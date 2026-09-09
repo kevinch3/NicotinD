@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { signal } from '@angular/core';
+import { computed, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { vi } from 'vitest';
 import {
@@ -105,7 +105,16 @@ describe('PlayerComponent', () => {
           provide: RemotePlaybackService,
           useValue: {
             isActiveDevice,
-            remoteEnabled: signal(false),
+            // The stub models one session: this device ('me') is the output
+            // while `isActiveDevice` is true, otherwise 'tv' is.
+            activeDeviceId: computed(() => (isActiveDevice() ? 'me' : 'tv')),
+            playingElsewhere: computed(() => !isActiveDevice()),
+            sessionControllable: signal(true),
+            activeDevice: signal(null),
+            devices: signal([]),
+            switcherOpen: signal(false),
+            setSwitcherOpen: vi.fn(),
+            switchToDevice: vi.fn(),
             remoteIsPlaying: signal(false),
             remotePosition: signal(0),
             remotePositionTs: signal(0),
@@ -115,7 +124,12 @@ describe('PlayerComponent', () => {
         },
         {
           provide: PlaybackWsService,
-          useValue: { sendProgressReport: vi.fn(), sendCommand: vi.fn() },
+          useValue: {
+            sendProgressReport: vi.fn(),
+            sendCommand: vi.fn(),
+            getDeviceId: () => 'me',
+            getDeviceName: () => 'Me',
+          },
         },
         { provide: Router, useValue: { navigate: vi.fn() } },
         { provide: PreserveService, useValue: preserveMock },

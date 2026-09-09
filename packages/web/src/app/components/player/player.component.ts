@@ -19,6 +19,7 @@ import { PlaybackWsService } from '../../services/playback-ws.service';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
 import { ArtistLinksComponent } from '../artist-links/artist-links.component';
 import { DeviceSwitcherComponent } from '../device-switcher/device-switcher.component';
+import { PlayingElsewhereComponent } from '../playing-elsewhere/playing-elsewhere.component';
 import { PreserveService } from '../../services/preserve.service';
 import { ServerConfigService } from '../../services/server-config.service';
 import { MediaControlsService } from '../../services/media-controls.service';
@@ -164,6 +165,7 @@ export function browserDurationIsAcceptable(knownSec: number, nativeSec: number)
   imports: [
     CoverArtComponent,
     DeviceSwitcherComponent,
+    PlayingElsewhereComponent,
     SeekBarComponent,
     ArtistLinksComponent,
     TranslatePipe,
@@ -245,6 +247,12 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   private interpolatedTime = signal(0);
 
   readonly isActiveDevice = this.remote.isActiveDevice;
+  /** The transport acts on the local player when this device is the output —
+   *  or when the session's device cannot be driven, in which case a play here
+   *  claims the output (the strip says "play here instead"). */
+  readonly drivesLocalPlayer = computed(
+    () => this.isActiveDevice() || !this.remote.sessionControllable(),
+  );
 
   readonly slideClass = computed(() => miniPlayerSlideClass(this.player.currentTrack() !== null));
 
@@ -578,9 +586,10 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       }
     });
 
-    // Effect 7: Progress reporting interval
+    // Effect 7: Progress reporting interval. Only the session's output reports;
+    // with no session (`null`) the server drops the report anyway.
     effect((onCleanup) => {
-      const isActive = this.isActiveDevice();
+      const isActive = this.remote.activeDeviceId() === this.ws.getDeviceId();
       const playing = this.player.isPlaying();
 
       if (!isActive || !playing) return;
@@ -1563,7 +1572,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   }
 
   handlePlayPause(): void {
-    if (this.isActiveDevice()) {
+    if (this.drivesLocalPlayer()) {
       if (this.player.isPlaying()) this.player.pause();
       else this.player.resume();
     } else {
@@ -1582,7 +1591,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   }
 
   handleNext(): void {
-    if (this.isActiveDevice()) {
+    if (this.drivesLocalPlayer()) {
       // A deliberate skip — closed here rather than in onEnded, which is the
       // only other way the track can end and means the opposite thing.
       this.tracker.end('skipped');
@@ -1592,7 +1601,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
 
   handlePrev(): void {
     const audio = this.audioEl()?.nativeElement;
-    if (this.isActiveDevice()) {
+    if (this.drivesLocalPlayer()) {
       if (audio && audio.currentTime > 3) {
         // Restarting the same track, not leaving it — the session continues
         // (the backward jump is a seek, which `accumulate` already ignores).
@@ -1611,7 +1620,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   // Firefox). Fires once on release: scrub locally for the active device, or
   // forward a SEEK command to the remote device.
   onSeek(time: number): void {
-    if (this.isActiveDevice()) {
+    if (this.drivesLocalPlayer()) {
       // Through the store, not straight at the element: Effect 6 is the single
       // applier, so the seek bar and the OS media controls share one
       // pending-intent record and one availability gate.

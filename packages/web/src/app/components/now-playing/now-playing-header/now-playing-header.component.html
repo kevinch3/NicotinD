@@ -37,9 +37,7 @@
       >{{ heading().key | t: heading().params ?? {} }}</span
     >
     <div class="absolute right-0">
-      @if (remote.remoteEnabled()) {
-        <app-device-switcher placement="down" />
-      }
+      <app-device-switcher placement="down" />
     </div>
   </div>
 </div>

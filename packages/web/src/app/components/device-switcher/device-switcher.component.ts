@@ -10,6 +10,7 @@ import {
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 import { profileIdOf } from '../../lib/device-id';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 
 function deviceEmoji(name: string, type: string): string {
   if (type !== 'web') return '\uD83C\uDFB5';
@@ -18,6 +19,7 @@ function deviceEmoji(name: string, type: string): string {
 
 @Component({
   selector: 'app-device-switcher',
+  imports: [TranslatePipe],
   templateUrl: './device-switcher.component.html',
 })
 export class DeviceSwitcherComponent {
@@ -32,12 +34,18 @@ export class DeviceSwitcherComponent {
   readonly myDevice = computed(() => this.remote.devices().find((d) => d.id === this.myId));
   // A second tab of this browser is a real, separately castable output, but it
   // renders with the same UA-derived name — so the row is marked rather than
-  // left an anonymous twin (issue #882).
+  // left an anonymous twin (issue #882). A device that opted out (or has had
+  // no gesture yet) is listed but not offered: it can still be the output
+  // when it plays on its own, so the list must be able to name it.
   readonly otherDevices = computed(() =>
     this.remote
       .devices()
       .filter((d) => d.id !== this.myId)
-      .map((d) => ({ ...d, sibling: profileIdOf(d.id) === profileIdOf(this.myId) })),
+      .map((d) => ({
+        ...d,
+        sibling: profileIdOf(d.id) === profileIdOf(this.myId),
+        offerable: d.available !== false,
+      })),
   );
   readonly isRemoteActive = computed(() => {
     const active = this.remote.activeDeviceId();

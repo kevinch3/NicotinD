@@ -2,10 +2,11 @@
     <div class="relative">
       <button
         (click)="toggleSwitcher($event)"
-        title="Play on a device"
+        [attr.title]="'remote.openSwitcher' | t"
+        [attr.aria-label]="'remote.openSwitcher' | t"
         data-testid="device-switcher-toggle"
         [class]="'w-7 h-7 flex items-center justify-center rounded-full transition ' +
-          (isRemoteActive() ? 'text-status-done' : 'text-theme-muted hover:text-theme-secondary')"
+          (isRemoteActive() ? 'text-[var(--theme-accent-text)]' : 'text-theme-muted hover:text-theme-secondary')"
       >
         <!-- Cast icon -->
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -17,7 +18,7 @@
       @if (remote.switcherOpen()) {
         <div data-testid="device-switcher-panel" [class]="'absolute right-0 w-64 bg-theme-surface-2 border border-theme rounded-xl shadow-2xl overflow-hidden z-50 ' + (placement() === 'down' ? 'top-10' : 'bottom-10')">
           <div class="px-4 py-3 border-b border-theme">
-            <p class="text-xs font-semibold text-theme-secondary uppercase tracking-widest">Play on...</p>
+            <p class="text-xs font-semibold text-theme-secondary uppercase tracking-widest">{{ 'remote.playOn' | t }}</p>
           </div>
 
           <!-- This device -->
@@ -30,9 +31,9 @@
             >
               <span class="text-base leading-none">{{ myDeviceEmoji() }}</span>
               <span class="flex-1 text-left truncate">{{ myDeviceName() }}</span>
-              <span class="text-[10px] text-theme-muted flex-shrink-0">this device</span>
+              <span class="text-[10px] text-theme-muted flex-shrink-0">{{ 'remote.thisDevice' | t }}</span>
               @if (isThisDeviceActive()) {
-                <span class="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0 animate-pulse"></span>
+                <span class="w-2 h-2 rounded-full bg-[var(--theme-accent)] flex-shrink-0 animate-pulse"></span>
               }
             </button>
           </div>
@@ -40,14 +41,16 @@
           <!-- Other remote devices -->
           <ul class="py-1 max-h-52 overflow-y-auto">
             @if (otherDevices().length === 0) {
-              <li class="px-4 py-3 text-sm text-theme-muted text-center">No other devices online</li>
+              <li class="px-4 py-3 text-sm text-theme-muted text-center">{{ 'remote.noOtherDevices' | t }}</li>
             }
             @for (device of otherDevices(); track device.id) {
               <li>
                 <button
-                  data-testid="device-option"
+                  [attr.data-testid]="device.offerable ? 'device-option' : 'device-option-unavailable'"
                   [attr.data-device-id]="device.id"
-                  [class]="'w-full flex items-center gap-3 px-4 py-2.5 text-sm transition hover:bg-theme-hover ' +
+                  [disabled]="!device.offerable"
+                  [class]="'w-full flex items-center gap-3 px-4 py-2.5 text-sm transition ' +
+                    (device.offerable ? 'hover:bg-theme-hover ' : 'cursor-default opacity-60 ') +
                     (device.id === remote.activeDeviceId() ? 'text-theme-primary' : 'text-theme-secondary')"
                   (click)="selectDevice(device.id)"
                 >
@@ -57,12 +60,17 @@
                     <span
                       data-testid="device-sibling-tab"
                       class="flex-shrink-0 text-[10px] text-theme-muted"
-                      >another tab</span
+                      >{{ 'remote.anotherTab' | t }}</span
                     >
+                  }
+                  @if (!device.offerable) {
+                    <span class="flex-shrink-0 text-[10px] text-theme-muted">{{ 'remote.notAvailable' | t }}</span>
+                  } @else if (device.pending) {
+                    <span class="flex-shrink-0 text-[10px] text-theme-muted">{{ 'remote.reconnecting' | t }}</span>
                   }
                   @if (device.id === remote.activeDeviceId()) {
                     <span data-testid="device-now-playing" class="flex-shrink-0 text-[10px] font-semibold tracking-wide px-1.5 py-0.5 rounded status-done">
-                      NOW PLAYING
+                      {{ 'remote.nowPlaying' | t }}
                     </span>
                   }
                 </button>
@@ -72,7 +80,7 @@
 
           @if (isRemoteActive() && activeDevice()) {
             <div class="px-4 py-2 border-t border-theme text-xs text-theme-muted truncate">
-              Playing on: <span class="text-theme-secondary">{{ activeDevice()!.name }}</span>
+              {{ 'remote.playingOn' | t: { name: activeDevice()!.name } }}
             </div>
           }
         </div>

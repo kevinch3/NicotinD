@@ -28,6 +28,8 @@ import { ArtistImageSourcesService } from '../../app/services/artist-image-sourc
 import { getStoryLang } from './story-lang';
 import { PlayerService } from '../../app/services/player.service';
 import type { Track } from '../../app/services/player.service';
+import { RemotePlaybackService } from '../../app/services/remote-playback.service';
+import type { RemoteDevice } from '../../app/services/remote-playback.service';
 
 export interface StoryState {
   /** Role the component should render for. `listener` hides acquisition affordances. */
@@ -56,6 +58,10 @@ export interface StoryState {
    * cannot do anything.
    */
   artistImageSources?: string[] | null;
+  /** A remote-playback session as the server would have synced it: who the
+   *  output is and the device list. Storybook has no WebSocket, so this is the
+   *  only way a controller-side story sees a session. */
+  remoteSession?: { activeDeviceId: string | null; devices: RemoteDevice[] };
 }
 
 /**
@@ -147,6 +153,11 @@ export function storyProviders(state: StoryState = {}): Array<Provider | Environ
       }
       if (state.artistImageSources !== undefined) {
         inject(ArtistImageSourcesService).sources.set(state.artistImageSources);
+      }
+      if (state.remoteSession !== undefined) {
+        const remote = inject(RemotePlaybackService);
+        remote.setDevices(state.remoteSession.devices);
+        remote.setActiveDeviceId(state.remoteSession.activeDeviceId);
       }
       // Load the REAL catalogs, not a stub: Storybook serves `public/` via
       // `staticDirs`, so `/i18n/en.json` and `/i18n/es.json` are the same files
