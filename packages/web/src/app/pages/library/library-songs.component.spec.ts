@@ -14,7 +14,7 @@ import { ListControlsService } from '../../services/list-controls.service';
 import type { Song } from '../../services/api/api-types';
 import type { LibraryFilter } from '@nicotind/core';
 import type { PreservedTrackMeta } from '../../lib/preserve-store';
-import { setInputValue } from '../../../testing/signal-input';
+import { changeInputValue, setInputValue } from '../../../testing/signal-input';
 
 // See track-row.component.spec.ts: the JIT harness can't drive input() signals,
 // so write straight to the signal node (only before the first detectChanges()).
@@ -79,7 +79,7 @@ const OFFLINE: PreservedTrackMeta[] = [
   },
 ];
 
-function setup(opts: { offline?: boolean; role?: string } = {}) {
+function setup(opts: { offline?: boolean; role?: string; emptyRows?: boolean } = {}) {
   const calls: Array<{
     size: number;
     offset: number;
@@ -134,7 +134,11 @@ function setup(opts: { offline?: boolean; role?: string } = {}) {
             o: { sort?: string; filter?: LibraryFilter; q?: string },
           ) => {
             calls.push({ size, offset, opts: o });
-            return of(SONGS);
+            // `emptyRows` keeps <app-track-row> out of the render for tests
+            // that need real change detection: TrackRowComponent is a genuine
+            // import, so NO_ERRORS_SCHEMA cannot stub it and it demands a
+            // required `track` input per row.
+            return of(opts.emptyRows ? [] : SONGS);
           },
           deleteSongs: (ids: string[]) => {
             deletedSongs = ids;
@@ -318,5 +322,43 @@ describe('LibrarySongsComponent — offline', () => {
     component.onConfirm();
     await Promise.resolve();
     expect(wasCleared()).toBe(true);
+  });
+});
+
+describe('LibrarySongsComponent — the filter input is the source of truth (#1060)', () => {
+  /** First change detection: runs ngOnInit (which loads once) and the effects,
+   *  so a later change is measured against a settled component. */
+  function start(fixture: { detectChanges: () => void }) {
+    fixture.detectChanges();
+  }
+
+  it('reloads when the parent changes the filter from outside this tab', async () => {
+    const { component, fixture, calls } = setup({ emptyRows: true });
+    start(fixture);
+    await Promise.resolve();
+    const before = calls.length;
+    // Not this component's own panel — the parent pushing a filter in (a
+    // restored link, a route change). Seeded only in ngOnInit, this was
+    // silently ignored and the list kept the previous filter's rows.
+    changeInputValue(component.filter, { countries: ['CL'] } as LibraryFilter);
+    fixture.detectChanges();
+    await Promise.resolve();
+    expect(calls.length).toBeGreaterThan(before);
+    expect(calls.at(-1)?.opts.filter).toEqual({ countries: ['CL'] });
+  });
+
+  it("does not re-request when the parent echoes back this tab's own change", async () => {
+    const { component, fixture, calls } = setup({ emptyRows: true });
+    start(fixture);
+    await Promise.resolve();
+    component.onFilterChange({ bpmMin: 120 });
+    await Promise.resolve();
+    const afterOwnChange = calls.length;
+    // The parent mirrors the emitted filter into its signal, which flows back
+    // down as this input. Same request — it must not fire a second time.
+    changeInputValue(component.filter, { bpmMin: 120 } as LibraryFilter);
+    fixture.detectChanges();
+    await Promise.resolve();
+    expect(calls.length).toBe(afterOwnChange);
   });
 });

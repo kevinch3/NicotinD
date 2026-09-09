@@ -2,6 +2,7 @@ import {
   Component,
   inject,
   signal,
+  type WritableSignal,
   computed,
   effect,
   viewChild,
@@ -40,6 +41,7 @@ import {
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { ArtistImageMenuComponent } from '../../components/artist-image-menu/artist-image-menu.component';
 import { LibraryStatsComponent } from './library-stats.component';
+import { LibraryListErrorComponent } from './library-list-error.component';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import { chunk } from '../../lib/tv-nav-grid';
@@ -125,6 +127,7 @@ function writePersistedState(state: PersistedLibraryState): void {
     IconComponent,
     TranslatePipe,
     LibraryStatsComponent,
+    LibraryListErrorComponent,
     TvNavGroupDirective,
     TvNavItemDirective,
   ],
@@ -381,9 +384,13 @@ export class LibraryComponent implements OnInit, OnDestroy {
     sortOptions: this.gridSortOptions,
   });
 
+  /** The last fetch failed — the list is cleared, not stale (#1059). */
+  readonly singlesFailed = signal(false);
+
   readonly isSinglesEmpty = computed(
     () =>
       this.singlesFetched() &&
+      !this.singlesFailed() &&
       !this.loadingSingles() &&
       this.singlesControls.filtered().length === 0,
   );
@@ -400,9 +407,12 @@ export class LibraryComponent implements OnInit, OnDestroy {
     sortOptions: this.gridSortOptions,
   });
 
+  readonly compilationsFailed = signal(false);
+
   readonly isCompilationsEmpty = computed(
     () =>
       this.compilationsFetched() &&
+      !this.compilationsFailed() &&
       !this.loadingCompilations() &&
       this.compilationsControls.filtered().length === 0,
   );
@@ -413,9 +423,11 @@ export class LibraryComponent implements OnInit, OnDestroy {
   >([]);
   readonly loadingArtists = signal(false);
   readonly artistsFetched = signal(false);
+  readonly artistsFailed = signal(false);
   readonly isArtistsEmpty = computed(
     () =>
       this.artistsFetched() &&
+      !this.artistsFailed() &&
       !this.loadingArtists() &&
       this.artistControls.filtered().length === 0,
   );
@@ -476,8 +488,13 @@ export class LibraryComponent implements OnInit, OnDestroy {
   readonly genres = signal<Array<{ value: string; songCount: number; albumCount: number }>>([]);
   readonly loadingGenres = signal(false);
   readonly genresFetched = signal(false);
+  readonly genresFailed = signal(false);
   readonly isGenresEmpty = computed(
-    () => this.genresFetched() && !this.loadingGenres() && this.genres().length === 0,
+    () =>
+      this.genresFetched() &&
+      !this.genresFailed() &&
+      !this.loadingGenres() &&
+      this.genres().length === 0,
   );
 
   // ─── Lifecycle ────────────────────────────────────────────────────
@@ -650,6 +667,11 @@ export class LibraryComponent implements OnInit, OnDestroy {
     } else if (mode === 'artists') {
       await this.fetchArtists();
     }
+    // No `songs` branch, deliberately (#1060): the Songs tab renders its own
+    // filter panel, so a change there reaches this method only *after*
+    // LibrarySongsComponent.onFilterChange has already reloaded. Refetching
+    // here would double every songs request. `refreshActiveTab` below does
+    // handle songs because pull-to-refresh has no such child-first path.
   }
 
   /** Pull-to-refresh: refetch the active tab now, stale-mark the rest so they
@@ -799,62 +821,91 @@ export class LibraryComponent implements OnInit, OnDestroy {
   }
 
   // ─── Artists / Genre fetchers ────────────────────────────────────
-  async fetchArtists(): Promise<void> {
-    if (this.loadingArtists()) return;
-    this.loadingArtists.set(true);
+  /**
+   * The one fetch lane for the whole-library tab lists.
+   *
+   * These four used to share a `catch { /* ignore *\/ }`, which is what made
+   * #1055 read as a logic bug rather than a timeout: the filtered request
+   * never came back, nothing recorded that, and the previous — unfiltered —
+   * list stayed on screen underneath the active filter chips. On failure the
+   * list is cleared and the error state rendered instead, because showing
+   * rows that contradict the filter is worse than showing none (#1059).
+   */
+  private async loadList<T>(
+    signals: {
+      loading: WritableSignal<boolean>;
+      fetched: WritableSignal<boolean>;
+      failed: WritableSignal<boolean>;
+      rows: WritableSignal<T[]>;
+    },
+    fetch: () => Promise<T[]>,
+  ): Promise<void> {
+    if (signals.loading()) return;
+    signals.loading.set(true);
     try {
-      const data = await firstValueFrom(this.api.getArtists(this.libFilter()));
-      this.artists.set(data.map((a) => ({ ...a, albumCount: a.albumCount ?? 0 })));
+      signals.rows.set(await fetch());
+      signals.failed.set(false);
     } catch {
-      /* ignore */
+      signals.rows.set([]);
+      signals.failed.set(true);
     } finally {
-      this.loadingArtists.set(false);
-      this.artistsFetched.set(true);
+      signals.loading.set(false);
+      signals.fetched.set(true);
     }
+  }
+
+  async fetchArtists(): Promise<void> {
+    await this.loadList(
+      {
+        loading: this.loadingArtists,
+        fetched: this.artistsFetched,
+        failed: this.artistsFailed,
+        rows: this.artists,
+      },
+      async () => {
+        const data = await firstValueFrom(this.api.getArtists(this.libFilter()));
+        return data.map((a) => ({ ...a, albumCount: a.albumCount ?? 0 }));
+      },
+    );
   }
 
   async fetchSingles(): Promise<void> {
-    if (this.loadingSingles()) return;
-    this.loadingSingles.set(true);
-    try {
-      const data = await firstValueFrom(this.api.getSingles('newest', 500, 0, this.libFilter()));
-      this.singles.set(data);
-    } catch {
-      /* ignore */
-    } finally {
-      this.loadingSingles.set(false);
-      this.singlesFetched.set(true);
-    }
+    await this.loadList(
+      {
+        loading: this.loadingSingles,
+        fetched: this.singlesFetched,
+        failed: this.singlesFailed,
+        rows: this.singles,
+      },
+      () => firstValueFrom(this.api.getSingles('newest', 500, 0, this.libFilter())),
+    );
   }
 
   async fetchCompilations(): Promise<void> {
-    if (this.loadingCompilations()) return;
-    this.loadingCompilations.set(true);
-    try {
-      const data = await firstValueFrom(
-        this.api.getCompilations('newest', 500, 0, this.libFilter()),
-      );
-      this.compilations.set(data);
-    } catch {
-      /* ignore */
-    } finally {
-      this.loadingCompilations.set(false);
-      this.compilationsFetched.set(true);
-    }
+    await this.loadList(
+      {
+        loading: this.loadingCompilations,
+        fetched: this.compilationsFetched,
+        failed: this.compilationsFailed,
+        rows: this.compilations,
+      },
+      () => firstValueFrom(this.api.getCompilations('newest', 500, 0, this.libFilter())),
+    );
   }
 
   async fetchGenres(): Promise<void> {
-    if (this.loadingGenres()) return;
-    this.loadingGenres.set(true);
-    try {
-      const data = await firstValueFrom(this.api.getGenres());
-      this.genres.set(data.sort((a, b) => b.songCount - a.songCount));
-    } catch {
-      /* ignore */
-    } finally {
-      this.loadingGenres.set(false);
-      this.genresFetched.set(true);
-    }
+    await this.loadList(
+      {
+        loading: this.loadingGenres,
+        fetched: this.genresFetched,
+        failed: this.genresFailed,
+        rows: this.genres,
+      },
+      async () => {
+        const data = await firstValueFrom(this.api.getGenres());
+        return data.sort((a, b) => b.songCount - a.songCount);
+      },
+    );
   }
 
   getAlbumLink(id: string) {

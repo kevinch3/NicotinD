@@ -1208,6 +1208,13 @@ Three rules, all documented on the helper itself:
 - **One fresh component per scenario.** Same mechanism: a second write to the
   same input lands in the node but doesn't invalidate readers, so an assertion
   after it can silently check the *first* value.
+- **To assert on a *reaction* to an input change, use `changeInputValue`.** It
+  goes through `signalSetFn`, so the version bumps and consumers are marked
+  dirty — the next `detectChanges()` runs an input-driven `effect()` exactly as
+  a real parent binding would. `setInputValue` cannot test this by
+  construction: it is the seed-before-first-`detectChanges()` call, and its
+  whole point is bypassing the notification. A spec written with the wrong one
+  does not fail loudly; it passes against the value it never changed.
 
 This exercises the real production template/CSS — it only swaps out *how* the
 input value gets in.

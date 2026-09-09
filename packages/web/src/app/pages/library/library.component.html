@@ -268,7 +268,9 @@
       }
     </div>
 
-    @if (loadingCompilations()) {
+    @if (compilationsFailed()) {
+      <app-library-list-error tab="compilations" (retry)="fetchCompilations()" />
+    } @else if (loadingCompilations()) {
       <app-skeleton variant="album-tile" [label]="'common.loadingAlbums' | t" />
     } @else {
       <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4" appTvNavGroup axis="grid" #compilationsGrid="appTvNavGroup">
@@ -355,7 +357,9 @@
       }
     </div>
 
-    @if (loadingSingles()) {
+    @if (singlesFailed()) {
+      <app-library-list-error tab="singles" (retry)="fetchSingles()" />
+    } @else if (loadingSingles()) {
       <app-skeleton variant="album-tile" [label]="'common.loadingAlbums' | t" />
     } @else {
       <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4" appTvNavGroup axis="grid" #singlesGrid="appTvNavGroup">
@@ -444,7 +448,9 @@
       }
     </div>
 
-    @if (loadingArtists()) {
+    @if (artistsFailed()) {
+      <app-library-list-error tab="artists" (retry)="fetchArtists()" />
+    } @else if (loadingArtists()) {
       <app-skeleton variant="artist-tile" [label]="'common.loadingArtists' | t" />
     } @else {
       <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4" appTvNavGroup axis="grid" #artistsGrid="appTvNavGroup">
@@ -495,7 +501,9 @@
   <!-- ═══ GENRE MODE ═══ -->
   @if (browseMode() === 'genre') {
     <!-- Genre grid -->
-    @if (loadingGenres()) {
+    @if (genresFailed()) {
+      <app-library-list-error tab="genres" (retry)="fetchGenres()" />
+    } @else if (loadingGenres()) {
       <app-skeleton variant="genre-tile" [label]="'common.loadingGenres' | t" />
     } @else {
       <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3" appTvNavGroup axis="grid" #genresGrid="appTvNavGroup">

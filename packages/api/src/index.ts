@@ -2,6 +2,8 @@ import { OpenAPIHono } from '@hono/zod-openapi';
 import { swaggerUI } from '@hono/swagger-ui';
 import { serveStatic, createBunWebSocket } from 'hono/bun';
 import { nativeAppCors } from './middleware/cors.js';
+import { inFlightRequests, trackInFlight } from './middleware/in-flight.js';
+import { startLoopBlockMonitor } from './services/loop-block-monitor.js';
 import type {
   NicotinDConfig,
   TrackStatus,
@@ -224,6 +226,12 @@ export function createApp({
 
   // Cross-origin support for the native (Capacitor) app — see middleware/cors.ts.
   app.use('/api/*', nativeAppCors());
+
+  // Attribute a blocked event loop to the request holding it (#1058). Mounted
+  // before auth so a request that never reaches a route still cannot be the
+  // unexplained one.
+  app.use('/api/*', trackInFlight());
+  startLoopBlockMonitor({ inFlight: inFlightRequests });
 
   app.route('/api/health', healthRoutes(version));
 

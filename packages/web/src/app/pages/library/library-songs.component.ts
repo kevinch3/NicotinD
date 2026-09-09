@@ -30,7 +30,17 @@ import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-
 import { SkeletonComponent } from '../../components/skeleton/skeleton.component';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { ListControlsService, type SortOption } from '../../services/list-controls.service';
-import { isEmptyLibraryFilter, type LibraryFilter } from '@nicotind/core';
+import { isEmptyLibraryFilter, serializeLibraryFilter, type LibraryFilter } from '@nicotind/core';
+
+/** Value identity for a filter — two filters are the same request when they
+ *  serialize to the same params, whatever object carries them. */
+function filterKey(f: LibraryFilter): string {
+  const params = serializeLibraryFilter(f);
+  return Object.keys(params)
+    .sort()
+    .map((k) => `${k}=${String(params[k as keyof typeof params])}`)
+    .join('&');
+}
 import { createSelection } from '../../lib/selection';
 import { albumRef, toTrack, offlineTrackAction } from '../../lib/track-utils';
 import { appendUnique } from '../../lib/append-unique';
@@ -213,6 +223,24 @@ export class LibrarySongsComponent implements OnInit, OnDestroy {
     this.lastOffline = offline;
     if (offline) void this.preserve.refreshList();
     else void this.loadSongs(true);
+  });
+
+  /**
+   * Keep the tab's own filter in step with the parent's (#1060).
+   *
+   * `activeFilter` used to be seeded once in `ngOnInit`, which happens to work
+   * only because today the sole path that changes the parent's filter while
+   * this tab is mounted is *this* component's own panel. Any other source —
+   * a route change, a filter restored from a shared link, a future sibling
+   * control — would leave the list rendering the previous filter's rows with
+   * no way to notice. Mirroring the input makes the input the source of truth;
+   * the equality check keeps our own emit from costing a second request.
+   */
+  private filterMirrorEffect = effect(() => {
+    const incoming = this.filter();
+    if (filterKey(incoming) === filterKey(this.activeFilter())) return;
+    this.activeFilter.set(incoming);
+    if (!this.offline()) void this.loadSongs(true);
   });
 
   ngOnInit(): void {

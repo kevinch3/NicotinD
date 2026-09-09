@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { vi } from 'vitest';
 import { LibraryComponent } from './library.component';
 import { LibraryApiService } from '../../services/api/library-api.service';
@@ -648,5 +648,77 @@ describe('LibraryComponent — new-album banner', () => {
     expect(component.newAlbumsAvailable()).toBe(false);
     expect(clearNewlyLandedAlbumIds).toHaveBeenCalled();
     expect(albumCalls.length).toBeGreaterThan(callsAfterInit);
+  });
+});
+
+describe('LibraryComponent — a list that failed to load says so (#1059)', () => {
+  it('surfaces the failure instead of leaving the previous list on screen', async () => {
+    const { component, api } = setup();
+    // First load succeeds — this is the unfiltered list the user is looking at.
+    api.getArtists = vi.fn(() => of([{ id: 'a1', name: 'Los Jaivas', albumCount: 2 }])) as never;
+    await component.fetchArtists();
+    expect(component.artists()).toHaveLength(1);
+    expect(component.artistsFailed()).toBe(false);
+
+    // Now a filtered fetch times out. This is the #1055 shape exactly: without
+    // the fix the rejection is swallowed and the *unfiltered* list stays
+    // rendered under the active filter chips, reading as "the filter did
+    // nothing" rather than "the filter never came back".
+    api.getArtists = vi.fn(() => throwError(() => new Error('timeout'))) as never;
+    await component.fetchArtists();
+    expect(component.artistsFailed()).toBe(true);
+    expect(component.artists()).toEqual([]);
+  });
+
+  it('does not claim the library is empty when the fetch failed', async () => {
+    const { component, api, filteredItems } = setup();
+    filteredItems.set([]);
+    api.getArtists = vi.fn(() => throwError(() => new Error('nope'))) as never;
+    await component.fetchArtists();
+    // "No artists found." is a statement about the library; we only know the
+    // request failed. The error state owns this case.
+    expect(component.isArtistsEmpty()).toBe(false);
+    expect(component.artistsFailed()).toBe(true);
+  });
+
+  it('clears the failure once a retry succeeds', async () => {
+    const { component, api } = setup();
+    api.getArtists = vi.fn(() => throwError(() => new Error('nope'))) as never;
+    await component.fetchArtists();
+    expect(component.artistsFailed()).toBe(true);
+    api.getArtists = vi.fn(() => of([{ id: 'a1', name: 'Inti-Illimani', albumCount: 1 }])) as never;
+    await component.fetchArtists();
+    expect(component.artistsFailed()).toBe(false);
+    expect(component.artists()).toHaveLength(1);
+  });
+
+  it('covers every whole-library tab, not just artists', async () => {
+    const { component, api } = setup();
+    api.getSingles = vi.fn(() => throwError(() => new Error('x'))) as never;
+    api.getCompilations = vi.fn(() => throwError(() => new Error('x'))) as never;
+    api.getGenres = vi.fn(() => throwError(() => new Error('x'))) as never;
+    await component.fetchSingles();
+    await component.fetchCompilations();
+    await component.fetchGenres();
+    expect([
+      component.singlesFailed(),
+      component.compilationsFailed(),
+      component.genresFailed(),
+    ]).toEqual([true, true, true]);
+    expect(component.isGenresEmpty()).toBe(false);
+  });
+});
+
+describe('LibraryComponent — the Songs tab owns its own refetch (#1060)', () => {
+  it('onFilterChange does not refetch songs, which would double every request', async () => {
+    const { component, api } = setup();
+    component.libraryMode.set('songs');
+    const before = (api.getArtists as ReturnType<typeof vi.fn>).mock.calls.length;
+    await component.onFilterChange({ countries: ['CL'] });
+    // The songs child has already reloaded itself by the time this runs; the
+    // parent's job here is the URL sync and invalidating the *other* tabs.
+    expect(component.libFilter()).toEqual({ countries: ['CL'] });
+    expect(component.artistsFetched()).toBe(false);
+    expect((api.getArtists as ReturnType<typeof vi.fn>).mock.calls.length).toBe(before);
   });
 });
