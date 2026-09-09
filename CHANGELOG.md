@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.22](https://github.com/kevinch3/NicotinD/compare/v0.6.21...v0.6.22) (2026-09-09)
+
+### Features
+
+* **karaoke:** drop the ML vocal-separation sidecar, keep the basic mute ([#1041](https://github.com/kevinch3/NicotinD/issues/1041)) ([cbe0528](https://github.com/kevinch3/NicotinD/commit/cbe05280331ab5e1b58e5ee20da8ad1801163636)), closes [#1024](https://github.com/kevinch3/NicotinD/issues/1024), references [#603](https://github.com/kevinch3/NicotinD/issues/603) [#1019](https://github.com/kevinch3/NicotinD/issues/1019) [#1021](https://github.com/kevinch3/NicotinD/issues/1021) [#1020](https://github.com/kevinch3/NicotinD/issues/1020) [#683](https://github.com/kevinch3/NicotinD/issues/683) [#603](https://github.com/kevinch3/NicotinD/issues/603)
+
+### Bug Fixes
+
+* **deps:** clear five advisories that reached the shipping closure ([#1047](https://github.com/kevinch3/NicotinD/issues/1047)) ([38c4dc0](https://github.com/kevinch3/NicotinD/commit/38c4dc0d9298a8c1411f131f7478f1b3ede63ca4))
 ## [0.6.21](https://github.com/kevinch3/NicotinD/compare/v0.6.20...v0.6.21) (2026-09-08)
 
 ### Bug Fixes
