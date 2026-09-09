@@ -71,9 +71,12 @@ core wheel and `key-detection.ts`'s `keyToCamelot` can never drift apart.
 
 - **Any-track matching** (the user-chosen semantic): on album and artist lists, a
   song-level property matches when **at least one** of the entity's tracks matches. One
-  `EXISTS` subquery carries the whole conjunction — a *single* track must satisfy all
-  song-level conditions together. Artists also match through the `library_song_artists`
-  join table, so featured credits count.
+  subquery carries the whole conjunction — a *single* track must satisfy all song-level
+  conditions together. Artists also match through the `library_song_artists` join table,
+  so featured credits count: an artist matches `country=CL` when they are credited on a
+  song whose credited-artist set includes a CL artist, which deliberately includes a
+  foreign artist featured on a Chilean track. See [Performance](#performance) for why this
+  is a membership test rather than a correlated `EXISTS`.
 - **Starred is the one entity-level property**: `/albums|/singles|/compilations` filter on
   `library_albums.starred`, `/artists` on `library_artists.starred`, and the songs route on
   `library_songs.starred`. It never participates in the any-track EXISTS.
@@ -87,6 +90,8 @@ core wheel and `key-detection.ts`'s `keyToCamelot` can never drift apart.
 - **`packages/api/src/services/library-filter-sql.ts`** — pure fragment builders
   (`songFilterWheres`, `albumFilterWheres`, `artistFilterWheres`) returning
   `{ wheres, params }` that routes splice into their existing `wheres[]/params[]` arrays.
+  The two entity builders share `entityFilterWheres`, which takes the `SELECT <entity id>
+  FROM …` prefixes to UNION rather than an entity correlation predicate.
   Bucket thresholds are inlined as code-constant literals; every user value travels as a
   `?` param (injection-safe).
 - Routes parse with `parseLibraryFilter(c.req.queries())` — `queries()` (plural) so the
@@ -94,11 +99,50 @@ core wheel and `key-detection.ts`'s `keyToCamelot` can never drift apart.
 
 ## Performance
 
-The EXISTS probes ride the existing indexes (`idx_library_songs_album_id`,
+**The song predicate must be evaluated once, as a membership test — never as a correlated
+`EXISTS` per entity row.** `entityFilterWheres` emits
+
+```sql
+library_artists.id IN (SELECT ls.artist_id FROM library_songs ls WHERE <song wheres>
+                       UNION
+                       SELECT sa.artist_id FROM library_song_artists sa
+                         JOIN library_songs ls ON ls.id = sa.song_id WHERE <song wheres>)
+```
+
+because the song wheres read only `ls`, never the entity. Written as
+`EXISTS (… WHERE <entity correlation> AND <song wheres>)` — the shape this file described
+until #1055 — SQLite cannot hoist it, so it re-derives the entire matching-song set for
+*every* entity row, and a non-matching entity scans every song before it can say no.
+
+Measured on prod (20,906 visible songs / 3,560 visible artists), old vs. new, **identical
+id sets** in both cases:
+
+| query | correlated `EXISTS` | membership | speedup |
+| --- | --- | --- | --- |
+| `/artists?country=CL,AR` (393 rows) | 204,859 ms | 118 ms | 1,737× |
+| `/artists?genre=Rock` (432 rows) | 184,616 ms | 91 ms | 2,021× |
+| `/albums?country=CL,AR` (1,439 rows) | 58,450 ms | 64 ms | 907× |
+
+**No index fixes the correlated form** — the shape is the cost, which is why the old advice
+here ("if filtering ever profiles slow, add a composite index") pointed at the wrong lever.
+The membership probes ride the existing indexes (`idx_library_songs_album_id`,
 `idx_library_songs_artist_id`, `idx_song_artists_artist`, `idx_library_songs_genre`,
-`idx_song_genres_genre`/`idx_song_genres_song` for the multi-genre EXISTS). At
-library scale nothing more is needed; if filtering ever profiles slow, a composite
-`(album_id, hidden)` index on `library_songs` is the first thing to add.
+`idx_song_genres_genre`/`idx_song_genres_song`).
+
+Two consequences worth holding onto:
+
+- **The artists form inlines the song wheres twice** (one per UNION branch), so
+  `entityFilterWheres` pushes `song.params` once per selector. A placeholder/param mismatch
+  throws at query time, not at build time; `library-filter-sql.test.ts` pins the binding.
+- **A slow query here stalls everything.** `bun:sqlite`'s `.all()` is synchronous inside a
+  synchronous Hono handler, so one filtered request occupied the single Bun event loop for
+  ~3 minutes — songs, cover art and the container health check all queued behind it. That
+  is why the reported symptom was "the country filter returns unfiltered results" (the
+  request never completed; the web layer's 30 s `artistsCache` kept the stale list on
+  screen) *and* "filtering songs is slow" (songs were fine at 82 ms — they were queued).
+
+`db.perf.test.ts` guards the shape via `EXPLAIN QUERY PLAN`, not wall-clock, so it cannot
+flake on a loaded box.
 
 ## Web UI
 

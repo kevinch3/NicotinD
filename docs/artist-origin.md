@@ -119,7 +119,10 @@ script and task cannot drift.
 - **`LibraryFilter.countries`** (`country=` comma-joined param): an `EXISTS`
   over the same credited-artist union as the radio pool. The `unknown` bucket
   is a `NOT EXISTS` — the curation lens for "which artists still need an
-  origin". Albums/artists inherit through the any-track `EXISTS` wrapper.
+  origin". Albums/artists inherit through the any-track membership test — an
+  `id IN (…)` over a song set built once, **not** a per-entity correlated
+  `EXISTS`, which measured 205 s for `country=CL,AR` on prod (#1055). See
+  [library-filters.md](library-filters.md#performance).
 - **Filter UI**: the panel's Origin section lists only countries present in
   the library (`GET /api/library/origin-countries` facets, lazy-loaded with
   the genres on first open) — a 249-entry dropdown would be noise.

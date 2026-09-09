@@ -106,29 +106,38 @@ describe('albumFilterWheres', () => {
     expect(albumFilterWheres({})).toEqual({ wheres: [], params: [] });
   });
 
-  it('keeps starred at the album level, song conditions in an EXISTS', () => {
+  it('keeps starred at the album level, song conditions in a membership test', () => {
     const frag = albumFilterWheres({ starred: true, bpmMin: 120, moods: ['happy'] });
     expect(frag.wheres).toHaveLength(2);
     expect(frag.wheres[0]).toBe('library_albums.starred IS NOT NULL');
     expect(frag.wheres[1]).toBe(
-      'EXISTS (SELECT 1 FROM library_songs ls WHERE ls.album_id = library_albums.id AND ls.hidden = 0 AND ls.bpm >= ? AND ls.mood IN (?))',
+      'library_albums.id IN (SELECT ls.album_id FROM library_songs ls WHERE ls.hidden = 0 AND ls.bpm >= ? AND ls.mood IN (?))',
     );
     expect(frag.params).toEqual([120, 'happy']);
   });
 
-  it('emits no EXISTS when only starred is set', () => {
+  it('emits no membership test when only starred is set', () => {
     expect(albumFilterWheres({ starred: true })).toEqual({
       wheres: ['library_albums.starred IS NOT NULL'],
       params: [],
     });
   });
 
-  it('routes countries through the any-track EXISTS on the ls alias', () => {
+  it('routes countries through the any-track membership test on the ls alias', () => {
     const frag = albumFilterWheres({ countries: ['AR'] });
     expect(frag.wheres).toHaveLength(1);
     expect(frag.wheres[0]).toContain('FROM library_songs ls');
     expect(frag.wheres[0]).toContain('ls.artist_id');
     expect(frag.params).toEqual(['AR']);
+  });
+
+  // The song predicate reads only `ls`. A correlated EXISTS re-derives the
+  // whole matching-song set per entity row, which measured 176s on prod
+  // (#1055); membership evaluates it once. Guard the shape, not the clock.
+  it('never correlates the song subquery back to the album row', () => {
+    const frag = albumFilterWheres({ countries: ['AR'], genres: ['Rock'] });
+    expect(frag.wheres[0]).not.toContain('EXISTS (SELECT 1 FROM library_songs ls');
+    expect(frag.wheres[0]).not.toContain('library_albums.id AND');
   });
 });
 
@@ -137,11 +146,29 @@ describe('artistFilterWheres', () => {
     const frag = artistFilterWheres({ starred: true, buckets: { energy: ['high'] } });
     expect(frag.wheres[0]).toBe('library_artists.starred IS NOT NULL');
     expect(frag.wheres[1]).toBe(
-      'EXISTS (SELECT 1 FROM library_songs ls WHERE (ls.artist_id = library_artists.id OR ls.id IN ' +
-        '(SELECT song_id FROM library_song_artists WHERE artist_id = library_artists.id)) ' +
-        'AND ls.hidden = 0 AND ls.energy >= 0.65)',
+      'library_artists.id IN (' +
+        'SELECT ls.artist_id FROM library_songs ls WHERE ls.hidden = 0 AND ls.energy >= 0.65' +
+        ' UNION ' +
+        'SELECT sa.artist_id FROM library_song_artists sa JOIN library_songs ls ON ls.id = sa.song_id ' +
+        'WHERE ls.hidden = 0 AND ls.energy >= 0.65)',
     );
     expect(frag.params).toEqual([]);
+  });
+
+  // Two UNION branches inline the song wheres twice, so every param must be
+  // pushed twice, in order. A placeholder/param mismatch throws at query time,
+  // not at build time — which is exactly the kind of break tsc cannot catch.
+  it('binds the song params once per UNION branch', () => {
+    const frag = artistFilterWheres({ countries: ['CL', 'AR'], bpmMin: 120 });
+    const placeholders = (frag.wheres[0]?.match(/\?/g) ?? []).length;
+    expect(frag.params).toEqual([120, 'CL', 'AR', 120, 'CL', 'AR']);
+    expect(frag.params).toHaveLength(placeholders);
+  });
+
+  it('never correlates the song subquery back to the artist row', () => {
+    const frag = artistFilterWheres({ countries: ['CL'] });
+    expect(frag.wheres[0]).not.toContain('EXISTS (SELECT 1 FROM library_songs ls');
+    expect(frag.wheres[0]).not.toContain('= library_artists.id');
   });
 });
 
