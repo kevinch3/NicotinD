@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.28](https://github.com/kevinch3/NicotinD/compare/v0.6.27...v0.6.28) (2026-09-09)
+
+### Bug Fixes
+
+* **library:** a failed list says so, and a blocked loop names its cause ([#1061](https://github.com/kevinch3/NicotinD/issues/1061)) ([6fb291e](https://github.com/kevinch3/NicotinD/commit/6fb291ee37e4371951fe252000d026913f3de7ff)), closes [#1059](https://github.com/kevinch3/NicotinD/issues/1059) [#1060](https://github.com/kevinch3/NicotinD/issues/1060), references [#1055](https://github.com/kevinch3/NicotinD/issues/1055) [#1055](https://github.com/kevinch3/NicotinD/issues/1055) [#1055](https://github.com/kevinch3/NicotinD/issues/1055) [#1058](https://github.com/kevinch3/NicotinD/issues/1058) [#1058](https://github.com/kevinch3/NicotinD/issues/1058)
 ## [0.6.27](https://github.com/kevinch3/NicotinD/compare/v0.6.26...v0.6.27) (2026-09-09)
 
 ### Bug Fixes
