@@ -1,5 +1,96 @@
 [
   {
+    "version": "0.6.21",
+    "date": "2026-09-08",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.6.20...v0.6.21",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**acquire:** an offline source is not a miss, and not a terminal failure ([#1045](https://github.com/kevinch3/NicotinD/issues/1045)) ([ad95748](https://github.com/kevinch3/NicotinD/commit/ad95748a78c8a081eeff0fb7c162aa00dbdf993f)), references [#1040](https://github.com/kevinch3/NicotinD/issues/1040)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.6.20",
+    "date": "2026-09-08",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.6.19...v0.6.20",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**web:** give \"Report this track\" a door the listener can see ([#1043](https://github.com/kevinch3/NicotinD/issues/1043)) ([89e705a](https://github.com/kevinch3/NicotinD/commit/89e705a76faac8ff5271a04301e2232c07ee427d)), closes [#1038](https://github.com/kevinch3/NicotinD/issues/1038), references [#1004](https://github.com/kevinch3/NicotinD/issues/1004)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.6.19",
+    "date": "2026-09-08",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.6.18...v0.6.19",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**scanner:** bind a file to its best-matching canonical track, not the first ([#1039](https://github.com/kevinch3/NicotinD/issues/1039)) ([8c90886](https://github.com/kevinch3/NicotinD/commit/8c90886938a5a1f47c1ffbfab5c3b5e02e2045d6))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.6.18",
+    "date": "2026-09-08",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.6.17...v0.6.18",
+    "sections": [
+      {
+        "title": "Performance",
+        "items": [
+          "**downloads:** run the lossless→opus encode pooled across a batch ([#1036](https://github.com/kevinch3/NicotinD/issues/1036)) ([d38f916](https://github.com/kevinch3/NicotinD/commit/d38f91698ab202c34f1e1dd2e4ca430012ef92bd))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.6.17",
+    "date": "2026-09-08",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.6.16...v0.6.17",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**downloads:** record the surviving copy when dedupe collapses an acquired file ([#1033](https://github.com/kevinch3/NicotinD/issues/1033)) ([501b7be](https://github.com/kevinch3/NicotinD/commit/501b7bec168decc45d98ff51dd8c45e946eaf7ad)), references [#1032](https://github.com/kevinch3/NicotinD/issues/1032)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.6.16",
+    "date": "2026-09-08",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.6.15...v0.6.16",
+    "sections": [
+      {
+        "title": "Performance",
+        "items": [
+          "**library:** reclassify only the albums a scan touched ([#1030](https://github.com/kevinch3/NicotinD/issues/1030)) ([73d7c12](https://github.com/kevinch3/NicotinD/commit/73d7c121e221773c794d22a9018c6a52b1acaef8))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.6.15",
+    "date": "2026-09-08",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.6.14...v0.6.15",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**downloads:** serialize the shared library organizer ([#1029](https://github.com/kevinch3/NicotinD/issues/1029)) ([a6acd54](https://github.com/kevinch3/NicotinD/commit/a6acd5430d8577ba76d7b04895a88f30f2fc8162)), closes [#1026](https://github.com/kevinch3/NicotinD/issues/1026), references [#809](https://github.com/kevinch3/NicotinD/issues/809)"
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.6.14",
     "date": "2026-09-08",
     "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.6.13...v0.6.14",
@@ -582,97 +673,6 @@
         "title": "Bug Fixes",
         "items": [
           "**web:** the mosaic plane no longer repeats as visible patches ([#871](https://github.com/kevinch3/NicotinD/issues/871)) ([db8d371](https://github.com/kevinch3/NicotinD/commit/db8d3714a87498d941e34db714fc9ce3cfde1dfb))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.5.60",
-    "date": "2026-09-01",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.5.59...v0.5.60",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**web:** the mosaic keeps discovering, holds for info, and actually stops ([#870](https://github.com/kevinch3/NicotinD/issues/870)) ([777c9c5](https://github.com/kevinch3/NicotinD/commit/777c9c53aa733cc837a9289ffad31a96de27a602))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.5.59",
-    "date": "2026-09-01",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.5.58...v0.5.59",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**web:** one pannable mosaic home where every tile starts a radio ([#869](https://github.com/kevinch3/NicotinD/issues/869)) ([9a2d802](https://github.com/kevinch3/NicotinD/commit/9a2d8026889fc2e6fad49d3ff52ba5a86fe475e0))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.5.58",
-    "date": "2026-09-01",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.5.57...v0.5.58",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**library:** detect an artist shredded into per-track credit rows ([#868](https://github.com/kevinch3/NicotinD/issues/868)) ([fa39a4c](https://github.com/kevinch3/NicotinD/commit/fa39a4cf30bc84529ce75d3708bb567a79502ad4)), references [#864](https://github.com/kevinch3/NicotinD/issues/864) [#865](https://github.com/kevinch3/NicotinD/issues/865) [#866](https://github.com/kevinch3/NicotinD/issues/866)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.5.57",
-    "date": "2026-09-01",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.5.56...v0.5.57",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**e2e:** close 3 flakes in the order-dependent family ([#829](https://github.com/kevinch3/NicotinD/issues/829), [#837](https://github.com/kevinch3/NicotinD/issues/837), [#854](https://github.com/kevinch3/NicotinD/issues/854)) ([#867](https://github.com/kevinch3/NicotinD/issues/867)) ([ab3dbf6](https://github.com/kevinch3/NicotinD/commit/ab3dbf60746f100a2973e840bd903a25531802c9)), references [#820](https://github.com/kevinch3/NicotinD/issues/820) [#863](https://github.com/kevinch3/NicotinD/issues/863) [#863](https://github.com/kevinch3/NicotinD/issues/863)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.5.56",
-    "date": "2026-09-01",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.5.55...v0.5.56",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**radio:** recalibrate to formula v7 on the first stars5 polls ([#862](https://github.com/kevinch3/NicotinD/issues/862)) ([61cab2a](https://github.com/kevinch3/NicotinD/commit/61cab2ae87bfb748041115414acaf2113365ebd3))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.5.55",
-    "date": "2026-09-01",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.5.54...v0.5.55",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**radio:** a station's target is the whole station, not the 300 rows sampled ([#859](https://github.com/kevinch3/NicotinD/issues/859)) ([81a827a](https://github.com/kevinch3/NicotinD/commit/81a827acb3b752d90a6f2e3d24b68d9f75a5cc58)), references [#1](https://github.com/kevinch3/NicotinD/issues/1) [#2](https://github.com/kevinch3/NicotinD/issues/2) [#598](https://github.com/kevinch3/NicotinD/issues/598) [#597](https://github.com/kevinch3/NicotinD/issues/597) [#600](https://github.com/kevinch3/NicotinD/issues/600) [#598](https://github.com/kevinch3/NicotinD/issues/598)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.5.54",
-    "date": "2026-08-31",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.5.53...v0.5.54",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**enrichment:** one malformed MBID no longer poisons every popularity batch ([#855](https://github.com/kevinch3/NicotinD/issues/855)) ([a5953aa](https://github.com/kevinch3/NicotinD/commit/a5953aa80b29bcc2897274d4820610e3d328cf61))"
         ]
       }
     ]
