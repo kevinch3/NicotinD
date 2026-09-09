@@ -444,8 +444,10 @@ export interface AlternateSource {
 }
 
 export interface AlternateSourcesResult {
-  /** The still-pending titles the search was run for. */
+  /** Everything still pending — what the chosen peer will be asked for. */
   wanted: string[];
+  /** Ticked titles the offered peers were required to cover, after intersection. */
+  required: string[];
   alternates: AlternateSource[];
   /** Both mean "we could not look properly" — never "nobody has it" (#1040). */
   rateLimited?: boolean;

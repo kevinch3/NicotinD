@@ -64,7 +64,7 @@
       @if (resourcing(); as target) {
         <app-resource-picker
           [jobId]="target.jobId"
-          [titles]="target.titles"
+          [require]="target.titles"
           (cancel)="resourcing.set(null)"
           (resourced)="onResourced($event)"
         />

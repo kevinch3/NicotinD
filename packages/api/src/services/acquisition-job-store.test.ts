@@ -25,7 +25,6 @@ import {
   supersedeActiveJobs,
   transferKeyFor,
   activePeers,
-  addonJobHasLiveItems,
   canResourceJob,
   claimUnattributedItems,
   huntTracklist,
@@ -1597,13 +1596,17 @@ describe('re-sourcing a stuck download (#1065)', () => {
   });
 
   it("claims a card's un-attributed rows for the addon job that owns them", () => {
+    // The stamp is what lets the terminal sweeps tell two addon jobs apart on
+    // one card; without it the replacement's live items read as belonging to
+    // the stuck job and get swept to `unavailable` when it dies.
     const id = stuckHunt();
     claimUnattributedItems(db, id, 'aj-stuck');
-    expect(addonJobHasLiveItems(db, id, 'aj-stuck')).toBe(true);
-    // The replacement has no rows of its own yet, but the NULL-tolerant read
-    // must not hand it the stuck job's — that is what the stamp is for.
-    expect(addonJobHasLiveItems(db, id, 'aj-new')).toBe(false);
-    supersedeItems(db, id, ['Amanecer', 'Bésame mucho']);
-    expect(addonJobHasLiveItems(db, id, 'aj-stuck')).toBe(false);
+    const owners = db
+      .query<{ addon_job_id: string | null; c: number }, [string]>(
+        `SELECT addon_job_id, COUNT(*) c FROM acquisition_job_items
+          WHERE job_id = ? GROUP BY addon_job_id`,
+      )
+      .all(id);
+    expect(owners).toEqual([{ addon_job_id: 'aj-stuck', c: 2 }]);
   });
 });

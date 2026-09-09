@@ -485,6 +485,8 @@
   "downloads.resource.queued": "cola {count}",
   "downloads.resource.use": "Usar este par",
   "downloads.resource.cancel": "Cancelar",
+  "downloads.resource.requiring": "debe incluir las {count} que elegiste",
+  "downloads.resource.conflict": "La fuente todavía tiene este álbum ocupado. Espera un momento e inténtalo de nuevo.",
   "downloads.resource.failed": "No se pudo iniciar la recuperación. Vuelve a ejecutar la búsqueda.",
   "downloads.resource.started": "Recuperando {count} pista(s) de {peer}",
   "downloads.discardPartial": "Descartar",
