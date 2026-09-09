@@ -888,7 +888,12 @@ export class AddonJobPoller {
     );
   }
 
-  /** Delete a fully-ingested terminal job addon-side (the 7-day janitor is the backstop). */
+  /**
+   * Delete a fully-ingested terminal job addon-side, which is what frees the
+   * addon's copy of its files. This comment used to claim a 7-day janitor as
+   * the backstop; the slskd addon had none, and kept every byte it ever
+   * downloaded — 34 GB on kpc (#1052). It has one now, off by default.
+   */
   private async maybeReleaseAddonJob(
     plugin: RemoteAddonPlugin,
     coreJobId: string,
