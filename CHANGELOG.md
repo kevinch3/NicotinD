@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.26](https://github.com/kevinch3/NicotinD/compare/v0.6.25...v0.6.26) (2026-09-09)
+
+### Bug Fixes
+
+* **deploy:** give the slskd addon write access to the staging dir it owns ([#1056](https://github.com/kevinch3/NicotinD/issues/1056)) ([40489f9](https://github.com/kevinch3/NicotinD/commit/40489f9ee7c923da460737203a7141a9e3a7f315)), references [#1052](https://github.com/kevinch3/NicotinD/issues/1052)
 ## [0.6.25](https://github.com/kevinch3/NicotinD/compare/v0.6.24...v0.6.25) (2026-09-09)
 
 ### Bug Fixes
