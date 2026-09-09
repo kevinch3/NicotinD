@@ -9,6 +9,7 @@ import { getCurrentUser, requireAcquirer } from '../middleware/current-user.js';
 import { ForbiddenError, asRole, canCurate } from '@nicotind/core';
 import {
   cancelUnownedJob,
+  pendingIngestCount,
   requestJobCancel,
   createJob,
   jobPartialContents,
@@ -317,6 +318,18 @@ export function downloadRoutes(
       const addon = pluginRegistry?.get(ref.addonId);
       if (addon instanceof RemoteAddonPlugin) {
         await addon.client.cancelJob(ref.addonJobId).catch(() => {});
+        // Releasing the job makes the addon delete its downloaded files
+        // (NicotinD#1052), and the rows below are gone in this same request, so
+        // the stranded sweep could never recover them. Discarding is exactly
+        // what Remove means, so this is right — but say so out loud, because
+        // any still-landing bytes die here and nowhere else records it.
+        const pending = pendingIngestCount(db, job.id);
+        if (pending > 0) {
+          log.info(
+            { jobId: job.id, addonJobId: ref.addonJobId, pending },
+            'remove: discarding files that had not landed yet',
+          );
+        }
         await addon.client.deleteJob(ref.addonJobId).catch(() => {});
       }
     }
