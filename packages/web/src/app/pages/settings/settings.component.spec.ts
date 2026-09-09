@@ -134,11 +134,11 @@ function makeProviders(role: 'admin' | 'user', updateOverrides: UpdateOverrides 
       {
         provide: RemotePlaybackService,
         useValue: {
-          remoteEnabled: signal(false),
-          disabledReason: signal(null),
+          outputAvailable: signal(true),
+          syncStatus: signal(null),
           devices: signal([]),
           activeDeviceId: signal(null),
-          setRemoteEnabled: vi.fn(),
+          setOutputAvailable: vi.fn(),
         },
       },
       {

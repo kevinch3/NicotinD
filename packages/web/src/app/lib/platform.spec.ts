@@ -11,7 +11,6 @@ import {
   isTvBuild,
   isTvUi,
   applyTvBuildClass,
-  resolveTvDefaultedPreference,
 } from './platform';
 import { environment } from '../../environments/environment';
 
@@ -132,24 +131,6 @@ describe('platform helpers', () => {
       expect(isTvUi()).toBe(false);
       document.documentElement.classList.add('tv-build');
       expect(isTvUi()).toBe(true);
-    });
-  });
-
-  describe('resolveTvDefaultedPreference', () => {
-    it('defaults to true on a TV build with no stored preference', () => {
-      expect(resolveTvDefaultedPreference(null, true)).toBe(true);
-    });
-
-    it('does not default on a non-TV build with no stored preference', () => {
-      expect(resolveTvDefaultedPreference(null, false)).toBe(false);
-    });
-
-    it('an explicit stored "false" always wins over a TV-build default', () => {
-      expect(resolveTvDefaultedPreference('false', true)).toBe(false);
-    });
-
-    it('an explicit stored "true" wins on a non-TV build too', () => {
-      expect(resolveTvDefaultedPreference('true', false)).toBe(true);
     });
   });
 });

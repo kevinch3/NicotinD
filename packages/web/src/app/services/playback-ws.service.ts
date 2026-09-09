@@ -7,7 +7,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { Subject, Observable } from 'rxjs';
 import { filter, map } from 'rxjs/operators';
 import { ServerConfigService } from './server-config.service';
-import { isTvBuild, isTvUi, resolveTvDefaultedPreference } from '../lib/platform';
+import { isTvUi } from '../lib/platform';
 import { deviceIdFor, profileIdOf, resolveDeviceId, TAB_ID_KEY } from '../lib/device-id';
 import { guardTabId, TAB_CHANNEL } from '../lib/tab-id-guard';
 
@@ -17,6 +17,14 @@ interface WsMessage {
 }
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
+
+/** The "let my other devices play music on this device" preference. On unless
+ *  the user turned it off: only an explicit "false" counts. */
+export const OUTPUT_AVAILABLE_KEY = 'nicotind_remote_available';
+
+export function readOutputAvailable(storage: Pick<Storage, 'getItem'>): boolean {
+  return storage.getItem(OUTPUT_AVAILABLE_KEY) !== 'false';
+}
 
 @Injectable({ providedIn: 'root' })
 export class PlaybackWsService {
@@ -29,6 +37,9 @@ export class PlaybackWsService {
   /** Beats sent since the last HEARTBEAT_ACK — the half-open socket detector. */
   private unansweredBeats = 0;
   readonly persistentFailure = signal<string | null>(null);
+  /** This document has had a user gesture, so `audio.play()` will be allowed.
+   *  Per page load, like the browser's own autoplay rule. */
+  private activated = false;
 
   private readonly messageSubject = new Subject<WsMessage>();
 
@@ -39,6 +50,24 @@ export class PlaybackWsService {
     this.deviceId = resolveDeviceId(localStorage, sessionStorage);
     this.deviceName = this.resolveDeviceName();
     this.guardTabIdentity();
+    this.retryOnReturn();
+  }
+
+  /** Five failed opens stop the timer-driven retries (a proxy that drops
+   *  WebSockets would otherwise be hammered forever), but the next sign of
+   *  life — network back, tab visible, window focused — tries again. */
+  private retryOnReturn(): void {
+    if (typeof window === 'undefined') return;
+    const retry = () => {
+      if (!this.persistentFailure()) return;
+      this.clearPersistentFailure();
+      this.connect();
+    };
+    window.addEventListener('online', retry);
+    window.addEventListener('focus', retry);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') retry();
+    });
   }
 
   /** "Duplicate tab" copies sessionStorage, so the copy boots holding this
@@ -172,10 +201,8 @@ export class PlaybackWsService {
           id: this.deviceId,
           name: this.deviceName,
           deviceType: 'web',
-          remoteEnabled: resolveTvDefaultedPreference(
-            localStorage.getItem('nicotind_remote_enabled'),
-            isTvBuild(),
-          ),
+          remoteEnabled: readOutputAvailable(localStorage),
+          activated: this.activated,
         },
       });
       this.startHeartbeat(socket);
@@ -282,8 +309,32 @@ export class PlaybackWsService {
     this.send({ type: 'SET_ACTIVE_DEVICE', payload: { id } });
   }
 
-  updateDevice(fields: { remoteEnabled?: boolean; name?: string }): void {
+  sendClaim(payload: {
+    track: unknown;
+    trackId: string;
+    position: number;
+    isPlaying: boolean;
+  }): void {
+    this.send({ type: 'CLAIM_OUTPUT', payload });
+  }
+
+  sendRelease(): void {
+    this.send({ type: 'RELEASE_OUTPUT', payload: {} });
+  }
+
+  updateDevice(fields: { remoteEnabled?: boolean; activated?: boolean; name?: string }): void {
     this.send({ type: 'UPDATE_DEVICE', payload: fields });
+  }
+
+  /** The first user gesture of this page load. */
+  markActivated(): void {
+    if (this.activated) return;
+    this.activated = true;
+    this.updateDevice({ activated: true });
+  }
+
+  isActivated(): boolean {
+    return this.activated;
   }
 
   clearPersistentFailure(): void {

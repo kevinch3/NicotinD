@@ -282,7 +282,7 @@ export class SettingsComponent {
   }
 
   async toggleRemote(): Promise<void> {
-    const enabled = !this.remote.remoteEnabled();
+    const enabled = !this.remote.outputAvailable();
     if (enabled) {
       const audio = document.querySelector('audio');
       if (audio && audio.paused) {
@@ -294,7 +294,7 @@ export class SettingsComponent {
         }
       }
     }
-    this.remote.setRemoteEnabled(enabled);
+    this.remote.setOutputAvailable(enabled);
   }
 
   saveDeviceName(): void {

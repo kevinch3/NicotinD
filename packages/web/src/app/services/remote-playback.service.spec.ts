@@ -5,20 +5,6 @@ import { PlayerService } from './player.service';
 import { AuthService } from './auth.service';
 import { EMPTY, Subject } from 'rxjs';
 import { filter, map } from 'rxjs/operators';
-import * as platform from '../lib/platform';
-
-// `remoteEnabled`'s initial value is computed once, at class-field-initialization
-// time, from `isTvBuild()`. Mocking the module (rather than the dynamic-import
-// dance) lets each test flip that return value per-case while still injecting a
-// fresh `RemotePlaybackService` instance per `TestBed.inject` call below --
-// matches the pattern already used by desktop-window-controls.component.spec.ts.
-vi.mock('../lib/platform', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../lib/platform')>();
-  return {
-    ...actual,
-    isTvBuild: vi.fn().mockReturnValue(false),
-  };
-});
 
 // Provide a full localStorage stub so the test works regardless of the
 // vitest environment (jsdom, happy-dom, or bare Node).
@@ -48,35 +34,30 @@ Object.defineProperty(globalThis, 'localStorage', {
   configurable: true,
 });
 
-describe('RemotePlaybackService', () => {
-  let service: RemotePlaybackService;
+describe('RemotePlaybackService — the "available as an output" preference', () => {
   let mockWs: {
     updateDevice: ReturnType<typeof vi.fn>;
     connect: ReturnType<typeof vi.fn>;
     disconnect: ReturnType<typeof vi.fn>;
     getDeviceId: ReturnType<typeof vi.fn>;
-    setActiveDevice: ReturnType<typeof vi.fn>;
-    sendCommand: ReturnType<typeof vi.fn>;
     messages: ReturnType<typeof vi.fn>;
-    sendStateUpdate: ReturnType<typeof vi.fn>;
-    clearPersistentFailure: ReturnType<typeof vi.fn>;
+    persistentFailure: ReturnType<typeof vi.fn>;
+    markActivated: ReturnType<typeof vi.fn>;
+    sendRelease: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {
     storageStub.clear();
-
     mockWs = {
       updateDevice: vi.fn(),
       connect: vi.fn(),
       disconnect: vi.fn(),
       getDeviceId: vi.fn(() => 'test-device-id'),
-      setActiveDevice: vi.fn(),
-      sendCommand: vi.fn(),
       messages: vi.fn(() => EMPTY),
-      sendStateUpdate: vi.fn(),
-      clearPersistentFailure: vi.fn(),
+      persistentFailure: vi.fn(() => null),
+      markActivated: vi.fn(),
+      sendRelease: vi.fn(),
     };
-
     TestBed.configureTestingModule({
       providers: [
         RemotePlaybackService,
@@ -85,116 +66,54 @@ describe('RemotePlaybackService', () => {
         { provide: PlaybackWsService, useValue: mockWs },
       ],
     });
-    service = TestBed.inject(RemotePlaybackService);
   });
 
-  describe('remoteEnabled initialization', () => {
-    it('defaults to false when localStorage has no value', () => {
-      expect(service.remoteEnabled()).toBe(false);
-    });
+  const inject = () => TestBed.inject(RemotePlaybackService);
+
+  it('is ON by default on every platform', () => {
+    expect(inject().outputAvailable()).toBe(true);
   });
 
-  describe('setRemoteEnabled(true)', () => {
-    it('sets remoteEnabled = true in the service', () => {
-      service.setRemoteEnabled(true);
-      expect(service.remoteEnabled()).toBe(true);
-    });
-
-    it('writes "true" to localStorage', () => {
-      service.setRemoteEnabled(true);
-      expect(localStorage.getItem('nicotind_remote_enabled')).toBe('true');
-    });
-
-    it('calls wsClient.updateDevice with { remoteEnabled: true }', () => {
-      service.setRemoteEnabled(true);
-      expect(mockWs.updateDevice).toHaveBeenCalledWith({ remoteEnabled: true });
-    });
+  it('an explicit stored "false" is the only way off', () => {
+    storageStub.setItem('nicotind_remote_available', 'false');
+    expect(inject().outputAvailable()).toBe(false);
   });
 
-  describe('setRemoteEnabled(false)', () => {
-    it('sets remoteEnabled = false in the service', () => {
-      service.setRemoteEnabled(true);
-      service.setRemoteEnabled(false);
-      expect(service.remoteEnabled()).toBe(false);
-    });
-
-    it('writes "false" to localStorage', () => {
-      service.setRemoteEnabled(false);
-      expect(localStorage.getItem('nicotind_remote_enabled')).toBe('false');
-    });
-
-    it('calls wsClient.updateDevice with { remoteEnabled: false }', () => {
-      service.setRemoteEnabled(false);
-      expect(mockWs.updateDevice).toHaveBeenCalledWith({ remoteEnabled: false });
-    });
-  });
-
-  describe('localStorage-based initialization', () => {
-    it('would initialize to true if localStorage had "true" before construction', () => {
-      localStorage.setItem('nicotind_remote_enabled', 'true');
-      const value = localStorage.getItem('nicotind_remote_enabled') === 'true';
-      expect(value).toBe(true);
-    });
-
-    it('would initialize to false if localStorage had "false" before construction', () => {
-      localStorage.setItem('nicotind_remote_enabled', 'false');
-      const value = localStorage.getItem('nicotind_remote_enabled') === 'true';
-      expect(value).toBe(false);
-    });
-  });
-});
-
-describe('RemotePlaybackService TV default', () => {
-  let mockWs: {
-    updateDevice: ReturnType<typeof vi.fn>;
-    clearPersistentFailure: ReturnType<typeof vi.fn>;
-  };
-
-  beforeEach(() => {
-    storageStub.clear();
-    mockWs = { updateDevice: vi.fn(), clearPersistentFailure: vi.fn() };
-  });
-
-  afterEach(() => {
-    vi.mocked(platform.isTvBuild).mockReturnValue(false);
-  });
-
-  function inject(): RemotePlaybackService {
-    TestBed.configureTestingModule({
-      providers: [
-        RemotePlaybackService,
-        { provide: PlaybackWsService, useValue: mockWs },
-        { provide: PlayerService, useValue: {} },
-        { provide: AuthService, useValue: {} },
-      ],
-    });
-    return TestBed.inject(RemotePlaybackService);
-  }
-
-  it('defaults remoteEnabled to true on a TV build with no stored preference', () => {
-    vi.mocked(platform.isTvBuild).mockReturnValue(true);
-    const service = inject();
-    expect(service.remoteEnabled()).toBe(true);
-  });
-
-  it('does not default remoteEnabled on a non-TV build with no stored preference', () => {
-    vi.mocked(platform.isTvBuild).mockReturnValue(false);
-    const service = inject();
-    expect(service.remoteEnabled()).toBe(false);
-  });
-
-  it('an explicit stored false always wins over a TV-build default', () => {
+  it('the old opt-in key is not consulted — its meaning changed', () => {
     storageStub.setItem('nicotind_remote_enabled', 'false');
-    vi.mocked(platform.isTvBuild).mockReturnValue(true);
-    const service = inject();
-    expect(service.remoteEnabled()).toBe(false);
+    expect(inject().outputAvailable()).toBe(true);
   });
 
-  it('an explicit stored true wins on a non-TV build too', () => {
-    storageStub.setItem('nicotind_remote_enabled', 'true');
-    vi.mocked(platform.isTvBuild).mockReturnValue(false);
+  it('turning it off persists, tells the server, and updates the signal', () => {
     const service = inject();
-    expect(service.remoteEnabled()).toBe(true);
+    service.setOutputAvailable(false);
+    expect(localStorage.getItem('nicotind_remote_available')).toBe('false');
+    expect(mockWs.updateDevice).toHaveBeenCalledWith({ remoteEnabled: false });
+    expect(service.outputAvailable()).toBe(false);
+    service.setOutputAvailable(true);
+    expect(localStorage.getItem('nicotind_remote_available')).toBe('true');
+    expect(mockWs.updateDevice).toHaveBeenCalledWith({ remoteEnabled: true });
+  });
+
+  it('the socket is the presence channel: it connects while logged in even with the toggle off', () => {
+    storageStub.setItem('nicotind_remote_available', 'false');
+    const service = inject();
+    const auth = TestBed.inject(AuthService);
+    auth.token.set('tok');
+    TestBed.runInInjectionContext(() => service.initialize());
+    TestBed.flushEffects();
+    expect(mockWs.connect).toHaveBeenCalled();
+    expect(mockWs.disconnect).not.toHaveBeenCalled();
+  });
+
+  it('a persistent connection failure is reported, never written into the preference', () => {
+    mockWs.persistentFailure.mockReturnValue('Connection failed');
+    const service = inject();
+    TestBed.runInInjectionContext(() => service.initialize());
+    TestBed.flushEffects();
+    expect(service.syncStatus()).toBe('Connection failed');
+    expect(service.outputAvailable()).toBe(true);
+    expect(localStorage.getItem('nicotind_remote_available')).toBeNull();
   });
 });
 
@@ -202,6 +121,8 @@ describe('RemotePlaybackService session behaviour (#877)', () => {
   const t1 = { id: 't1', title: 'One', artist: 'A' };
   const t2 = { id: 't2', title: 'Two', artist: 'A' };
   const t3 = { id: 't3', title: 'Three', artist: 'A' };
+  const tvDevice = { id: 'tv', name: 'TV', type: 'web', lastSeen: 0 };
+  const meDevice = { id: 'me', name: 'Me', type: 'web', lastSeen: 0 };
   let service: RemotePlaybackService;
   let player: PlayerService;
   let incoming: Subject<{ type: string; payload: unknown }>;
@@ -213,7 +134,9 @@ describe('RemotePlaybackService session behaviour (#877)', () => {
     setActiveDevice: ReturnType<typeof vi.fn>;
     sendCommand: ReturnType<typeof vi.fn>;
     sendStateUpdate: ReturnType<typeof vi.fn>;
-    clearPersistentFailure: ReturnType<typeof vi.fn>;
+    sendClaim: ReturnType<typeof vi.fn>;
+    sendRelease: ReturnType<typeof vi.fn>;
+    markActivated: ReturnType<typeof vi.fn>;
     persistentFailure: () => string | null;
     messages: (type: string) => unknown;
   };
@@ -227,7 +150,6 @@ describe('RemotePlaybackService session behaviour (#877)', () => {
 
   beforeEach(() => {
     storageStub.clear();
-    storageStub.setItem('nicotind_remote_enabled', 'true');
     incoming = new Subject();
     ws = {
       updateDevice: vi.fn(),
@@ -237,7 +159,9 @@ describe('RemotePlaybackService session behaviour (#877)', () => {
       setActiveDevice: vi.fn(),
       sendCommand: vi.fn(),
       sendStateUpdate: vi.fn(),
-      clearPersistentFailure: vi.fn(),
+      sendClaim: vi.fn(),
+      sendRelease: vi.fn(),
+      markActivated: vi.fn(),
       persistentFailure: () => null,
       messages: (type: string) =>
         incoming.pipe(
@@ -310,7 +234,7 @@ describe('RemotePlaybackService session behaviour (#877)', () => {
   });
 
   it('a mirrored track is not echoed back; a locally chosen one is forwarded', () => {
-    sync({ activeDeviceId: 'tv', isPlaying: true, position: 3, track: t2 });
+    sync({ activeDeviceId: 'tv', isPlaying: true, position: 3, track: t2 }, [tvDevice]);
     expect(ws.sendCommand).not.toHaveBeenCalledWith('SET_TRACK', { track: t2 });
     player.play(t3);
     TestBed.flushEffects();
@@ -324,5 +248,100 @@ describe('RemotePlaybackService session behaviour (#877)', () => {
     expect(service.isActiveDevice()).toBe(true);
     expect(player.isPlaying()).toBe(true);
     expect(player.seekTo()).toBeGreaterThanOrEqual(40);
+  });
+
+  // --- claim-on-play -------------------------------------------------------
+
+  it('a pick with no session claims the output with the track, and commits nothing until the sync', () => {
+    sync({ activeDeviceId: null }, [meDevice, tvDevice]);
+    player.play(t1);
+    TestBed.flushEffects();
+    expect(ws.sendClaim).toHaveBeenCalledTimes(1);
+    expect(ws.sendClaim).toHaveBeenCalledWith(
+      expect.objectContaining({ trackId: 't1', isPlaying: true }),
+    );
+    expect(ws.setActiveDevice).not.toHaveBeenCalled();
+    expect(service.activeDeviceId()).toBeNull();
+    sync({ activeDeviceId: 'me', track: t1, isPlaying: true, position: 0 });
+    expect(service.isActiveDevice()).toBe(true);
+    expect(service.playingElsewhere()).toBe(false);
+  });
+
+  it('a pick while another device is the output goes to that device, not a claim', () => {
+    sync({ activeDeviceId: 'tv', isPlaying: true, position: 3, track: t2 }, [meDevice, tvDevice]);
+    player.play(t3);
+    TestBed.flushEffects();
+    expect(ws.sendClaim).not.toHaveBeenCalled();
+    expect(ws.sendCommand).toHaveBeenCalledWith('SET_TRACK', { track: t3 });
+    expect(service.playingElsewhere()).toBe(true);
+    expect(service.sessionControllable()).toBe(true);
+  });
+
+  it('a pick while the output cannot be driven claims instead', () => {
+    sync({ activeDeviceId: 'tv', isPlaying: true, position: 3, track: t2 }, [
+      meDevice,
+      { ...tvDevice, available: false },
+    ]);
+    expect(service.sessionControllable()).toBe(false);
+    player.play(t3);
+    TestBed.flushEffects();
+    expect(ws.sendCommand).not.toHaveBeenCalledWith('SET_TRACK', expect.anything());
+    expect(ws.sendClaim).toHaveBeenCalledTimes(1);
+  });
+
+  it('losing a claim race yields: the private sync names the winner and this player pauses', () => {
+    sync({ activeDeviceId: null }, [meDevice, tvDevice]);
+    player.play(t1);
+    TestBed.flushEffects();
+    sync({ activeDeviceId: 'tv', track: t2, isPlaying: true, position: 1 }, [meDevice, tvDevice]);
+    expect(player.isPlaying()).toBe(false);
+    expect(player.currentTrack()?.id).toBe('t2');
+    expect(service.playingElsewhere()).toBe(true);
+  });
+
+  it('the output reports its own pause and resume as state', () => {
+    sync({ activeDeviceId: null }, [meDevice, tvDevice]);
+    player.play(t1);
+    TestBed.flushEffects();
+    sync({ activeDeviceId: 'me', track: t1, isPlaying: true, position: 0 });
+    ws.sendStateUpdate.mockClear();
+    player.pause();
+    TestBed.flushEffects();
+    expect(ws.sendStateUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ isPlaying: false }),
+    );
+    player.resume();
+    TestBed.flushEffects();
+    expect(ws.sendStateUpdate).toHaveBeenCalledWith(expect.objectContaining({ isPlaying: true }));
+  });
+
+  it('a restored (paused) track at boot is not forwarded anywhere', () => {
+    player.setCurrentTrackMetadata(t1 as never);
+    TestBed.flushEffects();
+    expect(ws.sendCommand).not.toHaveBeenCalled();
+    expect(ws.sendStateUpdate).not.toHaveBeenCalled();
+    expect(ws.sendClaim).not.toHaveBeenCalled();
+  });
+
+  it('the first gesture marks this tab as able to play', () => {
+    document.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    expect(ws.markActivated).toHaveBeenCalled();
+  });
+
+  it('a closing tab releases the output it holds', () => {
+    sync({ activeDeviceId: 'me' }, [meDevice]);
+    window.dispatchEvent(new Event('pagehide'));
+    expect(ws.sendRelease).toHaveBeenCalled();
+    ws.sendRelease.mockClear();
+    sync({ activeDeviceId: 'tv' }, [meDevice, tvDevice]);
+    window.dispatchEvent(new Event('pagehide'));
+    expect(ws.sendRelease).not.toHaveBeenCalled();
+  });
+
+  it('activeDevice names the session device from the list', () => {
+    sync({ activeDeviceId: 'tv' }, [meDevice, tvDevice]);
+    expect(service.activeDevice()?.name).toBe('TV');
+    sync({ activeDeviceId: null });
+    expect(service.activeDevice()).toBeNull();
   });
 });
