@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.24](https://github.com/kevinch3/NicotinD/compare/v0.6.23...v0.6.24) (2026-09-09)
+
+### Bug Fixes
+
+* **acquire:** earn the addon job release before it can delete files ([#1053](https://github.com/kevinch3/NicotinD/issues/1053)) ([878b648](https://github.com/kevinch3/NicotinD/commit/878b6482fa95a4106fb426cf27fc6998a733c13a)), references [#1052](https://github.com/kevinch3/NicotinD/issues/1052)
 ## [0.6.23](https://github.com/kevinch3/NicotinD/compare/v0.6.22...v0.6.23) (2026-09-09)
 
 ### Bug Fixes
