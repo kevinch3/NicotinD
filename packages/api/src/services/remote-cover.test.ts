@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 import {
+  absolutizeLidarrCoverUrl,
   isProxyableCoverUrl,
+  lidarrCoverPath,
   proxiedCoverUrl,
   remoteCoverCacheKey,
   resolveRemoteCoverUrl,
@@ -84,5 +86,56 @@ describe('isProxyableCoverUrl', () => {
   it('accepts the allowlisted art hosts', () => {
     expect(isProxyableCoverUrl('https://coverartarchive.org/release/x/1.jpg')).toBe(true);
     expect(isProxyableCoverUrl(CDN_ORIGINAL)).toBe(true);
+  });
+});
+
+describe('lidarrCoverPath / absolutizeLidarrCoverUrl (#1062)', () => {
+  it('keeps an absolute CDN url untouched', () => {
+    expect(lidarrCoverPath('https://images.lidarr.audio/x.jpg')).toBe(
+      'https://images.lidarr.audio/x.jpg',
+    );
+  });
+
+  // Lidarr reports art it has cached locally with a `remoteUrl` that is a path
+  // inside its OWN container, not a URL. Half of prod's artist portraits are
+  // stored in this shape and none of them can ever be fetched.
+  it('recovers the servable path from a Lidarr container filesystem path', () => {
+    expect(lidarrCoverPath('/config/MediaCover/1819/poster.jpg')).toBe(
+      '/MediaCover/1819/poster.jpg',
+    );
+    expect(lidarrCoverPath('C:\\ProgramData\\Lidarr\\MediaCover\\7\\poster.jpg')).toBe(
+      '/MediaCover/7/poster.jpg',
+    );
+  });
+
+  it('rejects a value with no fetchable reading', () => {
+    expect(lidarrCoverPath('poster.jpg')).toBeUndefined();
+    expect(lidarrCoverPath('')).toBeUndefined();
+    expect(lidarrCoverPath(null)).toBeUndefined();
+  });
+
+  it('absolutizes a MediaCover path against the configured Lidarr', () => {
+    expect(
+      absolutizeLidarrCoverUrl('/config/MediaCover/1819/poster.jpg', 'http://lidarr:8686'),
+    ).toBe('http://lidarr:8686/MediaCover/1819/poster.jpg');
+  });
+
+  // The canonical store holds provider URLs from OUTSIDE the proxy allowlist
+  // (discogs, theaudiodb, wikimedia); this resolver must not silently drop them
+  // the way `resolveRemoteCoverUrl`'s SSRF allowlist would.
+  it('passes through a stored non-allowlisted provider url', () => {
+    expect(absolutizeLidarrCoverUrl('https://i.discogs.com/a.jpg', 'http://lidarr:8686')).toBe(
+      'https://i.discogs.com/a.jpg',
+    );
+  });
+
+  it('returns null for a MediaCover path with no Lidarr configured', () => {
+    expect(absolutizeLidarrCoverUrl('/config/MediaCover/1/poster.jpg', null)).toBeNull();
+  });
+
+  it('heals the same shape through the proxy resolver', () => {
+    expect(resolveRemoteCoverUrl('/config/MediaCover/1819/poster.jpg', 'http://lidarr:8686')).toBe(
+      'http://lidarr:8686/MediaCover/1819/poster.jpg',
+    );
   });
 });

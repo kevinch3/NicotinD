@@ -123,19 +123,54 @@ describe('image pickers', () => {
   it('pickArtistImage prefers coverType "poster"', () => {
     expect(
       pickArtistImage([
-        { coverType: 'banner', url: '/b.jpg' },
-        { coverType: 'poster', url: '/p.jpg' },
+        { coverType: 'banner', url: '/MediaCover/1/banner.jpg' },
+        { coverType: 'poster', url: '/MediaCover/1/poster.jpg' },
       ]),
-    ).toBe('/p.jpg');
+    ).toBe('/MediaCover/1/poster.jpg');
   });
 
   it('falls back to the first image when no preferred type', () => {
-    expect(pickAlbumCover([{ coverType: 'banner', url: '/b.jpg' }])).toBe('/b.jpg');
+    expect(pickAlbumCover([{ coverType: 'banner', url: '/MediaCover/1/banner.jpg' }])).toBe(
+      '/MediaCover/1/banner.jpg',
+    );
   });
 
   it('returns undefined for no images', () => {
     expect(pickAlbumCover(undefined)).toBeUndefined();
     expect(pickArtistImage([])).toBeUndefined();
+  });
+
+  // The bug this whole change exists for (#1062): Lidarr answers with a
+  // `remoteUrl` that is a path inside its own container once it has cached the
+  // art locally. Preferring it verbatim stored 667 of prod's 1,331 artist
+  // portraits as strings `fetch()` rejects outright — and the artwork row then
+  // satisfied NEEDS_PORTRAIT_SQL, so no backfill ever revisited the artist.
+  it('does not pick a Lidarr container path over the servable one', () => {
+    expect(
+      pickArtistImage([
+        {
+          coverType: 'poster',
+          url: '/MediaCover/1819/poster.jpg?lastWrite=639244163466542154',
+          remoteUrl: '/config/MediaCover/1819/poster.jpg',
+        },
+      ]),
+    ).toBe('/MediaCover/1819/poster.jpg');
+  });
+
+  it('still prefers a real CDN remoteUrl over the local path', () => {
+    expect(
+      pickAlbumCover([
+        {
+          coverType: 'cover',
+          url: '/MediaCover/Albums/1/cover.jpg',
+          remoteUrl: 'https://images.lidarr.audio/c.jpg',
+        },
+      ]),
+    ).toBe('https://images.lidarr.audio/c.jpg');
+  });
+
+  it('declines an image with no fetchable reading at all', () => {
+    expect(pickArtistImage([{ coverType: 'poster', url: 'poster.jpg' }])).toBeUndefined();
   });
 });
 

@@ -18,7 +18,11 @@ import { resolveArtwork, canonicalCacheKey } from '../services/artwork-store.js'
 import { folderArtBelongsToAlbum } from '../services/album-folder.js';
 import { bucketCoverSize, resizeCover } from '../services/cover-thumbnail.js';
 import { readArtistImageOverride } from '../services/artist-image-override.js';
-import { remoteCoverCacheKey, resolveRemoteCoverUrl } from '../services/remote-cover.js';
+import {
+  absolutizeLidarrCoverUrl,
+  remoteCoverCacheKey,
+  resolveRemoteCoverUrl,
+} from '../services/remote-cover.js';
 import { isKnownUntranscodable, rememberTranscodeFailure } from '../services/transcode-failures.js';
 import { getWaveform, type PcmDecoder } from '../services/waveform-store.js';
 
@@ -318,11 +322,17 @@ export function streamingRoutes(
     //    matches the hunt tool, and so artists get real poster images. Cached
     //    under a `c_<key>` namespace, shared across an album's songs.
     const canonical = resolveArtwork(db, id);
-    if (canonical) {
+    // Stored rows are not always absolute URLs: Lidarr hands us a path inside
+    // its own container for art it has cached, and 667 of prod's 1,331 artist
+    // portraits were written in that shape (#1062). The row is not junk — the
+    // servable `/MediaCover/…` path is recoverable from it — so resolve here
+    // rather than making every one of those artists re-fetch from a provider.
+    const canonicalUrl = canonical ? absolutizeLidarrCoverUrl(canonical.url, lidarrBaseUrl) : null;
+    if (canonical && canonicalUrl) {
       const cacheKey = canonicalCacheKey(canonical.key);
       const cached = await readCachedCover(coverCacheDir, cacheKey);
       if (cached) return respondCover(cacheKey, cached, size);
-      const remote = await fetchRemoteCover(canonical.url);
+      const remote = await fetchRemoteCover(canonicalUrl);
       if (remote) {
         void cacheCover(coverCacheDir, cacheKey, remote).catch((err) =>
           log.debug({ err, id }, 'canonical cover cache write failed'),

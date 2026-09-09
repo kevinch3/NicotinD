@@ -617,6 +617,51 @@ describe('streaming routes — canonical artwork', () => {
   });
 });
 
+describe('canonical artwork stored as a Lidarr container path (#1062)', () => {
+  const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+  const realFetch = globalThis.fetch;
+  let fetchCalls: string[];
+  let lidarrApp: Hono;
+
+  beforeAll(() => {
+    db.run(
+      `INSERT INTO library_artwork (id, kind, cover_url, updated_at)
+       VALUES ('mc-art', 'artist', '/config/MediaCover/1819/poster.jpg', 1)`,
+    );
+    lidarrApp = new Hono();
+    lidarrApp.route('/', streamingRoutes(musicDir, db, dataDir, 'http://lidarr:8686'));
+    fetchCalls = [];
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      fetchCalls.push(String(input));
+      return new Response(PNG_BYTES, { status: 200, headers: { 'content-type': 'image/png' } });
+    }) as typeof fetch;
+  });
+
+  afterAll(() => {
+    globalThis.fetch = realFetch;
+    db.run(`DELETE FROM library_artwork WHERE id = 'mc-art'`);
+  });
+
+  // Half of prod's artist rows are in this shape. `fetch()` rejects the stored
+  // string outright, so before this the portrait existed in the DB and rendered
+  // as the placeholder forever.
+  it('serves the portrait by resolving the path against the configured Lidarr', async () => {
+    const res = await lidarrApp.request('/cover/mc-art');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('image/png');
+    expect(fetchCalls).toContain('http://lidarr:8686/MediaCover/1819/poster.jpg');
+  });
+
+  it('404s rather than fetching garbage when no Lidarr is configured', async () => {
+    fetchCalls = [];
+    const noLidarr = new Hono();
+    noLidarr.route('/', streamingRoutes(musicDir, db, dataDir, null));
+    const res = await noLidarr.request('/cover/mc-art');
+    expect(res.status).toBe(404);
+    expect(fetchCalls).toEqual([]);
+  });
+});
+
 describe('GET /peaks/:id (waveform artifact, #643)', () => {
   function sineDecoder(): PcmDecoder & { calls: number } {
     const fn = (async (_abs: string, onChunk: (s: Float32Array) => void) => {

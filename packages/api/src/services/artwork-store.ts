@@ -2,6 +2,7 @@ import type { Database } from 'bun:sqlite';
 import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import type { LidarrImage } from '@nicotind/lidarr-client';
+import { lidarrCoverPath } from './remote-cover.js';
 
 /**
  * Canonical artwork store (Lidarr/MusicBrainz cover & poster URLs).
@@ -162,14 +163,26 @@ export function deleteArtwork(db: Database, id: string, coverCacheDir?: string):
   if (coverCacheDir) purgeCanonicalCache(coverCacheDir, id);
 }
 
+/**
+ * The fetchable value of one Lidarr image, preferring its CDN original.
+ *
+ * `remoteUrl` is checked first because a CDN original outlives any Lidarr move,
+ * but it is only *preferred* when it survives `lidarrCoverPath` — Lidarr sets it
+ * to a path inside its own container for art it has cached, and that string is
+ * not a URL at all (#1062). Returning undefined when neither field is usable is
+ * the point: no artwork row is better than one that pins the artist as "done"
+ * and renders the placeholder forever.
+ */
+function fetchableImageUrl(img: LidarrImage | undefined): string | undefined {
+  return lidarrCoverPath(img?.remoteUrl) ?? lidarrCoverPath(img?.url);
+}
+
 /** Lidarr exposes album covers under coverType 'cover'; fall back to the first. */
 export function pickAlbumCover(images: LidarrImage[] | undefined): string | undefined {
-  const img = images?.find((i) => i.coverType === 'cover') ?? images?.[0];
-  return img?.remoteUrl ?? img?.url;
+  return fetchableImageUrl(images?.find((i) => i.coverType === 'cover') ?? images?.[0]);
 }
 
 /** Lidarr exposes artist photos under coverType 'poster'; fall back to the first. */
 export function pickArtistImage(images: LidarrImage[] | undefined): string | undefined {
-  const img = images?.find((i) => i.coverType === 'poster') ?? images?.[0];
-  return img?.remoteUrl ?? img?.url;
+  return fetchableImageUrl(images?.find((i) => i.coverType === 'poster') ?? images?.[0]);
 }
