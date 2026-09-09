@@ -302,7 +302,7 @@ describe('discography routes through a remote addon', () => {
       const h = harness({
         createJob: mock(async () => {
           creates += 1;
-          if (creates === 1) throw new AddonRequestError('already downloading', 409, '/jobs');
+          if (creates === 1) throw new AddonRequestError('already downloading', 409);
           return { id: 'aj-2', intent: 'album', items: [] };
         }),
         listJobs: mock(async () => [
