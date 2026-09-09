@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.23](https://github.com/kevinch3/NicotinD/compare/v0.6.22...v0.6.23) (2026-09-09)
+
+### Bug Fixes
+
+* **acquire:** release the [#1049](https://github.com/kevinch3/NicotinD/issues/1049) hunt-lane fix, and note the answered/fired counts on the protocol page ([#1051](https://github.com/kevinch3/NicotinD/issues/1051)) ([fa7f5ba](https://github.com/kevinch3/NicotinD/commit/fa7f5baa870463b5251dec95fe9a829eb7be4e71)), references [#1050](https://github.com/kevinch3/NicotinD/issues/1050)
 ## [0.6.22](https://github.com/kevinch3/NicotinD/compare/v0.6.21...v0.6.22) (2026-09-09)
 
 ### Features
