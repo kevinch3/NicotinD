@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.27](https://github.com/kevinch3/NicotinD/compare/v0.6.26...v0.6.27) (2026-09-09)
+
+### Bug Fixes
+
+* **library:** evaluate the filter song-set once, not per entity row ([#1057](https://github.com/kevinch3/NicotinD/issues/1057)) ([9a91aa3](https://github.com/kevinch3/NicotinD/commit/9a91aa34eb92108e6c69060b62ba58f8d416bd88)), references [#1055](https://github.com/kevinch3/NicotinD/issues/1055)
 ## [0.6.26](https://github.com/kevinch3/NicotinD/compare/v0.6.25...v0.6.26) (2026-09-09)
 
 ### Bug Fixes
