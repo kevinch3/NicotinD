@@ -1,4 +1,5 @@
 import { ɵSIGNAL as SIGNAL } from '@angular/core';
+import { signalSetFn, type SignalNode } from '@angular/core/primitives/signals';
 
 /**
  * Set an Angular signal `input()` from a unit test.
@@ -49,4 +50,22 @@ import { ɵSIGNAL as SIGNAL } from '@angular/core';
  */
 export function setInputValue<T>(inputSignal: () => T, value: T): void {
   (inputSignal as unknown as Record<typeof SIGNAL, { value: T }>)[SIGNAL].value = value;
+}
+
+/**
+ * Set a signal `input()` and **notify its readers**.
+ *
+ * `setInputValue` writes the node's `.value` directly, so anything that has
+ * already read the input keeps the stale value (landmine 2 above). That makes
+ * it unable to test the one thing an input-driven `effect()` exists for: a
+ * *change* arriving after the component has settled. Going through
+ * `signalSetFn` bumps the version and marks consumers dirty, so the next
+ * `detectChanges()` runs the effect exactly as a real parent binding would.
+ *
+ * Use this when the spec asserts on a **reaction** to an input change; the
+ * plain `setInputValue` stays the right call for seeding a value before the
+ * first `detectChanges()`.
+ */
+export function changeInputValue<T>(inputSignal: () => T, value: T): void {
+  signalSetFn((inputSignal as unknown as Record<typeof SIGNAL, SignalNode<T>>)[SIGNAL], value);
 }

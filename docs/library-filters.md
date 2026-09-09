@@ -140,9 +140,32 @@ Two consequences worth holding onto:
   is why the reported symptom was "the country filter returns unfiltered results" (the
   request never completed; the web layer's 30 s `artistsCache` kept the stale list on
   screen) *and* "filtering songs is slow" (songs were fine at 82 ms — they were queued).
+  See [Detecting the next one](#detecting-the-next-one).
 
 `db.perf.test.ts` guards the shape via `EXPLAIN QUERY PLAN`, not wall-clock, so it cannot
 flake on a loaded box.
+
+### Detecting the next one
+
+#1055 removed *a* quadratic query; it could not remove the property that makes one an
+outage rather than a slow page. `startLoopBlockMonitor`
+(`packages/api/src/services/loop-block-monitor.ts`) reports when the process stopped, and
+`trackInFlight` (`packages/api/src/middleware/in-flight.ts`) says which request was holding
+it — during #1055 the only visible symptom was a container flapping `Health check exceeded
+timeout (5s)`, and nothing named the query.
+
+It measures **timer lateness, not request duration**, which is what makes it quiet: a
+legitimately long *async* response (a stream) never stops timers from running and is never
+reported, while a synchronous `.all()` is reported by definition. The in-flight label
+carries query param *names* only — a filter value is library content, not a log line.
+
+**This detects; it does not pre-empt, because in this process nothing can.** `bun:sqlite`
+exposes neither `sqlite3_interrupt` nor a progress handler. The obvious workaround — stream
+with `.iterate()` and abandon the query past a deadline — was measured and does not work
+here: the list queries end in `USE TEMP B-TREE FOR ORDER BY`, so on a 3,000-artist fixture
+the first row arrives at 2,935 ms against 2,928 ms for the whole `.all()`. There is no
+"between rows" to check a deadline in. Real pre-emption needs the query off this loop
+entirely (a worker connection), which is still open on #1058.
 
 ## Web UI
 
@@ -151,7 +174,22 @@ popover + active-count badge on the four Library tabs and the artist Songs tab. 
 state is **one shared signal across the four tabs** ("filter my library, then look at it
 as albums/artists") and lives in the URL query string — shareable and refresh-proof.
 Legacy `type=starred` URLs map to `{ starred: true }` + newest ordering; starred is now a
-real WHERE filter, independent of sort. Page-specific extras (Albums' min-tracks /
+real WHERE filter, independent of sort.
+
+**A list that could not be loaded says so** (`LibraryListErrorComponent`, #1059). The four
+whole-library tabs share one fetch lane (`LibraryComponent.loadList`) which, on failure,
+clears the list and renders the error with a retry — it does not keep the previous rows.
+With a filter active, stale rows are not merely unhelpful, they contradict the filter chips
+above them: that is precisely how #1055's timeout was reported as "the filter returns the
+same results". For the same reason a failed fetch does not render "No artists found" —
+that is a claim about the library, and all we know is that the request failed.
+
+The Songs tab is the one tab whose filter panel belongs to the child
+(`LibrarySongsComponent`), so `LibraryComponent.onFilterChange` deliberately has **no
+`songs` branch** — the child has already reloaded by the time the change bubbles up, and a
+branch here would double every request (#1060). The child mirrors the `filter` input rather
+than seeding it once, so a filter arriving from anywhere other than its own panel still
+lands. Page-specific extras (Albums' min-tracks /
 show-hidden) stay client-side, projected into the panel through its content slot.
 
 Every library surface (Albums, Compilations, Singles & EPs, Artists, Library Songs,

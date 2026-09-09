@@ -277,8 +277,11 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   SQL bind — a non-numeric value used to reach SQLite as `NaN` (500) and a negative one as "no
   limit". → [api-routes.md](api-routes.md)
 - **Standardized library metadata filters**: one shared `LibraryFilter` filters the library tabs and
-  artist Songs tab server-side, with song properties matching via any-track `EXISTS` and state in URL
-  query params. → [library-filters.md](library-filters.md)
+  artist Songs tab server-side, with song properties matching via an any-track membership test and
+  state in URL query params. `entityFilterWheres`. → [library-filters.md](library-filters.md)
+- **A blocked event loop names the request that blocked it**: `bun:sqlite` is synchronous, so one
+  slow query stops the whole process; `startLoopBlockMonitor` reports timer lateness and
+  `trackInFlight` says whose. → [library-filters.md](library-filters.md)
 - **Library quality auditor**: assert (audit) + clean (repair/retag) + prevent (ingest sanitize) for
   DJ-pool/VA-source pollution across DB and disk; structural DJ-set tags recover their real
   artist via `djSetArtistName`. → [library-audit.md](library-audit.md)
