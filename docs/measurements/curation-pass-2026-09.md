@@ -2799,3 +2799,86 @@ class.
 | `Country` | 331 | 317 |
 
 69 writes, zero searches. Four junk or variant genre values eliminated outright.
+
+## 2026-09-09, stretch 4 — the genre vocabulary, measured structurally
+
+Ingest had stopped (last arrival 20:56; song count began *falling* as a scan pruned deleted files).
+
+### Don't eyeball a worklist when you can probe the shape
+
+`get_rare_genres(maxCount: 3)` returns a long tail that is mostly *legitimate* — `Bhangra`,
+`Mariachi`, `Corrido`, `Makossa`, `Maracatu`, `Gypsy Jazz` are all real genres with one song each.
+Worth stating because the tool's own framing ("a genre carried by one or two songs is usually a
+mistag") does not hold on this library, and it **counts the primary genre only**, so it cannot show
+near-duplicates at all: `Hardcore Punk` reads as 1 while sitting at position 2 on many rows.
+
+The useful view was a structural probe instead — normalise every distinct genre (fold accents,
+lowercase, `&`->`and`, strip non-alphanumerics) and group:
+
+```
+distinct genres: 852   ->   collision groups: 16
+```
+
+| | |
+| --- | --- |
+| `Hip Hop` (1275) · `Hip-Hop` (80) | `Reggaeton` (674) · `Reggaetón` (53) |
+| `Rock And Roll` (303) · `Rock & Roll` (22) | `Nu Disco` (95) · `Nu-Disco` (29) |
+| `Drum And Bass` (57) · `Drum & Bass` (1) | `World` (214) · `World music` (44) · `world.music` (13) · `World Music` (1) |
+| `Chanson FrançAise` (26) · `Chanson Francaise` (11) · `Chanson Française` (1) | …and 9 more |
+
+### `set_genre_alias`, not N × `set_song_genre`
+
+The right tool: it repairs the **value** (and future arrivals carrying it), not the songs. 27 calls
+moved ~275 song-rows. Folded minority into established majority for punctuation and `&`/`and`
+variants; folded `world.music` / `World music` / `World Music` into `World`.
+
+**Result: 16 collision groups -> 1, distinct genres 852 -> 833.**
+
+### The one group that could not be fixed — filed #1074
+
+The survivor is `Synth-Pop` (376) / `Synth-pop` (1), and it is the whole point.
+
+`set_genre_alias`'s description names "a malformed casing from the source tagger (`Nueva CancioN`)"
+as a primary use case. **A casing-only alias is a no-op.** Genre identity is case-insensitive, so
+the canonical resolves back to the row it came from:
+
+```
+set_genre_alias({alias:"Nueva CancióN",    canonical:"Nueva Canción"})    -> songsUpdated: 0
+set_genre_alias({alias:"Musique ConcrèTe", canonical:"Musique Concrète"}) -> songsUpdated: 0
+set_genre_alias({alias:"NorteñO",          canonical:"Norteño"})          -> songsUpdated: 0
+```
+
+Where a variant differs by more than case it works correctly — `Chanson Francaise` moved 11 songs.
+So the three Chanson variants **did** consolidate into one row, and the display name that survived
+is the broken one, because it was there first:
+
+```
+before: Chanson FrançAise (26) · Chanson Francaise (11) · Chanson Française (1)
+after:  Chanson FrançAise (38)
+```
+
+Ten genre values carry this shape (`Nueva CancióN` 45, `Chanson FrançAise` 38, `Musique ConcrèTe` 13,
+`PilóN` 12, `NorteñO` 6, `SierreñO` 4, `Chanson RéAliste` 3, `Cumbia NorteñA Mexicana` 2, `JùJú` 2,
+`DanzóN` 1). The signature is a title-caser splitting on a regex word boundary without the `u` flag —
+JS `\b` treats `ç`/`ó`/`ñ` as non-word characters, so `française` is read as `fran` + `aise` and both
+get capitalised. Same ASCII-assumption family as #720 / #706.
+
+**Not in this repo, as far as I could find** — `normalizeGenreList` preserves input verbatim,
+`humanizeSlug` only uppercases after a space, and `toUpperCase` across `packages/api/src` +
+`packages/core/src` has no hit on the genre path. Recorded as a lead pointing upstream, not a
+finding.
+
+**Scope checked so the class is not overstated:** the same probe returns **0** over
+`library_artists` and exactly one hit over `library_albums` — `DeBÍ TiRAR MáS FOToS`, Bad Bunny's
+genuinely stylised title, a false positive. Genre path only.
+
+### Two judgment calls, recorded because they went opposite ways
+
+- **`Folclore` over `Folklore`** (stretch 3) — populations comparable (36 vs 16), tiebreak was
+  consistency with the regional set, *against* the majority.
+- **`Reggaeton` over `Reggaetón`** — one form is 13× the other and established. Orthography favours
+  the accent; rewriting 674 rows to satisfy it is scope the owner did not ask for.
+
+The principle is that majority is a tiebreak, not a rule — it decides when nothing else does, and
+it is the *wrong* tiebreak whenever the majority form is the broken one, which is exactly the case
+in #1074.
