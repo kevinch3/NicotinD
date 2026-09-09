@@ -962,6 +962,42 @@ export function recomputeActiveJobStages(db: Database): void {
   for (const row of rows) recomputeStage(db, row.id);
 }
 
+/**
+ * Files the addon has finished but we have not landed yet — `completed`
+ * addon-side with no `relative_path` of ours.
+ *
+ * This is the same predicate `maybeReleaseAddonJob` uses to decide a job is
+ * safe to release, and it is the *only* honest answer to "may the addon throw
+ * these bytes away". It matters because the addon deletes a job's downloaded
+ * files when core calls `DELETE /jobs/:id` (NicotinD#1052): before that landed,
+ * the call was inert on disk and no caller had to think about it. Any caller
+ * that releases a job while this is non-zero destroys bytes we were about to
+ * fetch, and the poller's retry paths cannot recover them.
+ */
+export function pendingIngestCount(db: Database, jobId: string): number {
+  return (
+    db
+      .query<{ n: number }, [string]>(
+        `SELECT COUNT(*) AS n FROM acquisition_job_items
+         WHERE job_id = ? AND state = 'completed' AND relative_path IS NULL`,
+      )
+      .get(jobId)?.n ?? 0
+  );
+}
+
+/** `pendingIngestCount` for a job named by its addon-side ref rather than ours. */
+export function pendingIngestForAddonJob(
+  db: Database,
+  addonId: string,
+  addonJobId: string,
+): number {
+  const row = db
+    .query<{ id: string }, [string]>(`SELECT id FROM acquisition_jobs WHERE source_ref = ?`)
+    .get(`addon:${addonId}:${addonJobId}`);
+  // No core row means nothing of ours is waiting on those bytes.
+  return row ? pendingIngestCount(db, row.id) : 0;
+}
+
 /** Mirror of the hunt route's `?replace=true`: retire prior active jobs for the album. */
 export function supersedeActiveJobs(db: Database, target: { lidarrAlbumId: number }): void {
   db.run(

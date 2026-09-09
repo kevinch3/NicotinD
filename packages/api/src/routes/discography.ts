@@ -9,7 +9,11 @@ import { albumIdFor, artistIdFor } from '../services/library-scanner.js';
 import { albumAlreadyComplete } from '../services/library-completeness.js';
 import { setArtwork, pickAlbumCover, pickArtistImage } from '../services/artwork-store.js';
 import { recordAcquiredArtistIdentity } from '../services/artist-identity-store.js';
-import { createJob, supersedeActiveJobs } from '../services/acquisition-job-store.js';
+import {
+  createJob,
+  pendingIngestForAddonJob,
+  supersedeActiveJobs,
+} from '../services/acquisition-job-store.js';
 import { normalizeTitle, titlesOverlap } from '@nicotind/core';
 import type { AddonAlbumCandidate } from '@nicotind/core';
 import { join } from 'node:path';
@@ -535,7 +539,22 @@ export function discographyRoutes({
             );
             if (active) {
               await addon.client.cancelJob(active.id).catch(() => {});
-              await addon.client.deleteJob(active.id).catch(() => {});
+              // Releasing a job now makes the addon delete its downloaded files
+              // (NicotinD#1052). A re-hunt means "get me a better copy", never
+              // "throw away the tracks that already arrived" — and `supersedeActiveJobs`
+              // below only retires the job row, leaving those items live for the
+              // poller's next tick. So only release once nothing of ours is still
+              // waiting on those bytes; otherwise leave them to the addon's
+              // retention sweep, which reclaims them on its own schedule.
+              const pending = pendingIngestForAddonJob(db, addon.manifest.id, active.id);
+              if (pending === 0) {
+                await addon.client.deleteJob(active.id).catch(() => {});
+              } else {
+                log.info(
+                  { albumId, addonJobId: active.id, pending },
+                  'replace: keeping the superseded addon job, its files are still landing',
+                );
+              }
             }
             supersedeActiveJobs(db, { lidarrAlbumId: albumId });
             addonJob = await createAddonSide();

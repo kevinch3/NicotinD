@@ -196,6 +196,17 @@ source:
   `addonIsReady` downgrades it to `slskd-unavailable`. Readiness is only ever
   used to *soften* a failure, so an unanswerable probe is read as ready — losing
   the real error would be worse than deferring one attempt too few.
+- **Releasing a job is destructive, so it has to be earned too.** `DELETE
+  jobs/:id` is the signal that core is done with a job's files, and an addon is
+  entitled to delete them on it (#1052 — the slskd addon kept every byte it ever
+  downloaded, 34 GB on kpc, because it treated the call as ledger-only).
+  `pendingIngestCount` is the one honest test of "may these bytes go": zero items
+  `completed` addon-side with no `relative_path` of ours. `maybeReleaseAddonJob`
+  has always used it; the re-hunt path now does too, because superseding a job
+  retires the row while leaving its completed items live for the next poll, and
+  a re-hunt asks for a *better* copy, never for the loss of the tracks that
+  already arrived. Removing a job from the feed still releases it — discarding
+  is what the user asked for — but it says so in the log.
 
 Detecting an outage is only half of it. slskd backs off 1 → 2 → 4 … → 300 s
 between login attempts, so the **backoff ladder, not the network, sets the outage

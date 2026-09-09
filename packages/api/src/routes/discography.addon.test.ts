@@ -278,6 +278,83 @@ describe('discography routes through a remote addon', () => {
     });
   });
 
+  /**
+   * #1052: releasing a job now makes the addon delete that job's downloaded
+   * files. A re-hunt means "find me a better copy", not "throw away the tracks
+   * that already arrived" — and `supersedeActiveJobs` only retires the job row,
+   * leaving its completed items live for the poller's next tick. Releasing
+   * while they are still landing destroys bytes nothing can re-fetch.
+   */
+  describe('replace and the superseded addon job (#1052)', () => {
+    const pick = {
+      selected: {
+        username: 'peer',
+        directory: 'd',
+        files: [{ filename: 'f', size: 1 }],
+        candidateRef: 'ref-1',
+      },
+    };
+
+    /** First create 409s so the route takes the replace branch; the retry succeeds. */
+    function replaceHarness() {
+      let creates = 0;
+      const deleteJob = mock(async () => {});
+      const h = harness({
+        createJob: mock(async () => {
+          creates += 1;
+          if (creates === 1) throw new AddonRequestError('already downloading', 409);
+          return { id: 'aj-2', intent: 'album', items: [] };
+        }),
+        listJobs: mock(async () => [
+          {
+            id: 'aj-old',
+            intent: 'album',
+            state: 'active',
+            artist: 'Soda Stereo',
+            album: 'Dynamo',
+            items: [],
+          },
+        ]),
+        deleteJob,
+      } as unknown as Partial<AddonClient>);
+      // The core job mirroring the addon's `aj-old`, so the route can find it.
+      h.db.run(
+        `INSERT INTO acquisition_jobs (id, kind, method, state, stage, lidarr_album_id, source_ref, created_at, updated_at)
+         VALUES ('old-1', 'album-hunt', 'fixture-addon', 'active', 'downloading', 42, 'addon:fixture-addon:aj-old', 1, 1)`,
+      );
+      return { ...h, deleteJob };
+    }
+
+    it('keeps the addon job when one of its files has not landed yet', async () => {
+      const h = replaceHarness();
+      h.db.run(
+        `INSERT INTO acquisition_job_items (job_id, track_title, state, relative_path, updated_at)
+         VALUES ('old-1', 'One', 'completed', NULL, 1)`,
+      );
+
+      const res = await h.app.request('/albums/42/hunt-download?replace=true', jsonPost(pick));
+      expect(res.status).toBe(201);
+      expect(h.deleteJob).not.toHaveBeenCalled();
+      // The replace itself still happens — only the destructive release is held back.
+      const old = h.db
+        .query<{ state: string }, []>(`SELECT state FROM acquisition_jobs WHERE id = 'old-1'`)
+        .get()!;
+      expect(old.state).toBe('superseded');
+    });
+
+    it('releases the addon job once every completed item has landed', async () => {
+      const h = replaceHarness();
+      h.db.run(
+        `INSERT INTO acquisition_job_items (job_id, track_title, state, relative_path, updated_at)
+         VALUES ('old-1', 'One', 'organized', 'Artist/Album/01 One.opus', 1)`,
+      );
+
+      const res = await h.app.request('/albums/42/hunt-download?replace=true', jsonPost(pick));
+      expect(res.status).toBe(201);
+      expect(h.deleteJob).toHaveBeenCalledWith('aj-old');
+    });
+  });
+
   it('hunt-tracks runs addon-side and keeps the TrackHuntResult shape', async () => {
     const res = await h.app.request('/albums/42/hunt-tracks', jsonPost({}));
     expect(res.status).toBe(200);

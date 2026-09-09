@@ -337,6 +337,25 @@ describe('addon job actions (acquisition addon protocol phase 2)', () => {
     expect(testDb.query(`SELECT id FROM acquisition_jobs`).all()).toHaveLength(0);
   });
 
+  /**
+   * #1052: releasing the job now makes the addon delete its downloaded files,
+   * and the rows go in this same request, so nothing can recover them later.
+   * That is exactly what Remove means, so it stays — this pins the decision so
+   * a future reader sees it was deliberate rather than overlooked.
+   */
+  it('removes a job even when files had not landed yet — discarding is what Remove means', async () => {
+    const { app, calls, jobId } = makeAddonApp();
+    testDb.run(
+      `INSERT INTO acquisition_job_items (job_id, track_title, state, relative_path, updated_at)
+       VALUES (?, 'One', 'completed', NULL, 1)`,
+      [jobId],
+    );
+
+    const res = await app.request(`/jobs/${jobId}`, { method: 'DELETE' });
+    expect(res.status).toBe(200);
+    expect(calls.deleted).toEqual(['aj-7']);
+  });
+
   // A row no addon owns (a pre-linkage direct grab whose `source_ref` is the
   // peer name, or any legacy peer-ref row) used to 400 here, so "Cancel all"
   // could never close it — prod: a 31-track folder grab sat "Downloading 0 of
