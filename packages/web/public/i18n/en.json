@@ -485,6 +485,8 @@
   "downloads.resource.queued": "queue {count}",
   "downloads.resource.use": "Use this peer",
   "downloads.resource.cancel": "Cancel",
+  "downloads.resource.requiring": "must include {count} you picked",
+  "downloads.resource.conflict": "The source is still holding this album. Give it a moment and try again.",
   "downloads.resource.failed": "Could not start the re-source. Run the search again.",
   "downloads.resource.started": "Re-sourcing {count} track(s) from {peer}",
   "downloads.discardPartial": "Discard",

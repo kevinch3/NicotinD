@@ -116,6 +116,14 @@ export interface FixtureAddonOptions {
    * be a fixture change disguised as a product one.
    */
   alternatePeer?: string;
+  /**
+   * Refuse a second active job for the same (artist, album) with 409, the way
+   * the real slskd addon does (`JobConflictError`, one active album job per
+   * release). Opt-in only because the older specs create jobs freely — but any
+   * spec that puts a SECOND job on one album must turn it on, or it is testing
+   * a double that is more permissive than production (#1069).
+   */
+  conflictOnActiveAlbum?: boolean;
 }
 
 export async function startFixtureAddon(opts: FixtureAddonOptions = {}): Promise<FixtureAddon> {
@@ -130,6 +138,7 @@ export async function startFixtureAddon(opts: FixtureAddonOptions = {}): Promise
   let nextJob = 1;
   let rateLimited = false;
   const alternatePeer = opts.alternatePeer;
+  const conflictOnActiveAlbum = opts.conflictOnActiveAlbum ?? false;
 
   function applyCancel(job: FixtureJob): void {
     const now = Date.now();
@@ -281,6 +290,22 @@ export async function startFixtureAddon(opts: FixtureAddonOptions = {}): Promise
         // and its item id differs — the host keys its mirror on the item id, so
         // reusing one would silently update the abandoned row instead of
         // opening a new one, hiding the very thing the re-source spec asserts.
+        // The guard that made re-source impossible in prod while the fixture
+        // waved it through (#1069). Cancelling the first job clears it, which
+        // is exactly the ordering the host has to get right.
+        if (conflictOnActiveAlbum && b.intent === 'album') {
+          const clash = jobs.find(
+            (j) =>
+              j.state === 'active' &&
+              j.intent === 'album' &&
+              j.artist === (b.artist ?? payload.artist) &&
+              j.album === (b.album ?? payload.album),
+          );
+          if (clash) {
+            json(409, { error: 'album job already active', existingJobId: clash.id });
+            return;
+          }
+        }
         const fromAlternate = !!alternatePeer && b.candidateRef === 'fixture-candidate-2';
         const peer = fromAlternate ? alternatePeer : 'fixture-peer';
         const job: FixtureJob = {

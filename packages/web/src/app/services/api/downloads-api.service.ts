@@ -58,10 +58,10 @@ export class DownloadsApiService {
    * job's creation — so the caller shows a searching state rather than a
    * spinner that looks broken.
    */
-  searchAlternateSources(jobId: string, titles?: string[]) {
+  searchAlternateSources(jobId: string, require?: string[]) {
     return this.http.post<AlternateSourcesResult>(
       `/api/downloads/jobs/${jobId}/resource/search`,
-      titles?.length ? { titles } : {},
+      require?.length ? { require } : {},
     );
   }
 

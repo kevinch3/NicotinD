@@ -63,8 +63,9 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   → [download-pipeline.md](download-pipeline.md),
   [acquisition-addon-protocol.md](acquisition-addon-protocol.md)
 - **Re-source a stuck download from another peer**: a fresh hunt, a peer picker, and a second
-  addon job scoped to the still-pending titles and mirrored onto the same card; `canResourceJob`,
-  `coveredTitles`, `rankAlternates`, `supersedeItems`, `OWNED_BY_ADDON_JOB`.
+  addon job scoped to the still-pending titles and mirrored onto the same card, the stuck job
+  released first; `canResourceJob`, `coveredTitles`, `rankAlternates`, `supersedeItems`,
+  `OWNED_BY_ADDON_JOB`, `conflictOnActiveAlbum`.
   → [download-pipeline.md](download-pipeline.md)
 - **Spotify metadata fallback**: metadata-only lane handing a `spotify.com/album` URL to
   `/api/acquire`; the external spotdl addon resolves the download.

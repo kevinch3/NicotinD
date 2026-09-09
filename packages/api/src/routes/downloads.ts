@@ -19,7 +19,6 @@ import {
   recomputeStage,
   resolveJobAlbumId,
   activePeers,
-  addonJobHasLiveItems,
   canResourceJob,
   claimUnattributedItems,
   huntTracklist,
@@ -29,6 +28,7 @@ import {
 } from '../services/acquisition-job-store.js';
 import { rankAlternates } from '../services/download-resource.js';
 import { mapAddonJob } from '../services/addons/job-poller.js';
+import { AddonRequestError } from '../services/addons/client.js';
 import { deleteSongs } from '../services/library-deletion.js';
 import { errorHandler } from '../middleware/error-handler.js';
 import { recordAudit } from '../services/audit-log.js';
@@ -385,24 +385,31 @@ export function downloadRoutes(
     const { job, addon } = found;
 
     const body = await c.req
-      .json<{ titles?: string[] }>()
-      .catch(() => ({}) as { titles?: string[] });
-    const available = resourceableTitles(db, job.id);
-    // A caller-supplied subset is intersected, never trusted: a title that has
-    // since been delivered must not be taken away from the peer that delivered it.
-    const wanted = body.titles?.length
-      ? body.titles.filter((t) => available.includes(t))
-      : available;
+      .json<{ require?: string[] }>()
+      .catch(() => ({}) as { require?: string[] });
+    // Coverage is always measured over EVERYTHING still pending, because that
+    // is what the chosen peer will be asked for: re-sourcing releases the stuck
+    // job, so there is no second source left to split the remainder with
+    // (#1069). A narrower `wanted` here would quietly shrink the request.
+    const wanted = resourceableTitles(db, job.id);
     if (!wanted.length) return c.json({ error: 'Nothing on this download is still pending' }, 400);
+    // Ticked tracks are a REQUIREMENT, not a narrowing: "only offer peers that
+    // have these". Intersected with what is pending right now, so a track
+    // delivered since the tick cannot rule out every peer.
+    const required = (body.require ?? []).filter((t) => wanted.includes(t));
 
     const res = await addon.client.albumsSearch({
       artist: job.artistName ?? '',
       album: job.albumTitle ?? '',
       canonicalTracks: found.tracklist.map((title) => ({ title })),
     });
+    const ranked = rankAlternates(wanted, res.candidates, activePeers(db, job.id));
     return c.json({
       wanted,
-      alternates: rankAlternates(wanted, res.candidates, activePeers(db, job.id)),
+      required,
+      alternates: required.length
+        ? ranked.filter((a) => required.every((t) => a.coveredTitles.includes(t)))
+        : ranked,
       // An empty list means something different in each of these cases, and the
       // picker says so: throttled and offline are both "we could not look
       // properly", not "nobody has it" (#1040, #1045).
@@ -428,6 +435,9 @@ export function downloadRoutes(
       .catch(() => ({}) as { candidateRef?: string; titles?: string[] });
     if (!body.candidateRef) return c.json({ error: 'Pick a peer first' }, 400);
     const available = resourceableTitles(db, job.id);
+    // Intersected with what is pending RIGHT NOW: the picker's list was built
+    // from a search that took tens of seconds, and a track delivered in the
+    // meantime must not be taken away from the peer that delivered it.
     const titles = body.titles?.length
       ? body.titles.filter((t) => available.includes(t))
       : available;
@@ -436,6 +446,20 @@ export function downloadRoutes(
     // Attribute the existing rows BEFORE a second addon job can report, so the
     // terminal sweeps can tell the two apart (see OWNED_BY_ADDON_JOB).
     claimUnattributedItems(db, job.id, ref.addonJobId);
+
+    // Release the stuck job FIRST (#1069). An addon may allow only one active
+    // job per release — slskd does, and answers a second one with 409 — so
+    // creating before cancelling made every re-source fail against the real
+    // addon while passing against a more permissive test double. Cancelling
+    // does not delete what already landed (only `deleteJob` does); it ends the
+    // transfers that were not moving, which is the situation being fixed.
+    //
+    // This is why the new peer takes ALL of what is still pending rather than
+    // only a ticked subset: once the old job is gone there is no second source
+    // left to split with, so a split would just be a slower way to lose tracks.
+    await addon.client.cancelJob(ref.addonJobId).catch((err: unknown) => {
+      log.warn({ jobId: job.id, err }, 're-source: cancelling the stuck addon job failed');
+    });
 
     let addonJobId: string;
     try {
@@ -451,21 +475,31 @@ export function downloadRoutes(
       });
       addonJobId = created.id;
     } catch (err) {
-      // The hunt cache behind `candidateRef` expires, and a stale ref is the
-      // ordinary failure here — same wording the hunt modal uses.
+      // Past the cancel, so the stuck job is gone either way and its items will
+      // settle as `unavailable`. Say which failure this was: only an expired
+      // selection is fixed by searching again, and telling someone to re-run a
+      // 45 s hunt against a source that is refusing the job is worse than
+      // saying nothing.
       log.warn({ jobId: job.id, err }, 're-source rejected by the addon');
-      return c.json({ error: 'Selection expired — run the search again' }, 400);
+      recomputeStage(db, job.id);
+      const status = err instanceof AddonRequestError ? err.status : null;
+      if (status === 409) {
+        return c.json(
+          {
+            error: 'The source is still holding this album. Give it a moment and try again.',
+            code: 'resource_conflict',
+          },
+          409,
+        );
+      }
+      return c.json(
+        { error: 'Selection expired — run the search again', code: 'resource_expired' },
+        400,
+      );
     }
 
     mapAddonJob(db, ref.addonId, addonJobId, job.id);
     supersedeItems(db, job.id, titles);
-
-    // Only now let the old peer go, and only if it has nothing left to deliver.
-    // Cancelling it while it is still uploading other tracks would make the
-    // granular action destroy the very progress it was meant to preserve.
-    if (!addonJobHasLiveItems(db, job.id, ref.addonJobId)) {
-      await addon.client.cancelJob(ref.addonJobId).catch(() => {});
-    }
     recomputeStage(db, job.id);
     recordAudit(db, user, 'download.resource', {
       targetKind: 'acquisition_job',

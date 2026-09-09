@@ -348,10 +348,11 @@ export class DownloadItemComponent {
   }
 
   /**
-   * What the re-source button acts on: the ticked titles, or — when nothing is
-   * ticked — the empty list, which the server reads as "everything still
-   * pending". Letting the server decide keeps the card from acting on a
-   * tracklist that has moved on since the last poll.
+   * The ticked titles, handed to the picker as a REQUIREMENT on which peers to
+   * offer — not as the set to acquire. Re-sourcing releases the stuck job, so
+   * whoever is chosen is asked for everything still pending; ticking narrows
+   * who is worth choosing, not what gets downloaded (#1069). Empty means any
+   * peer holding some of it.
    */
   selectedOrAll(): string[] {
     return [...this.selected()];

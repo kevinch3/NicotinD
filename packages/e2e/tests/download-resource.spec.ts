@@ -20,7 +20,14 @@ test.describe('re-source a stuck download', () => {
   let auth: Record<string, string>;
 
   test.beforeAll(async ({ request }) => {
-    addon = await startFixtureAddon({ id: ADDON_ID, alternatePeer: ALTERNATE });
+    // `conflictOnActiveAlbum` models the real addon's one-active-job-per-album
+    // guard. Without it this spec passed against a double that could not
+    // reproduce the failure that made the feature unusable in prod (#1069).
+    addon = await startFixtureAddon({
+      id: ADDON_ID,
+      alternatePeer: ALTERNATE,
+      conflictOnActiveAlbum: true,
+    });
     const login = await request.post('/api/auth/login', {
       data: { username: ADMIN.username, password: ADMIN.password },
     });
@@ -97,6 +104,11 @@ test.describe('re-source a stuck download', () => {
 
     await picker.getByTestId('resource-confirm').click();
     await expect(picker).toBeHidden({ timeout: 15_000 });
+
+    // The stuck job is released BEFORE the replacement is created (#1069). The
+    // addon allows one active job per album, so the reverse order 409s — and
+    // this assertion, not the test merely passing, is what states the rule.
+    expect(addon.cancelRequests).toContain('fixture-job-1');
 
     // The replacement's item arrives on the SAME job, from the new peer, and
     // the abandoned row stops counting rather than doubling the tracklist.

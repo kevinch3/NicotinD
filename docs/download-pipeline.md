@@ -1006,9 +1006,32 @@ delivery becoming a duplicate file (the #951 class).
 the replacement job's first poll leaves the card on the stage it had rather than ruling
 "nothing landed" and flashing Error.
 
-The old addon job is cancelled **only** when it has no non-superseded, non-terminal items
-left (`addonJobHasLiveItems`). Cancelling it while it is still uploading other tracks would
-make the granular action destroy the progress it exists to preserve.
+### Release the stuck job first (#1069)
+
+The stuck addon job is cancelled **before** the replacement is created, and this ordering is not
+a preference. slskd allows one active job per `(artist, album)` and answers a second with **409**
+(`JobConflictError`); since the job being re-sourced is by definition still active for that
+release, creating first made every re-source fail — with "Selection expired", which names the
+wrong cause and sends the user back through a 45 s hunt.
+
+Cancelling clears the guard (it counts only `state = 'active'`) and does **not** delete what
+already landed — only `deleteJob` does that. What it does end are the transfers that were not
+moving, which is the situation being fixed.
+
+This ordering is also why **the new peer takes everything still pending** rather than a ticked
+subset. Once the stuck job is released there is no second source left to split the remainder
+with, so a split would only be a slower way to lose tracks. Ticking tracks is therefore a
+*requirement* on which peers are offered — "only show me ones that have these" — not a narrowing
+of the request. Titles the chosen peer does not have stay on the released job and settle as
+`unavailable`: visible on the card, and re-sourceable again.
+
+A 409 and an expired `candidateRef` are reported separately (`resource_conflict` /
+`resource_expired`). Only one of them is fixed by searching again.
+
+**This shipped broken in v0.6.30 and the e2e passed**, because `fixture-addon.ts` accepted any
+job creation. A test double more permissive than the real addon cannot fail the way production
+does; the fixture now models the guard behind `conflictOnActiveAlbum`, and any spec putting a
+second job on one album must enable it.
 
 ### What it cannot reach
 

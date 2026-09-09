@@ -812,18 +812,6 @@ export function claimUnattributedItems(db: Database, jobId: string, addonJobId: 
   );
 }
 
-/** Does this addon job still have work of its own on the card? (Whether to release its dead peer.) */
-export function addonJobHasLiveItems(db: Database, jobId: string, addonJobId: string): boolean {
-  const row = db
-    .query<{ c: number }, [string, string]>(
-      `SELECT COUNT(*) c FROM acquisition_job_items
-        WHERE job_id = ? AND (addon_job_id = ? OR addon_job_id IS NULL)
-          AND state IN ${NON_TERMINAL_STATES}`,
-    )
-    .get(jobId, addonJobId);
-  return (row?.c ?? 0) > 0;
-}
-
 /**
  * Attach the addon's job ref to a row reserved before the addon was called
  * (#714), and move it out of `resolving` now that the link is understood.

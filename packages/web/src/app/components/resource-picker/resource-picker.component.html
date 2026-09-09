@@ -19,6 +19,9 @@
     } @else {
       <p class="text-xs text-theme-muted mt-1">
         {{ 'downloads.resource.wanted' | t: { count: wanted().length } }}
+        @if (required().length) {
+          · {{ 'downloads.resource.requiring' | t: { count: required().length } }}
+        }
       </p>
 
       @if (sourceOffline()) {

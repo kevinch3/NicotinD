@@ -27,8 +27,13 @@ export class ResourcePickerComponent {
   private api = inject(DownloadsApiService);
 
   readonly jobId = input.required<string>();
-  /** Titles the user ticked; empty means every still-pending track. */
-  readonly titles = input<string[]>([]);
+  /**
+   * Titles the user ticked. A REQUIREMENT on the peers offered — "only show me
+   * ones that have these" — never a narrowing of the request: re-sourcing
+   * releases the stuck job, so whoever is chosen is asked for everything still
+   * pending (#1069).
+   */
+  readonly require = input<string[]>([]);
 
   readonly cancel = output<void>();
   /** Emitted once the re-source is accepted, so the feed can re-poll. */
@@ -38,6 +43,7 @@ export class ResourcePickerComponent {
   readonly submitting = signal(false);
   readonly error = signal<string | null>(null);
   readonly wanted = signal<string[]>([]);
+  readonly required = signal<string[]>([]);
   readonly alternates = signal<AlternateSource[]>([]);
   readonly rateLimited = signal(false);
   readonly sourceOffline = signal(false);
@@ -58,9 +64,10 @@ export class ResourcePickerComponent {
   private search(): void {
     this.searching.set(true);
     this.error.set(null);
-    this.api.searchAlternateSources(this.jobId(), this.titles()).subscribe({
+    this.api.searchAlternateSources(this.jobId(), this.require()).subscribe({
       next: (res) => {
         this.wanted.set(res.wanted);
+        this.required.set(res.required ?? []);
         this.alternates.set(res.alternates);
         this.rateLimited.set(!!res.rateLimited);
         this.sourceOffline.set(!!res.sourceOffline);
@@ -84,18 +91,21 @@ export class ResourcePickerComponent {
     const pick = this.selected();
     if (!pick || this.submitting()) return;
     this.submitting.set(true);
-    // Ask for what THIS peer actually has, not for everything that was
-    // pending: a peer covering 9 of 14 should be given the 9, and the rest
-    // left with their current source rather than handed to someone who cannot
-    // deliver them.
+    // What this peer actually has of everything still pending. Titles it does
+    // not have stay on the released job and settle as `unavailable` — visible
+    // on the card and re-sourceable again, rather than silently dropped.
     this.api.resourceJob(this.jobId(), pick.candidateRef, pick.coveredTitles).subscribe({
       next: (res) => {
         this.submitting.set(false);
         this.resourced.emit({ peer: pick.username, count: res.resourced });
       },
-      error: () => {
+      error: (err: { status?: number }) => {
         this.submitting.set(false);
-        this.error.set('downloads.resource.failed');
+        // 409 is the source still holding the album, not a stale selection —
+        // and only one of those is fixed by running the search again (#1069).
+        this.error.set(
+          err?.status === 409 ? 'downloads.resource.conflict' : 'downloads.resource.failed',
+        );
       },
     });
   }
