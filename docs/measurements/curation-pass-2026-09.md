@@ -2520,3 +2520,365 @@ tagged, ~85 web searches, 10 commits.** Zero review flags added — every ambigu
 case that couldn't be resolved with real-world/source evidence was left untagged,
 not guessed or flagged. The 3 pre-existing review flags (#19, #20, #21) remain open,
 all explicitly requiring a human call per their own text.
+
+---
+
+# 2026-09-09 — the artist field held a BPM (session 10, stretch 1)
+
+A large ingest landed between passes: **16,x?? → 21,174 songs**, 3,764 artists, 7,496 albums.
+It brought a defect class this library had not seen before, and the health report caught it as
+`numeric_artist` (severity **high**, 27 rows).
+
+## The defect
+
+A DJ-pool pack, `01 - Pop Aguante` (100 tracks, `Various Artists`, mp3 320), was tagged with the
+**BPM in the artist field** and the real credit buried in the title:
+
+| artist | title |
+| --- | --- |
+| `122` | `Bad Bunny - Dtmf - Braian Leiva` |
+| `108` | `Maria Becerra - Infinitos Como El Mar - Salsa Version Remix` |
+| `154` | `Angela Torres - Favorita - Extended Mix` |
+
+Every one of the 100 tracks. The artist values ran `090`–`154` — a BPM range, not a name, which is
+what makes the rule's `numeric_artist` predicate exactly right here.
+
+**Zero searches spent.** The title *is* the source evidence: `Artist - Title - Edit`. The fix is
+mechanical — set `artist` from the prefix, set `title` to the remainder. Nothing was invented.
+
+## What was done
+
+100 × `fix_song_metadata`, all read-back verified. Two corrections applied along the way:
+
+- Names were written in their **library-canonical** spelling, not the pack's: `KAROL G` (not
+  `Karol G`), `María Becerra`, `Beéle` (not `Beele`), `Miranda!` (not `Miranda`),
+  `Ca7riel & Paco Amoroso` (not `Catriel`), `Babasónicos`, `Arcángel`, `K4OS`. Writing the pack's
+  spelling would have minted a spelling variant per artist — the exact class
+  `curation-pass-2026-09-06` cleared to 0.
+- One title typo corrected against its own siblings in the same album: `Mistorioso Alguien` →
+  `Misterioso Alguien` (three other rows in the pack spell it correctly).
+
+## Result (re-measured, not tallied)
+
+| metric | before | after |
+| --- | --- | --- |
+| `numeric_artist` (high) | 27 | **14** |
+| genre-less songs | 324 | 312 |
+| `album_count_mismatch` (high) | 309 | 347 |
+
+13 junk artist rows gone. The 14 that remain are in **other** packs from the same ingest
+(`08 - Latin Tech . Techengue . Afro`, `Melodic Techno April 2022`) — the same fix applies.
+
+The `album_count_mismatch` rise is the expected post-write churn (#774), not new pollution.
+
+## Three things measured that are worth carrying
+
+**1. The pack's existing genres are classifier noise, and the health metric cannot see it.**
+55 of the 100 tracks already carried a genre, so they are absent from the genre worklist. Those
+genres are wrong in a way that a missing genre is not:
+
+| track | stored genre |
+| --- | --- |
+| `Miranda! - Me Gusta - Club Mix` | `Emo` |
+| `Casa De Leones - No Te Veo` (reggaetón) | `Christian Hip Hop` |
+| `Becky G Ft. Manuel Turizo - Que Haces - Merenguito Mix` | `Pop Rock` |
+| `Rels B - Tu Vas Sin - Extended` | `New Beat` |
+
+**A wrong genre scores better than a missing one on every dimension the report measures.** The
+genre metric counts absence; nothing counts implausibility. Same shape as the `numeric_artist`
+gap that #864 closed for artist names — and unlike that one, still open. Not fixed this stretch:
+re-tagging 55 rows is a judgment pass, not a mechanical one.
+
+**2. `fix_song_metadata` reports an error when the canonicalizer does its job — filed #1071.**
+Writing `artist: "Karol G"` on a library whose canonical row is `KAROL G` returns
+`{"error":"Tag write landed but the rescan did not apply it", actual:{artist:"KAROL G"}}`.
+Read-back proves the row is **correct**. The verifier compares the requested string to the stored
+string byte-for-byte and does not know about the accent/case fold the scanner just applied.
+
+This is a false negative in the one direction that matters: the standing rule is that `ok: true`
+is not proof, so an *error* is taken seriously — and the natural response is to retry, or to
+re-write the name in a spelling that makes the check pass, which mints the variant the fold
+existed to prevent.
+
+Asymmetry found in the same pass: a **compound** artist string is not folded. `"Maria Becerra"`
+became `"María Becerra"`; `"Maria Becerra, Xross"` was stored verbatim. The fold runs on the whole
+string, not per credit, so a compound is a door around it. Five rows written unfolded here and
+re-written accented before closing.
+
+**3. 20 concurrent `fix_song_metadata` calls 502 the origin; 12 do not.** Seven of twenty came
+back `origin_bad_gateway` from Cloudflare. The known concurrency ceiling (#757) was documented for
+`lookup_song_metadata`'s ~4-source fan-out — it applies to the **write** path too, which retags and
+rescans a file per call. Batches of ≤12 ran clean all pass. The writes are idempotent, so the
+retry was free, but the failure is silent about which half landed.
+
+## Open, next stretch
+
+- The remaining **14** `numeric_artist` rows, in the sibling packs from this ingest.
+- A second coherent wave from the same ingest: ~55 Chilean *cueca* / folklore singles
+  (`landedAt` 1788883785133), genre-less, one album per track. One judgment covers the wave —
+  but not blindly: `Rapanui Hinariru — Ina` is Rapa Nui and `Grupo Altamar` is cumbia, so the
+  wave is not homogeneous.
+- Flags #19/#20/#21 remain open: all three are owner decisions, correctly left alone.
+
+## 2026-09-09, stretch 2 — the Chilean folklore wave, and a ghost I over-diagnosed
+
+### `numeric_artist` reached 0, but not the way I thought
+
+Stretch 1 left the rule at 14 after correcting 100 songs. The reason turned out to be
+`library_song_artists`: the retag rewrote `library_songs.artist` and **added** the correct credit
+edge without removing the superseded one. Proven with a controlled re-write —
+
+```
+fix_song_metadata({songId:"b927a728…", artist:"Bad Bunny"})   // already correct
+SELECT a.name FROM library_song_artists sa JOIN library_artists a …
+-> [{"name":"090"}, {"name":"Bad Bunny"}]
+```
+
+126 such edges, 126/126 sitting beside a correct credit, spanning two albums. Filed as **#1073**.
+
+**Then it cleared itself.** Re-measured ~20 minutes later with no targeted action: 126 -> 0, every
+BPM artist row pruned, `numeric_artist` 14 -> 0, high-severity 361 -> 310. A full scan had run in
+that window (an ingest was live, and `merge_artist` re-buckets on the next scan — the trigger is not
+cleanly attributable, the outcome is). Correction posted to #1073 and the severity read down: the
+stale edge persists **until the next full scan**, not forever, and no backfill is needed.
+
+Worth being precise about the error, because the controlled test was sound and the conclusion
+still wasn't. I proved the *mechanism* (the edge is added without removing its predecessor) and
+then assumed *durability* without measuring it. The evidence I leaned on hardest — a second album
+I never touched still carrying ghosts — is equally consistent with "not scanned since it was
+retagged". Same shape as the `feedback_verify_filed_diagnoses` base rate, except the filed
+diagnosis was mine.
+
+### A clean negative: `merge_artist` does not have that shape
+
+Tested against a real spelling split found in the wave, `Los Hermanos Campo` (2) vs
+`Los Hermanos Campos` (10) — one artist, two spellings:
+
+```
+merge_artist({mergeInto:"Los Hermanos Campos", rawName:"Los Hermanos Campo", confirm:true})
+-> 12/12 under the canonical name, losing row gone, zero stale edges
+```
+
+So the reconcile logic already exists and is correct on that path. The retag path can likely reuse
+it. Also: the first `merge_artist` call **timed out**, and the DB showed it had landed *nothing* —
+the retry was safe. Verified rather than assumed; one occurrence, not a guarantee.
+
+### The folklore wave — 53 genre writes, zero searches
+
+59 genre-less songs landed together (`landed_at` ≈ 1788883785133). **56 of 59 sit in
+`Various Artists/Unknown`** — the #978 shared bucket — with one single-track album each, so the
+folder carries no provenance. The 3 that escaped are in real `<Artist>/30 Cuecas` folders.
+
+Vocabulary checked before writing, which is the whole job here:
+
+| existing | count |
+| --- | --- |
+| `Folclore Argentino` | 3 |
+| `Folclore` / `Folklore` | 13 / 36 |
+| `Cumbia Chilena`, `Pop Chileno`, `Rock Chileno` | 1 / 10 / 10 |
+| `Cueca` | **0 — did not exist** |
+
+The convention is Spanish `<Genre> <Nationality>`, so **`Folclore Chileno`** follows
+`Folclore Argentino` exactly. `Cueca` is genuinely new and correct — minting a *new* accurate genre
+is fine; minting a *variant spelling* of an existing one is the sin, and `Folklore Chileno` with a
+`k` would have been exactly that.
+
+Applied, all `mode: replace` (these carried no genre, so nothing was overwritten):
+
+- **8 × `Cueca; Folclore Chileno`** — only where the title or the source folder declares it
+  (`Cueca de Campeones`, `Mi Cueca Chilena`, `Una Cueca Chilenera`, `Pura Cueca`, the `30 Cuecas`
+  folder rows, the Medley). Declared evidence, not recall.
+- **45 × `Folclore Chileno`** — where the artist name itself declares the tradition
+  (`Huasos De Algarrobal`, `Los Huasos Quincheros`, `Conjunto Tierra Chilena`, `Las Colchagüinas`,
+  `Los Reales del Valle`, `Silvia Infantas y Los Cóndores`…).
+- **6 left untagged on purpose**: `Grupo Altamar` (2), `A los 4 Vientos` (2), `Entremares` (1),
+  `Rapanui Hinariru` (1). These read as cumbia/romántica or a distinct Rapa Nui tradition rather
+  than huaso folklore, and I would have been running on recall to say which. The skill's rule is
+  that an inconclusive call leaves the song untagged and does **not** get a flag — the genre
+  worklist is already the tracker.
+
+Verified against the DB, not the return values: `Folclore Chileno` 53, `Cueca` 8, wave genre-less
+6 — exactly the 6 held back.
+
+### Deltas
+
+| metric | stretch 1 start | now |
+| --- | --- | --- |
+| audit high | 336 | **310** |
+| `numeric_artist` | 27 | **0** |
+| genre-less songs | 324 | **304** |
+| artists | 3,764 | 3,762 |
+
+Not acted on, noted: two exact duplicate titles inside the wave
+(`Conjunto Tierra Chilena — Los Lagos de Chile`, `Los Hermanos Campos — La Consentida`, twice each).
+Dedupe is destructive and an ingest is live, so it waits — `landedAt` clustering says arrivals are
+still coming.
+
+## 2026-09-09, stretch 3 — the genre vocabulary was split by spelling
+
+Ingest still live (21,267 -> 21,361, distinct one-by-one `landed_at`), so destructive work stayed
+suspended. Went after the genre vocabulary instead.
+
+### The split, and how it was proved
+
+Stretch 2 wrote `Folclore Chileno` by following `Folclore Argentino`. Reading the wider cluster
+showed the library was inconsistent with *itself*:
+
+| | |
+| --- | --- |
+| `Folklore` | 36 |
+| `Folclore` | 13 |
+| `Folclore Argentino` | 3 |
+| `Folklore Peruano` | 3 |
+
+Same word, two spellings, applied to the same music. **Proof it is a split and not a distinction:
+`Los Tekis` appeared in both** — `Ay Vidita` tagged `Folclore`, eleven other Los Tekis tracks tagged
+`Folklore`. One artist, one tradition, two spellings. Both lists are otherwise the same population:
+Jorge Rojas, Los Cantores del Alba, Los Nocheros, Chaqueño Palavecino, Mercedes Sosa, Sanampay.
+
+Folded to **`Folclore`** (Spanish). Stated plainly because it is a judgment call, not a forced
+answer: the whole population is Spanish-language Latin American folklore, and it makes the regional
+set internally consistent (`Folclore` / `Folclore Argentino` / `Folclore Chileno` /
+`Folclore Peruano`). **Majority count alone would have favoured `Folklore`, 39 to 16.** The English
+`Folk` / `Folk Rock` / `Folk Pop` family is left alone — that separation is real.
+
+Multi-genre rows got their full ordered list written back, not a bare replace (five rows —
+`Latin Music | Folklore` -> `Latin Music; Folclore`, and one `Folklore | Latin Music | Folk`).
+
+### `Folkcentric` (13) — a genre that is one artist
+
+All 13 rows were Juana Molina, next to an existing `Folktronica` (48) that is the standard term for
+exactly what she makes. Folded; `Folktronica` 48 -> 61, `Folkcentric` gone.
+
+### A Discogs bucket string stored as a genre, and the false `Country` it created
+
+`Folk, World, & Country` (15) is Discogs' top-level bucket, stored verbatim **and** naively split on
+its commas, so every one of those songs carried four genres: the bucket plus `Folk`, `World`,
+`Country`. The split is the damaging part — it tagged **Fatoumata Diawara, Moraíto, Paco Cepero and
+Rafael Riqueni as `Country`.** A comma inside a genre *name* was read as a separator.
+
+Retagged per song against vocabulary that already existed (`Flamenco` 102, `Chamamé` 50,
+`Nuevo Flamenco` 22, `Sevillanas` 9, `World` 214) — nothing minted:
+
+| song | now |
+| --- | --- |
+| Eduardo Miño — Kilometro 11 | `Chamamé; Folclore Argentino` |
+| Fatoumata Diawara × 3 | `World` |
+| Johnny Cash, June Carter — Jackson | `Country; Folk` (genuinely country — bucket dropped only) |
+| Moraíto, Paco Cepero × 2, Rafael Riqueni | `Flamenco` |
+| Raya Real × 2 | `Sevillanas; Flamenco` |
+| Las Voces De Orán | `Folclore Argentino` |
+| Savia Andina | `Folclore` |
+| Rawayana — Welcome to El Sur | `Latin` |
+
+`Country` 331 -> 317.
+
+Rawayana is the weakest call and is recorded as such. Venezuelan indie/reggae-pop, not folk, world
+or country — but `set_song_genre` cannot clear a genre to empty ("empty values are ignored"), so
+"leave it untagged" was not available and the choice was between a known-false `Country` and an
+honest broader truth. Wrote only what is certain (`Latin`), not a guessed subgenre.
+
+### One correction to my own read
+
+Seeing `Punk` on a Los Tekis row, I checked whether `Punk` was a mistag class. It is not — 114 rows,
+overwhelmingly **2 Minutos**, a real Argentine punk band. The Los Tekis row was a lone stray
+(12 sibling tracks all `Folclore`), fixed individually. The rule that stopped a bad bulk edit is the
+sibling-agreement check: 12 independent siblings agreeing is a fix, one odd row out of 114 is not a
+class.
+
+### Deltas
+
+| genre | before | after |
+| --- | --- | --- |
+| `Folklore` | 36 | **0** |
+| `Folkcentric` | 13 | **0** |
+| `Folklore Peruano` | 3 | **0** |
+| `Folk, World, & Country` | 15 | **0** |
+| `Folclore` | 13 | 51 |
+| `Folktronica` | 48 | 61 |
+| `Country` | 331 | 317 |
+
+69 writes, zero searches. Four junk or variant genre values eliminated outright.
+
+## 2026-09-09, stretch 4 — the genre vocabulary, measured structurally
+
+Ingest had stopped (last arrival 20:56; song count began *falling* as a scan pruned deleted files).
+
+### Don't eyeball a worklist when you can probe the shape
+
+`get_rare_genres(maxCount: 3)` returns a long tail that is mostly *legitimate* — `Bhangra`,
+`Mariachi`, `Corrido`, `Makossa`, `Maracatu`, `Gypsy Jazz` are all real genres with one song each.
+Worth stating because the tool's own framing ("a genre carried by one or two songs is usually a
+mistag") does not hold on this library, and it **counts the primary genre only**, so it cannot show
+near-duplicates at all: `Hardcore Punk` reads as 1 while sitting at position 2 on many rows.
+
+The useful view was a structural probe instead — normalise every distinct genre (fold accents,
+lowercase, `&`->`and`, strip non-alphanumerics) and group:
+
+```
+distinct genres: 852   ->   collision groups: 16
+```
+
+| | |
+| --- | --- |
+| `Hip Hop` (1275) · `Hip-Hop` (80) | `Reggaeton` (674) · `Reggaetón` (53) |
+| `Rock And Roll` (303) · `Rock & Roll` (22) | `Nu Disco` (95) · `Nu-Disco` (29) |
+| `Drum And Bass` (57) · `Drum & Bass` (1) | `World` (214) · `World music` (44) · `world.music` (13) · `World Music` (1) |
+| `Chanson FrançAise` (26) · `Chanson Francaise` (11) · `Chanson Française` (1) | …and 9 more |
+
+### `set_genre_alias`, not N × `set_song_genre`
+
+The right tool: it repairs the **value** (and future arrivals carrying it), not the songs. 27 calls
+moved ~275 song-rows. Folded minority into established majority for punctuation and `&`/`and`
+variants; folded `world.music` / `World music` / `World Music` into `World`.
+
+**Result: 16 collision groups -> 1, distinct genres 852 -> 833.**
+
+### The one group that could not be fixed — filed #1074
+
+The survivor is `Synth-Pop` (376) / `Synth-pop` (1), and it is the whole point.
+
+`set_genre_alias`'s description names "a malformed casing from the source tagger (`Nueva CancioN`)"
+as a primary use case. **A casing-only alias is a no-op.** Genre identity is case-insensitive, so
+the canonical resolves back to the row it came from:
+
+```
+set_genre_alias({alias:"Nueva CancióN",    canonical:"Nueva Canción"})    -> songsUpdated: 0
+set_genre_alias({alias:"Musique ConcrèTe", canonical:"Musique Concrète"}) -> songsUpdated: 0
+set_genre_alias({alias:"NorteñO",          canonical:"Norteño"})          -> songsUpdated: 0
+```
+
+Where a variant differs by more than case it works correctly — `Chanson Francaise` moved 11 songs.
+So the three Chanson variants **did** consolidate into one row, and the display name that survived
+is the broken one, because it was there first:
+
+```
+before: Chanson FrançAise (26) · Chanson Francaise (11) · Chanson Française (1)
+after:  Chanson FrançAise (38)
+```
+
+Ten genre values carry this shape (`Nueva CancióN` 45, `Chanson FrançAise` 38, `Musique ConcrèTe` 13,
+`PilóN` 12, `NorteñO` 6, `SierreñO` 4, `Chanson RéAliste` 3, `Cumbia NorteñA Mexicana` 2, `JùJú` 2,
+`DanzóN` 1). The signature is a title-caser splitting on a regex word boundary without the `u` flag —
+JS `\b` treats `ç`/`ó`/`ñ` as non-word characters, so `française` is read as `fran` + `aise` and both
+get capitalised. Same ASCII-assumption family as #720 / #706.
+
+**Not in this repo, as far as I could find** — `normalizeGenreList` preserves input verbatim,
+`humanizeSlug` only uppercases after a space, and `toUpperCase` across `packages/api/src` +
+`packages/core/src` has no hit on the genre path. Recorded as a lead pointing upstream, not a
+finding.
+
+**Scope checked so the class is not overstated:** the same probe returns **0** over
+`library_artists` and exactly one hit over `library_albums` — `DeBÍ TiRAR MáS FOToS`, Bad Bunny's
+genuinely stylised title, a false positive. Genre path only.
+
+### Two judgment calls, recorded because they went opposite ways
+
+- **`Folclore` over `Folklore`** (stretch 3) — populations comparable (36 vs 16), tiebreak was
+  consistency with the regional set, *against* the majority.
+- **`Reggaeton` over `Reggaetón`** — one form is 13× the other and established. Orthography favours
+  the accent; rewriting 674 rows to satisfy it is scope the owner did not ask for.
+
+The principle is that majority is a tiebreak, not a rule — it decides when nothing else does, and
+it is the *wrong* tiebreak whenever the majority form is the broken one, which is exactly the case
+in #1074.
