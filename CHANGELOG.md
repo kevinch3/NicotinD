@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.32](https://github.com/kevinch3/NicotinD/compare/v0.6.31...v0.6.32) (2026-09-09)
+
+### Features
+
+* **remote:** one audible device — remote playback on by default, claim-on-play, "Playing on" strip ([#1075](https://github.com/kevinch3/NicotinD/issues/1075)) ([6d126c3](https://github.com/kevinch3/NicotinD/commit/6d126c3176c727fc5592b9fcf61e956b30705d76))
 ## [0.6.31](https://github.com/kevinch3/NicotinD/compare/v0.6.30...v0.6.31) (2026-09-09)
 
 ### Bug Fixes
