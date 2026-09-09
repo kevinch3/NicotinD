@@ -107,7 +107,22 @@ export function canonicalTrackCount(json: string | null): number | null {
 export type AcquisitionJobKind =
   'album-hunt' | 'auto-acquire' | 'direct' | 'track-search' | 'url' | 'import';
 export type AcquisitionJobItemState =
-  'queued' | 'downloading' | 'completed' | 'organized' | 'scanned' | 'failed' | 'unavailable';
+  | 'queued'
+  | 'downloading'
+  | 'completed'
+  | 'organized'
+  | 'scanned'
+  | 'failed'
+  | 'unavailable'
+  /**
+   * This title was handed to another peer (#1065). The row is KEPT rather than
+   * deleted so the addon job that owned it still finds it and cannot re-insert
+   * a duplicate — and so the attempt stays on the record. It is excluded from
+   * every tally and from ingestion: if the abandoned peer finally delivers the
+   * file, fetching it would organize a second copy of a track we already have
+   * from someone else (the #951 duplicate-file class).
+   */
+  | 'superseded';
 
 export interface CreateJobInput {
   kind: AcquisitionJobKind;
@@ -670,6 +685,145 @@ export function repointOrAttachItem(
   );
 }
 
+// ─── Re-sourcing a stuck download from another peer (#1065) ─────────────────
+//
+// Deliberately NOT built on `repointItem` above. Repointing rewrites a row's
+// peer in place, which needs a fuzzy title match to decide WHICH row, loses the
+// abandoned attempt, and — because the old addon job keeps reporting on an item
+// id whose row now describes someone else — lets a late delivery from the dead
+// peer overwrite the new one's progress. Keeping both rows and marking the old
+// one `superseded` needs no matching at read time and makes the abandoned peer
+// structurally unable to interfere.
+
+/** Item states a re-source may take away from their peer. Delivered files are not among them. */
+const RESOURCEABLE_STATES = REPOINTABLE_STATES;
+
+/** The shape `canResourceJob` rules on — a subset of `AcquisitionJob` plus cancel intent. */
+export interface ResourceableJobFacts {
+  kind: AcquisitionJobKind;
+  artistName: string | null;
+  albumTitle: string | null;
+  canonicalTracks: string[] | null;
+  cancelRequestedAt: number | null;
+  items: { state: AcquisitionJobItemState; trackTitle?: string | null }[];
+}
+
+/**
+ * The tracklist to hunt another peer with. The release's canonical list when we
+ * have it — only `hunt-download` records one — and otherwise the titles the job
+ * itemised, which is what a card mirrored straight from an addon has. Without
+ * the fallback the feature would refuse exactly the jobs the poller creates.
+ */
+export function huntTracklist(job: ResourceableJobFacts): string[] {
+  if (job.canonicalTracks?.length) return job.canonicalTracks;
+  return job.items.flatMap((i) => (i.trackTitle ? [i.trackTitle] : []));
+}
+
+/**
+ * Whether "get the rest from another peer" is a question this job can even ask.
+ * Exported and pure so the rule is unit-testable and has exactly one home — the
+ * feed publishes the verdict as `canResource` rather than letting the web
+ * re-derive it and drift.
+ *
+ * The kind gate is not a policy choice: finding another peer means re-running
+ * `albumsSearch`, which needs an artist, an album and a tracklist. A
+ * `direct` enqueue (a raw folder grab) has none of them, and a `url` job has no
+ * peers at all — for those the honest answer is that the card cannot offer this.
+ */
+export function canResourceJob(job: ResourceableJobFacts): boolean {
+  if (job.kind !== 'album-hunt' && job.kind !== 'auto-acquire') return false;
+  if (!job.artistName || !job.albumTitle) return false;
+  if (!huntTracklist(job).length) return false;
+  // A job the user has already told to stop is not a job to go find peers for.
+  if (job.cancelRequestedAt != null) return false;
+  return job.items.some((i) => RESOURCEABLE_STATE_SET.has(i.state));
+}
+
+const RESOURCEABLE_STATE_SET = new Set<AcquisitionJobItemState>([
+  'queued',
+  'downloading',
+  'failed',
+  'unavailable',
+]);
+
+/** Titles on this job that a re-source could take to another peer, in list order. */
+export function resourceableTitles(db: Database, jobId: string): string[] {
+  return db
+    .query<{ track_title: string | null }, [string]>(
+      `SELECT track_title FROM acquisition_job_items
+        WHERE job_id = ? AND state IN ${RESOURCEABLE_STATES} AND track_title IS NOT NULL
+        ORDER BY id ASC`,
+    )
+    .all(jobId)
+    .map((r) => r.track_title as string);
+}
+
+/**
+ * Peers this job is already pulling from. The re-source search subtracts these:
+ * a "different peer" that is the same peer is just the stuck download again.
+ * Superseded rows are excluded so a peer abandoned once can be reconsidered
+ * later — it may have come back online, and nothing else would ever re-offer it.
+ */
+export function activePeers(db: Database, jobId: string): string[] {
+  return db
+    .query<{ username: string }, [string]>(
+      `SELECT DISTINCT username FROM acquisition_job_items
+        WHERE job_id = ? AND username IS NOT NULL AND state <> 'superseded'`,
+    )
+    .all(jobId)
+    .map((r) => r.username);
+}
+
+/**
+ * Hand these titles to someone else: the rows keep their history but stop
+ * counting, stop ingesting, and stop being re-sourceable. Matching is by the
+ * exact stored title because the caller took these titles FROM `resourceableTitles`
+ * — a fuzzy match here could supersede a track nobody asked to give up.
+ * Returns how many rows moved.
+ */
+export function supersedeItems(db: Database, jobId: string, titles: string[]): number {
+  if (titles.length === 0) return 0;
+  const placeholders = titles.map(() => '?').join(', ');
+  db.run(
+    `UPDATE acquisition_job_items SET state = 'superseded', updated_at = ?
+      WHERE job_id = ? AND state IN ${RESOURCEABLE_STATES} AND track_title IN (${placeholders})`,
+    [Date.now(), jobId, ...titles],
+  );
+  return (
+    db
+      .query<{ c: number }, [string]>(
+        `SELECT COUNT(*) c FROM acquisition_job_items WHERE job_id = ? AND state = 'superseded'`,
+      )
+      .get(jobId)?.c ?? 0
+  );
+}
+
+/**
+ * Stamp a job's un-attributed items with the addon job that owns them, called
+ * at the one moment it starts to matter: just before a SECOND addon job joins
+ * the card. Rows written before this feature have a null `addon_job_id`, which
+ * the terminal sweeps read as "mine" — correct while there is one addon job,
+ * and ambiguous the instant there are two.
+ */
+export function claimUnattributedItems(db: Database, jobId: string, addonJobId: string): void {
+  db.run(
+    `UPDATE acquisition_job_items SET addon_job_id = ? WHERE job_id = ? AND addon_job_id IS NULL`,
+    [addonJobId, jobId],
+  );
+}
+
+/** Does this addon job still have work of its own on the card? (Whether to release its dead peer.) */
+export function addonJobHasLiveItems(db: Database, jobId: string, addonJobId: string): boolean {
+  const row = db
+    .query<{ c: number }, [string, string]>(
+      `SELECT COUNT(*) c FROM acquisition_job_items
+        WHERE job_id = ? AND (addon_job_id = ? OR addon_job_id IS NULL)
+          AND state IN ${NON_TERMINAL_STATES}`,
+    )
+    .get(jobId, addonJobId);
+  return (row?.c ?? 0) > 0;
+}
+
 /**
  * Attach the addon's job ref to a row reserved before the addon was called
  * (#714), and move it out of `resolving` now that the link is understood.
@@ -788,7 +942,8 @@ export function recomputeStage(db: Database, jobId: string): string | null {
   for (const row of db
     .query<{ state: string; c: number; last_moved: number }, [string]>(
       `SELECT state, COUNT(*) c, MAX(updated_at) last_moved
-         FROM acquisition_job_items WHERE job_id = ? GROUP BY state`,
+         FROM acquisition_job_items
+        WHERE job_id = ? AND state <> 'superseded' GROUP BY state`,
     )
     .all(jobId)) {
     counts.set(row.state, row.c);
@@ -1130,6 +1285,8 @@ export interface AcquisitionJobFeedItem {
   progress: AcquisitionJobView['progress'];
   /** Mirrors `AcquisitionJobView.cancelRequested` — see the core doc (#806). */
   cancelRequested: boolean;
+  /** Mirrors `AcquisitionJobView.canResource` — see `canResourceJob` (#1065). */
+  canResource: boolean;
   /**
    * Dominant enqueue-time bitrate + codec across the job's items (mode wins;
    * ties broken by max kbps), upgraded post-scan via the items' matching
@@ -1248,7 +1405,7 @@ function rollupJobQuality(
            COUNT(*) AS c
          FROM acquisition_job_items i
          LEFT JOIN library_songs s ON s.path = i.relative_path
-         WHERE i.job_id = ?
+         WHERE i.job_id = ? AND i.state <> 'superseded'
            AND COALESCE(s.bit_rate, i.bit_rate_kbps) IS NOT NULL
          GROUP BY bit_rate, format
          ORDER BY c DESC, bit_rate DESC
@@ -1262,7 +1419,7 @@ function rollupJobQuality(
       .query<{ bit_rate: number; format: string; c: number }, [string]>(
         `SELECT bit_rate_kbps AS bit_rate, audio_format AS format, COUNT(*) AS c
          FROM acquisition_job_items
-         WHERE job_id = ? AND bit_rate_kbps IS NOT NULL
+         WHERE job_id = ? AND state <> 'superseded' AND bit_rate_kbps IS NOT NULL
          GROUP BY bit_rate, format
          ORDER BY c DESC, bit_rate DESC
          LIMIT 1`,
@@ -1362,7 +1519,7 @@ function jobByteAgg(db: Database, jobId: string): ByteAggRow | null {
                                THEN MIN(COALESCE(bytes_transferred, 0), COALESCE(size_bytes, 0))
                              ELSE 0 END), 0) bt,
            COALESCE(SUM(CASE WHEN state IN ${BYTE_DELIVERABLE} THEN COALESCE(size_bytes, 0) ELSE 0 END), 0) sz
-         FROM acquisition_job_items WHERE job_id = ?`,
+         FROM acquisition_job_items WHERE job_id = ? AND state <> 'superseded'`,
       )
       .get(jobId) ?? null
   );
@@ -1376,7 +1533,8 @@ export function listJobFeed(db: Database, limit = 50): AcquisitionJobFeedItem[] 
     const counts = new Map<string, number>();
     for (const r of db
       .query<{ state: string; c: number }, [string]>(
-        `SELECT state, COUNT(*) c FROM acquisition_job_items WHERE job_id = ? GROUP BY state`,
+        `SELECT state, COUNT(*) c FROM acquisition_job_items
+          WHERE job_id = ? AND state <> 'superseded' GROUP BY state`,
       )
       .all(row.id)) {
       counts.set(r.state, r.c);
@@ -1418,7 +1576,8 @@ export function listJobFeed(db: Database, limit = 50): AcquisitionJobFeedItem[] 
         [string]
       >(
         `SELECT track_title, state, username, filename, bit_rate_kbps, audio_format, size_bytes
-           FROM acquisition_job_items WHERE job_id = ? ORDER BY id`,
+           FROM acquisition_job_items
+          WHERE job_id = ? AND state <> 'superseded' ORDER BY id`,
       )
       .all(row.id);
     const bytes = byteProgress(jobByteAgg(db, row.id));
@@ -1430,7 +1589,8 @@ export function listJobFeed(db: Database, limit = 50): AcquisitionJobFeedItem[] 
     const sources = db
       .query<{ username: string | null; c: number; states: string }, [string]>(
         `SELECT username, COUNT(*) c, GROUP_CONCAT(state) states
-         FROM acquisition_job_items WHERE job_id = ? GROUP BY username ORDER BY c DESC`,
+         FROM acquisition_job_items
+        WHERE job_id = ? AND state <> 'superseded' GROUP BY username ORDER BY c DESC`,
       )
       .all(row.id)
       .filter((r): r is { username: string; c: number; states: string } => Boolean(r.username))
@@ -1465,6 +1625,21 @@ export function listJobFeed(db: Database, limit = 50): AcquisitionJobFeedItem[] 
         bytesTotal: bytes?.bytesTotal ?? null,
       },
       cancelRequested: row.cancel_requested_at != null,
+      canResource: canResourceJob({
+        kind: row.kind,
+        artistName: row.artist_name,
+        albumTitle: row.album_title,
+        canonicalTracks: parseJsonArray(row.canonical_tracks_json),
+        cancelRequestedAt: row.cancel_requested_at,
+        // `trackTitle` is load-bearing, not decoration: it is the fallback
+        // tracklist for a card mirrored straight from an addon, which has no
+        // canonical list. Dropping it made `canResource` false on exactly the
+        // jobs the poller creates.
+        items: itemRows.map((r) => ({
+          state: r.state as AcquisitionJobItemState,
+          trackTitle: r.track_title,
+        })),
+      }),
       ...(quality ? { bitRate: quality.bitRate, audioFormat: quality.audioFormat } : {}),
       sources,
       destinationAlbums: jobDestinationAlbums(db, row.id),

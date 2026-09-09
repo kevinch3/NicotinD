@@ -365,6 +365,18 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   // whole-file count.
   addColumnIfMissing(db, 'acquisition_job_items', 'size_bytes', 'INTEGER');
   addColumnIfMissing(db, 'acquisition_job_items', 'bytes_transferred', 'INTEGER');
+  // Which addon job delivered this item (#1065). One card used to mean one addon
+  // job, so every job-terminal sweep could say `WHERE job_id = ?`. Re-sourcing
+  // puts a SECOND addon job on the same card, and without this column the first
+  // one going terminal would mark the second one's live items `unavailable`.
+  // Null on legacy rows and on non-addon lanes. Nothing backfills it globally:
+  // a job with one addon job cannot suffer the cross-talk, so the sweeps read
+  // NULL as "mine" and the re-source route stamps a job's stragglers at the one
+  // moment a second addon job is about to make the distinction matter.
+  addColumnIfMissing(db, 'acquisition_job_items', 'addon_job_id', 'TEXT');
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_acq_items_addon_job ON acquisition_job_items (addon_job_id)`,
+  );
   // Durable cancel intent (issue #806), stamped by the cancel route BEFORE any
   // addon I/O: the feed shows "Cancelling…" instantly and idempotently, the
   // poller stops re-pinning the job to `downloading`, and its grace valve

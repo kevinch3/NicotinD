@@ -24,6 +24,13 @@ import {
   resolveJobAlbumId,
   supersedeActiveJobs,
   transferKeyFor,
+  activePeers,
+  addonJobHasLiveItems,
+  canResourceJob,
+  claimUnattributedItems,
+  huntTracklist,
+  resourceableTitles,
+  supersedeItems,
 } from './acquisition-job-store.js';
 import { albumIdFor, artistIdFor } from './library-scanner.js';
 
@@ -1426,5 +1433,177 @@ describe('jobPartialContents (#810)', () => {
     const contents = jobPartialContents(db, id);
     expect(contents.songIds).toEqual(['s1']);
     expect(contents.orphanRelPaths).toEqual(['A/2.opus']);
+  });
+});
+
+describe('re-sourcing a stuck download (#1065)', () => {
+  /** A stuck album hunt: two tracks offered by one peer, neither moving. */
+  function stuckHunt() {
+    return createJob(db, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      artistName: 'Luis Miguel',
+      albumTitle: 'Romances',
+      canonicalTracks: ['Amanecer', 'Bésame mucho'],
+      sourceRef: 'addon:slskd:aj-stuck',
+      username: 'stuck-peer',
+      files: [
+        { filename: 'r\\01 Amanecer.flac', size: 1, trackTitle: 'Amanecer' },
+        { filename: 'r\\02 Besame mucho.flac', size: 1, trackTitle: 'Bésame mucho' },
+      ],
+    });
+  }
+
+  const facts = (over: Record<string, unknown> = {}) => ({
+    kind: 'album-hunt' as const,
+    artistName: 'Luis Miguel',
+    albumTitle: 'Romances',
+    canonicalTracks: ['Amanecer'],
+    cancelRequestedAt: null,
+    items: [{ state: 'queued' as const }],
+    ...over,
+  });
+
+  describe('canResourceJob', () => {
+    it('allows a hunt that still has tracks in flight', () => {
+      expect(canResourceJob(facts())).toBe(true);
+      expect(canResourceJob(facts({ kind: 'auto-acquire' }))).toBe(true);
+    });
+
+    it('refuses the lanes that have no peers to choose between', () => {
+      // A `direct` folder grab carries no artist/album/tracklist to search
+      // with, and a `url` acquire has no peers at all — offering the action
+      // there would be a button that cannot work.
+      expect(canResourceJob(facts({ kind: 'direct' }))).toBe(false);
+      expect(canResourceJob(facts({ kind: 'url' }))).toBe(false);
+      expect(canResourceJob(facts({ kind: 'import' }))).toBe(false);
+    });
+
+    it('refuses a job with nothing left to re-source', () => {
+      expect(canResourceJob(facts({ items: [{ state: 'scanned' }] }))).toBe(false);
+      expect(canResourceJob(facts({ items: [{ state: 'completed' }] }))).toBe(false);
+      expect(canResourceJob(facts({ items: [] }))).toBe(false);
+    });
+
+    it('takes a failed or unavailable track as re-sourceable', () => {
+      expect(canResourceJob(facts({ items: [{ state: 'failed' }] }))).toBe(true);
+      expect(canResourceJob(facts({ items: [{ state: 'unavailable' }] }))).toBe(true);
+    });
+
+    it('refuses a job the user has already told to stop', () => {
+      expect(canResourceJob(facts({ cancelRequestedAt: 123 }))).toBe(false);
+    });
+
+    it('refuses a job with no tracklist to hunt with', () => {
+      expect(canResourceJob(facts({ canonicalTracks: [] }))).toBe(false);
+      expect(canResourceJob(facts({ albumTitle: null }))).toBe(false);
+      expect(canResourceJob(facts({ artistName: null }))).toBe(false);
+    });
+
+    /**
+     * Only `hunt-download` records a canonical tracklist. A card mirrored
+     * straight from an addon is `album-hunt` with none — and those are exactly
+     * the cards the poller creates, so refusing them would have shipped a
+     * feature that declined the common case.
+     */
+    it("falls back to the job's own itemised titles when there is no canonical list", () => {
+      const addonFirst = facts({
+        canonicalTracks: null,
+        items: [{ state: 'queued', trackTitle: 'Amanecer' }],
+      });
+      expect(huntTracklist(addonFirst)).toEqual(['Amanecer']);
+      expect(canResourceJob(addonFirst)).toBe(true);
+    });
+
+    it('prefers the release tracklist over the itemised one when both exist', () => {
+      // The canonical list names tracks the source never offered, which is what
+      // gives the addon a chance to match a fuller folder.
+      expect(
+        huntTracklist(
+          facts({
+            canonicalTracks: ['Amanecer', 'Bésame mucho'],
+            items: [{ state: 'queued', trackTitle: 'Amanecer' }],
+          }),
+        ),
+      ).toEqual(['Amanecer', 'Bésame mucho']);
+    });
+  });
+
+  it('publishes canResource on the feed, including for an addon-first card', () => {
+    // The feed is where the web reads the verdict, and it builds its own facts
+    // — so the predicate passing in isolation proves nothing about the card.
+    const id = stuckHunt();
+    expect(listJobFeed(db)[0]!.canResource).toBe(true);
+    // ...and a card with no canonical tracklist (everything the poller mirrors)
+    // must still qualify off its itemised titles.
+    db.run(`UPDATE acquisition_jobs SET canonical_tracks_json = NULL WHERE id = ?`, [id]);
+    expect(listJobFeed(db)[0]!.canResource).toBe(true);
+  });
+
+  it('lists the titles a re-source may take, and the peers it must not offer', () => {
+    const id = stuckHunt();
+    expect(resourceableTitles(db, id)).toEqual(['Amanecer', 'Bésame mucho']);
+    expect(activePeers(db, id)).toEqual(['stuck-peer']);
+  });
+
+  it('a delivered track is neither re-sourceable nor taken away from its peer', () => {
+    const id = stuckHunt();
+    markItemCompleted(db, transferKeyFor('stuck-peer', 'r\\01 Amanecer.flac'));
+    expect(resourceableTitles(db, id)).toEqual(['Bésame mucho']);
+    // Even asked for by name, a completed row must not be superseded.
+    supersedeItems(db, id, ['Amanecer', 'Bésame mucho']);
+    const states = db
+      .query<{ track_title: string; state: string }, [string]>(
+        `SELECT track_title, state FROM acquisition_job_items WHERE job_id = ?`,
+      )
+      .all(id);
+    expect(states.find((s) => s.track_title === 'Amanecer')!.state).toBe('completed');
+    expect(states.find((s) => s.track_title === 'Bésame mucho')!.state).toBe('superseded');
+  });
+
+  it('a superseded track stops counting toward the card', () => {
+    const id = stuckHunt();
+    expect(listJobFeed(db)[0]!.progress.expected).toBe(2);
+    supersedeItems(db, id, ['Bésame mucho']);
+    const feed = listJobFeed(db)[0]!;
+    // The denominator drops rather than the card claiming a track it gave up.
+    // The replacement addon job's item restores it when the poller mirrors it.
+    expect(feed.progress.expected).toBe(1);
+    expect(feed.items.map((i) => i.title)).toEqual(['Amanecer']);
+    expect(feed.sources.map((s) => s.fileCount)).toEqual([1]);
+  });
+
+  it('a peer abandoned entirely stops being an active peer, so it can be offered again later', () => {
+    const id = stuckHunt();
+    supersedeItems(db, id, ['Amanecer', 'Bésame mucho']);
+    expect(activePeers(db, id)).toEqual([]);
+    expect(resourceableTitles(db, id)).toEqual([]);
+  });
+
+  it('superseding every track does not flash the card into Error', () => {
+    // The window between superseding and the replacement job's first poll is
+    // up to a tick long. A card with no countable items must keep the stage it
+    // had rather than being ruled on as "nothing landed".
+    const id = stuckHunt();
+    supersedeItems(db, id, ['Amanecer', 'Bésame mucho']);
+    recomputeStage(db, id);
+    const row = db
+      .query<{ state: string; stage: string }, [string]>(
+        `SELECT state, stage FROM acquisition_jobs WHERE id = ?`,
+      )
+      .get(id)!;
+    expect(row.stage).not.toBe('error');
+    expect(row.state).not.toBe('failed');
+  });
+
+  it("claims a card's un-attributed rows for the addon job that owns them", () => {
+    const id = stuckHunt();
+    claimUnattributedItems(db, id, 'aj-stuck');
+    expect(addonJobHasLiveItems(db, id, 'aj-stuck')).toBe(true);
+    // The replacement has no rows of its own yet, but the NULL-tolerant read
+    // must not hand it the stuck job's — that is what the stamp is for.
+    expect(addonJobHasLiveItems(db, id, 'aj-new')).toBe(false);
+    supersedeItems(db, id, ['Amanecer', 'Bésame mucho']);
+    expect(addonJobHasLiveItems(db, id, 'aj-stuck')).toBe(false);
   });
 });

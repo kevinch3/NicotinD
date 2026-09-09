@@ -1425,4 +1425,77 @@ describe('ingest measurement', () => {
     expect(h.organized).toHaveLength(0);
     expect(h.receipts).toHaveLength(0);
   });
+
+  /**
+   * Re-sourcing (#1065) is the first thing that puts TWO addon jobs on one
+   * card. Every terminal sweep used to say `WHERE job_id = ?`, which was
+   * correct only while that could not happen: the abandoned peer's job going
+   * terminal would otherwise mark the replacement's live downloads
+   * `unavailable`, and the card would report a partial while the new peer was
+   * still uploading. Delete the `OWNED_BY_ADDON_JOB` predicate and this fails.
+   */
+  it('a terminal addon job does not touch a second addon job on the same card', async () => {
+    const stuck = makeJob({
+      id: 'aj-stuck',
+      items: [{ ...makeJob().items[0]!, itemId: 't:song one', state: 'downloading' }],
+    });
+    const replacement = makeJob({
+      id: 'aj-replacement',
+      items: [
+        {
+          ...makeJob().items[0]!,
+          itemId: 't:song two',
+          title: 'Song Two',
+          username: 'other-peer',
+          filename: 'Music\\Album\\02 Song Two.mp3',
+          state: 'downloading',
+        },
+      ],
+    });
+    let jobsData: AddonJob[] = [stuck, replacement];
+    const h = harness(() => jobsData);
+    await h.registry.enable('fixture-addon', 'admin');
+    await h.poller.tick();
+    await h.poller.idle();
+
+    // Put both addon jobs on ONE card, the way the re-source route does.
+    const coreJobId = h.db
+      .query<{ id: string }, []>(`SELECT id FROM acquisition_jobs ORDER BY created_at LIMIT 1`)
+      .get()!.id;
+    mapAddonJob(h.db, 'fixture-addon', 'aj-replacement', coreJobId);
+    h.db.run(`UPDATE acquisition_job_items SET job_id = ? WHERE addon_job_id = ?`, [
+      coreJobId,
+      'aj-replacement',
+    ]);
+
+    // The abandoned peer gives up. Its own item may die; the other must not.
+    // The replacement is listed FIRST on purpose: it is mirrored before the
+    // stuck job closes, so nothing re-writes its row afterwards and the tick's
+    // final state is the honest one. (Listed last, an unscoped sweep is masked
+    // within the same tick by the very next mirror — which is how a bug this
+    // visible could hide from a test that only reads item states.)
+    jobsData = [replacement, { ...stuck, state: 'failed', updatedAt: 5000 }];
+    await h.poller.tick();
+    await h.poller.idle();
+
+    const states = new Map(
+      h.db
+        .query<{ addon_job_id: string; state: string }, [string]>(
+          `SELECT addon_job_id, state FROM acquisition_job_items WHERE job_id = ?`,
+        )
+        .all(coreJobId)
+        .map((r) => [r.addon_job_id, r.state]),
+    );
+    expect(states.get('aj-stuck')).toBe('unavailable');
+    expect(states.get('aj-replacement')).toBe('downloading');
+    // ...and the card must still read as a live download, not close as a
+    // partial while the new peer is uploading.
+    const card = h.db
+      .query<{ state: string; stage: string }, [string]>(
+        `SELECT state, stage FROM acquisition_jobs WHERE id = ?`,
+      )
+      .get(coreJobId)!;
+    expect(card.stage).toBe('downloading');
+    expect(card.state).toBe('active');
+  });
 });
