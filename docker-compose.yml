@@ -172,6 +172,18 @@ services:
     volumes:
       - slskd-addon-data:/data
       - music:/data/music:ro
+      # The addon deletes a job's downloaded files once core confirms it has
+      # ingested them (#1052) — without this it kept every byte it ever
+      # downloaded. The library itself stays read-only: the addon shares those
+      # files out to the network and must never be able to rewrite them. So
+      # only the reserved staging dir it owns is writable, mounted over the
+      # read-only parent. slskd creates the dir (it downloads into it) and
+      # starts first, per depends_on below.
+      - type: volume
+        source: music
+        target: /data/music/.downloads
+        volume:
+          subpath: .downloads
     depends_on:
       slskd:
         condition: service_started
