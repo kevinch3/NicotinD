@@ -354,10 +354,10 @@ describe('hasControllableSession', () => {
     ).toBe(false);
     expect(hasControllableSession(state({ activeDeviceId: 'tv', devices: [] }))).toBe(false);
   });
-  it('an output in its reconnect grace is still driven — a blip must not lose the picks', () => {
+  it('an output in its reconnect grace cannot be driven — a crashed tab must not swallow plays', () => {
     expect(
       hasControllableSession(state({ activeDeviceId: 'tv', devices: [{ ...tv, pending: true }] })),
-    ).toBe(true);
+    ).toBe(false);
   });
 });
 
@@ -415,12 +415,17 @@ describe('onLocalTrackChanged — uncontrollable session', () => {
 });
 
 describe('castTo — availability', () => {
-  it('refuses a target that is not available', () => {
-    const s = state({ devices: [{ ...tv, available: false }] });
-    const r = castTo(s, ctx(), 'tv', t1);
-    expect(r.messages).toEqual([]);
-    expect(r.effects).toEqual([]);
-    expect(r.state.activeDeviceId).toBeNull();
+  it('refuses a target that is not available or is in its reconnect grace', () => {
+    for (const d of [
+      { ...tv, available: false },
+      { ...tv, pending: true },
+    ]) {
+      const s = state({ devices: [d] });
+      const r = castTo(s, ctx(), 'tv', t1);
+      expect(r.messages).toEqual([]);
+      expect(r.effects).toEqual([]);
+      expect(r.state.activeDeviceId).toBeNull();
+    }
   });
 });
 

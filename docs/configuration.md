@@ -12,6 +12,7 @@ of truth; this page summarizes the ones most installs touch.
 | `NICOTIND_DOWNLOADS_DIR`               | `.downloads`            | Acquisition staging; top-level name under the music dir, or an absolute path |
 | `NICOTIND_MODE`                        | `embedded`              | `embedded` (best-effort manage Lidarr; slskd is its own addon) or `external` (connect to existing) |
 | `NICOTIND_ACQUISITION`                 | `on`                    | Deployment-wide acquisition kill-switch (`off` = streaming-only install) |
+| `NICOTIND_PLAYBACK_GRACE_MS`          | `15000`                 | How long a remote-playback session survives its output's socket dropping before it is released; the e2e server sets 2000 |
 | `NICOTIND_REGISTRATION`                | *(unset)*               | Public self-signup. Unset = the Admin → User Management toggle owns it (starts closed); setting `off`/`on` pins it and makes that toggle read-only |
 | `NICOTIND_METADATA_FIX_ENABLED`        | `true`                  | Auto-repair missing MP3 tags after download                    |
 | `NICOTIND_METADATA_FIX_MIN_SCORE`      | `85`                    | Minimum MusicBrainz match score (0-100) for auto-fill          |

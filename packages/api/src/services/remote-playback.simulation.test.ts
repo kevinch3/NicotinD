@@ -379,27 +379,43 @@ describe('simulation: the receiver opts out (symptom 3)', () => {
 });
 
 describe('simulation: the receiver loses its socket (symptom 1)', () => {
-  it('a reconnect within the grace keeps the session and re-syncs the track', async () => {
+  it('a reconnect within the grace keeps the session when nobody acted meanwhile', async () => {
     const w = castWorld({ activeGraceMs: 200 });
     w.b.disconnect();
-    w.a.playLocally(T2); // broadcast reaches nobody who is offline
     await Bun.sleep(20);
     w.b.connect();
-    expect(w.b.track).toEqual(T2);
     expect(w.views()).toEqual(['A:B', 'B:B']);
     expect(w.a.audible).toBe(false);
     expect(w.audible()).toEqual(['B']);
   });
 
-  it('gone for good after the controller picked a new track: the controller stays silent', async () => {
-    // Picking a track re-arms the local player (`play()` sets isPlaying), so
-    // the yield at cast time is not enough — the session ending must pause.
+  it("a pick during the receiver's blip plays here; the receiver finds the session moved", async () => {
+    // The controller cannot tell a 1 s blip from a crashed tab, and a play
+    // that does nothing for 15 s is the worse outcome: the device the user
+    // acted on plays.
+    const w = castWorld({ activeGraceMs: 200 });
+    w.b.disconnect();
+    w.a.playLocally(T2);
+    expect(w.a.audible).toBe(true); // B, offline, still plays until it hears otherwise
+    await Bun.sleep(20);
+    w.b.connect();
+    expect(w.views()).toEqual(['A:A', 'B:A']);
+    expect(w.b.playing).toBe(false);
+    expect(w.audible()).toEqual(['A']);
+    w.assertOneOutput();
+  });
+
+  it('gone for good after the controller picked a new track: the pick made the controller the output', async () => {
+    // The pick during the grace claimed the output (the receiver was pending),
+    // so the receiver's final release is about a session that already moved:
+    // nothing ends, nothing wakes, A just keeps playing what the user picked.
     const w = castWorld({ activeGraceMs: 20 });
     w.b.disconnect();
     w.a.playLocally(T2);
     await Bun.sleep(40);
-    expect(w.a.client.activeDeviceId).toBeNull();
-    expect(w.a.audible).toBe(false);
+    expect(w.a.client.activeDeviceId).toBe('A');
+    expect(w.a.audible).toBe(true);
+    expect(w.listedOn(w.a)).toEqual(['A']);
   });
 
   it('a reconnect that finds the session paused comes back paused at the position', async () => {
@@ -597,16 +613,15 @@ describe('simulation: claim-on-play — no picker involved', () => {
     expect(w.views()).toEqual(['A:B', 'B:B']);
   });
 
-  it("a controller picking during the output's reconnect blip does not steal the session", async () => {
-    const w = world({ activeGraceMs: 200 });
+  it('a crashed output (no pagehide) does not swallow a play elsewhere for the grace', async () => {
+    const w = world({ activeGraceMs: 10_000 });
     const a = w.device('A');
     const b = w.device('B');
     b.playLocally(T1);
-    b.disconnect();
+    b.disconnect(); // killed, no RELEASE_OUTPUT
     a.playLocally(T2);
-    expect(a.audible).toBe(false);
-    b.connect();
-    expect(w.audible()).toEqual(['B']);
-    expect(b.track).toEqual(T2);
+    expect(a.audible).toBe(true);
+    expect(w.manager.getState().activeDeviceId).toBe('A');
+    w.assertOneOutput();
   });
 });

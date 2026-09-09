@@ -43,7 +43,8 @@ same name.
 
 The output's session ends when its tab closes, when it opts out of remote control, or when it has
 sat paused for ten minutes. After that, the next device to press play becomes the output. A short
-connection blip (under 15 s) does not end anything.
+connection blip (under 15 s) does not end anything by itself, but while the output is unreachable
+a play on another device moves the audio there instead of waiting.
 
 ---
 
@@ -116,7 +117,12 @@ A session (`activeDeviceId !== null`) ends in exactly four ways:
 
 1. The output's socket stays gone past `activeGraceMs` (above).
 2. The output sends `RELEASE_OUTPUT` (its `pagehide`), so a closed laptop frees the phone at
-   once instead of after the grace. The grace remains for real blips, where nothing was sent.
+   once instead of after the grace. The grace remains for real blips, where nothing was sent —
+   and while it runs the output is `pending`: not a cast target, and a play elsewhere claims over
+   it (`canTarget` excludes it), because a controller cannot tell a 1 s blip from a crashed tab
+   and a play that does nothing for 15 s is the worse outcome. `NICOTIND_PLAYBACK_GRACE_MS`
+   overrides the 15 s; the e2e server runs at 2 s because a Playwright context teardown fires no
+   `pagehide`.
 3. The output opts out (`UPDATE_DEVICE { remoteEnabled: false }` or re-registering so).
 4. Nothing has said the output is playing for `idleReleaseMs` (10 min): `lastPlayingAt` is
    bumped by every `PROGRESS_REPORT`, `PLAY`/`SET_TRACK`, a claim and a `STATE_UPDATE
@@ -239,8 +245,8 @@ press ▶
   two devices pressing play together cannot both believe they won. That is what makes "only one
   device is ever audible" true without a picker.
 - **Only the picker moves audio.** While a session names another device, this device's transport
-  and its picks drive that device; a pick during the output's reconnect blip still goes to the
-  output (a pending device is still controllable — the grace exists so a blip changes nothing).
+  and its picks drive that device. The exception is an output that is not *controllable* right
+  now — opted out, no gesture yet, or in its reconnect grace — where a play or pick claims locally.
 - **Mirroring is unconditional, execution is gated.** A device that opted out of being driven still
   mirrors the session (so its strip can name the track) but never executes a `COMMAND`. A session
   whose output is not available is not *controllable* (`hasControllableSession`): the transport on

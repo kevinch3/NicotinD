@@ -108,19 +108,21 @@ export class PlaybackStateManager extends EventEmitter {
     }));
   }
 
-  /** Listed and available: a device a controller can point the session at,
-   *  and one a claim cannot take the session from. A device in its reconnect
-   *  grace still qualifies — the grace exists so a blip changes nothing. */
+  /** Listed, available and reachable: a device a controller can point the
+   *  session at, and one a claim cannot take the session from. A device in its
+   *  reconnect grace is neither — the grace keeps a blip from ending a session
+   *  nobody touches, but a play elsewhere must not wait 15 s for a crashed
+   *  tab. */
   canTarget(id: string): boolean {
     const d = this.devices.get(id);
-    return d !== undefined && d.remoteEnabled && d.activated;
+    return d !== undefined && d.remoteEnabled && d.activated && this.pendingRelease?.id !== id;
   }
 
   /** A device that started playing wants to be the output. Compare-and-set:
    *  applies when there is no session, when the claimant already holds it, or
-   *  when the current output cannot be driven (opted out, no gesture). One
-   *  `updateState`, so bystanders learn the new output and its track in a
-   *  single broadcast. */
+   *  when the current output cannot be driven (opted out, no gesture, gone
+   *  into its grace). One `updateState`, so bystanders learn the new output
+   *  and its track in a single broadcast. */
   claimOutput(id: string, snapshot: ClaimSnapshot): boolean {
     if (!this.devices.has(id)) return false;
     const current = this.state.activeDeviceId;
@@ -232,6 +234,9 @@ export class PlaybackStateManager extends EventEmitter {
     }, this.activeGraceMs);
     timer.unref?.();
     this.pendingRelease = { id, timer };
+    // Controllers must hear that the output is pending now, not when the
+    // grace ends: it is what turns their next play into a claim.
+    this.emit('devices_update', this.getDevices());
   }
 
   private cancelPendingRelease() {

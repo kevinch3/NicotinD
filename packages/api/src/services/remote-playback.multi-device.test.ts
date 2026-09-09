@@ -234,11 +234,16 @@ describe('reconnect grace for the active device', () => {
     expect(s.manager.getState().activeDeviceId).toBe('receiver');
   });
 
-  it('the active device stays listed during the grace', () => {
+  it('the active device stays listed during the grace, and the controller hears it is pending', () => {
     const s = castSession({ activeGraceMs: 40 });
     s.receiver.close();
     expect(s.controller.lastActive()).toBe('receiver');
     expect(s.manager.getDevices().map((x) => x.id)).toContain('receiver');
+    const list = s.controller.last('DEVICES_SYNC')!.payload['devices'] as {
+      id: string;
+      pending: boolean;
+    }[];
+    expect(list.find((d) => d.id === 'receiver')?.pending).toBe(true);
   });
 
   it('the active device is released once the grace expires', async () => {

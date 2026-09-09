@@ -26,8 +26,9 @@
  * - Mirroring is unconditional, execution is gated: a device that opted out of
  *   being driven (`remoteEnabled: false`) still shows what plays elsewhere, but
  *   never executes a command. A session whose output is not available (opted
- *   out, or no user gesture yet) is not *controllable*: a play or pick on a
- *   controller claims locally instead of driving nothing.
+ *   out, no user gesture yet, or gone into its reconnect grace) is not
+ *   *controllable*: a play or pick on a controller claims locally instead of
+ *   driving nothing.
  */
 
 export interface RemoteTrack {
@@ -46,8 +47,7 @@ export interface RemoteDevice {
   lastSeen: number;
   /** Can be driven: opted in and has had a user gesture. Absent = true. */
   available?: boolean;
-  /** Its socket is gone and the release grace is running. Informational: a
-   *  blip must not make a controller's pick steal the session. Absent = false. */
+  /** Its socket is gone and the release grace is running. Absent = false. */
   pending?: boolean;
 }
 
@@ -141,18 +141,20 @@ export function isAudioOutput(activeDeviceId: string | null, myId: string): bool
   return activeDeviceId === null || activeDeviceId === myId;
 }
 
-/** A session exists and its output can actually be driven: listed and
- *  available. A device in its reconnect grace still counts — the session
- *  survives a blip, so must the controller's picks. */
+/** A session exists and its output can actually be driven right now: listed,
+ *  available and reachable. A device in its reconnect grace is not — a
+ *  crashed tab (no `pagehide`) would otherwise swallow every play for 15 s.
+ *  The session itself survives a blip nobody acts on; only a play or pick
+ *  elsewhere moves it. */
 export function hasControllableSession(state: RemoteClientState): boolean {
   if (state.activeDeviceId === null) return false;
   const d = state.devices.find((x) => x.id === state.activeDeviceId);
-  return d !== undefined && d.available !== false;
+  return d !== undefined && d.available !== false && d.pending !== true;
 }
 
 function targetIsCastable(state: RemoteClientState, id: string): boolean {
   const d = state.devices.find((x) => x.id === id);
-  return d === undefined || d.available !== false;
+  return d === undefined || (d.available !== false && d.pending !== true);
 }
 
 /** This device wants to be the output. Nothing is committed locally: the

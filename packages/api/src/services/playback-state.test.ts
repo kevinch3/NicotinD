@@ -416,11 +416,21 @@ describe('PlaybackStateManager', () => {
       expect(manager.getState().activeDeviceId).toBe('d2');
     });
 
-    it('a claim loses to an output in its reconnect grace — a blip changes nothing', () => {
+    it('a claim wins over an output in its reconnect grace — a crashed tab must not hold the session', () => {
       claim('d1');
       manager.unregisterDevice('d1');
-      expect(claim('d2')).toBe(false);
-      expect(manager.getState().activeDeviceId).toBe('d1');
+      expect(claim('d2')).toBe(true);
+      expect(manager.getState().activeDeviceId).toBe('d2');
+    });
+
+    it('a blip nobody acts on changes nothing: the output re-registers and keeps the session', async () => {
+      const m = new PlaybackStateManager({ activeGraceMs: 30 });
+      m.registerDevice({ id: 'd1', name: 'A', type: 'web' });
+      m.claimOutput('d1', { track: null, trackId: null, position: 0, isPlaying: true });
+      m.unregisterDevice('d1');
+      m.registerDevice({ id: 'd1', name: 'A', type: 'web' });
+      await Bun.sleep(50);
+      expect(m.getState().activeDeviceId).toBe('d1');
     });
 
     it('an unknown claimant is refused', () => {
@@ -435,6 +445,9 @@ describe('PlaybackStateManager', () => {
       expect(manager.canTarget('d1')).toBe(true);
       expect(manager.canTarget('d2')).toBe(false);
       expect(manager.canTarget('ghost')).toBe(false);
+      manager.updateState({ activeDeviceId: 'd1' });
+      manager.unregisterDevice('d1');
+      expect(manager.canTarget('d1')).toBe(false);
     });
   });
 
@@ -467,12 +480,12 @@ describe('PlaybackStateManager', () => {
     });
 
     it('a reporting output is never idle-released', async () => {
-      const m = new PlaybackStateManager({ idleReleaseMs: 20 });
+      const m = new PlaybackStateManager({ idleReleaseMs: 200 });
       m.registerDevice({ id: 'd1', name: 'A', type: 'web' });
       m.claimOutput('d1', { track: null, trackId: null, position: 0, isPlaying: true });
-      await Bun.sleep(15);
+      await Bun.sleep(120);
       m.updateState({ position: 5, isPlaying: true });
-      await Bun.sleep(15);
+      await Bun.sleep(120);
       m.cleanupStaleDevices();
       expect(m.getState().activeDeviceId).toBe('d1');
     });
