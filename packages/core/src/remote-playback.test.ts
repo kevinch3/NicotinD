@@ -341,12 +341,16 @@ describe('hasControllableSession', () => {
   it('a session naming a listed, available device is controllable', () => {
     expect(hasControllableSession(state({ activeDeviceId: 'tv', devices: [tv] }))).toBe(true);
     expect(
-      hasControllableSession(state({ activeDeviceId: 'tv', devices: [{ ...tv, available: true }] })),
+      hasControllableSession(
+        state({ activeDeviceId: 'tv', devices: [{ ...tv, available: true }] }),
+      ),
     ).toBe(true);
   });
   it('an output that opted out or is not listed cannot be driven', () => {
     expect(
-      hasControllableSession(state({ activeDeviceId: 'tv', devices: [{ ...tv, available: false }] })),
+      hasControllableSession(
+        state({ activeDeviceId: 'tv', devices: [{ ...tv, available: false }] }),
+      ),
     ).toBe(false);
     expect(hasControllableSession(state({ activeDeviceId: 'tv', devices: [] }))).toBe(false);
   });

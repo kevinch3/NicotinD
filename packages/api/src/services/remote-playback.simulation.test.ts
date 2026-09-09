@@ -597,7 +597,7 @@ describe('simulation: claim-on-play — no picker involved', () => {
     expect(w.views()).toEqual(['A:B', 'B:B']);
   });
 
-  it('a controller picking during the output\'s reconnect blip does not steal the session', async () => {
+  it("a controller picking during the output's reconnect blip does not steal the session", async () => {
     const w = world({ activeGraceMs: 200 });
     const a = w.device('A');
     const b = w.device('B');

@@ -81,7 +81,10 @@ describe('DeviceSwitcherComponent', () => {
       lastSeen: Date.now(),
       available: false,
     };
-    const { fixture } = setup([{ id: MY_ID, name: 'Self', type: 'web', lastSeen: Date.now() }, out]);
+    const { fixture } = setup([
+      { id: MY_ID, name: 'Self', type: 'web', lastSeen: Date.now() },
+      out,
+    ]);
     const el: HTMLElement = fixture.nativeElement;
     expect(el.querySelector('[data-testid="device-option"]')).toBeNull();
     const row = el.querySelector('[data-testid="device-option-unavailable"]') as HTMLButtonElement;

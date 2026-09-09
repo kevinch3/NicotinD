@@ -31,7 +31,11 @@ import {
   type RemoteDevice,
   type ServerMessage,
 } from '@nicotind/core';
-import { PlaybackWsService, OUTPUT_AVAILABLE_KEY, readOutputAvailable } from './playback-ws.service';
+import {
+  PlaybackWsService,
+  OUTPUT_AVAILABLE_KEY,
+  readOutputAvailable,
+} from './playback-ws.service';
 import { PlayerService, Track } from './player.service';
 import { AuthService } from './auth.service';
 

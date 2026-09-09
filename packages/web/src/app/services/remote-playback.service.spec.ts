@@ -307,9 +307,7 @@ describe('RemotePlaybackService session behaviour (#877)', () => {
     ws.sendStateUpdate.mockClear();
     player.pause();
     TestBed.flushEffects();
-    expect(ws.sendStateUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ isPlaying: false }),
-    );
+    expect(ws.sendStateUpdate).toHaveBeenCalledWith(expect.objectContaining({ isPlaying: false }));
     player.resume();
     TestBed.flushEffects();
     expect(ws.sendStateUpdate).toHaveBeenCalledWith(expect.objectContaining({ isPlaying: true }));

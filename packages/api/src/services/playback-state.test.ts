@@ -388,7 +388,12 @@ describe('PlaybackStateManager', () => {
       manager.on('state_update', (st) => seen.push(structuredClone(st)));
       expect(claim('d1')).toBe(true);
       expect(seen).toHaveLength(1);
-      expect(seen[0]).toMatchObject({ activeDeviceId: 'd1', trackId: 't1', isPlaying: true, position: 3 });
+      expect(seen[0]).toMatchObject({
+        activeDeviceId: 'd1',
+        trackId: 't1',
+        isPlaying: true,
+        position: 3,
+      });
     });
 
     it('a claim against a live, drivable output is refused', () => {
@@ -442,7 +447,7 @@ describe('PlaybackStateManager', () => {
       expect(manager.getState().isPlaying).toBe(false);
     });
 
-    it('a bystander cannot release someone else\'s session', () => {
+    it("a bystander cannot release someone else's session", () => {
       manager.updateState({ activeDeviceId: 'd1', isPlaying: true });
       manager.releaseOutput('d2');
       expect(manager.getState().activeDeviceId).toBe('d1');

@@ -699,7 +699,10 @@ describe('createWebSocketHandlers', () => {
       mockManager.claimOutput.mockReturnValueOnce(false);
 
       handlers.onMessage!(
-        createEvent({ type: 'CLAIM_OUTPUT', payload: { trackId: 't1', position: 0, isPlaying: true } }),
+        createEvent({
+          type: 'CLAIM_OUTPUT',
+          payload: { trackId: 't1', position: 0, isPlaying: true },
+        }),
         ws,
       );
 
