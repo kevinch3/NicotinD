@@ -2713,3 +2713,89 @@ Not acted on, noted: two exact duplicate titles inside the wave
 (`Conjunto Tierra Chilena — Los Lagos de Chile`, `Los Hermanos Campos — La Consentida`, twice each).
 Dedupe is destructive and an ingest is live, so it waits — `landedAt` clustering says arrivals are
 still coming.
+
+## 2026-09-09, stretch 3 — the genre vocabulary was split by spelling
+
+Ingest still live (21,267 -> 21,361, distinct one-by-one `landed_at`), so destructive work stayed
+suspended. Went after the genre vocabulary instead.
+
+### The split, and how it was proved
+
+Stretch 2 wrote `Folclore Chileno` by following `Folclore Argentino`. Reading the wider cluster
+showed the library was inconsistent with *itself*:
+
+| | |
+| --- | --- |
+| `Folklore` | 36 |
+| `Folclore` | 13 |
+| `Folclore Argentino` | 3 |
+| `Folklore Peruano` | 3 |
+
+Same word, two spellings, applied to the same music. **Proof it is a split and not a distinction:
+`Los Tekis` appeared in both** — `Ay Vidita` tagged `Folclore`, eleven other Los Tekis tracks tagged
+`Folklore`. One artist, one tradition, two spellings. Both lists are otherwise the same population:
+Jorge Rojas, Los Cantores del Alba, Los Nocheros, Chaqueño Palavecino, Mercedes Sosa, Sanampay.
+
+Folded to **`Folclore`** (Spanish). Stated plainly because it is a judgment call, not a forced
+answer: the whole population is Spanish-language Latin American folklore, and it makes the regional
+set internally consistent (`Folclore` / `Folclore Argentino` / `Folclore Chileno` /
+`Folclore Peruano`). **Majority count alone would have favoured `Folklore`, 39 to 16.** The English
+`Folk` / `Folk Rock` / `Folk Pop` family is left alone — that separation is real.
+
+Multi-genre rows got their full ordered list written back, not a bare replace (five rows —
+`Latin Music | Folklore` -> `Latin Music; Folclore`, and one `Folklore | Latin Music | Folk`).
+
+### `Folkcentric` (13) — a genre that is one artist
+
+All 13 rows were Juana Molina, next to an existing `Folktronica` (48) that is the standard term for
+exactly what she makes. Folded; `Folktronica` 48 -> 61, `Folkcentric` gone.
+
+### A Discogs bucket string stored as a genre, and the false `Country` it created
+
+`Folk, World, & Country` (15) is Discogs' top-level bucket, stored verbatim **and** naively split on
+its commas, so every one of those songs carried four genres: the bucket plus `Folk`, `World`,
+`Country`. The split is the damaging part — it tagged **Fatoumata Diawara, Moraíto, Paco Cepero and
+Rafael Riqueni as `Country`.** A comma inside a genre *name* was read as a separator.
+
+Retagged per song against vocabulary that already existed (`Flamenco` 102, `Chamamé` 50,
+`Nuevo Flamenco` 22, `Sevillanas` 9, `World` 214) — nothing minted:
+
+| song | now |
+| --- | --- |
+| Eduardo Miño — Kilometro 11 | `Chamamé; Folclore Argentino` |
+| Fatoumata Diawara × 3 | `World` |
+| Johnny Cash, June Carter — Jackson | `Country; Folk` (genuinely country — bucket dropped only) |
+| Moraíto, Paco Cepero × 2, Rafael Riqueni | `Flamenco` |
+| Raya Real × 2 | `Sevillanas; Flamenco` |
+| Las Voces De Orán | `Folclore Argentino` |
+| Savia Andina | `Folclore` |
+| Rawayana — Welcome to El Sur | `Latin` |
+
+`Country` 331 -> 317.
+
+Rawayana is the weakest call and is recorded as such. Venezuelan indie/reggae-pop, not folk, world
+or country — but `set_song_genre` cannot clear a genre to empty ("empty values are ignored"), so
+"leave it untagged" was not available and the choice was between a known-false `Country` and an
+honest broader truth. Wrote only what is certain (`Latin`), not a guessed subgenre.
+
+### One correction to my own read
+
+Seeing `Punk` on a Los Tekis row, I checked whether `Punk` was a mistag class. It is not — 114 rows,
+overwhelmingly **2 Minutos**, a real Argentine punk band. The Los Tekis row was a lone stray
+(12 sibling tracks all `Folclore`), fixed individually. The rule that stopped a bad bulk edit is the
+sibling-agreement check: 12 independent siblings agreeing is a fix, one odd row out of 114 is not a
+class.
+
+### Deltas
+
+| genre | before | after |
+| --- | --- | --- |
+| `Folklore` | 36 | **0** |
+| `Folkcentric` | 13 | **0** |
+| `Folklore Peruano` | 3 | **0** |
+| `Folk, World, & Country` | 15 | **0** |
+| `Folclore` | 13 | 51 |
+| `Folktronica` | 48 | 61 |
+| `Country` | 331 | 317 |
+
+69 writes, zero searches. Four junk or variant genre values eliminated outright.
