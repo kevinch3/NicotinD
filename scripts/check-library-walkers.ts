@@ -59,6 +59,9 @@ const ALLOWLIST: Record<string, string> = {
     'reserved dirs too — a temp orphaned during addon ingest leaks inside .downloads',
   'packages/api/src/routes/streaming.ts':
     'folderCover() reads one album dir for cover art; never walks the musicDir root',
+  'packages/api/src/scripts/reclaim-addon-downloads.ts':
+    'the acquisition addon\'s .downloads IS its subject (#1052) — the predicate ' +
+    'would skip the only directory it exists to clear; it never reads library content',
   'packages/api/src/scripts/repair-pollution.ts':
     'gets its file list from scanMusicDir(), which applies the predicate',
 };
