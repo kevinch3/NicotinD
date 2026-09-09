@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.25](https://github.com/kevinch3/NicotinD/compare/v0.6.24...v0.6.25) (2026-09-09)
+
+### Bug Fixes
+
+* **acquire:** reclaim the addon's stranded downloads on proof, not on a title match ([#1054](https://github.com/kevinch3/NicotinD/issues/1054)) ([195c626](https://github.com/kevinch3/NicotinD/commit/195c6268876201a589d71e277b8c4c277d53b3ed)), references [#1052](https://github.com/kevinch3/NicotinD/issues/1052)
 ## [0.6.24](https://github.com/kevinch3/NicotinD/compare/v0.6.23...v0.6.24) (2026-09-09)
 
 ### Bug Fixes
