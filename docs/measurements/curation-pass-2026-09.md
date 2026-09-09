@@ -2970,3 +2970,86 @@ collaborations.** Its count being non-zero is correct, not a backlog.
 
 Left as-is on purpose: the album is still *titled* `IPAUTA`. Its artist is now right, but the real
 album title is unknown, and a source brand that is at least traceable beats an invented title.
+
+## 2026-09-10, stretch 6 — `track_collision` is three populations, and the fix for it is inert
+
+Ingest still trickling (5 arrivals in the last bucket, decaying), so dedupe stayed suspended.
+
+### The rule's 110 albums are not one problem
+
+`track_collision` (138 audit findings, 110 albums under a stricter predicate) has a remediation hint
+that reads "its running order is arbitrary" — implying the fix is renumbering. Probing the shape
+says otherwise:
+
+| | albums |
+| --- | --- |
+| every row disc-numbered | 49 |
+| every row disc-null | 26 |
+| mixed disc-null + disc-numbered | 35 |
+
+Three populations, three different remedies. I started from *The Division Bell* (76 songs) and had a
+tidy theory: it is the 25th-anniversary box, discs 1/2/4 correctly numbered, plus **a second copy of
+discs 2 and 4 that lost its disc numbers** — `Marooned (Edited Version)` at disc-null track 1
+duplicating `Marooned (edited version)` at disc-2 track 1. So the collision is *duplication*, and
+renumbering would be the wrong fix entirely.
+
+**The theory did not generalise: 2 of 110.** Only *The Division Bell* and *Yerba Buena* have a
+disc-null cohort whose titles overlap a disc-numbered one. Measuring before extrapolating is the
+only reason that stayed a note instead of a bulk edit.
+
+### The zero-research subset, and why it is small
+
+Filenames sometimes carry the running order the tags lost (`01 - It Won't Be Long.mp3`) — source
+evidence, no lookup, the same principle as the BPM-in-the-title fix. Testing "does the filename
+prefix exist *and* fully disambiguate the album": **4 of 110.** Small, but one of them is
+*With the Beatles* — the flagship case in #959, all 14 tracks numbered 63.
+
+Also visible: `63` and `32` recur as junk track values across unrelated albums. Sentinel garbage
+from a tagger, not real numbers.
+
+### The fix is inert — filed #1077
+
+Every one of the 20 intended writes failed the same way, 15 attempted across 3 albums:
+
+```
+fix_song_metadata({songId:"4693d642…", track:1})
+-> {"error":"Tag write landed but the rescan did not apply it",
+    "requested":{"track":1},"actual":{"track":63},"onDisk":{"track":1}}
+```
+
+Confirmed independently with `ffprobe`: the file's `track` tag really is `1`; `library_songs.track`
+really is still `63`. **Specific to `track`** — `artist`/`title`/`album` applied ~200 times this
+session, including one issued in the same call as a failing `track`.
+
+`scan_cache` (keyed `path, size, mtime_ms`, tags in `track_json`) is left in the worst possible
+state:
+
+| | |
+| --- | --- |
+| file size / cache size | 4451464 / 4451464 — unchanged, the rewrite fit existing ID3 padding |
+| file mtime / cache mtime | 1788994065633 / …633.30 — **refreshed to post-write** |
+| file `track` / cached `track` | **1 / 63** |
+
+Every other cached field matches the file. So the row holds a **current key with a stale value**: a
+later scan sees a fresh key, trusts the cache, and re-serves 63. The wrong value is pinned, not
+lagging. A track edit is precisely the case most likely to leave file size identical, so anything
+keyed on size is weakest exactly here.
+
+Two candidate causes, recorded as unseparated: the rescan writes back pre-write tags, or the scanner
+reads `track` from a different frame than the writer writes. Cause 1 predicts other fields going
+stale too; cause 2 predicts `track` alone, which is what I see — so I lean to 2 without having
+verified which frame the writer targets.
+
+**State left behind:** those 15 files now have correct track tags on disk and stale DB values. Not a
+regression — both were wrong before — and a cache-invalidating scan settles it correctly. Recorded so
+the divergence is not read as corruption.
+
+### Net
+
+Zero successful writes this stretch, and that is the finding. `track_collision` is the third-largest
+audit rule, the capability to fix it shipped in #959, and it does not work end to end. The 4
+filename-fixable albums are queued behind #1077, not behind judgement.
+
+`clip_not_song` (136) was scoped and left alone: it is genuinely junk — Tash Sultana social clips,
+`Me at the zoo` by `jawed` (19s, the first YouTube video) — but clearing it means deletion, which is
+the owner's call and blocked by the live ingest regardless.
