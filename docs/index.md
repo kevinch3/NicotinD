@@ -41,6 +41,11 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   source cut short (its two search lanes held by other work) is retried, not recorded as a miss
   (`huntCutShort`, `searchesAnswered`, `anyHunting`).
   → [acquisition-addon-protocol.md](acquisition-addon-protocol.md)
+- **Addon download lifecycle**: the addon owns a job's downloaded bytes until core releases the
+  job, so a release must be earned — `pendingIngestCount` is zero only when everything wanted is
+  durably landed. `judgeStrandedFile` reclaims the pre-existing backlog on proof (title + duration
+  + the library's own file), never on a title match alone.
+  → [acquisition-addon-protocol.md](acquisition-addon-protocol.md)
 - **Idempotent hunt — one album = one download**: 409 guards + only-missing-tracks enqueue;
   "already have it" surfaces as a notice, not an error. → [album-hunt.md](album-hunt.md)
 - **Watchlist auto-hunt**: star a catalog album; a poller auto-hunts and downloads on a confident
