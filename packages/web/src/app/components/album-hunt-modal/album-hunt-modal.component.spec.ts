@@ -385,6 +385,50 @@ describe('AlbumHuntModalComponent', () => {
     expect(toastShow).toHaveBeenCalledWith(expect.objectContaining({ kind: 'info' }));
   });
 
+  // #1049: the source runs two searches at a time; a hunt that started while
+  // another held them had its searches sit queued. Fewer answered than fired is
+  // "busy, retry now", not "no results".
+  it('flags sourceBusy when the source cut the hunt short', async () => {
+    huntAlbumBase.mockReturnValue(
+      of({
+        candidates: [],
+        totalTracks: 10,
+        skewNeeded: false,
+        searchesFired: 2,
+        searchesAnswered: 0,
+      }),
+    );
+    const c = create();
+    (c as unknown as { album: () => DiscographyAlbum }).album = () => ALBUM;
+    (c as unknown as { artistName: () => string }).artistName = () => 'Test Artist';
+
+    await c.startHunt();
+
+    expect(c.sourceBusy()).toBe(true);
+    expect(c.searchesFired()).toBe(2);
+    expect(c.searchesAnswered()).toBe(0);
+    expect(c.sourceOffline()).toBe(false);
+  });
+
+  it('does not flag sourceBusy when every search answered', async () => {
+    huntAlbumBase.mockReturnValue(
+      of({
+        candidates: [],
+        totalTracks: 10,
+        skewNeeded: false,
+        searchesFired: 2,
+        searchesAnswered: 2,
+      }),
+    );
+    const c = create();
+    (c as unknown as { album: () => DiscographyAlbum }).album = () => ALBUM;
+    (c as unknown as { artistName: () => string }).artistName = () => 'Test Artist';
+
+    await c.startHunt();
+
+    expect(c.sourceBusy()).toBe(false);
+  });
+
   it('does not flag sourceOffline on a genuine empty result', async () => {
     huntAlbumBase.mockReturnValue(of({ candidates: [], totalTracks: 10, skewNeeded: false }));
     const c = create();

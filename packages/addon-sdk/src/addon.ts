@@ -224,6 +224,17 @@ export interface AddonAlbumSearchResponse {
    * Soulseek". Additive + optional.
    */
   sourceOffline?: boolean;
+  /**
+   * Searches the hunt submitted, and how many of them ran to completion inside
+   * the hunt's deadline. Sources have a fixed search concurrency (slskd: two),
+   * so a hunt that starts while the lanes are held by other work has its
+   * searches sit queued and answer nothing — `searchesAnswered < searchesFired`
+   * says the hunt was cut short by a busy source, not that the album is absent
+   * (#1049). The host retries such a result instead of recording a miss, and
+   * the UI says "source busy" instead of "no match". Additive + optional.
+   */
+  searchesFired?: number;
+  searchesAnswered?: number;
 }
 
 /* ————— Jobs ————— */

@@ -187,6 +187,58 @@ describe('AutoHuntService', () => {
     expect(show).toHaveBeenCalledWith(expect.objectContaining({ kind: 'error' }));
   });
 
+  // #1049: the source cut the hunt short (its two search lanes were held by
+  // other work). "No confident match" would be a claim about the album we
+  // cannot make; the toast names the cause and offers an immediate retry.
+  it('says the source was busy, with a Retry, when the hunt was cut short', async () => {
+    huntAlbumBase.mockReturnValue(
+      of({
+        candidates: [],
+        totalTracks: 10,
+        skewNeeded: false,
+        searchesFired: 6,
+        searchesAnswered: 2,
+      }),
+    );
+
+    svc().hunt(ALBUM, 'Pink Floyd', vi.fn());
+    await Promise.resolve();
+
+    expect(show).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining('only 2 of 6 searches') }),
+    );
+    const labels = show.mock.calls[0]![0].actions?.map((a) => a.label);
+    expect(labels).toEqual(['Retry', 'Find Manually']);
+    expect(show).not.toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining('No confident match') }),
+    );
+  });
+
+  it('says the source is offline, with no retry, when it never searched', async () => {
+    huntAlbumBase.mockReturnValue(
+      of({ candidates: [], totalTracks: 10, skewNeeded: false, sourceOffline: true }),
+    );
+
+    svc().hunt(ALBUM, 'Pink Floyd', vi.fn());
+    await Promise.resolve();
+
+    expect(show).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringMatching(/offline/i) }),
+    );
+    expect(show.mock.calls[0]![0].actions?.map((a) => a.label)).toEqual(['Dismiss']);
+  });
+
+  it('anyHunting is true while a hunt is in flight and false once it settles', async () => {
+    huntAlbumBase.mockReturnValue(of({ candidates: [], totalTracks: 10, skewNeeded: false }));
+    const service = svc();
+    expect(service.anyHunting()).toBe(false);
+    service.hunt(ALBUM, 'Pink Floyd', vi.fn());
+    expect(service.anyHunting()).toBe(true);
+    // The run settles over a handful of microtasks (no timers involved).
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    expect(service.anyHunting()).toBe(false);
+  });
+
   it('shows error toast when hunt throws', async () => {
     huntAlbumBase.mockReturnValue(throwError(() => new Error('network error')));
 

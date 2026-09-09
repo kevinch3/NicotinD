@@ -207,6 +207,51 @@ describe('acquireAlbum when the source is offline', () => {
     expect((await acquireAlbum(h.deps, INPUT)).outcome).toBe('enqueued');
   });
 
+  // #1049. The source runs two searches at a time; a hunt that started while
+  // another held them had its searches sit queued and answer nothing. That is
+  // "busy, retry", not "not there" — the same distinction as offline, and the
+  // same wrong terminal record if conflated.
+  it('reports slskd-unavailable when the source cut the hunt short', async () => {
+    const h = makeDeps({
+      albumsSearch: async () => ({
+        candidates: [],
+        queries: ['a', 'b'],
+        skewNeeded: true,
+        searchesFired: 2,
+        searchesAnswered: 0,
+      }),
+    });
+    const result = await acquireAlbum(h.deps, INPUT);
+    expect(result.outcome).toBe('slskd-unavailable');
+    expect(result.detail).toMatch(/busy.*0 of 2/i);
+  });
+
+  it('still reports no-candidate when every search answered and found nothing', async () => {
+    const h = makeDeps({
+      albumsSearch: async () => ({
+        candidates: [],
+        queries: ['a', 'b'],
+        skewNeeded: true,
+        searchesFired: 2,
+        searchesAnswered: 2,
+      }),
+    });
+    expect((await acquireAlbum(h.deps, INPUT)).outcome).toBe('no-candidate');
+  });
+
+  it('acquires normally when a candidate cleared the bar despite a cut-short hunt', async () => {
+    const h = makeDeps({
+      albumsSearch: async () => ({
+        candidates: [CANDIDATE],
+        queries: ['a', 'b'],
+        skewNeeded: false,
+        searchesFired: 2,
+        searchesAnswered: 1,
+      }),
+    });
+    expect((await acquireAlbum(h.deps, INPUT)).outcome).toBe('enqueued');
+  });
+
   // The watchlist maps 'enqueue-failed' to state='failed', which is TERMINAL.
   // A source that went down between the hunt and the enqueue would therefore
   // permanently kill the row over a transient outage. Ask the addon whether it

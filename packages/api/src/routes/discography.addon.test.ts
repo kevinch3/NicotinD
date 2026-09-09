@@ -51,6 +51,8 @@ function harness(clientOver: Partial<AddonClient> = {}) {
       candidates: [CANDIDATE],
       queries: ['q1'],
       skewNeeded: true,
+      searchesFired: 2,
+      searchesAnswered: 1,
     })),
     createJob: mock(async (req: unknown, idempotencyKey?: string) => {
       jobRequests.push(req);
@@ -129,9 +131,14 @@ describe('discography routes through a remote addon', () => {
       }>;
       skewNeeded: boolean;
       totalTracks: number;
+      searchesFired?: number;
+      searchesAnswered?: number;
     };
     expect(body.skewNeeded).toBe(false);
     expect(body.totalTracks).toBe(3);
+    // #1049: the counts that let the modal say "busy" instead of "no match".
+    expect(body.searchesFired).toBe(2);
+    expect(body.searchesAnswered).toBe(1);
     expect(body.candidates[0]!.candidateRef).toBe('ref-1');
     expect(body.candidates[0]!.files[0]!.bitRate).toBe(900);
   });

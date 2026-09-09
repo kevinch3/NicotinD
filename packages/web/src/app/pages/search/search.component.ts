@@ -229,6 +229,8 @@ export class SearchComponent implements OnInit, OnDestroy {
   readonly plugins = inject(PluginService);
   readonly auth = inject(AuthService);
   private autoHunt = inject(AutoHuntService);
+  /** The source hunts one album at a time (#1049): catalog cards wait for the hunt in flight. */
+  protected readonly anyHunting = this.autoHunt.anyHunting;
   private p2r = inject(PullToRefreshService);
   readonly i18n = inject(TranslateService);
   private readonly translate: Translator = (key, params) => this.i18n.t(key, params);

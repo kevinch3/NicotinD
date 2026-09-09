@@ -1,9 +1,9 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom, of, switchMap, map } from 'rxjs';
 import { DownloadsApiService } from './api/downloads-api.service';
 import { TransferService } from './transfer.service';
 import { ToastService } from './toast.service';
-import type { DiscographyAlbum, FolderCandidate } from './api/api-types';
+import { huntCutShort, type DiscographyAlbum, type FolderCandidate } from './api/api-types';
 import { mergeCandidates } from '../lib/merge-candidates';
 import {
   classifyHuntDownloadResult,
@@ -24,6 +24,12 @@ export class AutoHuntService {
   private transfer = inject(TransferService);
   private toasts = inject(ToastService);
   readonly huntingAlbumIds = signal<Set<number>>(new Set());
+  /**
+   * Any hunt in flight. The source runs one hunt session at a time (#1049), so
+   * a second trigger would only queue behind the first; the triggers disable on
+   * this instead of letting the user stack hunts that all wait.
+   */
+  readonly anyHunting = computed(() => this.huntingAlbumIds().size > 0);
 
   isHunting(lidarrId: number): boolean {
     return this.huntingAlbumIds().has(lidarrId);
@@ -51,6 +57,13 @@ export class AutoHuntService {
     openManual: () => void,
   ): Promise<void> {
     let candidates: FolderCandidate[] = [];
+    // Why an empty result was empty (#1040/#1049): the source never reached its
+    // network, or its search lanes were busy and this hunt was cut short. Either
+    // way "no confident match" would be a claim about the album we cannot make.
+    let sourceOffline = false;
+    let sourceBusy = false;
+    let answered = 0;
+    let fired = 0;
 
     try {
       // Chain base + optional skew into one observable so both phases resolve
@@ -71,14 +84,21 @@ export class AutoHuntService {
                   .pipe(
                     map((skewResult) => ({
                       candidates: mergeCandidates(baseResult.candidates, skewResult.candidates),
+                      phases: [baseResult, skewResult],
                     })),
                   );
               }
-              return of({ candidates: baseResult.candidates });
+              return of({ candidates: baseResult.candidates, phases: [baseResult] });
             }),
           ),
       );
       candidates = hunt.candidates;
+      for (const phase of hunt.phases) {
+        sourceOffline ||= phase.sourceOffline === true;
+        sourceBusy ||= phase.rateLimited === true || huntCutShort(phase);
+        fired += phase.searchesFired ?? 0;
+        answered += phase.searchesAnswered ?? 0;
+      }
     } catch {
       let searchErrId!: string;
       searchErrId = this.toasts.show({
@@ -95,6 +115,55 @@ export class AutoHuntService {
             label: 'Find Manually',
             callback: () => {
               this.toasts.dismiss(searchErrId);
+              openManual();
+            },
+          },
+        ],
+      });
+      return;
+    }
+
+    const confident = candidates[0] !== undefined && candidates[0].matchPct >= AUTO_THRESHOLD;
+
+    // No retry button: the source reconnects on its own over minutes, and a
+    // button that fails until then only teaches people to mash it (#1040).
+    if (!confident && sourceOffline) {
+      let offlineId!: string;
+      offlineId = this.toasts.show({
+        message: `The download source is offline (reconnecting) — "${album.title}" was never searched. Try again in a few minutes.`,
+        kind: 'error',
+        actions: [
+          {
+            label: 'Dismiss',
+            callback: () => {
+              this.toasts.dismiss(offlineId);
+            },
+          },
+        ],
+      });
+      return;
+    }
+
+    // The source's search lanes were busy, so this hunt was cut short (#1049).
+    // It is retriable right away — the lanes free within a hunt's length.
+    if (!confident && sourceBusy) {
+      const detail = fired > 0 ? ` — only ${answered} of ${fired} searches completed` : '';
+      let busyId!: string;
+      busyId = this.toasts.show({
+        message: `The download source was busy${detail}; "${album.title}" may still be out there.`,
+        kind: 'error',
+        actions: [
+          {
+            label: 'Retry',
+            callback: () => {
+              this.toasts.dismiss(busyId);
+              this.hunt(album, artistName, openManual);
+            },
+          },
+          {
+            label: 'Find Manually',
+            callback: () => {
+              this.toasts.dismiss(busyId);
               openManual();
             },
           },

@@ -177,6 +177,19 @@ source:
   honest "not there". `acquireAlbum` maps `sourceOffline` to `slskd-unavailable`,
   not `no-candidate` — the tokens differ in what the caller should *do*, and
   `no-candidate` teaches a curator to stop asking.
+- **A hunt cut short is not a miss either.** A source has a fixed search
+  concurrency (slskd's Soulseek.NET client: two lanes, a lane held for the whole
+  per-search timeout), so a hunt that starts while another hunt or a background
+  wave holds the lanes has its searches sit queued and answer nothing inside its
+  deadline. Measured on kpc (#1049): deterministic "no confident match" for the
+  second of two hunts. The response carries `searchesFired` / `searchesAnswered`;
+  `huntCutShort` (fewer answered than fired) maps to `slskd-unavailable` in
+  `acquireAlbum`, the auto-hunt toast says "source busy — n of m searches
+  completed" with a Retry, the modal shows a `hunt-source-busy` state, and the
+  hunt triggers disable on `anyHunting` because the source takes one hunt at a
+  time anyway. The addon side (waves of two, an 8 s per-search timeout, one
+  `SearchLanes` queue with user hunts ahead of fallback waves) lives in the slskd
+  addon's protocol doc.
 - **A terminal outcome must be earned.** `enqueue-failed` makes the watchlist
   mark a row `failed`, permanently. An enqueue that died because the source went
   down between the hunt and the call is the opposite of terminal, so

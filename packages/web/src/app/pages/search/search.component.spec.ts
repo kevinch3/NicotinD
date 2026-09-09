@@ -48,7 +48,7 @@ function setup(
   const acquireRefresh = vi.fn(() => Promise.resolve());
   const acquireJobs = signal<AcquireJob[]>([]);
   const retryAcquireJob = vi.fn(() => of({ jobId: 'job2' }));
-  const autoHunt = { hunt: vi.fn() };
+  const autoHunt = { hunt: vi.fn(), anyHunting: () => false };
   const p2rStub = {
     register: (h: () => Promise<void> | void) => {
       registeredHandler = h;
