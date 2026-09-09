@@ -109,6 +109,13 @@ export interface FixtureAddonOptions {
    *  active until `confirmCancels()` — modelling an addon that is slow to act
    *  on a cancel (the #806 window). Default: cancels apply immediately. */
   deferCancel?: boolean;
+  /**
+   * Offer a SECOND folder candidate from a different peer (#1065), so a
+   * re-source search has an alternate to rank and pick. Opt-in: the hunt specs
+   * assert on a single candidate, and a peer appearing in them for free would
+   * be a fixture change disguised as a product one.
+   */
+  alternatePeer?: string;
 }
 
 export async function startFixtureAddon(opts: FixtureAddonOptions = {}): Promise<FixtureAddon> {
@@ -122,6 +129,7 @@ export async function startFixtureAddon(opts: FixtureAddonOptions = {}): Promise
   const cancelRequests: string[] = [];
   let nextJob = 1;
   let rateLimited = false;
+  const alternatePeer = opts.alternatePeer;
 
   function applyCancel(job: FixtureJob): void {
     const now = Date.now();
@@ -231,6 +239,28 @@ export async function startFixtureAddon(opts: FixtureAddonOptions = {}): Promise
               uploadSpeed: 100000,
               files: [{ filename: payload.filename, size: payloadSize, bitRateKbps: 900 }],
             },
+            // The alternate a re-source can move to. Same track, different
+            // peer — which is exactly what `activePeers` filters the first one
+            // out on.
+            ...(alternatePeer
+              ? [
+                  {
+                    candidateRef: 'fixture-candidate-2',
+                    username: alternatePeer,
+                    directory: `Music\\${alternatePeer}`,
+                    matchPct: 100,
+                    matchedTracks: 1,
+                    totalTracks: 1,
+                    format: 'FLAC',
+                    estimatedSizeMb: 1,
+                    isLive: false,
+                    freeUploadSlots: 5,
+                    queueLength: 0,
+                    uploadSpeed: 900000,
+                    files: [{ filename: payload.filename, size: payloadSize, bitRateKbps: 900 }],
+                  },
+                ]
+              : []),
           ],
           queries: [`${payload.artist} ${payload.album}`],
           skewNeeded: false,
@@ -240,8 +270,19 @@ export async function startFixtureAddon(opts: FixtureAddonOptions = {}): Promise
 
     if (path === '/addon/v1/jobs' && req.method === 'POST') {
       return readBody((body) => {
-        const b = (body ?? {}) as { intent?: string; artist?: string; album?: string };
+        const b = (body ?? {}) as {
+          intent?: string;
+          artist?: string;
+          album?: string;
+          candidateRef?: string;
+        };
         const now = Date.now();
+        // A job created against the alternate candidate comes FROM that peer,
+        // and its item id differs — the host keys its mirror on the item id, so
+        // reusing one would silently update the abandoned row instead of
+        // opening a new one, hiding the very thing the re-source spec asserts.
+        const fromAlternate = !!alternatePeer && b.candidateRef === 'fixture-candidate-2';
+        const peer = fromAlternate ? alternatePeer : 'fixture-peer';
         const job: FixtureJob = {
           id: `fixture-job-${nextJob++}`,
           intent: b.intent ?? 'browse-grab',
@@ -253,9 +294,9 @@ export async function startFixtureAddon(opts: FixtureAddonOptions = {}): Promise
           updatedAt: now,
           items: [
             {
-              itemId: `t:${payload.title.toLowerCase()}`,
+              itemId: `t:${payload.title.toLowerCase()}${fromAlternate ? ':alt' : ''}`,
               title: payload.title,
-              username: 'fixture-peer',
+              username: peer,
               filename: payload.filename,
               size: payloadSize,
               bitRateKbps: 900,

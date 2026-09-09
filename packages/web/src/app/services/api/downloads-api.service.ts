@@ -8,6 +8,7 @@ import type {
   FolderCandidate,
   AlbumJob,
   UntrackedDownload,
+  AlternateSourcesResult,
 } from './api-types';
 
 /** Acquisition: slskd transfers/browse, URL-acquire jobs, and the album hunt. */
@@ -48,6 +49,27 @@ export class DownloadsApiService {
     return this.http.post<{ ok: boolean; deletedCount: number }>(
       `/api/downloads/jobs/${jobId}/discard-partial`,
       {},
+    );
+  }
+
+  /**
+   * Which other peers have the tracks this download is stuck on (#1065). Slow
+   * by nature — it re-runs the hunt, because no candidate list survives the
+   * job's creation — so the caller shows a searching state rather than a
+   * spinner that looks broken.
+   */
+  searchAlternateSources(jobId: string, titles?: string[]) {
+    return this.http.post<AlternateSourcesResult>(
+      `/api/downloads/jobs/${jobId}/resource/search`,
+      titles?.length ? { titles } : {},
+    );
+  }
+
+  /** Hand the named titles to another peer, keeping the same download card. */
+  resourceJob(jobId: string, candidateRef: string, titles: string[]) {
+    return this.http.post<{ ok: boolean; resourced: number }>(
+      `/api/downloads/jobs/${jobId}/resource`,
+      { candidateRef, titles },
     );
   }
 

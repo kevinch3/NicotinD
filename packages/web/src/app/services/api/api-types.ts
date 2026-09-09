@@ -424,6 +424,34 @@ export interface FolderCandidate {
   uploadSpeed: number;
 }
 
+/**
+ * One peer that could take over the tracks a download is stuck on (#1065).
+ * Narrower than `FolderCandidate` on purpose: the picker asks a much smaller
+ * question than the hunt modal — not "which release is this" but "who else has
+ * these specific tracks, and can they actually upload right now".
+ */
+export interface AlternateSource {
+  candidateRef: string;
+  username: string;
+  directory: string;
+  /** The wanted titles this peer offers, verbatim as they were asked for. */
+  coveredTitles: string[];
+  format: string;
+  estimatedSizeMb: number;
+  freeUploadSlots: number;
+  queueLength: number;
+  uploadSpeed: number;
+}
+
+export interface AlternateSourcesResult {
+  /** The still-pending titles the search was run for. */
+  wanted: string[];
+  alternates: AlternateSource[];
+  /** Both mean "we could not look properly" — never "nobody has it" (#1040). */
+  rateLimited?: boolean;
+  sourceOffline?: boolean;
+}
+
 export interface HuntResult {
   candidates: FolderCandidate[];
   totalTracks: number;

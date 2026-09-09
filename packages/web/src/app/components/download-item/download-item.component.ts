@@ -1,4 +1,4 @@
-import { Component, input, output, signal, computed } from '@angular/core';
+import { Component, effect, input, output, signal, computed } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import type { DownloadItem } from '../../lib/download-groups';
 import type { FailureClass } from '@nicotind/core';
@@ -43,17 +43,30 @@ export function trackDetail(track: DownloadTrack): string {
 
 export const DOWNLOAD_ITEM_HOST_CLASS = 'block min-w-0';
 
+/** Per-instance suffix for `aria-controls` — the ids must be unique per document. */
+let bodyIdSeq = 0;
+function nextBodyId(): number {
+  return (bodyIdSeq += 1);
+}
+
 /**
- * The card row itself. `items-start` is load-bearing, not cosmetic: the
- * progress block and the action buttons are *siblings* of the column that
- * holds the expandable tracklist, so under `items-center` opening the
- * `<details>` grew the card and dragged them to its new vertical middle —
- * the progress bar reading as if it belonged to the middle of the track list
- * (issue #991). Top alignment keeps them on the header row, which is the row
- * they describe.
+ * The card. A COLUMN (#1066): the expandable body is a sibling of the header
+ * row, not a child of the header's text cell, so it spans the card's full
+ * width. Under the old three-way row layout the body lived in the first flex
+ * child and stopped short by the progress column plus the buttons — a track
+ * list narrower than the card containing it.
+ *
+ * That shape also needed `items-start` to stop expansion dragging the progress
+ * bar and buttons to the card's new vertical middle (issue #991). A column
+ * cannot do that: the header row keeps its own height whatever the body does,
+ * so the workaround is gone rather than merely unnecessary.
  */
 export const DOWNLOAD_ITEM_CARD_CLASS =
-  'flex items-start gap-3 md:gap-4 px-3 md:px-4 py-3 rounded-lg bg-theme-surface/50 border border-theme min-w-0 overflow-hidden';
+  'flex flex-col px-3 md:px-4 py-3 rounded-lg bg-theme-surface/50 border border-theme min-w-0 overflow-hidden';
+/** The always-visible row: disclosure, identity + meta, actions. */
+export const DOWNLOAD_ITEM_HEADER_CLASS = 'flex items-start gap-2 md:gap-3 min-w-0';
+/** The expanded body — full card width, which is the entire point of #1066. */
+export const DOWNLOAD_ITEM_BODY_CLASS = 'mt-2 w-full min-w-0 space-y-1.5';
 export const DOWNLOAD_ITEM_TITLE_CLASS = 'text-sm text-theme-primary truncate min-w-0';
 
 /**
@@ -169,20 +182,47 @@ export function failureClassLabel(klass: FailureClass): string {
 export class DownloadItemComponent {
   readonly hostClass = DOWNLOAD_ITEM_HOST_CLASS;
   readonly cardClass = DOWNLOAD_ITEM_CARD_CLASS;
+  readonly headerClass = DOWNLOAD_ITEM_HEADER_CLASS;
+  readonly bodyClass = DOWNLOAD_ITEM_BODY_CLASS;
   readonly titleClass = DOWNLOAD_ITEM_TITLE_CLASS;
 
   readonly item = input.required<DownloadItem>();
   readonly retrying = input(false);
   /** True while the parent's cancel request is in flight (#806). */
   readonly cancelling = input(false);
+  /** True while a re-source request for this card is in flight (#1065). */
+  readonly resourcing = input(false);
 
   readonly retry = output<void>();
   readonly cancel = output<void>();
   readonly remove = output<void>();
   /** Discard the partial tracks this cancelled job landed (#810). */
   readonly discardPartial = output<void>();
+  /** Take these titles to another peer (#1065); empty means "everything pending". */
+  readonly resource = output<string[]>();
 
   readonly showPath = signal(false);
+  /** One expansion for the whole card, replacing two independent `<details>`. */
+  readonly expanded = signal(false);
+  /** Distinct per instance so `aria-controls` points at THIS card's body. */
+  readonly bodyId = `download-body-${nextBodyId()}`;
+
+  /** Titles the user ticked for a re-source, by title (the server's key too). */
+  readonly selected = signal<ReadonlySet<string>>(new Set());
+
+  constructor() {
+    // A card is recycled across feed polls, and a selection made against one
+    // download must never be carried into another. Keyed on the card identity,
+    // not on the tracks: the same job legitimately re-reports its titles.
+    let lastKey: string | null = null;
+    effect(() => {
+      const key = this.item().key;
+      if (key !== lastKey) {
+        lastKey = key;
+        this.selected.set(new Set());
+      }
+    });
+  }
 
   /** Template access to the pure label helper. */
   readonly failureLabel = failureClassLabel;
@@ -267,6 +307,55 @@ export class DownloadItemComponent {
   readonly showTrackPeer = computed(() => (this.item().sources?.length ?? 0) > 1);
 
   readonly trackDetail = trackDetail;
+
+  /**
+   * Whether there is anything behind the disclosure. Without this the caret
+   * appears on a card that expands to nothing — a control that lies about
+   * having content.
+   */
+  readonly canExpand = computed(
+    () =>
+      (this.breakdown()?.total ?? 0) > 0 ||
+      (this.item().sources?.length ?? 0) > 1 ||
+      !!this.item().failures ||
+      !!this.item().error ||
+      !!this.item().storagePath,
+  );
+
+  /** The percent, inline in the meta line now that the bar carries no label. */
+  readonly showPercent = computed(() => this.showPercentBar());
+
+  /** How many tracks are ticked for a re-source. */
+  readonly selectedCount = computed(() => this.selected().size);
+
+  /**
+   * A track can be handed to another peer only while it has not arrived. The
+   * checkbox is absent — not disabled — on delivered rows: an unusable control
+   * on two thirds of a tracklist is noise.
+   */
+  canSelect(track: DownloadTrack): boolean {
+    return !!this.item().canResource && track.status !== 'done';
+  }
+
+  isSelected(track: DownloadTrack): boolean {
+    return this.selected().has(track.title);
+  }
+
+  toggle(track: DownloadTrack): void {
+    const next = new Set(this.selected());
+    if (!next.delete(track.title)) next.add(track.title);
+    this.selected.set(next);
+  }
+
+  /**
+   * What the re-source button acts on: the ticked titles, or — when nothing is
+   * ticked — the empty list, which the server reads as "everything still
+   * pending". Letting the server decide keeps the card from acting on a
+   * tracklist that has moved on since the last poll.
+   */
+  selectedOrAll(): string[] {
+    return [...this.selected()];
+  }
 
   startedAgo(): string {
     const at = this.item().startedAt;

@@ -1,0 +1,102 @@
+<div
+  class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+  appBottomChromeSafe
+  (click)="cancel.emit()"
+>
+  <div
+    class="bg-theme-surface border border-theme rounded-xl p-5 max-w-lg w-full mx-4 shadow-2xl"
+    data-testid="resource-picker"
+    (click)="$event.stopPropagation()"
+  >
+    <h2 class="text-theme-primary text-sm font-semibold">{{ 'downloads.resource.title' | t }}</h2>
+
+    @if (searching()) {
+      <!-- Named, not a bare spinner: this wait is tens of seconds because it is
+           a full re-hunt, and an unexplained one reads as a hung dialog. -->
+      <p class="text-xs text-theme-muted mt-3" data-testid="resource-searching">
+        {{ 'downloads.resource.searching' | t }}
+      </p>
+    } @else {
+      <p class="text-xs text-theme-muted mt-1">
+        {{ 'downloads.resource.wanted' | t: { count: wanted().length } }}
+      </p>
+
+      @if (sourceOffline()) {
+        <p class="text-xs text-status-error mt-3" data-testid="resource-offline">
+          {{ 'downloads.resource.offline' | t }}
+        </p>
+      } @else if (!alternates().length) {
+        <p class="text-xs text-theme-muted mt-3" data-testid="resource-none">
+          {{ 'downloads.resource.none' | t }}
+        </p>
+      }
+      @if (rateLimited() && alternates().length) {
+        <p class="text-xs text-theme-muted mt-2" data-testid="resource-throttled">
+          {{ 'downloads.resource.throttled' | t }}
+        </p>
+      }
+
+      @if (alternates().length) {
+        <ul class="mt-3 space-y-1 max-h-72 overflow-y-auto">
+          @for (a of alternates(); track a.candidateRef) {
+            <li>
+              <label
+                class="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer border transition"
+                [class.border-theme]="chosen() !== a.candidateRef"
+                [class.bg-theme-surface-2]="chosen() === a.candidateRef"
+                [class.border-transparent]="chosen() === a.candidateRef"
+                data-testid="resource-alternate"
+                [attr.data-peer]="a.username"
+              >
+                <input
+                  type="radio"
+                  name="alternate"
+                  class="flex-shrink-0 accent-blue-500"
+                  [checked]="chosen() === a.candidateRef"
+                  (change)="choose(a.candidateRef)"
+                />
+                <span class="flex-1 min-w-0">
+                  <span class="block text-sm text-theme-primary truncate">{{ a.username }}</span>
+                  <span class="block text-xs text-theme-muted truncate">
+                    {{
+                      'downloads.resource.covers'
+                        | t: { covered: a.coveredTitles.length, wanted: wanted().length }
+                    }}
+                    · {{ a.format }}
+                    · {{ 'downloads.resource.slots' | t: { count: a.freeUploadSlots } }}
+                    @if (a.queueLength) {
+                      · {{ 'downloads.resource.queued' | t: { count: a.queueLength } }}
+                    }
+                  </span>
+                </span>
+              </label>
+            </li>
+          }
+        </ul>
+      }
+    }
+
+    @if (error(); as e) {
+      <p class="text-xs text-status-error mt-3" data-testid="resource-error">{{ e | t }}</p>
+    }
+
+    <div class="flex gap-3 justify-end mt-5">
+      <button
+        type="button"
+        class="px-4 py-2 text-sm text-theme-secondary hover:text-theme-primary rounded-lg transition-colors"
+        (click)="cancel.emit()"
+      >
+        {{ 'downloads.resource.cancel' | t }}
+      </button>
+      <button
+        type="button"
+        class="px-4 py-2 text-sm rounded-lg transition-colors bg-theme-surface-2 text-theme-primary hover:opacity-80 disabled:opacity-40"
+        data-testid="resource-confirm"
+        [disabled]="!selected() || submitting()"
+        (click)="submit()"
+      >
+        {{ 'downloads.resource.use' | t }}
+      </button>
+    </div>
+  </div>
+</div>

@@ -128,7 +128,22 @@ export interface AcquisitionJobView {
      *  that the raw transfers lane is gone (phase 3). Null for URL items. */
     username?: string | null;
     filename?: string | null;
+    /**
+     * What actually landed for this track. The server has always serialized
+     * these three from `acquisition_job_items`; the type simply never said so,
+     * so the card's `trackDetail()` read fields TypeScript believed absent.
+     */
+    bitRate?: number | null;
+    audioFormat?: string | null;
+    sizeBytes?: number | null;
   }[];
+  /**
+   * Whether this card can offer "complete it from another peer" (#1065) — the
+   * server's verdict, not a rule the client re-derives. False for every lane
+   * that has no peers to choose between (URL acquires) and for a raw folder
+   * grab, which carries no artist/album/tracklist to search another peer with.
+   */
+  canResource?: boolean;
   /**
    * Dominant bitrate (kbps) of the job's files. For slskd hunts, this is the
    * enqueue-time bitrate (what the peer advertised); it upgrades to the

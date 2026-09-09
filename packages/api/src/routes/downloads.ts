@@ -1,4 +1,5 @@
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
+import type { Context } from 'hono';
 import type { AuthEnv } from '../middleware/auth.js';
 import type { ProviderRegistry } from '../services/provider-registry.js';
 import { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
@@ -17,7 +18,16 @@ import {
   markPartialDiscarded,
   recomputeStage,
   resolveJobAlbumId,
+  activePeers,
+  addonJobHasLiveItems,
+  canResourceJob,
+  claimUnattributedItems,
+  huntTracklist,
+  getJob,
+  resourceableTitles,
+  supersedeItems,
 } from '../services/acquisition-job-store.js';
+import { rankAlternates } from '../services/download-resource.js';
 import { mapAddonJob } from '../services/addons/job-poller.js';
 import { deleteSongs } from '../services/library-deletion.js';
 import { errorHandler } from '../middleware/error-handler.js';
@@ -299,6 +309,170 @@ export function downloadRoutes(
       detail: `deleted ${result.deletedCount} track(s), ${result.failed.length} failed`,
     });
     return c.json({ ok: true, deletedCount: result.deletedCount, failed: result.failed });
+  });
+
+  /**
+   * Re-source a stuck download from another peer (#1065).
+   *
+   * A hunt commits to one peer's folder. When that peer never uploads, the card
+   * sits at "0 of 14 · PENDING" and the only verbs are cancel and delete — so
+   * the fix has always been to throw the job away and re-download tracks that
+   * already landed. These two routes let the card keep its identity and hand
+   * only the missing titles to someone else.
+   *
+   * Two calls, not one, because finding another peer means re-running the hunt
+   * (core keeps no candidates: `candidateRef` is addon-side and short-lived)
+   * and that takes tens of seconds. A single blind route would be a button that
+   * spins for a minute and then reports a decision the user never saw.
+   *
+   * → docs/download-pipeline.md "Re-sourcing from another peer"
+   */
+
+  /**
+   * The job, its addon and its owner — or the response that says why this card
+   * cannot be re-sourced. Shared by both routes so the search can never offer
+   * peers for a job the commit would then refuse.
+   */
+  function resourceableJob(c: Context<AuthEnv>, db: ReturnType<typeof getDatabase>) {
+    const id = c.req.param('id');
+    const job = id ? getJob(db, id) : null;
+    if (!job) return { error: c.json({ error: 'Job not found' }, 404) } as const;
+    const row = db
+      .query<{ cancel_requested_at: number | null; user_id: string | null }, [string]>(
+        `SELECT cancel_requested_at, user_id FROM acquisition_jobs WHERE id = ?`,
+      )
+      .get(job.id);
+    // Same gate as discard-partial: re-sourcing your own download is not
+    // curation (docs/roles.md), and a NULL-owner row stays curator-only.
+    const user = getCurrentUser(c);
+    const isOwner = row?.user_id != null && row.user_id === user.sub;
+    if (!isOwner && !canCurate(asRole(user.role))) {
+      throw new ForbiddenError("Requires curator role, or the job's own user");
+    }
+    const facts = {
+      kind: job.kind,
+      artistName: job.artistName,
+      albumTitle: job.albumTitle,
+      canonicalTracks: job.canonicalTracks,
+      cancelRequestedAt: row?.cancel_requested_at ?? null,
+      items: job.items,
+    };
+    if (!canResourceJob(facts)) {
+      return {
+        error: c.json({ error: 'This download cannot be re-sourced from another peer' }, 400),
+      } as const;
+    }
+    const ref = parseAddonRef(job.sourceRef);
+    if (!ref || ref.addonId !== job.method) {
+      return { error: c.json({ error: 'No acquisition addon owns this download' }, 400) } as const;
+    }
+    const addon = pluginRegistry?.get(ref.addonId);
+    if (!(addon instanceof RemoteAddonPlugin)) {
+      return { error: c.json({ error: 'The acquisition addon is not available' }, 503) } as const;
+    }
+    return { job, ref, addon, user, tracklist: huntTracklist(facts) } as const;
+  }
+
+  /**
+   * Which other peers have the tracks this job is stuck on. Re-runs the hunt
+   * and subtracts the peers already on the card — an "alternate" that is the
+   * peer we are already waiting on is the same dead end.
+   */
+  app.post('/jobs/:id/resource/search', async (c) => {
+    const db = getDatabase();
+    const found = resourceableJob(c, db);
+    if ('error' in found) return found.error;
+    const { job, addon } = found;
+
+    const body = await c.req
+      .json<{ titles?: string[] }>()
+      .catch(() => ({}) as { titles?: string[] });
+    const available = resourceableTitles(db, job.id);
+    // A caller-supplied subset is intersected, never trusted: a title that has
+    // since been delivered must not be taken away from the peer that delivered it.
+    const wanted = body.titles?.length
+      ? body.titles.filter((t) => available.includes(t))
+      : available;
+    if (!wanted.length) return c.json({ error: 'Nothing on this download is still pending' }, 400);
+
+    const res = await addon.client.albumsSearch({
+      artist: job.artistName ?? '',
+      album: job.albumTitle ?? '',
+      canonicalTracks: found.tracklist.map((title) => ({ title })),
+    });
+    return c.json({
+      wanted,
+      alternates: rankAlternates(wanted, res.candidates, activePeers(db, job.id)),
+      // An empty list means something different in each of these cases, and the
+      // picker says so: throttled and offline are both "we could not look
+      // properly", not "nobody has it" (#1040, #1045).
+      rateLimited: res.rateLimited ?? false,
+      sourceOffline: res.sourceOffline ?? false,
+    });
+  });
+
+  /**
+   * Hand the named titles to the chosen peer. The new addon job is mapped onto
+   * THIS core job, so its items mirror into the same card rather than opening a
+   * second one — the download the user started is still the download they are
+   * watching.
+   */
+  app.post('/jobs/:id/resource', async (c) => {
+    const db = getDatabase();
+    const found = resourceableJob(c, db);
+    if ('error' in found) return found.error;
+    const { job, ref, addon, user } = found;
+
+    const body = await c.req
+      .json<{ candidateRef?: string; titles?: string[] }>()
+      .catch(() => ({}) as { candidateRef?: string; titles?: string[] });
+    if (!body.candidateRef) return c.json({ error: 'Pick a peer first' }, 400);
+    const available = resourceableTitles(db, job.id);
+    const titles = body.titles?.length
+      ? body.titles.filter((t) => available.includes(t))
+      : available;
+    if (!titles.length) return c.json({ error: 'Nothing on this download is still pending' }, 400);
+
+    // Attribute the existing rows BEFORE a second addon job can report, so the
+    // terminal sweeps can tell the two apart (see OWNED_BY_ADDON_JOB).
+    claimUnattributedItems(db, job.id, ref.addonJobId);
+
+    let addonJobId: string;
+    try {
+      const created = await addon.client.createJob({
+        intent: 'album',
+        artist: job.artistName ?? undefined,
+        album: job.albumTitle ?? undefined,
+        canonicalTracks: found.tracklist.map((title) => ({ title })),
+        // The whole point: this peer is asked for the missing titles only, not
+        // for the folder again.
+        wantedTracks: titles.map((title) => ({ title })),
+        candidateRef: body.candidateRef,
+      });
+      addonJobId = created.id;
+    } catch (err) {
+      // The hunt cache behind `candidateRef` expires, and a stale ref is the
+      // ordinary failure here — same wording the hunt modal uses.
+      log.warn({ jobId: job.id, err }, 're-source rejected by the addon');
+      return c.json({ error: 'Selection expired — run the search again' }, 400);
+    }
+
+    mapAddonJob(db, ref.addonId, addonJobId, job.id);
+    supersedeItems(db, job.id, titles);
+
+    // Only now let the old peer go, and only if it has nothing left to deliver.
+    // Cancelling it while it is still uploading other tracks would make the
+    // granular action destroy the very progress it was meant to preserve.
+    if (!addonJobHasLiveItems(db, job.id, ref.addonJobId)) {
+      await addon.client.cancelJob(ref.addonJobId).catch(() => {});
+    }
+    recomputeStage(db, job.id);
+    recordAudit(db, user, 'download.resource', {
+      targetKind: 'acquisition_job',
+      targetId: job.id,
+      detail: `re-sourced ${titles.length} track(s) to a new peer (addon job ${addonJobId})`,
+    });
+    return c.json({ ok: true, resourced: titles.length, addonJobId });
   });
 
   app.delete('/jobs/:id', async (c) => {

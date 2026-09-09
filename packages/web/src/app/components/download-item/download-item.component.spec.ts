@@ -5,6 +5,8 @@ import {
   DOWNLOAD_ITEM_HOST_CLASS,
   DOWNLOAD_ITEM_TITLE_CLASS,
   DOWNLOAD_ITEM_CARD_CLASS,
+  DOWNLOAD_ITEM_HEADER_CLASS,
+  DOWNLOAD_ITEM_BODY_CLASS,
   trackDetail,
   canOpenInLibrary,
   canOpenPlaylist,
@@ -16,9 +18,20 @@ import {
 } from './download-item.component';
 import { resolveAlbumRoute, resolvePlaylistRoute } from '../../lib/route-utils';
 import type { DownloadItem } from '../../lib/download-groups';
+
+/**
+ * Open the card. Since #1066 the tracklist, sources, failures and the Now/Next
+ * lines live in ONE card-level body rather than in two `<details>` that were
+ * always in the DOM, so a rendered assertion about any of them has to expand
+ * first — the same click the user makes.
+ */
+function expand(fixture: { componentInstance: DownloadItemComponent; detectChanges: () => void }) {
+  fixture.componentInstance.expanded.set(true);
+  fixture.detectChanges();
+}
 import { MenuPanelComponent } from '../menu-panel/menu-panel.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
-import { setInputValue } from '../../../testing/signal-input';
+import { setInputValue, changeInputValue } from '../../../testing/signal-input';
 
 /**
  * `app-pipeline-stage-badge` declares its `stage` input via the signal
@@ -79,16 +92,38 @@ describe('download-item truncation classes', () => {
  * pinned as the class the template binds — reintroducing `items-center` here
  * fails.
  */
-describe('download-item card alignment', () => {
+describe('download-item card layout (issue #1066)', () => {
   const cardClasses = DOWNLOAD_ITEM_CARD_CLASS.split(/\s+/);
+  const headerClasses = DOWNLOAD_ITEM_HEADER_CLASS.split(/\s+/);
+  const bodyClasses = DOWNLOAD_ITEM_BODY_CLASS.split(/\s+/);
 
-  it('top-aligns the row so a growing tracklist cannot drag the controls down', () => {
-    expect(cardClasses).toContain('items-start');
-    expect(cardClasses).not.toContain('items-center');
+  /**
+   * The defect in #1066: the expandable body lived INSIDE the header's text
+   * column, so it stopped short of the card by the width of the progress
+   * column plus the buttons — a tracklist narrower than its own card. A column
+   * card makes the body a sibling of the header, which is what gives it the
+   * full width; assert the direction, since that is what the fix is.
+   */
+  it('stacks the header and the body rather than putting the body in a cell', () => {
+    expect(cardClasses).toContain('flex-col');
+    expect(bodyClasses).toContain('w-full');
+  });
+
+  /**
+   * Under the old row layout `items-start` was load-bearing (#991): the
+   * progress block and buttons were siblings of the growing tracklist, so
+   * `items-center` re-centred them on expansion. In a column the header row
+   * keeps its own height whatever the body does, so the workaround is gone
+   * rather than merely unneeded — and the header row can align its own items.
+   */
+  it('no longer needs the top-alignment workaround on the card itself', () => {
+    expect(cardClasses).not.toContain('items-start');
+    expect(headerClasses).toContain('items-start');
   });
 
   it('still shrinks (min-w-0) so long titles truncate rather than widen the card', () => {
     expect(cardClasses).toContain('min-w-0');
+    expect(bodyClasses).toContain('min-w-0');
   });
 });
 
@@ -341,6 +376,7 @@ describe('download-item "Now: / Next:" — rendered', () => {
     const fixture = TestBed.createComponent(DownloadItemComponent);
     setInputValue(fixture.componentInstance.item, nowNextItem);
     fixture.detectChanges();
+    expand(fixture);
     return fixture;
   }
 
@@ -438,6 +474,7 @@ describe('download-item failure breakdown', () => {
     const fixture = TestBed.createComponent(DownloadItemComponent);
     setInputValue(fixture.componentInstance.item, one);
     fixture.detectChanges();
+    expand(fixture);
     return fixture;
   }
 
@@ -560,6 +597,7 @@ describe('download-item track drilldown', () => {
     const fixture = TestBed.createComponent(DownloadItemComponent);
     setInputValue(fixture.componentInstance.item, item(over));
     fixture.detectChanges();
+    expand(fixture);
     return fixture;
   }
 
@@ -588,13 +626,29 @@ describe('download-item track drilldown', () => {
     expect(rows[2].textContent).toContain('05x22 - Untitled.flac');
   });
 
-  it('summarises the tally so the count is legible while collapsed', () => {
+  /**
+   * The per-status tally labels the list it heads. It is inside the body since
+   * #1066 — the header already carries "N of M" while collapsed, so what the
+   * tally adds is the failed/skipped breakdown, which belongs with the rows
+   * that explain it.
+   */
+  it('heads the list with the per-status tally', () => {
     const fixture = setup({ kind: 'network', stage: 'error', tracks: TRACKS });
-    const summary = fixture.nativeElement.querySelector(
-      '[data-testid="download-tracks"] summary',
+    expect(fixture.componentInstance.breakdown()).toMatchObject({
+      done: 1,
+      total: 3,
+      failed: 2,
+    });
+    // The `t` pipe falls through to the key with no translations loaded, so
+    // the assertion is which strings are rendered, not their English. The
+    // skipped clause must stay absent — a "0 skipped" suffix on every card is
+    // noise dressed as information.
+    const tally = fixture.nativeElement.querySelector(
+      '[data-testid="download-tracks"]',
     ) as HTMLElement;
-    expect(summary.textContent).toContain('1/3');
-    expect(summary.textContent).toContain('2 failed');
+    expect(tally.textContent).toContain('downloads.tracks');
+    expect(tally.textContent).toContain('downloads.tracksFailed');
+    expect(tally.textContent).not.toContain('downloads.tracksSkipped');
   });
 
   /**
@@ -611,5 +665,173 @@ describe('download-item track drilldown', () => {
   it('renders nothing when the job exposes no tracks', () => {
     const fixture = setup({ kind: 'network', stage: 'done', tracks: undefined });
     expect(fixture.nativeElement.querySelector('[data-testid="download-tracks"]')).toBeNull();
+  });
+});
+
+describe('download-item expansion (issue #1066)', () => {
+  function setup(over: Partial<DownloadItem>) {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [DownloadItemComponent],
+      providers: [provideRouter([])],
+    });
+    TestBed.overrideComponent(DownloadItemComponent, {
+      set: {
+        imports: [RouterLink, MenuPanelComponent, StubPipelineStageBadgeComponent, TranslatePipe],
+      },
+    });
+    const fixture = TestBed.createComponent(DownloadItemComponent);
+    setInputValue(fixture.componentInstance.item, item(over));
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  const TRACKS: DownloadItem['tracks'] = [
+    { title: 'Amanecer', status: 'pending' },
+    { title: 'Bésame mucho', status: 'done' },
+  ];
+
+  it('identifies the download without expanding it', () => {
+    // The header is the contract from #1066: source, title, artist, stage and
+    // the count must all be readable while collapsed.
+    const fixture = setup({
+      kind: 'network',
+      stage: 'downloading',
+      subtitle: 'Luis Miguel',
+      tracks: TRACKS,
+      progress: { done: 0, total: 14 },
+    });
+    const el = fixture.nativeElement;
+    expect(el.querySelector('[data-testid="method-badge"]')).not.toBeNull();
+    expect(el.querySelector('[data-testid="download-title"]')).not.toBeNull();
+    expect(el.textContent).toContain('Luis Miguel');
+    expect(el.querySelector('[data-testid="download-progress-count"]')!.textContent).toContain(
+      '0 of 14',
+    );
+    // ...and the body is genuinely absent, not merely hidden.
+    expect(el.querySelector('[data-testid="download-track-row"]')).toBeNull();
+  });
+
+  it('reveals the tracklist on the disclosure, and names the state for a screen reader', () => {
+    const fixture = setup({ kind: 'network', stage: 'downloading', tracks: TRACKS });
+    const toggle = fixture.nativeElement.querySelector(
+      '[data-testid="download-disclosure"]',
+    ) as HTMLButtonElement;
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+
+    toggle.click();
+    fixture.detectChanges();
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(
+      fixture.nativeElement.querySelectorAll('[data-testid="download-track-row"]').length,
+    ).toBe(2);
+    // The control must point at the region it controls, or it announces nothing.
+    const body = fixture.nativeElement.querySelector(`#${toggle.getAttribute('aria-controls')}`);
+    expect(body).not.toBeNull();
+  });
+
+  it('offers no disclosure on a card with nothing behind it', () => {
+    // A caret that expands to an empty box is a control that lies.
+    const fixture = setup({ kind: 'network', stage: 'done', tracks: undefined });
+    expect(fixture.nativeElement.querySelector('[data-testid="download-disclosure"]')).toBeNull();
+  });
+});
+
+describe('download-item re-sourcing (issue #1065)', () => {
+  function setup(over: Partial<DownloadItem>) {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [DownloadItemComponent],
+      providers: [provideRouter([])],
+    });
+    TestBed.overrideComponent(DownloadItemComponent, {
+      set: {
+        imports: [RouterLink, MenuPanelComponent, StubPipelineStageBadgeComponent, TranslatePipe],
+      },
+    });
+    const fixture = TestBed.createComponent(DownloadItemComponent);
+    setInputValue(fixture.componentInstance.item, item(over));
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  const STUCK: Partial<DownloadItem> = {
+    kind: 'network',
+    stage: 'downloading',
+    canResource: true,
+    tracks: [
+      { title: 'Amanecer', status: 'pending' },
+      { title: 'Bésame mucho', status: 'pending' },
+      { title: 'Contigo', status: 'done' },
+    ],
+  };
+
+  it('offers the action without expanding — the stuck card is the point', () => {
+    const fixture = setup(STUCK);
+    expect(fixture.nativeElement.querySelector('[data-testid="download-resource"]')).not.toBeNull();
+  });
+
+  it('offers nothing on a card the server says cannot be re-sourced', () => {
+    // The verdict is the server's: only it knows whether the job carries the
+    // artist/album/tracklist a fresh hunt needs.
+    const fixture = setup({ ...STUCK, canResource: undefined });
+    expect(fixture.nativeElement.querySelector('[data-testid="download-resource"]')).toBeNull();
+  });
+
+  it('ticks only tracks that have not arrived', () => {
+    const fixture = setup(STUCK);
+    expand(fixture);
+    const boxes = fixture.nativeElement.querySelectorAll(
+      '[data-testid="download-track-select"]',
+    ) as NodeListOf<HTMLInputElement>;
+    // Three tracks, but the delivered one has no peer to be moved away from.
+    expect(boxes.length).toBe(2);
+  });
+
+  it('emits the ticked titles, and an empty list means "everything pending"', () => {
+    const fixture = setup(STUCK);
+    const emitted: string[][] = [];
+    fixture.componentInstance.resource.subscribe((t: string[]) => emitted.push(t));
+
+    // Nothing ticked: defer to the server's view of what is still pending
+    // rather than acting on a tracklist that may have moved on since the poll.
+    (
+      fixture.nativeElement.querySelector('[data-testid="download-resource"]') as HTMLButtonElement
+    ).click();
+    expect(emitted[0]).toEqual([]);
+
+    expand(fixture);
+    const boxes = fixture.nativeElement.querySelectorAll(
+      '[data-testid="download-track-select"]',
+    ) as NodeListOf<HTMLInputElement>;
+    boxes[0].click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.selectedCount()).toBe(1);
+    (
+      fixture.nativeElement.querySelector('[data-testid="download-resource"]') as HTMLButtonElement
+    ).click();
+    expect(emitted[1]).toEqual(['Amanecer']);
+
+    // Untick returns to the all-pending meaning.
+    boxes[0].click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.selectedCount()).toBe(0);
+  });
+
+  it('drops a selection when the card becomes a different download', () => {
+    // Feed rows are recycled across polls; a tick made against one download
+    // must never be carried into the next.
+    const fixture = setup(STUCK);
+    fixture.componentInstance.toggle({ title: 'Amanecer', status: 'pending' });
+    fixture.detectChanges();
+    expect(fixture.componentInstance.selectedCount()).toBe(1);
+
+    // `changeInputValue`, not `setInputValue` (#1061): only the former goes
+    // through `signalSetFn`, and a test of a REACTION to an input change is
+    // exactly what a non-notifying write cannot exercise.
+    changeInputValue(fixture.componentInstance.item, item({ ...STUCK, key: 'job:another' }));
+    fixture.detectChanges();
+    expect(fixture.componentInstance.selectedCount()).toBe(0);
   });
 });

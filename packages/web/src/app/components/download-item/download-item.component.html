@@ -6,164 +6,259 @@
   [attr.data-kind]="item().kind"
   [attr.data-job-id]="item().jobId"
 >
-  <div class="flex-1 min-w-0">
-    <div class="flex items-center gap-2 min-w-0">
-      <span
-        class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wide bg-theme-surface-2 text-theme-muted flex-shrink-0"
-        data-testid="method-badge"
+  <!-- Header: everything needed to identify this download WITHOUT expanding it.
+       A sibling of the body, not its parent, which is the whole point of #1066:
+       the body can now span the card instead of the header's text column. -->
+  <div [class]="headerClass">
+    @if (canExpand()) {
+      <button
+        type="button"
+        class="flex-shrink-0 self-start mt-0.5 p-0.5 -ml-1 rounded text-theme-muted hover:text-theme-secondary transition"
+        data-testid="download-disclosure"
+        [attr.aria-expanded]="expanded()"
+        [attr.aria-controls]="bodyId"
+        [attr.aria-label]="(expanded() ? 'downloads.collapse' : 'downloads.expand') | t"
+        (click)="expanded.set(!expanded())"
       >
-        <span translate="no">{{ badge().glyph }}</span>{{ badge().label }}
-      </span>
-      <p [class]="titleClass" data-testid="download-title">
-        {{ item().title }}
-      </p>
-      @if (showQuality()) {
-        <span
-          class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wide bg-theme-surface-2 text-theme-secondary flex-shrink-0"
-          data-testid="download-bitrate"
-          [title]="
-            item().audioFormat && item().audioFormat?.toUpperCase() === 'FLAC'
-              ? 'Lossless source — quality chip upgrades to the post-transcode bitrate once the library scan lands'
-              : 'Quality reported by the source / library scan'
-          "
+        <svg
+          width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="3" stroke-linecap="round" stroke-linejoin="round"
+          class="transition-transform duration-150"
+          [class.rotate-90]="expanded()"
         >
-          {{ qualityLabel() }}
-        </span>
-      }
-    </div>
-    @if (item().subtitle) {
-      <p class="text-xs text-theme-secondary truncate mt-0.5">{{ item().subtitle }}</p>
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+      </button>
     }
-    <div class="flex items-center gap-2 mt-1 flex-wrap min-w-0">
-      <app-pipeline-stage-badge [stage]="item().stage" />
-      @if (showProgressCount()) {
-        <!-- Denominator is the release's tracklist when the source offered less
-             of it than the release has, so "98 of 100" can't stand in for a
-             103-track album (#745). Suppressed entirely while resolving: zero
-             of zero is not yet a fact about anything, and reading it as one is
-             how a 46 s Spotify resolve looked like an empty job (#711). -->
-        <span class="text-xs text-theme-muted" data-testid="download-progress-count">
-          @if (showTotal()) {
-            {{ item().progress!.done }} of
-            {{ item().canonicalTotal ?? item().progress!.total }}
-          } @else {
-            <!-- The source enumerates as it downloads, so any total printed here
-                 would climb. Say what has landed and nothing more (#990). -->
-            {{ item().progress!.done }} so far
-          }
+    <div class="flex-1 min-w-0">
+      <div class="flex items-center gap-2 min-w-0">
+        <span
+          class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wide bg-theme-surface-2 text-theme-muted flex-shrink-0"
+          data-testid="method-badge"
+        >
+          <span translate="no">{{ badge().glyph }}</span>{{ badge().label }}
         </span>
+        <p [class]="titleClass" data-testid="download-title">
+          {{ item().title }}
+        </p>
+        @if (showQuality()) {
+          <span
+            class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wide bg-theme-surface-2 text-theme-secondary flex-shrink-0"
+            data-testid="download-bitrate"
+            [title]="
+              item().audioFormat && item().audioFormat?.toUpperCase() === 'FLAC'
+                ? 'Lossless source — quality chip upgrades to the post-transcode bitrate once the library scan lands'
+                : 'Quality reported by the source / library scan'
+            "
+          >
+            {{ qualityLabel() }}
+          </span>
+        }
+      </div>
+      @if (item().subtitle) {
+        <p class="text-xs text-theme-secondary truncate mt-0.5">{{ item().subtitle }}</p>
       }
-      @if (item().unavailable; as u) {
-        <!-- Honest partial: the fallback gave up on these tracks (nobody has them). -->
-        <span class="text-xs text-theme-muted" data-testid="download-unavailable"
-          >· {{ u }} unavailable</span
-        >
-      }
-      @if (item().notOffered; as n) {
-        <!-- Distinct from `unavailable`: the source never listed these at all. -->
-        <span class="text-xs text-theme-muted" data-testid="download-not-offered"
-          >· {{ n }} not offered</span
-        >
-      }
-      @if (item().startedAt) {
-        <span class="text-xs text-theme-muted">· {{ startedAgo() }}</span>
-      }
-      @if (canOpenPlaylist()) {
-        <a
-          [routerLink]="playlistRoute()"
-          class="px-2 py-0.5 rounded text-xs font-semibold transition"
-          style="background: var(--theme-status-done-bg); color: var(--theme-status-done-text)"
-          data-testid="download-open-playlist"
-        >
-          Open playlist
-        </a>
-      } @else if (canOpen()) {
-        <a
-          [routerLink]="albumRoute()"
-          class="px-2 py-0.5 rounded text-xs font-semibold transition"
-          style="background: var(--theme-status-done-bg); color: var(--theme-status-done-text)"
-          data-testid="download-open-album"
-        >
-          Open in Library
-        </a>
-      }
-      @if (showAlbumsMenu()) {
-        <app-menu-panel align="end" panelTestId="download-albums-menu">
-          <button
-            menuTrigger
-            type="button"
+      <div class="flex items-center gap-2 mt-1 flex-wrap min-w-0">
+        <app-pipeline-stage-badge [stage]="item().stage" />
+        @if (showProgressCount()) {
+          <!-- Denominator is the release's tracklist when the source offered less
+               of it than the release has, so "98 of 100" can't stand in for a
+               103-track album (#745). Suppressed entirely while resolving: zero
+               of zero is not yet a fact about anything, and reading it as one is
+               how a 46 s Spotify resolve looked like an empty job (#711). -->
+          <span class="text-xs text-theme-muted" data-testid="download-progress-count">
+            @if (showTotal()) {
+              {{ item().progress!.done }} of
+              {{ item().canonicalTotal ?? item().progress!.total }}
+            } @else {
+              <!-- The source enumerates as it downloads, so any total printed here
+                   would climb. Say what has landed and nothing more (#990). -->
+              {{ item().progress!.done }} so far
+            }
+          </span>
+        }
+        @if (item().unavailable; as u) {
+          <!-- Honest partial: the fallback gave up on these tracks (nobody has them). -->
+          <span class="text-xs text-theme-muted" data-testid="download-unavailable"
+            >· {{ u }} unavailable</span
+          >
+        }
+        @if (item().notOffered; as n) {
+          <!-- Distinct from `unavailable`: the source never listed these at all. -->
+          <span class="text-xs text-theme-muted" data-testid="download-not-offered"
+            >· {{ n }} not offered</span
+          >
+        }
+        @if (item().startedAt) {
+          <span class="text-xs text-theme-muted">· {{ startedAgo() }}</span>
+        }
+        @if (showPercent()) {
+          <span class="text-xs text-status-progress tabular-nums" data-testid="download-percent"
+            >· {{ item().percent }}%</span
+          >
+        }
+        @if (canOpenPlaylist()) {
+          <a
+            [routerLink]="playlistRoute()"
             class="px-2 py-0.5 rounded text-xs font-semibold transition"
             style="background: var(--theme-status-done-bg); color: var(--theme-status-done-text)"
-            data-testid="download-view-albums"
+            data-testid="download-open-playlist"
           >
-            View {{ destinationAlbums().length }} albums
-          </button>
-          <div
-            menuPanel
-            class="w-56 p-1.5 rounded-lg bg-theme-surface border border-theme shadow-xl flex flex-col"
+            Open playlist
+          </a>
+        } @else if (canOpen()) {
+          <a
+            [routerLink]="albumRoute()"
+            class="px-2 py-0.5 rounded text-xs font-semibold transition"
+            style="background: var(--theme-status-done-bg); color: var(--theme-status-done-text)"
+            data-testid="download-open-album"
           >
-            @for (album of destinationAlbums(); track album.albumId) {
-              <a
-                [routerLink]="albumRouteFor(album.albumId)"
-                class="text-left px-3 py-2 text-sm rounded-md text-theme-secondary hover:bg-theme-surface-2 transition truncate"
-                data-testid="download-album-row"
-              >
-                {{ album.albumTitle }}
-              </a>
-            }
-          </div>
-        </app-menu-panel>
-      }
-      @if (showPartialDiscard()) {
-        <span class="flex items-center gap-2 text-xs" data-testid="download-partial-landed">
-          <span class="text-theme-muted">{{ 'downloads.partialLanded' | t: { count: item().progress?.done ?? 0 } }}</span>
+            Open in Library
+          </a>
+        }
+        @if (showAlbumsMenu()) {
+          <app-menu-panel align="end" panelTestId="download-albums-menu">
+            <button
+              menuTrigger
+              type="button"
+              class="px-2 py-0.5 rounded text-xs font-semibold transition"
+              style="background: var(--theme-status-done-bg); color: var(--theme-status-done-text)"
+              data-testid="download-view-albums"
+            >
+              View {{ destinationAlbums().length }} albums
+            </button>
+            <div
+              menuPanel
+              class="w-56 p-1.5 rounded-lg bg-theme-surface border border-theme shadow-xl flex flex-col"
+            >
+              @for (album of destinationAlbums(); track album.albumId) {
+                <a
+                  [routerLink]="albumRouteFor(album.albumId)"
+                  class="text-left px-3 py-2 text-sm rounded-md text-theme-secondary hover:bg-theme-surface-2 transition truncate"
+                  data-testid="download-album-row"
+                >
+                  {{ album.albumTitle }}
+                </a>
+              }
+            </div>
+          </app-menu-panel>
+        }
+        <!-- Reachable without expanding: the card in #1065 sat stuck for ten
+             hours, and the fix for it should not be hidden behind a disclosure. -->
+        @if (item().canResource) {
           <button
             type="button"
-            class="underline decoration-dotted text-status-error hover:opacity-80 transition"
-            data-testid="download-discard-partial"
-            (click)="discardPartial.emit()"
-          >{{ 'downloads.discardPartial' | t }}</button>
-        </span>
-      }
-      @if (item().storagePath) {
+            class="px-2 py-0.5 rounded text-xs font-semibold bg-theme-surface-2 text-theme-secondary hover:text-theme-primary transition disabled:opacity-50"
+            data-testid="download-resource"
+            [disabled]="resourcing()"
+            (click)="resource.emit(selectedOrAll())"
+          >
+            {{
+              selectedCount()
+                ? ('downloads.resource.selected' | t: { count: selectedCount() })
+                : ('downloads.resource.all' | t)
+            }}
+          </button>
+        }
+        @if (showPartialDiscard()) {
+          <span class="flex items-center gap-2 text-xs" data-testid="download-partial-landed">
+            <span class="text-theme-muted">{{ 'downloads.partialLanded' | t: { count: item().progress?.done ?? 0 } }}</span>
+            <button
+              type="button"
+              class="underline decoration-dotted text-status-error hover:opacity-80 transition"
+              data-testid="download-discard-partial"
+              (click)="discardPartial.emit()"
+            >{{ 'downloads.discardPartial' | t }}</button>
+          </span>
+        }
+        @if (item().storagePath) {
+          <button
+            type="button"
+            class="text-xs text-theme-muted hover:text-theme-secondary transition underline decoration-dotted"
+            (click)="showPath.set(!showPath())"
+          >
+            {{ showPath() ? 'Hide path' : 'Where?' }}
+          </button>
+        }
+      </div>
+    </div>
+
+    <!-- Actions: siblings of the disclosure button, never inside it, so a click
+         on Cancel cannot also toggle the card. -->
+    @if (item().canRetry) {
+      <button
+        (click)="retry.emit()"
+        [disabled]="retrying()"
+        class="text-xs px-2 py-1 rounded-md bg-theme-surface-2 text-theme-secondary hover:text-theme-primary transition flex-shrink-0 self-start disabled:opacity-50"
+        data-testid="download-retry"
+        [attr.title]="'downloads.retry' | t"
+      >
+        {{ retrying() ? 'Retrying...' : 'Retry' }}
+      </button>
+    }
+    @if (item().canCancel) {
+      @if (cancelPending()) {
+        <span
+          class="text-xs px-2 py-1 rounded-md bg-theme-surface-2 text-theme-muted flex-shrink-0 self-start"
+          data-testid="download-cancelling"
+        >{{ 'downloads.cancelling' | t }}</span>
+      } @else {
         <button
-          type="button"
-          class="text-xs text-theme-muted hover:text-theme-secondary transition underline decoration-dotted"
-          (click)="showPath.set(!showPath())"
+          (click)="cancel.emit()"
+          class="p-1 text-theme-muted hover:text-status-error transition flex-shrink-0 self-start"
+          data-testid="download-cancel"
+          [attr.title]="'downloads.cancel' | t"
         >
-          {{ showPath() ? 'Hide path' : 'Where?' }}
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
         </button>
       }
-    </div>
-    @if (showNowNext()) {
-      <p class="text-xs text-theme-muted mt-1 truncate" data-testid="download-now">
-        Now: {{ nowNext().current }}
-      </p>
-      @if (nowNext().next.length) {
-        <p class="text-xs text-theme-muted truncate" data-testid="download-next">
-          Next: {{ nowNext().next.join(', ') }}
+    }
+    @if (item().canRemove && !item().canCancel) {
+      <button
+        (click)="remove.emit()"
+        class="p-1 text-theme-muted hover:text-status-error transition flex-shrink-0 self-start"
+        data-testid="download-remove"
+        [attr.title]="'downloads.dismiss' | t"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
+    }
+  </div>
+
+  <!-- Expanded body. A direct child of the card, so it spans the full width
+       (#1066) — it used to live inside the header's text column and stopped
+       short by the width of the progress bar and the buttons. -->
+  @if (expanded()) {
+    <div [id]="bodyId" [class]="bodyClass">
+      @if (showPath() && item().storagePath) {
+        <p class="text-xs text-theme-muted break-all max-w-full" data-testid="storage-path">
+          {{ item().storagePath }}
         </p>
       }
-    }
-    @if (showPath() && item().storagePath) {
-      <p class="text-xs text-theme-muted mt-1 break-all max-w-full" data-testid="storage-path">
-        {{ item().storagePath }}
-      </p>
-    }
-    <!-- Which tracks, not just how many (#746). The counts on the header line
-         answer "how much arrived"; this answers "what is missing", which was
-         previously undiscoverable for an album of any size. -->
-    @if (showTracks()) {
+      @if (showNowNext()) {
+        <p class="text-xs text-theme-muted truncate" data-testid="download-now">
+          Now: {{ nowNext().current }}
+        </p>
+        @if (nowNext().next.length) {
+          <p class="text-xs text-theme-muted truncate" data-testid="download-next">
+            Next: {{ nowNext().next.join(', ') }}
+          </p>
+        }
+      }
+      <!-- Which tracks, not just how many (#746). The counts on the header line
+           answer "how much arrived"; this answers "what is missing", which was
+           previously undiscoverable for an album of any size. -->
       @if (breakdown(); as b) {
-        <details class="mt-1" data-testid="download-tracks">
-          <summary
-            class="text-xs text-theme-muted cursor-pointer select-none hover:text-theme-secondary"
-          >
-            Tracks ({{ b.done }}/{{ b.total }}<!--
-            -->@if (b.failed) {, {{ b.failed }} failed}<!--
-            -->@if (b.skipped) {, {{ b.skipped }} skipped}<!--
-            -->)
-          </summary>
+        <div>
+          <p class="text-xs text-theme-muted" data-testid="download-tracks">
+            {{ 'downloads.tracks' | t: { done: b.done, total: b.total } }}<!--
+            -->@if (b.failed) { · {{ 'downloads.tracksFailed' | t: { count: b.failed } }}}<!--
+            -->@if (b.skipped) { · {{ 'downloads.tracksSkipped' | t: { count: b.skipped } }}}
+          </p>
           <ul class="mt-1 space-y-0.5">
             @for (t of item().tracks; track $index) {
               <li
@@ -171,6 +266,18 @@
                 data-testid="download-track-row"
                 [attr.data-status]="t.status"
               >
+                <!-- A checkbox only where it can do something: a delivered track
+                     has no peer to move it away from. -->
+                @if (canSelect(t)) {
+                  <input
+                    type="checkbox"
+                    class="flex-shrink-0 accent-blue-500"
+                    data-testid="download-track-select"
+                    [attr.aria-label]="t.title || t.filename"
+                    [checked]="isSelected(t)"
+                    (change)="toggle(t)"
+                  />
+                }
                 <!-- Falls back to the filename: an untitled item is exactly the
                      one whose identity the user most needs. -->
                 <span class="truncate flex-1 min-w-0">{{ t.title || t.filename || '—' }}</span>
@@ -190,118 +297,74 @@
               </li>
             }
           </ul>
-        </details>
+        </div>
       }
-    }
-    <!-- One job can pull from several peers (a fallback wave, a multi-disc
-         release). They belong inside the job's card, not as sibling cards
-         (issue #261). -->
-    @if (item().sources; as sources) {
-      @if (sources.length > 1) {
-        <details class="mt-1" data-testid="download-sources">
-          <summary
-            class="text-xs text-theme-muted cursor-pointer select-none hover:text-theme-secondary"
-          >
-            Sources ({{ sources.length }})
-          </summary>
-          <ul class="mt-1 space-y-0.5">
-            @for (s of sources; track s.username) {
-              <li
-                class="flex items-center gap-2 text-xs text-theme-muted"
-                data-testid="download-source-row"
-              >
-                <span class="truncate flex-1">{{ s.username }}</span>
-                <span class="tabular-nums"
-                  >{{ s.fileCount }} {{ s.fileCount === 1 ? 'file' : 'files' }}</span
+      <!-- One job can pull from several peers (a fallback wave, a multi-disc
+           release). They belong inside the job's card, not as sibling cards
+           (issue #261). Still its own disclosure: genuinely secondary. -->
+      @if (item().sources; as sources) {
+        @if (sources.length > 1) {
+          <details data-testid="download-sources">
+            <summary
+              class="text-xs text-theme-muted cursor-pointer select-none hover:text-theme-secondary"
+            >
+              {{ 'downloads.sources' | t: { count: sources.length } }}
+            </summary>
+            <ul class="mt-1 space-y-0.5">
+              @for (s of sources; track s.username) {
+                <li
+                  class="flex items-center gap-2 text-xs text-theme-muted"
+                  data-testid="download-source-row"
                 >
-                <span class="opacity-70">{{ s.state }}</span>
-              </li>
-            }
-          </ul>
-        </details>
-      }
-    }
-    @if (item().failures; as failures) {
-      <!-- One reason for N tracks tells nobody whether to retry; a count per
-           class does. The verbatim reasons stay on the hover title. -->
-      <p
-        class="text-xs text-status-error mt-1 truncate"
-        [title]="item().error"
-        data-testid="download-failure-breakdown"
-      >
-        @for (group of failures; track group.class) {
-          <span>{{ $first ? '' : ' · ' }}{{ group.count }} {{ failureLabel(group.class) }}</span>
+                  <span class="truncate flex-1">{{ s.username }}</span>
+                  <span class="tabular-nums"
+                    >{{ s.fileCount }} {{ s.fileCount === 1 ? 'file' : 'files' }}</span
+                  >
+                  <span class="opacity-70">{{ s.state }}</span>
+                </li>
+              }
+            </ul>
+          </details>
         }
-      </p>
-    } @else if (item().error) {
-      <p class="text-xs text-status-error mt-1 truncate" [title]="item().error">
-        {{ item().error }}
-      </p>
-    }
-  </div>
+      }
+      @if (item().failures; as failures) {
+        <!-- One reason for N tracks tells nobody whether to retry; a count per
+             class does. The verbatim reasons stay on the hover title. -->
+        <p
+          class="text-xs text-status-error truncate"
+          [title]="item().error"
+          data-testid="download-failure-breakdown"
+        >
+          @for (group of failures; track group.class) {
+            <span>{{ $first ? '' : ' · ' }}{{ group.count }} {{ failureLabel(group.class) }}</span>
+          }
+        </p>
+      } @else if (item().error) {
+        <p class="text-xs text-status-error truncate" [title]="item().error">
+          {{ item().error }}
+        </p>
+      }
+    </div>
+  }
 
-  <!-- Progress -->
+  <!-- Full-bleed progress: a bar the width of the card reads as this card's
+       progress. The old 112px stub sat in a column that also had to hold the
+       buttons, which is what squeezed the body (#1066). -->
   @if (showPercentBar()) {
-    <div class="w-16 md:w-28 flex-shrink-0 self-start">
-      <div class="h-1.5 bg-theme-surface-2 rounded-full overflow-hidden">
-        <div
-          class="h-full bg-blue-500 rounded-full transition-all duration-500"
-          [style.width.%]="item().percent"
-        ></div>
-      </div>
-      <p class="text-xs text-status-progress text-right mt-1">{{ item().percent }}%</p>
+    <div class="h-1 -mx-3 md:-mx-4 -mb-3 mt-2 bg-theme-surface-2 overflow-hidden rounded-b-lg">
+      <div
+        class="h-full bg-blue-500 transition-all duration-500"
+        [style.width.%]="item().percent"
+      ></div>
     </div>
   } @else if (showIndeterminateBar()) {
     <!-- No committed denominator: a percentage here would be a number that
          moves backwards, so the bar states motion instead of position (#990). -->
-    <div class="w-16 md:w-28 flex-shrink-0 self-start" data-testid="download-progress-indeterminate">
-      <div class="h-1.5 bg-theme-surface-2 rounded-full overflow-hidden">
-        <div class="h-full w-1/3 bg-blue-500 rounded-full animate-pulse"></div>
-      </div>
+    <div
+      class="h-1 -mx-3 md:-mx-4 -mb-3 mt-2 bg-theme-surface-2 overflow-hidden rounded-b-lg"
+      data-testid="download-progress-indeterminate"
+    >
+      <div class="h-full w-1/3 bg-blue-500 animate-pulse"></div>
     </div>
-  }
-
-  <!-- Actions -->
-  @if (item().canRetry) {
-    <button
-      (click)="retry.emit()"
-      [disabled]="retrying()"
-      class="text-xs px-2 py-1 rounded-md bg-theme-surface-2 text-theme-secondary hover:text-theme-primary transition flex-shrink-0 disabled:opacity-50"
-      data-testid="download-retry"
-      [attr.title]="'downloads.retry' | t"
-    >
-      {{ retrying() ? 'Retrying...' : 'Retry' }}
-    </button>
-  }
-  @if (item().canCancel) {
-    @if (cancelPending()) {
-      <span
-        class="text-xs px-2 py-1 rounded-md bg-theme-surface-2 text-theme-muted flex-shrink-0"
-        data-testid="download-cancelling"
-      >{{ 'downloads.cancelling' | t }}</span>
-    } @else {
-      <button
-        (click)="cancel.emit()"
-        class="p-1 text-theme-muted hover:text-status-error transition flex-shrink-0"
-        data-testid="download-cancel"
-        [attr.title]="'downloads.cancel' | t"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-        </svg>
-      </button>
-    }
-  }
-  @if (item().canRemove && !item().canCancel) {
-    <button
-      (click)="remove.emit()"
-      class="p-1 text-theme-muted hover:text-status-error transition flex-shrink-0"
-      data-testid="download-remove"
-      [attr.title]="'downloads.dismiss' | t"
-    >
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-      </svg>
-    </button>
   }
 </div>

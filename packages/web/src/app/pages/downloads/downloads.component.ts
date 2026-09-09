@@ -16,6 +16,7 @@ import {
 } from '../../lib/download-groups';
 import { DownloadItemComponent } from '../../components/download-item/download-item.component';
 import { DiskPillComponent } from '../../components/disk-pill/disk-pill.component';
+import { ResourcePickerComponent } from '../../components/resource-picker/resource-picker.component';
 import type { DiskUsage } from '../../services/api/api-types';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 
@@ -37,7 +38,13 @@ function sortAcquireJobs(jobs: AcquireJob[]): AcquireJob[] {
 
 @Component({
   selector: 'app-downloads',
-  imports: [ConfirmDialogComponent, DownloadItemComponent, DiskPillComponent, TranslatePipe],
+  imports: [
+    ConfirmDialogComponent,
+    DownloadItemComponent,
+    DiskPillComponent,
+    ResourcePickerComponent,
+    TranslatePipe,
+  ],
   templateUrl: './downloads.component.html',
 })
 export class DownloadsComponent {
@@ -211,6 +218,33 @@ export class DownloadsComponent {
         kind: 'error',
       });
     }
+    await this.transferService.kickPoll();
+  }
+
+  /**
+   * Which card's peer picker is open, and for which titles (#1065). Held on the
+   * page rather than the card because the dialog has to outlive the card: the
+   * feed re-polls every few seconds and rebuilds every row while the search is
+   * still running.
+   */
+  readonly resourcing = signal<{ jobId: string; titles: string[] } | null>(null);
+
+  onItemResource(item: DownloadItem, titles: string[]): void {
+    if (!item.jobId) return;
+    this.resourcing.set({ jobId: item.jobId, titles });
+  }
+
+  async onResourced(result: { peer: string; count: number }): Promise<void> {
+    this.resourcing.set(null);
+    this.toasts.show({
+      message: this.i18n.t('downloads.resource.started', {
+        count: result.count,
+        peer: result.peer,
+      }),
+      kind: 'success',
+    });
+    // The new addon job's items only reach the card on the poller's next tick,
+    // so nudge it rather than leaving the card looking unchanged.
     await this.transferService.kickPoll();
   }
 

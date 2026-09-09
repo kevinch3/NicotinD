@@ -939,6 +939,93 @@ success (134 downloads vs 793 search misses + 485 yt-dlp errors) over 12 h of
 prod logs, with `yt-dlp` current and a direct fetch of a "failed" URL succeeding.
 Tracked in #601 against `nicotind-spotdl-addon`.
 
+## Re-sourcing from another peer (#1065)
+
+A hunt commits to one peer's folder. When that peer never uploads, the card sits at
+`0 of 14 · PENDING` — prod carried exactly that for ten hours (*Romances* / Luis Miguel) —
+and the only verbs were cancel, discard-partial and delete. The fix was to throw the job
+away and re-download the tracks that had already landed.
+
+Re-sourcing hands **only the still-pending titles** to a different peer, on the **same
+card**.
+
+### Why it needs a fresh hunt
+
+Core retains no candidates after a job starts: `candidateRef` is opaque, addon-side and
+short-lived, and `album_jobs.alternates_json` has had no writer since the addon cutover. So
+`POST /jobs/:id/resource/search` re-runs `AddonClient.albumsSearch`, which costs tens of
+seconds (#1049: two search lanes at ~28 s). That cost is why the UI is a **search then a
+picker** rather than one blind button — an action that spins for a minute and then reports a
+choice the user never saw is not an improvement on being stuck.
+
+The search subtracts the peers already on the card (`activePeers`): an alternate that is the
+peer we are already waiting on is the same dead end. Candidates are ranked by coverage of
+the wanted titles first, then by peer availability (`freeUploadSlots`, `queueLength`,
+`uploadSpeed`) — availability second because it is what was actually wrong. Format is
+carried on every row but **not ranked on**: which encode you want is a taste call, and the
+picker exists so a person makes it.
+
+### No protocol change
+
+`AddonJobRequest.wantedTracks` already means "the subset that actually gets acquired", so
+`intent: 'album'` + `candidateRef` + `wantedTracks` says "give me these four titles from
+that peer's folder" in protocol v1 as it stands. `POST jobs/:id/retry` appears in the
+addon-protocol endpoint table but has no client method and no implementation — do not build
+on it.
+
+### One card, two addon jobs
+
+`AddonJobPoller.ensureCoreJob` resolves `jobmap:<addonJobId> → coreJobId` from `plugin_kv`
+before creating anything, so `mapAddonJob` pointing a *second* addon job at an *existing*
+core job makes its items mirror into the same card.
+
+That breaks an invariant nothing wrote down. Every job-terminal sweep said `WHERE job_id = ?`
+because one card meant one addon job; with two, the abandoned peer's job going terminal would
+mark the replacement's live downloads `unavailable` and close the card as a partial while the
+new peer was still uploading. `acquisition_job_items.addon_job_id` records provenance and
+`OWNED_BY_ADDON_JOB` scopes `applyAddonOutcome` and `failOrphanedJob` to the job reporting.
+NULL reads as "mine" — correct for rows written before the column existed, since that card
+had one addon job — and `claimUnattributedItems` stamps a card's stragglers at the one moment
+a second job is about to join it.
+
+### Superseded, not repointed
+
+`repointItem` looks like the hook and is deliberately **not** used. Rewriting a row's peer in
+place needs a fuzzy title match to choose the row, loses the abandoned attempt, and — because
+the old addon job keeps reporting on an item id whose row now describes someone else — lets a
+late delivery from the dead peer overwrite the new one's progress.
+
+Instead the old rows are kept and marked `superseded`. They are excluded from
+`progress.expected`, `recomputeStage`, `byteProgress`, the quality rollup, the sources
+breakdown and the feed's `items`; `mirrorItems` refuses to write to one, so the abandoned
+peer cannot resurrect it; and because a superseded row can never be `completed`,
+`ingestReadyItems` will never fetch its file — which is what stops a slow old peer's late
+delivery becoming a duplicate file (the #951 class).
+
+`recomputeStage` skips superseded rows when counting, so the window between superseding and
+the replacement job's first poll leaves the card on the stage it had rather than ruling
+"nothing landed" and flashing Error.
+
+The old addon job is cancelled **only** when it has no non-superseded, non-terminal items
+left (`addonJobHasLiveItems`). Cancelling it while it is still uploading other tracks would
+make the granular action destroy the progress it exists to preserve.
+
+### What it cannot reach
+
+`· K not offered` counts canonical titles the addon never itemised — they have no item row at
+all, so there is nothing to hand to another peer. Tracked separately as #1067.
+
+### Where the rules live
+
+`canResourceJob` (`acquisition-job-store.ts`) is the single verdict, published on the feed as
+`AcquisitionJobView.canResource` so the web never re-derives it. It requires an
+`album-hunt`/`auto-acquire` job with an artist, album and canonical tracklist — a `direct`
+folder grab has none of them to hunt with, and a `url` acquire has no peers — plus no cancel
+intent and at least one item still `queued`/`downloading`/`failed`/`unavailable`.
+`coveredTitles` and `rankAlternates` (`download-resource.ts`) are pure and match filenames
+with the shared `normalizeTitle`/`titlesOverlap`, so a peer judged to have a track here is
+judged to have it everywhere else too.
+
 ## A partial download says why, and can be retried
 
 The reporting fixes above made a partial playlist *honest* (`5 of 89 · 84 unavailable`)

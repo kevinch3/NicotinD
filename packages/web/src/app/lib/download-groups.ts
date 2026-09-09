@@ -131,6 +131,12 @@ export interface DownloadItem {
    * control, surviving reloads (unlike the request-in-flight `cancelling` set).
    */
   cancelRequested?: boolean;
+  /**
+   * Whether this card can offer "complete it from another peer" (#1065). The
+   * server's verdict — only it knows whether the job carries the artist, album
+   * and tracklist a fresh hunt needs, and whether anything is still pending.
+   */
+  canResource?: boolean;
 }
 
 /**
@@ -402,6 +408,7 @@ export function mergeAcquisitionJobs(
           ? jobPercent(job.progress)
           : undefined,
       cancelRequested: job.cancelRequested || undefined,
+      canResource: job.canResource || undefined,
       totalCommitted: hasCommittedTotal(job),
       // why: only a *shortfall* is news. A source that offered the whole
       // tracklist (or more — a folder with bonus tracks) leaves these unset so

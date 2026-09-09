@@ -69,6 +69,17 @@ const STRANDED_SWEEP_INTERVAL_MS = 60_000;
 const CANCEL_GRACE_MS = 90_000;
 
 /** Extract the addon-side job id from a `addon:<addonId>:<jobId>` source_ref. */
+/**
+ * Items on a card that belong to the addon job now reporting. A card used to
+ * have exactly one addon job, so every terminal sweep could say `WHERE job_id = ?`;
+ * re-sourcing (#1065) puts a second one on the card, and an unscoped sweep would
+ * let the peer that gave up mark the replacement's live downloads `unavailable`.
+ * NULL is read as "mine": rows written before the column existed belong to the
+ * one addon job that card had, and the re-source route stamps a card's stragglers
+ * before a second job ever joins it.
+ */
+const OWNED_BY_ADDON_JOB = `(addon_job_id IS NULL OR addon_job_id = ?)`;
+
 export function parseAddonJobId(sourceRef: string | null, addonId: string): string | null {
   const prefix = `addon:${addonId}:`;
   return sourceRef && sourceRef.startsWith(prefix) ? sourceRef.slice(prefix.length) : null;
@@ -350,7 +361,7 @@ export class AddonJobPoller {
           err.status === 404 &&
           !this.wasReleasedByUs(addonId, addonJobId)
         ) {
-          this.failOrphanedJob(row.id, addonId);
+          this.failOrphanedJob(row.id, addonId, addonJobId);
         }
         continue;
       }
@@ -482,7 +493,7 @@ export class AddonJobPoller {
         // Only a definitive 404 (addon has no such job) fails it; a network blip
         // or other error is left for the next tick.
         if (err instanceof AddonRequestError && err.status === 404) {
-          this.failOrphanedJob(row.id, addonId);
+          this.failOrphanedJob(row.id, addonId, addonJobId);
         }
       }
     }
@@ -498,7 +509,7 @@ export class AddonJobPoller {
     return this.kvGet(addonId, `released:${addonJobId}`) !== null;
   }
 
-  private failOrphanedJob(coreJobId: string, addonId: string): void {
+  private failOrphanedJob(coreJobId: string, addonId: string, addonJobId: string): void {
     const now = Date.now();
     // why: states what the poller observed, never a cause it cannot witness.
     const msg = 'The download source stopped reporting this job.';
@@ -514,8 +525,8 @@ export class AddonJobPoller {
     // mean the file is on disk, so sweeping them reports tracks we do hold.
     this.deps.db.run(
       `UPDATE acquisition_job_items SET state = 'unavailable', updated_at = ?
-       WHERE job_id = ? AND state = 'downloading'`,
-      [now, coreJobId],
+       WHERE job_id = ? AND ${OWNED_BY_ADDON_JOB} AND state = 'downloading'`,
+      [now, coreJobId, addonJobId],
     );
     log.info({ addonId, coreJobId }, 'failed an orphaned addon job (addon 404)');
   }
@@ -636,10 +647,11 @@ export class AddonJobPoller {
       if (!existing) {
         db.run(
           `INSERT INTO acquisition_job_items
-             (job_id, track_title, username, filename, transfer_key, bit_rate_kbps, audio_format, size_bytes, bytes_transferred, state, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             (job_id, addon_job_id, track_title, username, filename, transfer_key, bit_rate_kbps, audio_format, size_bytes, bytes_transferred, state, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             coreJobId,
+            job.id,
             item.title,
             item.username,
             item.filename,
@@ -655,6 +667,11 @@ export class AddonJobPoller {
         continue;
       }
       if (existing.state === 'organized' || existing.state === 'scanned') continue;
+      // A superseded row's title now belongs to another peer (#1065). The peer
+      // that gave it up may still be reporting on it — that report is stale by
+      // construction, and letting it write here would resurrect the row into
+      // the tallies and the ingest queue we deliberately removed it from.
+      if (existing.state === 'superseded') continue;
       db.run(
         `UPDATE acquisition_job_items
          SET track_title = ?, username = ?, filename = ?, bit_rate_kbps = ?, audio_format = ?, size_bytes = ?, bytes_transferred = ?, state = ?, updated_at = ?
@@ -853,8 +870,8 @@ export class AddonJobPoller {
     // `maybeReleaseAddonJob` already treats them as pending.
     db.run(
       `UPDATE acquisition_job_items SET state = 'unavailable', updated_at = ?
-       WHERE job_id = ? AND state IN ('downloading', 'queued')`,
-      [now, coreJobId],
+       WHERE job_id = ? AND ${OWNED_BY_ADDON_JOB} AND state IN ('downloading', 'queued')`,
+      [now, coreJobId, job.id],
     );
     const stage = recomputeStage(db, coreJobId);
     // The addon's closing word, for a job that DOES have items — `recomputeStage`
