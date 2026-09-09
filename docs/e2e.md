@@ -108,6 +108,14 @@ same PR that hit it.
   content assertions to fixtures the spec created or the shared `FIXTURE`
   constants.
 
+- **A context torn down by Playwright fires no `pagehide`.** The remote-playback session a
+  spec's tab claimed (every play claims one) therefore outlives the spec for the server's grace,
+  and the next spec's first play would drive a dead output instead of making sound, while its
+  player bar mirrors the dead session's track (a `getByText('Opening Static')` that suddenly
+  matches three elements). The e2e server runs with `NICOTIND_PLAYBACK_GRACE_MS=2000` so the
+  leftover clears between specs; a spec that must end a session *within* itself closes the page
+  (`page.close()` does fire `pagehide`), as `remote-playback.spec.ts` does.
+
 - **A library-global counter is not a barrier for one album.** A spec that polls a
   whole-library scalar (a pending count, a job count) to zero depends on every other
   spec's leftovers — one foreign row anywhere pins the poll (issue #854's "Expected 0,

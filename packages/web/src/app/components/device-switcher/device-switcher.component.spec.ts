@@ -73,6 +73,39 @@ describe('DeviceSwitcherComponent', () => {
     expect(el.querySelector('[data-testid="device-now-playing"]')).not.toBeNull();
   });
 
+  it('lists a device that opted out, disabled and outside the offerable testid', () => {
+    const out: RemoteDevice = {
+      id: 'kiosk',
+      name: 'Kiosk',
+      type: 'web',
+      lastSeen: Date.now(),
+      available: false,
+    };
+    const { fixture } = setup([
+      { id: MY_ID, name: 'Self', type: 'web', lastSeen: Date.now() },
+      out,
+    ]);
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('[data-testid="device-option"]')).toBeNull();
+    const row = el.querySelector('[data-testid="device-option-unavailable"]') as HTMLButtonElement;
+    expect(row).not.toBeNull();
+    expect(row.disabled).toBe(true);
+    expect(row.textContent).toContain('Kiosk');
+  });
+
+  it('an opted-out device that is the output still wears the NOW PLAYING badge', () => {
+    const out: RemoteDevice = {
+      id: 'kiosk',
+      name: 'Kiosk',
+      type: 'web',
+      lastSeen: Date.now(),
+      available: false,
+    };
+    const { fixture } = setup([out], out.id);
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('[data-testid="device-now-playing"]')).not.toBeNull();
+  });
+
   it('hides the panel when the switcher is closed', () => {
     const { fixture, remoteStub } = setup([]);
     remoteStub.switcherOpen.set(false);

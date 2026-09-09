@@ -98,27 +98,28 @@
 
           <div class="space-y-5">
             <div class="flex items-start gap-3">
-              <button role="switch" [attr.aria-checked]="remote.remoteEnabled()"
+              <button role="switch" [attr.aria-checked]="remote.outputAvailable()"
+                appTvNavItem
                 data-testid="remote-toggle"
                 (click)="toggleRemote()"
-                [class]="'relative mt-0.5 w-9 h-5 rounded-full transition-colors flex-shrink-0 ' + (remote.remoteEnabled() ? 'bg-emerald-600' : 'bg-theme-hover')">
-                <span [class]="'absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ' + (remote.remoteEnabled() ? 'translate-x-4' : 'translate-x-0')"></span>
+                [class]="'relative mt-0.5 w-9 h-5 rounded-full transition-colors flex-shrink-0 ' + (remote.outputAvailable() ? 'bg-[var(--theme-accent)]' : 'bg-theme-hover')">
+                <span [class]="'absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ' + (remote.outputAvailable() ? 'translate-x-4' : 'translate-x-0')"></span>
               </button>
               <div>
-                <p class="text-sm text-theme-primary">{{ 'settings.makeAvailable' | t }}</p>
-                <p class="text-xs text-theme-muted mt-0.5">{{ 'settings.makeAvailableHint' | t }}</p>
-                @if (!remote.remoteEnabled()) {
-                  <p class="text-xs text-status-warn mt-1">{{ 'settings.hiddenFromSelector' | t }}</p>
+                <p class="text-sm text-theme-primary">{{ 'settings.outputAvailable' | t }}</p>
+                <p class="text-xs text-theme-muted mt-0.5">{{ 'settings.outputAvailableHint' | t }}</p>
+                @if (!remote.outputAvailable()) {
+                  <p class="text-xs text-status-warn mt-1" data-testid="remote-unavailable-note">{{ 'settings.outputUnavailableNote' | t }}</p>
                 }
               </div>
             </div>
 
-            @if (remote.disabledReason()) {
+            @if (remote.syncStatus()) {
               <div class="flex items-start gap-2 px-3 py-2.5 rounded-lg status-warn border border-theme text-xs">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0 mt-0.5">
                   <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
                 </svg>
-                <span>{{ 'settings.autoDisabled' | t: { reason: remote.disabledReason() ?? '' } }}</span>
+                <span>{{ 'settings.syncUnavailable' | t: { reason: remote.syncStatus() ?? '' } }}</span>
               </div>
             }
 
@@ -148,6 +149,9 @@
                       <span [class]="device.id === myDeviceId ? 'text-theme-primary' : 'text-theme-secondary'">{{ device.name }}</span>
                       @if (device.id === myDeviceId) {
                         <span class="text-xs text-theme-muted">{{ 'settings.thisDevice' | t }}</span>
+                      }
+                      @if (device.available === false) {
+                        <span class="text-xs text-theme-muted">{{ 'remote.notAvailable' | t }}</span>
                       }
                       @if (device.id === remote.activeDeviceId()) {
                         <span class="ml-auto text-xs font-semibold tracking-wide px-1.5 py-0.5 rounded status-done">{{ 'settings.host' | t }}</span>

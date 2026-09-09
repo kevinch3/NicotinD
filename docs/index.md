@@ -428,10 +428,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **Radio evaluation polls (public, admin-created)**: frozen radio scenarios behind a public
   `/poll/:token` wizard, previewed via short-lived read-only share JWTs, distilled by
   `export-radio-poll.ts`. → [radio-eval-polls.md](radio-eval-polls.md)
-- **Remote playback (cast, Spotify-Connect-style)**: per-user `PlaybackStateManager` broadcasts state
-  and commands over `GET /api/ws/playback` through `createPlaybackHub` (connections keyed by raw
-  socket, `activeGraceMs` on loss); the client's decisions are the pure core `reduceServerMessage` /
-  `castTo`, shared with the multi-device simulation. → [remote-playback.md](remote-playback.md)
+- **Remote playback (one audible device, Spotify-Connect-style)**: per-user `PlaybackStateManager`
+  broadcasts over `GET /api/ws/playback` through `createPlaybackHub`; a device that plays claims the
+  output (`claimOutput`, compare-and-set), the picker moves it (`castTo`), `hasControllableSession`
+  gates the transport; `activeGraceMs`, `idleReleaseMs`. → [remote-playback.md](remote-playback.md)
 - **Auto-preserve queue (PWA lock-screen resilience)**: `AutoPreserveCoordinator` keeps the next-N
   queued tracks as IndexedDB blobs so playback survives the locked-screen network throttle;
   `evictAutoLRU` never evicts user-saved tracks. → [web-ui.md](web-ui.md)

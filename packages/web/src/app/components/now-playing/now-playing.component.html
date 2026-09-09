@@ -13,6 +13,7 @@
     [style.--np-tv-backdrop]="tvBackdropUrl() ? 'url(' + tvBackdropUrl() + ')' : null"
   >
     <app-now-playing-header (dragPointerDown)="onSheetDragStart($event)" />
+    <app-playing-elsewhere />
 
     @if (isTv && nextUp(); as next) {
       <!-- TV replaces the stacked queue panel with a glanceable Next-up chip;

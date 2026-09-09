@@ -133,6 +133,11 @@ function makeServer(port: string, dir: string): WebServer {
       // The silent-FLAC fixtures are ~30s; without this the radio pool's 60s
       // minimum-duration floor (issue #583) would empty every e2e radio queue.
       NICOTIND_RADIO_MIN_DURATION: '0',
+      // A context torn down by Playwright fires no `pagehide`, so the session
+      // its tab held lingers for the grace; at 15 s the next spec's first play
+      // would drive a dead output. Short enough to clear between specs, long
+      // enough that a reload inside one spec still reconnects within it.
+      NICOTIND_PLAYBACK_GRACE_MS: '2000',
     },
   };
 }

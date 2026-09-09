@@ -14,6 +14,9 @@ const mockManager = {
   updateState: mock(() => {}),
   updateStateQuiet: mock(() => {}),
   updateDevice: mock(() => {}),
+  claimOutput: mock(() => true as boolean),
+  canTarget: mock(() => true as boolean),
+  releaseOutput: mock(() => {}),
   emitCommand: mock(() => {}),
   getState: mock(() => ({
     activeDeviceId: null,
@@ -92,6 +95,9 @@ describe('createWebSocketHandlers', () => {
     mockManager.registerDevice.mockClear();
     mockManager.unregisterDevice.mockClear();
     mockManager.heartbeat.mockClear();
+    mockManager.claimOutput.mockClear();
+    mockManager.canTarget.mockClear();
+    mockManager.releaseOutput.mockClear();
     mockManager.heartbeat.mockReturnValue(true);
     mockManager.updateState.mockClear();
     mockManager.updateStateQuiet.mockClear();
@@ -116,6 +122,7 @@ describe('createWebSocketHandlers', () => {
         name: 'Chrome on Linux',
         type: 'web',
         remoteEnabled: false,
+        activated: true,
       });
 
       expect(ws.send).toHaveBeenCalledTimes(1);
@@ -138,6 +145,7 @@ describe('createWebSocketHandlers', () => {
         name: 'Test',
         type: 'web',
         remoteEnabled: false,
+        activated: true,
       });
     });
 
@@ -157,6 +165,7 @@ describe('createWebSocketHandlers', () => {
         name: 'Test',
         type: 'web',
         remoteEnabled: false,
+        activated: true,
       });
     });
   });
@@ -202,6 +211,7 @@ describe('createWebSocketHandlers', () => {
         name: 'Living room TV',
         type: 'web',
         remoteEnabled: false,
+        activated: true,
       });
     });
 
@@ -651,6 +661,16 @@ describe('createWebSocketHandlers', () => {
       expect(mockManager.updateState).toHaveBeenCalledWith({ activeDeviceId: 'dev2' });
     });
 
+    it('ignores a target the manager says cannot be driven', () => {
+      const ws = createMockWs();
+      handlers.onOpen!({} as Event, ws);
+      mockManager.canTarget.mockReturnValueOnce(false);
+
+      handlers.onMessage!(createEvent({ type: 'SET_ACTIVE_DEVICE', payload: { id: 'ghost' } }), ws);
+
+      expect(mockManager.updateState).not.toHaveBeenCalled();
+    });
+
     it('can set activeDeviceId to null', () => {
       const ws = createMockWs();
       handlers.onOpen!({} as Event, ws);
@@ -658,6 +678,52 @@ describe('createWebSocketHandlers', () => {
       handlers.onMessage!(createEvent({ type: 'SET_ACTIVE_DEVICE', payload: { id: null } }), ws);
 
       expect(mockManager.updateState).toHaveBeenCalledWith({ activeDeviceId: null });
+    });
+  });
+
+  describe('CLAIM_OUTPUT / RELEASE_OUTPUT', () => {
+    it('a claim from a registered device goes to the manager with the sender id', () => {
+      const ws = createMockWs();
+      registerDevice(handlers, ws, 'dev1');
+      const payload = { track: { id: 't1' }, trackId: 't1', position: 2, isPlaying: true };
+
+      handlers.onMessage!(createEvent({ type: 'CLAIM_OUTPUT', payload }), ws);
+
+      expect(mockManager.claimOutput).toHaveBeenCalledWith('dev1', payload);
+    });
+
+    it('a refused claim is answered with a private snapshot', () => {
+      const ws = createMockWs();
+      registerDevice(handlers, ws, 'dev1');
+      ws.send.mockClear();
+      mockManager.claimOutput.mockReturnValueOnce(false);
+
+      handlers.onMessage!(
+        createEvent({
+          type: 'CLAIM_OUTPUT',
+          payload: { trackId: 't1', position: 0, isPlaying: true },
+        }),
+        ws,
+      );
+
+      expect(ws.send).toHaveBeenCalledTimes(1);
+      const frame = JSON.parse(ws.send.mock.calls[0]![0] as string);
+      expect(frame.type).toBe('STATE_SYNC');
+      expect(frame.payload.devices).toBeDefined();
+    });
+
+    it('a claim from an unregistered connection is dropped', () => {
+      const ws = createMockWs();
+      handlers.onOpen!({} as Event, ws);
+      handlers.onMessage!(createEvent({ type: 'CLAIM_OUTPUT', payload: {} }), ws);
+      expect(mockManager.claimOutput).not.toHaveBeenCalled();
+    });
+
+    it('RELEASE_OUTPUT releases for the sender', () => {
+      const ws = createMockWs();
+      registerDevice(handlers, ws, 'dev1');
+      handlers.onMessage!(createEvent({ type: 'RELEASE_OUTPUT', payload: {} }), ws);
+      expect(mockManager.releaseOutput).toHaveBeenCalledWith('dev1');
     });
   });
 

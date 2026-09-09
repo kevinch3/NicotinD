@@ -2,6 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
 import { TranslateService } from '../../services/translate.service';
+import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import { TranslatePipe } from '../../pipes/translate.pipe';
@@ -28,7 +29,8 @@ export class TvSettingsComponent {
   readonly i18n = inject(TranslateService);
 
   readonly chooser = signal<Chooser>(null);
-  readonly remoteEnabled = signal(localStorage.getItem('nicotind_remote_enabled') !== 'false');
+  private readonly remote = inject(RemotePlaybackService);
+  readonly remoteEnabled = this.remote.outputAvailable;
 
   open(which: Exclude<Chooser, null>): void {
     this.chooser.set(which);
@@ -44,8 +46,9 @@ export class TvSettingsComponent {
   }
 
   chooseRemote(enabled: boolean): void {
-    localStorage.setItem('nicotind_remote_enabled', String(enabled));
-    this.remoteEnabled.set(enabled);
+    // Through the service, so the server hears it now rather than at the next
+    // REGISTER, and the web settings page agrees.
+    this.remote.setOutputAvailable(enabled);
     this.close();
   }
 

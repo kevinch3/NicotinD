@@ -42,7 +42,9 @@ function makePlayerStub() {
 function makeRemoteStub() {
   return {
     isActiveDevice: signal(true),
-    remoteEnabled: signal(false),
+    playingElsewhere: signal(false),
+    sessionControllable: signal(true),
+    activeDevice: signal(null),
     remoteIsPlaying: signal(false),
     remoteDuration: signal(0),
     remotePosition: signal(0),
@@ -110,10 +112,9 @@ describe('NowPlayingComponent', () => {
   beforeEach(() => localStorage.clear());
 
   describe('device switcher', () => {
-    it('renders app-device-switcher when a track is loaded and remote is enabled', () => {
-      const { fixture, playerStub, remoteStub } = setup();
+    it('renders app-device-switcher whenever a track is loaded (no opt-in gate)', () => {
+      const { fixture, playerStub } = setup();
 
-      remoteStub.remoteEnabled.set(true);
       playerStub.currentTrack.set({ id: '1', title: 'Song', artist: 'Artist' });
       fixture.detectChanges();
 

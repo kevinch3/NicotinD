@@ -1,25 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 import { PlaybackWsService } from './playback-ws.service';
 import { ServerConfigService } from './server-config.service';
-import * as platform from '../lib/platform';
 import { profileIdOf, TAB_ID_KEY } from '../lib/device-id';
 import { TAB_CHANNEL } from '../lib/tab-id-guard';
 
 // The REGISTER frame's `remoteEnabled` field used to be computed by an
-// independent, ad-hoc copy of the TV-default logic that lived only in this
-// file (`localStorage.getItem(...) === 'true'`) — so a fresh TV build's
-// signal-level `RemotePlaybackService.remoteEnabled` read `true` while the
-// WS payload this file sent still read `false`, and the server never listed
-// the TV as a controllable device. These tests pin the REGISTER payload to
-// the shared `resolveTvDefaultedPreference` helper so the two call sites
-// can't drift apart again.
-vi.mock('../lib/platform', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../lib/platform')>();
-  return {
-    ...actual,
-    isTvBuild: vi.fn().mockReturnValue(false),
-  };
-});
+// independent, ad-hoc copy of the preference logic that lived only in this
+// file, so the payload disagreed with the UI's own signal. It reads the
+// shared `readOutputAvailable` now, so the two call sites cannot drift.
 
 /** Minimal fake WebSocket that captures every sent frame and lets the test
  * trigger `onopen` manually, without touching the network. */
@@ -141,7 +129,6 @@ describe('PlaybackWsService REGISTER payload', () => {
 
   afterEach(() => {
     (globalThis as { WebSocket: unknown }).WebSocket = originalWebSocket;
-    vi.mocked(platform.isTvBuild).mockReturnValue(false);
   });
 
   function connectAndCaptureRegister(): Record<string, unknown> {
@@ -181,30 +168,27 @@ describe('PlaybackWsService REGISTER payload', () => {
     }
   });
 
-  it('sends remoteEnabled: false on a non-TV build with no stored preference', () => {
-    vi.mocked(platform.isTvBuild).mockReturnValue(false);
-    const payload = connectAndCaptureRegister();
-    expect(payload['remoteEnabled']).toBe(false);
-  });
-
-  it('sends remoteEnabled: true on a TV build with no stored preference', () => {
-    vi.mocked(platform.isTvBuild).mockReturnValue(true);
+  it('registers as available by default: the preference is on unless turned off', () => {
     const payload = connectAndCaptureRegister();
     expect(payload['remoteEnabled']).toBe(true);
   });
 
-  it('an explicit stored "false" always wins over a TV-build default', () => {
-    vi.mocked(platform.isTvBuild).mockReturnValue(true);
-    storageStub.setItem('nicotind_remote_enabled', 'false');
+  it('an explicit stored "false" registers as not available', () => {
+    storageStub.setItem('nicotind_remote_available', 'false');
     const payload = connectAndCaptureRegister();
     expect(payload['remoteEnabled']).toBe(false);
   });
 
-  it('an explicit stored "true" wins on a non-TV build too', () => {
-    vi.mocked(platform.isTvBuild).mockReturnValue(false);
-    storageStub.setItem('nicotind_remote_enabled', 'true');
+  it('registers as not activated until the first gesture, then tells the server', () => {
     const payload = connectAndCaptureRegister();
-    expect(payload['remoteEnabled']).toBe(true);
+    expect(payload['activated']).toBe(false);
+    const service = TestBed.inject(PlaybackWsService);
+    service.markActivated();
+    service.markActivated();
+    const updates = FakeWebSocket.instances[0].sent.filter(
+      (f) => (f as { type: string }).type === 'UPDATE_DEVICE',
+    );
+    expect(updates).toEqual([{ type: 'UPDATE_DEVICE', payload: { activated: true } }]);
   });
 });
 
@@ -375,5 +359,21 @@ describe('PlaybackWsService connection lifecycle (#877)', () => {
     }
     expect(socket.closed).toBe(false);
     expect(socket.frames('HEARTBEAT')).toHaveLength(4);
+  });
+
+  it('after five failed opens it stops retrying on a timer, and tries again when the tab returns', () => {
+    for (let i = 0; i < 5; i++) {
+      service.connect();
+      FakeWebSocket.instances.at(-1)!.emitClose();
+      vi.advanceTimersByTime(60_000);
+    }
+    expect(service.persistentFailure()).not.toBeNull();
+    const before = FakeWebSocket.instances.length;
+    vi.advanceTimersByTime(120_000);
+    expect(FakeWebSocket.instances).toHaveLength(before);
+
+    window.dispatchEvent(new Event('online'));
+    expect(FakeWebSocket.instances).toHaveLength(before + 1);
+    expect(service.persistentFailure()).toBeNull();
   });
 });

@@ -7,6 +7,7 @@ interface DeviceRegistration {
   name: string;
   type: string;
   remoteEnabled: boolean;
+  activated: boolean;
 }
 
 type ConnectionInfo = {
@@ -93,6 +94,9 @@ export function createPlaybackHub(registry: ManagerSource = playbackRegistry) {
                 name: data.payload.name,
                 type: data.payload.deviceType || 'web',
                 remoteEnabled: data.payload.remoteEnabled === true,
+                // Absent means an older client, which only registered after
+                // the opt-in click that doubled as its gesture.
+                activated: data.payload.activated !== false,
               };
               connections.set(key, { deviceId: id, userId, registration, ws });
               manager.registerDevice(registration);
@@ -121,11 +125,20 @@ export function createPlaybackHub(registry: ManagerSource = playbackRegistry) {
 
             case 'STATE_UPDATE': {
               const incoming = data.payload.state;
-              // Broadcast immediately when the active device reports a new track so controllers
-              // see the metadata update without waiting for the next PROGRESS_REPORT.
-              // All other state updates (position, volume, etc.) remain quiet to avoid echo.
-              const currentTrackId = manager.getState().trackId;
-              if (incoming.track !== undefined && incoming.track?.id !== currentTrackId) {
+              const current = manager.getState();
+              // While a session exists only its output may describe it; a
+              // controller's local player is paused and would say so.
+              if (current.activeDeviceId !== null && current.activeDeviceId !== info?.deviceId) {
+                break;
+              }
+              // Broadcast when the output reports a new track or a play/pause
+              // transition, so controllers stay truthful without waiting for the
+              // next PROGRESS_REPORT. Position-only updates remain quiet to avoid echo.
+              const trackChanged =
+                incoming.track !== undefined && incoming.track?.id !== current.trackId;
+              const playingChanged =
+                typeof incoming.isPlaying === 'boolean' && incoming.isPlaying !== current.isPlaying;
+              if (trackChanged || playingChanged) {
                 manager.updateState(incoming);
               } else {
                 manager.updateStateQuiet(incoming);
@@ -173,14 +186,50 @@ export function createPlaybackHub(registry: ManagerSource = playbackRegistry) {
             }
 
             case 'SET_ACTIVE_DEVICE': {
-              manager.updateState({ activeDeviceId: data.payload.id });
+              const id = data.payload.id;
+              // A target that is unknown, opted out, gesture-less or pending
+              // release would take the session and ignore every command.
+              if (id !== null && !manager.canTarget(id)) break;
+              manager.updateState({ activeDeviceId: id });
+              break;
+            }
+
+            case 'CLAIM_OUTPUT': {
+              if (!info?.deviceId) break;
+              const p = data.payload ?? {};
+              const applied = manager.claimOutput(info.deviceId, {
+                track: p.track ?? null,
+                trackId: p.trackId ?? p.track?.id ?? null,
+                position: typeof p.position === 'number' ? p.position : 0,
+                isPlaying: p.isPlaying !== false,
+              });
+              // The loser of a race learns the truth privately; nobody else
+              // needs to hear about a claim that changed nothing.
+              if (!applied) {
+                ws.send(
+                  JSON.stringify({
+                    type: 'STATE_SYNC',
+                    payload: { state: manager.getState(), devices: manager.getDevices() },
+                  }),
+                );
+              }
+              break;
+            }
+
+            case 'RELEASE_OUTPUT': {
+              if (info?.deviceId) manager.releaseOutput(info.deviceId);
               break;
             }
 
             case 'UPDATE_DEVICE': {
               if (info?.deviceId) {
                 manager.updateDevice(info.deviceId, {
-                  remoteEnabled: data.payload.remoteEnabled,
+                  ...(data.payload.remoteEnabled !== undefined && {
+                    remoteEnabled: data.payload.remoteEnabled === true,
+                  }),
+                  ...(data.payload.activated !== undefined && {
+                    activated: data.payload.activated === true,
+                  }),
                   ...(data.payload.name !== undefined && { name: data.payload.name }),
                 });
               }

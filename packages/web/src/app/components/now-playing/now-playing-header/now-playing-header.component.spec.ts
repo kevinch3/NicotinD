@@ -2,6 +2,7 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { NowPlayingHeaderComponent } from './now-playing-header.component';
 import { PlayerService } from '../../../services/player.service';
+import { PlaybackWsService } from '../../../services/playback-ws.service';
 import { RemotePlaybackService } from '../../../services/remote-playback.service';
 
 describe('NowPlayingHeaderComponent', () => {
@@ -23,7 +24,20 @@ describe('NowPlayingHeaderComponent', () => {
             currentTrack: signal(null),
           },
         },
-        { provide: RemotePlaybackService, useValue: { remoteEnabled: () => false } },
+        {
+          provide: RemotePlaybackService,
+          useValue: {
+            devices: signal([]),
+            activeDeviceId: signal(null),
+            switcherOpen: signal(false),
+            setSwitcherOpen: vi.fn(),
+            switchToDevice: vi.fn(),
+          },
+        },
+        {
+          provide: PlaybackWsService,
+          useValue: { getDeviceId: () => 'me', getDeviceName: () => 'Me' },
+        },
       ],
     });
   });

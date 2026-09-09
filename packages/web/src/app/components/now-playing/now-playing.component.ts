@@ -5,6 +5,7 @@ import { AuthService } from '../../services/auth.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 import { NowPlayingHeaderComponent } from './now-playing-header/now-playing-header.component';
+import { PlayingElsewhereComponent } from '../playing-elsewhere/playing-elsewhere.component';
 import { NowPlayingCoverArtComponent } from './now-playing-cover-art/now-playing-cover-art.component';
 import { NowPlayingTransportComponent } from './now-playing-transport/now-playing-transport.component';
 import { NowPlayingPanelTabsComponent } from './now-playing-panel-tabs/now-playing-panel-tabs.component';
@@ -48,6 +49,7 @@ import { resolveLyricsScrollContainer } from '../../lib/lyrics-scroll-container'
     TvNavGroupDirective,
     TvNavItemDirective,
     NowPlayingTvQueueComponent,
+    PlayingElsewhereComponent,
   ],
   templateUrl: './now-playing.component.html',
 })
@@ -170,6 +172,10 @@ export class NowPlayingComponent {
   private interpolatedTime = signal(0);
 
   readonly isActiveDevice = this.remote.isActiveDevice;
+  /** See PlayerComponent.drivesLocalPlayer. */
+  readonly drivesLocalPlayer = computed(
+    () => this.isActiveDevice() || !this.remote.sessionControllable(),
+  );
 
   readonly displayTime = computed(() => {
     if (this.isActiveDevice()) return this.player.currentTime();
@@ -577,7 +583,7 @@ export class NowPlayingComponent {
   }
 
   handlePlayPause(): void {
-    if (this.isActiveDevice()) {
+    if (this.drivesLocalPlayer()) {
       if (this.player.isPlaying()) this.player.pause();
       else this.player.resume();
     } else {
@@ -586,12 +592,12 @@ export class NowPlayingComponent {
   }
 
   handleNext(): void {
-    if (this.isActiveDevice()) this.player.playNext();
+    if (this.drivesLocalPlayer()) this.player.playNext();
     else this.ws.sendCommand('NEXT');
   }
 
   handlePrev(): void {
-    if (this.isActiveDevice()) {
+    if (this.drivesLocalPlayer()) {
       this.player.playPrev();
     } else {
       this.ws.sendCommand('PREV');
@@ -601,7 +607,7 @@ export class NowPlayingComponent {
   // Seek commit from app-seek-bar (native range — reliable click/drag/touch/
   // keyboard across browsers; see SeekBarComponent). Fires once on release.
   onSeek(time: number): void {
-    if (this.isActiveDevice()) {
+    if (this.drivesLocalPlayer()) {
       this.player.seek(time);
     } else {
       this.ws.sendCommand('SEEK', { position: time });

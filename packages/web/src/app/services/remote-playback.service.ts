@@ -4,10 +4,14 @@
  * Owns the remote-playback session state as signals and wires the WebSocket
  * subscriptions + reactive effects in `initialize()`. Every protocol decision
  * — who is the audio output, what a frame does to the player, what a local
- * track change sends — lives in the pure `@nicotind/core` reducer; this
- * service is the adapter that feeds it signals and applies its effects to
- * `PlayerService`. The api-side multi-device simulation drives that same
- * reducer against the real server, which is what keeps it honest (#877).
+ * track change or play/pause sends — lives in the pure `@nicotind/core`
+ * reducer; this service is the adapter that feeds it signals and applies its
+ * effects to `PlayerService`. The api-side multi-device simulation drives that
+ * same reducer against the real server, which is what keeps it honest (#877).
+ *
+ * The socket is the account's presence channel: it is open whenever the user
+ * is logged in, regardless of the "available as an output" preference. That
+ * preference only decides whether *other* devices may drive this one.
  *
  * Call `initialize()` once at app bootstrap (e.g. in AppComponent constructor).
  */
@@ -15,7 +19,9 @@ import { Injectable, inject, signal, computed, effect, untracked, DestroyRef } f
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   castTo,
+  hasControllableSession,
   isAudioOutput,
+  onLocalPlayingChanged,
   onLocalTrackChanged,
   reduceServerMessage,
   type ClientMessage,
@@ -25,10 +31,13 @@ import {
   type RemoteDevice,
   type ServerMessage,
 } from '@nicotind/core';
-import { PlaybackWsService } from './playback-ws.service';
+import {
+  PlaybackWsService,
+  OUTPUT_AVAILABLE_KEY,
+  readOutputAvailable,
+} from './playback-ws.service';
 import { PlayerService, Track } from './player.service';
 import { AuthService } from './auth.service';
-import { isTvBuild, resolveTvDefaultedPreference } from '../lib/platform';
 
 export type { RemoteDevice } from '@nicotind/core';
 
@@ -43,17 +52,10 @@ export class RemotePlaybackService {
   // State signals
   // ---------------------------------------------------------------------------
 
-  /**
-   * Whether this client has opted in to receive remote play commands.
-   * Explicit user choice (the key exists in storage) always wins; only when
-   * the user has never toggled this do we default it on for a TV build, so a
-   * TV instance is immediately controllable from a phone with zero setup.
-   */
-  readonly remoteEnabled = signal(
-    resolveTvDefaultedPreference(localStorage.getItem('nicotind_remote_enabled'), isTvBuild()),
-  );
-  /** Set when remote playback was automatically disabled due to connection failure */
-  readonly disabledReason = signal<string | null>(null);
+  /** Whether the user's other devices may play music on this one: listed in
+   *  their pickers and executing their commands. On by default everywhere;
+   *  an explicit "false" in storage is the only way off. */
+  readonly outputAvailable = signal(readOutputAvailable(localStorage));
   /** The device that is currently the active audio output */
   readonly activeDeviceId = signal<string | null>(null);
   /** All known connected devices */
@@ -73,6 +75,31 @@ export class RemotePlaybackService {
   readonly isActiveDevice = computed(() =>
     isAudioOutput(this.activeDeviceId(), this.ws.getDeviceId()),
   );
+  /** A session exists and names another device: show the chrome. */
+  readonly playingElsewhere = computed(() => {
+    const active = this.activeDeviceId();
+    return active !== null && active !== this.ws.getDeviceId();
+  });
+  /** The device the session names, if it is in the list. */
+  readonly activeDevice = computed(() => {
+    const active = this.activeDeviceId();
+    return active === null ? null : (this.devices().find((d) => d.id === active) ?? null);
+  });
+  /** The session's device can be driven from here; otherwise the transport is
+   *  inert and a play or pick claims the output locally. */
+  readonly sessionControllable = computed(() =>
+    hasControllableSession({
+      activeDeviceId: this.activeDeviceId(),
+      devices: this.devices(),
+      remoteIsPlaying: false,
+      remotePosition: 0,
+      remotePositionTs: 0,
+      remoteDuration: 0,
+      lastRemoteTrackId: null,
+    }),
+  );
+  /** Why the presence channel is down, when it stayed down. */
+  readonly syncStatus = computed(() => this.ws.persistentFailure());
 
   // ---------------------------------------------------------------------------
   // Internal bookkeeping
@@ -80,19 +107,18 @@ export class RemotePlaybackService {
 
   private lastRemoteTrackId: string | null = null;
   private previousTrackId: string | null = null;
+  private previousPlaying = false;
+  /** A pick fires both the playing and the track effect; one claim is enough. */
+  private claimInFlight: string | null = null;
 
   // ---------------------------------------------------------------------------
   // Simple setters
   // ---------------------------------------------------------------------------
 
-  setRemoteEnabled(enabled: boolean): void {
-    if (enabled) {
-      this.disabledReason.set(null);
-      this.ws.clearPersistentFailure();
-    }
-    localStorage.setItem('nicotind_remote_enabled', String(enabled));
+  setOutputAvailable(enabled: boolean): void {
+    localStorage.setItem(OUTPUT_AVAILABLE_KEY, String(enabled));
     this.ws.updateDevice({ remoteEnabled: enabled });
-    this.remoteEnabled.set(enabled);
+    this.outputAvailable.set(enabled);
   }
 
   setDevices(devices: RemoteDevice[]): void {
@@ -144,7 +170,7 @@ export class RemotePlaybackService {
   private context(): RemoteClientContext {
     return {
       myId: this.ws.getDeviceId(),
-      remoteEnabled: this.remoteEnabled(),
+      remoteEnabled: this.outputAvailable(),
       localTrackId: this.player.currentTrack()?.id ?? null,
       now: Date.now(),
     };
@@ -201,6 +227,14 @@ export class RemotePlaybackService {
         case 'SET_ACTIVE_DEVICE':
           this.ws.setActiveDevice(m.payload.id);
           break;
+        case 'CLAIM_OUTPUT':
+          if (this.claimInFlight === m.payload.trackId) break;
+          this.claimInFlight = m.payload.trackId;
+          this.ws.sendClaim(m.payload);
+          break;
+        case 'RELEASE_OUTPUT':
+          this.ws.sendRelease();
+          break;
         case 'COMMAND':
           this.ws.sendCommand(m.payload.action, { track: m.payload.track });
           break;
@@ -212,6 +246,7 @@ export class RemotePlaybackService {
   }
 
   private handle(msg: ServerMessage): void {
+    if (msg.type === 'STATE_SYNC') this.claimInFlight = null;
     const r = reduceServerMessage(this.snapshot(), this.context(), msg);
     this.commit(r.state);
     this.apply(r.effects);
@@ -222,28 +257,15 @@ export class RemotePlaybackService {
   // ---------------------------------------------------------------------------
 
   initialize(): void {
-    // --- Auth token effect: connect WS when token exists, disconnect when null ---
+    // --- Presence channel: up whenever logged in, down on logout ---
     effect(() => {
-      const token = this.auth.token();
-      const enabled = this.remoteEnabled();
-      if (token && enabled) {
-        this.ws.connect();
-      } else {
-        this.ws.disconnect();
-      }
+      if (this.auth.token()) this.ws.connect();
+      else this.ws.disconnect();
     });
 
-    // --- Auto-disable when WS fails persistently ---
-    effect(() => {
-      const reason = this.ws.persistentFailure();
-      const enabled = this.remoteEnabled();
-      if (reason && enabled) {
-        untracked(() => {
-          this.setRemoteEnabled(false);
-          this.disabledReason.set(reason);
-        });
-      }
-    });
+    // A restored track is not a change: forwarding it would restart the
+    // output's audio from a tab that merely reloaded (#882).
+    this.previousTrackId = this.player.currentTrack()?.id ?? null;
 
     // --- Track change forwarding ---
     effect(() => {
@@ -256,11 +278,44 @@ export class RemotePlaybackService {
         return;
       }
       this.previousTrackId = trackId;
+      // Only a pick (which sets `isPlaying`) is a change worth telling the
+      // session about; metadata restored or mirrored while paused is not.
+      if (!untracked(() => this.player.isPlaying())) return;
 
       const { messages } = untracked(() =>
         onLocalTrackChanged(this.snapshot(), this.context(), currentTrack),
       );
       this.post(messages);
+    });
+
+    // --- Play/pause: the output reports it, a device with nothing to drive claims ---
+    effect(() => {
+      const playing = this.player.isPlaying();
+      if (playing === this.previousPlaying) return;
+      this.previousPlaying = playing;
+      const { messages } = untracked(() =>
+        onLocalPlayingChanged(
+          this.snapshot(),
+          this.context(),
+          playing,
+          this.player.currentTrack(),
+          this.player.currentTime(),
+        ),
+      );
+      this.post(messages);
+    });
+
+    // --- The first gesture makes this tab able to play on command ---
+    const activate = () => {
+      this.ws.markActivated();
+    };
+    for (const type of ['pointerdown', 'keydown'] as const) {
+      document.addEventListener(type, activate, { once: true, capture: true, passive: true });
+    }
+
+    // --- A closing tab frees the session at once; the grace is for blips ---
+    window.addEventListener('pagehide', () => {
+      if (this.activeDeviceId() === this.ws.getDeviceId()) this.ws.sendRelease();
     });
 
     for (const type of ['STATE_SYNC', 'DEVICES_SYNC', 'COMMAND'] as const) {
@@ -278,8 +333,9 @@ export class RemotePlaybackService {
     this.remotePosition.set(0);
     this.remotePositionTs.set(0);
     this.remoteDuration.set(0);
-    this.disabledReason.set(null);
     this.lastRemoteTrackId = null;
     this.previousTrackId = null;
+    this.previousPlaying = false;
+    this.claimInFlight = null;
   }
 }
