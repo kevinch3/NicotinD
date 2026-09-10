@@ -245,10 +245,11 @@ describe('addon job actions (acquisition addon protocol phase 2)', () => {
     capabilities: ['search', 'download'],
   } as import('@nicotind/core').AddonManifest;
 
-  function makeAddonApp(opts: { failCancel?: boolean } = {}) {
+  function makeAddonApp(opts: { failCancel?: boolean; failDelete?: boolean } = {}) {
     testDb.run('DELETE FROM acquisition_job_items');
     testDb.run('DELETE FROM acquisition_jobs');
     testDb.run('DELETE FROM plugins');
+    testDb.run('DELETE FROM audit_log');
     const calls = { cancelled: [] as string[], deleted: [] as string[] };
     const client = {
       baseUrl: 'http://addon:9999',
@@ -257,6 +258,7 @@ describe('addon job actions (acquisition addon protocol phase 2)', () => {
         calls.cancelled.push(id);
       },
       deleteJob: async (id: string) => {
+        if (opts.failDelete) throw new Error('addon unreachable');
         calls.deleted.push(id);
       },
     } as unknown as import('../services/addons/client.js').AddonClient;
@@ -335,6 +337,39 @@ describe('addon job actions (acquisition addon protocol phase 2)', () => {
     expect(calls.cancelled).toEqual(['aj-7']);
     expect(calls.deleted).toEqual(['aj-7']);
     expect(testDb.query(`SELECT id FROM acquisition_jobs`).all()).toHaveLength(0);
+  });
+
+  // #1086: a removed card must be attributable afterwards, and say whether the
+  // addon-side release actually happened (#1081 turned on exactly that).
+  const removeAudit = () =>
+    testDb
+      .query<
+        { action: string; user_id: string; target_kind: string; target_id: string; detail: string },
+        []
+      >(`SELECT action, user_id, target_kind, target_id, detail FROM audit_log`)
+      .all();
+
+  it('DELETE records a download.remove audit row naming the released addon job (#1086)', async () => {
+    const { app, jobId } = makeAddonApp();
+    await app.request(`/jobs/${jobId}`, { method: 'DELETE' });
+    expect(removeAudit()).toEqual([
+      {
+        action: 'download.remove',
+        user_id: 'u',
+        target_kind: 'acquisition_job',
+        target_id: jobId,
+        detail: 'released addon job fixture-addon:aj-7',
+      },
+    ]);
+  });
+
+  it('DELETE audits a failed best-effort addon delete as such (#1086)', async () => {
+    const { app, jobId } = makeAddonApp({ failDelete: true });
+    const res = await app.request(`/jobs/${jobId}`, { method: 'DELETE' });
+    expect(res.status).toBe(200);
+    const [row] = removeAudit();
+    expect(row?.action).toBe('download.remove');
+    expect(row?.detail).toMatch(/fixture-addon:aj-7 failed \(best-effort\): .*addon unreachable/);
   });
 
   /**
@@ -452,6 +487,7 @@ describe('addon job actions (acquisition addon protocol phase 2)', () => {
     expect(testDb.query(`SELECT id FROM acquisition_jobs WHERE id = ?`).all(legacy)).toHaveLength(
       0,
     );
+    expect(removeAudit().map((r) => [r.target_id, r.detail])).toEqual([[legacy, 'no addon job']]);
   });
 
   it('DELETE removes a url-mirror row (sourceRef is the URL)', async () => {

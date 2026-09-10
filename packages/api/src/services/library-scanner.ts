@@ -14,7 +14,7 @@ import {
 import { jobCanonicalTracklists } from './acquisition-job-store.js';
 import { isVariousArtists } from './compilation-tagger.js';
 import { inferFolderAlbum, inferMetadataFromPath, hasUsableValue } from './path-inference.js';
-import { getMusicMetadata } from './music-metadata-loader.js';
+import { getMusicMetadata, trackNoFromParse } from './music-metadata-loader.js';
 import { featureTagsFromNative } from './audio-tags.js';
 import { selectAlbumTracks } from './library-track-select.js';
 import {
@@ -627,14 +627,19 @@ export function buildLibrary(
     // genres it doesn't already carry are kept after it). Overrides are keyed
     // on the same strings the ids above are minted from, so nothing extra has
     // to be threaded through here.
-    const genres = applyGenreOverride(
-      genreOverrides,
-      {
-        songId: id,
-        albumKey: albumGroupKey(albumArtist, album),
-        artistKey: normalizeArtistForGrouping(albumArtist),
-      },
-      splitGenres(t.genre, gctx),
+    // The override's own genres go back through the alias table too (#1078):
+    // otherwise an override carrying an aliased value re-inserts it verbatim.
+    const genres = splitGenres(
+      applyGenreOverride(
+        genreOverrides,
+        {
+          songId: id,
+          albumKey: albumGroupKey(albumArtist, album),
+          artistKey: normalizeArtistForGrouping(albumArtist),
+        },
+        splitGenres(t.genre, gctx),
+      ),
+      gctx,
     );
     for (let i = 0; i < genres.length; i++) {
       songGenreLinks.push({ songId: id, genre: genres[i]!, position: i });
@@ -1170,7 +1175,7 @@ export class LibraryScanner {
       artist: nfc(common?.artist),
       albumArtist: nfc(common?.albumartist),
       album: nfc(common?.album),
-      track: common?.track?.no ?? undefined,
+      track: trackNoFromParse(meta),
       disc: common?.disk?.no ?? undefined,
       year: common?.year ?? undefined,
       // FULL frame array — buildLibrary's splitGenres derives the set/primary.
@@ -1293,6 +1298,9 @@ export class LibraryScanner {
       ON CONFLICT(song_id, artist_id, role) DO UPDATE SET
         position = excluded.position
     `);
+    const songArtistDeleteStmt = this.db.prepare(
+      `DELETE FROM library_song_artists WHERE song_id = ?`,
+    );
     const albumArtistStmt = this.db.prepare(`
       INSERT INTO library_album_artists (album_id, artist_id, role, position)
       VALUES (?, ?, ?, ?)
@@ -1421,6 +1429,10 @@ export class LibraryScanner {
       for (const g of built.genres) {
         genreStmt.run(g.name, g.songCount, g.albumCount, syncedAt);
       }
+      // Replace, not merge (#1073): buildLibrary derives every rescanned song's
+      // complete credit set, so an upsert-only write kept a retag's superseded
+      // artist beside its successor in browse until the next full scan.
+      for (const s of built.songs) songArtistDeleteStmt.run(s.id);
       for (const link of built.songArtists) {
         songArtistStmt.run(link.parentId, link.artistId, link.role, link.position);
       }

@@ -25,6 +25,10 @@ env:
   # unstable (every bump is a cold install for every job) and makes a green run
   # unreproducible. Bump deliberately.
   BUN_VERSION: '1.3.11'
+  # ffmpeg-static's install script skips its GitHub download when this names an
+  # existing file. Only desktop-package stages the binary, so it clears this; a
+  # stray use elsewhere fails loudly instead of fetching (#1087, quality-gates.md).
+  FFMPEG_BIN: /bin/false
 
 jobs:
   # Static gates + unit tests. Deliberately holds nothing browser-driven and nothing
@@ -418,6 +422,8 @@ jobs:
   # regression reaching a release.
   desktop-package:
     runs-on: ubuntu-latest
+    env:
+      FFMPEG_BIN: ''
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2

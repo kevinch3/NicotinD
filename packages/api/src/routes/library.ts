@@ -84,7 +84,7 @@ import {
   writeFolderCover,
 } from '../services/cover-sources.js';
 import { checkFragments } from '../services/library-fragments.js';
-import { libraryHealth } from '../services/library-health.js';
+import { libraryHealthWithLidarr } from '../services/library-health.js';
 import { applyAlbumCover } from '../services/album-cover-mutate.js';
 import {
   applyMissplitMerge,
@@ -1844,14 +1844,18 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // Library health report (issue #734) — the on-demand entry point of a
   // curation pass. Deliberately not part of the polled admin review snapshot:
   // the audit half issues per-row queries, fine once, poison in a poll loop.
-  app.get('/health', (c) => {
+  app.get('/health', async (c) => {
     requireCurator(c);
     const sample = Number(c.req.query('sample'));
     return c.json(
-      libraryHealth(getDatabase(), {
-        ...(Number.isFinite(sample) ? { sampleSize: sample } : {}),
-        ...(musicDir ? { musicDir: expandDir(musicDir) } : {}),
-      }),
+      await libraryHealthWithLidarr(
+        getDatabase(),
+        {
+          ...(Number.isFinite(sample) ? { sampleSize: sample } : {}),
+          ...(musicDir ? { musicDir: expandDir(musicDir) } : {}),
+        },
+        lidarr,
+      ),
     );
   });
 

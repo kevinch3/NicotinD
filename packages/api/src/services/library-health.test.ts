@@ -5,7 +5,8 @@ import { describe, it, expect, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import { artistIdFor } from './library-scanner.js';
-import { libraryHealth } from './library-health.js';
+import type { Lidarr } from '@nicotind/lidarr-client';
+import { libraryHealth, libraryHealthWithLidarr } from './library-health.js';
 
 let db: Database;
 
@@ -341,6 +342,71 @@ describe('libraryHealth — completeness (confirmed, from album_jobs)', () => {
       unmatched: 1,
       albumId: 'al-works',
     });
+  });
+
+  /** #1080: one on-disk song satisfying several canonical titles (remixes). */
+  it('never reports owned above the songs actually on disk', () => {
+    seedOwned('al-v', 'V', ['Maps', 'Animals']);
+    addJob({
+      album: 'V',
+      canonical: ['Maps', 'Animals', 'Maps (Slaptop remix)', 'Animals (Gryffin remix)', 'Sugar'],
+    });
+    const row = libraryHealth(db).dimensions.completeness.worklist.confirmed[0]!;
+    expect(row).toMatchObject({ expected: 5, missing: 1, owned: 2 });
+  });
+
+  /**
+   * #1080: the stored hunt-time tracklist can be longer than Lidarr's current
+   * monitored release, which is what `complete_album` fetches — prod: 4 of 6
+   * hunts from this list returned already-complete.
+   */
+  it("judges against Lidarr's live tracklist when one is supplied", () => {
+    seedOwned('al-tob', 'Tyranny of Beauty', ['Catwalk', 'Haze of Fame']);
+    addJob({
+      album: 'Tyranny of Beauty',
+      canonical: ['Catwalk', 'Haze of Fame', 'Quasar'],
+      lidarrAlbumId: 12182,
+    });
+    expect(libraryHealth(db).dimensions.completeness.metric.confirmedIncomplete).toBe(1);
+    const d = libraryHealth(db, {
+      liveTracklists: new Map([[12182, ['Catwalk', 'Haze of Fame']]]),
+    }).dimensions.completeness;
+    expect(d.metric.confirmedIncomplete).toBe(0);
+    expect(d.metric.liveTracklists).toBe(1);
+  });
+
+  it('libraryHealthWithLidarr fetches the live list, and keeps the stored one on failure', async () => {
+    seedOwned('al-tob', 'Tyranny of Beauty', ['Catwalk', 'Haze of Fame']);
+    addJob({
+      album: 'Tyranny of Beauty',
+      canonical: ['Catwalk', 'Haze of Fame', 'Quasar'],
+      lidarrAlbumId: 12182,
+    });
+    const calls: number[] = [];
+    const ok = {
+      track: {
+        listByAlbum: async (id: number) => {
+          calls.push(id);
+          return [{ title: 'Catwalk' }, { title: 'Haze of Fame' }];
+        },
+      },
+    } as unknown as Pick<Lidarr, 'track'>;
+    const live = (await libraryHealthWithLidarr(db, {}, ok)).dimensions.completeness;
+    expect(calls).toEqual([12182]);
+    expect(live.metric).toMatchObject({ confirmedIncomplete: 0, liveTracklists: 1 });
+
+    const down = {
+      track: {
+        listByAlbum: async () => {
+          throw new Error('lidarr down');
+        },
+      },
+    } as unknown as Pick<Lidarr, 'track'>;
+    const stale = (await libraryHealthWithLidarr(db, {}, down)).dimensions.completeness;
+    expect(stale.metric).toMatchObject({ confirmedIncomplete: 1, liveTracklists: 0 });
+
+    const none = (await libraryHealthWithLidarr(db, {}, null)).dimensions.completeness;
+    expect(none.metric.liveTracklists).toBeNull();
   });
 
   /** A genuine gap must still reach `confirmed` — the guard is not a blanket. */

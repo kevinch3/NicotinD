@@ -47,6 +47,31 @@ export interface MMResult {
   native?: Record<string, Array<{ id: string; value: unknown }>>;
 }
 
+/** Higher-priority tag frames carrying a track number, best first (music-metadata's TagPriority). */
+const TRACK_FRAMES: ReadonlyArray<[tagType: string, id: string]> = [
+  ['APEv2', 'track'],
+  ['ID3v2.4', 'TRCK'],
+  ['ID3v2.3', 'TRCK'],
+  ['ID3v2.2', 'TRK'],
+];
+
+/**
+ * The file's track number. music-metadata maps `track` without its tag-priority
+ * check, so an ID3v1 trailer (parsed last) overwrites ID3v2's TRCK — and every
+ * ID3 writer here updates only ID3v2. Prefer a higher-priority frame whenever an
+ * ID3v1 tag is present (issue #1077).
+ */
+export function trackNoFromParse(meta: Pick<MMResult, 'common' | 'native'> | undefined) {
+  const common = meta?.common?.track?.no ?? undefined;
+  if (!meta?.native?.ID3v1) return common;
+  for (const [tagType, id] of TRACK_FRAMES) {
+    const frame = meta.native[tagType]?.find((t) => t.id.toLowerCase() === id.toLowerCase());
+    const n = parseInt(String(frame?.value ?? ''), 10);
+    if (Number.isInteger(n) && n > 0) return n;
+  }
+  return common;
+}
+
 export type MusicMetadataApi = {
   parseFile: (
     path: string,

@@ -247,6 +247,14 @@ longer serve stays in it until the 24 h valve clears it — at tick frequency th
 would be thousands of re-fetch attempts against the addon for one dead file.
 `strandedSweepIntervalMs` overrides the interval (tests set 0).
 
+**A retry after a failed organize does not re-download.** `organizeBatch` failing
+is logged and swallowed, so the item keeps a null `relative_path` and stays
+eligible — for the next ingest and for this sweep. `fetchToIncoming` therefore
+reuses `<incoming>/<addon>/<job>/<filename>` when it already exists at exactly
+the item's declared `size`, so the retry is a pure organize retry instead of one
+full re-download per sweep until the 24 h valve (issue #1025). A copy of any
+other size (a crash mid-write) or an item with no declared size is fetched again.
+
 **It keys on outstanding items, never on the job row's `updated_at`.**
 `recomputeStage` rewrites `updated_at` on every call even when the stage is
 unchanged, so a stranded job reads as seconds-idle while its items are

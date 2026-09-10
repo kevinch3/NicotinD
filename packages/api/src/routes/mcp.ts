@@ -17,7 +17,7 @@ import {
   listOpenCurationFlags,
   resolveCurationFlag,
 } from '../services/curation-flags.js';
-import { libraryHealth } from '../services/library-health.js';
+import { libraryHealthWithLidarr } from '../services/library-health.js';
 import { missingAlbumArtSql } from '../services/artwork-store.js';
 import { ShareRescanScheduler } from '../services/share-rescan-scheduler.js';
 import { tokenize, matchesAllTokens, rankBy } from '../services/search-tokens.js';
@@ -208,14 +208,19 @@ export const MCP_TOOLS: McpTool[] = [
         sample: { type: 'number', description: 'Worklist size per dimension (1–50, default 10).' },
       },
     },
-    handler: ({ db, metadata }, args) =>
+    handler: async ({ db, metadata, acquisition }, args) =>
       JSON.stringify(
-        libraryHealth(db, {
-          sampleSize: clampLimit(args.sample, 10, 50),
-          // Lets the artwork dimension probe the folder tier, so `unrenderable`
-          // is a number rather than "not measured" (#952).
-          ...(metadata.musicDir ? { musicDir: metadata.musicDir } : {}),
-        }),
+        await libraryHealthWithLidarr(
+          db,
+          {
+            sampleSize: clampLimit(args.sample, 10, 50),
+            // Lets the artwork dimension probe the folder tier, so `unrenderable`
+            // is a number rather than "not measured" (#952).
+            ...(metadata.musicDir ? { musicDir: metadata.musicDir } : {}),
+          },
+          // The tracklist complete_album will fetch, not the stored one (#1080).
+          acquisition.lidarr,
+        ),
         null,
         2,
       ),

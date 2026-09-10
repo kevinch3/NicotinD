@@ -28,6 +28,8 @@ export function systemRoutes(
     statfs?: StatfsFn;
     /** Shared maintenance runner (issue #622); absent → the local flag is used. */
     maintenance?: MaintenanceService | null;
+    /** Injected for tests; defaults to node:fs existsSync. */
+    socketExists?: (path: string) => boolean;
   } = {},
 ) {
   const app = new Hono<AuthEnv>();
@@ -130,7 +132,7 @@ export function systemRoutes(
 
     const DOCKER_SOCK = '/var/run/docker.sock';
 
-    if (!existsSync(DOCKER_SOCK)) {
+    if (!(opts.socketExists ?? existsSync)(DOCKER_SOCK)) {
       return c.json({ error: 'Docker socket not available' }, 503);
     }
 

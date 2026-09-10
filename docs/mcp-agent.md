@@ -184,7 +184,9 @@ Reach for it when the defect is the string itself:
 | junk value | anything → `''` drops it | — |
 
 The call upserts the row and immediately re-splits the songs carrying that value, so the response's
-`songsUpdated` is the repair you can verify by reading back.
+`songsUpdated` is the repair you can verify by reading back. A casing-only repair works: the
+canonical's spelling becomes the value's display form, replacing the broken `library_genres` row
+rather than resolving back to it (#1074).
 
 **`get_rare_genres` counts the primary genre only.** `Nueva CancióN` sat at position 3 on all 44
 rows, so the largest instance of this class was invisible to the worklist a curator works from; it

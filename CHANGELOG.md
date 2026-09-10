@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.37](https://github.com/kevinch3/NicotinD/compare/v0.6.36...v0.6.37) (2026-09-10)
+
+### Bug Fixes
+
+* **deps:** bump Angular to 22.1.6 to clear two new advisories in the shipping closure ([#1104](https://github.com/kevinch3/NicotinD/issues/1104)) ([67f07e1](https://github.com/kevinch3/NicotinD/commit/67f07e101811140e6890c68638367e04357d9eb6)), closes [#1102](https://github.com/kevinch3/NicotinD/issues/1102)
+* **downloads:** a failed organize is retried without re-downloading the file ([#1093](https://github.com/kevinch3/NicotinD/issues/1093)) ([642558c](https://github.com/kevinch3/NicotinD/commit/642558cfa1572a42781fda765f760f5cbf94bdf0)), closes [#1025](https://github.com/kevinch3/NicotinD/issues/1025)
 ## [0.6.36](https://github.com/kevinch3/NicotinD/compare/v0.6.35...v0.6.36) (2026-09-10)
 
 ### Bug Fixes

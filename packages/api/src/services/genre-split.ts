@@ -83,12 +83,18 @@ export function splitGenres(raw: string | string[] | undefined, ctx: GenreContex
   // `/` splits only when EVERY side is a known genre (library vocabulary,
   // alias, or alias canonical) — protects "Deep House / Vinyl"-style junk and
   // one-genre names, while "Pop/Rock" or "Nu Disco / Disco" split cleanly.
-  const canonicalKeys = new Set(
-    [...ctx.aliases.values()].flatMap((v) => v.split(SEPARATORS)).map(genreKey),
+  // A curator-typed canonical spelling outranks the vocabulary's vote, else a
+  // casing-only alias resolves back to the broken row it names (#1074).
+  const canonicalDisplay = new Map(
+    [...ctx.aliases.values()]
+      .flatMap((v) => v.split(SEPARATORS))
+      .map(norm)
+      .filter(Boolean)
+      .map((c) => [genreKey(c), c] as const),
   );
   const isKnown = (s: string): boolean => {
     const k = genreKey(s);
-    return ctx.known.has(k) || ctx.aliases.has(k) || canonicalKeys.has(k);
+    return ctx.known.has(k) || ctx.aliases.has(k) || canonicalDisplay.has(k);
   };
   parts = parts.flatMap((p) => {
     if (!p.includes('/')) return [p];
@@ -103,7 +109,7 @@ export function splitGenres(raw: string | string[] | undefined, ctx: GenreContex
     const k = genreKey(p);
     if (!k || seen.has(k)) continue;
     seen.add(k);
-    out.push(ctx.known.get(k) ?? p);
+    out.push(canonicalDisplay.get(k) ?? ctx.known.get(k) ?? p);
   }
   return out;
 }

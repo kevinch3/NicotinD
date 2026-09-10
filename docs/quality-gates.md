@@ -770,6 +770,24 @@ fix, and a workflow that stops passing the value lets the Dockerfile's own defau
 without breaking the build. It also rejects a constant value, which would satisfy both halves
 and restore the bug on the second build.
 
+## An install must not depend on a third-party download (#1087)
+
+`ffmpeg-static` (a devDependency of `@nicotind/desktop`, trusted by Bun's default list) runs an
+install script that downloads its binary from a GitHub release. Every CI job's `bun install` ran
+it, so a transient failure of that download failed `web-test` on the v0.6.33 release commit, with
+nothing wrong in the code.
+
+Only `desktop-package` (`prepare-resources` → `stageFfmpeg`) uses the binary. `ci.yml` sets
+`FFMPEG_BIN: /bin/false` workflow-wide: the package's `index.js` returns that path, and its
+installer exits early ("installed already") when the path is an existing file. `desktop-package`
+sets `FFMPEG_BIN: ''` to get the real download. `/bin/false` rather than `/bin/true` so any stray
+use fails loudly. `--ignore-scripts` would be too broad: electron, esbuild and sharp need their
+install scripts. `deploy.yml` is untouched, because its desktop jobs need the binary.
+
+`scripts/ci-ffmpeg-static.test.ts` checks the pairing: the sentinel is set, every job that stages
+ffmpeg clears it, no other job does, and the installed script really skips the network when
+`FFMPEG_BIN` is set.
+
 ## A release is only cut when something releasable landed (#755)
 
 `commit-and-tag-version` patch-bumps **even when nothing since the last tag bumps anything**,

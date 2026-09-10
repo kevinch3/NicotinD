@@ -36,6 +36,8 @@ export interface AuditFinding {
   /** The offending id/name/path so the report (and repair) can act on it. */
   subject: string;
   message: string;
+  /** Disk rules: the subject file's size, so a report can total what is at stake. */
+  bytes?: number;
 }
 
 export interface AuditReport {
