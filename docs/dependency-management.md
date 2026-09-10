@@ -27,6 +27,11 @@ version required by an advisory, left as a caret so Renovate can still move them
 | `js-yaml` `^4.3.1` | Quadratic CPU in merge-key chains and `!!omap` resolution (2 high). `electron-updater` asks for `^4.1.0`, so it accepts the fix with no parent bump. | `@nicotind/desktop > electron-updater` |
 | `yaml` `^2.9.0` | Stack overflow on deeply nested collections. Bumping `@hono/zod-openapi` was not enough: it asks for `openapi3-ts ^4.5.0` and bun kept the hoisted `4.5.0`, whose yaml range is `^2.8.0`. | `@nicotind/api > @hono/zod-openapi > openapi3-ts` |
 
+Direct dependencies take the floor in their own range instead: `@nicotind/web` declares every
+`@angular/*` package at `^22.1.6` (GHSA-p297-fm68-3q8c needs `@angular/common` ≥ 22.1.1,
+GHSA-hh8m-fm6v-7cvg needs `core`/`compiler` ≥ 22.1.0; the rest move in lockstep, since the
+framework packages are released and peered as one version).
+
 (`@types/node` in the same block is an exact pin for a different reason — toolchain
 consistency, not security.)
 
