@@ -25,6 +25,7 @@ import { readAudioTags, writeAudioTags } from './audio-tags.js';
 import { buildIdentifyApplyTags } from './identify.js';
 import { expandDir, resolveSongPath, isUnderMusicDir } from './song-path.js';
 import { libraryEvents } from './library-events.js';
+import { normalizeArtistForGrouping } from './album-grouping.js';
 
 export interface SongMetadataMutateDeps {
   musicDir?: string;
@@ -172,8 +173,15 @@ export async function mutateSongMetadata(
 
   const diverged: Partial<SongMetadataSnapshot> = {};
   if (tags.title !== undefined && after.title !== tags.title) diverged.title = after.title;
-  if (tags.artist !== undefined && after.artist !== tags.artist) diverged.artist = after.artist;
-  if (tags.albumArtist !== undefined && after.albumArtist !== tags.albumArtist) {
+  // The scanner stores an artist through its alias map (#1071), so compare
+  // against the spelling it would store, not the raw request.
+  if (tags.artist !== undefined && after.artist !== canonicalArtist(db, tags.artist)) {
+    diverged.artist = after.artist;
+  }
+  if (
+    tags.albumArtist !== undefined &&
+    after.albumArtist !== canonicalArtist(db, tags.albumArtist)
+  ) {
     diverged.albumArtist = after.albumArtist;
   }
   if (tags.album !== undefined && after.album !== tags.album) diverged.album = after.album;
@@ -258,6 +266,20 @@ async function readOnDiskConfirmation(
     out[field] = value;
   }
   return out as Partial<SongMetadataSnapshot>;
+}
+
+/** The scanner's `aliasFix` for one name: the alias row's spelling, else the name. */
+function canonicalArtist(db: Database, name: string): string {
+  try {
+    const row = db
+      .query<{ canonical_name: string }, [string]>(
+        'SELECT canonical_name FROM library_artist_aliases WHERE alias_norm = ?',
+      )
+      .get(normalizeArtistForGrouping(name));
+    return row?.canonical_name ?? name;
+  } catch {
+    return name;
+  }
 }
 
 function readSnapshot(db: Database, songId: string): SongMetadataSnapshot | null {
