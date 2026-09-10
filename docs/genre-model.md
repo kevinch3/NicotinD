@@ -112,6 +112,10 @@ file tags → splitGenres → library_genre_aliases → applyGenreOverride → s
   most specific scope first — **song → album → artist**. It is the only genre write that can
   *replace* a primary rather than append. Scopes are `GenreOverrideScope`, the append-vs-replace
   choice is `GenreOverrideMode`, and `GenreOverrideStatus` is the review queue.
+- **The override's output goes back through `splitGenres`** (#1078). An override stores genres
+  verbatim, so without that second pass an override carrying a value a *later* alias folds
+  re-inserted the raw value on every scan while the alias row still existed — `set_genre_alias`
+  looked applied, then reverted per song (only the songs an override covered), `Hip-Hop` → 80 rows.
 - The result is written to `library_song_genres` (position order preserved) and its `[0]` mirrored
   into `library_songs.genre`.
 
