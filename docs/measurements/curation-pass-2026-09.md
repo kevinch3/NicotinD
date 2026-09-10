@@ -3127,3 +3127,68 @@ that other tracks in that album are worth checking for the same mislabelling.
 matching `recordingId`, then delete the minority-format file.** One pair in six failed that gate in
 the only batch run so far — a ~17% catch rate on n=6, too small to quote as a rate, large enough to
 justify never skipping the step.
+
+## 2026-09-10, stretch 8 — dedupe continued; the gate keeps earning its cost
+
+Two more batches through the fixed pipeline (fingerprint both sides -> require matching
+`recordingId` -> delete the minority-format file).
+
+### Running totals
+
+| | |
+| --- | --- |
+| pairs fingerprint-verified | **18** |
+| confirmed duplicates, deleted | **15** |
+| **rejected by the gate** | **3 (17%)** |
+| songs | 21,382 -> **21,367** |
+
+Every keeper re-checked present after each batch, including both sides of every rejected pair.
+
+### What the gate caught, and why each would have been a real loss
+
+1. **ABBA — "Mamma Mia"** (stretch 7): the drop candidate was **Cyndi Lauper — "Girls Just Want to
+   Have Fun"**. Recovered by retag.
+2. **Britney Spears — "Sometimes"**: different `recordingId` (`04e85e16` vs `97e4d0f1`), and the
+   second scored **0.79** against 0.98 for the first. Two different recordings. Both kept.
+3. **Divididos — "Hombre en U"**: different `recordingId` (`e49aceb4` vs `1b2a26ea`). Two different
+   recordings of the same song — Divididos have studio and live versions in circulation. Both kept.
+
+Duration spread ≤2s and identical artist+title on all three. **Nothing short of a fingerprint
+separates these from the 15 that were genuinely redundant.**
+
+### The `acoustId` rule earned its place twice
+
+Two confirmed duplicates had **different `acoustId`s but the same `recordingId`**:
+
+```
+Backstreet Boys — Straight Through My Heart   2d36c9e8 / a76d19c9  ->  3831b32d  (same)
+Britney Spears — (You Drive Me) Crazy         10335791 / 1a6cebf5  ->  05d34d46  (same)
+```
+
+Judging on `acoustId` alone would have wrongly *spared* both — AcoustID holds two unmerged clusters
+for one recording. Combined with the Britney/Divididos rejections, the documented rule is confirmed
+in both directions on live data: **matching `acoustId` proves same recording; a differing one proves
+nothing either way, and only `recordingId` decides.**
+
+### Correcting the rationale I gave for the chosen rule
+
+When presenting the majority-format option I argued it would also clear the 241 `mixedFormatAlbums`,
+since the stray-format file is usually both the duplicate and the cohesion defect. After 15
+deletions:
+
+| | before | after |
+| --- | --- | --- |
+| mixed-format albums | 241 | **242** |
+
+**It has not helped, and the count went up by one.** Two reasons it was optimistic: deleting one
+minority-format file rarely removes the *last* minority file from its album, and the metric also
+moves with unrelated re-bucketing churn (an album re-attribution earlier in this pass). The rule is
+still a sound way to choose *which* copy to drop — it is just not a two-for-one. Worth re-measuring
+at the end of the dedupe pass rather than claiming the benefit now.
+
+### Remaining
+
+~28 decidable groups. The larger populations behind them stay out of scope for this rule: **495**
+two-file groups are same-format (the rule cannot choose) and **227** are ambiguous (both copies
+majority or both minority). Those need a different discriminator — bitrate within codec, or a
+per-album keep policy — and a separate owner decision.
