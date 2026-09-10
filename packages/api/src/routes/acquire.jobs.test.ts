@@ -285,6 +285,20 @@ describe('acquire route — addon seam', () => {
     const res = await app.request(`/jobs/${jobId}`, { method: 'DELETE' });
     expect(res.status).toBe(200);
     expect(db.query<{ c: number }, []>(`SELECT COUNT(*) c FROM acquisition_jobs`).get()!.c).toBe(0);
+    // #1086: the removal is attributable afterwards.
+    const audit = db
+      .query<{ action: string; user_id: string; target_id: string; detail: string }, []>(
+        `SELECT action, user_id, target_id, detail FROM audit_log`,
+      )
+      .all();
+    expect(audit).toEqual([
+      {
+        action: 'download.remove',
+        user_id: 'u',
+        target_id: jobId,
+        detail: 'released addon job bundled-stub:addon-job-1',
+      },
+    ]);
   });
 
   it('POST /jobs/:id/retry re-submits the stored url for an addon-run job', async () => {

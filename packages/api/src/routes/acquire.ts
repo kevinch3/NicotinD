@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
 import type { Database } from 'bun:sqlite';
 import type { AuthEnv } from '../middleware/auth.js';
-import { requireAcquirer } from '../middleware/current-user.js';
+import { getCurrentUser, requireAcquirer } from '../middleware/current-user.js';
+import { recordAudit } from '../services/audit-log.js';
 import {
   AcquireWatcher,
   NoAcquisitionPluginError,
@@ -226,12 +227,24 @@ export function acquireRoutes(
     if (addonJob) {
       const ref = addonRefForUrlJob(db, id);
       const addon = ref ? registry.get(ref.addonId) : null;
+      let released = ref
+        ? `addon ${ref.addonId} unavailable, addon job ${ref.addonJobId} not released`
+        : 'no addon job';
       if (ref && addon instanceof RemoteAddonPlugin) {
         await addon.client.cancelJob(ref.addonJobId).catch(() => {});
-        await addon.client.deleteJob(ref.addonJobId).catch(() => {});
+        released = await addon.client.deleteJob(ref.addonJobId).then(
+          () => `released addon job ${ref.addonId}:${ref.addonJobId}`,
+          (err: unknown) =>
+            `addon delete of ${ref.addonId}:${ref.addonJobId} failed (best-effort): ${String(err)}`,
+        );
       }
       db.run(`DELETE FROM acquisition_job_items WHERE job_id = ?`, [id]);
       db.run(`DELETE FROM acquisition_jobs WHERE id = ?`, [id]);
+      recordAudit(db, getCurrentUser(c), 'download.remove', {
+        targetKind: 'acquisition_job',
+        targetId: id,
+        detail: released,
+      });
       return c.json({ ok: true });
     }
     return c.json({ error: 'Job not found' }, 404);
