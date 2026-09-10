@@ -1303,6 +1303,29 @@ describe('complete_album (issue #735)', () => {
     expect(audits()).toHaveLength(0);
   });
 
+  it("get_library_health reconciles the confirmed worklist against Lidarr's live tracklist (#1080)", async () => {
+    seedOwned(['Mustapha']); // stored canonical has 2 tracks
+    addJob(42);
+    const metric = async (tracks: string[]) =>
+      (
+        JSON.parse(
+          (
+            await dispatchTool(
+              acquireCtx({ lidarr: makeLidarr({ tracks }) }),
+              'get_library_health',
+              {},
+            )
+          ).content[0]!.text,
+        ) as { dimensions: { completeness: { metric: Record<string, unknown> } } }
+      ).dimensions.completeness.metric;
+    // Lidarr's current release has only the track we hold: the hunt would say
+    // already-complete, so the worklist must not recommend it.
+    expect(await metric(['Mustapha'])).toMatchObject({ confirmedIncomplete: 0, liveTracklists: 1 });
+    expect(await metric(['Mustapha', 'Fat Bottomed Girls'])).toMatchObject({
+      confirmedIncomplete: 1,
+    });
+  });
+
   it('errors cleanly when Lidarr is not configured', async () => {
     seedOwned(['Mustapha']);
     const res = await dispatchTool(acquireCtx({ lidarr: null }), 'complete_album', {
