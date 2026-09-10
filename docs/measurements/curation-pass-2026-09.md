@@ -3424,3 +3424,72 @@ IPAUTA fix read back clean (56 edges -> 0). The aliases read back clean. Both we
 Read-back proves a write landed; it cannot prove the write is durable. The only thing that caught
 this was re-measuring a day later, and the only reason I re-measured was that an unrelated metric
 (`brand_artist`) moved back up.
+
+## 2026-09-10, stretch 12 — the durable fix for IPAUTA, and 481 orphans that are not missing music
+
+### `brand_artist` cleared for real this time
+
+Stretch 5 re-attributed the IPAUTA album and watched all 56 credit edges go to 0; stretch 11 found it
+fully reverted. The cause was established there: `fix_album_metadata` writes a DB override, the files
+still said `album_artist: IPAUTA`, and a rescan re-derived from the tags.
+
+This time the fix went through **the file**: `fix_song_metadata({albumArtist})` on all 10 songs.
+Verified with ffprobe rather than the tool's own report (#865 warns that report can be a lie on
+compilation files):
+
+```
+ffprobe …/Twitter @OdECk/IPAUTA/07 - ….mp3
+  "album_artist": "Jamsha El PutiPuerko"      <- the file itself
+songs with album_artist='IPAUTA' : 0
+IPAUTA join edges                : 0
+IPAUTA artist row                : 0   (gone)
+```
+
+Confirms the stretch-11 predictor exactly: **write the file and it survives; write only the DB and it
+does not.** The album is still *titled* `IPAUTA` because the `album` tag says so — honest to the
+file, and traceable.
+
+### `orphan_file`: 481 files, 2.73 GB, and none of it missing — filed #1079
+
+The rule says "on disk but not in the library DB", which is literally true. The natural reading —
+481 recordings invisible to the user — is wrong.
+
+115 directories, **96 partially indexed**, so the scanner reaches the folders and skips individual
+files. The skipped files duplicate indexed siblings:
+
+```
+orphan  LCD Soundsystem/Singles/03 - Tribulations.opus
+indexed LCD Soundsystem/Singles/03 - Tribulations (2).opus
+orphan  Funkadelic/Singles/03 - Music for My Mother.opus
+indexed Funkadelic/Singles/03 - Music For My Mother.mp3
+```
+
+**Three predicates, three over-counts, each corrected by the next.** Worth recording as a sequence
+because the error was the same each time — a path-shaped test for a content-shaped question:
+
+| predicate | "possibly real" | what it missed |
+| --- | --- | --- |
+| same-folder filename twin, key includes track number | 383 | `10 - Losing My Edge` vs indexed `01 - Losing My Edge` |
+| title-only key, same folder or same artist folder | 199 | variant artist folders — `The Red Hot Chili Peppers`, `Los Áutenticos Decadentes` (typo), `Charly García-Pedro Aznar` |
+| path prefix — "`Red Hot Chili Peppers/Freaky Styley/%` has 0 indexed, so the album is invisible" | 15 | the album **is** indexed, at a different path |
+
+The settling test was to stop asking about paths: take a random sample of the surviving "no twin
+anywhere" set and look each up **by title**. **8 of 8 were already in the library.** Ráfaga, Maluma,
+Los Auténticos Decadentes, Serú Girán, Charly García & Pedro Aznar, David Bowie, Rosalía (already
+holding three copies), Joe Vasconcellos.
+
+**A path-based test cannot answer "is this music in the library."** The folder tree carries
+artist-name variants, so one recording legitimately lives under several paths. Only a content lookup
+answers it.
+
+This is the same over-count shape #968 recorded ("545 invisible files were 3 populations, only 121
+real") — and this time the real bucket looks empty.
+
+2.73 GB of redundant audio is still worth reclaiming, but it is a disk-space job for the dedupe lane,
+not an indexing gap. Nothing deleted; that is the owner's call and the dedupe rule is still pending.
+
+### Durability re-check
+
+All 6 re-applied genre aliases still held at the start of this stretch (`Hip-Hop`, `Nu-Disco`,
+`Rock & Roll`, `Jazz-Rock`, `Post Bop`, `Post Rock`, `& Country` — all 0 raw rows). No scan has run
+since, so this is not yet evidence of durability, only of not-yet-reverted. #1078 stands.
