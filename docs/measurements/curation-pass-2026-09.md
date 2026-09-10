@@ -3053,3 +3053,77 @@ filename-fixable albums are queued behind #1077, not behind judgement.
 `clip_not_song` (136) was scoped and left alone: it is genuinely junk — Tash Sultana social clips,
 `Me at the zoo` by `jawed` (19s, the first YouTube video) — but clearing it means deletion, which is
 the owner's call and blocked by the live ingest regardless.
+
+## 2026-09-10, stretch 7 — dedupe begins, and the first pair was not a duplicate
+
+Ingest **over**: 488 minutes with zero arrivals and a stable count of 21,382. Destructive work
+unblocked for the first time this pass. Owner authorised deletion with the rule *prefer the album's
+majority format*.
+
+### Two lanes closed as data-absent before getting there
+
+- **`missing_year` (179 albums) is not a curation backlog.** Every one has **no song carrying a
+  year** — the album year is derived from song years, so there is no internal evidence at all. And
+  the files do not hold a hidden `date` the scanner missed: ffprobe over a 9-album sample found no
+  date/TYER/TDRC tag on any of them. The population is mostly DJ-pool packs and electronic singles
+  (`Warg (Original Mix)`, `Undulate (Original Mix)`) — exactly the generic-artist/generic-title shape
+  the skill says returns noise. Nothing to spend a search on.
+- **`untracked_album` (129)** is blocked behind #1077 along with `track_collision`.
+
+### The majority-format rule decides far less than the headline suggests
+
+| | groups |
+| --- | --- |
+| two-file groups, duration spread ≤2s | 768 |
+| both files same format — rule cannot apply | 495 |
+| both minority or both majority — ambiguous | 227 |
+| **decidable** | **46** |
+
+So of a "1,264 redundant files" headline, the authorised rule cleanly decides 46 groups. Worth
+stating plainly rather than reporting the big number.
+
+### The first pair was not a duplicate, and verification is the only reason it survived
+
+Sample fingerprinting of 4 groups earlier in the stretch came back 4/4 true duplicates (matching
+`acoustId` **and** `recordingId`, 8/8 matches, scores 0.97–0.9998). That is a tempting basis for a
+bulk delete. Then the very first candidate pair broke it:
+
+```
+ABBA :: "Mamma Mia"   keep 9a5fcfb7 mp3   -> acoustId 4b0501b1…  (match, NO metadata)
+                      drop cc29f03a opus  -> acoustId b1daf712…
+                                             Cyndi Lauper — "Girls Just Want to Have Fun"
+                                             recordingId 0e5f1add…  score 0.98
+```
+
+**Different `acoustId`, different recording, and the file the rule would have deleted is not ABBA at
+all.** Had I trusted the sample and deleted by rule, a Cyndi Lauper track that exists nowhere else
+under its own identity would be gone. `n=4` agreeing is not licence to skip `n=5`.
+
+It also re-proves the rule already in this document: *same `acoustId` proves same recording; a
+different one proves nothing on its own* — here the difference was the signal, and `recordingId`
+settled it.
+
+### Applied
+
+Pairs 2–6 confirmed on both sides (same `acoustId` **and** `recordingId`): Attaque 77 —
+*Hacelo por mí*; Backstreet Boys — *As Long as You Love Me*, *Bigger*, *Bye Bye Love*,
+*Everybody (Backstreet's Back)*. **5 files deleted**, songs 21,382 -> 21,377, and every keeper
+verified still present.
+
+The misidentified file was **recovered, not deleted** — retagged to `Cyndi Lauper` /
+`Girls Just Want to Have Fun`.
+
+### Filed flag #23 — an album that is a bucket
+
+The recovered track sits inside ABBA's *Voyage*, which also holds a `Mamma Mia` — a song from ABBA's
+1975 self-titled album, not *Voyage*, and whose own fingerprint matched with **no metadata returned**,
+so its identity is unconfirmed. Re-homing a track changes which album the user sees it in, and the
+correct destination for the unidentified file is unknown, so nothing was moved. Flagged with a note
+that other tracks in that album are worth checking for the same mislabelling.
+
+### The pipeline for the rest
+
+40 decidable groups remain. The order is fixed and not optional: **fingerprint both sides, require
+matching `recordingId`, then delete the minority-format file.** One pair in six failed that gate in
+the only batch run so far — a ~17% catch rate on n=6, too small to quote as a rate, large enough to
+justify never skipping the step.
