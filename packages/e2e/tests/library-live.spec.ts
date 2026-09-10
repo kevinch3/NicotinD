@@ -5,13 +5,14 @@ import { fileURLToPath } from 'node:url';
 import { ADMIN, bearer, scanAndWait, waitForLibrary } from '../helpers';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-/** A throwaway one-track album planted from the committed addon fixture. The
- *  scanner collapses same-title copies inside an album, so a second copy of a
- *  fixture track would never become a row; a separate album is the honest plant. */
+/** A throwaway one-track album this spec alone owns. Album identity comes from
+ *  the TAGS, not the folder: `live-probe.flac` is tagged "Live Probe Artist /
+ *  Live Probe Album / Live Probe Song", so no other spec can add a track to it
+ *  (the old plant copied `addon-song.flac` into the shared "Addon Album", #1064). */
 const PLANT_DIR = join(HERE, '../fixtures/music/Live Probe Artist');
-const PLANTED = join(PLANT_DIR, 'Live Probe Album', '01 - Addon Song.flac');
-const SOURCE = join(HERE, '../fixtures/addon/addon-song.flac');
-const PLANT_ALBUM = 'Addon Album';
+const PLANTED = join(PLANT_DIR, 'Live Probe Album', '01 - Live Probe Song.flac');
+const SOURCE = join(HERE, '../fixtures/plant/live-probe.flac');
+const PLANT_ALBUM = 'Live Probe Album';
 
 /**
  * Live library changes reach an open page over `/api/library/events`

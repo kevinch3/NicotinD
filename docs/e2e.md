@@ -124,6 +124,15 @@ same PR that hit it.
   never on a global scalar, and never take `list()[0]` of a shared feed — index 0 is
   whoever landed last.
 
+- **A folder name is not an album identity; the tags are.** The scanner mints the album
+  id from the file's tags, so copying `fixtures/addon/addon-song.flac` into a fresh
+  `Live Probe Artist/Live Probe Album/` folder still lands in the shared "Addon Album"
+  that `url-acquire`, `addon-acquire` and `import-upload` also fill (issue #1064: the
+  planted album showed a foreign track, or survived the delete of "its only" song). A spec
+  that needs an album it alone owns plants a fixture *tagged* uniquely —
+  `library-live.spec.ts` copies `fixtures/plant/live-probe.flac` (committed, since CI
+  has no ffmpeg to retag at runtime).
+
 - **A barrier on a shared endpoint must say *whose* response it is waiting for.**
   `waitForResponse` resolves on the first URL match, so when a page-level loader and
   a modal fetch the same route, the naive barrier armed just before the click is
