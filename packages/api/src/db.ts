@@ -1873,18 +1873,19 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   //   v2 — multi-genre: pre-v2 rows kept only the FIRST genre frame.
   //   v3 — `has_embedded_art` (#952): pre-v3 rows were parsed with
   //        `skipCovers: true`, so they carry no answer about attached art.
+  //   v4 — track (#1077): pre-v4 rows let an ID3v1 track override ID3v2 TRCK.
   //
   // Version-marker-gated: a stale marker ⇒ flush once (next scan re-parses all
   // files), then never again.
   const scanCacheVersion = db
     .query<{ value: string }, [string]>(`SELECT value FROM library_sync_state WHERE key = ?`)
     .get('scan_cache_version');
-  if (scanCacheVersion?.value !== '3') {
+  if (scanCacheVersion?.value !== '4') {
     const now = Date.now();
     db.transaction(() => {
       db.run(`DELETE FROM scan_cache`);
       db.run(
-        `INSERT OR REPLACE INTO library_sync_state (key, value, updated_at) VALUES (?, '3', ?)`,
+        `INSERT OR REPLACE INTO library_sync_state (key, value, updated_at) VALUES (?, '4', ?)`,
         ['scan_cache_version', now],
       );
     })();
