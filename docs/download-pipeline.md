@@ -1191,6 +1191,28 @@ Two supporting rules came out of the same incident:
   missing tracks we were in fact holding — the phantom "2 unavailable" above. An allowlist also forces
   a new item state to be considered deliberately rather than swept by default.
 
+### A removed card is not a poll failure, and one job is not the poll (#1081)
+
+`ensureCoreJob` trusted the `jobmap:` entry. Remove deletes the card's rows and leaves the map
+(deliberately — it is what stops the poller minting a twin), and its addon-side delete is
+best-effort. When that delete does not land the addon keeps listing the job, and mirroring its
+items into a row that no longer exists is a throw: the DB runs `PRAGMA foreign_keys=ON`. One
+`catch` wrapped the whole poll and logged at `debug`, so the throw aborted every job after it,
+the cursor never moved, and 11 finished albums sat at "Downloading 0 of N" for 16 h on kpc with
+their files already waiting in the addon's `.downloads/`.
+
+Three rules came out of it:
+
+- **A mapped id whose row is gone means the person removed the card.** The poller neither re-mints
+  it nor inserts into it — it releases the addon job (`releaseRemovedJob`: cancel if still active,
+  delete, stamp `released:`) and skips it. The map stays, so a release that fails cannot mint a
+  twin next tick.
+- **Each job is mirrored in its own `try`** (`mirrorAddonJob`), logged at `warn` with the addon
+  job id when it fails. The cursor still advances past a failed job: re-running it every 5 s is the
+  same wedge in another form, and the addon's next update brings it back anyway.
+- **The test DB enforces foreign keys** the way prod does. A test DB that does not never sees this
+  throw, which is how the class stayed invisible to 54 passing poller tests.
+
 ### A promoted job drops a stale reason
 
 `failOrphanedJob` writes `failed/error` plus its generic reason, then a later
