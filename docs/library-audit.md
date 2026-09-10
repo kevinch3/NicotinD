@@ -198,9 +198,16 @@ What the fix restores is asymmetric, and worth stating plainly: of the 1,247 alb
 
 ### Disk (from `library-disk-audit.ts`)
 - `missing_file` (high) — a `library_songs.path` with no file on disk (stale row).
-- `orphan_file` (medium) — an audio file on disk with no DB row. **Expected in part**:
-  the scanner keeps one best file per track, so deluxe/alt-format extras on disk are
-  legitimately not DB rows — review before deleting.
+- `orphan_file` (medium) — an audio file on disk with no DB row **and** no indexed file in
+  its folder with the same filename title (case/accent-folded, `(2)` collision suffix
+  ignored). This is an indexing gap — rescan, never delete.
+- `redundant_copy` (low) — an unindexed file whose folder already serves the same title from
+  an indexed, present file (the scanner keeps one best file per track, so format/collision
+  extras are legitimately not rows). A reclaim candidate, not missing music (#1079). Only a
+  same-folder twin counts: artist folders vary (`Rafaga`/`Ráfaga`, `The …`), so a cross-folder
+  title match stays `orphan_file`. Still verify before deleting — and take paths from the
+  finding's own `subject`, never from a derived list.
+- Both carry `bytes` in `--json`, and the text report totals each rule in GB.
 - `empty_dir` (low) — a directory with no entries (leftover folder, safe to `rmdir`).
 
 ## Usage
