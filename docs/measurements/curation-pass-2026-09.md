@@ -3659,3 +3659,87 @@ disproven by duration alone) · 110 `track_collision` albums under one theory th
 The pattern: a **path-shaped or name-shaped test for a content-shaped question**. The fix each time
 was to ask the question directly — look the recording up by title, fingerprint it, re-issue the write
 and read the count.
+
+---
+
+## 2026-09-10, stretch 15 — acting on four owner decisions
+
+Owner answered the four pending questions. Work applied.
+
+### 1. `clip_not_song` — deleted, 136 → 0
+
+All 136 were ≤44s (max 44s), so none was a full recording. **Deleted 136**; the rule is now absent
+from the audit entirely and 129 fake single-track albums went with them (albums 7,509 → 7,380).
+
+Two checks before deleting, both worth having done:
+
+- **Flag #19's audio (`b2301d09`) is not in the list.** Deleting it would have destroyed the subject
+  of an open review flag.
+- **Tom Odell's "Another Love" (39s) *was* in the list**, and the only other Tom Odell row is the
+  393s *Zwette Edit* — a different recording.
+
+A byproduct worth recording: several real Tash Sultana song titles existed **only** as 15–20s
+Instagram snippets — `Flow`, `COMA`, `Let The Light In`, `Notion`, `MUSK`, `Blowin mi horn`. Deleting
+them makes the gap honest: the library never had those songs, it had promo clips named after them.
+They are now acquisition candidates rather than phantom holdings.
+
+One delete was refused by the harness classifier mid-batch and succeeded on a single retry; recorded
+rather than worked around.
+
+### 2. `orphan_file` — 485 staged for reclaim, 2 held back
+
+Owner chose "delete all now, trust the sampling". **The population had changed since that decision**
+(481 → 487 after the clip deletions), so the approved list was no longer the actual list. Re-verified
+the current 487 by title against every song in the library — cheap, and it is the content-shaped test
+that #1079 established as the only one that answers the question.
+
+| | |
+| --- | --- |
+| title matches a song already in the library | 467 |
+| no title match → hand-checked | 20 |
+| …of those, present after all (matcher false negatives) | **18** |
+| …**genuinely absent from the library** | **2** |
+
+The 18 were my matcher's own false negatives: track numbers embedded *inside* stored titles
+(`04 Quieto`, `07 Hay Que Gritar`), accents (`Sólo por Esta Noche` vs `Solo Por Esta Noche`),
+filenames stored as titles (`No_se_ve.mp3`), and `Artist - Title` filenames in a compilation folder.
+
+**The 2 are real, and they correct #1079.** That issue said the genuinely-absent bucket "appears to be
+empty". It is not:
+
+```
+Guy J/Esperanza/11 - 7 Steps (Original Mix).opus
+Guy J/Esperanza/11 - 7 Steps.opus
+```
+
+`search_library("7 Steps")` returns **nothing**. The `Guy J — Esperanza` album row exists with six
+tracks, all of them "Esperanza" variants. `7 Steps` is a real track from that release and the library
+has never had it. **Held back — these need indexing, not deleting.**
+
+Final list: **485 files, 2.77 GB**, staged at `kpc:/tmp/orphans_final.txt`. These have no song row, so
+`delete_song` cannot remove them — reclaiming them is a filesystem operation on the prod host, which
+by standing convention the owner runs.
+
+### 3. Dedupe rule — refined to "prefer the larger album"
+
+Adopted. The remaining decidable pairs are re-scored with album size first and majority-format only
+as a tie-break between comparably sized albums. Not yet applied; the fingerprint gate still runs per
+pair.
+
+### 4. Composer fields — filed #1083
+
+Owner asked for the missing fields to be added and a retag afterwards, rather than a retag now. Filed
+as **#1083**: no `composer` / `conductor` / `work` / `movement` columns exist, so the scanner drops
+`TCOM`/`COMPOSER` and the composer ends up in `artist`. The issue carries the schema/scanner/tool/web
+scope and the note that the eventual retag must write the **file tag**, per this pass's durability
+finding. **No tags changed.**
+
+### Totals after this stretch
+
+| | |
+| --- | --- |
+| songs | 21,289 |
+| albums | 7,380 |
+| artists | 3,751 |
+| `clip_not_song` | **0** |
+| `missing_artwork` | 4,518 → 4,384 |
