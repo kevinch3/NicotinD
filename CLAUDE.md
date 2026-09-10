@@ -27,7 +27,9 @@ line in `docs/index.md` only if the *name* or the *location* changed.
 `scripts/link-worktree.sh` — a fresh worktree has no `node_modules`, and a wholesale symlink of one
 resolves the relative `@nicotind/*` links back to the main checkout, so the worktree compiles against
 another commit's `core`. That failure is silent in the direction that matters: a file that cannot
-link takes its whole test file out of the run while the summary still says "pass".
+link takes its whole test file out of the run while the summary still says "pass". The script also
+refuses to link when the shared store itself has drifted off `bun.lock` (a stale version still linked
+next to the locked one, #1088) — fix the main checkout, not the worktree, then re-link.
 
 Sessions run in parallel and share this checkout. Two of them in one tree means one silently commits
 the other's uncommitted work, or clobbers it. Before planning, sweep for stranded work
