@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.35](https://github.com/kevinch3/NicotinD/compare/v0.6.34...v0.6.35) (2026-09-10)
+
+### Bug Fixes
+
+* **worktree:** refuse to link a node_modules store drifted off bun.lock ([#1090](https://github.com/kevinch3/NicotinD/issues/1090)) ([da834b0](https://github.com/kevinch3/NicotinD/commit/da834b0cbc912fc620152a67faeec6f11280b430)), closes [#1088](https://github.com/kevinch3/NicotinD/issues/1088)
 ## [0.6.34](https://github.com/kevinch3/NicotinD/compare/v0.6.33...v0.6.34) (2026-09-10)
 
 ### Bug Fixes
