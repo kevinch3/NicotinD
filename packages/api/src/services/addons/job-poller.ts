@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite';
-import { mkdirSync, createWriteStream, rmSync } from 'node:fs';
+import { mkdirSync, createWriteStream, rmSync, statSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -1007,6 +1007,11 @@ export class AddonJobPoller {
       job.id,
       item.filename,
     );
+    // A failed organize leaves the fetched bytes here and the item re-eligible
+    // (#1025); a complete copy makes the retry a pure organize retry.
+    if (item.size > 0 && statSync(local, { throwIfNoEntry: false })?.size === item.size) {
+      return { path: local, bytes: 0 };
+    }
     mkdirSync(dirname(local), { recursive: true });
     const res = await plugin.client.fetchFile(job.id, item.itemId);
     if (!res.body) throw new Error('empty file response');
