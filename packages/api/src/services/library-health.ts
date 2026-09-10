@@ -1,5 +1,6 @@
 import { dirname, join } from 'node:path';
 import type { Database } from 'bun:sqlite';
+import type { Lidarr } from '@nicotind/lidarr-client';
 import { normalizeTitle, titlesOverlap } from '@nicotind/core';
 import { auditLibrary, type AuditSeverity } from './library-audit.js';
 import { unjustifiedHiddenAlbums } from './library-curator.js';
@@ -37,6 +38,12 @@ export interface LibraryHealthOptions {
    * measured"), never as a number that silently ignores a tier.
    */
   musicDir?: string;
+  /**
+   * Lidarr's CURRENT tracklist per `lidarr_album_id`, as the hunt will fetch it
+   * (issue #1080). Supplied by `libraryHealthWithLidarr`; omitted ⇒ the stored
+   * hunt-time `canonical_tracks_json` is used and `liveTracklists` reads `null`.
+   */
+  liveTracklists?: ReadonlyMap<number, string[]>;
 }
 
 // Calibrated on prod 2026-08-26 (16,386 songs): 128/96 floors flag 15 albums,
@@ -186,7 +193,13 @@ export interface LibraryHealthReport {
     };
     completeness: {
       /** `suspected` is advisory-only — never hunted without a curator confirming. */
-      metric: { confirmedIncomplete: number; suspected: number; titleMismatch: number };
+      metric: {
+        confirmedIncomplete: number;
+        suspected: number;
+        titleMismatch: number;
+        /** Albums re-checked against Lidarr's live tracklist; `null` = not reconciled (#1080). */
+        liveTracklists: number | null;
+      };
       worklist: {
         confirmed: ConfirmedIncomplete[];
         suspected: SuspectedGap[];
@@ -296,7 +309,10 @@ function count(db: Database, sql: string): number {
   return db.query<{ c: number }, []>(`SELECT COUNT(*) c FROM ${sql}`).get()?.c ?? 0;
 }
 
-function confirmedIncomplete(db: Database): {
+function confirmedIncomplete(
+  db: Database,
+  live?: ReadonlyMap<number, string[]>,
+): {
   confirmed: ConfirmedIncomplete[];
   titleMismatches: TitleMismatch[];
 } {
@@ -327,14 +343,19 @@ function confirmedIncomplete(db: Database): {
     const key = `${j.artist_name.trim().toLowerCase()}|${j.album_title.trim().toLowerCase()}`;
     if (seen.has(key)) continue; // newest job (id DESC) wins for a re-hunted pair
     seen.add(key);
-    let titles: string[];
-    try {
-      const parsed: unknown = JSON.parse(j.canonical_tracks_json);
-      titles = Array.isArray(parsed)
-        ? parsed.filter((t): t is string => typeof t === 'string')
-        : [];
-    } catch {
-      continue;
+    // The hunt re-fetches the tracklist from Lidarr, whose monitored release can
+    // change after the job was written — prod: 4 of 6 stored lists were longer
+    // than the live one, and every one of those hunts said already-complete (#1080).
+    let titles = j.lidarr_album_id != null ? live?.get(j.lidarr_album_id) : undefined;
+    if (!titles) {
+      try {
+        const parsed: unknown = JSON.parse(j.canonical_tracks_json);
+        titles = Array.isArray(parsed)
+          ? parsed.filter((t): t is string => typeof t === 'string')
+          : [];
+      } catch {
+        continue;
+      }
     }
     if (titles.length === 0) continue;
     // Same matcher acquireAlbum uses, so "incomplete here" ⇒ "a hunt would enqueue".
@@ -367,7 +388,9 @@ function confirmedIncomplete(db: Database): {
       artist: j.artist_name,
       album: j.album_title,
       expected: titles.length,
-      owned: titles.length - missing,
+      // One on-disk "Maps" satisfies "Maps (remix)" too, so matched titles can
+      // exceed the songs held — prod overstated two albums by 4 (#1080).
+      owned: Math.min(titles.length - missing, onDisk.length),
       missing,
       lidarrAlbumId: j.lidarr_album_id,
       state: j.state,
@@ -482,7 +505,7 @@ export function libraryHealth(db: Database, opts: LibraryHealthOptions = {}): Li
     .all(sample);
   const suspectedCount = count(db, `(${gapSql})`);
 
-  const { confirmed, titleMismatches } = confirmedIncomplete(db);
+  const { confirmed, titleMismatches } = confirmedIncomplete(db, opts.liveTracklists);
 
   const oldestFlag =
     db
@@ -650,6 +673,7 @@ export function libraryHealth(db: Database, opts: LibraryHealthOptions = {}): Li
           confirmedIncomplete: confirmed.length,
           suspected: suspectedCount,
           titleMismatch: titleMismatches.length,
+          liveTracklists: opts.liveTracklists ? opts.liveTracklists.size : null,
         },
         worklist: {
           confirmed: confirmed.slice(0, sample),
@@ -683,4 +707,43 @@ export function libraryHealth(db: Database, opts: LibraryHealthOptions = {}): Li
       },
     },
   };
+}
+
+const LIVE_TRACKLIST_CONCURRENCY = 8;
+
+/**
+ * `libraryHealth` with the confirmed worklist re-derived from Lidarr's live
+ * tracklists — the list `acquireAlbum` itself fetches — so a row reads
+ * "incomplete" only when the hunt would agree (issue #1080). The one network
+ * edge of the report; a failed fetch keeps that album's stored tracklist.
+ */
+export async function libraryHealthWithLidarr(
+  db: Database,
+  opts: LibraryHealthOptions,
+  lidarr: Pick<Lidarr, 'track'> | null | undefined,
+): Promise<LibraryHealthReport> {
+  if (!lidarr) return libraryHealth(db, opts);
+  const ids = [
+    ...new Set(
+      confirmedIncomplete(db)
+        .confirmed.map((c) => c.lidarrAlbumId)
+        .filter((id): id is number => id != null),
+    ),
+  ];
+  const live = new Map<number, string[]>();
+  for (let i = 0; i < ids.length; i += LIVE_TRACKLIST_CONCURRENCY) {
+    await Promise.all(
+      ids.slice(i, i + LIVE_TRACKLIST_CONCURRENCY).map(async (id) => {
+        try {
+          live.set(
+            id,
+            (await lidarr.track.listByAlbum(id)).map((t) => t.title),
+          );
+        } catch {
+          /* stored tracklist stands for this album */
+        }
+      }),
+    );
+  }
+  return libraryHealth(db, { ...opts, liveTracklists: live });
 }

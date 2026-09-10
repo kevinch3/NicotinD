@@ -561,6 +561,32 @@ real work, just not acquisition work.
 The general rule, third instance of it: **a list whose contract is "X would act on these" must apply
 X's own predicate, not a predicate that looks equivalent.**
 
+### …and X's own *input* (issue #1080)
+
+#758 aligned the predicate but not the data it runs on. The worklist read the tracklist stored in
+`album_jobs.canonical_tracks_json` at hunt time; `acquireAlbum` re-fetches it from Lidarr
+(`track.listByAlbum`), and Lidarr's monitored release can change afterwards. A prod sample of 6 hunts
+returned 4 `already-complete`, and all four were this:
+
+| album | stored list | live list | local songs |
+|---|---|---|---|
+| Tyranny of Beauty | 10 | 9 | 9 |
+| Never Let Me Down | 14 | 13 | 13 |
+| V | 20 (remixes) | 14 | 15 |
+| Mi vida loca | 19 (live/remix bonus) | 14 | 14 |
+
+So the MCP `get_library_health` tool and `GET /api/library/health` call `libraryHealthWithLidarr`,
+which fetches the live tracklist for each confirmed candidate (8 at a time) and re-runs the same
+evaluation on it. A failed fetch keeps that album's stored list; `completeness.metric.liveTracklists`
+counts the albums re-checked and is `null` when no Lidarr was consulted (the CLI script). The
+rows that fall out mostly land in `titleMismatches` (live count met, one title spelled differently:
+`Stratosfear 1995` vs `1994`, `My Heart Is Open feat. Gwen Stefani`) — retag work, not hunts.
+
+`owned` was also overstated (V: 19 against 15 songs held): a single on-disk `Maps` matches both
+`Maps` and `Maps (Slaptop remix)`, so matched-title counts can exceed the album. `owned` is now capped
+at the on-disk song count, and `expected − owned` no longer has to equal `missing` (the canonical
+titles with no match).
+
 ## Tests / CI
 `library-quality.test.ts`, `library-audit.test.ts`, `library-disk-audit.test.ts`,
 `library-health.test.ts`, `routes/library.health.test.ts`,
