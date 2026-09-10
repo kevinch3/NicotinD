@@ -3348,3 +3348,79 @@ lane (`Ernesto De Curtis`, `Giuseppe Giordani`).
 | `Night After Night` | 2 rows -> 1 row, 3 tracks |
 
 Three album rows removed, no songs touched, nothing deleted.
+
+## 2026-09-10, stretch 11 — checking whether this pass's work survived
+
+Deletions still paused pending the stretch-9 rule refinement. Spent the stretch verifying earlier
+work instead, prompted by `brand_artist` reappearing at 1 after being driven to 0.
+
+### `fix_album_metadata`'s artist change did not survive — IPAUTA is back
+
+Stretch 5 re-attributed the `IPAUTA` album to `Jamsha El PutiPuerko` and **all 56 credit edges went
+to 0**, verified at the time. A day later:
+
+```
+IPAUTA artist row      : present
+IPAUTA join edges      : 56
+songs with album_artist='IPAUTA' : 10
+override row           : raw f85dc269 -> corrected ff2da7f9, artist "Jamsha El PutiPuerko", manual
+```
+
+The durable override row is intact and the album row is back anyway. The files still carry
+`album_artist: IPAUTA`, and a rescan re-derived the album and its credits from the tags. **The
+album-identity fix does not rewrite the file tag, so the tag wins on the next scan.**
+
+### What survived, and the distinction that predicts it
+
+| class | mechanism | result |
+| --- | --- | --- |
+| `fix_song_metadata` (artist/title) | **rewrites the file tag** | **intact** — BPM artist rows still 0, Pop Aguante correct, writer-credit trims correct, Cyndi Lauper recovery correct |
+| `set_song_genre` mode `replace` | durable `library_genre_overrides` | intact — `Folclore Chileno` 53, `Folklore` 0, `Folkcentric` 0 |
+| `fix_album_metadata` (merges) | re-buckets rows | intact — all three stretch-10 merges still single rows |
+| `fix_album_metadata` (artist vs. a contradicting file tag) | override only | **reverted** |
+
+The pattern: **a fix that writes the file survives; a fix that only writes a DB row survives until
+something re-derives that value from the file.** The genre overrides survive because the scanner
+re-applies them by design; the album-artist override does not get that treatment.
+
+### A genre alias can be silently undone — filed #1078
+
+Of 91 alias rows, **6 had their raw value live again** while the alias row still existed:
+`Hip-Hop` (80 rows, fully back), `Nu-Disco` (7 of 29), `Rock & Roll` (11 of 22), `Jazz-Rock` (5),
+`Post Bop`, `Post Rock`, plus a pre-existing `& Country`. Re-issuing the identical call restores the
+fold and reports the same `songsUpdated`, so the alias row is intact and functional — something
+re-derived those songs from the raw tag without consulting it. Partial per-alias reversion
+(7 of 29) means it is per song, not per alias.
+
+**Mechanism not established, and recorded as such.** `synced_at` does **not** discriminate: held and
+reverted songs alike carry the identical last-scan timestamp, so "only rescanned songs revert" is
+unsupported. 71 of 91 aliases held over the same window.
+
+### Correcting my own labelling mid-stretch
+
+My first pass called **20** aliases reverted. Fourteen of those were not reverts at all — they are
+the **case-only no-ops from #1074**, which never applied and correctly reported `songsUpdated: 0`
+when written:
+
+```
+Chanson FrançAise 37 · Nueva CancióN 45 · Musique ConcrèTe 13 · PilóN 12 · NorteñO 6
+SierreñO 3 · Chanson RéAliste 3 · Cumbia NorteñA Mexicana 2 · JùJú 2 · DanzóN 1
+```
+
+124 rows, still mis-cased, still unfixable by this tool. The test that separated them was re-issuing
+the alias and reading `songsUpdated`: `Rock & Roll` moved 11 songs (a real revert), `Nueva CancióN`
+moved 1 of 45 (case-only, cannot move). **Two different defects were wearing the same symptom** —
+"the raw value is live and an alias row exists" — and only re-running the write told them apart.
+
+### Applied
+
+Re-applied all 6 genuinely reverted aliases (96 rows re-folded). Left the 14 case-only ones alone;
+they are #1074 and no curation call can fix them.
+
+### The uncomfortable part
+
+The standing rule of this pass — verify every write by reading back — **passed** on all of this. The
+IPAUTA fix read back clean (56 edges -> 0). The aliases read back clean. Both were undone later.
+Read-back proves a write landed; it cannot prove the write is durable. The only thing that caught
+this was re-measuring a day later, and the only reason I re-measured was that an unrelated metric
+(`brand_artist`) moved back up.
