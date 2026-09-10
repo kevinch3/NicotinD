@@ -1,4 +1,4 @@
-import { normalizeTitle, titlesOverlap } from '@nicotind/core';
+import { fold, foldTitleText, normalizeTitle, titlesOverlap } from '@nicotind/core';
 
 // Lossless formats beat any lossy file when choosing the single best copy of a
 // track; within a tier, higher bitrate wins. Soulseek rips routinely leave a
@@ -40,6 +40,9 @@ export interface SelectableTrack {
   bitRate: number;
   /** Disc number from tags. Absent/null means "the only disc" (issue #747). */
   disc?: number | null;
+  /** Track number from tags. Used only to decide whether a leading digit in
+   * `title` is that track prefix rather than part of the song's name (#1089). */
+  trackNumber?: number | null;
 }
 
 /**
@@ -92,6 +95,32 @@ export interface SelectableTrack {
  * Fixing that needs a one-to-one assignment between files and entries, which this
  * deliberately does not attempt.
  */
+/**
+ * Like `normalizeTitle`, but strips a leading digit prefix only when it
+ * equals the file's OWN track number.
+ *
+ * `normalizeTitle` strips any leading digit unconditionally — right for a
+ * file whose tag title still carries its track prefix ("04 Quieto", track 4),
+ * wrong for a title where the number is part of the song's name ("7 Steps",
+ * track 11). Both shapes are common and indistinguishable by regex alone; the
+ * file's own track number is the discriminator (measured on prod: 12 of 14
+ * albums need the strip, 2 don't). Getting it wrong silently drops a track:
+ * "7 Steps" and "2 Steps" both stripped to "steps" and collided with the
+ * album's actual track 2, "2 Steps" — the loser stayed on disk but never
+ * became a `library_songs` row, on every rescan (#1089).
+ *
+ * `normalizeTitle` can't make this call itself — it also serves the hunt
+ * engine matching peer filenames, which have no comparable track-number tag —
+ * so this stays local to the library layer instead of widening that shared
+ * signature.
+ */
+function normalizeTrackTitle(title: string, track: number | null | undefined): string {
+  const folded = fold(title);
+  const m = /^(\d+)[\s.\-]+/.exec(folded);
+  const isOwnTrackNumber = m !== null && track != null && Number(m[1]) === track;
+  return foldTitleText(isOwnTrackNumber ? folded.slice(m[0].length) : folded);
+}
+
 function canonicalEntryFor(canon: readonly string[], norm: string): string | null {
   let best: string | null = null;
   let bestScore = 0;
@@ -138,7 +167,7 @@ export function selectAlbumTracksDetailed<T extends SelectableTrack>(
   const best = new Map<string, T>();
   const groups = new Map<string, T[]>();
   for (const t of tracks) {
-    const norm = normalizeTitle(t.title);
+    const norm = normalizeTrackTitle(t.title, t.trackNumber);
     // A track's identity within an album is (disc, title), not title. Album
     // identity deliberately collapses discs, so without this term a title that
     // legitimately repeats across discs loses one real file (issue #747).

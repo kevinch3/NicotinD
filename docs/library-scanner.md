@@ -56,6 +56,20 @@ reissue releases.
 **A file the library already holds bypasses canonical keying entirely (issue #776).** A file listed in `knownRelPaths` is keyed by title like the no-canonical case, so a curator's correction is never re-keyed to the canonical wording it deliberately moved away from; only disappearing from disk removes it (`pruneAlbumOrphans`). The tracklist is pinned in `album_jobs` at *download* time and consulted on every rescan forever, so without this rule it silently vetoed later curation: `titlesOverlap` counts how many **canonical** words survive in the file's title, and a cleanup *removes* words. Cleaning `Es Por Tí (Remastered 2022)` to `Es Por Ti` scores 3/5 = 0.60, under the 0.7 threshold, so the retagged file was discarded from the scan, never reached `persist`, and `library_songs` kept the pre-edit title — while `fix_song_metadata` reported success. Measured on prod 2026-08-27: the tag was correct on disk *and* in `scan_cache`, only the canonical filter stood between them and the row; 407 of 5235 albums are pinned, and they are precisely the hunted albums a curator works on. The scanner supplies the set from `library_songs.path` (`LibraryScanner.knownRelPaths()`) at all three `buildLibrary` call sites.
 - **Without one**: files collapse by normalized title (format-dups merge; nothing dropped as foreign).
 
+**A leading digit in a tag title is not always a track-number prefix to strip (issue #1089).**
+`normalizeTitle` (shared with the hunt engine, matching peer *filenames*) strips any leading
+`\d+[\s.\-]+` unconditionally — right when a file's tag title still carries its own track prefix
+("04 Quieto"), wrong when the number is part of the song's name ("7 Steps"). Both shapes are common
+and indistinguishable by regex alone in the no-canonical-tracklist branch above, which keys purely on
+normalized title. Measured on prod: Guy J's "Esperanza" carried `11 - 7 Steps.opus` and
+`05 - 2 Steps.opus` — both stripped to `steps`, collided into one key, and the `7 Steps` files (both
+healthy, fully scanned) lost the tiebreak and were never assigned a `library_songs` row, re-dropped on
+every rescan since the drop is deterministic. Swept all 21k `scan_cache` rows: the strip is doing its
+intended job in 12 of 14 title collisions it creates; only 2 (both this album) are harmful. The
+library layer now strips a leading digit only when it equals the file's own tagged `track` number
+(`normalizeTrackTitle` in `library-track-select.ts`) — the hunt engine's `normalizeTitle` is
+unchanged, since it has no comparable per-file track number to check against.
+
 Non-destructive: unselected files stay on disk but get no `library_songs` row, so a full scan's prune makes them invisible. Physical cleanup is `scripts/repair-album-folders.ts`. Incremental `scanPaths` selects within its batch; the full scan is authoritative.
 
 **An incremental retag orphans the album it left, not just the file it moved (issue #874).** A song's own id is path-derived and survives a pure tag edit, but its `album_id` is not — an ALBUMARTIST retag re-mints it, and the song moves via `persist()`'s `ON CONFLICT(id) DO UPDATE SET album_id = excluded.album_id` upsert. The incremental branch only refreshed the aggregates for `built.albums` — the albums *this batch touched* — so the album a song moved *out of* was never revisited: it kept a stale `song_count` with zero real songs until the next full scan (which prunes by `synced_at` and so happens to catch it). `persist()` now reads each about-to-be-upserted song's *previous* `album_id` before the upsert runs, and afterwards calls the existing `pruneOrphanAlbum` for any that differ from the song's new album and weren't independently touched by this batch — the same refresh-or-drop logic a single-song delete already uses, just reached from a different direction. Measured on prod: 22 empty ghost album rows after retagging 32 songs across 3 clusters, which `checkMisSplitAlbums` then over-counted as mis-split singles.

@@ -752,40 +752,53 @@ describe('LibraryOrganizer (real fs)', () => {
       ).toBe(false);
     });
 
-    it('auto-dedupe drops a freshly-placed MP3 that collides with an existing FLAC', async () => {
-      const root = tmpRoot();
-      const staging = join(root, '_staging');
-      // Existing FLAC of the track already in the album folder.
-      mkdirSync(join(root, 'Lenny Kravitz', 'Circus'), { recursive: true });
-      writeFileSync(join(root, 'Lenny Kravitz', 'Circus', '01 - Believe.flac'), 'x'.repeat(100));
+    // Needs a REAL, tag-readable FLAC (not the `writeFileSync('x')` stand-in the
+    // other tests in this block use): the auto-dedupe path this exercises reads
+    // the file's own track number to decide whether a title's leading digit is
+    // a track prefix or part of the name (#1089), and an unparseable file gives
+    // it none — which is a real, deliberately-conservative "don't collapse"
+    // outcome for THAT case, just not the one this test is about.
+    it.skipIf(!ffmpegAvailable())(
+      'auto-dedupe drops a freshly-placed MP3 that collides with an existing FLAC',
+      async () => {
+        const root = tmpRoot();
+        const staging = join(root, '_staging');
+        // Existing FLAC of the track already in the album folder.
+        seedFlac(root, 'Lenny Kravitz/Circus/01 - Believe.flac', {
+          artist: 'Lenny Kravitz',
+          album: 'Circus',
+          title: 'Believe',
+          trackNumber: 1,
+        });
 
-      seed(staging, 'Lenny Kravitz - Circus/01 - Believe.mp3', {
-        artist: 'Lenny Kravitz',
-        album: 'Circus',
-        title: 'Believe',
-        trackNumber: 1,
-      });
+        seed(staging, 'Lenny Kravitz - Circus/01 - Believe.mp3', {
+          artist: 'Lenny Kravitz',
+          album: 'Circus',
+          title: 'Believe',
+          trackNumber: 1,
+        });
 
-      // preferFlacSkipMp3 off, but autoDedupe (default on) cleans up the collision
-      // after placement.
-      const org = new LibraryOrganizer({
-        transcodeLossless: { enabled: false, bitRate: 192 },
-        musicDir: root,
-        stagingDir: staging,
-      });
-      const result = await org.organizeBatch([
-        {
-          username: 'u',
-          directory: 'Lenny Kravitz - Circus',
-          filename: '01 - Believe.mp3',
-          directoryFileCount: 1,
-        },
-      ]);
+        // preferFlacSkipMp3 off, but autoDedupe (default on) cleans up the
+        // collision after placement.
+        const org = new LibraryOrganizer({
+          transcodeLossless: { enabled: false, bitRate: 192 },
+          musicDir: root,
+          stagingDir: staging,
+        });
+        const result = await org.organizeBatch([
+          {
+            username: 'u',
+            directory: 'Lenny Kravitz - Circus',
+            filename: '01 - Believe.mp3',
+            directoryFileCount: 1,
+          },
+        ]);
 
-      expect(result.dedupedBasenames).toContain('01 - believe.mp3');
-      expect(existsSync(join(root, 'Lenny Kravitz', 'Circus', '01 - Believe.flac'))).toBe(true);
-      expect(existsSync(join(root, 'Lenny Kravitz', 'Circus', '01 - Believe.mp3'))).toBe(false);
-    });
+        expect(result.dedupedBasenames).toContain('01 - believe.mp3');
+        expect(existsSync(join(root, 'Lenny Kravitz', 'Circus', '01 - Believe.flac'))).toBe(true);
+        expect(existsSync(join(root, 'Lenny Kravitz', 'Circus', '01 - Believe.mp3'))).toBe(false);
+      },
+    );
 
     it('keeps the MP3 when the preference is off (default)', async () => {
       const root = tmpRoot();

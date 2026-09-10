@@ -489,6 +489,7 @@ export function selectLibraryTracks(
       suffix: string;
       bitRate: number;
       disc: number | null;
+      trackNumber: number | null;
     }>
   >();
   for (const t of tracks) {
@@ -504,6 +505,9 @@ export function selectLibraryTracks(
       suffix: t.suffix,
       bitRate: t.bitRate,
       disc: t.disc ?? null,
+      // Tagged track number, so `selectAlbumTracks` can tell a leading digit
+      // that IS the track's own prefix from one that's part of the title (#1089).
+      trackNumber: t.track ?? null,
     });
     byAlbum.set(albId, arr);
   }

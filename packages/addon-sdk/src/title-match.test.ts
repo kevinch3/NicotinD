@@ -1,10 +1,18 @@
 import { describe, expect, it } from 'bun:test';
-import { normalizeTitle, titlesOverlap } from './title-match.js';
+import { foldTitleText, normalizeTitle, titlesOverlap } from './title-match.js';
 
 describe('normalizeTitle', () => {
   it('folds accents, strips track numbers and punctuation', () => {
     expect(normalizeTitle('03 - Canción de Amor!')).toBe('cancion de amor');
     expect(normalizeTitle('  Weird   spacing ')).toBe('weird spacing');
+  });
+
+  it('strips a leading digit even when it is part of the title (#1089)', () => {
+    // normalizeTitle matches peer FILENAMES, where a leading number is
+    // virtually always a track prefix — this is intentionally unconditional.
+    // A caller with the file's own track number (the library layer) needs
+    // `foldTitleText` instead so it can decide for itself; see its test below.
+    expect(normalizeTitle('7 Steps')).toBe('steps');
   });
 
   it('keeps non-Latin titles distinct instead of collapsing them to ""', () => {
@@ -14,6 +22,16 @@ describe('normalizeTitle', () => {
     const normalized = titles.map(normalizeTitle);
     expect(normalized).not.toContain('');
     expect(new Set(normalized).size).toBe(titles.length);
+  });
+});
+
+describe('foldTitleText', () => {
+  // Punctuation-strip + whitespace-collapse only — no lowercasing/diacritic
+  // fold (that's `fold`, applied by callers before this) and no digit strip
+  // (that's the caller's call, per #1089).
+  it('strips punctuation and collapses whitespace without touching case or a leading digit', () => {
+    expect(foldTitleText('7 Steps!')).toBe('7 Steps');
+    expect(foldTitleText('  Weird   spacing ')).toBe('Weird spacing');
   });
 });
 

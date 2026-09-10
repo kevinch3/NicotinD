@@ -214,6 +214,57 @@ describe('selectAlbumTracks — with a canonical Lidarr tracklist', () => {
   });
 });
 
+/**
+ * Issue #1089. `normalizeTitle` stripped a leading digit unconditionally, as
+ * if it were always a track-number prefix. Applied to a tag TITLE (rather
+ * than a filename), that deletes a number that's part of the song's own
+ * name: "7 Steps" and "2 Steps" both normalized to "steps" and collided, so
+ * one of two real, healthy files was silently dropped from the library on
+ * every rescan. Real prod case: Guy J — Esperanza, track 11 "7 Steps" vs
+ * track 5 "2 Steps". Swept 21k `scan_cache` rows: the strip is doing its
+ * intended job in 12 of 14 title collisions it creates and only harmful in 2
+ * (both this album) — so the fix has to keep the 12 working.
+ */
+describe('selectAlbumTracks — a leading digit that is part of the title (#1089)', () => {
+  const n = (
+    relPath: string,
+    title: string,
+    trackNumber: number | null,
+    suffix = 'opus',
+  ): SelectableTrack => ({ relPath, title, suffix, bitRate: 200, trackNumber });
+
+  it('keeps two titles whose own leading digits collide once blindly stripped', () => {
+    const kept = selectAlbumTracks([
+      n('11 - 7 Steps.opus', '7 Steps', 11),
+      n('05 - 2 Steps.opus', '2 Steps', 5),
+    ]);
+    expect(kept.map((k) => k.relPath).sort()).toEqual(['05 - 2 Steps.opus', '11 - 7 Steps.opus']);
+  });
+
+  it("still strips a leading digit that IS the file's own track-number prefix", () => {
+    // The benign shape that must keep working: a tag title that still carries
+    // its own track prefix has to fold onto the cleanly-tagged copy of the
+    // same track so format-duplicates keep collapsing.
+    const kept = selectAlbumTracks([
+      n('04 - Quieto.mp3', '04 Quieto', 4, 'mp3'),
+      n('04 - Quieto.flac', 'Quieto', 4, 'flac'),
+    ]);
+    expect(kept).toHaveLength(1);
+    expect(kept[0]!.suffix).toBe('flac');
+  });
+
+  it('does not guess when the track number is unknown, erring toward keeping both', () => {
+    // No discriminator available (untagged track number) — failing to merge a
+    // possible duplicate is a far smaller cost than risking a repeat of the
+    // #1089 drop, so this does NOT fall back to the old unconditional strip.
+    const kept = selectAlbumTracks([
+      n('01 - Quieto.mp3', '01 Quieto', null, 'mp3'),
+      n('Quieto.flac', 'Quieto', null),
+    ]);
+    expect(kept).toHaveLength(2);
+  });
+});
+
 describe('losslessSuffixSql', () => {
   it('matches exactly the lossless suffixes, case-insensitive, NULL-safe', () => {
     const db = new Database(':memory:');

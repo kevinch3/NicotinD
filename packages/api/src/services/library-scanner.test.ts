@@ -220,6 +220,60 @@ describe('a title repeated across discs (issue #747)', () => {
   });
 });
 
+/**
+ * Issue #1089, end to end. A tag title's leading digit is not always a
+ * track-number prefix — the selection key used to strip it unconditionally,
+ * so two distinct songs whose own titles start with a digit collided into
+ * one key and one was dropped, never becoming a `library_songs` row. Real
+ * prod case: Guy J — Esperanza, track 11 "7 Steps" vs track 5 "2 Steps".
+ */
+describe('a title starting with its own digit (issue #1089)', () => {
+  it('keeps two titles that would collide if their leading digits were blindly stripped', () => {
+    const built = buildLibrary([
+      track({
+        relPath: 'Guy J/Esperanza/11 - 7 Steps.opus',
+        suffix: 'opus',
+        artist: 'Guy J',
+        album: 'Esperanza',
+        title: '7 Steps',
+        track: 11,
+      }),
+      track({
+        relPath: 'Guy J/Esperanza/05 - 2 Steps.opus',
+        suffix: 'opus',
+        artist: 'Guy J',
+        album: 'Esperanza',
+        title: '2 Steps',
+        track: 5,
+      }),
+    ]);
+    expect(built.songs).toHaveLength(2);
+    expect(built.songs.map((s) => s.title).sort()).toEqual(['2 Steps', '7 Steps']);
+  });
+
+  it('still collapses a genuine track-number-prefixed duplicate (the benign, common shape)', () => {
+    const built = buildLibrary([
+      track({
+        relPath: 'Artist/Album/04 - Quieto.mp3',
+        artist: 'Artist',
+        album: 'Album',
+        title: '04 Quieto',
+        track: 4,
+      }),
+      track({
+        relPath: 'Artist/Album/Quieto.flac',
+        suffix: 'flac',
+        artist: 'Artist',
+        album: 'Album',
+        title: 'Quieto',
+        track: 4,
+      }),
+    ]);
+    expect(built.songs).toHaveLength(1);
+    expect(built.songs[0]!.suffix).toBe('flac');
+  });
+});
+
 describe('loose singles (un-bucketing)', () => {
   it('flags the synthetic Singles bucket and album-less tracks', () => {
     expect(isLooseSinglesBucket('Alfredo Casero/Singles', 'Singles')).toBe(true);
