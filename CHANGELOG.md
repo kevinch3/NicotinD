@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.34](https://github.com/kevinch3/NicotinD/compare/v0.6.33...v0.6.34) (2026-09-10)
+
+### Bug Fixes
+
+* **downloads:** a re-sourced job keeps its replacement peer's files ([#1085](https://github.com/kevinch3/NicotinD/issues/1085)) ([2070a06](https://github.com/kevinch3/NicotinD/commit/2070a0610f0fb0b89888d44cfed034f0fb7b9a3b))
 ## [0.6.33](https://github.com/kevinch3/NicotinD/compare/v0.6.32...v0.6.33) (2026-09-10)
 
 ### Bug Fixes
