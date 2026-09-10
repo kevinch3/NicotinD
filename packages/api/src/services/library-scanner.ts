@@ -1293,6 +1293,9 @@ export class LibraryScanner {
       ON CONFLICT(song_id, artist_id, role) DO UPDATE SET
         position = excluded.position
     `);
+    const songArtistDeleteStmt = this.db.prepare(
+      `DELETE FROM library_song_artists WHERE song_id = ?`,
+    );
     const albumArtistStmt = this.db.prepare(`
       INSERT INTO library_album_artists (album_id, artist_id, role, position)
       VALUES (?, ?, ?, ?)
@@ -1421,6 +1424,10 @@ export class LibraryScanner {
       for (const g of built.genres) {
         genreStmt.run(g.name, g.songCount, g.albumCount, syncedAt);
       }
+      // Replace, not merge (#1073): buildLibrary derives every rescanned song's
+      // complete credit set, so an upsert-only write kept a retag's superseded
+      // artist beside its successor in browse until the next full scan.
+      for (const s of built.songs) songArtistDeleteStmt.run(s.id);
       for (const link of built.songArtists) {
         songArtistStmt.run(link.parentId, link.artistId, link.role, link.position);
       }
