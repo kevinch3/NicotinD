@@ -691,11 +691,17 @@ export class AddonJobPoller {
     for (const item of job.items) {
       const key = addonTransferKey(addonId, item.itemId);
       const state = mapItemState(item);
+      // Scoped to the reporting addon job (#1084): after a re-source two jobs
+      // share the card AND the title-derived keys, so an unscoped lookup finds
+      // the abandoned peer's superseded row for the replacement's report too —
+      // and the replacement's row is never written, which reads as "nothing
+      // pending" and released the job before its files were fetched.
       const existing = db
-        .query<{ id: number; state: string }, [string, string]>(
-          `SELECT id, state FROM acquisition_job_items WHERE job_id = ? AND transfer_key = ?`,
+        .query<{ id: number; state: string }, [string, string, string]>(
+          `SELECT id, state FROM acquisition_job_items
+            WHERE job_id = ? AND transfer_key = ? AND ${OWNED_BY_ADDON_JOB}`,
         )
-        .get(coreJobId, key);
+        .get(coreJobId, key, job.id);
       if (!existing) {
         db.run(
           `INSERT INTO acquisition_job_items
@@ -771,10 +777,14 @@ export class AddonJobPoller {
       if (!(item.state === 'completed' && item.fileReady)) continue;
       const key = addonTransferKey(addonId, item.itemId);
       const row = db
-        .query<{ id: number; state: string; relative_path: string | null }, [string, string]>(
-          `SELECT id, state, relative_path FROM acquisition_job_items WHERE job_id = ? AND transfer_key = ?`,
+        .query<
+          { id: number; state: string; relative_path: string | null },
+          [string, string, string]
+        >(
+          `SELECT id, state, relative_path FROM acquisition_job_items
+            WHERE job_id = ? AND transfer_key = ? AND ${OWNED_BY_ADDON_JOB}`,
         )
-        .get(coreJobId, key);
+        .get(coreJobId, key, job.id);
       if (!row || row.state !== 'completed' || row.relative_path) continue;
 
       const fetchStartedAt = Date.now();
@@ -830,8 +840,8 @@ export class AddonJobPoller {
       relPaths.push(file.relativePath);
       this.deps.db.run(
         `UPDATE acquisition_job_items SET state = 'organized', relative_path = ?, updated_at = ?
-         WHERE job_id = ? AND transfer_key = ?`,
-        [file.relativePath, acquiredAt, coreJobId, keys[i]!],
+         WHERE job_id = ? AND transfer_key = ? AND ${OWNED_BY_ADDON_JOB}`,
+        [file.relativePath, acquiredAt, coreJobId, keys[i]!, job.id],
       );
       recordAcquisition(db, {
         relativePath: file.relativePath,
