@@ -627,14 +627,19 @@ export function buildLibrary(
     // genres it doesn't already carry are kept after it). Overrides are keyed
     // on the same strings the ids above are minted from, so nothing extra has
     // to be threaded through here.
-    const genres = applyGenreOverride(
-      genreOverrides,
-      {
-        songId: id,
-        albumKey: albumGroupKey(albumArtist, album),
-        artistKey: normalizeArtistForGrouping(albumArtist),
-      },
-      splitGenres(t.genre, gctx),
+    // The override's own genres go back through the alias table too (#1078):
+    // otherwise an override carrying an aliased value re-inserts it verbatim.
+    const genres = splitGenres(
+      applyGenreOverride(
+        genreOverrides,
+        {
+          songId: id,
+          albumKey: albumGroupKey(albumArtist, album),
+          artistKey: normalizeArtistForGrouping(albumArtist),
+        },
+        splitGenres(t.genre, gctx),
+      ),
+      gctx,
     );
     for (let i = 0; i < genres.length; i++) {
       songGenreLinks.push({ songId: id, genre: genres[i]!, position: i });

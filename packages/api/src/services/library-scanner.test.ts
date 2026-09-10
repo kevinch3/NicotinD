@@ -1329,6 +1329,40 @@ describe('genre overrides (issue #187 A3)', () => {
     expect(scan().songs[0]!.genre).toBe('Folclore');
   });
 
+  it('resolves override genres through the alias table (#1078)', () => {
+    // An override carrying a value a later alias folds must not re-insert the
+    // raw value on rescan while the alias row still exists.
+    const db = new Database(':memory:');
+    applySchema(db);
+    upsertGenreOverride(db, {
+      scope: 'artist',
+      key: artistKey,
+      genres: ['Hip-Hop'],
+      source: 'lidarr',
+      mbid: null,
+      confidence: null,
+      status: 'applied',
+      note: null,
+    });
+    db.run(
+      `INSERT INTO library_genre_aliases (alias, canonical, source, created_at) VALUES (?, ?, ?, ?)`,
+      ['Hip-Hop', 'Hip Hop', 'user', Date.now()],
+    );
+
+    const built = buildLibrary(
+      [larralde('L/H/01.mp3')],
+      undefined,
+      undefined,
+      undefined,
+      loadGenreContext(db),
+      loadGenreOverrides(db),
+    );
+    const genres = built.songGenres.map((g) => g.genre);
+    expect(genres).toContain('Hip Hop');
+    expect(genres).not.toContain('Hip-Hop');
+    expect(built.songs[0]!.genre).toBe('Hip Hop');
+  });
+
   it('leaves the library untouched for pending rows', () => {
     const db = new Database(':memory:');
     applySchema(db);
