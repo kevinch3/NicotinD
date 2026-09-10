@@ -3559,3 +3559,103 @@ retrying can never help. Possibly related to #1069.
 
 **Net acquisition result for the stretch: zero tracks acquired from six hunts.** That is the finding,
 not a failure of the hunts.
+
+---
+
+# 2026-09-09/10 CLOSE-OUT — session 10, fourteen stretches
+
+## Totals, with the confound stated
+
+| | baseline (09-09) | final (09-10) |
+| --- | --- | --- |
+| artists | 3,764 | 3,762 |
+| albums | 7,496 | 7,509 |
+| songs | 21,174 | 21,357 |
+| distinct genre values | 852 | **835** |
+
+**The song delta is not a curation result.** An ingest ran through most of the session (21,174 ->
+21,382 at its peak) while I deleted 25 duplicates. Those two movements are not separable from each
+other in this number, so it should not be read as either.
+
+## Metric deltas
+
+| metric | before | after |
+| --- | --- | --- |
+| audit HIGH | 336 | **314** |
+| `numeric_artist` | 27 | **0** |
+| `brand_artist` | 1 | **0** |
+| genre-less songs | 324 | **260** |
+| genre collision groups | 16 | **1** (the survivor is #1074's case-only class) |
+| `Folklore` / `Folkcentric` / `Folklore Peruano` / `Folk, World, & Country` | 36 / 13 / 3 / 15 | **0 / 0 / 0 / 0** |
+| verified duplicate files deleted | — | **25** |
+| album rows merged | — | **3** (one 53-track album was split in two) |
+| `fragmented_artist` | 8 | 8 — all judged, all genuine collaborations |
+
+## Work applied
+
+~500 writes, essentially all zero-search: 100 `fix_song_metadata` on a DJ pack whose artist field held
+the **BPM**; 53 genre writes over a Chilean folklore wave; 27 `set_genre_alias` calls folding ~275
+song-rows; 5 songwriter-credit strings trimmed; 10 `albumArtist` writes clearing a source brand;
+3 album merges; 25 fingerprint-verified deletions; 6 acquisition hunts.
+
+## Durability, re-measured — the session's most useful lesson
+
+Fixes were re-checked a day later, which caught two that had silently come undone. The predictor:
+
+| mechanism | durable? |
+| --- | --- |
+| writes the **file tag** (`fix_song_metadata`) | **yes** — every one intact |
+| durable override the scanner re-applies (`set_song_genre` mode `replace`) | yes |
+| album row re-bucketing (`fix_album_metadata` merges) | yes |
+| DB override contradicted by the file tag (`fix_album_metadata` artist) | **no — reverted** |
+| `set_genre_alias` | **partially — 6 of 91 came undone** (#1078) |
+
+**Read-back passed on both of the fixes that later reverted.** It proves a write landed; it cannot
+prove the write is durable. Only re-measuring later caught it — and only because an unrelated metric
+moved back up.
+
+## Issues filed
+
+| # | |
+| --- | --- |
+| **#1071** | `fix_song_metadata` reports an error when the artist canonicalizer folds the name it was given |
+| **#1073** | a retag adds the new artist credit and never removes the superseded one (downgraded by my own correction: a scan clears it) |
+| **#1074** | `set_genre_alias` cannot fix a casing-only defect — the use case its own docs name |
+| **#1077** | `fix_song_metadata({track})` writes the file but the DB never takes it; `scan_cache` keeps a current key with a stale value |
+| **#1078** | a genre alias can be silently undone |
+| **#1079** | `orphan_file`'s 481 findings are redundant copies (2.73 GB), not missing music |
+| **#1080** | `confirmedIncomplete` recommended 6 hunts, 4 were already complete |
+| flag #23 | ABBA *Voyage* is a bucket holding foreign tracks |
+
+## What blocked, and on whom
+
+- **Dedupe** (~20 decidable groups, plus 495 same-format and 227 ambiguous): awaiting the owner's call
+  on the rule refinement — prefer the copy in the **larger album**, because a single-track album
+  trivially satisfies "matches its album's majority format".
+- **2.73 GB of redundant files** (#1079) and **`clip_not_song`** (136): destructive, owner's call.
+- **`track_collision`** (137) and **`untracked_album`** (129): blocked by #1077.
+- **Composer-as-artist**: a convention choice, not a defect — there is no composer field, so
+  retagging would destroy the information rather than move it.
+
+## Closed as not-a-backlog
+
+- **`missing_year`** (179): no song carries a year and the files hold no date tag. Data-absent.
+- **`missing_artwork`** (4,518): already established by #952 as an overcount — most render via the
+  embedded fallback.
+- **`orphan_file`** (481): redundant copies, not missing music (#1079).
+- **`fragmented_artist`** (8): all genuine collaborations. A non-zero count here is correct.
+
+## The recurring error, worth carrying
+
+Nine times this pass a probe answered an easier question than the one asked, and each was caught by
+one more measurement rather than by thinking harder:
+
+535 "ghost credits" (mostly legitimate feature credits) · 1,264 "duplicate songs" (144 groups
+disproven by duration alone) · 110 `track_collision` albums under one theory that fit 2 of them ·
+161 "duplicate albums" (`Circus` is both Britney and Lenny Kravitz) · 383 then 199 then 15
+"unindexed files" (all present under other paths) · 20 "reverted" aliases (14 never applied) ·
+`owned` predicted to undercount when it overcounts.
+
+The pattern: a **path-shaped or name-shaped test for a content-shaped question**. The fix each time
+was to ask the question directly — look the recording up by title, fingerprint it, re-issue the write
+and read the count.
