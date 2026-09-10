@@ -70,6 +70,17 @@ library layer now strips a leading digit only when it equals the file's own tagg
 (`normalizeTrackTitle` in `library-track-select.ts`) — the hunt engine's `normalizeTitle` is
 unchanged, since it has no comparable per-file track number to check against.
 
+**An ID3v1 trailer must not outvote ID3v2 on the track number (issue #1077).** music-metadata maps
+`track` without its tag-priority check, so on an MP3 carrying both tags the ID3v1 trailer — parsed
+last — overwrites `common.track` with its own value. Every ID3 writer here (node-id3) updates only
+ID3v2, so `fix_song_metadata({track})` landed TRCK on disk and the rescan read the untouched ID3v1
+byte back: prod's *With the Beatles* stayed at track 63 through 15/15 retags while
+title/artist/album (which *do* honour priority) applied cleanly. The scan cache was faithful, not
+stale — it recorded exactly what the parser said. Both tag readers (`parseTrack`,
+`readFolderTracks`) now take the number from `trackNoFromParse` (`music-metadata-loader.ts`), which
+prefers APEv2/ID3v2 frames whenever an ID3v1 tag is present; `scan_cache_version` 4 flushes the
+cache once so rows already holding an ID3v1-clobbered number are re-read.
+
 Non-destructive: unselected files stay on disk but get no `library_songs` row, so a full scan's prune makes them invisible. Physical cleanup is `scripts/repair-album-folders.ts`. Incremental `scanPaths` selects within its batch; the full scan is authoritative.
 
 **An incremental retag orphans the album it left, not just the file it moved (issue #874).** A song's own id is path-derived and survives a pure tag edit, but its `album_id` is not — an ALBUMARTIST retag re-mints it, and the song moves via `persist()`'s `ON CONFLICT(id) DO UPDATE SET album_id = excluded.album_id` upsert. The incremental branch only refreshed the aggregates for `built.albums` — the albums *this batch touched* — so the album a song moved *out of* was never revisited: it kept a stale `song_count` with zero real songs until the next full scan (which prunes by `synced_at` and so happens to catch it). `persist()` now reads each about-to-be-upserted song's *previous* `album_id` before the upsert runs, and afterwards calls the existing `pruneOrphanAlbum` for any that differ from the song's new album and weren't independently touched by this batch — the same refresh-or-drop logic a single-song delete already uses, just reached from a different direction. Measured on prod: 22 empty ghost album rows after retagging 32 songs across 3 clusters, which `checkMisSplitAlbums` then over-counted as mis-split singles.

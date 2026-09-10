@@ -1,7 +1,7 @@
 // packages/api/src/services/album-reconcile.ts
 import { readdirSync, statSync, unlinkSync } from 'node:fs';
 import { extname, join } from 'node:path';
-import { getMusicMetadata } from './music-metadata-loader.js';
+import { getMusicMetadata, trackNoFromParse } from './music-metadata-loader.js';
 import { selectAlbumTracksDetailed, type SelectableTrack } from './library-track-select.js';
 import { AUDIO_EXTENSIONS } from '@nicotind/core';
 
@@ -92,7 +92,7 @@ export async function readFolderTracks(dir: string): Promise<ReconcileFile[]> {
       // Nullish, not truthy: the scanner keeps a `TPOS: 0`, so a truthy guard
       // here would disagree with it about the identity of the same file.
       disc = meta?.common?.disk?.no ?? null;
-      track = meta?.common?.track?.no ?? null;
+      track = trackNoFromParse(meta) ?? null;
     } catch {
       // unreadable — fall back to filename stem + 0 bitrate
     }

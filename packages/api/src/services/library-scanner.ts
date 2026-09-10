@@ -14,7 +14,7 @@ import {
 import { jobCanonicalTracklists } from './acquisition-job-store.js';
 import { isVariousArtists } from './compilation-tagger.js';
 import { inferFolderAlbum, inferMetadataFromPath, hasUsableValue } from './path-inference.js';
-import { getMusicMetadata } from './music-metadata-loader.js';
+import { getMusicMetadata, trackNoFromParse } from './music-metadata-loader.js';
 import { featureTagsFromNative } from './audio-tags.js';
 import { selectAlbumTracks } from './library-track-select.js';
 import {
@@ -1170,7 +1170,7 @@ export class LibraryScanner {
       artist: nfc(common?.artist),
       albumArtist: nfc(common?.albumartist),
       album: nfc(common?.album),
-      track: common?.track?.no ?? undefined,
+      track: trackNoFromParse(meta),
       disc: common?.disk?.no ?? undefined,
       year: common?.year ?? undefined,
       // FULL frame array — buildLibrary's splitGenres derives the set/primary.
