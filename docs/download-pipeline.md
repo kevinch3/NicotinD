@@ -1213,6 +1213,22 @@ Three rules came out of it:
 - **The test DB enforces foreign keys** the way prod does. A test DB that does not never sees this
   throw, which is how the class stayed invisible to 54 passing poller tests.
 
+### The replacement peer lands on its own row (#1084)
+
+A re-source maps a second addon job onto the **same** card and supersedes the titles it takes
+over (#1065). Item ids are title-derived, so the replacement's transfer keys collide with the
+superseded rows, and a lookup by `(job_id, transfer_key)` alone found the abandoned peer's row for
+the replacement's report too. The `superseded` guard then swallowed it, no row was ever written for
+the new peer, `maybeReleaseAddonJob` read "nothing pending" and released the job — and the addon,
+honouring the release (#1052), deleted the files before core had fetched one. Measured on kpc the
+first time a re-source was polled after #1081: 23 files gone.
+
+Every key lookup in the poller is now scoped by `OWNED_BY_ADDON_JOB` with the reporting job's id:
+the abandoned peer's stale report still lands on its own superseded row and is skipped; the
+replacement's report inserts a fresh row stamped with its `addon_job_id`, and the release waits for
+ingest as designed. The `addon_job_id` column existed for exactly this; the mirror was the one
+query not using it.
+
 ### A promoted job drops a stale reason
 
 `failOrphanedJob` writes `failed/error` plus its generic reason, then a later

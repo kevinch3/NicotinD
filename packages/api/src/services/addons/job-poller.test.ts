@@ -16,7 +16,13 @@ import {
   sanitizeAddonError,
   type IngestReceipt,
 } from './job-poller.js';
-import { createJob, markPartialDiscarded, requestJobCancel } from '../acquisition-job-store.js';
+import {
+  claimUnattributedItems,
+  createJob,
+  markPartialDiscarded,
+  requestJobCancel,
+  supersedeItems,
+} from '../acquisition-job-store.js';
 import type { CompletedDownloadFile } from '../path-inference.js';
 
 const MANIFEST: AddonManifest = {
@@ -1580,5 +1586,65 @@ describe('one job never wedges the poll for the rest (#1081)', () => {
 
     expect(itemsOf(h, 'aj-live')).toHaveLength(1);
     expect(cursor(h)).toBe('3000');
+  });
+});
+
+describe('re-source: the replacement peer lands on its own row (#1084)', () => {
+  it("ingests the new peer's file instead of releasing its job on sight", async () => {
+    const old = makeJob({ id: 'aj-old', updatedAt: 2000 });
+    let jobsData = [old];
+    const h = harness(() => jobsData);
+    await h.registry.enable('fixture-addon', 'admin');
+    await h.poller.tick();
+    await h.poller.idle();
+    const coreId = h.db.query<{ id: string }, []>(`SELECT id FROM acquisition_jobs`).get()!.id;
+
+    // What the re-source route does: stamp the old rows, map the replacement
+    // onto the same card, supersede the titles it takes over.
+    claimUnattributedItems(h.db, coreId, 'aj-old');
+    mapAddonJob(h.db, 'fixture-addon', 'aj-new', coreId);
+    supersedeItems(h.db, coreId, ['Song One']);
+
+    // The old peer keeps reporting (cancelled); the new one delivers the same
+    // title — same title-derived item id, so the same transfer key.
+    jobsData = [
+      makeJob({
+        id: 'aj-old',
+        state: 'cancelled',
+        updatedAt: 3000,
+        items: [{ ...makeJob().items[0]!, state: 'failed', updatedAt: 3000 }],
+      }),
+      makeJob({
+        id: 'aj-new',
+        state: 'done',
+        createdAt: 2500,
+        updatedAt: 3000,
+        items: [
+          {
+            ...makeJob().items[0]!,
+            username: 'newpeer',
+            filename: 'New\\01 Song One.flac',
+            state: 'completed',
+            fileReady: true,
+            updatedAt: 3000,
+          },
+        ],
+      }),
+    ];
+    await h.poller.tick();
+    await h.poller.idle();
+
+    // The new peer's file was fetched and organized…
+    expect(h.organized.map((f) => f.username)).toEqual(['newpeer']);
+    const rows = h.db
+      .query<{ addon_job_id: string | null; state: string; username: string }, [string]>(
+        `SELECT addon_job_id, state, username FROM acquisition_job_items WHERE job_id = ? ORDER BY id`,
+      )
+      .all(coreId);
+    // …on its own row, while the abandoned peer's row stays superseded.
+    expect(rows).toEqual([
+      { addon_job_id: 'aj-old', state: 'superseded', username: 'peer' },
+      { addon_job_id: 'aj-new', state: 'organized', username: 'newpeer' },
+    ]);
   });
 });
