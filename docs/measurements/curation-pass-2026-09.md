@@ -3743,3 +3743,42 @@ finding. **No tags changed.**
 | artists | 3,751 |
 | `clip_not_song` | **0** |
 | `missing_artwork` | 4,518 → 4,384 |
+
+## Stretch 16 — the reclaim `rm` failed on all 485 paths, and that was the save
+
+The owner ran the staged filesystem reclaim. Result: **485 of 485 `rm` calls failed with
+`No such file or directory`. Nothing was deleted.**
+
+The list was not stale. It was **derived**. Staged line 1 read
+`Los Tres/Se Remata el Siglo/01 - No Sabes Que Desperdicio Tengo En El Alma.opus`; the real
+file, and the real `library_songs.path`, is
+`01 - No sabes qué desperdicio tengo en el alma.mp3` — Title Case for sentence case, accents
+stripped, extension swapped. That is my own title-normalizer's output written out as a
+filesystem path. Every track in that album carries `landed_at = 2026-07-11`, so these are
+live indexed songs two months old, not orphans. **Had those paths resolved, the command would
+have deleted 485 files the library actively serves.**
+
+The failure mode is worth naming precisely: I verified the *contents* of the list (do these
+titles exist in the library?) and never verified the *paths* (does this string name a file on
+disk?). The content check passed — of course it did; they were real songs. It was the wrong
+question, and it is the ninth time this pass a probe answered an easier question than the one
+asked.
+
+Re-measured with `audit-library.ts --rule=orphan_file --no-fail --json`:
+
+| bucket | claimed in #1079 | measured now |
+| --- | --- | --- |
+| reclaimable orphans | 481 files / 2.73 GB | **0** |
+| genuinely missing from the library | "appears to be empty" | **2** |
+
+The two real ones are `Guy J/Esperanza/11 - 7 Steps (Original Mix).opus` and
+`11 - 7 Steps.opus`. Verified both directions: both are on disk, and `library_songs` for that
+prefix skips track 10 → 12 while every other track is indexed in both variants. They want a
+**scan, not a delete** — admin-only, outside a refiner session.
+
+`kpc:/tmp/orphans_final.txt` and its container copy are removed so the list cannot be re-run.
+The reclaim lane is closed at 0 bytes.
+
+**Standing rule added:** a destructive list is only staged once each entry has been resolved
+against the filesystem it will be applied to (`[ -e ]` per path), and the staged artifact is
+the audit's own `subject` field, never a reconstruction.
