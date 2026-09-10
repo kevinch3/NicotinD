@@ -522,8 +522,10 @@ export function downloadRoutes(
     // routes that no longer exist, so Remove silently no-opped). The addon
     // half is best-effort and only applies when the ref actually names one.
     const ref = parseAddonRef(job.source_ref);
+    let released = 'no addon job';
     if (ref && ref.addonId === job.method) {
       const addon = pluginRegistry?.get(ref.addonId);
+      released = `addon ${ref.addonId} unavailable, addon job ${ref.addonJobId} not released`;
       if (addon instanceof RemoteAddonPlugin) {
         await addon.client.cancelJob(ref.addonJobId).catch(() => {});
         // Releasing the job makes the addon delete its downloaded files
@@ -538,11 +540,20 @@ export function downloadRoutes(
             'remove: discarding files that had not landed yet',
           );
         }
-        await addon.client.deleteJob(ref.addonJobId).catch(() => {});
+        released = await addon.client.deleteJob(ref.addonJobId).then(
+          () => `released addon job ${ref.addonId}:${ref.addonJobId}`,
+          (err: unknown) =>
+            `addon delete of ${ref.addonId}:${ref.addonJobId} failed (best-effort): ${String(err)}`,
+        );
       }
     }
     db.run(`DELETE FROM acquisition_job_items WHERE job_id = ?`, [job.id]);
     db.run(`DELETE FROM acquisition_jobs WHERE id = ?`, [job.id]);
+    recordAudit(db, getCurrentUser(c), 'download.remove', {
+      targetKind: 'acquisition_job',
+      targetId: job.id,
+      detail: released,
+    });
     return c.json({ ok: true });
   });
 
