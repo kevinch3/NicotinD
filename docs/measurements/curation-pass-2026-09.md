@@ -3493,3 +3493,69 @@ not an indexing gap. Nothing deleted; that is the owner's call and the dedupe ru
 All 6 re-applied genre aliases still held at the start of this stretch (`Hip-Hop`, `Nu-Disco`,
 `Rock & Roll`, `Jazz-Rock`, `Post Bop`, `Post Rock`, `& Country` — all 0 raw rows). No scan has run
 since, so this is not yet evidence of durability, only of not-yet-reverted. #1078 stands.
+
+## 2026-09-10, stretch 13 — the acquisition step, and a worklist that recommends spending on complete albums
+
+All fixes still holding at the start of the stretch (aliases 0 raw rows, IPAUTA 0 edges, BPM rows 0,
+`Folclore Chileno` 53). Genre-less songs **324 -> 260** across the pass.
+
+A scan ran at `2026-09-10T09:07:53Z`, but I could not cleanly establish whether it postdates the
+stretch-11 re-applications, so this is *not-yet-reverted*, not proof of durability. #1078 stands.
+
+### Six hunts, four already complete — filed #1080
+
+`completeness.confirmedIncomplete` (108) is the one worklist the report marks as approved for
+spending: *"confirmed → complete_album (curator-approved, only-missing-tracks)"*. Six hunts from the
+top of it, inside the ≤10/session budget:
+
+| album | report | outcome |
+| --- | --- | --- |
+| Tangerine Dream — *Tyranny of Beauty* | 10 / 9 | **already-complete** |
+| David Bowie — *Never Let Me Down* | 14 / 13 | **already-complete** |
+| Maroon 5 — *V* | 20 / 19 | **already-complete** |
+| Los Auténticos Decadentes — *Mi vida loca* | 19 / 18 | **already-complete** |
+| Cultura Profética — *Sobrevolando Instrumental* | 15 / 14 | `no-candidate` |
+| El Kuelgue — *Ruli* | 14 / 13 | `enqueue-failed` — `addon responded 400` |
+
+**4 of 6.** #758 recorded ~40% for this rate; this sample is worse. Each one contacts peers and
+spends bandwidth on the report's own recommendation.
+
+### The prediction I got backwards
+
+I expected `owned` to **under**count — a title mismatch would fail to match a track that is present,
+which is exactly the shape of the `titleMismatch` dimension (46 albums). Checking `owned` against the
+local album row's actual song count:
+
+| album | report `owned` | actual songs |
+| --- | --- | --- |
+| David Bowie — *Never Let Me Down* | 13 | 13 |
+| Tangerine Dream — *Tyranny of Beauty* | 9 | 9 |
+| Maroon 5 — *V* | 19 | **15** |
+| Los Auténticos Decadentes — *Mi vida loca* | 18 | **14** |
+
+It **over**counts, by exactly 4 on two of four. Opposite direction, so `titleMismatch` and this are
+two separate problems rather than one seen twice. I did not establish where the extra 4 come from and
+did not claim a cause.
+
+The two failure shapes are also different:
+
+- **Bowie / Tangerine Dream** — report and library agree on `owned`, and the addon still says
+  complete. So **`expected` is wrong**: Lidarr's canonical tracklist carries one more track than the
+  release actually is.
+- **Maroon 5 / Los Auténticos Decadentes** — `owned` does not match the local row at all, so the
+  arithmetic behind "missing: 1" is not reproducible from library state.
+
+Either way `expected - owned = 1` is not evidence that a track is missing, and that is the entire
+basis on which this list recommends spending.
+
+Whatever `complete_album` consults to answer `already-complete` disagrees with the health report on
+4 of 6 — and it is the one that is right, being the same source that would perform the download.
+
+### Also
+
+`El Kuelgue — Ruli` returned `enqueue-failed` with `addon responded 400 for POST /addon/v1/jobs` —
+the tool's docs distinguish a deterministic rejection from an outage, and a 400 is the former, so
+retrying can never help. Possibly related to #1069.
+
+**Net acquisition result for the stretch: zero tracks acquired from six hunts.** That is the finding,
+not a failure of the hunts.
