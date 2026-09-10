@@ -24,6 +24,17 @@ if [ "$(cd "$W" && pwd)" = "$MAIN" ]; then
   exit 1
 fi
 
+# bun's per-version store keeps a stale copy of a dependency next to the one
+# bun.lock actually pins, and `bun install` won't re-point a workspace's
+# symlink off it once the lockfile is satisfied (#1088). Linking that tree
+# into a fresh worktree fails typecheck wholesale in a way that looks like
+# the branch's fault, so refuse up front instead.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if ! bun run "$SCRIPT_DIR/check-node-modules-drift.ts" "$MAIN"; then
+  echo "refusing to link a node_modules tree with version drift -- fix $MAIN first" >&2
+  exit 1
+fi
+
 link_dir() {                      # $1 = dir relative to repo root holding node_modules
   local rel="$1" src="$MAIN/$1/node_modules" dst="$W/$1/node_modules"
   [ -d "$src" ] || return 0
