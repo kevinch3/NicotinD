@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.33](https://github.com/kevinch3/NicotinD/compare/v0.6.32...v0.6.33) (2026-09-10)
+
+### Bug Fixes
+
+* **downloads:** a removed card no longer wedges the whole addon poll ([#1082](https://github.com/kevinch3/NicotinD/issues/1082)) ([0b94e56](https://github.com/kevinch3/NicotinD/commit/0b94e56916ab71b61b672b04d7cb35cb03697c55))
 ## [0.6.32](https://github.com/kevinch3/NicotinD/compare/v0.6.31...v0.6.32) (2026-09-09)
 
 ### Features
