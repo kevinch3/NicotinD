@@ -11,12 +11,14 @@ const f = (
   suffix: string,
   bitRate: number,
   disc: number | null = null,
+  track: number | null = null,
 ): ReconcileFile => ({
   name,
   title,
   suffix,
   bitRate,
   disc,
+  track,
 });
 
 describe('chooseFolderKeepers', () => {
@@ -125,6 +127,31 @@ describe('chooseFolderKeepers', () => {
     const { deletedNames } = chooseFolderKeepers(files);
     expect(deletedNames).toEqual(['b.mp3']);
   });
+
+  // Issue #1089: this pass deletes files, so blindly stripping a leading digit
+  // off the tag title (treating it as a track-number prefix) is destructive
+  // when the digit is actually part of the song's name. Real prod case: Guy J
+  // — Esperanza, track 11 "7 Steps" vs track 5 "2 Steps" both collided into
+  // "Steps" and one was `unlinkSync`'d — the loser was the only copy.
+  it("does not delete a title whose own leading digit collides with another title's leading digit", () => {
+    const files = [
+      f('11 - 7 Steps.opus', '7 Steps', 'opus', 128, null, 11),
+      f('05 - 2 Steps.opus', '2 Steps', 'opus', 128, null, 5),
+    ];
+    const { deletedNames, keptNames } = chooseFolderKeepers(files);
+    expect(deletedNames).toEqual([]);
+    expect(keptNames.sort()).toEqual(['05 - 2 Steps.opus', '11 - 7 Steps.opus']);
+  });
+
+  it('still collapses a genuine track-number-prefixed duplicate (the benign, common shape)', () => {
+    const files = [
+      f('04 - Quieto.mp3', '04 Quieto', 'mp3', 192, null, 4),
+      f('Quieto.flac', 'Quieto', 'flac', 900, null, 4),
+    ];
+    const { deletedNames, keptNames } = chooseFolderKeepers(files);
+    expect(deletedNames).toEqual(['04 - Quieto.mp3']);
+    expect(keptNames).toEqual(['Quieto.flac']);
+  });
 });
 
 describe('readFolderTracks', () => {
@@ -189,5 +216,36 @@ describe('readFolderTracks disc tag', () => {
 
     // Only the untagged twin of disc 1 collapses; disc 2's copy survives.
     expect(chooseFolderKeepers(tracks).deletedNames).toEqual(['plain.mp3']);
+  });
+});
+
+// Issue #1089, real tag parse rather than trusting the type: `readFolderTracks`
+// must populate `track` off the actual ID3 frame so `chooseFolderKeepers` can
+// tell "7 Steps" (track 11) from "2 Steps" (track 5) instead of blindly
+// stripping both leading digits and colliding them.
+describe('readFolderTracks track-number tag', () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'recon-track-'));
+  const fixture = join(import.meta.dir, '../../test-fixtures/silence.mp3');
+
+  afterAll(() => {
+    try {
+      rmSync(tmp, { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+  });
+
+  it('reads the track number off a tagged file and keeps two colliding-once-stripped titles', async () => {
+    const { default: nodeId3 } = (await import('node-id3')) as unknown as {
+      default: { update: (t: object, f: string) => boolean };
+    };
+    for (const name of ['seven.mp3', 'two.mp3']) copyFileSync(fixture, join(tmp, name));
+    nodeId3.update({ title: '7 Steps', trackNumber: '11' }, join(tmp, 'seven.mp3'));
+    nodeId3.update({ title: '2 Steps', trackNumber: '5' }, join(tmp, 'two.mp3'));
+
+    const tracks = await readFolderTracks(tmp);
+    expect(tracks.find((t) => t.name === 'seven.mp3')?.track).toBe(11);
+    expect(tracks.find((t) => t.name === 'two.mp3')?.track).toBe(5);
+    expect(chooseFolderKeepers(tracks).deletedNames).toEqual([]);
   });
 });

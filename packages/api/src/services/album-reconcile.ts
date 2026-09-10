@@ -15,6 +15,8 @@ export interface ReconcileFile {
   bitRate: number;
   /** Disc number from tags. Absent/null means "the only disc" (issue #747). */
   disc?: number | null;
+  /** Track number from tags. See `SelectableTrack.trackNumber` (#1089). */
+  track?: number | null;
 }
 
 export interface ReconcileResult {
@@ -48,6 +50,7 @@ export function chooseFolderKeepers(
     bitRate: x.bitRate,
     // This pass DELETES, so a title repeated across discs must not collide (issue #747).
     disc: x.disc ?? null,
+    trackNumber: x.track ?? null,
   }));
   const selection = selectAlbumTracksDetailed(selectable, canonicalTitles);
   const kept = new Set(selection.kept.map((t) => t.name));
@@ -81,6 +84,7 @@ export async function readFolderTracks(dir: string): Promise<ReconcileFile[]> {
     let title = name.slice(0, name.length - ext.length);
     let bitRate = 0;
     let disc: number | null = null;
+    let track: number | null = null;
     try {
       const meta = mm ? await mm.parseFile(abs, { duration: false, skipCovers: true }) : undefined;
       if (meta?.common?.title) title = meta.common.title;
@@ -88,10 +92,11 @@ export async function readFolderTracks(dir: string): Promise<ReconcileFile[]> {
       // Nullish, not truthy: the scanner keeps a `TPOS: 0`, so a truthy guard
       // here would disagree with it about the identity of the same file.
       disc = meta?.common?.disk?.no ?? null;
+      track = meta?.common?.track?.no ?? null;
     } catch {
       // unreadable — fall back to filename stem + 0 bitrate
     }
-    out.push({ name, title, suffix: ext.slice(1), bitRate, disc });
+    out.push({ name, title, suffix: ext.slice(1), bitRate, disc, track });
   }
   return out;
 }
