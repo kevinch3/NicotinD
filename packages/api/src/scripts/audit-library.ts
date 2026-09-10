@@ -103,6 +103,12 @@ function main(): void {
         `  ${SEV_ICON[s.severity]} ${s.severity.padEnd(6)} ${String(s.count).padStart(5)}  ${s.rule}`,
       );
     }
+    for (const rule of ['orphan_file', 'redundant_copy']) {
+      const hits = report.findings.filter((f) => f.rule === rule);
+      if (hits.length === 0) continue;
+      const gb = hits.reduce((n, f) => n + (f.bytes ?? 0), 0) / 1e9;
+      console.log(`  ${rule}: ${hits.length} file(s), ${gb.toFixed(2)} GB`);
+    }
     console.log(
       `\n  ${report.highSeverityCount} high-severity finding(s). Use --rule=<id> to list, --json for detail.`,
     );
