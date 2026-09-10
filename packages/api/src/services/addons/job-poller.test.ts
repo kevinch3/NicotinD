@@ -80,6 +80,8 @@ function harness(
     strandedSweepIntervalMs?: number;
     /** Organized relPath → the copy the dedupe kept in its place (#1032). */
     supersede?: Record<string, string>;
+    /** Called once per organizeBatch; true makes that call throw (#1025). */
+    organizeFails?: () => boolean;
   } = {},
 ) {
   const db = new Database(':memory:');
@@ -119,6 +121,7 @@ function harness(
     strandedSweepIntervalMs: opts.strandedSweepIntervalMs ?? 0,
     organizer: {
       organizeBatch: async (files) => {
+        if (opts.organizeFails?.()) throw new Error('organize blew up');
         const supersededRelPaths: Record<string, string> = {};
         for (const f of files) {
           organized.push(f);
@@ -1646,5 +1649,72 @@ describe('re-source: the replacement peer lands on its own row (#1084)', () => {
       { addon_job_id: 'aj-old', state: 'superseded', username: 'peer' },
       { addon_job_id: 'aj-new', state: 'organized', username: 'newpeer' },
     ]);
+  });
+});
+
+describe('a failed organize is retried without re-downloading (#1025)', () => {
+  const BODY = 'audio-bytes';
+
+  function readyJob(size: number): AddonJob {
+    return makeJob({
+      id: 'aj-refetch',
+      state: 'done',
+      items: [
+        {
+          itemId: 't:one',
+          title: 'Song One',
+          username: 'peer',
+          filename: 'Music\\Album\\01 Song One.mp3',
+          size,
+          bitRateKbps: 320,
+          audioFormat: 'MP3 320kbps',
+          state: 'completed',
+          fileReady: true,
+          updatedAt: 2000,
+        },
+      ],
+    });
+  }
+
+  async function run(size: number) {
+    let fetches = 0;
+    let organizeCalls = 0;
+    const job = readyJob(size);
+    const h = harness(
+      () => [job],
+      async () => job,
+      {
+        fetchFile: async () => {
+          fetches += 1;
+          return new Response(BODY);
+        },
+        organizeFails: () => ++organizeCalls === 1,
+      },
+    );
+    await h.registry.enable('fixture-addon', 'admin');
+    await h.poller.tick();
+    await h.poller.idle(); // fetched, organize throws: item stays completed + null path
+    await h.poller.tick();
+    await h.poller.idle(); // re-selected by ingest
+    const item = h.db
+      .query<{ state: string; relative_path: string | null }, []>(
+        `SELECT state, relative_path FROM acquisition_job_items`,
+      )
+      .get()!;
+    return { fetches, organizeCalls, item };
+  }
+
+  it('reuses the complete local copy instead of fetching it again', async () => {
+    const { fetches, organizeCalls, item } = await run(BODY.length);
+    expect(organizeCalls).toBe(2);
+    expect(fetches).toBe(1);
+    expect(item.state).toBe('organized');
+    expect(item.relative_path).not.toBeNull();
+  });
+
+  it('re-fetches when the local copy does not match the declared size', async () => {
+    const { fetches, item } = await run(BODY.length + 50);
+    expect(fetches).toBe(2);
+    expect(item.state).toBe('organized');
   });
 });
