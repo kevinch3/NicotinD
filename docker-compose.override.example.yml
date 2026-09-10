@@ -8,8 +8,8 @@
 #   1. Bind-mount your existing music library instead of the named volume
 #   2. Bind-mount the NicotinD data dir (secrets, DB) for persistence
 #   3. Build the server image from source instead of pulling from GHCR
-#   4. Re-enable the admin log viewer's Docker socket mount (removed from the
-#      default compose file in 0.4.0 — see the warning at the bottom)
+#   4. Opt in to the admin log viewer's Docker socket mount (not in the default
+#      compose file — see the warning at the bottom)
 #
 # GPU passthrough for the analysis sidecar is deliberately NOT here — it lives in
 # its own opt-in overlay, docker-compose.gpu.yml, so a host GPU / nvidia-
@@ -51,13 +51,18 @@ services:
       # remote cover art, parses untrusted audio tags, shells out to
       # ffmpeg/fpcalc and extracts user-supplied zip archives.
       #
-      # This was in docker-compose.yml by default until 0.4.0. It moved here
-      # because the published image is public, so the default configuration is
-      # what strangers run. Without it the log viewer degrades cleanly:
-      # GET /api/system/logs returns 503 "Docker socket not available".
+      # It is not in docker-compose.yml because the published image is public,
+      # so the default configuration is what strangers run (#1015). Without it
+      # the log viewer degrades cleanly: GET /api/system/logs/nicotind/stream
+      # returns 503 "Docker socket not available".
       #
       # Uncomment only if you want the admin log viewer and accept that trade.
+      # The container runs as uid 1000, so it also needs the host's `docker`
+      # group to read the socket — uncomment the `group_add` block below too,
+      # with your host's gid (`getent group docker | cut -d: -f3`).
       # - /var/run/docker.sock:/var/run/docker.sock:ro
+    # group_add:
+    #   - "981"
 
   analysis:
     # Just a bind mount here — the published analysis image runs on CPU. For GPU
