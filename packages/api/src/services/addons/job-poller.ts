@@ -251,7 +251,6 @@ export class AddonJobPoller {
   }
 
   private async pollAddon(plugin: RemoteAddonPlugin): Promise<void> {
-    const { db } = this.deps;
     const addonId = plugin.manifest.id;
     const cursor = Number(this.kvGet(addonId, 'poll_cursor') ?? '0') || undefined;
     const jobs = await plugin.client.listJobs(cursor);
@@ -265,34 +264,18 @@ export class AddonJobPoller {
 
     for (const job of jobs) {
       maxUpdated = Math.max(maxUpdated, job.updatedAt);
-      const coreJobId = this.ensureCoreJob(addonId, job);
-      handled.add(coreJobId);
-      // Cancel pending, addon still winding down (#806): freeze the mirror.
-      // Mirroring would overwrite the closed states `cancelUnownedJob` writes
-      // and re-derive a live-looking stage; the addon's own terminal verdict
-      // (state != active) still flows through the full path below, and the
-      // grace valve in tick() closes the job if that verdict never comes.
-      if (job.state === 'active' && this.cancelRequested(coreJobId)) continue;
-      this.updateJobMeta(coreJobId, job);
-      this.mirrorItems(addonId, coreJobId, job);
-      recomputeStage(db, coreJobId);
-      // Files to fetch → the background queue owns the whole finish tail
-      // (#809): outcome/playlist/release stay ordered AFTER ingest there, and
-      // this tick moves on to the next job instead of blocking for minutes.
-      // A job whose finish is already queued/running is left alone — the next
-      // tick re-observes it once the single-flight slot frees.
-      if (this.ingestQueuedJobs.has(coreJobId) || this.hasIngestableWork(coreJobId, job)) {
-        this.scheduleFinish(plugin, coreJobId, job);
-        continue;
+      // One job's failure is its own (#1081): the loop used to share a single
+      // catch, so a job the mirror could not store aborted the poll before the
+      // jobs after it and pinned the cursor — 11 finished albums sat at
+      // "Downloading 0 of N" for 16 h behind one removed card. The cursor still
+      // advances past a failed job: re-running it every 5 s is the same wedge
+      // in another form, and the addon's next update brings it back anyway.
+      try {
+        const coreJobId = await this.mirrorAddonJob(plugin, job);
+        if (coreJobId) handled.add(coreJobId);
+      } catch (err) {
+        log.warn({ addonId, addonJob: job.id, err }, 'addon job skipped this tick');
       }
-      this.applyAddonOutcome(coreJobId, job);
-      // Playlist-from-acquisition on the addon lane (issue #587): once the
-      // addon says the job is closed, any track that landed this tick or a
-      // prior one already carries a song_id, so there is nothing left to wait
-      // for. Safe to call every tick the job stays closed-but-unreleased — it
-      // refreshes the same playlist in place rather than duplicating.
-      if (job.state !== 'active') materializeAddonPlaylist(db, this.playlists, coreJobId);
-      await this.maybeReleaseAddonJob(plugin, coreJobId, job);
     }
 
     if (maxUpdated > (cursor ?? 0)) this.kvSet(addonId, 'poll_cursor', String(maxUpdated));
@@ -531,10 +514,79 @@ export class AddonJobPoller {
     log.info({ addonId, coreJobId }, 'failed an orphaned addon job (addon 404)');
   }
 
-  /** The core acquisition_jobs row mirroring an addon job (created on first sight). */
-  private ensureCoreJob(addonId: string, job: AddonJob): string {
+  /**
+   * Mirror one addon job onto its core row. Returns the core id it worked on,
+   * or null when the job belongs to a card the person removed.
+   */
+  private async mirrorAddonJob(plugin: RemoteAddonPlugin, job: AddonJob): Promise<string | null> {
+    const { db } = this.deps;
+    const addonId = plugin.manifest.id;
+    const coreJobId = this.ensureCoreJob(addonId, job);
+    if (coreJobId === null) {
+      await this.releaseRemovedJob(plugin, job);
+      return null;
+    }
+    // Cancel pending, addon still winding down (#806): freeze the mirror.
+    // Mirroring would overwrite the closed states `cancelUnownedJob` writes
+    // and re-derive a live-looking stage; the addon's own terminal verdict
+    // (state != active) still flows through the full path below, and the
+    // grace valve in tick() closes the job if that verdict never comes.
+    if (job.state === 'active' && this.cancelRequested(coreJobId)) return coreJobId;
+    this.updateJobMeta(coreJobId, job);
+    this.mirrorItems(addonId, coreJobId, job);
+    recomputeStage(db, coreJobId);
+    // Files to fetch → the background queue owns the whole finish tail
+    // (#809): outcome/playlist/release stay ordered AFTER ingest there, and
+    // this tick moves on to the next job instead of blocking for minutes.
+    // A job whose finish is already queued/running is left alone — the next
+    // tick re-observes it once the single-flight slot frees.
+    if (this.ingestQueuedJobs.has(coreJobId) || this.hasIngestableWork(coreJobId, job)) {
+      this.scheduleFinish(plugin, coreJobId, job);
+      return coreJobId;
+    }
+    this.applyAddonOutcome(coreJobId, job);
+    // Playlist-from-acquisition on the addon lane (issue #587): once the
+    // addon says the job is closed, any track that landed this tick or a
+    // prior one already carries a song_id, so there is nothing left to wait
+    // for. Safe to call every tick the job stays closed-but-unreleased — it
+    // refreshes the same playlist in place rather than duplicating.
+    if (job.state !== 'active') materializeAddonPlaylist(db, this.playlists, coreJobId);
+    await this.maybeReleaseAddonJob(plugin, coreJobId, job);
+    return coreJobId;
+  }
+
+  /**
+   * The map names a card that no longer exists: the person removed it, and the
+   * route's addon-side delete is best-effort (#1081). Not a row to re-mint —
+   * that is the ghost card the map exists to prevent — and not one to insert
+   * into: `foreign_keys=ON` makes that a throw. Release the addon job instead;
+   * the map stays so a release that fails cannot mint a twin next tick.
+   */
+  private async releaseRemovedJob(plugin: RemoteAddonPlugin, job: AddonJob): Promise<void> {
+    const addonId = plugin.manifest.id;
+    if (this.wasReleasedByUs(addonId, job.id)) return;
+    log.info({ addonId, addonJob: job.id }, 'releasing the addon job behind a removed card');
+    try {
+      if (job.state === 'active') await plugin.client.cancelJob(job.id).catch(() => {});
+      await plugin.client.deleteJob(job.id);
+      this.kvSet(addonId, `released:${job.id}`, '1');
+    } catch (err) {
+      log.warn({ addonId, addonJob: job.id, err }, "could not release a removed card's addon job");
+    }
+  }
+
+  /**
+   * The core acquisition_jobs row mirroring an addon job (created on first
+   * sight). Null when the map names a row that is gone — a removed card.
+   */
+  private ensureCoreJob(addonId: string, job: AddonJob): string | null {
     const mapped = this.kvGet(addonId, `jobmap:${job.id}`);
-    if (mapped) return mapped;
+    if (mapped) {
+      const exists = this.deps.db
+        .query<{ id: string }, [string]>(`SELECT id FROM acquisition_jobs WHERE id = ?`)
+        .get(mapped);
+      return exists ? mapped : null;
+    }
     const coreJobId = createJob(this.deps.db, {
       kind: KIND_BY_INTENT[job.intent] ?? 'direct',
       method: addonId,

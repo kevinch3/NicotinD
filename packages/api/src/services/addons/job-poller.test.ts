@@ -78,6 +78,9 @@ function harness(
 ) {
   const db = new Database(':memory:');
   applySchema(db);
+  // Prod's `openDatabase` enforces foreign keys; a test DB that does not never
+  // sees the throw #1081 is about (an item mirrored into a removed card).
+  db.run('PRAGMA foreign_keys=ON');
   const registry = new PluginRegistry({ db, dataDir: '/tmp/nicotind-test' });
   const deleted: string[] = [];
   const client = {
@@ -93,6 +96,7 @@ function harness(
     deleteJob: async (id: string) => {
       deleted.push(id);
     },
+    cancelJob: async () => {},
     getHealth: async () => ({ ok: true, ready: true }),
     putConfig: async () => {},
   } as unknown as AddonClient;
@@ -1497,5 +1501,84 @@ describe('ingest measurement', () => {
       .get(coreJobId)!;
     expect(card.stage).toBe('downloading');
     expect(card.state).toBe('active');
+  });
+});
+
+describe('one job never wedges the poll for the rest (#1081)', () => {
+  let h: ReturnType<typeof harness>;
+
+  function itemsOf(h: ReturnType<typeof harness>, addonJobId: string) {
+    return h.db
+      .query<{ state: string }, [string]>(
+        `SELECT i.state FROM acquisition_job_items i
+           JOIN acquisition_jobs j ON j.id = i.job_id
+          WHERE j.source_ref = ?`,
+      )
+      .all(`addon:fixture-addon:${addonJobId}`);
+  }
+
+  function cursor(h: ReturnType<typeof harness>) {
+    return h.db
+      .query<{ value: string }, []>(
+        `SELECT value FROM plugin_kv WHERE plugin_id = 'addon-poller:fixture-addon' AND key = 'poll_cursor'`,
+      )
+      .get()?.value;
+  }
+
+  it('releases the addon job behind a removed card and keeps mirroring the others', async () => {
+    const removed = makeJob({ id: 'aj-removed', createdAt: 1000, updatedAt: 3000 });
+    const live = makeJob({ id: 'aj-live', createdAt: 2000, updatedAt: 3000 });
+    h = harness(() => [removed, live]);
+    await h.registry.enable('fixture-addon', 'admin');
+    // The acquire route pre-maps the card; Remove then deletes the rows and
+    // leaves the map behind (the route's addon-side delete is best-effort, and
+    // on kpc it did not land — the addon kept listing the job).
+    const coreId = createJob(h.db, {
+      kind: 'album-hunt',
+      method: 'fixture-addon',
+      artistName: 'Artist',
+      albumTitle: 'Album',
+      sourceRef: 'addon:fixture-addon:aj-removed',
+      files: [],
+    });
+    mapAddonJob(h.db, 'fixture-addon', 'aj-removed', coreId);
+    h.db.run(`DELETE FROM acquisition_jobs WHERE id = ?`, [coreId]);
+
+    await h.poller.tick();
+    await h.poller.idle();
+
+    // The job behind the removed card is neither re-minted as a ghost card…
+    expect(
+      h.db
+        .query(`SELECT id FROM acquisition_jobs WHERE source_ref = ?`)
+        .all('addon:fixture-addon:aj-removed'),
+    ).toHaveLength(0);
+    // …nor left addon-side for ever: it is released, once.
+    expect(h.deleted).toEqual(['aj-removed']);
+    // And the job after it in the list still landed — the whole point.
+    expect(itemsOf(h, 'aj-live')).toHaveLength(1);
+    expect(cursor(h)).toBe('3000');
+
+    await h.poller.tick();
+    await h.poller.idle();
+    expect(h.deleted).toEqual(['aj-removed']);
+  });
+
+  it('a job the mirror cannot store is skipped, and the cursor still moves on', async () => {
+    const poisoned = makeJob({
+      id: 'aj-bad',
+      createdAt: 1000,
+      updatedAt: 3000,
+      items: [{ ...makeJob().items[0]!, state: 'exploded' as never }],
+    });
+    const live = makeJob({ id: 'aj-live', createdAt: 2000, updatedAt: 3000 });
+    h = harness(() => [poisoned, live]);
+    await h.registry.enable('fixture-addon', 'admin');
+
+    await h.poller.tick();
+    await h.poller.idle();
+
+    expect(itemsOf(h, 'aj-live')).toHaveLength(1);
+    expect(cursor(h)).toBe('3000');
   });
 });
