@@ -3782,3 +3782,46 @@ The reclaim lane is closed at 0 bytes.
 **Standing rule added:** a destructive list is only staged once each entry has been resolved
 against the filesystem it will be applied to (`[ -e ]` per path), and the staged artifact is
 the audit's own `subject` field, never a reconstruction.
+
+## Stretch 17 — the rescan did not clear the 2 orphans, because they are a scanner bug (#1089)
+
+The owner ran a full library rescan. Song count **21,295 → 21,295**; `audit-library.ts
+--rule=orphan_file` still returns the same two files. A rescan was never going to fix them.
+
+Both are healthy (3.8 MB, 152 s, decodable ogg/opus) and both sit in `scan_cache` with fully
+parsed `track_json` and `orphaned_at = null` — the scanner **reads** them fine and then drops
+them before the insert.
+
+Dumped the album's 32 cache rows and 30 `library_songs` paths from prod and replayed the
+shipped `selectAlbumTracksDetailed` locally, the [[reference_prod_data_inspection]] pattern:
+
+```
+input 32 kept 30
+DROPPED: Guy J/Esperanza/11 - 7 Steps (Original Mix).opus | norm= "steps original mix"
+DROPPED: Guy J/Esperanza/11 - 7 Steps.opus                | norm= "steps"
+```
+
+Cause, `packages/addon-sdk/src/title-match.ts:15`:
+
+```ts
+.replace(/^\d+[\s.\-]+/, '') // strip leading track numbers
+```
+
+`normalizeTitle("7 Steps")` → `"steps"`, and so does `normalizeTitle("2 Steps")`. The album has
+no canonical tracklist, so `selectAlbumTracks` keys by normalized title, the two songs collide,
+and `05 - 2 Steps` wins the lexicographic relPath tiebreak. Deterministic — it re-drops on every
+scan, which is exactly what the rescan demonstrated.
+
+Blast radius over all 21k `scan_cache` rows: **14** collisions created by the strip, **12
+benign** (`04 Quieto` vs `Quieto` — the strip doing its job), **2 harmful**. The 2 harmful are
+these files, and they are the whole `orphan_file` population. Two independent measurements agree.
+
+Fix proposed in **#1089**: strip the leading number only when it equals the file's own `track`
+value — a field already on every scanned track, and a perfect discriminator across all 16 real
+cases (`04 Quieto` track=4 strip; `7 Steps` track=11 keep).
+
+**Method note.** Three cheap checks in a row each said "not a data problem" — file size and
+`ffprobe` said the audio is fine, `scan_cache` said the parse is fine, and the DB said the row
+is absent. Only then was it worth reading the scanner. The replay is what turned a hypothesis
+into a reproduction; the blast-radius sweep is what stopped the fix from breaking the 12 benign
+cases it would otherwise have regressed.
