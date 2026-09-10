@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.36](https://github.com/kevinch3/NicotinD/compare/v0.6.35...v0.6.36) (2026-09-10)
+
+### Bug Fixes
+
+* **library:** strip a leading digit only when it is the file's own track number ([#1091](https://github.com/kevinch3/NicotinD/issues/1091)) ([45876b6](https://github.com/kevinch3/NicotinD/commit/45876b6b8f9c7f3e56920811c57996b67e308e94)), closes [#1089](https://github.com/kevinch3/NicotinD/issues/1089), references [#1089](https://github.com/kevinch3/NicotinD/issues/1089) [#747](https://github.com/kevinch3/NicotinD/issues/747)
 ## [0.6.35](https://github.com/kevinch3/NicotinD/compare/v0.6.34...v0.6.35) (2026-09-10)
 
 ### Bug Fixes
