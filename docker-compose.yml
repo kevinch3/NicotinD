@@ -7,19 +7,14 @@ services:
     # docker-compose.override.example.yml.
     image: ghcr.io/kevinch3/nicotind:${NICOTIND_VERSION:-release}
     user: "1000:1000"
-    group_add:
-      - "981"
     ports:
       - "8484:8484"
     volumes:
       - nicotind-data:/data/nicotind
       - music:/data/music
-      # SECURITY: bind-mounting /var/run/docker.sock grants the `nicotind`
-      # container full Docker API access = host-root-equivalent privilege.
-      # Required for the admin log-streaming feature (packages/api/src/routes/
-      # system.ts). The container runs as UID 1000 but this does not mitigate
-      # socket access. Remove this bind mount unless you need log streaming.
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # No /var/run/docker.sock here: it is host-root-equivalent, so the admin
+      # log viewer is opt-in via docker-compose.override.example.yml (#1015).
+      # scripts/compose-docker-socket.test.ts keeps it out.
     environment:
       NICOTIND_MODE: external
       NICOTIND_PORT: "8484"

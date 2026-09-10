@@ -504,10 +504,14 @@ So any RCE or SSRF anywhere in the API escalates directly to root on the host,
 in a service that fetches remote cover art, parses untrusted audio tags, shells
 out to `ffmpeg`/`fpcalc` and extracts user-supplied zip archives.
 
-**In 0.4.0 it is removed from `docker-compose.yml`.** If you want the log viewer,
-copy `docker-compose.override.example.yml` to `docker-compose.override.yml` and
-uncomment the mount. Without it the feature degrades cleanly: the route returns
-`503 Docker socket not available` rather than failing obscurely.
+**It is not in `docker-compose.yml`.** The 0.4.0 removal was announced but only
+actually landed with #1015; `scripts/compose-docker-socket.test.ts` now keeps the
+mount (and the `group_add` docker gid that existed only for it) out of the default
+file. If you want the log viewer, copy `docker-compose.override.example.yml` to
+`docker-compose.override.yml` and uncomment both the mount and the `group_add`
+block, set to your host's docker gid. Without it the feature degrades cleanly:
+the stream route returns `503 Docker socket not available` rather than failing
+obscurely, and the admin log panel shows "disconnected" without retrying.
 
 > Compose **merges** an override into the base file, but a *list* in the override
 > **replaces** the base list instead of appending. If you declare `volumes:` in
@@ -852,10 +856,10 @@ live.
   your override file (`mem_limit`, `cpus`) — the heavy consumers are library
   scans and ffmpeg-based enrichment (whose concurrency is admin-tunable in
   Admin → Library processing).
-- **Security**: the `/var/run/docker.sock` mount in `docker-compose.yml` grants
-  the container host-root-equivalent privilege; it exists only for the admin
-  log-streaming feature. Remove it unless you need that (see the comment in the
-  compose file).
+- **Security**: the `/var/run/docker.sock` mount grants the container
+  host-root-equivalent privilege; it exists only for the admin log-streaming
+  feature, so it is opt-in via the override file, never in `docker-compose.yml`
+  (see "Unsafe defaults being removed in 0.4.0" above).
 
 ## CI coverage
 

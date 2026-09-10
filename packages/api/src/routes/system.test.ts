@@ -99,6 +99,28 @@ describe('system routes', () => {
     expect(data.used).toBe(600 * 1024);
   });
 
+  // The default compose file no longer mounts the socket (#1015), so this is the
+  // path a default install takes: a clean 503, never a spawn of `docker`.
+  it('GET /logs/nicotind/stream returns 503 when the Docker socket is absent', async () => {
+    const withAdmin = new Hono<{ Variables: { user: { role: string } } }>();
+    withAdmin.use('*', async (c, next) => {
+      c.set('user', { role: 'admin' });
+      await next();
+    });
+    withAdmin.route(
+      '/',
+      systemRoutes(
+        serviceManagerMock as unknown as Parameters<typeof systemRoutes>[0],
+        configMock as unknown as Parameters<typeof systemRoutes>[1],
+        { socketExists: () => false },
+      ) as unknown as Hono<{ Variables: { user: { role: string } } }>,
+    );
+
+    const res = await withAdmin.request('/logs/nicotind/stream');
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: 'Docker socket not available' });
+  });
+
   it('GET /disk returns 500 when statfs throws', async () => {
     app = new Hono();
     app.route(
