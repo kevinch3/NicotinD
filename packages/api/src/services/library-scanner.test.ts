@@ -735,6 +735,42 @@ describe('LibraryScanner.persist', () => {
     expect(row).toEqual({ sample_rate: 96000, bit_depth: 24 });
   });
 
+  describe('retagged artist credit (#1073)', () => {
+    const creditsOf = (id: string) =>
+      db
+        .query<{ name: string }, [string]>(
+          `SELECT a.name FROM library_song_artists sa
+           JOIN library_artists a ON a.id = sa.artist_id
+           WHERE sa.song_id = ? ORDER BY a.name`,
+        )
+        .all(id)
+        .map((r) => r.name);
+
+    for (const prune of [false, true]) {
+      it(`drops the superseded credit on a ${prune ? 'full' : 'incremental'} rescan`, () => {
+        const t0 = Date.now();
+        // A sibling keeps the `090` artist row alive, so only the edge write
+        // can make the retagged song stop pointing at it.
+        const sibling = track({ relPath: '090/Other/01.mp3', artist: '090', album: 'Other' });
+        const before = track({
+          relPath: 'Mix/Pop/01.mp3',
+          artist: '090',
+          album: 'Pop',
+          title: 'T',
+        });
+        const first = buildLibrary([before, sibling]);
+        scanner.persist(first, t0, true);
+        const id = first.songs.find((s) => s.path === before.relPath)!.id;
+        expect(creditsOf(id)).toEqual(['090']);
+
+        const retagged = { ...before, artist: 'Bad Bunny' };
+        scanner.persist(buildLibrary(prune ? [retagged, sibling] : [retagged]), t0 + 1, prune);
+
+        expect(creditsOf(id)).toEqual(['Bad Bunny']);
+      });
+    }
+  });
+
   it('incremental persist does not prune untouched rows', () => {
     scanner.persist(
       buildLibrary([
