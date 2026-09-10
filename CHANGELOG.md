@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.38](https://github.com/kevinch3/NicotinD/compare/v0.6.37...v0.6.38) (2026-09-10)
+
+### Bug Fixes
+
+* **audit:** split orphan_file into redundant copies and genuine indexing gaps ([#1101](https://github.com/kevinch3/NicotinD/issues/1101)) ([38f3e6a](https://github.com/kevinch3/NicotinD/commit/38f3e6aa4f35e5b2a7b2759564fa2419f21b8e34)), closes [#1079](https://github.com/kevinch3/NicotinD/issues/1079), references [#1079](https://github.com/kevinch3/NicotinD/issues/1079)
+* **compose:** drop the Docker socket from the default compose file ([#1097](https://github.com/kevinch3/NicotinD/issues/1097)) ([e51253a](https://github.com/kevinch3/NicotinD/commit/e51253a1c882ca5af3b7d4fd9507367bb0ddac5d)), references [#1015](https://github.com/kevinch3/NicotinD/issues/1015)
+* **downloads:** audit removing a download card ([#1096](https://github.com/kevinch3/NicotinD/issues/1096)) ([581b8a8](https://github.com/kevinch3/NicotinD/commit/581b8a875e5511c9c2c44ad5b25cfb3a29ee5623)), closes [#1086](https://github.com/kevinch3/NicotinD/issues/1086), references [#1081](https://github.com/kevinch3/NicotinD/issues/1081)
+* **genre:** resolve override genres through the alias table at scan time ([#1098](https://github.com/kevinch3/NicotinD/issues/1098)) ([1dae49c](https://github.com/kevinch3/NicotinD/commit/1dae49c61c9b6b94fca203de7a755cf7639b75f9)), references [#1078](https://github.com/kevinch3/NicotinD/issues/1078)
+* **genres:** a casing-only genre alias renames the value instead of no-oping ([#1103](https://github.com/kevinch3/NicotinD/issues/1103)) ([48422d1](https://github.com/kevinch3/NicotinD/commit/48422d17619a2815ff7faa2583f1ea3c81712c62)), references [#1074](https://github.com/kevinch3/NicotinD/issues/1074)
+* **health:** judge the confirmed worklist against Lidarr's live tracklist ([#1105](https://github.com/kevinch3/NicotinD/issues/1105)) ([8ae135a](https://github.com/kevinch3/NicotinD/commit/8ae135ab4c291cea510a0256c93b7658efa4e63a)), references [#1080](https://github.com/kevinch3/NicotinD/issues/1080)
+* **library:** an ID3v1 trailer no longer outvotes ID3v2 on the track number ([#1100](https://github.com/kevinch3/NicotinD/issues/1100)) ([f8152f8](https://github.com/kevinch3/NicotinD/commit/f8152f8a2c3ad27cbe931656815b79730a82f335)), closes [#1077](https://github.com/kevinch3/NicotinD/issues/1077), references [#1089](https://github.com/kevinch3/NicotinD/issues/1089)
+* **library:** verify a retagged artist through the alias map ([#1095](https://github.com/kevinch3/NicotinD/issues/1095)) ([38bc0c4](https://github.com/kevinch3/NicotinD/commit/38bc0c466cc19994c932ee45b66931e674e254df)), closes [#1071](https://github.com/kevinch3/NicotinD/issues/1071)
+* **scanner:** replace a rescanned song's artist credits instead of merging ([#1094](https://github.com/kevinch3/NicotinD/issues/1094)) ([2394c94](https://github.com/kevinch3/NicotinD/commit/2394c94a3d995fc86919c705d5f232e0574d5762)), closes [#1073](https://github.com/kevinch3/NicotinD/issues/1073)
 ## [0.6.37](https://github.com/kevinch3/NicotinD/compare/v0.6.36...v0.6.37) (2026-09-10)
 
 ### Bug Fixes
