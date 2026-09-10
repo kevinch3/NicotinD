@@ -60,6 +60,12 @@ the rows the alias can possibly change. Two details that are easy to get wrong:
   the largest real instance of this class is precisely a casing repair inside an accented name —
   `Nueva CancióN` → `Nueva Canción`, 44 rows, all at position 3. A key comparison calls that a
   no-op and refuses the fix.
+- **An alias canonical's spelling outranks the vocabulary's display casing** (#1074). `splitGenres`
+  emits each name in the casing `library_genres` settled on, and `genreKey` folds case, so on prod
+  the canonical `Nueva Canción` resolved straight back to the existing `Nueva CancióN` row: the
+  alias was written and `songsUpdated` was 0. Consolidations kept the broken form too (three
+  `Chanson …` variants merged into `Chanson FrançAise`). `splitGenres` now prefers a canonical's own
+  spelling for its key, at curation time and at scan time alike.
 
 Worth knowing when working the rare-genre worklist: **`get_rare_genres` counts the primary genre
 only**, so that 44-row value was invisible to it and surfaced only from a direct

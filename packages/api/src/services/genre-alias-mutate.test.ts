@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import { upsertGenreAlias } from './genre-alias-mutate.js';
-import { loadGenreSets } from './genre-split.js';
+import { loadGenreContext, loadGenreSets, refreshGenreCounts, splitGenres } from './genre-split.js';
 
 let db: Database;
 
@@ -95,5 +95,43 @@ describe('upsertGenreAlias', () => {
     expect(upsertGenreAlias(db, { alias: 'Nueva CancióN', canonical: 'Nueva Canción' }).ok).toBe(
       true,
     );
+  });
+
+  // Issue #1074: on prod `library_genres` already holds the broken spelling, and
+  // the key folds case, so the canonical resolved back to that row — songsUpdated 0.
+  it('a casing-only alias renames the value when the vocabulary holds the broken spelling', () => {
+    addSong('s1', ['Folklore', 'Nueva CancióN']);
+    addSong('s2', ['Nueva CancióN']);
+    refreshGenreCounts(db, ['Folklore', 'Nueva CancióN']);
+
+    const r = upsertGenreAlias(db, { alias: 'Nueva CancióN', canonical: 'Nueva Canción' });
+    expect(r).toMatchObject({ ok: true, songsUpdated: 2 });
+    expect(genresOf('s1')).toEqual(['Folklore', 'Nueva Canción']);
+    expect(genresOf('s2')).toEqual(['Nueva Canción']);
+    const names = db
+      .query<{ name: string }, []>('SELECT name FROM library_genres ORDER BY name')
+      .all()
+      .map((g) => g.name);
+    expect(names).toEqual(['Folklore', 'Nueva Canción']);
+  });
+
+  it('a consolidation keeps the canonical spelling, not the pre-existing broken row', () => {
+    addSong('s1', ['Chanson FrançAise']);
+    addSong('s2', ['Chanson Francaise']);
+    refreshGenreCounts(db, ['Chanson FrançAise', 'Chanson Francaise']);
+
+    upsertGenreAlias(db, { alias: 'Chanson Francaise', canonical: 'Chanson Française' });
+    upsertGenreAlias(db, { alias: 'Chanson FrançAise', canonical: 'Chanson Française' });
+    expect(genresOf('s1')).toEqual(['Chanson Française']);
+    expect(genresOf('s2')).toEqual(['Chanson Française']);
+  });
+
+  it('the repair survives a rescan: splitGenres emits the canonical spelling', () => {
+    addSong('s1', ['Nueva CancióN']);
+    refreshGenreCounts(db, ['Nueva CancióN']);
+    upsertGenreAlias(db, { alias: 'Nueva CancióN', canonical: 'Nueva Canción' });
+    const ctx = loadGenreContext(db);
+    // A fresh arrival still carries the source tagger's string.
+    expect(splitGenres('Nueva CancióN', ctx)).toEqual(['Nueva Canción']);
   });
 });
