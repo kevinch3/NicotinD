@@ -3283,3 +3283,68 @@ the same doubt. No retag.
 Three Pavarotti recordings are filed under their **composer** as artist — `Ernesto De Curtis`,
 `Giuseppe Giordani` — the same composer-credit-as-artist class as the Sanampay case at the top of
 this document. Not acted on; it is a separate lane.
+
+## 2026-09-10, stretch 10 — a split album the fragments metric cannot see
+
+Deletions stayed paused pending the rule refinement from stretch 9. Non-destructive lane instead.
+
+### One album, two rows, and `duplicateAlbums: 0`
+
+`The People's Tenor` (2017) existed **twice** — once with `album_artist` = `Various Artists`
+(32 tracks) and once as `Luciano Pavarotti` (21). The track numbers interleave perfectly:
+
+```
+Various Artists   d1: t1  t3  t5  t7 t8 t9 t10  t12 t13  t15 …
+Luciano Pavarotti d1:  t2  t4  t6         t11      t14      t18 t19 t20 t21 t22
+```
+
+One 53-track album, split because the files disagree about `album_artist`. The health report's
+`fragments.duplicateAlbums` reads **0** — it cannot see a split whose two halves differ by artist.
+Merged with one `fix_album_metadata`; now a single 53-track row.
+
+### The discriminator that separates a split from a duplicate rip
+
+Probing "album names held by more than one artist row" returns **161**, and that number is almost
+entirely legitimate — `Circus` is a Britney Spears album *and* a Lenny Kravitz album, `Bossanova` is
+both Estopa and Pixies, `20 Grandes Exitos` is a title eight different artists used. Same-titled
+albums by different artists are normal, and treating 161 as a backlog would be the same
+easier-question error as the earlier 535-ghost-edge count.
+
+Narrowing to the actual signature — a `Various Artists` bucket beside one named artist — gives **9**
+pairs, and **track-number collision** separates them cleanly:
+
+| collisions | meaning | count |
+| --- | --- | --- |
+| **0** | tracks interleave — **one album, split** | **2** |
+| 1–2 | mostly interleaving, a stray or two | 2 |
+| 4–22 | both sides hold the same slots — **two rips of one album** | 5 |
+
+`while(1<2)` (deadmau5) is the clearest of the latter: 25 tracks vs 24 with **22 colliding slots** —
+a duplicate rip, which belongs to the dedupe lane, not here.
+
+Merged the two clean splits: `2018 Hay Vida (Spanish Version)` (Eros Ramazzotti, 3+6 -> 9) and
+`Night After Night` (Fideles, 1+2 -> 3). The five duplicate-rip pairs are recorded for the dedupe
+lane and left alone.
+
+### Composer-as-artist — measured, deliberately not acted on
+
+Every song in `The People's Tenor` carries its **composer** in `artist`: Puccini, Verdi, Bizet,
+Donizetti, Leoncavallo, Flotow — 14 distinct names over 53 tracks. Strictly the performing artist is
+Pavarotti, and this is the same class as the Sanampay composer credits at the top of this document.
+
+**Left as-is on purpose.** The library has no composer field, so retagging to `Luciano Pavarotti`
+would not move that information — it would destroy it, and composer-as-artist is a legitimate
+convention for classical repertoire. The album is already correctly attributed to Pavarotti at
+`album_artist`, so nothing is currently mis-browsed at album level. This is a collection-convention
+choice for the owner, not a defect to fix unilaterally. Three more instances were seen in the dedupe
+lane (`Ernesto De Curtis`, `Giuseppe Giordani`).
+
+### Deltas
+
+| | |
+| --- | --- |
+| `The People's Tenor` | 2 rows (32 + 21) -> **1 row, 53 tracks** |
+| `2018 Hay Vida` | 2 rows -> 1 row, 9 tracks |
+| `Night After Night` | 2 rows -> 1 row, 3 tracks |
+
+Three album rows removed, no songs touched, nothing deleted.
