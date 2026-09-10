@@ -24,6 +24,10 @@ async function openAllGroups(page: Page): Promise<void> {
  * export actually downloads.
  */
 test.describe('privacy settings', () => {
+  // A fresh SW holds every fetch until its first-install prefetch finishes, so
+  // one stalled asset hung the export in CI (#1044). See docs/e2e.md.
+  test.use({ serviceWorkers: 'block' });
+
   test('the page explains what is stored and offers the three controls', async ({ page }) => {
     await page.goto('/settings/privacy');
     await expect(page.getByTestId('privacy-settings')).toBeVisible();
@@ -83,9 +87,17 @@ test.describe('privacy settings', () => {
     await expect(consent).toHaveAttribute('aria-checked', 'true');
   });
 
-  test('the export downloads a file containing this user', async ({ page }) => {
+  test('the export downloads a file containing this user', async ({ page, serviceWorkers }) => {
+    // Tripwire for #1044: leave the SW's chunk prefetches unanswered, as CI did.
+    // Inert while the SW is blocked; a certain download timeout if it is not.
+    await page.context().route('**/chunk-*.js', async (route) => {
+      if (!route.request().serviceWorker()) await route.continue();
+    });
     await page.goto('/settings/privacy');
     await openAllGroups(page);
+    if (serviceWorkers !== 'block') {
+      await page.waitForFunction(() => !!navigator.serviceWorker.controller);
+    }
 
     const download = page.waitForEvent('download', { timeout: 15_000 });
     await page.getByTestId('privacy-export').click();
