@@ -394,3 +394,69 @@ describe('mutateSongMetadata — a divergence names the right culprit (#964)', (
     expect(result).toMatchObject({ ok: false, error: 'Tag write did not persist' });
   });
 });
+
+describe('mutateSongMetadata — verifies an artist through the alias map (#1071)', () => {
+  const scanStoring = (column: 'artist' | 'album_artist', value: string) => async () => {
+    db.run(`UPDATE library_songs SET ${column} = ? WHERE id = ?`, [value, 'song-yt']);
+  };
+  const alias = (norm: string, canonical: string) =>
+    db.run(
+      `INSERT INTO library_artist_aliases (alias_norm, canonical_name, source, created_at)
+       VALUES (?, ?, 'mbid', 0)`,
+      [norm, canonical],
+    );
+
+  it('accepts the canonical spelling the scanner stored for the requested artist', async () => {
+    alias('maria becerra', 'María Becerra');
+    const result = await mutateSongMetadata(
+      db,
+      {
+        musicDir,
+        writeTags: async () => true,
+        scanIncremental: scanStoring('artist', 'María Becerra'),
+        readTags: async () => ({ artist: 'Maria Becerra' }),
+      },
+      'song-yt',
+      { artist: 'Maria Becerra' },
+    );
+    expect(result).toMatchObject({
+      ok: true,
+      verified: true,
+      applied: { artist: 'María Becerra' },
+    });
+  });
+
+  it('accepts the canonical spelling for albumArtist too', async () => {
+    alias('karol g', 'KAROL G');
+    const result = await mutateSongMetadata(
+      db,
+      {
+        musicDir,
+        writeTags: async () => true,
+        scanIncremental: scanStoring('album_artist', 'KAROL G'),
+      },
+      'song-yt',
+      { albumArtist: 'Karol G' },
+    );
+    expect(result).toMatchObject({ ok: true, applied: { albumArtist: 'KAROL G' } });
+  });
+
+  it('still reports a divergence the alias map does not explain', async () => {
+    const result = await mutateSongMetadata(
+      db,
+      {
+        musicDir,
+        writeTags: async () => true,
+        scanIncremental: scanStoring('artist', 'KAROL G'),
+        readTags: async () => ({ artist: 'Karol G' }),
+      },
+      'song-yt',
+      { artist: 'Karol G' },
+    );
+    expect(result).toMatchObject({
+      ok: false,
+      error: 'Tag write landed but the rescan did not apply it',
+      actual: { artist: 'KAROL G' },
+    });
+  });
+});

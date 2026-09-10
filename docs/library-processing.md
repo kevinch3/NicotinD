@@ -670,6 +670,15 @@ The web track-info sheet shows the reason string verbatim — `tagErrorFrom` rea
 this path; the honest error tells the curator that, instead of sending them to look for a tag-writing
 bug that is not there.
 
+**An alias rewrite is not a divergence (issue #1071).** The scanner stores `artist` and
+`album_artist` through the artist alias map (`aliasFix`: the `library_artist_aliases` row keyed by
+`normalizeArtistForGrouping(name)`, else the name). So a request of `Maria Becerra` lands as
+`María Becerra`, and a byte-for-byte check reported that correct write as
+`Tag write landed but the rescan did not apply it`. The verifier now compares both artist fields
+against `canonicalArtist(db, requested)`, the same one-row lookup, and a success reports the
+canonical spelling in `applied`. This is strict, not a fold: a case or accent variant with no alias
+row still reports a divergence, because the scanner would not have produced it.
+
 ## One-time prod backfill
 
 For an existing library, run the manual scripts inside the container once to fill
