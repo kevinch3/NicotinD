@@ -3192,3 +3192,94 @@ at the end of the dedupe pass rather than claiming the benefit now.
 two-file groups are same-format (the rule cannot choose) and **227** are ambiguous (both copies
 majority or both minority). Those need a different discriminator — bitrate within codec, or a
 per-album keep policy — and a separate owner decision.
+
+## 2026-09-10, stretch 9 — 10 more deleted, then I audited the rule and stopped
+
+### Totals
+
+| | |
+| --- | --- |
+| pairs fingerprint-verified | **31** |
+| confirmed duplicates, deleted | **25** |
+| rejected by the gate | 3 |
+| songs | 21,382 -> **21,357** |
+
+Confirmed and deleted this stretch: Domenico Modugno/Pavarotti — *Nel blu, dipinto di blu*;
+Enrique Iglesias — *Not In Love (Bill Hamel Remix)*; *Non ti scordar di me*; Evanescence —
+*The Only One*; *Caro mio ben*; Indio Solari — *Una rata muerta…*; La Renga ×2; Limp Bizkit —
+*Full Nelson*; Los Auténticos Decadentes — *Diosa*.
+
+### The rule has a vacuous case, and 10 of 24 keepers hit it
+
+**A single-track album trivially "matches its own majority format".** So for any pair where one copy
+sits in a one-track bucket album, the test the owner authorised returns true on no evidence at all,
+and the rule picks that copy for arbitrary reasons.
+
+Audited every keeper chosen so far: **10 of 24 sit in a 1-track album** — `Never Gone`, `MSI`,
+`Radioactivity Volume 01-03`, `Crawling Back to You: Music for Hurricane Relief`,
+`Madre hay una sola`, `El Final Es En Donde Partí`, `Obras cumbres` and three more. Those ten
+decisions rested on nothing.
+
+**Checked for actual harm, and there is none.** Every deleted title still exists somewhere for its
+artist, and no album lost its only copy of a track:
+
+```
+I Still                   -> mp3 @ Never Gone
+More Than That            -> mp3 @ MSI
+The Call                  -> mp3 @ Radioactivity Volume 01-03
+As Long as You Love Me    -> mp3 @ Gute Zeiten schlechte Zeiten
+Bigger / Bye Bye Love     -> mp3 @ This Is Us
+Straight Through My Heart -> mp3 @ This Is Us  (×2 — see below)
+```
+
+None of the deleted opus copies were in `The Essential Backstreet Boys`, the only multi-format BSB
+album, so nothing was stripped out of a coherent release. The redundancy removed was real. But that
+is a fortunate outcome, not a designed one — the decision was made on a vacuous test and happened to
+land safely.
+
+### Where it would have gone wrong, caught before acting
+
+`La Renga — Balada del diablo y la muerte` exists twice:
+
+| file | format | album |
+| --- | --- | --- |
+| `ca5d5b62` | opus | `Balada Del Diablo y La Muerte` — a **1-track bucket** |
+| `43e35f20` | mp3 | `Despedazado por mil partes` — the **real 1996 album**, 11 tracks |
+
+The rule says keep `ca5d5b62` (trivially majority in its own 1-track album) and delete the copy
+filed in the genuine album. That is backwards. **Skipped, not applied.**
+
+### Proposed refinement, for the owner to confirm
+
+Prefer the copy in the **larger album**, and use majority-format only to break ties between copies in
+albums of comparable size. Equivalently: require the keeper's album to hold more than one track
+before the majority-format test is allowed to decide. **No further deletions until confirmed** — the
+authorised rule and the evidently-correct answer disagree, and that is the owner's call, not mine.
+
+### A mislabelled AcoustID cluster, disproved by the library's own data
+
+Both `balada` files fingerprint as **`El hombre de la estrella`** (acoustId `f4364746`, recordingId
+`a55aa85c`, scores 0.98) — which would suggest retagging them. Two other files *are* titled
+`El hombre de la estrella` and carry a **different** acoustId (`960d8899`, no recordingId).
+
+The decisive test was already in the library: `43e35f20` — titled `la balada del diablo y la muerte`
+and sitting in `Despedazado por mil partes`, where that song actually belongs — shares
+`f4364746`/`a55aa85c` with `ca5d5b62`. So the cluster groups the *balada* recording and merely labels
+it wrongly. **The library's titles are right and AcoustID's label is wrong.** Same failure already
+recorded in this document for two Lenny Kravitz files returning "Metro Station"; flag #21 rests on
+the same doubt. No retag.
+
+### Two methodological notes
+
+- **Title-grouping misses duplicates that differ by a leading article.** `la balada del diablo y la
+  muerte` vs `Balada Del Diablo y La Muerte` never grouped, yet they are one recording. The
+  fingerprint found a pair the candidate query structurally could not.
+- **The rejected pairs keep re-appearing** in the decidable list every stretch, because nothing
+  records that they were disproved. Britney — *Sometimes* and Divididos — *Hombre en U* were
+  re-listed and skipped by hand. A durable "not a duplicate" marker is missing.
+
+### Also noticed
+
+Three Pavarotti recordings are filed under their **composer** as artist — `Ernesto De Curtis`,
+`Giuseppe Giordani` — the same composer-credit-as-artist class as the Sanampay case at the top of
+this document. Not acted on; it is a separate lane.
