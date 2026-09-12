@@ -144,6 +144,15 @@ export const routes: Routes = [
         ),
       },
       {
+        // Curator triage rounds (docs/curator-triage.md). Placed ahead of the
+        // parameterised library/:id-style routes below on principle, though
+        // none of them is a bare `library/:something` today, so nothing
+        // actually shadows this path yet.
+        path: 'library/curate',
+        canActivate: [curatorGuard],
+        loadComponent: lazy(() => import('./pages/curate/curate.component').then((m) => m.default)),
+      },
+      {
         path: 'library/albums/:id',
         loadComponent: lazy(() =>
           import('./pages/library/album-detail.component').then((m) => m.AlbumDetailComponent),

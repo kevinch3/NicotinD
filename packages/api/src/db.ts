@@ -1280,6 +1280,12 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   // means repeat reports fold into one row, so without a tally the difference
   // between one person's gripe and twelve people's is invisible.
   addColumnIfMissing(db, 'curation_flags', 'report_count', 'INTEGER NOT NULL DEFAULT 1');
+  // A machine-readable case (CurationCaseKind) and its CaseOption[] blob, so a
+  // triage UI can render decision buttons instead of only prose. Both nullable
+  // with no default: an existing prose-only flag keeps rendering as a
+  // read-and-resolve card.
+  addColumnIfMissing(db, 'curation_flags', 'case_kind', 'TEXT');
+  addColumnIfMissing(db, 'curation_flags', 'options_json', 'TEXT');
 
   // One row per (target, reporter) — issue #987. This *is* the rate limit, and a
   // structural one beats a time window: the abuse worth stopping is one person

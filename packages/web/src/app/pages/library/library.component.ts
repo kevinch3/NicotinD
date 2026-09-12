@@ -14,6 +14,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { LibraryApiService } from '../../services/api/library-api.service';
+import { CurationApiService } from '../../services/api/curation-api.service';
 import type { Album, PlaylistSummary } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
 import { PlaylistService } from '../../services/playlist.service';
@@ -140,6 +141,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
   readonly chunk = chunk;
 
   private api = inject(LibraryApiService);
+  private curationApi = inject(CurationApiService);
   readonly auth = inject(AuthService);
   readonly playlistService = inject(PlaylistService);
   private confirm = inject(ConfirmService);
@@ -172,6 +174,18 @@ export class LibraryComponent implements OnInit, OnDestroy {
     this.newAlbumsAvailable.set(false);
     this.transferService.clearNewlyLandedAlbumIds();
     await this.resetAndLoad();
+  }
+
+  /** Open curator-triage case count (docs/curator-triage.md), driving the
+   *  library entry card. Fetched only for curators — a listener has no
+   *  route to reach and no count worth a request. */
+  readonly openCases = signal(0);
+
+  private fetchOpenCaseCount(): void {
+    this.curationApi.getCount().subscribe({
+      next: (r) => this.openCases.set(r.open),
+      error: () => this.openCases.set(0),
+    });
   }
 
   // ─── Mode ─────────────────────────────────────────────────────────
@@ -518,6 +532,8 @@ export class LibraryComponent implements OnInit, OnDestroy {
   async ngOnInit(): Promise<void> {
     // Offline: the only usable tab is Songs (on-device preserved tracks).
     if (this.setup.isOffline()) this.libraryMode.set('songs');
+
+    if (this.auth.canCurate()) this.fetchOpenCaseCount();
 
     // Seed the find bar from the URL so a shared/bookmarked ?find= link opens
     // straight onto its results. Offline the local lane is unreachable, so the

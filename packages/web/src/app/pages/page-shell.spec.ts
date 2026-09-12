@@ -25,6 +25,8 @@ const PAGE_TIERS: Array<[string, '6xl' | '3xl']> = [
   ['radio-landing/radio-landing.component.html', '3xl'],
   ['library/playlist-detail.component.html', '3xl'],
   ['share/share-view.component.html', '3xl'],
+  // Curator triage joins the 3xl tier rather than reviving the 2xl split (#420).
+  ['curate/curate.component.html', '3xl'],
 ];
 
 const IDIOM_PAGES = [
@@ -68,6 +70,7 @@ const PAGE_TITLE_PAGES = [
   'library/playlist-detail.component.html',
   'share/share-view.component.html',
   'downloads/downloads.component.html',
+  'curate/curate.component.html',
 ];
 
 describe('page title drift guard (issue #385)', () => {

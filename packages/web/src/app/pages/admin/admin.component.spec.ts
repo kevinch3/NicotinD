@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { provideRouter } from '@angular/router';
 import type { DebugElement } from '@angular/core';
 import { expandAllGroups } from '../../../testing/expand-groups';
 import { vi, beforeEach, describe, it, expect } from 'vitest';
@@ -230,6 +231,7 @@ describe('AdminComponent (snapshot-driven via ServiceReview)', () => {
     await TestBed.configureTestingModule({
       imports: [AdminComponent],
       providers: [
+        provideRouter([]),
         {
           provide: DownloadsApiService,
           useValue: {
@@ -294,6 +296,7 @@ describe('AdminComponent (orphan side-table rows, #259)', () => {
     await TestBed.configureTestingModule({
       imports: [AdminComponent],
       providers: [
+        provideRouter([]),
         { provide: DownloadsApiService, useValue: {} },
         {
           provide: SystemApiService,
@@ -363,6 +366,7 @@ describe('AdminComponent (artist portrait coverage, #250)', () => {
     await TestBed.configureTestingModule({
       imports: [AdminComponent],
       providers: [
+        provideRouter([]),
         { provide: DownloadsApiService, useValue: {} },
         {
           provide: SystemApiService,
@@ -464,6 +468,7 @@ describe('AdminComponent (acquisition kill-switch, #235)', () => {
     await TestBed.configureTestingModule({
       imports: [AdminComponent],
       providers: [
+        provideRouter([]),
         { provide: DownloadsApiService, useValue: {} },
         {
           provide: SystemApiService,
@@ -556,6 +561,7 @@ describe('AdminComponent (incompleteJobs / untracked via ServiceReview)', () => 
     await TestBed.configureTestingModule({
       imports: [AdminComponent],
       providers: [
+        provideRouter([]),
         { provide: DownloadsApiService, useValue: {} },
         {
           provide: SystemApiService,
@@ -647,6 +653,7 @@ describe('AdminComponent (incompleteJobs / untracked via ServiceReview)', () => 
     TestBed.configureTestingModule({
       imports: [AdminComponent],
       providers: [
+        provideRouter([]),
         { provide: DownloadsApiService, useValue: {} },
         {
           provide: SystemApiService,
@@ -694,6 +701,7 @@ describe('AdminComponent (TV D-pad navigation, Android TV support phase 4)', () 
     await TestBed.configureTestingModule({
       imports: [AdminComponent],
       providers: [
+        provideRouter([]),
         { provide: DownloadsApiService, useValue: {} },
         {
           provide: SystemApiService,
@@ -832,6 +840,7 @@ describe('AdminComponent — group structure (Task 4 regroup)', () => {
     await TestBed.configureTestingModule({
       imports: [AdminComponent],
       providers: [
+        provideRouter([]),
         {
           provide: DownloadsApiService,
           useValue: {
@@ -1044,6 +1053,7 @@ describe('AdminComponent (actionable fragments, #314)', () => {
     await TestBed.configureTestingModule({
       imports: [AdminComponent],
       providers: [
+        provideRouter([]),
         {
           provide: DownloadsApiService,
           useValue: {
@@ -1161,6 +1171,7 @@ describe('AdminComponent — maintenance passes (issue #622)', () => {
     await TestBed.configureTestingModule({
       imports: [LibraryMaintenancePanelComponent],
       providers: [
+        provideRouter([]),
         {
           provide: SystemApiService,
           useValue: {

@@ -32,6 +32,9 @@ import { historyRoutes } from './routes/history.js';
 import { privacyRoutes } from './routes/privacy.js';
 import { recommendationRoutes } from './routes/recommendations.js';
 import { libraryEventRoutes } from './routes/library-events.js';
+import { curationRoutes, describeTarget } from './routes/curation.js';
+import { mutateSongMetadata } from './services/song-metadata-mutate.js';
+import { mutateArtistIdentity } from './services/artist-identity-mutate.js';
 import { usersRoutes } from './routes/users.js';
 import { shareRoutes } from './routes/share.js';
 import { radioPollAdminRoutes, radioPollPublicRoutes } from './routes/radio-polls.js';
@@ -719,8 +722,23 @@ export function createApp({
     }),
   );
   // Mounted before the library routes so `/events` is not shadowed by a
-  // parameterised library path.
+  // parameterised library path. Curator triage rides the same rule.
   app.route('/api/library/events', libraryEventRoutes());
+  app.route(
+    '/api/library/curation',
+    curationRoutes({
+      applyDeps: {
+        // The REAL mutation services, not a triage-local copy of the write:
+        // an applied case runs exactly the path the HTTP route and the MCP
+        // tool run (docs/curator-triage.md §4).
+        mutateSongMetadata,
+        mutateArtistIdentity,
+        songMetadataDeps: { musicDir: config.musicDir, scanIncremental },
+        artistIdentityDeps: { dataDir: expandedDataDir },
+      },
+      describeTarget: (kind, id) => describeTarget(db, kind, id),
+    }),
+  );
   app.route(
     '/api/library',
     libraryRoutes(config.musicDir, {

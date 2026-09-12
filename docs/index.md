@@ -509,6 +509,9 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **Listener track reports**: listeners file into that same queue; `TRACK_REPORT_REASONS`,
   `recordListenerReport`, `curation_flag_reports` (the per-reporter rate limit), `isTasteOnly`.
   → [mcp-agent.md](mcp-agent.md)
+- **Curator triage rounds**: open review flags become typed decision cases served five per round from
+  the library view, each option applying through an existing mutation service; `CurationCase`,
+  `assembleRound`, `applyCaseEffect`, `CurateComponent`. → [curator-triage.md](curator-triage.md)
 - **Admin audit log**: `audit_log` + `recordAudit` called explicitly at destructive mutation sites,
   never as blanket middleware; entries carry `targetKind`/`targetId`/`detail`, and ledger failures
   never break the audited action. → [roles.md](roles.md)

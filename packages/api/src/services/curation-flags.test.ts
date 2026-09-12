@@ -106,3 +106,76 @@ describe('isFlagTargetKind', () => {
     expect(isFlagTargetKind(undefined)).toBe(false);
   });
 });
+
+describe('typed case columns', () => {
+  it('round-trips a case kind and options blob', () => {
+    createCurationFlag(db, {
+      targetKind: 'song',
+      targetId: 's1',
+      reason: 'which artist?',
+      createdBy: 'agent:t1',
+      caseKind: 'identity',
+      optionsJson: '[{"id":"a"}]',
+    });
+    const [flag] = listOpenCurationFlags(db);
+    expect(flag!.caseKind).toBe('identity');
+    expect(flag!.optionsJson).toBe('[{"id":"a"}]');
+  });
+
+  it('leaves both null for a prose-only flag', () => {
+    createCurationFlag(db, {
+      targetKind: 'song',
+      targetId: 's2',
+      reason: 'ambiguous',
+      createdBy: 'kevin',
+    });
+    const flag = listOpenCurationFlags(db).find((f) => f.targetId === 's2');
+    expect(flag!.caseKind).toBeNull();
+    expect(flag!.optionsJson).toBeNull();
+  });
+
+  it('re-flagging an open target with a new caseKind and no options clears the old options rather than pairing them', () => {
+    createCurationFlag(db, {
+      targetKind: 'song',
+      targetId: 's3',
+      reason: 'which artist?',
+      createdBy: 'agent:t1',
+      caseKind: 'identity',
+      optionsJson: '[{"id":"a"}]',
+    });
+
+    createCurationFlag(db, {
+      targetKind: 'song',
+      targetId: 's3',
+      reason: 'actually, placement',
+      createdBy: 'agent:t2',
+      caseKind: 'placement',
+    });
+
+    const flag = listOpenCurationFlags(db).find((f) => f.targetId === 's3');
+    expect(flag!.caseKind).toBe('placement');
+    expect(flag!.optionsJson).toBeNull();
+  });
+
+  it('re-flagging with neither caseKind nor options keeps the existing pair intact', () => {
+    createCurationFlag(db, {
+      targetKind: 'song',
+      targetId: 's4',
+      reason: 'which artist?',
+      createdBy: 'agent:t1',
+      caseKind: 'identity',
+      optionsJson: '[{"id":"a"}]',
+    });
+
+    createCurationFlag(db, {
+      targetKind: 'song',
+      targetId: 's4',
+      reason: 'still unresolved',
+      createdBy: 'agent:t2',
+    });
+
+    const flag = listOpenCurationFlags(db).find((f) => f.targetId === 's4');
+    expect(flag!.caseKind).toBe('identity');
+    expect(flag!.optionsJson).toBe('[{"id":"a"}]');
+  });
+});
