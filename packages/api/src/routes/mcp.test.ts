@@ -612,6 +612,88 @@ describe('MCP endpoint (issue #232)', () => {
     expect(song?.artist).toBe('Artist');
   });
 
+  // The MCP tool is the ONLY surface that can author a typed case: the
+  // human-facing POST /review-flags has no way to write options.
+  it('flag_for_review round-trips a typed case kind and its options', async () => {
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:curate' });
+    const options = [
+      {
+        id: 'retag',
+        label: 'Credit Pharrell',
+        rationale: 'The recording is Pharrell ft. Gwen',
+        effect: { type: 'song-metadata', songId: 's1', fields: { artist: 'Pharrell' } },
+      },
+    ];
+    const body = (await (
+      await rpc(token, 'tools/call', {
+        name: 'flag_for_review',
+        arguments: {
+          targetKind: 'song',
+          targetId: 's1',
+          reason: 'whose recording is this?',
+          caseKind: 'placement',
+          options,
+        },
+      })
+    ).json()) as { result: { content: Array<{ text: string }> } };
+    expect(JSON.parse(body.result.content[0]!.text)).toMatchObject({ ok: true, created: true });
+
+    const row = testDb
+      .query<{ case_kind: string | null; options_json: string | null }, []>(
+        'SELECT case_kind, options_json FROM curation_flags WHERE resolved_at IS NULL',
+      )
+      .get();
+    expect(row?.case_kind).toBe('placement');
+    expect(JSON.parse(row!.options_json!)).toEqual(options);
+  });
+
+  it('flag_for_review refuses an unknown caseKind instead of dropping it', async () => {
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:curate' });
+    const body = (await (
+      await rpc(token, 'tools/call', {
+        name: 'flag_for_review',
+        arguments: { targetKind: 'song', targetId: 's1', reason: 'x', caseKind: 'Placement' },
+      })
+    ).json()) as { result: { content: Array<{ text: string }> } };
+    const text = body.result.content[0]!.text;
+    expect(text).toContain('caseKind');
+    expect(text).toContain('placement');
+    expect(testDb.query('SELECT id FROM curation_flags').all()).toHaveLength(0);
+  });
+
+  it('flag_for_review refuses options that are not an array', async () => {
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:curate' });
+    const body = (await (
+      await rpc(token, 'tools/call', {
+        name: 'flag_for_review',
+        arguments: {
+          targetKind: 'song',
+          targetId: 's1',
+          reason: 'x',
+          caseKind: 'identity',
+          options: { id: 'retag' },
+        },
+      })
+    ).json()) as { result: { content: Array<{ text: string }> } };
+    expect(body.result.content[0]!.text).toContain('options must be an array');
+    expect(testDb.query('SELECT id FROM curation_flags').all()).toHaveLength(0);
+  });
+
+  it('flag_for_review still files a prose flag when the typed pair is omitted', async () => {
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:curate' });
+    await rpc(token, 'tools/call', {
+      name: 'flag_for_review',
+      arguments: { targetKind: 'song', targetId: 's1', reason: 'prose only' },
+    });
+    const row = testDb
+      .query<{ case_kind: string | null; options_json: string | null }, []>(
+        'SELECT case_kind, options_json FROM curation_flags WHERE resolved_at IS NULL',
+      )
+      .get();
+    expect(row?.case_kind).toBeNull();
+    expect(row?.options_json).toBeNull();
+  });
+
   it('flag_for_review rejects an unknown target kind', async () => {
     const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:curate' });
     const body = (await (

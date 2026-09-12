@@ -278,6 +278,20 @@ export function countOpenCurationFlags(db: Database): number {
 }
 
 /**
+ * True when the flag exists and has already been resolved. Lets a caller tell
+ * "this case was handled" apart from "no such case" once the row has dropped
+ * out of the open queue.
+ */
+export function isResolvedCurationFlag(db: Database, id: number): boolean {
+  const row = db
+    .query<{ resolved_at: number | null }, [number]>(
+      'SELECT resolved_at FROM curation_flags WHERE id = ?',
+    )
+    .get(id);
+  return !!row && row.resolved_at !== null;
+}
+
+/**
  * Mark a flag handled. Returns false for an unknown id or one already resolved —
  * resolving is idempotent from the caller's side but never silently re-stamps
  * who resolved it.

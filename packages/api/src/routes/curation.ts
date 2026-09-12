@@ -16,6 +16,7 @@ import {
   listOpenCurationFlags,
   countOpenCurationFlags,
   resolveCurationFlag,
+  isResolvedCurationFlag,
   type FlagTargetKind,
 } from '../services/curation-flags.js';
 import { flagToCase, type CaseTarget } from '../services/curation/case-sources.js';
@@ -125,22 +126,43 @@ export function curationRoutes(deps: CurationRouteDeps) {
     if (!optionId) return c.json({ error: 'optionId is required' }, 400);
 
     const db = getDatabase();
+    const flagId = Number(caseId.slice('flag:'.length));
+    const flagBacked = caseId.startsWith('flag:') && Number.isInteger(flagId);
+
     // Rebuilt from the open flags rather than trusting the client's copy: the
     // option's effect is what gets dispatched, so it must come from the server.
     const found = buildPool(db).find((x) => x.id === caseId);
-    if (!found) return c.json({ error: 'Case not found' }, 404);
+    if (!found) {
+      // Gone from the pool because somebody else finished it is a different
+      // answer from "no such case", and the UI should say so.
+      if (flagBacked && isResolvedCurationFlag(db, flagId)) {
+        return c.json({ error: 'This case was already handled' }, 409);
+      }
+      return c.json({ error: 'Case not found' }, 404);
+    }
 
     const option = found.options.find((o) => o.id === optionId);
     if (!option) return c.json({ error: 'Unknown optionId for this case' }, 400);
 
-    const result = await applyCaseEffect(db, option.effect, deps.applyDeps);
-    if (!result.ok) return c.json({ error: result.error }, 400);
-
     // Every phase-1 case is flag-backed, so applying an option also closes the
-    // flag: the decision it recorded has now been made.
-    const flagId = Number(caseId.slice('flag:'.length));
-    if (caseId.startsWith('flag:') && Number.isInteger(flagId)) {
-      resolveCurationFlag(db, flagId, user.username ?? user.sub);
+    // flag: the decision it recorded has now been made. Resolving happens FIRST
+    // and its boolean is the lock — a conditional UPDATE on `resolved_at IS
+    // NULL` is the only thing serialising two curators on the same card. Losing
+    // that race means the case was already handled: refuse rather than dispatch
+    // the mutation (and write the audit row) a second time.
+    if (flagBacked) {
+      if (!resolveCurationFlag(db, flagId, user.username ?? user.sub)) {
+        return c.json({ error: 'This case was already handled' }, 409);
+      }
+    }
+
+    // The flag is closed before the effect runs, so a failed effect leaves a
+    // resolved flag with no data change. That is the safer of the two
+    // orderings: a human can re-flag, whereas a lost mutation under a still-open
+    // flag invites the same wrong apply again.
+    const result = await applyCaseEffect(db, option.effect, deps.applyDeps);
+    if (!result.ok) {
+      return c.json({ error: result.error, resolved: true }, 400);
     }
 
     recordAudit(db, user, 'curation.case', {

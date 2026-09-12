@@ -189,6 +189,58 @@ describe('POST /cases/:id/apply', () => {
     });
   });
 
+  it('409s a second apply of the same case and dispatches exactly once', async () => {
+    let dispatches = 0;
+    const app = new Hono<AuthEnv>();
+    app.onError(errorHandler);
+    app.use('*', (c, next) => {
+      c.set('user', { sub: 'user1', username: 'curator', role: 'admin', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    app.route(
+      '/',
+      curationRoutes({
+        applyDeps: {
+          ...applyDeps,
+          mutateSongMetadata: async () => {
+            dispatches++;
+            return { ok: true };
+          },
+        },
+        describeTarget: (kind, id) => describeTarget(sharedDb, kind, id),
+      }),
+    );
+
+    const id = createCurationFlag(sharedDb, {
+      targetKind: 'song',
+      targetId: 'song-race',
+      reason: 'who?',
+      createdBy: 'agent:test',
+      caseKind: 'placement',
+      optionsJson: JSON.stringify([
+        {
+          id: 'retag',
+          label: 'Retag',
+          rationale: 'the tag is wrong',
+          effect: { type: 'song-metadata', songId: 'song-race', fields: { artist: 'Pharrell' } },
+        },
+      ]),
+    }).flag.id;
+
+    const send = () =>
+      app.request(`/cases/flag:${id}/apply`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ optionId: 'retag' }),
+      });
+
+    expect((await send()).status).toBe(200);
+    const second = await send();
+    expect(second.status).toBe(409);
+    expect(dispatches).toBe(1);
+    expect(sharedDb.query('SELECT id FROM audit_log').all()).toHaveLength(1);
+  });
+
   it('404s an unknown case id', async () => {
     const res = await makeApp().request('/cases/flag:9999/apply', {
       method: 'POST',

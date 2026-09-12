@@ -24,6 +24,22 @@ const RESOLVE_ONLY: CaseOption = {
   effect: { type: 'resolve-only' },
 };
 
+/** The only tag fields a `song-metadata` effect may carry. */
+const SONG_METADATA_FIELDS = new Set(['title', 'artist', 'album', 'albumArtist']);
+
+/**
+ * A `fields` bag is dispatchable only if every key is a known tag field with a
+ * STRING value, and at least one is present. Key-only validation is not enough:
+ * a non-string value reaches `normalizeTagValue`, whose unconditional `.trim()`
+ * throws — a 500 with the flag left open, rather than a dropped option.
+ */
+function isDispatchableFields(fields: unknown): boolean {
+  if (typeof fields !== 'object' || fields === null || Array.isArray(fields)) return false;
+  const entries = Object.entries(fields as Record<string, unknown>);
+  if (entries.length === 0) return false;
+  return entries.every(([k, v]) => SONG_METADATA_FIELDS.has(k) && typeof v === 'string');
+}
+
 /**
  * Validate that an effect object has all required fields for its type.
  * Returns true only if the effect can be safely dispatched.
@@ -37,12 +53,7 @@ function isDispatchableEffect(effect: unknown): boolean {
     return true;
   }
   if (type === 'song-metadata') {
-    return (
-      typeof e.songId === 'string' &&
-      e.songId.length > 0 &&
-      typeof e.fields === 'object' &&
-      e.fields !== null
-    );
+    return typeof e.songId === 'string' && e.songId.length > 0 && isDispatchableFields(e.fields);
   }
   if (type === 'artist-merge') {
     return (

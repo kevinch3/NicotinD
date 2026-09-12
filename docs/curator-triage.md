@@ -337,6 +337,20 @@ flags only (no generators, no dismissal loop, no destructive kinds yet).
 - **Reachability**: the route is `/library/curate`, `curatorGuard`'ed in `app.routes.ts`; an entry
   card on `LibraryComponent` (`auth.canCurate() && openCases() > 0`) links to it, and
   `ReviewFlagsPanelComponent` now links there too instead of hosting a second worklist.
+- **Who can author a typed case**: the **MCP `flag_for_review` tool only**. Its optional `caseKind`
+  and `options` arguments are what fill `curation_flags.case_kind` / `options_json`, so a curating
+  agent is the only producer of a multi-option card. The human-facing `POST /api/library/review-flags`
+  deliberately files prose: a person clicking "report" has no way to author an option's `effect`, and
+  a prose flag is a perfectly good read-and-resolve card. A bad `caseKind` or a non-array `options`
+  is refused rather than silently downgraded — an agent that thinks it offered choices must find out
+  it did not. Per-option validity stays a single authority, `isDispatchableEffect` on read: an
+  option naming an unknown effect, or a `song-metadata` whose `fields` are not
+  `title|artist|album|albumArtist` string values, is dropped and the card degrades to resolve-only.
+- **Applying is resolve-first.** `POST …/cases/:id/apply` closes the flag *before* dispatching, and
+  uses the conditional `UPDATE … WHERE resolved_at IS NULL` as the lock: the loser of a two-curator
+  race gets **409** and dispatches nothing. A dispatch that then fails leaves a resolved flag with no
+  data change (recoverable by re-flagging) rather than an open flag with a possibly-duplicated
+  mutation.
 
 ## Risks
 

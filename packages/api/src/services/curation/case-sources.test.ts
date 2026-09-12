@@ -161,6 +161,51 @@ describe('flagToCase', () => {
     expect(c.options[1]!.effect).toEqual({ type: 'resolve-only' });
   });
 
+  // A `fields` value that is not a string reaches `normalizeTagValue`, whose
+  // `.trim()` throws — an uncaught 500 with the flag left open. Dropped instead.
+  const withFields = (fields: unknown) =>
+    flagToCase(
+      flag({
+        caseKind: 'identity',
+        optionsJson: JSON.stringify([
+          {
+            id: 'opt',
+            label: 'Option',
+            rationale: 'r',
+            effect: { type: 'song-metadata', songId: 's1', fields },
+          },
+        ]),
+      }),
+      target,
+    );
+
+  it('drops song-metadata whose field value is not a string', () => {
+    const c = withFields({ artist: 123 });
+    expect(c.options).toHaveLength(1);
+    expect(c.options[0]!.effect).toEqual({ type: 'resolve-only' });
+  });
+
+  it('drops song-metadata carrying an unknown field key', () => {
+    const c = withFields({ artist: 'Pharrell', year: '1999' });
+    expect(c.options).toHaveLength(1);
+    expect(c.options[0]!.effect).toEqual({ type: 'resolve-only' });
+  });
+
+  it('drops song-metadata with an empty fields bag', () => {
+    expect(withFields({}).options).toHaveLength(1);
+    expect(withFields([]).options).toHaveLength(1);
+  });
+
+  it('keeps a valid multi-field song-metadata effect', () => {
+    const c = withFields({ title: 'T', artist: 'A', album: 'Al', albumArtist: 'AA' });
+    expect(c.options).toHaveLength(2);
+    expect(c.options[0]!.effect).toEqual({
+      type: 'song-metadata',
+      songId: 's1',
+      fields: { title: 'T', artist: 'A', album: 'Al', albumArtist: 'AA' },
+    });
+  });
+
   it('includes resolve-only as last option on typed cases', () => {
     const c = flagToCase(
       flag({

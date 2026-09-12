@@ -41,7 +41,13 @@ import { rareGenres } from '../services/genre-distribution.js';
 import { normalizeForGrouping } from '../services/album-grouping.js';
 import type { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
 import type { Lidarr } from '@nicotind/lidarr-client';
-import type { ApplyMetadataRequest, MetadataReleaseType } from '@nicotind/core';
+import {
+  CURATION_CASE_KINDS,
+  isCurationCaseKind,
+  type CurationCaseKind,
+  type ApplyMetadataRequest,
+  type MetadataReleaseType,
+} from '@nicotind/core';
 import type { MusicBrainzClient } from '../services/musicbrainz-client.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 import type { readAudioTags, writeAudioTags } from '../services/audio-tags.js';
@@ -986,8 +992,7 @@ export const MCP_TOOLS: McpTool[] = [
   },
   {
     name: 'flag_for_review',
-    description:
-      'Flag one artist, album, or song as needing a human decision, with a reason. Use this instead of guessing when a fix has no unambiguous answer — a b2b DJ credit naming two acts, an identity you cannot resolve confidently. Changes no library data. Re-flagging the same target updates the open flag rather than adding another.',
+    description: `Flag one artist, album, or song as needing a human decision, with a reason. Use this instead of guessing when a fix has no unambiguous answer — a b2b DJ credit naming two acts, an identity you cannot resolve confidently. Changes no library data. Re-flagging the same target updates the open flag rather than adding another. Optionally add caseKind (${CURATION_CASE_KINDS.join('|')}) plus options — a list of {id,label,rationale,effect} the curator picks from, effect being {type:'resolve-only'} | {type:'song-metadata',songId,fields:{title|artist|album|albumArtist}} | {type:'artist-merge',rawName,mergeInto} — so the triage card offers one-click fixes instead of prose only.`,
     access: 'curate',
     inputSchema: {
       type: 'object',
@@ -1000,6 +1005,16 @@ export const MCP_TOOLS: McpTool[] = [
         reason: {
           type: 'string',
           description: 'What the ambiguity is and what a human needs to decide.',
+        },
+        caseKind: {
+          type: 'string',
+          enum: [...CURATION_CASE_KINDS],
+          description: 'Optional. The shape of the decision owed.',
+        },
+        options: {
+          type: 'array',
+          description: 'Optional. Typed choices the curator can apply in one click.',
+          items: { type: 'object' },
         },
       },
       required: ['targetKind', 'targetId', 'reason'],
@@ -1014,12 +1029,35 @@ export const MCP_TOOLS: McpTool[] = [
       if (!targetId || !reason)
         return JSON.stringify({ error: 'targetId and reason are required' });
 
+      // A typed case is optional, but a malformed one is a refusal, not a
+      // silent downgrade to prose: an agent that thinks it offered choices and
+      // did not would never learn. Per-option validity is NOT re-checked here —
+      // `isDispatchableEffect` is the one authority on that, on read.
+      let caseKind: CurationCaseKind | undefined;
+      if (args.caseKind !== undefined && args.caseKind !== null) {
+        if (!isCurationCaseKind(args.caseKind)) {
+          return JSON.stringify({
+            error: `caseKind must be one of ${CURATION_CASE_KINDS.join(', ')}`,
+          });
+        }
+        caseKind = args.caseKind;
+      }
+      let optionsJson: string | undefined;
+      if (args.options !== undefined && args.options !== null) {
+        if (!Array.isArray(args.options)) {
+          return JSON.stringify({ error: 'options must be an array of choice objects' });
+        }
+        optionsJson = JSON.stringify(args.options);
+      }
+
       const actor = `agent:${identity.tokenId}`;
       const { flag, created } = createCurationFlag(db, {
         targetKind,
         targetId,
         reason,
         createdBy: actor,
+        caseKind,
+        optionsJson,
       });
       // Audited like the other writes: a flag is inert for the library, but it
       // does put a task on a person, which is worth a trace.
