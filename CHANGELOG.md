@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.40](https://github.com/kevinch3/NicotinD/compare/v0.6.39...v0.6.40) (2026-09-12)
+
+### Bug Fixes
+
+* **mcp:** let a required nullable arg's null value through the arg gate ([#1113](https://github.com/kevinch3/NicotinD/issues/1113)) ([0232c93](https://github.com/kevinch3/NicotinD/commit/0232c93a326bae054f8b5f431546c7bbbb35845e)), closes [#1111](https://github.com/kevinch3/NicotinD/issues/1111), references [#1111](https://github.com/kevinch3/NicotinD/issues/1111)
 ## [0.6.39](https://github.com/kevinch3/NicotinD/compare/v0.6.38...v0.6.39) (2026-09-12)
 
 ### Features
