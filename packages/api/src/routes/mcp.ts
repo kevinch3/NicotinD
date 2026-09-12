@@ -1317,8 +1317,13 @@ export function checkToolAccess(
  * tool — and every tool added later — is covered by construction.
  *
  * Present-but-falsy is present: `confirm: false` and `year: 0` are real values
- * (the confirm gate above owns the former). Only undefined, null, a blank
- * string and an empty array count as missing.
+ * (the confirm gate above owns the former). Only undefined, a blank string and
+ * an empty array count as missing — `null` counts as missing too, UNLESS the
+ * schema itself declares `'null'` a valid type for that key, in which case an
+ * explicit `null` is a real value the handler must see (issue #1111:
+ * `set_artist_origin`'s `country: null` tombstone was rejected here before its
+ * own handler — which already distinguishes `null` from "key not sent" — ever
+ * ran).
  */
 export function missingRequiredArgs(
   tool: { name: string; inputSchema: Record<string, unknown> },
@@ -1326,12 +1331,20 @@ export function missingRequiredArgs(
 ): string | null {
   const required = tool.inputSchema.required;
   if (!Array.isArray(required) || required.length === 0) return null;
-  const absent = (v: unknown): boolean =>
+  const properties = tool.inputSchema.properties;
+  const allowsNull = (key: string): boolean => {
+    if (typeof properties !== 'object' || properties === null) return false;
+    const prop = (properties as Record<string, unknown>)[key];
+    if (typeof prop !== 'object' || prop === null) return false;
+    const type = (prop as { type?: unknown }).type;
+    return type === 'null' || (Array.isArray(type) && type.includes('null'));
+  };
+  const absent = (key: string, v: unknown): boolean =>
     v === undefined ||
-    v === null ||
+    (v === null && !allowsNull(key)) ||
     (typeof v === 'string' && v.trim() === '') ||
     (Array.isArray(v) && v.length === 0);
-  const missing = required.filter((k): k is string => typeof k === 'string' && absent(args[k]));
+  const missing = required.filter((k): k is string => typeof k === 'string' && absent(k, args[k]));
   if (missing.length === 0) return null;
   const sent = Object.keys(args);
   return (

@@ -1744,6 +1744,35 @@ describe('missingRequiredArgs', () => {
     expect(missingRequiredArgs(tool(['id']), { id: '' })).toContain('id');
     expect(missingRequiredArgs(tool(['ids']), { ids: [] })).toContain('ids');
   });
+
+  // Issue #1111: set_artist_origin's country:null tombstone was rejected here
+  // before its own handler — which already distinguishes null from "not
+  // sent" — ever ran.
+  it('accepts an explicit null for a key whose schema declares null a valid type', () => {
+    const nullableTool = {
+      name: 'set_artist_origin',
+      inputSchema: {
+        type: 'object',
+        properties: { artistId: { type: 'string' }, country: { type: ['string', 'null'] } },
+        required: ['artistId', 'country'],
+      },
+    };
+    expect(missingRequiredArgs(nullableTool, { artistId: 'a1', country: null })).toBeNull();
+    // The key must still be sent — genuinely omitting it is still missing.
+    expect(missingRequiredArgs(nullableTool, { artistId: 'a1' })).toContain('country');
+  });
+
+  it('still rejects null for a key whose schema does not declare null', () => {
+    const tightTool = {
+      name: 't',
+      inputSchema: {
+        type: 'object',
+        properties: { id: { type: 'string' } },
+        required: ['id'],
+      },
+    };
+    expect(missingRequiredArgs(tightTool, { id: null })).toContain('id');
+  });
 });
 
 // Issue #787. Both cases below actually reached the library during curation

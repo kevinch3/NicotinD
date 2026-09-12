@@ -525,10 +525,15 @@ per-handler checks: every tool, including every tool added later, is covered by
 construction.
 
 Present-but-falsy is present — `confirm: false` and `year: 0` are real values,
-and the confirm gate owns the former. Only `undefined`, `null`, a blank string
-and an empty array count as missing. The guard reads the schema and never
-invents a requirement: `complete_album` declares only `confirm`, because
-`albumId` and `artist` + `album` are alternatives its handler arbitrates.
+and the confirm gate owns the former. `undefined`, a blank string and an empty
+array always count as missing; `null` does too, **unless the schema itself
+declares `'null'` a valid type for that key** — `set_artist_origin`'s
+`country: null` is the documented "tombstone this as unknown" value, and
+issue #1111 was exactly this guard rejecting it before the tool's own handler
+(which already distinguished `null` from "not sent") ever ran. The guard reads
+the schema and never invents a requirement: `complete_album` declares only
+`confirm`, because `albumId` and `artist` + `album` are alternatives its
+handler arbitrates.
 
 ### An HTML entity in a name is refused, not stored (issue #787)
 
