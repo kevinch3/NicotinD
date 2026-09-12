@@ -23,6 +23,9 @@ import { recordingKey } from '../services/recording-identity.js';
 import { songFilterWheres } from '../services/library-filter-sql.js';
 import { seedCentroid, type OrderableRow } from '../services/playlist-recipe.js';
 import { isRealGenre } from '../services/genre-split.js';
+import type { GenreAffinityFn } from '../services/genre-affinity.js';
+import { loadGenreAffinity } from '../services/genre-centroids.js';
+import { getRadioSettings } from '../services/radio-settings.js';
 import { loadDescriptors, type DescriptorFeatures } from '../services/descriptor-store.js';
 import { descriptorBlocks, meanBlock, type DescriptorBlocks } from '../services/descriptor-axes.js';
 import { feedEligibilitySql, type ReadinessTier } from '../services/recommendation/eligibility.js';
@@ -285,6 +288,12 @@ export interface RadioResult {
   pool: RadioCandidate[];
   /** The top-N after scoring + per-artist diversification. */
   ranked: ScoredSong<RadioCandidate>[];
+  /**
+   * The genre-affinity resolver the ranking used, when the caller supplied one
+   * (docs/genre-affinity.md), so a later `explainSimilarity` over this result
+   * (poll snapshots, the diagnostic dump) scores the genre axis the same way.
+   */
+  genreAffinity?: GenreAffinityFn;
 }
 
 /** Extract the ranked candidates as full Song rows (the route's response shape). */
@@ -519,6 +528,14 @@ export function buildSeedRadio(
   seedRow: RadioSongRow,
   opts: {
     count?: number;
+    /** Learned genre affinity (docs/genre-affinity.md); absent = lexical genre axis. */
+    genreAffinity?: GenreAffinityFn;
+    /**
+     * The admin opt-in (`RadioSettings.genreAffinity`): when set and no
+     * explicit `genreAffinity` was given, the resolver is loaded here for
+     * exactly the genres in play (seed + pool) once the pool is known.
+     */
+    learnedGenreAffinity?: boolean;
     excludeIds?: Set<string>;
     weights?: ScoringWeights;
     /** Named recipe (pool mix, weight overrides, caps); `weights` still wins when given. */
@@ -573,13 +590,33 @@ export function buildSeedRadio(
     opts.userId,
     opts.now,
   );
+  const genreAffinity = resolveGenreAffinity(db, opts, seedGenres, candidates);
   const ranked = rankCandidates(seed, pool, {
     count,
     maxPerArtist: strategy.maxPerArtist,
     weights: opts.weights ?? resolveWeights(strategy),
     quota: outOfGenreQuota(strategy, seedGenres),
+    genreAffinity,
   });
-  return { seed, pool, ranked };
+  return { seed, pool, ranked, genreAffinity };
+}
+
+/**
+ * The opt-in's resolver for one generation: centroids for the genres the seed
+ * and the pool actually carry — one chunked query, no per-pair IO. `undefined`
+ * (option off, no explicit resolver, or nothing stored) keeps the lexical axis.
+ */
+function resolveGenreAffinity(
+  db: ReturnType<typeof getDatabase>,
+  opts: { genreAffinity?: GenreAffinityFn; learnedGenreAffinity?: boolean },
+  seedGenres: readonly string[],
+  candidates: readonly RadioSongRow[],
+): GenreAffinityFn | undefined {
+  if (opts.genreAffinity) return opts.genreAffinity;
+  if (!opts.learnedGenreAffinity) return undefined;
+  const genres = new Set<string>(seedGenres);
+  for (const r of candidates) for (const g of genresOf(r) ?? []) genres.add(g);
+  return loadGenreAffinity(db, genres);
 }
 
 /**
@@ -616,6 +653,14 @@ export function buildListRadio(
   seedRows: RadioSongRow[],
   opts: {
     count?: number;
+    /** Learned genre affinity (docs/genre-affinity.md); absent = lexical genre axis. */
+    genreAffinity?: GenreAffinityFn;
+    /**
+     * The admin opt-in (`RadioSettings.genreAffinity`): when set and no
+     * explicit `genreAffinity` was given, the resolver is loaded here for
+     * exactly the genres in play (seed + pool) once the pool is known.
+     */
+    learnedGenreAffinity?: boolean;
     excludeIds?: Set<string>;
     weights?: ScoringWeights;
     /** Named recipe (pool mix, weight overrides, caps); `weights` still wins when given. */
@@ -677,13 +722,15 @@ export function buildListRadio(
     opts.userId,
     opts.now,
   );
+  const genreAffinity = resolveGenreAffinity(db, opts, genreUnion, candidates);
   const ranked = rankCandidates(seed, pool, {
     count,
     maxPerArtist: strategy.maxPerArtist,
     weights: opts.weights ?? resolveWeights(strategy),
     quota: outOfGenreQuota(strategy, genreUnion),
+    genreAffinity,
   });
-  return { seed, pool, ranked };
+  return { seed, pool, ranked, genreAffinity };
 }
 
 /**
@@ -896,6 +943,10 @@ export function radioRoutes() {
     // each excluded recording (#660), so a rejected track's twin stays out too.
     const userId = listenerId(c);
     if (userId) for (const id of excludedSongIds(db, userId)) excludeIds.add(id);
+    // The learned genre axis is an admin opt-in (docs/genre-affinity.md); off
+    // by default so the regular radio is untouched. Seed and list lanes only —
+    // a station already replaces the genre axis with graded membership.
+    const learnedGenreAffinity = getRadioSettings(db).genreAffinity;
 
     // A seed *list* → list-seeded radio ("keep the vibe"). Takes precedence
     // over the single-seed and filter lanes. Capped at the recently-played
@@ -913,7 +964,15 @@ export function radioRoutes() {
       // deleted song. Only an entirely-unresolvable list is an error.
       if (seedRows.length === 0) return c.json({ error: 'No seed songs found' }, 404);
       return c.json(
-        radioSongs(buildListRadio(db, seedRows, { count, excludeIds, userId, strategy })),
+        radioSongs(
+          buildListRadio(db, seedRows, {
+            count,
+            excludeIds,
+            userId,
+            strategy,
+            learnedGenreAffinity,
+          }),
+        ),
       );
     }
 
@@ -937,7 +996,11 @@ export function radioRoutes() {
       .get(seedId);
     if (!seedRow) return c.json({ error: 'Seed song not found' }, 404);
 
-    return c.json(radioSongs(buildSeedRadio(db, seedRow, { count, excludeIds, userId, strategy })));
+    return c.json(
+      radioSongs(
+        buildSeedRadio(db, seedRow, { count, excludeIds, userId, strategy, learnedGenreAffinity }),
+      ),
+    );
   });
 
   return app;

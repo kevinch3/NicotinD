@@ -176,6 +176,21 @@ dramatically improved. It is inflated by a broad seed genre: "Latin" trivially
 matched 60% of a Latin-heavy library while meaning nothing. When the seed's genre
 specificity changes, compare the ranked output, not the pool percentage.
 
+**Genre affinity (spike, not yet scoring) — the lexical rule's two blind spots.**
+A shared umbrella tag is a perfect 1.0 ("Electronic; Tech House" vs
+"Electronic; Big Room" — the MAX lands on "Electronic"), and adjacent scenes
+with no shared token are a 0 ("Tech House" vs "Minimal Techno"). Both are the
+axis being confidently wrong, and no weight fixes that. The replacement is a
+_learned_ pair score: every genre name is summarised as the centroid of its
+tracks' discogs-effnet embeddings (`library_genre_centroids`, rebuilt daily),
+two names are as close as their centroids' cosine, and a tag whose members
+disagree (low coherence — the umbrella signal) is discounted. It rides the same
+`genreSetCloseness` MAX through `ScoringContext.genreAffinity`, falls back to
+the lexical rule for any pair it does not know, and is an **admin opt-in, off
+by default** (Admin → Radio, `RadioSettings.genreAffinity`): off, the regular
+radio is untouched; on, seed and list radio use it — stations and polls never
+do. `dump-radio --genre-affinity` is the A/B. → [genre-affinity.md](genre-affinity.md)
+
 **Why MusicBrainz can't fix this for you.** Task A1 measured MB/Lidarr genre
 coverage on this library at 2/25 artists (~3% of the gap), with Lidarr returning
 byte-identical data to MB (it proxies it) and Spotify's API now requiring a
@@ -1056,6 +1071,7 @@ bun run packages/api/src/scripts/dump-radio.ts --artist "José Larralde" --count
 bun run packages/api/src/scripts/dump-radio.ts --random          # random-sample a seed
 bun run packages/api/src/scripts/dump-radio.ts --bpm-min 115 --bpm-max 125   # filter vibe
 bun run packages/api/src/scripts/dump-radio.ts --seed <id> --weights embedding=8,genre=14
+bun run packages/api/src/scripts/dump-radio.ts --seed <id> --genre-affinity   # learned genre axis A/B
 ```
 
 `--weights axis=n,…` re-ranks the same seed under a candidate `DEFAULT_WEIGHTS`
@@ -1063,7 +1079,10 @@ bun run packages/api/src/scripts/dump-radio.ts --seed <id> --weights embedding=8
 `weights` option), so a proposed weight change can be **measured against a control
 seed before it ships** instead of guessed. `parseWeightOverrides` throws on an
 unknown axis or a non-numeric value — a silent no-op would invalidate the
-measurement.
+measurement. `--genre-affinity` scores the genre axis from the learned genre
+centroids instead of the lexical rule (threaded the same way, via
+`buildSeedRadio`'s `genreAffinity` option); the report's header line names
+which axis was in force. → [genre-affinity.md](genre-affinity.md)
 
 The route and the dump share **one** implementation: `buildSeedRadio` /
 `buildFilterRadio` (exported from `routes/radio.ts`) build the pool + rank; the
@@ -1136,6 +1155,9 @@ collapse, which it needed most (see "Same recording, multiple files").
 | `packages/api/src/services/station-affinity.ts`                       | **Stations (v3)**: `genreDepthScore` / `stationAffinity` / `anchorCentroid` — pure graded membership + the audio anchor                                                                                                                                        |
 | `packages/api/src/services/genre-distribution.ts`                     | `artistGenreShares` — batched "how much of this artist is this genre", the artist half of station affinity (shares the radar's definition)                                                                                                                     |
 | `packages/api/src/services/embedding-store.ts`                        | `loadEmbeddings` / `embeddingModelFor` / `dominantEmbeddingModel` — pooled read of cached Essentia vectors (the last picks a station's vector space, which has no seed song to pin)                                                                            |
+| `packages/api/src/services/genre-affinity.ts`                         | **Genre affinity (spike)**: `explainGenrePair` / `makeGenreAffinity` / `rankNeighbours` — pure learned pair score over genre centroids, coherence-discounted; consumed through `ScoringContext.genreAffinity` ([genre-affinity.md](genre-affinity.md))                        |
+| `packages/api/src/services/genre-centroids.ts`                        | `computeGenreCentroids` / `loadGenreAffinity` / `maybeRunDailyGenreCentroids` — the one-pass centroid rebuild into `library_genre_centroids` and its daily sweep                                                                                                |
+| `packages/api/src/scripts/genre-affinity.ts`                          | Developer diagnostic for the learned axis (`--refresh`, `--pair`, `--neighbours`, `--breadth`)                                                                                                                                                                 |
 | `packages/api/src/routes/radio.ts`                                    | `/api/radio/next` route (seed **and** filter paths); exports the shared generators `buildSeedRadio` / `buildFilterRadio` / `radioSongs` (pool build + rank, optional `weights` override for the dump), `toOrderable` (via `songFilterWheres` + `seedCentroid`), `stationCentroid` (the station's target, over the whole eligible set) |
 | `packages/api/src/services/recommendation/strategies.ts`              | **Strategies**: `STRATEGIES` / `resolveStrategy` / `resolveWeights` / `PoolMix` — the named recipes (weights, cap, pool mix, out-of-genre quota); `balanced` pinned to the pre-strategy pool; `UnknownStrategyError` → route 400                                                       |
 | `packages/web/src/app/components/now-playing/radio-chip/`             | **Variety chip**: the radio pill + suffix panel (`radio-chip-expand`, `radio-variety-*`); steers `PlayerService.setRadioStrategy`, logs the vote, saves the default                                                                                                  |

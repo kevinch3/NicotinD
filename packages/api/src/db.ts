@@ -1087,6 +1087,25 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
     )
   `);
 
+  // Per-genre-NAME audio centroid over the members' embeddings, the learned
+  // genre-to-genre affinity radio's genre axis can consume
+  // (services/genre-centroids.ts, docs/genre-affinity.md). Genre-keyed, so no
+  // orphan marker: the daily sweep rebuilds the whole table atomically.
+  // `coherence` = |mean of unit vectors| — how much the tag's members agree,
+  // which is the umbrella-tag signal.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_genre_centroids (
+      genre_key   TEXT PRIMARY KEY,
+      genre       TEXT NOT NULL,
+      model       TEXT NOT NULL,
+      dim         INTEGER NOT NULL,
+      vec         BLOB NOT NULL,
+      members     INTEGER NOT NULL,
+      coherence   REAL NOT NULL,
+      computed_at INTEGER NOT NULL
+    )
+  `);
+
   // Per-(song, task) analysis failure ledger. A file that hard-fails a decode/
   // sidecar analysis (e.g. a corrupt "Invalid data" mp3) is recorded here; once
   // fail_count reaches the task's attempt cap the windowed processor excludes it

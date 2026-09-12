@@ -18,6 +18,7 @@ import { maybeRefreshAutoPlaylists } from './auto-playlists.service.js';
 import { reapIdleItems } from './acquisition-job-store.js';
 import { maybeRunDailyBackup } from './backup.js';
 import { maybeRunDailyOrphanPrune } from './orphan-prune.js';
+import { maybeRunDailyGenreCentroids } from './genre-centroids.js';
 import {
   ENRICHMENT_TASKS,
   createEnrichmentContext,
@@ -228,6 +229,13 @@ export class LibraryProcessingService extends EventEmitter {
     // the backup: housekeeping must not depend on enrichment being enabled, and
     // it runs before the backup's next snapshot picks the freed bytes up.
     maybeRunDailyOrphanPrune(this.db, { now: this.now().getTime() });
+    // Daily genre-centroid rebuild (docs/genre-affinity.md): one pass over the
+    // stored embeddings, so the learned genre affinity tracks the library as
+    // tags and analyses land. Same placement + marker-guard as the sweeps
+    // above — a derived table must not depend on enrichment being enabled.
+    if (maybeRunDailyGenreCentroids(this.db, { now: this.now().getTime() })) {
+      log.info('genre centroids rebuilt');
+    }
     // Daily cover-cache sweep (issue #311): the cache had no eviction at all —
     // prod measured 3.6 GB, 1.6 GB of it belonging to rows that are gone. Same
     // placement + marker-guard as the two above.

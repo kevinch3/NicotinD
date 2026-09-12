@@ -408,6 +408,72 @@ describe('genreSetCloseness (multi-genre)', () => {
   });
 });
 
+describe('genre affinity seam (docs/genre-affinity.md — learned genre axis, not yet wired)', () => {
+  // A stub of the centroid-backed resolver: the shared umbrella is discounted,
+  // the audio neighbour is named, everything else is unknown (→ lexical).
+  const stub: Record<string, number> = {
+    'electronic|electronic': 0.5,
+    'tech house|minimal techno': 0.9,
+    'tech house|big room': 0.05,
+  };
+  const affinity = (a: string, b: string): number | null => {
+    const k1 = `${a.toLowerCase()}|${b.toLowerCase()}`;
+    const k2 = `${b.toLowerCase()}|${a.toLowerCase()}`;
+    return stub[k1] ?? stub[k2] ?? null;
+  };
+
+  it('genreSetCloseness takes the resolver per pair and keeps the lexical rule for unknown pairs', async () => {
+    const { genreSetCloseness } = await import('./radio.service.js');
+    // Known pair: the resolver's number, not the lexical 0.
+    expect(genreSetCloseness(['Tech House'], ['Minimal Techno'], affinity)).toBe(0.9);
+    // Unknown pair: lexical containment as before.
+    expect(genreSetCloseness(['Deep House'], ['House'], affinity)).toBe(0.6);
+    // No resolver: identical to the lexical MAX.
+    expect(genreSetCloseness(['Electronic', 'Tech House'], ['Electronic', 'Big Room'])).toBe(1.0);
+  });
+
+  /**
+   * The reported failure: "Electronic; Tech House" vs "Electronic; Big Room"
+   * was a perfect genre match via the shared umbrella, so big-room EDM followed
+   * tech house. With the resolver, the discounted umbrella (0.5) is the best
+   * pair for the wrong candidate while the real neighbour scores 0.9.
+   */
+  it('lets a specific neighbour outrank a shared umbrella tag in the full score', () => {
+    const seed = makeSeed({ genre: 'Electronic', genres: ['Electronic', 'Tech House'] });
+    const neighbour = makeCandidate({ genre: 'Minimal Techno', genres: ['Minimal Techno'] });
+    const wrong = makeCandidate({ genre: 'Electronic', genres: ['Electronic', 'Big Room'] });
+
+    // Lexical today: the wrong candidate wins the genre axis outright.
+    expect(explainSimilarity(seed, wrong).axes.find((a) => a.axis === 'genre')!.value).toBe(1);
+    expect(explainSimilarity(seed, neighbour).axes.find((a) => a.axis === 'genre')!.value).toBe(0);
+
+    const ctx = { genreAffinity: affinity };
+    expect(
+      explainSimilarity(seed, wrong, DEFAULT_WEIGHTS, ctx).axes.find((a) => a.axis === 'genre')!
+        .value,
+    ).toBe(0.5);
+    expect(
+      explainSimilarity(seed, neighbour, DEFAULT_WEIGHTS, ctx).axes.find((a) => a.axis === 'genre')!
+        .value,
+    ).toBe(0.9);
+    expect(scoreSimilarity(seed, neighbour, DEFAULT_WEIGHTS, ctx)).toBeGreaterThan(
+      scoreSimilarity(seed, wrong, DEFAULT_WEIGHTS, ctx),
+    );
+
+    const ranked = rankCandidates(seed, [wrong, neighbour], { count: 2, genreAffinity: affinity });
+    expect(ranked[0]!.song).toBe(neighbour);
+    // And without the option the ranking is the lexical one, unchanged.
+    expect(rankCandidates(seed, [wrong, neighbour], { count: 2 })[0]!.song).toBe(wrong);
+  });
+
+  it('a floored (genre-less) candidate is unaffected by the resolver', () => {
+    const seed = makeSeed({ genres: ['Tech House'] });
+    const untagged = makeCandidate({ genre: undefined, genres: [] });
+    const ex = explainSimilarity(seed, untagged, DEFAULT_WEIGHTS, { genreAffinity: affinity });
+    expect(ex.floored).toContain('genre');
+  });
+});
+
 describe('scoreSimilarity — multi-genre axis', () => {
   it('uses the genre sets when present so a shared secondary genre scores 1.0', async () => {
     const { scoreSimilarity, DEFAULT_WEIGHTS } = await import('./radio.service.js');

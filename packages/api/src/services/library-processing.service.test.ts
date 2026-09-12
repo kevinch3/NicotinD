@@ -7,6 +7,7 @@ import { applySchema } from '../db.js';
 import { setProcessingSettings } from './processing-settings.js';
 import { LibraryProcessingService } from './library-processing.service.js';
 import { getTask, type EnrichmentContext } from './enrichment/tasks.js';
+import { countGenreCentroids } from './genre-centroids.js';
 
 let db: Database;
 let dataDir: string;
@@ -147,6 +148,32 @@ describe('LibraryProcessingService', () => {
 
     expect(counters.analyzed).toBe(2); // one batch only
     expect(pendingBpm()).toBe(3);
+  });
+
+  it('tick rebuilds the genre centroids once per day, whether or not enrichment is enabled', async () => {
+    seedSong('s1');
+    db.run(`UPDATE library_songs SET genre = 'Tango' WHERE id = 's1'`);
+    db.run(
+      `INSERT INTO library_embeddings (song_id, model, dim, vec, file_size, updated_at)
+       VALUES ('s1', 'discogs-effnet-bs64-1', 2, ?, 10, 1)`,
+      [Buffer.from(new Float32Array([1, 0]).buffer)],
+    );
+    setProcessingSettings(db, { enabled: false });
+    const counters = { analyzed: 0, genreLookups: 0 };
+
+    await service({ now: new Date(2024, 0, 1, 9, 0), counters }).tick();
+    expect(countGenreCentroids(db)).toBe(1);
+
+    // A tag added later the same day waits for tomorrow's rebuild.
+    db.run(`UPDATE library_songs SET genre = 'Milonga' WHERE id = 's1'`);
+    await service({ now: new Date(2024, 0, 1, 15, 0), counters }).tick();
+    expect(
+      db.query<{ genre: string }, []>('SELECT genre FROM library_genre_centroids').get()!.genre,
+    ).toBe('Tango');
+    await service({ now: new Date(2024, 0, 2, 9, 0), counters }).tick();
+    expect(
+      db.query<{ genre: string }, []>('SELECT genre FROM library_genre_centroids').get()!.genre,
+    ).toBe('Milonga');
   });
 
   it('tick is a no-op when disabled', async () => {
