@@ -137,6 +137,62 @@ describe('explainGenrePair', () => {
   });
 });
 
+/**
+ * The calibration cases (#1119). Numbers are the PRODUCTION measurement, not
+ * invention: `coherence` is the value `--breadth` printed for each tag, and the
+ * vectors are built to reproduce the exact centroid cosine `--pair` printed
+ * against Tech House. They exist so a later change to the four constants has to
+ * face what the library actually sounds like.
+ */
+describe('calibrated on the production library (#1119)', () => {
+  const TECH_HOUSE_COHERENCE = 0.809;
+  /** Unit vector at the measured cosine from Tech House's [1, 0]. */
+  const atCosine = (genre: string, cos: number, coherence: number): GenreCentroid =>
+    centroid(genre, [cos, Math.sqrt(1 - cos * cos)], { coherence, members: 60 });
+
+  const prod = mapOf(
+    centroid('Tech House', [1, 0], { coherence: TECH_HOUSE_COHERENCE, members: 241 }),
+    atCosine('Minimal Techno', 0.969, 0.812),
+    atCosine('Electronic', 0.93, 0.693),
+    atCosine('Big Room House', 0.851, 0.914),
+    atCosine('Tango', 0.474, 0.758),
+  );
+  const aff = (g: string) => explainGenrePair('Tech House', g, prod).affinity!;
+
+  it('ranks a real neighbour far above both the umbrella and the festival drift', () => {
+    expect(aff('Minimal Techno')).toBeCloseTo(0.872, 2);
+    expect(aff('Big Room House')).toBeCloseTo(0.402, 2);
+    expect(aff('Electronic')).toBeCloseTo(0.36, 2);
+    expect(aff('Tango')).toBe(0);
+    // The order the axis exists to produce: the named neighbour wins by >2x over
+    // everything the tech-house radio used to drift into, and Tango stays out.
+    expect(aff('Minimal Techno')).toBeGreaterThan(2 * aff('Big Room House'));
+    expect(aff('Minimal Techno')).toBeGreaterThan(2 * aff('Electronic'));
+    expect(aff('Big Room House')).toBeGreaterThan(aff('Tango'));
+  });
+
+  it('discounts the measured umbrellas to the floor and leaves leaf styles whole', () => {
+    // Latin .665 / Pop .672 / Rock .682 / World .682 / Electronic .693 all sit
+    // below COHERENCE_LOW; Tech House .809 / Minimal Techno .812 at or above HIGH.
+    for (const umbrella of [0.665, 0.672, 0.682, 0.693])
+      expect(breadthCredit({ coherence: umbrella })).toBeCloseTo(1 - BREADTH_DISCOUNT, 6);
+    expect(breadthCredit({ coherence: TECH_HOUSE_COHERENCE })).toBeGreaterThan(0.99);
+    expect(breadthCredit({ coherence: 0.812 })).toBe(1);
+  });
+
+  it('keeps an umbrella exact match under a named neighbour (BREADTH_DISCOUNT stays 0.5)', () => {
+    expect(explainGenrePair('Electronic', 'Electronic', prod).affinity).toBeCloseTo(0.5, 6);
+    expect(aff('Minimal Techno')).toBeGreaterThan(
+      explainGenrePair('Electronic', 'Electronic', prod).affinity!,
+    );
+  });
+
+  it('scores the weakest-linked genre above zero — the floor is not above the data', () => {
+    // The lowest nearest-neighbour cosine over 368 usable prod centroids is 0.796.
+    expect(rescaleCosine(0.796)).toBeGreaterThan(0);
+  });
+});
+
 describe('makeGenreAffinity / rankNeighbours', () => {
   const cs = mapOf(
     centroid('Tech House', [1, 0.1]),
