@@ -1,0 +1,50 @@
+<article class="rounded-lg border p-4" data-testid="case-card">
+  <header class="mb-3">
+    <p class="text-xs uppercase tracking-wide opacity-70">{{ case().kind }}</p>
+    <h2 class="text-lg font-semibold">{{ case().target.title }}</h2>
+    <p class="text-sm opacity-70">{{ case().target.subtitle }}</p>
+  </header>
+
+  <p class="mb-3" data-testid="case-question">{{ case().question }}</p>
+
+  @if (case().evidence.length) {
+    <dl class="mb-4 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+      @for (e of case().evidence; track e.label + e.value) {
+        <dt class="opacity-70">{{ e.label }}</dt>
+        <dd>
+          @if (e.href) {
+            <a [href]="e.href" target="_blank" rel="noopener noreferrer">{{ e.value }}</a>
+          } @else {
+            {{ e.value }}
+          }
+        </dd>
+      }
+    </dl>
+  }
+
+  <div class="flex flex-col gap-2">
+    @for (o of case().options; track o.id) {
+      <button
+        type="button"
+        class="rounded border px-3 py-2 text-left"
+        data-testid="case-option"
+        [attr.data-destructive]="o.destructive ? 'true' : null"
+        [disabled]="busy()"
+        (click)="choose.emit(o.id)"
+      >
+        <span class="block font-medium">{{ o.label }}</span>
+        <span class="block text-sm opacity-70">{{ o.rationale }}</span>
+      </button>
+    }
+  </div>
+
+  <button
+    type="button"
+    class="mt-3 text-sm underline"
+    data-testid="case-skip"
+    [disabled]="busy()"
+    (click)="skip.emit()"
+  >
+    {{ 'curate.skip' | t }}
+  </button>
+</article>
