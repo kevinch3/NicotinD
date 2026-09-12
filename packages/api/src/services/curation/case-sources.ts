@@ -98,7 +98,7 @@ export function flagToCase(flag: CurationFlag, target: CaseTarget): CurationCase
     target,
     question: flag.reason,
     evidence,
-    options: parsed.length > 0 ? parsed : [RESOLVE_ONLY],
+    options: [...parsed, RESOLVE_ONLY],
     confidence: 1,
     source: 'flag',
   };

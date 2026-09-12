@@ -44,8 +44,9 @@ describe('flagToCase', () => {
       target,
     );
     expect(c.kind).toBe('placement');
-    expect(c.options).toHaveLength(1);
+    expect(c.options).toHaveLength(2);
     expect(c.options[0]!.label).toBe('Move to Pharrell');
+    expect(c.options[1]!.effect).toEqual({ type: 'resolve-only' });
   });
 
   it('falls back to resolve-only when options_json is malformed', () => {
@@ -150,12 +151,40 @@ describe('flagToCase', () => {
       }),
       target,
     );
-    expect(c.options).toHaveLength(1);
+    expect(c.options).toHaveLength(2);
     expect(c.options[0]!.label).toBe('Valid option');
     expect(c.options[0]!.effect).toEqual({
       type: 'song-metadata',
       songId: 's1',
       fields: { artist: 'Test' },
     });
+    expect(c.options[1]!.effect).toEqual({ type: 'resolve-only' });
+  });
+
+  it('includes resolve-only as last option on typed cases', () => {
+    const c = flagToCase(
+      flag({
+        caseKind: 'placement',
+        optionsJson: JSON.stringify([
+          {
+            id: 'opt1',
+            label: 'First option',
+            rationale: 'A typed option',
+            effect: { type: 'song-metadata', songId: 's1', fields: { artist: 'Artist' } },
+          },
+          {
+            id: 'opt2',
+            label: 'Second option',
+            rationale: 'Another typed option',
+            effect: { type: 'artist-merge', mergeInto: 'a1', rawName: 'Raw Name' },
+          },
+        ]),
+      }),
+      target,
+    );
+    expect(c.options).toHaveLength(3);
+    expect(c.options[0]!.id).toBe('opt1');
+    expect(c.options[1]!.id).toBe('opt2');
+    expect(c.options[2]!.effect).toEqual({ type: 'resolve-only' });
   });
 });
