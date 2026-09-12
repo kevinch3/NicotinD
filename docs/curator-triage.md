@@ -346,6 +346,9 @@ flags only (no generators, no dismissal loop, no destructive kinds yet).
   it did not. Per-option validity stays a single authority, `isDispatchableEffect` on read: an
   option naming an unknown effect, or a `song-metadata` whose `fields` are not
   `title|artist|album|albumArtist` string values, is dropped and the card degrades to resolve-only.
+  `caseKind` and `optionsJson` move together on a re-flag: supplying either replaces both with the
+  caller's values (a kind with no options means options become null), never a new kind paired with
+  a stale options blob from the flag it is refreshing.
 - **Applying is resolve-first.** `POST …/cases/:id/apply` closes the flag *before* dispatching, and
   uses the conditional `UPDATE … WHERE resolved_at IS NULL` as the lock: the loser of a two-curator
   race gets **409** and dispatches nothing. A dispatch that then fails leaves a resolved flag with no

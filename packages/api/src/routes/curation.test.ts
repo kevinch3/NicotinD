@@ -241,6 +241,128 @@ describe('POST /cases/:id/apply', () => {
     expect(sharedDb.query('SELECT id FROM audit_log').all()).toHaveLength(1);
   });
 
+  it('pins the resolve-first lock under real concurrency: racing two applies on one flag dispatches exactly once', async () => {
+    // The sequential test above ("409s a second apply...") never overlaps the
+    // two requests' processing — by the time the second is even issued, the
+    // first has fully finished (its own dispatch AND resolve). That proves
+    // only that a second apply after the first is done gets 409; it does not
+    // exercise the lock under contention, and would pass identically against
+    // the old dispatch-then-resolve ordering (see the git history on this
+    // file). Firing both requests before awaiting either is the concurrent
+    // shape: the second request's own case lookup runs while the first is
+    // still mid-flight, so this is the one that actually distinguishes
+    // "resolve is the lock" from "resolve happens eventually".
+    let dispatches = 0;
+    const app = new Hono<AuthEnv>();
+    app.onError(errorHandler);
+    app.use('*', (c, next) => {
+      c.set('user', { sub: 'user1', username: 'curator', role: 'admin', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    app.route(
+      '/',
+      curationRoutes({
+        applyDeps: {
+          ...applyDeps,
+          mutateSongMetadata: async () => {
+            dispatches++;
+            return { ok: true };
+          },
+        },
+        describeTarget: (kind, id) => describeTarget(sharedDb, kind, id),
+      }),
+    );
+
+    const id = createCurationFlag(sharedDb, {
+      targetKind: 'song',
+      targetId: 'song-race-concurrent',
+      reason: 'who?',
+      createdBy: 'agent:test',
+      caseKind: 'placement',
+      optionsJson: JSON.stringify([
+        {
+          id: 'retag',
+          label: 'Retag',
+          rationale: 'the tag is wrong',
+          effect: {
+            type: 'song-metadata',
+            songId: 'song-race-concurrent',
+            fields: { artist: 'Pharrell' },
+          },
+        },
+      ]),
+    }).flag.id;
+
+    const send = () =>
+      app.request(`/cases/flag:${id}/apply`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ optionId: 'retag' }),
+      });
+
+    // Both fired before either is awaited — do not `await send()` here.
+    const first = send();
+    const second = send();
+    const results = await Promise.all([first, second]);
+    const statuses = results.map((r) => r.status).sort();
+
+    expect(statuses).toEqual([200, 409]);
+    expect(dispatches).toBe(1);
+    expect(sharedDb.query('SELECT id FROM audit_log').all()).toHaveLength(1);
+  });
+
+  it('leaves the flag resolved (not reopened) when the dispatch fails after the lock is taken', async () => {
+    const app = new Hono<AuthEnv>();
+    app.onError(errorHandler);
+    app.use('*', (c, next) => {
+      c.set('user', { sub: 'user1', username: 'curator', role: 'admin', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    app.route(
+      '/',
+      curationRoutes({
+        applyDeps: {
+          ...applyDeps,
+          mutateSongMetadata: async () => ({ ok: false, error: 'tag write failed' }),
+        },
+        describeTarget: (kind, id) => describeTarget(sharedDb, kind, id),
+      }),
+    );
+
+    const id = createCurationFlag(sharedDb, {
+      targetKind: 'song',
+      targetId: 'song-dispatch-fail',
+      reason: 'who?',
+      createdBy: 'agent:test',
+      caseKind: 'placement',
+      optionsJson: JSON.stringify([
+        {
+          id: 'retag',
+          label: 'Retag',
+          rationale: 'the tag is wrong',
+          effect: {
+            type: 'song-metadata',
+            songId: 'song-dispatch-fail',
+            fields: { artist: 'Pharrell' },
+          },
+        },
+      ]),
+    }).flag.id;
+
+    const res = await app.request(`/cases/flag:${id}/apply`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ optionId: 'retag' }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: 'tag write failed', resolved: true });
+    // Not open (resolved) and not resolvable a second time — the deliberate
+    // contract: a failed dispatch after the lock leaves the flag closed with
+    // no data change, recoverable only by re-flagging.
+    expect(listOpenCurationFlags(sharedDb)).toHaveLength(0);
+  });
+
   it('404s an unknown case id', async () => {
     const res = await makeApp().request('/cases/flag:9999/apply', {
       method: 'POST',

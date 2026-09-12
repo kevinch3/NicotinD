@@ -102,8 +102,15 @@ export function createCurationFlag(
     .get(input.targetKind, input.targetId);
 
   if (existing) {
-    const caseKind = input.caseKind ?? existing.case_kind ?? null;
-    const optionsJson = input.optionsJson ?? existing.options_json ?? null;
+    // caseKind and optionsJson describe one card and must move together: a
+    // re-flag that supplies either one replaces BOTH with the caller's values
+    // (a kind with no options means options become null), never one from the
+    // new call paired with the other left over from the old one.
+    const suppliesCase = input.caseKind !== undefined || input.optionsJson !== undefined;
+    const caseKind = suppliesCase ? (input.caseKind ?? null) : (existing.case_kind ?? null);
+    const optionsJson = suppliesCase
+      ? (input.optionsJson ?? null)
+      : (existing.options_json ?? null);
     db.run('UPDATE curation_flags SET reason = ?, case_kind = ?, options_json = ? WHERE id = ?', [
       input.reason,
       caseKind,
