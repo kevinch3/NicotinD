@@ -16,7 +16,7 @@ import type { CurationCase } from '../../services/api/api-types';
   templateUrl: './case-card.component.html',
 })
 export class CaseCardComponent {
-  readonly case = input.required<CurationCase>();
+  readonly case = input<CurationCase | null>(null);
   readonly busy = input(false);
 
   readonly choose = output<string>();

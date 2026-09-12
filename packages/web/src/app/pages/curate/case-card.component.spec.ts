@@ -21,7 +21,7 @@ const aCase = (over: Partial<CurationCase> = {}): CurationCase => ({
 // componentRef.setInput() is a silent no-op on this JIT harness — see
 // testing/signal-input.ts. setInputValue writes the signal node directly and
 // must run before the fixture's first detectChanges().
-function render(kase: CurationCase, busy = false) {
+function render(kase: CurationCase | null, busy = false) {
   TestBed.configureTestingModule({ imports: [CaseCardComponent] });
   const fixture = TestBed.createComponent(CaseCardComponent);
   setInputValue(fixture.componentInstance.case, kase);
@@ -81,5 +81,10 @@ describe('CaseCardComponent', () => {
       '[data-testid="case-option"]',
     ) as HTMLButtonElement;
     expect(btn.getAttribute('data-destructive')).toBe('true');
+  });
+
+  it('renders nothing when there is no case', () => {
+    const f = render(null);
+    expect((f.nativeElement as HTMLElement).querySelector('[data-testid="case-card"]')).toBeNull();
   });
 });
