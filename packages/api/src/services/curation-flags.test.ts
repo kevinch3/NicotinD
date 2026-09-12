@@ -106,3 +106,31 @@ describe('isFlagTargetKind', () => {
     expect(isFlagTargetKind(undefined)).toBe(false);
   });
 });
+
+describe('typed case columns', () => {
+  it('round-trips a case kind and options blob', () => {
+    createCurationFlag(db, {
+      targetKind: 'song',
+      targetId: 's1',
+      reason: 'which artist?',
+      createdBy: 'agent:t1',
+      caseKind: 'identity',
+      optionsJson: '[{"id":"a"}]',
+    });
+    const [flag] = listOpenCurationFlags(db);
+    expect(flag!.caseKind).toBe('identity');
+    expect(flag!.optionsJson).toBe('[{"id":"a"}]');
+  });
+
+  it('leaves both null for a prose-only flag', () => {
+    createCurationFlag(db, {
+      targetKind: 'song',
+      targetId: 's2',
+      reason: 'ambiguous',
+      createdBy: 'kevin',
+    });
+    const flag = listOpenCurationFlags(db).find((f) => f.targetId === 's2');
+    expect(flag!.caseKind).toBeNull();
+    expect(flag!.optionsJson).toBeNull();
+  });
+});

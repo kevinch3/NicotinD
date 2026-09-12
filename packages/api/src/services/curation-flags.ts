@@ -12,6 +12,7 @@
  * Rows are the record itself: nothing is derived from scanner state.
  */
 import type { Database } from 'bun:sqlite';
+import { isCurationCaseKind, type CurationCaseKind } from '@nicotind/core';
 
 export type FlagTargetKind = 'artist' | 'album' | 'song';
 
@@ -26,6 +27,10 @@ export interface CurationFlag {
   source: FlagSource;
   /** Distinct listeners who have reported this target; 1 for a curator flag. */
   reportCount: number;
+  /** Set when an agent filed a machine-readable case; null for prose-only. */
+  caseKind: CurationCaseKind | null;
+  /** JSON-encoded `CaseOption[]`; null for prose-only. */
+  optionsJson: string | null;
 }
 
 export type FlagSource = 'curator' | 'listener';
@@ -45,6 +50,8 @@ interface FlagRow {
   created_at: number;
   source?: FlagSource | null;
   report_count?: number | null;
+  case_kind?: string | null;
+  options_json?: string | null;
 }
 
 const toFlag = (r: FlagRow): CurationFlag => ({
@@ -56,9 +63,11 @@ const toFlag = (r: FlagRow): CurationFlag => ({
   createdAt: r.created_at,
   source: r.source ?? 'curator',
   reportCount: r.report_count ?? 1,
+  caseKind: isCurationCaseKind(r.case_kind) ? r.case_kind : null,
+  optionsJson: r.options_json ?? null,
 });
 
-const FLAG_COLUMNS = `id, target_kind, target_id, reason, created_by, created_at, source, report_count`;
+const FLAG_COLUMNS = `id, target_kind, target_id, reason, created_by, created_at, source, report_count, case_kind, options_json`;
 
 export interface CreateFlagResult {
   flag: CurationFlag;
@@ -74,7 +83,14 @@ export interface CreateFlagResult {
  */
 export function createCurationFlag(
   db: Database,
-  input: { targetKind: FlagTargetKind; targetId: string; reason: string; createdBy: string },
+  input: {
+    targetKind: FlagTargetKind;
+    targetId: string;
+    reason: string;
+    createdBy: string;
+    caseKind?: CurationCaseKind;
+    optionsJson?: string;
+  },
   now = Date.now(),
 ): CreateFlagResult {
   const existing = db
@@ -86,14 +102,38 @@ export function createCurationFlag(
     .get(input.targetKind, input.targetId);
 
   if (existing) {
-    db.run('UPDATE curation_flags SET reason = ? WHERE id = ?', [input.reason, existing.id]);
-    return { flag: { ...toFlag(existing), reason: input.reason }, created: false };
+    const caseKind = input.caseKind ?? existing.case_kind ?? null;
+    const optionsJson = input.optionsJson ?? existing.options_json ?? null;
+    db.run('UPDATE curation_flags SET reason = ?, case_kind = ?, options_json = ? WHERE id = ?', [
+      input.reason,
+      caseKind,
+      optionsJson,
+      existing.id,
+    ]);
+    return {
+      flag: {
+        ...toFlag(existing),
+        reason: input.reason,
+        caseKind: isCurationCaseKind(caseKind) ? caseKind : null,
+        optionsJson,
+      },
+      created: false,
+    };
   }
 
   db.run(
-    `INSERT INTO curation_flags (target_kind, target_id, reason, created_by, created_at)
-     VALUES (?, ?, ?, ?, ?)`,
-    [input.targetKind, input.targetId, input.reason, input.createdBy, now],
+    `INSERT INTO curation_flags
+       (target_kind, target_id, reason, created_by, created_at, case_kind, options_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      input.targetKind,
+      input.targetId,
+      input.reason,
+      input.createdBy,
+      now,
+      input.caseKind ?? null,
+      input.optionsJson ?? null,
+    ],
   );
   const row = db
     .query<FlagRow, []>(
