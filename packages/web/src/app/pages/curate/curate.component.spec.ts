@@ -105,6 +105,24 @@ describe('CurateComponent', () => {
     expect(f.componentInstance.current()?.id).toBe('flag:1');
   });
 
+  // A load failure applied nothing; naming the apply would report a write that
+  // never happened.
+  it('toasts the load failure key, not the apply one, when the round cannot load', () => {
+    getRound.mockReturnValue(throwError(() => new Error('offline')));
+    const f = TestBed.createComponent(CurateComponent);
+    f.detectChanges();
+    expect(show).toHaveBeenCalledTimes(1);
+    expect(show.mock.calls[0][0].message).toBe('curate.loadFailed');
+  });
+
+  it('toasts the apply failure key when a choice fails', () => {
+    applyCase.mockReturnValue(throwError(() => new Error('nope')));
+    const f = TestBed.createComponent(CurateComponent);
+    f.detectChanges();
+    f.componentInstance.onChoose('resolve');
+    expect(show.mock.calls[0][0].message).toBe('curate.applyFailed');
+  });
+
   it('renders the empty state when the round has no cases', () => {
     getRound.mockReturnValue(of({ cases: [] }));
     const f = TestBed.createComponent(CurateComponent);

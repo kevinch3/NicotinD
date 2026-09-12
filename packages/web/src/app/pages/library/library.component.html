@@ -69,7 +69,11 @@
       class="mb-4 block rounded-lg border border-theme p-3 hover:bg-theme-surface-2/50 transition"
       data-testid="curate-entry"
     >
-      <span class="font-medium text-theme-primary">{{ 'curate.waiting' | t: { count: openCases() } }}</span>
+      <!-- The i18n layer interpolates but does not pluralise, so the singular
+           is its own key rather than a framework nobody else needs. -->
+      <span class="font-medium text-theme-primary">{{
+        (openCases() === 1 ? 'curate.waitingOne' : 'curate.waiting') | t: { count: openCases() }
+      }}</span>
       <span class="ml-2 underline text-theme-secondary">{{ 'curate.start' | t }}</span>
     </a>
   }

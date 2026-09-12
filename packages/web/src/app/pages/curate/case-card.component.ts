@@ -21,4 +21,9 @@ export class CaseCardComponent {
 
   readonly choose = output<string>();
   readonly skip = output<void>();
+
+  /** The eyebrow reads the decision SHAPE; the raw union member is not copy. */
+  kindKey(kind: CurationCase['kind']): string {
+    return `curate.kind.${kind}`;
+  }
 }

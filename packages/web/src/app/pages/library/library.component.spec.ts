@@ -20,6 +20,7 @@ import type { PlaylistSummary } from '../../services/api/api-types';
 // stub to exercise the two curator-entry keys this spec asserts text against.
 const TEST_CATALOG: Record<string, string> = {
   'curate.waiting': '{count} decisions waiting',
+  'curate.waitingOne': '1 decision waiting',
   'curate.start': 'Start a round',
 };
 
@@ -753,6 +754,19 @@ describe('LibraryComponent — curator triage entry card', () => {
     const entry = fixture.nativeElement.querySelector('[data-testid="curate-entry"]');
     expect(entry).not.toBeNull();
     expect(entry.textContent).toContain('3');
+  });
+
+  // The i18n layer has no plural support, so a single open case gets its own
+  // key rather than reading "1 decisions waiting" on the feature's front door.
+  it('uses the singular copy for exactly one open case', async () => {
+    const { fixture } = setup({}, { canCurate: true, openCases: 1 });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const entry = fixture.nativeElement.querySelector('[data-testid="curate-entry"]');
+    expect(entry.textContent).toContain('1 decision waiting');
+    expect(entry.textContent).not.toContain('1 decisions waiting');
   });
 
   it('hides the triage entry card when nothing is open', async () => {

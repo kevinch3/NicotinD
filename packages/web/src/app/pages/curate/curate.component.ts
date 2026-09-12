@@ -49,7 +49,9 @@ export default class CurateComponent {
       },
       error: () => {
         this.busy.set(false);
-        this.toast.show({ message: this.i18n.t('curate.applyFailed'), kind: 'error' });
+        // A load failure applied nothing — saying "could not apply that choice"
+        // would name a write that never happened.
+        this.toast.show({ message: this.i18n.t('curate.loadFailed'), kind: 'error' });
       },
     });
   }

@@ -1,8 +1,8 @@
-<div class="page-shell max-w-2xl">
-  <h1 class="mb-4 text-xl font-semibold">{{ 'curate.title' | t }}</h1>
+<div class="page-shell max-w-3xl">
+  <h1 class="page-title mb-4">{{ 'curate.title' | t }}</h1>
 
   @if (current(); as c) {
-    <p class="mb-2 text-sm opacity-70" data-testid="curate-progress">
+    <p class="mb-2 text-sm text-theme-secondary" data-testid="curate-progress">
       {{ index() + 1 }} / {{ total() }}
     </p>
     <app-case-card
@@ -16,7 +16,7 @@
       {{ total() ? ('curate.roundDone' | t) : ('curate.empty' | t) }}
     </p>
     @if (total()) {
-      <button type="button" class="mt-3 rounded border px-3 py-2" data-testid="curate-next-round" (click)="load()">
+      <button type="button" class="mt-3 rounded border border-theme px-3 py-2" data-testid="curate-next-round" (click)="load()">
         {{ 'curate.nextRound' | t }}
       </button>
     }

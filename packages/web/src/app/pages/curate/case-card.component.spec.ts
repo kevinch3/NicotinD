@@ -99,6 +99,14 @@ describe('CaseCardComponent', () => {
     expect(buttons[1].classList.contains('text-red-400')).toBe(false);
   });
 
+  // The eyebrow used to print the raw union member (`identity`, `placement`).
+  // It goes through the catalog now; with no catalog loaded the pipe returns
+  // the key, which is exactly what proves it is translated copy.
+  it('renders the kind through an i18n key, not the raw union member', () => {
+    const f = render(aCase({ kind: 'placement' }));
+    expect((f.nativeElement as HTMLElement).textContent).toContain('curate.kind.placement');
+  });
+
   it('renders nothing when there is no case', () => {
     const f = render(null);
     expect((f.nativeElement as HTMLElement).querySelector('[data-testid="case-card"]')).toBeNull();
