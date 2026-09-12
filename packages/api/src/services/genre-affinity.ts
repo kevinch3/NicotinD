@@ -31,9 +31,10 @@
  * Pure and IO-free: this module never touches the DB. `genreSetCloseness`
  * consumes a {@link GenreAffinityFn} as a drop-in for the lexical pair score
  * and falls back to lexical whenever a side is unknown or too thin
- * (`MIN_MEMBERS`). Every constant below is a prior; the `genre-affinity.ts`
- * script prints the real distributions so they get set from data
- * (docs/genre-affinity.md).
+ * (`MIN_MEMBERS`). Every constant below was a prior and is now calibrated on
+ * the production library (#1119); each carries the measured number it came
+ * from, and the `genre-affinity.ts` script reprints those distributions
+ * (docs/genre-affinity.md "Measurements").
  */
 
 import { cosineSim } from './radio.service.js';
@@ -73,17 +74,24 @@ export type GenreAffinityFn = (a: string, b: string) => number | null;
  * `ANCHOR_MIN_MEMBERS` in station-affinity.ts, lower because a genre name only
  * needs to be *placed*, not to anchor a whole station.
  */
+// why 5: measured, the 59 tags at 3-4 members do NOT behave — Celtic→Melodic
+// House, Crossover Thrash→Neo Soul, Anarcho-Punk→New Wave 0.14 — and admitting
+// them would *replace* a lexical fallback that gets several of them right.
 export const MIN_MEMBERS = 5;
 
 /**
  * Cosines between discogs-effnet centroids cluster high (everything is music),
  * so the raw cosine is rescaled: `(cos − COS_FLOOR) / (1 − COS_FLOOR)`, clamped.
  * A pair at or below the floor scores 0 — as unrelated as the lexical rule
- * would call a disjoint pair. PRIOR: set it from the vocab-wide percentiles the
- * script prints (`--refresh`); a floor near the 10th percentile keeps only the
- * genuinely far pairs at zero.
+ * would call a disjoint pair.
  */
-export const COS_FLOOR = 0.6;
+// why 0.75: measured on 67,528 prod pairs. The floor belongs at the bottom of
+// the *nearest-neighbour* distribution (min 0.796, p5 0.890), not of the
+// all-pairs one (p10 0.439, p50 0.634) — below ~0.8 a pair is nobody's nearest
+// neighbour, so a lower floor pays half credit to genuinely distant genres,
+// which IS the drift. 0.75 clears every genre's best neighbour but two, and
+// widens the tech-house good-vs-drift gap from 0.235 to 0.426.
+export const COS_FLOOR = 0.75;
 
 /**
  * Umbrella discount. `credit = 1 − BREADTH_DISCOUNT × (1 − coherenceNorm)`,
@@ -91,12 +99,20 @@ export const COS_FLOOR = 0.6;
  * At 0.5 the most diffuse tag keeps half credit — enough that a library tagged
  * only with umbrellas ("Rock" everywhere) still clears `MISSING_GENRE_FLOOR`
  * (0.2) on an exact match, not enough for it to beat a real neighbour.
- * PRIORS, all three: the script's `--breadth` ranking shows where "Electronic"
- * / "Pop" / "Rock" actually sit against leaf styles.
  */
+// why 0.5 kept: at the measured band an umbrella exact match scores 0.500,
+// well under the 0.872 a named neighbour gets — the condition for raising it
+// does not fire.
 export const BREADTH_DISCOUNT = 0.5;
-export const COHERENCE_LOW = 0.55;
-export const COHERENCE_HIGH = 0.9;
+// why 0.70 / 0.81: measured coherence over 368 usable prod centroids spans
+// 0.658..0.953 (p10 0.708, p50 0.793). Every umbrella named in #1119 sits below
+// 0.70 — Latin 0.665, Pop 0.672, Rock 0.682, World 0.682, Electronic 0.693 —
+// and the leaf styles the axis exists to separate sit at or above 0.81 (Tech
+// House 0.809, Minimal Techno 0.812, Deep House 0.817). The shipped 0.55..0.9
+// band was outside the data on both ends: nothing reached the discount floor
+// and everything above p90 saturated.
+export const COHERENCE_LOW = 0.7;
+export const COHERENCE_HIGH = 0.81;
 
 function clamp01(v: number): number {
   return Math.max(0, Math.min(1, v));

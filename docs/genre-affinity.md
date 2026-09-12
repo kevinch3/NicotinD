@@ -1,4 +1,4 @@
-# Genre affinity — a learned genre axis for radio (spike)
+# Genre affinity — a learned genre axis for radio
 
 **Status: shipped as an admin opt-in, OFF by default.** The centroids are built
 and refreshed daily, the pure affinity and the scoring seam exist, and the
@@ -8,7 +8,8 @@ genre similarity (experimental)" (`RadioSettings.genreAffinity`,
 regular radio is byte-for-byte what it was. `RADIO_FORMULA_VERSION` stays at 8
 because the default behaviour is unchanged and evaluation polls always
 generate on the lexical axis (see "The seam"); taking v9 is the step that makes
-it the default, once the measurements below say the priors are right.
+it the default (#1121). The constants are no longer priors — they were
+calibrated on the production library in #1119, and the A/B there says **go**.
 
 ## The problem
 
@@ -92,14 +93,15 @@ members, coherence }`; `makeGenreAffinity(centroids)` is the scorer-facing
 - **A side unknown or below `MIN_MEMBERS`** → `null`, and `genreSetCloseness`
   falls back to the lexical rule _for that pair_.
 
-Constants (all priors until the measurements section says otherwise):
+Constants, calibrated on prod in #1119 ("Measurements" below carries the number
+behind each one; so does a `// why` line at each declaration):
 
 | constant                          | value     | role                                                                                                                                 |
 | --------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | `MIN_MEMBERS`                     | 5         | a centroid over fewer tracks is noise; lexical is a better guess                                                                     |
-| `COS_FLOOR`                       | 0.6       | `rescaleCosine = (cos − floor) / (1 − floor)`, clamped — effnet cosines cluster high, so the floor is where "unrelated" starts       |
+| `COS_FLOOR`                       | 0.75      | `rescaleCosine = (cos − floor) / (1 − floor)`, clamped — effnet cosines cluster high, so the floor is where "unrelated" starts       |
 | `BREADTH_DISCOUNT`                | 0.5       | `credit = 1 − D × (1 − coherenceNorm)`: the most diffuse tag keeps half credit, enough to clear `MISSING_GENRE_FLOOR` on an exact match |
-| `COHERENCE_LOW` / `COHERENCE_HIGH` | 0.55 / 0.9 | the band `coherenceNorm` maps onto `[0, 1]`                                                                                          |
+| `COHERENCE_LOW` / `COHERENCE_HIGH` | 0.70 / 0.81 | the band `coherenceNorm` maps onto `[0, 1]`                                                                                        |
 
 Worked example with the reported failure (stub numbers): seed
 "Electronic; Tech House". Candidate "Electronic; Big Room": best pair is the
@@ -158,8 +160,11 @@ What to check, in order:
 1. `--breadth`: "Electronic", "Pop", "Rock", "Latin" should sit at the bottom
    (lowest coherence) and leaf styles at the top. If they do not, the
    coherence band (`COHERENCE_LOW/HIGH`) is wrong for this model.
-2. `--refresh` prints p10/p50/p90 of every pairwise centroid cosine.
-   `COS_FLOOR` should sit near p10: only the genuinely far pairs at zero.
+2. `--refresh` prints p10/p50/p90 of every pairwise centroid cosine. Those are
+   a statement about *strangers*, not neighbours — do **not** put `COS_FLOOR`
+   near that p10 (#1119 measured why). The floor belongs just under the lowest
+   **nearest-neighbour** cosine in the vocabulary: below that, a pair is
+   nobody's neighbour, and paying it credit is the drift.
 3. `--neighbours "Tech House"`: techno/house neighbours above EDM/Big Room,
    "Tango" nowhere near the top.
 4. The dump A/B on a tech-house seed and on two control seeds (a well-tagged
@@ -168,9 +173,32 @@ What to check, in order:
 
 ## Measurements
 
-_None yet — fill in from the steps above on the real library before wiring
-the routes. Record the model, member/centroid counts, the three percentiles,
-the top and bottom of the coherence ranking, and the ranked diff per seed._
+Calibrated on prod **2026-09-12** (#1119). Full record, including the three-way
+A/B dumps: [measurements/genre-affinity-2026-09.md](measurements/genre-affinity-2026-09.md).
+
+`discogs-effnet-bs64-1`, 18,179 live embeddings → **648** genre centroids,
+**368 usable** at ≥ 5 members, **67,528** pairs compared. Read-only: the daily
+sweep had already rebuilt the table that morning, so no `--refresh` was run.
+
+| constant | prior | calibrated | the measured number it came from |
+| --- | --- | --- | --- |
+| `COS_FLOOR` | 0.6 | **0.75** | lowest nearest-neighbour cosine 0.796 (all-pairs p10 is 0.439 and is the wrong statistic) |
+| `COHERENCE_LOW` | 0.55 | **0.70** | every umbrella below it — Latin .665, Pop .672, Rock .682, World .682, Electronic .693 |
+| `COHERENCE_HIGH` | 0.9 | **0.81** | leaf styles at or above — Tech House .809, Minimal Techno .812, Deep House .817 (p90 is 0.886) |
+| `BREADTH_DISCOUNT` | 0.5 | **0.5** | unchanged: umbrella exact 0.500 vs named neighbour 0.872 |
+| `MIN_MEMBERS` | 5 | **5** | unchanged: the 59 tags at 3–4 members mis-place (Celtic → Melodic House) |
+
+From a Tech House seed the four pinned pairs move Minimal Techno **0.803 →
+0.872** while Big Room House drops **0.545 → 0.402** and Electronic **0.581 →
+0.360** — a real neighbour now outscores both by 2.2×, where the priors gave
+1.5×. Pinned in `genre-affinity.test.ts`.
+
+**A/B verdict: v9 GO.** On the tech-house seed the served window shares **zero**
+tracks with the axis-off run, loses all five mainstream-pop entries that rode a
+shared `Pop` tag in at genre 1.00, and lifts mean embedding cosine 0.604 → 0.706.
+The folclore control keeps 8 of 15 and the same artists; the pop control
+reshuffles (1 of 15) but never leaves pop — expected on a 26-tag seed, where
+with the axis off every candidate ties at 1.00 and nothing orders them.
 
 ## What this is not
 
