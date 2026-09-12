@@ -1,0 +1,55 @@
+<app-settings-group
+  groupId="radio"
+  icon="headphones"
+  [title]="'admin.groupRadio' | t"
+  [description]="'admin.groupRadioDesc' | t"
+>
+  <!-- Learned genre axis opt-in (docs/genre-affinity.md). Off = the regular
+       radio, untouched; on = seed/list radio score genre closeness from the
+       library's own audio centroids. -->
+  <section
+    class="mb-8"
+    data-testid="radio-settings-panel"
+  >
+    @if (radio(); as r) {
+      <div class="space-y-4">
+        <label class="flex items-center justify-between gap-4" appTvNavGroup axis="horizontal">
+          <span class="text-sm text-theme-primary"
+            >{{ 'admin.radioGenreAffinity' | t }}
+            <span class="block text-xs text-theme-muted">{{
+              'admin.radioGenreAffinityHint' | t
+            }}</span>
+            @if (r.centroids > 0) {
+              <span class="block text-xs text-theme-muted" data-testid="radio-genre-affinity-status">{{
+                'admin.radioGenreAffinityStatus' | t: { count: r.centroids }
+              }}</span>
+            } @else {
+              <span class="block text-xs text-status-warn" data-testid="radio-genre-affinity-status">{{
+                'admin.radioGenreAffinityNone' | t
+              }}</span>
+            }
+          </span>
+          <input
+            type="checkbox"
+            appTvNavItem
+            data-testid="radio-genre-affinity-toggle"
+            [checked]="r.genreAffinity"
+            [disabled]="saving()"
+            (change)="save({ genreAffinity: $any($event.target).checked })"
+            class="w-4 h-4 rounded accent-emerald-500"
+          />
+        </label>
+
+        @if (message(); as m) {
+          <p
+            class="text-xs"
+            [class.text-status-done]="m.type === 'success'"
+            [class.text-status-error]="m.type === 'error'"
+          >
+            {{ m.text }}
+          </p>
+        }
+      </div>
+    }
+  </section>
+</app-settings-group>

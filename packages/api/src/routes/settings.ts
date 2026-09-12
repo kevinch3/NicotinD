@@ -8,6 +8,12 @@ import {
   type StreamingSettings,
 } from '../services/streaming-settings.js';
 import { ffmpegAvailable } from '../services/transcode.js';
+import {
+  getRadioSettings,
+  setRadioSettings,
+  type RadioSettings,
+} from '../services/radio-settings.js';
+import { computeGenreCentroids, genreCentroidsStatus } from '../services/genre-centroids.js';
 
 export function settingsRoutes(config: NicotinDConfig) {
   const app = new Hono<AuthEnv>();
@@ -53,6 +59,35 @@ export function settingsRoutes(config: NicotinDConfig) {
     }
     const next = setStreamingSettings(getDatabase(), patch);
     return c.json({ ...next, ffmpegAvailable: ffmpegAvailable() });
+  });
+
+  // GET /api/settings/radio — the learned-genre-axis opt-in + how much data
+  // backs it (docs/genre-affinity.md). Any authenticated user: the Now Playing
+  // surface may want to say which genre axis is in force; nothing secret here.
+  app.get('/radio', (c) => {
+    const db = getDatabase();
+    return c.json({ ...getRadioSettings(db), ...genreCentroidsStatus(db) });
+  });
+
+  // PUT /api/settings/radio — flip the opt-in (admin). Enabling it on a
+  // library that has never built its centroids builds them right here, so the
+  // toggle takes effect on the next radio fetch instead of after the daily
+  // sweep; the sweep keeps them fresh from then on.
+  app.put('/radio', async (c) => {
+    const user = c.get('user');
+    if (user.role !== 'admin') {
+      return c.json(
+        { error: 'Only administrators can change radio settings', code: 'FORBIDDEN' },
+        403,
+      );
+    }
+    const db = getDatabase();
+    const body = await c.req.json<Partial<RadioSettings>>();
+    const patch: Partial<RadioSettings> = {};
+    if (typeof body.genreAffinity === 'boolean') patch.genreAffinity = body.genreAffinity;
+    const next = setRadioSettings(db, patch);
+    if (next.genreAffinity && genreCentroidsStatus(db).centroids === 0) computeGenreCentroids(db);
+    return c.json({ ...next, ...genreCentroidsStatus(db) });
   });
 
   return app;

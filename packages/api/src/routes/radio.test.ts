@@ -1484,3 +1484,83 @@ describe('radio /next — one recording, one slot (issue #660)', () => {
     expect(ids).toContain('x2');
   });
 });
+
+describe('radio /next — the learned genre axis opt-in (docs/genre-affinity.md)', () => {
+  const MODEL = 'discogs-effnet-bs64-1';
+  let app: Hono;
+
+  function seedWithEmbedding(id: string, genre: string, vec: number[], year: number): void {
+    seedSong(testDb, {
+      id,
+      title: id,
+      artist: `artist-${id}`,
+      albumId: `alb-${id}`,
+      album: `Alb ${id}`,
+      genre,
+      bpm: 124,
+      key: 'A minor',
+      year,
+    });
+    testDb.run(
+      `INSERT INTO library_embeddings (song_id, model, dim, vec, file_size, updated_at)
+       VALUES (?, ?, 2, ?, 0, 1)`,
+      [id, MODEL, Buffer.from(new Float32Array(vec).buffer)],
+    );
+  }
+
+  beforeEach(async () => {
+    testDb = createTestDb();
+    app = new Hono();
+    app.route('/radio', radioRoutes());
+    // Enough members per tag to clear MIN_MEMBERS; Tech House and Minimal
+    // Techno sound alike, Big Room does not. The Big Room candidate is one year
+    // closer to the seed, so lexically (both genres disjoint from the seed's →
+    // 0) it wins on the year axis alone.
+    // The seed itself carries NO embedding, so the per-track embedding axis is
+    // skipped for every pair and only the genre axis can tell the two apart.
+    seedSong(testDb, {
+      id: 'th0',
+      title: 'th0',
+      artist: 'artist-th0',
+      albumId: 'alb-th0',
+      album: 'Alb th0',
+      genre: 'Tech House',
+      bpm: 124,
+      key: 'A minor',
+      year: 2020,
+    });
+    for (let i = 1; i <= 6; i++) seedWithEmbedding(`th${i}`, 'Tech House', [1, 0.1], 2020);
+    for (let i = 0; i < 6; i++) seedWithEmbedding(`mt${i}`, 'Minimal Techno', [1, 0.15], 2010);
+    for (let i = 0; i < 6; i++) seedWithEmbedding(`br${i}`, 'Big Room', [0, 1], 2019);
+    const { computeGenreCentroids } = await import('../services/genre-centroids.js');
+    computeGenreCentroids(testDb);
+  });
+
+  /** Served position of the first track of each genre (other Tech House tracks
+   *  are exact genre matches and rightly lead under either axis). */
+  async function firstPositions(): Promise<{ minimal: number; bigRoom: number }> {
+    const res = await app.request('/radio/next?seedId=th0&count=20');
+    expect(res.status).toBe(200);
+    const genres = ((await res.json()) as Array<{ genre?: string }>).map((s) => s.genre);
+    const minimal = genres.indexOf('Minimal Techno');
+    const bigRoom = genres.indexOf('Big Room');
+    expect(minimal).toBeGreaterThanOrEqual(0);
+    expect(bigRoom).toBeGreaterThanOrEqual(0);
+    return { minimal, bigRoom };
+  }
+
+  it('is OFF by default: the regular (lexical) radio is untouched', async () => {
+    const p = await firstPositions();
+    expect(p.bigRoom).toBeLessThan(p.minimal);
+  });
+
+  it('when enabled, the audio neighbour outranks the lexically-equal stranger', async () => {
+    const { setRadioSettings } = await import('../services/radio-settings.js');
+    setRadioSettings(testDb, { genreAffinity: true });
+    const on = await firstPositions();
+    expect(on.minimal).toBeLessThan(on.bigRoom);
+    setRadioSettings(testDb, { genreAffinity: false });
+    const off = await firstPositions();
+    expect(off.bigRoom).toBeLessThan(off.minimal);
+  });
+});

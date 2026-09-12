@@ -77,3 +77,73 @@ describe('GET /downloads', () => {
     expect(data.transcodeLossless.bitRate).toBe(256);
   });
 });
+
+async function adminToken() {
+  return signJwt({ sub: 'admin1', username: 'admin', role: 'admin' }, SECRET);
+}
+
+describe('/radio — the learned genre axis opt-in (docs/genre-affinity.md)', () => {
+  it('reads OFF by default with the centroid status, for any user', async () => {
+    const app = buildApp();
+    const res = await app.request('/radio', {
+      headers: { Authorization: `Bearer ${await userToken()}` },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ genreAffinity: false, centroids: 0, computedAt: null });
+  });
+
+  it('refuses a non-admin write', async () => {
+    const app = buildApp();
+    const res = await app.request('/radio', {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${await userToken()}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ genreAffinity: true }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('an admin flips it, and enabling builds the centroids on the spot', async () => {
+    testDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, synced_at)
+       VALUES ('ra', 'Album', 'Artist', 'art', 1, 0, 1)`,
+    );
+    testDb.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, genre, created, synced_at)
+       VALUES ('rs1', 'ra', 'T', 'Artist', 'art', 200, 'Artist/Album/rs1.opus', 1000, 'Tango', '2024-01-01', 1)`,
+    );
+    testDb.run(
+      `INSERT INTO library_embeddings (song_id, model, dim, vec, file_size, updated_at)
+       VALUES ('rs1', 'discogs-effnet-bs64-1', 2, ?, 1000, 1)`,
+      [Buffer.from(new Float32Array([1, 0]).buffer)],
+    );
+    const app = buildApp();
+    const headers = {
+      Authorization: `Bearer ${await adminToken()}`,
+      'Content-Type': 'application/json',
+    };
+    const on = await app.request('/radio', {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ genreAffinity: true, ignored: 'x' }),
+    });
+    expect(on.status).toBe(200);
+    const body = (await on.json()) as {
+      genreAffinity: boolean;
+      centroids: number;
+      computedAt: number | null;
+    };
+    expect(body.genreAffinity).toBe(true);
+    expect(body.centroids).toBe(1);
+    expect(body.computedAt).not.toBeNull();
+
+    const off = await app.request('/radio', {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ genreAffinity: false }),
+    });
+    expect(((await off.json()) as { genreAffinity: boolean }).genreAffinity).toBe(false);
+    // The data stays; only the switch moved.
+    const get = await app.request('/radio', { headers });
+    expect(((await get.json()) as { centroids: number }).centroids).toBe(1);
+  });
+});

@@ -4,6 +4,7 @@ import type { ProcessingSettings, ProcessingStatus } from '@nicotind/core';
 import type { Role } from '../../../types/core';
 import type {
   StreamingSettings,
+  RadioSettings,
   DownloadSettings,
   SetupStatus,
   SetupResult,
@@ -87,6 +88,15 @@ export class SystemApiService {
 
   saveStreamingSettings(patch: Partial<StreamingSettings>) {
     return this.http.put<StreamingSettings>('/api/settings/streaming', patch);
+  }
+
+  // Radio — the learned genre axis opt-in (docs/genre-affinity.md)
+  getRadioSettings() {
+    return this.http.get<RadioSettings>('/api/settings/radio');
+  }
+
+  saveRadioSettings(patch: Partial<Pick<RadioSettings, 'genreAffinity'>>) {
+    return this.http.put<RadioSettings>('/api/settings/radio', patch);
   }
 
   // Download-pipeline prefs (lossless→Opus standardization) — read-only, any user.

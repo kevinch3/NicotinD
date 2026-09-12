@@ -186,8 +186,10 @@ tracks' discogs-effnet embeddings (`library_genre_centroids`, rebuilt daily),
 two names are as close as their centroids' cosine, and a tag whose members
 disagree (low coherence — the umbrella signal) is discounted. It rides the same
 `genreSetCloseness` MAX through `ScoringContext.genreAffinity`, falls back to
-the lexical rule for any pair it does not know, and **no route passes it yet**
-— `dump-radio --genre-affinity` is the A/B. → [genre-affinity.md](genre-affinity.md)
+the lexical rule for any pair it does not know, and is an **admin opt-in, off
+by default** (Admin → Radio, `RadioSettings.genreAffinity`): off, the regular
+radio is untouched; on, seed and list radio use it — stations and polls never
+do. `dump-radio --genre-affinity` is the A/B. → [genre-affinity.md](genre-affinity.md)
 
 **Why MusicBrainz can't fix this for you.** Task A1 measured MB/Lidarr genre
 coverage on this library at 2/25 artists (~3% of the gap), with Lidarr returning

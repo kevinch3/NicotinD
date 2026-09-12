@@ -244,6 +244,19 @@ export function countGenreCentroids(db: Database): number {
   );
 }
 
+/** What the settings UI shows next to the opt-in: how much data backs it. */
+export function genreCentroidsStatus(db: Database): {
+  centroids: number;
+  computedAt: number | null;
+} {
+  const row = db
+    .query<{ n: number; at: number | null }, []>(
+      'SELECT COUNT(*) AS n, MAX(computed_at) AS at FROM library_genre_centroids',
+    )
+    .get();
+  return { centroids: Number(row?.n ?? 0), computedAt: row?.at ?? null };
+}
+
 const DAY_MARKER = 'genre_centroids_last_day';
 
 function readMarker(db: Database, key: string): string | null {

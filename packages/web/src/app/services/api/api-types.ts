@@ -277,6 +277,16 @@ export interface StreamingSettings {
   ffmpegAvailable?: boolean;
 }
 
+/** Admin radio preferences + the data behind the learned genre axis (docs/genre-affinity.md). */
+export interface RadioSettings {
+  /** Opt-in: score radio's genre axis from the library's audio centroids. Default off. */
+  genreAffinity: boolean;
+  /** Genre names with a stored centroid (0 = nothing analysed yet). */
+  centroids: number;
+  /** Epoch ms of the last centroid rebuild, or null. */
+  computedAt: number | null;
+}
+
 /** Read-only download-pipeline prefs the acquire UI reads to show an accurate
  *  "lossless → Opus" reminder. `enabled && ffmpegAvailable` gates the hint. */
 export interface DownloadSettings {

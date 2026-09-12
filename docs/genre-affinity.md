@@ -1,11 +1,14 @@
 # Genre affinity — a learned genre axis for radio (spike)
 
-**Status: shipped as a spike, not yet scoring.** The centroids are built and
-refreshed daily, the pure affinity and the scoring seam exist, and the
-diagnostics can A/B it against real radio output — but no route passes the
-resolver yet, so `RADIO_FORMULA_VERSION` stays at 8 and radio serves exactly
-what it served before. Wiring it in (formula v9) is the follow-up, once the
-measurements below say the priors are right.
+**Status: shipped as an admin opt-in, OFF by default.** The centroids are built
+and refreshed daily, the pure affinity and the scoring seam exist, and the
+diagnostics can A/B it against real radio output. Admin → Radio → "Learned
+genre similarity (experimental)" (`RadioSettings.genreAffinity`,
+`GET/PUT /api/settings/radio`) switches seed and list radio onto it; off, the
+regular radio is byte-for-byte what it was. `RADIO_FORMULA_VERSION` stays at 8
+because the default behaviour is unchanged and evaluation polls always
+generate on the lexical axis (see "The seam"); taking v9 is the step that makes
+it the default, once the measurements below say the priors are right.
 
 ## The problem
 
@@ -110,11 +113,29 @@ regression test in `radio.service.test.ts` ("genre affinity seam").
 `explainSimilarity(seed, candidate, weights, ctx)` and `scoreSimilarity` take a
 `ScoringContext { genreAffinity? }`; `rankCandidates` takes `genreAffinity` in
 its options; `genreSetCloseness(a, b, affinity?)` consults it per pair.
-`buildSeedRadio` / `buildListRadio` accept `genreAffinity` and echo it on
-`RadioResult` so a later `explainSimilarity` over the result (poll
-snapshots, the dump) scores the axis the same way. Filter radio (stations)
-is untouched: it already replaces the genre axis with graded membership.
-Without the option every one of these is byte-for-byte the lexical behaviour.
+`buildSeedRadio` / `buildListRadio` accept an explicit `genreAffinity` (the
+dump's A/B) or `learnedGenreAffinity: true` (the opt-in: the resolver is then
+loaded for exactly the genres the seed and pool carry, one chunked query, once
+the pool is known — `resolveGenreAffinity` in `routes/radio.ts`), and echo the
+resolver on `RadioResult` so a later `explainSimilarity` over the result scores
+the axis the same way. `GET /api/radio/next` reads `getRadioSettings(db)` per
+request and passes the flag on the seed and list lanes only. Filter radio
+(stations) is untouched: it already replaces the genre axis with graded
+membership. `/songs/:id/similar` is untouched too — deliberately, until the
+opt-in has been listened to. Evaluation polls (`radio-poll-generate.ts`)
+never pass the flag, so every vote keeps grading formula v8 on the lexical
+axis; polls for the learned axis come with the v9 bump. Without the option
+every one of these paths is byte-for-byte the lexical behaviour.
+
+### Turning it on
+
+Admin → Radio. The card shows how many genre names have a centroid; enabling
+the toggle on a library that has never built them builds them right there
+(`PUT /api/settings/radio`), so the next radio fetch already uses them; the
+daily sweep keeps them fresh from then on. Genres with fewer than
+`MIN_MEMBERS` analysed tracks, and every genre on a library with no
+audio-features analysis at all, stay on the lexical rule — turning it on
+never *removes* a signal.
 
 ## Diagnostics — judge it before it plays
 

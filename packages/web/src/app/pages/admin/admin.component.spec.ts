@@ -152,6 +152,7 @@ function makeAdminMocks(review: Partial<ServiceReview> = {}) {
     ok: true,
   };
   const getFragments = vi.fn(() => of(emptyFragments));
+  const getRadio = vi.fn(() => of({ genreAffinity: false, centroids: 0, computedAt: null }));
   const getStreaming = vi.fn(() =>
     of({
       transcodeEnabled: true,
@@ -218,6 +219,7 @@ function makeAdminMocks(review: Partial<ServiceReview> = {}) {
     resyncLibrary,
     getFragments,
     getStreaming,
+    getRadio,
     getProcessing,
     procStatus,
     reviewService: makeSvc(review),
@@ -243,6 +245,8 @@ describe('AdminComponent (snapshot-driven via ServiceReview)', () => {
             getUsers: mocks.getUsers,
             getStreamingSettings: mocks.getStreaming,
             saveStreamingSettings: vi.fn((p: unknown) => of(p as object)),
+            getRadioSettings: mocks.getRadio,
+            saveRadioSettings: vi.fn((p: unknown) => of(p as object)),
             getProcessing: mocks.getProcessing,
             getAcquisition: vi.fn(() => of({ enabled: true, configurable: true })),
             setAcquisition: vi.fn((e: boolean) => of({ enabled: e, configurable: true })),
@@ -301,6 +305,8 @@ describe('AdminComponent (orphan side-table rows, #259)', () => {
             getUsers: vi.fn(() => of([])),
             getStreamingSettings: mocks.getStreaming,
             saveStreamingSettings: vi.fn((p: unknown) => of(p as object)),
+            getRadioSettings: mocks.getRadio,
+            saveRadioSettings: vi.fn((p: unknown) => of(p as object)),
             getProcessing: mocks.getProcessing,
             getAcquisition: vi.fn(() => of({ enabled: true, configurable: true })),
             setAcquisition: vi.fn((e: boolean) => of({ enabled: e, configurable: true })),
@@ -370,6 +376,8 @@ describe('AdminComponent (artist portrait coverage, #250)', () => {
             getUsers: vi.fn(() => of([])),
             getStreamingSettings: mocks.getStreaming,
             saveStreamingSettings: vi.fn((p: unknown) => of(p as object)),
+            getRadioSettings: mocks.getRadio,
+            saveRadioSettings: vi.fn((p: unknown) => of(p as object)),
             getProcessing: mocks.getProcessing,
             getAcquisition: vi.fn(() => of({ enabled: true, configurable: true })),
             setAcquisition: vi.fn((e: boolean) => of({ enabled: e, configurable: true })),
@@ -471,6 +479,8 @@ describe('AdminComponent (acquisition kill-switch, #235)', () => {
             getUsers: vi.fn(() => of([])),
             getStreamingSettings: mocks.getStreaming,
             saveStreamingSettings: vi.fn((p: unknown) => of(p as object)),
+            getRadioSettings: mocks.getRadio,
+            saveRadioSettings: vi.fn((p: unknown) => of(p as object)),
             getProcessing: mocks.getProcessing,
             saveProcessing: vi.fn((p: unknown) => of(p as object)),
             getAcquisition,
@@ -563,6 +573,8 @@ describe('AdminComponent (incompleteJobs / untracked via ServiceReview)', () => 
             getUsers: vi.fn(() => of([])),
             getStreamingSettings: mocks.getStreaming,
             saveStreamingSettings: vi.fn((p: unknown) => of(p as object)),
+            getRadioSettings: mocks.getRadio,
+            saveRadioSettings: vi.fn((p: unknown) => of(p as object)),
             getProcessing: mocks.getProcessing,
             getAcquisition: vi.fn(() => of({ enabled: true, configurable: true })),
             setAcquisition: vi.fn((e: boolean) => of({ enabled: e, configurable: true })),
@@ -654,6 +666,8 @@ describe('AdminComponent (incompleteJobs / untracked via ServiceReview)', () => 
             getUsers: vi.fn(() => of([])),
             getStreamingSettings: mocks.getStreaming,
             saveStreamingSettings: vi.fn((p: unknown) => of(p as object)),
+            getRadioSettings: mocks.getRadio,
+            saveRadioSettings: vi.fn((p: unknown) => of(p as object)),
             getProcessing: mocks.getProcessing,
             getAcquisition: vi.fn(() => of({ enabled: true, configurable: true })),
             setAcquisition: vi.fn((e: boolean) => of({ enabled: e, configurable: true })),
@@ -701,6 +715,8 @@ describe('AdminComponent (TV D-pad navigation, Android TV support phase 4)', () 
             getUsers: vi.fn(() => of([])),
             getStreamingSettings: mocks.getStreaming,
             saveStreamingSettings: vi.fn((p: unknown) => of(p as object)),
+            getRadioSettings: mocks.getRadio,
+            saveRadioSettings: vi.fn((p: unknown) => of(p as object)),
             getProcessing: mocks.getProcessing,
             getAcquisition: vi.fn(() => of({ enabled: true, configurable: true })),
             setAcquisition: vi.fn((e: boolean) => of({ enabled: e, configurable: true })),
@@ -845,6 +861,8 @@ describe('AdminComponent — group structure (Task 4 regroup)', () => {
             getUsers: mocks.getUsers,
             getStreamingSettings: mocks.getStreaming,
             saveStreamingSettings: vi.fn((p: unknown) => of(p as object)),
+            getRadioSettings: mocks.getRadio,
+            saveRadioSettings: vi.fn((p: unknown) => of(p as object)),
             getProcessing: mocks.getProcessing,
             getAcquisition: vi.fn(() => of({ enabled: true, configurable: true })),
             setAcquisition: vi.fn((e: boolean) => of({ enabled: e, configurable: true })),
@@ -880,8 +898,9 @@ describe('AdminComponent — group structure (Task 4 regroup)', () => {
     // card (docs/radio-eval-polls.md) and the curation review queue (#682),
     // minus "Import music" — which went with the admin import card, import
     // being internal/API-only now (docs/import.md) — and minus the
-    // generation-feedback queue, removed with that feature.
-    expect(headers.length).toBe(10);
+    // generation-feedback queue, removed with that feature. 11 with the radio
+    // preferences card (docs/genre-affinity.md).
+    expect(headers.length).toBe(11);
     fixture.destroy();
   });
 
@@ -913,6 +932,7 @@ describe('AdminComponent — group structure (Task 4 regroup)', () => {
       'app-acquisition-automation-panel',
       'app-review-flags-panel',
       'app-audit-log-panel',
+      'app-radio-settings-panel',
       'app-settings-group', // radio polls — the last section still inline
     ]);
     fixture.destroy();
@@ -1057,6 +1077,8 @@ describe('AdminComponent (actionable fragments, #314)', () => {
             getUsers: mocks.getUsers,
             getStreamingSettings: mocks.getStreaming,
             saveStreamingSettings: vi.fn((p: unknown) => of(p as object)),
+            getRadioSettings: mocks.getRadio,
+            saveRadioSettings: vi.fn((p: unknown) => of(p as object)),
             getProcessing: mocks.getProcessing,
             getAcquisition: vi.fn(() => of({ enabled: true, configurable: true })),
             setAcquisition: vi.fn((e: boolean) => of({ enabled: e, configurable: true })),
