@@ -23,6 +23,7 @@ import { recordingKey } from '../services/recording-identity.js';
 import { songFilterWheres } from '../services/library-filter-sql.js';
 import { seedCentroid, type OrderableRow } from '../services/playlist-recipe.js';
 import { isRealGenre } from '../services/genre-split.js';
+import type { GenreAffinityFn } from '../services/genre-affinity.js';
 import { loadDescriptors, type DescriptorFeatures } from '../services/descriptor-store.js';
 import { descriptorBlocks, meanBlock, type DescriptorBlocks } from '../services/descriptor-axes.js';
 import { feedEligibilitySql, type ReadinessTier } from '../services/recommendation/eligibility.js';
@@ -285,6 +286,12 @@ export interface RadioResult {
   pool: RadioCandidate[];
   /** The top-N after scoring + per-artist diversification. */
   ranked: ScoredSong<RadioCandidate>[];
+  /**
+   * The genre-affinity resolver the ranking used, when the caller supplied one
+   * (docs/genre-affinity.md), so a later `explainSimilarity` over this result
+   * (poll snapshots, the diagnostic dump) scores the genre axis the same way.
+   */
+  genreAffinity?: GenreAffinityFn;
 }
 
 /** Extract the ranked candidates as full Song rows (the route's response shape). */
@@ -519,6 +526,8 @@ export function buildSeedRadio(
   seedRow: RadioSongRow,
   opts: {
     count?: number;
+    /** Learned genre affinity (docs/genre-affinity.md); absent = lexical genre axis. */
+    genreAffinity?: GenreAffinityFn;
     excludeIds?: Set<string>;
     weights?: ScoringWeights;
     /** Named recipe (pool mix, weight overrides, caps); `weights` still wins when given. */
@@ -578,8 +587,9 @@ export function buildSeedRadio(
     maxPerArtist: strategy.maxPerArtist,
     weights: opts.weights ?? resolveWeights(strategy),
     quota: outOfGenreQuota(strategy, seedGenres),
+    genreAffinity: opts.genreAffinity,
   });
-  return { seed, pool, ranked };
+  return { seed, pool, ranked, genreAffinity: opts.genreAffinity };
 }
 
 /**
@@ -616,6 +626,8 @@ export function buildListRadio(
   seedRows: RadioSongRow[],
   opts: {
     count?: number;
+    /** Learned genre affinity (docs/genre-affinity.md); absent = lexical genre axis. */
+    genreAffinity?: GenreAffinityFn;
     excludeIds?: Set<string>;
     weights?: ScoringWeights;
     /** Named recipe (pool mix, weight overrides, caps); `weights` still wins when given. */
@@ -682,8 +694,9 @@ export function buildListRadio(
     maxPerArtist: strategy.maxPerArtist,
     weights: opts.weights ?? resolveWeights(strategy),
     quota: outOfGenreQuota(strategy, genreUnion),
+    genreAffinity: opts.genreAffinity,
   });
-  return { seed, pool, ranked };
+  return { seed, pool, ranked, genreAffinity: opts.genreAffinity };
 }
 
 /**

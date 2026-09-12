@@ -17,6 +17,9 @@
  *        --key <code>, --mood <m>, --dur-min/--dur-max, --starred,
  *        --weights genre=14,embedding=8 (A/B a candidate DEFAULT_WEIGHTS change),
  *        --strategy similar|balanced|different (a named recipe; --weights still wins).
+ *        --genre-affinity (score the genre axis from the learned genre centroids
+ *        instead of the lexical rule — the A/B for docs/genre-affinity.md; run the
+ *        same seed with and without it and diff the ranked lists).
  *
  * WHY this exists: seed radios are genre-coherent but filter ("vibe") radios pull
  * cross-genre tracks (José Larralde Folk → Katy Perry Pop). The per-axis breakdown
@@ -39,10 +42,13 @@ import {
   genreSetCloseness,
   MISSING_GENRE_FLOOR,
   parseWeightOverrides,
+  type ScoringContext,
   type ScoringWeights,
   type SimilarityExplanation,
   type SongFeatures,
 } from '../services/radio.service.js';
+import { makeGenreAffinity } from '../services/genre-affinity.js';
+import { listGenreCentroids } from '../services/genre-centroids.js';
 import { isRealGenre } from '../services/genre-split.js';
 import { feedEligibilitySql } from '../services/recommendation/eligibility.js';
 import {
@@ -350,12 +356,13 @@ export function descriptorSpreadLines(
   seed: SongFeatures,
   served: readonly SongFeatures[],
   weights: ScoringWeights,
+  ctx: ScoringContext = {},
 ): string[] {
   if (served.length === 0) return [];
   const axes = ['timbre', 'groove', 'spectralBalance'] as const;
   const values = new Map<string, number[]>(axes.map((a) => [a, []]));
   for (const c of served) {
-    const ex = explainSimilarity(seed, c, weights);
+    const ex = explainSimilarity(seed, c, weights, ctx);
     for (const a of ex.axes) if (values.has(a.axis)) values.get(a.axis)!.push(a.value);
   }
   if ([...values.values()].every((v) => v.length === 0)) return [];
@@ -400,8 +407,9 @@ function renderTrackBlock(
   score: number,
   rank: number | null,
   weights: ScoringWeights,
+  ctx: ScoringContext = {},
 ): string[] {
-  const ex = explainSimilarity(seed, cand, weights);
+  const ex = explainSimilarity(seed, cand, weights, ctx);
   const r = cand._row;
   const genres = genresOf(r);
   const head = rank !== null ? `${String(rank).padStart(2)}. ` : '    ';
@@ -448,7 +456,7 @@ function renderDiagnosis(
   let keyScored = 0;
   const mashed = new Set<string>();
   const consider = (cand: RadioCandidate): void => {
-    const ex = explainSimilarity(seed, cand, weights);
+    const ex = explainSimilarity(seed, cand, weights, { genreAffinity: result.genreAffinity });
     if (ex.axes.some((a) => a.axis === 'station')) stationScored++;
     else if (ex.skipped.includes('genre') || ex.floored.includes('genre')) genreSkipped++;
     else if (ex.axes.find((a) => a.axis === 'genre')?.value === 0) genreZero++;
@@ -567,11 +575,15 @@ function renderDump(
   strategy: RecommendationStrategy,
 ): string {
   const { seed, pool, ranked } = result;
+  const ctx: ScoringContext = { genreAffinity: result.genreAffinity };
   const lines: string[] = [];
   lines.push(`# Radio diagnostic dump`);
   lines.push('');
   lines.push(`- kind: **${kind} radio**`);
   lines.push(`- strategy: **${strategy.id}**`);
+  lines.push(
+    `- genre axis: **${result.genreAffinity ? 'learned affinity (genre centroids)' : 'lexical'}**`,
+  );
   lines.push(...renderServedWindow(seed, ranked));
   lines.push(`- seed: ${seedLabel(seedRow, seed)}`);
   if (filter) lines.push(`- filter: \`${JSON.stringify(filter)}\``);
@@ -632,6 +644,7 @@ function renderDump(
       seed,
       ranked.map((r) => r.song),
       weights,
+      ctx,
     ),
   );
   lines.push('```');
@@ -656,7 +669,9 @@ function renderDump(
 
   lines.push(`## Output — ranked top ${ranked.length}`);
   lines.push('```');
-  ranked.forEach((e, i) => lines.push(...renderTrackBlock(seed, e.song, e.score, i + 1, weights)));
+  ranked.forEach((e, i) =>
+    lines.push(...renderTrackBlock(seed, e.song, e.score, i + 1, weights, ctx)),
+  );
   lines.push('```');
   lines.push('');
 
@@ -675,14 +690,16 @@ function renderDump(
   const nearMisses = pool
     .filter((c) => !chosen.has(c._row.id))
     .filter((c) => !(c.recordingKey && chosenRecordings.has(c.recordingKey)))
-    .map((c) => ({ c, score: explainSimilarity(seed, c, weights).score }))
+    .map((c) => ({ c, score: explainSimilarity(seed, c, weights, ctx).score }))
     .sort((a, b) => b.score - a.score)
     .slice(0, 10);
   if (nearMisses.length > 0) {
     lines.push('## Rejected near-misses (next 10 by score, not selected)');
     lines.push('```');
     lines.push('(duplicate copies of a served recording are omitted)');
-    nearMisses.forEach((m) => lines.push(...renderTrackBlock(seed, m.c, m.score, null, weights)));
+    nearMisses.forEach((m) =>
+      lines.push(...renderTrackBlock(seed, m.c, m.score, null, weights, ctx)),
+    );
     lines.push('```');
   }
   return lines.join('\n');
@@ -702,6 +719,11 @@ function main(): void {
   const count = Math.min(Math.max(Number(firstArg(args, 'count') ?? 12), 1), 50);
   const strategy = resolveStrategy(firstArg(args, 'strategy'));
   const weights = parseWeightOverrides(firstArg(args, 'weights'), resolveWeights(strategy));
+  // The whole centroid table (≈ one row per genre name, a few MB) rather than a
+  // per-pool load: a diagnostic run happens once, and the pool isn't known
+  // until the radio is built.
+  const genreAffinity =
+    args['genre-affinity'] === true ? makeGenreAffinity(listGenreCentroids(db)) : undefined;
   let kind: 'seed' | 'filter';
   let seedRow: RadioSongRow | null = null;
   let filter: LibraryFilter | null = null;
@@ -725,7 +747,7 @@ function main(): void {
         process.exit(1);
       }
       kind = 'seed';
-      result = buildSeedRadio(db, seedRow, { count, weights, strategy });
+      result = buildSeedRadio(db, seedRow, { count, weights, strategy, genreAffinity });
     } else if (seedId) {
       seedRow = db.query<RadioSongRow, [string]>(`${RADIO_SONG_SELECT} WHERE s.id = ?`).get(seedId);
       if (!seedRow) {
@@ -733,7 +755,7 @@ function main(): void {
         process.exit(1);
       }
       kind = 'seed';
-      result = buildSeedRadio(db, seedRow, { count, weights, strategy });
+      result = buildSeedRadio(db, seedRow, { count, weights, strategy, genreAffinity });
     } else if (artist) {
       // Pick a landed track for the artist, preferring one that HAS a genre so
       // the seed represents the artist's tagging (else the whole run is genre-blind).
@@ -748,7 +770,7 @@ function main(): void {
         process.exit(1);
       }
       kind = 'seed';
-      result = buildSeedRadio(db, seedRow, { count, weights, strategy });
+      result = buildSeedRadio(db, seedRow, { count, weights, strategy, genreAffinity });
     } else {
       filter = filterFromArgs(args);
       if (Object.keys(filter).length === 0) {
@@ -778,7 +800,9 @@ function main(): void {
               artist: e.song._row.artist,
               title: e.song._row.title,
               score: e.score,
-              explanation: explainSimilarity(result.seed as SongFeatures, e.song, weights),
+              explanation: explainSimilarity(result.seed as SongFeatures, e.song, weights, {
+                genreAffinity: result.genreAffinity,
+              }),
             })),
           },
           null,

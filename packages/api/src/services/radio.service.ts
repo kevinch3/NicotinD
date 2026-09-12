@@ -2,6 +2,7 @@ import { originSetCloseness } from '@nicotind/core';
 import { keyToCamelot } from './key-detection.js';
 import { isRealGenre } from './genre-split.js';
 import { blockCosineCloseness, spectralBalanceCloseness } from './descriptor-axes.js';
+import type { GenreAffinityFn } from './genre-affinity.js';
 
 export interface SongFeatures {
   bpm?: number;
@@ -232,6 +233,12 @@ export const DEFAULT_WEIGHTS: ScoringWeights = {
  *      three axes must not pool its votes with any of them - so it takes the
  *      next free number. The v1-v7 votes cannot grade v8: their snapshots
  *      carry no descriptor blocks, so v8 needs its own poll.
+ * v9 - RESERVED for the learned genre affinity (docs/genre-affinity.md): the
+ *      genre axis scored from embedding centroids per genre name instead of
+ *      the lexical rule. The seam (`ScoringContext.genreAffinity`) ships
+ *      first with no route passing it — dump-radio `--genre-affinity` is the
+ *      A/B — so v8 still describes everything radio serves. Take 9 in the
+ *      commit that wires the routes.
  */
 export const RADIO_FORMULA_VERSION = 8;
 
@@ -347,10 +354,16 @@ export function genreCloseness(a: string | undefined, b: string | undefined): nu
  * well as a shared primary — the whole point of multi-genre for radio.
  * Accepts a single string for single-genre compat. Null when either side is
  * empty (axis skipped), matching genreCloseness semantics.
+ *
+ * `affinity` (docs/genre-affinity.md) replaces the lexical pair score with a
+ * learned one — centroids of the library's own embeddings — for every pair it
+ * knows; a pair it returns `null` for keeps the lexical rule. Without it the
+ * function is exactly the lexical MAX it always was.
  */
 export function genreSetCloseness(
   a: string | string[] | undefined,
   b: string | string[] | undefined,
+  affinity?: GenreAffinityFn,
 ): number | null {
   // Junk vocab ("Other", "Unknown", ...) carries no genre identity: two shrugs
   // must not score 1.0 (issue #583 - language courses ranked #1 and #2 via
@@ -363,7 +376,7 @@ export function genreSetCloseness(
   let best: number | null = null;
   for (const ga of la) {
     for (const gb of lb) {
-      const c = genreCloseness(ga, gb);
+      const c = affinity?.(ga, gb) ?? genreCloseness(ga, gb);
       if (c !== null && (best === null || c > best)) best = c;
       if (best === 1) return 1;
     }
@@ -451,10 +464,20 @@ export const MISSING_ORIGIN_FLOOR = 0.2;
  * tell genre-mismatch (weight problem) apart from missing-genre (data problem).
  * See docs/radio.md "Diagnostic dump".
  */
+/**
+ * Per-request scoring context — things that are neither a feature of a song
+ * nor a weight. Today: the learned genre affinity (docs/genre-affinity.md),
+ * absent = lexical genre axis, exactly as before it existed.
+ */
+export interface ScoringContext {
+  genreAffinity?: GenreAffinityFn;
+}
+
 export function explainSimilarity(
   seed: SongFeatures,
   candidate: SongFeatures,
   weights: ScoringWeights = DEFAULT_WEIGHTS,
+  ctx: ScoringContext = {},
 ): SimilarityExplanation {
   // Accumulate a weighted numerator and the weight of the axes that are
   // actually comparable (both sides present), then normalize. An axis missing
@@ -494,7 +517,7 @@ export function explainSimilarity(
   } else {
     const seedGenre = seed.genres ?? seed.genre;
     const candGenre = candidate.genres ?? candidate.genre;
-    const genreValue = genreSetCloseness(seedGenre, candGenre);
+    const genreValue = genreSetCloseness(seedGenre, candGenre, ctx.genreAffinity);
     // A junk-only seed genre ("Other") is no genre identity at all: it must
     // SKIP, not floor - flooring would penalize every genre-less candidate for
     // a seed axis that does not really exist (issue #583).
@@ -610,8 +633,9 @@ export function scoreSimilarity(
   seed: SongFeatures,
   candidate: SongFeatures,
   weights: ScoringWeights = DEFAULT_WEIGHTS,
+  ctx: ScoringContext = {},
 ): number {
-  return explainSimilarity(seed, candidate, weights).score;
+  return explainSimilarity(seed, candidate, weights, ctx).score;
 }
 
 export interface ScoredSong<T> {
@@ -639,15 +663,18 @@ export function rankCandidates<T extends SongFeatures>(
     maxPerArtist?: number;
     count?: number;
     quota?: RankQuota<T>;
+    /** Learned genre affinity for this pool (docs/genre-affinity.md); absent = lexical. */
+    genreAffinity?: GenreAffinityFn;
   } = {},
 ): ScoredSong<T>[] {
   const weights = opts.weights ?? DEFAULT_WEIGHTS;
   const maxPerArtist = opts.maxPerArtist ?? 2;
   const count = opts.count ?? 10;
+  const ctx: ScoringContext = { genreAffinity: opts.genreAffinity };
 
   const scored = candidates.map((song) => ({
     song,
-    score: scoreSimilarity(seed, song, weights),
+    score: scoreSimilarity(seed, song, weights, ctx),
   }));
 
   scored.sort((a, b) => b.score - a.score);

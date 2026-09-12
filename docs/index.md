@@ -403,6 +403,11 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   artist diversity, the perceptual axes and embedding cosine. `buildSeedRadio`, `scoreSimilarity`,
   `explainSimilarity`, `genreSetCloseness`, `MISSING_GENRE_FLOOR`, `recentPlayPenalty`,
   `lastPlayedByRecording`. → [radio.md](radio.md)
+- **Genre affinity (learned genre axis, spike)**: one audio centroid per genre name over the
+  library's own embeddings, coherence-discounted for umbrella tags; a `ScoringContext` seam no route
+  passes yet. `library_genre_centroids`, `computeGenreCentroids`, `explainGenrePair`,
+  `makeGenreAffinity`, `loadGenreAffinity`, `maybeRunDailyGenreCentroids`.
+  → [genre-affinity.md](genre-affinity.md)
 - **One recording is one thing**: two files of one track (album + compilation) are two
   `library_songs` rows, so radio served it twice as often; `recordingKey` collapses them in the
   served window, the pool exclusion and the recency demotion. → [radio.md](radio.md)

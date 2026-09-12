@@ -166,7 +166,10 @@ function seedScenario(
       // Emulates the real queue (rank order) today; kept as its own field so an
       // anti-position-bias shuffle is a generation-time change only.
       displayOrder: i + 1,
-      explanation: explainSimilarity(result.seed as SongFeatures, e.song, weights),
+      // Same resolver the ranking used (none today — see RadioResult.genreAffinity).
+      explanation: explainSimilarity(result.seed as SongFeatures, e.song, weights, {
+        genreAffinity: result.genreAffinity,
+      }),
     })),
   };
   return { id: randomUUID(), position, kind: 'seed', seedSongId: seedRow.id, snapshot };
