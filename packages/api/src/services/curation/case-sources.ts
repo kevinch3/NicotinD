@@ -24,6 +24,32 @@ const RESOLVE_ONLY: CaseOption = {
   effect: { type: 'resolve-only' },
 };
 
+/**
+ * Validate that an effect object has all required fields for its type.
+ * Returns true only if the effect can be safely dispatched.
+ */
+function isDispatchableEffect(effect: unknown): boolean {
+  if (typeof effect !== 'object' || effect === null) return false;
+  const e = effect as Partial<Record<string, unknown>>;
+  const type = e.type;
+
+  if (type === 'resolve-only') {
+    return true;
+  }
+  if (type === 'song-metadata') {
+    return typeof e.songId === 'string' && e.songId.length > 0 && typeof e.fields === 'object' && e.fields !== null;
+  }
+  if (type === 'artist-merge') {
+    return (
+      typeof e.mergeInto === 'string' &&
+      e.mergeInto.length > 0 &&
+      typeof e.rawName === 'string' &&
+      e.rawName.length > 0
+    );
+  }
+  return false;
+}
+
 function parseOptions(json: string | null): CaseOption[] {
   if (!json) return [];
   let raw: unknown;
@@ -42,7 +68,8 @@ function parseOptions(json: string | null): CaseOption[] {
       typeof c.label === 'string' &&
       typeof c.rationale === 'string' &&
       typeof effectType === 'string' &&
-      KNOWN_EFFECTS.has(effectType)
+      KNOWN_EFFECTS.has(effectType) &&
+      isDispatchableEffect(c.effect)
     );
   });
 }

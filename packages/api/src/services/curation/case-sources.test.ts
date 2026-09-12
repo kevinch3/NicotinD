@@ -77,4 +77,81 @@ describe('flagToCase', () => {
     const c = flagToCase(flag({ source: 'listener', reportCount: 12 }), target);
     expect(c.evidence.some((e) => e.value.includes('12'))).toBe(true);
   });
+
+  it('drops song-metadata option with no songId', () => {
+    const c = flagToCase(
+      flag({
+        caseKind: 'identity',
+        optionsJson: JSON.stringify([
+          {
+            id: 'bad',
+            label: 'Bad option',
+            rationale: 'Missing songId',
+            effect: { type: 'song-metadata', fields: { artist: 'Test' } },
+          },
+        ]),
+      }),
+      target,
+    );
+    expect(c.options).toHaveLength(1);
+    expect(c.options[0]!.effect).toEqual({ type: 'resolve-only' });
+  });
+
+  it('drops song-metadata option with no fields', () => {
+    const c = flagToCase(
+      flag({
+        caseKind: 'identity',
+        optionsJson: JSON.stringify([
+          {
+            id: 'bad',
+            label: 'Bad option',
+            rationale: 'Missing fields',
+            effect: { type: 'song-metadata', songId: 's1' },
+          },
+        ]),
+      }),
+      target,
+    );
+    expect(c.options).toHaveLength(1);
+    expect(c.options[0]!.effect).toEqual({ type: 'resolve-only' });
+  });
+
+  it('drops artist-merge option missing rawName', () => {
+    const c = flagToCase(
+      flag({
+        caseKind: 'identity',
+        optionsJson: JSON.stringify([
+          {
+            id: 'bad',
+            label: 'Bad option',
+            rationale: 'Missing rawName',
+            effect: { type: 'artist-merge', mergeInto: 'a1' },
+          },
+        ]),
+      }),
+      target,
+    );
+    expect(c.options).toHaveLength(1);
+    expect(c.options[0]!.effect).toEqual({ type: 'resolve-only' });
+  });
+
+  it('keeps valid song-metadata option with all required fields', () => {
+    const c = flagToCase(
+      flag({
+        caseKind: 'identity',
+        optionsJson: JSON.stringify([
+          {
+            id: 'valid',
+            label: 'Valid option',
+            rationale: 'All fields present',
+            effect: { type: 'song-metadata', songId: 's1', fields: { artist: 'Test' } },
+          },
+        ]),
+      }),
+      target,
+    );
+    expect(c.options).toHaveLength(1);
+    expect(c.options[0]!.label).toBe('Valid option');
+    expect(c.options[0]!.effect).toEqual({ type: 'song-metadata', songId: 's1', fields: { artist: 'Test' } });
+  });
 });
