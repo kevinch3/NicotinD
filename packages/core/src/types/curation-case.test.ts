@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import {
-  CURATION_CASE_KINDS,
-  isCurationCaseKind,
-  type CurationCase,
-} from './curation-case.js';
+import { CURATION_CASE_KINDS, isCurationCaseKind, type CurationCase } from './curation-case.js';
 
 describe('curation case kinds', () => {
   it('is a closed set of the five decision shapes', () => {

@@ -37,7 +37,12 @@ function isDispatchableEffect(effect: unknown): boolean {
     return true;
   }
   if (type === 'song-metadata') {
-    return typeof e.songId === 'string' && e.songId.length > 0 && typeof e.fields === 'object' && e.fields !== null;
+    return (
+      typeof e.songId === 'string' &&
+      e.songId.length > 0 &&
+      typeof e.fields === 'object' &&
+      e.fields !== null
+    );
   }
   if (type === 'artist-merge') {
     return (

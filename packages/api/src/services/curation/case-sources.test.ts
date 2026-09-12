@@ -152,6 +152,10 @@ describe('flagToCase', () => {
     );
     expect(c.options).toHaveLength(1);
     expect(c.options[0]!.label).toBe('Valid option');
-    expect(c.options[0]!.effect).toEqual({ type: 'song-metadata', songId: 's1', fields: { artist: 'Test' } });
+    expect(c.options[0]!.effect).toEqual({
+      type: 'song-metadata',
+      songId: 's1',
+      fields: { artist: 'Test' },
+    });
   });
 });
