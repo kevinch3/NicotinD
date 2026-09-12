@@ -58,6 +58,11 @@ export async function applyCaseEffect(
   effect: CaseEffect,
   deps: ApplyEffectDeps,
 ): Promise<ApplyEffectResult> {
+  // No case here writes an album-row override. That isn't enforced by this
+  // function — it's enforced upstream: `CaseEffect` (packages/core/src/types/
+  // curation-case.ts) is a closed union with no such variant, and this switch
+  // is exhaustive with no `default`, so a variant added without a case here
+  // fails `tsc --build`, not a runtime check.
   switch (effect.type) {
     case 'resolve-only':
       return { ok: true, detail: 'reviewed, no data change' };

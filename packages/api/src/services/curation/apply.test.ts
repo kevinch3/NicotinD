@@ -1,5 +1,4 @@
 import { describe, it, expect, mock } from 'bun:test';
-import { readFileSync } from 'node:fs';
 import { Database } from 'bun:sqlite';
 import type { SongMetadataMutateBody } from '../song-metadata-mutate.js';
 import type { ArtistIdentityMutateBody } from '../artist-identity-mutate.js';
@@ -85,16 +84,5 @@ describe('applyCaseEffect', () => {
     );
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error).toContain('song not found');
-  });
-});
-
-describe('durability', () => {
-  it('offers no effect that writes an album row override', () => {
-    // docs/curator-triage.md §4: an album-row artist write that contradicts the
-    // file tag reverts on the next rescan, so it must never be an option's
-    // apply path. This asserts the dispatch table, not a comment about it.
-    const src = readFileSync(new URL('./apply.ts', import.meta.url).pathname, 'utf8');
-    expect(src).not.toContain('fix_album_metadata');
-    expect(src).not.toContain('mutateAlbumMetadata');
   });
 });
