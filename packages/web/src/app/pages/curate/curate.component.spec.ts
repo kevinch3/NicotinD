@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
-import { of, throwError } from 'rxjs';
+import { of, throwError, Subject } from 'rxjs';
 import CurateComponent from './curate.component';
 import { CurationApiService } from '../../services/api/curation-api.service';
 import { ToastService } from '../../services/toast.service';
@@ -114,5 +114,30 @@ describe('CurateComponent', () => {
     expect(
       (f.nativeElement as HTMLElement).querySelector('[data-testid="curate-next-round"]'),
     ).toBeNull();
+  });
+
+  // The other six tests all resolve their mocked `applyCase` synchronously
+  // (`of(...)`), so `busy` is already back to `false` before a second call
+  // could ever be issued — the re-entrancy guard in `onChoose` is never
+  // exercised. A Subject keeps the first call genuinely in flight so a second
+  // `onChoose` while it is pending actually has to be turned away.
+  it('does not double-apply a choice while the first apply is still in flight', () => {
+    const inFlight = new Subject<{ ok: boolean; detail: string }>();
+    applyCase.mockReturnValue(inFlight);
+    const f = TestBed.createComponent(CurateComponent);
+    f.detectChanges();
+
+    f.componentInstance.onChoose('resolve');
+    f.componentInstance.onChoose('resolve');
+    expect(applyCase).toHaveBeenCalledTimes(1);
+    expect(f.componentInstance.busy()).toBe(true);
+    expect(f.componentInstance.index()).toBe(0);
+
+    inFlight.next({ ok: true, detail: 'done' });
+    inFlight.complete();
+    f.detectChanges();
+
+    expect(f.componentInstance.busy()).toBe(false);
+    expect(f.componentInstance.index()).toBe(1);
   });
 });
