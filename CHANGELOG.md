@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.39](https://github.com/kevinch3/NicotinD/compare/v0.6.38...v0.6.39) (2026-09-12)
+
+### Features
+
+* **curation:** curator triage rounds from the library view ([#1117](https://github.com/kevinch3/NicotinD/issues/1117)) ([ee37e7a](https://github.com/kevinch3/NicotinD/commit/ee37e7afa485ab7b6884e40f5dd17231daa25eda)), references [#420](https://github.com/kevinch3/NicotinD/issues/420)
 ## [0.6.38](https://github.com/kevinch3/NicotinD/compare/v0.6.37...v0.6.38) (2026-09-10)
 
 ### Bug Fixes
