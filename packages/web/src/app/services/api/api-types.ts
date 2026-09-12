@@ -1030,3 +1030,31 @@ export type AutoFetchImageResult =
       filled: false;
       reason: 'not-found' | 'manual-override' | 'no-cache-dir' | 'no-candidate' | 'error';
     };
+
+// ── Curator triage (docs/curator-triage.md) ──────────────────────────────────
+
+export type CurationCaseKind = 'identity' | 'placement' | 'duplicate' | 'listen' | 'batch';
+
+export interface CaseEvidence {
+  label: string;
+  value: string;
+  href?: string;
+}
+
+export interface CaseOption {
+  id: string;
+  label: string;
+  rationale: string;
+  destructive?: boolean;
+}
+
+export interface CurationCase {
+  id: string;
+  kind: CurationCaseKind;
+  target: { kind: 'artist' | 'album' | 'song'; id: string; title: string; subtitle: string };
+  question: string;
+  evidence: CaseEvidence[];
+  options: CaseOption[];
+  confidence: number;
+  source: 'flag' | 'generated';
+}
