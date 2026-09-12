@@ -27,7 +27,8 @@
       @for (o of c.options; track o.id) {
         <button
           type="button"
-          class="rounded border px-3 py-2 text-left"
+          class="rounded border px-3 py-2 text-left
+                 {{ o.destructive ? 'border-red-900/50 text-red-400' : '' }}"
           data-testid="case-option"
           [attr.data-destructive]="o.destructive ? 'true' : null"
           [disabled]="busy()"

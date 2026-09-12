@@ -83,6 +83,22 @@ describe('CaseCardComponent', () => {
     expect(btn.getAttribute('data-destructive')).toBe('true');
   });
 
+  it('gives a destructive option a visibly distinct treatment, unlike a safe one', () => {
+    const f = render(
+      aCase({
+        options: [
+          { id: 'del', label: 'Delete', rationale: 'redundant', destructive: true },
+          { id: 'keep', label: 'Keep', rationale: 'fine as-is' },
+        ],
+      }),
+    );
+    const buttons = (f.nativeElement as HTMLElement).querySelectorAll(
+      '[data-testid="case-option"]',
+    );
+    expect(buttons[0].classList.contains('text-red-400')).toBe(true);
+    expect(buttons[1].classList.contains('text-red-400')).toBe(false);
+  });
+
   it('renders nothing when there is no case', () => {
     const f = render(null);
     expect((f.nativeElement as HTMLElement).querySelector('[data-testid="case-card"]')).toBeNull();
