@@ -4,7 +4,17 @@
   [title]="'admin.reviewFlags' | t"
   [description]="'admin.groupReviewFlagsDesc' | t"
 >
-  <!-- Curation review queue: cases a curator or agent deliberately did not decide. -->
+  <!-- Curation review queue: cases a curator or agent deliberately did not decide.
+       This panel stays a link into the triage round rather than a second worklist
+       (docs/curator-triage.md §3) — one queue, not two. -->
+  <a
+    routerLink="/library/curate"
+    class="mb-3 inline-block text-sm underline text-theme-secondary hover:text-theme-primary"
+    data-testid="review-flags-open-triage"
+  >
+    {{ 'admin.reviewFlagsOpenTriage' | t }}
+  </a>
+
   @if (openFlags().length > 0) {
     <div data-testid="review-flags">
       <section class="section-flush">

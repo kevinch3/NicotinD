@@ -67,6 +67,7 @@
   "admin.reviewFlagsEmpty": "Nothing is waiting on a decision.",
   "admin.reviewFlagResolve": "Resolve",
   "admin.reviewFlagResolveFailed": "Couldn't resolve that flag.",
+  "admin.reviewFlagsOpenTriage": "Open the triage queue",
   "admin.backingUp": "Backing up…",
   "admin.backupCreated": "Backup {name} created ({size}).",
   "admin.backupFailed": "Backup failed — see server logs.",

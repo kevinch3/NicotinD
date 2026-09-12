@@ -5,17 +5,32 @@ import { of, throwError } from 'rxjs';
 import { vi } from 'vitest';
 import { LibraryComponent } from './library.component';
 import { LibraryApiService } from '../../services/api/library-api.service';
+import { CurationApiService } from '../../services/api/curation-api.service';
 import { AuthService } from '../../services/auth.service';
 import { PlaylistService } from '../../services/playlist.service';
 import { ConfirmService } from '../../services/confirm.service';
 import { TransferService } from '../../services/transfer.service';
 import { ListControlsService } from '../../services/list-controls.service';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
+import { TranslateService, interpolate } from '../../services/translate.service';
 import type { PlaylistSummary } from '../../services/api/api-types';
+
+// Real catalogs aren't loaded in a unit test (TranslateService.init() is never
+// called), so the raw key would render with no interpolation — enough of a
+// stub to exercise the two curator-entry keys this spec asserts text against.
+const TEST_CATALOG: Record<string, string> = {
+  'curate.waiting': '{count} decisions waiting',
+  'curate.start': 'Start a round',
+};
 
 function setup(
   queryParams: Record<string, string | string[]> = {},
-  opts: { playlists?: PlaylistSummary[]; confirmResult?: boolean } = {},
+  opts: {
+    playlists?: PlaylistSummary[];
+    confirmResult?: boolean;
+    canCurate?: boolean;
+    openCases?: number;
+  } = {},
 ) {
   // Minimal filteredItems signal returned by every connect() call — empty by
   // default so isEmpty computeds can be driven by setting the signal directly.
@@ -69,17 +84,31 @@ function setup(
     getGenres: vi.fn(() => of([])),
     invalidateLibraryReads: vi.fn(),
   };
+  const curationApi = { getCount: vi.fn(() => of({ open: opts.openCases ?? 0 })) };
 
   TestBed.configureTestingModule({
     imports: [LibraryComponent],
     providers: [
       { provide: LibraryApiService, useValue: api },
+      { provide: CurationApiService, useValue: curationApi },
       {
         provide: AuthService,
         // canCurate is read by the template's curator-gated controls; a test
         // that lets change detection run (fake timers flush the scheduler)
         // renders them, so the stub has to answer.
-        useValue: { token: signal('tok'), role: () => 'user', canCurate: () => false },
+        useValue: {
+          token: signal('tok'),
+          role: () => 'user',
+          canCurate: () => opts.canCurate ?? false,
+        },
+      },
+      {
+        provide: TranslateService,
+        useValue: {
+          lang: signal('en'),
+          t: (key: string, params?: Record<string, string | number>) =>
+            interpolate(TEST_CATALOG[key] ?? key, params),
+        },
       },
       {
         provide: PlaylistService,
@@ -145,6 +174,7 @@ function setup(
     playlistCreate,
     confirmAsk,
     api,
+    curationApi,
     playlistService: { refresh: playlistRefresh },
     getRegisteredHandler: () => registeredHandler,
     newlyLandedAlbumIds,
@@ -706,6 +736,43 @@ describe('LibraryComponent — a list that failed to load says so (#1059)', () =
       component.genresFailed(),
     ]).toEqual([true, true, true]);
     expect(component.isGenresEmpty()).toBe(false);
+  });
+});
+
+// docs/curator-triage.md §3: a card in the library view, offered only when
+// there is a decision waiting AND the viewer can curate. The route itself is
+// curatorGuard'ed (app.routes.ts) — this only covers the entry card.
+describe('LibraryComponent — curator triage entry card', () => {
+  it('offers a triage entry card when decisions are waiting', async () => {
+    const { fixture, curationApi } = setup({}, { canCurate: true, openCases: 3 });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(curationApi.getCount).toHaveBeenCalled();
+    const entry = fixture.nativeElement.querySelector('[data-testid="curate-entry"]');
+    expect(entry).not.toBeNull();
+    expect(entry.textContent).toContain('3');
+  });
+
+  it('hides the triage entry card when nothing is open', async () => {
+    const { fixture } = setup({}, { canCurate: true, openCases: 0 });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="curate-entry"]')).toBeNull();
+  });
+
+  it('hides the triage entry card from a viewer who cannot curate, even with cases open', async () => {
+    const { fixture, curationApi } = setup({}, { canCurate: false, openCases: 5 });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    // Not a curator: the count is never even fetched.
+    expect(curationApi.getCount).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.querySelector('[data-testid="curate-entry"]')).toBeNull();
   });
 });
 

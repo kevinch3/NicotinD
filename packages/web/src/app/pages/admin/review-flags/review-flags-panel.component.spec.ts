@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
+import { provideRouter } from '@angular/router';
 import { vi } from 'vitest';
 import { of, throwError } from 'rxjs';
 import { ReviewFlagsPanelComponent } from './review-flags-panel.component';
@@ -46,6 +47,7 @@ describe('ReviewFlagsPanelComponent', () => {
     await TestBed.configureTestingModule({
       imports: [ReviewFlagsPanelComponent],
       providers: [
+        provideRouter([]),
         { provide: ServiceReviewService, useValue: { reviewFlags: flags } },
         { provide: LibraryApiService, useValue: { resolveReviewFlag } },
         { provide: ToastService, useValue: { show } },

@@ -1,4 +1,5 @@
 import { Component, inject, signal } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { SettingsGroupComponent } from '../../../components/settings-group/settings-group.component';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
 import { ServiceReviewService } from '../../../services/service-review.service';
@@ -20,7 +21,7 @@ import { TranslateService } from '../../../services/translate.service';
   selector: 'app-review-flags-panel',
   standalone: true,
   host: { class: 'contents' },
-  imports: [SettingsGroupComponent, TranslatePipe],
+  imports: [SettingsGroupComponent, TranslatePipe, RouterLink],
   templateUrl: './review-flags-panel.component.html',
 })
 export class ReviewFlagsPanelComponent {

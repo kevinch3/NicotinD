@@ -1,6 +1,6 @@
 # Curator triage: typed decision cases, five per round
 
-**Status**: approved design, not yet implemented
+**Status**: phase 1 shipped; phases 2-3 pending
 **Date**: 2026-09-12
 
 ## The problem
@@ -322,6 +322,21 @@ deployment granularity on this project.
 **The implementation plan that follows this spec covers phase 1 only.** Phases 2 and 3
 get their own plans once phase 1 is in use, because the round interaction is the part
 most likely to change once it is actually driven against real flags.
+
+## What shipped in phase 1
+
+The spine from §8: case model, round assembly, apply dispatch, and the round UI — sourced from
+flags only (no generators, no dismissal loop, no destructive kinds yet).
+
+- **Endpoints** (`packages/api/src/routes/curation.ts`, all `requireCurator`):
+  `GET /api/library/curation/round`, `GET /api/library/curation/count`,
+  `POST /api/library/curation/cases/:id/apply`.
+- **Components**: `CurateComponent` (`pages/curate/curate.component.ts`, the round shell) +
+  `CaseCardComponent` (one case at a time); `CurationApiService`
+  (`services/api/curation-api.service.ts`) is the HTTP client both use.
+- **Reachability**: the route is `/library/curate`, `curatorGuard`'ed in `app.routes.ts`; an entry
+  card on `LibraryComponent` (`auth.canCurate() && openCases() > 0`) links to it, and
+  `ReviewFlagsPanelComponent` now links there too instead of hosting a second worklist.
 
 ## Risks
 
