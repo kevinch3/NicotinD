@@ -2882,3 +2882,946 @@ genuinely stylised title, a false positive. Genre path only.
 The principle is that majority is a tiebreak, not a rule — it decides when nothing else does, and
 it is the *wrong* tiebreak whenever the majority form is the broken one, which is exactly the case
 in #1074.
+
+## 2026-09-09/10, stretch 5 — two corrections, then the artist-name rules to their floor
+
+### Correction: the ingest had not stopped
+
+Stretch 4 recorded "ingest stopped (last arrival 20:56, count falling)". Re-measured at the start of
+this stretch: newest arrival **21:56, twelve minutes earlier**, count 21,356 -> 21,378. What I read
+as the end was a lull. Destructive work stayed suspended — which is the only reason the wrong call
+cost nothing.
+
+The lesson is in the metric I used. A *falling* song count read as "ingest finished, scan pruning",
+and it is equally the signature of a scan running *during* an ingest. `landed_at` clustering is the
+documented signal precisely because count deltas are ambiguous, and I substituted the ambiguous one.
+
+### Correction: "1,264 duplicate songs" is an upper bound, not a measurement
+
+Grouping on `LOWER(artist)` + `LOWER(title)` gives 1,128 groups / 1,264 redundant rows — about 6% of
+the library. Splitting the same groups by duration spread shows what that number actually contains:
+
+| duration spread | groups | reading |
+| --- | --- | --- |
+| ≤2s | 829 | plausibly the same recording |
+| 3–10s | 155 | uncertain |
+| >10s | **144** | **different recordings** |
+
+144 groups are disproven outright — `Pink Floyd — Comfortably Numb` at 384 / 446 / 446 / 537s is
+studio, album and live versions, not four copies. And the ≤2s bucket is not proof either: the
+Chalchaleros case already in this document has 162 vs 163 the same recording and 163 vs 225 a
+different one, while Vilma Palma's 278/278/279/282 are all one recording. **Duration is a heuristic;
+`recordingId` is the identity.** Any real dedupe pass has to fingerprint, and it is blocked on the
+ingest finishing regardless.
+
+### `brand_artist` 1 -> 0 — and the fix was an album fix
+
+`IPAUTA` (a Latin download-site brand) was credited as a performer on 56 songs. The songs' own
+`artist` was already correct — `Jamsha El PutiPuerko` on all 10 in the IPAUTA album — so the defect
+was the **album identity**, not the song tags. One `fix_album_metadata` re-attributed the album and
+moved 10 songs.
+
+**All 56 credit edges went to 0.** So `fix_album_metadata`, like `merge_artist`, reconciles
+`library_song_artists` properly. Combined with stretch 2's finding, the ghost-credit behaviour in
+#1073 is specific to the `fix_song_metadata` rescan path — two of the three write paths are clean.
+Worth knowing for whoever fixes it: the correct implementation already exists twice in the codebase.
+
+### `fragmented_artist` — 5 writer-credit strings cut, and the rest are real
+
+The rule reports at ≥2 deliberately, as advisory. Judged all 8 clusters; they split cleanly in two.
+
+**Real collaborations — left alone.** `Don Omar, Zion` · `Wisin & Yandel, Romeo Santos` ·
+`Los Ángeles Azules, NICKI NICOLE` · `Cele Arrabal, Tatto` · `Cosculluela, Chencho Corleone`. A
+comma is not a defect.
+
+**Songwriter credits leaked into the artist tag — cut.** Five strings, and the corroboration is
+decisive: each contains *the performer's own legal name* alongside their stage name.
+
+| track | was | now |
+| --- | --- | --- |
+| My Space | `Don Omar, Wisin & Yandel, Willian Omar Landron, Juan Luis Morera, Llndel Veguilla` | `Don Omar, Wisin & Yandel` |
+| Una Locura | `Ozuna, J Balvin, Chencho Corleone, ` + 10 legal names | `Ozuna, J Balvin, Chencho Corleone` |
+| El Plan | `Ozuna, Chencho Corleone, Sky Rompiendo, ` + 6 legal names | `Ozuna, Chencho Corleone, Sky Rompiendo` |
+| Me Llamas | `Cosculluela, Genio La Musa, Chencho Corleone, Darell, ` + 5 | `Cosculluela, Genio La Musa, Chencho Corleone, Darell` |
+| Podemos Repetirlo | `Don Omar, Chencho Corleone, ` + 8 legal names | `Don Omar, Chencho Corleone` |
+
+`Don Omar` **is** `Willian Omar Landron`; `Wisin` and `Yandel` are `Juan Luis Morera` and
+`Llandel Veguilla`; `Orlando Javier Valle` — Chencho Corleone — appears in four of the five. A
+credit list that names its own performers twice, once as stage name and once as legal name, is an
+ASCAP/BMI writer list, not a lineup. Same shape as the Sanampay composer-credit case at the top of
+this document, and the same rule caught it: corroborate the name against the track.
+
+Read back from `library_songs.artist`: all five correct. Four of the five legal-name artist rows are
+already pruned; one survives with a single stale edge — the #1073 ghost, which a scan clears.
+
+**The rule now sits at its floor for this library: all 8 remaining clusters are genuine
+collaborations.** Its count being non-zero is correct, not a backlog.
+
+### Deltas
+
+| rule | before | after |
+| --- | --- | --- |
+| `numeric_artist` | 0 | 0 (holding) |
+| `brand_artist` | 1 | **0** |
+| `fragmented_artist` | 8 | 8 — all judged, all real |
+| `djset_artist` | 1 | 1 — flag #19, owner's call |
+
+`album_count_mismatch` 308 -> 398 is post-write churn (#774), not new pollution.
+
+Left as-is on purpose: the album is still *titled* `IPAUTA`. Its artist is now right, but the real
+album title is unknown, and a source brand that is at least traceable beats an invented title.
+
+## 2026-09-10, stretch 6 — `track_collision` is three populations, and the fix for it is inert
+
+Ingest still trickling (5 arrivals in the last bucket, decaying), so dedupe stayed suspended.
+
+### The rule's 110 albums are not one problem
+
+`track_collision` (138 audit findings, 110 albums under a stricter predicate) has a remediation hint
+that reads "its running order is arbitrary" — implying the fix is renumbering. Probing the shape
+says otherwise:
+
+| | albums |
+| --- | --- |
+| every row disc-numbered | 49 |
+| every row disc-null | 26 |
+| mixed disc-null + disc-numbered | 35 |
+
+Three populations, three different remedies. I started from *The Division Bell* (76 songs) and had a
+tidy theory: it is the 25th-anniversary box, discs 1/2/4 correctly numbered, plus **a second copy of
+discs 2 and 4 that lost its disc numbers** — `Marooned (Edited Version)` at disc-null track 1
+duplicating `Marooned (edited version)` at disc-2 track 1. So the collision is *duplication*, and
+renumbering would be the wrong fix entirely.
+
+**The theory did not generalise: 2 of 110.** Only *The Division Bell* and *Yerba Buena* have a
+disc-null cohort whose titles overlap a disc-numbered one. Measuring before extrapolating is the
+only reason that stayed a note instead of a bulk edit.
+
+### The zero-research subset, and why it is small
+
+Filenames sometimes carry the running order the tags lost (`01 - It Won't Be Long.mp3`) — source
+evidence, no lookup, the same principle as the BPM-in-the-title fix. Testing "does the filename
+prefix exist *and* fully disambiguate the album": **4 of 110.** Small, but one of them is
+*With the Beatles* — the flagship case in #959, all 14 tracks numbered 63.
+
+Also visible: `63` and `32` recur as junk track values across unrelated albums. Sentinel garbage
+from a tagger, not real numbers.
+
+### The fix is inert — filed #1077
+
+Every one of the 20 intended writes failed the same way, 15 attempted across 3 albums:
+
+```
+fix_song_metadata({songId:"4693d642…", track:1})
+-> {"error":"Tag write landed but the rescan did not apply it",
+    "requested":{"track":1},"actual":{"track":63},"onDisk":{"track":1}}
+```
+
+Confirmed independently with `ffprobe`: the file's `track` tag really is `1`; `library_songs.track`
+really is still `63`. **Specific to `track`** — `artist`/`title`/`album` applied ~200 times this
+session, including one issued in the same call as a failing `track`.
+
+`scan_cache` (keyed `path, size, mtime_ms`, tags in `track_json`) is left in the worst possible
+state:
+
+| | |
+| --- | --- |
+| file size / cache size | 4451464 / 4451464 — unchanged, the rewrite fit existing ID3 padding |
+| file mtime / cache mtime | 1788994065633 / …633.30 — **refreshed to post-write** |
+| file `track` / cached `track` | **1 / 63** |
+
+Every other cached field matches the file. So the row holds a **current key with a stale value**: a
+later scan sees a fresh key, trusts the cache, and re-serves 63. The wrong value is pinned, not
+lagging. A track edit is precisely the case most likely to leave file size identical, so anything
+keyed on size is weakest exactly here.
+
+Two candidate causes, recorded as unseparated: the rescan writes back pre-write tags, or the scanner
+reads `track` from a different frame than the writer writes. Cause 1 predicts other fields going
+stale too; cause 2 predicts `track` alone, which is what I see — so I lean to 2 without having
+verified which frame the writer targets.
+
+**State left behind:** those 15 files now have correct track tags on disk and stale DB values. Not a
+regression — both were wrong before — and a cache-invalidating scan settles it correctly. Recorded so
+the divergence is not read as corruption.
+
+### Net
+
+Zero successful writes this stretch, and that is the finding. `track_collision` is the third-largest
+audit rule, the capability to fix it shipped in #959, and it does not work end to end. The 4
+filename-fixable albums are queued behind #1077, not behind judgement.
+
+`clip_not_song` (136) was scoped and left alone: it is genuinely junk — Tash Sultana social clips,
+`Me at the zoo` by `jawed` (19s, the first YouTube video) — but clearing it means deletion, which is
+the owner's call and blocked by the live ingest regardless.
+
+## 2026-09-10, stretch 7 — dedupe begins, and the first pair was not a duplicate
+
+Ingest **over**: 488 minutes with zero arrivals and a stable count of 21,382. Destructive work
+unblocked for the first time this pass. Owner authorised deletion with the rule *prefer the album's
+majority format*.
+
+### Two lanes closed as data-absent before getting there
+
+- **`missing_year` (179 albums) is not a curation backlog.** Every one has **no song carrying a
+  year** — the album year is derived from song years, so there is no internal evidence at all. And
+  the files do not hold a hidden `date` the scanner missed: ffprobe over a 9-album sample found no
+  date/TYER/TDRC tag on any of them. The population is mostly DJ-pool packs and electronic singles
+  (`Warg (Original Mix)`, `Undulate (Original Mix)`) — exactly the generic-artist/generic-title shape
+  the skill says returns noise. Nothing to spend a search on.
+- **`untracked_album` (129)** is blocked behind #1077 along with `track_collision`.
+
+### The majority-format rule decides far less than the headline suggests
+
+| | groups |
+| --- | --- |
+| two-file groups, duration spread ≤2s | 768 |
+| both files same format — rule cannot apply | 495 |
+| both minority or both majority — ambiguous | 227 |
+| **decidable** | **46** |
+
+So of a "1,264 redundant files" headline, the authorised rule cleanly decides 46 groups. Worth
+stating plainly rather than reporting the big number.
+
+### The first pair was not a duplicate, and verification is the only reason it survived
+
+Sample fingerprinting of 4 groups earlier in the stretch came back 4/4 true duplicates (matching
+`acoustId` **and** `recordingId`, 8/8 matches, scores 0.97–0.9998). That is a tempting basis for a
+bulk delete. Then the very first candidate pair broke it:
+
+```
+ABBA :: "Mamma Mia"   keep 9a5fcfb7 mp3   -> acoustId 4b0501b1…  (match, NO metadata)
+                      drop cc29f03a opus  -> acoustId b1daf712…
+                                             Cyndi Lauper — "Girls Just Want to Have Fun"
+                                             recordingId 0e5f1add…  score 0.98
+```
+
+**Different `acoustId`, different recording, and the file the rule would have deleted is not ABBA at
+all.** Had I trusted the sample and deleted by rule, a Cyndi Lauper track that exists nowhere else
+under its own identity would be gone. `n=4` agreeing is not licence to skip `n=5`.
+
+It also re-proves the rule already in this document: *same `acoustId` proves same recording; a
+different one proves nothing on its own* — here the difference was the signal, and `recordingId`
+settled it.
+
+### Applied
+
+Pairs 2–6 confirmed on both sides (same `acoustId` **and** `recordingId`): Attaque 77 —
+*Hacelo por mí*; Backstreet Boys — *As Long as You Love Me*, *Bigger*, *Bye Bye Love*,
+*Everybody (Backstreet's Back)*. **5 files deleted**, songs 21,382 -> 21,377, and every keeper
+verified still present.
+
+The misidentified file was **recovered, not deleted** — retagged to `Cyndi Lauper` /
+`Girls Just Want to Have Fun`.
+
+### Filed flag #23 — an album that is a bucket
+
+The recovered track sits inside ABBA's *Voyage*, which also holds a `Mamma Mia` — a song from ABBA's
+1975 self-titled album, not *Voyage*, and whose own fingerprint matched with **no metadata returned**,
+so its identity is unconfirmed. Re-homing a track changes which album the user sees it in, and the
+correct destination for the unidentified file is unknown, so nothing was moved. Flagged with a note
+that other tracks in that album are worth checking for the same mislabelling.
+
+### The pipeline for the rest
+
+40 decidable groups remain. The order is fixed and not optional: **fingerprint both sides, require
+matching `recordingId`, then delete the minority-format file.** One pair in six failed that gate in
+the only batch run so far — a ~17% catch rate on n=6, too small to quote as a rate, large enough to
+justify never skipping the step.
+
+## 2026-09-10, stretch 8 — dedupe continued; the gate keeps earning its cost
+
+Two more batches through the fixed pipeline (fingerprint both sides -> require matching
+`recordingId` -> delete the minority-format file).
+
+### Running totals
+
+| | |
+| --- | --- |
+| pairs fingerprint-verified | **18** |
+| confirmed duplicates, deleted | **15** |
+| **rejected by the gate** | **3 (17%)** |
+| songs | 21,382 -> **21,367** |
+
+Every keeper re-checked present after each batch, including both sides of every rejected pair.
+
+### What the gate caught, and why each would have been a real loss
+
+1. **ABBA — "Mamma Mia"** (stretch 7): the drop candidate was **Cyndi Lauper — "Girls Just Want to
+   Have Fun"**. Recovered by retag.
+2. **Britney Spears — "Sometimes"**: different `recordingId` (`04e85e16` vs `97e4d0f1`), and the
+   second scored **0.79** against 0.98 for the first. Two different recordings. Both kept.
+3. **Divididos — "Hombre en U"**: different `recordingId` (`e49aceb4` vs `1b2a26ea`). Two different
+   recordings of the same song — Divididos have studio and live versions in circulation. Both kept.
+
+Duration spread ≤2s and identical artist+title on all three. **Nothing short of a fingerprint
+separates these from the 15 that were genuinely redundant.**
+
+### The `acoustId` rule earned its place twice
+
+Two confirmed duplicates had **different `acoustId`s but the same `recordingId`**:
+
+```
+Backstreet Boys — Straight Through My Heart   2d36c9e8 / a76d19c9  ->  3831b32d  (same)
+Britney Spears — (You Drive Me) Crazy         10335791 / 1a6cebf5  ->  05d34d46  (same)
+```
+
+Judging on `acoustId` alone would have wrongly *spared* both — AcoustID holds two unmerged clusters
+for one recording. Combined with the Britney/Divididos rejections, the documented rule is confirmed
+in both directions on live data: **matching `acoustId` proves same recording; a differing one proves
+nothing either way, and only `recordingId` decides.**
+
+### Correcting the rationale I gave for the chosen rule
+
+When presenting the majority-format option I argued it would also clear the 241 `mixedFormatAlbums`,
+since the stray-format file is usually both the duplicate and the cohesion defect. After 15
+deletions:
+
+| | before | after |
+| --- | --- | --- |
+| mixed-format albums | 241 | **242** |
+
+**It has not helped, and the count went up by one.** Two reasons it was optimistic: deleting one
+minority-format file rarely removes the *last* minority file from its album, and the metric also
+moves with unrelated re-bucketing churn (an album re-attribution earlier in this pass). The rule is
+still a sound way to choose *which* copy to drop — it is just not a two-for-one. Worth re-measuring
+at the end of the dedupe pass rather than claiming the benefit now.
+
+### Remaining
+
+~28 decidable groups. The larger populations behind them stay out of scope for this rule: **495**
+two-file groups are same-format (the rule cannot choose) and **227** are ambiguous (both copies
+majority or both minority). Those need a different discriminator — bitrate within codec, or a
+per-album keep policy — and a separate owner decision.
+
+## 2026-09-10, stretch 9 — 10 more deleted, then I audited the rule and stopped
+
+### Totals
+
+| | |
+| --- | --- |
+| pairs fingerprint-verified | **31** |
+| confirmed duplicates, deleted | **25** |
+| rejected by the gate | 3 |
+| songs | 21,382 -> **21,357** |
+
+Confirmed and deleted this stretch: Domenico Modugno/Pavarotti — *Nel blu, dipinto di blu*;
+Enrique Iglesias — *Not In Love (Bill Hamel Remix)*; *Non ti scordar di me*; Evanescence —
+*The Only One*; *Caro mio ben*; Indio Solari — *Una rata muerta…*; La Renga ×2; Limp Bizkit —
+*Full Nelson*; Los Auténticos Decadentes — *Diosa*.
+
+### The rule has a vacuous case, and 10 of 24 keepers hit it
+
+**A single-track album trivially "matches its own majority format".** So for any pair where one copy
+sits in a one-track bucket album, the test the owner authorised returns true on no evidence at all,
+and the rule picks that copy for arbitrary reasons.
+
+Audited every keeper chosen so far: **10 of 24 sit in a 1-track album** — `Never Gone`, `MSI`,
+`Radioactivity Volume 01-03`, `Crawling Back to You: Music for Hurricane Relief`,
+`Madre hay una sola`, `El Final Es En Donde Partí`, `Obras cumbres` and three more. Those ten
+decisions rested on nothing.
+
+**Checked for actual harm, and there is none.** Every deleted title still exists somewhere for its
+artist, and no album lost its only copy of a track:
+
+```
+I Still                   -> mp3 @ Never Gone
+More Than That            -> mp3 @ MSI
+The Call                  -> mp3 @ Radioactivity Volume 01-03
+As Long as You Love Me    -> mp3 @ Gute Zeiten schlechte Zeiten
+Bigger / Bye Bye Love     -> mp3 @ This Is Us
+Straight Through My Heart -> mp3 @ This Is Us  (×2 — see below)
+```
+
+None of the deleted opus copies were in `The Essential Backstreet Boys`, the only multi-format BSB
+album, so nothing was stripped out of a coherent release. The redundancy removed was real. But that
+is a fortunate outcome, not a designed one — the decision was made on a vacuous test and happened to
+land safely.
+
+### Where it would have gone wrong, caught before acting
+
+`La Renga — Balada del diablo y la muerte` exists twice:
+
+| file | format | album |
+| --- | --- | --- |
+| `ca5d5b62` | opus | `Balada Del Diablo y La Muerte` — a **1-track bucket** |
+| `43e35f20` | mp3 | `Despedazado por mil partes` — the **real 1996 album**, 11 tracks |
+
+The rule says keep `ca5d5b62` (trivially majority in its own 1-track album) and delete the copy
+filed in the genuine album. That is backwards. **Skipped, not applied.**
+
+### Proposed refinement, for the owner to confirm
+
+Prefer the copy in the **larger album**, and use majority-format only to break ties between copies in
+albums of comparable size. Equivalently: require the keeper's album to hold more than one track
+before the majority-format test is allowed to decide. **No further deletions until confirmed** — the
+authorised rule and the evidently-correct answer disagree, and that is the owner's call, not mine.
+
+### A mislabelled AcoustID cluster, disproved by the library's own data
+
+Both `balada` files fingerprint as **`El hombre de la estrella`** (acoustId `f4364746`, recordingId
+`a55aa85c`, scores 0.98) — which would suggest retagging them. Two other files *are* titled
+`El hombre de la estrella` and carry a **different** acoustId (`960d8899`, no recordingId).
+
+The decisive test was already in the library: `43e35f20` — titled `la balada del diablo y la muerte`
+and sitting in `Despedazado por mil partes`, where that song actually belongs — shares
+`f4364746`/`a55aa85c` with `ca5d5b62`. So the cluster groups the *balada* recording and merely labels
+it wrongly. **The library's titles are right and AcoustID's label is wrong.** Same failure already
+recorded in this document for two Lenny Kravitz files returning "Metro Station"; flag #21 rests on
+the same doubt. No retag.
+
+### Two methodological notes
+
+- **Title-grouping misses duplicates that differ by a leading article.** `la balada del diablo y la
+  muerte` vs `Balada Del Diablo y La Muerte` never grouped, yet they are one recording. The
+  fingerprint found a pair the candidate query structurally could not.
+- **The rejected pairs keep re-appearing** in the decidable list every stretch, because nothing
+  records that they were disproved. Britney — *Sometimes* and Divididos — *Hombre en U* were
+  re-listed and skipped by hand. A durable "not a duplicate" marker is missing.
+
+### Also noticed
+
+Three Pavarotti recordings are filed under their **composer** as artist — `Ernesto De Curtis`,
+`Giuseppe Giordani` — the same composer-credit-as-artist class as the Sanampay case at the top of
+this document. Not acted on; it is a separate lane.
+
+## 2026-09-10, stretch 10 — a split album the fragments metric cannot see
+
+Deletions stayed paused pending the rule refinement from stretch 9. Non-destructive lane instead.
+
+### One album, two rows, and `duplicateAlbums: 0`
+
+`The People's Tenor` (2017) existed **twice** — once with `album_artist` = `Various Artists`
+(32 tracks) and once as `Luciano Pavarotti` (21). The track numbers interleave perfectly:
+
+```
+Various Artists   d1: t1  t3  t5  t7 t8 t9 t10  t12 t13  t15 …
+Luciano Pavarotti d1:  t2  t4  t6         t11      t14      t18 t19 t20 t21 t22
+```
+
+One 53-track album, split because the files disagree about `album_artist`. The health report's
+`fragments.duplicateAlbums` reads **0** — it cannot see a split whose two halves differ by artist.
+Merged with one `fix_album_metadata`; now a single 53-track row.
+
+### The discriminator that separates a split from a duplicate rip
+
+Probing "album names held by more than one artist row" returns **161**, and that number is almost
+entirely legitimate — `Circus` is a Britney Spears album *and* a Lenny Kravitz album, `Bossanova` is
+both Estopa and Pixies, `20 Grandes Exitos` is a title eight different artists used. Same-titled
+albums by different artists are normal, and treating 161 as a backlog would be the same
+easier-question error as the earlier 535-ghost-edge count.
+
+Narrowing to the actual signature — a `Various Artists` bucket beside one named artist — gives **9**
+pairs, and **track-number collision** separates them cleanly:
+
+| collisions | meaning | count |
+| --- | --- | --- |
+| **0** | tracks interleave — **one album, split** | **2** |
+| 1–2 | mostly interleaving, a stray or two | 2 |
+| 4–22 | both sides hold the same slots — **two rips of one album** | 5 |
+
+`while(1<2)` (deadmau5) is the clearest of the latter: 25 tracks vs 24 with **22 colliding slots** —
+a duplicate rip, which belongs to the dedupe lane, not here.
+
+Merged the two clean splits: `2018 Hay Vida (Spanish Version)` (Eros Ramazzotti, 3+6 -> 9) and
+`Night After Night` (Fideles, 1+2 -> 3). The five duplicate-rip pairs are recorded for the dedupe
+lane and left alone.
+
+### Composer-as-artist — measured, deliberately not acted on
+
+Every song in `The People's Tenor` carries its **composer** in `artist`: Puccini, Verdi, Bizet,
+Donizetti, Leoncavallo, Flotow — 14 distinct names over 53 tracks. Strictly the performing artist is
+Pavarotti, and this is the same class as the Sanampay composer credits at the top of this document.
+
+**Left as-is on purpose.** The library has no composer field, so retagging to `Luciano Pavarotti`
+would not move that information — it would destroy it, and composer-as-artist is a legitimate
+convention for classical repertoire. The album is already correctly attributed to Pavarotti at
+`album_artist`, so nothing is currently mis-browsed at album level. This is a collection-convention
+choice for the owner, not a defect to fix unilaterally. Three more instances were seen in the dedupe
+lane (`Ernesto De Curtis`, `Giuseppe Giordani`).
+
+### Deltas
+
+| | |
+| --- | --- |
+| `The People's Tenor` | 2 rows (32 + 21) -> **1 row, 53 tracks** |
+| `2018 Hay Vida` | 2 rows -> 1 row, 9 tracks |
+| `Night After Night` | 2 rows -> 1 row, 3 tracks |
+
+Three album rows removed, no songs touched, nothing deleted.
+
+## 2026-09-10, stretch 11 — checking whether this pass's work survived
+
+Deletions still paused pending the stretch-9 rule refinement. Spent the stretch verifying earlier
+work instead, prompted by `brand_artist` reappearing at 1 after being driven to 0.
+
+### `fix_album_metadata`'s artist change did not survive — IPAUTA is back
+
+Stretch 5 re-attributed the `IPAUTA` album to `Jamsha El PutiPuerko` and **all 56 credit edges went
+to 0**, verified at the time. A day later:
+
+```
+IPAUTA artist row      : present
+IPAUTA join edges      : 56
+songs with album_artist='IPAUTA' : 10
+override row           : raw f85dc269 -> corrected ff2da7f9, artist "Jamsha El PutiPuerko", manual
+```
+
+The durable override row is intact and the album row is back anyway. The files still carry
+`album_artist: IPAUTA`, and a rescan re-derived the album and its credits from the tags. **The
+album-identity fix does not rewrite the file tag, so the tag wins on the next scan.**
+
+### What survived, and the distinction that predicts it
+
+| class | mechanism | result |
+| --- | --- | --- |
+| `fix_song_metadata` (artist/title) | **rewrites the file tag** | **intact** — BPM artist rows still 0, Pop Aguante correct, writer-credit trims correct, Cyndi Lauper recovery correct |
+| `set_song_genre` mode `replace` | durable `library_genre_overrides` | intact — `Folclore Chileno` 53, `Folklore` 0, `Folkcentric` 0 |
+| `fix_album_metadata` (merges) | re-buckets rows | intact — all three stretch-10 merges still single rows |
+| `fix_album_metadata` (artist vs. a contradicting file tag) | override only | **reverted** |
+
+The pattern: **a fix that writes the file survives; a fix that only writes a DB row survives until
+something re-derives that value from the file.** The genre overrides survive because the scanner
+re-applies them by design; the album-artist override does not get that treatment.
+
+### A genre alias can be silently undone — filed #1078
+
+Of 91 alias rows, **6 had their raw value live again** while the alias row still existed:
+`Hip-Hop` (80 rows, fully back), `Nu-Disco` (7 of 29), `Rock & Roll` (11 of 22), `Jazz-Rock` (5),
+`Post Bop`, `Post Rock`, plus a pre-existing `& Country`. Re-issuing the identical call restores the
+fold and reports the same `songsUpdated`, so the alias row is intact and functional — something
+re-derived those songs from the raw tag without consulting it. Partial per-alias reversion
+(7 of 29) means it is per song, not per alias.
+
+**Mechanism not established, and recorded as such.** `synced_at` does **not** discriminate: held and
+reverted songs alike carry the identical last-scan timestamp, so "only rescanned songs revert" is
+unsupported. 71 of 91 aliases held over the same window.
+
+### Correcting my own labelling mid-stretch
+
+My first pass called **20** aliases reverted. Fourteen of those were not reverts at all — they are
+the **case-only no-ops from #1074**, which never applied and correctly reported `songsUpdated: 0`
+when written:
+
+```
+Chanson FrançAise 37 · Nueva CancióN 45 · Musique ConcrèTe 13 · PilóN 12 · NorteñO 6
+SierreñO 3 · Chanson RéAliste 3 · Cumbia NorteñA Mexicana 2 · JùJú 2 · DanzóN 1
+```
+
+124 rows, still mis-cased, still unfixable by this tool. The test that separated them was re-issuing
+the alias and reading `songsUpdated`: `Rock & Roll` moved 11 songs (a real revert), `Nueva CancióN`
+moved 1 of 45 (case-only, cannot move). **Two different defects were wearing the same symptom** —
+"the raw value is live and an alias row exists" — and only re-running the write told them apart.
+
+### Applied
+
+Re-applied all 6 genuinely reverted aliases (96 rows re-folded). Left the 14 case-only ones alone;
+they are #1074 and no curation call can fix them.
+
+### The uncomfortable part
+
+The standing rule of this pass — verify every write by reading back — **passed** on all of this. The
+IPAUTA fix read back clean (56 edges -> 0). The aliases read back clean. Both were undone later.
+Read-back proves a write landed; it cannot prove the write is durable. The only thing that caught
+this was re-measuring a day later, and the only reason I re-measured was that an unrelated metric
+(`brand_artist`) moved back up.
+
+## 2026-09-10, stretch 12 — the durable fix for IPAUTA, and 481 orphans that are not missing music
+
+### `brand_artist` cleared for real this time
+
+Stretch 5 re-attributed the IPAUTA album and watched all 56 credit edges go to 0; stretch 11 found it
+fully reverted. The cause was established there: `fix_album_metadata` writes a DB override, the files
+still said `album_artist: IPAUTA`, and a rescan re-derived from the tags.
+
+This time the fix went through **the file**: `fix_song_metadata({albumArtist})` on all 10 songs.
+Verified with ffprobe rather than the tool's own report (#865 warns that report can be a lie on
+compilation files):
+
+```
+ffprobe …/Twitter @OdECk/IPAUTA/07 - ….mp3
+  "album_artist": "Jamsha El PutiPuerko"      <- the file itself
+songs with album_artist='IPAUTA' : 0
+IPAUTA join edges                : 0
+IPAUTA artist row                : 0   (gone)
+```
+
+Confirms the stretch-11 predictor exactly: **write the file and it survives; write only the DB and it
+does not.** The album is still *titled* `IPAUTA` because the `album` tag says so — honest to the
+file, and traceable.
+
+### `orphan_file`: 481 files, 2.73 GB, and none of it missing — filed #1079
+
+The rule says "on disk but not in the library DB", which is literally true. The natural reading —
+481 recordings invisible to the user — is wrong.
+
+115 directories, **96 partially indexed**, so the scanner reaches the folders and skips individual
+files. The skipped files duplicate indexed siblings:
+
+```
+orphan  LCD Soundsystem/Singles/03 - Tribulations.opus
+indexed LCD Soundsystem/Singles/03 - Tribulations (2).opus
+orphan  Funkadelic/Singles/03 - Music for My Mother.opus
+indexed Funkadelic/Singles/03 - Music For My Mother.mp3
+```
+
+**Three predicates, three over-counts, each corrected by the next.** Worth recording as a sequence
+because the error was the same each time — a path-shaped test for a content-shaped question:
+
+| predicate | "possibly real" | what it missed |
+| --- | --- | --- |
+| same-folder filename twin, key includes track number | 383 | `10 - Losing My Edge` vs indexed `01 - Losing My Edge` |
+| title-only key, same folder or same artist folder | 199 | variant artist folders — `The Red Hot Chili Peppers`, `Los Áutenticos Decadentes` (typo), `Charly García-Pedro Aznar` |
+| path prefix — "`Red Hot Chili Peppers/Freaky Styley/%` has 0 indexed, so the album is invisible" | 15 | the album **is** indexed, at a different path |
+
+The settling test was to stop asking about paths: take a random sample of the surviving "no twin
+anywhere" set and look each up **by title**. **8 of 8 were already in the library.** Ráfaga, Maluma,
+Los Auténticos Decadentes, Serú Girán, Charly García & Pedro Aznar, David Bowie, Rosalía (already
+holding three copies), Joe Vasconcellos.
+
+**A path-based test cannot answer "is this music in the library."** The folder tree carries
+artist-name variants, so one recording legitimately lives under several paths. Only a content lookup
+answers it.
+
+This is the same over-count shape #968 recorded ("545 invisible files were 3 populations, only 121
+real") — and this time the real bucket looks empty.
+
+2.73 GB of redundant audio is still worth reclaiming, but it is a disk-space job for the dedupe lane,
+not an indexing gap. Nothing deleted; that is the owner's call and the dedupe rule is still pending.
+
+### Durability re-check
+
+All 6 re-applied genre aliases still held at the start of this stretch (`Hip-Hop`, `Nu-Disco`,
+`Rock & Roll`, `Jazz-Rock`, `Post Bop`, `Post Rock`, `& Country` — all 0 raw rows). No scan has run
+since, so this is not yet evidence of durability, only of not-yet-reverted. #1078 stands.
+
+## 2026-09-10, stretch 13 — the acquisition step, and a worklist that recommends spending on complete albums
+
+All fixes still holding at the start of the stretch (aliases 0 raw rows, IPAUTA 0 edges, BPM rows 0,
+`Folclore Chileno` 53). Genre-less songs **324 -> 260** across the pass.
+
+A scan ran at `2026-09-10T09:07:53Z`, but I could not cleanly establish whether it postdates the
+stretch-11 re-applications, so this is *not-yet-reverted*, not proof of durability. #1078 stands.
+
+### Six hunts, four already complete — filed #1080
+
+`completeness.confirmedIncomplete` (108) is the one worklist the report marks as approved for
+spending: *"confirmed → complete_album (curator-approved, only-missing-tracks)"*. Six hunts from the
+top of it, inside the ≤10/session budget:
+
+| album | report | outcome |
+| --- | --- | --- |
+| Tangerine Dream — *Tyranny of Beauty* | 10 / 9 | **already-complete** |
+| David Bowie — *Never Let Me Down* | 14 / 13 | **already-complete** |
+| Maroon 5 — *V* | 20 / 19 | **already-complete** |
+| Los Auténticos Decadentes — *Mi vida loca* | 19 / 18 | **already-complete** |
+| Cultura Profética — *Sobrevolando Instrumental* | 15 / 14 | `no-candidate` |
+| El Kuelgue — *Ruli* | 14 / 13 | `enqueue-failed` — `addon responded 400` |
+
+**4 of 6.** #758 recorded ~40% for this rate; this sample is worse. Each one contacts peers and
+spends bandwidth on the report's own recommendation.
+
+### The prediction I got backwards
+
+I expected `owned` to **under**count — a title mismatch would fail to match a track that is present,
+which is exactly the shape of the `titleMismatch` dimension (46 albums). Checking `owned` against the
+local album row's actual song count:
+
+| album | report `owned` | actual songs |
+| --- | --- | --- |
+| David Bowie — *Never Let Me Down* | 13 | 13 |
+| Tangerine Dream — *Tyranny of Beauty* | 9 | 9 |
+| Maroon 5 — *V* | 19 | **15** |
+| Los Auténticos Decadentes — *Mi vida loca* | 18 | **14** |
+
+It **over**counts, by exactly 4 on two of four. Opposite direction, so `titleMismatch` and this are
+two separate problems rather than one seen twice. I did not establish where the extra 4 come from and
+did not claim a cause.
+
+The two failure shapes are also different:
+
+- **Bowie / Tangerine Dream** — report and library agree on `owned`, and the addon still says
+  complete. So **`expected` is wrong**: Lidarr's canonical tracklist carries one more track than the
+  release actually is.
+- **Maroon 5 / Los Auténticos Decadentes** — `owned` does not match the local row at all, so the
+  arithmetic behind "missing: 1" is not reproducible from library state.
+
+Either way `expected - owned = 1` is not evidence that a track is missing, and that is the entire
+basis on which this list recommends spending.
+
+Whatever `complete_album` consults to answer `already-complete` disagrees with the health report on
+4 of 6 — and it is the one that is right, being the same source that would perform the download.
+
+### Also
+
+`El Kuelgue — Ruli` returned `enqueue-failed` with `addon responded 400 for POST /addon/v1/jobs` —
+the tool's docs distinguish a deterministic rejection from an outage, and a 400 is the former, so
+retrying can never help. Possibly related to #1069.
+
+**Net acquisition result for the stretch: zero tracks acquired from six hunts.** That is the finding,
+not a failure of the hunts.
+
+---
+
+# 2026-09-09/10 CLOSE-OUT — session 10, fourteen stretches
+
+## Totals, with the confound stated
+
+| | baseline (09-09) | final (09-10) |
+| --- | --- | --- |
+| artists | 3,764 | 3,762 |
+| albums | 7,496 | 7,509 |
+| songs | 21,174 | 21,357 |
+| distinct genre values | 852 | **835** |
+
+**The song delta is not a curation result.** An ingest ran through most of the session (21,174 ->
+21,382 at its peak) while I deleted 25 duplicates. Those two movements are not separable from each
+other in this number, so it should not be read as either.
+
+## Metric deltas
+
+| metric | before | after |
+| --- | --- | --- |
+| audit HIGH | 336 | **314** |
+| `numeric_artist` | 27 | **0** |
+| `brand_artist` | 1 | **0** |
+| genre-less songs | 324 | **260** |
+| genre collision groups | 16 | **1** (the survivor is #1074's case-only class) |
+| `Folklore` / `Folkcentric` / `Folklore Peruano` / `Folk, World, & Country` | 36 / 13 / 3 / 15 | **0 / 0 / 0 / 0** |
+| verified duplicate files deleted | — | **25** |
+| album rows merged | — | **3** (one 53-track album was split in two) |
+| `fragmented_artist` | 8 | 8 — all judged, all genuine collaborations |
+
+## Work applied
+
+~500 writes, essentially all zero-search: 100 `fix_song_metadata` on a DJ pack whose artist field held
+the **BPM**; 53 genre writes over a Chilean folklore wave; 27 `set_genre_alias` calls folding ~275
+song-rows; 5 songwriter-credit strings trimmed; 10 `albumArtist` writes clearing a source brand;
+3 album merges; 25 fingerprint-verified deletions; 6 acquisition hunts.
+
+## Durability, re-measured — the session's most useful lesson
+
+Fixes were re-checked a day later, which caught two that had silently come undone. The predictor:
+
+| mechanism | durable? |
+| --- | --- |
+| writes the **file tag** (`fix_song_metadata`) | **yes** — every one intact |
+| durable override the scanner re-applies (`set_song_genre` mode `replace`) | yes |
+| album row re-bucketing (`fix_album_metadata` merges) | yes |
+| DB override contradicted by the file tag (`fix_album_metadata` artist) | **no — reverted** |
+| `set_genre_alias` | **partially — 6 of 91 came undone** (#1078) |
+
+**Read-back passed on both of the fixes that later reverted.** It proves a write landed; it cannot
+prove the write is durable. Only re-measuring later caught it — and only because an unrelated metric
+moved back up.
+
+## Issues filed
+
+| # | |
+| --- | --- |
+| **#1071** | `fix_song_metadata` reports an error when the artist canonicalizer folds the name it was given |
+| **#1073** | a retag adds the new artist credit and never removes the superseded one (downgraded by my own correction: a scan clears it) |
+| **#1074** | `set_genre_alias` cannot fix a casing-only defect — the use case its own docs name |
+| **#1077** | `fix_song_metadata({track})` writes the file but the DB never takes it; `scan_cache` keeps a current key with a stale value |
+| **#1078** | a genre alias can be silently undone |
+| **#1079** | `orphan_file`'s 481 findings are redundant copies (2.73 GB), not missing music |
+| **#1080** | `confirmedIncomplete` recommended 6 hunts, 4 were already complete |
+| flag #23 | ABBA *Voyage* is a bucket holding foreign tracks |
+
+## What blocked, and on whom
+
+- **Dedupe** (~20 decidable groups, plus 495 same-format and 227 ambiguous): awaiting the owner's call
+  on the rule refinement — prefer the copy in the **larger album**, because a single-track album
+  trivially satisfies "matches its album's majority format".
+- **2.73 GB of redundant files** (#1079) and **`clip_not_song`** (136): destructive, owner's call.
+- **`track_collision`** (137) and **`untracked_album`** (129): blocked by #1077.
+- **Composer-as-artist**: a convention choice, not a defect — there is no composer field, so
+  retagging would destroy the information rather than move it.
+
+## Closed as not-a-backlog
+
+- **`missing_year`** (179): no song carries a year and the files hold no date tag. Data-absent.
+- **`missing_artwork`** (4,518): already established by #952 as an overcount — most render via the
+  embedded fallback.
+- **`orphan_file`** (481): redundant copies, not missing music (#1079).
+- **`fragmented_artist`** (8): all genuine collaborations. A non-zero count here is correct.
+
+## The recurring error, worth carrying
+
+Nine times this pass a probe answered an easier question than the one asked, and each was caught by
+one more measurement rather than by thinking harder:
+
+535 "ghost credits" (mostly legitimate feature credits) · 1,264 "duplicate songs" (144 groups
+disproven by duration alone) · 110 `track_collision` albums under one theory that fit 2 of them ·
+161 "duplicate albums" (`Circus` is both Britney and Lenny Kravitz) · 383 then 199 then 15
+"unindexed files" (all present under other paths) · 20 "reverted" aliases (14 never applied) ·
+`owned` predicted to undercount when it overcounts.
+
+The pattern: a **path-shaped or name-shaped test for a content-shaped question**. The fix each time
+was to ask the question directly — look the recording up by title, fingerprint it, re-issue the write
+and read the count.
+
+---
+
+## 2026-09-10, stretch 15 — acting on four owner decisions
+
+Owner answered the four pending questions. Work applied.
+
+### 1. `clip_not_song` — deleted, 136 → 0
+
+All 136 were ≤44s (max 44s), so none was a full recording. **Deleted 136**; the rule is now absent
+from the audit entirely and 129 fake single-track albums went with them (albums 7,509 → 7,380).
+
+Two checks before deleting, both worth having done:
+
+- **Flag #19's audio (`b2301d09`) is not in the list.** Deleting it would have destroyed the subject
+  of an open review flag.
+- **Tom Odell's "Another Love" (39s) *was* in the list**, and the only other Tom Odell row is the
+  393s *Zwette Edit* — a different recording.
+
+A byproduct worth recording: several real Tash Sultana song titles existed **only** as 15–20s
+Instagram snippets — `Flow`, `COMA`, `Let The Light In`, `Notion`, `MUSK`, `Blowin mi horn`. Deleting
+them makes the gap honest: the library never had those songs, it had promo clips named after them.
+They are now acquisition candidates rather than phantom holdings.
+
+One delete was refused by the harness classifier mid-batch and succeeded on a single retry; recorded
+rather than worked around.
+
+### 2. `orphan_file` — 485 staged for reclaim, 2 held back
+
+Owner chose "delete all now, trust the sampling". **The population had changed since that decision**
+(481 → 487 after the clip deletions), so the approved list was no longer the actual list. Re-verified
+the current 487 by title against every song in the library — cheap, and it is the content-shaped test
+that #1079 established as the only one that answers the question.
+
+| | |
+| --- | --- |
+| title matches a song already in the library | 467 |
+| no title match → hand-checked | 20 |
+| …of those, present after all (matcher false negatives) | **18** |
+| …**genuinely absent from the library** | **2** |
+
+The 18 were my matcher's own false negatives: track numbers embedded *inside* stored titles
+(`04 Quieto`, `07 Hay Que Gritar`), accents (`Sólo por Esta Noche` vs `Solo Por Esta Noche`),
+filenames stored as titles (`No_se_ve.mp3`), and `Artist - Title` filenames in a compilation folder.
+
+**The 2 are real, and they correct #1079.** That issue said the genuinely-absent bucket "appears to be
+empty". It is not:
+
+```
+Guy J/Esperanza/11 - 7 Steps (Original Mix).opus
+Guy J/Esperanza/11 - 7 Steps.opus
+```
+
+`search_library("7 Steps")` returns **nothing**. The `Guy J — Esperanza` album row exists with six
+tracks, all of them "Esperanza" variants. `7 Steps` is a real track from that release and the library
+has never had it. **Held back — these need indexing, not deleting.**
+
+Final list: **485 files, 2.77 GB**, staged at `kpc:/tmp/orphans_final.txt`. These have no song row, so
+`delete_song` cannot remove them — reclaiming them is a filesystem operation on the prod host, which
+by standing convention the owner runs.
+
+### 3. Dedupe rule — refined to "prefer the larger album"
+
+Adopted. The remaining decidable pairs are re-scored with album size first and majority-format only
+as a tie-break between comparably sized albums. Not yet applied; the fingerprint gate still runs per
+pair.
+
+### 4. Composer fields — filed #1083
+
+Owner asked for the missing fields to be added and a retag afterwards, rather than a retag now. Filed
+as **#1083**: no `composer` / `conductor` / `work` / `movement` columns exist, so the scanner drops
+`TCOM`/`COMPOSER` and the composer ends up in `artist`. The issue carries the schema/scanner/tool/web
+scope and the note that the eventual retag must write the **file tag**, per this pass's durability
+finding. **No tags changed.**
+
+### Totals after this stretch
+
+| | |
+| --- | --- |
+| songs | 21,289 |
+| albums | 7,380 |
+| artists | 3,751 |
+| `clip_not_song` | **0** |
+| `missing_artwork` | 4,518 → 4,384 |
+
+## Stretch 16 — the reclaim `rm` failed on all 485 paths, and that was the save
+
+The owner ran the staged filesystem reclaim. Result: **485 of 485 `rm` calls failed with
+`No such file or directory`. Nothing was deleted.**
+
+The list was not stale. It was **derived**. Staged line 1 read
+`Los Tres/Se Remata el Siglo/01 - No Sabes Que Desperdicio Tengo En El Alma.opus`; the real
+file, and the real `library_songs.path`, is
+`01 - No sabes qué desperdicio tengo en el alma.mp3` — Title Case for sentence case, accents
+stripped, extension swapped. That is my own title-normalizer's output written out as a
+filesystem path. Every track in that album carries `landed_at = 2026-07-11`, so these are
+live indexed songs two months old, not orphans. **Had those paths resolved, the command would
+have deleted 485 files the library actively serves.**
+
+The failure mode is worth naming precisely: I verified the *contents* of the list (do these
+titles exist in the library?) and never verified the *paths* (does this string name a file on
+disk?). The content check passed — of course it did; they were real songs. It was the wrong
+question, and it is the ninth time this pass a probe answered an easier question than the one
+asked.
+
+Re-measured with `audit-library.ts --rule=orphan_file --no-fail --json`:
+
+| bucket | claimed in #1079 | measured now |
+| --- | --- | --- |
+| reclaimable orphans | 481 files / 2.73 GB | **0** |
+| genuinely missing from the library | "appears to be empty" | **2** |
+
+The two real ones are `Guy J/Esperanza/11 - 7 Steps (Original Mix).opus` and
+`11 - 7 Steps.opus`. Verified both directions: both are on disk, and `library_songs` for that
+prefix skips track 10 → 12 while every other track is indexed in both variants. They want a
+**scan, not a delete** — admin-only, outside a refiner session.
+
+`kpc:/tmp/orphans_final.txt` and its container copy are removed so the list cannot be re-run.
+The reclaim lane is closed at 0 bytes.
+
+**Standing rule added:** a destructive list is only staged once each entry has been resolved
+against the filesystem it will be applied to (`[ -e ]` per path), and the staged artifact is
+the audit's own `subject` field, never a reconstruction.
+
+## Stretch 17 — the rescan did not clear the 2 orphans, because they are a scanner bug (#1089)
+
+The owner ran a full library rescan. Song count **21,295 → 21,295**; `audit-library.ts
+--rule=orphan_file` still returns the same two files. A rescan was never going to fix them.
+
+Both are healthy (3.8 MB, 152 s, decodable ogg/opus) and both sit in `scan_cache` with fully
+parsed `track_json` and `orphaned_at = null` — the scanner **reads** them fine and then drops
+them before the insert.
+
+Dumped the album's 32 cache rows and 30 `library_songs` paths from prod and replayed the
+shipped `selectAlbumTracksDetailed` locally, the [[reference_prod_data_inspection]] pattern:
+
+```
+input 32 kept 30
+DROPPED: Guy J/Esperanza/11 - 7 Steps (Original Mix).opus | norm= "steps original mix"
+DROPPED: Guy J/Esperanza/11 - 7 Steps.opus                | norm= "steps"
+```
+
+Cause, `packages/addon-sdk/src/title-match.ts:15`:
+
+```ts
+.replace(/^\d+[\s.\-]+/, '') // strip leading track numbers
+```
+
+`normalizeTitle("7 Steps")` → `"steps"`, and so does `normalizeTitle("2 Steps")`. The album has
+no canonical tracklist, so `selectAlbumTracks` keys by normalized title, the two songs collide,
+and `05 - 2 Steps` wins the lexicographic relPath tiebreak. Deterministic — it re-drops on every
+scan, which is exactly what the rescan demonstrated.
+
+Blast radius over all 21k `scan_cache` rows: **14** collisions created by the strip, **12
+benign** (`04 Quieto` vs `Quieto` — the strip doing its job), **2 harmful**. The 2 harmful are
+these files, and they are the whole `orphan_file` population. Two independent measurements agree.
+
+Fix proposed in **#1089**: strip the leading number only when it equals the file's own `track`
+value — a field already on every scanned track, and a perfect discriminator across all 16 real
+cases (`04 Quieto` track=4 strip; `7 Steps` track=11 keep).
+
+**Method note.** Three cheap checks in a row each said "not a data problem" — file size and
+`ffprobe` said the audio is fine, `scan_cache` said the parse is fine, and the DB said the row
+is absent. Only then was it worth reading the scanner. The replay is what turned a hypothesis
+into a reproduction; the blast-radius sweep is what stopped the fix from breaking the 12 benign
+cases it would otherwise have regressed.
