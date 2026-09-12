@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.41](https://github.com/kevinch3/NicotinD/compare/v0.6.40...v0.6.41) (2026-09-12)
+
+### Features
+
+* **radio:** learned genre affinity from embedding centroids (spike, not yet scoring) ([#1118](https://github.com/kevinch3/NicotinD/issues/1118)) ([3ad2027](https://github.com/kevinch3/NicotinD/commit/3ad2027da8bdc66682a9cd4c74e2f207ee3207b5)), references [#258](https://github.com/kevinch3/NicotinD/issues/258)
 ## [0.6.40](https://github.com/kevinch3/NicotinD/compare/v0.6.39...v0.6.40) (2026-09-12)
 
 ### Bug Fixes
