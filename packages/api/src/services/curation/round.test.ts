@@ -61,4 +61,16 @@ describe('assembleRound', () => {
     const ids = assembleRound(pool).map((r) => r.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
+
+  it('dedupes by id within the round even when the pool has duplicates in the first pass', () => {
+    const pool = [
+      c('dup', 'identity', 0.9),
+      c('dup', 'identity', 0.8), // same id, same kind, both high confidence
+      c('one', 'identity', 0.7),
+      c('two', 'listen', 0.6),
+    ];
+    const round = assembleRound(pool);
+    const dupCount = round.filter((r) => r.id === 'dup').length;
+    expect(dupCount).toBe(1);
+  });
 });

@@ -18,21 +18,23 @@ export function assembleRound(pool: CurationCase[], size = ROUND_SIZE): Curation
 
   const picked: CurationCase[] = [];
   const perKind = new Map<string, number>();
+  const taken = new Set<string>();
 
   // First pass: honour the cap.
   for (const c of byConfidence) {
     if (picked.length >= size) break;
+    if (taken.has(c.id)) continue;
     const used = perKind.get(c.kind) ?? 0;
     if (used >= MAX_PER_KIND) continue;
     picked.push(c);
     perKind.set(c.kind, used + 1);
+    taken.add(c.id);
   }
 
   // Second pass: the pool did not have enough variety to fill the round, so
   // take the best remaining regardless of kind. A shorter round would be worse
   // than a less varied one.
   if (picked.length < size) {
-    const taken = new Set(picked.map((p) => p.id));
     for (const c of byConfidence) {
       if (picked.length >= size) break;
       if (taken.has(c.id)) continue;
