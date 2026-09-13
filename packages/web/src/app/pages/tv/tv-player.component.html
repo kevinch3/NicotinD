@@ -100,6 +100,27 @@
           </button>
         }
 
+        <!-- Remote playback, stated on the screen that plays the audio (#1128).
+             Accent-coloured while the audio is elsewhere, because that is a
+             state of the player and not a notification — the same rule the
+             phone's "Playing on <device>" strip follows. -->
+        <button
+          appTvNavItem
+          type="button"
+          (click)="openDevices()"
+          data-testid="tv-remote-row"
+          [class]="
+            'text-sm truncate max-w-2xl px-4 py-2 rounded-lg focus:outline-none ' +
+            'focus-visible:ring-4 focus-visible:ring-white ' +
+            (elsewhere() ? 'text-theme-accent-text bg-white/10' : 'text-white/50')
+          "
+        >
+          @if (elsewhere()) {
+            {{ 'remote.playingOn' | t: { name: elsewhereName() } }} · {{ 'tv.playHere' | t }}
+          } @else {
+            {{ 'remote.playOn' | t }}
+          }
+        </button>
       </div>
     </div>
   }

@@ -151,9 +151,9 @@ somewhere unexpected.
 
 ### Player (`/player`)
 
-Full-bleed blurred backdrop, centred art, title/artist, `prev · play/pause · next`, and the Next-up
-chip that opens the D-pad queue overlay (#399). No seek bar — ◀ ▶ seek. A one-line hint teaches it
-on first arrival.
+Full-bleed blurred backdrop, centred art, title/artist, `prev · play/pause · next`, the Next-up chip
+that opens the D-pad queue overlay (#399), and a remote-playback row. No seek bar — ◀ ▶ seek. A
+one-line hint teaches it on first arrival.
 
 There is **no Radio toggle**, and the original draft above claiming one was aspirational. Radio is
 not a toggle on TV at all — see "Radio is always on" below.
@@ -163,6 +163,12 @@ not a toggle on TV at all — see "Radio is always on" below.
 A vertical list of D-pad rows covering only what a TV needs: **sign out**, **switch server**,
 **language**, **remote-control toggle**. Each choice opens a full-screen list rather than a native
 `<select>`; nothing is a form control. Admin, extensions, agent tokens and devices are absent.
+
+The remote-control screen also **names this TV** — the string other devices' pickers show for it,
+special-cased to `"NicotinD TV"` because the UA reads "Chrome on Android" and says nothing a cast
+selector needs (#393). Until #1128 that name existed only on the web Settings page, so from the
+couch there was no way to tell which entry in the phone's picker was this box, and no way at all
+with two TVs.
 
 ## Enforcement — the part that makes it stick
 
@@ -302,3 +308,30 @@ The queue overlay is reachable at last: `NowPlayingTvQueueComponent` shipped in 
 by the phone sheet**, so on TV it was dead code and the player showed one read-only Next-up line.
 The chip is now a focusable button that opens it.
 
+## Remote playback on TV (#1128)
+
+The TV was a full participant in the protocol — it registers, it is castable, it executes commands —
+with no surface saying so. `app-playing-elsewhere` and `app-device-switcher` are mounted by the
+phone sheet and by `player.component.html`, whose chrome is behind `@if (!isTv)`, so on a TV build
+neither was ever instantiated. Three consequences, all of them what "not prepared for remote audio
+playback" meant:
+
+- **A cast landed invisibly.** Audio started and the screen stayed on Home. `TvShellComponent` now
+  routes to `/player` when this TV becomes the output *and is playing* — `isPlaying`, not
+  `currentTrack`, because `restoreState()` re-loads the last track paused on every boot and a cold
+  start must not jump to the player for a track nobody asked for.
+- **Audio moved away left no sign.** The player's remote row reads "Playing on ‹device› · OK to play
+  here" in the accent colour, and is one press from bringing it back.
+- **There was no way back.** `TvDevicePickerComponent` is the output chooser in the shape every
+  other TV chooser uses — a full-screen list of buttons, never a popover (the phone's closes on an
+  outside `mousedown`, which a D-pad cannot perform) and never a `<select>` (#438). It is mounted on
+  the shell and keyed off the same `switcherOpen` signal the phone popover uses, so every existing
+  caller opens the right shape for its surface.
+
+Only the presentation is forked. The offerable/sibling rules come from the shared `otherDevicesFor`
+(`lib/device-list.ts`), used by both pickers — two pickers disagreeing about which devices are
+offerable is a bug nobody would see until they were holding both devices.
+
+Home also grows a **Now playing** entry when a track is loaded. Without it `/player` was reachable
+only by starting something, so the screen that says "your audio is on the phone" was the one screen
+you could not get to.

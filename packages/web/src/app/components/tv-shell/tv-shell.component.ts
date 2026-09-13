@@ -2,6 +2,8 @@ import { Component, effect, inject, untracked } from '@angular/core';
 import { Router, RouterOutlet } from '@angular/router';
 import { PlayerComponent } from '../player/player.component';
 import { PlayerService } from '../../services/player.service';
+import { RemotePlaybackService } from '../../services/remote-playback.service';
+import { TvDevicePickerComponent } from '../tv-device-picker/tv-device-picker.component';
 
 /**
  * The TV chrome: a router outlet and a headless audio engine.
@@ -16,7 +18,7 @@ import { PlayerService } from '../../services/player.service';
 @Component({
   selector: 'app-tv-shell',
   standalone: true,
-  imports: [RouterOutlet, PlayerComponent],
+  imports: [RouterOutlet, PlayerComponent, TvDevicePickerComponent],
   template: `
     <div class="min-h-screen bg-theme-base text-theme-primary">
       <router-outlet />
@@ -25,11 +27,19 @@ import { PlayerService } from '../../services/player.service';
            the bar — buffering, transcode fallback, false-ended recovery and the
            media session all live in it. -->
       <app-player />
+      <!-- The D-pad output chooser, on the same switcherOpen flag the phone
+           popover uses so every caller opens the right shape for its surface
+           (#1128). Mounted on the shell, not a page, so it survives a route
+           change and is reachable from wherever the strip was pressed. -->
+      @if (remote.switcherOpen()) {
+        <app-tv-device-picker />
+      }
     </div>
   `,
 })
 export class TvShellComponent {
   private readonly player = inject(PlayerService);
+  readonly remote = inject(RemotePlaybackService);
   private readonly router = inject(Router);
 
   constructor() {
@@ -53,6 +63,24 @@ export class TvShellComponent {
       if (!this.player.nowPlayingOpen()) return;
       untracked(() => {
         this.player.nowPlayingOpen.set(false);
+        void this.router.navigate(['/player']);
+      });
+    });
+
+    // A cast that lands here shows itself (#1128). Picking this TV from a
+    // phone's device switcher used to start audio and change nothing on
+    // screen — the 10-foot display stayed on Home with no artwork, no title
+    // and no transport for the track it had just started playing.
+    //
+    // `castsReceived`, not `isActiveDevice()`: this device claims the output
+    // when it plays locally too, and `isAudioOutput` is true with no session at
+    // all — so the state cannot tell "a controller cast to me" from "I am
+    // playing", and keying off it would yank the screen to the player on every
+    // ordinary play. Only a server message bumps the counter.
+    effect(() => {
+      if (this.remote.castsReceived() === 0) return;
+      untracked(() => {
+        if (this.router.url.startsWith('/player')) return;
         void this.router.navigate(['/player']);
       });
     });

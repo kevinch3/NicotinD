@@ -599,6 +599,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **Manual PWA update check**: a Settings button calling `UpdateService.checkForUpdate()` with
   outcomes surfaced through `ToastService`; `UpdateBannerComponent` remains the install CTA.
   → [web-ui.md](web-ui.md)
+- **The TV says where the audio is**: `TvDevicePickerComponent` is the D-pad output chooser (a
+  full-screen list, never the phone popover a remote cannot dismiss), sharing `otherDevicesFor` with
+  it; `TvShellComponent` routes to the player when a cast lands here.
+  → [remote-playback.md](remote-playback.md), [tv-ux.md](tv-ux.md)
 - **Changelog modal**: build-time `CHANGELOG.md` → `changelog.json`, capped; the version string in
   header and settings is clickable. → [web-ui.md](web-ui.md)
 - **Shared relative time**: one `timeAgo` (`lib/relative-time.ts`) for the Downloads feed and Admin

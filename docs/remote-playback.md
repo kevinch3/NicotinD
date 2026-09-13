@@ -307,10 +307,39 @@ press ▶
 
 ---
 
+## The TV surface (issue #1128)
+
+The phone's two surfaces are a bar (`app-playing-elsewhere`) and a popover
+(`app-device-switcher`), both mounted by the Now Playing sheet and by `player.component.html` —
+whose chrome is behind `@if (!isTv)`. So on a TV build neither was ever instantiated, and the TV
+participated fully in the protocol while saying nothing about it: a cast landed with no change on
+screen, audio moved to a phone left the transport inert with no explanation, and there was no way
+back without picking up the phone.
+
+The TV forks the **presentation** only:
+
+| | Phone / desktop | TV |
+|---|---|---|
+| "audio is elsewhere" | `PlayingElsewhereComponent` strip | a focusable row on `/player`, accent-coloured, OK brings the audio back |
+| pick an output | `DeviceSwitcherComponent` popover | `TvDevicePickerComponent`, a full-screen list of buttons |
+| a cast arriving | nothing (the sheet is already there) | `TvShellComponent` routes to `/player` |
+| this device's name | Settings → Remote playback (editable) | Settings → Remote control (read-only) |
+
+Both pickers open on the same `switcherOpen` signal, so any existing caller gets the right shape for
+its surface, and both build their list with the shared `otherDevicesFor` (`lib/device-list.ts`) —
+two pickers disagreeing about which devices are offerable is a bug nobody would see until they were
+holding both devices. A popover is the wrong shape on TV for a concrete reason, not a stylistic one:
+it closes on an outside `mousedown`, which a D-pad cannot perform.
+
+The TV routes on `isActiveDevice() && isPlaying()`, not `currentTrack()`: `restoreState()` re-loads
+the last track paused on every boot, so a cold start would otherwise jump to the player for a track
+nobody asked for. See [tv-ux.md](tv-ux.md).
+
+---
+
 ## Known limitations
 
 - **State is ephemeral.** Server restart clears the active device and playback state. All devices reconnect automatically but no track is restored.
 - **Shared library only.** Remote playback works because all devices stream from the same NicotinD instance using their own JWT tokens. External users on different NicotinD instances cannot be targeted.
-- **The TV route shows no strip.** A TV is the output in practice; when it is a controller it only has the tinted cast icon. Follow-up if anyone casts *from* a TV.
 - **Every connected tab hears every `STATE_SYNC`.** The presence socket is always up now, so the output's 2 s progress broadcast reaches every logged-in tab. Fine at household scale; a per-tab subscription would be the fix if it ever is not.
 - **No queue sync.** The queue lives in each browser's player store. Only the currently playing track is sent via `SET_TRACK`. Advancing to the next track on the receiver plays from its local queue, which may be empty.

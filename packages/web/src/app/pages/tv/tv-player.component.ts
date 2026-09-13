@@ -2,6 +2,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { Location } from '@angular/common';
 import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
+import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { NowPlayingTvQueueComponent } from '../../components/now-playing/now-playing-tv-queue/now-playing-tv-queue.component';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
@@ -37,6 +38,7 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
 export class TvPlayerComponent {
   readonly player = inject(PlayerService);
   readonly auth = inject(AuthService);
+  readonly remote = inject(RemotePlaybackService);
   private readonly location = inject(Location);
 
   readonly track = this.player.currentTrack;
@@ -46,6 +48,11 @@ export class TvPlayerComponent {
    *  sheet — so a TV build shipped it as dead code and showed one Next-up line
    *  with no way to see or change what followed (#1127). */
   readonly queueOpen = signal(false);
+
+  /** The audio is on another device: the transport here drives it, and OK on
+   *  the strip opens the chooser to bring it back (#1128). */
+  readonly elsewhere = this.remote.playingElsewhere;
+  readonly elsewhereName = computed(() => this.remote.activeDevice()?.name ?? '…');
 
   /** Blurred cover behind the sheet. Safe to bind unconditionally here — unlike
    *  the phone sheet, this component only exists while the route is active. */
@@ -57,6 +64,10 @@ export class TvPlayerComponent {
   togglePlay(): void {
     if (this.player.isPlaying()) this.player.pause();
     else this.player.resume();
+  }
+
+  openDevices(): void {
+    this.remote.setSwitcherOpen(true);
   }
 
   onQueueJump(index: number): void {

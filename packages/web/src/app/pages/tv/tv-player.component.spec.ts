@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { TvPlayerComponent } from './tv-player.component';
 import { PlayerService, type Track } from '../../services/player.service';
+import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { TranslateService } from '../../services/translate.service';
 
 const track = (id: string): Track => ({ id, title: id.toUpperCase(), artist: 'E2E Test Artist' });
@@ -25,10 +26,11 @@ describe('TvPlayerComponent', () => {
       ],
     });
     const player = TestBed.inject(PlayerService);
+    const remote = TestBed.inject(RemotePlaybackService);
     player.play(track('s1'));
     const fixture = TestBed.createComponent(TvPlayerComponent);
     fixture.detectChanges();
-    return { fixture, player };
+    return { fixture, player, remote };
   }
 
   const q = (fixture: { nativeElement: HTMLElement }, id: string) =>
@@ -80,5 +82,30 @@ describe('TvPlayerComponent', () => {
 
     expect(player.queue().map((t) => t.id)).toEqual(['s3']);
     expect(fixture.componentInstance.queueOpen()).toBe(true);
+  });
+
+  describe('remote playback (#1128)', () => {
+    it('offers the output picker even when the audio is here', () => {
+      const { fixture } = create();
+
+      expect(q(fixture, 'tv-remote-row')).not.toBeNull();
+    });
+
+    it('names the device the audio moved to', () => {
+      const { fixture, remote } = create();
+      remote.setDevices([{ id: 'phone', name: 'Safari on iPhone', type: 'web', lastSeen: 0 }]);
+      remote.setActiveDeviceId('phone');
+      fixture.detectChanges();
+
+      expect(q(fixture, 'tv-remote-row')!.textContent).toContain('Safari on iPhone');
+    });
+
+    it('pressing the row opens the chooser, which is how the audio comes back', () => {
+      const { fixture, remote } = create();
+
+      q(fixture, 'tv-remote-row')!.click();
+
+      expect(remote.switcherOpen()).toBe(true);
+    });
   });
 });

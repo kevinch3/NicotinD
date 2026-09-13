@@ -215,6 +215,40 @@ describe('RemotePlaybackService session behaviour (#877)', () => {
     expect(player.isPlaying()).toBe(false);
   });
 
+  describe('castsReceived — "a controller cast to me", which no state can tell (#1128)', () => {
+    it('counts a command that made this device play', () => {
+      sync({ activeDeviceId: 'me' });
+      expect(service.castsReceived()).toBe(0);
+
+      emit('COMMAND', { action: 'SET_TRACK', track: t2 });
+
+      expect(service.castsReceived()).toBe(1);
+    });
+
+    it('does not count a local play, which claims the output all the same', () => {
+      player.play(t1);
+      TestBed.flushEffects();
+
+      expect(service.isActiveDevice()).toBe(true);
+      expect(service.castsReceived()).toBe(0);
+    });
+
+    it('does not count a pick made on this device', () => {
+      player.play(t1);
+      TestBed.flushEffects();
+
+      service.switchToDevice('tv');
+
+      expect(service.castsReceived()).toBe(0);
+    });
+
+    it('does not count the metadata a controller mirrors while the audio is elsewhere', () => {
+      sync({ activeDeviceId: 'tv', isPlaying: true, position: 3, track: t2 });
+
+      expect(service.castsReceived()).toBe(0);
+    });
+  });
+
   it('a reconnect snapshot re-syncs the output device to the server track', () => {
     sync({ activeDeviceId: 'me' });
     emit('COMMAND', { action: 'SET_TRACK', track: t1 });
