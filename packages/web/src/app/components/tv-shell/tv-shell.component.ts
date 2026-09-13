@@ -33,6 +33,14 @@ export class TvShellComponent {
   private readonly router = inject(Router);
 
   constructor() {
+    // Radio is always on for a TV build. The five TV screens carry no radio
+    // control — the toggle lives in the phone transport and the radio chip — so
+    // a remembered `radio = false` could never be turned back on from the
+    // couch, and every queue (album, artist, genre, even a vibe tile) ended in
+    // silence (#1127). Endless playback is the 10-foot expectation; there is no
+    // "off" worth preserving when there is no way back.
+    this.player.ensureRadioOn();
+
     // `nowPlayingOpen` is the phone sheet's open flag, and existing callers
     // (the radio landing's vibe/resume actions, the song menu) set it to mean
     // "show the user what's playing now". On TV there is no sheet, so the shell

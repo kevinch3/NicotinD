@@ -12,14 +12,11 @@ import {
   RouterLink,
   RouterLinkActive,
 } from '@angular/router';
-import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../services/auth.service';
-import { PlayerService, shuffleArray } from '../../services/player.service';
-import { LibraryApiService } from '../../services/api/library-api.service';
+import { PlayerService } from '../../services/player.service';
 import { LikeService } from '../../services/like.service';
 import { RecommendationExclusionsService } from '../../services/recommendation-exclusions.service';
 import { LibraryEventsService } from '../../services/library-events.service';
-import { toTrack } from '../../lib/track-utils';
 import { mainBottomPadClass } from '../../lib/player-chrome';
 import { SetupService } from '../../services/setup.service';
 import { TransferService } from '../../services/transfer.service';
@@ -118,7 +115,6 @@ export class LayoutComponent implements OnInit, OnDestroy {
   readonly version = inject(APP_VERSION);
   private transfers = inject(TransferService);
   private acquire = inject(AcquireService);
-  private api = inject(LibraryApiService);
   private likes = inject(LikeService);
   private readonly exclusions = inject(RecommendationExclusionsService);
   private readonly libraryEvents = inject(LibraryEventsService);
@@ -291,37 +287,9 @@ export class LayoutComponent implements OnInit, OnDestroy {
     // Same shape for the listener's recommendation exclusions (menu labels).
     void this.exclusions.refresh();
 
-    // Radio source: metadata-aware track selection so playback continues with
-    // musically similar tracks. Falls back to shuffled recent songs when no seed.
-    this.player.setRadioProvider(async (seed) => {
-      const exclude = [
-        seed.currentTrack?.id,
-        ...this.player.queue().map((t) => t.id),
-        ...this.player
-          .history()
-          .slice(-20)
-          .map((t) => t.id),
-      ].filter((id): id is string => !!id);
-
-      // Filter "vibe" radio: keep pulling in-filter tracks so the mood holds.
-      const filter = this.player.radioFilter();
-      if (filter) {
-        const songs = await firstValueFrom(
-          this.api.getFilterRadio(filter, exclude, 10, seed.strategy),
-        );
-        if (songs.length) return songs.map((s) => toTrack(s));
-        // Filter exhausted → fall through to seed/shuffle so playback continues.
-      }
-
-      if (!seed.currentTrack) {
-        const songs = await firstValueFrom(this.api.getAllSongs(200, 0, { sort: 'newest' }));
-        return shuffleArray(songs.map((s) => toTrack(s)));
-      }
-      const songs = await firstValueFrom(
-        this.api.getRadioNext(seed.currentTrack.id, exclude, 10, seed.strategy),
-      );
-      return songs.map((s) => toTrack(s));
-    });
+    // The radio source is NOT registered here any more: a shell that forgets it
+    // silently loses radio, which is exactly what happened to the TV tree
+    // (#1127). `RadioSourceService` installs it from the app initializer.
   }
 
   ngOnDestroy(): void {

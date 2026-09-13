@@ -7,6 +7,7 @@ import { CoverArtComponent } from '../cover-art/cover-art.component';
 import { SkeletonComponent } from '../skeleton/skeleton.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import type { RecentPlay } from '../../services/api/api-types';
+import { playShelfSong } from '../../lib/shelf-play';
 
 /**
  * "Recently played" shelf — the first read surface over the listening log.
@@ -114,7 +115,7 @@ export class RecentlyPlayedComponent implements OnInit {
   onPlay(index: number): void {
     const tracks = this.plays().map(toTrack);
     if (tracks.length === 0) return;
-    this.player.playWithContext(tracks, index, { type: 'adhoc', name: 'Recently played' });
+    playShelfSong(this.player, tracks, index, { type: 'adhoc', name: 'Recently played' });
   }
 
   /**

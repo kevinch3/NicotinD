@@ -82,11 +82,34 @@
 
       <p class="text-sm text-white/50" data-testid="tv-seek-hint">{{ 'tv.seekHint' | t }}</p>
 
-      @if (nextUp(); as n) {
-        <p class="text-sm text-white/60 truncate max-w-2xl" data-testid="tv-next-up">
-          {{ 'tv.queue' | t }}: {{ n.title }} · {{ n.artist }}
-        </p>
-      }
+      <!-- Below the transport, one vertical group: the queue and the output
+           picker. ▼ from play/pause lands here, which is the same path the
+           radio chip uses on the phone sheet (docs/tv-ux.md "The button
+           contract"). -->
+      <div appTvNavGroup [axis]="'vertical'" class="flex flex-col items-center gap-2">
+        @if (nextUp(); as n) {
+          <button
+            appTvNavItem
+            type="button"
+            (click)="queueOpen.set(true)"
+            data-testid="tv-next-up"
+            class="text-sm text-white/60 truncate max-w-2xl px-4 py-2 rounded-lg
+                   focus:outline-none focus-visible:ring-4 focus-visible:ring-white"
+          >
+            {{ 'tv.queue' | t }}: {{ n.title }} · {{ n.artist }}
+          </button>
+        }
+
+      </div>
     </div>
+  }
+
+  @if (queueOpen()) {
+    <app-now-playing-tv-queue
+      [queue]="player.queue()"
+      (jump)="onQueueJump($event)"
+      (remove)="onQueueRemove($event)"
+      (closed)="queueOpen.set(false)"
+    />
   }
 </div>

@@ -449,6 +449,21 @@ export class PlayerService {
   }
 
   /**
+   * Turn radio on if it is not already, without the toggle's off branch.
+   *
+   * A TV build calls this at shell start: its five screens carry no radio
+   * control (the toggle lives in the phone transport and the radio chip), so a
+   * remembered `radio = false` could never be undone from the couch and every
+   * queue ended in silence (#1127). Idempotent — safe on every start, and it
+   * leaves an existing filter "vibe" alone.
+   */
+  ensureRadioOn(): void {
+    if (this.radio()) return;
+    this.radio.set(true);
+    untracked(() => void this.replenishRadio());
+  }
+
+  /**
    * Move the variety position. Steers now: the radio-appended tail of the queue
    * (never a track the listener queued) is replaced from the new strategy on
    * the next fetch, which fires immediately when radio is on.

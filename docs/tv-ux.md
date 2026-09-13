@@ -151,9 +151,12 @@ somewhere unexpected.
 
 ### Player (`/player`)
 
-Full-bleed blurred backdrop, centred art, title/artist, `prev · play/pause · next`, a Radio toggle,
-and the Next-up chip that opens the D-pad queue overlay (#399, kept as-is). No seek bar — ◀ ▶ seek.
-A one-line hint teaches it on first arrival.
+Full-bleed blurred backdrop, centred art, title/artist, `prev · play/pause · next`, and the Next-up
+chip that opens the D-pad queue overlay (#399). No seek bar — ◀ ▶ seek. A one-line hint teaches it
+on first arrival.
+
+There is **no Radio toggle**, and the original draft above claiming one was aspirational. Radio is
+not a toggle on TV at all — see "Radio is always on" below.
 
 ### Settings (`/settings`)
 
@@ -257,3 +260,45 @@ for any surface that still nests a bottom-most nav group under other chrome.
 The issue names every native control on TV, not just the seek bar. It is satisfied by
 `dpad-reachability.tv.spec.ts`'s `input, select, textarea, [contenteditable]` count being zero on
 every TV route — which is what makes the guarantee durable rather than a convention.
+
+## Radio is always on (#1127)
+
+Two things were true at once and neither was visible: the TV tree mounts `TvShellComponent`, not
+`LayoutComponent` — and `LayoutComponent.ngOnInit` was the **only** call site of
+`PlayerService.setRadioProvider`. So on a TV build `replenishRadio` returned on its first line
+(`if (!this.radioProvider …) return`) for the life of the app, and every queue ended in silence:
+
+| TV action | Queue it built | What happened at the end |
+| --- | --- | --- |
+| A vibe tile on Home | 20 tracks (`getFilterRadio(filter, [], 20)`) | silence — radio was *on*, and still could not replenish |
+| An artist tile | ≤ 200 | silence |
+| A genre tile | ≤ 100 | silence |
+| An album, or a track in one | the album | silence |
+| A recently-played tile | ≤ 20 | silence |
+
+Two fixes, and the first matters more than the bug:
+
+1. **The radio source is registered where no shell can forget it.** `RadioSourceService`
+   (`services/radio-source.service.ts`), installed from the app initializer. "A shell must remember
+   to register the radio source" is not a contract a shell can be trusted with: forgetting it throws
+   nothing, logs nothing, and stops the music twenty minutes later — pointing at the radio formula,
+   the network, the addon, anywhere but a missing call. `scripts/radio-source-registration.test.ts`
+   fails if a component takes it back.
+2. **`PlayerService.ensureRadioOn()` at TV shell start.** The five TV screens carry no radio control
+   (the toggle lives in the phone transport and the radio chip), so a remembered `radio = false`
+   could never be undone from the couch. Endless playback is the 10-foot expectation and there is no
+   "off" worth preserving when there is no way back. Idempotent, and it leaves an in-flight filter
+   vibe alone.
+
+**A song press on Home seeds radio from that song.** `playShelfSong` (`lib/shelf-play.ts`) is the
+one decision, shared by the three Home shelves: on phone and desktop the shelf decides (a
+recommendation tile seeds radio, the history shelf plays itself as a queue), on TV every press seeds
+radio and asks for the player. The variety position is the listener's stored strategy — `balanced`
+(`DEFAULT_STRATEGY`) unless they changed it elsewhere; the TV offers no chip, so it never diverges
+on its own. Routing goes through `nowPlayingOpen`, which the shell already adapts into a route
+change, rather than a second navigation call in every shelf.
+
+The queue overlay is reachable at last: `NowPlayingTvQueueComponent` shipped in #399 mounted **only
+by the phone sheet**, so on TV it was dead code and the player showed one read-only Next-up line.
+The chip is now a focusable button that opens it.
+

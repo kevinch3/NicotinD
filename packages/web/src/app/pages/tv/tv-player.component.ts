@@ -1,8 +1,9 @@
-import { Component, computed, inject } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { Location } from '@angular/common';
 import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
+import { NowPlayingTvQueueComponent } from '../../components/now-playing/now-playing-tv-queue/now-playing-tv-queue.component';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import { TranslatePipe } from '../../pipes/translate.pipe';
@@ -24,7 +25,13 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
 @Component({
   selector: 'app-tv-player',
   standalone: true,
-  imports: [CoverArtComponent, TvNavGroupDirective, TvNavItemDirective, TranslatePipe],
+  imports: [
+    CoverArtComponent,
+    NowPlayingTvQueueComponent,
+    TvNavGroupDirective,
+    TvNavItemDirective,
+    TranslatePipe,
+  ],
   templateUrl: './tv-player.component.html',
 })
 export class TvPlayerComponent {
@@ -34,6 +41,11 @@ export class TvPlayerComponent {
 
   readonly track = this.player.currentTrack;
   readonly nextUp = computed(() => this.player.queue()[0] ?? null);
+
+  /** The D-pad queue overlay (#399), previously reachable only from the phone
+   *  sheet — so a TV build shipped it as dead code and showed one Next-up line
+   *  with no way to see or change what followed (#1127). */
+  readonly queueOpen = signal(false);
 
   /** Blurred cover behind the sheet. Safe to bind unconditionally here — unlike
    *  the phone sheet, this component only exists while the route is active. */
@@ -45,6 +57,15 @@ export class TvPlayerComponent {
   togglePlay(): void {
     if (this.player.isPlaying()) this.player.pause();
     else this.player.resume();
+  }
+
+  onQueueJump(index: number): void {
+    this.player.jumpToQueueIndex(index);
+    this.queueOpen.set(false);
+  }
+
+  onQueueRemove(index: number): void {
+    this.player.removeFromQueue(index);
   }
 
   back(): void {

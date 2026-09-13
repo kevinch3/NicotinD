@@ -23,6 +23,7 @@ import { PlayerService } from './services/player.service';
 import { AuthService } from './services/auth.service';
 import { AuthApiService } from './services/api/auth-api.service';
 import { AutoPreserveCoordinator } from './services/auto-preserve-coordinator';
+import { RadioSourceService } from './services/radio-source.service';
 import pkg from '../../../../package.json';
 import { switchMap } from 'rxjs/operators';
 import { TranslateService } from './services/translate.service';
@@ -98,6 +99,10 @@ export const appConfig: ApplicationConfig = {
       // coordinator has no equivalent concern. Native apps default to "off" and
       // the only effect cost is reading two signals.
       inject(AutoPreserveCoordinator);
+      // The library side of radio, wired here rather than in a shell: a shell
+      // that forgets it silently loses radio, which is what stranded the TV
+      // tree with a queue that could never replenish (#1127).
+      inject(RadioSourceService).install();
       // Captured here because the .then() below runs outside the injection
       // context (needed for the deferred-refresh effect).
       const injector = inject(Injector);
