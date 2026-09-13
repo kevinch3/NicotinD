@@ -1,9 +1,16 @@
 import { Hono } from 'hono';
 import type { AuthEnv } from '../middleware/auth.js';
-import { parseLibraryFilter, type LibraryFilter, type Song } from '@nicotind/core';
+import {
+  parseLibraryFilter,
+  type LibraryFilter,
+  type RadioLane,
+  type RadioProvenance,
+  type Song,
+} from '@nicotind/core';
 import { getDatabase } from '../db.js';
 import {
   rankCandidates,
+  RADIO_FORMULA_VERSION,
   recentPlayFactor,
   type RankQuota,
   RECENT_PLAY_WINDOW_MS,
@@ -299,6 +306,41 @@ export interface RadioResult {
 /** Extract the ranked candidates as full Song rows (the route's response shape). */
 export function radioSongs(result: RadioResult): Song[] {
   return result.ranked.map((e) => rowToSong(e.song._row));
+}
+
+/**
+ * How this generation actually scored, for the client to display (#1124).
+ * `genreAxis` is read off the RESULT, never off the request: the learned axis
+ * is silently skipped when no centroid covers the genres in play, so asking
+ * `getRadioSettings().genreAffinity` would report a wish rather than a fact.
+ */
+export function radioProvenance(
+  result: RadioResult,
+  strategy: RecommendationStrategy,
+  lane: RadioLane,
+): RadioProvenance {
+  return {
+    formulaVersion: RADIO_FORMULA_VERSION,
+    genreAxis: lane === 'filter' ? 'station' : result.genreAffinity ? 'learned' : 'lexical',
+    strategy: strategy.id,
+    lane,
+  };
+}
+
+/**
+ * The response body. Opt-in by `?provenance=1` rather than an unconditional
+ * envelope: the bare `Song[]` is the shape every already-installed client
+ * (Android, TV, desktop) parses, and those ship their own bundled web build, so
+ * an unconditional change breaks a phone that simply has not been updated.
+ */
+export function radioBody(
+  result: RadioResult,
+  strategy: RecommendationStrategy,
+  lane: RadioLane,
+  wantsProvenance: boolean,
+): Song[] | { songs: Song[]; provenance: RadioProvenance } {
+  const songs = radioSongs(result);
+  return wantsProvenance ? { songs, provenance: radioProvenance(result, strategy, lane) } : songs;
 }
 
 /** The seed-derived knobs the candidate pool is built from — a real seed
@@ -947,6 +989,8 @@ export function radioRoutes() {
     // by default so the regular radio is untouched. Seed and list lanes only —
     // a station already replaces the genre axis with graded membership.
     const learnedGenreAffinity = getRadioSettings(db).genreAffinity;
+    // Opt-in envelope (#1124): an already-installed client parses a bare array.
+    const wantsProvenance = c.req.query('provenance') === '1';
 
     // A seed *list* → list-seeded radio ("keep the vibe"). Takes precedence
     // over the single-seed and filter lanes. Capped at the recently-played
@@ -964,7 +1008,7 @@ export function radioRoutes() {
       // deleted song. Only an entirely-unresolvable list is an error.
       if (seedRows.length === 0) return c.json({ error: 'No seed songs found' }, 404);
       return c.json(
-        radioSongs(
+        radioBody(
           buildListRadio(db, seedRows, {
             count,
             excludeIds,
@@ -972,6 +1016,9 @@ export function radioRoutes() {
             strategy,
             learnedGenreAffinity,
           }),
+          strategy,
+          'list',
+          wantsProvenance,
         ),
       );
     }
@@ -987,7 +1034,12 @@ export function radioRoutes() {
         return c.json({ error: '"seedId" or a filter is required' }, 400);
       }
       return c.json(
-        radioSongs(buildFilterRadio(db, filter, { count, excludeIds, userId, strategy })),
+        radioBody(
+          buildFilterRadio(db, filter, { count, excludeIds, userId, strategy }),
+          strategy,
+          'filter',
+          wantsProvenance,
+        ),
       );
     }
 
@@ -997,8 +1049,11 @@ export function radioRoutes() {
     if (!seedRow) return c.json({ error: 'Seed song not found' }, 404);
 
     return c.json(
-      radioSongs(
+      radioBody(
         buildSeedRadio(db, seedRow, { count, excludeIds, userId, strategy, learnedGenreAffinity }),
+        strategy,
+        'seed',
+        wantsProvenance,
       ),
     );
   });

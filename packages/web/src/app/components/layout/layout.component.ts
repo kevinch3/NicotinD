@@ -307,7 +307,9 @@ export class LayoutComponent implements OnInit, OnDestroy {
       const filter = this.player.radioFilter();
       if (filter) {
         const songs = await firstValueFrom(
-          this.api.getFilterRadio(filter, exclude, 10, seed.strategy),
+          // The player lane is the one that reports provenance (#1124) — the
+          // chip describes the radio you are hearing, not a shelf's query.
+          this.api.getFilterRadio(filter, exclude, 10, seed.strategy, { provenance: true }),
         );
         if (songs.length) return songs.map((s) => toTrack(s));
         // Filter exhausted → fall through to seed/shuffle so playback continues.
@@ -318,7 +320,9 @@ export class LayoutComponent implements OnInit, OnDestroy {
         return shuffleArray(songs.map((s) => toTrack(s)));
       }
       const songs = await firstValueFrom(
-        this.api.getRadioNext(seed.currentTrack.id, exclude, 10, seed.strategy),
+        this.api.getRadioNext(seed.currentTrack.id, exclude, 10, seed.strategy, {
+          provenance: true,
+        }),
       );
       return songs.map((s) => toTrack(s));
     });

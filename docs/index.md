@@ -342,6 +342,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   chosen by `?strategy=`, stamped on poll scenarios, rendered by `dump-radio --strategy`; the Now
   Playing radio chip's three-position variety control maps complaints to remedies in one core
   function. `STRATEGIES`, `resolveStrategy`, `strategyForVariety`, `radio-variety`. → [radio.md](radio.md)
+- **Radio provenance**: the queue reports the formula version, the genre axis that actually ran
+  (`learned` only when a centroid covered it; `station` for a filter radio) and the strategy, behind
+  an opt-in `?provenance=1` envelope so an installed client still parses the bare array.
+  `RadioProvenance`, `radioProvenance`, `radioBody`, `radio-chip-provenance`. → [radio.md](radio.md)
 - **Per-user exclusions**: "Don't recommend this" holds a song out of every feed for one listener
   without touching the library; explicit votes and a derived early-skip rule (`SKIP_RULE`) feed the
   `excludeIds` layer at request time, twin recordings included. `recordFeedback`, `excludedSongIds`,

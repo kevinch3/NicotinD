@@ -1,5 +1,5 @@
 import type { TrackReportReason } from '@nicotind/core';
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { type Observable, of, map, catchError, tap, timeout } from 'rxjs';
 import { createCachedObservable } from '../../lib/cached-observable';
@@ -15,6 +15,7 @@ import type {
   LibraryFilter,
   ArtistInfoResponse,
   IdentifyOutcome,
+  RadioProvenance,
   StrategyId,
 } from '@nicotind/core';
 import { serializeLibraryFilter, isEmptyLibraryFilter } from '@nicotind/core';
@@ -546,10 +547,54 @@ export class LibraryApiService {
     });
   }
 
-  getRadioNext(seedId: string, exclude: string[], count = 10, strategy?: StrategyId) {
-    return this.http.get<Song[]>('/api/radio/next', {
-      params: withStrategy({ seedId, exclude: exclude.join(','), count }, strategy),
-    });
+  /**
+   * How the queue *being listened to* was generated (#1124) — set only by a
+   * call that passed `{ provenance: true }`, which is the player's own refill.
+   * Shelves and blends call the same endpoints as a recommendation source, and
+   * deliberately leave this alone: the chip describes the radio you are
+   * hearing, not the last recommendation query the page happened to make.
+   * Null until a provenance-tracked call lands, or against a server too old to
+   * send the envelope.
+   */
+  private readonly _radioProvenance = signal<RadioProvenance | null>(null);
+  readonly radioProvenance = this._radioProvenance.asReadonly();
+
+  /**
+   * The envelope is opt-in per request rather than the response shape, because
+   * an installed Android/TV/desktop client bundles its own web build and parses
+   * the bare array — an unconditional envelope breaks a phone that has simply
+   * not been updated. An array reply here means exactly that (an older server),
+   * and is handled rather than crashed on.
+   */
+  private radioGet(params: QueryParams, provenance: boolean): Observable<Song[]> {
+    if (!provenance) return this.http.get<Song[]>('/api/radio/next', { params });
+    return this.http
+      .get<Song[] | { songs: Song[]; provenance: RadioProvenance }>('/api/radio/next', {
+        params: { ...params, provenance: '1' },
+      })
+      .pipe(
+        map((res) => {
+          if (Array.isArray(res)) {
+            this._radioProvenance.set(null);
+            return res;
+          }
+          this._radioProvenance.set(res.provenance);
+          return res.songs;
+        }),
+      );
+  }
+
+  getRadioNext(
+    seedId: string,
+    exclude: string[],
+    count = 10,
+    strategy?: StrategyId,
+    opts: { provenance?: boolean } = {},
+  ) {
+    return this.radioGet(
+      withStrategy({ seedId, exclude: exclude.join(','), count }, strategy),
+      opts.provenance === true,
+    );
   }
 
   /** List-seeded radio ("keep the vibe"): one generation scored against the
@@ -561,10 +606,17 @@ export class LibraryApiService {
   }
 
   /** Filter-seeded radio (no seed song): start a "vibe" from a LibraryFilter. */
-  getFilterRadio(filter: LibraryFilter, exclude: string[], count = 20, strategy?: StrategyId) {
-    return this.http.get<Song[]>('/api/radio/next', {
-      params: withFilter(withStrategy({ exclude: exclude.join(','), count }, strategy), filter),
-    });
+  getFilterRadio(
+    filter: LibraryFilter,
+    exclude: string[],
+    count = 20,
+    strategy?: StrategyId,
+    opts: { provenance?: boolean } = {},
+  ) {
+    return this.radioGet(
+      withFilter(withStrategy({ exclude: exclude.join(','), count }, strategy), filter),
+      opts.provenance === true,
+    );
   }
 
   /** A uniformly random slice of the landed library — the "Taste breakers"

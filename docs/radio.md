@@ -751,6 +751,34 @@ On TV the chip's two buttons are direct items of the Now Playing root nav group
 panel is its own horizontal group; the mini player and the TV player carry no
 chip.
 
+### Provenance line (#1124)
+
+The panel's last line says how the queue was actually made —
+`formula v8 · balanced · genre by sound` (`radio-chip-provenance`). It exists
+because `RADIO_FORMULA_VERSION` used to live only on the server: once the genre
+axis is a setting ([genre-affinity.md](genre-affinity.md)) the same seed yields
+different queues depending on a flag the listener cannot see, and a screenshot
+of a bad radio could not say which radio it was.
+
+Three details are load-bearing:
+
+- **`genreAxis` is read off the RESULT, not the request.** `resolveGenreAffinity`
+  returns nothing when no stored centroid covers the genres in play, so the
+  setting says what was *wanted* and only `RadioResult.genreAffinity` says what
+  *ran*. A filter radio reports `station`, because it replaces the genre axis
+  with graded membership rather than scoring it — calling that "lexical" would
+  be false.
+- **The envelope is opt-in (`?provenance=1`), not the response shape.** The bare
+  `Song[]` is what every already-installed Android/TV/desktop client parses, and
+  those bundle their own web build, so an unconditional envelope breaks a phone
+  that has merely not been updated. The client also tolerates an array reply,
+  which is what an older server sends.
+- **Only the player lane asks for it.** `LibraryApiService.radioProvenance` is
+  set by calls made with `{ provenance: true }` — the queue refill in
+  `layout.component.ts`. Shelves, blends and "keep the vibe" hit the same
+  endpoints as a recommendation source and deliberately leave it alone: the chip
+  describes the radio you are hearing, not the last query the page made.
+
 ## Per-user exclusions ("Don't recommend this")
 
 A listener can hold a song out of every feed without touching the library:
@@ -857,7 +885,7 @@ docs/curated-playlists.md "Covers").
 
 | Method | Path              | Params                                                                                                                                                                                                                                                                                                                       | Returns                                     |
 | ------ | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| GET    | `/api/radio/next` | **one of** `seedId` (seed radio), `seedIds` (comma-separated, list-seeded "keep the vibe" — capped at 20, unknown ids skipped, 404 only when none resolve) **or** a serialized `LibraryFilter` (filter radio — `mood`, `genre`, `bpmMin`, axis buckets, …); plus `exclude` (comma-separated IDs), `count` (1–50, default 10) | `Song[]` (`[]` if a filter matches nothing) |
+| GET    | `/api/radio/next` | **one of** `seedId` (seed radio), `seedIds` (comma-separated, list-seeded "keep the vibe" — capped at 20, unknown ids skipped, 404 only when none resolve) **or** a serialized `LibraryFilter` (filter radio — `mood`, `genre`, `bpmMin`, axis buckets, …); plus `exclude` (comma-separated IDs), `count` (1–50, default 10), `provenance=1` (envelope, below) | `Song[]` (`[]` if a filter matches nothing), or `{ songs, provenance }` with `provenance=1` |
 
 ## Perceptual features (shipped)
 

@@ -8,6 +8,7 @@ import {
 } from '@nicotind/core';
 import { firstValueFrom } from 'rxjs';
 import { PlayerService } from '../../../services/player.service';
+import { LibraryApiService } from '../../../services/api/library-api.service';
 import { RecommendationsApiService } from '../../../services/api/recommendations-api.service';
 import { TranslateService } from '../../../services/translate.service';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
@@ -39,6 +40,7 @@ const KIND_FOR_VARIETY: Record<Variety, FeedbackKind> = {
 export class RadioChipComponent {
   readonly player = inject(PlayerService);
   private readonly api = inject(RecommendationsApiService);
+  private readonly library = inject(LibraryApiService);
   private readonly i18n = inject(TranslateService);
 
   readonly VARIETIES = VARIETIES;
@@ -56,6 +58,25 @@ export class RadioChipComponent {
     }
     const track = this.player.currentTrack();
     return track ? this.i18n.t('nowPlaying.radioSeed', { title: track.title }) : '';
+  });
+
+  /**
+   * How the queue was generated (#1124): version, genre axis and strategy.
+   * Null before the first player-lane refill, and against a server that does
+   * not send the envelope — the panel then simply omits the line rather than
+   * guessing a version it cannot know.
+   */
+  readonly provenance = this.library.radioProvenance;
+
+  /** `v8 · balanced · learned genre` — one line, already translated. */
+  readonly provenanceLabel = computed(() => {
+    const p = this.provenance();
+    if (!p) return '';
+    return [
+      this.i18n.t('nowPlaying.radioFormula', { version: String(p.formulaVersion) }),
+      this.i18n.t(`nowPlaying.radioStrategy.${p.strategy}`),
+      this.i18n.t(`nowPlaying.radioAxis.${p.genreAxis}`),
+    ].join(' · ');
   });
 
   toggleExpanded(): void {

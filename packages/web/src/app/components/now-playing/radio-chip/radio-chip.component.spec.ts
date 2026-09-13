@@ -5,9 +5,17 @@ import { vi } from 'vitest';
 import { RadioChipComponent } from './radio-chip.component';
 import { PlayerService } from '../../../services/player.service';
 import { RecommendationsApiService } from '../../../services/api/recommendations-api.service';
-import type { StrategyId } from '@nicotind/core';
+import { LibraryApiService } from '../../../services/api/library-api.service';
+import type { RadioProvenance, StrategyId } from '@nicotind/core';
 
-function setup(over: { radio?: boolean; strategy?: StrategyId; filter?: unknown } = {}) {
+function setup(
+  over: {
+    radio?: boolean;
+    strategy?: StrategyId;
+    filter?: unknown;
+    provenance?: RadioProvenance | null;
+  } = {},
+) {
   const radioStrategy = signal<StrategyId>(over.strategy ?? 'balanced');
   const player = {
     radio: () => over.radio ?? true,
@@ -27,6 +35,10 @@ function setup(over: { radio?: boolean; strategy?: StrategyId; filter?: unknown 
     providers: [
       { provide: PlayerService, useValue: player },
       { provide: RecommendationsApiService, useValue: api },
+      {
+        provide: LibraryApiService,
+        useValue: { radioProvenance: signal(over.provenance ?? null).asReadonly() },
+      },
     ],
   });
   const fixture = TestBed.createComponent(RadioChipComponent);
@@ -104,6 +116,42 @@ describe('RadioChipComponent', () => {
     off.q('radio-chip-expand')!.click();
     off.fixture.detectChanges();
     expect(off.q('radio-chip-description')!.textContent).toContain('nowPlaying.radioIdle');
+  });
+
+  it('omits the provenance line until a player-lane radio has reported one', () => {
+    const { q, fixture } = setup();
+    q('radio-chip-expand')!.click();
+    fixture.detectChanges();
+    // Null provenance means "this server did not tell us" — say nothing rather
+    // than print a version we would be guessing.
+    expect(q('radio-chip-provenance')).toBeNull();
+  });
+
+  it('reports the formula, the strategy and the genre axis that actually ran', () => {
+    const { q, fixture } = setup({
+      provenance: { formulaVersion: 8, genreAxis: 'learned', strategy: 'balanced', lane: 'seed' },
+    });
+    q('radio-chip-expand')!.click();
+    fixture.detectChanges();
+    const text = q('radio-chip-provenance')!.textContent!;
+    expect(text).toContain('nowPlaying.radioFormula');
+    expect(text).toContain('nowPlaying.radioStrategy.balanced');
+    expect(text).toContain('nowPlaying.radioAxis.learned');
+  });
+
+  it('distinguishes a station from a lexical genre axis', () => {
+    const { q, fixture } = setup({
+      filter: { genres: ['Jazz'] },
+      provenance: {
+        formulaVersion: 8,
+        genreAxis: 'station',
+        strategy: 'different',
+        lane: 'filter',
+      },
+    });
+    q('radio-chip-expand')!.click();
+    fixture.detectChanges();
+    expect(q('radio-chip-provenance')!.textContent).toContain('nowPlaying.radioAxis.station');
   });
 
   it('arrow keys move the position; Escape collapses', () => {

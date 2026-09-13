@@ -7,6 +7,7 @@ import { upsertArtistOrigin } from '../services/artist-origins.js';
 import { DESCRIPTOR_VERSION, upsertDescriptors } from '../services/descriptor-store.js';
 import { recordFeedback } from '../services/recommendation/feedback-store.js';
 import { radioRoutes, buildFilterRadio, stationCentroid } from './radio.js';
+import { RADIO_FORMULA_VERSION } from '../services/radio.service.js';
 
 let testDb: Database = (() => {
   const d = new Database(':memory:');
@@ -1552,6 +1553,50 @@ describe('radio /next — the learned genre axis opt-in (docs/genre-affinity.md)
   it('is OFF by default: the regular (lexical) radio is untouched', async () => {
     const p = await firstPositions();
     expect(p.bigRoom).toBeLessThan(p.minimal);
+  });
+
+  /**
+   * #1124. Two things are pinned here and both are contracts, not cosmetics:
+   * the bare array stays the default shape (an installed phone parses it), and
+   * `genreAxis` reports the axis that RAN — reading the setting instead would
+   * claim "learned" on a library whose centroids do not cover the seed.
+   */
+  it('reports the axis that actually ran, only when the envelope is asked for', async () => {
+    const { setRadioSettings } = await import('../services/radio-settings.js');
+
+    const bare = await (await app.request('/radio/next?seedId=th0&count=5')).json();
+    expect(Array.isArray(bare)).toBe(true);
+
+    const off = (await (
+      await app.request('/radio/next?seedId=th0&count=5&provenance=1')
+    ).json()) as { songs: unknown[]; provenance: Record<string, unknown> };
+    expect(Array.isArray(off.songs)).toBe(true);
+    expect(off.songs).toHaveLength(5);
+    expect(off.provenance).toEqual({
+      formulaVersion: RADIO_FORMULA_VERSION,
+      genreAxis: 'lexical',
+      strategy: 'balanced',
+      lane: 'seed',
+    });
+
+    setRadioSettings(testDb, { genreAffinity: true });
+    const on = (await (
+      await app.request('/radio/next?seedId=th0&count=5&provenance=1&strategy=similar')
+    ).json()) as { provenance: Record<string, unknown> };
+    expect(on.provenance).toMatchObject({ genreAxis: 'learned', strategy: 'similar' });
+    setRadioSettings(testDb, { genreAffinity: false });
+  });
+
+  it('calls a station a station, not a lexical genre axis', async () => {
+    const { setRadioSettings } = await import('../services/radio-settings.js');
+    // Even with the learned axis ON, a filter radio grades genre membership
+    // instead of scoring the axis — saying "lexical" here would be a lie.
+    setRadioSettings(testDb, { genreAffinity: true });
+    const res = await app.request('/radio/next?genre=Tech%20House&count=5&provenance=1');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { provenance: Record<string, unknown> };
+    expect(body.provenance).toMatchObject({ genreAxis: 'station', lane: 'filter' });
+    setRadioSettings(testDb, { genreAffinity: false });
   });
 
   it('when enabled, the audio neighbour outranks the lexically-equal stranger', async () => {
