@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.43](https://github.com/kevinch3/NicotinD/compare/v0.6.42...v0.6.43) (2026-09-13)
+
+### Bug Fixes
+
+* **radio:** calibrate the learned genre axis on the production library ([#1120](https://github.com/kevinch3/NicotinD/issues/1120)) ([b61d928](https://github.com/kevinch3/NicotinD/commit/b61d928cd5d7abee5147cd12c75541f1f2fe058c)), references [#1118](https://github.com/kevinch3/NicotinD/issues/1118) [#1119](https://github.com/kevinch3/NicotinD/issues/1119) [#1119](https://github.com/kevinch3/NicotinD/issues/1119)
 ## [0.6.42](https://github.com/kevinch3/NicotinD/compare/v0.6.41...v0.6.42) (2026-09-13)
 
 ### Bug Fixes
