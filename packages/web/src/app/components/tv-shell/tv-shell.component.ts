@@ -3,6 +3,7 @@ import { Router, RouterOutlet } from '@angular/router';
 import { PlayerComponent } from '../player/player.component';
 import { PlayerService } from '../../services/player.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
+import { UpdateBannerComponent } from '../update-banner/update-banner.component';
 import { TvDevicePickerComponent } from '../tv-device-picker/tv-device-picker.component';
 
 /**
@@ -18,7 +19,7 @@ import { TvDevicePickerComponent } from '../tv-device-picker/tv-device-picker.co
 @Component({
   selector: 'app-tv-shell',
   standalone: true,
-  imports: [RouterOutlet, PlayerComponent, TvDevicePickerComponent],
+  imports: [RouterOutlet, PlayerComponent, UpdateBannerComponent, TvDevicePickerComponent],
   template: `
     <div class="min-h-screen bg-theme-base text-theme-primary">
       <router-outlet />
@@ -34,6 +35,10 @@ import { TvDevicePickerComponent } from '../tv-device-picker/tv-device-picker.co
       @if (remote.switcherOpen()) {
         <app-tv-device-picker />
       }
+      <!-- The update surface the TV tree used to lack entirely (#1126): the
+           banner lived only in layout.component.html, so a TV build had no sign
+           an update was applying. -->
+      <app-update-banner />
     </div>
   `,
 })

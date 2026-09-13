@@ -7,10 +7,14 @@ import { PlayerService } from '../../services/player.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 import { PlayerComponent } from '../player/player.component';
+import { UpdateBannerComponent } from '../update-banner/update-banner.component';
 import { TvDevicePickerComponent } from '../tv-device-picker/tv-device-picker.component';
 
 @Component({ selector: 'app-player', template: '' })
 class StubPlayerComponent {}
+
+@Component({ selector: 'app-update-banner', template: '' })
+class StubUpdateBannerComponent {}
 
 @Component({ selector: 'app-tv-device-picker', template: '' })
 class StubTvDevicePickerComponent {}
@@ -29,8 +33,10 @@ describe('TvShellComponent', () => {
       ],
     });
     TestBed.overrideComponent(TvShellComponent, {
-      remove: { imports: [PlayerComponent, TvDevicePickerComponent] },
-      add: { imports: [StubPlayerComponent, StubTvDevicePickerComponent] },
+      remove: { imports: [PlayerComponent, UpdateBannerComponent, TvDevicePickerComponent] },
+      add: {
+        imports: [StubPlayerComponent, StubUpdateBannerComponent, StubTvDevicePickerComponent],
+      },
     });
     const player = TestBed.inject(PlayerService);
     const remote = TestBed.inject(RemotePlaybackService);

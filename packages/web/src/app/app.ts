@@ -7,6 +7,7 @@ import { PresenceService } from './services/presence.service';
 import { KeyboardShortcutsService } from './services/keyboard-shortcuts.service';
 import { BackButtonService } from './services/native/back-button.service';
 import { TvChannelsService } from './services/native/tv-channels.service';
+import { UpdateService } from './services/update.service';
 import { ToastOutletComponent } from './components/toast-outlet/toast-outlet.component';
 import { DesktopTitleBarOverlayComponent } from './components/desktop-title-bar-overlay/desktop-title-bar-overlay.component';
 
@@ -25,6 +26,7 @@ export class App {
   private keyboardShortcuts = inject(KeyboardShortcutsService);
   private backButton = inject(BackButtonService);
   private tvChannels = inject(TvChannelsService);
+  private updates = inject(UpdateService);
 
   // `App` is the root component (mounted once, never destroyed), so this
   // subscription outlives the app regardless — kept as a field rather than
@@ -47,6 +49,14 @@ export class App {
 
     // Google TV Play Next + Assistant voice playback (Android TV only).
     this.tvChannels.initialize();
+
+    // Background PWA updates (#1126): the resume/periodic checks an installed
+    // standalone app never gets from a navigation, and the auto-apply that
+    // replaces a banner nobody presses. A no-op wherever the service worker is
+    // disabled (dev, the Capacitor shells, Electron). Started here rather than
+    // in the initializer because `UpdateService` reads `APP_VERSION` from
+    // app.config, and app.config importing it back would be a module cycle.
+    this.updates.start();
 
     // Redirect to setup if needed (runs after APP_INITIALIZER completes).
     //

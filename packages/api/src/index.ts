@@ -45,6 +45,7 @@ import { remoteAccessRoutes } from './routes/remote-access.js';
 import { importRoutes } from './routes/import.js';
 import { importUploadRoutes } from './routes/import-upload.js';
 import { shouldServeSpaIndex } from './services/spa-fallback.js';
+import { cacheControlForStatic } from './services/static-cache.js';
 import { ImportUploadService } from './services/import-upload.service.js';
 import { LibraryImportService } from './services/library-import.service.js';
 import { reviewRoutes } from './routes/review.js';
@@ -980,6 +981,15 @@ export function createApp({
 
   // Serve web UI static files
   if (webDistPath) {
+    // Cache directives first: `serveStatic` sets only Content-Type, and a
+    // response with no freshness information is heuristically cacheable — which
+    // is how a browser pins a stale `index.html`/`ngsw.json` and an installed
+    // PWA stops seeing updates (#1126). See services/static-cache.ts.
+    app.use('*', async (c, next) => {
+      const value = cacheControlForStatic(c.req.path);
+      if (value) c.header('Cache-Control', value);
+      await next();
+    });
     app.use('*', serveStatic({ root: webDistPath }));
     // Server-side OG/Twitter meta for shared links so crawlers (Slack, iMessage,
     // WhatsApp, …) render a rich preview — they don't run the SPA's JS. Must come

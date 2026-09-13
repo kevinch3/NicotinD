@@ -596,9 +596,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   invisible to a diff of `online`. `isOffline` is a `computed`;
   `reportServerFailure`/`reportServerSuccess` flip it both ways mid-session.
   → [mobile-app.md](mobile-app.md)
-- **Manual PWA update check**: a Settings button calling `UpdateService.checkForUpdate()` with
-  outcomes surfaced through `ToastService`; `UpdateBannerComponent` remains the install CTA.
-  → [web-ui.md](web-ui.md)
+- **PWA updates apply themselves**: `UpdateService.start()` re-checks on resume, `pageshow` and a
+  30-min timer — the navigations an installed standalone app never makes — and `canApplyUpdateNow`
+  activates in the background, never while playing or visible; `serverIsNewer` outvotes a worker
+  holding a stale manifest. → [web-ui.md](web-ui.md)
 - **The TV says where the audio is**: `TvDevicePickerComponent` is the D-pad output chooser (a
   full-screen list, never the phone popover a remote cannot dismiss), sharing `otherDevicesFor` with
   it; `TvShellComponent` routes to the player when a cast lands here.
@@ -657,6 +658,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 
 ### Build, CI, deploy & ops
 
+- **Cache directives for the static build**: `cacheControlForStatic` splits content-hashed output
+  (`immutable`) from everything whose name outlives its bytes (`no-cache`), because Hono's
+  `serveStatic` sends no freshness at all and a heuristically-cached `index.html`/`ngsw.json` strands
+  an installed PWA on an old build. → [web-ui.md](web-ui.md)
 - **Quality gates assert their own denominator**: a gate that computes a smaller candidate set than it
   should still exits 0 truthfully. Gates derive their denominator independently, print what they
   examined, fail on what they cannot classify, and check allowlists both ways.
