@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { FIXTURE, expandGroup, openAlbumCard } from '../helpers';
+import { FIXTURE, expandGroup, openAlbumCard, trackTitle } from '../helpers';
 
 /** Max currentTime across the (double-buffered) audio elements. */
 const audioTime = (page: Page) =>
@@ -189,7 +189,7 @@ test.describe('player controls', () => {
     await startAlbum(page);
     await expect(page.getByTestId('player-title')).toHaveText('Opening Static');
 
-    await page.getByTestId('track-row-title').filter({ hasText: 'Sixth Sense' }).click();
+    await trackTitle(page, 'Sixth Sense').click();
     await expect(page.getByTestId('player-title')).toHaveText('Sixth Sense');
 
     await page.getByTestId('player-next').click();

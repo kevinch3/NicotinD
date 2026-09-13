@@ -1,4 +1,4 @@
-import type { APIRequestContext, Page } from '@playwright/test';
+import type { APIRequestContext, Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -133,6 +133,34 @@ export async function waitForLibrary(request: APIRequestContext, token: string):
       { timeout: 30_000, intervals: [500, 1000, 1500] },
     )
     .toBeGreaterThan(0);
+}
+
+/**
+ * A track **as listed in a track list** — the row's title button, never the
+ * player bar and never Now Playing.
+ *
+ * `page.getByText('Opening Static')` is not that assertion. Every play claims a
+ * remote-playback session, and a context Playwright tears down fires no
+ * `pagehide` (see "A context torn down by Playwright fires no `pagehide`" in
+ * docs/e2e.md), so the previous spec's session can still be live when this spec
+ * loads its first page. Its track then renders in `player-title` *and*
+ * `now-playing-title`, and the bare text locator resolves to three elements —
+ * a strict-mode failure inside a spec that never played anything. That is
+ * issue #1110, and the repeated `library.spec.ts:5` failures of #1116,
+ * including two on clean `master`.
+ *
+ * `NICOTIND_PLAYBACK_GRACE_MS=2000` narrows that window but cannot close it:
+ * the grace is wall-clock and the collision is load-dependent, so the leftover
+ * outlives it exactly when the box is busy. Scoping removes the dependency
+ * instead of racing it — `track-row-title` is rendered only by
+ * `app-track-row`, which the player bar and Now Playing do not use, so a
+ * leftover session cannot satisfy this locator however late it clears.
+ *
+ * Pass a narrower `scope` (e.g. `page.getByTestId('artist-songs-list')`) when
+ * the same title can legitimately appear in two lists on one page.
+ */
+export function trackTitle(scope: Page | Locator, title: string): Locator {
+  return scope.getByTestId('track-row-title').filter({ hasText: title });
 }
 
 /**

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { FIXTURE, openAlbumCard } from '../helpers';
+import { FIXTURE, openAlbumCard, trackTitle } from '../helpers';
 
 test.describe('library', () => {
   test('shows the fixture album in the grid and its tracklist', async ({ page }) => {
@@ -9,14 +9,47 @@ test.describe('library', () => {
 
     // Album detail renders the title and the bookend tracks of the 7-track album.
     await expect(page.getByText(FIXTURE.album.title, { exact: false }).first()).toBeVisible();
-    await expect(page.getByText('Opening Static')).toBeVisible();
-    await expect(page.getByText('Closing Time')).toBeVisible();
+    await expect(trackTitle(page, 'Opening Static')).toBeVisible();
+    await expect(trackTitle(page, 'Closing Time')).toBeVisible();
+  });
+
+  /**
+   * Regression for #1110 / #1116: the failures those issues record are a
+   * strict-mode violation, not a missing track. A leftover remote-playback
+   * session from an earlier spec renders its track in the player bar and in Now
+   * Playing, so a bare `getByText('Opening Static')` matches three elements and
+   * the assertion fails in a spec that never pressed play.
+   *
+   * Reproducing that needs no leftover and no load: pressing play in *this*
+   * page puts it in the identical DOM state. The test asserts both halves — the
+   * bare locator really is ambiguous here (so this stays a real reproduction if
+   * the player markup changes), and the scoped one is not.
+   */
+  test('a playing track does not make the tracklist assertion ambiguous', async ({ page }) => {
+    await page.goto('/library');
+    await openAlbumCard(page, FIXTURE.album.title);
+    await trackTitle(page, 'Opening Static').click();
+
+    // Player bar, then Now Playing: the two extra elements that carry the title.
+    await expect(page.getByTestId('player-title')).toHaveText('Opening Static');
+    await page.getByTestId('player-title').click();
+    await expect(page.getByTestId('now-playing-title')).toHaveText('Opening Static');
+
+    // The bare locator is ambiguous in this state — the failure both issues hit.
+    expect(await page.getByText('Opening Static').count()).toBeGreaterThan(1);
+    // The scoped one is not: `track-row-title` is rendered only by
+    // `app-track-row`, which neither the player bar nor Now Playing uses.
+    await expect(trackTitle(page, 'Opening Static')).toHaveCount(1);
+
+    // Close rather than let the fixture tear the context down, so this spec's
+    // own session fires `pagehide` instead of leaking into the next one.
+    await page.close();
   });
 
   test('album track rows omit the redundant per-track thumbnail', async ({ page }) => {
     await page.goto('/library');
     await openAlbumCard(page, FIXTURE.album.title);
-    await expect(page.getByText('Opening Static')).toBeVisible();
+    await expect(trackTitle(page, 'Opening Static')).toBeVisible();
 
     // In a single-album context every row shares the album cover, so the per-row
     // thumbnail is suppressed — the track number carries row identity. The
@@ -49,7 +82,7 @@ test.describe('library', () => {
     await page.getByTestId('artist-tab-songs').click();
     const list = page.getByTestId('artist-songs-list');
     await expect(list).toBeVisible();
-    await expect(page.getByText('Opening Static')).toBeVisible();
+    await expect(trackTitle(list, 'Opening Static')).toBeVisible();
 
     // The Songs filter menu opens (and is clamped on-screen by MenuPanel).
     await page.getByTestId('artist-songs-filters').click();
@@ -68,7 +101,7 @@ test.describe('library', () => {
     await expect(list).toBeVisible();
 
     // Flat whole-library listing includes fixture album tracks.
-    await expect(page.getByText('Opening Static')).toBeVisible();
+    await expect(trackTitle(list, 'Opening Static')).toBeVisible();
 
     // Newest-first by default.
     await expect(page.getByTestId('library-songs-sort')).toHaveValue('newest');
