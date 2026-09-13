@@ -21,6 +21,44 @@ import { expandGroup } from '../helpers';
  * flakiness than this assertion warrants.
  */
 test.describe('PWA update check (manual)', () => {
+  /**
+   * The server half of #1126. Hono's `serveStatic` sends no freshness at all,
+   * so `index.html` / `ngsw.json` / `ngsw-worker.js` were heuristically
+   * cacheable — a browser pinning any of them strands an installed PWA on an
+   * old build no amount of client-side checking can rescue.
+   *
+   * Asserted over the wire rather than against `cacheControlForStatic`, which
+   * has its own unit tests: what matters here is that the middleware actually
+   * runs for the paths the catch-all answers. The `request` fixture is
+   * unauthenticated (docs/e2e.md), which is fine — these are public files.
+   */
+  test('the shell and the service-worker control files are served no-cache', async ({
+    request,
+  }) => {
+    for (const path of ['/', '/index.html', '/ngsw.json', '/ngsw-worker.js']) {
+      const res = await request.get(path);
+      expect(res.status(), path).toBe(200);
+      expect(res.headers()['cache-control'], path).toBe('no-cache');
+    }
+  });
+
+  test('a content-hashed bundle is immutable, so the revalidation is not paid twice', async ({
+    page,
+    request,
+  }) => {
+    await page.goto('/settings');
+    const src = await page
+      .locator('script[src^="main-"], script[src^="/main-"]')
+      .first()
+      .getAttribute('src');
+    expect(src, 'the production build emits a hashed entry bundle').toBeTruthy();
+
+    const res = await request.get(src!.startsWith('/') ? src! : `/${src!}`);
+
+    expect(res.status()).toBe(200);
+    expect(res.headers()['cache-control']).toContain('immutable');
+  });
+
   test('shows the Check-for-updates control on the production e2e build (SW enabled)', async ({
     page,
   }) => {

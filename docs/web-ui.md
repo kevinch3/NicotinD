@@ -1481,9 +1481,41 @@ Clicking the version string in the **desktop header** (`layout.component`, `data
 - **API version**: `GET /api/system/status` `nicotind.version` is read from `package.json` at server startup (`src/main.ts` → `createApp({ version: pkg.version })` → `systemRoutes`), replacing the previous hardcoded `'0.1.0'`.
 - **GitHub Release description (second `CHANGELOG.md` consumer)**: the `release-notes` job in `.github/workflows/deploy.yml` (ungated by `changes`, `if: github.ref_type == 'tag'`) `awk`-extracts the tag's `## [<version>] …` section from `CHANGELOG.md` and sets it as the Release description via `softprops/action-gh-release` (`body_path`). It only sets `body`, so it merges with — never clobbers, and is never clobbered by — the asset-upload steps that pass no body, in any job order. Empty section (chore/refactor-only release) → a "Maintenance release" fallback so the Release page is never blank.
 
-## Manual PWA update check
+## PWA updates
 
-The Angular service worker (`provideServiceWorker('ngsw-worker.js')`, registered via `registerWhenStable:30000`) ships in every production browser build. It only re-checks `/ngsw.json` on initialization and on navigation requests — Chromium self-schedules around 24 h, so a user who keeps the tab open for the whole weekend between NicotinD releases sees the new **Reload to update** banner only when they navigate or open a new tab. The first symptom reported in real use was "I deployed a new version and my browser kept showing the old one", then "I had to reload manually to even see the toast". The fix is `UpdateService.checkForUpdate()`, wired into a Settings → Account **Check for updates** button (`data-testid="settings-check-update"`).
+The Angular service worker (`provideServiceWorker('ngsw-worker.js')`, registered via `registerWhenStable:30000`) ships in every production browser build. It re-checks `/ngsw.json` **only on a navigation request** (`ngsw-worker.js`, `handleFetch`: `if (event.request.mode === "navigate" …) idle.schedule("check-updates-on-navigation", …)`). A tab left open all weekend therefore never re-checks, and an **installed home-screen app never re-checks at all** — iOS resumes the web view rather than navigating, and the SPA router handles every route change in-process.
+
+That was first reported as "I deployed a new version and my browser kept showing the old one" and answered with a Settings → Account **Check for updates** button (`data-testid="settings-check-update"`). It came back worse from an iOS standalone install (#1126): the PWA stayed on an old build for weeks, and the button answered **"You're on v…"** while the server was serving something newer. Four independent defects, each sufficient on its own:
+
+1. **The check lied about a staged update.** `UpdateService` mapped `sw.checkForUpdate()` straight through, but the driver returns `false` for a version it has *already set up* — `if (this.versions.has(hash)) { notifyClientsAboutNoNewVersionDetected(…); return false; }`. The first check finds the update; every later one says "latest". Since the navigation check usually fires first, the button the user presses is almost always a later one.
+2. **Nothing ever re-checked.** `checkForUpdate()` had exactly one caller, the button.
+3. **Applying it needed a click that is free to never make.** `UpdateBannerComponent` was a **Reload to update** bar; ignoring it cost nothing. Worse, `versionUpdates` has no replay, so a `VERSION_READY` from a previous app session was invisible to this one and the bar never appeared.
+4. **The server sent no cache directives.** Hono's `serveStatic` sets `Content-Type` and nothing else, so `index.html`, `ngsw.json` and `ngsw-worker.js` were all heuristically cacheable. See "Cache directives for the static build" below.
+
+### The loop
+
+`UpdateService.start()` (called once from `App`, the root component) adds the navigations an installed PWA never makes:
+
+| Trigger | Why |
+|---|---|
+| `visibilitychange` → visible (via `createVisibilityPoller`, `pollOnResume`) | Resume is the only "navigation" a standalone app has |
+| `pageshow` | A bfcache restore can arrive with no visibility transition |
+| every 30 min while foregrounded | The parked-tab case; paused while hidden, where a suspended app would not run it anyway |
+
+`ready` is a sticky signal written from **three** sources, because no one of them is reliable: the `VERSION_READY` event, a `checkForUpdate()` that resolved `true`, and `serverIsNewer()` — `GET /api/health` reports the version the server is actually serving and is the only signal that survives a worker holding a stale manifest. `unrecoverable` reloads.
+
+### Applying it in the background
+
+Requested in as many words: *"force the update in the background too, to avoid dismissals."* `canApplyUpdateNow` (`lib/update-policy.ts`, pure) is the whole policy, and it has exactly two constraints:
+
+- **Never while audio is playing.** The reload tears down the `<audio>` element, and on the device that is the remote output it drops the cast for everyone driving it.
+- **Never while the page is visible.** A reload mid-sentence loses a half-typed search, a settings field, a running import. Waiting for hidden costs nothing — the app is backgrounded many times a day and the reload is then invisible.
+
+A backgrounded tab that is still the output is *playing*, and playing wins. Every trigger re-asks: the `VERSION_READY` itself, the page going hidden, and playback stopping. The banner is now a status line (**"Updating to the new version…"**) with an impatient button rather than a prompt, and `TvShellComponent` mounts it too — the TV tree previously had no update surface at all.
+
+### Cache directives for the static build
+
+`cacheControlForStatic` (`packages/api/src/services/static-cache.ts`) runs as a middleware *before* `serveStatic`. Two answers, and the split is the build's own: a filename carrying a content hash (`-[A-Z0-9]{8,}\.(js|mjs|css)`) names one byte sequence forever and gets `public, max-age=31536000, immutable`; everything else gets `no-cache`, which means "revalidate before reuse", not "don't cache" — a 304 costs nothing when nothing changed. `/api/*`, `/doc` and `/openapi.json` are left to their own handlers.
 
 **Pool and isolation (measured).** `pool: 'threads'` + `maxWorkers: '100%'` took the suite
 from 134.7s to 113.1s; nothing here needs process isolation, so `forks` was pure spawn
@@ -1502,11 +1534,13 @@ is a latent landmine under any shared-worker config. Re-evaluate behind
 
 - **Service**: `UpdateService` (`packages/web/src/app/services/update.service.ts`) bridges Angular's `SwUpdate` to signals. Exposes:
   - `enabled: Signal<boolean>` — `SwUpdate.isEnabled` **or the native Android APK path** (see below; false in dev, Electron, iOS, browsers without SW support).
-  - `updateAvailable: Signal<boolean>` — sticky `true` once `VERSION_READY` fires (existing).
-  - `searching: Signal<boolean>` — gates duplicate clicks while a check is in flight.
+  - `updateAvailable: Signal<boolean>` — sticky `true` once anything has staged a version (see "The loop" above for the three writers).
+  - `applying: Signal<boolean>` — true from the moment `applyUpdate` starts until the reload replaces the page; the banner reads it.
+  - `searching: Signal<boolean>` — gates duplicate clicks while a manual check is in flight.
   - `checkAvailable: Signal<boolean>` — `enabled && !updateAvailable`; the manual control only renders when this is true (the banner already owns the CTA once an update is staged).
-  - `checkForUpdate(): Promise<'available' | 'up-to-date' | 'unavailable'>` — short-circuits to `'unavailable'` when `!enabled` or already `searching`; otherwise calls `sw.checkForUpdate()` (resolves `true` if the new version is downloaded & ready, `false` otherwise; rejects on a network/SW error) and returns the result.
-  - `applyUpdate(): Promise<void>` — `sw.activateUpdate()` then `document.location.reload()` (unchanged; jsdom doesn't allow redefining `location.reload`, so the test asserts the call against the stub).
+  - `checkForUpdate(): Promise<'available' | 'up-to-date' | 'unavailable'>` — short-circuits to `'unavailable'` when `!enabled` or already `searching`. Then, in order: a version already staged is **`'available'` without asking the worker** (defect 1 above); otherwise `sw.checkForUpdate()`; otherwise `serverIsNewer()`. Only when all three say no is the answer `'up-to-date'`.
+  - `start(): void` — the background loop. A no-op wherever the SW is disabled.
+  - `applyUpdate(): Promise<void>` — `sw.activateUpdate()` then `document.location.reload()`. A failed activation is swallowed rather than fatal: when the "available" came from the server comparison there is nothing staged to activate, and the reload is what fetches the newer shell. (jsdom doesn't allow redefining `location.reload`, so the test asserts against the stub's `activateUpdate`.)
 
 - **UI** (`packages/web/src/app/pages/settings/settings.component.{ts,html}`): the Account section grows a `@if (update.checkAvailable()) { … }` button. On browsers it follows `SwUpdate.isEnabled` (so dev builds and Electron hide it); on the native Android/TV shell `enabled` is true via the APK path instead. It shows **Check for updates** by default and **Checking for updates…** + `disabled` while the check is in flight.
 
@@ -1527,16 +1561,20 @@ is a latent landmine under any shared-worker config. Re-evaluate behind
 
   The reason the manual check is a *button* rather than a *timer*: Angular's docs explicitly warn that long-running `setInterval` polling (the canonical "check every 6 h" snippet) **prevents the app from stabilizing and delays SW registration up to 30 s** (`ngsw-config.json` + `provideServiceWorker`). A user-triggered click is both the cheapest and the safest fix. Every NicotinD release already triggers a `chore(release):` commit and pushes a `vX.Y.Z` tag, so the SW's natural polling cadence is fine when the user actually opens the tab — the bug only surfaces for users who stay parked on the same tab for hours.
 
-### Alternatives considered (and rejected)
+### Two earlier rejections, revisited (#1126)
 
-1. **Background interval polling** (`interval(6h)` → `checkForUpdate()` from the Angular docs). Rejected: blocks SW registration (the registration *forces* at 30 s when there's a polling task alive) and costs N requests/day per open tab for a payload that almost always says "no update". Manual click is on demand.
-2. **Compare `/api/system/status` `nicotind.version` vs `APP_VERSION` client-side and toast on mismatch.** Rejected: the server version advances with the Docker image, not the deployed PWA assets. A fresh image with the old `dist/` would toast "new version" even though the SW has nothing to swap to. `SwUpdate.checkForUpdate()` is the authoritative "new app shell available" signal.
-3. **`sw.unrecoverable` event → reload prompt.** Out of scope for this fix (would need a recovery UI + a "wipe cache" CTA); left as a follow-up if/when a real "stuck cache" report lands.
+The manual-button design rejected both halves of what now ships. Both rejections were reasonable and both were wrong in the standalone-PWA case, so they are recorded rather than quietly deleted:
+
+1. **"Don't poll — it blocks SW registration."** True of the Angular docs' canonical snippet, which starts an unconditional `interval` at bootstrap. The loop here is a `createVisibilityPoller`: it stands down while hidden, its first tick is 30 minutes out, and registration is `registerWhenStable:30000` — a 30-minute timer is not what keeps an app from stabilizing. The reason the original reasoning does not carry is that "a user who stays parked on one tab" was treated as the edge case; on an installed PWA it is *every* session.
+2. **"The server version is not the PWA's version."** Still true, and it is why `serverIsNewer()` is the **last** resort rather than the signal: `SwUpdate` is asked first, twice over. But a server on a newer version than the running shell is proof the shell is stale, whatever the worker believes — and "the worker believes wrong" is exactly the reported state. A false positive costs one reload; the false negative it replaces cost weeks on an old build.
+3. **`sw.unrecoverable` → reload.** Was deferred "until a real stuck-cache report lands". It reloads now: an unrecoverable cache serves a broken app forever, and re-registering from scratch is the documented way out.
 
 ### Files touched
 
-- `packages/web/src/app/services/update.service.ts` — added `enabled`, `searching`, `checkAvailable`, `checkForUpdate`.
-- `packages/web/src/app/services/update.service.spec.ts` — 11 tests: enable/disable, search guard, available/up-to-date/error outcomes, reentrant safety, `applyUpdate` activation.
+- `packages/web/src/app/services/update.service.ts` — `enabled`, `searching`, `checkAvailable`, `checkForUpdate`; then (#1126) the sticky `ready` signal, `start()`, `serverIsNewer()`, `applying` and the auto-apply.
+- `packages/web/src/app/lib/update-policy.ts` — `canApplyUpdateNow`, the whole auto-apply policy, pure.
+- `packages/api/src/services/static-cache.ts` — `cacheControlForStatic`, plus the middleware in `packages/api/src/index.ts`.
+- `packages/web/src/app/services/update.service.spec.ts` — enable/disable, search guard, available/up-to-date/error outcomes, reentrant safety, `applyUpdate` activation, and the #1126 group: a staged version never reports "up to date", the server beats a worker that says no, an older/unknown/unreachable server never invents an update.
 - `packages/web/src/app/pages/settings/settings.component.ts` + `.html` — `searchForUpdates()` + `reloadToUpdate()` handlers; new `@if` button above the version chip.
 - `packages/web/src/app/pages/settings/settings.component.spec.ts` — 8 new tests (visibility: enabled/disabled/staged; outcomes: up-to-date/available/error; re-entrancy via toast dismiss; pending-state UI).
 - `packages/e2e/tests/pwa-update.spec.ts` — chromium-only assertion that the button **is visible** on the e2e server. The harness serves the **production** `@nicotind/web` bundle (`ng build` defaults to the production configuration with `serviceWorker: ngsw-config.json`) over http://localhost, where Chromium permits service workers — so `sw.isEnabled` is true and `checkAvailable()` resolves true, proving the `@if` gate renders the control in a real PWA build. The toast outcomes are covered by the unit tests because `SwUpdate` cannot be stubbed from outside the bundle, and driving the live SW round-trip through Playwright would hinge on flaky service-worker registration timing.
@@ -1545,7 +1583,8 @@ is a latent landmine under any shared-worker config. Re-evaluate behind
 ### Gotchas
 
 - **jsdom doesn't let you redefine `window.location.reload`**, so the `applyUpdate` test asserts against the stub's `activateUpdate` instead of intercepting the navigation (`update.service.spec.ts`); production behaviour is unchanged.
-- **Don't poll**: a `setInterval` (or `interval(...)`) keeps the app from stabilizing and the SW registration would force at 30 s (`registerWhenStable:30000`). The Angular docs' canonical example waits for `ApplicationRef.isStable` before starting the timer; for now the click handler is the entire solution.
+- **`UpdateService.start()` is called from `App`, not the app initializer.** `update.service.ts` imports `APP_VERSION` from `app.config.ts`; having app.config import the service back would be a module cycle. The root component is the same place `RemotePlaybackService.initialize()` and the rest of the once-at-bootstrap wiring lives.
+- **Signal inputs do not bind in the web test setup.** `src/testing/signal-input.ts` exists because JIT does not reflect `input()` into component metadata — a template binding onto a child's signal input silently does nothing under vitest (`NG0303`, downgraded to a warning by `errorOnUnknownProperties: false`). Assert the parent's own wiring and let the child's spec cover the child.
 - **`ngsw-bypass` still applies**: the stream URL helper (`ServerConfigService.streamUrl`) appends `ngsw-bypass=1` so `/api/stream/*` never hits the worker — orthogonal to this change but worth keeping in mind when reasoning about "the SW isn't picking up the new version".
 
 ## Service worker fire-and-forget

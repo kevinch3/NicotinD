@@ -1,7 +1,15 @@
-import { Injectable, NgZone, computed, inject, signal } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
+import {
+  DestroyRef,
+  Injectable,
+  Injector,
+  NgZone,
+  computed,
+  effect,
+  inject,
+  signal,
+} from '@angular/core';
 import { SwUpdate, VersionReadyEvent } from '@angular/service-worker';
-import { filter, map, of } from 'rxjs';
+import { filter } from 'rxjs';
 import { APP_VERSION } from '../app.config';
 import {
   apkAssetUrl,
@@ -10,9 +18,17 @@ import {
   RELEASES_LATEST_URL,
 } from '../lib/apk-update';
 import { getCapacitorPlugin, getPlatform, isNativePlatform, isTvUi } from '../lib/platform';
+import { createVisibilityPoller, type VisibilityPoller } from '../lib/visibility-poller';
+import { canApplyUpdateNow } from '../lib/update-policy';
 import { compareVersions } from '@nicotind/core';
+import { PlayerService } from './player.service';
+import { ServerConfigService } from './server-config.service';
 
 export type CheckUpdateOutcome = 'unavailable' | 'available' | 'up-to-date';
+
+/** How often a foregrounded tab re-asks. Paused while hidden — a resume fires
+ *  its own check, which is the only "navigation" an installed PWA has. */
+const CHECK_INTERVAL_MS = 30 * 60_000;
 
 /** `@nicotind/capacitor-apk-update`'s native plugin (Capacitor global, no
  *  `@capacitor/*` import in the web bundle — the native-capabilities pattern). */
@@ -26,6 +42,12 @@ export class UpdateService {
   private sw = inject(SwUpdate);
   private version = inject(APP_VERSION);
   private zone = inject(NgZone);
+  private player = inject(PlayerService);
+  private serverConfig = inject(ServerConfigService);
+  private destroyRef = inject(DestroyRef);
+  // `start()` is called from the root component, outside this service's own
+  // injection context, so the effect below needs the injector explicitly.
+  private injector = inject(Injector);
 
   /** Sideloaded Android/TV shell: no store channel and no service worker, so
    *  "update" means fetching the newer release APK and handing it to the
@@ -45,23 +67,46 @@ export class UpdateService {
   /** APK download progress (0–100) while the native plugin streams it, else null. */
   readonly downloadProgress = signal<number | null>(null);
 
-  /** Sticky "an update is ready" flag. Sourced directly from the SW version
-   * stream via `toSignal` — no manual subscription/teardown. `toSignal` retains
-   * the last emitted value, so once VERSION_READY maps to `true` it stays true. */
-  readonly updateAvailable = toSignal(
-    this.sw.isEnabled
-      ? this.sw.versionUpdates.pipe(
-          filter((e): e is VersionReadyEvent => e.type === 'VERSION_READY'),
-          map(() => true),
-        )
-      : of(false),
-    { initialValue: false },
-  );
+  /**
+   * Sticky "an update is ready" flag.
+   *
+   * Written from three places, because no single one of them is reliable: the
+   * `VERSION_READY` event, the resolved value of a `checkForUpdate()` that
+   * found something, and the server-version comparison. `versionUpdates` is a
+   * plain multicast stream with no replay, so a `VERSION_READY` emitted before
+   * this service was first injected — or in a previous app session — is never
+   * seen by this one, which is half of why a staged update could sit
+   * indefinitely behind a banner that never appeared (#1126).
+   */
+  private readonly ready = signal(false);
+  readonly updateAvailable = this.ready.asReadonly();
+
+  /** True from the moment `applyUpdate` starts until the reload replaces us. */
+  readonly applying = signal(false);
 
   /** Convenience for templates that want to render the manual control. */
   readonly checkAvailable = computed(() => this.enabled() && !this.updateAvailable());
 
+  private poller: VisibilityPoller | null = null;
+  private started = false;
+
   constructor() {
+    // Subscribed here, not in `start()`: a VERSION_READY that arrives before
+    // the root component has started the loop must still be recorded, and
+    // `versionUpdates` has no replay to recover it from afterwards.
+    if (this.sw.isEnabled) {
+      this.sw.versionUpdates
+        .pipe(filter((e): e is VersionReadyEvent => e.type === 'VERSION_READY'))
+        .subscribe(() => {
+          this.ready.set(true);
+          this.maybeAutoApply();
+        });
+
+      // A cache the worker cannot recover from serves a broken app forever. A
+      // reload re-registers from scratch, which is the documented way out.
+      this.sw.unrecoverable.subscribe(() => this.reload());
+    }
+
     if (this.nativeApk) {
       // zone.run: native callbacks arrive outside Angular's zone (the
       // tv-channels pattern), so the signal write must re-enter it to render.
@@ -72,14 +117,76 @@ export class UpdateService {
     }
   }
 
+  /**
+   * Start the background update loop. Called once from the root component; a
+   * no-op wherever the service worker is disabled (dev, Capacitor, Electron).
+   *
+   * The Angular service worker checks for updates **only on a navigation
+   * request** (`ngsw-worker.js`, `handleFetch`). An installed home-screen app
+   * is resumed rather than navigated, and the SPA router handles every route
+   * change in-process, so a standalone PWA can run for weeks without a single
+   * check. These triggers are the navigations it does not make.
+   */
+  start(): void {
+    if (this.started || !this.sw.isEnabled) return;
+    this.started = true;
+
+    this.poller = createVisibilityPoller({
+      poll: () => this.backgroundCheck(),
+      delayMs: () => CHECK_INTERVAL_MS,
+      // Paused while hidden: an iOS standalone app is suspended anyway, and the
+      // resume below is worth more than a timer that never fires.
+      hiddenDelayMs: () => null,
+      pollOnResume: true,
+    });
+    this.poller.start();
+
+    // Hidden is when an update may actually apply (the rules are in
+    // lib/update-policy.ts), so the same transition that pauses the poller is
+    // the one that lands the update.
+    const onVisibility = (): void => this.maybeAutoApply();
+    document.addEventListener('visibilitychange', onVisibility);
+    // A bfcache restore can bring the app back with no visibility transition.
+    const onPageShow = (): void => void this.backgroundCheck();
+    window.addEventListener('pageshow', onPageShow);
+    this.destroyRef.onDestroy(() => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pageshow', onPageShow);
+      this.poller?.stop();
+    });
+
+    // Playback stopping is the other moment a deferred update becomes safe.
+    effect(
+      () => {
+        if (this.player.isPlaying()) return;
+        this.maybeAutoApply();
+      },
+      { injector: this.injector },
+    );
+  }
+
   async checkForUpdate(): Promise<CheckUpdateOutcome> {
     if (!this.enabled()) return 'unavailable';
     if (this.searching()) return 'unavailable';
     this.searching.set(true);
     try {
       if (this.nativeApk) return await this.checkGithubRelease();
-      const found = await this.sw.checkForUpdate();
-      return found ? 'available' : 'up-to-date';
+      // A version already staged is available — full stop. The driver answers
+      // `false` for a hash it has already set up (`if (this.versions.has(hash))
+      // … return false`), so asking it again about an update it is already
+      // holding reports "you're on the latest version" (#1126).
+      if (this.ready()) return 'available';
+      if (await this.sw.checkForUpdate()) {
+        this.ready.set(true);
+        return 'available';
+      }
+      // The worker said no. It can be wrong — a wedged or stale-manifest worker
+      // says no forever — and the server knows what it is actually serving.
+      if (await this.serverIsNewer()) {
+        this.ready.set(true);
+        return 'available';
+      }
+      return 'up-to-date';
     } finally {
       this.searching.set(false);
     }
@@ -100,6 +207,52 @@ export class UpdateService {
     return 'up-to-date';
   }
 
+  /**
+   * Is the server serving something newer than the build running here?
+   *
+   * `GET /api/health` reports the running server version and needs no auth. It
+   * is the only signal that survives a service worker holding a stale manifest,
+   * which is exactly the state a user reports as "it says I'm up to date".
+   * `no-store` so no cache — HTTP or otherwise — can answer for it.
+   */
+  private async serverIsNewer(): Promise<boolean> {
+    try {
+      const res = await fetch(this.serverConfig.apiUrl('/api/health'), {
+        cache: 'no-store',
+        headers: { accept: 'application/json' },
+      });
+      if (!res.ok) return false;
+      const body = (await res.json()) as { version?: unknown };
+      const served = typeof body.version === 'string' ? body.version : null;
+      if (!served || served === 'unknown') return false;
+      return compareVersions(served, this.version) > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  /** A periodic/resume check. Never reports, never throws — it only stages. */
+  private async backgroundCheck(): Promise<void> {
+    if (!this.sw.isEnabled || this.ready()) return;
+    try {
+      if (await this.sw.checkForUpdate()) this.ready.set(true);
+      else if (await this.serverIsNewer()) this.ready.set(true);
+    } catch {
+      // Offline, or the worker is busy. The next tick asks again.
+    }
+    this.maybeAutoApply();
+  }
+
+  private maybeAutoApply(): void {
+    if (this.applying()) return;
+    const decide = canApplyUpdateNow({
+      ready: this.ready(),
+      playing: this.player.isPlaying(),
+      visible: typeof document === 'undefined' || !document.hidden,
+    });
+    if (decide) void this.applyUpdate();
+  }
+
   async applyUpdate(): Promise<void> {
     if (this.nativeApk) {
       const version = this.pendingApkVersion();
@@ -117,7 +270,18 @@ export class UpdateService {
       }
       return;
     }
-    await this.sw.activateUpdate();
+    this.applying.set(true);
+    try {
+      await this.sw.activateUpdate();
+    } catch {
+      // No version staged here — the "available" came from the server
+      // comparison, so a reload is what fetches the newer shell. Deliberately
+      // not fatal: the reload below is the recovery.
+    }
+    this.reload();
+  }
+
+  private reload(): void {
     if (typeof document !== 'undefined') document.location.reload();
   }
 }

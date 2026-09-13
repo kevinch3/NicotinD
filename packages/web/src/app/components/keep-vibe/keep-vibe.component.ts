@@ -7,6 +7,7 @@ import { CoverArtComponent } from '../cover-art/cover-art.component';
 import { SkeletonComponent } from '../skeleton/skeleton.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { toTrack } from '../../lib/track-utils';
+import { playShelfSong } from '../../lib/shelf-play';
 import type { RecentPlay, Song } from '../../services/api/api-types';
 
 /**
@@ -111,9 +112,10 @@ export class KeepVibeComponent {
     }
   }
 
-  /** Start a radio seeded from the tapped recommendation — the vibe continues. */
+  /** Start a radio seeded from the tapped recommendation — the vibe continues.
+   *  Through the shared shelf helper so a TV press also shows the player. */
   onPlay(song: Song): void {
-    this.player.startRadio(toTrack(song));
+    playShelfSong(this.player, [toTrack(song)], 0);
   }
 
   /**

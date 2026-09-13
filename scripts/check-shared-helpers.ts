@@ -53,6 +53,11 @@ export const SHARED_HELPERS: SharedHelper[] = [
   // different tabs. Registered so copy #3 fails CI.
   { name: 'resolveTabId', canonical: 'packages/web/src/app/lib/device-id.ts' },
   { name: 'profileIdOf', canonical: 'packages/web/src/app/lib/device-id.ts' },
+  // "Which devices can I send audio to?" was the phone popover's private
+  // computed until the TV needed the same answer in a different shape (#1128).
+  // Two pickers with two copies of the offerable/sibling rules disagree only
+  // when someone is holding both devices at once — the worst place to find out.
+  { name: 'otherDevicesFor', canonical: 'packages/web/src/app/lib/device-list.ts' },
   // The Storybook gates were two scripts sharing ~50 duplicated lines — the static
   // server, the story enumeration, the iframe URL — until they were merged into one
   // traversal. Registered at the moment of extraction, which is when a copy is most

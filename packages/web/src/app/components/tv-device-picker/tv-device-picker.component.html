@@ -1,0 +1,74 @@
+<div
+  class="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+  data-testid="tv-device-picker"
+>
+  <div class="w-full max-w-3xl px-[4vw] py-[3vh] max-h-full overflow-y-auto">
+    <h2 class="text-3xl font-bold mb-2 text-theme-primary">{{ 'remote.playOn' | t }}</h2>
+    <p class="text-base text-theme-muted mb-8" data-testid="tv-device-picker-self-name">
+      {{ 'tv.remoteThisDevice' | t: { name: myName() } }}
+    </p>
+
+    <div appTvNavGroup [axis]="'vertical'" class="flex flex-col gap-3">
+      <button
+        appTvNavItem
+        type="button"
+        (click)="pick(myId)"
+        data-testid="tv-device-row"
+        class="flex items-center justify-between px-6 py-5 rounded-xl bg-theme-surface-2 text-left
+               focus:outline-none focus-visible:ring-4 focus-visible:ring-theme-accent"
+      >
+        <span class="text-lg text-theme-primary truncate">{{ myName() }}</span>
+        <span class="text-base text-theme-muted shrink-0 ml-4">
+          @if (playingHere()) {
+            {{ 'remote.nowPlaying' | t }}
+          } @else {
+            {{ 'remote.thisDevice' | t }}
+          }
+        </span>
+      </button>
+
+      @for (d of others(); track d.id) {
+        <button
+          appTvNavItem
+          type="button"
+          (click)="pick(d.id)"
+          [disabled]="!d.offerable"
+          data-testid="tv-device-row"
+          [attr.data-device-id]="d.id"
+          class="flex items-center justify-between px-6 py-5 rounded-xl bg-theme-surface-2 text-left
+                 disabled:opacity-50 focus:outline-none focus-visible:ring-4 focus-visible:ring-theme-accent"
+        >
+          <span class="text-lg text-theme-primary truncate">{{ d.name }}</span>
+          <span class="text-base text-theme-muted shrink-0 ml-4">
+            @if (!d.offerable) {
+              {{ 'remote.notAvailable' | t }}
+            } @else if (d.id === activeDeviceId()) {
+              {{ 'remote.nowPlaying' | t }}
+            } @else if (d.pending) {
+              {{ 'remote.reconnecting' | t }}
+            } @else if (d.sibling) {
+              {{ 'remote.anotherTab' | t }}
+            }
+          </span>
+        </button>
+      }
+
+      @if (others().length === 0) {
+        <p class="text-base text-theme-muted px-6 py-5" data-testid="tv-device-picker-empty">
+          {{ 'remote.noOtherDevices' | t }}
+        </p>
+      }
+
+      <button
+        appTvNavItem
+        type="button"
+        (click)="close()"
+        data-testid="tv-device-picker-back"
+        class="px-6 py-5 rounded-xl text-left text-lg text-theme-secondary
+               focus:outline-none focus-visible:ring-4 focus-visible:ring-theme-accent"
+      >
+        {{ 'common.back' | t }}
+      </button>
+    </div>
+  </div>
+</div>

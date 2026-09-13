@@ -1,7 +1,12 @@
 import { TestBed } from '@angular/core/testing';
 import { Subject } from 'rxjs';
 import { vi } from 'vitest';
-import { SwUpdate, VersionEvent, VersionReadyEvent } from '@angular/service-worker';
+import {
+  SwUpdate,
+  UnrecoverableStateEvent,
+  VersionEvent,
+  VersionReadyEvent,
+} from '@angular/service-worker';
 import { APP_VERSION } from '../app.config';
 import { UpdateService } from './update.service';
 
@@ -12,6 +17,7 @@ function makeSwStub(
   const stub = {
     isEnabled,
     versionUpdates: new Subject<VersionEvent>(),
+    unrecoverable: new Subject<UnrecoverableStateEvent>(),
     activateUpdate: vi.fn().mockResolvedValue(true),
     checkForUpdate: vi.fn(),
   };
@@ -25,7 +31,23 @@ function makeSwStub(
   return stub;
 }
 
-function provide(sw: ReturnType<typeof makeSwStub>) {
+/**
+ * `checkForUpdate` falls back to `GET /api/health` when the worker says no, so
+ * every browser-path test needs a served version. Default: the same version the
+ * app is running, i.e. "the server agrees you are current".
+ */
+function stubHealth(servedVersion: string | null = '0.1.300'): ReturnType<typeof vi.fn> {
+  const fetchMock = vi.fn().mockResolvedValue(
+    new Response(JSON.stringify({ ok: true, version: servedVersion ?? 'unknown' }), {
+      status: 200,
+    }),
+  );
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
+function provide(sw: ReturnType<typeof makeSwStub>, servedVersion: string | null = '0.1.300') {
+  stubHealth(servedVersion);
   TestBed.configureTestingModule({
     providers: [
       { provide: SwUpdate, useValue: sw },
@@ -42,6 +64,10 @@ const versionReady = {
 } as VersionReadyEvent;
 
 describe('UpdateService', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('flips updateAvailable to true on a VERSION_READY event', () => {
     const sw = makeSwStub(true);
     const service = provide(sw);
@@ -233,6 +259,59 @@ describe('UpdateService', () => {
       const service = provideNative();
       await service.applyUpdate();
       expect(downloadAndInstall).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('a staged update must never report "up to date" (#1126)', () => {
+    it('reports available for a version already staged, without re-asking the worker', async () => {
+      // The driver answers `false` for a hash it has already set up, so the
+      // second press of "Check for updates" used to say "you're on the latest
+      // version" while the new build sat downloaded and waiting.
+      const sw = makeSwStub(true, 'false');
+      const service = provide(sw);
+      sw.versionUpdates.next(versionReady);
+
+      expect(await service.checkForUpdate()).toBe('available');
+      expect(sw.checkForUpdate).not.toHaveBeenCalled();
+    });
+
+    it('believes the server over a worker that reports no new version', async () => {
+      const sw = makeSwStub(true, 'false');
+      const service = provide(sw, '0.1.301');
+
+      expect(await service.checkForUpdate()).toBe('available');
+      expect(service.updateAvailable()).toBe(true);
+    });
+
+    it('stays up-to-date when the worker and the server both agree', async () => {
+      const sw = makeSwStub(true, 'false');
+      const service = provide(sw, '0.1.300');
+
+      expect(await service.checkForUpdate()).toBe('up-to-date');
+      expect(service.updateAvailable()).toBe(false);
+    });
+
+    it('ignores an older or unknown server version', async () => {
+      const older = provide(makeSwStub(true, 'false'), '0.1.299');
+      expect(await older.checkForUpdate()).toBe('up-to-date');
+
+      TestBed.resetTestingModule();
+      const unknown = provide(makeSwStub(true, 'false'), null);
+      expect(await unknown.checkForUpdate()).toBe('up-to-date');
+    });
+
+    it('survives an unreachable server rather than reporting an update', async () => {
+      const sw = makeSwStub(true, 'false');
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: SwUpdate, useValue: sw },
+          { provide: APP_VERSION, useValue: '0.1.300' },
+        ],
+      });
+      const service = TestBed.inject(UpdateService);
+
+      expect(await service.checkForUpdate()).toBe('up-to-date');
     });
   });
 

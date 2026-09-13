@@ -1,5 +1,6 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { PlayerService } from '../../services/player.service';
 import { RadioLandingComponent } from '../radio-landing/radio-landing.component';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
@@ -27,6 +28,21 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
       <app-radio-landing />
 
       <nav appTvNavGroup [axis]="'horizontal'" class="flex gap-4" data-testid="tv-home-nav">
+        <!-- Back to the player. Without it /player was reachable only by
+             starting something: audio moved to a phone, or a cast landing
+             here, left no way to the screen that says so (#1128). Hidden when
+             nothing is loaded, so a fresh install shows two entries as before. -->
+        @if (player.currentTrack()) {
+          <a
+            appTvNavItem
+            routerLink="/player"
+            data-testid="tv-nav-player"
+            class="px-8 py-4 rounded-2xl bg-theme-surface-2 text-lg font-semibold
+                   focus:outline-none focus-visible:ring-4 focus-visible:ring-theme-accent"
+          >
+            {{ 'tv.nowPlaying' | t }}
+          </a>
+        }
         <a
           appTvNavItem
           routerLink="/library"
@@ -49,4 +65,6 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
     </div>
   `,
 })
-export class TvHomeComponent {}
+export class TvHomeComponent {
+  readonly player = inject(PlayerService);
+}
