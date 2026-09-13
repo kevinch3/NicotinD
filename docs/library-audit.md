@@ -495,7 +495,10 @@ planned Admin panel (issue #736) is the fourth.
 
 Dimensions: audit summary (per-rule counts, no findings array), fragments (dup-album clusters),
 album covers (`missingAlbumArtSql`), artist portraits (`artistImageCoverage`), genres
-(`unresolvedGenreSql`, landed songs only), years, classification, **format cohesion** (new),
+(`unresolvedGenreSql`, landed songs only, **plus** `lowInformationOnlyGenreSql` — songs whose only
+genre is a true-but-contentless umbrella, with an artist-grouped worklist; see
+[genre-model.md](genre-model.md) for why that is a separate bucket from junk vocab and why
+`Pop`/`Rock` are excluded), years, classification, **format cohesion** (new),
 **completeness** (new), lyrics (count only — fetch is on-demand by design), open curation flags.
 
 Design rules it inherits:
@@ -507,8 +510,15 @@ Design rules it inherits:
 - **On-demand only, never polled.** The audit half issues per-row queries — fine as a snapshot,
   poison in the `ServiceReview` interval. The Admin panel fetches on expand.
 - **Shared predicates, derived not restated** (`check:shared-helpers` spirit): `missingAlbumArtSql`
-  (also adopted by `checkRenderGaps`, `backfillArtwork`, `optimizeAllAlbums`) and
-  `losslessSuffixSql` (derived from `LOSSLESS` in `library-track-select.ts`).
+  (also adopted by `checkRenderGaps`, `backfillArtwork`, `optimizeAllAlbums`),
+  `losslessSuffixSql` (derived from `LOSSLESS` in `library-track-select.ts`) and
+  `lowInformationOnlyGenreSql` (derived from `LOW_INFORMATION_GENRES`, the same way
+  `unresolvedGenreSql` derives from `JUNK_GENRES`).
+- **A worklist is grouped by the unit its fix amortises over.** Every other dimension's row is one
+  remediation, so the genre dimension's `lowInformationWorklist` is per *artist*, not per song: one
+  subgenre judgement about a canonical artist covered 9 artists / 83 songs in the pass that filed
+  #1115. Listing the same 83 songs would have described one decision as 83 pieces of work — the
+  reporting error that makes a real backlog look unaffordable.
 
 ### New detectors and their calibration (prod, 2026-08-26, 16,386 songs / 5,173 visible albums)
 

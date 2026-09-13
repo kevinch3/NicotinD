@@ -174,6 +174,7 @@ scan.
 | `loadGenreSets`                                   | **full set**                   | The batch accessor; prefer it over ad-hoc queries               |
 | Album / artist aggregate `genre` column           | **primary only**               | `mostCommonGenre` over member primaries — one stable label      |
 | `libraryHealth` "missing genre" metric            | **mirror column**              | `unresolvedGenreSql` tests the primary against `JUNK_GENRES`    |
+| `libraryHealth` `genres.lowInformation` metric     | **join table only**            | "is this the song's *only* genre" is a count the mirror cannot hold |
 
 \* unless `primaryGenreOnly` is set.
 
@@ -183,6 +184,33 @@ field on `LibraryFilter` (`packages/core/src/types/library-filter.ts`), URL-seri
 #222). The genre detail page deliberately does **not** take it: ordering primary matches first
 serves the same need without adding a mode. Any new reader wanting primary-only semantics should
 use this flag rather than reaching for `s.genre` directly.
+
+### Low-information genres are a third bucket, not more junk (#1115)
+
+`JUNK_GENRES` holds values that are *wrong* — `Other`, `Unknown`, and YouTube's `Music` category —
+and `unresolvedGenreSql` already treats them as no genre at all, so they count in the health
+report's `missing`. `LOW_INFORMATION_GENRES` (`genre-split.ts`) holds values that are *right* and
+uninformative: `Electronic`, `Dance`. A song whose only genre is one of those is genre-resolved by
+every existing definition, which is why 309 prod songs sat on bare `Electronic` while
+`genres.missing` read 101.
+
+The two metrics are disjoint by construction and a test pins that, because reading them as one
+backlog is the mistake #1115 itself made — it proposed `Music` for the new metric, where the code
+had covered it since #694.
+
+**`Pop` and `Rock` are excluded on purpose.** They are legitimately broad — a Pop song's genre
+really is Pop — and they cover 3,206 prod songs against `Electronic`+`Dance`'s 516. Adding them
+converts a worklist with a cheap fix into a backlog nobody can work, this repo's recurring "count
+what is easy to count" failure. The bar for a new entry is that **the subgenre is knowable from the
+artist alone**: that is what makes the remediation amortise, and it is why the worklist groups by
+artist. In the pass that filed #1115, nine canonical artists covered 83 songs with one judgement
+each and zero searches.
+
+`lowInformationOnlyGenreSql` reads `library_song_genres` with `COUNT(*) = 1` rather than the mirror
+column, and that is load-bearing for safety as well as accuracy: `set_song_genre(mode: 'replace')`
+overwrites a song's whole genre set, so the worklist must never contain a song carrying
+`[Electronic, Tech House]` — the mirror holds `genres[0]` and cannot tell it apart from
+`[Electronic]`.
 
 ## The facet count is a snapshot, not a live count
 

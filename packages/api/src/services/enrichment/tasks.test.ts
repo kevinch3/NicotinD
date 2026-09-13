@@ -13,6 +13,7 @@ import {
 } from './tasks.js';
 import { MAX_ANALYSIS_ATTEMPTS, recordAnalysisFailure } from './analysis-failures.js';
 import { getGenreOverride, upsertGenreOverride } from '../genre-overrides.js';
+import { mapDiscogsGenres } from '../discogs-genre-vocab.js';
 import { NoConfidentResultError } from '../track-analysis.js';
 import { AudioFileRejectedError } from '../audio-features-client.js';
 import { upsertArtistIdentity } from '../artist-identity-store.js';
@@ -1432,6 +1433,55 @@ describe('genre-audio task', () => {
         .query('SELECT COUNT(*) AS n FROM library_song_analysis_failures WHERE task = ?')
         .get('genre-audio') as { n: number },
     ).toEqual({ n: 0 });
+  });
+
+  /**
+   * #1092: the override row was canonicalised (#941) but the *inline* apply — the
+   * write that reaches `library_song_genres` and the file tag before any rescan —
+   * was built from the raw sidecar label. So the two disagreed, and the raw label
+   * went into the tag, where the next scan splits `Folk, World, & Country` into
+   * `Folk` / `World` / `& Country`: the exact pollution #941 removed, reopened
+   * through the other door.
+   *
+   * `Folk, World, & Country` is the case worth pinning because raw and mapped
+   * differ in *shape*, not spelling — one label becomes three genres — so an
+   * assertion on it cannot pass by accident.
+   */
+  it('canonicalises the sidecar label on the inline apply too, not just the override row', async () => {
+    seedSong('a', { artist: 'Foo', title: 'Bar' });
+    ledgerGenreFailed('a');
+    let taggedGenre: string | undefined;
+    const c = ctx({
+      analyzeAudioFeatures: async () =>
+        audioGenreResult({ genre: 'Folk, World, & Country', style: 'Zamba', confidence: 0.9 }),
+      writeTags: async (_abs, tags) => {
+        taggedGenre = tags.genre;
+        return true;
+      },
+    });
+    const res = await genreAudio.run(db, c, 25);
+    expect(res.applied).toBe(1);
+
+    const canonical = mapDiscogsGenres(['Folk, World, & Country']);
+    expect(canonical).toEqual(['Folk', 'World', 'Country']); // guards the premise
+
+    // The override row was already right…
+    expect(getGenreOverride(db, 'song', 'a')?.genres).toEqual(canonical);
+    // …and now the two writes that used to take the raw label agree with it.
+    const rows = db
+      .query<{ genre: string }, [string]>(
+        'SELECT genre FROM library_song_genres WHERE song_id = ? ORDER BY position',
+      )
+      .all('a')
+      .map((r) => r.genre);
+    expect(rows).toEqual(canonical);
+    expect(taggedGenre).toBe('Folk; World; Country');
+    // The raw label must not survive anywhere a scan will re-read it.
+    expect(taggedGenre).not.toContain(',');
+    expect(taggedGenre).not.toContain('&');
+
+    // The operator-facing summary names what was written, not what the sidecar said.
+    expect(res.labels).toEqual(['Foo — Bar → Folk, World, Country (audio)']);
   });
 
   it('ledgers a low-confidence result without writing, and does not tally it as a failure', async () => {

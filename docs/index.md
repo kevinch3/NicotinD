@@ -256,9 +256,9 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   (`fragment-remediation.ts`). → [library-scanner.md](library-scanner.md)
 - **Library health report**: one `libraryHealth` module — every curation dimension as metric +
   bounded worst-first worklist + remediation hint — rendered by `GET /api/library/health` (curator),
-  the `library-health.ts` CLI and MCP `get_library_health`. `missingAlbumArtSql` and
-  `losslessSuffixSql` are the shared predicates; on-demand only, never polled.
-  → [library-audit.md](library-audit.md)
+  the `library-health.ts` CLI and MCP `get_library_health`. `missingAlbumArtSql`,
+  `losslessSuffixSql` and `lowInformationOnlyGenreSql` are the shared predicates; on-demand only,
+  never polled. → [library-audit.md](library-audit.md)
 - **Metadata optimization**: conservative all-or-nothing bulk Lidarr re-fetch (`optimizeAllAlbums`),
   run as a cancellable background job on `MaintenanceService`, bounded by limit + cursor.
   → [metadata-optimize.md](metadata-optimize.md)

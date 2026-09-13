@@ -1675,10 +1675,17 @@ const genreAudioTask: EnrichmentTask = {
           )
           .all(song.id)
           .map((g) => g.genre);
+        // `genres`, never `result.genre.label`: the inline apply below is what
+        // reaches `library_song_genres` and the file tag *now*, so feeding it the
+        // raw label re-opens #941 through this path (#1092). The override row was
+        // canonical and the inline write was not, so the two disagreed until the
+        // next scan re-derived from the row — and in the meantime the raw label
+        // sat in the file tag, where that scan splits `Folk, World, & Country`
+        // into `Folk`/`World`/`& Country`, which is the pollution #941 removed.
         const overrideIdx: OverrideIndex = {
           artist: new Map(),
           album: new Map(),
-          song: new Map([[song.id, { genres: [result.genre.label], source: 'essentia' }]]),
+          song: new Map([[song.id, { genres, source: 'essentia' }]]),
         };
         const merged = applyGenreOverride(
           overrideIdx,
@@ -1689,7 +1696,7 @@ const genreAudioTask: EnrichmentTask = {
         await writeTagsRebased(db, ctx, song.id, abs, { genre: merged.join('; ') });
         clearAnalysisFailure(db, song.id, 'genre-audio');
         applied++;
-        labels.push(`${song.artist} — ${song.title} → ${result.genre.label} (audio)`);
+        labels.push(`${song.artist} — ${song.title} → ${genres.join(', ')} (audio)`);
       }
     };
     await Promise.all(
