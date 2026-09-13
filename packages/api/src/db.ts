@@ -1599,6 +1599,15 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   addColumnIfMissing(db, 'library_artist_origins', 'orphaned_at', 'INTEGER');
   addColumnIfMissing(db, 'library_artist_meta', 'orphaned_at', 'INTEGER');
 
+  // Which MBID this bio was derived FROM (#1114). Without it a bio outlives the
+  // identity that produced it: "Rocky" rendered `France` / `Pop 100%` from a
+  // curator's correction with an Israeli psytrance producer's biography directly
+  // underneath, because nothing connected the two. NULL on a pre-#1114 row =
+  // provenance unknown, which is not the same as "derived from no mbid" — the
+  // tombstone case writes bio NULL anyway, so a NULL here never authorises a
+  // stale bio to stay.
+  addColumnIfMissing(db, 'library_artist_meta', 'mbid', 'TEXT');
+
   // Audit trail written by normalize-library.ts and future automation.
   // navidrome_id is null until NavidromeSyncer backfills it via path join.
   db.run(`

@@ -3,6 +3,8 @@ import { Database } from 'bun:sqlite';
 import { applySchema } from '../../db.js';
 import type { LidarrArtist } from '@nicotind/lidarr-client';
 import {
+  MBID_CONFIDENCE_EXACT,
+  MBID_CONFIDENCE_SUBSEQ,
   ENRICHMENT_TASKS,
   getTask,
   isWholeTokenSubsequence,
@@ -18,7 +20,14 @@ import { NoConfidentResultError } from '../track-analysis.js';
 import { AudioFileRejectedError } from '../audio-features-client.js';
 import { upsertArtistIdentity } from '../artist-identity-store.js';
 import { artistIdFor } from '../library-scanner.js';
-import { MBID_AMBIGUITY_FIX_AT, getMbid, upsertMbid, type MbidSource } from '../mbid-store.js';
+import {
+  MBID_AMBIGUITY_FIX_AT,
+  getMbid,
+  isMbidTombstoned,
+  upsertMbid,
+  type MbidSource,
+} from '../mbid-store.js';
+import { mutateArtistMbid } from '../artist-mbid-mutate.js';
 import { albumGroupKey } from '../album-grouping.js';
 import { getArtistMeta, upsertArtistMeta } from '../artist-meta-store.js';
 import { getArtistOrigin, upsertArtistOrigin } from '../artist-origins.js';
@@ -584,6 +593,36 @@ describe('artist-origin task', () => {
     expect(artistOrigin.available(ctx())).toBe('No origin lookup available');
   });
 
+  /**
+   * The origin task has no confidence gate of its own, so `isMbidTombstoned` is
+   * the whole protection here — and origin is the field a curator corrects first
+   * on a homonym (#1112), which makes re-deriving it from the detached id the
+   * most likely way the correction gets undone.
+   */
+  it('skips a curator-tombstoned identity instead of re-deriving an origin from it', async () => {
+    seedArtist('a1', { name: 'Artist One' });
+    upsertMbid(db, {
+      scope: 'artist',
+      key: 'artist one',
+      mbid: 'mbid-homonym',
+      source: 'lidarr',
+      confidence: MBID_CONFIDENCE_EXACT,
+    });
+    mutateArtistMbid(db, 'a1', null);
+    let lookups = 0;
+    const c = ctx({
+      lookupArtistOrigin: async () => {
+        lookups++;
+        return { ok: true, country: 'IL' };
+      },
+    });
+    const result = await artistOrigin.run(db, c, 10);
+    expect(lookups).toBe(0);
+    expect(result.applied).toBe(0);
+    // Not even the TTL tombstone: nothing was attempted, so nothing is recorded.
+    expect(getArtistOrigin(db, 'a1')).toBeNull();
+  });
+
   it('fills origin for an artist with a cached MBID', async () => {
     seedArtist('a1', { name: 'Ana Tijoux' });
     upsertMbid(db, {
@@ -716,6 +755,108 @@ describe('artist-info task', () => {
     expect(result.applied).toBe(0);
     expect(getArtistMeta(db, 'a1')).not.toBeNull();
     expect(artistInfo.countPending(db)).toBe(0);
+  });
+
+  /**
+   * #1114: the widened whole-token-subsequence match (#211, confidence 0.5) was
+   * good enough to publish a biography. A bio is not a label on a song — it
+   * asserts a birth date, a death date and a career about an identifiable real
+   * person, on a page carrying source links — and Rosalía's page told every
+   * listener that a living artist died in 2021 on exactly that basis.
+   */
+  it('will not publish a bio from a widened (0.5) mbid, and does not even fetch one', async () => {
+    seedArtist('a1', { name: 'Artist One' });
+    upsertMbid(db, {
+      scope: 'artist',
+      key: 'artist one',
+      mbid: 'mbid-widened',
+      source: 'lidarr',
+      confidence: MBID_CONFIDENCE_SUBSEQ,
+    });
+    let fetched = 0;
+    const c = ctx({
+      lookupArtistInfo: async () => {
+        fetched++;
+        return { bio: "A stranger's life story", urls: [], source: 'discogs', confidence: 0.95 };
+      },
+    });
+    const result = await artistInfo.run(db, c, 10);
+    expect(result.applied).toBe(0);
+    expect(fetched).toBe(0); // the gate is before the fetch, not after
+    // Tombstoned rather than retried: the same widened match will not improve on
+    // its own, so leaving it pending would re-ask the same question forever.
+    expect(getArtistMeta(db, 'a1')?.bio).toBeNull();
+    expect(artistInfo.countPending(db)).toBe(0);
+  });
+
+  it('publishes a bio from an exact (0.8) mbid and records which id produced it', async () => {
+    seedArtist('a1', { name: 'Artist One' });
+    upsertMbid(db, {
+      scope: 'artist',
+      key: 'artist one',
+      mbid: 'mbid-exact',
+      source: 'lidarr',
+      confidence: MBID_CONFIDENCE_EXACT,
+    });
+    const c = ctx({
+      lookupArtistInfo: async () => ({
+        bio: 'A bio',
+        urls: [],
+        source: 'discogs',
+        confidence: 0.95,
+      }),
+    });
+    expect((await artistInfo.run(db, c, 10)).applied).toBe(1);
+    // Provenance is what lets a later `set_artist_mbid` invalidate this bio
+    // instead of leaving the page asserting two different people (#1114).
+    expect(getArtistMeta(db, 'a1')).toMatchObject({ bio: 'A bio', mbid: 'mbid-exact' });
+  });
+
+  /**
+   * #1112: a tombstone must stop the *lookup*, not merely the cached read.
+   * `library_mbids` caches a resolution, so re-resolving an id the curator
+   * detached hands back the same homonym — the correction undoing itself.
+   */
+  it('honours a curator tombstone: no lookup, no live re-resolution, bio tombstoned', async () => {
+    seedArtist('a1', { name: 'Artist One' });
+    // Tombstone OVER a resolved id, which is the real case: the row keeps the
+    // rejected mbid as provenance, so a reader that skips `usableMbid` still has
+    // a perfectly usable-looking id in hand and will publish the wrong person's
+    // bio from it. Tombstoning an unresolved name would make this test pass on
+    // the empty string alone and prove nothing.
+    upsertMbid(db, {
+      scope: 'artist',
+      key: 'artist one',
+      mbid: 'mbid-homonym',
+      source: 'lidarr',
+      confidence: MBID_CONFIDENCE_EXACT,
+    });
+    mutateArtistMbid(db, 'a1', null);
+    let fetched = 0;
+    let lidarrLookups = 0;
+    const c = ctx({
+      lookupArtistInfo: async () => {
+        fetched++;
+        return { bio: 'wrong person', urls: [], source: 'discogs', confidence: 0.95 };
+      },
+      lidarr: {
+        artist: {
+          lookup: async (name: string) => {
+            lidarrLookups++;
+            return [{ artistName: name, foreignArtistId: 'mbid-homonym', albumCount: 9 }];
+          },
+        },
+      } as unknown as EnrichmentContext['lidarr'],
+    });
+    const result = await artistInfo.run(db, c, 10);
+    expect(result.applied).toBe(0);
+    expect(fetched).toBe(0);
+    // …and no live re-resolution either: that is the path that hands the detached
+    // homonym straight back, which a plain delete could not prevent.
+    expect(lidarrLookups).toBe(0);
+    expect(getArtistMeta(db, 'a1')?.bio).toBeNull();
+    // The tombstone is still standing — the pass did not overwrite it.
+    expect(isMbidTombstoned(getMbid(db, 'artist', 'artist one'))).toBe(true);
   });
 
   it('skips a manual_override row entirely', async () => {

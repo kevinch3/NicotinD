@@ -12,6 +12,7 @@ import { LibraryCurator } from '../services/library-curator.js';
 import { artistIdFor } from '../services/library-scanner.js';
 import { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
 import { AddonRequestError, type AddonClient } from '../services/addons/client.js';
+import { getMbid, isMbidTombstoned, upsertMbid } from '../services/mbid-store.js';
 import {
   dispatchTool,
   checkToolAccess,
@@ -1641,6 +1642,118 @@ describe('identify_song (fingerprint lane, issue #777)', () => {
     const tool = MCP_TOOLS.find((t) => t.name === 'identify_song');
     expect(tool?.access).toBe('read');
     expect(tool?.destructive).toBeUndefined();
+  });
+});
+
+/**
+ * #1112: the 19 MCP tools could patch every *symptom* of a homonym collision
+ * durably — `set_artist_origin`, `set_song_genre` — and nothing could touch the
+ * cause, so each new MusicBrainz-derived surface (the portrait, the bio, the
+ * release list) inherited the same wrong identity with no tool to catch it.
+ */
+describe('set_artist_mbid (#1112)', () => {
+  const WRONG = 'c7b8495c-8cec-4aac-b051-19578bbd4ade';
+  const RIGHT = 'ac0ee862-a6ca-4d39-a7a4-d8460534ba30';
+
+  const mbidCtx = (scope: 'refiner:read' | 'refiner:curate'): McpToolContext => ({
+    db: testDb,
+    identity: { tokenId: 't-mbid', userId: 'u1', scope },
+    deletion: { musicDir, shareRescan: new ShareRescanScheduler(async () => {}) },
+    artistIdentity: { dataDir: undefined, runSync: undefined },
+    songGenre: { musicDir },
+    metadata: { musicDir },
+    curation: {},
+    acquisition: { getAddon: () => null, isAcquisitionEnabled: () => false, minMatchPct: 80 },
+  });
+
+  beforeEach(() => {
+    testDb.run(`DELETE FROM library_mbids WHERE key = 'rocky'`);
+    testDb.run(
+      `INSERT OR REPLACE INTO library_artists (id, name, album_count, hidden, synced_at)
+       VALUES ('art-rocky', 'Rocky', 1, 0, 1)`,
+    );
+  });
+
+  it('is a curate tool, not a read one', () => {
+    expect(MCP_TOOLS.find((t) => t.name === 'set_artist_mbid')?.access).toBe('curate');
+  });
+
+  it('pins a replacement identity', async () => {
+    const res = await dispatchTool(mbidCtx('refiner:curate'), 'set_artist_mbid', {
+      artistId: 'art-rocky',
+      mbid: RIGHT,
+    });
+    expect(res.isError).toBeUndefined();
+    expect(JSON.parse(res.content[0]!.text)).toMatchObject({
+      ok: true,
+      mbid: { id: RIGHT, source: 'user' },
+    });
+  });
+
+  /**
+   * The tombstone is the reason the tool exists, and `null` must survive the arg
+   * gate to reach the handler — the #1111 failure mode, where `set_artist_origin`'s
+   * `country: null` was rejected before its own handler ever ran.
+   */
+  it('accepts an explicit null and tombstones the identity', async () => {
+    upsertMbid(testDb, {
+      scope: 'artist',
+      key: 'rocky',
+      mbid: WRONG,
+      source: 'lidarr',
+      confidence: 0.8,
+    });
+    const res = await dispatchTool(mbidCtx('refiner:curate'), 'set_artist_mbid', {
+      artistId: 'art-rocky',
+      mbid: null,
+    });
+    expect(res.isError).toBeUndefined();
+    expect(JSON.parse(res.content[0]!.text)).toMatchObject({ ok: true, mbid: { id: null } });
+    expect(isMbidTombstoned(getMbid(testDb, 'artist', 'rocky'))).toBe(true);
+  });
+
+  it('still requires the key to be sent at all', async () => {
+    const res = await dispatchTool(mbidCtx('refiner:curate'), 'set_artist_mbid', {
+      artistId: 'art-rocky',
+    });
+    expect(res.isError).toBe(true);
+    expect(res.content[0]!.text).toContain('mbid');
+  });
+
+  it('audit-logs as the agent, naming what it replaced', async () => {
+    upsertMbid(testDb, {
+      scope: 'artist',
+      key: 'rocky',
+      mbid: WRONG,
+      source: 'lidarr',
+      confidence: 0.8,
+    });
+    await dispatchTool(mbidCtx('refiner:curate'), 'set_artist_mbid', {
+      artistId: 'art-rocky',
+      mbid: null,
+    });
+    const audit = testDb
+      .query<{ username: string; detail: string }, []>(
+        `SELECT username, detail FROM audit_log WHERE action = 'artist.mbid' ORDER BY rowid DESC LIMIT 1`,
+      )
+      .get();
+    expect(audit?.username).toBe('agent:t-mbid');
+    expect(audit?.detail).toContain(WRONG);
+    expect(audit?.detail).toContain('tombstoned');
+    expect(audit?.detail).toContain('via MCP agent');
+  });
+
+  it('reports a tombstone distinctly on get_artist, not as "no mbid"', async () => {
+    await dispatchTool(mbidCtx('refiner:curate'), 'set_artist_mbid', {
+      artistId: 'art-rocky',
+      mbid: null,
+    });
+    const res = await dispatchTool(mbidCtx('refiner:read'), 'get_artist', { id: 'art-rocky' });
+    // "a curator detached this" and "never looked up" are different facts; an
+    // agent shown a bare null would go resolve the id again.
+    expect(JSON.parse(res.content[0]!.text)).toMatchObject({
+      mbid: { id: null, tombstoned: true },
+    });
   });
 });
 

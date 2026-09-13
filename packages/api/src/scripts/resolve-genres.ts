@@ -45,7 +45,7 @@ import {
   gateArtistResolution,
   pickGenres,
 } from '../services/genre-resolve.js';
-import { getMbid, upsertMbid } from '../services/mbid-store.js';
+import { getMbid, isMbidTombstoned, usableMbid, upsertMbid } from '../services/mbid-store.js';
 import { MusicBrainzClient, MB_USER_AGENT } from '../services/musicbrainz-client.js';
 import { expandHome } from '@nicotind/core';
 
@@ -108,7 +108,11 @@ async function propose(db: Database, mb: MusicBrainzClient, limit: number): Prom
     // whole reason the review queue is a status column rather than a JSON file.
     if (getGenreOverride(db, 'artist', artistKey)) continue;
 
-    let mbid = getMbid(db, 'artist', artistKey)?.mbid ?? null;
+    const cachedMbid = getMbid(db, 'artist', artistKey);
+    // A curator's tombstone is a decision, not a cache miss: re-searching would
+    // re-attach the identity they detached (#1112).
+    if (isMbidTombstoned(cachedMbid)) continue;
+    let mbid = usableMbid(cachedMbid);
     if (!mbid) {
       const hit = await mb.searchArtist(artist.name);
       if (!hit) continue;
