@@ -1,5 +1,70 @@
 [
   {
+    "version": "0.6.43",
+    "date": "2026-09-13",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.6.42...v0.6.43",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**radio:** calibrate the learned genre axis on the production library ([#1120](https://github.com/kevinch3/NicotinD/issues/1120)) ([b61d928](https://github.com/kevinch3/NicotinD/commit/b61d928cd5d7abee5147cd12c75541f1f2fe058c)), references [#1118](https://github.com/kevinch3/NicotinD/issues/1118) [#1119](https://github.com/kevinch3/NicotinD/issues/1119) [#1119](https://github.com/kevinch3/NicotinD/issues/1119)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.6.42",
+    "date": "2026-09-13",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.6.41...v0.6.42",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "PWA updates apply themselves; TV keeps playing and says where the audio is ([#1130](https://github.com/kevinch3/NicotinD/issues/1130)) ([94aec94](https://github.com/kevinch3/NicotinD/commit/94aec94e1dcb51d8ffe8960d840c0be5c67a8ed8)), references [#399](https://github.com/kevinch3/NicotinD/issues/399) [#1127](https://github.com/kevinch3/NicotinD/issues/1127) [#438](https://github.com/kevinch3/NicotinD/issues/438) [#1128](https://github.com/kevinch3/NicotinD/issues/1128) [#1126](https://github.com/kevinch3/NicotinD/issues/1126)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.6.41",
+    "date": "2026-09-12",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.6.40...v0.6.41",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**radio:** learned genre affinity from embedding centroids (spike, not yet scoring) ([#1118](https://github.com/kevinch3/NicotinD/issues/1118)) ([3ad2027](https://github.com/kevinch3/NicotinD/commit/3ad2027da8bdc66682a9cd4c74e2f207ee3207b5)), references [#258](https://github.com/kevinch3/NicotinD/issues/258)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.6.40",
+    "date": "2026-09-12",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.6.39...v0.6.40",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**mcp:** let a required nullable arg's null value through the arg gate ([#1113](https://github.com/kevinch3/NicotinD/issues/1113)) ([0232c93](https://github.com/kevinch3/NicotinD/commit/0232c93a326bae054f8b5f431546c7bbbb35845e)), closes [#1111](https://github.com/kevinch3/NicotinD/issues/1111), references [#1111](https://github.com/kevinch3/NicotinD/issues/1111)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.6.39",
+    "date": "2026-09-12",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.6.38...v0.6.39",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**curation:** curator triage rounds from the library view ([#1117](https://github.com/kevinch3/NicotinD/issues/1117)) ([ee37e7a](https://github.com/kevinch3/NicotinD/commit/ee37e7afa485ab7b6884e40f5dd17231daa25eda)), references [#420](https://github.com/kevinch3/NicotinD/issues/420)"
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.6.38",
     "date": "2026-09-10",
     "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.6.37...v0.6.38",
@@ -613,72 +678,6 @@
         "title": "Bug Fixes",
         "items": [
           "**audit:** make each rule answer the question its name asks ([#970](https://github.com/kevinch3/NicotinD/issues/970)) ([4ba2b42](https://github.com/kevinch3/NicotinD/commit/4ba2b42fd9a95c44c7a436c1adac70db59a71501)), closes [#947](https://github.com/kevinch3/NicotinD/issues/947) [#954](https://github.com/kevinch3/NicotinD/issues/954) [#957](https://github.com/kevinch3/NicotinD/issues/957) [#959](https://github.com/kevinch3/NicotinD/issues/959) [#962](https://github.com/kevinch3/NicotinD/issues/962) [#963](https://github.com/kevinch3/NicotinD/issues/963) [#966](https://github.com/kevinch3/NicotinD/issues/966) [#967](https://github.com/kevinch3/NicotinD/issues/967) [#969](https://github.com/kevinch3/NicotinD/issues/969), references [#947](https://github.com/kevinch3/NicotinD/issues/947) [#954](https://github.com/kevinch3/NicotinD/issues/954) [#947](https://github.com/kevinch3/NicotinD/issues/947) [#954](https://github.com/kevinch3/NicotinD/issues/954) [#947](https://github.com/kevinch3/NicotinD/issues/947) [#957](https://github.com/kevinch3/NicotinD/issues/957) [#966](https://github.com/kevinch3/NicotinD/issues/966) [#959](https://github.com/kevinch3/NicotinD/issues/959) [#963](https://github.com/kevinch3/NicotinD/issues/963) [#705](https://github.com/kevinch3/NicotinD/issues/705) [#962](https://github.com/kevinch3/NicotinD/issues/962) [#967](https://github.com/kevinch3/NicotinD/issues/967) [#969](https://github.com/kevinch3/NicotinD/issues/969)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.5.82",
-    "date": "2026-09-06",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.5.81...v0.5.82",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "clear the mechanical backlog — nine fixes and two operator surfaces ([#948](https://github.com/kevinch3/NicotinD/issues/948)) ([6749b2b](https://github.com/kevinch3/NicotinD/commit/6749b2b7cc48550be4ad7c960c2a3609888725da)), closes [#914](https://github.com/kevinch3/NicotinD/issues/914) [#856](https://github.com/kevinch3/NicotinD/issues/856) [#858](https://github.com/kevinch3/NicotinD/issues/858) [#872](https://github.com/kevinch3/NicotinD/issues/872) [#822](https://github.com/kevinch3/NicotinD/issues/822) [#669](https://github.com/kevinch3/NicotinD/issues/669) [#670](https://github.com/kevinch3/NicotinD/issues/670) [#724](https://github.com/kevinch3/NicotinD/issues/724), references [#943](https://github.com/kevinch3/NicotinD/issues/943) [#944](https://github.com/kevinch3/NicotinD/issues/944) [#914](https://github.com/kevinch3/NicotinD/issues/914) [#856](https://github.com/kevinch3/NicotinD/issues/856) [#858](https://github.com/kevinch3/NicotinD/issues/858) [#747](https://github.com/kevinch3/NicotinD/issues/747) [#872](https://github.com/kevinch3/NicotinD/issues/872) [#822](https://github.com/kevinch3/NicotinD/issues/822) [#669](https://github.com/kevinch3/NicotinD/issues/669) [#860](https://github.com/kevinch3/NicotinD/issues/860) [#670](https://github.com/kevinch3/NicotinD/issues/670) [#724](https://github.com/kevinch3/NicotinD/issues/724) [#722](https://github.com/kevinch3/NicotinD/issues/722) [#747](https://github.com/kevinch3/NicotinD/issues/747) [#860](https://github.com/kevinch3/NicotinD/issues/860) [#864](https://github.com/kevinch3/NicotinD/issues/864)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.5.81",
-    "date": "2026-09-05",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.5.80...v0.5.81",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**radio:** score timbre, groove and spectral balance as formula v8 ([#937](https://github.com/kevinch3/NicotinD/issues/937)) ([a177d38](https://github.com/kevinch3/NicotinD/commit/a177d38235c3ee5e608e5b5111ba696c5ffa45c0)), closes [#642](https://github.com/kevinch3/NicotinD/issues/642), references [#640](https://github.com/kevinch3/NicotinD/issues/640) [#641](https://github.com/kevinch3/NicotinD/issues/641)",
-          "**web:** show which tracks landed and which failed, not just how many ([#938](https://github.com/kevinch3/NicotinD/issues/938)) ([f61fb30](https://github.com/kevinch3/NicotinD/commit/f61fb3081adf1cd5b9b2a61f4c29fb72a69495d8)), closes [#746](https://github.com/kevinch3/NicotinD/issues/746), references [#745](https://github.com/kevinch3/NicotinD/issues/745) [#752](https://github.com/kevinch3/NicotinD/issues/752)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.5.80",
-    "date": "2026-09-04",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.5.79...v0.5.80",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**web:** draw the mosaic's lanes at random and drop the current-track tile ([#935](https://github.com/kevinch3/NicotinD/issues/935)) ([22c6063](https://github.com/kevinch3/NicotinD/commit/22c6063e3722d6f33c0d5da6afbd86c8e00499d8))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.5.79",
-    "date": "2026-09-04",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.5.78...v0.5.79",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**web:** 404 a missing asset instead of answering it with the HTML shell ([#926](https://github.com/kevinch3/NicotinD/issues/926)) ([cb6c20b](https://github.com/kevinch3/NicotinD/commit/cb6c20b77bf90b6c71c797ca93748c822c37c620)), closes [#925](https://github.com/kevinch3/NicotinD/issues/925), references [#894](https://github.com/kevinch3/NicotinD/issues/894) [#878](https://github.com/kevinch3/NicotinD/issues/878) [#908](https://github.com/kevinch3/NicotinD/issues/908)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.5.78",
-    "date": "2026-09-04",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.5.77...v0.5.78",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**import:** enforce the chunk bound on the path production actually takes ([#922](https://github.com/kevinch3/NicotinD/issues/922)) ([3dd5a55](https://github.com/kevinch3/NicotinD/commit/3dd5a55f434a650b94b564b993cfad373a83e3dd)), closes [#921](https://github.com/kevinch3/NicotinD/issues/921), references [#894](https://github.com/kevinch3/NicotinD/issues/894) [#878](https://github.com/kevinch3/NicotinD/issues/878)"
         ]
       }
     ]

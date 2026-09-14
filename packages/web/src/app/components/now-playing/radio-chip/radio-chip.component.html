@@ -78,6 +78,14 @@
       </div>
       </div>
       <p class="text-[11px] text-theme-muted text-center">{{ 'nowPlaying.varietyHint' | t }}</p>
+      @if (provenanceLabel()) {
+        <p
+          class="text-[10px] text-theme-muted/80 text-center font-mono tracking-tight"
+          data-testid="radio-chip-provenance"
+        >
+          {{ provenanceLabel() }}
+        </p>
+      }
     </div>
   }
 </div>

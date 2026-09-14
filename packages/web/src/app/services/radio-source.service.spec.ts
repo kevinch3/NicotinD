@@ -55,7 +55,9 @@ describe('RadioSourceService', () => {
 
     const more = await provider!({ currentTrack: track, context: null, strategy: 'balanced' });
 
-    expect(api.getFilterRadio).toHaveBeenCalledWith(filter, ['s1'], 10, 'balanced');
+    expect(api.getFilterRadio).toHaveBeenCalledWith(filter, ['s1'], 10, 'balanced', {
+      provenance: true,
+    });
     expect(more.map((t) => t.id)).toEqual(['in-vibe']);
   });
 
@@ -66,8 +68,29 @@ describe('RadioSourceService', () => {
 
     const more = await provider!({ currentTrack: track, context: null, strategy: 'similar' });
 
-    expect(api.getRadioNext).toHaveBeenCalledWith('s1', ['s1'], 10, 'similar');
+    expect(api.getRadioNext).toHaveBeenCalledWith('s1', ['s1'], 10, 'similar', {
+      provenance: true,
+    });
     expect(more.map((t) => t.id)).toEqual(['seeded']);
+  });
+
+  it('asks for provenance on both refill lanes — this IS the player lane (#1124)', async () => {
+    // The chip reports the radio you are hearing, and only a call made with
+    // `{ provenance: true }` sets what it reads. This registration used to live
+    // in `layout.component.ts`; when it moved here (#1127) the flag had to move
+    // with it, and nothing else in the suite would notice if it were dropped —
+    // the chip would simply go quiet, with every other test still green.
+    const { api, player, provider } = setup();
+
+    await provider!({ currentTrack: track, context: null, strategy: 'balanced' });
+    player.radioFilter.set({ genres: ['Ambient'] });
+    await provider!({ currentTrack: track, context: null, strategy: 'balanced' });
+
+    for (const call of [...api.getRadioNext.mock.calls, ...api.getFilterRadio.mock.calls]) {
+      expect(call.at(-1)).toEqual({ provenance: true });
+    }
+    expect(api.getRadioNext).toHaveBeenCalled();
+    expect(api.getFilterRadio).toHaveBeenCalled();
   });
 
   it('shuffles recent songs when there is no seed at all', async () => {
@@ -86,7 +109,9 @@ describe('RadioSourceService', () => {
 
     await provider!({ currentTrack: track, context: null, strategy: 'balanced' });
 
-    expect(api.getRadioNext).toHaveBeenCalledWith('s1', ['s1', 'q1', 'h1'], 10, 'balanced');
+    expect(api.getRadioNext).toHaveBeenCalledWith('s1', ['s1', 'q1', 'h1'], 10, 'balanced', {
+      provenance: true,
+    });
   });
 
   it('keeps the queue alive end to end: radio on with an empty queue replenishes', async () => {
