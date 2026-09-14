@@ -13,7 +13,7 @@ A non-positive window must never reach ffmpeg: `-t 0` decodes nothing, which
 would 422 every file in the library.
 """
 
-import app.models as models
+from app import models
 from app.models import (
     ANALYZE_WINDOW_SECONDS_DEFAULT,
     SAMPLE_RATE,
