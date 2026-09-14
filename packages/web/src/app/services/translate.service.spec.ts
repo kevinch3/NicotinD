@@ -149,4 +149,70 @@ describe('TranslatePipe reactivity', () => {
     fixture.detectChanges();
     expect(el.textContent).toContain('Iniciar sesión');
   });
+
+  /**
+   * A fetch whose catalogs resolve only when the test says so — the order at
+   * bootstrap, where `init()` is not awaited and the first render happens
+   * while the catalogs are still in flight.
+   */
+  function deferredFetch(catalogs: Record<string, unknown>) {
+    const release: Record<string, () => void> = {};
+    const fetchFn = vi.fn(
+      (url: string) =>
+        new Promise<Response>((resolve) => {
+          const lang = url.replace('/i18n/', '').replace('.json', '');
+          release[lang] = () =>
+            resolve({ ok: true, json: async () => catalogs[lang] } as unknown as Response);
+        }),
+    ) as unknown as typeof fetch;
+    return { fetchFn, release };
+  }
+
+  it('a catalog that lands after the first render still reaches the DOM', async () => {
+    // The memo used to be (key, language, params): the first render looked up
+    // an empty catalog, fell through to the key, and memoized THAT — the
+    // arrival of the catalog invalidated nothing. Keys stayed on screen.
+    localStorage.clear();
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ imports: [HostComponent] });
+    const svc = TestBed.inject(TranslateService);
+    const { fetchFn, release } = deferredFetch({ en: EN });
+    const booting = svc.init(fetchFn);
+
+    const fixture = TestBed.createComponent(HostComponent);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.textContent).toContain('login.title');
+
+    release['en']!();
+    await booting;
+    fixture.detectChanges();
+    expect(el.textContent).toContain('Sign in');
+  });
+
+  it('never shows the base text under the new language while its catalog loads', async () => {
+    // `use()` flipped `lang` first and awaited the catalog second, so the
+    // render in between memoized "Sign in" under 'es' for good. Now the flip
+    // waits for the catalog: mid-load the page is still, truthfully, English.
+    localStorage.clear();
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ imports: [HostComponent] });
+    const svc = TestBed.inject(TranslateService);
+    await svc.init(fakeFetch({ en: EN }));
+    const fixture = TestBed.createComponent(HostComponent);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+
+    const { fetchFn, release } = deferredFetch({ es: ES });
+    const switching = svc.use('es', fetchFn);
+    fixture.detectChanges();
+    expect(svc.lang()).toBe('en');
+    expect(el.textContent).toContain('Sign in');
+
+    release['es']!();
+    await switching;
+    fixture.detectChanges();
+    expect(svc.lang()).toBe('es');
+    expect(el.textContent).toContain('Iniciar sesión');
+  });
 });
