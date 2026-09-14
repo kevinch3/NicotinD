@@ -37,7 +37,7 @@ describe('TvKaraokeComponent (#1134)', () => {
         { provide: LibraryApiService, useValue: api },
         {
           provide: TranslateService,
-          useValue: { t: (key: string) => key, lang: () => 'en', version: () => 0 },
+          useValue: { t: (key: string) => key, lang: () => 'en', revision: () => 0 },
         },
       ],
     });

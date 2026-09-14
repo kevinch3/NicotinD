@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.46](https://github.com/kevinch3/NicotinD/compare/v0.6.45...v0.6.46) (2026-09-14)
+
+### Bug Fixes
+
+* e2e grid-strand recovery, i18n memo staleness + SW-block default, reused addon job id ([#1142](https://github.com/kevinch3/NicotinD/issues/1142)) ([8054aa2](https://github.com/kevinch3/NicotinD/commit/8054aa2ce17d4b281d916d2a64c2eceef38f2207)), closes [#1109](https://github.com/kevinch3/NicotinD/issues/1109), references [#784](https://github.com/kevinch3/NicotinD/issues/784) [#1109](https://github.com/kevinch3/NicotinD/issues/1109) [#708](https://github.com/kevinch3/NicotinD/issues/708) [#726](https://github.com/kevinch3/NicotinD/issues/726) [#784](https://github.com/kevinch3/NicotinD/issues/784) [#1106](https://github.com/kevinch3/NicotinD/issues/1106) [#1106](https://github.com/kevinch3/NicotinD/issues/1106) [#1106](https://github.com/kevinch3/NicotinD/issues/1106) [#1044](https://github.com/kevinch3/NicotinD/issues/1044) [#1106](https://github.com/kevinch3/NicotinD/issues/1106) [#1106](https://github.com/kevinch3/NicotinD/issues/1106) [#1081](https://github.com/kevinch3/NicotinD/issues/1081) [#1018](https://github.com/kevinch3/NicotinD/issues/1018)
+## [0.6.45](https://github.com/kevinch3/NicotinD/compare/v0.6.44...v0.6.45) (2026-09-14)
+
+### Bug Fixes
+
+* **deploy:** bound every container's memory so a leak cannot take the host ([#1138](https://github.com/kevinch3/NicotinD/issues/1138)) ([3bdf16e](https://github.com/kevinch3/NicotinD/commit/3bdf16e89bb00487df669be7823462ac3306b9a8))
 ## [0.6.44](https://github.com/kevinch3/NicotinD/compare/v0.6.43...v0.6.44) (2026-09-14)
 
 ### Features

@@ -170,6 +170,11 @@ test.describe('offline network detection', () => {
  * instead, so these assert the listener keeps the page they were on.
  */
 test.describe('mosaic home offline', () => {
+  // Opt back into a live worker: the `chromium` project blocks service workers
+  // by default (issue #1106), but the second test below needs ngsw to have
+  // actually prefetched `/*.js` to serve `/library`'s lazy chunk once offline.
+  test.use({ serviceWorkers: 'allow' });
+
   test('stays on home when the network drops, and says what is going on', async ({
     page,
     context,

@@ -81,16 +81,19 @@ export class TranslateService {
   /** True once the base catalog has loaded; templates render keys until then. */
   readonly ready = signal(false);
   /**
-   * Bumped every time a catalog lands. The `t` pipe memoizes on (key, lang,
-   * params) and, being impure, is re-invoked on every change detection — but
-   * a memo hit never calls `t()`, so a catalog that arrives AFTER the first
-   * render under its language was invisible to it: the login page rendered
-   * "Sign In" under `lang = 'es'` while `es.json` was still in flight, and
-   * kept it once the file landed. `init()` is deliberately not awaited at
-   * bootstrap, so that ordering is the normal one, not an edge case. Folding
-   * this into the memo key is what makes "swaps in when it lands" true.
+   * Bumped on every catalog write (`base` or `active`), never on `lang` alone.
+   *
+   * `TranslatePipe` memoizes on `(key, lang, params)` — but `t()`'s output also
+   * depends on catalog *contents*, which land strictly after `lang`: `init()`
+   * is fired un-awaited at bootstrap (`app.config.ts`), and `use()` itself sets
+   * `lang` synchronously before its `await loadCatalog(...)` resolves. Any
+   * change-detection pass inside that window renders the English (or raw-key)
+   * fallback and memoizes it under a key `lang` alone will never invalidate
+   * again once the real catalog lands — the "renders English, or raw keys, and
+   * swaps in when it lands" contract this class documents at the call site,
+   * broken by the one consumer built to honour it (#1106).
    */
-  readonly version = signal(0);
+  readonly revision = signal(0);
 
   readonly available = AVAILABLE_LANGS;
   readonly isBase = computed(() => this.lang() === BASE_LANG);
@@ -100,24 +103,17 @@ export class TranslateService {
     const stored = safeRead(STORAGE_KEY);
     const navLangs = typeof navigator !== 'undefined' ? (navigator.languages ?? []) : [];
     this.base.set(await loadCatalog(BASE_LANG, fetchFn));
-    this.version.update((v) => v + 1);
+    this.revision.update((n) => n + 1);
     this.ready.set(true);
     await this.use(resolveInitialLang(stored, navLangs), fetchFn);
   }
 
-  /**
-   * Switch language, persisting the choice for this device.
-   *
-   * The catalog is loaded BEFORE `lang` flips: the two are read together by
-   * every `t()` call, and flipping the language first showed the base text
-   * under the new language for the length of the fetch.
-   */
+  /** Switch language, persisting the choice for this device. */
   async use(lang: string, fetchFn: typeof fetch = fetch): Promise<void> {
-    safeWrite(STORAGE_KEY, lang);
-    const catalog = lang === BASE_LANG ? {} : await loadCatalog(lang, fetchFn);
-    this.active.set(catalog);
     this.lang.set(lang);
-    this.version.update((v) => v + 1);
+    safeWrite(STORAGE_KEY, lang);
+    this.active.set(lang === BASE_LANG ? {} : await loadCatalog(lang, fetchFn));
+    this.revision.update((n) => n + 1);
   }
 
   /**

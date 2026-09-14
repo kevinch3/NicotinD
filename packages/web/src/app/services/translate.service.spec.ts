@@ -151,68 +151,72 @@ describe('TranslatePipe reactivity', () => {
   });
 
   /**
-   * A fetch whose catalogs resolve only when the test says so — the order at
-   * bootstrap, where `init()` is not awaited and the first render happens
-   * while the catalogs are still in flight.
+   * #1106: `lang` flips synchronously in `use()`, strictly before the catalog
+   * it names has loaded. A render inside that window used to memoize the
+   * English fallback under `(key, lang='es', params)` — a key the eventual
+   * catalog load can never invalidate again, since `lang` does not change a
+   * second time. The switch above never renders inside the window (it awaits
+   * `use()` before ever calling `detectChanges`), so it could not catch this.
    */
-  function deferredFetch(catalogs: Record<string, unknown>) {
-    const release: Record<string, () => void> = {};
-    const fetchFn = vi.fn(
-      (url: string) =>
-        new Promise<Response>((resolve) => {
-          const lang = url.replace('/i18n/', '').replace('.json', '');
-          release[lang] = () =>
-            resolve({ ok: true, json: async () => catalogs[lang] } as unknown as Response);
-        }),
-    ) as unknown as typeof fetch;
-    return { fetchFn, release };
-  }
-
-  it('a catalog that lands after the first render still reaches the DOM', async () => {
-    // The memo used to be (key, language, params): the first render looked up
-    // an empty catalog, fell through to the key, and memoized THAT — the
-    // arrival of the catalog invalidated nothing. Keys stayed on screen.
+  it('does not strand the English fallback when the target catalog lands after a render (#1106)', async () => {
     localStorage.clear();
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({ imports: [HostComponent] });
     const svc = TestBed.inject(TranslateService);
-    const { fetchFn, release } = deferredFetch({ en: EN });
-    const booting = svc.init(fetchFn);
+    await svc.init(fakeFetch());
+
+    // Hold `es.json` open — the way a fresh service worker's sequential
+    // prefetch does (#1106) — and render WHILE `lang()` already reads 'es' but
+    // `active()` is still empty.
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    const slowEs = vi.fn(async (url: string) => {
+      if (url.includes('es.json')) await held;
+      return { ok: true, json: async () => ES } as unknown as Response;
+    }) as unknown as typeof fetch;
 
     const fixture = TestBed.createComponent(HostComponent);
     fixture.detectChanges();
     const el = fixture.nativeElement as HTMLElement;
-    expect(el.textContent).toContain('login.title');
-
-    release['en']!();
-    await booting;
-    fixture.detectChanges();
-    expect(el.textContent).toContain('Sign in');
-  });
-
-  it('never shows the base text under the new language while its catalog loads', async () => {
-    // `use()` flipped `lang` first and awaited the catalog second, so the
-    // render in between memoized "Sign in" under 'es' for good. Now the flip
-    // waits for the catalog: mid-load the page is still, truthfully, English.
-    localStorage.clear();
-    TestBed.resetTestingModule();
-    TestBed.configureTestingModule({ imports: [HostComponent] });
-    const svc = TestBed.inject(TranslateService);
-    await svc.init(fakeFetch({ en: EN }));
-    const fixture = TestBed.createComponent(HostComponent);
-    fixture.detectChanges();
-    const el = fixture.nativeElement as HTMLElement;
-
-    const { fetchFn, release } = deferredFetch({ es: ES });
-    const switching = svc.use('es', fetchFn);
-    fixture.detectChanges();
-    expect(svc.lang()).toBe('en');
     expect(el.textContent).toContain('Sign in');
 
-    release['es']!();
+    const switching = svc.use('es', slowEs);
+    fixture.detectChanges(); // renders INSIDE the window — the defect site
+    expect(el.textContent).toContain('Sign in'); // correct fallback at this instant
+
+    release();
     await switching;
     fixture.detectChanges();
-    expect(svc.lang()).toBe('es');
-    expect(el.textContent).toContain('Iniciar sesión');
+    expect(el.textContent).toContain('Iniciar sesión'); // must not still read the memoized fallback
+  });
+
+  /**
+   * The same defect on the OTHER catalog, and `(key, lang)` cannot even
+   * express it: `lang` never changes here (`init()`'s language resolution
+   * hasn't run yet), so a fix keyed only on `lang` would not touch this case.
+   */
+  it('does not strand a raw key when the base catalog lands after a render (#1106)', async () => {
+    localStorage.clear();
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ imports: [HostComponent] });
+    const svc = TestBed.inject(TranslateService);
+
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    const slowEn = vi.fn(async (url: string) => {
+      if (url.includes('en.json')) await held;
+      return { ok: true, json: async () => EN } as unknown as Response;
+    }) as unknown as typeof fetch;
+
+    const initing = svc.init(slowEn);
+    const fixture = TestBed.createComponent(HostComponent);
+    fixture.detectChanges(); // renders before the base catalog exists at all
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.textContent).toContain('login.title'); // the raw key — correct at this instant
+
+    release();
+    await initing;
+    fixture.detectChanges();
+    expect(el.textContent).toContain('Sign in'); // must not still read the memoized raw key
   });
 });

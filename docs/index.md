@@ -689,6 +689,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   callee that *tokenises* to fetch, catching injected clients a `\bfetch\b` regex misses; signals go
   inline, after any throttle, since a timeout starts counting when constructed.
   → [quality-gates.md](quality-gates.md)
+- **Container memory limits**: every compose service declares `mem_limit` and `memswap_limit`, set
+  equal so no container may swap, enforced by `compose-memory-limits.test.ts` against a whole-stack
+  budget. An unbounded container cannot fail alone — it stalls the host instead of itself.
+  → [deployment.md](deployment.md)
 - **Secret + image scanning**: gitleaks runs over every commit (needs full history or the scan
   silently shrinks to one commit) as a pinned binary; Trivy scans the published image scoped to OS
   vulns and unfixed-ignored, as a *step* so blocking the deploy needs no `if:` edit.

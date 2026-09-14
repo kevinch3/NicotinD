@@ -277,12 +277,32 @@ export function trackTitle(scope: Page | Locator, title: string): Locator {
  * deliberate: pinning one id up front would make the documented re-chunk above a
  * hard failure instead of the thing the retry exists to absorb, while still
  * leaving the helper unable to claim an album it did not click.
+ *
+ * Issue #1109: the loop above is only idempotent while the page is still ON the
+ * grid. An attempt whose click commits a navigation the identity assertion
+ * rejects — the wrong-album landing #784 guards against, or a lazy route that
+ * resolves just after the 2 s window — leaves the page on `/library/albums/…`,
+ * where `data-testid="album-card"` does not exist (it is rendered only by the
+ * two grid templates, never by album detail). Every later attempt then times
+ * out reading `data-album-id` off a locator with nothing to resolve to, and the
+ * loop burns its whole 15 s without ever looking at the grid again — the
+ * reported `locator.getAttribute: Timeout 2000ms exceeded` with no visible
+ * cause. Re-navigating back to the caller's own grid URL when the grid is gone
+ * turns that dead end into one more retry.
  */
 export async function openAlbumCard(page: Page, title?: string): Promise<void> {
   const grid = page.getByTestId('album-card');
   const card = (title ? grid.filter({ hasText: title }) : grid).first();
   await expect(card).toBeVisible();
+  // The caller's exact grid state (/library, ?find=…, ?type=…) — restored
+  // below rather than a generic /library, so a find-bar or filtered caller
+  // doesn't lose that state on recovery.
+  const gridUrl = page.url();
   await expect(async () => {
+    // A stranded attempt: get back to the grid before trying to read from it.
+    // `grid.count()` is a zero-wait snapshot, so the happy path (no strand)
+    // pays nothing extra.
+    if ((await grid.count()) === 0) await page.goto(gridUrl);
     // Read and click in the same attempt so the assertion below is about the
     // element this iteration actually clicked, not one a re-chunk has replaced.
     const albumId = await card.getAttribute('data-album-id', { timeout: 2_000 });

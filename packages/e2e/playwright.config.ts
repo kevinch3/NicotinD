@@ -55,6 +55,20 @@ const PLAYGROUND_RE = /\.playground\.ts$/;
 // The TV project's specs, kept out of the `chromium` project by name.
 const TV_BUILD_RE = /\.tvbuild\.spec\.ts$/;
 
+/**
+ * Blocked by default across every correctness project (issue #1106): `baseURL`
+ * is always `localhost` here (`makeServer`, below), and ngsw treats a
+ * localhost origin as a debug/dev context — `scheduleInitialization` skips the
+ * idle scheduler and awaits the whole prefetch inline before answering the
+ * FIRST fetch the worker intercepts. On any other origin the same prefetch is
+ * scheduled on the idle callback and never blocks a request, so this is a
+ * harness exposure, not one real listeners hit — but it is a real one for CI,
+ * where that inline prefetch can apparently stall outright (see docs/e2e.md).
+ * `offline.spec.ts` opts back to `'allow'` for the one describe that
+ * genuinely needs a live worker.
+ */
+const SERVICE_WORKERS_BLOCKED = { serviceWorkers: 'block' } as const;
+
 export default defineConfig({
   testDir: './tests',
   fullyParallel: false,
@@ -104,7 +118,9 @@ export default defineConfig({
  * dedicated never-seeded server (no `storageState`, no `setup` dependency) so it
  * sees `needsSetup: true`; the rest of the suite runs against the seeded server.
  * The onboarding project is skipped in external mode — you must never drive the
- * setup wizard against a real instance.
+ * setup wizard against a real instance. See `SERVICE_WORKERS_BLOCKED` above for
+ * why the projects also carry `serviceWorkers: 'block'` (issue #1106) — the
+ * `tv` project included, as its server is a `localhost` origin too.
  */
 function correctnessProjects(): PlaywrightTestConfig['projects'] {
   const projects: NonNullable<PlaywrightTestConfig['projects']> = [
@@ -116,7 +132,11 @@ function correctnessProjects(): PlaywrightTestConfig['projects'] {
       // wizard needs a never-seeded server (its own project below), and the TV
       // bundle has its own server and project.
       testIgnore: [PLAYGROUND_RE, /onboarding\.spec\.ts/, TV_BUILD_RE],
-      use: { ...devices['Desktop Chrome'], storageState: '.auth/admin.json' },
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: '.auth/admin.json',
+        ...SERVICE_WORKERS_BLOCKED,
+      },
       dependencies: ['setup'],
     },
   ];
@@ -124,7 +144,11 @@ function correctnessProjects(): PlaywrightTestConfig['projects'] {
     projects.push({
       name: 'onboarding',
       testMatch: /onboarding\.spec\.ts/,
-      use: { ...devices['Desktop Chrome'], baseURL: `http://localhost:${ONBOARDING_PORT}` },
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: `http://localhost:${ONBOARDING_PORT}`,
+        ...SERVICE_WORKERS_BLOCKED,
+      },
     });
     // The real TV route tree in Chromium (#1136): the TV-configuration bundle on
     // its own server, at the viewport a 1080p Android TV gives the WebView
@@ -143,6 +167,7 @@ function correctnessProjects(): PlaywrightTestConfig['projects'] {
           deviceScaleFactor: 1,
           baseURL: tvBaseURL,
           storageState: '.auth/tv-admin.json',
+          ...SERVICE_WORKERS_BLOCKED,
         },
         dependencies: ['tv-setup'],
       },

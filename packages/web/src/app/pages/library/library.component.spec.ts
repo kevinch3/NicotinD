@@ -107,7 +107,9 @@ function setup(
         provide: TranslateService,
         useValue: {
           lang: signal('en'),
-          version: signal(0),
+          // TranslatePipe reads this unconditionally (#1106) — a `useValue` stub
+          // standing in for the whole service must carry it too.
+          revision: signal(0),
           t: (key: string, params?: Record<string, string | number>) =>
             interpolate(TEST_CATALOG[key] ?? key, params),
         },

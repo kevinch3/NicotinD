@@ -1573,6 +1573,110 @@ describe('one job never wedges the poll for the rest (#1081)', () => {
     expect(h.deleted).toEqual(['aj-removed']);
   });
 
+  /**
+   * Issue #1018. `fixture-addon.ts`'s `nextJob` counter is per-instance, so a
+   * fresh addon (a restart in prod; a Playwright `afterAll`/`beforeAll` cycle
+   * in the e2e flake this test is named for) reissues `fixture-job-1` — and
+   * before this fix `ensureCoreJob` could not tell that apart from the SAME
+   * job's card having been removed, so the new job was silently released and
+   * skipped forever: no card, no error, no download, on every retry.
+   */
+  it('mints a fresh card when the addon restarts and reissues a job id', async () => {
+    // The addon now lists a job under 'aj-1' with createdAt 5000 — provably
+    // not the job the removed card behind 'aj-1' used to mirror.
+    const reissued = makeJob({ id: 'aj-1', createdAt: 5000, updatedAt: 6000 });
+    const live = makeJob({ id: 'aj-live', createdAt: 6000, updatedAt: 6000 });
+    h = harness(() => [reissued, live]);
+    await h.registry.enable('fixture-addon', 'admin');
+
+    // The previous attempt's card: mapped with the OLD job's createdAt (1000),
+    // then removed (deleted core-side) the way #1018's flake removes it —
+    // between the two Playwright attempts that share one fixture addon id.
+    const oldCoreId = createJob(h.db, {
+      kind: 'album-hunt',
+      method: 'fixture-addon',
+      artistName: 'Old Artist',
+      albumTitle: 'Old Album',
+      sourceRef: 'addon:fixture-addon:aj-1',
+      files: [],
+    });
+    mapAddonJob(h.db, 'fixture-addon', 'aj-1', oldCoreId, 1000);
+    h.db.run(`DELETE FROM acquisition_jobs WHERE id = ?`, [oldCoreId]);
+
+    await h.poller.tick();
+    await h.poller.idle();
+
+    // NOT released as a removed card — the old card genuinely is gone, but the
+    // id now names a different job, which mirrors into a fresh row instead.
+    expect(h.deleted).toEqual([]);
+    expect(itemsOf(h, 'aj-1')).toHaveLength(1);
+    // And the job listed after it still lands — the same guarantee the
+    // existing removed-card test above pins for the ordinary case.
+    expect(itemsOf(h, 'aj-live')).toHaveLength(1);
+  });
+
+  /**
+   * The other side of #1018's fix: a matching `createdAt` means the addon is
+   * listing the SAME job as before, so the existing #1081 removed-card guard
+   * must still fire — the fix narrows when a row gets re-minted, it does not
+   * remove the guard.
+   */
+  it('still releases a removed card when the addon relists the identical job', async () => {
+    const same = makeJob({ id: 'aj-1', createdAt: 1000, updatedAt: 5000 });
+    h = harness(() => [same]);
+    await h.registry.enable('fixture-addon', 'admin');
+
+    const coreId = createJob(h.db, {
+      kind: 'album-hunt',
+      method: 'fixture-addon',
+      artistName: 'Artist',
+      albumTitle: 'Album',
+      sourceRef: 'addon:fixture-addon:aj-1',
+      files: [],
+    });
+    mapAddonJob(h.db, 'fixture-addon', 'aj-1', coreId, 1000); // same createdAt as `same`
+    h.db.run(`DELETE FROM acquisition_jobs WHERE id = ?`, [coreId]);
+
+    await h.poller.tick();
+    await h.poller.idle();
+
+    expect(itemsOf(h, 'aj-1')).toHaveLength(0); // not re-minted
+    expect(h.deleted).toEqual(['aj-1']); // released, exactly as before this fix
+  });
+
+  /**
+   * A row written before #1018 — a bare core-id string, no `createdAt` at
+   * all — must decode the same way a mapping with an unknown `createdAt`
+   * does: never re-mint. `mapAddonJob` always writes JSON now, so this writes
+   * the legacy shape directly to prove the READ side still honours it.
+   */
+  it('treats a pre-existing bare-string mapping as createdAt-unknown, never re-minting', async () => {
+    const reissued = makeJob({ id: 'aj-1', createdAt: 5000, updatedAt: 5000 });
+    h = harness(() => [reissued]);
+    await h.registry.enable('fixture-addon', 'admin');
+
+    const coreId = createJob(h.db, {
+      kind: 'album-hunt',
+      method: 'fixture-addon',
+      artistName: 'Artist',
+      albumTitle: 'Album',
+      sourceRef: 'addon:fixture-addon:aj-1',
+      files: [],
+    });
+    // A raw pre-migration row — the bare id, not the {coreJobId,...} shape.
+    h.db.run(
+      `INSERT INTO plugin_kv (plugin_id, key, value) VALUES ('addon-poller:fixture-addon', 'jobmap:aj-1', ?)`,
+      [coreId],
+    );
+    h.db.run(`DELETE FROM acquisition_jobs WHERE id = ?`, [coreId]);
+
+    await h.poller.tick();
+    await h.poller.idle();
+
+    expect(itemsOf(h, 'aj-1')).toHaveLength(0);
+    expect(h.deleted).toEqual(['aj-1']); // safe default: released, not re-minted
+  });
+
   it('a job the mirror cannot store is skipped, and the cursor still moves on', async () => {
     const poisoned = makeJob({
       id: 'aj-bad',

@@ -28,7 +28,9 @@ describe('TvPlayerComponent', () => {
             t: (key: string, params?: Record<string, string>) =>
               key === 'remote.playingOn' ? `Playing on ${params?.['name']}` : key,
             lang: () => 'en',
-            version: () => 0,
+            // TranslatePipe reads this unconditionally (#1106) — a `useValue`
+            // stub standing in for the whole service must carry it too.
+            revision: () => 0,
           },
         },
       ],
