@@ -25,8 +25,11 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
   ],
   template: `
     <div class="px-[4vw] py-[3vh] flex flex-col gap-8" data-testid="tv-home">
-      <app-radio-landing />
-
+      <!-- The nav comes FIRST. Below the shelves it sat at y≈614 on a 540px TV
+           viewport — the only two ways off the front door, and the way back to
+           the player, were below the fold until the D-pad scrolled to them
+           (#1135). A 10-foot UI shows its primary navigation before its
+           content; leanback puts it at the top for the same reason. -->
       <nav appTvNavGroup [axis]="'horizontal'" class="flex gap-4" data-testid="tv-home-nav">
         <!-- Back to the player. Without it /player was reachable only by
              starting something: audio moved to a phone, or a cast landing
@@ -62,6 +65,8 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
           {{ 'nav.settings' | t }}
         </a>
       </nav>
+
+      <app-radio-landing />
     </div>
   `,
 })

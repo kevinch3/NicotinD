@@ -27,6 +27,13 @@
         <p class="text-base text-white/70 truncate">{{ t.artist }}</p>
       </div>
 
+      <!-- Every button centres its icon with flex, as every other icon button in
+           the app does: Tailwind's preflight makes an <svg> `display: block`,
+           and a block child of a <button> is vertically centred by the
+           button's own layout but never horizontally — `text-align: center`
+           only reaches inline content. Without this each glyph sat on the left
+           edge of its circle, which from the couch reads as the whole row being
+           shoved to the right (#1132). -->
       <div
         appTvNavGroup
         [axis]="'horizontal'"
@@ -39,8 +46,8 @@
           (click)="player.playPrev()"
           data-testid="tv-prev"
           aria-label="Previous"
-          class="w-14 h-14 rounded-full bg-white/10 text-white focus:outline-none
-                 focus-visible:ring-4 focus-visible:ring-white"
+          class="w-14 h-14 rounded-full bg-white/10 text-white flex items-center justify-center
+                 focus:outline-none focus-visible:ring-4 focus-visible:ring-white"
         >
           <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <path d="M6 6h2v12H6zm3 6l9-6v12z" />
@@ -52,8 +59,8 @@
           (click)="togglePlay()"
           data-testid="tv-playpause"
           aria-label="Play or pause"
-          class="w-20 h-20 rounded-full bg-white text-black focus:outline-none
-                 focus-visible:ring-4 focus-visible:ring-white"
+          class="w-20 h-20 rounded-full bg-white text-black flex items-center justify-center
+                 focus:outline-none focus-visible:ring-4 focus-visible:ring-white"
         >
           @if (player.isPlaying()) {
           <svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -71,8 +78,8 @@
           (click)="player.playNext()"
           data-testid="tv-next"
           aria-label="Next"
-          class="w-14 h-14 rounded-full bg-white/10 text-white focus:outline-none
-                 focus-visible:ring-4 focus-visible:ring-white"
+          class="w-14 h-14 rounded-full bg-white/10 text-white flex items-center justify-center
+                 focus:outline-none focus-visible:ring-4 focus-visible:ring-white"
         >
           <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <path d="M16 6h2v12h-2zm-1 6L6 18V6z" />

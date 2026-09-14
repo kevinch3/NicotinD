@@ -130,8 +130,13 @@ variety panel is a horizontal group of three radios. See [radio.md](radio.md) "V
 ### Home (`/`)
 
 The existing radio landing, promoted to the entry point: resume, one-press vibe presets, top-genre
-chips. Adds a single **Browse** entry and a **Settings** entry. This is the screen closest to already
-being right — it needs the surrounding chrome removed more than it needs redesigning.
+chips. Adds a single **Browse** entry and a **Settings** entry (and **Now playing**, once a track is
+loaded — #1128). This is the screen closest to already being right — it needs the surrounding chrome
+removed more than it needs redesigning.
+
+**The nav row renders first, above the shelves.** Below them it sat at y≈614 on the 540 px the
+WebView has, so the only two ways off the front door were below the fold until the D-pad scrolled to
+them (#1135). A 10-foot UI shows its navigation before its content.
 
 ### Browse (`/library`)
 
@@ -151,9 +156,17 @@ somewhere unexpected.
 
 ### Player (`/player`)
 
-Full-bleed blurred backdrop, centred art, title/artist, `prev · play/pause · next`, the Next-up chip
-that opens the D-pad queue overlay (#399), and a remote-playback row. No seek bar — ◀ ▶ seek. A
-one-line hint teaches it on first arrival.
+Full-bleed blurred backdrop, centred art, title/artist, `prev · play/pause · next`, then one vertical
+group: **Lyrics** (the karaoke overlay, below), the Next-up chip that opens the D-pad queue overlay
+(#399), and the remote-playback row. No seek bar — ◀ ▶ seek. A one-line hint teaches it on first
+arrival; its arrows are `← →`, not `◀ ▶`, because the latter have no glyph in the UI font and fall
+through to the colour-emoji face as two orange tiles (#1132).
+
+The three transport buttons centre their icons with `flex items-center justify-center`, like every
+other icon button in the app. Without it each glyph sat on the **left edge** of its circle: Tailwind's
+preflight makes an `<svg>` `display: block`, and a button centres a block child vertically but never
+horizontally. From the couch that read as the whole row shoved to the right (#1132) — and it shipped
+through a green suite because no Chromium test had ever rendered this template.
 
 There is **no Radio toggle**, and the original draft above claiming one was aspirational. Radio is
 not a toggle on TV at all — see "Radio is always on" below.
@@ -335,3 +348,22 @@ offerable is a bug nobody would see until they were holding both devices.
 Home also grows a **Now playing** entry when a track is loaded. Without it `/player` was reachable
 only by starting something, so the screen that says "your audio is on the phone" was the one screen
 you could not get to.
+
+## What the pixels showed (#1132, #1133, #1135)
+
+Captured from the TV bundle at 960×540 before the fixes (the shots are in the linked issues):
+
+| Screen | Measured | Cause |
+| --- | --- | --- |
+| Player | prev/next icons at x = button x (−15 px from centre); play/pause −23 px | block-level `<svg>` in a button with no flex centring (#1132) |
+| Login | page 606 px tall in 540; `tv-login-use-password` at y=553–569, below the fold | the phone's vertical `max-w-sm` card reused on a 16:9 screen (#1133) |
+| Home | page 690 px tall; `tv-home-nav` at y=614 | nav rendered after the shelves (#1135) |
+| Player hint | `◀ ▶` drawn as orange emoji tiles | no text glyph in the UI font; fallback to the colour-emoji face (#1132) |
+
+### The login card is 16:9 on TV (#1133)
+
+`LoginComponent` keeps one template; on `isTvUi()` the card widens to `max-w-3xl`, the brand block
+becomes one row, and the sign-in panel puts the 180 px QR beside the hint, the code, the status line
+and the two links. The typed-password fallback stays phone-width inside the wide card. Everything
+fits with no scroll — a TV cuts off what it cannot fit rather than scrolling to it — which the
+`tv` project asserts (`scrollHeight <= innerHeight`, every element `toBeInViewport` at ratio 1).
