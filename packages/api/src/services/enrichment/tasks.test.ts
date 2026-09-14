@@ -1271,8 +1271,10 @@ describe('audio-features task', () => {
 
   it('counts per-file failures when the sidecar is up but returns no result (404)', async () => {
     // A 404 — file not visible to the sidecar (usually a mount mismatch that
-    // 404s *every* file) — must stay an outage-style failure, NOT ledgered, so a
-    // misconfig never excludes the whole library even after repeated runs.
+    // 404s *every* file) — must never cost a song a STRIKE, so a misconfig can
+    // never exclude the library however many times it runs. It does stamp the
+    // attempt: un-ledgered plus NULLS-FIRST ordering is what livelocks the pool
+    // on the same window forever (#1048, the #851 shape).
     seedSong('a');
     seedSong('b');
     const c = ctx({
@@ -1284,11 +1286,67 @@ describe('audio-features task', () => {
     expect(res.applied).toBe(0);
     expect(res.failed).toBe(2);
     expect(res.errorSample).toContain('sidecar');
-    expect(
-      db.query('SELECT COUNT(*) AS n FROM library_song_analysis_failures').get() as { n: number },
-    ).toEqual({ n: 0 }); // nothing ledgered — env safety preserves the library
-    // Files remain pending so the run keeps surfacing the problem.
+
+    // The invariant that actually matters: attempts stamped, zero strikes.
+    const rows = db
+      .query<{ fail_count: number; terminal: number; last_attempt: number }, []>(
+        `SELECT fail_count, terminal, last_attempt FROM library_song_analysis_failures
+         WHERE task = 'audio-features'`,
+      )
+      .all();
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.fail_count === 0)).toBe(true);
+    expect(rows.every((r) => r.terminal === 0)).toBe(true);
+    expect(rows.every((r) => r.last_attempt > 0)).toBe(true);
+
+    // Files remain pending so the run keeps surfacing the problem — a non-strike
+    // excludes nothing, which is what preserved the library before and still does.
     expect(features.countPending(db)).toBe(2);
+  });
+
+  it('advances the frontier when analyze times out, instead of re-serving the same window forever (#1048)', async () => {
+    // The prod shape: one 8 h 35 m track blew past the 120 s client timeout on
+    // every attempt. A timeout is deliberately not a strike — the file may be
+    // fine and the sidecar merely slow — but un-ledgered it also left
+    // `last_attempt` NULL, and `leastRecentlyAttemptedOrderSql` sorts NULLS
+    // FIRST, so the window was refilled from the very rows that just failed.
+    // 96 of 96 recent failures on prod were the same single file.
+    for (let i = 0; i < 30; i++) seedSong(`s${String(i).padStart(2, '0')}`);
+    const idOf = (relPath: string) =>
+      relPath.slice(relPath.lastIndexOf('/') + 1).replace('.opus', '');
+
+    const windows: string[][] = [];
+    for (let w = 0; w < 2; w++) {
+      const seen: string[] = [];
+      const c = ctx({
+        concurrency: 1,
+        analyzeAudioFeatures: async (relPath: string) => {
+          seen.push(idOf(relPath));
+          // What AbortSignal.timeout() throws — NOT an AudioFileRejectedError,
+          // so it takes the un-ledgered transport branch.
+          throw Object.assign(new Error('The operation timed out.'), {
+            name: 'TimeoutError',
+          });
+        },
+        audioFeaturesAvailable: () => true, // sidecar is reachable, just slow
+      });
+      await features.run(db, c, 25);
+      windows.push(seen);
+    }
+
+    expect(windows[0]).toHaveLength(25);
+    // Before the fix both windows are the identical 25 songs and this is 0.
+    const fresh = windows[1]!.filter((id) => !windows[0]!.includes(id));
+    expect(fresh).toHaveLength(5);
+
+    // And a timeout still costs no strike — every song stays retryable.
+    const rows = db
+      .query<{ fail_count: number; terminal: number }, []>(
+        `SELECT fail_count, terminal FROM library_song_analysis_failures WHERE task = 'audio-features'`,
+      )
+      .all();
+    expect(rows.every((r) => r.fail_count === 0 && r.terminal === 0)).toBe(true);
+    expect(features.countPending(db)).toBe(30);
   });
 
   it('ledgers a sidecar-rejected file (422) as a hard failure and excludes it after the cap', async () => {

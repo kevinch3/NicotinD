@@ -422,7 +422,17 @@ table (keyed `(song_id, task)`) fix that:
   writes no attempt rows sorts entirely on NULLs and keeps its old `created DESC` order.
   `artistOriginTask` solved the same class earlier with a TTL tombstone
   (`ORIGIN_RECHECK_TTL_MS`); the ledger stamp generalises it.
-  → [popularity.md](popularity.md)
+
+  **"Every un-ledgered path" was aspirational until #1048.** The #851 fix was only ever
+  wired into `popularity`; `audioFeaturesTask`'s two un-ledgered branches — the transport
+  throw (which includes the client-side `ANALYZE_TIMEOUT_MS` abort) and the sidecar-returned-
+  no-result 404 — stamped nothing. One 8 h 35 m track that could not finish inside the 120 s
+  timeout therefore sat at the head of every window forever: 96 of 96 recent `audio-features`
+  failures on prod were that one file, while the sidecar burned ~100% CPU re-running analyses
+  whose results were always discarded. The lesson is about the *shape* of the claim: a rule
+  stated universally ("every un-ledgered path") is worth a gate or a test per path, because a
+  single unconverted call site reproduces the whole defect and the prose keeps reading as true.
+  → [popularity.md](popularity.md), [audio-ml-enrichment.md](audio-ml-enrichment.md)
 - **A confident negative is terminal, not a strike** (issue #689). A
   `NoConfidentResultError` means "we asked, no such data exists for this recording" — a
   final answer. It sets `terminal = 1` on the ledger row, and both clauses read

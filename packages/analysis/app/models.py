@@ -23,14 +23,45 @@ from .genre_labels import GENRE_LABELS
 # Both embedding models expect 16 kHz mono input.
 SAMPLE_RATE = 16000
 
+# Length of the head of a track /analyze decodes. 15 minutes is far past any
+# ordinary song (the library averages ~4 min) while bounding the decode buffer
+# at ~57 MB of float32 PCM.
+ANALYZE_WINDOW_SECONDS_DEFAULT = 900.0
+
+
+def analyze_window_seconds(env: dict[str, str] | None = None) -> float:
+    """Seconds of each track `/analyze` decodes (`ANALYSIS_ANALYZE_SECONDS`).
+
+    Non-numeric or non-positive values fall back to the default rather than
+    disabling the window — an unbounded decode is the failure this prevents,
+    so there is deliberately no way to switch it off by misconfiguration.
+    """
+    e = os.environ if env is None else env
+    raw = e.get("ANALYSIS_ANALYZE_SECONDS")
+    if raw is None:
+        return ANALYZE_WINDOW_SECONDS_DEFAULT
+    try:
+        value = float(raw)
+    except ValueError:
+        return ANALYZE_WINDOW_SECONDS_DEFAULT
+    return value if value > 0 else ANALYZE_WINDOW_SECONDS_DEFAULT
+
 
 def load_audio(path: str):
-    """Decode any codec to 16 kHz mono float32 via the system ffmpeg CLI.
+    """Decode the head of any codec to 16 kHz mono float32 via the ffmpeg CLI.
 
     Essentia's bundled AudioLoader lacks Opus support (the library's standard
     codec after lossless→Opus standardization), so decoding goes through
     ffmpeg — which handles everything — and the raw PCM feeds the TF
     predictors directly.
+
+    The decode is WINDOWED (`-t`, as an input option so ffmpeg stops reading
+    rather than decoding and discarding). `subprocess.run(capture_output=True)`
+    buffers the whole stream in memory, so an unwindowed decode makes peak RSS a
+    function of track length: one 8 h 35 m file needed ~1.98 GB of PCM before a
+    single inference ran, and repeatedly OOM-killed the container (#1048).
+    `rhythm.py` and `descriptors.py` already windowed; this was the one path
+    that did not.
     """
     import numpy as np  # deferred with the rest of the model deps
 
@@ -40,6 +71,8 @@ def load_audio(path: str):
             "-hide_banner",
             "-loglevel",
             "error",
+            "-t",
+            str(analyze_window_seconds()),
             "-i",
             path,
             "-vn",

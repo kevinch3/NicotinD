@@ -948,9 +948,17 @@ const audioFeaturesTask: EnrichmentTask = {
             // files). Count it as a run failure: the file is bad.
             noteItemFailure(db, tally, song, 'audio-features', err);
           } else {
-            // An unexpected throw from the client (transport error). Treat it
-            // like an outage unless we can still reach the sidecar.
+            // An unexpected throw from the client (transport error, or the
+            // client-side analyze timeout). Treat it like an outage unless we
+            // can still reach the sidecar.
             if (!ctx.audioFeaturesAvailable()) return;
+            // Not a strike — the file may be fine and the sidecar merely slow —
+            // but stamp the attempt, or this song stays NULL in `last_attempt`,
+            // sorts NULLS FIRST forever, and refills the window with itself.
+            // One 8 h track livelocked the whole task that way: 96 of 96 recent
+            // failures were the same file, and the frontier never advanced
+            // (#1048; the #851 shape, which `noteAnalysisAttempt` exists for).
+            noteAnalysisAttempt(db, song.id, 'audio-features', song.size);
             recordFailure(tally, err instanceof Error ? err : new Error(String(err)));
           }
           continue;
@@ -960,9 +968,12 @@ const audioFeaturesTask: EnrichmentTask = {
           // (an outage, not a per-file failure — don't count it against the file).
           if (!ctx.audioFeaturesAvailable()) return;
           // Sidecar is up but returned no result (e.g. 404 — file not visible
-          // to the sidecar, usually a mount mismatch). Don't ledger: a misconfig
-          // would otherwise exclude the whole library; count it as a failure
-          // so the run still surfaces the problem.
+          // to the sidecar, usually a mount mismatch). Don't ledger a strike: a
+          // misconfig would otherwise exclude the whole library; count it as a
+          // failure so the run still surfaces the problem. Stamp the attempt for
+          // the same reason as the throw path above — un-ledgered plus
+          // NULLS-FIRST ordering is what livelocks the pool.
+          noteAnalysisAttempt(db, song.id, 'audio-features', song.size);
           recordFailure(tally, new Error('analysis sidecar could not analyze file (see logs)'));
           continue;
         }

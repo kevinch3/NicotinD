@@ -443,6 +443,46 @@ Cross-tenant awareness (gating a window kick on Immich/Ollama's own GPU usage) r
 self-throttling via idle-release was judged sufficient for now; revisit if the `kpc` measurement
 shows otherwise.
 
+### The other memory axis: HOST RAM scaling with track length (issue #1048)
+
+Everything above is GPU memory. A second, independent bound was missing entirely: `/analyze`
+was the only endpoint that decoded a **whole file**. `load_audio` runs ffmpeg under
+`subprocess.run(capture_output=True)`, which buffers the entire decoded stream in memory, so
+peak host RSS was a function of track *length* rather than a constant.
+
+```
+30,915.56 s x 16,000 Hz x 4 B  =  ~1.98 GB of float32 PCM, before one inference runs
+```
+
+That is a real file in the library — an 8 h 35 m live set, 416 MB, 129x the ~4-minute average
+this whole compute budget was sized against. `rhythm.py` (90 s) and `descriptors.py`
+(`ANALYSIS_DESCRIPTOR_SECONDS`, 180 s) both already windowed their decode; this one path did
+not, so the pathological case had no ceiling.
+
+`ANALYSIS_ANALYZE_SECONDS` (default 900 s) now windows it with ffmpeg `-t`, placed **before**
+`-i` so it is an input option and ffmpeg stops reading rather than decoding and discarding the
+tail. 15 minutes clears any ordinary track while capping the buffer near 57 MB. A non-positive
+value falls back to the default rather than disabling the window — `-t 0` would decode nothing
+and 422 the entire library.
+
+**Why it stayed broken for days rather than failing once.** Three defects composed, and only
+together do they explain a 3h42m host outage:
+
+1. **Unbounded decode** — the ~1.98 GB above, on a container that had no memory limit.
+2. **An abort the server never hears.** The API client gives up at `ANALYZE_TIMEOUT_MS`
+   (120 s), but `/analyze` is a synchronous handler holding a lock: it runs the full ~4-minute
+   analysis to completion regardless. Measured on prod: **11,868 TensorFlow GPU sessions in
+   ~65 h** (12 per analyze ⇒ ~989 completed analyses) against **2** successful `POST /analyze`
+   responses. Essentially all of that compute was discarded before it finished.
+3. **A timeout that stamps nothing**, so the same file returned to the head of every window —
+   see "An un-ledgered failure must still stamp an attempt" in
+   [library-processing.md](library-processing.md).
+
+Bounding the decode fixes (1). Stamping the attempt fixes (3). **(2) is still open**: a client
+abort should cancel server-side work, not merely stop waiting for it. Until it does, any file
+that cannot finish inside the timeout still costs a full analysis of wasted GPU time per
+attempt — it just no longer costs the same file every time, or the host.
+
 ## 5. Rollout phases
 
 1. **Sidecar skeleton** — ✅ built (`packages/analysis/`): FastAPI + Essentia-TF,
