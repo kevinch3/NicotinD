@@ -47,6 +47,38 @@ def analyze_window_seconds(env: dict[str, str] | None = None) -> float:
     return value if value > 0 else ANALYZE_WINDOW_SECONDS_DEFAULT
 
 
+def decode_argv(path: str, seconds: float) -> list[str]:
+    """ffmpeg argv for a windowed 16 kHz mono float32 decode to stdout.
+
+    Split out of `load_audio` so the window is assertable without the model
+    extra: `numpy` is deliberately absent from dev/CI installs (it ships with
+    TensorFlow in `[models]`), and `load_audio` imports it before it ever
+    reaches ffmpeg. The argv *is* the contract here — the whole defect was one
+    missing flag — so it is worth a function that a test can call directly.
+
+    `-t` precedes `-i` to make it an INPUT option: ffmpeg then stops reading at
+    the window instead of decoding the whole file and discarding the tail.
+    """
+    return [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-t",
+        str(seconds),
+        "-i",
+        path,
+        "-vn",
+        "-ac",
+        "1",
+        "-ar",
+        str(SAMPLE_RATE),
+        "-f",
+        "f32le",
+        "pipe:1",
+    ]
+
+
 def load_audio(path: str):
     """Decode the head of any codec to 16 kHz mono float32 via the ffmpeg CLI.
 
@@ -66,24 +98,7 @@ def load_audio(path: str):
     import numpy as np  # deferred with the rest of the model deps
 
     proc = subprocess.run(
-        [
-            "ffmpeg",
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-t",
-            str(analyze_window_seconds()),
-            "-i",
-            path,
-            "-vn",
-            "-ac",
-            "1",
-            "-ar",
-            str(SAMPLE_RATE),
-            "-f",
-            "f32le",
-            "pipe:1",
-        ],
+        decode_argv(path, analyze_window_seconds()),
         capture_output=True,
         check=False,
     )

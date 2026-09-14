@@ -13,12 +13,11 @@ A non-positive window must never reach ffmpeg: `-t 0` decodes nothing, which
 would 422 every file in the library.
 """
 
-from app import models
 from app.models import (
     ANALYZE_WINDOW_SECONDS_DEFAULT,
     SAMPLE_RATE,
     analyze_window_seconds,
-    load_audio,
+    decode_argv,
 )
 
 
@@ -61,34 +60,27 @@ def test_garbage_falls_back_rather_than_raising() -> None:
     )
 
 
-class _FakeProc:
-    returncode = 0
-    stderr = b""
-    # One second of silence: enough to clear load_audio's `< SAMPLE_RATE` guard.
-    stdout = b"\0" * (SAMPLE_RATE * 4)
-
-
-def test_load_audio_actually_passes_the_window_to_ffmpeg(monkeypatch) -> None:
+def test_the_window_actually_reaches_the_ffmpeg_argv() -> None:
     """The knob is worthless unless it reaches the argv — so assert the argv.
 
     A config function that returns the right number while the caller ignores it
-    is the failure this guards: the whole defect was an ffmpeg invocation
-    missing one flag.
+    is precisely the failure this guards: the whole defect was an ffmpeg
+    invocation missing one flag.
     """
-    seen: list[list[str]] = []
-
-    def fake_run(argv, **_kwargs):
-        seen.append(argv)
-        return _FakeProc()
-
-    monkeypatch.setattr(models.subprocess, "run", fake_run)
-    monkeypatch.setenv("ANALYSIS_ANALYZE_SECONDS", "42")
-    load_audio("/music/anything.opus")
-
-    assert len(seen) == 1
-    argv = seen[0]
+    argv = decode_argv("/music/anything.opus", 42.0)
     assert "-t" in argv, "the decode is unwindowed — this is the #1048 defect"
     assert argv[argv.index("-t") + 1] == "42.0"
     # `-t` must precede `-i` to be an INPUT option: ffmpeg then stops reading at
     # the window instead of decoding the whole file and discarding the tail.
     assert argv.index("-t") < argv.index("-i")
+    assert argv[argv.index("-i") + 1] == "/music/anything.opus"
+
+
+def test_decode_argv_still_produces_the_format_the_models_expect() -> None:
+    # Windowing must not disturb the rest of the contract: 16 kHz mono f32 to
+    # stdout is what the TF predictors are fed.
+    argv = decode_argv("/music/x.opus", ANALYZE_WINDOW_SECONDS_DEFAULT)
+    assert argv[argv.index("-ar") + 1] == str(SAMPLE_RATE)
+    assert argv[argv.index("-ac") + 1] == "1"
+    assert argv[argv.index("-f") + 1] == "f32le"
+    assert argv[-1] == "pipe:1"
