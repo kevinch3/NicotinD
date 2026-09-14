@@ -121,20 +121,56 @@ export function addonTransferKey(addonId: string, itemId: string): string {
 }
 
 /**
+ * The `jobmap:<addonJobId>` value: the core row it mirrors into, plus the
+ * addon job's `createdAt` at the time of mapping — the timestamp that lets
+ * `ensureCoreJob` tell "this exact job's card was removed" apart from "the
+ * addon restarted and reissued this id for a different job" (issue #1018).
+ *
+ * `createdAt` is optional so a bare-string legacy value (every row written
+ * before this type existed) still parses: `decodeJobMap` treats a plain
+ * string as `{ coreJobId: value, createdAt: undefined }`, which
+ * `ensureCoreJob` then treats as "can't tell, don't re-mint" — the safe
+ * default, and the exact behaviour those rows already had.
+ */
+interface JobMapValue {
+  coreJobId: string;
+  createdAt?: number;
+}
+
+function decodeJobMap(raw: string): JobMapValue {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && 'coreJobId' in parsed) {
+      return parsed as JobMapValue;
+    }
+  } catch {
+    /* a legacy bare core-id string is not JSON at all */
+  }
+  return { coreJobId: raw };
+}
+
+/**
  * Pre-map an addon job to a core acquisition job (acquireAlbum creates the
  * feed row with hunt metadata; the poller then mirrors items into it instead
  * of minting a bare row).
+ *
+ * `addonCreatedAt`, when known, is stored alongside the core id — see
+ * {@link JobMapValue}. Callers that don't have it yet (existing tests,
+ * anything pre-dating #1018) may omit it; the mapping still round-trips.
  */
 export function mapAddonJob(
   db: Database,
   addonId: string,
   addonJobId: string,
   coreJobId: string,
+  addonCreatedAt?: number,
 ): void {
+  const value: JobMapValue = { coreJobId };
+  if (addonCreatedAt !== undefined) value.createdAt = addonCreatedAt;
   db.run(
     `INSERT INTO plugin_kv (plugin_id, key, value) VALUES (?, ?, ?)
      ON CONFLICT(plugin_id, key) DO UPDATE SET value = excluded.value`,
-    [`addon-poller:${addonId}`, `jobmap:${addonJobId}`, coreJobId],
+    [`addon-poller:${addonId}`, `jobmap:${addonJobId}`, JSON.stringify(value)],
   );
 }
 
@@ -580,12 +616,25 @@ export class AddonJobPoller {
    * sight). Null when the map names a row that is gone — a removed card.
    */
   private ensureCoreJob(addonId: string, job: AddonJob): string | null {
-    const mapped = this.kvGet(addonId, `jobmap:${job.id}`);
+    const rawMapped = this.kvGet(addonId, `jobmap:${job.id}`);
+    const mapped = rawMapped ? decodeJobMap(rawMapped) : null;
     if (mapped) {
       const exists = this.deps.db
         .query<{ id: string }, [string]>(`SELECT id FROM acquisition_jobs WHERE id = ?`)
-        .get(mapped);
-      return exists ? mapped : null;
+        .get(mapped.coreJobId);
+      if (exists) return mapped.coreJobId; // the common case, unchanged
+      // The mapped row is gone. That is a removed card ONLY when this is
+      // demonstrably the same addon job — `createdAt` unknown (a legacy row,
+      // or a caller that never had it) keeps the existing, safe behaviour of
+      // never re-minting. A DIFFERENT `createdAt` means the addon restarted
+      // and reissued this id for a new job (issue #1018: an in-memory addon
+      // job store re-mints ids from 1) — the card the id used to name really
+      // was removed, but the id itself is not, so fall through and mirror it
+      // as the new job it is. `wasReleasedByUs` must not remember the OLD
+      // job's release across that boundary, or this one release-and-skip
+      // forever with no card and no error, exactly the flake `#1018` reports.
+      if (mapped.createdAt === undefined || mapped.createdAt === job.createdAt) return null;
+      this.kvDelete(addonId, `released:${job.id}`);
     }
     const coreJobId = createJob(this.deps.db, {
       kind: KIND_BY_INTENT[job.intent] ?? 'direct',
@@ -596,7 +645,7 @@ export class AddonJobPoller {
       sourceRef: `addon:${addonId}:${job.id}`,
       files: [],
     });
-    this.kvSet(addonId, `jobmap:${job.id}`, coreJobId);
+    mapAddonJob(this.deps.db, addonId, job.id, coreJobId, job.createdAt);
     log.info({ addonId, addonJob: job.id, coreJobId }, 'mirroring addon job into the feed');
     return coreJobId;
   }
@@ -1089,6 +1138,19 @@ export class AddonJobPoller {
        ON CONFLICT(plugin_id, key) DO UPDATE SET value = excluded.value`,
       [`addon-poller:${addonId}`, key, value],
     );
+  }
+
+  /**
+   * Drop one namespaced key. Used only to clear a stale `released:<id>`
+   * tombstone when `ensureCoreJob` proves a reissued id names a genuinely new
+   * job (issue #1018) — never to wipe a whole addon's namespace on remove,
+   * which would re-mint a twin card for any still-live job on a remove→re-add.
+   */
+  private kvDelete(addonId: string, key: string): void {
+    this.deps.db.run(`DELETE FROM plugin_kv WHERE plugin_id = ? AND key = ?`, [
+      `addon-poller:${addonId}`,
+      key,
+    ]);
   }
 }
 

@@ -240,7 +240,11 @@ async function acquireViaAddon(
       sourceRef: `addon:${addonId}:${addonJob.id}`,
       files: [],
     });
-    mapAddonJob(db, addonId, addonJob.id, coreJobId);
+    // `addonJob.createdAt` is what lets a later poll tell "this exact job's
+    // card was removed" apart from "the addon restarted and reissued this id
+    // for a different job" (issue #1018) — the same protection the poller's
+    // own auto-mint path gets.
+    mapAddonJob(db, addonId, addonJob.id, coreJobId, addonJob.createdAt);
   } catch (err) {
     log.warn({ lidarrAlbumId, err }, 'Failed to record acquisition job for addon acquire');
   }
