@@ -108,6 +108,15 @@ test.describe('partial discard from the download card', () => {
     page,
     request,
   }) => {
+    // Diagnosability only, NOT a fix for #1018 (that is the acquisition-side
+    // job-id-reuse bug this flake actually traces to — see
+    // docs/download-pipeline.md "A mapped id names a JOB, not a slot"). This
+    // spec's own explicit waits already sum past Playwright's 30s per-test
+    // default (30+30+20+20 below), so a genuine hang anywhere in it reports
+    // the *test's* 30s budget rather than the assertion actually stuck —
+    // exactly why #1018's `:163` failure line named the wrong thing. Raising
+    // the ceiling here just lets a real failure point at itself.
+    test.setTimeout(90_000);
     const created = await request.post(`${addon.url}/addon/v1/jobs`, {
       headers: ADDON_AUTH,
       data: { intent: 'album', artist: 'Rick Astley', album: 'Whenever You Need Somebody' },
@@ -179,7 +188,7 @@ test.describe('partial discard from the download card', () => {
     // With a track already landed, cancel asks what to do with it (#810).
     // Keep it: the point here is the card's own Discard afterwards.
     await page.getByTestId('confirm-ok').click();
-    await expect.poll(() => addon.cancelRequests.length).toBe(1);
+    await expect.poll(() => addon.cancelRequests.length, { timeout: 20_000 }).toBe(1);
 
     // The cancelled partial names itself: Discard is offered, and confirming it
     // deletes the landed track (never the destination album by name).

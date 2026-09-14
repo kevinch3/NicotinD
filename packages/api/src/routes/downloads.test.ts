@@ -454,12 +454,13 @@ describe('addon job actions (acquisition addon protocol phase 2)', () => {
     expect(job.method).toBe('fixture-addon');
     expect(job.source_ref).toBe('addon:fixture-addon:grab-1');
     // Pre-mapped for the poller, so it mirrors into THIS row instead of a twin.
+    // `mapAddonJob` stores `{coreJobId,...}` JSON (#1018), not the bare id.
     const mapped = testDb
       .query<{ value: string }, [string, string]>(
         `SELECT value FROM plugin_kv WHERE plugin_id = ? AND key = ?`,
       )
       .get('addon-poller:fixture-addon', 'jobmap:grab-1');
-    expect(mapped?.value).toBe(job.id);
+    expect(JSON.parse(mapped?.value ?? '{}')).toMatchObject({ coreJobId: job.id });
     // …and Cancel now reaches the addon.
     const cancel = await app.request(`/jobs/${job.id}/cancel`, { method: 'POST' });
     expect(cancel.status).toBe(200);

@@ -1213,6 +1213,30 @@ Three rules came out of it:
 - **The test DB enforces foreign keys** the way prod does. A test DB that does not never sees this
   throw, which is how the class stayed invisible to 54 passing poller tests.
 
+### A mapped id names a JOB, not a slot — reissued ids need a tiebreaker (#1018)
+
+The first rule above has a qualifier the original wording didn't state: **a mapped id whose row is
+gone means the person removed the card, *provided the addon is still talking about the same job*.**
+`jobmap:<addonJobId>` is keyed on the addon's own id string, and nothing guaranteed that string is
+unique across the addon's whole lifetime — an in-memory job store (the yt-dlp/spotdl addons are;
+`reconcileOrphanedJobs`'s own comment already notes a restart drops the job) with a counter that
+resets on restart reissues `job-1` for a completely different job. `ensureCoreJob` then read
+"mapped id, row gone" and concluded "removed card" for a job nobody had touched — silently
+released and skipped, forever, with no card and no error.
+
+The fix is `mapAddonJob`'s optional `addonCreatedAt`, stored alongside the core id
+(`JobMapValue`). `ensureCoreJob` now applies the first rule **only when the timestamp still
+matches** (or is unknown — a pre-fix row, or a caller that never had it, which is the existing
+behaviour and stays the safe default). A different `createdAt` means the id survived a restart
+naming a new job: the removed card really was removed, but the id is not the same slot, so the
+job falls through and mirrors into a fresh row instead. `releaseRemovedJob`'s `released:<id>`
+tombstone is cleared on that fall-through too — it was stamped for the *old* job under this id
+and must not silently swallow the new one.
+
+`album-acquire.ts`'s pre-mapping call site (`auto-acquire`, before the poller ever sees the job)
+passes `addonJob.createdAt` the same way the poller's own auto-mint path does, so a Lidarr-driven
+acquire gets the same protection as one discovered by polling.
+
 ### The replacement peer lands on its own row (#1084)
 
 A re-source maps a second addon job onto the **same** card and supersedes the titles it takes
