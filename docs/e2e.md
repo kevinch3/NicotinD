@@ -169,20 +169,40 @@ same PR that hit it.
   Block the SW for the test instead; it is a faithful stand-in, since against a
   genuinely dead server the SW's own network fetch fails too.
 
-- **A fresh service worker holds every fetch until its whole prefetch lands.**
-  Each test gets a new context, so `ngsw-worker.js` installs from scratch, and
-  its `handleFetch` awaits `ensureInitialized` → `initializeFully`, which fetches
-  the entire `app` asset group (~93 files) one at a time. Every `/api` call made
-  in that window, about 0.5–1 s after boot, waits behind it. One asset that never answers
-  therefore hangs an unrelated request for as long as it stalls. In CI the prefetch stopped at
+- **A fresh service worker holds every fetch until its whole prefetch lands —
+  and only on `localhost`.** Each test gets a new context, so `ngsw-worker.js`
+  installs from scratch, and its `handleFetch` awaits `ensureInitialized` →
+  `initializeFully`, which fetches the entire `app` asset group (~93 files) one
+  at a time. Every `/api` call made in that window, about 0.5–1 s after boot,
+  waits behind it. One asset that never answers therefore hangs an unrelated
+  request for as long as it stalls. In CI the prefetch stopped at
   `chunk-C4_c_NPY2.js` (27/93) and `GET /api/privacy/export` sat unsent for the
   full 15 s download wait, on both attempts (issue #1044, `privacy.spec.ts`).
   The trace proves it was the SW, not the server: chunks issued *after* the
-  export were served in 1–2 ms. A spec whose subject is not the SW should
-  `test.use({ serviceWorkers: 'block' })`. `privacy.spec.ts` also carries a
-  tripwire that stalls the SW's `chunk-*.js` prefetches (not `ngsw-worker.js`
-  itself, or the SW never takes control and the test fails for a different reason), so dropping the block
-  fails every run instead of one in N.
+  export were served in 1–2 ms.
+
+  The `localhost` qualifier is load-bearing, not incidental (issue #1106):
+  ngsw's `scheduleInitialization` runs the prefetch *inline, awaited* only when
+  `isLocalhost(registration.scope)` — which `baseURL = http://localhost:${PORT}`
+  always is here — and defers it to the idle scheduler on every other origin,
+  where it never blocks a fetch. So this is a genuine harness exposure with no
+  real-listener equivalent, which is also why `serviceWorkers: 'block'` is now
+  the **suite-wide default** for the `chromium`/`onboarding` projects rather
+  than a per-spec opt-in: almost nothing under test is *about* the SW, and every
+  spec that isn't pays this race for free. A spec that genuinely needs a live
+  worker opts back in with `test.use({ serviceWorkers: 'allow' })` —
+  `offline.spec.ts`'s "mosaic home offline" describe is the one example, and
+  `pwa-update.spec.ts` deliberately needs neither, since `SwUpdate.isEnabled` is
+  the browser API's mere presence, unaffected by `block`.
+
+  `privacy.spec.ts`'s own `test.use({ serviceWorkers: 'block' })` — the fix for
+  #1044, and now redundant with the suite default — is left in place rather
+  than deleted: its export test reads the **effective** `serviceWorkers` fixture
+  value rather than assuming which one wins (`if (serviceWorkers !== 'block')
+  await page.waitForFunction(...controller)`), and its `chunk-*.js` tripwire
+  only intercepts SW-attributed requests, so both stay correct regardless of
+  whether the describe-level override or the project default is the one
+  actually in force.
 
 - **Going offline is only offline if the service worker is ready for it — and
   when it takes control is a race.** `context.setOffline(true)` does *not* stop

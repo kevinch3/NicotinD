@@ -13,6 +13,13 @@ import { expandGroup } from '../helpers';
  * VISIBLE, proving the `@if (update.checkAvailable())` gate resolves true in a
  * real PWA build.
  *
+ * Deliberately unaffected by the `chromium` project's `serviceWorkers: 'block'`
+ * default (issue #1106): `SwUpdate.isEnabled` is `!!navigator.serviceWorker` —
+ * the browser API's mere presence, independent of whether a worker actually
+ * registers or controls the page — so this assertion holds under `block` the
+ * same as under `allow`. That is also why this spec needs no `test.use`
+ * override, unlike `offline.spec.ts`'s "mosaic home offline" describe.
+ *
  * The click outcomes (up-to-date / available / error toasts, re-entrancy,
  * `applyUpdate` activation) are covered against a stubbed `SwUpdate` in
  * `update.service.spec.ts` and `settings.component.spec.ts`; driving the live
