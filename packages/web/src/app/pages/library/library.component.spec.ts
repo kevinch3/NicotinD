@@ -107,6 +107,7 @@ function setup(
         provide: TranslateService,
         useValue: {
           lang: signal('en'),
+          version: signal(0),
           t: (key: string, params?: Record<string, string | number>) =>
             interpolate(TEST_CATALOG[key] ?? key, params),
         },

@@ -612,6 +612,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   full-screen list, never the phone popover a remote cannot dismiss), sharing `otherDevicesFor` with
   it; `TvShellComponent` routes to the player when a cast lands here.
   → [remote-playback.md](remote-playback.md), [tv-ux.md](tv-ux.md)
+- **The TV tree in Chromium**: the e2e `tv` project serves `ng build --configuration tv` through
+  `NICOTIND_WEB_DIST` on a third managed server and screenshots every TV screen at 960×540, because
+  stamping `tv-build` on the phone bundle never renders `isTvBuild()`'s route tree. `TV_DIST`,
+  `seedAdminAndLibrary`, `expectNoNativeFormControls`, `tvbuild.spec.ts`. → [e2e.md](e2e.md)
 - **Changelog modal**: build-time `CHANGELOG.md` → `changelog.json`, capped; the version string in
   header and settings is clickable. → [web-ui.md](web-ui.md)
 - **Shared relative time**: one `timeAgo` (`lib/relative-time.ts`) for the Downloads feed and Admin

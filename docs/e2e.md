@@ -12,6 +12,12 @@ unit can: boot → auth → scan → stream → playback → plugin gating.
 > distinguish "focus correctly moved" from "focus never could have moved". Anything about
 > D-pad reachability, focus escape, or the hardware Back key belongs there, not here. →
 > [e2e-tv-emulator.md](e2e-tv-emulator.md)
+>
+> **And a `tv` project in this suite renders the real TV bundle.** The TV route tree is a
+> build-time fork (`isTvBuild()`), so stamping the `tv-build` class on the phone bundle — what the
+> older `*-tv.spec.ts` files do — never mounts it. The `tv` project serves `ng build --configuration
+> tv` on a third managed server and asserts screenshots at the TV viewport. → "The TV bundle in
+> Chromium" below.
 
 ## Fixtures
 
@@ -42,6 +48,8 @@ gradient fallback and needs a subject that genuinely has no cover.
 | `tests/onboarding.spec.ts`     | (**`onboarding` project**, own fresh server) drives the 4-step setup wizard end-to-end incl. the Advanced/Lidarr panel, then confirms it lands authenticated in the app                                                                       |
 | `tests/welcome-banner.spec.ts` | an admin-provisioned user sees the first-login welcome banner and can dismiss it (seeded server)                                                                                                                                              |
 | `tests/song-menu.spec.ts`      | on an album detail page: the unified `⋯` row menu's common actions + "Go to album" suppression, "Song info" opens the track-info sheet, admin "Remove from library" → global `ConfirmHost` → row removal (see `docs/song-actions.md#testing`) |
+| `tests/tv-build/tv-auth.setup.ts` | (**`tv-setup` project**, the TV server) the same `seedAdminAndLibrary` as `auth.setup.ts`, saving `.auth/tv-admin.json` |
+| `tests/tv-build/*.tvbuild.spec.ts` | (**`tv` project**, the real TV bundle at 960×540) login fits the screen with the QR beside the code (#1133); Home's nav is above the fold and a D-pad row (#1135); Browse/Album render and covers decode; the player's transport icons are centred (#1132), the queue overlay, the output chooser and karaoke open (#1134) with no native form control anywhere; Settings' rows and chooser — each with a `toHaveScreenshot` baseline |
 
 ## How it runs
 
@@ -63,6 +71,11 @@ gradient fallback and needs a subject that genuinely has no cover.
   the first admin — a one-shot per server — so the spec is a single end-to-end pass.
   The onboarding project is **omitted in external/prod-smoke mode** (`E2E_BASE_URL`):
   the setup wizard must never run against a real instance.
+- **The TV bundle runs on a third server**: `TvShellComponent` and the five TV routes exist only
+  in a build with `environment.tvBuild` true, so a **third** managed server boots on **8588**
+  (`E2E_TV_CHROMIUM_PORT`, own `.tmp-data-tvbuild` DB) with `NICOTIND_WEB_DIST` pointed at
+  `packages/web/dist-tv/browser`, and the `tv` project targets it with its own `tv-setup`
+  dependency and `.auth/tv-admin.json`. Omitted in external mode like onboarding.
 - **Selectors**: the suite selects on `data-testid` attributes added to the relevant
   components (login/setup/search/library/album-detail/plugins/player). **This is the
   e2e selector standard** — prefer adding a `data-testid` over text/CSS coupling when
@@ -287,13 +300,33 @@ same PR that hit it.
   seeds. Don't assert on content existing unless the setup project or your
   spec created it.
 
+- **`GET /api/library/albums` names an album `name` and carries no `song[]`.** The
+  lyrics seed in `auth.setup.ts` matched on `a.title` and read `song[0]` off the list, so
+  `fixtureAlbum` was always `undefined`, the `if` around the PUT was always false, and the
+  karaoke overlay's e2e ran for months against a track with **no lyrics** — passing, because
+  it only asserted an absence. `seedAdminAndLibrary` now goes through the album detail and
+  `expect`s each step, so the seed cannot go quiet again. A seed guarded by an `if` is a
+  seed that can silently stop seeding.
+
+- **A screenshot baseline is a Linux rendering with pinned fonts.** `toHaveScreenshot` in the
+  `tv` project compares against committed `*-tv-linux.png` files. Text is most of every TV
+  screen and the UI font stack resolves through fontconfig to whatever the box has, so
+  `tests/tv-build/tv-test.ts` injects a stylesheet pinning DejaVu Sans / DejaVu Sans Mono /
+  Noto Color Emoji — fonts every Ubuntu image and Playwright's `install-deps` provide. A
+  missing baseline is **written and the test fails** (`updateSnapshots: 'missing'`), so a
+  new screenshot needs its baseline committed with it, generated on Linux
+  (`--update-snapshots`); the `.gitignore` drops the `-darwin`/`-win32` files another OS
+  would write. Anything random per run is masked (`mask:` — the login QR and code, the Taste
+  breakers shelf), never waited out.
+
 ## Running locally
 
 ```bash
 bunx playwright install chromium            # one-time, from packages/e2e
 bun run --filter @nicotind/e2e test         # or: bun run e2e (from repo root)
 bun run --filter @nicotind/e2e test:ui      # interactive UI mode
-E2E_SKIP_BUILD=1 bunx playwright test tests/x.spec.ts   # fast re-run, existing dist
+E2E_SKIP_BUILD=1 bunx playwright test tests/x.spec.ts   # fast re-run, existing dist + dist-tv
+E2E_SKIP_BUILD=1 bunx playwright test --project=tv      # the TV bundle only (runs tv-setup first)
 bun run --filter @nicotind/e2e typecheck    # type-check the specs (also part of root typecheck)
 ```
 
@@ -340,6 +373,39 @@ same call; the `hunt` / `live-screens` / `real` configs all require
 > declare `engines.node >= 22.22.3`. If `ng build`/`ng test` fail an engine check,
 > run `nvm use` (the host default nvm Node — `22.22.0` — is below the floor).
 
+## The TV bundle in Chromium (the `tv` project)
+
+**Why it exists (#1136).** Three "TV" specs — `now-playing-tv.spec.ts`, `library-dpad-tv.spec.ts`,
+`login-tv-signin.spec.ts` — fake a TV by stamping the `tv-build` root class on the phone bundle at
+960×540. That flips `isTvUi()`, which components read. The TV **route tree** is keyed off
+`isTvBuild()` — `environment.tvBuild`, replaced at build time by `--configuration tv` — so those specs
+never mounted `TvShellComponent`, `TvHomeComponent`, `TvPlayerComponent`, `TvSettingsComponent` or
+`TvDevicePickerComponent`. `now-playing-tv.spec.ts` drives a phone sheet the TV build does not render.
+The real tree's only coverage was the local-only emulator lane, and three layout defects (#1132,
+#1133, #1135) shipped through a green suite on templates no Chromium test had ever rendered.
+
+**What it is.** `ensureWebBuild()` builds the TV bundle beside the phone one
+(`ng build --configuration tv --output-path dist-tv` → `packages/web/dist-tv/browser/`, the
+`browser/` segment being what a string `--output-path` does to angular.json's object `outputPath`;
+`TV_DIST` in `ensure-web-build.ts`). `playwright.config.ts` boots a third `makeServer` with
+`NICOTIND_WEB_DIST` on that path, and the `tv` project (`testMatch: *.tvbuild.spec.ts`, ignored by
+`chromium`) runs against it at **960×540, DPR 1** — the CSS viewport a 1080p Android TV gives the
+WebView, at the DPR that keeps baselines small. Specs import `test` from `tests/tv-build/tv-test.ts`,
+which pins the fonts (above) and exports the three assertions every screen gets:
+`expectNoNativeFormControls` (the docs/tv-ux.md "Enforcement" invariant, here on overlays too),
+`expectFitsTheScreen` (`toBeInViewport` at ratio 1 — a TV cuts off what it cannot fit rather than
+scrolling), and `centreOf` for geometry such as #1132's icon offsets.
+
+**Screenshots.** Every screen and overlay ends in `toHaveScreenshot` against a committed
+`*-tv-linux.png`. The project-wide `expect.toHaveScreenshot` sets `maxDiffPixelRatio: 0.03` and
+`threshold: 0.3` so a different Chromium build's anti-aliasing passes and a layout change does not;
+animations are disabled by Playwright's default. Per-run randomness is masked, never waited out.
+
+**What it still does not give you.** Spatial navigation and hardware Back — a desktop Chromium has
+neither, and the D-pad reachability walk and the Back-exits-the-route contract stay in
+[e2e-tv-emulator.md](e2e-tv-emulator.md). The `tv` project's keyboard assertions cover only what the
+app's own `TvNavGroupDirective` handles (◀ ▶ within a row, Escape through `BackHandlerStack`).
+
 ## Prod smoke
 
 Point the suite at a running instance and the managed `webServer` is skipped:
@@ -354,7 +420,8 @@ Use read-only/login-style specs only — do not seed or destroy prod data.
 ## CI
 
 The `e2e` job in `.github/workflows/ci.yml` installs deps + the Chromium browser,
-builds web (the Hono server serves `packages/web/dist`), runs the suite, and uploads
+builds web twice — the phone bundle the Hono server serves from `packages/web/dist` and the
+TV bundle in `dist-tv` (`Build (web, TV configuration)`) — runs the suite, and uploads
 the Playwright HTML report on failure. `release` depends on every gate job (`ci`,
 `web-test`, `storybook`, `e2e`, `analysis`, `docker`, `desktop-package`),
 so a red e2e run blocks the deploy. `e2e` **is** in `check-ci-parity.ts`'s `GATE_JOBS`
@@ -389,6 +456,8 @@ consequences worth knowing before you add a spec:
   the fixtures carry no genre tag, and it only passed because an earlier spec wrote one.
 - **`auth.setup.ts` runs in every shard**, so the seeded admin, the scanned fixture
   library and `.auth/admin.json` are the baseline a spec may assume. Nothing else is.
+  The `tv` project's files shard like any others; a shard that draws one boots the third
+  server and runs `tv-setup` too.
 
 `fail-fast: false` on the matrix is deliberate: knowing which of the other three shards
 passed is what separates "this block of specs is broken" from "the suite is broken".

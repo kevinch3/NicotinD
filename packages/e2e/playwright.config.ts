@@ -2,7 +2,7 @@ import { defineConfig, devices, type PlaywrightTestConfig } from '@playwright/te
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { rmSync } from 'node:fs';
-import { ensureWebBuild } from './ensure-web-build.js';
+import { TV_DIST, ensureWebBuild } from './ensure-web-build.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../..');
@@ -22,15 +22,23 @@ const baseURL = externalBaseUrl ?? `http://localhost:${PORT}`;
 // SECOND, never-seeded server on its own port/DB. See docs/e2e.md.
 const ONBOARDING_PORT = process.env.E2E_ONBOARDING_PORT ?? '8586';
 
+// The TV route tree is a BUILD-time fork (`environment.tvBuild`, docs/tv-ux.md),
+// so stamping the `tv-build` class on the phone bundle never renders it. The `tv`
+// project drives a THIRD managed server that serves the `--configuration tv`
+// bundle through NICOTIND_WEB_DIST (#1136). 8587 is the emulator lane's port.
+const TV_PORT = process.env.E2E_TV_CHROMIUM_PORT ?? '8588';
+
 // Fresh DB per run so the first user is always our admin (deterministic setup).
 // Done at config-eval time — before Playwright launches the webServer — because
 // the webServer opens the SQLite DB on boot and a globalSetup hook would be too
 // late. Only wipe the local throwaway dirs, never when pointed at an external URL.
 const dataDir = resolve(__dirname, '.tmp-data');
 const onboardingDataDir = resolve(__dirname, '.tmp-data-onboarding');
+const tvDataDir = resolve(__dirname, '.tmp-data-tvbuild');
 if (!externalBaseUrl) {
   rmSync(dataDir, { recursive: true, force: true });
   rmSync(onboardingDataDir, { recursive: true, force: true });
+  rmSync(tvDataDir, { recursive: true, force: true });
 }
 
 // The managed server serves the prebuilt packages/web/dist, so build it here —
@@ -44,6 +52,8 @@ ensureWebBuild();
 // out of the CI `e2e` job — see docs/e2e.md "Playground harness".
 const playground = !!process.env.PLAYGROUND;
 const PLAYGROUND_RE = /\.playground\.ts$/;
+// The TV project's specs, kept out of the `chromium` project by name.
+const TV_BUILD_RE = /\.tvbuild\.spec\.ts$/;
 
 export default defineConfig({
   testDir: './tests',
@@ -61,6 +71,14 @@ export default defineConfig({
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
+  // Screenshot assertions (the `tv` project). Animations are frozen by default;
+  // the ratio and threshold absorb a different Chromium build's anti-aliasing
+  // — the baselines are Linux renderings with the fonts pinned by
+  // tests/tv-build/tv-test.ts, so a layout change still fails and a
+  // rasteriser nudge does not (docs/e2e.md "The TV bundle in Chromium").
+  expect: {
+    toHaveScreenshot: { maxDiffPixelRatio: 0.03, threshold: 0.3, caret: 'hide' },
+  },
   projects: playground
     ? [
         { name: 'playground-setup', testMatch: /playground\.setup\.ts/ },
@@ -74,7 +92,11 @@ export default defineConfig({
     : correctnessProjects(),
   webServer: externalBaseUrl
     ? undefined
-    : [makeServer(PORT, dataDir), makeServer(ONBOARDING_PORT, onboardingDataDir)],
+    : [
+        makeServer(PORT, dataDir),
+        makeServer(ONBOARDING_PORT, onboardingDataDir),
+        makeServer(TV_PORT, tvDataDir, { NICOTIND_WEB_DIST: TV_DIST }),
+      ],
 });
 
 /**
@@ -86,12 +108,14 @@ export default defineConfig({
  */
 function correctnessProjects(): PlaywrightTestConfig['projects'] {
   const projects: NonNullable<PlaywrightTestConfig['projects']> = [
-    { name: 'setup', testMatch: /auth\.setup\.ts/ },
+    // Anchored on the directory separator: `tv-auth.setup.ts` must not match.
+    { name: 'setup', testMatch: /\/auth\.setup\.ts$/ },
     {
       name: 'chromium',
-      // The correctness suite never runs the playground flows, and the onboarding
-      // wizard needs a never-seeded server (its own project below).
-      testIgnore: [PLAYGROUND_RE, /onboarding\.spec\.ts/],
+      // The correctness suite never runs the playground flows, the onboarding
+      // wizard needs a never-seeded server (its own project below), and the TV
+      // bundle has its own server and project.
+      testIgnore: [PLAYGROUND_RE, /onboarding\.spec\.ts/, TV_BUILD_RE],
       use: { ...devices['Desktop Chrome'], storageState: '.auth/admin.json' },
       dependencies: ['setup'],
     },
@@ -102,6 +126,27 @@ function correctnessProjects(): PlaywrightTestConfig['projects'] {
       testMatch: /onboarding\.spec\.ts/,
       use: { ...devices['Desktop Chrome'], baseURL: `http://localhost:${ONBOARDING_PORT}` },
     });
+    // The real TV route tree in Chromium (#1136): the TV-configuration bundle on
+    // its own server, at the viewport a 1080p Android TV gives the WebView
+    // (960×540 CSS px at DPR 2). DPR 1 here keeps the committed baselines small;
+    // the layout is the same. Spatial navigation and hardware Back are still
+    // emulator-only (docs/e2e-tv-emulator.md) — pixels and geometry are not.
+    const tvBaseURL = `http://localhost:${TV_PORT}`;
+    projects.push(
+      { name: 'tv-setup', testMatch: /\/tv-auth\.setup\.ts$/, use: { baseURL: tvBaseURL } },
+      {
+        name: 'tv',
+        testMatch: TV_BUILD_RE,
+        use: {
+          ...devices['Desktop Chrome'],
+          viewport: { width: 960, height: 540 },
+          deviceScaleFactor: 1,
+          baseURL: tvBaseURL,
+          storageState: '.auth/tv-admin.json',
+        },
+        dependencies: ['tv-setup'],
+      },
+    );
   }
   return projects;
 }
@@ -109,7 +154,7 @@ function correctnessProjects(): PlaywrightTestConfig['projects'] {
 /** Build a managed server config on the given port + throwaway data dir. */
 type WebServer = Extract<NonNullable<PlaywrightTestConfig['webServer']>, { command: string }>;
 
-function makeServer(port: string, dir: string): WebServer {
+function makeServer(port: string, dir: string, extraEnv: Record<string, string> = {}): WebServer {
   return {
     command: 'bun run src/main.ts',
     cwd: repoRoot,
@@ -138,6 +183,7 @@ function makeServer(port: string, dir: string): WebServer {
       // would drive a dead output. Short enough to clear between specs, long
       // enough that a reload inside one spec still reconnects within it.
       NICOTIND_PLAYBACK_GRACE_MS: '2000',
+      ...extraEnv,
     },
   };
 }

@@ -67,6 +67,7 @@ describe('TvChannelsService (Play Next + Assistant voice)', () => {
           useValue: {
             ready: signal(true),
             lang: signal('en'),
+            version: signal(0),
             t: (k: string) => (k === 'tv.channelRecentlyAdded' ? 'Recently added' : k),
           },
         },

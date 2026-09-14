@@ -344,6 +344,14 @@ jobs:
       - name: Build (web)
         run: bun run --filter @nicotind/web build
 
+      # The TV route tree is a build-time fork (`environment.tvBuild`), so the
+      # `tv` project serves a second bundle through NICOTIND_WEB_DIST (#1136).
+      # Same reason as the step above: E2E_SKIP_BUILD below skips ensureWebBuild()
+      # for both bundles, so both are built once here. `--output-path` is a string
+      # override of angular.json's object outputPath, hence `dist-tv/browser`.
+      - name: Build (web, TV configuration)
+        run: bun run --filter @nicotind/web build -- --configuration tv --output-path dist-tv
+
       # ffmpeg: the waveform artifact (`GET /api/peaks/:id`, issue #643) decodes
       # the fixture on demand and its e2e asserts the real strip — skipping that
       # test where ffmpeg is absent would leave the feature a permanently silent

@@ -1,7 +1,9 @@
 # The TV surface
 
 **Status:** shipped 2026-08-08. `isTvBuild()` selects a five-route TV tree; `bun run e2e:tv` covers
-it with 18 tests, including an assertion that no TV route renders a native form control.
+it with 18 tests on the emulator, and since #1136 the Chromium suite's `tv` project renders the same
+tree with screenshot baselines on every PR (see "The TV tree in Chromium" below). Both assert that
+no TV route renders a native form control.
 
 **Supersedes** the conditional-patching approach that produced issues #387, #389, #393, #394, #396,
 #399, #432, #436, #438 and #439 — nine rounds of locally-reasonable fixes to touch components that
@@ -226,7 +228,8 @@ expect(await page.locator(NATIVE).count()).toBe(0);
 This closes the audit's own gap: a native input carries neither `appTvNavItem` nor `tabindex="0"`, so
 today it is invisible to the walk — which is exactly why the audit passed while #438 was live.
 
-Coverage: every route in the TV tree, run by `bun run e2e:tv`.
+Coverage: every route in the TV tree, run by `bun run e2e:tv` — and, on every PR, every screen and
+overlay the Chromium `tv` project screenshots (`expectNoNativeFormControls`, `tests/tv-build/`).
 
 ## Migration
 
@@ -375,7 +378,28 @@ Home also grows a **Now playing** entry when a track is loaded. Without it `/pla
 only by starting something, so the screen that says "your audio is on the phone" was the one screen
 you could not get to.
 
-## What the pixels showed (#1132, #1133, #1135)
+## The TV tree in Chromium (#1136)
+
+Three "TV" specs in the Chromium suite — `now-playing-tv.spec.ts`, `library-dpad-tv.spec.ts`,
+`login-tv-signin.spec.ts` — fake a TV by stamping the `tv-build` class on the **phone bundle** at
+960×540. That flips `isTvUi()`. The route tree above is keyed off **`isTvBuild()`**, baked at build
+time ("What implementing it changed", item 1), so those specs never mounted `TvShellComponent`,
+`TvPlayerComponent` or any other TV template; `now-playing-tv.spec.ts` in particular exercises a
+phone sheet the TV build no longer renders at all. The only automated coverage of the real tree was
+`bun run e2e:tv`, a local-only lane.
+
+That is how #1132, #1133 and #1135 shipped: every one is a layout fact — icon offsets, a card taller
+than the screen, a nav below the fold — that Chromium can measure, on templates no Chromium test had
+rendered. The fix is the `tv` Playwright project ([e2e.md](e2e.md) "The TV bundle in Chromium"): a
+third managed server serving `ng build --configuration tv` through `NICOTIND_WEB_DIST`, specs in
+`packages/e2e/tests/tv-build/` at the TV viewport, and `toHaveScreenshot` baselines for login, Home,
+Browse, Album, the player, its queue and output overlays, karaoke and Settings, beside the geometry
+assertions each of those issues named.
+
+What stays emulator-only is unchanged: spatial navigation and hardware Back
+([e2e-tv-emulator.md](e2e-tv-emulator.md)). Pixels and geometry do not have to be.
+
+### What the pixels showed
 
 Captured from the TV bundle at 960×540 before the fixes (the shots are in the linked issues):
 
