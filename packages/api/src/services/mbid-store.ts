@@ -44,8 +44,52 @@ export const MBID_AMBIGUITY_FIX_AT = Date.UTC(2026, 7, 22);
  */
 export function isMbidReResolvable(row: MbidRow | null, cutoff = MBID_AMBIGUITY_FIX_AT): boolean {
   if (!row) return false;
+  // Also the guard that keeps a tombstone (`source: 'user'`) closed: `user`
+  // outranks `lidarr`, so a curator's decision is never re-queried. Note this
+  // only covers a row that EXISTS — a caller reading `usableMbid() === null` must
+  // still check {@link isMbidTombstoned} before falling back to a live lookup,
+  // since a tombstone and a miss both read as no id.
   if ((SOURCE_RANK[row.source] ?? 0) > SOURCE_RANK.lidarr) return false;
   return row.checkedAt < cutoff;
+}
+
+/**
+ * A curator's "this identity is wrong and must not come back": `source: 'user'`
+ * with `confidence: 0`.
+ *
+ * Deleting the row is NOT equivalent and was the gap in #1112. `library_mbids`
+ * is a cache of a *resolution*, so an absent row means "not looked up yet" and
+ * the next automatic pass simply re-runs the same Lidarr lookup and re-attaches
+ * the same homonym — "Rocky" resolves to the Israeli psytrance producer every
+ * time. A tombstone is the only state that says "this was looked at and the
+ * answer is not to be trusted".
+ *
+ * Expressed as a `(source, confidence)` pair rather than a nullable `mbid`
+ * because `library_mbids.mbid` is `NOT NULL` and the table is referenced too
+ * widely to rebuild for this. No automatic writer uses `source: 'user'` (its
+ * rank is the highest, so `upsertMbid` also refuses to let one overwrite a
+ * tombstone), and a curator *setting* an id writes `confidence: 1`, so the pair
+ * is unambiguous. The rejected id stays in the row as provenance — which id was
+ * wrong is exactly what a later investigation wants — and is never handed to a
+ * caller, because every reader goes through {@link usableMbid}.
+ */
+export function isMbidTombstoned(row: MbidRow | null): boolean {
+  return !!row && row.source === 'user' && row.confidence === 0;
+}
+
+/**
+ * The id a caller may actually query a provider by — `null` for a cache miss
+ * **and** for a tombstone.
+ *
+ * Every reader of {@link getMbid} must go through this rather than `row?.mbid`.
+ * A tombstone honoured by some readers and not others is worse than none: it
+ * would leave the curator believing the wrong identity was detached while the
+ * portrait, bio or release-list surface kept using it — the precise way genre
+ * and origin came to be individually patched while the cause stayed live
+ * (#1112, #1114).
+ */
+export function usableMbid(row: MbidRow | null): string | null {
+  return row && !isMbidTombstoned(row) ? row.mbid : null;
 }
 
 /**
@@ -116,7 +160,9 @@ export function libraryAlbumTitles(db: Database, artistId: string): string[] {
     .map((r) => r.name);
 }
 
-/** Drop a cached id, reopening the entity to automatic resolution (issue #610). */
-export function deleteMbid(db: Database, scope: MbidScope, key: string): void {
-  db.run(`DELETE FROM library_mbids WHERE scope = ? AND key = ?`, [scope, key]);
-}
+// `deleteMbid` (issue #610) is deliberately gone rather than left unused. It was
+// the artist-detach path until #1112 established that dropping the row reopens
+// the entity to the *same* automatic resolution, so a curator clearing a homonym
+// got it back on the next pass. `mutateArtistMbid` writes a tombstone instead.
+// Reviving it would reintroduce that, so a future caller should go through the
+// tombstone or state its own reason for wanting a bare delete.

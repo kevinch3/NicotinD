@@ -179,6 +179,55 @@ export const JUNK_GENRES: ReadonlySet<string> = new Set([
   'music',
 ]);
 
+/**
+ * Genres that are **true but nearly contentless** in this library — a tag that
+ * answers "is this music?" where the listener asked "which kind?".
+ *
+ * Distinct from {@link JUNK_GENRES}, and the distinction is the whole point:
+ * junk is a *wrong* value (`Other`, and YouTube's `Music` category) and is
+ * already treated as no genre at all by {@link unresolvedGenreSql}, so it is
+ * counted in the health report's `missing`. `Electronic` and `Dance` are
+ * *correct*; they are simply uninformative in a library this electronic-heavy,
+ * where the subgenre is the entire distinction anyone cares about. So they need
+ * their own metric rather than a place in either existing bucket — which is why
+ * `genres.missing` read 101 while 309 songs' only genre was `Electronic`
+ * (#1115).
+ *
+ * **`Pop` and `Rock` are deliberately excluded**, and widening this set to reach
+ * them would be a mistake, not an improvement. They are legitimately broad
+ * answers — a Pop song's genre really is Pop — and they cover 3,206 songs on
+ * prod against `Electronic`+`Dance`'s 516. Including them would turn a worklist
+ * with a cheap, confident fix into a 3,200-row backlog nobody can act on, which
+ * is this repo's recurring "count what is easy to count" failure (#969, #1115).
+ * Add an entry here only for a genre whose *subgenre is knowable from the
+ * artist alone* — that is what makes the remediation amortise.
+ */
+export const LOW_INFORMATION_GENRES: ReadonlySet<string> = new Set(['electronic', 'dance']);
+
+/**
+ * SQL predicate for "this song's **only** genre is a low-information catch-all".
+ *
+ * Deliberately reads `library_song_genres`, not the `library_songs.genre` mirror
+ * that {@link unresolvedGenreSql} tests: the mirror holds `genres[0]` only, so it
+ * cannot distinguish `[Electronic]` (the backlog) from `[Electronic, Tech House]`
+ * (already fine, and must not be touched — `set_song_genre(mode: 'replace')`
+ * overwrites a song's entire genre set). `COUNT(*) = 1` is the only form of that
+ * question the mirror cannot answer.
+ *
+ * Returns a bare fragment with no bind params — the vocabulary is an internal
+ * constant — so it drops into an existing `WHERE ... LIMIT ?` untouched.
+ *
+ * @param idCol qualified `library_songs` id column to correlate against.
+ */
+export function lowInformationOnlyGenreSql(idCol = 'id'): string {
+  const list = [...LOW_INFORMATION_GENRES].map((g) => `'${g.replace(/'/g, "''")}'`).join(', ');
+  return `${idCol} IN (
+    SELECT song_id FROM library_song_genres
+    GROUP BY song_id
+    HAVING COUNT(*) = 1 AND LOWER(TRIM(MIN(genre))) IN (${list})
+  )`;
+}
+
 /** True when `g` names an actual musical style rather than junk vocab. */
 export function isRealGenre(g: string): boolean {
   return !JUNK_GENRES.has(genreKey(g));

@@ -631,8 +631,26 @@ value, let alone fix it; the sole surface was the web UI's `ArtistOriginComponen
 always *inherited* from a wrong MBID on a homonym — `routes/library.ts`'s own MBID-correction
 docblock uses "Emilia → ten exact hits" as its example — so an agent shown only the country will
 keep correcting the symptom while the bio, Discogs genres and artist image stay wrong. Seeing both
-is what makes "the MBID is wrong, escalate" a possible conclusion. Correcting the MBID itself
-remains web-only (`PUT /api/library/artists/:id/mbid`).
+is what makes "the MBID is wrong, escalate" a possible conclusion.
+
+**`set_artist_mbid` (issue #1112).** Escalating was as far as an agent could get: correcting the
+MBID was web-only, so a curation pass could patch the *symptoms* durably — `set_artist_origin`,
+`set_song_genre`, both writing permanent `user` rows — and never the cause. Two homonyms found in
+one pass ("Rocky" → an Israeli psytrance producer for a French band; "Sebastian" → a Danish artist
+for an Argentine cumbia singer) had origin and genre fixed while the mbid stayed attached, so every
+*other* surface keyed off it stayed wrong with no tool to catch it: the portrait, the bio, and a
+release list that can feed acquisition.
+
+`mbid: null` is the tombstone and the main reason the tool exists — see
+[library-scanner.md](library-scanner.md) for why a delete is not equivalent. `get_artist` reports it
+as `{ id: null, tombstoned: true, rejected: <the wrong id> }` rather than a bare null, because "a
+curator detached this" and "never looked up" are different facts and an agent shown the latter will
+go resolve the id again. Both the tool and the HTTP route call `mutateArtistMbid`, which also drops
+the source-derived bio and origin so they re-derive from the identity the curator set.
+
+One caveat the description states outright: `library_mbids` is keyed by **normalized artist name**,
+not artist id — which is where the homonym hazard lives in the first place — so a write moves every
+same-name artist at once.
 
 `country: null` is a decision, not an absence: it writes the permanent `user` tombstone that stops
 the MusicBrainz pass re-deriving the wrong value, so `mutateArtistOrigin` distinguishes an explicit

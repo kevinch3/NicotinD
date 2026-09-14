@@ -1,6 +1,6 @@
 import { test, expect, type BrowserContext, type Page } from '@playwright/test';
 import { writeFileSync } from 'node:fs';
-import { FIXTURE, expandGroup, openAlbumCard } from '../helpers';
+import { FIXTURE, expandGroup, openAlbumCard, trackTitle } from '../helpers';
 
 /**
  * Remote playback across two real browser contexts (issue #877).
@@ -212,7 +212,7 @@ test.describe('remote playback', () => {
 
       // A pick on B plays on A — only the picker moves audio.
       await openAlbumCard(b, FIXTURE.album.title);
-      await b.getByTestId('track-row-title').filter({ hasText: 'Sixth Sense' }).click();
+      await trackTitle(b, 'Sixth Sense').click();
       await expect.poll(() => playerTitle(a), { timeout: 10_000 }).toContain('Sixth Sense');
       await expect.poll(() => audioPlaying(a), { timeout: 10_000 }).toBe(true);
       expect(await audioPaused(b)).toBe(true);
@@ -316,7 +316,7 @@ test.describe('remote playback', () => {
       // B plays first, with no session anywhere: it still claims the output.
       await b.goto('/library');
       await openAlbumCard(b, FIXTURE.album.title);
-      await b.getByTestId('track-row-title').filter({ hasText: 'Sixth Sense' }).click();
+      await trackTitle(b, 'Sixth Sense').click();
       await expect.poll(() => audioPlaying(b), { timeout: 15_000 }).toBe(true);
 
       // A sees the session but cannot drive it: the strip says so, and the

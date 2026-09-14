@@ -10,7 +10,7 @@ import { missingAlbumArtSql } from './artwork-store.js';
 import { folderArtBelongsToAlbum } from './album-folder.js';
 import { findFolderCoverName } from './cover-sources.js';
 import { losslessSuffixSql } from './library-track-select.js';
-import { unresolvedGenreSql } from './genre-split.js';
+import { lowInformationOnlyGenreSql, unresolvedGenreSql } from './genre-split.js';
 import { countOpenCurationFlags } from './curation-flags.js';
 import { albumAlreadyComplete, matchingLocalAlbums, onDiskTitles } from './library-completeness.js';
 
@@ -64,6 +64,25 @@ export interface SongRef {
   songId: string;
   title: string;
   artist: string;
+}
+
+/**
+ * One unit of low-information-genre work: an artist, the catch-all every one of
+ * these songs carries, and how many songs one judgement about that artist would
+ * fix.
+ *
+ * Grouped by artist because that is the unit the remediation amortises over, not
+ * a presentation choice: in the pass that filed #1115, nine canonical artists
+ * (Charlotte de Witte, Paul Kalkbrenner, Cirez D, …) covered 83 songs with one
+ * subgenre judgement each and **zero searches**. A per-song worklist of the same
+ * 83 rows would have described that as 83 pieces of work.
+ */
+export interface LowInformationGenreArtist {
+  artistId: string;
+  artist: string;
+  /** The catch-all all `songs` of them carry — what a single judgement replaces. */
+  genre: string;
+  songs: number;
 }
 
 export interface MixedFormatFinding extends AlbumRef {
@@ -164,8 +183,20 @@ export interface LibraryHealthReport {
     };
     artistPortraits: { metric: ArtistImageCoverage; remediation: string };
     genres: {
-      metric: { songs: number; missing: number };
+      /**
+       * `missing` and `lowInformation` are **disjoint by construction** and
+       * measure different tables. `missing` is "no usable genre" — NULL, empty,
+       * or {@link JUNK_GENRES} — tested against the `library_songs.genre` mirror.
+       * `lowInformation` is "one genre, and it is a true-but-contentless
+       * umbrella", which needs `library_song_genres` because the mirror holds
+       * only `genres[0]` and so cannot tell `[Electronic]` from
+       * `[Electronic, Tech House]`. A junk-only song is therefore in `missing`
+       * and never here (#1115).
+       */
+      metric: { songs: number; missing: number; lowInformation: number };
       worklist: SongRef[];
+      /** Artist-grouped, biggest amortisation first. See {@link LowInformationGenreArtist}. */
+      lowInformationWorklist: LowInformationGenreArtist[];
       remediation: string;
     };
     years: {
@@ -427,6 +458,22 @@ export function libraryHealth(db: Database, opts: LibraryHealthOptions = {}): Li
     )
     .all(sample);
 
+  // Grouped by (artist, catch-all): one row is one judgement. The predicate
+  // guarantees a single genre row per song, so the JOIN is 1:1 and `MIN(g.genre)`
+  // is that genre rather than a pick from several.
+  const lowInfoGenreWhere = `library_songs WHERE ${lowInformationOnlyGenreSql()}`;
+  const lowInfoGenreWorklist = db
+    .query<{ artist_id: string; artist: string; genre: string; songs: number }, [number]>(
+      `SELECT s.artist_id AS artist_id, MIN(s.artist) AS artist, MIN(g.genre) AS genre,
+              COUNT(*) AS songs
+         FROM library_songs s
+         JOIN library_song_genres g ON g.song_id = s.id
+        WHERE ${lowInformationOnlyGenreSql('s.id')}
+        GROUP BY s.artist_id, LOWER(TRIM(g.genre))
+        ORDER BY songs DESC, artist LIMIT ?`,
+    )
+    .all(sample);
+
   const yearWorklist = db
     .query<{ id: string; name: string; artist: string; song_count: number }, [number]>(
       `SELECT id, name, artist, song_count FROM library_albums
@@ -572,10 +619,20 @@ export function libraryHealth(db: Database, opts: LibraryHealthOptions = {}): Li
         metric: {
           songs: count(db, 'library_songs'),
           missing: count(db, genreWhere),
+          lowInformation: count(db, lowInfoGenreWhere),
         },
         worklist: genreWorklist.map((r) => ({ songId: r.id, title: r.title, artist: r.artist })),
+        lowInformationWorklist: lowInfoGenreWorklist.map((r) => ({
+          artistId: r.artist_id,
+          artist: r.artist,
+          genre: r.genre,
+          songs: r.songs,
+        })),
         remediation:
-          'genre → genre-discogs → genre-audio enrichment chain; residuals via set_song_genre',
+          'genre → genre-discogs → genre-audio enrichment chain; residuals via set_song_genre. ' +
+          'lowInformation is per-ARTIST work: one subgenre judgement for an artist whose subgenre ' +
+          'is unambiguous, then set_song_genre(mode: replace) across their songs — it only ever ' +
+          'lists songs whose catch-all is their ONLY genre, so replace cannot drop a real genre',
       },
       years: {
         metric: {

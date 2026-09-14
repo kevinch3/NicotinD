@@ -649,8 +649,82 @@ Chilean id all along (self-titled + `Crece` + `Made in Jamaica` clear
 in `mbid-corroboration.test.ts`). Nothing was wrong with the tie-break; nothing
 ever ran it again.
 
-`isMbidReResolvable` (`services/mbid-store.ts`) is the whole policy, and it is
-deliberately narrow — a row is resolved again only when **both** hold:
+#### A detach must be a tombstone, not a delete (issues #1112, #1114)
+
+`PUT /api/library/artists/:id/mbid` used to clear an override with `deleteMbid`,
+described as "reopening the artist to resolution". That is the defect, not the
+feature: `library_mbids` caches a *resolution*, so an absent row reads as "not
+looked up yet" and the next automatic pass runs the same Lidarr lookup and
+re-attaches the same homonym. "Rocky" resolves to the Israeli psytrance producer
+every time, however often a curator clears it.
+
+`mbid: null` therefore writes a **tombstone** — `source: 'user'` with
+`confidence: 0`, which `isMbidTombstoned` recognises. The pair is used rather
+than a nullable `mbid` because `library_mbids.mbid` is `NOT NULL` and the table
+is referenced too widely to rebuild; no automatic writer uses `source: 'user'`,
+and a curator *setting* an id writes `confidence: 1`, so it cannot be
+manufactured by accident. The rejected id stays in the row as provenance — which
+id was wrong is what a later investigation needs — and is never handed out,
+because **every reader goes through `usableMbid`**, which returns `null` for a
+tombstone as well as a miss.
+
+That "every reader" is load-bearing, not tidiness. A tombstone honoured by some
+readers and not others leaves the curator believing the identity is detached
+while the portrait, the bio, the origin and the release list keep using it —
+which is exactly how genre and origin came to be patched per-field while the
+cause stayed live. Note also that a reader seeing `usableMbid() === null` must
+check `isMbidTombstoned` before falling back to a *live* lookup, since a
+tombstone and a miss read alike: skipping that check re-resolves the homonym and
+the correction undoes itself. `artistInfoTask`, `artistOriginTask`,
+`makePluginArtistImageLookup`, `fetchAndStoreArtistInfo` and
+`scripts/resolve-genres.ts` all do.
+
+The write is `services/artist-mbid-mutate.ts` (`mutateArtistMbid`), shared by the
+HTTP route and MCP's `set_artist_mbid` — the sixth instance of the one-tested-write
+doctrine. It evicts the source-derived bio and origin on a **detach** as well as a
+set, which the route did not: clearing used to leave the wrong person's biography
+and the inherited country sitting on the page.
+
+The trade-off is deliberate: a curator can no longer say "forget my override and
+try automatically again". They can pin the right id instead, and the homonym case
+— where no correct id is known and the wrong one keeps returning — is what this
+surface exists for.
+
+#### A bio needs more confidence than a candidate does (issue #1114)
+
+`artistInfoTask` was MBID-first and confidence-blind: whatever
+`ctx.lookupArtistInfo(mbid)` returned was stored. So the widened
+whole-token-subsequence match (#211, confidence 0.5) could publish a biography,
+and Rosalía's page told every listener that a living artist died in 2021 —
+sourced, with links, under a correct portrait and a correct genre spread.
+
+A bio is not a label on a song. It asserts a birth date, a death date and a
+career about an identifiable real person, on a page presented as factual. So the
+bar is `BIO_MIN_MBID_CONFIDENCE`, derived from `MBID_CONFIDENCE_EXACT` rather
+than restated: an exact match (0.8) or a curator's `set_artist_mbid` (1) may
+publish; the widening (0.5) and a fuzzy `mb-search` (0.3) may not. The widening
+still *resolves and persists* the id — it is usually right, and candidate pooling
+wants it — it just no longer speaks for a person. The gate sits **before** the
+fetch, so a stranger's prose is never retrieved, and the doubtful case is
+tombstoned rather than retried: the same widened match will not improve on its
+own, and leaving it pending re-asks the same question every window.
+
+`library_artist_meta.mbid` records which identity produced the prose. Without it
+a bio outlives the identity behind it: "Rocky" rendered `France` and `Pop 100%`
+from a curator's correction with the Israeli producer's biography directly
+underneath, because nothing connected the two. `POST /artists/:id/refresh-info`
+applies the same gate — it is the button a curator presses *after* fixing an
+identity, so it is the one path where bypassing the gate would be worst.
+
+Two of #1114's suggestions are **not** implemented here: a bio/origin
+country-contradiction heuristic (needs country extraction from free prose, with a
+real false-positive class), and a "this bio is the wrong person" curator action in
+the web UI. Also unmeasured: how many of prod's 4,045 `library_artist_meta` rows
+describe the wrong person — #1114 is one sampled pair, not a rate.
+
+`isMbidReResolvable` (`services/mbid-store.ts`) is the whole policy for
+*re-resolution*, and it is deliberately narrow — a row is resolved again only
+when **both** hold:
 
 - **Its source is at or below `lidarr` in `SOURCE_RANK`.** A `user` row is a
   correction and is never re-derived; a `tag` row outranks anything a

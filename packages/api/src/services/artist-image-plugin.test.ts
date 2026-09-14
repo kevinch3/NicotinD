@@ -69,6 +69,45 @@ describe('makePluginArtistImageLookup', () => {
     expect(seen).toEqual(['mbid-cached']);
   });
 
+  /**
+   * #1112 named the portrait as the next surface that would silently inherit a
+   * wrong identity — genre and origin were patchable per-field, the mbid was not,
+   * so anything else keyed off it kept using the homonym with nothing to catch it.
+   * This is the one reader with no confidence gate of its own, so the tombstone
+   * check is the whole protection.
+   */
+  it('yields no portrait for a curator-tombstoned identity, and does not re-resolve it', async () => {
+    // The rejected id is still in the row as provenance, so a reader that skips
+    // `usableMbid` has a usable-looking id in hand and would fetch the wrong
+    // person's photo.
+    db.run(
+      `INSERT INTO library_mbids (scope, key, mbid, source, confidence, checked_at)
+       VALUES ('artist', 'aphex twin', 'mbid-homonym', 'user', 0, 1)`,
+    );
+    const seen: string[] = [];
+    let lidarrLookups = 0;
+    const lookup = makePluginArtistImageLookup({
+      db,
+      lidarr: {
+        artist: {
+          lookup: async () => {
+            lidarrLookups++;
+            return [{ artistName: 'Aphex Twin', foreignArtistId: 'mbid-homonym', albumCount: 9 }];
+          },
+        },
+      } as unknown as Lidarr,
+      plugins: registryWith(
+        imagePlugin(async (mbid) => {
+          seen.push(mbid);
+          return 'https://img/wrong-person.jpg';
+        }),
+      ),
+    });
+    expect(await lookup(artist)).toBeNull();
+    expect(seen).toEqual([]);
+    expect(lidarrLookups).toBe(0); // re-resolving is how the homonym comes back
+  });
+
   it('is a confident miss (null, no name search) when no MBID can be resolved', async () => {
     let called = false;
     const lookup = makePluginArtistImageLookup({

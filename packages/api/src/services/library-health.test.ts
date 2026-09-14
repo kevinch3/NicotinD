@@ -51,6 +51,24 @@ function addAlbum(o: {
   );
 }
 
+/**
+ * Write a song's genres the way `setSongGenres` does — join-table rows *and* the
+ * `library_songs.genre` mirror set to `genres[0]`. The low-information metric
+ * reads the join table precisely because the mirror cannot express "how many",
+ * so a test that touched only one of them would not exercise it.
+ */
+function addSongGenres(songId: string, genres: string[]): void {
+  db.run(`DELETE FROM library_song_genres WHERE song_id = ?`, [songId]);
+  genres.forEach((g, i) =>
+    db.run(`INSERT INTO library_song_genres (song_id, genre, position) VALUES (?, ?, ?)`, [
+      songId,
+      g,
+      i,
+    ]),
+  );
+  db.run(`UPDATE library_songs SET genre = ? WHERE id = ?`, [genres[0] ?? null, songId]);
+}
+
 function addSong(o: {
   id: string;
   albumId: string;
@@ -154,8 +172,87 @@ describe('libraryHealth — genres, years, classification', () => {
     addSong({ id: 's-null', albumId: 'al1', genre: null });
     addSong({ id: 's-junk', albumId: 'al1', genre: 'Music' }); // YouTube category name = unresolved
     const d = libraryHealth(db).dimensions.genres;
-    expect(d.metric).toEqual({ songs: 3, missing: 2 });
+    expect(d.metric).toEqual({ songs: 3, missing: 2, lowInformation: 0 });
     expect(d.worklist.map((w) => w.songId).sort()).toEqual(['s-junk', 's-null']);
+  });
+
+  it('counts songs whose ONLY genre is a low-information catch-all, grouped by artist', () => {
+    addArtist('ar1', 'A', 1);
+    addAlbum({ id: 'al1', name: 'N', songCount: 5 });
+    // Two artists sitting on bare `Electronic` — the #1115 backlog shape.
+    for (const id of ['s-cdw1', 's-cdw2', 's-cdw3']) {
+      addSong({ id, albumId: 'al1', artist: 'Charlotte de Witte', artistId: 'ar-cdw' });
+      addSongGenres(id, ['Electronic']);
+    }
+    addSong({ id: 's-pk', albumId: 'al1', artist: 'Paul Kalkbrenner', artistId: 'ar-pk' });
+    addSongGenres('s-pk', ['Dance']);
+    // Already fine: the catch-all is not this song's only genre, and
+    // `set_song_genre(mode: replace)` across it would DROP Tech House.
+    addSong({ id: 's-ok', albumId: 'al1', artist: 'Cirez D', artistId: 'ar-cd' });
+    addSongGenres('s-ok', ['Electronic', 'Tech House']);
+
+    const d = libraryHealth(db).dimensions.genres;
+    expect(d.metric.lowInformation).toBe(4);
+    // One row per (artist, catch-all) — one judgement each — biggest first.
+    expect(d.lowInformationWorklist).toEqual([
+      { artistId: 'ar-cdw', artist: 'Charlotte de Witte', genre: 'Electronic', songs: 3 },
+      { artistId: 'ar-pk', artist: 'Paul Kalkbrenner', genre: 'Dance', songs: 1 },
+    ]);
+  });
+
+  /**
+   * The exclusion is the load-bearing half of the metric, so it is pinned: `Pop`
+   * and `Rock` are legitimately broad and cover 3,206 prod songs against
+   * `Electronic`+`Dance`'s 516. Widening the set to reach them turns an
+   * actionable worklist into a backlog nobody can work, so a change that does it
+   * should have to delete this test on purpose.
+   */
+  it('deliberately excludes Pop and Rock, however bare they are', () => {
+    addArtist('ar1', 'A', 1);
+    addAlbum({ id: 'al1', name: 'N', songCount: 2 });
+    addSong({ id: 's-pop', albumId: 'al1' });
+    addSongGenres('s-pop', ['Pop']);
+    addSong({ id: 's-rock', albumId: 'al1' });
+    addSongGenres('s-rock', ['Rock']);
+
+    const d = libraryHealth(db).dimensions.genres;
+    expect(d.metric.lowInformation).toBe(0);
+    expect(d.lowInformationWorklist).toEqual([]);
+  });
+
+  /**
+   * `missing` and `lowInformation` must never double-count. Junk vocab — `Other`,
+   * and YouTube's `Music` category — is already "no genre" to
+   * `unresolvedGenreSql`, so it belongs to `missing` alone. #1115 read the two as
+   * one backlog and proposed `Music` for this metric; the code already had it.
+   */
+  it('keeps missing and lowInformation disjoint — junk vocab stays in missing', () => {
+    addArtist('ar1', 'A', 1);
+    addAlbum({ id: 'al1', name: 'N', songCount: 2 });
+    addSong({ id: 's-music', albumId: 'al1' });
+    addSongGenres('s-music', ['Music']);
+    addSong({ id: 's-elec', albumId: 'al1' });
+    addSongGenres('s-elec', ['Electronic']);
+
+    const d = libraryHealth(db).dimensions.genres;
+    expect(d.metric.missing).toBe(1);
+    expect(d.metric.lowInformation).toBe(1);
+    expect(d.worklist.map((w) => w.songId)).toEqual(['s-music']);
+    expect(d.lowInformationWorklist.map((w) => w.songs)).toEqual([1]);
+  });
+
+  it('caps the artist-grouped worklist at the clamped sample size', () => {
+    addArtist('ar1', 'A', 1);
+    addAlbum({ id: 'al1', name: 'N', songCount: 12 });
+    for (let i = 0; i < 12; i++) {
+      addSong({ id: `s${i}`, albumId: 'al1', artist: `Artist ${i}`, artistId: `ar-${i}` });
+      addSongGenres(`s${i}`, ['Electronic']);
+    }
+    expect(libraryHealth(db).dimensions.genres.metric.lowInformation).toBe(12);
+    expect(libraryHealth(db).dimensions.genres.lowInformationWorklist).toHaveLength(10);
+    expect(
+      libraryHealth(db, { sampleSize: 3 }).dimensions.genres.lowInformationWorklist,
+    ).toHaveLength(3);
   });
 
   it('counts visible albums missing a usable year, split by track count (issue #969)', () => {

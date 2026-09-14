@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import type { PluginRegistry } from './plugins/registry.js';
-import { getMbid, upsertMbid } from './mbid-store.js';
+import { getMbid, isMbidTombstoned, usableMbid, upsertMbid } from './mbid-store.js';
 import { normalizeArtistForGrouping } from './album-grouping.js';
 import { resolveMbidViaLidarr } from './enrichment/tasks.js';
 
@@ -30,7 +30,12 @@ export function makePluginArtistImageLookup(deps: {
     if (!provider?.artistImage) return null;
 
     const key = normalizeArtistForGrouping(artist.name);
-    let mbid = getMbid(deps.db, 'artist', key)?.mbid ?? null;
+    const cached = getMbid(deps.db, 'artist', key);
+    // A curator-tombstoned identity yields no portrait rather than the wrong
+    // person's — and must not trigger the live fallback, which would re-resolve
+    // the same homonym Lidarr produced in the first place (#1112).
+    if (isMbidTombstoned(cached)) return null;
+    let mbid = usableMbid(cached);
     if (!mbid && deps.lidarr) {
       const resolved = await resolveMbidViaLidarr(deps.lidarr, artist.name);
       if (resolved) {

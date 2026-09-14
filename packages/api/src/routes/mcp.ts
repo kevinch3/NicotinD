@@ -36,7 +36,8 @@ import { artistIdFor } from '../services/library-scanner.js';
 import { normalizeArtistForGrouping } from '../services/album-grouping.js';
 import { getArtistOrigin } from '../services/artist-origins.js';
 import { mutateArtistOrigin } from '../services/artist-origin-mutate.js';
-import { getMbid } from '../services/mbid-store.js';
+import { mutateArtistMbid } from '../services/artist-mbid-mutate.js';
+import { getMbid, isMbidTombstoned } from '../services/mbid-store.js';
 import { rareGenres } from '../services/genre-distribution.js';
 import { normalizeForGrouping } from '../services/album-grouping.js';
 import type { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
@@ -206,7 +207,7 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'get_library_health',
     description:
-      'The entry point of a curation pass: one report over every curation dimension — audit findings, duplicate-album fragments, missing covers / portraits / genres / years, unknown classification, format cohesion (mixed-format and low-bitrate albums, remaining lossless), album completeness (confirmed from hunt history; plus advisory track-gap suspicion that must never be acted on without a human confirming), lyrics coverage and open review flags. Each dimension carries a metric, a bounded worst-first worklist sample and a remediation hint. Read-only and cheap — call it before and after a pass to record deltas, then page deeper with search_library / get_album_tracks.',
+      'The entry point of a curation pass: one report over every curation dimension — audit findings, duplicate-album fragments, missing covers / portraits / genres / years, umbrella-only genres (genres.lowInformation — songs whose ONLY genre is a true-but-contentless catch-all like Electronic or Dance; its worklist is grouped by ARTIST because that is the unit one subgenre judgement fixes, and only ever lists songs whose catch-all is their only genre, so set_song_genre(mode: replace) there cannot drop a real genre), unknown classification, format cohesion (mixed-format and low-bitrate albums, remaining lossless), album completeness (confirmed from hunt history; plus advisory track-gap suspicion that must never be acted on without a human confirming), lyrics coverage and open review flags. Each dimension carries a metric, a bounded worst-first worklist sample and a remediation hint. Read-only and cheap — call it before and after a pass to record deltas, then page deeper with search_library / get_album_tracks.',
     access: 'read',
     inputSchema: {
       type: 'object',
@@ -304,7 +305,15 @@ export const MCP_TOOLS: McpTool[] = [
         {
           ...artist,
           origin: origin ? { country: origin.country, source: origin.source } : null,
-          mbid: mbidRow ? { id: mbidRow.mbid, source: mbidRow.source } : null,
+          // A tombstone reads as `{ id: null, tombstoned: true }` rather than a
+          // bare null: "a curator detached this identity" and "never looked up"
+          // are different facts, and conflating them invites an agent to go
+          // resolve the id again (#1112).
+          mbid: mbidRow
+            ? isMbidTombstoned(mbidRow)
+              ? { id: null, source: mbidRow.source, tombstoned: true, rejected: mbidRow.mbid }
+              : { id: mbidRow.mbid, source: mbidRow.source }
+            : null,
           albums,
         },
         null,
@@ -453,6 +462,59 @@ export const MCP_TOOLS: McpTool[] = [
         },
       );
       return JSON.stringify({ ok: true, origin: result.origin, previous: result.previous });
+    },
+  },
+  {
+    name: 'set_artist_mbid',
+    description:
+      "Set or DETACH an artist's MusicBrainz id — the cause behind a wrong origin, genre, portrait, " +
+      'bio and release list on a homonym, where set_artist_origin / set_song_genre only patch the ' +
+      'symptoms one field at a time. Pass mbid: null when the attached id belongs to a different ' +
+      'real-world artist and you cannot establish the right one: that writes a permanent tombstone, ' +
+      'so the automatic pass stops re-resolving the same wrong id (deleting it would not — an absent ' +
+      'id just means "not looked up yet"). Pass a UUID to pin the correct identity. Either way the ' +
+      'automatically-derived bio is dropped, because it was fetched from the identity you are ' +
+      'replacing; a later pass refetches it from the id you set. Read the current value with ' +
+      'get_artist, which reports a tombstone as { id: null, tombstoned: true }. NOTE the id is keyed ' +
+      'by normalized artist NAME, so this moves every same-name artist at once. Audit-logged.',
+    access: 'curate',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        artistId: { type: 'string' },
+        mbid: {
+          type: ['string', 'null'],
+          description:
+            'MusicBrainz artist UUID, or null to tombstone the identity as wrong/unknown.',
+        },
+      },
+      required: ['artistId', 'mbid'],
+    },
+    handler: ({ db, identity }, args) => {
+      const artistId = str(args.artistId);
+      // `null` is the tombstone — a meaningful decision, and the main reason this
+      // tool exists — so it must not collapse onto undefined (cf. set_artist_origin).
+      const mbid = args.mbid === null ? null : str(args.mbid);
+      const result = mutateArtistMbid(db, artistId, 'mbid' in args ? mbid : undefined);
+      if (!result.ok) return JSON.stringify({ error: result.error });
+      recordAudit(
+        db,
+        { sub: identity.userId, username: `agent:${identity.tokenId}` },
+        'artist.mbid',
+        {
+          targetKind: 'artist',
+          targetId: artistId,
+          detail:
+            `${result.previous?.mbid ?? 'none'} → ${result.mbid.id ?? 'tombstoned'}` +
+            `${result.clearedBio ? ' (derived bio dropped)' : ''} (via MCP agent)`,
+        },
+      );
+      return JSON.stringify({
+        ok: true,
+        mbid: result.mbid,
+        previous: result.previous,
+        clearedBio: result.clearedBio,
+      });
     },
   },
   // Separators mirror the scanner's own (`SEPARATORS`, genre-split.ts), so a

@@ -116,6 +116,17 @@ same PR that hit it.
   leftover clears between specs; a spec that must end a session *within* itself closes the page
   (`page.close()` does fire `pagehide`), as `remote-playback.spec.ts` does.
 
+  **The grace is a narrowing, not a fix, and the difference is measurable**: issues #1110 and
+  #1116 are that same three-element match surviving it, #1116 twice on clean `master`. The grace
+  is wall-clock while the collision is load-dependent, so it lapses exactly when the box is
+  busy — which is also when the suite is least affordable to re-run. **Assert a track's presence
+  through `trackTitle(scope, title)`** (`helpers.ts`), never a bare `getByText(title)`: it scopes
+  to `track-row-title`, which only `app-track-row` renders and neither the player bar nor Now
+  Playing uses, so a leftover session cannot satisfy it however late it clears. Pass a list
+  locator as `scope` when one title can appear in two lists on a page. `library.spec.ts`'s "a
+  playing track does not make the tracklist assertion ambiguous" reproduces the ambiguity
+  deliberately and holds both halves.
+
 - **A library-global counter is not a barrier for one album.** A spec that polls a
   whole-library scalar (a pending count, a job count) to zero depends on every other
   spec's leftovers — one foreign row anywhere pins the poll (issue #854's "Expected 0,

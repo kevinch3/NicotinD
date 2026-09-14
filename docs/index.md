@@ -173,13 +173,15 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   `library_artist_identity` + `library_artist_aliases` survive rescans; `corroboratesLidarrHit` and
   `boundedEditDistance` guard provisioning. → [library-scanner.md](library-scanner.md)
 - **Artist MBID resolution + homonyms**: one `library_mbids` row per normalized name feeds every
-  non-tag artist surface; `pickMbidHit` returns null on ambiguity and
-  `pickByDiscographyOverlap` breaks the tie. `isMbidReResolvable` re-asks a pre-fix automatic row
-  once. Curator repair is `PUT /api/library/artists/:id/mbid`.
-  → [library-scanner.md](library-scanner.md)
+  non-tag artist surface; `pickMbidHit` returns null on ambiguity, `pickByDiscographyOverlap` breaks
+  the tie, `isMbidReResolvable` re-asks a pre-fix row once. Curator repair is `mutateArtistMbid`
+  (HTTP + MCP `set_artist_mbid`); a detach writes an `isMbidTombstoned` row and readers take
+  `usableMbid`. → [library-scanner.md](library-scanner.md)
 - **Artist bios (auto + override)**: MBID-first Discogs lookup into `library_artist_meta` with
   tombstones; auto-fetch on first artist-page visit; `formatArtistBio` strips Discogs BBCode;
-  `resolveMbidViaLidarr` is two-stage. → [library-scanner.md](library-scanner.md)
+  `resolveMbidViaLidarr` is two-stage. A bio needs `BIO_MIN_MBID_CONFIDENCE` and records the
+  `mbid` it came from, so an identity correction invalidates it.
+  → [library-scanner.md](library-scanner.md)
 - **Artist images (auto + override)**: priority-ordered provider chain
   (`buildArtistImageProviders` → lidarr/spotify/discogs) walked by `resolveArtistImageUrl`; one shared
   `fillArtistImages` behind the task, the one-shot route and the backfill script;
@@ -256,9 +258,9 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   (`fragment-remediation.ts`). → [library-scanner.md](library-scanner.md)
 - **Library health report**: one `libraryHealth` module — every curation dimension as metric +
   bounded worst-first worklist + remediation hint — rendered by `GET /api/library/health` (curator),
-  the `library-health.ts` CLI and MCP `get_library_health`. `missingAlbumArtSql` and
-  `losslessSuffixSql` are the shared predicates; on-demand only, never polled.
-  → [library-audit.md](library-audit.md)
+  the `library-health.ts` CLI and MCP `get_library_health`. `missingAlbumArtSql`,
+  `losslessSuffixSql` and `lowInformationOnlyGenreSql` are the shared predicates; on-demand only,
+  never polled. → [library-audit.md](library-audit.md)
 - **Metadata optimization**: conservative all-or-nothing bulk Lidarr re-fetch (`optimizeAllAlbums`),
   run as a cancellable background job on `MaintenanceService`, bounded by limit + cursor.
   → [metadata-optimize.md](metadata-optimize.md)
@@ -502,9 +504,9 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   `album-cover-mutate.ts`) back HTTP and MCP alike; `gatherCandidates` + `gatherSongCandidates`
   do online lookup. → [mcp-agent.md](mcp-agent.md)
 - **Curator origin + rare-genre tools**: `get_artist` returns origin *and* mbid (a wrong origin is
-  usually an inherited wrong MBID); `set_artist_origin` writes the shared `mutateArtistOrigin`, and
-  `get_rare_genres` (`rareGenres`) surfaces low-cardinality primary genres as mistag candidates.
-  → [mcp-agent.md](mcp-agent.md)
+  usually an inherited wrong MBID); `set_artist_origin` writes the shared `mutateArtistOrigin`,
+  `set_artist_mbid` fixes the cause behind it, and `get_rare_genres` (`rareGenres`) surfaces
+  low-cardinality primary genres as mistag candidates. → [mcp-agent.md](mcp-agent.md)
 - **A missing MCP argument is an error, not empty data**: `missingRequiredArgs` rejects on each
   tool's own `inputSchema.required`, naming the keys sent — a wrong key used to answer "not in the
   library"; `htmlEntityArgs` refuses a literal HTML entity, which lands in the library rather than

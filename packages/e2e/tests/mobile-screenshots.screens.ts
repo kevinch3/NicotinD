@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { FIXTURE } from '../helpers';
+import { FIXTURE, trackTitle } from '../helpers';
 
 const OUT = 'screenshots/mobile';
 
@@ -19,7 +19,7 @@ test('capture mobile screens', async ({ page }) => {
   await page.getByTestId('album-card').filter({ hasText: FIXTURE.album.title }).click();
   await expect(page).toHaveURL(/\/library\/albums\//);
   await expect(page.getByTestId('play-album')).toBeVisible();
-  await expect(page.getByText('Opening Static')).toBeVisible();
+  await expect(trackTitle(page, 'Opening Static')).toBeVisible();
   await page.waitForTimeout(400);
   await page.screenshot({ path: `${OUT}/02-library-album.png`, fullPage: false });
 

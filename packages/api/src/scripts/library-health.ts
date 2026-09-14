@@ -86,7 +86,11 @@ function main(): void {
       'artist portraits',
       `${d.artistPortraits.metric.missing} of ${d.artistPortraits.metric.visible} missing`,
     ],
-    ['genres', `${d.genres.metric.missing} of ${d.genres.metric.songs} songs unresolved`],
+    [
+      'genres',
+      `${d.genres.metric.missing} of ${d.genres.metric.songs} songs unresolved · ` +
+        `${d.genres.metric.lowInformation} umbrella-only (${d.genres.lowInformationWorklist.length} artists listed)`,
+    ],
     ['years', `${d.years.metric.missing} of ${d.years.metric.visibleAlbums} albums missing`],
     [
       'classification',

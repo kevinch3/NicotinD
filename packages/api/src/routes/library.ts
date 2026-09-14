@@ -3,7 +3,6 @@ import { basename, dirname, join, relative } from 'node:path';
 import { existsSync } from 'node:fs';
 import {
   createLogger,
-  isMbidShape,
   isTasteOnly,
   isTrackReportReason,
   trackReportReasonText,
@@ -30,9 +29,15 @@ import type { AudioFeaturesClient } from '../services/audio-features-client.js';
 import { readAudioTags, writeAudioTags, type AudioTags } from '../services/audio-tags.js';
 import { getLyrics, setLyrics, deleteLyrics } from '../services/lyrics-store.js';
 import { getArtistMeta, upsertArtistMeta } from '../services/artist-meta-store.js';
-import { deleteMbid, getMbid, libraryAlbumTitles, upsertMbid } from '../services/mbid-store.js';
+import {
+  getMbid,
+  isMbidTombstoned,
+  libraryAlbumTitles,
+  upsertMbid,
+  usableMbid,
+} from '../services/mbid-store.js';
 import { fillArtistImages } from '../services/artist-image-fill.js';
-import { resolveMbidViaLidarr } from '../services/enrichment/tasks.js';
+import { BIO_MIN_MBID_CONFIDENCE, resolveMbidViaLidarr } from '../services/enrichment/tasks.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 import { optimizeAlbum } from '../services/metadata-optimize.js';
 import { rankCandidates, DEFAULT_WEIGHTS, type SongFeatures } from '../services/radio.service.js';
@@ -102,6 +107,7 @@ import type {
 } from '@nicotind/core';
 import { normalizeTitle, parseLibraryFilter } from '@nicotind/core';
 import { getArtistOrigin, listOriginFacets } from '../services/artist-origins.js';
+import { mutateArtistMbid } from '../services/artist-mbid-mutate.js';
 import { mutateArtistOrigin } from '../services/artist-origin-mutate.js';
 import {
   albumFilterWheres,
@@ -161,7 +167,16 @@ async function fetchAndStoreArtistInfo(
   { kind: 'ok'; bio: string | null; urls: string[] } | { kind: 'error'; message: string }
 > {
   const mbidRow = getMbid(db, 'artist', normalizeArtistForGrouping(artist.name));
-  let mbid = mbidRow?.mbid ?? null;
+  // Refresh must respect a curator's tombstone, and must not fall through to the
+  // live lookup below: re-resolving is precisely how the detached homonym comes
+  // back, which would make the button that looks like a fix the thing that undoes
+  // it (#1112, #1114).
+  if (isMbidTombstoned(mbidRow)) {
+    upsertArtistMeta(db, { artistId: artist.id, bio: null, urls: [], source: 'discogs' });
+    return { kind: 'ok', bio: null, urls: [] };
+  }
+  let mbid = usableMbid(mbidRow);
+  let mbidConfidence: number | null = mbidRow?.confidence ?? null;
   // Fallback (issue #207): library_mbids is never populated for artists
   // automatically in production, so a cache miss is resolved live via a single
   // Lidarr lookup and persisted — mirroring artistInfoTask. Without this the
@@ -190,6 +205,7 @@ async function fetchAndStoreArtistInfo(
     );
     if (resolved) {
       mbid = resolved.mbid;
+      mbidConfidence = resolved.confidence;
       upsertMbid(db, {
         scope: 'artist',
         key: normalizeArtistForGrouping(artist.name),
@@ -200,6 +216,16 @@ async function fetchAndStoreArtistInfo(
     }
   }
   if (!mbid) {
+    upsertArtistMeta(db, { artistId: artist.id, bio: null, urls: [], source: 'discogs' });
+    return { kind: 'ok', bio: null, urls: [] };
+  }
+  // The background task's bar, imported rather than restated: a widened match is
+  // good enough to pool candidates, not to publish biographical claims about a
+  // real person (#1114). Refreshing an artist whose id is only a widened match
+  // would otherwise be the one path that still writes a stranger's bio — and it
+  // is the button a curator presses right after fixing an identity, so a second
+  // copy of the threshold here is a copy that would drift unnoticed.
+  if ((mbidConfidence ?? 0) < BIO_MIN_MBID_CONFIDENCE) {
     upsertArtistMeta(db, { artistId: artist.id, bio: null, urls: [], source: 'discogs' });
     return { kind: 'ok', bio: null, urls: [] };
   }
@@ -233,6 +259,7 @@ async function fetchAndStoreArtistInfo(
     bio: info.bio,
     urls: info.urls,
     source: info.source,
+    mbid, // provenance (#1114) — lets a later mbid correction invalidate this bio
   });
   return { kind: 'ok', bio: info.bio, urls: info.urls };
 }
@@ -748,28 +775,25 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     if (!body || !('mbid' in body)) {
       return c.json({ error: 'mbid required', code: 'VALIDATION_ERROR' }, 400);
     }
-    const mbid = body.mbid == null ? null : body.mbid.trim().toLowerCase();
-    if (mbid !== null && !isMbidShape(mbid)) {
-      return c.json({ error: 'Not a MusicBrainz id', code: 'VALIDATION_ERROR' }, 400);
-    }
-
-    const key = normalizeArtistForGrouping(artist.name);
-    if (mbid === null) {
-      deleteMbid(db, 'artist', key);
-    } else {
-      upsertMbid(db, { scope: 'artist', key, mbid, source: 'user', confidence: 1 });
-      // Evict only what a *source* derived: a curator's own bio/origin is the
-      // more authoritative statement and must survive (same discipline as the
-      // background tasks' manual_override / source='user' guards).
-      db.run(`DELETE FROM library_artist_meta WHERE artist_id = ? AND manual_override = 0`, [id]);
-      db.run(`DELETE FROM library_artist_origins WHERE artist_id = ? AND source != 'user'`, [id]);
+    // One tested write, shared with MCP's `set_artist_mbid` (#1112) — this route
+    // held the only copy, and its clear branch was a plain `deleteMbid`, which the
+    // next automatic pass simply undoes by re-resolving the same homonym.
+    const result = mutateArtistMbid(db, id, body.mbid ?? null);
+    if (!result.ok) {
+      return c.json(
+        { error: result.error, code: result.status === 404 ? 'NOT_FOUND' : 'VALIDATION_ERROR' },
+        result.status,
+      );
     }
     recordAudit(db, c.get('user'), 'artist.mbid', {
       targetKind: 'artist',
       targetId: id,
-      detail: mbid === null ? `${artist.name} — MBID override cleared` : `${artist.name} → ${mbid}`,
+      detail:
+        result.mbid.id === null
+          ? `${artist.name} — MBID tombstoned as wrong/unknown`
+          : `${artist.name} → ${result.mbid.id}`,
     });
-    return c.json({ mbid, source: mbid === null ? null : 'user' });
+    return c.json({ mbid: result.mbid.id, source: result.mbid.id === null ? null : 'user' });
   });
 
   /** Origin facets: countries present in the library + the unknown count. */

@@ -13,8 +13,9 @@ import type { AuthEnv } from '../middleware/auth.js';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 import { getArtistMeta, upsertArtistMeta } from '../services/artist-meta-store.js';
+import { mutateArtistMbid } from '../services/artist-mbid-mutate.js';
 import { getArtistOrigin, upsertArtistOrigin } from '../services/artist-origins.js';
-import { getMbid, upsertMbid } from '../services/mbid-store.js';
+import { getMbid, isMbidTombstoned, upsertMbid, usableMbid } from '../services/mbid-store.js';
 import { normalizeArtistForGrouping } from '../services/album-grouping.js';
 import { artistIdFor } from '../services/library-scanner.js';
 
@@ -2113,12 +2114,19 @@ describe('artist-info routes', () => {
     expect(getArtistMeta(testDb, artistId)?.bio).toBe('Bio via Lidarr MBID');
   });
 
-  it('POST /artists/:id/refresh-info resolves via the issue #211 widening for canonical-name drift', async () => {
+  it('POST /artists/:id/refresh-info resolves the issue #211 widening but will not publish a bio from it', async () => {
     // Real prod case (issue #211): library "Eduardo Miño" → Lidarr canonical
     // "Luis Eduardo Miño Naranjo" (contains the library name as a whole-token
     // subsequence, + `albumCount > 0` corroboration). The widened path reports
     // confidence 0.5 (vs 0.8 for exact) so `library_mbids` carries the
     // provenance forward.
+    //
+    // #1114 changed what that 0.5 is allowed to do. It still resolves and
+    // persists the id — the widening exists because it is usually right, and
+    // candidate pooling wants it. It no longer publishes prose: a bio asserts a
+    // birth date, a death date and a career about an identifiable real person, so
+    // a "usually right" identity is the wrong bar. Rosalía's page said a living
+    // artist died in 2021 on exactly this basis.
     const artistId = seedArtistWithAlbum('art-drift', 'Eduardo Miño');
     const { registry, calls: pluginCalls } = makeRegistry({
       result: {
@@ -2141,13 +2149,72 @@ describe('artist-info routes', () => {
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as { bio: string | null; urls: string[] };
-    expect(body.bio).toBe('Bio via widened Lidarr MBID');
+    expect(body.bio).toBeNull();
     expect(lidarrCalls()).toBe(1);
-    expect(pluginCalls()).toBe(1);
+    // The artist-info provider is never asked — the gate is before the fetch, so
+    // a stranger's prose is not merely discarded, it is never retrieved.
+    expect(pluginCalls()).toBe(0);
+    // The id is still resolved and still carries its widened provenance.
     const mbidRow = getMbid(testDb, 'artist', normalizeArtistForGrouping('Eduardo Miño'));
     expect(mbidRow).toEqual(
       expect.objectContaining({ mbid: 'mbid-drift', source: 'lidarr', confidence: 0.5 }),
     );
+    // …and the meta row is a tombstone, so the artist drains from the pending set
+    // instead of re-fetching the same doubtful identity every window.
+    const meta = getArtistMeta(testDb, artistId);
+    expect(meta).toEqual(expect.objectContaining({ bio: null, mbid: null }));
+  });
+
+  it('POST /artists/:id/refresh-info publishes a bio from an EXACT match, with the mbid recorded', async () => {
+    // The other side of #1114's gate: an exact Lidarr match (0.8) is the bar, and
+    // the write records WHICH identity produced the prose so a later
+    // `set_artist_mbid` correction can invalidate it.
+    const artistId = seedArtistWithAlbum('art-exact', 'Rosalía');
+    const { registry, calls: pluginCalls } = makeRegistry({
+      result: {
+        bio: 'Spanish singer, El Mal Querer',
+        urls: [],
+        source: 'discogs',
+        confidence: 0.9,
+      },
+    });
+    const { lidarr } = makeLidarrLookup({
+      Rosalía: { artistName: 'Rosalía', mbid: 'mbid-rosalia', albumCount: 4 },
+    });
+    const res = await makeApp('refiner', registry, lidarr).request(
+      `/artists/${artistId}/refresh-info`,
+      { method: 'POST' },
+    );
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { bio: string | null }).bio).toBe(
+      'Spanish singer, El Mal Querer',
+    );
+    expect(pluginCalls()).toBe(1);
+    expect(getArtistMeta(testDb, artistId)).toEqual(
+      expect.objectContaining({ mbid: 'mbid-rosalia' }),
+    );
+  });
+
+  it('POST /artists/:id/refresh-info honours a curator tombstone instead of re-resolving it', async () => {
+    // The Refresh button is what a curator reaches for after fixing an identity.
+    // If it re-ran the lookup it would re-attach the homonym they just detached —
+    // the fix undoing itself (#1112).
+    const artistId = seedArtistWithAlbum('art-tombstoned', 'Rocky');
+    mutateArtistMbid(testDb, artistId, null);
+    const { registry, calls: pluginCalls } = makeRegistry({
+      result: { bio: 'Israeli psytrance producer', urls: [], source: 'discogs', confidence: 0.9 },
+    });
+    const { lidarr, calls: lidarrCalls } = makeLidarrLookup({
+      Rocky: { artistName: 'Rocky', mbid: 'mbid-israeli', albumCount: 9 },
+    });
+    const res = await makeApp('refiner', registry, lidarr).request(
+      `/artists/${artistId}/refresh-info`,
+      { method: 'POST' },
+    );
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { bio: string | null }).bio).toBeNull();
+    expect(lidarrCalls()).toBe(0); // no live lookup at all
+    expect(pluginCalls()).toBe(0);
   });
 
   it('POST /artists/:id/refresh-info does NOT widen when the Lidarr hit has albumCount=0', async () => {
@@ -2594,12 +2661,51 @@ describe('curator artist MBID override (issue #610)', () => {
     expect(getArtistMeta(sharedDb, 'art-mb3')?.bio).toBe('Hand-written by a curator.');
   });
 
-  it('clears the override on null, reopening the artist to resolution', async () => {
+  /**
+   * #1112 changed what `null` means here. It used to `deleteMbid`, described as
+   * "reopening the artist to resolution" — which is the defect, not the feature:
+   * `library_mbids` caches a *resolution*, so an absent row reads as "not looked
+   * up yet" and the next automatic pass runs the same Lidarr lookup and re-attaches
+   * the same homonym. "Rocky" resolves to the Israeli psytrance producer every
+   * time. `null` now writes a permanent tombstone instead.
+   *
+   * The trade-off is deliberate: a curator can no longer say "forget my override
+   * and try automatically again". They can always pin the right id, and the
+   * homonym case — where no correct id is known and the wrong one keeps coming
+   * back — is the one this surface exists for.
+   */
+  it('tombstones on null rather than reopening the artist to the same wrong resolution', async () => {
     seedPoisoned('art-mb4', 'Emilia Four');
     await put('art-mb4', { mbid: MERNES });
     const res = await put('art-mb4', { mbid: null });
     expect(res.status).toBe(200);
-    expect(getMbid(sharedDb, 'artist', normalizeArtistForGrouping('Emilia Four'))).toBeNull();
+
+    const key = normalizeArtistForGrouping('Emilia Four');
+    const row = getMbid(sharedDb, 'artist', key);
+    expect(isMbidTombstoned(row)).toBe(true);
+    expect(usableMbid(row)).toBeNull();
+
+    // What the next enrichment window does with a name it believes unresolved.
+    // Against a deleted row this wrote the homonym straight back.
+    upsertMbid(sharedDb, {
+      scope: 'artist',
+      key,
+      mbid: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+      source: 'lidarr',
+      confidence: 0.8,
+    });
+    expect(isMbidTombstoned(getMbid(sharedDb, 'artist', key))).toBe(true);
+  });
+
+  it('clears the derived bio and origin on a tombstone too, not just on a set', async () => {
+    // The old clear branch evicted nothing, so detaching the identity left the
+    // wrong person's biography and the inherited country on the page — the
+    // self-contradicting artist page of #1114.
+    seedPoisoned('art-mb7', 'Emilia Seven');
+    const res = await put('art-mb7', { mbid: null });
+    expect(res.status).toBe(200);
+    expect(getArtistMeta(sharedDb, 'art-mb7')).toBeNull();
+    expect(getArtistOrigin(sharedDb, 'art-mb7')).toBeNull();
   });
 
   it('rejects a malformed id with 400', async () => {

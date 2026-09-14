@@ -43,7 +43,14 @@ import { splitOnDelimiters } from '../artist-split.js';
 import { upsertArtistIdentity } from '../artist-identity-store.js';
 import { artistIdFor } from '../library-scanner.js';
 import { ListenBrainzClient, normalizePopularity } from '../listenbrainz-client.js';
-import { getMbid, isMbidReResolvable, libraryAlbumTitles, upsertMbid } from '../mbid-store.js';
+import {
+  getMbid,
+  isMbidReResolvable,
+  isMbidTombstoned,
+  libraryAlbumTitles,
+  upsertMbid,
+  usableMbid,
+} from '../mbid-store.js';
 import { upsertArtistMeta } from '../artist-meta-store.js';
 import { upsertArtistOrigin } from '../artist-origins.js';
 import { MusicBrainzClient, MB_USER_AGENT } from '../musicbrainz-client.js';
@@ -1056,6 +1063,19 @@ interface ArtistNameRow {
  * from re-querying every window; skips `manual_override=1` rows entirely
  * (they already have a meta row, so the NOT EXISTS predicate excludes them).
  */
+/**
+ * Minimum mbid confidence that may publish a biography (#1114).
+ *
+ * Derived from {@link MBID_CONFIDENCE_EXACT} rather than restated, so the gate
+ * moves with the resolver: whatever an exact match is worth is exactly the bar
+ * for prose about a real person. In practice this admits an exact Lidarr match
+ * (0.8) and a curator's `set_artist_mbid` (1), and excludes the widened
+ * whole-token-subsequence match (0.5, #211) and a fuzzy `mb-search` (0.3). A
+ * future `source: 'tag'` writer is exact by definition and must stamp a
+ * confidence at or above this, or its bios will tombstone.
+ */
+export const BIO_MIN_MBID_CONFIDENCE = MBID_CONFIDENCE_EXACT;
+
 const artistInfoTask: EnrichmentTask = {
   id: 'artist-info',
   label: 'Artist bios',
@@ -1088,7 +1108,14 @@ const artistInfoTask: EnrichmentTask = {
     let applied = 0;
     for (const artist of rows) {
       const mbidRow = getMbid(db, 'artist', normalizeArtistForGrouping(artist.name));
-      let mbid = mbidRow?.mbid ?? null;
+      // A curator's tombstone (#1112) ends this artist here: no id to look up, and
+      // deliberately no live fallback — re-resolving is how the detached homonym
+      // comes back. The bio tombstone is the honest result.
+      if (isMbidTombstoned(mbidRow)) {
+        upsertArtistMeta(db, { artistId: artist.id, bio: null, urls: [], source: 'discogs' });
+        continue;
+      }
+      let mbid = usableMbid(mbidRow);
       let mbidConfidence = mbidRow?.confidence ?? 0;
       // Fallback (issue #207): library_mbids is never populated for artists
       // automatically in production, so a cache miss is resolved live via a
@@ -1123,6 +1150,25 @@ const artistInfoTask: EnrichmentTask = {
         upsertArtistMeta(db, { artistId: artist.id, bio: null, urls: [], source: 'discogs' });
         continue;
       }
+      // A bio is not a label on a song: it makes biographical claims — a birth
+      // date, a death date, a career — about an identifiable real person, on a
+      // page presented as factual and carrying source links. Rosalía's page told
+      // every listener that a living artist died in 2021, because the identity it
+      // was derived from belonged to someone else (#1114). So the widened match
+      // (#211) is good enough to pool candidates and NOT good enough to publish
+      // prose: the machinery that already exists to doubt an mbid —
+      // `corroborationFor`, the 0.5-vs-0.8 confidence split, the #1008
+      // re-resolution — gated everything except the bio write.
+      //
+      // A tombstone is the right outcome for the doubtful case, not a retry: the
+      // same widened match will not improve on its own, and tombstoning drains the
+      // artist from the pending set. A curator who knows the identity can pin it
+      // with `set_artist_mbid`, which drops this row and lets the next pass fetch
+      // from the id they supplied.
+      if (mbidConfidence < BIO_MIN_MBID_CONFIDENCE) {
+        upsertArtistMeta(db, { artistId: artist.id, bio: null, urls: [], source: 'discogs' });
+        continue;
+      }
       try {
         const info = await ctx.lookupArtistInfo(mbid);
         if (!info) {
@@ -1134,6 +1180,11 @@ const artistInfoTask: EnrichmentTask = {
           bio: info.bio,
           urls: info.urls,
           source: info.source,
+          // Provenance (#1114): which identity produced this prose. Without it a
+          // later mbid correction cannot invalidate the bio, which is how "Rocky"
+          // came to render `France` / `Pop 100%` above an Israeli producer's
+          // biography — the curator's correction and the bio refetch never met.
+          mbid,
         });
         applied++;
         labels.push(
@@ -1228,7 +1279,10 @@ const artistOriginTask: EnrichmentTask = {
     let applied = 0;
     for (const artist of rows) {
       const mbidRow = getMbid(db, 'artist', normalizeArtistForGrouping(artist.name));
-      let mbid = mbidRow?.mbid ?? null;
+      // A tombstoned identity must not be re-resolved into an origin either — the
+      // wrong country is the symptom a curator most often corrects first (#1112).
+      if (isMbidTombstoned(mbidRow)) continue;
+      let mbid = usableMbid(mbidRow);
       // Same re-resolution policy as artistInfoTask (issue #1008).
       if ((!mbid || isMbidReResolvable(mbidRow)) && ctx.lidarr) {
         const resolved = await resolveMbidViaLidarr(
@@ -1497,7 +1551,7 @@ const genreDiscogsTask: EnrichmentTask = {
           albumId: r.albumId,
           albumName: r.albumName,
           albumArtist: r.albumArtist,
-          mbid: getMbid(db, 'album', key)?.mbid ?? null,
+          mbid: usableMbid(getMbid(db, 'album', key)),
           songs: [],
         };
         toResolve.set(r.albumId, entry);
@@ -1675,10 +1729,17 @@ const genreAudioTask: EnrichmentTask = {
           )
           .all(song.id)
           .map((g) => g.genre);
+        // `genres`, never `result.genre.label`: the inline apply below is what
+        // reaches `library_song_genres` and the file tag *now*, so feeding it the
+        // raw label re-opens #941 through this path (#1092). The override row was
+        // canonical and the inline write was not, so the two disagreed until the
+        // next scan re-derived from the row — and in the meantime the raw label
+        // sat in the file tag, where that scan splits `Folk, World, & Country`
+        // into `Folk`/`World`/`& Country`, which is the pollution #941 removed.
         const overrideIdx: OverrideIndex = {
           artist: new Map(),
           album: new Map(),
-          song: new Map([[song.id, { genres: [result.genre.label], source: 'essentia' }]]),
+          song: new Map([[song.id, { genres, source: 'essentia' }]]),
         };
         const merged = applyGenreOverride(
           overrideIdx,
@@ -1689,7 +1750,7 @@ const genreAudioTask: EnrichmentTask = {
         await writeTagsRebased(db, ctx, song.id, abs, { genre: merged.join('; ') });
         clearAnalysisFailure(db, song.id, 'genre-audio');
         applied++;
-        labels.push(`${song.artist} — ${song.title} → ${result.genre.label} (audio)`);
+        labels.push(`${song.artist} — ${song.title} → ${genres.join(', ')} (audio)`);
       }
     };
     await Promise.all(
