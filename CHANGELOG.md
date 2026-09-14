@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.44](https://github.com/kevinch3/NicotinD/compare/v0.6.43...v0.6.44) (2026-09-14)
+
+### Features
+
+* **radio:** report the formula, genre axis and strategy that made the queue ([#1125](https://github.com/kevinch3/NicotinD/issues/1125)) ([130db9e](https://github.com/kevinch3/NicotinD/commit/130db9e8451a6adf3b9706218a664a85cd322b0b)), closes [#1124](https://github.com/kevinch3/NicotinD/issues/1124)
+
+### Bug Fixes
+
+* latest backlog bugs — e2e tracklist scoping, genre write path + umbrella-only metric, wrong-MBID contamination ([#1131](https://github.com/kevinch3/NicotinD/issues/1131)) ([def855e](https://github.com/kevinch3/NicotinD/commit/def855eca58a3ea47b7ca6bf8c0edae1baae206a)), closes [#1110](https://github.com/kevinch3/NicotinD/issues/1110) [#1092](https://github.com/kevinch3/NicotinD/issues/1092) [#1115](https://github.com/kevinch3/NicotinD/issues/1115) [#1112](https://github.com/kevinch3/NicotinD/issues/1112) [#1114](https://github.com/kevinch3/NicotinD/issues/1114), references [#1116](https://github.com/kevinch3/NicotinD/issues/1116) [#1109](https://github.com/kevinch3/NicotinD/issues/1109) [#1116](https://github.com/kevinch3/NicotinD/issues/1116) [#1092](https://github.com/kevinch3/NicotinD/issues/1092) [#941](https://github.com/kevinch3/NicotinD/issues/941) [#941](https://github.com/kevinch3/NicotinD/issues/941) [#1115](https://github.com/kevinch3/NicotinD/issues/1115) [#1115](https://github.com/kevinch3/NicotinD/issues/1115) [#694](https://github.com/kevinch3/NicotinD/issues/694) [#1129](https://github.com/kevinch3/NicotinD/issues/1129) [#1114](https://github.com/kevinch3/NicotinD/issues/1114) [#211](https://github.com/kevinch3/NicotinD/issues/211) [#1112](https://github.com/kevinch3/NicotinD/issues/1112) [#1114](https://github.com/kevinch3/NicotinD/issues/1114)
 ## [0.6.43](https://github.com/kevinch3/NicotinD/compare/v0.6.42...v0.6.43) (2026-09-13)
 
 ### Bug Fixes
