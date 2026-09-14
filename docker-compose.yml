@@ -1,3 +1,11 @@
+# Every service declares `mem_limit` + `memswap_limit`, enforced by
+# `bun run check:compose-limits`. Unbounded containers let one leaking service
+# take the whole HOST down instead of just itself: on 2026-09-14 the analysis
+# sidecar grew past 9.5 GB, exhausted RAM *and* all 4 GB of swap, and the box
+# spent 3h42m thrashing — reachable to nothing, yet never down, so every health
+# signal stayed green. `memswap_limit` equals `mem_limit` on purpose: that
+# forbids swap per container, because swap is what converted a container-sized
+# bug into a host-sized outage. → docs/deployment.md
 services:
   nicotind:
     # Published multi-arch image (see docs/deployment.md). `release` is the
@@ -7,6 +15,9 @@ services:
     # docker-compose.override.example.yml.
     image: ghcr.io/kevinch3/nicotind:${NICOTIND_VERSION:-release}
     user: "1000:1000"
+    # Steady state ~1.1 GB; headroom for a full scan + concurrent streams.
+    mem_limit: 3g
+    memswap_limit: 3g
     ports:
       - "8484:8484"
     volumes:
@@ -53,6 +64,9 @@ services:
     profiles: ["slskd-addon"]
     image: slskd/slskd:0.25.1
     user: "1000:1000"
+    # Steady state ~350 MB.
+    mem_limit: 1g
+    memswap_limit: 1g
     volumes:
       - music:/data/music
       - slskd-data:/app
@@ -128,6 +142,12 @@ services:
     # into a CPU-only container.
     runtime: runc
     user: "1000:1000"
+    # The tightest limit here, and deliberately so: this sidecar grew 5.9 -> 9.5 GB
+    # in 19 minutes on 2026-09-14 while serving no more work than usual. It did its
+    # job at ~5.9 GB, so anything past 6 GB is the leak, not the workload. Capped,
+    # the leak costs a container restart; uncapped it cost the host.
+    mem_limit: 6g
+    memswap_limit: 6g
     volumes:
       - music:/data/music:ro
     environment:
@@ -152,6 +172,12 @@ services:
   slskd-addon:
     image: ghcr.io/kevinch3/nicotind-slskd-addon:latest
     profiles: ["slskd-addon"]
+    # Observed holding a flat 7.4 GB after 3.7 days without ever restarting — a
+    # plateau, not a working set, for a service that coordinates searches and
+    # hands off files. 3 GB is generous against that job; if it trips this limit
+    # the growth is a bug worth a restart and an issue, not more RAM.
+    mem_limit: 3g
+    memswap_limit: 3g
     environment:
       SLSKD_ADDON_TOKEN: ${SLSKD_ADDON_TOKEN:-change-me}
       SLSKD_ADDON_SLSKD_URL: http://slskd:5030
@@ -196,6 +222,10 @@ services:
   ytdlp-addon:
     image: ghcr.io/kevinch3/nicotind-ytdlp-addon:latest
     profiles: ["ytdlp-addon"]
+    # Idles near 25 MB but shells out to ffmpeg, and the transcode is the
+    # expensive half of acquisition — 1 GB covers a concurrent burst.
+    mem_limit: 1g
+    memswap_limit: 1g
     environment:
       YTDLP_ADDON_TOKEN: ${YTDLP_ADDON_TOKEN:-change-me}
       # Its own pot-provider companion (below) shares this container's network
@@ -218,6 +248,9 @@ services:
     # `brainicism/bgutil-ytdlp-pot-provider:<version>` to fall back to upstream.
     image: ghcr.io/kevinch3/nicotind-pot-provider:${NICOTIND_IMAGE_TAG:-release}
     profiles: ["ytdlp-addon"]
+    # A small Node service; observed ~62 MB.
+    mem_limit: 512m
+    memswap_limit: 512m
     # why explicit `runtime: runc`: a host whose Docker daemon's default runtime
     # is the NVIDIA container runtime (e.g. after `nvidia-ctk runtime configure
     # --runtime=nvidia --set-as-default`) will try to bind-mount
@@ -242,6 +275,9 @@ services:
   spotdl-addon:
     image: ghcr.io/kevinch3/nicotind-spotdl-addon:latest
     profiles: ["spotdl-addon"]
+    # Same shape as ytdlp-addon: tiny at rest, ffmpeg under load.
+    mem_limit: 1g
+    memswap_limit: 1g
     environment:
       SPOTDL_ADDON_TOKEN: ${SPOTDL_ADDON_TOKEN:-change-me}
       # Optional — raise spotDL's Spotify rate limits over its shared client.
@@ -259,6 +295,9 @@ services:
   spotdl-pot-provider:
     image: ghcr.io/kevinch3/nicotind-pot-provider:${NICOTIND_IMAGE_TAG:-release}
     profiles: ["spotdl-addon"]
+    # A small Node service; observed ~62 MB.
+    mem_limit: 512m
+    memswap_limit: 512m
     runtime: runc
     network_mode: "service:spotdl-addon"
     depends_on:
@@ -270,6 +309,9 @@ services:
     # Pinned (was :latest): a silent Lidarr major bump can break the API
     # client. Bump deliberately after checking the Lidarr changelog.
     image: linuxserver/lidarr:3.1.0
+    # Steady state ~270 MB; .NET, so give the GC room before it is a hard wall.
+    mem_limit: 1g
+    memswap_limit: 1g
     environment:
       PUID: 1000
       PGID: 1000

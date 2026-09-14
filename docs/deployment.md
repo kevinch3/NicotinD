@@ -587,6 +587,55 @@ The host has no scheduled prune, so this will re-accumulate; the guard turns the
 next occurrence into a failed deploy step with a reclaim command instead of an
 outage with a misleading cause.
 
+### Memory limits, and why swap is forbidden
+
+Every service in `docker-compose.yml` declares both `mem_limit` and
+`memswap_limit`, and `scripts/compose-memory-limits.test.ts` fails the build if a
+service is added without them, if the two disagree, or if the limits stop fitting
+the stack budget.
+
+`memswap_limit` must **equal** `mem_limit`. That is Docker's spelling of "this
+container may not swap": left unset, a container may use swap up to *twice* its
+memory limit, which is exactly the mechanism that turns one leaking container
+into a host-wide stall.
+
+| Service                        | Observed                | Limit  |
+| ------------------------------ | ----------------------- | ------ |
+| `analysis`                     | ~2.2 GB idle (#605)     | 6 GB   |
+| `nicotind`                     | ~1.1 GB                 | 3 GB   |
+| `slskd-addon`                  | 7.4 GB flat — see below | 3 GB   |
+| `slskd` · `lidarr`             | ~300 MB                 | 1 GB   |
+| `ytdlp-addon` · `spotdl-addon` | ~25 MB                  | 1 GB   |
+| `*-pot-provider`               | ~62 MB                  | 512 MB |
+
+`slskd-addon`'s limit is set *below* what it was observed holding, on purpose.
+It sat at a flat 7.4 GB after 3.7 days without a single restart, at 0.38% CPU —
+a plateau, not a working set, for a service whose job is to coordinate searches
+and hand off files. Its healthy footprint has not been measured, so 3 GB is a
+deliberate forcing function: if it trips the limit, the growth is a bug to file,
+not a number to raise.
+
+17 GB total on a 31 GB host, because the prod host also runs a separate Immich
+stack and its own daemons. The headroom is the point; raising the budget in the
+test is a deliberate act that should come with a look at the host.
+
+**Why this exists.** On 2026-09-14 the `analysis` sidecar grew from 5.9 GB to
+9.5 GB in 19 minutes, exhausted RAM *and* all 4 GB of swap, and the host spent
+**3h42m thrashing**. The box never rebooted (`up 5 days`) and `tailscaled` never
+restarted (`NRestarts=0`) — it simply could not service its network stack, so it
+went inbound-unreachable while every liveness indicator, including the Tailscale
+admin console, kept saying "Connected". The web UI showed only its generic
+offline banner, so the failure read as a client-side network problem for hours.
+
+The lesson generalises past this one container: **unreachable is not down, and up
+is not working**. A cgroup limit does not prevent the leak; it decides who pays
+for it. Bounded, a leak costs one container restart — loud, logged, seconds long.
+Unbounded, it costs the host, silently.
+
+Note that `docker inspect`'s `OOMKilled` flag is cgroup-scoped: with no limit set
+it is structurally incapable of being `true`, so reading `OOMKilled=false` on an
+unbounded container as "memory was fine" inverts its actual meaning.
+
 ### Symptom: a container sits in `created` and the API never comes back (issue #1019)
 
 ```
