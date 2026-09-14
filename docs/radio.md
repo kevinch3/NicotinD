@@ -775,7 +775,7 @@ Three details are load-bearing:
   which is what an older server sends.
 - **Only the player lane asks for it.** `LibraryApiService.radioProvenance` is
   set by calls made with `{ provenance: true }` — the queue refill in
-  `layout.component.ts`. Shelves, blends and "keep the vibe" hit the same
+  `radio-source.service.ts`. Shelves, blends and "keep the vibe" hit the same
   endpoints as a recommendation source and deliberately leave it alone: the chip
   describes the radio you are hearing, not the last query the page made.
 
@@ -1197,6 +1197,6 @@ collapse, which it needed most (see "Same recording, multiple files").
 | `packages/api/src/routes/library.ts`                                  | `/songs/:id/similar` refactored to use shared scorer                                                                                                                                                                                                           |
 | `packages/web/src/app/services/api/library-api.service.ts`            | `getRadioNext()` + `getFilterRadio()` API methods                                                                                                                                                                                                              |
 | `packages/web/src/app/services/player.service.ts`                     | `radioFilter` signal + `startRadioWithFilter()` (persisted vibe)                                                                                                                                                                                               |
-| `packages/web/src/app/components/layout/layout.component.ts`          | Smart RadioProvider registration (filter-aware)                                                                                                                                                                                                                |
+| `packages/web/src/app/services/radio-source.service.ts`               | Smart RadioProvider registration (filter-aware), installed from the app initializer                                                                                                                                                                                                                |
 | `packages/web/src/app/pages/mosaic-home/mosaic-home.component.ts` | The home route: one pannable mosaic, every tile a radio start                                                                                                                                                                                                |
 | `packages/web/src/app/pages/radio-landing/radio-landing.component.ts` | Classic landing at `/classic`: resume, shelves, vibe tiles + genre tiles                                                                                                                                                                                               |

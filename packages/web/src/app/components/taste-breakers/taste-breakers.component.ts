@@ -7,6 +7,7 @@ import { CoverArtComponent } from '../cover-art/cover-art.component';
 import { SkeletonComponent } from '../skeleton/skeleton.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { toTrack } from '../../lib/track-utils';
+import { playShelfSong } from '../../lib/shelf-play';
 import type { RecentPlay, Song } from '../../services/api/api-types';
 
 /** Over-fetch factor: the pool is re-ordered unheard-first and then cut to
@@ -120,9 +121,10 @@ export class TasteBreakersComponent implements OnInit {
     }
   }
 
-  /** Start a radio seeded from the tapped track — the detour becomes a direction. */
+  /** Start a radio seeded from the tapped track — the detour becomes a direction.
+   *  Through the shared shelf helper so a TV press also shows the player. */
   onPlay(song: Song): void {
-    this.player.startRadio(toTrack(song));
+    playShelfSong(this.player, [toTrack(song)], 0);
   }
 
   /**

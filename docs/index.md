@@ -444,6 +444,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **Auto-preserve queue (PWA lock-screen resilience)**: `AutoPreserveCoordinator` keeps the next-N
   queued tracks as IndexedDB blobs so playback survives the locked-screen network throttle;
   `evictAutoLRU` never evicts user-saved tracks. → [web-ui.md](web-ui.md)
+- **The radio source belongs to no shell**: `RadioSourceService.install()` hands `PlayerService` its
+  `RadioProvider` from the app initializer, because the one shell that used to own it is not the one
+  a TV build mounts; `ensureRadioOn` keeps a TV endless and `playShelfSong` makes a Home song press
+  a radio seed. → [tv-ux.md](tv-ux.md)
 
 ### Playlists, listening & privacy
 
@@ -596,9 +600,14 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   invisible to a diff of `online`. `isOffline` is a `computed`;
   `reportServerFailure`/`reportServerSuccess` flip it both ways mid-session.
   → [mobile-app.md](mobile-app.md)
-- **Manual PWA update check**: a Settings button calling `UpdateService.checkForUpdate()` with
-  outcomes surfaced through `ToastService`; `UpdateBannerComponent` remains the install CTA.
-  → [web-ui.md](web-ui.md)
+- **PWA updates apply themselves**: `UpdateService.start()` re-checks on resume, `pageshow` and a
+  30-min timer — the navigations an installed standalone app never makes — and `canApplyUpdateNow`
+  activates in the background, never while playing or visible; `serverIsNewer` outvotes a worker
+  holding a stale manifest. → [web-ui.md](web-ui.md)
+- **The TV says where the audio is**: `TvDevicePickerComponent` is the D-pad output chooser (a
+  full-screen list, never the phone popover a remote cannot dismiss), sharing `otherDevicesFor` with
+  it; `TvShellComponent` routes to the player when a cast lands here.
+  → [remote-playback.md](remote-playback.md), [tv-ux.md](tv-ux.md)
 - **Changelog modal**: build-time `CHANGELOG.md` → `changelog.json`, capped; the version string in
   header and settings is clickable. → [web-ui.md](web-ui.md)
 - **Shared relative time**: one `timeAgo` (`lib/relative-time.ts`) for the Downloads feed and Admin
@@ -653,6 +662,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 
 ### Build, CI, deploy & ops
 
+- **Cache directives for the static build**: `cacheControlForStatic` splits content-hashed output
+  (`immutable`) from everything whose name outlives its bytes (`no-cache`), because Hono's
+  `serveStatic` sends no freshness at all and a heuristically-cached `index.html`/`ngsw.json` strands
+  an installed PWA on an old build. → [web-ui.md](web-ui.md)
 - **Quality gates assert their own denominator**: a gate that computes a smaller candidate set than it
   should still exits 0 truthfully. Gates derive their denominator independently, print what they
   examined, fail on what they cannot classify, and check allowlists both ways.

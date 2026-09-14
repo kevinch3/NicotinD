@@ -399,6 +399,40 @@ describe('PlayerService', () => {
       expect(service.radio()).toBe(false);
     });
 
+    it('ensureRadioOn turns it on and fills, and is idempotent (#1127)', async () => {
+      // A TV build calls this at shell start: its five screens carry no radio
+      // control, so a remembered `radio = false` could never be undone.
+      // Four tracks so the fill lands above RADIO_MIN_QUEUE and the drain
+      // effect stays quiet — otherwise it, not the second call, is what
+      // refetches and the idempotence claim below would be untestable.
+      const more = ['t4', 't5', 't6', 't7'].map((id) => ({ id, title: id, artist: 'A' }));
+      const provider = vi.fn(async () => more);
+      service.setRadioProvider(provider);
+      service.play(track1);
+      service.queue.set([]);
+
+      service.ensureRadioOn();
+      await flush();
+
+      expect(service.radio()).toBe(true);
+      expect(service.queue().map((t) => t.id)).toEqual(['t4', 't5', 't6', 't7']);
+
+      service.ensureRadioOn();
+      await flush();
+
+      expect(provider).toHaveBeenCalledTimes(1);
+    });
+
+    it('ensureRadioOn keeps an in-flight filter vibe rather than resetting it', () => {
+      service.radioFilter.set({ genres: ['Ambient'] });
+      service.radio.set(true);
+
+      service.ensureRadioOn();
+
+      expect(service.radioFilter()).toEqual({ genres: ['Ambient'] });
+      expect(service.radio()).toBe(true);
+    });
+
     it('fills the queue immediately when toggled on with a low queue', async () => {
       service.setRadioProvider(async () => [track2, track3, track1]); // t1 = current, filtered
       service.play(track1);

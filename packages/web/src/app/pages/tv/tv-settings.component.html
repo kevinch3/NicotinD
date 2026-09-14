@@ -71,6 +71,9 @@
           </button>
         }
       } @else {
+        <p class="text-base text-theme-muted mb-4" data-testid="tv-settings-device-name">
+          {{ 'tv.remoteThisDevice' | t: { name: deviceName() } }}
+        </p>
         @for (opt of [true, false]; track opt) {
           <button
             appTvNavItem

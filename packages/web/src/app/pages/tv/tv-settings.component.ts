@@ -1,8 +1,9 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
 import { TranslateService } from '../../services/translate.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
+import { PlaybackWsService } from '../../services/playback-ws.service';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import { TranslatePipe } from '../../pipes/translate.pipe';
@@ -30,7 +31,19 @@ export class TvSettingsComponent {
 
   readonly chooser = signal<Chooser>(null);
   private readonly remote = inject(RemotePlaybackService);
+  private readonly ws = inject(PlaybackWsService);
   readonly remoteEnabled = this.remote.outputAvailable;
+
+  /** The name this TV advertises in every other device's picker. It is
+   *  special-cased ("NicotinD TV" — the UA reads "Chrome on Android" and says
+   *  nothing a cast selector needs, #393), and until now it was visible only
+   *  from the phone settings page: from the couch there was no way to tell
+   *  which entry in the picker was this box (#1128). */
+  readonly deviceName = computed(
+    () =>
+      this.remote.devices().find((d) => d.id === this.ws.getDeviceId())?.name ??
+      this.ws.getDeviceName(),
+  );
 
   open(which: Exclude<Chooser, null>): void {
     this.chooser.set(which);

@@ -101,6 +101,18 @@ export class RemotePlaybackService {
   /** Why the presence channel is down, when it stayed down. */
   readonly syncStatus = computed(() => this.ws.persistentFailure());
 
+  /**
+   * Bumped every time a **server message** made this device start playing —
+   * i.e. a controller cast to it.
+   *
+   * Nothing derivable after the fact can tell a cast from a local play: a local
+   * play claims the output too, so `isActiveDevice()` is true either way (and
+   * `isAudioOutput` is true with no session at all). A receiver that wants to
+   * show what it was just told to play — the TV routes to its player (#1128) —
+   * needs the moment, not the state.
+   */
+  readonly castsReceived = signal(0);
+
   // ---------------------------------------------------------------------------
   // Internal bookkeeping
   // ---------------------------------------------------------------------------
@@ -250,6 +262,13 @@ export class RemotePlaybackService {
     const r = reduceServerMessage(this.snapshot(), this.context(), msg);
     this.commit(r.state);
     this.apply(r.effects);
+    // Only here, never in the local paths: `apply` is shared with
+    // `switchToDevice`, and a pick made *on* this device is not a cast *to* it.
+    // `show-track` is excluded deliberately — it is metadata for a controller,
+    // which is the case where the audio is somewhere else.
+    if (r.effects.some((e) => e.kind === 'play' || e.kind === 'resume')) {
+      this.castsReceived.update((n) => n + 1);
+    }
   }
 
   // ---------------------------------------------------------------------------

@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
-import { profileIdOf } from '../../lib/device-id';
+import { otherDevicesFor } from '../../lib/device-list';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 
 function deviceEmoji(name: string, type: string): string {
@@ -32,21 +32,9 @@ export class DeviceSwitcherComponent {
   private myId = this.ws.getDeviceId();
 
   readonly myDevice = computed(() => this.remote.devices().find((d) => d.id === this.myId));
-  // A second tab of this browser is a real, separately castable output, but it
-  // renders with the same UA-derived name — so the row is marked rather than
-  // left an anonymous twin (issue #882). A device that opted out (or has had
-  // no gesture yet) is listed but not offered: it can still be the output
-  // when it plays on its own, so the list must be able to name it.
-  readonly otherDevices = computed(() =>
-    this.remote
-      .devices()
-      .filter((d) => d.id !== this.myId)
-      .map((d) => ({
-        ...d,
-        sibling: profileIdOf(d.id) === profileIdOf(this.myId),
-        offerable: d.available !== false,
-      })),
-  );
+  // Shared with the TV chooser (`otherDevicesFor`) so the two pickers cannot
+  // disagree about which devices are offerable.
+  readonly otherDevices = computed(() => otherDevicesFor(this.remote.devices(), this.myId));
   readonly isRemoteActive = computed(() => {
     const active = this.remote.activeDeviceId();
     return active !== null && active !== this.myId;
