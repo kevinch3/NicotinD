@@ -14,6 +14,43 @@ test.describe('library', () => {
   });
 
   /**
+   * Regression for #1109: forces exactly the outcome #784 records — a click
+   * that commits a navigation `openAlbumCard`'s identity assertion rejects —
+   * deterministically rather than waiting for the grid re-chunk race that
+   * produces it in the wild. Before the fix, attempt 1 diverts to a page with
+   * no `album-card` in it, `toHaveURL` rejects that URL, and every later
+   * attempt times out reading `data-album-id` off a locator resolving to
+   * nothing — the helper's whole 15 s budget spent without it ever looking at
+   * the grid again. With the fix, the next attempt notices the grid is gone,
+   * navigates back, and the (now listener-free) click lands on the real card.
+   */
+  test('openAlbumCard recovers when an attempt strands it off the grid (#1109)', async ({
+    page,
+  }) => {
+    await page.goto('/library');
+    await expect(page.getByTestId('album-card').first()).toBeVisible();
+
+    // A one-shot diversion: the first click on any album card is redirected to
+    // a dead album route instead of the real one. A full document load, so the
+    // listener dies with the document and does not affect the recovery's own
+    // click.
+    await page.evaluate(() => {
+      const divert = (ev: MouseEvent) => {
+        if (!(ev.target as HTMLElement).closest('[data-testid="album-card"]')) return;
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        document.removeEventListener('click', divert, true);
+        location.href = '/library/albums/not-a-real-album-1109';
+      };
+      document.addEventListener('click', divert, true);
+    });
+
+    await openAlbumCard(page, FIXTURE.album.title);
+    await expect(page.getByTestId('play-album')).toBeVisible();
+    await expect(trackTitle(page, 'Opening Static')).toBeVisible();
+  });
+
+  /**
    * Regression for #1110 / #1116: the failures those issues record are a
    * strict-mode violation, not a missing track. A leftover remote-playback
    * session from an earlier spec renders its track in the player bar and in Now
