@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit, OnDestroy } from '@angular/core';
+import { Component, computed, inject, signal, OnInit, OnDestroy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
@@ -42,6 +42,10 @@ export class LoginComponent implements OnInit, OnDestroy {
   username = '';
   password = '';
   readonly isRegister = signal(false);
+  /** The line under the brand — shared by the phone stack and the TV row. */
+  readonly subtitleKey = computed(() =>
+    this.isRegister() ? 'login.subtitle.register' : 'login.subtitle.signIn',
+  );
   readonly error = signal('');
   readonly loading = signal(false);
   readonly registrationEnabled = signal(true);

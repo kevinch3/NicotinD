@@ -28,9 +28,12 @@ preflight and fails in the `device` fixture with a pointer back to `bun run e2e:
 
 ## Why this exists
 
-The Chromium e2e suite fakes a TV by stamping the `tv-build` class on the prod bundle at a
-960×540 viewport. That covers layout and any behaviour driven by the app's own JavaScript
-keydown handlers — which is most of the TV navigation work.
+The Chromium e2e suite used to fake a TV by stamping the `tv-build` class on the prod bundle at a
+960×540 viewport. That flips `isTvUi()` but never `isTvBuild()`, so it rendered the phone sheet's
+TV treatment and not one screen of the TV route tree (#1136). Since then the suite's `tv` project
+serves the real TV bundle on its own server and screenshots every TV screen on every PR
+([e2e.md](e2e.md) "The TV bundle in Chromium") — layout, geometry and the app's own keydown
+handlers, which is most of the TV navigation work, now live there.
 
 It cannot cover one thing: **an Android WebView has spatial navigation and desktop Chrome
 does not.** On a TV, pressing a direction key with no nav group claiming it moves focus to

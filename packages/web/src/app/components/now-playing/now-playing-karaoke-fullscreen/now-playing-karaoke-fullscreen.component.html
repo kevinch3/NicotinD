@@ -44,7 +44,7 @@
     <button
       appTvNavItem
       (click)="exit.emit()"
-      class="w-10 h-10 flex items-center justify-center text-white/60 hover:text-white transition rounded-full hover:bg-white/10"
+      class="w-10 h-10 flex items-center justify-center text-white/60 hover:text-white transition rounded-full hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
       [attr.aria-label]="'nowPlaying.exitFullscreen' | t"
     >
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -55,7 +55,7 @@
     <button
       appTvNavItem
       (click)="browseToggle.emit()"
-      class="w-10 h-10 flex items-center justify-center transition rounded-full hover:bg-white/10"
+      class="w-10 h-10 flex items-center justify-center transition rounded-full hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
       [class]="browsing() ? 'text-white' : 'text-white/60 hover:text-white'"
       [attr.aria-label]="(browsing() ? 'nowPlaying.exitBrowseLyrics' : 'nowPlaying.browseLyrics') | t"
       data-testid="karaoke-browse-toggle"
@@ -76,7 +76,7 @@
     <button
       appTvNavItem
       (click)="vocalMuteToggle.emit()"
-      class="w-10 h-10 flex items-center justify-center transition rounded-full hover:bg-white/10"
+      class="w-10 h-10 flex items-center justify-center transition rounded-full hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
       [class]="vocalsMuted() ? 'text-red-400' : 'text-white/60 hover:text-white'"
       [attr.aria-label]="(vocalsMuted() ? 'nowPlaying.unmuteVocals' : 'nowPlaying.muteVocals') | t"
       [attr.data-vocal-mode]="vocalsMuted() ? 'basic' : 'off'"
@@ -178,26 +178,32 @@
 
   <!-- Karaoke transport controls -->
   <div class="relative z-10 px-6 pb-6 pt-2">
-    <!-- Seek bar -->
-    <div class="max-w-md mx-auto mb-3">
-      <app-seek-bar
-        [position]="progress()"
-        [duration]="duration()"
-        [buffered]="buffered()"
-        (seek)="seek.emit($event)"
-      />
-      <div class="flex justify-between mt-1">
-        <span class="text-xs text-white/40">{{ formatTime(progress()) }}</span>
-        <span class="text-xs text-white/40">{{ formatTime(duration()) }}</span>
+    <!-- Seek bar — or, on a TV, the hint that ◀ ▶ seek (see `seekBar`). -->
+    @if (seekBar()) {
+      <div class="max-w-md mx-auto mb-3">
+        <app-seek-bar
+          [position]="progress()"
+          [duration]="duration()"
+          [buffered]="buffered()"
+          (seek)="seek.emit($event)"
+        />
+        <div class="flex justify-between mt-1">
+          <span class="text-xs text-white/40">{{ formatTime(progress()) }}</span>
+          <span class="text-xs text-white/40">{{ formatTime(duration()) }}</span>
+        </div>
       </div>
-    </div>
+    } @else {
+      <p class="text-center text-xs text-white/40 mb-3" data-testid="karaoke-seek-hint">
+        {{ formatTime(progress()) }} / {{ formatTime(duration()) }} · {{ 'tv.seekHint' | t }}
+      </p>
+    }
     <!-- Controls -->
     <div class="flex items-center justify-center gap-6" appTvNavGroup [axis]="'horizontal'">
       <button
         appTvNavItem
         (click)="prevClicked.emit()"
         [attr.aria-label]="'nowPlaying.previous' | t"
-        class="w-10 h-10 flex items-center justify-center text-white/60 hover:text-white transition"
+        class="w-10 h-10 flex items-center justify-center text-white/60 hover:text-white transition rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
       >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
           <rect x="3" y="5" width="3" height="14" />
@@ -209,7 +215,7 @@
         (click)="playPauseClicked.emit()"
         [attr.aria-label]="(playing() ? 'nowPlaying.pause' : 'nowPlaying.play') | t"
         [attr.data-buffering]="buffering()"
-        class="w-14 h-14 rounded-full bg-white/20 backdrop-blur-sm text-white flex items-center justify-center hover:bg-white/30 transition border border-white/10"
+        class="w-14 h-14 rounded-full bg-white/20 backdrop-blur-sm text-white flex items-center justify-center hover:bg-white/30 transition border border-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
       >
         @if (buffering()) {
           <span class="inline-block w-5 h-5 border-[3px] border-current border-t-transparent rounded-full animate-spin"></span>
@@ -228,7 +234,7 @@
         appTvNavItem
         (click)="nextClicked.emit()"
         [attr.aria-label]="'nowPlaying.next' | t"
-        class="w-10 h-10 flex items-center justify-center text-white/60 hover:text-white transition"
+        class="w-10 h-10 flex items-center justify-center text-white/60 hover:text-white transition rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
       >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
           <polygon points="3,5 15,12 3,19" />

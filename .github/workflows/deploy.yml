@@ -155,7 +155,13 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # `packages` defaults to `tools platform-tools`, and the SDK repository no
+      # longer lists the legacy `tools` package: `sdkmanager tools` exited 1 and
+      # the v0.6.46 release shipped with no APK. Gradle fetches the build-tools
+      # and platform it needs itself; platform-tools is all the action must add.
       - uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       # Gradle resolves the phone AND tv assembleRelease classpaths over the
       # network otherwise. One of those deps (osbarcode-android) is served only

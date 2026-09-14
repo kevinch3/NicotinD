@@ -1030,7 +1030,7 @@
   "tv.queue": "Cola",
   "tv.remoteControl": "Control remoto",
   "tv.remoteThisDevice": "Este televisor aparece como «{name}»",
-  "tv.seekHint": "Pulsá ◀ ▶ para saltar 10 segundos",
+  "tv.seekHint": "Pulsá ← → para saltar 10 segundos",
   "tv.signOut": "Cerrar sesión",
   "tv.switchServer": "Cambiar de servidor",
   "vibe.acoustic": "Acústico",

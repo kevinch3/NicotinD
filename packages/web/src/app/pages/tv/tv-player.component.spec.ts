@@ -1,11 +1,18 @@
+import { Component } from '@angular/core';
+import { vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { TvPlayerComponent } from './tv-player.component';
+import { TvKaraokeComponent } from './tv-karaoke.component';
 import { PlayerService, type Track } from '../../services/player.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { TranslateService } from '../../services/translate.service';
 
 const track = (id: string): Track => ({ id, title: id.toUpperCase(), artist: 'E2E Test Artist' });
+
+/** The overlay has its own spec; here only the mount/unmount wiring matters. */
+@Component({ selector: 'app-tv-karaoke', template: '' })
+class StubTvKaraokeComponent {}
 
 describe('TvPlayerComponent', () => {
   function create() {
@@ -27,6 +34,10 @@ describe('TvPlayerComponent', () => {
           },
         },
       ],
+    });
+    TestBed.overrideComponent(TvPlayerComponent, {
+      remove: { imports: [TvKaraokeComponent] },
+      add: { imports: [StubTvKaraokeComponent] },
     });
     const player = TestBed.inject(PlayerService);
     const remote = TestBed.inject(RemotePlaybackService);
@@ -85,6 +96,38 @@ describe('TvPlayerComponent', () => {
 
     expect(player.queue().map((t) => t.id)).toEqual(['s3']);
     expect(fixture.componentInstance.queueOpen()).toBe(true);
+  });
+
+  describe('karaoke (#1134)', () => {
+    it('the Lyrics row mounts the overlay — the surface this route never had', () => {
+      const { fixture } = create();
+
+      expect(fixture.nativeElement.querySelector('app-tv-karaoke')).toBeNull();
+      q(fixture, 'tv-lyrics')!.click();
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.karaokeOpen()).toBe(true);
+      expect(fixture.nativeElement.querySelector('app-tv-karaoke')).not.toBeNull();
+    });
+
+    it('closing unmounts it and hands focus back to the row that opened it', () => {
+      vi.useFakeTimers();
+      try {
+        const { fixture } = create();
+        q(fixture, 'tv-lyrics')!.click();
+        fixture.detectChanges();
+
+        fixture.componentInstance.closeKaraoke();
+        fixture.detectChanges();
+        vi.runAllTimers();
+
+        expect(fixture.componentInstance.karaokeOpen()).toBe(false);
+        expect(fixture.nativeElement.querySelector('app-tv-karaoke')).toBeNull();
+        expect(document.activeElement).toBe(q(fixture, 'tv-lyrics'));
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   describe('remote playback (#1128)', () => {

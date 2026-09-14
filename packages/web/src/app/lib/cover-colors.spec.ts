@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { computePaletteFromPixels, DEFAULT_PALETTE } from './cover-colors';
+import {
+  computePaletteFromPixels,
+  loadCoverPalette,
+  DEFAULT_PALETTE,
+  type PaletteImage,
+} from './cover-colors';
 
 /** Build an RGBA buffer that repeats the given pixels `repeat` times. */
 function rgba(pixels: Array<[number, number, number]>, repeat: number): Uint8ClampedArray {
@@ -50,5 +55,44 @@ describe('computePaletteFromPixels', () => {
       16,
     );
     expect(computePaletteFromPixels(data)).toEqual(computePaletteFromPixels(data));
+  });
+});
+
+describe('loadCoverPalette', () => {
+  // jsdom never fires load/error on an <img> and has no 2D canvas, so the image
+  // is injected and the two paths that can be reached here are the ones that
+  // matter for a caller: it always resolves, and it resolves to the default.
+  function fakeImage(): PaletteImage & { fire: (event: 'onload' | 'onerror') => void } {
+    const img: PaletteImage & { fire: (event: 'onload' | 'onerror') => void } = {
+      crossOrigin: null,
+      onload: null,
+      onerror: null,
+      src: '',
+      fire: (event) => img[event]?.(),
+    };
+    return img;
+  }
+
+  it('asks for the cover anonymously so the canvas is not tainted', async () => {
+    const img = fakeImage();
+    const pending = loadCoverPalette('/api/cover/x', { createImage: () => img });
+    expect(img.crossOrigin).toBe('anonymous');
+    expect(img.src).toBe('/api/cover/x');
+    img.fire('onerror');
+    await pending;
+  });
+
+  it('resolves to the default palette when the cover cannot be loaded', async () => {
+    const img = fakeImage();
+    const pending = loadCoverPalette('/api/cover/x', { createImage: () => img });
+    img.fire('onerror');
+    expect(await pending).toEqual(DEFAULT_PALETTE);
+  });
+
+  it('resolves to the default palette when the canvas cannot give pixels', async () => {
+    const img = fakeImage();
+    const pending = loadCoverPalette('/api/cover/x', { createImage: () => img });
+    img.fire('onload');
+    expect(await pending).toEqual(DEFAULT_PALETTE);
   });
 });

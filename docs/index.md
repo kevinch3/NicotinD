@@ -400,8 +400,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   above the tabs, and `lg:` is two columns. → [web-ui.md](web-ui.md)
 - **Lyrics + karaoke**: `metadata` plugin kind + `lyrics` capability (LRCLIB) in `library_lyrics`
   + file tag; karaoke panel with synced highlighting, fullscreen auto-follow, and a `?vocals=off`
-  center-cancel mute cached as its own `novox` transcode variant.
-  → [design-patterns.md](design-patterns.md), [vocal-isolation-spike.md](vocal-isolation-spike.md)
+  center-cancel mute cached as its own `novox` transcode variant. The lyrics state is shared:
+  `LyricsService`, `KaraokeBrowseMode`, `loadCoverPalette`, `TvKaraokeComponent`.
+  → [design-patterns.md](design-patterns.md), [vocal-isolation-spike.md](vocal-isolation-spike.md),
+  [tv-ux.md](tv-ux.md)
 - **Now Playing waveform + karaoke VFX**: rendered from a precomputed artifact.
   → [audio-ml-enrichment.md](audio-ml-enrichment.md)
 - **Smart radio (metadata-driven queue)**: `GET /api/radio/next` scores candidates by a
@@ -610,6 +612,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   full-screen list, never the phone popover a remote cannot dismiss), sharing `otherDevicesFor` with
   it; `TvShellComponent` routes to the player when a cast lands here.
   → [remote-playback.md](remote-playback.md), [tv-ux.md](tv-ux.md)
+- **The TV tree in Chromium**: the e2e `tv` project serves `ng build --configuration tv` through
+  `NICOTIND_WEB_DIST` on a third managed server and screenshots every TV screen at 960×540, because
+  stamping `tv-build` on the phone bundle never renders `isTvBuild()`'s route tree. `TV_DIST`,
+  `seedAdminAndLibrary`, `expectNoNativeFormControls`, `tvbuild.spec.ts`. → [e2e.md](e2e.md)
 - **Changelog modal**: build-time `CHANGELOG.md` → `changelog.json`, capped; the version string in
   header and settings is clickable. → [web-ui.md](web-ui.md)
 - **Shared relative time**: one `timeAgo` (`lib/relative-time.ts`) for the Downloads feed and Admin

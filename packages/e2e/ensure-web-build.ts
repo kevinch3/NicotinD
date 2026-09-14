@@ -5,7 +5,22 @@ import { dirname, resolve } from 'node:path';
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
 /**
- * Build `@nicotind/web` before Playwright boots the managed server.
+ * Where `ng build --configuration tv --output-path dist-tv` lands the bundle
+ * the `tv` project serves (`NICOTIND_WEB_DIST`, see playwright.config.ts).
+ *
+ * The `browser/` segment is not a choice: angular.json declares `outputPath`
+ * as `{ base: 'dist', browser: '' }`, and a CLI `--output-path` can only be a
+ * string, which replaces the whole object — so the builder falls back to its
+ * default `browser/` subfolder. Keeping the flag on the command line rather
+ * than adding a second output path to the `tv` configuration is deliberate:
+ * that configuration is also what `bun run e2e:tv` and the Capacitor TV APK
+ * build, and both expect it in `dist/`.
+ */
+export const TV_DIST = resolve(repoRoot, 'packages/web/dist-tv/browser');
+
+/**
+ * Build `@nicotind/web` — the phone/desktop bundle AND the TV-configuration
+ * bundle — before Playwright boots the managed servers.
  *
  * why (issue #253): the managed `webServer` runs `bun run src/main.ts`, and Hono
  * serves the **prebuilt** `packages/web/dist` — there is no dev server and no
@@ -17,6 +32,11 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
  * you just made reports the **pre-fix** behaviour as the actual value, which
  * reads exactly like the fix not working. Real cost paid during the #233
  * regression spec — several minutes re-reading correct code.
+ *
+ * The TV bundle (#1136) has the same hazard with one twist: the TV route tree
+ * is a **build-time** fork (`environment.tvBuild`), so it is not a stale copy
+ * of the same code that would be served, it is a different application — the
+ * one the `tv` project exists to render at all.
  *
  * Called at **config-eval time**, mirroring the fresh-DB `rmSync` in
  * playwright.config.ts and for the same reason: it must happen before Playwright
@@ -41,21 +61,33 @@ export function ensureWebBuild(): void {
 
   // Escape hatch for re-running one spec repeatedly while debugging.
   if (process.env.E2E_SKIP_BUILD) {
-    console.log('[e2e] E2E_SKIP_BUILD set — serving the existing packages/web/dist');
+    console.log('[e2e] E2E_SKIP_BUILD set — serving the existing packages/web/dist and dist-tv');
     return;
   }
 
-  console.log('[e2e] building @nicotind/web (set E2E_SKIP_BUILD=1 to skip)…');
-  const built = spawnSync('bun', ['run', '--filter', '@nicotind/web', 'build'], {
-    cwd: repoRoot,
-    stdio: 'inherit',
-  });
+  build('@nicotind/web', ['run', '--filter', '@nicotind/web', 'build']);
+  build('@nicotind/web (tv configuration)', [
+    'run',
+    '--filter',
+    '@nicotind/web',
+    'build',
+    '--',
+    '--configuration',
+    'tv',
+    '--output-path',
+    'dist-tv',
+  ]);
+}
+
+function build(label: string, args: string[]): void {
+  console.log(`[e2e] building ${label} (set E2E_SKIP_BUILD=1 to skip)…`);
+  const built = spawnSync('bun', args, { cwd: repoRoot, stdio: 'inherit' });
 
   // Fail loudly. Continuing would run the whole suite against a stale bundle —
   // exactly the failure this exists to remove.
   if (built.status !== 0) {
     throw new Error(
-      `[e2e] web build failed (exit ${built.status ?? 'signal ' + built.signal}). ` +
+      `[e2e] ${label} build failed (exit ${built.status ?? 'signal ' + built.signal}). ` +
         'Fix the build, or set E2E_SKIP_BUILD=1 to run against the existing dist.',
     );
   }

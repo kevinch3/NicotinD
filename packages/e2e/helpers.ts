@@ -1,6 +1,6 @@
 import type { APIRequestContext, Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -119,6 +119,87 @@ export async function scanAndWait(request: APIRequestContext, token: string): Pr
     )
     .toBe(false);
 }
+
+/**
+ * Seed a managed server the way every spec assumes it: the first user (an
+ * admin), a scanned fixture library, plain lyrics on the first fixture track,
+ * and an authenticated `storageState` at `authFile` for the project to reuse.
+ *
+ * Shared by the `setup` and `tv-setup` projects (#1136) — the TV bundle runs on
+ * its own server, which needs exactly this and must not drift from the phone
+ * server's baseline. Idempotent across re-runs: if the DB was not wiped (e.g.
+ * `reuseExistingServer` locally), it logs in instead of completing setup.
+ */
+export async function seedAdminAndLibrary(
+  page: Page,
+  request: APIRequestContext,
+  authFile: string,
+): Promise<void> {
+  const status = (await (await request.get('/api/setup/status')).json()) as {
+    needsSetup: boolean;
+  };
+
+  let token: string;
+  if (status.needsSetup) {
+    const res = await request.post('/api/setup/complete', {
+      data: { admin: { username: ADMIN.username, password: ADMIN.password } },
+    });
+    expect(res.status(), 'setup/complete should create the first admin').toBe(201);
+    token = ((await res.json()) as { token: string }).token;
+  } else {
+    const res = await request.post('/api/auth/login', {
+      data: { username: ADMIN.username, password: ADMIN.password },
+    });
+    expect(res.ok(), 'admin login should succeed on a reused server').toBeTruthy();
+    token = ((await res.json()) as { token: string }).token;
+  }
+
+  // Kick a scan of the fixture music dir and wait for it to land. `scanAndWait`
+  // is what makes "land" true: `waitForLibrary` alone only proves *an* album
+  // exists, so setup could return while the scanner was still writing and the
+  // first spec would race a half-scanned library (issue #655).
+  await scanAndWait(request, token);
+  await waitForLibrary(request, token);
+
+  // Seed lyrics on the first fixture track so the karaoke overlays can render
+  // (fixture tracks are silent FLAC with no LRCLIB match, so the panel would be
+  // empty without pre-seeded text). The list endpoint carries no songs and
+  // names the album `name`, so this goes through the detail — the previous
+  // `a.title` / `song[0]` on the list never matched, and the seed silently
+  // never happened. This one asserts, so it cannot go quiet again.
+  const albums = (await (
+    await request.get('/api/library/albums', { headers: bearer(token) })
+  ).json()) as Array<{ id: string; name: string }>;
+  const fixtureAlbum = albums.find((a) => a.name === FIXTURE.album.title);
+  expect(fixtureAlbum, `the fixture album "${FIXTURE.album.title}" is scanned`).toBeTruthy();
+  const detail = (await (
+    await request.get(`/api/library/albums/${fixtureAlbum!.id}`, { headers: bearer(token) })
+  ).json()) as { song: Array<{ id: string }> };
+  const first = detail.song[0];
+  expect(first, 'the fixture album has a first track to carry the lyrics').toBeTruthy();
+  const seeded = await request.put(`/api/library/songs/${first!.id}/lyrics`, {
+    headers: bearer(token),
+    data: { plain: KARAOKE_FIXTURE_LYRICS },
+  });
+  expect(seeded.ok(), 'the karaoke lyrics seed lands').toBeTruthy();
+
+  // Persist auth into localStorage (the web app reads nicotind_token/_username/_role)
+  // and snapshot it for the project.
+  await page.goto('/login');
+  await page.evaluate(
+    ({ t, u }) => {
+      localStorage.setItem('nicotind_token', t);
+      localStorage.setItem('nicotind_username', u);
+      localStorage.setItem('nicotind_role', 'admin');
+    },
+    { t: token, u: ADMIN.username },
+  );
+  mkdirSync(dirname(authFile) || '.', { recursive: true });
+  await page.context().storageState({ path: authFile });
+}
+
+/** The plain lyrics `seedAdminAndLibrary` puts on the first fixture track. */
+export const KARAOKE_FIXTURE_LYRICS = 'karaoke warmup line\nsecond warmup line';
 
 /** Wait until the library scan has settled and at least one album is listed. */
 export async function waitForLibrary(request: APIRequestContext, token: string): Promise<void> {

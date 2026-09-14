@@ -23,6 +23,22 @@ describe('NowPlayingKaraokeFullscreenComponent', () => {
     expect(selected).toBe(0);
   });
 
+  it('renders the seek bar by default, and the ◀ ▶ hint in its place when told not to', () => {
+    // A native range input is the #438 trap on a TV: it eats all four arrow
+    // keys and a remote has no Tab to escape with. The TV overlay turns the bar
+    // off (#1134); everything else about the overlay stays the same.
+    const withBar = TestBed.createComponent(NowPlayingKaraokeFullscreenComponent);
+    withBar.detectChanges();
+    expect(withBar.nativeElement.querySelector('input[type="range"]')).not.toBeNull();
+    expect(withBar.nativeElement.querySelector('[data-testid="karaoke-seek-hint"]')).toBeNull();
+
+    const tv = TestBed.createComponent(NowPlayingKaraokeFullscreenComponent);
+    setInputValue(tv.componentInstance.seekBar, false);
+    tv.detectChanges();
+    expect(tv.nativeElement.querySelector('input[type="range"]')).toBeNull();
+    expect(tv.nativeElement.querySelector('[data-testid="karaoke-seek-hint"]')).not.toBeNull();
+  });
+
   it('emits vocalMuteToggle', () => {
     const fixture = TestBed.createComponent(NowPlayingKaraokeFullscreenComponent);
     fixture.detectChanges();

@@ -33,6 +33,13 @@ export class NowPlayingKaraokeFullscreenComponent {
     'karaoke-line-anim-a',
   );
   readonly vocalsMuted = input(false);
+  /**
+   * Whether to render the seek bar. Off on the TV player: `app-seek-bar` is a
+   * native range input, which eats all four arrow keys with no Tab to escape
+   * by (#438), so the TV shows the ◀ ▶ hint in its place and seeks through
+   * the route-scoped shortcut instead (#1134).
+   */
+  readonly seekBar = input(true);
   readonly progress = input(0);
   readonly duration = input(0);
   readonly buffered = input<{ start: number; end: number }[]>([]);

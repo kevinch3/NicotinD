@@ -5,6 +5,7 @@ import { AuthService } from '../../services/auth.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { NowPlayingTvQueueComponent } from '../../components/now-playing/now-playing-tv-queue/now-playing-tv-queue.component';
+import { TvKaraokeComponent } from './tv-karaoke.component';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import { TranslatePipe } from '../../pipes/translate.pipe';
@@ -29,6 +30,7 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
   imports: [
     CoverArtComponent,
     NowPlayingTvQueueComponent,
+    TvKaraokeComponent,
     TvNavGroupDirective,
     TvNavItemDirective,
     TranslatePipe,
@@ -49,6 +51,10 @@ export class TvPlayerComponent {
    *  with no way to see or change what followed (#1127). */
   readonly queueOpen = signal(false);
 
+  /** The karaoke overlay (#1134) — the phone sheet's fullscreen lyrics, on a
+   *  route that never had a lyrics surface of its own. */
+  readonly karaokeOpen = signal(false);
+
   /** The audio is on another device: the transport here drives it, and OK on
    *  the strip opens the chooser to bring it back (#1128). */
   readonly elsewhere = this.remote.playingElsewhere;
@@ -68,6 +74,13 @@ export class TvPlayerComponent {
 
   openDevices(): void {
     this.remote.setSwitcherOpen(true);
+  }
+
+  closeKaraoke(): void {
+    this.karaokeOpen.set(false);
+    // Focus-restore to the row that opened it (the MenuPanel discipline), once
+    // the overlay has left the DOM — a host query, not a viewChild.
+    setTimeout(() => document.querySelector<HTMLElement>('[data-testid="tv-lyrics"]')?.focus(), 0);
   }
 
   onQueueJump(index: number): void {

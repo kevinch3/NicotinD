@@ -12,75 +12,99 @@
     class="pointer-events-none absolute -bottom-32 left-1/4 h-96 w-96 rounded-full bg-teal-500/30 blur-3xl"
   ></div>
 
+  <!-- A TV is a 16:9 window with 540 CSS px of height, so the TV card is wide
+       rather than tall: the brand block becomes one row and the sign-in panel
+       puts the QR beside the code. Stacked, the phone card ran to 606px and
+       "Use password instead" sat below the fold (#1133). -->
   <div
-    class="relative z-10 w-full max-w-sm rounded-2xl border border-white/10 bg-white/5 p-8 shadow-2xl shadow-black/40 backdrop-blur-xl"
+    [class]="
+      'relative z-10 w-full rounded-2xl border border-white/10 bg-white/5 p-8 shadow-2xl shadow-black/40 backdrop-blur-xl ' +
+      (isTv ? 'max-w-3xl' : 'max-w-sm')
+    "
+    data-testid="login-card"
   >
-    <!-- Brand mark: the actual app icon (favicon/PWA), not a decorative stand-in (#832) -->
-    <div class="mb-5 flex justify-center">
-      <img
-        src="/icons/icon.svg"
-        alt=""
-        class="h-14 w-14 rounded-2xl shadow-lg shadow-indigo-500/40"
-      />
-    </div>
+    @if (isTv) {
+      <div class="mb-6 flex items-center justify-center gap-4">
+        <img
+          src="/icons/icon.svg"
+          alt=""
+          class="h-12 w-12 rounded-xl shadow-lg shadow-indigo-500/40"
+        />
+        <div class="text-left">
+          <h1 class="text-2xl font-bold leading-tight tracking-tight text-white">NicotinD</h1>
+          <p class="text-sm text-white/50">{{ subtitleKey() | t }}</p>
+        </div>
+      </div>
+    } @else {
+      <!-- Brand mark: the actual app icon (favicon/PWA), not a decorative stand-in (#832) -->
+      <div class="mb-5 flex justify-center">
+        <img
+          src="/icons/icon.svg"
+          alt=""
+          class="h-14 w-14 rounded-2xl shadow-lg shadow-indigo-500/40"
+        />
+      </div>
 
-    <h1 class="text-center text-3xl font-bold tracking-tight text-white">NicotinD</h1>
-    <p class="mb-8 mt-1 text-center text-sm text-white/50">
-      {{ (isRegister() ? 'login.subtitle.register' : 'login.subtitle.signIn') | t }}
-    </p>
+      <h1 class="text-center text-3xl font-bold tracking-tight text-white">NicotinD</h1>
+      <p class="mb-8 mt-1 text-center text-sm text-white/50">{{ subtitleKey() | t }}</p>
+    }
 
     @if (isTv && !showPasswordForm()) {
       <!-- TV sign-in from the phone (issue #389 flow): QR + code + poll;
-               the typed form stays available behind the toggle below. -->
+           the typed form stays available behind the toggle below. The QR is
+           the scannable half and keeps its size — it is read from the couch. -->
       <div
         appTvNavGroup
         [axis]="'vertical'"
-        class="space-y-4 text-center"
+        class="flex items-center gap-8"
         data-testid="tv-login-panel"
       >
-        <p class="text-sm text-white/70">{{ 'login.tvScanHint' | t }}</p>
         @if (tvQrDataUrl(); as qr) {
           <div
             [class]="
-              'mx-auto w-fit rounded-xl bg-white p-2 transition-opacity ' +
+              'shrink-0 rounded-xl bg-white p-2 transition-opacity ' +
               (tvExpired() ? 'opacity-20' : '')
             "
           >
             <img [src]="qr" alt="" width="180" height="180" data-testid="tv-login-qr" />
           </div>
         }
-        @if (tvLogin(); as minted) {
-          <p class="font-mono text-2xl tracking-[0.3em] text-white" data-testid="tv-login-code">
-            {{ minted.code }}
-          </p>
-        }
-        @if (tvExpired()) {
+        <div class="flex min-w-0 flex-1 flex-col items-start gap-3 text-left">
+          <p class="text-sm text-white/70">{{ 'login.tvScanHint' | t }}</p>
+          @if (tvLogin(); as minted) {
+            <p class="font-mono text-3xl tracking-[0.3em] text-white" data-testid="tv-login-code">
+              {{ minted.code }}
+            </p>
+          }
+          @if (tvExpired()) {
+            <button
+              type="button"
+              appTvNavItem
+              (click)="startTvLogin()"
+              data-testid="tv-login-regenerate"
+              class="rounded-lg bg-white/10 px-4 py-2 text-sm text-white hover:bg-white/20 focus:outline-none focus-visible:ring-4 focus-visible:ring-white"
+            >
+              {{ 'login.tvRegenerate' | t }}
+            </button>
+          } @else {
+            <p class="text-xs text-white/40">{{ 'login.tvWaiting' | t }}</p>
+          }
           <button
             type="button"
             appTvNavItem
-            (click)="startTvLogin()"
-            data-testid="tv-login-regenerate"
-            class="rounded-lg bg-white/10 px-4 py-2 text-sm text-white hover:bg-white/20"
+            (click)="showPasswordForm.set(true)"
+            data-testid="tv-login-use-password"
+            class="rounded-lg px-2 py-1 text-xs text-white/50 underline-offset-2 hover:underline focus:outline-none focus-visible:ring-4 focus-visible:ring-white"
           >
-            {{ 'login.tvRegenerate' | t }}
+            {{ 'login.tvOrPassword' | t }}
           </button>
-        } @else {
-          <p class="text-xs text-white/40">{{ 'login.tvWaiting' | t }}</p>
-        }
-        <button
-          type="button"
-          appTvNavItem
-          (click)="showPasswordForm.set(true)"
-          data-testid="tv-login-use-password"
-          class="text-xs text-white/50 underline-offset-2 hover:underline"
-        >
-          {{ 'login.tvOrPassword' | t }}
-        </button>
+        </div>
       </div>
     }
+    <!-- The typed form keeps the phone width inside the wide TV card. -->
     <form
       (ngSubmit)="handleSubmit()"
-      class="space-y-5"
+      [class]="'space-y-5 ' + (isTv ? 'mx-auto max-w-sm' : '')"
       [class.hidden]="isTv && !showPasswordForm()"
     >
       <input

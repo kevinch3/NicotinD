@@ -5,6 +5,8 @@ dist/
 .DS_Store
 *.log
 packages/web/dist/
+# The TV-configuration bundle the e2e `tv` project serves (docs/e2e.md)
+packages/web/dist-tv/
 # Stray in-place tsc output next to TS sources (real build emits to dist/)
 packages/core/src/**/*.js
 ~/.nicotind/
