@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.47](https://github.com/kevinch3/NicotinD/compare/v0.6.46...v0.6.47) (2026-09-14)
+
+### Features
+
+* **tv:** karaoke on the player, three layout fixes, and the TV bundle rendered in Chromium e2e ([#1141](https://github.com/kevinch3/NicotinD/issues/1141)) ([c39aba2](https://github.com/kevinch3/NicotinD/commit/c39aba25e524f06c9684139bafb2582f31adec47)), references [#1132](https://github.com/kevinch3/NicotinD/issues/1132) [#1133](https://github.com/kevinch3/NicotinD/issues/1133) [#1135](https://github.com/kevinch3/NicotinD/issues/1135) [#438](https://github.com/kevinch3/NicotinD/issues/438) [#1134](https://github.com/kevinch3/NicotinD/issues/1134) [#1132](https://github.com/kevinch3/NicotinD/issues/1132) [#1135](https://github.com/kevinch3/NicotinD/issues/1135) [#1136](https://github.com/kevinch3/NicotinD/issues/1136)
 ## [0.6.46](https://github.com/kevinch3/NicotinD/compare/v0.6.45...v0.6.46) (2026-09-14)
 
 ### Bug Fixes
