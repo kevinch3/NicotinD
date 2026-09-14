@@ -1,7 +1,9 @@
 /**
  * Cover-art palette extraction for karaoke mode. The pure pixel→palette core
- * lives here (DOM-free, unit-testable); the component keeps only the thin
- * Image/<canvas> loading shell that feeds raw RGBA into computePaletteFromPixels.
+ * lives here (DOM-free, unit-testable), and so does the thin Image/<canvas>
+ * loading shell that feeds it (`loadCoverPalette`) — both the phone sheet and
+ * the TV karaoke overlay need the same shell, and a second copy of it is how
+ * the two would drift (#1134).
  */
 
 export interface CoverPalette {
@@ -85,4 +87,48 @@ export function scrollToActiveLine(container: HTMLElement, index: number): void 
   const lines = container.querySelectorAll('[data-karaoke-line]');
   const el = lines[index] as HTMLElement | undefined;
   el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+/** The pieces of `HTMLImageElement` the loader touches — injectable so a test
+ *  can drive `onload`/`onerror` where jsdom would never fire either. */
+export interface PaletteImage {
+  crossOrigin: string | null;
+  onload: (() => void) | null;
+  onerror: (() => void) | null;
+  src: string;
+}
+
+/**
+ * Load a cover into a tiny offscreen canvas and derive its karaoke gradient.
+ * Resolves to {@link DEFAULT_PALETTE} on every failure — a CORS block, a
+ * decode error, a canvas that will not hand back pixels — so a caller never
+ * has to special-case a missing palette, only paint whatever comes back.
+ */
+export function loadCoverPalette(
+  src: string,
+  opts: { size?: number; createImage?: () => PaletteImage } = {},
+): Promise<CoverPalette> {
+  const size = opts.size ?? 40; // downscale for fast sampling
+  return new Promise((resolve) => {
+    const img = opts.createImage ? opts.createImage() : new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) {
+          resolve(DEFAULT_PALETTE);
+          return;
+        }
+        ctx.drawImage(img as unknown as CanvasImageSource, 0, 0, size, size);
+        resolve(computePaletteFromPixels(ctx.getImageData(0, 0, size, size).data));
+      } catch {
+        resolve(DEFAULT_PALETTE);
+      }
+    };
+    img.onerror = () => resolve(DEFAULT_PALETTE);
+    img.src = src;
+  });
 }

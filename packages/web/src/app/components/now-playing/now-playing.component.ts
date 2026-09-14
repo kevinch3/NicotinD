@@ -16,8 +16,7 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
 import { TrackInfoService } from '../../services/track-info.service';
 import { resolveArtistTarget } from '../../lib/route-utils';
 import { LibraryApiService } from '../../services/api/library-api.service';
-import { parseLrc, findActiveLine } from '../../lib/lrc-parser';
-import type { LyricsDto, WaveformData } from '@nicotind/core';
+import type { WaveformData } from '@nicotind/core';
 import { firstValueFrom } from 'rxjs';
 import { createPointerDrag } from '../../lib/pointer-drag';
 import { ScrollLockService } from '../../services/scroll-lock.service';
@@ -28,11 +27,13 @@ import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import { NowPlayingTvQueueComponent } from './now-playing-tv-queue/now-playing-tv-queue.component';
 import { BackButtonService } from '../../services/native/back-button.service';
 import {
-  computePaletteFromPixels,
+  loadCoverPalette,
   scrollToActiveLine,
   DEFAULT_PALETTE,
   type CoverPalette,
 } from '../../lib/cover-colors';
+import { LyricsService } from '../../services/lyrics.service';
+import { KaraokeBrowseMode } from '../../lib/karaoke-browse';
 import { resolveLyricsScrollContainer } from '../../lib/lyrics-scroll-container';
 
 @Component({
@@ -94,39 +95,34 @@ export class NowPlayingComponent {
   // field initialization order matters in JS/TS class bodies, and
   // `activePanel` must already be assigned before `lyricsOpen`'s initializer
   // runs.
-  readonly lyrics = signal<LyricsDto | null>(null);
+  // The lyrics themselves live in `LyricsService` (#1134): the TV player shows
+  // the same karaoke overlay and never mounts this sheet, so the state could
+  // not stay here. These are the service's own signals under the names the
+  // template, the child bindings and the specs have always used.
+  private readonly lyricsSvc = inject(LyricsService);
+  readonly lyrics = this.lyricsSvc.lyrics;
   /** Precomputed waveform artifact for the current track (issue #643); null
    *  until fetched or when the server has none (404 → plain seek bar). */
   readonly waveform = signal<WaveformData | null>(null);
   private readonly waveformLoadedForId = signal<string | null>(null);
-  readonly lyricsLoading = signal(false);
-  /** True after a source *failed* (vs a confident no-match) — offer a retry. */
-  readonly lyricsError = signal(false);
-  /** True while a manual (button-triggered) fetch is in flight. */
-  readonly fetchingLyrics = signal(false);
-  private lyricsLoadedForId = signal<string | null>(null);
+  readonly lyricsLoading = this.lyricsSvc.loading;
+  readonly lyricsError = this.lyricsSvc.error;
+  readonly fetchingLyrics = this.lyricsSvc.fetching;
   /** Parsed synced LRC lines (empty when the lyrics are plain-only). */
-  readonly lyricLines = computed(() => parseLrc(this.lyrics()?.synced));
-  /** Index of the line to highlight for the current playback position. */
-  readonly activeLine = computed(() =>
-    findActiveLine(this.lyricLines(), this.displayTime() * 1000),
-  );
+  readonly lyricLines = this.lyricsSvc.lines;
+  /** Index of the line to highlight for the current playback position — the
+   *  sheet's *display* time, which follows a remote session when the audio is
+   *  elsewhere. */
+  readonly activeLine = computed(() => this.lyricsSvc.activeLineAt(this.displayTime() * 1000));
   /** Plain text fallback when there are no synced lines. */
-  readonly plainLyrics = computed(() => this.lyrics()?.plain ?? '');
+  readonly plainLyrics = this.lyricsSvc.plain;
   /** Whether the current track has lyrics loaded (drives the tab-switcher dot).
-   *  Gated on `lyricsLoadedForId` matching the current track — `lyrics()` is
-   *  only cleared/reloaded when the lyrics panel is open (see the effects
-   *  below), so without this gate switching tracks with the panel closed
-   *  left `lyrics()` holding the PREVIOUS track's data and the dot showed a
-   *  stale positive. This only reflects data that has actually been loaded
-   *  for the current track — it does not proactively prefetch, so the dot
-   *  stays off until the Lyrics tab has been opened at least once for this
-   *  track (see docs/web-ui.md). */
-  readonly hasLyrics = computed(() => {
-    const track = this.player.currentTrack();
-    if (!track || this.lyricsLoadedForId() !== track.id) return false;
-    return !!this.lyrics()?.synced || !!this.lyrics()?.plain;
-  });
+   *  Gated on the service's `loadedForId` — the state is only reloaded while
+   *  a lyrics surface is open, so after a track change with the panel closed
+   *  it still holds the previous track's text, and an ungated check showed a
+   *  stale positive. Stays off until the Lyrics tab has been opened at least
+   *  once for this track (see docs/web-ui.md). */
+  readonly hasLyrics = computed(() => this.lyricsSvc.hasLyricsFor(this.player.currentTrack()?.id));
 
   /** Current line's text for the fullscreen auto-follow (2-line) view. */
   readonly currentLineText = computed(() => this.lyricLines()[this.activeLine()]?.text ?? '');
@@ -139,10 +135,10 @@ export class NowPlayingComponent {
   // Fullscreen lyrics has two views: a 2-line auto-follow view (default, fits a
   // narrow TV/monitor without wrapping) and a manual-browse view (the full
   // scrolling list) entered by scrolling/swiping; tapping a line there seeks
-  // and returns to auto-follow. `false` = auto-follow.
-  readonly karaokeBrowsing = signal(false);
-  private static readonly BROWSE_IDLE_MS = 4000;
-  private browseIdleTimer: ReturnType<typeof setTimeout> | null = null;
+  // and returns to auto-follow. The rule — and its idle timeout — is
+  // `KaraokeBrowseMode`, shared with the TV overlay. `false` = auto-follow.
+  private readonly browse = new KaraokeBrowseMode();
+  readonly karaokeBrowsing = this.browse.browsing;
 
   /** Alternates on every activeLine change so the CSS keyframe animation
    *  restarts (changing the class name is what forces a replay). */
@@ -419,8 +415,7 @@ export class NowPlayingComponent {
     effect(() => {
       if (!this.lyricsOpen()) return;
       const id = this.player.currentTrack()?.id ?? null;
-      if (!id || id === this.lyricsLoadedForId()) return;
-      this.loadLyrics(id);
+      if (id) this.lyricsSvc.ensureLoaded(id);
     });
 
     // Extract cover colors when lyrics are open (needed for the fullscreen gradient).
@@ -461,14 +456,13 @@ export class NowPlayingComponent {
     });
 
     // Ensure the browse-idle timeout can never fire/leak past destruction.
-    this.destroyRef.onDestroy(() => this.clearBrowseIdleTimer());
+    this.destroyRef.onDestroy(() => this.browse.destroy());
   }
 
   toggleKaraokeFullscreen(): void {
     const entering = !this.karaokeFullscreen();
     this.karaokeFullscreen.set(entering);
-    this.clearBrowseIdleTimer();
-    this.karaokeBrowsing.set(false);
+    this.browse.leave();
     if (entering) {
       // Ensure lyrics stay loaded — through setActivePanel so the persisted
       // choice matches what is actually on screen (issue #446).
@@ -485,34 +479,10 @@ export class NowPlayingComponent {
     }
   }
 
-  /**
-   * Load a cover image into a tiny offscreen canvas and derive a karaoke
-   * gradient from its pixels. This is just the DOM shell — the pixel→palette
-   * math lives in the pure, unit-tested computePaletteFromPixels().
-   */
+  /** The Image/<canvas> shell lives with the palette maths it feeds
+   *  (`loadCoverPalette`), shared with the TV overlay (#1134). */
   private extractColorsFromImage(src: string): void {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      try {
-        const canvas = document.createElement('canvas');
-        const size = 40; // downscale for fast sampling
-        canvas.width = size;
-        canvas.height = size;
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        if (!ctx) return;
-        ctx.drawImage(img, 0, 0, size, size);
-        const data = ctx.getImageData(0, 0, size, size).data;
-        this.coverColors.set(computePaletteFromPixels(data));
-      } catch {
-        // CORS or canvas error — use defaults
-        this.coverColors.set(DEFAULT_PALETTE);
-      }
-    };
-    img.onerror = () => {
-      this.coverColors.set(DEFAULT_PALETTE);
-    };
-    img.src = src;
+    void loadCoverPalette(src).then((palette) => this.coverColors.set(palette));
   }
 
   private loadWaveform(id: string): void {
@@ -528,58 +498,12 @@ export class NowPlayingComponent {
     });
   }
 
-  private loadLyrics(id: string): void {
-    this.lyrics.set(null);
-    this.lyricsError.set(false);
-    this.lyricsLoading.set(true);
-    this.api.getLyrics(id).subscribe({
-      next: (l) => {
-        if (l) {
-          this.lyrics.set(l);
-          this.lyricsLoadedForId.set(id);
-          this.lyricsLoading.set(false);
-        } else {
-          this.api.fetchLyrics(id).subscribe({
-            next: (f) => {
-              this.lyrics.set(f);
-              // Only cache the id on success so a later external fetch (e.g.
-              // from the track-info sheet) is picked up on the next effect run.
-              if (f) this.lyricsLoadedForId.set(id);
-              this.lyricsLoading.set(false);
-            },
-            // A source failure (502) is distinct from a confident no-match —
-            // flag it so the empty state offers a retry instead of "none".
-            error: () => {
-              this.lyricsError.set(true);
-              this.lyricsLoading.set(false);
-            },
-          });
-        }
-      },
-      error: () => this.lyricsLoading.set(false),
-    });
-  }
-
   /**
    * Manual "Fetch lyrics" from the empty state. Forces a re-fetch (so a prior
    * miss/error is retried) and surfaces success/empty/error distinctly.
    */
   fetchLyricsManually(): void {
-    const id = this.player.currentTrack()?.id;
-    if (!id || this.fetchingLyrics()) return;
-    this.fetchingLyrics.set(true);
-    this.lyricsError.set(false);
-    this.api.fetchLyrics(id, true).subscribe({
-      next: (f) => {
-        this.lyrics.set(f);
-        if (f) this.lyricsLoadedForId.set(id);
-        this.fetchingLyrics.set(false);
-      },
-      error: () => {
-        this.lyricsError.set(true);
-        this.fetchingLyrics.set(false);
-      },
-    });
+    this.lyricsSvc.fetchManually(this.player.currentTrack()?.id);
   }
 
   handlePlayPause(): void {
@@ -617,42 +541,21 @@ export class NowPlayingComponent {
 
   /** Wheel/touch gesture on the fullscreen lyrics body enters browse mode. */
   onKaraokeInteraction(): void {
-    this.karaokeBrowsing.set(true);
-    this.resetBrowseIdleTimer();
+    this.browse.interact();
   }
 
   /** Tapping a line in browse mode seeks there and returns to auto-follow. */
   seekToLine(index: number): void {
     const line = this.lyricLines()[index];
     if (!line) return;
-    this.clearBrowseIdleTimer();
     this.onSeek(line.timeMs / 1000);
-    this.karaokeBrowsing.set(false);
-  }
-
-  private resetBrowseIdleTimer(): void {
-    this.clearBrowseIdleTimer();
-    this.browseIdleTimer = setTimeout(() => {
-      this.karaokeBrowsing.set(false);
-    }, NowPlayingComponent.BROWSE_IDLE_MS);
-  }
-
-  private clearBrowseIdleTimer(): void {
-    if (this.browseIdleTimer !== null) {
-      clearTimeout(this.browseIdleTimer);
-      this.browseIdleTimer = null;
-    }
+    this.browse.leave();
   }
 
   /** Explicit toggle for the visible browse button and keyboard entry — flips
    *  between the 2-line auto-follow view and the full browse list. */
   toggleKaraokeBrowsing(): void {
-    if (this.karaokeBrowsing()) {
-      this.clearBrowseIdleTimer();
-      this.karaokeBrowsing.set(false);
-    } else {
-      this.onKaraokeInteraction();
-    }
+    this.browse.toggle();
   }
 
   onSheetDragStart(event: PointerEvent): void {

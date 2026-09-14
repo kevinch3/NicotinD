@@ -400,8 +400,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   above the tabs, and `lg:` is two columns. → [web-ui.md](web-ui.md)
 - **Lyrics + karaoke**: `metadata` plugin kind + `lyrics` capability (LRCLIB) in `library_lyrics`
   + file tag; karaoke panel with synced highlighting, fullscreen auto-follow, and a `?vocals=off`
-  center-cancel mute cached as its own `novox` transcode variant.
-  → [design-patterns.md](design-patterns.md), [vocal-isolation-spike.md](vocal-isolation-spike.md)
+  center-cancel mute cached as its own `novox` transcode variant. The lyrics state is shared:
+  `LyricsService`, `KaraokeBrowseMode`, `loadCoverPalette`, `TvKaraokeComponent`.
+  → [design-patterns.md](design-patterns.md), [vocal-isolation-spike.md](vocal-isolation-spike.md),
+  [tv-ux.md](tv-ux.md)
 - **Now Playing waveform + karaoke VFX**: rendered from a precomputed artifact.
   → [audio-ml-enrichment.md](audio-ml-enrichment.md)
 - **Smart radio (metadata-driven queue)**: `GET /api/radio/next` scores candidates by a

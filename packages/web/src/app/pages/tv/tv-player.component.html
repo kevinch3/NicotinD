@@ -94,6 +94,20 @@
            radio chip uses on the phone sheet (docs/tv-ux.md "The button
            contract"). -->
       <div appTvNavGroup [axis]="'vertical'" class="flex flex-col items-center gap-2">
+        <!-- Karaoke (#1134): the first row down from the transport, because it
+             is what a living room reaches for. Opens the phone's fullscreen
+             lyrics overlay, adapted for the remote in TvKaraokeComponent. -->
+        <button
+          appTvNavItem
+          type="button"
+          (click)="karaokeOpen.set(true)"
+          data-testid="tv-lyrics"
+          class="text-sm text-white/60 px-4 py-2 rounded-lg
+                 focus:outline-none focus-visible:ring-4 focus-visible:ring-white"
+        >
+          {{ 'nowPlaying.lyrics' | t }}
+        </button>
+
         @if (nextUp(); as n) {
           <button
             appTvNavItem
@@ -130,6 +144,10 @@
         </button>
       </div>
     </div>
+  }
+
+  @if (karaokeOpen()) {
+    <app-tv-karaoke (closed)="closeKaraoke()" />
   }
 
   @if (queueOpen()) {

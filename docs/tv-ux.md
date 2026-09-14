@@ -183,6 +183,32 @@ selector needs (#393). Until #1128 that name existed only on the web Settings pa
 couch there was no way to tell which entry in the phone's picker was this box, and no way at all
 with two TVs.
 
+## Karaoke on TV (#1134)
+
+The phone player's fullscreen lyrics — `NowPlayingKaraokeFullscreenComponent`, synced-line
+auto-follow, browse-to-seek — mounted from the TV player's **Lyrics** row. What the report asked for
+is the lyrics; the vocal-mute toggle rides along only because the shared overlay already carries it
+and `PlayerComponent.streamSrc` already honours `vocalsMuted` on every surface.
+
+It could not simply be mounted before: every piece of lyrics state lived in `NowPlayingComponent`,
+the phone sheet, which the TV tree never instantiates. So the state moved up, and the overlay is
+driven by three shared pieces rather than a second copy of any of them:
+
+| Piece | Lives in | Used by |
+| --- | --- | --- |
+| Load / fetch / LRC parse / active line | `LyricsService` (`services/lyrics.service.ts`) | phone sheet, `TvKaraokeComponent` |
+| Auto-follow ↔ browse, with the 4 s idle return | `KaraokeBrowseMode` (`lib/karaoke-browse.ts`) | both |
+| Cover → gradient palette (the Image/canvas shell) | `loadCoverPalette` (`lib/cover-colors.ts`) | both |
+
+`TvKaraokeComponent` (`pages/tv/tv-karaoke.component.ts`) is the wiring and the three TV
+adaptations: **no seek bar** — `app-seek-bar` is a native range input, the #438 trap, so the
+overlay's `seekBar` input is off and the ◀ ▶ hint takes its place while the route-scoped shortcut
+keeps seeking; **Back closes the overlay first**, through `registerOverlayCloser` on the shared
+`BackHandlerStack` (the #398 modal shape), so Escape and hardware Back never leave the route; and
+**the overlay takes focus on entry** so ▲ ▼ enter browse mode at once. Closing hands focus back to
+the Lyrics row. The overlay's six buttons also gained a visible focus ring — they only ever had hover
+styles, which a D-pad never triggers.
+
 ## Enforcement — the part that makes it stick
 
 The design is one `<select>` away from re-rotting. So the rule becomes executable:
