@@ -298,6 +298,15 @@ behaviour":
   analyses (issue #641, ~5 s/track at 180, ~3 s at 90). Non-numeric or
   non-positive values fall back to the default rather than disabling the
   pass. See [audio-descriptors.md](audio-descriptors.md).
+- **`ANALYSIS_ANALYZE_SECONDS`** (default `900`) — host RAM, not GPU: the length
+  of the track head `/analyze` decodes. `load_audio` buffers the whole decoded
+  stream in memory, so without a window peak RSS scales with track *length*
+  rather than being a constant. One 8 h 35 m live set needed ~1.98 GB of PCM
+  before a single inference ran and repeatedly OOM-killed the sidecar (#1048).
+  15 minutes is far past any ordinary track (the library averages ~4 min) and
+  caps the buffer near 57 MB. Non-numeric or non-positive values fall back to
+  the default — there is deliberately no way to disable the window, since an
+  unbounded decode is the failure it exists to prevent.
 - **`TF_GPU_ALLOCATOR`** (unset by default) — set to `cuda_malloc_async` to try
   TF's stream-ordered allocator, which unlike the default (under
   `TF_FORCE_GPU_ALLOW_GROWTH=true`, already baked into the image) can return

@@ -332,6 +332,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   mood, vocals, acousticness and cached embeddings from the Essentia sidecar; all written to file tags
   and COALESCE-preserved columns. `library_embeddings`, `embedding-store.ts`.
   → [audio-ml-enrichment.md](audio-ml-enrichment.md), [radio.md](radio.md)
+- **Every sidecar decode is windowed**: `load_audio` buffers the whole ffmpeg stream, so an
+  unwindowed `/analyze` made peak host RSS scale with track length (~1.98 GB for one 8 h file).
+  `analyze_window_seconds` / `ANALYSIS_ANALYZE_SECONDS` bounds it, as `descriptor_window_seconds`
+  already did. → [audio-ml-enrichment.md](audio-ml-enrichment.md)
 - **Audio descriptors — timbre / groove / spectral balance**: sidecar `/descriptors` + store (phase
   1), then three composite radio axes (phase 2, formula v8): `descriptorBlocks` splits a row into
   `TIMBRE_NAMES`/`GROOVE_NAMES`/`BAND_NAMES`, scored by `blockCosineCloseness` and
