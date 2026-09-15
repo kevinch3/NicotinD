@@ -44,6 +44,11 @@ export interface RadioPollExportDataset {
     centroid?: unknown;
     filter?: LibraryFilter;
     weights: Record<string, number>;
+    /** Genre axis the candidates were frozen on (#1121); absent on older
+     *  dataset files on disk = lexical. The eval cannot re-derive a learned
+     *  value (no centroids in a snapshot), so it grades such a scenario off
+     *  the frozen genre value in each candidate's explanation instead. */
+    genreAxis?: 'lexical' | 'learned';
     candidates: Array<{
       songId: string;
       title: string;
@@ -146,6 +151,7 @@ export function pollExportDataset(db: Database, poll: RadioPollRow): RadioPollEx
       centroid: s.centroid,
       filter: s.filter,
       weights: s.weights,
+      genreAxis: s.genreAxis,
       candidates: s.candidates.map((c) => exportCandidate(c, scale)),
     })),
   };

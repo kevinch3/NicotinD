@@ -783,10 +783,9 @@ describe('descriptor axes (formula v8, issue #642)', () => {
     expect(DEFAULT_WEIGHTS.timbre).toBe(6);
     expect(DEFAULT_WEIGHTS.groove).toBe(5);
     expect(DEFAULT_WEIGHTS.spectralBalance).toBe(3);
-    // Branched as v5, but v5/v6/v7 shipped underneath it. Adding three axes
-    // changes what a vote means, so it must not pool with any of them — the
-    // number is the fence, and it has to be one nothing has voted under.
-    expect(RADIO_FORMULA_VERSION).toBe(8);
+    // v9 since #1121: the learned genre axis is the default, and a v8 snapshot
+    // cannot grade it (no centroids in a snapshot). The number is the fence.
+    expect(RADIO_FORMULA_VERSION).toBe(9);
   });
 
   it('rewards timbre / groove / spectral-balance closeness at equal classic features', () => {

@@ -1486,7 +1486,7 @@ describe('radio /next — one recording, one slot (issue #660)', () => {
   });
 });
 
-describe('radio /next — the learned genre axis opt-in (docs/genre-affinity.md)', () => {
+describe('radio /next — the learned genre axis (docs/genre-affinity.md)', () => {
   const MODEL = 'discogs-effnet-bs64-1';
   let app: Hono;
 
@@ -1550,7 +1550,14 @@ describe('radio /next — the learned genre axis opt-in (docs/genre-affinity.md)
     return { minimal, bigRoom };
   }
 
-  it('is OFF by default: the regular (lexical) radio is untouched', async () => {
+  it('is ON by default: the audio neighbour outranks the lexically-equal stranger', async () => {
+    const p = await firstPositions();
+    expect(p.minimal).toBeLessThan(p.bigRoom);
+  });
+
+  it('an explicit opt-out puts the lexical axis back', async () => {
+    const { setRadioSettings } = await import('../services/radio-settings.js');
+    setRadioSettings(testDb, { genreAffinity: false });
     const p = await firstPositions();
     expect(p.bigRoom).toBeLessThan(p.minimal);
   });
@@ -1567,45 +1574,76 @@ describe('radio /next — the learned genre axis opt-in (docs/genre-affinity.md)
     const bare = await (await app.request('/radio/next?seedId=th0&count=5')).json();
     expect(Array.isArray(bare)).toBe(true);
 
-    const off = (await (
+    const on = (await (
       await app.request('/radio/next?seedId=th0&count=5&provenance=1')
     ).json()) as { songs: unknown[]; provenance: Record<string, unknown> };
-    expect(Array.isArray(off.songs)).toBe(true);
-    expect(off.songs).toHaveLength(5);
-    expect(off.provenance).toEqual({
+    expect(Array.isArray(on.songs)).toBe(true);
+    expect(on.songs).toHaveLength(5);
+    expect(on.provenance).toEqual({
       formulaVersion: RADIO_FORMULA_VERSION,
-      genreAxis: 'lexical',
+      genreAxis: 'learned',
       strategy: 'balanced',
       lane: 'seed',
     });
 
-    setRadioSettings(testDb, { genreAffinity: true });
-    const on = (await (
+    setRadioSettings(testDb, { genreAffinity: false });
+    const off = (await (
       await app.request('/radio/next?seedId=th0&count=5&provenance=1&strategy=similar')
     ).json()) as { provenance: Record<string, unknown> };
-    expect(on.provenance).toMatchObject({ genreAxis: 'learned', strategy: 'similar' });
-    setRadioSettings(testDb, { genreAffinity: false });
+    expect(off.provenance).toMatchObject({ genreAxis: 'lexical', strategy: 'similar' });
   });
 
   it('calls a station a station, not a lexical genre axis', async () => {
-    const { setRadioSettings } = await import('../services/radio-settings.js');
-    // Even with the learned axis ON, a filter radio grades genre membership
-    // instead of scoring the axis — saying "lexical" here would be a lie.
-    setRadioSettings(testDb, { genreAffinity: true });
+    // A filter radio grades genre membership instead of scoring the axis —
+    // saying "lexical" here would be a lie, and so would "learned".
     const res = await app.request('/radio/next?genre=Tech%20House&count=5&provenance=1');
     expect(res.status).toBe(200);
     const body = (await res.json()) as { provenance: Record<string, unknown> };
     expect(body.provenance).toMatchObject({ genreAxis: 'station', lane: 'filter' });
-    setRadioSettings(testDb, { genreAffinity: false });
+  });
+});
+
+/**
+ * The default-on flip (#1121) must degrade, not break, on a library that has
+ * never built a centroid — a fresh install, or one with no audio analysis at
+ * all. The pure fallback is covered in genre-centroids.test.ts; this is the
+ * route end of it, which is the half that can 500.
+ */
+describe('radio /next — the learned genre axis with no centroids stored', () => {
+  let app: Hono;
+
+  beforeEach(() => {
+    testDb = createTestDb();
+    app = new Hono();
+    app.route('/radio', radioRoutes());
+    for (const g of ['Tech House', 'Minimal Techno', 'Big Room']) {
+      for (let i = 0; i < 4; i++) {
+        const id = `${g.replace(/\W/g, '')}${i}`;
+        seedSong(testDb, {
+          id,
+          title: id,
+          artist: `artist-${id}`,
+          albumId: `alb-${id}`,
+          album: `Alb ${id}`,
+          genre: g,
+          bpm: 124,
+          key: 'A minor',
+          year: 2020,
+        });
+      }
+    }
   });
 
-  it('when enabled, the audio neighbour outranks the lexically-equal stranger', async () => {
-    const { setRadioSettings } = await import('../services/radio-settings.js');
-    setRadioSettings(testDb, { genreAffinity: true });
-    const on = await firstPositions();
-    expect(on.minimal).toBeLessThan(on.bigRoom);
-    setRadioSettings(testDb, { genreAffinity: false });
-    const off = await firstPositions();
-    expect(off.bigRoom).toBeLessThan(off.minimal);
+  it('serves a full queue on the lexical axis and says so', async () => {
+    const { genreCentroidsStatus } = await import('../services/genre-centroids.js');
+    const { getRadioSettings } = await import('../services/radio-settings.js');
+    expect(getRadioSettings(testDb).genreAffinity).toBe(true);
+    expect(genreCentroidsStatus(testDb).centroids).toBe(0);
+
+    const res = await app.request('/radio/next?seedId=TechHouse0&count=5&provenance=1');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { songs: unknown[]; provenance: Record<string, unknown> };
+    expect(body.songs).toHaveLength(5);
+    expect(body.provenance).toMatchObject({ genreAxis: 'lexical', lane: 'seed' });
   });
 });

@@ -74,6 +74,9 @@ import {
   recordListenerReport,
 } from '../services/curation-flags.js';
 import { recordAudit } from '../services/audit-log.js';
+import { loadGenreAffinity } from '../services/genre-centroids.js';
+import type { GenreAffinityFn } from '../services/genre-affinity.js';
+import { getRadioSettings } from '../services/radio-settings.js';
 import { loadGenreSets, setSongGenres } from '../services/genre-split.js';
 import {
   backfillGenreOverrides,
@@ -2581,6 +2584,18 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       _row: r,
     }));
 
+    // The learned genre axis, unless an admin opted out (#1121,
+    // docs/genre-affinity.md). Resolved over exactly the genres in play, like
+    // radio's own `resolveGenreAffinity`; `undefined` (opted out, or no
+    // centroid stored) keeps the lexical rule.
+    let genreAffinity: GenreAffinityFn | undefined;
+    if (getRadioSettings(db).genreAffinity) {
+      const names = new Set<string>(seedGenres);
+      for (const c of candidates)
+        for (const g of c.genres ?? (c.genre ? [c.genre] : [])) names.add(g);
+      genreAffinity = loadGenreAffinity(db, names);
+    }
+
     // Use a higher artist cap for "similar" than for radio — same-artist results
     // are expected here — and a small NORMALIZED-space boost (scores are 0..1)
     // so same-artist tracks are nudged up rather than penalized.
@@ -2588,6 +2603,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       count: size,
       maxPerArtist: 5,
       weights: { ...DEFAULT_WEIGHTS, artistPenalty: -0.1 },
+      genreAffinity,
     });
 
     const results = ranked.map((e) => rowToSong((e.song as (typeof candidates)[number])._row));

@@ -233,14 +233,18 @@ export const DEFAULT_WEIGHTS: ScoringWeights = {
  *      three axes must not pool its votes with any of them - so it takes the
  *      next free number. The v1-v7 votes cannot grade v8: their snapshots
  *      carry no descriptor blocks, so v8 needs its own poll.
- * v9 - RESERVED for the learned genre affinity (docs/genre-affinity.md): the
- *      genre axis scored from embedding centroids per genre name instead of
- *      the lexical rule. The seam (`ScoringContext.genreAffinity`) ships
- *      first with no route passing it — dump-radio `--genre-affinity` is the
- *      A/B — so v8 still describes everything radio serves. Take 9 in the
- *      commit that wires the routes.
+ * v9 - the learned genre affinity is the default (issue #1121,
+ *      docs/genre-affinity.md): the genre axis is scored from embedding
+ *      centroids per genre name, falling back to the lexical rule for any
+ *      pair no centroid covers. Calibrated on the production library in
+ *      #1119, where the lexical axis scored 15/15 nearest neighbours of a
+ *      tech-house seed at exactly 1.00 (a shared umbrella tag) — it ordered
+ *      nothing — while the learned axis spread them and lifted the served
+ *      queue's mean embedding cosine 0.604 -> 0.706. The v8 votes cannot
+ *      grade v9: the centroid store is not part of a poll snapshot, so a
+ *      replay of a v8 scenario can only re-derive the axis lexically.
  */
-export const RADIO_FORMULA_VERSION = 8;
+export const RADIO_FORMULA_VERSION = 9;
 
 /**
  * Parse a `--weights axis=n[,axis=n...]` override spec against a base weight

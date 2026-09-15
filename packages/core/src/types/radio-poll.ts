@@ -145,6 +145,11 @@ export interface RadioPollScenarioSnapshot {
    *  Its own field, not folded into the formula version: a strategy is a weight
    *  set + a pool, never a new scoring function. */
   strategy?: StrategyId;
+  /** How the genre axis was scored when the candidates were frozen; absent on
+   *  pre-#1121 scenarios = lexical. Recorded because the centroid store is NOT
+   *  in the snapshot: a replay can only re-derive the axis lexically, so a
+   *  'learned' scenario must be graded off its frozen genre value instead. */
+  genreAxis?: 'lexical' | 'learned';
   candidates: RadioPollCandidateSnapshot[];
 }
 
@@ -251,6 +256,8 @@ export interface RadioPollScenarioResult {
   filter?: LibraryFilter;
   /** The full weight set the ranking used (from the frozen snapshot). */
   weights: Record<string, number>;
+  /** How the genre axis was scored at freeze time; absent = lexical. */
+  genreAxis?: 'lexical' | 'learned';
   candidates: RadioPollCandidateResult[];
 }
 

@@ -82,14 +82,34 @@ async function adminToken() {
   return signJwt({ sub: 'admin1', username: 'admin', role: 'admin' }, SECRET);
 }
 
-describe('/radio — the learned genre axis opt-in (docs/genre-affinity.md)', () => {
-  it('reads OFF by default with the centroid status, for any user', async () => {
+describe('/radio — the learned genre axis (docs/genre-affinity.md)', () => {
+  it('reads ON by default with the centroid status, for any user', async () => {
     const app = buildApp();
     const res = await app.request('/radio', {
       headers: { Authorization: `Bearer ${await userToken()}` },
     });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ genreAffinity: false, centroids: 0, computedAt: null });
+    expect(await res.json()).toEqual({ genreAffinity: true, centroids: 0, computedAt: null });
+  });
+
+  /** A body the route finds no boolean in must not stamp one: that spurious
+   *  explicit false is exactly what would suppress the #1121 default. */
+  it('an admin write with no genreAffinity key leaves the default tracked', async () => {
+    const app = buildApp();
+    const res = await app.request('/radio', {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${await adminToken()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ somethingElse: 1 }),
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { genreAffinity: boolean }).genreAffinity).toBe(true);
+    const stored = testDb
+      .query<{ value: string }, []>(`SELECT value FROM app_settings WHERE key = 'radio'`)
+      .get();
+    expect(JSON.parse(stored!.value)).toEqual({});
   });
 
   it('refuses a non-admin write', async () => {

@@ -12,10 +12,16 @@
  *
  * Axis values are RECOMPUTED from the frozen snapshot features via
  * `explainSimilarity`, so a formula change (e.g. the junk-genre fix) is
- * measurable against votes collected before it — except the embedding axis,
- * whose vector is stripped from snapshots (`stripFeatures`): its frozen VALUE
- * is read from the stored explanation and folded into the weighted mean under
- * the candidate weight set's embedding weight.
+ * measurable against votes collected before it — except two axes a snapshot
+ * cannot reproduce, both read from the stored explanation instead:
+ *   - embedding: the vector is stripped from snapshots (`stripFeatures`), so
+ *     its frozen VALUE is folded into the weighted mean under the candidate
+ *     weight set's embedding weight;
+ *   - genre on a `genreAxis: 'learned'` scenario (#1121): the centroid store
+ *     is not in the snapshot, so a recompute silently falls back to the
+ *     LEXICAL rule and would grade a poll on a formula it never served. The
+ *     frozen value REPLACES the recomputed one (unlike embedding, which is
+ *     added — `explainSimilarity` does emit a genre axis, just a lexical one).
  *
  * Caveat (the CLI prints it too): polls only grade the top-K the *generating*
  * formula served (off-policy), so an AUC validates ordering among those
@@ -42,11 +48,27 @@ export function agreementAuc(t: AgreementTally): number | null {
 
 type ExportCandidate = RadioPollExportDataset['scenarios'][number]['candidates'][number];
 
-function storedEmbeddingValue(explanation: unknown): number | null {
+function storedAxisValue(explanation: unknown, axis: string): number | null {
   const axes = (explanation as { axes?: Array<{ axis?: string; value?: number }> } | null)?.axes;
   if (!Array.isArray(axes)) return null;
-  const hit = axes.find((a) => a?.axis === 'embedding');
+  const hit = axes.find((a) => a?.axis === axis);
   return typeof hit?.value === 'number' ? hit.value : null;
+}
+
+/**
+ * Numerator correction that swaps the recomputed (lexical) genre value for the
+ * learned one the poll actually served. 0 when there is nothing to swap — a
+ * lexical scenario, a snapshot without a genre axis, or a recompute that
+ * skipped genre entirely (nothing to weight the frozen value by).
+ */
+function frozenGenreDelta(
+  ex: { axes: Array<{ axis: string; value: number; weight: number }> },
+  explanation: unknown,
+): number {
+  const recomputed = ex.axes.find((a) => a.axis === 'genre');
+  const frozen = storedAxisValue(explanation, 'genre');
+  if (!recomputed || frozen === null) return 0;
+  return (frozen - recomputed.value) * recomputed.weight;
 }
 
 /** Re-score one frozen candidate against its seed under `weights`. */
@@ -54,6 +76,7 @@ export function rescoreCandidate(
   seed: SongFeatures,
   candidate: ExportCandidate,
   weights: ScoringWeights,
+  opts: { genreAxis?: 'lexical' | 'learned' } = {},
 ): number {
   const ex = explainSimilarity(seed, candidate.features as SongFeatures, weights);
   const contrib = ex.axes.reduce((s, a) => s + a.contribution, 0);
@@ -62,10 +85,13 @@ export function rescoreCandidate(
   // Post-normalization deltas (artist penalty; recent-play is always 0 here —
   // snapshots are listener-less) carried over unchanged.
   const penalties = ex.score - base;
-  const emb = storedEmbeddingValue(candidate.explanation);
-  if (emb === null || weights.embedding <= 0) return ex.score;
+  const genreDelta = opts.genreAxis === 'learned' ? frozenGenreDelta(ex, candidate.explanation) : 0;
+  const emb = storedAxisValue(candidate.explanation, 'embedding');
+  if (emb === null || weights.embedding <= 0) {
+    return genreDelta === 0 ? ex.score : (contrib + genreDelta) / weightAcc + penalties;
+  }
   const den = weightAcc + weights.embedding;
-  return (contrib + emb * weights.embedding) / den + penalties;
+  return (contrib + genreDelta + emb * weights.embedding) / den + penalties;
 }
 
 export interface PollAgreement {
@@ -108,7 +134,7 @@ export function evaluatePollAgreement(
         .filter((c) => (c.meanRating ?? null) !== null && (c.ratingCount ?? 0) > 0)
         .map((c) => ({
           mean: c.meanRating as number,
-          score: rescoreCandidate(seed, c, weights),
+          score: rescoreCandidate(seed, c, weights, { genreAxis: sc.genreAxis }),
         }));
       graded += scored.length;
       for (let i = 0; i < scored.length; i++) {
@@ -126,7 +152,7 @@ export function evaluatePollAgreement(
     }
     const scored = sc.candidates.map((c) => ({
       consensus: c.consensus,
-      score: rescoreCandidate(seed, c, weights),
+      score: rescoreCandidate(seed, c, weights, { genreAxis: sc.genreAxis }),
     }));
     graded += scored.filter((s) => s.consensus !== null).length;
     const good = scored.filter((s) => s.consensus === 'good');

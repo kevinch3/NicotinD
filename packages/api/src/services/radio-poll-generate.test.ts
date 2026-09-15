@@ -14,6 +14,8 @@ import {
 import { DEFAULT_WEIGHTS } from './radio.service.js';
 import { BAND_NAMES, GROOVE_NAMES, TIMBRE_NAMES } from './descriptor-axes.js';
 import { DESCRIPTOR_VERSION, upsertDescriptors } from './descriptor-store.js';
+import { computeGenreCentroids } from './genre-centroids.js';
+import { setRadioSettings } from './radio-settings.js';
 
 let db: Database;
 
@@ -478,5 +480,80 @@ describe('snapshot descriptor blocks (issue #940)', () => {
       const featureJson = JSON.stringify(all);
       expect(featureJson).not.toContain('.mp3');
     }
+  });
+});
+
+/**
+ * A poll frozen on the lexical axis while the live radio scores genre from
+ * centroids grades a formula nobody hears (#1121). The axis is recorded on the
+ * snapshot because the centroid store is NOT in it: the eval harness can only
+ * re-derive genre lexically, so it needs to be told when to use the frozen
+ * value instead.
+ */
+describe('generatePollScenarios — the learned genre axis (#1121)', () => {
+  const MODEL = 'discogs-effnet-bs64-1';
+
+  function withEmbedding(id: string, genre: string, vec: number[]): void {
+    seedSong({ id, title: id, artist: `artist-${id}`, genre, bpm: 124 });
+    db.run(
+      `INSERT INTO library_embeddings (song_id, model, dim, vec, file_size, updated_at)
+       VALUES (?, ?, 2, ?, 0, 1)`,
+      [id, MODEL, Buffer.from(new Float32Array(vec).buffer)],
+    );
+  }
+
+  /** Tech House and Minimal Techno sound alike and share no token; the lexical
+   *  rule scores that pair exactly 0. */
+  function genreLibrary(): void {
+    for (let i = 0; i < 6; i++) withEmbedding(`th${i}`, 'Tech House', [1, 0.1]);
+    for (let i = 0; i < 6; i++) withEmbedding(`mt${i}`, 'Minimal Techno', [1, 0.15]);
+    computeGenreCentroids(db);
+  }
+
+  function pinnedScenario() {
+    return generatePollScenarios(
+      db,
+      normalizePollSettings({ scenarioCount: 1, nextUpCount: 10, pinnedSeedIds: ['th0'] }),
+      mergePollWeights(undefined),
+    )[0]!;
+  }
+
+  function crossGenreGenreValue(sc: ReturnType<typeof pinnedScenario>): number {
+    const cand = sc.snapshot.candidates.find((c) => c.song.genre === 'Minimal Techno');
+    expect(cand).toBeDefined();
+    const axis = cand!.explanation.axes.find((a) => a.axis === 'genre');
+    expect(axis).toBeDefined();
+    return axis!.value;
+  }
+
+  it('generates on the learned axis by default and freezes its genre value', () => {
+    genreLibrary();
+    const sc = pinnedScenario();
+    expect(sc.snapshot.genreAxis).toBe('learned');
+    // The lexical rule scores this pair 0; the frozen value is the learned one.
+    expect(crossGenreGenreValue(sc)).toBeGreaterThan(0);
+  });
+
+  it('records lexical when the admin opted out', () => {
+    genreLibrary();
+    setRadioSettings(db, { genreAffinity: false });
+    const sc = pinnedScenario();
+    expect(sc.snapshot.genreAxis).toBe('lexical');
+    expect(crossGenreGenreValue(sc)).toBe(0);
+  });
+
+  it('records lexical on a library with no centroids — the axis that RAN', () => {
+    for (let i = 0; i < 6; i++)
+      seedSong({ id: `th${i}`, title: `th${i}`, artist: `a${i}`, genre: 'Tech House', bpm: 124 });
+    for (let i = 0; i < 6; i++)
+      seedSong({
+        id: `mt${i}`,
+        title: `mt${i}`,
+        artist: `b${i}`,
+        genre: 'Minimal Techno',
+        bpm: 124,
+      });
+    const sc = pinnedScenario();
+    expect(sc.snapshot.genreAxis).toBe('lexical');
   });
 });

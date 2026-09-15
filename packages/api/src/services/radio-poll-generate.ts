@@ -16,6 +16,7 @@ import {
 } from '../routes/radio.js';
 import { feedEligibilitySql } from './recommendation/eligibility.js';
 import { resolveStrategy, type RecommendationStrategy } from './recommendation/strategies.js';
+import { getRadioSettings } from './radio-settings.js';
 import {
   DEFAULT_WEIGHTS,
   explainSimilarity,
@@ -148,8 +149,14 @@ function seedScenario(
   nextUpCount: number,
   weights: ScoringWeights,
   strategy: RecommendationStrategy,
+  learnedGenreAffinity: boolean,
 ): GeneratedScenario | null {
-  const result = buildSeedRadio(db, seedRow, { count: nextUpCount, weights, strategy });
+  const result = buildSeedRadio(db, seedRow, {
+    count: nextUpCount,
+    weights,
+    strategy,
+    learnedGenreAffinity,
+  });
   if (!result.seed || result.ranked.length === 0) return null;
   const snapshot: RadioPollScenarioSnapshot = {
     kind: 'seed',
@@ -158,6 +165,9 @@ function seedScenario(
     seed: { song: rowToSong(seedRow), features: stripFeatures(result.seed) },
     weights: { ...weights },
     strategy: strategy.id,
+    // The axis that RAN, not the setting: the resolver comes back undefined
+    // when no stored centroid covers the genres in play.
+    genreAxis: result.genreAffinity ? 'learned' : 'lexical',
     candidates: result.ranked.map((e, i) => ({
       song: rowToSong(e.song._row),
       features: stripFeatures(e.song),
@@ -166,7 +176,8 @@ function seedScenario(
       // Emulates the real queue (rank order) today; kept as its own field so an
       // anti-position-bias shuffle is a generation-time change only.
       displayOrder: i + 1,
-      // Same resolver the ranking used (none today — see RadioResult.genreAffinity).
+      // Same resolver the ranking used (see RadioResult.genreAffinity), which
+      // is what freezes the learned genre value into the snapshot.
       explanation: explainSimilarity(result.seed as SongFeatures, e.song, weights, {
         genreAffinity: result.genreAffinity,
       }),
@@ -232,6 +243,10 @@ export function generatePollScenarios(
   const scenarios: GeneratedScenario[] = [];
   const usedSeedIds = new Set<string>();
   const strategy = resolveStrategy(settings.strategy);
+  // Generate on the axis the live radio is serving (#1121). A poll frozen on
+  // the lexical axis while radio scores genre from centroids grades a formula
+  // nobody hears.
+  const learnedGenreAffinity = getRadioSettings(db).genreAffinity;
 
   const pinned = (settings.pinnedSeedIds ?? []).slice(0, settings.scenarioCount);
   for (const seedId of pinned) {
@@ -251,6 +266,7 @@ export function generatePollScenarios(
       settings.nextUpCount,
       weights,
       strategy,
+      learnedGenreAffinity,
     );
     if (scenario) scenarios.push(scenario);
   }
@@ -281,6 +297,7 @@ export function generatePollScenarios(
       settings.nextUpCount,
       weights,
       strategy,
+      learnedGenreAffinity,
     );
     if (scenario) scenarios.push(scenario);
   }

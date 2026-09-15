@@ -251,3 +251,131 @@ describe('GET /songs/:id/similar — feed eligibility', () => {
     expect(ids).toEqual(['raw', 'vetted']);
   });
 });
+
+/**
+ * #1121: "similar" used to be the one similarity surface the learned genre
+ * axis never reached, so an album page and a radio queue disagreed about what
+ * a genre even means. The pool is same-artist + same-genre, so the axis does
+ * its work inside an artist's own catalogue — which is precisely where the
+ * lexical rule scores two adjacent sub-genres 0 and orders nothing.
+ */
+describe('GET /songs/:id/similar — the learned genre axis', () => {
+  const MODEL = 'discogs-effnet-bs64-1';
+  let app: Hono;
+
+  /** `file_size` NULL on purpose: a value that disagrees with the song's own
+   *  size is treated as a stale vector and skipped (issue #258). */
+  function embed(id: string, vec: number[]): void {
+    testDb.run(
+      `INSERT INTO library_embeddings (song_id, model, dim, vec, file_size, updated_at)
+       VALUES (?, ?, 2, ?, NULL, 1)`,
+      [id, MODEL, Buffer.from(new Float32Array(vec).buffer)],
+    );
+  }
+
+  beforeEach(async () => {
+    testDb = new Database(':memory:');
+    applySchema(testDb);
+    app = new Hono();
+    app.route('/', libraryRoutes('/music'));
+    seedAlbum(testDb, {
+      id: 'alb',
+      name: 'Alb',
+      artist: 'Artist A',
+      artistId: 'artist-1',
+      songCount: 20,
+      created: '2024-01-01',
+    });
+    // The seed carries no embedding, so the per-track cosine axis is skipped
+    // for every pair and only the genre axis can tell the candidates apart.
+    seedSong(testDb, {
+      id: 'seed',
+      title: 'Seed',
+      artist: 'Artist A',
+      artistId: 'artist-1',
+      albumId: 'alb',
+      genre: 'Tech House',
+      year: 2020,
+      path: '/m/seed.flac',
+    });
+    // Same artist, so both lanes' pools reach them; lexically both score 0
+    // against "Tech House", and Big Room is a year closer.
+    const rows: Array<[string, string, number, number[]]> = [
+      ['near', 'Minimal Techno', 2010, [1, 0.15]],
+      ['far', 'Big Room', 2019, [0, 1]],
+    ];
+    for (const [id, genre, year, vec] of rows) {
+      seedSong(testDb, {
+        id,
+        title: id,
+        artist: 'Artist A',
+        artistId: 'artist-1',
+        albumId: 'alb',
+        genre,
+        year,
+        path: `/m/${id}.flac`,
+      });
+      embed(id, vec);
+    }
+    // Centroid members for each genre in play (MIN_MEMBERS), on other artists
+    // so they never crowd the two candidates under test out of the window.
+    const filler: Array<[string, number[]]> = [
+      ['Tech House', [1, 0.1]],
+      ['Minimal Techno', [1, 0.15]],
+      ['Big Room', [0, 1]],
+    ];
+    for (const [genre, vec] of filler) {
+      for (let i = 0; i < 6; i++) {
+        const id = `${genre.replace(/\W/g, '')}-f${i}`;
+        seedAlbum(testDb, {
+          id: `alb-${id}`,
+          name: `Alb ${id}`,
+          artist: `Filler ${id}`,
+          artistId: `art-${id}`,
+          songCount: 1,
+          created: '2024-01-01',
+        });
+        seedSong(testDb, {
+          id,
+          title: id,
+          artist: `Filler ${id}`,
+          artistId: `art-${id}`,
+          albumId: `alb-${id}`,
+          genre,
+          year: 2000,
+          path: `/m/${id}.flac`,
+        });
+        embed(id, vec);
+      }
+    }
+    const { computeGenreCentroids } = await import('../services/genre-centroids.js');
+    computeGenreCentroids(testDb);
+  });
+
+  afterEach(() => {
+    testDb.close();
+  });
+
+  async function positions(): Promise<{ near: number; far: number }> {
+    const res = await app.request('/songs/seed/similar?size=50');
+    expect(res.status).toBe(200);
+    const ids = ((await res.json()) as SimilarSong[]).map((s) => s.id);
+    const near = ids.indexOf('near');
+    const far = ids.indexOf('far');
+    expect(near).toBeGreaterThanOrEqual(0);
+    expect(far).toBeGreaterThanOrEqual(0);
+    return { near, far };
+  }
+
+  it('orders the audio neighbour above the lexically-equal stranger by default', async () => {
+    const p = await positions();
+    expect(p.near).toBeLessThan(p.far);
+  });
+
+  it('goes back to the lexical rule when the admin opted out', async () => {
+    const { setRadioSettings } = await import('../services/radio-settings.js');
+    setRadioSettings(testDb, { genreAffinity: false });
+    const p = await positions();
+    expect(p.far).toBeLessThan(p.near);
+  });
+});

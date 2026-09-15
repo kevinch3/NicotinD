@@ -133,7 +133,8 @@ optional (`expiresInHours`, capped at 90 days).
 
 A poll is generated under one named strategy (`RadioPollSettings.strategy`,
 default `balanced`, 400 on an unknown id) and every scenario snapshot carries
-it (`snapshot.strategy`). `eval-radio-poll` groups by
+it (`snapshot.strategy`) — as it carries `snapshot.genreAxis`, the genre rule
+that actually ran (#1121). `eval-radio-poll` groups by
 `formula_version · voteScale · strategy`: a strategy changes the pool the
 raters saw, so its votes are a different population — the same never-pool rule
 as the formula version. Weight overrides on a poll land on top of the
@@ -162,9 +163,14 @@ pooled within-scenario pairwise AUC of the current `DEFAULT_WEIGHTS` (and a
 so neither cross-formula nor cross-scale votes are ever pooled. The pure half
 is `services/radio-poll-eval.ts` (`evaluatePollAgreement`): axis values are
 recomputed from the frozen features (so a formula change like the junk-genre
-fix is measurable against old votes), except the embedding axis, whose vector
-is stripped from snapshots — its frozen *value* is folded back in under the
-candidate weight set. On stars5 datasets the metric generalizes: every
+fix is measurable against old votes), except two axes a snapshot cannot
+reproduce. The embedding vector is stripped from snapshots, so its frozen
+*value* is folded back in under the candidate weight set; and on a scenario
+stamped `genreAxis: 'learned'` (#1121) the frozen genre value *replaces* the
+recompute, because the genre centroids are not in the snapshot either and a
+recompute would silently grade a learned poll on the lexical rule. A
+`'lexical'` or absent stamp replays exactly as it always did.
+On stars5 datasets the metric generalizes: every
 within-scenario pair with **unequal mean ratings** counts (win = the weight
 set orders the pair like the humans, score-tie = half credit) — the binary
 good×bad cross-product is the special case, and the pairs binary consensus
