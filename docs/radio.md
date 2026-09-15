@@ -186,10 +186,13 @@ tracks' discogs-effnet embeddings (`library_genre_centroids`, rebuilt daily),
 two names are as close as their centroids' cosine, and a tag whose members
 disagree (low coherence — the umbrella signal) is discounted. It rides the same
 `genreSetCloseness` MAX through `ScoringContext.genreAffinity`, falls back to
-the lexical rule for any pair it does not know, and is an **admin opt-in, off
-by default** (Admin → Radio, `RadioSettings.genreAffinity`): off, the regular
-radio is untouched; on, seed and list radio use it — stations and polls never
-do. `dump-radio --genre-affinity` is the A/B. → [genre-affinity.md](genre-affinity.md)
+the lexical rule for any pair it does not know, and is **on by default since
+formula v9** (#1121) with an admin **opt-out** at Admin → Radio
+(`RadioSettings.genreAffinity`): on, seed and list radio, `/songs/:id/similar`
+and newly generated evaluation polls all use it; off, the regular radio is the
+lexical rule it always was. Stations never use it — they replace the genre axis
+with graded membership. `dump-radio --genre-affinity` is the A/B.
+→ [genre-affinity.md](genre-affinity.md)
 
 **Why MusicBrainz can't fix this for you.** Task A1 measured MB/Lidarr genre
 coverage on this library at 2/25 artists (~3% of the gap), with Lidarr returning
@@ -754,7 +757,7 @@ chip.
 ### Provenance line (#1124)
 
 The panel's last line says how the queue was actually made —
-`formula v8 · balanced · genre by sound` (`radio-chip-provenance`). It exists
+`formula v9 · balanced · genre by sound` (`radio-chip-provenance`). It exists
 because `RADIO_FORMULA_VERSION` used to live only on the server: once the genre
 axis is a setting ([genre-affinity.md](genre-affinity.md)) the same seed yields
 different queues depending on a flag the listener cannot see, and a screenshot
@@ -1079,6 +1082,31 @@ used — the version is the human/grouping label, not the ground truth.
   that adds three axes must not pool its votes with any of them, so it takes
   the next free number instead of the one it reserved.
 
+- **v9** (2026-09-15, issue #1121): the learned genre axis becomes the default
+  ([genre-affinity.md](genre-affinity.md)). No weight moved — the genre axis
+  keeps weight 18 — but the *function* behind it changed, which is the same
+  kind of change v3 made for stations and is exactly what the version fences.
+  Calibrated on prod in #1119: on a tech-house seed the lexical axis scored all
+  **15 of 15** nearest neighbours at exactly **1.00** (a shared umbrella tag
+  ordered nothing), while the learned axis returned 5 distinct values and
+  lifted the served window's mean embedding cosine **0.604 → 0.706**, sharing
+  zero tracks with the axis-off run. Two controls behaved as predicted (folclore
+  keeps 8/15; pop reshuffles inside pop). The flip also reaches
+  `/songs/:id/similar` and new evaluation polls, so a poll grades the formula
+  the listener hears.
+
+  **v8 votes cannot grade v9**, and not for the usual reason: the centroid store
+  is not part of a poll snapshot, so a replay can only re-derive the genre axis
+  lexically. New scenarios therefore record the axis that RAN
+  (`RadioPollScenarioSnapshot.genreAxis`) and `rescoreCandidate` grades a
+  `'learned'` scenario off its frozen genre value — the same rule #1017 set for
+  the stripped embedding vector.
+
+  **Not measured here**: the three strategy weight sets (`similar`'s genre 24,
+  `different`'s 8) were set against a three-valued axis and are worth re-running
+  now that it is continuous; so is the umbrella-only pop/rock case. Both need
+  prod + `dump-radio.ts`.
+
 Measure any weight idea against the accumulated votes before shipping it:
 
 ```bash
@@ -1110,7 +1138,11 @@ unknown axis or a non-numeric value — a silent no-op would invalidate the
 measurement. `--genre-affinity` scores the genre axis from the learned genre
 centroids instead of the lexical rule (threaded the same way, via
 `buildSeedRadio`'s `genreAffinity` option); the report's header line names
-which axis was in force. → [genre-affinity.md](genre-affinity.md)
+which axis was in force. The dump does **not** read
+`RadioSettings.genreAffinity`, so since the v9 default (#1121) it is the FLAG
+that reproduces what the route serves and the bare run that is the control —
+read the header line before trusting a dump (#1161).
+→ [genre-affinity.md](genre-affinity.md)
 
 The route and the dump share **one** implementation: `buildSeedRadio` /
 `buildFilterRadio` (exported from `routes/radio.ts`) build the pool + rank; the
@@ -1183,7 +1215,7 @@ collapse, which it needed most (see "Same recording, multiple files").
 | `packages/api/src/services/station-affinity.ts`                       | **Stations (v3)**: `genreDepthScore` / `stationAffinity` / `anchorCentroid` — pure graded membership + the audio anchor                                                                                                                                        |
 | `packages/api/src/services/genre-distribution.ts`                     | `artistGenreShares` — batched "how much of this artist is this genre", the artist half of station affinity (shares the radar's definition)                                                                                                                     |
 | `packages/api/src/services/embedding-store.ts`                        | `loadEmbeddings` / `embeddingModelFor` / `dominantEmbeddingModel` — pooled read of cached Essentia vectors (the last picks a station's vector space, which has no seed song to pin)                                                                            |
-| `packages/api/src/services/genre-affinity.ts`                         | **Genre affinity (spike)**: `explainGenrePair` / `makeGenreAffinity` / `rankNeighbours` — pure learned pair score over genre centroids, coherence-discounted; consumed through `ScoringContext.genreAffinity` ([genre-affinity.md](genre-affinity.md))                        |
+| `packages/api/src/services/genre-affinity.ts`                         | **Genre affinity (default on since v9)**: `explainGenrePair` / `makeGenreAffinity` / `rankNeighbours` — pure learned pair score over genre centroids, coherence-discounted; consumed through `ScoringContext.genreAffinity` ([genre-affinity.md](genre-affinity.md))                        |
 | `packages/api/src/services/genre-centroids.ts`                        | `computeGenreCentroids` / `loadGenreAffinity` / `maybeRunDailyGenreCentroids` — the one-pass centroid rebuild into `library_genre_centroids` and its daily sweep                                                                                                |
 | `packages/api/src/scripts/genre-affinity.ts`                          | Developer diagnostic for the learned axis (`--refresh`, `--pair`, `--neighbours`, `--breadth`)                                                                                                                                                                 |
 | `packages/api/src/routes/radio.ts`                                    | `/api/radio/next` route (seed **and** filter paths); exports the shared generators `buildSeedRadio` / `buildFilterRadio` / `radioSongs` (pool build + rank, optional `weights` override for the dump), `toOrderable` (via `songFilterWheres` + `seedCentroid`), `stationCentroid` (the station's target, over the whole eligible set) |

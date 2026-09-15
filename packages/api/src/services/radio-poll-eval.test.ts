@@ -4,6 +4,7 @@ import {
   agreementAuc,
   evaluatePollAgreement,
   pooledTally,
+  rescoreCandidate,
   type PollAgreement,
 } from './radio-poll-eval.js';
 import type { RadioPollExportDataset } from './radio-poll-export.js';
@@ -17,6 +18,7 @@ function dataset(
     explanation?: unknown;
     consensus: Consensus;
   }>,
+  genreAxis?: 'lexical' | 'learned',
 ): RadioPollExportDataset {
   return {
     pollId: 'p1',
@@ -35,6 +37,7 @@ function dataset(
         kind: 'seed',
         seed: { songId: 'seed', title: 'S', artist: 'A', features: seedFeatures },
         weights: {},
+        genreAxis,
         candidates: candidates.map((c, i) => ({
           songId: `c${i}`,
           title: `C${i}`,
@@ -328,5 +331,66 @@ describe('descriptor axes are gradable from a snapshot (issue #940)', () => {
     // pair is a tie, so no amount of re-weighting can move the measurement.
     const result = evaluatePollAgreement(ds, onlyAxes({ timbre: 100, groove: 100 }));
     expect(result.tally.wins).toBe(0);
+  });
+});
+
+/**
+ * The centroid store is not part of a snapshot, so a replay of a learned-axis
+ * poll re-derives genre LEXICALLY and would grade a formula the raters never
+ * heard (#1121 — the same defect #1017 fixed for the stripped embedding
+ * vector). The frozen genre value REPLACES the recompute, and only for a
+ * scenario that says it was generated that way.
+ */
+describe('learned genre axis replay (#1121)', () => {
+  // Both candidates are lexically 0 against the seed (no shared token), which
+  // is exactly the failure the learned axis exists for: the lexical rule
+  // orders nothing here.
+  const seed = { duration: 200, artistId: 'seed-a', genres: ['Tech House'] };
+  const candidates = [
+    {
+      features: { duration: 200, artistId: 'x', genres: ['Minimal Techno'] },
+      explanation: { axes: [{ axis: 'genre', value: 0.82, weight: 18, contribution: 14.76 }] },
+      consensus: 'good' as Consensus,
+    },
+    {
+      features: { duration: 200, artistId: 'y', genres: ['Big Room'] },
+      explanation: { axes: [{ axis: 'genre', value: 0.11, weight: 18, contribution: 1.98 }] },
+      consensus: 'bad' as Consensus,
+    },
+  ];
+
+  it('grades a learned scenario off the frozen genre value', () => {
+    const learned = dataset(seed, candidates, 'learned');
+    expect(evaluatePollAgreement(learned, onlyAxes({ genre: 18 })).auc).toBe(1);
+  });
+
+  it('leaves a lexical scenario exactly as it was — recomputed, hence tied', () => {
+    const lexical = dataset(seed, candidates, 'lexical');
+    const legacy = dataset(seed, candidates);
+    expect(evaluatePollAgreement(lexical, onlyAxes({ genre: 18 })).auc).toBe(0.5);
+    expect(evaluatePollAgreement(legacy, onlyAxes({ genre: 18 })).auc).toBe(0.5);
+    // Byte-identical, not merely equal-ordering: the untouched call and an
+    // explicit lexical scenario must produce the same number.
+    const weights = onlyAxes({ genre: 18, bpm: 8, embedding: 4 });
+    const c = legacy.scenarios[0]!.candidates[0]!;
+    const before = rescoreCandidate(seed as never, c, weights);
+    expect(rescoreCandidate(seed as never, c, weights, { genreAxis: 'lexical' })).toBe(before);
+    expect(rescoreCandidate(seed as never, c, weights, {})).toBe(before);
+  });
+
+  it('falls back to the recompute when the snapshot froze no genre axis', () => {
+    const noAxis = dataset(
+      seed,
+      candidates.map((c) => ({ ...c, explanation: { axes: [] } })),
+      'learned',
+    );
+    const weights = onlyAxes({ genre: 18, bpm: 8 });
+    const c = noAxis.scenarios[0]!.candidates[0]!;
+    // Nothing to substitute is not the same as substituting nothing: the score
+    // must equal the plain recompute, not the recompute minus a phantom axis.
+    expect(rescoreCandidate(seed as never, c, weights, { genreAxis: 'learned' })).toBe(
+      rescoreCandidate(seed as never, c, weights),
+    );
+    expect(evaluatePollAgreement(noAxis, weights).auc).toBe(0.5);
   });
 });

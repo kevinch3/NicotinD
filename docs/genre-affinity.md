@@ -1,15 +1,15 @@
 # Genre affinity — a learned genre axis for radio
 
-**Status: shipped as an admin opt-in, OFF by default.** The centroids are built
-and refreshed daily, the pure affinity and the scoring seam exist, and the
-diagnostics can A/B it against real radio output. Admin → Radio → "Learned
-genre similarity (experimental)" (`RadioSettings.genreAffinity`,
-`GET/PUT /api/settings/radio`) switches seed and list radio onto it; off, the
-regular radio is byte-for-byte what it was. `RADIO_FORMULA_VERSION` stays at 8
-because the default behaviour is unchanged and evaluation polls always
-generate on the lexical axis (see "The seam"); taking v9 is the step that makes
-it the default (#1121). The constants are no longer priors — they were
-calibrated on the production library in #1119, and the A/B there says **go**.
+**Status: shipped, ON by default (formula v9, #1121).** The centroids are built
+and refreshed daily, and every similarity surface consults them: seed and list
+radio, `/songs/:id/similar`, and the scenarios an evaluation poll freezes.
+Admin → Radio → "Learned genre similarity" (`RadioSettings.genreAffinity`,
+`GET/PUT /api/settings/radio`) is the **opt-out**; switched off, the regular
+radio is byte-for-byte the lexical behaviour it always had. The constants are
+not priors — they were calibrated on the production library in #1119, whose
+A/B said **go**: on a tech-house seed the lexical axis scored all 15 nearest
+neighbours at exactly 1.00 (a shared umbrella tag — it ordered nothing), and
+the learned axis lifted the served queue's mean embedding cosine 0.604 → 0.706.
 
 ## The problem
 
@@ -116,28 +116,50 @@ regression test in `radio.service.test.ts` ("genre affinity seam").
 `ScoringContext { genreAffinity? }`; `rankCandidates` takes `genreAffinity` in
 its options; `genreSetCloseness(a, b, affinity?)` consults it per pair.
 `buildSeedRadio` / `buildListRadio` accept an explicit `genreAffinity` (the
-dump's A/B) or `learnedGenreAffinity: true` (the opt-in: the resolver is then
+dump's A/B) or `learnedGenreAffinity: true` (the setting: the resolver is then
 loaded for exactly the genres the seed and pool carry, one chunked query, once
 the pool is known — `resolveGenreAffinity` in `routes/radio.ts`), and echo the
 resolver on `RadioResult` so a later `explainSimilarity` over the result scores
 the axis the same way. `GET /api/radio/next` reads `getRadioSettings(db)` per
 request and passes the flag on the seed and list lanes only. Filter radio
 (stations) is untouched: it already replaces the genre axis with graded
-membership. `/songs/:id/similar` is untouched too — deliberately, until the
-opt-in has been listened to. Evaluation polls (`radio-poll-generate.ts`)
-never pass the flag, so every vote keeps grading formula v8 on the lexical
-axis; polls for the learned axis come with the v9 bump. Without the option
-every one of these paths is byte-for-byte the lexical behaviour.
+membership. `/songs/:id/similar` reads the same setting and resolves over its
+own pool (`loadGenreAffinity` in `routes/library.ts`) — an album page and a
+radio queue must not disagree about what a genre means. Evaluation polls
+(`radio-poll-generate.ts`) generate on whatever the setting says, and record
+the axis that RAN on the scenario snapshot (`RadioPollScenarioSnapshot.genreAxis`)
+— see "Grading a learned poll". Without the option every one of these paths is
+byte-for-byte the lexical behaviour.
 
-### Turning it on
+### Grading a learned poll
+
+The centroid store is **not** part of a snapshot, so replaying a poll
+(`eval-radio-poll.ts` → `rescoreCandidate`) can only re-derive the genre axis
+*lexically*. A learned-axis poll graded that way measures a formula the raters
+never heard — the defect #1017 fixed for the stripped embedding vector. So a
+scenario stamped `genreAxis: 'learned'` is graded off the genre value frozen in
+each candidate's explanation, which **replaces** the recomputed one (embedding
+is *added*, because `explainSimilarity` emits no embedding axis without a
+vector but does emit a lexical genre axis). A `'lexical'` or absent stamp
+replays exactly as before. The formula-version fence does the rest: v8 votes
+and v9 votes are never pooled.
+
+### Turning it off
 
 Admin → Radio. The card shows how many genre names have a centroid; enabling
 the toggle on a library that has never built them builds them right there
 (`PUT /api/settings/radio`), so the next radio fetch already uses them; the
-daily sweep keeps them fresh from then on. Genres with fewer than
-`MIN_MEMBERS` analysed tracks, and every genre on a library with no
-audio-features analysis at all, stay on the lexical rule — turning it on
-never *removes* a signal.
+daily sweep keeps them fresh from then on — and it runs from the processor tick
+regardless of the toggle, so the default does not wait for anyone to press it.
+Genres with fewer than `MIN_MEMBERS` analysed tracks, and every genre on a
+library with no audio-features analysis at all, stay on the lexical rule — the
+learned axis never *removes* a signal, and a library with no centroids at all
+degrades to exactly the lexical radio.
+
+A stored opt-out is a real decision and outlives a default change:
+`radio-settings.ts` persists only the keys an admin actually set, so an absent
+key means "nobody chose" and tracks `DEFAULT_RADIO_SETTINGS`, while a stored
+`false` keeps the lexical axis forever.
 
 ## Diagnostics — judge it before it plays
 
@@ -154,6 +176,12 @@ bun run packages/api/src/scripts/genre-affinity.ts --breadth
 bun run packages/api/src/scripts/dump-radio.ts --seed <id>
 bun run packages/api/src/scripts/dump-radio.ts --seed <id> --genre-affinity
 ```
+
+`dump-radio` still defaults to the **lexical** axis and does not read
+`RadioSettings.genreAffinity`, so since the v9 flip it is `--genre-affinity`
+that reproduces what the route serves and the bare run that is the control.
+The report's header line names which axis was in force — read it before
+trusting a dump (#1161).
 
 What to check, in order:
 
@@ -230,4 +258,6 @@ with the axis off every candidate ties at 1.00 and nothing orders them.
 | `packages/api/src/scripts/genre-affinity.ts`           | The diagnostic above (`--refresh` is its one write)                                     |
 | `packages/api/src/scripts/dump-radio.ts`               | `--genre-affinity` A/B flag                                                             |
 | `packages/api/src/services/radio.service.ts`           | `ScoringContext`, the `genreSetCloseness` / `rankCandidates` seam                       |
+| `packages/api/src/services/radio-settings.ts`          | `DEFAULT_RADIO_SETTINGS` (on), and the partial-only persistence that keeps an opt-out distinguishable from an unset key |
+| `packages/api/src/services/radio-poll-eval.ts`         | `rescoreCandidate` — the frozen-genre substitution for a `genreAxis: 'learned'` scenario |
 | `packages/api/src/db.ts`                               | `library_genre_centroids`                                                               |

@@ -406,6 +406,7 @@ export function pollResults(
       centroid: s.snapshot.centroid,
       filter: s.snapshot.filter,
       weights: s.snapshot.weights,
+      genreAxis: s.snapshot.genreAxis,
       candidates: s.snapshot.candidates.map((c) => {
         const t = tally.get(s.id + ' ' + c.song.id);
         return {
