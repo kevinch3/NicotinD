@@ -1,5 +1,29 @@
 [
   {
+    "version": "0.6.51",
+    "date": "2026-09-15",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.6.50...v0.6.51",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**radio:** make the learned genre axis the default (formula v9) ([#1158](https://github.com/kevinch3/NicotinD/issues/1158)) ([ef1f14d](https://github.com/kevinch3/NicotinD/commit/ef1f14d41c06da91603a491ed5dab4dff5ff3b88))",
+          "**web:** in-app About page with the AGPL §13 source offer ([#1157](https://github.com/kevinch3/NicotinD/issues/1157)) ([49dfa59](https://github.com/kevinch3/NicotinD/commit/49dfa59b81a76a0c9a8b3d5d4bfb2c03041925cf))"
+        ]
+      },
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**a11y:** name the Now Playing repeat control and raise the version button's contrast ([#1163](https://github.com/kevinch3/NicotinD/issues/1163)) ([7d68dd5](https://github.com/kevinch3/NicotinD/commit/7d68dd5555bd18d21373c1a30ed2ab099e89b54e))",
+          "**e2e:** a poll predicate must not read a locator its own success removes ([#1162](https://github.com/kevinch3/NicotinD/issues/1162)) ([9307d53](https://github.com/kevinch3/NicotinD/commit/9307d53ef72047add501665141df2dda0040377a))",
+          "**health:** count albums hunted through acquisition_jobs as incomplete ([#1154](https://github.com/kevinch3/NicotinD/issues/1154)) ([2b2178b](https://github.com/kevinch3/NicotinD/commit/2b2178bc3e25181b275bb9ed7a2632bdc43d2ff6))",
+          "**karaoke:** band-limited mid/side vocal mute on a versioned novox cache key ([#1156](https://github.com/kevinch3/NicotinD/issues/1156)) ([8f016dd](https://github.com/kevinch3/NicotinD/commit/8f016dd8ad252cf5de109131e523cf2be8898d15))",
+          "**tags:** rewrite the mp3 container when an in-place ID3 write does not stick ([#1152](https://github.com/kevinch3/NicotinD/issues/1152)) ([85d15aa](https://github.com/kevinch3/NicotinD/commit/85d15aaefa441c9a9c745a7b038aca1a6a391d09))"
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.6.50",
     "date": "2026-09-15",
     "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.6.49...v0.6.50",
@@ -659,19 +683,6 @@
         "title": "Features",
         "items": [
           "**radio:** named recommendation strategies with a variety control in the player ([#985](https://github.com/kevinch3/NicotinD/issues/985)) ([e9a7d9e](https://github.com/kevinch3/NicotinD/commit/e9a7d9ef5b5be9d4de78c0b43ec692e7bf874c45))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.6.1",
-    "date": "2026-09-07",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.6.0...v0.6.1",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**radio:** let a listener exclude tracks from every recommendation feed ([#982](https://github.com/kevinch3/NicotinD/issues/982)) ([#984](https://github.com/kevinch3/NicotinD/issues/984)) ([edc2833](https://github.com/kevinch3/NicotinD/commit/edc2833c86cd78f1b9aa1bf32ec9676e9217952e)), references [#660](https://github.com/kevinch3/NicotinD/issues/660)"
         ]
       }
     ]
