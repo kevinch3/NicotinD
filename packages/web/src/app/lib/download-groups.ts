@@ -82,21 +82,27 @@ export interface DownloadItem {
     audioFormat?: string | null;
     sizeBytes?: number | null;
   }[];
-  /** Completed / total tracks (or playlist items). `total` is what the source itemized. */
+  /**
+   * Completed / total tracks (or playlist items). For a job feed row `total` is
+   * `jobDenominator` — the release's committed size when there is one, and only
+   * otherwise the source's running tally.
+   */
   progress?: { done: number; total: number };
   /**
-   * The release's own track count, when it exceeds what the source offered.
-   * `progress.total` alone silently became the album's size, so a 103-track
+   * The release's own track count, when it exceeds what the source offered —
+   * the source's offering had silently become the album's size, so a 103-track
    * release read "98 of 100" with nothing to show for the gap (#745). Set only
-   * when it differs, so an ordinary complete album renders unchanged.
+   * when it differs, so an ordinary complete album renders unchanged; since
+   * #1067 `progress.total` is the same number by construction.
    */
   canonicalTotal?: number;
   /** Tracks the release has that this source never offered — renders "· K not offered". */
   notOffered?: number;
   /**
    * Whether the denominator is a fact about the release or just a tally of what
-   * has arrived. `progress.total` is `COUNT(*)` over the mirrored item rows, so
-   * on a source that discovers its tracklist as it downloads it *climbs* —
+   * has arrived. With no commitment `progress.total` falls back to `COUNT(*)`
+   * over the mirrored item rows, so on a source that discovers its tracklist as
+   * it downloads it *climbs* —
    * "12 of 20" became "12 of 26" and progress ran backwards (issue #990). When
    * this is false the card shows the count alone rather than a denominator it
    * will have to take back.
@@ -140,6 +146,20 @@ export interface DownloadItem {
 }
 
 /**
+ * The one denominator a job's card is allowed to print or divide by (#1067).
+ *
+ * `progress.expected` keeps meaning "what this job is itemising right now" — a
+ * live `COUNT(*)` that is allowed to move — and the *displayed* total is the
+ * release's commitment whenever there is one. Both the bar and the count text
+ * come through here so they cannot disagree, and so a job whose scope grows
+ * mid-flight cannot walk its own total (issue #990).
+ * → docs/download-pipeline.md "One denominator, and `expected` is not it"
+ */
+export function jobDenominator(progress: { expected: number; canonical: number | null }): number {
+  return Math.max(progress.expected, progress.canonical ?? 0);
+}
+
+/**
  * The in-flight bar's percentage for a network job (#805): bytes-weighted when
  * the addon reports byte progress, whole-file counts otherwise (the degraded
  * mode when `bytesTotal` is null — an addon with no sizes, a legacy row).
@@ -151,11 +171,7 @@ export function jobPercent(progress: AcquisitionJobView['progress']): number | u
     const pct = Math.round((progress.bytesTransferred / progress.bytesTotal) * 100);
     return Math.min(99, Math.max(0, pct));
   }
-  // The release's committed size wins over the arrival tally. `expected` is
-  // COUNT(*) over the items mirrored so far, so dividing by it made the bar
-  // retreat every time the source enumerated more of its own tracklist —
-  // "12 of 20" → "12 of 26" and the fill went backwards (issue #990).
-  const denominator = Math.max(progress.expected, progress.canonical ?? 0);
+  const denominator = jobDenominator(progress);
   if (denominator > 0) return Math.round((progress.delivered / denominator) * 100);
   return undefined;
 }
@@ -394,7 +410,7 @@ export function mergeAcquisitionJobs(
       destinationAlbums: job.destinationAlbums?.length ? job.destinationAlbums : undefined,
       startedAt: job.createdAt,
       tracks: job.items,
-      progress: { done: job.progress.delivered, total: job.progress.expected },
+      progress: { done: job.progress.delivered, total: jobDenominator(job.progress) },
       // Only while downloading: the bar answers "how much is still moving", and
       // any later stage (organizing/scanning) has nothing in flight.
       // `downloading` is where a *download* has a meaningful percentage. An

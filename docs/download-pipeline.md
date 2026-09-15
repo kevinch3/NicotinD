@@ -518,7 +518,7 @@ from arrivals. Two consumers had to learn the difference:
 
 - `jobPercent` divided by `progress.expected` — `COUNT(*)` over mirrored items — so the fill retreated
   each time the source enumerated more of its own tracklist. It now divides by
-  `max(expected, canonical)`.
+  `jobDenominator` = `max(expected, canonical)`, which #1067 made the card's *only* denominator.
 - `hasCommittedTotal` marks a URL job with no canonical tracklist as *uncommitted*. Those cards show
   `N so far` and an indeterminate bar rather than a total they will have to take back. `network`
   (a peer's folder listing) and `import` (files counted off disk) enumerate up front and are exempt.
@@ -792,6 +792,35 @@ sums to the release.
 `unavailable` and `notOffered` are deliberately distinct: the first is a track the source *had* and
 could not deliver, the second one it never listed. Collapsing them would re-hide the thing this fixed.
 
+#### One denominator, and `expected` is not it (#1067)
+
+Whether a job may *grow its own scope* mid-flight — attach the not-offered titles to a second peer —
+turns entirely on what the denominator means, so that is ruled on here rather than decided inside
+whichever route grows first.
+
+**`progress.expected` keeps meaning "what this job is itemising right now."** It is
+`COUNT(*)` over the non-superseded item rows, a live fact about arrivals, and it is *allowed* to
+move. Freezing it would be the wrong fix: a `COUNT(*)` pinned to its first value is a field that
+lies, and it is what forces the #990 climbing-total shape onto any later scope change.
+
+**The displayed denominator is the release's commitment whenever there is one.** `jobDenominator`
+(`lib/download-groups.ts`) is `max(expected, canonical)`, and it is the *only* number the card
+divides by or prints — the progress bar through `jobPercent`, the count text through
+`DownloadItem.progress.total`. Those were two separate expressions of the same rule and only one of
+them had learned it: the bar took the `max` (the #990 fix), while the card text still divided by raw
+`expected`. One helper, two call sites, so they cannot drift apart again.
+
+What this buys: inserting rows for K not-offered titles walks `expected` 12 → 14 while the printed
+total stays 14, `delivered` climbs toward it, and `notOffered` decays 2 → 0. Every one of those is
+true at every instant, and the number the user is reading never moves — the #990 class is *removed*
+rather than avoided. `canonicalShortfall` therefore needed no change at all. The regression test is
+that the printed total is identical either side of the attach.
+
+The card is also still the same acquisition once its scope has grown: card identity is the job id
+recorded at enqueue (#261), and the canonical tracklist never changed — only the source set did.
+
+The attach path itself is #1146, not this.
+
 #### Which tracks, not just how many (#746)
 
 The card reported counts and never names, so "2 unavailable" on a 103-track release was
@@ -1036,7 +1065,9 @@ second job on one album must enable it.
 ### What it cannot reach
 
 `· K not offered` counts canonical titles the addon never itemised — they have no item row at
-all, so there is nothing to hand to another peer. Tracked separately as #1067.
+all, so there is nothing to hand to another peer. Reaching them means *inserting* rows, which
+#1067 unblocked by ruling on the denominator ("One denominator, and `expected` is not it" above);
+the insert itself is #1146.
 
 ### Where the rules live
 
