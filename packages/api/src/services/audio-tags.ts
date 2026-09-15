@@ -353,9 +353,61 @@ export async function readAudioTags(filepath: string): Promise<AudioTags> {
   return {};
 }
 
-export async function writeAudioTags(filepath: string, tags: AudioTags): Promise<boolean> {
+export interface WriteAudioTagsDeps {
+  /** Injectable for tests; defaults to the real reader. This is the ID3
+   *  read-back that decides whether the in-place write actually stuck. */
+  readTags?: typeof readAudioTags;
+}
+
+/**
+ * The fields `readAudioTags` maps on an ID3 file, so a read-back can tell a
+ * landed write from a lost one. Deliberately not the whole of `AudioTags`:
+ * `bpm`/`discNumber` are written but not read, `compilation` is not written at
+ * all (#917), and the perceptual features go through `toFixed`, so a faithful
+ * write reads back rounded. Comparing any of those would report a good write as
+ * lost and rewrite the container for nothing.
+ */
+const ID3_VERIFIABLE_FIELDS = [
+  'title',
+  'artist',
+  'albumArtist',
+  'album',
+  'genre',
+  'key',
+  'lyrics',
+  'year',
+  'trackNumber',
+  'acoustIdId',
+  'mbRecordingId',
+  'mbReleaseId',
+] as const satisfies readonly (keyof AudioTags)[];
+
+export async function writeAudioTags(
+  filepath: string,
+  tags: AudioTags,
+  deps: WriteAudioTagsDeps = {},
+): Promise<boolean> {
   const ext = extname(filepath).toLowerCase();
-  if (ID3_EXTS.has(ext)) return writeId3Tags(filepath, tags);
+  if (ID3_EXTS.has(ext)) {
+    if (!(await writeId3Tags(filepath, tags))) return false;
+    if (!FFMPEG_MUXERS[ext]) return true;
+    // node-id3 reports success on an in-place merge it did not land (#964), so
+    // the write is believed only where the file reads it back. The container
+    // rewrite is the repair, and `-map_metadata 0` carries every frame the
+    // analysis writers own across it. See docs/library-processing.md.
+    const onDisk = await (deps.readTags ?? readAudioTags)(filepath);
+    const stale = ID3_VERIFIABLE_FIELDS.filter(
+      (f) => tags[f] !== undefined && onDisk[f] !== tags[f],
+    );
+    if (stale.length === 0) return true;
+    log.warn({ filepath, stale }, 'ID3 write did not stick in place; rewriting the container');
+    // ffmpeg re-emits an inherited USLT as a TXXX frame, which no reader here
+    // maps back to `lyrics` — so the lyrics are put back through node-id3.
+    const lyrics = tags.lyrics ?? (await readAudioTags(filepath)).lyrics;
+    if (!(await writeFfmpegTags(filepath, tags))) return false;
+    if (lyrics !== undefined) await writeId3Tags(filepath, { lyrics });
+    return true;
+  }
   if (VORBIS_EXTS.has(ext) || ext === '.m4a') return writeFfmpegTags(filepath, tags);
   return false;
 }
@@ -407,11 +459,23 @@ const FFMPEG_MUXERS: Record<string, string> = {
   '.ogg': 'ogg',
   '.opus': 'opus',
   '.m4a': 'ipod',
+  // Only reached as the ID3 fallback above — .mp3 is written in place by
+  // node-id3 whenever that works.
+  '.mp3': 'mp3',
+};
+
+// ffmpeg defaults the mp3 muxer to ID3v2.4, which carries a year as TDRC —
+// node-id3 surfaces that frame as `recordingTime`, so `readAudioTags` reads no
+// year at all and the rewrite's own write would look lost. v2.3 is what
+// node-id3 writes, and both readers agree on it.
+const FFMPEG_MUXER_ARGS: Record<string, string[]> = {
+  '.mp3': ['-id3v2_version', '3'],
 };
 
 function writeFfmpegTags(filepath: string, tags: AudioTags): Promise<boolean> {
   const tmpPath = filepath + '.nicotind.tmp';
-  const muxer = FFMPEG_MUXERS[extname(filepath).toLowerCase()];
+  const ext = extname(filepath).toLowerCase();
+  const muxer = FFMPEG_MUXERS[ext];
   if (!muxer) return Promise.resolve(false);
   const metaArgs: string[] = [];
   if (tags.album !== undefined) metaArgs.push('-metadata', `ALBUM=${tags.album}`);
@@ -469,6 +533,7 @@ function writeFfmpegTags(filepath: string, tags: AudioTags): Promise<boolean> {
     ...streamMetaArgs,
     '-c',
     'copy',
+    ...(FFMPEG_MUXER_ARGS[ext] ?? []),
     '-f',
     muxer,
     tmpPath,

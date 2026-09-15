@@ -668,17 +668,33 @@ So the file is now re-read before the report is written. `readTags` is an inject
 
 `onDisk` is set only when the file carries **every** diverged field at the requested value. Anything
 less keeps the older, blunter error, which makes the fallback the safe one: `readAudioTags` reads no
-`discNumber` on any container, and an unreadable file returns `{}` — both read as "the write did not
-land" rather than inventing a rescan fault. Both routes (`PATCH /api/library/songs/:id/metadata` and
-the MCP `fix_song_metadata`) forward `onDisk` when it is present.
+`discNumber` on any container (#1151), and an unreadable file returns `{}` — both read as "the write
+did not land" rather than inventing a rescan fault. Both routes
+(`PATCH /api/library/songs/:id/metadata` and the MCP `fix_song_metadata`) forward `onDisk` when it is
+present.
 
 The web track-info sheet shows the reason string verbatim — `tagErrorFrom` reads the response's
 `error` field directly and does **not** go through `ERROR_CODE_I18N_KEYS` (the result carries no
 `code`), so both strings surface in English regardless of UI language, as the old one already did.
 
-**This is the report, not the repair.** A file the tracklist de-selects is still unfixable through
-this path; the honest error tells the curator that, instead of sending them to look for a tag-writing
-bug that is not there.
+**The report outlives the response.** A caller may be unattended — `normalize-titles.ts`, a curator
+triage round — so an error that lives and dies inside one HTTP response is a silence. Either
+verification failure now also files a `song` flag through `createCurationFlag`, created by
+`system:tag-write`, its reason the error plus the diverged field names, so the file appears in
+`list_review_flags` and the review feed. That function refreshes a target's existing open flag
+instead of minting a second, so a retried write cannot pile up: two consecutive failed writes on one
+song leave exactly one open flag. The three pre-write failures (unknown song, no music dir,
+`writeAudioTags` returning false) file nothing — a 404 is not a lost write.
+
+**Refreshing that flag does not spend a human's wording.** This is the first automated writer with
+reach into a table curators write by hand, and the refresh-instead-of-pile rule would otherwise
+replace a curator's judgement with a generated error string. So `createCurationFlag` keeps the
+existing reason when an actor named `system:*` meets an open flag a non-`system:` actor wrote —
+`isAutomatedActor`. The row still refreshes in every other direction: a `system:` actor overwrites
+its own earlier reason, and a human overwrites a machine's.
+
+A file the tracklist de-selects is still unfixable through this path; the honest error tells the
+curator that, instead of sending them to look for a tag-writing bug that is not there.
 
 **An alias rewrite is not a divergence (issue #1071).** The scanner stores `artist` and
 `album_artist` through the artist alias map (`aliasFix`: the `library_artist_aliases` row keyed by
@@ -688,6 +704,57 @@ bug that is not there.
 against `canonicalArtist(db, requested)`, the same one-row lookup, and a success reports the
 canonical spelling in `applied`. This is strict, not a fold: a case or accent variant with no alias
 row still reports a divergence, because the scanner would not have produced it.
+
+## An mp3 whose in-place tag write does not stick rewrites the container (issue #964)
+
+The writer for this already existed; mp3 just could not reach it. `writeAudioTags` routed `ID3_EXTS`
+to `writeId3Tags` (node-id3's `id3.update` — an in-place merge) and everything else to
+`writeFfmpegTags`, which remuxes with `-map_metadata 0 ... -c copy` into a `.nicotind.tmp` and
+renames. That is exactly the repair #964 asked for, unreachable for `.mp3` only because
+`FFMPEG_MUXERS` had no entry for it. It has one now, and the ID3 branch falls through to it.
+
+**The fallback is keyed on the read-back, never on the boolean.** `writeId3Tags` RETURNED TRUE for
+the reported file — a `false` exits earlier with `Failed to write tags` — so a fallback gated on
+`false` could never fire on this class. An mp3 write is therefore believed only where the file reads
+it back: the requested fields in `ID3_VERIFIABLE_FIELDS` are compared against a fresh
+`readAudioTags`, and one that still differs triggers a single ffmpeg rewrite. That set is
+deliberately narrower than `AudioTags` — `bpm`/`discNumber` are written and never read (#1151),
+`compilation` is not written at all (#917), and the perceptual features go through `toFixed`, so a
+faithful write reads back rounded. Comparing any of those would remux every BPM, disc or analysis
+write forever.
+
+Two things the container rewrite must not break, both pinned by tests that fail without them:
+
+- **The TXXX feature frames.** `-map_metadata 0` carries `ENERGY`/`LOUDNESS_LUFS`/`MOOD` and the
+  Picard TXXX ids across the remux, which is what the analysis writers depend on.
+- **The year.** ffmpeg defaults the mp3 muxer to ID3v2.4, which stores a year as `TDRC` — node-id3
+  surfaces that frame as `recordingTime`, so `readAudioTags` sees no year and the rewrite's own write
+  would read as lost. `FFMPEG_MUXER_ARGS` pins `-id3v2_version 3`: what node-id3 writes, and the one
+  version both readers agree on.
+
+ffmpeg also re-emits an inherited `USLT` as a TXXX frame no reader here maps back to `lyrics`, so the
+rewrite is followed by a node-id3 merge that puts the lyrics frame back.
+
+`WriteAudioTagsDeps.readTags` is the injectable seam for that read-back, mirroring the `readTags`
+dep on `mutateSongMetadata`; it exists so the failure class is testable, since node-id3's update
+could not be made to lose a write on any real mp3 shape tried here.
+
+## The two mp3 readers disagree (issue #1151)
+
+`readAudioTags` parses an mp3 with **node-id3**; the scanner parses the same file with
+**music-metadata** (`parseTrack`). Every post-write audit above compares one against the other —
+`readOnDiskConfirmation` reads the file with node-id3 and disagrees with a row music-metadata
+filled — so a library-level disagreement produces the divergence of the section above with no fault
+anywhere in the write path. That is a fourth candidate cause for #964, and the only one measurable
+with no prod access.
+
+`audio-tags.readers.test.ts` is the measurement: same file, both readers, field by field, over every
+mp3 shape NicotinD produces. All of those agree, including the container-rewrite output. Three
+fields do not, and they are pinned there as today's truth so closing #1151 fails the test rather
+than making it a quiet lie: `bpm` (TBPM) and `discNumber` (TPOS) are written by `writeId3Tags` and
+mapped by no read branch, and a `year` on an ID3v2.4 file is invisible. The live cost is in #1151 —
+notably `bpm = tags.bpm ?? null`, the preference for a file's own BPM over a DSP run, which on mp3
+can never fire, so every mp3 is re-analysed even when it already carries a BPM we wrote.
 
 ## One-time prod backfill
 

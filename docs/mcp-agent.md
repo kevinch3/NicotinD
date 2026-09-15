@@ -486,13 +486,22 @@ rule the other curate tools established.
 - **`applied` is read back, never echoed (issue #776).** It used to return the
   *request*, so a write that never reached the row was indistinguishable from
   success. `mutateSongMetadata` now re-reads the song after the rescan: a
-  divergence fails with `Tag write did not persist` plus `requested` and the
-  `actual` row values, and a success carries `verified: true` with the values
+  divergence re-reads the FILE to name the right culprit and fails with either
+  `Tag write did not persist` or `Tag write landed but the rescan did not apply
+  it` (issue #964), plus `requested`, the `actual` row values and — for the
+  second — the `onDisk` ones; a success carries `verified: true` with the values
   actually on the row. Without a rescanner wired there is nothing to read back
   through, so the result says `verified: false` rather than claiming a check it
   did not perform. Anything automating retags — an agent, the `normalize-titles`
   bulk pass — depends on this to avoid reporting a clean run having changed
   nothing.
+  **Either failure also files a curation flag (issue #964).** A `song` flag
+  created by `system:tag-write`, reason = the error plus the diverged field
+  names, so the file turns up in `list_review_flags` rather than the failure
+  ending with the response your bulk pass may not be reading. It is one flag per
+  song however many times the write is retried. You still verify your own writes
+  by reading back — the flag catches the failures nobody was watching for, it
+  does not make `ok: true` proof.
   **`albumArtist` was missing from this check entirely (issue #865).** It is
   written into the file tag (`writeAudioTags`) exactly like the other four
   fields, but `SongMetadataSnapshot`/`readSnapshot`'s `SELECT`/the divergence

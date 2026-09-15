@@ -76,10 +76,15 @@ export interface CreateFlagResult {
   created: boolean;
 }
 
+/** An actor whose wording is machine-generated and must yield to a human's. */
+const isAutomatedActor = (createdBy: string) => createdBy.startsWith('system:');
+
 /**
  * Flag a target for human review. Re-flagging a target that already has an OPEN
  * flag updates that row's reason instead of adding a second one — an agent's
  * repeated sweep must not turn one unresolved ambiguity into a growing pile.
+ *
+ * A `system:` actor never overwrites a reason a human wrote.
  */
 export function createCurationFlag(
   db: Database,
@@ -111,8 +116,14 @@ export function createCurationFlag(
     const optionsJson = suppliesCase
       ? (input.optionsJson ?? null)
       : (existing.options_json ?? null);
+    // A machine's phrasing is derived; a curator's is a judgement. Refreshing
+    // the reason keeps the pile from growing, but it must not spend a human's
+    // wording to do it (#964 gave the first automated writer this reach).
+    const keepsHumanReason =
+      isAutomatedActor(input.createdBy) && !isAutomatedActor(existing.created_by);
+    const reason = keepsHumanReason ? existing.reason : input.reason;
     db.run('UPDATE curation_flags SET reason = ?, case_kind = ?, options_json = ? WHERE id = ?', [
-      input.reason,
+      reason,
       caseKind,
       optionsJson,
       existing.id,
@@ -120,7 +131,7 @@ export function createCurationFlag(
     return {
       flag: {
         ...toFlag(existing),
-        reason: input.reason,
+        reason,
         caseKind: isCurationCaseKind(caseKind) ? caseKind : null,
         optionsJson,
       },

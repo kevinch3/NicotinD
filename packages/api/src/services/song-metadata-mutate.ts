@@ -26,6 +26,10 @@ import { buildIdentifyApplyTags } from './identify.js';
 import { expandDir, resolveSongPath, isUnderMusicDir } from './song-path.js';
 import { libraryEvents } from './library-events.js';
 import { normalizeArtistForGrouping } from './album-grouping.js';
+import { createCurationFlag } from './curation-flags.js';
+
+/** `created_by` on the flag a failed verification files. */
+export const TAG_WRITE_FLAG_ACTOR = 'system:tag-write';
 
 export interface SongMetadataMutateDeps {
   musicDir?: string;
@@ -200,23 +204,23 @@ export async function mutateSongMetadata(
       tags,
       diverged,
     );
+    const error = onDisk
+      ? 'Tag write landed but the rescan did not apply it'
+      : 'Tag write did not persist';
+    // The error alone is a silence: the caller may be an unattended bulk pass,
+    // and nothing outlives the response. The flag puts the file in the review
+    // queue instead (issue #964). `createCurationFlag` refreshes the song's
+    // open flag rather than minting a second, so a retried write cannot pile up.
+    createCurationFlag(db, {
+      targetKind: 'song',
+      targetId: songId,
+      reason: `${error}: ${Object.keys(diverged).join(', ')}`,
+      createdBy: TAG_WRITE_FLAG_ACTOR,
+    });
     if (onDisk) {
-      return {
-        ok: false,
-        error: 'Tag write landed but the rescan did not apply it',
-        status: 500,
-        requested: body,
-        actual: diverged,
-        onDisk,
-      };
+      return { ok: false, error, status: 500, requested: body, actual: diverged, onDisk };
     }
-    return {
-      ok: false,
-      error: 'Tag write did not persist',
-      status: 500,
-      requested: body,
-      actual: diverged,
-    };
+    return { ok: false, error, status: 500, requested: body, actual: diverged };
   }
 
   return {
