@@ -71,6 +71,9 @@
       <!-- First-login welcome banner for admin-provisioned users -->
       <app-welcome-banner />
 
+      <!-- One-time PWA install nudge; self-gates on beforeinstallprompt / iOS -->
+      <app-install-promo-banner />
+
       <!-- Content — pad bottom so the fixed player + mobile tab bar never cover the last item.
            `relative` anchors the pull-to-refresh indicator; the pointerdown feeds the
            layout-hosted pull gesture (coarse-pointer only — see lib/pull-to-refresh.ts). -->

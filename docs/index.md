@@ -609,6 +609,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **Pull-to-refresh (touch)**: one layout-hosted gesture on `<main>` (`pull-to-refresh.ts` composing
   `createPointerDrag`) plus a `PullToRefreshService` handler stack pages register into,
   coarse-pointer-gated. → [web-ui.md](web-ui.md)
+- **PWA install promotion**: `captureInstallPrompt` stashes `beforeinstallprompt` before bootstrap;
+  `InstallPromptService` + `installPromotionVisible` drive a one-time layout strip
+  (`InstallPromoBannerComponent`) and a permanent Settings row, iOS gets manual copy.
+  → [web-ui.md](web-ui.md)
 - **Reactive network / offline detection**: `NetworkStatusService` is one live `online` signal **plus a
   monotonic `reconnects` counter**, because signals coalesce and a fast offline/online pair is
   invisible to a diff of `online`. `isOffline` is a `computed`;

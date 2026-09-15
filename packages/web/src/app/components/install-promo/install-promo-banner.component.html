@@ -1,0 +1,39 @@
+@if (install.showPromotion()) {
+  <div
+    data-testid="install-promo"
+    role="region"
+    [attr.aria-label]="'install.promoTitle' | t"
+    class="flex items-center justify-between gap-4 px-4 py-3 border-b"
+    style="background: var(--theme-surface); border-color: var(--theme-border);"
+  >
+    <div class="min-w-0 text-sm" style="color: var(--theme-text-secondary);">
+      <span class="font-medium" style="color: var(--theme-text-primary);">{{ 'install.promoTitle' | t }}</span>
+      <span class="block text-xs">
+        {{ (install.canInstall() ? 'install.promoBody' : 'install.iosBody') | t }}
+      </span>
+    </div>
+    <div class="flex shrink-0 items-center gap-2">
+      @if (install.canInstall()) {
+        <button
+          type="button"
+          (click)="install.install()"
+          [disabled]="install.installing()"
+          data-testid="install-promo-install"
+          class="rounded px-3 py-1 text-sm font-medium transition-opacity hover:opacity-80 disabled:opacity-50"
+          style="background: var(--theme-accent); color: var(--theme-on-accent);"
+        >
+          {{ 'install.install' | t }}
+        </button>
+      }
+      <button
+        type="button"
+        (click)="install.dismissPromotion()"
+        data-testid="install-promo-dismiss"
+        [attr.aria-label]="'install.dismissLabel' | t"
+        class="rounded px-2 py-1 text-sm text-theme-muted hover:text-theme-primary transition"
+      >
+        {{ 'install.notNow' | t }}
+      </button>
+    </div>
+  </div>
+}

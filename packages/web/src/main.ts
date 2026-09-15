@@ -7,6 +7,7 @@ import { installStartupErrorCapture, captureError } from './app/observability/er
 import { isNativeShell, applyTvBuildClass, isTvBuild } from './app/lib/platform';
 import { clearStaleChunkMarker } from './app/lib/stale-chunk';
 import { applyOverscan, loadOverscanPreset } from './app/lib/tv-overscan';
+import { captureInstallPrompt } from './app/lib/install-prompt';
 import pkg from '../../../package.json';
 
 // Sentry is loaded lazily to keep its ~272 kB (42 % of the initial chunk) off
@@ -19,6 +20,10 @@ const stopStartupCapture = installStartupErrorCapture();
 // stamped before bootstrap so the first paint is already inset.
 applyTvBuildClass();
 if (isTvBuild()) applyOverscan(loadOverscanPreset());
+
+// `beforeinstallprompt` fires once and is never replayed, so the listener has
+// to exist before Angular does — InstallPromptService reads the stash later.
+if (!isNativeShell()) captureInstallPrompt();
 
 // Native shells get a trimmed init (no Session Replay / tracing) — see loadSentry.
 function startSentry(): void {

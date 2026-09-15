@@ -261,6 +261,24 @@
 
           <!-- Updates -->
           <h3 class="text-xs font-semibold uppercase tracking-wider text-theme-muted mb-3 mt-6 pt-6 border-t border-theme">{{ 'settings.subUpdates' | t }}</h3>
+          <!-- PWA install: the permanent offer (the layout strip is the one-time
+               nudge). Only once the browser has said the app is installable;
+               iOS never says so, so it gets the manual instructions instead. -->
+          @if (installPrompt.canInstall()) {
+            <button
+              appTvNavItem
+              type="button"
+              (click)="installPrompt.install()"
+              [disabled]="installPrompt.installing()"
+              data-testid="settings-install-app"
+              class="text-left mb-3 block disabled:opacity-50 disabled:cursor-wait"
+            >
+              <span class="text-sm text-theme-primary block">{{ 'settings.installApp' | t }}</span>
+              <span class="text-xs text-theme-muted block">{{ 'settings.installAppHint' | t }}</span>
+            </button>
+          } @else if (installPrompt.showIosHint()) {
+            <p class="text-xs text-theme-muted mb-3" data-testid="settings-install-ios">{{ 'settings.installAppIos' | t }}</p>
+          }
           @if (update.checkAvailable()) {
             <button
               appTvNavItem
