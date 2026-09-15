@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.48](https://github.com/kevinch3/NicotinD/compare/v0.6.47...v0.6.48) (2026-09-15)
+
+### Bug Fixes
+
+* **analysis:** window the /analyze decode and stamp its un-ledgered failures ([#1140](https://github.com/kevinch3/NicotinD/issues/1140)) ([f6a07c9](https://github.com/kevinch3/NicotinD/commit/f6a07c9706f8d035bfdf0ad7cec6f0d40f6f625c)), references [#851](https://github.com/kevinch3/NicotinD/issues/851)
 ## [0.6.47](https://github.com/kevinch3/NicotinD/compare/v0.6.46...v0.6.47) (2026-09-14)
 
 ### Features
