@@ -82,7 +82,10 @@ export default defineConfig({
       : 'list',
   use: {
     baseURL,
-    trace: 'on-first-retry',
+    // Not `on-first-retry`: it traced neither place a flake has been seen —
+    // locally `retries` is 0, and in CI it traces the retry, which for an
+    // order-dependent flake is the attempt that PASSES (#1116, #835, docs/e2e.md).
+    trace: { mode: 'retain-on-failure', snapshots: true, screenshots: true, sources: false },
     screenshot: 'only-on-failure',
   },
   // Screenshot assertions (the `tv` project). Animations are frozen by default;
