@@ -63,6 +63,16 @@ published tree to point at.
 `resolveBuildInfo` validates the sha rather than trusting it, because an unpassed `--define`
 arrives as the empty string and a mis-wired one arrives as whatever the shell left behind.
 
+## Surfaces this does not cover
+
+The TV build is a **route-level fork** (`isTvBuild()`, docs/tv-ux.md): its `settings` route is
+`TvSettingsComponent`, and the settings sub-pages are deliberately absent, so `/settings/about` does
+not render there. That is not a §13 gap — §13 binds whoever *operates* the server, and the server's
+own web UI carries the offer — but a distributed APK is covered by §§4–6 instead (source alongside
+the object code), which the GitHub release does not currently state anywhere in-app. If the TV or
+mobile shells ever need their own notice, it wants a 10-foot layout rather than this card: external
+links are not reachable from a D-pad WebView.
+
 ## Not shipped yet: the generated third-party manifest
 
 Issue #453 also asks for a generated manifest of bundled third-party components and their licences,
