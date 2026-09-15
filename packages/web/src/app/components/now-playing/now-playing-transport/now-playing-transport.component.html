@@ -72,6 +72,13 @@
       appTvNavItem
       (click)="player.cycleRepeat()"
       data-testid="now-playing-repeat"
+      [attr.aria-label]="
+        (player.repeat() === 'one'
+          ? 'nowPlaying.repeatOne'
+          : player.repeat() === 'all'
+            ? 'nowPlaying.repeatAll'
+            : 'nowPlaying.repeatOff') | t
+      "
       [attr.aria-pressed]="player.repeat() !== 'off'"
       [class]="'w-8 h-8 flex items-center justify-center rounded-full transition relative ' + (player.repeat() !== 'off' ? 'text-theme-accent-text' : 'text-theme-muted hover:text-theme-secondary')"
     >
