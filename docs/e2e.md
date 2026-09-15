@@ -243,6 +243,16 @@ same PR that hit it.
   same `offline.spec.ts` carried one for two issues. Fix the race, don't raise
   the number.
 
+- **Five routes in one test is five routes in one 30s budget.** That budget is
+  spent by *navigations*, not by assertions.
+  `settings-consistency.spec.ts` walked all five settings routes inside a single
+  test — `goto` + `clearGroupState` + `reload` each, so 10 full SPA loads — and
+  at the ~3s a four-way-sharded runner takes per load it timed out naming no
+  route at all (issue #1116). It is now one test per route, comparing against a
+  reference tuple captured once from `ROUTES[0]`: same assertion, same total
+  navigations, a quarter of the per-test exposure, and a failure that says
+  *which* route regressed. Split the loop; don't raise the number (above).
+
 - **An absence assertion passes vacuously on a page that has not rendered.**
   `expect(x).toHaveCount(0)` / `not.toBeVisible()` cannot distinguish "this
   element is correctly absent" from "nothing has rendered yet", so it is **not**
@@ -392,6 +402,36 @@ same call; the `hunt` / `live-screens` / `real` configs all require
 > (`imbios/bun-node:…-22.22.3`) all resolve from it, and root + web `package.json`
 > declare `engines.node >= 22.22.3`. If `ng build`/`ng test` fail an engine check,
 > run `nvm use` (the host default nvm Node — `22.22.0` — is below the floor).
+
+## What a failure leaves behind
+
+`use.trace` is `{ mode: 'retain-on-failure', snapshots: true, screenshots: true,
+sources: false }` and `use.screenshot` is `only-on-failure`. Every attempt is
+traced; a passing attempt's trace is thrown away and a failing one's is kept and
+attached to the test — locally at
+`packages/e2e/test-results/<test>/trace.zip`, in CI copied into
+`playwright-report/` by the `html` reporter and uploaded per shard as
+`playwright-report-shard-<n>`. Open one with `bunx playwright show-trace <path>`.
+
+It was `on-first-retry` until issues #1116 and #835, and that setting recorded
+nothing in either place a flake has actually been observed. Locally `retries` is
+0, so it never fired at all — a local failure left a screenshot and nothing else.
+In CI `retries: 1` fired it on the **retry**, and for an order-dependent flake the
+retry is the attempt that *passes*, so what got uploaded was a trace of a
+successful run. Both issues asked for the failing attempt, twice, and got that
+instead.
+
+The cost is real and accepted: `retain-on-failure` records a trace for every test
+instead of for none, so each test pays the recording overhead on a suite budgeted
+at ~3 min per shard, and `sources: false` is what keeps the kept artifact small
+(no copy of the spec sources inside the zip). A flake you can open is worth that.
+
+When a trace does fall out of a flake, read it before naming a cause: which
+`await` was still pending when the budget ran out, what the network panel says the
+last request actually did, and whether the state the spec assumed at start was
+still there. The middle one matters more than it looks — a `waitForResponse` gate
+that requires `r.ok()` never resolves on a 4xx and then times out naming neither
+the gate nor the status (`admin-users.spec.ts`'s DELETE gate, issue #835).
 
 ## The TV bundle in Chromium (the `tv` project)
 

@@ -36,6 +36,14 @@ interface StyleTuple {
   };
 }
 
+/** goto + collapse-state reset + the load gate every reading below needs. */
+async function openRoute(page: Page, route: string): Promise<void> {
+  await page.goto(route);
+  await clearGroupState(page);
+  await page.reload();
+  await expect(page.locator('[data-group-id]').first()).toBeVisible();
+}
+
 async function readStyleTuple(page: Page): Promise<StyleTuple> {
   return page.evaluate(() => {
     const card = document.querySelector('[data-group-id]') as HTMLElement | null;
@@ -85,34 +93,36 @@ test.describe('settings cards — cross-view consistency', () => {
     page,
   }) => {
     for (const route of ROUTES) {
-      await page.goto(route);
-      await clearGroupState(page);
-      await page.reload();
-      await expect(page.locator('[data-group-id]').first()).toBeVisible();
+      await openRoute(page, route);
       await expect(page.getByTestId('settings-group-body')).toHaveCount(DEFAULT_OPEN[route] ?? 0);
     }
   });
 
-  test("every route's group card + title share identical computed styles", async ({ page }) => {
-    const tuples: Record<string, StyleTuple> = {};
+  // One test per route, not one loop over five (#1116): the loop spent 10 SPA
+  // navigations inside a single 30s budget and, when it timed out, named no
+  // route. The reference tuple is captured from ROUTES[0] by whichever of these
+  // runs first and reused, so the total navigation count is unchanged.
+  const [referenceRoute, ...comparedRoutes] = ROUTES;
+  let reference: StyleTuple | undefined;
 
-    for (const route of ROUTES) {
-      await page.goto(route);
-      await clearGroupState(page);
-      await page.reload();
-      await expect(page.locator('[data-group-id]').first()).toBeVisible();
-      tuples[route] = await readStyleTuple(page);
+  async function referenceTuple(page: Page): Promise<StyleTuple> {
+    if (!reference) {
+      await openRoute(page, referenceRoute);
+      reference = await readStyleTuple(page);
     }
+    return reference;
+  }
 
-    const [firstRoute, ...restRoutes] = ROUTES;
-    const expected = tuples[firstRoute];
-
-    for (const route of restRoutes) {
-      expect(tuples[route], `${route} card/title styles should match ${firstRoute}`).toEqual(
-        expected,
-      );
-    }
-  });
+  for (const route of comparedRoutes) {
+    test(`${route}'s group card + title match ${referenceRoute}`, async ({ page }) => {
+      const expected = await referenceTuple(page);
+      await openRoute(page, route);
+      expect(
+        await readStyleTuple(page),
+        `${route} card/title styles should match ${referenceRoute}`,
+      ).toEqual(expected);
+    });
+  }
 
   test('every settings-family route shares the page-shell gutter scale', async ({ page }) => {
     const readings: Array<{ route: string; maxWidth: string; pad: string }> = [];
