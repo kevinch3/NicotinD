@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.50](https://github.com/kevinch3/NicotinD/compare/v0.6.49...v0.6.50) (2026-09-15)
+
+### Bug Fixes
+
+* **analysis:** one /analyze worker and a budget derived from the sidecar's own window ([#1150](https://github.com/kevinch3/NicotinD/issues/1150)) ([532b08d](https://github.com/kevinch3/NicotinD/commit/532b08d2846842df8cd1a27a1f3e8611a071c983))
+* **downloads:** one denominator for the progress bar and the card count ([#1148](https://github.com/kevinch3/NicotinD/issues/1148)) ([a1315cf](https://github.com/kevinch3/NicotinD/commit/a1315cf277d9affa0cc40b0e429ed5203bf77fb3))
+* **library:** gate the library list query plan and cap the artists list ([#1153](https://github.com/kevinch3/NicotinD/issues/1153)) ([92346c1](https://github.com/kevinch3/NicotinD/commit/92346c1a831facb81dfefc2bf61b4aeb509479bf))
 ## [0.6.49](https://github.com/kevinch3/NicotinD/compare/v0.6.48...v0.6.49) (2026-09-15)
 
 ### Features
