@@ -12,9 +12,9 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
 - **E-Ink legibility**: e-paper devices flatten thin strokes and low-contrast grays into the page (icons became indistinguishable). The `eink` theme therefore pushes `--theme-text-secondary`/`--theme-text-muted`/`--theme-border` much darker, sets a `font-weight: 500` floor, and a `[data-theme="eink"] svg { stroke-width: 3 }` rule thickens every stroked icon (unitless so it scales per icon; the app draws icons at `stroke-width="2"`). Guarded by `packages/e2e/tests/theme.spec.ts`.
 - Settings UI: Settings → Appearance — swatch grid + "Follow system theme" toggle
 - **Settings / Admin / Extensions split**: the core **Settings** page holds only universal user prefs, grouped into 4 cards — each with a uniform icon+title+description header (`SettingsGroupHeaderComponent`, `packages/web/src/app/components/settings-group-header/`) — **Appearance** (theme, language), **Playback & Offline** (autoplay, remote cast, offline storage/auto-preserve), **Account & Devices** (identity, sign-out, links, update check), and **Advanced** (platform-only Server/Desktop/iOS-diagnostics sub-sections, each gated on its own platform flag — the card itself is hidden entirely on plain web, admin or not, since it has no more admin-only content, #754). Server-admin tools (streaming, library processing, find-duplicates) live on **Admin**; extension config (slskd connection/shares + a live status panel) is embedded inline in the slskd extension's own collapsible card under **Extensions** (`/settings/plugins`, relabeled from "Plugins") — no more dedicated per-plugin route. Admins reach both via links in the Settings → Account section. → [docs/admin-settings-decoupling.md](admin-settings-decoupling.md)
-- **Settings-cards unification (all five settings-family views)**: `/settings`, `/admin`,
-  `/settings/plugins` (incl. each `PluginCardComponent`), `/settings/devices`, and
-  `/settings/agent-tokens` all render their groups through the one shared bordered, collapsible
+- **Settings-cards unification (every settings-family view)**: `/settings`, `/admin`,
+  `/settings/plugins` (incl. each `PluginCardComponent`), `/settings/devices`,
+  `/settings/agent-tokens` and `/settings/about` all render their groups through the one shared bordered, collapsible
   `SettingsGroupComponent` (`packages/web/src/app/components/settings-group/`) — **every group
   collapsed by default, with one documented exception** (issue #379): Devices' paired-devices list
   ships `[defaultOpen]="true"` because it is that page's primary content and the common visit
@@ -32,7 +32,9 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
   `expandAllGroups` from `packages/web/src/testing/expand-groups.ts` (issue #377 — both used to
   be per-file copies). `tests/settings-consistency.spec.ts` is the CI-run gate that
   every route renders collapsed on load (its `DEFAULT_OPEN` map carries the #379 exception) and that the first card + title resolve to identical
-  computed styles across all five routes; `tests/settings-gallery.screens.ts` (out-of-CI, run via
+  computed styles across every route in its `ROUTES` array — **a new settings route must be added to
+  that array *and* to its `WRAPPER_MAX_WIDTH` map, or the family assertions silently skip it**;
+  `tests/settings-gallery.screens.ts` (out-of-CI, run via
   `cd packages/e2e && bunx playwright test --config=playwright.screenshots.config.ts`) captures a
   collapsed + fully-expanded shot of every route in both a mobile and a desktop viewport for human
   side-by-side review. Full component/persistence rationale (superseded `AdminGroupComponent`, the
@@ -326,7 +328,7 @@ happens to look today:
 | Tier | Pages | Why |
 | --- | --- | --- |
 | `max-w-6xl` | Library, album/artist/genre detail, Acquire, Downloads | Browse surfaces — grids/lists that want the room. Downloads moved `max-w-5xl` → `6xl` to join this tier rather than keep a one-off width. |
-| `max-w-3xl` | Playlist detail, Radio landing, Share view, Admin, Settings, Devices, Agent tokens, Extensions (`plugins.component`) | Reading/mixed surfaces — a mix of prose-width content and wider panels (Admin's tables/forms don't need browse-grid width). The settings-family started one tier narrower (`max-w-2xl`), but the 2xl/3xl split made the content column visibly jump when navigating Settings ↔ Admin ↔ Extensions — all `SettingsGroupComponent` pages now share this tier (issue #420). |
+| `max-w-3xl` | Playlist detail, Radio landing, Share view, Admin, Settings, About, Devices, Agent tokens, Extensions (`plugins.component`) | Reading/mixed surfaces — a mix of prose-width content and wider panels (Admin's tables/forms don't need browse-grid width). The settings-family started one tier narrower (`max-w-2xl`), but the 2xl/3xl split made the content column visibly jump when navigating Settings ↔ Admin ↔ Extensions — all `SettingsGroupComponent` pages now share this tier (issue #420). |
 
 **Section idioms** — once inside a page, three shapes cover everything:
 
@@ -356,11 +358,11 @@ consumer would just be unused surface area. If one shows up, add it as a named `
 the other three; never reintroduce a raw `rounded-xl border ...` literal as a one-off.
 
 **Drift guard**: `packages/web/src/app/pages/page-shell.spec.ts` (runs in `bun run test:web`)
-asserts, per a `PAGE_TIERS` table, that all 14 routed page templates contain their assigned
+asserts, per a `PAGE_TIERS` table, that all 16 routed page templates contain their assigned
 `page-shell max-w-<tier>` string, and separately bans the raw bare-surface card literal
 (`rounded-xl border border-theme bg-theme-surface` without a `/`-opacity or `-2` suffix) and the raw
-uppercase-heading literal on the six idiom pages (Settings, Devices, Agent tokens, Extensions,
-`slskd-settings`, Admin). `packages/e2e/tests/settings-consistency.spec.ts` is the runtime
+uppercase-heading literal on the six idiom pages (Settings, About, Devices, Agent tokens,
+Extensions, Admin). `packages/e2e/tests/settings-consistency.spec.ts` is the runtime
 counterpart — it asserts every settings-family + Admin route's first `SettingsGroupComponent` card
 and its header resolve to **identical** computed styles (`getComputedStyle`, not just "same class
 list"), and that each route's `.page-shell` reports the tier's expected `maxWidth`/padding.

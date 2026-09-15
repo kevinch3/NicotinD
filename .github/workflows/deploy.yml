@@ -506,8 +506,13 @@ jobs:
           # useful, but `apt-get upgrade` re-executes every build instead of
           # being served from a July-vintage blob while Trivy blocks the deploy
           # over a CVE the archive had already fixed.
+          # NICOTIND_BUILD_COMMIT stamps the web bundle with the tree this image
+          # was built from, so the About page's AGPL §13 source offer points at
+          # the exact source (docs/licensing.md). It does not cost cache: a
+          # release bumps the root package.json this stage COPYs first anyway.
           build-args: |
             APT_REFRESH=${{ github.run_id }}
+            NICOTIND_BUILD_COMMIT=${{ github.sha }}
           cache-from: type=gha,scope=docker-${{ env.PLATFORM_PAIR }}
           cache-to: type=gha,mode=max,scope=docker-${{ env.PLATFORM_PAIR }}
 

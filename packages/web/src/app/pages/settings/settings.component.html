@@ -246,6 +246,8 @@
              class="block text-sm text-theme-secondary hover:text-theme-primary transition mb-2">{{ 'settings.privacy' | t }}</a>
           <a appTvNavItem routerLink="/settings/recommendations" data-testid="settings-recommendations-link"
              class="block text-sm text-theme-secondary hover:text-theme-primary transition mb-2">{{ 'settings.recommendations' | t }}</a>
+          <a appTvNavItem routerLink="/settings/about" data-testid="settings-about-link"
+             class="block text-sm text-theme-secondary hover:text-theme-primary transition mb-2">{{ 'settings.about' | t }}</a>
           @if (auth.canCurate()) {
             <a appTvNavItem routerLink="/settings/agent-tokens" data-testid="settings-agent-tokens-link"
                class="block text-sm text-theme-secondary hover:text-theme-primary transition mb-2">{{ 'settings.agentTokens' | t }}</a>

@@ -18,6 +18,7 @@ const PAGE_TIERS: Array<[string, '6xl' | '3xl']> = [
   ['search/search.component.html', '6xl'],
   ['downloads/downloads.component.html', '6xl'],
   ['settings/settings.component.html', '3xl'],
+  ['settings/about/about.component.html', '3xl'],
   ['settings/devices/devices.component.html', '3xl'],
   ['settings/agent-tokens/agent-tokens.component.html', '3xl'],
   ['plugins/plugins.component.html', '3xl'],
@@ -31,6 +32,7 @@ const PAGE_TIERS: Array<[string, '6xl' | '3xl']> = [
 
 const IDIOM_PAGES = [
   'settings/settings.component.html',
+  'settings/about/about.component.html',
   'settings/devices/devices.component.html',
   'settings/agent-tokens/agent-tokens.component.html',
   'plugins/plugins.component.html',

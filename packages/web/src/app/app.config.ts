@@ -27,8 +27,12 @@ import { RadioSourceService } from './services/radio-source.service';
 import pkg from '../../../../package.json';
 import { switchMap } from 'rxjs/operators';
 import { TranslateService } from './services/translate.service';
+import { BUILD_INFO, type BuildInfo } from './lib/build-info';
 
 export const APP_VERSION = new InjectionToken<string>('APP_VERSION');
+
+/** Commit identity of this bundle, for the About page's §13 source offer. */
+export const APP_BUILD_INFO = new InjectionToken<BuildInfo>('APP_BUILD_INFO');
 
 /**
  * Refresh the stored session and sync the per-user profile flags. Runs after the
@@ -67,6 +71,7 @@ export function refreshSession(
 export const appConfig: ApplicationConfig = {
   providers: [
     { provide: APP_VERSION, useValue: pkg.version },
+    { provide: APP_BUILD_INFO, useValue: BUILD_INFO },
     // A Sentry-free ErrorHandler (issue #285): it buffers into error-buffer.ts,
     // which the lazily-loaded SDK drains on connect. Replaces
     // Sentry.createErrorHandler() + Sentry.TraceService, whose static imports
