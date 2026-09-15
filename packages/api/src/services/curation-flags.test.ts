@@ -54,6 +54,60 @@ describe('createCurationFlag', () => {
     expect(second.flag.id).not.toBe(first.flag.id);
     expect(countOpenCurationFlags(db)).toBe(1);
   });
+
+  it('a system actor does not spend a human reason to stay idempotent', () => {
+    // The loss this prevents: a curator writes why a song is ambiguous, then an
+    // automated tag-write failure refreshes the same open flag and the judgement
+    // is gone. Still one row — idempotency must not cost the human's wording.
+    createCurationFlag(db, {
+      targetKind: 'song',
+      targetId: 's1',
+      reason: 'title is a live medley; needs the setlist to split',
+      createdBy: 'kevin',
+    });
+    const res = createCurationFlag(db, {
+      targetKind: 'song',
+      targetId: 's1',
+      reason: 'Tag write did not persist: title',
+      createdBy: 'system:tag-write',
+    });
+    expect(res.created).toBe(false);
+    expect(countOpenCurationFlags(db)).toBe(1);
+    expect(listOpenCurationFlags(db)[0]!.reason).toBe(
+      'title is a live medley; needs the setlist to split',
+    );
+    expect(res.flag.reason).toBe('title is a live medley; needs the setlist to split');
+  });
+
+  it('a system actor still refreshes its own earlier reason', () => {
+    const sys = (reason: string) =>
+      createCurationFlag(db, {
+        targetKind: 'song',
+        targetId: 's2',
+        reason,
+        createdBy: 'system:tag-write',
+      });
+    sys('Tag write did not persist: title');
+    sys('Tag write did not persist: title, artist');
+    expect(countOpenCurationFlags(db)).toBe(1);
+    expect(listOpenCurationFlags(db)[0]!.reason).toBe('Tag write did not persist: title, artist');
+  });
+
+  it('a human still overwrites a system reason', () => {
+    createCurationFlag(db, {
+      targetKind: 'song',
+      targetId: 's3',
+      reason: 'Tag write did not persist: title',
+      createdBy: 'system:tag-write',
+    });
+    createCurationFlag(db, {
+      targetKind: 'song',
+      targetId: 's3',
+      reason: 'the file is fine, the tracklist is wrong',
+      createdBy: 'kevin',
+    });
+    expect(listOpenCurationFlags(db)[0]!.reason).toBe('the file is fine, the tracklist is wrong');
+  });
 });
 
 describe('listOpenCurationFlags', () => {

@@ -686,6 +686,13 @@ instead of minting a second, so a retried write cannot pile up: two consecutive 
 song leave exactly one open flag. The three pre-write failures (unknown song, no music dir,
 `writeAudioTags` returning false) file nothing — a 404 is not a lost write.
 
+**Refreshing that flag does not spend a human's wording.** This is the first automated writer with
+reach into a table curators write by hand, and the refresh-instead-of-pile rule would otherwise
+replace a curator's judgement with a generated error string. So `createCurationFlag` keeps the
+existing reason when an actor named `system:*` meets an open flag a non-`system:` actor wrote —
+`isAutomatedActor`. The row still refreshes in every other direction: a `system:` actor overwrites
+its own earlier reason, and a human overwrites a machine's.
+
 A file the tracklist de-selects is still unfixable through this path; the honest error tells the
 curator that, instead of sending them to look for a tag-writing bug that is not there.
 
