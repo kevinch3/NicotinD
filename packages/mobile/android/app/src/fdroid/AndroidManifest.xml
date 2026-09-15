@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  F-Droid variant overlay (issue #1168). The `fdroid` flavor excludes the two
+  non-free Capacitor plugins via `android.includePlugins` (see ../../../../src/fdroid.ts),
+  which leaves the permissions they need declared with no code left to use them
+  — a permission an app cannot exercise is a lie to the user, and F-Droid's
+  scanner reads REQUEST_INSTALL_PACKAGES as an app that sidesteps its updates.
+
+  Only removals live here. Everything else, including the Android TV launcher
+  contract, stays in src/main/AndroidManifest.xml and is merged in.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- @nicotind/capacitor-apk-update is not in this build; F-Droid updates the app. -->
+    <uses-permission
+        android:name="android.permission.REQUEST_INSTALL_PACKAGES"
+        tools:node="remove" />
+
+    <!-- @capacitor/barcode-scanner is not in this build (Google ML Kit is
+         proprietary), so there is no camera QR pairing to ask for. Manual
+         pairing codes still work — already the only option on TV. -->
+    <uses-permission android:name="android.permission.CAMERA" tools:node="remove" />
+    <uses-feature android:name="android.hardware.camera" tools:node="remove" />
+
+</manifest>
