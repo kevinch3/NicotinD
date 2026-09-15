@@ -433,6 +433,24 @@ still there. The middle one matters more than it looks — a `waitForResponse` g
 that requires `r.ok()` never resolves on a 4xx and then times out naming neither
 the gate nor the status (`admin-users.spec.ts`'s DELETE gate, issue #835).
 
+It paid for itself on the first failure it caught. `curator-triage.spec.ts` began
+failing on master the moment this setting landed, and the kept trace named the
+cause in one line: its last action is `waiting for getByTestId('curate-progress')`
+against a round whose own snapshot already read "Round complete." **A poll
+predicate must never read a locator that the state it is polling for removes.**
+That spec's predicate checked `curate-done`, found it not yet visible because the
+apply was still in flight, then called an unbounded `progress.textContent()` — and
+`curate-progress` is deleted when the round ends, so the call auto-waited for an
+element that would never return, spending the entire poll budget inside ONE
+predicate evaluation and never re-checking `curate-done`. Bound the inner read
+(`textContent({ timeout: 500 }).catch(() => 'done')`) so the predicate can always
+come back and look again.
+
+Note what that says about the recording cost above: the overhead did not introduce
+the defect, it widened the window the defect needed. A spec that races its own
+teardown is a latent failure that any timing change — a slower runner, another
+shard, a new spec ahead of it — can surface at any time.
+
 ## The TV bundle in Chromium (the `tv` project)
 
 **Why it exists (#1136).** Three "TV" specs — `now-playing-tv.spec.ts`, `library-dpad-tv.spec.ts`,

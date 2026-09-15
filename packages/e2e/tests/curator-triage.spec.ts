@@ -49,15 +49,23 @@ test.describe('curator triage', () => {
     // while this file happened to sort first.
     const progress = page.getByTestId('curate-progress');
     const done = page.getByTestId('curate-done');
+    // `curate-progress` is REMOVED when the round ends, so reading it must be
+    // bounded: an unbounded textContent() auto-waits for a locator that will
+    // never return, spending the whole poll budget inside ONE predicate call
+    // and leaving the poll unable to re-check `done`. Proven from the retained
+    // trace of a real CI failure (#1116) — its last action is "waiting for
+    // getByTestId('curate-progress')" against an already-complete round.
+    const roundState = async () => {
+      if (await done.isVisible()) return 'done';
+      return await progress.textContent({ timeout: 500 }).catch(() => 'done');
+    };
     for (let i = 0; i < ROUND_LIMIT; i++) {
       if (!(await card.isVisible())) break;
       const before = await progress.textContent();
       await page.getByTestId('case-option').first().click();
       // The apply is async: the card only advances once it lands. Either the
       // progress counter moved on, or the round finished.
-      await expect
-        .poll(async () => ((await done.isVisible()) ? 'done' : await progress.textContent()))
-        .not.toBe(before);
+      await expect.poll(roundState).not.toBe(before);
     }
 
     await expect(page.getByTestId('curate-done')).toBeVisible();
