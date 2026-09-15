@@ -27,6 +27,7 @@ import { ServerConfigService } from '../../services/server-config.service';
 import { pickDirectory, setMusicDir, revealLogs } from '../../services/native/native-capabilities';
 import { ConfirmService } from '../../services/confirm.service';
 import { UpdateService } from '../../services/update.service';
+import { InstallPromptService } from '../../services/install-prompt.service';
 import { ToastService } from '../../services/toast.service';
 import { TranslateService } from '../../services/translate.service';
 import { TranslatePipe } from '../../pipes/translate.pipe';
@@ -97,6 +98,7 @@ export class SettingsComponent {
   private mediaControls = inject(MediaControlsService);
   private confirm = inject(ConfirmService);
   readonly update = inject(UpdateService);
+  readonly installPrompt = inject(InstallPromptService);
   private toast = inject(ToastService);
 
   readonly serverConfig = inject(ServerConfigService);

@@ -19,6 +19,7 @@ import { pickDirectory, setMusicDir, revealLogs } from '../../services/native/na
 import { ToastService } from '../../services/toast.service';
 import { UpdateService } from '../../services/update.service';
 import type { CheckUpdateOutcome } from '../../services/update.service';
+import { InstallPromptService } from '../../services/install-prompt.service';
 import BASE_CATALOG from '../../../../public/i18n/en.json';
 
 vi.mock('../../lib/platform', async (importOriginal) => {
@@ -924,5 +925,63 @@ describe('SettingsComponent (device icon mapping)', () => {
     expect(component.getDeviceIcon({ type: 'web', name: 'Android Chrome' })).toBe('smartphone');
     expect(component.getDeviceIcon({ type: 'cast', name: 'Living Room Speaker' })).toBe('speaker');
     fixture.destroy();
+  });
+});
+
+describe('SettingsComponent (PWA install offer)', () => {
+  function installStub(state: { canInstall: boolean; iosHint: boolean }) {
+    return {
+      canInstall: signal(state.canInstall),
+      showIosHint: signal(state.iosHint),
+      installing: signal(false),
+      install: vi.fn().mockResolvedValue('accepted'),
+    };
+  }
+
+  async function render(state: { canInstall: boolean; iosHint: boolean }) {
+    const stub = installStub(state);
+    const { list } = makeProviders('user');
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: [...list, { provide: InstallPromptService, useValue: stub }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    expandAllGroups(fixture);
+    const q = (id: string) =>
+      fixture.nativeElement.querySelector(`[data-testid="${id}"]`) as HTMLElement | null;
+    return { fixture, stub, q };
+  }
+
+  it('renders no offer until the browser reports the app installable', async () => {
+    const { q, fixture } = await render({ canInstall: false, iosHint: false });
+    expect(q('settings-install-app')).toBeNull();
+    expect(q('settings-install-ios')).toBeNull();
+    fixture.destroy();
+  });
+
+  it('renders the Install row once a prompt was captured, and it fires the prompt', async () => {
+    const { q, stub, fixture } = await render({ canInstall: true, iosHint: false });
+    q('settings-install-app')!.click();
+    expect(stub.install).toHaveBeenCalledTimes(1);
+    expect(q('settings-install-ios')).toBeNull();
+    fixture.destroy();
+  });
+
+  it('renders the manual instructions on iOS, where no prompt exists', async () => {
+    const { q, fixture } = await render({ canInstall: false, iosHint: true });
+    expect(q('settings-install-app')).toBeNull();
+    expect(q('settings-install-ios')).not.toBeNull();
+    fixture.destroy();
+  });
+
+  it('has catalog entries for the install keys', () => {
+    for (const key of [
+      'settings.installApp',
+      'settings.installAppHint',
+      'settings.installAppIos',
+    ]) {
+      expect(BASE_CATALOG).toHaveProperty([key]);
+    }
   });
 });

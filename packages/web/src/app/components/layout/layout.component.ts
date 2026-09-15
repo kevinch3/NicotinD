@@ -26,6 +26,7 @@ import { PlayerComponent } from '../player/player.component';
 import { NowPlayingComponent } from '../now-playing/now-playing.component';
 import { UpdateBannerComponent } from '../update-banner/update-banner.component';
 import { WelcomeBannerComponent } from '../welcome-banner/welcome-banner.component';
+import { InstallPromoBannerComponent } from '../install-promo/install-promo-banner.component';
 import { BottomNavComponent } from '../bottom-nav/bottom-nav.component';
 import { AddToPlaylistComponent } from '../add-to-playlist/add-to-playlist.component';
 import { ConfirmHostComponent } from '../confirm-host/confirm-host.component';
@@ -94,6 +95,7 @@ export function headerDisplayClass(url: string): string {
     NowPlayingComponent,
     UpdateBannerComponent,
     WelcomeBannerComponent,
+    InstallPromoBannerComponent,
     BottomNavComponent,
     TranslatePipe,
     AddToPlaylistComponent,

@@ -1483,6 +1483,25 @@ Clicking the version string in the **desktop header** (`layout.component`, `data
 - **API version**: `GET /api/system/status` `nicotind.version` is read from `package.json` at server startup (`src/main.ts` → `createApp({ version: pkg.version })` → `systemRoutes`), replacing the previous hardcoded `'0.1.0'`.
 - **GitHub Release description (second `CHANGELOG.md` consumer)**: the `release-notes` job in `.github/workflows/deploy.yml` (ungated by `changes`, `if: github.ref_type == 'tag'`) `awk`-extracts the tag's `## [<version>] …` section from `CHANGELOG.md` and sets it as the Release description via `softprops/action-gh-release` (`body_path`). It only sets `body`, so it merges with — never clobbers, and is never clobbered by — the asset-upload steps that pass no body, in any job order. Empty section (chore/refactor-only release) → a "Maintenance release" fallback so the Release page is never blank.
 
+## PWA install promotion
+
+The manifest, icons and service worker have made the web app installable for a long time, but nothing in the app ever *said* so — Chrome's own mini-infobar fired on its own 90-day schedule, and iOS Safari, which fires no `beforeinstallprompt` at all, said nothing. This is the in-app install experience from web.dev's [promote-install](https://web.dev/articles/promote-install) and [customize-install](https://web.dev/articles/customize-install), applied to this app's shape.
+
+**Capture happens before Angular exists.** `captureInstallPrompt()` (`lib/install-prompt.ts`) is called from `main.ts` ahead of `bootstrapApplication`: Chromium fires `beforeinstallprompt` once, early, and never replays it, so a listener attached from a service that is first injected later sees nothing — the same no-replay trap `SwUpdate.versionUpdates` set for #1126. The listener calls `preventDefault()` (suppressing Chrome's infobar, so the app owns *when* the prompt shows) and stashes the event; `InstallPromptService` reads the stash at construction and subscribes to later captures. Native shells never attach it — Capacitor and Electron *are* the installed app.
+
+**Two surfaces, one policy** (`installPromotionVisible`, pure and unit-tested):
+
+| Surface | What | When |
+| --- | --- | --- |
+| `InstallPromoBannerComponent` in the layout banner slot (under the welcome banner) | The one-time nudge: title, one-line value pitch, **Install** + **Not now** | Only after `beforeinstallprompt` was captured (or on iOS, where the manual instructions are the whole path); only for a signed-in user, which is the engagement signal the pattern asks for; never once installed, never inside a native shell, and never again after **Not now** on this device |
+| Settings → Account & Devices → Updates (`settings-install-app` / `settings-install-ios`) | The permanent offer, next to "Check for updates" — where a user goes looking | Same gates minus the dismissal |
+
+`install()` calls `prompt()` on the captured event and awaits `userChoice`; the event is single-use, so it is dropped whatever the answer and the browser fires a fresh one if the page stays installable. `appinstalled` (which also fires for the omnibox install button) flips `installed` and hides every offer. "Already installed" is detected at boot by `isStandaloneDisplay()` — `display-mode: standalone|fullscreen|minimal-ui` or iOS's `navigator.standalone` — so an installed app is never asked to install itself.
+
+**Dismissal is per device, not per user** (`nicotind-install-promo-dismissed` in localStorage, like the language): an install is a fact about the device. It is never re-shown on a timer; the Settings row is the way back. **iOS** is detected by UA (`isIosBrowser`, including the touch-Macintosh iPadOS UA) and gets "Share → Add to Home Screen" copy in both surfaces, with no Install button.
+
+Not done, on purpose: no prompt on the login page (the user is not signed in yet), no in-feed or snackbar repetition, and no engagement counter beyond sign-in — the app is self-hosted and every visitor is already a member. Chromium in headless Playwright never fires the event, so `pwa-install.spec.ts` fires it itself through the real listener and asserts the product side: nothing before, both surfaces after, `prompt()` called once, refusal remembered across a reload with the Settings row intact.
+
 ## PWA updates
 
 The Angular service worker (`provideServiceWorker('ngsw-worker.js')`, registered via `registerWhenStable:30000`) ships in every production browser build. It re-checks `/ngsw.json` **only on a navigation request** (`ngsw-worker.js`, `handleFetch`: `if (event.request.mode === "navigate" …) idle.schedule("check-updates-on-navigation", …)`). A tab left open all weekend therefore never re-checks, and an **installed home-screen app never re-checks at all** — iOS resumes the web view rather than navigating, and the SPA router handles every route change in-process.
