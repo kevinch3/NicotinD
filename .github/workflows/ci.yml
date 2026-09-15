@@ -138,6 +138,13 @@ jobs:
       - name: Check every name search goes through the shared folded matcher
         run: bun run check:search-matching
 
+      # `bun:sqlite` is synchronous, so a quadratic list query is an outage, not
+      # a slow page (#1055 held the event loop ~3 min) and nothing in this
+      # process can pre-empt it. This plans every list route x every filter
+      # dimension and fails the correlated shape before it ships.
+      - name: Check every library list query evaluates the song predicate once
+        run: bun run check:library-queries
+
       # Every feed used to hand-roll `hidden = 0 AND landed_at IS NOT NULL`, and
       # radio forgot the album's hidden flag. "May this song be recommended" now
       # has one definition; this fails a feed that answers it its own way.

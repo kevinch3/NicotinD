@@ -142,8 +142,27 @@ Two consequences worth holding onto:
   screen) *and* "filtering songs is slow" (songs were fine at 82 ms — they were queued).
   See [Detecting the next one](#detecting-the-next-one).
 
-`db.perf.test.ts` guards the shape via `EXPLAIN QUERY PLAN`, not wall-clock, so it cannot
-flake on a loaded box.
+`check:library-queries` guards the shape via `EXPLAIN QUERY PLAN`, not wall-clock, so it
+cannot flake on a loaded box — see [Preventing the next one](#preventing-the-next-one).
+
+### Row ceilings
+
+Every list route clamps its `?size` through `clampQueryInt`, so the row count a request can
+ask for is bounded independently of the plan. `/artists` was the exception: no `LIMIT`, no
+pagination, blast radius bounded only by library size (#1058). It now clamps to
+`ARTISTS_PAGE_MAX` (5,000) and takes `?offset`.
+
+The default is the ceiling, not a page size, because the artists grid fetches the list
+unpaginated (`LibraryApiService.getArtists`) and a smaller default would silently drop
+artists from the grid — that contract needs a UI change first, not a quieter server. Prod
+has 3,560 visible artists, so today the cap never bites.
+
+When it does bite, the route says so: it asks SQLite for one row past the page and, if that
+row exists, sets **`X-Truncated: true`** (exposed through `nativeAppCors` so the native
+shell can read it too). A header rather than a body field because the body must stay a bare
+JSON array — every caller is typed on it, and changing the shape only in the truncated case
+would break exactly the request that hit the limit. Asking for `size + 1` is also what
+keeps a page that happens to be exactly `size` long from claiming to be truncated.
 
 ### Detecting the next one
 
@@ -159,13 +178,37 @@ legitimately long *async* response (a stream) never stops timers from running an
 reported, while a synchronous `.all()` is reported by definition. The in-flight label
 carries query param *names* only — a filter value is library content, not a log line.
 
-**This detects; it does not pre-empt, because in this process nothing can.** `bun:sqlite`
-exposes neither `sqlite3_interrupt` nor a progress handler. The obvious workaround — stream
-with `.iterate()` and abandon the query past a deadline — was measured and does not work
-here: the list queries end in `USE TEMP B-TREE FOR ORDER BY`, so on a 3,000-artist fixture
-the first row arrives at 2,935 ms against 2,928 ms for the whole `.all()`. There is no
-"between rows" to check a deadline in. Real pre-emption needs the query off this loop
-entirely (a worker connection), which is still open on #1058.
+### Why nothing here pre-empts
+
+**This detects; it does not pre-empt, because in this process nothing can.** Three
+candidates were considered for #1058 and two are dead on this runtime. Re-probed on
+**Bun 1.3.11, 2026-09-15**, against a real `Database`/`Statement` pair:
+
+| candidate | verdict |
+| --- | --- |
+| `db.interrupt` / `db.setProgressHandler` (also `stmt.*`) | **`undefined`** — `bun:sqlite` exposes neither `sqlite3_interrupt` nor a progress handler, so a per-request statement budget cannot be built at all |
+| `.iterate()` with a deadline between rows | exists (`stmt.iterate` and `stmt[Symbol.iterator]` are both functions) but **inert for these queries** |
+| the query on a worker connection | the only real pre-emption, and **out of scope** — see below |
+
+The `.iterate()` rejection is about the plan, not the API. Every list query ends in
+`USE TEMP B-TREE FOR ORDER BY`: SQLite materialises and sorts the whole result before it
+can yield row one, so on a 3,000-artist fixture the first row arrives at **2,935 ms**
+against **2,928 ms** for the entire `.all()`. There is no "between rows" to check a deadline
+in. Measure the plan before building on a streaming primitive.
+
+A worker connection is the only thing that would actually interrupt a running query, and it
+is deliberately **not built**: it puts a thread round-trip on *every* query, including the
+fast ones, and that cost has not been measured (baseline the p50 of `/api/library/songs`
+first). #1058 stays open for that measurement.
+
+### Preventing the next one
+
+Since pre-emption is impossible, the remaining lever is the shape — asserted before it
+ships by **`check:library-queries`** (`scripts/check-library-queries.ts`), which plans every
+list route through the real builders across every filter dimension and fails a song scan
+that is not evaluated once. It replaces the two hand-written cases that lived in
+`db.perf.test.ts`, and it fails on a list route or a filter param it does not model, so the
+denominator cannot shrink quietly. → [quality-gates.md](quality-gates.md)
 
 ## Web UI
 

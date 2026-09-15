@@ -86,7 +86,8 @@ table cannot classify) · `check:route-auth` (an `/api` group mounted with no au
 advisory that both ships and matches the resolved version) · `check:shared-helpers` (a shared helper
 re-implemented locally) · `check:library-walkers` (a `musicDir` walker that skips the reserved-path
 predicate) · `check:search-matching` (a name search done in raw SQL, bypassing the shared
-folded matcher) · `check:feed-eligibility` (a recommendation feed selecting songs without the
+folded matcher) · `check:library-queries` (a library list query whose plan re-derives the song
+predicate per entity row) · `check:feed-eligibility` (a recommendation feed selecting songs without the
 shared eligibility predicate) · `check:json` (duplicate keys) · `check:shipped-issues` (report, not a gate)
 · `check:isolated-specs` (slow, not a gate). → [quality-gates.md](docs/quality-gates.md)
 

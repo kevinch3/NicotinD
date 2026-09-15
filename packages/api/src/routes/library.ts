@@ -271,6 +271,9 @@ async function fetchAndStoreArtistInfo(
 const GRID_CLASSIFICATION_SQL = `classification = 'album'`;
 const SINGLE_EP_CLASSIFICATION_SQL = `classification IN ('single','ep')`;
 
+/** Row ceiling for the artists grid, which its caller reads unpaginated (#1058). */
+export const ARTISTS_PAGE_MAX = 5000;
+
 /**
  * Returns a Set of "artist album" group keys for every album that is actively
  * downloading: active `album_jobs` rows, unioned with `extraKeys` derived from
@@ -630,6 +633,9 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const filter = parseLibraryFilter(c.req.queries());
     const frag = artistFilterWheres(filter);
     const filterClause = frag.wheres.length ? ` AND ${frag.wheres.join(' AND ')}` : '';
+    const size = clampQueryInt(c, 'size', { fallback: ARTISTS_PAGE_MAX, max: ARTISTS_PAGE_MAX });
+    const offsetRaw = Number(c.req.query('offset') ?? 0);
+    const offset = Number.isFinite(offsetRaw) ? Math.max(Math.trunc(offsetRaw), 0) : 0;
     const rows = db
       .query<ArtistRow, (string | number)[]>(
         // split_compound = 0: a compound that split ("Charly García y Luis
@@ -640,10 +646,13 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
         `SELECT id, name, album_count, cover_art, starred
          FROM library_artists
          WHERE hidden = 0 AND split_compound = 0 AND fragment_of IS NULL AND name != 'Various Artists' COLLATE NOCASE${filterClause}
-         ORDER BY name COLLATE NOCASE ASC`,
+         ORDER BY name COLLATE NOCASE ASC LIMIT ? OFFSET ?`,
       )
-      .all(...frag.params);
-    return c.json(rows.map(rowToArtist));
+      // One row past the page is what proves there is a next one, so the cap
+      // announces itself instead of silently dropping artists (#1058).
+      .all(...frag.params, size + 1, offset);
+    if (rows.length > size) c.header('X-Truncated', 'true');
+    return c.json(rows.slice(0, size).map(rowToArtist));
   });
 
   // Resolve an artist *name* to its canonical id so the player/search can link a

@@ -13,7 +13,7 @@ export const NATIVE_APP_ORIGINS = [
 
 const ALLOW_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'];
 const ALLOW_HEADERS = ['Authorization', 'Content-Type', 'Range', 'Accept'];
-const EXPOSE_HEADERS = ['Content-Range', 'Accept-Ranges', 'Content-Length'];
+const EXPOSE_HEADERS = ['Content-Range', 'Accept-Ranges', 'Content-Length', 'X-Truncated'];
 const MAX_AGE_SECONDS = 86400;
 
 /**
