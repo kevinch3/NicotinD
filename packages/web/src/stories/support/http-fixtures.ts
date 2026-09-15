@@ -12,11 +12,19 @@
 import type { HttpEvent, HttpInterceptorFn, HttpRequest } from '@angular/common/http';
 import { HttpErrorResponse, HttpResponse } from '@angular/common/http';
 import { type Observable, of, throwError } from 'rxjs';
-import { demoGenreSlices, demoSongs, DEMO_ARTIST_ID, demoProvenance } from './fixtures';
+import {
+  demoGenreSlices,
+  demoSongs,
+  DEMO_ARTIST_ID,
+  demoProvenance,
+  demoLyrics,
+  demoWaveform,
+} from './fixtures';
 
 /** URL suffix → response body. First match wins, so put specific routes first. */
 const ROUTES: Array<[RegExp, () => unknown]> = [
   [/\/api\/auth\/me$/, () => ({ role: 'admin', username: 'storybook', welcomeDismissed: true })],
+  [/\/api\/setup\/status$/, () => ({ needsSetup: false })],
   [/\/api\/library\/liked-ids$/, () => ({ ids: [demoSongs[0].id] })],
   [
     /\/api\/library\/artists\/[^/]+\/genre-distribution$/,
@@ -37,13 +45,21 @@ const ROUTES: Array<[RegExp, () => unknown]> = [
   // the track-info-sheet stories first failed. Returning the right *shape* per
   // route is the fixture's whole job.
   [/\/api\/library\/songs\/[^/]+\/provenance$/, () => demoProvenance],
-  [/\/api\/library\/songs\/[^/]+\/lyrics$/, () => null],
+  [/\/api\/library\/songs\/[^/]+\/lyrics$/, () => demoLyrics],
   [/\/api\/library\/identify\/available$/, () => ({ available: true })],
   [/\/api\/library\/songs/, () => ({ songs: demoSongs, total: demoSongs.length })],
+  [/\/api\/peaks\/[^/]+$/, () => demoWaveform],
   [/\/api\/search/, () => ({ songs: demoSongs, albums: [], artists: [] })],
   [/\/api\/history\/plays/, () => ({ accepted: 0, collection: 'on' })],
   [/\/api\/history\/recent/, () => ({ songs: demoSongs.slice(0, 4) })],
   [/\/api\/playlists$/, () => ({ playlists: [] })],
+  // The app shell's own hydration, all of it started by `LayoutComponent.ngOnInit`.
+  // Empty is the honest default for a catalog — no exclusions, nothing downloading —
+  // and it is also what overwrites `StoryState`'s badge seeds in any story whose
+  // component starts the transfer poll (see `layout.stories.ts`).
+  [/\/api\/recommendations\/excluded$/, () => ({ excluded: [] })],
+  [/\/api\/downloads\/jobs$/, () => []],
+  [/\/api\/acquire\/jobs$/, () => []],
 ];
 
 export const fixtureHttpInterceptor: HttpInterceptorFn = (

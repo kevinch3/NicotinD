@@ -1,21 +1,27 @@
+import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { NowPlayingTransportComponent } from './now-playing-transport.component';
 import { PlayerService } from '../../../services/player.service';
 import { setInputValue } from '../../../../testing/signal-input';
 import { RecommendationsApiService } from '../../../services/api/recommendations-api.service';
+import BASE_CATALOG from '../../../../../public/i18n/en.json';
 
 describe('NowPlayingTransportComponent', () => {
   let toggleShuffle: ReturnType<typeof vi.fn>;
+  // A real signal, not a plain getter: the template reads it, so only a signal
+  // write actually re-renders the label under this component's change detection.
+  let repeatMode: WritableSignal<'off' | 'all' | 'one'>;
 
   beforeEach(() => {
     toggleShuffle = vi.fn();
+    repeatMode = signal('off');
     TestBed.configureTestingModule({
       providers: [
         {
           provide: PlayerService,
           useValue: {
             shuffle: () => false,
-            repeat: () => 'off',
+            repeat: repeatMode,
             radio: () => false,
             radioFilter: () => null,
             radioStrategy: () => 'balanced',
@@ -107,6 +113,46 @@ describe('NowPlayingTransportComponent', () => {
     // shuffle, prev, play/pause, next, repeat
     expect(navItems.length).toBe(5);
     expect(group.contains(navItems[0])).toBe(true);
+  });
+
+  // Every one of these is icon-only, so an absent name announces nothing at all.
+  // Repeat shipped that way — `aria-pressed` with no label — until the Storybook
+  // catalog's axe pass reached this transport through the Now Playing stories (#470).
+  it('gives every icon-only transport control an accessible name', () => {
+    const fixture = TestBed.createComponent(NowPlayingTransportComponent);
+    fixture.detectChanges();
+    const group = fixture.nativeElement.querySelector('[appTvNavGroup]');
+    const buttons = Array.from<HTMLElement>(group.querySelectorAll('[appTvNavItem]'));
+    expect(buttons.length).toBe(5);
+    for (const button of buttons) {
+      expect(button.getAttribute('aria-label')).toBeTruthy();
+    }
+  });
+
+  // The name has to follow the mode, not just exist: a static label on a
+  // three-state control is a wrong answer rather than a missing one.
+  it('names the repeat control after the mode it is in', () => {
+    const fixture = TestBed.createComponent(NowPlayingTransportComponent);
+    fixture.detectChanges();
+    const label = (): string | null =>
+      fixture.nativeElement
+        .querySelector('[data-testid="now-playing-repeat"]')
+        .getAttribute('aria-label');
+    // No catalog is loaded in a unit test, so `t` falls through to the key —
+    // which is exactly what identifies the branch taken.
+    expect(label()).toBe('nowPlaying.repeatOff');
+    repeatMode.set('all');
+    fixture.detectChanges();
+    expect(label()).toBe('nowPlaying.repeatAll');
+    repeatMode.set('one');
+    fixture.detectChanges();
+    expect(label()).toBe('nowPlaying.repeatOne');
+    // And each of those keys is really in the base catalog. `t` falls through to
+    // the raw key, so a typo would announce "nowPlaying.repeatOne" to a screen
+    // reader and still satisfy every assertion above.
+    expect(BASE_CATALOG).toHaveProperty(['nowPlaying.repeatOff']);
+    expect(BASE_CATALOG).toHaveProperty(['nowPlaying.repeatAll']);
+    expect(BASE_CATALOG).toHaveProperty(['nowPlaying.repeatOne']);
   });
 
   it('delegates repeat and radio toggles to PlayerService directly', () => {

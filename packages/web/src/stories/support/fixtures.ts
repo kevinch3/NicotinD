@@ -6,6 +6,7 @@
  * the real interface — never `as any` — so a story stops compiling when a type changes,
  * which is the point of having stories in `typecheck`.
  */
+import type { LyricsDto, WaveformData } from '@nicotind/core';
 import type { Track } from '../../app/services/player.service';
 import type { ArtistCredit, ProvenanceRecord, Song } from '../../app/services/api/api-types';
 import type { DownloadItem } from '../../app/lib/download-groups';
@@ -13,6 +14,13 @@ import type { GenreSlice } from '../../app/components/genre-radar/genre-radar.co
 
 export const DEMO_ARTIST_ID = 'artist-nocturnal-signal';
 export const DEMO_ALBUM_ID = 'album-static-bloom';
+
+/**
+ * The demo track's length. Exported because the silent stream the player
+ * stories hand the `<audio>` element has to be exactly this long — the player
+ * rejects a browser duration far from the API-known one. See `story-audio.ts`.
+ */
+export const DEMO_TRACK_SECONDS = 214;
 
 export const demoArtistCredits: ArtistCredit[] = [
   { id: DEMO_ARTIST_ID, name: 'Nocturnal Signal', role: 'primary' },
@@ -27,7 +35,7 @@ export const demoTrack: Track = {
   artists: demoArtistCredits,
   album: 'Static Bloom',
   albumId: DEMO_ALBUM_ID,
-  duration: 214,
+  duration: DEMO_TRACK_SECONDS,
   bitRate: 192,
   genre: 'Dream Pop',
   bpm: 104,
@@ -60,7 +68,7 @@ export const demoSong: Song = {
   artists: demoArtistCredits,
   album: 'Static Bloom',
   albumId: DEMO_ALBUM_ID,
-  duration: 214,
+  duration: DEMO_TRACK_SECONDS,
   track: 1,
   path: '/music/Nocturnal Signal/Static Bloom/01 - Opening Static.opus',
   bitRate: 192,
@@ -113,6 +121,63 @@ export const demoDownloadItem: DownloadItem = {
     status: i < 3 ? 'done' : i === 3 ? 'downloading' : 'pending',
   })),
 };
+
+/**
+ * Synced lyrics for the demo track, so the Now Playing Lyrics tab has a line to
+ * highlight rather than its empty state. The timestamps are spread over the
+ * whole track: wherever a story parks playback, one line is the active one.
+ */
+export const demoLyrics: LyricsDto = {
+  plain: 'Static on the opening band\nA held breath, then the room lets go',
+  synced: [
+    '[00:12.00]Static on the opening band',
+    '[00:26.40]A held breath, then the room lets go',
+    '[00:41.10]Every light in the hall goes soft',
+    '[01:04.00]We are only here for the sound',
+    '[01:38.50]Hold it, hold it, let it break',
+    '[02:22.00]And the last note stays in the wall',
+  ].join('\n'),
+  source: 'storybook',
+  customized: false,
+  updatedAt: Date.parse('2026-02-14T09:12:00.000Z'),
+};
+
+/**
+ * Waveform artifact for the demo track (`GET /api/peaks/:id`), which is what
+ * turns the Now Playing seek bar into the envelope strip rather than its plain
+ * fallback.
+ *
+ * Generated, not written out: `peaks` is 200 interleaved min/max pairs and
+ * `bands` is one six-level row every half second, which as a literal would be
+ * ~2,700 numbers of noise in a fixture file.
+ */
+function buildDemoWaveform(): WaveformData {
+  const round = (n: number): number => Math.round(n * 1000) / 1000;
+  // Three swells with a fade in and out — enough shape that a strip drawing the
+  // envelope upside down or ignoring `min` is visible at a glance.
+  const levelAt = (t: number): number =>
+    0.18 + 0.72 * Math.abs(Math.sin(t * Math.PI * 3)) * Math.min(1, 4 * t * (1 - t) + 0.2);
+
+  const pairs = 200;
+  const peaks: number[] = [];
+  for (let i = 0; i < pairs; i++) {
+    const level = levelAt(i / (pairs - 1));
+    peaks.push(round(-level), round(level));
+  }
+
+  const frameRate = 2;
+  const frames = DEMO_TRACK_SECONDS * frameRate;
+  const bands: number[][] = [];
+  for (let f = 0; f < frames; f++) {
+    const level = levelAt(f / (frames - 1));
+    // Bass-heavy, as most of this catalog's fixture material claims to be.
+    bands.push([1, 0.95, 0.8, 0.65, 0.45, 0.3].map((share) => round(level * share)));
+  }
+
+  return { version: 1, duration: DEMO_TRACK_SECONDS, peaks, frameRate, bands };
+}
+
+export const demoWaveform: WaveformData = buildDemoWaveform();
 
 /**
  * Processing history for the track-info sheet. Two entries so the timeline

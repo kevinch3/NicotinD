@@ -23,24 +23,32 @@ were the slowest half of it — see [deployment.md](deployment.md) "CI coverage"
 
 ## What is in it
 
-36 components, split by how much of the app they need in order to render:
+46 components, split by how much of the app they need in order to render:
 
-- **Presentational (20)** — zero injected services: `artist-links`, `changelog-modal`,
-  `confirm-dialog`, `desktop-window-controls`, `disk-pill`, `download-item`,
-  `genre-distribution-strip`, `genre-radar`, `icon`, `library-filter-panel`,
-  `metric-pill`, `password-field`, `pipeline-stage-badge`, `seek-bar`, `selection-bar`,
-  `settings-group`, `settings-group-header`, `skeleton`, `source-chip`, `track-stats-bars`.
-- **Light-DI (16)** — one to three injected services, rendered against fixtures:
+- **Presentational (20)** — zero injected services: `album-tile`, `artist-links`,
+  `changelog-modal`, `confirm-dialog`, `desktop-window-controls`, `disk-pill`,
+  `download-item`, `genre-distribution-strip`, `genre-radar`, `icon`,
+  `library-filter-panel`, `metric-pill`, `password-field`, `seek-bar`, `selection-bar`,
+  `settings-group`, `settings-group-header`, `skeleton`, `source-chip`,
+  `track-stats-bars`.
+- **Light-DI (18)** — one to three injected services, rendered against fixtures:
   `add-to-playlist`, `artist-genre-modal`, `artist-identity-modal`, `artist-info`,
   `confirm-host`, `cover-art`, `desktop-title-bar-overlay`, `device-switcher`,
-  `menu-panel`, `recently-played`, `song-picker`, `toast-outlet`, `track-row`,
-  `tv-shell`, `update-banner`, `welcome-banner`.
+  `menu-panel`, `pipeline-stage-badge`, `playing-elsewhere`, `recently-played`,
+  `song-picker`, `toast-outlet`, `track-row`, `tv-shell`, `update-banner`,
+  `welcome-banner`.
+- **Compositions (8)** — four to fourteen injected services: `album-hunt-modal`,
+  `artist-image-menu`, `bottom-nav`, `folder-browser`, `layout`, `now-playing`,
+  `player`, `track-info-sheet`. App surfaces rather than shared primitives. The
+  app-shell trio at the end of that list is what the two element-level transports
+  below exist for.
 
-**Not in it (10):** `album-hunt-modal`, `artist-image-menu`, `bottom-nav`,
-`folder-browser`, `layout`, `metadata-fix-modal`, `now-playing`,
-`player`, `track-info-sheet`. These inject 5–14 services (`layout` injects
-14). They are compositions of the app, not shared primitives, and storying them means
-reconstructing most of the service graph. See the deferred-work issues below.
+**Not in it (13):** `artist-origin`, `entity-link`, `import-drop-card`, `keep-vibe`,
+`metadata-fix-modal`, `report-track-dialog`, `report-track-host`, `resource-picker`,
+`taste-breakers`, `tastemakers`, `track-info-host`, `tv-device-picker`, `vibe-tile`.
+`metadata-fix-modal` did have stories; they were deleted with the review hold
+([#981](https://github.com/kevinch3/NicotinD/issues/981)), which is why it is still
+named in the interaction and a11y notes below.
 
 ## Adding a component
 
@@ -76,6 +84,8 @@ MDX is reserved for what has no component to attach to:
 - `http-fixtures.ts` — an `HttpInterceptorFn` answering `/api` from the fixtures.
   Unmatched routes return 404 rather than passing through, so a story can never reach a
   real network.
+- `story-audio.ts` — the two `<audio>` resources, for the one transport an interceptor
+  cannot see (below).
 - `story-providers.ts` — `storyProviders(state?)`.
 
 **There are no fake service classes, deliberately.** Every service the light-DI
@@ -83,6 +93,43 @@ components inject turned out to be a plain signal holder whose only outside depe
 `HttpClient`. So stories run the *real* services and fake only the transport plus the
 starting signal state. A fake class is a second implementation to keep in sync, and it
 can stay green while the real service is broken — which would make the catalog fiction.
+
+### The transports `HttpClient` does not carry
+
+The app shell has two, and neither goes through an interceptor. `storyProviders` covers
+both with a subclass that overrides exactly **one method** — every other line of both
+services is the real one, so the rule above holds:
+
+- **The `<audio>` element's own resource.** `ServerConfigService.streamUrl()` is read by
+  the element, not by `HttpClient`, so without an override the player fetches
+  `/api/stream/:id` from the Storybook server. Measured with the override removed: the
+  element lands on `MEDIA_ERR_SRC_NOT_SUPPORTED`, the dead-stream recovery reloads it
+  three times and the bar ends up **paused at 0:00** — a "playing" story documenting a
+  failure. The replacement is real, decodable bytes: 8-bit 8 kHz mono PCM silence as a
+  blob URL, built once (~1.7 MB). Two details are load-bearing. The sample rate: 8 kHz is
+  the floor Chromium's WAV decoder accepts, and 1 kHz is rejected outright. And the
+  length: it must match the fixture track's API-known duration, because the player
+  refuses a browser duration far from it (`browserDurationIsAcceptable`) and treats an
+  early `ended` as a truncated stream (`isFalseEnded`) — a one-second stub puts every
+  playing story into false-ended recovery a second after it mounts.
+- **The `EventSource`.** `LibraryEventsService.start()` opens `/api/library/events` from
+  `LayoutComponent.ngOnInit`, so a layout story would send one request to the Storybook
+  server. `StoryState.liveEvents` (default off) makes `start()` a no-op. Measured, not
+  assumed: a 404 is *fatal* to an `EventSource` — a non-2xx response fails the connection
+  for good — so the cost of leaving it on is one request and one console error, not the
+  retry loop it looks like it should be.
+
+**A buffering story needs a stalled transport, not a seeded flag.** `audioTransport:
+'stalled'` hands the element a `MediaSource` with nothing appended: it attaches, fires
+`waiting`, and sits at `HAVE_NOTHING` with no `error` and no `canplay`. Seeding
+`buffering` alone cannot hold the state — the component clears it the moment the element
+says it can play. Measured on the same story: with the stalled transport, one spinner and
+`readyState 0`; without it, **zero spinners** and playback at 1.8 s, i.e. a second copy of
+the Playing story. Left open for 20 s it reproduces the real `STREAM_STALL_TIMEOUT_MS`
+recovery, which is the honest end of a dead stream.
+
+Neither is a fake of the player: the component runs its own load effects, media events,
+duration gate and recovery against these, and only the bytes are ours.
 
 `storyProviders` also supplies two things every story needs:
 
@@ -136,6 +183,19 @@ thing worth testing.
 Neither service polls until `startPolling()` is called, so a story that injects them stays
 inert: no timer to stop, no request to intercept.
 
+**A seed only survives a component that does not re-fetch it.** `LayoutComponent.ngOnInit`
+starts the transfer poll, which overwrites both job signals with the fixture's (empty)
+feeds within a tick — so the badge has no `layout` story, and the axis stays on
+`bottom-nav`, which polls nothing. Check what a component hydrates before seeding state
+for it.
+
+The app-shell trio adds four more seeds: `restoredTime` (parks playback through the
+player's own session-restore field, so the seek bar and elapsed time are not both zero),
+`nowPlayingOpen` (the sheet is never unmounted, only translated below the viewport, so a
+story that leaves it closed renders off-canvas and still passes the render gate), `offline`
+(writes `NetworkStatusService.online`, which is what `SetupService.isOffline()` folds in —
+no failed request needed to raise the shell's banner), and `audioTransport` (above).
+
 `artistImageSources` seeds `ArtistImageSourcesService.sources`, which gates "Fetch
 automatically" (issue #422): `null` is the pre-load optimistic state and `[]` means no
 provider can resolve a portrait, so the control is disabled rather than offered and failing.
@@ -188,7 +248,13 @@ stepping fixture; none of the stories written so far do.
 The same wrapper pattern covers **component-internal state**: `metadata-fix-modal`'s
 `identifyFailures` is populated by the identify call's response, not by a service, so its
 stories reach the component through a `viewChild` and set it directly — showing the
-*result* without performing the call.
+*result* without performing the call. `now-playing` is the second case: its queue/lyrics
+`activePanel` is restored from per-device storage rather than an input, so the probe
+writes the **signal** and not `setActivePanel()`, which persists — one story's tab would
+otherwise be the restored default for every story after it, for the life of the browser
+profile. That probe also mounts `<app-player />`, because the sheet renders position,
+length and the spinner out of `PlayerService` and the `<audio>` engine that writes them
+lives in the player, exactly as the shell mounts the two together.
 
 Covered: `TvNavGroupDirective`/`TvNavItemDirective` (grid + vertical axes) and
 `BottomChromeSafeDirective`. The `t` pipe is storied on the Internationalization page,
@@ -203,6 +269,13 @@ documenting nothing. With the simulated bar the guarded panel reserves 72px.
 focus *wiring* — that the roving tabindex moves and that exactly one item is tabbable —
 not real D-pad behaviour. That gap is exactly what hid issue #436; the only place the real
 behaviour is exercised is `bun run e2e:tv` against the emulator.
+
+The TV global also does not reach every fork. It stamps `html.tv-build`, which is what
+`isTvUi()` reads — so it really does switch `now-playing` to the 10-foot sheet, but it
+cannot collapse the **player**, whose fork is `isTvBuild()`, a build-time flag (the
+distinction that bit `app.routes.ts`, see [tv-ux.md](tv-ux.md)). The player bar is
+therefore always the phone/desktop chrome in Storybook; the headless-on-TV case, where
+only its `<audio>` engine survives, has no catalog surface.
 
 ## Interaction tests (play functions)
 
@@ -369,6 +442,22 @@ because a gate that starts red gets disabled rather than fixed.
 | `color-contrast` | serious | Fixed — 241 nodes → 0 ([#481](https://github.com/kevinch3/NicotinD/issues/481)) |
 | `link-in-text-block` | serious | Fixed — changelog commit links now underlined ([#482](https://github.com/kevinch3/NicotinD/issues/482)) |
 
+### What the app-shell trio added, and what it changed
+
+Storying `layout` / `player` / `now-playing` (#470) took the gate from 0 to **13 nodes on
+its first run**, both of them app defects rather than story artifacts — the same pattern
+`metadata-fix-modal` set, and the reason the response is to fix the component:
+
+| Rule | Impact | Nodes | Outcome |
+| --- | --- | --- | --- |
+| `button-name` | critical | 9 | Fixed — the Now Playing **repeat** control had `aria-pressed` and no label, so it announced nothing at all. Its shuffle neighbour and the mini-player's own repeat button both had one; this is the button the earlier pass missed. Now an i18n label that follows the mode, with a unit test on both the presence and the mode it names |
+| `color-contrast` | serious | 4 | Fixed — the header's version button was `text-theme-muted/50`, and halving the opacity of a token that was raised to *just* pass puts it back under. Dropped the `/50` |
+
+Neither is reachable from a primitive's story: the repeat button only renders inside the
+Now Playing transport, and the version button only inside the shell header. That is the
+argument for storying compositions at all — 46 stories of primitives had been over these
+two for months.
+
 ### Keeping it at zero: the skeleton's contract
 
 `SkeletonComponent` was the first component added after the gate went green, and it
@@ -452,7 +541,7 @@ Tracked under the `storybook` label.
 
 | Issue | Work |
 | --- | --- |
-| [#470](https://github.com/kevinch3/NicotinD/issues/470) | Story the player / now-playing / layout shell trio |
+| ~~[#470](https://github.com/kevinch3/NicotinD/issues/470)~~ | ✅ The player / now-playing / layout shell trio storied. Its listed blockers were mostly not: `PlaybackWsService` opens nothing until an explicit `initialize()`, and the session state was already seedable. The two real ones were the non-`HttpClient` transports — see above |
 | ~~[#471](https://github.com/kevinch3/NicotinD/issues/471)~~ | ✅ Acquisition modals storied. Its time-stepping-fixture prerequisite proved unnecessary — see above |
 | ~~[#472](https://github.com/kevinch3/NicotinD/issues/472)~~ | ✅ Review surfaces storied (the inbox itself was later removed with instant landing). Its identify-failure criterion was misattributed — those chips live in `metadata-fix-modal` (#471), not `review-inbox` |
 | [#473](https://github.com/kevinch3/NicotinD/issues/473) | Visual regression on top of the stories |
