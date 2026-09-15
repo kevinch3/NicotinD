@@ -63,27 +63,56 @@ export function transcodeContentType(format: TranscodeFmt): string {
 }
 
 /**
- * Karaoke / vocal-mute filter: center-channel cancellation. Both output
- * channels become the same (L−R)/2 difference, so anything mixed dead-center
- * (typically the lead vocal) cancels while stereo-panned instruments survive.
- * Deterministic and dependency-free — the "basic" mode that ML separation
- * (issue #603) builds on; imperfect (reverb/backing vocals leak, and the kick
- * and bass go with the vocal).
- *
- * why identical channels: the original `c0=c0-c1|c1=c1-c0` pair was perfectly
- * anti-phase, so every mono downmix (phone speaker, single earbud, mono TV out)
- * summed to digital silence (issue #602). why 0.5: L−R peaks above 0 dBFS on
- * most real mixes (+0.7 to +5.2 dBFS on 6 of 7 prod tracks measured), which the
- * encoder hard-clips; halving keeps every one of them under full scale.
+ * How much of the mid (center) channel survives inside the vocal band. Must
+ * stay > 0: at 0 the two output channels are exactly anti-phase in-band and
+ * every mono downmix collapses to silence again (issue #602).
  */
-const VOCAL_REMOVAL_FILTER = 'pan=stereo|c0=0.5*c0-0.5*c1|c1=0.5*c0-0.5*c1';
+export const MID_RESIDUAL = 0.2;
+
+/** Band the mid attenuation is confined to; outside it the original passes through. */
+export const VOCAL_BAND_HZ: readonly [number, number] = [150, 8000];
+
+// pan coefficients for `L' = a·M + S` / `R' = a·M − S`, from the one constant above.
+const midKeep = ((1 + MID_RESIDUAL) / 2).toFixed(3);
+const midDrop = ((1 - MID_RESIDUAL) / 2).toFixed(3);
+
+/**
+ * Karaoke / vocal-mute filter: band-limited mid/side center attenuation.
+ * Deterministic and dependency-free — the only mode there is since the ML
+ * separator was removed (issues #603 / #1024); imperfect (reverb and backing
+ * vocals leak, and a centered instrument is attenuated with the voice).
+ *
+ * `M = (L+R)/2` is whatever sits dead-center (typically the lead vocal) and
+ * `S = (L−R)/2` the stereo image. Inside the vocal band the mid is attenuated
+ * to {@link MID_RESIDUAL} and a real stereo pair is rebuilt (`L' = a·M + S`,
+ * `R' = a·M − S`); the bands outside it pass through untouched.
+ *
+ * why band-limited: the full-band predecessor summed L−R into both channels and
+ * took 9.35 dB of sub-bass — the bass and kick, which have nothing to do with
+ * the voice — with it (issue #1042). why normalize=0: `amix` otherwise divides
+ * the recombined bands by 3. why no output trim despite the crossover raising
+ * peaks: measured, the over-full-scale sample count stays at or below the
+ * source's own. → docs/vocal-isolation-spike.md §3.1
+ */
+export const VOCAL_REMOVAL_FILTER =
+  `acrossover=split=${VOCAL_BAND_HZ[0]} ${VOCAL_BAND_HZ[1]}[low][mid][high];` +
+  `[mid]pan=stereo|c0=${midKeep}*c0-${midDrop}*c1|c1=-${midDrop}*c0+${midKeep}*c1[midx];` +
+  `[low][midx][high]amix=inputs=3:normalize=0`;
+
+/**
+ * Recipe version folded into the `novox` cache key. A cached rendition is the
+ * *output* of the filter above, so changing the filter without bumping this
+ * serves the old recipe's audio forever. Pinned to the recipe's own digest by
+ * `transcode-cache.test.ts`. v1 was the full-band mono difference.
+ */
+export const NOVOX_FILTER_VERSION = 2;
 
 /**
  * Transcode the whole file to `outPath` and return only once it's complete.
  * Writes to a sibling temp file then atomically renames, so a reader never sees
  * a half-written cache entry. The on-disk file enables HTTP **range** support,
  * which is what makes seeking work on transcoded streams. Pass `vocalRemoval`
- * to apply the center-channel cancellation filter (karaoke / `?vocals=off`).
+ * to apply the {@link VOCAL_REMOVAL_FILTER} vocal mute (karaoke / `?vocals=off`).
  *
  * Integrity checks beyond `exit 0`:
  *   - `-xerror` and `-fflags +discardcorrupt` so ffmpeg fails fast on a

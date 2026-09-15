@@ -138,17 +138,84 @@ compared against the exact ffmpeg filter we ship today.
 **Per-channel band energy retained vs. the original mix** (0 dB = untouched; the
 instrumental _should_ only lose the vocal):
 
-| band                 | BS-RoFormer  | center-cancel (shipped) |
-| -------------------- | ------------ | ----------------------- |
-| sub/bass 20–250 Hz   | **−1.60 dB** | **−9.35 dB**            |
-| low-mid 250 Hz–2 kHz | −3.21 dB     | −9.78 dB                |
-| presence 2–6 kHz     | −1.32 dB     | −5.97 dB                |
-| air 6–16 kHz         | −4.61 dB     | −9.20 dB                |
+| band                 | BS-RoFormer  | center-cancel (v1) |
+| -------------------- | ------------ | ------------------ |
+| sub/bass 20–250 Hz   | **−1.60 dB** | **−9.35 dB**       |
+| low-mid 250 Hz–2 kHz | −3.21 dB     | −9.78 dB           |
+| presence 2–6 kHz     | −1.32 dB     | −5.97 dB           |
+| air 6–16 kHz         | −4.61 dB     | −9.20 dB           |
 
-The shipped filter removes **9.35 dB of sub-bass** — the bass guitar and kick drum,
+The v1 filter removes **9.35 dB of sub-bass** — the bass guitar and kick drum,
 which have nothing to do with the vocal. That is the "rustic" complaint, quantified.
 BS-RoFormer leaves the low end essentially intact (−1.60 dB) and takes its energy out of
-the low-mid/presence bands where the voice actually lives.
+the low-mid/presence bands where the voice actually lives. §3.1 is what shipped in its
+place once the ML path was abandoned.
+
+### 3.1 Shipped 2026-09-15 (#1042): band-limited mid/side
+
+v1 (`pan=stereo|c0=0.5*c0-0.5*c1|c1=0.5*c0-0.5*c1`) wrote one full-band mono difference
+into both channels — it destroyed the stereo image and took the whole low end with the
+voice. v2 keeps mid/side and band-limits the attenuation:
+
+```
+acrossover=split=150 8000[low][mid][high];
+[mid]pan=stereo|c0=0.600*c0-0.400*c1|c1=-0.400*c0+0.600*c1[midx];
+[low][midx][high]amix=inputs=3:normalize=0
+```
+
+With `M=(L+R)/2`, `S=(L−R)/2` and `a = MID_RESIDUAL = 0.2`, the mid branch is
+`L' = a·M + S`, `R' = a·M − S` (coefficients are `(1±a)/2`, derived from the one constant
+in `transcode.ts`). The low and high bands are recombined untouched; `normalize=0` stops
+`amix` dividing the three bands by 3.
+
+**Band energy retained vs. the original mix**, mean over **4 real local tracks**, 30 s
+from 0:45, ffmpeg 8.0.1. These are *different tracks* from the §3 table — read this table
+against its own `old` column, not against §3's numbers:
+
+| band                 | v1 (old) | v2 (shipped) | per-track v2 range |
+| -------------------- | -------- | ------------ | ------------------ |
+| sub/bass 20–250 Hz   | −15.46   | **−1.89**    | −1.1 … −4.0        |
+| low-mid 250 Hz–2 kHz | −11.14   | −8.61        | −3.0 … −11.3       |
+| presence 2–6 kHz     | −10.63   | −8.64        | −6.2 … −10.1       |
+| air 6–16 kHz         | −10.77   | −3.01        | −2.5 … −3.5        |
+
+The sub-bass harm the issue filed is gone (−1.89 dB, next to BS-RoFormer's −1.60 dB on
+its own material), and the vocal band is where the loss now concentrates.
+
+**The cost, stated plainly:** v1 *cancelled* the centre, v2 *attenuates* it. On a
+synthetic centre-440 Hz + side-660 Hz mix (mp3 192 k), the centred tone in the mono sum
+drops **66.9 dB under v1 and 13.5 dB under v2**. Less collateral damage, less complete
+suppression — whether that still reads as karaoke by ear is an owner listen, not a
+measurement.
+
+**`a > 0` is load-bearing (#602), with a floor.** Mono RMS of that same mix, by residual:
+
+| a    | 0      | 0.05   | 0.1    | 0.2 (ships) | 0.3    |
+| ---- | ------ | ------ | ------ | ----------- | ------ |
+| dBFS | −44.94 | −32.24 | −27.23 | **−21.75**  | −18.41 |
+
+At `a = 0` the in-band pair is anti-phase again and only out-of-band leakage survives, so
+the `> −40 dBFS` guard in `transcode.vocal-mute.test.ts` fails — the #602 silence bug
+comes straight back. Lowering `a` buys suppression and spends mono safety.
+
+**Headroom: no output trim, measured rather than assumed.** v1 multiplied everything by
+0.5; v2 passes the low and high bands at unity and the crossover's phase rotation
+undoes a limiter's peak shaping, so on 25 real tracks (first 90 s) the peak lands up to
+**+3.83 dB above the source** (mean −1.68 dB, above the source on 5/25). But peak is the
+wrong statistic for an encoder: the *over-full-scale sample count* is **lower** than the
+source's own (0.0058 % vs 0.0211 % mean; worse than the source on 3/25, and on the worst
+track 0.0828 % against the source's own 0.3555 %). A trim big enough to cover the
+transient overshoot would be about −4 dB — it would hand back most of the sub-bass this
+change exists to recover, so there is none. Encode cost grew ~23 % (2.79 s → 3.42 s for a
+6-minute track at opus 320 k).
+
+**The cache had to be versioned.** A `novox` cache entry is the *output* of this recipe,
+and the key carried no version — a prod cache of 703 `.opus` karaoke entries would have
+kept serving v1's audio forever. `transcodeCacheKey` now hashes `|novox|v<n>` from
+`NOVOX_FILTER_VERSION`; `plain` keys are byte-identical to before, so no ordinary
+transcode is invalidated. Three tests pin it: a hardcoded v1 digest, a cached-v1-file
+miss through `getTranscodedFile`, and a digest of `VOCAL_REMOVAL_FILTER` tied to the
+version — edit the recipe without bumping the version and that last one fails.
 
 ## 4. Bug found in passing: karaoke mode is **silent in mono**
 
@@ -168,9 +235,11 @@ plausible primary use case — plays nothing at all. This is independent of the 
 question and fixable today by summing to a mono-safe result instead of an anti-phase
 pair. **Filed separately; it should not wait on this spike.**
 
-**Fixed 2026-09-02 (#602):** both channels are now `0.5*(L−R)` — identical, so the mono sum is
+**Fixed 2026-09-02 (#602):** both channels became `0.5*(L−R)` — identical, so the mono sum is
 the side signal instead of zero; the `0.5` is measured (L−R peaked at +0.7 to +5.2 dBFS on 6 of 7
 random prod tracks, which the encoder clips). Pinned by `transcode.vocal-mute.test.ts`.
+**Superseded by §3.1 (#1042):** the mono sum is now `a·M` with `a = MID_RESIDUAL > 0`, which is
+the same guarantee by a different route — and the reason that constant can never reach 0.
 
 ## 5. Runtime: the deployment constraint
 
