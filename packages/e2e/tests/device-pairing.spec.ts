@@ -64,15 +64,20 @@ test.describe('device pairing', () => {
     await expect(page.getByTestId('pair-done')).toContainText(ADMIN.username);
     await page.waitForURL('/');
 
-    // The browser now holds a device-bound session: the device row exists.
+    // The browser now holds a device-bound session: a browser row exists.
     await page.goto('/settings/devices');
     await expandGroup(page, 'devices-paired');
-    const browserRow = deviceRow(page, 'browser');
-    await expect(browserRow).toHaveCount(1);
-    // Revoke through THAT row, and assert only that it went: this spec does not
-    // own the device list, so emptiness is not its to claim.
-    await browserRow.getByTestId('device-revoke').click();
-    await expect(browserRow).toHaveCount(0);
+    // AT LEAST one, never exactly one. This device's label comes from the user
+    // agent, so it is indistinguishable from a browser session another spec left
+    // paired — CI has been observed with 2. Asserting a count here is the same
+    // "I own this list" mistake as the bare locator it replaced.
+    const browserRows = deviceRow(page, 'browser');
+    await expect(browserRows.first()).toBeVisible();
+    const before = await browserRows.count();
+    // Revoke through a row and assert the list shrank by one. Not `devices-empty`:
+    // emptiness is a claim about everyone else's devices.
+    await browserRows.first().getByTestId('device-revoke').click();
+    await expect(browserRows).toHaveCount(before - 1);
   });
 
   test('a used or stale /pair link fails soft with guidance', async ({ page }) => {
@@ -101,16 +106,24 @@ test.describe('device pairing', () => {
     // The paired device appears in the list (page polls nothing — reload).
     await page.reload();
     await expandGroup(page, 'devices-paired');
-    const phoneRow = deviceRow(page, 'CI phone');
-    await expect(phoneRow).toHaveCount(1);
+    // At least one: a retried attempt of this same test leaves its own
+    // 'CI phone' behind, so the count is not this spec's to pin either.
+    const phoneRows = deviceRow(page, 'CI phone');
+    await expect(phoneRows.first()).toBeVisible();
+    const phonesBefore = await phoneRows.count();
 
     // The device JWT is a real session: refresh works…
     const refreshOk = await request.post('/api/auth/refresh', { headers: bearer(deviceJwt) });
     expect(refreshOk.ok()).toBeTruthy();
 
-    // …until the device is revoked in the UI.
-    await phoneRow.getByTestId('device-revoke').click();
-    await expect(phoneRow).toHaveCount(0);
+    // …until the device is revoked in the UI. Revoke EVERY 'CI phone' row, not
+    // just the first: this test goes on to assert that *its* JWT is dead, and
+    // with a retry's leftover in the list there is no ordering guarantee about
+    // which row is ours. Clearing them all makes the 403 below unambiguous.
+    for (let n = phonesBefore; n > 0; n--) {
+      await phoneRows.first().getByTestId('device-revoke').click();
+      await expect(phoneRows).toHaveCount(n - 1);
+    }
 
     const refreshDead = await request.post('/api/auth/refresh', { headers: bearer(deviceJwt) });
     expect(refreshDead.status()).toBe(403);
