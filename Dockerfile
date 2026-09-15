@@ -31,7 +31,16 @@ COPY tsconfig.json ./
 # build-changelog.ts reads repo-root CHANGELOG.md → static JSON for the changelog
 # modal; without it the web build silently emits an empty changelog.
 COPY CHANGELOG.md ./
-RUN cd packages/web && bun run build
+# The commit the About page's AGPL §13 source offer points at. It is substituted
+# into the bundle rather than read from a tracked file, because a value derived
+# from HEAD is stale the moment it is committed. `.git` is not in this stage, so
+# the workflow passes the sha as a build arg; an unpassed one degrades to
+# "unstamped" and the offer falls back to the repository root.
+# printf supplies the JSON quotes esbuild's --define requires, without needing
+# backslashes the Dockerfile parser would also claim. → docs/licensing.md
+ARG NICOTIND_BUILD_COMMIT=""
+RUN cd packages/web && bun run build \
+  --define "NICOTIND_BUILD_COMMIT=$(printf '"%s"' "$NICOTIND_BUILD_COMMIT")"
 
 # Stage 2: Production server
 FROM oven/bun:1.3.14 AS production

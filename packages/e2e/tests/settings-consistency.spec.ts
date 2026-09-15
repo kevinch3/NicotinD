@@ -21,6 +21,7 @@ const ROUTES = [
   '/settings/plugins',
   '/settings/devices',
   '/settings/agent-tokens',
+  '/settings/about',
 ];
 
 interface StyleTuple {
@@ -80,6 +81,7 @@ const WRAPPER_MAX_WIDTH: Record<string, string> = {
   '/settings/plugins': '768px',
   '/settings/devices': '768px',
   '/settings/agent-tokens': '768px',
+  '/settings/about': '768px',
   '/admin': '768px',
 };
 

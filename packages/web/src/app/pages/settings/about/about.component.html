@@ -1,0 +1,101 @@
+<div class="page-shell max-w-3xl" data-testid="about-settings">
+  <a routerLink="/settings" class="text-sm text-theme-muted hover:text-theme-primary">{{
+    'common.backToSettings' | t
+  }}</a>
+  <h1 class="page-title mt-2 mb-6">{{ 'about.title' | t }}</h1>
+
+  <app-settings-group
+    groupId="about"
+    icon="tag"
+    [title]="'about.groupTitle' | t"
+    [description]="'about.groupDesc' | t"
+  >
+    <div appTvNavGroup [axis]="'vertical'" class="flex flex-col gap-6">
+      <!-- Identity -->
+      <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+        <dt class="text-theme-muted">{{ 'about.appLabel' | t }}</dt>
+        <dd class="text-theme-primary">NicotinD</dd>
+        <dt class="text-theme-muted">{{ 'about.versionLabel' | t }}</dt>
+        <dd class="text-theme-primary" data-testid="about-version">v{{ version }}</dd>
+        <dt class="text-theme-muted">{{ 'about.buildLabel' | t }}</dt>
+        <dd class="text-theme-primary font-mono text-xs" data-testid="about-build">
+          {{ build.shortCommit ?? ('about.buildUnknown' | t) }}
+        </dd>
+      </dl>
+
+      <button
+        appTvNavItem
+        type="button"
+        (click)="showChangelog.set(true)"
+        data-testid="about-changelog"
+        class="self-start px-3 py-1.5 rounded-lg bg-theme-surface-2 text-sm text-theme-primary hover:bg-theme-surface"
+      >
+        {{ 'about.releaseNotes' | t }}
+      </button>
+
+      <!-- Licence -->
+      <div class="pt-6 border-t border-theme flex flex-col gap-2">
+        <h3 class="text-xs font-semibold uppercase tracking-wider text-theme-muted">
+          {{ 'about.licenceTitle' | t }}
+        </h3>
+        <p class="text-sm text-theme-secondary" data-testid="about-licence">
+          {{ 'about.licenceBody' | t }}
+        </p>
+        <a
+          appTvNavItem
+          [href]="licenceUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          data-testid="about-licence-link"
+          class="self-start text-sm text-theme-accent-text hover:underline"
+        >
+          {{ 'about.licenceFullText' | t }}
+        </a>
+      </div>
+
+      <!-- AGPL §13: the offer of corresponding source for THIS build -->
+      <div class="pt-6 border-t border-theme flex flex-col gap-2">
+        <h3 class="text-xs font-semibold uppercase tracking-wider text-theme-muted">
+          {{ 'about.sourceTitle' | t }}
+        </h3>
+        <p class="text-sm text-theme-secondary">{{ 'about.sourceBody' | t }}</p>
+        <a
+          appTvNavItem
+          [href]="build.sourceUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          data-testid="about-source-link"
+          class="self-start text-sm text-theme-accent-text hover:underline break-all"
+        >
+          {{ (build.commit ? 'about.sourceThisBuild' : 'about.sourceRepo') | t }}
+        </a>
+        @if (build.commit) {
+          <a
+            appTvNavItem
+            [href]="repoUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="about-repo-link"
+            class="self-start text-sm text-theme-secondary hover:text-theme-primary"
+          >
+            {{ 'about.sourceRepo' | t }}
+          </a>
+        }
+      </div>
+
+      <!-- Third-party notices — declared gap, filled by the generated manifest -->
+      <div class="pt-6 border-t border-theme flex flex-col gap-2">
+        <h3 class="text-xs font-semibold uppercase tracking-wider text-theme-muted">
+          {{ 'about.noticesTitle' | t }}
+        </h3>
+        <p class="text-sm text-theme-muted" data-testid="about-notices">
+          {{ 'about.noticesPending' | t }}
+        </p>
+      </div>
+    </div>
+  </app-settings-group>
+
+  @if (showChangelog()) {
+    <app-changelog-modal (close)="showChangelog.set(false)" />
+  }
+</div>

@@ -185,6 +185,12 @@ export const routes: Routes = [
         ),
       },
       {
+        path: 'settings/about',
+        loadComponent: lazy(() =>
+          import('./pages/settings/about/about.component').then((m) => m.AboutComponent),
+        ),
+      },
+      {
         path: 'settings/devices',
         loadComponent: lazy(() =>
           import('./pages/settings/devices/devices.component').then((m) => m.DevicesComponent),

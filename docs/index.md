@@ -581,8 +581,12 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **Page & section idioms**: every routed page inside the shell has a `page-shell` root with a width
   cap, grouped pages share `SettingsGroupComponent`, tables use `section-flush`; `page-shell.spec.ts`
   is the drift guard. → [web-ui.md](web-ui.md)
+- **In-app licence + source offer**: `/settings/about` states AGPL-3.0-only and links the §13
+  corresponding source, pinned to the exact tree when the bundle is stamped at build time
+  (`AboutComponent`, `resolveBuildInfo`, `APP_BUILD_INFO` from `ng build --define`); third-party
+  notices are a declared gap. → [licensing.md](licensing.md)
 - **Settings-cards unification**: one bordered collapsible `SettingsGroupComponent` backs every group
-  across all five settings-family views, collapsed by default and persisted per device via
+  across every settings-family view, collapsed by default and persisted per device via
   `group-state.ts`; `settings-consistency.spec.ts` is the cross-view gate.
   → [design-patterns.md](design-patterns.md),
   [admin-settings-decoupling.md](admin-settings-decoupling.md)
