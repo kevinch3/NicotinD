@@ -91,14 +91,21 @@ test.describe('settings cards — cross-view consistency', () => {
   // device), so it renders expanded while every sibling stays collapsed.
   const DEFAULT_OPEN: Record<string, number> = { '/settings/devices': 1 };
 
-  test('every route renders collapsed on first load (minus documented exceptions)', async ({
-    page,
-  }) => {
-    for (const route of ROUTES) {
+  // One test per route, for the same reason as the tuple comparison below: this
+  // ran as one loop over every route, and `openRoute` costs two SPA loads each
+  // (goto + clearGroupState + reload). At five routes that was 10 loads inside a
+  // single 30s budget and already the next candidate flagged by #1116's split;
+  // #453 added a sixth and it started timing out on CI's shard 4, naming no
+  // route. Splitting keeps the navigation count identical and makes the failure
+  // say which page regressed.
+  for (const route of ROUTES) {
+    test(`${route} renders collapsed on first load (minus documented exceptions)`, async ({
+      page,
+    }) => {
       await openRoute(page, route);
       await expect(page.getByTestId('settings-group-body')).toHaveCount(DEFAULT_OPEN[route] ?? 0);
-    }
-  });
+    });
+  }
 
   // One test per route, not one loop over five (#1116): the loop spent 10 SPA
   // navigations inside a single 30s budget and, when it timed out, named no
