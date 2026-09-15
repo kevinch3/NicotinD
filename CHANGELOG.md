@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.51](https://github.com/kevinch3/NicotinD/compare/v0.6.50...v0.6.51) (2026-09-15)
+
+### Features
+
+* **radio:** make the learned genre axis the default (formula v9) ([#1158](https://github.com/kevinch3/NicotinD/issues/1158)) ([ef1f14d](https://github.com/kevinch3/NicotinD/commit/ef1f14d41c06da91603a491ed5dab4dff5ff3b88))
+* **web:** in-app About page with the AGPL §13 source offer ([#1157](https://github.com/kevinch3/NicotinD/issues/1157)) ([49dfa59](https://github.com/kevinch3/NicotinD/commit/49dfa59b81a76a0c9a8b3d5d4bfb2c03041925cf))
+
+### Bug Fixes
+
+* **a11y:** name the Now Playing repeat control and raise the version button's contrast ([#1163](https://github.com/kevinch3/NicotinD/issues/1163)) ([7d68dd5](https://github.com/kevinch3/NicotinD/commit/7d68dd5555bd18d21373c1a30ed2ab099e89b54e))
+* **e2e:** a poll predicate must not read a locator its own success removes ([#1162](https://github.com/kevinch3/NicotinD/issues/1162)) ([9307d53](https://github.com/kevinch3/NicotinD/commit/9307d53ef72047add501665141df2dda0040377a))
+* **health:** count albums hunted through acquisition_jobs as incomplete ([#1154](https://github.com/kevinch3/NicotinD/issues/1154)) ([2b2178b](https://github.com/kevinch3/NicotinD/commit/2b2178bc3e25181b275bb9ed7a2632bdc43d2ff6))
+* **karaoke:** band-limited mid/side vocal mute on a versioned novox cache key ([#1156](https://github.com/kevinch3/NicotinD/issues/1156)) ([8f016dd](https://github.com/kevinch3/NicotinD/commit/8f016dd8ad252cf5de109131e523cf2be8898d15))
+* **tags:** rewrite the mp3 container when an in-place ID3 write does not stick ([#1152](https://github.com/kevinch3/NicotinD/issues/1152)) ([85d15aa](https://github.com/kevinch3/NicotinD/commit/85d15aaefa441c9a9c745a7b038aca1a6a391d09))
 ## [0.6.50](https://github.com/kevinch3/NicotinD/compare/v0.6.49...v0.6.50) (2026-09-15)
 
 ### Bug Fixes
