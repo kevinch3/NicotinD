@@ -2,7 +2,8 @@
 
 Contract (consumed by @nicotind/api's AudioFeaturesClient):
 
-  GET  /health            -> { status, device, modelVersions, rhythm, descriptors }
+  GET  /health            -> { status, device, modelVersions, rhythm, descriptors,
+                               loaded, analyzeWindowSeconds }
   POST /analyze {relPath} -> { embedding: {model, dim, values},
                                features: {danceability, valence, acousticness,
                                           instrumental, mood},
@@ -40,7 +41,7 @@ from pydantic import BaseModel
 
 from .descriptors import DescriptorAnalyzer, DescriptorUnavailableError
 from .idle_release import IdleReleaseGuard, RegistryHolder
-from .models import ModelRegistry
+from .models import ModelRegistry, analyze_window_seconds
 from .rhythm import RhythmAnalyzer
 
 log = logging.getLogger("analysis")
@@ -165,6 +166,9 @@ def create_app(
     def health() -> dict[str, object]:
         rhythm_ok = rhythm_state["analyzer"] is not None
         descriptors_ok = descriptors_state["analyzer"] is not None
+        # Config, not model state, so every branch reports it: it is what the
+        # API's client budgets its /analyze abort against (issue #1139).
+        window_sec = analyze_window_seconds()
         # can_serve(), not is_loaded(): an idle-released registry reloads on
         # the next /analyze, so it must report "ok" (cold, loaded=false) —
         # "unavailable" is reserved for a boot-time load failure, which never
@@ -179,6 +183,7 @@ def create_app(
                 "rhythm": rhythm_ok,
                 "descriptors": descriptors_ok,
                 "loaded": False,
+                "analyzeWindowSeconds": window_sec,
             }
         # peek(), not get(): a health check must not count as activity, or the
         # frequent Docker healthcheck poll (every 30s) keeps the registry "in
@@ -193,6 +198,7 @@ def create_app(
                 "rhythm": rhythm_ok,
                 "descriptors": descriptors_ok,
                 "loaded": False,
+                "analyzeWindowSeconds": window_sec,
             }
         return {
             "status": "ok",
@@ -201,6 +207,7 @@ def create_app(
             "rhythm": rhythm_ok,
             "descriptors": descriptors_ok,
             "loaded": True,
+            "analyzeWindowSeconds": window_sec,
         }
 
     @app.post("/analyze")

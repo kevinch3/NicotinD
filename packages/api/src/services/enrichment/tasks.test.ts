@@ -1250,6 +1250,38 @@ describe('audio-features task', () => {
     expect(sidecarCalls).toBe(1);
   });
 
+  // #1139: the sidecar serializes /analyze on one lock and the client's abort
+  // measures wall clock, so a queued second request burns its own budget.
+  it('never has two sidecar analyses in flight, whatever ctx.concurrency says', async () => {
+    for (let i = 0; i < 4; i++) seedSong(`s${i}`);
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const c = ctx({
+      concurrency: 4,
+      analyzeAudioFeatures: async () => {
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((r) => setTimeout(r, 2));
+        inFlight--;
+        return {
+          features: {
+            danceability: 0.5,
+            valence: 0.5,
+            acousticness: 0.5,
+            instrumental: 0.5,
+            mood: 'happy',
+          },
+          embedding: { model: 'm', dim: 1, values: [0] },
+          modelVersions: {},
+          genre: null,
+        };
+      },
+    });
+    const res = await features.run(db, c, 25);
+    expect(res.applied).toBe(4);
+    expect(maxInFlight).toBe(1);
+  });
+
   it('stops the batch when the sidecar goes down mid-run (songs stay pending)', async () => {
     for (let i = 0; i < 4; i++) seedSong(`s${i}`);
     let calls = 0;

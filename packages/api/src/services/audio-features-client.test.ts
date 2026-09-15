@@ -65,6 +65,60 @@ describe('AudioFeaturesClient.healthy', () => {
   });
 });
 
+/**
+ * The /analyze budget is derived, so asserting a constant proves nothing — these
+ * capture the ms that actually reached `AbortSignal.timeout` for the very signal
+ * the fake fetch received, by recording each call keyed by the signal it returns.
+ */
+async function analyzeBudgetMs(healthBody: unknown | null): Promise<number | undefined> {
+  const real = AbortSignal.timeout;
+  const seen = new WeakMap<AbortSignal, number>();
+  AbortSignal.timeout = ((ms: number) => {
+    const signal = real.call(AbortSignal, ms);
+    seen.set(signal, ms);
+    return signal;
+  }) as typeof AbortSignal.timeout;
+  try {
+    let analyzeSignal: AbortSignal | undefined;
+    const c = clientWith((url, init) => {
+      if (url.endsWith('/health')) return jsonResponse(healthBody);
+      analyzeSignal = (init?.signal ?? undefined) as AbortSignal | undefined;
+      return jsonResponse(GOOD_PAYLOAD);
+    });
+    if (healthBody !== null) await c.healthy();
+    await c.analyze('Artist/Album/song.opus');
+    return analyzeSignal ? seen.get(analyzeSignal) : undefined;
+  } finally {
+    AbortSignal.timeout = real;
+  }
+}
+
+describe('AudioFeaturesClient /analyze budget', () => {
+  it('falls back to 120 s before /health has ever been read', async () => {
+    expect(await analyzeBudgetMs(null)).toBe(120_000);
+  });
+
+  it('falls back to 120 s when /health omits analyzeWindowSeconds (older sidecar)', async () => {
+    expect(await analyzeBudgetMs({ status: 'ok' })).toBe(120_000);
+  });
+
+  it('holds the 120 s floor for a window small enough to derive less', async () => {
+    expect(await analyzeBudgetMs({ status: 'ok', analyzeWindowSeconds: 90 })).toBe(120_000);
+  });
+
+  it('scales with the window the sidecar reports', async () => {
+    // The shipped ANALYSIS_ANALYZE_SECONDS default: 900 s x 0.12 = 108 s of
+    // decode, plus the 30 s cold-reload margin.
+    expect(await analyzeBudgetMs({ status: 'ok', analyzeWindowSeconds: 900 })).toBe(138_000);
+    expect(await analyzeBudgetMs({ status: 'ok', analyzeWindowSeconds: 3600 })).toBe(462_000);
+  });
+
+  it('ignores a non-positive or non-numeric window rather than aborting instantly', async () => {
+    expect(await analyzeBudgetMs({ status: 'ok', analyzeWindowSeconds: 0 })).toBe(120_000);
+    expect(await analyzeBudgetMs({ status: 'ok', analyzeWindowSeconds: 'lots' })).toBe(120_000);
+  });
+});
+
 describe('AudioFeaturesClient.analyze', () => {
   it('returns the validated payload and strips the trailing base-url slash', async () => {
     let calledUrl = '';

@@ -2,10 +2,11 @@
 
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-from app.models import AnalysisResult
+from app.models import AnalysisResult, analyze_window_seconds
 
 VERSIONS = {"embedding": "discogs-effnet-bs64-1", "danceability": "danceability-discogs-effnet-1"}
 
@@ -238,3 +239,36 @@ def test_health_stays_ok_after_idle_release(tmp_path: Path) -> None:
     assert body["loaded"] is False
     assert body["device"] is None
     assert body["modelVersions"] == {}
+
+
+def test_health_publishes_the_analyze_window(tmp_path: Path) -> None:
+    """Issue #1139: the API client derives its `/analyze` abort from this field,
+    so every branch must carry it — including the cold and never-loaded ones,
+    where the window is still config the client needs."""
+    default = analyze_window_seconds({})
+    loaded = make_client(tmp_path, FakeRegistry()).get("/health").json()
+    assert loaded["loaded"] is True
+    assert loaded["analyzeWindowSeconds"] == default
+    assert make_client(tmp_path, None).get("/health").json()["analyzeWindowSeconds"] == default
+
+    clock = {"t": 0.0}
+    app = create_app(
+        registry=FakeRegistry(),
+        music_dir=str(tmp_path),
+        registry_factory=lambda: FakeRegistry(),
+        idle_release_sec=10.0,
+        now=lambda: clock["t"],
+    )
+    clock["t"] += 10.0
+    assert app.state.registry_holder.release_if_idle() is True
+    body = TestClient(app).get("/health").json()
+    assert body["loaded"] is False
+    assert body["analyzeWindowSeconds"] == default
+
+
+def test_health_analyze_window_tracks_the_env_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ANALYSIS_ANALYZE_SECONDS", "123.5")
+    body = make_client(tmp_path, FakeRegistry()).get("/health").json()
+    assert body["analyzeWindowSeconds"] == 123.5

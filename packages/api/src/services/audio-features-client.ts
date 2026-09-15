@@ -80,7 +80,13 @@ export interface DescriptorsResult {
 const HEALTH_TTL_MS = 30_000;
 const HEALTH_TIMEOUT_MS = 5_000;
 // Analysis is ~seconds per track on CPU; leave generous headroom for cold caches.
+// Also the floor and the fallback for the derived /analyze budget below.
 const ANALYZE_TIMEOUT_MS = 120_000;
+// /analyze costs ~0.12x the audio it decodes on CPU and the sidecar caps that at
+// `analyzeWindowSeconds`, so the client's budget can be derived from the window
+// the sidecar reports instead of guessed. → docs/audio-ml-enrichment.md
+const ANALYZE_CPU_REALTIME_FACTOR = 0.12;
+const ANALYZE_COLD_START_MARGIN_MS = 30_000;
 
 function clamp01(n: unknown): number | null {
   const v = typeof n === 'number' ? n : NaN;
@@ -98,6 +104,9 @@ export class AudioFeaturesClient {
   // on /health: a models-less sidecar reports status "unavailable" and still
   // serves it. Read via descriptorsSnapshot(), never inferred from healthy().
   private lastDescriptors = false;
+  // Seconds of audio the sidecar decodes per /analyze, as reported by /health.
+  // null = not probed yet, or an older sidecar image that omits the field.
+  private lastAnalyzeWindowSec: number | null = null;
   private healthProbe: Promise<boolean> | null = null;
 
   constructor(opts: { baseUrl: string; fetchFn?: typeof fetch; healthTtlMs?: number }) {
@@ -139,22 +148,45 @@ export class AudioFeaturesClient {
   private async probeHealth(): Promise<boolean> {
     let healthy = false;
     let descriptors = false;
+    let windowSec: number | null = null;
     try {
       const res = await this.fetchFn(`${this.baseUrl}/health`, {
         signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS),
       });
       if (res.ok) {
-        const body = (await res.json()) as { status?: string; descriptors?: unknown };
+        const body = (await res.json()) as {
+          status?: string;
+          descriptors?: unknown;
+          analyzeWindowSeconds?: unknown;
+        };
         healthy = body.status === 'ok';
         descriptors = body.descriptors === true;
+        const w = body.analyzeWindowSeconds;
+        if (typeof w === 'number' && Number.isFinite(w) && w > 0) windowSec = w;
       }
     } catch {
       healthy = false;
     }
     this.lastHealthy = healthy;
     this.lastDescriptors = descriptors;
+    this.lastAnalyzeWindowSec = windowSec;
     this.lastHealthAt = Date.now();
     return healthy;
+  }
+
+  /**
+   * Wall-clock budget for one `/analyze`, derived from the decode window the
+   * sidecar reports on `/health` so the two budgets cannot silently disagree
+   * (issue #1139). {@link ANALYZE_TIMEOUT_MS} is both the floor and the
+   * fallback: an unprobed client or an older sidecar that omits the field must
+   * keep the previous budget, never collapse to a 0 ms abort.
+   */
+  private analyzeTimeoutMs(): number {
+    const window = this.lastAnalyzeWindowSec;
+    if (window === null) return ANALYZE_TIMEOUT_MS;
+    const derived =
+      Math.round(window * ANALYZE_CPU_REALTIME_FACTOR * 1000) + ANALYZE_COLD_START_MARGIN_MS;
+    return Math.max(ANALYZE_TIMEOUT_MS, derived);
   }
 
   /**
@@ -169,7 +201,7 @@ export class AudioFeaturesClient {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ relPath }),
-        signal: AbortSignal.timeout(ANALYZE_TIMEOUT_MS),
+        signal: AbortSignal.timeout(this.analyzeTimeoutMs()),
       });
     } catch (err) {
       log.warn({ err, relPath }, 'analyze request failed');
