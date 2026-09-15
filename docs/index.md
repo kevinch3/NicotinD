@@ -693,6 +693,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   callee that *tokenises* to fetch, catching injected clients a `\bfetch\b` regex misses; signals go
   inline, after any throttle, since a timeout starts counting when constructed.
   → [quality-gates.md](quality-gates.md)
+- **External reachability probe**: `kpc-probe.sh` runs on the edge droplet, not the host — a host
+  that is up and unreachable reports perfect health from inside. Its `decide` state machine debounces,
+  de-storms and checks a control host before blaming the target. Swap and memory alarms are measured
+  useless here; load discriminates. → [host-monitoring.md](host-monitoring.md)
 - **Container memory limits**: every compose service declares `mem_limit` and `memswap_limit`, set
   equal so no container may swap, enforced by `compose-memory-limits.test.ts` against a whole-stack
   budget. An unbounded container cannot fail alone — it stalls the host instead of itself.
