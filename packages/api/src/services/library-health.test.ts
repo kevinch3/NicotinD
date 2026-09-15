@@ -338,7 +338,7 @@ describe('libraryHealth — format cohesion', () => {
   });
 });
 
-describe('libraryHealth — completeness (confirmed, from album_jobs)', () => {
+describe('libraryHealth — completeness (confirmed, the album_jobs arm)', () => {
   const artist = 'Queen';
   const arId = artistIdFor(artist);
 
@@ -348,16 +348,18 @@ describe('libraryHealth — completeness (confirmed, from album_jobs)', () => {
     canonical: string[];
     lidarrAlbumId?: number | null;
     state?: string;
+    createdAt?: number;
   }): void {
     db.run(
       `INSERT INTO album_jobs
         (lidarr_album_id, username, directory, canonical_tracks_json, alternates_json,
          state, created_at, artist_name, album_title)
-       VALUES (?, 'u', 'd', ?, '[]', ?, 1, ?, ?)`,
+       VALUES (?, 'u', 'd', ?, '[]', ?, ?, ?, ?)`,
       [
         o.lidarrAlbumId ?? 7,
         JSON.stringify(o.canonical),
         o.state ?? 'exhausted',
+        o.createdAt ?? 1,
         o.artist ?? artist,
         o.album,
       ],
@@ -404,8 +406,14 @@ describe('libraryHealth — completeness (confirmed, from album_jobs)', () => {
 
   it('dedupes per artist/title with the newest job winning', () => {
     seedOwned('al-hot', 'Hot Space', ['Staying Power', 'Dancer']);
-    addJob({ album: 'Hot Space', canonical: ['Staying Power', 'Dancer', 'Back Chat'] });
-    addJob({ album: 'Hot Space', canonical: ['Staying Power', 'Dancer'] }); // newer, complete
+    addJob({
+      album: 'Hot Space',
+      canonical: ['Staying Power', 'Dancer', 'Back Chat'],
+      createdAt: 1,
+    });
+    // Newer, complete. "Newest" is `created_at`, not an id: the union that feeds
+    // this reads two tables whose ids are a uuid and an integer (#736).
+    addJob({ album: 'Hot Space', canonical: ['Staying Power', 'Dancer'], createdAt: 2 });
     expect(libraryHealth(db).dimensions.completeness.metric.confirmedIncomplete).toBe(0);
   });
 
@@ -513,6 +521,135 @@ describe('libraryHealth — completeness (confirmed, from album_jobs)', () => {
     const d = libraryHealth(db).dimensions.completeness;
     expect(d.metric.confirmedIncomplete).toBe(1);
     expect(d.metric.titleMismatch).toBe(0);
+  });
+});
+
+/**
+ * #736: the dimension read `album_jobs` alone, a table with no production writer
+ * since the unified store landed — so every album hunted through
+ * `acquisition_jobs` was invisible and the card read "everything complete".
+ * Seeds the unified table ONLY, because the block above seeds `album_jobs` and
+ * therefore passes with the bug present.
+ */
+describe('libraryHealth — completeness spans acquisition_jobs too', () => {
+  const artist = 'Boards of Canada';
+  const arId = artistIdFor(artist);
+
+  function addAcquisitionJob(o: {
+    id: string;
+    album: string;
+    canonical: string[];
+    createdAt: number;
+    state?: string;
+  }): void {
+    db.run(
+      `INSERT INTO acquisition_jobs
+        (id, kind, method, state, stage, artist_name, album_title, lidarr_album_id,
+         canonical_tracks_json, created_at, updated_at)
+       VALUES (?, 'album-hunt', 'slskd', ?, 'downloading', ?, ?, 21, ?, ?, ?)`,
+      [
+        o.id,
+        o.state ?? 'active',
+        artist,
+        o.album,
+        JSON.stringify(o.canonical),
+        o.createdAt,
+        o.createdAt,
+      ],
+    );
+  }
+
+  function addAlbumJob(o: { album: string; canonical: string[]; createdAt: number }): void {
+    db.run(
+      `INSERT INTO album_jobs
+        (lidarr_album_id, username, directory, canonical_tracks_json, alternates_json,
+         state, created_at, artist_name, album_title)
+       VALUES (21, 'u', 'd', ?, '[]', 'exhausted', ?, ?, ?)`,
+      [JSON.stringify(o.canonical), o.createdAt, artist, o.album],
+    );
+  }
+
+  function seedOwned(albumId: string, name: string, titles: string[]): void {
+    addAlbum({ id: albumId, name, artist, artistId: arId, songCount: titles.length });
+    titles.forEach((t, i) =>
+      addSong({ id: `${albumId}-s${i}`, albumId, title: t, artist, artistId: arId }),
+    );
+  }
+
+  beforeEach(() => addArtist(arId, artist, 1));
+
+  it('reports an album hunted only through the unified job table', () => {
+    seedOwned('al-mhtrtc', 'Music Has the Right to Children', [
+      'Wildlife Analysis',
+      'An Eagle in Your Mind',
+    ]);
+    addAcquisitionJob({
+      id: 'job-uuid-1',
+      album: 'Music Has the Right to Children',
+      canonical: ['Wildlife Analysis', 'An Eagle in Your Mind', 'Telephasic Workshop'],
+      createdAt: 1_000,
+    });
+    const d = libraryHealth(db).dimensions.completeness;
+    expect(d.metric.confirmedIncomplete).toBe(1);
+    expect(d.worklist.confirmed[0]).toMatchObject({
+      album: 'Music Has the Right to Children',
+      expected: 3,
+      owned: 2,
+      missing: 1,
+      lidarrAlbumId: 21,
+      state: 'active',
+    });
+  });
+
+  /**
+   * The two cases below are the same pair with the winner swapped, so an order
+   * that ignores `created_at` fails one of them: `id DESC` cannot survive the
+   * union (TEXT uuid vs INTEGER) and UNION returns rows in an arbitrary order.
+   */
+  it('picks the newer unified job over an older album_jobs row', () => {
+    seedOwned('al-geo', 'Geogaddi', ['Ready Lets Go', 'Music Is Math']);
+    addAlbumJob({ album: 'Geogaddi', canonical: ['Ready Lets Go', 'Music Is Math'], createdAt: 2 });
+    addAcquisitionJob({
+      id: 'job-uuid-2',
+      album: 'Geogaddi',
+      canonical: ['Ready Lets Go', 'Music Is Math', 'Sunshine Recorder'],
+      createdAt: 3,
+    });
+    expect(libraryHealth(db).dimensions.completeness.metric.confirmedIncomplete).toBe(1);
+  });
+
+  it('picks the newer album_jobs row over an older unified job', () => {
+    seedOwned('al-geo', 'Geogaddi', ['Ready Lets Go', 'Music Is Math']);
+    addAcquisitionJob({
+      id: 'job-uuid-3',
+      album: 'Geogaddi',
+      canonical: ['Ready Lets Go', 'Music Is Math', 'Sunshine Recorder'],
+      createdAt: 2,
+    });
+    addAlbumJob({ album: 'Geogaddi', canonical: ['Ready Lets Go', 'Music Is Math'], createdAt: 3 });
+    expect(libraryHealth(db).dimensions.completeness.metric.confirmedIncomplete).toBe(0);
+  });
+
+  it('fetches the live tracklist for a unified job once, not twice', async () => {
+    seedOwned('al-tomo', 'Tomorrows Harvest', ['Gemini', 'Reach for the Dead']);
+    addAcquisitionJob({
+      id: 'job-uuid-4',
+      album: 'Tomorrows Harvest',
+      canonical: ['Gemini', 'Reach for the Dead', 'White Cyclosa'],
+      createdAt: 4,
+    });
+    const calls: number[] = [];
+    const lidarr = {
+      track: {
+        listByAlbum: async (id: number) => {
+          calls.push(id);
+          return [{ title: 'Gemini' }, { title: 'Reach for the Dead' }];
+        },
+      },
+    } as unknown as Pick<Lidarr, 'track'>;
+    const d = (await libraryHealthWithLidarr(db, {}, lidarr)).dimensions.completeness;
+    expect(calls).toEqual([21]);
+    expect(d.metric).toMatchObject({ confirmedIncomplete: 0, liveTracklists: 1 });
   });
 });
 

@@ -351,7 +351,13 @@ full rescan re-reads the value from the tag instead of wiping it.
    itself is no longer hand-written three times: all three call the shared
    **`jobAlbumPairs(db, {activeOnly?})`** / **`jobCanonicalTracklists(db)`**
    helpers in `acquisition-job-store.ts` (one source, resilient to missing
-   tables). `transfer-group-keys.ts` remains the permanent safety net for
+   tables). The health report's completeness dimension (`confirmedIncomplete`,
+   `library-health.ts`) is the fourth caller — it had been left reading
+   `album_jobs` alone and under-counted (#736); it needs `lidarrAlbumId`,
+   `state` (raw, per-arm vocabulary) and `createdAt` (the only key that can
+   order a union of a uuid and an integer id), which is why
+   `jobCanonicalTracklists` returns them.
+   `transfer-group-keys.ts` remains the permanent safety net for
    transfers with no job at all (enqueued outside NicotinD). The legacy
    folder-string **`enrichWithAlbumJobs` feed-label fallback is retired** — the
    feed now labels download folders purely by the stored per-file transfer key

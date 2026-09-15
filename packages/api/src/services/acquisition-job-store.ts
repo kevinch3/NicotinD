@@ -47,29 +47,53 @@ export function jobAlbumPairs(
   }
 }
 
+export interface JobCanonicalTracklist {
+  artistName: string;
+  albumTitle: string;
+  canonicalTracks: string[];
+  lidarrAlbumId: number | null;
+  /**
+   * The job's own state, raw and **per-arm**: the two tables do not share a
+   * vocabulary (`album_jobs` has the fallback engine's `exhausted`,
+   * `acquisition_jobs` has `superseded`). Never compare it across arms.
+   */
+  state: string;
+  createdAt: number;
+}
+
 /**
  * Canonical Lidarr tracklists per recorded acquisition — the same `album_jobs`
  * UNION `acquisition_jobs`, restricted to rows carrying a `canonical_tracks_json`.
  * Parsed to string[]; unparseable/empty rows are skipped. Missing tables → [].
+ *
+ * `createdAt` is the only key that can order the compound result: the two ids
+ * are a TEXT uuid and an INTEGER, so "newest job" is a timestamp comparison.
  */
-export function jobCanonicalTracklists(
-  db: Database,
-): Array<{ artistName: string; albumTitle: string; canonicalTracks: string[] }> {
-  let rows: Array<{ artist_name: string; album_title: string; canonical_tracks_json: string }>;
+export function jobCanonicalTracklists(db: Database): JobCanonicalTracklist[] {
+  let rows: Array<{
+    artist_name: string;
+    album_title: string;
+    canonical_tracks_json: string;
+    lidarr_album_id: number | null;
+    state: string;
+    created_at: number;
+  }>;
+  const cols =
+    'artist_name, album_title, canonical_tracks_json, lidarr_album_id, state, created_at';
   try {
     rows = db
-      .query<{ artist_name: string; album_title: string; canonical_tracks_json: string }, []>(
-        `SELECT artist_name, album_title, canonical_tracks_json FROM album_jobs
+      .query<(typeof rows)[number], []>(
+        `SELECT ${cols} FROM album_jobs
          WHERE artist_name IS NOT NULL AND album_title IS NOT NULL AND canonical_tracks_json IS NOT NULL
          UNION
-         SELECT artist_name, album_title, canonical_tracks_json FROM acquisition_jobs
+         SELECT ${cols} FROM acquisition_jobs
          WHERE artist_name IS NOT NULL AND album_title IS NOT NULL AND canonical_tracks_json IS NOT NULL`,
       )
       .all();
   } catch {
     return [];
   }
-  const out: Array<{ artistName: string; albumTitle: string; canonicalTracks: string[] }> = [];
+  const out: JobCanonicalTracklist[] = [];
   for (const r of rows) {
     let titles: unknown;
     try {
@@ -82,6 +106,9 @@ export function jobCanonicalTracklists(
       artistName: r.artist_name,
       albumTitle: r.album_title,
       canonicalTracks: titles as string[],
+      lidarrAlbumId: r.lidarr_album_id,
+      state: r.state,
+      createdAt: r.created_at,
     });
   }
   return out;
