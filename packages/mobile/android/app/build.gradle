@@ -5,6 +5,12 @@ android {
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
         applicationId "ar.kevinroberts.nicotind"
+        // F-Droid requires a distinct application id per app entry, and the phone
+        // and TV APKs otherwise share one (they differ only in the web bundle
+        // `cap sync` copied in). CI passes ".tv" for the F-Droid TV build; the
+        // sideloaded GitHub TV APK keeps the bare id, so an F-Droid install lands
+        // ALONGSIDE it instead of failing to upgrade it. See docs/fdroid.md.
+        applicationIdSuffix System.getenv("NICOTIND_APP_ID_SUFFIX") ?: ""
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // Driven by the monorepo version via CI (scripts/android-env.ts, derived
@@ -23,7 +29,7 @@ android {
     }
     // Release signing is supplied entirely via env (CI decodes the keystore from a
     // secret). With no keystore env present (local dev) the release build is left
-    // unsigned, so contributors can still `assembleRelease` without secrets.
+    // unsigned, so contributors can still `assembleStandardRelease` without secrets.
     signingConfigs {
         release {
             def storeFilePath = System.getenv("ANDROID_KEYSTORE_FILE")
@@ -35,6 +41,19 @@ android {
             }
         }
     }
+    // Distribution channel. The only difference is which permissions survive the
+    // manifest merge: the F-Droid variant excludes the non-free Capacitor plugins
+    // (via `android.includePlugins`, see ../../src/fdroid.ts), so CAMERA and
+    // REQUEST_INSTALL_PACKAGES would be declared with nothing left to use them.
+    // A flavor rather than a second hand-maintained manifest — src/fdroid's
+    // overlay is three `tools:node="remove"` lines and the merger does the rest,
+    // so the manifest contract stays in ONE file and one test covers it.
+    flavorDimensions "distribution"
+    productFlavors {
+        standard { dimension "distribution" }
+        fdroid { dimension "distribution" }
+    }
+
     buildTypes {
         release {
             minifyEnabled false

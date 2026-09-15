@@ -27,7 +27,7 @@ allprojects {
         // NOT on JitPack, Google, or Maven Central). The plugin declares this repo
         // in its own build.gradle, but that block isn't consulted when `:app`
         // resolves its transitive runtime classpath — only these root repos are —
-        // so `cap sync` + `assembleRelease` fails resolution without it here
+        // so `cap sync` + `assembleStandardRelease` fails resolution without it here
         // (broke the android release job on v0.1.222). Scoped via `includeGroup`
         // so nothing else routes through Azure. Mirrors the plugin's declaration.
         maven {

@@ -163,7 +163,7 @@ jobs:
         with:
           packages: platform-tools
 
-      # Gradle resolves the phone AND tv assembleRelease classpaths over the
+      # Gradle resolves the phone AND tv assembleStandardRelease classpaths over the
       # network otherwise. One of those deps (osbarcode-android) is served only
       # by OutSystems' Azure feed, whose 503 broke the v0.5.53 release. Caching
       # the module store lets a re-run resolve offline; the pinned version in
@@ -213,17 +213,19 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: ./gradlew assembleRelease
+        run: ./gradlew assembleStandardRelease
 
-      # Gradle emits a bare `app-release.apk`; rename it to the versioned,
-      # product-named scheme the other release assets use (NicotinD-<version>.apk)
-      # via $NICOTIND_VERSION_NAME (already in $GITHUB_ENV from "Derive Android version").
+      # Gradle emits `app-standard-release.apk` under the flavor's own output dir.
+      # `standard` is the GitHub-release flavor; `fdroid` drops the non-free
+      # plugins (docs/fdroid.md). Rename to the versioned, product-named scheme
+      # the other release assets use (NicotinD-<version>.apk) via
+      # $NICOTIND_VERSION_NAME (already in $GITHUB_ENV from "Derive Android version").
       # Staged out of the gradle output dir so the TV build below can't clobber it.
       - name: Stage phone APK
-        working-directory: packages/mobile/android/app/build/outputs/apk/release
+        working-directory: packages/mobile/android/app/build/outputs/apk/standard/release
         run: |
           mkdir -p "$RUNNER_TEMP/apks"
-          mv app-release.apk "$RUNNER_TEMP/apks/NicotinD-${NICOTIND_VERSION_NAME}.apk"
+          mv app-standard-release.apk "$RUNNER_TEMP/apks/NicotinD-${NICOTIND_VERSION_NAME}.apk"
 
       # Second flavor: the SAME Android project rebuilt with the web bundle from
       # the Angular `tv` configuration (environment.tv.ts → isTvBuild() true).
@@ -243,11 +245,45 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: ./gradlew assembleRelease
+        run: ./gradlew assembleStandardRelease
 
       - name: Stage TV APK
-        working-directory: packages/mobile/android/app/build/outputs/apk/release
-        run: mv app-release.apk "$RUNNER_TEMP/apks/NicotinD-TV-${NICOTIND_VERSION_NAME}.apk"
+        working-directory: packages/mobile/android/app/build/outputs/apk/standard/release
+        run: mv app-standard-release.apk "$RUNNER_TEMP/apks/NicotinD-TV-${NICOTIND_VERSION_NAME}.apk"
+
+      # The F-Droid variant, built but NOT attached: it is a different package
+      # (TV) and a different update channel, so shipping it beside the sideload
+      # APKs would only confuse. It is assembled here because `check:fdroid` is
+      # static — it proves the plugin set is classified, not that the variant
+      # still COMPILES without the excluded plugins, which is the break a
+      # dropped `getCapacitorPlugin` null-guard would cause. The TV web bundle
+      # is already in place from the step above, so this is the `.tv` entry.
+      # See docs/fdroid.md.
+      - name: Build the F-Droid TV variant (verification only)
+        working-directory: packages/mobile
+        env:
+          NICOTIND_FDROID: '1'
+          NICOTIND_APP_ID_SUFFIX: .tv
+        run: |
+          set -euo pipefail
+          bunx cap sync android
+          cd android && ./gradlew assembleFdroidRelease
+
+      # Assert the exclusion actually reached the artifact. `check:fdroid` reads
+      # package.json; this reads the dex. A gate that only checks intent is how
+      # a plugin excluded in config but still on the classpath would ship.
+      - name: Assert no proprietary dependency in the F-Droid APK
+        working-directory: packages/mobile/android/app/build/outputs/apk/fdroid/release
+        run: |
+          set -euo pipefail
+          apk=app-fdroid-release.apk
+          for forbidden in com/google/mlkit com/google/android/gms outsystems; do
+            if unzip -p "$apk" 'classes*.dex' | grep -qa "$forbidden"; then
+              echo "::error::$forbidden is present in the F-Droid APK — F-Droid would reject it."
+              exit 1
+            fi
+          done
+          echo "F-Droid APK is clean of mlkit / play-services / osbarcode."
 
       - name: Attach APKs to the GitHub Release
         uses: softprops/action-gh-release@v3
