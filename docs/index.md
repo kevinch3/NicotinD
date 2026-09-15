@@ -288,7 +288,8 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   state in URL query params. `entityFilterWheres`. → [library-filters.md](library-filters.md)
 - **A blocked event loop names the request that blocked it**: `bun:sqlite` is synchronous, so one
   slow query stops the whole process; `startLoopBlockMonitor` reports timer lateness and
-  `trackInFlight` says whose. → [library-filters.md](library-filters.md)
+  `trackInFlight` says whose. Nothing in-process pre-empts it, so the shape is gated and every list
+  route caps its rows (`ARTISTS_PAGE_MAX`). → [library-filters.md](library-filters.md)
 - **Library quality auditor**: assert (audit) + clean (repair/retag) + prevent (ingest sanitize) for
   DJ-pool/VA-source pollution across DB and disk; structural DJ-set tags recover their real
   artist via `djSetArtistName`. → [library-audit.md](library-audit.md)
@@ -689,6 +690,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   `bun.lock` from every workspace's `dependencies`) *and* the resolved version, reports the dependency
   path, fails on an unresolvable version, and warns-and-passes on an unreachable registry.
   → [quality-gates.md](quality-gates.md)
+- **`check:library-queries`**: plans every library list route through the real filter builders across
+  every filter dimension and fails a `library_songs` scan that is not evaluated once; routes and
+  dimensions are both discovered, so an unmodeled one fails. `judgeSongScans`,
+  `discoverListRoutes`. → [library-filters.md](library-filters.md)
 - **`check:fetch-timeouts`**: every outbound call is bounded. The gate walks the AST and matches any
   callee that *tokenises* to fetch, catching injected clients a `\bfetch\b` regex misses; signals go
   inline, after any throttle, since a timeout starts counting when constructed.

@@ -28,6 +28,9 @@ describe('nativeAppCors', () => {
     expect(exposed).toContain('Content-Range');
     expect(exposed).toContain('Accept-Ranges');
     expect(exposed).toContain('Content-Length');
+    // A list route that hit its row ceiling says so in a header, which the
+    // native shell reads cross-origin or not at all (#1058).
+    expect(exposed).toContain('X-Truncated');
   });
 
   it('answers a preflight OPTIONS allowing Authorization + Range and the right methods', async () => {

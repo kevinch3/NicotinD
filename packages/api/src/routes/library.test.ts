@@ -8,7 +8,7 @@ import * as realFsNamespace from 'node:fs';
 // partial stub below leaks into later test files (e.g. library-organizer.test.ts),
 // leaving their mkdirSync/copyFileSync/etc. undefined and silently breaking them.
 const realFs = { ...realFsNamespace };
-import { libraryRoutes, __resetDownloadSuppressionCache } from './library.js';
+import { libraryRoutes, ARTISTS_PAGE_MAX, __resetDownloadSuppressionCache } from './library.js';
 import type { AuthEnv } from '../middleware/auth.js';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import type { PluginRegistry } from '../services/plugins/registry.js';
@@ -1747,6 +1747,45 @@ describe('library metadata filters', () => {
     seedArtist('art-b');
 
     expect(await ids('/artists')).toEqual(['art-a', 'art-b']);
+  });
+
+  it('GET /artists pages on ?size/?offset and announces a page it cut short', async () => {
+    seedArtist('art-a');
+    seedArtist('art-b');
+    seedArtist('art-c');
+
+    const page = await makeApp().request('/artists?size=2');
+    expect(((await page.json()) as Array<{ id: string }>).map((a) => a.id)).toEqual([
+      'art-a',
+      'art-b',
+    ]);
+    expect(page.headers.get('X-Truncated')).toBe('true');
+
+    const rest = await makeApp().request('/artists?size=2&offset=2');
+    expect(((await rest.json()) as Array<{ id: string }>).map((a) => a.id)).toEqual(['art-c']);
+    expect(rest.headers.get('X-Truncated')).toBeNull();
+
+    // A page that happens to be exactly `size` long is not truncated — the
+    // route asks for one row past it rather than guessing from the count.
+    const exact = await makeApp().request('/artists?size=3');
+    expect(exact.headers.get('X-Truncated')).toBeNull();
+  });
+
+  it('GET /artists defaults to the whole list, so the unpaginated caller is unchanged', async () => {
+    seedArtist('art-a');
+    seedArtist('art-b');
+
+    const bare = await makeApp().request('/artists');
+    const overMax = await makeApp().request(`/artists?size=${ARTISTS_PAGE_MAX + 1}`);
+    const malformed = await makeApp().request('/artists?size=abc&offset=abc');
+    for (const res of [bare, overMax, malformed]) {
+      expect(res.status).toBe(200);
+      expect(res.headers.get('X-Truncated')).toBeNull();
+      expect(((await res.json()) as Array<{ id: string }>).map((a) => a.id)).toEqual([
+        'art-a',
+        'art-b',
+      ]);
+    }
   });
 
   it('GET /artists?starred=true filters on artist-level starred', async () => {

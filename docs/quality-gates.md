@@ -638,6 +638,56 @@ Applying the rules above:
   feed in the repo is a template literal today, and `classify` is unit-tested
   against the verbatim shipped fragments.
 
+## `check:library-queries` — the plan is the gate, because nothing can pre-empt
+
+`bun:sqlite` is synchronous inside a synchronous Hono handler, so a quadratic
+list query is not a slow page — it is an outage. `/artists?country=CL,AR` held
+the single Bun event loop for ~3 minutes and took cover art, the Songs tab and
+the container health check down with it (#1055).
+
+The detection half shipped with that fix (`startLoopBlockMonitor` +
+`trackInFlight`, see [library-filters.md](library-filters.md)), and it is honest
+about what it is: it *names* the query that stopped the process, after the fact.
+It cannot stop one, and neither can anything else in this process — the
+rejections and their evidence are recorded in
+[library-filters.md](library-filters.md) "Why nothing here pre-empts". That
+leaves the shape, judged before it ships.
+
+`scripts/check-library-queries.ts` builds every library list query through the
+**real** fragment builders (`artistFilterWheres` / `albumFilterWheres`) across
+every dimension the filter grammar can express, runs `EXPLAIN QUERY PLAN`
+against a schema-only in-memory DB, and fails when a `library_songs` scan is not
+evaluated once. Asserted on the plan rather than the clock: a wall-clock
+threshold flakes on a loaded box and says nothing about *why*.
+
+The plan's `id`/`parent` columns give the real tree, which turns both bad
+spellings into one rule (`judgeSongScans`): a song scan under a `CORRELATED …`
+ancestor is re-derived per entity row, and one SQLite tagged ` EXISTS` is driven
+by the outer loop. The required shape puts it under a plain `LIST SUBQUERY`.
+
+Applying the rules above:
+
+- **Three denominators, each derived independently of the check** (rule 1).
+  The routes come from the `*FilterWheres(` call sites in `routes/library.ts`
+  (`discoverListRoutes`), so a new list route fails the gate until it is
+  modeled; the dimensions come from `LIBRARY_FILTER_PARAM_KEYS`, so a new filter
+  property fails it until a case covers one; and a case whose SQL reads
+  `library_songs` but whose plan shows no song scan fails as unclassified
+  rather than passing (rule 3).
+- **Printed:** *"72 query plans over 4 list routes x 18 filter cases, 85
+  library_songs scans judged"*. A run that judges zero scans fails.
+- **A case the grammar drops is not a case.** `vacuousCases` round-trips each
+  one through `parseLibraryFilter` + `serializeLibraryFilter`, so a renamed
+  param cannot leave its dimension silently unmeasured; the `licence` tombstone
+  is the one exemption and carries its reason.
+- **Proven able to fail** — `--fixture correlated` appends the pre-#1055
+  correlated `EXISTS`, and the gate's own test asserts that run exits 1 while
+  the real one exits 0.
+- **Known limit:** it asserts the *shape*, not a time. A future query that is
+  slow for some other reason (a missing index, an unbounded row count) is
+  invisible to it; row ceilings are the separate answer, and the one list route
+  that had none now has one.
+
 ## `check:audit` — a supply-chain gate that measures what ships
 
 There was no dependency scanning at all. The obvious fix — append
