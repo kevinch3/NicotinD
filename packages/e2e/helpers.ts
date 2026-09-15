@@ -245,6 +245,30 @@ export function trackTitle(scope: Page | Locator, title: string): Locator {
 }
 
 /**
+ * One paired-device row, by the label shown on it.
+ *
+ * Same reason as `trackTitle`: a bare `getByTestId('device-row')` asserted with
+ * `toContainText` is a strict-mode violation the moment the list holds more than
+ * one device, and no spec owns that list. A browser session another spec left
+ * open is still a paired device (see the pagehide note in docs/e2e.md), so the
+ * count observed in CI was 2, 3 and 4 across attempts of the same test.
+ *
+ * Assert `.first()` is visible — **at least one, never exactly one**. A device's
+ * label can come from the user agent, so this spec's own row is
+ * indistinguishable from a leftover; and a retried attempt leaves its own row
+ * behind. Pinning the count is the same "I own this list" mistake as the bare
+ * locator, one layer down.
+ *
+ * Revoke through a row and assert the list SHRANK, rather than that it is empty
+ * — emptiness is a claim about everyone else's devices. If the test then asserts
+ * something about the revoked device (a dead JWT), revoke every matching row:
+ * with a leftover present there is no ordering guarantee about which is yours.
+ */
+export function deviceRow(scope: Page | Locator, label: string): Locator {
+  return scope.getByTestId('device-row').filter({ hasText: label });
+}
+
+/**
  * Open an album from the library grid, tolerating the grid's re-chunk.
  *
  * Issue #726: the album grid chunks its cards into `role="row"` slices of

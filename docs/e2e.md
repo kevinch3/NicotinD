@@ -446,6 +446,24 @@ predicate evaluation and never re-checking `curate-done`. Bound the inner read
 (`textContent({ timeout: 500 }).catch(() => 'done')`) so the predicate can always
 come back and look again.
 
+Its second catch was the same defect class one layer down. `device-pairing.spec.ts`
+asserted `expect(getByTestId('device-row')).toContainText(...)` on a **bare**
+locator, and the kept traces show it resolving to **2, 3 and 4** elements across
+attempts of one test — a strict-mode violation, not a timeout. One of them names
+the leftover outright: `Chrome browser This device` *and* a second
+`Chrome browser`. **No spec owns the device list**, because a browser session
+another spec left open is still a paired device. Two rules follow, and
+`deviceRow()` in `helpers.ts` exists to make the first one cheap:
+
+- Scope a list assertion to the row you created (`.filter({ hasText })`), the
+  same fix `trackTitle()` applies to the tracklist.
+- **Revoke through that row and assert the row is gone**, never that the list is
+  empty. `devices-empty` is a claim about *everyone else's* devices, and it fails
+  the moment a sibling leaves one behind. The one remaining `devices-empty`
+  assertion (`device-pairing.spec.ts`'s first test) is deliberate — it is the only
+  coverage of the empty state, so it is kept and known to be the next candidate
+  rather than weakened into a green light.
+
 Note what that says about the recording cost above: the overhead did not introduce
 the defect, it widened the window the defect needed. A spec that races its own
 teardown is a latent failure that any timing change — a slower runner, another
