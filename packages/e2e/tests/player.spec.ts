@@ -244,8 +244,8 @@ test.describe('player controls', () => {
   test('vocal mute toggle preserves playback position (server-side transcode filter)', async ({
     page,
   }) => {
-    // Vocal removal is server-side: ?vocals=off forces an ffmpeg center-channel
-    // cancellation transcode, so the toggle DOES re-assign audio.src. Position is
+    // Vocal removal is server-side: ?vocals=off forces an ffmpeg mid/side
+    // vocal-mute transcode, so the toggle DOES re-assign audio.src. Position is
     // preserved across that reload by `restoredTime` rather than by avoiding the
     // reload. The setup seeds lyrics on the first track so the overlay renders.
     await startAlbum(page);

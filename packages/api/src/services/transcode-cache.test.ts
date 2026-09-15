@@ -1,4 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test';
+import { createHash } from 'node:crypto';
 import {
   mkdtempSync,
   writeFileSync,
@@ -20,6 +21,7 @@ import {
   _resetTranscodeCacheForTests,
   type FileTranscoder,
 } from './transcode-cache.js';
+import { NOVOX_FILTER_VERSION, VOCAL_REMOVAL_FILTER } from './transcode.js';
 
 let musicDir: string;
 let cacheDir: string;
@@ -185,6 +187,70 @@ describe('transcode cache', () => {
     expect(noVocals).not.toBe(normal);
     // Passing the flag falsy must match the 5-arg call so existing cache entries survive.
     expect(transcodeCacheKey('/m/a.flac', 1000, 12345, 'mp3', 192, 'plain')).toBe(normal);
+    // Hardcoded, not recomputed: this is the shipped digest of the `plain`
+    // input string, so a marker that leaked into the ordinary key (invalidating
+    // every cached transcode on deploy) fails here.
+    expect(normal).toBe('9df30b71430859b207b9aa6388130e47277b1da7');
+  });
+
+  it('a filter-version bump re-keys novox and leaves plain alone (#1042)', () => {
+    const v2 = transcodeCacheKey('/m/a.flac', 1000, 12345, 'mp3', 192, 'novox', 2);
+    const v3 = transcodeCacheKey('/m/a.flac', 1000, 12345, 'mp3', 192, 'novox', 3);
+    expect(v3).not.toBe(v2);
+    expect(transcodeCacheKey('/m/a.flac', 1000, 12345, 'mp3', 192, 'plain', 3)).toBe(
+      transcodeCacheKey('/m/a.flac', 1000, 12345, 'mp3', 192, 'plain', 2),
+    );
+    // The shipped default must be the current recipe's version, or a deploy
+    // keeps serving the previous filter's audio.
+    expect(transcodeCacheKey('/m/a.flac', 1000, 12345, 'mp3', 192, 'novox')).toBe(
+      transcodeCacheKey('/m/a.flac', 1000, 12345, 'mp3', 192, 'novox', NOVOX_FILTER_VERSION),
+    );
+  });
+
+  it('the unversioned v1 novox key is dead (#1042)', () => {
+    // sha1 of the exact string the pre-fix key hashed (`…|192|novox`, no
+    // version), built here rather than read back from transcodeCacheKey: going
+    // through the function under test would agree with itself even if the
+    // version were dropped again, which is the regression this pins.
+    // Computed, not pasted — a 40-char hex literal named `*Key` is what the
+    // generic-api-key rule in .gitleaks.toml exists to catch, and the secret
+    // gate scans full history, so the literal would fail CI on every branch
+    // that can see this commit, not just this one.
+    const v1Key = createHash('sha1').update('/m/a.flac|1000|12345|mp3|192|novox').digest('hex');
+    expect(transcodeCacheKey('/m/a.flac', 1000, 12345, 'mp3', 192, 'novox')).not.toBe(v1Key);
+  });
+
+  it('a cached v1 novox rendition is not served — the new recipe re-transcodes (#1042)', async () => {
+    // The end-to-end shape of the trap: a healthy, full-size karaoke entry left
+    // by the previous filter must be unreachable, not a cache hit.
+    const st = statSync(srcPath);
+    const v1Path = join(
+      cacheDir,
+      `${createHash('sha1')
+        .update(`${srcPath}|${Math.round(st.mtimeMs)}|${st.size}|mp3|192|novox`)
+        .digest('hex')}.mp3`,
+    );
+    writeFileSync(v1Path, 'OLD-FILTER-AUDIO-'.repeat(128));
+    const t = makeTranscoder();
+    const out = await getTranscodedFile(cacheDir, srcPath, 'mp3', 192, {
+      transcoder: t.fn,
+      variant: 'novox',
+    });
+    expect(out).not.toBe(v1Path);
+    expect(t.calls()).toBe(1);
+    expect((await Bun.file(out).text()).startsWith('TRANSCODED-1-')).toBe(true);
+  });
+
+  it('the novox recipe and its cache version move together (#1042)', () => {
+    // The guard that makes forgetting the bump impossible: edit
+    // VOCAL_REMOVAL_FILTER and this fails. The fix is to bump
+    // NOVOX_FILTER_VERSION (which re-keys every cached novox entry) and update
+    // the digest below — never the other way round.
+    const digest = createHash('sha1').update(VOCAL_REMOVAL_FILTER).digest('hex').slice(0, 12);
+    expect({ version: NOVOX_FILTER_VERSION, digest }).toEqual({
+      version: 2,
+      digest: 'b2258d610ef9',
+    });
   });
 
   it('evicts oldest files when over the disk budget', async () => {

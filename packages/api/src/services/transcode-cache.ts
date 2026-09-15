@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { createLogger } from '@nicotind/core';
 import {
   type TranscodeFmt,
+  NOVOX_FILTER_VERSION,
   transcodeExt,
   transcodeToFile as defaultTranscodeToFile,
 } from './transcode.js';
@@ -23,7 +24,7 @@ export type FileTranscoder = (
 /**
  * Which rendition of a track a cache entry holds:
  *   - `plain`: the track as-is;
- *   - `novox`: the center-cancel vocal mute (an ffmpeg `-af` while encoding).
+ *   - `novox`: the band-limited mid/side vocal mute (an ffmpeg `-af` while encoding).
  */
 export type TranscodeVariant = 'plain' | 'novox';
 
@@ -57,10 +58,15 @@ const MIN_USABLE_OUTPUT_BYTES = 1024;
 
 /**
  * Deterministic cache id: source path + mtime + size + target format/bitrate,
- * plus a `|novox` marker for the vocal-muted variant (`plain` adds nothing, so
- * a deploy never invalidates the ordinary entries). Source size is part of the
- * key so a file replacement with an unchanged mtime (a 1-second resolution on
- * some filesystems) cannot silently reuse a stale transcode.
+ * plus a `|novox|v<n>` marker for the vocal-muted variant (`plain` adds
+ * nothing, so a deploy never invalidates the ordinary entries). Source size is
+ * part of the key so a file replacement with an unchanged mtime (a 1-second
+ * resolution on some filesystems) cannot silently reuse a stale transcode.
+ *
+ * The marker carries the recipe AND its implementation version: a `novox` entry
+ * is the *output* of `VOCAL_REMOVAL_FILTER`, so a changed filter is a different
+ * rendition of the same source and must not collide with the cached old one
+ * (issue #1042). `filterVersion` is injectable only so a test can prove that.
  */
 export function transcodeCacheKey(
   absPath: string,
@@ -69,8 +75,9 @@ export function transcodeCacheKey(
   format: TranscodeFmt,
   kbps: number,
   variant: TranscodeVariant = 'plain',
+  filterVersion: number = NOVOX_FILTER_VERSION,
 ): string {
-  const marker = variant === 'plain' ? '' : `|${variant}`;
+  const marker = variant === 'plain' ? '' : `|${variant}|v${filterVersion}`;
   return createHash('sha1')
     .update(`${absPath}|${Math.round(mtimeMs)}|${sizeBytes}|${format}|${kbps}${marker}`)
     .digest('hex');

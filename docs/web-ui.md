@@ -126,7 +126,7 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
   - `NowPlayingLyricsPanelComponent` — the in-place karaoke-styled lyrics view.
   - The fullscreen overlay's mic button carries `data-vocal-mode` (`off | basic`) and a
     `vocal-mute-status` caption naming the served mute, both derived from
-    `PlayerService.vocalsMuted` — center-cancel is a synchronous ffmpeg filter, so the flag
+    `PlayerService.vocalsMuted` — the vocal mute is a synchronous ffmpeg filter, so the flag
     *is* the mode. It was a four-state machine while the ML stem could be pending
     ([vocal-isolation-spike.md](vocal-isolation-spike.md), issues #603/#1024).
   - `NowPlayingKaraokeFullscreenComponent` — the fullscreen gradient overlay.

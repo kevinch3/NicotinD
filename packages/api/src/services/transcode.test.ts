@@ -52,6 +52,9 @@ const {
   transcodeExt,
   transcodeContentType,
   transcodeOutputIsAcceptable,
+  MID_RESIDUAL,
+  VOCAL_BAND_HZ,
+  VOCAL_REMOVAL_FILTER,
 } = await import('./transcode.js');
 
 afterAll(() => {
@@ -130,22 +133,29 @@ describe('transcodeToFile', () => {
     expect(lastSpawnArgs).not.toContain('-af');
   });
 
-  it('applies the center-channel cancellation filter when vocal removal is on', async () => {
+  it('applies the vocal-mute filter when vocal removal is on', async () => {
     const p = transcodeToFile('/in.flac', '/out.mp3', 'mp3', 192, true);
     lastProc!.emit('close', 0);
     await expect(p).resolves.toBeUndefined();
     const af = lastSpawnArgs!.indexOf('-af');
     expect(af).toBeGreaterThanOrEqual(0);
-    // Center cancellation: each output channel is the same L/R difference, so
-    // anything panned dead-center (typically lead vocals) cancels out.
-    const filter = lastSpawnArgs![af + 1];
-    expect(filter).toBe('pan=stereo|c0=0.5*c0-0.5*c1|c1=0.5*c0-0.5*c1');
-    // Issue #602: the two channels must be IDENTICAL, not opposite. An
-    // anti-phase pair (c0=L−R, c1=R−L) sums to digital silence on any mono
-    // downmix — phone speakers, single earbuds, mono TV out.
-    const [, c0, c1] = /^pan=stereo\|c0=(.+)\|c1=(.+)$/.exec(filter) ?? [];
+    expect(lastSpawnArgs![af + 1]).toBe(VOCAL_REMOVAL_FILTER);
+  });
+
+  it('the vocal-mute recipe attenuates the mid inside the vocal band only (#602, #1042)', () => {
+    // Issue #602: the mid is attenuated, never cancelled — at 0 the in-band
+    // pair is anti-phase and every mono downmix is digital silence.
+    expect(MID_RESIDUAL).toBeGreaterThan(0);
+    // Issue #1042: the attenuation is band-limited and the bands outside it are
+    // recombined at unity, which is what keeps the bass and kick.
+    expect(VOCAL_REMOVAL_FILTER).toContain(
+      `acrossover=split=${VOCAL_BAND_HZ[0]} ${VOCAL_BAND_HZ[1]}`,
+    );
+    expect(VOCAL_REMOVAL_FILTER).toContain('normalize=0');
+    // A real stereo pair: the side is kept, so the two channels differ.
+    const [, c0, c1] = /\|c0=([^|]+)\|c1=([^[]+)\[/.exec(VOCAL_REMOVAL_FILTER) ?? [];
     expect(c0).toBeDefined();
-    expect(c1).toBe(c0);
+    expect(c1).not.toBe(c0);
   });
 
   it('uses strict decoding flags so a damaged source fails fast (-xerror, +discardcorrupt)', async () => {
