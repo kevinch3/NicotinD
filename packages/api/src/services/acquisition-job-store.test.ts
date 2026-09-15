@@ -83,6 +83,31 @@ describe('jobAlbumPairs / jobCanonicalTracklists (shared album_jobs ∪ acquisit
     expect(canon).toEqual(['Heathen:2', 'Kid A:2']); // Drones (null canonical) excluded
   });
 
+  /** The completeness dimension dedupes re-hunted pairs on these three (#736). */
+  it('carries lidarrAlbumId, the raw per-arm state and createdAt from both arms', () => {
+    createJob(db, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      artistName: 'David Bowie',
+      albumTitle: 'Heathen',
+      lidarrAlbumId: 99,
+      canonicalTracks: ['Sunday'],
+      username: 'peer1',
+      files: [{ filename: 'x\\01 Sunday.flac', size: 1, trackTitle: 'Sunday' }],
+    });
+    insertAlbumJob('Radiohead', 'Kid A', 'exhausted', ['Everything']);
+
+    const byAlbum = new Map(jobCanonicalTracklists(db).map((r) => [r.albumTitle, r]));
+    expect(byAlbum.get('Heathen')).toMatchObject({ lidarrAlbumId: 99, state: 'active' });
+    expect(byAlbum.get('Heathen')!.createdAt).toBeGreaterThan(0);
+    // The album_jobs arm has its own vocabulary, surfaced raw.
+    expect(byAlbum.get('Kid A')).toMatchObject({
+      lidarrAlbumId: 1,
+      state: 'exhausted',
+      createdAt: 0,
+    });
+  });
+
   it('degrades to empty on a schema-less DB (missing tables)', () => {
     const bare = new Database(':memory:');
     expect(jobAlbumPairs(bare)).toEqual([]);

@@ -13,6 +13,7 @@ import { losslessSuffixSql } from './library-track-select.js';
 import { lowInformationOnlyGenreSql, unresolvedGenreSql } from './genre-split.js';
 import { countOpenCurationFlags } from './curation-flags.js';
 import { albumAlreadyComplete, matchingLocalAlbums, onDiskTitles } from './library-completeness.js';
+import { jobCanonicalTracklists, type JobCanonicalTracklist } from './acquisition-job-store.js';
 
 /**
  * Library health report — the one aggregation of every curation dimension:
@@ -104,6 +105,11 @@ export interface ConfirmedIncomplete {
   owned: number;
   missing: number;
   lidarrAlbumId: number | null;
+  /**
+   * The winning job's own state, raw. Its vocabulary depends on which table
+   * recorded the job — see {@link JobCanonicalTracklist.state}; a renderer can
+   * show it but must not branch on it.
+   */
   state: string;
 }
 
@@ -340,74 +346,64 @@ function count(db: Database, sql: string): number {
   return db.query<{ c: number }, []>(`SELECT COUNT(*) c FROM ${sql}`).get()?.c ?? 0;
 }
 
+/**
+ * Newest recorded acquisition per artist/album pair, over `album_jobs` UNION
+ * `acquisition_jobs` (issue #736 — reading `album_jobs` alone made every album
+ * hunted through the unified table invisible to the completeness dimension).
+ *
+ * Ordered by `createdAt DESC`, never by id: the two ids are a TEXT uuid and an
+ * INTEGER, so no id sort can order the compound result. Two jobs written in the
+ * same millisecond for one pair tie, and the winner between them is arbitrary.
+ */
+function newestJobPerPair(db: Database): JobCanonicalTracklist[] {
+  const jobs = jobCanonicalTracklists(db).sort((a, b) => b.createdAt - a.createdAt);
+  const out: JobCanonicalTracklist[] = [];
+  const seen = new Set<string>();
+  for (const j of jobs) {
+    const key = `${j.artistName.trim().toLowerCase()}|${j.albumTitle.trim().toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(j);
+  }
+  return out;
+}
+
 function confirmedIncomplete(
   db: Database,
+  jobs: readonly JobCanonicalTracklist[],
   live?: ReadonlyMap<number, string[]>,
 ): {
   confirmed: ConfirmedIncomplete[];
   titleMismatches: TitleMismatch[];
 } {
-  let jobs: Array<{
-    artist_name: string;
-    album_title: string;
-    canonical_tracks_json: string;
-    lidarr_album_id: number | null;
-    state: string;
-  }>;
-  try {
-    jobs = db
-      .query<(typeof jobs)[number], []>(
-        `SELECT artist_name, album_title, canonical_tracks_json, lidarr_album_id, state
-         FROM album_jobs
-         WHERE artist_name IS NOT NULL AND album_title IS NOT NULL
-         ORDER BY id DESC`,
-      )
-      .all();
-  } catch {
-    return { confirmed: [], titleMismatches: [] };
-  }
-
   const out: ConfirmedIncomplete[] = [];
   const titleMismatches: TitleMismatch[] = [];
-  const seen = new Set<string>();
   for (const j of jobs) {
-    const key = `${j.artist_name.trim().toLowerCase()}|${j.album_title.trim().toLowerCase()}`;
-    if (seen.has(key)) continue; // newest job (id DESC) wins for a re-hunted pair
-    seen.add(key);
     // The hunt re-fetches the tracklist from Lidarr, whose monitored release can
     // change after the job was written — prod: 4 of 6 stored lists were longer
     // than the live one, and every one of those hunts said already-complete (#1080).
-    let titles = j.lidarr_album_id != null ? live?.get(j.lidarr_album_id) : undefined;
-    if (!titles) {
-      try {
-        const parsed: unknown = JSON.parse(j.canonical_tracks_json);
-        titles = Array.isArray(parsed)
-          ? parsed.filter((t): t is string => typeof t === 'string')
-          : [];
-      } catch {
-        continue;
-      }
-    }
+    const titles =
+      (j.lidarrAlbumId != null ? live?.get(j.lidarrAlbumId) : undefined) ?? j.canonicalTracks;
     if (titles.length === 0) continue;
     // Same matcher acquireAlbum uses, so "incomplete here" ⇒ "a hunt would enqueue".
-    const onDisk = onDiskTitles(db, j.artist_name, j.album_title);
+    const onDisk = onDiskTitles(db, j.artistName, j.albumTitle);
     if (onDisk.length === 0) continue; // absent, not partial — deletion is a curator decision
     const missing = titles.filter(
       (t) => !onDisk.some((d) => titlesOverlap(d, normalizeTitle(t))),
     ).length;
     if (missing === 0) continue;
-    const local = matchingLocalAlbums(db, j.artist_name, j.album_title);
+    const local = matchingLocalAlbums(db, j.artistName, j.albumTitle);
     // This list's contract is "a hunt would enqueue these" — so it must apply
     // the SAME guard the hunt applies (#758). `albumAlreadyComplete` counts
     // ROWS while the loop above matches TITLES, and the two disagree whenever a
     // song is on disk under a different spelling: the title matcher reports it
     // missing, the hunt refuses it as `already-complete`, and a curator spends
     // bounded hunt budget on a no-op. Measured at 4 of 10 on prod.
-    if (albumAlreadyComplete(db, j.artist_name, j.album_title, titles.length)) {
+    if (albumAlreadyComplete(db, j.artistName, j.albumTitle, titles.length)) {
       titleMismatches.push({
         albumId: local[0]?.id ?? null,
-        artist: j.artist_name,
-        album: j.album_title,
+        artist: j.artistName,
+        album: j.albumTitle,
         expected: titles.length,
         onDisk: Math.max(...local.map((r) => r.song_count), 0),
         unmatched: missing,
@@ -416,14 +412,14 @@ function confirmedIncomplete(
     }
     out.push({
       albumId: local[0]?.id ?? null,
-      artist: j.artist_name,
-      album: j.album_title,
+      artist: j.artistName,
+      album: j.albumTitle,
       expected: titles.length,
       // One on-disk "Maps" satisfies "Maps (remix)" too, so matched titles can
       // exceed the songs held — prod overstated two albums by 4 (#1080).
       owned: Math.min(titles.length - missing, onDisk.length),
       missing,
-      lidarrAlbumId: j.lidarr_album_id,
+      lidarrAlbumId: j.lidarrAlbumId,
       state: j.state,
     });
   }
@@ -434,7 +430,12 @@ function confirmedIncomplete(
   };
 }
 
-export function libraryHealth(db: Database, opts: LibraryHealthOptions = {}): LibraryHealthReport {
+export function libraryHealth(
+  db: Database,
+  opts: LibraryHealthOptions = {},
+  /** Pre-read job list, so `libraryHealthWithLidarr` unions the job tables once. */
+  jobs: readonly JobCanonicalTracklist[] = newestJobPerPair(db),
+): LibraryHealthReport {
   const sample = Math.min(50, Math.max(1, Math.trunc(opts.sampleSize ?? 10)));
 
   const audit = auditLibrary(db);
@@ -552,7 +553,7 @@ export function libraryHealth(db: Database, opts: LibraryHealthOptions = {}): Li
     .all(sample);
   const suspectedCount = count(db, `(${gapSql})`);
 
-  const { confirmed, titleMismatches } = confirmedIncomplete(db, opts.liveTracklists);
+  const { confirmed, titleMismatches } = confirmedIncomplete(db, jobs, opts.liveTracklists);
 
   const oldestFlag =
     db
@@ -780,9 +781,12 @@ export async function libraryHealthWithLidarr(
   lidarr: Pick<Lidarr, 'track'> | null | undefined,
 ): Promise<LibraryHealthReport> {
   if (!lidarr) return libraryHealth(db, opts);
+  // One job read for both passes — the candidate scan below and the report
+  // itself would otherwise each union `album_jobs` with `acquisition_jobs`.
+  const jobs = newestJobPerPair(db);
   const ids = [
     ...new Set(
-      confirmedIncomplete(db)
+      confirmedIncomplete(db, jobs)
         .confirmed.map((c) => c.lidarrAlbumId)
         .filter((id): id is number => id != null),
     ),
@@ -802,5 +806,5 @@ export async function libraryHealthWithLidarr(
       }),
     );
   }
-  return libraryHealth(db, { ...opts, liveTracklists: live });
+  return libraryHealth(db, { ...opts, liveTracklists: live }, jobs);
 }

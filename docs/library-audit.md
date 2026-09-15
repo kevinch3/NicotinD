@@ -531,7 +531,7 @@ genuinely degraded.
 
 **Completeness, two-source and honest about it**:
 
-- *confirmed* — `album_jobs` rows (newest per artist/title pair wins): canonical tracklist vs
+- *confirmed* — recorded acquisitions (newest per artist/title pair wins): canonical tracklist vs
   `onDiskTitles`, carrying `lidarrAlbumId` for the `complete_album` tool. Albums with **zero**
   matching tracks on disk are skipped — absent is a curator decision (maybe deleted on purpose),
   not incomplete.
@@ -596,6 +596,34 @@ rows that fall out mostly land in `titleMismatches` (live count met, one title s
 `Maps` and `Maps (Slaptop remix)`, so matched-title counts can exceed the album. `owned` is now capped
 at the on-disk song count, and `expected − owned` no longer has to equal `missing` (the canonical
 titles with no match).
+
+### …over the jobs that actually exist (issue #736)
+
+`confirmedIncomplete` read `FROM album_jobs` alone. Since the unified acquisition store landed that
+table is the cross-peer fallback engine's *private* table and has **no production writer** — every
+album hunted through `acquisition_jobs` (track-search and direct grabs included) was invisible to the
+dimension, so the shipped report, CLI and MCP tool under-counted and the card read "everything
+complete". It now goes through the shared `jobCanonicalTracklists` helper in
+`acquisition-job-store.ts` — the same `album_jobs ∪ acquisition_jobs` union the scanner's canonical
+map and the download-suppression readers use — extended to carry `lidarrAlbumId`, `state` and
+`createdAt` for this reader.
+
+Three consequences of unioning, each load-bearing:
+
+- **Newest-wins is `createdAt DESC`, never `id DESC`.** The two ids are a TEXT uuid and an INTEGER,
+  and a `UNION` returns rows in an arbitrary order anyway, so an id sort cannot order the compound
+  result at all — it would silently hand a re-hunted pair some arbitrary job's tracklist. Two jobs
+  written in the same millisecond for one pair tie, and the winner between them is arbitrary. The
+  tests assert **both** directions (the newer row in each table in turn), so an order that ignores
+  `createdAt` fails one of them.
+- **`state` stays raw, not normalized.** The two arms have different vocabularies (`album_jobs`
+  carries the fallback engine's `exhausted`, `acquisition_jobs` carries `superseded`), and
+  `ConfirmedIncomplete.state` is already shipped to the CLI and the MCP tool — normalizing would
+  rewrite a field consumers read today, and the per-arm value is the more truthful one. A renderer
+  may display it; nothing may branch on it.
+- **One job read per report.** `libraryHealthWithLidarr` needs a first candidate pass to know which
+  Lidarr albums to re-fetch, so it reads the union once and passes that list into `libraryHealth`
+  (its third, optional argument) instead of letting both passes union the two tables.
 
 ## Tests / CI
 `library-quality.test.ts`, `library-audit.test.ts`, `library-disk-audit.test.ts`,
