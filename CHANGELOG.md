@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.53](https://github.com/kevinch3/NicotinD/compare/v0.6.52...v0.6.53) (2026-09-15)
+
+### Bug Fixes
+
+* **e2e:** scope the device-row assertions to at least one row, and revoke through it ([#1166](https://github.com/kevinch3/NicotinD/issues/1166)) ([e00d02e](https://github.com/kevinch3/NicotinD/commit/e00d02e28fb5ebee65d61164d9efc2ac2e315670)), references [#1116](https://github.com/kevinch3/NicotinD/issues/1116)
 ## [0.6.52](https://github.com/kevinch3/NicotinD/compare/v0.6.51...v0.6.52) (2026-09-15)
 
 ### Bug Fixes
