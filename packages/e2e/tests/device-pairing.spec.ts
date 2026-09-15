@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { ADMIN, bearer, expandGroup } from '../helpers';
+import { ADMIN, bearer, deviceRow, expandGroup } from '../helpers';
 
 // Device pairing (QR link): the Devices settings page mints a short-lived
 // pairing code; claiming it (the phone's job — simulated here with a direct
@@ -67,10 +67,12 @@ test.describe('device pairing', () => {
     // The browser now holds a device-bound session: the device row exists.
     await page.goto('/settings/devices');
     await expandGroup(page, 'devices-paired');
-    await expect(page.getByTestId('device-row')).toContainText('browser', { ignoreCase: true });
-    // Clean up so the other tests' device-list assertions stay isolated.
-    await page.getByTestId('device-revoke').click();
-    await expect(page.getByTestId('devices-empty')).toBeVisible();
+    const browserRow = deviceRow(page, 'browser');
+    await expect(browserRow).toHaveCount(1);
+    // Revoke through THAT row, and assert only that it went: this spec does not
+    // own the device list, so emptiness is not its to claim.
+    await browserRow.getByTestId('device-revoke').click();
+    await expect(browserRow).toHaveCount(0);
   });
 
   test('a used or stale /pair link fails soft with guidance', async ({ page }) => {
@@ -99,15 +101,16 @@ test.describe('device pairing', () => {
     // The paired device appears in the list (page polls nothing — reload).
     await page.reload();
     await expandGroup(page, 'devices-paired');
-    await expect(page.getByTestId('device-row')).toContainText('CI phone');
+    const phoneRow = deviceRow(page, 'CI phone');
+    await expect(phoneRow).toHaveCount(1);
 
     // The device JWT is a real session: refresh works…
     const refreshOk = await request.post('/api/auth/refresh', { headers: bearer(deviceJwt) });
     expect(refreshOk.ok()).toBeTruthy();
 
     // …until the device is revoked in the UI.
-    await page.getByTestId('device-revoke').click();
-    await expect(page.getByTestId('devices-empty')).toBeVisible();
+    await phoneRow.getByTestId('device-revoke').click();
+    await expect(phoneRow).toHaveCount(0);
 
     const refreshDead = await request.post('/api/auth/refresh', { headers: bearer(deviceJwt) });
     expect(refreshDead.status()).toBe(403);
