@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.49](https://github.com/kevinch3/NicotinD/compare/v0.6.48...v0.6.49) (2026-09-15)
+
+### Features
+
+* **ops:** watch kpc from the edge droplet, because on-host checks cannot see this ([#1144](https://github.com/kevinch3/NicotinD/issues/1144)) ([9da5983](https://github.com/kevinch3/NicotinD/commit/9da598362125b682ccc9c6baa790ddb2a04e957a)), references [#1143](https://github.com/kevinch3/NicotinD/issues/1143)
 ## [0.6.48](https://github.com/kevinch3/NicotinD/compare/v0.6.47...v0.6.48) (2026-09-15)
 
 ### Bug Fixes
