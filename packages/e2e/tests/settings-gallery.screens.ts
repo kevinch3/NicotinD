@@ -16,7 +16,7 @@ import { shot } from '../playground/shot';
  * `screenshots/mobile/<flow>/NN-label.png` path (the constant `ROOT` there is
  * shared across projects; only the `<flow>` segment differentiates them).
  *
- * Step numbers are one running counter across all five routes so the output
+ * Step numbers are one running counter across every route so the output
  * folder sorts into a single readable story (01-settings-collapsed,
  * 02-settings-expanded, 03-admin-collapsed, ...).
  */
@@ -26,6 +26,7 @@ const ROUTES: Array<{ path: string; label: string }> = [
   { path: '/settings/plugins', label: 'plugins' },
   { path: '/settings/devices', label: 'devices' },
   { path: '/settings/agent-tokens', label: 'agent-tokens' },
+  { path: '/settings/about', label: 'about' },
 ];
 
 /** Every persisted group-open key is prefixed `nicotind-group-` (see
