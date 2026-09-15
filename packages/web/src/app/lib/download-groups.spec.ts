@@ -3,6 +3,7 @@ import type { AcquireJob, AcquisitionJobView } from '@nicotind/core';
 import {
   acquireJobToDownloadItem,
   acquireJobLabel,
+  jobDenominator,
   jobPercent,
   methodForBackend,
   buildDownloadFeed,
@@ -228,7 +229,7 @@ describe('mergeAcquisitionJobs', () => {
           }),
         ],
       )[0]!;
-      expect(card.progress).toEqual({ done: 98, total: 100 });
+      expect(card.progress).toEqual({ done: 98, total: 103 });
       expect(card.canonicalTotal).toBe(103);
       expect(card.notOffered).toBe(3);
     });
@@ -261,6 +262,56 @@ describe('mergeAcquisitionJobs', () => {
       )[0]!;
       expect(card.canonicalTotal).toBeUndefined();
       expect(card.notOffered).toBeUndefined();
+    });
+  });
+
+  /**
+   * #1067. `expected` stays "what the job is itemising right now" — a live
+   * COUNT(*) allowed to move — and the *printed* total is the commitment. So
+   * attaching the not-offered titles later grows `expected` without ever
+   * moving the denominator the card showed, which is the #990 shape.
+   */
+  describe('one denominator for the bar and the count (#1067)', () => {
+    const shortfallJob = (expected: number) =>
+      acqJob({
+        progress: { expected, delivered: 12, unavailable: 0, failed: 0, canonical: 14 },
+      });
+
+    it('prints the commitment, not the arrival tally', () => {
+      const card = mergeAcquisitionJobs([], [shortfallJob(12)])[0]!;
+      expect(card.progress).toEqual({ done: 12, total: 14 });
+      expect(card.notOffered).toBe(2);
+    });
+
+    it('does not move the printed total when the job itemises the rest', () => {
+      const before = mergeAcquisitionJobs([], [shortfallJob(12)])[0]!;
+      const after = mergeAcquisitionJobs([], [shortfallJob(14)])[0]!;
+      // The assertion that matters: `expected` climbed 12 → 14 and the
+      // denominator the user is reading did not budge.
+      expect(after.progress!.total).toBe(before.progress!.total);
+      expect(after.notOffered).toBeUndefined();
+      expect(after.canonicalTotal).toBeUndefined();
+    });
+
+    it('keeps the item count when the source offered bonus tracks', () => {
+      const card = mergeAcquisitionJobs(
+        [],
+        [
+          acqJob({
+            progress: { expected: 12, delivered: 12, unavailable: 0, failed: 0, canonical: 10 },
+          }),
+        ],
+      )[0]!;
+      expect(card.progress).toEqual({ done: 12, total: 12 });
+      expect(card.notOffered).toBeUndefined();
+    });
+
+    it('divides the bar by the number the count text printed', () => {
+      const view = shortfallJob(12);
+      const card = mergeAcquisitionJobs([], [view])[0]!;
+      expect(card.progress!.total).toBe(jobDenominator(view.progress));
+      expect(card.percent).toBe(Math.round((card.progress!.done / card.progress!.total) * 100));
+      expect(card.percent).toBe(86);
     });
   });
 

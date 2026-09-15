@@ -75,7 +75,8 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   `isUnknownLike` rejects placeholders. → [download-pipeline.md](download-pipeline.md)
 - **Identity resolved beside the transfer**: `AcquireMetadataPrefetch` + `lookupRelease` +
   `spotifyResourceFromUrl` name a URL job and fix its size at submit; `hasCommittedTotal` hides an
-  uncommitted denominator. → [download-pipeline.md](download-pipeline.md)
+  uncommitted denominator and `jobDenominator` is the only one the card prints or divides by.
+  → [download-pipeline.md](download-pipeline.md)
 - **Playlist-from-acquisition**: a URL job classified as a playlist auto-generates a native playlist
   from landed tracks in download order — addon-native (the live path, issue #587):
   `materializeAddonPlaylist`; legacy in-process fallback: `classifyAcquireUrl`,
