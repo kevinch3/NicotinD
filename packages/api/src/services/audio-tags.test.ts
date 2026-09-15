@@ -6,7 +6,15 @@
  */
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, copyFileSync, rmSync } from 'node:fs';
+import {
+  mkdtempSync,
+  copyFileSync,
+  rmSync,
+  writeFileSync,
+  readFileSync,
+  chmodSync,
+  existsSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { featureTagsFromNative, readAudioTags, writeAudioTags } from './audio-tags.js';
@@ -387,6 +395,144 @@ describe.if(ffmpegAvailable())('compilation flag round-trip (Vorbis/Opus)', () =
 
   // Deliberately no mp3 case here: ID3 compilation support was removed in #932
   // (issue #917), not left broken. `library-organizer.test.ts` covers the mp3 side.
+});
+
+/**
+ * Issue #964: node-id3's in-place merge reports success on a write it did not
+ * land, so `writeAudioTags` believes an mp3 write only where the file reads it
+ * back — and falls through to the container rewrite when it does not. The
+ * failure returned TRUE, so nothing keyed on the boolean can see this class.
+ */
+describe.if(ffmpegAvailable())('mp3 container-rewrite fallback (#964)', () => {
+  let ffmpegLog: string;
+  let prevFfmpeg: string | undefined;
+
+  /** An ffmpeg that records its argv, so "did not spawn" is observable. */
+  const recordingFfmpeg = (realBinary = 'ffmpeg'): string => {
+    const wrapper = join(dir, 'ffmpeg-wrapper.sh');
+    writeFileSync(
+      wrapper,
+      `#!/bin/sh\nprintf '%s\\n' "$*" >> '${ffmpegLog}'\nexec ${realBinary} "$@"\n`,
+    );
+    chmodSync(wrapper, 0o755);
+    return wrapper;
+  };
+  const spawns = (): string[] =>
+    existsSync(ffmpegLog) ? readFileSync(ffmpegLog, 'utf8').trim().split('\n').filter(Boolean) : [];
+
+  beforeEach(() => {
+    ffmpegLog = join(dir, 'ffmpeg.log');
+    prevFfmpeg = process.env.NICOTIND_FFMPEG_PATH;
+    process.env.NICOTIND_FFMPEG_PATH = recordingFfmpeg();
+  });
+  afterEach(() => {
+    if (prevFfmpeg === undefined) delete process.env.NICOTIND_FFMPEG_PATH;
+    else process.env.NICOTIND_FFMPEG_PATH = prevFfmpeg;
+  });
+
+  it('never reaches ffmpeg when the in-place write sticks', async () => {
+    expect(
+      await writeAudioTags(mp3, {
+        title: 'T',
+        artist: 'A',
+        album: 'Al',
+        albumArtist: 'AA',
+        genre: 'Cumbia; Pop',
+        key: 'Am',
+        year: 2001,
+        trackNumber: 5,
+        lyrics: 'L1',
+        energy: 0.72,
+        mbRecordingId: 'mbr',
+      }),
+    ).toBe(true);
+    expect(spawns()).toEqual([]);
+    expect((await readAudioTags(mp3)).title).toBe('T');
+  });
+
+  it('does not rewrite for a field the reader cannot see', async () => {
+    // TBPM and TPOS are written and never read back, so comparing them would
+    // remux every BPM/disc write forever.
+    expect(await writeAudioTags(mp3, { bpm: 128, discNumber: 2 })).toBe(true);
+    expect(spawns()).toEqual([]);
+  });
+
+  it('rewrites the container when the read-back still shows the old value', async () => {
+    await writeAudioTags(mp3, { title: 'OLD TITLE' });
+    // The reported class: node-id3 returns true, the file still reads old.
+    expect(
+      await writeAudioTags(
+        mp3,
+        { title: 'NEW TITLE' },
+        { readTags: async () => ({ title: 'OLD TITLE' }) },
+      ),
+    ).toBe(true);
+    expect(spawns()).toHaveLength(1);
+    expect(spawns()[0]).toContain('-map_metadata 0');
+    // ID3v2.4 carries a year as TDRC, which node-id3 maps to `recordingTime`
+    // and `readAudioTags` therefore never sees.
+    expect(spawns()[0]).toContain('-id3v2_version 3');
+    expect((await readAudioTags(mp3)).title).toBe('NEW TITLE');
+  });
+
+  it('preserves the TXXX feature frames the analysis writers own', async () => {
+    await writeAudioTags(mp3, {
+      title: 'OLD TITLE',
+      artist: 'KEEP ARTIST',
+      year: 1988,
+      energy: 0.72,
+      loudness: -9.3,
+      mood: 'party',
+      mbRecordingId: 'mbr-1',
+      acoustIdId: 'aid-1',
+    });
+    expect(
+      await writeAudioTags(
+        mp3,
+        { title: 'NEW TITLE' },
+        { readTags: async () => ({ title: 'OLD TITLE' }) },
+      ),
+    ).toBe(true);
+    expect(spawns()).toHaveLength(1);
+    const tags = await readAudioTags(mp3);
+    expect(tags.title).toBe('NEW TITLE');
+    expect(tags.artist).toBe('KEEP ARTIST');
+    expect(tags.energy).toBeCloseTo(0.72, 3);
+    expect(tags.loudness).toBeCloseTo(-9.3, 1);
+    expect(tags.mood).toBe('party');
+    expect(tags.mbRecordingId).toBe('mbr-1');
+    expect(tags.acoustIdId).toBe('aid-1');
+    // The id3v2.3 pin: a v2.4 rewrite would leave this undefined.
+    expect(tags.year).toBe(1988);
+  });
+
+  it('keeps the lyrics readable across the rewrite', async () => {
+    // ffmpeg carries an inherited USLT across but re-emits it as TXXX, which no
+    // reader here maps to `lyrics`, so node-id3 puts the frame back.
+    await writeAudioTags(mp3, { title: 'OLD TITLE', lyrics: 'first line\nsecond line' });
+    expect(
+      await writeAudioTags(
+        mp3,
+        { title: 'NEW TITLE' },
+        { readTags: async () => ({ title: 'OLD TITLE' }) },
+      ),
+    ).toBe(true);
+    expect(spawns()).toHaveLength(1);
+    const tags = await readAudioTags(mp3);
+    expect(tags.title).toBe('NEW TITLE');
+    expect(tags.lyrics).toBe('first line\nsecond line');
+  });
+
+  it('reports false when the rewrite itself cannot run', async () => {
+    process.env.NICOTIND_FFMPEG_PATH = join(dir, 'no-such-ffmpeg');
+    expect(
+      await writeAudioTags(
+        mp3,
+        { title: 'NEW TITLE' },
+        { readTags: async () => ({ title: 'OLD TITLE' }) },
+      ),
+    ).toBe(false);
+  });
 });
 
 describe('featureTagsFromNative (pure)', () => {

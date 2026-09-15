@@ -4,7 +4,8 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { applySchema } from '../db.js';
-import { mutateSongMetadata } from './song-metadata-mutate.js';
+import { mutateSongMetadata, TAG_WRITE_FLAG_ACTOR } from './song-metadata-mutate.js';
+import { countOpenCurationFlags, listOpenCurationFlags } from './curation-flags.js';
 import type { AudioTags } from './audio-tags.js';
 
 let db: Database;
@@ -392,6 +393,80 @@ describe('mutateSongMetadata — a divergence names the right culprit (#964)', (
       { title: 'Pegao' },
     );
     expect(result).toMatchObject({ ok: false, error: 'Tag write did not persist' });
+  });
+});
+
+/**
+ * Issue #964: naming the right culprit still left the failure inside one HTTP
+ * response. The caller may be an unattended bulk pass (`normalize-titles.ts`,
+ * a curator triage round), so the file now lands in the review queue and stops
+ * being a silence.
+ */
+describe('mutateSongMetadata — a failed verification files a curation flag (#964)', () => {
+  const failing = (onDisk?: AudioTags) => ({
+    musicDir,
+    writeTags: async () => true,
+    scanIncremental: async () => {},
+    readTags: async () => onDisk ?? {},
+  });
+
+  it('flags the song when the tag write did not persist', async () => {
+    const result = await mutateSongMetadata(db, failing(), 'song-yt', { title: 'Pegao' });
+    expect(result).toMatchObject({ ok: false, error: 'Tag write did not persist' });
+    const flags = listOpenCurationFlags(db);
+    expect(flags).toHaveLength(1);
+    expect(flags[0]).toMatchObject({
+      targetKind: 'song',
+      targetId: 'song-yt',
+      reason: 'Tag write did not persist: title',
+      createdBy: TAG_WRITE_FLAG_ACTOR,
+    });
+  });
+
+  it('flags the song when the rescan is the culprit, naming that instead', async () => {
+    const result = await mutateSongMetadata(db, failing({ title: 'Pegao' }), 'song-yt', {
+      title: 'Pegao',
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      error: 'Tag write landed but the rescan did not apply it',
+    });
+    expect(listOpenCurationFlags(db)[0]?.reason).toBe(
+      'Tag write landed but the rescan did not apply it: title',
+    );
+  });
+
+  it('two consecutive failed writes leave exactly one open flag', async () => {
+    await mutateSongMetadata(db, failing(), 'song-yt', { title: 'Pegao' });
+    await mutateSongMetadata(db, failing(), 'song-yt', { title: 'Pegao' });
+    expect(countOpenCurationFlags(db)).toBe(1);
+  });
+
+  it('files nothing when the write verifies', async () => {
+    const result = await mutateSongMetadata(
+      db,
+      {
+        musicDir,
+        writeTags: async () => true,
+        scanIncremental: async () => {
+          db.run('UPDATE library_songs SET title = ? WHERE id = ?', ['Pegao', 'song-yt']);
+        },
+      },
+      'song-yt',
+      { title: 'Pegao' },
+    );
+    expect(result.ok).toBe(true);
+    expect(countOpenCurationFlags(db)).toBe(0);
+  });
+
+  it('files nothing for a failure that never reached the tag write', async () => {
+    // A 404/503/400 is not a lost write and must not queue a human decision.
+    await mutateSongMetadata(db, { musicDir }, 'nope', { title: 'X' });
+    await mutateSongMetadata(db, {}, 'song-yt', { title: 'X' });
+    await mutateSongMetadata(db, { musicDir, writeTags: async () => false }, 'song-yt', {
+      title: 'X',
+    });
+    expect(countOpenCurationFlags(db)).toBe(0);
   });
 });
 
