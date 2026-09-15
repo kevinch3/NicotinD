@@ -3825,3 +3825,83 @@ cases (`04 Quieto` track=4 strip; `7 Steps` track=11 keep).
 is absent. Only then was it worth reading the scanner. The replay is what turned a hypothesis
 into a reproduction; the blast-radius sweep is what stopped the fix from breaking the 12 benign
 cases it would otherwise have regressed.
+
+## Stretch 18 — 2026-09-15: the "Music" residue, and a stale headline on the umbrella metric
+
+A genre-only pass taken alongside the backlog sweep, working #1129 (YouTube's category name as a
+genre) and #1123 (umbrella-only tags). Every write verified by read-back.
+
+### Baseline → final
+
+| dimension | before | after | delta |
+| --- | --- | --- | --- |
+| `genres.missing` | 217 | **180** | **−37** |
+| `genres.lowInformation` | 516 | 505 | −11 (see the ingest note) |
+| Gigi D'Agostino umbrella-only | 55 | **33** | −22 |
+| songs (library) | 21,537 | 21,549 | +12 |
+
+38 writes: 37 tracks carrying the bare genre `Music`, plus one stray `Latin`.
+
+| cluster | n | written | corroboration |
+| --- | --- | --- | --- |
+| Jorge Cafrune, *Esenciales* (2020) | 28 | `Folclore` | the **tracks**: *López Pereyra*, *Balderrama*, *Zamba para Decir Adiós* are zambas, *Milonga del Solitario* a milonga, *La telesita* Santiagueño. `origin.country = AR` |
+| Gigi D'Agostino, *L'Amour Toujours* (1999) | 22 | `Italo Dance` | canonical Italo Dance: *Bla Bla Bla*, *The Riddle*, *Tecno Fes* |
+| Vetusta Morla | 5 | `Indie Rock` | Madrid indie rock, five real singles |
+| Mouloudji | 2 | `Chanson` | *Un jour tu verras* is a canonical chanson |
+| Demis Roussos | 2 | `Baroque Pop`, `Easy Listening` | *Rain and Tears* is the 1968 Aphrodite's Child single over Pachelbel's Canon |
+
+### `genres.missing` is the dimension that moved, and that is the point
+
+−37 matches the 37 retagged exactly. It landed in `missing` rather than `lowInformation` because
+`music` is already in `JUNK_GENRES`, so the scorer read those songs as genre-**absent** all along.
+#1129's own analysis predicted this, and the delta confirms it: nothing needed fixing in the axis,
+only in the data.
+
+### The umbrella headline was stale by an order of magnitude
+
+#1123 measured **5,135** umbrella-only songs on 09-12. The dimension reads **516** today. That is not
+progress — it is #1131's metric fix, which narrowed the count to songs whose catch-all is their
+**only** genre, grouped per artist. Anyone planning against 5,135 would be sizing a project that no
+longer exists.
+
+**Lesson, the same shape as the acceptance-metric traps already in this file: re-measure before
+planning against a number, even one this repo wrote down itself three days ago.**
+
+### An ingest landed mid-pass, and it explains the weak `lowInformation` delta
+
+23 umbrella fixes moved the metric only 11. The library grew by 12 songs and 9 artists during the
+pass, a new `djset_artist` appeared, `fragmented_artist` went 8 → 9, and a 30-track Green Velvet DJ
+mix entered the cover worklist. New arrivals carry new umbrella tags.
+
+So `lowInformation` **will not trend down on hand passes alone** — the inflow matches the outflow of
+a careful session. That is an argument for the enrichment chain, not for more hand curation, and it
+is worth remembering before anyone reads a flat metric as "the curation did not work".
+
+### Where I stopped, and why that was the right call
+
+Four artists were left unjudged rather than guessed:
+
+- **Moderat (20)** — the free lane offers exactly **one** real sibling tag (*III* → `Downtempo`), and
+  the rule is ≥2 agreeing siblings. *II* is more club-oriented; blanketing `Downtempo` is the mistag
+  that rule exists to prevent.
+- **Fred again.. (16)** — `House` is very likely right, but the one real sibling tag in the library
+  says `Electro`. A disagreeing sibling is a reason to stop, not to overrule it.
+- **Abraham (ES) & S.Hai (30)** — obscure; no confident subgenre without a search.
+- **Pete Tong, HER-O, Jules Buckley (17)** — the Heritage Orchestra *Ibiza Classics* project. Genuinely
+  a naming decision (classical crossover vs dance), not a lookup.
+
+**A uniform genre across a uniform format is n=1.** All 22 Gigi tracks are mp3 128 from one rip
+carrying one blanket `Dance`. The tag agreeing with itself 22 times is one source's tag, not 22
+pieces of evidence — the judgement rested on the artist.
+
+### Evidence produced for other issues
+
+- **#864** — a second composer-credit artist row in a different decade:
+  `Demis Roussos, COSTANDINOS， ROBERT, VLAVIANOS， STYLIANOS`, where Costandinos and Vlavianos wrote
+  the song. Its separators include **U+FF0C FULLWIDTH COMMA**, so the delimiter path cannot repair
+  the row at all — the members it would yield are `SURNAME， FIRSTNAME` pairs no lookup will match.
+  Recorded there: a re-mint count that greps only `, ` under-reports this class.
+- **#866** — two more upload-date-as-year confirmations: *Rain and Tears* (1968) filed as **2015**,
+  *Shadows* as 2014.
+- **#747** — *L'Amour Toujours* is a real two-disc release (disc 1 × 12, disc 2 × 10) with track
+  numbers restarting at 1, i.e. the collision shape that issue measures.
