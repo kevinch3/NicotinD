@@ -894,8 +894,9 @@ const audioFeaturesTask: EnrichmentTask = {
     const tally: FailureTally = { failed: 0, sample: null };
     let applied = 0;
     let cursor = 0;
-    // The sidecar serializes inference internally, so more than 2 in flight
-    // only queues — keep the pool small regardless of ctx.concurrency.
+    // One worker regardless of ctx.concurrency: the sidecar serializes /analyze
+    // on a single registry lock and the client's abort measures wall clock, so a
+    // second in-flight request only spends its own budget queueing (#1139).
     const worker = async (): Promise<void> => {
       for (;;) {
         const idx = cursor++;
@@ -1011,9 +1012,7 @@ const audioFeaturesTask: EnrichmentTask = {
         labels.push(`${song.artist} — ${song.title} → ${f.mood}`);
       }
     };
-    await Promise.all(
-      Array.from({ length: Math.max(1, Math.min(ctx.concurrency, 2)) }, () => worker()),
-    );
+    await worker();
     return { applied, labels, failed: tally.failed, errorSample: tally.sample };
   },
 };

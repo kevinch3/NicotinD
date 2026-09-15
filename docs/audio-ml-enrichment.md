@@ -478,10 +478,56 @@ together do they explain a 3h42m host outage:
    see "An un-ledgered failure must still stamp an attempt" in
    [library-processing.md](library-processing.md).
 
-Bounding the decode fixes (1). Stamping the attempt fixes (3). **(2) is still open**: a client
-abort should cancel server-side work, not merely stop waiting for it. Until it does, any file
-that cannot finish inside the timeout still costs a full analysis of wasted GPU time per
-attempt — it just no longer costs the same file every time, or the host.
+Bounding the decode fixes (1). Stamping the attempt fixes (3).
+
+### (2) is bounded, not cancelled (issue #1139)
+
+**Re-measured on `kpc` 2026-09-15, read-only, 12 h after the windowed image deployed:**
+`danceability IS NULL` = **0 of 21,537** songs (so `audioFeaturesTask.countPending` is 0 and the
+task issues no work), **2** `POST /analyze` in 12 h, **both 200**, zero 4xx/5xx, zero `analysis
+failed` lines, container `Up 12 hours (healthy)`. The 989:2 ratio above was a property of the
+unbounded decode *composed with* the NULLS-FIRST refill loop; with both fixed there is no waste
+left to reclaim.
+
+With the window in place, one `/analyze` costs `min(duration, 900) s` of audio at the measured
+~0.12x CPU real-time (21.4 s for a ~180 s track, §4) — ~86 s worst case, inside the budget. So a
+`duration > N ⇒ 422` would reject 59 perfectly analyzable prod tracks for no benefit, and is not
+what ships.
+
+What *was* still structurally reachable is **queue time, not analysis time**:
+`AbortSignal.timeout` measures wall clock, and the `audio-features` task ran two workers against a
+sidecar that serializes `/analyze` on one registry lock, so two queued long tracks were ~86 s +
+~86 s against a 120 s budget. Two changes close that:
+
+- **One worker.** The task now runs a single worker regardless of `ctx.concurrency`. Free by §4a's
+  own measurement: 1/2/4/8 came in at 26.4/26.3/26.2/26.3 s, under 1 % spread, so lowering it to 1
+  costs nothing and removes the queue entirely.
+- **The two budgets now agree.** `/health` publishes `analyzeWindowSeconds`, and
+  `AudioFeaturesClient.analyzeTimeoutMs()` derives the abort from it (`window x 0.12` plus a 30 s
+  margin for the idle-release reload) instead of a flat constant that could silently drift from
+  the sidecar's window. The old 120 s is kept as **both the floor and the fallback**, so a client
+  that has not probed yet, or an older sidecar image that omits the field, keeps exactly the
+  previous budget rather than collapsing to a 0 ms abort. At the shipped 900 s window the budget
+  is 138 s.
+
+Do **not** lower `ANALYZE_WINDOW_SECONDS_DEFAULT` as a cheaper way to make the budgets agree:
+`library_embeddings` is keyed `(song_id, model)` with `file_size` as the content stamp and does
+not include the window, so a change silently mixes vectors computed over different windows into
+one similarity space — the un-versioned-recipe trap. If the window ever changes, it has to enter
+that key.
+
+Real server-side cancellation stays unbuilt and #1139 stays open for it, pending a re-measure
+after the next batch of new songs (or a model-version bump) reopens the backfill: count non-200
+`/analyze` responses against completed analyses, and build only if waste reappears. The shape then
+is `descriptors.py`'s `ProcessRunner` — a killable worker process — not a cancellation token,
+because an abandoned Python thread keeps `models.py`'s registry lock and the next request queues
+behind work you claimed to cancel.
+
+Two inherited claims are wrong and should not be re-derived. There is **no healthcheck in the
+compose `analysis` block**: it lives at `packages/analysis/Dockerfile` and already carries
+`--start-period=120s` (with `--interval=30s --timeout=5s`). And a long inference does **not** make
+the container report unhealthy — `descriptors.py` records the opposite as measured fact
+(TensorFlow releases the GIL, which is why `/analyze` never showed the stall `/descriptors` did).
 
 ## 5. Rollout phases
 
