@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.54](https://github.com/kevinch3/NicotinD/compare/v0.6.53...v0.6.54) (2026-09-15)
+
+### Features
+
+* **web:** offer to install the PWA in-app ([#1167](https://github.com/kevinch3/NicotinD/issues/1167)) ([a940610](https://github.com/kevinch3/NicotinD/commit/a94061064b392170fdbecc8ead3e5ff1b6dca520)), references [#1126](https://github.com/kevinch3/NicotinD/issues/1126)
 ## [0.6.53](https://github.com/kevinch3/NicotinD/compare/v0.6.52...v0.6.53) (2026-09-15)
 
 ### Bug Fixes
