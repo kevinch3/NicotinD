@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.57](https://github.com/kevinch3/NicotinD/compare/v0.6.56...v0.6.57) (2026-09-16)
+
+### Features
+
+* **mobile:** F-Droid store metadata for both app entries ([#1179](https://github.com/kevinch3/NicotinD/issues/1179)) ([471c5ad](https://github.com/kevinch3/NicotinD/commit/471c5adc49ff12f4ff2b436d470f97135a7504a2)), references [#1168](https://github.com/kevinch3/NicotinD/issues/1168)
+
+### Bug Fixes
+
+* **tags:** read back bpm, discNumber and an ID3v2.4 year ([#1178](https://github.com/kevinch3/NicotinD/issues/1178)) ([8a648b1](https://github.com/kevinch3/NicotinD/commit/8a648b16d8b9420735c7155a1411944e281023a8)), closes [#1151](https://github.com/kevinch3/NicotinD/issues/1151), references [#964](https://github.com/kevinch3/NicotinD/issues/964) [#1013](https://github.com/kevinch3/NicotinD/issues/1013) [#1177](https://github.com/kevinch3/NicotinD/issues/1177)
 ## [0.6.56](https://github.com/kevinch3/NicotinD/compare/v0.6.55...v0.6.56) (2026-09-16)
 
 ### Bug Fixes
