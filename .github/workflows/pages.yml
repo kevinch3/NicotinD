@@ -1,0 +1,189 @@
+name: Pages
+
+# ONE workflow owns GitHub Pages, because Pages serves one site per repository
+# and every `deploy-pages` replaces the whole thing. Two workflows publishing
+# two trees would each delete the other's. So both live here:
+#
+#   /storybook/    the component catalog (was the whole site until #1168)
+#   /fdroid/repo/  our signed F-Droid repository
+#
+# Which means every run must produce BOTH, whatever triggered it — a release
+# cannot publish the repository without also rebuilding the catalog, or the
+# catalog vanishes.
+on:
+  push:
+    branches: [master]
+    # The catalog documents master as it is now, so it rebuilds on anything it
+    # renders. Breakage from elsewhere is caught by `ci` on the same push.
+    paths:
+      - 'packages/web/**'
+      - 'packages/core/**'
+      - '.github/workflows/pages.yml'
+  # The F-Droid half is what a release changes, and `paths:` filters do not work
+  # for tag pushes (see deploy.yml's `changes` job), so this keys off the release
+  # workflow finishing instead of the tag itself. That is also the moment the
+  # F-Droid APKs actually exist as release assets.
+  workflow_run:
+    workflows: ['Build & Deploy']
+    types: [completed]
+  workflow_dispatch: {}
+
+# Pages accepts one deployment at a time. Queue rather than cancel: a cancelled
+# run would leave the site half-replaced — and since one deployment carries both
+# trees, "half" could mean a catalog with no repository next to it.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  # Pinned to match ci.yml — see the note there.
+  BUN_VERSION: '1.3.11'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+      contents: read
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Cache bun dependencies
+        uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ env.BUN_VERSION }}-${{ hashFiles('bun.lock', 'bunfig.toml') }}
+          restore-keys: |
+            bun-${{ runner.os }}-${{ env.BUN_VERSION }}-
+
+      # ng build (storybook) requires Node >= 22.22.3; pin from .nvmrc.
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Install dependencies
+        run: bun install
+
+      # Early, because the F-Droid repository has to be built with its own
+      # public URL baked into the index — `repo_url` is what a client stores
+      # when a user adds the repository, and a wrong one makes every download
+      # 404 after the repo is already added.
+      - uses: actions/configure-pages@v6
+        id: pages
+
+      - name: Build Storybook
+        run: bun run build:storybook
+
+      - name: Stage the catalog at /storybook
+        run: |
+          set -euo pipefail
+          mkdir -p site/storybook
+          cp -r packages/web/storybook-static/. site/storybook/
+
+      # --- The F-Droid repository -----------------------------------------
+      # Skipped, not failed, when the repo signing key is absent: until the
+      # secret is set this workflow still has a catalog to publish, and a hard
+      # failure would take that down too. Same shape as deploy.yml's keystore
+      # handling. `has_key` gates every step below.
+      - name: Check for the F-Droid repo signing key
+        id: key
+        env:
+          FDROID_REPO_KEYSTORE_BASE64: ${{ secrets.FDROID_REPO_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$FDROID_REPO_KEYSTORE_BASE64" ]; then
+            echo "has_key=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_key=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::No FDROID_REPO_KEYSTORE_BASE64 — publishing the catalog only, no F-Droid repository."
+          fi
+
+      # fdroidserver builds and signs the index; apksigner (Android SDK) is what
+      # it reads APK signatures with. Verified against fdroidserver 2.4.5.
+      # Pinned, and from PyPI rather than apt: this is the version the repository
+      # layout was validated against locally, and Ubuntu's package lags. An
+      # index built by a different fdroidserver is not something to discover
+      # from a user's client.
+      - name: Install fdroidserver
+        if: steps.key.outputs.has_key == 'true'
+        run: |
+          set -euo pipefail
+          pipx install 'fdroidserver==2.4.5'
+          fdroid --version
+
+      - uses: android-actions/setup-android@v4
+        if: steps.key.outputs.has_key == 'true'
+        with:
+          packages: platform-tools build-tools;34.0.0
+
+      # The APKs come from the latest RELEASE, not from this checkout: the
+      # repository must serve what was released, and a master-push catalog
+      # refresh has to republish those same files rather than build new ones.
+      - name: Download the latest release's F-Droid APKs
+        id: apks
+        if: steps.key.outputs.has_key == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p fdroid-apks
+          tag="$(gh release list --limit 1 --json tagName --jq '.[0].tagName')"
+          echo "Latest release: $tag"
+          # `|| true`: a release predating the F-Droid APKs has none, which is a
+          # skip rather than a failure — the catalog still publishes.
+          gh release download "$tag" --dir fdroid-apks --pattern '*-fdroid-*.apk' || true
+          # The builder expects unversioned names (FDROID_APPS).
+          for f in fdroid-apks/NicotinD-TV-fdroid-*.apk; do
+            [ -e "$f" ] && mv "$f" fdroid-apks/NicotinD-TV-fdroid.apk
+          done
+          for f in fdroid-apks/NicotinD-fdroid-*.apk; do
+            [ -e "$f" ] && mv "$f" fdroid-apks/NicotinD-fdroid.apk
+          done
+          if [ -f fdroid-apks/NicotinD-fdroid.apk ] && [ -f fdroid-apks/NicotinD-TV-fdroid.apk ]; then
+            echo "have_apks=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "have_apks=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::$tag has no F-Droid APKs — publishing the catalog only."
+          fi
+
+      - name: Build the signed F-Droid repository
+        if: steps.key.outputs.has_key == 'true' && steps.apks.outputs.have_apks == 'true'
+        env:
+          FDROID_REPO_KEYSTORE_BASE64: ${{ secrets.FDROID_REPO_KEYSTORE_BASE64 }}
+          FDROID_REPO_KEYSTORE_PASSWORD: ${{ secrets.FDROID_REPO_KEYSTORE_PASSWORD }}
+          FDROID_REPO_KEY_ALIAS: ${{ secrets.FDROID_REPO_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          echo "$FDROID_REPO_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/fdroid-repo.keystore"
+          chmod 600 "$RUNNER_TEMP/fdroid-repo.keystore"
+          FDROID_REPO_URL="${{ steps.pages.outputs.base_url }}/fdroid/repo" \
+          FDROID_REPO_KEYSTORE="$RUNNER_TEMP/fdroid-repo.keystore" \
+            bun run scripts/build-fdroid-repo.ts fdroid-apks "$RUNNER_TEMP/fdroid-out"
+          mkdir -p site/fdroid
+          # Only `repo/` is served. The working directory also holds the
+          # generated metadata and fdroid's scratch dirs, which are not for
+          # publication — and the builder has already deleted the keystore and
+          # the password-bearing config.yml.
+          cp -r "$RUNNER_TEMP/fdroid-out/repo" site/fdroid/repo
+          shred -u "$RUNNER_TEMP/fdroid-repo.keystore"
+
+      # A landing page, so the site root is not a 404 for someone who trims the
+      # URL, and so the repository address is copy-pasteable.
+      - name: Write the site index
+        env:
+          PAGES_BASE_URL: ${{ steps.pages.outputs.base_url }}
+        run: bun run scripts/build-pages-index.ts site
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+      - id: deploy
+        uses: actions/deploy-pages@v5

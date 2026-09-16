@@ -196,15 +196,60 @@ multi-byte and a character-counted cap would pass text the store cuts.
    `gradle: [fdroid]` to select the flavor.
 2. **Screenshots**, and the TV metadata path question above.
 
-An **own signed F-Droid repository** ships first (decided 2026-09-16): it serves the `fdroid`-variant
-APKs we already build, needs none of the above, and stays available if inclusion stalls in review.
-It is blocked on two decisions that are not ours to guess — where it is hosted (GitHub Pages in this
-repo is already taken by the Storybook catalog, since Pages serves one site per repo, so this means a
-second repo or kpc's public edge) and whether the existing release keystore signs the repo index.
+## Our own F-Droid repository
+
+Shipped first, before `fdroiddata` (decided 2026-09-16). Users add:
+
+```
+https://kevinch3.github.io/NicotinD/fdroid/repo
+```
 
 It serves the **`fdroid` variant**, not the `standard` APKs, even though no policy applies to our own
-repo: the standard APK's self-updater would otherwise fight the F-Droid client for the same install,
-and it is 26 MB larger for a QR screen (#1170).
+repo: the standard APK's self-updater would otherwise fight the F-Droid client for the same install.
+
+### How it is built
+
+`scripts/build-fdroid-repo.ts` assembles a directory `fdroid update` (fdroidserver) can sign, from
+the release's F-Droid APKs; `.github/workflows/pages.yml` publishes it. `config.yml` and each
+`metadata/<applicationId>.yml` are **generated** (`fdroid-repo.ts`) rather than committed — the repo
+URL, app ids and current version all come from things the repo already knows.
+
+It publishes **only the current release**, which is what keeps it stateless: an F-Droid repository is
+valid with one version per app, so there is no history to carry between runs and re-running a release
+reproduces the same repository. The trade-off is no downgrades.
+
+### Four things that cost time, so they are written down
+
+- **`fdroid update --create-metadata` breaks the two entries.** It invents a metadata file whose
+  `Name` — the APK's own label, `NicotinD` for both — **outranks** the fastlane `title.txt`. Verified:
+  the TV entry came out named "NicotinD", with `Categories: [fdtest]` taken from the working
+  directory's name. Generating the `.yml` ourselves is what keeps the entries distinguishable.
+- **`repo_icon` is a path relative to fdroid's working directory**, and fdroid copies it into
+  `repo/icons/` itself. The warning misleads: it says `repo_icon "repo/icons/icon.png" does not
+  exist` while the check is on the *source* (`update.py`'s `if os.path.exists(repo_icon)`). Putting
+  a PNG in `repo/` instead gets it published as an app file with no metadata.
+- **Per-version changelogs do not appear in a binary-only repo.** `whatsNew` is attached to a
+  `Builds` entry (`update.py` matches `build["versionCode"] == versionCode`), and only apps
+  fdroidserver builds from source have those. The `<versionCode>.txt` files stay correct for the
+  fdroiddata submission; do not chase this in our own repo.
+- **`fdroid update` exits 0 after skipping an APK it could not read.** The builder therefore parses
+  the generated `index-v2.json` and fails unless *both* application ids are present — the index is
+  the only honest confirmation that both entries published.
+
+### The signing key
+
+A **dedicated** keystore, not the app release key, so app-signing identity and repository identity
+stay independent: `FDROID_REPO_KEYSTORE_BASE64`, `FDROID_REPO_KEYSTORE_PASSWORD`,
+`FDROID_REPO_KEY_ALIAS`. RSA 4096, PKCS12, generated 2026-09-16.
+
+**Losing it changes the repository's identity**, and every user who added the repo has to remove and
+re-add it — so it belongs in durable backup, not only in Actions secrets. The workflow decodes it to
+`$RUNNER_TEMP`, `chmod 600`, and `shred -u`s it afterwards; the builder deletes both the keystore
+copy and the password-bearing `config.yml` from its output directory before anything is published.
+
+Absent the secret the F-Droid half is **skipped, not failed** — the catalog still publishes, the same
+shape as deploy.yml's keystore handling. The landing page then omits the repository section rather
+than advertising one that is not there.
 
 ## Migration note
 

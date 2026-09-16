@@ -72,7 +72,10 @@ function isAndroidPlugin(name: string): boolean {
 }
 
 // --- 1. Every Android plugin is classified -----------------------------------
-const classified = new Set([...Object.keys(NON_FREE_PLUGINS), ...Object.keys(FREE_ANDROID_PLUGINS)]);
+const classified = new Set([
+  ...Object.keys(NON_FREE_PLUGINS),
+  ...Object.keys(FREE_ANDROID_PLUGINS),
+]);
 const androidPlugins = Object.keys(declared).filter(isAndroidPlugin);
 
 if (androidPlugins.length === 0) {
@@ -157,41 +160,48 @@ for (const { file, mustContain } of releaseLane) {
 // v0.6.55 shipped with NO Android APK because the F-Droid verification build sat
 // between "Stage TV APK" and "Attach APKs", failed on missing signing env, and
 // took two already-built release artifacts down with it. The signing error was
-// the trigger; the ORDER was the defect — a verification step must never stand
-// between a built artifact and its upload. Nothing else notices: the phone and
-// TV APKs built fine, the job went red for an unrelated reason, and the release
+// the trigger; the ORDER was the defect. Nothing else notices: the phone and TV
+// APKs built fine, the job went red for an unrelated reason, and the release
 // page simply had no APK on it.
+//
+// Two orderings now matter, for opposite reasons:
+//   * the SIDELOAD APKs upload before any F-Droid work, so an F-Droid failure
+//     cannot discard them;
+//   * the F-Droid APKs upload AFTER the dex assertion, because those are
+//     artifacts we would rather not publish at all than publish unchecked.
 {
   const deploy = readFileSync(join(repoRoot, '.github/workflows/deploy.yml'), 'utf8');
-  const attachAt = deploy.indexOf('Attach APKs to the GitHub Release');
-  const verifyAt = deploy.indexOf('Build the F-Droid TV variant (verification only)');
-  const assertAt = deploy.indexOf('Assert no proprietary dependency in the F-Droid APK');
+  const steps: Record<string, number> = {
+    attachSideload: deploy.indexOf('Attach APKs to the GitHub Release'),
+    buildFdroidTv: deploy.indexOf('Build the F-Droid TV APK'),
+    assertFdroid: deploy.indexOf('Assert no proprietary dependency in the F-Droid APKs'),
+    attachFdroid: deploy.indexOf('Attach the F-Droid APKs to the GitHub Release'),
+  };
 
-  for (const [label, at] of [
-    ['Attach APKs to the GitHub Release', attachAt],
-    ['Build the F-Droid TV variant (verification only)', verifyAt],
-    ['Assert no proprietary dependency in the F-Droid APK', assertAt],
-  ] as const) {
+  for (const [key, at] of Object.entries(steps)) {
     if (at < 0) {
       errors.push(
-        `deploy.yml has no step named "${label}". This gate anchors on the step ` +
-          `names; a rename makes the ordering check vacuous, so fix the name here too.`,
+        `deploy.yml is missing the step this gate anchors "${key}" on. A rename makes ` +
+          `the ordering check vacuous, so update scripts/check-fdroid.ts too.`,
       );
     }
   }
 
-  if (attachAt >= 0 && verifyAt >= 0 && attachAt > verifyAt) {
-    errors.push(
-      `deploy.yml builds the F-Droid verification variant BEFORE attaching the ` +
-        `release APKs. A failure there discards the phone and TV APKs that already ` +
-        `built — exactly how v0.6.55 shipped with none. Move the attach step first.`,
-    );
-  }
-  if (attachAt >= 0 && assertAt >= 0 && attachAt > assertAt) {
-    errors.push(
-      `deploy.yml asserts the F-Droid APK's contents BEFORE attaching the release ` +
-        `APKs. Verification must run after the artifacts are uploaded.`,
-    );
+  if (Object.values(steps).every((at) => at >= 0)) {
+    if (steps.attachSideload > steps.buildFdroidTv) {
+      errors.push(
+        `deploy.yml builds the F-Droid variant BEFORE attaching the release APKs. A ` +
+          `failure there discards the phone and TV APKs that already built — exactly ` +
+          `how v0.6.55 shipped with none. Move the attach step first.`,
+      );
+    }
+    if (steps.assertFdroid > steps.attachFdroid) {
+      errors.push(
+        `deploy.yml attaches the F-Droid APKs BEFORE asserting they carry no ` +
+          `proprietary dependency. Those feed our own F-Droid repository; publish them ` +
+          `only once checked.`,
+      );
+    }
   }
 }
 
@@ -261,7 +271,9 @@ if (excludesMlKit !== selectsZxing) {
   for (const { dir, label } of TREES) {
     const androidDir = join(repoRoot, dir, 'metadata/android');
     if (!existsSync(androidDir)) {
-      errors.push(`${dir}/metadata/android is missing — the ${label} F-Droid listing has no metadata.`);
+      errors.push(
+        `${dir}/metadata/android is missing — the ${label} F-Droid listing has no metadata.`,
+      );
       continue;
     }
     const locales = readdirSync(androidDir, { withFileTypes: true })
@@ -314,6 +326,45 @@ if (excludesMlKit !== selectsZxing) {
           );
         }
       }
+    }
+  }
+}
+
+// --- 7. The Pages lane still reaches the repository builder ------------------
+// The catalog and the repository share one Pages site, and one deploy replaces
+// all of it. If pages.yml stops invoking the builder, the site keeps publishing
+// — minus the F-Droid repository, which every user who added it then sees as a
+// repo frozen at whatever version was live when the reference broke. Nothing
+// fails; the URL just stops moving.
+{
+  const pages = join(repoRoot, '.github/workflows/pages.yml');
+  if (!existsSync(pages)) {
+    errors.push(
+      '.github/workflows/pages.yml is missing. It owns the Pages site (catalog + ' +
+        'F-Droid repository); without it neither is published.',
+    );
+  } else {
+    const source = readFileSync(pages, 'utf8');
+    for (const needle of [
+      'scripts/build-fdroid-repo.ts',
+      'scripts/build-pages-index.ts',
+      'FDROID_REPO_KEYSTORE_BASE64',
+      'site/storybook',
+    ]) {
+      if (!source.includes(needle)) {
+        errors.push(`.github/workflows/pages.yml no longer mentions "${needle}".`);
+      }
+    }
+  }
+  // deploy.yml is where the APKs the repository serves come from.
+  const deployForApks = readFileSync(join(repoRoot, '.github/workflows/deploy.yml'), 'utf8');
+  for (const needle of ['NicotinD-fdroid-', 'NicotinD-TV-fdroid-']) {
+    if (!deployForApks.includes(needle)) {
+      errors.push(
+        `.github/workflows/deploy.yml does not publish "${needle}<version>.apk". The ` +
+          `Pages workflow downloads the F-Droid APKs from the latest release, so ` +
+          `without them the repository silently stops updating.`,
+      );
     }
   }
 }

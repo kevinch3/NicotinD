@@ -1079,7 +1079,7 @@ Two details are load-bearing.
 
 `cancel-in-progress: false`, because abandoning a deploy mid-`up -d` leaves the
 host half-applied — strictly worse than waiting for it. This is the same shape
-`storybook-pages.yml` already uses for its own single-destination publish.
+`pages.yml` already uses for its own single-destination publish.
 
 The group is **workflow-level, not on the `deploy` job alone**. Serializing only
 the job looks tighter — expensive per-platform builds would still overlap — but

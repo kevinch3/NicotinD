@@ -16,7 +16,7 @@ on:
 #
 # `cancel-in-progress: false` is the load-bearing half — abandoning a deploy
 # mid-`up -d` leaves the host half-applied, which is worse than queueing behind
-# it. Same shape as storybook-pages.yml; ci.yml keys on `github.ref` because it
+# it. Same shape as pages.yml; ci.yml keys on `github.ref` because it
 # serializes per-branch, not per-host.
 concurrency:
   group: deploy-host
@@ -265,30 +265,60 @@ jobs:
           files: ${{ runner.temp }}/apks/*.apk
           fail_on_unmatched_files: true
 
-      # The F-Droid variant, built but NOT attached: it is a different package
-      # (TV) and a different update channel, so shipping it beside the sideload
-      # APKs would only confuse. It is assembled because `check:fdroid` is
-      # static — it proves the plugin set is classified, not that the variant
-      # still COMPILES without the excluded plugins, which is the break a
-      # dropped `getCapacitorPlugin` null-guard would cause. The TV web bundle
-      # is still in place from the TV steps above, so this is the `.tv` entry.
+      # Now the F-Droid variant: BOTH entries, signed, for our own F-Droid
+      # repository (docs/fdroid.md). They are attached under `-fdroid-` names in
+      # a second upload rather than mixed into the batch above, because the
+      # release is the only durable place the Pages workflow can fetch them from
+      # — a master-push catalog refresh has to publish the last release's APKs,
+      # and workflow artifacts expire. The distinct names keep them from reading
+      # as the APK a sideloading user wants.
       #
-      # Built UNSIGNED, deliberately: `ANDROID_KEYSTORE_FILE` is in $GITHUB_ENV
-      # from the decode step, which makes build.gradle attach the release
-      # signingConfig, whose passwords arrive as per-step env on the shipping
-      # builds only. Clearing the path here (Groovy reads "" as false) takes this
-      # throwaway artifact out of the signing path entirely rather than handing
-      # it the release key it has no use for. See docs/fdroid.md.
-      - name: Build the F-Droid TV variant (verification only)
+      # Signed with the release key, unlike before: these are artifacts users
+      # install, not throwaways. The TV web bundle is still in place from the TV
+      # steps above, so the `.tv` entry builds first and the phone bundle is
+      # rebuilt for the second.
+      - name: Build the F-Droid TV APK
         working-directory: packages/mobile
         env:
           NICOTIND_FDROID: '1'
           NICOTIND_APP_ID_SUFFIX: .tv
-          ANDROID_KEYSTORE_FILE: ''
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           bunx cap sync android
           cd android && ./gradlew assembleFdroidRelease
+
+      - name: Stage the F-Droid TV APK
+        working-directory: packages/mobile/android/app/build/outputs/apk/fdroid/release
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/fdroid"
+          mv app-fdroid-release.apk \
+            "$RUNNER_TEMP/fdroid/NicotinD-TV-fdroid-${NICOTIND_VERSION_NAME}.apk"
+
+      - name: Build web (phone) for the F-Droid phone APK
+        run: bun run --filter @nicotind/web build
+
+      - name: Build the F-Droid phone APK
+        working-directory: packages/mobile
+        env:
+          NICOTIND_FDROID: '1'
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          bunx cap sync android
+          cd android && ./gradlew assembleFdroidRelease
+
+      - name: Stage the F-Droid phone APK
+        working-directory: packages/mobile/android/app/build/outputs/apk/fdroid/release
+        run: |
+          set -euo pipefail
+          mv app-fdroid-release.apk \
+            "$RUNNER_TEMP/fdroid/NicotinD-fdroid-${NICOTIND_VERSION_NAME}.apk"
 
       # Assert the exclusion actually reached the artifact. `check:fdroid` reads
       # package.json; this reads the dex. A gate that only checks intent is how
@@ -296,19 +326,38 @@ jobs:
       # Greps rather than counting class definitions on purpose: for THIS variant
       # the plugin is absent entirely, so a surviving type *reference* is a
       # finding too (docs/fdroid.md).
-      - name: Assert no proprietary dependency in the F-Droid APK
-        working-directory: packages/mobile/android/app/build/outputs/apk/fdroid/release
+      - name: Assert no proprietary dependency in the F-Droid APKs
+        working-directory: ${{ runner.temp }}/fdroid
         run: |
           set -euo pipefail
-          apk=app-fdroid-release-unsigned.apk
-          [ -f "$apk" ] || apk=app-fdroid-release.apk
-          for forbidden in com/google/mlkit com/google/android/gms outsystems; do
-            if unzip -p "$apk" 'classes*.dex' | grep -qa "$forbidden"; then
-              echo "::error::$forbidden is present in the F-Droid APK — F-Droid would reject it."
-              exit 1
-            fi
+          shopt -s nullglob
+          apks=(*.apk)
+          # Assert the denominator: an empty glob would make the loop below pass
+          # while checking nothing, which is the failure this whole gate exists
+          # to avoid. Two entries, always.
+          if [ "${#apks[@]}" -ne 2 ]; then
+            echo "::error::expected 2 F-Droid APKs, found ${#apks[@]}: ${apks[*]:-none}"
+            exit 1
+          fi
+          for apk in "${apks[@]}"; do
+            for forbidden in com/google/mlkit com/google/android/gms outsystems; do
+              if unzip -p "$apk" 'classes*.dex' | grep -qa "$forbidden"; then
+                echo "::error::$forbidden is present in $apk — F-Droid would reject it."
+                exit 1
+              fi
+            done
+            echo "$apk is clean of mlkit / play-services / osbarcode."
           done
-          echo "F-Droid APK ($apk) is clean of mlkit / play-services / osbarcode."
+
+      # A second upload, after the assertion: the sideload APKs went up before
+      # any verification (see above), and these go up only once they are known
+      # clean. Failing here leaves the release's own APKs untouched.
+      - name: Attach the F-Droid APKs to the GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: ${{ runner.temp }}/fdroid/*.apk
+          fail_on_unmatched_files: true
 
   # Build an UNSIGNED iOS .ipa and attach it to the GitHub Release.
   # The native `ios/` project is NOT committed (it must be generated on a Mac), 

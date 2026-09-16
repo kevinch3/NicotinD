@@ -517,8 +517,17 @@ theme-token problem rather than a component one:
 
 ## Publishing
 
-`.github/workflows/storybook-pages.yml` publishes the static build **on every push to
-master** that touches `packages/web/**` or `packages/core/**`.
+`.github/workflows/pages.yml` publishes the static build **on every push to master** that
+touches `packages/web/**` or `packages/core/**`, at **`/storybook/`** — no longer at the
+site root.
+
+The catalog stopped owning the whole site in #1168, when the F-Droid repository needed
+somewhere to live and GitHub Pages serves one site per repository: every `deploy-pages`
+replaces the entire thing, so two workflows publishing two trees would each delete the
+other's. One workflow now assembles both (`/storybook/` and `/fdroid/repo/`) and every run
+must produce both, whatever triggered it. Moving the catalog cost nothing measurable —
+nothing in the repo linked to its URL, and it was already served from a subpath
+(`/NicotinD/`). → [fdroid.md](fdroid.md)
 
 Not per release tag, which is what this shipped as first. The catalog documents the
 components as they exist now; a developer reads it to decide whether to use a component
@@ -528,8 +537,14 @@ environment's default deployment policy, which permits the `master` branch only 
 rejected the tag-triggered deployment outright (`Tag "v0.1.339" is not allowed to deploy
 to github-pages`).
 
+That rejection is also why the F-Droid half is triggered by `workflow_run` on **Build &
+Deploy** completing rather than by the tag push: a `workflow_run` runs in the default
+branch's context, so it is permitted where a tag is not — and it fires at the moment the
+release's F-Droid APKs actually exist as assets.
+
 Deployments queue rather than cancel (`cancel-in-progress: false`): a cancelled run would
-leave the published catalog behind the master it claims to document.
+leave the published catalog behind the master it claims to document — and now also risks
+publishing a catalog with no repository beside it, since one deployment carries both.
 
 > **Manual prerequisite:** GitHub Pages must be enabled for the repository with source
 > "GitHub Actions" (Settings → Pages). A workflow cannot enable it. Until it is set, the
