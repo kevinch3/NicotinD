@@ -236,6 +236,29 @@ release version (staged from the root `package.json`), so `GET /api/system` repo
 version, not `0.0.0`. This was verified end-to-end locally (stage → `bun install --production` → spawn
 `bun run` against the staged tree → `NICOTIND_LISTENING` handshake) before shipping.
 
+**Every external dependency in those staged manifests is rewritten to the exact version the monorepo
+has installed** (`pinDependencies` / `pinExternalDeps`, issue #1174). The staged tree has no lockfile
+to freeze against — it is synthesized fresh each run — so before this, bun resolved the *ranges*, and
+the shipped desktop backend got whatever npm called newest at package time: `bun.lock` pinned
+`@sentry/core@10.67.0` while the artifact installed `10.75.0`, eight minors ahead of the tree every
+test, gate and Docker image runs against. CI cannot catch a regression introduced that way, because
+CI never runs those versions.
+
+Two details worth knowing before touching it:
+
+- The **workspace packages' own manifests** are pinned too, not just the synthesized root one. They
+  are resolved by the same lockfile-less install, and `@sentry/bun` — the range that actually floated
+  — lives in `packages/api/package.json`.
+- Versions are read from the **installed** `node_modules`, walking up from each manifest's own
+  directory rather than looking only at the repo root: bun does not hoist everything, and
+  addon-sdk's `pino`/`zod`/`pino-pretty` sit in `packages/addon-sdk/node_modules/`. `bun.lock` itself
+  is JSONC, so `JSON.parse` cannot read it. An unresolvable dependency **throws** rather than falling
+  back to its range, since that fallback is the whole defect.
+
+A side effect worth the name: the release lane no longer breaks when a dependency is published
+mid-release. A partially-propagated `@sentry/core@10.75.0` failed resolution on the v0.6.56 run and,
+because `release` has `needs: [… desktop-package …]`, skipped the version bump entirely.
+
 `electron-builder.yml`: `appId: ar.kevinroberts.nicotind.desktop`; `asarUnpack` + `extraResources`
 keep the backend/bun/ffmpeg as real executables outside the asar; **linux** → AppImage + deb
 (category Audio); **macOS** → dmg (**arm64 only** — the Intel/x64 target was dropped: current

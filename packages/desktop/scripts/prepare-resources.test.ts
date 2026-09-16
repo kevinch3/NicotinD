@@ -1,5 +1,68 @@
 import { describe, expect, it } from 'bun:test';
-import { buildBackendPackageJson, isLikelyBunBinary } from './prepare-resources.js';
+import {
+  buildBackendPackageJson,
+  isLikelyBunBinary,
+  pinDependencies,
+} from './prepare-resources.js';
+
+describe('pinDependencies', () => {
+  // #1174: the staged backend installs with no lockfile, so a surviving range
+  // let the shipped desktop app resolve @sentry/core 10.75.0 while bun.lock —
+  // and therefore every test and gate — pinned 10.67.0.
+  const installed: Record<string, string> = {
+    '@sentry/bun': '10.67.0',
+    yaml: '2.9.1',
+    hono: '4.6.3',
+  };
+  const resolve = (name: string) => installed[name] ?? null;
+
+  it('rewrites a caret range to the installed version', () => {
+    const { dependencies, unresolved } = pinDependencies({ '@sentry/bun': '^10.67.0' }, resolve);
+    expect(dependencies).toEqual({ '@sentry/bun': '10.67.0' });
+    expect(unresolved).toEqual([]);
+  });
+
+  it('pins every kind of range, not just carets', () => {
+    const { dependencies } = pinDependencies(
+      { yaml: '^2.9.0', hono: 'latest', '@sentry/bun': '>=10 <11' },
+      resolve,
+    );
+    expect(dependencies).toEqual({ yaml: '2.9.1', hono: '4.6.3', '@sentry/bun': '10.67.0' });
+  });
+
+  it('leaves workspace: entries alone — they are symlinked, not resolved', () => {
+    const { dependencies, unresolved } = pinDependencies(
+      { '@nicotind/core': 'workspace:*', yaml: '^2.9.0' },
+      resolve,
+    );
+    expect(dependencies['@nicotind/core']).toBe('workspace:*');
+    expect(dependencies.yaml).toBe('2.9.1');
+    expect(unresolved).toEqual([]);
+  });
+
+  it('reports an unresolvable dependency instead of silently keeping the range', () => {
+    // Keeping the range is precisely the defect, so the caller must be able to
+    // fail. A pinner that degrades quietly would pass this file's other tests.
+    const { dependencies, unresolved } = pinDependencies({ ghost: '^1.0.0' }, resolve);
+    expect(unresolved).toEqual(['ghost']);
+    expect(dependencies.ghost).toBe('^1.0.0');
+  });
+
+  it('is empty-safe for a manifest with no dependencies', () => {
+    expect(pinDependencies(undefined, resolve)).toEqual({ dependencies: {}, unresolved: [] });
+  });
+
+  it('leaves nothing floating when it resolves everything', () => {
+    const { dependencies } = pinDependencies(
+      { yaml: '^2.9.0', hono: '^4.0.0', '@nicotind/core': 'workspace:*' },
+      resolve,
+    );
+    for (const [name, version] of Object.entries(dependencies)) {
+      if (version.startsWith('workspace:')) continue;
+      expect(version, `${name} is still a range`).toMatch(/^\d+\.\d+\.\d+/);
+    }
+  });
+});
 
 describe('buildBackendPackageJson', () => {
   it('turns workspace package names into workspace:* deps', () => {

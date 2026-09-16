@@ -103,6 +103,46 @@ export function buildBackendPackageJson(
   };
 }
 
+/**
+ * Pure: rewrite every external dependency range to the exact version the
+ * monorepo has installed, leaving `workspace:` entries alone.
+ *
+ * WHY (issue #1174): the staged backend `package.json` is synthesized fresh and
+ * installed with no lockfile, so bun resolved `^10.67.0` against whatever npm
+ * called newest at package time. `bun.lock` pinned `@sentry/core@10.67.0` and
+ * the shipped desktop app got `10.75.0` — eight minors ahead of the tree every
+ * test, gate and Docker image runs against. Nothing in CI can catch a
+ * regression introduced that way, because CI never runs those versions.
+ *
+ * `resolve` reads the INSTALLED version rather than parsing `bun.lock`: that
+ * file is JSONC (trailing commas defeat `JSON.parse`), and what the repo
+ * actually resolved is the fact we want to reproduce anyway.
+ *
+ * Unresolvable names are returned rather than quietly left as ranges — falling
+ * back to the range is the exact bug this removes, so the caller fails loudly.
+ */
+export function pinDependencies(
+  dependencies: Record<string, string> | undefined,
+  resolve: (name: string) => string | null,
+): { dependencies: Record<string, string>; unresolved: string[] } {
+  const pinned: Record<string, string> = {};
+  const unresolved: string[] = [];
+  for (const [name, range] of Object.entries(dependencies ?? {})) {
+    if (range.startsWith('workspace:')) {
+      pinned[name] = range;
+      continue;
+    }
+    const version = resolve(name);
+    if (version === null) {
+      unresolved.push(name);
+      pinned[name] = range;
+      continue;
+    }
+    pinned[name] = version;
+  }
+  return { dependencies: pinned, unresolved };
+}
+
 /** Pure: true when `execPath` looks like a `bun` (not `node`/other) binary. */
 export function isLikelyBunBinary(execPath: string): boolean {
   return /bun(\.exe)?$/i.test(execPath);
@@ -122,6 +162,60 @@ function run(label: string, cmd: string, args: string[], cwd: string): void {
 
 function readJson<T>(file: string): T {
   return JSON.parse(readFileSync(file, 'utf8')) as T;
+}
+
+/**
+ * The version of `name` as the monorepo has it installed, or null when it is
+ * not there.
+ *
+ * Walks `node_modules` up from `fromDir` the way node resolves, because a
+ * workspace dependency is NOT necessarily hoisted to the repo root: bun put
+ * addon-sdk's `pino`/`zod`/`pino-pretty` in
+ * `packages/addon-sdk/node_modules/`, and a root-only lookup reported them
+ * missing. Reading the manifest through bun's hoisted symlink into
+ * `node_modules/.bun/...` gives the resolved version either way.
+ */
+function installedVersion(name: string, fromDir: string): string | null {
+  let dir = path.resolve(fromDir);
+  for (;;) {
+    const manifest = path.join(dir, 'node_modules', name, 'package.json');
+    if (existsSync(manifest)) {
+      try {
+        const { version } = readJson<{ version?: string }>(manifest);
+        if (typeof version === 'string' && version) return version;
+      } catch {
+        // Unreadable manifest: keep walking, then report unresolved.
+      }
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir || dir === repoRoot) return null;
+    dir = parent;
+  }
+}
+
+/**
+ * {@link pinDependencies} against the installed tree, failing loudly on any
+ * dependency it cannot resolve. `relDir` is the manifest's directory relative
+ * to the repo root ('.' for the root manifest) and roots the `node_modules`
+ * walk; `label` names it in the error.
+ */
+function pinExternalDeps(
+  dependencies: Record<string, string> | undefined,
+  relDir: string,
+  label: string,
+): Record<string, string> {
+  const fromDir = path.join(repoRoot, relDir);
+  const { dependencies: pinned, unresolved } = pinDependencies(dependencies, (name) =>
+    installedVersion(name, fromDir),
+  );
+  if (unresolved.length > 0) {
+    throw new Error(
+      `${label}: cannot pin ${unresolved.join(', ')} — not installed under node_modules. ` +
+        `Run \`bun install\` first. Refusing to stage a floating range: the desktop ` +
+        `artifact would then ship a version nothing tested (#1174).`,
+    );
+  }
+  return pinned;
 }
 
 /** 1. Build the Angular SPA and stage its output at `resources/web`. */
@@ -175,6 +269,14 @@ function stageBackend(): void {
       path.join(pkgSrcRoot, 'package.json'),
     );
     delete pkgJson.devDependencies;
+    // These manifests are resolved by the same lockfile-less install as the root
+    // one, so they need pinning too — `@sentry/bun` lives here, in api's
+    // dependencies, and it was the range that actually floated (#1174).
+    pkgJson.dependencies = pinExternalDeps(
+      pkgJson.dependencies,
+      `packages/${pkg}`,
+      `packages/${pkg}`,
+    );
     writeFileSync(path.join(pkgDestRoot, 'package.json'), JSON.stringify(pkgJson, null, 2) + '\n');
 
     workspacePackageNames.push(pkgJson.name);
@@ -184,7 +286,7 @@ function stageBackend(): void {
     path.join(repoRoot, 'package.json'),
   );
   const backendPkg = buildBackendPackageJson(
-    rootPkg.dependencies,
+    pinExternalDeps(rootPkg.dependencies, '.', 'package.json (root)'),
     workspacePackageNames,
     rootPkg.version,
   );
@@ -192,9 +294,13 @@ function stageBackend(): void {
 
   // Production install: resolves the external deps above (hono, zod,
   // music-metadata, sharp, pino, ...) plus wires the workspace: packages via
-  // symlinks in node_modules. Not `--frozen-lockfile` — this package.json is
-  // synthesized fresh each run and has no matching lockfile to freeze
-  // against; bun resolves it from the version ranges directly.
+  // symlinks in node_modules. Still not `--frozen-lockfile` — this package.json
+  // is synthesized fresh each run and has no matching lockfile to freeze
+  // against. What makes that safe is that every external range was already
+  // rewritten to the EXACT version the monorepo has installed
+  // (`pinExternalDeps`), so there is nothing left for bun to choose: the
+  // artifact gets the versions the tests ran against, and a package published
+  // upstream mid-release cannot change the build (#1174).
   run('bun install --production (backend)', 'bun', ['install', '--production'], backendDir);
 
   const entry = path.join(backendDir, 'src', 'main.ts');
