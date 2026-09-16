@@ -1,0 +1,33 @@
+NicotinD TV es la aplicación de Android TV para un servidor de música NicotinD autoalojado. El servidor lo ejecutas tú en tu propia máquina; esta aplicación se coloca en la fila de inicio del televisor y lleva tu biblioteca al salón. No hay cuenta de NicotinD, ni servicio en la nube, ni registro de ningún tipo: el único servidor con el que habla la aplicación es aquel cuya dirección le indiques.
+
+Necesitas un servidor NicotinD para que esta aplicación te sirva de algo. Funciona en un único contenedor Docker, desde un portátil que te sobre hasta un NAS.
+
+<b>Pensada para un mando, no para una pantalla táctil</b>
+
+Es una aplicación distinta de la del móvil, no las mismas pantallas estiradas. Incluye un reproductor a diez pies, navegación con el D-pad en toda la interfaz y un comportamiento predecible del botón Atrás, y registra un canal en la pantalla de inicio de Android TV.
+
+<b>Qué hace</b>
+
+* Explora y reproduce tu biblioteca: artistas, álbumes, canciones y géneros, con portadas al tamaño adecuado para verlas desde el sofá.
+* Radio guiada por metadatos: elige lo siguiente por similitud de BPM, tonalidad, género y mood, no por un servicio de recomendaciones.
+* Letras sincronizadas con opción de silenciar la voz al estilo karaoke, que es justo por lo que mucha gente quiere música en el televisor.
+* Reproduce en segundo plano con los controles multimedia del sistema, y acepta reproducciones iniciadas desde otro dispositivo con NicotinD.
+* Multiusuario, con ajustes por usuario sobre una biblioteca compartida.
+
+<b>Privacidad</b>
+
+La aplicación habla con tu servidor y con nada más. Sin analíticas, sin identificadores de publicidad, sin SDK de terceros. Tu historial de escucha vive en tu propia base de datos.
+
+<b>Cómo conectarla</b>
+
+Los televisores no tienen cámara, así que la conexión es la de siempre en una aplicación de TV: escribe la dirección de tu servidor o introduce el código de emparejamiento que este muestra. No es una limitación de esta versión: es la única vía en cualquier televisor.
+
+<b>Sobre esta versión</b>
+
+Instalada desde F-Droid, esta aplicación se actualiza a través de F-Droid. La versión publicada en las releases de GitHub del proyecto incluye su propio instalador de actualizaciones; aquí se elimina, junto con el permiso que necesitaba. En esta versión no se incluye ninguna biblioteca privativa.
+
+Se instala junto a un APK de TV descargado desde GitHub en lugar de sustituirlo, porque son paquetes distintos de canales de actualización distintos. Desinstala el de GitHub si no quieres tener los dos.
+
+<b>Software libre</b>
+
+NicotinD se publica bajo la licencia AGPL-3.0. Código, incidencias y documentación: https://github.com/kevinch3/NicotinD

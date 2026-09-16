@@ -84,8 +84,10 @@ gradle puts somewhere else is how v0.6.46 shipped with no APK.
   list. It fails on: a Capacitor Android plugin classified neither in `NON_FREE_PLUGINS` nor in
   `FREE_ANDROID_PLUGINS` — which is the moment a proprietary transitive dep can enter, turned into a
   decision; a classification entry naming a package that is not a dependency (dead config); a
-  non-free plugin surviving into the resolved allowlist; and a release step pointing at a gradle
-  output path the flavor does not produce.
+  non-free plugin surviving into the resolved allowlist; a release step pointing at a gradle
+  output path the flavor does not produce; a verification-only step standing between a built
+  artifact and its upload; the ML Kit exclusion and the explicit ZXing selection parting company;
+  and fastlane metadata outside F-Droid's byte caps in any locale.
 - **`packages/mobile/src/fdroid.test.ts`** covers the pure helpers, including that a plugin added
   later is included without being named.
 - **`packages/mobile/src/android-manifest.test.ts`** covers the overlay: the `tools` namespace
@@ -151,13 +153,48 @@ Three things that fall out of that, all of which matter to a recipe:
 - **`cap sync` also rewrites the tracked `capacitor.build.gradle`**, so building the F-Droid variant
   locally dirties two tracked files. Restore them; don't commit the variant's versions.
 
+## Store metadata
+
+Fastlane layout, one tree per entry, both `en-US` and `es-ES` (the two locales the app itself ships):
+
+| Entry | Tree |
+| --- | --- |
+| phone (`ar.kevinroberts.nicotind`) | `packages/mobile/fastlane/metadata/android/<locale>/` |
+| TV (`ar.kevinroberts.nicotind.tv`) | `packages/mobile/fastlane-tv/metadata/android/<locale>/` |
+
+The TV tree's name is ours, not a convention. fdroidserver finds fastlane metadata relative to a
+build's `subdir` or the repo root, and both entries share one `subdir` — so auto-detection would hand
+the *same* metadata to both. **Which path the TV entry's recipe has to name is unverified**; settle it
+against a local `fdroidserver` when writing the merge request rather than assuming.
+
+Both descriptions are explicit that the F-Droid build has no QR pairing and no self-updater, and why.
+A listing that promises a camera scanner the build cannot provide is a bug report waiting to happen.
+
+**Changelogs** are named by `versionCode`, not semver — that is how F-Droid pairs a changelog with a
+build. `bun run --filter @nicotind/mobile fdroid:changelog` derives the name from `androidVersion()`,
+the same function CI feeds to gradle, so a changelog cannot be filed under a code no APK was built
+with. It reduces the generated `CHANGELOG.md` section to plain bullets inside the 500-byte cap,
+dropping whole entries and saying how many rather than cutting mid-URL. Run it after
+`bun run release`, not during: the release script makes its own commit, so a file written inside it
+lands in the following one.
+
+**Screenshots are deliberately absent**, and both `images/README.md` files say why at the point of
+use. The fixture-based Playwright harness has exactly one album — "E2E Test Album", noise cover —
+which is right for the README and wrong for a store listing, where it reads as an empty app. A real
+capture needs a live library (`playwright.live-screens.config.ts` is the hook) plus a spec that does
+not navigate by fixture name; the TV entry additionally needs the `tv` bundle, since that UI is a
+build-time route fork. F-Droid does not require screenshots, so this does not block submission.
+
+`check:fdroid` validates every locale's title/short_description/full_description against F-Droid's
+byte caps and every changelog's name and size — **byte** length, because the accented Spanish copy is
+multi-byte and a character-counted cap would pass text the store cuts.
+
 ## What is still needed for the main repo
 
-1. **Metadata**: fastlane layout under `fastlane/metadata/android/<locale>/` per entry (F-Droid reads
-   it straight from the repo), summary/description/changelog, screenshots for both form factors.
-2. **Two merge requests** to `fdroiddata`, one per application id, with `prebuild` setting
+1. **Two merge requests** to `fdroiddata`, one per application id, with `prebuild` setting
    `NICOTIND_FDROID=1` (and `NICOTIND_APP_ID_SUFFIX=.tv` for the TV entry) before `cap sync`, and
    `gradle: [fdroid]` to select the flavor.
+2. **Screenshots**, and the TV metadata path question above.
 
 An **own signed F-Droid repository** ships first (decided 2026-09-16): it serves the `fdroid`-variant
 APKs we already build, needs none of the above, and stays available if inclusion stalls in review.

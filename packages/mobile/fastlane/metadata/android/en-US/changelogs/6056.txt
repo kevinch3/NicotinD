@@ -1,0 +1,2 @@
+• ci: attach the release APKs before verifying the F-Droid variant (#1173)
+• desktop: pin the staged backend deps to the installed versions (#1175)
