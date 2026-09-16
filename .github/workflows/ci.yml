@@ -169,6 +169,14 @@ jobs:
       - name: Check every /api route group decides about auth
         run: bun run check:route-auth
 
+      # F-Droid forbids proprietary deps, and ours arrive transitively:
+      # @capacitor/barcode-scanner pulls com.google.mlkit. A new plugin with the
+      # same problem would not change the exclusion list, so this fails on an
+      # UNCLASSIFIED plugin too, and on a release step pointing at a gradle
+      # output path the `distribution` flavor does not produce (#1168).
+      - name: F-Droid build variant gate
+        run: bun run check:fdroid
+
       # Every outbound fetch must carry an abort signal. Both house clients
       # shipped without one (#623, #625) and the failure mode is silence: a
       # missing timeout looks exactly like a working call until an upstream

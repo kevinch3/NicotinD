@@ -73,6 +73,81 @@ describe('AndroidManifest.xml — Android TV launcher contract', () => {
   });
 });
 
+/**
+ * The F-Droid flavor overlay (issue #1168). Verified end to end against the
+ * merged manifest during development; these tests hold the contract that makes
+ * that merge correct, since no compiler reads either XML file.
+ */
+describe('AndroidManifest.xml — F-Droid flavor overlay', () => {
+  const overlay = readFileSync(
+    join(import.meta.dir, '..', 'android', 'app', 'src', 'fdroid', 'AndroidManifest.xml'),
+    'utf8',
+  );
+
+  it('declares the tools namespace that tools:node="remove" needs', () => {
+    // Without it the merger treats tools:node as an unknown attribute and the
+    // permissions survive — the failure is a silently over-permissioned APK.
+    expect(overlay).toContain('xmlns:tools="http://schemas.android.com/tools"');
+  });
+
+  it('removes REQUEST_INSTALL_PACKAGES — F-Droid is the updater there', () => {
+    expect(overlay).toMatch(
+      /<uses-permission[\s\S]*?android\.permission\.REQUEST_INSTALL_PACKAGES[\s\S]*?tools:node="remove"[\s\S]*?\/>/,
+    );
+  });
+
+  it('removes the camera permission and feature — ML Kit is not in this build', () => {
+    expect(overlay).toMatch(
+      /<uses-permission[\s\S]*?android\.permission\.CAMERA[\s\S]*?tools:node="remove"[\s\S]*?\/>/,
+    );
+    expect(overlay).toMatch(
+      /<uses-feature[\s\S]*?android\.hardware\.camera[\s\S]*?tools:node="remove"[\s\S]*?\/>/,
+    );
+  });
+
+  it('only ever removes — the launcher contract stays in one manifest', () => {
+    // An <activity>/<intent-filter> here would fork the TV launcher contract the
+    // tests above guard, and the fork would only show up on F-Droid installs.
+    const nodes =
+      overlay.match(/<(uses-permission|uses-feature|activity|provider|application)\b/g) ?? [];
+    expect(nodes.length).toBeGreaterThan(0);
+    for (const node of nodes) {
+      expect(['<uses-permission', '<uses-feature']).toContain(node);
+    }
+    const removals = overlay.match(/tools:node="remove"/g) ?? [];
+    expect(removals.length).toBe(nodes.length);
+  });
+
+  it('removes nothing the main manifest does not declare', () => {
+    // A removal that matches nothing is dead config: it reads as protection
+    // while the real permission sits somewhere else under a different spelling.
+    const targets = [...overlay.matchAll(/android:name="([^"]+)"/g)].map((m) => m[1]);
+    expect(targets.length).toBeGreaterThan(0);
+    for (const name of targets) {
+      expect(manifest).toContain(`android:name="${name}"`);
+    }
+  });
+
+  it('is wired up as a gradle product flavor', () => {
+    const gradle = readFileSync(
+      join(import.meta.dir, '..', 'android', 'app', 'build.gradle'),
+      'utf8',
+    );
+    // The overlay dir is inert unless a flavor of the same name exists.
+    expect(gradle).toMatch(/flavorDimensions\s+"distribution"/);
+    expect(gradle).toMatch(/fdroid\s*\{\s*dimension\s+"distribution"\s*\}/);
+    expect(gradle).toMatch(/standard\s*\{\s*dimension\s+"distribution"\s*\}/);
+  });
+
+  it('takes the application id suffix from the environment', () => {
+    const gradle = readFileSync(
+      join(import.meta.dir, '..', 'android', 'app', 'build.gradle'),
+      'utf8',
+    );
+    expect(gradle).toContain('System.getenv("NICOTIND_APP_ID_SUFFIX")');
+  });
+});
+
 describe('TV banner asset', () => {
   const bannerPath = join(ANDROID_APP, 'res', 'drawable-xhdpi', 'banner.png');
 
