@@ -251,19 +251,40 @@ jobs:
         working-directory: packages/mobile/android/app/build/outputs/apk/standard/release
         run: mv app-standard-release.apk "$RUNNER_TEMP/apks/NicotinD-TV-${NICOTIND_VERSION_NAME}.apk"
 
+      # ATTACH BEFORE VERIFYING. This step must stay ahead of every
+      # verification-only step below: v0.6.55 shipped with no APK at all because
+      # the F-Droid verification sat here instead, failed on missing signing env,
+      # and took the already-built phone and TV APKs down with it. The artifacts
+      # users install are the job's product; anything that merely *checks*
+      # something runs after they are safely uploaded. `check:fdroid` asserts
+      # this ordering so the steps cannot drift back.
+      - name: Attach APKs to the GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: ${{ runner.temp }}/apks/*.apk
+          fail_on_unmatched_files: true
+
       # The F-Droid variant, built but NOT attached: it is a different package
       # (TV) and a different update channel, so shipping it beside the sideload
-      # APKs would only confuse. It is assembled here because `check:fdroid` is
+      # APKs would only confuse. It is assembled because `check:fdroid` is
       # static — it proves the plugin set is classified, not that the variant
       # still COMPILES without the excluded plugins, which is the break a
       # dropped `getCapacitorPlugin` null-guard would cause. The TV web bundle
-      # is already in place from the step above, so this is the `.tv` entry.
-      # See docs/fdroid.md.
+      # is still in place from the TV steps above, so this is the `.tv` entry.
+      #
+      # Built UNSIGNED, deliberately: `ANDROID_KEYSTORE_FILE` is in $GITHUB_ENV
+      # from the decode step, which makes build.gradle attach the release
+      # signingConfig, whose passwords arrive as per-step env on the shipping
+      # builds only. Clearing the path here (Groovy reads "" as false) takes this
+      # throwaway artifact out of the signing path entirely rather than handing
+      # it the release key it has no use for. See docs/fdroid.md.
       - name: Build the F-Droid TV variant (verification only)
         working-directory: packages/mobile
         env:
           NICOTIND_FDROID: '1'
           NICOTIND_APP_ID_SUFFIX: .tv
+          ANDROID_KEYSTORE_FILE: ''
         run: |
           set -euo pipefail
           bunx cap sync android
@@ -272,25 +293,22 @@ jobs:
       # Assert the exclusion actually reached the artifact. `check:fdroid` reads
       # package.json; this reads the dex. A gate that only checks intent is how
       # a plugin excluded in config but still on the classpath would ship.
+      # Greps rather than counting class definitions on purpose: for THIS variant
+      # the plugin is absent entirely, so a surviving type *reference* is a
+      # finding too (docs/fdroid.md).
       - name: Assert no proprietary dependency in the F-Droid APK
         working-directory: packages/mobile/android/app/build/outputs/apk/fdroid/release
         run: |
           set -euo pipefail
-          apk=app-fdroid-release.apk
+          apk=app-fdroid-release-unsigned.apk
+          [ -f "$apk" ] || apk=app-fdroid-release.apk
           for forbidden in com/google/mlkit com/google/android/gms outsystems; do
             if unzip -p "$apk" 'classes*.dex' | grep -qa "$forbidden"; then
               echo "::error::$forbidden is present in the F-Droid APK — F-Droid would reject it."
               exit 1
             fi
           done
-          echo "F-Droid APK is clean of mlkit / play-services / osbarcode."
-
-      - name: Attach APKs to the GitHub Release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: ${{ runner.temp }}/apks/*.apk
-          fail_on_unmatched_files: true
+          echo "F-Droid APK ($apk) is clean of mlkit / play-services / osbarcode."
 
   # Build an UNSIGNED iOS .ipa and attach it to the GitHub Release.
   # The native `ios/` project is NOT committed (it must be generated on a Mac), 
