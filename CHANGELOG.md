@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.56](https://github.com/kevinch3/NicotinD/compare/v0.6.55...v0.6.56) (2026-09-16)
+
+### Bug Fixes
+
+* **ci:** attach the release APKs before verifying the F-Droid variant ([#1173](https://github.com/kevinch3/NicotinD/issues/1173)) ([1eefed2](https://github.com/kevinch3/NicotinD/commit/1eefed22e5de824eb50025c31def1a59492735ea)), references [#1168](https://github.com/kevinch3/NicotinD/issues/1168)
+* **desktop:** pin the staged backend deps to the installed versions ([#1175](https://github.com/kevinch3/NicotinD/issues/1175)) ([73567c2](https://github.com/kevinch3/NicotinD/commit/73567c2be92c2745257423fbce6fc90af22eeb01)), closes [#1174](https://github.com/kevinch3/NicotinD/issues/1174)
 ## [0.6.55](https://github.com/kevinch3/NicotinD/compare/v0.6.54...v0.6.55) (2026-09-16)
 
 ### Performance
