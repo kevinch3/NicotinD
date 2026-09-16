@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.55](https://github.com/kevinch3/NicotinD/compare/v0.6.54...v0.6.55) (2026-09-16)
+
+### Performance
+
+* **mobile:** drop Google ML Kit from the Android build (30 MB -> 10.5 MB) ([#1172](https://github.com/kevinch3/NicotinD/issues/1172)) ([d427cdb](https://github.com/kevinch3/NicotinD/commit/d427cdb312b726df0d2c63c258b3cec4bdfe9f99)), references [#1170](https://github.com/kevinch3/NicotinD/issues/1170)
 ## [0.6.54](https://github.com/kevinch3/NicotinD/compare/v0.6.53...v0.6.54) (2026-09-15)
 
 ### Features
