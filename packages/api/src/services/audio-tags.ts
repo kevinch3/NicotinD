@@ -73,7 +73,10 @@ type MusicMetadataApi = {
       album?: string;
       title?: string;
       track?: { no?: number | null };
+      /** Disc position, the same `{ no, of }` shape as `track` (#1151). */
+      disk?: { no?: number | null };
       year?: number;
+      bpm?: number;
       key?: string;
       mood?: string;
       /** One entry per genre tag frame — an ARRAY, not a string (issue #791). */
@@ -266,7 +269,12 @@ function pickGenre(raw: unknown): string | undefined {
   return pickString(raw);
 }
 
-function parseTrackNumber(raw: unknown): number | undefined {
+/**
+ * The leading integer of a node-id3 numeric frame. Every one of them arrives as
+ * a string, and TRCK/TPOS carry a `position/total` pair at least as often as a
+ * bare number.
+ */
+function parseLeadingNumber(raw: unknown): number | undefined {
   if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
   if (typeof raw === 'string') {
     const m = raw.match(/^\d+/);
@@ -301,8 +309,13 @@ export async function readAudioTags(filepath: string): Promise<AudioTags> {
         albumArtist: pickString(d.performerInfo) ?? pickString(d.band),
         album: pickString(d.album),
         title: pickString(d.title),
-        trackNumber: parseTrackNumber(d.trackNumber),
-        year: parseYear(d.year),
+        trackNumber: parseLeadingNumber(d.trackNumber),
+        discNumber: parseLeadingNumber(d.partOfSet),
+        bpm: parseLeadingNumber(d.bpm),
+        // TYER first, then v2.4's TDRC. node-id3's `update` downgrades the
+        // header to v2.3 and writes TYER while leaving any existing TDRC in
+        // place, so a retagged file carries both and TDRC is the stale one.
+        year: parseYear(d.year) ?? parseYear(d.recordingTime),
         key: pickString(d.initialKey),
         genre: pickString(d.genre),
         lyrics: readId3Lyrics(d),
@@ -333,6 +346,12 @@ export async function readAudioTags(filepath: string): Promise<AudioTags> {
         album: pickString(c.album),
         title: pickString(c.title),
         trackNumber: c.track?.no ?? undefined,
+        // `writeFfmpegTags` emits DISC and BPM here too, so leaving these
+        // unmapped made them write-only on flac/m4a for the same reason (#1151).
+        discNumber: c.disk?.no ?? undefined,
+        // Vorbis comments are free text, so a BPM can arrive as "128" or "128.5"
+        // even where music-metadata's own types promise a number.
+        bpm: parseLeadingNumber(c.bpm),
         year: c.year,
         key: pickString(c.key),
         genre: pickGenre(c.genre),
@@ -362,10 +381,14 @@ export interface WriteAudioTagsDeps {
 /**
  * The fields `readAudioTags` maps on an ID3 file, so a read-back can tell a
  * landed write from a lost one. Deliberately not the whole of `AudioTags`:
- * `bpm`/`discNumber` are written but not read, `compilation` is not written at
- * all (#917), and the perceptual features go through `toFixed`, so a faithful
- * write reads back rounded. Comparing any of those would report a good write as
- * lost and rewrite the container for nothing.
+ * `compilation` is not written at all (#917), and the perceptual features go
+ * through `toFixed`, so a faithful write reads back rounded. Comparing either
+ * would report a good write as lost and rewrite the container for nothing.
+ *
+ * `bpm`/`discNumber` became readable in #1151 and round-trip exactly, but they
+ * stay out: this list decides whether to REWRITE THE CONTAINER, and neither is
+ * a field a curator corrects. Widening the rewrite trigger is a cost paid on
+ * every write, for a divergence nothing reads.
  */
 const ID3_VERIFIABLE_FIELDS = [
   'title',

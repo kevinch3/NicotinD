@@ -247,8 +247,10 @@ const SNAPSHOT_TAG_KEYS = {
 /**
  * The diverged fields as the file carries them, or null unless the file carries
  * EVERY one of them at the requested value. Null is the conservative answer: a
- * field the reader cannot see (no container's read path returns `discNumber`) reads as a
- * write that did not land, which keeps the older, blunter error.
+ * field the reader cannot see reads as a write that did not land, which keeps
+ * the older, blunter error. Since #1151 both read paths return `discNumber`,
+ * and the ID3 path reads an ID3v2.4 year, so a `disc` or `year` fix can be
+ * confirmed instead of being reported as non-persistence on every mp3.
  */
 async function readOnDiskConfirmation(
   read: typeof readAudioTags,

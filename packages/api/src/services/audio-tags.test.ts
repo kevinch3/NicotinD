@@ -302,6 +302,25 @@ describe.if(ffmpegAvailable())('overwriting an existing tag (#760)', () => {
       expect(await writeAudioTags(path, { albumArtist: 'NEWER ALBUM ARTIST' })).toBe(true);
       expect((await readAudioTags(path)).albumArtist).toBe('NEWER ALBUM ARTIST');
     });
+
+    // `writeFfmpegTags` has always emitted DISC and BPM here; until #1151 no
+    // read branch mapped either, so both were write-only on this family too —
+    // the same asymmetry the mp3 side carried, one container over.
+    it(`reads back disc and bpm on .${ext} (#1151)`, async () => {
+      const path = tagged(ext, `numbers-${ext}`);
+      expect(await writeAudioTags(path, { discNumber: 2, bpm: 128 })).toBe(true);
+      const tags = await readAudioTags(path);
+      expect(tags.discNumber).toBe(2);
+      if (ext === 'm4a') {
+        // Measured, not assumed: the file carries `disk` and NO tempo atom at
+        // all, so this one is a WRITE gap, not the read gap #1151 closed.
+        // ffmpeg's mov muxer ignores `-metadata BPM=`; the key it maps to the
+        // tempo atom is `tmpo`. Filed as #1177 — invert this branch there.
+        expect(tags.bpm).toBeUndefined();
+      } else {
+        expect(tags.bpm).toBe(128);
+      }
+    });
   }
 
   /**
