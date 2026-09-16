@@ -119,9 +119,26 @@ interface BarcodeScannerPlugin {
     scanText: string;
     cameraDirection: number;
     scanOrientation: number;
-    native?: { scanOrientation?: number };
+    native?: { scanOrientation?: number; android?: { scanningLibrary?: string } };
   }): Promise<{ ScanResult?: string }>;
 }
+
+// Pin the ZXing scanning backend explicitly. `com.google.mlkit` is excluded
+// from the Android build (packages/mobile/android/build.gradle, #1170).
+//
+// This is defence, not the fix. Read from the plugin's own bytecode: the
+// scanner activity turns a missing value into `""`, and the factory is
+// `if (scanLibrary == "mlkit") MLKitWrapper else ZXingWrapper` — so ZXing is
+// ALREADY what v1.0.4 selects by default, and the 20 MB of ML Kit we used to
+// ship was for a backend the app never chose. Saying "zxing" out loud is what
+// keeps an upstream change of that default from silently pulling it back in.
+//
+// The key path is `native.android.scanningLibrary`, NOT the top-level `android`
+// the plugin's published TypeScript shows: OSBarcodePlugin.kt reads
+// `call.getObject("native")?.getJSObject("android")?.getString("scanningLibrary")`.
+// The public shape is what its JS wrapper accepts, and we bypass that wrapper
+// (see above), so sent at the top level this would be dropped without a word.
+const SCANNING_LIBRARY_ZXING = 'zxing';
 
 const QR_CODE_HINT = 0; // Html5QrcodeSupportedFormats.QR_CODE
 const CAMERA_BACK = 1;
@@ -167,7 +184,10 @@ export async function scanBarcode(): Promise<ScanOutcome> {
       scanText: ' ',
       cameraDirection: CAMERA_BACK,
       scanOrientation: ORIENTATION_ADAPTIVE,
-      native: { scanOrientation: ORIENTATION_ADAPTIVE },
+      native: {
+        scanOrientation: ORIENTATION_ADAPTIVE,
+        android: { scanningLibrary: SCANNING_LIBRARY_ZXING },
+      },
     });
     const value = result?.ScanResult;
     return value ? { status: 'ok', value } : { status: 'cancelled' };

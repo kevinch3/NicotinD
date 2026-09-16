@@ -144,7 +144,17 @@ the request-origin candidate (below).
      `{ hint }`-only call rejects "Error decoding scan arguments" before the
      camera even opens. `scanBarcode()` therefore passes every wrapper-default
      option (and `hint: 0` = QR_CODE in html5-qrcode numbering, *not* zxing's
-     ordinals) and returns a typed `ScanOutcome` so cancel stays silent while
+     ordinals). The **same wrapper bypass** decides where the scanning-library
+     option goes. `com.google.mlkit` is excluded from the Android build (#1170,
+     20 MB of a 30 MB APK), and `scanBarcode()` asks for ZXing by name at
+     `native.android.scanningLibrary` — **not** the top-level `android` the
+     plugin's published types show, since `OSBarcodePlugin.kt` reads it from
+     inside `native` and a top-level key is dropped in silence. Note the option
+     is belt-and-braces: the plugin's factory is
+     `if (scanLibrary == "mlkit") MLKitWrapper else ZXingWrapper` with a missing
+     value arriving as `""`, so ZXing was *always* what ran and ML Kit was dead
+     weight. Naming it keeps an upstream change of that `else` from pulling it
+     back in; `check:fdroid` keeps exclusion and option together. It returns a typed `ScanOutcome` so cancel stays silent while
      denied-camera/plugin errors surface as actionable messages instead of
      reading as "the QR is invalid". `lib/pairing.ts` parses the payload
      (foreign QR content fails soft), probes the candidates in order against

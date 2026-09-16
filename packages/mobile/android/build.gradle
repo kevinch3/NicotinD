@@ -50,6 +50,24 @@ allprojects {
         resolutionStrategy {
             force 'com.github.outsystems:osbarcode-android:1.1.5'
         }
+        // Google ML Kit is proprietary and was 20 MB of a 30 MB APK (#1170) —
+        // for a scanning backend the app never selected. `@capacitor/barcode-
+        // scanner` bundles TWO behind `OSBARCScanLibraryFactory`, whose whole
+        // body is `if (scanLibrary == "mlkit") MLKitWrapper else ZXingWrapper`,
+        // and a missing value reaches it as "". So ZXing was always what ran;
+        // ML Kit was dead weight on every install.
+        //
+        // Safe because the ML Kit references are confined to OSBARCMLKitWrapper
+        // and OSBARCMLKitHelper: OSBARCZXingWrapper, OSBARCZXingHelper,
+        // OSBARCBarcodeAnalyzer and OSBARCImageHelper carry zero, so the ZXing
+        // path never class-loads an excluded type. Verified with `dexdump`:
+        // 195 `com.google.mlkit` class DEFINITIONS before, 0 after, 264 ZXing
+        // definitions still present, 30 MB -> 10.5 MB.
+        //
+        // native-capabilities.ts also asks for ZXing by name. That is belt and
+        // braces, not the fix — it keeps an upstream change of that `else` from
+        // quietly pulling ML Kit back in. `check:fdroid` keeps the two together.
+        exclude group: 'com.google.mlkit'
     }
 }
 

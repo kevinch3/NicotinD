@@ -110,6 +110,24 @@ describe('scanBarcode', () => {
     );
   });
 
+  it('selects ZXing at native.android.scanningLibrary, not at the top level', async () => {
+    // com.google.mlkit is excluded from the Android build (#1170). The plugin's
+    // default backend is already ZXing, so this pins intent rather than fixing a
+    // break — but the pin only counts if it lands on the key the native side
+    // reads. The nesting IS the assertion: the published TS types put `android`
+    // at the TOP level, while OSBarcodePlugin.kt reads it from inside `native`,
+    // and we call the raw bridge rather than the wrapper that translates
+    // between them. A top-level `android` is dropped in silence.
+    const scanMock = withScannerPlugin(async () => ({ ScanResult: 'payload' }));
+    await scanBarcode();
+    const options = scanMock.mock.calls[0]?.[0] as {
+      android?: unknown;
+      native?: { android?: { scanningLibrary?: string } };
+    };
+    expect(options.native?.android?.scanningLibrary).toBe('zxing');
+    expect(options.android).toBeUndefined();
+  });
+
   it('is unavailable off-native', async () => {
     await expect(scanBarcode()).resolves.toEqual({ status: 'unavailable' });
   });
