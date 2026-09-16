@@ -72,6 +72,11 @@ jobs:
       # Pinned binary rather than gitleaks-action, matching the actionlint step
       # above — it also sidesteps that action's licensing terms entirely.
       # Allowlists (with reasons) live in .gitleaks.toml.
+      #
+      # -v names the rule, file, line and commit of every finding. Without it the
+      # log says only "leaks found: N", and because the scan covers every fetched
+      # branch the finding is not necessarily on the branch under test (#1160).
+      # --redact stays on, so the matched value itself is never printed.
       - name: Secret scan
         run: |
           set -euo pipefail
@@ -79,7 +84,7 @@ jobs:
           version=8.30.1
           curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz" \
             | tar -xz gitleaks
-          ./gitleaks git . --redact --no-banner --config .gitleaks.toml
+          ./gitleaks git . --redact --no-banner --config .gitleaks.toml -v
 
       - uses: oven-sh/setup-bun@v2
         with:

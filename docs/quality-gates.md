@@ -769,6 +769,25 @@ The binary is downloaded pinned rather than run through `gitleaks-action`, match
 `actionlint` step directly above it in the same job; it also sidesteps that action's
 licensing terms. Both carry a `check:ci-parity` ALLOWLIST entry, since neither runs locally.
 
+### A finding is not necessarily yours (#1160)
+
+`fetch-depth: 0` fetches **every remote branch**, and the scan walks all of them. One
+unmerged branch carrying a high-entropy fixture therefore reds the gate on every other
+pull request and on `master`, for content the author of the failing run has never seen.
+That is the intended reach — a secret is published the moment it is pushed anywhere — but
+it makes attribution the first question a red gate has to answer.
+
+So the step runs with `-v`, which prints the rule, file, line and **commit** of each
+finding. `--redact` stays on beside it, so the matched value itself is still never printed.
+Without `-v` the log says only `leaks found: 1` and names nothing, which cost a full triage
+to attribute to a sibling branch.
+
+To confirm your own range is clean before blaming it:
+
+```bash
+gitleaks git . --redact --no-banner --config .gitleaks.toml -v --log-opts="origin/master..HEAD"
+```
+
 ### What the first scan found
 
 Run before any config was written, because a gate you have not measured is a guess:
