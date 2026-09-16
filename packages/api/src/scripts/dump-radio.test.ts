@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'bun:test';
-import { descriptorSpreadLines, looksConcatenatedGenre, parseWeightOverrides } from './dump-radio';
+import {
+  chooseGenreAxis,
+  descriptorSpreadLines,
+  looksConcatenatedGenre,
+  parseWeightOverrides,
+} from './dump-radio';
 import { DEFAULT_WEIGHTS, type SongFeatures } from '../services/radio.service';
 
 describe('descriptorSpreadLines (the v4 tripwire, applied to the v5 axes)', () => {
@@ -106,5 +111,45 @@ describe('looksConcatenatedGenre (genre-detection miss flag)', () => {
     expect(looksConcatenatedGenre('Dubstep')).toBe(false); // no mid-string capital
     expect(looksConcatenatedGenre('NewWave')).toBe(false); // 1 hump but < 8 chars
     expect(looksConcatenatedGenre('Acid House')).toBe(false); // space-separated, no hump
+  });
+});
+
+/**
+ * #1161: the flag had quietly become the "reproduce prod" switch and the
+ * default had become the control — the inverse of how the tool is read. These
+ * pin the precedence, so a future default change fails here rather than
+ * silently measuring a radio the server does not serve.
+ */
+describe('chooseGenreAxis (which axis a dump reproduces)', () => {
+  const choose = (o: Partial<Parameters<typeof chooseGenreAxis>[0]>) =>
+    chooseGenreAxis({ affinityFlag: false, lexicalFlag: false, setting: true, ...o });
+
+  it('follows the setting when no flag is given', () => {
+    expect(choose({ setting: true })).toEqual({ learned: true, source: 'setting' });
+    expect(choose({ setting: false })).toEqual({ learned: false, source: 'setting' });
+  });
+
+  it('lets either flag override the setting in its own direction', () => {
+    // The case the issue is about: the setting is ON (the v9 default since
+    // #1121), and --lexical-genre is the only way to measure the old axis.
+    expect(choose({ setting: true, lexicalFlag: true })).toEqual({
+      learned: false,
+      source: 'flag',
+    });
+    // And the flag still forces the learned axis on a server that opted out.
+    expect(choose({ setting: false, affinityFlag: true })).toEqual({
+      learned: true,
+      source: 'flag',
+    });
+  });
+
+  it('reports a flag as the source even when it agrees with the setting', () => {
+    // `source` is what makes the report honest about WHY, so it must not
+    // collapse to 'setting' just because the two happen to match.
+    expect(choose({ setting: true, affinityFlag: true }).source).toBe('flag');
+  });
+
+  it('refuses both flags at once rather than silently picking one', () => {
+    expect(() => choose({ affinityFlag: true, lexicalFlag: true })).toThrow(/mutually exclusive/);
   });
 });

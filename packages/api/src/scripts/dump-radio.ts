@@ -17,9 +17,13 @@
  *        --key <code>, --mood <m>, --dur-min/--dur-max, --starred,
  *        --weights genre=14,embedding=8 (A/B a candidate DEFAULT_WEIGHTS change),
  *        --strategy similar|balanced|different (a named recipe; --weights still wins).
- *        --genre-affinity (score the genre axis from the learned genre centroids
- *        instead of the lexical rule — the A/B for docs/genre-affinity.md; run the
- *        same seed with and without it and diff the ranked lists).
+ *
+ * GENRE AXIS: by default the dump scores on whatever the SERVER is serving —
+ * `RadioSettings.genreAffinity`, read from this database, exactly as the route
+ * does. Override it for an A/B: --genre-affinity forces the learned centroid
+ * axis on, --lexical-genre forces the old lexical rule. The two are mutually
+ * exclusive, and the report header always names the axis in force and whether a
+ * flag or the setting chose it (docs/genre-affinity.md).
  *
  * WHY this exists: seed radios are genre-coherent but filter ("vibe") radios pull
  * cross-genre tracks (José Larralde Folk → Katy Perry Pop). The per-axis breakdown
@@ -47,8 +51,7 @@ import {
   type SimilarityExplanation,
   type SongFeatures,
 } from '../services/radio.service.js';
-import { makeGenreAffinity } from '../services/genre-affinity.js';
-import { listGenreCentroids } from '../services/genre-centroids.js';
+import { getRadioSettings } from '../services/radio-settings.js';
 import { isRealGenre } from '../services/genre-split.js';
 import { feedEligibilitySql } from '../services/recommendation/eligibility.js';
 import {
@@ -104,6 +107,29 @@ function parseArgs(argv: string[]): Record<string, string[] | true> {
 function firstArg(args: Record<string, string[] | true>, key: string): string | undefined {
   const v = args[key];
   return Array.isArray(v) ? v[0] : undefined;
+}
+
+/**
+ * Which genre axis a dump run scores on, and why — the decision, separated from
+ * the loading so it is testable without a database (#1161).
+ *
+ * The default is whatever the SERVER is serving, because a diagnostic that does
+ * not reproduce prod answers a question nobody asked. Before #1121 the learned
+ * axis was off by default and `--genre-affinity` turned it on; now the setting
+ * defaults on, so the same flag has become "confirm the axis" and the new
+ * `--lexical-genre` is the A/B control.
+ */
+export function chooseGenreAxis(opts: {
+  affinityFlag: boolean;
+  lexicalFlag: boolean;
+  setting: boolean;
+}): { learned: boolean; source: 'flag' | 'setting' } {
+  if (opts.affinityFlag && opts.lexicalFlag) {
+    throw new Error('--genre-affinity and --lexical-genre are mutually exclusive.');
+  }
+  if (opts.affinityFlag) return { learned: true, source: 'flag' };
+  if (opts.lexicalFlag) return { learned: false, source: 'flag' };
+  return { learned: opts.setting, source: 'setting' };
 }
 
 /** CLI filter flags → the query shape parseLibraryFilter consumes (reuse the one parser). */
@@ -573,6 +599,7 @@ function renderDump(
   result: RadioResult,
   weights: ScoringWeights,
   strategy: RecommendationStrategy,
+  axis: ReturnType<typeof chooseGenreAxis>,
 ): string {
   const { seed, pool, ranked } = result;
   const ctx: ScoringContext = { genreAffinity: result.genreAffinity };
@@ -581,8 +608,16 @@ function renderDump(
   lines.push('');
   lines.push(`- kind: **${kind} radio**`);
   lines.push(`- strategy: **${strategy.id}**`);
+  // Reading the axis off `result` reports what actually scored, not what was
+  // requested: the learned axis silently falls back to lexical when nothing is
+  // stored for the genres in play. `axis.source` says who asked (#1161).
   lines.push(
-    `- genre axis: **${result.genreAffinity ? 'learned affinity (genre centroids)' : 'lexical'}**`,
+    `- genre axis: **${result.genreAffinity ? 'learned affinity (genre centroids)' : 'lexical'}**` +
+      ` (${axis.learned ? 'learned' : 'lexical'} requested by ${
+        axis.source === 'flag'
+          ? 'a CLI flag'
+          : 'the RadioSettings.genreAffinity setting, as the route reads it'
+      })`,
   );
   lines.push(...renderServedWindow(seed, ranked));
   lines.push(`- seed: ${seedLabel(seedRow, seed)}`);
@@ -719,11 +754,15 @@ function main(): void {
   const count = Math.min(Math.max(Number(firstArg(args, 'count') ?? 12), 1), 50);
   const strategy = resolveStrategy(firstArg(args, 'strategy'));
   const weights = parseWeightOverrides(firstArg(args, 'weights'), resolveWeights(strategy));
-  // The whole centroid table (≈ one row per genre name, a few MB) rather than a
-  // per-pool load: a diagnostic run happens once, and the pool isn't known
-  // until the radio is built.
-  const genreAffinity =
-    args['genre-affinity'] === true ? makeGenreAffinity(listGenreCentroids(db)) : undefined;
+  const axis = chooseGenreAxis({
+    affinityFlag: args['genre-affinity'] === true,
+    lexicalFlag: args['lexical-genre'] === true,
+    setting: getRadioSettings(db).genreAffinity,
+  });
+  // `learnedGenreAffinity`, not a prebuilt resolver: this is the same option the
+  // route passes, so the centroids load for exactly the genres in play rather
+  // than for the whole vocabulary. Anything else diagnoses a different radio.
+  const learnedGenreAffinity = axis.learned;
   let kind: 'seed' | 'filter';
   let seedRow: RadioSongRow | null = null;
   let filter: LibraryFilter | null = null;
@@ -747,7 +786,7 @@ function main(): void {
         process.exit(1);
       }
       kind = 'seed';
-      result = buildSeedRadio(db, seedRow, { count, weights, strategy, genreAffinity });
+      result = buildSeedRadio(db, seedRow, { count, weights, strategy, learnedGenreAffinity });
     } else if (seedId) {
       seedRow = db.query<RadioSongRow, [string]>(`${RADIO_SONG_SELECT} WHERE s.id = ?`).get(seedId);
       if (!seedRow) {
@@ -755,7 +794,7 @@ function main(): void {
         process.exit(1);
       }
       kind = 'seed';
-      result = buildSeedRadio(db, seedRow, { count, weights, strategy, genreAffinity });
+      result = buildSeedRadio(db, seedRow, { count, weights, strategy, learnedGenreAffinity });
     } else if (artist) {
       // Pick a landed track for the artist, preferring one that HAS a genre so
       // the seed represents the artist's tagging (else the whole run is genre-blind).
@@ -770,7 +809,7 @@ function main(): void {
         process.exit(1);
       }
       kind = 'seed';
-      result = buildSeedRadio(db, seedRow, { count, weights, strategy, genreAffinity });
+      result = buildSeedRadio(db, seedRow, { count, weights, strategy, learnedGenreAffinity });
     } else {
       filter = filterFromArgs(args);
       if (Object.keys(filter).length === 0) {
@@ -780,10 +819,14 @@ function main(): void {
         process.exit(1);
       }
       kind = 'filter';
+      // No genre axis here on purpose: a filter ("station") radio has no seed
+      // genre set, and spends the genre weight on graded station membership
+      // instead. `buildFilterRadio` takes no affinity option at all, so both
+      // flags are inert on this path and the header will say `lexical`.
       result = buildFilterRadio(db, filter, { count, weights, strategy });
     }
 
-    const markdown = renderDump(db, kind, seedRow, filter, result, weights, strategy);
+    const markdown = renderDump(db, kind, seedRow, filter, result, weights, strategy, axis);
     const outPath = firstArg(args, 'out') ?? join(dataDir, `radio-dump-${Date.now()}.md`);
     writeFileSync(outPath, markdown + '\n');
     if (args['json'] === true) {

@@ -172,16 +172,30 @@ bun run packages/api/src/scripts/genre-affinity.ts --pair "Tech House" "Tango"
 bun run packages/api/src/scripts/genre-affinity.ts --neighbours "Tech House" --limit 20
 # which tags read as umbrellas (lowest coherence first)
 bun run packages/api/src/scripts/genre-affinity.ts --breadth
-# the A/B against real radio output: same seed, with and without the axis
-bun run packages/api/src/scripts/dump-radio.ts --seed <id>
-bun run packages/api/src/scripts/dump-radio.ts --seed <id> --genre-affinity
+# the A/B against real radio output: same seed, both axes
+bun run packages/api/src/scripts/dump-radio.ts --seed <id>                    # what the server serves
+bun run packages/api/src/scripts/dump-radio.ts --seed <id> --lexical-genre    # the control
 ```
 
-`dump-radio` still defaults to the **lexical** axis and does not read
-`RadioSettings.genreAffinity`, so since the v9 flip it is `--genre-affinity`
-that reproduces what the route serves and the bare run that is the control.
-The report's header line names which axis was in force — read it before
-trusting a dump (#1161).
+**A bare `dump-radio` reproduces the server.** It reads
+`RadioSettings.genreAffinity` from the same database, through the same
+`learnedGenreAffinity` option the route passes, so the centroids resolve over
+the genres in play rather than over the whole vocabulary. On a default install
+that means the learned axis, formula v9.
+
+The two overrides are for the A/B only and are mutually exclusive:
+`--genre-affinity` forces the learned axis on, `--lexical-genre` forces the old
+lexical rule. Since the v9 flip in #1121 the *control* is the one that needs a
+flag; before #1161 it was the other way round, and a bare run silently measured
+the lexical axis and reported it as the current formula.
+
+The report's header names the axis that actually scored **and** whether a flag
+or the setting asked for it. Those can differ: the learned axis falls back to
+lexical when nothing is stored for the genres in play.
+
+`--genre-affinity` and `--lexical-genre` are both inert on a filter ("station")
+radio. It has no seed genre set and spends the genre weight on graded station
+membership instead, so `buildFilterRadio` takes no affinity option at all.
 
 What to check, in order:
 
@@ -256,7 +270,7 @@ with the axis off every candidate ties at 1.00 and nothing orders them.
 | `packages/api/src/services/genre-affinity.ts`          | Pure: `explainGenrePair`, `makeGenreAffinity`, `rankNeighbours`, `breadthCredit`, the constants |
 | `packages/api/src/services/genre-centroids.ts`         | IO: `computeGenreCentroids`, `loadGenreCentroids`, `loadGenreAffinity`, `listGenreCentroids`, `maybeRunDailyGenreCentroids` |
 | `packages/api/src/scripts/genre-affinity.ts`           | The diagnostic above (`--refresh` is its one write)                                     |
-| `packages/api/src/scripts/dump-radio.ts`               | `--genre-affinity` A/B flag                                                             |
+| `packages/api/src/scripts/dump-radio.ts`               | Defaults to the served axis; `--genre-affinity` / `--lexical-genre` A/B overrides (`chooseGenreAxis`) |
 | `packages/api/src/services/radio.service.ts`           | `ScoringContext`, the `genreSetCloseness` / `rankCandidates` seam                       |
 | `packages/api/src/services/radio-settings.ts`          | `DEFAULT_RADIO_SETTINGS` (on), and the partial-only persistence that keeps an opt-out distinguishable from an unset key |
 | `packages/api/src/services/radio-poll-eval.ts`         | `rescoreCandidate` — the frozen-genre substitution for a `genreAxis: 'learned'` scenario |
