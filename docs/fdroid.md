@@ -12,7 +12,7 @@ ship on GitHub:
 
 | Policy | Ours |
 | --- | --- |
-| Proprietary Google libraries are "strictly forbidden"; upstream must provide "a build flavour that does not require these dependencies" | `@capacitor/barcode-scanner` pulls `com.google.mlkit:barcode-scanning` and `com.github.outsystems:osbarcode-android:1.1.+` (a dynamic version, which defeats reproducibility on its own) |
+| Prebuilt binaries are trusted only from Debian, Maven Central, Google Maven, OSS Sonatype, OSS JFrog, JitPack and Clojars | `@capacitor/barcode-scanner`'s Android implementation is `com.github.outsystems:osbarcode-android`, served **only** by OutSystems' private Azure Maven feed. (Its ML Kit dependency used to be the headline reason; #1170 removed that from every variant — see below.) |
 | An app must not download executable binaries without opt-in consent that explains it bypasses F-Droid's checks | `@nicotind/capacitor-apk-update` downloads a release APK and hands it to the system installer. On F-Droid the client *is* the updater, so the honest answer is to drop it, not to explain it |
 | "All applications must have their own distinct Android Application ID" | The phone and TV APKs share `ar.kevinroberts.nicotind` — they differ only in the web bundle `cap sync` copied in |
 
@@ -47,15 +47,27 @@ option on TV.
 
 ### Measured effect
 
-The excluded plugins were most of the download:
+| Variant | APK | `com.google.mlkit` class definitions |
+| --- | --- | --- |
+| `standard`, before #1170 | 30 MB | 195 |
+| `standard`, now | 10.5 MB | 0 |
+| `fdroid` | 4.4 MB | 0 |
 
-| Variant | APK |
-| --- | --- |
-| `standard` (GitHub releases) | 30 MB |
-| `fdroid` | 4.4 MB |
+#1170 excluded `com.google.mlkit` from the whole Android build, so the 20 MB of proprietary Google
+code is gone from **every** variant and QR pairing still works on the GitHub builds. The remaining
+`standard` / `fdroid` gap is CameraX plus a Compose runtime, which the scanner plugin also drags in.
 
-ML Kit, Play Services, CameraX and a Compose runtime came in behind one QR-pairing screen. Worth
-knowing when deciding what the *standard* APK should keep paying for.
+Worth being exact about why that was safe: the plugin's `OSBARCScanLibraryFactory` is
+`if (scanLibrary == "mlkit") MLKitWrapper else ZXingWrapper`, and the scanner activity turns a
+missing value into `""`. **ZXing was already what ran** — the 20 MB was a backend the app never
+selected. `scanBarcode()` now names ZXing explicitly anyway, so the guarantee stops depending on a
+third party's `else`.
+
+Measured with `dexdump -f` on class **definitions**, not a `grep` of the dex: a dex records the
+*names* of types it references even when the classes are absent, so a plain grep reports ML Kit
+"present" in a build that ships none of it. The CI assertion below greps, which is the stricter
+direction — it fires on a reference as well as on real code — and is right for the `fdroid` variant,
+which has neither.
 
 ## Flavors
 
