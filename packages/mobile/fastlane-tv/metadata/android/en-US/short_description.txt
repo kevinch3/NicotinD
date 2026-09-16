@@ -1,0 +1,1 @@
+Android TV player for your self-hosted NicotinD music server

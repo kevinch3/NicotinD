@@ -1,0 +1,33 @@
+NicotinD TV is the Android TV client for a self-hosted NicotinD music server. You run the server on your own machine; this app sits on the TV home row and streams your library to the living room. There is no NicotinD account, no cloud service, and nothing to sign up for — the only server the app talks to is the one whose address you give it.
+
+You will need a NicotinD server before this app is useful. It runs in one Docker container on anything from a spare laptop to a NAS.
+
+<b>Built for a remote, not a touchscreen</b>
+
+This is a separate app from the phone client, not the same screens stretched out. It ships a ten-foot player, D-pad navigation throughout, and predictable Back behaviour, and it registers a channel on the Android TV home screen.
+
+<b>What it does</b>
+
+* Browses and streams your library — artists, albums, songs, genres, with cover art sized for across-the-room viewing.
+* Metadata-driven radio that picks what comes next from BPM, musical key, genre and mood similarity rather than from a recommendation service.
+* Synced lyrics with a karaoke-style vocal-mute option — the reason a lot of people want music on a TV in the first place.
+* Plays in the background with system media controls, and accepts playback started from another NicotinD device.
+* Multi-user, with per-user settings on one shared library.
+
+<b>Privacy</b>
+
+The app talks to your server and nothing else. No analytics, no advertising identifiers, no third-party SDKs. Your listening history lives in your own database.
+
+<b>Connecting it</b>
+
+TVs have no camera, so you connect the way TV apps always have: type your server's address, or enter the pairing code your server displays. This is not a limitation of this build — it is the only path on any TV.
+
+<b>About this build</b>
+
+Installed from F-Droid, this app updates through F-Droid. The build published on the project's GitHub releases carries its own self-installer instead; that is removed here, along with the permission it needed. No proprietary library ships in this build.
+
+It installs alongside a sideloaded GitHub TV APK rather than replacing it, because the two are different packages from different update channels. Uninstall the sideloaded one if you do not want both.
+
+<b>Free software</b>
+
+NicotinD is licensed under the AGPL-3.0. Source, issues and documentation: https://github.com/kevinch3/NicotinD

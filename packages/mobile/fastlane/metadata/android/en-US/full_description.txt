@@ -1,0 +1,31 @@
+NicotinD is a self-hosted music server, and this is its Android client. You run the server on your own machine; the app connects to it and streams your library. There is no NicotinD account, no cloud service, and nothing to sign up for — the only server the app talks to is the one whose address you give it.
+
+You will need a NicotinD server before this app is useful. It runs in one Docker container on anything from a spare laptop to a NAS.
+
+<b>What it does</b>
+
+* Browses and streams your library — artists, albums, songs, genres, with cover art and full tag metadata.
+* Plays in the background with lock-screen and notification controls, and keeps playing when you switch apps or turn the screen off.
+* Saves tracks for offline playback, so a commute without signal still has music.
+* Metadata-driven radio that picks what comes next from BPM, musical key, genre and mood similarity rather than from a recommendation service.
+* Synced lyrics with a karaoke-style vocal-mute option.
+* Listening history and stats, native and auto-generated playlists.
+* Casts to another device running NicotinD, or to Chromecast and DLNA hardware.
+* Multi-user, with per-user settings on one shared library and roles from listener to admin.
+
+<b>Privacy</b>
+
+The app talks to your server and nothing else. No analytics, no advertising identifiers, no third-party SDKs. Your listening history lives in your own database.
+
+<b>About this build</b>
+
+This F-Droid build differs from the APK on the project's GitHub releases, in both cases deliberately:
+
+* <b>No QR-code pairing.</b> Connecting by scanning the QR code your server shows needs a camera-scanning library that is not free software, so it is left out here. Enter your server's address, or use the pairing code your server displays — both work the same way.
+* <b>No built-in updater.</b> The GitHub build downloads and installs its own updates; F-Droid does that for this one, so the self-installer is removed along with the permission it needed.
+
+Nothing else is missing, and no proprietary library ships in this build.
+
+<b>Free software</b>
+
+NicotinD is licensed under the AGPL-3.0. Source, issues and documentation: https://github.com/kevinch3/NicotinD

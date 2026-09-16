@@ -11,7 +11,7 @@
  * keep reporting success after someone adds a plugin with the same problem.
  *
  * So this asserts its own denominator (docs/quality-gates.md) rather than just
- * re-checking the exclusion list. It fails four ways:
+ * re-checking the exclusion list. It fails six ways:
  *
  *   1. A Capacitor plugin with Android code that is classified NEITHER free nor
  *      non-free — the moment a proprietary dep can enter, turned into a
@@ -23,10 +23,18 @@
  *      flavor does not produce. v0.6.46 shipped with no APK at all because a
  *      build step broke in the tag-only lane; a flavor rename is the same
  *      hazard, and `fail_on_unmatched_files` only fires after the build is gone.
+ *   4b. A verification-only step standing between a built artifact and its
+ *      upload. That is how v0.6.55 shipped with no APK: the check failed and
+ *      discarded two APKs that had already built.
+ *   5. The ML Kit exclusion and the explicit ZXing selection parting company —
+ *      either half alone is silently wrong (#1170).
+ *   6. Fastlane metadata outside F-Droid's limits, in any locale. The store
+ *      rejects an over-long short_description and silently truncates an
+ *      over-long changelog; neither is visible from inside the repo.
  *
  * NETWORK-FREE: everything here is read off the installed tree and the repo.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import {
   FREE_ANDROID_PLUGINS,
@@ -230,6 +238,84 @@ if (excludesMlKit !== selectsZxing) {
           `packages/mobile/android/build.gradle no longer excludes ` +
           `com.google.mlkit — the proprietary dependency and ~20 MB are back. (#1170)`,
   );
+}
+
+// --- 6. The fastlane metadata is within F-Droid's limits, in every locale ----
+// These caps are enforced by the store, not by us: an over-long
+// short_description is rejected, an over-long changelog is silently truncated,
+// and a missing title falls back to the application id. All three are invisible
+// from inside the repo, and the metadata is plain text nothing else validates.
+{
+  const TREES = [
+    { dir: 'packages/mobile/fastlane', label: 'phone' },
+    { dir: 'packages/mobile/fastlane-tv', label: 'tv' },
+  ];
+  // Names are F-Droid's; the byte caps are its documented limits.
+  const REQUIRED = [
+    { file: 'title.txt', max: 50 },
+    { file: 'short_description.txt', max: 80 },
+    { file: 'full_description.txt', max: 4000 },
+  ];
+  const CHANGELOG_MAX = 500;
+
+  for (const { dir, label } of TREES) {
+    const androidDir = join(repoRoot, dir, 'metadata/android');
+    if (!existsSync(androidDir)) {
+      errors.push(`${dir}/metadata/android is missing — the ${label} F-Droid listing has no metadata.`);
+      continue;
+    }
+    const locales = readdirSync(androidDir, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name);
+    if (locales.length === 0) {
+      errors.push(`${dir}/metadata/android has no locale directories.`);
+      continue;
+    }
+
+    for (const locale of locales) {
+      for (const { file, max } of REQUIRED) {
+        const path = join(androidDir, locale, file);
+        if (!existsSync(path)) {
+          errors.push(`${dir}/metadata/android/${locale}/${file} is missing.`);
+          continue;
+        }
+        // Byte length, not characters: the accented Spanish copy is multi-byte,
+        // and a cap measured in characters would pass something the store cuts.
+        const bytes = Buffer.byteLength(readFileSync(path, 'utf8').trim(), 'utf8');
+        if (bytes === 0) {
+          errors.push(`${dir}/metadata/android/${locale}/${file} is empty.`);
+        } else if (bytes > max) {
+          errors.push(
+            `${dir}/metadata/android/${locale}/${file} is ${bytes} bytes, over F-Droid's ${max}.`,
+          );
+        }
+      }
+
+      const changelogDir = join(androidDir, locale, 'changelogs');
+      if (!existsSync(changelogDir)) continue;
+      for (const entry of readdirSync(changelogDir)) {
+        if (!/^\d+\.txt$/.test(entry)) {
+          errors.push(
+            `${dir}/metadata/android/${locale}/changelogs/${entry} is not named ` +
+              `<versionCode>.txt — F-Droid pairs a changelog with a build by versionCode, ` +
+              `so any other name is shown to nobody.`,
+          );
+          continue;
+        }
+        const bytes = Buffer.byteLength(
+          readFileSync(join(changelogDir, entry), 'utf8').trim(),
+          'utf8',
+        );
+        if (bytes > CHANGELOG_MAX) {
+          errors.push(
+            `${dir}/metadata/android/${locale}/changelogs/${entry} is ${bytes} bytes, over ` +
+              `F-Droid's ${CHANGELOG_MAX} — it would be truncated mid-entry. Regenerate with ` +
+              `\`bun run --filter @nicotind/mobile fdroid:changelog\`.`,
+          );
+        }
+      }
+    }
+  }
 }
 
 if (errors.length > 0) {

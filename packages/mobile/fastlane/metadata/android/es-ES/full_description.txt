@@ -1,0 +1,31 @@
+NicotinD es un servidor de música autoalojado, y esta es su aplicación para Android. El servidor lo ejecutas tú en tu propia máquina; la aplicación se conecta a él y reproduce tu biblioteca. No hay cuenta de NicotinD, ni servicio en la nube, ni registro de ningún tipo: el único servidor con el que habla la aplicación es aquel cuya dirección le indiques.
+
+Necesitas un servidor NicotinD para que esta aplicación te sirva de algo. Funciona en un único contenedor Docker, desde un portátil que te sobre hasta un NAS.
+
+<b>Qué hace</b>
+
+* Explora y reproduce tu biblioteca: artistas, álbumes, canciones y géneros, con portadas y todos los metadatos de las etiquetas.
+* Reproduce en segundo plano con controles en la pantalla de bloqueo y en la notificación, y sigue sonando al cambiar de aplicación o apagar la pantalla.
+* Guarda canciones para escucharlas sin conexión, para que un trayecto sin cobertura siga teniendo música.
+* Radio guiada por metadatos: elige lo siguiente por similitud de BPM, tonalidad, género y mood, no por un servicio de recomendaciones.
+* Letras sincronizadas, con opción de silenciar la voz al estilo karaoke.
+* Historial de escucha y estadísticas, listas de reproducción propias y generadas automáticamente.
+* Envía la reproducción a otro dispositivo con NicotinD, o a hardware Chromecast y DLNA.
+* Multiusuario, con ajustes por usuario sobre una biblioteca compartida y roles desde oyente hasta administrador.
+
+<b>Privacidad</b>
+
+La aplicación habla con tu servidor y con nada más. Sin analíticas, sin identificadores de publicidad, sin SDK de terceros. Tu historial de escucha vive en tu propia base de datos.
+
+<b>Sobre esta versión</b>
+
+Esta versión de F-Droid se diferencia del APK de las releases de GitHub del proyecto, en ambos casos a propósito:
+
+* <b>Sin emparejamiento por código QR.</b> Conectarse escaneando el código QR que muestra tu servidor requiere una biblioteca de escaneo que no es software libre, así que aquí se omite. Escribe la dirección de tu servidor o usa el código de emparejamiento que este muestra: funcionan igual.
+* <b>Sin actualizador integrado.</b> La versión de GitHub descarga e instala sus propias actualizaciones; de esta se encarga F-Droid, así que el instalador se elimina junto con el permiso que necesitaba.
+
+No falta nada más, y en esta versión no se incluye ninguna biblioteca privativa.
+
+<b>Software libre</b>
+
+NicotinD se publica bajo la licencia AGPL-3.0. Código, incidencias y documentación: https://github.com/kevinch3/NicotinD
