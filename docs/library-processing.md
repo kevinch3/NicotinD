@@ -667,9 +667,10 @@ So the file is now re-read before the report is written. `readTags` is an inject
 | the **requested** value | `Tag write landed but the rescan did not apply it` | `requested`, `actual`, `onDisk` |
 
 `onDisk` is set only when the file carries **every** diverged field at the requested value. Anything
-less keeps the older, blunter error, which makes the fallback the safe one: `readAudioTags` reads no
-`discNumber` on any container (#1151), and an unreadable file returns `{}` — both read as "the write
-did not land" rather than inventing a rescan fault. Both routes
+less keeps the older, blunter error, which makes the fallback the safe one: an unreadable file
+returns `{}`, which reads as "the write did not land" rather than inventing a rescan fault. Until
+#1151 that fallback was also where every `disc` fix ended up, and every `year` fix on an ID3v2.4
+mp3, because the reader could not see those fields at all; both are confirmable now. Both routes
 (`PATCH /api/library/songs/:id/metadata` and the MCP `fix_song_metadata`) forward `onDisk` when it is
 present.
 
@@ -718,19 +719,25 @@ the reported file — a `false` exits earlier with `Failed to write tags` — so
 `false` could never fire on this class. An mp3 write is therefore believed only where the file reads
 it back: the requested fields in `ID3_VERIFIABLE_FIELDS` are compared against a fresh
 `readAudioTags`, and one that still differs triggers a single ffmpeg rewrite. That set is
-deliberately narrower than `AudioTags` — `bpm`/`discNumber` are written and never read (#1151),
-`compilation` is not written at all (#917), and the perceptual features go through `toFixed`, so a
-faithful write reads back rounded. Comparing any of those would remux every BPM, disc or analysis
-write forever.
+deliberately narrower than `AudioTags` — `compilation` is not written at all (#917), and the
+perceptual features go through `toFixed`, so a faithful write reads back rounded. Comparing either
+would remux every analysis write forever.
+
+`bpm`/`discNumber` became readable in #1151 and do round-trip exactly, so they *could* join the set.
+They deliberately do not: this list decides whether to rewrite the container, neither is a field a
+curator corrects, and widening the rewrite trigger is a cost paid on every write for a divergence
+nothing reads.
 
 Two things the container rewrite must not break, both pinned by tests that fail without them:
 
 - **The TXXX feature frames.** `-map_metadata 0` carries `ENERGY`/`LOUDNESS_LUFS`/`MOOD` and the
   Picard TXXX ids across the remux, which is what the analysis writers depend on.
-- **The year.** ffmpeg defaults the mp3 muxer to ID3v2.4, which stores a year as `TDRC` — node-id3
-  surfaces that frame as `recordingTime`, so `readAudioTags` sees no year and the rewrite's own write
-  would read as lost. `FFMPEG_MUXER_ARGS` pins `-id3v2_version 3`: what node-id3 writes, and the one
-  version both readers agree on.
+- **The year.** ffmpeg defaults the mp3 muxer to ID3v2.4, which stores a year as `TDRC` rather than
+  v2.3's `TYER`. `FFMPEG_MUXER_ARGS` pins `-id3v2_version 3`: what node-id3 writes, and the one
+  version both readers agree on. `readAudioTags` also reads `TDRC` since #1151, so a foreign v2.4
+  file is no longer yearless — but the pin still matters, because node-id3's `update` downgrades the
+  header to v2.3 and writes `TYER` while **leaving any existing `TDRC` in place**. A file that has
+  been through both carries two year frames with different values, and only `TYER` is the fresh one.
 
 ffmpeg also re-emits an inherited `USLT` as a TXXX frame no reader here maps back to `lyrics`, so the
 rewrite is followed by a node-id3 merge that puts the lyrics frame back.
@@ -739,7 +746,7 @@ rewrite is followed by a node-id3 merge that puts the lyrics frame back.
 dep on `mutateSongMetadata`; it exists so the failure class is testable, since node-id3's update
 could not be made to lose a write on any real mp3 shape tried here.
 
-## The two mp3 readers disagree (issue #1151)
+## The two mp3 readers agree (issue #1151)
 
 `readAudioTags` parses an mp3 with **node-id3**; the scanner parses the same file with
 **music-metadata** (`parseTrack`). Every post-write audit above compares one against the other —
@@ -749,12 +756,27 @@ anywhere in the write path. That is a fourth candidate cause for #964, and the o
 with no prod access.
 
 `audio-tags.readers.test.ts` is the measurement: same file, both readers, field by field, over every
-mp3 shape NicotinD produces. All of those agree, including the container-rewrite output. Three
-fields do not, and they are pinned there as today's truth so closing #1151 fails the test rather
-than making it a quiet lie: `bpm` (TBPM) and `discNumber` (TPOS) are written by `writeId3Tags` and
-mapped by no read branch, and a `year` on an ID3v2.4 file is invisible. The live cost is in #1151 —
-notably `bpm = tags.bpm ?? null`, the preference for a file's own BPM over a DSP run, which on mp3
-can never fire, so every mp3 is re-analysed even when it already carries a BPM we wrote.
+mp3 shape NicotinD produces. It found three fields that `writeId3Tags` emitted and no read branch
+mapped — `bpm` (TBPM), `discNumber` (TPOS), and a `year` on an ID3v2.4 file (TDRC) — and pinned them
+as today's truth so that closing #1151 would fail the test rather than make it a quiet lie. #1151
+closed by **inverting** those assertions, which is what they were for.
+
+The ID3 branch now maps `bpm` from `d.bpm`, `discNumber` from `d.partOfSet`, and `year` from
+`d.year ?? d.recordingTime`. Every one of them arrives from node-id3 as a *string*, and TRCK/TPOS
+carry a `position/total` pair as often as a bare number, so all three go through the shared
+`parseLeadingNumber`. The Vorbis/m4a branch had the same write-only gap — `writeFfmpegTags` emits
+`DISC` and `BPM` — and now maps `c.disk?.no` and `c.bpm` beside them.
+
+Two things this bought:
+
+- **`bpm = tags.bpm ?? null`** — the preference for a file's own BPM over a DSP run, in both the BPM
+  route and `analyze-bpm.ts` — could never fire on an mp3, so every mp3 was re-analysed even when it
+  already carried a BPM we wrote. It fires now.
+- A `disc` fix, and a `year` fix on a v2.4 mp3, can be confirmed by `readOnDiskConfirmation` instead
+  of reading as non-persistence on a write that landed perfectly (#964, #1013).
+
+The order in `d.year ?? d.recordingTime` is load-bearing and has its own test. See the year bullet
+above: a retagged file carries both frames, and `TDRC` is the stale one.
 
 ## One-time prod backfill
 

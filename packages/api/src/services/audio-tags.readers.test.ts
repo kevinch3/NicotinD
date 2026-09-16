@@ -31,7 +31,9 @@ interface Common {
   albumArtist?: string;
   album?: string;
   track?: number;
+  disc?: number;
   year?: number;
+  bpm?: number;
   genre?: string;
 }
 
@@ -41,7 +43,9 @@ const fromNodeId3 = (t: AudioTags): Common => ({
   albumArtist: t.albumArtist,
   album: t.album,
   track: t.trackNumber,
+  disc: t.discNumber,
   year: t.year,
+  bpm: t.bpm,
   genre: t.genre,
 });
 
@@ -57,7 +61,9 @@ async function fromMusicMetadata(path: string): Promise<Common> {
         albumartist?: string;
         album?: string;
         track?: { no?: number | null };
+        disk?: { no?: number | null };
         year?: number;
+        bpm?: number;
         genre?: string[];
       };
     }>;
@@ -69,7 +75,9 @@ async function fromMusicMetadata(path: string): Promise<Common> {
     albumArtist: c.albumartist,
     album: c.album,
     track: c.track?.no ?? undefined,
+    disc: c.disk?.no ?? undefined,
     year: c.year,
+    bpm: c.bpm,
     // `pickGenre`'s own contract: one entry per frame, joined on `; `.
     genre: c.genre?.length ? c.genre.join('; ') : undefined,
   };
@@ -138,7 +146,9 @@ describe('readAudioTags and the scanner read the same mp3 the same way (#964)', 
         albumArtist: 'Shakira',
         album: 'MTV Unplugged',
         trackNumber: 7,
+        discNumber: 1,
         year: 1999,
+        bpm: 108,
         genre: 'Latin Pop; Rock en Español',
       }),
     ).toBe(true);
@@ -147,6 +157,8 @@ describe('readAudioTags and the scanner read the same mp3 the same way (#964)', 
     // Not a vacuous agreement between two empty reads.
     expect(viaId3.title).toBe('Ojos Así');
     expect(viaId3.year).toBe(1999);
+    expect(viaId3.bpm).toBe(108);
+    expect(viaId3.disc).toBe(1);
     expect(viaId3.genre).toBe('Latin Pop; Rock en Español');
   });
 
@@ -177,33 +189,51 @@ describe('readAudioTags and the scanner read the same mp3 the same way (#964)', 
 });
 
 /**
- * The divergences the measurement found. Each is a write `readAudioTags` cannot
- * read back while music-metadata — the reader the SCANNER uses — can, so the
- * row and the file audit disagree with no fault in the write path. Filed as
- * issue #1151; these assertions state today's truth and must be inverted, not
- * deleted, when it closes.
+ * The divergences the measurement found, now closed (#1151). Each used to be a
+ * write `readAudioTags` could not read back while music-metadata — the reader
+ * the SCANNER uses — could, so the row and the file audit disagreed with no
+ * fault in the write path. These assertions were inverted rather than deleted:
+ * they are the regression tests for the three frames.
  */
-describe('known reader disagreements on mp3 (#1151)', () => {
-  it.if(ffmpegAvailable())('an ID3v2.4 year is invisible to readAudioTags', async () => {
-    // node-id3 surfaces TDRC as `recordingTime`; the reader only maps `year`
-    // (TYER, ID3v2.3). ffmpeg's mp3 muxer defaults to v2.4, so this is the
-    // shape most foreign taggers produce.
+describe('the frames that used to be write-only on mp3 (#1151)', () => {
+  it.if(ffmpegAvailable())('reads an ID3v2.4 year (TDRC)', async () => {
+    // node-id3 surfaces TDRC as `recordingTime`; the reader used to map only
+    // `year` (TYER, ID3v2.3). ffmpeg's mp3 muxer defaults to v2.4, so this is
+    // the shape most foreign taggers produce.
     const f = fixture('v24.mp3', ['-id3v2_version', '4', ...EXTERNAL_TAGS]);
-    expect((await readAudioTags(f)).year).toBeUndefined();
-    expect((await fromMusicMetadata(f)).year).toBe(1999);
+    expect((await readAudioTags(f)).year).toBe(1999);
+    expect(fromNodeId3(await readAudioTags(f))).toEqual(await fromMusicMetadata(f));
   });
 
-  it('bpm and discNumber are written and never read back', async () => {
-    // `writeId3Tags` emits TBPM/TPOS; the ID3 read branch maps neither. The BPM
-    // endpoint and analyze-bpm.ts both prefer a file's own BPM tag over a DSP
-    // run, so on mp3 that preference can never fire.
+  it('reads back bpm and discNumber', async () => {
+    // `writeId3Tags` emits TBPM/TPOS. The BPM endpoint and analyze-bpm.ts both
+    // prefer a file's own BPM tag over a DSP run, so while this was unmapped
+    // that preference could never fire on an mp3.
     const f = fixture('numbers.mp3');
     expect(await writeAudioTags(f, { bpm: 128, discNumber: 2, key: 'Am' })).toBe(true);
     const viaId3 = await readAudioTags(f);
-    expect(viaId3.bpm).toBeUndefined();
-    expect(viaId3.discNumber).toBeUndefined();
-    // `key` is the control: TKEY is mapped, so the gap is per-field, not the
-    // whole ID3 read path.
+    expect(viaId3.bpm).toBe(128);
+    expect(viaId3.discNumber).toBe(2);
+    // `key` is the control: TKEY was always mapped, so a regression here would
+    // be per-field rather than the whole ID3 read path going dark.
     expect(viaId3.key).toBe('Am');
+    expect(fromNodeId3(viaId3)).toEqual(await fromMusicMetadata(f));
+  });
+
+  it.if(ffmpegAvailable())('prefers TYER over a stale TDRC left behind by a rewrite', async () => {
+    // node-id3's `update` downgrades the header to v2.3 and writes TYER while
+    // LEAVING the v2.4 TDRC frame in place, so a retagged file carries both.
+    // TDRC is then the older value, and reading it would silently revert a
+    // correction the curator just made.
+    const f = fixture('both-year-frames.mp3', ['-id3v2_version', '4', ...EXTERNAL_TAGS]);
+    expect(await writeAudioTags(f, { year: 2007 })).toBe(true);
+    expect((await readAudioTags(f)).year).toBe(2007);
+  });
+
+  it.if(ffmpegAvailable())('reads a disc number written as "2/3"', async () => {
+    // TPOS carries a position/total pair at least as often as a bare number,
+    // and a foreign tagger is where that shape comes from.
+    const f = fixture('discpair.mp3', ['-id3v2_version', '3', '-metadata', 'disc=2/3']);
+    expect((await readAudioTags(f)).discNumber).toBe(2);
   });
 });
