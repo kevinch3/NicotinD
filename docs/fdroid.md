@@ -98,23 +98,61 @@ gradle puts somewhere else is how v0.6.46 shipped with no APK.
   plugins, which is the break a dropped null-guard would cause. The variant is built, verified and
   **not attached** to the release — it is a different package and a different update channel.
 
+## The toolchain question — answered
+
+This was filed as the open feasibility risk. It is not a blocker, in either direction.
+
+**Bun is probably allowed.** The policy's prebuilt-binary clause ends: "…and compilers or build
+tools **which are not included in Debian can be acceptable**. Whenever possible, Debian-packaged
+dependencies should be chosen above other options." Bun is MIT-licensed FLOSS and not in Debian, so
+it lands in that sentence — reviewer discretion with a stated preference for Debian-packaged
+alternatives, not exclusion. Ask on the merge request rather than assuming either way.
+
+**And the whole build works with no bun at all.** Probed on `d4311f2c` in a throwaway worktree with
+its own `node_modules`, npm 10.9.8 / Node 22.23.1, start to finish:
+
+| Step | Result |
+| --- | --- |
+| `npm install` as-is | **fails** — `EUNSUPPORTEDPROTOCOL: workspace:*`, on npm 10 *and* npm 12 |
+| `workspace:*` → `*` in the 9 package.json entries, then `npm install --legacy-peer-deps` | 1918 packages, clean |
+| `node scripts/build-changelog.ts` (the `prebuild` hook, which shells out to `bun`) | works — Node ≥ 22.18 strips types natively |
+| `ng build` | clean, 8.9 s |
+| `NICOTIND_FDROID=1 cap sync android` | 5 plugins, barcode-scanner and apk-update absent |
+| `NICOTIND_APP_ID_SUFFIX=.tv ./gradlew assembleFdroidDebug` | APK, `package="ar.kevinroberts.nicotind.tv"`, no mlkit/gms/osbarcode |
+
+Three things that fall out of that, all of which matter to a recipe:
+
+- **`*` is enough**; no `file:` rewriting. npm resolves a bare `*` against the workspace. `--legacy-peer-deps`
+  is needed only for a `@storybook/angular` peer range on `@angular/common` — dev tooling F-Droid
+  never builds. **Not landed**: it is only needed if bun is refused, and re-verifying the bun install
+  and `bun.lock` around it is its own risk. Whether bun still resolves `*` to workspace packages is
+  **untested** — deliberately, to avoid drifting the shared bun store (#1088).
+- **The recipe must run `cap sync`, not just gradle.** The *tracked* `capacitor.settings.gradle`
+  hardcodes bun's store layout
+  (`../../../node_modules/.bun/@capacitor+android@6.2.1/node_modules/@capacitor/android/capacitor`)
+  plus a fixed `../../../` depth, so it is wrong for any other install layout or checkout depth.
+  `cap sync` rewrote it to `../../../node_modules/@capacitor/android/capacitor` under npm. This is
+  the same file that must never be committed after a local `cap update`.
+- **`cap sync` also rewrites the tracked `capacitor.build.gradle`**, so building the F-Droid variant
+  locally dirties two tracked files. Restore them; don't commit the variant's versions.
+
 ## What is still needed for the main repo
 
-1. **The toolchain question.** The policy's allowed prebuilt sources name Debian, the listed Maven
-   repos, the Android/Flutter SDKs, PyPI wheels, Nix, Rust, Go and "Node.js (current versions)".
-   **Bun is absent**, and `bun.lock` is not consumable by npm. The build recipe likely needs a
-   node/npm path to `ng build`. Probe this against a local `fdroidserver` before writing anything
-   else — it is the one open feasibility risk.
-2. **Metadata**: `metadata/<appid>.yml` per entry, fastlane layout, summary/description/changelog,
-   screenshots for both form factors.
-3. **Two merge requests** to `fdroiddata`, one per application id, with `prebuild` setting
-   `NICOTIND_FDROID=1` (and `NICOTIND_APP_ID_SUFFIX=.tv` for the TV entry) before `cap sync`.
+1. **Metadata**: fastlane layout under `fastlane/metadata/android/<locale>/` per entry (F-Droid reads
+   it straight from the repo), summary/description/changelog, screenshots for both form factors.
+2. **Two merge requests** to `fdroiddata`, one per application id, with `prebuild` setting
+   `NICOTIND_FDROID=1` (and `NICOTIND_APP_ID_SUFFIX=.tv` for the TV entry) before `cap sync`, and
+   `gradle: [fdroid]` to select the flavor.
 
-An **own signed F-Droid repository** is the fallback and the faster interim: it works with the APKs
-we already build, needs none of the above, and stays available if inclusion stalls on the toolchain
-question. It needs two decisions that are not ours to guess — where it is hosted (GitHub Pages is
-already taken by the Storybook catalog, so a second repo or kpc's public edge) and whether the
-existing release keystore signs the repo index.
+An **own signed F-Droid repository** ships first (decided 2026-09-16): it serves the `fdroid`-variant
+APKs we already build, needs none of the above, and stays available if inclusion stalls in review.
+It is blocked on two decisions that are not ours to guess — where it is hosted (GitHub Pages in this
+repo is already taken by the Storybook catalog, since Pages serves one site per repo, so this means a
+second repo or kpc's public edge) and whether the existing release keystore signs the repo index.
+
+It serves the **`fdroid` variant**, not the `standard` APKs, even though no policy applies to our own
+repo: the standard APK's self-updater would otherwise fight the F-Droid client for the same install,
+and it is 26 MB larger for a QR screen (#1170).
 
 ## Migration note
 
