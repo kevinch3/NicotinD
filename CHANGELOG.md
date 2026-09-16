@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.58](https://github.com/kevinch3/NicotinD/compare/v0.6.57...v0.6.58) (2026-09-16)
+
+### Bug Fixes
+
+* **radio:** make dump-radio default to the axis the server serves ([#1180](https://github.com/kevinch3/NicotinD/issues/1180)) ([c73bcfe](https://github.com/kevinch3/NicotinD/commit/c73bcfeffef591d9047c11501eb7ce613dacfc2a)), closes [#1161](https://github.com/kevinch3/NicotinD/issues/1161), references [#1121](https://github.com/kevinch3/NicotinD/issues/1121)
 ## [0.6.57](https://github.com/kevinch3/NicotinD/compare/v0.6.56...v0.6.57) (2026-09-16)
 
 ### Features
