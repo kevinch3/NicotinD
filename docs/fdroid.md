@@ -98,6 +98,21 @@ gradle puts somewhere else is how v0.6.46 shipped with no APK.
   plugins, which is the break a dropped null-guard would cause. The variant is built, verified and
   **not attached** to the release — it is a different package and a different update channel.
 
+  Two rules that this step learned the hard way, both now asserted by `check:fdroid`:
+
+  **It runs AFTER "Attach APKs".** v0.6.55 shipped with no Android APK at all because the
+  verification build sat between staging and attaching, failed, and took two already-built release
+  artifacts with it. The phone and TV APKs had compiled fine; the job went red for an unrelated
+  reason and the release page simply had nothing on it. A step that merely *checks* something must
+  never stand between an artifact and its upload.
+
+  **It builds unsigned.** `ANDROID_KEYSTORE_FILE` lives in `$GITHUB_ENV` from the decode step, so
+  `build.gradle` attaches the release `signingConfig` to *every* subsequent assemble — while the
+  keystore passwords are per-step env on the shipping builds only. That mismatch is what failed
+  (`SigningConfig "release" is missing required property "storePassword"`). The step clears the path
+  instead of being handed the release key it has no use for; Groovy reads `""` as false. Gradle then
+  emits `app-fdroid-release-unsigned.apk`, which the assertion accepts alongside the signed name.
+
 ## The toolchain question — answered
 
 This was filed as the open feasibility risk. It is not a blocker, in either direction.

@@ -145,6 +145,48 @@ for (const { file, mustContain } of releaseLane) {
   }
 }
 
+// --- 4b. The shipping artifacts are attached before anything merely checks ----
+// v0.6.55 shipped with NO Android APK because the F-Droid verification build sat
+// between "Stage TV APK" and "Attach APKs", failed on missing signing env, and
+// took two already-built release artifacts down with it. The signing error was
+// the trigger; the ORDER was the defect — a verification step must never stand
+// between a built artifact and its upload. Nothing else notices: the phone and
+// TV APKs built fine, the job went red for an unrelated reason, and the release
+// page simply had no APK on it.
+{
+  const deploy = readFileSync(join(repoRoot, '.github/workflows/deploy.yml'), 'utf8');
+  const attachAt = deploy.indexOf('Attach APKs to the GitHub Release');
+  const verifyAt = deploy.indexOf('Build the F-Droid TV variant (verification only)');
+  const assertAt = deploy.indexOf('Assert no proprietary dependency in the F-Droid APK');
+
+  for (const [label, at] of [
+    ['Attach APKs to the GitHub Release', attachAt],
+    ['Build the F-Droid TV variant (verification only)', verifyAt],
+    ['Assert no proprietary dependency in the F-Droid APK', assertAt],
+  ] as const) {
+    if (at < 0) {
+      errors.push(
+        `deploy.yml has no step named "${label}". This gate anchors on the step ` +
+          `names; a rename makes the ordering check vacuous, so fix the name here too.`,
+      );
+    }
+  }
+
+  if (attachAt >= 0 && verifyAt >= 0 && attachAt > verifyAt) {
+    errors.push(
+      `deploy.yml builds the F-Droid verification variant BEFORE attaching the ` +
+        `release APKs. A failure there discards the phone and TV APKs that already ` +
+        `built — exactly how v0.6.55 shipped with none. Move the attach step first.`,
+    );
+  }
+  if (attachAt >= 0 && assertAt >= 0 && attachAt > assertAt) {
+    errors.push(
+      `deploy.yml asserts the F-Droid APK's contents BEFORE attaching the release ` +
+        `APKs. Verification must run after the artifacts are uploaded.`,
+    );
+  }
+}
+
 const gradle = readFileSync(join(mobileRoot, 'android/app/build.gradle'), 'utf8');
 if (!gradle.includes(`${FLAVOR} { dimension "distribution" }`)) {
   errors.push(
