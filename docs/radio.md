@@ -191,7 +191,8 @@ formula v9** (#1121) with an admin **opt-out** at Admin → Radio
 (`RadioSettings.genreAffinity`): on, seed and list radio, `/songs/:id/similar`
 and newly generated evaluation polls all use it; off, the regular radio is the
 lexical rule it always was. Stations never use it — they replace the genre axis
-with graded membership. `dump-radio --genre-affinity` is the A/B.
+with graded membership. A bare `dump-radio` reproduces whichever axis the
+setting selects; `--lexical-genre` is the A/B control (#1161).
 → [genre-affinity.md](genre-affinity.md)
 
 **Why MusicBrainz can't fix this for you.** Task A1 measured MB/Lidarr genre
@@ -1127,8 +1128,24 @@ bun run packages/api/src/scripts/dump-radio.ts --artist "José Larralde" --count
 bun run packages/api/src/scripts/dump-radio.ts --random          # random-sample a seed
 bun run packages/api/src/scripts/dump-radio.ts --bpm-min 115 --bpm-max 125   # filter vibe
 bun run packages/api/src/scripts/dump-radio.ts --seed <id> --weights embedding=8,genre=14
-bun run packages/api/src/scripts/dump-radio.ts --seed <id> --genre-affinity   # learned genre axis A/B
+bun run packages/api/src/scripts/dump-radio.ts --seed <id> --lexical-genre   # genre axis A/B control
 ```
+
+**The genre axis defaults to what the server serves.** The dump reads
+`RadioSettings.genreAffinity` from the same database and passes the same
+`learnedGenreAffinity` option the route passes, so the centroids resolve over
+the genres in play rather than over the whole vocabulary. Override it only for
+an A/B: `--genre-affinity` forces the learned axis on, `--lexical-genre` forces
+the lexical rule, and the two are mutually exclusive.
+
+That default is the point of the tool. Between #1121 (which made the learned
+axis the route's default) and #1161 the flag had quietly become the
+"reproduce prod" switch and a bare run the control, so an unflagged dump
+measured an axis the server was not serving and reported it as the current
+formula. The header line names the axis that actually scored **and** whether a
+flag or the setting chose it; those differ when the learned axis falls back to
+lexical for genres nothing is stored for. `chooseGenreAxis` is the pure
+precedence rule, pinned in `dump-radio.test.ts`.
 
 `--weights axis=n,…` re-ranks the same seed under a candidate `DEFAULT_WEIGHTS`
 (threaded into `buildSeedRadio`/`buildFilterRadio` via `rankCandidates`'s existing
@@ -1224,7 +1241,7 @@ collapse, which it needed most (see "Same recording, multiple files").
 | `packages/api/src/services/recommendation/feedback-store.ts`          | **Per-user exclusions**: `recordFeedback`, `excludedSongs` / `excludedSongIds`, `SKIP_RULE` — explicit votes plus the derived early-skip rule, applied by radio / random / similar as `excludeIds`                                                                          |
 | `packages/api/src/services/recommendation/eligibility.ts`             | **Feed eligibility**: `feedEligibilitySql` / `feedEligibilityWheres` / `isFeedEligible` — the one "may this song be recommended" predicate (hidden song or album, landed, duration floor, readiness tiers), enforced by `check:feed-eligibility`                                              |
 | `packages/api/src/services/genre-split.ts`                            | `segmentConcatenatedGenre` — splits mashed genre tags feeding the genre axis (see [library-scanner.md](library-scanner.md))                                                                                                                                    |
-| `packages/api/src/scripts/dump-radio.ts`                              | Developer diagnostic dump (read-only) — see "Diagnostic dump" above; `looksConcatenatedGenre` flags un-split genre tags, `parseWeightOverrides` backs `--weights`                                                                                              |
+| `packages/api/src/scripts/dump-radio.ts`                              | Developer diagnostic dump (read-only) — see "Diagnostic dump" above; `chooseGenreAxis` picks the genre axis (setting by default), `looksConcatenatedGenre` flags un-split genre tags, `parseWeightOverrides` backs `--weights`                                                                                             |
 | `packages/api/src/routes/radio.test.ts`                               | Route tests (incl. filter-radio cases)                                                                                                                                                                                                                         |
 | `packages/api/src/routes/library.ts`                                  | `/songs/:id/similar` refactored to use shared scorer                                                                                                                                                                                                           |
 | `packages/web/src/app/services/api/library-api.service.ts`            | `getRadioNext()` + `getFilterRadio()` API methods                                                                                                                                                                                                              |
