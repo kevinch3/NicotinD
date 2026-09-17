@@ -243,6 +243,28 @@ same PR that hit it.
   same `offline.spec.ts` carried one for two issues. Fix the race, don't raise
   the number.
 
+- **`page.goto` timing out with `ERR_ABORTED` is not evidence about the
+  navigation.** `net::ERR_ABORTED; maybe frame was detached?` is what Playwright
+  reports for whatever call was still in flight when the *test* hit its 30s
+  budget and the context was torn down — so the goto is usually the victim, not
+  the cause. Before blaming it, read three things in the trace. **The action
+  timeline**: if everything before the goto took a fraction of a second, no
+  budget was consumed and "the test was slow" is already disproved (#1182:
+  line 43 was reached at 0.39s with 29.6s left). **The request's headers**: a
+  navigation Chromium actually dispatched carries `Host`, `Connection`, `Accept`
+  and `Sec-Fetch-*`, because Playwright merges the on-the-wire set from
+  `requestWillBeSentExtraInfo`; one showing only `Accept-Language` /
+  `User-Agent` / `sec-ch-ua*` with every timing `-1` never reached the network
+  at all, and no `waitUntil` or in-app click can rescue it. **`After Hooks`**:
+  teardown of a healthy context is ~0.2s (measured), so `Fixture "context"` at
+  5.06s and `After Hooks` at 10.10s are Playwright's *force-close* budgets —
+  the page could not be closed gracefully.
+  Together those three mean the renderer was wedged and never came back, which
+  is an app bug, not a spec bug. A merely *busy* renderer does not lose a
+  navigation: blocking the main thread for 8s delays the goto to 7.878s and it
+  then succeeds (measured). Note a second mid-spec `page.goto` is ordinary here
+  — 39 specs do one — so it is not itself a smell.
+
 - **Five routes in one test is five routes in one 30s budget.** That budget is
   spent by *navigations*, not by assertions.
   `settings-consistency.spec.ts` walked all five settings routes inside a single
