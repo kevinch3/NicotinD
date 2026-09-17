@@ -42,6 +42,14 @@ env:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # `workflow_run` fires on `completed`, which includes FAILURE and CANCELLED —
+    # there is no `types: [succeeded]`. Without this, a failed release triggers a
+    # republish, and a release that failed before attaching its APKs is exactly
+    # the run whose artifacts should not be picked up. push/dispatch carry no
+    # workflow_run payload, so the second clause lets them through.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
     permissions:
       pages: write
       id-token: write
@@ -180,6 +188,35 @@ jobs:
         env:
           PAGES_BASE_URL: ${{ steps.pages.outputs.base_url }}
         run: bun run scripts/build-pages-index.ts site
+
+      # REFUSE TO PUBLISH A SITE THAT WOULD DELETE THE LIVE REPOSITORY.
+      #
+      # One Pages deployment replaces the entire site, so a `site/` without
+      # `fdroid/repo` does not leave the published repository alone — it removes
+      # it. Every client that added the repository then gets 404s on the index
+      # and stops seeing updates, with nothing failing to say so.
+      #
+      # The "skip, not fail" degradation above is right while bootstrapping (no
+      # repository published yet) and destructive once one is live, so the two
+      # cases have to be told apart — by asking the live site, which is the only
+      # thing that actually knows.
+      - name: Refuse to publish a site that would remove a live repository
+        env:
+          BASE_URL: ${{ steps.pages.outputs.base_url }}
+        run: |
+          set -euo pipefail
+          if [ -f site/fdroid/repo/index-v2.json ]; then
+            echo "This run built an F-Droid repository — nothing to protect."
+            exit 0
+          fi
+          live="$(curl -s -o /dev/null -w '%{http_code}' -L "$BASE_URL/fdroid/repo/index-v2.json" || echo 000)"
+          if [ "$live" = "200" ]; then
+            echo "::error::A repository is live at $BASE_URL/fdroid/repo but this run built none."
+            echo "::error::Publishing now would delete it and break every client that added it."
+            echo "::error::Fix the cause (signing key secret, or the release's F-Droid APKs) and re-run."
+            exit 1
+          fi
+          echo "No repository live (HTTP $live) and none built — bootstrap case, publishing the catalog only."
 
       - uses: actions/upload-pages-artifact@v5
         with:
