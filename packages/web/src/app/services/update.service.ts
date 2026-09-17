@@ -14,6 +14,7 @@ import { APP_VERSION } from '../app.config';
 import {
   apkAssetUrl,
   apkFileName,
+  isStoreManagedInstaller,
   parseLatestRelease,
   RELEASES_LATEST_URL,
 } from '../lib/apk-update';
@@ -35,6 +36,8 @@ const CHECK_INTERVAL_MS = 30 * 60_000;
 interface ApkUpdatePlugin {
   downloadAndInstall(options: { url: string; fileName: string }): Promise<void>;
   addListener(event: 'apkDownloadProgress', cb: (data: { percent: number }) => void): unknown;
+  /** Optional: absent in an older shell than the web bundle it serves. */
+  getInstallerPackage?(): Promise<{ installer: string | null }>;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -114,6 +117,39 @@ export class UpdateService {
         'apkDownloadProgress',
         ({ percent }) => this.zone.run(() => this.downloadProgress.set(percent)),
       );
+      void this.hideWhenStoreManaged();
+    }
+  }
+
+  /**
+   * Hide the in-app updater when a store installed this app and will update it
+   * itself (#1168).
+   *
+   * Since there is one APK for both channels, this is a RUNTIME question where
+   * it used to be a build flavor: the same binary is sideloaded from GitHub —
+   * where self-update is the only path — and installed from our F-Droid
+   * repository, where F-Droid is the updater and a second prompt beside it is
+   * confusing at best.
+   *
+   * Starts enabled and disables on the answer rather than waiting for it: the
+   * check is a native round-trip, and a settings page that renders nothing
+   * until it returns is worse than one whose update row disappears a frame
+   * later. Any failure leaves self-update available — the failure mode of
+   * guessing wrong the other way is a user stranded on an old build.
+   */
+  private async hideWhenStoreManaged(): Promise<void> {
+    const plugin = getCapacitorPlugin<ApkUpdatePlugin>('NicotindApkUpdate');
+    // Optional-chained: a shell older than the web bundle it serves has no such
+    // method, and that shell is a sideload anyway.
+    if (!plugin?.getInstallerPackage) return;
+    try {
+      const { installer } = await plugin.getInstallerPackage();
+      if (isStoreManagedInstaller(installer)) {
+        // zone.run for the same reason as the progress listener above.
+        this.zone.run(() => this.enabled.set(false));
+      }
+    } catch {
+      // Unknown installer: leave the in-app path alone.
     }
   }
 

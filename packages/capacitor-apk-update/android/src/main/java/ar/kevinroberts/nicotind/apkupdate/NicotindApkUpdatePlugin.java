@@ -1,7 +1,9 @@
 package ar.kevinroberts.nicotind.apkupdate;
 
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.os.Build;
 
 import androidx.core.content.FileProvider;
 
@@ -25,10 +27,46 @@ import java.net.URL;
  * the one-time "install unknown apps" grant it may redirect to) is the
  * system's own — D-pad friendly on TV. Progress is emitted as
  * {@code apkDownloadProgress} events so the web UI can show a percentage.
+ *
+ * {@code getInstallerPackage} exists so the web layer can tell whether it
+ * should offer that at all: since #1168 there is ONE APK, and the same binary
+ * is sideloaded from GitHub and distributed through our F-Droid repository.
+ * Self-updating is right for the first and wrong for the second — F-Droid is
+ * the updater there, and a second update path beside it is confusing at best.
+ * Asking the system who installed us replaces what used to be a build flavor.
  */
 @CapacitorPlugin(name = "NicotindApkUpdate")
 public class NicotindApkUpdatePlugin extends Plugin {
     private static final String TAG = "NicotindApkUpdate";
+
+    /**
+     * The package that installed this app ("org.fdroid.fdroid" for the F-Droid
+     * client, "com.android.packageinstaller"/null for a sideload), or null when
+     * the platform will not say.
+     *
+     * `getInstallSourceInfo` is API 30+; `getInstallerPackageName` is the
+     * deprecated fallback that still works down to our minSdk of 26. Both throw
+     * for an unknown package, which is reported as null rather than an error —
+     * "who installed this" failing is not a reason to break the settings page.
+     */
+    @PluginMethod
+    public void getInstallerPackage(PluginCall call) {
+        String installer = null;
+        try {
+            PackageManager pm = getContext().getPackageManager();
+            String self = getContext().getPackageName();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                installer = pm.getInstallSourceInfo(self).getInstallingPackageName();
+            } else {
+                installer = pm.getInstallerPackageName(self);
+            }
+        } catch (Exception e) {
+            installer = null;
+        }
+        JSObject result = new JSObject();
+        result.put("installer", installer);
+        call.resolve(result);
+    }
 
     @PluginMethod
     public void downloadAndInstall(PluginCall call) {

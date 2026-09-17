@@ -5,114 +5,55 @@ only install path for the TV APK that is not "enable unknown sources on your tel
 covers the **F-Droid build variant** that exists today and what is still needed to get the two app
 entries published. Issue #1168.
 
-## Why a variant at all
+## There is no variant any more
 
-F-Droid's [inclusion policy](https://f-droid.org/docs/Inclusion_Policy/) rules out three things we
-ship on GitHub:
+F-Droid's [inclusion policy](https://f-droid.org/docs/Inclusion_Policy/) ruled out three things the
+GitHub build used to do. All three are now fixed in the **single** build, so the release's own APKs
+are the ones our F-Droid repository serves — one APK per form factor, no gradle flavours, no plugin
+allowlist, no manifest overlay.
 
-| Policy | Ours |
+| Policy | How it is satisfied |
 | --- | --- |
-| Prebuilt binaries are trusted only from Debian, Maven Central, Google Maven, OSS Sonatype, OSS JFrog, JitPack and Clojars | **Resolved.** `@capacitor/barcode-scanner`'s native lib `com.github.outsystems:osbarcode-android` came from OutSystems' private Azure Maven feed. #1168 removed the plugin outright rather than working around it, so no build has this exposure any more. |
-| An app must not download executable binaries without opt-in consent that explains it bypasses F-Droid's checks | `@nicotind/capacitor-apk-update` downloads a release APK and hands it to the system installer. On F-Droid the client *is* the updater, so the honest answer is to drop it, not to explain it |
-| "All applications must have their own distinct Android Application ID" | The phone and TV APKs share `ar.kevinroberts.nicotind` — they differ only in the web bundle `cap sync` copied in |
+| Prebuilt binaries are trusted only from Debian, Maven Central, Google Maven, OSS Sonatype, OSS JFrog, JitPack and Clojars | `@capacitor/barcode-scanner`'s native lib came from OutSystems' private Azure Maven feed. #1168 removed the plugin outright rather than working around it — see mobile-app.md "The QR scanner, and why it is gone". |
+| An app must not download executable binaries without opt-in consent explaining it bypasses F-Droid's checks | The self-updater is **hidden at runtime** when a store installed the app: `getInstallerPackage` (the apk-update plugin) + `isStoreManagedInstaller` (`lib/apk-update.ts`). A sideload keeps it, because there it is the only update path. |
+| "All applications must have their own distinct Android Application ID" | The TV build carries `.tv` on every channel (`androidAppId`), so phone and TV are two entries. |
 
-## How the variant is built
+### Why runtime rather than a build flavour
 
-`NICOTIND_FDROID=1` plus the `fdroid` gradle flavor. Three levers, no source edits and no prebuild
-step that mutates the dependency tree:
+A flavour would have meant two builds of everything forever, and it was already the reason the
+release lane produced **four** APKs. Who installed the app is a fact the system will tell you, so
+#1168 asks it instead — and the same binary is then correct in both channels. `REQUIRED_INSTALL_PACKAGES`
+stays declared because the sideloaded copy genuinely needs it.
 
-```bash
-bun run --filter @nicotind/mobile android:assemble:fdroid
-# NICOTIND_APP_ID_SUFFIX=.tv for the TV entry
-```
+The list in `isStoreManagedInstaller` covers the F-Droid **clients** people use (F-Droid, F-Droid
+Basic, Droid-ify, Neo Store), not just the official one. An unlisted client keeps the in-app
+updater, which is the safe direction to be wrong in: the opposite error strands a sideloading user on
+an old build with no way to move.
 
-1. **`android.includePlugins`** (`capacitor.config.ts` → `fdroidIncludePlugins`). Capacitor's
-   allowlist REPLACES its dependency scan, so `fdroidIncludePlugins` reproduces the default list
-   minus `NON_FREE_PLUGINS` rather than naming the plugins to keep — a hand-written keep-list would
-   silently omit any plugin added later, and the missing feature would appear only on F-Droid.
-   `cap sync` then never writes those gradle subprojects into `capacitor.build.gradle`.
-2. **`src/fdroid/AndroidManifest.xml`**, a removals-only overlay: `CAMERA`,
-   `android.hardware.camera` and `REQUEST_INSTALL_PACKAGES` are dropped with `tools:node="remove"`.
-   The merger does the work, so the launcher contract stays in one manifest and one test covers it.
-3. **`applicationIdSuffix`** from `NICOTIND_APP_ID_SUFFIX`, so the TV entry is
-   `ar.kevinroberts.nicotind.tv`.
+### Migration, once
 
-The variant needs **no web-code change**. Both excluded plugins are reached through the Capacitor
-global — the update service is
-`getCapacitorPlugin('NicotindApkUpdate')?.` throughout. That null-tolerance was written for web and
-Electron, which have neither plugin, and it is what makes a plugin-less native build a supported
-configuration rather than a crash. QR pairing degrades to the manual pairing code, already the only
-option on TV.
-
-### Measured effect
-
-| Variant | APK | `com.google.mlkit` class definitions |
-| --- | --- | --- |
-| `standard`, before #1170 | 30 MB | 195 |
-| `standard`, now | 10.5 MB | 0 |
-| `fdroid` | 4.4 MB | 0 |
-
-#1170 excluded `com.google.mlkit` from the whole Android build, so the 20 MB of proprietary Google
-code is gone from **every** variant and QR pairing still works on the GitHub builds. The remaining
-`standard` / `fdroid` gap is CameraX plus a Compose runtime, which the scanner plugin also drags in.
-
-Worth being exact about why that was safe: the plugin's `OSBARCScanLibraryFactory` is
-`if (scanLibrary == "mlkit") MLKitWrapper else ZXingWrapper`, and the scanner activity turns a
-missing value into `""`. **ZXing was already what ran** — the 20 MB was a backend the app never
-selected. #1168 then removed the plugin entirely, so neither the ML Kit exclusion nor the explicit
-ZXing selection is needed any more — both are gone, along with the OutSystems Azure feed.
-
-Measured with `dexdump -f` on class **definitions**, not a `grep` of the dex: a dex records the
-*names* of types it references even when the classes are absent, so a plain grep reports ML Kit
-"present" in a build that ships none of it. The CI assertion below greps, which is the stricter
-direction — it fires on a reference as well as on real code — and is right for the `fdroid` variant,
-which has neither.
-
-## Flavors
-
-`distribution` is the only flavor dimension: `standard` (GitHub releases, everything) and `fdroid`.
-Gradle output therefore lives at
-`app/build/outputs/apk/<flavor>/<buildType>/app-<flavor>-<buildType>.apk`, and the task is
-`assembleStandardRelease`, not `assembleRelease`. The release lane and the TV emulator preflight
-both name the flavor; `check:fdroid` asserts they still do, because a release that builds an APK
-gradle puts somewhere else is how v0.6.46 shipped with no APK.
+A TV APK sideloaded before 0.7.x carries the old shared `applicationId`, so the suffixed build
+installs **alongside** it rather than upgrading it. The stale copy has to be removed by hand. That is
+the price of phone and TV finally being separate apps — which also means a TV APK can no longer be
+installed over the phone one and silently swap the UI.
 
 ## Gates
 
-- **`check:fdroid`** (CI-blocking) asserts its own denominator rather than re-reading the exclusion
-  list. It fails on: a Capacitor Android plugin classified neither in `NON_FREE_PLUGINS` nor in
-  `FREE_ANDROID_PLUGINS` — which is the moment a proprietary transitive dep can enter, turned into a
-  decision; a classification entry naming a package that is not a dependency (dead config); a
-  non-free plugin surviving into the resolved allowlist; a release step pointing at a gradle
-  output path the flavor does not produce; a verification-only step standing between a built
-  artifact and its upload; the ML Kit exclusion and the explicit ZXing selection parting company;
-  and fastlane metadata outside F-Droid's byte caps in any locale.
-- **`packages/mobile/src/fdroid.test.ts`** covers the pure helpers, including that a plugin added
-  later is included without being named.
-- **`packages/mobile/src/android-manifest.test.ts`** covers the overlay: the `tools` namespace
-  (without it the merger ignores `tools:node` and the APK is silently over-permissioned), that the
-  overlay only ever *removes*, and that every removal targets something the main manifest actually
-  declares.
-- **deploy.yml** assembles the F-Droid variant on every release and greps the dex for
-  `com/google/mlkit`, `com/google/android/gms` and `outsystems`. `check:fdroid` is static and proves
-  the plugin set is classified; it cannot prove the variant still *compiles* without the excluded
-  plugins, which is the break a dropped null-guard would cause. The variant is built, verified and
-  **not attached** to the release — it is a different package and a different update channel.
-
-  Two rules that this step learned the hard way, both now asserted by `check:fdroid`:
-
-  **It runs AFTER "Attach APKs".** v0.6.55 shipped with no Android APK at all because the
-  verification build sat between staging and attaching, failed, and took two already-built release
-  artifacts with it. The phone and TV APKs had compiled fine; the job went red for an unrelated
-  reason and the release page simply had nothing on it. A step that merely *checks* something must
-  never stand between an artifact and its upload.
-
-  **It builds unsigned.** `ANDROID_KEYSTORE_FILE` lives in `$GITHUB_ENV` from the decode step, so
-  `build.gradle` attaches the release `signingConfig` to *every* subsequent assemble — while the
-  keystore passwords are per-step env on the shipping builds only. That mismatch is what failed
-  (`SigningConfig "release" is missing required property "storePassword"`). The step clears the path
-  instead of being handed the release key it has no use for; Groovy reads `""` as false. Gradle then
-  emits `app-fdroid-release-unsigned.apk`, which the assertion accepts alongside the signed name.
+- **`check:fdroid`** (CI-blocking) got much smaller in #1168: the arms that guarded the build
+  flavour were **deleted rather than left passing vacuously**, which is the dead config this gate
+  exists to reject. What remains are the three things still silently breakable — fastlane metadata
+  outside F-Droid's byte caps in any locale; the Pages lane losing its reference to the scripts that
+  build and publish the repository (nothing fails, the repository just stops moving); and the release
+  lane renaming or no longer producing the APKs the repository serves, which the Pages job downloads
+  from the latest release **by name**.
+- **`packages/mobile/src/app-id.test.ts`** covers the `.tv` suffix, and `fdroid-repo.test.ts`
+  asserts `FDROID_APPS` agrees with it — two places encode that id, and a drift would advertise an
+  id no APK carries.
+- **`packages/web/src/app/lib/apk-update.spec.ts`** + `update.service.spec.ts` cover the runtime
+  gating, including that an unknown installer keeps the in-app updater and that the check does not
+  block the initial render. Both gating tests were confirmed to fail without the fix.
+- **deploy.yml** no longer assembles or verifies a separate variant — there isn't one. It publishes
+  two APKs, and `check:fdroid` asserts their names still match what the Pages job downloads.
 
 ## The toolchain question — answered
 
@@ -133,8 +74,8 @@ its own `node_modules`, npm 10.9.8 / Node 22.23.1, start to finish:
 | `workspace:*` → `*` in the 9 package.json entries, then `npm install --legacy-peer-deps` | 1918 packages, clean |
 | `node scripts/build-changelog.ts` (the `prebuild` hook, which shells out to `bun`) | works — Node ≥ 22.18 strips types natively |
 | `ng build` | clean, 8.9 s |
-| `NICOTIND_FDROID=1 cap sync android` | 5 plugins, barcode-scanner and apk-update absent |
-| `NICOTIND_APP_ID_SUFFIX=.tv ./gradlew assembleFdroidDebug` | APK, `package="ar.kevinroberts.nicotind.tv"`, no mlkit/gms/osbarcode |
+| `cap sync android` | plugins resolved |
+| `NICOTIND_APP_ID_SUFFIX=.tv ./gradlew assembleDebug` | APK, `package="ar.kevinroberts.nicotind.tv"` |
 
 Three things that fall out of that, all of which matter to a recipe:
 
@@ -190,9 +131,9 @@ multi-byte and a character-counted cap would pass text the store cuts.
 
 ## What is still needed for the main repo
 
-1. **Two merge requests** to `fdroiddata`, one per application id, with `prebuild` setting
-   `NICOTIND_FDROID=1` (and `NICOTIND_APP_ID_SUFFIX=.tv` for the TV entry) before `cap sync`, and
-   `gradle: [fdroid]` to select the flavor.
+1. **Two merge requests** to `fdroiddata`, one per application id. Simpler than it would have been:
+   no flavour to select, and `NICOTIND_APP_ID_SUFFIX=.tv` for the TV entry is the only build-time
+   input. The single build is already policy-clean.
 2. **Screenshots**, and the TV metadata path question above.
 
 ## Our own F-Droid repository

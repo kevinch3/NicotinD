@@ -31,3 +31,37 @@ export function apkFileName(version: string, tv: boolean): string {
 export function apkAssetUrl(version: string, tv: boolean): string {
   return `${DOWNLOAD_BASE}/v${version}/${apkFileName(version, tv)}`;
 }
+
+/**
+ * Package names of app stores that manage updates for what they installed.
+ *
+ * Since #1168 there is ONE Android APK: the same binary is sideloaded from
+ * GitHub releases and served from our F-Droid repository. Self-updating is
+ * right for the first and wrong for the second — F-Droid updates what it
+ * installed, and offering a second path beside it means two update prompts and
+ * an in-app one that bypasses the store's own integrity checks.
+ *
+ * Asking the system who installed us is what replaced a build flavor here, so
+ * the list has to cover the F-Droid *clients* people actually use, not just the
+ * official one; an unlisted fork simply keeps the in-app updater, which is the
+ * safe direction to be wrong in.
+ */
+const STORE_MANAGED_INSTALLERS = new Set([
+  'org.fdroid.fdroid', // F-Droid
+  'org.fdroid.basic', // F-Droid Basic
+  'com.looker.droidify', // Droid-ify
+  'com.machiav3lli.fdroid', // Neo Store
+  'com.android.vending', // Play Store, for completeness
+]);
+
+/**
+ * True when `installer` is a store that will update this app itself, so the
+ * in-app updater should stay hidden.
+ *
+ * A null/unknown installer means a sideload (or a platform that will not say),
+ * and that keeps self-update available — the failure mode of guessing wrong here is
+ * a user stranded on an old build with no way to move.
+ */
+export function isStoreManagedInstaller(installer: string | null | undefined): boolean {
+  return installer !== null && installer !== undefined && STORE_MANAGED_INSTALLERS.has(installer);
+}
