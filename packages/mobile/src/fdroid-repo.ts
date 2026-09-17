@@ -26,22 +26,25 @@ export interface FdroidApp {
 }
 
 /**
- * The two entries we publish. The TV app id carries the `.tv` suffix the
- * F-Droid variant builds with (`NICOTIND_APP_ID_SUFFIX`), so this list and
- * `fdroidAppId()` have to agree — `check:fdroid` asserts that they do.
+ * The two entries we publish, serving the release's OWN APKs — since #1168
+ * there is no separate F-Droid variant, because the single build carries no
+ * proprietary dependency and hides its self-updater when a store installed it.
+ *
+ * The TV app id carries the `.tv` suffix every TV build now uses, so this list
+ * and `androidAppId()` have to agree — `check:fdroid` asserts that they do.
  */
 export const FDROID_APPS: readonly FdroidApp[] = [
   {
     applicationId: 'ar.kevinroberts.nicotind',
     name: 'NicotinD',
     fastlaneDir: 'fastlane',
-    apk: 'NicotinD-fdroid.apk',
+    apk: 'NicotinD.apk',
   },
   {
     applicationId: 'ar.kevinroberts.nicotind.tv',
     name: 'NicotinD TV',
     fastlaneDir: 'fastlane-tv',
-    apk: 'NicotinD-TV-fdroid.apk',
+    apk: 'NicotinD-TV.apk',
   },
 ] as const;
 

@@ -207,6 +207,71 @@ describe('UpdateService', () => {
       document.documentElement.classList.remove('tv-build');
     });
 
+    /**
+     * #1168: one APK now serves both channels, so who installed the app decides
+     * whether the in-app updater appears — a runtime question where it used to
+     * be a build flavor.
+     */
+    function provideNativeWithInstaller(installer: string | null) {
+      downloadAndInstall = vi.fn().mockResolvedValue(undefined);
+      (globalThis as { Capacitor?: unknown }).Capacitor = {
+        isNativePlatform: () => true,
+        getPlatform: () => 'android',
+        Plugins: {
+          NicotindApkUpdate: {
+            downloadAndInstall,
+            addListener: vi.fn(),
+            getInstallerPackage: vi.fn().mockResolvedValue({ installer }),
+          },
+        },
+      };
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(new Response(JSON.stringify({ tag_name: 'v0.1.305' }))),
+      );
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: SwUpdate, useValue: makeSwStub(false) },
+          { provide: APP_VERSION, useValue: '0.1.300' },
+        ],
+      });
+      return TestBed.inject(UpdateService);
+    }
+
+    it('hides itself when F-Droid installed the app — F-Droid updates it', async () => {
+      const service = provideNativeWithInstaller('org.fdroid.fdroid');
+      // Starts enabled and disables on the answer: the check is a native
+      // round-trip, so the initial render must not block on it.
+      expect(service.enabled()).toBe(true);
+      await vi.waitFor(() => expect(service.enabled()).toBe(false));
+    });
+
+    it('stays enabled for a sideload, where it is the only update path', async () => {
+      const service = provideNativeWithInstaller(null);
+      await vi.waitFor(() =>
+        expect(
+          (
+            globalThis as {
+              Capacitor?: {
+                Plugins: {
+                  NicotindApkUpdate: { getInstallerPackage: { mock: { calls: unknown[] } } };
+                };
+              };
+            }
+          ).Capacitor!.Plugins.NicotindApkUpdate.getInstallerPackage.mock.calls.length,
+        ).toBe(1),
+      );
+      expect(service.enabled()).toBe(true);
+    });
+
+    it('stays enabled in a shell too old to answer', async () => {
+      // The web bundle can be newer than the APK shell serving it; an absent
+      // method must not take the only update path away from a sideload.
+      const service = provideNative();
+      await Promise.resolve();
+      expect(service.enabled()).toBe(true);
+    });
+
     it('enables the manual checker on native Android even without a service worker', () => {
       const service = provideNative();
       expect(service.enabled()).toBe(true);

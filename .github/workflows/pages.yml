@@ -146,19 +146,23 @@ jobs:
           echo "Latest release: $tag"
           # `|| true`: a release predating the F-Droid APKs has none, which is a
           # skip rather than a failure — the catalog still publishes.
-          gh release download "$tag" --dir fdroid-apks --pattern '*-fdroid-*.apk' || true
+          # The release's OWN APKs since #1168 — there is no separate F-Droid
+          # variant any more. TV first: its name is a superset of the phone's,
+          # so globbing the phone pattern would otherwise match it too.
+          gh release download "$tag" --dir fdroid-apks --pattern 'NicotinD-TV-*.apk' || true
+          gh release download "$tag" --dir fdroid-apks --pattern 'NicotinD-[0-9]*.apk' || true
           # The builder expects unversioned names (FDROID_APPS).
-          for f in fdroid-apks/NicotinD-TV-fdroid-*.apk; do
-            [ -e "$f" ] && mv "$f" fdroid-apks/NicotinD-TV-fdroid.apk
+          for f in fdroid-apks/NicotinD-TV-*.apk; do
+            [ -e "$f" ] && mv "$f" fdroid-apks/NicotinD-TV.apk
           done
-          for f in fdroid-apks/NicotinD-fdroid-*.apk; do
-            [ -e "$f" ] && mv "$f" fdroid-apks/NicotinD-fdroid.apk
+          for f in fdroid-apks/NicotinD-[0-9]*.apk; do
+            [ -e "$f" ] && mv "$f" fdroid-apks/NicotinD.apk
           done
-          if [ -f fdroid-apks/NicotinD-fdroid.apk ] && [ -f fdroid-apks/NicotinD-TV-fdroid.apk ]; then
+          if [ -f fdroid-apks/NicotinD.apk ] && [ -f fdroid-apks/NicotinD-TV.apk ]; then
             echo "have_apks=true" >> "$GITHUB_OUTPUT"
           else
             echo "have_apks=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::$tag has no F-Droid APKs — publishing the catalog only."
+            echo "::warning::$tag has no Android APKs — publishing the catalog only."
           fi
 
       - name: Build the signed F-Droid repository

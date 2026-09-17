@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { FDROID_APPS, fdroidAppMetadata, fdroidRepoConfig } from './fdroid-repo.js';
-import { fdroidAppId } from './fdroid.js';
+import { androidAppId } from './app-id.js';
 
 describe('FDROID_APPS', () => {
   it('gives every entry a distinct application id and a distinct name', () => {
@@ -14,12 +14,12 @@ describe('FDROID_APPS', () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
-  it('agrees with fdroidAppId about the suffix the TV build is assembled with', () => {
+  it('agrees with androidAppId about the suffix every TV build now uses', () => {
     // Two places encode ".tv": the gradle suffix and this list. If they drift,
     // the repo advertises an id no APK carries and the entry installs nothing.
     const base = 'ar.kevinroberts.nicotind';
-    expect(ids()).toContain(fdroidAppId(base, false));
-    expect(ids()).toContain(fdroidAppId(base, true));
+    expect(ids()).toContain(androidAppId(base, false));
+    expect(ids()).toContain(androidAppId(base, true));
     function ids() {
       return FDROID_APPS.map((a) => a.applicationId);
     }

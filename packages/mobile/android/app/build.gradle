@@ -29,7 +29,7 @@ android {
     }
     // Release signing is supplied entirely via env (CI decodes the keystore from a
     // secret). With no keystore env present (local dev) the release build is left
-    // unsigned, so contributors can still `assembleStandardRelease` without secrets.
+    // unsigned, so contributors can still `assembleRelease` without secrets.
     signingConfigs {
         release {
             def storeFilePath = System.getenv("ANDROID_KEYSTORE_FILE")
@@ -41,19 +41,6 @@ android {
             }
         }
     }
-    // Distribution channel. The only difference is which permissions survive the
-    // manifest merge: the F-Droid variant excludes the non-free Capacitor plugins
-    // (via `android.includePlugins`, see ../../src/fdroid.ts), so CAMERA and
-    // REQUEST_INSTALL_PACKAGES would be declared with nothing left to use them.
-    // A flavor rather than a second hand-maintained manifest — src/fdroid's
-    // overlay is three `tools:node="remove"` lines and the merger does the rest,
-    // so the manifest contract stays in ONE file and one test covers it.
-    flavorDimensions "distribution"
-    productFlavors {
-        standard { dimension "distribution" }
-        fdroid { dimension "distribution" }
-    }
-
     buildTypes {
         release {
             minifyEnabled false

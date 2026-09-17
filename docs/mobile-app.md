@@ -731,22 +731,24 @@ browse → play.
   CI derives them from `package.json` via `scripts/android-env.ts` → `androidVersion()`. So the existing
   `bun run release` drives the app version with no second source of truth.
 - **Signing**: the release `signingConfig` is supplied entirely via env. With no keystore env (local dev)
-  the release build is left unsigned so contributors can `assembleStandardRelease` without secrets.
+  the release build is left unsigned so contributors can `assembleRelease` without secrets.
 - **CI** (`.github/workflows/deploy.yml`, `android` job): gated like `deploy` (the `chore(release):`
   commit or a manual run) and runs in parallel with it — a failure here does **not** block the server
   deploy (no `needs` linkage), but it is **not** `continue-on-error`: a genuine build break turns the
   release run red so it can't ship a tag with no APK. It builds the web, `cap sync`s, decodes the
-  keystore, runs `./gradlew assembleStandardRelease`, renames Gradle's `app-standard-release.apk` to the
+  keystore, runs `./gradlew assembleRelease`, renames Gradle's `app-release.apk` to the
   versioned `NicotinD-<version>.apk` (via `$NICOTIND_VERSION_NAME`, for naming cohesion with the
-  desktop assets), then repeats the web-build → `cap sync` → `assembleStandardRelease` sequence with the
+  desktop assets), then repeats the web-build → `cap sync` → `assembleRelease` sequence with the
   Angular **`tv` configuration** to produce `NicotinD-TV-<version>.apk` (the flavor that actually
   carries `tvBuild:true` — before issue #387 the tv config was never built by CI, so no released
   APK ever had TV behavior). Both staged APKs are
   attached to the GitHub Release for the version tag. The two share one `applicationId`/signature —
-  install `NicotinD-TV-*.apk` on TVs, the plain one on phones; installing the wrong flavor silently
-  swaps TV behavior. (The F-Droid TV entry does **not** share the id — F-Droid requires one per app
-  entry, so it takes a `.tv` suffix and installs alongside a sideloaded TV APK. The job also builds
-  and verifies the `fdroid` flavor without attaching it. → [fdroid.md](fdroid.md).) Required repo secrets:
+  install `NicotinD-TV-*.apk` on TVs, the plain one on phones. Since #1168 they no longer share an
+  `applicationId`: the TV build carries `.tv` on **every** channel, so installing one over the other
+  is impossible rather than silently UI-swapping, and phone and TV can be two F-Droid entries. One
+  migration consequence — a TV APK sideloaded before 0.7.x has the old shared id, so the suffixed
+  build installs **alongside** it and the stale copy must be removed by hand.
+  → [fdroid.md](fdroid.md). Required repo secrets:
   `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`
   (until they're set, the job builds an unsigned APK / fails loudly — it never ships a broken keystore).
 
@@ -811,7 +813,7 @@ the only option on TV, which has no camera. → [device-pairing.md](device-pairi
   Range headers, preflight OPTIONS, disallowed-origin rejection.
 - `src/version.ts` (`packages/mobile/src/version.test.ts`) — version mapping + monotonicity; run in CI via
   the `ci` job's `bun test … packages/mobile/src`.
-- The Android `assembleStandardRelease` (CI `android` job) is the build-level gate; there is no emulator in CI, so
+- The Android `assembleRelease` (CI `android` job) is the build-level gate; there is no emulator in CI, so
   shared logic stays in the unit-tested helpers above.
 
 ## Known optimization (not yet done)

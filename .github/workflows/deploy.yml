@@ -213,7 +213,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: ./gradlew assembleStandardRelease
+        run: ./gradlew assembleRelease
 
       # Gradle emits `app-standard-release.apk` under the flavor's own output dir.
       # `standard` is the GitHub-release flavor; `fdroid` drops the non-free
@@ -222,10 +222,10 @@ jobs:
       # $NICOTIND_VERSION_NAME (already in $GITHUB_ENV from "Derive Android version").
       # Staged out of the gradle output dir so the TV build below can't clobber it.
       - name: Stage phone APK
-        working-directory: packages/mobile/android/app/build/outputs/apk/standard/release
+        working-directory: packages/mobile/android/app/build/outputs/apk/release
         run: |
           mkdir -p "$RUNNER_TEMP/apks"
-          mv app-standard-release.apk "$RUNNER_TEMP/apks/NicotinD-${NICOTIND_VERSION_NAME}.apk"
+          mv app-release.apk "$RUNNER_TEMP/apks/NicotinD-${NICOTIND_VERSION_NAME}.apk"
 
       # Second flavor: the SAME Android project rebuilt with the web bundle from
       # the Angular `tv` configuration (environment.tv.ts → isTvBuild() true).
@@ -239,17 +239,22 @@ jobs:
         run: bunx cap sync android
         working-directory: packages/mobile
 
+      # `.tv` applies to every channel now (#1168): there is ONE TV APK, and an
+      # application id cannot depend on where the file was downloaded from. It
+      # is also what lets phone and TV be two F-Droid entries — and stops a TV
+      # APK installing over the phone one and silently swapping the UI.
       - name: Build TV release APK
         working-directory: packages/mobile/android
         env:
+          NICOTIND_APP_ID_SUFFIX: .tv
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: ./gradlew assembleStandardRelease
+        run: ./gradlew assembleRelease
 
       - name: Stage TV APK
-        working-directory: packages/mobile/android/app/build/outputs/apk/standard/release
-        run: mv app-standard-release.apk "$RUNNER_TEMP/apks/NicotinD-TV-${NICOTIND_VERSION_NAME}.apk"
+        working-directory: packages/mobile/android/app/build/outputs/apk/release
+        run: mv app-release.apk "$RUNNER_TEMP/apks/NicotinD-TV-${NICOTIND_VERSION_NAME}.apk"
 
       # ATTACH BEFORE VERIFYING. This step must stay ahead of every
       # verification-only step below: v0.6.55 shipped with no APK at all because
@@ -263,100 +268,6 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           files: ${{ runner.temp }}/apks/*.apk
-          fail_on_unmatched_files: true
-
-      # Now the F-Droid variant: BOTH entries, signed, for our own F-Droid
-      # repository (docs/fdroid.md). They are attached under `-fdroid-` names in
-      # a second upload rather than mixed into the batch above, because the
-      # release is the only durable place the Pages workflow can fetch them from
-      # — a master-push catalog refresh has to publish the last release's APKs,
-      # and workflow artifacts expire. The distinct names keep them from reading
-      # as the APK a sideloading user wants.
-      #
-      # Signed with the release key, unlike before: these are artifacts users
-      # install, not throwaways. The TV web bundle is still in place from the TV
-      # steps above, so the `.tv` entry builds first and the phone bundle is
-      # rebuilt for the second.
-      - name: Build the F-Droid TV APK
-        working-directory: packages/mobile
-        env:
-          NICOTIND_FDROID: '1'
-          NICOTIND_APP_ID_SUFFIX: .tv
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          set -euo pipefail
-          bunx cap sync android
-          cd android && ./gradlew assembleFdroidRelease
-
-      - name: Stage the F-Droid TV APK
-        working-directory: packages/mobile/android/app/build/outputs/apk/fdroid/release
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/fdroid"
-          mv app-fdroid-release.apk \
-            "$RUNNER_TEMP/fdroid/NicotinD-TV-fdroid-${NICOTIND_VERSION_NAME}.apk"
-
-      - name: Build web (phone) for the F-Droid phone APK
-        run: bun run --filter @nicotind/web build
-
-      - name: Build the F-Droid phone APK
-        working-directory: packages/mobile
-        env:
-          NICOTIND_FDROID: '1'
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          set -euo pipefail
-          bunx cap sync android
-          cd android && ./gradlew assembleFdroidRelease
-
-      - name: Stage the F-Droid phone APK
-        working-directory: packages/mobile/android/app/build/outputs/apk/fdroid/release
-        run: |
-          set -euo pipefail
-          mv app-fdroid-release.apk \
-            "$RUNNER_TEMP/fdroid/NicotinD-fdroid-${NICOTIND_VERSION_NAME}.apk"
-
-      # Assert the exclusion actually reached the artifact. `check:fdroid` reads
-      # package.json; this reads the dex. A gate that only checks intent is how
-      # a plugin excluded in config but still on the classpath would ship.
-      # Greps rather than counting class definitions on purpose: for THIS variant
-      # the plugin is absent entirely, so a surviving type *reference* is a
-      # finding too (docs/fdroid.md).
-      - name: Assert no proprietary dependency in the F-Droid APKs
-        working-directory: ${{ runner.temp }}/fdroid
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          apks=(*.apk)
-          # Assert the denominator: an empty glob would make the loop below pass
-          # while checking nothing, which is the failure this whole gate exists
-          # to avoid. Two entries, always.
-          if [ "${#apks[@]}" -ne 2 ]; then
-            echo "::error::expected 2 F-Droid APKs, found ${#apks[@]}: ${apks[*]:-none}"
-            exit 1
-          fi
-          for apk in "${apks[@]}"; do
-            for forbidden in com/google/mlkit com/google/android/gms outsystems; do
-              if unzip -p "$apk" 'classes*.dex' | grep -qa "$forbidden"; then
-                echo "::error::$forbidden is present in $apk — F-Droid would reject it."
-                exit 1
-              fi
-            done
-            echo "$apk is clean of mlkit / play-services / osbarcode."
-          done
-
-      # A second upload, after the assertion: the sideload APKs went up before
-      # any verification (see above), and these go up only once they are known
-      # clean. Failing here leaves the release's own APKs untouched.
-      - name: Attach the F-Droid APKs to the GitHub Release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: ${{ runner.temp }}/fdroid/*.apk
           fail_on_unmatched_files: true
 
   # Build an UNSIGNED iOS .ipa and attach it to the GitHub Release.

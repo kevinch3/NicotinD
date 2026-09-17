@@ -31,13 +31,9 @@ import {
   tvMusicDir,
 } from './env.js';
 
-// `standard` is the distribution flavor that ships on GitHub releases — the one
-// this lane exists to test. The `fdroid` flavor drops the non-free plugins and is
-// never what a TV user sideloads. See docs/fdroid.md.
-const APK = join(
-  repoRoot,
-  'packages/mobile/android/app/build/outputs/apk/standard/debug/app-standard-debug.apk',
-);
+// One APK per form factor since #1168 — the distribution flavours are gone, so
+// gradle writes to the plain build-type directory again. See docs/fdroid.md.
+const APK = join(repoRoot, 'packages/mobile/android/app/build/outputs/apk/debug/app-debug.apk');
 
 /** Boot the AVD headless and wait for `sys.boot_completed`. Measured ~26s. */
 async function ensureEmulator(): Promise<string> {
@@ -66,7 +62,7 @@ async function ensureEmulator(): Promise<string> {
   );
 }
 
-/** Build web (tv configuration) → cap sync → assembleStandardDebug → install. */
+/** Build web (tv configuration) → cap sync → assembleDebug → install. */
 function buildAndInstall(serial: string): void {
   run(
     'bun',
@@ -77,9 +73,9 @@ function buildAndInstall(serial: string): void {
   run('bunx', ['cap', 'sync', 'android'], join(repoRoot, 'packages/mobile'), 'cap sync');
   run(
     './gradlew',
-    ['assembleStandardDebug', '-q'],
+    ['assembleDebug', '-q'],
     join(repoRoot, 'packages/mobile/android'),
-    'assembleStandardDebug',
+    'assembleDebug',
   );
   if (!existsSync(APK)) throw new Error(`[e2e:tv] APK missing after build: ${APK}`);
   run(adbPath(), ['-s', serial, 'install', '-r', '-d', APK], repoRoot, 'install');

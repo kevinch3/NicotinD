@@ -695,10 +695,12 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **`check:route-auth`**: fails when an `/api` group is mounted without `auth` or a reasoned
   `PUBLIC_ROUTES` entry; AST-parsed, not grepped, and it fails when its own count disagrees with the
   file's. → [api-routes.md](api-routes.md)
-- **F-Droid build variant**: the `fdroid` gradle flavor plus `NICOTIND_FDROID=1` drops the plugins
-  that pull proprietary Android deps, via `fdroidIncludePlugins` / `NON_FREE_PLUGINS` /
-  `FREE_ANDROID_PLUGINS` and a removals-only manifest overlay; `check:fdroid` fails on an
-  unclassified plugin. → [fdroid.md](fdroid.md)
+- **One APK per form factor, F-Droid included**: no build flavour — the single build is
+  policy-clean and hides its self-updater at runtime via `getInstallerPackage` +
+  `isStoreManagedInstaller`; `androidAppId` gives TV its own id. → [fdroid.md](fdroid.md)
+- **Own signed F-Droid repository**: `build-fdroid-repo.ts` + `FDROID_APPS` assemble and sign it
+  from the release's APKs; `pages.yml` publishes it beside the Storybook catalog.
+  → [fdroid.md](fdroid.md)
 - **`check:audit` — gated on what *ships***: filters advisories by the production closure (walking
   `bun.lock` from every workspace's `dependencies`) *and* the resolved version, reports the dependency
   path, fails on an unresolvable version, and warns-and-passes on an unreachable registry.

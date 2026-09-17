@@ -11,8 +11,7 @@
     "cap:sync:ios": "cap sync ios",
     "cap:open:ios": "cap open ios",
     "cap:add:ios": "cap add ios",
-    "android:assemble": "cd android && ./gradlew assembleStandardRelease",
-    "android:assemble:fdroid": "NICOTIND_FDROID=1 cap sync android && cd android && ./gradlew assembleFdroidRelease",
+    "android:assemble": "cd android && ./gradlew assembleRelease",
     "icons:source": "bun run scripts/generate-native-icons.ts",
     "icons:generate": "bunx @capacitor/assets@3 generate",
     "fdroid:changelog": "bun run scripts/fdroid-changelog.ts"

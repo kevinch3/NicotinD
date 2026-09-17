@@ -156,7 +156,7 @@ launch a local browser. Specs in `tests-tv/` import `test` from `tv/fixtures.ts`
 | Cold emulator boot → `sys.boot_completed=1`       | 26 s     |
 | Web build `--configuration tv`                    | 8.0 s    |
 | `cap sync`                                        | 0.05 s   |
-| `gradlew assembleStandardDebug` (warm daemon, no changes) | 9.8 s    |
+| `gradlew assembleDebug` (warm daemon, no changes) | 9.8 s    |
 | `adb install -r` (31 MB)                          | 0.7 s    |
 | Fixture server boot → `/api/health`               | ~15 s    |
 | Launch + WebView target ready                     | ~8 s     |
