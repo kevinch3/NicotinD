@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.7.1](https://github.com/kevinch3/NicotinD/compare/v0.7.0...v0.7.1) (2026-09-17)
+
+### Bug Fixes
+
+* **playback:** end a session on demand, and give every e2e spec a fresh one ([#1188](https://github.com/kevinch3/NicotinD/issues/1188)) ([5d86c27](https://github.com/kevinch3/NicotinD/commit/5d86c27386b734491d0acbf47a80ded1b3a58a2f)), references [#1182](https://github.com/kevinch3/NicotinD/issues/1182) [#1110](https://github.com/kevinch3/NicotinD/issues/1110) [#1116](https://github.com/kevinch3/NicotinD/issues/1116) [#1182](https://github.com/kevinch3/NicotinD/issues/1182) [#1182](https://github.com/kevinch3/NicotinD/issues/1182) [#1185](https://github.com/kevinch3/NicotinD/issues/1185)
 ## [0.7.0](https://github.com/kevinch3/NicotinD/compare/v0.6.60...v0.7.0) (2026-09-17)
 
 ### ⚠ BREAKING CHANGES
