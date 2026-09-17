@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.7.0](https://github.com/kevinch3/NicotinD/compare/v0.6.60...v0.7.0) (2026-09-17)
+
+### ⚠ BREAKING CHANGES
+
+* **mobile:** the in-app "Scan QR" button is gone from the server picker and
+  from Settings → Devices, along with the CAMERA permission and iOS's
+  NSCameraUsageDescription. QR pairing is now the OS camera app path only (the
+  QR's link opens the server's own /pair page); the manual pairing code remains
+  the typed fallback, and was always the only option on TV.
+
+  WHY, in the order the costs were paid:
+
+  - Its native lib `com.github.outsystems:osbarcode-android` was served ONLY by
+    OutSystems' private Azure Maven feed. That disqualifies the build from the
+    official F-Droid repository outright — prebuilt binaries are trusted from
+    Debian and a short list of Maven repos, and that is not one of them.
+  - That feed broke the android release job three times: an extra root repo
+    (v0.1.222), a minSdk floor (v0.1.222), and an HTTP 503 that failed a release
+    in which nothing of ours had changed (v0.5.53).
+  - It arrived with 20 MB of Google ML Kit for a scanning backend the app never
+    selected (#1170/#1172).
+
+### Features
+
+* **mobile:** remove the QR scanner, and with it the private Maven feed ([#1187](https://github.com/kevinch3/NicotinD/issues/1187)) ([0f77024](https://github.com/kevinch3/NicotinD/commit/0f77024680c5bfd55e1649308103644ac87880d9)), references [1170/#1172](https://github.com/kevinch3/NicotinD/issues/1172) [#1168](https://github.com/kevinch3/NicotinD/issues/1168) [#1170](https://github.com/kevinch3/NicotinD/issues/1170)
 ## [0.6.60](https://github.com/kevinch3/NicotinD/compare/v0.6.59...v0.6.60) (2026-09-17)
 
 ### Bug Fixes
