@@ -251,6 +251,26 @@ Absent the secret the F-Droid half is **skipped, not failed** — the catalog st
 shape as deploy.yml's keystore handling. The landing page then omits the repository section rather
 than advertising one that is not there.
 
+### Two guards the publishing lane needs, and why
+
+That "skip, not fail" degradation is right while bootstrapping and **destructive once a repository is
+live**, because one Pages deployment replaces the *entire* site. A `site/` built without
+`fdroid/repo` does not leave the published repository alone — it removes it, and every client that
+added the repository then gets 404s on the index and silently stops seeing updates. Nothing fails to
+say so.
+
+So the lane distinguishes the two cases by asking the live site, which is the only thing that knows:
+
+- **`Refuse to publish a site that would remove a live repository`** — if this run built no
+  repository but one answers 200, the job fails instead of deploying. Verified against the real site
+  in all three states: built (passes), none built with one live (fails), neither (passes, bootstrap).
+- **A conclusion guard on the trigger.** `workflow_run` has no `types: [succeeded]` — `completed`
+  includes failure and cancellation — so the job is gated on
+  `github.event.workflow_run.conclusion == 'success'`. A release that failed *before* attaching its
+  APKs is exactly the run whose assets must not be picked up.
+
+`check:fdroid` asserts both; removing either is caught.
+
 ## Migration note
 
 An F-Droid TV install is package `…nicotind.tv` and lands *alongside* a sideloaded TV APK rather

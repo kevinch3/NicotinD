@@ -355,6 +355,31 @@ if (excludesMlKit !== selectsZxing) {
         errors.push(`.github/workflows/pages.yml no longer mentions "${needle}".`);
       }
     }
+
+    // `workflow_run` has no `types: [succeeded]`; `completed` includes failure
+    // and cancellation. A release that failed before attaching its APKs is
+    // precisely the run whose artifacts must not be picked up.
+    if (
+      source.includes('workflow_run:') &&
+      !source.includes("workflow_run.conclusion == 'success'")
+    ) {
+      errors.push(
+        `.github/workflows/pages.yml triggers on workflow_run without gating on ` +
+          `\`conclusion == 'success'\`, so a FAILED release republishes the site.`,
+      );
+    }
+
+    // The one that is actively destructive: one Pages deployment replaces the
+    // whole site, so publishing without `fdroid/repo` DELETES a live repository
+    // rather than leaving it alone — every client that added it 404s, silently.
+    if (!source.includes('would remove a live repository')) {
+      errors.push(
+        `.github/workflows/pages.yml has no guard refusing to publish a site that ` +
+          `would remove an already-live F-Droid repository. A Pages deployment ` +
+          `replaces the entire site, so a skipped F-Droid build deletes the ` +
+          `published repository instead of leaving it in place.`,
+      );
+    }
   }
   // deploy.yml is where the APKs the repository serves come from.
   const deployForApks = readFileSync(join(repoRoot, '.github/workflows/deploy.yml'), 'utf8');
