@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.0](https://github.com/kevinch3/NicotinD/compare/v0.7.1...v0.8.0) (2026-09-17)
+
+### ⚠ BREAKING CHANGES
+
+* **mobile:** the TV APK's applicationId is now ar.kevinroberts.nicotind.tv
+  on every channel. A TV APK sideloaded before 0.7.x carries the old shared id, so
+  the new one installs alongside it rather than upgrading it — remove the stale
+  copy by hand. Phone and TV are now separate apps, which also makes two F-Droid
+  entries possible.
+
+  Each release publishes two APKs instead of four: the release's own APKs are what
+  our F-Droid repository serves. The self-updater is hidden at runtime when a
+  store installed the app, which replaced the build flavour.
+
+### Features
+
+* **mobile:** one APK per form factor — collapse the F-Droid build flavour ([#1189](https://github.com/kevinch3/NicotinD/issues/1189)) ([063d8fc](https://github.com/kevinch3/NicotinD/commit/063d8fcdd29c64587d34a66f7a36296c52fa275b)), references [#1168](https://github.com/kevinch3/NicotinD/issues/1168)
 ## [0.7.1](https://github.com/kevinch3/NicotinD/compare/v0.7.0...v0.7.1) (2026-09-17)
 
 ### Bug Fixes
