@@ -1,4 +1,4 @@
-import { test, expect, type BrowserContext, type Page } from '@playwright/test';
+import { test, expect, type BrowserContext, type Page } from '../helpers';
 import { writeFileSync } from 'node:fs';
 import { FIXTURE, expandGroup, openAlbumCard, trackTitle } from '../helpers';
 

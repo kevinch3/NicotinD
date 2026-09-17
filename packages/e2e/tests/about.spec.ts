@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../helpers';
 
 /**
  * Settings → About (issue #453, docs/licensing.md). The licence statement and

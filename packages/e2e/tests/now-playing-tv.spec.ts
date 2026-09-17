@@ -11,7 +11,7 @@
  * by main.ts on real TV builds — so stamping it here exercises the real TV
  * template in the prod bundle. Pure layout behavior: needs a browser engine.
  */
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from '../helpers';
 import { FIXTURE, openAlbumCard } from '../helpers';
 
 // 1080p TV / Google TV emulator: 1920×1080 physical at DPR 2.

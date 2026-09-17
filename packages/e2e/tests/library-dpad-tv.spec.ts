@@ -6,7 +6,7 @@
  * bundle by stamping the `tv-build` root class (isTvUi pattern). Named to
  * sort before offline.spec.ts (its #372 flake starves later specs).
  */
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from '../helpers';
 import { FIXTURE } from '../helpers';
 
 const TV_VIEWPORT = { width: 960, height: 540 };

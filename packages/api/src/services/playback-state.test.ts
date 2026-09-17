@@ -207,6 +207,66 @@ describe('PlaybackStateManager', () => {
     });
   });
 
+  // An operator ending a stuck cast, and the e2e harness giving every spec a
+  // clean session instead of the previous spec's, minus the grace (#1182).
+  describe('reset', () => {
+    it('returns the session to its initial state and broadcasts it', () => {
+      manager.registerDevice({ id: 'd1', name: 'Test', type: 'web' });
+      manager.updateState({
+        activeDeviceId: 'd1',
+        isPlaying: true,
+        position: 12,
+        duration: 30,
+        trackId: 't1',
+        track: { id: 't1', title: 'Opening Static', artist: 'A', album: 'B', duration: 30 },
+        queue: ['t2'],
+      });
+      const handler = mock(() => {});
+      manager.on('state_update', handler);
+
+      manager.reset();
+
+      const state = manager.getState();
+      expect(state.activeDeviceId).toBeNull();
+      expect(state.isPlaying).toBe(false);
+      expect(state.position).toBe(0);
+      expect(state.duration).toBe(0);
+      expect(state.trackId).toBeNull();
+      expect(state.track).toBeNull();
+      expect(state.queue).toEqual([]);
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it('drops a device in its release grace and cancels the timer for good', async () => {
+      manager.updateState({ activeDeviceId: 'd1', isPlaying: true });
+      manager.registerDevice({ id: 'd1', name: 'Gone', type: 'web' });
+      manager.unregisterDevice('d1'); // socket gone: grace running
+      expect(manager.getDevices().map((d) => d.pending)).toEqual([true]);
+      const devices = mock(() => {});
+      manager.on('devices_update', devices);
+      const state = mock(() => {});
+      manager.on('state_update', state);
+
+      manager.reset();
+
+      expect(manager.getDevices()).toHaveLength(0);
+      expect(devices).toHaveBeenCalledTimes(1);
+      // The cancelled timer must not fire a second release after the grace.
+      await Bun.sleep(25);
+      expect(state).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps a live device registered — ending a cast is not kicking listeners', () => {
+      manager.registerDevice({ id: 'live', name: 'Phone', type: 'mobile' });
+      manager.updateState({ activeDeviceId: 'live', isPlaying: true });
+
+      manager.reset();
+
+      expect(manager.getDevices().map((d) => d.id)).toEqual(['live']);
+      expect(manager.getState().activeDeviceId).toBeNull();
+    });
+  });
+
   describe('heartbeat', () => {
     it('updates lastSeen for known device', () => {
       manager.registerDevice({ id: 'd1', name: 'Test', type: 'web' });

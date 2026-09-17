@@ -6,7 +6,7 @@
  * the /approve page UI. Named to sort before offline.spec.ts (#372 blast
  * radius).
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../helpers';
 import { ADMIN, bearer } from '../helpers';
 
 const TV_VIEWPORT = { width: 960, height: 540 };

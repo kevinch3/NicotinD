@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../helpers';
 
 test.describe('e-ink theme', () => {
   // Regression guard for the e-paper legibility fix: stroked icons "blended"

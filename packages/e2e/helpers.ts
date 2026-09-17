@@ -1,8 +1,57 @@
 import type { APIRequestContext, Locator, Page } from '@playwright/test';
-import { expect, test } from '@playwright/test';
+import { expect, test as base } from '@playwright/test';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+export { expect };
+export type { APIRequestContext, BrowserContext, Locator, Page } from '@playwright/test';
+
+/** The bearer token a project's saved `storageState` carries, or null when the
+ *  project has none (the never-seeded `onboarding` server). */
+function storedToken(storageState: unknown): string | null {
+  if (typeof storageState !== 'string' || !existsSync(storageState)) return null;
+  const state = JSON.parse(readFileSync(storageState, 'utf8')) as {
+    origins?: Array<{ localStorage?: Array<{ name: string; value: string }> }>;
+  };
+  for (const origin of state.origins ?? []) {
+    const hit = origin.localStorage?.find((e) => e.name === 'nicotind_token');
+    if (hit?.value) return hit.value;
+  }
+  return null;
+}
+
+/**
+ * The suite's `test`: every spec imports it from here (the TV lane's
+ * `tv-test.ts` composes on it).
+ *
+ * `freshPlaybackSession` is why. A context torn down by Playwright fires no
+ * `pagehide`, so the remote-playback session a spec's tab claimed outlives the
+ * spec on the server — and its *track* outlives even the release grace, which
+ * only clears the output. The next spec's fresh tab then restores that track
+ * into its player bar from the first `STATE_SYNC` and, if the dead output is
+ * still in its grace, spends its first seconds "reconnecting" to it (#1182,
+ * and the three-element title matches of #1110/#1116). The 2 s
+ * `NICOTIND_PLAYBACK_GRACE_MS` on the e2e server only narrows that window;
+ * this ends the session outright before every test, through the same
+ * `POST /api/playback/session/reset` an operator uses on a stuck cast — so a
+ * retry starts from the same clean slate as a first attempt, which is the
+ * property a flake retry is supposed to have. Loud on failure by design: a
+ * reset that silently stopped working would put every spec back on the timer.
+ */
+export const test = base.extend<{ freshPlaybackSession: void }>({
+  freshPlaybackSession: [
+    async ({ request }, use, testInfo) => {
+      const token = storedToken(testInfo.project.use.storageState);
+      if (token) {
+        const res = await request.post('/api/playback/session/reset', { headers: bearer(token) });
+        expect(res.status(), 'per-spec playback session reset').toBe(204);
+      }
+      await use();
+    },
+    { auto: true },
+  ],
+});
 
 /** Admin seeded by auth.setup.ts (first user => admin). */
 export const ADMIN = { username: 'e2e-admin', password: 'e2e-password-123' } as const;

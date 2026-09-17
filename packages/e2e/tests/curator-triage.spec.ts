@@ -5,7 +5,7 @@
  * `flagToCase` turns into exactly one option, "Mark handled" (a `resolve-only`
  * effect) — the simplest path to a green round.
  */
-import { test, expect, type APIRequestContext } from '@playwright/test';
+import { test, expect, type APIRequestContext } from '../helpers';
 import { ADMIN, FIXTURE, bearer } from '../helpers';
 
 /** A round is capped server-side (`assembleRound`); the loop can never exceed it. */

@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from '../helpers';
 
 /**
  * Runtime network detection (the offline crash/UX fix). The app now folds a live
