@@ -12,7 +12,6 @@ const pkg: { dependencies: Record<string, string>; devDependencies: Record<strin
 describe('fdroidIncludePlugins', () => {
   it('drops every non-free plugin', () => {
     const included = fdroidIncludePlugins({
-      '@capacitor/barcode-scanner': '^1',
       '@nicotind/capacitor-apk-update': 'workspace:*',
       '@capacitor/app': '^6',
     });

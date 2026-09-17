@@ -1,11 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import {
-  classifyScanError,
-  pickDirectory,
-  platformId,
-  scanBarcode,
-  setMusicDir,
-} from './native-capabilities';
+import { pickDirectory, platformId, setMusicDir } from './native-capabilities';
 
 // See platform.spec.ts: restore the real `window`, never delete it — the stubs below are
 // process-wide globals, not per-file ones.
@@ -77,74 +71,5 @@ describe('native-capabilities', () => {
   it('setMusicDir is a no-op off-Electron', async () => {
     (globalThis as { window?: unknown }).window = {};
     await expect(setMusicDir('/music')).resolves.toEqual({ ok: true });
-  });
-});
-
-describe('scanBarcode', () => {
-  afterEach(() => {
-    delete (globalThis as { Capacitor?: unknown }).Capacitor;
-  });
-
-  function withScannerPlugin(impl: (options: unknown) => Promise<{ ScanResult?: string }>) {
-    const scanMock = vi.fn(impl);
-    (globalThis as { Capacitor?: unknown }).Capacitor = {
-      isNativePlatform: () => true,
-      getPlatform: () => 'android',
-      Plugins: { CapacitorBarcodeScanner: { scanBarcode: scanMock } },
-    };
-    return scanMock;
-  }
-
-  it('passes every option the raw bridge requires (iOS rejects sparse calls)', async () => {
-    const scanMock = withScannerPlugin(async () => ({ ScanResult: 'payload' }));
-    await expect(scanBarcode()).resolves.toEqual({ status: 'ok', value: 'payload' });
-    expect(scanMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        hint: 0,
-        scanInstructions: expect.any(String),
-        scanButton: false,
-        scanText: expect.any(String),
-        cameraDirection: 1,
-        scanOrientation: 3,
-      }),
-    );
-  });
-
-  it('selects ZXing at native.android.scanningLibrary, not at the top level', async () => {
-    // com.google.mlkit is excluded from the Android build (#1170). The plugin's
-    // default backend is already ZXing, so this pins intent rather than fixing a
-    // break — but the pin only counts if it lands on the key the native side
-    // reads. The nesting IS the assertion: the published TS types put `android`
-    // at the TOP level, while OSBarcodePlugin.kt reads it from inside `native`,
-    // and we call the raw bridge rather than the wrapper that translates
-    // between them. A top-level `android` is dropped in silence.
-    const scanMock = withScannerPlugin(async () => ({ ScanResult: 'payload' }));
-    await scanBarcode();
-    const options = scanMock.mock.calls[0]?.[0] as {
-      android?: unknown;
-      native?: { android?: { scanningLibrary?: string } };
-    };
-    expect(options.native?.android?.scanningLibrary).toBe('zxing');
-    expect(options.android).toBeUndefined();
-  });
-
-  it('is unavailable off-native', async () => {
-    await expect(scanBarcode()).resolves.toEqual({ status: 'unavailable' });
-  });
-
-  it('maps an empty result to cancelled and rejections to typed outcomes', async () => {
-    withScannerPlugin(async () => ({}));
-    await expect(scanBarcode()).resolves.toEqual({ status: 'cancelled' });
-    withScannerPlugin(async () => Promise.reject(new Error('Scanning cancelled')));
-    await expect(scanBarcode()).resolves.toEqual({ status: 'cancelled' });
-    withScannerPlugin(async () => Promise.reject(new Error('Camera access denied')));
-    await expect(scanBarcode()).resolves.toEqual({ status: 'denied' });
-  });
-
-  it('classifyScanError falls through to error with the message', () => {
-    expect(classifyScanError('boom')).toEqual({ status: 'error', message: 'boom' });
-    expect(classifyScanError('OS-PLUG-BARC-0007 permission missing')).toEqual({
-      status: 'denied',
-    });
   });
 });

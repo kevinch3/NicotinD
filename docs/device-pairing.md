@@ -131,36 +131,18 @@ the request-origin candidate (below).
    `onLinkOpened()`, wired to the group's `(opened)` output, so a code is
    minted only the first time a user actually expands the card, never on
    page load and never twice if a code already exists.
-3. **Scan** — two equally supported paths:
-   - **Camera app**: scanning opens `/pair` on the server; done.
-   - **In-app**: the phone's server-picker native-only **Scan QR** button
-     (`@capacitor/barcode-scanner` via the `Capacitor.Plugins` global —
-     `scanBarcode()` in `services/native/native-capabilities.ts`, so
-     `@capacitor/*` stays out of the web bundle; Electron/web report
-     unavailable and hide the button). **Gotcha, learned the hard way:**
-     calling the raw bridge bypasses the package's JS wrapper, and the iOS
-     native side JSON-decodes `scanInstructions`/`scanButton`/`scanText`/
-     `cameraDirection`/`scanOrientation` as *required* fields — a
-     `{ hint }`-only call rejects "Error decoding scan arguments" before the
-     camera even opens. `scanBarcode()` therefore passes every wrapper-default
-     option (and `hint: 0` = QR_CODE in html5-qrcode numbering, *not* zxing's
-     ordinals). The **same wrapper bypass** decides where the scanning-library
-     option goes. `com.google.mlkit` is excluded from the Android build (#1170,
-     20 MB of a 30 MB APK), and `scanBarcode()` asks for ZXing by name at
-     `native.android.scanningLibrary` — **not** the top-level `android` the
-     plugin's published types show, since `OSBarcodePlugin.kt` reads it from
-     inside `native` and a top-level key is dropped in silence. Note the option
-     is belt-and-braces: the plugin's factory is
-     `if (scanLibrary == "mlkit") MLKitWrapper else ZXingWrapper` with a missing
-     value arriving as `""`, so ZXing was *always* what ran and ML Kit was dead
-     weight. Naming it keeps an upstream change of that `else` from pulling it
-     back in; `check:fdroid` keeps exclusion and option together. It returns a typed `ScanOutcome` so cancel stays silent while
-     denied-camera/plugin errors surface as actionable messages instead of
-     reading as "the QR is invalid". `lib/pairing.ts` parses the payload
-     (foreign QR content fails soft), probes the candidates in order against
-     `/api/health`, and claims against the first one that answers. A **pairing
-     code** field next to the URL input is the manual path: URL + code typed
-     from the server's screen.
+3. **Scan** — with the phone's **camera app**: scanning the QR opens `/pair` on the server, which
+   signs the phone in; done. A **pairing code** field next to the URL input is the manual path:
+   URL + 6-char code typed from the server's screen, and the only path on a TV (no camera).
+
+   There is **no in-app scanner**. One existed behind a native-only *Scan QR* button until #1168
+   removed `@capacitor/barcode-scanner` along with the `CAMERA` permission: its native lib came from
+   OutSystems' private Azure Maven feed, which disqualified the build from the official F-Droid
+   repository, had broken the release job three times, and arrived with 20 MB of Google ML Kit for a
+   backend the app never selected. `lib/pairing.ts` still parses the payload and probes candidates —
+   that half is shared with the `/pair` page — but nothing opens a camera from inside the app.
+   → [mobile-app.md](mobile-app.md) "The QR scanner, and why it is gone", [fdroid.md](fdroid.md)
+
 4. **Claim** — `POST /api/devices/claim` (public, `{ token? | code?, deviceName?,
    platform? }`): single-use check (410 expired/claimed, 404 unknown), then
    mints a **normal 30-day sliding JWT** for the minting user with a `deviceId`
@@ -207,7 +189,7 @@ pure localStorage helpers surfaced through `ServerConfigService`):
   "Use a different server" link (native only), Settings → Server → "Switch
   server", and the `/server` picker itself, which now lists saved servers
   (with a "Signed in as …" hint when a stash exists, a Current badge, and
-  per-row remove) above Scan QR / manual entry. The picker shows a Back button
+  per-row remove) above manual entry. The picker shows a Back button
   when opened from a configured, signed-in app; re-selecting the active
   signed-in server is a plain navigation home.
 
@@ -247,29 +229,18 @@ overlay pattern). The phone side is the new auth-guarded `/approve` page
 End-to-end coverage: `packages/e2e/tests/login-tv-signin.spec.ts` (API loop + a real TV-viewport
 UI test where an API-side approval signs the TV in with zero typing + the /approve page).
 
-### The phone-side camera button (issue #434)
+### The phone-side camera button (issue #434) — removed in #1168
 
-The approve step above assumed the phone would reach the `/approve` link through its **OS camera
-app**. In practice a user looking for "authorize a new device" opens Settings → Devices and finds
-only a QR to *show*, never one to *read* — so the flow required leaving the app. The scanner itself
-already existed (`services/native/native-capabilities.ts` `canScanBarcode`/`scanBarcode`) but had a
-single call site: the `/server` page, reachable from Settings only via a native-only link labelled
-"Switch server", which reads as "change which backend I talk to".
+Settings → Devices briefly carried a **scan card** (`devices-scan-approve`) that opened the in-app
+camera, parsed a TV's sign-in code and navigated to `/approve#c=<code>`. #1168 removed it with the
+scanner itself: the plugin's native lib came from a private Maven feed that disqualified the build
+from the official F-Droid repository, and it had cost three release-job breakages and 20 MB of ML
+Kit. The approve step is back to what it assumed originally — the phone's **OS camera app** opening
+the `/approve` link, or the code typed by hand.
 
-Settings → Devices now carries a **scan card** (`devices-scan-approve`), rendered only where
-`canScanBarcode()` is true — web and desktop have no scanner, and a dead button is worse than no
-button. It hands the scanned string to the pure `parseApproveCode` (`web/src/app/lib/pairing.ts`)
-and, on a hit, navigates to `/approve#c=<code>`: deliberately the **same entry point** the OS camera
-app would have opened, so `ApproveLoginComponent` stays the one place that confirms and posts —
-this button is a shortcut into the existing flow, not a second implementation of it.
-
-`parseApproveCode` accepts both forms the TV puts on screen — the `/approve` link (fragment first,
-query as the hand-built fallback, matching `ApproveLoginComponent`'s own precedence) and the bare
-printed code — so one button serves either. It **validates against the minting alphabet** rather
-than passing the value through: an instant "that isn't a sign-in code" beats a round-trip that
-returns 404. A foreign origin is accepted on purpose — the code is always claimed against *this*
-phone's own server, so a stranger's code simply 404s; the origin in the QR is cosmetic. A `/pair`
-QR (the server-pairing flow) returns null, keeping the two scan paths disjoint.
+What survives, and is still the useful part: **`parseApproveCode`** in
+`packages/web/src/app/lib/pairing.ts`. `ApproveLoginComponent` uses it to read the code out of the
+`/approve` URL, so it remains the single place the TV's on-screen forms are interpreted.
 
 To make that validation shared rather than duplicated, the alphabet moved to
 `@nicotind/core` `pairing-code.ts` (`CODE_ALPHABET`/`CODE_LENGTH`/`isPairingCodeShape`), which the

@@ -21,53 +21,6 @@ allprojects {
     repositories {
         google()
         mavenCentral()
-        // @capacitor/barcode-scanner (QR device-pairing) pulls its native lib
-        // `com.github.outsystems:osbarcode-android` from OutSystems' *Azure*
-        // public Maven feed (the `com.github.*` group name is misleading — it is
-        // NOT on JitPack, Google, or Maven Central). The plugin declares this repo
-        // in its own build.gradle, but that block isn't consulted when `:app`
-        // resolves its transitive runtime classpath — only these root repos are —
-        // so `cap sync` + `assembleStandardRelease` fails resolution without it here
-        // (broke the android release job on v0.1.222). Scoped via `includeGroup`
-        // so nothing else routes through Azure. Mirrors the plugin's declaration.
-        maven {
-            url 'https://pkgs.dev.azure.com/OutSystemsRD/9e79bc5b-69b2-4476-9ca5-d67594972a52/_packaging/PublicArtifactRepository/maven/v1'
-            name 'OutSystemsAzure'
-            content {
-                includeGroup 'com.github.outsystems'
-            }
-        }
-    }
-
-    // The plugin asks for `osbarcode-android:1.1.+@aar`. A dynamic range is
-    // re-checked against the remote every cacheDynamicVersionsFor window, so a
-    // cached dependency does NOT make the build offline-safe: an OutSystems Azure
-    // outage still fails resolution and reddens the whole release run (v0.5.53,
-    // HTTP 503). Pinning the range to the version it already resolves to makes
-    // the APK reproducible and lets the CI gradle cache actually serve it.
-    // Bump deliberately; 1.1.5 is the highest 1.1.x published.
-    configurations.all {
-        resolutionStrategy {
-            force 'com.github.outsystems:osbarcode-android:1.1.5'
-        }
-        // Google ML Kit is proprietary and was 20 MB of a 30 MB APK (#1170) —
-        // for a scanning backend the app never selected. `@capacitor/barcode-
-        // scanner` bundles TWO behind `OSBARCScanLibraryFactory`, whose whole
-        // body is `if (scanLibrary == "mlkit") MLKitWrapper else ZXingWrapper`,
-        // and a missing value reaches it as "". So ZXing was always what ran;
-        // ML Kit was dead weight on every install.
-        //
-        // Safe because the ML Kit references are confined to OSBARCMLKitWrapper
-        // and OSBARCMLKitHelper: OSBARCZXingWrapper, OSBARCZXingHelper,
-        // OSBARCBarcodeAnalyzer and OSBARCImageHelper carry zero, so the ZXing
-        // path never class-loads an excluded type. Verified with `dexdump`:
-        // 195 `com.google.mlkit` class DEFINITIONS before, 0 after, 264 ZXing
-        // definitions still present, 30 MB -> 10.5 MB.
-        //
-        // native-capabilities.ts also asks for ZXing by name. That is belt and
-        // braces, not the fix — it keeps an upstream change of that `else` from
-        // quietly pulling ML Kit back in. `check:fdroid` keeps the two together.
-        exclude group: 'com.google.mlkit'
     }
 }
 

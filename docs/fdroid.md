@@ -12,7 +12,7 @@ ship on GitHub:
 
 | Policy | Ours |
 | --- | --- |
-| Prebuilt binaries are trusted only from Debian, Maven Central, Google Maven, OSS Sonatype, OSS JFrog, JitPack and Clojars | `@capacitor/barcode-scanner`'s Android implementation is `com.github.outsystems:osbarcode-android`, served **only** by OutSystems' private Azure Maven feed. (Its ML Kit dependency used to be the headline reason; #1170 removed that from every variant — see below.) |
+| Prebuilt binaries are trusted only from Debian, Maven Central, Google Maven, OSS Sonatype, OSS JFrog, JitPack and Clojars | **Resolved.** `@capacitor/barcode-scanner`'s native lib `com.github.outsystems:osbarcode-android` came from OutSystems' private Azure Maven feed. #1168 removed the plugin outright rather than working around it, so no build has this exposure any more. |
 | An app must not download executable binaries without opt-in consent that explains it bypasses F-Droid's checks | `@nicotind/capacitor-apk-update` downloads a release APK and hands it to the system installer. On F-Droid the client *is* the updater, so the honest answer is to drop it, not to explain it |
 | "All applications must have their own distinct Android Application ID" | The phone and TV APKs share `ar.kevinroberts.nicotind` — they differ only in the web bundle `cap sync` copied in |
 
@@ -38,8 +38,7 @@ bun run --filter @nicotind/mobile android:assemble:fdroid
    `ar.kevinroberts.nicotind.tv`.
 
 The variant needs **no web-code change**. Both excluded plugins are reached through the Capacitor
-global — `canScanBarcode()` returns false when `getCapacitorPlugin('CapacitorBarcodeScanner')` is
-null and `scanBarcode()` resolves `{status:'unavailable'}`; the update service is
+global — the update service is
 `getCapacitorPlugin('NicotindApkUpdate')?.` throughout. That null-tolerance was written for web and
 Electron, which have neither plugin, and it is what makes a plugin-less native build a supported
 configuration rather than a crash. QR pairing degrades to the manual pairing code, already the only
@@ -60,8 +59,8 @@ code is gone from **every** variant and QR pairing still works on the GitHub bui
 Worth being exact about why that was safe: the plugin's `OSBARCScanLibraryFactory` is
 `if (scanLibrary == "mlkit") MLKitWrapper else ZXingWrapper`, and the scanner activity turns a
 missing value into `""`. **ZXing was already what ran** — the 20 MB was a backend the app never
-selected. `scanBarcode()` now names ZXing explicitly anyway, so the guarantee stops depending on a
-third party's `else`.
+selected. #1168 then removed the plugin entirely, so neither the ML Kit exclusion nor the explicit
+ZXing selection is needed any more — both are gone, along with the OutSystems Azure feed.
 
 Measured with `dexdump -f` on class **definitions**, not a `grep` of the dex: a dex records the
 *names* of types it references even when the classes are absent, so a plain grep reports ML Kit

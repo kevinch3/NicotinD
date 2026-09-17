@@ -21,18 +21,6 @@
  * whether a plugin still has to be excluded needs the dependency, not the name.
  */
 export const NON_FREE_PLUGINS = {
-  /** Its Android implementation is `com.github.outsystems:osbarcode-android`,
-   * served ONLY by OutSystems' private Azure Maven feed — not one of the
-   * repositories F-Droid trusts for prebuilt binaries (Maven Central, Google
-   * Maven, OSS Sonatype, OSS JFrog, JitPack, Clojars).
-   *
-   * This is no longer about ML Kit: #1170 excludes `com.google.mlkit` from the
-   * whole Android build and selects ZXing instead, so no proprietary Google
-   * code ships in any variant. The Azure feed is what still disqualifies the
-   * plugin from an F-Droid build. Costs QR device pairing there; the manual
-   * pairing code is the documented fallback and already the only option on TV,
-   * which has no camera. */
-  '@capacitor/barcode-scanner': 'osbarcode-android is served only by a private Azure Maven feed',
   /** Downloads a release APK and hands it to the system package installer.
    * On an F-Droid install the client is the updater, so this is redundant as
    * well as policy-sensitive, and it is what forces REQUEST_INSTALL_PACKAGES. */
