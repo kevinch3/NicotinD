@@ -46,6 +46,13 @@ sat paused for ten minutes. After that, the next device to press play becomes th
 connection blip (under 15 s) does not end anything by itself, but while the output is unreachable
 a play on another device moves the audio there instead of waiting.
 
+A session can also be ended on demand: `POST /api/playback/session/reset` ends the caller's session
+outright and forgets every device whose socket is already gone, while devices that are still
+connected stay registered and learn the empty state through their socket. It is the one session
+operation that must work *without* a healthy socket — an output that is stuck or gone — and it is
+what the e2e suite runs before every spec (docs/e2e.md "A context torn down by Playwright fires no
+`pagehide`"). `GET /api/playback/session` reads the same state the socket would sync to a fresh tab.
+
 ---
 
 ## Architecture
@@ -298,7 +305,8 @@ press ▶
 
 | File | Role |
 |------|------|
-| `packages/api/src/services/playback-state.ts` | In-memory state + device registry; `claimOutput` (compare-and-set), `canTarget`, `releaseOutput`; `updateState` (broadcasts) vs `updateStateQuiet` (silent); `activeGraceMs`, `idleReleaseMs` |
+| `packages/api/src/services/playback-state.ts` | In-memory state + device registry; `claimOutput` (compare-and-set), `canTarget`, `releaseOutput`, `reset` (end the session, drop devices in their grace, keep live ones); `updateState` (broadcasts) vs `updateStateQuiet` (silent); `activeGraceMs`, `idleReleaseMs` |
+| `packages/api/src/routes/playback.ts` | `GET /api/playback/session` (the state a fresh tab would sync) and `POST /api/playback/session/reset`, both scoped to the caller |
 | `packages/api/src/services/websocket.ts` | `createPlaybackHub` — connection table keyed by raw socket, message handlers, broadcast listeners |
 | `packages/api/src/services/remote-playback.multi-device.test.ts` | Server-side virtual devices: real hub + manager, a fresh `WSContext` per event |
 | `packages/api/src/services/remote-playback.simulation.test.ts` | Full simulation: N virtual devices running the core reducer against the real hub |

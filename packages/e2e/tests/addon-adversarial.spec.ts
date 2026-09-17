@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../helpers';
 import { ADMIN, bearer } from '../helpers';
 import { startHostileAddon, HOSTILE_ADDON_TOKEN, type HostileAddon } from './helpers/hostile-addon';
 

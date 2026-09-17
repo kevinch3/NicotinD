@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../helpers';
 
 test.describe('favicon', () => {
   // Guards against a broken/stale favicon link after the brand-icon rework.

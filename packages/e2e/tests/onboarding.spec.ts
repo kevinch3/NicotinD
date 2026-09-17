@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../helpers';
 
 /**
  * Setup wizard (self-hoster first run). Runs in the `onboarding` project against

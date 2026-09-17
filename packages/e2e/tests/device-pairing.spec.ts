@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../helpers';
 import { ADMIN, bearer, deviceRow, expandGroup } from '../helpers';
 
 // Device pairing (QR link): the Devices settings page mints a short-lived

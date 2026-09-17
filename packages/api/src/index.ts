@@ -31,6 +31,7 @@ import { presenceRoutes } from './routes/presence.js';
 import { historyRoutes } from './routes/history.js';
 import { privacyRoutes } from './routes/privacy.js';
 import { recommendationRoutes } from './routes/recommendations.js';
+import { playbackRoutes } from './routes/playback.js';
 import { libraryEventRoutes } from './routes/library-events.js';
 import { curationRoutes, describeTarget } from './routes/curation.js';
 import { mutateSongMetadata } from './services/song-metadata-mutate.js';
@@ -616,6 +617,7 @@ export function createApp({
   app.use('/api/catalog/*', auth);
   app.use('/api/users/*', auth);
   app.use('/api/ws/*', auth);
+  app.use('/api/playback/*', auth);
   app.use('/api/discography/*', auth);
   app.use('/api/watchlist/*', auth);
   // Hunt + watchlist are acquisition features — gated on an enabled download
@@ -713,6 +715,7 @@ export function createApp({
   app.route('/api/history', historyRoutes(historyEnabled));
   app.route('/api/privacy', privacyRoutes(historyEnabled));
   app.route('/api/recommendations', recommendationRoutes());
+  app.route('/api/playback', playbackRoutes());
   // Partial-track discard (#810) deletes files, so it carries the same
   // debounced share-rescan the review inbox's discard uses.
   app.route(

@@ -4,7 +4,7 @@
  * own; the spec *creates* the data through the curator PUT (the same write the
  * in-page picker issues) and asserts the flag line renders.
  */
-import { test, expect, type APIRequestContext } from '@playwright/test';
+import { test, expect, type APIRequestContext } from '../helpers';
 import { ADMIN, FIXTURE, bearer } from '../helpers';
 
 /** The `request` fixture carries no auth — log in explicitly (see docs/e2e.md). */

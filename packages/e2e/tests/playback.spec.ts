@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../helpers';
 import { FIXTURE, ADMIN, bearer, openAlbumCard } from '../helpers';
 
 test.describe('playback', () => {

@@ -626,6 +626,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   full-screen list, never the phone popover a remote cannot dismiss), sharing `otherDevicesFor` with
   it; `TvShellComponent` routes to the player when a cast lands here.
   → [remote-playback.md](remote-playback.md), [tv-ux.md](tv-ux.md)
+- **Per-spec playback session reset**: every e2e spec imports `test` from `helpers.ts`, whose auto
+  fixture `freshPlaybackSession` ends the caller's remote-playback session before each test, because
+  a torn-down context fires no `pagehide` and the leaked track outlives the release grace.
+  `PlaybackStateManager.reset`, `playbackRoutes`, `playback-isolation.spec.ts`. → [e2e.md](e2e.md)
 - **The TV tree in Chromium**: the e2e `tv` project serves `ng build --configuration tv` through
   `NICOTIND_WEB_DIST` on a third managed server and screenshots every TV screen at 960×540, because
   stamping `tv-build` on the phone bundle never renders `isTvBuild()`'s route tree. `TV_DIST`,

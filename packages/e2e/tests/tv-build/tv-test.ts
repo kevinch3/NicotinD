@@ -1,4 +1,7 @@
-import { test as base, expect, type Locator, type Page } from '@playwright/test';
+// Composes on the suite's `test` (helpers.ts), so the TV lane gets the same
+// per-spec playback-session reset as the phone lane — its server is separate,
+// but its specs play audio too.
+import { test as base, expect, type Locator, type Page } from '../../helpers';
 
 export { expect };
 

@@ -144,6 +144,31 @@ export class PlaybackStateManager extends EventEmitter {
     this.releaseIfActive(id);
   }
 
+  /** End the session outright and forget every device whose socket is already
+   *  gone: an operator ending a stuck cast, or a test runner giving the next
+   *  spec a clean slate instead of the previous spec's session minus the grace
+   *  (#1182). Live devices stay registered — ending a cast is not kicking the
+   *  listeners off. */
+  reset() {
+    for (const [id, timer] of this.pendingReleases) {
+      clearTimeout(timer);
+      this.devices.delete(id);
+    }
+    const dropped = this.pendingReleases.size > 0;
+    this.pendingReleases.clear();
+    this.lastPlayingAt = 0;
+    this.updateState({
+      activeDeviceId: null,
+      isPlaying: false,
+      position: 0,
+      duration: 0,
+      trackId: null,
+      track: null,
+      queue: [],
+    });
+    if (dropped) this.emit('devices_update', this.getDevices());
+  }
+
   /** Remove devices that haven't sent a heartbeat within the timeout window,
    *  and end a session whose output has gone silent about playing. */
   cleanupStaleDevices() {

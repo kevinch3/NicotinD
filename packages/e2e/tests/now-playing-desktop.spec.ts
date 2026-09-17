@@ -5,7 +5,7 @@
  * (vertical-only gesture) is hidden. Pure CSS breakpoint behavior, so it needs
  * a real browser: the unit harness (jsdom) has no layout engine.
  */
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from '../helpers';
 import { FIXTURE, openAlbumCard } from '../helpers';
 
 const DESKTOP = { width: 1280, height: 800 };

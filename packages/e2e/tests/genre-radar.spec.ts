@@ -9,7 +9,7 @@
  * Without that the chart legitimately hides and every assertion below would
  * vacuously pass.
  */
-import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
+import { test, expect, type APIRequestContext, type Page } from '../helpers';
 import { ADMIN, FIXTURE, bearer, openAlbumCard } from '../helpers';
 
 /** The `request` fixture carries no auth — log in explicitly (see docs/e2e.md). */

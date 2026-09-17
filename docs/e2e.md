@@ -122,16 +122,25 @@ same PR that hit it.
   constants.
 
 - **A context torn down by Playwright fires no `pagehide`.** The remote-playback session a
-  spec's tab claimed (every play claims one) therefore outlives the spec for the server's grace,
-  and the next spec's first play would drive a dead output instead of making sound, while its
-  player bar mirrors the dead session's track (a `getByText('Opening Static')` that suddenly
-  matches three elements). The e2e server runs with `NICOTIND_PLAYBACK_GRACE_MS=2000` so the
-  leftover clears between specs; a spec that must end a session *within* itself closes the page
+  spec's tab claimed (every play claims one) therefore outlives the spec on the server, and the
+  next spec's fresh tab inherits it: its player bar restores the dead session's track from the
+  first `STATE_SYNC` (a `getByText('Opening Static')` that suddenly matches three elements), and
+  while the dead output is still in its release grace the tab spends its first seconds
+  "reconnecting" to it (#1182). The *track* outlives even the grace — the grace only clears the
+  output — so waiting never made this go away. **Every spec therefore imports `test` from
+  `../helpers`, never from `@playwright/test`**: its auto fixture `freshPlaybackSession` ends the
+  caller's session through `POST /api/playback/session/reset` before each test, so a retry starts
+  from the same clean slate as a first attempt. `playback-isolation.spec.ts` proves the guarantee
+  — a spec that plays and is torn down, then a spec that reads `GET /api/playback/session` and
+  finds it empty — and fails without the fixture (`trackId` is the leaked track). The reset is
+  loud on failure by design: a reset that silently stopped working would put every spec back on
+  the timer. `NICOTIND_PLAYBACK_GRACE_MS=2000` on the e2e server is now belt-and-braces for the
+  within-spec case; a spec that must end a session *inside* itself still closes the page
   (`page.close()` does fire `pagehide`), as `remote-playback.spec.ts` does.
 
-  **The grace is a narrowing, not a fix, and the difference is measurable**: issues #1110 and
+  **The grace was a narrowing, not a fix, and the difference was measurable**: issues #1110 and
   #1116 are that same three-element match surviving it, #1116 twice on clean `master`. The grace
-  is wall-clock while the collision is load-dependent, so it lapses exactly when the box is
+  is wall-clock while the collision is load-dependent, so it lapsed exactly when the box was
   busy — which is also when the suite is least affordable to re-run. **Assert a track's presence
   through `trackTitle(scope, title)`** (`helpers.ts`), never a bare `getByText(title)`: it scopes
   to `track-row-title`, which only `app-track-row` renders and neither the player bar nor Now

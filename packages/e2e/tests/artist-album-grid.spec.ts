@@ -8,7 +8,7 @@
  * album-tile.component.spec.ts, which can drive the states this environment cannot
  * produce.
  */
-import { test, expect, type APIRequestContext } from '@playwright/test';
+import { test, expect, type APIRequestContext } from '../helpers';
 import { ADMIN, FIXTURE, bearer } from '../helpers';
 
 /** The `request` fixture carries no auth — log in explicitly (see docs/e2e.md). */

@@ -4,7 +4,7 @@
  * harness cannot bind a nested component's inputs, so the rendered href and the
  * click-does-not-play contract are pinned here, in the real bundle.
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../helpers';
 import { FIXTURE, openAlbumCard } from '../helpers';
 
 const ALBUM_URL = /\/library\/albums\/[^/?#]+/;

@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from '../helpers';
 import { FIXTURE, expandGroup, openAlbumCard, trackTitle } from '../helpers';
 
 /** Max currentTime across the (double-buffered) audio elements. */

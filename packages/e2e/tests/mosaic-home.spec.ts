@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../helpers';
 
 /**
  * The post-login landing (route '') is the mosaic: an infinite pannable field of

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from '../helpers';
 
 /**
  * Issue #236 — runtime JSON i18n. The property that matters end to end is that
