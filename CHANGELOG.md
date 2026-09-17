@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.6.60](https://github.com/kevinch3/NicotinD/compare/v0.6.59...v0.6.60) (2026-09-17)
+
+### Bug Fixes
+
+* **ci:** stop a bad Pages run from deleting the live F-Droid repository ([#1184](https://github.com/kevinch3/NicotinD/issues/1184)) ([9e0f5a7](https://github.com/kevinch3/NicotinD/commit/9e0f5a77b873a647dda8804b989f3bda10ef04e9)), references [#1168](https://github.com/kevinch3/NicotinD/issues/1168)
 ## [0.6.59](https://github.com/kevinch3/NicotinD/compare/v0.6.58...v0.6.59) (2026-09-17)
 
 ### Features
