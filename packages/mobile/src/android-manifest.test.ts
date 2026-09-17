@@ -48,10 +48,14 @@ describe('AndroidManifest.xml — Android TV launcher contract', () => {
     expect(manifest).toMatch(/<application[\s\S]*?android:usesCleartextTraffic="true"[\s\S]*?>/);
   });
 
-  it('declares the camera optional — the CAMERA permission (QR pairing) implies required=true otherwise', () => {
-    expect(manifest).toMatch(
-      /<uses-feature\s+android:name="android\.hardware\.camera"\s+android:required="false"\s*\/>/,
-    );
+  it('asks for no camera at all — the QR scanner was removed (#1168)', () => {
+    // Stated as the new truth rather than deleted: the CAMERA permission and the
+    // camera uses-feature both existed only for `@capacitor/barcode-scanner`,
+    // whose Android implementation came from a private Maven feed. Dropping the
+    // plugin dropped the reason, and an app that asks for a camera it cannot use
+    // is a permission prompt with nothing behind it.
+    expect(manifest).not.toContain('android.permission.CAMERA');
+    expect(manifest).not.toContain('android.hardware.camera');
   });
 
   it('points the application at the TV banner drawable', () => {
@@ -96,13 +100,13 @@ describe('AndroidManifest.xml — F-Droid flavor overlay', () => {
     );
   });
 
-  it('removes the camera permission and feature — ML Kit is not in this build', () => {
-    expect(overlay).toMatch(
-      /<uses-permission[\s\S]*?android\.permission\.CAMERA[\s\S]*?tools:node="remove"[\s\S]*?\/>/,
-    );
-    expect(overlay).toMatch(
-      /<uses-feature[\s\S]*?android\.hardware\.camera[\s\S]*?tools:node="remove"[\s\S]*?\/>/,
-    );
+  it('no longer removes the camera — the main manifest stopped declaring it', () => {
+    // The overlay used to strip CAMERA because the F-Droid build dropped the
+    // scanner. Since #1168 removed the scanner from EVERY build, main declares
+    // no camera and a removal here would match nothing — dead config, which the
+    // "removes nothing the main manifest does not declare" test below catches.
+    expect(overlay).not.toContain('android.permission.CAMERA');
+    expect(overlay).not.toContain('android.hardware.camera');
   });
 
   it('only ever removes — the launcher contract stays in one manifest', () => {

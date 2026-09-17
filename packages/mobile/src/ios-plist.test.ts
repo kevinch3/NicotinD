@@ -9,13 +9,12 @@ describe('buildPlistBuddyCommands', () => {
     expect(cmds).toContain('Add :UIBackgroundModes:0 string audio');
   });
 
-  it('always sets NSCameraUsageDescription for the pairing QR scanner', () => {
+  it('declares no camera usage — the QR scanner was removed (#1168)', () => {
+    // The new truth, stated rather than the assertion deleted: iOS shows the
+    // usage string in a permission prompt, so declaring one for a camera the
+    // app can no longer open would be a prompt with nothing behind it.
     const cmds = buildPlistBuddyCommands({});
-    const add = cmds.find((c) => c.startsWith('Add :NSCameraUsageDescription string '));
-    const set = cmds.find((c) => c.startsWith('Set :NSCameraUsageDescription '));
-    expect(add).toBeDefined();
-    expect(set).toBeDefined();
-    expect(cmds.indexOf(add!)).toBeLessThan(cmds.indexOf(set!));
+    expect(cmds.some((c) => c.includes('NSCameraUsageDescription'))).toBe(false);
   });
 
   it('deletes the array before re-adding it so re-runs stay idempotent', () => {

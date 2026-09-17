@@ -15,7 +15,7 @@ import {
   claimPairing,
   PairingClaimError,
 } from '../../lib/pairing';
-import { canScanBarcode, scanBarcode, platformId } from '../../services/native/native-capabilities';
+import { platformId } from '../../services/native/native-capabilities';
 import type { SavedServer } from '../../lib/server-registry';
 import { TranslateService } from '../../services/translate.service';
 import { errorMessageForCode } from '../../lib/http-error';
@@ -52,7 +52,6 @@ export class ServerConfigComponent {
   pairingCode = '';
   readonly error = signal('');
   readonly checking = signal(false);
-  readonly canScan = canScanBarcode();
   /** Saved servers other than the active one (the active one shows pinned). */
   readonly servers = this.server.servers;
   readonly currentUrl = this.server.baseUrl;
@@ -129,39 +128,6 @@ export class ServerConfigComponent {
       this.error.set(
         e instanceof PairingError ? e.message : "Couldn't reach a NicotinD server at that address",
       );
-    } finally {
-      this.checking.set(false);
-    }
-  }
-
-  async scan(): Promise<void> {
-    this.error.set('');
-    const outcome = await scanBarcode();
-    if (outcome.status === 'cancelled' || outcome.status === 'unavailable') return;
-    if (outcome.status === 'denied') {
-      this.error.set(
-        'Camera access is denied — allow it in your phone settings, or type the URL and code instead',
-      );
-      return;
-    }
-    if (outcome.status === 'error') {
-      this.error.set('The scanner could not start — type the URL and code instead');
-      return;
-    }
-    const payload = parsePairingPayload(outcome.value);
-    if (!payload) {
-      this.error.set("That QR code isn't a NicotinD pairing code");
-      return;
-    }
-    this.checking.set(true);
-    try {
-      const reachable = await probeCandidates(payload.urls);
-      if (!reachable) {
-        throw new PairingError("Couldn't reach the server from this phone");
-      }
-      await this.claimAndEnter(reachable, { token: payload.token }, payload.name);
-    } catch (e) {
-      this.error.set(e instanceof PairingError ? e.message : 'Pairing failed — try a fresh code');
     } finally {
       this.checking.set(false);
     }

@@ -26,8 +26,6 @@
  *   4b. A verification-only step standing between a built artifact and its
  *      upload. That is how v0.6.55 shipped with no APK: the check failed and
  *      discarded two APKs that had already built.
- *   5. The ML Kit exclusion and the explicit ZXing selection parting company —
- *      either half alone is silently wrong (#1170).
  *   6. Fastlane metadata outside F-Droid's limits, in any locale. The store
  *      rejects an over-long short_description and silently truncates an
  *      over-long changelog; neither is visible from inside the repo.
@@ -210,43 +208,6 @@ if (!gradle.includes(`${FLAVOR} { dimension "distribution" }`)) {
   errors.push(
     `packages/mobile/android/app/build.gradle no longer declares the "${FLAVOR}" ` +
       `flavor the release lane assembles.`,
-  );
-}
-
-// --- 5. ML Kit exclusion and the ZXing selection travel together -------------
-// Two edits, two languages, two packages, one intent (#1170). The plugin's
-// current default already IS ZXing — its factory reads
-// `if (scanLibrary == "mlkit") MLKitWrapper else ZXingWrapper`, and a missing
-// value arrives as "" — so the exclusion alone works *today*. That is exactly
-// why this is paired rather than trusted: the exclusion's safety rests on an
-// upstream default nothing of ours controls, and the explicit selection is what
-// makes it ours. Losing either half is silent — one regrows the APK by 20 MB,
-// the other leaves the guarantee resting on a third party's `else`.
-const rootGradle = readFileSync(join(mobileRoot, 'android/build.gradle'), 'utf8');
-const excludesMlKit = /exclude\s+group:\s*'com\.google\.mlkit'/.test(rootGradle);
-const scannerSource = readFileSync(
-  join(repoRoot, 'packages/web/src/app/services/native/native-capabilities.ts'),
-  'utf8',
-);
-// The key path Kotlin actually reads: native.android.scanningLibrary. The
-// plugin's published types put `android` at the top level, where the native
-// side never looks.
-const selectsZxing =
-  /native:\s*\{[\s\S]{0,300}?android:\s*\{\s*scanningLibrary/.test(scannerSource) &&
-  /['"]zxing['"]/.test(scannerSource);
-
-if (excludesMlKit !== selectsZxing) {
-  errors.push(
-    excludesMlKit
-      ? `packages/mobile/android/build.gradle excludes com.google.mlkit, but ` +
-          `native-capabilities.ts does not select ZXing via ` +
-          `native.android.scanningLibrary. That leaves the scanner working only ` +
-          `because the plugin's default happens to be ZXing — an upstream ` +
-          `change would reintroduce ML Kit, and with it excluded the scan would ` +
-          `throw NoClassDefFoundError on a device. (#1170)`
-      : `native-capabilities.ts selects the ZXing scanning library, but ` +
-          `packages/mobile/android/build.gradle no longer excludes ` +
-          `com.google.mlkit — the proprietary dependency and ~20 MB are back. (#1170)`,
   );
 }
 

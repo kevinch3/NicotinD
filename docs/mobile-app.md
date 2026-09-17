@@ -93,13 +93,13 @@ native:
   `GET /api/health`, persists, routes to `/login`. **`serverGuard`** (`guards/auth.guard.ts`) forces it on
   native first launch (`needsConfiguration()`); on web `needsConfiguration()` is always false, so the
   picker **never appears** and the existing e2e suite is unaffected.
-- **QR device pairing** (see [device-pairing.md](device-pairing.md)): the picker's native-only
-  **Scan QR** button (`@capacitor/barcode-scanner`, reached through the `Capacitor.Plugins` global via
-  `scanBarcode()` in `services/native/native-capabilities.ts` so `@capacitor/*` stays out of the web
-  bundle; requires the `CAMERA` permission added to the Android manifest) reads the server's
-  Link-a-device QR, probes its candidate URLs, claims the one-time token, and lands **connected and
-  signed in** in one scan. A **pairing code** field is the manual fallback (URL + 6-char code typed
-  from the server's Devices page). Pairing URLs are typically HTTPS (Tailscale Funnel or a
+- **QR device pairing** (see [device-pairing.md](device-pairing.md)): the server shows a
+  Link-a-device QR whose link opens its own `/pair` page, so the **OS camera app** connects a phone
+  and signs it in in one scan. There is no in-app scanner — #1168 removed it with
+  `@capacitor/barcode-scanner` (and the `CAMERA` permission), because its native lib came from a
+  private Maven feed that disqualified the build from F-Droid; see "The QR scanner, and why it is
+  gone" below. A **pairing code** field is the typed fallback (URL + 6-char code from the server's
+  Devices page), and the only path on TV. Pairing URLs are typically HTTPS (Tailscale Funnel or a
   reverse-proxied deployment), but plain-`http` LAN servers also work: the Android shell allows
   cleartext + mixed content (issue #390 — `android:usesCleartextTraffic="true"` in the manifest +
   `allowMixedContent: true` in `capacitor.config.ts`). Without those, the WebView's
@@ -777,33 +777,31 @@ end-to-end against the live v0.1.306 release: version toast → real CDN downloa
 prompt → installer "Do you want to update this app?". Note the flow only exists **from** builds that
 carry it — the first release with this feature must still be sideloaded manually once.
 
-### `@capacitor/barcode-scanner` build requirements (root `build.gradle` + `variables.gradle`)
+### The QR scanner, and why it is gone (#1168)
 
-The QR device-pairing plugin (`@capacitor/barcode-scanner`) pulls its native lib
-`com.github.outsystems:osbarcode-android` — and building it needs three things, each of which has
-broken the `android` release job in production:
+`@capacitor/barcode-scanner` powered the in-app **Scan QR** button until #1168 removed it. It is
+recorded here because its build requirements broke the `android` release job three separate times,
+and because the reasons are the argument against reaching for it again:
 
-- **An extra Maven repo** (v0.1.222). Despite the `com.github.*` group name, osbarcode is **not** on JitPack,
-  Google, or Maven Central — it lives on OutSystems' **Azure Artifacts** public feed. The plugin
-  declares that repo in _its own_ `build.gradle`, but a subproject's repositories are **not**
-  consulted when `:app` resolves its transitive runtime classpath — only the root `allprojects`
-  repos are. So `android/build.gradle`'s `allprojects.repositories` must mirror it (scoped with
-  `content { includeGroup 'com.github.outsystems' }` so nothing else routes through Azure).
-- **`minSdkVersion = 26`** (v0.1.222). osbarcode declares `minSdk 26`; with the Capacitor default of 22 the
-  manifest merger fails (_"minSdkVersion 22 cannot be smaller than version 26"_). Bumped in
-  `variables.gradle` (drops Android < 8.0, forced by the merged QR feature).
-- **A pinned version** (v0.5.53). The plugin asks for `osbarcode-android:1.1.+@aar`. A dynamic range
-  makes Gradle fetch that feed's `maven-metadata.xml` to list versions on every resolution, so an
-  OutSystems outage fails the release even though nothing of ours changed — which is exactly what an
-  Azure Artifacts **HTTP 503** did to v0.5.53's `assembleStandardRelease`. `allprojects.configurations.all`
-  in `android/build.gradle` forces `1.1.5` (the highest 1.1.x published, i.e. what the range already
-  selected — the pin changes nothing but determinism). Measured with `--refresh-dependencies --info`:
-  the metadata request to Azure is present without the force and absent with it, which is what lets
-  the `android` job's `~/.gradle/caches/modules-2` cache actually serve a re-run. Bump deliberately.
+- **An extra Maven repo** (v0.1.222). Despite the `com.github.*` group name, its native lib
+  `com.github.outsystems:osbarcode-android` was **not** on JitPack, Google, or Maven Central — it
+  lived on OutSystems' **Azure Artifacts** feed. A subproject's repositories are not consulted when
+  `:app` resolves its transitive runtime classpath, so the root `allprojects.repositories` had to
+  mirror it.
+- **`minSdkVersion = 26`** (v0.1.222). osbarcode declared `minSdk 26`; the Capacitor default of 22
+  failed the manifest merge. `variables.gradle` still carries 26 — the floor outlived the plugin, and
+  lowering it now would be a separate, deliberate decision.
+- **A pinned version** (v0.5.53). It asked for `osbarcode-android:1.1.+@aar`, and a dynamic range
+  re-fetches that feed's `maven-metadata.xml` on every resolution — so an Azure Artifacts **HTTP
+  503** failed a release in which nothing of ours had changed.
+- **20 MB of Google ML Kit** (#1170), for a scanning backend the app never selected.
 
-The first two were verified locally by `./gradlew :app:assembleStandardDebug` (unsigned; exercises the same
-dependency resolution + manifest merge as `assembleStandardRelease`) producing a working APK. CI only
-surfaced the repo error first because it fails at dependency resolution before the manifest merge.
+Removing it dropped all four at once, took the release APK from 27.23 MB to ~3.2 MB across #1172 and
+#1168, and is what makes the build eligible for the official F-Droid repository — a private Maven
+feed disqualifies it outright. QR pairing is now the **camera app** path only (the OS camera opens
+the server's `/pair` page); the **manual pairing code** remains the typed fallback, and was always
+the only option on TV, which has no camera. → [device-pairing.md](device-pairing.md),
+[fdroid.md](fdroid.md)
 
 ## Tests (quality gates)
 

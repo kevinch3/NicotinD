@@ -17,10 +17,4 @@
         android:name="android.permission.REQUEST_INSTALL_PACKAGES"
         tools:node="remove" />
 
-    <!-- @capacitor/barcode-scanner is not in this build (Google ML Kit is
-         proprietary), so there is no camera QR pairing to ask for. Manual
-         pairing codes still work — already the only option on TV. -->
-    <uses-permission android:name="android.permission.CAMERA" tools:node="remove" />
-    <uses-feature android:name="android.hardware.camera" tools:node="remove" />
-
 </manifest>

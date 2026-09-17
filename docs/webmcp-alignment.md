@@ -119,7 +119,7 @@ Consequences, non-negotiable:
 
 A small Angular service registering at app-shell init, feature-detected
 (`'modelContext' in document`) so it is inert in Capacitor WebView, Electron, Firefox and
-Safari — the same progressive-enhancement shape as `getCapacitorPlugin` / `canScanBarcode()`.
+Safari — the same progressive-enhancement shape as `getCapacitorPlugin`.
 
 Proposed starting set, deliberately tiny, read + session-mutating only:
 
