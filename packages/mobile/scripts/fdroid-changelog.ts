@@ -1,7 +1,7 @@
 /**
  * Writes the current release's F-Droid changelog into both metadata trees:
  *
- *   packages/mobile/fastlane{,-tv}/metadata/android/<locale>/changelogs/<versionCode>.txt
+ *   <fastlaneDir>/metadata/android/<locale>/changelogs/<versionCode>.txt
  *
  *   bun run packages/mobile/scripts/fdroid-changelog.ts
  *
@@ -23,6 +23,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { changelogSection, toFdroidChangelog } from '../src/fdroid-changelog.js';
+import { FDROID_APPS } from '../src/fdroid-repo.js';
 import { androidVersion } from '../src/version.js';
 
 const mobileRoot = resolve(import.meta.dir, '..');
@@ -47,15 +48,16 @@ if (body === '') {
   process.exit(0);
 }
 
-const targets = [
-  ...['en-US', 'es-ES'].map((l) => `fastlane/metadata/android/${l}/changelogs/${versionCode}.txt`),
-  ...['en-US', 'es-ES'].map(
-    (l) => `fastlane-tv/metadata/android/${l}/changelogs/${versionCode}.txt`,
+// Derived from FDROID_APPS so a tree that moves cannot be missed here — the
+// phone tree had to move to the repo root for fdroidserver to see it at all.
+const targets = FDROID_APPS.flatMap((app) =>
+  ['en-US', 'es-ES'].map(
+    (l) => `${app.fastlaneDir}/metadata/android/${l}/changelogs/${versionCode}.txt`,
   ),
-];
+);
 
 for (const rel of targets) {
-  const file = join(mobileRoot, rel);
+  const file = join(repoRoot, rel);
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, body + '\n');
   console.log(`  ${rel}`);

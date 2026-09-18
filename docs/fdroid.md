@@ -22,7 +22,7 @@ allowlist, no manifest overlay.
 
 A flavour would have meant two builds of everything forever, and it was already the reason the
 release lane produced **four** APKs. Who installed the app is a fact the system will tell you, so
-#1168 asks it instead — and the same binary is then correct in both channels. `REQUIRED_INSTALL_PACKAGES`
+#1168 asks it instead — and the same binary is then correct in both channels. `REQUEST_INSTALL_PACKAGES`
 stays declared because the sideloaded copy genuinely needs it.
 
 The list in `isStoreManagedInstaller` covers the F-Droid **clients** people use (F-Droid, F-Droid
@@ -41,11 +41,13 @@ installed over the phone one and silently swap the UI.
 
 - **`check:fdroid`** (CI-blocking) got much smaller in #1168: the arms that guarded the build
   flavour were **deleted rather than left passing vacuously**, which is the dead config this gate
-  exists to reject. What remains are the three things still silently breakable — fastlane metadata
+  exists to reject. What remains are the five things still silently breakable — fastlane metadata
   outside F-Droid's byte caps in any locale; the Pages lane losing its reference to the scripts that
-  build and publish the repository (nothing fails, the repository just stops moving); and the release
+  build and publish the repository (nothing fails, the repository just stops moving); the release
   lane renaming or no longer producing the APKs the repository serves, which the Pages job downloads
-  from the latest release **by name**.
+  from the latest release **by name**; a release with **no changelog for its own versionCode**, which
+  F-Droid renders as blank release notes (it happened twice before the arm existed); and the
+  fdroiddata recipe drifting from the build it describes.
 - **`packages/mobile/src/app-id.test.ts`** covers the `.tv` suffix, and `fdroid-repo.test.ts`
   asserts `FDROID_APPS` agrees with it — two places encode that id, and a drift would advertise an
   id no APK carries.
@@ -99,38 +101,39 @@ Fastlane layout, one tree per entry, both `en-US` and `es-ES` (the two locales t
 
 | Entry | Tree |
 | --- | --- |
-| phone (`ar.kevinroberts.nicotind`) | `packages/mobile/fastlane/metadata/android/<locale>/` |
+| phone (`ar.kevinroberts.nicotind`) | `fastlane/metadata/android/<locale>/` — **repo root**, see below |
 | TV (`ar.kevinroberts.nicotind.tv`) | `packages/mobile/fastlane-tv/metadata/android/<locale>/` |
 
-### Neither tree is auto-discovered, and that is the answer to the TV question
+### The phone tree lives at the repo ROOT, and it has to
 
-Settled 2026-09-18 against fdroidserver 2.4.5's own source (`update.py`,
-`_strip_and_copy_image` / the `sourcedirs` globs) rather than by assuming. It looks in exactly four
-places, and the two that read the app's own checkout are:
+fdroidserver reads listing metadata from exactly four places (2.4.5, `update.py`,
+`insert_localized_app_metadata`). The two that read the app's own checkout are:
 
 ```
 build/<applicationId>/fastlane/metadata/android/<locale>/
-build/<applicationId>/src/<buildFlavor>/fastlane/metadata/android/<locale>/
+build/<applicationId>/src/<buildFlavour>/fastlane/metadata/android/<locale>/
 ```
 
-`build/<applicationId>/` is the **repo root** of the checkout. Ours is a monorepo: the trees are at
-`packages/mobile/fastlane…`, which matches neither glob, and `subdir` does not move the search.
-**So F-Droid would find no listing at all** — not the wrong one, none.
+`build/<applicationId>/` is the **checkout root**, and `subdir` does not move that search. Verified
+by running the real globs against both layouts: `fastlane/` at the root matches, and
+`packages/mobile/fastlane/` matches nothing. While the tree lived there, F-Droid would have found
+**no** listing at all — not the wrong one, none — and nothing would have errored.
 
-The fix is the fourth glob, which reads fdroiddata itself and is keyed by application id:
+So `fastlane/` sits at the repo root even though `packages/mobile/` would be tidier. `FDROID_APPS`
+carries the path (`fastlaneDir`, repo-root relative) so the builder, the gate and `fdroid:changelog`
+all read the one place.
 
-```
-metadata/<applicationId>/<locale>/{title,short_description,full_description}.txt
-metadata/<applicationId>/<locale>/changelogs/<versionCode>.txt
-metadata/<applicationId>/<locale>/images/icon.png
-```
+**Do not put descriptions in fdroiddata.** fdroiddata's fourth glob (`metadata/<applicationId>/
+<locale>/`) does work, and we tried it first — a reviewer told us to take it out
+([MR 49342](https://gitlab.com/fdroid/fdroiddata/-/merge_requests/49342)), and the App Inclusion
+template says the same: fdroiddata carries the **build metadata only**, and everything else is
+pulled from the upstream fastlane tree so the author can maintain it without opening an MR.
 
-That is the ordinary layout — 71,394 such directories in fdroiddata today — and because it is keyed
-by application id it gives phone and TV separate listings for free. The `fastlane-tv` name never
-needed solving; the premise that fdroidserver would auto-detect either tree was wrong.
-
-The trees stay in this repo: they are the source of truth, `check:fdroid` holds them to F-Droid's
-byte caps, and `fdroid:changelog` writes into them. The merge request copies them across.
+**The TV entry is still unresolved.** Both entries build from one checkout, so only one can own the
+root `fastlane/`, and F-Droid's answer for a second app in one repo is `src/<buildFlavour>/fastlane`
+— a gradle flavour, which #1168 deliberately deleted. `packages/mobile/fastlane-tv` therefore serves
+our *own* repository (which reads the path explicitly) and nothing else. Settle this before
+submitting the TV entry; do not assume the phone fix generalises.
 
 Run `fdroid rewritemeta <applicationId>` on the recipe before submitting — it canonicalises key order
 and strips comments, so the copy in fdroiddata will not match ours byte-for-byte. That is expected;
@@ -171,13 +174,14 @@ repository rather than only in a fork, so it is reviewed alongside the code it b
 `ar.kevinroberts.nicotind`, copy the file to `metadata/ar.kevinroberts.nicotind.yml`, commit as
 `New App: ar.kevinroberts.nicotind`, open the MR.
 
-A merge request carries **both** the recipe and the listing text, because fdroidserver will not find
-our fastlane trees (see "Store metadata" — it globs the checkout's *root*, and ours are nested):
+A merge request carries the **build metadata only** — one file:
 
 ```
-metadata/ar.kevinroberts.nicotind.yml          # the recipe, after `fdroid rewritemeta`
-metadata/ar.kevinroberts.nicotind/<locale>/…   # title, descriptions, changelogs/<versionCode>.txt, images/icon.png
+metadata/ar.kevinroberts.nicotind.yml          # after `fdroid rewritemeta`
 ```
+
+Descriptions, changelogs and images are pulled from this repo's root `fastlane/` tree, not committed
+to fdroiddata (see "Store metadata"). We got that wrong on the first attempt and were corrected.
 
 `fdroid lint ar.kevinroberts.nicotind` passes clean on fdroidserver 2.4.5 against fdroiddata's own
 config — lint it there, not against a stub config, because a stub has no category list and reports a
@@ -211,13 +215,28 @@ used: it locks the root account, because it assumes a disposable buildserver VM.
   still in the manifest, and the store listing now says so in as many words rather than claiming the
   permission was removed. If the reviewer wants it gone, that means a manifest-stripping build step —
   possible, but it re-introduces a variant, which is what #1168 deleted.
-- **F-Droid signs with its own key.** A user who sideloaded from GitHub cannot upgrade in place;
-  Android refuses a signature change, so they must uninstall first and lose app data. Accepted
-  deliberately (2026-09-18) — our own repository keeps serving our-signed APKs for anyone who would
-  rather not. Reproducible builds would remove the problem and can be added later without redoing
-  the submission.
+- **Signing — decided once, and it cannot be revisited.** The App Inclusion template is explicit:
+  "if you don't enable reproducible build then the apk will be signed with our key so you can't
+  enable it later." So **reproducible builds are enabled** (owner's call, 2026-09-18, after an
+  earlier note here wrongly said this could be deferred). F-Droid verifies its build byte-matches
+  ours and publishes **our** signature, which means a GitHub sideloader upgrades in place instead of
+  uninstalling and losing app data, and users can move between channels.
 
-Still open: **screenshots**.
+  Two fields carry it: `Binaries:` (the release asset URL, `%v`-templated) and
+  `AllowedAPKSigningKeys:` (the release keystore's SHA-256 cert digest,
+  `5bf701a0…557d6bea`, read off the published `NicotinD-0.8.3.apk` with `apksigner verify
+  --print-certs`). If the build is not byte-identical, F-Droid reports it rather than silently
+  publishing its own signature — that is the point of the field.
+
+### CI on a fdroiddata fork
+
+The template says it outright: "F-Droid CI runners are under GitLab's FOSS program, so there's no
+need for you to pay for any CI time. If Gitlab starts asking for phone numbers or credit cards don't
+submit anything, just leave a note in the MR so we know we need to trigger the CI." Our fork's first
+pipeline failed instantly with **zero jobs created** — no runner, not a metadata error. Leave a note;
+do not verify a payment method to make the badge green.
+
+Still open: **screenshots**, and the **TV entry's metadata path** (above).
 
 ## Our own F-Droid repository
 

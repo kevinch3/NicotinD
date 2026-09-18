@@ -19,7 +19,17 @@ export interface FdroidApp {
   /** Shown in the client. MUST differ per entry: F-Droid requires it, and two
    * rows both called "NicotinD" would be unpickable. */
   name: string;
-  /** Directory holding the fastlane tree, relative to packages/mobile. */
+  /**
+   * Directory holding the fastlane tree, relative to the **repo root**.
+   *
+   * The phone entry's tree is `fastlane/` at the root and not somewhere tidier
+   * because that is the only place fdroidserver looks: `insert_localized_app_
+   * metadata` globs `build/<applicationId>/fastlane/metadata/android/<locale>`
+   * (plus a `src/<flavour>/` variant), where `build/<applicationId>` is the
+   * checkout root. `subdir` does not move that search. While this tree lived at
+   * `packages/mobile/fastlane`, F-Droid would have found **no** listing at all
+   * — not the wrong one, none — and nothing would have errored.
+   */
   fastlaneDir: string;
   /** The APK file name inside `repo/`. */
   apk: string;
@@ -43,7 +53,12 @@ export const FDROID_APPS: readonly FdroidApp[] = [
   {
     applicationId: 'ar.kevinroberts.nicotind.tv',
     name: 'NicotinD TV',
-    fastlaneDir: 'fastlane-tv',
+    // Still nested, and therefore still undiscoverable by fdroidserver. That is
+    // unresolved rather than overlooked: both entries build from one checkout,
+    // so only one of them can own the root `fastlane/`. Our own repository
+    // reads this path explicitly, so the TV listing works there; the fdroiddata
+    // TV entry needs an answer to the shared-root problem first (docs/fdroid.md).
+    fastlaneDir: 'packages/mobile/fastlane-tv',
     apk: 'NicotinD-TV.apk',
   },
 ] as const;
