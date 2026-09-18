@@ -67,3 +67,17 @@ describe('build.gradle — version derivation', () => {
     expect(() => androidVersion('1.1000.0')).toThrow();
   });
 });
+
+describe('build.gradle — reproducible build', () => {
+  // F-Droid rebuilds this APK and compares it byte-for-byte to the published
+  // one. Both of these are inputs to that comparison, and both fail silently:
+  // the build still succeeds, the APK is just no longer reproducible.
+  it('keeps AGP dependency metadata out of the APK', () => {
+    expect(gradle).toMatch(/dependenciesInfo\s*\{[\s\S]*?includeInApk\s*=\s*false/);
+    expect(gradle).toMatch(/dependenciesInfo\s*\{[\s\S]*?includeInBundle\s*=\s*false/);
+  });
+
+  it('leaves minification off, which R8 would make non-deterministic', () => {
+    expect(gradle).toContain('minifyEnabled false');
+  });
+});

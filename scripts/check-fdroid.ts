@@ -11,7 +11,7 @@
  * flavour were deleted rather than left passing vacuously, which is the dead
  * config this gate exists to reject.
  *
- * What remains are the five things that are still silently breakable:
+ * What remains are the six things that are still silently breakable:
  *
  *   1. Fastlane metadata outside F-Droid's byte caps, in any locale. The store
  *      rejects an over-long short_description and silently truncates an
@@ -26,9 +26,14 @@
  *   4. A release with no changelog for its own versionCode — F-Droid then shows
  *      blank release notes, because it renders only the changelog matching the
  *      versionCode it is offering.
- *   5. The fdroiddata build recipe drifting from the build it describes. It
+ *   5. The APK build becoming unreproducible — F-Droid rebuilds it from the tag
+ *      and compares byte-for-byte, so a stray timestamp costs us our signature.
+ *   6. The fdroiddata build recipe drifting from the build it describes. It
  *      pins the toolchain by hand because F-Droid's buildserver never sees our
  *      CI, and a stale pin builds successfully with something we never tested.
+ *
+ * The numbered sections below follow that list, except (4), which rides along
+ * inside (1) because it needs the same per-locale walk.
  *
  * NETWORK-FREE: everything here is read off the repo.
  */
@@ -225,7 +230,80 @@ const { versionCode: currentVersionCode, versionName: currentVersionName } = and
   }
 }
 
-// --- 5. The fdroiddata build recipe still describes THIS build ----------------
+// --- 5. The APK build stays reproducible -------------------------------------
+// F-Droid rebuilds our APK from the tag and compares it byte-for-byte to the one
+// we publish; a mismatch means it refuses to use our signature. Measured on
+// v0.8.5: of 658 APK entries, the service-worker manifest's `Date.now()`
+// timestamp was the ONLY difference. Everything below is a wire that, if it came
+// loose, would leave the build green and the APK unreproducible — nothing would
+// go red until F-Droid's next rebuild.
+{
+  const webPkgPath = join(repoRoot, 'packages/web/package.json');
+  const webPkg = JSON.parse(readFileSync(webPkgPath, 'utf8')) as {
+    scripts?: Record<string, string>;
+  };
+  const PIN = 'scripts/pin-ngsw-timestamp.ts';
+
+  if (!webPkg.scripts?.postbuild?.includes(PIN)) {
+    errors.push(
+      `packages/web/package.json has no "postbuild" running ${PIN}. Without it every web ` +
+        `build stamps a fresh Date.now() into ngsw.json, which cap sync copies into the APK.`,
+    );
+  }
+  if (!existsSync(join(repoRoot, 'packages/web', PIN))) {
+    errors.push(`packages/web/${PIN} is missing, but the postbuild hook names it.`);
+  }
+
+  // The hook only matters where a service worker is actually emitted. Naming the
+  // configurations here keeps the denominator visible: if one stops shipping a
+  // service worker, this says so instead of passing vacuously.
+  const angular = JSON.parse(readFileSync(join(repoRoot, 'packages/web/angular.json'), 'utf8')) as {
+    projects: Record<string, { architect: { build: { configurations: Record<string, object> } } }>;
+  };
+  const configs = angular.projects['nicotind-web']?.architect.build.configurations ?? {};
+  const withSw = Object.entries(configs)
+    .filter(([, c]) => 'serviceWorker' in c)
+    .map(([name]) => name);
+  for (const required of ['production', 'tv']) {
+    if (!withSw.includes(required)) {
+      errors.push(
+        `angular.json's "${required}" configuration no longer sets serviceWorker. If that is ` +
+          `deliberate, update this gate to the new truth — do not leave it asserting a ` +
+          `configuration that no longer exists.`,
+      );
+    }
+  }
+
+  const deploy = readFileSync(join(repoRoot, '.github/workflows/deploy.yml'), 'utf8');
+  if (!deploy.includes('SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)')) {
+    errors.push(
+      `.github/workflows/deploy.yml no longer derives SOURCE_DATE_EPOCH from the commit. ` +
+        `fdroidserver derives it the same way, which is what makes the two builds agree.`,
+    );
+  }
+
+  // Any consumer that runs `ng build` directly skips the postbuild hook. Strip
+  // comments first: both files *mention* `ng build` in prose explaining why Node
+  // is pinned, and a gate that cannot tell a comment from a command cries wolf.
+  const uncommented = (src: string): string =>
+    src
+      .split('\n')
+      .filter((l) => !/^\s*#/.test(l))
+      .join('\n');
+  for (const [label, source] of [
+    ['deploy.yml', deploy],
+    ['Dockerfile', readFileSync(join(repoRoot, 'Dockerfile'), 'utf8')],
+  ] as const) {
+    if (/\bng build\b/.test(uncommented(source))) {
+      errors.push(
+        `${label} invokes \`ng build\` directly, bypassing the web package's postbuild hook ` +
+          `(and therefore the ngsw timestamp pin). Go through the package script.`,
+      );
+    }
+  }
+}
+
+// --- 6. The fdroiddata build recipe still describes THIS build ----------------
 // The recipe we submit to fdroiddata pins the toolchain by hand, because
 // F-Droid's buildserver runs gradle against a source checkout and never sees
 // our CI. Two of those pins can drift away from the repo silently, and the

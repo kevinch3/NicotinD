@@ -64,8 +64,20 @@ android {
             }
         }
     }
+    // AGP embeds an encrypted, Google-readable list of our dependencies in the
+    // APK signing block by default. F-Droid rebuilds this APK and compares it
+    // byte-for-byte against the published one, and a blob nobody can inspect is
+    // exactly the wrong thing to carry into that comparison. Nothing reads it
+    // outside Play, so it is pure cost here.
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
     buildTypes {
         release {
+            // Also a reproducibility property, not only a size one: R8 is not
+            // deterministic across versions, so turning this on needs its own
+            // rebuild comparison first. See docs/fdroid.md.
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
             if (System.getenv("ANDROID_KEYSTORE_FILE")) {
