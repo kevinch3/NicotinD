@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.3](https://github.com/kevinch3/NicotinD/compare/v0.8.2...v0.8.3) (2026-09-18)
+
+### Bug Fixes
+
+* **fdroid:** point the recipe at v0.8.2, and fix two listing defects ([#1194](https://github.com/kevinch3/NicotinD/issues/1194)) ([356eb54](https://github.com/kevinch3/NicotinD/commit/356eb541a41b153649408b457b204d9999de20ee)), references [#1168](https://github.com/kevinch3/NicotinD/issues/1168) [#1179](https://github.com/kevinch3/NicotinD/issues/1179)
 ## [0.8.2](https://github.com/kevinch3/NicotinD/compare/v0.8.1...v0.8.2) (2026-09-18)
 
 ### Features
