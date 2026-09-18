@@ -1,0 +1,52 @@
+# The fdroiddata metadata for the phone app. Copy to
+# metadata/ar.kevinroberts.nicotind.yml in a fdroiddata fork; see docs/fdroid.md.
+#
+# Kept here, not only in the fork, so the recipe is reviewed with the code it
+# builds and check:fdroid can hold it to that code — it pins the toolchain by
+# hand, because F-Droid's buildserver runs gradle against a source checkout and
+# never sees our CI.
+#
+# The version fields below are a SEED for the first build entry, not a mirror of
+# the current release: once the app is in fdroiddata, `AutoUpdateMode: Version`
+# has F-Droid add build entries from our tags itself. Set them to whatever
+# release the merge request is opened against; nothing gates them, deliberately,
+# because gating them would fail every release for a value F-Droid owns.
+Categories:
+  - Multimedia
+License: AGPL-3.0-only
+AuthorName: Kevin Chavarria
+SourceCode: https://github.com/kevinch3/NicotinD
+IssueTracker: https://github.com/kevinch3/NicotinD/issues
+Changelog: https://github.com/kevinch3/NicotinD/blob/HEAD/CHANGELOG.md
+
+AutoName: NicotinD
+
+RepoType: git
+Repo: https://github.com/kevinch3/NicotinD.git
+
+Builds:
+  - versionName: 0.8.1
+    versionCode: 8001
+    commit: v0.8.1
+    subdir: packages/mobile/android/app
+    sudo:
+      - install -d /opt/bun
+      - curl -fsSL -o /tmp/bun.zip
+          https://github.com/oven-sh/bun/releases/download/bun-v1.3.11/bun-linux-x64.zip
+      - echo "8611ba935af886f05a6f38740a15160326c15e5d5d07adef966130b4493607ed  /tmp/bun.zip"
+          | sha256sum -c -
+      - unzip -j -d /opt/bun /tmp/bun.zip
+      - chmod 755 /opt/bun/bun
+      - ln -sf /opt/bun/bun /usr/local/bin/bun
+      - rm -f /tmp/bun.zip
+    prebuild:
+      - cd ../../../.. && bun install --frozen-lockfile
+      - cd ../../../.. && bun run --filter @nicotind/web build
+      - cd ../.. && bunx cap sync android
+    gradle:
+      - yes
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+CurrentVersion: 0.8.1
+CurrentVersionCode: 8001

@@ -11,7 +11,7 @@
  * flavour were deleted rather than left passing vacuously, which is the dead
  * config this gate exists to reject.
  *
- * What remains are the three things that are still silently breakable:
+ * What remains are the four things that are still silently breakable:
  *
  *   1. Fastlane metadata outside F-Droid's byte caps, in any locale. The store
  *      rejects an over-long short_description and silently truncates an
@@ -23,6 +23,9 @@
  *      naming them differently. The Pages workflow downloads them from the
  *      latest release by name, so a rename stops the repository updating
  *      without anything going red.
+ *   4. The fdroiddata build recipe drifting from the build it describes. It
+ *      pins the toolchain by hand because F-Droid's buildserver never sees our
+ *      CI, and a stale pin builds successfully with something we never tested.
  *
  * NETWORK-FREE: everything here is read off the repo.
  */
@@ -197,6 +200,61 @@ const errors: string[] = [];
         `(outputs/apk/standard/...). The distribution flavour was removed in #1168, so ` +
         `gradle writes to outputs/apk/<buildType>/ and nothing is there.`,
     );
+  }
+}
+
+// --- 4. The fdroiddata build recipe still describes THIS build ---------------
+// The recipe we submit to fdroiddata pins the toolchain by hand, because
+// F-Droid's buildserver runs gradle against a source checkout and never sees
+// our CI. Two of those pins can drift away from the repo silently, and the
+// symptom is an F-Droid build that succeeds and ships something we never
+// tested. Note the version fields are NOT checked: `AutoUpdateMode: Version`
+// means F-Droid bumps those itself from our tags, so the committed copy is only
+// the seed.
+{
+  const recipe = join(repoRoot, 'packages/mobile/fdroiddata/ar.kevinroberts.nicotind.yml');
+  if (!existsSync(recipe)) {
+    errors.push(
+      'packages/mobile/fdroiddata/ar.kevinroberts.nicotind.yml is missing — it is the ' +
+        'build recipe submitted to fdroiddata, kept here so it is reviewed with the code ' +
+        'it builds.',
+    );
+  } else {
+    const source = readFileSync(recipe, 'utf8');
+
+    // deploy.yml's BUN_VERSION is the version we actually test against.
+    const deploy = readFileSync(join(repoRoot, '.github/workflows/deploy.yml'), 'utf8');
+    const ciBun = /BUN_VERSION:\s*'([^']+)'/.exec(deploy)?.[1];
+    if (!ciBun) {
+      errors.push('.github/workflows/deploy.yml no longer defines BUN_VERSION.');
+    } else if (!source.includes(`bun-v${ciBun}/`)) {
+      errors.push(
+        `packages/mobile/fdroiddata/…yml pins a different bun than CI (BUN_VERSION ` +
+          `${ciBun}). F-Droid would build with a toolchain no release was ever built with. ` +
+          `Update the download URL and its sha256 together — a stale checksum fails the ` +
+          `build loudly, a stale version does not.`,
+      );
+    }
+
+    // The checksum is the only thing standing between the buildserver and an
+    // unverified binary, which is exactly what the inclusion policy is about.
+    if (!source.includes('sha256sum -c -')) {
+      errors.push(
+        'packages/mobile/fdroiddata/…yml downloads the bun toolchain without verifying a ' +
+          'sha256. F-Droid reviewers reject unverified binary downloads, and so should we.',
+      );
+    }
+
+    // `cap sync` rewrites capacitor.settings.gradle, which is COMMITTED with
+    // bun's store layout hardcoded. Skip it and gradle resolves paths that do
+    // not exist on the buildserver.
+    if (!source.includes('cap sync android')) {
+      errors.push(
+        'packages/mobile/fdroiddata/…yml does not run `cap sync android` before gradle. ' +
+          "The tracked capacitor.settings.gradle hardcodes bun's store layout, so gradle " +
+          "would resolve plugin paths that do not exist in F-Droid's checkout.",
+      );
+    }
   }
 }
 

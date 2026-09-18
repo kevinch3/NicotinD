@@ -710,6 +710,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **Own signed F-Droid repository**: `build-fdroid-repo.ts` + `FDROID_APPS` assemble and sign it
   from the release's APKs; `pages.yml` publishes it beside the Storybook catalog.
   → [fdroid.md](fdroid.md)
+- **fdroiddata build recipe, kept in-repo**: `packages/mobile/fdroiddata/*.yml` is what a
+  `fdroiddata` MR carries; `check:fdroid` pins its bun version to `BUN_VERSION` and its
+  `cap sync` step. `nicotindVersion` in `build.gradle` versions a bare checkout.
+  → [fdroid.md](fdroid.md)
 - **`check:audit` — gated on what *ships***: filters advisories by the production closure (walking
   `bun.lock` from every workspace's `dependencies`) *and* the resolved version, reports the dependency
   path, fails on an unresolvable version, and warns-and-passes on an unreachable registry.

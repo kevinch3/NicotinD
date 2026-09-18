@@ -129,12 +129,49 @@ build-time route fork. F-Droid does not require screenshots, so this does not bl
 byte caps and every changelog's name and size — **byte** length, because the accented Spanish copy is
 multi-byte and a character-counted cap would pass text the store cuts.
 
-## What is still needed for the main repo
+## Submitting to the main repo
 
-1. **Two merge requests** to `fdroiddata`, one per application id. Simpler than it would have been:
-   no flavour to select, and `NICOTIND_APP_ID_SUFFIX=.tv` for the TV entry is the only build-time
-   input. The single build is already policy-clean.
-2. **Screenshots**, and the TV metadata path question above.
+Two merge requests to [`fdroiddata`](https://gitlab.com/fdroid/fdroiddata), one per application id,
+**phone first** — a leanback-only second app from the same repository is the unusual half, and it is
+worth learning what the reviewer wants from the ordinary one first.
+
+The build recipe lives at **`packages/mobile/fdroiddata/ar.kevinroberts.nicotind.yml`**, in this
+repository rather than only in a fork, so it is reviewed alongside the code it builds and
+`check:fdroid` can hold it to that code. To submit: fork `fdroiddata`, branch
+`ar.kevinroberts.nicotind`, copy the file to `metadata/ar.kevinroberts.nicotind.yml`, commit as
+`New App: ar.kevinroberts.nicotind`, open the MR.
+
+`fdroid lint ar.kevinroberts.nicotind` passes clean against fdroidserver 2.4.5.
+
+### What the recipe has to do that a normal Android app does not
+
+- **Install bun.** Pinned to the same version `deploy.yml` builds with, downloaded from its GitHub
+  release and **sha256-verified** — an unverified binary download is the thing the inclusion policy
+  is most pointed about. `check:fdroid` fails if the pin drifts from `BUN_VERSION` or the checksum
+  step disappears. The bun-free npm path above is the fallback if a reviewer objects; offer it
+  rather than arguing.
+- **Run `cap sync android` before gradle.** Not optional: the *tracked*
+  `capacitor.settings.gradle` hardcodes bun's store layout, so gradle in a fresh checkout resolves
+  plugin paths that do not exist. Also gated.
+- **Nothing for the version.** `build.gradle` reads the monorepo `package.json` itself, so a
+  checkout builds the right `versionCode` with no environment at all. It did not use to — the
+  fallback was `versionCode 1`, and an APK that lies about its version cannot be updated by any
+  store.
+
+### Two things a reviewer will raise
+
+- **`REQUEST_INSTALL_PACKAGES`.** The single build declares it, and F-Droid will never use it. The
+  control that needs it hides itself on a store-managed install (above), but the *permission* is
+  still in the manifest, and the store listing now says so in as many words rather than claiming the
+  permission was removed. If the reviewer wants it gone, that means a manifest-stripping build step —
+  possible, but it re-introduces a variant, which is what #1168 deleted.
+- **F-Droid signs with its own key.** A user who sideloaded from GitHub cannot upgrade in place;
+  Android refuses a signature change, so they must uninstall first and lose app data. Accepted
+  deliberately (2026-09-18) — our own repository keeps serving our-signed APKs for anyone who would
+  rather not. Reproducible builds would remove the problem and can be added later without redoing
+  the submission.
+
+Still open: **screenshots**, and the TV metadata path question above.
 
 ## Our own F-Droid repository
 
