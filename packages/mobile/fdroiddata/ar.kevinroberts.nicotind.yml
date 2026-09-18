@@ -25,9 +25,9 @@ RepoType: git
 Repo: https://github.com/kevinch3/NicotinD.git
 
 Builds:
-  - versionName: 0.8.1
-    versionCode: 8001
-    commit: v0.8.1
+  - versionName: 0.8.2
+    versionCode: 8002
+    commit: v0.8.2
     subdir: packages/mobile/android/app
     sudo:
       - install -d /opt/bun
@@ -48,5 +48,5 @@ Builds:
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
-CurrentVersion: 0.8.1
-CurrentVersionCode: 8001
+CurrentVersion: 0.8.2
+CurrentVersionCode: 8002
