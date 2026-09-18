@@ -2,8 +2,8 @@
 
 NicotinD is AGPL-3.0-only and self-hosted, which makes F-Droid the natural store for it — and the
 only install path for the TV APK that is not "enable unknown sources on your telly". This page
-covers the **F-Droid build variant** that exists today and what is still needed to get the two app
-entries published. Issue #1168.
+covers how the single build satisfies the inclusion policy, the repository we publish ourselves, and
+what is still needed to get the two app entries into the main F-Droid repo. Issue #1168.
 
 ## There is no variant any more
 
@@ -90,8 +90,8 @@ Three things that fall out of that, all of which matter to a recipe:
   plus a fixed `../../../` depth, so it is wrong for any other install layout or checkout depth.
   `cap sync` rewrote it to `../../../node_modules/@capacitor/android/capacitor` under npm. This is
   the same file that must never be committed after a local `cap update`.
-- **`cap sync` also rewrites the tracked `capacitor.build.gradle`**, so building the F-Droid variant
-  locally dirties two tracked files. Restore them; don't commit the variant's versions.
+- **`cap sync` also rewrites the tracked `capacitor.build.gradle`**, so an Android build under a
+  non-bun install layout dirties two tracked files. Restore them; don't commit those versions.
 
 ## Store metadata
 
@@ -144,8 +144,9 @@ Shipped first, before `fdroiddata` (decided 2026-09-16). Users add:
 https://kevinch3.github.io/NicotinD/fdroid/repo
 ```
 
-It serves the **`fdroid` variant**, not the `standard` APKs, even though no policy applies to our own
-repo: the standard APK's self-updater would otherwise fight the F-Droid client for the same install.
+It serves the release's **own** APKs — the same files attached to the GitHub Release. There is
+nothing to keep apart: the self-updater that would otherwise fight the F-Droid client for the same
+install hides itself at runtime on a store-managed install (see the policy table above).
 
 ### How it is built
 
