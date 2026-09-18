@@ -102,13 +102,43 @@ Fastlane layout, one tree per entry, both `en-US` and `es-ES` (the two locales t
 | phone (`ar.kevinroberts.nicotind`) | `packages/mobile/fastlane/metadata/android/<locale>/` |
 | TV (`ar.kevinroberts.nicotind.tv`) | `packages/mobile/fastlane-tv/metadata/android/<locale>/` |
 
-The TV tree's name is ours, not a convention. fdroidserver finds fastlane metadata relative to a
-build's `subdir` or the repo root, and both entries share one `subdir` — so auto-detection would hand
-the *same* metadata to both. **Which path the TV entry's recipe has to name is unverified**; settle it
-against a local `fdroidserver` when writing the merge request rather than assuming.
+### Neither tree is auto-discovered, and that is the answer to the TV question
 
-Both descriptions are explicit that the F-Droid build has no QR pairing and no self-updater, and why.
-A listing that promises a camera scanner the build cannot provide is a bug report waiting to happen.
+Settled 2026-09-18 against fdroidserver 2.4.5's own source (`update.py`,
+`_strip_and_copy_image` / the `sourcedirs` globs) rather than by assuming. It looks in exactly four
+places, and the two that read the app's own checkout are:
+
+```
+build/<applicationId>/fastlane/metadata/android/<locale>/
+build/<applicationId>/src/<buildFlavor>/fastlane/metadata/android/<locale>/
+```
+
+`build/<applicationId>/` is the **repo root** of the checkout. Ours is a monorepo: the trees are at
+`packages/mobile/fastlane…`, which matches neither glob, and `subdir` does not move the search.
+**So F-Droid would find no listing at all** — not the wrong one, none.
+
+The fix is the fourth glob, which reads fdroiddata itself and is keyed by application id:
+
+```
+metadata/<applicationId>/<locale>/{title,short_description,full_description}.txt
+metadata/<applicationId>/<locale>/changelogs/<versionCode>.txt
+metadata/<applicationId>/<locale>/images/icon.png
+```
+
+That is the ordinary layout — 71,394 such directories in fdroiddata today — and because it is keyed
+by application id it gives phone and TV separate listings for free. The `fastlane-tv` name never
+needed solving; the premise that fdroidserver would auto-detect either tree was wrong.
+
+The trees stay in this repo: they are the source of truth, `check:fdroid` holds them to F-Droid's
+byte caps, and `fdroid:changelog` writes into them. The merge request copies them across.
+
+Run `fdroid rewritemeta <applicationId>` on the recipe before submitting — it canonicalises key order
+and strips comments, so the copy in fdroiddata will not match ours byte-for-byte. That is expected;
+ours keeps the comments because they explain the toolchain pins to the next reader.
+
+Both descriptions state plainly that there is no QR pairing, that the in-app updater hides itself on
+a store install, and that `REQUEST_INSTALL_PACKAGES` is nonetheless declared. A listing that
+contradicts the manifest it ships with is what gets a submission bounced.
 
 **Changelogs** are named by `versionCode`, not semver — that is how F-Droid pairs a changelog with a
 build. `bun run --filter @nicotind/mobile fdroid:changelog` derives the name from `androidVersion()`,
@@ -141,7 +171,23 @@ repository rather than only in a fork, so it is reviewed alongside the code it b
 `ar.kevinroberts.nicotind`, copy the file to `metadata/ar.kevinroberts.nicotind.yml`, commit as
 `New App: ar.kevinroberts.nicotind`, open the MR.
 
-`fdroid lint ar.kevinroberts.nicotind` passes clean against fdroidserver 2.4.5.
+A merge request carries **both** the recipe and the listing text, because fdroidserver will not find
+our fastlane trees (see "Store metadata" — it globs the checkout's *root*, and ours are nested):
+
+```
+metadata/ar.kevinroberts.nicotind.yml          # the recipe, after `fdroid rewritemeta`
+metadata/ar.kevinroberts.nicotind/<locale>/…   # title, descriptions, changelogs/<versionCode>.txt, images/icon.png
+```
+
+`fdroid lint ar.kevinroberts.nicotind` passes clean on fdroidserver 2.4.5 against fdroiddata's own
+config — lint it there, not against a stub config, because a stub has no category list and reports a
+valid category as invalid.
+
+**The recipe's whole build was run for real** (2026-09-18) from a clean clone with no `node_modules`:
+`bun install --frozen-lockfile` → web build → `cap sync android` → `assembleRelease` with **no
+environment set**, producing `versionCode='8001' versionName='0.8.1'` and **0** class definitions
+matching ML Kit, GMS, Firebase, osbarcode or OutSystems out of 5226. `fdroid build` itself was not
+used: it locks the root account, because it assumes a disposable buildserver VM.
 
 ### What the recipe has to do that a normal Android app does not
 
@@ -171,7 +217,7 @@ repository rather than only in a fork, so it is reviewed alongside the code it b
   rather not. Reproducible builds would remove the problem and can be added later without redoing
   the submission.
 
-Still open: **screenshots**, and the TV metadata path question above.
+Still open: **screenshots**.
 
 ## Our own F-Droid repository
 
