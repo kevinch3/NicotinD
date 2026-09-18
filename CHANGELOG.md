@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.1](https://github.com/kevinch3/NicotinD/compare/v0.8.0...v0.8.1) (2026-09-18)
+
+### Bug Fixes
+
+* **slskd:** prune the incomplete dir slskd leaks onto the Docker data root ([#1192](https://github.com/kevinch3/NicotinD/issues/1192)) ([e7452f7](https://github.com/kevinch3/NicotinD/commit/e7452f78478be2f22032edda11139400f8ae15aa)), closes [#1145](https://github.com/kevinch3/NicotinD/issues/1145)
 ## [0.8.0](https://github.com/kevinch3/NicotinD/compare/v0.7.1...v0.8.0) (2026-09-17)
 
 ### ⚠ BREAKING CHANGES
