@@ -27,7 +27,7 @@ describe('FDROID_APPS', () => {
 
   it('points every entry at a fastlane tree that exists', () => {
     for (const app of FDROID_APPS) {
-      const dir = join(import.meta.dir, '..', app.fastlaneDir, 'metadata', 'android');
+      const dir = join(import.meta.dir, '../../..', app.fastlaneDir, 'metadata', 'android');
       expect(existsSync(dir), `${app.fastlaneDir} is missing`).toBe(true);
     }
   });

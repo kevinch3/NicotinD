@@ -39,7 +39,6 @@ import {
 import { androidVersion } from '../packages/mobile/src/version.js';
 
 const repoRoot = resolve(import.meta.dir, '..');
-const mobileRoot = join(repoRoot, 'packages/mobile');
 
 function required(name: string): string {
   const value = process.env[name];
@@ -96,7 +95,7 @@ for (const app of FDROID_APPS) {
   mkdirSync(metadataDir, { recursive: true });
   // The fastlane tree, per locale. `images/README.md` documents the missing
   // screenshots for a human and would otherwise be copied into the index.
-  cpSync(join(mobileRoot, app.fastlaneDir, 'metadata/android'), metadataDir, {
+  cpSync(join(repoRoot, app.fastlaneDir, 'metadata/android'), metadataDir, {
     recursive: true,
     filter: (src) => !src.endsWith('README.md'),
   });
@@ -113,10 +112,7 @@ for (const app of FDROID_APPS) {
 // `repo_icon "repo/icons/icon.png" does not exist` while the existence check is
 // on the source path (update.py's `if os.path.exists(repo_icon)`). Putting a
 // stray PNG in repo/ instead gets it published as an app file with no metadata.
-cpSync(
-  join(mobileRoot, 'fastlane/metadata/android/en-US/images/icon.png'),
-  join(outDir, 'icon.png'),
-);
+cpSync(join(repoRoot, 'fastlane/metadata/android/en-US/images/icon.png'), join(outDir, 'icon.png'));
 
 // NOT --create-metadata: it would invent a metadata file whose Name (the APK
 // label, identical for both entries) outranks our fastlane title.txt.

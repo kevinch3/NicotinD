@@ -1,0 +1,1 @@
+• fdroid: point the recipe at v0.8.2, and fix two listing defects (#1194)

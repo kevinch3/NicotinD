@@ -11,7 +11,7 @@
  * flavour were deleted rather than left passing vacuously, which is the dead
  * config this gate exists to reject.
  *
- * What remains are the four things that are still silently breakable:
+ * What remains are the five things that are still silently breakable:
  *
  *   1. Fastlane metadata outside F-Droid's byte caps, in any locale. The store
  *      rejects an over-long short_description and silently truncates an
@@ -23,7 +23,10 @@
  *      naming them differently. The Pages workflow downloads them from the
  *      latest release by name, so a rename stops the repository updating
  *      without anything going red.
- *   4. The fdroiddata build recipe drifting from the build it describes. It
+ *   4. A release with no changelog for its own versionCode — F-Droid then shows
+ *      blank release notes, because it renders only the changelog matching the
+ *      versionCode it is offering.
+ *   5. The fdroiddata build recipe drifting from the build it describes. It
  *      pins the toolchain by hand because F-Droid's buildserver never sees our
  *      CI, and a stale pin builds successfully with something we never tested.
  *
@@ -32,14 +35,19 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { FDROID_APPS } from '../packages/mobile/src/fdroid-repo.js';
+import { androidVersion } from '../packages/mobile/src/version.js';
 
 const repoRoot = resolve(dirname(new URL(import.meta.url).pathname), '..');
 const errors: string[] = [];
 
+const { versionCode: currentVersionCode, versionName: currentVersionName } = androidVersion(
+  (JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8')) as { version: string }).version,
+);
+
 // --- 1. Fastlane metadata is within F-Droid's limits, in every locale --------
 {
   const TREES = FDROID_APPS.map((app) => ({
-    dir: `packages/mobile/${app.fastlaneDir}`,
+    dir: app.fastlaneDir,
     label: app.applicationId,
   }));
   // Names are F-Droid's; the byte caps are its documented limits.
@@ -88,6 +96,20 @@ const errors: string[] = [];
       }
 
       const changelogDir = join(androidDir, locale, 'changelogs');
+      // A changelog for the version about to ship. Twice now a release went out
+      // with changelogs keyed only to older versionCodes (6056, then 8002 while
+      // 0.8.3 shipped), which F-Droid renders as *no* release notes — it shows
+      // the changelog for the versionCode it is offering and nothing else. The
+      // older arms below check a changelog's name and size, which cannot catch
+      // the one that is simply absent.
+      if (!existsSync(join(changelogDir, `${currentVersionCode}.txt`))) {
+        errors.push(
+          `${dir}/metadata/android/${locale}/changelogs/${currentVersionCode}.txt is missing ` +
+            `for the current version (${currentVersionName}). F-Droid shows the changelog for ` +
+            `the versionCode it offers, so this release would publish with blank release ` +
+            `notes. Run \`bun run --filter @nicotind/mobile fdroid:changelog\`.`,
+        );
+      }
       if (!existsSync(changelogDir)) continue;
       for (const entry of readdirSync(changelogDir)) {
         if (!/^\d+\.txt$/.test(entry)) {
@@ -203,7 +225,7 @@ const errors: string[] = [];
   }
 }
 
-// --- 4. The fdroiddata build recipe still describes THIS build ---------------
+// --- 5. The fdroiddata build recipe still describes THIS build ----------------
 // The recipe we submit to fdroiddata pins the toolchain by hand, because
 // F-Droid's buildserver runs gradle against a source checkout and never sees
 // our CI. Two of those pins can drift away from the repo silently, and the
