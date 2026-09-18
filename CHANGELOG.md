@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.5](https://github.com/kevinch3/NicotinD/compare/v0.8.4...v0.8.5) (2026-09-18)
+
+### Bug Fixes
+
+* **release:** generate the F-Droid changelog inside the release commit ([#1196](https://github.com/kevinch3/NicotinD/issues/1196)) ([51e5a20](https://github.com/kevinch3/NicotinD/commit/51e5a20dbbfb5b4c470b95754d5482e34e1e1aa3)), references [#1195](https://github.com/kevinch3/NicotinD/issues/1195) [#1168](https://github.com/kevinch3/NicotinD/issues/1168)
 ## [0.8.4](https://github.com/kevinch3/NicotinD/compare/v0.8.3...v0.8.4) (2026-09-18)
 
 ### Bug Fixes

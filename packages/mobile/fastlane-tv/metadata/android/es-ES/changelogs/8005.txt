@@ -1,0 +1,1 @@
+• release: generate the F-Droid changelog inside the release commit (#1196)
