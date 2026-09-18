@@ -10,5 +10,9 @@
     { "type": "test", "hidden": true },
     { "type": "ci", "hidden": true },
     { "type": "build", "hidden": true }
-  ]
+  ],
+  "scripts": {
+    "postchangelog": "bun run --filter @nicotind/mobile fdroid:changelog && git add fastlane packages/mobile/fastlane-tv"
+  },
+  "commitAll": true
 }

@@ -10,10 +10,11 @@
  * the same function CI feeds to gradle, so the changelog cannot end up filed
  * under a code no APK was ever built with.
  *
- * Run it after `bun run release` (which regenerates CHANGELOG.md and bumps the
- * version) and commit the result. Deliberately NOT wired into the release
- * script: `bun run release` creates the version-bump commit, so a file written
- * during it would land in the *next* commit, and F-Droid reads the tag.
+ * `bun run release` runs this for you, from `.versionrc.json`'s `postchangelog`
+ * hook — after CHANGELOG.md is written, before the release commit, so the
+ * output lands IN the bump commit and the tag F-Droid reads is complete. It
+ * used to be a manual follow-up step, and three releases in a row shipped
+ * without one (see docs/fdroid.md). Run it by hand only to regenerate.
  *
  * Only the current version is written. Backfilling every release would add ~50
  * files F-Droid shows no one — it displays the changelog for the version it is
