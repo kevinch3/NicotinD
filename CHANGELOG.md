@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.4](https://github.com/kevinch3/NicotinD/compare/v0.8.3...v0.8.4) (2026-09-18)
+
+### Bug Fixes
+
+* **fdroid:** move the fastlane tree to the repo root, where fdroidserver looks ([#1195](https://github.com/kevinch3/NicotinD/issues/1195)) ([5c1940f](https://github.com/kevinch3/NicotinD/commit/5c1940f4c070caf619766541ac2951df25017327)), references [#1168](https://github.com/kevinch3/NicotinD/issues/1168) [#1168](https://github.com/kevinch3/NicotinD/issues/1168)
 ## [0.8.3](https://github.com/kevinch3/NicotinD/compare/v0.8.2...v0.8.3) (2026-09-18)
 
 ### Bug Fixes
