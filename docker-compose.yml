@@ -71,6 +71,7 @@ services:
       - music:/data/music
       - slskd-data:/app
       - ./scripts/slskd-entrypoint.sh:/slskd-entrypoint.sh:ro
+      - ./scripts/slskd-configure.sh:/slskd-configure.sh:ro
     entrypoint: ["/slskd-entrypoint.sh"]
     command:
       - --remote-configuration=true
@@ -107,7 +108,19 @@ services:
       SLSKD_SLSK_LISTEN_PORT: "50300"
       SLSKD_USERNAME: slskd
       SLSKD_PASSWORD: slskd
-      SLSKD_DIRECTORIES__INCOMPLETE: /app/incomplete
+      # slskd binds env vars from an explicit [EnvironmentVariable] allowlist,
+      # NOT by `__` nesting: this was written `SLSKD_DIRECTORIES__INCOMPLETE`
+      # for months and was inert the whole time, matching only because
+      # `<app-dir>/incomplete` is already the default. → #1145
+      SLSKD_INCOMPLETE_DIR: /app/incomplete
+      # Partials of transfers that died mid-flight are never moved out of the
+      # incomplete dir, and it sits on the DOCKER DATA ROOT — the filesystem
+      # that filled to 0 bytes and took Lidarr, the API and the separator down
+      # (#1021). 418 MB had accumulated since 2026-05 before this was set.
+      # Read by scripts/slskd-configure.sh, which renders it into slskd.yml;
+      # retention has no env binding of its own. 30 days, in minutes.
+      # → docs/library-path-conventions.md (#1145)
+      SLSKD_INCOMPLETE_RETENTION_MINUTES: "43200"
     healthcheck:
       # why: the slskd image ships no curl/wget, so a curl-based check fails at
       # exec time and marks the container permanently unhealthy; bash /dev/tcp

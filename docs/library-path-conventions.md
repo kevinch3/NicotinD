@@ -284,6 +284,73 @@ on each side anchors it to a real path segment, so `Downloads Vol. 2` still shar
 `scripts/compose-share-filter.test.ts` asserts both path forms and keeps it in sync with
 `--downloads`.
 
+## slskd's own incomplete dir
+
+Everything above is about `.downloads`, the staging dir **inside the music volume** that slskd
+writes *completed* files into and the acquisition addon owns. slskd has a second directory that
+none of it covers: `directories.incomplete`, where it writes partials while a transfer is in
+flight. A file only leaves it when the transfer **completes**, so every transfer that dies
+mid-flight leaves its partial behind and nothing ever collects it.
+
+That directory is `/app/incomplete`, and `/app` is the `slskd-data` named volume — the **Docker
+data root**, the filesystem that filled to 0 bytes and took Lidarr, the API and the separator down
+(#1021). Measured on 2026-09-18: **418 MB across 188 files, the oldest dating to 2026-05-13**, with
+143 of them untouched for over 30 days. The #1052 retention sweep does not see any of it: that
+sweep walks `/data/music/.downloads` and releases bytes the addon itself delivered and still has a
+job for. A partial was never completed, so it never had a job to release, and it is not on the
+music volume at all.
+
+slskd fixes this itself. `retention.files.incomplete` deletes files under `directories.incomplete`
+whose **access time** is older than the configured number of minutes, on a 30-minute clock. It is
+`null` by default, which is the entire reason four months accumulated unnoticed. We set it to
+**43200 (30 days)** via `SLSKD_INCOMPLETE_RETENTION_MINUTES` in `docker-compose.yml`; the data root
+is ext4 `relatime`, so access time tracks writes closely enough to be a real age signal here.
+
+### Why it goes through the YAML file and not the environment
+
+**slskd binds environment variables from an explicit `[EnvironmentVariable]` allowlist, not by `__`
+nesting.** Its config provider walks `Options` looking for that attribute and reads `SLSKD_` +
+whatever name the attribute declares; a variable no attribute claims is simply never read. The
+retention options carry no attribute and no command-line argument either, so `SLSKD_RETENTION__FILES__INCOMPLETE`
+would have been **inert** — configuration that reads as effective while doing nothing, which is the
+failure this issue already was.
+
+The same rule caught a latent bug in the opposite direction: `SLSKD_DIRECTORIES__INCOMPLETE` had
+been in `docker-compose.yml` for months and was never read. It looked correct only because
+`<app-dir>/incomplete` is already slskd's default, so the value it "set" was the value already in
+force. It is now `SLSKD_INCOMPLETE_DIR`, the name the attribute actually declares.
+
+So the window has to reach slskd through its config file. `scripts/slskd-configure.sh` renders it
+into `/app/slskd.yml` at container start, inside a sentinel-delimited block it rewrites on every
+run. That file also holds the operator's Soulseek credentials, so the script only ever removes its
+own block and appends — anything that rewrote the file wholesale would log the instance out. Two
+consequences worth knowing: slskd runs with `--remote-configuration=true`, so a change made in its
+web UI can drop the block until the next restart re-applies it; and an operator who writes their
+own top-level `retention:` key wins, because a duplicate mapping would stop slskd from starting.
+
+### Never set `retention.files.complete`
+
+The sibling option prunes `directories.downloads` — which is `/data/music/.downloads`, the
+acquisition addon's staging dir. Those bytes are the addon's, delivered against a job and released
+by the addon's own sweep once core confirms ingestion (#1052, addon#10/#19; the ownership rule is
+in the v1 protocol contract). A second sweeper on the same directory would race it and delete files
+it had not released yet. `scripts/slskd-configure.test.ts` asserts the rendered config carries
+`incomplete` and nothing else; `scripts/compose-slskd-retention.test.ts` keeps a `complete`
+variable out of compose.
+
+### Verifying it took
+
+The retention window is visible in slskd's own resolved options, which is the only evidence that
+distinguishes "configured" from "in force":
+
+```
+GET /api/v0/options  →  .retention.files.incomplete
+```
+
+Before this change it read `"files": {}` on prod. After deploy it must read `43200`, and
+`du -sh /app/incomplete` inside the slskd container must fall — 366.8 MB of the 418 MB was already
+past a 30-day window when this was written.
+
 ## Out of scope
 
 - The 25 scripts that each hand-roll `loadConfig()` — a real duplication, but not this change.
