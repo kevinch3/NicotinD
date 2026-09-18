@@ -1,29 +1,5 @@
 apply plugin: 'com.android.application'
 
-import groovy.json.JsonSlurper
-
-// The monorepo version is the single source of truth for the app version, and
-// gradle reads it directly rather than only accepting it from the environment.
-// CI still exports NICOTIND_VERSION_* (scripts/android-env.ts) and that wins,
-// but a build without them — a contributor's local `assembleRelease`, or
-// F-Droid's buildserver, which does not run our CI scripts — used to silently
-// produce versionCode 1 / versionName "1.0". An APK that lies about its version
-// cannot be updated by any store, so the fallback has to be the real version,
-// not a placeholder. Mirrors androidVersion() in packages/mobile/src/version.ts:
-// major*1e6 + minor*1e3 + patch, monotonic while minor and patch stay < 1000.
-ext.nicotindVersion = { ->
-    def semver = new JsonSlurper()
-        .parse(file("$rootDir/../../../package.json"))
-        .version
-    def m = (semver =~ /^(\d+)\.(\d+)\.(\d+)/)
-    if (!m) throw new GradleException("Unparseable monorepo version: $semver")
-    def (major, minor, patch) = [1, 2, 3].collect { m[0][it].toInteger() }
-    if (minor >= 1000 || patch >= 1000) {
-        throw new GradleException("minor/patch must be < 1000 for a monotonic versionCode: $semver")
-    }
-    [name: "${major}.${minor}.${patch}", code: major * 1_000_000 + minor * 1_000 + patch]
-}()
-
 android {
     namespace "ar.kevinroberts.nicotind"
     compileSdk rootProject.ext.compileSdkVersion
@@ -36,13 +12,14 @@ android {
         applicationIdSuffix System.getenv("NICOTIND_APP_ID_SUFFIX") ?: ""
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        // Env wins (CI's scripts/android-env.ts); otherwise the version read
-        // straight out of package.json above. Locals avoid the
-        // `versionCode (...)` space-before-paren Groovy method-call ambiguity.
-        def envVersionCode = System.getenv("NICOTIND_VERSION_CODE")
-        def envVersionName = System.getenv("NICOTIND_VERSION_NAME")
-        versionCode envVersionCode ? envVersionCode.toInteger() : nicotindVersion.code
-        versionName envVersionName ?: nicotindVersion.name
+        // Written by `bun run release` (packages/mobile/scripts/android-version.ts,
+        // via .versionrc.json's postchangelog hook) from the monorepo version.
+        // Literals, not computed: F-Droid's checkupdates greps this file with
+        // /versionCode\s*=?\s*["'(]*([0-9]+)/ to decide what a tag contains, and a
+        // Groovy expression matches nothing — AutoUpdateMode would silently stop
+        // seeing new releases. build-gradle.test.ts pins both to package.json.
+        versionCode 8006
+        versionName "0.8.6"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
