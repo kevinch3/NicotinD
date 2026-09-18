@@ -163,12 +163,17 @@ jobs:
         with:
           packages: platform-tools
 
-      # Gradle resolves the phone AND tv assembleStandardRelease classpaths over the
-      # network otherwise. One of those deps (osbarcode-android) is served only
-      # by OutSystems' Azure feed, whose 503 broke the v0.5.53 release. Caching
-      # the module store lets a re-run resolve offline; the pinned version in
-      # packages/mobile/android/build.gradle is what makes that cache authoritative
-      # (a dynamic range would re-check the remote regardless of the cache).
+      # Gradle resolves the phone AND tv release classpaths over the network
+      # otherwise, twice per run. Caching the module store lets a re-run resolve
+      # offline, which is what makes a re-run useful after a transient registry
+      # failure.
+      #
+      # This used to carry a sharper reason: one dependency (osbarcode-android)
+      # came only from OutSystems' Azure feed, whose 503 broke v0.5.53, and a
+      # version pin was needed to stop a dynamic range re-checking the remote
+      # regardless of the cache. #1168 removed that dependency, the feed and the
+      # pin, so the cache is now a plain speed-and-resilience measure — kept,
+      # but no longer load-bearing for correctness.
       - name: Cache Gradle dependencies
         uses: actions/cache@v6
         with:
