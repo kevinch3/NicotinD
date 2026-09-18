@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.2](https://github.com/kevinch3/NicotinD/compare/v0.8.1...v0.8.2) (2026-09-18)
+
+### Features
+
+* **fdroid:** version a bare checkout, and land the fdroiddata build recipe ([#1193](https://github.com/kevinch3/NicotinD/issues/1193)) ([7c1aac6](https://github.com/kevinch3/NicotinD/commit/7c1aac6cbd1c7564bf34ca92fbe19ab2c7f51089)), references [#1187](https://github.com/kevinch3/NicotinD/issues/1187) [#1168](https://github.com/kevinch3/NicotinD/issues/1168)
 ## [0.8.1](https://github.com/kevinch3/NicotinD/compare/v0.8.0...v0.8.1) (2026-09-18)
 
 ### Bug Fixes
