@@ -351,6 +351,15 @@ Before this change it read `"files": {}` on prod. After deploy it must read `432
 `du -sh /app/incomplete` inside the slskd container must fall — 366.8 MB of the 418 MB was already
 past a 30-day window when this was written.
 
+That the option binds was checked against a throwaway **real slskd 0.25.1**, not a fixture: it
+parsed the rendered file and reported `"files":{"incomplete":43200}`. So was the sweep itself —
+given a planted file with a 60-day-old access time and a second one freshly written, it deleted the
+aged file and left the fresh one. It also ran **at startup**, not only on the half-hour tick, so a
+deploy is when the first reclaim lands.
+
+One residue to expect: slskd prunes **files, not directories**, so the empty album folders a swept
+partial leaves behind stay. They cost inodes, not bytes, and a later transfer reuses the name.
+
 ## Out of scope
 
 - The 25 scripts that each hand-roll `loadConfig()` — a real duplication, but not this change.
