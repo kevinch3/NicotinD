@@ -25,7 +25,8 @@ possible without new server work — but it is explicitly out of scope here.
   generated Capacitor config are git-ignored by the generated `.gitignore`s, so it's source-only).
 - `src/version.ts` — pure `androidVersion(semver)` → `{ versionName, versionCode }` (unit-tested); keeps
   `bun run release` the single source of truth for the app version.
-- `scripts/android-env.ts` — prints `NICOTIND_VERSION_{NAME,CODE}` for CI to feed gradle.
+- `scripts/android-env.ts` — prints `NICOTIND_VERSION_{NAME,CODE}`, used only to NAME the release
+  assets. `scripts/android-version.ts` writes the version literals gradle actually builds from.
 - `src/native-icons.ts` — pure SVG builders for the brand mark (unit-tested), and
   `scripts/generate-native-icons.ts` + `assets/` — see **App icons** below.
 
@@ -727,9 +728,13 @@ browse → play.
 
 ## Release & signing
 
-- **Versioning**: `android/app/build.gradle` reads `NICOTIND_VERSION_{NAME,CODE}` from the environment;
-  CI derives them from `package.json` via `scripts/android-env.ts` → `androidVersion()`. So the existing
-  `bun run release` drives the app version with no second source of truth.
+- **Versioning**: `android/app/build.gradle` carries `versionCode`/`versionName` as **literals**,
+  written from `package.json` by `scripts/android-version.ts` inside `bun run release`
+  (`.versionrc.json`'s `postchangelog`), so they land in the version-bump commit. They are literals
+  because F-Droid's `checkupdates` *greps* this file to decide what a tag contains and cannot
+  evaluate Groovy — a computed version read as no version at all. `build-gradle.test.ts` pins them
+  to `package.json`, which is what catches the hook silently not running: a stale literal builds and
+  publishes perfectly well, under the wrong version. → [fdroid.md](fdroid.md)
 - **Signing**: the release `signingConfig` is supplied entirely via env. With no keystore env (local dev)
   the release build is left unsigned so contributors can `assembleRelease` without secrets.
 - **CI** (`.github/workflows/deploy.yml`, `android` job): gated like `deploy` (the `chore(release):`

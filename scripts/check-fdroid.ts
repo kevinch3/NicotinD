@@ -274,6 +274,19 @@ const { versionCode: currentVersionCode, versionName: currentVersionName } = and
     }
   }
 
+  // The release hook writes build.gradle's version literals; if it is not also
+  // committed, the tag carries a stale version and F-Droid offers the old one.
+  const versionrc = readFileSync(join(repoRoot, '.versionrc.json'), 'utf8');
+  for (const needed of ['android:version', 'packages/mobile/android/app/build.gradle']) {
+    if (!versionrc.includes(needed)) {
+      errors.push(
+        `.versionrc.json's postchangelog hook no longer mentions "${needed}". The Android ` +
+          `version literals would then drift from package.json — a build that ships and ` +
+          `publishes fine, under the wrong version, forever.`,
+      );
+    }
+  }
+
   const deploy = readFileSync(join(repoRoot, '.github/workflows/deploy.yml'), 'utf8');
   if (!deploy.includes('SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)')) {
     errors.push(

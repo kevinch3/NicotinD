@@ -243,6 +243,22 @@ used: it locks the root account, because it assumes a disposable buildserver VM.
   --print-certs`). If the build is not byte-identical, F-Droid reports it rather than silently
   publishing its own signature — that is the point of the field.
 
+## Auto-update needs a version F-Droid can read
+
+`UpdateCheckMode: Tags` + `AutoUpdateMode: Version` means fdroidserver watches our tags and adds
+build entries itself. To do that it **greps `build.gradle`** (`common.py`'s `vcsearch_g`/`vnsearch_g`)
+— it never runs gradle. Our file used to compute the version from `package.json` in Groovy, which
+those regexes read as *no version*, so F-Droid would have stopped seeing releases with nothing going
+red on our side.
+
+So the file carries literals, written by `bun run release`. Two consequences worth knowing:
+
+- **A match inside a comment counts.** fdroidserver greps; it cannot tell code from prose. A stray
+  `versionCode 1` in an example would decide our published version. `applyAndroidVersion` and
+  `build-gradle.test.ts` both refuse more than one match, comments included.
+- **A stale literal is invisible.** The build succeeds and the APK installs; it just claims the
+  wrong version. The drift test against `package.json` is the only thing that notices.
+
 ## Reproducible builds
 
 Enabling the fields above was a promise the build could not keep. Measured, not assumed.

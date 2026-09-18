@@ -14,7 +14,8 @@
     "android:assemble": "cd android && ./gradlew assembleRelease",
     "icons:source": "bun run scripts/generate-native-icons.ts",
     "icons:generate": "bunx @capacitor/assets@3 generate",
-    "fdroid:changelog": "bun run scripts/fdroid-changelog.ts"
+    "fdroid:changelog": "bun run scripts/fdroid-changelog.ts",
+    "android:version": "bun run scripts/android-version.ts"
   },
   "dependencies": {
     "@capacitor/android": "^6.2.0",

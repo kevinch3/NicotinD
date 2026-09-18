@@ -203,7 +203,9 @@ jobs:
         run: bunx cap sync android
         working-directory: packages/mobile
 
-      # versionName/versionCode for gradle, derived from the monorepo version.
+      # Only for the ASSET FILENAMES below — gradle no longer reads these. The
+      # version lives as literals in build.gradle, written by `bun run release`,
+      # because F-Droid greps that file to see what a tag contains.
       - name: Derive Android version
         run: bun run packages/mobile/scripts/android-env.ts >> "$GITHUB_ENV"
 
