@@ -19,12 +19,11 @@ La aplicación habla con tu servidor y con nada más. Sin analíticas, sin ident
 
 <b>Sobre esta versión</b>
 
-Esta versión de F-Droid se diferencia del APK de las releases de GitHub del proyecto, en ambos casos a propósito:
+Es el mismo APK que el proyecto publica en sus releases de GitHub: una sola compilación, sin variante exclusiva de F-Droid. No incluye ninguna biblioteca privativa.
 
-* <b>Sin emparejamiento por código QR.</b> Conectarse escaneando el código QR que muestra tu servidor requiere una biblioteca de escaneo que no es software libre, así que aquí se omite. Escribe la dirección de tu servidor o usa el código de emparejamiento que este muestra: funcionan igual.
-* <b>Sin actualizador integrado.</b> La versión de GitHub descarga e instala sus propias actualizaciones; de esta se encarga F-Droid, así que el instalador se elimina junto con el permiso que necesitaba.
+Instalada desde F-Droid, la aplicación se actualiza por F-Droid y su botón de actualización interno se oculta solo. Ese botón existe para quien instala el APK directamente, donde es la única forma de actualizar; la aplicación le pregunta a Android quién la instaló y retira el control cuando fue una tienda. Por eso declara el permiso de «instalar aplicaciones desconocidas» aunque aquí F-Droid nunca lo use.
 
-No falta nada más, y en esta versión no se incluye ninguna biblioteca privativa.
+No hay emparejamiento por código QR. Se eliminó de todas las compilaciones, no solo de esta: escanear requería una biblioteca de cámara que no es software libre. Escribe la dirección de tu servidor o usa el código de emparejamiento que este muestra: funcionan igual.
 
 <b>Software libre</b>
 

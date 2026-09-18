@@ -1,0 +1,39 @@
+Categories:
+  - Multimedia
+License: AGPL-3.0-only
+AuthorName: Kevin Chavarria
+SourceCode: https://github.com/kevinch3/NicotinD
+IssueTracker: https://github.com/kevinch3/NicotinD/issues
+Changelog: https://github.com/kevinch3/NicotinD/blob/HEAD/CHANGELOG.md
+
+AutoName: NicotinD
+
+RepoType: git
+Repo: https://github.com/kevinch3/NicotinD.git
+
+Builds:
+  - versionName: 0.8.0
+    versionCode: 8000
+    commit: v0.8.0
+    subdir: packages/mobile/android/app
+    sudo:
+      - install -d /opt/bun
+      - curl -fsSL -o /tmp/bun.zip
+          https://github.com/oven-sh/bun/releases/download/bun-v1.3.11/bun-linux-x64.zip
+      - echo "8611ba935af886f05a6f38740a15160326c15e5d5d07adef966130b4493607ed  /tmp/bun.zip"
+          | sha256sum -c -
+      - unzip -j -d /opt/bun /tmp/bun.zip
+      - chmod 755 /opt/bun/bun
+      - ln -sf /opt/bun/bun /usr/local/bin/bun
+      - rm -f /tmp/bun.zip
+    prebuild:
+      - cd ../../../.. && bun install --frozen-lockfile
+      - cd ../../../.. && bun run --filter @nicotind/web build
+      - cd ../.. && bunx cap sync android
+    gradle:
+      - yes
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+CurrentVersion: 0.8.0
+CurrentVersionCode: 8000

@@ -24,9 +24,11 @@ TVs have no camera, so you connect the way TV apps always have: type your server
 
 <b>About this build</b>
 
-Installed from F-Droid, this app updates through F-Droid. The build published on the project's GitHub releases carries its own self-installer instead; that is removed here, along with the permission it needed. No proprietary library ships in this build.
+This is the same APK the project publishes on its GitHub releases — one build, no F-Droid-only variant, and no proprietary library of any kind.
 
-It installs alongside a sideloaded GitHub TV APK rather than replacing it, because the two are different packages from different update channels. Uninstall the sideloaded one if you do not want both.
+Installed from F-Droid, it updates through F-Droid, and its own in-app update button hides itself. That button exists for people who sideload, where it is the only way to update; the app asks Android who installed it and removes the control when a store did. This is why it declares the "install unknown apps" permission even though F-Droid will never use it here.
+
+The TV app is a separate package from the phone app, so the two install side by side rather than replacing each other. If you sideloaded a TV APK before version 0.7, that older one used the phone package name and will not be upgraded by this — uninstall it by hand.
 
 <b>Free software</b>
 

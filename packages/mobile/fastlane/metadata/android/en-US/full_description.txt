@@ -19,12 +19,11 @@ The app talks to your server and nothing else. No analytics, no advertising iden
 
 <b>About this build</b>
 
-This F-Droid build differs from the APK on the project's GitHub releases, in both cases deliberately:
+This is the same APK the project publishes on its GitHub releases — one build, no F-Droid-only variant. It contains no proprietary library of any kind.
 
-* <b>No QR-code pairing.</b> Connecting by scanning the QR code your server shows needs a camera-scanning library that is not free software, so it is left out here. Enter your server's address, or use the pairing code your server displays — both work the same way.
-* <b>No built-in updater.</b> The GitHub build downloads and installs its own updates; F-Droid does that for this one, so the self-installer is removed along with the permission it needed.
+Installed from F-Droid, the app updates through F-Droid, and its own in-app update button hides itself. That button exists for people who install the APK directly, where it is the only way to update; the app asks Android who installed it and removes the control when a store did. This is why the app declares the "install unknown apps" permission even though F-Droid will never use it here.
 
-Nothing else is missing, and no proprietary library ships in this build.
+There is no QR-code pairing. It was dropped from every build rather than only this one: scanning needed a camera library that is not free software. Enter your server's address, or use the pairing code your server displays — both work the same way.
 
 <b>Free software</b>
 

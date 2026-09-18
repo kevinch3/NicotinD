@@ -24,9 +24,11 @@ Los televisores no tienen cámara, así que la conexión es la de siempre en una
 
 <b>Sobre esta versión</b>
 
-Instalada desde F-Droid, esta aplicación se actualiza a través de F-Droid. La versión publicada en las releases de GitHub del proyecto incluye su propio instalador de actualizaciones; aquí se elimina, junto con el permiso que necesitaba. En esta versión no se incluye ninguna biblioteca privativa.
+Es el mismo APK que el proyecto publica en sus releases de GitHub: una sola compilación, sin variante exclusiva de F-Droid y sin ninguna biblioteca privativa.
 
-Se instala junto a un APK de TV descargado desde GitHub en lugar de sustituirlo, porque son paquetes distintos de canales de actualización distintos. Desinstala el de GitHub si no quieres tener los dos.
+Instalada desde F-Droid, se actualiza por F-Droid y su botón de actualización interno se oculta solo. Ese botón existe para quien instala el APK directamente, donde es la única forma de actualizar; la aplicación le pregunta a Android quién la instaló y retira el control cuando fue una tienda. Por eso declara el permiso de «instalar aplicaciones desconocidas» aunque aquí F-Droid nunca lo use.
+
+La aplicación de TV es un paquete distinto del de móvil, así que ambas se instalan a la vez en lugar de sustituirse. Si instalaste un APK de TV anterior a la versión 0.7, aquel usaba el nombre de paquete del móvil y este no lo actualizará: desinstálalo a mano.
 
 <b>Software libre</b>
 
