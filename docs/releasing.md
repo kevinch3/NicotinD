@@ -40,7 +40,7 @@ so re-runs are always safe.
 | ----------------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | **Server image**                          | every tag                 | multi-arch image published to `ghcr.io/kevinch3/nicotind` (`vX.Y.Z` + `vX` + `release` tags); self-hosters `docker compose pull` |
 | **Server (production host)**              | every tag                 | auto-deployed over Tailscale SSH: pulls the just-published image — nothing to do                                                 |
-| **Android APK** (+ TV flavor)             | mobile/web inputs changed | download from the GitHub Release and sideload (see below); signed when `ANDROID_KEYSTORE_*` secrets are present                  |
+| **Android APK** (+ a separate TV APK)     | mobile/web inputs changed | download from the GitHub Release and sideload (see below); signed when `ANDROID_KEYSTORE_*` secrets are present                  |
 | **iOS IPA** (unsigned)                    | mobile/web inputs changed | re-sign + install via AltStore/Sideloadly (see below)                                                                            |
 | **Desktop** Linux AppImage/deb + macOS dmg | desktop inputs changed    | GitHub Release download; **existing installs auto-update** via electron-updater — Linux applies updates itself, macOS only notifies (ad-hoc signing) |
 
@@ -48,7 +48,7 @@ so re-runs are always safe.
 
 - CI builds the signed APK on every tag push (uses `ANDROID_KEYSTORE_*` secrets
   when present, otherwise an unsigned APK), plus a second `NicotinD-TV-<v>.apk`
-  flavor for Android TV.
+  for Android TV — a separate app (`…nicotind.tv`), not a variant of the phone one.
 - The APK is attached to the **GitHub Release** of the tag — download and
   install directly on Android (you may need to allow "Install from unknown
   sources"). The in-app "Check for updates" button self-updates from GitHub

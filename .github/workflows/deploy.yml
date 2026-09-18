@@ -220,20 +220,22 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: ./gradlew assembleRelease
 
-      # Gradle emits `app-standard-release.apk` under the flavor's own output dir.
-      # `standard` is the GitHub-release flavor; `fdroid` drops the non-free
-      # plugins (docs/fdroid.md). Rename to the versioned, product-named scheme
-      # the other release assets use (NicotinD-<version>.apk) via
+      # There are no flavors since #1168, so gradle emits one `app-release.apk`
+      # per build and BOTH builds in this job write it to the same path. Staging
+      # is therefore not tidiness: the TV build below would otherwise overwrite
+      # the phone APK in place. Renamed here to the versioned, product-named
+      # scheme the other release assets use (NicotinD-<version>.apk) via
       # $NICOTIND_VERSION_NAME (already in $GITHUB_ENV from "Derive Android version").
-      # Staged out of the gradle output dir so the TV build below can't clobber it.
       - name: Stage phone APK
         working-directory: packages/mobile/android/app/build/outputs/apk/release
         run: |
           mkdir -p "$RUNNER_TEMP/apks"
           mv app-release.apk "$RUNNER_TEMP/apks/NicotinD-${NICOTIND_VERSION_NAME}.apk"
 
-      # Second flavor: the SAME Android project rebuilt with the web bundle from
+      # Second APK: the SAME Android project rebuilt with the web bundle from
       # the Angular `tv` configuration (environment.tv.ts → isTvBuild() true).
+      # A rebuild, not a gradle flavor — the difference is the *web* bundle, and
+      # the app id below, neither of which gradle's variant system produces.
       # This is what makes the tv config reachable by users at all — the plain
       # APK has tvBuild:false, so it never gets TV remote-control defaults and
       # keeps the arrow-seek shortcut that breaks D-pad navigation (issue #387).
