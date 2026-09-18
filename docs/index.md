@@ -132,6 +132,11 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   "is this library content?"; the rule is depth-scoped (root dot-dirs skipped, album titles never
   judged) and `check:library-walkers` keeps all 14 walkers honest.
   → [library-path-conventions.md](library-path-conventions.md)
+- **slskd's incomplete dir is pruned by slskd, not by us**: `SLSKD_INCOMPLETE_RETENTION_MINUTES`
+  reaches `retention.files.incomplete` only through `scripts/slskd-configure.sh`, because slskd
+  binds env vars from an `[EnvironmentVariable]` allowlist; `retention.files.complete` stays unset
+  (it would prune the addon-owned staging dir).
+  → [library-path-conventions.md](library-path-conventions.md)
 - **Import music — two lanes into one pipeline**: an admin server path and a browser upload
   (`ImportUploadService`, chunked + resumable, `submitStaged`) both run through organize → scan;
   drop a folder on `/get`, gated by `canImport`. → [import.md](import.md)
