@@ -710,6 +710,9 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **Own signed F-Droid repository**: `build-fdroid-repo.ts` + `FDROID_APPS` assemble and sign it
   from the release's APKs; `pages.yml` publishes it beside the Storybook catalog.
   → [fdroid.md](fdroid.md)
+- **Reproducible Android build**: F-Droid rebuilds the APK and compares byte-for-byte;
+  `pinManifestTimestamp` (web `postbuild`) fixes the one nondeterministic input, `dependenciesInfo`
+  is off, and `apk-diff.ts` names a differing entry. → [fdroid.md](fdroid.md)
 - **fdroiddata build recipe, kept in-repo**: `packages/mobile/fdroiddata/*.yml` is what a
   `fdroiddata` MR carries; `check:fdroid` pins its bun version to `BUN_VERSION` and its
   `cap sync` step. `nicotindVersion` in `build.gradle` versions a bare checkout.

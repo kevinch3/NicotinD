@@ -243,6 +243,55 @@ used: it locks the root account, because it assumes a disposable buildserver VM.
   --print-certs`). If the build is not byte-identical, F-Droid reports it rather than silently
   publishing its own signature — that is the point of the field.
 
+## Reproducible builds
+
+Enabling the fields above was a promise the build could not keep. Measured, not assumed.
+
+### What F-Droid actually checks
+
+`fdroid verify` runs `apksigcopier.do_copy(ours, theirs, exclude=exclude_meta)` — grafting our
+signature onto their own rebuild — then `apksigner verify`. That passes only when the two archives
+are byte-identical apart from the signature. `apksigcopier` is vendored inside fdroidserver with no
+CLI, so the exact check is runnable locally:
+
+```bash
+~/.local/share/pipx/venvs/fdroidserver/bin/python -c \
+  "from fdroidserver import apksigcopier as a; a.do_copy('published.apk','rebuilt-unsigned.apk','out.apk', exclude=a.exclude_meta)"
+apksigner verify --verbose out.apk
+```
+
+It answers *whether*, never *where*, so `bun run packages/mobile/scripts/apk-diff.ts <published>
+<rebuilt>` exists to name the entry — it hashes every zip entry, ignores exactly the files
+apksigcopier ignores, and prints the denominator ("658 entries: 658 compared, 0 signature entries
+ignored") so a pass cannot be an empty comparison.
+
+Our APKs carry **no** JAR signature files: minSdk 26 means AGP signs with v2/v3 only, so `0 ignored`
+is the honest count rather than a bug.
+
+### The one thing that was not deterministic
+
+Measured on `v0.8.5`, published APK vs a clean-clone rebuild: **of 658 entries, exactly one
+differed** — `assets/public/ngsw.json`. Angular's service-worker manifest carries
+`timestamp: Date.now()`, and `cap sync` copies the whole web bundle into the APK.
+
+`packages/web/scripts/pin-ngsw-timestamp.ts` (`pinManifestTimestamp`) rewrites it, wired as the web
+package's **`postbuild`** so every consumer gets it without knowing — CI, Docker, desktop packaging,
+both e2e lanes, and F-Droid's recipe, which invokes the same package script. The value comes from
+`SOURCE_DATE_EPOCH` when set, else `git log -1 --format=%ct`, else the 1980 zip epoch AGP already
+stamps on every entry; `deploy.yml` exports the same `git log -1 --format=%ct` that fdroidserver
+uses (`common.py`), so both builds derive it identically without coordinating.
+
+It is behaviour-neutral for the PWA: `ngsw-worker.js` reads `timestamp` only under
+`applicationMaxAge`, which `ngsw-config.json` does not set.
+
+`dependenciesInfo { includeInApk false }` is off in `build.gradle` for the same reason — AGP
+otherwise embeds an encrypted, Google-readable dependency blob in the signing block, which is the
+wrong thing to carry into a byte comparison. `minifyEnabled false` stays: R8 is not deterministic
+across versions, so turning it on needs its own rebuild comparison first.
+
+`check:fdroid` guards all of it, because every one of these fails **silently** — the build stays
+green and only F-Droid's next rebuild notices.
+
 ### CI on a fdroiddata fork
 
 The template says it outright: "F-Droid CI runners are under GitLab's FOSS program, so there's no

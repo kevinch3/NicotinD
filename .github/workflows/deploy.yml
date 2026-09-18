@@ -132,6 +132,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # F-Droid rebuilds this APK from the same tag and compares it byte-for-byte
+      # to the one attached here. It derives SOURCE_DATE_EPOCH as `git log -1
+      # --format=%ct`, so deriving it identically is what makes the two builds
+      # agree without coordinating. Consumed by the web build's postbuild hook,
+      # which pins the service-worker manifest timestamp. See docs/fdroid.md.
+      - name: Export SOURCE_DATE_EPOCH
+        run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
