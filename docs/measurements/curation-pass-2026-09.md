@@ -3963,5 +3963,44 @@ supply — deferred rather than guessed at the artist level.
 
 #1123's headline (24% / 5,135 umbrella-only songs) and #1129's headline (114 "Music"-as-genre
 tracks) are both still open on GitHub with counts stretch 18 already made stale (#1131's metric fix;
-37 of #1129's instances fixed 09-15). Worth a closing/updating comment on both rather than
+37 of #1129's instances fixed 09-15). Posted a corrective comment on both this session rather than
 re-measuring against either issue's own original premise.
+
+## 2026-09-19, continued — the lowInformation dimension, done properly this time
+
+Stretch 18 deliberately left `genres.lowInformation`'s top four unjudged (Moderat, Fred again..,
+Abraham (ES) & S.Hai, Pete Tong/HER-O/Jules Buckley) for good reasons that still hold — confirmed by
+re-checking, not re-litigated. This continuation went past them to the artists behind them, this time
+pulling actual per-song data (`get_artist` → `get_album_tracks`) before writing anything, since the
+health report's worklist supplies only artist + count.
+
+### 64 writes, 3 artists, all read-back verified
+
+| dimension | before | after |
+| --- | --- | --- |
+| `genres.lowInformation` | 505 | **441** |
+
+| artist | n | written | evidence |
+| --- | --- | --- | --- |
+| Gigi D'Agostino (*Tecno Fes*, *Tecno Fes 2*, *The Essential*) | 33 | `Italo Dance` | same artist, 3 separate album years (2000/2001/2009) independently carrying the same catch-all — not the single-rip n=1 shape; *L'Amour Toujours* (already `Italo Dance` from stretch 18) is the same continuous body of work |
+| CamelPhat, *Dark Matter* | 15 | `Deep House` | 8 of the album's own 23 tracks already carry `House`/`Deep House`; 14 of CamelPhat's other 22 albums are already `Deep House` — strong in-artist sibling agreement, not external knowledge alone |
+| Sonny Fodera (*After Parties & Aeroplanes*, *Frequently Flying*) | 16 | `Deep House` | zero in-library corroboration (both albums were blanket `Dance`) — confirmed by search before writing: "House, Deep House, and Soulful House" / "deep, soulful house" per Traxsource and Insomniac |
+
+### Two more checked and correctly left alone
+
+- **Guy J (12)** — no in-library corroboration (all 3 albums blanket `Dance`/`Electronic`). A search
+  before writing was the right call: Resident Advisor describes his own *Esperanza* as "progressive
+  house, techno, electro and electronica," and genre listings differ **per track on the same album**.
+  Blanketing one genre here is exactly the trap this dimension exists to avoid.
+- **Röyksopp (12)** — all 3 in-library albums (2005 ×2, 2014) are already just `Electronic`, with no
+  differentiation across a 9-year span. A duo whose own catalog resists one label; left alone.
+
+### The pattern worth naming
+
+Sonny Fodera and CamelPhat looked identical going in (blanket `Dance`, confident-sounding external
+genre in mind) but resolved oppositely on method: CamelPhat's in-library sibling evidence was strong
+enough to trust outright; Sonny Fodera had none, so the write waited on a search — which also
+corrected the specific genre (Tech House, from his more recent work, would have been wrong for the
+2014/2016 albums actually in the library). Guy J looked like Sonny Fodera's shape (confident external
+guess, zero in-library corroboration) and the same discipline — search before writing — caught that
+it was actually David Guetta's shape instead.
