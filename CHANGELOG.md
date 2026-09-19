@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.12](https://github.com/kevinch3/NicotinD/compare/v0.8.11...v0.8.12) (2026-09-19)
+
+### Bug Fixes
+
+* **fdroid:** build the release APK on JDK 21, the one F-Droid uses ([#1204](https://github.com/kevinch3/NicotinD/issues/1204)) ([58c1e01](https://github.com/kevinch3/NicotinD/commit/58c1e014834055256eaa14a85fc6718b7080fddd)), references [#1168](https://github.com/kevinch3/NicotinD/issues/1168)
 ## [0.8.11](https://github.com/kevinch3/NicotinD/compare/v0.8.10...v0.8.11) (2026-09-19)
 
 ### Bug Fixes

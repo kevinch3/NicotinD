@@ -1,0 +1,1 @@
+• fdroid: build the release APK on JDK 21, the one F-Droid uses (#1204)
