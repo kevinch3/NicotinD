@@ -232,6 +232,20 @@ environment set**, producing `versionCode='8001' versionName='0.8.1'` and **0** 
 matching ML Kit, GMS, Firebase, osbarcode or OutSystems out of 5226. `fdroid build` itself was not
 used: it locks the root account, because it assumes a disposable buildserver VM.
 
+### Recipe conventions the reviewer asked for
+
+Both raised on [MR 49342](https://gitlab.com/fdroid/fdroiddata/-/merge_requests/49342), both now
+gated by `check:fdroid` — a recipe that breaks either still *builds*, it just stops being
+reviewable, which is exactly the kind of thing no local check would otherwise catch.
+
+- **One command per list entry; never `&&` or `;` inside one.** Verified against fdroidserver
+  rather than taken on faith: `sudo:` and `prebuild:` are each `'; '.join(…)`-ed and run under
+  `bash -e -u -o pipefail`, so separate entries already abort on failure, and a bare `cd` already
+  persists into the entries after it. Chaining buys nothing and costs a readable diff.
+- **`commit:` is a full 40-character hash, never a tag.** A tag can be moved or deleted after the
+  build is reviewed, so it does not identify what was audited. Our `AutoUpdateMode: Version` seed
+  therefore carries a hash; F-Droid fills later entries in itself.
+
 ### What the recipe has to do that a normal Android app does not
 
 - **Install bun.** Pinned to the same version `deploy.yml` builds with, downloaded from its GitHub

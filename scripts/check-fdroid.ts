@@ -429,6 +429,37 @@ const { versionCode: currentVersionCode, versionName: currentVersionName } = and
           `reject unverified binary downloads, and so should we.`,
       );
     }
+    // Both raised by an F-Droid reviewer on MR 49342, and both are invisible
+    // from here: the recipe still builds, it is just not reviewable.
+    //
+    // A tag can be moved or deleted after review, so it does not identify what
+    // was audited. Only a full hash does.
+    const commits = [...source.matchAll(/^\s*commit:\s*(\S+)/gm)].map((m) => m[1]);
+    for (const c of commits) {
+      if (!/^[0-9a-f]{40}$/.test(c)) {
+        errors.push(
+          `${rel} has \`commit: ${c}\` — F-Droid requires a full 40-character hash, not a tag ` +
+            `or branch, because those can move after the build is reviewed.`,
+        );
+      }
+    }
+
+    // fdroidserver joins each list with `; ` and runs it under `bash -e`, so a
+    // failure already stops the build and a `cd` already persists. Chaining
+    // inside one entry just makes the recipe harder to read and to diff.
+    for (const key of ['sudo', 'prebuild'] as const) {
+      const block = new RegExp(`^\\s*${key}:\\n((?:\\s+- .*\\n|\\s{8,}.*\\n)+)`, 'm').exec(source);
+      for (const line of block?.[1].split('\n') ?? []) {
+        if (/\s&&\s|;\s*$|;\s+\S/.test(line)) {
+          errors.push(
+            `${rel}'s \`${key}:\` chains commands inside one entry (${line.trim()}). Use one ` +
+              `entry per command — fdroidserver joins them under \`bash -e\`, so this changes ` +
+              `nothing except reviewability.`,
+          );
+        }
+      }
+    }
+
     if (!source.includes('cap sync android')) {
       errors.push(
         `${rel} does not run \`cap sync android\` before gradle. The tracked ` +
