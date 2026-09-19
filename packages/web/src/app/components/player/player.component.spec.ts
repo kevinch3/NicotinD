@@ -1229,6 +1229,139 @@ describe('PlayerComponent', () => {
     });
   });
 
+  // ─── Skipping out of an in-flight recovery ────────────────────────────────
+
+  describe('a track change interrupts an armed recovery', () => {
+    const knownTrack: Track = { id: 't1', title: 'Test Track', artist: 'A', duration: 240 };
+
+    /** Put the component into `awaiting-duration` with the 5 s valve armed. */
+    function armRecovery(): void {
+      Object.defineProperty(fakeAudio, 'duration', { value: 1.8, configurable: true });
+      Object.defineProperty(fakeAudio, 'currentTime', {
+        value: 1.8,
+        writable: true,
+        configurable: true,
+      });
+      playerService.isPlaying.set(true);
+      fakeAudio.dispatchEvent(new Event('ended'));
+      expect(playerService.recoveryState()).toBe('awaiting-duration');
+    }
+
+    beforeEach(() => {
+      playerService.currentTrack.set(knownTrack);
+      fixture.detectChanges();
+    });
+
+    it('clears the recovery state so the next track is not left mid-recovery', () => {
+      vi.useFakeTimers();
+      armRecovery();
+
+      // The user presses Next while the spinner is up — before the valve fires.
+      vi.advanceTimersByTime(LOAD_SETTLE_MS);
+      playerService.currentTrack.set(TRACK_2);
+      fixture.detectChanges();
+
+      expect(playerService.recoveryState()).toBe('normal');
+      vi.useRealTimers();
+    });
+
+    it('lets the next track arm a recovery valve of its own', () => {
+      vi.useFakeTimers();
+      armRecovery();
+
+      vi.advanceTimersByTime(LOAD_SETTLE_MS);
+      playerService.currentTrack.set({ ...TRACK_2, duration: 240 });
+      fixture.detectChanges();
+      playerService.queue.set([knownTrack]);
+      playerService.isPlaying.set(true);
+      mockLoad.mockClear();
+
+      // The replacement track loads badly too — exactly the case the user hits.
+      // It must recover, not sit silent and not skip itself. Asserting on the
+      // valve rather than on `recoveryState`, which a wedged state satisfies
+      // without a recovery ever having been started.
+      fakeAudio.dispatchEvent(new Event('ended'));
+      expect(playerService.queue()).toEqual([knownTrack]);
+      vi.advanceTimersByTime(5000);
+
+      expect(mockLoad).toHaveBeenCalled();
+      expect(playerService.recoveryState()).toBe('normal');
+      vi.useRealTimers();
+    });
+
+    it('does not let the abandoned valve reload the track that replaced it', () => {
+      vi.useFakeTimers();
+      armRecovery();
+
+      vi.advanceTimersByTime(LOAD_SETTLE_MS);
+      playerService.currentTrack.set(TRACK_2);
+      fixture.detectChanges();
+      mockLoad.mockClear();
+
+      // The 5 s valve armed for the abandoned track must be cancelled, not just
+      // ignored: firing it would reload and reposition the new track.
+      vi.advanceTimersByTime(5000);
+
+      expect(mockLoad).not.toHaveBeenCalled();
+      vi.useRealTimers();
+    });
+
+    it('re-arms the stall watchdog for the new track', () => {
+      vi.useFakeTimers();
+      armRecovery();
+
+      vi.advanceTimersByTime(LOAD_SETTLE_MS);
+      playerService.currentTrack.set({ ...TRACK_2, duration: 240 });
+      fixture.detectChanges();
+      playerService.isPlaying.set(true);
+      Object.defineProperty(fakeAudio, 'currentTime', { value: 42, configurable: true });
+
+      // A stream that parks on `waiting` and never delivers. The watchdog
+      // early-returns while recoveryState is stuck, leaving playback dead.
+      fakeAudio.dispatchEvent(new Event('waiting'));
+      vi.advanceTimersByTime(STREAM_STALL_TIMEOUT_MS + 10);
+      vi.advanceTimersByTime(MEDIA_ERROR_RETRY_MS + 10);
+
+      expect(playerService.restoredTime).toBe(42);
+      vi.useRealTimers();
+    });
+
+    // The advance onEnded performs pre-loads the next track itself and marks it
+    // `lastManualSrc`, which makes Effect 1 return before the reset block. The
+    // new track therefore inherited the spent allowance of the one that just
+    // failed, and its own first false `ended` skipped it on the spot — the
+    // "jumps into the next track automatically" half of the report.
+    it('gives a naturally-advanced track a fresh allowance, not the last one', () => {
+      vi.useFakeTimers();
+      const third: Track = { id: 't3', title: 'Third', artist: 'A', duration: 240 };
+      playerService.queue.set([{ ...TRACK_2, duration: 240 }, third]);
+      playerService.isPlaying.set(true);
+      Object.defineProperty(fakeAudio, 'duration', { value: 1.8, configurable: true });
+      Object.defineProperty(fakeAudio, 'currentTime', {
+        value: 1.8,
+        writable: true,
+        configurable: true,
+      });
+
+      // Burn the whole allowance on the track that is playing.
+      for (let i = 0; i < MAX_RECOVERY_ATTEMPTS; i++) {
+        fakeAudio.dispatchEvent(new Event('ended'));
+        vi.advanceTimersByTime(5000);
+      }
+      // Allowance spent — this one advances the queue for real.
+      fakeAudio.dispatchEvent(new Event('ended'));
+      expect(playerService.currentTrack()?.id).toBe('t2');
+      fixture.detectChanges();
+
+      // t2's own first false `ended` must recover it, not skip straight to t3.
+      fakeAudio.dispatchEvent(new Event('ended'));
+
+      expect(playerService.currentTrack()?.id).toBe('t2');
+      expect(playerService.queue()).toEqual([third]);
+      vi.useRealTimers();
+    });
+  });
+
   // ─── Seeking past the loaded region ───────────────────────────────────────
 
   describe('seek past the loaded region', () => {

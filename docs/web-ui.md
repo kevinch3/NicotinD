@@ -917,6 +917,35 @@ two sites now share one `clearRecoveryTimeout()` helper (also used by `startReco
 `ngOnDestroy`), so the handle has a single teardown path. The two bugs compound: the stray restart
 can itself provoke another early `ended`, feeding the loop the bound is there to stop.
 
+**The recovery state outlived the track it described.** Everything above is per-resource, but only
+some of it was *reset* per resource, and the two halves of that omission produced the two halves of
+one user report: a track skipped to "loads for a second, reloads, then either sits silent or skips
+itself on its own".
+
+- `recoveryState` lives on `PlayerService`; `recoveryAttempts`, `retryOnReconnect` and
+  `recoveringStream` are component fields. The track-change effect reset the three fields and not the
+  signal. Every exit from `'awaiting-duration'` — `onDuration`, `onCanPlay`, the 5 s valve — is gated
+  on the `loadGeneration` captured at bind time, and a track change bumps that generation. So
+  pressing Next *during* a recovery (what a listener does when a track is visibly stuck) left the
+  signal set with no live path back to `'normal'`. Recovery then depended entirely on the *next*
+  track loading cleanly — and when it did not, `startRecovery` hit its own
+  `'awaiting-duration'` early-return and did nothing at all: no recovery, no advance, a silent
+  player. `armStallWatchdog` stands down on the same signal, so the fallback for a stream that
+  stalls without raising `error` was wedged too.
+- The reset also sat *below* the `lastManualSrc` early-return, which `onEnded` takes when it
+  pre-loads the next track itself. A natural advance therefore handed the incoming track the spent
+  allowance of the one that had just failed, and its own first false `ended` fell straight through
+  to the advance path — the track skipping itself, and then the next, down the queue.
+
+Both are now voided together in the existing "a genuine track change" block, keyed on
+`loadedTrackId` and above the pre-load return, alongside the pending seek that dies on the same
+terms. Keying on the id rather than "the effect ran" is what keeps a token refresh from refreshing a
+flaky resource's allowance — the property the paragraph above claims and the old placement did not
+actually hold on the natural-advance path. Regression cover: the
+`a track change interrupts an armed recovery` block (state cleared, the new track able to arm a
+valve of its own, the abandoned valve not reloading its replacement, the stall watchdog live again,
+and a naturally-advanced track getting a fresh allowance).
+
 **Truncated preserved blob — the "plays 3-4 s, feels cached" variant.** A user report of playback
 delivering only ~3-4 s per track, the buffered band instantly full at those few seconds, then a
 stall or an advance — on *every* play of the affected tracks. That signature (instantly-buffered,
