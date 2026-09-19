@@ -1,5 +1,5 @@
-# The fdroiddata metadata for the PHONE app. Copy to
-# metadata/ar.kevinroberts.nicotind.yml in a fdroiddata fork; see docs/fdroid.md.
+# The fdroiddata metadata for the ANDROID TV app. Copy to
+# metadata/ar.kevinroberts.nicotind.tv.yml in a fdroiddata fork; see docs/fdroid.md.
 #
 # Kept here, not only in the fork, so the recipe is reviewed with the code it
 # builds and check:fdroid can hold it to that code — it pins the toolchain by
@@ -12,9 +12,10 @@
 # release the merge request is opened against; nothing gates them, deliberately,
 # because gating them would fail every release for a value F-Droid owns.
 #
-# `gradle: [phone]` is load-bearing. With product flavours present, `yes` makes
-# fdroidserver run a bare `assembleRelease` and then look for an APK under
-# outputs/apk/release/, which no longer exists — "No apks match".
+# `gradle: [tv]` does two jobs. It selects `assembleTvRelease`, whose flavour
+# supplies the `.tv` applicationId (F-Droid's buildserver cannot set the env var
+# our CI used to use), AND it is what makes fdroidserver read this app's store
+# listing from `src/tv/fastlane/` instead of inheriting the phone's.
 Categories:
   - Multimedia
 License: AGPL-3.0-only
@@ -27,7 +28,7 @@ AutoName: NicotinD
 
 RepoType: git
 Repo: https://github.com/kevinch3/NicotinD.git
-Binaries: https://github.com/kevinch3/NicotinD/releases/download/v%v/NicotinD-%v.apk
+Binaries: https://github.com/kevinch3/NicotinD/releases/download/v%v/NicotinD-TV-%v.apk
 
 Builds:
   - versionName: 0.8.7
@@ -46,10 +47,10 @@ Builds:
       - rm -f /tmp/bun.zip
     prebuild:
       - cd ../../../.. && bun install --frozen-lockfile
-      - cd ../../../.. && bun run --filter @nicotind/web build
+      - cd ../../../.. && bun run --filter @nicotind/web build -- --configuration tv
       - cd ../.. && bunx cap sync android
     gradle:
-      - phone
+      - tv
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags

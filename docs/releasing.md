@@ -54,7 +54,9 @@ so re-runs are always safe.
   sources"). The in-app "Check for updates" button self-updates from GitHub
   Releases afterwards.
 - Local build:
-  `cd packages/mobile && bunx cap sync android && cd android && ./gradlew assembleRelease`.
+  `cd packages/mobile && bunx cap sync android && cd android && ./gradlew assemblePhoneRelease`
+  (or `assembleTvRelease` after a `--configuration tv` web build — never bare `assembleRelease`,
+  which builds both flavours from one bundle).
 - Full detail: [mobile-app.md](mobile-app.md).
 
 ### iOS app

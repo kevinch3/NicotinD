@@ -156,7 +156,7 @@ launch a local browser. Specs in `tests-tv/` import `test` from `tv/fixtures.ts`
 | Cold emulator boot → `sys.boot_completed=1`       | 26 s     |
 | Web build `--configuration tv`                    | 8.0 s    |
 | `cap sync`                                        | 0.05 s   |
-| `gradlew assembleDebug` (warm daemon, no changes) | 9.8 s    |
+| `gradlew assembleTvDebug` (warm daemon, no changes) | 9.8 s    |
 | `adb install -r` (31 MB)                          | 0.7 s    |
 | Fixture server boot → `/api/health`               | ~15 s    |
 | Launch + WebView target ready                     | ~8 s     |
@@ -169,6 +169,19 @@ clearly wrong, so every run builds and installs from scratch.
 The one conditional is the emulator itself: boot it only if no device reporting the
 `nicotind-tv` AVD has `sys.boot_completed=1`. That reuses a _running process_, not a _build
 artifact_ — a different risk class, and worth not paying 26 s per run.
+
+### The package this lane drives is `…nicotind.tv`
+
+Since the F-Droid TV entry needed a gradle flavour (docs/fdroid.md), the TV build carries
+`applicationIdSuffix ".tv"`. Two consequences for this lane, both of which look like a broken
+harness rather than a naming change:
+
+- `APP_ID` is `ar.kevinroberts.nicotind.tv` — the WebView lookup matches on package name, so a stale
+  id finds no WebView and reads as "the app crashed on launch".
+- The launcher activity is **not** under that id. `android:name=".MainActivity"` resolves against the
+  gradle *namespace*, which `applicationIdSuffix` does not move, so `am start -n <APP_ID>/.MainActivity`
+  names a class that does not exist. `MAIN_ACTIVITY` is the fully-qualified
+  `ar.kevinroberts.nicotind.MainActivity`.
 
 ### Fixed decisions
 

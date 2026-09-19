@@ -43,7 +43,7 @@
     }
   ],
   "scripts": {
-    "postchangelog": "bun run --filter @nicotind/mobile fdroid:changelog && bun run --filter @nicotind/mobile android:version && git add fastlane packages/mobile/fastlane-tv packages/mobile/android/app/build.gradle"
+    "postchangelog": "bun run --filter @nicotind/mobile fdroid:changelog && bun run --filter @nicotind/mobile android:version && git add fastlane src/tv/fastlane packages/mobile/android/app/build.gradle"
   },
   "commitAll": true
 }

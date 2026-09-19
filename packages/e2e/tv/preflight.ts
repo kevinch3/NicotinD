@@ -19,6 +19,8 @@ import { join } from 'node:path';
 import {
   APP_ID,
   AVD,
+  LEGACY_APP_ID,
+  MAIN_ACTIVITY,
   TV_PORT,
   adb,
   adbPath,
@@ -31,9 +33,12 @@ import {
   tvMusicDir,
 } from './env.js';
 
-// One APK per form factor since #1168 — the distribution flavours are gone, so
-// gradle writes to the plain build-type directory again. See docs/fdroid.md.
-const APK = join(repoRoot, 'packages/mobile/android/app/build/outputs/apk/debug/app-debug.apk');
+// The `tv` flavour's debug output. Flavours came back for the F-Droid TV entry
+// (metadata-only — see docs/fdroid.md), so gradle writes per flavour again.
+const APK = join(
+  repoRoot,
+  'packages/mobile/android/app/build/outputs/apk/tv/debug/app-tv-debug.apk',
+);
 
 /** Boot the AVD headless and wait for `sys.boot_completed`. Measured ~26s. */
 async function ensureEmulator(): Promise<string> {
@@ -62,7 +67,7 @@ async function ensureEmulator(): Promise<string> {
   );
 }
 
-/** Build web (tv configuration) → cap sync → assembleDebug → install. */
+/** Build web (tv configuration) → cap sync → assembleTvDebug → install. */
 function buildAndInstall(serial: string): void {
   run(
     'bun',
@@ -73,9 +78,9 @@ function buildAndInstall(serial: string): void {
   run('bunx', ['cap', 'sync', 'android'], join(repoRoot, 'packages/mobile'), 'cap sync');
   run(
     './gradlew',
-    ['assembleDebug', '-q'],
+    ['assembleTvDebug', '-q'],
     join(repoRoot, 'packages/mobile/android'),
-    'assembleDebug',
+    'assembleTvDebug',
   );
   if (!existsSync(APK)) throw new Error(`[e2e:tv] APK missing after build: ${APK}`);
   run(adbPath(), ['-s', serial, 'install', '-r', '-d', APK], repoRoot, 'install');
@@ -128,6 +133,13 @@ async function startServer(): Promise<() => void> {
  */
 async function launchApp(serial: string): Promise<void> {
   adb(['shell', 'am', 'force-stop', APP_ID], { serial });
+  // The pre-flavour package is still installed on any machine that ran this
+  // lane before, and it is a leanback launcher app too. If it holds the
+  // foreground, Playwright still attaches to OUR WebView over devtools while
+  // `input keyevent` goes to ITS window — so the DOM reads fine and focus never
+  // moves. Observed as "reached 0 of 3 declared focusables"; see the top-activity
+  // assertion below, which is what turns that into a legible failure.
+  adb(['shell', 'am', 'force-stop', LEGACY_APP_ID], { serial, quiet: true });
   // Wipe app state every run. Two reasons, both learned the hard way:
   //  - a stale `nicotind_server_url` from a previous session points at a port
   //    this run does not tunnel, and the restored track's cover URL then kills
@@ -142,12 +154,25 @@ async function launchApp(serial: string): Promise<void> {
   // `am start` on the explicit component, not `monkey`: monkey's category
   // launch was observed starting the process while the launcher kept the top
   // activity, which produces the same no-WebView symptom.
-  adb(['shell', 'am', 'start', '-W', '-n', `${APP_ID}/.MainActivity`], { serial });
+  adb(['shell', 'am', 'start', '-W', '-n', `${APP_ID}/${MAIN_ACTIVITY}`], { serial });
 
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
     const socks = adb(['shell', 'cat', '/proc/net/unix'], { serial, quiet: true });
     if (socks.includes('webview_devtools_remote_')) {
+      // A WebView is not enough: key events go to whatever window is on top, and
+      // a different app there produces a readable DOM with dead input. Assert it
+      // rather than let every focus spec fail with an unexplained empty walk.
+      const top = adb(['shell', 'dumpsys', 'activity', 'activities'], { serial, quiet: true })
+        .split('\n')
+        .find((l) => l.includes('topResumedActivity'));
+      if (top && !top.includes(APP_ID)) {
+        throw new Error(
+          `[e2e:tv] ${APP_ID} exposes a WebView but is NOT the foreground app — key events ` +
+            `would go elsewhere and every focus assertion would fail with an empty walk.\n` +
+            `  ${top.trim()}`,
+        );
+      }
       console.log('[e2e:tv] app up, WebView attached');
       return;
     }

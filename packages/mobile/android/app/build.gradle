@@ -5,11 +5,6 @@ android {
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
         applicationId "ar.kevinroberts.nicotind"
-        // Phone and TV are separate apps. The TV build sets ".tv" on EVERY
-        // channel (#1168) — an application id cannot depend on where the file
-        // was downloaded from, and F-Droid requires a distinct id per entry.
-        // See docs/fdroid.md and packages/mobile/src/app-id.ts.
-        applicationIdSuffix System.getenv("NICOTIND_APP_ID_SUFFIX") ?: ""
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // Written by `bun run release` (packages/mobile/scripts/android-version.ts,
@@ -25,6 +20,30 @@ android {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    // Phone and TV are separate apps — F-Droid requires a distinct application id
+    // per entry, and sharing one let a TV APK install over the phone one and
+    // silently swap the UI.
+    //
+    // These flavours carry NO code, resources or dependencies: what differs
+    // between the two APKs is the web bundle `cap sync` copied into assets, and
+    // the id below. They exist because fdroidserver reads a second app's store
+    // listing only from `src/<flavour>/fastlane/` when the recipe's `gradle:`
+    // names that flavour — and because F-Droid's buildserver cannot supply the
+    // id through the environment the way our CI used to. See docs/fdroid.md.
+    //
+    // NEVER run a bare `assembleRelease`: it builds BOTH flavours from whatever
+    // bundle happens to be in assets/, so the TV APK would ship the phone UI
+    // under the TV id, with nothing failing. check:fdroid forbids it.
+    flavorDimensions "formFactor"
+    productFlavors {
+        phone {
+            dimension "formFactor"
+        }
+        tv {
+            dimension "formFactor"
+            applicationIdSuffix ".tv"
         }
     }
     // Release signing is supplied entirely via env (CI decodes the keystore from a

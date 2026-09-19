@@ -41,3 +41,24 @@ commits = [
   "eeff5f7854bb02b0a88544d488480f007492117a",
   "37ab44c64be801f78feadfcdc77716bcc376c4b1",
 ]
+
+[[allowlists]]
+description = """
+`AllowedAPKSigningKeys` in the fdroiddata recipes — the SHA-256 digest of our
+release signing CERTIFICATE. A certificate is the public half: this exact value
+ships inside every APK we publish and anyone can read it back with
+`apksigner verify --print-certs NicotinD-<version>.apk`.
+
+Publishing it is the entire point. F-Droid rebuilds our APK and refuses to
+publish its own signature unless the result matches this digest, so hiding the
+value would disable reproducible builds rather than protect anything. The
+private key it corresponds to lives only in the ANDROID_KEYSTORE_BASE64 secret
+and appears nowhere in this repo.
+
+gitleaks' generic-api-key rule is an entropy heuristic: 64 hex characters look
+identical whether they are a key or a fingerprint.
+
+Scoped to the digest itself, not to the recipe files — a real secret added
+beside it must still be caught.
+"""
+regexes = ['5bf701a0ff9a2cd75f279404d2c8b4bf16ed2bb8591709ae2c8560bc557d6bea']
