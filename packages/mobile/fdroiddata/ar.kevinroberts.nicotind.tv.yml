@@ -64,6 +64,10 @@ Builds:
       - unzip -j -d /opt/bun /tmp/bun.zip
       - chmod 755 /opt/bun/bun
       - ln -sf /opt/bun/bun /usr/local/bin/bun
+      # bun dispatches on argv[0], and its own installer ships `bunx` as a
+      # symlink to the same binary. Without this the prebuild dies on
+      # `bunx: command not found` — after the web build has already succeeded.
+      - ln -sf /opt/bun/bun /usr/local/bin/bunx
       - rm -f /tmp/bun.zip
     # One entry per command. fdroidserver joins these with `; ` and runs the
     # result under `bash -e`, so a failure still stops the build and the `cd`
