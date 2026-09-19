@@ -3905,3 +3905,63 @@ pieces of evidence — the judgement rested on the artist.
   *Shadows* as 2014.
 - **#747** — *L'Amour Toujours* is a real two-disc release (disc 1 × 12, disc 2 × 10) with track
   numbers restarting at 1, i.e. the collision shape that issue measures.
+
+## 2026-09-19 — genre backlog, picked up from the 09-15 baseline
+
+Four days after stretch 18 with no other curation activity in between (`genres.missing` measured
+179 against stretch 18's recorded 180 — a single song of ordinary ingest drift, not missed work;
+`genres.lowInformation` measured exactly 505, unchanged). Checked `git log --follow` on this file
+before starting specifically to confirm that — worth doing every time a pass resumes after a gap,
+since the alternative is redoing work silently.
+
+### Baseline → after this stretch
+
+| dimension | 09-15 (stretch 18) | 09-19 start | after this stretch |
+| --- | --- | --- | --- |
+| `genres.missing` | 180 | 179 | **153** |
+| `genres.lowInformation` | 505 | 505 | 505 (not worked this stretch) |
+| open review flags | 3 | 4 (+1 listener) | 4 |
+
+### 26 zero-to-low-search genre writes, all read-back verified
+
+| cluster | n | written | how |
+| --- | --- | --- | --- |
+| Vinícius de Moraes / Toquinho / Quarteto Jobim-Morelenbaum (one ingest instant) | 6 | `Bossa Nova` | the bossa nova canon itself — *Garota de Ipanema*, *Água de Beber* — zero search |
+| Glaucia Nasser, Rita Benneditto | 2 | `MPB` | 1 search each, both confirmed (Nasser: MPB compilation guest, Bossacucanova remix; Benneditto: Brazilian Music Award, Grammy-nominated) |
+| "01 - Pop Aguante" VA compilation | 14 of 15 | `Pop` / `Reggaeton` / `Cumbia 420` / `Trap` | per-track by individual artist identity (Karol G, Miranda!, Tini, Angela Torres) plus 3 searches for the genuinely blended acts (Ca7riel & Paco Amoroso, Luck Ra, Six Sex) |
+| Anyma, *DOGS † VETEMENTS SS26 SHOW* | 1 | `Melodic Techno` | consistent brand identity (session 11b precedent) |
+| Fémina, Melim, a Spanish university tuna ensemble | 3 | `Indie Pop` / `Pop` / `Tuna` | individual recognition; the tuna ensemble's own name self-declares its genre |
+
+Left untagged, correctly: Silvia Donati (1 search, genuinely inconclusive) and "Alleh, Yorghaki" (not
+distinctive enough to spend a search on) from this stretch's own clusters, plus the previously
+triaged dead ends re-encountered and correctly not re-attempted — Grupo Altamar / A los 4 Vientos /
+Entremares / Rapanui Hinariru (session 11) and OldChild / Kieran San Jose / Independent Lemon /
+Manuel Galán / Joaquín Da Rosa / Niklas Dee / Morgan Seatree / Nathan C (session 5b, three weeks
+stale and still unresolved).
+
+`get_rare_genres(maxCount:15)` afterward: no case/accent duplicate introduced by any of the 8 new
+genre strings written this stretch. One pre-existing, unrelated candidate noticed but not chased:
+a lone `Dance-pop` (lowercase p, count 1) that reads like a case-variant orphan of a larger
+`Dance-Pop`/`Dance Pop` bucket.
+
+### A new listener flag, and a capability gap it exposed
+
+Flag #26 (via the report-a-track feature, #987) reported "Luna tucumana" (Los Chalchaleros) has
+lyrics out of sync. Confirmed on prod: a non-customized `lrclib` synced-lyrics row, most likely
+matched to a different recording/take's timing. **No MCP tool can act on it** — `fetch`/`reset`
+lyrics exist only as REST routes, neither exposed to the refiner MCP surface. Filed **#1205**
+proposing `reset_song_lyrics`/`fetch_song_lyrics` MCP tools (same shape as #1112). Flag left open.
+
+### Deliberately not worked this stretch
+
+`genres.lowInformation` — the current worklist (Gigi D'Agostino 33, Abraham (ES) & S.Hai 30,
+Moderat 20, Pete Tong/HER-O/Jules Buckley 17, Fred again.. 16, Sonny Fodera 16, CamelPhat 15, David
+Guetta 15, Eelke Kleijn 14, Avicii 13) is unchanged from stretch 18's own "left unjudged" set for the
+first four, confirming nothing has touched this dimension since 09-15. Acting on it needs per-song
+ids (`get_artist` → `get_album_tracks`), which the health report's artist+count worklist doesn't
+supply — deferred rather than guessed at the artist level.
+
+#1123's headline (24% / 5,135 umbrella-only songs) and #1129's headline (114 "Music"-as-genre
+tracks) are both still open on GitHub with counts stretch 18 already made stale (#1131's metric fix;
+37 of #1129's instances fixed 09-15). Worth a closing/updating comment on both rather than
+re-measuring against either issue's own original premise.
