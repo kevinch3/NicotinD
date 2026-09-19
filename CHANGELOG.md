@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.9](https://github.com/kevinch3/NicotinD/compare/v0.8.8...v0.8.9) (2026-09-19)
+
+### Bug Fixes
+
+* **fdroid:** one command per recipe entry, and a commit hash instead of a tag ([#1200](https://github.com/kevinch3/NicotinD/issues/1200)) ([ab22618](https://github.com/kevinch3/NicotinD/commit/ab226182171fdb3aa534a974142fa08953e68dae)), references [#1168](https://github.com/kevinch3/NicotinD/issues/1168)
 ## [0.8.8](https://github.com/kevinch3/NicotinD/compare/v0.8.7...v0.8.8) (2026-09-19)
 
 ### Bug Fixes

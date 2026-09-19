@@ -1,0 +1,1 @@
+• fdroid: one command per recipe entry, and a commit hash instead of a tag (#1200)
