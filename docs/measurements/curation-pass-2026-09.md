@@ -4004,3 +4004,27 @@ corrected the specific genre (Tech House, from his more recent work, would have 
 2014/2016 albums actually in the library). Guy J looked like Sonny Fodera's shape (confident external
 guess, zero in-library corroboration) and the same discipline — search before writing — caught that
 it was actually David Guetta's shape instead.
+
+## 2026-09-19, tick 3 — two more genre fixes, a genre-spanning artist confirmed, one new duplicate flag
+
+Back to `list_recent_songs(missingGenre:true)`, the front of which is now entirely already-triaged
+residue from this and prior sessions. Four names worth a search hadn't been checked before:
+
+- **Nickodemus, "Mi Swing es Tropical"** → `Global Bass`. Not a guess — the sources describing him
+  literally use this as his genre movement's name, and this exact track (co-written with Quantic) is
+  his own most-cited example of it.
+- **Master Peace, "I Might be Fake"** → `Indie Sleaze`. British artist explicitly covered as
+  "heralding an indie sleaze resurgence"; picked the more specific of several valid genre tags
+  reported for him, same reasoning as `Cumbia 420` over plain `Reggaeton` earlier this session.
+- **Juan Pablo Vega (2 songs) — left untagged.** Confirmed genre-spanning by search ("siempre está
+  cambiando de género, y que no le gusta encasillarse" — always changing genre, refuses to be
+  pigeonholed): the David Guetta shape, this time caught before a write rather than after.
+- **emoemy, "Krossa alla fönster" — left untagged.** Search surfaced a title collision with an older
+  song by a different artist (Maskinen); genuinely inconclusive, not guessed.
+- `genres.missing`: 153 → **151**.
+
+**Flag #27 filed**: two song rows share the exact title/artist ("Trista Pena", Dany Krastan Sanchez)
+but only one is inside the actual "Trista Pena" single album — the other files under an unclear album
+context. `identify_song` returned `no-match` on BOTH, so per the standing dedupe rule neither side
+proves anything; left both files untouched and flagged for an owner to listen rather than guessing at
+a merge.
