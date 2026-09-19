@@ -4028,3 +4028,43 @@ but only one is inside the actual "Trista Pena" single album — the other files
 context. `identify_song` returned `no-match` on BOTH, so per the standing dedupe rule neither side
 proves anything; left both files untouched and flagged for an owner to listen rather than guessing at
 a merge.
+
+## 2026-09-19, tick 4 — 43 more lowInformation fixes, and a mode:'replace' near-miss caught by habit
+
+Continued past Clotta with the same `get_artist`→`get_album_tracks` method. Four artists resolved
+cleanly, `genres.lowInformation` 441→**398**:
+
+| artist | n | written | evidence |
+| --- | --- | --- | --- |
+| Fatboy Slim, *Palookaville* | 11 | `Big Beat` | 3 of his other 4 albums already `Big Beat`, spanning 1998-2016 — confirms the session-11b fix is durable |
+| Gordo, *DIAMANTE* | 11 | `Tech House` | 6 of his other 6 albums already `Tech House` |
+| Master KG, *Jerusalema* | 11 | `Amapiano` | his one album, his own signature mega-hit; the genre a search actually confirmed rather than assumed ("Gospel Amapiano... a raw hybrid of deep house, jazz and lounge") |
+| Alex Gaudino, *My Destination* | 10 | `Electro House` | matches his own Wikipedia genre listing exactly; count matched the health report's own number precisely |
+
+### The near-miss: `mode:'replace'` on a song found OUTSIDE the verified worklist
+
+While in Alex Gaudino's catalog, three more of his songs — separate single-track albums (*Destination
+Calabria*, *Watch Out*, and a 2014 *Destination Calabria* reissue) — LOOKED like the same shape
+(`get_album_tracks` showed a bare `genre: "Dance"`) and got the same `Electro House` write. They were
+**not** part of the health report's verified 10-song count for this artist — found by browsing, not
+by matching a tool-reported number.
+
+**The tell**: the health delta only moved by 43, not the 46 songs actually written. Checking `scan_cache`
+(the raw, pre-curation tag read from each file) for the 3 extras showed the real stored value was
+`"Dance; Electronic; House"` — three genres in one semicolon-joined tag, of which `get_album_tracks`'
+single `genre` field only ever surfaces the first. `replace` had overwritten the other two into
+oblivion. Restored all three to `Dance;Electronic;House` (`ok:true`, verified) — a full, conservative
+undo rather than compounding the error with a second unilateral judgement about what to keep.
+
+**Spot-checked `scan_cache` for one song from every count-verified batch this tick and last** (Gordo,
+Fatboy Slim, Master KG, CamelPhat, Sonny Fodera) — all single-value `["Dance"]`, confirming the mistake
+was isolated to the three songs pulled outside the worklist's own count, not a wider problem.
+
+**The generalizable rule, sharper than the skill's existing one**: "`mode:'replace'` overwrites the
+whole genre set" already covers a *known* multi-genre song. This is the version that bites when you
+don't know it's multi-genre — `get_album_tracks`/`get_artist` display only the PRIMARY genre string,
+so a song can look like a clean single-tag catch-all and not be one. **The only songs load-bearing
+enough to write blind are ones whose count was cross-checked against `get_library_health`'s own
+`lowInformationWorklist` number** (that mechanism is documented to check the true full list before
+including a song) — any song added because it "looks like the same case" needs its own read-back
+first, no exception for how obvious it seems.
