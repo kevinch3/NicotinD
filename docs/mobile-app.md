@@ -736,14 +736,14 @@ browse → play.
   to `package.json`, which is what catches the hook silently not running: a stale literal builds and
   publishes perfectly well, under the wrong version. → [fdroid.md](fdroid.md)
 - **Signing**: the release `signingConfig` is supplied entirely via env. With no keystore env (local dev)
-  the release build is left unsigned so contributors can `assembleRelease` without secrets.
+  the release build is left unsigned so contributors can `assemblePhoneRelease` without secrets.
 - **CI** (`.github/workflows/deploy.yml`, `android` job): gated like `deploy` (the `chore(release):`
   commit or a manual run) and runs in parallel with it — a failure here does **not** block the server
   deploy (no `needs` linkage), but it is **not** `continue-on-error`: a genuine build break turns the
   release run red so it can't ship a tag with no APK. It builds the web, `cap sync`s, decodes the
-  keystore, runs `./gradlew assembleRelease`, renames Gradle's `app-release.apk` to the
+  keystore, runs `./gradlew assemblePhoneRelease`, renames Gradle's `app-phone-release.apk` to the
   versioned `NicotinD-<version>.apk` (via `$NICOTIND_VERSION_NAME`, for naming cohesion with the
-  desktop assets), then repeats the web-build → `cap sync` → `assembleRelease` sequence with the
+  desktop assets), then repeats the web-build → `cap sync` → `assembleTvRelease` sequence with the
   Angular **`tv` configuration** to produce `NicotinD-TV-<version>.apk` (the build that actually
   carries `tvBuild:true` — before issue #387 the tv config was never built by CI, so no released
   APK ever had TV behavior). It is a second **rebuild**, not a gradle flavor: what differs is the
@@ -822,7 +822,7 @@ the only option on TV, which has no camera. → [device-pairing.md](device-pairi
   Range headers, preflight OPTIONS, disallowed-origin rejection.
 - `src/version.ts` (`packages/mobile/src/version.test.ts`) — version mapping + monotonicity; run in CI via
   the `ci` job's `bun test … packages/mobile/src`.
-- The Android `assembleRelease` (CI `android` job) is the build-level gate; there is no emulator in CI, so
+- The Android `assemblePhoneRelease` (CI `android` job) is the build-level gate; there is no emulator in CI, so
   shared logic stays in the unit-tested helpers above.
 
 ## Known optimization (not yet done)

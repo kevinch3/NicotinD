@@ -141,6 +141,53 @@ const { versionCode: currentVersionCode, versionName: currentVersionName } = and
   }
 }
 
+// --- 1b. A non-root tree is a SUPERSET of the root one -----------------------
+// fdroidserver reads the checkout's root `fastlane/` for EVERY app built from
+// this repo — that glob has no flavour gate — and only then overwrites it, file
+// by file, from `src/<flavour>/fastlane`. So any file the root tree has and a
+// flavour tree lacks silently publishes the PHONE's text under the other entry.
+// Nothing errors; the listing just reads wrong.
+{
+  const root = FDROID_APPS.find((a) => !a.fastlaneDir.includes('/'));
+  if (!root) {
+    errors.push('No FDROID_APPS entry uses the repo-root fastlane tree — this arm cannot run.');
+  } else {
+    const relFiles = (dir: string): string[] => {
+      const base = join(repoRoot, dir, 'metadata/android');
+      if (!existsSync(base)) return [];
+      const out: string[] = [];
+      const walk = (rel: string): void => {
+        for (const e of readdirSync(join(base, rel), { withFileTypes: true })) {
+          const next = rel ? `${rel}/${e.name}` : e.name;
+          if (e.isDirectory()) walk(next);
+          // README.md documents the tree for humans; it is not published.
+          else if (e.name !== 'README.md') out.push(next);
+        }
+      };
+      walk('');
+      return out;
+    };
+
+    const rootFiles = relFiles(root.fastlaneDir);
+    for (const app of FDROID_APPS) {
+      if (app === root) continue;
+      const own = new Set(relFiles(app.fastlaneDir));
+      // Changelogs are per-versionCode and arm 4 already requires the current
+      // one in every tree; an older code missing here is not a leak risk.
+      const missing = rootFiles.filter((f) => !own.has(f) && !f.includes('/changelogs/'));
+      if (missing.length > 0) {
+        errors.push(
+          `${app.fastlaneDir} is missing ${missing.length} file(s) the root tree has ` +
+            `(${missing.slice(0, 3).join(', ')}${missing.length > 3 ? ', …' : ''}). ` +
+            `fdroidserver applies the root tree to EVERY app from this repo and overwrites ` +
+            `per file, so ${app.applicationId} would publish ${root.applicationId}'s text for ` +
+            `each of them.`,
+        );
+      }
+    }
+  }
+}
+
 // --- 2. The Pages lane still reaches the repository builder ------------------
 {
   const pages = join(repoRoot, '.github/workflows/pages.yml');
@@ -219,13 +266,41 @@ const { versionCode: currentVersionCode, versionName: currentVersionName } = and
     }
   }
 
-  // Flavours are gone; the output path must not have grown one back, or the
-  // staging steps would look somewhere gradle does not write.
-  if (deploy.includes('outputs/apk/standard/')) {
+  // Each app builds from its own gradle flavour, so its task and output path
+  // are flavoured too. A bare `assembleRelease` is the dangerous one: it builds
+  // EVERY flavour from whatever bundle happens to be in assets/, so the TV APK
+  // would ship the phone UI under the TV id and nothing would fail.
+  const gradleSource = readFileSync(
+    join(repoRoot, 'packages/mobile/android/app/build.gradle'),
+    'utf8',
+  );
+  for (const app of FDROID_APPS) {
+    const Flavour = app.flavour[0].toUpperCase() + app.flavour.slice(1);
+    for (const needle of [
+      `assemble${Flavour}Release`,
+      `outputs/apk/${app.flavour}/release`,
+      `app-${app.flavour}-release.apk`,
+    ]) {
+      if (!deploy.includes(needle)) {
+        errors.push(
+          `.github/workflows/deploy.yml does not mention "${needle}", which ` +
+            `${app.applicationId} is built and staged from.`,
+        );
+      }
+    }
+    if (!new RegExp(`\\b${app.flavour}\\s*\\{`).test(gradleSource)) {
+      errors.push(
+        `packages/mobile/android/app/build.gradle declares no "${app.flavour}" product flavour, ` +
+          `but FDROID_APPS and the fdroiddata recipe both name it. fdroidserver would run ` +
+          `assemble${Flavour}Release and find no such task.`,
+      );
+    }
+  }
+  if (/\.\/gradlew assembleRelease\b/.test(deploy)) {
     errors.push(
-      `.github/workflows/deploy.yml still reads a flavoured gradle output path ` +
-        `(outputs/apk/standard/...). The distribution flavour was removed in #1168, so ` +
-        `gradle writes to outputs/apk/<buildType>/ and nothing is there.`,
+      `.github/workflows/deploy.yml runs a bare \`./gradlew assembleRelease\`. With product ` +
+        `flavours that builds all of them from one web bundle, so the TV APK would carry the ` +
+        `phone UI under the TV id — silently. Use the flavour-specific task.`,
     );
   }
 }
@@ -316,58 +391,107 @@ const { versionCode: currentVersionCode, versionName: currentVersionName } = and
   }
 }
 
-// --- 6. The fdroiddata build recipe still describes THIS build ----------------
-// The recipe we submit to fdroiddata pins the toolchain by hand, because
-// F-Droid's buildserver runs gradle against a source checkout and never sees
-// our CI. Two of those pins can drift away from the repo silently, and the
-// symptom is an F-Droid build that succeeds and ships something we never
-// tested. Note the version fields are NOT checked: `AutoUpdateMode: Version`
-// means F-Droid bumps those itself from our tags, so the committed copy is only
-// the seed.
+// --- 6. The fdroiddata build recipes still describe THIS build ---------------
+// One recipe per app, each pinning the toolchain by hand because F-Droid's
+// buildserver runs gradle against a source checkout and never sees our CI. The
+// symptom of drift is an F-Droid build that succeeds and ships something we
+// never tested. The version fields are NOT checked: `AutoUpdateMode: Version`
+// means F-Droid bumps those itself from our tags, so our copy is only a seed.
 {
-  const recipe = join(repoRoot, 'packages/mobile/fdroiddata/ar.kevinroberts.nicotind.yml');
-  if (!existsSync(recipe)) {
-    errors.push(
-      'packages/mobile/fdroiddata/ar.kevinroberts.nicotind.yml is missing — it is the ' +
-        'build recipe submitted to fdroiddata, kept here so it is reviewed with the code ' +
-        'it builds.',
-    );
-  } else {
+  const deploy = readFileSync(join(repoRoot, '.github/workflows/deploy.yml'), 'utf8');
+  const ciBun = /BUN_VERSION:\s*'([^']+)'/.exec(deploy)?.[1];
+  if (!ciBun) errors.push('.github/workflows/deploy.yml no longer defines BUN_VERSION.');
+
+  const digests = new Set<string>();
+
+  for (const app of FDROID_APPS) {
+    const rel = `packages/mobile/fdroiddata/${app.applicationId}.yml`;
+    const recipe = join(repoRoot, rel);
+    if (!existsSync(recipe)) {
+      errors.push(
+        `${rel} is missing — every FDROID_APPS entry needs the build recipe submitted to ` +
+          `fdroiddata, kept here so it is reviewed with the code it builds.`,
+      );
+      continue;
+    }
     const source = readFileSync(recipe, 'utf8');
 
-    // deploy.yml's BUN_VERSION is the version we actually test against.
-    const deploy = readFileSync(join(repoRoot, '.github/workflows/deploy.yml'), 'utf8');
-    const ciBun = /BUN_VERSION:\s*'([^']+)'/.exec(deploy)?.[1];
-    if (!ciBun) {
-      errors.push('.github/workflows/deploy.yml no longer defines BUN_VERSION.');
-    } else if (!source.includes(`bun-v${ciBun}/`)) {
+    if (ciBun && !source.includes(`bun-v${ciBun}/`)) {
       errors.push(
-        `packages/mobile/fdroiddata/…yml pins a different bun than CI (BUN_VERSION ` +
-          `${ciBun}). F-Droid would build with a toolchain no release was ever built with. ` +
-          `Update the download URL and its sha256 together — a stale checksum fails the ` +
-          `build loudly, a stale version does not.`,
+        `${rel} pins a different bun than CI (BUN_VERSION ${ciBun}). F-Droid would build with ` +
+          `a toolchain no release was ever built with. Update the download URL and its sha256 ` +
+          `together — a stale checksum fails the build loudly, a stale version does not.`,
       );
     }
-
-    // The checksum is the only thing standing between the buildserver and an
-    // unverified binary, which is exactly what the inclusion policy is about.
     if (!source.includes('sha256sum -c -')) {
       errors.push(
-        'packages/mobile/fdroiddata/…yml downloads the bun toolchain without verifying a ' +
-          'sha256. F-Droid reviewers reject unverified binary downloads, and so should we.',
+        `${rel} downloads the bun toolchain without verifying a sha256. F-Droid reviewers ` +
+          `reject unverified binary downloads, and so should we.`,
+      );
+    }
+    if (!source.includes('cap sync android')) {
+      errors.push(
+        `${rel} does not run \`cap sync android\` before gradle. The tracked ` +
+          `capacitor.settings.gradle hardcodes bun's store layout, so gradle would resolve ` +
+          `plugin paths that do not exist in F-Droid's checkout.`,
       );
     }
 
-    // `cap sync` rewrites capacitor.settings.gradle, which is COMMITTED with
-    // bun's store layout hardcoded. Skip it and gradle resolves paths that do
-    // not exist on the buildserver.
-    if (!source.includes('cap sync android')) {
+    // `gradle:` selects BOTH the assemble task and the src/<flavour>/fastlane
+    // tree fdroidserver reads this app's listing from. A wrong name silently
+    // builds the other app, or publishes the other app's description.
+    const gradleList = /gradle:\s*\n\s*-\s*(\S+)/.exec(source)?.[1];
+    if (gradleList !== app.flavour) {
       errors.push(
-        'packages/mobile/fdroiddata/…yml does not run `cap sync android` before gradle. ' +
-          "The tracked capacitor.settings.gradle hardcodes bun's store layout, so gradle " +
-          "would resolve plugin paths that do not exist in F-Droid's checkout.",
+        `${rel} has \`gradle: [${gradleList ?? 'missing'}]\`, but ${app.applicationId} builds ` +
+          `from the "${app.flavour}" flavour. fdroidserver uses that name for BOTH ` +
+          `assemble<Flavour>Release and the src/<flavour>/fastlane listing, so a mismatch ` +
+          `builds or describes the wrong app.`,
       );
     }
+
+    // The TV APK is the tv WEB bundle plus the tv flavour. The flavour alone
+    // gives the right id with the phone UI inside it — and F-Droid's build
+    // would succeed, so only a user would notice.
+    const wantsTvBundle = app.flavour === 'tv';
+    if (source.includes('--configuration tv') !== wantsTvBundle) {
+      errors.push(
+        wantsTvBundle
+          ? `${rel} does not build the web bundle with \`--configuration tv\`. The flavour sets ` +
+              `the application id; only the web build makes it the TV UI, so this would publish ` +
+              `the phone interface under the TV entry.`
+          : `${rel} builds the web bundle with \`--configuration tv\`, which would publish the ` +
+              `TV interface under the phone entry.`,
+      );
+    }
+
+    // Reproducible builds: F-Droid publishes OUR signature only if its rebuild
+    // matches, and only if it knows which key to expect.
+    const stem = app.apk.replace(/\.apk$/, '');
+    if (!source.includes(`/${stem}-%v.apk`)) {
+      errors.push(
+        `${rel} has no \`Binaries:\` pointing at ${stem}-%v.apk. Without it F-Droid cannot ` +
+          `compare its rebuild to what we publish, and reproducible builds silently do nothing.`,
+      );
+    }
+    const digest = /AllowedAPKSigningKeys:\s*([0-9a-f]{64})\b/.exec(source)?.[1];
+    if (!digest) {
+      errors.push(
+        `${rel} has no valid \`AllowedAPKSigningKeys:\` (64 hex chars). That field is what ` +
+          `makes F-Droid reject a mismatched rebuild instead of publishing its own signature.`,
+      );
+    } else {
+      digests.add(digest);
+    }
+  }
+
+  // Both apps are signed by one keystore; two digests means one recipe is stale
+  // and that app's updates would stop installing.
+  if (digests.size > 1) {
+    errors.push(
+      `The fdroiddata recipes name ${digests.size} different AllowedAPKSigningKeys, but every ` +
+        `release APK is signed with one keystore. One of them is stale.`,
+    );
   }
 }
 

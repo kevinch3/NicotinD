@@ -222,33 +222,35 @@ jobs:
             echo "::warning::No ANDROID_KEYSTORE_BASE64 secret — building an unsigned APK."
           fi
 
-      - name: Build release APK
+      # The flavour-specific task, never bare `assembleRelease`: that builds BOTH
+      # flavours from whatever bundle is in assets/, so the TV APK would ship the
+      # phone UI under the TV id with nothing failing. check:fdroid forbids it.
+      - name: Build phone release APK
         working-directory: packages/mobile/android
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: ./gradlew assembleRelease
+        run: ./gradlew assemblePhoneRelease
 
-      # There are no flavors since #1168, so gradle emits one `app-release.apk`
-      # per build and BOTH builds in this job write it to the same path. Staging
-      # is therefore not tidiness: the TV build below would otherwise overwrite
-      # the phone APK in place. Renamed here to the versioned, product-named
-      # scheme the other release assets use (NicotinD-<version>.apk) via
-      # $NICOTIND_VERSION_NAME (already in $GITHUB_ENV from "Derive Android version").
+      # Renamed to the versioned, product-named scheme the other release assets
+      # use (NicotinD-<version>.apk) via $NICOTIND_VERSION_NAME, already in
+      # $GITHUB_ENV from "Derive Android version". Staged out of the gradle
+      # output tree so the TV build below cannot disturb it.
       - name: Stage phone APK
-        working-directory: packages/mobile/android/app/build/outputs/apk/release
+        working-directory: packages/mobile/android/app/build/outputs/apk/phone/release
         run: |
           mkdir -p "$RUNNER_TEMP/apks"
-          mv app-release.apk "$RUNNER_TEMP/apks/NicotinD-${NICOTIND_VERSION_NAME}.apk"
+          mv app-phone-release.apk "$RUNNER_TEMP/apks/NicotinD-${NICOTIND_VERSION_NAME}.apk"
 
       # Second APK: the SAME Android project rebuilt with the web bundle from
       # the Angular `tv` configuration (environment.tv.ts → isTvBuild() true).
-      # A rebuild, not a gradle flavor — the difference is the *web* bundle, and
-      # the app id below, neither of which gradle's variant system produces.
-      # This is what makes the tv config reachable by users at all — the plain
-      # APK has tvBuild:false, so it never gets TV remote-control defaults and
-      # keeps the arrow-seek shortcut that breaks D-pad navigation (issue #387).
+      # The rebuild is the load-bearing half — a gradle flavour cannot change
+      # which web bundle `cap sync` copied into assets/, which is why the `tv`
+      # flavour carries only the application id. This is what makes the tv
+      # config reachable by users at all: the phone APK has tvBuild:false, so it
+      # never gets TV remote-control defaults and keeps the arrow-seek shortcut
+      # that breaks D-pad navigation (issue #387).
       - name: Build web (tv configuration)
         run: bun run --filter @nicotind/web build -- --configuration tv
 
@@ -256,22 +258,21 @@ jobs:
         run: bunx cap sync android
         working-directory: packages/mobile
 
-      # `.tv` applies to every channel now (#1168): there is ONE TV APK, and an
-      # application id cannot depend on where the file was downloaded from. It
-      # is also what lets phone and TV be two F-Droid entries — and stops a TV
-      # APK installing over the phone one and silently swapping the UI.
+      # The `tv` flavour supplies `.tv`. It used to come from an env var, which
+      # F-Droid's buildserver has no way to set — so a TV entry there would have
+      # built the phone id. The suffix is what lets phone and TV be two F-Droid
+      # entries, and stops a TV APK installing over the phone one.
       - name: Build TV release APK
         working-directory: packages/mobile/android
         env:
-          NICOTIND_APP_ID_SUFFIX: .tv
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: ./gradlew assembleRelease
+        run: ./gradlew assembleTvRelease
 
       - name: Stage TV APK
-        working-directory: packages/mobile/android/app/build/outputs/apk/release
-        run: mv app-release.apk "$RUNNER_TEMP/apks/NicotinD-TV-${NICOTIND_VERSION_NAME}.apk"
+        working-directory: packages/mobile/android/app/build/outputs/apk/tv/release
+        run: mv app-tv-release.apk "$RUNNER_TEMP/apks/NicotinD-TV-${NICOTIND_VERSION_NAME}.apk"
 
       # ATTACH BEFORE VERIFYING. This step must stay ahead of every
       # verification-only step below: v0.6.55 shipped with no APK at all because

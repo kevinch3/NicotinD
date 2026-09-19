@@ -7,8 +7,22 @@ import { homedir } from 'node:os';
 export const e2eRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const repoRoot = resolve(e2eRoot, '../..');
 
-/** Capacitor applicationId — the WebView we attach to. */
-export const APP_ID = 'ar.kevinroberts.nicotind';
+/** Capacitor applicationId — the WebView we attach to. The `tv` product flavour
+ *  adds `.tv` (docs/fdroid.md), so this lane installs a differently-named
+ *  package than the phone build. */
+export const APP_ID = 'ar.kevinroberts.nicotind.tv';
+
+/** The pre-flavour package id. Machines that ran this lane before the `tv`
+ *  flavour existed still have it installed, and it is ALSO a leanback launcher
+ *  app — so it can hold the foreground while Playwright reads the new app's
+ *  WebView through devtools. Key events then go to the wrong window and every
+ *  focus assertion fails with "reached 0 of N". Force-stopped before launch. */
+export const LEGACY_APP_ID = 'ar.kevinroberts.nicotind';
+
+/** Fully-qualified launcher activity. It lives in the gradle NAMESPACE, which
+ *  the flavour's applicationIdSuffix does NOT move — so `am start -n
+ *  <APP_ID>/.MainActivity` would resolve to a class that does not exist. */
+export const MAIN_ACTIVITY = 'ar.kevinroberts.nicotind.MainActivity';
 
 /** The AVD this lane drives. Created once, by hand; see docs/e2e-tv-emulator.md. */
 export const AVD = process.env.E2E_TV_AVD ?? 'nicotind-tv';

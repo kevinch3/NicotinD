@@ -31,6 +31,10 @@ export interface FdroidApp {
    * — not the wrong one, none — and nothing would have errored.
    */
   fastlaneDir: string;
+  /** Gradle product flavour this entry is built from — also the `src/<flavour>/`
+   * segment fdroidserver reads its listing from, and the name an fdroiddata
+   * recipe must put in `gradle:` for either to happen. */
+  flavour: string;
   /** The APK file name inside `repo/`. */
   apk: string;
 }
@@ -48,17 +52,18 @@ export const FDROID_APPS: readonly FdroidApp[] = [
     applicationId: 'ar.kevinroberts.nicotind',
     name: 'NicotinD',
     fastlaneDir: 'fastlane',
+    flavour: 'phone',
     apk: 'NicotinD.apk',
   },
   {
     applicationId: 'ar.kevinroberts.nicotind.tv',
     name: 'NicotinD TV',
-    // Still nested, and therefore still undiscoverable by fdroidserver. That is
-    // unresolved rather than overlooked: both entries build from one checkout,
-    // so only one of them can own the root `fastlane/`. Our own repository
-    // reads this path explicitly, so the TV listing works there; the fdroiddata
-    // TV entry needs an answer to the shared-root problem first (docs/fdroid.md).
-    fastlaneDir: 'packages/mobile/fastlane-tv',
+    // `src/<flavour>/fastlane` is the only tree fdroidserver reads for a SECOND
+    // app built from the same checkout — the root `fastlane/` glob has no
+    // flavour gate, so without this the TV entry would show the phone's
+    // listing. See src/tv/README.md for why a non-source directory lives there.
+    fastlaneDir: 'src/tv/fastlane',
+    flavour: 'tv',
     apk: 'NicotinD-TV.apk',
   },
 ] as const;

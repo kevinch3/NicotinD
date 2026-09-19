@@ -102,7 +102,7 @@ Fastlane layout, one tree per entry, both `en-US` and `es-ES` (the two locales t
 | Entry | Tree |
 | --- | --- |
 | phone (`ar.kevinroberts.nicotind`) | `fastlane/metadata/android/<locale>/` — **repo root**, see below |
-| TV (`ar.kevinroberts.nicotind.tv`) | `packages/mobile/fastlane-tv/metadata/android/<locale>/` |
+| TV (`ar.kevinroberts.nicotind.tv`) | `src/tv/fastlane/metadata/android/<locale>/` — **repo root**, see below |
 
 ### The phone tree lives at the repo ROOT, and it has to
 
@@ -129,11 +129,35 @@ all read the one place.
 template says the same: fdroiddata carries the **build metadata only**, and everything else is
 pulled from the upstream fastlane tree so the author can maintain it without opening an MR.
 
-**The TV entry is still unresolved.** Both entries build from one checkout, so only one can own the
-root `fastlane/`, and F-Droid's answer for a second app in one repo is `src/<buildFlavour>/fastlane`
-— a gradle flavour, which #1168 deliberately deleted. `packages/mobile/fastlane-tv` therefore serves
-our *own* repository (which reads the path explicitly) and nothing else. Settle this before
-submitting the TV entry; do not assume the phone fix generalises.
+### The TV entry needs a flavour, and that is not what #1168 deleted
+
+Both apps build from this one repository, which creates two problems that share one answer.
+
+**The root tree has no flavour gate.** fdroidserver applies `build/<appid>/fastlane/` to *every*
+app checked out from this repo, then overwrites it **file by file** from
+`src/<flavour>/fastlane/` (`sorted()` puts `fastlane` before `src`; later reads win). So the TV
+entry inherits the phone's listing for every file the TV tree does not also have — silently, with
+nothing to read as an error. `check:fdroid` therefore requires the TV tree to be a **superset** of
+the root one.
+
+**`src/<flavour>/fastlane` is read only when the recipe's `gradle:` names that flavour** — and that
+same name is what fdroidserver passes to `assemble<Flavour>Release`. So the flavour is not optional
+packaging; it is the key to the listing.
+
+It also solves a second blocker. The `.tv` suffix used to come from `NICOTIND_APP_ID_SUFFIX`, which
+our CI sets and **F-Droid's buildserver has no way to set** — a TV entry there would have built the
+phone's application id. `productFlavors { tv { applicationIdSuffix ".tv" } }` supplies it from
+gradle instead, verified by building: `assembleTvRelease` with no environment at all badges
+`ar.kevinroberts.nicotind.tv`.
+
+The flavours carry **no code, resources or dependencies** — what differs between the two APKs is the
+web bundle `cap sync` copied into `assets/`, which no gradle variant can change. That is why this is
+not a reversal of #1168: what that removed was a *distribution* flavour with its own plugin list and
+manifest overlay. These two are an application-id carrier and a metadata path.
+
+One consequence with teeth: **a bare `./gradlew assembleRelease` now builds both flavours from
+whatever bundle is in `assets/`**, so the TV APK would ship the phone UI under the TV id and nothing
+would fail. `check:fdroid` forbids it in `deploy.yml`.
 
 Run `fdroid rewritemeta <applicationId>` on the recipe before submitting — it canonicalises key order
 and strips comments, so the copy in fdroiddata will not match ours byte-for-byte. That is expected;
@@ -203,7 +227,7 @@ config — lint it there, not against a stub config, because a stub has no categ
 valid category as invalid.
 
 **The recipe's whole build was run for real** (2026-09-18) from a clean clone with no `node_modules`:
-`bun install --frozen-lockfile` → web build → `cap sync android` → `assembleRelease` with **no
+`bun install --frozen-lockfile` → web build → `cap sync android` → `assemblePhoneRelease` with **no
 environment set**, producing `versionCode='8001' versionName='0.8.1'` and **0** class definitions
 matching ML Kit, GMS, Firebase, osbarcode or OutSystems out of 5226. `fdroid build` itself was not
 used: it locks the root account, because it assumes a disposable buildserver VM.
