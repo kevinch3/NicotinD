@@ -268,13 +268,61 @@ bun's own installer creates as a symlink to that same binary — bun dispatches 
 sudo block linked `bun` and not `bunx`, so the prebuild died three commands later, which reads like
 a Capacitor problem rather than a `PATH` one. Gated.
 
+### The source scanner rejects what `bun install` leaves behind
+
+Fourth failure, and the first that is not a toolchain assumption — every recipe command succeeded,
+including `cap sync`:
+
+```
+ERROR: Found binary at node_modules/.bun/@esbuild+linux-x64@0.27.3/…/bin/esbuild
+ERROR: Found Java JAR file at node_modules/.bun/@trapezedev+gradle-parse@7.1.3/…/groovy-3.0.9.jar
+ERROR: Could not build app ar.kevinroberts.nicotind.tv: Can't build due to 22 errors while scanning
+```
+
+`fdroid build` runs `scanner.scan_source()` **between prebuild and gradle** (`build.py`: after
+`prepare_source`, before the assemble), and any binary, JAR, shared library, wasm module or archive
+in the tree is an error. All 22 were under `node_modules/`: three esbuild binaries, two wasm
+modules, the capacitor CLI's nine template tarballs, trapeze's three groovy/json JARs, two libvips
+shared libraries, and `ffmpeg-static`. The fix is one line per recipe:
+
+```yaml
+    scandelete:
+      - node_modules
+```
+
+Three things in `scanner.py` decide that shape, and all three are worth knowing before touching it:
+
+- **`scandelete` deletes the flagged file, not the path.** `removeproblem()` calls `os.remove()` on
+  the individual file the scan objected to — never `rmtree`. That is what makes a broad entry safe
+  here: the capacitor plugin projects gradle actually builds from live *inside* `node_modules`
+  (`capacitor.settings.gradle` points `projectDir` at `node_modules/.bun/@capacitor+android@…`), and
+  a tree-wide delete would take them with it.
+- **An entry that matches nothing is itself an error** (`count += 1`, "Unused scandelete path").
+  So the version-pinned form — `node_modules/.bun/@esbuild+linux-x64@0.27.3` — is a time bomb: it
+  fails the build the day that dependency bumps, *because it stopped matching*. One broad entry is
+  the only self-maintaining form.
+- **`scanignore` wins over `scandelete`** (`handleproblem` tests it first). If a plugin's own
+  `build.gradle` were ever flagged — an unknown maven repo, say — `scandelete` would delete it and
+  gradle would fail on a missing project. That is why the React Native recipes in fdroiddata pair a
+  broad `scandelete: node_modules/` with a `scanignore` list of plugin `build.gradle` paths. We need
+  no such list today: none of the five gradle-referenced plugin subtrees contains a flagged file.
+  Re-check that if a plugin is added — the failure is a deleted build file, not a scan error.
+
+Verified by running fdroidserver's own `scan_source()` against this checkout, and by intersecting
+the flagged set with every `node_modules` path the gradle build references. (Locally that scan also
+flags `android/app/build/` and `.gradle/` artifacts, and a stale `@capacitor/barcode-scanner` the
+lockfile no longer installs — a fresh clone has none of them, which is why F-Droid's number is 22
+and this machine's is four digits.)
+
 ### Every one of these was invisible from here
 
-Node too old, no `xz`, no `bunx` — three round-trips, all of them assumptions about a machine we do
-not have. Local verification cannot catch them: this repo's own `bun` install ships `bunx`, this
-machine has `xz`, and our Node is the version `.nvmrc` pins. The gates exist so the *next* drift is
-caught here instead, but the first discovery of each will always be F-Droid's CI. Budget for that
-rather than treating a red pipeline there as a surprise.
+Node too old, no `xz`, no `bunx`, then the scanner — four round-trips, and the first three were
+assumptions about a machine we do not have. Local verification cannot catch those: this repo's own
+`bun` install ships `bunx`, this machine has `xz`, and our Node is the version `.nvmrc` pins. The
+scanner one was different in kind — it is a *policy* check, reproducible here, and it was findable
+in advance by reading `scanner.py`. The gates exist so the *next* drift is caught here instead, but
+the first discovery of each will always be F-Droid's CI. Budget for that rather than treating a red
+pipeline there as a surprise.
 
 ### `checkupdates` fails on a stale seed, which is not a defect
 

@@ -80,6 +80,17 @@ Builds:
       - bunx cap sync android
     gradle:
       - tv
+    # fdroidserver scans the checkout for binaries AFTER prebuild and refuses to
+    # build if it finds any — `bun install` leaves 22 of them (esbuild, the
+    # capacitor CLI's template tarballs, trapeze's groovy jars, sharp's libvips,
+    # ffmpeg-static). One broad entry, not a list of pinned paths, for two
+    # reasons: an entry that matches nothing is itself a scan error, so pinned
+    # versions would fail the build the day a dependency bumps; and `scandelete`
+    # removes only the individual files the scan flags (`os.remove`, never the
+    # tree), so the capacitor plugin projects gradle builds from — which live
+    # inside node_modules — survive it.
+    scandelete:
+      - node_modules
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags

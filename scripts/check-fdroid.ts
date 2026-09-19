@@ -487,6 +487,18 @@ const { versionCode: currentVersionCode, versionName: currentVersionName } = and
       );
     }
 
+    // fdroidserver scans the source tree between prebuild and gradle and fails
+    // the build on any binary it finds. `bun install` leaves plenty, so without
+    // this the build dies at "Can't build due to N errors while scanning" —
+    // after every command in the recipe has already succeeded.
+    if (!/scandelete:\s*\n\s*-\s*node_modules\b/.test(source)) {
+      errors.push(
+        `${rel} does not \`scandelete: [node_modules]\`. \`bun install\` leaves prebuilt ` +
+          `binaries in the tree, and fdroidserver's scanner refuses to build when it finds ` +
+          `them — "Can't build due to N errors while scanning", with every recipe command green.`,
+      );
+    }
+
     if (!source.includes('cap sync android')) {
       errors.push(
         `${rel} does not run \`cap sync android\` before gradle. The tracked ` +
