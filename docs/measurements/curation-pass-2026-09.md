@@ -4124,3 +4124,28 @@ succeeded seconds apart. Filed **#1209** with the full reproduction table and a 
 (citing #1069's documented "one active job per (artist,album)" conflict guard) explicitly marked as
 an unverified hypothesis, not a finding — a refiner MCP session has no visibility into the addon's
 own job table to confirm it.
+
+## 2026-09-19, tick 7 — flags re-verified, three album covers
+
+Re-checked all 5 open review flags (#19, #23, #25, #26, #27): unchanged, all still genuinely need an
+owner decision. Left them for the product's own curator triage UI rather than interrupting — that
+surface exists precisely for this.
+
+Tried the completely untouched album-covers dimension: `lookup_album_metadata` on 5 real (non-VA)
+releases from the worklist. Two had no usable candidate for their EXACT release (Box Natiruts, Los
+Enanitos Verdes' *Obras Cumbres* — the tag-matched candidates scored 100 but carried no image; every
+image-bearing candidate was a *different* release) and were correctly left alone. Three resolved
+cleanly:
+
+- Luciano Pavarotti, *The Best* (1997) — exact title+year match, real cover.
+- The Beatles, *The White Album* — the exact-titled candidates (score 100) were all wrong releases
+  (a Super Mario 64 soundfont parody, outtake compilations); the real match is filed under the
+  album's actual title, just "The Beatles" (1968, score 71) — the "White Album" is a nickname, not
+  the official title, and the score reflects that literally rather than knowing it.
+- New Order, *Substance* — matched to *Substance 1987*, the real 20-track singles compilation this
+  library's plain-named 20-song album is.
+
+`albumCovers.missing` 4470→**4467**, exact match. Also observed, not directly caused: `songs`
+21549→21552 and `completeness.confirmedIncomplete` 81→78 in the same health check — plausibly 3 of
+tick 6's 5 enqueued hunts landing already (fast P2P availability on short/single-track gaps); not
+independently confirmed beyond the metric movement lining up.
