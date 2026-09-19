@@ -157,11 +157,18 @@ jobs:
         with:
           node-version-file: '.nvmrc'
 
-      # Capacitor 6 targets JDK 17.
+      # JDK 21 because fdroiddata's CI builds every app on it
+      # (`apt-get install openjdk-21-jdk-headless` + `update-alternatives --set
+      # java`), and the JDK that runs gradle decides what ends up in classes.dex.
+      # On 17, D8 keeps javac's synthetic enum switch-map class
+      # (`HttpRequestHandler$1`); on 21 it does not — one class out of 5,226, and
+      # the only difference between our APK and F-Droid's. It fails their
+      # reproducible-build check. Capacitor 6 documents 17, but 21 builds and is
+      # what the reference binary must match. See docs/fdroid.md.
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
 
       # `packages` defaults to `tools platform-tools`, and the SDK repository no
       # longer lists the legacy `tools` package: `sdkmanager tools` exited 1 and

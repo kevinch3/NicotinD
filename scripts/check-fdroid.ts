@@ -363,6 +363,28 @@ const { versionCode: currentVersionCode, versionName: currentVersionName } = and
   }
 
   const deploy = readFileSync(join(repoRoot, '.github/workflows/deploy.yml'), 'utf8');
+
+  // The JDK that runs gradle decides the contents of classes.dex. Measured on
+  // v0.8.10, four builds across two machines: on 17 the dex carries javac's
+  // synthetic enum switch-map class (5,226 class_defs), on 21 it does not
+  // (5,225) — and a local Temurin 21 build produced a classes.dex byte-identical
+  // to F-Droid's Debian OpenJDK 21 one, so the major version is the whole story.
+  // fdroiddata's CI pins 21 for every app, so this is the number to track; if
+  // they move, this gate is what makes it a red build here instead of a failed
+  // reproducibility check there, one release later.
+  const FDROID_JDK = '21';
+  const jdk = /setup-java@v\d+\s*\n\s*with:\s*\n(?:\s*\w+:.*\n)*?\s*java-version:\s*'([^']+)'/.exec(
+    deploy,
+  )?.[1];
+  if (jdk !== FDROID_JDK) {
+    errors.push(
+      `.github/workflows/deploy.yml builds the release APK on JDK ${jdk ?? 'unknown'}, but ` +
+        `fdroiddata's CI builds every app on JDK ${FDROID_JDK}. The JDK running gradle changes ` +
+        `what D8 emits into classes.dex, so a mismatch publishes an APK F-Droid cannot ` +
+        `reproduce — green here, refused there.`,
+    );
+  }
+
   if (!deploy.includes('SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)')) {
     errors.push(
       `.github/workflows/deploy.yml no longer derives SOURCE_DATE_EPOCH from the commit. ` +
