@@ -6,6 +6,9 @@
 # hand, because F-Droid's buildserver runs gradle against a source checkout and
 # never sees our CI.
 #
+# `commit:` is a full 40-character hash, never a tag or branch: a tag can be
+# moved or deleted after review, so it does not identify what was audited.
+#
 # The version fields below are a SEED for the first build entry, not a mirror of
 # the current release: once the app is in fdroiddata, `AutoUpdateMode: Version`
 # has F-Droid add build entries from our tags itself. Set them to whatever
@@ -32,7 +35,7 @@ Binaries: https://github.com/kevinch3/NicotinD/releases/download/v%v/NicotinD-%v
 Builds:
   - versionName: 0.8.7
     versionCode: 8007
-    commit: v0.8.7
+    commit: b11d3d591038964451ac12431cb95984b8842bf6
     subdir: packages/mobile/android/app
     sudo:
       - install -d /opt/bun
@@ -44,10 +47,15 @@ Builds:
       - chmod 755 /opt/bun/bun
       - ln -sf /opt/bun/bun /usr/local/bin/bun
       - rm -f /tmp/bun.zip
+    # One entry per command. fdroidserver joins these with `; ` and runs the
+    # result under `bash -e`, so a failure still stops the build and the `cd`
+    # persists into the following entries — no `&&` chaining needed.
     prebuild:
-      - cd ../../../.. && bun install --frozen-lockfile
-      - cd ../../../.. && bun run --filter @nicotind/web build
-      - cd ../.. && bunx cap sync android
+      - cd ../../../..
+      - bun install --frozen-lockfile
+      - bun run --filter @nicotind/web build
+      - cd packages/mobile
+      - bunx cap sync android
     gradle:
       - phone
 
