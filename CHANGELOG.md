@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.11](https://github.com/kevinch3/NicotinD/compare/v0.8.10...v0.8.11) (2026-09-19)
+
+### Bug Fixes
+
+* **fdroid:** pin node in the recipes — the buildserver's is too old for Angular ([#1202](https://github.com/kevinch3/NicotinD/issues/1202)) ([4b05a6a](https://github.com/kevinch3/NicotinD/commit/4b05a6a39af74c533db1965948438caf81642f95)), references [#1168](https://github.com/kevinch3/NicotinD/issues/1168)
+* **fdroid:** scandelete node_modules — the source scanner rejects bun's binaries ([#1203](https://github.com/kevinch3/NicotinD/issues/1203)) ([9c55f53](https://github.com/kevinch3/NicotinD/commit/9c55f53af05ec7e3dd3120576c7f5744206a67ce)), references [#1168](https://github.com/kevinch3/NicotinD/issues/1168) [#1202](https://github.com/kevinch3/NicotinD/issues/1202)
 ## [0.8.10](https://github.com/kevinch3/NicotinD/compare/v0.8.9...v0.8.10) (2026-09-19)
 
 ### Bug Fixes

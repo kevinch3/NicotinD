@@ -1,0 +1,2 @@
+• fdroid: pin node in the recipes — the buildserver's is too old for Angular (#1202)
+• fdroid: scandelete node_modules — the source scanner rejects bun's binaries (#1203)
