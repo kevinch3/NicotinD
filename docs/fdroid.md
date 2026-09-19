@@ -232,6 +232,38 @@ environment set**, producing `versionCode='8001' versionName='0.8.1'` and **0** 
 matching ML Kit, GMS, Firebase, osbarcode or OutSystems out of 5226. `fdroid build` itself was not
 used: it locks the root account, because it assumes a disposable buildserver VM.
 
+### The buildserver's node is too old for Angular
+
+Found by F-Droid's own CI on the first real `fdroid build` (2026-09-19), not by anything here:
+
+```
+Node.js version v24.3.0 detected.
+The Angular CLI requires a minimum Node.js version of v22.22.3 or v24.15.0 or v26.0.0.
+```
+
+bun installs fine and runs the workspace scripts, but `ng` is executed by the **system node**, so
+the bun pin never covered this. The recipe now installs node too — same version as `.nvmrc`,
+checksummed against nodejs.org's published `SHASUMS256.txt`, and gated so the pin cannot drift
+away from the version we actually build with.
+
+Worth generalising: every build input F-Droid supplies is one we do not control and never test
+against. The bun and node pins exist for the same reason, and both are gated for the same reason —
+a mismatch fails only there.
+
+### `checkupdates` fails on a stale seed, which is not a defect
+
+The job reads our tags and proposes the metadata it thinks is current:
+
+```
+-CurrentVersion: 0.8.8
++CurrentVersionCode: 8010
+```
+
+It exits non-zero when the committed metadata is behind. Because the seed is deliberately ungated
+(F-Droid owns those fields once the app is in), it goes stale with every release while a merge
+request is open. Bump it to the current tag when the reviewer next looks; do not add a gate that
+would redden master on every release.
+
 ### Recipe conventions the reviewer asked for
 
 Both raised on [MR 49342](https://gitlab.com/fdroid/fdroiddata/-/merge_requests/49342), both now

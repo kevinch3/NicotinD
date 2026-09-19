@@ -423,6 +423,19 @@ const { versionCode: currentVersionCode, versionName: currentVersionName } = and
           `together — a stale checksum fails the build loudly, a stale version does not.`,
       );
     }
+    // bun shells out to the system node for `ng`, and F-Droid's buildserver
+    // ships an older one than Angular's CLI accepts — `fdroid build` failed on
+    // exactly this. The recipe pins node itself, and the pin has to track the
+    // version we actually build with.
+    const nvmrc = readFileSync(join(repoRoot, '.nvmrc'), 'utf8').trim();
+    if (!source.includes(`node-v${nvmrc}-linux-x64.tar.xz`)) {
+      errors.push(
+        `${rel} does not pin node ${nvmrc} (the .nvmrc version). F-Droid's buildserver ships ` +
+          `its own node, and Angular's CLI refuses an older one — the build fails there while ` +
+          `passing everywhere we test.`,
+      );
+    }
+
     if (!source.includes('sha256sum -c -')) {
       errors.push(
         `${rel} downloads the bun toolchain without verifying a sha256. F-Droid reviewers ` +
