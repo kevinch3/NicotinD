@@ -1,0 +1,1 @@
+• fdroid: metadata-only phone/tv flavours, and the TV app entry (#1199)

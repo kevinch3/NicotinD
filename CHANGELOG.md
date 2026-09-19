@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.8](https://github.com/kevinch3/NicotinD/compare/v0.8.7...v0.8.8) (2026-09-19)
+
+### Bug Fixes
+
+* **fdroid:** metadata-only phone/tv flavours, and the TV app entry ([#1199](https://github.com/kevinch3/NicotinD/issues/1199)) ([6fa9112](https://github.com/kevinch3/NicotinD/commit/6fa9112cd95bb5e16d75850633bbf69cb86c2a4b)), references [#1189](https://github.com/kevinch3/NicotinD/issues/1189) [#1168](https://github.com/kevinch3/NicotinD/issues/1168)
 ## [0.8.7](https://github.com/kevinch3/NicotinD/compare/v0.8.6...v0.8.7) (2026-09-18)
 
 ### Bug Fixes
