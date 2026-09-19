@@ -44,15 +44,18 @@ Builds:
       # first real run even though bun installed fine. bun shells out to the
       # system node for `ng`, so pinning node is not optional. Same version as
       # .nvmrc, checksummed against nodejs.org's published SHASUMS256.txt.
+      #
+      # .tar.gz, not .tar.xz: the buildserver has no xz binary (`tar (child):
+      # xz: Cannot exec`), and gzip is one fewer thing to have to install.
       - install -d /opt/node
-      - curl -fsSL -o /tmp/node.tar.xz
-          https://nodejs.org/dist/v22.22.3/node-v22.22.3-linux-x64.tar.xz
-      - echo "2e5d13569282d016861fae7c8f935e741693c269101a5bebcf761a5376d1f99f  /tmp/node.tar.xz"
+      - curl -fsSL -o /tmp/node.tar.gz
+          https://nodejs.org/dist/v22.22.3/node-v22.22.3-linux-x64.tar.gz
+      - echo "c7a10d6816da8eaaa7534dd73c71c6e2b2c391dbbf845e364902d156615dd1b8  /tmp/node.tar.gz"
           | sha256sum -c -
-      - tar -xJf /tmp/node.tar.xz -C /opt/node --strip-components=1
+      - tar -xzf /tmp/node.tar.gz -C /opt/node --strip-components=1
       - ln -sf /opt/node/bin/node /usr/local/bin/node
       - ln -sf /opt/node/bin/npm /usr/local/bin/npm
-      - rm -f /tmp/node.tar.xz
+      - rm -f /tmp/node.tar.gz
       - install -d /opt/bun
       - curl -fsSL -o /tmp/bun.zip
           https://github.com/oven-sh/bun/releases/download/bun-v1.3.11/bun-linux-x64.zip

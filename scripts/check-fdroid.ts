@@ -428,7 +428,10 @@ const { versionCode: currentVersionCode, versionName: currentVersionName } = and
     // exactly this. The recipe pins node itself, and the pin has to track the
     // version we actually build with.
     const nvmrc = readFileSync(join(repoRoot, '.nvmrc'), 'utf8').trim();
-    if (!source.includes(`node-v${nvmrc}-linux-x64.tar.xz`)) {
+    // Archive format deliberately not pinned here: .tar.gz replaced .tar.xz
+    // once the buildserver turned out to have no xz binary, and that is a
+    // packaging detail, not the thing this arm is protecting.
+    if (!new RegExp(`node-v${nvmrc.replace(/\./g, '\\.')}-linux-x64\\.tar\\.`).test(source)) {
       errors.push(
         `${rel} does not pin node ${nvmrc} (the .nvmrc version). F-Droid's buildserver ships ` +
           `its own node, and Angular's CLI refuses an older one — the build fails there while ` +

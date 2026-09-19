@@ -246,6 +246,11 @@ the bun pin never covered this. The recipe now installs node too — same versio
 checksummed against nodejs.org's published `SHASUMS256.txt`, and gated so the pin cannot drift
 away from the version we actually build with.
 
+**Use the `.tar.gz`, not the `.tar.xz`.** The next run got as far as `/tmp/node.tar.gz: OK` and then
+died on `tar (child): xz: Cannot exec: No such file or directory` — the buildserver has no xz. Both
+formats are published with checksums, and gzip is one fewer thing to have to install. The gate
+deliberately does not pin the extension: that is packaging, not the thing worth protecting.
+
 Worth generalising: every build input F-Droid supplies is one we do not control and never test
 against. The bun and node pins exist for the same reason, and both are gated for the same reason —
 a mismatch fails only there.
