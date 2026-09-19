@@ -38,6 +38,20 @@ Builds:
     commit: b11d3d591038964451ac12431cb95984b8842bf6
     subdir: packages/mobile/android/app
     sudo:
+      # Angular's CLI refuses anything below 22.22.3 / 24.15.0 / 26.0.0, and the
+      # buildserver ships Node 24.3.0 — so `fdroid build` failed here on the
+      # first real run even though bun installed fine. bun shells out to the
+      # system node for `ng`, so pinning node is not optional. Same version as
+      # .nvmrc, checksummed against nodejs.org's published SHASUMS256.txt.
+      - install -d /opt/node
+      - curl -fsSL -o /tmp/node.tar.xz
+          https://nodejs.org/dist/v22.22.3/node-v22.22.3-linux-x64.tar.xz
+      - echo "2e5d13569282d016861fae7c8f935e741693c269101a5bebcf761a5376d1f99f  /tmp/node.tar.xz"
+          | sha256sum -c -
+      - tar -xJf /tmp/node.tar.xz -C /opt/node --strip-components=1
+      - ln -sf /opt/node/bin/node /usr/local/bin/node
+      - ln -sf /opt/node/bin/npm /usr/local/bin/npm
+      - rm -f /tmp/node.tar.xz
       - install -d /opt/bun
       - curl -fsSL -o /tmp/bun.zip
           https://github.com/oven-sh/bun/releases/download/bun-v1.3.11/bun-linux-x64.zip
