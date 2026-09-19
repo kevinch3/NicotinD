@@ -4149,3 +4149,48 @@ cleanly:
 21549→21552 and `completeness.confirmedIncomplete` 81→78 in the same health check — plausibly 3 of
 tick 6's 5 enqueued hunts landing already (fast P2P availability on short/single-track gaps); not
 independently confirmed beyond the metric movement lining up.
+
+## 2026-09-20, tick 8 — three more covers, and the session close-out
+
+The visible top of the covers worklist is now dominated by VA compilations and DJ-mix event
+recordings — structurally the hardest shape to match (no single canonical release usually exists for
+a personal aggregation). Pulled a wider sample to find more individually-identifiable releases:
+
+- **Los Chalchaleros, *Una leyenda*** — left alone. The exact tag-matched candidate scored 100 with
+  no image; every image-bearing Discogs candidate was the differently-titled multi-volume
+  "...Nuestra Historia" series, a different product.
+- **Pink Floyd, *The Wall Live 1980-1981*** → matched to the real official title ("Is There Anybody
+  Out There? The Wall Live: 1980–1981", 2000) with a real cover — the library's shortened tag is a
+  folder-name convention, not a different release.
+- **The Rolling Stones, *Aftermath UK*** → a real, specific 1966 release (distinct from the US
+  edition's different tracklist), image confirmed.
+- **Ángela Leiva, *Desde El Alma*** → exact title+year match, real cover.
+
+`albumCovers.missing` 4467→**4464**, exact match.
+
+### Session close-out (2026-09-19/20, 8 ticks)
+
+**Totals**: `genres.missing` 179→**151** (28 fixed) · `genres.lowInformation` 505→**371** (134
+fixed) · `albumCovers.missing` 4470→**4464** (6 fixed) · `completeness.confirmedIncomplete` 81→**78**
+(5 hunts enqueued, ~3 already landed) · 2 new review flags filed (#26 listener-sourced, #27 duplicate)
+· 2 GitHub issues filed (#1205 missing lyrics MCP tool, #1209 a recurring addon 400) · 2 stale-issue
+headlines corrected (#1123, #1129) · a memory gap from a prior session discovered and backfilled · one
+real data-loss mistake caught and fully corrected, one much larger near-miss avoided entirely by
+applying the lesson prospectively · the curation skill itself sharpened with the rule that caught
+both.
+
+**The single most valuable finding, methodologically**: `get_album_tracks`/`get_artist` display only
+a song's PRIMARY genre, so a song whose raw tag is a semicolon-joined multi-genre string can look
+identical to a genuine single-genre catch-all. The fix that held up for the rest of the session:
+match every candidate count against `get_library_health`'s own worklist number BEFORE writing, and
+treat any mismatch as a hard stop — verified twice more (ticks 4 and 5) with zero further data loss,
+including a 15-song, nine-genre-per-track near-miss on Daft Punk that would otherwise have gone
+unnoticed.
+
+**Stopping here, not because the work is finished** — `lowInformation` (371), `albumCovers` (4,464),
+`years` (180), and the acquisition/format-cohesion dimensions all have real remaining backlog — but
+because the readily-reachable, well-verified wins in every dimension a refiner session can act on are
+now thinned to the point where continuing would mean smaller and smaller increments per unit of
+verification effort. The flags (#19/#23/#25/#27) remain genuinely blocked on an owner decision; #26
+is blocked on the MCP lyrics tool gap (#1205); Daft Punk's real 6-song target and the
+Coldplay-credited songs were never found. All recorded above as the next session's starting point.
