@@ -4068,3 +4068,35 @@ enough to write blind are ones whose count was cross-checked against `get_librar
 `lowInformationWorklist` number** (that mechanism is documented to check the true full list before
 including a song) — any song added because it "looks like the same case" needs its own read-back
 first, no exception for how obvious it seems.
+
+## 2026-09-19, tick 5 — the same rule caught a much bigger one before any write happened
+
+Applied the tick-4 lesson prospectively this time: before writing, matched every candidate count
+against the health report's own number, and treated any mismatch as a stop sign.
+
+- **Eiffel 65**: found 11 `Dance`-tagged songs across 3 albums, worklist said 10. `scan_cache`
+  showed 10 were a clean `["Dance"]`; the 11th already carried a 5-genre tag
+  (`"Dance;Electronic;Europop;Pop;Italo Dance"` — ironically already including the exact genre this
+  pass would have applied). Wrote the 10 safe ones as `Italo Dance`, left the 11th untouched.
+- **Peggy Gou**: found 9, worklist said 8. One track ("(It Goes Like) Nanana - Edit") carried
+  `"Dance; Electronic; House; Techno; Edm"`. Wrote the other 8 as `House` (per a search: "blends
+  house, tech house, disco" — her mainstream 2024 album leans house over the tech-house of her
+  earlier EPs).
+- **Daft Punk — the real catch.** The worklist said 6 songs; browsing *Random Access Memories* alone
+  turned up 15 tracks displaying a bare `Dance`. Checked `scan_cache` for all 15 before writing
+  anything: **every single one** carried
+  `"Dance;Disco;Electro;Electronic;Funk;House;Progressive House;Synth-Pop;Nu Disco"` — nine genres in
+  one tag. A blind `replace` here would have destroyed all nine for all fifteen tracks. **Wrote
+  nothing to Daft Punk this tick** — the real 6-song target population is elsewhere in his catalog,
+  not identified yet.
+- **Cassian (6) and 3 Swedish House Mafia songs, both checked clean** (`["Electronic"]` /
+  `["Dance"]` respectively) → `Melodic Techno` (2 of his other albums already agree, same year) and
+  `House` (4 of Swedish House Mafia's 6 albums already agree).
+- `genres.lowInformation` 398→**371**, exactly the 27 songs actually written — the delta matched the
+  write count precisely this time, confirming the pre-write check is sufficient on its own; no
+  post-write surprise needed.
+
+**Note for next time**: the "Coldplay vs. Swedish House Mafia" worklist entry (9 songs) was never
+actually resolved — the 3 songs found were credited plainly "Swedish House Mafia," not the compound
+credit, so they're a different (also legitimate) fix, not that entry's target. The real
+Coldplay-credited songs and Daft Punk's real 6 both remain to find.
