@@ -246,9 +246,83 @@ the bun pin never covered this. The recipe now installs node too — same versio
 checksummed against nodejs.org's published `SHASUMS256.txt`, and gated so the pin cannot drift
 away from the version we actually build with.
 
+**Use the `.tar.gz`, not the `.tar.xz`.** The next run got as far as `/tmp/node.tar.gz: OK` and then
+died on `tar (child): xz: Cannot exec: No such file or directory` — the buildserver has no xz. Both
+formats are published with checksums, and gzip is one fewer thing to have to install. The gate
+deliberately does not pin the extension: that is packaging, not the thing worth protecting.
+
 Worth generalising: every build input F-Droid supplies is one we do not control and never test
 against. The bun and node pins exist for the same reason, and both are gated for the same reason —
 a mismatch fails only there.
+
+### `bunx` needs its own symlink
+
+Third failure in the same job, after the web build had already succeeded:
+
+```
+bash: line 1: bunx: command not found
+```
+
+The bun release **zip contains only the `bun` binary**. `bunx` is a separate name on `PATH` that
+bun's own installer creates as a symlink to that same binary — bun dispatches on `argv[0]`. Our
+sudo block linked `bun` and not `bunx`, so the prebuild died three commands later, which reads like
+a Capacitor problem rather than a `PATH` one. Gated.
+
+### The source scanner rejects what `bun install` leaves behind
+
+Fourth failure, and the first that is not a toolchain assumption — every recipe command succeeded,
+including `cap sync`:
+
+```
+ERROR: Found binary at node_modules/.bun/@esbuild+linux-x64@0.27.3/…/bin/esbuild
+ERROR: Found Java JAR file at node_modules/.bun/@trapezedev+gradle-parse@7.1.3/…/groovy-3.0.9.jar
+ERROR: Could not build app ar.kevinroberts.nicotind.tv: Can't build due to 22 errors while scanning
+```
+
+`fdroid build` runs `scanner.scan_source()` **between prebuild and gradle** (`build.py`: after
+`prepare_source`, before the assemble), and any binary, JAR, shared library, wasm module or archive
+in the tree is an error. All 22 were under `node_modules/`: three esbuild binaries, two wasm
+modules, the capacitor CLI's nine template tarballs, trapeze's three groovy/json JARs, two libvips
+shared libraries, and `ffmpeg-static`. The fix is one line per recipe:
+
+```yaml
+    scandelete:
+      - node_modules
+```
+
+Three things in `scanner.py` decide that shape, and all three are worth knowing before touching it:
+
+- **`scandelete` deletes the flagged file, not the path.** `removeproblem()` calls `os.remove()` on
+  the individual file the scan objected to — never `rmtree`. That is what makes a broad entry safe
+  here: the capacitor plugin projects gradle actually builds from live *inside* `node_modules`
+  (`capacitor.settings.gradle` points `projectDir` at `node_modules/.bun/@capacitor+android@…`), and
+  a tree-wide delete would take them with it.
+- **An entry that matches nothing is itself an error** (`count += 1`, "Unused scandelete path").
+  So the version-pinned form — `node_modules/.bun/@esbuild+linux-x64@0.27.3` — is a time bomb: it
+  fails the build the day that dependency bumps, *because it stopped matching*. One broad entry is
+  the only self-maintaining form.
+- **`scanignore` wins over `scandelete`** (`handleproblem` tests it first). If a plugin's own
+  `build.gradle` were ever flagged — an unknown maven repo, say — `scandelete` would delete it and
+  gradle would fail on a missing project. That is why the React Native recipes in fdroiddata pair a
+  broad `scandelete: node_modules/` with a `scanignore` list of plugin `build.gradle` paths. We need
+  no such list today: none of the five gradle-referenced plugin subtrees contains a flagged file.
+  Re-check that if a plugin is added — the failure is a deleted build file, not a scan error.
+
+Verified by running fdroidserver's own `scan_source()` against this checkout, and by intersecting
+the flagged set with every `node_modules` path the gradle build references. (Locally that scan also
+flags `android/app/build/` and `.gradle/` artifacts, and a stale `@capacitor/barcode-scanner` the
+lockfile no longer installs — a fresh clone has none of them, which is why F-Droid's number is 22
+and this machine's is four digits.)
+
+### Every one of these was invisible from here
+
+Node too old, no `xz`, no `bunx`, then the scanner — four round-trips, and the first three were
+assumptions about a machine we do not have. Local verification cannot catch those: this repo's own
+`bun` install ships `bunx`, this machine has `xz`, and our Node is the version `.nvmrc` pins. The
+scanner one was different in kind — it is a *policy* check, reproducible here, and it was findable
+in advance by reading `scanner.py`. The gates exist so the *next* drift is caught here instead, but
+the first discovery of each will always be F-Droid's CI. Budget for that rather than treating a red
+pipeline there as a surprise.
 
 ### `checkupdates` fails on a stale seed, which is not a defect
 

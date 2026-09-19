@@ -428,7 +428,10 @@ const { versionCode: currentVersionCode, versionName: currentVersionName } = and
     // exactly this. The recipe pins node itself, and the pin has to track the
     // version we actually build with.
     const nvmrc = readFileSync(join(repoRoot, '.nvmrc'), 'utf8').trim();
-    if (!source.includes(`node-v${nvmrc}-linux-x64.tar.xz`)) {
+    // Archive format deliberately not pinned here: .tar.gz replaced .tar.xz
+    // once the buildserver turned out to have no xz binary, and that is a
+    // packaging detail, not the thing this arm is protecting.
+    if (!new RegExp(`node-v${nvmrc.replace(/\./g, '\\.')}-linux-x64\\.tar\\.`).test(source)) {
       errors.push(
         `${rel} does not pin node ${nvmrc} (the .nvmrc version). F-Droid's buildserver ships ` +
           `its own node, and Angular's CLI refuses an older one — the build fails there while ` +
@@ -471,6 +474,29 @@ const { versionCode: currentVersionCode, versionName: currentVersionName } = and
           );
         }
       }
+    }
+
+    // `bunx` is a separate name on PATH (bun dispatches on argv[0]); the zip we
+    // unpack contains only `bun`, so the symlink has to be explicit. Missing it
+    // fails the prebuild AFTER the web build has succeeded, which reads as a
+    // capacitor problem rather than a PATH one.
+    if (source.includes('bunx ') && !source.includes('/usr/local/bin/bunx')) {
+      errors.push(
+        `${rel} runs \`bunx\` but never links it onto PATH. The bun release zip ships only the ` +
+          `\`bun\` binary — F-Droid's build dies on "bunx: command not found".`,
+      );
+    }
+
+    // fdroidserver scans the source tree between prebuild and gradle and fails
+    // the build on any binary it finds. `bun install` leaves plenty, so without
+    // this the build dies at "Can't build due to N errors while scanning" —
+    // after every command in the recipe has already succeeded.
+    if (!/scandelete:\s*\n\s*-\s*node_modules\b/.test(source)) {
+      errors.push(
+        `${rel} does not \`scandelete: [node_modules]\`. \`bun install\` leaves prebuilt ` +
+          `binaries in the tree, and fdroidserver's scanner refuses to build when it finds ` +
+          `them — "Can't build due to N errors while scanning", with every recipe command green.`,
+      );
     }
 
     if (!source.includes('cap sync android')) {
