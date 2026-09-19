@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.10](https://github.com/kevinch3/NicotinD/compare/v0.8.9...v0.8.10) (2026-09-19)
+
+### Bug Fixes
+
+* **fdroid:** publish the author name as Kevin Roberts ([#1201](https://github.com/kevinch3/NicotinD/issues/1201)) ([ba420ab](https://github.com/kevinch3/NicotinD/commit/ba420abba3e9d7d6326cc53e9d1153439e6a1f7e)), references [#1168](https://github.com/kevinch3/NicotinD/issues/1168)
 ## [0.8.9](https://github.com/kevinch3/NicotinD/compare/v0.8.8...v0.8.9) (2026-09-19)
 
 ### Bug Fixes

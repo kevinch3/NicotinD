@@ -1,0 +1,1 @@
+• fdroid: publish the author name as Kevin Roberts (#1201)
