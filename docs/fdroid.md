@@ -255,6 +255,27 @@ Worth generalising: every build input F-Droid supplies is one we do not control 
 against. The bun and node pins exist for the same reason, and both are gated for the same reason —
 a mismatch fails only there.
 
+### `bunx` needs its own symlink
+
+Third failure in the same job, after the web build had already succeeded:
+
+```
+bash: line 1: bunx: command not found
+```
+
+The bun release **zip contains only the `bun` binary**. `bunx` is a separate name on `PATH` that
+bun's own installer creates as a symlink to that same binary — bun dispatches on `argv[0]`. Our
+sudo block linked `bun` and not `bunx`, so the prebuild died three commands later, which reads like
+a Capacitor problem rather than a `PATH` one. Gated.
+
+### Every one of these was invisible from here
+
+Node too old, no `xz`, no `bunx` — three round-trips, all of them assumptions about a machine we do
+not have. Local verification cannot catch them: this repo's own `bun` install ships `bunx`, this
+machine has `xz`, and our Node is the version `.nvmrc` pins. The gates exist so the *next* drift is
+caught here instead, but the first discovery of each will always be F-Droid's CI. Budget for that
+rather than treating a red pipeline there as a surprise.
+
 ### `checkupdates` fails on a stale seed, which is not a defect
 
 The job reads our tags and proposes the metadata it thinks is current:

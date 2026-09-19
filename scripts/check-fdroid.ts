@@ -476,6 +476,17 @@ const { versionCode: currentVersionCode, versionName: currentVersionName } = and
       }
     }
 
+    // `bunx` is a separate name on PATH (bun dispatches on argv[0]); the zip we
+    // unpack contains only `bun`, so the symlink has to be explicit. Missing it
+    // fails the prebuild AFTER the web build has succeeded, which reads as a
+    // capacitor problem rather than a PATH one.
+    if (source.includes('bunx ') && !source.includes('/usr/local/bin/bunx')) {
+      errors.push(
+        `${rel} runs \`bunx\` but never links it onto PATH. The bun release zip ships only the ` +
+          `\`bun\` binary — F-Droid's build dies on "bunx: command not found".`,
+      );
+    }
+
     if (!source.includes('cap sync android')) {
       errors.push(
         `${rel} does not run \`cap sync android\` before gradle. The tracked ` +
