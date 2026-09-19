@@ -314,9 +314,54 @@ flags `android/app/build/` and `.gradle/` artifacts, and a stale `@capacitor/bar
 lockfile no longer installs — a fresh clone has none of them, which is why F-Droid's number is 22
 and this machine's is four digits.)
 
+### The JDK that runs gradle decides what is in `classes.dex`
+
+Fifth failure, and the one the whole reproducible-build decision rested on. The build now completes;
+F-Droid rebuilds it and compares:
+
+```
+Unexpected diff output:
+  assets/dexopt/baseline.prof  differ
+  assets/dexopt/baseline.profm differ
+  classes.dex                  differ
+```
+
+Three entries out of 658. Everything else — every web asset, `resources.arsc`, `AndroidManifest.xml`
+— byte-identical, so the `ngsw.json` pin and `dependenciesInfo` both held.
+
+Parsing the two dex headers, ours carries **exactly one extra class**:
+`com.getcapacitor.plugin.util.HttpRequestHandler$1`, javac's synthetic holder for an enum switch
+(`$SwitchMap$…$ResponseType`). The two baseline profiles index into the dex, so they are
+consequences of that one class, not separate causes.
+
+**Our CI built on JDK 17; fdroiddata's CI builds every app on JDK 21** (`apt-get install -y
+openjdk-21-jdk-headless` + `update-alternatives --set java`, in their pipeline, not per app).
+
+Measured rather than assumed, because the obvious test says the opposite: **standalone `javac` 21
+emits that switch map exactly like `javac` 17**, at every `--release` level. It is the full AGP/D8
+pipeline that diverges. Four `assembleTvRelease` builds settle it:
+
+| build | `class_defs` | switch map |
+| --- | --- | --- |
+| ours published (CI, JDK 17) | 5226 | yes |
+| F-Droid (Debian OpenJDK 21.0.12) | 5225 | no |
+| local, JDK 17 | 5226 | yes |
+| local, JDK 21 (Temurin 21.0.5) | 5225 | no |
+
+And the local Temurin 21 build's `classes.dex` is **byte-identical** to F-Droid's Debian 21 one
+(`a33f9db1…`) — so the major version is the entire story, independent of vendor and patch release.
+
+`deploy.yml` therefore builds on 21. Capacitor 6 documents 17; 21 builds fine and is what the
+reference binary has to match. Gated against fdroiddata's number, because the failure mode is a
+green release here and a refused rebuild there, one release later.
+
+**The general rule this settles:** with `Binaries:` + `AllowedAPKSigningKeys:`, our release toolchain
+is no longer ours to choose. It has to track F-Droid's, and every part of it that can change the
+output needs a gate — `bun`, `node`, and now the JDK.
+
 ### Every one of these was invisible from here
 
-Node too old, no `xz`, no `bunx`, then the scanner — four round-trips, and the first three were
+Node too old, no `xz`, no `bunx`, the scanner, then the JDK — five round-trips, and the first three were
 assumptions about a machine we do not have. Local verification cannot catch those: this repo's own
 `bun` install ships `bunx`, this machine has `xz`, and our Node is the version `.nvmrc` pins. The
 scanner one was different in kind — it is a *policy* check, reproducible here, and it was findable
