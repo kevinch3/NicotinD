@@ -4100,3 +4100,27 @@ against the health report's own number, and treated any mismatch as a stop sign.
 actually resolved — the 3 songs found were credited plainly "Swedish House Mafia," not the compound
 credit, so they're a different (also legitimate) fix, not that entry's target. The real
 Coldplay-credited songs and Daft Punk's real 6 both remain to find.
+
+## 2026-09-19, tick 6 — the acquisition lane, and a recurring addon failure
+
+`genres.lowInformation`'s remaining worklist head (Abraham (ES) & S.Hai, Moderat, Pete
+Tong/HER-O/Jules Buckley, Fred again.., David Guetta, Eelke Kleijn, Avicii, Guy J, Röyksopp, Clotta)
+is now entirely artists already evaluated and deliberately left alone across this session and stretch
+18 — a natural point to switch lanes rather than re-litigate them without new information.
+
+Ran the acquisition lane instead (completely untouched this session), 10 `complete_album` hunts from
+the confirmed-incomplete worklist — the session's full budget per the skill's guidance:
+
+- **5 enqueued cleanly**: Michael Gray, Gwen Stefani, Enrique Iglesias, Luis Alberto Spinetta, Limp
+  Bizkit.
+- **1 `no-candidate`**: Çantamarta.
+- **4 hit the byte-identical error** `addon responded 400 for POST /addon/v1/jobs`: Cultura
+  Profética, El Kuelgue, Los Auténticos Decadentes, Paulina Rubio.
+
+**El Kuelgue's *Ruli* failed this exact same way in a session from three weeks ago** (recorded in
+project memory) — the same album, the same string, unprompted. A genuinely transient/overloaded
+addon would not selectively fail the same album twice across a month while 6 of 10 in the same batch
+succeeded seconds apart. Filed **#1209** with the full reproduction table and a candidate mechanism
+(citing #1069's documented "one active job per (artist,album)" conflict guard) explicitly marked as
+an unverified hypothesis, not a finding — a refiner MCP session has no visibility into the addon's
+own job table to confirm it.
