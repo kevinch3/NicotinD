@@ -65,8 +65,16 @@ async function main(): Promise<void> {
   const mb = (r.bytesReclaimed / (1024 * 1024)).toFixed(1);
   console.log(
     `\nDone (${apply ? 'applied' : 'dry run'}). candidates=${r.candidates} converted=${r.converted} ` +
-      `skipped=${r.skipped} failed=${r.failed} reclaimed≈${mb}MB`,
+      `skipped=${r.skipped} failed=${r.failed} reclaimed${apply ? '=' : '≈'}${mb}MB`,
   );
+  if (r.unestimated > 0) {
+    // Say which number you mean: with unknown durations in the set, the figure
+    // above is a floor, not an estimate.
+    console.log(
+      `  ${r.unestimated} candidate(s) had no duration, so no saving was estimated for them — ` +
+        `reclaimed is a floor.`,
+    );
+  }
   if (!apply && r.converted > 0) {
     console.log('\nRe-run with --apply to transcode these files.');
   }

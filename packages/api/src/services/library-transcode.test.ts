@@ -6,7 +6,7 @@
  */
 import { describe, expect, it, afterEach } from 'bun:test';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, existsSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Database } from 'bun:sqlite';
@@ -66,12 +66,16 @@ function makeAudio(
   );
 }
 
-function seedSongRow(db: Database, rel: string, extra: { starred?: string; hidden?: number } = {}) {
+function seedSongRow(
+  db: Database,
+  rel: string,
+  extra: { starred?: string; hidden?: number; size?: number; duration?: number } = {},
+) {
   const id = songId(rel);
   db.run(
-    `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, suffix, size, starred, hidden, synced_at)
-     VALUES (?, 'alb', 'Avril 14th', 'Aphex Twin', 'art', ?, 'flac', 1000, ?, ?, 1)`,
-    [id, rel, extra.starred ?? null, extra.hidden ?? 0],
+    `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, suffix, size, duration, starred, hidden, synced_at)
+     VALUES (?, 'alb', 'Avril 14th', 'Aphex Twin', 'art', ?, 'flac', ?, ?, ?, ?, 1)`,
+    [id, rel, extra.size ?? 1000, extra.duration ?? 120, extra.starred ?? null, extra.hidden ?? 0],
   );
   return id;
 }
@@ -113,6 +117,91 @@ describe('transcodeLibraryToOpus', () => {
     // Row unchanged (still flac).
     const row = db.query<{ suffix: string }, []>('SELECT suffix FROM library_songs').get();
     expect(row?.suffix).toBe('flac');
+  });
+
+  describe('dry-run bytesReclaimed', () => {
+    it('reports the difference, not the whole original size', async () => {
+      const music = tmpMusic();
+      const db = new Database(':memory:');
+      applySchema(db);
+      const rel = 'Aphex Twin/Drukqs/01 - Avril 14th.flac';
+      mkdirSync(dirname(join(music, rel)), { recursive: true });
+      await Bun.write(join(music, rel), 'x');
+      // 120 s at 192 kbps ≈ 2,880,000 bytes of Opus out of a 10 MB source.
+      seedSongRow(db, rel, { size: 10_000_000, duration: 120 });
+
+      const r = await transcodeLibraryToOpus(db, music, { apply: false, bitRate: 192 });
+
+      // Before the fix this was the full 10,000,000 — it assumed the Opus file
+      // would be zero bytes, so the figure the operator sizes a run against was
+      // always too high by the size of every resulting file.
+      expect(r.bytesReclaimed).toBe(10_000_000 - 120 * 192 * 125);
+      expect(r.bytesReclaimed).toBeLessThan(10_000_000);
+      expect(r.unestimated).toBe(0);
+    });
+
+    it('scales the estimate with the chosen bitrate', async () => {
+      const music = tmpMusic();
+      const db = new Database(':memory:');
+      applySchema(db);
+      const rel = 'Aphex Twin/Drukqs/01 - Avril 14th.flac';
+      mkdirSync(dirname(join(music, rel)), { recursive: true });
+      await Bun.write(join(music, rel), 'x');
+      seedSongRow(db, rel, { size: 10_000_000, duration: 120 });
+
+      const low = await transcodeLibraryToOpus(db, music, { apply: false, bitRate: 96 });
+      const high = await transcodeLibraryToOpus(db, music, { apply: false, bitRate: 256 });
+      // A smaller encode frees more; the old code reported the same either way.
+      expect(low.bytesReclaimed).toBeGreaterThan(high.bytesReclaimed);
+    });
+
+    it('counts a file with no duration as unestimated rather than guessing', async () => {
+      const music = tmpMusic();
+      const db = new Database(':memory:');
+      applySchema(db);
+      const rel = 'Aphex Twin/Drukqs/01 - Avril 14th.flac';
+      mkdirSync(dirname(join(music, rel)), { recursive: true });
+      await Bun.write(join(music, rel), 'x');
+      seedSongRow(db, rel, { size: 10_000_000, duration: 0 });
+
+      const r = await transcodeLibraryToOpus(db, music, { apply: false, bitRate: 192 });
+
+      // Under-report rather than over-report: a floor is recoverable, the old
+      // over-estimate is what this fix exists to stop.
+      expect(r.bytesReclaimed).toBe(0);
+      expect(r.unestimated).toBe(1);
+    });
+
+    it.skipIf(!ffmpegAvailable())(
+      'lands within a sane margin of the real apply figure',
+      async () => {
+        // Against a real encode rather than a seeded size, so the bound is
+        // checked on the shape of file the pass actually meets.
+        const music = tmpMusic();
+        const db = new Database(':memory:');
+        applySchema(db);
+        const rel = 'Aphex Twin/Drukqs/01 - Avril 14th.flac';
+        const abs = join(music, rel);
+        makeFlac(music, rel, 'Avril 14th');
+        const size = statSync(abs).size;
+        // The fixture is a short generated FLAC; its real duration is what the
+        // estimate has to work from.
+        seedSongRow(db, rel, { size, duration: 1 });
+
+        const dry = await transcodeLibraryToOpus(db, music, { apply: false, bitRate: 96 });
+
+        expect(dry.unestimated).toBe(0);
+        // The bound that matters, and the one the old code broke: a dry run can
+        // never claim to free more than the file occupies. It used to claim
+        // exactly that — the whole source size, every time.
+        expect(dry.bytesReclaimed).toBeLessThan(size);
+
+        // This one-second fixture is the honest edge case: Opus at 96 kbps costs
+        // more than a second of silent FLAC, so there is no saving to report and
+        // the pass says zero rather than inventing one.
+        expect(dry.bytesReclaimed).toBe(0);
+      },
+    );
   });
 
   it.skipIf(!ffmpegAvailable())(
