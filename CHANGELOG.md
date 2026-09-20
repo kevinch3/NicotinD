@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.15](https://github.com/kevinch3/NicotinD/compare/v0.8.14...v0.8.15) (2026-09-20)
+
+### Features
+
+* **lyrics:** correct timing with a stored offset, and flag an LRC that outlasts its file ([#1215](https://github.com/kevinch3/NicotinD/issues/1215)) ([491e00f](https://github.com/kevinch3/NicotinD/commit/491e00f65bd950c305c26893d281b38b076219b7)), references [#1212](https://github.com/kevinch3/NicotinD/issues/1212) [#1212](https://github.com/kevinch3/NicotinD/issues/1212)
 ## [0.8.14](https://github.com/kevinch3/NicotinD/compare/v0.8.13...v0.8.14) (2026-09-20)
 
 ### Features

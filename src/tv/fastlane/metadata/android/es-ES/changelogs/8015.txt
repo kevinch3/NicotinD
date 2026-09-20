@@ -1,0 +1,1 @@
+• lyrics: correct timing with a stored offset, and flag an LRC that outlasts its file (#1215)
