@@ -4,7 +4,7 @@ import { basename, dirname, join, extname } from 'node:path';
 import { createLogger, ID3_EXTS } from '@nicotind/core';
 import { isLossless } from './library-track-select.js';
 import { getMusicMetadata } from './music-metadata-loader.js';
-import { ffmpegAvailable, transcodeOutputIsAcceptable } from './transcode.js';
+import { ffmpegAvailable, TRANSCODE_DURATION_TOLERANCE_SEC } from './transcode.js';
 import { ffmpegBinary } from './ffmpeg-path.js';
 import { preserveFolderCover } from './cover-sources.js';
 import { readAudioTags, type AudioTags } from './audio-tags.js';
@@ -63,12 +63,12 @@ export async function isLosslessFile(absPath: string): Promise<boolean> {
  *     leniently, and rejecting it left the file un-standardized forever. The
  *     duration check below still guards the lenient output, so a genuinely
  *     truncated source is rejected in both modes.
- *   - post-write ffprobe vs music-metadata source duration; an obviously
- *     truncated output is rejected without renaming, so the library never
- *     ingests a too-short file. This file ends up IN the library (not just
- *     in a cache) so a corrupt short file here is a worse failure mode than
- *     the streaming equivalent — the user can't tell a single track in the
- *     library is short without playing it.
+ *   - post-write ffprobe vs music-metadata source duration, judged **fail
+ *     closed** by {@link opusOutputVerdict}: an output that cannot be probed is
+ *     rejected, not waved through. This file ends up IN the library rather than
+ *     in a cache, and the very next statement unlinks the original, so the
+ *     streaming path's best-effort policy would be actively wrong here. A user
+ *     cannot tell a single library track is short without playing it.
  */
 const TEMP_SUFFIX = '.nicotind-transcode.opus';
 
@@ -233,20 +233,22 @@ export async function transcodeToOpus(absPath: string, bitRate = 128): Promise<s
 
   // Exit 0 isn't enough — ffmpeg can succeed on a truncated source and
   // produce a valid-but-short Opus file that the browser will play for
-  // 1-2 s then "end". Validate before swapping the library file. A probe
-  // failure is a best-effort no-op pass (the strict flags above already turn
-  // obvious damage into a non-zero exit); a probe that *ran* and failed the
-  // duration check rejects.
-  let durationOk = true;
+  // 1-2 s then "end". Validate before swapping the library file — and **fail
+  // closed**: the statement after the swap unlinks the original, so anything
+  // short of positive evidence is a rejection. See `opusOutputVerdict`.
+  let verdict: { ok: true } | { ok: false; reason: string };
   try {
-    durationOk = await validateOpusOutput(absPath, tmpPath);
+    verdict = await validateOpusOutput(absPath, tmpPath);
   } catch (err) {
-    log.debug({ err, absPath }, 'post-download transcode output duration probe skipped');
+    // A throw here used to leave the flag at its `true` initial value, so the
+    // original was deleted on the strength of an exception. Unverifiable is a
+    // rejection now, because the next statement is irreversible.
+    verdict = { ok: false, reason: `verification threw: ${(err as Error).message}` };
   }
-  if (!durationOk) {
+  if (!verdict.ok) {
     cleanup(tmpPath);
     throw new Error(
-      `Opus output failed duration check: source ${absPath} produced suspiciously short output at ${tmpPath}`,
+      `Refusing to replace ${absPath}: ${verdict.reason}. The original is untouched.`,
     );
   }
   try {
@@ -289,18 +291,69 @@ function runFfmpeg(
 }
 
 /**
- * Source/output duration comparison for the ingest-time Opus transcode. The
- * streaming helper (`validateTranscodeOutput` in `./transcode.ts`) does the
- * same job but imports `music-metadata` dynamically; we re-implement the
- * probe call here to avoid a circular import.
+ * Whether the output is good enough to **destroy the source for**.
+ *
+ * Deliberately stricter than `validateTranscodeOutput` in `./transcode.ts`,
+ * because the stakes are not the same and a single shared policy cannot be
+ * right for both. There, the output is a *cache* file: an unprobeable one is
+ * served best-effort and regenerated if it is wrong, so failing open costs a
+ * cache miss. Here the next statement unlinks an irreplaceable library file.
+ *
+ * So this one **fails closed**. Two ways it used to fail open, both of which
+ * ended with the original deleted on no evidence:
+ *
+ * 1. `transcodeOutputIsAcceptable` returns `true` when *either* duration is
+ *    `null` — "best effort", which is right for a cache and wrong here.
+ * 2. The caller initialised its flag to `true` and swallowed a probe throw, so
+ *    an exception was also a pass.
+ *
+ * Returns a reason rather than a bare boolean: "failed the duration check" and
+ * "could not be probed at all" are different operator problems, and a run over
+ * thousands of files needs to say which.
  */
-async function validateOpusOutput(sourcePath: string, outputPath: string): Promise<boolean> {
-  if (!ffmpegAvailable()) return true; // ffmpeg missing → strict flags also off, trust the exit
-  const [src, out] = await Promise.all([
-    readSourceDurationSec(sourcePath),
-    readOutputDurationSec(outputPath),
-  ]);
-  return transcodeOutputIsAcceptable(src, out);
+export function opusOutputVerdict(
+  sourceSec: number | null,
+  outputSec: number | null,
+  toleranceSec = TRANSCODE_DURATION_TOLERANCE_SEC,
+): { ok: true } | { ok: false; reason: string } {
+  if (sourceSec == null) return { ok: false, reason: 'source duration could not be read' };
+  if (outputSec == null) return { ok: false, reason: 'output duration could not be read' };
+  if (!Number.isFinite(outputSec) || outputSec <= 0) {
+    return { ok: false, reason: `output duration is ${outputSec}` };
+  }
+  if (outputSec < sourceSec - toleranceSec) {
+    return {
+      ok: false,
+      reason: `output ${outputSec.toFixed(2)}s is shorter than source ${sourceSec.toFixed(2)}s`,
+    };
+  }
+  return { ok: true };
+}
+
+/**
+ * Probe both durations and judge. Any probe failure is a **rejection**, not a
+ * pass — see {@link opusOutputVerdict}.
+ *
+ * The one genuine exemption is ffmpeg being absent entirely: the strict decode
+ * flags are off in that case too, so there is nothing to verify against and
+ * the caller never reaches the delete anyway.
+ */
+async function validateOpusOutput(
+  sourcePath: string,
+  outputPath: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  if (!ffmpegAvailable()) return { ok: true };
+  let src: number | null = null;
+  let out: number | null = null;
+  try {
+    [src, out] = await Promise.all([
+      readSourceDurationSec(sourcePath),
+      readOutputDurationSec(outputPath),
+    ]);
+  } catch (err) {
+    return { ok: false, reason: `duration probe threw: ${(err as Error).message}` };
+  }
+  return opusOutputVerdict(src, out);
 }
 
 async function readSourceDurationSec(absPath: string): Promise<number | null> {
