@@ -4,7 +4,9 @@
  *   bun run packages/api/src/scripts/normalize-library.ts [options]
  *
  * Options:
- *   --dry-run          Print every action without writing anything.
+ *   --apply            Actually write. Without it this is a dry run, like every
+ *                      other script here (#1237).
+ *   --dry-run          Accepted and ignored; a dry run is now the default.
  *   --phase=A          Run only the fast, offline phase (dedup, folder merges).
  *   --phase=B          Run only the MusicBrainz-assisted phase.
  *   --phase=all        Run both (default).
@@ -53,11 +55,12 @@ import { normalizeTagValue } from '../services/audio-tags.js';
 import { MusicBrainzClient } from '../services/musicbrainz-client.js';
 import { AUDIO_EXTENSIONS, expandHome } from '@nicotind/core';
 import { isReservedTopLevel, reservedDirsFor } from '../services/library-paths.js';
+import { isDryRun } from './normalize-library-args.js';
 
 // ─── CLI flags ────────────────────────────────────────────────────────────────
 
 const args = process.argv.slice(2);
-const DRY_RUN = args.includes('--dry-run');
+const DRY_RUN = isDryRun(args);
 const PHASE_ARG = (args.find((a) => a.startsWith('--phase='))?.split('=')[1] ?? 'all') as
   'A' | 'B' | 'all';
 const CACHE_ARG = args.find((a) => a.startsWith('--cache='))?.split('=')[1];
@@ -971,7 +974,10 @@ async function main(): Promise<void> {
   log(`Music dir : ${musicDir}`);
   log(`Data dir  : ${dataDir}`);
   log(`Move log  : ${moveLogPath}`);
-  log(`Mode      : ${DRY_RUN ? 'DRY RUN' : 'LIVE'}, phase=${PHASE_ARG}`);
+  log(
+    `Mode      : ${DRY_RUN ? 'DRY RUN (pass --apply to write)' : 'APPLY (writing)'}, ` +
+      `phase=${PHASE_ARG}`,
+  );
 
   // Open DB (skip if DB not initialized yet — script can run standalone)
   try {
