@@ -128,6 +128,23 @@ export function sweepStaleTranscodeTemps(musicDir: string, graceMs = 10 * 60_000
 }
 
 /**
+ * How many {@link transcodeToOpus} calls may run at once.
+ *
+ * why a small constant rather than `cpus().length`: this is real CPU work, but
+ * the box also runs the analysis sidecar and whatever else shares the host, and
+ * one batch is not the only thing that should get to use it. Measured on prod
+ * (8 cores, load ~1.8): four concurrent encodes of a 3-minute FLAC took 3.4 s
+ * against 10.0 s serial, so the return is already most of the way to linear at
+ * four and buying more would mostly be taking cores off neighbours.
+ *
+ * It lives here rather than in either caller because both the download
+ * organizer and the whole-library conversion pool the same call against the
+ * same cores. Two independently chosen numbers would quietly become eight
+ * concurrent encodes whenever a download lands mid-conversion.
+ */
+export const TRANSCODE_CONCURRENCY = 4;
+
+/**
  * ID3 frames `-map_metadata 0` does not carry into Vorbis comments, and the
  * Vorbis name each has to be written under.
  *

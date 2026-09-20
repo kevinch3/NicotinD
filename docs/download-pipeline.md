@@ -263,6 +263,39 @@ The caller supplies the transaction, because every caller has other work to make
 
 Returns `{ candidates, converted, skipped, failed, bytesReclaimed, unestimated }`.
 
+### Concurrency: the same three-phase split, over a window
+
+The conversion pass pools its encodes exactly like `organizeGroup` does, and for the same reason —
+the ffmpeg call is nearly the whole cost and shares nothing between files. What differs is scale, and
+that changes the shape.
+
+`organizeGroup` works one directory at a time, so it can encode the whole batch and then migrate it.
+This pass works over the whole library — 13,864 files on prod — where doing the same would hold every
+output on disk before freeing a single original, run for hours before the first progress event, and
+give `shouldStop` no granularity at all. So the split is applied to a **window** of `ENCODE_BATCH`
+(`TRANSCODE_CONCURRENCY * 4`) files:
+
+1. **serial** — skip rows whose file is gone, do the dry-run accounting
+2. **pooled** at `TRANSCODE_CONCURRENCY` — `transcodeToOpus`, which owns nothing shared
+3. **serial** — the identity migration
+
+**Phase 3 must stay serial.** `scanPaths` reads whole-DB state outside a transaction and recomputes
+album aggregates from it, so two concurrent calls lose the song count for any album with two files
+converted at once. Widening a transaction does not fix that: the read set is the whole library.
+
+**`mapPool` has no error isolation.** It is `Promise.all` underneath, so one throw rejects it and
+every sibling result is lost. The pooled function therefore catches internally and returns an
+outcome record rather than throwing.
+
+**`shouldStop` is checked between batches only.** Stopping between an encode and its migration would
+strand an `.opus` on disk that no library row points at, with its original already moved to
+quarantine or deleted. Every encode the pass starts is always migrated.
+
+**Progress is a snapshot.** `result` is mutated for the whole pass, so handing the caller the object
+itself means every event it kept shows the final counters. `visited` is also counted at emit time
+rather than at pick-up: the pooled phase starts a whole batch before any of it finishes, so counting
+at pick-up reports the batch as done the moment it begins.
+
 ### Embedding cover art in Opus: the ceiling is ours
 
 `-vn` in the encoder discards the attached picture, and the comment there is right — ffmpeg's Ogg
@@ -450,11 +483,20 @@ and the suite was green.
 
 ### Headroom preflight, and why it fails open
 
-On `apply` with candidates present, the pass checks `musicDir` for the largest single candidate plus
-`TRANSCODE_DISK_MARGIN_BYTES` (500 MB, matching `IMPORT_DISK_MARGIN_BYTES`) before starting. Peak
-usage is only one encode above steady state — each Opus file is written beside its source and the
-original removed — but the run is long, unattended, and shares a disk that has filled to zero once
-and taken the API down with it (#1021).
+On `apply` with candidates present, the pass checks `musicDir` before starting, against
+`TRANSCODE_DISK_MARGIN_BYTES` (500 MB, matching `IMPORT_DISK_MARGIN_BYTES`) plus whichever peak
+applies. The run is long, unattended, and shares a disk that has filled to zero once and taken the
+API down with it (#1021).
+
+Two peaks, because keeping the originals inverts the arithmetic:
+
+| originals | peak above steady state | why |
+| --- | --- | --- |
+| deleted | largest candidate × `TRANSCODE_CONCURRENCY` | each encode unlinks its own source as soon as the output verifies, so the bytes in flight are one encode per pool worker |
+| quarantined | the whole projected output | nothing is freed: every output is added while every original is still held |
+
+The concurrency factor is a **bound, not an estimate** — it assumes every worker is simultaneously
+holding the largest file in the library. That is the side to err on for a preflight.
 
 `services/disk-space.ts` is the one place that probes free space. `StatfsFn` and `freeBytes` had
 **three byte-identical copies** (the library import, the migration backup, `GET /api/system/disk`),

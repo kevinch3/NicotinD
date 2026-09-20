@@ -2,9 +2,14 @@ import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Database } from 'bun:sqlite';
 import { createLogger } from '@nicotind/core';
-import { isLossless, isLosslessFile, transcodeToOpus } from './post-download-transcode.js';
+import {
+  isLossless,
+  isLosslessFile,
+  transcodeToOpus,
+  TRANSCODE_CONCURRENCY,
+} from './post-download-transcode.js';
 import { ffmpegAvailable } from './transcode.js';
-import { LibraryScanner, songId } from './library-scanner.js';
+import { LibraryScanner, mapPool, songId } from './library-scanner.js';
 import { carrySongCuration } from './song-curation-carry.js';
 import { refreshAlbumAggregate } from './library-aggregates.js';
 import { checkHeadroom, type StatfsFn } from './disk-space.js';
@@ -24,6 +29,29 @@ const log = createLogger('library-transcode');
  * model the run.
  */
 const TRANSCODE_DISK_MARGIN_BYTES = 500 * 1024 * 1024;
+
+/**
+ * Files encoded before the pass stops to migrate their identities.
+ *
+ * The organizer runs its three-phase split over one directory at a time, so it
+ * can encode the whole batch and then migrate it. This pass runs over the whole
+ * library — 13,864 files on prod — and doing the same would hold every output
+ * on disk before freeing a single original, hours before the first progress
+ * event, with no useful `shouldStop` granularity. So the split is applied to a
+ * window instead.
+ *
+ * Four times the pool depth: big enough that a slow file stalls the pool only
+ * briefly at the batch boundary, small enough that the extra disk held is one
+ * batch of encodes rather than a library of them.
+ */
+const ENCODE_BATCH = TRANSCODE_CONCURRENCY * 4;
+
+/** Split into fixed-size windows, the last one short. */
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
 
 export interface LibraryTranscodeResult {
   /** Lossless rows considered. */
@@ -196,10 +224,16 @@ export async function transcodeLibraryToOpus(
     // (A same-filesystem quarantine move is a rename and costs nothing extra
     // for the original itself; a cross-filesystem one briefly costs a copy.
     // Either way the outputs are new bytes that no deletion offsets.)
+    //
+    // Without quarantine the peak scales with the POOL, not the batch: each
+    // encode unlinks its own source as soon as the output verifies, so the
+    // extra bytes in flight are one encode per worker rather than a whole
+    // batch. Taking the largest candidate that many times over is a bound, not
+    // an estimate, which is the right side to err on here.
     const keepingOriginals = Boolean(opts.dataDir);
     const need = keepingOriginals
       ? rows.reduce((n, r) => n + (estimateOpusBytes(r.duration, bitRate) ?? r.size ?? 0), 0)
-      : rows.reduce((n, r) => Math.max(n, r.size ?? 0), 0);
+      : rows.reduce((n, r) => Math.max(n, r.size ?? 0), 0) * TRANSCODE_CONCURRENCY;
     const head = checkHeadroom(musicDir, need, {
       margin: TRANSCODE_DISK_MARGIN_BYTES,
       statfs: opts.statfs,
@@ -207,7 +241,9 @@ export async function transcodeLibraryToOpus(
     if (!head.sufficient) {
       throw new Error(
         `Not enough free space in ${musicDir}: ${head.free} bytes free, ` +
-          `${head.required} needed (largest candidate + margin).`,
+          `${head.required} needed (` +
+          (keepingOriginals ? 'whole projected output, originals kept' : 'one encode per worker') +
+          ` + margin).`,
       );
     }
     if (head.free === null) {
@@ -224,102 +260,143 @@ export async function transcodeLibraryToOpus(
   }
 
   let visited = 0;
-  for (const row of rows) {
+  // Counted HERE rather than when a row is picked up, because the pooled phase
+  // starts a whole batch before any of it finishes: incrementing at pick-up
+  // time reports the batch as done the moment it begins. Every row emits
+  // exactly once — skipped, dry-run, failed or converted — so this stays one
+  // per file and monotonic.
+  //
+  // `result` is mutated for the whole pass, so a live reference handed to a
+  // caller shows whatever the counters happen to be when it looks. Snapshot.
+  const emit = (label: string) => {
+    visited += 1;
+    opts.onProgress?.({ total: rows.length, visited, label, result: { ...result } });
+  };
+
+  for (const batch of chunk(rows, ENCODE_BATCH)) {
+    // Checked per BATCH, not per row. Stopping between the encode and the
+    // migration would leave an .opus file on disk that no library row points
+    // at — and, with quarantine on, its original already moved away. Every
+    // encode this pass starts is therefore always migrated.
     if (opts.shouldStop?.()) {
       result.stopped = true;
       break;
     }
-    visited += 1;
-    const abs = join(musicDir, row.path);
-    const emit = () => opts.onProgress?.({ total: rows.length, visited, label: row.path, result });
-    if (!existsSync(abs)) {
-      log.warn({ path: row.path }, 'lossless row points at a missing file — skipping');
-      result.skipped += 1;
-      emit();
-      continue;
-    }
-    if (!opts.apply) {
-      result.converted += 1; // dry-run: report what would be converted
-      // The DIFFERENCE, matching the apply path below. This used to add the
-      // whole original size, i.e. it assumed the Opus file would be zero bytes
-      // — so the figure the operator sizes the run against was always too high
-      // by the size of every resulting file, and the CLI's "reclaimed≈" read as
-      // rounding rather than as a bug.
-      const estimated = estimateOpusBytes(row.duration, bitRate);
-      if (estimated !== null) {
-        result.bytesReclaimed += Math.max(0, (row.size ?? 0) - estimated);
-      } else {
-        result.unestimated += 1;
+
+    // --- phase 1, serial: decide what this batch actually encodes -----------
+    const encodable: SongRow[] = [];
+    for (const row of batch) {
+      const abs = join(musicDir, row.path);
+      if (!existsSync(abs)) {
+        log.warn({ path: row.path }, 'lossless row points at a missing file — skipping');
+        result.skipped += 1;
+        emit(row.path);
+        continue;
       }
-      emit();
-      continue;
+      if (!opts.apply) {
+        result.converted += 1; // dry-run: report what would be converted
+        // The DIFFERENCE, matching the apply path below. This used to add the
+        // whole original size, i.e. it assumed the Opus file would be zero
+        // bytes — so the figure the operator sizes the run against was always
+        // too high by the size of every resulting file, and the CLI's
+        // "reclaimed≈" read as rounding rather than as a bug.
+        const estimated = estimateOpusBytes(row.duration, bitRate);
+        if (estimated !== null) {
+          result.bytesReclaimed += Math.max(0, (row.size ?? 0) - estimated);
+        } else {
+          result.unestimated += 1;
+        }
+        emit(row.path);
+        continue;
+      }
+      encodable.push(row);
     }
+    if (encodable.length === 0) continue;
 
-    let newAbs: string;
-    let oldSize = 0;
-    try {
-      oldSize = statSync(abs).size;
-      newAbs = await transcodeToOpus(
-        abs,
-        bitRate,
-        quarantineRun ? { runDir: quarantineRun, musicDir } : undefined,
-      );
-    } catch (err) {
-      log.warn({ err, path: row.path }, 'library transcode failed — original kept');
-      result.failed += 1;
-      result.errorSample ??= err instanceof Error ? err.message : String(err);
-      emit();
-      continue;
+    // --- phase 2, pooled: the encodes, which own nothing shared -------------
+    // Each writes its own hidden temp path and touches no DB. `mapPool` uses
+    // `Promise.all`, which rejects on the first throw and loses every sibling
+    // result, so this catches internally and returns an outcome instead.
+    const encoded = await mapPool(encodable, TRANSCODE_CONCURRENCY, async (row) => {
+      const abs = join(musicDir, row.path);
+      try {
+        const oldSize = statSync(abs).size;
+        const newAbs = await transcodeToOpus(
+          abs,
+          bitRate,
+          quarantineRun ? { runDir: quarantineRun, musicDir } : undefined,
+        );
+        return { row, ok: true as const, newAbs, oldSize };
+      } catch (err) {
+        return { row, ok: false as const, err };
+      }
+    });
+
+    // --- phase 3, serial: the identity migration, which owns the library ----
+    // `scanPaths` reads whole-DB state outside a transaction and recomputes
+    // album aggregates from it, so two concurrent calls lose song counts for
+    // any album with two files converted at once. Widening the transaction
+    // would not fix it: the read set is the whole library. Serial is the fix.
+    for (const outcome of encoded) {
+      const row = outcome.row;
+      if (!outcome.ok) {
+        log.warn({ err: outcome.err, path: row.path }, 'library transcode failed — original kept');
+        result.failed += 1;
+        result.errorSample ??=
+          outcome.err instanceof Error ? outcome.err.message : String(outcome.err);
+        emit(row.path);
+        continue;
+      }
+      try {
+        const newRel = outcome.newAbs
+          .slice(musicDir.length)
+          .replace(/^[/\\]+/, '')
+          .replace(/\\/g, '/');
+        const newId = songId(newRel);
+        const newSize = existsSync(outcome.newAbs) ? statSync(outcome.newAbs).size : 0;
+
+        // Scan the new file in FIRST, then drop the stale row and carry
+        // curation in one transaction.
+        //
+        // The delete used to run before the scan and outside the transaction,
+        // so a scan that threw left the old row gone and the new one never
+        // inserted — the song simply vanished until the next full rescan, with
+        // nothing to say so. Ordering it this way means either both rows exist
+        // briefly or neither changes, and the album aggregate is refreshed
+        // explicitly rather than relying on the scan seeing a library the
+        // delete had already adjusted.
+        await scanner.scanPaths([newRel]);
+
+        db.transaction(() => {
+          db.run('DELETE FROM library_songs WHERE id = ?', [row.id]);
+          // Carry curation forward onto the new song id.
+          db.run('UPDATE library_songs SET starred = ?, hidden = ? WHERE id = ?', [
+            row.starred,
+            row.hidden,
+            newId,
+          ]);
+          carrySongCuration(db, {
+            fromId: row.id,
+            toId: newId,
+            fromPath: row.path,
+            toPath: newRel,
+          });
+          // The scan counted both rows; recount now the stale one is gone.
+          if (row.album_id) refreshAlbumAggregate(db, row.album_id);
+        })();
+
+        result.converted += 1;
+        result.bytesReclaimed += Math.max(0, outcome.oldSize - newSize);
+      } catch (err) {
+        // The re-encode succeeded but the identity migration threw. Count it
+        // and carry on: before #622 this rejected the pass and lost every
+        // counter.
+        log.warn({ err, path: row.path }, 'library transcode migration failed; continuing');
+        result.failed += 1;
+        result.errorSample ??= err instanceof Error ? err.message : String(err);
+      }
+      emit(row.path);
     }
-
-    try {
-      const newRel = newAbs
-        .slice(musicDir.length)
-        .replace(/^[/\\]+/, '')
-        .replace(/\\/g, '/');
-      const newId = songId(newRel);
-      const newSize = existsSync(newAbs) ? statSync(newAbs).size : 0;
-
-      // Scan the new file in FIRST, then drop the stale row and carry curation
-      // in one transaction.
-      //
-      // The delete used to run before the scan and outside the transaction, so
-      // a scan that threw left the old row gone and the new one never inserted
-      // — the song simply vanished until the next full rescan, with nothing to
-      // say so. Ordering it this way means either both rows exist briefly or
-      // neither changes, and the album aggregate is refreshed explicitly rather
-      // than relying on the scan seeing a library the delete had already
-      // adjusted.
-      await scanner.scanPaths([newRel]);
-
-      db.transaction(() => {
-        db.run('DELETE FROM library_songs WHERE id = ?', [row.id]);
-        // Carry curation forward onto the new song id.
-        db.run('UPDATE library_songs SET starred = ?, hidden = ? WHERE id = ?', [
-          row.starred,
-          row.hidden,
-          newId,
-        ]);
-        carrySongCuration(db, {
-          fromId: row.id,
-          toId: newId,
-          fromPath: row.path,
-          toPath: newRel,
-        });
-        // The scan counted both rows; recount now the stale one is gone.
-        if (row.album_id) refreshAlbumAggregate(db, row.album_id);
-      })();
-
-      result.converted += 1;
-      result.bytesReclaimed += Math.max(0, oldSize - newSize);
-    } catch (err) {
-      // The re-encode succeeded but the identity migration threw. Count it and
-      // carry on: before #622 this rejected the pass and lost every counter.
-      log.warn({ err, path: row.path }, 'library transcode migration failed; continuing');
-      result.failed += 1;
-      result.errorSample ??= err instanceof Error ? err.message : String(err);
-    }
-    emit();
   }
   if (limit > 0 && rows.length === limit) result.stopped = true;
 
