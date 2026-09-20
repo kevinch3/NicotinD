@@ -336,9 +336,20 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       // target meant nothing outside the track it was made against. Keyed on
       // the id rather than "this effect ran" because a token refresh re-runs
       // the effect with the same track and must not cancel the user's seek.
+      //
+      // The recovery state is per-resource and dies here on the same terms: its
+      // every exit is gated on a load generation this change invalidates, so
+      // left standing it wedges the valve for the rest of the session. Above
+      // the pre-load return below, or a natural advance keeps the spent
+      // allowance of the track that just failed and skips itself.
       if ((track?.id ?? null) !== this.loadedTrackId) {
         this.loadedTrackId = track?.id ?? null;
         this.clearPendingSeek();
+        this.clearRecoveryTimeout();
+        this.player.recoveryState.set('normal');
+        this.recoveryAttempts = 0;
+        this.retryOnReconnect = false;
+        this.recoveringStream = false;
       }
 
       // onEnded pre-loaded this track synchronously to keep the Android audio session alive.
@@ -366,13 +377,6 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       // Never deferred: the store-side state behind the title, artwork, seek
       // bar and row indicators has to land on every press, or a burst of skips
       // looks frozen while the settle window runs.
-      //
-      // Different audio — a fresh MAX_RECOVERY_ATTEMPTS allowance. Deliberately
-      // NOT reset when a recovery succeeds: that's the same resource, and
-      // refreshing its budget there lets a flaky one recover indefinitely.
-      this.recoveryAttempts = 0;
-      this.retryOnReconnect = false;
-      this.recoveringStream = false;
       this.player.setCurrentTime(0);
       this.player.setDuration(track.duration ?? 0);
       // New load beginning — flag it before any bytes move so track rows and
