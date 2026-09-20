@@ -7,6 +7,23 @@ export interface ResolvedTranscodeLossless {
 }
 
 /**
+ * A consumer takes either the value or a reader for it.
+ *
+ * The reader form exists because the setting became admin-editable at runtime
+ * (`downloads-settings.ts`): a consumer that captures the value at construction
+ * silently ignores every change until the next restart. Callers that genuinely
+ * have a fixed value — tests, offline scripts — still pass it directly.
+ */
+export type TranscodeLosslessSource = ResolvedTranscodeLossless | (() => ResolvedTranscodeLossless);
+
+/** Normalize either form to a reader. */
+export function readTranscodeLossless(
+  source: TranscodeLosslessSource,
+): () => ResolvedTranscodeLossless {
+  return typeof source === 'function' ? source : () => source;
+}
+
+/**
  * Resolve `downloads.transcodeLossless` from a raw parsed config file, falling
  * back to the shipped schema default.
  *

@@ -14,6 +14,7 @@ import {
   type RadioSettings,
 } from '../services/radio-settings.js';
 import { computeGenreCentroids, genreCentroidsStatus } from '../services/genre-centroids.js';
+import { getDownloadsSettings } from '../services/downloads-settings.js';
 
 export function settingsRoutes(config: NicotinDConfig) {
   const app = new Hono<AuthEnv>();
@@ -26,14 +27,25 @@ export function settingsRoutes(config: NicotinDConfig) {
 
   // GET /api/settings/downloads — download-pipeline preferences the UI needs to
   // render an accurate acquisition-flow hint. Currently just the lossless→Opus
-  // standardization (env/YAML-configured, captured into LibraryOrganizer at boot),
-  // exposed read-only so the search/acquire UI can tell the user a FLAC pick will
-  // be stored as Opus — but only when it's actually on and ffmpeg is present.
+  // standardization, exposed read-only so the search/acquire UI can tell the user
+  // a FLAC pick will be stored as Opus — but only when it's actually on and
+  // ffmpeg is present.
+  //
+  // The EFFECTIVE value, not the configured one: an operator's explicit choice
+  // lives in `app_settings.downloads` and overrides the env/YAML default, which
+  // on prod is unsettable at runtime because the image carries no config file.
   // Any authenticated user (the hint shows in the acquire flow); no secrets here.
   app.get('/downloads', (c) => {
-    const t = config.downloads.transcodeLossless;
+    const { transcodeLossless: t } = getDownloadsSettings(
+      getDatabase(),
+      config.downloads.transcodeLossless,
+    );
     return c.json({
-      transcodeLossless: { enabled: t.enabled, format: t.format, bitRate: t.bitRate },
+      transcodeLossless: {
+        enabled: t.enabled,
+        format: config.downloads.transcodeLossless.format,
+        bitRate: t.bitRate,
+      },
       ffmpegAvailable: ffmpegAvailable(),
     });
   });

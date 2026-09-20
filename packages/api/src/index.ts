@@ -115,6 +115,7 @@ import { backfillAcquisitions } from './services/acquisition-backfill.js';
 import { albumIdsForPaths } from './services/album-ids-for-paths.js';
 import { LibraryCurator } from './services/library-curator.js';
 import { LibraryOrganizer } from './services/library-organizer.js';
+import { getDownloadsSettings } from './services/downloads-settings.js';
 import { AcoustIdLookup } from './services/acoustid-lookup.js';
 import { normalizeArtistForGrouping, normalizeForGrouping } from './services/album-grouping.js';
 import { createLogger } from '@nicotind/core';
@@ -266,10 +267,11 @@ export function createApp({
       config.metadataFix.enabled && acoustidApiKey ? new AcoustIdLookup(acoustidApiKey) : undefined,
     unsortedRoot: `${expandedDataDir}/unsorted`,
     preferFlacSkipMp3: config.downloads.preferFlacSkipMp3,
-    transcodeLossless: {
-      enabled: config.downloads.transcodeLossless.enabled,
-      bitRate: config.downloads.transcodeLossless.bitRate,
-    },
+    // A reader, not a value: the operator can change this at runtime and the
+    // organizer outlives the edit (#824 — on prod the config file is absent, so
+    // the stored setting is the only writable home).
+    transcodeLossless: () =>
+      getDownloadsSettings(db, config.downloads.transcodeLossless).transcodeLossless,
     jobLookup: (directory) => {
       const exact = db
         .query<{ artist_name: string | null; album_title: string | null }, [string]>(
@@ -668,10 +670,8 @@ export function createApp({
     lidarr,
     musicDir: expandedMusicDir,
     coverCacheDir: `${expandedDataDir}/cover-cache`,
-    transcodeLossless: {
-      enabled: config.downloads.transcodeLossless.enabled,
-      bitRate: config.downloads.transcodeLossless.bitRate,
-    },
+    transcodeLossless: () =>
+      getDownloadsSettings(db, config.downloads.transcodeLossless).transcodeLossless,
     runSync: runSyncAndCurate,
   });
   app.route(

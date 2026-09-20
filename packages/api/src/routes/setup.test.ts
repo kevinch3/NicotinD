@@ -4,6 +4,7 @@ import { Database } from 'bun:sqlite';
 import { Hono } from 'hono';
 import { setupRoutes } from './setup.js';
 import { applySchema } from '../db.js';
+import { getDownloadsSettings } from '../services/downloads-settings.js';
 
 const testDb = new Database(':memory:');
 applySchema(testDb);
@@ -12,6 +13,7 @@ mock.module('../db.js', () => ({ getDatabase: () => testDb, applySchema }));
 
 const mockConfig = {
   musicDir: '~/Music',
+  downloads: { transcodeLossless: { enabled: true, format: 'opus', bitRate: 192 } },
   jwt: { secret: 'test-secret-at-least-32-chars-long-xx', expiresIn: '30d' },
   soulseek: { username: '', password: '', url: 'http://localhost:5030', port: 5030 },
   lidarr: { url: 'http://localhost:8686', apiKey: '', port: 8686 },
@@ -97,7 +99,11 @@ describe('POST /api/setup/complete', () => {
     expect(config.musicDir).toBe('/mnt/music');
   });
 
-  it('stores transcodeLossless settings in app_settings when provided', async () => {
+  // This block previously asserted the value landed in the `streaming` key, which
+  // is playback-time on-the-fly transcoding and has nothing to do with the
+  // question the wizard asks. It pinned the defect rather than the behaviour, so
+  // it is inverted here rather than deleted — the same discipline #1177 used.
+  it('stores transcodeLossless under the downloads key, not streaming', async () => {
     const app = buildApp();
     await app.request('/api/setup/complete', {
       method: 'POST',
@@ -107,13 +113,37 @@ describe('POST /api/setup/complete', () => {
         transcodeLossless: { enabled: true, bitRate: 256 },
       }),
     });
-    const row = testDb.query('SELECT value FROM app_settings WHERE key = ?').get('streaming') as
+
+    const row = testDb.query('SELECT value FROM app_settings WHERE key = ?').get('downloads') as
       { value: string } | undefined;
     expect(row).toBeTruthy();
-    const settings = JSON.parse(row!.value);
-    expect(settings.transcodeEnabled).toBe(true);
-    expect(settings.maxBitRate).toBe(256);
-    expect(settings.format).toBe('opus');
+    expect(JSON.parse(row!.value).transcodeLossless).toEqual({ enabled: true, bitRate: 256 });
+
+    // The playback setting must be untouched: writing it was the bug.
+    const streaming = testDb.query('SELECT value FROM app_settings WHERE key = ?').get('streaming');
+    expect(streaming).toBeFalsy();
+  });
+
+  it('turning the toggle OFF at setup actually disables the download transcode', async () => {
+    // The user-visible bug: an operator who declined lossless→Opus still got
+    // every FLAC converted, because the answer never reached this setting.
+    // The suite shares one database, so clear the key this case is about.
+    testDb.run(`DELETE FROM app_settings WHERE key = 'downloads'`);
+    const app = buildApp();
+    await app.request('/api/setup/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        admin: { username: 'admin', password: 'password123' },
+        transcodeLossless: { enabled: false },
+      }),
+    });
+
+    // Read it back the way the download path does, against a config that says ON.
+    const effective = getDownloadsSettings(testDb, { enabled: true, bitRate: 192 });
+    expect(effective.transcodeLossless.enabled).toBe(false);
+    // bitRate was never mentioned, so the configured value still governs it.
+    expect(effective.transcodeLossless.bitRate).toBe(192);
   });
 
   it('returns needsRestart: true when lidarr is configured', async () => {
