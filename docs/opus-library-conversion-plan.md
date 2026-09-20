@@ -196,12 +196,23 @@ first production batches.
 The obvious design — an ffmpeg `loudnorm` filter in the encode — is the wrong one, for two
 reasons.
 
-**It destroys the signal the recommender runs on.** `computeEnergy(integratedLufs, loudnessRange)`
-maps loudness onto a 0..1 energy score: −25 LUFS is 0, −7 LUFS is 1 (`loudness-analysis.ts:70-76`).
-`energy` feeds radio, playlists and the recommendation feeds, and `loudness` separately drives
-radio's loudness-jump avoidance. Flatten every file to one target and the measured loudness of
-every file *is* that target: energy collapses to a function of loudness range alone, and the radio's
-energy arcs stop meaning anything.
+**It corrupts the recommender's input for every song ingested afterwards.**
+`computeEnergy(integratedLufs, loudnessRange)` maps loudness onto a 0..1 energy score: −25 LUFS is
+0, −7 LUFS is 1 (`loudness-analysis.ts:70-76`), and `energy` feeds radio, playlists and the
+recommendation feeds. Flatten every file to one target and the measured loudness of every file *is*
+that target, so energy collapses to a function of loudness range alone.
+
+The timing matters, and it is worse than it first looks. `computeEnergy` is called from exactly one
+place — inside `analyzeLoudness` itself (`loudness-analysis.ts:145`) — and the enrichment selector
+is `energy IS NULL` (`enrichment/tasks.ts:791`), so already-analyzed songs are never re-analyzed.
+Baking gain would therefore leave today's values intact and silently produce wrong energy for
+**every song ingested from then on**. A gradual, invisible corruption is harder to notice than an
+abrupt one.
+
+(An earlier draft of this plan also claimed `loudness` drives a radio loudness-jump avoidance.
+**It does not.** No such feature exists; the only occurrence in the repo is an aspirational doc
+comment at `loudness-analysis.ts:18`. `loudness` is selected into the radio and library DTOs and
+scored on by nothing. The claim came from #723's triage, which has now been wrong three times.)
 
 **It is irreversible and it cannot be re-tuned.** Baked-in gain means changing the target later is
 another full re-encode of the library.
@@ -243,8 +254,17 @@ If the spike fails, fall back to a `loudnorm` encode **plus** a new column prese
 pre-normalization loudness, so the descriptor survives. That fallback is strictly worse: it is
 irreversible and it cannot normalize the existing Opus third without a second generation.
 
-Once every file is level, radio's loudness-jump avoidance is measuring a constant and should be
-deleted rather than left running on a flat input.
+### Album gain, not track gain — decided
+
+The header gain is one baked value that the decoder applies unconditionally, so it cannot switch per
+playback context. Radio and shuffle want every track at the same level; album playback wants the
+quiet interlude to stay quiet relative to the track beside it, which is what album sequencing
+encodes.
+
+**Decided: album gain goes in the header, and the per-track delta is stored as an
+`R128_TRACK_GAIN` Vorbis comment.** Album intent is preserved by default, and a future client that
+wants track normalization has the number without another pass over the library. Album grouping
+already exists via `library_songs.album_id`.
 
 ## Adaptive bitrate
 
@@ -270,6 +290,35 @@ table-driven so they can be argued about in a test rather than in the encoder.
 
 **Network-adaptive streaming** (HLS/DASH, switching rendition mid-playback) needs a segmenting
 pipeline and a player that can switch. Out of scope.
+
+## Requirement: back up before transcoding
+
+Not a preference and not an open question. The pass deletes the original unconditionally
+(`post-download-transcode.ts:195`) after a duration check that fails open, and generation loss is
+invisible to that check. Nothing in the repo currently moves a library file anywhere but to
+`unlink`.
+
+Two backups, because two different things can be lost:
+
+**The originals.** Move each converted file to `<dataDir>/quarantine/<batch>/` rather than
+unlinking it, and release the batch only once its outputs are verified. `dataDir` rather than
+`musicDir` is deliberate and settles open decision 4 — it avoids needing a new `PathConfig` reserved
+directory (`services/library-paths.ts:16-21`), avoids the full-scan warning at
+`library-scanner.ts:1085-1093`, and avoids colliding with the path stems the remap matches on. It
+also follows the existing precedent, since both database backup paths already live under `dataDir`.
+
+Retention copies that precedent exactly: **count-based, scoped to its own name pattern, never
+time-based, never a blanket delete of the root** (`services/migration-backup.ts:34-43`,
+`:105-110`, `:136-149`). Disk is bounded by quarantining one batch at a time, not the library.
+
+**The database.** The id remap rewrites rows across roughly a dozen tables, and a wrong remap is
+not recoverable from the files. Take a snapshot before the run using the existing
+`services/backup.ts`, on the `pre-migrate` model rather than the daily rotation — a snapshot taken
+for a destructive pass must not age out on the seven-day clock
+(`services/migration-backup.ts:66-76`).
+
+If `dataDir` and `musicDir` sit on different filesystems the move is a copy, which is another reason
+to bound it to one batch.
 
 ## The container is a real decision, and Ogg is not automatically right
 
@@ -417,8 +466,8 @@ until the safety work is in.
    measured distribution above.
 7. **The conversion pass** — extend the predicate, pool the encodes, wire the remap. Dry run,
    pilot batch, then the 13,864.
-8. **The simplification sweep** — delete the ID3 path, `node-id3`, the mixed-format rule and the
-   loudness-jump avoidance. Close #964 and #1177.
+8. **The simplification sweep** — delete the ID3 path, `node-id3` and the mixed-format rule. Close
+   #964 and #1177.
 
 Steps 2 through 5 are each worth landing even if the conversion is abandoned. Step 2 is a complete
 answer to #723 for a third of the library. Steps 3 to 5 harden a pass that already runs today on
@@ -435,8 +484,8 @@ every lossless download.
 3. **The bitrate mapping table** — 64 / 96 / 112 / 128 as proposed, or different.
 4. **Ogg or WebM?** Recommended: Ogg, keeping the tag collapse. WebM would trade that for immunity
    to two browser defects we have not hit, and it stays available later as a lossless remux.
-4. **Originals replaced, or quarantined until verified?** Quarantine costs disk during the run and
-   collides on the path stems the remap uses.
+4. ~~Originals replaced, or quarantined until verified?~~ **Settled: back up before transcoding.**
+   See the requirement below.
 5. **The 3 FLAC files** — leave them as the only true masters, or convert for uniformity.
 6. **The 6 `.wma` files** cannot be tagged by any current path (`.wma` is in neither `ID3_EXTS` nor
    `VORBIS_EXTS`). Converting them is a strict improvement; worth confirming they are wanted at
