@@ -263,6 +263,33 @@ The caller supplies the transaction, because every caller has other work to make
 
 Returns `{ candidates, converted, skipped, failed, bytesReclaimed, unestimated }`.
 
+### Two verification policies, because the stakes differ
+
+`transcodeOutputIsAcceptable` (`transcode.ts`) returns **true** when either duration reads `null`.
+That is correct where it is used: the streaming path's output is a *cache* file, an unprobeable one
+is served best-effort, and a wrong one is regenerated. Failing open there costs a cache miss.
+
+The ingest/library path is the opposite. Its next statement is
+`rmSync(absPath)` on an irreplaceable library file, so `opusOutputVerdict`
+(`post-download-transcode.ts`) **fails closed**: an output that cannot be probed is rejected, and the
+original survives.
+
+Two ways it used to fail open, both ending with a delete on no evidence:
+
+1. the shared predicate's `null` best-effort pass, above;
+2. the caller initialised `durationOk = true` and swallowed a probe throw, so an *exception* also
+   counted as success.
+
+The verdict carries a **reason** rather than a bare boolean. Across thousands of files, "came out
+short" and "could not be probed at all" are different operator problems and the log has to say
+which.
+
+`post-download-transcode.test.ts` pins both policies against the same inputs on purpose. If they
+ever agree, one of the two callers has the wrong policy for its stakes.
+
+The one genuine exemption is ffmpeg being absent: the strict decode flags are off then too, so there
+is nothing to verify against and the delete is never reached.
+
 ### Tags across a container change: measure, do not assume
 
 `-map_metadata 0` does **not** carry everything from mp3 to Opus, and the pattern is the opposite of

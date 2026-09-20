@@ -13,8 +13,13 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { isLossless, isLosslessFile, transcodeToOpus } from './post-download-transcode.js';
-import { ffmpegAvailable } from './transcode.js';
+import {
+  isLossless,
+  isLosslessFile,
+  transcodeToOpus,
+  opusOutputVerdict,
+} from './post-download-transcode.js';
+import { ffmpegAvailable, transcodeOutputIsAcceptable } from './transcode.js';
 import { readAudioTags, writeAudioTags } from './audio-tags.js';
 
 const cleanups: Array<() => void> = [];
@@ -265,5 +270,60 @@ describe('tag preservation through mp3 -> opus', () => {
     const out = await transcodeToOpus(src, 96);
     expect(existsSync(out)).toBe(true);
     expect(out.endsWith('.opus')).toBe(true);
+  });
+});
+
+describe('opusOutputVerdict — fails closed, because the caller then deletes the source', () => {
+  it('accepts an output at least as long as the source', () => {
+    expect(opusOutputVerdict(180, 180).ok).toBe(true);
+  });
+
+  it('accepts a shortfall inside the tolerance', () => {
+    expect(opusOutputVerdict(180, 179.5).ok).toBe(true);
+  });
+
+  it('rejects a truncated output', () => {
+    const v = opusOutputVerdict(180, 12);
+    expect(v.ok).toBe(false);
+    expect(v.ok === false && v.reason).toContain('shorter than source');
+  });
+
+  // The two that used to pass. `transcodeOutputIsAcceptable` returns true when
+  // either duration is null — correct for the streaming CACHE, where a bad file
+  // is regenerated, and wrong here, where the next statement is an unlink.
+  it('REJECTS an unreadable source duration', () => {
+    const v = opusOutputVerdict(null, 180);
+    expect(v.ok).toBe(false);
+    expect(v.ok === false && v.reason).toContain('source duration');
+  });
+
+  it('REJECTS an unreadable output duration', () => {
+    const v = opusOutputVerdict(180, null);
+    expect(v.ok).toBe(false);
+    expect(v.ok === false && v.reason).toContain('output duration');
+  });
+
+  it('rejects a zero or non-finite output duration', () => {
+    expect(opusOutputVerdict(180, 0).ok).toBe(false);
+    expect(opusOutputVerdict(180, Number.NaN).ok).toBe(false);
+    expect(opusOutputVerdict(180, Number.POSITIVE_INFINITY).ok).toBe(false);
+  });
+
+  it('names which check failed, not just that one did', () => {
+    // A run over thousands of files has to distinguish "came out short" from
+    // "could not be probed" — they are different operator problems.
+    const truncated = opusOutputVerdict(180, 12);
+    const unprobeable = opusOutputVerdict(180, null);
+    expect(truncated.ok === false && unprobeable.ok === false).toBe(true);
+    expect(truncated.ok === false && truncated.reason).not.toBe(
+      unprobeable.ok === false ? unprobeable.reason : '',
+    );
+  });
+
+  it('keeps the streaming path lenient — the two policies must differ', () => {
+    // Same inputs, opposite verdicts, on purpose. If these ever agree, one of
+    // the two callers has the wrong policy for its stakes.
+    expect(transcodeOutputIsAcceptable(null, 180)).toBe(true);
+    expect(opusOutputVerdict(null, 180).ok).toBe(false);
   });
 });
