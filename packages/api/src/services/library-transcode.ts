@@ -14,7 +14,19 @@ export interface LibraryTranscodeResult {
   converted: number;
   skipped: number;
   failed: number;
+  /**
+   * On apply, bytes actually freed. On a dry run, the **estimated** difference
+   * between each original and the Opus encode that would replace it — never the
+   * original's whole size, which would assume the output is empty.
+   */
   bytesReclaimed: number;
+  /**
+   * Dry-run only: candidates whose duration is unknown, so no saving could be
+   * estimated for them and none was counted. Non-zero means `bytesReclaimed` is
+   * a floor rather than an estimate, and the run is that many files larger than
+   * the figure suggests.
+   */
+  unestimated: number;
   /** First failure message, for surfacing without a log dive. */
   errorSample: string | null;
   /** True when work may remain — cancelled, or the limit filled a full page. */
@@ -46,8 +58,26 @@ interface SongRow {
   path: string;
   suffix: string | null;
   size: number | null;
+  /** Seconds. `0` means the scanner could not read one — see `estimateOpusBytes`. */
+  duration: number | null;
   starred: string | null;
   hidden: number;
+}
+
+/**
+ * Bytes a `bitRate`-kbps Opus encode of `seconds` audio will occupy.
+ *
+ * kbps is decimal kilobits per second, so one second is `bitRate * 1000 / 8`
+ * bytes — i.e. `bitRate * 125`.
+ *
+ * Returns `null` when the duration is unknown (`0`, the column's default when
+ * the scanner could not read one). A dry run then counts **no** reclaim for
+ * that file rather than guessing: under-reporting a saving is recoverable,
+ * over-reporting one is what this function exists to stop.
+ */
+export function estimateOpusBytes(seconds: number | null, bitRate: number): number | null {
+  if (!seconds || !Number.isFinite(seconds) || seconds <= 0) return null;
+  return Math.round(seconds * bitRate * 125);
 }
 
 /**
@@ -76,6 +106,7 @@ export async function transcodeLibraryToOpus(
     skipped: 0,
     failed: 0,
     bytesReclaimed: 0,
+    unestimated: 0,
     errorSample: null,
     stopped: false,
   };
@@ -84,7 +115,9 @@ export async function transcodeLibraryToOpus(
   }
 
   const allRows = db
-    .query<SongRow, []>(`SELECT id, path, suffix, size, starred, hidden FROM library_songs`)
+    .query<SongRow, []>(
+      `SELECT id, path, suffix, size, duration, starred, hidden FROM library_songs`,
+    )
     .all();
   const limit = opts.limit != null && opts.limit > 0 ? opts.limit : -1;
   const rows: SongRow[] = [];
@@ -124,7 +157,17 @@ export async function transcodeLibraryToOpus(
     }
     if (!opts.apply) {
       result.converted += 1; // dry-run: report what would be converted
-      result.bytesReclaimed += row.size ?? 0;
+      // The DIFFERENCE, matching the apply path below. This used to add the
+      // whole original size, i.e. it assumed the Opus file would be zero bytes
+      // — so the figure the operator sizes the run against was always too high
+      // by the size of every resulting file, and the CLI's "reclaimed≈" read as
+      // rounding rather than as a bug.
+      const estimated = estimateOpusBytes(row.duration, bitRate);
+      if (estimated !== null) {
+        result.bytesReclaimed += Math.max(0, (row.size ?? 0) - estimated);
+      } else {
+        result.unestimated += 1;
+      }
       emit();
       continue;
     }

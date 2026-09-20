@@ -205,7 +205,21 @@ The hook fires in `LibraryOrganizer.placeFile()` **after the move and before the
 3. **deletes the stale lossless row first**, then `scanPaths([newRel])` inserts the new opus row and recomputes the album aggregate counting only it;
 4. carries `starred`/`hidden` onto the new id and re-points `playlist_songs.song_id`, `acquisitions.relative_path` and `library_genre_overrides` (scope `song`) — none of which has an FK on `song_id`, so each has to be named here to be carried (#856).
 
-Returns `{ candidates, converted, skipped, failed, bytesReclaimed }`.
+Returns `{ candidates, converted, skipped, failed, bytesReclaimed, unestimated }`.
+
+**`bytesReclaimed` means the difference, on both paths.** On apply it is what was actually freed
+(`oldSize - newSize`). On a dry run it is the *estimated* difference: `size - estimateOpusBytes()`,
+where a `bitRate`-kbps encode of `n` seconds costs `n * bitRate * 125` bytes.
+
+It used to add the whole original size on the dry-run path, i.e. it assumed the Opus output would be
+zero bytes. The figure an operator sized a run against was therefore always too high by the size of
+every resulting file, and the CLI's `reclaimed≈` read as rounding rather than as a bug.
+
+`estimateOpusBytes` returns `null` when the duration is unknown (`0`, the column default when the
+scanner could not read one). The pass then counts **no** saving for that file and increments
+`unestimated`, so a non-zero `unestimated` means `bytesReclaimed` is a floor rather than an
+estimate. Under-reporting is recoverable; over-reporting is the failure this exists to prevent. The
+CLI says so explicitly rather than leaving the reader to infer it.
 
 ### One resolved setting, never a per-entry-point default
 

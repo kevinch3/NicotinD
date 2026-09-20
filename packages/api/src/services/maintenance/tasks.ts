@@ -213,6 +213,9 @@ export function buildMaintenanceTasks(deps: MaintenanceDeps): AnyMaintenanceTask
             skipped: r.skipped,
             failed: r.failed,
             bytesReclaimed: r.bytesReclaimed,
+            // Surfaced so a dry-run figure is never read as exact when part of
+            // the set could not be estimated.
+            unestimated: r.unestimated,
           },
         };
       },
