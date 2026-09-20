@@ -402,7 +402,11 @@ describe('disk headroom preflight', () => {
     return { music, db };
   }
 
-  it('refuses to start when the disk is full', async () => {
+  // The two apply-path cases need ffmpeg, and not because they test it: the
+  // pass rejects on a missing binary BEFORE it reaches the preflight, so
+  // without it these assert the wrong error and pass or fail for the wrong
+  // reason. The `ci` job has no ffmpeg; the e2e job does.
+  it.skipIf(!ffmpegAvailable())('refuses to start when the disk is full', async () => {
     const { music, db } = await oneCandidate();
     await expect(
       transcodeLibraryToOpus(db, music, { apply: true, bitRate: 96, statfs: fullDisk }),
@@ -435,7 +439,7 @@ describe('disk headroom preflight', () => {
     expect(r.converted).toBe(1);
   });
 
-  it('does not preflight when there is nothing to convert', async () => {
+  it.skipIf(!ffmpegAvailable())('does not preflight when there is nothing to convert', async () => {
     const music = tmpMusic();
     const db = new Database(':memory:');
     applySchema(db);
