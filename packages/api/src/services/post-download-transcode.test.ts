@@ -1,9 +1,12 @@
 /**
  * Tests for the post-download Opus transcode helper.
  *
- * `isLossless` is pure. `transcodeToOpus` spawns ffmpeg, so its test generates a
- * real FLAC via ffmpeg and is skipped when ffmpeg is absent (GitHub ubuntu
- * runners ship it, so CI still covers the path).
+ * `isLossless` is pure. `transcodeToOpus` spawns ffmpeg, so its tests generate
+ * real audio and are skipped when ffmpeg is absent.
+ *
+ * Note the `ci` gate job does NOT have ffmpeg — these skip there, and the `e2e`
+ * job is what actually exercises them. An earlier version of this comment
+ * claimed CI covered the path; the job log says otherwise.
  */
 import { describe, expect, it, afterEach } from 'bun:test';
 import { execFileSync } from 'node:child_process';
@@ -12,6 +15,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { isLossless, isLosslessFile, transcodeToOpus } from './post-download-transcode.js';
 import { ffmpegAvailable } from './transcode.js';
+import { readAudioTags, writeAudioTags } from './audio-tags.js';
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -184,5 +188,82 @@ describe('transcodeToOpus', () => {
     // The opaque "exited with code N" alone is what made #534 undiagnosable —
     // the message must carry an ffmpeg diagnostic, whichever line ends stderr.
     await expect(transcodeToOpus(bogus)).rejects.toThrow(/invalid data|no packets/i);
+  });
+});
+
+describe('tag preservation through mp3 -> opus', () => {
+  function makeMp3(path: string): void {
+    execFileSync(
+      'ffmpeg',
+      [
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-f',
+        'lavfi',
+        '-i',
+        'anullsrc=channel_layout=stereo:sample_rate=44100',
+        '-t',
+        '1',
+        '-c:a',
+        'libmp3lame',
+        '-y',
+        path,
+      ],
+      { stdio: 'ignore' },
+    );
+  }
+
+  // Every field the library stores in a tag. The point of listing them all is
+  // that a future field is caught here rather than discovered missing later.
+  const FULL_TAGS = {
+    title: 'T',
+    artist: 'A',
+    album: 'Al',
+    bpm: 128,
+    key: 'Am',
+    energy: 0.7,
+    loudness: -9.5,
+    valence: 0.4,
+    danceability: 0.6,
+    acousticness: 0.2,
+    instrumental: 0.1,
+    mood: 'happy' as const,
+    lyrics: 'la la la',
+  };
+
+  it.skipIf(!ffmpegAvailable())('loses nothing — not bpm, key or lyrics', async () => {
+    // Measured, not assumed: ffmpeg's `-map_metadata 0` carries every ID3 TXXX
+    // user-text frame into Vorbis comments on its own, but silently drops the
+    // three NATIVE frames — TBPM, TKEY and USLT. A dropped BPM means the track
+    // is re-analysed forever, since the analyzers prefer the file's own tag.
+    const root = tmpRoot();
+    const src = join(root, 'song.mp3');
+    makeMp3(src);
+    expect(await writeAudioTags(src, FULL_TAGS)).toBe(true);
+    const before = await readAudioTags(src);
+
+    const out = await transcodeToOpus(src, 96);
+    const after = await readAudioTags(out);
+
+    const lost = (Object.keys(FULL_TAGS) as Array<keyof typeof FULL_TAGS>).filter(
+      (k) => JSON.stringify(before[k]) !== JSON.stringify(after[k]),
+    );
+    expect(lost).toEqual([]);
+
+    // Named explicitly too: these three are the ones that regress, so a future
+    // failure should say which rather than only that the set shrank.
+    expect(after.bpm).toBe(128);
+    expect(after.key).toBe('Am');
+    expect(after.lyrics).toBe('la la la');
+  });
+
+  it.skipIf(!ffmpegAvailable())('still converts a source carrying no tags at all', async () => {
+    const root = tmpRoot();
+    const src = join(root, 'bare.mp3');
+    makeMp3(src);
+    const out = await transcodeToOpus(src, 96);
+    expect(existsSync(out)).toBe(true);
+    expect(out.endsWith('.opus')).toBe(true);
   });
 });

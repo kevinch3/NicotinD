@@ -1,12 +1,13 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { readdirSync, renameSync, rmSync, statSync } from 'node:fs';
 import { basename, dirname, join, extname } from 'node:path';
-import { createLogger } from '@nicotind/core';
+import { createLogger, ID3_EXTS } from '@nicotind/core';
 import { isLossless } from './library-track-select.js';
 import { getMusicMetadata } from './music-metadata-loader.js';
 import { ffmpegAvailable, transcodeOutputIsAcceptable } from './transcode.js';
 import { ffmpegBinary } from './ffmpeg-path.js';
 import { preserveFolderCover } from './cover-sources.js';
+import { readAudioTags, type AudioTags } from './audio-tags.js';
 
 const log = createLogger('post-download-transcode');
 
@@ -45,8 +46,12 @@ export async function isLosslessFile(absPath: string): Promise<boolean> {
  * Used both by the download pipeline (before a file enters the library, so the
  * scanner only ever sees the final `.opus` path) and by the existing-library
  * conversion job. Lossy files are never touched — callers gate on
- * {@link isLossless}. Tags are carried via `-map_metadata 0`; the organizer
- * re-writes canonical tags afterward regardless.
+ * {@link isLossless}.
+ *
+ * Tags ride `-map_metadata 0`, plus explicit `-metadata` for the three native
+ * ID3 frames it silently drops — see {@link ID3_FRAMES_FFMPEG_DROPS}. The
+ * download path re-writes canonical tags afterwards anyway; the library
+ * conversion job does not, which is why the carry has to happen here.
  *
  * Returns the new absolute path (same dir + basename, `.opus` extension). On any
  * ffmpeg failure the original is left untouched and the call throws.
@@ -120,6 +125,59 @@ export function sweepStaleTranscodeTemps(musicDir: string, graceMs = 10 * 60_000
   return removed;
 }
 
+/**
+ * ID3 frames `-map_metadata 0` does not carry into Vorbis comments, and the
+ * Vorbis name each has to be written under.
+ *
+ * Measured rather than assumed, on a real mp3 carrying the full tag set.
+ * Everything NicotinD stores as an ID3 `TXXX` user-text frame — energy,
+ * loudness, valence, danceability, acousticness, instrumentalness, mood —
+ * maps across on its own. Exactly three do not, and all three are **native**
+ * ID3 frames rather than user text:
+ *
+ * | field  | ID3 frame | survives `-map_metadata 0`? |
+ * | ------ | --------- | --- |
+ * | bpm    | `TBPM`    | no  |
+ * | key    | `TKEY`    | no  |
+ * | lyrics | `USLT`    | no  |
+ *
+ * Losing them is not cosmetic. `POST /api/library/songs/:id/bpm` and
+ * `analyze-bpm.ts` both prefer a file's own BPM tag over a DSP run, so a
+ * dropped `TBPM` means that track is re-analysed forever — the same live cost
+ * #1151 and #1177 describe, one container over. And the lyrics tag is the only
+ * recovery path for a `library_lyrics` row orphaned by the id re-mint.
+ */
+const ID3_FRAMES_FFMPEG_DROPS = [
+  { field: 'bpm', vorbis: 'BPM' },
+  { field: 'key', vorbis: 'KEY' },
+  { field: 'lyrics', vorbis: 'LYRICS' },
+] as const;
+
+/**
+ * `-metadata` args carrying the frames ffmpeg would otherwise drop.
+ *
+ * Done during the encode rather than as a second `writeAudioTags` pass: that
+ * would rewrite the whole container again, and at whole-library scale a second
+ * rewrite per file is not free.
+ */
+async function carriedMetadataArgs(absPath: string): Promise<string[]> {
+  if (!ID3_EXTS.has(extname(absPath).toLowerCase())) return [];
+  let tags: AudioTags;
+  try {
+    tags = await readAudioTags(absPath);
+  } catch {
+    return []; // an unreadable source is the encoder's problem, not ours
+  }
+  const args: string[] = [];
+  for (const { field, vorbis } of ID3_FRAMES_FFMPEG_DROPS) {
+    const v = tags[field];
+    if (v !== undefined && v !== null && String(v) !== '') {
+      args.push('-metadata', `${vorbis}=${String(v)}`);
+    }
+  }
+  return args;
+}
+
 export async function transcodeToOpus(absPath: string, bitRate = 128): Promise<string> {
   // Materialise the cover BEFORE encoding: `-vn` below discards the attached
   // picture stream and nothing downstream can recover it (issue #953 — 0 of
@@ -132,6 +190,7 @@ export async function transcodeToOpus(absPath: string, bitRate = 128): Promise<s
   // Distinct temp name so an interrupted run never half-writes the destination
   // (which may equal absPath only if the source were already .opus — excluded).
   const tmpPath = transcodeTempPathFor(absPath);
+  const carried = await carriedMetadataArgs(absPath);
   const ffmpegArgs = (strict: boolean) => [
     '-hide_banner',
     '-loglevel',
@@ -145,6 +204,8 @@ export async function transcodeToOpus(absPath: string, bitRate = 128): Promise<s
     '-vn',
     '-map_metadata',
     '0',
+    // After -map_metadata so these win over anything it carried.
+    ...carried,
     '-c:a',
     'libopus',
     '-b:a',
