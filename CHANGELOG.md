@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.23](https://github.com/kevinch3/NicotinD/compare/v0.8.22...v0.8.23) (2026-09-20)
+
+### Bug Fixes
+
+* **transcode:** carry cover art and readable ids through the Opus encode ([#1230](https://github.com/kevinch3/NicotinD/issues/1230)) ([17b9a06](https://github.com/kevinch3/NicotinD/commit/17b9a068d8d298dbf0177ea0945573fd22c116ed)), closes [#1226](https://github.com/kevinch3/NicotinD/issues/1226), references [#1226](https://github.com/kevinch3/NicotinD/issues/1226) [#917](https://github.com/kevinch3/NicotinD/issues/917) [#723](https://github.com/kevinch3/NicotinD/issues/723)
 ## [0.8.22](https://github.com/kevinch3/NicotinD/compare/v0.8.21...v0.8.22) (2026-09-20)
 
 ### Features

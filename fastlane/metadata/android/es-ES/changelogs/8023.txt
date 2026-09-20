@@ -1,0 +1,1 @@
+• transcode: carry cover art and readable ids through the Opus encode (#1230)
