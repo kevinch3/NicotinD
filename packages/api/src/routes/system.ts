@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { spawn } from 'node:child_process';
-import { existsSync, statfsSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import type { NicotinDConfig } from '@nicotind/core';
 import type { ServiceManager } from '@nicotind/service-manager';
 import type { AuthEnv } from '../middleware/auth.js';
@@ -9,12 +9,8 @@ import type { MaintenanceService } from '../services/maintenance/maintenance.ser
 
 const startTime = Date.now();
 
-/** Subset of node:fs statfs result we need; injected so tests skip the real FS. */
-export type StatfsFn = (path: string) => {
-  bsize: number;
-  blocks: number;
-  bavail: number;
-};
+export type { StatfsFn } from '../services/disk-space.js';
+import { realStatfs, type StatfsFn } from '../services/disk-space.js';
 
 export function systemRoutes(
   serviceManager: ServiceManager,
@@ -46,7 +42,7 @@ export function systemRoutes(
     const { phase, taskId } = opts.maintenance.getStatus();
     return phase !== 'idle' && taskId === 'library-sync';
   };
-  const statfs = opts.statfs ?? (statfsSync as unknown as StatfsFn);
+  const statfs = opts.statfs ?? realStatfs;
   const diskPath = opts.musicDir ?? config.musicDir;
 
   app.get('/status', async (c) => {

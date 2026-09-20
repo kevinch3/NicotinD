@@ -140,8 +140,10 @@ function importSourceErrorMessage(code: ImportSourceErrorCode): string {
   }
 }
 
-/** Subset of node:fs statfs result we need; injected so tests skip the real FS. */
-export type StatfsFn = (path: string) => { bsize: number; blocks: number; bavail: number };
+// Re-exported for the callers that already import it from here; the declaration
+// lives in `disk-space.ts` now, with the other two copies.
+export type { StatfsFn } from './disk-space.js';
+import { freeBytes, type StatfsFn } from './disk-space.js';
 
 export interface LibraryImportServiceOptions {
   db: Database;
@@ -431,12 +433,7 @@ export class LibraryImportService {
   }
 
   private freeBytes(path: string): number | null {
-    try {
-      const st = this.statfs(path);
-      return st.bavail * st.bsize;
-    } catch {
-      return null;
-    }
+    return freeBytes(path, this.statfs);
   }
 
   /** Request cancellation; the in-flight chunk finishes its scan first. */

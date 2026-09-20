@@ -98,6 +98,13 @@ export const SHARED_HELPERS: SharedHelper[] = [
   // already re-invented locally, so it is registered on arrival rather than
   // after a third copy appears (issue #660).
   { name: 'recordingKey', canonical: 'packages/api/src/services/recording-identity.ts' },
+  // Free-space probing. Three byte-identical copies existed — the library
+  // import, the migration backup and GET /api/system/disk — and the type was
+  // already being imported across module boundaries from whichever file
+  // happened to declare it, which is the shape that precedes a fourth. The
+  // whole-library transcode was that fourth caller (#1021).
+  { name: 'freeBytes', canonical: 'packages/api/src/services/disk-space.ts' },
+  { name: 'checkHeadroom', canonical: 'packages/api/src/services/disk-space.ts' },
   // The drag-reorder splice, extracted from PlayerService.moveInQueue when the
   // track-info sheet's genre chips became the second reorderable list (#684) —
   // registered at extraction, before a third surface copies it again.
