@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.25](https://github.com/kevinch3/NicotinD/compare/v0.8.24...v0.8.25) (2026-09-20)
+
+### Features
+
+* **artwork:** embed album art back into Opus files that lost it ([#1233](https://github.com/kevinch3/NicotinD/issues/1233)) ([d8434f9](https://github.com/kevinch3/NicotinD/commit/d8434f9eeb616199b9955afa7baccdb54bd79b47)), references [#978](https://github.com/kevinch3/NicotinD/issues/978) [#723](https://github.com/kevinch3/NicotinD/issues/723)
 ## [0.8.24](https://github.com/kevinch3/NicotinD/compare/v0.8.23...v0.8.24) (2026-09-20)
 
 ### Performance

@@ -1,0 +1,1 @@
+• artwork: embed album art back into Opus files that lost it (#1233)
