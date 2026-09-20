@@ -1,12 +1,13 @@
 import { execFileSync, spawn } from 'node:child_process';
-import { readdirSync, renameSync, rmSync, statSync } from 'node:fs';
+import { readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, extname } from 'node:path';
 import { createLogger, ID3_EXTS } from '@nicotind/core';
 import { isLossless } from './library-track-select.js';
 import { getMusicMetadata } from './music-metadata-loader.js';
 import { ffmpegAvailable, TRANSCODE_DURATION_TOLERANCE_SEC } from './transcode.js';
 import { ffmpegBinary } from './ffmpeg-path.js';
-import { preserveFolderCover } from './cover-sources.js';
+import { extractEmbeddedPicture, preserveFolderCover } from './cover-sources.js';
+import { attachPictureToOpus, preparePicture } from './opus-artwork.js';
 import { readAudioTags, type AudioTags } from './audio-tags.js';
 import { quarantineOriginal } from './transcode-quarantine.js';
 
@@ -155,7 +156,38 @@ const ID3_FRAMES_FFMPEG_DROPS = [
 ] as const;
 
 /**
- * `-metadata` args carrying the frames ffmpeg would otherwise drop.
+ * The other, quieter failure: frames ffmpeg **keeps but renames wrong**.
+ *
+ * A TXXX user-text frame becomes a Vorbis comment named after its description,
+ * uppercased — so `TXXX:MusicBrainz Track Id` lands as `MUSICBRAINZ TRACK ID`,
+ * with spaces. That is not a Vorbis comment name anyone reads: the canonical
+ * key is `MUSICBRAINZ_TRACKID`. Measured through the real encode:
+ *
+ * | ID3 TXXX description | ffmpeg writes | anyone reads |
+ * | --- | --- | --- |
+ * | `Acoustid Id` | `ACOUSTID ID` | `ACOUSTID_ID` |
+ * | `MusicBrainz Track Id` | `MUSICBRAINZ TRACK ID` | `MUSICBRAINZ_TRACKID` |
+ * | `MusicBrainz Album Id` | `MUSICBRAINZ ALBUM ID` | `MUSICBRAINZ_ALBUMID` |
+ *
+ * This is worse than the dropped frames, because the value is still *in* the
+ * file — so a "did the data survive?" check says yes while every reader,
+ * ours and other players', sees nothing. `acoustIdId` doubles as the
+ * "already fingerprinted" marker, so losing it re-fingerprints the track
+ * forever; the two MusicBrainz ids are what match a file back to a release.
+ *
+ * The fix sets the canonical key **and blanks the spaced one**. Setting only
+ * the canonical key also reads correctly, but leaves both in the file — six
+ * comments for three values, which the next pass would carry again.
+ */
+const ID3_TXXX_FFMPEG_MISNAMES = [
+  { field: 'acoustIdId', description: 'Acoustid Id', vorbis: 'ACOUSTID_ID' },
+  { field: 'mbRecordingId', description: 'MusicBrainz Track Id', vorbis: 'MUSICBRAINZ_TRACKID' },
+  { field: 'mbReleaseId', description: 'MusicBrainz Album Id', vorbis: 'MUSICBRAINZ_ALBUMID' },
+] as const;
+
+/**
+ * `-metadata` args fixing up what `-map_metadata 0` gets wrong — the frames
+ * ffmpeg drops, and the ones it renames into unreadable keys.
  *
  * Done during the encode rather than as a second `writeAudioTags` pass: that
  * would rewrite the whole container again, and at whole-library scale a second
@@ -170,11 +202,20 @@ async function carriedMetadataArgs(absPath: string): Promise<string[]> {
     return []; // an unreadable source is the encoder's problem, not ours
   }
   const args: string[] = [];
+  const present = (v: unknown): v is string | number =>
+    v !== undefined && v !== null && String(v) !== '';
+
   for (const { field, vorbis } of ID3_FRAMES_FFMPEG_DROPS) {
     const v = tags[field];
-    if (v !== undefined && v !== null && String(v) !== '') {
-      args.push('-metadata', `${vorbis}=${String(v)}`);
-    }
+    if (present(v)) args.push('-metadata', `${vorbis}=${String(v)}`);
+  }
+  for (const { field, description, vorbis } of ID3_TXXX_FFMPEG_MISNAMES) {
+    const v = tags[field];
+    if (!present(v)) continue;
+    args.push('-metadata', `${vorbis}=${String(v)}`);
+    // Blank the key ffmpeg derives from the TXXX description, so the value
+    // exists once under the name readers actually look for.
+    args.push('-metadata', `${description.toUpperCase()}=`);
   }
   return args;
 }
@@ -185,6 +226,41 @@ export interface TranscodeKeepOriginal {
   runDir: string;
   /** Library root, so the original keeps its relative path inside the run. */
   musicDir: string;
+}
+
+/**
+ * Move the source's embedded cover onto the freshly encoded Opus.
+ *
+ * Three steps, each of which can decline without failing the conversion:
+ * read the picture out of the source, cap it so our own reader can read it
+ * back (`preparePicture` — `music-metadata` throws above ~600 KB in Ogg), and
+ * attach it with a stream copy.
+ *
+ * Never throws: art is an enhancement on a file whose audio is already
+ * verified, so every failure is a warning and a `false`.
+ */
+async function carryEmbeddedCover(sourcePath: string, opusPath: string): Promise<boolean> {
+  const raw = join(dirname(opusPath), `.${basename(opusPath)}.cover-src`);
+  const scratch = join(dirname(opusPath), `.${basename(opusPath)}.cover-fit`);
+  try {
+    const pic = await extractEmbeddedPicture(sourcePath);
+    if (!pic) return false;
+    writeFileSync(raw, Buffer.from(pic.data));
+    const prepared = preparePicture(raw, scratch);
+    if (!prepared) return false; // too large to embed readably — say so, move on
+    return attachPictureToOpus(opusPath, prepared.path);
+  } catch (err) {
+    log.debug({ err, sourcePath }, 'no cover carried across the transcode');
+    return false;
+  } finally {
+    for (const p of [raw, scratch]) {
+      try {
+        rmSync(p, { force: true });
+      } catch {
+        /* best effort */
+      }
+    }
+  }
 }
 
 export async function transcodeToOpus(
@@ -264,6 +340,15 @@ export async function transcodeToOpus(
       `Refusing to replace ${absPath}: ${verdict.reason}. The original is untouched.`,
     );
   }
+  // Carry the source's embedded cover across, onto the TEMP — so the rename
+  // below promotes a complete file rather than one that gains art a moment
+  // later. `-vn` in the encode discarded it and nothing else can bring it
+  // back; see `attachPictureToOpus` for why the obvious routes do not work.
+  //
+  // Best-effort by construction: the audio is already verified correct, and a
+  // missing cover must never cost the conversion.
+  await carryEmbeddedCover(absPath, tmpPath);
+
   try {
     // Promote temp → final, then deal with the original. If dest === source
     // path (impossible here since ext changed) we'd skip it entirely.

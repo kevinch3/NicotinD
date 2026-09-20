@@ -10,8 +10,9 @@
  */
 import { describe, expect, it, afterEach } from 'bun:test';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readdirSync, rmSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { getMusicMetadata } from './music-metadata-loader.js';
 import { tmpdir } from 'node:os';
 import {
   isLossless,
@@ -20,7 +21,7 @@ import {
   opusOutputVerdict,
 } from './post-download-transcode.js';
 import { ffmpegAvailable, transcodeOutputIsAcceptable } from './transcode.js';
-import { readAudioTags, writeAudioTags } from './audio-tags.js';
+import { readAudioTags, writeAudioTags, type AudioTags } from './audio-tags.js';
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -219,12 +220,51 @@ describe('tag preservation through mp3 -> opus', () => {
     );
   }
 
-  // Every field the library stores in a tag. The point of listing them all is
-  // that a future field is caught here rather than discovered missing later.
+  // The denominator, asserted rather than assumed. Adding a field to
+  // `AudioTags` breaks this object at COMPILE time until it is listed, so a new
+  // tag cannot reach the library without someone deciding whether the transcode
+  // carries it. A hand-kept list would silently go stale instead.
+  const ALL_AUDIO_TAG_FIELDS: Record<keyof AudioTags, true> = {
+    artist: true,
+    albumArtist: true,
+    album: true,
+    title: true,
+    trackNumber: true,
+    discNumber: true,
+    year: true,
+    genre: true,
+    bpm: true,
+    key: true,
+    lyrics: true,
+    energy: true,
+    loudness: true,
+    valence: true,
+    danceability: true,
+    acousticness: true,
+    instrumental: true,
+    mood: true,
+    compilation: true,
+    acoustIdId: true,
+    mbRecordingId: true,
+    mbReleaseId: true,
+  };
+
+  // `compilation` is the one field an mp3 source cannot carry: node-id3 0.2.9
+  // has no TCMP frame, so `writeAudioTags` never writes it on the ID3 path
+  // (#917) and there is nothing for the encode to lose. It is covered from a
+  // FLAC source below, where the Vorbis writer does emit it.
+  const NOT_WRITABLE_ON_ID3 = ['compilation'] as const;
+
+  // Every other field the library stores in a tag.
   const FULL_TAGS = {
     title: 'T',
     artist: 'A',
+    albumArtist: 'AA',
     album: 'Al',
+    trackNumber: 7,
+    discNumber: 2,
+    year: 1994,
+    genre: 'Shoegaze',
     bpm: 128,
     key: 'Am',
     energy: 0.7,
@@ -235,7 +275,19 @@ describe('tag preservation through mp3 -> opus', () => {
     instrumental: 0.1,
     mood: 'happy' as const,
     lyrics: 'la la la',
+    acoustIdId: '6d1b2f3c-0000-4000-8000-0000000000ac',
+    mbRecordingId: '9e0a1b2c-0000-4000-8000-0000000000mb',
+    mbReleaseId: '1f2e3d4c-0000-4000-8000-0000000000re',
   };
+
+  it('covers every AudioTags field', () => {
+    // The gate on the gate: without this, extending `AudioTags` and forgetting
+    // to extend `FULL_TAGS` leaves the new field untested while the suite stays
+    // green, which is exactly how bpm/key/lyrics were lost unnoticed.
+    expect([...Object.keys(FULL_TAGS), ...NOT_WRITABLE_ON_ID3].sort()).toEqual(
+      Object.keys(ALL_AUDIO_TAG_FIELDS).sort(),
+    );
+  });
 
   it.skipIf(!ffmpegAvailable())('loses nothing — not bpm, key or lyrics', async () => {
     // Measured, not assumed: ffmpeg's `-map_metadata 0` carries every ID3 TXXX
@@ -256,11 +308,34 @@ describe('tag preservation through mp3 -> opus', () => {
     );
     expect(lost).toEqual([]);
 
-    // Named explicitly too: these three are the ones that regress, so a future
+    // Named explicitly too: these are the ones that regress, so a future
     // failure should say which rather than only that the set shrank.
     expect(after.bpm).toBe(128);
     expect(after.key).toBe('Am');
     expect(after.lyrics).toBe('la la la');
+    expect(after.acoustIdId).toBe(FULL_TAGS.acoustIdId);
+    expect(after.mbRecordingId).toBe(FULL_TAGS.mbRecordingId);
+    expect(after.mbReleaseId).toBe(FULL_TAGS.mbReleaseId);
+  });
+
+  it.skipIf(!ffmpegAvailable())('writes the ids under canonical keys, once each', async () => {
+    // `lost` above would pass with the value stored twice — under the spaced
+    // key ffmpeg derives from the TXXX description AND the canonical one. A
+    // duplicated comment is carried forward by every later pass, so assert the
+    // file is clean, not just readable.
+    const root = tmpRoot();
+    const src = join(root, 'ids.mp3');
+    makeMp3(src);
+    await writeAudioTags(src, FULL_TAGS);
+
+    const out = await transcodeToOpus(src, 96);
+
+    const mm = await getMusicMetadata();
+    const comments = ((await mm!.parseFile(out)).native?.vorbis ?? [])
+      .map((t) => t.id)
+      .filter((id) => /ACOUSTID|MUSICBRAINZ/i.test(id))
+      .sort();
+    expect(comments).toEqual(['ACOUSTID_ID', 'MUSICBRAINZ_ALBUMID', 'MUSICBRAINZ_TRACKID']);
   });
 
   it.skipIf(!ffmpegAvailable())('still converts a source carrying no tags at all', async () => {
@@ -270,6 +345,49 @@ describe('tag preservation through mp3 -> opus', () => {
     const out = await transcodeToOpus(src, 96);
     expect(existsSync(out)).toBe(true);
     expect(out.endsWith('.opus')).toBe(true);
+  });
+
+  it.skipIf(!ffmpegAvailable())('loses nothing from a FLAC source either', async () => {
+    // The lossless path is the bulk of the conversion, and it is Vorbis to
+    // Vorbis rather than ID3 to Vorbis — a different mapping, so the mp3 case
+    // does not cover it. `compilation` is only testable here: node-id3 has no
+    // TCMP frame, so the mp3 writer cannot emit it at all (#917). It matters
+    // because the organizer re-remuxes any file whose `compilation` reads
+    // false, so losing it puts every compilation track in a rewrite loop.
+    const root = tmpRoot();
+    const src = join(root, 'various.flac');
+    execFileSync(
+      'ffmpeg',
+      [
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-f',
+        'lavfi',
+        '-i',
+        'anullsrc=channel_layout=stereo:sample_rate=44100',
+        '-t',
+        '1',
+        '-c:a',
+        'flac',
+        '-y',
+        src,
+      ],
+      { stdio: 'ignore' },
+    );
+    const full = { ...FULL_TAGS, compilation: true };
+    expect(await writeAudioTags(src, full)).toBe(true);
+    const before = await readAudioTags(src);
+    expect(before.compilation).toBe(true);
+
+    const out = await transcodeToOpus(src, 96);
+    const after = await readAudioTags(out);
+
+    const lost = (Object.keys(full) as Array<keyof typeof full>).filter(
+      (k) => JSON.stringify(before[k]) !== JSON.stringify(after[k]),
+    );
+    expect(lost).toEqual([]);
+    expect(after.compilation).toBe(true);
   });
 });
 
@@ -325,5 +443,141 @@ describe('opusOutputVerdict — fails closed, because the caller then deletes th
     // the two callers has the wrong policy for its stakes.
     expect(transcodeOutputIsAcceptable(null, 180)).toBe(true);
     expect(opusOutputVerdict(null, 180).ok).toBe(false);
+  });
+});
+
+describe.skipIf(!ffmpegAvailable())('cover art survives the transcode', () => {
+  function makeFlacWithCover(dir: string, coverPx: number): { flac: string; coverBytes: number } {
+    const cover = join(dir, 'art.jpg');
+    execFileSync(
+      'ffmpeg',
+      [
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-f',
+        'lavfi',
+        '-i',
+        `nullsrc=s=${coverPx}x${coverPx},geq=random(1)*255:128:128`,
+        '-frames:v',
+        '1',
+        '-q:v',
+        '4',
+        '-y',
+        cover,
+      ],
+      { stdio: 'ignore' },
+    );
+    const bare = join(dir, 'bare.flac');
+    execFileSync(
+      'ffmpeg',
+      [
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-f',
+        'lavfi',
+        '-i',
+        'anullsrc=channel_layout=stereo:sample_rate=44100',
+        '-t',
+        '1',
+        '-c:a',
+        'flac',
+        '-y',
+        bare,
+      ],
+      { stdio: 'ignore' },
+    );
+    const flac = join(dir, 'song.flac');
+    execFileSync(
+      'ffmpeg',
+      [
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-i',
+        bare,
+        '-i',
+        cover,
+        '-map',
+        '0:a',
+        '-map',
+        '1:v',
+        '-c',
+        'copy',
+        '-disposition:v',
+        'attached_pic',
+        '-metadata',
+        'ARTIST=TheArtist',
+        '-y',
+        flac,
+      ],
+      { stdio: 'ignore' },
+    );
+    return { flac, coverBytes: statSync(cover).size };
+  }
+
+  it('carries the embedded cover from a FLAC into the Opus', async () => {
+    // The whole point of #1226: `-vn` drops the attached picture and nothing
+    // downstream could recover it. 0 of 7,774 already-converted files have art.
+    const root = tmpRoot();
+    const { flac, coverBytes } = makeFlacWithCover(root, 500);
+
+    const out = await transcodeToOpus(flac, 96);
+
+    const mm = await getMusicMetadata();
+    const pic = (await mm!.parseFile(out)).common.picture?.[0];
+    expect(pic?.data.length).toBe(coverBytes);
+  });
+
+  it('keeps the tags while carrying the cover', async () => {
+    const root = tmpRoot();
+    const { flac } = makeFlacWithCover(root, 400);
+
+    const out = await transcodeToOpus(flac, 96);
+
+    expect((await readAudioTags(out)).artist).toBe('TheArtist');
+  });
+
+  it('converts a source with no cover exactly as before', async () => {
+    const root = tmpRoot();
+    const bare = join(root, 'plain.flac');
+    execFileSync(
+      'ffmpeg',
+      [
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-f',
+        'lavfi',
+        '-i',
+        'anullsrc=channel_layout=stereo:sample_rate=44100',
+        '-t',
+        '1',
+        '-c:a',
+        'flac',
+        '-y',
+        bare,
+      ],
+      { stdio: 'ignore' },
+    );
+
+    const out = await transcodeToOpus(bare, 96);
+
+    expect(existsSync(out)).toBe(true);
+    const mm = await getMusicMetadata();
+    expect((await mm!.parseFile(out)).common.picture?.length ?? 0).toBe(0);
+  });
+
+  it('leaves no cover temp files beside the output', async () => {
+    const root = tmpRoot();
+    const { flac } = makeFlacWithCover(root, 400);
+
+    await transcodeToOpus(flac, 96);
+
+    const leaked = readdirSync(root).filter(
+      (n) => n.includes('cover-src') || n.includes('cover-fit'),
+    );
+    expect(leaked).toEqual([]);
   });
 });

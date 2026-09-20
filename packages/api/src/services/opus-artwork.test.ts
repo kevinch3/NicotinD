@@ -15,11 +15,12 @@
  * guarded, never the individual cases, so a test added later inherits it.
  */
 import { describe, expect, it, afterEach } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { ffmpegAvailable } from './transcode.js';
-import { MAX_EMBEDDED_PICTURE_BYTES, preparePicture } from './opus-artwork.js';
+import { attachPictureToOpus, MAX_EMBEDDED_PICTURE_BYTES, preparePicture } from './opus-artwork.js';
 import {
   encodeWithPicture,
   makeCover,
@@ -171,5 +172,147 @@ describe('the cap itself', () => {
     // the boundary: the exact figure is a property of a dependency we do not
     // control, and it can move on an upgrade.
     expect(MAX_EMBEDDED_PICTURE_BYTES).toBeLessThan(598_039);
+  });
+});
+
+describe.skipIf(!ffmpegAvailable())('attachPictureToOpus — no re-encode, no new dependency', () => {
+  /** A tagged .opus the way the real encode produces one. */
+  function taggedOpus(d: string, tags: Record<string, string>): string {
+    const wav = join(d, 'src.wav');
+    const out = join(d, 'tagged.opus');
+    makeWav(wav);
+    const meta = Object.entries(tags).flatMap(([k, v]) => ['-metadata', `${k}=${v}`]);
+    execFileSync(
+      'ffmpeg',
+      [
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-i',
+        wav,
+        '-vn',
+        ...meta,
+        '-c:a',
+        'libopus',
+        '-b:a',
+        '96k',
+        '-f',
+        'ogg',
+        '-y',
+        out,
+      ],
+      { stdio: 'ignore' },
+    );
+    return out;
+  }
+
+  async function vorbisTags(p: string): Promise<Record<string, string>> {
+    const mm = await getMusicMetadata();
+    const m = await mm!.parseFile(p);
+    const native = (m.native as Record<string, Array<{ id: string; value: unknown }>>).vorbis ?? [];
+    return Object.fromEntries(
+      native.filter((t) => t.id !== 'METADATA_BLOCK_PICTURE').map((t) => [t.id, String(t.value)]),
+    );
+  }
+
+  it('attaches a cover the app can read back, byte-exact', async () => {
+    const d = scratch();
+    const opus = taggedOpus(d, { ARTIST: 'A' });
+    const cover = join(d, 'c.jpg');
+    const bytes = makeCover(cover, 500, 4);
+
+    expect(attachPictureToOpus(opus, cover)).toBe(true);
+
+    expect(await readWithMusicMetadata(opus)).toBe(bytes);
+  });
+
+  it('keeps every existing tag, including ones readAudioTags does not model', async () => {
+    // `-map_metadata 1` looks like it replaces the source metadata, and for a
+    // re-encode it does. A stream copy carries the Opus comment header with the
+    // stream, so the picture merges in instead. COPYRIGHT is the witness: the
+    // app reads it but never writes it, so a rebuild-from-reader would drop it.
+    const d = scratch();
+    const tags = { ARTIST: 'TheArtist', ALBUM: 'TheAlbum', BPM: '128', COPYRIGHT: 'SomeLabel' };
+    const opus = taggedOpus(d, tags);
+    const before = await vorbisTags(opus);
+    const cover = join(d, 'c.jpg');
+    makeCover(cover, 400, 4);
+
+    expect(attachPictureToOpus(opus, cover)).toBe(true);
+
+    expect(await vorbisTags(opus)).toEqual(before);
+  });
+
+  it('does not re-encode — the audio stream is untouched', async () => {
+    const d = scratch();
+    const opus = taggedOpus(d, {});
+    const durBefore = execFileSync('ffprobe', [
+      '-v',
+      'error',
+      '-show_entries',
+      'format=duration',
+      '-of',
+      'csv=p=0',
+      opus,
+    ])
+      .toString()
+      .trim();
+    const cover = join(d, 'c.jpg');
+    makeCover(cover, 400, 4);
+
+    attachPictureToOpus(opus, cover);
+
+    const durAfter = execFileSync('ffprobe', [
+      '-v',
+      'error',
+      '-show_entries',
+      'format=duration',
+      '-of',
+      'csv=p=0',
+      opus,
+    ])
+      .toString()
+      .trim();
+    expect(durAfter).toBe(durBefore);
+  });
+
+  it('leaves no temp files behind', async () => {
+    const d = scratch();
+    const opus = taggedOpus(d, {});
+    const cover = join(d, 'c.jpg');
+    makeCover(cover, 400, 4);
+
+    attachPictureToOpus(opus, cover);
+
+    const leaked = readdirSync(d).filter((n) => n.includes('nicotind-art'));
+    expect(leaked).toEqual([]);
+  });
+
+  it('returns false and leaves the file intact when the cover is unreadable', async () => {
+    // Art is an enhancement; the audio is already correct, so a failure here
+    // must never cost the file.
+    const d = scratch();
+    const opus = taggedOpus(d, { ARTIST: 'A' });
+    const before = await vorbisTags(opus);
+
+    expect(attachPictureToOpus(opus, join(d, 'does-not-exist.jpg'))).toBe(false);
+
+    expect(await vorbisTags(opus)).toEqual(before);
+    expect(readdirSync(d).filter((n) => n.includes('nicotind-art'))).toEqual([]);
+  });
+
+  it('a capped oversized cover still round-trips', async () => {
+    // The two halves together: preparePicture brings it under the ceiling,
+    // attachPictureToOpus puts it in, and the app can read it.
+    const d = scratch();
+    const opus = taggedOpus(d, {});
+    const cover = join(d, 'big.jpg');
+    makeCover(cover, 900, 2);
+
+    const p = preparePicture(cover, join(d, 'scratch.jpg'));
+    expect(p).not.toBeNull();
+    expect(attachPictureToOpus(opus, p!.path)).toBe(true);
+
+    expect(await readWithMusicMetadata(opus)).toBe(p!.bytes);
   });
 });
