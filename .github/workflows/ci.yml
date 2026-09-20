@@ -136,6 +136,15 @@ jobs:
       - name: Check every musicDir walker honours the reserved-path predicate
         run: bun run check:library-walkers
 
+      # Song ids are sha1(path), so a rename, move or re-encode re-mints them --
+      # and there are no FKs on song_id, deliberately, so a table nobody carried
+      # orphans in silence. #259 lost playlist rows that way; 30% of song-scope
+      # genre overrides were found orphaned on prod. The denominator comes from
+      # the live schema, so a table added later is covered whether or not anyone
+      # remembered the registry.
+      - name: Check every song-keyed table is carried or exempt on the record
+        run: bun run check:song-carry-coverage
+
       # check:shared-helpers only sees a *re-declared* helper. The MCP agent
       # surface bypassed the shared matcher with inline `LIKE ? COLLATE NOCASE`
       # instead (#706, and #719 on the Songs tab) — no local copy to find, so
