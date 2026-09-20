@@ -5,22 +5,14 @@
  * it lands, how long it is kept, and what happens when it fails. Rationale in
  * docs/backup-restore.md "Pre-migration snapshots".
  */
-import {
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  rmSync,
-  statSync,
-  statfsSync,
-} from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Database } from 'bun:sqlite';
 import { createLogger } from '@nicotind/core';
 import { backupsRoot } from './backup.js';
 // Reused rather than redeclared — this structural type is already duplicated
 // between system.ts and library-import.service.ts; a third copy is not the fix.
-import type { StatfsFn } from './library-import.service.js';
+import { freeBytes, realStatfs, type StatfsFn } from './disk-space.js';
 
 const log = createLogger('migration-backup');
 
@@ -117,15 +109,6 @@ function dbSizeBytes(dataDir: string): number {
   }
 }
 
-function freeBytes(dataDir: string, statfs: StatfsFn): number | null {
-  try {
-    const st = statfs(dataDir);
-    return st.bavail * st.bsize;
-  } catch {
-    return null;
-  }
-}
-
 function dirSize(dir: string): number {
   let total = 0;
   for (const f of readdirSync(dir)) total += statSync(join(dir, f)).size;
@@ -156,7 +139,7 @@ export function pruneMigrationBackups(dataDir: string, keepCount: number): void 
 export function runMigrationBackup(db: Database, deps: MigrationBackupDeps): MigrationBackupResult {
   const { dataDir, fromVersion, toVersion } = deps;
   const now = deps.now ?? Date.now();
-  const statfs = deps.statfs ?? (statfsSync as unknown as StatfsFn);
+  const statfs = deps.statfs ?? realStatfs;
 
   // Preflight, so a full disk reads as "not enough room" instead of a partial
   // file and a mid-VACUUM ENOSPC.

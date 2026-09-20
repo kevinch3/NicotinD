@@ -235,6 +235,31 @@ The caller supplies the transaction, because every caller has other work to make
 
 Returns `{ candidates, converted, skipped, failed, bytesReclaimed, unestimated }`.
 
+### Headroom preflight, and why it fails open
+
+On `apply` with candidates present, the pass checks `musicDir` for the largest single candidate plus
+`TRANSCODE_DISK_MARGIN_BYTES` (500 MB, matching `IMPORT_DISK_MARGIN_BYTES`) before starting. Peak
+usage is only one encode above steady state — each Opus file is written beside its source and the
+original removed — but the run is long, unattended, and shares a disk that has filled to zero once
+and taken the API down with it (#1021).
+
+`services/disk-space.ts` is the one place that probes free space. `StatfsFn` and `freeBytes` had
+**three byte-identical copies** (the library import, the migration backup, `GET /api/system/disk`),
+and the type was already being imported across module boundaries from whichever file happened to
+declare it — the shape that precedes a fourth. Both names are registered in `check:shared-helpers`,
+so a fourth copy is now a gate failure rather than a discovery.
+
+It lives in `packages/api`, not core, because core is deliberately free of `node:fs` so the Angular
+build can import it, and all consumers are API-side.
+
+**Unknown is not full.** Every probe returns `null` rather than `0` when the filesystem cannot
+answer, and `checkHeadroom` reports `sufficient: true` with `free: null` in that case; the pass logs
+that it skipped the check and proceeds. A preflight that refuses to run on a mount it cannot stat is
+worse than no preflight — that exact failure once blocked an upgrade
+(`migration-backup.test.ts`). A *genuinely* full filesystem reports `0`, which is an answer, and
+does stop the run. A dry run is never preflighted: it writes nothing, and a full disk is when its
+sizing report matters most.
+
 **`bytesReclaimed` means the difference, on both paths.** On apply it is what was actually freed
 (`oldSize - newSize`). On a dry run it is the *estimated* difference: `size - estimateOpusBytes()`,
 where a `bitRate`-kbps encode of `n` seconds costs `n * bitRate * 125` bytes.

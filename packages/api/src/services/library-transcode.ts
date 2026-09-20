@@ -7,8 +7,18 @@ import { ffmpegAvailable } from './transcode.js';
 import { LibraryScanner, songId } from './library-scanner.js';
 import { carrySongCuration } from './song-curation-carry.js';
 import { refreshAlbumAggregate } from './library-aggregates.js';
+import { checkHeadroom, type StatfsFn } from './disk-space.js';
 
 const log = createLogger('library-transcode');
+
+/**
+ * Free space the pass insists on beyond the largest single candidate.
+ *
+ * Matches `IMPORT_DISK_MARGIN_BYTES`: the same disk, the same reason, and a
+ * number chosen to leave the DB and its WAL room to breathe rather than to
+ * model the run.
+ */
+const TRANSCODE_DISK_MARGIN_BYTES = 500 * 1024 * 1024;
 
 export interface LibraryTranscodeResult {
   /** Lossless rows considered. */
@@ -52,6 +62,8 @@ export interface TranscodeAllOptions {
   limit?: number;
   /** Checked before each file; true → stop and return the partial counters. */
   shouldStop?: () => boolean;
+  /** Injected for tests; defaults to the real `statfs`. */
+  statfs?: StatfsFn;
   onProgress?: (p: TranscodeProgress) => void;
 }
 
@@ -144,6 +156,31 @@ export async function transcodeLibraryToOpus(
 
   const scanner = new LibraryScanner(musicDir, db);
   const bitRate = opts.bitRate;
+
+  // Headroom preflight. The pass writes each Opus file beside its source before
+  // removing the original, so peak usage is one encode above steady state — but
+  // the pass is long, unattended, and shares a disk that has already filled to
+  // zero once and taken the API down with it (#1021). A margin is cheap.
+  //
+  // Fails OPEN by construction: an unprobeable filesystem returns `free: null`
+  // and `sufficient: true`. Unknown is not full, and a preflight that refuses to
+  // run on a mount it cannot stat is worse than no preflight.
+  if (opts.apply && rows.length > 0) {
+    const largest = rows.reduce((n, r) => Math.max(n, r.size ?? 0), 0);
+    const head = checkHeadroom(musicDir, largest, {
+      margin: TRANSCODE_DISK_MARGIN_BYTES,
+      statfs: opts.statfs,
+    });
+    if (!head.sufficient) {
+      throw new Error(
+        `Not enough free space in ${musicDir}: ${head.free} bytes free, ` +
+          `${head.required} needed (largest candidate + margin).`,
+      );
+    }
+    if (head.free === null) {
+      log.warn({ musicDir }, 'could not probe free space — proceeding without a headroom check');
+    }
+  }
 
   let visited = 0;
   for (const row of rows) {

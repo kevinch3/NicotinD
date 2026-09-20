@@ -383,3 +383,77 @@ describe('transcodeLibraryToOpus', () => {
     },
   );
 });
+
+describe('disk headroom preflight', () => {
+  const fullDisk = () => ({ bsize: 4096, blocks: 100, bavail: 0 });
+  const roomyDisk = () => ({ bsize: 4096, blocks: 1e9, bavail: 1e9 });
+  const unprobeable = () => {
+    throw new Error('EPERM: container mount does not implement statfs');
+  };
+
+  async function oneCandidate() {
+    const music = tmpMusic();
+    const db = new Database(':memory:');
+    applySchema(db);
+    const rel = 'Aphex Twin/Drukqs/01 - Avril 14th.flac';
+    mkdirSync(dirname(join(music, rel)), { recursive: true });
+    await Bun.write(join(music, rel), 'x');
+    seedSongRow(db, rel, { size: 5_000_000, duration: 120 });
+    return { music, db };
+  }
+
+  it('refuses to start when the disk is full', async () => {
+    const { music, db } = await oneCandidate();
+    await expect(
+      transcodeLibraryToOpus(db, music, { apply: true, bitRate: 96, statfs: fullDisk }),
+    ).rejects.toThrow(/Not enough free space/);
+  });
+
+  it('PROCEEDS when the filesystem cannot be probed', async () => {
+    // "Unknown is not full." A preflight that refuses to run on a mount it
+    // cannot stat is worse than no preflight — that failure shape once blocked
+    // an upgrade, which is why every probe here fails open.
+    const { music, db } = await oneCandidate();
+    const r = await transcodeLibraryToOpus(db, music, {
+      apply: false,
+      bitRate: 96,
+      statfs: unprobeable,
+    });
+    expect(r.candidates).toBe(1);
+  });
+
+  it('does not preflight a dry run', async () => {
+    // A dry run writes nothing, so a full disk must not stop it — that is
+    // exactly when an operator needs the sizing report most.
+    const { music, db } = await oneCandidate();
+    const r = await transcodeLibraryToOpus(db, music, {
+      apply: false,
+      bitRate: 96,
+      statfs: fullDisk,
+    });
+    expect(r.candidates).toBe(1);
+    expect(r.converted).toBe(1);
+  });
+
+  it('does not preflight when there is nothing to convert', async () => {
+    const music = tmpMusic();
+    const db = new Database(':memory:');
+    applySchema(db);
+    const r = await transcodeLibraryToOpus(db, music, {
+      apply: true,
+      bitRate: 96,
+      statfs: fullDisk,
+    });
+    expect(r.candidates).toBe(0);
+  });
+
+  it('passes when there is room', async () => {
+    const { music, db } = await oneCandidate();
+    const r = await transcodeLibraryToOpus(db, music, {
+      apply: false,
+      bitRate: 96,
+      statfs: roomyDisk,
+    });
+    expect(r.candidates).toBe(1);
+  });
+});
