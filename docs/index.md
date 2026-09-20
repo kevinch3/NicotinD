@@ -415,6 +415,11 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   `LyricsService`, `KaraokeBrowseMode`, `loadCoverPalette`, `TvKaraokeComponent`.
   → [design-patterns.md](design-patterns.md), [vocal-isolation-spike.md](vocal-isolation-spike.md),
   [tv-ux.md](tv-ux.md)
+- **Lyrics match quality**: a source match is ranked and rejected on duration, not taken first-hit;
+  `matchedDurationSec` is stored so a wrong take stays findable afterwards as `suspectMatches`,
+  with rows nothing could check counted `unverified` rather than clean.
+  `LYRICS_DURATION_TOLERANCE_SEC` is shared by the fetch gate and the report so they cannot drift.
+  → [design-patterns.md](design-patterns.md)
 - **Now Playing waveform + karaoke VFX**: rendered from a precomputed artifact.
   → [audio-ml-enrichment.md](audio-ml-enrichment.md)
 - **Smart radio (metadata-driven queue)**: `GET /api/radio/next` scores candidates by a

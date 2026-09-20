@@ -6,6 +6,7 @@ import type {
   LyricsQuery,
   LyricsResult,
 } from '@nicotind/core';
+import { LYRICS_DURATION_TOLERANCE_SEC } from '@nicotind/core';
 
 export interface LrclibPluginConfig {
   enabled: boolean;
@@ -41,12 +42,31 @@ const REQUEST_TIMEOUT_MS = 8000;
 const MAX_ATTEMPTS = 3;
 const RETRY_BACKOFF_MS = 400;
 
+/**
+ * How far a /search hit's duration may sit from the local file's before it is
+ * rejected outright (issue #1212). Shared with the health report so the gate
+ * and the detector cannot drift — see `LYRICS_DURATION_TOLERANCE_SEC`.
+ *
+ * `/get` already matches within ±2s, so the fallback must be looser than that
+ * or it could never rescue anything /get missed. But it stays much tighter than
+ * the gap that caused the bug: wrong lyrics are worse than no lyrics, because a
+ * listener sees plausible-looking words with no way to tell they belong to
+ * another take.
+ */
+const SEARCH_DURATION_TOLERANCE_SEC = LYRICS_DURATION_TOLERANCE_SEC;
+
 /** Map a LRCLIB record to a LyricsResult, treating empty strings as "none". */
 function toResult(track: LrclibTrack): LyricsResult | null {
   const plain = track.plainLyrics?.trim() ? track.plainLyrics : null;
   const synced = track.syncedLyrics?.trim() ? track.syncedLyrics : null;
   if (!plain && !synced) return null;
-  return { plain, synced, source: 'lrclib' };
+  return {
+    plain,
+    synced,
+    source: 'lrclib',
+    ...(typeof track.duration === 'number' ? { matchedDurationSec: track.duration } : {}),
+    ...(track.id !== undefined ? { sourceTrackId: String(track.id) } : {}),
+  };
 }
 
 /**
@@ -117,15 +137,47 @@ export class LrclibPlugin implements Plugin {
     return track ? toResult(track) : null;
   }
 
+  /**
+   * Fuzzy fallback for when /get's ±2s exact match finds nothing. LRCLIB ranks
+   * by its own text relevance, which says nothing about whether a hit is the
+   * same *recording* — "Luna tucumana" has dozens of takes, and taking hits[0]
+   * stored another one's words and timings as though they were verified
+   * (issue #1212). So rank by how close each hit's duration is to the local
+   * file's and refuse anything beyond the tolerance.
+   */
   private async searchByQuery(query: LyricsQuery): Promise<LyricsResult | null> {
-    const params = new URLSearchParams({ q: `${query.artist} ${query.title}`.trim() });
+    const params = new URLSearchParams({
+      artist_name: query.artist,
+      track_name: query.title,
+    });
     const hits = await this.request<LrclibTrack[]>(`/search?${params.toString()}`);
     if (!Array.isArray(hits)) return null;
-    for (const hit of hits) {
-      const result = toResult(hit);
-      if (result) return result;
-    }
-    return null;
+
+    const candidates = hits
+      .map((hit) => ({ hit, result: toResult(hit) }))
+      .filter((c): c is { hit: LrclibTrack; result: LyricsResult } => c.result !== null);
+    if (candidates.length === 0) return null;
+
+    const target = query.durationSec;
+    // No local duration means nothing to rank against. Returning the first hit
+    // keeps the old behaviour rather than silently dropping lyrics — the result
+    // still carries the source's duration, so the host records an unverified
+    // match instead of one that merely looks checked.
+    if (!target || target <= 0) return candidates[0]!.result;
+
+    const scored = candidates
+      .filter((c) => typeof c.hit.duration === 'number')
+      .map((c) => ({ ...c, delta: Math.abs(c.hit.duration! - target) }))
+      .filter((c) => c.delta <= SEARCH_DURATION_TOLERANCE_SEC)
+      // Closest duration wins; a tie goes to the hit that carries timings.
+      .sort((a, b) => a.delta - b.delta || Number(!!b.result.synced) - Number(!!a.result.synced));
+    if (scored[0]) return scored[0].result;
+
+    // A hit that states no duration cannot be ranked or rejected on one. Dropping
+    // it would lose real lyrics whenever LRCLIB simply omits the field, so take
+    // it — but it carries no `matchedDurationSec`, which is what marks it
+    // unverified downstream rather than letting it pass as a checked match.
+    return candidates.find((c) => typeof c.hit.duration !== 'number')?.result ?? null;
   }
 
   /**
