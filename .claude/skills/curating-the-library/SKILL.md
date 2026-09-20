@@ -69,6 +69,18 @@ non-zero-position match, and pass the full corrected ordered list back, not the 
 string that was wrong. Position-0 matches are the only ones safe to fix with a bare
 single-genre `replace`.
 
+**`get_album_tracks` and `get_artist` show only the position-0 genre string, so a song can
+look like a clean single-tag catch-all without being one.** The `lowInformationWorklist`
+health-report count is safe *because* that mechanism checks a song's full genre list
+server-side before including it — matching your candidate count against that number is
+the actual safety check, not the fact that the display showed one bare string. Measured
+2026-09-19: three Alex Gaudino songs found by browsing (not pulled from the worklist
+count) each displayed `genre: "Dance"`; their real stored value was
+`"Dance; Electronic; House"`, and a `replace` silently destroyed the other two. **A song
+added because it "looks like the same case" as a worklist-verified batch is not
+covered by that batch's safety guarantee — read its own full list (or match it against
+its own worklist count) before writing.**
+
 
 ## Type bare characters in every MCP argument
 

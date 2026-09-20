@@ -3905,3 +3905,292 @@ pieces of evidence — the judgement rested on the artist.
   *Shadows* as 2014.
 - **#747** — *L'Amour Toujours* is a real two-disc release (disc 1 × 12, disc 2 × 10) with track
   numbers restarting at 1, i.e. the collision shape that issue measures.
+
+## 2026-09-19 — genre backlog, picked up from the 09-15 baseline
+
+Four days after stretch 18 with no other curation activity in between (`genres.missing` measured
+179 against stretch 18's recorded 180 — a single song of ordinary ingest drift, not missed work;
+`genres.lowInformation` measured exactly 505, unchanged). Checked `git log --follow` on this file
+before starting specifically to confirm that — worth doing every time a pass resumes after a gap,
+since the alternative is redoing work silently.
+
+### Baseline → after this stretch
+
+| dimension | 09-15 (stretch 18) | 09-19 start | after this stretch |
+| --- | --- | --- | --- |
+| `genres.missing` | 180 | 179 | **153** |
+| `genres.lowInformation` | 505 | 505 | 505 (not worked this stretch) |
+| open review flags | 3 | 4 (+1 listener) | 4 |
+
+### 26 zero-to-low-search genre writes, all read-back verified
+
+| cluster | n | written | how |
+| --- | --- | --- | --- |
+| Vinícius de Moraes / Toquinho / Quarteto Jobim-Morelenbaum (one ingest instant) | 6 | `Bossa Nova` | the bossa nova canon itself — *Garota de Ipanema*, *Água de Beber* — zero search |
+| Glaucia Nasser, Rita Benneditto | 2 | `MPB` | 1 search each, both confirmed (Nasser: MPB compilation guest, Bossacucanova remix; Benneditto: Brazilian Music Award, Grammy-nominated) |
+| "01 - Pop Aguante" VA compilation | 14 of 15 | `Pop` / `Reggaeton` / `Cumbia 420` / `Trap` | per-track by individual artist identity (Karol G, Miranda!, Tini, Angela Torres) plus 3 searches for the genuinely blended acts (Ca7riel & Paco Amoroso, Luck Ra, Six Sex) |
+| Anyma, *DOGS † VETEMENTS SS26 SHOW* | 1 | `Melodic Techno` | consistent brand identity (session 11b precedent) |
+| Fémina, Melim, a Spanish university tuna ensemble | 3 | `Indie Pop` / `Pop` / `Tuna` | individual recognition; the tuna ensemble's own name self-declares its genre |
+
+Left untagged, correctly: Silvia Donati (1 search, genuinely inconclusive) and "Alleh, Yorghaki" (not
+distinctive enough to spend a search on) from this stretch's own clusters, plus the previously
+triaged dead ends re-encountered and correctly not re-attempted — Grupo Altamar / A los 4 Vientos /
+Entremares / Rapanui Hinariru (session 11) and OldChild / Kieran San Jose / Independent Lemon /
+Manuel Galán / Joaquín Da Rosa / Niklas Dee / Morgan Seatree / Nathan C (session 5b, three weeks
+stale and still unresolved).
+
+`get_rare_genres(maxCount:15)` afterward: no case/accent duplicate introduced by any of the 8 new
+genre strings written this stretch. One pre-existing, unrelated candidate noticed but not chased:
+a lone `Dance-pop` (lowercase p, count 1) that reads like a case-variant orphan of a larger
+`Dance-Pop`/`Dance Pop` bucket.
+
+### A new listener flag, and a capability gap it exposed
+
+Flag #26 (via the report-a-track feature, #987) reported "Luna tucumana" (Los Chalchaleros) has
+lyrics out of sync. Confirmed on prod: a non-customized `lrclib` synced-lyrics row, most likely
+matched to a different recording/take's timing. **No MCP tool can act on it** — `fetch`/`reset`
+lyrics exist only as REST routes, neither exposed to the refiner MCP surface. Filed **#1205**
+proposing `reset_song_lyrics`/`fetch_song_lyrics` MCP tools (same shape as #1112). Flag left open.
+
+### Deliberately not worked this stretch
+
+`genres.lowInformation` — the current worklist (Gigi D'Agostino 33, Abraham (ES) & S.Hai 30,
+Moderat 20, Pete Tong/HER-O/Jules Buckley 17, Fred again.. 16, Sonny Fodera 16, CamelPhat 15, David
+Guetta 15, Eelke Kleijn 14, Avicii 13) is unchanged from stretch 18's own "left unjudged" set for the
+first four, confirming nothing has touched this dimension since 09-15. Acting on it needs per-song
+ids (`get_artist` → `get_album_tracks`), which the health report's artist+count worklist doesn't
+supply — deferred rather than guessed at the artist level.
+
+#1123's headline (24% / 5,135 umbrella-only songs) and #1129's headline (114 "Music"-as-genre
+tracks) are both still open on GitHub with counts stretch 18 already made stale (#1131's metric fix;
+37 of #1129's instances fixed 09-15). Posted a corrective comment on both this session rather than
+re-measuring against either issue's own original premise.
+
+## 2026-09-19, continued — the lowInformation dimension, done properly this time
+
+Stretch 18 deliberately left `genres.lowInformation`'s top four unjudged (Moderat, Fred again..,
+Abraham (ES) & S.Hai, Pete Tong/HER-O/Jules Buckley) for good reasons that still hold — confirmed by
+re-checking, not re-litigated. This continuation went past them to the artists behind them, this time
+pulling actual per-song data (`get_artist` → `get_album_tracks`) before writing anything, since the
+health report's worklist supplies only artist + count.
+
+### 64 writes, 3 artists, all read-back verified
+
+| dimension | before | after |
+| --- | --- | --- |
+| `genres.lowInformation` | 505 | **441** |
+
+| artist | n | written | evidence |
+| --- | --- | --- | --- |
+| Gigi D'Agostino (*Tecno Fes*, *Tecno Fes 2*, *The Essential*) | 33 | `Italo Dance` | same artist, 3 separate album years (2000/2001/2009) independently carrying the same catch-all — not the single-rip n=1 shape; *L'Amour Toujours* (already `Italo Dance` from stretch 18) is the same continuous body of work |
+| CamelPhat, *Dark Matter* | 15 | `Deep House` | 8 of the album's own 23 tracks already carry `House`/`Deep House`; 14 of CamelPhat's other 22 albums are already `Deep House` — strong in-artist sibling agreement, not external knowledge alone |
+| Sonny Fodera (*After Parties & Aeroplanes*, *Frequently Flying*) | 16 | `Deep House` | zero in-library corroboration (both albums were blanket `Dance`) — confirmed by search before writing: "House, Deep House, and Soulful House" / "deep, soulful house" per Traxsource and Insomniac |
+
+### Two more checked and correctly left alone
+
+- **Guy J (12)** — no in-library corroboration (all 3 albums blanket `Dance`/`Electronic`). A search
+  before writing was the right call: Resident Advisor describes his own *Esperanza* as "progressive
+  house, techno, electro and electronica," and genre listings differ **per track on the same album**.
+  Blanketing one genre here is exactly the trap this dimension exists to avoid.
+- **Röyksopp (12)** — all 3 in-library albums (2005 ×2, 2014) are already just `Electronic`, with no
+  differentiation across a 9-year span. A duo whose own catalog resists one label; left alone.
+
+### The pattern worth naming
+
+Sonny Fodera and CamelPhat looked identical going in (blanket `Dance`, confident-sounding external
+genre in mind) but resolved oppositely on method: CamelPhat's in-library sibling evidence was strong
+enough to trust outright; Sonny Fodera had none, so the write waited on a search — which also
+corrected the specific genre (Tech House, from his more recent work, would have been wrong for the
+2014/2016 albums actually in the library). Guy J looked like Sonny Fodera's shape (confident external
+guess, zero in-library corroboration) and the same discipline — search before writing — caught that
+it was actually David Guetta's shape instead.
+
+## 2026-09-19, tick 3 — two more genre fixes, a genre-spanning artist confirmed, one new duplicate flag
+
+Back to `list_recent_songs(missingGenre:true)`, the front of which is now entirely already-triaged
+residue from this and prior sessions. Four names worth a search hadn't been checked before:
+
+- **Nickodemus, "Mi Swing es Tropical"** → `Global Bass`. Not a guess — the sources describing him
+  literally use this as his genre movement's name, and this exact track (co-written with Quantic) is
+  his own most-cited example of it.
+- **Master Peace, "I Might be Fake"** → `Indie Sleaze`. British artist explicitly covered as
+  "heralding an indie sleaze resurgence"; picked the more specific of several valid genre tags
+  reported for him, same reasoning as `Cumbia 420` over plain `Reggaeton` earlier this session.
+- **Juan Pablo Vega (2 songs) — left untagged.** Confirmed genre-spanning by search ("siempre está
+  cambiando de género, y que no le gusta encasillarse" — always changing genre, refuses to be
+  pigeonholed): the David Guetta shape, this time caught before a write rather than after.
+- **emoemy, "Krossa alla fönster" — left untagged.** Search surfaced a title collision with an older
+  song by a different artist (Maskinen); genuinely inconclusive, not guessed.
+- `genres.missing`: 153 → **151**.
+
+**Flag #27 filed**: two song rows share the exact title/artist ("Trista Pena", Dany Krastan Sanchez)
+but only one is inside the actual "Trista Pena" single album — the other files under an unclear album
+context. `identify_song` returned `no-match` on BOTH, so per the standing dedupe rule neither side
+proves anything; left both files untouched and flagged for an owner to listen rather than guessing at
+a merge.
+
+## 2026-09-19, tick 4 — 43 more lowInformation fixes, and a mode:'replace' near-miss caught by habit
+
+Continued past Clotta with the same `get_artist`→`get_album_tracks` method. Four artists resolved
+cleanly, `genres.lowInformation` 441→**398**:
+
+| artist | n | written | evidence |
+| --- | --- | --- | --- |
+| Fatboy Slim, *Palookaville* | 11 | `Big Beat` | 3 of his other 4 albums already `Big Beat`, spanning 1998-2016 — confirms the session-11b fix is durable |
+| Gordo, *DIAMANTE* | 11 | `Tech House` | 6 of his other 6 albums already `Tech House` |
+| Master KG, *Jerusalema* | 11 | `Amapiano` | his one album, his own signature mega-hit; the genre a search actually confirmed rather than assumed ("Gospel Amapiano... a raw hybrid of deep house, jazz and lounge") |
+| Alex Gaudino, *My Destination* | 10 | `Electro House` | matches his own Wikipedia genre listing exactly; count matched the health report's own number precisely |
+
+### The near-miss: `mode:'replace'` on a song found OUTSIDE the verified worklist
+
+While in Alex Gaudino's catalog, three more of his songs — separate single-track albums (*Destination
+Calabria*, *Watch Out*, and a 2014 *Destination Calabria* reissue) — LOOKED like the same shape
+(`get_album_tracks` showed a bare `genre: "Dance"`) and got the same `Electro House` write. They were
+**not** part of the health report's verified 10-song count for this artist — found by browsing, not
+by matching a tool-reported number.
+
+**The tell**: the health delta only moved by 43, not the 46 songs actually written. Checking `scan_cache`
+(the raw, pre-curation tag read from each file) for the 3 extras showed the real stored value was
+`"Dance; Electronic; House"` — three genres in one semicolon-joined tag, of which `get_album_tracks`'
+single `genre` field only ever surfaces the first. `replace` had overwritten the other two into
+oblivion. Restored all three to `Dance;Electronic;House` (`ok:true`, verified) — a full, conservative
+undo rather than compounding the error with a second unilateral judgement about what to keep.
+
+**Spot-checked `scan_cache` for one song from every count-verified batch this tick and last** (Gordo,
+Fatboy Slim, Master KG, CamelPhat, Sonny Fodera) — all single-value `["Dance"]`, confirming the mistake
+was isolated to the three songs pulled outside the worklist's own count, not a wider problem.
+
+**The generalizable rule, sharper than the skill's existing one**: "`mode:'replace'` overwrites the
+whole genre set" already covers a *known* multi-genre song. This is the version that bites when you
+don't know it's multi-genre — `get_album_tracks`/`get_artist` display only the PRIMARY genre string,
+so a song can look like a clean single-tag catch-all and not be one. **The only songs load-bearing
+enough to write blind are ones whose count was cross-checked against `get_library_health`'s own
+`lowInformationWorklist` number** (that mechanism is documented to check the true full list before
+including a song) — any song added because it "looks like the same case" needs its own read-back
+first, no exception for how obvious it seems.
+
+## 2026-09-19, tick 5 — the same rule caught a much bigger one before any write happened
+
+Applied the tick-4 lesson prospectively this time: before writing, matched every candidate count
+against the health report's own number, and treated any mismatch as a stop sign.
+
+- **Eiffel 65**: found 11 `Dance`-tagged songs across 3 albums, worklist said 10. `scan_cache`
+  showed 10 were a clean `["Dance"]`; the 11th already carried a 5-genre tag
+  (`"Dance;Electronic;Europop;Pop;Italo Dance"` — ironically already including the exact genre this
+  pass would have applied). Wrote the 10 safe ones as `Italo Dance`, left the 11th untouched.
+- **Peggy Gou**: found 9, worklist said 8. One track ("(It Goes Like) Nanana - Edit") carried
+  `"Dance; Electronic; House; Techno; Edm"`. Wrote the other 8 as `House` (per a search: "blends
+  house, tech house, disco" — her mainstream 2024 album leans house over the tech-house of her
+  earlier EPs).
+- **Daft Punk — the real catch.** The worklist said 6 songs; browsing *Random Access Memories* alone
+  turned up 15 tracks displaying a bare `Dance`. Checked `scan_cache` for all 15 before writing
+  anything: **every single one** carried
+  `"Dance;Disco;Electro;Electronic;Funk;House;Progressive House;Synth-Pop;Nu Disco"` — nine genres in
+  one tag. A blind `replace` here would have destroyed all nine for all fifteen tracks. **Wrote
+  nothing to Daft Punk this tick** — the real 6-song target population is elsewhere in his catalog,
+  not identified yet.
+- **Cassian (6) and 3 Swedish House Mafia songs, both checked clean** (`["Electronic"]` /
+  `["Dance"]` respectively) → `Melodic Techno` (2 of his other albums already agree, same year) and
+  `House` (4 of Swedish House Mafia's 6 albums already agree).
+- `genres.lowInformation` 398→**371**, exactly the 27 songs actually written — the delta matched the
+  write count precisely this time, confirming the pre-write check is sufficient on its own; no
+  post-write surprise needed.
+
+**Note for next time**: the "Coldplay vs. Swedish House Mafia" worklist entry (9 songs) was never
+actually resolved — the 3 songs found were credited plainly "Swedish House Mafia," not the compound
+credit, so they're a different (also legitimate) fix, not that entry's target. The real
+Coldplay-credited songs and Daft Punk's real 6 both remain to find.
+
+## 2026-09-19, tick 6 — the acquisition lane, and a recurring addon failure
+
+`genres.lowInformation`'s remaining worklist head (Abraham (ES) & S.Hai, Moderat, Pete
+Tong/HER-O/Jules Buckley, Fred again.., David Guetta, Eelke Kleijn, Avicii, Guy J, Röyksopp, Clotta)
+is now entirely artists already evaluated and deliberately left alone across this session and stretch
+18 — a natural point to switch lanes rather than re-litigate them without new information.
+
+Ran the acquisition lane instead (completely untouched this session), 10 `complete_album` hunts from
+the confirmed-incomplete worklist — the session's full budget per the skill's guidance:
+
+- **5 enqueued cleanly**: Michael Gray, Gwen Stefani, Enrique Iglesias, Luis Alberto Spinetta, Limp
+  Bizkit.
+- **1 `no-candidate`**: Çantamarta.
+- **4 hit the byte-identical error** `addon responded 400 for POST /addon/v1/jobs`: Cultura
+  Profética, El Kuelgue, Los Auténticos Decadentes, Paulina Rubio.
+
+**El Kuelgue's *Ruli* failed this exact same way in a session from three weeks ago** (recorded in
+project memory) — the same album, the same string, unprompted. A genuinely transient/overloaded
+addon would not selectively fail the same album twice across a month while 6 of 10 in the same batch
+succeeded seconds apart. Filed **#1209** with the full reproduction table and a candidate mechanism
+(citing #1069's documented "one active job per (artist,album)" conflict guard) explicitly marked as
+an unverified hypothesis, not a finding — a refiner MCP session has no visibility into the addon's
+own job table to confirm it.
+
+## 2026-09-19, tick 7 — flags re-verified, three album covers
+
+Re-checked all 5 open review flags (#19, #23, #25, #26, #27): unchanged, all still genuinely need an
+owner decision. Left them for the product's own curator triage UI rather than interrupting — that
+surface exists precisely for this.
+
+Tried the completely untouched album-covers dimension: `lookup_album_metadata` on 5 real (non-VA)
+releases from the worklist. Two had no usable candidate for their EXACT release (Box Natiruts, Los
+Enanitos Verdes' *Obras Cumbres* — the tag-matched candidates scored 100 but carried no image; every
+image-bearing candidate was a *different* release) and were correctly left alone. Three resolved
+cleanly:
+
+- Luciano Pavarotti, *The Best* (1997) — exact title+year match, real cover.
+- The Beatles, *The White Album* — the exact-titled candidates (score 100) were all wrong releases
+  (a Super Mario 64 soundfont parody, outtake compilations); the real match is filed under the
+  album's actual title, just "The Beatles" (1968, score 71) — the "White Album" is a nickname, not
+  the official title, and the score reflects that literally rather than knowing it.
+- New Order, *Substance* — matched to *Substance 1987*, the real 20-track singles compilation this
+  library's plain-named 20-song album is.
+
+`albumCovers.missing` 4470→**4467**, exact match. Also observed, not directly caused: `songs`
+21549→21552 and `completeness.confirmedIncomplete` 81→78 in the same health check — plausibly 3 of
+tick 6's 5 enqueued hunts landing already (fast P2P availability on short/single-track gaps); not
+independently confirmed beyond the metric movement lining up.
+
+## 2026-09-20, tick 8 — three more covers, and the session close-out
+
+The visible top of the covers worklist is now dominated by VA compilations and DJ-mix event
+recordings — structurally the hardest shape to match (no single canonical release usually exists for
+a personal aggregation). Pulled a wider sample to find more individually-identifiable releases:
+
+- **Los Chalchaleros, *Una leyenda*** — left alone. The exact tag-matched candidate scored 100 with
+  no image; every image-bearing Discogs candidate was the differently-titled multi-volume
+  "...Nuestra Historia" series, a different product.
+- **Pink Floyd, *The Wall Live 1980-1981*** → matched to the real official title ("Is There Anybody
+  Out There? The Wall Live: 1980–1981", 2000) with a real cover — the library's shortened tag is a
+  folder-name convention, not a different release.
+- **The Rolling Stones, *Aftermath UK*** → a real, specific 1966 release (distinct from the US
+  edition's different tracklist), image confirmed.
+- **Ángela Leiva, *Desde El Alma*** → exact title+year match, real cover.
+
+`albumCovers.missing` 4467→**4464**, exact match.
+
+### Session close-out (2026-09-19/20, 8 ticks)
+
+**Totals**: `genres.missing` 179→**151** (28 fixed) · `genres.lowInformation` 505→**371** (134
+fixed) · `albumCovers.missing` 4470→**4464** (6 fixed) · `completeness.confirmedIncomplete` 81→**78**
+(5 hunts enqueued, ~3 already landed) · 2 new review flags filed (#26 listener-sourced, #27 duplicate)
+· 2 GitHub issues filed (#1205 missing lyrics MCP tool, #1209 a recurring addon 400) · 2 stale-issue
+headlines corrected (#1123, #1129) · a memory gap from a prior session discovered and backfilled · one
+real data-loss mistake caught and fully corrected, one much larger near-miss avoided entirely by
+applying the lesson prospectively · the curation skill itself sharpened with the rule that caught
+both.
+
+**The single most valuable finding, methodologically**: `get_album_tracks`/`get_artist` display only
+a song's PRIMARY genre, so a song whose raw tag is a semicolon-joined multi-genre string can look
+identical to a genuine single-genre catch-all. The fix that held up for the rest of the session:
+match every candidate count against `get_library_health`'s own worklist number BEFORE writing, and
+treat any mismatch as a hard stop — verified twice more (ticks 4 and 5) with zero further data loss,
+including a 15-song, nine-genre-per-track near-miss on Daft Punk that would otherwise have gone
+unnoticed.
+
+**Stopping here, not because the work is finished** — `lowInformation` (371), `albumCovers` (4,464),
+`years` (180), and the acquisition/format-cohesion dimensions all have real remaining backlog — but
+because the readily-reachable, well-verified wins in every dimension a refiner session can act on are
+now thinned to the point where continuing would mean smaller and smaller increments per unit of
+verification effort. The flags (#19/#23/#25/#27) remain genuinely blocked on an owner decision; #26
+is blocked on the MCP lyrics tool gap (#1205); Daft Punk's real 6-song target and the
+Coldplay-credited songs were never found. All recorded above as the next session's starting point.
