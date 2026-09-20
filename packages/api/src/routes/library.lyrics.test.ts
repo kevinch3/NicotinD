@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { Hono } from 'hono';
 import { Database } from 'bun:sqlite';
 import type { JwtPayload, LyricsResult } from '@nicotind/core';
+import { LYRICS_OFFSET_MAX_MS } from '@nicotind/core';
 import type { AuthEnv } from '../middleware/auth.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 import { applySchema } from '../db.js';
@@ -267,5 +268,122 @@ describe('DELETE /songs/:id/lyrics', () => {
     seedSong(testDb, 'song-1');
     const res = await makeApp('user').request('/songs/song-1/lyrics', { method: 'DELETE' });
     expect(res.status).toBe(403);
+  });
+});
+
+/**
+ * PUT used to hard-code `synced: null`, so the only way a curator could act on
+ * bad timing was to erase every timestamp. Keeping an explicitly-sent LRC is
+ * what makes a timing fix possible at all — and what lets e2e seed synced
+ * lyrics, which had no route to do before.
+ */
+describe('PUT /songs/:id/lyrics keeps synced text when it is sent', () => {
+  it('clears the stored LRC when only plain text is sent', async () => {
+    seedSong(testDb, 'song-1');
+    const { registry } = makeRegistry({ result: LYRICS });
+    await makeApp('user', registry).request('/songs/song-1/lyrics/fetch', { method: 'POST' });
+    expect(getLyrics(testDb, 'song-1')?.synced).toBe('[00:01.00]la selva');
+
+    await makeApp('admin').request('/songs/song-1/lyrics', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ plain: 'rewritten' }),
+    });
+    // The edited body no longer lines up with timings written for the old text.
+    expect(getLyrics(testDb, 'song-1')?.synced).toBeNull();
+  });
+
+  it('keeps the LRC verbatim when synced is sent alongside plain', async () => {
+    seedSong(testDb, 'song-1');
+    const res = await makeApp('admin').request('/songs/song-1/lyrics', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ plain: 'la selva', synced: '[00:02.50]la selva' }),
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).synced).toBe('[00:02.50]la selva');
+    expect(getLyrics(testDb, 'song-1')?.synced).toBe('[00:02.50]la selva');
+  });
+
+  it('treats a blank synced string as none, not as empty timings', async () => {
+    seedSong(testDb, 'song-1');
+    await makeApp('admin').request('/songs/song-1/lyrics', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ plain: 'words', synced: '   ' }),
+    });
+    expect(getLyrics(testDb, 'song-1')?.synced).toBeNull();
+  });
+});
+
+/**
+ * The sync correction. It must never touch the words — that is the whole reason
+ * it is a separate route from PUT.
+ */
+describe('PATCH /songs/:id/lyrics/offset', () => {
+  async function seedFetched(): Promise<void> {
+    seedSong(testDb, 'song-1');
+    const { registry } = makeRegistry({ result: LYRICS });
+    await makeApp('user', registry).request('/songs/song-1/lyrics/fetch', { method: 'POST' });
+  }
+
+  const patch = async (role: 'admin' | 'user', body: unknown): Promise<Response> =>
+    makeApp(role).request('/songs/song-1/lyrics/offset', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+  it('stores the offset and leaves the fetched text untouched', async () => {
+    await seedFetched();
+    const res = await patch('admin', { offsetMs: 1_500 });
+    expect(res.status).toBe(200);
+    expect((await res.json()).offsetMs).toBe(1_500);
+
+    const stored = getLyrics(testDb, 'song-1');
+    expect(stored?.offsetMs).toBe(1_500);
+    expect(stored?.synced).toBe('[00:01.00]la selva');
+    expect(stored?.plain).toBe('la selva');
+    // Not a user edit — the words are still the source's, so a re-fetch may
+    // still replace them.
+    expect(stored?.customized).toBe(false);
+  });
+
+  it('is reversible — zero restores the original timing', async () => {
+    await seedFetched();
+    await patch('admin', { offsetMs: 2_000 });
+    expect((await (await patch('admin', { offsetMs: 0 })).json()).offsetMs).toBe(0);
+  });
+
+  it('clamps rather than refusing an out-of-range nudge', async () => {
+    await seedFetched();
+    const res = await patch('admin', { offsetMs: 10_000_000 });
+    expect(res.status).toBe(200);
+    expect((await res.json()).offsetMs).toBe(LYRICS_OFFSET_MAX_MS);
+  });
+
+  it('rejects a non-numeric offset', async () => {
+    await seedFetched();
+    expect((await patch('admin', { offsetMs: 'later' })).status).toBe(400);
+    expect((await patch('admin', {})).status).toBe(400);
+  });
+
+  it('400s when the song has no stored lyrics to correct', async () => {
+    seedSong(testDb, 'song-1');
+    expect((await patch('admin', { offsetMs: 500 })).status).toBe(400);
+  });
+
+  it('404s for an unknown song', async () => {
+    const res = await makeApp('admin').request('/songs/nope/lyrics/offset', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ offsetMs: 500 }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('rejects a non-admin sync', async () => {
+    await seedFetched();
+    expect((await patch('user', { offsetMs: 500 })).status).toBe(403);
   });
 });

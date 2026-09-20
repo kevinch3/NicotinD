@@ -61,6 +61,20 @@ export type {
 } from '../../../core/src/types/metadata-fix';
 
 export type { LyricsDto } from '../../../core/src/types/lyrics';
+// *Values*, not types: the nudge control and the API both bound the offset, and
+// both must bound it the same way or the UI promises a range the server refuses.
+export { LYRICS_OFFSET_MAX_MS, LYRICS_OFFSET_STEP_MS } from '../../../core/src/types/lyrics';
+// The LRC parser and the render-time offset. Pure string/array work with no node
+// builtins, and shared so the karaoke surfaces and the API's health detector
+// cannot disagree about where a line falls — in particular about the sign of the
+// spec's own `[offset:]` tag.
+export {
+  parseLrc,
+  parseLrcDetailed,
+  applyLyricsOffset,
+  findActiveLine,
+} from '../../../core/src/lrc';
+export type { LyricLine, ParsedLrc } from '../../../core/src/lrc';
 export type { WaveformData } from '../../../core/src/types/waveform';
 
 export type {

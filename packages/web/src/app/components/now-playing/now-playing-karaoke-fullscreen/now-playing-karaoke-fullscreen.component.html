@@ -242,5 +242,53 @@
         </svg>
       </button>
     </div>
+    <!-- Sync nudge. Fullscreen karaoke is where drift is actually noticed, so
+         the correction belongs here as much as in the small panel. Rendered
+         only when the viewer may curate — on TV it never appears, keeping the
+         D-pad navigation tree above exactly as it was. -->
+    @if (canSync()) {
+      <div
+        class="mt-4 flex items-center justify-center gap-1 text-white/50"
+        data-testid="karaoke-lyrics-sync"
+      >
+        <button
+          (click)="offsetNudged.emit(-step)"
+          data-testid="karaoke-lyrics-sync-earlier"
+          [attr.aria-label]="'nowPlaying.syncEarlier' | t"
+          class="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 hover:text-white transition focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11 17l-5-5 5-5" /><path d="M18 17l-5-5 5-5" />
+          </svg>
+        </button>
+        <span
+          data-testid="karaoke-lyrics-sync-value"
+          class="min-w-[4.5rem] text-center text-xs tabular-nums"
+          [class.text-white]="offsetMs() !== 0"
+        >
+          {{ offsetLabel() || ('nowPlaying.syncInSync' | t) }}
+        </span>
+        <button
+          (click)="offsetNudged.emit(step)"
+          data-testid="karaoke-lyrics-sync-later"
+          [attr.aria-label]="'nowPlaying.syncLater' | t"
+          class="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 hover:text-white transition focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M13 17l5-5-5-5" /><path d="M6 17l5-5-5-5" />
+          </svg>
+        </button>
+        @if (offsetMs() !== 0) {
+          <button
+            (click)="offsetReset.emit()"
+            data-testid="karaoke-lyrics-sync-reset"
+            [attr.aria-label]="'nowPlaying.syncReset' | t"
+            class="ml-1 text-xs underline underline-offset-2 hover:text-white transition focus:outline-none focus-visible:ring-2 focus-visible:ring-white rounded"
+          >
+            {{ 'nowPlaying.syncReset' | t }}
+          </button>
+        }
+      </div>
+    }
   </div>
 </div>

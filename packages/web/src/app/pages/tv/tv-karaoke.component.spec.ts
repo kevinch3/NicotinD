@@ -19,6 +19,7 @@ function synced(): LyricsDto {
     source: 'lrclib',
     customized: false,
     updatedAt: 0,
+    offsetMs: 0,
   };
 }
 

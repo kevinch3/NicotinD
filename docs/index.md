@@ -420,6 +420,11 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   with rows nothing could check counted `unverified` rather than clean.
   `LYRICS_DURATION_TOLERANCE_SEC` is shared by the fetch gate and the report so they cannot drift.
   → [design-patterns.md](design-patterns.md)
+- **Lyrics sync offset**: bad timing is corrected by a stored offset applied at render time
+  (`applyLyricsOffset`), never by rewriting the LRC, so it is reversible; `parseLrc` moved to core
+  because `syncedBeyondDuration` — an LRC outlasting its own file, the one check needing nothing
+  from the source — parses server-side. Tools: `get_song_lyrics`, `sync_song_lyrics`.
+  → [design-patterns.md](design-patterns.md), [mcp-agent.md](mcp-agent.md)
 - **Now Playing waveform + karaoke VFX**: rendered from a precomputed artifact.
   → [audio-ml-enrichment.md](audio-ml-enrichment.md)
 - **Smart radio (metadata-driven queue)**: `GET /api/radio/next` scores candidates by a

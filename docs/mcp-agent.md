@@ -74,6 +74,8 @@ audit-logged.
 | `list_recent_songs` | read | recently-landed songs, newest first, paged, optional missing-genre filter |
 | `get_artist` | read | one artist + their albums |
 | `get_album_tracks` | read | one album: header (year/classification/cover status) + songs with genre, track/disc, suffix, bitrate |
+| `get_song_lyrics` | read | `services/lyrics-store.ts` `getLyrics` + `parseLrc` — source, offset, matched vs local duration, and where the LRC's last line falls |
+| `sync_song_lyrics` | curate | `services/lyrics-store.ts` `setLyricsOffset` + `song.lyrics` audit (render-time offset, text untouched) |
 | `set_song_genre` | curate | `services/song-genre-mutate.ts` `mutateSongGenre` + `song.genre` audit |
 | `set_genre_alias` | curate | `services/genre-alias-mutate.ts` `upsertGenreAlias` + `genre.alias` audit |
 | `lookup_song_metadata` | read | `services/candidate-sources.ts` `gatherSongCandidates` + `services/title-clean.ts` `cleanDisplayTitle` |
@@ -160,8 +162,41 @@ substring queries. Sorts by `landed_at` (indexed, "when the song was first
 scanned") rather than `created` (file mtime, unindexed on songs). `missingGenre` reuses the `WHERE (genre IS NULL OR genre = '')` idiom
 already used by the background genre-enrichment task. Real `limit`/`offset`
 pagination — a page shorter than `limit` means no more results, so no separate
-`COUNT(*)` call. Read-only, so (like the other 3 read tools) it does not call
-`recordAudit`.
+`COUNT(*)` call. Read-only, so (like every other read tool) it does not call
+`recordAudit`. That phrasing used to carry a count of the read tools, which went
+stale the first time one was added — a number is the wrong thing to assert in
+prose when the table above it is the register.
+
+### `get_song_lyrics` / `sync_song_lyrics` (issue #1212) — two defects, two fixes
+
+Curators were blind to lyrics entirely: no tool read them, and the only write
+path (`PUT /songs/:id/lyrics`) set `synced: null`, so **the sole way to act on
+bad timing was to erase all timing.** A listener's "lyrics out of sync" had no
+remedy an agent could reach.
+
+The trap these tools exist to prevent is treating one symptom as one defect.
+"The lyrics are wrong" is two problems wearing one complaint:
+
+| What is wrong | How `get_song_lyrics` shows it | Fix |
+| --- | --- | --- |
+| **Wrong words** — the source matched another take | `durationDeltaSec` beyond a few seconds, or `overrunBySec` above 0 | re-fetch; the words are not this recording's |
+| **Right words, wrong clock** — same performance, different master | both of those near 0, but the lines land off the beat | `sync_song_lyrics` |
+
+`overrunBySec` is the load-bearing one, because it needs **nothing from the
+source**: an LRC whose last line falls after the file has ended cannot belong to
+that file. That is the only check that reaches the `unverified` population — rows
+whose source never reported a duration, and every row written before match
+recording existed — which `matched_duration` cannot judge by construction.
+
+**Applying an offset to wrong words hides the defect rather than fixing it**, so
+both tool descriptions say so in the text the agent actually reads.
+
+`offsetMs` is **absolute, not a nudge**. An agent that retries a relative shift
+doubles it, and a doubled correction looks like a worse version of the problem it
+was sent to fix. 0 restores the source's own timings exactly; the write touches
+only `library_lyrics.offset_ms`, never the text, so nothing here can cost you the
+words. Clamped to ±30 s — needing more than that means it is the wrong recording,
+which is the first row of the table, not the second.
 
 ### `set_genre_alias` (issue #949) — fix the VALUE, not the songs
 
@@ -752,7 +787,10 @@ server's `requireCurator` gate on the same routes.
 hash-only storage, expiry, revocation scoping, curator-gating, mint-once) and
 `routes/mcp.test.ts` (401 without a token, initialize/tools-list/tools-call, a
 read tool, `list_recent_songs`'s recency ordering +
-`missingGenre` filter + `limit`/`offset` paging, `set_song_genre`'s append /
+`missingGenre` filter + `limit`/`offset` paging, the lyrics pair (`get_song_lyrics`
+reporting an unverified row as unknown rather than fine and surfacing an LRC that
+outlasts its file; `sync_song_lyrics`' absolute-not-relative offset, clamp,
+no-lyrics refusal, audit row and read-only-token refusal), `set_song_genre`'s append /
 `replace`-override / unknown-song / read-only-token paths, `merge_artist`'s
 batch `rawNames` form including a partial failure, the audited curate write,
 read-only-token refusal, `flag_for_review`'s record/inertness/bad-kind/half-card/scope

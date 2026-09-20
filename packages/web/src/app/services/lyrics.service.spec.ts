@@ -12,6 +12,7 @@ function dto(over: Partial<LyricsDto> = {}): LyricsDto {
     source: 'lrclib',
     customized: false,
     updatedAt: 0,
+    offsetMs: 0,
     ...over,
   };
 }
@@ -21,6 +22,9 @@ function setup() {
     getLyrics: vi.fn<(id: string) => Observable<LyricsDto | null>>(() => of(null)),
     fetchLyrics: vi.fn<(id: string, force?: boolean) => Observable<LyricsDto | null>>(() =>
       of(null),
+    ),
+    setLyricsOffset: vi.fn<(id: string, offsetMs: number) => Observable<LyricsDto>>((_id, ms) =>
+      of(dto({ offsetMs: ms })),
     ),
   };
   TestBed.configureTestingModule({ providers: [{ provide: LibraryApiService, useValue: api }] });
@@ -143,5 +147,103 @@ describe('LyricsService (#1134)', () => {
     expect(lyrics.activeLineAt(0)).toBe(-1);
     expect(lyrics.activeLineAt(1500)).toBe(0);
     expect(lyrics.activeLineAt(3500)).toBe(1);
+  });
+});
+
+/**
+ * The sync correction, from the view's side. A nudge is judged by ear against
+ * the music, so the highlight has to move on the tap — but the library must
+ * never keep a correction the server refused.
+ */
+describe('LyricsService sync offset', () => {
+  const SYNCED = '[00:01.00]one\n[00:03.00]two';
+
+  function loaded() {
+    const s = setup();
+    s.api.getLyrics.mockReturnValue(of(dto({ synced: SYNCED })));
+    // The real route returns the whole row, text included — it only ever writes
+    // the offset column. A stub that dropped `synced` would be testing a server
+    // that does not exist.
+    s.api.setLyricsOffset.mockImplementation((_id, ms) =>
+      of(dto({ synced: SYNCED, offsetMs: ms })),
+    );
+    s.lyrics.ensureLoaded('s1');
+    return s;
+  }
+
+  it('shifts the rendered lines without touching the stored text', () => {
+    const { lyrics } = loaded();
+    lyrics.nudgeOffset(500);
+
+    expect(lyrics.offsetMs()).toBe(500);
+    expect(lyrics.lines().map((l) => l.timeMs)).toEqual([1_500, 3_500]);
+    // The words the source sent are still exactly the words we hold.
+    expect(lyrics.lyrics()?.synced).toBe(SYNCED);
+  });
+
+  it('moves the highlight — the whole reason to nudge by ear', () => {
+    const { lyrics } = loaded();
+    expect(lyrics.activeLineAt(1_500)).toBe(0);
+    lyrics.nudgeOffset(1_000);
+    expect(lyrics.activeLineAt(1_500)).toBe(-1);
+  });
+
+  it('accumulates nudges and persists the absolute value', () => {
+    const { api, lyrics } = loaded();
+    lyrics.nudgeOffset(250);
+    lyrics.nudgeOffset(250);
+    expect(lyrics.offsetMs()).toBe(500);
+    expect(api.setLyricsOffset).toHaveBeenLastCalledWith('s1', 500);
+  });
+
+  it('applies before the round-trip, so the highlight does not wait', () => {
+    const { api, lyrics } = loaded();
+    const pending = new Subject<LyricsDto>();
+    api.setLyricsOffset.mockReturnValue(pending);
+
+    lyrics.nudgeOffset(750);
+    expect(lyrics.offsetMs()).toBe(750);
+
+    pending.next(dto({ synced: SYNCED, offsetMs: 750 }));
+    pending.complete();
+    expect(lyrics.offsetMs()).toBe(750);
+  });
+
+  it('reverts when the write fails — the view never keeps what the library refused', () => {
+    const { api, lyrics } = loaded();
+    api.setLyricsOffset.mockReturnValue(throwError(() => ({ status: 403 })));
+
+    lyrics.nudgeOffset(750);
+
+    expect(lyrics.offsetMs()).toBe(0);
+    expect(lyrics.lines().map((l) => l.timeMs)).toEqual([1_000, 3_000]);
+  });
+
+  it('trusts the server’s clamp over its own optimism', () => {
+    const { api, lyrics } = loaded();
+    api.setLyricsOffset.mockReturnValue(of(dto({ synced: SYNCED, offsetMs: 30_000 })));
+    lyrics.nudgeOffset(30_000);
+    expect(lyrics.offsetMs()).toBe(30_000);
+  });
+
+  it('resets to zero, restoring the source timings exactly', () => {
+    const { api, lyrics } = loaded();
+    lyrics.nudgeOffset(1_000);
+    lyrics.resetOffset();
+    expect(lyrics.offsetMs()).toBe(0);
+    expect(api.setLyricsOffset).toHaveBeenLastCalledWith('s1', 0);
+    expect(lyrics.lines().map((l) => l.timeMs)).toEqual([1_000, 3_000]);
+  });
+
+  it('does nothing when no track is loaded', () => {
+    const { api, lyrics } = setup();
+    lyrics.nudgeOffset(500);
+    expect(api.setLyricsOffset).not.toHaveBeenCalled();
+  });
+
+  it('does not write when the value would not change', () => {
+    const { api, lyrics } = loaded();
+    lyrics.resetOffset();
+    expect(api.setLyricsOffset).not.toHaveBeenCalled();
   });
 });

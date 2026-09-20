@@ -1355,6 +1355,13 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   // counts them as unknown rather than clean.
   addColumnIfMissing(db, 'library_lyrics', 'matched_duration', 'INTEGER');
   addColumnIfMissing(db, 'library_lyrics', 'source_id', 'TEXT');
+  // The human sync correction, applied at render time so the fetched text stays
+  // pristine and the fix stays reversible. A source can be right about the words
+  // and wrong about the timing — a different master of the same performance —
+  // and no amount of re-fetching mends that, because the source has nothing
+  // better to offer. Defaults to 0, which is also what every pre-existing row
+  // gets: "not corrected", never "corrected to zero by someone".
+  addColumnIfMissing(db, 'library_lyrics', 'offset_ms', 'INTEGER NOT NULL DEFAULT 0');
 
   // Native per-user playlists (re-added after the Navidrome removal). Playlists
   // reference songs by the scanner's stable songId; reads JOIN library_songs and

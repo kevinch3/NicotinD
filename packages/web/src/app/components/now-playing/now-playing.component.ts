@@ -116,6 +116,11 @@ export class NowPlayingComponent {
   readonly activeLine = computed(() => this.lyricsSvc.activeLineAt(this.displayTime() * 1000));
   /** Plain text fallback when there are no synced lines. */
   readonly plainLyrics = this.lyricsSvc.plain;
+  /** Stored sync correction, shown next to the nudge control. */
+  readonly lyricsOffsetMs = this.lyricsSvc.offsetMs;
+  /** The offset is shared library state, so it follows the same gate as every
+   *  other lyrics write. Non-curators see no control rather than a dead one. */
+  readonly canSyncLyrics = computed(() => this.auth.canCurate());
   /** Whether the current track has lyrics loaded (drives the tab-switcher dot).
    *  Gated on the service's `loadedForId` — the state is only reloaded while
    *  a lyrics surface is open, so after a track change with the panel closed
@@ -504,6 +509,14 @@ export class NowPlayingComponent {
    */
   fetchLyricsManually(): void {
     this.lyricsSvc.fetchManually(this.player.currentTrack()?.id);
+  }
+
+  nudgeLyricsOffset(stepMs: number): void {
+    this.lyricsSvc.nudgeOffset(stepMs);
+  }
+
+  resetLyricsOffset(): void {
+    this.lyricsSvc.resetOffset();
   }
 
   handlePlayPause(): void {

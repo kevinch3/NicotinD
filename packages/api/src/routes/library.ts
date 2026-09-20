@@ -27,7 +27,7 @@ import { PlaylistService } from '../services/playlist.service.js';
 import { analyzeBpm, verifyGenre } from '../services/track-analysis.js';
 import type { AudioFeaturesClient } from '../services/audio-features-client.js';
 import { readAudioTags, writeAudioTags, type AudioTags } from '../services/audio-tags.js';
-import { getLyrics, setLyrics, deleteLyrics } from '../services/lyrics-store.js';
+import { getLyrics, setLyrics, setLyricsOffset, deleteLyrics } from '../services/lyrics-store.js';
 import { getArtistMeta, upsertArtistMeta } from '../services/artist-meta-store.js';
 import {
   getMbid,
@@ -2493,14 +2493,22 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   });
 
   // Save user-edited lyrics (admin): marks the row customized so a re-fetch won't
-  // clobber it, clears the synced LRC (the edited body no longer matches its
-  // timing), and writes the plain text back to the file tag.
+  // clobber it, and writes the plain text back to the file tag.
+  //
+  // `synced` is optional and its absence is meaningful. Omit it and the stored
+  // LRC is cleared — an edited body no longer lines up with timings written for
+  // the text it replaced. Send it and it is kept verbatim. Until that choice
+  // existed, the only way a curator could act on bad timing was to erase all
+  // timing, which is also why synced lyrics had never been reachable from e2e.
   app.put('/songs/:id/lyrics', async (c) => {
     requireCurator(c);
     const id = c.req.param('id');
-    const body = await c.req.json<{ plain?: string }>().catch(() => ({}) as { plain?: string });
+    const body = await c.req
+      .json<{ plain?: string; synced?: string | null }>()
+      .catch(() => ({}) as { plain?: string; synced?: string | null });
     const plain = (body.plain ?? '').trim();
     if (!plain) return c.json({ error: 'plain is required' }, 400);
+    const synced = typeof body.synced === 'string' && body.synced.trim() ? body.synced : null;
 
     const db = getDatabase();
     const song = db
@@ -2508,13 +2516,43 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       .get(id);
     if (!song) return c.json({ error: 'Song not found' }, 404);
 
-    const saved = setLyrics(db, id, { plain, synced: null, source: 'user', customized: true });
+    const saved = setLyrics(db, id, { plain, synced, source: 'user', customized: true });
     if (musicDir) {
       const abs = resolveSongPath(expandDir(musicDir), song.path);
       if (isUnderMusicDir(expandDir(musicDir), abs) && existsSync(abs)) {
         await writeAudioTags(abs, { lyrics: plain }).catch(() => false);
       }
     }
+    return c.json(saved);
+  });
+
+  // Sync correction (admin): shift the stored LRC's timings by a fixed offset,
+  // applied at render time rather than written into the text.
+  //
+  // Deliberately its own route rather than a field on PUT: this writes no text
+  // at all, so correcting timing can never cost the words, and the correction
+  // is undone by setting the offset back to 0. It is the remedy for a source
+  // that is right about the lyrics and wrong about the clock — a different
+  // master of the same performance, which no amount of re-fetching mends.
+  app.patch('/songs/:id/lyrics/offset', async (c) => {
+    requireCurator(c);
+    const id = c.req.param('id');
+    const body = await c.req
+      .json<{ offsetMs?: number }>()
+      .catch(() => ({}) as { offsetMs?: number });
+    if (typeof body.offsetMs !== 'number' || !Number.isFinite(body.offsetMs)) {
+      return c.json({ error: 'offsetMs must be a finite number' }, 400);
+    }
+    const db = getDatabase();
+    const song = db
+      .query<{ id: string }, [string]>(`SELECT id FROM library_songs WHERE id = ?`)
+      .get(id);
+    if (!song) return c.json({ error: 'Song not found' }, 404);
+    // Out-of-range values are clamped, not refused: a nudge held down should
+    // stop at the limit, not fail. The store owns the bound so the MCP tool
+    // and this route cannot promise different ranges.
+    const saved = setLyricsOffset(db, id, body.offsetMs);
+    if (!saved) return c.json({ error: 'No lyrics stored for this song' }, 400);
     return c.json(saved);
   });
 

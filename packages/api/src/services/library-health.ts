@@ -1,7 +1,13 @@
 import { dirname, join } from 'node:path';
 import type { Database } from 'bun:sqlite';
 import type { Lidarr } from '@nicotind/lidarr-client';
-import { normalizeTitle, titlesOverlap, LYRICS_DURATION_TOLERANCE_SEC } from '@nicotind/core';
+import {
+  normalizeTitle,
+  titlesOverlap,
+  parseLrc,
+  applyLyricsOffset,
+  LYRICS_DURATION_TOLERANCE_SEC,
+} from '@nicotind/core';
 import { auditLibrary, type AuditSeverity } from './library-audit.js';
 import { unjustifiedHiddenAlbums } from './library-curator.js';
 import { checkFragments } from './library-fragments.js';
@@ -271,8 +277,25 @@ export interface LibraryHealthReport {
         suspectMatches: number;
         /** Rows nothing could check — no matched duration, or no song duration. */
         unverified: number;
+        /**
+         * Rows carrying an LRC that can be checked against the file's own
+         * clock. The denominator for `syncedBeyondDuration`, and deliberately
+         * not the same population as `suspectMatches`': this one needs no
+         * duration from the source, only from the file.
+         */
+        synced: number;
+        /** Of `synced`, those whose last lyric line lands after the track ends. */
+        syncedBeyondDuration: number;
       };
-      worklist: Array<{ songId: string; title: string; artist: string; deltaSec: number }>;
+      worklist: Array<{
+        songId: string;
+        title: string;
+        artist: string;
+        deltaSec: number;
+        /** Which detector found it: a source-length disagreement, or an LRC
+         *  running past the end of the file. */
+        reason: 'duration' | 'overruns';
+      }>;
       remediation: string;
     };
     flags: { metric: { open: number; oldestAt: number | null }; remediation: string };
@@ -386,6 +409,84 @@ function lyricsMatchFacts(db: Database): { suspectMatches: number; unverified: n
   };
 }
 
+/**
+ * Rows carrying an LRC we can actually check against the clock. A different
+ * population from `LYRICS_JUDGEABLE_SQL`'s — that one needs the *source* to have
+ * reported a duration, this one needs only the file's own — which is why the
+ * two counts are reported with their own denominators rather than summed.
+ */
+const LYRICS_SYNCED_SQL = `
+  FROM library_lyrics l
+  JOIN library_songs s ON s.id = l.song_id
+  WHERE l.synced_text IS NOT NULL AND TRIM(l.synced_text) != '' AND s.duration > 0`;
+
+interface SyncedLyricsRow {
+  songId: string;
+  title: string;
+  artist: string;
+  synced: string;
+  offsetMs: number | null;
+  duration: number;
+}
+
+/**
+ * How far past the end of the file the last lyric line lands, in seconds.
+ * Negative when the LRC finishes inside the track (the normal case — songs end
+ * on instrumental outros).
+ *
+ * The correction is applied first: once a curator has nudged a row into place,
+ * the question is whether it *still* overruns, not whether it once did.
+ */
+function lyricsOverrunSec(row: SyncedLyricsRow): number {
+  const lines = applyLyricsOffset(parseLrc(row.synced), row.offsetMs ?? 0);
+  const last = lines[lines.length - 1];
+  if (!last) return Number.NEGATIVE_INFINITY;
+  return last.timeMs / 1000 - row.duration;
+}
+
+/**
+ * The detector that needs no cooperation from the source: an LRC whose last
+ * line lands after the file has already ended cannot belong to that file.
+ *
+ * This is the only check that reaches the `unverified` population — rows whose
+ * source never stated a duration, and every row written before match recording
+ * existed. Those cannot be judged on `matched_duration` by construction, so
+ * without this they would sit permanently in "unknown".
+ *
+ * Costs one LRC parse per synced row, which is why the SQL gate excludes
+ * plain-only rows before any parsing happens. The *count* is deliberately not
+ * sampled — a bounded scan would report a sample wearing a total's name.
+ */
+function syncedLyricsFacts(
+  db: Database,
+  limit: number,
+): {
+  synced: number;
+  syncedBeyondDuration: number;
+  worklist: Array<{ songId: string; title: string; artist: string; deltaSec: number }>;
+} {
+  const rows = db
+    .query<SyncedLyricsRow, []>(
+      `SELECT s.id songId, s.title, s.artist, l.synced_text synced,
+              l.offset_ms offsetMs, s.duration ${LYRICS_SYNCED_SQL}`,
+    )
+    .all();
+  const over = rows
+    .map((r) => ({ row: r, overrunSec: lyricsOverrunSec(r) }))
+    .filter((r) => r.overrunSec > LYRICS_DURATION_TOLERANCE_SEC)
+    .sort((a, b) => b.overrunSec - a.overrunSec);
+  return {
+    synced: rows.length,
+    syncedBeyondDuration: over.length,
+    worklist: over.slice(0, limit).map(({ row, overrunSec }) => ({
+      songId: row.songId,
+      title: row.title,
+      artist: row.artist,
+      deltaSec: Math.round(overrunSec),
+    })),
+  };
+}
+
 /** Suspect rows, widest duration gap first — the ones to re-fetch or re-sync. */
 function suspectLyricsMatches(
   db: Database,
@@ -400,6 +501,33 @@ function suspectLyricsMatches(
        ORDER BY deltaSec DESC LIMIT ?`,
     )
     .all(LYRICS_DURATION_TOLERANCE_SEC, limit);
+}
+
+/**
+ * One worst-first list over both detectors, each entry saying which one found
+ * it. Merged rather than summed: they answer different questions over different
+ * populations, and a single number covering both would have no denominator.
+ */
+function lyricsWorklist(
+  db: Database,
+  limit: number,
+  overruns: Array<{ songId: string; title: string; artist: string; deltaSec: number }>,
+): Array<{
+  songId: string;
+  title: string;
+  artist: string;
+  deltaSec: number;
+  reason: 'duration' | 'overruns';
+}> {
+  const byDuration = suspectLyricsMatches(db, limit).map((r) => ({
+    ...r,
+    reason: 'duration' as const,
+  }));
+  const seen = new Set(byDuration.map((r) => r.songId));
+  const byOverrun = overruns
+    .filter((r) => !seen.has(r.songId))
+    .map((r) => ({ ...r, reason: 'overruns' as const }));
+  return [...byDuration, ...byOverrun].sort((a, b) => b.deltaSec - a.deltaSec).slice(0, limit);
 }
 
 /**
@@ -618,6 +746,10 @@ export function libraryHealth(
       )
       .get()?.t ?? null;
 
+  // One pass over the synced rows serves both the count and the worklist — the
+  // LRC parse is the expensive part, so it happens once.
+  const syncedFacts = syncedLyricsFacts(db, sample);
+
   const severityTally = { high: 0, medium: 0, low: 0 };
   for (const s of audit.summary) severityTally[s.severity] += s.count;
 
@@ -814,10 +946,12 @@ export function libraryHealth(
           songs: count(db, 'library_songs'),
           withLyrics: count(db, 'library_lyrics'),
           ...lyricsMatchFacts(db),
+          synced: syncedFacts.synced,
+          syncedBeyondDuration: syncedFacts.syncedBeyondDuration,
         },
-        worklist: suspectLyricsMatches(db, sample),
+        worklist: lyricsWorklist(db, sample, syncedFacts.worklist),
         remediation:
-          'a suspect row matched another take: re-fetch it, or nudge the offset if the words are right and only the timing drifts. `unverified` rows predate match recording — they are unknown, not clean',
+          "reason `duration`: the source matched another take — re-fetch it. reason `overruns`: the LRC outlasts the file, so its timings are not this recording's. Either way, sync_song_lyrics only helps when the WORDS are right and the clock drifts. `unverified` rows predate match recording — unknown, not clean",
       },
       flags: {
         metric: { open: countOpenCurationFlags(db), oldestAt: oldestFlag },

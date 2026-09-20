@@ -140,6 +140,7 @@ export const demoLyrics: LyricsDto = {
   source: 'storybook',
   customized: false,
   updatedAt: Date.parse('2026-02-14T09:12:00.000Z'),
+  offsetMs: 0,
 };
 
 /**

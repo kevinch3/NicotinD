@@ -112,8 +112,12 @@
               [plainLyrics]="plainLyrics()"
               [error]="lyricsError()"
               [fetching]="fetchingLyrics()"
+              [offsetMs]="lyricsOffsetMs()"
+              [canSync]="canSyncLyrics()"
               (fullscreenRequested)="toggleKaraokeFullscreen()"
               (fetchRequested)="fetchLyricsManually()"
+              (offsetNudged)="nudgeLyricsOffset($event)"
+              (offsetReset)="resetLyricsOffset()"
             />
           } @else {
             <app-now-playing-queue-panel (linkFollowed)="closeForNavigation()" />
@@ -142,7 +146,11 @@
         [playing]="showPlaying()"
         [buffering]="showBuffering()"
         [waveform]="waveform()"
+        [offsetMs]="lyricsOffsetMs()"
+        [canSync]="canSyncLyrics()"
         (exit)="toggleKaraokeFullscreen()"
+        (offsetNudged)="nudgeLyricsOffset($event)"
+        (offsetReset)="resetLyricsOffset()"
         (browseToggle)="toggleKaraokeBrowsing()"
         (interaction)="onKaraokeInteraction()"
         (lineSelected)="seekToLine($event)"

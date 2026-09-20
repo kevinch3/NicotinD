@@ -31,6 +31,57 @@
         }
       </div>
     </div>
+    <!-- Sync nudge. It lives HERE, beside the lyrics, because the listener who
+         can tell the timing is wrong is the one looking at them — until now the
+         only lyrics control sat in the empty state, where nobody with a drift
+         problem ever lands. -->
+    @if (canSync()) {
+      <div
+        class="shrink-0 flex items-center justify-center gap-1 pb-3 pt-1 text-theme-muted"
+        data-testid="lyrics-sync"
+      >
+        <button
+          (click)="offsetNudged.emit(-step)"
+          data-testid="lyrics-sync-earlier"
+          [attr.aria-label]="'nowPlaying.syncEarlier' | t"
+          [attr.title]="'nowPlaying.syncEarlier' | t"
+          class="w-7 h-7 flex items-center justify-center rounded-full bg-theme-surface-2 hover:bg-theme-hover hover:text-theme-primary transition"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11 17l-5-5 5-5" /><path d="M18 17l-5-5 5-5" />
+          </svg>
+        </button>
+        <span
+          data-testid="lyrics-sync-value"
+          class="min-w-[4.5rem] text-center text-xs tabular-nums"
+          [class.text-theme-primary]="offsetMs() !== 0"
+        >
+          {{ offsetLabel() || ('nowPlaying.syncInSync' | t) }}
+        </span>
+        <button
+          (click)="offsetNudged.emit(step)"
+          data-testid="lyrics-sync-later"
+          [attr.aria-label]="'nowPlaying.syncLater' | t"
+          [attr.title]="'nowPlaying.syncLater' | t"
+          class="w-7 h-7 flex items-center justify-center rounded-full bg-theme-surface-2 hover:bg-theme-hover hover:text-theme-primary transition"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M13 17l5-5-5-5" /><path d="M6 17l5-5-5-5" />
+          </svg>
+        </button>
+        @if (offsetMs() !== 0) {
+          <button
+            (click)="offsetReset.emit()"
+            data-testid="lyrics-sync-reset"
+            [attr.aria-label]="'nowPlaying.syncReset' | t"
+            [attr.title]="'nowPlaying.syncReset' | t"
+            class="ml-1 text-xs underline underline-offset-2 hover:text-theme-primary transition"
+          >
+            {{ 'nowPlaying.syncReset' | t }}
+          </button>
+        }
+      </div>
+    }
   } @else if (plainLyrics()) {
     <pre class="flex-1 overflow-y-auto overflow-x-hidden pb-4 whitespace-pre-wrap break-words font-sans text-sm text-theme-secondary text-center">{{ plainLyrics() }}</pre>
   } @else {

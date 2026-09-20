@@ -1,7 +1,7 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import type { LyricsDto } from '@nicotind/core';
+import { parseLrc, findActiveLine, applyLyricsOffset, LYRICS_OFFSET_MAX_MS } from '@nicotind/core';
 import { LibraryApiService } from './api/library-api.service';
-import { parseLrc, findActiveLine } from '../lib/lrc-parser';
 
 /**
  * The lyrics of the track being listened to — loaded on demand, parsed once,
@@ -32,10 +32,20 @@ export class LyricsService {
   readonly loadedForId = signal<string | null>(null);
   private inFlightId: string | null = null;
 
-  /** Parsed synced LRC lines (empty when the lyrics are plain-only). */
-  readonly lines = computed(() => parseLrc(this.lyrics()?.synced));
+  /**
+   * Parsed synced LRC lines (empty when the lyrics are plain-only), with both
+   * offsets applied: the file's own `[offset:]` tag, folded in by the parser,
+   * and the stored human correction. The fetched text itself is never touched —
+   * shifting happens here, at render time, which is what makes a sync fix
+   * reversible and keeps the source's words intact.
+   */
+  readonly lines = computed(() =>
+    applyLyricsOffset(parseLrc(this.lyrics()?.synced), this.offsetMs()),
+  );
   /** Plain text fallback when there are no synced lines. */
   readonly plain = computed(() => this.lyrics()?.plain ?? '');
+  /** The stored sync correction; positive shows the lines later. */
+  readonly offsetMs = computed(() => this.lyrics()?.offsetMs ?? 0);
 
   /** Index of the line to highlight at `timeMs` into the track. */
   activeLineAt(timeMs: number): number {
@@ -94,6 +104,41 @@ export class LyricsService {
         });
       },
       error: settle,
+    });
+  }
+
+  /**
+   * Nudge the sync offset by `stepMs` (positive = show the lines later).
+   *
+   * Applied to the signal first and persisted after: the whole reason to nudge
+   * is to watch the highlight land on the beat, and a control that waits for a
+   * round-trip before moving cannot be judged by ear. A failed write reverts,
+   * so the view never keeps a correction the library did not store.
+   */
+  nudgeOffset(stepMs: number): void {
+    this.setOffset(this.offsetMs() + stepMs);
+  }
+
+  /** Drop the correction. Exactly restores the source's own timings. */
+  resetOffset(): void {
+    this.setOffset(0);
+  }
+
+  private setOffset(next: number): void {
+    const id = this.loadedForId();
+    const current = this.lyrics();
+    if (!id || !current) return;
+    const clamped = Math.max(-LYRICS_OFFSET_MAX_MS, Math.min(LYRICS_OFFSET_MAX_MS, next));
+    if (clamped === current.offsetMs) return;
+    this.lyrics.set({ ...current, offsetMs: clamped });
+    this.api.setLyricsOffset(id, clamped).subscribe({
+      next: (saved) => {
+        // Trust the server's value — it owns the clamp.
+        if (this.loadedForId() === id) this.lyrics.set(saved);
+      },
+      error: () => {
+        if (this.loadedForId() === id) this.lyrics.set(current);
+      },
     });
   }
 
