@@ -263,6 +263,37 @@ The caller supplies the transaction, because every caller has other work to make
 
 Returns `{ candidates, converted, skipped, failed, bytesReclaimed, unestimated }`.
 
+### Tags across a container change: measure, do not assume
+
+`-map_metadata 0` does **not** carry everything from mp3 to Opus, and the pattern is the opposite of
+the intuitive one. Measured on a real mp3 carrying the full tag set:
+
+| field | ID3 frame | survives `-map_metadata 0`? |
+| --- | --- | --- |
+| energy, loudness, valence, danceability, acousticness, instrumentalness, mood | `TXXX` user text | **yes** — all seven |
+| title, artist, album | native | yes |
+| **bpm** | `TBPM` | **no** |
+| **key** | `TKEY` | **no** |
+| **lyrics** | `USLT` | **no** |
+
+So the *user-text* frames map across on their own, and exactly three **native** frames do not. An
+earlier analysis had this backwards and predicted losing "every analysis tag"; the measurement is in
+`post-download-transcode.test.ts`, which fails if any of the thirteen regresses.
+
+Losing them is not cosmetic. `POST /api/library/songs/:id/bpm` and `analyze-bpm.ts` both prefer a
+file's own BPM tag over a DSP run, so a dropped `TBPM` means that track is re-analysed **forever** —
+the live cost #1151 and #1177 describe, one container over. The lyrics tag is also the only recovery
+path for a `library_lyrics` row orphaned by an id re-mint.
+
+`ID3_FRAMES_FFMPEG_DROPS` names the three and `carriedMetadataArgs` emits them as explicit
+`-metadata` during the encode. Not as a second `writeAudioTags` pass: that rewrites the whole
+container again, and at whole-library scale a second rewrite per file is not free. They are appended
+**after** `-map_metadata 0` so they win over anything it carried.
+
+The download path re-writes canonical tags immediately afterwards and would not have noticed. The
+library conversion job does not, which is why the carry belongs in the encoder rather than in either
+caller.
+
 ### Headroom preflight, and why it fails open
 
 On `apply` with candidates present, the pass checks `musicDir` for the largest single candidate plus
