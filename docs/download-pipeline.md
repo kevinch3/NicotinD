@@ -194,7 +194,7 @@ The hook fires in `LibraryOrganizer.placeFile()` **after the move and before the
 
 ### Acquire-flow reminder (UI surface)
 
-`downloads.transcodeLossless` is **env/YAML-only** (captured into `LibraryOrganizer` at boot; no runtime toggle). Users never saw it, so a lossless pick silently became Opus. `GET /api/settings/downloads` (`routes/settings.ts`, any authenticated user, read-only) exposes `{ transcodeLossless: {enabled, format, bitRate}, ffmpegAvailable }` so the search/acquire page can show an **accurate** reminder: a "Lossless picks are stored as Opus Nk to save space" note under the Results header plus a per-row `→ Opus Nk` chip on lossless candidates. The web gate is `transcodeActive = enabled && ffmpegAvailable` **and** a lossless item actually in view (`isLosslessCandidate` checks the pick's extension) — so it never promises a conversion that won't happen for a 320k MP3 pick, and it disappears entirely when transcoding is off or ffmpeg is missing.
+`downloads.transcodeLossless` used to be **env/YAML-only** (captured into `LibraryOrganizer` at boot; no runtime toggle). Users never saw it, so a lossless pick silently became Opus. It is now admin-editable via `app_settings.downloads` (see *One resolved setting* below). `GET /api/settings/downloads` (`routes/settings.ts`, any authenticated user, read-only) exposes the **effective** `{ transcodeLossless: {enabled, format, bitRate}, ffmpegAvailable }` so the search/acquire page can show an **accurate** reminder: a "Lossless picks are stored as Opus Nk to save space" note under the Results header plus a per-row `→ Opus Nk` chip on lossless candidates. The web gate is `transcodeActive = enabled && ffmpegAvailable` **and** a lossless item actually in view (`isLosslessCandidate` checks the pick's extension) — so it never promises a conversion that won't happen for a 320k MP3 pick, and it disappears entirely when transcoding is off or ffmpeg is missing.
 
 ### Existing library (`transcodeLibraryToOpus`, the careful part)
 
@@ -213,6 +213,22 @@ Returns `{ candidates, converted, skipped, failed, bytesReclaimed }`.
 (`services/transcode-settings.ts`) against the exported `TranscodeLosslessSchema`, and
 `LibraryOrganizer.transcodeLossless` / `TranscodeAllOptions.bitRate` are **required** options
 — a caller that forgets is a compile error, not a silent divergence.
+
+**The config value is the default, not the last word.** `services/downloads-settings.ts` stores an
+operator's explicit choice in `app_settings.downloads` and overrides the resolved config value with
+it. The store exists because the production image carries no config file, so the YAML value is
+env-only and unsettable at runtime (#824) — which meant the onboarding wizard's
+"convert lossless downloads to Opus?" question had nowhere to put its answer, and wrote the
+unrelated `streaming` key instead.
+
+It follows the stored-partial dialect from `radio-settings.ts`: an absent key means "nobody chose",
+so a configured default can still move for installs that never answered, and a patch never stamps a
+value the caller did not mention (#1121).
+
+Consumers take `TranscodeLosslessSource` — either the value or a reader for it, normalized by
+`readTranscodeLossless()`. Long-lived consumers (`LibraryOrganizer`, `MaintenanceDeps`) pass a
+**reader**: a value captured at construction would ignore every runtime edit until the next restart.
+Tests and offline scripts still pass a plain value.
 
 This is a fix, not a style preference. Every offline entry point used to invent its own
 fallback and all four disagreed with the shipped config:

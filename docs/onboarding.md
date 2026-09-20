@@ -40,7 +40,13 @@ addon's Extensions card (SLSKD_ADDON_* on the addon container), not here.
 ```
 
 - `musicDir` updates `config.musicDir` and persists to `app_settings`
-- `transcodeLossless` writes to the `streaming` key in `app_settings`
+- `transcodeLossless` writes to the **`downloads`** key in `app_settings`, which overrides
+  `config.downloads.transcodeLossless` for the download pipeline
+  (`services/downloads-settings.ts`). It wrote the `streaming` key until 2026-09, which governs
+  playback-time on-the-fly transcoding and is an unrelated mechanism — so the answer never reached
+  the setting the question names, and every lossless download was converted whatever the operator
+  chose. The setting needs a store of its own because the production image carries no config file,
+  making the YAML value unsettable at runtime (#824).
 - `lidarr` writes to `config.lidarr`, saves the API key to `secrets.json`, and — if Lidarr was already running — restarts it; in external mode, calls `PUT /api/v1/config` on the Lidarr instance
 - Returns `{ token, user, needsRestart }` — `needsRestart: true` when Lidarr was configured, so the UI can show *"Lidarr will be available after restarting NicotinD"*
 

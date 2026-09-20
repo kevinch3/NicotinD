@@ -2,6 +2,7 @@ import type { Database } from 'bun:sqlite';
 import { optimizeAllAlbums, type OptimizeLidarr } from '../metadata-optimize.js';
 import { transcodeLibraryToOpus } from '../library-transcode.js';
 import { backfillArtwork, type BackfillLidarr } from '../artwork-backfill.js';
+import { readTranscodeLossless, type TranscodeLosslessSource } from '../transcode-settings.js';
 
 /**
  * Operator-triggered, whole-library maintenance passes.
@@ -90,8 +91,10 @@ export interface MaintenanceDeps {
   musicDir: string;
   coverCacheDir?: string;
   /** Resolved `downloads.transcodeLossless`, so the Admin task and the download
-   *  path encode at the same bitrate. */
-  transcodeLossless: { enabled: boolean; bitRate: number };
+   *  path encode at the same bitrate. Pass a reader rather than a value: the
+   *  setting is admin-editable at runtime (`downloads-settings.ts`), and the
+   *  runner outlives any single edit. */
+  transcodeLossless: TranscodeLosslessSource;
   /** Full library scan + curation pass, or null when unavailable. */
   runSync: (() => Promise<void>) | null;
 }
@@ -199,7 +202,7 @@ export function buildMaintenanceTasks(deps: MaintenanceDeps): AnyMaintenanceTask
       run: async (ctx, p) => {
         const r = await transcodeLibraryToOpus(deps.db, deps.musicDir, {
           apply: p.apply,
-          bitRate: deps.transcodeLossless.bitRate,
+          bitRate: readTranscodeLossless(deps.transcodeLossless)().bitRate,
           limit: p.limit,
           shouldStop: ctx.shouldStop,
           onProgress: (x) => ctx.onProgress({ total: x.total, visited: x.visited, label: x.label }),

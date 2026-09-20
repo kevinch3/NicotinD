@@ -38,6 +38,7 @@ import { reconcileAlbumFolder } from './album-reconcile.js';
 import { albumGroupKey } from './album-grouping.js';
 import { DEFAULT_UNSORTED_DIR } from './library-paths.js';
 import { isLosslessFile, transcodeToOpus } from './post-download-transcode.js';
+import { readTranscodeLossless, type TranscodeLosslessSource } from './transcode-settings.js';
 import { mapPool } from './library-scanner.js';
 import { ffmpegAvailable } from './transcode.js';
 import {
@@ -72,8 +73,12 @@ export interface LibraryOrganizerOptions {
    * after being moved into the library and **before** the scan sees them — so the
    * library standardizes on a small browser-native codec and the song's stable id
    * (derived from its final path) is computed once. Lossy files are left as-is.
+   *
+   * Pass a function to read the setting per batch rather than freezing it at
+   * construction: it is admin-editable at runtime now (`downloads-settings.ts`),
+   * and a value captured here would ignore every change until the next restart.
    */
-  transcodeLossless: { enabled: boolean; bitRate: number };
+  transcodeLossless: TranscodeLosslessSource;
   /**
    * After placing a batch, remove redundant duplicate copies (`02 - Song (2)`,
    * mixed FLAC/MP3 of the same track) from each album folder it touched. On by
@@ -195,7 +200,8 @@ export class LibraryOrganizer {
   private unsortedRoot: string;
   private acoustid: AcoustIdLookup | undefined;
   private preferFlacSkipMp3: boolean;
-  private transcodeLossless: { enabled: boolean; bitRate: number };
+  /** Always a function: a plain value is wrapped at construction. */
+  private transcodeLossless: () => { enabled: boolean; bitRate: number };
   private autoDedupe: boolean;
   private dedupeAcrossEditions: boolean;
   private jobLookup?: (
@@ -237,7 +243,7 @@ export class LibraryOrganizer {
     this.acoustid = opts.acoustid;
     this.moveLogPath = opts.moveLogPath;
     this.preferFlacSkipMp3 = opts.preferFlacSkipMp3 ?? false;
-    this.transcodeLossless = opts.transcodeLossless;
+    this.transcodeLossless = readTranscodeLossless(opts.transcodeLossless);
     this.autoDedupe = opts.autoDedupe ?? true;
     this.dedupeAcrossEditions = opts.dedupeAcrossEditions ?? true;
     this.jobLookup = opts.jobLookup;
@@ -800,7 +806,7 @@ export class LibraryOrganizer {
     // isLosslessFile (not isLossless): ALAC hides behind the same .m4a extension
     // as lossy AAC, so .m4a needs a codec probe.
     const wouldTranscode =
-      this.transcodeLossless.enabled && ffmpegAvailable() && (await isLosslessFile(file.srcPath));
+      this.transcodeLossless().enabled && ffmpegAvailable() && (await isLosslessFile(file.srcPath));
 
     return {
       outcome: unsortedDest ? 'unsorted' : 'moved',
@@ -915,7 +921,7 @@ export class LibraryOrganizer {
     if (p.samePath || !p.plan.wouldTranscode) return;
     const transcodeStartedAt = Date.now();
     try {
-      p.destPath = await transcodeToOpus(p.destPath, this.transcodeLossless.bitRate);
+      p.destPath = await transcodeToOpus(p.destPath, this.transcodeLossless().bitRate);
       this.batchTranscoded++;
     } catch (err) {
       log.warn({ err, destPath: p.destPath }, 'lossless→opus transcode failed — keeping original');

@@ -5,7 +5,7 @@ import type { ServiceManager } from '@nicotind/service-manager';
 import { getDatabase } from '../db.js';
 import { signJwt } from '../middleware/auth.js';
 import { updateExternalLidarrCredentials } from '../services/lidarr-config.js';
-import { setStreamingSettings } from '../services/streaming-settings.js';
+import { setDownloadsSettings } from '../services/downloads-settings.js';
 
 interface SetupDeps {
   config: NicotinDConfig;
@@ -65,12 +65,15 @@ export function setupRoutes({ config, serviceManager, saveLidarrSecretsFn }: Set
     }
 
     // 3. Configure lossless-to-Opus transcoding (optional)
+    //
+    // This used to write the `streaming` key, which governs playback-time
+    // on-the-fly transcoding — an unrelated mechanism. The operator's answer
+    // therefore never reached `downloads.transcodeLossless`, and every FLAC was
+    // converted regardless of what they chose. It writes the downloads key now.
     if (body.transcodeLossless !== undefined) {
-      setStreamingSettings(db, {
-        transcodeEnabled: body.transcodeLossless.enabled ?? true,
-        maxBitRate: body.transcodeLossless.bitRate ?? 192,
-        format: 'opus',
-        forceTranscode: false,
+      setDownloadsSettings(db, config.downloads.transcodeLossless, {
+        enabled: body.transcodeLossless.enabled,
+        bitRate: body.transcodeLossless.bitRate,
       });
     }
 
