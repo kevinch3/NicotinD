@@ -95,6 +95,13 @@ export interface MaintenanceDeps {
   db: Database;
   lidarr: (OptimizeLidarr & BackfillLidarr) | null;
   musicDir: string;
+  /**
+   * Data dir, so `transcode-library` can KEEP the originals it replaces.
+   * Required, not optional: it was absent here while `transcodeLibraryToOpus`
+   * took `dataDir` optionally, so the Admin button silently deleted every
+   * original it converted — the one thing quarantine (#1228) exists to stop.
+   */
+  dataDir: string;
   coverCacheDir?: string;
   /** Resolved `downloads.transcodeLossless`, so the Admin task and the download
    *  path encode at the same bitrate. Pass a reader rather than a value: the
@@ -252,6 +259,10 @@ export function buildMaintenanceTasks(deps: MaintenanceDeps): AnyMaintenanceTask
           apply: p.apply,
           bitRate: readTranscodeLossless(deps.transcodeLossless)().bitRate,
           limit: p.limit,
+          // Keep every original under `<dataDir>/quarantine/<run>/`. A
+          // whole-library re-encode is irreversible and unattended; the disk
+          // cost is recoverable, a wrong conversion is not.
+          dataDir: deps.dataDir,
           shouldStop: ctx.shouldStop,
           onProgress: (x) => ctx.onProgress({ total: x.total, visited: x.visited, label: x.label }),
         });

@@ -41,6 +41,10 @@ function loadConfig(): { dataDir: string; musicDir: string; bitRate: number } {
 
 async function main(): Promise<void> {
   const apply = process.argv.includes('--apply');
+  // Opt OUT of keeping the originals, never opt in. This script computed
+  // `dataDir` for the DB path and then did not pass it, so every run deleted
+  // the files it replaced while the quarantine it was meant to use sat unused.
+  const deleteOriginals = process.argv.includes('--delete-originals');
   const bitrateIdx = process.argv.indexOf('--bitrate');
   const { dataDir, musicDir, bitRate: configuredBitRate } = loadConfig();
   // --bitrate overrides; otherwise match what the download path encodes at.
@@ -58,9 +62,16 @@ async function main(): Promise<void> {
   console.log(`Mode      : ${apply ? 'APPLY (writing)' : 'DRY RUN (no changes)'}`);
   console.log(`Music dir : ${musicDir}`);
   console.log(`Bitrate   : ${bitRate}k`);
-  console.log(`Database  : ${dbPath}\n`);
+  console.log(`Database  : ${dbPath}`);
+  console.log(
+    `Originals : ${deleteOriginals ? 'DELETED after conversion' : `kept under ${join(dataDir, 'quarantine')}`}\n`,
+  );
 
-  const r = await transcodeLibraryToOpus(db, musicDir, { apply, bitRate });
+  const r = await transcodeLibraryToOpus(db, musicDir, {
+    apply,
+    bitRate,
+    dataDir: deleteOriginals ? undefined : dataDir,
+  });
 
   const mb = (r.bytesReclaimed / (1024 * 1024)).toFixed(1);
   console.log(
@@ -74,6 +85,9 @@ async function main(): Promise<void> {
       `  ${r.unestimated} candidate(s) had no duration, so no saving was estimated for them — ` +
         `reclaimed is a floor.`,
     );
+  }
+  if (r.quarantineRun) {
+    console.log(`  Originals kept in ${r.quarantineRun} — delete it once you are satisfied.`);
   }
   if (!apply && r.converted > 0) {
     console.log('\nRe-run with --apply to transcode these files.');

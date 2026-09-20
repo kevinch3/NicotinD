@@ -669,6 +669,7 @@ export function createApp({
     db,
     lidarr,
     musicDir: expandedMusicDir,
+    dataDir: expandedDataDir,
     coverCacheDir: `${expandedDataDir}/cover-cache`,
     transcodeLossless: () =>
       getDownloadsSettings(db, config.downloads.transcodeLossless).transcodeLossless,
