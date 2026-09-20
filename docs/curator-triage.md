@@ -1,7 +1,7 @@
 # Curator triage: typed decision cases, five per round
 
-**Status**: phase 1 shipped; phases 2-3 pending
-**Date**: 2026-09-12
+**Status**: phase 1 shipped; reworked to closed options only (see the last section); phases 2-3 pending
+**Date**: 2026-09-12, revised 2026-09-20
 
 ## The problem
 
@@ -90,6 +90,8 @@ interface CurationCase {
   target: { kind: 'artist' | 'album' | 'song'; id: string; title: string; subtitle: string };
   /** One sentence: the decision owed. */
   question: string;
+  /** The raiser's research, folded behind the question. */
+  details: string | null;
   evidence: CaseEvidence[];
   options: CaseOption[];
   /** Drives round ordering; also the precision signal. 0..1 */
@@ -260,8 +262,8 @@ CREATE TABLE IF NOT EXISTS curation_case_dismissals (
 );
 ```
 
-Both flag columns are nullable so existing prose-only flags keep working — they render as
-a read-and-resolve card with no typed options, exactly today's behaviour.
+Both flag columns are nullable: a prose-only flag is still a valid row. Since the closed-options
+rework it is no longer a card — the round never serves it (see "Closed options only").
 
 Generated cases are **not** persisted; they are derived per request. Only dismissals
 persist, which is what keeps a generated case from reappearing.
@@ -337,23 +339,109 @@ flags only (no generators, no dismissal loop, no destructive kinds yet).
 - **Reachability**: the route is `/library/curate`, `curatorGuard`'ed in `app.routes.ts`; an entry
   card on `LibraryComponent` (`auth.canCurate() && openCases() > 0`) links to it, and
   `ReviewFlagsPanelComponent` now links there too instead of hosting a second worklist.
-- **Who can author a typed case**: the **MCP `flag_for_review` tool only**. Its optional `caseKind`
-  and `options` arguments are what fill `curation_flags.case_kind` / `options_json`, so a curating
-  agent is the only producer of a multi-option card. The human-facing `POST /api/library/review-flags`
-  deliberately files prose: a person clicking "report" has no way to author an option's `effect`, and
-  a prose flag is a perfectly good read-and-resolve card. A bad `caseKind` or a non-array `options`
-  is refused rather than silently downgraded — an agent that thinks it offered choices must find out
-  it did not. Per-option validity stays a single authority, `isDispatchableEffect` on read: an
-  option naming an unknown effect, or a `song-metadata` whose `fields` are not
-  `title|artist|album|albumArtist` string values, is dropped and the card degrades to resolve-only.
-  `caseKind` and `optionsJson` move together on a re-flag: supplying either replaces both with the
-  caller's values (a kind with no options means options become null), never a new kind paired with
-  a stale options blob from the flag it is refreshing.
+- **Who can author a typed case**: originally the **MCP `flag_for_review` tool only**; since the
+  closed-options rework the human-facing `POST /api/library/review-flags` accepts the same
+  `question` / `caseKind` / `options` through the same parser (`parseTypedCaseInput`), because a
+  curator over HTTP is the same trust as an agent over MCP and the e2e suite needs a producer. The
+  UI's report button still sends prose. A bad shape is refused rather than silently downgraded — an
+  agent that thinks it offered choices must find out it did not (see "Closed options only" for the
+  rules). `caseKind`, `question` and `optionsJson` move together on a re-flag: supplying any of them
+  replaces all three with the caller's values, never a new kind paired with a stale options blob
+  from the flag it is refreshing.
 - **Applying is resolve-first.** `POST …/cases/:id/apply` closes the flag *before* dispatching, and
   uses the conditional `UPDATE … WHERE resolved_at IS NULL` as the lock: the loser of a two-curator
   race gets **409** and dispatches nothing. A dispatch that then fails leaves a resolved flag with no
   data change (recoverable by re-flagging) rather than an open flag with a possibly-duplicated
   mutation.
+
+## Closed options only (2026-09-20)
+
+Phase 1 was dogfooded on a phone for a week and produced no decisions. Every card the owner saw
+was the same shape: an eyebrow, a title reading **"Missing artist — no longer in the library"**,
+eleven lines of agent prose ("DJ-set listing line used as an artist name, and it is a b2b credit
+naming TWO acts…"), two evidence rows naming an agent token id and a timestamp, and a single
+button, **Mark handled**. The owner skipped it, and because a skip was a client-side index bump the
+same card led the next round, three days running. Their verdict: *for human reviewers this tool is
+not useful at all; the system should be as simple in description and actionable with closed
+options.* Two of the five open prod flags at the time had a `caseKind` and no options; the "missing
+artist" was in fact **in the library** — flag #19 stored the artist's raw name, as the tool invites,
+and `describeTarget` looked it up by id only.
+
+The rework makes the contract with the human strict, and everything else follows from it:
+
+> **A card is one sentence plus closed options that each do something. A flag that cannot be
+> rendered that way is the agent's unfinished work, not a human's.**
+
+### What a human sees
+
+- **`question`** (new column, ≤160 chars) is the card. **`reason`** is the raiser's research and is
+  served as `details`, folded behind a *"Why this came up"* disclosure together with the evidence
+  rows (raised by, raised at, listener count). Nothing of the research sits above the buttons.
+- **Options** are the agent's, in its order, each a button: `label` (≤80) with `rationale` (≤160)
+  as the one line under it. The server appends **Leave as is** (`resolve-only`, id `resolve`, copy
+  owned by the web's i18n) only when the agent offered no "change nothing" choice of its own, so a
+  card never shows two ways of doing nothing. It renders as the secondary choice.
+- **A destructive option asks once more**: the button turns into an in-card confirm row, and
+  cancelling puts it back with nothing emitted. `song-delete` is destructive whatever the agent
+  wrote — decided in `validateCaseOptions`, not trusted from the blob.
+- **Skip for now is a server-side deferral**: `POST /cases/:id/skip` sets `snoozed_until` a week
+  out (`SKIP_SNOOZE_MS`), the round and the count exclude a snoozed flag, and a re-flag lifts the
+  deferral because new information deserves a fresh look. "Leave as is" remains the durable exit.
+- **The count is the served pool**, not the open-flag count, so "3 decisions waiting" never
+  advertises a card nobody will see. An empty round says how many flags are still with the agent
+  (`awaitingAgent`) so it does not read as an empty backlog.
+
+### What a human never sees
+
+`GET /round` drops a flag when any of these hold, and counts it under `awaitingAgent`:
+
+| Flag | Why it is the agent's, not the human's |
+|---|---|
+| no option with an effect that changes data (prose, or every option `resolve-only`) | nothing to press |
+| target not in the library | nothing to decide about; a re-key by a move or a delete since filing |
+| snoozed | the human said "later" |
+
+The agent sees its side through `list_review_flags`: `servable:false` (no human will see it until
+re-filed with question + options), `targetMissing:true` (re-file against the live id, or resolve),
+`snoozedUntil`. `flag_for_review` answers `servedToHuman` on every write and a `hint` when false.
+The admin **Needs review** panel still lists every open flag, with an *agent only* badge on the
+prose ones, so the backlog the round hides is one click away rather than invisible.
+
+### Writing a card (the producer contract)
+
+`parseTypedCaseInput` guards both producers. `question` and `options` are required together
+(half a card is refused); the question is trimmed and capped; each option needs a unique `id`
+(never the reserved `resolve`), a `label` under the cap, an optional string `rationale` under the
+cap, and an `effect` this build can dispatch — `song-metadata` (`title|artist|album|albumArtist`
+strings only), `artist-merge`, `song-delete`, or `resolve-only` as a labelled "keep". **At least one
+option must change data.** The error names the option index and the problem
+(`options[1] effect: fields.year is not one of …`). The caps live in core as `CASE_TEXT_LIMITS`
+so the tool description, the parser and any future card renderer quote one number. The read-side
+`parseOptions` still drops anything undispatchable, because the stored blob remains a trust
+boundary; a row that loses its last actionable option through that filter simply stops being a
+card.
+
+### Target resolution
+
+`describeTarget` moved to `services/curation/describe-target.ts` and returns null for a missing
+target instead of a "Missing artist" header. For an artist it tries the id, then `artistIdFor(raw
+name)`, then `name COLLATE NOCASE` — the shapes `flag_for_review` produces. The served `target.id`
+is the resolved library id.
+
+### `song-delete`
+
+The third effect, dispatched to `deleteOne` (the same path `delete_song` and the HTTP delete run)
+with the same `ShareRescanScheduler` the download routes carry, so a deleted file stops being
+advertised to Soulseek. The apply route writes a `song.delete` audit row beside the `curation.case`
+one, because prod probes count deletes by that action and a delete through a card must not hide.
+
+### What did not change
+
+Resolve-first locking and the 409 on a lost race; the closed `CaseEffect` union with no album-row
+override; the round size and kind cap; the entry card and the route. Phases 2-3 (generators, the
+dismissal loop, the `duplicate` A/B card with fingerprint verdicts, `batch`) remain unbuilt; the
+two open prod duplicate flags are exactly what the A/B card is for, and until then a duplicate is
+filed as a `duplicate` case whose options name the copies in the labels.
 
 ## Risks
 

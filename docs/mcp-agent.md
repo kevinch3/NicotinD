@@ -83,8 +83,8 @@ audit-logged.
 | `fix_album_metadata` | curate | `services/metadata-fix.ts` `applyMetadataFix` + `album.metadata` audit |
 | `set_album_cover` | curate | `services/album-cover-mutate.ts` `applyAlbumCover` + `album.cover` audit |
 | `set_album_classification` | curate | `LibraryCurator.setManualOverride` + `album.classify` audit |
-| `flag_for_review` | curate | `services/curation-flags.ts` `createCurationFlag` + `curation.flag` audit |
-| `list_review_flags` | read | the open human-review queue, oldest first |
+| `flag_for_review` | curate | `services/curation-flags.ts` `createCurationFlag` + `curation.flag` audit; typed cards through `parseTypedCaseInput` |
+| `list_review_flags` | read | the open human-review queue, oldest first, with `servable` / `targetMissing` / `snoozedUntil` |
 | `resolve_review_flag` | curate | `services/curation-flags.ts` `resolveCurationFlag` + `curation.flag` audit |
 | `complete_album` | curate, **destructive** | `services/album-acquire.ts` `acquireAlbum` (only-missing-tracks hunt) + `album.acquire` audit |
 | `delete_song` | curate, **destructive** | `services/library-deletion.ts` `deleteOne` + `song.delete` audit |
@@ -311,6 +311,40 @@ flags over `POST /api/library/review-flags` and
 This pairs with #679's `djSetArtistName`, which returns null precisely on the
 ambiguous `b2b` case — the sanitizer declines to guess, and this is where that
 case now goes instead of being lost.
+
+#### A flag is a card, or it is yours
+
+Since the closed-options rework of the triage round (docs/curator-triage.md "Closed options
+only"), **a flag reaches a human only as a card**: a one-sentence `question` plus `options`, each
+a button with an `effect` the server applies in one tap, at least one of which changes data. A
+flag filed with `reason` alone is still recorded and still open, but no human sees it —
+`flag_for_review` answers `servedToHuman:false` with a hint, and `list_review_flags` shows it as
+`servable:false`. That is deliberate: a week of prose cards produced zero decisions and a human
+who skipped the same card three days running. The research belongs in `reason`, which the card
+folds under the question; the card itself is the choice.
+
+So the agent's job on a flag is to finish the research and *frame the choice*:
+
+```json
+{
+  "targetKind": "song", "targetId": "655e9ca1…", "caseKind": "duplicate",
+  "question": "Same recording as the 2021 single, or a different take?",
+  "reason": "Two rows share title+artist; identify_song no-match on both; 143 kbps opus vs …",
+  "options": [
+    { "id": "dupe", "label": "Same recording — delete this copy",
+      "rationale": "keep the 2021 single-track album's opus",
+      "effect": { "type": "song-delete", "songId": "655e9ca1…" } },
+    { "id": "keep", "label": "Different take — keep both",
+      "effect": { "type": "resolve-only" } }
+  ]
+}
+```
+
+Caps (`CASE_TEXT_LIMITS`): question 160, label 80, rationale 160 characters; a refusal names the
+option index and the problem. `list_review_flags` also reports `targetMissing:true` when a flag's
+target no longer resolves (a deleted or re-keyed song, an artist name that is gone) — re-file
+against the live id or resolve it, because the round never serves that card — and `snoozedUntil`
+while a human has deferred it. An artist may be flagged by raw name; the card resolves it.
 
 ### `get_library_health` / `resolve_review_flag` (issue #734)
 
@@ -721,8 +755,8 @@ read tool, `list_recent_songs`'s recency ordering +
 `missingGenre` filter + `limit`/`offset` paging, `set_song_genre`'s append /
 `replace`-override / unknown-song / read-only-token paths, `merge_artist`'s
 batch `rawNames` form including a partial failure, the audited curate write,
-read-only-token refusal, `flag_for_review`'s record/inertness/bad-kind/scope
-cases and `list_review_flags`' ordering, `delete_song`/`delete_album` against a real temp-dir
+read-only-token refusal, `flag_for_review`'s record/inertness/bad-kind/half-card/scope
+cases and `list_review_flags`' ordering + `servable`/`targetMissing` annotations, `delete_song`/`delete_album` against a real temp-dir
 music folder — confirm gate, scope gate, and the audited happy path —
 `lookup_song_metadata`'s read-only-token offline suggestion + unknown-song
 payload, `fix_song_metadata`'s audited tag-write/rescan happy path,

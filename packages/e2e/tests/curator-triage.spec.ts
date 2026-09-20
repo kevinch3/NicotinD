@@ -1,15 +1,16 @@
 /**
- * Curator triage (docs/curator-triage.md) — DOM coverage for the round the
- * library's "decisions waiting" card links into. The spec seeds a prose flag
- * through the real curator endpoint (no typed `case_kind`/options), which
- * `flagToCase` turns into exactly one option, "Mark handled" (a `resolve-only`
- * effect) — the simplest path to a green round.
+ * Curator triage (docs/curator-triage.md "Closed options only") — DOM coverage
+ * for the round the library's "decisions waiting" card links into.
+ *
+ * The round serves only cases with a one-sentence question and closed options
+ * that do something, so the spec seeds two TYPED flags through the real
+ * curator endpoint (the same parser the MCP tool uses). The effects are never
+ * fired: the spec skips one card, cancels a destructive option on the other,
+ * then picks its labelled "keep" choice, which closes the flag with no data
+ * change — fixture state shared with every other spec stays untouched.
  */
 import { test, expect, type APIRequestContext } from '../helpers';
 import { ADMIN, FIXTURE, bearer } from '../helpers';
-
-/** A round is capped server-side (`assembleRound`); the loop can never exceed it. */
-const ROUND_LIMIT = 5;
 
 /** The `request` fixture carries no auth — log in explicitly (see docs/e2e.md). */
 async function token(request: APIRequestContext): Promise<string> {
@@ -17,21 +18,55 @@ async function token(request: APIRequestContext): Promise<string> {
   return ((await res.json()) as { token: string }).token;
 }
 
+const RESEARCH = 'e2e research: the credit line names two acts, neither fingerprinted.';
+
 test.describe('curator triage', () => {
-  test('a curator works a triage round from the library view', async ({ page, request }) => {
+  test('a curator works a round of closed-option cases from the library view', async ({
+    page,
+    request,
+  }) => {
     const jwt = await token(request);
 
     const artists = (await (
       await request.get('/api/library/artists', { headers: bearer(jwt) })
     ).json()) as Array<{ id: string; name: string }>;
-    const artist = artists.find((a) => a.name === FIXTURE.album.artist)!;
-    expect(artist, 'fixture artist must exist').toBeTruthy();
+    const first = artists.find((a) => a.name === FIXTURE.album.artist)!;
+    const second = artists.find((a) => a.name === FIXTURE.single.artist)!;
+    expect(first, 'fixture album artist must exist').toBeTruthy();
+    expect(second, 'fixture single artist must exist').toBeTruthy();
 
-    const flagged = await request.post('/api/library/review-flags', {
-      headers: bearer(jwt),
-      data: { targetKind: 'artist', targetId: artist.id, reason: 'e2e: verify artist credit' },
-    });
-    expect(flagged.ok()).toBe(true);
+    const file = (artist: { id: string; name: string }, question: string) =>
+      request.post('/api/library/review-flags', {
+        headers: bearer(jwt),
+        data: {
+          targetKind: 'artist',
+          targetId: artist.id,
+          reason: RESEARCH,
+          question,
+          caseKind: 'identity',
+          options: [
+            {
+              id: 'merge',
+              label: 'Credit the first act',
+              rationale: 'the set is theirs',
+              effect: { type: 'artist-merge', rawName: artist.name, mergeInto: artist.name },
+            },
+            {
+              id: 'del',
+              label: 'Delete the stray file',
+              effect: { type: 'song-delete', songId: 'e2e-no-such-song' },
+            },
+            {
+              id: 'keep',
+              label: 'Keep both credits',
+              rationale: 'two real acts',
+              effect: { type: 'resolve-only' },
+            },
+          ],
+        },
+      });
+    expect((await file(first, 'e2e: who gets the credit on the first?')).ok()).toBe(true);
+    expect((await file(second, 'e2e: who gets the credit on the second?')).ok()).toBe(true);
 
     await page.goto('/library');
     const entry = page.getByTestId('curate-entry');
@@ -41,33 +76,36 @@ test.describe('curator triage', () => {
     await expect(page).toHaveURL(/\/library\/curate$/);
     const card = page.getByTestId('case-card');
     await expect(card).toBeVisible();
+    // Only typed cases are served, so the round is exactly the two we filed —
+    // a prose flag another spec leaves open (report-track.spec.ts) is not a card.
+    await expect(page.getByTestId('curate-progress')).toHaveText(/1 \/ 2/);
 
-    // The round holds up to five cases and this spec shares its server and DB
-    // with every other spec that files a flag (report-track.spec.ts leaves one
-    // permanently open). So work the WHOLE round rather than assuming ours is
-    // the only card — asserting "done" after exactly one click only passed
-    // while this file happened to sort first.
-    const progress = page.getByTestId('curate-progress');
-    const done = page.getByTestId('curate-done');
-    // `curate-progress` is REMOVED when the round ends, so reading it must be
-    // bounded: an unbounded textContent() auto-waits for a locator that will
-    // never return, spending the whole poll budget inside ONE predicate call
-    // and leaving the poll unable to re-check `done`. Proven from the retained
-    // trace of a real CI failure (#1116) — its last action is "waiting for
-    // getByTestId('curate-progress')" against an already-complete round.
-    const roundState = async () => {
-      if (await done.isVisible()) return 'done';
-      return await progress.textContent({ timeout: 500 }).catch(() => 'done');
-    };
-    for (let i = 0; i < ROUND_LIMIT; i++) {
-      if (!(await card.isVisible())) break;
-      const before = await progress.textContent();
-      await page.getByTestId('case-option').first().click();
-      // The apply is async: the card only advances once it lands. Either the
-      // progress counter moved on, or the round finished.
-      await expect.poll(roundState).not.toBe(before);
-    }
+    // The question is the card; the research is folded behind it.
+    await expect(page.getByTestId('case-question')).toContainText('who gets the credit');
+    await expect(page.getByTestId('case-details-text')).toBeHidden();
+    await page.getByTestId('case-details').locator('summary').click();
+    await expect(page.getByTestId('case-details-text')).toContainText(RESEARCH);
 
+    // Skip is a server-side deferral: this card must not come back below.
+    await page.getByTestId('case-skip').click();
+    await expect(page.getByTestId('curate-progress')).toHaveText(/2 \/ 2/);
+
+    // A destructive option asks once more, and cancelling fires nothing.
+    await page.getByTestId('case-option').filter({ hasText: 'Delete the stray file' }).click();
+    await expect(page.getByTestId('case-confirm')).toBeVisible();
+    await page.getByTestId('case-confirm-no').click();
+    await expect(page.getByTestId('case-confirm')).toBeHidden();
+
+    // The agent's own "keep" choice closes the case with no data change.
+    await page.getByTestId('case-option').filter({ hasText: 'Keep both credits' }).click();
     await expect(page.getByTestId('curate-done')).toBeVisible();
+
+    // A fresh load: the applied case is gone and the skipped one is deferred,
+    // so there is nothing to serve — and the library card no longer advertises.
+    await page.goto('/library/curate');
+    await expect(page.getByTestId('curate-done')).toBeVisible();
+    await expect(page.getByTestId('curate-progress')).toHaveCount(0);
+    await page.goto('/library');
+    await expect(page.getByTestId('curate-entry')).toHaveCount(0);
   });
 });

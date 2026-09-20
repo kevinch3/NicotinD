@@ -45,6 +45,7 @@ export class ReviewFlagsPanelComponent {
     createdAt: number;
     source?: string;
     reportCount?: number;
+    optionsJson?: string | null;
   }> {
     const done = this.resolved();
     return this.flags().filter((f) => !done.has(f.id));

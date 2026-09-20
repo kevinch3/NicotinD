@@ -31,6 +31,10 @@ export interface CurationFlag {
   caseKind: CurationCaseKind | null;
   /** JSON-encoded `CaseOption[]`; null for prose-only. */
   optionsJson: string | null;
+  /** The one sentence a human answers; null for prose-only. */
+  question: string | null;
+  /** Deferred by "skip for now" until this time; null when live. */
+  snoozedUntil: number | null;
 }
 
 export type FlagSource = 'curator' | 'listener';
@@ -52,6 +56,8 @@ interface FlagRow {
   report_count?: number | null;
   case_kind?: string | null;
   options_json?: string | null;
+  question?: string | null;
+  snoozed_until?: number | null;
 }
 
 const toFlag = (r: FlagRow): CurationFlag => ({
@@ -65,9 +71,11 @@ const toFlag = (r: FlagRow): CurationFlag => ({
   reportCount: r.report_count ?? 1,
   caseKind: isCurationCaseKind(r.case_kind) ? r.case_kind : null,
   optionsJson: r.options_json ?? null,
+  question: r.question ?? null,
+  snoozedUntil: r.snoozed_until ?? null,
 });
 
-const FLAG_COLUMNS = `id, target_kind, target_id, reason, created_by, created_at, source, report_count, case_kind, options_json`;
+const FLAG_COLUMNS = `id, target_kind, target_id, reason, created_by, created_at, source, report_count, case_kind, options_json, question, snoozed_until`;
 
 export interface CreateFlagResult {
   flag: CurationFlag;
@@ -95,6 +103,7 @@ export function createCurationFlag(
     createdBy: string;
     caseKind?: CurationCaseKind;
     optionsJson?: string;
+    question?: string;
   },
   now = Date.now(),
 ): CreateFlagResult {
@@ -107,33 +116,41 @@ export function createCurationFlag(
     .get(input.targetKind, input.targetId);
 
   if (existing) {
-    // caseKind and optionsJson describe one card and must move together: a
-    // re-flag that supplies either one replaces BOTH with the caller's values
-    // (a kind with no options means options become null), never one from the
-    // new call paired with the other left over from the old one.
-    const suppliesCase = input.caseKind !== undefined || input.optionsJson !== undefined;
+    // caseKind, optionsJson and question describe one card and must move
+    // together: a re-flag that supplies any of them replaces ALL with the
+    // caller's values (a kind with no options means options become null),
+    // never one from the new call paired with another left over from the old.
+    const suppliesCase =
+      input.caseKind !== undefined ||
+      input.optionsJson !== undefined ||
+      input.question !== undefined;
     const caseKind = suppliesCase ? (input.caseKind ?? null) : (existing.case_kind ?? null);
     const optionsJson = suppliesCase
       ? (input.optionsJson ?? null)
       : (existing.options_json ?? null);
+    const question = suppliesCase ? (input.question ?? null) : (existing.question ?? null);
     // A machine's phrasing is derived; a curator's is a judgement. Refreshing
     // the reason keeps the pile from growing, but it must not spend a human's
     // wording to do it (#964 gave the first automated writer this reach).
     const keepsHumanReason =
       isAutomatedActor(input.createdBy) && !isAutomatedActor(existing.created_by);
     const reason = keepsHumanReason ? existing.reason : input.reason;
-    db.run('UPDATE curation_flags SET reason = ?, case_kind = ?, options_json = ? WHERE id = ?', [
-      reason,
-      caseKind,
-      optionsJson,
-      existing.id,
-    ]);
+    // A re-filed case is new information, so a "skip for now" on the old
+    // wording no longer applies.
+    db.run(
+      `UPDATE curation_flags
+          SET reason = ?, case_kind = ?, options_json = ?, question = ?, snoozed_until = NULL
+        WHERE id = ?`,
+      [reason, caseKind, optionsJson, question, existing.id],
+    );
     return {
       flag: {
         ...toFlag(existing),
         reason,
         caseKind: isCurationCaseKind(caseKind) ? caseKind : null,
         optionsJson,
+        question,
+        snoozedUntil: null,
       },
       created: false,
     };
@@ -141,8 +158,8 @@ export function createCurationFlag(
 
   db.run(
     `INSERT INTO curation_flags
-       (target_kind, target_id, reason, created_by, created_at, case_kind, options_json)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+       (target_kind, target_id, reason, created_by, created_at, case_kind, options_json, question)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       input.targetKind,
       input.targetId,
@@ -151,6 +168,7 @@ export function createCurationFlag(
       now,
       input.caseKind ?? null,
       input.optionsJson ?? null,
+      input.question ?? null,
     ],
   );
   const row = db
@@ -273,16 +291,50 @@ export function recordListenerReport(
   };
 }
 
-/** Open flags, oldest first — the queue reads as a to-do list, not a feed. */
-export function listOpenCurationFlags(db: Database, limit = 100): CurationFlag[] {
-  return db
-    .query<FlagRow, [number]>(
-      `SELECT ${FLAG_COLUMNS}
-       FROM curation_flags WHERE resolved_at IS NULL
-       ORDER BY created_at, id LIMIT ?`,
-    )
-    .all(Math.max(1, Math.min(500, Math.floor(limit))))
-    .map(toFlag);
+/**
+ * Open flags, oldest first — the queue reads as a to-do list, not a feed.
+ *
+ * `excludeSnoozedAt` drops flags a curator deferred past that instant; the
+ * triage round passes it, while the admin panel and the agent list do not
+ * (a deferred flag is still open, and the agent may re-file it).
+ */
+export function listOpenCurationFlags(
+  db: Database,
+  limit = 100,
+  opts: { excludeSnoozedAt?: number } = {},
+): CurationFlag[] {
+  const clamped = Math.max(1, Math.min(500, Math.floor(limit)));
+  const rows =
+    opts.excludeSnoozedAt === undefined
+      ? db
+          .query<FlagRow, [number]>(
+            `SELECT ${FLAG_COLUMNS}
+             FROM curation_flags WHERE resolved_at IS NULL
+             ORDER BY created_at, id LIMIT ?`,
+          )
+          .all(clamped)
+      : db
+          .query<FlagRow, [number, number]>(
+            `SELECT ${FLAG_COLUMNS}
+             FROM curation_flags
+             WHERE resolved_at IS NULL AND (snoozed_until IS NULL OR snoozed_until <= ?)
+             ORDER BY created_at, id LIMIT ?`,
+          )
+          .all(opts.excludeSnoozedAt, clamped);
+  return rows.map(toFlag);
+}
+
+/**
+ * Defer an open flag out of the triage round until `until`. Returns false for
+ * an unknown or already-resolved id. Not audited: nothing about the library
+ * changed, only when a person will next be asked.
+ */
+export function snoozeCurationFlag(db: Database, id: number, until: number): boolean {
+  const res = db.run(
+    'UPDATE curation_flags SET snoozed_until = ? WHERE id = ? AND resolved_at IS NULL',
+    [until, id],
+  );
+  return Number(res.changes ?? 0) > 0;
 }
 
 export function countOpenCurationFlags(db: Database): number {

@@ -7,6 +7,7 @@ const c = (id: string, kind: CurationCaseKind, confidence = 1): CurationCase => 
   kind,
   target: { kind: 'song', id, title: id, subtitle: '' },
   question: 'q',
+  details: null,
   evidence: [],
   options: [{ id: 'r', label: 'r', rationale: 'r', effect: { type: 'resolve-only' } }],
   confidence,

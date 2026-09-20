@@ -28,6 +28,7 @@ import type {
   ArtistIdentityMutateBody,
   ArtistIdentityMutateDeps,
 } from '../artist-identity-mutate.js';
+import type { DeletionDeps } from '../library-deletion.js';
 
 export type ApplyEffectResult = { ok: true; detail: string } | { ok: false; error: string };
 
@@ -36,6 +37,9 @@ type SongMetadataApplyResult = { ok: true } | { ok: false; error: string };
 
 /** The result shape this dispatcher reads back from `mutateArtistIdentity`. */
 type ArtistIdentityApplyResult = { ok: true } | { ok: false; error: string };
+
+/** The result shape this dispatcher reads back from `deleteOne`. */
+type DeleteSongApplyResult = { ok: boolean; error?: string };
 
 export interface ApplyEffectDeps {
   mutateSongMetadata: (
@@ -49,8 +53,11 @@ export interface ApplyEffectDeps {
     deps: ArtistIdentityMutateDeps,
     body: ArtistIdentityMutateBody,
   ) => ArtistIdentityApplyResult;
+  /** `deleteOne` — the same file-and-rows path `delete_song` and the HTTP delete run. */
+  deleteSong: (db: Database, songId: string, deps: DeletionDeps) => Promise<DeleteSongApplyResult>;
   songMetadataDeps: SongMetadataMutateDeps;
   artistIdentityDeps: ArtistIdentityMutateDeps;
+  deletionDeps: DeletionDeps;
 }
 
 export async function applyCaseEffect(
@@ -85,6 +92,12 @@ export async function applyCaseEffect(
       });
       if (!res.ok) return { ok: false, error: res.error };
       return { ok: true, detail: `merged ${effect.rawName} into ${effect.mergeInto}` };
+    }
+
+    case 'song-delete': {
+      const res = await deps.deleteSong(db, effect.songId, deps.deletionDeps);
+      if (!res.ok) return { ok: false, error: res.error ?? 'delete failed' };
+      return { ok: true, detail: `deleted song ${effect.songId}` };
     }
   }
 }

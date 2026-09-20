@@ -6,6 +6,7 @@ import {
   listOpenCurationFlags,
   countOpenCurationFlags,
   resolveCurationFlag,
+  snoozeCurationFlag,
   isFlagTargetKind,
 } from './curation-flags.js';
 
@@ -107,6 +108,82 @@ describe('createCurationFlag', () => {
       createdBy: 'kevin',
     });
     expect(listOpenCurationFlags(db)[0]!.reason).toBe('the file is fine, the tracklist is wrong');
+  });
+});
+
+describe('typed case fields', () => {
+  const typed = (question: string, optionsJson = '[{"id":"a"}]') =>
+    createCurationFlag(db, {
+      targetKind: 'song',
+      targetId: 's1',
+      reason: 'long research',
+      createdBy: 'agent:t1',
+      caseKind: 'duplicate',
+      question,
+      optionsJson,
+    });
+
+  it('stores and lists the question beside the options', () => {
+    typed('Same recording?');
+    const [f] = listOpenCurationFlags(db);
+    expect(f!.question).toBe('Same recording?');
+    expect(f!.caseKind).toBe('duplicate');
+    expect(f!.optionsJson).toBe('[{"id":"a"}]');
+    expect(f!.snoozedUntil).toBeNull();
+  });
+
+  it('a re-flag that supplies the case replaces question, kind and options together', () => {
+    typed('Same recording?');
+    createCurationFlag(db, {
+      targetKind: 'song',
+      targetId: 's1',
+      reason: 'new research',
+      createdBy: 'agent:t1',
+      question: 'Different take?',
+    });
+    const [f] = listOpenCurationFlags(db);
+    expect(f!.question).toBe('Different take?');
+    expect(f!.caseKind).toBeNull();
+    expect(f!.optionsJson).toBeNull();
+  });
+
+  it('a prose re-flag keeps the existing case', () => {
+    typed('Same recording?');
+    createCurationFlag(db, {
+      targetKind: 'song',
+      targetId: 's1',
+      reason: 'more notes',
+      createdBy: 'agent:t1',
+    });
+    const [f] = listOpenCurationFlags(db);
+    expect(f!.question).toBe('Same recording?');
+    expect(f!.optionsJson).toBe('[{"id":"a"}]');
+    expect(f!.reason).toBe('more notes');
+  });
+});
+
+describe('snoozeCurationFlag', () => {
+  it('hides a deferred flag from the round until the deadline, not from the plain list', () => {
+    const { flag: f } = flag('A');
+    expect(snoozeCurationFlag(db, f.id, 1_000)).toBe(true);
+    expect(listOpenCurationFlags(db).map((x) => x.snoozedUntil)).toEqual([1_000]);
+    expect(listOpenCurationFlags(db, 100, { excludeSnoozedAt: 999 })).toHaveLength(0);
+    expect(listOpenCurationFlags(db, 100, { excludeSnoozedAt: 1_000 })).toHaveLength(1);
+    expect(countOpenCurationFlags(db)).toBe(1);
+  });
+
+  it('refuses an unknown or resolved id', () => {
+    const { flag: f } = flag('A');
+    resolveCurationFlag(db, f.id, 'kevin');
+    expect(snoozeCurationFlag(db, f.id, 1_000)).toBe(false);
+    expect(snoozeCurationFlag(db, 9999, 1_000)).toBe(false);
+  });
+
+  it('a re-flag lifts the deferral: new information is worth a fresh look', () => {
+    const { flag: f } = flag('A');
+    snoozeCurationFlag(db, f.id, Number.MAX_SAFE_INTEGER);
+    flag('A', 'sharper');
+    expect(listOpenCurationFlags(db, 100, { excludeSnoozedAt: Date.now() })).toHaveLength(1);
   });
 });
 
