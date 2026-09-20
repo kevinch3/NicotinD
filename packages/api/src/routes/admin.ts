@@ -39,6 +39,8 @@ import { presenceService } from '../services/presence.js';
 import type { LibraryProcessingService } from '../services/library-processing.service.js';
 import type { MaintenanceService } from '../services/maintenance/maintenance.service.js';
 import type { MaintenanceTaskId } from '../services/maintenance/tasks.js';
+import type { Database } from 'bun:sqlite';
+import { listTranscodeRuns } from '../services/transcode-run-store.js';
 
 export interface AdminRoutesDeps {
   musicDir: string;
@@ -56,6 +58,8 @@ export interface AdminRoutesDeps {
   registration?: RegistrationToggle | null;
   /** Env-level listening-history floor (issue #454); absent → treated as on. */
   historyEnabled?: () => boolean;
+  /** DB handle, for the transcode run history; absent → that route 503s. */
+  db?: Database | null;
 }
 
 /** The subset of an admin user row the activity ordering reads. */
@@ -590,6 +594,18 @@ export function adminRoutes(deps: AdminRoutesDeps) {
   });
 
   // A cheap dedicated poll target, unlike the many-sub-fetch /admin/review.
+  // Durable history for the one pass that is irreversible. Live status lives in
+  // memory by design (see MaintenanceService); this answers the different
+  // question of what has already been done to the library, which no restart or
+  // subsequent task should be able to erase.
+  app.get('/transcode-runs', (c) => {
+    if (!deps.db) return c.json({ error: 'Transcode run history is not available' }, 503);
+    const limit = Number(c.req.query('limit'));
+    return c.json({
+      runs: listTranscodeRuns(deps.db, Number.isInteger(limit) && limit > 0 ? limit : 20),
+    });
+  });
+
   app.get('/maintenance/status', (c) => {
     const svc = deps.maintenance;
     if (!svc) return c.json({ error: 'Maintenance is not available' }, 503);

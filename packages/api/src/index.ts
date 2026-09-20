@@ -104,6 +104,7 @@ import { WatchlistService } from './services/watchlist.service.js';
 import { AutoAcquireService } from './services/auto-acquire.service.js';
 import { reconcileOnBoot as reconcileAcquisitionJobs } from './services/acquisition-job-store.js';
 import { MaintenanceService } from './services/maintenance/maintenance.service.js';
+import { reconcileTranscodeRunsOnBoot } from './services/transcode-run-store.js';
 import { LibraryProcessingService } from './services/library-processing.service.js';
 import { AudioFeaturesClient } from './services/audio-features-client.js';
 import { ProviderRegistry } from './services/provider-registry.js';
@@ -665,6 +666,12 @@ export function createApp({
   // Operator-triggered whole-library passes (issue #622). One runner, one busy
   // guard: metadata-optimize, the Opus standardization and the full rescan all
   // contend for the same DB and disk, so they must not overlap.
+  // Any run still marked `running` at boot outlived its process — nothing
+  // survives a restart mid-pass — so it is swept before anything can read a
+  // stale "running" as live. This is the half that makes writing a row at
+  // START sound; neither half works alone.
+  reconcileTranscodeRunsOnBoot(db);
+
   const maintenance = new MaintenanceService({
     db,
     lidarr,
@@ -683,6 +690,7 @@ export function createApp({
       historyEnabled,
       musicDir: expandedMusicDir,
       dataDir: expandedDataDir,
+      db,
       processing: processingRef.current,
       maintenance,
       version,

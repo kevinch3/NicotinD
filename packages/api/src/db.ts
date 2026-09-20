@@ -1087,6 +1087,34 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
     )
   `);
 
+  // One row per whole-library transcode pass (services/transcode-run-store.ts,
+  // docs/download-pipeline.md). The pass is long, unattended and irreversible,
+  // and `MaintenanceService` keeps its status in memory only — so a crash left
+  // no trace at all that a conversion had been running, let alone how far it
+  // got. A row is written at START, not only at the end: a terminal-only record
+  // cannot answer "did it finish", because an interrupted run writes nothing.
+  // `reconcileTranscodeRunsOnBoot` is what makes that sound, the same bargain
+  // `import_jobs` strikes above. No CHECK constraints, same reason.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS transcode_runs (
+      id             TEXT PRIMARY KEY,
+      state          TEXT NOT NULL DEFAULT 'running',
+      apply          INTEGER NOT NULL DEFAULT 0,
+      bit_rate       INTEGER NOT NULL DEFAULT 0,
+      quarantine_run TEXT,
+      candidates     INTEGER NOT NULL DEFAULT 0,
+      converted      INTEGER NOT NULL DEFAULT 0,
+      skipped        INTEGER NOT NULL DEFAULT 0,
+      failed         INTEGER NOT NULL DEFAULT 0,
+      bytes_reclaimed INTEGER NOT NULL DEFAULT 0,
+      error          TEXT,
+      started_by     TEXT,
+      started_at     INTEGER NOT NULL,
+      finished_at    INTEGER
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_transcode_runs_state ON transcode_runs (state)`);
+
   // Per-genre-NAME audio centroid over the members' embeddings, the learned
   // genre-to-genre affinity radio's genre axis can consume
   // (services/genre-centroids.ts, docs/genre-affinity.md). Genre-keyed, so no

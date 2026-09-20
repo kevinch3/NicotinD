@@ -19,6 +19,7 @@ import { applySchema } from '../../db.js';
 import { buildMaintenanceTasks, type MaintenanceRunContext } from './tasks.js';
 import { songId } from '../library-scanner.js';
 import { ffmpegAvailable } from '../transcode.js';
+import { listTranscodeRuns } from '../transcode-run-store.js';
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -93,6 +94,62 @@ describe.skipIf(!ffmpegAvailable())('transcode-library keeps the originals', () 
     const runs = readdirSync(join(dataDir, 'quarantine'));
     expect(runs.length).toBe(1);
     expect(existsSync(join(dataDir, 'quarantine', runs[0]!, rel))).toBe(true);
+  });
+
+  it('records a durable run row, with where the originals went', async () => {
+    // The Admin panel's last outcome is wiped by the next task or any restart,
+    // so without this an irreversible whole-library pass left only a
+    // `maintenance.start` audit row saying it began.
+    const musicDir = tmpDir('nicotind-mtask-music-');
+    const dataDir = tmpDir('nicotind-mtask-data-');
+    const db = new Database(':memory:');
+    applySchema(db);
+
+    const rel = 'The Artist/Album/01 - Song.flac';
+    const abs = join(musicDir, rel);
+    mkdirSync(dirname(abs), { recursive: true });
+    execFileSync(
+      'ffmpeg',
+      [
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-f',
+        'lavfi',
+        '-i',
+        'anullsrc=channel_layout=mono:sample_rate=22050',
+        '-t',
+        '0.3',
+        '-c:a',
+        'flac',
+        abs,
+      ],
+      { stdio: 'ignore' },
+    );
+    db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, suffix,
+                                  size, duration, hidden, synced_at)
+       VALUES (?, 'alb', 'Song', 'The Artist', 'art', ?, 'flac', 1000, 10, 0, 1)`,
+      [songId(rel), rel],
+    );
+
+    const tasks = buildMaintenanceTasks({
+      db,
+      lidarr: null,
+      musicDir,
+      dataDir,
+      transcodeLossless: { enabled: true, bitRate: 96 },
+      runSync: null,
+    });
+    const task = tasks.find((t) => t.id === 'transcode-library')!;
+
+    await task.run(ctx, task.parseParams(new URLSearchParams()));
+
+    const runs = listTranscodeRuns(db);
+    expect(runs.length).toBe(1);
+    expect(runs[0]!.state).toBe('done');
+    expect(runs[0]!.converted).toBe(1);
+    expect(runs[0]!.quarantineRun).toContain('quarantine');
   });
 
   it('defaults to apply, so a bare click is the destructive one', () => {

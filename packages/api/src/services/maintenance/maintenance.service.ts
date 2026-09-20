@@ -71,6 +71,20 @@ function idleStatus(): MaintenanceStatus {
  * that persists doesn't trust it across a restart. Durability lives in the audit
  * row instead.
  *
+ * **That argument is about live status, and it still holds.** It does not
+ * settle whether a *finished* pass leaves a trace, and one of these tasks
+ * deserves it: `transcode-library` re-encodes the library in place and is the
+ * only one that cannot be undone by pressing the button again. So that task
+ * alone opens a `transcode_runs` row (`services/transcode-run-store.ts`), which
+ * this service never reads and the panel never renders as status.
+ *
+ * It is written at START rather than only at the end, which is exactly the
+ * shape objected to above — and it is sound for the same reason `import_jobs`
+ * is: `reconcileTranscodeRunsOnBoot` sweeps any row that outlived its process
+ * before anything can read it. A terminal-only record would have been useless
+ * for the one question an unattended pass raises, since an interrupted run
+ * never reaches the code that would write it.
+ *
  * Must stay on the main thread: `optimizeAllAlbums` clears the cover
  * negative-cache, which is in-process module state — from a worker thread that
  * clear would land in the wrong process and covers would silently not appear.
