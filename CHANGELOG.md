@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.20](https://github.com/kevinch3/NicotinD/compare/v0.8.19...v0.8.20) (2026-09-20)
+
+### Bug Fixes
+
+* **transcode:** verify before deleting the original, and fail closed ([#1227](https://github.com/kevinch3/NicotinD/issues/1227)) ([fa2ac7f](https://github.com/kevinch3/NicotinD/commit/fa2ac7f5d58508c7fc6542253ba23c341785ef54))
 ## [0.8.19](https://github.com/kevinch3/NicotinD/compare/v0.8.18...v0.8.19) (2026-09-20)
 
 ### Bug Fixes

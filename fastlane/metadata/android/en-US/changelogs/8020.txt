@@ -1,0 +1,1 @@
+• transcode: verify before deleting the original, and fail closed (#1227)
