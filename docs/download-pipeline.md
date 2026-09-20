@@ -295,6 +295,37 @@ authority on whether the file is right, and `music-metadata`, which is what the 
 Keeping those apart is the point — "the file is wrong" and "we cannot read a correct file" need
 opposite fixes, and conflating them is what made the first two attempts at this wrong (#1226).
 
+#### Attaching it: ffmpeg stream-copy, and why no new dependency
+
+The plan for this was `opustags`, a new binary in the image. It turned out to be unnecessary.
+`attachPictureToOpus` (`services/opus-artwork.ts`) writes the picture onto an already-encoded
+`.opus` with ffmpeg alone, **without re-encoding the audio**:
+
+```
+ffmpeg -i in.opus -f ffmetadata -i meta -map 0:a -map_metadata 1 -c:a copy -f ogg -y tmp
+```
+
+Three things had to be measured, because two of them look like they rule the approach out:
+
+- **The payload cannot go on the command line.** A 730 KB cover base64s to 974,524 characters and
+  `execFile` fails with `E2BIG` — Linux caps a single argv entry at 128 KB. Hence the ffmetadata
+  file, whose escaping matters: base64 padding is `=`, which ffmetadata treats as a separator.
+- **`-map_metadata 1` does not replace the existing tags** under `-c:a copy`. It looks like it
+  would, and for a re-encode it does — but a stream copy carries the Opus comment header with the
+  stream, so the picture merges in. Verified against a file carrying `COPYRIGHT`, which
+  `readAudioTags` does not even model: it survives.
+- **It is reproducible.** An earlier attempt at this route was abandoned as flaky. Re-run three
+  times across three cover sizes it is byte-exact every time — the confound was oversize, not the
+  method, and the 512 KB cap removes it.
+
+`carryEmbeddedCover` in `post-download-transcode.ts` runs it after the duration verdict passes and before
+the temp file is renamed into place, so a failure leaves a correct audio file with no art rather
+than a damaged one. Every step can decline without failing the conversion: art is an enhancement on
+a file whose audio is already verified.
+
+So `opus-tools` stays in the image for the harness's `opusinfo`/`opusenc` only, and nothing new was
+added to it.
+
 ### Back up before transcoding
 
 `transcodeToOpus` unlinks the source once the output verifies. For a freshly downloaded file that is
@@ -384,6 +415,38 @@ container again, and at whole-library scale a second rewrite per file is not fre
 The download path re-writes canonical tags immediately afterwards and would not have noticed. The
 library conversion job does not, which is why the carry belongs in the encoder rather than in either
 caller.
+
+#### The quieter failure: frames ffmpeg keeps but renames wrong
+
+A dropped frame is at least visibly absent. Three more are **worse**: ffmpeg keeps the value and
+writes it under a Vorbis comment name nothing reads. A `TXXX` user-text frame becomes a comment
+named after its description, uppercased — spaces and all:
+
+| ID3 `TXXX` description | ffmpeg writes | what readers look for |
+| --- | --- | --- |
+| `Acoustid Id` | `ACOUSTID ID` | `ACOUSTID_ID` |
+| `MusicBrainz Track Id` | `MUSICBRAINZ TRACK ID` | `MUSICBRAINZ_TRACKID` |
+| `MusicBrainz Album Id` | `MUSICBRAINZ ALBUM ID` | `MUSICBRAINZ_ALBUMID` |
+
+The value is still *in* the file, so a "did the data survive?" check says yes while `music-metadata`,
+and every other player, sees nothing. `acoustIdId` doubles as the "already fingerprinted" marker, so
+losing it re-fingerprints that track forever; the two MusicBrainz ids are what match a file back to a
+release.
+
+`ID3_TXXX_FFMPEG_MISNAMES` sets the canonical key **and blanks the spaced one**. Setting only the
+canonical key also reads correctly, but leaves both in the file — six comments for three values,
+which every later pass would carry forward.
+
+This is scoped to the ID3 path on purpose: FLAC and Ogg sources are Vorbis-to-Vorbis and their keys
+pass through unchanged, which a separate FLAC case in `post-download-transcode.test.ts` asserts.
+Measured on prod, the already-converted files carry canonical keys and zero spaced ones — the bug
+lands on the *conversion* population rather than the converted one, and that population is **97.9%
+mp3** (13,576 of 13,864).
+
+The tag test asserts **its own denominator**: `ALL_AUDIO_TAG_FIELDS` is a `Record<keyof AudioTags,
+true>`, so adding a field to `AudioTags` fails the type-check until it is listed and a decision is
+made about whether the transcode carries it. That is what surfaced these three — they were untested,
+and the suite was green.
 
 ### Headroom preflight, and why it fails open
 
