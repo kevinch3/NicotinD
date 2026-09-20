@@ -5,6 +5,8 @@ import { createLogger } from '@nicotind/core';
 import { isLossless, isLosslessFile, transcodeToOpus } from './post-download-transcode.js';
 import { ffmpegAvailable } from './transcode.js';
 import { LibraryScanner, songId } from './library-scanner.js';
+import { carrySongCuration } from './song-curation-carry.js';
+import { refreshAlbumAggregate } from './library-aggregates.js';
 
 const log = createLogger('library-transcode');
 
@@ -55,6 +57,7 @@ export interface TranscodeAllOptions {
 
 interface SongRow {
   id: string;
+  album_id: string | null;
   path: string;
   suffix: string | null;
   size: number | null;
@@ -88,12 +91,14 @@ export function estimateOpusBytes(seconds: number | null, bitRate: number): numb
  * Re-encoding changes a file's extension → its relative path → its derived
  * `songId` and `acquisitions` key. Album-keyed data (artwork, release-meta,
  * classification) is keyed on the tag-derived `albumId` and survives; song-keyed
- * data does not, so per file we **migrate identity**: carry `starred`/`hidden`
- * onto the new song row, re-point `playlist_songs.song_id`,
- * `library_genre_overrides` (scope `song`) and `acquisitions.relative_path`,
- * and drop the stale lossless row. `scanPaths`
- * inserts the new opus row and recomputes the album aggregate after the old row
- * is gone, so counts stay correct.
+ * data does not, so per file we **migrate identity**: `scanPaths` inserts the
+ * new opus row, then one transaction drops the stale lossless row, carries
+ * `starred`/`hidden` onto the new one, hands the rest to `carrySongCuration`
+ * and recomputes the album aggregate.
+ *
+ * The scan runs before the delete, and the delete inside the transaction,
+ * because the reverse lost songs: a scan that threw left the old row deleted
+ * and the new one never inserted, with nothing to report it.
  */
 export async function transcodeLibraryToOpus(
   db: Database,
@@ -116,7 +121,7 @@ export async function transcodeLibraryToOpus(
 
   const allRows = db
     .query<SongRow, []>(
-      `SELECT id, path, suffix, size, duration, starred, hidden FROM library_songs`,
+      `SELECT id, album_id, path, suffix, size, duration, starred, hidden FROM library_songs`,
     )
     .all();
   const limit = opts.limit != null && opts.limit > 0 ? opts.limit : -1;
@@ -193,51 +198,34 @@ export async function transcodeLibraryToOpus(
       const newId = songId(newRel);
       const newSize = existsSync(newAbs) ? statSync(newAbs).size : 0;
 
-      // Drop the stale lossless row first so scanPaths recomputes the album
-      // aggregate counting only the new opus row.
-      db.run('DELETE FROM library_songs WHERE id = ?', [row.id]);
+      // Scan the new file in FIRST, then drop the stale row and carry curation
+      // in one transaction.
+      //
+      // The delete used to run before the scan and outside the transaction, so
+      // a scan that threw left the old row gone and the new one never inserted
+      // — the song simply vanished until the next full rescan, with nothing to
+      // say so. Ordering it this way means either both rows exist briefly or
+      // neither changes, and the album aggregate is refreshed explicitly rather
+      // than relying on the scan seeing a library the delete had already
+      // adjusted.
       await scanner.scanPaths([newRel]);
 
       db.transaction(() => {
+        db.run('DELETE FROM library_songs WHERE id = ?', [row.id]);
         // Carry curation forward onto the new song id.
         db.run('UPDATE library_songs SET starred = ?, hidden = ? WHERE id = ?', [
           row.starred,
           row.hidden,
           newId,
         ]);
-        // Re-point playlist + acquisition references (no FK on song_id).
-        db.run('UPDATE OR IGNORE playlist_songs SET song_id = ? WHERE song_id = ?', [
-          newId,
-          row.id,
-        ]);
-        // A curator's song-scope genre override is keyed on the song id too, and
-        // was the one carried-forward table this pass skipped (#856).
-        const overrideMoved = db.run(
-          `UPDATE OR IGNORE library_genre_overrides SET key = ? WHERE scope = 'song' AND key = ?`,
-          [newId, row.id],
-        );
-        // 0 changes means either no override existed or (scope, key) already had
-        // one for the opus row and the UPDATE was ignored; the stale row is dead
-        // either way, so drop it rather than leave an orphan behind.
-        if (Number(overrideMoved.changes ?? 0) === 0) {
-          db.run(`DELETE FROM library_genre_overrides WHERE scope = 'song' AND key = ?`, [row.id]);
-        }
-        // The lossless file may have a pre-existing opus duplicate whose provenance
-        // row already sits at `newRel` (the relative_path PK). A plain UPDATE would
-        // collide (SQLITE_CONSTRAINT_PRIMARYKEY) and abort the whole migration, so
-        // keep the existing target row and drop the now-stale lossless one; only
-        // re-point when the opus path has no row yet.
-        const targetExists = db
-          .query('SELECT 1 FROM acquisitions WHERE relative_path = ?')
-          .get(newRel);
-        if (targetExists) {
-          db.run('DELETE FROM acquisitions WHERE relative_path = ?', [row.path]);
-        } else {
-          db.run('UPDATE acquisitions SET relative_path = ? WHERE relative_path = ?', [
-            newRel,
-            row.path,
-          ]);
-        }
+        carrySongCuration(db, {
+          fromId: row.id,
+          toId: newId,
+          fromPath: row.path,
+          toPath: newRel,
+        });
+        // The scan counted both rows; recount now the stale one is gone.
+        if (row.album_id) refreshAlbumAggregate(db, row.album_id);
       })();
 
       result.converted += 1;

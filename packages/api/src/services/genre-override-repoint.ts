@@ -1,3 +1,4 @@
+import { moveSongGenreOverride } from './song-curation-carry.js';
 import type { Database } from 'bun:sqlite';
 
 /**
@@ -78,22 +79,11 @@ export function repointGenreOverrideForSong(
 
   if (survivors.length !== 1) return { repointed: 0, unmatched: 1 };
 
-  // OR IGNORE: the survivor may already carry its own song-scope override,
-  // and (scope, key) is a primary key — a plain UPDATE would abort the
-  // whole scan. Keeping the survivor's own curation is the right outcome.
-  const moved = db.run(
-    `UPDATE OR IGNORE library_genre_overrides SET key = ? WHERE scope = 'song' AND key = ?`,
-    [survivors[0].id, song.id],
-  );
-  const repointed = Number(moved.changes ?? 0);
-  // Ignored means the survivor already had its own row, so the doomed one is
-  // dead weight — and `library_genre_overrides` is curator data, deliberately
-  // outside ORPHAN_TABLES, so nothing would ever sweep it. Same drop the
-  // transcode path makes (#856).
-  if (repointed === 0) {
-    db.run(`DELETE FROM library_genre_overrides WHERE scope = 'song' AND key = ?`, [song.id]);
-  }
-  return { repointed, unmatched: 0 };
+  // This module's job ends at finding the survivor; the move itself is shared
+  // with the transcode pass, which knows its mapping without searching for it.
+  // The two had the same statements written out twice, verbatim.
+  const moved = moveSongGenreOverride(db, song.id, survivors[0].id);
+  return { repointed: moved ? 1 : 0, unmatched: 0 };
 }
 
 /**
