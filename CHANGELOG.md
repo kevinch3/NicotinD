@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.26](https://github.com/kevinch3/NicotinD/compare/v0.8.25...v0.8.26) (2026-09-20)
+
+### Bug Fixes
+
+* **transcode:** make the library pass actually keep the originals ([#1235](https://github.com/kevinch3/NicotinD/issues/1235)) ([7098146](https://github.com/kevinch3/NicotinD/commit/709814645e42b7e9c91e59a82f6b5d3ca71804ac)), references [#1228](https://github.com/kevinch3/NicotinD/issues/1228) [#723](https://github.com/kevinch3/NicotinD/issues/723)
 ## [0.8.25](https://github.com/kevinch3/NicotinD/compare/v0.8.24...v0.8.25) (2026-09-20)
 
 ### Features
