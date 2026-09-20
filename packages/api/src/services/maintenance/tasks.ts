@@ -3,6 +3,7 @@ import { optimizeAllAlbums, type OptimizeLidarr } from '../metadata-optimize.js'
 import { transcodeLibraryToOpus } from '../library-transcode.js';
 import { backfillArtwork, type BackfillLidarr } from '../artwork-backfill.js';
 import { embedAlbumArt } from '../opus-art-embed.js';
+import { finishTranscodeRun, startTranscodeRun } from '../transcode-run-store.js';
 import { readTranscodeLossless, type TranscodeLosslessSource } from '../transcode-settings.js';
 
 /**
@@ -255,31 +256,68 @@ export function buildMaintenanceTasks(deps: MaintenanceDeps): AnyMaintenanceTask
       parseParams: (q) => ({ apply: !flag(q, 'dryRun'), limit: positiveInt(q, 'limit') }),
       describe: (p) => ({ summary: p.apply ? 'apply' : 'dry-run', dryRun: !p.apply }),
       run: async (ctx, p) => {
-        const r = await transcodeLibraryToOpus(deps.db, deps.musicDir, {
+        // Opened BEFORE the first file is touched. A terminal-only record
+        // cannot say "this pass was interrupted", because an interrupted pass
+        // never reaches the code that would write it.
+        const bitRate = readTranscodeLossless(deps.transcodeLossless)().bitRate;
+        const runId = startTranscodeRun(deps.db, {
           apply: p.apply,
-          bitRate: readTranscodeLossless(deps.transcodeLossless)().bitRate,
-          limit: p.limit,
-          // Keep every original under `<dataDir>/quarantine/<run>/`. A
-          // whole-library re-encode is irreversible and unattended; the disk
-          // cost is recoverable, a wrong conversion is not.
-          dataDir: deps.dataDir,
-          shouldStop: ctx.shouldStop,
-          onProgress: (x) => ctx.onProgress({ total: x.total, visited: x.visited, label: x.label }),
+          bitRate,
+          startedBy: 'maintenance',
         });
-        return {
-          stopped: r.stopped,
-          errorSample: r.errorSample,
-          detail: {
+        try {
+          const r = await transcodeLibraryToOpus(deps.db, deps.musicDir, {
+            apply: p.apply,
+            bitRate,
+            limit: p.limit,
+            // Keep every original under `<dataDir>/quarantine/<run>/`. A
+            // whole-library re-encode is irreversible and unattended; the disk
+            // cost is recoverable, a wrong conversion is not.
+            dataDir: deps.dataDir,
+            shouldStop: ctx.shouldStop,
+            onProgress: (x) =>
+              ctx.onProgress({ total: x.total, visited: x.visited, label: x.label }),
+          });
+          finishTranscodeRun(deps.db, runId, {
+            state: 'done',
+            quarantineRun: r.quarantineRun ?? null,
             candidates: r.candidates,
             converted: r.converted,
             skipped: r.skipped,
             failed: r.failed,
             bytesReclaimed: r.bytesReclaimed,
-            // Surfaced so a dry-run figure is never read as exact when part of
-            // the set could not be estimated.
-            unestimated: r.unestimated,
-          },
-        };
+            error: r.errorSample,
+          });
+          return {
+            stopped: r.stopped,
+            errorSample: r.errorSample,
+            detail: {
+              candidates: r.candidates,
+              converted: r.converted,
+              skipped: r.skipped,
+              failed: r.failed,
+              bytesReclaimed: r.bytesReclaimed,
+              // Surfaced so a dry-run figure is never read as exact when part
+              // of the set could not be estimated.
+              unestimated: r.unestimated,
+            },
+          };
+        } catch (err) {
+          // A throw here means the pass died before returning counters — a
+          // preflight refusal, most likely. Record that rather than leaving a
+          // row the boot sweep would later call "interrupted", which would be
+          // a different and wrong story.
+          finishTranscodeRun(deps.db, runId, {
+            state: 'failed',
+            candidates: 0,
+            converted: 0,
+            skipped: 0,
+            failed: 0,
+            bytesReclaimed: 0,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          throw err;
+        }
       },
     }),
 

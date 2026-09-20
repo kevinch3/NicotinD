@@ -401,6 +401,37 @@ The three "nothing happened" counters stay separate (`noSource`, `sharedBucket`,
 because they need three different fixes: acquire art, fix the folder layout, reach the host. One
 combined number would hide which.
 
+### A pass that dies still has to say what it did
+
+`transcode_runs` (`services/transcode-run-store.ts`) is one row per whole-library
+conversion, and `GET /api/admin/transcode-runs` reads them back.
+
+It exists because nothing else survives. `MaintenanceService` keeps status in memory by design, the
+panel's "last outcome" line is wiped by the next task or any restart, and the only durable trace of a
+13,864-file irreversible pass was a single `maintenance.start` audit row saying it began.
+
+**The row is written at start, not at the end.** That is the shape the `MaintenanceService` docstring
+argues against, and the objection is right on its own terms: a persisted `running` behind a crash is
+a permanently-running UI and a guard that never releases. But a terminal-only record cannot answer
+the one question an unattended pass raises — *did it finish* — because an interrupted run never
+reaches the code that would write it.
+
+So the two halves ship together, the same bargain `import_jobs` strikes: write at start, and
+`reconcileTranscodeRunsOnBoot` flips anything still `running` to `interrupted` before a reader can
+mistake it for live. Neither half is sound alone.
+
+Counters are **kept** on an interrupted run rather than zeroed. A pass that converted 4,000 files
+before dying is a different situation from one that converted none, and the operator has to be able
+to tell which.
+
+`failed` and `interrupted` stay distinct states. A preflight refusal and a power cut need different
+responses, and the boot sweep must not relabel the first as the second.
+
+**Per-file detail has no table and no log, deliberately.** The quarantine run dir *is* the per-item
+record: every original the pass replaced is a real file under `<dataDir>/quarantine/<run>/` at its
+library-relative path. A parallel TSV would be a second, weaker copy of that — and the one precedent
+for such a log, `library-processing.log`, grows unbounded with nothing reading it.
+
 ### Back up before transcoding
 
 `transcodeToOpus` unlinks the source once the output verifies. For a freshly downloaded file that is
