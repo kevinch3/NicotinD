@@ -29,9 +29,10 @@ import {
   type AuditSeverity,
 } from '../services/library-audit.js';
 import { scanMusicDir, diskFindings } from '../services/library-disk-audit.js';
+import { resolveReservedDirs } from '../services/library-paths.js';
 import { expandHome } from '@nicotind/core';
 
-function loadConfig(): { dataDir: string; musicDir: string } {
+function loadConfig(): { dataDir: string; musicDir: string; reserved: ReadonlySet<string> } {
   let fileConfig: Record<string, unknown> = {};
   const configPath = resolve(process.env.NICOTIND_CONFIG ?? 'config/default.yml');
   try {
@@ -44,7 +45,11 @@ function loadConfig(): { dataDir: string; musicDir: string } {
   );
   const musicDirRaw = process.env.NICOTIND_MUSIC_DIR ?? (fileConfig.musicDir as string | undefined);
   if (!musicDirRaw) throw new Error('musicDir not configured');
-  return { dataDir, musicDir: expandHome(musicDirRaw) };
+  return {
+    dataDir,
+    musicDir: expandHome(musicDirRaw),
+    reserved: resolveReservedDirs(fileConfig, dataDir),
+  };
 }
 
 const SEV_ICON: Record<AuditSeverity, string> = { high: '🔴', medium: '🟠', low: '🟡' };
@@ -55,7 +60,7 @@ function main(): void {
   const noFail = args.has('--no-fail');
   const ruleFilter = [...args].find((a) => a.startsWith('--rule='))?.slice('--rule='.length);
 
-  const { dataDir, musicDir } = loadConfig();
+  const { dataDir, musicDir, reserved } = loadConfig();
   const dbPath = join(dataDir, 'nicotind.db');
   if (!existsSync(dbPath)) {
     console.error(`Database not found at ${dbPath}. Run nicotind at least once first.`);
@@ -66,7 +71,7 @@ function main(): void {
   // DB findings + disk findings merged into one report.
   let findings: AuditFinding[] = auditLibrary(db).findings;
   if (existsSync(musicDir)) {
-    const scan = scanMusicDir(musicDir);
+    const scan = scanMusicDir(musicDir, reserved);
     const dbPaths = db
       .query<{ path: string }, []>('SELECT path FROM library_songs')
       .all()

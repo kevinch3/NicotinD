@@ -74,10 +74,13 @@ export function buildBasenameIndex(
 export function backfillRelativePaths(
   db: Database,
   musicDir: string,
-  opts: { apply?: boolean } = {},
+  opts: { apply?: boolean; reserved?: ReadonlySet<string> } = {},
 ): BackfillResult {
   const apply = opts.apply ?? false;
-  const index = buildBasenameIndex(musicDir);
+  // Pass the deployment's set, not the shipped defaults: a configured non-dot
+  // staging dir would otherwise be walked as library content and its files
+  // matched into `completed_downloads` (#826, at the call site this time).
+  const index = buildBasenameIndex(musicDir, opts.reserved);
   const result: BackfillResult = { matched: 0, ambiguous: 0, unresolved: 0 };
 
   const rows = db

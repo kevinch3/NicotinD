@@ -42,6 +42,7 @@ import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
 import { pruneOrphanArtist } from '../services/library-aggregates.js';
 import { scanMusicDir } from '../services/library-disk-audit.js';
+import { resolveReservedDirs } from '../services/library-paths.js';
 import { expandHome } from '@nicotind/core';
 import {
   auditLibrary,
@@ -50,7 +51,7 @@ import {
   type DeletableRule,
 } from '../services/library-audit.js';
 
-function loadConfig(): { dataDir: string; musicDir: string } {
+function loadConfig(): { dataDir: string; musicDir: string; reserved: ReadonlySet<string> } {
   let fileConfig: Record<string, unknown> = {};
   const configPath = resolve(process.env.NICOTIND_CONFIG ?? 'config/default.yml');
   try {
@@ -63,7 +64,11 @@ function loadConfig(): { dataDir: string; musicDir: string } {
   );
   const musicDirRaw = process.env.NICOTIND_MUSIC_DIR ?? (fileConfig.musicDir as string | undefined);
   if (!musicDirRaw) throw new Error('musicDir not configured');
-  return { dataDir, musicDir: expandHome(musicDirRaw) };
+  return {
+    dataDir,
+    musicDir: expandHome(musicDirRaw),
+    reserved: resolveReservedDirs(fileConfig, dataDir),
+  };
 }
 
 function parseRules(args: Set<string>): DeletableRule[] {
@@ -96,7 +101,7 @@ function main(): void {
   const sweepEmpty = args.has('--empty-dirs');
   const rules = parseRules(args);
 
-  const { dataDir, musicDir } = loadConfig();
+  const { dataDir, musicDir, reserved } = loadConfig();
   const dbPath = join(dataDir, 'nicotind.db');
   if (!existsSync(dbPath)) {
     console.error(`Database not found at ${dbPath}.`);
@@ -212,7 +217,7 @@ function main(): void {
 
   // Empty-dir sweep (independent of the pollution deletes).
   if (sweepEmpty) {
-    const empties = scanMusicDir(musicDir).emptyDirs;
+    const empties = scanMusicDir(musicDir, reserved).emptyDirs;
     console.log(`\nEmpty directories: ${empties.length}`);
     for (const d of empties.slice(0, 20)) console.log(`  • ${d}`);
     if (apply) {

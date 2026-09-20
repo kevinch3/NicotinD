@@ -360,6 +360,31 @@ deploy is when the first reclaim lands.
 One residue to expect: slskd prunes **files, not directories**, so the empty album folders a swept
 partial leaves behind stay. They cost inodes, not bytes, and a later transfer reuses the name.
 
+## Resolving the set: `resolveReservedDirs`
+
+The predicate was right; the **call sites** were not. `scanMusicDir` and `buildBasenameIndex` both
+default `reserved` to `reservedDirsFor()` — the *shipped* names — and three production callers took
+that default instead of the deployment's set:
+
+| Call site | Effect of the default |
+| --- | --- |
+| `scripts/audit-library.ts` | a configured non-dot staging dir's contents reported as `orphan_file` |
+| `scripts/repair-pollution.ts` | the same dir's folders reported as empty dirs to clean |
+| `services/untracked-backfill.ts` | its files indexed as library content and matched into `completed_downloads` |
+
+Only a **non-dot** name was affected: the `.`-prefix branch of `isReservedTopLevel` is
+config-independent, so the shipped `.downloads` / `.unsorted` were skipped either way. That is what
+kept it quiet.
+
+`resolveReservedDirs(fileConfig, dataDir)` (`services/library-paths.ts`) is the shared resolver,
+the same shape as `resolveTranscodeLossless` one module over and for the same reason: an offline
+entry point that builds its own config must not also invent its own fallback. Env beats the file,
+matching every other key — and it is the only source the production image has, since it ships no
+config file (#824).
+
+The default parameter stays, because tests legitimately want the shipped set. Production callers
+pass the resolved one.
+
 ## Out of scope
 
 - The 25 scripts that each hand-roll `loadConfig()` — a real duplication, but not this change.

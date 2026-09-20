@@ -64,3 +64,29 @@ export function downloadsDirFor(musicDir: string, cfg?: PathConfig): string {
   const raw = cfg?.downloadsDir ?? DEFAULT_DOWNLOADS_DIR;
   return isAbsolute(raw) ? raw : join(musicDir, raw);
 }
+
+/**
+ * Resolve this deployment's reserved set from a raw parsed config file, the way
+ * `src/index.ts` does at boot.
+ *
+ * The offline entry points each build their own `{dataDir, musicDir}` and none
+ * of them resolved this, so they walked with `reservedDirsFor()` — the shipped
+ * defaults, not the configured set. A configured **non-dot** staging directory
+ * was therefore invisible to them: the audit reported its contents as orphan
+ * files, and the backfill indexed them as library content. That is the #826
+ * defect class reappearing at the call site rather than in the predicate, which
+ * is exactly what `resolveTranscodeLossless` exists to prevent one module over.
+ *
+ * `unsortedRoot` is `<dataDir>/unsorted`, matching the boot wiring — absolute,
+ * so it contributes no reserved *name* unless an operator points it inside
+ * musicDir with a relative path.
+ */
+export function resolveReservedDirs(fileConfig: unknown, dataDir: string): ReadonlySet<string> {
+  const downloads = (fileConfig as { downloads?: { dir?: unknown } } | undefined)?.downloads;
+  const fromFile = typeof downloads?.dir === 'string' ? downloads.dir : undefined;
+  // Env wins over the file, the same precedence every other key uses — and the
+  // one that matters most here, because the production image ships no config
+  // file at all, so env is the only source it has (#824).
+  const dir = process.env.NICOTIND_DOWNLOADS_DIR?.trim() || fromFile;
+  return reservedDirsFor({ downloadsDir: dir, unsortedRoot: `${dataDir}/unsorted` });
+}
