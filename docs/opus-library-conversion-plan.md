@@ -160,6 +160,17 @@ For lossless sources that is tolerable: the failure it catches, truncation, is t
 For lossy sources it is not, because generation loss is invisible to a duration check, and the
 original is gone the moment the rename lands.
 
+The duration comparison is also mildly biased toward passing, and it is worth knowing why:
+**`ffprobe` does not subtract pre-skip for Ogg-Opus**, so it over-reports an Opus file's playable
+length by the pre-skip, measured at 6.5 ms on a reference encode. The check reads source duration
+from `music-metadata` and output duration from `ffprobe`, so the output always looks slightly
+longer than it is. That is far inside the 1.0 s tolerance and harmless today, but it means the
+check is not measuring what it appears to measure.
+
+The library database is unaffected — the scanner takes duration from `music-metadata`
+(`library-scanner.ts:1159`), not `ffprobe`. It does round to whole seconds, which is the rounding
+that makes the heuristic repoint matcher in gap 1 unsafe.
+
 **Design.** Verify what actually matters before deleting an irreplaceable file: decoded sample
 count, channel count, sample rate, and a measured output loudness within tolerance of the target.
 Fail closed when a probe returns null. Consider a quarantine window instead of `rmSync` for the
@@ -260,6 +271,66 @@ table-driven so they can be argued about in a test rather than in the encoder.
 **Network-adaptive streaming** (HLS/DASH, switching rendition mid-playback) needs a segmenting
 pipeline and a player that can switch. Out of scope.
 
+## The container is a real decision, and Ogg is not automatically right
+
+Ogg-Opus carries **no duration field anywhere**. RFC 7845 defines none; duration is recoverable only
+as `(final granule position − pre-skip) / 48000`, which means reading the *last* page. Both engines
+do exactly that and both gate it on the transport being seekable — Chromium through ffmpeg's
+`ogg_get_length()`, which seeks to the last 64 KB, and Firefox through `OggDemuxer::RangeEndTime()`,
+guarded on a known content length. Fail that and `duration` is `Infinity` and seeking is dead.
+
+**Our server already meets the full contract**, which is why the 7,774 Ogg-Opus files play today:
+`Accept-Ranges: bytes` on every response, `206` with `Content-Range`, accurate `Content-Length`,
+`If-Range` validation, and suffix ranges handled specially for iOS CoreMedia
+(`streaming.ts:432-534`). There is also **no compression middleware anywhere in the API**, which
+matters more than it sounds: gzipping audio silently costs both duration and seeking, and Firefox
+disables seekability outright on a compressed response.
+
+Two live browser defects survive a correct server:
+
+- **Chromium 40781739** — repeatedly seeking an Ogg `<audio>` element makes the reported duration
+  creep upward, with a storm of `durationchange` events. Closed **Won't Fix, Intended Behavior** in
+  2024, root-caused to ffmpeg's Ogg seek handling. Firefox does not reproduce it.
+- **Mozilla 1810378** — long Ogg files stall for 15–20 s on load and seek, and the built-in player
+  caps near 12 h 25 m. Still unassigned. The reporter fixed it by remuxing to WebM. Our longest
+  content is DJ sets, comfortably under that threshold.
+
+WebM-Opus answers both: its `Info/Duration` element sits about **250 bytes into the file**, so no
+tail read is needed, and it decodes sample-exact via `CodecDelay` and `DiscardPadding`. It is a
+**remux, not a re-encode** — `-c copy`, no quality cost, applicable to the whole library at any later
+date.
+
+**But WebM forfeits the tag simplification.** Matroska carries its own tag system rather than Vorbis
+comments, and `.webm` is in `AUDIO_EXTENSIONS` but in **neither** `ID3_EXTS` nor `VORBIS_EXTS` — the
+library can index a WebM file today but cannot write its tags at all. Choosing WebM means building a
+third tag path instead of deleting two.
+
+### The iOS floor, which is the one hard constraint here
+
+**Safari gained Ogg container support only in iOS 18.4 / macOS 15.4, shipped 2025-03-31.** Before
+that it plays no Ogg-Opus at all. Converting the library to Ogg-Opus therefore sets a hard minimum
+OS version for the iOS app, and anything older gets silence rather than a degraded experience.
+
+That is survivable eighteen months on, but it must be a decision rather than a discovery, and it
+needs two things checked before the conversion rather than after:
+
+- Confirm on a real device that the 7,774 Ogg-Opus files already in the library play on the iOS
+  app, and that seeking and reported duration behave. There is no good public evidence on Ogg-Opus
+  seek behaviour in Safari 18.4+, so this is a measurement, not a lookup.
+- Decide what happens below the floor. An AAC or MP3 fallback rendition is the conventional answer;
+  the per-stream transcode path this plan otherwise retires could serve exactly that, which is an
+  argument for not deleting it outright.
+
+**Recommendation: stay on Ogg-Opus.** The server contract is already correct, the files already
+play, and the one-tag-path collapse is worth more than two defects we have not hit. Record WebM as a
+documented escape hatch rather than a decision deferred.
+
+The other containers are out on their own merits: Chromium has never supported CAF (its `kContainerCAF`
+constant is metrics-only, which is a trap for anyone grepping), and MP4-Opus requires `+faststart`
+and Safari has never played it. Electron is not a constraint — Opus can never be stripped by the
+proprietary-codec switch, and Chromium demuxes Opus from Ogg, WebM, Matroska and MP4 in both
+brandings.
+
 ## Simplifications that follow
 
 ### One tag path instead of three
@@ -293,9 +364,10 @@ tag-container set instead of two.
 
 ### Runtime
 
-Per-stream transcoding becomes near-unnecessary. `transcodeEnabled` is already `false` by default;
-with a uniform, normalized library it can stay off and the 2 GiB transcode cache serves only the
-karaoke variant. e2e fixtures collapse to one format.
+Per-stream transcoding stops being needed for *format* reasons. `transcodeEnabled` is already
+`false` by default and can stay off for ordinary playback. It should **not** be deleted, though:
+the iOS floor above means an AAC fallback rendition is the likely answer for pre-18.4 clients, and
+this path is exactly what would serve it. e2e fixtures collapse to one format.
 
 ## What this does not fix
 
@@ -316,6 +388,7 @@ karaoke variant. e2e fixtures collapse to one format.
 | A verification that fails open deletes an unrecoverable original | High | Fail closed on null probes; verify samples, channels, rate and measured loudness |
 | Energy and radio descriptors flattened by normalization | High → **dissolved** | Normalize via the Opus header gain, which leaves the audio untouched. Only returns if the spike fails and `loudnorm` is used |
 | Re-encoding the 7,774 files that are already Opus | High | Exclude already-Opus from the encode predicate; they need a header gain, not a generation |
+| An all-Ogg library is silent on iOS below 18.4 | High | Verify on device before converting; keep the per-stream transcode path for an AAC fallback rather than retiring it |
 | Song lost when the pre-scan delete commits and the scan then throws | Medium | Move the delete inside the transaction, or insert before deleting |
 | Disk exhaustion or a day-and-a-half run | Medium | Pool the encodes, batch with headroom checks, make the pass resumable |
 
@@ -327,8 +400,10 @@ The order matters: the cheapest, most reversible win ships first, and nothing ir
 until the safety work is in.
 
 0. ~~**Measure.**~~ Done, above.
-1. **Spike: does `output_gain` work on our surfaces?** A day, not a project. Decides the
-   normalization mechanism and therefore most of what follows.
+1. **Spike, on a real iOS device.** Two questions in one sitting: does `output_gain` take effect on
+   our surfaces, and do the 7,774 Ogg-Opus files already in the library play, seek and report
+   duration correctly on iOS 18.4+. Together these decide the normalization mechanism and the
+   container, and therefore most of what follows.
 2. **Normalize the 7,774 existing Opus files.** Lossless, reversible, needs none of the conversion
    machinery, and it closes #723 for a third of the library. **This is shippable on its own** and
    should not wait behind the conversion.
@@ -358,6 +433,8 @@ every lossless download.
    dramatically quieter. With the header-gain design this is re-tunable later, which makes it a
    much cheaper decision than it looks.
 3. **The bitrate mapping table** — 64 / 96 / 112 / 128 as proposed, or different.
+4. **Ogg or WebM?** Recommended: Ogg, keeping the tag collapse. WebM would trade that for immunity
+   to two browser defects we have not hit, and it stays available later as a lossless remux.
 4. **Originals replaced, or quarantined until verified?** Quarantine costs disk during the run and
    collides on the path stems the remap uses.
 5. **The 3 FLAC files** — leave them as the only true masters, or convert for uniformity.
