@@ -808,7 +808,14 @@ export interface UntrackedDownload {
  */
 export interface MaintenanceStatus {
   phase: 'idle' | 'running' | 'cancelling';
-  taskId: 'metadata-optimize' | 'transcode-library' | 'library-sync' | null;
+  /**
+   * Mirrors `MAINTENANCE_TASK_IDS` (`services/maintenance/tasks.ts`). The union
+   * is duplicated rather than shared, per the note above — so
+   * `maintenance-task-mirror.test.ts` asserts it against the server's list,
+   * because a mirror nothing checks is a mirror that drifts. It already had:
+   * `artwork-backfill` shipped without ever reaching this type.
+   */
+  taskId: 'metadata-optimize' | 'artwork-backfill' | 'transcode-library' | 'library-sync' | null;
   label: string | null;
   /** Denominator; 0 = the pass can't count ahead (a full rescan). */
   total: number;

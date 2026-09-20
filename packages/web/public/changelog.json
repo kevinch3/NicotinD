@@ -1,5 +1,24 @@
 [
   {
+    "version": "0.8.14",
+    "date": "2026-09-20",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.13...v0.8.14",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**curation:** triage cards serve closed options only; prose flags stay with the agent ([#1213](https://github.com/kevinch3/NicotinD/issues/1213)) ([3fe009a](https://github.com/kevinch3/NicotinD/commit/3fe009a613d55bccc72bb4814af563791060f059)), references [#1210](https://github.com/kevinch3/NicotinD/issues/1210) [#1211](https://github.com/kevinch3/NicotinD/issues/1211)"
+        ]
+      },
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**lyrics:** rank a source match on duration, and record what it matched ([#1214](https://github.com/kevinch3/NicotinD/issues/1214)) ([47e316c](https://github.com/kevinch3/NicotinD/commit/47e316c6639c231b30f625e1d9358dd9749e4903)), references [#1212](https://github.com/kevinch3/NicotinD/issues/1212)"
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.8.13",
     "date": "2026-09-20",
     "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.12...v0.8.13",
@@ -680,19 +699,6 @@
         "title": "Bug Fixes",
         "items": [
           "**library:** a failed list says so, and a blocked loop names its cause ([#1061](https://github.com/kevinch3/NicotinD/issues/1061)) ([6fb291e](https://github.com/kevinch3/NicotinD/commit/6fb291ee37e4371951fe252000d026913f3de7ff)), closes [#1059](https://github.com/kevinch3/NicotinD/issues/1059) [#1060](https://github.com/kevinch3/NicotinD/issues/1060), references [#1055](https://github.com/kevinch3/NicotinD/issues/1055) [#1055](https://github.com/kevinch3/NicotinD/issues/1055) [#1055](https://github.com/kevinch3/NicotinD/issues/1055) [#1058](https://github.com/kevinch3/NicotinD/issues/1058) [#1058](https://github.com/kevinch3/NicotinD/issues/1058)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.6.27",
-    "date": "2026-09-09",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.6.26...v0.6.27",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**library:** evaluate the filter song-set once, not per entity row ([#1057](https://github.com/kevinch3/NicotinD/issues/1057)) ([9a91aa3](https://github.com/kevinch3/NicotinD/commit/9a91aa34eb92108e6c69060b62ba58f8d416bd88)), references [#1055](https://github.com/kevinch3/NicotinD/issues/1055)"
         ]
       }
     ]
