@@ -1,7 +1,12 @@
 import { describe, expect, it, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
-import { carrySongCuration, moveSongGenreOverride } from './song-curation-carry.js';
+import {
+  carrySongCuration,
+  moveSongGenreOverride,
+  SONG_CARRY_TABLES,
+  SONG_CARRY_EXEMPT,
+} from './song-curation-carry.js';
 import { upsertGenreOverride } from './genre-overrides.js';
 
 let db: Database;
@@ -90,7 +95,9 @@ describe('carrySongCuration', () => {
       toPath: 'a/old.opus',
     });
 
-    expect(r).toEqual({ playlistRows: 1, genreOverrideMoved: true, acquisitionMoved: true });
+    expect(r.playlistRows).toBe(1);
+    expect(r.genreOverrideMoved).toBe(true);
+    expect(r.acquisitionMoved).toBe(true);
     expect(db.query<{ song_id: string }, []>('SELECT song_id FROM playlist_songs').all()).toEqual([
       { song_id: 'new' },
     ]);
@@ -152,7 +159,90 @@ describe('carrySongCuration', () => {
   it('is a no-op when the id did not change', () => {
     override('same', ['Dub']);
     const r = carrySongCuration(db, { fromId: 'same', toId: 'same' });
-    expect(r).toEqual({ playlistRows: 0, genreOverrideMoved: false, acquisitionMoved: false });
+    expect(r.playlistRows).toBe(0);
+    expect(r.genreOverrideMoved).toBe(false);
+    expect(r.acquisitionMoved).toBe(false);
+    expect(r.moved).toEqual({});
+    expect(r.dropped).toEqual({});
     expect(overrideKeys()).toEqual(['same']);
+  });
+});
+
+describe('the registry, and the tables it newly covers', () => {
+  it('every carried and exempt entry records a reason', () => {
+    // The lists are read by whoever adds the next table; an entry with no
+    // reason is a decision nobody can check.
+    for (const e of [...SONG_CARRY_TABLES, ...SONG_CARRY_EXEMPT]) {
+      expect(e.why.trim().length).toBeGreaterThan(20);
+    }
+  });
+
+  it('no table is in both lists', () => {
+    const carried = new Set(SONG_CARRY_TABLES.map((e) => `${e.table}.${e.column}`));
+    const both = SONG_CARRY_EXEMPT.filter((e) => carried.has(`${e.table}.${e.column}`));
+    expect(both).toEqual([]);
+  });
+
+  it('carries lyrics, which nothing else would ever restore', () => {
+    // 2,436 rows on prod, outside ORPHAN_TABLES so nothing sweeps them, and
+    // rebuilt by nothing. Synced LRC offsets live only here.
+    db.run(
+      `INSERT INTO library_lyrics (song_id, plain_text, updated_at) VALUES ('old', 'la la', 1)`,
+    );
+    carrySongCuration(db, { fromId: 'old', toId: 'new' });
+    expect(db.query<{ song_id: string }, []>('SELECT song_id FROM library_lyrics').all()).toEqual([
+      { song_id: 'new' },
+    ]);
+  });
+
+  it('keeps the destination lyrics when both sides have them, and drops the stale row', () => {
+    db.run(
+      `INSERT INTO library_lyrics (song_id, plain_text, updated_at) VALUES ('old', 'source', 1)`,
+    );
+    db.run(
+      `INSERT INTO library_lyrics (song_id, plain_text, updated_at) VALUES ('new', 'dest', 1)`,
+    );
+
+    const r = carrySongCuration(db, { fromId: 'old', toId: 'new' });
+
+    const rows = db
+      .query<{ song_id: string; plain_text: string }, []>(
+        'SELECT song_id, plain_text FROM library_lyrics',
+      )
+      .all();
+    expect(rows).toEqual([{ song_id: 'new', plain_text: 'dest' }]);
+    // The leftover must be deleted explicitly: nothing sweeps this table.
+    expect(r.dropped['library_lyrics']).toBe(1);
+  });
+
+  it('carries an exclude decision', () => {
+    db.run(
+      `INSERT INTO recommendation_feedback (user_id, song_id, kind, at) VALUES ('u', 'old', 'exclude', 1)`,
+    );
+    carrySongCuration(db, { fromId: 'old', toId: 'new' });
+    expect(
+      db.query<{ song_id: string }, []>('SELECT song_id FROM recommendation_feedback').all(),
+    ).toEqual([{ song_id: 'new' }]);
+  });
+
+  it('leaves play_events alone — history is defended by snapshot, not by carry', () => {
+    db.run(
+      `INSERT INTO play_events (client_event_id, user_id, song_id, title, artist, album, at, ms_played, reason, counted)
+       VALUES ('e1', 'u', 'old', 'T', 'A', 'Al', 1, 1000, 'played', 1)`,
+    );
+    carrySongCuration(db, { fromId: 'old', toId: 'new' });
+    // Re-pointing it would be wrong: the event records what was played then,
+    // and title/artist/album are copied onto the row for exactly this reason.
+    expect(db.query<{ song_id: string }, []>('SELECT song_id FROM play_events').all()).toEqual([
+      { song_id: 'old' },
+    ]);
+  });
+
+  it('reports what it moved, per table', () => {
+    db.run(`INSERT INTO library_lyrics (song_id, plain_text, updated_at) VALUES ('old', 'la', 1)`);
+    const r = carrySongCuration(db, { fromId: 'old', toId: 'new' });
+    expect(r.moved['library_lyrics']).toBe(1);
+    // Tables with nothing to move are omitted rather than reported as zero.
+    expect(r.moved['library_embeddings']).toBeUndefined();
   });
 });

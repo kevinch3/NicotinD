@@ -231,6 +231,34 @@ Provenance moves on a **different key**: `acquisitions` is keyed on `relative_pa
 id, the same split `artist-curation-carry` makes for its name-keyed rows. Omit the paths to leave it
 alone.
 
+#### Which tables, and who decides
+
+`SONG_CARRY_TABLES` and `SONG_CARRY_EXEMPT` are the two lists, and
+**`check:song-carry-coverage` reads the denominator from the live schema** — `applySchema` into an
+in-memory database, then `pragma_table_info` over every table — so a table added later is in scope
+whether or not anyone remembered the registry. Both directions fail: an unclassified column, and a
+registered entry the schema no longer has.
+
+Carried, because nothing else restores them: `playlist_songs`, `library_lyrics` (synced LRC offsets
+exist only here), `recommendation_feedback`, plus `library_embeddings` and
+`library_song_descriptors` — regenerable, but the first is ~46% of the database and the second is
+hours of recompute across a whole-library pass.
+
+Exempt, each on the record: `library_song_artists` and `library_song_genres` are rebuilt from tags
+by the scan; `library_song_analysis_failures` is a ledger about a file no longer at that id;
+`play_events` is defended by snapshot instead, since title/artist/album are copied onto the event
+for exactly this reason; `radio_poll_scenarios` and `radio_poll_votes` are **recorded measurements**
+and re-pointing them would rewrite what was actually asked and answered.
+
+One blind spot, named rather than hidden: `library_genre_overrides` keys on `key`, not `song_id`, so
+a name-based sweep cannot see it. It is carried by its own statement and the gate prints that
+caveat on every run.
+
+The move policy is uniform and each part earns its place: `UPDATE OR IGNORE` because a key may
+already hold a row for the destination and a plain `UPDATE` would abort the caller's transaction;
+then an explicit `DELETE` of whatever could not move, because these tables sit outside
+`ORPHAN_TABLES` precisely so nothing sweeps them — an abandoned row would live forever.
+
 The caller supplies the transaction, because every caller has other work to make atomic with it.
 
 Returns `{ candidates, converted, skipped, failed, bytesReclaimed, unestimated }`.
