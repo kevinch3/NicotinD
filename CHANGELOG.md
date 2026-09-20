@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.28](https://github.com/kevinch3/NicotinD/compare/v0.8.27...v0.8.28) (2026-09-20)
+
+### Bug Fixes
+
+* **scripts:** normalize-library is dry-run by default like every sibling ([#1238](https://github.com/kevinch3/NicotinD/issues/1238)) ([8348859](https://github.com/kevinch3/NicotinD/commit/834885905bad72110728015d762cb2092186554c)), closes [#1237](https://github.com/kevinch3/NicotinD/issues/1237), references [#1234](https://github.com/kevinch3/NicotinD/issues/1234)
 ## [0.8.27](https://github.com/kevinch3/NicotinD/compare/v0.8.26...v0.8.27) (2026-09-20)
 
 ### Bug Fixes
