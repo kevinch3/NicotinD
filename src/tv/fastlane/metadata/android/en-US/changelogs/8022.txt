@@ -1,0 +1,1 @@
+• artwork: a harness for embedding cover art in Opus, and the cap it found (#1229)

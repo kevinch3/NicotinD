@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.22](https://github.com/kevinch3/NicotinD/compare/v0.8.21...v0.8.22) (2026-09-20)
+
+### Features
+
+* **artwork:** a harness for embedding cover art in Opus, and the cap it found ([#1229](https://github.com/kevinch3/NicotinD/issues/1229)) ([fe3e2dc](https://github.com/kevinch3/NicotinD/commit/fe3e2dc9c2372417e81e260abc553b67588f75ec)), references [#1226](https://github.com/kevinch3/NicotinD/issues/1226) [#1226](https://github.com/kevinch3/NicotinD/issues/1226)
 ## [0.8.21](https://github.com/kevinch3/NicotinD/compare/v0.8.20...v0.8.21) (2026-09-20)
 
 ### Features
