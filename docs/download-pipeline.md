@@ -263,6 +263,38 @@ The caller supplies the transaction, because every caller has other work to make
 
 Returns `{ candidates, converted, skipped, failed, bytesReclaimed, unestimated }`.
 
+### Embedding cover art in Opus: the ceiling is ours
+
+`-vn` in the encoder discards the attached picture, and the comment there is right — ffmpeg's Ogg
+muxer **cannot** attach one. Dropping `-vn` does not help: ffmpeg re-encodes the JPEG as a **Theora
+video stream** inside the Ogg, which is worse than losing it.
+
+**`opusenc --picture` writes a correct block.** `opusinfo` reads a 730 KB cover back byte-exact and
+`ffprobe` reports the right dimensions. `opus-tools` is in the image for this reason and no other.
+
+**What fails is `music-metadata`**, which every read path here goes through — `extractEmbeddedPicture`
+for the cover picker, the scanner for `has_embedded_art`. Measured on opusenc output, same image:
+
+| cover bytes | music-metadata |
+| --- | --- |
+| 7,607 · 104,076 · 415,118 · 457,336 · 598,039 | reads it |
+| **676,153** · 730,846 · 886,362 | throws `Out of bounds access` |
+
+The same 730 KB image reads fine from an **mp3**, so it is specific to Opus — consistent with a large
+comment spanning Ogg pages, which cap at 65,025 payload bytes each.
+
+A file the app cannot read is worse than no file: the picker shows nothing and `has_embedded_art`
+says false, while the bytes are still paid for. So `preparePicture`
+(`services/opus-artwork.ts`) caps covers at **512 KB** — under the measured boundary with margin,
+because the exact figure belongs to a dependency we do not control and can move on an upgrade — and
+re-compresses anything larger up a quality ladder. It returns **null** when nothing fits, an explicit
+"do not embed" rather than a path that fails in the encoder.
+
+`opus-artwork.test.ts` is the harness, and it asks **two** readers on purpose: `opusinfo`, the
+authority on whether the file is right, and `music-metadata`, which is what the app can actually see.
+Keeping those apart is the point — "the file is wrong" and "we cannot read a correct file" need
+opposite fixes, and conflating them is what made the first two attempts at this wrong (#1226).
+
 ### Back up before transcoding
 
 `transcodeToOpus` unlinks the source once the output verifies. For a freshly downloaded file that is

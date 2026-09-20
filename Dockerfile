@@ -52,7 +52,9 @@ LABEL org.opencontainers.image.source="https://github.com/kevinch3/NicotinD" \
       org.opencontainers.image.description="NicotinD — self-hosted music acquisition + streaming server" \
       org.opencontainers.image.licenses="AGPL-3.0-only"
 
-# Install curl (healthchecks), ffmpeg (transcode + enrichment), docker CLI (log
+# Install curl (healthchecks), ffmpeg (transcode + enrichment), opus-tools
+# (opusenc is the only writer that produces a readable Opus METADATA_BLOCK_PICTURE
+# -- ffmpeg's ogg muxer cannot attach a picture at all, see #1226), docker CLI (log
 # streaming via mounted socket), and libchromaprint-tools, which provides the
 # `fpcalc` binary AcoustID identify spawns (issue #548 — without it every
 # identify returns `fpcalc-missing`, whose "install libchromaprint-tools"
@@ -91,7 +93,7 @@ ARG APT_REFRESH=unset
 RUN echo "apt refresh: ${APT_REFRESH}" && \
     apt-get update && \
     apt-get upgrade -y && \
-    apt-get install -y --no-install-recommends curl ca-certificates ffmpeg libchromaprint-tools && \
+    apt-get install -y --no-install-recommends curl ca-certificates ffmpeg libchromaprint-tools opus-tools && \
     rm -rf /var/lib/apt/lists/*
 COPY --from=docker:cli /usr/local/bin/docker /usr/local/bin/docker
 
