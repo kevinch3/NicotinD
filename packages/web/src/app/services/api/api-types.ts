@@ -815,7 +815,13 @@ export interface MaintenanceStatus {
    * because a mirror nothing checks is a mirror that drifts. It already had:
    * `artwork-backfill` shipped without ever reaching this type.
    */
-  taskId: 'metadata-optimize' | 'artwork-backfill' | 'transcode-library' | 'library-sync' | null;
+  taskId:
+    | 'metadata-optimize'
+    | 'artwork-backfill'
+    | 'embed-cover-art'
+    | 'transcode-library'
+    | 'library-sync'
+    | null;
   label: string | null;
   /** Denominator; 0 = the pass can't count ahead (a full rescan). */
   total: number;

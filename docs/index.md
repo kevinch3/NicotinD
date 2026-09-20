@@ -208,6 +208,9 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **A cover survives the transcode as a folder image**: `preserveFolderCover` writes `cover.jpg`
   before `-vn` discards the attached picture and as the organizer lands any format — ffmpeg's Ogg
   muxer cannot carry one. `findFolderCoverName`. → [library-audit.md](library-audit.md)
+- **Art is embedded back into Opus files that lack it**: `embedAlbumArt` resolves one cover per
+  album (folder image, then the `library_artwork` URL) and writes it with `attachPictureToOpus`,
+  setting `has_embedded_art` itself. → [download-pipeline.md](download-pipeline.md)
 - **The displayed artist spelling is reduced, not first-seen**: `pickDisplayName` picks one of an
   album's spellings (frequency → diacritics → not-shouted → explicit-locale alphabetical) and
   `refreshAlbumArtistDisplay` re-derives it on every incremental touch, so a one-file scan cannot
