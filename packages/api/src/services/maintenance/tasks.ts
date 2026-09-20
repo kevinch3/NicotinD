@@ -2,6 +2,7 @@ import type { Database } from 'bun:sqlite';
 import { optimizeAllAlbums, type OptimizeLidarr } from '../metadata-optimize.js';
 import { transcodeLibraryToOpus } from '../library-transcode.js';
 import { backfillArtwork, type BackfillLidarr } from '../artwork-backfill.js';
+import { embedAlbumArt } from '../opus-art-embed.js';
 import { readTranscodeLossless, type TranscodeLosslessSource } from '../transcode-settings.js';
 
 /**
@@ -14,11 +15,16 @@ import { readTranscodeLossless, type TranscodeLosslessSource } from '../transcod
  * `ENRICHMENT_TASKS` — see docs/metadata-optimize.md for the four reasons.
  */
 export type MaintenanceTaskId =
-  'metadata-optimize' | 'artwork-backfill' | 'transcode-library' | 'library-sync';
+  | 'metadata-optimize'
+  | 'artwork-backfill'
+  | 'embed-cover-art'
+  | 'transcode-library'
+  | 'library-sync';
 
 export const MAINTENANCE_TASK_IDS: readonly MaintenanceTaskId[] = [
   'metadata-optimize',
   'artwork-backfill',
+  'embed-cover-art',
   'transcode-library',
   'library-sync',
 ];
@@ -188,6 +194,48 @@ export function buildMaintenanceTasks(deps: MaintenanceDeps): AnyMaintenanceTask
             albumsUnresolved: r.albumsUnresolved,
             albumsLookedUp: r.albumsLookedUp,
             albumLookupMatched: r.albumLookupMatched,
+          },
+        };
+      },
+    }),
+
+    defineTask<{ apply: boolean; limit?: number; afterId?: string; localOnly: boolean }>({
+      id: 'embed-cover-art',
+      label: 'Embed cover art into Opus files',
+      available: () => (deps.musicDir ? true : 'Music directory is not configured'),
+      parseParams: (q) => ({
+        apply: !flag(q, 'dryRun'),
+        limit: positiveInt(q, 'limit'),
+        afterId: q.get('after') ?? undefined,
+        localOnly: flag(q, 'localOnly'),
+      }),
+      describe: (p) => ({
+        summary: `${p.apply ? 'apply' : 'dry-run'}${p.localOnly ? ', folder art only' : ''}`,
+        dryRun: !p.apply,
+      }),
+      run: async (ctx, p) => {
+        const r = await embedAlbumArt(deps.db, deps.musicDir, {
+          apply: p.apply,
+          limit: p.limit,
+          afterId: p.afterId,
+          localOnly: p.localOnly,
+          shouldStop: ctx.shouldStop,
+          onProgress: (x) => ctx.onProgress({ total: x.total, visited: x.visited, label: x.label }),
+        });
+        return {
+          stopped: r.stopped,
+          errorSample: r.errorSample,
+          detail: {
+            albums: r.albums,
+            albumsEmbedded: r.albumsEmbedded,
+            tracksEmbedded: r.tracksEmbedded,
+            // Three different "nothing happened" reasons, kept apart because
+            // they need three different fixes: acquire art, fix the folder
+            // layout, or reach the host.
+            noSource: r.noSource,
+            sharedBucket: r.sharedBucket,
+            fetchFailed: r.fetchFailed,
+            failed: r.failed,
           },
         };
       },

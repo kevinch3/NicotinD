@@ -326,6 +326,48 @@ a file whose audio is already verified.
 So `opus-tools` stays in the image for the harness's `opusinfo`/`opusenc` only, and nothing new was
 added to it.
 
+### Putting art back into the files that already lost it
+
+`embedAlbumArt` (`services/opus-art-embed.ts`, admin task `embed-cover-art`) writes an album's cover
+into its own `.opus` files. It exists because the loss already happened: **0 of 7,774** Opus tracks
+on prod carry embedded art, against 89.5% of the mp3s.
+
+**What it buys is portability, not pixels.** The cover route already prefers a canonical artwork row,
+then a folder image, then embedded art — so any album with either of the first two already renders
+in the app and looks identical afterwards. What changes is that the art travels with the file to
+other players, and stops depending on a sibling `cover.jpg` surviving a move.
+
+**The obvious target is the wrong one.** `libraryHealth`'s `unrenderable` slice looks like the thing
+to fix, and it is exactly the slice this cannot touch: it is *defined* as having no artwork row, no
+embedded art and no usable folder image, so there is nothing to embed. Those albums need artwork
+**acquisition** (`backfillArtwork`, or the cover picker), and pointing this pass at them would
+convert zero. Measured on prod, 2026-09-20:
+
+| Opus albums lacking embedded art | 1,736 |
+| --- | --- |
+| source = artwork row (a remote URL) | 671 |
+| source = folder image only | 509 |
+| no source at all | 556 |
+
+So the pass has **two** sources, tried in cost order. The folder image is local and free. The
+`library_artwork` row is a **URL, not bytes** — 3,680 of 3,690 rows on prod are `http(s)`, and the
+on-disk cover cache does not exist at all on a box that has not served those covers — so that half
+needs a bounded fetch, which `localOnly` skips.
+
+Three constraints carried over from elsewhere, each already paid for once:
+
+- **`folderArtBelongsToAlbum` is mandatory**, not advisory. #978 is one stray `cover.jpg` that had
+  become the cover of 1,229 unrelated albums. Rendering that is wrong; baking it into the files
+  makes it permanent.
+- **The pass sets `has_embedded_art` itself.** Only the scanner writes that column, and its upsert
+  `COALESCE`s, so a rescan would keep the stale `0` and every later pass would redo the same album.
+- **The cover is capped once per album**, not per track — `preparePicture`'s re-compress ladder over
+  a 125-track compilation would otherwise run 125 times for one image.
+
+The three "nothing happened" counters stay separate (`noSource`, `sharedBucket`, `fetchFailed`)
+because they need three different fixes: acquire art, fix the folder layout, reach the host. One
+combined number would hide which.
+
 ### Back up before transcoding
 
 `transcodeToOpus` unlinks the source once the output verifies. For a freshly downloaded file that is
