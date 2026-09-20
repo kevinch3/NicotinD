@@ -1,0 +1,366 @@
+# Full-library Opus conversion with loudness normalization
+
+**Status**: design, not approved. No code written.
+**Date**: 2026-09-20
+**Supersedes the narrow fix proposed in**: #723
+
+## What this is
+
+Convert every song in the library to Opus, applying EBU R128 loudness normalization in the same
+ffmpeg pass, choosing the Opus bitrate per source rather than using one constant.
+
+## What already exists
+
+More than expected. `transcodeLibraryToOpus` (`library-transcode.ts:68`) already converts library
+files to Opus, already handles the song-id change that a new file extension forces, and already
+runs from both a CLI script and an Admin button. `downloads.transcodeLossless` is
+`{enabled: true, format: opus, bitRate: 192}` by default, so lossless downloads are converted at
+ingest — which is why only **3** lossless songs remain out of 21,641.
+
+So this is not a new pipeline. It is a change of predicate, plus normalization, plus a bitrate
+decision — and then the work of making machinery that was built for a handful of files survive
+21,641 of them.
+
+## Measured scope
+
+Read-only against prod, 2026-09-20, `library_songs`, 21,641 songs / 122.17 GiB. Loudness coverage
+is **100%** — no row has a null `loudness`.
+
+| ext | songs | GiB | avg kbps |
+|---|---|---|---|
+| mp3 | 13,576 | 76.36 | 193 |
+| **opus** | **7,774** | **43.81** | **184** |
+| m4a | 238 | 1.63 | 254 |
+| ogg | 44 | 0.23 | 235 |
+| wma | 6 | 0.03 | 134 |
+| flac | 3 | 0.11 | 975 |
+
+**A third of the library is already Opus.** That changes the shape of the job: 13,864 files need a
+re-encode, not 21,641, and the 7,774 that are already Opus must not be put through a second
+generation for no reason.
+
+It also largely answers the "will Opus play everywhere" question empirically rather than from
+specification: 7,774 Opus files are in the library today and playing. Worth confirming explicitly
+on iOS, where Ogg-Opus support arrived late, but this is not an unknown container being introduced
+to the app for the first time.
+
+The mp3 bitrate distribution is cleanly bimodal — 8,138 files at 128–159 kbps and 4,383 at 256+ —
+which makes a source-adaptive mapping straightforward rather than a guess:
+
+| source bucket | files | now | → Opus | after | saved |
+|---|---|---|---|---|---|
+| < 128 kbps | 80 | 0.34 GiB | 64 | 0.13 GiB | 0.21 |
+| 128–159 | 8,153 | 30.19 GiB | 96 | 21.85 GiB | 8.34 |
+| 160–255 | 1,038 | 5.76 GiB | 112 | 3.26 GiB | 2.50 |
+| 256+ | 4,589 | 41.84 GiB | 128 | 16.57 GiB | 25.27 |
+| **total** | **13,864** | **78.22 GiB** | | **41.85 GiB** | **36.4** |
+
+The library goes from 122.17 GiB to about 85.8 GiB, a **30% reduction**, and 64% of files are
+re-encoded once.
+
+## The predicate change, and why it is a different decision in kind
+
+The pass keeps a file only if `isLossless(suffix) || isLossless(ext(path))`
+(`library-transcode.ts:93`), with a codec probe for `.m4a` containers. **Everything lossy — mp3,
+aac, ogg, existing opus — is invisible to it** (pinned by `library-transcode.test.ts:259-271`).
+
+Converting FLAC to Opus is lossless to lossy: a first-generation encode. Extending the predicate to
+mp3 and aac is **lossy to lossy**, a second-generation encode across ~21,600 files, and the pass
+deletes the original (`post-download-transcode.ts:195`) with no backup and no rollback. That is the
+one thing here that cannot be undone.
+
+## Five gaps that scale badly
+
+Each is fine at three files and dangerous at 21,641. These are the actual work of this plan.
+
+### 1. The identity migration covers 4 tables of ~14
+
+`songId(relPath) = sha1('song:' + relPath)` (`library-scanner.ts:298`), so changing `.mp3` to
+`.opus` re-mints the id. There are no foreign keys on `song_id` — deliberately, since a cascade
+would delete listening history on a routine rescan (`db.ts:1777-1782`). Nothing errors. Rows stop
+matching, silently. The codebase has been burned once already: `db.ts:1782` cites "the failure that
+produced dangling playlist_songs, #259".
+
+The existing migration (`library-transcode.ts:153-198`) carries across four things: `starred` and
+`hidden`, `playlist_songs`, the song-scope genre override (#856), and `acquisitions` provenance.
+`scanPaths` then rebuilds `library_song_genres` and `library_song_artists` from the new file's tags.
+
+**Not carried, and therefore orphaned:**
+
+| Table | Cost of losing it |
+|---|---|
+| `library_lyrics` | **2,436 rows.** Deliberately outside `ORPHAN_TABLES`, so nothing prunes it and nothing repairs it. Synced LRC offsets are database-only and are simply lost |
+| `library_embeddings` | ~46% of the prod database by bytes; sidecar must re-embed everything |
+| `library_song_descriptors` | timbre/groove/band, ~5 s each to recompute |
+| `recommendation_feedback` | "never recommend this" exclusions silently reset |
+| `curation_flags` (song-scoped) | open review flags orphan under the unique-open-flag index |
+| `play_events` | history de-links; partly softened because title/artist/album are snapshotted onto the event, but the play-count index goes cold |
+| `library_song_analysis_failures`, `library_song_provenance`, `completed_downloads`, `acquisition_job_items`, `scan_cache` | stale or unreachable rows |
+
+Albums and artists are **name**-derived (`library-scanner.ts:304`, `:314`), so they survive, and
+`library_artwork` is keyed on album id, so album covers survive.
+
+Four repoint helpers already exist for this shape and are not used here — `playlist-repoint.ts`,
+`acquisition-repoint.ts`, `genre-override-repoint.ts`, `artist-curation-carry.ts` — and each cites
+`library-transcode.ts` as its precedent.
+
+**Design.** Do not extend the ad-hoc list by hand, and do not fall back on the heuristic matcher:
+`repointGenreOverridesBeforePrune` matches on `(title, artist, duration)` with exactly one survivor
+(`genre-override-repoint.ts:73-79`), and duration is an integer of seconds that an Opus encode can
+shift across a rounding boundary. At whole-library scale that quietly drops curation.
+
+Instead, since the conversion knows `oldPath` and `newPath` exactly, it knows `oldId` and `newId`
+exactly. Record that map, apply it in one transaction, and **gate coverage off the schema**: a test
+that enumerates every table carrying a `song_id` column via `pragma_table_info` and fails if the
+migration does not name it. A table added later then cannot silently fall out. This matches the
+repo's existing rule that gates assert their own denominator.
+
+### 2. `-map_metadata 0` silently loses the analysis tags on mp3 sources
+
+This one invalidates the obvious shortcut. Analysis results are mirrored into file tags — `BPM`,
+`KEY`, `ENERGY`, `LOUDNESS_LUFS`, `VALENCE`, `DANCEABILITY`, `ACOUSTICNESS`, `INSTRUMENTALNESS`,
+`MOOD` (`audio-tags.ts:110-118`) — so the tempting plan is to let `-map_metadata 0` carry them into
+the Opus file and have the scanner read them back, skipping re-analysis of 21,641 files.
+
+That works for FLAC, because Vorbis comments map onto Vorbis comments. It does **not** work for
+mp3: those values live in ID3 `TXXX` frames and lyrics in `USLT`, and ffmpeg has no guaranteed
+`TXXX`-to-Vorbis-comment mapping. Expect silent loss of every analysis tag and of the
+embedded-lyrics recovery path — which is also the only fallback for the orphaned `library_lyrics`
+rows in gap 1. **No test covers tag preservation at all.**
+
+**Design.** Read tags with the existing reader before encoding, and write them explicitly with
+`writeAudioTags` after, rather than trusting `-map_metadata 0`. Add the tag-preservation test the
+pass has never had.
+
+### 3. `-vn` drops embedded artwork, and the folder fallback only fires when the folder is bare
+
+The encoder passes `-vn` (`post-download-transcode.ts:145`) because ffmpeg's Ogg muxer cannot write
+an attached picture stream; Opus wants a base64 `METADATA_BLOCK_PICTURE` comment instead.
+`preserveFolderCover` runs first (`:128`) but writes a folder cover **only if the folder has none**
+(`cover-sources.ts:167-180`).
+
+At lossless volumes that is a reasonable trade. Across the whole library it means: every track's
+embedded art is discarded, one cover per album is kept, and per-track distinct artwork —
+compilations, singles sharing a folder — is **lost**. The library already reports 4,462 albums
+missing artwork and 1,181 with no embedded art. This would convert a cosmetic gap into a permanent
+one, and it rhymes with #978, where one stray `cover.jpg` became the cover of 1,229 albums.
+
+**Design.** Write `METADATA_BLOCK_PICTURE` properly so embedded art survives the container change,
+or treat artwork extraction as a required pre-step with per-track fidelity. Not a `-vn` and a hope.
+
+### 4. Verification is duration-only and fails open, yet the original is deleted unconditionally
+
+The swap is temp-then-rename, which is right, and a failed encode leaves the source untouched
+(`post-download-transcode.test.ts:147-158`). But the only check before
+`rmSync(absPath, {force: true})` is a duration comparison with a 1.0 s tolerance
+(`transcode.ts:232-239`), and it **returns `true` when either probe returns null**. There is no
+size check, no bitrate check, no channel or sample-rate check, and no decode-integrity check.
+
+For lossless sources that is tolerable: the failure it catches, truncation, is the realistic one.
+For lossy sources it is not, because generation loss is invisible to a duration check, and the
+original is gone the moment the rename lands.
+
+**Design.** Verify what actually matters before deleting an irreplaceable file: decoded sample
+count, channel count, sample rate, and a measured output loudness within tolerance of the target.
+Fail closed when a probe returns null. Consider a quarantine window instead of `rmSync` for the
+first production batches.
+
+### 5. Throughput, cancellation, and a row delete that commits outside its transaction
+
+- **Concurrency is 1** (`library-transcode.ts:111`, a plain sequential loop). At a few seconds per
+  track, 21,641 files is on the order of a day and a half of wall clock. The download path already
+  has a pooling model to copy (`library-organizer.ts:905-923`).
+- **Cancellation is checked only between files** (`:112-115`); an in-flight ffmpeg is never killed.
+- **`DELETE FROM library_songs WHERE id = ?` at `:155` commits before `scanPaths` runs and outside
+  the migration transaction.** If the scan throws, the catch only logs and increments `failed`: the
+  old row is gone, the new one was never inserted, and the song is invisible until a full rescan.
+  At whole-library scale this is a way to lose many songs quietly.
+- `SELECT` with no `WHERE` pulls the entire song table into memory and filters in JS (`:86-93`).
+- Dry-run's `bytesReclaimed` adds the **full original size** rather than the difference (`:125-130`
+  versus `:201`), so it over-reports by the size of every resulting file.
+- The Admin button ignores `enabled: false` (`tasks.ts:196`).
+
+## Normalization: do not bake it into the audio
+
+The obvious design — an ffmpeg `loudnorm` filter in the encode — is the wrong one, for two
+reasons.
+
+**It destroys the signal the recommender runs on.** `computeEnergy(integratedLufs, loudnessRange)`
+maps loudness onto a 0..1 energy score: −25 LUFS is 0, −7 LUFS is 1 (`loudness-analysis.ts:70-76`).
+`energy` feeds radio, playlists and the recommendation feeds, and `loudness` separately drives
+radio's loudness-jump avoidance. Flatten every file to one target and the measured loudness of
+every file *is* that target: energy collapses to a function of loudness range alone, and the radio's
+energy arcs stop meaning anything.
+
+**It is irreversible and it cannot be re-tuned.** Baked-in gain means changing the target later is
+another full re-encode of the library.
+
+### Use the Opus header gain instead
+
+Opus carries an `output_gain` field in its `OpusHead` identification header, and RFC 7845 §5.1
+requires a decoder to apply it. It is a gain applied at decode time, in a header, not in the coded
+audio.
+
+That separates the two decisions cleanly:
+
+- **The encode** decides which files become Opus and at what bitrate. One generation, once.
+- **The normalization** is a header value. Lossless, re-tunable by rewriting a couple of bytes,
+  and it never touches a sample.
+
+Three consequences follow, and they are the reason to prefer this shape:
+
+1. **The descriptor trap disappears entirely.** The audio is unmodified, so `loudness` keeps
+   describing the master as acquired and `computeEnergy` keeps working. No second column, no
+   pre-capture dance, no migration.
+2. **The 7,774 files that are already Opus can be normalized right now**, losslessly, without
+   waiting for or depending on any conversion. That is a third of the library, and it is the
+   cheapest available answer to #723.
+3. **The target stays a decision, not a commitment.** Picking −14 and later preferring −12 costs a
+   header rewrite, not 13,864 re-encodes.
+
+Negative gain is unconditionally safe. Positive gain can clip at the output, but the files needing
+positive gain are the quiet ones, which by construction have headroom. Clamp the positive direction
+against measured true peak.
+
+**Two things to confirm before committing to this** (a spike, not a build): that browsers and the
+Capacitor WebViews honour `output_gain` in practice rather than merely in specification, and which
+tool writes it — `opusenc --gain` at encode time is straightforward, but patching an existing file's
+header means recomputing the Ogg page CRC, and `opus-tools` is not currently in the image
+(`Dockerfile:94` installs ffmpeg only).
+
+If the spike fails, fall back to a `loudnorm` encode **plus** a new column preserving the
+pre-normalization loudness, so the descriptor survives. That fallback is strictly worse: it is
+irreversible and it cannot normalize the existing Opus third without a second generation.
+
+Once every file is level, radio's loudness-jump avoidance is measuring a constant and should be
+deleted rather than left running on a flat input.
+
+## Adaptive bitrate
+
+Two readings; this plan takes the first.
+
+**Source-adaptive encode bitrate.** Pick the Opus target per file from the source's quality instead
+of one constant. Today every file gets the same `-b:a ${bitRate}k` (`post-download-transcode.ts:150`)
+with no `-vbr`, no `-application audio`, and no per-file adaptation. Spending 192 kbps of Opus on a
+96 kbps mp3 stores artifacts at high fidelity and wastes roughly half the bytes; spending 96 kbps
+on a 320 kbps source discards quality that was there.
+
+The input already exists and is reliable: `library_songs.bit_rate` is populated at scan from
+`music-metadata` (`library-scanner.ts:1163`), and the measurement above found **only 4 rows** in the
+whole library with an unknown bitrate. Note `probeAudioFile` (`transcode.ts:317-368`) is *not* the
+right fallback — it never falls back to `format=bit_rate` and so returns null for many real files,
+and a `bit_rate` of `0` means probe failure, not a real bitrate.
+
+The mapping in the scope table above is the proposal: 64 / 96 / 112 / 128 kbps against the four
+source buckets. It is deliberately conservative at the top — Opus at 128 kbps is generally held to
+be transparent for stereo music, so spending more on a 320 kbps mp3 source preserves artifacts
+rather than music. The exact numbers are an open decision, and the function should be pure and
+table-driven so they can be argued about in a test rather than in the encoder.
+
+**Network-adaptive streaming** (HLS/DASH, switching rendition mid-playback) needs a segmenting
+pipeline and a player that can switch. Out of scope.
+
+## Simplifications that follow
+
+### One tag path instead of three
+
+`writeAudioTags` (`audio-tags.ts:408-436`) branches three ways today: `.mp3` through `node-id3`,
+then a read-back verification, then — when the in-place write did not stick — a full container
+rewrite through ffmpeg, then a *second* `node-id3` write to restore lyrics that ffmpeg turned from
+`USLT` into `TXXX`; `.flac/.ogg/.opus` through ffmpeg Vorbis comments; `.m4a` through ffmpeg, where
+the mov muxer silently drops keys.
+
+With one container it becomes `writeFfmpegTags`. That deletes `writeId3Tags`, the read-back repair
+loop, `ID3_VERIFIABLE_FIELDS`, the lyrics restoration workaround, `getNodeId3`, the `node-id3`
+dependency and its hand-written declaration at `packages/api/src/types/node-id3.d.ts`. The read
+path collapses the same way. `ID3_EXTS` becomes empty and `audio-extensions.ts` keeps one
+tag-container set instead of two.
+
+### Issues this closes
+
+| Issue | Why |
+|---|---|
+| **#723** loudness normalization | Done by construction, on every surface, with no client gain path and no per-stream transcode. Note the client-side option that issue proposes is independently ruled out: `player.component.ts:551-554` records that routing the audio element through a `MediaElementAudioSourceNode` **silenced playback entirely on Android**, with an explicit "do not reintroduce", corroborated at `now-playing-vfx.component.ts:8-13` |
+| **#964** one mp3 refuses a tag write | The issue names a malformed ID3 structure as the likely cause. A re-encode replaces the file with clean Vorbis comments |
+| **#1177** no BPM on `.m4a` | The mov muxer is never invoked again; its pinned test branch gets deleted rather than inverted |
+
+### Measured defects this clears
+
+- **248 mixed-format albums** go to zero, and `formatCohesion.mixedFormatAlbums`
+  (`library-health.ts:500-506`) becomes structurally unreachable and can be retired.
+- `lowBitrateAlbums` stops conflating a bad source with a bad container. Afterwards a low bitrate
+  means a genuinely poor source, which is a re-hunt signal.
+
+### Runtime
+
+Per-stream transcoding becomes near-unnecessary. `transcodeEnabled` is already `false` by default;
+with a uniform, normalized library it can stay off and the 2 GiB transcode cache serves only the
+karaoke variant. e2e fixtures collapse to one format.
+
+## What this does not fix
+
+- **19 low-bitrate albums** are low-bitrate because the source is 32–94 kbps. Re-encoding adds
+  nothing back; they stay re-hunt candidates.
+- **The 3 remaining lossless files** would take real first-generation loss. Exclude them, or decide
+  knowingly.
+- Disk pressure is relieved, not solved. kpc's Docker root filled to zero once (#1021).
+
+## Risks
+
+| Risk | Severity | Mitigation |
+|---|---|---|
+| 2,436 lyric rows, embeddings, descriptors and open curation flags orphaned by the id re-mint | **Highest** | Exact `(oldId, newId)` map; schema-derived coverage gate; no heuristic matching |
+| Analysis tags silently lost converting from ID3 | **Highest** | Explicit read-then-write of tags; a tag-preservation test the pass has never had |
+| Per-track embedded artwork discarded by `-vn` | High | Write `METADATA_BLOCK_PICTURE`; do not rely on the bare-folder fallback |
+| Irreversible generation loss on 13,864 lossy files | High | Source-adaptive bitrate; pilot batch; quarantine instead of `rmSync` early on; an explicit owner decision |
+| A verification that fails open deletes an unrecoverable original | High | Fail closed on null probes; verify samples, channels, rate and measured loudness |
+| Energy and radio descriptors flattened by normalization | High → **dissolved** | Normalize via the Opus header gain, which leaves the audio untouched. Only returns if the spike fails and `loudnorm` is used |
+| Re-encoding the 7,774 files that are already Opus | High | Exclude already-Opus from the encode predicate; they need a header gain, not a generation |
+| Song lost when the pre-scan delete commits and the scan then throws | Medium | Move the delete inside the transaction, or insert before deleting |
+| Disk exhaustion or a day-and-a-half run | Medium | Pool the encodes, batch with headroom checks, make the pass resumable |
+
+## Sequencing
+
+One PR per piece of work, since PR granularity is deploy granularity.
+
+The order matters: the cheapest, most reversible win ships first, and nothing irreversible happens
+until the safety work is in.
+
+0. ~~**Measure.**~~ Done, above.
+1. **Spike: does `output_gain` work on our surfaces?** A day, not a project. Decides the
+   normalization mechanism and therefore most of what follows.
+2. **Normalize the 7,774 existing Opus files.** Lossless, reversible, needs none of the conversion
+   machinery, and it closes #723 for a third of the library. **This is shippable on its own** and
+   should not wait behind the conversion.
+3. **Song-id remap infrastructure** — the exact map, the transaction fix, and the schema-derived
+   coverage gate.
+4. **Tag and artwork preservation** — explicit read-then-write, `METADATA_BLOCK_PICTURE`, and the
+   tests neither has today.
+5. **Verification hardening** — fail closed, check more than duration, quarantine instead of
+   delete.
+6. **Source-adaptive bitrate selection** — a pure, table-driven function tested against the
+   measured distribution above.
+7. **The conversion pass** — extend the predicate, pool the encodes, wire the remap. Dry run,
+   pilot batch, then the 13,864.
+8. **The simplification sweep** — delete the ID3 path, `node-id3`, the mixed-format rule and the
+   loudness-jump avoidance. Close #964 and #1177.
+
+Steps 2 through 5 are each worth landing even if the conversion is abandoned. Step 2 is a complete
+answer to #723 for a third of the library. Steps 3 to 5 harden a pass that already runs today on
+every lossless download.
+
+## Open decisions
+
+1. **Is a second lossy generation acceptable on 13,864 files** to save 36.4 GiB and collapse the
+   format-specific code? This is the irreversible one. It does not block steps 1–5.
+2. **Normalization target.** The library's median is −10.1 LUFS, louder than the −14 streaming
+   convention and far louder than the −23 broadcast standard; −23 would make everything
+   dramatically quieter. With the header-gain design this is re-tunable later, which makes it a
+   much cheaper decision than it looks.
+3. **The bitrate mapping table** — 64 / 96 / 112 / 128 as proposed, or different.
+4. **Originals replaced, or quarantined until verified?** Quarantine costs disk during the run and
+   collides on the path stems the remap uses.
+5. **The 3 FLAC files** — leave them as the only true masters, or convert for uniformity.
+6. **The 6 `.wma` files** cannot be tagged by any current path (`.wma` is in neither `ID3_EXTS` nor
+   `VORBIS_EXTS`). Converting them is a strict improvement; worth confirming they are wanted at
+   all.
