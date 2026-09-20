@@ -37,7 +37,11 @@ import { normalizeTitle } from '@nicotind/core';
 import { reconcileAlbumFolder } from './album-reconcile.js';
 import { albumGroupKey } from './album-grouping.js';
 import { DEFAULT_UNSORTED_DIR } from './library-paths.js';
-import { isLosslessFile, transcodeToOpus } from './post-download-transcode.js';
+import {
+  isLosslessFile,
+  transcodeToOpus,
+  TRANSCODE_CONCURRENCY,
+} from './post-download-transcode.js';
 import { readTranscodeLossless, type TranscodeLosslessSource } from './transcode-settings.js';
 import { mapPool } from './library-scanner.js';
 import { ffmpegAvailable } from './transcode.js';
@@ -167,17 +171,8 @@ interface PendingPlacement {
   samePath: boolean;
 }
 
-/**
- * How many lossless→Opus encodes may run at once within one batch.
- *
- * why a small constant rather than `cpus().length`: this is real CPU work, but
- * the box also runs the analysis sidecar and whatever else shares the host, and
- * an organize batch is not the only thing that should get to use it. Measured on
- * prod (8 cores, load ~1.8): four concurrent encodes of a 3-minute FLAC took
- * 3.4 s against 10.0 s serial, so the return is already most of the way to
- * linear at four and buying more would mostly be taking cores off neighbours.
- */
-const TRANSCODE_CONCURRENCY = 4;
+// Lives with `transcodeToOpus`, the call it bounds — the library conversion
+// pass pools the same call and must not pick a second, different number.
 
 /** A batch that did nothing: no files in, no dirs touched. */
 function emptyOrganizeResult(): OrganizeResult {

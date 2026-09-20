@@ -6,7 +6,7 @@
  */
 import { describe, expect, it, afterEach } from 'bun:test';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, rmSync, existsSync, statSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readdirSync, rmSync, existsSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Database } from 'bun:sqlite';
@@ -551,5 +551,109 @@ describe.skipIf(!ffmpegAvailable())('keeping originals (back up before transcodi
     await expect(
       transcodeLibraryToOpus(db, music, { apply: true, bitRate: 96, dataDir: data, statfs: tight }),
     ).rejects.toThrow(/Not enough free space/);
+  });
+});
+
+describe.skipIf(!ffmpegAvailable())('concurrency: the three-phase split', () => {
+  /** One album of `n` tracks, seeded as stale lossless rows. */
+  function seedAlbum(db: Database, music: string, n: number): string[] {
+    const rels: string[] = [];
+    for (let i = 1; i <= n; i++) {
+      const rel = `Aphex Twin/Drukqs/${String(i).padStart(2, '0')} - Track ${i}.flac`;
+      makeFlac(music, rel, `Track ${i}`);
+      seedSongRow(db, rel);
+      rels.push(rel);
+    }
+    return rels;
+  }
+
+  it('keeps the album song count right across a pooled batch', async () => {
+    // The reason the migration phase stays serial. `scanPaths` reads whole-DB
+    // state outside a transaction and recomputes album aggregates from it, so
+    // two concurrent calls lose counts for any album with two files converted
+    // at once. Six tracks is more than the pool depth, so the pool is really
+    // exercised — a serial run would pass this even with the bug.
+    const music = tmpMusic();
+    const db = new Database(':memory:');
+    applySchema(db);
+    seedAlbum(db, music, 6);
+
+    const r = await transcodeLibraryToOpus(db, music, { apply: true, bitRate: 96 });
+
+    expect(r.converted).toBe(6);
+    expect(r.failed).toBe(0);
+    const album = db
+      .query<{ song_count: number }, []>(
+        `SELECT song_count FROM library_albums WHERE name = 'Drukqs'`,
+      )
+      .get();
+    expect(album?.song_count).toBe(6);
+    expect(db.query<{ n: number }, []>(`SELECT COUNT(*) n FROM library_songs`).get()?.n).toBe(6);
+  });
+
+  it('converts every sibling when one file in the batch fails', async () => {
+    // `mapPool` is `Promise.all` underneath: one throw rejects it and every
+    // sibling result is lost. The pooled phase therefore catches internally
+    // and returns an outcome, and this is what proves it.
+    const music = tmpMusic();
+    const db = new Database(':memory:');
+    applySchema(db);
+    seedAlbum(db, music, 5);
+    const broken = 'Aphex Twin/Drukqs/99 - Broken.flac';
+    await Bun.write(join(music, broken), 'this is not a flac');
+    seedSongRow(db, broken);
+
+    const r = await transcodeLibraryToOpus(db, music, { apply: true, bitRate: 96 });
+
+    expect(r.converted).toBe(5);
+    expect(r.failed).toBe(1);
+    expect(r.errorSample).toBeTruthy();
+    // The failure kept its original, and every sibling really moved.
+    expect(existsSync(join(music, broken))).toBe(true);
+    expect(existsSync(join(music, 'Aphex Twin/Drukqs/01 - Track 1.opus'))).toBe(true);
+  });
+
+  it('emits a progress snapshot per file, not a live reference', async () => {
+    // `result` is mutated for the whole pass. Handing the caller the object
+    // itself means every event it kept shows the FINAL counters, so a progress
+    // bar built from them jumps from nothing to done.
+    const music = tmpMusic();
+    const db = new Database(':memory:');
+    applySchema(db);
+    seedAlbum(db, music, 5);
+
+    const seen: Array<{ visited: number; converted: number }> = [];
+    await transcodeLibraryToOpus(db, music, {
+      apply: true,
+      bitRate: 96,
+      onProgress: (p) => seen.push({ visited: p.visited, converted: p.result.converted }),
+    });
+
+    expect(seen.length).toBe(5);
+    expect(seen.map((s) => s.visited)).toEqual([1, 2, 3, 4, 5]);
+    expect(seen[0]!.converted).toBeLessThan(seen[seen.length - 1]!.converted);
+  });
+
+  it('never leaves an encoded file with no library row when stopped', async () => {
+    // `shouldStop` is checked between batches, never between an encode and its
+    // migration — stopping there would strand an .opus on disk that nothing
+    // points at, with its original already gone.
+    const music = tmpMusic();
+    const db = new Database(':memory:');
+    applySchema(db);
+    seedAlbum(db, music, 6);
+
+    const r = await transcodeLibraryToOpus(db, music, {
+      apply: true,
+      bitRate: 96,
+      shouldStop: () => true,
+    });
+
+    expect(r.stopped).toBe(true);
+    expect(r.converted).toBe(0);
+    const opusOnDisk = readdirSync(join(music, 'Aphex Twin/Drukqs')).filter((n) =>
+      n.endsWith('.opus'),
+    );
+    expect(opusOnDisk).toEqual([]);
   });
 });
