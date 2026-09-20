@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.17](https://github.com/kevinch3/NicotinD/compare/v0.8.16...v0.8.17) (2026-09-20)
+
+### Features
+
+* **transcode:** one shared disk-headroom probe, and a preflight on the library pass ([#1222](https://github.com/kevinch3/NicotinD/issues/1222)) ([0d08bfa](https://github.com/kevinch3/NicotinD/commit/0d08bfaaab1fb7f0eb11276d4032739e534d1542)), references [#1021](https://github.com/kevinch3/NicotinD/issues/1021) [#1021](https://github.com/kevinch3/NicotinD/issues/1021)
 ## [0.8.16](https://github.com/kevinch3/NicotinD/compare/v0.8.15...v0.8.16) (2026-09-20)
 
 ### Bug Fixes
