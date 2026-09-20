@@ -60,10 +60,14 @@ const ALLOWLIST: Record<string, string> = {
   'packages/api/src/routes/streaming.ts':
     'folderCover() reads one album dir for cover art; never walks the musicDir root',
   'packages/api/src/scripts/reclaim-addon-downloads.ts':
-    'the acquisition addon\'s .downloads IS its subject (#1052) — the predicate ' +
+    "the acquisition addon's .downloads IS its subject (#1052) — the predicate " +
     'would skip the only directory it exists to clear; it never reads library content',
   'packages/api/src/scripts/repair-pollution.ts':
     'gets its file list from scanMusicDir(), which applies the predicate',
+  'packages/api/src/services/transcode-quarantine.ts':
+    'its readdir lists quarantine RUN dirs under dataDir, never musicDir — the ' +
+    'musicDir parameter is only used to compute a relative path, and quarantining ' +
+    'deliberately lives outside musicDir so no walker ever meets it',
 };
 
 function main(): void {

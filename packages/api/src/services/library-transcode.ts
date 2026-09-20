@@ -8,6 +8,11 @@ import { LibraryScanner, songId } from './library-scanner.js';
 import { carrySongCuration } from './song-curation-carry.js';
 import { refreshAlbumAggregate } from './library-aggregates.js';
 import { checkHeadroom, type StatfsFn } from './disk-space.js';
+import {
+  createQuarantineRun,
+  pruneQuarantine,
+  DEFAULT_QUARANTINE_KEEP,
+} from './transcode-quarantine.js';
 
 const log = createLogger('library-transcode');
 
@@ -43,6 +48,12 @@ export interface LibraryTranscodeResult {
   errorSample: string | null;
   /** True when work may remain — cancelled, or the limit filled a full page. */
   stopped: boolean;
+  /**
+   * Where the replaced originals were kept, when the caller asked for that.
+   * Absent on a dry run, on a pass with no candidates, or when no `dataDir`
+   * was given — i.e. when the originals were deleted.
+   */
+  quarantineRun?: string;
 }
 
 /** Cumulative progress, emitted after each file. */
@@ -64,6 +75,16 @@ export interface TranscodeAllOptions {
   shouldStop?: () => boolean;
   /** Injected for tests; defaults to the real `statfs`. */
   statfs?: StatfsFn;
+  /**
+   * Data dir. When given, each replaced original is **kept** under
+   * `<dataDir>/quarantine/<run>/` instead of being unlinked, and older runs are
+   * pruned to `quarantineKeep`. Omit only where losing the source is
+   * acceptable; for a whole-library backfill it is not (#1226 is what an
+   * irreversible pass costs when something was missed).
+   */
+  dataDir?: string;
+  /** Quarantine runs to keep. Count-based, never time-based. */
+  quarantineKeep?: number;
   onProgress?: (p: TranscodeProgress) => void;
 }
 
@@ -166,8 +187,20 @@ export async function transcodeLibraryToOpus(
   // and `sufficient: true`. Unknown is not full, and a preflight that refuses to
   // run on a mount it cannot stat is worse than no preflight.
   if (opts.apply && rows.length > 0) {
-    const largest = rows.reduce((n, r) => Math.max(n, r.size ?? 0), 0);
-    const head = checkHeadroom(musicDir, largest, {
+    // Keeping the originals inverts the arithmetic. Normally each output
+    // replaces its source, so peak usage is one encode above steady state and
+    // the run ends smaller. With quarantine on, nothing is freed — every
+    // output is added while every original is still held — so the requirement
+    // is the whole projected output, not one file's worth.
+    //
+    // (A same-filesystem quarantine move is a rename and costs nothing extra
+    // for the original itself; a cross-filesystem one briefly costs a copy.
+    // Either way the outputs are new bytes that no deletion offsets.)
+    const keepingOriginals = Boolean(opts.dataDir);
+    const need = keepingOriginals
+      ? rows.reduce((n, r) => n + (estimateOpusBytes(r.duration, bitRate) ?? r.size ?? 0), 0)
+      : rows.reduce((n, r) => Math.max(n, r.size ?? 0), 0);
+    const head = checkHeadroom(musicDir, need, {
       margin: TRANSCODE_DISK_MARGIN_BYTES,
       statfs: opts.statfs,
     });
@@ -180,6 +213,14 @@ export async function transcodeLibraryToOpus(
     if (head.free === null) {
       log.warn({ musicDir }, 'could not probe free space — proceeding without a headroom check');
     }
+  }
+
+  // One run dir for the whole pass, created only when there is something to
+  // convert — an empty pass should not leave an empty backup behind.
+  let quarantineRun: string | null = null;
+  if (opts.apply && opts.dataDir && rows.length > 0) {
+    quarantineRun = createQuarantineRun(opts.dataDir);
+    log.info({ quarantineRun, candidates: rows.length }, 'originals will be kept, not deleted');
   }
 
   let visited = 0;
@@ -218,7 +259,11 @@ export async function transcodeLibraryToOpus(
     let oldSize = 0;
     try {
       oldSize = statSync(abs).size;
-      newAbs = await transcodeToOpus(abs, bitRate);
+      newAbs = await transcodeToOpus(
+        abs,
+        bitRate,
+        quarantineRun ? { runDir: quarantineRun, musicDir } : undefined,
+      );
     } catch (err) {
       log.warn({ err, path: row.path }, 'library transcode failed — original kept');
       result.failed += 1;
@@ -277,6 +322,19 @@ export async function transcodeLibraryToOpus(
     emit();
   }
   if (limit > 0 && rows.length === limit) result.stopped = true;
+
+  // Prune AFTER the pass, never before: the run that just finished is the one
+  // most worth keeping, and pruning first could drop it to make room for
+  // itself. Failure here costs disk, not correctness, so it never fails the
+  // pass.
+  if (quarantineRun && opts.dataDir) {
+    result.quarantineRun = quarantineRun;
+    try {
+      pruneQuarantine(opts.dataDir, opts.quarantineKeep ?? DEFAULT_QUARANTINE_KEEP);
+    } catch (err) {
+      log.warn({ err }, 'quarantine prune failed; originals are still kept');
+    }
+  }
 
   log.info({ ...result, apply: opts.apply }, 'library transcode pass complete');
   return result;
