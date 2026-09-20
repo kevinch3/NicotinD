@@ -1340,6 +1340,14 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
       updated_at  INTEGER NOT NULL
     )
   `);
+  // How long the recording the source matched was, and its id there. Without
+  // these a stored row cannot be told apart from a good match, so a library had
+  // no way to count — let alone find — lyrics belonging to a different take
+  // (issue #1212). NULL means "never verified", which is not the same as "fine":
+  // rows written before this column existed keep it, and the health report
+  // counts them as unknown rather than clean.
+  addColumnIfMissing(db, 'library_lyrics', 'matched_duration', 'INTEGER');
+  addColumnIfMissing(db, 'library_lyrics', 'source_id', 'TEXT');
 
   // Native per-user playlists (re-added after the Navidrome removal). Playlists
   // reference songs by the scanner's stable songId; reads JOIN library_songs and

@@ -14,6 +14,8 @@ interface DbRow {
   source: string | null;
   customized: number;
   updated_at: number;
+  matched_duration: number | null;
+  source_id: string | null;
 }
 
 export interface SetLyricsInput {
@@ -22,6 +24,14 @@ export interface SetLyricsInput {
   source: string | null;
   /** True when a user edited the text — protects it from being re-fetched. */
   customized: boolean;
+  /**
+   * Length of the recording the source matched, when it reported one. Null
+   * means the match was never verified against the local file's duration —
+   * which is a distinct state from "verified and close" (issue #1212).
+   */
+  matchedDurationSec?: number | null;
+  /** The source's own id for the matched record. */
+  sourceTrackId?: string | null;
 }
 
 function toDto(r: DbRow): LyricsDto {
@@ -31,6 +41,8 @@ function toDto(r: DbRow): LyricsDto {
     source: r.source,
     customized: r.customized === 1,
     updatedAt: r.updated_at,
+    matchedDurationSec: r.matched_duration,
+    sourceTrackId: r.source_id,
   };
 }
 
@@ -45,17 +57,31 @@ export function getLyrics(db: Database, songId: string): LyricsDto | null {
 /** Upsert lyrics for a songId. */
 export function setLyrics(db: Database, songId: string, input: SetLyricsInput): LyricsDto {
   const updatedAt = Date.now();
+  const matchedDurationSec = input.matchedDurationSec ?? null;
+  const sourceTrackId = input.sourceTrackId ?? null;
   db.run(
     `INSERT INTO library_lyrics
-       (song_id, plain_text, synced_text, source, customized, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?)
+       (song_id, plain_text, synced_text, source, customized, updated_at,
+        matched_duration, source_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(song_id) DO UPDATE SET
        plain_text = excluded.plain_text,
        synced_text = excluded.synced_text,
        source = excluded.source,
        customized = excluded.customized,
-       updated_at = excluded.updated_at`,
-    [songId, input.plain, input.synced, input.source, input.customized ? 1 : 0, updatedAt],
+       updated_at = excluded.updated_at,
+       matched_duration = excluded.matched_duration,
+       source_id = excluded.source_id`,
+    [
+      songId,
+      input.plain,
+      input.synced,
+      input.source,
+      input.customized ? 1 : 0,
+      updatedAt,
+      matchedDurationSec,
+      sourceTrackId,
+    ],
   );
   return {
     plain: input.plain,
@@ -63,6 +89,8 @@ export function setLyrics(db: Database, songId: string, input: SetLyricsInput): 
     source: input.source,
     customized: input.customized,
     updatedAt,
+    matchedDurationSec,
+    sourceTrackId,
   };
 }
 

@@ -718,8 +718,65 @@ describe('libraryHealth — lyrics & flags', () => {
        VALUES ('album','al1','check','tester',111)`,
     );
     const r = libraryHealth(db);
-    expect(r.dimensions.lyrics.metric).toEqual({ songs: 2, withLyrics: 1 });
+    expect(r.dimensions.lyrics.metric).toMatchObject({ songs: 2, withLyrics: 1 });
     expect(r.dimensions.flags.metric).toEqual({ open: 1, oldestAt: 111 });
+  });
+
+  /**
+   * Issue #1212. A lyrics row that belongs to a different take is
+   * indistinguishable from a good one once stored, so nothing counted it and no
+   * self-hosted library could find its own. These assertions are the detector.
+   */
+  describe('suspect lyrics matches', () => {
+    function seedLyrics(
+      songId: string,
+      opts: { songDuration: number; matched: number | null },
+    ): void {
+      addSong({ id: songId, albumId: 'al1' });
+      db.run(`UPDATE library_songs SET duration = ? WHERE id = ?`, [opts.songDuration, songId]);
+      db.run(
+        `INSERT INTO library_lyrics (song_id, plain_text, source, updated_at, matched_duration)
+         VALUES (?, 'words', 'lrclib', 1, ?)`,
+        [songId, opts.matched],
+      );
+    }
+
+    beforeEach(() => {
+      addArtist('ar1', 'A', 1);
+      addAlbum({ id: 'al1', name: 'N', songCount: 0 });
+    });
+
+    it('counts a row whose matched recording is too far from the local file', () => {
+      seedLyrics('close', { songDuration: 200, matched: 202 });
+      seedLyrics('far', { songDuration: 232, matched: 214 });
+      const m = libraryHealth(db).dimensions.lyrics.metric;
+      expect(m.suspectMatches).toBe(1);
+      expect(m.unverified).toBe(0);
+    });
+
+    it('counts a row with no matched duration as unverified, never as clean', () => {
+      // Every row written before the column existed looks like this. Folding
+      // them into "fine" would report a reassuring number that means nothing.
+      seedLyrics('legacy', { songDuration: 200, matched: null });
+      const m = libraryHealth(db).dimensions.lyrics.metric;
+      expect(m.unverified).toBe(1);
+      expect(m.suspectMatches).toBe(0);
+    });
+
+    it('lists the worst offenders first, with the delta that condemns them', () => {
+      seedLyrics('mild', { songDuration: 200, matched: 208 });
+      seedLyrics('worst', { songDuration: 200, matched: 260 });
+      const worklist = libraryHealth(db).dimensions.lyrics.worklist ?? [];
+      expect(worklist.map((w) => w.songId)).toEqual(['worst', 'mild']);
+      expect(worklist[0]?.deltaSec).toBe(60);
+    });
+
+    it('ignores a song with no duration of its own — nothing to compare against', () => {
+      seedLyrics('unknownLength', { songDuration: 0, matched: 214 });
+      const m = libraryHealth(db).dimensions.lyrics.metric;
+      expect(m.suspectMatches).toBe(0);
+      expect(m.unverified).toBe(1);
+    });
   });
 });
 

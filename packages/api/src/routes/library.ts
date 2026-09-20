@@ -2450,6 +2450,10 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
         synced: result.synced,
         source: result.source,
         customized: false,
+        // Recorded so a wrong-take match stays visible after the fact; a source
+        // that reports no duration leaves these null, i.e. unverified (#1212).
+        matchedDurationSec: result.matchedDurationSec ?? null,
+        sourceTrackId: result.sourceTrackId ?? null,
       });
       if (result.plain && musicDir) {
         const abs = resolveSongPath(expandDir(musicDir), song.path);

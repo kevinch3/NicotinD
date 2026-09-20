@@ -1,7 +1,7 @@
 import { dirname, join } from 'node:path';
 import type { Database } from 'bun:sqlite';
 import type { Lidarr } from '@nicotind/lidarr-client';
-import { normalizeTitle, titlesOverlap } from '@nicotind/core';
+import { normalizeTitle, titlesOverlap, LYRICS_DURATION_TOLERANCE_SEC } from '@nicotind/core';
 import { auditLibrary, type AuditSeverity } from './library-audit.js';
 import { unjustifiedHiddenAlbums } from './library-curator.js';
 import { checkFragments } from './library-fragments.js';
@@ -263,7 +263,18 @@ export interface LibraryHealthReport {
       remediation: string;
     };
     /** Lyrics are fetched on demand by design — count only, no worklist. */
-    lyrics: { metric: { songs: number; withLyrics: number } };
+    lyrics: {
+      metric: {
+        songs: number;
+        withLyrics: number;
+        /** Stored matches whose recording length disagrees with the local file. */
+        suspectMatches: number;
+        /** Rows nothing could check — no matched duration, or no song duration. */
+        unverified: number;
+      };
+      worklist: Array<{ songId: string; title: string; artist: string; deltaSec: number }>;
+      remediation: string;
+    };
     flags: { metric: { open: number; oldestAt: number | null }; remediation: string };
   };
 }
@@ -344,6 +355,51 @@ function diskFacts(db: Database): { wronglyOrphaned: number | null; measuredAt: 
 
 function count(db: Database, sql: string): number {
   return db.query<{ c: number }, []>(`SELECT COUNT(*) c FROM ${sql}`).get()?.c ?? 0;
+}
+
+/**
+ * A lyrics row is only judgeable when both lengths are known: the local file's
+ * and the one the source matched. Everything else is `unverified` — rows stored
+ * before match recording existed, and rows from a source that reports no
+ * duration. Calling those "fine" would be the easier question (issue #1212):
+ * the reassuring number would count rows nothing ever checked.
+ */
+const LYRICS_JUDGEABLE_SQL = `
+  FROM library_lyrics l
+  JOIN library_songs s ON s.id = l.song_id
+  WHERE l.matched_duration IS NOT NULL AND s.duration > 0`;
+
+function lyricsMatchFacts(db: Database): { suspectMatches: number; unverified: number } {
+  const suspectMatches =
+    db
+      .query<{ c: number }, [number]>(
+        `SELECT COUNT(*) c ${LYRICS_JUDGEABLE_SQL}
+           AND ABS(l.matched_duration - s.duration) > ?`,
+      )
+      .get(LYRICS_DURATION_TOLERANCE_SEC)?.c ?? 0;
+  const judgeable = db
+    .query<{ c: number }, []>(`SELECT COUNT(*) c ${LYRICS_JUDGEABLE_SQL}`)
+    .get()?.c;
+  return {
+    suspectMatches,
+    unverified: count(db, 'library_lyrics') - (judgeable ?? 0),
+  };
+}
+
+/** Suspect rows, widest duration gap first — the ones to re-fetch or re-sync. */
+function suspectLyricsMatches(
+  db: Database,
+  limit: number,
+): Array<{ songId: string; title: string; artist: string; deltaSec: number }> {
+  return db
+    .query<{ songId: string; title: string; artist: string; deltaSec: number }, [number, number]>(
+      `SELECT s.id songId, s.title, s.artist,
+              ABS(l.matched_duration - s.duration) deltaSec
+         ${LYRICS_JUDGEABLE_SQL}
+           AND ABS(l.matched_duration - s.duration) > ?
+       ORDER BY deltaSec DESC LIMIT ?`,
+    )
+    .all(LYRICS_DURATION_TOLERANCE_SEC, limit);
 }
 
 /**
@@ -757,7 +813,11 @@ export function libraryHealth(
         metric: {
           songs: count(db, 'library_songs'),
           withLyrics: count(db, 'library_lyrics'),
+          ...lyricsMatchFacts(db),
         },
+        worklist: suspectLyricsMatches(db, sample),
+        remediation:
+          'a suspect row matched another take: re-fetch it, or nudge the offset if the words are right and only the timing drifts. `unverified` rows predate match recording — they are unknown, not clean',
       },
       flags: {
         metric: { open: countOpenCurationFlags(db), oldestAt: oldestFlag },

@@ -90,6 +90,15 @@ export interface LyricsResult {
   synced: string | null;
   /** Plugin id that produced this (e.g. 'lrclib'). */
   source: string;
+  /**
+   * Length of the recording the source matched, when it reports one. The host
+   * stores this and compares it to the local file: a wide gap means the words
+   * belong to a different take, which is otherwise indistinguishable from a good
+   * match once persisted (issue #1212). Absent when the source cannot say.
+   */
+  matchedDurationSec?: number;
+  /** The source's own id for the matched record, for tracing a bad match back. */
+  sourceTrackId?: string;
 }
 
 /**
