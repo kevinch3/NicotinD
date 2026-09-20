@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.19](https://github.com/kevinch3/NicotinD/compare/v0.8.18...v0.8.19) (2026-09-20)
+
+### Bug Fixes
+
+* **transcode:** mp3 to Opus silently dropped bpm, key and lyrics ([#1225](https://github.com/kevinch3/NicotinD/issues/1225)) ([3072919](https://github.com/kevinch3/NicotinD/commit/3072919b4e9ee4fb4dfbedd85562eb8eaf0eafb1)), references [#1151](https://github.com/kevinch3/NicotinD/issues/1151) [#1177](https://github.com/kevinch3/NicotinD/issues/1177) [#1151](https://github.com/kevinch3/NicotinD/issues/1151) [#1177](https://github.com/kevinch3/NicotinD/issues/1177)
 ## [0.8.18](https://github.com/kevinch3/NicotinD/compare/v0.8.17...v0.8.18) (2026-09-20)
 
 ### Features

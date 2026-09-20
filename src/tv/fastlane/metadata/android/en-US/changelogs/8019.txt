@@ -1,0 +1,1 @@
+• transcode: mp3 to Opus silently dropped bpm, key and lyrics (#1225)
