@@ -1,0 +1,1 @@
+• carry: cover every song-keyed table, with the denominator from the schema (#1224)

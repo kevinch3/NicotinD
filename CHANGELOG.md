@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.18](https://github.com/kevinch3/NicotinD/compare/v0.8.17...v0.8.18) (2026-09-20)
+
+### Features
+
+* **carry:** cover every song-keyed table, with the denominator from the schema ([#1224](https://github.com/kevinch3/NicotinD/issues/1224)) ([e2bb66c](https://github.com/kevinch3/NicotinD/commit/e2bb66cb41078ef18af431b1809a8a6950eff1ba)), references [#259](https://github.com/kevinch3/NicotinD/issues/259) [#259](https://github.com/kevinch3/NicotinD/issues/259) [#856](https://github.com/kevinch3/NicotinD/issues/856)
 ## [0.8.17](https://github.com/kevinch3/NicotinD/compare/v0.8.16...v0.8.17) (2026-09-20)
 
 ### Features
