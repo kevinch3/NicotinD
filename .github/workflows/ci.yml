@@ -135,6 +135,8 @@ jobs:
       # (27.5 GB, #827). This keeps walker #15 from re-deriving the exclusion.
       - name: Check every musicDir walker honours the reserved-path predicate
         run: bun run check:library-walkers
+      - name: Transcode callers keep the originals
+        run: bun run check:transcode-quarantine
 
       # Song ids are sha1(path), so a rename, move or re-encode re-mints them --
       # and there are no FKs on song_id, deliberately, so a table nobody carried

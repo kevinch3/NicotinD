@@ -413,6 +413,23 @@ original is **moved** to `<dataDir>/quarantine/transcode-<stamp>/`, keeping its 
 path, instead of being deleted. The result carries `quarantineRun` so the operator knows where.
 `services/transcode-quarantine.ts` owns it.
 
+**Opting in is exactly how it failed.** The feature shipped, was tested and documented — and then
+*neither* production caller passed `dataDir`. `MaintenanceDeps` had no such field, so the Admin task
+could not have passed one; `convert-library.ts` computed a `dataDir` for the database path and simply
+never forwarded it. Both paths deleted every original they converted, for as long as the feature had
+existed.
+
+Nothing could see it from the inside. The pass logged success, the counters were right, the
+mechanism's own tests passed, and the only symptom was that an irreversible 13,864-file conversion
+had no undo. So two things changed together: `MaintenanceDeps.dataDir` is **required**, not optional,
+and `check:transcode-quarantine` fails any production call site that omits it. The gate reports how
+many call sites it examined and fails when that count is **zero**, because a gate that quietly
+matched nothing prints the same clean line as one that checked every caller.
+
+`convert-library.ts` keeps originals by default and takes `--delete-originals` to opt out — the
+dangerous choice has to be typed. `tasks.test.ts` asserts the behaviour rather than the argument: it
+runs the real Admin task over a real FLAC and looks for the file under `quarantine/`.
+
 **Why `dataDir` and not `musicDir`.** Three costs, each already paid elsewhere: a directory inside
 `musicDir` must be registered in `reservedDirsFor` or the scanner walks it and the disk audit reports
 its contents as orphan files (the #826 class); even registered, `LibraryScanner` warns about a
