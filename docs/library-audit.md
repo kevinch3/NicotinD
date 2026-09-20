@@ -338,6 +338,9 @@ irreversible — every deletion is appended to `<dataDir>/repair-pollution.log`.
   deletable. Selection lives in `selectPollutionTargets` (pure, unit-tested).
 - Protected real-but-mis-tagged albums should be re-merged with the existing
   `normalize-library` / `repair-album-folders` scripts, not deleted here.
+  Both are dry-run by default; pass `--apply` to write. `normalize-library` was
+  the exception until #1237 — it read `--dry-run` as the opt-IN, so the bare
+  command shown here unlinked files while every sibling only printed.
 
 ## Re-tagging low-hanging fruit (recover, don't delete)
 `scripts/retag-pollution.ts` fixes pollution that is **real music, just mis-tagged** — the
