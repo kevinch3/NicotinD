@@ -1,0 +1,1 @@
+• player: void the recovery state on a track change (#1206) (#1207)

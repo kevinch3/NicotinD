@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.13](https://github.com/kevinch3/NicotinD/compare/v0.8.12...v0.8.13) (2026-09-20)
+
+### Bug Fixes
+
+* **player:** void the recovery state on a track change ([#1206](https://github.com/kevinch3/NicotinD/issues/1206)) ([#1207](https://github.com/kevinch3/NicotinD/issues/1207)) ([4904c5e](https://github.com/kevinch3/NicotinD/commit/4904c5ebeeb65604ca6c83cebf50a1fd99b5c75f))
 ## [0.8.12](https://github.com/kevinch3/NicotinD/compare/v0.8.11...v0.8.12) (2026-09-19)
 
 ### Bug Fixes
