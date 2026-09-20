@@ -462,7 +462,13 @@ describe('disk headroom preflight', () => {
   });
 });
 
-describe('keeping originals (back up before transcoding)', () => {
+// The WHOLE block is guarded, not the individual cases. Every test here uses
+// `apply: true`, and `transcodeLibraryToOpus` rejects on a missing ffmpeg
+// BEFORE it reaches anything under test — so on the `ci` job, which has no
+// ffmpeg, an unguarded case asserts the wrong error and fails for a reason
+// that has nothing to do with quarantine. Guarding the describe means a case
+// added later inherits it rather than repeating the mistake.
+describe.skipIf(!ffmpegAvailable())('keeping originals (back up before transcoding)', () => {
   const roomy = () => ({ bsize: 4096, blocks: 1e9, bavail: 1e9 });
 
   it.skipIf(!ffmpegAvailable())(
@@ -491,7 +497,7 @@ describe('keeping originals (back up before transcoding)', () => {
     },
   );
 
-  it.skipIf(!ffmpegAvailable())('deletes the original when no dataDir is given', async () => {
+  it('deletes the original when no dataDir is given', async () => {
     // The download path's contract, unchanged: a just-fetched original is one
     // re-download away, and quarantining every download would fill the disk.
     const music = tmpMusic();
