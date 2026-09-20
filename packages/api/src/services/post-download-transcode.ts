@@ -8,6 +8,7 @@ import { ffmpegAvailable, TRANSCODE_DURATION_TOLERANCE_SEC } from './transcode.j
 import { ffmpegBinary } from './ffmpeg-path.js';
 import { preserveFolderCover } from './cover-sources.js';
 import { readAudioTags, type AudioTags } from './audio-tags.js';
+import { quarantineOriginal } from './transcode-quarantine.js';
 
 const log = createLogger('post-download-transcode');
 
@@ -178,7 +179,19 @@ async function carriedMetadataArgs(absPath: string): Promise<string[]> {
   return args;
 }
 
-export async function transcodeToOpus(absPath: string, bitRate = 128): Promise<string> {
+/** Where the replaced original goes instead of being unlinked. */
+export interface TranscodeKeepOriginal {
+  /** This run's quarantine dir, from `createQuarantineRun`. */
+  runDir: string;
+  /** Library root, so the original keeps its relative path inside the run. */
+  musicDir: string;
+}
+
+export async function transcodeToOpus(
+  absPath: string,
+  bitRate = 128,
+  keepOriginal?: TranscodeKeepOriginal,
+): Promise<string> {
   // Materialise the cover BEFORE encoding: `-vn` below discards the attached
   // picture stream and nothing downstream can recover it (issue #953 — 0 of
   // 1,719 non-mp3 files in the library carry art). The source is lossless and
@@ -252,10 +265,21 @@ export async function transcodeToOpus(absPath: string, bitRate = 128): Promise<s
     );
   }
   try {
-    // Promote temp → final, then drop the original. If dest === source path
-    // (impossible here since ext changed) we'd skip the unlink.
+    // Promote temp → final, then deal with the original. If dest === source
+    // path (impossible here since ext changed) we'd skip it entirely.
     renameSync(tmpPath, destPath);
-    if (absPath !== destPath) rmSync(absPath, { force: true });
+    if (absPath !== destPath) {
+      if (keepOriginal) {
+        // Opt-in, and only the whole-library backfill opts in. A freshly
+        // downloaded original is one re-download away, and quarantining every
+        // download would fill the disk for no benefit; an irreplaceable
+        // library file is a different proposition, and generation loss is
+        // invisible to every check that runs before this point.
+        quarantineOriginal(keepOriginal.runDir, keepOriginal.musicDir, absPath);
+      } else {
+        rmSync(absPath, { force: true });
+      }
+    }
     log.debug({ from: absPath, to: destPath, bitRate }, 'transcoded lossless → opus');
     return destPath;
   } catch (err) {

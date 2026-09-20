@@ -263,6 +263,38 @@ The caller supplies the transaction, because every caller has other work to make
 
 Returns `{ candidates, converted, skipped, failed, bytesReclaimed, unestimated }`.
 
+### Back up before transcoding
+
+`transcodeToOpus` unlinks the source once the output verifies. For a freshly downloaded file that is
+the intended design — it is one re-download away. For a **whole-library backfill** over thousands of
+irreplaceable files it is not, and generation loss is invisible to every check that runs first: the
+output can be valid, correct-length and still worse.
+
+So the destructive pass opts in. Pass `dataDir` to `transcodeLibraryToOpus` and each replaced
+original is **moved** to `<dataDir>/quarantine/transcode-<stamp>/`, keeping its musicDir-relative
+path, instead of being deleted. The result carries `quarantineRun` so the operator knows where.
+`services/transcode-quarantine.ts` owns it.
+
+**Why `dataDir` and not `musicDir`.** Three costs, each already paid elsewhere: a directory inside
+`musicDir` must be registered in `reservedDirsFor` or the scanner walks it and the disk audit reports
+its contents as orphan files (the #826 class); even registered, `LibraryScanner` warns about a
+skipped dir holding audio on every full scan; and it would collide on the path stems the identity
+remap matches on.
+
+**Why the relative path is preserved.** A restore becomes a copy back — and every album has an
+`01 - Intro`, so a flat basename layout would silently overwrite one original with another.
+
+**Retention copies `migration-backup.ts` exactly**: count-based, scoped to its own name pattern,
+never time-based, and never a blanket delete of the root. Anything an operator parks in the root by
+hand survives. `keep` below 1 is treated as 1 — deleting a backup to make room for a backup is never
+the right trade. Pruning runs **after** the pass, so the run that just finished cannot be dropped to
+make room for itself.
+
+**It inverts the headroom arithmetic.** Normally each output replaces its source, so peak usage is
+one encode above steady state and the run ends smaller. Keeping the originals frees nothing, so the
+preflight requires the **whole projected output** rather than one file's worth. On the measured
+library that is the difference between needing ~40 MB and needing ~42 GiB.
+
 ### Two verification policies, because the stakes differ
 
 `transcodeOutputIsAcceptable` (`transcode.ts`) returns **true** when either duration reads `null`.

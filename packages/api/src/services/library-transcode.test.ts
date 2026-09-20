@@ -461,3 +461,89 @@ describe('disk headroom preflight', () => {
     expect(r.candidates).toBe(1);
   });
 });
+
+describe('keeping originals (back up before transcoding)', () => {
+  const roomy = () => ({ bsize: 4096, blocks: 1e9, bavail: 1e9 });
+
+  it.skipIf(!ffmpegAvailable())(
+    'moves the original into the run instead of deleting it',
+    async () => {
+      const music = tmpMusic();
+      const data = tmpMusic();
+      const db = new Database(':memory:');
+      applySchema(db);
+      const rel = 'Aphex Twin/Drukqs/01 - Avril 14th.flac';
+      makeFlac(music, rel, 'Avril 14th');
+      seedSongRow(db, rel, { size: statSync(join(music, rel)).size, duration: 1 });
+
+      const r = await transcodeLibraryToOpus(db, music, {
+        apply: true,
+        bitRate: 96,
+        dataDir: data,
+        statfs: roomy,
+      });
+
+      expect(r.converted).toBe(1);
+      expect(existsSync(join(music, rel))).toBe(false); // gone from the library
+      expect(r.quarantineRun).toBeTruthy();
+      // ...but still on disk, under its library-relative path.
+      expect(existsSync(join(r.quarantineRun!, rel))).toBe(true);
+    },
+  );
+
+  it.skipIf(!ffmpegAvailable())('deletes the original when no dataDir is given', async () => {
+    // The download path's contract, unchanged: a just-fetched original is one
+    // re-download away, and quarantining every download would fill the disk.
+    const music = tmpMusic();
+    const db = new Database(':memory:');
+    applySchema(db);
+    const rel = 'Aphex Twin/Drukqs/01 - Avril 14th.flac';
+    makeFlac(music, rel, 'Avril 14th');
+    seedSongRow(db, rel, { size: statSync(join(music, rel)).size, duration: 1 });
+
+    const r = await transcodeLibraryToOpus(db, music, { apply: true, bitRate: 96, statfs: roomy });
+
+    expect(r.converted).toBe(1);
+    expect(r.quarantineRun).toBeUndefined();
+    expect(existsSync(join(music, rel))).toBe(false);
+  });
+
+  it('leaves no empty run behind when there is nothing to convert', async () => {
+    const music = tmpMusic();
+    const data = tmpMusic();
+    const db = new Database(':memory:');
+    applySchema(db);
+    const r = await transcodeLibraryToOpus(db, music, {
+      apply: true,
+      bitRate: 96,
+      dataDir: data,
+      statfs: roomy,
+    });
+    expect(r.candidates).toBe(0);
+    expect(r.quarantineRun).toBeUndefined();
+    expect(existsSync(join(data, 'quarantine'))).toBe(false);
+  });
+
+  it('requires room for the WHOLE output when originals are kept', async () => {
+    // The arithmetic inverts: normally each output replaces its source and the
+    // run ends smaller, so one file's worth of headroom is enough. Keeping the
+    // originals frees nothing, so the requirement is every output at once.
+    const music = tmpMusic();
+    const data = tmpMusic();
+    const db = new Database(':memory:');
+    applySchema(db);
+    for (let i = 1; i <= 3; i++) {
+      const rel = `A/Album/0${i} - T.flac`;
+      mkdirSync(dirname(join(music, rel)), { recursive: true });
+      await Bun.write(join(music, rel), 'x');
+      seedSongRow(db, rel, { size: 5_000_000, duration: 600 });
+    }
+    // Room for one 600 s @ 96 kbps output (7.2 MB) plus the margin, but not
+    // three. Without a dataDir this passes; with one it must not.
+    const tight = () => ({ bsize: 1, blocks: 1e9, bavail: 520 * 1024 * 1024 });
+
+    await expect(
+      transcodeLibraryToOpus(db, music, { apply: true, bitRate: 96, dataDir: data, statfs: tight }),
+    ).rejects.toThrow(/Not enough free space/);
+  });
+});
