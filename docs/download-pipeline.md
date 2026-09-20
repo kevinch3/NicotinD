@@ -430,6 +430,22 @@ matched nothing prints the same clean line as one that checked every caller.
 dangerous choice has to be typed. `tasks.test.ts` asserts the behaviour rather than the argument: it
 runs the real Admin task over a real FLAC and looks for the file under `quarantine/`.
 
+**And the gate's first denominator was still wrong.** It watched callers of `transcodeLibraryToOpus`
+and reported a clean two sites — while `reorganize-library.ts --transcode` deleted originals just out
+of frame. That script never names the encoder: it constructs a `LibraryOrganizer`, which calls
+`transcodeToOpus` itself. So the gate now watches **three doors** — both encode functions and
+`new LibraryOrganizer(` — and counts six sites rather than two.
+
+`LibraryOrganizer` gained `keepOriginals`, which it forwards rather than decides, so the choice sits
+with whoever constructs it: the download ingest deliberately deletes, because a just-fetched source
+is one re-download away, and `reorganize-library.ts` quarantines, because its files are already in
+the library. Both are allowlisted or wired explicitly, with the reason on the record.
+
+The lesson is about gates, not about this feature. A gate's denominator is a claim about the world,
+and the first version of this one was checked by reintroducing the original bug — which it caught —
+without ever testing the case it could not see. Re-introducing *each* bug the gate claims to cover
+is the only thing that distinguishes a gate from a gate-shaped comment.
+
 **Why `dataDir` and not `musicDir`.** Three costs, each already paid elsewhere: a directory inside
 `musicDir` must be registered in `reservedDirsFor` or the scanner walks it and the disk audit reports
 its contents as orphan files (the #826 class); even registered, `LibraryScanner` warns about a

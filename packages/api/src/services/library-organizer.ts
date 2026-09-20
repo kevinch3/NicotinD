@@ -41,6 +41,7 @@ import {
   isLosslessFile,
   transcodeToOpus,
   TRANSCODE_CONCURRENCY,
+  type TranscodeKeepOriginal,
 } from './post-download-transcode.js';
 import { readTranscodeLossless, type TranscodeLosslessSource } from './transcode-settings.js';
 import { mapPool } from './library-scanner.js';
@@ -72,6 +73,16 @@ export interface LibraryOrganizerOptions {
    * mixed MP3+FLAC duplicate albums the analysis flagged. Opt-in.
    */
   preferFlacSkipMp3?: boolean;
+  /**
+   * Where a transcoded file's original is KEPT instead of being unlinked.
+   *
+   * Absent is correct for the download path — a freshly fetched source is one
+   * re-download away — and wrong for anything that re-encodes files already in
+   * the library, which is what `reorganize-library.ts --transcode` does. That
+   * distinction is the caller's to make, so it is declared here rather than
+   * defaulted in the encoder. `check:transcode-quarantine` watches it.
+   */
+  keepOriginals?: TranscodeKeepOriginal;
   /**
    * When set, lossless files (FLAC/WAV/…) are transcoded to Opus in place right
    * after being moved into the library and **before** the scan sees them — so the
@@ -197,6 +208,7 @@ export class LibraryOrganizer {
   private preferFlacSkipMp3: boolean;
   /** Always a function: a plain value is wrapped at construction. */
   private transcodeLossless: () => { enabled: boolean; bitRate: number };
+  private keepOriginals?: TranscodeKeepOriginal;
   private autoDedupe: boolean;
   private dedupeAcrossEditions: boolean;
   private jobLookup?: (
@@ -239,6 +251,7 @@ export class LibraryOrganizer {
     this.moveLogPath = opts.moveLogPath;
     this.preferFlacSkipMp3 = opts.preferFlacSkipMp3 ?? false;
     this.transcodeLossless = readTranscodeLossless(opts.transcodeLossless);
+    this.keepOriginals = opts.keepOriginals;
     this.autoDedupe = opts.autoDedupe ?? true;
     this.dedupeAcrossEditions = opts.dedupeAcrossEditions ?? true;
     this.jobLookup = opts.jobLookup;
@@ -916,7 +929,11 @@ export class LibraryOrganizer {
     if (p.samePath || !p.plan.wouldTranscode) return;
     const transcodeStartedAt = Date.now();
     try {
-      p.destPath = await transcodeToOpus(p.destPath, this.transcodeLossless().bitRate);
+      p.destPath = await transcodeToOpus(
+        p.destPath,
+        this.transcodeLossless().bitRate,
+        this.keepOriginals,
+      );
       this.batchTranscoded++;
     } catch (err) {
       log.warn({ err, destPath: p.destPath }, 'lossless→opus transcode failed — keeping original');

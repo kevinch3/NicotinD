@@ -36,6 +36,7 @@ import {
   resolveTranscodeLossless,
   type ResolvedTranscodeLossless,
 } from '../services/transcode-settings.js';
+import { createQuarantineRun } from '../services/transcode-quarantine.js';
 import { AcoustIdLookup } from '../services/acoustid-lookup.js';
 import { AUDIO_EXTENSIONS, expandHome } from '@nicotind/core';
 
@@ -240,7 +241,7 @@ async function main(): Promise<void> {
       ? 'requested, but downloads.transcodeLossless.enabled is false in config'
       : !ffmpeg
         ? 'requested, but ffmpeg is not on PATH — no file will be re-encoded'
-        : `ON — lossless → Opus ${transcodeLossless.bitRate}k, IRREVERSIBLE (source deleted). ` +
+        : `ON — lossless → Opus ${transcodeLossless.bitRate}k; originals kept under ${join(dataDir, 'quarantine')}. ` +
           'Only files that actually move; use convert-library.ts for the rest';
 
   console.log(`Mode      : ${apply ? 'APPLY (writing)' : 'DRY RUN (no changes)'}`);
@@ -270,6 +271,10 @@ async function main(): Promise<void> {
     // standardized on Opus by the same hook the download path uses — but only
     // when asked, since that step is the one this script cannot undo.
     transcodeLossless: { enabled: willTranscode, bitRate: transcodeLossless.bitRate },
+    // These files are already IN the library, so unlike the download path the
+    // original is not one re-download away. Keep it.
+    keepOriginals:
+      willTranscode && apply ? { runDir: createQuarantineRun(dataDir), musicDir } : undefined,
     // Park unsortable files OUTSIDE musicDir so Navidrome doesn't scan them.
     unsortedRoot: unsortedDir,
   });

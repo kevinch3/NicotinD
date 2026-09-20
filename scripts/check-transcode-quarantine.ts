@@ -1,5 +1,5 @@
 /**
- * Fail when a production caller of `transcodeLibraryToOpus` does not keep the
+ * Fail when a production caller of the lossless re-encode does not keep the
  * originals it replaces.
  *
  *   bun run check:transcode-quarantine
@@ -27,18 +27,53 @@ import { Glob } from 'bun';
 
 const repoRoot = resolve(import.meta.dir, '..');
 
-/** The pass whose callers decide the originals' fate. */
-const CALLEE = 'transcodeLibraryToOpus';
+/**
+ * Both doors into "re-encode a file and decide what happens to the original".
+ *
+ * Watching only the library pass was not enough, and that is the whole lesson:
+ * `LibraryOrganizer` calls `transcodeToOpus` directly, and
+ * `reorganize-library.ts --transcode` drives it over files **already in the
+ * library** — so the first version of this gate reported a clean two call sites
+ * while a third deleted originals just out of frame. A gate's denominator is a
+ * claim about the world, and that one was wrong.
+ */
+const CALLEES = ['transcodeLibraryToOpus', 'transcodeToOpus'] as const;
 
-/** What a caller must pass so the originals are kept rather than unlinked. */
-const KEEPS_ORIGINALS = /\bdataDir\s*:/;
+/**
+ * The third door, and the one that proves a call-site gate is not enough.
+ *
+ * `reorganize-library.ts --transcode` re-encodes files already in the library,
+ * but it never names the encoder — it constructs a `LibraryOrganizer`, which
+ * calls it. A gate watching only calls reported a clean line with that script
+ * deleting originals. So construction sites are checked too, and the encoder
+ * call inside the organizer is allowlisted because it forwards rather than
+ * decides.
+ */
+const CONSTRUCTOR = 'new LibraryOrganizer(';
+
+/**
+ * What a caller must pass so the originals are kept rather than unlinked:
+ * `dataDir` for the library pass, or a `TranscodeKeepOriginal` payload —
+ * spelled either by the option name or by `runDir`, its distinctive field,
+ * since callers build it inline.
+ */
+const KEEPS_ORIGINALS = /\b(dataDir|keepOriginals?|runDir)\s*:/;
 
 /**
  * Callers that legitimately delete. Each carries its reason — an exemption
  * without one is how a gate turns into decoration. Checked both ways: an entry
  * that no longer calls the pass is a failure, not a no-op.
  */
-const ALLOWLIST: Record<string, string> = {};
+const ALLOWLIST: Record<string, string> = {
+  'packages/api/src/index.ts':
+    'the download ingest organizer: deleting a freshly downloaded source IS the ' +
+    'intended design (it is one re-download away), and quarantining every ' +
+    'download would fill the disk',
+  'packages/api/src/services/library-organizer.ts':
+    'forwards its own `keepOriginals` option to the encoder rather than choosing — ' +
+    'the instantiation site decides, and the download path deliberately deletes ' +
+    'because a just-fetched source is one re-download away',
+};
 
 function main(): void {
   const callers: string[] = [];
@@ -53,21 +88,34 @@ function main(): void {
       if (rel === 'scripts/check-transcode-quarantine.ts') continue;
       const src = readFileSync(resolve(repoRoot, file), 'utf-8');
 
-      // The definition is not a call site, and neither is a bare re-export.
-      const call = src.indexOf(`${CALLEE}(`);
-      if (call < 0) continue;
-      if (new RegExp(`(export\\s+)?async\\s+function\\s+${CALLEE}\\b`).test(src)) continue;
+      let isCaller = false;
+      let deletes = false;
+
+      const ctor = src.indexOf(CONSTRUCTOR);
+      if (ctor >= 0) {
+        isCaller = true;
+        const end = src.indexOf('});', ctor);
+        if (!KEEPS_ORIGINALS.test(src.slice(ctor, end < 0 ? src.length : end))) deletes = true;
+      }
+
+      for (const callee of CALLEES) {
+        // The definition is not a call site, and neither is a bare re-export.
+        const call = src.indexOf(`${callee}(`);
+        if (call < 0) continue;
+        if (new RegExp(`(export\\s+)?async\\s+function\\s+${callee}\\b`).test(src)) continue;
+        isCaller = true;
+
+        // The argument that decides this is the last one. Reading to the end of
+        // the call expression is enough — the field cannot be hiding elsewhere.
+        const end = src.indexOf(');', call);
+        const args = src.slice(call, end < 0 ? src.length : end);
+        if (!KEEPS_ORIGINALS.test(args)) deletes = true;
+      }
+      if (!isCaller) continue;
 
       callers.push(rel);
       if (rel in ALLOWLIST) continue;
-
-      // The options object is the argument that decides this, and it is the
-      // last one. Reading to the end of the statement is enough: these calls
-      // are `await transcodeLibraryToOpus(db, dir, { ... })` and the field
-      // cannot be hiding anywhere else in the expression.
-      const end = src.indexOf('});', call);
-      const args = src.slice(call, end < 0 ? src.length : end);
-      if (!KEEPS_ORIGINALS.test(args)) offenders.push(rel);
+      if (deletes) offenders.push(rel);
     }
   }
 
@@ -80,17 +128,17 @@ function main(): void {
 
   if (callers.length === 0) {
     console.error(
-      `\nFAIL: found no call site of ${CALLEE} at all.\n` +
+      `\nFAIL: found no call site of ${CALLEES.join(' / ')} at all.\n` +
         '  A gate that matches nothing reports the same clean line as one that\n' +
-        '  checked every caller. If the function was renamed or moved, update\n' +
-        '  CALLEE here in the same commit.',
+        '  checked every caller. If a function was renamed or moved, update\n' +
+        '  CALLEES here in the same commit.',
     );
     process.exit(1);
   }
 
   if (stale.length > 0) {
     console.error(
-      `\nFAIL: ${stale.length} allowlist entr(ies) no longer call ${CALLEE}:\n` +
+      `\nFAIL: ${stale.length} allowlist entr(ies) no longer call any of ${CALLEES.join(' / ')}:\n` +
         stale.map((f) => `  - ${f}`).join('\n') +
         '\n  Remove them; a stale exemption hides the next real one.',
     );
