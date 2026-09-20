@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.14](https://github.com/kevinch3/NicotinD/compare/v0.8.13...v0.8.14) (2026-09-20)
+
+### Features
+
+* **curation:** triage cards serve closed options only; prose flags stay with the agent ([#1213](https://github.com/kevinch3/NicotinD/issues/1213)) ([3fe009a](https://github.com/kevinch3/NicotinD/commit/3fe009a613d55bccc72bb4814af563791060f059)), references [#1210](https://github.com/kevinch3/NicotinD/issues/1210) [#1211](https://github.com/kevinch3/NicotinD/issues/1211)
+
+### Bug Fixes
+
+* **lyrics:** rank a source match on duration, and record what it matched ([#1214](https://github.com/kevinch3/NicotinD/issues/1214)) ([47e316c](https://github.com/kevinch3/NicotinD/commit/47e316c6639c231b30f625e1d9358dd9749e4903)), references [#1212](https://github.com/kevinch3/NicotinD/issues/1212)
 ## [0.8.13](https://github.com/kevinch3/NicotinD/compare/v0.8.12...v0.8.13) (2026-09-20)
 
 ### Bug Fixes

@@ -1,0 +1,2 @@
+• curation: triage cards serve closed options only; prose flags stay with the agent (#1213)
+• lyrics: rank a source match on duration, and record what it matched (#1214)
