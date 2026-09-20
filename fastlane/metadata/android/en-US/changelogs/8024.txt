@@ -1,0 +1,1 @@
+• transcode: pool the library conversion's encodes (#1232)

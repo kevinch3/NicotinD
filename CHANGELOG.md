@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.24](https://github.com/kevinch3/NicotinD/compare/v0.8.23...v0.8.24) (2026-09-20)
+
+### Performance
+
+* **transcode:** pool the library conversion's encodes ([#1232](https://github.com/kevinch3/NicotinD/issues/1232)) ([f236830](https://github.com/kevinch3/NicotinD/commit/f2368306a4bff8bb6abbf1e2c814bb21e0d06d28)), references [#723](https://github.com/kevinch3/NicotinD/issues/723)
 ## [0.8.23](https://github.com/kevinch3/NicotinD/compare/v0.8.22...v0.8.23) (2026-09-20)
 
 ### Bug Fixes
