@@ -183,6 +183,27 @@ that disagreement is the signal to search, not to silently pick the more confide
 `flag_for_review` is for ambiguity that risks **wrong data** — a b2b DJ credit, two
 plausible artist identities, an authenticity call — not for "I don't know this one".
 
+### A flag reaches a human only as a card
+
+The triage round serves a flag **only** when it carries a one-sentence `question` and `options`
+with effects (at least one that changes data). A `reason`-only flag is recorded but no human
+ever sees it — the tool answers `servedToHuman:false`. So a flag is the *end* of your research,
+not a substitute for it: do the `identify_song` / `search_library` / web work first, then frame
+the choice as buttons. Write the question and the labels in the language the owner reads (the
+UI here runs in Spanish); put every finding in `reason`, which the card folds under the question.
+Caps: question 160, label 80, rationale 160.
+
+- One option per real outcome, each with the effect that produces it: `song-metadata` to retag or
+  re-home, `artist-merge` to credit, `song-delete` for a redundant copy (confirmed in-card),
+  `resolve-only` as a labelled "keep as is" when doing nothing is a genuine answer.
+- Do not offer an effect you would not apply yourself if the human picked it; the tap is the
+  whole decision.
+- **Every session, `list_review_flags` first**: any open flag with `servable:false` is yours —
+  re-file it as a card or resolve it with a note. `targetMissing:true` means the id no longer
+  resolves (a move or a delete since filing): find the live row and re-file against it, or
+  resolve. `snoozedUntil` means the human deferred it; leave it unless you have new information,
+  which a re-flag surfaces again.
+
 ## `identify_song` — when the tags cannot be trusted at all
 
 Fingerprint identity from the audio, independent of every tag. It is `read` access,

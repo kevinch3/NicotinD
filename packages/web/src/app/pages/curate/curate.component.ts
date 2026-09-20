@@ -14,7 +14,8 @@ import type { CurationCase } from '../../services/api/api-types';
  *
  * A failed apply leaves the case in place rather than advancing — silently
  * skipping past a decision that did not land is how a queue lies about its own
- * progress.
+ * progress. A skip is recorded server-side, so the same card is not the first
+ * thing shown in the next round.
  */
 @Component({
   selector: 'app-curate',
@@ -30,6 +31,9 @@ export default class CurateComponent {
   readonly cases = signal<CurationCase[]>([]);
   readonly index = signal(0);
   readonly busy = signal(false);
+  /** Open flags the agent still has to turn into cards — shown so an empty
+   *  round does not read as an empty backlog. */
+  readonly awaitingAgent = signal(0);
 
   readonly current = computed(() => this.cases()[this.index()] ?? null);
   readonly done = computed(() => this.current() === null);
@@ -44,6 +48,7 @@ export default class CurateComponent {
     this.api.getRound().subscribe({
       next: (r) => {
         this.cases.set(r.cases);
+        this.awaitingAgent.set(r.awaitingAgent ?? 0);
         this.index.set(0);
         this.busy.set(false);
       },
@@ -73,7 +78,21 @@ export default class CurateComponent {
   }
 
   onSkip(): void {
-    if (this.busy()) return;
-    this.index.update((i) => i + 1);
+    const c = this.current();
+    if (!c || this.busy()) return;
+    this.busy.set(true);
+    this.api.skipCase(c.id).subscribe({
+      next: () => {
+        this.busy.set(false);
+        this.index.update((i) => i + 1);
+      },
+      error: () => {
+        // The deferral did not land, so the card may come back sooner than a
+        // week — but the person asked to move on, and nothing was written.
+        this.busy.set(false);
+        this.toast.show({ message: this.i18n.t('curate.skipFailed'), kind: 'error' });
+        this.index.update((i) => i + 1);
+      },
+    });
   }
 }

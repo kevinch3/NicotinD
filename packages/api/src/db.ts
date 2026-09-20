@@ -1305,6 +1305,13 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   // read-and-resolve card.
   addColumnIfMissing(db, 'curation_flags', 'case_kind', 'TEXT');
   addColumnIfMissing(db, 'curation_flags', 'options_json', 'TEXT');
+  // The one sentence a human answers; `reason` stays the raiser's long-form
+  // context. Null on a prose flag, which the triage round never serves.
+  addColumnIfMissing(db, 'curation_flags', 'question', 'TEXT');
+  // "Skip for now" is a server-side deferral: a client-side skip put the same
+  // card first in every round, and a curator who sees the same card three
+  // days running stops opening the surface.
+  addColumnIfMissing(db, 'curation_flags', 'snoozed_until', 'INTEGER');
 
   // One row per (target, reporter) — issue #987. This *is* the rate limit, and a
   // structural one beats a time window: the abuse worth stopping is one person

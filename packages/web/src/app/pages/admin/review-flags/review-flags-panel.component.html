@@ -54,7 +54,18 @@
                   <span class="text-theme-muted text-xs">{{ f.targetKind }}</span>
                   {{ f.targetId }}
                 </td>
-                <td class="px-4 py-2.5 text-theme-secondary">{{ f.reason }}</td>
+                <td class="px-4 py-2.5 text-theme-secondary">
+                  {{ f.reason }}
+                  <!-- A flag with no options never reaches the triage round: it
+                       stays with the agent until it is re-filed as a card. -->
+                  @if (!f.optionsJson) {
+                    <span
+                      class="ml-1 px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wide bg-theme-surface-2"
+                      data-testid="flag-agent-only"
+                      >{{ 'admin.reviewFlagAgentOnly' | t }}</span
+                    >
+                  }
+                </td>
                 <td class="px-4 py-2.5 text-theme-muted">
                   {{ f.createdBy }}
                   <!-- A listener report and an operator's own finding carry

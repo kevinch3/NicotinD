@@ -73,6 +73,7 @@ import {
   resolveCurationFlag,
   recordListenerReport,
 } from '../services/curation-flags.js';
+import { parseTypedCaseInput } from '../services/curation/case-sources.js';
 import { recordAudit } from '../services/audit-log.js';
 import { loadGenreAffinity } from '../services/genre-centroids.js';
 import type { GenreAffinityFn } from '../services/genre-affinity.js';
@@ -1095,7 +1096,14 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // a curator raising a flag from the UI, and clearing one they have handled.
   app.post('/review-flags', async (c) => {
     requireCurator(c);
-    type Body = { targetKind?: string; targetId?: string; reason?: string };
+    type Body = {
+      targetKind?: string;
+      targetId?: string;
+      reason?: string;
+      question?: unknown;
+      caseKind?: unknown;
+      options?: unknown;
+    };
     const body = await c.req.json<Body>().catch(() => ({}) as Body);
     if (!isFlagTargetKind(body.targetKind)) {
       return c.json({ error: 'targetKind must be artist, album, or song' }, 400);
@@ -1103,6 +1111,11 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const targetId = (body.targetId ?? '').trim();
     const reason = (body.reason ?? '').trim();
     if (!targetId || !reason) return c.json({ error: 'targetId and reason are required' }, 400);
+    // A curator over HTTP is the same trust as an agent over MCP, and files
+    // through the same parser: the UI's report button sends prose, a script
+    // may send a full card, and both are refused for the same bad shapes.
+    const typed = parseTypedCaseInput(body);
+    if (!typed.ok) return c.json({ error: typed.error }, 400);
 
     const db = getDatabase();
     const user = c.get('user');
@@ -1111,13 +1124,21 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       targetId,
       reason,
       createdBy: user?.username ?? user?.sub ?? 'unknown',
+      caseKind: typed.caseKind,
+      question: typed.question,
+      optionsJson: typed.optionsJson,
     });
     recordAudit(db, user, 'curation.flag', {
       targetKind: body.targetKind,
       targetId,
-      detail: `${created ? 'flagged' : 'updated'}: ${reason}`,
+      detail: `${created ? 'flagged' : 'updated'}: ${typed.question ?? reason}`,
     });
-    return c.json({ ok: true, id: flag.id, created });
+    return c.json({
+      ok: true,
+      id: flag.id,
+      created,
+      servedToHuman: typed.optionsJson !== undefined,
+    });
   });
 
   app.post('/review-flags/:id/resolve', (c) => {

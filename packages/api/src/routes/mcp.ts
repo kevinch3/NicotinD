@@ -43,12 +43,16 @@ import { normalizeForGrouping } from '../services/album-grouping.js';
 import type { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import {
+  CASE_TEXT_LIMITS,
   CURATION_CASE_KINDS,
-  isCurationCaseKind,
-  type CurationCaseKind,
   type ApplyMetadataRequest,
   type MetadataReleaseType,
 } from '@nicotind/core';
+import {
+  flagHasActionableOptions,
+  parseTypedCaseInput,
+} from '../services/curation/case-sources.js';
+import { describeTarget } from '../services/curation/describe-target.js';
 import type { MusicBrainzClient } from '../services/musicbrainz-client.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 import type { readAudioTags, writeAudioTags } from '../services/audio-tags.js';
@@ -1054,7 +1058,7 @@ export const MCP_TOOLS: McpTool[] = [
   },
   {
     name: 'flag_for_review',
-    description: `Flag one artist, album, or song as needing a human decision, with a reason. Use this instead of guessing when a fix has no unambiguous answer — a b2b DJ credit naming two acts, an identity you cannot resolve confidently. Changes no library data. Re-flagging the same target updates the open flag rather than adding another. Optionally add caseKind (${CURATION_CASE_KINDS.join('|')}) plus options — a list of {id,label,rationale,effect} the curator picks from, effect being {type:'resolve-only'} | {type:'song-metadata',songId,fields:{title|artist|album|albumArtist}} | {type:'artist-merge',rawName,mergeInto} — so the triage card offers one-click fixes instead of prose only.`,
+    description: `Put one decision in front of a human, as a card: a one-sentence question plus closed options, each of which applies a fix in one tap. Use it when a fix has no unambiguous answer — a b2b DJ credit naming two acts, two plausible identities, an unconfirmed duplicate — and YOU have already done the research; the human spends only the judgement. Changes no library data. Re-flagging the same target replaces the open flag's card. A flag with no options is agent-only: it never reaches a human (list_review_flags shows it as servable:false), so give question + options whenever a human could decide by choosing. question: ≤${CASE_TEXT_LIMITS.question} chars, the choice in one sentence. options: 1+ of {id, label (≤${CASE_TEXT_LIMITS.label} chars, the button), rationale (≤${CASE_TEXT_LIMITS.rationale} chars, one line under it), effect}, at least one with an effect that changes data; effect is {type:'song-metadata',songId,fields:{title|artist|album|albumArtist}} | {type:'artist-merge',rawName,mergeInto} | {type:'song-delete',songId} (destructive, confirmed in-card) | {type:'resolve-only'} (a labelled "keep as is"; the server adds a generic one if you give none). reason: your evidence and research, folded under the card — write it for the record, not the card. caseKind (${CURATION_CASE_KINDS.join('|')}) sets the card's eyebrow.`,
     access: 'curate',
     inputSchema: {
       type: 'object',
@@ -1066,7 +1070,12 @@ export const MCP_TOOLS: McpTool[] = [
         },
         reason: {
           type: 'string',
-          description: 'What the ambiguity is and what a human needs to decide.',
+          description:
+            'Your evidence and research, for the record. Shown folded under the question, never as the question.',
+        },
+        question: {
+          type: 'string',
+          description: `One sentence the human answers by picking an option (≤${CASE_TEXT_LIMITS.question} chars). Required with options.`,
         },
         caseKind: {
           type: 'string',
@@ -1075,7 +1084,8 @@ export const MCP_TOOLS: McpTool[] = [
         },
         options: {
           type: 'array',
-          description: 'Optional. Typed choices the curator can apply in one click.',
+          description:
+            'Closed choices {id,label,rationale?,effect,destructive?}; at least one effect must change data. Required with question.',
           items: { type: 'object' },
         },
       },
@@ -1093,24 +1103,10 @@ export const MCP_TOOLS: McpTool[] = [
 
       // A typed case is optional, but a malformed one is a refusal, not a
       // silent downgrade to prose: an agent that thinks it offered choices and
-      // did not would never learn. Per-option validity is NOT re-checked here —
-      // `isDispatchableEffect` is the one authority on that, on read.
-      let caseKind: CurationCaseKind | undefined;
-      if (args.caseKind !== undefined && args.caseKind !== null) {
-        if (!isCurationCaseKind(args.caseKind)) {
-          return JSON.stringify({
-            error: `caseKind must be one of ${CURATION_CASE_KINDS.join(', ')}`,
-          });
-        }
-        caseKind = args.caseKind;
-      }
-      let optionsJson: string | undefined;
-      if (args.options !== undefined && args.options !== null) {
-        if (!Array.isArray(args.options)) {
-          return JSON.stringify({ error: 'options must be an array of choice objects' });
-        }
-        optionsJson = JSON.stringify(args.options);
-      }
+      // did not would never learn, and the human would get a card with
+      // nothing to press. The same parser guards the HTTP route.
+      const typed = parseTypedCaseInput(args);
+      if (!typed.ok) return JSON.stringify({ error: typed.error });
 
       const actor = `agent:${identity.tokenId}`;
       const { flag, created } = createCurationFlag(db, {
@@ -1118,23 +1114,35 @@ export const MCP_TOOLS: McpTool[] = [
         targetId,
         reason,
         createdBy: actor,
-        caseKind,
-        optionsJson,
+        caseKind: typed.caseKind,
+        question: typed.question,
+        optionsJson: typed.optionsJson,
       });
       // Audited like the other writes: a flag is inert for the library, but it
       // does put a task on a person, which is worth a trace.
       recordAudit(db, { sub: identity.userId, username: actor }, 'curation.flag', {
         targetKind,
         targetId,
-        detail: `${created ? 'flagged' : 'updated'}: ${reason} (via MCP agent)`,
+        detail: `${created ? 'flagged' : 'updated'}: ${typed.question ?? reason} (via MCP agent)`,
       });
-      return JSON.stringify({ ok: true, id: flag.id, created });
+      const servedToHuman = typed.optionsJson !== undefined;
+      return JSON.stringify({
+        ok: true,
+        id: flag.id,
+        created,
+        servedToHuman,
+        ...(servedToHuman
+          ? {}
+          : {
+              hint: 'No options, so no human will see this. Re-file with question + options once you can frame the choice.',
+            }),
+      });
     },
   },
   {
     name: 'list_review_flags',
     description:
-      'List the open human-review flags, oldest first — what a previous pass could not decide alone.',
+      'List the open human-review flags, oldest first. servable:false means no human will see it until you re-file it with question + options; targetMissing:true means its target id no longer resolves — re-file against the live id, or resolve it. snoozedUntil is set while a human has deferred it.',
     access: 'read',
     inputSchema: {
       type: 'object',
@@ -1142,7 +1150,13 @@ export const MCP_TOOLS: McpTool[] = [
     },
     handler: ({ db }, args) =>
       JSON.stringify(
-        { flags: listOpenCurationFlags(db, clampLimit(args.limit, 25, 100)) },
+        {
+          flags: listOpenCurationFlags(db, clampLimit(args.limit, 25, 100)).map((f) => ({
+            ...f,
+            servable: flagHasActionableOptions(f),
+            targetMissing: describeTarget(db, f.targetKind, f.targetId) === null,
+          })),
+        },
         null,
         2,
       ),

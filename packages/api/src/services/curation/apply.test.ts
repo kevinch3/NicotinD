@@ -22,8 +22,10 @@ const deps = () => ({
     ok: true as const,
     moved: 3,
   })),
+  deleteSong: mock(async (_db: Database, _songId: string, _deps: unknown) => ({ ok: true })),
   songMetadataDeps: {} as never,
   artistIdentityDeps: {} as never,
+  deletionDeps: {} as never,
 });
 
 describe('applyCaseEffect', () => {
@@ -64,6 +66,30 @@ describe('applyCaseEffect', () => {
     );
     expect(res.ok).toBe(true);
     expect(d.mutateArtistIdentity).toHaveBeenCalledTimes(1);
+  });
+
+  it('song-delete delegates to deleteOne and touches no other service', async () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    const d = deps();
+    const res = await applyCaseEffect(db, { type: 'song-delete', songId: 's9' }, d);
+    expect(res.ok).toBe(true);
+    expect(d.deleteSong).toHaveBeenCalledTimes(1);
+    expect(d.deleteSong.mock.calls[0]![1]).toBe('s9');
+    expect(d.mutateSongMetadata).not.toHaveBeenCalled();
+    expect(d.mutateArtistIdentity).not.toHaveBeenCalled();
+  });
+
+  it('reports a failed delete with its reason', async () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    const failing = {
+      ...deps(),
+      deleteSong: mock(async () => ({ ok: false, error: 'Song not found in library' })),
+    };
+    const res = await applyCaseEffect(db, { type: 'song-delete', songId: 'nope' }, failing);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toContain('not found');
   });
 
   it('reports a failed mutation rather than claiming success', async () => {

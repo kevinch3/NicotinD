@@ -917,6 +917,8 @@ export interface CurationFlag {
   reason: string;
   createdBy: string;
   createdAt: number;
+  /** Null on a prose flag — one the triage round never serves. */
+  optionsJson?: string | null;
 }
 
 /**
@@ -1062,9 +1064,18 @@ export interface CurationCase {
   id: string;
   kind: CurationCaseKind;
   target: { kind: 'artist' | 'album' | 'song'; id: string; title: string; subtitle: string };
+  /** One sentence: the decision owed. */
   question: string;
+  /** The raiser's long-form context, folded behind the question. */
+  details: string | null;
   evidence: CaseEvidence[];
   options: CaseOption[];
   confidence: number;
   source: 'flag' | 'generated';
+}
+
+/** One round of cases, plus the open flags no human will see until the agent re-files them. */
+export interface CurationRound {
+  cases: CurationCase[];
+  awaitingAgent: number;
 }

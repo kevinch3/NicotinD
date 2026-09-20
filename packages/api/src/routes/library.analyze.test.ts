@@ -369,6 +369,54 @@ describe('curation review flags', () => {
     expect(audit).toContain('curation.flag');
   });
 
+  // A curator over HTTP is the same trust as an agent over MCP and files
+  // through the same parser, so a script (or the e2e suite) can put a full
+  // card in front of a human without an agent token.
+  it('files a typed case through the same parser the MCP tool uses', async () => {
+    const options = [
+      {
+        id: 'merge',
+        label: 'Credit Secret Cinema',
+        rationale: 'the set is theirs',
+        effect: {
+          type: 'artist-merge',
+          rawName: 'Secret Cinema B2B Egbert',
+          mergeInto: 'Secret Cinema',
+        },
+      },
+    ];
+    const res = await raise('admin', {
+      targetKind: 'artist',
+      targetId: 'Secret Cinema B2B Egbert',
+      reason: 'two acts',
+      question: 'Who gets the credit?',
+      caseKind: 'identity',
+      options,
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, created: true, servedToHuman: true });
+    const row = testDb
+      .query<
+        { question: string | null; case_kind: string | null; options_json: string | null },
+        []
+      >('SELECT question, case_kind, options_json FROM curation_flags')
+      .get()!;
+    expect(row.question).toBe('Who gets the credit?');
+    expect(row.case_kind).toBe('identity');
+    expect(JSON.parse(row.options_json!)).toEqual(options);
+
+    const half = await raise('admin', {
+      targetKind: 'artist',
+      targetId: 'B',
+      reason: 'x',
+      question: 'Who?',
+    });
+    expect(half.status).toBe(400);
+    expect(await half.json()).toMatchObject({
+      error: expect.stringContaining('required together'),
+    });
+  });
+
   it('rejects a bad target kind and a missing reason with 400', async () => {
     expect(
       (await raise('admin', { targetKind: 'playlist', targetId: 'p', reason: 'x' })).status,

@@ -12,7 +12,7 @@ export const CURATION_CASE_KINDS = [
   'identity',
   /** The data is right — which album/artist should hold it? */
   'placement',
-  /** Same recording? Which copy survives? (phase 3) */
+  /** Same recording? Which copy survives? */
   'duplicate',
   /** Only listening settles it. */
   'listen',
@@ -26,6 +26,14 @@ export function isCurationCaseKind(v: unknown): v is CurationCaseKind {
   return typeof v === 'string' && (CURATION_CASE_KINDS as readonly string[]).includes(v);
 }
 
+/**
+ * How much copy a case may put in front of a human, in characters. A card is
+ * read on a phone between two songs: the question is one sentence, an option
+ * is a button label, and the rationale is the one line under it. Everything
+ * longer belongs in `details`, which the card keeps folded.
+ */
+export const CASE_TEXT_LIMITS = { question: 160, label: 80, rationale: 160 } as const;
+
 /** One fact supporting the decision. `href` renders it as a link. */
 export interface CaseEvidence {
   label: string;
@@ -35,7 +43,7 @@ export interface CaseEvidence {
 
 /**
  * What applying an option actually runs. Every variant maps to an EXISTING
- * mutation service — see `applyCaseEffect`. Phase 1 deliberately has no
+ * mutation service — see `applyCaseEffect`. There is deliberately no
  * album-row override variant: an album-row artist write that contradicts the
  * file tag reverts on the next rescan.
  */
@@ -46,7 +54,13 @@ export type CaseEffect =
       songId: string;
       fields: { title?: string; artist?: string; album?: string; albumArtist?: string };
     }
-  | { type: 'artist-merge'; mergeInto: string; rawName: string };
+  | { type: 'artist-merge'; mergeInto: string; rawName: string }
+  | { type: 'song-delete'; songId: string };
+
+/** An effect that changes library data — the thing that makes a case a decision. */
+export function isActionableEffect(effect: CaseEffect): boolean {
+  return effect.type !== 'resolve-only';
+}
 
 export interface CaseOption {
   id: string;
@@ -58,12 +72,14 @@ export interface CaseOption {
 }
 
 export interface CurationCase {
-  /** `flag:<id>` in phase 1; `gen:<generator>:<key>` once generators land. */
+  /** `flag:<id>`; `gen:<generator>:<key>` once generators land. */
   id: string;
   kind: CurationCaseKind;
   target: { kind: 'artist' | 'album' | 'song'; id: string; title: string; subtitle: string };
   /** One sentence: the decision owed. */
   question: string;
+  /** The raiser's long-form context, folded behind the question. */
+  details: string | null;
   evidence: CaseEvidence[];
   options: CaseOption[];
   /** Round ordering. 1 for a flag (a human already judged it worth raising). */

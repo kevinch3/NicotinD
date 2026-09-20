@@ -22,8 +22,9 @@ const aCase = (id: string): CurationCase => ({
   kind: 'identity',
   target: { kind: 'song', id: 's1', title: `T-${id}`, subtitle: 'sub' },
   question: 'q',
+  details: null,
   evidence: [],
-  options: [{ id: 'resolve', label: 'Mark handled', rationale: 'no change' }],
+  options: [{ id: 'resolve', label: 'Leave as is', rationale: 'no change' }],
   confidence: 1,
   source: 'flag',
 });
@@ -31,19 +32,28 @@ const aCase = (id: string): CurationCase => ({
 describe('CurateComponent', () => {
   const getRound = vi.fn();
   const applyCase = vi.fn();
+  const skipCase = vi.fn();
   const show = vi.fn();
+
+  const query = (f: { nativeElement: unknown }, testId: string) =>
+    (f.nativeElement as HTMLElement).querySelector(`[data-testid="${testId}"]`);
 
   beforeEach(async () => {
     getRound.mockReset();
     applyCase.mockReset();
+    skipCase.mockReset();
     show.mockReset();
-    getRound.mockReturnValue(of({ cases: [aCase('flag:1'), aCase('flag:2')] }));
+    getRound.mockReturnValue(of({ cases: [aCase('flag:1'), aCase('flag:2')], awaitingAgent: 0 }));
     applyCase.mockReturnValue(of({ ok: true, detail: 'done' }));
+    skipCase.mockReturnValue(of({ ok: true, until: 1 }));
 
     await TestBed.configureTestingModule({
       imports: [CurateComponent],
       providers: [
-        { provide: CurationApiService, useValue: { getRound, applyCase, getCount: vi.fn() } },
+        {
+          provide: CurationApiService,
+          useValue: { getRound, applyCase, skipCase, getCount: vi.fn() },
+        },
         { provide: ToastService, useValue: { show } },
       ],
     }).compileComponents();
@@ -54,10 +64,7 @@ describe('CurateComponent', () => {
     f.detectChanges();
     expect(getRound).toHaveBeenCalledTimes(1);
     expect(f.componentInstance.current()?.id).toBe('flag:1');
-    expect(
-      (f.nativeElement as HTMLElement).querySelector('[data-testid="curate-progress"]')
-        ?.textContent,
-    ).toContain('1 / 2');
+    expect(query(f, 'curate-progress')?.textContent).toContain('1 / 2');
   });
 
   it('advances to the next case after a choice is applied', () => {
@@ -67,10 +74,7 @@ describe('CurateComponent', () => {
     f.detectChanges();
     expect(applyCase).toHaveBeenCalledWith('flag:1', 'resolve');
     expect(f.componentInstance.current()?.id).toBe('flag:2');
-    expect(
-      (f.nativeElement as HTMLElement).querySelector('[data-testid="curate-progress"]')
-        ?.textContent,
-    ).toContain('2 / 2');
+    expect(query(f, 'curate-progress')?.textContent).toContain('2 / 2');
   });
 
   it('shows the done state after the last case', () => {
@@ -80,17 +84,29 @@ describe('CurateComponent', () => {
     f.componentInstance.onChoose('resolve');
     f.detectChanges();
     expect(f.componentInstance.done()).toBe(true);
-    expect(
-      (f.nativeElement as HTMLElement).querySelector('[data-testid="curate-done"]'),
-    ).not.toBeNull();
+    expect(query(f, 'curate-done')).not.toBeNull();
   });
 
-  it('skip advances without applying anything', () => {
+  // A skip is a server-side deferral: a client-side index bump put the same
+  // card first in every round.
+  it('skip defers the case on the server, applies nothing, and advances', () => {
     const f = TestBed.createComponent(CurateComponent);
     f.detectChanges();
     f.componentInstance.onSkip();
     f.detectChanges();
+    expect(skipCase).toHaveBeenCalledWith('flag:1');
     expect(applyCase).not.toHaveBeenCalled();
+    expect(f.componentInstance.current()?.id).toBe('flag:2');
+  });
+
+  it('a failed skip still advances, and says the deferral did not land', () => {
+    skipCase.mockReturnValue(throwError(() => new Error('offline')));
+    const f = TestBed.createComponent(CurateComponent);
+    f.detectChanges();
+    f.componentInstance.onSkip();
+    f.detectChanges();
+    expect(show).toHaveBeenCalledTimes(1);
+    expect(show.mock.calls[0][0].message).toBe('curate.skipFailed');
     expect(f.componentInstance.current()?.id).toBe('flag:2');
   });
 
@@ -124,17 +140,26 @@ describe('CurateComponent', () => {
   });
 
   it('renders the empty state when the round has no cases', () => {
-    getRound.mockReturnValue(of({ cases: [] }));
+    getRound.mockReturnValue(of({ cases: [], awaitingAgent: 0 }));
     const f = TestBed.createComponent(CurateComponent);
     f.detectChanges();
     expect(f.componentInstance.done()).toBe(true);
     expect(f.componentInstance.total()).toBe(0);
-    expect(
-      (f.nativeElement as HTMLElement).querySelector('[data-testid="curate-next-round"]'),
-    ).toBeNull();
+    expect(query(f, 'curate-next-round')).toBeNull();
+    expect(query(f, 'curate-awaiting-agent')).toBeNull();
   });
 
-  // The other six tests all resolve their mocked `applyCase` synchronously
+  // An empty round is not an empty backlog: flags with no options stay with
+  // the agent, and the person deserves to know they exist.
+  it('says how many flags are still with the agent when the round is empty', () => {
+    getRound.mockReturnValue(of({ cases: [], awaitingAgent: 3 }));
+    const f = TestBed.createComponent(CurateComponent);
+    f.detectChanges();
+    expect(f.componentInstance.awaitingAgent()).toBe(3);
+    expect(query(f, 'curate-awaiting-agent')?.textContent).toContain('curate.awaitingAgent');
+  });
+
+  // The other tests all resolve their mocked `applyCase` synchronously
   // (`of(...)`), so `busy` is already back to `false` before a second call
   // could ever be issued — the re-entrancy guard in `onChoose` is never
   // exercised. A Subject keeps the first call genuinely in flight so a second

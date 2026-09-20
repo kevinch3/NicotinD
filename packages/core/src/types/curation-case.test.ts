@@ -25,6 +25,7 @@ describe('curation case kinds', () => {
       kind: 'identity',
       target: { kind: 'artist', id: 'a1', title: 'Rocky', subtitle: '1 album' },
       question: 'Which Rocky is this?',
+      details: null,
       evidence: [{ label: 'Origin', value: 'France' }],
       options: [
         {
