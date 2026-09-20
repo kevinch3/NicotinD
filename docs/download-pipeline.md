@@ -200,10 +200,38 @@ The hook fires in `LibraryOrganizer.placeFile()` **after the move and before the
 
 `services/library-transcode.ts` converts the lossless files already in the library — via `scripts/convert-library.ts` (`--apply`, optional `--bitrate`; dry-run reports candidates) or admin `POST /api/admin/transcode-library` (`?dryRun=1`). Re-encoding changes a file's extension → its relative path → its derived `songId` **and** its `acquisitions` key. Album-keyed data (`library_artwork`, `library_release_meta`, classification, all keyed on the tag-derived `albumId`) is unaffected and survives; song-keyed data does not, so **per file** the job:
 
-1. reads the old `library_songs` row (`id`, `path`, `starred`, `hidden`);
+1. reads the old `library_songs` row (`id`, `album_id`, `path`, `starred`, `hidden`);
 2. transcodes on disk (FLAC → opus, original removed);
-3. **deletes the stale lossless row first**, then `scanPaths([newRel])` inserts the new opus row and recomputes the album aggregate counting only it;
-4. carries `starred`/`hidden` onto the new id and re-points `playlist_songs.song_id`, `acquisitions.relative_path` and `library_genre_overrides` (scope `song`) — none of which has an FK on `song_id`, so each has to be named here to be carried (#856).
+3. `scanPaths([newRel])` inserts the new opus row;
+4. **one transaction** drops the stale lossless row, carries `starred`/`hidden` onto the new id, calls `carrySongCuration` and refreshes the album aggregate.
+
+**Why the scan runs before the delete.** It used to be the other way round, with the delete
+committed *outside* the transaction so `scanPaths` would see a library it had already adjusted. A
+scan that threw then left the old row gone and the new one never inserted: the song vanished until
+the next full rescan, and the `catch` only counted a failure. Scanning first means either both rows
+exist briefly or neither changes, and the aggregate is recomputed explicitly instead of relying on
+ordering.
+
+### `carrySongCuration` — the mapping is known, so don't go looking for it
+
+`services/song-curation-carry.ts` moves `playlist_songs.song_id`,
+`library_genre_overrides` (scope `song`) and `acquisitions.relative_path` onto a new song identity.
+None has an FK on `song_id` — deliberately, since a cascade would delete listening history on a
+routine rescan — so each has to be named to be carried (#856), and a missed one fails silently.
+
+It is the sibling of `artist-curation-carry.ts` and takes the same shape: a **known**
+`fromId`/`toId`, no matching. That is the line between it and the repoint modules.
+`playlist-repoint.ts` and `genre-override-repoint.ts` exist to *find* the successor of a row the
+scanner is about to prune, by `(title, artist, duration)`; the transcode pass already knows it,
+because it chose the new path itself. Conflating the two is how the same three statements ended up
+written out twice, one of them verbatim — `genre-override-repoint.ts` now delegates the move to
+`moveSongGenreOverride` and keeps only the search.
+
+Provenance moves on a **different key**: `acquisitions` is keyed on `relative_path`, not on the song
+id, the same split `artist-curation-carry` makes for its name-keyed rows. Omit the paths to leave it
+alone.
+
+The caller supplies the transaction, because every caller has other work to make atomic with it.
 
 Returns `{ candidates, converted, skipped, failed, bytesReclaimed, unestimated }`.
 
