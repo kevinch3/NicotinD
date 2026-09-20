@@ -448,45 +448,56 @@ One PR per piece of work, since PR granularity is deploy granularity.
 The order matters: the cheapest, most reversible win ships first, and nothing irreversible happens
 until the safety work is in.
 
-0. ~~**Measure.**~~ Done, above.
-1. **Spike, on a real iOS device.** Two questions in one sitting: does `output_gain` take effect on
-   our surfaces, and do the 7,774 Ogg-Opus files already in the library play, seek and report
-   duration correctly on iOS 18.4+. Together these decide the normalization mechanism and the
-   container, and therefore most of what follows.
-2. **Normalize the 7,774 existing Opus files.** Lossless, reversible, needs none of the conversion
-   machinery, and it closes #723 for a third of the library. **This is shippable on its own** and
-   should not wait behind the conversion.
-3. **Song-id remap infrastructure** — the exact map, the transaction fix, and the schema-derived
-   coverage gate.
-4. **Tag and artwork preservation** — explicit read-then-write, `METADATA_BLOCK_PICTURE`, and the
-   tests neither has today.
-5. **Verification hardening** — fail closed, check more than duration, quarantine instead of
-   delete.
+0. ~~**Measure.**~~ Done.
+1. **Spike, on a real iOS device.** *Still open, and now the only thing blocking the rest.* Two
+   questions in one sitting: does `output_gain` take effect on our surfaces, and do the 7,774
+   Ogg-Opus files already in the library play, seek and report duration correctly on iOS 18.4+.
+   Together these decide the normalization mechanism and the container.
+2. **Normalize the 7,774 existing Opus files.** Not started. Lossless, reversible, needs none of
+   the conversion machinery, and it closes #723 for a third of the library. **Shippable on its
+   own** — it should not wait behind the conversion. Blocked only on step 1.
+3. ~~**Song-id remap infrastructure.**~~ Shipped: #1221 the shared carry, #1224 the coverage gate
+   reading the live schema, #1227 the delete-before-scan song-loss fix.
+4. ~~**Tag and artwork preservation.**~~ Shipped: #1225 the three dropped ID3 frames, #1229 the
+   harness and the 512 KB reader cap, #1230 art at encode time plus the mis-named MusicBrainz and
+   AcoustID keys, #1233 re-embedding into files that already lost it.
+5. ~~**Verification hardening.**~~ Shipped: #1227 fails closed before the delete, #1228 quarantine,
+   #1235 and #1236 wiring that quarantine into the callers that had silently bypassed it, #1232
+   pooled encodes, #1239 a durable run record.
 6. **Source-adaptive bitrate selection** — a pure, table-driven function tested against the
-   measured distribution above.
-7. **The conversion pass** — extend the predicate, pool the encodes, wire the remap. Dry run,
-   pilot batch, then the 13,864.
+   measured distribution above. Not started; needs decision 3.
+7. **The conversion pass** — extend the predicate and wire the remap. Dry run, pilot batch, then
+   the 13,864. Not started; needs every decision below.
 8. **The simplification sweep** — delete the ID3 path, `node-id3` and the mixed-format rule. Close
-   #964 and #1177.
+   #964 and #1177. Not started; strictly after step 7.
 
-Steps 2 through 5 are each worth landing even if the conversion is abandoned. Step 2 is a complete
-answer to #723 for a third of the library. Steps 3 to 5 harden a pass that already runs today on
-every lossless download.
+Steps 3 to 5 were each worth landing even if the conversion is abandoned, and they landed: they
+harden a pass that already runs today on every lossless download. Step 2 remains the same kind of
+bet — a complete answer to #723 for a third of the library, with no conversion machinery involved.
 
 ## Open decisions
 
-1. **Is a second lossy generation acceptable on 13,864 files** to save 36.4 GiB and collapse the
-   format-specific code? This is the irreversible one. It does not block steps 1–5.
-2. **Normalization target.** The library's median is −10.1 LUFS, louder than the −14 streaming
-   convention and far louder than the −23 broadcast standard; −23 would make everything
-   dramatically quieter. With the header-gain design this is re-tunable later, which makes it a
-   much cheaper decision than it looks.
-3. **The bitrate mapping table** — 64 / 96 / 112 / 128 as proposed, or different.
-4. **Ogg or WebM?** Recommended: Ogg, keeping the tag collapse. WebM would trade that for immunity
-   to two browser defects we have not hit, and it stays available later as a lossless remux.
-4. ~~Originals replaced, or quarantined until verified?~~ **Settled: back up before transcoding.**
-   See the requirement below.
-5. **The 3 FLAC files** — leave them as the only true masters, or convert for uniformity.
-6. **The 6 `.wma` files** cannot be tagged by any current path (`.wma` is in neither `ID3_EXTS` nor
-   `VORBIS_EXTS`). Converting them is a strict improvement; worth confirming they are wanted at
-   all.
+Every one of these is a closed choice with a recommendation and the measurement behind it. None
+needs research to answer. Nothing below step 5 of the sequencing proceeds until they are settled,
+because the pass they configure cannot be undone.
+
+| # | Decision | Options | Recommended | Why |
+| --- | --- | --- | --- | --- |
+| 1 | A second lossy generation on 13,864 files? | convert / leave as-is | **convert** | Saves 36.4 GiB and collapses the format-specific code. It is the irreversible one, and the only reason to hesitate. Quarantine now makes it recoverable for as long as the run dir is kept. |
+| 2 | Normalization target | −14 LUFS / −18 / −23 / leave alone | **−14** | The library's median is −10.1, louder than the −14 streaming convention; −23 would make everything dramatically quieter. Header gain makes this re-tunable later, so it is a cheap decision. |
+| 3 | Bitrate mapping | 64 / 96 / 112 / 128 as proposed, or different | **as proposed** | mp3 bitrate is bimodal: 8,138 files at 128–159 kbps and 4,383 at 256+. A source-adaptive table reads that rather than guessing one number. |
+| 4 | Container | Ogg / WebM | **Ogg** | Keeps the one-tag-path collapse. WebM trades that for immunity to two browser defects we have not hit, and stays available later as a lossless remux. |
+| 5 | The 3 FLAC files | convert / keep as masters | **keep** | They are the only true masters in the library, and 3 files is not a uniformity problem worth first-generation loss. |
+| 6 | The 6 `.wma` files | convert / delete / leave | **convert** | `.wma` is in neither `ID3_EXTS` nor `VORBIS_EXTS`, so no current path can tag them at all. Converting is a strict improvement; worth confirming they are wanted at all first. |
+
+~~Originals replaced, or quarantined until verified?~~ **Settled: back up before transcoding.** The
+quarantine ships and, since #1235 and #1236, is actually reachable from every caller.
+
+**Decision 1 is the only one that cannot be revisited.** 2 is re-tunable by design, 3 applies only
+to files not yet converted, 4 leaves WebM available as a lossless remux, and 5 and 6 concern nine
+files between them.
+
+**The iOS device check is not a decision and cannot be answered from here.** On an iOS 18.4+ device:
+play a known-quiet track, change its Opus header gain, confirm the level moves, and confirm seeking
+and duration still behave. It gates decisions 2 and 4 and step 2 of the sequencing, which is the
+shippable third-of-the-library win.
