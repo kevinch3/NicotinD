@@ -1,0 +1,4 @@
+• library-paths: offline walkers used the shipped reserved set, not the configured one (#1219)
+• setup: give the lossless-to-Opus toggle a store that actually governs it (#1217)
+• transcode: dry-run reported the whole original size as reclaimable (#1218)
+• web: artwork-backfill never reached the MaintenanceStatus task union (#1220)

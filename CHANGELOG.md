@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.16](https://github.com/kevinch3/NicotinD/compare/v0.8.15...v0.8.16) (2026-09-20)
+
+### Bug Fixes
+
+* **library-paths:** offline walkers used the shipped reserved set, not the configured one ([#1219](https://github.com/kevinch3/NicotinD/issues/1219)) ([eeac572](https://github.com/kevinch3/NicotinD/commit/eeac572b3b8ad9dd695df8321f9201e9185a3df2)), references [#826](https://github.com/kevinch3/NicotinD/issues/826) [#824](https://github.com/kevinch3/NicotinD/issues/824)
+* **setup:** give the lossless-to-Opus toggle a store that actually governs it ([#1217](https://github.com/kevinch3/NicotinD/issues/1217)) ([914df49](https://github.com/kevinch3/NicotinD/commit/914df495ee26b80230d7b32a8bf7635d6a12fcef)), closes [#1216](https://github.com/kevinch3/NicotinD/issues/1216), references [#824](https://github.com/kevinch3/NicotinD/issues/824) [#1121](https://github.com/kevinch3/NicotinD/issues/1121) [#1177](https://github.com/kevinch3/NicotinD/issues/1177)
+* **transcode:** dry-run reported the whole original size as reclaimable ([#1218](https://github.com/kevinch3/NicotinD/issues/1218)) ([72de594](https://github.com/kevinch3/NicotinD/commit/72de594bdbcc23815c33b987d9d8ce49127a1c26)), references [#723](https://github.com/kevinch3/NicotinD/issues/723)
+* **web:** artwork-backfill never reached the MaintenanceStatus task union ([#1220](https://github.com/kevinch3/NicotinD/issues/1220)) ([c4b46b7](https://github.com/kevinch3/NicotinD/commit/c4b46b7f9a49ac52a18dc528412977ab4a65d04e))
 ## [0.8.15](https://github.com/kevinch3/NicotinD/compare/v0.8.14...v0.8.15) (2026-09-20)
 
 ### Features
