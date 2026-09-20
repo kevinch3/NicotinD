@@ -118,6 +118,17 @@ export const SHARED_HELPERS: SharedHelper[] = [
   { name: 'fold', canonical: 'packages/addon-sdk/src/hunt-queries.ts' },
   { name: 'tokenize', canonical: 'packages/api/src/services/search-tokens.ts' },
   { name: 'matchesAllTokens', canonical: 'packages/api/src/services/search-tokens.ts' },
+  // LRC parsing + the render-time offset, lifted out of the web app when the
+  // API needed the same parse (the health detector asks whether an LRC overruns
+  // its own file; the MCP read tool reports where its timings sit). The thing a
+  // second copy would get wrong is the sign: the spec's `[offset:+N]` means
+  // *sooner* while a stored offset means *later*, so two parsers would drift
+  // into shifting the same lyrics in opposite directions. Registered at
+  // extraction, which is when a copy is most likely to grow back.
+  { name: 'parseLrc', canonical: 'packages/core/src/lrc.ts' },
+  { name: 'parseLrcDetailed', canonical: 'packages/core/src/lrc.ts' },
+  { name: 'applyLyricsOffset', canonical: 'packages/core/src/lrc.ts' },
+  { name: 'findActiveLine', canonical: 'packages/core/src/lrc.ts' },
 ];
 
 export interface HelperViolation {

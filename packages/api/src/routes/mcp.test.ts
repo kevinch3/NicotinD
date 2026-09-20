@@ -61,6 +61,7 @@ beforeEach(() => {
   testDb.run('DELETE FROM library_song_genres');
   testDb.run('DELETE FROM library_genre_overrides');
   testDb.run('DELETE FROM curation_flags');
+  testDb.run('DELETE FROM library_lyrics');
 });
 
 async function rpc(token: string | null, method: string, params?: unknown) {
@@ -2006,6 +2007,166 @@ describe('checkToolAccess (scope + confirm gates)', () => {
     // …and scope still comes first: a read-only token can't reach a destructive
     // tool even with confirm.
     expect(checkToolAccess(destructiveTool, 'refiner:read', { confirm: true })).toContain(
+      'read-only',
+    );
+  });
+});
+
+/**
+ * Lyrics tools. Curators were blind to lyrics entirely until `get_song_lyrics`,
+ * and the only write path erased timing — so "the words are right, the clock is
+ * wrong" had no remedy at all.
+ */
+describe('lyrics tools', () => {
+  const ctx = (scope: 'refiner:read' | 'refiner:curate'): McpToolContext => ({
+    db: testDb,
+    identity: { tokenId: 't', userId: 'u1', scope },
+    deletion: { musicDir, shareRescan: new ShareRescanScheduler(async () => {}) },
+    artistIdentity: { dataDir: undefined, runSync: undefined },
+    songGenre: { musicDir },
+    metadata: { musicDir },
+    curation: {},
+    acquisition: { getAddon: () => null, isAcquisitionEnabled: () => false, minMatchPct: 80 },
+  });
+
+  /** Seed a song of `durationSec` with an LRC whose last line is at `lastLineSec`. */
+  function seedLyrics(opts: {
+    durationSec: number;
+    lastLineSec: number;
+    matched?: number | null;
+  }): void {
+    seedSong('s-lyr', 'Luna tucumana');
+    testDb.run(`UPDATE library_songs SET duration = ? WHERE id = 's-lyr'`, [opts.durationSec]);
+    const mm = String(Math.floor(opts.lastLineSec / 60)).padStart(2, '0');
+    const ss = String(opts.lastLineSec % 60).padStart(2, '0');
+    testDb.run(
+      `INSERT INTO library_lyrics
+         (song_id, plain_text, synced_text, source, customized, updated_at, matched_duration)
+       VALUES ('s-lyr', 'first line\nsecond line', ?, 'lrclib', 0, 1, ?)`,
+      [`[00:05.00]first line\n[${mm}:${ss}.00]second line`, opts.matched ?? null],
+    );
+  }
+
+  const call = async (
+    scope: 'refiner:read' | 'refiner:curate',
+    name: string,
+    args: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> => {
+    const res = await dispatchTool(ctx(scope), name, args);
+    return JSON.parse(res.content[0]!.text) as Record<string, unknown>;
+  };
+
+  it('registers both tools with the right access levels', () => {
+    const read = MCP_TOOLS.find((t) => t.name === 'get_song_lyrics');
+    const curate = MCP_TOOLS.find((t) => t.name === 'sync_song_lyrics');
+    expect(read?.access).toBe('read');
+    expect(curate?.access).toBe('curate');
+    // Not destructive: it writes no text and 0 undoes it exactly.
+    expect(curate?.destructive).toBeUndefined();
+  });
+
+  it('reports a row a listener could not otherwise judge', async () => {
+    seedLyrics({ durationSec: 232, lastLineSec: 200, matched: 222 });
+    const out = await call('refiner:read', 'get_song_lyrics', { songId: 's-lyr' });
+    expect(out.synced).toBe(true);
+    expect(out.lineCount).toBe(2);
+    expect(out.offsetMs).toBe(0);
+    // The source's recording is 10s shorter than this file's.
+    expect(out.durationDeltaSec).toBe(-10);
+    expect(out.overrunBySec).toBe(-32);
+    expect(out.firstLines).toEqual(['[5s] first line', '[200s] second line']);
+  });
+
+  it('says a row was never verified rather than implying it is fine', async () => {
+    seedLyrics({ durationSec: 232, lastLineSec: 200, matched: null });
+    const out = await call('refiner:read', 'get_song_lyrics', { songId: 's-lyr' });
+    expect(out.matchedDurationSec).toBeNull();
+    expect(out.durationDeltaSec).toBeNull();
+  });
+
+  it('surfaces an LRC that outlasts the file — proof without the source', async () => {
+    seedLyrics({ durationSec: 180, lastLineSec: 220, matched: null });
+    const out = await call('refiner:read', 'get_song_lyrics', { songId: 's-lyr' });
+    expect(out.overrunBySec).toBe(40);
+  });
+
+  it('reports no lyrics distinctly from an unknown song', async () => {
+    seedSong('s-bare', 'Bare');
+    expect((await call('refiner:read', 'get_song_lyrics', { songId: 's-bare' })).lyrics).toBeNull();
+    expect((await call('refiner:read', 'get_song_lyrics', { songId: 'nope' })).error).toBe(
+      'Song not found',
+    );
+  });
+
+  it('applies an absolute offset and leaves the words alone', async () => {
+    seedLyrics({ durationSec: 232, lastLineSec: 200 });
+    const out = await call('refiner:curate', 'sync_song_lyrics', {
+      songId: 's-lyr',
+      offsetMs: 1_500,
+    });
+    expect(out).toMatchObject({ ok: true, offsetMs: 1_500, clamped: false });
+
+    const after = await call('refiner:read', 'get_song_lyrics', { songId: 's-lyr' });
+    expect(after.offsetMs).toBe(1_500);
+    // Shifted at render time; the stored text is untouched, so the first line
+    // simply reads later than the 5s it was written at.
+    expect(after.firstLines).toEqual(['[6s] first line', '[201s] second line']);
+    expect(after.plainPreview).toContain('first line');
+  });
+
+  it('is absolute, not a nudge — calling twice does not double', async () => {
+    seedLyrics({ durationSec: 232, lastLineSec: 200 });
+    await call('refiner:curate', 'sync_song_lyrics', { songId: 's-lyr', offsetMs: 1_000 });
+    const out = await call('refiner:curate', 'sync_song_lyrics', {
+      songId: 's-lyr',
+      offsetMs: 1_000,
+    });
+    expect(out.offsetMs).toBe(1_000);
+  });
+
+  it('clamps out of range and says so', async () => {
+    seedLyrics({ durationSec: 232, lastLineSec: 200 });
+    const out = await call('refiner:curate', 'sync_song_lyrics', {
+      songId: 's-lyr',
+      offsetMs: 500_000,
+    });
+    expect(out).toMatchObject({ offsetMs: 30_000, clamped: true });
+  });
+
+  it('refuses a song with no lyrics, naming the fix', async () => {
+    seedSong('s-bare', 'Bare');
+    const out = await call('refiner:curate', 'sync_song_lyrics', {
+      songId: 's-bare',
+      offsetMs: 500,
+    });
+    expect(out.error).toContain('Fetch lyrics first');
+  });
+
+  it('rejects a non-numeric offset', async () => {
+    seedLyrics({ durationSec: 232, lastLineSec: 200 });
+    const out = await call('refiner:curate', 'sync_song_lyrics', {
+      songId: 's-lyr',
+      offsetMs: 'later',
+    });
+    expect(out.error).toContain('must be a number');
+  });
+
+  it('audit-logs the sync', async () => {
+    seedLyrics({ durationSec: 232, lastLineSec: 200 });
+    await call('refiner:curate', 'sync_song_lyrics', { songId: 's-lyr', offsetMs: -750 });
+    const audit = testDb
+      .query<{ action: string; target_id: string; detail: string }, []>(
+        'SELECT action, target_id, detail FROM audit_log ORDER BY id DESC LIMIT 1',
+      )
+      .get();
+    expect(audit?.action).toBe('song.lyrics');
+    expect(audit?.target_id).toBe('s-lyr');
+    expect(audit?.detail).toContain('-750');
+  });
+
+  it('will not let a read-only token re-time anything', async () => {
+    const tool = MCP_TOOLS.find((t) => t.name === 'sync_song_lyrics')!;
+    expect(checkToolAccess(tool, 'refiner:read', { songId: 's-lyr', offsetMs: 0 })).toContain(
       'read-only',
     );
   });

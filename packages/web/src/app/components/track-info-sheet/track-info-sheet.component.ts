@@ -25,7 +25,7 @@ import { identifyFailureKey } from '../../lib/identify-failure';
 import { LikeService } from '../../services/like.service';
 import { ServerConfigService } from '../../services/server-config.service';
 import { methodBadge } from '../../lib/acquisition-method';
-import { parseLrc } from '../../lib/lrc-parser';
+import { parseLrc } from '@nicotind/core';
 import { moveInList } from '../../lib/move-in-list';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
 import { ArtistLinksComponent } from '../artist-links/artist-links.component';

@@ -359,6 +359,71 @@ test.describe('mobile UX', () => {
     await expect(page.getByTestId('now-playing-lyrics')).toHaveCount(0);
   });
 
+  /**
+   * Synced (LRC) lyrics end-to-end — impossible to write until now. `PUT` used
+   * to hard-code `synced: null`, so no route could seed timed lyrics and the
+   * karaoke path was unit-test-only. It now keeps an explicitly-sent LRC, which
+   * is the same change that lets a curator fix timing without erasing it.
+   */
+  test('Now Playing lyrics: synced lines render and the sync offset persists', async ({
+    page,
+    request,
+  }) => {
+    const token = (
+      (await (await request.post('/api/auth/login', { data: ADMIN })).json()) as { token: string }
+    ).token;
+    const albums = (await (
+      await request.get('/api/library/albums', { headers: bearer(token) })
+    ).json()) as Array<{ id: string; title: string }>;
+    const album = albums.find((a) => a.title === FIXTURE.album.title) ?? albums[0]!;
+    const detail = (await (
+      await request.get(`/api/library/albums/${album.id}`, { headers: bearer(token) })
+    ).json()) as { song: Array<{ id: string }> };
+    const synced = '[00:00.50]opening line\n[00:09.00]second line';
+    for (const s of detail.song) {
+      await request.put(`/api/library/songs/${s.id}/lyrics`, {
+        headers: bearer(token),
+        data: { plain: 'opening line\nsecond line', synced },
+      });
+    }
+
+    await openNowPlaying(page);
+    await page.getByTestId('now-playing-tab-lyrics').click();
+    const panel = page.getByTestId('now-playing-lyrics');
+    // Timed lines, not the plain-text fallback — the karaoke branch.
+    await expect(panel.locator('[data-karaoke-line]').first()).toContainText('opening line');
+
+    // The control sits WITH the lyrics. Before this it only existed in the
+    // empty state, i.e. nowhere a mistimed-lyrics complaint could reach it.
+    const sync = page.getByTestId('lyrics-sync');
+    await expect(sync).toBeVisible();
+    await expect(page.getByTestId('lyrics-sync-value')).toContainText('In sync');
+
+    await page.getByTestId('lyrics-sync-later').click();
+    await expect(page.getByTestId('lyrics-sync-value')).toContainText('+0.25s');
+    await page.getByTestId('lyrics-sync-later').click();
+    await expect(page.getByTestId('lyrics-sync-value')).toContainText('+0.50s');
+
+    // Durable, and the words are untouched — the correction is an offset, not
+    // a rewrite, so the source's text must come back exactly as it went in.
+    // Every track was seeded; exactly the one being played should carry it.
+    const rows = await Promise.all(
+      detail.song.map(
+        async (s) =>
+          (await (
+            await request.get(`/api/library/songs/${s.id}/lyrics`, { headers: bearer(token) })
+          ).json()) as { offsetMs: number; synced: string },
+      ),
+    );
+    const corrected = rows.filter((r) => r.offsetMs === 500);
+    expect(corrected).toHaveLength(1);
+    expect(corrected[0]!.synced).toBe(synced);
+
+    // Reset returns to the source's own timings.
+    await page.getByTestId('lyrics-sync-reset').click();
+    await expect(page.getByTestId('lyrics-sync-value')).toContainText('In sync');
+  });
+
   // The drag-resize handle is shell-owned (above the Queue/Lyrics tabs) so it
   // must stay usable on the Lyrics tab — inside the queue panel it vanished with
   // the tab switch and read as a lost feature. Drag it up and assert the cover

@@ -789,9 +789,21 @@ export class LibraryApiService {
     return this.http.post<LyricsDto | null>(`/api/library/songs/${id}/lyrics/fetch`, { force });
   }
 
-  /** Save user-edited lyrics (admin); marks them customized + writes the tag. */
-  saveLyrics(id: string, plain: string) {
-    return this.http.put<LyricsDto>(`/api/library/songs/${id}/lyrics`, { plain });
+  /**
+   * Save user-edited lyrics (admin); marks them customized + writes the tag.
+   * Omitting `synced` clears the stored LRC — an edited body no longer matches
+   * timings written for the text it replaced.
+   */
+  saveLyrics(id: string, plain: string, synced?: string | null) {
+    return this.http.put<LyricsDto>(`/api/library/songs/${id}/lyrics`, { plain, synced });
+  }
+
+  /**
+   * Shift a song's synced lyrics by a fixed offset (admin). Applied at render
+   * time — the fetched text is never rewritten, so 0 undoes it exactly.
+   */
+  setLyricsOffset(id: string, offsetMs: number) {
+    return this.http.patch<LyricsDto>(`/api/library/songs/${id}/lyrics/offset`, { offsetMs });
   }
 
   /** Reset a song's lyrics (admin); drops the stored row. */

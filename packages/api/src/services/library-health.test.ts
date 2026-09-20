@@ -778,6 +778,102 @@ describe('libraryHealth — lyrics & flags', () => {
       expect(m.unverified).toBe(1);
     });
   });
+
+  /**
+   * The second detector, which needs nothing from the source: an LRC whose last
+   * line lands after the file has ended cannot be this file's. It is the only
+   * check that reaches rows the `matched_duration` test must call `unverified`.
+   */
+  describe('synced lyrics that outlast the file', () => {
+    function seedSynced(
+      songId: string,
+      opts: { songDuration: number; lastLineSec: number; offsetMs?: number; matched?: number },
+    ): void {
+      addSong({ id: songId, albumId: 'al1' });
+      db.run(`UPDATE library_songs SET duration = ? WHERE id = ?`, [opts.songDuration, songId]);
+      const mm = String(Math.floor(opts.lastLineSec / 60)).padStart(2, '0');
+      const ss = String(opts.lastLineSec % 60).padStart(2, '0');
+      db.run(
+        `INSERT INTO library_lyrics
+           (song_id, plain_text, synced_text, source, updated_at, matched_duration, offset_ms)
+         VALUES (?, 'words', ?, 'lrclib', 1, ?, ?)`,
+        [songId, `[00:01.00]first\n[${mm}:${ss}.00]last`, opts.matched ?? null, opts.offsetMs ?? 0],
+      );
+    }
+
+    /** A plain-only row, i.e. one this detector must leave alone. */
+    function seedPlain(songId: string, opts: { songDuration: number; matched: number }): void {
+      addSong({ id: songId, albumId: 'al1' });
+      db.run(`UPDATE library_songs SET duration = ? WHERE id = ?`, [opts.songDuration, songId]);
+      db.run(
+        `INSERT INTO library_lyrics (song_id, plain_text, source, updated_at, matched_duration)
+         VALUES (?, 'words', 'lrclib', 1, ?)`,
+        [songId, opts.matched],
+      );
+    }
+
+    beforeEach(() => {
+      addArtist('ar1', 'A', 1);
+      addAlbum({ id: 'al1', name: 'N', songCount: 0 });
+    });
+
+    it('flags an LRC whose last line lands after the track ends', () => {
+      seedSynced('overruns', { songDuration: 180, lastLineSec: 220 });
+      const m = libraryHealth(db).dimensions.lyrics.metric;
+      expect(m.syncedBeyondDuration).toBe(1);
+      expect(m.synced).toBe(1);
+    });
+
+    it('leaves an LRC that finishes inside the track alone', () => {
+      // Songs routinely end on an instrumental outro, so finishing early is
+      // the normal case and says nothing at all.
+      seedSynced('fine', { songDuration: 240, lastLineSec: 180 });
+      expect(libraryHealth(db).dimensions.lyrics.metric.syncedBeyondDuration).toBe(0);
+    });
+
+    it('reports its own denominator, not just the finding', () => {
+      seedSynced('a', { songDuration: 180, lastLineSec: 220 });
+      seedSynced('b', { songDuration: 240, lastLineSec: 180 });
+      const m = libraryHealth(db).dimensions.lyrics.metric;
+      expect(m.synced).toBe(2);
+      expect(m.syncedBeyondDuration).toBe(1);
+    });
+
+    it('judges a row the duration test cannot — no matched duration at all', () => {
+      // The whole point: `unverified` is not a place rows go to be forgotten.
+      seedSynced('legacy', { songDuration: 180, lastLineSec: 220, matched: undefined });
+      const m = libraryHealth(db).dimensions.lyrics.metric;
+      expect(m.unverified).toBe(1);
+      expect(m.syncedBeyondDuration).toBe(1);
+    });
+
+    it('applies the stored offset before judging — a fixed row stops being flagged', () => {
+      seedSynced('nudged', { songDuration: 180, lastLineSec: 184, offsetMs: -20_000 });
+      expect(libraryHealth(db).dimensions.lyrics.metric.syncedBeyondDuration).toBe(0);
+    });
+
+    it('ignores a plain-only row: there are no timings to outlast anything', () => {
+      seedPlain('plainOnly', { songDuration: 180, matched: 180 });
+      const m = libraryHealth(db).dimensions.lyrics.metric;
+      expect(m.synced).toBe(0);
+      expect(m.syncedBeyondDuration).toBe(0);
+    });
+
+    it('names which detector found each worklist row', () => {
+      seedSynced('overruns', { songDuration: 180, lastLineSec: 260 });
+      seedPlain('wrongTake', { songDuration: 200, matched: 260 });
+      const worklist = libraryHealth(db).dimensions.lyrics.worklist ?? [];
+      const byId = new Map(worklist.map((w) => [w.songId, w.reason]));
+      expect(byId.get('overruns')).toBe('overruns');
+      expect(byId.get('wrongTake')).toBe('duration');
+    });
+
+    it('lists a row once even when both detectors condemn it', () => {
+      seedSynced('both', { songDuration: 180, lastLineSec: 260, matched: 260 });
+      const worklist = libraryHealth(db).dimensions.lyrics.worklist ?? [];
+      expect(worklist.filter((w) => w.songId === 'both')).toHaveLength(1);
+    });
+  });
 });
 
 /**

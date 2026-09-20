@@ -6,7 +6,9 @@ import {
   AGENT_EFFECTIVE_ROLE,
   type AgentIdentity,
 } from '../services/agent-tokens.js';
+import { parseLrc, applyLyricsOffset, LYRICS_OFFSET_MAX_MS } from '@nicotind/core';
 import { recordAudit } from '../services/audit-log.js';
+import { getLyrics, setLyricsOffset } from '../services/lyrics-store.js';
 import { deleteAlbum, deleteOne } from '../services/library-deletion.js';
 import { mutateArtistIdentity } from '../services/artist-identity-mutate.js';
 import { upsertGenreAlias } from '../services/genre-alias-mutate.js';
@@ -425,6 +427,117 @@ export const MCP_TOOLS: McpTool[] = [
       const maxCount = typeof args.maxCount === 'number' ? args.maxCount : undefined;
       const limit = typeof args.limit === 'number' ? args.limit : undefined;
       return JSON.stringify({ genres: rareGenres(db, { maxCount, limit }) }, null, 2);
+    },
+  },
+  {
+    name: 'get_song_lyrics',
+    description:
+      "Everything needed to judge one song's stored lyrics without a second call: the source, whether a user edited them, the current sync offset, the length of the recording the source matched against the local file's own, and — for synced (LRC) lyrics — how many lines there are, where the last one falls, and the first/last few with their timings. Two independent things can be wrong and they have different fixes: WRONG WORDS (the source matched another take — visible as a durationDeltaSec beyond a few seconds, or an overrunBySec above zero meaning the lyrics outlast the file) need a re-fetch, while RIGHT WORDS ON A WRONG CLOCK need sync_song_lyrics. Read-only. Returns a bounded preview, never the full text.",
+    access: 'read',
+    inputSchema: {
+      type: 'object',
+      properties: { songId: { type: 'string' } },
+      required: ['songId'],
+    },
+    handler: ({ db }, args) => {
+      const songId = str(args.songId);
+      const song = db
+        .query<{ title: string; artist: string; duration: number }, [string]>(
+          'SELECT title, artist, duration FROM library_songs WHERE id = ?',
+        )
+        .get(songId);
+      if (!song) return JSON.stringify({ error: 'Song not found' });
+
+      const durationSec = song.duration > 0 ? song.duration : null;
+      const stored = getLyrics(db, songId);
+      const head = { songId, title: song.title, artist: song.artist, durationSec };
+      if (!stored) return JSON.stringify({ ...head, lyrics: null }, null, 2);
+
+      // The same render the listener sees: the file's own [offset:] tag folded
+      // in by the parser, then the stored correction.
+      const lines = applyLyricsOffset(parseLrc(stored.synced), stored.offsetMs);
+      const lastLineSec = lines.length ? Math.round(lines[lines.length - 1]!.timeMs / 1000) : null;
+      const preview = (l: { timeMs: number; text: string }): string =>
+        `[${Math.floor(l.timeMs / 1000)}s] ${l.text}`;
+      return JSON.stringify(
+        {
+          ...head,
+          source: stored.source,
+          customized: stored.customized,
+          offsetMs: stored.offsetMs,
+          matchedDurationSec: stored.matchedDurationSec ?? null,
+          sourceTrackId: stored.sourceTrackId ?? null,
+          // Positive = the source's recording is longer than this file's.
+          // Null means nothing ever verified this row, which is not the same
+          // as verified-and-fine.
+          durationDeltaSec:
+            stored.matchedDurationSec != null && durationSec != null
+              ? stored.matchedDurationSec - durationSec
+              : null,
+          synced: lines.length > 0,
+          lineCount: lines.length,
+          lastLineSec,
+          // Above zero and the LRC outlasts the track — proof it is not this
+          // recording's, needing nothing from the source to establish.
+          overrunBySec:
+            lastLineSec != null && durationSec != null ? lastLineSec - durationSec : null,
+          firstLines: lines.slice(0, 3).map(preview),
+          lastLines: lines.slice(-3).map(preview),
+          plainPreview: stored.plain ? stored.plain.split('\n').slice(0, 3).join(' / ') : null,
+        },
+        null,
+        2,
+      );
+    },
+  },
+  {
+    name: 'sync_song_lyrics',
+    description:
+      "Shift a song's synced (LRC) lyrics by a fixed offset so they land on the beat. offsetMs is ABSOLUTE, not a nudge — positive shows the lines LATER, 0 restores the source's own timings exactly. Applied at render time: the fetched words are never rewritten, so this is fully reversible and cannot cost you the text. Use it ONLY when the words are right and the clock is wrong. If the words belong to another take (get_song_lyrics shows a large durationDeltaSec, or an overrunBySec above zero), sliding them into place hides the real defect — re-fetch instead. Clamped to ±30s; needing more than that means it is the wrong recording. Audit-logged.",
+    access: 'curate',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        songId: { type: 'string' },
+        offsetMs: {
+          type: 'number',
+          description:
+            'Absolute offset in ms, positive = later. 0 clears the correction. Clamped to ±30000.',
+        },
+      },
+      required: ['songId', 'offsetMs'],
+    },
+    handler: ({ db, identity }, args) => {
+      const songId = str(args.songId);
+      const requested = typeof args.offsetMs === 'number' ? args.offsetMs : Number.NaN;
+      if (!Number.isFinite(requested)) {
+        return JSON.stringify({
+          error: 'offsetMs must be a number — an absolute offset in ms, not a delta',
+        });
+      }
+      const saved = setLyricsOffset(db, songId, requested);
+      if (!saved) {
+        return JSON.stringify({
+          error:
+            'No lyrics stored for this song — there is nothing to re-time. Fetch lyrics first.',
+        });
+      }
+      recordAudit(
+        db,
+        { sub: identity.userId, username: `agent:${identity.tokenId}` },
+        'song.lyrics',
+        {
+          targetKind: 'song',
+          targetId: songId,
+          detail: `sync offset ${saved.offsetMs}ms (via MCP agent)`,
+        },
+      );
+      return JSON.stringify({
+        ok: true,
+        offsetMs: saved.offsetMs,
+        clamped: saved.offsetMs !== Math.round(requested),
+        maxOffsetMs: LYRICS_OFFSET_MAX_MS,
+      });
     },
   },
   {

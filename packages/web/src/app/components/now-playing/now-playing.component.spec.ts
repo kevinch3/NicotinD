@@ -66,6 +66,9 @@ function makeLibraryStub() {
     fetchLyrics: vi.fn<(id: string, force?: boolean) => Observable<LyricsDto | null>>(() =>
       of(null),
     ),
+    setLyricsOffset: vi.fn<(id: string, offsetMs: number) => Observable<LyricsDto>>(() =>
+      throwError(() => ({ status: 400 })),
+    ),
     // 404 by default: "no waveform" is the common state and must leave the
     // sheet rendering exactly as before (#643).
     getPeaks: vi.fn<(id: string) => Observable<WaveformData>>(() =>
@@ -84,7 +87,7 @@ function setup() {
     providers: [
       provideRouter([]),
       { provide: PlayerService, useValue: playerStub },
-      { provide: AuthService, useValue: { token: signal('tok') } },
+      { provide: AuthService, useValue: { token: signal('tok'), canCurate: () => true } },
       { provide: LibraryApiService, useValue: libraryStub },
       { provide: RemotePlaybackService, useValue: remoteStub },
       {
@@ -137,7 +140,14 @@ describe('NowPlayingComponent', () => {
       const component = fixture.componentInstance;
       playerStub.currentTrack.set({ id: 's1', title: 'Song', artist: 'Artist' });
       libraryStub.fetchLyrics.mockReturnValue(
-        of({ plain: 'la la', synced: null, source: 'lrclib', customized: false, updatedAt: 0 }),
+        of({
+          plain: 'la la',
+          synced: null,
+          source: 'lrclib',
+          customized: false,
+          updatedAt: 0,
+          offsetMs: 0,
+        }),
       );
 
       component.fetchLyricsManually();
@@ -184,7 +194,14 @@ describe('NowPlayingComponent', () => {
       // Load lyrics for track A (simulates having visited the Lyrics tab).
       playerStub.currentTrack.set({ id: 'a', title: 'Song A', artist: 'Artist' });
       libraryStub.fetchLyrics.mockReturnValue(
-        of({ plain: 'la la', synced: null, source: 'lrclib', customized: false, updatedAt: 0 }),
+        of({
+          plain: 'la la',
+          synced: null,
+          source: 'lrclib',
+          customized: false,
+          updatedAt: 0,
+          offsetMs: 0,
+        }),
       );
       component.fetchLyricsManually();
       expect(component.hasLyrics()).toBe(true);
@@ -227,6 +244,7 @@ describe('NowPlayingComponent', () => {
           source: 'lrclib',
           customized: false,
           updatedAt: 0,
+          offsetMs: 0,
         }),
       );
       component.setActivePanel('lyrics');
@@ -248,6 +266,7 @@ describe('NowPlayingComponent', () => {
           source: 'lrclib',
           customized: false,
           updatedAt: 0,
+          offsetMs: 0,
         }),
       );
       component.setActivePanel('lyrics');
@@ -296,6 +315,7 @@ describe('NowPlayingComponent', () => {
           source: 'lrclib',
           customized: false,
           updatedAt: 0,
+          offsetMs: 0,
         }),
       );
       component.setActivePanel('lyrics');
@@ -367,6 +387,7 @@ describe('NowPlayingComponent', () => {
           source: 'lrclib',
           customized: false,
           updatedAt: 0,
+          offsetMs: 0,
         }),
       );
       component.setActivePanel('lyrics');

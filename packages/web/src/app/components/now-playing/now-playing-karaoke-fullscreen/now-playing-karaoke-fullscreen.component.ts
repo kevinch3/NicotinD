@@ -1,4 +1,5 @@
-import { Component, ElementRef, input, output, viewChild } from '@angular/core';
+import { Component, ElementRef, computed, input, output, viewChild } from '@angular/core';
+import { LYRICS_OFFSET_STEP_MS } from '@nicotind/core';
 import { SeekBarComponent } from '../../seek-bar/seek-bar.component';
 import { NowPlayingVfxComponent } from '../now-playing-vfx/now-playing-vfx.component';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
@@ -47,8 +48,20 @@ export class NowPlayingKaraokeFullscreenComponent {
   readonly buffering = input(false);
   /** Precomputed band timeline driving the VFX backdrop (issue #643). */
   readonly waveform = input<WaveformData | null>(null);
+  /** Stored sync correction; positive shows the lines later. */
+  readonly offsetMs = input(0);
+  /**
+   * Whether to render the sync nudge. Defaults off for the same reason
+   * `seekBar` does: the TV player mounts this component and drives it with a
+   * D-pad roving tabindex, so two extra focusables would land in its
+   * navigation tree without ever being reachable by a curator's ears.
+   */
+  readonly canSync = input(false);
 
   readonly exit = output<void>();
+  /** Emits the delta in ms — the overlay doesn't own the stored offset. */
+  readonly offsetNudged = output<number>();
+  readonly offsetReset = output<void>();
   readonly browseToggle = output<void>();
   readonly interaction = output<void>();
   readonly lineSelected = output<number>();
@@ -63,6 +76,14 @@ export class NowPlayingKaraokeFullscreenComponent {
    *  auto-scroll effect can reach it while fullscreen browse mode is active,
    *  mirroring `NowPlayingLyricsPanelComponent.lyricsScrollRef`. */
   readonly lyricsScrollRef = viewChild<ElementRef<HTMLElement>>('lyricsScroll');
+
+  readonly step = LYRICS_OFFSET_STEP_MS;
+  /** Signed seconds, e.g. `+1.25s`. Empty at zero, where the label reads "in sync". */
+  readonly offsetLabel = computed(() => {
+    const ms = this.offsetMs();
+    if (!ms) return '';
+    return `${ms > 0 ? '+' : '−'}${(Math.abs(ms) / 1000).toFixed(2)}s`;
+  });
 
   formatTime(s: number): string {
     if (!Number.isFinite(s) || s < 0) return '0:00';

@@ -29,6 +29,10 @@ export * from './types/radio-poll.js';
 export * from './types/radio-provenance.js';
 export * from './types/radio-strategy.js';
 
+// Synced-lyrics (LRC) parsing + the render-time offset — shared by the web
+// karaoke surfaces and the API (health detector + MCP read tool).
+export * from './lrc.js';
+
 // Role ladder (capability helpers shared by API guards + web gating)
 export * from './roles.js';
 
