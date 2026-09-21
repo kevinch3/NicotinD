@@ -521,9 +521,21 @@ and the file is left alone: a gain computed from a default would be a confident 
 normalized-to-nothing track is worse than an unnormalized one. The gain clamps to ±32 dB so a
 corrupt reading cannot produce a silent or deafening file.
 
-**Nothing calls this yet.** The library pass that applies it across the 7,774 files is the next
-piece, and stays behind a flag defaulting off until the iOS header-gain behaviour is verified on a
-real device.
+**The pass that applies it** is `normalizeLibraryLoudness` (`services/loudness-normalize.ts`),
+exposed as the admin task `normalize-loudness`. Target is **−14 LUFS**, the streaming convention;
+the library's median is −10.1, so most of it comes down a few dB.
+
+**Off by default, and it says why on screen.** The task reports itself unavailable unless
+`NICOTIND_OPUS_HEADER_GAIN` is set, because nobody has confirmed on a real device that Safari
+applies `output_gain` — Ogg support only arrived in iOS 18.4. A library normalized for clients that
+then ignore it is a *half*-normalized library, which is worse than an unnormalized one.
+
+**Idempotent by measurement, not by a flag.** Each file's current header gain is read and compared
+against what it should be, within half a Q7.8 step. So a re-run touches nothing, and an interrupted
+run resumes correctly with no resume bookkeeping at all — the file itself is the record.
+
+`noMeasurement` is a signal rather than a failure: a file with no loudness reading is skipped, and a
+non-zero count means the analysis has fallen behind, not that those files are fine.
 
 ### Back up before transcoding
 

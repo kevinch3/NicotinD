@@ -819,6 +819,7 @@ export interface MaintenanceStatus {
     | 'metadata-optimize'
     | 'artwork-backfill'
     | 'embed-cover-art'
+    | 'normalize-loudness'
     | 'transcode-library'
     | 'library-sync'
     | null;

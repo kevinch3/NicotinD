@@ -677,6 +677,8 @@ export function createApp({
     lidarr,
     musicDir: expandedMusicDir,
     dataDir: expandedDataDir,
+    // Off unless explicitly enabled: see the field's doc on MaintenanceDeps.
+    opusHeaderGain: /^(1|true|yes|on)$/i.test(process.env.NICOTIND_OPUS_HEADER_GAIN ?? ''),
     coverCacheDir: `${expandedDataDir}/cover-cache`,
     transcodeLossless: () =>
       getDownloadsSettings(db, config.downloads.transcodeLossless).transcodeLossless,
