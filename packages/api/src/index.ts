@@ -677,6 +677,9 @@ export function createApp({
     lidarr,
     musicDir: expandedMusicDir,
     dataDir: expandedDataDir,
+    // Defaults to dataDir. Set it when dataDir cannot hold every original —
+    // which on a box whose dataDir sits on the root filesystem it cannot.
+    quarantineDir: process.env.NICOTIND_QUARANTINE_DIR || undefined,
     // Off unless explicitly enabled: see the field's doc on MaintenanceDeps.
     opusHeaderGain: /^(1|true|yes|on)$/i.test(process.env.NICOTIND_OPUS_HEADER_GAIN ?? ''),
     coverCacheDir: `${expandedDataDir}/cover-cache`,

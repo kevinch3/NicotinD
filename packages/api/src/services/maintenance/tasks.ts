@@ -106,6 +106,14 @@ export interface MaintenanceDeps {
    * original it converted — the one thing quarantine (#1228) exists to stop.
    */
   dataDir: string;
+  /**
+   * Where the transcode quarantine lives, when it must not be `dataDir`.
+   *
+   * `dataDir` is routinely on a different — and smaller — filesystem than the
+   * library. On kpc it is the host root with 71 GiB free, against 78 GiB of
+   * originals, so the default would fill `/`.
+   */
+  quarantineDir?: string;
   coverCacheDir?: string;
   /** Resolved `downloads.transcodeLossless`, so the Admin task and the download
    *  path encode at the same bitrate. Pass a reader rather than a value: the
@@ -341,6 +349,7 @@ export function buildMaintenanceTasks(deps: MaintenanceDeps): AnyMaintenanceTask
             // whole-library re-encode is irreversible and unattended; the disk
             // cost is recoverable, a wrong conversion is not.
             dataDir: deps.dataDir,
+            quarantineDir: deps.quarantineDir,
             shouldStop: ctx.shouldStop,
             onProgress: (x) =>
               ctx.onProgress({ total: x.total, visited: x.visited, label: x.label }),

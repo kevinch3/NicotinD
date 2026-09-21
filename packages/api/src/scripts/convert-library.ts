@@ -7,6 +7,7 @@
  *   bun run packages/api/src/scripts/convert-library.ts --apply     # write
  *   bun run packages/api/src/scripts/convert-library.ts --apply
  *   bun run packages/api/src/scripts/convert-library.ts --apply --all          # every non-Opus file
+ *   bun run packages/api/src/scripts/convert-library.ts --apply --quarantine-dir /mnt/big/q
  *   bun run packages/api/src/scripts/convert-library.ts --apply --bitrate 96   # pin one rate
  *
  * Per-file it migrates song-keyed references (playlist entries, acquisitions,
@@ -51,6 +52,9 @@ async function main(): Promise<void> {
   // a second lossy generation on most of the library, so it is typed, never
   // defaulted into.
   const scope = process.argv.includes('--all') ? ('all' as const) : ('lossless' as const);
+  // Put the backups on a disk that can hold them; dataDir often cannot.
+  const qIdx = process.argv.indexOf('--quarantine-dir');
+  const quarantineDir = qIdx >= 0 ? process.argv[qIdx + 1] : undefined;
   const bitrateIdx = process.argv.indexOf('--bitrate');
   const { dataDir, musicDir, bitRate: configuredBitRate } = loadConfig();
   // `--bitrate` pins one rate for every file. Without it the pass reads each
@@ -86,6 +90,7 @@ async function main(): Promise<void> {
     scope,
     bitRate,
     dataDir: deleteOriginals ? undefined : dataDir,
+    quarantineDir: deleteOriginals ? undefined : quarantineDir,
   });
 
   const mb = (r.bytesReclaimed / (1024 * 1024)).toFixed(1);

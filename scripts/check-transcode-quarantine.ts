@@ -57,7 +57,7 @@ const CONSTRUCTOR = 'new LibraryOrganizer(';
  * spelled either by the option name or by `runDir`, its distinctive field,
  * since callers build it inline.
  */
-const KEEPS_ORIGINALS = /\b(dataDir|keepOriginals?|runDir)\s*:/;
+const KEEPS_ORIGINALS = /\b(dataDir|quarantineDir|keepOriginals?|runDir)\s*:/;
 
 /**
  * Callers that legitimately delete. Each carries its reason — an exemption

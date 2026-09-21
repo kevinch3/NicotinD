@@ -546,26 +546,34 @@ describe.skipIf(!ffmpegAvailable())('keeping originals (back up before transcodi
     expect(existsSync(join(data, 'quarantine'))).toBe(false);
   });
 
-  it('requires room for the WHOLE output when originals are kept', async () => {
-    // The arithmetic inverts: normally each output replaces its source and the
-    // run ends smaller, so one file's worth of headroom is enough. Keeping the
-    // originals frees nothing, so the requirement is every output at once.
+  it('requires room for every ORIGINAL when they are kept', async () => {
+    // This used to assert the whole projected OUTPUT, on musicDir. Both were
+    // wrong: the originals are what accumulate, they are roughly twice the size
+    // of the output, and they land on the quarantine filesystem — which on kpc
+    // is a different, much smaller disk than the library.
     const music = tmpMusic();
     const data = tmpMusic();
     const db = new Database(':memory:');
     applySchema(db);
-    for (let i = 1; i <= 3; i++) {
-      const rel = `A/Album/0${i} - T.flac`;
+    const MB = 1024 * 1024;
+    for (let i = 1; i <= 10; i++) {
+      const rel = `A/Album/${String(i).padStart(2, '0')} - T.flac`;
       mkdirSync(dirname(join(music, rel)), { recursive: true });
       await Bun.write(join(music, rel), 'x');
-      seedSongRow(db, rel, { size: 5_000_000, duration: 600 });
+      seedSongRow(db, rel, { size: 50 * MB, duration: 600 });
     }
-    // Room for one 600 s @ 96 kbps output (7.2 MB) plus the margin, but not
-    // three. Without a dataDir this passes; with one it must not.
-    const tight = () => ({ bsize: 1, blocks: 1e9, bavail: 520 * 1024 * 1024 });
+    // 800 MB free. Keeping originals needs 500 MB of backups + 500 MB margin =
+    // 1000 MB, so it must refuse. Without a dataDir the requirement is one
+    // encode per worker (50 x 4) + margin = 700 MB, so it must proceed.
+    const eightHundredMB = () => ({ bsize: 1, blocks: 1e9, bavail: 800 * MB });
 
     await expect(
-      transcodeLibraryToOpus(db, music, { apply: true, bitRate: 96, dataDir: data, statfs: tight }),
+      transcodeLibraryToOpus(db, music, {
+        apply: true,
+        bitRate: 96,
+        dataDir: data,
+        statfs: eightHundredMB,
+      }),
     ).rejects.toThrow(/Not enough free space/);
   });
 });
@@ -842,3 +850,87 @@ describe('the bitrate ladder, now that lossy files are in scope', () => {
     expect(adaptive.bytesReclaimed).toBe(at128.bytesReclaimed);
   });
 });
+
+// Guarded like every other apply-path describe here: `transcodeLibraryToOpus`
+// throws "ffmpeg is required" BEFORE it reaches the preflight, so on the `ci`
+// job (no ffmpeg) these would fail on the wrong error rather than assert the
+// disk logic. The `e2e` job has ffmpeg and is what actually runs them.
+describe.skipIf(!ffmpegAvailable())(
+  'the preflight must probe the filesystem the originals land on',
+  () => {
+    const GiB = 1024 ** 3;
+
+    /** Real dirs, so a failure is the preflight and not an mkdir permission error. */
+    async function bigLibrary(sizeEach: number, count: number) {
+      const music = tmpMusic();
+      const data = tmpMusic(); // a second temp root, standing in for dataDir
+      const db = new Database(':memory:');
+      applySchema(db);
+      for (let i = 1; i <= count; i++) {
+        const rel = `A/Al/${String(i).padStart(3, '0')} - Track.flac`;
+        mkdirSync(dirname(join(music, rel)), { recursive: true });
+        await Bun.write(join(music, rel), 'x');
+        seedSongRow(db, rel, { size: sizeEach, duration: 240 });
+      }
+      return { music, data, db };
+    }
+
+    /** kpc's real shape: roomy library disk, tight root holding dataDir. */
+    const disks = (musicDir: string, musicGiB: number, dataGiB: number) => (path: string) =>
+      path === musicDir
+        ? { bsize: 4096, blocks: 1e9, bavail: (musicGiB * GiB) / 4096 }
+        : { bsize: 4096, blocks: 1e9, bavail: (dataGiB * GiB) / 4096 };
+
+    it('refuses when the quarantine disk is too small, even though musicDir is roomy', async () => {
+      // The exact prod shape, and the case a single-filesystem check passes.
+      // 10 originals x 8 GiB = 80 GiB of backups onto a 71 GiB root, while the
+      // library disk being probed has 743 GiB and is getting EMPTIER.
+      const { music, data, db } = await bigLibrary(8 * GiB, 10);
+
+      await expect(
+        transcodeLibraryToOpus(db, music, {
+          apply: true,
+          dataDir: data,
+          statfs: disks(music, 743, 71),
+        }),
+      ).rejects.toThrow(/Not enough free space/);
+    });
+
+    it('names the filesystem that is short, not always musicDir', async () => {
+      const { music, data, db } = await bigLibrary(8 * GiB, 10);
+
+      await expect(
+        transcodeLibraryToOpus(db, music, {
+          apply: true,
+          dataDir: data,
+          statfs: disks(music, 743, 71),
+        }),
+      ).rejects.toThrow(new RegExp(data.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    });
+
+    it('sizes the quarantine side by ORIGINAL bytes, not projected output', async () => {
+      // Opus at 128k for 240 s is ~3.8 MB against an 80 MB source, so sizing the
+      // check by the output would under-ask by ~20x and let the run start.
+      const { music, data, db } = await bigLibrary(80 * 1024 * 1024, 200); // ~15.6 GiB
+      await expect(
+        transcodeLibraryToOpus(db, music, {
+          apply: true,
+          dataDir: data,
+          statfs: disks(music, 743, 10), // 10 GiB is short for 15.6, roomy for the output
+        }),
+      ).rejects.toThrow(/Not enough free space/);
+    });
+
+    it('proceeds when the quarantine disk genuinely has room', async () => {
+      const { music, data, db } = await bigLibrary(1024 * 1024, 5);
+
+      const r = await transcodeLibraryToOpus(db, music, {
+        apply: false, // preflight is apply-only; this asserts the dry path is unaffected
+        dataDir: data,
+        statfs: disks(music, 743, 743),
+      });
+
+      expect(r.candidates).toBe(5);
+    });
+  },
+);
