@@ -1,0 +1,1 @@
+• artwork: give the cover scratch files an extension, or ffmpeg drops them (#1251)

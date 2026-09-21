@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.37](https://github.com/kevinch3/NicotinD/compare/v0.8.36...v0.8.37) (2026-09-21)
+
+### Bug Fixes
+
+* **artwork:** give the cover scratch files an extension, or ffmpeg drops them ([#1251](https://github.com/kevinch3/NicotinD/issues/1251)) ([1025b41](https://github.com/kevinch3/NicotinD/commit/1025b41d95b1f31a101c6aa3a5ec5393aeec0759)), references [#723](https://github.com/kevinch3/NicotinD/issues/723) [#1226](https://github.com/kevinch3/NicotinD/issues/1226)
 ## [0.8.36](https://github.com/kevinch3/NicotinD/compare/v0.8.35...v0.8.36) (2026-09-21)
 
 ### Bug Fixes
