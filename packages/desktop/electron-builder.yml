@@ -155,3 +155,12 @@ publish:
   provider: github
   owner: kevinch3
   repo: NicotinD
+  # MUST stay `release`. The publisher refuses to upload into a release whose
+  # type differs from this one, and it does that by logging `skipped publishing`
+  # per file and exiting 0. deploy.yml's `release-notes` job creates the tag's
+  # release as *published* seconds after the tag lands, so the default (`draft`)
+  # meant every desktop artifact was built and silently dropped for ~40 releases
+  # (#1261). verify-published-assets.ts is the backstop that makes the next such
+  # skip red instead of green. → docs/desktop-app.md
+  releaseType: release
+
