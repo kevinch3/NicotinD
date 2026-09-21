@@ -9,10 +9,11 @@ import type { RadioSettings } from '../../../services/api/api-types';
 import { TranslateService } from '../../../services/translate.service';
 
 /**
- * Admin card for radio preferences — today the one opt-in: the learned genre
- * axis (docs/genre-affinity.md). Same shape as the streaming panel: load on
- * init, save a patch per control, echo the server's answer back into the
- * signal so the status line (how many genre profiles exist) stays honest.
+ * Admin card for radio preferences: the learned genre axis opt-in
+ * (docs/genre-affinity.md) and how deep the player holds the radio queue
+ * (docs/radio.md). Same shape as the streaming panel: load on init, save a
+ * patch per control, echo the server's answer back into the signal so the
+ * status line (how many genre profiles exist) stays honest.
  */
 @Component({
   selector: 'app-radio-settings-panel',
@@ -41,7 +42,10 @@ export class RadioSettingsPanelComponent implements OnInit {
     }
   }
 
-  async save(patch: Partial<Pick<RadioSettings, 'genreAffinity'>>): Promise<void> {
+  /** The depths offered. A free number field would invite one outside the band. */
+  readonly queueTargets = [5, 10, 20, 30, 40, 50];
+
+  async save(patch: Partial<Pick<RadioSettings, 'genreAffinity' | 'queueTarget'>>): Promise<void> {
     this.saving.set(true);
     this.message.set(null);
     try {

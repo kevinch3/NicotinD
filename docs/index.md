@@ -431,6 +431,11 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   → [design-patterns.md](design-patterns.md), [mcp-agent.md](mcp-agent.md)
 - **Now Playing waveform + karaoke VFX**: rendered from a precomputed artifact.
   → [audio-ml-enrichment.md](audio-ml-enrichment.md)
+- **A radio queue has a depth, not a batch size**: the queue is held at
+  `radioQueueTarget` (admin-owned `RadioSettings.queueTarget`, default 20) and refills the
+  shortfall — one track per track played — instead of draining to two and dropping a batch in;
+  `replenishRadio`, `radioStarvedSeed`, `isValidQueueTarget`, `DEFAULT_RADIO_QUEUE_TARGET`.
+  → [radio.md](radio.md)
 - **Smart radio (metadata-driven queue)**: `GET /api/radio/next` scores candidates by a
   weight-normalized blend of BPM, Camelot key, genre-set closeness, artist origin, year, duration,
   artist diversity, the perceptual axes and embedding cosine. `buildSeedRadio`, `scoreSimilarity`,

@@ -40,6 +40,32 @@
           />
         </label>
 
+        <!-- Queue depth (docs/radio.md): how many tracks radio keeps lined up.
+             It refills the shortfall as each one plays, so this is the depth the
+             listener sees all the way down, not a batch size. -->
+        <label class="flex items-center justify-between gap-4" appTvNavGroup axis="horizontal">
+          <span class="text-sm text-theme-primary"
+            >{{ 'admin.radioQueueTarget' | t }}
+            <span class="block text-xs text-theme-muted">{{
+              'admin.radioQueueTargetHint' | t
+            }}</span>
+          </span>
+          <!-- The current depth is marked on the option, not bound on the
+               <select>: a `[value]` binding lands before `@for` has written any
+               options, so it silently falls back to the first one. -->
+          <select
+            appTvNavItem
+            data-testid="radio-queue-target"
+            [disabled]="saving()"
+            (change)="save({ queueTarget: +$any($event.target).value })"
+            class="text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary"
+          >
+            @for (n of queueTargets; track n) {
+              <option [value]="n" [selected]="n === r.queueTarget">{{ n }}</option>
+            }
+          </select>
+        </label>
+
         @if (message(); as m) {
           <p
             class="text-xs"

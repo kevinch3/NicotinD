@@ -10,6 +10,7 @@ import {
 import { ffmpegAvailable } from '../services/transcode.js';
 import {
   getRadioSettings,
+  isValidQueueTarget,
   setRadioSettings,
   type RadioSettings,
 } from '../services/radio-settings.js';
@@ -97,6 +98,9 @@ export function settingsRoutes(config: NicotinDConfig) {
     const body = await c.req.json<Partial<RadioSettings>>();
     const patch: Partial<RadioSettings> = {};
     if (typeof body.genreAffinity === 'boolean') patch.genreAffinity = body.genreAffinity;
+    // The band lives with the store, not here: a second copy of 5..50 is a
+    // second thing to forget when the client's depth ceiling moves.
+    if (isValidQueueTarget(body.queueTarget)) patch.queueTarget = body.queueTarget;
     const next = setRadioSettings(db, patch);
     if (next.genreAffinity && genreCentroidsStatus(db).centroids === 0) computeGenreCentroids(db);
     return c.json({ ...next, ...genreCentroidsStatus(db) });
