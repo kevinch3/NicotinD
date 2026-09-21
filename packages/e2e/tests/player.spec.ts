@@ -157,7 +157,6 @@ test.describe('player controls', () => {
 
   test('next advances to the following track', async ({ page }) => {
     await startAlbum(page);
-    // Album track order is deterministic with shuffle off.
     await expect(page.getByTestId('player-title')).toHaveText('Opening Static');
     await page.getByTestId('player-next').click();
     await expect(page.getByTestId('player-title')).toHaveText('Second Wind');
@@ -172,14 +171,17 @@ test.describe('player controls', () => {
     await expect.poll(() => audioTime(page), { timeout: 5_000 }).toBeGreaterThan(10);
   });
 
-  test('shuffle toggles on and off', async ({ page }) => {
+  /**
+   * Shuffle reordered the queue you already had rather than starting a radio,
+   * and repeat with radio on neither repeated nor extended. Both are gone from
+   * the UI, so the bar is prev/play/next and nothing else (#1262).
+   */
+  test('the transport is prev, play and next, with no shuffle or repeat', async ({ page }) => {
     await startAlbum(page);
-    const shuffle = page.getByTestId('player-shuffle');
-    await expect(shuffle).toHaveAttribute('data-active', 'false');
-    await shuffle.click();
-    await expect(shuffle).toHaveAttribute('data-active', 'true');
-    await shuffle.click();
-    await expect(shuffle).toHaveAttribute('data-active', 'false');
+    await expect(page.getByTestId('player-shuffle')).toHaveCount(0);
+    await expect(page.getByTestId('player-prev')).toBeVisible();
+    await expect(page.getByTestId('player-playpause')).toBeVisible();
+    await expect(page.getByTestId('player-next')).toBeVisible();
   });
 
   test('reload leaves the player paused', async ({ page }) => {

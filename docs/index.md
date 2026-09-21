@@ -574,7 +574,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   `now-playing-scroll-axes.spec.ts`. → [web-ui.md](web-ui.md)
 - **Now Playing sheet**: `nowPlayingHeading` names the session (radio wins over the context it
   extended); `coverCollapsed` drops the cover padding at the notch's zero floor; `monoEnvelopePath`
-  folds the waveform onto the seek line; `LongPress` makes hold-shuffle start a radio.
+  folds the waveform onto the seek line. → [web-ui.md](web-ui.md)
+- **Shuffle and repeat are not in the UI**: both buttons are gone from the mini bar and the Now
+  Playing sheet — shuffle reordered the queue instead of starting a radio, and repeat only stopped
+  the radio top-up. `PlayerService.shuffle`/`repeat` stay, since `playNext` still reads them.
   → [web-ui.md](web-ui.md)
 
 - **Unified song listings**: one `TrackRowComponent` + one root `SongMenuService.build(song, ctx)`

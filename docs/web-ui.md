@@ -192,11 +192,12 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
   - **Desktop side panel (`lg:` ≥1024px, Spotify-like)**: the sheet becomes two columns — cover art + transport centered in a flexible left column, the Queue/Lyrics panel (with its tab switcher) an always-visible fixed `w-[380px]` right column (`data-testid="now-playing-body"` wraps both). Because every extracted child uses `host: {class: 'contents'}`, a grid/flex on the root would place each child's *inner* element as an individual item — so the shell adds two **group wrappers that are `contents` below `lg` and real flex columns at `lg`** (`class="contents lg:flex …"`): below the breakpoint the wrappers dissolve and the mobile stacked layout is untouched by construction. The breakpoint is `lg`, not `md` (the app's nav-chrome fork) — a portrait tablet at 768px lacks room for cover + a 380px column, and `lg:` is where the app's grids already assume real horizontal space. The mobile drag-resize handle is `lg:hidden` (a vertical resize is meaningless beside a fixed-width column) and the stored cover shrink is mobile-scoped: `coverMaxPx` rides a **`--np-cover-max` CSS var** (`max-w-[var(--np-cover-max,20rem)] lg:max-w-80`) instead of an inline `style.max-width`, which would beat every class including the `lg:` cap. Karaoke fullscreen is untouched (own `fixed inset-0 z-[70]` overlay at all widths). Covered by `now-playing-desktop.spec.ts` (e2e; jsdom has no layout engine) + the cover-art spec's var-binding case.
 - **Mini-player transport** (player-standardization plan, Task 11 — the plan's final task):
   `PlayerTransportMiniComponent` (`components/player/player-transport-mini/`) pulls the
-  shuffle/prev/play-pause/next/repeat button cluster out of the mini bar (`player.component`) — a
+  prev/play-pause/next button cluster out of the mini bar (`player.component`) — a
   pure relocation of markup already covered by `appTvNavGroup`/`appTvNavItem` D-pad nav, not new
   coverage. `playing`/`buffering` stay shell-owned inputs (the shell branches play/pause between
-  local and remote-device dispatch); shuffle/repeat inject `PlayerService` directly and call
-  `toggleShuffle()`/`cycleRepeat()` inline, same pattern as `NowPlayingTransportComponent` (Task 4).
+  local and remote-device dispatch). It used to flank those three with shuffle and repeat, which
+  injected `PlayerService` directly; both are gone (see "Shuffle and repeat are not in the UI"), so
+  the component is inputs and outputs only and injects nothing.
   Hit the **same JIT harness gap documented above** for Now Playing's decomposition: a parent-level
   spec assertion that set `bufferingVisible` and expected the mini-player's play/pause button to
   render the spinner via the `[buffering]="showBuffering()"` binding failed with `NG0303` (binding
@@ -1696,20 +1697,47 @@ only, and averaging would halve exactly the feature the strip exists to show —
 can take a vertical gradient fill (transparent at the base, opaque at the peaks); a stroked polyline
 could not.
 
-## Hold shuffle for a radio
+## Shuffle and repeat are not in the UI (#1262)
 
-Shuffle and radio are the same intent at two strengths — "surprise me from this queue" and "surprise
-me from the library" — so they share one control rather than adding a second button to a transport
-row with no room for one (issue #995).
+Neither control did what its icon promised once radio became the way queues stay alive.
 
-`LongPress` exists for the part that is not the timer: a pointer-up after a hold still produces a
-`click`, so without suppression a hold would toggle shuffle on its way to starting the radio. `end()`
-reports whether the hold fired, and clears the flag there rather than on the next `start()` —
-otherwise a hold followed by a genuine tap would swallow the tap too. Its timer functions are
-injected, so the timing is unit-tested without fake timers or a DOM.
+**Shuffle** reordered the queue you already had. Read against the rest of the app, where every tile
+and every "surprise me" gesture starts a *radio*, that is the wrong verb on the wrong list — and its
+off branch restores `context.originalOrder`, which silently drops whatever radio had appended.
 
-A hidden gesture is a gesture nobody finds, so the hold is named in both the tooltip and the
-aria-label rather than left to be discovered.
+**Repeat** was worse, because it did nothing you could name: the radio top-up effect skips while
+`repeat !== 'off'`, so switching it on stopped the queue extending without starting a repeat of
+anything — the queue simply ran out. Turning on "repeat" and getting silence is not a rough edge,
+it is a control that lies.
+
+Both buttons are gone from every surface: the mini bar
+(`player-transport-mini.component.html`) and the Now Playing sheet
+(`now-playing-transport.component.html`); the TV transport and the karaoke overlay never had them.
+The Now Playing sheet's replacement for "surprise me" is the radio chip directly beneath the row,
+which already toggles radio on the current track.
+
+**The service state stays.** `PlayerService.shuffle` / `repeat` are still signals, still persisted
+in the player snapshot, and still read by `playNext()`, `playWithContext()` and the media-session
+`ended` handler. Deleting them would be a behaviour change dressed as a cleanup; deleting the
+*buttons* is the behaviour change that was asked for, and it leaves a remembered `shuffle: true`
+from before this change inert rather than stranded.
+
+Gone with the shuffle button: the hold-for-radio gesture (#995) and the `LongPress` helper that was
+its only user. The gesture's destination — a radio seeded on this track — is one tap away on the
+chip below it, so the hidden shortcut was the only thing lost.
+
+## Transport buttons are sized for a thumb (#1262)
+
+Prev/play/next were laid out for a dense desktop bar: 28px taps with 16px glyphs on the mini
+player, 40px with 22px glyphs on the sheet. Every one of them is ~25% larger now — mini
+`w-9`/`w-10` with 20/18px glyphs, sheet `w-[3.125rem]`/`w-[4.375rem]` with 28px glyphs — which is
+also what moves the mini bar's prev/next closer to a real 36px target.
+
+The mini play button is additionally raised (`-translate-y-1`) with `z-10` and a surface-coloured
+ring, so it breaks the row's baseline and paints over the chrome behind it rather than reading as
+one of three equal buttons. It stops short of clearing the bar's top border: the 22px band above
+the row is the grab handle, a drag target the notch rules already protect, and a button floating
+over it would be a tap target sitting on a drag target.
 
 
 ## Bundle size budget (issue #256)

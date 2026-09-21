@@ -1,23 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 import { PlayerTransportMiniComponent } from './player-transport-mini.component';
-import { PlayerService } from '../../../services/player.service';
 import { setInputValue } from '../../../../testing/signal-input';
 
 describe('PlayerTransportMiniComponent', () => {
   beforeEach(() => {
-    TestBed.configureTestingModule({
-      providers: [
-        {
-          provide: PlayerService,
-          useValue: {
-            shuffle: () => false,
-            repeat: () => 'off',
-            toggleShuffle: vi.fn(),
-            cycleRepeat: vi.fn(),
-          },
-        },
-      ],
-    });
+    // No PlayerService stub: the row is inputs and outputs only since shuffle
+    // and repeat left the UI, and a stub for a dependency the component does
+    // not have would hide a regression rather than catch one.
+    TestBed.configureTestingModule({});
   });
 
   it('emits playPauseClicked when the play/pause button is clicked', () => {
@@ -51,16 +41,26 @@ describe('PlayerTransportMiniComponent', () => {
     expect(nextCalled).toBe(true);
   });
 
-  it('calls PlayerService.toggleShuffle and cycleRepeat directly on click', () => {
+  /**
+   * Shuffle and repeat are gone from every player surface. Shuffle misled —
+   * it reordered the queue you already had rather than starting a radio — and
+   * repeat did neither: with radio on it neither repeated nor extended, which
+   * is the confusion this removal ends.
+   */
+  it('renders prev, play and next, and nothing beside them', () => {
     const fixture = TestBed.createComponent(PlayerTransportMiniComponent);
     fixture.detectChanges();
-    const player = TestBed.inject(PlayerService);
-    fixture.nativeElement.querySelector('[data-testid="player-shuffle"]').click();
-    expect(player.toggleShuffle).toHaveBeenCalled();
-    // Repeat button has no data-testid in the current markup — it's the last
-    // button in the row (shuffle, prev, play/pause, next, repeat).
-    const buttons = fixture.nativeElement.querySelectorAll('button');
-    (buttons[buttons.length - 1] as HTMLElement).click();
-    expect(player.cycleRepeat).toHaveBeenCalled();
+    const ids = [...fixture.nativeElement.querySelectorAll('button')].map((b: HTMLElement) =>
+      b.getAttribute('data-testid'),
+    );
+    expect(ids).toEqual(['player-prev', 'player-playpause', 'player-next']);
+  });
+
+  it('gives every icon-only control an accessible name', () => {
+    const fixture = TestBed.createComponent(PlayerTransportMiniComponent);
+    fixture.detectChanges();
+    for (const btn of fixture.nativeElement.querySelectorAll('button')) {
+      expect((btn as HTMLElement).getAttribute('aria-label')?.trim()).toBeTruthy();
+    }
   });
 });
