@@ -99,6 +99,21 @@ export interface TranscodeProgress {
 export interface TranscodeAllOptions {
   apply: boolean;
   /**
+   * Which files the pass considers.
+   *
+   * `'lossless'` (the default) takes FLAC/WAV/ALAC and leaves every lossy file
+   * alone — the behaviour the download path relies on, where re-encoding a
+   * lossy file would be a second generation for nothing.
+   *
+   * `'all'` takes **everything that is not already Opus**: on prod that is
+   * 13,576 mp3, 238 m4a, 44 ogg, 6 wma and 3 flac, exactly the 13,864 the
+   * conversion plan sizes. That is a deliberate second lossy generation on most
+   * of a library, so it has to be asked for by name rather than defaulted into.
+   *
+   * Neither value ever re-encodes an existing `.opus`.
+   */
+  scope?: 'lossless' | 'all';
+  /**
    * One fixed rate for every file, overriding the source-adaptive ladder.
    *
    * The pass defaults to {@link opusBitrateFor}, which reads each file's own
@@ -185,15 +200,26 @@ export async function transcodeLibraryToOpus(
     .all();
   const limit = opts.limit != null && opts.limit > 0 ? opts.limit : -1;
   const rows: SongRow[] = [];
+  const scope = opts.scope ?? 'lossless';
   for (const r of allRows) {
     if (limit > 0 && rows.length >= limit) break;
-    if (isLossless(r.suffix) || isLossless(r.path.split('.').pop() ?? '')) {
+    const ext = (r.path.split('.').pop() ?? '').toLowerCase();
+
+    // Already the target format. Re-encoding Opus to Opus is pure generation
+    // loss for zero gain, and it is the one thing this pass must never do.
+    if (ext === 'opus' || (r.suffix ?? '').toLowerCase() === 'opus') continue;
+
+    if (scope === 'all') {
+      rows.push(r);
+      continue;
+    }
+
+    if (isLossless(r.suffix) || isLossless(ext)) {
       rows.push(r);
       continue;
     }
     // .m4a-family rows need a codec probe: ALAC (lossless, browser-undecodable)
     // shares the extension with lossy AAC. Probe only files that exist.
-    const ext = (r.path.split('.').pop() ?? '').toLowerCase();
     if (['m4a', 'm4b', 'mp4'].includes(ext)) {
       const abs = join(musicDir, r.path);
       if (existsSync(abs) && (await isLosslessFile(abs))) rows.push(r);
