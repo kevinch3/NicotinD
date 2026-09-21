@@ -79,6 +79,7 @@ describe.skipIf(!ffmpegAvailable())('transcode-library keeps the originals', () 
       lidarr: null,
       musicDir,
       dataDir,
+      opusHeaderGain: false,
       transcodeLossless: { enabled: true, bitRate: 96 },
       runSync: null,
     });
@@ -138,6 +139,7 @@ describe.skipIf(!ffmpegAvailable())('transcode-library keeps the originals', () 
       lidarr: null,
       musicDir,
       dataDir,
+      opusHeaderGain: false,
       transcodeLossless: { enabled: true, bitRate: 96 },
       runSync: null,
     });
@@ -161,6 +163,7 @@ describe.skipIf(!ffmpegAvailable())('transcode-library keeps the originals', () 
       lidarr: null,
       musicDir: '/music',
       dataDir: '/data',
+      opusHeaderGain: false,
       transcodeLossless: { enabled: true, bitRate: 96 },
       runSync: null,
     });
@@ -171,5 +174,40 @@ describe.skipIf(!ffmpegAvailable())('transcode-library keeps the originals', () 
 
     expect(parse('').apply).toBe(true);
     expect(parse('dryRun=1').apply).toBe(false);
+  });
+});
+
+describe('normalize-loudness is off until the flag says otherwise', () => {
+  function tasksWith(opusHeaderGain: boolean) {
+    return buildMaintenanceTasks({
+      db: new Database(':memory:'),
+      lidarr: null,
+      musicDir: '/music',
+      dataDir: '/data',
+      opusHeaderGain,
+      transcodeLossless: { enabled: true, bitRate: 96 },
+      runSync: null,
+    });
+  }
+
+  it('reports unavailable, with the reason, when the flag is off', () => {
+    // Normalizing a library one of its clients then ignores is a
+    // half-normalized library, which is worse than an unnormalized one. The
+    // reason has to reach the screen, not just the code.
+    const task = tasksWith(false).find((t) => t.id === 'normalize-loudness')!;
+
+    const available = task.available();
+
+    expect(available).not.toBe(true);
+    expect(String(available)).toContain('NICOTIND_OPUS_HEADER_GAIN');
+    expect(String(available)).toContain('iOS 18.4');
+  });
+
+  it('becomes available once the flag is set', () => {
+    expect(
+      tasksWith(true)
+        .find((t) => t.id === 'normalize-loudness')!
+        .available(),
+    ).toBe(true);
   });
 });

@@ -210,7 +210,7 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   muxer cannot carry one. `findFolderCoverName`. → [library-audit.md](library-audit.md)
 - **The Opus conversion is accountable, re-embeds art and normalizes losslessly**: `transcode_runs`
   opens at start, `reconcileTranscodeRunsOnBoot` sweeps orphans, `embedAlbumArt` writes a cover via
-  `attachPictureToOpus`, `writeOutputGain`/`oggPageCrc` put loudness in the header.
+  `attachPictureToOpus`, `normalizeLibraryLoudness` puts loudness in the header via `writeOutputGain`.
   → [download-pipeline.md](download-pipeline.md)
 - **The displayed artist spelling is reduced, not first-seen**: `pickDisplayName` picks one of an
   album's spellings (frequency → diacritics → not-shouted → explicit-locale alphabetical) and

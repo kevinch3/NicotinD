@@ -30,6 +30,7 @@ const noDeps = {
   lidarr: null,
   musicDir: '/music',
   dataDir: '/data',
+  opusHeaderGain: false,
   transcodeLossless: { enabled: true, bitRate: 192 },
   runSync: null,
 };

@@ -3,6 +3,7 @@ import { optimizeAllAlbums, type OptimizeLidarr } from '../metadata-optimize.js'
 import { transcodeLibraryToOpus } from '../library-transcode.js';
 import { backfillArtwork, type BackfillLidarr } from '../artwork-backfill.js';
 import { embedAlbumArt } from '../opus-art-embed.js';
+import { normalizeLibraryLoudness } from '../loudness-normalize.js';
 import { finishTranscodeRun, startTranscodeRun } from '../transcode-run-store.js';
 import { type TranscodeLosslessSource } from '../transcode-settings.js';
 
@@ -19,6 +20,7 @@ export type MaintenanceTaskId =
   | 'metadata-optimize'
   | 'artwork-backfill'
   | 'embed-cover-art'
+  | 'normalize-loudness'
   | 'transcode-library'
   | 'library-sync';
 
@@ -26,6 +28,7 @@ export const MAINTENANCE_TASK_IDS: readonly MaintenanceTaskId[] = [
   'metadata-optimize',
   'artwork-backfill',
   'embed-cover-art',
+  'normalize-loudness',
   'transcode-library',
   'library-sync',
 ];
@@ -111,6 +114,17 @@ export interface MaintenanceDeps {
   transcodeLossless: TranscodeLosslessSource;
   /** Full library scan + curation pass, or null when unavailable. */
   runSync: (() => Promise<void>) | null;
+  /**
+   * Whether `normalize-loudness` is offered at all.
+   *
+   * **Default off.** RFC 7845 says decoders apply `output_gain`, but Safari
+   * only gained Ogg support in iOS 18.4 and nobody has confirmed the gain
+   * takes effect there on a real device. Normalizing a library that one of its
+   * clients then ignores is a half-normalized library, which is worse than an
+   * unnormalized one — so the task stays unavailable, with that reason on
+   * screen, until someone flips `NICOTIND_OPUS_HEADER_GAIN`.
+   */
+  opusHeaderGain: boolean;
 }
 
 export function buildMaintenanceTasks(deps: MaintenanceDeps): AnyMaintenanceTask[] {
@@ -202,6 +216,46 @@ export function buildMaintenanceTasks(deps: MaintenanceDeps): AnyMaintenanceTask
             albumsUnresolved: r.albumsUnresolved,
             albumsLookedUp: r.albumsLookedUp,
             albumLookupMatched: r.albumLookupMatched,
+          },
+        };
+      },
+    }),
+
+    defineTask<{ apply: boolean; limit?: number; afterId?: string }>({
+      id: 'normalize-loudness',
+      label: 'Normalize loudness (Opus header gain)',
+      available: () =>
+        !deps.musicDir
+          ? 'Music directory is not configured'
+          : deps.opusHeaderGain
+            ? true
+            : 'Off by default — set NICOTIND_OPUS_HEADER_GAIN once the Opus header gain is ' +
+              'confirmed to take effect on iOS 18.4+',
+      parseParams: (q) => ({
+        apply: !flag(q, 'dryRun'),
+        limit: positiveInt(q, 'limit'),
+        afterId: q.get('after') ?? undefined,
+      }),
+      describe: (p) => ({ summary: p.apply ? 'apply' : 'dry-run', dryRun: !p.apply }),
+      run: async (ctx, p) => {
+        const r = await normalizeLibraryLoudness(deps.db, deps.musicDir, {
+          apply: p.apply,
+          limit: p.limit,
+          afterId: p.afterId,
+          shouldStop: ctx.shouldStop,
+          onProgress: (x) => ctx.onProgress({ total: x.total, visited: x.visited, label: x.label }),
+        });
+        return {
+          stopped: r.stopped,
+          errorSample: r.errorSample,
+          detail: {
+            candidates: r.candidates,
+            normalized: r.normalized,
+            alreadyCorrect: r.alreadyCorrect,
+            // A non-zero count here means the loudness analysis has fallen
+            // behind, not that those files are fine.
+            noMeasurement: r.noMeasurement,
+            failed: r.failed,
           },
         };
       },

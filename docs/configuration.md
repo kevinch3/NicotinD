@@ -8,6 +8,7 @@ of truth; this page summarizes the ones most installs touch.
 | ------------------------------------- | ----------------------- | -------------------------------------------------------------- |
 | `NICOTIND_PORT`                        | `8484`                  | API server port                                                |
 | `NICOTIND_DATA_DIR`                    | `~/.nicotind`           | Data directory (SQLite DB, secrets, artist-overrides)          |
+| `NICOTIND_OPUS_HEADER_GAIN`            | unset (off)             | Offer the loudness-normalization task; off until Opus header gain is confirmed on iOS 18.4+ |
 | `NICOTIND_MUSIC_DIR`                   | `~/Music`               | Shared music folder                                            |
 | `NICOTIND_DOWNLOADS_DIR`               | `.downloads`            | Acquisition staging; top-level name under the music dir, or an absolute path |
 | `NICOTIND_MODE`                        | `embedded`              | `embedded` (best-effort manage Lidarr; slskd is its own addon) or `external` (connect to existing) |
