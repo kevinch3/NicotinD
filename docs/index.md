@@ -208,9 +208,9 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **A cover survives the transcode as a folder image**: `preserveFolderCover` writes `cover.jpg`
   before `-vn` discards the attached picture and as the organizer lands any format — ffmpeg's Ogg
   muxer cannot carry one. `findFolderCoverName`. → [library-audit.md](library-audit.md)
-- **The Opus conversion is accountable and re-embeds art**: `transcode_runs` opens at start with
-  `reconcileTranscodeRunsOnBoot` sweeping orphans; `embedAlbumArt` takes one cover per album and
-  writes it via `attachPictureToOpus`, setting `has_embedded_art`.
+- **The Opus conversion is accountable, re-embeds art and normalizes losslessly**: `transcode_runs`
+  opens at start, `reconcileTranscodeRunsOnBoot` sweeps orphans, `embedAlbumArt` writes a cover via
+  `attachPictureToOpus`, `writeOutputGain`/`oggPageCrc` put loudness in the header.
   → [download-pipeline.md](download-pipeline.md)
 - **The displayed artist spelling is reduced, not first-seen**: `pickDisplayName` picks one of an
   album's spellings (frequency → diacritics → not-shouted → explicit-locale alphabetical) and
@@ -415,8 +415,8 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   above the tabs, and `lg:` is two columns. → [web-ui.md](web-ui.md)
 - **Lyrics + karaoke**: `metadata` plugin kind + `lyrics` capability (LRCLIB) in `library_lyrics`
   + file tag; karaoke panel with synced highlighting, fullscreen auto-follow, and a `?vocals=off`
-  mid/side mute cached as its own recipe-versioned `novox` transcode variant. The lyrics state is shared:
-  `LyricsService`, `KaraokeBrowseMode`, `loadCoverPalette`, `TvKaraokeComponent`.
+  mid/side mute cached as a recipe-versioned `novox` variant. Shared state: `LyricsService`,
+  `KaraokeBrowseMode`, `loadCoverPalette`, `TvKaraokeComponent`.
   → [design-patterns.md](design-patterns.md), [vocal-isolation-spike.md](vocal-isolation-spike.md),
   [tv-ux.md](tv-ux.md)
 - **Lyrics match quality**: a source match is ranked and rejected on duration, not taken first-hit;
