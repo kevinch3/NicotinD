@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.33](https://github.com/kevinch3/NicotinD/compare/v0.8.32...v0.8.33) (2026-09-21)
+
+### Features
+
+* **transcode:** normalize the library's loudness, off until iOS is checked ([#1245](https://github.com/kevinch3/NicotinD/issues/1245)) ([3aacf80](https://github.com/kevinch3/NicotinD/commit/3aacf805c2d32909f6eee6236b0fa5fdf528bf79)), references [#1243](https://github.com/kevinch3/NicotinD/issues/1243) [#723](https://github.com/kevinch3/NicotinD/issues/723)
 ## [0.8.32](https://github.com/kevinch3/NicotinD/compare/v0.8.31...v0.8.32) (2026-09-21)
 
 ### Features
