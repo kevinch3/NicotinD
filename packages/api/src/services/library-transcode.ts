@@ -137,6 +137,15 @@ export interface TranscodeAllOptions {
    * irreversible pass costs when something was missed).
    */
   dataDir?: string;
+  /**
+   * Where the quarantine lives, when it is not `dataDir`.
+   *
+   * It exists because the two are routinely **different filesystems** and the
+   * originals are what fills one of them. On kpc `dataDir` sits on the host
+   * root with 71 GiB free while the library has 743 GiB, so parking 78 GiB of
+   * originals in the default location fills `/` and takes the box down.
+   */
+  quarantineDir?: string;
   /** Quarantine runs to keep. Count-based, never time-based. */
   quarantineKeep?: number;
   onProgress?: (p: TranscodeProgress) => void;
@@ -241,6 +250,11 @@ export async function transcodeLibraryToOpus(
   // Fails OPEN by construction: an unprobeable filesystem returns `free: null`
   // and `sufficient: true`. Unknown is not full, and a preflight that refuses to
   // run on a mount it cannot stat is worse than no preflight.
+  // Defaults to dataDir, which is where quarantine has always lived. Naming it
+  // separately is what lets an operator put the backups on a disk that can hold
+  // them.
+  const quarantineDir = opts.quarantineDir ?? opts.dataDir;
+
   if (opts.apply && rows.length > 0) {
     // Keeping the originals inverts the arithmetic. Normally each output
     // replaces its source, so peak usage is one encode above steady state and
@@ -257,32 +271,48 @@ export async function transcodeLibraryToOpus(
     // extra bytes in flight are one encode per worker rather than a whole
     // batch. Taking the largest candidate that many times over is a bound, not
     // an estimate, which is the right side to err on here.
-    const keepingOriginals = Boolean(opts.dataDir);
-    const need = keepingOriginals
-      ? rows.reduce((n, r) => n + (estimateOpusBytes(r.duration, rateFor(r)) ?? r.size ?? 0), 0)
-      : rows.reduce((n, r) => Math.max(n, r.size ?? 0), 0) * TRANSCODE_CONCURRENCY;
-    const head = checkHeadroom(musicDir, need, {
-      margin: TRANSCODE_DISK_MARGIN_BYTES,
-      statfs: opts.statfs,
-    });
-    if (!head.sufficient) {
-      throw new Error(
-        `Not enough free space in ${musicDir}: ${head.free} bytes free, ` +
-          `${head.required} needed (` +
-          (keepingOriginals ? 'whole projected output, originals kept' : 'one encode per worker') +
-          ` + margin).`,
-      );
+    // musicDir's peak is one encode per pool worker either way: with quarantine
+    // the original LEAVES musicDir as each file converts, and without it the
+    // encode unlinks its own source. musicDir ends the run smaller in both.
+    const transient = rows.reduce((n, r) => Math.max(n, r.size ?? 0), 0) * TRANSCODE_CONCURRENCY;
+    const checks: Array<{ path: string; need: number; what: string }> = [
+      { path: musicDir, need: transient, what: 'one encode per worker' },
+    ];
+
+    // The quarantine is a DIFFERENT filesystem's problem, and a different
+    // number. It accumulates every original — not the projected output, which
+    // is ~half the size — and probing musicDir for it was the bug: that disk
+    // is the one getting emptier while the other fills.
+    if (quarantineDir) {
+      checks.push({
+        path: quarantineDir,
+        need: rows.reduce((n, r) => n + (r.size ?? 0), 0),
+        what: 'every original, kept',
+      });
     }
-    if (head.free === null) {
-      log.warn({ musicDir }, 'could not probe free space — proceeding without a headroom check');
+
+    for (const c of checks) {
+      const head = checkHeadroom(c.path, c.need, {
+        margin: TRANSCODE_DISK_MARGIN_BYTES,
+        statfs: opts.statfs,
+      });
+      if (!head.sufficient) {
+        throw new Error(
+          `Not enough free space in ${c.path}: ${head.free} bytes free, ` +
+            `${head.required} needed (${c.what} + margin).`,
+        );
+      }
+      if (head.free === null) {
+        log.warn({ path: c.path }, 'could not probe free space — proceeding without that check');
+      }
     }
   }
 
   // One run dir for the whole pass, created only when there is something to
   // convert — an empty pass should not leave an empty backup behind.
   let quarantineRun: string | null = null;
-  if (opts.apply && opts.dataDir && rows.length > 0) {
-    quarantineRun = createQuarantineRun(opts.dataDir);
+  if (opts.apply && quarantineDir && rows.length > 0) {
+    quarantineRun = createQuarantineRun(quarantineDir);
     log.info({ quarantineRun, candidates: rows.length }, 'originals will be kept, not deleted');
   }
 
@@ -431,10 +461,10 @@ export async function transcodeLibraryToOpus(
   // most worth keeping, and pruning first could drop it to make room for
   // itself. Failure here costs disk, not correctness, so it never fails the
   // pass.
-  if (quarantineRun && opts.dataDir) {
+  if (quarantineRun && quarantineDir) {
     result.quarantineRun = quarantineRun;
     try {
-      pruneQuarantine(opts.dataDir, opts.quarantineKeep ?? DEFAULT_QUARANTINE_KEEP);
+      pruneQuarantine(quarantineDir, opts.quarantineKeep ?? DEFAULT_QUARANTINE_KEEP);
     } catch (err) {
       log.warn({ err }, 'quarantine prune failed; originals are still kept');
     }

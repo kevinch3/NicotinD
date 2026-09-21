@@ -699,15 +699,25 @@ On `apply` with candidates present, the pass checks `musicDir` before starting, 
 applies. The run is long, unattended, and shares a disk that has filled to zero once and taken the
 API down with it (#1021).
 
-Two peaks, because keeping the originals inverts the arithmetic:
+**Two filesystems, two different numbers.** `musicDir` always needs the same thing — the largest
+candidate times `TRANSCODE_CONCURRENCY`, a bound rather than an estimate, since every encode frees
+its own source as it finishes. musicDir *shrinks* over a run either way.
 
-| originals | peak above steady state | why |
+The quarantine is the other one, and it is where the first version of this check went wrong:
+
+| what | where it lands | how much |
 | --- | --- | --- |
-| deleted | largest candidate × `TRANSCODE_CONCURRENCY` | each encode unlinks its own source as soon as the output verifies, so the bytes in flight are one encode per pool worker |
-| quarantined | the whole projected output | nothing is freed: every output is added while every original is still held |
+| the Opus outputs | `musicDir` | transient, one per pool worker |
+| every replaced original | the **quarantine** filesystem | the sum of their sizes, kept for the whole run |
 
-The concurrency factor is a **bound, not an estimate** — it assumes every worker is simultaneously
-holding the largest file in the library. That is the side to err on for a preflight.
+The check used to probe `musicDir` for the *projected output*. Both halves were wrong when
+quarantine was on: the bytes accumulate somewhere else entirely, and the originals are roughly twice
+the size of the output. On kpc the consequences were concrete — `dataDir` is the host **root**
+filesystem with 71 GiB free, against 78 GiB of originals, while the 743 GiB library disk being
+probed was the one getting emptier. The preflight would have passed and then filled `/`.
+
+So `quarantineDir` exists as its own option, defaulting to `dataDir`, and the preflight checks both
+paths and names whichever is short.
 
 `services/disk-space.ts` is the one place that probes free space. `StatfsFn` and `freeBytes` had
 **three byte-identical copies** (the library import, the migration backup, `GET /api/system/disk`),
