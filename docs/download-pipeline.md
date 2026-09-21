@@ -688,6 +688,14 @@ and every other player, sees nothing. `acoustIdId` doubles as the "already finge
 losing it re-fingerprints that track forever; the two MusicBrainz ids are what match a file back to a
 release.
 
+**And the recording id is not in a `TXXX` at all.** MusicBrainz puts it in a `UFID` frame owned by
+`http://musicbrainz.org` — that is the standard, and it is what real taggers write. Measured on the
+library: 20% of files carry it there and **none** carries a `TXXX:MusicBrainz Track Id`. Reading only
+the user-text frame meant `mbRecordingId` was always `undefined` for those files, so the conversion
+had nothing to carry, and ffmpeg does not map `UFID` into a Vorbis comment either. The value simply
+disappeared. `readMusicBrainzUfid` reads it, checking the owner and that the payload is a UUID rather
+than trusting the namespace.
+
 `ID3_TXXX_FFMPEG_MISNAMES` sets the canonical key **and blanks the spaced one**. Setting only the
 canonical key also reads correctly, but leaves both in the file — six comments for three values,
 which every later pass would carry forward.
