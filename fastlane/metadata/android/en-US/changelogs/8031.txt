@@ -1,0 +1,1 @@
+• transcode: normalize loudness in the Opus header, not the audio (#1243)

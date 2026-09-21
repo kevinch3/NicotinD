@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.31](https://github.com/kevinch3/NicotinD/compare/v0.8.30...v0.8.31) (2026-09-21)
+
+### Features
+
+* **transcode:** normalize loudness in the Opus header, not the audio ([#1243](https://github.com/kevinch3/NicotinD/issues/1243)) ([4ce8a91](https://github.com/kevinch3/NicotinD/commit/4ce8a917e0f26f1fd7e032cdbfebb4f465a2a8eb)), references [#1240](https://github.com/kevinch3/NicotinD/issues/1240) [#723](https://github.com/kevinch3/NicotinD/issues/723) [#1240](https://github.com/kevinch3/NicotinD/issues/1240)
 ## [0.8.30](https://github.com/kevinch3/NicotinD/compare/v0.8.29...v0.8.30) (2026-09-21)
 
 ### Features
