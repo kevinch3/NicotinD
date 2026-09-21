@@ -447,7 +447,15 @@ describe('opusOutputVerdict — fails closed, because the caller then deletes th
 });
 
 describe.skipIf(!ffmpegAvailable())('cover art survives the transcode', () => {
-  function makeFlacWithCover(dir: string, coverPx: number): { flac: string; coverBytes: number } {
+  function makeFlacWithCover(
+    dir: string,
+    coverPx: number,
+    quality = 4,
+    // `geq=random` is worst-case incompressible, which is wrong for an
+    // oversized-cover fixture: a real photo shrinks under re-compression and
+    // noise does not. `mandelbrot` has real detail and still compresses.
+    source = `nullsrc=s=${coverPx}x${coverPx},geq=random(1)*255:128:128`,
+  ): { flac: string; coverBytes: number } {
     const cover = join(dir, 'art.jpg');
     execFileSync(
       'ffmpeg',
@@ -458,11 +466,11 @@ describe.skipIf(!ffmpegAvailable())('cover art survives the transcode', () => {
         '-f',
         'lavfi',
         '-i',
-        `nullsrc=s=${coverPx}x${coverPx},geq=random(1)*255:128:128`,
+        source,
         '-frames:v',
         '1',
         '-q:v',
-        '4',
+        String(quality),
         '-y',
         cover,
       ],
@@ -537,6 +545,26 @@ describe.skipIf(!ffmpegAvailable())('cover art survives the transcode', () => {
     const out = await transcodeToOpus(flac, 96);
 
     expect((await readAudioTags(out)).artist).toBe('TheArtist');
+  });
+
+  it('carries a cover that is OVER the embed cap, by re-compressing it', async () => {
+    // The case nothing covered, and it cost 10% of the library's art. The
+    // scratch paths had no image extension, so `ffmpeg -i in -q:v N out` could
+    // not pick an output muxer; every re-compress failed and every oversized
+    // cover was silently dropped. Small covers kept working, which is why the
+    // earlier tests all passed.
+    const root = tmpRoot();
+    const { flac, coverBytes } = makeFlacWithCover(root, 1800, 2, 'mandelbrot=s=1800x1800');
+    expect(coverBytes).toBeGreaterThan(512 * 1024); // ~597 KB, over the cap
+
+    const out = await transcodeToOpus(flac, 96);
+
+    const mm = await getMusicMetadata();
+    const pic = (await mm!.parseFile(out)).common.picture?.[0];
+    expect(pic).toBeDefined();
+    // Re-compressed to fit, not carried verbatim and not dropped.
+    expect(pic!.data.length).toBeLessThanOrEqual(512 * 1024);
+    expect(pic!.data.length).toBeGreaterThan(0);
   });
 
   it('converts a source with no cover exactly as before', async () => {

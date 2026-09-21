@@ -351,6 +351,14 @@ Three things had to be measured, because two of them look like they rule the app
   times across three cover sizes it is byte-exact every time — the confound was oversize, not the
   method, and the 512 KB cap removes it.
 
+**The scratch paths must carry an image extension.** `preparePicture` re-compresses an oversized
+cover with `ffmpeg -i in -q:v N out`, and ffmpeg chooses the output muxer from the **extension** —
+an extensionless path fails with *"Unable to choose an output format"*. The first version wrote to
+`.cover-src` / `.cover-fit`, so every re-compress failed and every cover over the 512 KB cap was
+silently dropped. Measured on a real conversion batch: **10% of files**, and precisely the
+well-tagged albums whose art is worth keeping. Covers under the cap were unaffected, which is why
+every earlier test passed — none of them used an oversized one.
+
 `carryEmbeddedCover` in `post-download-transcode.ts` runs it after the duration verdict passes and before
 the temp file is renamed into place, so a failure leaves a correct audio file with no art rather
 than a damaged one. Every step can decline without failing the conversion: art is an enhancement on

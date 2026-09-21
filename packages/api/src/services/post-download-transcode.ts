@@ -257,8 +257,14 @@ export interface TranscodeKeepOriginal {
  * verified, so every failure is a warning and a `false`.
  */
 async function carryEmbeddedCover(sourcePath: string, opusPath: string): Promise<boolean> {
-  const raw = join(dirname(opusPath), `.${basename(opusPath)}.cover-src`);
-  const scratch = join(dirname(opusPath), `.${basename(opusPath)}.cover-fit`);
+  // The `.jpg` matters and is not decoration: `preparePicture` re-compresses an
+  // oversized cover with `ffmpeg -i in -q:v N out`, and ffmpeg picks the output
+  // muxer from the **extension**. With an extensionless scratch path it cannot,
+  // so every re-compress failed and every cover over the 512 KB cap was
+  // dropped — measured at 10% of files, and exactly the well-tagged albums
+  // whose art is worth keeping.
+  const raw = join(dirname(opusPath), `.${basename(opusPath)}.cover-src.jpg`);
+  const scratch = join(dirname(opusPath), `.${basename(opusPath)}.cover-fit.jpg`);
   try {
     const pic = await extractEmbeddedPicture(sourcePath);
     if (!pic) return false;
