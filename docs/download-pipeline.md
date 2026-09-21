@@ -467,6 +467,42 @@ record: every original the pass replaced is a real file under `<dataDir>/quarant
 library-relative path. A parallel TSV would be a second, weaker copy of that — and the one precedent
 for such a log, `library-processing.log`, grows unbounded with nothing reading it.
 
+### Loudness rides the header, not the audio
+
+`writeOutputGain` (`services/opus-gain.ts`) normalizes an Opus file by editing two bytes of its
+header. The audio is not touched.
+
+**Why not a `loudnorm` filter.** Baking gain into the encode changes the samples, which flattens
+`library_songs.loudness` — and `computeEnergy` maps that column (−25 LUFS → 0, −7 → 1) into the
+descriptor radio runs on. Normalizing that way would silently destroy the recommender's own input
+while appearing to work.
+
+RFC 7845 §5.1 puts `output_gain` in the `OpusHead` packet and requires **decoders** to apply it. So
+the gain is 2 bytes of header: the audio is untouched, the descriptor survives, the target stays
+re-tunable forever, and the 7,774 files already in Opus can be normalized without any conversion
+machinery — a complete answer to #723 for a third of the library.
+
+**The CRC is the whole risk.** `OpusHead` lives in the first Ogg page's payload, bytes 16–17, in
+Q7.8 dB. Changing them invalidates that page's checksum, and a page with a stale CRC is a file our
+own parser reads happily and every decoder rejects. So `oggPageCrc` recomputes it — Ogg's variant is
+MSB-first with no reflection and no final xor, none of the common CRC32 flavours, which is why it is
+written out rather than reached for.
+
+A normalized file differs from its original in **exactly six bytes**: two of gain, four of CRC. The
+tests assert that count, assert everything past the first page is byte-identical, and assert that
+writing `0` back restores the original byte-for-byte. Two independent readers confirm the file is
+still valid — and that pair was checked to actually **fail** on a bad CRC rather than tolerate one,
+because a test that cannot fail proves nothing.
+
+**Declines rather than guesses.** No loudness reading, or one outside −60..0 LUFS, returns `null`
+and the file is left alone: a gain computed from a default would be a confident wrong answer, and a
+normalized-to-nothing track is worse than an unnormalized one. The gain clamps to ±32 dB so a
+corrupt reading cannot produce a silent or deafening file.
+
+**Nothing calls this yet.** The library pass that applies it across the 7,774 files is the next
+piece, and stays behind a flag defaulting off until the iOS header-gain behaviour is verified on a
+real device.
+
 ### Back up before transcoding
 
 `transcodeToOpus` unlinks the source once the output verifies. For a freshly downloaded file that is
