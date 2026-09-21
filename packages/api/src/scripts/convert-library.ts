@@ -6,6 +6,7 @@
  *   bun run packages/api/src/scripts/convert-library.ts             # dry run
  *   bun run packages/api/src/scripts/convert-library.ts --apply     # write
  *   bun run packages/api/src/scripts/convert-library.ts --apply
+ *   bun run packages/api/src/scripts/convert-library.ts --apply --all          # every non-Opus file
  *   bun run packages/api/src/scripts/convert-library.ts --apply --bitrate 96   # pin one rate
  *
  * Per-file it migrates song-keyed references (playlist entries, acquisitions,
@@ -46,6 +47,10 @@ async function main(): Promise<void> {
   // `dataDir` for the DB path and then did not pass it, so every run deleted
   // the files it replaced while the quarantine it was meant to use sat unused.
   const deleteOriginals = process.argv.includes('--delete-originals');
+  // `--all` converts every non-Opus file, not just the lossless ones. That is
+  // a second lossy generation on most of the library, so it is typed, never
+  // defaulted into.
+  const scope = process.argv.includes('--all') ? ('all' as const) : ('lossless' as const);
   const bitrateIdx = process.argv.indexOf('--bitrate');
   const { dataDir, musicDir, bitRate: configuredBitRate } = loadConfig();
   // `--bitrate` pins one rate for every file. Without it the pass reads each
@@ -66,6 +71,9 @@ async function main(): Promise<void> {
   console.log(`Mode      : ${apply ? 'APPLY (writing)' : 'DRY RUN (no changes)'}`);
   console.log(`Music dir : ${musicDir}`);
   console.log(
+    `Scope     : ${scope === 'all' ? 'EVERY non-Opus file (second lossy generation)' : 'lossless only'}`,
+  );
+  console.log(
     `Bitrate   : ${bitRate ? `${bitRate}k (pinned)` : `adaptive, 64–128k by source (config: ${configuredBitRate}k)`}`,
   );
   console.log(`Database  : ${dbPath}`);
@@ -75,6 +83,7 @@ async function main(): Promise<void> {
 
   const r = await transcodeLibraryToOpus(db, musicDir, {
     apply,
+    scope,
     bitRate,
     dataDir: deleteOriginals ? undefined : dataDir,
   });

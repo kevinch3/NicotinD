@@ -717,3 +717,128 @@ describe('source-adaptive bitrate', () => {
     expect(r.bytesReclaimed).toBe(at128.bytesReclaimed);
   });
 });
+
+describe('conversion scope', () => {
+  async function seedMixed(db: Database, music: string): Promise<void> {
+    for (const [rel, suffix] of [
+      ['A/Al/01 - Lossless.flac', 'flac'],
+      ['A/Al/02 - Lossy.mp3', 'mp3'],
+      ['A/Al/03 - Windows.wma', 'wma'],
+      ['A/Al/04 - Vorbis.ogg', 'ogg'],
+      ['A/Al/05 - Already.opus', 'opus'],
+    ] as const) {
+      mkdirSync(dirname(join(music, rel)), { recursive: true });
+      await Bun.write(join(music, rel), 'x');
+      seedSongRow(db, rel, { suffix });
+    }
+  }
+
+  it('takes only lossless by default', async () => {
+    const music = tmpMusic();
+    const db = new Database(':memory:');
+    applySchema(db);
+    await seedMixed(db, music);
+
+    const r = await transcodeLibraryToOpus(db, music, { apply: false });
+
+    expect(r.candidates).toBe(1); // the flac
+  });
+
+  it('takes every non-Opus file under scope=all', async () => {
+    // What "convert all 13,864" means: 13,576 mp3 + 238 m4a + 44 ogg + 6 wma
+    // + 3 flac. The wma matter because no current path can even tag them.
+    const music = tmpMusic();
+    const db = new Database(':memory:');
+    applySchema(db);
+    await seedMixed(db, music);
+
+    const r = await transcodeLibraryToOpus(db, music, { apply: false, scope: 'all' });
+
+    expect(r.candidates).toBe(4); // flac, mp3, wma, ogg — not the opus
+  });
+
+  it('never re-encodes a file that is already Opus', async () => {
+    // The one thing this pass must not do: Opus to Opus is pure generation
+    // loss for zero gain, and at `scope: 'all'` the predicate is wide enough
+    // to have swept it in.
+    const music = tmpMusic();
+    const db = new Database(':memory:');
+    applySchema(db);
+    await seedMixed(db, music);
+
+    for (const scope of ['lossless', 'all'] as const) {
+      const r = await transcodeLibraryToOpus(db, music, { apply: false, scope });
+      expect(r.candidates).toBeLessThan(5);
+    }
+    // Explicitly: the opus row is absent from both candidate sets.
+    const all = await transcodeLibraryToOpus(db, music, { apply: false, scope: 'all' });
+    expect(all.candidates).toBe(4);
+  });
+
+  it('skips an Opus row whose suffix column disagrees with its path', async () => {
+    // Belt and braces: the scanner writes `suffix`, but a mis-scanned or
+    // hand-edited row must not get the file re-encoded on the strength of a
+    // stale column.
+    const music = tmpMusic();
+    const db = new Database(':memory:');
+    applySchema(db);
+    const rel = 'A/Al/01 - Mislabelled.opus';
+    mkdirSync(dirname(join(music, rel)), { recursive: true });
+    await Bun.write(join(music, rel), 'x');
+    seedSongRow(db, rel, { suffix: 'mp3' }); // wrong on purpose
+
+    const r = await transcodeLibraryToOpus(db, music, { apply: false, scope: 'all' });
+
+    expect(r.candidates).toBe(0);
+  });
+});
+
+describe('the bitrate ladder, now that lossy files are in scope', () => {
+  it('gives a 128k source a different rate than a 320k one', async () => {
+    // Closes the loop on the ladder shipping inert: under `scope: 'all'` the
+    // pass finally sees lossy files, so the buckets actually separate. The
+    // reclaim estimate is the observable — same source size, different target.
+    const music = tmpMusic();
+    const db = new Database(':memory:');
+    applySchema(db);
+    for (const [rel, bitRate] of [
+      ['A/Al/01 - Low.mp3', 128],
+      ['A/Al/02 - High.mp3', 320],
+    ] as const) {
+      mkdirSync(dirname(join(music, rel)), { recursive: true });
+      await Bun.write(join(music, rel), 'x');
+      seedSongRow(db, rel, { suffix: 'mp3', size: 10_000_000, duration: 120, bitRate });
+    }
+
+    const low = await transcodeLibraryToOpus(db, music, {
+      apply: false,
+      scope: 'all',
+      limit: 1,
+    });
+    const both = await transcodeLibraryToOpus(db, music, { apply: false, scope: 'all' });
+
+    // 120 s at 96k is 1.44 MB; at 128k it is 1.92 MB. Two files at one rate
+    // would reclaim exactly twice the first; they do not.
+    expect(both.candidates).toBe(2);
+    expect(both.bytesReclaimed).not.toBe(low.bytesReclaimed * 2);
+  });
+
+  it('still gives an unprobed lossy file the safe top rate', async () => {
+    const music = tmpMusic();
+    const db = new Database(':memory:');
+    applySchema(db);
+    const rel = 'A/Al/01 - Unknown.mp3';
+    mkdirSync(dirname(join(music, rel)), { recursive: true });
+    await Bun.write(join(music, rel), 'x');
+    seedSongRow(db, rel, { suffix: 'mp3', size: 10_000_000, duration: 120, bitRate: 0 });
+
+    const adaptive = await transcodeLibraryToOpus(db, music, { apply: false, scope: 'all' });
+    const at128 = await transcodeLibraryToOpus(db, music, {
+      apply: false,
+      scope: 'all',
+      bitRate: 128,
+    });
+
+    expect(adaptive.bytesReclaimed).toBe(at128.bytesReclaimed);
+  });
+});

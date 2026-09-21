@@ -401,6 +401,28 @@ The three "nothing happened" counters stay separate (`noSource`, `sharedBucket`,
 because they need three different fixes: acquire art, fix the folder layout, reach the host. One
 combined number would hide which.
 
+### Which files the pass takes
+
+`scope` decides, and it defaults to the safe half.
+
+| scope | takes | why |
+| --- | --- | --- |
+| `'lossless'` (default) | FLAC, WAV, ALAC-in-m4a | what the download path relies on: re-encoding a lossy file there would be a second generation for nothing |
+| `'all'` | everything that is not already Opus | the conversion: 13,576 mp3 + 238 m4a + 44 ogg + 6 wma + 3 flac = exactly the 13,864 the plan sizes |
+
+`'all'` is a deliberate second lossy generation across most of a library, so it is **asked for by
+name** — `?scope=all` on the admin task, `--all` on the script. A bare click or a bare command stays
+on the lossless scope. The destructive choice has to be typed, the same rule the quarantine wiring
+settled.
+
+**Neither scope ever re-encodes an existing `.opus`.** Opus to Opus is pure generation loss for zero
+gain, and at `'all'` the predicate is wide enough to have swept it in. The check reads the path
+extension *and* the `suffix` column, so a mis-scanned or hand-edited row cannot get a file
+re-encoded on the strength of a stale column.
+
+The six `.wma` files are worth calling out: `.wma` is in neither `ID3_EXTS` nor `VORBIS_EXTS`, so no
+current path can tag them at all. Converting them is a strict improvement rather than a trade.
+
 ### One rate per file, not one per pass
 
 `opusBitrateFor` (`services/transcode-bitrate.ts`) picks the Opus rate from the source's own
@@ -427,11 +449,11 @@ meaningless.
 **An unknown bitrate takes the top rate too.** The scanner writes `0` when it could not probe one,
 and reading that as "under 128, so encode at 64" would crush exactly the files we know least about.
 
-The ladder is **wired but inert today**: the conversion pass still selects lossless files only, and
-every lossless file takes the top rate without consulting it. It becomes live the moment the
-predicate extends to the 13,576 mp3s. `transcode-bitrate.test.ts` covers the buckets directly; the
-pass-level test says plainly what it does and does not yet prove, so it cannot quietly pass for the
-wrong reason.
+The ladder is **live under `scope: 'all'`** and idle otherwise: the default lossless-only scope sees
+no lossy files, and every lossless file takes the top rate without consulting the buckets. A
+pass-level test now asserts a 128 kbps source and a 320 kbps one get different rates, which is the
+thing the earlier version of that test could not prove. `transcode-bitrate.test.ts` covers the
+boundaries directly.
 
 `bitRate` on the pass is now an override for callers that genuinely want one rate. A run row's
 `bit_rate` of `0` means adaptive, not zero kbps.

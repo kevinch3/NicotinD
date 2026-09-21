@@ -249,12 +249,22 @@ export function buildMaintenanceTasks(deps: MaintenanceDeps): AnyMaintenanceTask
       },
     }),
 
-    defineTask<{ apply: boolean; limit?: number }>({
+    defineTask<{ apply: boolean; limit?: number; scope: 'lossless' | 'all' }>({
       id: 'transcode-library',
       label: 'Standardize library on Opus',
       available: () => (deps.musicDir ? true : 'Music directory is not configured'),
-      parseParams: (q) => ({ apply: !flag(q, 'dryRun'), limit: positiveInt(q, 'limit') }),
-      describe: (p) => ({ summary: p.apply ? 'apply' : 'dry-run', dryRun: !p.apply }),
+      parseParams: (q) => ({
+        apply: !flag(q, 'dryRun'),
+        limit: positiveInt(q, 'limit'),
+        // `?scope=all` converts every non-Opus file, which is a second lossy
+        // generation on most of the library. It has to be asked for by name:
+        // a bare click stays on the lossless-only scope.
+        scope: q.get('scope') === 'all' ? 'all' : 'lossless',
+      }),
+      describe: (p) => ({
+        summary: `${p.apply ? 'apply' : 'dry-run'}, ${p.scope === 'all' ? 'every non-Opus file' : 'lossless only'}`,
+        dryRun: !p.apply,
+      }),
       run: async (ctx, p) => {
         // Opened BEFORE the first file is touched. A terminal-only record
         // cannot say "this pass was interrupted", because an interrupted pass
@@ -272,6 +282,7 @@ export function buildMaintenanceTasks(deps: MaintenanceDeps): AnyMaintenanceTask
           const r = await transcodeLibraryToOpus(deps.db, deps.musicDir, {
             apply: p.apply,
             limit: p.limit,
+            scope: p.scope,
             // Keep every original under `<dataDir>/quarantine/<run>/`. A
             // whole-library re-encode is irreversible and unattended; the disk
             // cost is recoverable, a wrong conversion is not.
