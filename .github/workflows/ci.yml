@@ -209,6 +209,16 @@ jobs:
       - name: Supply-chain gate (what actually ships)
         run: bun run check:audit
 
+      # Fails on a dependency whose install hook nobody has reviewed. Such a hook
+      # can download from a vendor's own host, which puts a third party's uptime
+      # in front of every job's `bun install` — ffmpeg-static failed `web-test` on
+      # a release commit that way (#1087), and sharp@0.32.6 failed `web-test`,
+      # both `e2e-shard` legs and `desktop-package` at once on 2026-09-21. Runs
+      # here rather than in its own job because it reads the tree `bun install`
+      # just built, which every gate job has already.
+      - name: Install-script gate (no unreviewed third-party downloads)
+        run: bun run check:install-scripts
+
       - name: Test (API + slskd-client + lidarr-client + core + service-manager + mobile)
         run: bun test packages/api/src packages/lidarr-client/src packages/core/src packages/addon-sdk/src packages/service-manager/src packages/mobile/src packages/desktop/electron packages/desktop/scripts scripts
 
@@ -479,8 +489,24 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version-file: '.nvmrc'
-      - name: Install dependencies
-        run: bun install
+      # The ONLY job that installs with `FFMPEG_BIN: ''`, so it is the only one whose
+      # `bun install` downloads a binary from a host that is not the npm registry — it
+      # needs the real ffmpeg to package the app, so #1087's removal is not available
+      # here. That download returned 504 on 2026-09-21 and withheld a four-file artwork
+      # fix; retrying it is the honest remedy, because a vendor CDN's uptime is not a
+      # signal about the diff. Bounded and loud: three attempts, then the job fails —
+      # never a `|| true`, which would land a release with resources staged from a
+      # half-installed tree. `check:install-scripts` is what keeps this narrow, by
+      # failing if a SECOND package starts downloading.
+      - name: Install dependencies (bounded retry — third-party binary download)
+        run: |
+          for attempt in 1 2 3; do
+            if bun install; then exit 0; fi
+            echo "::warning::bun install failed (attempt ${attempt}/3); retrying"
+            sleep $((attempt * 10))
+          done
+          echo "::error::bun install failed 3 times — not a transient download failure"
+          exit 1
       - name: Build web (prepare-resources stages the dist)
         run: bun run --filter @nicotind/web build
       - name: Stage desktop resources (production backend install)
