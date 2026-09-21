@@ -1,0 +1,1 @@
+• artwork: cap the longest edge when quality alone misses the embed cap (#1253)

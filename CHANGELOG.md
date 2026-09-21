@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.38](https://github.com/kevinch3/NicotinD/compare/v0.8.37...v0.8.38) (2026-09-21)
+
+### Bug Fixes
+
+* **artwork:** cap the longest edge when quality alone misses the embed cap ([#1253](https://github.com/kevinch3/NicotinD/issues/1253)) ([afc9a50](https://github.com/kevinch3/NicotinD/commit/afc9a500aa559debf28c42743009b867762d0e7f)), closes [#1252](https://github.com/kevinch3/NicotinD/issues/1252), references [#1249](https://github.com/kevinch3/NicotinD/issues/1249) [#1251](https://github.com/kevinch3/NicotinD/issues/1251)
 ## [0.8.37](https://github.com/kevinch3/NicotinD/compare/v0.8.36...v0.8.37) (2026-09-21)
 
 ### Bug Fixes
