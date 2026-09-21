@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.30](https://github.com/kevinch3/NicotinD/compare/v0.8.29...v0.8.30) (2026-09-21)
+
+### Features
+
+* **transcode:** pick the Opus rate from each file's own bitrate ([#1242](https://github.com/kevinch3/NicotinD/issues/1242)) ([71a58aa](https://github.com/kevinch3/NicotinD/commit/71a58aabf6858a3b91fdd534e8d3b38571cfc8cb)), references [#723](https://github.com/kevinch3/NicotinD/issues/723)
 ## [0.8.29](https://github.com/kevinch3/NicotinD/compare/v0.8.28...v0.8.29) (2026-09-20)
 
 ### Features
