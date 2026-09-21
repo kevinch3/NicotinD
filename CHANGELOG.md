@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.35](https://github.com/kevinch3/NicotinD/compare/v0.8.34...v0.8.35) (2026-09-21)
+
+### Bug Fixes
+
+* **transcode:** read six bytes, not the whole track ([#1248](https://github.com/kevinch3/NicotinD/issues/1248)) ([05f4a9e](https://github.com/kevinch3/NicotinD/commit/05f4a9ec892a7f8d1cb0fb88aa3ced1bb7645929)), references [#723](https://github.com/kevinch3/NicotinD/issues/723)
 ## [0.8.34](https://github.com/kevinch3/NicotinD/compare/v0.8.33...v0.8.34) (2026-09-21)
 
 ### Bug Fixes
