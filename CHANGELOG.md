@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.39](https://github.com/kevinch3/NicotinD/compare/v0.8.38...v0.8.39) (2026-09-21)
+
+### Bug Fixes
+
+* **ci:** stop unreviewed install hooks downloading from third-party hosts ([#1259](https://github.com/kevinch3/NicotinD/issues/1259)) ([99adac6](https://github.com/kevinch3/NicotinD/commit/99adac6d1d6f0ca9f6fd6f39996a0da36cc535b7)), closes [#1183](https://github.com/kevinch3/NicotinD/issues/1183)
 ## [0.8.38](https://github.com/kevinch3/NicotinD/compare/v0.8.37...v0.8.38) (2026-09-21)
 
 ### Bug Fixes

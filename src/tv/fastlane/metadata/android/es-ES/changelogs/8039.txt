@@ -1,0 +1,1 @@
+• ci: stop unreviewed install hooks downloading from third-party hosts (#1259)
