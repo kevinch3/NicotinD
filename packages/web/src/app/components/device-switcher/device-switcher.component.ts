@@ -39,6 +39,26 @@ export class DeviceSwitcherComponent {
     const active = this.remote.activeDeviceId();
     return active !== null && active !== this.myId;
   });
+  /**
+   * Is there anywhere to send the audio?
+   *
+   * The button used to render unconditionally, which on the common
+   * single-device setup put a permanent dead control immediately beside Next —
+   * a near-miss for the thumb aiming at it, whose only reward was a panel
+   * saying "no other devices" (#1262). It appears when the roster holds
+   * something other than this device, listed-but-unavailable included: that is
+   * still a device worth telling the listener about, and the panel already says
+   * so per row.
+   *
+   * Two states keep it visible with an empty roster. If the audio is already
+   * elsewhere, hiding the control would strand the listener with no way to pull
+   * it back; and if the panel is open — `PlayingElsewhereComponent` and the TV
+   * player both open it without this button — the trigger must not vanish out
+   * from under an open popover.
+   */
+  readonly canPickOutput = computed(
+    () => this.otherDevices().length > 0 || this.isRemoteActive() || this.remote.switcherOpen(),
+  );
   readonly activeDevice = computed(() =>
     this.remote.devices().find((d) => d.id === this.remote.activeDeviceId()),
   );

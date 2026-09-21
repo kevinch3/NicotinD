@@ -104,11 +104,9 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   `mapAddonJob`, `cancelUnownedJob`, `methodForBackend`, `downloadTitleFor`.
   → [download-pipeline.md](download-pipeline.md)
 - **A partial download says why, and can be retried**: per-track failures grouped by class on the
-  card; Retry reaches partial addon URL jobs, not just failed ones. `parseJobFailureSummary`,
-  `classifyTrackFailure`, `summarizeFailures`, `failureClassLabel`, `allItemsFailedMessage`. A
-  `trackBreakdown` disclosure lists which tracks, not just how many — offered for slskd too, which
-  `canShowNowNext` skips.
-  → [download-pipeline.md](download-pipeline.md)
+  card, a `trackBreakdown` disclosure naming which ones, and a Retry that reaches partial addon URL
+  jobs. `parseJobFailureSummary`, `classifyTrackFailure`, `summarizeFailures`, `failureClassLabel`,
+  `allItemsFailedMessage`, `canShowNowNext`. → [download-pipeline.md](download-pipeline.md)
 - **Inline download lifecycle**: result cards go idle → progress % → "Open in Library", driven by
   `TransferService` + a `libraryDirty` signal. → [design-patterns.md](design-patterns.md),
   [download-pipeline.md](download-pipeline.md)
@@ -161,11 +159,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   with deterministic SHA1 ids; `resolveTags` applies overrides before minting the artist/album ids.
   Incremental `scan_cache` + `mapPool`, `applyPerformancePragmas`, `albumIdsByGroupKey`.
   → [library-scanner.md](library-scanner.md)
-- **A canonical tracklist ranks duplicates, it never deletes the only copy**: the pinned tracklist
-  keys an album's files to canonical tracks so duplicates collapse; a file it does not name keys by
-  its own title and survives, in the scanner and in the disk-deleting reconcile pass alike.
-  `selectAlbumTracks`, `selectAlbumTracksDetailed`, `LibraryScanner.knownRelPaths`, `chooseFolderKeepers`.
-  → [library-scanner.md](library-scanner.md)
+- **A canonical tracklist ranks duplicates, it never deletes the only copy**: it keys an album's
+  files to canonical tracks so duplicates collapse, and a file it does not name keys by its own
+  title and survives. `selectAlbumTracks`, `selectAlbumTracksDetailed`,
+  `LibraryScanner.knownRelPaths`, `chooseFolderKeepers`. → [library-scanner.md](library-scanner.md)
 - **Title cleanup runs over the existing library too**: `cleanDisplayTitle` covers reissue labels,
   and `normalize-titles.ts` applies it to stored rows through the verified retag path.
   `planTitleNormalization`. → [library-scanner.md](library-scanner.md)
@@ -179,10 +176,9 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   `library_artist_identity` + `library_artist_aliases` survive rescans; `corroboratesLidarrHit` and
   `boundedEditDistance` guard provisioning. → [library-scanner.md](library-scanner.md)
 - **Artist MBID resolution + homonyms**: one `library_mbids` row per normalized name feeds every
-  non-tag artist surface; `pickMbidHit` returns null on ambiguity, `pickByDiscographyOverlap` breaks
-  the tie, `isMbidReResolvable` re-asks a pre-fix row once. Curator repair is `mutateArtistMbid`
-  (HTTP + MCP `set_artist_mbid`); a detach writes an `isMbidTombstoned` row and readers take
-  `usableMbid`. → [library-scanner.md](library-scanner.md)
+  non-tag artist surface. `pickMbidHit`, `pickByDiscographyOverlap`, `isMbidReResolvable`,
+  `mutateArtistMbid` (+ MCP `set_artist_mbid`), `isMbidTombstoned`, `usableMbid`.
+  → [library-scanner.md](library-scanner.md)
 - **Artist bios (auto + override)**: MBID-first Discogs lookup into `library_artist_meta` with
   tombstones; auto-fetch on first artist-page visit; `formatArtistBio` strips Discogs BBCode;
   `resolveMbidViaLidarr` is two-stage. A bio needs `BIO_MIN_MBID_CONFIDENCE` and records the
@@ -266,11 +262,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **Fragmentation diagnostic**: `checkFragments` surfaces same-release spelling variants and
   mis-classified albums via `contradictsTrackCount`, each row carrying its remediation
   (`fragment-remediation.ts`). → [library-scanner.md](library-scanner.md)
-- **Library health report**: one `libraryHealth` module — every curation dimension as metric +
-  bounded worst-first worklist + remediation hint — rendered by `GET /api/library/health` (curator),
-  the `library-health.ts` CLI and MCP `get_library_health`. `missingAlbumArtSql`,
-  `losslessSuffixSql` and `lowInformationOnlyGenreSql` are the shared predicates; on-demand only,
-  never polled. → [library-audit.md](library-audit.md)
+- **Library health report**: one `libraryHealth` module — every curation dimension as metric plus
+  a worst-first worklist — behind `GET /api/library/health`, the `library-health.ts` CLI and MCP
+  `get_library_health`. Shared predicates: `missingAlbumArtSql`, `losslessSuffixSql`,
+  `lowInformationOnlyGenreSql`. → [library-audit.md](library-audit.md)
 - **Metadata optimization**: conservative all-or-nothing bulk Lidarr re-fetch (`optimizeAllAlbums`),
   run as a cancellable background job on `MaintenanceService`, bounded by limit + cursor.
   → [metadata-optimize.md](metadata-optimize.md)
@@ -347,18 +342,18 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   unwindowed `/analyze` made peak host RSS scale with track length (~1.98 GB for one 8 h file).
   `analyze_window_seconds` / `ANALYSIS_ANALYZE_SECONDS` bounds it, as `descriptor_window_seconds`
   already did. → [audio-ml-enrichment.md](audio-ml-enrichment.md)
-- **Audio descriptors — timbre / groove / spectral balance**: sidecar `/descriptors` + store (phase
-  1), then three composite radio axes (phase 2, formula v8): `descriptorBlocks` splits a row into
+- **Audio descriptors — timbre / groove / spectral balance**: sidecar `/descriptors` + store, then
+  three composite radio axes (formula v8): `descriptorBlocks` splits a row into
   `TIMBRE_NAMES`/`GROOVE_NAMES`/`BAND_NAMES`, scored by `blockCosineCloseness` and
-  `spectralBalanceCloseness`; `DESCRIPTOR_NORM` holds the library-measured z-score constants.
+  `spectralBalanceCloseness`; `DESCRIPTOR_NORM` holds the z-score constants.
   → [audio-descriptors.md](audio-descriptors.md), [radio.md](radio.md)
 
 ### Playback, radio & streaming
 
 - **Recommendation strategies**: named recipes (weights, artist cap, pool mix, out-of-genre quota)
-  chosen by `?strategy=`, stamped on poll scenarios, rendered by `dump-radio --strategy`; the Now
-  Playing radio chip's three-position variety control maps complaints to remedies in one core
-  function. `STRATEGIES`, `resolveStrategy`, `strategyForVariety`, `radio-variety`. → [radio.md](radio.md)
+  chosen by `?strategy=` and stamped on poll scenarios; the Now Playing chip's variety control maps
+  complaints to remedies in one core function. `STRATEGIES`, `resolveStrategy`,
+  `strategyForVariety`, `radio-variety`. → [radio.md](radio.md)
 - **Radio provenance**: the queue reports the formula version, the genre axis that actually ran
   (`learned` only when a centroid covered it; `station` for a filter radio) and the strategy, behind
   an opt-in `?provenance=1` envelope so an installed client still parses the bare array.
@@ -419,33 +414,29 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   `KaraokeBrowseMode`, `loadCoverPalette`, `TvKaraokeComponent`.
   → [design-patterns.md](design-patterns.md), [vocal-isolation-spike.md](vocal-isolation-spike.md),
   [tv-ux.md](tv-ux.md)
-- **Lyrics match quality**: a source match is ranked and rejected on duration, not taken first-hit;
-  `matchedDurationSec` is stored so a wrong take stays findable afterwards as `suspectMatches`,
-  with rows nothing could check counted `unverified` rather than clean.
-  `LYRICS_DURATION_TOLERANCE_SEC` is shared by the fetch gate and the report so they cannot drift.
+- **Lyrics match quality**: a source match is ranked and rejected on duration, not taken
+  first-hit; a stored `matchedDurationSec` keeps a wrong take findable as `suspectMatches`, with
+  uncheckable rows counted `unverified`. `LYRICS_DURATION_TOLERANCE_SEC`.
   → [design-patterns.md](design-patterns.md)
 - **Lyrics sync offset**: bad timing is corrected by a stored offset applied at render time
-  (`applyLyricsOffset`), never by rewriting the LRC, so it is reversible; `parseLrc` moved to core
-  because `syncedBeyondDuration` — an LRC outlasting its own file, the one check needing nothing
-  from the source — parses server-side. Tools: `get_song_lyrics`, `sync_song_lyrics`.
+  (`applyLyricsOffset`), never by rewriting the LRC, so it is reversible; `parseLrc` is in core so
+  `syncedBeyondDuration` parses server-side. Tools: `get_song_lyrics`, `sync_song_lyrics`.
   → [design-patterns.md](design-patterns.md), [mcp-agent.md](mcp-agent.md)
 - **Now Playing waveform + karaoke VFX**: rendered from a precomputed artifact.
   → [audio-ml-enrichment.md](audio-ml-enrichment.md)
-- **A radio queue has a depth, not a batch size**: the queue is held at
-  `radioQueueTarget` (admin-owned `RadioSettings.queueTarget`, default 20) and refills the
-  shortfall — one track per track played — instead of draining to two and dropping a batch in;
-  `replenishRadio`, `radioStarvedSeed`, `isValidQueueTarget`, `DEFAULT_RADIO_QUEUE_TARGET`.
-  → [radio.md](radio.md)
+- **A radio queue has a depth, not a batch size**: held at `radioQueueTarget` (admin-owned
+  `RadioSettings.queueTarget`, default 20), refilling the shortfall rather than draining to two;
+  `replenishRadio`, `radioStarvedSeed`, `isValidQueueTarget`. → [radio.md](radio.md)
 - **Smart radio (metadata-driven queue)**: `GET /api/radio/next` scores candidates by a
   weight-normalized blend of BPM, Camelot key, genre-set closeness, artist origin, year, duration,
   artist diversity, the perceptual axes and embedding cosine. `buildSeedRadio`, `scoreSimilarity`,
   `explainSimilarity`, `genreSetCloseness`, `MISSING_GENRE_FLOOR`, `recentPlayPenalty`,
   `lastPlayedByRecording`. → [radio.md](radio.md)
-- **Genre affinity (learned genre axis, default on)**: one audio centroid per genre name over
-  the library's own embeddings, coherence-discounted for umbrella tags; radio, similar songs and
-  new polls use it unless `RadioSettings.genreAffinity` is off. `library_genre_centroids`,
-  `computeGenreCentroids`, `explainGenrePair`, `makeGenreAffinity`, `loadGenreAffinity`,
-  `getRadioSettings`, `RadioSettingsPanelComponent`. → [genre-affinity.md](genre-affinity.md)
+- **Genre affinity (learned genre axis, default on)**: one audio centroid per genre name over the
+  library's own embeddings, used by radio, similar songs and new polls unless
+  `RadioSettings.genreAffinity` is off. `library_genre_centroids`, `computeGenreCentroids`,
+  `explainGenrePair`, `makeGenreAffinity`, `loadGenreAffinity`, `getRadioSettings`,
+  `RadioSettingsPanelComponent`. → [genre-affinity.md](genre-affinity.md)
 - **One recording is one thing**: two files of one track (album + compilation) are two
   `library_songs` rows, so radio served it twice as often; `recordingKey` collapses them in the
   served window, the pool exclusion and the recency demotion. → [radio.md](radio.md)
@@ -460,10 +451,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **One tile, two tones**: `VibeTileComponent` renders the classic landing's vibe row and genre row
   so they cannot drift — `tone`/`wide` carry the whole difference, and the vibe gradients are fixed
   pairs, never `--theme-*`. → [web-ui.md](web-ui.md)
-- **Filter-seeded radio / stations**: the same `GET /api/radio/next` route starts a vibe with no
-  seed song from a `LibraryFilter` via `buildFilterRadio` + `songFilterWheres` + `stationCentroid`;
-  a genre station is graded not tag-tested by `stationAffinity` (`genreDepthScore` ×
-  `artistGenreShares`), a demotion never an exclusion. → [radio.md](radio.md),
+- **Filter-seeded radio / stations**: the same `GET /api/radio/next` starts a vibe with no seed
+  song from a `LibraryFilter` — `buildFilterRadio`, `songFilterWheres`, `stationCentroid`; a genre
+  station is graded by `stationAffinity` (`genreDepthScore` × `artistGenreShares`), a demotion never
+  an exclusion. → [radio.md](radio.md),
   [radio-stations-2026-08.md](measurements/radio-stations-2026-08.md)
 - **Radio calibration + diagnostics**: `RADIO_FORMULA_VERSION` stamps every poll so votes never pool
   across formulas; `dump-radio.ts` reports per-axis breakdowns and the served-window spread;
@@ -471,15 +462,17 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **Radio evaluation polls (public, admin-created)**: frozen radio scenarios behind a public
   `/poll/:token` wizard, previewed via short-lived read-only share JWTs, distilled by
   `export-radio-poll.ts`. → [radio-eval-polls.md](radio-eval-polls.md)
+- **The output picker hides when there is nothing to pick**: `canPickOutput` drops the cast button
+  on a single-device setup, keeping it while the audio is elsewhere or the panel is open.
+  → [remote-playback.md](remote-playback.md)
 - **Remote playback (one audible device, Spotify-Connect-style)**: per-user `PlaybackStateManager`
   broadcasts over `GET /api/ws/playback` through `createPlaybackHub`; a device that plays claims the
   output (`claimOutput`, compare-and-set), the picker moves it (`castTo`), `hasControllableSession`
   gates the transport; `activeGraceMs`, `idleReleaseMs`. → [remote-playback.md](remote-playback.md)
 - **Auto-preserve queue (PWA lock-screen resilience)**: `AutoPreserveCoordinator` keeps the next-N
   queued tracks as IndexedDB blobs so playback survives the locked-screen network throttle;
-  `evictAutoLRU` never evicts user-saved tracks. The window has a one-track rung for metered
-  connections, and changing it never deletes — `clearAutoSaved` is its own button.
-  `windowSize`, `offlineTrackAction`. → [web-ui.md](web-ui.md)
+  `evictAutoLRU` never evicts user-saved tracks. `windowSize` has a one-track rung, and changing
+  it never deletes — `clearAutoSaved` is its own button. → [web-ui.md](web-ui.md)
 - **The radio source belongs to no shell**: `RadioSourceService.install()` hands `PlayerService` its
   `RadioProvider` from the app initializer, because the one shell that used to own it is not the one
   a TV build mounts; `ensureRadioOn` keeps a TV endless and `playShelfSong` makes a Home song press
@@ -534,17 +527,15 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   publishes the loopback backend. → [device-pairing.md](device-pairing.md)
 - **MCP agent access**: external agents curate via `/api/mcp` with a revocable `agent_tokens`
   bearer capped at refiner (`AGENT_EFFECTIVE_ROLE`); `checkToolAccess` gates scope + destructive
-  confirm, `dispatchTool` audits writes; shared mutation modules (`library-deletion.ts` …
-  `album-cover-mutate.ts`) back HTTP and MCP alike; `gatherCandidates` + `gatherSongCandidates`
-  do online lookup. → [mcp-agent.md](mcp-agent.md)
+  confirm and `dispatchTool` audits writes. Shared mutation modules (`library-deletion.ts` …
+  `album-cover-mutate.ts`) back HTTP and MCP alike. → [mcp-agent.md](mcp-agent.md)
 - **Curator origin + rare-genre tools**: `get_artist` returns origin *and* mbid (a wrong origin is
   usually an inherited wrong MBID); `set_artist_origin` writes the shared `mutateArtistOrigin`,
   `set_artist_mbid` fixes the cause behind it, and `get_rare_genres` (`rareGenres`) surfaces
   low-cardinality primary genres as mistag candidates. → [mcp-agent.md](mcp-agent.md)
 - **A missing MCP argument is an error, not empty data**: `missingRequiredArgs` rejects on each
-  tool's own `inputSchema.required`, naming the keys sent — a wrong key used to answer "not in the
-  library"; `htmlEntityArgs` refuses a literal HTML entity, which lands in the library rather than
-  bouncing. → [mcp-agent.md](mcp-agent.md)
+  tool's own `inputSchema.required`, naming the keys sent; `htmlEntityArgs` refuses a literal HTML
+  entity. → [mcp-agent.md](mcp-agent.md)
 - **`identify_song` — identity from the audio**: `identifySongById` is fpcalc + AcoustID and nothing
   else, batchable where `lookup_song_metadata`'s fan-out is not; typed outcome, suggests only,
   carries no genre. → [mcp-agent.md](mcp-agent.md)
@@ -575,10 +566,9 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **Now Playing sheet**: `nowPlayingHeading` names the session (radio wins over the context it
   extended); `coverCollapsed` drops the cover padding at the notch's zero floor; `monoEnvelopePath`
   folds the waveform onto the seek line. → [web-ui.md](web-ui.md)
-- **Shuffle and repeat are not in the UI**: both buttons are gone from the mini bar and the Now
-  Playing sheet — shuffle reordered the queue instead of starting a radio, and repeat only stopped
-  the radio top-up. `PlayerService.shuffle`/`repeat` stay, since `playNext` still reads them.
-  → [web-ui.md](web-ui.md)
+- **Shuffle and repeat are not in the UI**: both buttons are gone — shuffle reordered the queue
+  instead of starting a radio, repeat only stopped the radio top-up. `PlayerService.shuffle` and
+  `repeat` stay, since `playNext` reads them. → [web-ui.md](web-ui.md)
 
 - **Unified song listings**: one `TrackRowComponent` + one root `SongMenuService.build(song, ctx)`
   builds every `⋯` menu; every album/artist name is an `EntityLinkComponent` link (span on TV for
