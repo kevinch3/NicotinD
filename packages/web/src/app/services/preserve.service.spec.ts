@@ -380,6 +380,17 @@ describe('PreserveService', () => {
       expect(svc.windowSize(100)).toBe(0);
     });
 
+    /**
+     * The data-saver rung: `[current, ...queue]` sliced to 1 is exactly the
+     * track playing, so nothing ahead is ever fetched.
+     */
+    it('keeps only the track playing when mode is "1"', () => {
+      svc.setAutoPreserveMode('1');
+      expect(svc.windowSize(1)).toBe(1);
+      expect(svc.windowSize(50)).toBe(1);
+      expect(svc.windowSize(0)).toBe(0);
+    });
+
     it('caps at 5 when mode is "5"', () => {
       svc.setAutoPreserveMode('5');
       expect(svc.windowSize(3)).toBe(3);

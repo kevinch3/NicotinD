@@ -64,19 +64,20 @@ test.describe('auto-preserve queue (PWA lock-screen resilience)', () => {
         }),
     );
 
-  test('Settings exposes the four auto-preserve modes and the explainer', async ({ page }) => {
+  test('Settings exposes every auto-preserve mode and the explainer', async ({ page }) => {
     await page.goto('/settings');
     // The Playback & Offline card starts collapsed (settings-cards
     // unification task 2) — expand it to reach the auto-preserve controls.
     await expandGroup(page, 'settings-playback');
     await expect(page.getByTestId('auto-preserve-off')).toBeVisible();
+    await expect(page.getByTestId('auto-preserve-1')).toBeVisible();
     await expect(page.getByTestId('auto-preserve-5')).toBeVisible();
     await expect(page.getByTestId('auto-preserve-20')).toBeVisible();
     await expect(page.getByTestId('auto-preserve-full')).toBeVisible();
     await expect(page.getByTestId('auto-preserve-explain')).toBeVisible();
   });
 
-  test('enabling "Next 5" auto-saves queued tracks; toggle-off confirms and clears', async ({
+  test('enabling "Next 5" auto-saves queued tracks; turning it off keeps them', async ({
     page,
   }) => {
     // Reset both stores for a deterministic count.
@@ -98,19 +99,44 @@ test.describe('auto-preserve queue (PWA lock-screen resilience)', () => {
     // Wait for the coordinator to save exactly 5 auto-source rows.
     await expect.poll(() => autoPreservedCount(page), { timeout: 30_000 }).toBe(5);
 
-    // Toggle off — should prompt a confirm dialog with the count baked in.
+    // Turning it off stops the downloads and nothing else: no prompt, and the
+    // five tracks already on disk stay there (#1262).
     await page.goto('/settings');
     await expandGroup(page, 'settings-playback');
     const dialog = page.getByTestId('confirm-dialog');
     await page.getByTestId('auto-preserve-off').click();
+    await expect(page.getByTestId('auto-preserve-off')).toHaveAttribute('aria-pressed', 'true');
+    await expect(dialog).toHaveCount(0);
+    expect(await autoPreservedCount(page)).toBe(5);
+
+    // Deleting them is its own button, and still asks first.
+    await page.getByTestId('auto-preserve-clear').click();
     await expect(dialog).toBeVisible();
     await expect(dialog).toContainText('5 auto-saved track');
-
     await page.getByTestId('confirm-ok').click();
 
-    // After confirm: auto-source rows are gone, mode persisted.
     await expect.poll(() => autoPreservedCount(page), { timeout: 5_000 }).toBe(0);
-    await expect(page.getByTestId('auto-preserve-off')).toHaveAttribute('aria-pressed', 'true');
+    // Nothing left to delete, so the button goes away.
+    await expect(page.getByTestId('auto-preserve-clear')).toHaveCount(0);
+  });
+
+  test('"This track" keeps only what is playing, never the queue ahead', async ({ page }) => {
+    await page.goto('/');
+    await deletePreserveDb(page);
+    await page.evaluate(() => localStorage.removeItem('nicotind-auto-preserve'));
+    await page.reload();
+
+    await page.goto('/settings');
+    await expandGroup(page, 'settings-playback');
+    await page.getByTestId('auto-preserve-1').click();
+    await expect(page.getByTestId('auto-preserve-1')).toHaveAttribute('aria-pressed', 'true');
+
+    await startAlbum(page);
+
+    // One row, and it stays one however long the 7-track queue sits there.
+    await expect.poll(() => autoPreservedCount(page), { timeout: 30_000 }).toBe(1);
+    await page.waitForTimeout(2_000);
+    expect(await autoPreservedCount(page)).toBe(1);
   });
 });
 

@@ -477,7 +477,9 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   gates the transport; `activeGraceMs`, `idleReleaseMs`. → [remote-playback.md](remote-playback.md)
 - **Auto-preserve queue (PWA lock-screen resilience)**: `AutoPreserveCoordinator` keeps the next-N
   queued tracks as IndexedDB blobs so playback survives the locked-screen network throttle;
-  `evictAutoLRU` never evicts user-saved tracks. → [web-ui.md](web-ui.md)
+  `evictAutoLRU` never evicts user-saved tracks. The window has a one-track rung for metered
+  connections, and changing it never deletes — `clearAutoSaved` is its own button.
+  `windowSize`, `offlineTrackAction`. → [web-ui.md](web-ui.md)
 - **The radio source belongs to no shell**: `RadioSourceService.install()` hands `PlayerService` its
   `RadioProvider` from the app initializer, because the one shell that used to own it is not the one
   a TV build mounts; `ensureRadioOn` keeps a TV endless and `playShelfSong` makes a Home song press

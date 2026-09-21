@@ -53,6 +53,7 @@ export const BUDGET_OPTIONS: { label: string; bytes: number }[] = [
  * to keep a runaway radio from filling tens of GB. */
 export const AUTO_PRESERVE_OPTIONS: { value: AutoPreserveMode; label: string }[] = [
   { value: 'off', label: 'Off' },
+  { value: '1', label: 'This track' },
   { value: '5', label: 'Next 5' },
   { value: '20', label: 'Next 20' },
   { value: 'full', label: 'Whole queue' },
@@ -227,27 +228,30 @@ export class SettingsComponent {
   }
 
   /**
-   * Auto-preserve toggle handler. Turning it OFF while auto-saved tracks
-   * exist asks the user to confirm removal — otherwise it just flips the
-   * mode without touching storage.
+   * Auto-preserve mode handler: it changes the mode, and nothing else.
+   *
+   * Turning it off used to prompt to delete every auto-saved track, and
+   * declining the prompt aborted the toggle — so "stop downloading but keep
+   * what I have" was unreachable, and the only way to stop the downloads was to
+   * lose the offline library they had built (#1262). Deleting is its own
+   * button now (`clearAutoSaved`), where it can be asked for rather than
+   * suffered.
    */
-  async onAutoPreserveClick(value: AutoPreserveMode): Promise<void> {
-    if (value === 'off' && this.preserve.autoPreserveMode() !== 'off') {
-      const count = this.preserve.autoPreservedCount();
-      if (count > 0) {
-        const ok = await this.confirm.ask(
-          this.i18n.t(
-            count === 1 ? 'settings.removeAutoSavedOne' : 'settings.removeAutoSavedOther',
-            {
-              count,
-            },
-          ),
-        );
-        if (!ok) return;
-        await this.preserve.removeAllAutoPreserved();
-      }
-    }
+  onAutoPreserveClick(value: AutoPreserveMode): void {
     this.preserve.setAutoPreserveMode(value);
+  }
+
+  /** Delete every auto-saved track. User-saved ones are never in this set. */
+  async clearAutoSaved(): Promise<void> {
+    const count = this.preserve.autoPreservedCount();
+    if (count === 0) return;
+    const ok = await this.confirm.ask(
+      this.i18n.t(count === 1 ? 'settings.removeAutoSavedOne' : 'settings.removeAutoSavedOther', {
+        count,
+      }),
+    );
+    if (!ok) return;
+    await this.preserve.removeAllAutoPreserved();
   }
 
   /** One-line explainer for the current auto-preserve mode. */
@@ -255,6 +259,8 @@ export class SettingsComponent {
     switch (this.preserve.autoPreserveMode()) {
       case 'off':
         return this.i18n.t('settings.autoPreserveExplainOff');
+      case '1':
+        return this.i18n.t('settings.autoPreserveExplain1');
       case '5':
         return this.i18n.t('settings.autoPreserveExplain5');
       case '20':

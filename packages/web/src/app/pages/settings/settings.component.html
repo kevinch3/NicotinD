@@ -222,6 +222,17 @@
             <p class="text-xs text-theme-muted mt-2" data-testid="auto-preserve-explain">
               {{ autoPreserveExplain() }}
             </p>
+            <!-- Deleting the auto-saved tracks is its own button, not a side
+                 effect of turning the window off: stopping the downloads and
+                 discarding what they produced are different intentions, and
+                 only one of them is reversible. -->
+            @if (preserve.autoPreservedCount(); as autoSaved) {
+              <button appTvNavItem type="button" (click)="clearAutoSaved()"
+                data-testid="auto-preserve-clear"
+                class="mt-3 text-xs rounded-lg border border-theme px-3 py-1.5 text-status-error hover:bg-theme-surface-2 transition">
+                {{ 'settings.clearAutoSaved' | t: { count: autoSaved } }}
+              </button>
+            }
           </div>
         </div>
       </app-settings-group>
