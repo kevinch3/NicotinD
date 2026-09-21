@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { closeSync, openSync, readSync, writeSync } from 'node:fs';
 import { createLogger } from '@nicotind/core';
 
 const log = createLogger('opus-gain');
@@ -118,19 +118,47 @@ function firstOggPage(buf: Buffer): FirstPage | null {
   return { start: 0, length: headerLength + payloadLength, payloadAt };
 }
 
-/** Current header gain in dB, or `null` when the file is not Ogg-Opus. */
-export function readOutputGain(path: string): number | null {
-  let buf: Buffer;
+/**
+ * Bytes pulled off the front of a file. An Ogg page caps at 65,307 bytes
+ * (27 header + 255 lacing + 65,025 payload), so one read covers the first page
+ * whatever its size.
+ */
+const HEAD_BYTES = 65_536;
+
+/**
+ * Read the first {@link HEAD_BYTES} of a file, or `null` if it cannot be read.
+ *
+ * A descriptor rather than `readFileSync`, because `readFileSync(p).subarray(…)`
+ * loads the **whole track** and then throws almost all of it away. Over a
+ * library that is 43.8 GiB of reads to inspect 2 bytes per file, and it is
+ * synchronous, so it blocks the event loop long enough for health checks to
+ * time out and the container to be marked unhealthy. Measured, not theorised.
+ */
+function readHead(path: string): { buf: Buffer; bytes: number } | null {
+  let fd: number;
   try {
-    // 64 KiB is far more than the first page needs and avoids loading a
-    // whole track to read two bytes.
-    buf = readFileSync(path).subarray(0, 65536);
+    fd = openSync(path, 'r');
   } catch {
     return null;
   }
-  const page = firstOggPage(buf);
+  try {
+    const buf = Buffer.alloc(HEAD_BYTES);
+    const bytes = readSync(fd, buf, 0, HEAD_BYTES, 0);
+    return { buf, bytes };
+  } catch {
+    return null;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** Current header gain in dB, or `null` when the file is not Ogg-Opus. */
+export function readOutputGain(path: string): number | null {
+  const head = readHead(path);
+  if (!head) return null;
+  const page = firstOggPage(head.buf.subarray(0, head.bytes));
   if (!page) return null;
-  return buf.readInt16LE(page.payloadAt + GAIN_OFFSET_IN_HEAD) / Q7_8_PER_DB;
+  return head.buf.readInt16LE(page.payloadAt + GAIN_OFFSET_IN_HEAD) / Q7_8_PER_DB;
 }
 
 /**
@@ -140,35 +168,47 @@ export function readOutputGain(path: string): number | null {
  * be read — this runs over a whole library, and one odd file must not end the
  * pass.
  *
- * The write is a whole-file rewrite because the page CRC changes, but the
- * bytes that differ are exactly the two of gain and the four of CRC. Passing
- * `0` restores a file to unnormalized, which is what makes this reversible.
+ * **Six bytes are read-modify-written in place**, not a whole-file rewrite.
+ * Both live in the first Ogg page, so the file is opened once, its head read,
+ * and two short `writeSync`s land at fixed offsets. Rewriting the container to
+ * change a gain would move 43.8 GiB across a library to alter 46 KB of it.
+ *
+ * Passing `0` restores a file to unnormalized, which is what makes this
+ * reversible.
  */
 export function writeOutputGain(path: string, gainDb: number): boolean {
-  let buf: Buffer;
+  let fd: number;
   try {
-    buf = readFileSync(path);
+    fd = openSync(path, 'r+');
   } catch (err) {
-    log.debug({ err, path }, 'could not read file for gain write');
+    log.debug({ err, path }, 'could not open file for gain write');
     return false;
   }
-  const page = firstOggPage(buf);
-  if (!page) return false;
-
-  const clamped = Math.max(MIN_GAIN_DB, Math.min(MAX_GAIN_DB, gainDb));
-  const units = Math.round(clamped * Q7_8_PER_DB);
-  buf.writeInt16LE(units, page.payloadAt + GAIN_OFFSET_IN_HEAD);
-
-  // The CRC covers the whole page including the header we just changed, so it
-  // has to be recomputed. A stale CRC makes the file corrupt to every decoder.
-  const pageBuf = buf.subarray(page.start, page.start + page.length);
-  buf.writeUInt32LE(oggPageCrc(pageBuf), page.start + 22);
-
   try {
-    writeFileSync(path, buf);
+    const buf = Buffer.alloc(HEAD_BYTES);
+    const bytes = readSync(fd, buf, 0, HEAD_BYTES, 0);
+    const page = firstOggPage(buf.subarray(0, bytes));
+    if (!page) return false;
+
+    const clamped = Math.max(MIN_GAIN_DB, Math.min(MAX_GAIN_DB, gainDb));
+    const units = Math.round(clamped * Q7_8_PER_DB);
+    const gainAt = page.payloadAt + GAIN_OFFSET_IN_HEAD;
+    buf.writeInt16LE(units, gainAt);
+
+    // The CRC covers the whole page including the byte just changed, so it has
+    // to be recomputed. A stale CRC makes the file corrupt to every decoder —
+    // it is the one thing this must not get wrong.
+    const crcAt = page.start + 22;
+    buf.writeUInt32LE(oggPageCrc(buf.subarray(page.start, page.start + page.length)), crcAt);
+
+    // The two byte ranges that actually differ, written where they sit.
+    writeSync(fd, buf, gainAt, 2, gainAt);
+    writeSync(fd, buf, crcAt, 4, crcAt);
     return true;
   } catch (err) {
     log.warn({ err, path }, 'could not write Opus header gain');
     return false;
+  } finally {
+    closeSync(fd);
   }
 }

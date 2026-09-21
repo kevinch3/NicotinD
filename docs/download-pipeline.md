@@ -510,8 +510,19 @@ own parser reads happily and every decoder rejects. So `oggPageCrc` recomputes i
 MSB-first with no reflection and no final xor, none of the common CRC32 flavours, which is why it is
 written out rather than reached for.
 
-A normalized file differs from its original in **exactly six bytes**: two of gain, four of CRC. The
-tests assert that count, assert everything past the first page is byte-identical, and assert that
+A normalized file differs from its original in **exactly six bytes**: two of gain, four of CRC — and
+since #1248 those six are also the only bytes *written*. The file is opened once, its head read, and
+two short `writeSync`s land at fixed offsets.
+
+That mattered more than it sounds. The first version called `readFileSync(path).subarray(0, 65536)`
+to inspect two bytes, with a comment claiming it avoided loading the whole track — which is exactly
+what it did. Over 7,774 files that is **43.8 GiB of synchronous reads**, in a loop that never
+yielded, and on prod it blocked the event loop long enough for the health check to time out and the
+container to be marked unhealthy mid-pass. Cancelling was impossible for the same reason: the
+request that would set `shouldStop` could not run. The pass now also yields every `YIELD_EVERY`
+files.
+
+The tests assert that count, assert everything past the first page is byte-identical, and assert that
 writing `0` back restores the original byte-for-byte. Two independent readers confirm the file is
 still valid — and that pair was checked to actually **fail** on a bad CRC rather than tolerate one,
 because a test that cannot fail proves nothing.

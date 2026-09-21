@@ -194,6 +194,28 @@ describe.skipIf(!ffmpegAvailable())('writeOutputGain', () => {
     expect(opusinfoGain(p)).toContain('Opus');
   });
 
+  it('touches only the head of a file far larger than the read window', () => {
+    // The regression. `readFileSync(p).subarray(0, 65536)` reads the WHOLE
+    // track and throws it away; over 7,774 library files that was 43.8 GiB of
+    // synchronous reads, which blocked the event loop long enough for health
+    // checks to time out and the container to be marked unhealthy on prod.
+    // A 30 s Opus file is comfortably past the 64 KiB window.
+    const root = tmpRoot();
+    const p = join(root, 'long.opus');
+    makeOpus(p, 30);
+    const before = readFileSync(p);
+    expect(before.length).toBeGreaterThan(65_536);
+
+    expect(writeOutputGain(p, -4)).toBe(true);
+
+    const after = readFileSync(p);
+    expect(after.length).toBe(before.length);
+    expect(readOutputGain(p)).toBe(-4);
+    // Everything past the first page is untouched, which is what makes an
+    // in-place six-byte patch equivalent to the old whole-file rewrite.
+    expect(after.subarray(65_536).equals(before.subarray(65_536))).toBe(true);
+  });
+
   it('declines a file that is not Ogg-Opus rather than corrupting it', () => {
     const root = tmpRoot();
     const p = join(root, 'not-audio.opus');
