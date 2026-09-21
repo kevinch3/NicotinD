@@ -58,6 +58,11 @@ which makes a source-adaptive mapping straightforward rather than a guess:
 The library goes from 122.17 GiB to about 85.8 GiB, a **30% reduction**, and 64% of files are
 re-encoded once.
 
+**Re-measured 2026-09-21**, replaying the shipped ladder read-only against prod: **13,867**
+candidates (three files added since), 78.35 GiB → 41.86, saving **36.49 GiB**; library 122.16 →
+85.67. **Zero candidates lack a duration**, so that figure is an estimate rather than a floor — the
+`unestimated` caveat below does not apply to this run.
+
 ## The predicate change, and why it is a different decision in kind
 
 The pass keeps a file only if `isLossless(suffix) || isLossless(ext(path))`
@@ -453,9 +458,11 @@ until the safety work is in.
    questions in one sitting: does `output_gain` take effect on our surfaces, and do the 7,774
    Ogg-Opus files already in the library play, seek and report duration correctly on iOS 18.4+.
    Together these decide the normalization mechanism and the container.
-2. **Normalize the 7,774 existing Opus files.** Not started. Lossless, reversible, needs none of
-   the conversion machinery, and it closes #723 for a third of the library. **Shippable on its
-   own** — it should not wait behind the conversion. Blocked only on step 1.
+2. **Normalize the 7,774 existing Opus files.** BUILT (#1243 the header-gain primitive, #1245 the
+   pass), and deliberately **off** behind `NICOTIND_OPUS_HEADER_GAIN` until step 1 answers. Nothing
+   else waits on it: it is lossless, reversible, needs none of the conversion machinery, and closes
+   #723 for a third of the library. All 7,774 files have a loudness reading, so none would be
+   skipped.
 3. ~~**Song-id remap infrastructure.**~~ Shipped: #1221 the shared carry, #1224 the coverage gate
    reading the live schema, #1227 the delete-before-scan song-loss fix.
 4. ~~**Tag and artwork preservation.**~~ Shipped: #1225 the three dropped ID3 frames, #1229 the
@@ -464,10 +471,12 @@ until the safety work is in.
 5. ~~**Verification hardening.**~~ Shipped: #1227 fails closed before the delete, #1228 quarantine,
    #1235 and #1236 wiring that quarantine into the callers that had silently bypassed it, #1232
    pooled encodes, #1239 a durable run record.
-6. **Source-adaptive bitrate selection** — a pure, table-driven function tested against the
-   measured distribution above. Not started; needs decision 3.
-7. **The conversion pass** — extend the predicate and wire the remap. Dry run, pilot batch, then
-   the 13,864. Not started; needs every decision below.
+6. ~~**Source-adaptive bitrate selection.**~~ Shipped: #1242 `opusBitrateFor`, pure and
+   table-driven. It shipped **inert** — the pass took only lossless files, which all get the top
+   rate — and #1244 made it live.
+7. **The conversion pass.** BUILT: #1244 `scope: 'all'` takes every non-Opus file, asked for by
+   name (`?scope=all`, `--all`) so a bare click stays on the safe half. **Not run.** The remaining
+   sequence is the owner's: dry run, pilot batch, then the rest.
 8. **The simplification sweep** — delete the ID3 path, `node-id3` and the mixed-format rule. Close
    #964 and #1177. Not started; strictly after step 7.
 
