@@ -12,16 +12,18 @@
  *
  * Two independent reasons the raw number is meaningless here:
  *
- *   1. It audits the whole lockfile (2,546 packages), not what ships. The
- *      runtime image is 166 packages (issue #612 / #621, `bun install
- *      --production`). Filtering to the production closure: 27 -> 5.
+ *   1. It audits the whole lockfile (1,886 packages as bun counts them), not
+ *      what ships. The runtime image is 158 packages (issue #612 / #621, `bun
+ *      install --production`). Filtering to the production closure: 28 -> 4.
  *
  *   2. It reports per package NAME, not per resolved INSTANCE. A monorepo
- *      lockfile resolves the same package many times: `sharp` is here at both
- *      0.32.6 (vulnerable, pulled by @capacitor/assets, dev-only) and 0.35.3
- *      (safe, what the API ships). `yaml` and `builder-util-runtime` are the
- *      same story. Without semver-matching the RESOLVED version, the gate is
- *      majority false positives even inside the closure.
+ *      lockfile resolves the same package many times: `builder-util-runtime` is
+ *      here at both 9.2.10 and 9.7.0. Without semver-matching the RESOLVED
+ *      version, the gate is majority false positives even inside the closure.
+ *      The example this note used to give was `sharp`, dev-only at a vulnerable
+ *      0.32.6 alongside the safe copy the API ships; that second resolution came
+ *      in through `@capacitor/assets` and left with it (#1183), which is why the
+ *      example moved rather than the rule.
  *
  * So this gate applies both filters and reports the whole funnel. Neither filter
  * is allowed to drop something silently: a package inside the closure whose

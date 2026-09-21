@@ -735,6 +735,9 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   `bun.lock` from every workspace's `dependencies`) *and* the resolved version, reports the dependency
   path, fails on an unresolvable version, and warns-and-passes on an unreachable registry.
   → [quality-gates.md](quality-gates.md)
+- **`check:install-scripts`**: no dependency runs an unreviewed install hook, keyed on its command
+  text and walked from the workspace roots. `scan`, `unreviewed`, `staleEntries`.
+  → [quality-gates.md](quality-gates.md)
 - **`check:library-queries`**: plans every library list route through the real filter builders across
   every filter dimension and fails a `library_songs` scan that is not evaluated once; routes and
   dimensions are both discovered, so an unmodeled one fails. `judgeSongScans`,
@@ -749,12 +752,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   useless here; load discriminates. → [host-monitoring.md](host-monitoring.md)
 - **Container memory limits**: every compose service declares `mem_limit` and `memswap_limit`, set
   equal so no container may swap, enforced by `compose-memory-limits.test.ts` against a whole-stack
-  budget. An unbounded container cannot fail alone — it stalls the host instead of itself.
-  → [deployment.md](deployment.md)
-- **Secret + image scanning**: gitleaks runs over every commit (needs full history or the scan
-  silently shrinks to one commit) as a pinned binary; Trivy scans the published image scoped to OS
-  vulns and unfixed-ignored, as a *step* so blocking the deploy needs no `if:` edit.
-  → [quality-gates.md](quality-gates.md)
+  budget. → [deployment.md](deployment.md)
+- **Secret + image scanning**: gitleaks runs over every commit as a pinned binary, needing
+  `fetch-depth: 0`; Trivy scans the published image scoped to OS vulns and unfixed-ignored, as a
+  *step* so blocking the deploy needs no `if:` edit. → [quality-gates.md](quality-gates.md)
 - **CI boots the shipped artifact**: the docker build is unconditional and loaded, then a smoke step
   waits on the image's own healthcheck and asserts `/api/health` reports the expected version,
   matrixed over both published arches on native runners, never QEMU. The deploy then polls the host
@@ -764,15 +765,14 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   config rather than a hardcoded list. Release tagging is orphan-tag-proof.
   → [deployment.md](deployment.md)
 - **The runtime image ships only what it runs**: the production stage installs with `--production`
-  from the isolated store; `.dockerignore` excludes tests; `USER bun` needs `/data` pre-created and
-  chowned. → [deployment.md](deployment.md)
+  from the isolated store, `.dockerignore` excludes tests, and `USER bun` needs `/data` chowned.
+  → [deployment.md](deployment.md)
 - **Unsafe shipped defaults, announced before removal**: `findInsecureDefaults`
   (`services/insecure-defaults.ts`) warns at boot, after the ready handshake, never fatally — it checks
   registered addon tokens, not env vars. → [deployment.md](deployment.md)
-- **Bounded outbound clients**: `LidarrClient` timeouts come in three tiers (local, lookup, provision)
-  because many call sites swallow failures, so one flat budget degrades silently; a timeout is
-  re-thrown as "timed out". MusicBrainz uses a discriminated `FetchOutcome` so an outage is never
-  cached as a confirmed absence. → [design-patterns.md](design-patterns.md)
+- **Bounded outbound clients**: `LidarrClient` timeouts come in three tiers (local, lookup,
+  provision); a timeout is re-thrown as "timed out". MusicBrainz uses a discriminated `FetchOutcome`
+  so an outage is never cached as a confirmed absence. → [design-patterns.md](design-patterns.md)
 - **We build the YouTube PO-token provider**: `ghcr.io/kevinch3/nicotind-pot-provider` built from
   pinned upstream source; the canonical version is published on the artifact as a label, pinned by
   `pot-provider-pin.test.ts`. → [deployment.md](deployment.md)

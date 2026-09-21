@@ -699,17 +699,19 @@ direction, loudly-false instead of silently-green.
 
 Two independent reasons the raw number means nothing here.
 
-**It audits the lockfile, not the artifact.** `bun audit` reads all 2,546 entries in
-`bun.lock`. The runtime image installs 166 of them (`bun install --production`, see
+**It audits the lockfile, not the artifact.** `bun audit` reads every entry in `bun.lock`
+(1,886 packages as bun counts them). The runtime image installs 158 of them (`bun install --production`, see
 [deployment.md](deployment.md)). Angular, Storybook, Playwright, `electron-builder` and
 `lint-staged` build the app; they never run in it. Filtering to the production closure takes
-27 advisory packages down to **3**.
+28 advisory packages down to **4**.
 
 **It reports per package name, not per resolved instance.** A monorepo lockfile resolves the
-same package many times, and `bun audit` groups by name. `sharp` is here at both `0.32.6`
-(vulnerable, via `@capacitor/assets`, dev-only) and `0.35.3` (safe, what the API ships);
-`yaml` and `builder-util-runtime` are the same story. Without matching the *resolved*
-version, the gate is majority false positives even after the closure filter.
+same package many times, and `bun audit` groups by name. `builder-util-runtime` is here at
+both `9.2.10` and `9.7.0`. Without matching the *resolved* version, the gate is majority
+false positives even after the closure filter. The example this used to give was `sharp`,
+dev-only at a vulnerable `0.32.6` beside the safe copy the API ships — that second
+resolution arrived through `@capacitor/assets` and left with it (#1183). The rule is
+unchanged; only the instance that illustrated it is gone.
 
 So `check:audit` applies both filters and prints the whole funnel:
 
@@ -850,12 +852,54 @@ Only `desktop-package` (`prepare-resources` → `stageFfmpeg`) uses the binary. 
 `FFMPEG_BIN: /bin/false` workflow-wide: the package's `index.js` returns that path, and its
 installer exits early ("installed already") when the path is an existing file. `desktop-package`
 sets `FFMPEG_BIN: ''` to get the real download. `/bin/false` rather than `/bin/true` so any stray
-use fails loudly. `--ignore-scripts` would be too broad: electron, esbuild and sharp need their
-install scripts. `deploy.yml` is untouched, because its desktop jobs need the binary.
+use fails loudly. `--ignore-scripts` would be too broad: `esbuild` needs its install script to
+validate the platform binary the lockfile pins, and `lmdb` / `msgpackr-extract` need theirs to
+resolve a prebuilt `.node`. `deploy.yml` is untouched, because its desktop jobs need the binary.
 
 `scripts/ci-ffmpeg-static.test.ts` checks the pairing: the sentinel is set, every job that stages
 ffmpeg clears it, no other job does, and the installed script really skips the network when
 `FFMPEG_BIN` is set.
+
+### The second instance, and why this became a gate (#1183)
+
+The sentinel fixed one package. On 2026-09-21 a second arrived: **`sharp@0.32.6`**, pulled in
+transitively by `@capacitor/assets`, whose install script downloads libvips from a GitHub release
+and falls back to compiling from source when that fails. A 504 from the release CDN failed
+`web-test`, both `e2e-shard` legs and `desktop-package` **in the same minute**, on a four-file
+artwork fix that reaches none of them — four attempts, 15.5 minutes, the last blocked by an
+unrelated 504 on ffmpeg-static's own download.
+
+It was removable for exactly the reason ffmpeg-static's was — nothing in CI used it. Both call
+sites already write `bunx @capacitor/assets@3`, which pins the major itself, so the declared
+devDependency bought nothing and cost every job a libvips download. Deleting it also removed the
+dev-only vulnerable `sharp` resolution that `check:audit`'s note used as its worked example, and
+restored an intent `packages/mobile/scripts/generate-native-icons.ts` had already written down:
+the 1024² sources are committed so CI needs "no native `sharp` build in the mobile CI jobs".
+
+Two instances of one class is where a gate earns its place, so the rule in this section's title
+is now enforced rather than remembered. **`check:install-scripts`** walks the installed tree and
+fails on any package running a `preinstall`/`install`/`postinstall` hook that is not on a
+reviewed allowlist — keyed on the **hook command text**, not the version, so a patch bump that
+changes what the script does re-opens the decision while routine bumps do not. Both directions,
+per the rule at the top of this page: an entry matching nothing also fails, so the allowlist
+cannot rot into a check over an empty set.
+
+The denominator is the subtle part, and the first draft got it wrong. Scanning
+`node_modules/.bun` — bun's store — reported four packages that `bun install` would never run:
+the store is a cache bun does not prune, and it holds versions no workspace links to any more.
+The gate walks **reachability from the workspace roots** instead, following symlinks and
+deduplicating by realpath, because what runs an install script is what bun links into the tree.
+Bun's isolated layout is why that walk is not a one-liner: a package's dependencies are siblings
+inside `<store-entry>/node_modules/`, not in a nested `node_modules`, and a walk that checked only
+the nested case found one package out of seven.
+
+After the removal exactly one allowlisted package still fetches from a vendor host —
+`ffmpeg-static` — and only `desktop-package` runs it, because that job genuinely needs the binary.
+Removal is unavailable there, so that one `bun install` is wrapped in a **bounded** retry: three
+attempts, backoff, then the job fails. A vendor CDN's uptime is not a signal about the diff, but a
+retry that could never fail would be the hidden-retry shape this page warns about elsewhere — so
+it is bounded, it is loud, and `check:install-scripts` is what stops it widening to a second
+package by making one appear as a build failure instead of a withheld release.
 
 ## A release is only cut when something releasable landed (#755)
 
