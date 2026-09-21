@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.40](https://github.com/kevinch3/NicotinD/compare/v0.8.39...v0.8.40) (2026-09-21)
+
+### Bug Fixes
+
+* **ci:** publish the desktop artifacts again, and fail when none are uploaded ([#1262](https://github.com/kevinch3/NicotinD/issues/1262)) ([1d86ee8](https://github.com/kevinch3/NicotinD/commit/1d86ee876fd26c6693761c8565faf1cb25d1bc99)), references [#1261](https://github.com/kevinch3/NicotinD/issues/1261)
 ## [0.8.39](https://github.com/kevinch3/NicotinD/compare/v0.8.38...v0.8.39) (2026-09-21)
 
 ### Bug Fixes
