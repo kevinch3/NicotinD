@@ -9,9 +9,7 @@ import { parse } from 'yaml';
 // `@nicotind/desktop` fails it once `/` is stripped, leaving `@` behind.
 const SAFE_FILENAME_FIELD = /^[\p{L}\p{N}._\- ]+$/u;
 
-const config = parse(
-  readFileSync(path.join(import.meta.dir, '../electron-builder.yml'), 'utf-8'),
-);
+const config = parse(readFileSync(path.join(import.meta.dir, '../electron-builder.yml'), 'utf-8'));
 
 describe('electron-builder.yml', () => {
   it('pins executableName to a value electron-builder accepts (regression: v26 rejects the scoped package name fallback)', () => {
@@ -21,5 +19,14 @@ describe('electron-builder.yml', () => {
 
   it('pins deb.artifactName off productName, not the scoped package name', () => {
     expect(config.deb.artifactName).toBe('${productName}_${version}_${arch}.${ext}');
+  });
+
+  // Regression #1261: the publisher's default is `draft`, and it refuses to
+  // upload into the *published* release that deploy.yml's `release-notes` job
+  // creates first — skipping every file and exiting 0. Two months of releases
+  // shipped no AppImage, deb, dmg or updater feed while both jobs stayed green.
+  it('pins publish.releaseType to release, so the publisher matches the release deploy.yml creates', () => {
+    expect(config.publish.provider).toBe('github');
+    expect(config.publish.releaseType).toBe('release');
   });
 });
