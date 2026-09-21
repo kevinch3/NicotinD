@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.36](https://github.com/kevinch3/NicotinD/compare/v0.8.35...v0.8.36) (2026-09-21)
+
+### Bug Fixes
+
+* **tags:** read the MusicBrainz recording id from UFID, where it lives ([#1249](https://github.com/kevinch3/NicotinD/issues/1249)) ([0d874bd](https://github.com/kevinch3/NicotinD/commit/0d874bdd5d9f1119c8413fbd21e97f8188d202ef)), references [#1230](https://github.com/kevinch3/NicotinD/issues/1230) [#723](https://github.com/kevinch3/NicotinD/issues/723)
 ## [0.8.35](https://github.com/kevinch3/NicotinD/compare/v0.8.34...v0.8.35) (2026-09-21)
 
 ### Bug Fixes
