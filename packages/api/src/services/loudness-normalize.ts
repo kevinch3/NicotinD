@@ -37,6 +37,12 @@ export const DEFAULT_TARGET_LUFS = -14;
  */
 const GAIN_EPSILON_DB = 1 / 512;
 
+/**
+ * Files handled between yields. Small enough that a cancel or a health check
+ * lands promptly, large enough that the yield itself is not the cost.
+ */
+const YIELD_EVERY = 64;
+
 export interface NormalizeLoudnessResult {
   /** Files this pass looked at — the denominator, fixed before any work. */
   candidates: number;
@@ -110,6 +116,12 @@ export async function normalizeLibraryLoudness(
 
   let visited = 0;
   for (const row of rows) {
+    // Yield periodically. Every step below is synchronous, so without this the
+    // whole pass runs in one turn of the event loop: on prod that starved the
+    // health check and the container was marked unhealthy mid-run. Cancelling
+    // was impossible for the same reason — `shouldStop` cannot be set by a
+    // request that never gets to run.
+    if (visited > 0 && visited % YIELD_EVERY === 0) await new Promise(setImmediate);
     if (opts.shouldStop?.()) {
       result.stopped = true;
       break;
