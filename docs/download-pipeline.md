@@ -320,8 +320,30 @@ A file the app cannot read is worse than no file: the picker shows nothing and `
 says false, while the bytes are still paid for. So `preparePicture`
 (`services/opus-artwork.ts`) caps covers at **512 KB** — under the measured boundary with margin,
 because the exact figure belongs to a dependency we do not control and can move on an upgrade — and
-re-compresses anything larger up a quality ladder. It returns **null** when nothing fits, an explicit
-"do not embed" rather than a path that fails in the encoder.
+re-compresses anything larger. It returns **null** when nothing fits, an explicit "do not embed"
+rather than a path that fails in the encoder.
+
+**The re-compress walks two ladders, quality then dimensions, and the order is the whole design.**
+Quality comes first (`RECOMPRESS_QUALITY` q4 → q6 → q8) so a cover that is merely saved wastefully
+keeps its full pixel dimensions, which is what a listener sees when they open it. Only when no
+quality reaches the cap does it start capping the longest edge (`RECOMPRESS_EDGE` native → 1500px →
+1000px), because past a certain size quality alone cannot get there **at all**. Measured on a real
+3000×3000 cover that was being dropped (#1252):
+
+| | native | 1500px | 1000px |
+| --- | --- | --- | --- |
+| q4 | 982 KB | 348 KB | 175 KB |
+| q8 | **605 KB — over the cap, so no art** | 198 KB | 102 KB |
+
+1500px q4 is both smaller *and* better-looking than native q8 — at any realistic display size q8's
+artifacts show more than the resample does. So once a cover is over the cap, downscaling dominates
+pushing quality; the original ladder spent its entire budget on the weaker axis and then gave up.
+With the 1000px rung, **null is no longer reachable by size** — square noise, the worst case there
+is, lands ~385 KB there whatever its source dimensions — so it now means an input ffmpeg cannot
+decode. The scale filter bounds its box by the source's own dimensions
+(`min(edge,iw)`/`min(edge,ih)` with `force_original_aspect_ratio=decrease`), which is what stops it
+upscaling a small cover and what caps the longest edge on a portrait image rather than only the
+width.
 
 `opus-artwork.test.ts` is the harness, and it asks **two** readers on purpose: `opusinfo`, the
 authority on whether the file is right, and `music-metadata`, which is what the app can actually see.

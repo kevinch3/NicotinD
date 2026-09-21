@@ -61,6 +61,45 @@ export function makeCover(path: string, px: number, quality = 3): number {
   return statSync(path).size;
 }
 
+/**
+ * Bytes of `src` re-encoded at `quality` with **no** resampling.
+ *
+ * Lets a spec assert its own denominator: that the quality ladder alone really
+ * cannot fit a given fixture, rather than trusting that it still cannot after
+ * an ffmpeg upgrade moves the encoder's output size.
+ */
+export function nativeQualityBytes(src: string, quality: number): number {
+  const out = join(dirname(src), `.native-q${quality}.jpg`);
+  execFileSync(
+    'ffmpeg',
+    ['-hide_banner', '-loglevel', 'error', '-i', src, '-q:v', String(quality), '-y', out],
+    { stdio: 'ignore' },
+  );
+  return statSync(out).size;
+}
+
+/** `[width, height]` of an image, via ffprobe. */
+export function imageDimensions(path: string): [number, number] {
+  const out = execFileSync(
+    'ffprobe',
+    [
+      '-hide_banner',
+      '-v',
+      'error',
+      '-select_streams',
+      'v:0',
+      '-show_entries',
+      'stream=width,height',
+      '-of',
+      'csv=p=0',
+      path,
+    ],
+    { encoding: 'utf8' },
+  ).trim();
+  const [w, h] = out.split(',').map(Number);
+  return [w!, h!];
+}
+
 /** One second of silence as a WAV, the input opusenc takes. */
 export function makeWav(path: string): void {
   mkdirSync(dirname(path), { recursive: true });
