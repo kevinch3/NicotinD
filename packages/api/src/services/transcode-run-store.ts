@@ -46,6 +46,7 @@ export interface TranscodeRun {
   id: string;
   state: TranscodeRunState;
   apply: boolean;
+  /** Fixed kbps the pass used, or `0` when it read each file's own. */
   bitRate: number;
   /** Where the replaced originals were kept, when they were. */
   quarantineRun: string | null;

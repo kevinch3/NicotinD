@@ -69,13 +69,29 @@ function makeAudio(
 function seedSongRow(
   db: Database,
   rel: string,
-  extra: { starred?: string; hidden?: number; size?: number; duration?: number } = {},
+  extra: {
+    starred?: string;
+    hidden?: number;
+    size?: number;
+    duration?: number;
+    suffix?: string;
+    bitRate?: number;
+  } = {},
 ) {
   const id = songId(rel);
   db.run(
-    `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, suffix, size, duration, starred, hidden, synced_at)
-     VALUES (?, 'alb', 'Avril 14th', 'Aphex Twin', 'art', ?, 'flac', ?, ?, ?, ?, 1)`,
-    [id, rel, extra.size ?? 1000, extra.duration ?? 120, extra.starred ?? null, extra.hidden ?? 0],
+    `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, suffix, size, duration, bit_rate, starred, hidden, synced_at)
+     VALUES (?, 'alb', 'Avril 14th', 'Aphex Twin', 'art', ?, ?, ?, ?, ?, ?, ?, 1)`,
+    [
+      id,
+      rel,
+      extra.suffix ?? 'flac',
+      extra.size ?? 1000,
+      extra.duration ?? 120,
+      extra.bitRate ?? 0,
+      extra.starred ?? null,
+      extra.hidden ?? 0,
+    ],
   );
   return id;
 }
@@ -655,5 +671,49 @@ describe.skipIf(!ffmpegAvailable())('concurrency: the three-phase split', () => 
       n.endsWith('.opus'),
     );
     expect(opusOnDisk).toEqual([]);
+  });
+});
+
+describe('source-adaptive bitrate', () => {
+  it('gives every candidate the top rate today, because every candidate is lossless', async () => {
+    // Honest about what this currently proves. The pass selects lossless files
+    // only, and lossless takes LOSSLESS_OPUS_KBPS without consulting the
+    // ladder — so the ladder is wired but INERT until the predicate extends to
+    // the 13,576 mp3s. Its own unit tests cover the buckets; this covers the
+    // wiring, and will start distinguishing rates the moment the predicate
+    // grows. Written this way so it cannot quietly pass for the wrong reason.
+    const music = tmpMusic();
+    const db = new Database(':memory:');
+    applySchema(db);
+    const rel = 'A/Album/01 - Song.flac';
+    mkdirSync(dirname(join(music, rel)), { recursive: true });
+    await Bun.write(join(music, rel), 'x');
+    seedSongRow(db, rel, { size: 10_000_000, duration: 120, bitRate: 96 });
+
+    const adaptive = await transcodeLibraryToOpus(db, music, { apply: false });
+    const at128 = await transcodeLibraryToOpus(db, music, { apply: false, bitRate: 128 });
+    const at64 = await transcodeLibraryToOpus(db, music, { apply: false, bitRate: 64 });
+
+    // Adaptive agrees with a pinned 128 and differs from a pinned 64, which is
+    // what "took the top rate" means in terms this pass can observe.
+    expect(adaptive.bytesReclaimed).toBe(at128.bytesReclaimed);
+    expect(adaptive.bytesReclaimed).not.toBe(at64.bytesReclaimed);
+  });
+
+  it('treats an unprobed bitrate as top rate, never as a quiet source', async () => {
+    // `bit_rate = 0` is probe failure. Reading it as "under 128, encode at 64"
+    // would crush exactly the files we know least about.
+    const music = tmpMusic();
+    const db = new Database(':memory:');
+    applySchema(db);
+    const rel = 'A/Album/01 - Unknown.flac';
+    mkdirSync(dirname(join(music, rel)), { recursive: true });
+    await Bun.write(join(music, rel), 'x');
+    seedSongRow(db, rel, { size: 10_000_000, duration: 120, bitRate: 0 });
+
+    const r = await transcodeLibraryToOpus(db, music, { apply: false });
+    const at128 = await transcodeLibraryToOpus(db, music, { apply: false, bitRate: 128 });
+
+    expect(r.bytesReclaimed).toBe(at128.bytesReclaimed);
   });
 });
