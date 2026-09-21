@@ -5,7 +5,8 @@
  *
  *   bun run packages/api/src/scripts/convert-library.ts             # dry run
  *   bun run packages/api/src/scripts/convert-library.ts --apply     # write
- *   bun run packages/api/src/scripts/convert-library.ts --apply --bitrate 96
+ *   bun run packages/api/src/scripts/convert-library.ts --apply
+ *   bun run packages/api/src/scripts/convert-library.ts --apply --bitrate 96   # pin one rate
  *
  * Per-file it migrates song-keyed references (playlist entries, acquisitions,
  * starred/hidden) across the id change. Env: NICOTIND_DATA_DIR,
@@ -47,8 +48,11 @@ async function main(): Promise<void> {
   const deleteOriginals = process.argv.includes('--delete-originals');
   const bitrateIdx = process.argv.indexOf('--bitrate');
   const { dataDir, musicDir, bitRate: configuredBitRate } = loadConfig();
-  // --bitrate overrides; otherwise match what the download path encodes at.
-  const bitRate = bitrateIdx >= 0 ? Number(process.argv[bitrateIdx + 1]) : configuredBitRate;
+  // `--bitrate` pins one rate for every file. Without it the pass reads each
+  // file's own through the ladder, which is what the library wants: its mp3
+  // bitrates are bimodal, so a single number is wrong for most of them either
+  // way. `configuredBitRate` is only the label printed below.
+  const bitRate = bitrateIdx >= 0 ? Number(process.argv[bitrateIdx + 1]) : undefined;
   const dbPath = join(dataDir, 'nicotind.db');
 
   if (!existsSync(dbPath)) {
@@ -61,7 +65,9 @@ async function main(): Promise<void> {
 
   console.log(`Mode      : ${apply ? 'APPLY (writing)' : 'DRY RUN (no changes)'}`);
   console.log(`Music dir : ${musicDir}`);
-  console.log(`Bitrate   : ${bitRate}k`);
+  console.log(
+    `Bitrate   : ${bitRate ? `${bitRate}k (pinned)` : `adaptive, 64–128k by source (config: ${configuredBitRate}k)`}`,
+  );
   console.log(`Database  : ${dbPath}`);
   console.log(
     `Originals : ${deleteOriginals ? 'DELETED after conversion' : `kept under ${join(dataDir, 'quarantine')}`}\n`,

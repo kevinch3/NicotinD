@@ -4,7 +4,7 @@ import { transcodeLibraryToOpus } from '../library-transcode.js';
 import { backfillArtwork, type BackfillLidarr } from '../artwork-backfill.js';
 import { embedAlbumArt } from '../opus-art-embed.js';
 import { finishTranscodeRun, startTranscodeRun } from '../transcode-run-store.js';
-import { readTranscodeLossless, type TranscodeLosslessSource } from '../transcode-settings.js';
+import { type TranscodeLosslessSource } from '../transcode-settings.js';
 
 /**
  * Operator-triggered, whole-library maintenance passes.
@@ -259,16 +259,18 @@ export function buildMaintenanceTasks(deps: MaintenanceDeps): AnyMaintenanceTask
         // Opened BEFORE the first file is touched. A terminal-only record
         // cannot say "this pass was interrupted", because an interrupted pass
         // never reaches the code that would write it.
-        const bitRate = readTranscodeLossless(deps.transcodeLossless)().bitRate;
+        // No fixed rate: the pass reads each file's own bitrate through the
+        // ladder, because the library's distribution is bimodal and one number
+        // is wrong for most of it either way. `0` on the run row means exactly
+        // that — adaptive, not "zero kbps".
         const runId = startTranscodeRun(deps.db, {
           apply: p.apply,
-          bitRate,
+          bitRate: 0,
           startedBy: 'maintenance',
         });
         try {
           const r = await transcodeLibraryToOpus(deps.db, deps.musicDir, {
             apply: p.apply,
-            bitRate,
             limit: p.limit,
             // Keep every original under `<dataDir>/quarantine/<run>/`. A
             // whole-library re-encode is irreversible and unattended; the disk

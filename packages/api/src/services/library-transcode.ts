@@ -13,6 +13,9 @@ import { LibraryScanner, mapPool, songId } from './library-scanner.js';
 import { carrySongCuration } from './song-curation-carry.js';
 import { refreshAlbumAggregate } from './library-aggregates.js';
 import { checkHeadroom, type StatfsFn } from './disk-space.js';
+// Lives with the bitrate ladder it estimates against.
+export { estimateOpusBytes } from './transcode-bitrate.js';
+import { estimateOpusBytes, opusBitrateFor } from './transcode-bitrate.js';
 import {
   createQuarantineRun,
   pruneQuarantine,
@@ -95,8 +98,16 @@ export interface TranscodeProgress {
 
 export interface TranscodeAllOptions {
   apply: boolean;
-  /** Required: a backfill must not invent a bitrate the download path disagrees with. */
-  bitRate: number;
+  /**
+   * One fixed rate for every file, overriding the source-adaptive ladder.
+   *
+   * The pass defaults to {@link opusBitrateFor}, which reads each file's own
+   * bitrate — the library's distribution is bimodal, so a single number is
+   * wrong in one direction or the other for most of it. This exists for
+   * callers that genuinely want one rate, and for tests that assert on a known
+   * one.
+   */
+  bitRate?: number;
   /** Max files to visit. Omitted/<=0 → unbounded. */
   limit?: number;
   /** Checked before each file; true → stop and return the partial counters. */
@@ -124,24 +135,10 @@ interface SongRow {
   size: number | null;
   /** Seconds. `0` means the scanner could not read one — see `estimateOpusBytes`. */
   duration: number | null;
+  /** Source kbps. `0` means probe failure, which the ladder reads as unknown. */
+  bit_rate: number | null;
   starred: string | null;
   hidden: number;
-}
-
-/**
- * Bytes a `bitRate`-kbps Opus encode of `seconds` audio will occupy.
- *
- * kbps is decimal kilobits per second, so one second is `bitRate * 1000 / 8`
- * bytes — i.e. `bitRate * 125`.
- *
- * Returns `null` when the duration is unknown (`0`, the column's default when
- * the scanner could not read one). A dry run then counts **no** reclaim for
- * that file rather than guessing: under-reporting a saving is recoverable,
- * over-reporting one is what this function exists to stop.
- */
-export function estimateOpusBytes(seconds: number | null, bitRate: number): number | null {
-  if (!seconds || !Number.isFinite(seconds) || seconds <= 0) return null;
-  return Math.round(seconds * bitRate * 125);
 }
 
 /**
@@ -182,7 +179,8 @@ export async function transcodeLibraryToOpus(
 
   const allRows = db
     .query<SongRow, []>(
-      `SELECT id, album_id, path, suffix, size, duration, starred, hidden FROM library_songs`,
+      `SELECT id, album_id, path, suffix, size, duration, bit_rate, starred, hidden
+         FROM library_songs`,
     )
     .all();
   const limit = opts.limit != null && opts.limit > 0 ? opts.limit : -1;
@@ -204,7 +202,10 @@ export async function transcodeLibraryToOpus(
   result.candidates = rows.length;
 
   const scanner = new LibraryScanner(musicDir, db);
-  const bitRate = opts.bitRate;
+  // Per file, not per pass: a 320 kbps source and a 128 kbps source want
+  // different rates, and the library holds thousands of each.
+  const rateFor = (r: SongRow): number =>
+    opts.bitRate ?? opusBitrateFor(r.bit_rate, isLossless(r.suffix ?? ''));
 
   // Headroom preflight. The pass writes each Opus file beside its source before
   // removing the original, so peak usage is one encode above steady state — but
@@ -232,7 +233,7 @@ export async function transcodeLibraryToOpus(
     // an estimate, which is the right side to err on here.
     const keepingOriginals = Boolean(opts.dataDir);
     const need = keepingOriginals
-      ? rows.reduce((n, r) => n + (estimateOpusBytes(r.duration, bitRate) ?? r.size ?? 0), 0)
+      ? rows.reduce((n, r) => n + (estimateOpusBytes(r.duration, rateFor(r)) ?? r.size ?? 0), 0)
       : rows.reduce((n, r) => Math.max(n, r.size ?? 0), 0) * TRANSCODE_CONCURRENCY;
     const head = checkHeadroom(musicDir, need, {
       margin: TRANSCODE_DISK_MARGIN_BYTES,
@@ -300,7 +301,7 @@ export async function transcodeLibraryToOpus(
         // bytes — so the figure the operator sizes the run against was always
         // too high by the size of every resulting file, and the CLI's
         // "reclaimed≈" read as rounding rather than as a bug.
-        const estimated = estimateOpusBytes(row.duration, bitRate);
+        const estimated = estimateOpusBytes(row.duration, rateFor(row));
         if (estimated !== null) {
           result.bytesReclaimed += Math.max(0, (row.size ?? 0) - estimated);
         } else {
@@ -323,7 +324,7 @@ export async function transcodeLibraryToOpus(
         const oldSize = statSync(abs).size;
         const newAbs = await transcodeToOpus(
           abs,
-          bitRate,
+          rateFor(row),
           quarantineRun ? { runDir: quarantineRun, musicDir } : undefined,
         );
         return { row, ok: true as const, newAbs, oldSize };

@@ -401,6 +401,41 @@ The three "nothing happened" counters stay separate (`noSource`, `sharedBucket`,
 because they need three different fixes: acquire art, fix the folder layout, reach the host. One
 combined number would hide which.
 
+### One rate per file, not one per pass
+
+`opusBitrateFor` (`services/transcode-bitrate.ts`) picks the Opus rate from the source's own
+bitrate. The library's mp3 distribution is cleanly bimodal — 8,153 files at 128–159 kbps and 4,589
+at 256+ — so a single target is wrong in one direction or the other for most of it. Encoding a
+320 kbps source at 96 throws away music; encoding a 128 kbps source at 128 spends bytes preserving
+the *first* encoder's artifacts.
+
+| source | → Opus | files | saved |
+| --- | --- | --- | --- |
+| < 128 kbps | 64 | 80 | 0.21 GiB |
+| 128–159 | 96 | 8,153 | 8.34 GiB |
+| 160–255 | 112 | 1,038 | 2.50 GiB |
+| 256+ | 128 | 4,589 | 25.27 GiB |
+
+**Deliberately conservative at the top.** Opus at 128 kbps is generally held to be transparent for
+stereo music, so a higher rate from a 320 kbps mp3 buys no audible quality — it stores the source
+encoder's mistakes more faithfully.
+
+**Lossless skips the ladder** and takes the top rate directly. A FLAC's bitrate is a property of the
+material, not a quality choice, so mapping it through buckets meant for lossy sources would be
+meaningless.
+
+**An unknown bitrate takes the top rate too.** The scanner writes `0` when it could not probe one,
+and reading that as "under 128, so encode at 64" would crush exactly the files we know least about.
+
+The ladder is **wired but inert today**: the conversion pass still selects lossless files only, and
+every lossless file takes the top rate without consulting it. It becomes live the moment the
+predicate extends to the 13,576 mp3s. `transcode-bitrate.test.ts` covers the buckets directly; the
+pass-level test says plainly what it does and does not yet prove, so it cannot quietly pass for the
+wrong reason.
+
+`bitRate` on the pass is now an override for callers that genuinely want one rate. A run row's
+`bit_rate` of `0` means adaptive, not zero kbps.
+
 ### A pass that dies still has to say what it did
 
 `transcode_runs` (`services/transcode-run-store.ts`) is one row per whole-library
