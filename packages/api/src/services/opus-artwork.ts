@@ -194,11 +194,20 @@ const escapeFfmetadata = (s: string): string => s.replace(/[=;#\\\n]/g, (c) => '
  * - **The payload cannot go on the command line.** A 730 KB cover base64s to
  *   974,524 characters and `execFile` fails with `E2BIG`; Linux caps a single
  *   argv entry at 128 KB. Hence the ffmetadata file.
- * - **`-c:a copy` preserves the existing tags.** `-map_metadata 1` looks like
- *   it would replace them, and for a re-encode it does — but a stream copy
- *   carries the Opus comment header with the stream, so the picture merges in.
- *   Verified against a file carrying `COPYRIGHT`, which `readAudioTags` does
- *   not even model: it survives.
+ * - **`-c:a copy` preserves the existing *scalar* tags.** `-map_metadata 1`
+ *   looks like it would replace them, and for a re-encode it does — but a
+ *   stream copy carries the Opus comment header with the stream, so the picture
+ *   merges in. Verified against a file carrying `COPYRIGHT`, which
+ *   `readAudioTags` does not even model: it survives.
+ * - **An existing picture does NOT survive**, and that exception is easy to
+ *   inherit wrongly from the line above. ffmpeg surfaces
+ *   `METADATA_BLOCK_PICTURE` as an attached-picture *stream*, so `-map 0:a`
+ *   excludes it and the cover is gone. This function never notices because it
+ *   always writes a picture of its own — but any caller merging some *other*
+ *   field into an existing file must re-write the current picture into the
+ *   ffmetadata or silently strip it. Measured: adding only a
+ *   `MUSICBRAINZ_TRACKID` took a file from `pics=1` to `pics=0` while title,
+ *   artist and album came through untouched.
  *
  * Writes to a sibling temp and renames, so an interrupted run never leaves a
  * half-written library file. The temp is dot-prefixed for the same reason

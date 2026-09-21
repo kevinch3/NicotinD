@@ -17,10 +17,15 @@
 import { describe, expect, it, afterEach } from 'bun:test';
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { ffmpegAvailable } from './transcode.js';
-import { attachPictureToOpus, MAX_EMBEDDED_PICTURE_BYTES, preparePicture } from './opus-artwork.js';
+import {
+  attachPictureToOpus,
+  MAX_EMBEDDED_PICTURE_BYTES,
+  pictureBlockBase64,
+  preparePicture,
+} from './opus-artwork.js';
 import {
   encodeWithPicture,
   imageDimensions,
@@ -190,6 +195,93 @@ describe.skipIf(!ffmpegAvailable())('preparePicture keeps covers under the cap',
     encodeWithPicture(wav, p!.path, out);
 
     expect(await readWithMusicMetadata(out)).toBe(p!.bytes);
+  });
+});
+
+describe.skipIf(!TOOLS)('merging one field into a tagged file', () => {
+  /** The merge `attachPictureToOpus` performs, with whatever ffmetadata is given. */
+  function mergeMetadata(src: string, out: string, lines: string[]): void {
+    const meta = join(dirname(out), 'merge.ffmeta');
+    writeFileSync(meta, [';FFMETADATA1', ...lines].join('\n') + '\n');
+    execFileSync(
+      'ffmpeg',
+      [
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-i',
+        src,
+        '-f',
+        'ffmetadata',
+        '-i',
+        meta,
+        '-map',
+        '0:a',
+        '-map_metadata',
+        '1',
+        '-c:a',
+        'copy',
+        '-f',
+        'ogg',
+        '-y',
+        out,
+      ],
+      { stdio: 'pipe' },
+    );
+  }
+
+  it('keeps the scalar comments but DROPS an existing picture', async () => {
+    // The trap, pinned. The docstring's "`-c:a copy` preserves the existing
+    // tags" is true of scalars and false of the cover: ffmpeg surfaces
+    // METADATA_BLOCK_PICTURE as an attached-picture stream, so `-map 0:a`
+    // excludes it. `attachPictureToOpus` never meets this because it always
+    // writes a picture; a caller merging some other field silently strips one.
+    // Measured on a real repair before it touched 32 library files.
+    const d = scratch();
+    const cover = join(d, 'c.jpg');
+    const wav = join(d, 'a.wav');
+    const tagged = join(d, 'tagged.opus');
+    const out = join(d, 'out.opus');
+    const bytes = makeCover(cover, 400);
+    makeWav(wav);
+    encodeWithPicture(wav, cover, tagged);
+    expect(await readWithMusicMetadata(tagged)).toBe(bytes);
+
+    mergeMetadata(tagged, out, ['MUSICBRAINZ_TRACKID=4f6edf56-d83b-4d8f-b216-2b17c2a9daab']);
+
+    const m = await getMusicMetadata();
+    const after = await m!.parseFile(out);
+    // The field asked for arrives...
+    expect((after.common as Record<string, unknown>).musicbrainz_recordingid).toBeTruthy();
+    // ...and the cover nobody mentioned is gone.
+    expect(after.common.picture?.length ?? 0).toBe(0);
+  });
+
+  it('preserves the picture when the merge re-writes it explicitly', async () => {
+    // The remedy, and the shape any one-field merge has to use.
+    const d = scratch();
+    const cover = join(d, 'c.jpg');
+    const wav = join(d, 'a.wav');
+    const tagged = join(d, 'tagged.opus');
+    const out = join(d, 'out.opus');
+    const bytes = makeCover(cover, 400);
+    makeWav(wav);
+    encodeWithPicture(wav, cover, tagged);
+
+    const m = await getMusicMetadata();
+    const pic = (await m!.parseFile(tagged)).common.picture![0]!;
+    mergeMetadata(tagged, out, [
+      'METADATA_BLOCK_PICTURE=' +
+        pictureBlockBase64(Buffer.from(pic.data), pic.format || 'image/jpeg').replace(
+          /[=;#\\\n]/g,
+          (c) => '\\' + c,
+        ),
+      'MUSICBRAINZ_TRACKID=4f6edf56-d83b-4d8f-b216-2b17c2a9daab',
+    ]);
+
+    const after = await m!.parseFile(out);
+    expect((after.common as Record<string, unknown>).musicbrainz_recordingid).toBeTruthy();
+    expect(after.common.picture?.[0]?.data?.length).toBe(bytes);
   });
 });
 
