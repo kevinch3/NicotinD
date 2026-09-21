@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.32](https://github.com/kevinch3/NicotinD/compare/v0.8.31...v0.8.32) (2026-09-21)
+
+### Features
+
+* **transcode:** convert every non-Opus file, when asked by name ([#1244](https://github.com/kevinch3/NicotinD/issues/1244)) ([d8bf958](https://github.com/kevinch3/NicotinD/commit/d8bf958173e5ec0f45923d6377d885f4c18a5f41)), references [#1242](https://github.com/kevinch3/NicotinD/issues/1242) [#723](https://github.com/kevinch3/NicotinD/issues/723)
 ## [0.8.31](https://github.com/kevinch3/NicotinD/compare/v0.8.30...v0.8.31) (2026-09-21)
 
 ### Features

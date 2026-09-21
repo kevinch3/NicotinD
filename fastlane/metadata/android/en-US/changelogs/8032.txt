@@ -1,0 +1,1 @@
+• transcode: convert every non-Opus file, when asked by name (#1244)
