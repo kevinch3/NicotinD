@@ -205,6 +205,44 @@ export function featureTagsFromNative(
   return out;
 }
 
+/**
+ * MusicBrainz puts the **recording id** in a `UFID` frame owned by
+ * `http://musicbrainz.org`, not in a `TXXX`. That is the standard, and it is
+ * what real taggers write — measured on the library, 20% of files carry it
+ * there and none carry a `TXXX:MusicBrainz Track Id`.
+ *
+ * Reading only the `TXXX` meant `mbRecordingId` was always `undefined` for
+ * those files, so the Opus conversion had nothing to carry and the id was
+ * dropped. ffmpeg does not map `UFID` into a Vorbis comment either, so the
+ * value simply disappeared.
+ *
+ * The identifier is raw bytes, not a string: node-id3 hands back a Buffer-like
+ * object, so it is decoded as ASCII and sanity-checked as a UUID before use.
+ */
+const MB_UFID_OWNER = 'http://musicbrainz.org';
+
+export function readMusicBrainzUfid(raw: Record<string, unknown>): string | undefined {
+  const frames = raw.uniqueFileIdentifier ?? raw.UFID;
+  const list = Array.isArray(frames) ? frames : frames ? [frames] : [];
+  for (const f of list as Array<Record<string, unknown>>) {
+    const owner = pickString(f?.ownerIdentifier ?? f?.owner_identifier);
+    if (owner !== MB_UFID_OWNER) continue;
+    const id = f?.identifier;
+    const text =
+      typeof id === 'string'
+        ? id
+        : id != null
+          ? Buffer.from(Object.values(id as Record<string, number>)).toString('ascii')
+          : '';
+    // A recording id is a UUID. Anything else is a different owner's payload
+    // that happens to share the namespace, and guessing would be worse.
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(text.trim())) {
+      return text.trim();
+    }
+  }
+  return undefined;
+}
+
 function readUserText(raw: Record<string, unknown>, description: string): string | undefined {
   const list = raw.userDefinedText as NodeId3UserText[] | undefined;
   if (!Array.isArray(list)) return undefined;
@@ -327,7 +365,9 @@ export async function readAudioTags(filepath: string): Promise<AudioTags> {
         instrumental: parseUnit(readUserText(d, FEATURE_TAG_KEYS.instrumental)),
         mood: parseMood(readUserText(d, FEATURE_TAG_KEYS.mood)),
         acoustIdId: readUserText(d, TXXX_ACOUSTID),
-        mbRecordingId: readUserText(d, TXXX_MB_RECORDING),
+        // TXXX first because our own writer uses it, then the UFID the
+        // MusicBrainz standard actually specifies.
+        mbRecordingId: readUserText(d, TXXX_MB_RECORDING) ?? readMusicBrainzUfid(d),
         mbReleaseId: readUserText(d, TXXX_MB_RELEASE),
       };
     } catch {

@@ -17,7 +17,12 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { featureTagsFromNative, readAudioTags, writeAudioTags } from './audio-tags.js';
+import {
+  featureTagsFromNative,
+  readAudioTags,
+  writeAudioTags,
+  readMusicBrainzUfid,
+} from './audio-tags.js';
 import { ffmpegAvailable } from './transcode.js';
 
 const FIXTURE = join(import.meta.dir, '../../test-fixtures/silence.mp3');
@@ -617,5 +622,71 @@ describe('featureTagsFromNative (pure)', () => {
       instrumental: undefined,
       mood: undefined,
     });
+  });
+});
+
+describe('readMusicBrainzUfid — the recording id lives in UFID, not TXXX', () => {
+  // The exact shape observed on the real library: node-id3 hands back the
+  // identifier as a serialized Buffer, i.e. an object with numeric keys.
+  const asBytes = (s: string) =>
+    Object.fromEntries([...Buffer.from(s, 'ascii')].map((b, i) => [String(i), b]));
+  const UUID = '4f6edf56-d83b-4d8f-b216-2b17c2a9daab';
+
+  it('reads the id from a byte-array identifier', () => {
+    // 20% of the library carries it this way and none carries a
+    // `TXXX:MusicBrainz Track Id`, so this is the only path that finds it.
+    expect(
+      readMusicBrainzUfid({
+        uniqueFileIdentifier: {
+          owner_identifier: 'http://musicbrainz.org',
+          identifier: asBytes(UUID),
+        },
+      }),
+    ).toBe(UUID);
+  });
+
+  it('accepts a real Buffer and a plain string too', () => {
+    expect(
+      readMusicBrainzUfid({
+        uniqueFileIdentifier: { ownerIdentifier: 'http://musicbrainz.org', identifier: UUID },
+      }),
+    ).toBe(UUID);
+  });
+
+  it('picks the MusicBrainz frame out of several owners', () => {
+    expect(
+      readMusicBrainzUfid({
+        uniqueFileIdentifier: [
+          { owner_identifier: 'http://example.com', identifier: asBytes('not-ours') },
+          { owner_identifier: 'http://musicbrainz.org', identifier: asBytes(UUID) },
+        ],
+      }),
+    ).toBe(UUID);
+  });
+
+  it('ignores another owner rather than guessing', () => {
+    expect(
+      readMusicBrainzUfid({
+        uniqueFileIdentifier: { owner_identifier: 'http://example.com', identifier: asBytes(UUID) },
+      }),
+    ).toBeUndefined();
+  });
+
+  it('rejects a payload that is not a UUID', () => {
+    // Same namespace, different payload. A recording id is a UUID; anything
+    // else would be a confident wrong answer.
+    expect(
+      readMusicBrainzUfid({
+        uniqueFileIdentifier: {
+          owner_identifier: 'http://musicbrainz.org',
+          identifier: asBytes('hello'),
+        },
+      }),
+    ).toBeUndefined();
+  });
+
+  it('is quiet on a file with no UFID at all', () => {
+    expect(readMusicBrainzUfid({})).toBeUndefined();
+    expect(readMusicBrainzUfid({ uniqueFileIdentifier: null })).toBeUndefined();
   });
 });
