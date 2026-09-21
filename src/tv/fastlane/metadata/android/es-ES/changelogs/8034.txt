@@ -1,0 +1,1 @@
+• transcode: check the disk the originals land on, not the one they leave (#1247)

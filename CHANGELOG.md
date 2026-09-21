@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.34](https://github.com/kevinch3/NicotinD/compare/v0.8.33...v0.8.34) (2026-09-21)
+
+### Bug Fixes
+
+* **transcode:** check the disk the originals land on, not the one they leave ([#1247](https://github.com/kevinch3/NicotinD/issues/1247)) ([925ae9c](https://github.com/kevinch3/NicotinD/commit/925ae9cf14bc155f47dd366a2dc592087976e4ec)), references [#1021](https://github.com/kevinch3/NicotinD/issues/1021) [#723](https://github.com/kevinch3/NicotinD/issues/723)
 ## [0.8.33](https://github.com/kevinch3/NicotinD/compare/v0.8.32...v0.8.33) (2026-09-21)
 
 ### Features
