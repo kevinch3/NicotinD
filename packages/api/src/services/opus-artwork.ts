@@ -47,6 +47,30 @@ export const MAX_EMBEDDED_PICTURE_BYTES = 512 * 1024;
 /** Quality ladder tried, in order, when a cover is over the cap. */
 const RECOMPRESS_QUALITY = [4, 6, 8] as const;
 
+/**
+ * Longest-edge caps tried, in order, each paired with the whole quality ladder.
+ *
+ * `null` comes first and means "leave the pixel dimensions alone", so a cover
+ * that is merely saved at a wasteful quality is fixed without ever resampling
+ * — the common case, and unchanged from before.
+ *
+ * The later entries exist because quality is the *weaker* axis once an image
+ * is large in **dimensions**: there is a point past which no quality setting
+ * reaches the cap, and the ladder used to exhaust there and drop the art
+ * entirely. Measured on a real 3000×3000 cover this was dropping (#1252):
+ *
+ * | | native | 1500px | 1000px |
+ * | --- | --- | --- | --- |
+ * | q4 | 982 KB | 348 KB | 175 KB |
+ * | q8 | **605 KB — over the cap** | 198 KB | 102 KB |
+ *
+ * Note that 1500px q4 is both smaller *and* better-looking than native q8: at
+ * any realistic display size q8's artifacts show more than the resample does.
+ * So once a cover is over the cap, downscaling dominates pushing quality — the
+ * old ladder spent its entire budget on the weaker axis and then gave up.
+ */
+const RECOMPRESS_EDGE = [null, 1500, 1000] as const;
+
 export interface PreparedPicture {
   /** Path to embed — the input itself when it was already small enough. */
   path: string;
@@ -59,14 +83,16 @@ export interface PreparedPicture {
  * Ensure `coverPath` is small enough for the app to read back after embedding,
  * re-compressing into `scratchPath` when it is not.
  *
- * Re-compresses rather than downscales: the pixel dimensions are what a
- * listener sees when the cover is opened, and JPEG quality is the axis with
- * the most headroom — a 1000×1000 cover at q3 is 730 KB and visually identical
- * at q6.
+ * Tries quality before dimensions: the pixel dimensions are what a listener
+ * sees when the cover is opened, so a cover that only needs a gentler quality
+ * keeps its full size — a 1000×1000 cover at q3 is 730 KB and visually
+ * identical at q6. Only when no quality reaches the cap does it start capping
+ * the longest edge, because past a certain size quality alone cannot get there
+ * at all. See {@link RECOMPRESS_EDGE}.
  *
  * Returns the original untouched when it already fits, which is the common
- * case; only the outliers pay for a second encode. Returns **null** when even
- * the softest quality cannot get under the cap — an explicit "do not embed
+ * case; only the outliers pay for a second encode. Returns **null** when
+ * nothing on either ladder gets under the cap — an explicit "do not embed
  * this" the caller has to handle, rather than a path that fails later.
  */
 export function preparePicture(coverPath: string, scratchPath: string): PreparedPicture | null {
@@ -75,37 +101,41 @@ export function preparePicture(coverPath: string, scratchPath: string): Prepared
     return { path: coverPath, recompressed: false, bytes };
   }
 
-  for (const q of RECOMPRESS_QUALITY) {
-    try {
-      execFileSync(
-        ffmpegBinary(),
-        [
-          '-hide_banner',
-          '-loglevel',
-          'error',
-          '-i',
-          coverPath,
-          '-q:v',
-          String(q),
-          '-y',
-          scratchPath,
-        ],
-        { stdio: 'pipe' },
-      );
-    } catch (err) {
-      log.warn({ err, coverPath, q }, 'cover re-compress failed');
-      break;
-    }
-    const got = statSync(scratchPath).size;
-    if (got <= MAX_EMBEDDED_PICTURE_BYTES) {
-      log.debug({ coverPath, from: bytes, to: got, q }, 're-compressed an oversized cover');
-      return { path: scratchPath, recompressed: true, bytes: got };
+  for (const edge of RECOMPRESS_EDGE) {
+    for (const q of RECOMPRESS_QUALITY) {
+      const args = ['-hide_banner', '-loglevel', 'error', '-i', coverPath];
+      if (edge !== null) {
+        // Bounding the box by the source's own dimensions is what keeps this
+        // from UPSCALING a cover that is already small on one axis, and
+        // `decrease` caps the longest edge whatever the orientation — a plain
+        // `scale=w:-2` would only ever cap the width and do nothing to a tall
+        // image.
+        args.push(
+          '-vf',
+          `scale='min(${edge},iw)':'min(${edge},ih)':force_original_aspect_ratio=decrease:flags=lanczos`,
+        );
+      }
+      args.push('-q:v', String(q), '-y', scratchPath);
+
+      try {
+        execFileSync(ffmpegBinary(), args, { stdio: 'pipe' });
+      } catch (err) {
+        // A failure here is about the input, not the setting, so trying the
+        // remaining eight combinations would just be eight more failures.
+        log.warn({ err, coverPath, q, edge }, 'cover re-compress failed');
+        return null;
+      }
+      const got = statSync(scratchPath).size;
+      if (got <= MAX_EMBEDDED_PICTURE_BYTES) {
+        log.debug({ coverPath, from: bytes, to: got, q, edge }, 're-compressed an oversized cover');
+        return { path: scratchPath, recompressed: true, bytes: got };
+      }
     }
   }
 
-  // Still too big at the softest quality we are willing to use. Embedding it
-  // would produce a file the app cannot read — silently invisible art that
-  // still costs the bytes — so report the failure and let the caller skip it.
+  // Nothing on either ladder fits. Embedding it would produce a file the app
+  // cannot read — silently invisible art that still costs the bytes — so
+  // report the failure and let the caller skip it.
   log.warn(
     { coverPath, bytes, cap: MAX_EMBEDDED_PICTURE_BYTES },
     'cover too large to embed readably; leaving it out',

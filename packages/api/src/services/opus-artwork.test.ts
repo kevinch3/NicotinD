@@ -15,7 +15,7 @@
  * guarded, never the individual cases, so a test added later inherits it.
  */
 import { describe, expect, it, afterEach } from 'bun:test';
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -23,9 +23,11 @@ import { ffmpegAvailable } from './transcode.js';
 import { attachPictureToOpus, MAX_EMBEDDED_PICTURE_BYTES, preparePicture } from './opus-artwork.js';
 import {
   encodeWithPicture,
+  imageDimensions,
   makeCover,
   makeMp3WithCover,
   makeWav,
+  nativeQualityBytes,
   opusencAvailable,
   opusinfoAvailable,
   opusinfoPictureBytes,
@@ -137,13 +139,38 @@ describe.skipIf(!ffmpegAvailable())('preparePicture keeps covers under the cap',
     expect(p!.bytes).toBeLessThanOrEqual(MAX_EMBEDDED_PICTURE_BYTES);
   });
 
-  it('returns null rather than a path when nothing gets under the cap', () => {
-    // Pure noise at 1400px is incompressible by construction — no real cover
-    // looks like this, but the caller still needs an explicit "do not embed"
-    // instead of a path that blows up in the encoder later.
+  it('downscales when no quality reaches the cap', () => {
+    // #1252. 1100px of noise is over the cap at EVERY quality the ladder will
+    // try, so before the edge ladder existed this cover was dropped outright.
+    // Real covers hit the same wall at larger dimensions — the one that found
+    // this was 3000×3000 and 605 KB at q8.
     const d = scratch();
-    const cover = join(d, 'huge.jpg');
-    makeCover(cover, 1400, 1);
+    const cover = join(d, 'wide.jpg');
+    const bytes = makeCover(cover, 1100, 2);
+    expect(bytes).toBeGreaterThan(MAX_EMBEDDED_PICTURE_BYTES);
+    // Assert the denominator: this fixture is only a regression test for as
+    // long as quality alone genuinely cannot rescue it. q8 is the softest rung.
+    expect(nativeQualityBytes(cover, 8)).toBeGreaterThan(MAX_EMBEDDED_PICTURE_BYTES);
+
+    const p = preparePicture(cover, join(d, 'scratch.jpg'));
+
+    expect(p).not.toBeNull();
+    expect(p!.bytes).toBeLessThanOrEqual(MAX_EMBEDDED_PICTURE_BYTES);
+    // And it fits by giving up as little as possible: the first edge rung that
+    // works, not the smallest one. A fix that shrank every oversized cover to
+    // a thumbnail would also satisfy the assertion above.
+    expect(Math.max(...imageDimensions(p!.path))).toBeGreaterThanOrEqual(1000);
+  });
+
+  it('returns null when the input is not a decodable image', () => {
+    // The null contract still matters, but it is no longer reachable by size:
+    // the 1000px rung brings any decodable image under the cap (square noise,
+    // the worst case there is, lands ~385 KB there whatever its source size).
+    // What remains is a cover that ffmpeg cannot read at all, and the caller
+    // needs an explicit "do not embed" rather than a path that fails later.
+    const d = scratch();
+    const cover = join(d, 'not-an-image.jpg');
+    writeFileSync(cover, Buffer.alloc(900 * 1024, 0x7f));
 
     expect(preparePicture(cover, join(d, 'scratch.jpg'))).toBeNull();
   });
