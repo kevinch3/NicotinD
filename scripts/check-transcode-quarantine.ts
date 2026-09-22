@@ -31,13 +31,19 @@ const repoRoot = resolve(import.meta.dir, '..');
  * Both doors into "re-encode a file and decide what happens to the original".
  *
  * Watching only the library pass was not enough, and that is the whole lesson:
- * `LibraryOrganizer` calls `transcodeToOpus` directly, and
+ * `LibraryOrganizer` calls the per-file encoder directly, and
  * `reorganize-library.ts --transcode` drives it over files **already in the
  * library** — so the first version of this gate reported a clean two call sites
  * while a third deleted originals just out of frame. A gate's denominator is a
  * claim about the world, and that one was wrong.
+ *
+ * Each name is checked for a non-zero count **on its own**. The total was not
+ * enough: with two names in the list, renaming one left the other matching, so
+ * the count stayed plausible while half the gate had quietly stopped watching
+ * anything. A denominator assertion that is not per-item is only half an
+ * assertion (#1256).
  */
-const CALLEES = ['transcodeLibraryToOpus', 'transcodeToOpus'] as const;
+const CALLEES = ['transcodeLibraryToFormat', 'transcodeToLibraryFormat'] as const;
 
 /**
  * The third door, and the one that proves a call-site gate is not enough.
@@ -78,6 +84,9 @@ const ALLOWLIST: Record<string, string> = {
 function main(): void {
   const callers: string[] = [];
   const offenders: string[] = [];
+  /** Call sites found per watched name, so each can be asserted on its own. */
+  const perCallee = new Map<string, number>(CALLEES.map((c) => [c, 0]));
+  let ctorSites = 0;
 
   for (const pattern of ['packages/*/src/**/*.ts', 'scripts/**/*.ts', 'src/**/*.ts']) {
     for (const file of new Glob(pattern).scanSync(repoRoot)) {
@@ -94,6 +103,7 @@ function main(): void {
       const ctor = src.indexOf(CONSTRUCTOR);
       if (ctor >= 0) {
         isCaller = true;
+        ctorSites += 1;
         const end = src.indexOf('});', ctor);
         if (!KEEPS_ORIGINALS.test(src.slice(ctor, end < 0 ? src.length : end))) deletes = true;
       }
@@ -104,6 +114,7 @@ function main(): void {
         if (call < 0) continue;
         if (new RegExp(`(export\\s+)?async\\s+function\\s+${callee}\\b`).test(src)) continue;
         isCaller = true;
+        perCallee.set(callee, (perCallee.get(callee) ?? 0) + 1);
 
         // The argument that decides this is the last one. Reading to the end of
         // the call expression is enough — the field cannot be hiding elsewhere.
@@ -121,17 +132,29 @@ function main(): void {
 
   const stale = Object.keys(ALLOWLIST).filter((f) => !callers.includes(f));
 
+  // What was examined, per watched pattern — not just what was found.
+  const coverage = [
+    ...[...perCallee].map(([name, n]) => `${name}=${n}`),
+    `${CONSTRUCTOR.trim()}=${ctorSites}`,
+  ].join(', ');
   console.log(
-    `check:transcode-quarantine: ${callers.length} production call site(s); ` +
+    `check:transcode-quarantine: ${callers.length} production call site(s) [${coverage}]; ` +
       `${Object.keys(ALLOWLIST).length} allowlisted, ${offenders.length} deleting originals.`,
   );
 
-  if (callers.length === 0) {
+  const unwatched = [
+    ...[...perCallee].filter(([, n]) => n === 0).map(([name]) => name),
+    ...(ctorSites === 0 ? [CONSTRUCTOR] : []),
+  ];
+  if (unwatched.length > 0) {
     console.error(
-      `\nFAIL: found no call site of ${CALLEES.join(' / ')} at all.\n` +
-        '  A gate that matches nothing reports the same clean line as one that\n' +
-        '  checked every caller. If a function was renamed or moved, update\n' +
-        '  CALLEES here in the same commit.',
+      `\nFAIL: ${unwatched.length} watched pattern(s) matched nothing:\n` +
+        unwatched.map((n) => `  - ${n}`).join('\n') +
+        '\n\n  A gate that matches nothing reports the same clean line as one that\n' +
+        '  checked every caller — and one that matches only SOME of its patterns\n' +
+        '  reports a plausible total while half of it watches nothing. If a\n' +
+        '  function was renamed or moved, update CALLEES/CONSTRUCTOR here in the\n' +
+        '  same commit.',
     );
     process.exit(1);
   }

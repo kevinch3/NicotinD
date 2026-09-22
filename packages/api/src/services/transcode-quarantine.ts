@@ -17,7 +17,7 @@ const log = createLogger('transcode-quarantine');
  * Keep the original instead of deleting it, for the passes that replace a
  * library file with a re-encode.
  *
- * `transcodeToOpus` unlinks the source the moment the output is verified. For a
+ * `transcodeToLibraryFormat` unlinks the source the moment the output is verified. For a
  * freshly downloaded file that is the intended design — it is one re-download
  * away. For a **whole-library backfill** over thousands of irreplaceable files
  * it is not, and generation loss is invisible to any check that runs

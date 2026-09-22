@@ -1,6 +1,6 @@
 import { TranscodeLosslessSchema } from '@nicotind/core';
 
-/** What `LibraryOrganizer` and `transcodeLibraryToOpus` actually consume. */
+/** What `LibraryOrganizer` and `transcodeLibraryToFormat` actually consume. */
 export interface ResolvedTranscodeLossless {
   enabled: boolean;
   bitRate: number;

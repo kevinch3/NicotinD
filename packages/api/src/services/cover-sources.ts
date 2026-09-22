@@ -153,7 +153,7 @@ export function findFolderCoverName(dir: string): string | null {
  * operations (a transcode, an organize) whose success must not depend on art.
  *
  * Why the folder and not the tag (issue #953): **zero of 1,719 non-mp3 files in
- * the library carry embedded art**, against ~87% of mp3s. `transcodeToOpus`
+ * the library carry embedded art**, against ~87% of mp3s. `transcodeToLibraryFormat`
  * drops it with `-vn` (an attached cover is a video stream) and `-map_metadata`
  * does not bring it back — but simply removing `-vn` would not work either,
  * since ffmpeg's Ogg muxer cannot write an attached picture stream at all; Opus

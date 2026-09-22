@@ -5,7 +5,7 @@ import { createLogger } from '@nicotind/core';
 import {
   isLossless,
   isLosslessFile,
-  transcodeToOpus,
+  transcodeToLibraryFormat,
   TRANSCODE_CONCURRENCY,
 } from './post-download-transcode.js';
 import { ffmpegAvailable } from './transcode.js';
@@ -14,8 +14,9 @@ import { carrySongCuration } from './song-curation-carry.js';
 import { refreshAlbumAggregate } from './library-aggregates.js';
 import { checkHeadroom, type StatfsFn } from './disk-space.js';
 // Lives with the bitrate ladder it estimates against.
-export { estimateOpusBytes } from './transcode-bitrate.js';
-import { estimateOpusBytes, opusBitrateFor } from './transcode-bitrate.js';
+export { estimateEncodedBytes } from './transcode-bitrate.js';
+import { estimateEncodedBytes } from './transcode-bitrate.js';
+import { DEFAULT_LIBRARY_FORMAT, libraryFormat, type LibraryFormat } from './library-format.js';
 import {
   createQuarantineRun,
   pruneQuarantine,
@@ -64,7 +65,7 @@ export interface LibraryTranscodeResult {
   failed: number;
   /**
    * On apply, bytes actually freed. On a dry run, the **estimated** difference
-   * between each original and the Opus encode that would replace it — never the
+   * between each original and the encode that would replace it — never the
    * original's whole size, which would assume the output is empty.
    */
   bytesReclaimed: number;
@@ -105,20 +106,31 @@ export interface TranscodeAllOptions {
    * alone — the behaviour the download path relies on, where re-encoding a
    * lossy file would be a second generation for nothing.
    *
-   * `'all'` takes **everything that is not already Opus**: on prod that is
-   * 13,576 mp3, 238 m4a, 44 ogg, 6 wma and 3 flac, exactly the 13,864 the
-   * conversion plan sizes. That is a deliberate second lossy generation on most
-   * of a library, so it has to be asked for by name rather than defaulted into.
+   * `'all'` takes **everything that is not already the target format**: on
+   * prod that is 13,576 mp3, 238 m4a, 44 ogg, 6 wma and 3 flac, exactly the
+   * 13,864 the conversion plan sizes. That is a deliberate second lossy
+   * generation on most of a library, so it has to be asked for by name rather
+   * than defaulted into.
    *
-   * Neither value ever re-encodes an existing `.opus`.
+   * Neither value ever re-encodes a file that is already in the target format.
    */
   scope?: 'lossless' | 'all';
   /**
+   * Target format. Defaults to {@link DEFAULT_LIBRARY_FORMAT}.
+   *
+   * Changing it on a populated library is a whole-library re-encode **and** a
+   * re-mint of every `songId` (they are derived from the relative path, so the
+   * extension is part of the identity). Nothing here refuses that, because
+   * nothing here can tell a fresh install from a deliberate migration — the
+   * refusal belongs at the setting, where the operator is.
+   */
+  format?: LibraryFormat;
+  /**
    * One fixed rate for every file, overriding the source-adaptive ladder.
    *
-   * The pass defaults to {@link opusBitrateFor}, which reads each file's own
-   * bitrate — the library's distribution is bimodal, so a single number is
-   * wrong in one direction or the other for most of it. This exists for
+   * The pass defaults to the target format's own ladder, which reads each
+   * file's bitrate — the library's distribution is bimodal, so a single number
+   * is wrong in one direction or the other for most of it. This exists for
    * callers that genuinely want one rate, and for tests that assert on a known
    * one.
    */
@@ -157,7 +169,7 @@ interface SongRow {
   path: string;
   suffix: string | null;
   size: number | null;
-  /** Seconds. `0` means the scanner could not read one — see `estimateOpusBytes`. */
+  /** Seconds. `0` means the scanner could not read one — see `estimateEncodedBytes`. */
   duration: number | null;
   /** Source kbps. `0` means probe failure, which the ladder reads as unknown. */
   bit_rate: number | null;
@@ -166,15 +178,15 @@ interface SongRow {
 }
 
 /**
- * Convert the **existing** library's lossless files (FLAC/WAV/…) to Opus in
- * place, mirroring the post-download standardization. Already-lossy files are
- * left untouched.
+ * Convert the **existing** library's lossless files (FLAC/WAV/…) to the target
+ * format in place, mirroring the post-download standardization. Already-lossy
+ * files are left untouched.
  *
  * Re-encoding changes a file's extension → its relative path → its derived
  * `songId` and `acquisitions` key. Album-keyed data (artwork, release-meta,
  * classification) is keyed on the tag-derived `albumId` and survives; song-keyed
  * data does not, so per file we **migrate identity**: `scanPaths` inserts the
- * new opus row, then one transaction drops the stale lossless row, carries
+ * new row, then one transaction drops the stale lossless row, carries
  * `starred`/`hidden` onto the new one, hands the rest to `carrySongCuration`
  * and recomputes the album aggregate.
  *
@@ -182,11 +194,13 @@ interface SongRow {
  * because the reverse lost songs: a scan that threw left the old row deleted
  * and the new one never inserted, with nothing to report it.
  */
-export async function transcodeLibraryToOpus(
+export async function transcodeLibraryToFormat(
   db: Database,
   musicDir: string,
   opts: TranscodeAllOptions,
 ): Promise<LibraryTranscodeResult> {
+  const format = opts.format ?? DEFAULT_LIBRARY_FORMAT;
+  const target = libraryFormat(format);
   const result: LibraryTranscodeResult = {
     candidates: 0,
     converted: 0,
@@ -214,9 +228,10 @@ export async function transcodeLibraryToOpus(
     if (limit > 0 && rows.length >= limit) break;
     const ext = (r.path.split('.').pop() ?? '').toLowerCase();
 
-    // Already the target format. Re-encoding Opus to Opus is pure generation
-    // loss for zero gain, and it is the one thing this pass must never do.
-    if (ext === 'opus' || (r.suffix ?? '').toLowerCase() === 'opus') continue;
+    // Already the target format. Re-encoding a file into its own format is pure
+    // generation loss for zero gain, and it is the one thing this pass must
+    // never do.
+    if (ext === target.ext || (r.suffix ?? '').toLowerCase() === target.ext) continue;
 
     if (scope === 'all') {
       rows.push(r);
@@ -240,9 +255,9 @@ export async function transcodeLibraryToOpus(
   // Per file, not per pass: a 320 kbps source and a 128 kbps source want
   // different rates, and the library holds thousands of each.
   const rateFor = (r: SongRow): number =>
-    opts.bitRate ?? opusBitrateFor(r.bit_rate, isLossless(r.suffix ?? ''));
+    opts.bitRate ?? target.bitrateFor(r.bit_rate, isLossless(r.suffix ?? ''));
 
-  // Headroom preflight. The pass writes each Opus file beside its source before
+  // Headroom preflight. The pass writes each encode beside its source before
   // removing the original, so peak usage is one encode above steady state — but
   // the pass is long, unattended, and shares a disk that has already filled to
   // zero once and taken the API down with it (#1021). A margin is cheap.
@@ -332,7 +347,7 @@ export async function transcodeLibraryToOpus(
 
   for (const batch of chunk(rows, ENCODE_BATCH)) {
     // Checked per BATCH, not per row. Stopping between the encode and the
-    // migration would leave an .opus file on disk that no library row points
+    // migration would leave an encoded file on disk that no library row points
     // at — and, with quarantine on, its original already moved away. Every
     // encode this pass starts is therefore always migrated.
     if (opts.shouldStop?.()) {
@@ -353,11 +368,11 @@ export async function transcodeLibraryToOpus(
       if (!opts.apply) {
         result.converted += 1; // dry-run: report what would be converted
         // The DIFFERENCE, matching the apply path below. This used to add the
-        // whole original size, i.e. it assumed the Opus file would be zero
+        // whole original size, i.e. it assumed the encoded file would be zero
         // bytes — so the figure the operator sizes the run against was always
         // too high by the size of every resulting file, and the CLI's
         // "reclaimed≈" read as rounding rather than as a bug.
-        const estimated = estimateOpusBytes(row.duration, rateFor(row));
+        const estimated = estimateEncodedBytes(row.duration, rateFor(row));
         if (estimated !== null) {
           result.bytesReclaimed += Math.max(0, (row.size ?? 0) - estimated);
         } else {
@@ -378,10 +393,11 @@ export async function transcodeLibraryToOpus(
       const abs = join(musicDir, row.path);
       try {
         const oldSize = statSync(abs).size;
-        const newAbs = await transcodeToOpus(
+        const newAbs = await transcodeToLibraryFormat(
           abs,
           rateFor(row),
           quarantineRun ? { runDir: quarantineRun, musicDir } : undefined,
+          format,
         );
         return { row, ok: true as const, newAbs, oldSize };
       } catch (err) {

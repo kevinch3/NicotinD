@@ -39,7 +39,7 @@ import { albumGroupKey } from './album-grouping.js';
 import { DEFAULT_UNSORTED_DIR } from './library-paths.js';
 import {
   isLosslessFile,
-  transcodeToOpus,
+  transcodeToLibraryFormat,
   TRANSCODE_CONCURRENCY,
   type TranscodeKeepOriginal,
 } from './post-download-transcode.js';
@@ -182,7 +182,7 @@ interface PendingPlacement {
   samePath: boolean;
 }
 
-// Lives with `transcodeToOpus`, the call it bounds — the library conversion
+// Lives with `transcodeToLibraryFormat`, the call it bounds — the library conversion
 // pass pools the same call and must not pick a second, different number.
 
 /** A batch that did nothing: no files in, no dirs touched. */
@@ -929,14 +929,14 @@ export class LibraryOrganizer {
     if (p.samePath || !p.plan.wouldTranscode) return;
     const transcodeStartedAt = Date.now();
     try {
-      p.destPath = await transcodeToOpus(
+      p.destPath = await transcodeToLibraryFormat(
         p.destPath,
         this.transcodeLossless().bitRate,
         this.keepOriginals,
       );
       this.batchTranscoded++;
     } catch (err) {
-      log.warn({ err, destPath: p.destPath }, 'lossless→opus transcode failed — keeping original');
+      log.warn({ err, destPath: p.destPath }, 'lossless transcode failed — keeping original');
     } finally {
       this.batchTranscodeMs += Date.now() - transcodeStartedAt;
     }
