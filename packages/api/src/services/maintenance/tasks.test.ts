@@ -16,6 +16,7 @@ import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../../db.js';
+import { setLibraryFormatSettings } from '../library-format-settings.js';
 import { buildMaintenanceTasks, type MaintenanceRunContext } from './tasks.js';
 import { songId } from '../library-scanner.js';
 import { ffmpegAvailable } from '../transcode.js';
@@ -179,8 +180,13 @@ describe.skipIf(!ffmpegAvailable())('transcode-library keeps the originals', () 
 
 describe('normalize-loudness is off until the flag says otherwise', () => {
   function tasksWith(opusHeaderGain: boolean) {
+    // A schema'd DB, not a bare one: `available()` reads the library-format
+    // setting to say whether the chosen format can be normalized at all, so a
+    // bare database would exercise the fallback instead of the real path.
+    const db = new Database(':memory:');
+    applySchema(db);
     return buildMaintenanceTasks({
-      db: new Database(':memory:'),
+      db,
       lidarr: null,
       musicDir: '/music',
       dataDir: '/data',
@@ -209,5 +215,31 @@ describe('normalize-loudness is off until the flag says otherwise', () => {
         .find((t) => t.id === 'normalize-loudness')!
         .available(),
     ).toBe(true);
+  });
+
+  it('says WHY when the chosen library format has no gain field (#1256)', () => {
+    // The trap #1256 names: a format selector that silently turns off loudness
+    // normalization is worse than no selector, because the capability loss has
+    // no symptom. So the reason has to reach the screen — offering a pass that
+    // would visit nothing, or failing at run time, both hide it.
+    const db = new Database(':memory:');
+    applySchema(db);
+    setLibraryFormatSettings(db, { format: 'mp3' });
+    const task = buildMaintenanceTasks({
+      db,
+      lidarr: null,
+      musicDir: '/music',
+      dataDir: '/data',
+      // Flag ON, so the only thing making it unavailable is the format.
+      opusHeaderGain: true,
+      transcodeLossless: { enabled: true, bitRate: 96 },
+      runSync: null,
+    }).find((t) => t.id === 'normalize-loudness')!;
+
+    const available = task.available();
+
+    expect(available).not.toBe(true);
+    expect(String(available)).toContain('mp3');
+    expect(String(available)).toContain('no in-header gain field');
   });
 });

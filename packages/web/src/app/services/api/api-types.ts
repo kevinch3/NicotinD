@@ -277,6 +277,31 @@ export interface StreamingSettings {
   ffmpegAvailable?: boolean;
 }
 
+/** What one library format can actually do, as the strategy itself declares it. */
+export interface LibraryFormatOption {
+  id: string;
+  ext: string;
+  /**
+   * False for a container with no in-header gain field (mp3, AAC).
+   *
+   * Rendered at the point of choosing rather than documented elsewhere: a
+   * selector that silently disables loudness normalization is worse than no
+   * selector, because the capability loss has no symptom afterwards.
+   */
+  canNormalizeLoudness: boolean;
+  /** Null where no reader ceiling was measured for this container. */
+  maxEmbeddedPictureBytes: number | null;
+  impact: { alreadyTarget: number; wouldReEncode: number; destructive: boolean };
+}
+
+/** What the library is standardized on, and what switching would cost. */
+export interface LibraryFormatSettings {
+  format: string;
+  ffmpegAvailable?: boolean;
+  available?: LibraryFormatOption[];
+  impact?: { alreadyTarget: number; wouldReEncode: number; destructive: boolean };
+}
+
 /** Admin radio preferences + the data behind the learned genre axis (docs/genre-affinity.md). */
 export interface RadioSettings {
   /** Opt-in: score radio's genre axis from the library's audio centroids. Default off. */

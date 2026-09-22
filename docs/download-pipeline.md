@@ -213,6 +213,36 @@ muxer silently ignores `-metadata BPM=`, so `.m4a` files ended with no tempo ato
 re-analysed forever. `BPM_METADATA_KEY` (`audio-tags.ts`) overrides the key to `tmpo` for that one
 container — see *Tags across a container change* below.
 
+### Choosing the format (#1256, #1255)
+
+`LibraryFormatSettings` (`services/library-format-settings.ts`) persists the choice in
+`app_settings`, admin-editable at `PUT /api/settings/library-format` and rendered by the **Library
+format** admin panel. Validated with zod against `LIBRARY_FORMATS` itself, so a format added to the
+registry becomes selectable without a second list going stale, and one removed stops validating.
+A corrupt or unknown persisted value falls back to the default rather than throwing — the conversion
+pass is the thing an operator would use to fix a mess, so a settings row must not take it down.
+
+**It is read per run, never captured at construction.** The Admin task, the `normalize-loudness`
+task and `convert-library.ts` all call `getLibraryFormatSettings` at the moment they run. A value
+frozen at boot would convert to the old target while the UI showed the new one.
+
+**Two things make it honest rather than a dropdown.**
+
+*The capabilities ship with the list.* `GET` returns each format's `canNormalizeLoudness`, derived
+from the strategy's own `writeGain`, and the panel renders it beside the option. A selector that
+silently disables loudness normalization is worse than no selector, because the capability loss has
+no symptom — so it is stated where the decision is made. The `normalize-loudness` task's
+`available()` says the same thing in the same words when the chosen format cannot do it, instead of
+offering a pass that would visit nothing.
+
+*A destructive change is counted and confirmed.* `formatChangeImpact` counts, in SQL, how many songs
+a change would re-encode. `PUT` answers **409 `CONFIRM_REQUIRED`** with that count unless
+`confirm: true` is sent. The setting reads like a preference and is not one on a populated library:
+`scope: 'all'` takes everything that is not already the target, and `songId` is derived from the
+relative path, so a new extension **re-mints every song id** and the 13-table carry runs per file.
+Choosing a format on an empty library stays free — making someone confirm a no-op only teaches them
+to click through.
+
 Where they genuinely agree they share: the Opus strategy's `encodeArgs` calls `FORMAT_ARGS.opus.args`
 rather than writing the tuple out again, which is the duplicate this seam removed.
 `check:shared-helpers` registers both names so a third copy fails CI — note it matches on the *name*,

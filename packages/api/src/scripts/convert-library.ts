@@ -19,6 +19,7 @@ import { resolve, join } from 'node:path';
 import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
 import { transcodeLibraryToFormat } from '../services/library-transcode.js';
+import { getLibraryFormatSettings } from '../services/library-format-settings.js';
 import { resolveTranscodeLossless } from '../services/transcode-settings.js';
 import { expandHome } from '@nicotind/core';
 
@@ -85,10 +86,16 @@ async function main(): Promise<void> {
     `Originals : ${deleteOriginals ? 'DELETED after conversion' : `kept under ${join(dataDir, 'quarantine')}`}\n`,
   );
 
+  // The same setting the Admin task reads, so the CLI and the button cannot
+  // convert to different formats on the same library.
+  const format = getLibraryFormatSettings(db).format;
+  console.log(`Format    : ${format}\n`);
+
   const r = await transcodeLibraryToFormat(db, musicDir, {
     apply,
     scope,
     bitRate,
+    format,
     dataDir: deleteOriginals ? undefined : dataDir,
     quarantineDir: deleteOriginals ? undefined : quarantineDir,
   });

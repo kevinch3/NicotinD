@@ -8,6 +8,7 @@ import { LibraryProcessingPanelComponent } from './library-processing/library-pr
 import { SystemHealthPanelComponent } from './system-health/system-health-panel.component';
 import { LibraryMaintenancePanelComponent } from './library-maintenance/library-maintenance-panel.component';
 import { StreamingMediaPanelComponent } from './streaming-media/streaming-media-panel.component';
+import { LibraryFormatPanelComponent } from './library-format/library-format-panel.component';
 import { RadioSettingsPanelComponent } from './radio-settings/radio-settings-panel.component';
 import { BackupsDataPanelComponent } from './backups-data/backups-data-panel.component';
 import { AcquisitionAutomationPanelComponent } from './acquisition-automation/acquisition-automation-panel.component';
@@ -37,6 +38,7 @@ import { ReviewFlagsPanelComponent } from './review-flags/review-flags-panel.com
     SystemHealthPanelComponent,
     LibraryMaintenancePanelComponent,
     StreamingMediaPanelComponent,
+    LibraryFormatPanelComponent,
     RadioSettingsPanelComponent,
     BackupsDataPanelComponent,
     AcquisitionAutomationPanelComponent,
