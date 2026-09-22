@@ -1,0 +1,1 @@
+• settings: let the operator choose the library's format, and say what it costs (#1275)

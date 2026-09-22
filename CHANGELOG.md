@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.44](https://github.com/kevinch3/NicotinD/compare/v0.8.43...v0.8.44) (2026-09-22)
+
+### Features
+
+* **settings:** let the operator choose the library's format, and say what it costs ([#1275](https://github.com/kevinch3/NicotinD/issues/1275)) ([c7a1d75](https://github.com/kevinch3/NicotinD/commit/c7a1d75c8f8b240e16cebbaa2003b3e0e7905e8e)), references [#1256](https://github.com/kevinch3/NicotinD/issues/1256) [#1255](https://github.com/kevinch3/NicotinD/issues/1255) [#1256](https://github.com/kevinch3/NicotinD/issues/1256) [#1256](https://github.com/kevinch3/NicotinD/issues/1256) [#1255](https://github.com/kevinch3/NicotinD/issues/1255)
 ## [0.8.43](https://github.com/kevinch3/NicotinD/compare/v0.8.42...v0.8.43) (2026-09-22)
 
 ### Features
