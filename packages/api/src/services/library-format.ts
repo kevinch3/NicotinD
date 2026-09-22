@@ -1,6 +1,7 @@
 import { FORMAT_ARGS } from './transcode.js';
 import { bitrateFor as ladderBitrateFor } from './transcode-bitrate.js';
 import { attachPictureToOpus, MAX_EMBEDDED_PICTURE_BYTES } from './opus-artwork.js';
+import { attachPictureAsStream } from './attached-picture.js';
 import { writeOutputGain } from './opus-gain.js';
 
 /**
@@ -24,7 +25,7 @@ import { writeOutputGain } from './opus-gain.js';
  * Where they *do* agree, the args come from `FORMAT_ARGS` rather than being
  * written out again — the duplicate this module exists to delete.
  */
-export type LibraryFormat = 'opus';
+export type LibraryFormat = 'opus' | 'mp3';
 
 export interface FormatStrategy {
   id: LibraryFormat;
@@ -75,6 +76,23 @@ export const LIBRARY_FORMATS: Record<LibraryFormat, FormatStrategy> = {
     maxEmbeddedPictureBytes: MAX_EMBEDDED_PICTURE_BYTES,
     embedArt: attachPictureToOpus,
     writeGain: writeOutputGain,
+  },
+  mp3: {
+    id: 'mp3',
+    ext: 'mp3',
+    encodeArgs: (kbps) => FORMAT_ARGS.mp3.args(kbps),
+    bitrateFor: (sourceKbps, lossless) => ladderBitrateFor('mp3', sourceKbps, lossless),
+    // No ceiling we could measure: a 6.5 MB cover reads back byte-exact, ten
+    // times the point where Ogg throws. The 512 KB cap is a property of
+    // `music-metadata` reading Ogg, not of cover art — see `attached-picture.ts`.
+    maxEmbeddedPictureBytes: null,
+    embedArt: attachPictureAsStream,
+    // mp3 has no in-header gain field. ReplayGain is an advisory tag no player
+    // is obliged to honour, and baking the gain into the audio is the thing
+    // `loudness_measured` exists to make safe but which still re-encodes. So
+    // this format declares the capability absent and every call site is made to
+    // handle it by the type.
+    writeGain: null,
   },
 };
 

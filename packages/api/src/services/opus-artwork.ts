@@ -95,9 +95,17 @@ export interface PreparedPicture {
  * nothing on either ladder gets under the cap — an explicit "do not embed
  * this" the caller has to handle, rather than a path that fails later.
  */
-export function preparePicture(coverPath: string, scratchPath: string): PreparedPicture | null {
+export function preparePicture(
+  coverPath: string,
+  scratchPath: string,
+  maxBytes: number | null = MAX_EMBEDDED_PICTURE_BYTES,
+): PreparedPicture | null {
   const bytes = statSync(coverPath).size;
-  if (bytes <= MAX_EMBEDDED_PICTURE_BYTES) {
+  // `null` means the target container's reader imposes no ceiling we could
+  // measure — mp3 reads a 6.5 MB cover back byte-exact where Ogg throws above
+  // ~600 KB. Re-compressing there would degrade a cover for a reason that does
+  // not apply to it, so the cap travels with the format rather than the module.
+  if (maxBytes === null || bytes <= maxBytes) {
     return { path: coverPath, recompressed: false, bytes };
   }
 
@@ -126,7 +134,7 @@ export function preparePicture(coverPath: string, scratchPath: string): Prepared
         return null;
       }
       const got = statSync(scratchPath).size;
-      if (got <= MAX_EMBEDDED_PICTURE_BYTES) {
+      if (got <= maxBytes) {
         log.debug({ coverPath, from: bytes, to: got, q, edge }, 're-compressed an oversized cover');
         return { path: scratchPath, recompressed: true, bytes: got };
       }
@@ -137,7 +145,7 @@ export function preparePicture(coverPath: string, scratchPath: string): Prepared
   // cannot read — silently invisible art that still costs the bytes — so
   // report the failure and let the caller skip it.
   log.warn(
-    { coverPath, bytes, cap: MAX_EMBEDDED_PICTURE_BYTES },
+    { coverPath, bytes, cap: maxBytes },
     'cover too large to embed readably; leaving it out',
   );
   return null;

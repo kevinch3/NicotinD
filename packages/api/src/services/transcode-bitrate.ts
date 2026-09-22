@@ -70,6 +70,28 @@ export const LADDERS: Record<LibraryFormat, BitrateLadder> = {
     ],
     losslessKbps: 128,
   },
+  // mp3's rungs sit ABOVE Opus's at every step, and above the source's own
+  // number in the lower buckets. That is not a mistake and it is the reason a
+  // ladder cannot be shared: mp3 is the less efficient codec, so matching
+  // *perceived* quality costs more bits. Roughly, Opus 64 ≈ mp3 128, Opus 96 ≈
+  // mp3 160, Opus 112 ≈ mp3 192, Opus 128 ≈ mp3 256 (LAME V0, ~245 VBR, is the
+  // usual transparency mark).
+  //
+  // Note the invariant the Opus ladder is tested against — "never a rate above
+  // the source for a lossy file" — is deliberately NOT generalised. It holds
+  // for Opus because Opus is more efficient than everything converted into it.
+  // Applying it here would cap a 128 kbps source at 128 kbps of mp3 and throw
+  // away music on every file. A same-format source never reaches the ladder at
+  // all: the pass skips anything already in the target format.
+  mp3: {
+    steps: [
+      { upTo: 127, targetKbps: 128 },
+      { upTo: 159, targetKbps: 160 },
+      { upTo: 255, targetKbps: 192 },
+      { upTo: Infinity, targetKbps: 256 },
+    ],
+    losslessKbps: 256,
+  },
 };
 
 /**

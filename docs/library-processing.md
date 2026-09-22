@@ -719,9 +719,15 @@ the reported file — a `false` exits earlier with `Failed to write tags` — so
 `false` could never fire on this class. An mp3 write is therefore believed only where the file reads
 it back: the requested fields in `ID3_VERIFIABLE_FIELDS` are compared against a fresh
 `readAudioTags`, and one that still differs triggers a single ffmpeg rewrite. That set is
-deliberately narrower than `AudioTags` — `compilation` is not written at all (#917), and the
-perceptual features go through `toFixed`, so a faithful write reads back rounded. Comparing either
-would remux every analysis write forever.
+deliberately narrower than `AudioTags`: the perceptual features go through `toFixed`, so a faithful
+write reads back rounded, and comparing them would remux every analysis write forever.
+
+`compilation` is excluded too, but for the opposite reason to the one #917 gave. It *does* write on
+mp3 now (#1256) — node-id3 passes an unrecognised four-character frame id through, so `TCMP` lands —
+and the rewrite this list triggers would **destroy** it, because ffmpeg's mp3 muxer will not emit
+`TCMP` from `-metadata`. Listing it would turn a landed write into a lost one on every repair. The
+rewrite path therefore restores `TCMP` (and `USLT`) through node-id3 afterwards, reading both off
+the file first so a rewrite triggered by some *other* field cannot strip them.
 
 `bpm`/`discNumber` became readable in #1151 and do round-trip exactly, so they *could* join the set.
 They deliberately do not: this list decides whether to rewrite the container, neither is a field a

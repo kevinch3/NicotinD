@@ -318,6 +318,30 @@ describe.if(ffmpegAvailable())('overwriting an existing tag (#760)', () => {
     // container now takes `tmpo` instead. Every container asserts the same
     // thing, which is the point: an exemption kept as `toBeUndefined()` would
     // have gone on passing after the fix and quietly become a lie.
+    it(`round-trips the compilation flag on .${ext} (#1256)`, async () => {
+      // Was Vorbis/m4a only, on #917's finding that node-id3 has no TCMP frame
+      // — true of its typed API, false of its behaviour. Asserted on every
+      // container together, because the flag is only useful when BOTH halves
+      // work: a write with no matching read is not idempotent, it is a loop
+      // that re-tags every track of every compilation album forever (#916).
+      const path = tagged(ext, `compilation-${ext}`);
+      expect(await writeAudioTags(path, { compilation: true })).toBe(true);
+      expect((await readAudioTags(path)).compilation).toBe(true);
+    });
+
+    it(`keeps the compilation flag when another field forces a rewrite on .${ext}`, async () => {
+      // The ID3 repair path rewrites the container with ffmpeg, whose mp3 muxer
+      // will not emit TCMP — so a flag already correctly on disk would come
+      // back OFF, triggered by a write that never mentioned it. Exactly the
+      // "verify what you did not intend to change" shape.
+      const path = tagged(ext, `compilation-rewrite-${ext}`);
+      expect(await writeAudioTags(path, { compilation: true })).toBe(true);
+      expect(await writeAudioTags(path, { title: 'FORCES A REWRITE' })).toBe(true);
+      const tags = await readAudioTags(path);
+      expect(tags.title).toBe('FORCES A REWRITE');
+      expect(tags.compilation).toBe(true);
+    });
+
     it(`reads back disc and bpm on .${ext} (#1151, #1177)`, async () => {
       const path = tagged(ext, `numbers-${ext}`);
       expect(await writeAudioTags(path, { discNumber: 2, bpm: 128 })).toBe(true);

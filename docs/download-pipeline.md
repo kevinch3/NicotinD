@@ -201,7 +201,7 @@ the bytes are permanent, tagged, re-scanned, and replace a file that is then del
 | | streaming (`FORMAT_ARGS`) | library (`LIBRARY_FORMATS`) |
 | --- | --- | --- |
 | `opus` | `-f ogg` → served | `-f ogg` → `.opus`, taggable, header gain |
-| `mp3` | `-f mp3` → served | not yet implemented |
+| `mp3` | `-f mp3` → served | `-f mp3` → `.mp3`, taggable, **no** gain field, no art cap |
 | `aac` | `-f adts` → served | **invalid**: `.aac` is in `AUDIO_EXTENSIONS` but in neither `ID3_EXTS` nor `VORBIS_EXTS`, and `writeAudioTags` returns `false` for it |
 
 So an `.aac` library would be indexed by the scanner and permanently untaggable — every tag write

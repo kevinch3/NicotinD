@@ -42,11 +42,18 @@ export interface AudioTags {
   /** Dominant mood label (TXXX/Vorbis `MOOD`), from MOOD_VOCAB. */
   mood?: string;
   /**
-   * Vorbis/m4a only. node-id3 0.2.9 has no `TCMP` frame, so the ID3 path can
-   * neither write nor read this — it used to try, and the two dead halves
-   * cancelled out (the read returned false, which stopped the organizer ever
-   * asking for the write). Claiming support it does not have is worse than
-   * not claiming it (issue #917).
+   * Supported on every container this app writes, including mp3 (#1256).
+   *
+   * It was Vorbis/m4a only until then, on the strength of #917's finding that
+   * node-id3 0.2.9 has no `TCMP` frame. True of its typed API, false of its
+   * behaviour: it passes an unrecognised four-character frame id straight
+   * through, so `{ TCMP: '1' }` writes a real frame. The **read** is the half
+   * that genuinely does not work — node-id3 cannot see TCMP at all, not even
+   * under `raw` — so the ID3 path reads this one field through music-metadata.
+   *
+   * Both halves matter together, which is #916's lesson: a write with no
+   * matching read is not idempotent, it is a loop. The organizer re-tags any
+   * file whose `compilation` reads false against a compilation folder.
    */
   compilation?: boolean;
   /** AcoustID track UUID. Doubles as a "we've already fingerprinted this" marker. */
@@ -65,7 +72,10 @@ type NodeId3Api = {
 type MusicMetadataApi = {
   parseFile: (
     path: string,
-    opts?: { duration?: boolean },
+    // `skipCovers` matters as much as `duration` for the narrow reads: a cover
+    // is the largest thing in a tag header, and the compilation lookup wants
+    // one boolean from it.
+    opts?: { duration?: boolean; skipCovers?: boolean },
   ) => Promise<{
     common: {
       artist?: string;
@@ -333,6 +343,44 @@ function parseYear(raw: unknown): number | undefined {
   return undefined;
 }
 
+/**
+ * The compilation flag on an mp3, read through music-metadata rather than
+ * node-id3.
+ *
+ * node-id3 **writes** `TCMP` — it passes an unrecognised four-character frame
+ * id straight through — but cannot **read** it back: not as a top-level key and
+ * not under its `raw` map. Measured, not assumed: after
+ * `id3.update({ TCMP: '1' })` the frame is in the file and
+ * `music-metadata` reports `common.compilation === true`, while
+ * `id3.read()` returns only `encodingTechnology, title, raw`.
+ *
+ * Write-side-works, read-side-blind is the #1151 asymmetry over again, and it
+ * is not cosmetic: the organizer re-tags any file whose `compilation` reads
+ * false against a compilation folder (`library-organizer.ts`), so a flag that
+ * can never be read puts every track of every compilation album into a
+ * permanent rewrite loop. That is what kept mp3 from being a valid library
+ * target (#1256, #917).
+ *
+ * Deliberately a **second, narrow parse** rather than moving the whole ID3 read
+ * onto music-metadata: `readAudioTags` is called per file by the organizer and
+ * the scanner, and swapping the reader wholesale would re-litigate every field
+ * mapping above. `duration: false` + `skipCovers: true` keeps this to the tag
+ * header — the expensive parts of a parse are exactly the two things it skips.
+ *
+ * Returns `false` on any failure: an unreadable flag must read as "not a
+ * compilation", never throw a tag read that otherwise succeeded.
+ */
+async function readId3Compilation(filepath: string): Promise<boolean> {
+  try {
+    const mm = await getMusicMetadata();
+    if (!mm) return false;
+    const meta = await mm.parseFile(filepath, { duration: false, skipCovers: true });
+    return (meta.common as Record<string, unknown>).compilation === true;
+  } catch {
+    return false;
+  }
+}
+
 export async function readAudioTags(filepath: string): Promise<AudioTags> {
   const ext = extname(filepath).toLowerCase();
   if (ID3_EXTS.has(ext)) {
@@ -343,6 +391,7 @@ export async function readAudioTags(filepath: string): Promise<AudioTags> {
       if (!raw || typeof raw !== 'object') return {};
       const d = raw as Record<string, unknown>;
       return {
+        compilation: (await readId3Compilation(filepath)) || undefined,
         artist: pickString(d.artist),
         albumArtist: pickString(d.performerInfo) ?? pickString(d.band),
         album: pickString(d.album),
@@ -420,10 +469,16 @@ export interface WriteAudioTagsDeps {
 
 /**
  * The fields `readAudioTags` maps on an ID3 file, so a read-back can tell a
- * landed write from a lost one. Deliberately not the whole of `AudioTags`:
- * `compilation` is not written at all (#917), and the perceptual features go
- * through `toFixed`, so a faithful write reads back rounded. Comparing either
- * would report a good write as lost and rewrite the container for nothing.
+ * landed write from a lost one. Deliberately not the whole of `AudioTags`: the
+ * perceptual features go through `toFixed`, so a faithful write reads back
+ * rounded, and comparing them would report a good write as lost and rewrite the
+ * container for nothing.
+ *
+ * `compilation` is also absent, now for a different reason than #917 gave. It
+ * writes correctly (a real TCMP frame), but the ffmpeg container rewrite this
+ * list triggers would **destroy** it — the mp3 muxer will not emit TCMP from
+ * `-metadata`. Listing it here would turn a landed write into a lost one on
+ * every repair pass.
  *
  * `bpm`/`discNumber` became readable in #1151 and round-trip exactly, but they
  * stay out: this list decides whether to REWRITE THE CONTAINER, and neither is
@@ -464,11 +519,20 @@ export async function writeAudioTags(
     );
     if (stale.length === 0) return true;
     log.warn({ filepath, stale }, 'ID3 write did not stick in place; rewriting the container');
-    // ffmpeg re-emits an inherited USLT as a TXXX frame, which no reader here
-    // maps back to `lyrics` — so the lyrics are put back through node-id3.
-    const lyrics = tags.lyrics ?? (await readAudioTags(filepath)).lyrics;
+    // Two frames the container rewrite destroys, restored through node-id3
+    // afterwards. ffmpeg re-emits an inherited USLT as a TXXX no reader here
+    // maps back to `lyrics`; and its mp3 muxer will not write `TCMP` at all, so
+    // a compilation flag that was correctly on disk comes back off. Both are
+    // read from the file first, so a rewrite triggered by some *other* field
+    // does not quietly strip them (#1256).
+    const before = await readAudioTags(filepath);
+    const lyrics = tags.lyrics ?? before.lyrics;
+    const compilation = tags.compilation ?? before.compilation;
     if (!(await writeFfmpegTags(filepath, tags))) return false;
-    if (lyrics !== undefined) await writeId3Tags(filepath, { lyrics });
+    const restore: AudioTags = {};
+    if (lyrics !== undefined) restore.lyrics = lyrics;
+    if (compilation) restore.compilation = true;
+    if (Object.keys(restore).length > 0) await writeId3Tags(filepath, restore);
     return true;
   }
   if (VORBIS_EXTS.has(ext) || ext === '.m4a') return writeFfmpegTags(filepath, tags);
@@ -491,6 +555,20 @@ async function writeId3Tags(filepath: string, tags: AudioTags): Promise<boolean>
   if (tags.key !== undefined) update.initialKey = tags.key;
   if (tags.lyrics !== undefined)
     update.unsynchronisedLyrics = { language: 'eng', text: tags.lyrics };
+  // `TCMP` is the iTunes compilation flag. node-id3 0.2.9 has no typed field
+  // for it — which is what #917 recorded and why this went unwritten — but it
+  // passes an unrecognised **four-character frame id** straight through to the
+  // file. Measured: `{ TCMP: '1' }` produces a real TCMP frame that
+  // music-metadata reads back as `common.compilation === true`. Its documented
+  // `raw: { TCMP }` escape hatch does NOT work, and a `TXXX:COMPILATION` is not
+  // read by anything.
+  //
+  // Not cosmetic, and not only about display: the organizer re-tags any file
+  // whose `compilation` reads false against a compilation folder
+  // (`library-organizer.ts`), so a container that cannot hold the flag puts
+  // every track of every compilation album into a permanent rewrite loop. That
+  // is what blocked mp3 from being a valid library target (#1256).
+  if (tags.compilation) update.TCMP = '1';
 
   const userText: NodeId3UserText[] = [];
   for (const [field, key] of numericFeatureEntries()) {
