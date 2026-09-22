@@ -218,6 +218,7 @@ export async function seedAdminAndLibrary(
   // first spec would race a half-scanned library (issue #655).
   await scanAndWait(request, token);
   await waitForLibrary(request, token);
+  await waitForProcessingIdle(request, token);
 
   // Seed lyrics on the first fixture track so the karaoke overlays can render
   // (fixture tracks are silent FLAC with no LRCLIB match, so the panel would be
@@ -272,6 +273,40 @@ export async function waitForLibrary(request: APIRequestContext, token: string):
       { timeout: 30_000, intervals: [500, 1000, 1500] },
     )
     .toBeGreaterThan(0);
+}
+
+/**
+ * Wait for the eager enrichment pass a scan kicks off to drain.
+ *
+ * A landed scan is not a quiet server: `enrichNewSongsNow()` fires the moment
+ * it completes and decodes every new file for BPM/key/loudness. On a two-core
+ * runner, three servers doing that over 24 fixtures starve the first spec of
+ * the shard — its `/api/library/albums` sat on "Loading albums" past the 5 s
+ * locator timeout, twice (PR #1281). `phase` is `running` while a run is in
+ * flight, but the service may report idle in the gap between two batches of
+ * one run, so a single quiet sample proves nothing: three in a row, a second
+ * apart, do. A 503 means no processing service, which is nothing to wait for.
+ */
+export async function waitForProcessingIdle(
+  request: APIRequestContext,
+  token: string,
+): Promise<void> {
+  const phase = async (): Promise<string> => {
+    const r = await request.get('/api/admin/processing', { headers: bearer(token) });
+    if (!r.ok()) return 'unavailable';
+    const state = (await r.json()) as { status?: { phase?: string } };
+    return state.status?.phase ?? 'unknown';
+  };
+  let quiet = 0;
+  await expect
+    .poll(
+      async () => {
+        quiet = (await phase()) === 'running' ? 0 : quiet + 1;
+        return quiet;
+      },
+      { timeout: 180_000, intervals: [1000] },
+    )
+    .toBeGreaterThanOrEqual(3);
 }
 
 /**

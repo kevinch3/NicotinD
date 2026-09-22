@@ -112,6 +112,15 @@ same PR that hit it.
   promise. `waitForLibrary` is not a substitute — it only proves *an* album exists,
   not that the scanner has stopped writing.
 
+- **A landed scan is not a quiet server.** The moment a scan completes, the eager
+  enrichment pass decodes every new file for BPM/key/loudness, and on a two-core
+  runner three servers doing that over the fixture library starve whichever spec
+  runs first in the shard: its `/api/library/albums` sat on "Loading albums" past
+  the locator timeout, twice, the day the fixtures grew from 10 to 24 files
+  (PR #1281). `seedAdminAndLibrary` therefore also calls `waitForProcessingIdle`,
+  which polls `GET /api/admin/processing` until `status.phase` leaves `running`.
+  A spec that kicks its own scan or genre override mid-suite owns the same wait.
+
 - **A spec must not assert on state it does not own.** One server and one DB mean
   every spec sees every other spec's leftovers. `mobile-ux.spec.ts` asserted the
   Downloads feed was empty (`No active downloads.`) purely as a readiness check,
