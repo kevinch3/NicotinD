@@ -137,7 +137,7 @@ it exists to fix.
 
 **Secondary finding, and the bigger one (#953): zero of 1,719 non-mp3 files carry art**, against
 ~87% of mp3s. That is not a rate, it is an absolute — every path that *produces* a file drops the
-cover. `transcodeToOpus` does it with `-vn` (an attached picture is a video stream, and
+cover. `transcodeToLibraryFormat` does it with `-vn` (an attached picture is a video stream, and
 `-map_metadata` does not bring it back), and m4a never goes through the transcode at all, so at
 least one download path drops it too.
 
@@ -508,7 +508,7 @@ Design rules it inherits:
 
 - **A metric is what its remediation acts on** (the `NEEDS_PORTRAIT_SQL` doctrine): the covers
   number is `backfillArtwork`'s candidate set; the lossless-remaining count is
-  `transcodeLibraryToOpus`'s; the confirmed-incomplete rows use the *same* matcher (`onDiskTitles` +
+  `transcodeLibraryToFormat`'s; the confirmed-incomplete rows use the *same* matcher (`onDiskTitles` +
   `titlesOverlap`) as `acquireAlbum`, so "incomplete here" means "a hunt would enqueue something".
 - **On-demand only, never polled.** The audit half issues per-row queries — fine as a snapshot,
   poison in the `ServiceReview` interval. The Admin panel fetches on expand.

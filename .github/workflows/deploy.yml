@@ -391,6 +391,10 @@ jobs:
   # fail-loud rationale as android/ios above: a broken deb/AppImage must turn the
   # run red (e.g. the scoped-name deb bug that silently shipped no Linux artifacts),
   # yet it still never blocks `deploy`, which runs in parallel with no `needs` link.
+  #
+  # Fail-loud was not enough on its own: the publisher can decline to upload and
+  # still exit 0, which is #1261. The verify step below closes that, and
+  # `check:desktop-publish` keeps it wired to every packaging job.
   desktop-linux:
     runs-on: ubuntu-latest
     # Skipped when the desktop inputs didn't change this release (see `changes`).
@@ -443,6 +447,17 @@ jobs:
         # creating a stray `v0.1.0` one.
         run: bunx electron-builder --linux --publish always -c.extraMetadata.version="${GITHUB_REF_NAME#v}"
 
+      # `--publish always` is not a promise that anything was published: the
+      # publisher logs `skipped publishing` per file and exits 0 when it will not
+      # upload (#1261 — ~40 green releases with no Linux artifact and no updater
+      # feed). This compares the release against what the step above actually
+      # wrote to `release/`, so the next skip is red. Runs AFTER the upload,
+      # never between build and upload.
+      - name: Verify the Linux artifacts reached the Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bun run packages/desktop/scripts/verify-published-assets.ts --label desktop-linux
+
   # Build the macOS desktop app (dmg, arm64 only — Intel/x64 dropped) and publish
   # it the same way (electron-updater reads `latest-mac.yml`). Ad-hoc signed — no
   # Apple Developer ID in scope for v1, so electron-builder.yml leaves `identity`
@@ -493,6 +508,12 @@ jobs:
         # Run electron-builder under Node, not Bun (`--bun` crashes it).
         # extraMetadata.version: use the release tag's version (see desktop-linux).
         run: bunx electron-builder --mac --publish always -c.extraMetadata.version="${GITHUB_REF_NAME#v}"
+
+      # Same backstop as desktop-linux — see the rationale there.
+      - name: Verify the macOS artifacts reached the Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bun run packages/desktop/scripts/verify-published-assets.ts --label desktop-mac
 
   # Build + publish the multi-arch server image to GHCR (Immich-style): one
   # native-runner build per arch pushed by digest, then `docker-merge` stitches

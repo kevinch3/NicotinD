@@ -831,11 +831,16 @@ const energyTask: EnrichmentTask = {
         }
         if (!result) continue;
         const loudness = Number.isFinite(result.loudness) ? result.loudness : null;
-        db.run('UPDATE library_songs SET energy = ?, loudness = ? WHERE id = ?', [
-          result.energy,
-          loudness,
-          song.id,
-        ]);
+        // `loudness_measured` is COALESCEd, never assigned: the first measurement
+        // of a song is the one the descriptor is derived from, and a later pass
+        // must not be able to replace it with a post-normalization value. See
+        // the column's note in db.ts (#1256).
+        db.run(
+          `UPDATE library_songs
+              SET energy = ?, loudness = ?, loudness_measured = COALESCE(loudness_measured, ?)
+            WHERE id = ?`,
+          [result.energy, loudness, loudness, song.id],
+        );
         if (!fromTag) {
           await writeTagsRebased(db, ctx, song.id, abs, {
             energy: result.energy,

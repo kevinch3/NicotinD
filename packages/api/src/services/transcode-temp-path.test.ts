@@ -17,7 +17,7 @@ afterEach(() => rmSync(musicDir, { recursive: true, force: true }));
 
 describe('transcodeTempPathFor', () => {
   test('the temp file is hidden, so a crash-orphaned one is never library content', () => {
-    // transcodeToOpus already cleans up on every *handled* failure. The leak
+    // transcodeToLibraryFormat already cleans up on every *handled* failure. The leak
     // this guards is the process dying mid-encode (deploy restart, OOM,
     // SIGKILL), where no finally runs. A hidden name makes that cost disk
     // rather than a phantom track.

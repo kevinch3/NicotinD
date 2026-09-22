@@ -11,7 +11,7 @@ import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
-import { transcodeLibraryToOpus } from './library-transcode.js';
+import { transcodeLibraryToFormat } from './library-transcode.js';
 import { songId } from './library-scanner.js';
 import { ffmpegAvailable } from './transcode.js';
 import { upsertGenreOverride } from './genre-overrides.js';
@@ -117,7 +117,7 @@ const songOverrides = (db: Database) =>
     )
     .all();
 
-describe('transcodeLibraryToOpus', () => {
+describe('transcodeLibraryToFormat', () => {
   it('dry run reports candidates without touching disk or db', async () => {
     const music = tmpMusic();
     const db = new Database(':memory:');
@@ -127,7 +127,7 @@ describe('transcodeLibraryToOpus', () => {
     await Bun.write(join(music, rel), 'x'); // dry-run only existsSync-checks
     seedSongRow(db, rel);
 
-    const r = await transcodeLibraryToOpus(db, music, { apply: false, bitRate: 192 });
+    const r = await transcodeLibraryToFormat(db, music, { apply: false, bitRate: 192 });
     expect(r.candidates).toBe(1);
     expect(r.converted).toBe(1); // would-convert count
     // Row unchanged (still flac).
@@ -146,7 +146,7 @@ describe('transcodeLibraryToOpus', () => {
       // 120 s at 192 kbps ≈ 2,880,000 bytes of Opus out of a 10 MB source.
       seedSongRow(db, rel, { size: 10_000_000, duration: 120 });
 
-      const r = await transcodeLibraryToOpus(db, music, { apply: false, bitRate: 192 });
+      const r = await transcodeLibraryToFormat(db, music, { apply: false, bitRate: 192 });
 
       // Before the fix this was the full 10,000,000 — it assumed the Opus file
       // would be zero bytes, so the figure the operator sizes a run against was
@@ -165,8 +165,8 @@ describe('transcodeLibraryToOpus', () => {
       await Bun.write(join(music, rel), 'x');
       seedSongRow(db, rel, { size: 10_000_000, duration: 120 });
 
-      const low = await transcodeLibraryToOpus(db, music, { apply: false, bitRate: 96 });
-      const high = await transcodeLibraryToOpus(db, music, { apply: false, bitRate: 256 });
+      const low = await transcodeLibraryToFormat(db, music, { apply: false, bitRate: 96 });
+      const high = await transcodeLibraryToFormat(db, music, { apply: false, bitRate: 256 });
       // A smaller encode frees more; the old code reported the same either way.
       expect(low.bytesReclaimed).toBeGreaterThan(high.bytesReclaimed);
     });
@@ -180,7 +180,7 @@ describe('transcodeLibraryToOpus', () => {
       await Bun.write(join(music, rel), 'x');
       seedSongRow(db, rel, { size: 10_000_000, duration: 0 });
 
-      const r = await transcodeLibraryToOpus(db, music, { apply: false, bitRate: 192 });
+      const r = await transcodeLibraryToFormat(db, music, { apply: false, bitRate: 192 });
 
       // Under-report rather than over-report: a floor is recoverable, the old
       // over-estimate is what this fix exists to stop.
@@ -204,7 +204,7 @@ describe('transcodeLibraryToOpus', () => {
         // estimate has to work from.
         seedSongRow(db, rel, { size, duration: 1 });
 
-        const dry = await transcodeLibraryToOpus(db, music, { apply: false, bitRate: 96 });
+        const dry = await transcodeLibraryToFormat(db, music, { apply: false, bitRate: 96 });
 
         expect(dry.unestimated).toBe(0);
         // The bound that matters, and the one the old code broke: a dry run can
@@ -244,7 +244,7 @@ describe('transcodeLibraryToOpus', () => {
         [rel],
       );
 
-      const r = await transcodeLibraryToOpus(db, music, { apply: true, bitRate: 96 });
+      const r = await transcodeLibraryToFormat(db, music, { apply: true, bitRate: 96 });
       expect(r.converted).toBe(1);
       expect(r.failed).toBe(0);
 
@@ -296,7 +296,7 @@ describe('transcodeLibraryToOpus', () => {
         [newRel],
       );
 
-      const r = await transcodeLibraryToOpus(db, music, { apply: true, bitRate: 96 });
+      const r = await transcodeLibraryToFormat(db, music, { apply: true, bitRate: 96 });
       expect(r.converted).toBe(1);
       expect(r.failed).toBe(0);
 
@@ -328,7 +328,7 @@ describe('transcodeLibraryToOpus', () => {
       const oldId = seedSongRow(db, rel);
       overrideSong(db, oldId, ['Ambient']);
 
-      const r = await transcodeLibraryToOpus(db, music, { apply: true, bitRate: 96 });
+      const r = await transcodeLibraryToFormat(db, music, { apply: true, bitRate: 96 });
       expect(r.converted).toBe(1);
       expect(r.failed).toBe(0);
 
@@ -352,7 +352,7 @@ describe('transcodeLibraryToOpus', () => {
       overrideSong(db, newId, ['Techno']);
       overrideSong(db, oldId, ['Ambient']);
 
-      const r = await transcodeLibraryToOpus(db, music, { apply: true, bitRate: 96 });
+      const r = await transcodeLibraryToFormat(db, music, { apply: true, bitRate: 96 });
       expect(r.converted).toBe(1);
       expect(r.failed).toBe(0);
 
@@ -370,7 +370,7 @@ describe('transcodeLibraryToOpus', () => {
       `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, suffix, synced_at)
        VALUES ('m', 'alb', 'T', 'A', 'art', 'A/B/01.mp3', 'mp3', 1)`,
     );
-    const r = await transcodeLibraryToOpus(db, music, { apply: true, bitRate: 192 });
+    const r = await transcodeLibraryToFormat(db, music, { apply: true, bitRate: 192 });
     expect(r.candidates).toBe(0);
     expect(r.converted).toBe(0);
   });
@@ -389,7 +389,7 @@ describe('transcodeLibraryToOpus', () => {
       seedSongRow(db, aacRel);
       db.run(`UPDATE library_songs SET suffix = 'm4a'`);
 
-      const r = await transcodeLibraryToOpus(db, music, { apply: true, bitRate: 96 });
+      const r = await transcodeLibraryToFormat(db, music, { apply: true, bitRate: 96 });
       // Only the ALAC file is a candidate; the lossy AAC one is untouched.
       expect(r.candidates).toBe(1);
       expect(r.converted).toBe(1);
@@ -425,7 +425,7 @@ describe('disk headroom preflight', () => {
   it.skipIf(!ffmpegAvailable())('refuses to start when the disk is full', async () => {
     const { music, db } = await oneCandidate();
     await expect(
-      transcodeLibraryToOpus(db, music, { apply: true, bitRate: 96, statfs: fullDisk }),
+      transcodeLibraryToFormat(db, music, { apply: true, bitRate: 96, statfs: fullDisk }),
     ).rejects.toThrow(/Not enough free space/);
   });
 
@@ -434,7 +434,7 @@ describe('disk headroom preflight', () => {
     // cannot stat is worse than no preflight — that failure shape once blocked
     // an upgrade, which is why every probe here fails open.
     const { music, db } = await oneCandidate();
-    const r = await transcodeLibraryToOpus(db, music, {
+    const r = await transcodeLibraryToFormat(db, music, {
       apply: false,
       bitRate: 96,
       statfs: unprobeable,
@@ -446,7 +446,7 @@ describe('disk headroom preflight', () => {
     // A dry run writes nothing, so a full disk must not stop it — that is
     // exactly when an operator needs the sizing report most.
     const { music, db } = await oneCandidate();
-    const r = await transcodeLibraryToOpus(db, music, {
+    const r = await transcodeLibraryToFormat(db, music, {
       apply: false,
       bitRate: 96,
       statfs: fullDisk,
@@ -459,7 +459,7 @@ describe('disk headroom preflight', () => {
     const music = tmpMusic();
     const db = new Database(':memory:');
     applySchema(db);
-    const r = await transcodeLibraryToOpus(db, music, {
+    const r = await transcodeLibraryToFormat(db, music, {
       apply: true,
       bitRate: 96,
       statfs: fullDisk,
@@ -469,7 +469,7 @@ describe('disk headroom preflight', () => {
 
   it('passes when there is room', async () => {
     const { music, db } = await oneCandidate();
-    const r = await transcodeLibraryToOpus(db, music, {
+    const r = await transcodeLibraryToFormat(db, music, {
       apply: false,
       bitRate: 96,
       statfs: roomyDisk,
@@ -479,7 +479,7 @@ describe('disk headroom preflight', () => {
 });
 
 // The WHOLE block is guarded, not the individual cases. Every test here uses
-// `apply: true`, and `transcodeLibraryToOpus` rejects on a missing ffmpeg
+// `apply: true`, and `transcodeLibraryToFormat` rejects on a missing ffmpeg
 // BEFORE it reaches anything under test — so on the `ci` job, which has no
 // ffmpeg, an unguarded case asserts the wrong error and fails for a reason
 // that has nothing to do with quarantine. Guarding the describe means a case
@@ -498,7 +498,7 @@ describe.skipIf(!ffmpegAvailable())('keeping originals (back up before transcodi
       makeFlac(music, rel, 'Avril 14th');
       seedSongRow(db, rel, { size: statSync(join(music, rel)).size, duration: 1 });
 
-      const r = await transcodeLibraryToOpus(db, music, {
+      const r = await transcodeLibraryToFormat(db, music, {
         apply: true,
         bitRate: 96,
         dataDir: data,
@@ -523,7 +523,11 @@ describe.skipIf(!ffmpegAvailable())('keeping originals (back up before transcodi
     makeFlac(music, rel, 'Avril 14th');
     seedSongRow(db, rel, { size: statSync(join(music, rel)).size, duration: 1 });
 
-    const r = await transcodeLibraryToOpus(db, music, { apply: true, bitRate: 96, statfs: roomy });
+    const r = await transcodeLibraryToFormat(db, music, {
+      apply: true,
+      bitRate: 96,
+      statfs: roomy,
+    });
 
     expect(r.converted).toBe(1);
     expect(r.quarantineRun).toBeUndefined();
@@ -535,7 +539,7 @@ describe.skipIf(!ffmpegAvailable())('keeping originals (back up before transcodi
     const data = tmpMusic();
     const db = new Database(':memory:');
     applySchema(db);
-    const r = await transcodeLibraryToOpus(db, music, {
+    const r = await transcodeLibraryToFormat(db, music, {
       apply: true,
       bitRate: 96,
       dataDir: data,
@@ -568,7 +572,7 @@ describe.skipIf(!ffmpegAvailable())('keeping originals (back up before transcodi
     const eightHundredMB = () => ({ bsize: 1, blocks: 1e9, bavail: 800 * MB });
 
     await expect(
-      transcodeLibraryToOpus(db, music, {
+      transcodeLibraryToFormat(db, music, {
         apply: true,
         bitRate: 96,
         dataDir: data,
@@ -602,7 +606,7 @@ describe.skipIf(!ffmpegAvailable())('concurrency: the three-phase split', () => 
     applySchema(db);
     seedAlbum(db, music, 6);
 
-    const r = await transcodeLibraryToOpus(db, music, { apply: true, bitRate: 96 });
+    const r = await transcodeLibraryToFormat(db, music, { apply: true, bitRate: 96 });
 
     expect(r.converted).toBe(6);
     expect(r.failed).toBe(0);
@@ -627,7 +631,7 @@ describe.skipIf(!ffmpegAvailable())('concurrency: the three-phase split', () => 
     await Bun.write(join(music, broken), 'this is not a flac');
     seedSongRow(db, broken);
 
-    const r = await transcodeLibraryToOpus(db, music, { apply: true, bitRate: 96 });
+    const r = await transcodeLibraryToFormat(db, music, { apply: true, bitRate: 96 });
 
     expect(r.converted).toBe(5);
     expect(r.failed).toBe(1);
@@ -647,7 +651,7 @@ describe.skipIf(!ffmpegAvailable())('concurrency: the three-phase split', () => 
     seedAlbum(db, music, 5);
 
     const seen: Array<{ visited: number; converted: number }> = [];
-    await transcodeLibraryToOpus(db, music, {
+    await transcodeLibraryToFormat(db, music, {
       apply: true,
       bitRate: 96,
       onProgress: (p) => seen.push({ visited: p.visited, converted: p.result.converted }),
@@ -667,7 +671,7 @@ describe.skipIf(!ffmpegAvailable())('concurrency: the three-phase split', () => 
     applySchema(db);
     seedAlbum(db, music, 6);
 
-    const r = await transcodeLibraryToOpus(db, music, {
+    const r = await transcodeLibraryToFormat(db, music, {
       apply: true,
       bitRate: 96,
       shouldStop: () => true,
@@ -685,7 +689,7 @@ describe.skipIf(!ffmpegAvailable())('concurrency: the three-phase split', () => 
 describe('source-adaptive bitrate', () => {
   it('gives every candidate the top rate today, because every candidate is lossless', async () => {
     // Honest about what this currently proves. The pass selects lossless files
-    // only, and lossless takes LOSSLESS_OPUS_KBPS without consulting the
+    // only, and lossless takes the ladder's losslessKbps without consulting the
     // ladder — so the ladder is wired but INERT until the predicate extends to
     // the 13,576 mp3s. Its own unit tests cover the buckets; this covers the
     // wiring, and will start distinguishing rates the moment the predicate
@@ -698,9 +702,9 @@ describe('source-adaptive bitrate', () => {
     await Bun.write(join(music, rel), 'x');
     seedSongRow(db, rel, { size: 10_000_000, duration: 120, bitRate: 96 });
 
-    const adaptive = await transcodeLibraryToOpus(db, music, { apply: false });
-    const at128 = await transcodeLibraryToOpus(db, music, { apply: false, bitRate: 128 });
-    const at64 = await transcodeLibraryToOpus(db, music, { apply: false, bitRate: 64 });
+    const adaptive = await transcodeLibraryToFormat(db, music, { apply: false });
+    const at128 = await transcodeLibraryToFormat(db, music, { apply: false, bitRate: 128 });
+    const at64 = await transcodeLibraryToFormat(db, music, { apply: false, bitRate: 64 });
 
     // Adaptive agrees with a pinned 128 and differs from a pinned 64, which is
     // what "took the top rate" means in terms this pass can observe.
@@ -719,8 +723,8 @@ describe('source-adaptive bitrate', () => {
     await Bun.write(join(music, rel), 'x');
     seedSongRow(db, rel, { size: 10_000_000, duration: 120, bitRate: 0 });
 
-    const r = await transcodeLibraryToOpus(db, music, { apply: false });
-    const at128 = await transcodeLibraryToOpus(db, music, { apply: false, bitRate: 128 });
+    const r = await transcodeLibraryToFormat(db, music, { apply: false });
+    const at128 = await transcodeLibraryToFormat(db, music, { apply: false, bitRate: 128 });
 
     expect(r.bytesReclaimed).toBe(at128.bytesReclaimed);
   });
@@ -747,7 +751,7 @@ describe('conversion scope', () => {
     applySchema(db);
     await seedMixed(db, music);
 
-    const r = await transcodeLibraryToOpus(db, music, { apply: false });
+    const r = await transcodeLibraryToFormat(db, music, { apply: false });
 
     expect(r.candidates).toBe(1); // the flac
   });
@@ -760,7 +764,7 @@ describe('conversion scope', () => {
     applySchema(db);
     await seedMixed(db, music);
 
-    const r = await transcodeLibraryToOpus(db, music, { apply: false, scope: 'all' });
+    const r = await transcodeLibraryToFormat(db, music, { apply: false, scope: 'all' });
 
     expect(r.candidates).toBe(4); // flac, mp3, wma, ogg — not the opus
   });
@@ -775,11 +779,11 @@ describe('conversion scope', () => {
     await seedMixed(db, music);
 
     for (const scope of ['lossless', 'all'] as const) {
-      const r = await transcodeLibraryToOpus(db, music, { apply: false, scope });
+      const r = await transcodeLibraryToFormat(db, music, { apply: false, scope });
       expect(r.candidates).toBeLessThan(5);
     }
     // Explicitly: the opus row is absent from both candidate sets.
-    const all = await transcodeLibraryToOpus(db, music, { apply: false, scope: 'all' });
+    const all = await transcodeLibraryToFormat(db, music, { apply: false, scope: 'all' });
     expect(all.candidates).toBe(4);
   });
 
@@ -795,7 +799,7 @@ describe('conversion scope', () => {
     await Bun.write(join(music, rel), 'x');
     seedSongRow(db, rel, { suffix: 'mp3' }); // wrong on purpose
 
-    const r = await transcodeLibraryToOpus(db, music, { apply: false, scope: 'all' });
+    const r = await transcodeLibraryToFormat(db, music, { apply: false, scope: 'all' });
 
     expect(r.candidates).toBe(0);
   });
@@ -818,12 +822,12 @@ describe('the bitrate ladder, now that lossy files are in scope', () => {
       seedSongRow(db, rel, { suffix: 'mp3', size: 10_000_000, duration: 120, bitRate });
     }
 
-    const low = await transcodeLibraryToOpus(db, music, {
+    const low = await transcodeLibraryToFormat(db, music, {
       apply: false,
       scope: 'all',
       limit: 1,
     });
-    const both = await transcodeLibraryToOpus(db, music, { apply: false, scope: 'all' });
+    const both = await transcodeLibraryToFormat(db, music, { apply: false, scope: 'all' });
 
     // 120 s at 96k is 1.44 MB; at 128k it is 1.92 MB. Two files at one rate
     // would reclaim exactly twice the first; they do not.
@@ -840,8 +844,8 @@ describe('the bitrate ladder, now that lossy files are in scope', () => {
     await Bun.write(join(music, rel), 'x');
     seedSongRow(db, rel, { suffix: 'mp3', size: 10_000_000, duration: 120, bitRate: 0 });
 
-    const adaptive = await transcodeLibraryToOpus(db, music, { apply: false, scope: 'all' });
-    const at128 = await transcodeLibraryToOpus(db, music, {
+    const adaptive = await transcodeLibraryToFormat(db, music, { apply: false, scope: 'all' });
+    const at128 = await transcodeLibraryToFormat(db, music, {
       apply: false,
       scope: 'all',
       bitRate: 128,
@@ -851,7 +855,7 @@ describe('the bitrate ladder, now that lossy files are in scope', () => {
   });
 });
 
-// Guarded like every other apply-path describe here: `transcodeLibraryToOpus`
+// Guarded like every other apply-path describe here: `transcodeLibraryToFormat`
 // throws "ffmpeg is required" BEFORE it reaches the preflight, so on the `ci`
 // job (no ffmpeg) these would fail on the wrong error rather than assert the
 // disk logic. The `e2e` job has ffmpeg and is what actually runs them.
@@ -888,7 +892,7 @@ describe.skipIf(!ffmpegAvailable())(
       const { music, data, db } = await bigLibrary(8 * GiB, 10);
 
       await expect(
-        transcodeLibraryToOpus(db, music, {
+        transcodeLibraryToFormat(db, music, {
           apply: true,
           dataDir: data,
           statfs: disks(music, 743, 71),
@@ -900,7 +904,7 @@ describe.skipIf(!ffmpegAvailable())(
       const { music, data, db } = await bigLibrary(8 * GiB, 10);
 
       await expect(
-        transcodeLibraryToOpus(db, music, {
+        transcodeLibraryToFormat(db, music, {
           apply: true,
           dataDir: data,
           statfs: disks(music, 743, 71),
@@ -913,7 +917,7 @@ describe.skipIf(!ffmpegAvailable())(
       // check by the output would under-ask by ~20x and let the run start.
       const { music, data, db } = await bigLibrary(80 * 1024 * 1024, 200); // ~15.6 GiB
       await expect(
-        transcodeLibraryToOpus(db, music, {
+        transcodeLibraryToFormat(db, music, {
           apply: true,
           dataDir: data,
           statfs: disks(music, 743, 10), // 10 GiB is short for 15.6, roomy for the output
@@ -924,7 +928,7 @@ describe.skipIf(!ffmpegAvailable())(
     it('proceeds when the quarantine disk genuinely has room', async () => {
       const { music, data, db } = await bigLibrary(1024 * 1024, 5);
 
-      const r = await transcodeLibraryToOpus(db, music, {
+      const r = await transcodeLibraryToFormat(db, music, {
         apply: false, // preflight is apply-only; this asserts the dry path is unaffected
         dataDir: data,
         statfs: disks(music, 743, 743),

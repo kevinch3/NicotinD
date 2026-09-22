@@ -338,11 +338,47 @@ publish uploads the `latest-*.yml` metadata the updater polls.
 Tag-triggered jobs in `.github/workflows/deploy.yml` (mirroring the Android/iOS jobs,
 `if: github.ref_type == 'tag'`). They are **not** `continue-on-error` — a packaging failure turns
 the release run **red** so a broken release is caught, instead of silently shipping a tag with no
-artifacts (as the scoped-name deb bug did). They still never block the server `deploy` job: it runs
-in parallel with no `needs` linkage, so its success is independent of packaging.
+artifacts (as the scoped-name deb bug did). That catches a failing build, but not a *successful*
+build that publishes nothing — see "Publishing to the GitHub Release" below. They still never block
+the server `deploy` job: it runs in parallel with no `needs` linkage, so its success is independent
+of packaging.
 
 - `desktop-linux` (ubuntu) → `electron-builder --linux --publish always` (AppImage/deb + `latest-linux.yml`).
 - `desktop-mac` (macos-14) → `electron-builder --mac --publish always` (dmg + `latest-mac.yml`).
+
+### Publishing to the GitHub Release
+
+`--publish always` and a fail-loud job are **not** a promise that anything was published. The
+GitHub publisher refuses to upload into a release whose type does not match its own `releaseType`,
+and the way it refuses is one `skipped publishing` line per file and **exit code 0**.
+
+That is exactly what shipped from **v0.1.232 to v0.8.39** (#1261). `deploy.yml`'s `release-notes`
+job is ungated and has no `needs`, so it creates the tag's release as *published* within seconds of
+the tag push — while the publisher was still on its default `releaseType: draft`. For two months and
+~40 releases both desktop jobs built the AppImage, the deb and the dmg, uploaded none of them, and
+reported success. `latest-linux.yml` / `latest-mac.yml` went with them, so every installed app also
+lost its update feed. The one visible trace was v0.6.37, where the desktop job won the race instead
+and left its artifacts on an **orphan draft** sharing the tag name — invisible on the releases page,
+invisible to the updater.
+
+Two things keep it fixed, and they are deliberately in different places:
+
+1. **`publish.releaseType: release`** in `electron-builder.yml` — the publisher now matches the
+   release `release-notes` creates. Asserted by `electron-builder-config.test.ts`, next to the
+   config it constrains.
+2. **A post-publish verification step in every packaging job.**
+   `verify-published-assets.ts` lists what electron-builder actually wrote to `release/`, then
+   asserts each of those names is on the tag's *published* release
+   (`/releases/tags/{tag}` never resolves a draft, which is the point). It expects what the build
+   produced rather than a hardcoded asset list, so adding a target extends the check for free, and
+   an **empty** artifact set fails too — a build that produced nothing must not pass for lack of
+   anything to check. It runs strictly *after* the upload, and retries a bounded number of times so
+   a lagging asset listing cannot flake the release red.
+
+(1) fixes the instance; (2) covers the class, because every future publisher-side skip — a token
+that cannot write, a renamed target, a draft created by a racing job — looks identical from outside.
+`check:desktop-publish` keeps (2) wired: it fails a packaging job whose verification was dropped,
+reordered before the upload, or made `continue-on-error`. → [quality-gates.md](quality-gates.md)
 
 Desktop **unit tests** (`bun:test`: `parseListeningPort`, `shouldRestart`, `updateMode`,
 `mergeDesktopConfig`, dialog-result, prepare-resources helpers) run in CI via `ci.yml`'s test step

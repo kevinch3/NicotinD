@@ -193,6 +193,15 @@ jobs:
       - name: F-Droid build variant gate
         run: bun run check:fdroid
 
+      # electron-builder's publisher skips every upload and exits 0 when it will
+      # not write to the release, so `--publish always` plus a fail-loud job was
+      # still green through ~40 releases that shipped no desktop artifact and no
+      # updater feed (#1261). This fails a packaging job whose post-publish
+      # verification was dropped, reordered before the upload, or made
+      # continue-on-error — the wiring, not the mechanism.
+      - name: Desktop publish gate (a packaging job must verify what it uploaded)
+        run: bun run check:desktop-publish
+
       # Every outbound fetch must carry an abort signal. Both house clients
       # shipped without one (#623, #625) and the failure mode is silence: a
       # missing timeout looks exactly like a working call until an upstream

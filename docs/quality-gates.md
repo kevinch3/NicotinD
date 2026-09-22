@@ -901,6 +901,44 @@ retry that could never fail would be the hidden-retry shape this page warns abou
 it is bounded, it is loud, and `check:install-scripts` is what stops it widening to a second
 package by making one appear as a build failure instead of a withheld release.
 
+## A publisher that uploads nothing can still exit 0 (#1261)
+
+The desktop packaging jobs were written fail-loud on purpose: not `continue-on-error`, so a broken
+AppImage turns the release run red instead of shipping a tag with no artifacts. That covers a
+failing build. It does not cover a **succeeding** build that publishes nothing, and for two months
+that is what ran.
+
+electron-builder's GitHub publisher refuses to upload into a release whose type does not match its
+own `releaseType`. The refusal is one `skipped publishing` line per file in the log — and exit
+code **0**. `deploy.yml`'s `release-notes` job is ungated and has no `needs`, so it creates the
+tag's release as *published* within seconds of the tag push, while the publisher sat on its default
+`draft`. From **v0.1.232 to v0.8.39** — ~40 releases — both desktop jobs built the AppImage, the deb
+and the dmg, uploaded none of them, and reported success. The `latest-*.yml` feeds went with them,
+so every installed desktop app silently lost auto-update at the same time.
+
+Nothing in the pipeline was in a position to notice. The jobs were green; the release page had
+assets on it (the APKs and the ipa, from other jobs); the changed area gate said `desktop=true` and
+the jobs genuinely ran. The one physical trace was v0.6.37, where the desktop job happened to reach
+`publish` *first* and electron-builder created its own draft — leaving a second release sharing the
+tag name, holding exactly the five missing files, invisible on the releases page.
+
+The root-cause fix is one line, `publish.releaseType: release`, asserted by a unit test beside the
+config. The gate is the other half, and it is aimed at the class rather than the instance: **a step
+that produces artifacts and publishes none must be red**. `verify-published-assets.ts` runs after
+the upload in each packaging job, lists what electron-builder actually wrote to `release/`, and
+fails unless every one of those names is on the tag's *published* release —
+`/releases/tags/{tag}` resolves no drafts, which is the assertion we want given how v0.6.37 failed.
+
+Two denominator decisions, per the rule at the top of this page. The expectation is read from the
+build's own output rather than a hardcoded asset list, so a target someone adds is covered without
+anyone remembering to extend the check; and an **empty** artifact set fails rather than passing,
+because a build that produced nothing is the vacuous pass this whole section is about.
+
+`check:desktop-publish` is what keeps that step wired. A safety step nobody wired is off, so the
+gate checks the *wiring*, not the mechanism: it fails a packaging job whose verification was
+deleted, renamed, reordered before the upload, or neutered with `continue-on-error`, and it fails
+when it stops finding the packaging jobs at all rather than passing over an empty set.
+
 ## A release is only cut when something releasable landed (#755)
 
 `commit-and-tag-version` patch-bumps **even when nothing since the last tag bumps anything**,

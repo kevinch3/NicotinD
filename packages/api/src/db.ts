@@ -998,6 +998,32 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_licence ON library_songs(licence)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_popularity ON library_songs(popularity)`);
 
+  // The loudness the audio was MEASURED at, as distinct from whatever `loudness`
+  // currently says. Write-once: filled the first time a song is analysed and
+  // never rewritten (#1256).
+  //
+  // Today the two are always equal, because the only normalization we ship
+  // writes Opus's `output_gain` header field and leaves the samples untouched.
+  // A format without that field — mp3 and AAC have no in-header gain — can only
+  // bake the gain into the audio, and then `loudness` describes post-gain
+  // samples while `energy` (derived from the pre-gain measurement by
+  // `computeEnergy`, −25 LUFS → 0, −7 → 1) is what radio scores on. Re-deriving
+  // energy from normalized audio would flatten the library's own descriptor,
+  // and nothing would report it.
+  //
+  // So the guarantee is structural rather than a rule anyone has to remember:
+  // this column is absent from the scanner's upsert entirely (the `popularity`
+  // precedent above), so no tag read or rescan can reach it, and both analysis
+  // writers COALESCE rather than assign, so a second pass cannot overwrite a
+  // first measurement.
+  if (addColumnIfMissing(db, 'library_songs', 'loudness_measured', 'REAL')) {
+    // Every existing row's `loudness` IS a pre-gain measurement — nothing in the
+    // codebase bakes gain into audio — so seeding from it is exact, not an
+    // approximation. Gated on the column having just been added, so a later boot
+    // finds it present and never re-runs this over corrected values.
+    db.run(`UPDATE library_songs SET loudness_measured = loudness WHERE loudness IS NOT NULL`);
+  }
+
   // Container technical details — sample rate (Hz), bit depth (bits/sample,
   // lossless-only), channel count. Read from music-metadata's format at scan
   // time (no DSP), same additive pattern as bit_rate; purely file-derived so a

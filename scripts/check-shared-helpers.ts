@@ -74,6 +74,22 @@ export const SHARED_HELPERS: SharedHelper[] = [
   { name: 'AUDIO_EXTENSIONS', canonical: 'packages/core/src/audio-extensions.ts' },
   { name: 'ID3_EXTS', canonical: 'packages/core/src/audio-extensions.ts' },
   { name: 'VORBIS_EXTS', canonical: 'packages/core/src/audio-extensions.ts' },
+  // "What ffmpeg args encode this format?" was declared twice: the streaming
+  // table here, and the same Opus tuple written out inline in the library
+  // conversion path. The two paths could drift without anything noticing,
+  // because nothing compared them — the reversible path stayed configurable
+  // while the irreversible one hardcoded what it did (#1256). `library-format.ts`
+  // now builds its encode args from this table; registered so copy #3 fails CI.
+  // Note the gate matches the NAME: it cannot see an inline array literal, which
+  // is why deleting the original duplicate was manual work, not something this
+  // caught.
+  { name: 'FORMAT_ARGS', canonical: 'packages/api/src/services/transcode.ts' },
+  // The library's own format table, separate from FORMAT_ARGS on purpose:
+  // streaming output is ephemeral and untagged, library output is permanent,
+  // tagged and re-scanned, so `aac` is a valid streaming format and not a valid
+  // library one. Two tables that look alike are exactly what gets merged by a
+  // well-meaning refactor.
+  { name: 'LIBRARY_FORMATS', canonical: 'packages/api/src/services/library-format.ts' },
   { name: 'readStories', canonical: 'packages/e2e/scripts/lib/storybook-runner.mjs' },
   { name: 'visitStories', canonical: 'packages/e2e/scripts/lib/storybook-runner.mjs' },
   { name: 'storyUrl', canonical: 'packages/e2e/scripts/lib/storybook-runner.mjs' },

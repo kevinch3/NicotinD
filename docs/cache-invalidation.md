@@ -284,7 +284,7 @@ full scan left the fix unreachable in normal operation:
 | ----------------------------------------------- | ------------------------------------- | -------------------------------------------------------------------- |
 | `scanFull`'s prune                              | a full library walk                   | `repointGenreOverridesBeforePrune`                                    |
 | `pruneAlbumOrphans` (`reconcileAlbums`)         | after every organized download batch  | `repointGenreOverrideForSong` per doomed row                          |
-| `transcodeLibraryToOpus`                        | the lossless→Opus maintenance task    | direct `UPDATE OR IGNORE` — it knows old *and* new id exactly         |
+| `transcodeLibraryToFormat`                        | the lossless→Opus maintenance task    | direct `UPDATE OR IGNORE` — it knows old *and* new id exactly         |
 
 `pruneAlbumOrphans` is the load-bearing one: it is the download seam, it deletes
 the doomed row the moment the file is gone, and it dooms a row by **file

@@ -31,7 +31,16 @@ export function _resetFfmpegProbe(): void {
 
 export type TranscodeFmt = Exclude<TranscodeFormat, 'original'>;
 
-const FORMAT_ARGS: Record<
+/**
+ * ffmpeg output args, Content-Type and extension per streaming format.
+ *
+ * Exported because the library-conversion path had written the Opus tuple out a
+ * second time, inline, and the two drifted apart unnoticed; `library-format.ts`
+ * now builds its encode args from here and `check:shared-helpers` fails a third
+ * declaration. It is **not** the library's own table — see `library-format.ts`
+ * for why `aac` here (`-f adts`, `.aac`) cannot be a library target.
+ */
+export const FORMAT_ARGS: Record<
   TranscodeFmt,
   { args: (kbps: number) => string[]; contentType: string; ext: string }
 > = {

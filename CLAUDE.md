@@ -83,7 +83,8 @@ bun run src/main.ts      # Start NicotinD (requires .env or config/default.yml)
 `docs/index.md`'s symbols, links and size) · `check:ci-parity` (a gate job step `verify` misses, or a gate that stopped blocking
 `release`) · `check:action-runtimes` (an action pinned to a retired Node runtime, or one the floor
 table cannot classify) · `check:route-auth` (an `/api` group mounted with no auth decision) · `check:audit` (an
-advisory that both ships and matches the resolved version) · `check:install-scripts` (a dependency
+advisory that both ships and matches the resolved version) · `check:desktop-publish` (a desktop
+packaging job that does not verify its artifacts reached the Release) · `check:install-scripts` (a dependency
 whose install hook is unreviewed, or fetches from a host that is not the npm
 registry) · `check:shared-helpers` (a shared helper
 re-implemented locally) · `check:library-walkers` (a `musicDir` walker that skips the reserved-path

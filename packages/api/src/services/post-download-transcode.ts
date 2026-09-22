@@ -7,9 +7,16 @@ import { getMusicMetadata } from './music-metadata-loader.js';
 import { ffmpegAvailable, TRANSCODE_DURATION_TOLERANCE_SEC } from './transcode.js';
 import { ffmpegBinary } from './ffmpeg-path.js';
 import { extractEmbeddedPicture, preserveFolderCover } from './cover-sources.js';
-import { attachPictureToOpus, preparePicture } from './opus-artwork.js';
+import { preparePicture } from './opus-artwork.js';
 import { readAudioTags, type AudioTags } from './audio-tags.js';
 import { quarantineOriginal } from './transcode-quarantine.js';
+import {
+  DEFAULT_LIBRARY_FORMAT,
+  libraryFormat,
+  TRANSCODE_TEMP_MARKER,
+  type FormatStrategy,
+  type LibraryFormat,
+} from './library-format.js';
 
 const log = createLogger('post-download-transcode');
 
@@ -43,10 +50,11 @@ export async function isLosslessFile(absPath: string): Promise<boolean> {
 }
 
 /**
- * Transcode a lossless file to Opus **in place**, replacing the original.
+ * Transcode a file to the library's target format **in place**, replacing the
+ * original.
  *
  * Used both by the download pipeline (before a file enters the library, so the
- * scanner only ever sees the final `.opus` path) and by the existing-library
+ * scanner only ever sees the final encoded path) and by the existing-library
  * conversion job. Lossy files are never touched — callers gate on
  * {@link isLossless}.
  *
@@ -55,8 +63,9 @@ export async function isLosslessFile(absPath: string): Promise<boolean> {
  * download path re-writes canonical tags afterwards anyway; the library
  * conversion job does not, which is why the carry has to happen here.
  *
- * Returns the new absolute path (same dir + basename, `.opus` extension). On any
- * ffmpeg failure the original is left untouched and the call throws.
+ * Returns the new absolute path (same dir + basename, the target format's
+ * extension). On any ffmpeg failure the original is left untouched and the call
+ * throws.
  *
  * Integrity (same contract as the streaming transcode in `./transcode.ts`):
  *   - `-xerror` + `+discardcorrupt` so a damaged source fails fast
@@ -66,28 +75,33 @@ export async function isLosslessFile(absPath: string): Promise<boolean> {
  *     duration check below still guards the lenient output, so a genuinely
  *     truncated source is rejected in both modes.
  *   - post-write ffprobe vs music-metadata source duration, judged **fail
- *     closed** by {@link opusOutputVerdict}: an output that cannot be probed is
- *     rejected, not waved through. This file ends up IN the library rather than
- *     in a cache, and the very next statement unlinks the original, so the
+ *     closed** by {@link encodeOutputVerdict}: an output that cannot be probed
+ *     is rejected, not waved through. This file ends up IN the library rather
+ *     than in a cache, and the very next statement unlinks the original, so the
  *     streaming path's best-effort policy would be actively wrong here. A user
  *     cannot tell a single library track is short without playing it.
  */
-const TEMP_SUFFIX = '.nicotind-transcode.opus';
 
 /**
  * Where the in-progress encode is written.
  *
- * **Dot-prefixed on purpose.** Every handled failure in `transcodeToOpus` already
- * unlinks this file, so the only way one survives is the process dying mid-write
- * — a deploy restart, an OOM kill — where no `finally` runs. A hidden basename
- * means `isHiddenFile()` keeps the scanner from ever ingesting the leftover as a
- * track with a mangled title and a truncated duration (#841). A leak then costs
- * disk, not library correctness.
+ * **Dot-prefixed on purpose.** Every handled failure in
+ * `transcodeToLibraryFormat` already unlinks this file, so the only way one
+ * survives is the process dying mid-write — a deploy restart, an OOM kill —
+ * where no `finally` runs. A hidden basename means `isHiddenFile()` keeps the
+ * scanner from ever ingesting the leftover as a track with a mangled title and
+ * a truncated duration (#841). A leak then costs disk, not library correctness.
+ *
+ * The target's extension is on the end so ffmpeg can pick a muxer from the temp
+ * path the same way it would from the final one.
  */
-export function transcodeTempPathFor(absPath: string): string {
+export function transcodeTempPathFor(
+  absPath: string,
+  format: LibraryFormat = DEFAULT_LIBRARY_FORMAT,
+): string {
   const ext = extname(absPath);
   const stem = basename(ext ? absPath.slice(0, -ext.length) : absPath);
-  return join(dirname(absPath), `.${stem}${TEMP_SUFFIX}`);
+  return join(dirname(absPath), `.${stem}${TRANSCODE_TEMP_MARKER}${libraryFormat(format).ext}`);
 }
 
 /**
@@ -95,6 +109,10 @@ export function transcodeTempPathFor(absPath: string): string {
  * leaks under the pre-#841 *un-hidden* name, which the scanner would ingest, so
  * this matches both shapes. Files younger than the grace period are left alone —
  * they may be an encode in flight.
+ *
+ * Matches the format-independent marker rather than one target's suffix: after
+ * the target changes, temps left by the previous one still have to be swept, and
+ * a suffix match would strand them forever.
  */
 export function sweepStaleTranscodeTemps(musicDir: string, graceMs = 10 * 60_000): number {
   const cutoff = Date.now() - graceMs;
@@ -110,7 +128,7 @@ export function sweepStaleTranscodeTemps(musicDir: string, graceMs = 10 * 60_000
       const full = join(dir, entry.name);
       if (entry.isDirectory()) {
         walk(full);
-      } else if (entry.isFile() && entry.name.endsWith(TEMP_SUFFIX)) {
+      } else if (entry.isFile() && entry.name.includes(TRANSCODE_TEMP_MARKER)) {
         try {
           if (statSync(full).mtimeMs < cutoff) {
             rmSync(full, { force: true });
@@ -128,7 +146,7 @@ export function sweepStaleTranscodeTemps(musicDir: string, graceMs = 10 * 60_000
 }
 
 /**
- * How many {@link transcodeToOpus} calls may run at once.
+ * How many {@link transcodeToLibraryFormat} calls may run at once.
  *
  * why a small constant rather than `cpus().length`: this is real CPU work, but
  * the box also runs the analysis sidecar and whatever else shares the host, and
@@ -246,32 +264,36 @@ export interface TranscodeKeepOriginal {
 }
 
 /**
- * Move the source's embedded cover onto the freshly encoded Opus.
+ * Move the source's embedded cover onto the freshly encoded file.
  *
  * Three steps, each of which can decline without failing the conversion:
  * read the picture out of the source, cap it so our own reader can read it
  * back (`preparePicture` — `music-metadata` throws above ~600 KB in Ogg), and
- * attach it with a stream copy.
+ * attach it by whatever mechanism the target format uses.
  *
  * Never throws: art is an enhancement on a file whose audio is already
  * verified, so every failure is a warning and a `false`.
  */
-async function carryEmbeddedCover(sourcePath: string, opusPath: string): Promise<boolean> {
+async function carryEmbeddedCover(
+  sourcePath: string,
+  outPath: string,
+  strategy: FormatStrategy,
+): Promise<boolean> {
   // The `.jpg` matters and is not decoration: `preparePicture` re-compresses an
   // oversized cover with `ffmpeg -i in -q:v N out`, and ffmpeg picks the output
   // muxer from the **extension**. With an extensionless scratch path it cannot,
   // so every re-compress failed and every cover over the 512 KB cap was
   // dropped — measured at 10% of files, and exactly the well-tagged albums
   // whose art is worth keeping.
-  const raw = join(dirname(opusPath), `.${basename(opusPath)}.cover-src.jpg`);
-  const scratch = join(dirname(opusPath), `.${basename(opusPath)}.cover-fit.jpg`);
+  const raw = join(dirname(outPath), `.${basename(outPath)}.cover-src.jpg`);
+  const scratch = join(dirname(outPath), `.${basename(outPath)}.cover-fit.jpg`);
   try {
     const pic = await extractEmbeddedPicture(sourcePath);
     if (!pic) return false;
     writeFileSync(raw, Buffer.from(pic.data));
     const prepared = preparePicture(raw, scratch);
     if (!prepared) return false; // too large to embed readably — say so, move on
-    return attachPictureToOpus(opusPath, prepared.path);
+    return strategy.embedArt(outPath, prepared.path);
   } catch (err) {
     log.debug({ err, sourcePath }, 'no cover carried across the transcode');
     return false;
@@ -286,11 +308,13 @@ async function carryEmbeddedCover(sourcePath: string, opusPath: string): Promise
   }
 }
 
-export async function transcodeToOpus(
+export async function transcodeToLibraryFormat(
   absPath: string,
   bitRate = 128,
   keepOriginal?: TranscodeKeepOriginal,
+  format: LibraryFormat = DEFAULT_LIBRARY_FORMAT,
 ): Promise<string> {
+  const strategy = libraryFormat(format);
   // Materialise the cover BEFORE encoding: `-vn` below discards the attached
   // picture stream and nothing downstream can recover it (issue #953 — 0 of
   // 1,719 non-mp3 files in the library carry art). The source is lossless and
@@ -298,10 +322,11 @@ export async function transcodeToOpus(
   await preserveFolderCover(absPath);
   const ext = extname(absPath);
   const base = ext ? absPath.slice(0, -ext.length) : absPath;
-  const destPath = `${base}.opus`;
+  const destPath = `${base}.${strategy.ext}`;
   // Distinct temp name so an interrupted run never half-writes the destination
-  // (which may equal absPath only if the source were already .opus — excluded).
-  const tmpPath = transcodeTempPathFor(absPath);
+  // (which may equal absPath only if the source were already the target format
+  // — excluded by the callers' "already the target" test).
+  const tmpPath = transcodeTempPathFor(absPath, format);
   const carried = await carriedMetadataArgs(absPath);
   const ffmpegArgs = (strict: boolean) => [
     '-hide_banner',
@@ -318,12 +343,7 @@ export async function transcodeToOpus(
     '0',
     // After -map_metadata so these win over anything it carried.
     ...carried,
-    '-c:a',
-    'libopus',
-    '-b:a',
-    `${bitRate}k`,
-    '-f',
-    'ogg',
+    ...strategy.encodeArgs(bitRate),
     tmpPath,
   ];
 
@@ -347,10 +367,10 @@ export async function transcodeToOpus(
   // produce a valid-but-short Opus file that the browser will play for
   // 1-2 s then "end". Validate before swapping the library file — and **fail
   // closed**: the statement after the swap unlinks the original, so anything
-  // short of positive evidence is a rejection. See `opusOutputVerdict`.
+  // short of positive evidence is a rejection. See `encodeOutputVerdict`.
   let verdict: { ok: true } | { ok: false; reason: string };
   try {
-    verdict = await validateOpusOutput(absPath, tmpPath);
+    verdict = await validateEncodedOutput(absPath, tmpPath);
   } catch (err) {
     // A throw here used to leave the flag at its `true` initial value, so the
     // original was deleted on the strength of an exception. Unverifiable is a
@@ -366,11 +386,11 @@ export async function transcodeToOpus(
   // Carry the source's embedded cover across, onto the TEMP — so the rename
   // below promotes a complete file rather than one that gains art a moment
   // later. `-vn` in the encode discarded it and nothing else can bring it
-  // back; see `attachPictureToOpus` for why the obvious routes do not work.
+  // back; see the format's `embedArt` for why the obvious routes do not work.
   //
   // Best-effort by construction: the audio is already verified correct, and a
   // missing cover must never cost the conversion.
-  await carryEmbeddedCover(absPath, tmpPath);
+  await carryEmbeddedCover(absPath, tmpPath, strategy);
 
   try {
     // Promote temp → final, then deal with the original. If dest === source
@@ -388,7 +408,7 @@ export async function transcodeToOpus(
         rmSync(absPath, { force: true });
       }
     }
-    log.debug({ from: absPath, to: destPath, bitRate }, 'transcoded lossless → opus');
+    log.debug({ from: absPath, to: destPath, bitRate, format }, 'transcoded to the library format');
     return destPath;
   } catch (err) {
     cleanup(tmpPath);
@@ -443,7 +463,7 @@ function runFfmpeg(
  * "could not be probed at all" are different operator problems, and a run over
  * thousands of files needs to say which.
  */
-export function opusOutputVerdict(
+export function encodeOutputVerdict(
   sourceSec: number | null,
   outputSec: number | null,
   toleranceSec = TRANSCODE_DURATION_TOLERANCE_SEC,
@@ -464,13 +484,13 @@ export function opusOutputVerdict(
 
 /**
  * Probe both durations and judge. Any probe failure is a **rejection**, not a
- * pass — see {@link opusOutputVerdict}.
+ * pass — see {@link encodeOutputVerdict}.
  *
  * The one genuine exemption is ffmpeg being absent entirely: the strict decode
  * flags are off in that case too, so there is nothing to verify against and
  * the caller never reaches the delete anyway.
  */
-async function validateOpusOutput(
+async function validateEncodedOutput(
   sourcePath: string,
   outputPath: string,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
@@ -485,7 +505,7 @@ async function validateOpusOutput(
   } catch (err) {
     return { ok: false, reason: `duration probe threw: ${(err as Error).message}` };
   }
-  return opusOutputVerdict(src, out);
+  return encodeOutputVerdict(src, out);
 }
 
 async function readSourceDurationSec(absPath: string): Promise<number | null> {

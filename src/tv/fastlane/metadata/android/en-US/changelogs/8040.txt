@@ -1,0 +1,1 @@
+• ci: publish the desktop artifacts again, and fail when none are uploaded (#1262)

@@ -18,7 +18,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
-import { transcodeLibraryToOpus } from '../services/library-transcode.js';
+import { transcodeLibraryToFormat } from '../services/library-transcode.js';
 import { resolveTranscodeLossless } from '../services/transcode-settings.js';
 import { expandHome } from '@nicotind/core';
 
@@ -85,7 +85,7 @@ async function main(): Promise<void> {
     `Originals : ${deleteOriginals ? 'DELETED after conversion' : `kept under ${join(dataDir, 'quarantine')}`}\n`,
   );
 
-  const r = await transcodeLibraryToOpus(db, musicDir, {
+  const r = await transcodeLibraryToFormat(db, musicDir, {
     apply,
     scope,
     bitRate,
