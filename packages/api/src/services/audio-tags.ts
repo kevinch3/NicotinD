@@ -3,7 +3,7 @@ import { extname } from 'node:path';
 import { readFileSync, renameSync, unlinkSync } from 'node:fs';
 import { ID3_EXTS, VORBIS_EXTS, createLogger, MOOD_VOCAB, type MoodLabel } from '@nicotind/core';
 import { ffmpegBinary } from './ffmpeg-path.js';
-import { planVorbisKeyFixes, type VorbisKeyPlan } from './vorbis-keys.js';
+import { planVorbisKeyFixes, type VorbisKeyPlan, type VorbisKeyPreference } from './vorbis-keys.js';
 import { attachPictureDataToOpus, readOggPicture } from './opus-artwork.js';
 import { readFreeformAtoms, writeFreeformAtoms } from './mp4-freeform.js';
 
@@ -487,6 +487,8 @@ export interface WriteAudioTagsDeps {
   /** Injectable for tests; defaults to the real reader. This is the ID3
    *  read-back that decides whether the in-place write actually stuck. */
   readTags?: typeof readAudioTags;
+  /** A curator's decision for disagreeing spaced/canonical Vorbis pairs (#1283). */
+  vorbisKeyPrefer?: ReadonlyMap<string, VorbisKeyPreference>;
 }
 
 /**
@@ -557,7 +559,8 @@ export async function writeAudioTags(
     if (Object.keys(restore).length > 0) await writeId3Tags(filepath, restore);
     return true;
   }
-  if (VORBIS_EXTS.has(ext) || ext === '.m4a') return writeFfmpegTags(filepath, tags);
+  if (VORBIS_EXTS.has(ext) || ext === '.m4a')
+    return writeFfmpegTags(filepath, tags, deps.vorbisKeyPrefer);
   return false;
 }
 
@@ -669,13 +672,14 @@ const BPM_METADATA_KEY: Record<string, string> = {
 export async function planVorbisKeyHeal(
   filepath: string,
   written?: ReadonlySet<string>,
+  prefer?: ReadonlyMap<string, VorbisKeyPreference>,
 ): Promise<VorbisKeyPlan | null> {
   if (!VORBIS_EXTS.has(extname(filepath).toLowerCase())) return null;
   const mm = await getMusicMetadata();
   if (!mm) return null;
   try {
     const parsed = await mm.parseFile(filepath, { duration: false, skipCovers: true });
-    return planVorbisKeyFixes(parsed.native?.vorbis ?? [], { written });
+    return planVorbisKeyFixes(parsed.native?.vorbis ?? [], { written, prefer });
   } catch {
     return null;
   }
@@ -701,7 +705,11 @@ function mp4FreeformValues(tags: AudioTags): Record<string, string> {
   return out;
 }
 
-async function writeFfmpegTags(filepath: string, tags: AudioTags): Promise<boolean> {
+async function writeFfmpegTags(
+  filepath: string,
+  tags: AudioTags,
+  prefer?: ReadonlyMap<string, VorbisKeyPreference>,
+): Promise<boolean> {
   const tmpPath = filepath + '.nicotind.tmp';
   const ext = extname(filepath).toLowerCase();
   const muxer = FFMPEG_MUXERS[ext];
@@ -739,7 +747,7 @@ async function writeFfmpegTags(filepath: string, tags: AudioTags): Promise<boole
   for (let i = 1; i < metaArgs.length; i += 2) {
     written.add(metaArgs[i]!.slice(0, metaArgs[i]!.indexOf('=')).toUpperCase());
   }
-  const heal = await planVorbisKeyHeal(filepath, written);
+  const heal = await planVorbisKeyHeal(filepath, written, prefer);
   for (const m of heal?.metadata ?? []) metaArgs.push('-metadata', m);
   if (metaArgs.length === 0) return true;
 

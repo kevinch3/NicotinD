@@ -766,9 +766,9 @@ describe.if(ffmpegAvailable())('spaced Vorbis names heal on any rewrite (#1250, 
       '-metadata',
       'MusicBrainz Artist Id=artist-1', // alone → moved
       '-metadata',
-      'RELEASETYPE=album',
+      'RELEASESTATUS=withdrawn',
       '-metadata',
-      'RELEASE TYPE=ep', // disagrees → left, reported
+      'MusicBrainz Album Status=official', // disagrees → left, reported
       path,
     ]);
     expect(gen.status).toBe(0);
@@ -807,7 +807,9 @@ describe.if(ffmpegAvailable())('spaced Vorbis names heal on any rewrite (#1250, 
       'MUSICBRAINZ_ARTISTID=artist-1',
       'MUSICBRAINZ ARTIST ID=',
     ]);
-    expect(plan?.conflicts).toEqual([{ spaced: 'RELEASE TYPE', canonical: 'RELEASETYPE' }]);
+    expect(plan?.conflicts).toEqual([
+      { spaced: 'MUSICBRAINZ ALBUM STATUS', canonical: 'RELEASESTATUS' },
+    ]);
     expect((await vorbisKeys(path))['ALBUM ARTIST']).toEqual(['Same']);
   });
 
@@ -821,8 +823,8 @@ describe.if(ffmpegAvailable())('spaced Vorbis names heal on any rewrite (#1250, 
     expect(keys.MUSICBRAINZ_ARTISTID).toEqual(['artist-1']);
     expect(keys['MUSICBRAINZ ARTIST ID']).toBeUndefined();
     // Disagreeing pair: both kept, because picking one is a curation call.
-    expect(keys.RELEASETYPE).toEqual(['album']);
-    expect(keys['RELEASE TYPE']).toEqual(['ep']);
+    expect(keys.RELEASESTATUS).toEqual(['withdrawn']);
+    expect(keys['MUSICBRAINZ ALBUM STATUS']).toEqual(['official']);
 
     const { parseFile } = await import('music-metadata');
     const parsed = await parseFile(path);
