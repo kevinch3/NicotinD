@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.41](https://github.com/kevinch3/NicotinD/compare/v0.8.40...v0.8.41) (2026-09-22)
+
+### Bug Fixes
+
+* **tags:** write BPM to the atom the mp4 muxer actually reads ([#1267](https://github.com/kevinch3/NicotinD/issues/1267)) ([bd3fdca](https://github.com/kevinch3/NicotinD/commit/bd3fdca4b1ea827d7eca435aeb554c6e29425a5a)), closes [#1177](https://github.com/kevinch3/NicotinD/issues/1177) [#1177](https://github.com/kevinch3/NicotinD/issues/1177), references [#1151](https://github.com/kevinch3/NicotinD/issues/1151)
 ## [0.8.40](https://github.com/kevinch3/NicotinD/compare/v0.8.39...v0.8.40) (2026-09-21)
 
 ### Bug Fixes
