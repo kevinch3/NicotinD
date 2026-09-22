@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { Database } from 'bun:sqlite';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { PROCESSING_TASK_IDS } from '@nicotind/core';
@@ -300,6 +300,65 @@ describe('applySchema — perceptual feature columns + embeddings table', () => 
     const db = new Database(':memory:');
     applySchema(db);
     expect(() => applySchema(db)).not.toThrow();
+  });
+});
+
+describe('applySchema — loudness_measured is seeded once and never re-seeded (#1256)', () => {
+  /** A `library_songs` row with the given loudness, on a schema-applied db. */
+  const seed = (db: Database, id: string, loudness: number | null): void => {
+    db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, loudness, synced_at)
+       VALUES (?, 'a', 'T', 'X', 'art', ?, ?, 1)`,
+      [id, `${id}.opus`, loudness],
+    );
+  };
+  const measuredOf = (db: Database, id: string): number | null =>
+    db
+      .query<{ loudness_measured: number | null }, [string]>(
+        `SELECT loudness_measured FROM library_songs WHERE id = ?`,
+      )
+      .get(id)?.loudness_measured ?? null;
+
+  it('backfills from loudness for rows that predate the column', () => {
+    // The seed is exact rather than approximate: nothing in the codebase bakes
+    // gain into audio, so every existing `loudness` IS a pre-gain measurement.
+    const db = new Database(':memory:');
+    applySchema(db);
+    db.run(`ALTER TABLE library_songs DROP COLUMN loudness_measured`);
+    seed(db, 'has', -18.5);
+    seed(db, 'none', null);
+
+    applySchema(db);
+
+    expect(measuredOf(db, 'has')).toBeCloseTo(-18.5);
+    // A row with nothing to seed from stays NULL rather than taking a guess —
+    // the enrichment pass fills it on first measurement.
+    expect(measuredOf(db, 'none')).toBeNull();
+  });
+
+  it('does NOT re-seed on a later boot, so a normalized loudness cannot overwrite it', () => {
+    // The whole point of the `addColumnIfMissing` guard. Without it, every boot
+    // would copy the CURRENT loudness over the measurement — which for a
+    // bake-the-gain format is exactly the value that must not win.
+    const db = new Database(':memory:');
+    applySchema(db);
+    seed(db, 's', -18.5);
+    db.run(`UPDATE library_songs SET loudness_measured = -18.5 WHERE id = 's'`);
+    // Simulate a post-gain re-measure landing in `loudness`.
+    db.run(`UPDATE library_songs SET loudness = -14.0 WHERE id = 's'`);
+
+    applySchema(db);
+
+    expect(measuredOf(db, 's')).toBeCloseTo(-18.5);
+  });
+
+  it('is absent from the scanner upsert, so no tag read can reach it', () => {
+    // Structural, not a rule anyone has to remember: the scanner names its
+    // columns explicitly, so a column it does not list is unreachable from any
+    // rescan or tag read. Asserted against the real statement text.
+    const src = readFileSync(join(import.meta.dir, 'services', 'library-scanner.ts'), 'utf-8');
+    expect(src).toContain('loudness');
+    expect(src).not.toContain('loudness_measured');
   });
 
   it('backfills the columns onto a legacy library_songs table', () => {

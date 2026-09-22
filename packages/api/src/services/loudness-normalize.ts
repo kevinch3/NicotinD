@@ -76,6 +76,17 @@ export interface NormalizeLoudnessOptions {
 interface Row {
   id: string;
   path: string;
+  /**
+   * The loudness the gain is computed against — `loudness_measured` where it
+   * exists, else `loudness`.
+   *
+   * These are identical today, and the distinction still matters: a gain must
+   * be derived from the audio's ORIGINAL loudness, not from whatever the
+   * current value describes. Opus keeps them equal for free by writing the
+   * offset into `OpusHead` and leaving the samples alone, so a re-run of this
+   * pass is idempotent. A format that has to bake the gain in would not, and
+   * reading `loudness` there would compound the correction on every pass.
+   */
   loudness: number | null;
 }
 
@@ -103,7 +114,7 @@ export async function normalizeLibraryLoudness(
   // re-walks an arbitrary head on every call and never finishes.
   const rows = db
     .query<Row, [string | null, string | null, number]>(
-      `SELECT id, path, loudness
+      `SELECT id, path, COALESCE(loudness_measured, loudness) AS loudness
          FROM library_songs
         WHERE hidden = 0
           AND lower(suffix) = 'opus'

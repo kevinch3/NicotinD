@@ -558,10 +558,33 @@ for such a log, `library-processing.log`, grows unbounded with nothing reading i
 `writeOutputGain` (`services/opus-gain.ts`) normalizes an Opus file by editing two bytes of its
 header. The audio is not touched.
 
-**Why not a `loudnorm` filter.** Baking gain into the encode changes the samples, which flattens
-`library_songs.loudness` — and `computeEnergy` maps that column (−25 LUFS → 0, −7 → 1) into the
-descriptor radio runs on. Normalizing that way would silently destroy the recommender's own input
-while appearing to work.
+**Why not a `loudnorm` filter.** Baking gain into the encode changes the samples the loudness was
+measured from. `computeEnergy` turns that measurement into `energy` (−25 LUFS → 0, −7 → 1), and
+`energy` is what radio scores on (`DEFAULT_WEIGHTS.energy = 5`, the heaviest term). Re-deriving it
+from normalized audio would flatten the library's own descriptor while appearing to work.
+
+Note the precise shape, because it is easy to state one step wrong: `computeEnergy` has exactly one
+call site (`loudness-analysis.ts`, inside `analyzeLoudness`) and runs **at measurement time**. Raw
+`loudness` is not itself scored — `SongFeatures` has no such field. The risk is not that a stored
+column is read into the recommender, it is that a *re-measurement* of post-gain audio produces a
+different `energy`.
+
+**`loudness_measured` makes that structural rather than a rule to remember (#1256).** It is the
+loudness the audio was measured at, seeded once from `loudness` when the column is added — exact,
+not approximate, since nothing bakes gain today — and thereafter:
+
+- **absent from the scanner's upsert entirely**, the `popularity` precedent, so no tag read or
+  rescan can reach it;
+- **COALESCEd, never assigned**, by both analysis writers (`enrichment/tasks.ts`,
+  `scripts/analyze-energy.ts`), so a second pass cannot replace a first measurement;
+- **re-seeded never** — the backfill is gated on `addColumnIfMissing` returning true, so a later
+  boot cannot copy a post-gain `loudness` over it.
+
+`normalizeLibraryLoudness` reads `COALESCE(loudness_measured, loudness)`. The two are identical
+today and the distinction still matters: a gain must be derived from the audio's *original*
+loudness. Opus keeps them equal for free by leaving the samples alone, so re-running the pass is
+idempotent; a format that had to bake the gain in would compound the correction on every pass if it
+read `loudness`.
 
 RFC 7845 §5.1 puts `output_gain` in the `OpusHead` packet and requires **decoders** to apply it. So
 the gain is 2 bytes of header: the audio is untouched, the descriptor survives, the target stays

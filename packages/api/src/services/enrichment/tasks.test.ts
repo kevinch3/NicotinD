@@ -1107,6 +1107,47 @@ describe('energy task', () => {
     expect(wroteTags).toEqual({ energy: 0.81, loudness: -8.2 });
   });
 
+  it('records the first measurement in loudness_measured and never overwrites it (#1256)', async () => {
+    // `energy` is what radio scores on and it is derived from the loudness at
+    // the moment of measurement. A second pass over the same song — after a
+    // re-encode re-mints its id and clears `energy`, say — must not be able to
+    // replace that measurement with a post-normalization value, or the
+    // descriptor silently drifts with no symptom.
+    seedSong('a');
+    await energy.run(
+      db,
+      ctx({ analyzeLoudness: async () => ({ loudness: -18.5, energy: 0.4 }) }),
+      25,
+    );
+
+    const measured = (): number | null =>
+      db
+        .query<{ loudness_measured: number | null }, [string]>(
+          'SELECT loudness_measured FROM library_songs WHERE id = ?',
+        )
+        .get('a')?.loudness_measured ?? null;
+    expect(measured()).toBeCloseTo(-18.5);
+
+    // Re-arm the pass the way an id re-mint would, then hand it a louder
+    // reading — as a baked-in gain to −14 would produce.
+    db.run('UPDATE library_songs SET energy = NULL WHERE id = ?', ['a']);
+    await energy.run(
+      db,
+      ctx({ analyzeLoudness: async () => ({ loudness: -14.0, energy: 0.72 }) }),
+      25,
+    );
+
+    const row = db
+      .query<{ energy: number; loudness: number }, [string]>(
+        'SELECT energy, loudness FROM library_songs WHERE id = ?',
+      )
+      .get('a');
+    // `loudness` tracks the file as it is now...
+    expect(row?.loudness).toBeCloseTo(-14.0);
+    // ...but the measurement the descriptor came from is immutable.
+    expect(measured()).toBeCloseTo(-18.5);
+  });
+
   it('prefers an existing ENERGY tag and does NOT rewrite the tag', async () => {
     seedSong('a');
     let analyzed = 0;
