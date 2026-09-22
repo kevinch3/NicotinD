@@ -1,0 +1,1 @@
+• transcode: make AAC (.m4a) a valid library format (#1285)

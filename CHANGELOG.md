@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.49](https://github.com/kevinch3/NicotinD/compare/v0.8.48...v0.8.49) (2026-09-22)
+
+### Features
+
+* **transcode:** make AAC (.m4a) a valid library format ([#1285](https://github.com/kevinch3/NicotinD/issues/1285)) ([b895444](https://github.com/kevinch3/NicotinD/commit/b89544417e292b925335214aa291d90bbea5d5a4)), closes [#1279](https://github.com/kevinch3/NicotinD/issues/1279), references [#1177](https://github.com/kevinch3/NicotinD/issues/1177) [#1274](https://github.com/kevinch3/NicotinD/issues/1274)
 ## [0.8.48](https://github.com/kevinch3/NicotinD/compare/v0.8.47...v0.8.48) (2026-09-22)
 
 ### Bug Fixes
