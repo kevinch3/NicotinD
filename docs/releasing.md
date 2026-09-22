@@ -47,10 +47,12 @@ The husky `commit-msg` hook cannot catch this — it runs on commits made on you
 machine, and a squash merge is performed by GitHub from a title nothing
 validated. Two things close it:
 
-- **`check:pr-title`** (the `pr-title` CI job) fails a PR whose title is not a
-  conventional commit, *and* a PR whose title does not bump while its commits
-  do. It re-runs on every title edit, which is why the workflow's
-  `pull_request` trigger lists `edited`.
+- **`check:pr-title`** (`.github/workflows/pr-title.yml`) fails a PR whose title
+  is not a conventional commit, *and* a PR whose title does not bump while its
+  commits do. It re-runs on every title edit — a retitle pushes no commit — which
+  is why its trigger lists `edited`, and why it is a separate workflow: `edited`
+  fires on body edits too, and `ci.yml` must not rebuild everything because
+  someone fixed a typo in a description.
 - **`release-needed.ts`** prints a `::warning::` when it skips a commit whose
   *body* lists bumping commits its subject lost. The decision is unchanged —
   only a subject may bump — but the skip stops being silent.

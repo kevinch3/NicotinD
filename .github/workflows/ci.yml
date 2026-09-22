@@ -5,12 +5,6 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
-    # `edited` is load-bearing: the default set is opened/synchronize/reopened,
-    # so `pr-title` below would judge the title once and never look again — and
-    # the fix for a bad title is editing it, which pushes no commit. Without
-    # this the gate would stay red on a corrected title and, worse, stay green
-    # on a good title edited into a bad one.
-    types: [opened, edited, reopened, synchronize]
 
 concurrency:
   # One group per master COMMIT, not per branch. Sharing one group meant
@@ -37,44 +31,6 @@ env:
   FFMPEG_BIN: /bin/false
 
 jobs:
-  # The PR title becomes the squash-merge subject, and the subject is the only
-  # thing `release-needed.ts` reads — so an untyped title lands a commit that
-  # bumps nothing and freezes releases with every check green (#1267). The
-  # husky `commit-msg` hook cannot see this: a squash merge is performed by
-  # GitHub, from a title nothing validated. Deliberately NOT in `release.needs`
-  # and not a `check:ci-parity` gate job: it only exists on a pull request, and
-  # `verify` has no title to check. Branch protection is what makes it blocking.
-  pr-title:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          # The PR's own commits are rule 2's input, so the merge-base has to be
-          # reachable. A shallow clone would leave `origin/master..HEAD` empty,
-          # which reads as "no bumping commits" — the silent-pass direction.
-          fetch-depth: 0
-
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: ${{ env.BUN_VERSION }}
-
-      - name: Check the PR title is a conventional commit
-        env:
-          # Through the environment, never interpolated into the `run:` block:
-          # a title is attacker-controlled text and `${{ }}` inside a shell
-          # script is a command-injection seam.
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
-        run: |
-          set -euo pipefail
-          # FETCH_HEAD, not `origin/$BASE_REF`: a pull_request checkout has no
-          # guarantee of that remote-tracking ref, and a `..HEAD` range against
-          # a ref that does not exist fails loudly rather than reading empty.
-          git fetch --no-tags origin "$BASE_REF"
-          git log --format=%B%x00 FETCH_HEAD..HEAD > /tmp/pr-commits
-          PR_COMMITS_FILE=/tmp/pr-commits bun run ./scripts/check-pr-title.ts
-
   # Static gates + unit tests. Deliberately holds nothing browser-driven and nothing
   # that takes minutes: this job used to be the workflow's entire critical path (10m09
   # steady-state, 14m16 on a bad run) while every other job finished and idled, because

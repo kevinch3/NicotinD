@@ -510,11 +510,19 @@ with `fetch-depth: 0`. A shallow clone would make that range empty, and empty
 reads as "nothing on this branch bumps" — a pass. The silent direction is the
 dangerous one, so the fetch is explicit rather than inherited.
 
-**Why it re-runs on `edited`.** The fix for a bad title is editing the title,
-which pushes no commit. The default `pull_request` trigger set would judge the
-title once and never look again: red forever on a corrected title, and green
-forever on a good title edited into a bad one. The workflow lists
-`[opened, edited, reopened, synchronize]` for that reason.
+**Why it re-runs on `edited`, in a workflow of its own.** The fix for a bad
+title is editing the title, which pushes no commit. The default `pull_request`
+trigger set would judge the title once and never look again: red forever on a
+corrected title, and green forever on a good title edited into a bad one. So the
+trigger lists `[opened, edited, reopened, synchronize]`.
+
+It lives in `.github/workflows/pr-title.yml` rather than on `ci.yml`'s trigger
+because **`edited` fires on body edits too**. Attached to `ci.yml` it re-ran all
+thirteen jobs — both Docker arches, four e2e shards, the desktop package — every
+time anyone touched a PR description; measured on this gate's own PR, editing
+the body cancelled a full run and started another. A trigger that expensive
+attached to an editorial action is one people learn to route around, so the
+cheap check got its own workflow and `ci.yml` keeps the default trigger set.
 
 **Not a `check:ci-parity` gate job, on purpose.** It only exists on a pull
 request and `verify` has no title to check, so it is neither in `release.needs`
