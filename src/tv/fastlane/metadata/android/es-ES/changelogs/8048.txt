@@ -1,0 +1,1 @@
+• tags: stop mapping edition labels as release types, and let curation settle disagreeing Vorbis pairs (#1284)

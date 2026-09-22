@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.48](https://github.com/kevinch3/NicotinD/compare/v0.8.47...v0.8.48) (2026-09-22)
+
+### Bug Fixes
+
+* **tags:** stop mapping edition labels as release types, and let curation settle disagreeing Vorbis pairs ([#1284](https://github.com/kevinch3/NicotinD/issues/1284)) ([504be46](https://github.com/kevinch3/NicotinD/commit/504be467bc8388a939d2192d1abb757f283c844a)), closes [#1283](https://github.com/kevinch3/NicotinD/issues/1283)
 ## [0.8.47](https://github.com/kevinch3/NicotinD/compare/v0.8.46...v0.8.47) (2026-09-22)
 
 ### Bug Fixes
