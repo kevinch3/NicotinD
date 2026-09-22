@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.43](https://github.com/kevinch3/NicotinD/compare/v0.8.42...v0.8.43) (2026-09-22)
+
+### Features
+
+* **transcode:** make mp3 a valid library format, and gate what "valid" means ([#1273](https://github.com/kevinch3/NicotinD/issues/1273)) ([50a6d14](https://github.com/kevinch3/NicotinD/commit/50a6d14820cf46b0183e7826d24788049a43e992)), references [#1256](https://github.com/kevinch3/NicotinD/issues/1256) [#1230](https://github.com/kevinch3/NicotinD/issues/1230) [#917](https://github.com/kevinch3/NicotinD/issues/917) [#1256](https://github.com/kevinch3/NicotinD/issues/1256) [#1256](https://github.com/kevinch3/NicotinD/issues/1256) [#916](https://github.com/kevinch3/NicotinD/issues/916) [#917](https://github.com/kevinch3/NicotinD/issues/917)
 ## [0.8.42](https://github.com/kevinch3/NicotinD/compare/v0.8.41...v0.8.42) (2026-09-22)
 
 ### Bug Fixes

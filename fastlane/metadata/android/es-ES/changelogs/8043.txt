@@ -1,0 +1,1 @@
+• transcode: make mp3 a valid library format, and gate what "valid" means (#1273)
