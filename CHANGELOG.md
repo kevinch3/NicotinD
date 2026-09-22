@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.42](https://github.com/kevinch3/NicotinD/compare/v0.8.41...v0.8.42) (2026-09-22)
+
+### Bug Fixes
+
+* **ci:** gate the PR title, the one commit message no hook sees ([#1272](https://github.com/kevinch3/NicotinD/issues/1272)) ([0995815](https://github.com/kevinch3/NicotinD/commit/0995815c619aea363d4d4aa1aeb5684521c718ac)), references [#1263](https://github.com/kevinch3/NicotinD/issues/1263) [#1267](https://github.com/kevinch3/NicotinD/issues/1267) [#1263](https://github.com/kevinch3/NicotinD/issues/1263)
 ## [0.8.41](https://github.com/kevinch3/NicotinD/compare/v0.8.40...v0.8.41) (2026-09-22)
 
 ### Bug Fixes
