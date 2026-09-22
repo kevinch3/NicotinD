@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.47](https://github.com/kevinch3/NicotinD/compare/v0.8.46...v0.8.47) (2026-09-22)
+
+### Bug Fixes
+
+* **tags:** write the eleven fields the mp4 muxer drops, and stop a retag deleting the rest ([#1278](https://github.com/kevinch3/NicotinD/issues/1278)) ([3892c4b](https://github.com/kevinch3/NicotinD/commit/3892c4bb46e642ab1f289569b9a377a95b48280e)), closes [#1274](https://github.com/kevinch3/NicotinD/issues/1274)
 ## [0.8.46](https://github.com/kevinch3/NicotinD/compare/v0.8.45...v0.8.46) (2026-09-22)
 
 ### Bug Fixes
