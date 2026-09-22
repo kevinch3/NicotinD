@@ -64,10 +64,38 @@ export const UNMODELLED_SPACED_KEYS: readonly SpacedVorbisKey[] = [
       ['MUSICBRAINZ ALBUM TYPE', 'RELEASETYPE'],
       ['MUSICBRAINZ ALBUM STATUS', 'RELEASESTATUS'],
       ['MUSICBRAINZ ALBUM RELEASE COUNTRY', 'RELEASECOUNTRY'],
-      ['RELEASE TYPE', 'RELEASETYPE'],
+      // Not `RELEASE TYPE`: on prod it holds scene/store *edition* labels —
+      // `Limited`, `Retail`, `Deluxe`, `REDE` — not MusicBrainz's album/single/
+      // ep. Mapping it to `RELEASETYPE` wrote editions into the release-type
+      // field (#1283).
     ] as const
   ).map(([spaced, canonical]) => ({ spaced, canonical, ffmpegKey: canonical })),
 ];
+
+/**
+ * Store/scene *edition* labels that a `RELEASE TYPE` tag carries — never a
+ * MusicBrainz release type. The first library-wide run mapped `RELEASE TYPE`
+ * to `RELEASETYPE` and filed ~84 of these as release types (#1283); a
+ * `RELEASETYPE` holding exactly one of them goes back under `RELEASE TYPE`,
+ * the name it arrived with. Deliberately a closed list of the values measured
+ * on prod, not a "not in the MusicBrainz vocabulary" test: other taggers write
+ * odd but release-type-shaped values (`Album (Reissue)`, `LP, Album`) that this
+ * app did not put there and has no business moving.
+ */
+export const EDITION_LABELS: ReadonlySet<string> = new Set([
+  'normal',
+  'normal release',
+  'retail',
+  'limited',
+  'deluxe',
+  'deluxe edition',
+  'special edition',
+  'remastered',
+  'remdlx',
+  'rede',
+  'proper',
+  'advance',
+]);
 
 /** Every spaced name a rewrite heals: the modelled three and the rest. */
 export const ALL_SPACED_KEYS: readonly SpacedVorbisKey[] = [
@@ -83,6 +111,9 @@ export interface VorbisComment {
   id: string;
   value: unknown;
 }
+
+/** Which side wins a disagreeing pair, decided by curation (#1283). */
+export type VorbisKeyPreference = 'spaced' | 'canonical';
 
 export interface VorbisKeyPlan {
   /** `KEY=VALUE` strings for `-metadata`; an empty value deletes the key. */
@@ -106,10 +137,18 @@ export interface VorbisKeyPlan {
  *
  * A multi-valued spaced key with no canonical twin is also reported, since one
  * `-metadata` value cannot carry several.
+ *
+ * Values differing only in case or surrounding space agree (`Album`/`album`):
+ * the canonical one is kept. `prefer` settles a real disagreement a curator has
+ * decided — the winning value ends up under the canonical name, once.
  */
 export function planVorbisKeyFixes(
   comments: readonly VorbisComment[],
-  opts: { written?: ReadonlySet<string>; keys?: readonly SpacedVorbisKey[] } = {},
+  opts: {
+    written?: ReadonlySet<string>;
+    keys?: readonly SpacedVorbisKey[];
+    prefer?: ReadonlyMap<string, VorbisKeyPreference>;
+  } = {},
 ): VorbisKeyPlan {
   const written = opts.written ?? new Set<string>();
   const byKey = new Map<string, string[]>();
@@ -122,8 +161,16 @@ export function planVorbisKeyFixes(
   }
 
   const plan: VorbisKeyPlan = { metadata: [], conflicts: [] };
-  // Two spaced names can share a canonical one (`RELEASE TYPE`, `MUSICBRAINZ
-  // ALBUM TYPE`); the second compares against what the first moved across.
+  const releaseType = byKey.get('RELEASETYPE');
+  if (
+    releaseType?.length === 1 &&
+    EDITION_LABELS.has(releaseType[0]!.trim().toLowerCase()) &&
+    !byKey.has('RELEASE TYPE')
+  ) {
+    plan.metadata.push(`RELEASE TYPE=${releaseType[0]}`, 'RELEASETYPE=');
+  }
+  // Two spaced names can share a canonical one; the second compares against
+  // what the first moved across.
   const moved = new Map<string, string>();
   for (const key of opts.keys ?? ALL_SPACED_KEYS) {
     const spacedValues = byKey.get(key.spaced);
@@ -148,8 +195,11 @@ export function planVorbisKeyFixes(
     const agrees =
       spacedValues.length === 1 &&
       canonicalValues.length === 1 &&
-      canonicalValues[0]!.trim() === spacedValues[0]!.trim();
-    if (agrees) plan.metadata.push(blank);
+      canonicalValues[0]!.trim().toLowerCase() === spacedValues[0]!.trim().toLowerCase();
+    const preference = opts.prefer?.get(key.spaced);
+    if (agrees || preference === 'canonical') plan.metadata.push(blank);
+    else if (preference === 'spaced' && spacedValues.length === 1)
+      plan.metadata.push(`${key.ffmpegKey}=${spacedValues[0]}`, blank);
     else plan.conflicts.push({ spaced: key.spaced, canonical: key.canonical });
   }
   return plan;

@@ -33,7 +33,11 @@ describe.if(ffmpegAvailable())('backfillVorbisKeys (#1250, #1231)', () => {
         'ALBUM ARTIST=X',
       ),
       clean: opus('A/Album/02.opus', 'TITLE=clean'),
-      conflict: opus('B/Album/01.opus', 'RELEASETYPE=album', 'RELEASE TYPE=ep'),
+      conflict: opus(
+        'B/Album/01.opus',
+        'RELEASESTATUS=withdrawn',
+        'MusicBrainz Album Status=official',
+      ),
       staged: opus('.downloads/peer/01.opus', 'MusicBrainz Artist Id=staged'),
     };
   }
@@ -49,7 +53,7 @@ describe.if(ffmpegAvailable())('backfillVorbisKeys (#1250, #1231)', () => {
     expect(report.affected).toBe(1);
     expect(report.byKey).toEqual({ 'ALBUM ARTIST': 1, 'MUSICBRAINZ ARTIST ID': 1 });
     expect(report.conflicts).toEqual([
-      { path: 'B/Album/01.opus', spaced: 'RELEASE TYPE', canonical: 'RELEASETYPE' },
+      { path: 'B/Album/01.opus', spaced: 'MUSICBRAINZ ALBUM STATUS', canonical: 'RELEASESTATUS' },
     ]);
     expect((await planVorbisKeyHeal(files.spaced))?.metadata.length).toBeGreaterThan(0);
   });
@@ -64,5 +68,31 @@ describe.if(ffmpegAvailable())('backfillVorbisKeys (#1250, #1231)', () => {
     // A second run finds nothing left to do.
     const again = await backfillVorbisKeys({ musicDir, reserved: reservedDirsFor(), apply: true });
     expect(again.affected).toBe(0);
+  });
+
+  it('applies a curated resolution under its dir, and reports one that matched nothing (#1283)', async () => {
+    const files = tree();
+    const resolutions = [
+      { dir: 'B/Album', spaced: 'MUSICBRAINZ ALBUM STATUS', keep: 'spaced' as const },
+      { dir: 'Nowhere/Album', spaced: 'ALBUM ARTIST', keep: 'canonical' as const },
+    ];
+    const report = await backfillVorbisKeys({
+      musicDir,
+      reserved: reservedDirsFor(),
+      apply: true,
+      resolutions,
+    });
+    expect(report.failed).toEqual([]);
+    expect(report.conflicts).toEqual([]);
+    expect(report.unusedResolutions).toEqual([resolutions[1]]);
+    const after = await planVorbisKeyHeal(files.conflict);
+    expect(after).toEqual({ metadata: [], conflicts: [] });
+    const { parseFile } = await import('music-metadata');
+    const status = (await parseFile(files.conflict)).native.vorbis?.filter((t) =>
+      /STATUS/i.test(t.id),
+    );
+    expect(status?.map((t) => [t.id.toUpperCase(), t.value])).toEqual([
+      ['RELEASESTATUS', 'official'],
+    ]);
   });
 });

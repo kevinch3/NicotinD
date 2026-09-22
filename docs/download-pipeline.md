@@ -907,6 +907,33 @@ the one the app reads today. Picking the winner is a curation decision, so the p
 pair and changes nothing. The exception is a write that sets the field itself: a curator's explicit
 album artist supersedes both, and the spaced twin is deleted.
 
+**What the first library-wide run found (#1283).** 442 pairs across 44 albums disagreed. Measuring
+the values rather than counting them split them three ways:
+
+- **Case only** (`Album`/`album`, `Official`/`official`) — 76 pairs. The planner now treats a
+  case-insensitive match as agreement and keeps the canonical value. Artist and album ids are
+  case-folded, so an album-artist pair differing only in case cannot re-mint an id.
+- **`RELEASE TYPE` is not a release type.** 167 of its values were scene/store *edition* labels —
+  `Limited`, `Retail`, `Deluxe`, `REDE` — not MusicBrainz's album/single/ep. It was mapped to
+  `RELEASETYPE` by analogy and is now out of the table; nothing in the app reads either key. That
+  first run had already moved ~84 edition labels into `RELEASETYPE`; `EDITION_LABELS` is the
+  closed list of those values, and a `RELEASETYPE` holding exactly one goes back under
+  `RELEASE TYPE`. Odd but release-type-shaped values other taggers wrote (`Album (Reissue)`) stay.
+- **Real disagreements** — 178 pairs in 16 albums, settled by evidence: a MusicBrainz lookup for
+  ids, country and status (in each case one side's ids belonged to the release and the other's did
+  not), and the album-artist ones against the tracks and the library's existing artist.
+
+A settled pair goes through `normalize-vorbis-keys.ts --resolve=<file>`: entries of
+`{ dir, spaced, keep: 'spaced' | 'canonical' }`, matched on whole path segments under `musicDir`.
+The same writer and read-back run as for every other file, and a resolution that matched nothing is
+reported rather than ignored.
+
+**An album-artist decision starts in the database, not the file.** music-metadata maps both names to
+`albumartist`, and for every disagreeing album on prod the library was reading the *spaced* value.
+Keeping the canonical one blindly would have re-filed `Kisses` and `Until Now` under Various Artists
+on the next scan. Where the library's value was wrong, `fix_album_metadata` set it first (its
+override survives rescans); the file resolution then matches it.
+
 The encode-time fix is scoped to the ID3 path: FLAC and Ogg sources are Vorbis-to-Vorbis and their
 keys pass through unchanged, which a separate FLAC case in `post-download-transcode.test.ts`
 asserts. Spaced names that arrive in a Vorbis source are what the rewrite heal and the backfill are

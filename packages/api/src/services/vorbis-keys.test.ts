@@ -55,20 +55,58 @@ describe('planVorbisKeyFixes (#1250, #1231)', () => {
   });
 
   it('compares a second spaced name against the value the first one moved', () => {
-    const agree = planVorbisKeyFixes([
-      c('MUSICBRAINZ ALBUM TYPE', 'album'),
-      c('RELEASE TYPE', 'album'),
-    ]);
-    expect(agree.metadata).toEqual([
-      'RELEASETYPE=album',
-      'MUSICBRAINZ ALBUM TYPE=',
-      'RELEASE TYPE=',
-    ]);
-    const differ = planVorbisKeyFixes([
-      c('MUSICBRAINZ ALBUM TYPE', 'album'),
-      c('RELEASE TYPE', 'ep'),
-    ]);
-    expect(differ.conflicts).toEqual([{ spaced: 'RELEASE TYPE', canonical: 'RELEASETYPE' }]);
+    const keys = [
+      { spaced: 'A ONE', canonical: 'SHARED', ffmpegKey: 'SHARED' },
+      { spaced: 'A TWO', canonical: 'SHARED', ffmpegKey: 'SHARED' },
+    ];
+    const agree = planVorbisKeyFixes([c('A ONE', 'x'), c('A TWO', 'x')], { keys });
+    expect(agree.metadata).toEqual(['SHARED=x', 'A ONE=', 'A TWO=']);
+    const differ = planVorbisKeyFixes([c('A ONE', 'x'), c('A TWO', 'y')], { keys });
+    expect(differ.conflicts).toEqual([{ spaced: 'A TWO', canonical: 'SHARED' }]);
+  });
+
+  it('treats values differing only in case as agreeing, keeping the canonical one (#1283)', () => {
+    expect(
+      planVorbisKeyFixes([c('RELEASETYPE', 'album'), c('MUSICBRAINZ ALBUM TYPE', 'Album')]),
+    ).toEqual({
+      metadata: ['MUSICBRAINZ ALBUM TYPE='],
+      conflicts: [],
+    });
+  });
+
+  it('does not map RELEASE TYPE, which holds edition labels, not release types (#1283)', () => {
+    expect(planVorbisKeyFixes([c('RELEASE TYPE', 'Limited')])).toEqual({
+      metadata: [],
+      conflicts: [],
+    });
+  });
+
+  it('puts an edition label filed as RELEASETYPE back under RELEASE TYPE (#1283)', () => {
+    expect(planVorbisKeyFixes([c('RELEASETYPE', 'Retail')])).toEqual({
+      metadata: ['RELEASE TYPE=Retail', 'RELEASETYPE='],
+      conflicts: [],
+    });
+    // Real release types, and release-type-shaped values other taggers wrote, stay.
+    for (const v of ['album', 'Album', 'compilation;album', 'Album (Reissue)', 'LP, Album'])
+      expect(planVorbisKeyFixes([c('RELEASETYPE', v)]).metadata).toEqual([]);
+    // Already has a RELEASE TYPE: nothing to restore into.
+    expect(
+      planVorbisKeyFixes([c('RELEASETYPE', 'Retail'), c('RELEASE TYPE', 'Limited')]).metadata,
+    ).toEqual([]);
+  });
+
+  it('settles a disagreement the way a curator decided (#1283)', () => {
+    const pair = [c('ALBUMARTIST', 'Cultura Profetica'), c('ALBUM ARTIST', 'Cultura Profética')];
+    expect(
+      planVorbisKeyFixes(pair, { prefer: new Map([['ALBUM ARTIST', 'spaced']]) }).metadata,
+    ).toEqual(['album_artist=Cultura Profética', 'ALBUM ARTIST=']);
+    expect(
+      planVorbisKeyFixes(pair, { prefer: new Map([['ALBUM ARTIST', 'canonical']]) }).metadata,
+    ).toEqual(['ALBUM ARTIST=']);
+    // A preference for a different key leaves this pair a conflict.
+    expect(
+      planVorbisKeyFixes(pair, { prefer: new Map([['MUSICBRAINZ ALBUM ID', 'spaced']]) }).conflicts,
+    ).toHaveLength(1);
   });
 
   it('leaves keys outside the table, and non-string values, alone', () => {
