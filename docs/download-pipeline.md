@@ -211,7 +211,9 @@ for the same codec*. Two tables that look alike are not evidence that one of the
 That route also needed #1177 before it could be a *valid* choice, and #1177 is now closed: the mov
 muxer silently ignores `-metadata BPM=`, so `.m4a` files ended with no tempo atom and were
 re-analysed forever. `BPM_METADATA_KEY` (`audio-tags.ts`) overrides the key to `tmpo` for that one
-container — see *Tags across a container change* below.
+container — see *Tags across a container change* below. #1274 then made the other eleven fields
+writable (freeform atoms, same section). What AAC still lacks is its own `FormatStrategy`: a `covr`
+art embed and a bitrate ladder.
 
 ### Choosing the format (#1256, #1255)
 
@@ -813,6 +815,28 @@ app wrote ended with no tempo atom — a tag that could never exist, re-analysed
 Probed across all four plausible spellings against a real `.m4a`, only `tmpo` (the iTunes atom)
 reads back; `BPM`, `TBPM` and `tempo` all yield `undefined`. `BPM_METADATA_KEY` overrides the key
 per container rather than renaming it globally, because `BPM` is what the Vorbis family reads.
+
+**`tmpo` covered one field of twelve (#1274).** The same muxer drops `key`, the seven perceptual
+features and the three ids — and no `-metadata` spelling reaches them, not even
+`----:com.apple.iTunes:NAME`. It also drops every freeform atom the *source* carried, so any retag
+of an `.m4a` (a title fix, say) silently deleted the MusicBrainz ids another tagger had written. The
+writer still returned `true`.
+
+`mp4-freeform.ts` writes those atoms by hand after the remux. `writeFfmpegTags` reads the file's
+existing `----` atoms first, lets ffmpeg rewrite the container, then `writeFreeformAtoms` puts the
+carried set back with this write's own values replacing any of the same name — one atom per field,
+however many passes. Names are the ones every other container uses (`Acoustid Id`,
+`MusicBrainz Track Id`, `ENERGY`, …), plus Picard's `initialkey` for the key.
+
+Two facts make this safe, and both are asserted rather than assumed. ffmpeg's output without
+`+faststart` puts `moov` **after** `mdat`, so growing `ilst` moves nothing any `stco`/`co64` offset
+points at; `withFreeformAtoms` refuses any other layout instead of patching sample tables. And a
+faststart *source* is fine, because the remux lays out its own output. If the edit is refused, the
+write reports `false` rather than claiming the fields.
+
+The read side had a gap of its own: music-metadata maps no MP4 atom to `common.key` at all.
+`keyFromParse` falls back to the native `initialkey` frame, and both `readAudioTags` and the scanner
+use it; `featureTagsFromNative` matches the `----:com.apple.iTunes:` prefix beside `TXXX:`.
 
 Worth noting how it was found and how it is now pinned. The gap was *measured on the written file*
 while closing #1151 (the read side of the same asymmetry) — the read fix alone would have looked
