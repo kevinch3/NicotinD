@@ -1,6 +1,6 @@
 import type { Database } from 'bun:sqlite';
 import { optimizeAllAlbums, type OptimizeLidarr } from '../metadata-optimize.js';
-import { transcodeLibraryToOpus } from '../library-transcode.js';
+import { transcodeLibraryToFormat } from '../library-transcode.js';
 import { backfillArtwork, type BackfillLidarr } from '../artwork-backfill.js';
 import { embedAlbumArt } from '../opus-art-embed.js';
 import { normalizeLibraryLoudness } from '../loudness-normalize.js';
@@ -101,7 +101,7 @@ export interface MaintenanceDeps {
   musicDir: string;
   /**
    * Data dir, so `transcode-library` can KEEP the originals it replaces.
-   * Required, not optional: it was absent here while `transcodeLibraryToOpus`
+   * Required, not optional: it was absent here while `transcodeLibraryToFormat`
    * took `dataDir` optionally, so the Admin button silently deleted every
    * original it converted — the one thing quarantine (#1228) exists to stop.
    */
@@ -341,7 +341,7 @@ export function buildMaintenanceTasks(deps: MaintenanceDeps): AnyMaintenanceTask
           startedBy: 'maintenance',
         });
         try {
-          const r = await transcodeLibraryToOpus(deps.db, deps.musicDir, {
+          const r = await transcodeLibraryToFormat(deps.db, deps.musicDir, {
             apply: p.apply,
             limit: p.limit,
             scope: p.scope,

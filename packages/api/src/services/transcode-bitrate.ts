@@ -1,5 +1,7 @@
+import type { LibraryFormat } from './library-format.js';
+
 /**
- * How many kbps an Opus encode of a given source should get.
+ * How many kbps an encode of a given source should get, per target format.
  *
  * **Why adaptive rather than one number.** The library's mp3 bitrate
  * distribution is cleanly bimodal — 8,153 files at 128–159 kbps and 4,589 at
@@ -8,17 +10,17 @@
  * 128 kbps source at 128 spends bytes preserving the artifacts of the first
  * encode rather than the recording.
  *
- * **Why the top of the table is conservative.** Opus at 128 kbps is generally
- * held to be transparent for stereo music, so nothing above it buys audible
- * quality from a source that is already lossy. Going higher would mostly
- * preserve the *source encoder's* artifacts with more fidelity, which is not a
- * goal.
- *
  * Pure and table-driven on purpose: the numbers are a judgement call, and a
  * judgement call belongs somewhere it can be argued about in a test rather than
  * buried in an encoder invocation.
  *
- * Measured against the real library (2026-09-20, 13,864 candidates):
+ * **Why a ladder per format rather than one shared table.** The numbers are
+ * calibrated to a codec, not to a source: Opus at 96 kbps is roughly mp3 at
+ * 160. Reusing Opus's rungs for an mp3 target would encode most of a library
+ * at a little over half the rate its own table asks for. A format arrives here
+ * with its own ladder or it does not arrive.
+ *
+ * Measured against the real library (2026-09-20, 13,864 candidates), Opus:
  *
  * | source | files | now | → Opus | after | saved |
  * | --- | --- | --- | --- | --- | --- |
@@ -30,31 +32,48 @@
  */
 
 /**
- * Source-bitrate buckets and the Opus rate each maps to, ordered low to high.
+ * One format's mapping from source bitrate to target rate.
  *
- * `upTo` is inclusive. The last entry is the catch-all and its `upTo` is
- * `Infinity`, so the table is total by construction — there is no source
- * bitrate that falls off the end and no default hiding below the table.
+ * `upTo` is inclusive. The last step is the catch-all and its `upTo` is
+ * `Infinity`, so a ladder is total by construction — there is no source bitrate
+ * that falls off the end and no default hiding below the table.
+ *
+ * `losslessKbps` is what a lossless source gets. Lossless has no meaningful
+ * "source bitrate" to read — a FLAC's is a property of the material, not of a
+ * quality choice — so it takes the top of the ladder rather than being mapped
+ * through it. A 400 kbps FLAC and a 1,400 kbps FLAC are both first-generation,
+ * and both deserve the transparent rate.
  */
-export const BITRATE_LADDER: ReadonlyArray<{ upTo: number; opusKbps: number }> = [
-  { upTo: 127, opusKbps: 64 },
-  { upTo: 159, opusKbps: 96 },
-  { upTo: 255, opusKbps: 112 },
-  { upTo: Infinity, opusKbps: 128 },
-];
+export interface BitrateLadder {
+  steps: ReadonlyArray<{ upTo: number; targetKbps: number }>;
+  losslessKbps: number;
+}
 
 /**
- * What a lossless source gets.
+ * The ladder each target format uses.
  *
- * Lossless has no meaningful "source bitrate" to read — a FLAC's is a property
- * of the material, not of a quality choice — so it takes the top of the ladder
- * rather than being mapped through it. A 400 kbps FLAC and a 1,400 kbps FLAC
- * are both first-generation, and both deserve the transparent rate.
+ * Total over `LibraryFormat`, so a format cannot join the registry in
+ * `library-format.ts` without bringing a calibrated ladder with it.
+ *
+ * Opus's top rung is 128: Opus at 128 kbps is generally held to be transparent
+ * for stereo music, so nothing above it buys audible quality from a source that
+ * is already lossy. Going higher would mostly preserve the *source encoder's*
+ * artifacts with more fidelity, which is not a goal.
  */
-export const LOSSLESS_OPUS_KBPS = 128;
+export const LADDERS: Record<LibraryFormat, BitrateLadder> = {
+  opus: {
+    steps: [
+      { upTo: 127, targetKbps: 64 },
+      { upTo: 159, targetKbps: 96 },
+      { upTo: 255, targetKbps: 112 },
+      { upTo: Infinity, targetKbps: 128 },
+    ],
+    losslessKbps: 128,
+  },
+};
 
 /**
- * Opus kbps for a source, given its bitrate in kbps and whether it is lossless.
+ * Target kbps for a source, given its bitrate in kbps and whether it is lossless.
  *
  * **A missing or zero bitrate is a probe failure, not a quiet source.** The
  * scanner writes `0` when it could not read one, and treating that as "under
@@ -62,29 +81,37 @@ export const LOSSLESS_OPUS_KBPS = 128;
  * about. Unknown therefore takes the same top rate as lossless: the choice that
  * cannot make things worse, at the cost of some bytes on a handful of files.
  */
-export function opusBitrateFor(sourceKbps: number | null | undefined, lossless: boolean): number {
-  if (lossless) return LOSSLESS_OPUS_KBPS;
+export function bitrateFor(
+  format: LibraryFormat,
+  sourceKbps: number | null | undefined,
+  lossless: boolean,
+): number {
+  const ladder = LADDERS[format];
+  if (lossless) return ladder.losslessKbps;
   if (sourceKbps == null || !Number.isFinite(sourceKbps) || sourceKbps <= 0) {
-    return LOSSLESS_OPUS_KBPS;
+    return ladder.losslessKbps;
   }
-  for (const step of BITRATE_LADDER) {
-    if (sourceKbps <= step.upTo) return step.opusKbps;
+  for (const step of ladder.steps) {
+    if (sourceKbps <= step.upTo) return step.targetKbps;
   }
   // Unreachable: the ladder's last entry is Infinity. Here so a future edit
   // that drops the catch-all fails loudly rather than returning undefined.
-  throw new Error(`no bitrate bucket for ${sourceKbps} kbps — the ladder lost its catch-all`);
+  throw new Error(
+    `no bitrate bucket for ${sourceKbps} kbps — the ${format} ladder lost its catch-all`,
+  );
 }
 
 /**
- * Bytes a `kbps` Opus encode of `seconds` audio occupies, or `null` when the
+ * Bytes a `kbps` encode of `seconds` audio occupies, or `null` when the
  * duration is unknown.
  *
- * Decimal kilobits per second, so one second is `kbps * 1000 / 8` bytes. A dry
- * run counts **no** saving for an unknown duration rather than guessing:
+ * Decimal kilobits per second, so one second is `kbps * 1000 / 8` bytes — the
+ * same arithmetic whatever the codec, since the rate is the rate. A dry run
+ * counts **no** saving for an unknown duration rather than guessing:
  * under-reporting a saving is recoverable, over-reporting one is the mistake
  * that makes an operator size a run wrong.
  */
-export function estimateOpusBytes(seconds: number | null, kbps: number): number | null {
+export function estimateEncodedBytes(seconds: number | null, kbps: number): number | null {
   if (!seconds || !Number.isFinite(seconds) || seconds <= 0) return null;
   return Math.round(seconds * kbps * 125);
 }

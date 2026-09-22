@@ -1,7 +1,7 @@
 /**
  * Tests for the post-download Opus transcode helper.
  *
- * `isLossless` is pure. `transcodeToOpus` spawns ffmpeg, so its tests generate
+ * `isLossless` is pure. `transcodeToLibraryFormat` spawns ffmpeg, so its tests generate
  * real audio and are skipped when ffmpeg is absent.
  *
  * Note the `ci` gate job does NOT have ffmpeg — these skip there, and the `e2e`
@@ -17,8 +17,8 @@ import { tmpdir } from 'node:os';
 import {
   isLossless,
   isLosslessFile,
-  transcodeToOpus,
-  opusOutputVerdict,
+  transcodeToLibraryFormat,
+  encodeOutputVerdict,
 } from './post-download-transcode.js';
 import { ffmpegAvailable, transcodeOutputIsAcceptable } from './transcode.js';
 import { readAudioTags, writeAudioTags, type AudioTags } from './audio-tags.js';
@@ -137,14 +137,14 @@ describe('isLosslessFile', () => {
   });
 });
 
-describe('transcodeToOpus', () => {
+describe('transcodeToLibraryFormat', () => {
   it.skipIf(!ffmpegAvailable())('replaces a FLAC with an .opus file in place', async () => {
     const root = tmpRoot();
     const flac = join(root, '01 - Song.flac');
     makeFlac(flac);
     expect(existsSync(flac)).toBe(true);
 
-    const out = await transcodeToOpus(flac, 128);
+    const out = await transcodeToLibraryFormat(flac, 128);
 
     expect(out).toBe(join(root, '01 - Song.opus'));
     expect(existsSync(out)).toBe(true);
@@ -160,7 +160,7 @@ describe('transcodeToOpus', () => {
     // A non-audio file ffmpeg can't decode.
     await Bun.write(bogus, 'this is not a flac');
 
-    await expect(transcodeToOpus(bogus)).rejects.toThrow();
+    await expect(transcodeToLibraryFormat(bogus)).rejects.toThrow();
     // Original untouched, no temp/opus left behind.
     expect(existsSync(bogus)).toBe(true);
     expect(existsSync(join(root, 'not-audio.opus'))).toBe(false);
@@ -178,7 +178,7 @@ describe('transcodeToOpus', () => {
       makeLongFlac(flac);
       await corruptOneFrame(flac);
 
-      const out = await transcodeToOpus(flac, 128);
+      const out = await transcodeToLibraryFormat(flac, 128);
 
       expect(out).toBe(join(root, 'glitchy.opus'));
       expect(existsSync(out)).toBe(true);
@@ -193,7 +193,7 @@ describe('transcodeToOpus', () => {
 
     // The opaque "exited with code N" alone is what made #534 undiagnosable —
     // the message must carry an ffmpeg diagnostic, whichever line ends stderr.
-    await expect(transcodeToOpus(bogus)).rejects.toThrow(/invalid data|no packets/i);
+    await expect(transcodeToLibraryFormat(bogus)).rejects.toThrow(/invalid data|no packets/i);
   });
 });
 
@@ -300,7 +300,7 @@ describe('tag preservation through mp3 -> opus', () => {
     expect(await writeAudioTags(src, FULL_TAGS)).toBe(true);
     const before = await readAudioTags(src);
 
-    const out = await transcodeToOpus(src, 96);
+    const out = await transcodeToLibraryFormat(src, 96);
     const after = await readAudioTags(out);
 
     const lost = (Object.keys(FULL_TAGS) as Array<keyof typeof FULL_TAGS>).filter(
@@ -328,7 +328,7 @@ describe('tag preservation through mp3 -> opus', () => {
     makeMp3(src);
     await writeAudioTags(src, FULL_TAGS);
 
-    const out = await transcodeToOpus(src, 96);
+    const out = await transcodeToLibraryFormat(src, 96);
 
     const mm = await getMusicMetadata();
     const comments = ((await mm!.parseFile(out)).native?.vorbis ?? [])
@@ -342,7 +342,7 @@ describe('tag preservation through mp3 -> opus', () => {
     const root = tmpRoot();
     const src = join(root, 'bare.mp3');
     makeMp3(src);
-    const out = await transcodeToOpus(src, 96);
+    const out = await transcodeToLibraryFormat(src, 96);
     expect(existsSync(out)).toBe(true);
     expect(out.endsWith('.opus')).toBe(true);
   });
@@ -380,7 +380,7 @@ describe('tag preservation through mp3 -> opus', () => {
     const before = await readAudioTags(src);
     expect(before.compilation).toBe(true);
 
-    const out = await transcodeToOpus(src, 96);
+    const out = await transcodeToLibraryFormat(src, 96);
     const after = await readAudioTags(out);
 
     const lost = (Object.keys(full) as Array<keyof typeof full>).filter(
@@ -391,17 +391,17 @@ describe('tag preservation through mp3 -> opus', () => {
   });
 });
 
-describe('opusOutputVerdict — fails closed, because the caller then deletes the source', () => {
+describe('encodeOutputVerdict — fails closed, because the caller then deletes the source', () => {
   it('accepts an output at least as long as the source', () => {
-    expect(opusOutputVerdict(180, 180).ok).toBe(true);
+    expect(encodeOutputVerdict(180, 180).ok).toBe(true);
   });
 
   it('accepts a shortfall inside the tolerance', () => {
-    expect(opusOutputVerdict(180, 179.5).ok).toBe(true);
+    expect(encodeOutputVerdict(180, 179.5).ok).toBe(true);
   });
 
   it('rejects a truncated output', () => {
-    const v = opusOutputVerdict(180, 12);
+    const v = encodeOutputVerdict(180, 12);
     expect(v.ok).toBe(false);
     expect(v.ok === false && v.reason).toContain('shorter than source');
   });
@@ -410,28 +410,28 @@ describe('opusOutputVerdict — fails closed, because the caller then deletes th
   // either duration is null — correct for the streaming CACHE, where a bad file
   // is regenerated, and wrong here, where the next statement is an unlink.
   it('REJECTS an unreadable source duration', () => {
-    const v = opusOutputVerdict(null, 180);
+    const v = encodeOutputVerdict(null, 180);
     expect(v.ok).toBe(false);
     expect(v.ok === false && v.reason).toContain('source duration');
   });
 
   it('REJECTS an unreadable output duration', () => {
-    const v = opusOutputVerdict(180, null);
+    const v = encodeOutputVerdict(180, null);
     expect(v.ok).toBe(false);
     expect(v.ok === false && v.reason).toContain('output duration');
   });
 
   it('rejects a zero or non-finite output duration', () => {
-    expect(opusOutputVerdict(180, 0).ok).toBe(false);
-    expect(opusOutputVerdict(180, Number.NaN).ok).toBe(false);
-    expect(opusOutputVerdict(180, Number.POSITIVE_INFINITY).ok).toBe(false);
+    expect(encodeOutputVerdict(180, 0).ok).toBe(false);
+    expect(encodeOutputVerdict(180, Number.NaN).ok).toBe(false);
+    expect(encodeOutputVerdict(180, Number.POSITIVE_INFINITY).ok).toBe(false);
   });
 
   it('names which check failed, not just that one did', () => {
     // A run over thousands of files has to distinguish "came out short" from
     // "could not be probed" — they are different operator problems.
-    const truncated = opusOutputVerdict(180, 12);
-    const unprobeable = opusOutputVerdict(180, null);
+    const truncated = encodeOutputVerdict(180, 12);
+    const unprobeable = encodeOutputVerdict(180, null);
     expect(truncated.ok === false && unprobeable.ok === false).toBe(true);
     expect(truncated.ok === false && truncated.reason).not.toBe(
       unprobeable.ok === false ? unprobeable.reason : '',
@@ -442,7 +442,7 @@ describe('opusOutputVerdict — fails closed, because the caller then deletes th
     // Same inputs, opposite verdicts, on purpose. If these ever agree, one of
     // the two callers has the wrong policy for its stakes.
     expect(transcodeOutputIsAcceptable(null, 180)).toBe(true);
-    expect(opusOutputVerdict(null, 180).ok).toBe(false);
+    expect(encodeOutputVerdict(null, 180).ok).toBe(false);
   });
 });
 
@@ -531,7 +531,7 @@ describe.skipIf(!ffmpegAvailable())('cover art survives the transcode', () => {
     const root = tmpRoot();
     const { flac, coverBytes } = makeFlacWithCover(root, 500);
 
-    const out = await transcodeToOpus(flac, 96);
+    const out = await transcodeToLibraryFormat(flac, 96);
 
     const mm = await getMusicMetadata();
     const pic = (await mm!.parseFile(out)).common.picture?.[0];
@@ -542,7 +542,7 @@ describe.skipIf(!ffmpegAvailable())('cover art survives the transcode', () => {
     const root = tmpRoot();
     const { flac } = makeFlacWithCover(root, 400);
 
-    const out = await transcodeToOpus(flac, 96);
+    const out = await transcodeToLibraryFormat(flac, 96);
 
     expect((await readAudioTags(out)).artist).toBe('TheArtist');
   });
@@ -557,7 +557,7 @@ describe.skipIf(!ffmpegAvailable())('cover art survives the transcode', () => {
     const { flac, coverBytes } = makeFlacWithCover(root, 1800, 2, 'mandelbrot=s=1800x1800');
     expect(coverBytes).toBeGreaterThan(512 * 1024); // ~597 KB, over the cap
 
-    const out = await transcodeToOpus(flac, 96);
+    const out = await transcodeToLibraryFormat(flac, 96);
 
     const mm = await getMusicMetadata();
     const pic = (await mm!.parseFile(out)).common.picture?.[0];
@@ -590,7 +590,7 @@ describe.skipIf(!ffmpegAvailable())('cover art survives the transcode', () => {
       { stdio: 'ignore' },
     );
 
-    const out = await transcodeToOpus(bare, 96);
+    const out = await transcodeToLibraryFormat(bare, 96);
 
     expect(existsSync(out)).toBe(true);
     const mm = await getMusicMetadata();
@@ -601,7 +601,7 @@ describe.skipIf(!ffmpegAvailable())('cover art survives the transcode', () => {
     const root = tmpRoot();
     const { flac } = makeFlacWithCover(root, 400);
 
-    await transcodeToOpus(flac, 96);
+    await transcodeToLibraryFormat(flac, 96);
 
     const leaked = readdirSync(root).filter(
       (n) => n.includes('cover-src') || n.includes('cover-fit'),

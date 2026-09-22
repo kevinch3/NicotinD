@@ -139,7 +139,7 @@ right to decline a second copy. Only the bookkeeping was wrong.
 
 ## Lossless → Opus standardization (storage + web playback)
 
-FLAC is overkill for web streaming and large on disk. `downloads.transcodeLossless` is **default-on at 192 kbps** (config / `NICOTIND_TRANSCODE_LOSSLESS_ENABLED` + `NICOTIND_TRANSCODE_LOSSLESS_BITRATE`; set `enabled:false` to keep originals). When enabled, lossless downloads are transcoded to Opus and **already-lossy files (MP3/AAC/…) are left untouched**. The lossless set is shared (`isLossless()` in `library-track-select.ts`); the encoder is `post-download-transcode.ts` `transcodeToOpus()` (ffmpeg `libopus`, replace-in-place: write `<name>.opus`, drop the original). Everything is gated on `ffmpegAvailable()`.
+FLAC is overkill for web streaming and large on disk. `downloads.transcodeLossless` is **default-on at 192 kbps** (config / `NICOTIND_TRANSCODE_LOSSLESS_ENABLED` + `NICOTIND_TRANSCODE_LOSSLESS_BITRATE`; set `enabled:false` to keep originals). When enabled, lossless downloads are transcoded to Opus and **already-lossy files (MP3/AAC/…) are left untouched**. The lossless set is shared (`isLossless()` in `library-track-select.ts`); the encoder is `post-download-transcode.ts` `transcodeToLibraryFormat()` (ffmpeg `libopus`, replace-in-place: write `<name>.opus`, drop the original). Everything is gated on `ffmpegAvailable()`.
 
 The in-progress encode is written to a **dot-prefixed** temp path
 (`transcodeTempPathFor`) so that a run killed mid-write — a deploy restart, an OOM — leaves a file
@@ -188,6 +188,40 @@ is left untouched. Both the ingest hook and the existing-library migration use
 `isLosslessFile`, so a library pass (`convert-library.ts` / admin
 `POST /api/admin/transcode-library`) also sweeps up historical ALAC.
 
+### The library's format table is not the streaming one (#1256)
+
+Both paths encode audio with ffmpeg, so the obvious move is one shared table. It is wrong, and the
+case that proves it is `aac`.
+
+`FORMAT_ARGS` (`services/transcode.ts`) answers *"how do I encode bytes for this request"*. Those
+bytes are ephemeral: nothing tags them, nothing scans them, a wrong one costs a cache miss.
+`LIBRARY_FORMATS` (`services/library-format.ts`) answers *"what may the library be made of"*, where
+the bytes are permanent, tagged, re-scanned, and replace a file that is then deleted.
+
+| | streaming (`FORMAT_ARGS`) | library (`LIBRARY_FORMATS`) |
+| --- | --- | --- |
+| `opus` | `-f ogg` → served | `-f ogg` → `.opus`, taggable, header gain |
+| `mp3` | `-f mp3` → served | not yet implemented |
+| `aac` | `-f adts` → served | **invalid**: `.aac` is in `AUDIO_EXTENSIONS` but in neither `ID3_EXTS` nor `VORBIS_EXTS`, and `writeAudioTags` returns `false` for it |
+
+So an `.aac` library would be indexed by the scanner and permanently untaggable — every tag write
+silently refused. Library AAC has to be `.m4a` through the `ipod` muxer, which is a *different muxer
+for the same codec*, and it additionally needs #1177 (the mov muxer drops `-metadata BPM=`, so an
+`.m4a` library re-analyses BPM forever). Two tables that look alike are not evidence that one of
+them is redundant.
+
+Where they genuinely agree they share: the Opus strategy's `encodeArgs` calls `FORMAT_ARGS.opus.args`
+rather than writing the tuple out again, which is the duplicate this seam removed.
+`check:shared-helpers` registers both names so a third copy fails CI — note it matches on the *name*,
+so it could never have caught the original inline array literal.
+
+`FormatStrategy` makes each per-format fact a field rather than a constant: `ext`, `encodeArgs`,
+`bitrateFor` (its own ladder — Opus 96k ≈ mp3 160k), `maxEmbeddedPictureBytes` (an Ogg reader limit,
+not a format property), `embedArt`, and `writeGain`. `writeGain` is `((path, db) => boolean) | null`
+**in the type**: Opus carries `output_gain` in `OpusHead`, mp3 and AAC carry nothing equivalent, and
+a nullable field forces every call site to handle that gap at compile time instead of a user
+discovering that normalization silently did nothing.
+
 ### New downloads (no identity churn)
 
 The hook fires in `LibraryOrganizer.placeFile()` **after the move and before the incremental scan**. Because the scanner only ever sees the final `.opus` path, the song's path-derived `songId` is computed once — no orphaned curation, and format-preference dedup keeps working (all kept files are opus). A transcode failure is best-effort: it logs and leaves the original in place.
@@ -196,7 +230,7 @@ The hook fires in `LibraryOrganizer.placeFile()` **after the move and before the
 
 `downloads.transcodeLossless` used to be **env/YAML-only** (captured into `LibraryOrganizer` at boot; no runtime toggle). Users never saw it, so a lossless pick silently became Opus. It is now admin-editable via `app_settings.downloads` (see *One resolved setting* below). `GET /api/settings/downloads` (`routes/settings.ts`, any authenticated user, read-only) exposes the **effective** `{ transcodeLossless: {enabled, format, bitRate}, ffmpegAvailable }` so the search/acquire page can show an **accurate** reminder: a "Lossless picks are stored as Opus Nk to save space" note under the Results header plus a per-row `→ Opus Nk` chip on lossless candidates. The web gate is `transcodeActive = enabled && ffmpegAvailable` **and** a lossless item actually in view (`isLosslessCandidate` checks the pick's extension) — so it never promises a conversion that won't happen for a 320k MP3 pick, and it disappears entirely when transcoding is off or ffmpeg is missing.
 
-### Existing library (`transcodeLibraryToOpus`, the careful part)
+### Existing library (`transcodeLibraryToFormat`, the careful part)
 
 `services/library-transcode.ts` converts the lossless files already in the library — via `scripts/convert-library.ts` (`--apply`, optional `--bitrate`; dry-run reports candidates) or admin `POST /api/admin/transcode-library` (`?dryRun=1`). Re-encoding changes a file's extension → its relative path → its derived `songId` **and** its `acquisitions` key. Album-keyed data (`library_artwork`, `library_release_meta`, classification, all keyed on the tag-derived `albumId`) is unaffected and survives; song-keyed data does not, so **per file** the job:
 
@@ -276,7 +310,7 @@ give `shouldStop` no granularity at all. So the split is applied to a **window**
 (`TRANSCODE_CONCURRENCY * 4`) files:
 
 1. **serial** — skip rows whose file is gone, do the dry-run accounting
-2. **pooled** at `TRANSCODE_CONCURRENCY` — `transcodeToOpus`, which owns nothing shared
+2. **pooled** at `TRANSCODE_CONCURRENCY` — `transcodeToLibraryFormat`, which owns nothing shared
 3. **serial** — the identity migration
 
 **Phase 3 must stay serial.** `scanPaths` reads whole-DB state outside a transaction and recomputes
@@ -455,7 +489,7 @@ current path can tag them at all. Converting them is a strict improvement rather
 
 ### One rate per file, not one per pass
 
-`opusBitrateFor` (`services/transcode-bitrate.ts`) picks the Opus rate from the source's own
+the target format's `bitrateFor` (`services/transcode-bitrate.ts`) picks the Opus rate from the source's own
 bitrate. The library's mp3 distribution is cleanly bimodal — 8,153 files at 128–159 kbps and 4,589
 at 256+ — so a single target is wrong in one direction or the other for most of it. Encoding a
 320 kbps source at 96 throws away music; encoding a 128 kbps source at 128 spends bytes preserving
@@ -580,12 +614,12 @@ non-zero count means the analysis has fallen behind, not that those files are fi
 
 ### Back up before transcoding
 
-`transcodeToOpus` unlinks the source once the output verifies. For a freshly downloaded file that is
+`transcodeToLibraryFormat` unlinks the source once the output verifies. For a freshly downloaded file that is
 the intended design — it is one re-download away. For a **whole-library backfill** over thousands of
 irreplaceable files it is not, and generation loss is invisible to every check that runs first: the
 output can be valid, correct-length and still worse.
 
-So the destructive pass opts in. Pass `dataDir` to `transcodeLibraryToOpus` and each replaced
+So the destructive pass opts in. Pass `dataDir` to `transcodeLibraryToFormat` and each replaced
 original is **moved** to `<dataDir>/quarantine/transcode-<stamp>/`, keeping its musicDir-relative
 path, instead of being deleted. The result carries `quarantineRun` so the operator knows where.
 `services/transcode-quarantine.ts` owns it.
@@ -607,10 +641,10 @@ matched nothing prints the same clean line as one that checked every caller.
 dangerous choice has to be typed. `tasks.test.ts` asserts the behaviour rather than the argument: it
 runs the real Admin task over a real FLAC and looks for the file under `quarantine/`.
 
-**And the gate's first denominator was still wrong.** It watched callers of `transcodeLibraryToOpus`
+**And the gate's first denominator was still wrong.** It watched callers of `transcodeLibraryToFormat`
 and reported a clean two sites — while `reorganize-library.ts --transcode` deleted originals just out
 of frame. That script never names the encoder: it constructs a `LibraryOrganizer`, which calls
-`transcodeToOpus` itself. So the gate now watches **three doors** — both encode functions and
+`transcodeToLibraryFormat` itself. So the gate now watches **three doors** — both encode functions and
 `new LibraryOrganizer(` — and counts six sites rather than two.
 
 `LibraryOrganizer` gained `keepOriginals`, which it forwards rather than decides, so the choice sits
@@ -618,10 +652,25 @@ with whoever constructs it: the download ingest deliberately deletes, because a 
 is one re-download away, and `reorganize-library.ts` quarantines, because its files are already in
 the library. Both are allowlisted or wired explicitly, with the reason on the record.
 
+**And the denominator was wrong a second time, in a subtler way (#1256).** The gate failed when it
+found **zero** call sites — but `CALLEES` holds two names, so renaming *one* of them left the other
+matching. The total stayed plausible (four sites instead of six) and the gate reported a clean line
+while half of it watched nothing. It now asserts a non-zero count **per watched pattern** and prints
+the breakdown it examined, not just the total:
+
+```
+check:transcode-quarantine: 6 production call site(s)
+  [transcodeLibraryToFormat=2, transcodeToLibraryFormat=2, new LibraryOrganizer(=2]; …
+```
+
+Verified by renaming one callee and confirming the failure, which the old shape passed.
+
 The lesson is about gates, not about this feature. A gate's denominator is a claim about the world,
 and the first version of this one was checked by reintroducing the original bug — which it caught —
 without ever testing the case it could not see. Re-introducing *each* bug the gate claims to cover
-is the only thing that distinguishes a gate from a gate-shaped comment.
+is the only thing that distinguishes a gate from a gate-shaped comment — and **a denominator
+assertion that is not per-item is only half an assertion**, because the aggregate stays believable
+while a component of it goes to zero.
 
 **Why `dataDir` and not `musicDir`.** Three costs, each already paid elsewhere: a directory inside
 `musicDir` must be registered in `reservedDirsFor` or the scanner walks it and the disk audit reports
@@ -650,7 +699,7 @@ That is correct where it is used: the streaming path's output is a *cache* file,
 is served best-effort, and a wrong one is regenerated. Failing open there costs a cache miss.
 
 The ingest/library path is the opposite. Its next statement is
-`rmSync(absPath)` on an irreplaceable library file, so `opusOutputVerdict`
+`rmSync(absPath)` on an irreplaceable library file, so `encodeOutputVerdict`
 (`post-download-transcode.ts`) **fails closed**: an output that cannot be probed is rejected, and the
 original survives.
 
@@ -786,14 +835,14 @@ does stop the run. A dry run is never preflighted: it writes nothing, and a full
 sizing report matters most.
 
 **`bytesReclaimed` means the difference, on both paths.** On apply it is what was actually freed
-(`oldSize - newSize`). On a dry run it is the *estimated* difference: `size - estimateOpusBytes()`,
+(`oldSize - newSize`). On a dry run it is the *estimated* difference: `size - estimateEncodedBytes()`,
 where a `bitRate`-kbps encode of `n` seconds costs `n * bitRate * 125` bytes.
 
 It used to add the whole original size on the dry-run path, i.e. it assumed the Opus output would be
 zero bytes. The figure an operator sized a run against was therefore always too high by the size of
 every resulting file, and the CLI's `reclaimed≈` read as rounding rather than as a bug.
 
-`estimateOpusBytes` returns `null` when the duration is unknown (`0`, the column default when the
+`estimateEncodedBytes` returns `null` when the duration is unknown (`0`, the column default when the
 scanner could not read one). The pass then counts **no** saving for that file and increments
 `unestimated`, so a non-zero `unestimated` means `bytesReclaimed` is a floor rather than an
 estimate. Under-reporting is recoverable; over-reporting is the failure this exists to prevent. The
