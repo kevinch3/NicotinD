@@ -100,7 +100,7 @@ test.describe('auto-preserve queue (PWA lock-screen resilience)', () => {
     await expect.poll(() => autoPreservedCount(page), { timeout: 30_000 }).toBe(5);
 
     // Turning it off stops the downloads and nothing else: no prompt, and the
-    // five tracks already on disk stay there (#1262).
+    // five tracks already on disk stay there (#1263).
     await page.goto('/settings');
     await expandGroup(page, 'settings-playback');
     const dialog = page.getByTestId('confirm-dialog');
@@ -174,7 +174,7 @@ test.describe('player controls', () => {
   /**
    * Shuffle reordered the queue you already had rather than starting a radio,
    * and repeat with radio on neither repeated nor extended. Both are gone from
-   * the UI, so the bar is prev/play/next and nothing else (#1262).
+   * the UI, so the bar is prev/play/next and nothing else (#1263).
    */
   test('the transport is prev, play and next, with no shuffle or repeat', async ({ page }) => {
     await startAlbum(page);

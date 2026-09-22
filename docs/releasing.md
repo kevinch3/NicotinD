@@ -29,6 +29,37 @@ hand — you land commits and the pipeline does the rest.
      `{ ok, version }`, Settings footer, or `GET /api/system/status`), and the
      in-app changelog modal (click the version string) shows the new entry.
 
+### The PR title is the commit message that decides (#1263)
+
+Merges here are **squashes**, so the PR title becomes the subject on master —
+and `release-needed.ts` reads subjects, only subjects, on purpose. A PR titled
+without a conventional-commit type therefore lands a commit that bumps nothing,
+whatever it contains.
+
+That froze releases once. PR #1263 squash-merged five `feat:` commits under the
+title *"Radio queue depth: replace batch refill with target-based top-up"*. No
+type, no bump, no tag, no deploy — v0.8.40 stayed the latest release while the
+features sat on master, and **every check was green**, because nothing was
+broken: the release genuinely was not needed, from a subject that had lost the
+only evidence it should have been.
+
+The husky `commit-msg` hook cannot catch this — it runs on commits made on your
+machine, and a squash merge is performed by GitHub from a title nothing
+validated. Two things close it:
+
+- **`check:pr-title`** (the `pr-title` CI job) fails a PR whose title is not a
+  conventional commit, *and* a PR whose title does not bump while its commits
+  do. It re-runs on every title edit, which is why the workflow's
+  `pull_request` trigger lists `edited`.
+- **`release-needed.ts`** prints a `::warning::` when it skips a commit whose
+  *body* lists bumping commits its subject lost. The decision is unchanged —
+  only a subject may bump — but the skip stops being silent.
+
+**If it happens anyway**: nothing on master can be retyped without rewriting
+history, so land the next bumping commit normally. The tree ships in full
+(a deploy carries the whole tree, not a diff), but the stranded work will not
+appear in `CHANGELOG.md` — note it in the follow-up PR so the record exists.
+
 If a merge contained only non-bumping types, no release is cut — that's by
 design, not a failure. The release job is also **idempotent**: it skips itself
 on `chore(release)` pushes and exits early if the computed tag already exists,

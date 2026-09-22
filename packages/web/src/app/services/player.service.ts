@@ -122,7 +122,7 @@ export class PlayerService {
   /**
    * The depth radio holds the queue at. Radio used to drain to two tracks and
    * then drop a batch in, which read as a stall: the "up next" list emptied out
-   * in front of the listener and refilled in a lump (#1262). It now tops up to
+   * in front of the listener and refilled in a lump (#1263). It now tops up to
    * this many and replaces each track as it is consumed, so the queue looks the
    * same depth all the way down. Admin-owned (`/api/settings/radio`), pushed in
    * by `RadioSourceService`; the default stands until that lands.

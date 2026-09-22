@@ -25,7 +25,7 @@ import { toTrack } from '../lib/track-utils';
  * asks for exactly that — normally one track, the replacement for the one just
  * played. The batch size used to be a `10` written here, which is how the depth
  * the listener saw and the depth an admin could set ended up in different files
- * (#1262).
+ * (#1263).
  */
 @Injectable({ providedIn: 'root' })
 export class RadioSourceService {

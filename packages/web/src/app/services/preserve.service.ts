@@ -41,7 +41,7 @@ const AUTO_PRESERVE_STORAGE_KEY = 'nicotind-auto-preserve';
  *
  * `'1'` is the data-saver rung: only the track actually playing is kept, so
  * offline playback survives a locked screen without a metered connection paying
- * for a queue nobody asked for (#1262). Before it, the smallest way to have
+ * for a queue nobody asked for (#1263). Before it, the smallest way to have
  * offline playback at all was five tracks ahead.
  */
 export type AutoPreserveMode = 'off' | '1' | '5' | '20' | 'full';

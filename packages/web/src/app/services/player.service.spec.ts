@@ -510,7 +510,7 @@ describe('PlayerService', () => {
   /**
    * Radio used to drain to two tracks and then drop a batch in, so the "up
    * next" list emptied out in front of the listener and refilled in a lump
-   * (#1262). It now holds a depth instead.
+   * (#1263). It now holds a depth instead.
    */
   describe('radio queue depth', () => {
     const flush = () => new Promise((r) => setTimeout(r, 0));

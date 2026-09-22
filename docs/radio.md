@@ -75,7 +75,7 @@ candidate pool against the seed and returns the top matches, which are appended
 to the queue. Deduplication against current + queue + recent history is applied
 both server-side (via the `exclude` parameter) and client-side.
 
-### A radio queue has a depth, not a batch size (#1262)
+### A radio queue has a depth, not a batch size (#1263)
 
 It used to drain to two tracks and then drop ten in. Both halves of that were
 visible from the couch: the "up next" list emptied out in front of the listener,

@@ -34,6 +34,7 @@
     "format": "prettier --write 'packages/*/src/**/*.ts' 'src/**/*.ts' 'packages/web/.storybook/*.ts'",
     "format:check": "prettier --check 'packages/*/src/**/*.ts' 'src/**/*.ts' 'packages/web/.storybook/*.ts'",
     "typecheck": "tsc --build && bun run --filter @nicotind/e2e typecheck && bun run --filter @nicotind/web typecheck:template && bun run --filter @nicotind/web typecheck:spec",
+    "check:pr-title": "bun run ./scripts/check-pr-title.ts",
     "check:shipped-issues": "bun run ./scripts/check-shipped-issues.ts",
     "check:json": "bun run ./scripts/check-json-configs.ts",
     "check:shared-helpers": "bun run ./scripts/check-shared-helpers.ts",

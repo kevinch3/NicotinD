@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import { isBumping, releaseNeeded } from './release-needed.js';
+import { isBumping, lostBumpsIn, releaseNeeded } from './release-needed.js';
 
 describe('isBumping', () => {
   it('accepts the three releasing types', () => {
@@ -69,5 +69,49 @@ describe('releaseNeeded (#755)', () => {
     expect(runA.needed).toBe(true);
     const runB = releaseNeeded([], true);
     expect(runB.needed).toBe(false);
+  });
+});
+
+/**
+ * The diagnosis beside the skip. A squash merge writes the PR title as the
+ * subject and the squashed commits as body bullets, so a title with no type
+ * buries every `feat:` it carried — which is how five features reached master
+ * with no release behind them (#1263).
+ */
+describe('lostBumpsIn', () => {
+  const squashed = [
+    'Radio queue depth: replace batch refill with target-based top-up (#1263)',
+    '',
+    '* feat(radio): hold the queue at a depth instead of refilling in batches',
+    '',
+    'Some body text.',
+    '',
+    '* feat(offline): stop downloading without losing the downloads',
+  ].join('\n');
+
+  it('names a non-bumping subject whose body lists bumping commits', () => {
+    expect(lostBumpsIn([squashed])).toEqual([
+      'Radio queue depth: replace batch refill with target-based top-up (#1263)',
+    ]);
+  });
+
+  it('says nothing about a commit that bumps on its own subject', () => {
+    expect(lostBumpsIn(['feat(radio): a thing\n\n* feat(x): another'])).toEqual([]);
+  });
+
+  it('says nothing about an honest non-bumping commit', () => {
+    expect(lostBumpsIn(['refactor(db): rename a column\n\nA plain body.'])).toEqual([]);
+  });
+
+  /** Prose that merely mentions a type is not a bullet list of commits. */
+  it('does not fire on a type quoted in prose', () => {
+    expect(lostBumpsIn(['docs: record it\n\nThis documents fix(radio): the stall.'])).toEqual([]);
+  });
+
+  /** Advisory only: the decision still comes from subjects alone. */
+  it('never changes the decision', () => {
+    const decision = releaseNeeded([squashed], false);
+    expect(decision.needed).toBe(false);
+    expect(decision.lostBumps.length).toBe(1);
   });
 });

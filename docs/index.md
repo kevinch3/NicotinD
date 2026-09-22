@@ -41,10 +41,9 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   source cut short (its two search lanes held by other work) is retried, not recorded as a miss
   (`huntCutShort`, `searchesAnswered`, `anyHunting`).
   → [acquisition-addon-protocol.md](acquisition-addon-protocol.md)
-- **Addon download lifecycle**: the addon owns a job's downloaded bytes until core releases the
-  job, so a release must be earned — `pendingIngestCount` is zero only when everything wanted is
-  durably landed. `judgeStrandedFile` reclaims the pre-existing backlog on proof (title + duration
-  + the library's own file), never on a title match alone.
+- **Addon download lifecycle**: the addon owns a job's bytes until core releases it, and
+  `pendingIngestCount` is zero only when everything wanted is durably landed. `judgeStrandedFile`
+  reclaims the backlog on proof (title + duration + the library's own file), never a title alone.
   → [acquisition-addon-protocol.md](acquisition-addon-protocol.md)
 - **Idempotent hunt — one album = one download**: 409 guards + only-missing-tracks enqueue;
   "already have it" surfaces as a notice, not an error. → [album-hunt.md](album-hunt.md)
@@ -58,9 +57,8 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   with full-discography load opt-in. → [album-hunt.md](album-hunt.md)
 - **URL acquisition (yt-dlp / spotdl / archive)**: `POST /api/acquire` routes a URL via
   `resolveAddonForUrl` to a `resolve`-capable addon, bundled (`LocalAddonTransport`) or external,
-  matched by `urlPatterns`; `resolveAcquireAs`, `findInFlightAddonUrlJob`, `applyAddonOutcome`,
-  `sanitizeAddonError`.
-  → [download-pipeline.md](download-pipeline.md),
+  matched by `urlPatterns`. `resolveAcquireAs`, `findInFlightAddonUrlJob`, `applyAddonOutcome`,
+  `sanitizeAddonError`. → [download-pipeline.md](download-pipeline.md),
   [acquisition-addon-protocol.md](acquisition-addon-protocol.md)
 - **Re-source a stuck download from another peer**: a fresh hunt, a peer picker, and a second
   addon job scoped to the still-pending titles and mirrored onto the same card, the stuck job
@@ -359,8 +357,8 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   an opt-in `?provenance=1` envelope so an installed client still parses the bare array.
   `RadioProvenance`, `radioProvenance`, `radioBody`, `radio-chip-provenance`. → [radio.md](radio.md)
 - **Per-user exclusions**: "Don't recommend this" holds a song out of every feed for one listener
-  without touching the library; explicit votes and a derived early-skip rule (`SKIP_RULE`) feed the
-  `excludeIds` layer at request time, twin recordings included. `recordFeedback`, `excludedSongIds`,
+  without touching the library; explicit votes and a derived early-skip rule (`SKIP_RULE`) feed
+  `excludeIds` at request time. `recordFeedback`, `excludedSongIds`,
   `RecommendationExclusionsService`. → [radio.md](radio.md)
 - **Feed eligibility**: one predicate decides whether a song may be *recommended* (hidden song or
   album, landed, duration floor, analysed-or-permanently-failed at tier 1 with a tier-2 fallback when
@@ -379,13 +377,12 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   and a negative cache for the deterministic `TranscodeOutputRejectedError` only.
   → [library-scanner.md](library-scanner.md)
 - **Frontend false-ended recovery**: `browserDurationIsAcceptable`, `isFalseEnded`, `startRecovery`,
-  `loadGeneration`, bounded by `MAX_RECOVERY_ATTEMPTS` with both gates falling back to
-  `FALSE_ENDED_ABSOLUTE_FLOOR_SEC` when the known duration is missing; the valve resumes where the
-  listener was, never at 0. → [web-ui.md](web-ui.md)
-- **A dead stream is reloaded, not abandoned**: a media `error` — or a stall that raises nothing at
-  all — reloads the track and resumes where it stopped, bounded by `MAX_RECOVERY_ATTEMPTS`, while an
-  outage holds the intent until the network returns. `recoverFromDeadStream`, `armStallWatchdog`,
-  `STREAM_STALL_TIMEOUT_MS`, `holdPausedState`, `parkedGeneration`. → [web-ui.md](web-ui.md)
+  `loadGeneration`, with both gates falling back to `FALSE_ENDED_ABSOLUTE_FLOOR_SEC`; the valve
+  resumes where the listener was, never at 0. → [web-ui.md](web-ui.md)
+- **A dead stream is reloaded, not abandoned**: a media `error`, or a stall that raises nothing,
+  reloads the track and resumes where it stopped, bounded by `MAX_RECOVERY_ATTEMPTS`.
+  `recoverFromDeadStream`, `armStallWatchdog`, `STREAM_STALL_TIMEOUT_MS`, `holdPausedState`,
+  `parkedGeneration`. → [web-ui.md](web-ui.md)
 - **A seek is an intent, not a poke**: a forward seek past the loaded region is held and applied once
   `audio.seekable` covers it, never assigned and silently clamped into a false `ended`.
   `pendingSeek`, `requestSeek`, `applyPendingSeek`, `seekTargetIsAvailable`,
@@ -409,11 +406,10 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   sub-components with a `NowPlayingPanelTabsComponent` switcher; the resize handle is shell-owned
   above the tabs, and `lg:` is two columns. → [web-ui.md](web-ui.md)
 - **Lyrics + karaoke**: `metadata` plugin kind + `lyrics` capability (LRCLIB) in `library_lyrics`
-  + file tag; karaoke panel with synced highlighting, fullscreen auto-follow, and a `?vocals=off`
-  mid/side mute cached as a recipe-versioned `novox` variant. Shared state: `LyricsService`,
-  `KaraokeBrowseMode`, `loadCoverPalette`, `TvKaraokeComponent`.
-  → [design-patterns.md](design-patterns.md), [vocal-isolation-spike.md](vocal-isolation-spike.md),
-  [tv-ux.md](tv-ux.md)
+  + file tag; karaoke panel with synced highlighting and a `?vocals=off` mid/side mute cached as a
+  recipe-versioned `novox` variant. `LyricsService`, `KaraokeBrowseMode`, `loadCoverPalette`,
+  `TvKaraokeComponent`. → [design-patterns.md](design-patterns.md),
+  [vocal-isolation-spike.md](vocal-isolation-spike.md), [tv-ux.md](tv-ux.md)
 - **Lyrics match quality**: a source match is ranked and rejected on duration, not taken
   first-hit; a stored `matchedDurationSec` keeps a wrong take findable as `suspectMatches`, with
   uncheckable rows counted `unverified`. `LYRICS_DURATION_TOLERANCE_SEC`.
@@ -738,6 +734,9 @@ The index proper. Each line: what it is, what to grep for, where the detail live
 - **`check:install-scripts`**: no dependency runs an unreviewed install hook, keyed on its command
   text and walked from the workspace roots. `scan`, `unreviewed`, `staleEntries`.
   → [quality-gates.md](quality-gates.md)
+- **`check:pr-title`**: a squash merge makes the PR title master's subject, so an untyped one
+  freezes releases with every check green; the `pr-title` job fails that and a title that does not
+  bump while its commits do. `checkPrTitle`, `lostBumpsIn`. → [releasing.md](releasing.md)
 - **`check:library-queries`**: plans every library list route through the real filter builders across
   every filter dimension and fails a `library_songs` scan that is not evaluated once; routes and
   dimensions are both discovered, so an unmodeled one fails. `judgeSongScans`,

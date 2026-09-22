@@ -283,7 +283,7 @@ test.describe('mobile UX', () => {
 
   // The live-screens `player-analysis` flow targets the transport controls by
   // testid; guard that those stable hooks exist — and that the two the sheet no
-  // longer offers are really gone, on the sheet as well as the bar (#1262).
+  // longer offers are really gone, on the sheet as well as the bar (#1263).
   test('Now Playing exposes transport + queue testids, and no shuffle or repeat', async ({
     page,
   }) => {
