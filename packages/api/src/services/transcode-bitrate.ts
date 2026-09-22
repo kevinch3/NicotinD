@@ -92,6 +92,20 @@ export const LADDERS: Record<LibraryFormat, BitrateLadder> = {
     ],
     losslessKbps: 256,
   },
+  // AAC through ffmpeg's native encoder, which trails libfdk: it needs roughly
+  // mp3's rate at the low end and reaches transparency near 192–256. So the
+  // rungs sit between Opus's and mp3's, and lossless takes 256 because a
+  // first-generation source is the one case where the headroom is audible.
+  // A judgement call, like the others, kept here to be argued with in a test.
+  aac: {
+    steps: [
+      { upTo: 127, targetKbps: 112 },
+      { upTo: 159, targetKbps: 128 },
+      { upTo: 255, targetKbps: 160 },
+      { upTo: Infinity, targetKbps: 192 },
+    ],
+    losslessKbps: 256,
+  },
 };
 
 /**
