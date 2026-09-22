@@ -407,7 +407,7 @@ tag-container set instead of two.
 |---|---|
 | **#723** loudness normalization | Done by construction, on every surface, with no client gain path and no per-stream transcode. Note the client-side option that issue proposes is independently ruled out: `player.component.ts:551-554` records that routing the audio element through a `MediaElementAudioSourceNode` **silenced playback entirely on Android**, with an explicit "do not reintroduce", corroborated at `now-playing-vfx.component.ts:8-13` |
 | **#964** one mp3 refuses a tag write | The issue names a malformed ID3 structure as the likely cause. A re-encode replaces the file with clean Vorbis comments |
-| **#1177** no BPM on `.m4a` | The mov muxer is never invoked again; its pinned test branch gets deleted rather than inverted |
+| **#1177** no BPM on `.m4a` | ~~The mov muxer is never invoked again; its pinned test branch gets deleted rather than inverted~~ **Fixed directly instead, not by avoidance.** Once the operator chooses the library's format (#1256), "the mov muxer is never invoked again" stopped being true — an `.m4a` target invokes it on every file. `BPM_METADATA_KEY` maps the key to `tmpo` for that container; the pinned branch was deleted as planned |
 
 ### Measured defects this clears
 

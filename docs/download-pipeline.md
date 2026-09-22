@@ -206,9 +206,12 @@ the bytes are permanent, tagged, re-scanned, and replace a file that is then del
 
 So an `.aac` library would be indexed by the scanner and permanently untaggable — every tag write
 silently refused. Library AAC has to be `.m4a` through the `ipod` muxer, which is a *different muxer
-for the same codec*, and it additionally needs #1177 (the mov muxer drops `-metadata BPM=`, so an
-`.m4a` library re-analyses BPM forever). Two tables that look alike are not evidence that one of
-them is redundant.
+for the same codec*. Two tables that look alike are not evidence that one of them is redundant.
+
+That route also needed #1177 before it could be a *valid* choice, and #1177 is now closed: the mov
+muxer silently ignores `-metadata BPM=`, so `.m4a` files ended with no tempo atom and were
+re-analysed forever. `BPM_METADATA_KEY` (`audio-tags.ts`) overrides the key to `tmpo` for that one
+container — see *Tags across a container change* below.
 
 Where they genuinely agree they share: the Opus strategy's `encodeArgs` calls `FORMAT_ARGS.opus.args`
 rather than writing the tuple out again, which is the duplicate this seam removed.
@@ -763,6 +766,20 @@ Losing them is not cosmetic. `POST /api/library/songs/:id/bpm` and `analyze-bpm.
 file's own BPM tag over a DSP run, so a dropped `TBPM` means that track is re-analysed **forever** —
 the live cost #1151 and #1177 describe, one container over. The lyrics tag is also the only recovery
 path for a `library_lyrics` row orphaned by an id re-mint.
+
+**The same cost had a second cause, on the write side (#1177).** ffmpeg's mov/ipod muxer does not
+recognise `-metadata BPM=` and drops it without a warning or a non-zero exit, so every `.m4a` this
+app wrote ended with no tempo atom — a tag that could never exist, re-analysed on every pass.
+Probed across all four plausible spellings against a real `.m4a`, only `tmpo` (the iTunes atom)
+reads back; `BPM`, `TBPM` and `tempo` all yield `undefined`. `BPM_METADATA_KEY` overrides the key
+per container rather than renaming it globally, because `BPM` is what the Vorbis family reads.
+
+Worth noting how it was found and how it is now pinned. The gap was *measured on the written file*
+while closing #1151 (the read side of the same asymmetry) — the read fix alone would have looked
+complete. The test then pinned today's truth with an explicit `ext === 'm4a'` branch asserting
+`bpm` is `undefined`, and closing #1177 **deleted that branch** rather than loosening it, so all
+four containers now assert the same value. An exemption relaxed to "either is fine" would have gone
+on passing after the fix and quietly become a lie.
 
 `ID3_FRAMES_FFMPEG_DROPS` names the three and `carriedMetadataArgs` emits them as explicit
 `-metadata` during the encode. Not as a second `writeAudioTags` pass: that rewrites the whole

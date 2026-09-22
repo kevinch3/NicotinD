@@ -9,7 +9,9 @@ import {
   indexEntries,
   MAX_ENTRY_CHARS,
   MAX_CLAUDE_MD_BYTES,
-  MAX_INDEX_BYTES,
+  MAX_INDEX_SECTION_BYTES,
+  indexSectionSlugs,
+  sectionMismatches,
   MIN_PLAUSIBLE_ENTRIES,
   entryProse,
 } from './check-claude-md.js';
@@ -106,10 +108,16 @@ describe('EXTERNAL_SYMBOLS', () => {
   });
 
   it('lists only symbols the index still names', () => {
-    // #934 moved the entries to docs/index.md, so the corpus is both files —
-    // asserting against CLAUDE.md alone would fail every symbol that relocated.
-    const corpus =
-      claudeMd + readFileSync(resolve(REPO_ROOT, 'docs', 'index.md'), 'utf8');
+    // #934 moved the entries out of CLAUDE.md and #1240 split them across
+    // sections, so the corpus is every file — asserting against one of them
+    // would fail every symbol that relocated.
+    const corpus = [
+      claudeMd,
+      readFileSync(resolve(REPO_ROOT, 'docs', 'index.md'), 'utf8'),
+      ...indexSectionSlugs().map((s) =>
+        readFileSync(resolve(REPO_ROOT, 'docs', 'index', `${s}.md`), 'utf8'),
+      ),
+    ].join('\n');
     for (const [sym] of EXTERNAL_SYMBOLS) {
       expect(corpus.includes(`\`${sym}\``), `the index no longer names ${sym}`).toBe(true);
     }
@@ -196,33 +204,75 @@ describe('indexEntries', () => {
 describe('the size budget', () => {
   const claudeMd = readFileSync(resolve(REPO_ROOT, 'CLAUDE.md'), 'utf8');
   const indexMd = readFileSync(resolve(REPO_ROOT, 'docs', 'index.md'), 'utf8');
+  const slugs = indexSectionSlugs();
+  const sectionText = (slug: string) =>
+    readFileSync(resolve(REPO_ROOT, 'docs', 'index', `${slug}.md`), 'utf8');
+  const sections = slugs.map((slug) => ({ slug, text: sectionText(slug) }));
+  const allEntries = [indexMd, ...sections.map((s) => s.text)].flatMap(indexEntries);
+  const indexBytes = [indexMd, ...sections.map((s) => s.text)].reduce(
+    (n, t) => n + Buffer.byteLength(t, 'utf8'),
+    0,
+  );
 
   it('holds on the real files, with headroom', () => {
-    // The denominator is asserted against the file that actually holds the
-    // index. CLAUDE.md keeps a handful of Surfaces entries; if this pointed
-    // there it would pass vacuously on a file that is no longer an index.
-    const entries = indexEntries(indexMd);
-    expect(entries.length).toBeGreaterThanOrEqual(MIN_PLAUSIBLE_ENTRIES);
-    for (const e of [...entries, ...indexEntries(claudeMd)]) {
+    // The denominator is asserted against the files that actually hold the
+    // index, and against their SUM: per-file it would be meaningless, because a
+    // small section legitimately holds 8 entries. CLAUDE.md keeps a handful of
+    // Surfaces entries; pointing this there would pass vacuously.
+    expect(allEntries.length).toBeGreaterThanOrEqual(MIN_PLAUSIBLE_ENTRIES);
+    for (const e of [...allEntries, ...indexEntries(claudeMd)]) {
       expect(e.chars, `L${e.line} ${e.name}`).toBeLessThanOrEqual(MAX_ENTRY_CHARS);
     }
     expect(Buffer.byteLength(claudeMd, 'utf8')).toBeLessThanOrEqual(MAX_CLAUDE_MD_BYTES);
-    expect(Buffer.byteLength(indexMd, 'utf8')).toBeLessThanOrEqual(MAX_INDEX_BYTES);
+    for (const { slug, text } of sections) {
+      expect(Buffer.byteLength(text, 'utf8'), slug).toBeLessThanOrEqual(MAX_INDEX_SECTION_BYTES);
+    }
   });
 
   it('keeps CLAUDE.md far smaller than the index it points at — that is the whole point of #934', () => {
     // If these ever converge, the index has drifted back into the file that is
     // paid for on every request, and the relocation has quietly been undone.
-    expect(Buffer.byteLength(claudeMd, 'utf8')).toBeLessThan(
-      Buffer.byteLength(indexMd, 'utf8') / 2,
-    );
+    expect(Buffer.byteLength(claudeMd, 'utf8')).toBeLessThan(indexBytes / 2);
   });
 
   it('is not set flush against the current files — a cap that fires on the next honest addition gets raised reflexively', () => {
     expect(MAX_CLAUDE_MD_BYTES - Buffer.byteLength(claudeMd, 'utf8')).toBeGreaterThan(5_000);
-    expect(MAX_INDEX_BYTES - Buffer.byteLength(indexMd, 'utf8')).toBeGreaterThan(5_000);
-    const max = Math.max(...indexEntries(indexMd).map((e) => e.chars));
+    // Per SECTION now. A single total could not hold this: #1240 measured the
+    // index growing ~1,040 bytes/day, which ate a 10,000-byte raise in 14 days.
+    for (const { slug, text } of sections) {
+      expect(MAX_INDEX_SECTION_BYTES - Buffer.byteLength(text, 'utf8'), slug).toBeGreaterThan(
+        5_000,
+      );
+    }
+    const max = Math.max(...allEntries.map((e) => e.chars));
     expect(MAX_ENTRY_CHARS - max).toBeGreaterThan(20);
+  });
+
+  it('keeps every section reachable from the contents table, both ways', () => {
+    expect(sectionMismatches(indexMd, slugs)).toEqual([]);
+    expect(slugs.length).toBeGreaterThan(1);
+  });
+});
+
+describe('sectionMismatches', () => {
+  const toc = (...slugs: string[]) => slugs.map((s) => `| [x](index/${s}.md) | scope |`).join('\n');
+
+  it('passes when the table and the directory agree', () => {
+    expect(sectionMismatches(toc('library', 'playback'), ['library', 'playback'])).toEqual([]);
+  });
+
+  // The silent one: the file is checked by every other arm of this gate, and no
+  // reader ever opens it, because the table is the only route in.
+  it('fails a section file the contents table never links', () => {
+    const errors = sectionMismatches(toc('library'), ['library', 'orphan']);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('unreachable');
+  });
+
+  it('fails a contents row whose file does not exist', () => {
+    const errors = sectionMismatches(toc('library', 'ghost'), ['library']);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('does not exist');
   });
 });
 

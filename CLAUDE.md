@@ -7,18 +7,20 @@ so every byte here is paid on every task — including the many tasks that never
 all. It carries only what is worth that price: how to build and test, what the repo *is*, and where
 to look next.
 
-**The index itself is [docs/index.md](docs/index.md)** — every mechanism, the symbols you would grep
-for, and the doc that explains why. It is read when you need to locate something, not on every
-request (#934). An entry's shape is fixed there: **name**, one sentence of *what it is*, the symbols,
-and the link. No rationale, no issue narratives, no prod numbers — those go in the linked doc.
+**The index itself is [docs/index.md](docs/index.md)** — a contents table over one file per section
+in `docs/index/`, read when you need to locate something rather than on every request, so a lookup
+costs one section instead of the whole index (#934, #1240). Each entry: **name**, one sentence of
+*what it is*, the symbols, and the link. No rationale, no issue narratives, no prod numbers — those
+go in the linked doc.
 
-`bun run check:claude-md` enforces both files: a named symbol that exists nowhere in code, a link to
-a doc that does not exist, an entry over its character cap, and either file over its own byte budget.
-The two budgets are deliberately different sizes — CLAUDE.md's is the per-request cost and the one to
-defend.
+`bun run check:claude-md` enforces all of it: a symbol that exists nowhere in code, a dead doc link,
+an entry over its character cap, a section the contents table does not reach, and CLAUDE.md or any
+one section over its byte budget. A section over budget has earned a **split**, not a trim; the
+index total is reported, never enforced (#1240). CLAUDE.md's budget is the per-request cost — the
+one to defend.
 
 **When you change behavior**, update the linked `docs/` page in the same commit, and touch the index
-line in `docs/index.md` only if the *name* or the *location* changed.
+line in its `docs/index/<section>.md` only if the *name* or the *location* changed.
 → [quality-gates.md](docs/quality-gates.md)
 
 ## Every Task Gets Its Own Worktree
@@ -80,8 +82,8 @@ bun run src/main.ts      # Start NicotinD (requires .env or config/default.yml)
 ```
 
 **Check gates** (all CI-blocking unless noted): `check:claude-md` (this file's *and*
-`docs/index.md`'s symbols, links and size) · `check:pr-title` (the PR title a squash merge turns into
-master's subject) · `check:ci-parity` (a gate job step `verify` misses, or a gate that stopped blocking
+`docs/index/`'s symbols, links, size and reachability) · `check:pr-title` (the PR title a squash
+merge turns into master's subject) · `check:ci-parity` (a gate job step `verify` misses, or a gate that stopped blocking
 `release`) · `check:action-runtimes` (an action pinned to a retired Node runtime, or one the floor
 table cannot classify) · `check:route-auth` (an `/api` group mounted with no auth decision) · `check:audit` (an
 advisory that both ships and matches the resolved version) · `check:desktop-publish` (a desktop
@@ -141,10 +143,10 @@ NicotinD (Hono API :8484)  — native library scanner + streaming, all in-proces
 ## Key Design Patterns
 
 The index proper — every mechanism, the symbols you would grep for, and the doc that explains why —
-is **[docs/index.md](docs/index.md)**. Read it to locate a mechanism; it is not loaded on every
-request, which is the point. Sections: Acquisition & downloads · Library & metadata · Audio analysis
-& enrichment · Playback, radio & streaming · Playlists, listening & privacy · Users, auth & access ·
-Web UI patterns · Data integrity, caching & migrations · Build, CI, deploy & ops.
+is **[docs/index.md](docs/index.md)**, a contents table over one file per section in `docs/index/`.
+Read the section you need; it is not loaded on every request, and you no longer pay for the eight
+sections you did not want. Sections: acquisition · library · audio-analysis · playback · listening ·
+users-auth · web-ui-patterns · data-integrity · build-ci.
 
 ## Surfaces
 

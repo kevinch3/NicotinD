@@ -29,19 +29,62 @@
  * named things). Everything else it sees is reported under `--list` but never
  * fails the build. Deliberate non-code mentions live in ALLOWLIST below.
  */
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { resolve, dirname, join } from 'node:path';
 
 const repoRoot = resolve(dirname(new URL(import.meta.url).pathname), '..');
 const CLAUDE_MD = join(repoRoot, 'CLAUDE.md');
 /**
- * The index itself, split out of CLAUDE.md by #934 so it is read on demand
- * rather than paid for on every request. Both files are checked together: a
- * symbol or link is a claim wherever it is written, and checking only one of
- * them would recreate the blind spot this gate exists to close.
+ * The index root, split out of CLAUDE.md by #934 so it is read on demand rather
+ * than paid for on every request, and reduced to a table of contents by #1240.
+ * Every file here is checked together: a symbol or link is a claim wherever it
+ * is written, and checking only one of them would recreate the blind spot this
+ * gate exists to close.
  */
 const INDEX_MD = join(repoRoot, 'docs', 'index.md');
+/** One file per index section (#1240). */
+const INDEX_DIR = join(repoRoot, 'docs', 'index');
+
+/**
+ * Section files, discovered rather than listed.
+ *
+ * Discovery is what makes a new section covered the moment it exists; the
+ * both-ways check against the root's table of contents (see `tocSlugs`) is what
+ * stops discovery from being a way to add an unreachable one.
+ */
+export function indexSectionSlugs(dir = INDEX_DIR): string[] {
+  return readdirSync(dir)
+    .filter((f) => f.endsWith('.md'))
+    .map((f) => f.slice(0, -3))
+    .sort();
+}
+
+/** Sections the index root actually links, as `index/<slug>.md`. */
+export function tocSlugs(rootMd: string): string[] {
+  return [...rootMd.matchAll(/\]\(index\/([^)]+)\.md\)/g)].map((m) => m[1]).sort();
+}
+
+/**
+ * A section on disk that the root does not link, or a link with no file.
+ *
+ * Both directions, because they fail differently and both fail silently. An
+ * unlinked file takes its whole section out of circulation while every other
+ * check here still passes on it — the reader simply never learns it exists. A
+ * link with no file is the reverse: the reader is sent somewhere empty.
+ */
+export function sectionMismatches(rootMd: string, slugs = indexSectionSlugs()): string[] {
+  const linked = new Set(tocSlugs(rootMd));
+  const onDisk = new Set(slugs);
+  return [
+    ...[...onDisk]
+      .filter((s) => !linked.has(s))
+      .map((s) => `docs/index/${s}.md exists but docs/index.md never links it — unreachable.`),
+    ...[...linked]
+      .filter((s) => !onDisk.has(s))
+      .map((s) => `docs/index.md links index/${s}.md, which does not exist.`),
+  ];
+}
 
 /**
  * Identifiers CLAUDE.md names on purpose that are not repo symbols. Each entry
@@ -107,43 +150,59 @@ export const EXTERNAL_SYMBOLS = new Map<string, string>([
  *                        and the one to defend: every byte is paid on every
  *                        task, including the majority that never open the index.
  *   MAX_INDEX_BYTES      the on-demand index. Generous, because its cost is paid
- *                        only when read — but present, because "nobody pays for
+ *   (gone — see #1240)   only when read — but present, because "nobody pays for
  *                        it" is exactly how the 186 KB happened the first time.
+ *                        That second cap no longer exists; the paragraph below
+ *                        says why, and MAX_INDEX_SECTION_BYTES replaced it.
  *
  * Neither is a law of nature: raising one is fine, but it should be a commit
  * that says why, which is what an un-measured prose rule never forced. A test
- * asserts both keep >5,000 bytes of headroom, so a cap can never sit flush
- * against the file it measures — a gate that fires on the next honest addition
- * gets raised reflexively.
+ * asserts CLAUDE.md and every section keep >5,000 bytes of headroom, so a cap
+ * can never sit flush against the file it measures — a gate that fires on the
+ * next honest addition gets raised reflexively.
  *
- * MAX_INDEX_BYTES was raised 60,000 → 70,000 on 2026-09-08, and this is the
- * commit that says why. On 2026-09-07 two PRs each added an index entry, each
- * trimmed to fit *on its own branch*, and their merge broke the cap on master:
- * neither branch could see the other's line, so a per-branch gate cannot catch
- * a budget overrun that only exists in the sum. The trim that reopened master
- * then landed 95 bytes inside the 5,000-byte floor, which is the flush cap this
- * very paragraph exists to forbid — one more entry and master goes red again.
+ * A SINGLE TOTAL WAS THE WRONG CAP (#1240). It was raised 60,000 → 70,000 on
+ * 2026-09-08 for ~48 entries of runway. The index consumed all 10,000 bytes in
+ * fourteen days. Measured 2026-09-05 → 2026-09-22: 47,278 → 64,995 bytes and
+ * 155 → 205 entries, about 1,040 bytes and 3 entries per day.
  *
- * Trimming further is not the answer, and that is measured, not assumed:
- * docs/measurements/claude-md-compression-2026-09.md put 55 agents over three
- * passes on exactly this question and found the best CORRECT compression was
- * -0.9%, while the aggressive merging that did reach -32% invented 48 claims.
- * The index is 178 entries at ~308 bytes each against a 440-char entry cap, so
- * it is at its shape, not padded — its size is the count of mechanisms this
- * repo has, and that number legitimately grows. 70,000 restores ~15 KB, about
- * 48 entries of runway, and still fires long before a return to the 186 KB
- * that started all of this. MAX_CLAUDE_MD_BYTES is untouched: that is the
- * per-request cost and the number actually worth defending.
+ * Neither obvious answer survives those numbers. Raising the total again buys
+ * ~10 days. Trimming buys less: claude-md-compression-2026-09.md put 55 agents
+ * over three passes on exactly this and found the best CORRECT compression was
+ * -0.9% — 585 bytes, thirteen hours of growth — while the aggressive merging
+ * that reached -32% invented 48 claims. The index is at its shape, not padded.
+ * Its size IS the count of mechanisms this repo has, so capping the total caps
+ * how much the repo may do, which is not a thing a docs gate should decide.
+ *
+ * So the index became one file per section, and the cap became per section.
+ * What matters was never the total — it is what a reader pays to locate ONE
+ * mechanism, and that went from 65 KB to ~7 KB. The cap's MEANING changes with
+ * it: a section over budget has earned a SPLIT, not a trim and not a bigger
+ * number. Growth is absorbed by subdivision, which has no ceiling, and each
+ * split halves the read cost again. That is the property a single total never
+ * had, and it also defuses the 2026-09-07 merge break, where two PRs each
+ * trimmed to fit on their own branch and broke master in the sum: they must now
+ * collide inside one section, near that section's cap.
+ *
+ * The total is still REPORTED on every run, because "nobody pays for it" is
+ * exactly how CLAUDE.md reached 186 KB — it is simply no longer enforced.
+ * MAX_CLAUDE_MD_BYTES is untouched: that is the per-request cost and the number
+ * actually worth defending.
  */
 export const MAX_ENTRY_CHARS = 440;
 export const MAX_CLAUDE_MD_BYTES = 20_000;
-export const MAX_INDEX_BYTES = 70_000;
+/**
+ * Per section file. The largest section is ~13 KB, so this is roughly a
+ * doubling — and the headroom test keeps it from ever sitting flush.
+ */
+export const MAX_INDEX_SECTION_BYTES = 24_000;
 
 /**
  * The gate's denominator, and the part that matters most. It is asserted
- * against docs/index.md, NOT CLAUDE.md: after #934 the index lives there, so
- * pointing this at CLAUDE.md (which now parses ~5 Surfaces entries) would make
- * it pass vacuously on a file that no longer holds an index.
+ * against the index — NOT CLAUDE.md, which now parses ~5 Surfaces entries and
+ * would pass vacuously — and against the SUM across sections, not any one file.
+ * Per-file it would be meaningless (a small section legitimately holds 8), and
+ * summing is what fails loudly if the section walk ever stops finding files.
  */
 export const MIN_PLAUSIBLE_ENTRIES = 60;
 
@@ -290,9 +349,15 @@ export function brokenDocLinks(md: string, root = repoRoot, base = '.'): string[
 function main(): void {
   const claudeMd = readFileSync(CLAUDE_MD, 'utf8');
   const indexMd = readFileSync(INDEX_MD, 'utf8');
-  // A symbol is a claim wherever it is written, so the two files are one corpus
-  // for the existence check — splitting the index must not split the gate.
-  const both = `${claudeMd}\n${indexMd}`;
+  const slugs = indexSectionSlugs();
+  const sections = slugs.map((slug) => ({
+    slug,
+    path: `docs/index/${slug}.md`,
+    text: readFileSync(join(INDEX_DIR, `${slug}.md`), 'utf8'),
+  }));
+  // A symbol is a claim wherever it is written, so every file is ONE corpus for
+  // the existence check — splitting the index must not split the gate.
+  const both = [claudeMd, indexMd, ...sections.map((s) => s.text)].join('\n');
   const idents = [
     ...new Set(
       backtickedSpans(both)
@@ -311,20 +376,35 @@ function main(): void {
   const brokenLinks = [
     ...brokenDocLinks(claudeMd, repoRoot).map((l) => `CLAUDE.md -> ${l}`),
     ...brokenDocLinks(indexMd, repoRoot, 'docs').map((l) => `docs/index.md -> docs/${l}`),
+    ...sections.flatMap(({ path, text }) =>
+      brokenDocLinks(text, repoRoot, 'docs/index').map((l) => `${path} -> docs/index/${l}`),
+    ),
   ];
+  const unreachable = sectionMismatches(indexMd, slugs);
 
   const claudeEntries = indexEntries(claudeMd);
-  const indexEntriesList = indexEntries(indexMd);
+  // The root still carries the "Proposed, NOT built" entry above its contents
+  // table, so it counts as index content, not only as a table of contents.
+  const indexEntriesList = [
+    ...indexEntries(indexMd).map((e) => ({ ...e, file: 'docs/index.md' })),
+    ...sections.flatMap(({ path, text }) => indexEntries(text).map((e) => ({ ...e, file: path }))),
+  ];
   const claudeBytes = Buffer.byteLength(claudeMd, 'utf8');
-  const indexBytes = Buffer.byteLength(indexMd, 'utf8');
+  const sectionBytes = sections.map((s) => ({
+    ...s,
+    bytes: Buffer.byteLength(s.text, 'utf8'),
+  }));
+  const indexBytes =
+    Buffer.byteLength(indexMd, 'utf8') + sectionBytes.reduce((n, s) => n + s.bytes, 0);
   // The per-entry cap applies wherever an entry is written; the denominator
-  // check applies only to the file that actually holds the index.
+  // check applies to the index as a whole (see MIN_PLAUSIBLE_ENTRIES).
   const oversized = [
     ...claudeEntries.map((e) => ({ ...e, file: 'CLAUDE.md' })),
-    ...indexEntriesList.map((e) => ({ ...e, file: 'docs/index.md' })),
+    ...indexEntriesList,
   ].filter((e) => e.chars > MAX_ENTRY_CHARS);
   const unreadable = indexEntriesList.length < MIN_PLAUSIBLE_ENTRIES;
-  const overBudget = claudeBytes > MAX_CLAUDE_MD_BYTES || indexBytes > MAX_INDEX_BYTES;
+  const fatSections = sectionBytes.filter((s) => s.bytes > MAX_INDEX_SECTION_BYTES);
+  const overBudget = claudeBytes > MAX_CLAUDE_MD_BYTES || fatSections.length > 0;
 
   if (process.argv.includes('--list')) {
     console.log(`Checked ${idents.length} identifiers:`);
@@ -340,13 +420,18 @@ function main(): void {
       ].chars
     : 0;
   const maxChars = indexEntriesList.reduce((m, e) => Math.max(m, e.chars), 0);
+  const widest = sectionBytes.reduce((m, s) => Math.max(m, s.bytes), 0);
   const sizeLine =
     `CLAUDE.md (paid every request): ${claudeBytes.toLocaleString()} / ` +
     `${MAX_CLAUDE_MD_BYTES.toLocaleString()} bytes ` +
     `(${Math.round((claudeBytes / MAX_CLAUDE_MD_BYTES) * 100)}% of budget).\n` +
-    `docs/index.md (read on demand): ${indexBytes.toLocaleString()} / ` +
-    `${MAX_INDEX_BYTES.toLocaleString()} bytes, ${indexEntriesList.length} entries, ` +
-    `median ${median} chars, max ${maxChars}/${MAX_ENTRY_CHARS}.`;
+    // The total is reported and NOT enforced (see the SIZE BUDGET note): what a
+    // reader actually pays is the widest section, which is what has a cap.
+    `docs/index: ${sections.length} sections, ${indexEntriesList.length} entries, ` +
+    `${indexBytes.toLocaleString()} bytes total (unenforced).\n` +
+    `  widest section ${widest.toLocaleString()} / ` +
+    `${MAX_INDEX_SECTION_BYTES.toLocaleString()} bytes; ` +
+    `entry median ${median} chars, max ${maxChars}/${MAX_ENTRY_CHARS}.`;
 
   if (
     !missing.length &&
@@ -355,10 +440,11 @@ function main(): void {
     !unusedExternal.length &&
     !oversized.length &&
     !unreadable &&
+    !unreachable.length &&
     !overBudget
   ) {
     console.log(
-      `CLAUDE.md + docs/index.md: ${idents.length} identifiers checked, all present ` +
+      `CLAUDE.md + docs/index: ${idents.length} identifiers checked, all present ` +
         `(${external.size} owned by the addon repo). No broken doc links.`,
     );
     console.log(sizeLine);
@@ -401,8 +487,8 @@ function main(): void {
   }
   if (unreadable) {
     console.error(
-      `\nOnly ${indexEntriesList.length} index entries parsed from docs/index.md ` +
-        `(expected at least ${MIN_PLAUSIBLE_ENTRIES}).\n\n` +
+      `\nOnly ${indexEntriesList.length} index entries parsed across ` +
+        `${sections.length} section file(s) (expected at least ${MIN_PLAUSIBLE_ENTRIES}).\n\n` +
         'This is the gate failing to READ the index, not the index being small. The entry\n' +
         'format changed out from under indexEntries(), so every size check below it just\n' +
         'passed on nothing. Fix the parser (or the format), never the threshold.',
@@ -424,12 +510,26 @@ function main(): void {
           'This is the per-request cost, so it is the one to defend. Detail belongs in\n' +
           'docs/index.md or the linked doc, not here.',
       );
-    if (indexBytes > MAX_INDEX_BYTES)
+    for (const s of fatSections)
       console.error(
-        `\ndocs/index.md is ${indexBytes.toLocaleString()} bytes, over its ` +
-          `${MAX_INDEX_BYTES.toLocaleString()}-byte budget.\n\n` +
-          'Usually detail that has drifted back in from the linked docs. Move it out.',
+        `\n${s.path} is ${s.bytes.toLocaleString()} bytes, over the ` +
+          `${MAX_INDEX_SECTION_BYTES.toLocaleString()}-byte section budget.\n\n` +
+          'SPLIT IT — do not trim it, and do not raise the number. This section has grown\n' +
+          'enough to be two: pick a boundary, move half into a new docs/index/<slug>.md,\n' +
+          'and add it to the table in docs/index.md. That halves what a reader pays to\n' +
+          'locate one mechanism, which is the cost this budget is actually about.\n\n' +
+          'Trimming is the answer that was measured and found wanting: the best CORRECT\n' +
+          'compression of this index was -0.9%, about thirteen hours of its growth.',
       );
+  }
+  if (unreachable.length) {
+    console.error(`\n${unreachable.length} index section(s) out of step with the contents:\n`);
+    for (const u of unreachable) console.error(`  ✗ ${u}`);
+    console.error(
+      '\nThe table in docs/index.md is the only way a reader finds a section, so a file\n' +
+        'missing from it is a file nobody opens — every other check here still passes on\n' +
+        'it. Checked both ways so neither half can drift.',
+    );
   }
   process.exit(1);
 }
