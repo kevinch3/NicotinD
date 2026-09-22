@@ -440,6 +440,16 @@ Three things had to be measured, because two of them look like they rule the app
   times across three cover sizes it is byte-exact every time — the confound was oversize, not the
   method, and the 512 KB cap removes it.
 
+**Every later tag write has to put the picture back (#1280).** ffmpeg surfaces an Ogg
+`METADATA_BLOCK_PICTURE` as a video stream the opus/ogg muxer cannot carry, so `writeFfmpegTags`'
+remux silently dropped the cover from every `.opus` it retagged — and on `.ogg` default stream
+selection mapped that stream as mjpeg, which the muxer rejects, so the write failed outright.
+`writeFfmpegTags` now maps audio only on Ogg, reads the picture first with `readOggPicture` (ffmpeg,
+not music-metadata, which throws above ~600 KB in Ogg) and re-attaches it to the temp file with
+`attachPictureDataToOpus` before the rename. A picture that is present but unreadable refuses the
+write rather than stripping it. The re-attached picture is a front cover with no description; a
+`METADATA_BLOCK_PICTURE`'s type and description are not carried.
+
 **The scratch paths must carry an image extension.** `preparePicture` re-compresses an oversized
 cover with `ffmpeg -i in -q:v N out`, and ffmpeg chooses the output muxer from the **extension** —
 an extensionless path fails with *"Unable to choose an output format"*. The first version wrote to
@@ -845,15 +855,38 @@ had nothing to carry, and ffmpeg does not map `UFID` into a Vorbis comment eithe
 disappeared. `readMusicBrainzUfid` reads it, checking the owner and that the payload is a UUID rather
 than trusting the namespace.
 
-`ID3_TXXX_FFMPEG_MISNAMES` sets the canonical key **and blanks the spaced one**. Setting only the
-canonical key also reads correctly, but leaves both in the file — six comments for three values,
-which every later pass would carry forward.
+`ID3_TXXX_FFMPEG_MISNAMES` (`services/vorbis-keys.ts`) sets the canonical key **and blanks the
+spaced one**. Setting only the canonical key also reads correctly, but leaves both in the file — six
+comments for three values, which every later pass would carry forward.
 
-This is scoped to the ID3 path on purpose: FLAC and Ogg sources are Vorbis-to-Vorbis and their keys
-pass through unchanged, which a separate FLAC case in `post-download-transcode.test.ts` asserts.
-Measured on prod, the already-converted files carry canonical keys and zero spaced ones — the bug
-lands on the *conversion* population rather than the converted one, and that population is **97.9%
-mp3** (13,576 of 13,864).
+#### The rest of the spaced names, and healing the files already written (#1250, #1231)
+
+The same mechanism renames every *other* `TXXX` too — the MusicBrainz artist, album artist, release
+group and release track ids, album type/status/country — and some source taggers write spaced names
+of their own (`ALBUM ARTIST`). Measured on prod after the conversion, **74 of 400 sampled `.opus`
+files** carried at least one: the seven MusicBrainz names on ~10%, `ALBUM ARTIST` on 4.75% (always
+beside `ALBUMARTIST`). `UNMODELLED_SPACED_KEYS` lists the ones that have a canonical name
+music-metadata's Vorbis mapper reads; the long tail (`RIP DATE`, `AB:HI:*`) has no reader either way
+and is left alone. `AudioTags` does not grow fields for them — the fix is a pass-through.
+
+`planVorbisKeyFixes` is the one planner, applied in three places:
+
+- **at encode**, from the source's `TXXX` frames, in `carriedMetadataArgs`;
+- **on every rewrite** — `writeFfmpegTags` asks `planVorbisKeyHeal` and appends its args, so a
+  file is normalized the first time anything touches it;
+- **once, library-wide**, by `normalize-vorbis-keys.ts` (dry run unless `--apply`), which re-plans
+  each written file from disk and counts one that still has changes as failed.
+
+**A disagreeing pair is not renamed.** 1 of 19 `ALBUM ARTIST`/`ALBUMARTIST` pairs on prod held
+different values, and music-metadata maps *both* names to `albumartist` — so the spaced value may be
+the one the app reads today. Picking the winner is a curation decision, so the planner reports the
+pair and changes nothing. The exception is a write that sets the field itself: a curator's explicit
+album artist supersedes both, and the spaced twin is deleted.
+
+The encode-time fix is scoped to the ID3 path: FLAC and Ogg sources are Vorbis-to-Vorbis and their
+keys pass through unchanged, which a separate FLAC case in `post-download-transcode.test.ts`
+asserts. Spaced names that arrive in a Vorbis source are what the rewrite heal and the backfill are
+for.
 
 The tag test asserts **its own denominator**: `ALL_AUDIO_TAG_FIELDS` is a `Record<keyof AudioTags,
 true>`, so adding a field to `AudioTags` fails the type-check until it is listed and a decision is

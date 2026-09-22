@@ -19,6 +19,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   featureTagsFromNative,
+  planVorbisKeyHeal,
   readAudioTags,
   writeAudioTags,
   readMusicBrainzUfid,
@@ -711,5 +712,226 @@ describe('readMusicBrainzUfid — the recording id lives in UFID, not TXXX', () 
   it('is quiet on a file with no UFID at all', () => {
     expect(readMusicBrainzUfid({})).toBeUndefined();
     expect(readMusicBrainzUfid({ uniqueFileIdentifier: null })).toBeUndefined();
+  });
+});
+
+describe.if(ffmpegAvailable())('spaced Vorbis names heal on any rewrite (#1250, #1231)', () => {
+  /** An `.opus` carrying the three shapes measured on prod, plus a cover and lyrics. */
+  async function spacedOpus(name: string): Promise<string> {
+    const path = join(dir, `${name}.opus`);
+    const gen = spawnSync('ffmpeg', [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=frequency=440:sample_rate=48000:duration=1',
+      '-c:a',
+      'libopus',
+      '-metadata',
+      'TITLE=OLD',
+      '-metadata',
+      'LYRICS=la la la',
+      '-metadata',
+      'album_artist=Same',
+      '-metadata',
+      'ALBUM ARTIST=Same', // agrees → deleted
+      '-metadata',
+      'MusicBrainz Artist Id=artist-1', // alone → moved
+      '-metadata',
+      'RELEASETYPE=album',
+      '-metadata',
+      'RELEASE TYPE=ep', // disagrees → left, reported
+      path,
+    ]);
+    expect(gen.status).toBe(0);
+    const cover = join(dir, `${name}.jpg`);
+    spawnSync('ffmpeg', [
+      '-v',
+      'error',
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      'color=c=red:s=64x64',
+      '-frames:v',
+      '1',
+      cover,
+    ]);
+    const { attachPictureToOpus } = await import('./opus-artwork.js');
+    expect(attachPictureToOpus(path, cover)).toBe(true);
+    return path;
+  }
+
+  async function vorbisKeys(path: string): Promise<Record<string, string[]>> {
+    const { parseFile } = await import('music-metadata');
+    const out: Record<string, string[]> = {};
+    for (const t of (await parseFile(path)).native.vorbis ?? []) {
+      if (typeof t.value === 'string') (out[t.id.toUpperCase()] ??= []).push(t.value);
+    }
+    return out;
+  }
+
+  it('plans the fix without writing', async () => {
+    const path = await spacedOpus('plan');
+    const plan = await planVorbisKeyHeal(path);
+    expect(plan?.metadata).toEqual([
+      'ALBUM ARTIST=',
+      'MUSICBRAINZ_ARTISTID=artist-1',
+      'MUSICBRAINZ ARTIST ID=',
+    ]);
+    expect(plan?.conflicts).toEqual([{ spaced: 'RELEASE TYPE', canonical: 'RELEASETYPE' }]);
+    expect((await vorbisKeys(path))['ALBUM ARTIST']).toEqual(['Same']);
+  });
+
+  it('a title-only write normalizes the rest, and changes nothing it should not', async () => {
+    const path = await spacedOpus('heal');
+    expect(await writeAudioTags(path, { title: 'NEW' })).toBe(true);
+    const keys = await vorbisKeys(path);
+    expect(keys.TITLE).toEqual(['NEW']);
+    expect(keys.ALBUMARTIST).toEqual(['Same']);
+    expect(keys['ALBUM ARTIST']).toBeUndefined();
+    expect(keys.MUSICBRAINZ_ARTISTID).toEqual(['artist-1']);
+    expect(keys['MUSICBRAINZ ARTIST ID']).toBeUndefined();
+    // Disagreeing pair: both kept, because picking one is a curation call.
+    expect(keys.RELEASETYPE).toEqual(['album']);
+    expect(keys['RELEASE TYPE']).toEqual(['ep']);
+
+    const { parseFile } = await import('music-metadata');
+    const parsed = await parseFile(path);
+    expect(parsed.common.picture?.length).toBe(1);
+    expect((await readAudioTags(path)).lyrics).toBe('la la la');
+    expect(parsed.format.duration).toBeGreaterThan(0.9);
+    // Idempotent: a second pass finds nothing left to change.
+    expect((await planVorbisKeyHeal(path))?.metadata).toEqual([]);
+  });
+
+  it('an explicit album artist write deletes the spaced twin whatever it said', async () => {
+    const path = join(dir, 'explicit.opus');
+    spawnSync('ffmpeg', [
+      '-v',
+      'error',
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=frequency=440:sample_rate=48000:duration=1',
+      '-c:a',
+      'libopus',
+      '-metadata',
+      'album_artist=Old',
+      '-metadata',
+      'ALBUM ARTIST=Stale',
+      path,
+    ]);
+    expect(await writeAudioTags(path, { albumArtist: 'Fixed' })).toBe(true);
+    const keys = await vorbisKeys(path);
+    expect(keys.ALBUMARTIST).toEqual(['Fixed']);
+    expect(keys['ALBUM ARTIST']).toBeUndefined();
+    expect((await readAudioTags(path)).albumArtist).toBe('Fixed');
+  });
+
+  it('an empty write on a file with spaced names still rewrites it, which the backfill relies on', async () => {
+    const path = await spacedOpus('empty');
+    expect(await writeAudioTags(path, {})).toBe(true);
+    expect((await vorbisKeys(path))['ALBUM ARTIST']).toBeUndefined();
+  });
+});
+
+describe.if(ffmpegAvailable())('a tag write keeps the embedded cover (#1280)', () => {
+  function coverFile(): string {
+    const cover = join(dir, 'cover.jpg');
+    spawnSync('ffmpeg', [
+      '-v',
+      'error',
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      'color=c=blue:s=96x96',
+      '-frames:v',
+      '1',
+      cover,
+    ]);
+    return cover;
+  }
+
+  async function withCover(ext: 'opus' | 'ogg' | 'flac'): Promise<string> {
+    const path = join(dir, `covered.${ext}`);
+    const codec = { opus: 'libopus', ogg: 'libvorbis', flac: 'flac' }[ext];
+    const cover = coverFile();
+    const { attachPictureToOpus } = await import('./opus-artwork.js');
+    if (ext === 'flac') {
+      spawnSync('ffmpeg', [
+        '-v',
+        'error',
+        '-y',
+        '-f',
+        'lavfi',
+        '-i',
+        'sine=duration=1',
+        '-i',
+        cover,
+        '-map',
+        '0:a',
+        '-map',
+        '1:v',
+        '-c:a',
+        codec,
+        '-c:v',
+        'copy',
+        '-disposition:v',
+        'attached_pic',
+        path,
+      ]);
+    } else {
+      spawnSync('ffmpeg', [
+        '-v',
+        'error',
+        '-y',
+        '-f',
+        'lavfi',
+        '-i',
+        'sine=duration=1',
+        '-c:a',
+        codec,
+        path,
+      ]);
+      expect(attachPictureToOpus(path, cover)).toBe(true);
+    }
+    return path;
+  }
+
+  for (const ext of ['opus', 'ogg', 'flac'] as const) {
+    it(`keeps the same picture bytes across a title write on .${ext}`, async () => {
+      const { readOggPicture } = await import('./opus-artwork.js');
+      const path = await withCover(ext);
+      const before = readOggPicture(path);
+      expect(before).not.toBeNull();
+      expect(await writeAudioTags(path, { title: 'RETAGGED' })).toBe(true);
+      expect((await readAudioTags(path)).title).toBe('RETAGGED');
+      expect(readOggPicture(path)?.data.equals(before!.data)).toBe(true);
+    });
+  }
+
+  it('a file with no cover gains none', async () => {
+    const { readOggPicture } = await import('./opus-artwork.js');
+    const path = join(dir, 'bare.opus');
+    spawnSync('ffmpeg', [
+      '-v',
+      'error',
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=duration=1',
+      '-c:a',
+      'libopus',
+      path,
+    ]);
+    expect(await writeAudioTags(path, { title: 'T' })).toBe(true);
+    expect(readOggPicture(path)).toBeNull();
   });
 });

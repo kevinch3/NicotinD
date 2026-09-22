@@ -222,6 +222,16 @@ const escapeFfmetadata = (s: string): string => s.replace(/[=;#\\\n]/g, (c) => '
  * `transcodeTempPathFor` is: a leaked one must not be scanned as a track.
  */
 export function attachPictureToOpus(opusPath: string, coverPath: string): boolean {
+  try {
+    return attachPictureDataToOpus(opusPath, readFileSync(coverPath), mimeForCover(coverPath));
+  } catch (err) {
+    log.warn({ err, opusPath }, 'could not attach cover art');
+    return false;
+  }
+}
+
+/** {@link attachPictureToOpus} for image bytes already in memory. */
+export function attachPictureDataToOpus(opusPath: string, data: Buffer, mimeType: string): boolean {
   const dir = dirname(opusPath);
   const stem = basename(opusPath, extname(opusPath));
   const meta = join(dir, `.${stem}.nicotind-art.ffmeta`);
@@ -237,7 +247,7 @@ export function attachPictureToOpus(opusPath: string, coverPath: string): boolea
   };
 
   try {
-    const b64 = pictureBlockBase64(readFileSync(coverPath), mimeForCover(coverPath));
+    const b64 = pictureBlockBase64(data, mimeType);
     writeFileSync(meta, ';FFMETADATA1\nMETADATA_BLOCK_PICTURE=' + escapeFfmetadata(b64) + '\n');
     execFileSync(
       ffmpegBinary(),
@@ -277,6 +287,47 @@ export function attachPictureToOpus(opusPath: string, coverPath: string): boolea
     cleanup();
     return false;
   }
+}
+
+/**
+ * The first picture embedded in an Ogg file, or `null` when it has none.
+ *
+ * Exists so a caller that rewrites the container can put the picture back —
+ * the trap described on {@link attachPictureToOpus}, which every tag write hit
+ * until #1280. Read through ffmpeg rather than music-metadata, because the
+ * latter throws on an Ogg picture above ~600 KB, and a picture we cannot read
+ * is one the rewrite would silently drop.
+ *
+ * **Throws** when a picture is present but could not be extracted, so the
+ * caller refuses the write instead of stripping it. The picture comes back as
+ * a front cover with no description; the type and description of a
+ * `METADATA_BLOCK_PICTURE` are not carried.
+ */
+export function readOggPicture(path: string): { data: Buffer; mimeType: string } | null {
+  const streams = execFileSync(
+    ffmpegBinary().replace(/ffmpeg$/, 'ffprobe'),
+    [
+      '-v',
+      'error',
+      '-select_streams',
+      'v',
+      '-show_entries',
+      'stream=index',
+      '-of',
+      'csv=p=0',
+      path,
+    ],
+    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+  ).trim();
+  if (streams === '') return null;
+  const data = execFileSync(
+    ffmpegBinary(),
+    ['-v', 'error', '-i', path, '-map', '0:v:0', '-c', 'copy', '-f', 'image2pipe', '-'],
+    { stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 },
+  );
+  if (data.length === 0) throw new Error('embedded picture present but empty');
+  const isPng = data.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  return { data, mimeType: isPng ? 'image/png' : 'image/jpeg' };
 }
 
 /** Content type from a cover's extension; the block needs an accurate one. */
