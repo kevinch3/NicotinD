@@ -202,7 +202,7 @@ the bytes are permanent, tagged, re-scanned, and replace a file that is then del
 | --- | --- | --- |
 | `opus` | `-f ogg` → served | `-f ogg` → `.opus`, taggable, header gain |
 | `mp3` | `-f mp3` → served | `-f mp3` → `.mp3`, taggable, **no** gain field, no art cap |
-| `aac` | `-f adts` → served | **invalid**: `.aac` is in `AUDIO_EXTENSIONS` but in neither `ID3_EXTS` nor `VORBIS_EXTS`, and `writeAudioTags` returns `false` for it |
+| `aac` | `-f adts` `.aac` → served | `-f ipod` → `.m4a`, taggable (freeform atoms), no art cap, **no** gain field. `.aac`/adts would be **invalid**: in `AUDIO_EXTENSIONS` but in neither `ID3_EXTS` nor `VORBIS_EXTS`, so `writeAudioTags` returns `false` |
 
 So an `.aac` library would be indexed by the scanner and permanently untaggable — every tag write
 silently refused. Library AAC has to be `.m4a` through the `ipod` muxer, which is a *different muxer
@@ -212,8 +212,12 @@ That route also needed #1177 before it could be a *valid* choice, and #1177 is n
 muxer silently ignores `-metadata BPM=`, so `.m4a` files ended with no tempo atom and were
 re-analysed forever. `BPM_METADATA_KEY` (`audio-tags.ts`) overrides the key to `tmpo` for that one
 container — see *Tags across a container change* below. #1274 then made the other eleven fields
-writable (freeform atoms, same section). What AAC still lacks is its own `FormatStrategy`: a `covr`
-art embed and a bitrate ladder.
+writable (freeform atoms, same section), and #1279 registered AAC. Two things it needed of its own:
+an `.m4a` target is carried by a full `writeAudioTags` **after** the encode and after the cover
+(`carryPostEncodeTags`) — no `-metadata` spelling reaches what `ipod` drops, and the cover's own
+remux would drop freeform atoms written before it — and it encodes without `+faststart`, because
+`writeFreeformAtoms` needs `moov` after `mdat`. A 2.9 MB `covr` reads back byte-exact, so it has no
+art cap.
 
 ### Choosing the format (#1256, #1255)
 

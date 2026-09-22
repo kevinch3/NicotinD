@@ -230,7 +230,7 @@ const ID3_FRAMES_FFMPEG_DROPS = [
  * {@link ID3_TXXX_FFMPEG_MISNAMES} rather than a second copy of those strings.
  *
  * Two fields have **no** working `-metadata` key at all and are handled after
- * the encode by {@link carryPostEncodeId3}: `lyrics` (ffmpeg re-emits USLT as a
+ * the encode by {@link carryPostEncodeTags}: `lyrics` (ffmpeg re-emits USLT as a
  * TXXX no reader maps back) and `compilation` (needs a TCMP frame ffmpeg's mp3
  * muxer will not write).
  */
@@ -248,7 +248,21 @@ const VORBIS_FIELDS_FFMPEG_DROPS = [
  * Best-effort by construction: the audio is verified and the file is already
  * correct without these, so a failure is a warning, never a lost conversion.
  */
-async function carryPostEncodeId3(sourceTags: AudioTags, outPath: string): Promise<void> {
+async function carryPostEncodeTags(sourceTags: AudioTags, outPath: string): Promise<void> {
+  // An `.m4a` target gets the source's whole tag set: the `ipod` muxer drops
+  // key, the perceptual features and the ids from `-map_metadata` and from any
+  // `-metadata` spelling, and `writeAudioTags` is the one writer that lands
+  // them, as freeform atoms (#1274, #1279). Written after the cover, because
+  // the cover's own remux would otherwise drop those atoms.
+  if (extname(outPath).toLowerCase() === '.m4a') {
+    try {
+      if (!(await writeAudioTags(outPath, sourceTags)))
+        log.warn({ outPath }, 'could not carry tags onto the encoded .m4a');
+    } catch (err) {
+      log.warn({ err, outPath }, 'could not carry tags onto the encoded .m4a');
+    }
+    return;
+  }
   const carry: AudioTags = {};
   if (sourceTags.lyrics !== undefined) carry.lyrics = sourceTags.lyrics;
   if (sourceTags.compilation) carry.compilation = true;
@@ -292,6 +306,15 @@ async function carriedMetadataArgs(
 ): Promise<{ args: string[]; sourceTags: AudioTags | null }> {
   const sourceIsId3 = ID3_EXTS.has(extname(absPath).toLowerCase());
   const targetIsId3 = ID3_EXTS.has(`.${targetExt}`);
+  // No `-metadata` spelling reaches the fields `ipod` drops, so an `.m4a`
+  // target is carried after the encode instead — see `carryPostEncodeTags`.
+  if (targetExt === 'm4a') {
+    try {
+      return { args: [], sourceTags: await readAudioTags(absPath) };
+    } catch {
+      return { args: [], sourceTags: null };
+    }
+  }
   // Same tag family in and out: `-map_metadata 0` carries everything and there
   // is nothing to fix up.
   if (sourceIsId3 === targetIsId3) return { args: [], sourceTags: null };
@@ -477,7 +500,7 @@ export async function transcodeToLibraryFormat(
   // so they go on after the encode, onto the TEMP — the rename below then
   // promotes a complete file rather than one that gains tags a moment later,
   // the same discipline the cover carry above follows.
-  if (sourceTags) await carryPostEncodeId3(sourceTags, tmpPath);
+  if (sourceTags) await carryPostEncodeTags(sourceTags, tmpPath);
 
   try {
     // Promote temp → final, then deal with the original. If dest === source

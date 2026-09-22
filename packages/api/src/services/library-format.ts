@@ -25,7 +25,7 @@ import { writeOutputGain } from './opus-gain.js';
  * Where they *do* agree, the args come from `FORMAT_ARGS` rather than being
  * written out again — the duplicate this module exists to delete.
  */
-export type LibraryFormat = 'opus' | 'mp3';
+export type LibraryFormat = 'opus' | 'mp3' | 'aac';
 
 export interface FormatStrategy {
   id: LibraryFormat;
@@ -62,10 +62,10 @@ export interface FormatStrategy {
  * The formats the library may be standardized on.
  *
  * Total by construction — `Record<LibraryFormat, …>`, so a format joins the
- * union and the table together or not at all. mp3 and AAC join in #1256's step
- * 4, each bringing its own ladder, art mechanism and (absent) gain support;
- * AAC additionally needs #1177, since the `ipod` muxer drops `-metadata BPM=`
- * and an `.m4a` library would re-analyse BPM forever.
+ * union and the table together or not at all. Each brings its own ladder, art
+ * mechanism and (absent) gain support. AAC could join only once every
+ * `AudioTags` field survived the `ipod` muxer: `tmpo` for BPM (#1177), freeform
+ * atoms for the other eleven (#1274).
  */
 export const LIBRARY_FORMATS: Record<LibraryFormat, FormatStrategy> = {
   opus: {
@@ -92,6 +92,22 @@ export const LIBRARY_FORMATS: Record<LibraryFormat, FormatStrategy> = {
     // `loudness_measured` exists to make safe but which still re-encodes. So
     // this format declares the capability absent and every call site is made to
     // handle it by the type.
+    writeGain: null,
+  },
+  aac: {
+    id: 'aac',
+    // `.m4a` through the `ipod` muxer — NOT `FORMAT_ARGS.aac`, whose `-f adts`
+    // `.aac` is a stream no tagger here can write (see the module comment).
+    // No `+faststart`: `writeFreeformAtoms` needs `moov` after `mdat`, and
+    // ffmpeg's default output puts it there (#1274).
+    ext: 'm4a',
+    encodeArgs: (kbps) => ['-c:a', 'aac', '-b:a', `${kbps}k`, '-f', 'ipod'],
+    bitrateFor: (sourceKbps, lossless) => ladderBitrateFor('aac', sourceKbps, lossless),
+    // Measured: a 2.9 MB cover reads back byte-exact from `covr`. The 512 KB
+    // cap is an Ogg reader limit and does not apply (#1279).
+    maxEmbeddedPictureBytes: null,
+    embedArt: attachPictureAsStream,
+    // Like mp3, no in-header gain field; `iTunNORM`/ReplayGain are advisory.
     writeGain: null,
   },
 };
