@@ -535,6 +535,31 @@ const FFMPEG_MUXER_ARGS: Record<string, string[]> = {
   '.mp3': ['-id3v2_version', '3'],
 };
 
+/**
+ * BPM's `-metadata` key, where the container disagrees with the default.
+ *
+ * ffmpeg's mov/ipod muxer does not recognise `BPM` and **silently drops it** —
+ * no warning, exit 0, and an `.m4a` that ends with no tempo atom at all. The
+ * key it maps to the iTunes `tmpo` atom is `tmpo`. Probed across all four
+ * plausible spellings against a real `.m4a`, reading back with music-metadata
+ * (#1177):
+ *
+ * | `-metadata` key | `common.bpm` |
+ * | --- | --- |
+ * | `BPM` | `undefined` |
+ * | `tmpo` | **128** |
+ * | `TBPM` | `undefined` |
+ * | `tempo` | `undefined` |
+ *
+ * Not cosmetic: `POST /api/library/songs/:id/bpm` and `analyze-bpm.ts` both
+ * prefer a file's own BPM tag over a DSP run, so a container that can never
+ * hold one is re-analysed forever. A per-container override rather than a
+ * global rename, because `BPM` is what the Vorbis family reads.
+ */
+const BPM_METADATA_KEY: Record<string, string> = {
+  '.m4a': 'tmpo',
+};
+
 function writeFfmpegTags(filepath: string, tags: AudioTags): Promise<boolean> {
   const tmpPath = filepath + '.nicotind.tmp';
   const ext = extname(filepath).toLowerCase();
@@ -553,7 +578,8 @@ function writeFfmpegTags(filepath: string, tags: AudioTags): Promise<boolean> {
   if (tags.discNumber !== undefined) metaArgs.push('-metadata', `DISC=${tags.discNumber}`);
   if (tags.year !== undefined) metaArgs.push('-metadata', `DATE=${tags.year}`);
   if (tags.genre !== undefined) metaArgs.push('-metadata', `GENRE=${tags.genre}`);
-  if (tags.bpm !== undefined) metaArgs.push('-metadata', `BPM=${tags.bpm}`);
+  if (tags.bpm !== undefined)
+    metaArgs.push('-metadata', `${BPM_METADATA_KEY[ext] ?? 'BPM'}=${tags.bpm}`);
   if (tags.key !== undefined) metaArgs.push('-metadata', `KEY=${tags.key}`);
   if (tags.lyrics !== undefined) metaArgs.push('-metadata', `LYRICS=${tags.lyrics}`);
   for (const [field, key] of numericFeatureEntries()) {
