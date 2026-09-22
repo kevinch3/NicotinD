@@ -228,6 +228,32 @@ jobs:
       - name: Install-script gate (no unreviewed third-party downloads)
         run: bun run check:install-scripts
 
+      # Without these, 55 `describe.if(ffmpegAvailable())` blocks across 15 files
+      # SKIP here and print the same green as a pass. This job reported
+      # `136 skip / 0 fail` on #1267 while skipping the very regression test for
+      # the bug that PR fixed. The whole transcode / artwork / tagging / loudness
+      # surface was unverified — every defect the Opus conversion paid to find
+      # (#1225, #1230, #1249, #1251, #1252, #1177) has a regression test, and none
+      # of them ran (#1268).
+      #
+      # Two true statements that never met: this job runs the bun:test suite but
+      # had no ffmpeg, and `e2e-shard` has ffmpeg but runs Playwright specs only.
+      # A comment in `post-download-transcode.test.ts` asserted the `e2e` job
+      # exercised them; it does not, and that claim is corrected there.
+      #
+      # `opus-tools` is separate from ffmpeg and equally required: `opusinfo` is
+      # the independent second reader `opus-artwork.test.ts` uses deliberately,
+      # because checking a file only with the same library the app reads it with
+      # cannot distinguish "written wrong" from "read wrong" (#1226).
+      #
+      # `--no-install-recommends` for the reason `e2e-shard` gives: it drops ~100
+      # packages (VA/VDPAU drivers, SDL2, PulseAudio) no decode path reaches.
+      - name: Install ffmpeg and opus-tools (so the gated tests actually run)
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends ffmpeg opus-tools
+
       - name: Test (API + slskd-client + lidarr-client + core + service-manager + mobile)
         run: bun test packages/api/src packages/lidarr-client/src packages/core/src packages/addon-sdk/src packages/service-manager/src packages/mobile/src packages/desktop/electron packages/desktop/scripts scripts
 

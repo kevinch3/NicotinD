@@ -4,9 +4,15 @@
  * `isLossless` is pure. `transcodeToLibraryFormat` spawns ffmpeg, so its tests generate
  * real audio and are skipped when ffmpeg is absent.
  *
- * Note the `ci` gate job does NOT have ffmpeg — these skip there, and the `e2e`
- * job is what actually exercises them. An earlier version of this comment
- * claimed CI covered the path; the job log says otherwise.
+ * **The `ci` job installs ffmpeg and opus-tools, so these run there (#1268).**
+ *
+ * They did not until then, and this comment has now been wrong twice about why.
+ * It first claimed CI covered the path; corrected to "the `e2e` job is what
+ * actually exercises them", which was also false — `e2e-shard` has ffmpeg but
+ * runs Playwright specs only and never invokes the bun:test suite. So nothing
+ * ran them at all: 55 gated blocks across 15 files skipped while `ci` printed
+ * green. Read the job log for `(skip)` lines before believing any claim of this
+ * shape, including this one.
  */
 import { describe, expect, it, afterEach } from 'bun:test';
 import { execFileSync } from 'node:child_process';
