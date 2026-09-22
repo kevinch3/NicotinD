@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.46](https://github.com/kevinch3/NicotinD/compare/v0.8.45...v0.8.46) (2026-09-22)
+
+### Bug Fixes
+
+* **radio:** anchor a song radio on its seed instead of the playing track ([#1281](https://github.com/kevinch3/NicotinD/issues/1281)) ([cf76c0e](https://github.com/kevinch3/NicotinD/commit/cf76c0e167d66297afa002c15304b39b5b8af2f1)), references [#1262](https://github.com/kevinch3/NicotinD/issues/1262) [#1277](https://github.com/kevinch3/NicotinD/issues/1277)
 ## [0.8.45](https://github.com/kevinch3/NicotinD/compare/v0.8.44...v0.8.45) (2026-09-22)
 
 ### Bug Fixes
