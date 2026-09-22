@@ -150,14 +150,16 @@ export const EXTERNAL_SYMBOLS = new Map<string, string>([
  *                        and the one to defend: every byte is paid on every
  *                        task, including the majority that never open the index.
  *   MAX_INDEX_BYTES      the on-demand index. Generous, because its cost is paid
- *                        only when read — but present, because "nobody pays for
+ *   (gone — see #1240)   only when read — but present, because "nobody pays for
  *                        it" is exactly how the 186 KB happened the first time.
+ *                        That second cap no longer exists; the paragraph below
+ *                        says why, and MAX_INDEX_SECTION_BYTES replaced it.
  *
  * Neither is a law of nature: raising one is fine, but it should be a commit
  * that says why, which is what an un-measured prose rule never forced. A test
- * asserts both keep >5,000 bytes of headroom, so a cap can never sit flush
- * against the file it measures — a gate that fires on the next honest addition
- * gets raised reflexively.
+ * asserts CLAUDE.md and every section keep >5,000 bytes of headroom, so a cap
+ * can never sit flush against the file it measures — a gate that fires on the
+ * next honest addition gets raised reflexively.
  *
  * A SINGLE TOTAL WAS THE WRONG CAP (#1240). It was raised 60,000 → 70,000 on
  * 2026-09-08 for ~48 entries of runway. The index consumed all 10,000 bytes in
