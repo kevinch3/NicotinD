@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.45](https://github.com/kevinch3/NicotinD/compare/v0.8.44...v0.8.45) (2026-09-22)
+
+### Bug Fixes
+
+* **tags:** keep the Ogg cover on every tag write, and heal spaced Vorbis names ([#1282](https://github.com/kevinch3/NicotinD/issues/1282)) ([6b0c162](https://github.com/kevinch3/NicotinD/commit/6b0c16286317ecfb89d6e735d8f34a8dec61fdcc)), closes [#1250](https://github.com/kevinch3/NicotinD/issues/1250) [#1231](https://github.com/kevinch3/NicotinD/issues/1231) [#1280](https://github.com/kevinch3/NicotinD/issues/1280)
 ## [0.8.44](https://github.com/kevinch3/NicotinD/compare/v0.8.43...v0.8.44) (2026-09-22)
 
 ### Features

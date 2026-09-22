@@ -1,0 +1,1 @@
+• tags: keep the Ogg cover on every tag write, and heal spaced Vorbis names (#1282)
