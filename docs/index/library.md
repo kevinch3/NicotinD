@@ -61,6 +61,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   `backfillVorbisKeys` runs it once. → [download-pipeline.md](../download-pipeline.md)
 - **A tag write keeps the Ogg cover**: `readOggPicture` reads it before the remux drops it and
   `attachPictureDataToOpus` puts it back. → [download-pipeline.md](../download-pipeline.md)
+- **`.m4a` fields the ipod muxer drops ride in freeform atoms**: `writeFreeformAtoms` writes key,
+  features and ids as `----` atoms after the remux and carries the file's own across it;
+  `keyFromParse` reads `initialkey` back. → [download-pipeline.md](../download-pipeline.md)
 - **The displayed artist spelling is reduced, not first-seen**: `pickDisplayName` picks one of an
   album's spellings (frequency → diacritics → not-shouted → explicit-locale alphabetical) and
   `refreshAlbumArtistDisplay` re-derives it on every incremental touch, so a one-file scan cannot

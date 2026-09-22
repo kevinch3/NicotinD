@@ -1,10 +1,11 @@
 import { spawn } from 'node:child_process';
 import { extname } from 'node:path';
-import { renameSync, unlinkSync } from 'node:fs';
+import { readFileSync, renameSync, unlinkSync } from 'node:fs';
 import { ID3_EXTS, VORBIS_EXTS, createLogger, MOOD_VOCAB, type MoodLabel } from '@nicotind/core';
 import { ffmpegBinary } from './ffmpeg-path.js';
 import { planVorbisKeyFixes, type VorbisKeyPlan } from './vorbis-keys.js';
 import { attachPictureDataToOpus, readOggPicture } from './opus-artwork.js';
+import { readFreeformAtoms, writeFreeformAtoms } from './mp4-freeform.js';
 
 const log = createLogger('audio-tags');
 
@@ -110,6 +111,11 @@ const TXXX_ACOUSTID = 'Acoustid Id';
 const TXXX_MB_RECORDING = 'MusicBrainz Track Id';
 const TXXX_MB_RELEASE = 'MusicBrainz Album Id';
 
+// Picard's MP4 name for the musical key. music-metadata maps no MP4 atom to
+// `common.key` at all, so it is read back from the native frame (#1274).
+const MP4_KEY_ATOM = 'initialkey';
+const MP4_FREEFORM_PREFIX = '----:com.apple.itunes:';
+
 /**
  * Closed mood vocabulary — argmax over the sidecar's mood heads. Canonical
  * definition lives in @nicotind/core (shared with the web filter UI);
@@ -189,11 +195,25 @@ function readNativeValue(native: NativeTagMap | undefined, key: string): unknown
     if (!Array.isArray(frames)) continue;
     for (const frame of frames) {
       const id = frame?.id?.toLowerCase();
-      // ID3 native frames surface TXXX as "TXXX:DESCRIPTION".
-      if (id === wanted || id === `txxx:${wanted}`) return frame.value;
+      // ID3 native frames surface TXXX as "TXXX:DESCRIPTION"; MP4 freeform
+      // atoms as "----:com.apple.iTunes:NAME" (#1274).
+      if (id === wanted || id === `txxx:${wanted}` || id === `${MP4_FREEFORM_PREFIX}${wanted}`)
+        return frame.value;
     }
   }
   return undefined;
+}
+
+/**
+ * The musical key from a music-metadata parse. music-metadata maps no MP4 atom
+ * to `common.key`, so an `.m4a` key lives only in its native `initialkey`
+ * freeform atom — shared by `readAudioTags` and the scanner so both see it (#1274).
+ */
+export function keyFromParse(
+  commonKey: string | undefined,
+  native: NativeTagMap | undefined,
+): string | undefined {
+  return pickString(commonKey) ?? pickString(readNativeValue(native, MP4_KEY_ATOM));
 }
 
 /**
@@ -444,7 +464,7 @@ export async function readAudioTags(filepath: string): Promise<AudioTags> {
         // even where music-metadata's own types promise a number.
         bpm: parseLeadingNumber(c.bpm),
         year: c.year,
-        key: pickString(c.key),
+        key: keyFromParse(c.key, parsed.native),
         genre: pickGenre(c.genre),
         // Without this the organizer's `!currentRaw.compilation` guard is
         // permanently true and it re-remuxes every compilation file on every
@@ -661,6 +681,26 @@ export async function planVorbisKeyHeal(
   }
 }
 
+/**
+ * The fields the `ipod` muxer drops from `-metadata`, as the freeform atoms
+ * {@link writeFreeformAtoms} writes after the remux instead (#1274). Names are
+ * the ones already used as TXXX descriptions and Vorbis keys, so every
+ * container carries one spelling per field.
+ */
+function mp4FreeformValues(tags: AudioTags): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (tags.key !== undefined) out[MP4_KEY_ATOM] = tags.key;
+  for (const [field, key] of numericFeatureEntries()) {
+    const v = tags[field];
+    if (v !== undefined) out[key] = formatFeature(field, v);
+  }
+  if (tags.mood !== undefined) out[FEATURE_TAG_KEYS.mood] = tags.mood;
+  if (tags.acoustIdId) out[TXXX_ACOUSTID] = tags.acoustIdId;
+  if (tags.mbRecordingId) out[TXXX_MB_RECORDING] = tags.mbRecordingId;
+  if (tags.mbReleaseId) out[TXXX_MB_RELEASE] = tags.mbReleaseId;
+  return out;
+}
+
 async function writeFfmpegTags(filepath: string, tags: AudioTags): Promise<boolean> {
   const tmpPath = filepath + '.nicotind.tmp';
   const ext = extname(filepath).toLowerCase();
@@ -721,6 +761,21 @@ async function writeFfmpegTags(filepath: string, tags: AudioTags): Promise<boole
     }
   }
 
+  // The remux below drops every `----` atom the file already carries, not just
+  // the fields we could not write — so they are read first and put back, with
+  // this write's own values layered on top.
+  let mp4Carry: { carried: Buffer[]; values: Record<string, string> } | null = null;
+  if (ext === '.m4a') {
+    try {
+      mp4Carry = {
+        carried: readFreeformAtoms(readFileSync(filepath)),
+        values: mp4FreeformValues(tags),
+      };
+    } catch {
+      return false;
+    }
+  }
+
   // Every -metadata also goes to the first audio STREAM (issue #760).
   //
   // In an Ogg container (.opus/.ogg) the Vorbis comments ARE stream metadata,
@@ -774,6 +829,8 @@ async function writeFfmpegTags(filepath: string, tags: AudioTags): Promise<boole
         try {
           if (oggPicture && !attachPictureDataToOpus(tmpPath, oggPicture.data, oggPicture.mimeType))
             throw new Error('embedded cover not re-attached');
+          if (mp4Carry && !writeFreeformAtoms(tmpPath, mp4Carry.carried, mp4Carry.values))
+            throw new Error('mp4 freeform atoms not written');
           renameSync(tmpPath, filepath);
           resolve(true);
         } catch {

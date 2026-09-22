@@ -19,12 +19,14 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   featureTagsFromNative,
+  keyFromParse,
   planVorbisKeyHeal,
   readAudioTags,
   writeAudioTags,
   readMusicBrainzUfid,
 } from './audio-tags.js';
 import { ffmpegAvailable } from './transcode.js';
+import { readFreeformAtoms, writeFreeformAtoms } from './mp4-freeform.js';
 
 const FIXTURE = join(import.meta.dir, '../../test-fixtures/silence.mp3');
 
@@ -614,6 +616,17 @@ describe('featureTagsFromNative (pure)', () => {
     expect(out.energy).toBe(0.5);
   });
 
+  it('reads MP4 freeform atoms via the ----:com.apple.iTunes: prefix (#1274)', () => {
+    const out = featureTagsFromNative({
+      iTunes: [
+        { id: '----:com.apple.iTunes:ENERGY', value: '0.5' },
+        { id: '----:com.apple.iTunes:LOUDNESS_LUFS', value: '-9.5' },
+      ],
+    });
+    expect(out.energy).toBe(0.5);
+    expect(out.loudness).toBe(-9.5);
+  });
+
   it('clamps unit scores into 0..1 and drops garbage', () => {
     const out = featureTagsFromNative({
       vorbis: [
@@ -646,6 +659,18 @@ describe('featureTagsFromNative (pure)', () => {
       instrumental: undefined,
       mood: undefined,
     });
+  });
+});
+
+describe('keyFromParse (#1274)', () => {
+  it('prefers common.key, then the MP4 initialkey atom music-metadata does not map', () => {
+    expect(keyFromParse(' Am ', undefined)).toBe('Am');
+    expect(
+      keyFromParse(undefined, {
+        iTunes: [{ id: '----:com.apple.iTunes:initialkey', value: 'F#m' }],
+      }),
+    ).toBe('F#m');
+    expect(keyFromParse('  ', { iTunes: [] })).toBeUndefined();
   });
 });
 
@@ -933,5 +958,116 @@ describe.if(ffmpegAvailable())('a tag write keeps the embedded cover (#1280)', (
     ]);
     expect(await writeAudioTags(path, { title: 'T' })).toBe(true);
     expect(readOggPicture(path)).toBeNull();
+  });
+});
+
+describe.if(ffmpegAvailable())('.m4a fields the ipod muxer drops (#1274)', () => {
+  /** A one-second AAC `.m4a`, optionally with an attached cover and moov-first. */
+  function m4a(name: string, opts: { cover?: boolean; faststart?: boolean } = {}): string {
+    const path = join(dir, `${name}.m4a`);
+    const inputs = ['-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=1'];
+    const coverArgs: string[] = [];
+    if (opts.cover) {
+      // A still image file, not a lavfi video source: `-frames:v 1` on a
+      // generated stream ends the whole mux after one frame, audio included.
+      const cover = join(dir, 'cover.png');
+      spawnSync('ffmpeg', [
+        '-v',
+        'error',
+        '-y',
+        '-f',
+        'lavfi',
+        '-i',
+        'color=c=red:s=64x64',
+        '-frames:v',
+        '1',
+        cover,
+      ]);
+      inputs.push('-i', cover);
+      coverArgs.push('-map', '0:a', '-map', '1:v', '-c:v', 'png', '-disposition:v', 'attached_pic');
+    }
+    const gen = spawnSync('ffmpeg', [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-y',
+      ...inputs,
+      ...coverArgs,
+      '-c:a',
+      'aac',
+      '-metadata',
+      'TITLE=OLD TITLE',
+      ...(opts.faststart ? ['-movflags', '+faststart'] : []),
+      path,
+    ]);
+    expect(gen.status).toBe(0);
+    return path;
+  }
+
+  const ELEVEN = {
+    key: 'Am',
+    energy: 0.75,
+    loudness: -11.2,
+    valence: 0.3,
+    danceability: 0.64,
+    acousticness: 0.1,
+    instrumental: 0.02,
+    mood: 'happy' as const,
+    acoustIdId: 'aaaaaaaa-0000-0000-0000-000000000001',
+    mbRecordingId: '11111111-1111-1111-1111-111111111111',
+    mbReleaseId: '22222222-2222-2222-2222-222222222222',
+  };
+
+  it('writes and reads back every one of the eleven fields', async () => {
+    const path = m4a('eleven');
+    expect(await writeAudioTags(path, ELEVEN)).toBe(true);
+    const tags = await readAudioTags(path);
+    for (const [field, value] of Object.entries(ELEVEN)) {
+      expect({ field, value: tags[field as keyof typeof tags] }).toEqual({ field, value });
+    }
+  });
+
+  it('keeps them, a foreign freeform atom and the cover across a rewrite for an unrelated field', async () => {
+    // Before #1274 the ipod remux stripped every `----` atom, so a title fix
+    // also deleted whatever MusicBrainz ids another tagger had written.
+    const path = m4a('carry', { cover: true });
+    expect(await writeAudioTags(path, ELEVEN)).toBe(true);
+    const onDisk = readFileSync(path);
+    expect(
+      writeFreeformAtoms(path, readFreeformAtoms(onDisk), { 'MusicBrainz Artist Id': 'artist-1' }),
+    ).toBe(true);
+
+    expect(await writeAudioTags(path, { title: 'NEW TITLE' })).toBe(true);
+    const tags = await readAudioTags(path);
+    expect(tags.title).toBe('NEW TITLE');
+    for (const [field, value] of Object.entries(ELEVEN)) {
+      expect({ field, value: tags[field as keyof typeof tags] }).toEqual({ field, value });
+    }
+    const { parseFile } = await import('music-metadata');
+    const parsed = await parseFile(path);
+    expect(parsed.common.musicbrainz_artistid).toEqual(['artist-1']);
+    expect(parsed.common.picture?.length).toBe(1);
+    expect(parsed.format.duration).toBeGreaterThan(0.9);
+    // One atom per name: a rewrite that appended instead of replacing would
+    // double every field on each pass.
+    const names = readFreeformAtoms(readFileSync(path)).map((a) => a.toString('utf8', 48));
+    expect(names.length).toBe(Object.keys(ELEVEN).length + 1);
+  });
+
+  it('rewrites the same field in place rather than adding a second atom', async () => {
+    const path = m4a('twice');
+    expect(await writeAudioTags(path, { key: 'Am' })).toBe(true);
+    expect(await writeAudioTags(path, { key: 'F#m' })).toBe(true);
+    expect((await readAudioTags(path)).key).toBe('F#m');
+    expect(readFreeformAtoms(readFileSync(path))).toHaveLength(1);
+  });
+
+  it('writes a moov-first (faststart) source, because the remux lays moov out last', async () => {
+    const path = m4a('faststart', { faststart: true });
+    expect(await writeAudioTags(path, { key: 'Am', title: 'T' })).toBe(true);
+    const tags = await readAudioTags(path);
+    expect(tags.key).toBe('Am');
+    expect(tags.title).toBe('T');
+    expect(spawnSync('ffmpeg', ['-v', 'error', '-i', path, '-f', 'null', '-']).status).toBe(0);
   });
 });

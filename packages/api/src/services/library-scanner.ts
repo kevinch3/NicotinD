@@ -15,7 +15,7 @@ import { jobCanonicalTracklists } from './acquisition-job-store.js';
 import { isVariousArtists } from './compilation-tagger.js';
 import { inferFolderAlbum, inferMetadataFromPath, hasUsableValue } from './path-inference.js';
 import { getMusicMetadata, trackNoFromParse } from './music-metadata-loader.js';
-import { featureTagsFromNative } from './audio-tags.js';
+import { featureTagsFromNative, keyFromParse } from './audio-tags.js';
 import { selectAlbumTracks } from './library-track-select.js';
 import {
   isHiddenFile,
@@ -1181,7 +1181,7 @@ export class LibraryScanner {
       // FULL frame array — buildLibrary's splitGenres derives the set/primary.
       genre: common?.genre?.length ? common.genre.map((g) => nfc(g) ?? g) : undefined,
       bpm: typeof common?.bpm === 'number' && common.bpm > 0 ? Math.round(common.bpm) : undefined,
-      key: typeof common?.key === 'string' && common.key.trim() ? common.key.trim() : undefined,
+      key: keyFromParse(common?.key, meta?.native),
       // Perceptual features live in custom Vorbis/TXXX frames — parse them from
       // the native tag map so pre-tagged files are dense from the first scan.
       ...featureTagsFromNative(meta?.native, common?.mood),
