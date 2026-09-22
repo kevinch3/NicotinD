@@ -13,7 +13,8 @@ link when someone asks "why did it play that?"; the formula itself is versioned
 (see "Calibration history" below).
 
 **1. Gather candidates.** From your own library only, radio collects a few
-hundred candidates that plausibly fit the current song: tracks sharing a genre
+hundred candidates that plausibly fit the seed song — the song the radio was
+started from, not whatever is playing now: tracks sharing a genre
 with it, tracks in a similar tempo range, tracks with similar energy, and a
 random top-up. Tracks shorter than 60 seconds never enter (intros, skits, ads),
 junk genre tags ("Other", "Unknown") don't count as genres, and a track that is
@@ -21,7 +22,7 @@ hidden, whose album is hidden, or that has not been analysed yet is never
 considered — unless the library has too few analysed tracks to fill the pool,
 in which case not-yet-analysed ones are admitted so radio keeps playing.
 
-**2. Score each candidate 0–1 against the current song.** Each criterion below
+**2. Score each candidate 0–1 against the seed song.** Each criterion below
 produces a closeness between 0 and 1; the final score is the weighted average
 of the criteria _both tracks actually carry_ — a track missing BPM analysis
 competes on what it has instead of being punished for missing data.
@@ -70,10 +71,56 @@ search/filters, playlists, stats, or anything about acquisition.
 When `radio` is toggled on (Now Playing sheet), `PlayerService` watches the
 queue length against `radioQueueTarget` and calls the registered
 `RadioProvider` whenever it sits below it. The provider hits
-`GET /api/radio/next` with the current track as the seed. The server scores a
-candidate pool against the seed and returns the top matches, which are appended
-to the queue. Deduplication against current + queue + recent history is applied
-both server-side (via the `exclude` parameter) and client-side.
+`GET /api/radio/next` with the session's **anchor** as the seed. The server
+scores a candidate pool against the seed and returns the top matches, which are
+appended to the queue. Deduplication against current + queue + recent history
+is applied both server-side (via the `exclude` parameter) and client-side.
+
+### A radio is about its anchor, not about whatever is playing (#1277)
+
+The seed lane used to send the *playing* track. That read as right for the
+first fill and wrong for everything after it: once the queue holds a depth and
+is topped up one track at a time, each new track is scored against its
+predecessor, so a radio started from one song was a random walk away from it
+within twenty tracks. The Now Playing heading and the chip's "Based on …" both
+named the playing track too, so the session was renamed after every song.
+
+`PlayerService.radioAnchor` is what the session is about, fixed when it starts
+and persisted with the rest of the player state:
+
+- `{ kind: 'song', id, title }` — `startRadio(track)` (song menu, a Home tile, a
+  TV song press). Every top-up is `GET /api/radio/next?seedId=<anchor>`.
+- `{ kind: 'list', ids, members, name? }` — `startRadioWithTracks(tracks, list)`
+  (a tastemakers blend, a playlist tile) and radio turned on over an album or
+  playlist queue. Every top-up goes through the list lane (`seedIds=<ids>`, the
+  first 20 — the server's cap); `members` is the whole list, kept out of the
+  answers. A playlist longer than `RADIO_EXCLUDE_CAP` (200) leaks its tail back
+  in; accepted and documented rather than paginated.
+- `null` — a filter radio, which `radioFilter` already anchors, and radio off.
+
+A **user gesture re-anchors; a radio advance never does.** `playSingle` and
+`playWithContext` clear the anchor and the next top-up derives a fresh one from
+what the gesture set up (the album/playlist context's whole `originalOrder`,
+else the playing track). `playNext`, `jumpToQueueIndex` and the top-up itself
+leave it alone. The same lazy derivation is the upgrade path for a session
+remembered by a build that had no anchor to remember. The variety-chip vote
+names the anchor as its seed (`seedId` / `seedIds`), never the playing track.
+
+**Exclusion widened, with a narrow retry.** A fixed seed exhausts its pool
+sooner than a walk does, so `radioExcludeIds(wide)` sends what is playing, what
+is queued, the list's members and then history newest-first, up to the server's
+cap of 200 (`RADIO_EXCLUDE_CAP`; persisted history grew from 50 to match). When
+that wide pass comes back empty the provider asks once more with the narrow set
+(playing + queued + members): the server demotes recent plays, so the session
+is served its repeats oldest-first instead of ending. The starved latch is keyed
+on the anchor *and* the playing track, so a heard-out session is re-asked once
+per track — the old cadence — without ever being re-seeded.
+
+Pinned by `radio.test.ts` "a chained session" (the server side of the
+contract: the same seed stays in genre, re-seeding from the last answer walks
+across a bridge track), `player.service.spec.ts` "radio anchor",
+`radio-source.service.spec.ts`, and `radio-anchor.spec.ts` end to end on the
+genre-tagged fixtures.
 
 ### A radio queue has a depth, not a batch size (#1263)
 
@@ -95,8 +142,9 @@ Topping up is iterative by design: a round that lands short of the target leaves
 the queue below it, which fires the effect again and asks for what is still
 missing. A round that adds **nothing** latches instead (`radioStarvedSeed`) —
 without it, a library with nothing left to offer would be re-asked on every queue
-mutation for as long as radio stayed on. The latch is keyed on the seed, so a new
-seed, a new strategy or radio being turned on again all un-latch it. A *failed*
+mutation for as long as radio stayed on. The latch is keyed on the anchor and
+the playing track, so the next track, a new anchor, a new strategy or radio
+being turned on again all un-latch it. A *failed*
 fetch never latches: it says nothing about whether tracks exist, and the next
 drain is the retry.
 
@@ -661,10 +709,12 @@ mis-tracking case turns up.
 
 Client side, `PlayerService.radioFilter` remembers the active vibe so
 **auto-replenish stays in-vibe**: the layout `RadioProvider` calls
-`getFilterRadio(filter, …)` while `radioFilter` is set, falling back to
-seed/shuffle only if the filter is exhausted. `startRadioWithFilter(tracks, filter)`
-plays the first track, queues the rest, sets `radio` on, and stores the filter;
-starting seed radio or turning radio off clears it.
+`getFilterRadio(filter, …)` while `radioFilter` is set (wide exclude, then the
+narrow retry), falling back to the playing track only if the filter is
+exhausted — without touching `radioAnchor`, so the labels still say station.
+`startRadioWithFilter(tracks, filter)` plays the first track, queues the rest,
+sets `radio` on, and stores the filter; starting seed radio or turning radio
+off clears it.
 
 ## Keep the vibe (list-seeded radio)
 
@@ -762,8 +812,9 @@ tier-2 readiness trigger — see "Feed eligibility".
 The radio pill in Now Playing (`components/now-playing/radio-chip/`) grew a
 suffix. The main button keeps the `now-playing-radio` toggle contract; the
 chevron (`radio-chip-expand`) opens a panel that names what the radio is
-playing from — "Based on *title*" for a seed, "Station: *label*" via the shared
-`describeLibraryFilter` for a vibe — and a three-position control
+about — "Based on *title*" for a song anchor, "Based on the playlist *name*"
+for a list anchor, "Station: *label*" via the shared `describeLibraryFilter`
+for a vibe (never the playing track, #1277) — and a three-position control
 (`radio-variety`, `role="radiogroup"`, positions
 `radio-variety-too-similar|balanced|too-different`, ArrowLeft/Right move it).
 
@@ -777,7 +828,8 @@ inverted. A move does three things:
    queued is never touched — and refetches immediately with the new strategy.
 2. **Logs a vote.** `POST /api/recommendations/feedback` with kind
    `too_similar` / `balanced` / `too_different` against the playing track and a
-   context (`strategyFrom`, `strategyTo`, seed or filter). Votes never exclude;
+   context (`strategyFrom`, `strategyTo`, the anchor as `seedId`/`seedIds`, or
+   the filter). Votes never exclude;
    they are the raw material for a later per-user taste profile.
 3. **Remembers.** `PUT /api/recommendations/preferences` stores the strategy on
    `user_settings.radio_strategy`; `GET /api/auth/me` returns it and the app
@@ -905,15 +957,17 @@ Tapping a tile starts a **blend**, composed client-side in
    tail songs are members, so the component re-filters the variations against
    the _whole_ playlist id set — "never replay the list" is enforced
    client-side, not by the seed exclusion alone;
-3. the result is handed to `PlayerService.startRadioWithTracks(tracks)` — the
-   prepared-list sibling of `startRadioWithFilter` (play first, queue rest,
-   radio on, filter and context cleared). When the blend drains, the layout
-   `RadioProvider`'s **seed lane** continues from the current track; there is
-   deliberately no persisted "list vibe" replenish lane in this iteration.
+3. the result is handed to `PlayerService.startRadioWithTracks(tracks, list)` —
+   the prepared-list sibling of `startRadioWithFilter` (play first, queue rest,
+   radio on, filter and context cleared) — with the playlist as the session's
+   **list anchor** (#1277): when the blend drains, the top-up goes through the
+   same list lane with the members excluded, so the session stays about the
+   playlist rather than about whichever pick is playing.
 
 Failure modes degrade rather than dead-end: an empty shelf (a recipe that
 matched nothing) toasts instead of silently no-opping, and a radio-engine
-failure still plays the picks alone (the seed lane takes over from there).
+failure still plays the picks alone (the list-anchored top-up takes over from
+there).
 Curated covers are the designed gradient SVGs bundled with the SPA
 (`/playlist-covers/<slug>.svg`) rendered via a plain `<img>` — deliberately
 not `<app-cover-art>`, which rewrites `src` through the API base URL (see

@@ -20,6 +20,7 @@ describe('NowPlayingHeaderComponent', () => {
             setNowPlayingOpen,
             radio: signal(false),
             radioFilter: signal(null),
+            radioAnchor: signal(null),
             context: signal(null),
             currentTrack: signal(null),
           },

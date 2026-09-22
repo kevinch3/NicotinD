@@ -1647,3 +1647,97 @@ describe('radio /next — the learned genre axis with no centroids stored', () =
     expect(body.provenance).toMatchObject({ genreAxis: 'lexical', lane: 'seed' });
   });
 });
+
+/**
+ * The contract the player's anchored radio relies on (#1277): a session that
+ * keeps asking with the song it started from stays in that song's genre, while
+ * one that re-seeds from whatever was served last walks across a bridge track
+ * into a neighbouring genre. The server has no session state, so this is the
+ * client's `exclude` list accumulating across single-track calls.
+ */
+describe('radio /next — a chained session', () => {
+  let app: Hono;
+
+  beforeEach(() => {
+    testDb = createTestDb();
+    app = new Hono();
+    app.route('/radio', radioRoutes());
+    seedSong(testDb, {
+      id: 'S',
+      title: 'Seed',
+      artist: 'Seed Artist',
+      albumId: 'albS',
+      album: 'Seed Alb',
+      genre: 'Rock',
+      bpm: 120,
+      year: 2020,
+    });
+    // Rock neighbours: right genre, tempo a little off, one artist each.
+    for (let i = 0; i < 10; i++) {
+      seedSong(testDb, {
+        id: `rock-${i}`,
+        title: `Rock ${i}`,
+        artist: `Rock Artist ${i}`,
+        albumId: `albRock${i}`,
+        album: `Rock Alb ${i}`,
+        genre: 'Rock',
+        bpm: i < 5 ? 110 + i : 126 + i,
+        year: 2020,
+      });
+    }
+    // The bridge: Jazz-primary with Rock as a secondary tag, at the seed's tempo.
+    seedSong(testDb, {
+      id: 'B',
+      title: 'Bridge',
+      artist: 'Bridge Artist',
+      albumId: 'albB',
+      album: 'Bridge Alb',
+      genre: 'Jazz',
+      bpm: 120,
+      year: 2020,
+    });
+    testDb.run(
+      `INSERT INTO library_song_genres (song_id, genre, position) VALUES ('B', 'Jazz', 0), ('B', 'Rock', 1)`,
+    );
+    // Jazz: the bridge's genre at the bridge's tempo — closer to B than any Rock row.
+    for (let i = 0; i < 10; i++) {
+      seedSong(testDb, {
+        id: `jazz-${i}`,
+        title: `Jazz ${i}`,
+        artist: `Jazz Artist ${i}`,
+        albumId: `albJazz${i}`,
+        album: `Jazz Alb ${i}`,
+        genre: 'Jazz',
+        bpm: 120,
+        year: 2020,
+      });
+    }
+  });
+
+  /** One track per call, the client's exclude list growing as the session plays. */
+  async function chain(nextSeed: (served: string[]) => string, steps: number): Promise<string[]> {
+    const served: string[] = [];
+    for (let i = 0; i < steps; i++) {
+      const exclude = ['S', ...served].join(',');
+      const res = await app.request(
+        `/radio/next?seedId=${nextSeed(served)}&count=1&exclude=${exclude}`,
+      );
+      expect(res.status).toBe(200);
+      const ids = ((await res.json()) as Array<{ id: string }>).map((s) => s.id);
+      expect(ids.length).toBe(1);
+      served.push(ids[0]!);
+    }
+    return served;
+  }
+
+  it('stays in the seed genre when every call carries the original seed', async () => {
+    const served = await chain(() => 'S', 6);
+    expect(served.filter((id) => id.startsWith('jazz-'))).toEqual([]);
+  });
+
+  it('walks into the neighbouring genre when each call re-seeds from the last track', async () => {
+    const served = await chain((s) => s.at(-1) ?? 'S', 6);
+    expect(served[0]).toBe('B');
+    expect(served.some((id) => id.startsWith('jazz-'))).toBe(true);
+  });
+});

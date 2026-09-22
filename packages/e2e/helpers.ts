@@ -78,6 +78,15 @@ export const FIXTURE = {
     seed: { title: 'Nocturne' },
     suggested: { title: 'Nocturne Drift' },
   },
+  /**
+   * The only genre-tagged fixtures. Five Alpha artists x 2 tracks and two Beta
+   * artists x 2, so a radio held at depth 5 can stay in Alpha for a whole spec
+   * (#1277) and Beta is there to be drifted into. Titles are `<genre> <a>-<n>`.
+   */
+  genres: {
+    alpha: { genre: 'E2E Alpha', artists: 5, tracks: 10 },
+    beta: { genre: 'E2E Beta', artists: 2, tracks: 4 },
+  },
 } as const;
 
 /** auth header for direct API calls in setup/teardown. */

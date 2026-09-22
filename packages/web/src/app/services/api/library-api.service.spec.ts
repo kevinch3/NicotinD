@@ -27,6 +27,27 @@ describe('LibraryApiService', () => {
     req.flush([]);
   });
 
+  it('getListRadio carries exclude and provenance for the player lane, neither for a shelf (#1277)', () => {
+    service
+      .getListRadio(['a', 'b'], 1, 'balanced', { exclude: ['x', 'y'], provenance: true })
+      .subscribe();
+    const player = http.expectOne((r) => r.url === '/api/radio/next');
+    expect(player.request.params.get('seedIds')).toBe('a,b');
+    expect(player.request.params.get('exclude')).toBe('x,y');
+    expect(player.request.params.get('provenance')).toBe('1');
+    player.flush({
+      songs: [],
+      provenance: { formulaVersion: 1, genreAxis: 'tag', strategy: 'balanced', lane: 'list' },
+    });
+    expect(service.radioProvenance()?.lane).toBe('list');
+
+    service.getListRadio(['a'], 5).subscribe();
+    const shelf = http.expectOne((r) => r.url === '/api/radio/next');
+    expect(shelf.request.params.has('exclude')).toBe(false);
+    expect(shelf.request.params.has('provenance')).toBe(false);
+    shelf.flush([]);
+  });
+
   it('POSTs a genre to the song genre endpoint', () => {
     service.applyGenre('song-1', 'Reggae').subscribe();
     const req = http.expectOne('/api/library/songs/song-1/genre');

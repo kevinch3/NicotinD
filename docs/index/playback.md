@@ -77,6 +77,10 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   → [design-patterns.md](../design-patterns.md), [mcp-agent.md](../mcp-agent.md)
 - **Now Playing waveform + karaoke VFX**: rendered from a precomputed artifact.
   → [audio-ml-enrichment.md](../audio-ml-enrichment.md)
+- **A radio is about its anchor**: the song or list a radio was started from seeds every top-up
+  and names the session; a gesture re-anchors, a radio advance never does; the exclude window is
+  wide with a narrow retry. `RadioAnchor`, `radioAnchor`, `radioExcludeIds`, `RADIO_EXCLUDE_CAP`.
+  → [radio.md](../radio.md)
 - **A radio queue has a depth, not a batch size**: held at `radioQueueTarget` (admin-owned
   `RadioSettings.queueTarget`, default 20), refilling the shortfall rather than draining to two;
   `replenishRadio`, `radioStarvedSeed`, `isValidQueueTarget`. → [radio.md](../radio.md)

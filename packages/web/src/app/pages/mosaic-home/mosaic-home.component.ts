@@ -491,7 +491,16 @@ export class MosaicHomeComponent implements OnInit {
       this.toast.show({ message: 'That playlist is empty', kind: 'info' });
       return;
     }
-    this.player.startRadioWithTracks(detail.songs.map((s) => toTrack(s)));
+    const ids = detail.songs.map((s) => s.id);
+    // Anchored on the playlist (#1277): the top-up keeps to its vibe and the
+    // heading keeps its name, rather than following whatever track is playing.
+    this.player.startRadioWithTracks(
+      detail.songs.map((s) => toTrack(s)),
+      {
+        seedIds: ids,
+        name: detail.name,
+      },
+    );
   }
 
   /**

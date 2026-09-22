@@ -55,6 +55,59 @@ function isPlayContext(v: unknown): v is PlayContext {
   return typeof v === 'object' && v !== null && Array.isArray((v as PlayContext).originalOrder);
 }
 
+/**
+ * What a radio session is *about*, fixed when it starts (#1277).
+ *
+ * A song radio used to hand the provider whatever was playing, so after the
+ * first fill every top-up was one hop from its predecessor — a walk, not a
+ * station. The anchor is the seed for every top-up and the name in the Now
+ * Playing labels; a filter radio needs none because `radioFilter` already is
+ * one. `ids` is what the server takes as `seedIds` (it caps the list at 20);
+ * `members` is the whole list, kept out of the answers.
+ */
+export type RadioAnchor =
+  | { kind: 'song'; id: string; title: string }
+  | { kind: 'list'; ids: string[]; members: string[]; name?: string };
+
+const isStringArray = (v: unknown): v is string[] =>
+  Array.isArray(v) && v.every((x) => typeof x === 'string');
+
+export function isRadioAnchor(v: unknown): v is RadioAnchor {
+  if (typeof v !== 'object' || v === null) return false;
+  const a = v as Partial<RadioAnchor>;
+  if (a.kind === 'song') return typeof a.id === 'string' && typeof a.title === 'string';
+  if (a.kind === 'list') return isStringArray(a.ids) && isStringArray(a.members);
+  return false;
+}
+
+/** The server takes at most this many `seedIds`. */
+const LIST_ANCHOR_SEEDS = 20;
+
+/**
+ * How many ids a radio fetch may ask the server to keep out — mirrors
+ * `MAX_EXCLUDE_IDS` in `packages/api/src/routes/radio.ts`. Persisted history
+ * is held to the same length so the window survives a reload.
+ */
+export const RADIO_EXCLUDE_CAP = 200;
+
+function songAnchor(track: Track): RadioAnchor {
+  return { kind: 'song', id: track.id, title: track.title };
+}
+
+function listAnchor(seedIds: string[], memberIds: string[], name?: string): RadioAnchor {
+  return {
+    kind: 'list',
+    ids: seedIds.slice(0, LIST_ANCHOR_SEEDS),
+    members: memberIds.slice(0, RADIO_EXCLUDE_CAP),
+    ...(name ? { name } : {}),
+  };
+}
+
+function anchorKey(anchor: RadioAnchor | null): string {
+  if (!anchor) return 'none';
+  return anchor.kind === 'song' ? `song:${anchor.id}` : `list:${anchor.ids.join(',')}`;
+}
+
 export function shuffleArray<T>(arr: T[]): T[] {
   const result = [...arr];
   for (let i = result.length - 1; i > 0; i--) {
@@ -74,6 +127,8 @@ function radioQueued(t: Track): Track {
 export type RadioProvider = (seed: {
   currentTrack: Track | null;
   context: PlayContext | null;
+  /** What the session is about — the seed of every top-up. Null for a filter radio. */
+  anchor: RadioAnchor | null;
   /** The listener's current variety position, as a named strategy. */
   strategy: StrategyId;
   /**
@@ -115,6 +170,10 @@ export class PlayerService {
   // pulling in-vibe tracks (via the radio provider) instead of re-seeding off
   // the current song. Null for seed radio / radio off. Persisted with `radio`.
   readonly radioFilter = signal<LibraryFilter | null>(null);
+  // The song or list a radio was started from; every top-up is seeded from it
+  // (see RadioAnchor). Null for a filter radio and when radio is off. A user
+  // gesture clears it and the next top-up derives a fresh one. Persisted.
+  readonly radioAnchor = signal<RadioAnchor | null>(null);
   // The variety position (docs/radio.md "Strategies"): which named recipe the
   // radio provider asks for. Remembered here across sessions and, per user, on
   // the server; the chip in Now Playing is its control.
@@ -165,19 +224,10 @@ export class PlayerService {
         localStorage.removeItem(PlayerService.STORAGE_KEY);
         return;
       }
-      const snapshot = {
+      const snapshot = this.snapshot(
         currentTrack,
-        queue: this.queue(),
-        history: this.history().slice(-50),
-        shuffle: this.shuffle(),
-        repeat: this.repeat(),
-        radio: this.radio(),
-        radioFilter: this.radioFilter(),
-        radioStrategy: this.radioStrategy(),
-        context: this.context(),
-        currentTime: untracked(() => this.currentTime()),
-        wasPlaying: this.isPlaying(),
-      };
+        untracked(() => this.currentTime()),
+      );
       try {
         localStorage.setItem(PlayerService.STORAGE_KEY, JSON.stringify(snapshot));
       } catch {
@@ -205,19 +255,7 @@ export class PlayerService {
       const currentTrack = this.currentTrack();
       if (currentTrack === null) return;
       try {
-        const snapshot = {
-          currentTrack,
-          queue: this.queue(),
-          history: this.history().slice(-50),
-          shuffle: this.shuffle(),
-          repeat: this.repeat(),
-          radio: this.radio(),
-          radioFilter: this.radioFilter(),
-          radioStrategy: this.radioStrategy(),
-          context: this.context(),
-          currentTime: this.currentTime(),
-          wasPlaying: this.isPlaying(),
-        };
+        const snapshot = this.snapshot(currentTrack, this.currentTime());
         localStorage.setItem(PlayerService.STORAGE_KEY, JSON.stringify(snapshot));
       } catch {
         /* ignore */
@@ -232,6 +270,24 @@ export class PlayerService {
       },
       { passive: true },
     );
+  }
+
+  /** The one shape both persistence paths write, so a field cannot land in one and not the other. */
+  private snapshot(currentTrack: Track, currentTime: number) {
+    return {
+      currentTrack,
+      queue: this.queue(),
+      history: this.history().slice(-RADIO_EXCLUDE_CAP),
+      shuffle: this.shuffle(),
+      repeat: this.repeat(),
+      radio: this.radio(),
+      radioFilter: this.radioFilter(),
+      radioAnchor: this.radioAnchor(),
+      radioStrategy: this.radioStrategy(),
+      context: this.context(),
+      currentTime,
+      wasPlaying: this.isPlaying(),
+    };
   }
 
   restoreState(): void {
@@ -251,6 +307,8 @@ export class PlayerService {
       if (state['radio'] != null) this.radio.set(Boolean(state['radio']));
       const rf = state['radioFilter'];
       this.radioFilter.set(rf && typeof rf === 'object' ? (rf as LibraryFilter) : null);
+      const ra = state['radioAnchor'];
+      this.radioAnchor.set(isRadioAnchor(ra) ? ra : null);
       if (isStrategyId(state['radioStrategy'])) this.radioStrategy.set(state['radioStrategy']);
       if (isPlayContext(state['context'])) this.context.set(state['context']);
       if (typeof state['currentTime'] === 'number' && state['currentTime'] > 1) {
@@ -272,6 +330,7 @@ export class PlayerService {
     this.queue.set([]);
     this.history.set([]);
     this.context.set(null);
+    this.radioAnchor.set(null); // a gesture: the next top-up is about this song
     this.play(track);
   }
 
@@ -302,12 +361,13 @@ export class PlayerService {
     this.queue.update((q) => [track, ...q]);
   }
 
-  /** Start radio seeded on a specific song: play it, then enable radio (which
-   * replenishes from the current track). Clears any filter "vibe". */
+  /** Start radio about a specific song: play it, anchor the session on it, and
+   * enable radio. Clears any filter "vibe". */
   startRadio(track: Track): void {
     this.radioFilter.set(null);
     // A leftover queue would play out before radio ever kicked in.
     this.playSingle(track);
+    this.radioAnchor.set(songAnchor(track));
     if (!this.radio()) this.toggleRadio();
   }
 
@@ -318,6 +378,7 @@ export class PlayerService {
     if (tracks.length === 0) return;
     const [first, ...rest] = tracks;
     this.radioFilter.set(filter);
+    this.radioAnchor.set(null);
     this.context.set(null);
     this.play(first);
     this.queue.set(rest.map(radioQueued));
@@ -327,12 +388,21 @@ export class PlayerService {
   }
 
   /** Start radio from a prepared track list (e.g. a tastemaker blend): play the
-   * first, queue the rest, radio on. Clears any filter "vibe" — when the queue
-   * drains, replenish re-seeds from the current track (the seed lane). */
-  startRadioWithTracks(tracks: Track[]): void {
+   * first, queue the rest, radio on. Clears any filter "vibe". With `list` the
+   * session stays about that list (the server's `seedIds` lane); without it,
+   * about the first track. */
+  startRadioWithTracks(
+    tracks: Track[],
+    list?: { seedIds: string[]; memberIds?: string[]; name?: string },
+  ): void {
     if (tracks.length === 0) return;
     const [first, ...rest] = tracks;
     this.radioFilter.set(null);
+    this.radioAnchor.set(
+      list
+        ? listAnchor(list.seedIds, list.memberIds ?? list.seedIds, list.name)
+        : songAnchor(first),
+    );
     this.context.set(null);
     this.play(first);
     this.queue.set(rest.map(radioQueued));
@@ -459,13 +529,14 @@ export class PlayerService {
   private radioProvider: RadioProvider | null = null;
   private replenishing = false;
   /**
-   * The seed a replenish already came back empty-handed for.
+   * The anchor + playing track a replenish already came back empty-handed for.
    *
    * Topping up to a depth means the effect re-fires on every append, so a
    * library with nothing left to offer would be re-asked on every single queue
    * mutation for as long as radio stayed on. The latch holds that off until
-   * something that could change the answer moves — a new seed, a new strategy,
-   * or radio being turned on again.
+   * something that could change the answer moves — the next track (the
+   * exclude window moved), a new anchor, a new strategy, or radio being turned
+   * on again.
    */
   private radioStarvedSeed: string | null = null;
 
@@ -483,7 +554,46 @@ export class PlayerService {
     if (this.radio()) {
       this.radioStarvedSeed = null;
       untracked(() => void this.replenishRadio());
-    } else this.radioFilter.set(null); // turning radio off ends the filter "vibe"
+    } else {
+      // Turning radio off ends the session: the filter "vibe" and the anchor.
+      this.radioFilter.set(null);
+      this.radioAnchor.set(null);
+    }
+  }
+
+  /**
+   * What a session with no anchor yet is about: the album or playlist it grew
+   * out of (the whole list, not the queue — that shrinks as it plays and holds
+   * the radio tail), else the playing track. Runs when radio is turned on over
+   * an existing queue, after a gesture cleared the anchor, and once for a
+   * session remembered by a build that had no anchor to remember.
+   */
+  private deriveAnchor(): RadioAnchor | null {
+    const context = this.context();
+    if (context && (context.type === 'album' || context.type === 'playlist')) {
+      const ids = context.originalOrder.map((t) => t.id);
+      if (ids.length) return listAnchor(ids, ids, context.name);
+    }
+    const current = this.currentTrack();
+    return current ? songAnchor(current) : null;
+  }
+
+  /**
+   * What a top-up asks the server to keep out, in the order that matters when
+   * the cap cuts it: what is playing, what is queued, the anchored list's own
+   * members, then history newest first. `wide` is the normal pass; the narrow
+   * one drops history so a session that has heard everything is served its
+   * repeats oldest-first (the server demotes recent plays) instead of ending.
+   */
+  radioExcludeIds(wide: boolean): string[] {
+    const anchor = this.radioAnchor();
+    const ids = [
+      this.currentTrack()?.id,
+      ...this.queue().map((t) => t.id),
+      ...(anchor?.kind === 'list' ? anchor.members : []),
+      ...(wide ? [...this.history()].reverse().map((t) => t.id) : []),
+    ].filter((id): id is string => !!id);
+    return [...new Set(ids)].slice(0, RADIO_EXCLUDE_CAP);
   }
 
   /**
@@ -536,22 +646,29 @@ export class PlayerService {
     if (!this.radioProvider || this.replenishing) return;
     const deficit = this.radioQueueTarget() - this.queue().length;
     if (deficit <= 0) return;
-    const seed = this.currentTrack()?.id ?? PlayerService.NO_RADIO_SEED;
+    if (!this.radioFilter() && !this.radioAnchor()) this.radioAnchor.set(this.deriveAnchor());
+    const anchor = this.radioAnchor();
+    // Keyed on the anchor *and* the playing track: a starved session is
+    // re-asked once per track (the exclude window has moved), never re-seeded.
+    const seed = `${this.radioFilter() ? 'filter' : anchorKey(anchor)}|${
+      this.currentTrack()?.id ?? PlayerService.NO_RADIO_SEED
+    }`;
     if (this.radioStarvedSeed === seed) return;
     this.replenishing = true;
     try {
       const more = await this.radioProvider({
         currentTrack: this.currentTrack(),
         context: this.context(),
+        anchor,
         strategy: this.radioStrategy(),
         count: deficit,
       });
+      // Only what is playing or queued is off limits here: the provider may
+      // have chosen to serve a repeat from history on purpose (see
+      // radioExcludeIds), and dropping it would latch the session instead.
       const seen = new Set<string>([
         this.currentTrack()?.id ?? '',
         ...this.queue().map((t) => t.id),
-        ...this.history()
-          .slice(-20)
-          .map((t) => t.id),
       ]);
       const fresh = more.filter((t) => t.id && !seen.has(t.id)).map(radioQueued);
       if (fresh.length) {
@@ -587,6 +704,7 @@ export class PlayerService {
     this.isPlaying.set(true);
     this.queue.set(queue);
     this.history.set([]);
+    this.radioAnchor.set(null); // a gesture: the next top-up is about this list
     this.context.set({
       type: contextInfo?.type ?? 'adhoc',
       id: contextInfo?.id,

@@ -25,9 +25,10 @@ test.describe('TV browse', () => {
     await expect(page.getByTestId('tv-artist-card').first()).toBeVisible();
     await expect(page).toHaveScreenshot('browse-artists.png');
 
-    // The fixtures carry no genre tag, so this tab is the honest empty state.
+    // The two genre-tagged catalogues (helpers.ts `FIXTURE.genres`) are the only
+    // genres in the library, so this tab has exactly those to show.
     await page.locator('[data-tab="genres"]').click();
-    await expect(page.getByTestId('tv-browse-empty')).toBeVisible();
+    await expect(page.getByTestId('tv-genre-card')).toHaveCount(2);
   });
 
   test('an album is cover, title, Play and the tracklist', async ({ page }) => {

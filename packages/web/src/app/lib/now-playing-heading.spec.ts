@@ -54,7 +54,55 @@ describe('nowPlayingHeading', () => {
     expect(h.params!['name'].length).toBeGreaterThan(0);
   });
 
-  it('falls back to the seed track, then to a bare Radio', () => {
+  /**
+   * #1277: the heading named the *playing* track, so a song radio was renamed
+   * after every song. It names the anchor now, and keeps it as tracks advance.
+   */
+  it('names the anchor over the context and the playing track, and holds it across tracks', () => {
+    const song = { kind: 'song', id: 'x', title: 'Mujeres' } as const;
+    for (const trackTitle of ['Mujeres', 'Otra', 'Y otra']) {
+      expect(
+        nowPlayingHeading({
+          radio: true,
+          radioFilter: null,
+          radioAnchor: song,
+          context: ctx('album', 'Crece'),
+          trackTitle,
+        }),
+      ).toEqual({ key: 'nowPlaying.headingRadioAbout', params: { name: 'Mujeres' } });
+    }
+    expect(
+      nowPlayingHeading({
+        radio: true,
+        radioFilter: null,
+        radioAnchor: { kind: 'list', ids: ['a'], members: ['a'], name: 'Fresh this week' },
+        context: null,
+        trackTitle: 'Otra',
+      }),
+    ).toEqual({ key: 'nowPlaying.headingRadioAbout', params: { name: 'Fresh this week' } });
+    // A nameless list says what it can: the context, else the playing track.
+    expect(
+      nowPlayingHeading({
+        radio: true,
+        radioFilter: null,
+        radioAnchor: { kind: 'list', ids: ['a'], members: ['a'] },
+        context: null,
+        trackTitle: 'Otra',
+      }),
+    ).toEqual({ key: 'nowPlaying.headingRadioAbout', params: { name: 'Otra' } });
+  });
+
+  it('still prefers the station filter over an anchor left behind', () => {
+    const h = nowPlayingHeading({
+      radio: true,
+      radioFilter: { genres: ['reggae'] },
+      radioAnchor: { kind: 'song', id: 'x', title: 'Mujeres' },
+      context: null,
+    });
+    expect(h.params!['name']).not.toBe('Mujeres');
+  });
+
+  it('falls back to the playing track when nothing is anchored yet, then to a bare Radio', () => {
     expect(
       nowPlayingHeading({
         radio: true,

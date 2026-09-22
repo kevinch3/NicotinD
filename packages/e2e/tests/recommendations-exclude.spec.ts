@@ -30,7 +30,7 @@ test.describe('per-user recommendation exclusions', () => {
     expect(vote.status()).toBe(201);
 
     // Radio never serves it, however many times it is asked. The fixture
-    // library is 10 songs, so a count of 20 would otherwise return everything.
+    // library is 24 songs, so a count of 20 would otherwise reach most of it.
     for (let i = 0; i < 3; i++) {
       const res = await request.get(`/api/radio/next?seedId=${seed}&count=20`, { headers: auth });
       expect(res.ok()).toBeTruthy();

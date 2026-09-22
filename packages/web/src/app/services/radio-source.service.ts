@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
-import { firstValueFrom } from 'rxjs';
-import { PlayerService, shuffleArray } from './player.service';
+import { firstValueFrom, type Observable } from 'rxjs';
+import type { Song } from './api/api-types';
+import { PlayerService, shuffleArray, type Track } from './player.service';
 import { LibraryApiService } from './api/library-api.service';
 import { SystemApiService } from './api/system-api.service';
 import { toTrack } from '../lib/track-utils';
@@ -68,40 +69,48 @@ export class RadioSourceService {
     this.player.setRadioProvider(async (seed) => {
       // Cheap after the first success; the retry only matters on a cold launch.
       await this.syncQueueTarget();
-      const exclude = [
-        seed.currentTrack?.id,
-        ...this.player.queue().map((t) => t.id),
-        ...this.player
-          .history()
-          .slice(-20)
-          .map((t) => t.id),
-      ].filter((id): id is string => !!id);
+      const { count, strategy } = seed;
+      const opts = { provenance: true };
+      // Two passes per lane: the wide exclude first (everything heard lately),
+      // then, if the library has nothing else to give, a narrow one that keeps
+      // out only what is playing or queued — the server demotes recent plays,
+      // so the repeats come back oldest-first instead of the session ending.
+      const twoPass = async (
+        fetch: (exclude: string[]) => Observable<Song[]>,
+      ): Promise<Track[]> => {
+        for (const wide of [true, false]) {
+          const songs = await firstValueFrom(fetch(this.player.radioExcludeIds(wide)));
+          if (songs.length) return songs.map((s) => toTrack(s));
+        }
+        return [];
+      };
 
       // Filter "vibe" radio: keep pulling in-filter tracks so the mood holds.
       const filter = this.player.radioFilter();
       if (filter) {
-        const songs = await firstValueFrom(
-          // The player lane is the one that reports provenance (#1124) — the
-          // chip describes the radio you are hearing, not a shelf's query.
-          this.api.getFilterRadio(filter, exclude, seed.count, seed.strategy, { provenance: true }),
+        const inVibe = await twoPass((exclude) =>
+          this.api.getFilterRadio(filter, exclude, count, strategy, opts),
         );
-        if (songs.length) return songs.map((s) => toTrack(s));
-        // Filter exhausted → fall through to seed/shuffle so playback continues.
+        if (inVibe.length) return inVibe;
+        // Filter exhausted → fall through to the playing track so playback
+        // continues; the anchor stays untouched, so the labels still say station.
       }
 
-      if (!seed.currentTrack) {
+      const anchor = filter ? null : seed.anchor;
+      if (anchor?.kind === 'list') {
+        return twoPass((exclude) =>
+          this.api.getListRadio(anchor.ids, count, strategy, { ...opts, exclude }),
+        );
+      }
+      const seedId = anchor?.kind === 'song' ? anchor.id : seed.currentTrack?.id;
+      if (!seedId) {
         // Cold start: nothing to be similar to, so shuffle the recent library and
         // hand back only the depth asked for. Once a track is playing the seed
         // lane below takes over, so this pool is drawn at most once per start.
         const songs = await firstValueFrom(this.api.getAllSongs(200, 0, { sort: 'newest' }));
-        return shuffleArray(songs.map((s) => toTrack(s))).slice(0, seed.count);
+        return shuffleArray(songs.map((s) => toTrack(s))).slice(0, count);
       }
-      const songs = await firstValueFrom(
-        this.api.getRadioNext(seed.currentTrack.id, exclude, seed.count, seed.strategy, {
-          provenance: true,
-        }),
-      );
-      return songs.map((s) => toTrack(s));
+      return twoPass((exclude) => this.api.getRadioNext(seedId, exclude, count, strategy, opts));
     });
   }
 }

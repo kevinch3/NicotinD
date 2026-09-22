@@ -56,8 +56,16 @@ export class RadioChipComponent {
     if (filter) {
       return this.i18n.t('nowPlaying.radioStation', { label: describeLibraryFilter(filter) });
     }
-    const track = this.player.currentTrack();
-    return track ? this.i18n.t('nowPlaying.radioSeed', { title: track.title }) : '';
+    // The anchor, not the playing track: a song radio is about the song it
+    // started from, however far along it is (#1277).
+    const anchor = this.player.radioAnchor();
+    if (anchor?.kind === 'list') {
+      return anchor.name
+        ? this.i18n.t('nowPlaying.radioList', { name: anchor.name })
+        : this.i18n.t('nowPlaying.radioListUnnamed');
+    }
+    const title = anchor?.kind === 'song' ? anchor.title : this.player.currentTrack()?.title;
+    return title ? this.i18n.t('nowPlaying.radioSeed', { title }) : '';
   });
 
   /**
@@ -105,12 +113,17 @@ export class RadioChipComponent {
     this.player.setRadioStrategy(to);
     const track = this.player.currentTrack();
     if (track) {
+      // The vote is against the playing track, in the context of what the
+      // radio is about: its filter, or its anchor (#1277).
+      const filter = this.player.radioFilter();
+      const anchor = filter ? null : this.player.radioAnchor();
       void firstValueFrom(
         this.api.feedback(track.id, KIND_FOR_VARIETY[v], {
           strategyFrom: from,
           strategyTo: to,
-          seedId: this.player.radioFilter() ? undefined : track.id,
-          filter: this.player.radioFilter() ?? undefined,
+          seedId: anchor?.kind === 'song' ? anchor.id : undefined,
+          seedIds: anchor?.kind === 'list' ? anchor.ids : undefined,
+          filter: filter ?? undefined,
         }),
       ).catch(() => {});
     }

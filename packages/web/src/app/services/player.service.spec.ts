@@ -1,6 +1,13 @@
 import { TestBed, getTestBed } from '@angular/core/testing';
 import { effect } from '@angular/core';
-import { PlayerService, type Track, type PlayContext } from './player.service';
+import {
+  PlayerService,
+  RADIO_EXCLUDE_CAP,
+  type RadioAnchor,
+  type RadioProvider,
+  type Track,
+  type PlayContext,
+} from './player.service';
 import { vi } from 'vitest';
 
 const track1: Track = { id: 't1', title: 'Track 1', artist: 'Artist A' };
@@ -624,7 +631,7 @@ describe('PlayerService', () => {
       expect(provider).toHaveBeenCalledTimes(2);
     });
 
-    it('asks again once the seed moves on', async () => {
+    it('asks again once the track moves on — the exclude window moved, the seed did not', async () => {
       const provider = vi.fn(async () => [track2]);
       service.radioQueueTarget.set(20);
       service.setRadioProvider(provider);
@@ -634,7 +641,7 @@ describe('PlayerService', () => {
       await settle();
       provider.mockClear();
 
-      service.playNext(); // t2 becomes current — a different seed to ask about
+      service.playNext(); // t2 becomes current — the window moved, same anchor (#1277)
       await settle();
 
       expect(provider).toHaveBeenCalled();
@@ -1020,5 +1027,248 @@ describe('radio strategy (variety position)', () => {
     service.setRadioStrategy('different');
     expect(service.queue().map((q) => q.id)).toEqual(['r1']);
     expect(provider).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * A song radio is about the song it started from, for the whole session
+ * (#1277). It used to hand the provider whatever was playing, so after the
+ * first fill every top-up was one hop from its predecessor — a walk, not a
+ * station — and the labels renamed the session after every track.
+ */
+describe('radio anchor (#1277)', () => {
+  const STORAGE_KEY = 'nicotind_player_state';
+  const t = (id: string, queuedBy?: 'radio' | 'user'): Track => ({
+    id,
+    title: `Title ${id}`,
+    artist: 'A',
+    ...(queuedBy ? { queuedBy } : {}),
+  });
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+  const settle = async (rounds = 6) => {
+    for (let i = 0; i < rounds; i++) {
+      TestBed.flushEffects();
+      await flush();
+    }
+  };
+  let service: PlayerService;
+  let provider: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    localStorage.clear();
+    TestBed.configureTestingModule({});
+    service = TestBed.inject(PlayerService);
+    service.clear();
+    let n = 0;
+    provider = vi.fn(async ({ count }: { count: number }) =>
+      Array.from({ length: count }, () => t(`g${++n}`)),
+    );
+    service.setRadioProvider(provider as unknown as RadioProvider);
+    service.radioQueueTarget.set(3);
+  });
+  afterEach(() => localStorage.clear());
+
+  const anchorsSeen = () =>
+    provider.mock.calls.map((c) => (c[0] as { anchor: RadioAnchor | null }).anchor);
+
+  it('startRadio anchors the session on that song', async () => {
+    service.startRadio(t('seed'));
+    await settle();
+
+    expect(service.radioAnchor()).toEqual({ kind: 'song', id: 'seed', title: 'Title seed' });
+    expect(anchorsSeen()[0]).toEqual({ kind: 'song', id: 'seed', title: 'Title seed' });
+  });
+
+  it('keeps handing the provider the seed as the session advances', async () => {
+    service.startRadio(t('seed'));
+    await settle();
+    service.playNext();
+    await settle();
+    service.playNext();
+    await settle();
+
+    expect(service.currentTrack()?.id).not.toBe('seed');
+    expect(new Set(anchorsSeen().map((a) => a && a.kind === 'song' && a.id))).toEqual(
+      new Set(['seed']),
+    );
+    expect(provider.mock.calls.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('a starved anchor is re-asked once per track, with the same anchor', async () => {
+    provider.mockImplementation(async () => [t('only')]);
+    service.startRadio(t('seed'));
+    await settle();
+    // One round landed `only`, one came back with nothing new, then quiet.
+    expect(provider).toHaveBeenCalledTimes(2);
+    service.addToQueue(t('mine', 'user'));
+    await settle();
+    expect(provider).toHaveBeenCalledTimes(2);
+
+    service.playNext();
+    await settle();
+
+    expect(provider.mock.calls.length).toBeGreaterThan(2);
+    expect(anchorsSeen().at(-1)).toEqual({ kind: 'song', id: 'seed', title: 'Title seed' });
+  });
+
+  it('startRadioWithTracks anchors on the list it was given, first 20 as seeds, all as members', () => {
+    const tracks = Array.from({ length: 25 }, (_, i) => t(`p${i}`));
+    service.startRadioWithTracks(tracks, {
+      seedIds: tracks.map((x) => x.id),
+      name: 'Fresh this week',
+    });
+
+    const anchor = service.radioAnchor();
+    expect(anchor?.kind).toBe('list');
+    if (anchor?.kind !== 'list') return;
+    expect(anchor.ids).toEqual(tracks.slice(0, 20).map((x) => x.id));
+    expect(anchor.members).toEqual(tracks.map((x) => x.id));
+    expect(anchor.name).toBe('Fresh this week');
+  });
+
+  it('startRadioWithTracks without a list anchors on its first track', () => {
+    service.startRadioWithTracks([t('a'), t('b')]);
+    expect(service.radioAnchor()).toEqual({ kind: 'song', id: 'a', title: 'Title a' });
+  });
+
+  it('a filter radio carries no anchor, and radio off drops it', () => {
+    service.startRadio(t('seed'));
+    service.startRadioWithFilter([t('v1'), t('v2')], { genres: ['Ambient'] });
+    expect(service.radioAnchor()).toBeNull();
+
+    service.startRadio(t('seed'));
+    expect(service.radioAnchor()).not.toBeNull();
+    service.toggleRadio();
+    expect(service.radioAnchor()).toBeNull();
+  });
+
+  it('a user gesture re-anchors; a radio advance never does', async () => {
+    service.startRadio(t('seed'));
+    await settle();
+
+    service.playNext();
+    service.jumpToQueueIndex(0);
+    expect(service.radioAnchor()).toEqual({ kind: 'song', id: 'seed', title: 'Title seed' });
+
+    service.playSingle(t('other'));
+    expect(service.radioAnchor()).toBeNull();
+    await settle();
+    // Radio is still on, so the next top-up derives a fresh anchor from the gesture.
+    expect(anchorsSeen().at(-1)).toEqual({ kind: 'song', id: 'other', title: 'Title other' });
+
+    service.playWithContext([t('x'), t('y')], 0, { type: 'album', id: 'alb', name: 'Alb' });
+    await settle();
+    const last = anchorsSeen().at(-1);
+    expect(last?.kind).toBe('list');
+    if (last?.kind === 'list') expect(last.ids).toEqual(['x', 'y']);
+  });
+
+  it('radio turned on over an album anchors on the album, not on the shrinking queue', async () => {
+    service.playWithContext([t('a1'), t('a2'), t('a3')], 1, {
+      type: 'album',
+      id: 'alb',
+      name: 'Alb',
+    });
+    service.toggleRadio();
+    await settle();
+
+    expect(service.radioAnchor()).toEqual({
+      kind: 'list',
+      ids: ['a1', 'a2', 'a3'],
+      members: ['a1', 'a2', 'a3'],
+      name: 'Alb',
+    });
+  });
+
+  it('a remembered session with no anchor derives one on its first top-up (upgrade path)', async () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ currentTrack: t('cur'), radio: true, queue: [] }),
+    );
+    service.restoreState();
+    await settle();
+
+    expect(service.radioAnchor()).toEqual({ kind: 'song', id: 'cur', title: 'Title cur' });
+  });
+
+  it('persists the anchor and restores it', () => {
+    service.startRadio(t('seed'));
+    TestBed.flushEffects();
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).radioAnchor).toEqual({
+      kind: 'song',
+      id: 'seed',
+      title: 'Title seed',
+    });
+
+    getTestBed().resetTestingModule();
+    const fresh = TestBed.inject(PlayerService);
+    fresh.restoreState();
+    expect(fresh.radioAnchor()).toEqual({ kind: 'song', id: 'seed', title: 'Title seed' });
+  });
+
+  it('ignores a malformed anchor in the snapshot', () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ currentTrack: t('cur'), radio: true, radioAnchor: { kind: 'song' } }),
+    );
+    service.restoreState();
+    expect(service.radioAnchor()).toBeNull();
+  });
+
+  describe('radioExcludeIds', () => {
+    it('wide: current, queue, list members, then history newest first, capped', () => {
+      service.play(t('cur'));
+      service.queue.set([t('q1'), t('q2')]);
+      service.history.set([t('old'), t('mid'), t('new')]);
+      service.radioAnchor.set({ kind: 'list', ids: ['m1'], members: ['m1', 'm2'] });
+
+      expect(service.radioExcludeIds(true)).toEqual([
+        'cur',
+        'q1',
+        'q2',
+        'm1',
+        'm2',
+        'new',
+        'mid',
+        'old',
+      ]);
+    });
+
+    it('narrow: no history, so the server can serve repeats oldest-first', () => {
+      service.play(t('cur'));
+      service.queue.set([t('q1')]);
+      service.history.set([t('old')]);
+      service.radioAnchor.set({ kind: 'song', id: 'seed', title: 'S' });
+
+      expect(service.radioExcludeIds(false)).toEqual(['cur', 'q1']);
+    });
+
+    it('never exceeds the server cap, dropping the oldest history first', () => {
+      service.play(t('cur'));
+      service.history.set(Array.from({ length: 300 }, (_, i) => t(`h${i}`)));
+
+      const ids = service.radioExcludeIds(true);
+      expect(ids.length).toBe(RADIO_EXCLUDE_CAP);
+      expect(ids[1]).toBe('h299');
+      expect(ids).not.toContain('h0');
+    });
+
+    it('persists enough history to fill the cap', () => {
+      service.play(t('cur'));
+      service.history.set(Array.from({ length: 300 }, (_, i) => t(`h${i}`)));
+      TestBed.flushEffects();
+      expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).history.length).toBe(RADIO_EXCLUDE_CAP);
+    });
+  });
+
+  it('accepts a repeat the provider chose to serve, as long as it is not queued or playing', async () => {
+    service.play(t('cur'));
+    service.history.set([t('played')]);
+    provider.mockImplementation(async () => [t('played'), t('cur')]);
+
+    service.toggleRadio();
+    await settle();
+
+    expect(service.queue().map((x) => x.id)).toEqual(['played']);
   });
 });
