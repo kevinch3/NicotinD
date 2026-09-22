@@ -31,7 +31,7 @@ brings the audio back to them.
 
 You can also rename the device here (e.g. "Living Room TV") so it is easy to spot in the picker.
 
-### The picker hides when there is nothing to pick (#1262)
+### The picker hides when there is nothing to pick (#1263)
 
 The cast button used to render unconditionally, on every device including the
 only one you own. That put a permanent dead control immediately beside Next — a

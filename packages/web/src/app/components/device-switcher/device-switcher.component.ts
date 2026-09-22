@@ -45,7 +45,7 @@ export class DeviceSwitcherComponent {
    * The button used to render unconditionally, which on the common
    * single-device setup put a permanent dead control immediately beside Next —
    * a near-miss for the thumb aiming at it, whose only reward was a panel
-   * saying "no other devices" (#1262). It appears when the roster holds
+   * saying "no other devices" (#1263). It appears when the roster holds
    * something other than this device, listed-but-unavailable included: that is
    * still a device worth telling the listener about, and the panel already says
    * so per row.

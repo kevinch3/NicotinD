@@ -156,7 +156,7 @@ describe('RadioSourceService', () => {
 
   /**
    * The batch size used to be a `10` written in this file, so the depth the
-   * listener saw and the depth an admin set lived in different places (#1262).
+   * listener saw and the depth an admin set lived in different places (#1263).
    * Every lane now asks for exactly what the queue is short of.
    */
   it('asks each lane for the shortfall the player names, not a fixed batch', async () => {

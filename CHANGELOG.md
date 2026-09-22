@@ -7,6 +7,20 @@ All notable changes to this project will be documented in this file. See [commit
 ### Bug Fixes
 
 * **tags:** write BPM to the atom the mp4 muxer actually reads ([#1267](https://github.com/kevinch3/NicotinD/issues/1267)) ([bd3fdca](https://github.com/kevinch3/NicotinD/commit/bd3fdca4b1ea827d7eca435aeb554c6e29425a5a)), closes [#1177](https://github.com/kevinch3/NicotinD/issues/1177) [#1177](https://github.com/kevinch3/NicotinD/issues/1177), references [#1151](https://github.com/kevinch3/NicotinD/issues/1151)
+
+### Features
+
+<!-- Added by hand. These shipped in this release but the generator could not see
+     them: [#1263](https://github.com/kevinch3/NicotinD/pull/1263) squash-merged five `feat:` commits under a title
+     with no conventional-commit type, so their types survive only in that commit's
+     body, which `commit-and-tag-version` does not read. `check:pr-title` now stops
+     a title like that from landing — see docs/releasing.md. -->
+
+* **radio:** hold the queue at a depth instead of refilling in batches ([#1263](https://github.com/kevinch3/NicotinD/pull/1263)) ([beffb06](https://github.com/kevinch3/NicotinD/commit/beffb068da3d921fe100c13d33696170f3d12aad))
+* **offline:** stop downloading without losing the downloads, and keep only the playing track ([#1263](https://github.com/kevinch3/NicotinD/pull/1263)) ([beffb06](https://github.com/kevinch3/NicotinD/commit/beffb068da3d921fe100c13d33696170f3d12aad))
+* **player:** drop shuffle and repeat, and size the transport for a thumb ([#1263](https://github.com/kevinch3/NicotinD/pull/1263)) ([beffb06](https://github.com/kevinch3/NicotinD/commit/beffb068da3d921fe100c13d33696170f3d12aad))
+* **remote:** hide the output picker when there is nowhere to send the audio ([#1263](https://github.com/kevinch3/NicotinD/pull/1263)) ([beffb06](https://github.com/kevinch3/NicotinD/commit/beffb068da3d921fe100c13d33696170f3d12aad))
+
 ## [0.8.40](https://github.com/kevinch3/NicotinD/compare/v0.8.39...v0.8.40) (2026-09-21)
 
 ### Bug Fixes

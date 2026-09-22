@@ -233,7 +233,7 @@ export class SettingsComponent {
    * Turning it off used to prompt to delete every auto-saved track, and
    * declining the prompt aborted the toggle — so "stop downloading but keep
    * what I have" was unreachable, and the only way to stop the downloads was to
-   * lose the offline library they had built (#1262). Deleting is its own
+   * lose the offline library they had built (#1263). Deleting is its own
    * button now (`clearAutoSaved`), where it can be asked for rather than
    * suffered.
    */

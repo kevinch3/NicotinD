@@ -34,6 +34,10 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **`check:install-scripts`**: no dependency runs an unreviewed install hook, keyed on its command
   text and walked from the workspace roots. `scan`, `unreviewed`, `staleEntries`.
   → [quality-gates.md](../quality-gates.md)
+- **`check:pr-title`**: a squash merge writes the PR title as master's subject, and the release guard
+  reads subjects — so an untyped title freezes releases with every check green. The `pr-title` job
+  fails that, and a title that does not bump while its commits do. `checkPrTitle`,
+  `parseConventionalSubject`, `lostBumpsIn`. → [releasing.md](../releasing.md)
 - **`check:library-queries`**: plans every library list route through the real filter builders across
   every filter dimension and fails a `library_songs` scan that is not evaluated once; routes and
   dimensions are both discovered, so an unmodeled one fails. `judgeSongScans`,

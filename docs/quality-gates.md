@@ -471,6 +471,70 @@ This is also what makes the documented rollback actionable: pinning
 `NICOTIND_VERSION` and redeploying only helps if you know the release is bad, and
 until now the way you found out was a user telling you.
 
+## `check:pr-title` — the commit message GitHub writes for you (#1263)
+
+Every other commit message in this repo goes through the husky + commitlint
+`commit-msg` hook. Exactly one does not: the subject of a **squash merge**,
+which GitHub composes from the PR title, on GitHub, where no hook runs.
+
+That subject is the one that decides releases. `release-needed.ts` reads
+subjects and only subjects — deliberately, because a body can quote a commit
+message and a release cut from prose is worse than a release not cut. So a PR
+titled without a type lands a commit that bumps nothing, whatever it carries.
+
+**The incident.** PR #1263 squash-merged five `feat:` commits under *"Radio
+queue depth: replace batch refill with target-based top-up"*. Every check was
+green on that PR and on the master push after it, because nothing was broken:
+the release guard correctly answered "not needed" to a subject that had lost
+the evidence. v0.8.40 stayed the latest release; the features sat on master,
+built and deployed nowhere. The freeze was found by a human noticing prod had
+not changed.
+
+**The gate.** Two rules, because the first alone leaves the more subtle half
+open:
+
+1. the title parses as a conventional commit with a known type — this is what
+   #1263's title failed;
+2. if the branch's own commits bump and the title does not, it fails — a
+   `chore:` title over a branch of `feat:` commits is valid *and* still throws
+   the release away.
+
+It imports `parseConventionalSubject` and `isBumping` from `release-needed.ts`
+rather than re-deriving them. A gate that disagrees with the guard it protects
+is worth nothing, and the disagreement would be invisible until releases
+stopped again — which is the same argument `check:shared-helpers` makes
+generally.
+
+**Its denominator.** Rule 2's input is `FETCH_HEAD..HEAD`, so the job checks out
+with `fetch-depth: 0`. A shallow clone would make that range empty, and empty
+reads as "nothing on this branch bumps" — a pass. The silent direction is the
+dangerous one, so the fetch is explicit rather than inherited.
+
+**Why it re-runs on `edited`, in a workflow of its own.** The fix for a bad
+title is editing the title, which pushes no commit. The default `pull_request`
+trigger set would judge the title once and never look again: red forever on a
+corrected title, and green forever on a good title edited into a bad one. So the
+trigger lists `[opened, edited, reopened, synchronize]`.
+
+It lives in `.github/workflows/pr-title.yml` rather than on `ci.yml`'s trigger
+because **`edited` fires on body edits too**. Attached to `ci.yml` it re-ran all
+thirteen jobs — both Docker arches, four e2e shards, the desktop package — every
+time anyone touched a PR description; measured on this gate's own PR, editing
+the body cancelled a full run and started another. A trigger that expensive
+attached to an editorial action is one people learn to route around, so the
+cheap check got its own workflow and `ci.yml` keeps the default trigger set.
+
+**Not a `check:ci-parity` gate job, on purpose.** It only exists on a pull
+request and `verify` has no title to check, so it is neither in `release.needs`
+nor in `GATE_JOBS`. Branch protection is what makes it blocking — the same
+arrangement `desktop-smoke` already has.
+
+**The second layer.** `release-needed.ts` now prints a `::warning::` when it
+skips a commit whose body lists bumping commits its subject lost
+(`lostBumpsIn`). The decision is unchanged; what changes is that the skip says
+why. The orphan-tag incident in `ci.yml` froze releases for a day by exiting 0
+silently, and this is the same failure shape one layer up.
+
 ## `check:fetch-timeouts` — an outbound call with no deadline
 
 A `fetch` with no `AbortSignal` hangs for as long as the upstream stays silent,

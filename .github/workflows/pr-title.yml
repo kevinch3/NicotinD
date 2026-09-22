@@ -1,0 +1,61 @@
+name: PR title
+
+# The PR title becomes the squash-merge subject, and the subject is the only
+# thing `release-needed.ts` reads — so an untyped title lands a commit that
+# bumps nothing and freezes releases with every check green (#1263). The husky
+# `commit-msg` hook cannot see this: a squash merge is performed by GitHub,
+# from a title nothing validated.
+#
+# **Why this is its own workflow.** The check has to re-run on `edited`, because
+# the fix for a bad title is editing the title, which pushes no commit — without
+# it the gate would judge once and never look again: red forever on a corrected
+# title, and green forever on a good title edited into a bad one. But `edited`
+# fires on **body** edits too, and putting it on `ci.yml`'s trigger re-ran all
+# thirteen jobs — two Docker arches, four e2e shards, the desktop package — every
+# time anyone touched a PR description. Measured on this PR's own body edit: one
+# full run cancelled and replaced. A trigger that expensive attached to an
+# editorial action is one people learn to avoid, so the cheap check gets its own
+# workflow and `ci.yml` keeps the default trigger set.
+on:
+  pull_request:
+    branches: [master]
+    types: [opened, edited, reopened, synchronize]
+
+# A burst of title edits should leave only the last one running.
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  BUN_VERSION: '1.3.11'
+
+jobs:
+  pr-title:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The PR's own commits are rule 2's input, so the merge-base has to be
+          # reachable. A shallow clone would leave `FETCH_HEAD..HEAD` empty,
+          # which reads as "no bumping commits" — the silent-pass direction.
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Check the PR title is a conventional commit
+        env:
+          # Through the environment, never interpolated into the `run:` block:
+          # a title is attacker-controlled text and `${{ }}` inside a shell
+          # script is a command-injection seam.
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          # FETCH_HEAD, not `origin/$BASE_REF`: a pull_request checkout has no
+          # guarantee of that remote-tracking ref, and a `..HEAD` range against
+          # a ref that does not exist fails loudly rather than reading empty.
+          git fetch --no-tags origin "$BASE_REF"
+          git log --format=%B%x00 FETCH_HEAD..HEAD > /tmp/pr-commits
+          PR_COMMITS_FILE=/tmp/pr-commits bun run ./scripts/check-pr-title.ts

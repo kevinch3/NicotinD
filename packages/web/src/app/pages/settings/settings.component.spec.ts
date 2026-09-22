@@ -665,7 +665,7 @@ describe('SettingsComponent (auto-preserve queue toggle)', () => {
   });
 
   /**
-   * The bug this pair pins (#1262): turning the window off used to prompt to
+   * The bug this pair pins (#1263): turning the window off used to prompt to
    * delete everything it had saved, and declining aborted the toggle — so
    * "stop downloading, keep what I have" could not be expressed at all.
    */

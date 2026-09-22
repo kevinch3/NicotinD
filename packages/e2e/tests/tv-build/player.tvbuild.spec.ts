@@ -51,7 +51,7 @@ test.describe('TV player', () => {
 
   /**
    * A TV shell turns radio on at start (`ensureRadioOn`, #1127), and radio now
-   * holds the queue at a depth rather than waiting for it to drain (#1262). So
+   * holds the queue at a depth rather than waiting for it to drain (#1263). So
    * the overlay lists the rest of the album *and* the radio tail behind it —
    * how much tail depends on how much the fixture library has left to offer,
    * which is why this asserts the album's remainder as a floor rather than a

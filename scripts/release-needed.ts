@@ -21,11 +21,79 @@
  */
 
 /** Conventional-commit types that bump the version. Mirrors CLAUDE.md's table. */
-const BUMPING_TYPES = ['feat', 'fix', 'perf'];
+export const BUMPING_TYPES = ['feat', 'fix', 'perf'];
+
+/** Every type CLAUDE.md's table names, bumping or not. */
+export const KNOWN_TYPES = [
+  ...BUMPING_TYPES,
+  'chore',
+  'refactor',
+  'style',
+  'docs',
+  'test',
+  'ci',
+  'build',
+  'revert',
+];
+
+export interface ConventionalHeader {
+  type: string;
+  scope: string | null;
+  breaking: boolean;
+  description: string;
+}
+
+/**
+ * Parse a conventional-commit subject line, or null when it is not one.
+ *
+ * Exported because `check-pr-title.ts` gates the very thing this file measures:
+ * a squash-merge subject comes from the PR title, so the two must agree on what
+ * counts as a type down to the last edge case. Importing it is the coupling —
+ * a second parser would be free to drift, and the drift would be invisible
+ * until releases stopped again.
+ */
+export function parseConventionalSubject(subject: string): ConventionalHeader | null {
+  const m = subject.match(/^([a-zA-Z]+)(\(([^)]*)\))?(!)?: ?(.*)$/);
+  if (!m) return null;
+  return {
+    type: (m[1] ?? '').toLowerCase(),
+    scope: m[3] ?? null,
+    breaking: m[4] === '!',
+    description: (m[5] ?? '').trim(),
+  };
+}
 
 export interface ReleaseDecision {
   needed: boolean;
   reason: string;
+  /**
+   * Subjects of commits that do not bump, but whose BODY lists commits that
+   * would have. Advisory only — never part of the decision.
+   */
+  lostBumps: string[];
+}
+
+/**
+ * A squash merge writes the PR title as the subject and the squashed commits as
+ * body bullets, so a PR titled without a type buries every `feat:` it carried
+ * where nothing reads it. That is how v0.8.40 came to be the last release while
+ * five features sat on master (#1263).
+ *
+ * The decision deliberately does NOT change: only a subject may bump, because a
+ * body can quote a commit message and a release cut from prose is worse than a
+ * release not cut. This is the diagnosis printed beside the skip — the freeze
+ * was invisible, and a false positive here costs one advisory line.
+ */
+const SQUASHED_BUMP = new RegExp(
+  String.raw`^\s*[*-]\s+(${BUMPING_TYPES.join('|')})(\([^)]*\))?!?:\s`,
+  'm',
+);
+
+export function lostBumpsIn(messages: string[]): string[] {
+  return messages
+    .filter((m) => !isBumping(m))
+    .filter((m) => SQUASHED_BUMP.test(m.split('\n').slice(1).join('\n')))
+    .map((m) => (m.split('\n', 1)[0] ?? '').trim());
 }
 
 /**
@@ -35,19 +103,28 @@ export interface ReleaseDecision {
  */
 export function releaseNeeded(subjects: string[], tipIsTag: boolean): ReleaseDecision {
   if (tipIsTag) {
-    return { needed: false, reason: 'master tip is already the latest tag — nothing new landed' };
+    return {
+      needed: false,
+      reason: 'master tip is already the latest tag — nothing new landed',
+      lostBumps: [],
+    };
   }
   if (subjects.length === 0) {
-    return { needed: false, reason: 'no commits since the latest tag' };
+    return { needed: false, reason: 'no commits since the latest tag', lostBumps: [] };
   }
   const bumping = subjects.filter(isBumping);
   if (bumping.length === 0) {
     return {
       needed: false,
       reason: `${subjects.length} commit(s) since the tag, none of a releasing type (${BUMPING_TYPES.join('/')})`,
+      lostBumps: lostBumpsIn(subjects),
     };
   }
-  return { needed: true, reason: `${bumping.length} releasing commit(s) since the latest tag` };
+  return {
+    needed: true,
+    reason: `${bumping.length} releasing commit(s) since the latest tag`,
+    lostBumps: [],
+  };
 }
 
 /**
@@ -56,14 +133,12 @@ export function releaseNeeded(subjects: string[], tipIsTag: boolean): ReleaseDec
  * major bump regardless of type.
  */
 export function isBumping(message: string): boolean {
-  const subject = message.split('\n', 1)[0] ?? '';
-  const header = subject.match(/^([a-zA-Z]+)(\([^)]*\))?(!)?:/);
+  const header = parseConventionalSubject(message.split('\n', 1)[0] ?? '');
   if (!header) return false;
-  const [, type, , breaking] = header;
-  if (breaking) return true;
+  if (header.breaking) return true;
   // The footer form is authoritative even under a non-bumping type.
   if (/^BREAKING[ -]CHANGE:/m.test(message)) return true;
-  return BUMPING_TYPES.includes((type ?? '').toLowerCase());
+  return BUMPING_TYPES.includes(header.type);
 }
 
 if (import.meta.main) {
@@ -93,5 +168,13 @@ if (import.meta.main) {
   console.log(
     `release-needed: ${decision.needed ? 'YES' : 'NO'} — ${decision.reason} (last tag ${tag})`,
   );
+  // Loud, because the version this skipped is one nobody will come looking for.
+  for (const subject of decision.lostBumps) {
+    console.log(
+      `::warning::"${subject}" does not bump, but its body lists commits that would have — ` +
+        'a squash merge whose PR title carried no conventional-commit type. ' +
+        'The release it should have cut is not happening. See docs/releasing.md.',
+    );
+  }
   process.exit(decision.needed ? 0 : 1);
 }

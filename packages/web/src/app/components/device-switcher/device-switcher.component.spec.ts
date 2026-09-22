@@ -54,7 +54,7 @@ describe('DeviceSwitcherComponent', () => {
 
   /**
    * A cast button on a single-device setup is a dead control sitting right
-   * beside Next, and the only thing behind it is "no other devices" (#1262).
+   * beside Next, and the only thing behind it is "no other devices" (#1263).
    */
   describe('with nowhere else to play', () => {
     const self: RemoteDevice = { id: MY_ID, name: 'Self', type: 'web', lastSeen: 0 };

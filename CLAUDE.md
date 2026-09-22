@@ -82,7 +82,8 @@ bun run src/main.ts      # Start NicotinD (requires .env or config/default.yml)
 ```
 
 **Check gates** (all CI-blocking unless noted): `check:claude-md` (this file's *and*
-`docs/index/`'s symbols, links, size and reachability) · `check:ci-parity` (a gate job step `verify` misses, or a gate that stopped blocking
+`docs/index/`'s symbols, links, size and reachability) · `check:pr-title` (the PR title a squash
+merge turns into master's subject) · `check:ci-parity` (a gate job step `verify` misses, or a gate that stopped blocking
 `release`) · `check:action-runtimes` (an action pinned to a retired Node runtime, or one the floor
 table cannot classify) · `check:route-auth` (an `/api` group mounted with no auth decision) · `check:audit` (an
 advisory that both ships and matches the resolved version) · `check:desktop-publish` (a desktop
@@ -105,6 +106,11 @@ DB probe) → [prod-inspection.md](docs/prod-inspection.md)
 
 [Conventional Commits](https://www.conventionalcommits.org/), enforced by a husky + commitlint
 `commit-msg` hook: `<type>(<optional scope>): <description>`.
+
+**The PR title is a commit message too.** Merges are squashes, so the title becomes the subject on
+master and is the only thing the release guard reads — an untyped title freezes releases with every
+check green (#1263). `check:pr-title` gates it in CI, because the `commit-msg` hook never sees a
+merge GitHub performs.
 
 | Bumps version                 | Does not bump                                                      |
 | ----------------------------- | ------------------------------------------------------------------ |
