@@ -1,13 +1,15 @@
 # Design patterns — detail for patterns without a dedicated doc
 
-`docs/index.md` carries a one-line index of every design pattern (it lived in `CLAUDE.md`
-until #934 moved it out of the every-request path). The **detail** for each
+`docs/index/` carries a one-line index of every design pattern, one file per section behind
+the contents table in `docs/index.md` (it lived in `CLAUDE.md` until #934 moved it out of
+the every-request path, and #1240 split it by section). The **detail** for each
 pattern lives either in a dedicated `docs/<feature>.md` (see the pointer table below) or,
 for patterns that don't warrant their own file, **in full here**. This keeps the
 per-request `CLAUDE.md` small while keeping the rationale discoverable.
 
 > **Documentation rule:** when you add or change behavior, update the detail (here or in
-> the dedicated doc) **and** the one-line index entry in `docs/index.md` in the same change.
+> the dedicated doc) **and** the one-line index entry in its `docs/index/<section>.md` in the
+> same change.
 > Don't grow a dense multi-sentence bullet back into `CLAUDE.md`. Stale docs are a bug.
 
 ## Patterns with a dedicated doc

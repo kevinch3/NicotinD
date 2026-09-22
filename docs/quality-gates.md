@@ -109,12 +109,18 @@ carrying a second copy.
 |---|---|---|---|
 | `MAX_ENTRY_CHARS` | 440 | entries in **either** file | measured max **prose** 371 after the restructure |
 | `MAX_CLAUDE_MD_BYTES` | 20,000 | `CLAUDE.md` | the per-request cost. 12.4 KB after #934 relocated the index |
-| `MAX_INDEX_BYTES` | 70,000 | `docs/index.md` | raised from 60,000 on 2026-09-08 — see "When a cap is the thing that is wrong" below |
-| `MIN_PLAUSIBLE_ENTRIES` | 60 | `docs/index.md` **only** | the gate's own denominator (155 parse today) |
+| `MAX_INDEX_SECTION_BYTES` | 24,000 | **each** `docs/index/<section>.md` | replaced a single 70,000 total in #1240 — see "A cap on a number that must grow" below |
+| `MIN_PLAUSIBLE_ENTRIES` | 60 | the index, **summed** across sections | the gate's own denominator (208 parse today) |
 
-`MIN_PLAUSIBLE_ENTRIES` is asserted against `docs/index.md`, not `CLAUDE.md`.
-Pointing it at CLAUDE.md after the relocation would make it pass vacuously:
-that file now parses a handful of Surfaces entries and is no longer an index.
+`MIN_PLAUSIBLE_ENTRIES` is asserted against the index, not `CLAUDE.md`. Pointing
+it at CLAUDE.md after the relocation would make it pass vacuously: that file now
+parses a handful of Surfaces entries and is no longer an index. It is summed
+rather than per-file because a small section legitimately holds 8 entries, and
+the sum is what goes red if the section walk ever stops finding files.
+
+The index's **total** is reported on every run and enforced nowhere. That is
+deliberate (#1240) and it is the one number a reader should not be asked to pay:
+what you actually pay is the section you open.
 
 ### When a cap is the thing that is wrong
 
@@ -148,6 +154,39 @@ So the cap moved to 70,000 — ~15 KB, about 48 entries of runway — in a commi
 that says why, which is exactly what the header of `check-claude-md.ts` asks for.
 `MAX_CLAUDE_MD_BYTES` was left alone: that is the per-request cost, and it is
 still the number to defend.
+
+### A cap on a number that must grow (#1240)
+
+That runway lasted **fourteen days**. Measured 2026-09-05 → 2026-09-22, the index
+went 47,278 → 64,995 bytes and 155 → 205 entries: about **1,040 bytes and 3
+entries per day**. The whole 10,000-byte raise was spent, and the headroom test
+was one entry from red again — the third time the same argument had come round,
+after #1006 and `fa06da6d`.
+
+At that growth rate neither answer works. Raising the total again buys ~10 days.
+Trimming buys less than one: the measured best **correct** compression, -0.9%, is
+585 bytes — thirteen hours. The pattern is the tell. **A cap on the index's total
+is a cap on how many mechanisms the repo may have**, and a docs gate should not
+be the thing deciding that.
+
+**What the budget was always really about is what a reader pays to locate ONE
+mechanism**, and nothing forced that to be the whole file. So the index became
+one file per section, the cap became per section, and the meaning of exceeding it
+changed: **a section over budget has earned a split, not a trim and not a bigger
+number.** Growth is absorbed by subdivision, which has no ceiling, and each split
+halves the read cost again — the property a single total never had. Median read
+went from 65 KB to ~7 KB.
+
+It also defuses the 2026-09-07 merge break above: two PRs adding an entry each
+now collide only if they land in the **same** section, near **that** section's
+cap.
+
+Two things the split had to keep. The **total is still reported** on every run,
+because "nobody pays for it" is precisely how `CLAUDE.md` reached 186 KB — it is
+simply no longer enforced. And because a section is now reachable only through
+the contents table in `docs/index.md`, the gate checks that table against the
+directory **both ways**: a file nothing links is a section no reader ever opens,
+while every other arm of the gate still passes on it happily.
 
 The two byte budgets are deliberately different sizes, and the split is the
 point of the gate rather than an accident of it. `CLAUDE.md` is paid on every
