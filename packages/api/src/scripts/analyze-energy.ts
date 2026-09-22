@@ -138,11 +138,13 @@ async function main(): Promise<void> {
       if (samples.length < 25)
         samples.push(`  • ${label}  →  energy ${energy.toFixed(2)}  (${source})`);
       if (apply) {
-        db.run('UPDATE library_songs SET energy = ?, loudness = ? WHERE id = ?', [
-          energy,
-          loudness,
-          song.id,
-        ]);
+        // COALESCE, not assign — see the `loudness_measured` note in db.ts.
+        db.run(
+          `UPDATE library_songs
+              SET energy = ?, loudness = ?, loudness_measured = COALESCE(loudness_measured, ?)
+            WHERE id = ?`,
+          [energy, loudness, loudness, song.id],
+        );
         if (source === 'analyzed')
           await writeAudioTags(abs, { energy, loudness: loudness ?? undefined }).catch(() => false);
         appendFileSync(
