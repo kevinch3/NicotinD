@@ -95,7 +95,7 @@ export class SystemApiService {
     return this.http.get<RadioSettings>('/api/settings/radio');
   }
 
-  saveRadioSettings(patch: Partial<Pick<RadioSettings, 'genreAffinity'>>) {
+  saveRadioSettings(patch: Partial<Pick<RadioSettings, 'genreAffinity' | 'queueTarget'>>) {
     return this.http.put<RadioSettings>('/api/settings/radio', patch);
   }
 

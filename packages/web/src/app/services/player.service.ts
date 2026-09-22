@@ -76,10 +76,21 @@ export type RadioProvider = (seed: {
   context: PlayContext | null;
   /** The listener's current variety position, as a named strategy. */
   strategy: StrategyId;
+  /**
+   * How many tracks this call should return: the queue's shortfall against its
+   * target, which after the first fill is usually 1. A provider that ignores it
+   * and answers with a fixed batch still works — the extras are just kept.
+   */
+  count: number;
 }) => Promise<Track[]>;
 
-// Replenish the queue once it drops to this many remaining tracks.
-const RADIO_MIN_QUEUE = 2;
+/**
+ * How deep the radio queue is held when the server has not said otherwise.
+ * Matches `DEFAULT_RADIO_SETTINGS.queueTarget`; the two are separate on purpose
+ * — the client must still behave before the settings fetch lands, and on a
+ * build talking to an older server that has no opinion at all.
+ */
+export const DEFAULT_RADIO_QUEUE_TARGET = 20;
 
 // How long buffering must persist before surfaces show a spinner. HDD
 // spin-up/seek (multi-second) is the target; cached tracks that start in
@@ -108,6 +119,15 @@ export class PlayerService {
   // radio provider asks for. Remembered here across sessions and, per user, on
   // the server; the chip in Now Playing is its control.
   readonly radioStrategy = signal<StrategyId>(DEFAULT_STRATEGY);
+  /**
+   * The depth radio holds the queue at. Radio used to drain to two tracks and
+   * then drop a batch in, which read as a stall: the "up next" list emptied out
+   * in front of the listener and refilled in a lump (#1262). It now tops up to
+   * this many and replaces each track as it is consumed, so the queue looks the
+   * same depth all the way down. Admin-owned (`/api/settings/radio`), pushed in
+   * by `RadioSourceService`; the default stands until that lands.
+   */
+  readonly radioQueueTarget = signal(DEFAULT_RADIO_QUEUE_TARGET);
   readonly context = signal<PlayContext | null>(null);
   readonly nowPlayingOpen = signal(false);
   readonly currentTime = signal(0);
@@ -165,14 +185,17 @@ export class PlayerService {
       }
     });
 
-    // Radio: when the queue drains to RADIO_MIN_QUEUE (and we're not repeating),
-    // pull more tracks from the library so playback continues. Reads queue()/radio()
-    // so it re-runs on any drain (next track, manual removal); the actual fetch +
-    // queue append happens async (untracked) so it never loops on its own write.
+    // Radio: whenever the queue sits below its target depth (and we're not
+    // repeating), pull the shortfall from the library so the queue stays the
+    // same length as it is consumed. Reads queue()/radio()/radioQueueTarget()
+    // so it re-runs on any drain (next track, manual removal) and on an admin
+    // raising the depth; the actual fetch + queue append happens async
+    // (untracked) so it never loops on its own write.
     effect(() => {
       const queueLen = this.queue().length;
       const radioOn = this.radio();
-      if (!radioOn || queueLen > RADIO_MIN_QUEUE) return;
+      const target = this.radioQueueTarget();
+      if (!radioOn || queueLen >= target) return;
       const hasCurrent = untracked(() => this.currentTrack()) !== null;
       const repeating = untracked(() => this.repeat()) !== 'off';
       if (hasCurrent && !repeating) untracked(() => void this.replenishRadio());
@@ -435,6 +458,19 @@ export class PlayerService {
 
   private radioProvider: RadioProvider | null = null;
   private replenishing = false;
+  /**
+   * The seed a replenish already came back empty-handed for.
+   *
+   * Topping up to a depth means the effect re-fires on every append, so a
+   * library with nothing left to offer would be re-asked on every single queue
+   * mutation for as long as radio stayed on. The latch holds that off until
+   * something that could change the answer moves — a new seed, a new strategy,
+   * or radio being turned on again.
+   */
+  private radioStarvedSeed: string | null = null;
+
+  /** Stands in for "no seed at all" in the starved latch, which a real id can never be. */
+  private static readonly NO_RADIO_SEED = '\u0000no-seed';
 
   /** Register the source of "more tracks" for Radio (library access lives in a component). */
   setRadioProvider(provider: RadioProvider): void {
@@ -444,8 +480,10 @@ export class PlayerService {
   toggleRadio(): void {
     this.radio.update((r) => !r);
     // Turning it on with a low queue should fill immediately, not wait for a drain.
-    if (this.radio()) untracked(() => void this.replenishRadio());
-    else this.radioFilter.set(null); // turning radio off ends the filter "vibe"
+    if (this.radio()) {
+      this.radioStarvedSeed = null;
+      untracked(() => void this.replenishRadio());
+    } else this.radioFilter.set(null); // turning radio off ends the filter "vibe"
   }
 
   /**
@@ -460,6 +498,7 @@ export class PlayerService {
   ensureRadioOn(): void {
     if (this.radio()) return;
     this.radio.set(true);
+    this.radioStarvedSeed = null;
     untracked(() => void this.replenishRadio());
   }
 
@@ -472,6 +511,9 @@ export class PlayerService {
     if (this.radioStrategy() === strategy) return;
     this.radioStrategy.set(strategy);
     if (!this.radio()) return;
+    // A new recipe is a new answer: whatever the old one had run out of, this
+    // one has not been asked yet.
+    this.radioStarvedSeed = null;
     this.queue.update((q) => q.filter((t) => t.queuedBy !== 'radio'));
     untracked(() => void this.replenishRadio());
   }
@@ -480,16 +522,29 @@ export class PlayerService {
     this.vocalsMuted.update((v) => !v);
   }
 
-  /** Append fresh library tracks to the queue, skipping anything already lined up. */
+  /**
+   * Top the queue back up to its target depth with fresh library tracks,
+   * skipping anything already lined up.
+   *
+   * It asks for exactly the shortfall, which after the first fill is normally
+   * one track — the replacement for the one just played. A round that adds
+   * something short of the target leaves the queue below it, so the effect
+   * fires again and the next round asks for what is still missing; a round
+   * that adds nothing latches instead of spinning (`radioStarvedSeed`).
+   */
   private async replenishRadio(): Promise<void> {
     if (!this.radioProvider || this.replenishing) return;
-    if (this.queue().length > RADIO_MIN_QUEUE) return;
+    const deficit = this.radioQueueTarget() - this.queue().length;
+    if (deficit <= 0) return;
+    const seed = this.currentTrack()?.id ?? PlayerService.NO_RADIO_SEED;
+    if (this.radioStarvedSeed === seed) return;
     this.replenishing = true;
     try {
       const more = await this.radioProvider({
         currentTrack: this.currentTrack(),
         context: this.context(),
         strategy: this.radioStrategy(),
+        count: deficit,
       });
       const seen = new Set<string>([
         this.currentTrack()?.id ?? '',
@@ -499,9 +554,16 @@ export class PlayerService {
           .map((t) => t.id),
       ]);
       const fresh = more.filter((t) => t.id && !seen.has(t.id)).map(radioQueued);
-      if (fresh.length) this.queue.update((q) => [...q, ...fresh]);
+      if (fresh.length) {
+        this.radioStarvedSeed = null;
+        this.queue.update((q) => [...q, ...fresh]);
+      } else {
+        this.radioStarvedSeed = seed;
+      }
     } catch {
-      // Non-fatal — radio simply doesn't extend this time.
+      // Non-fatal — radio simply doesn't extend this time. Deliberately not
+      // latched: a failed fetch says nothing about whether tracks exist, and
+      // the next drain is the retry.
     } finally {
       this.replenishing = false;
     }

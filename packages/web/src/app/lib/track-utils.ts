@@ -50,12 +50,22 @@ export function albumRef(song: { album?: string; albumId?: string }): AlbumRef |
 /**
  * Build the "Save offline" / "Remove download" toggle action for a track-row menu.
  * The label reflects the live preserve state (saved / in-progress / not saved).
+ *
+ * This is the one-track lane, and the only one that costs a data-saving
+ * listener exactly the track they asked for. `label` stays English because it
+ * is the `@for` key and the `data-testid` suffix; `labelKey` is what is
+ * rendered.
  */
 export function offlineTrackAction(preserve: PreserveService, track: Track): TrackAction {
   const preserved = preserve.isPreserved(track.id);
   const inProgress = preserve.isPreserving(track.id);
   return {
     label: inProgress ? 'Saving…' : preserved ? 'Remove download' : 'Save offline',
+    labelKey: inProgress
+      ? 'song.savingOffline'
+      : preserved
+        ? 'song.removeDownload'
+        : 'song.saveOffline',
     destructive: preserved,
     action: () => {
       if (inProgress) return;

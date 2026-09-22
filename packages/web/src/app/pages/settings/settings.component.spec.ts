@@ -593,7 +593,7 @@ describe('SettingsComponent (auto-preserve queue toggle)', () => {
     confirm.ask = confirmAsk;
   }
 
-  it('renders the auto-preserve selector with all four modes', async () => {
+  it('renders the auto-preserve selector with every mode, smallest first', async () => {
     const fixture = await makeFixture();
     patchPreserve();
     fixture.detectChanges();
@@ -604,12 +604,29 @@ describe('SettingsComponent (auto-preserve queue toggle)', () => {
     const ids = buttons.map((b) => b.getAttribute('data-testid'));
     expect(ids).toEqual([
       'auto-preserve-off',
+      'auto-preserve-1',
       'auto-preserve-5',
       'auto-preserve-20',
       'auto-preserve-full',
     ]);
     const labels = buttons.map((b) => b.textContent?.trim());
-    expect(labels).toEqual(['Off', 'Next 5', 'Next 20', 'Whole queue']);
+    expect(labels).toEqual(['Off', 'This track', 'Next 5', 'Next 20', 'Whole queue']);
+    fixture.destroy();
+  });
+
+  /** The data-saver rung: offline playback without paying for a queue. */
+  it('offers a single-track window that does not download anything ahead', async () => {
+    const fixture = await makeFixture();
+    patchPreserve();
+    patchConfirm();
+    fixture.detectChanges();
+    expandAllGroups(fixture);
+    (
+      fixture.nativeElement.querySelector('[data-testid="auto-preserve-1"]') as HTMLButtonElement
+    ).click();
+    await fixture.whenStable();
+    expect(setAutoPreserveMode).toHaveBeenCalledWith('1');
+    expect(confirmAsk).not.toHaveBeenCalled();
     fixture.destroy();
   });
 
@@ -647,7 +664,12 @@ describe('SettingsComponent (auto-preserve queue toggle)', () => {
     fixture.destroy();
   });
 
-  it('clicking "off" with auto-preserved tracks: confirms then removes', async () => {
+  /**
+   * The bug this pair pins (#1262): turning the window off used to prompt to
+   * delete everything it had saved, and declining aborted the toggle — so
+   * "stop downloading, keep what I have" could not be expressed at all.
+   */
+  it('clicking "off" with auto-preserved tracks keeps them, and asks nothing', async () => {
     autoPreserveMode.set('20');
     const fixture = await makeFixture();
     patchPreserve();
@@ -662,16 +684,39 @@ describe('SettingsComponent (auto-preserve queue toggle)', () => {
     ) as HTMLButtonElement;
     offBtn.click();
     await fixture.whenStable();
-    expect(confirmAsk).toHaveBeenCalledOnce();
-    // The message is now an i18n key (issue #236); count > 1 picks the plural key.
-    expect(confirmAsk.mock.calls[0]?.[0]).toBe('settings.removeAutoSavedOther');
-    expect(BASE_CATALOG).toHaveProperty(['settings.removeAutoSavedOther']);
-    expect(removeAllAutoPreserved).toHaveBeenCalled();
+    expect(confirmAsk).not.toHaveBeenCalled();
+    expect(removeAllAutoPreserved).not.toHaveBeenCalled();
     expect(setAutoPreserveMode).toHaveBeenCalledWith('off');
     fixture.destroy();
   });
 
-  it('canceling the confirm leaves the mode unchanged', async () => {
+  it('deleting the auto-saved tracks is its own button, and still confirms', async () => {
+    autoPreserveMode.set('20');
+    const fixture = await makeFixture();
+    patchPreserve();
+    patchConfirm();
+    (
+      fixture.componentInstance.preserve as unknown as { autoPreservedCount: () => number }
+    ).autoPreservedCount = () => 7;
+    fixture.detectChanges();
+    expandAllGroups(fixture);
+    const clear = fixture.nativeElement.querySelector(
+      '[data-testid="auto-preserve-clear"]',
+    ) as HTMLButtonElement;
+    clear.click();
+    await fixture.whenStable();
+    expect(confirmAsk).toHaveBeenCalledOnce();
+    // The message is an i18n key (issue #236); count > 1 picks the plural key.
+    expect(confirmAsk.mock.calls[0]?.[0]).toBe('settings.removeAutoSavedOther');
+    expect(BASE_CATALOG).toHaveProperty(['settings.removeAutoSavedOther']);
+    expect(BASE_CATALOG).toHaveProperty(['settings.clearAutoSaved']);
+    expect(removeAllAutoPreserved).toHaveBeenCalled();
+    // The mode is the mode button's business, not this one's.
+    expect(setAutoPreserveMode).not.toHaveBeenCalled();
+    fixture.destroy();
+  });
+
+  it('canceling that confirm keeps the downloads', async () => {
     confirmAsk.mockResolvedValue(false);
     autoPreserveMode.set('5');
     const fixture = await makeFixture();
@@ -682,13 +727,22 @@ describe('SettingsComponent (auto-preserve queue toggle)', () => {
     ).autoPreservedCount = () => 3;
     fixture.detectChanges();
     expandAllGroups(fixture);
-    const offBtn = fixture.nativeElement.querySelector(
-      '[data-testid="auto-preserve-off"]',
+    const clear = fixture.nativeElement.querySelector(
+      '[data-testid="auto-preserve-clear"]',
     ) as HTMLButtonElement;
-    offBtn.click();
+    clear.click();
     await fixture.whenStable();
     expect(removeAllAutoPreserved).not.toHaveBeenCalled();
-    expect(setAutoPreserveMode).not.toHaveBeenCalled();
+    fixture.destroy();
+  });
+
+  it('hides the delete button when there is nothing auto-saved to delete', async () => {
+    autoPreserveMode.set('5');
+    const fixture = await makeFixture();
+    patchPreserve(); // autoPreservedCount stubs to 0
+    fixture.detectChanges();
+    expandAllGroups(fixture);
+    expect(fixture.nativeElement.querySelector('[data-testid="auto-preserve-clear"]')).toBeNull();
     fixture.destroy();
   });
 

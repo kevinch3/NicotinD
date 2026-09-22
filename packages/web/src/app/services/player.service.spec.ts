@@ -390,6 +390,24 @@ describe('PlayerService', () => {
 
   describe('radio', () => {
     const flush = () => new Promise((r) => setTimeout(r, 0));
+    /**
+     * Drive the append → effect → fetch chain to a standstill. Topping up to a
+     * depth is deliberately iterative: a round that lands short of the target
+     * leaves the queue below it, which fires the effect again.
+     */
+    const settle = async (rounds = 8) => {
+      for (let i = 0; i < rounds; i++) {
+        TestBed.flushEffects();
+        await flush();
+      }
+    };
+    /** A provider with an inexhaustible supply of distinct tracks. */
+    const endless = () => {
+      let n = 0;
+      return vi.fn(async ({ count }: { count: number }) =>
+        Array.from({ length: count }, () => ({ id: `g${++n}`, title: `g${n}`, artist: 'A' })),
+      );
+    };
 
     it('toggleRadio flips the flag', () => {
       expect(service.radio()).toBe(false);
@@ -402,23 +420,25 @@ describe('PlayerService', () => {
     it('ensureRadioOn turns it on and fills, and is idempotent (#1127)', async () => {
       // A TV build calls this at shell start: its five screens carry no radio
       // control, so a remembered `radio = false` could never be undone.
-      // Four tracks so the fill lands above RADIO_MIN_QUEUE and the drain
-      // effect stays quiet — otherwise it, not the second call, is what
-      // refetches and the idempotence claim below would be untestable.
+      // The depth matches what the provider hands back, so the fill reaches the
+      // target and the top-up effect stays quiet — otherwise it, not the second
+      // call, is what refetches and the idempotence claim below would be
+      // untestable.
       const more = ['t4', 't5', 't6', 't7'].map((id) => ({ id, title: id, artist: 'A' }));
       const provider = vi.fn(async () => more);
+      service.radioQueueTarget.set(4);
       service.setRadioProvider(provider);
       service.play(track1);
       service.queue.set([]);
 
       service.ensureRadioOn();
-      await flush();
+      await settle();
 
       expect(service.radio()).toBe(true);
       expect(service.queue().map((t) => t.id)).toEqual(['t4', 't5', 't6', 't7']);
 
       service.ensureRadioOn();
-      await flush();
+      await settle();
 
       expect(provider).toHaveBeenCalledTimes(1);
     });
@@ -434,12 +454,13 @@ describe('PlayerService', () => {
     });
 
     it('fills the queue immediately when toggled on with a low queue', async () => {
+      service.radioQueueTarget.set(2);
       service.setRadioProvider(async () => [track2, track3, track1]); // t1 = current, filtered
       service.play(track1);
       service.queue.set([]);
 
       service.toggleRadio();
-      await flush();
+      await settle();
 
       expect(service.queue().map((t) => t.id)).toEqual(['t2', 't3']);
     });
@@ -483,6 +504,175 @@ describe('PlayerService', () => {
       await flush();
 
       expect(calls).toBe(0);
+    });
+  });
+
+  /**
+   * Radio used to drain to two tracks and then drop a batch in, so the "up
+   * next" list emptied out in front of the listener and refilled in a lump
+   * (#1262). It now holds a depth instead.
+   */
+  describe('radio queue depth', () => {
+    const flush = () => new Promise((r) => setTimeout(r, 0));
+    const settle = async (rounds = 8) => {
+      for (let i = 0; i < rounds; i++) {
+        TestBed.flushEffects();
+        await flush();
+      }
+    };
+    const endless = () => {
+      let n = 0;
+      return vi.fn(async ({ count }: { count: number }) =>
+        Array.from({ length: count }, () => ({ id: `g${++n}`, title: `g${n}`, artist: 'A' })),
+      );
+    };
+
+    it('defaults to 20 until an admin says otherwise', () => {
+      expect(service.radioQueueTarget()).toBe(20);
+    });
+
+    it('fills to the target on the first round, asking for the whole shortfall', async () => {
+      const provider = endless();
+      service.radioQueueTarget.set(6);
+      service.setRadioProvider(provider);
+      service.play(track1);
+      service.queue.set([]);
+
+      service.toggleRadio();
+      await settle();
+
+      expect(service.queue().length).toBe(6);
+      expect(provider).toHaveBeenCalledTimes(1);
+      expect(provider.mock.calls[0]?.[0]?.count).toBe(6);
+    });
+
+    /** This is the whole point: one played track costs one fetched track. */
+    it('replaces each consumed track, so the depth never visibly drops', async () => {
+      const provider = endless();
+      service.radioQueueTarget.set(6);
+      service.setRadioProvider(provider);
+      service.play(track1);
+      service.queue.set([]);
+      service.toggleRadio();
+      await settle();
+      provider.mockClear();
+
+      service.playNext();
+      await settle();
+
+      expect(service.queue().length).toBe(6);
+      expect(provider).toHaveBeenCalledTimes(1);
+      expect(provider.mock.calls[0]?.[0]?.count).toBe(1);
+    });
+
+    it('keeps the depth across a run of tracks, one fetch per track', async () => {
+      const provider = endless();
+      service.radioQueueTarget.set(5);
+      service.setRadioProvider(provider);
+      service.play(track1);
+      service.queue.set([]);
+      service.toggleRadio();
+      await settle();
+      provider.mockClear();
+
+      for (let i = 0; i < 4; i++) {
+        service.playNext();
+        await settle();
+        expect(service.queue().length).toBe(5);
+      }
+      expect(provider).toHaveBeenCalledTimes(4);
+    });
+
+    it('tops up without waiting for a drain when an admin raises the depth', async () => {
+      const provider = endless();
+      service.radioQueueTarget.set(4);
+      service.setRadioProvider(provider);
+      service.play(track1);
+      service.queue.set([]);
+      service.toggleRadio();
+      await settle();
+      expect(service.queue().length).toBe(4);
+
+      service.radioQueueTarget.set(9);
+      await settle();
+
+      expect(service.queue().length).toBe(9);
+    });
+
+    /**
+     * A depth is re-checked on every queue mutation, so a library with nothing
+     * new to give would be asked again on every single one. One empty answer
+     * per seed is enough.
+     */
+    it('stops asking once a seed has nothing new left to offer', async () => {
+      const provider = vi.fn(async () => [track2]);
+      service.radioQueueTarget.set(20);
+      service.setRadioProvider(provider);
+      service.play(track1);
+      service.queue.set([]);
+
+      service.toggleRadio();
+      await settle();
+
+      // One round that landed t2, one that came back with nothing new, then quiet.
+      expect(service.queue().map((t) => t.id)).toEqual(['t2']);
+      expect(provider).toHaveBeenCalledTimes(2);
+
+      service.addToQueue(track3);
+      await settle();
+
+      expect(provider).toHaveBeenCalledTimes(2);
+    });
+
+    it('asks again once the seed moves on', async () => {
+      const provider = vi.fn(async () => [track2]);
+      service.radioQueueTarget.set(20);
+      service.setRadioProvider(provider);
+      service.play(track1);
+      service.queue.set([]);
+      service.toggleRadio();
+      await settle();
+      provider.mockClear();
+
+      service.playNext(); // t2 becomes current — a different seed to ask about
+      await settle();
+
+      expect(provider).toHaveBeenCalled();
+    });
+
+    it('asks again when the variety position moves', async () => {
+      const provider = vi.fn(async () => [track2]);
+      service.radioQueueTarget.set(20);
+      service.setRadioProvider(provider);
+      service.play(track1);
+      service.queue.set([]);
+      service.toggleRadio();
+      await settle();
+      provider.mockClear();
+
+      service.setRadioStrategy('similar');
+      await settle();
+
+      expect(provider).toHaveBeenCalled();
+    });
+
+    /** A failed fetch says nothing about whether tracks exist, so it never latches. */
+    it('retries after a failed fetch instead of giving up on the seed', async () => {
+      const provider = vi.fn(async () => {
+        throw new Error('offline');
+      });
+      service.radioQueueTarget.set(20);
+      service.setRadioProvider(provider);
+      service.play(track1);
+      service.queue.set([]);
+      service.toggleRadio();
+      await settle(2);
+      const afterFirst = provider.mock.calls.length;
+
+      service.addToQueue(track3);
+      await settle(2);
+
+      expect(provider.mock.calls.length).toBeGreaterThan(afterFirst);
     });
   });
 

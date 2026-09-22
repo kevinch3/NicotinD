@@ -89,7 +89,12 @@ describe('/radio — the learned genre axis (docs/genre-affinity.md)', () => {
       headers: { Authorization: `Bearer ${await userToken()}` },
     });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ genreAffinity: true, centroids: 0, computedAt: null });
+    expect(await res.json()).toEqual({
+      genreAffinity: true,
+      queueTarget: 20,
+      centroids: 0,
+      computedAt: null,
+    });
   });
 
   /** A body the route finds no boolean in must not stamp one: that spurious
@@ -165,5 +170,39 @@ describe('/radio — the learned genre axis (docs/genre-affinity.md)', () => {
     // The data stays; only the switch moved.
     const get = await app.request('/radio', { headers });
     expect(((await get.json()) as { centroids: number }).centroids).toBe(1);
+  });
+
+  /** The player reads this depth on every boot, so a non-admin GET must carry it. */
+  it('an admin sets the radio queue depth, and any user can read it back', async () => {
+    const app = buildApp();
+    const put = await app.request('/radio', {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${await adminToken()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ queueTarget: 30 }),
+    });
+    expect(put.status).toBe(200);
+    expect(((await put.json()) as { queueTarget: number }).queueTarget).toBe(30);
+    const get = await app.request('/radio', {
+      headers: { Authorization: `Bearer ${await userToken()}` },
+    });
+    expect(((await get.json()) as { queueTarget: number }).queueTarget).toBe(30);
+  });
+
+  it('refuses a depth outside the band, leaving the stored one untouched', async () => {
+    const app = buildApp();
+    const headers = {
+      Authorization: `Bearer ${await adminToken()}`,
+      'Content-Type': 'application/json',
+    };
+    const res = await app.request('/radio', {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ queueTarget: 0 }),
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { queueTarget: number }).queueTarget).toBe(30);
   });
 });

@@ -49,13 +49,22 @@ test.describe('TV player', () => {
     await expect(page).toHaveScreenshot('player.png');
   });
 
+  /**
+   * A TV shell turns radio on at start (`ensureRadioOn`, #1127), and radio now
+   * holds the queue at a depth rather than waiting for it to drain (#1262). So
+   * the overlay lists the rest of the album *and* the radio tail behind it —
+   * how much tail depends on how much the fixture library has left to offer,
+   * which is why this asserts the album's remainder as a floor rather than a
+   * count.
+   */
   test('the Next-up chip opens the D-pad queue overlay', async ({ page }) => {
     await playFixtureAlbum(page);
     await page.getByTestId('tv-next-up').click();
     const overlay = page.getByTestId('tv-queue-overlay');
     await expect(overlay).toBeVisible();
-    await expect(page.getByTestId('tv-queue-row').first()).toBeFocused();
-    await expect(page.getByTestId('tv-queue-row')).toHaveCount(FIXTURE.album.trackCount - 1);
+    const rows = page.getByTestId('tv-queue-row');
+    await expect(rows.first()).toBeFocused();
+    expect(await rows.count()).toBeGreaterThanOrEqual(FIXTURE.album.trackCount - 1);
     await expect(page).toHaveScreenshot('player-queue.png');
 
     await page.keyboard.press('Escape');

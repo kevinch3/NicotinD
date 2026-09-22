@@ -137,6 +137,7 @@ describe('trackUtils', () => {
       const preserve = fakePreserve({ preserved: false });
       const action = offlineTrackAction(preserve, TRACK);
       expect(action.label).toBe('Save offline');
+      expect(action.labelKey).toBe('song.saveOffline');
       expect(action.destructive).toBe(false);
       action.action();
       expect(preserve.preserve).toHaveBeenCalledWith(TRACK);
@@ -147,6 +148,7 @@ describe('trackUtils', () => {
       const preserve = fakePreserve({ preserved: true });
       const action = offlineTrackAction(preserve, TRACK);
       expect(action.label).toBe('Remove download');
+      expect(action.labelKey).toBe('song.removeDownload');
       expect(action.destructive).toBe(true);
       action.action();
       expect(preserve.remove).toHaveBeenCalledWith('t1');
@@ -157,6 +159,7 @@ describe('trackUtils', () => {
       const preserve = fakePreserve({ inProgress: true });
       const action = offlineTrackAction(preserve, TRACK);
       expect(action.label).toBe('Saving…');
+      expect(action.labelKey).toBe('song.savingOffline');
       action.action();
       expect(preserve.preserve).not.toHaveBeenCalled();
       expect(preserve.remove).not.toHaveBeenCalled();

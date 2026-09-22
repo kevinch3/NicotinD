@@ -36,8 +36,15 @@ export const UNLIMITED_BUDGET = Number.MAX_SAFE_INTEGER;
 const BUDGET_STORAGE_KEY = 'nicotind-preserve-budget';
 const AUTO_PRESERVE_STORAGE_KEY = 'nicotind-auto-preserve';
 
-/** Auto-preserve window — how far ahead of the playhead to keep on disk. */
-export type AutoPreserveMode = 'off' | '5' | '20' | 'full';
+/**
+ * Auto-preserve window — how far ahead of the playhead to keep on disk.
+ *
+ * `'1'` is the data-saver rung: only the track actually playing is kept, so
+ * offline playback survives a locked screen without a metered connection paying
+ * for a queue nobody asked for (#1262). Before it, the smallest way to have
+ * offline playback at all was five tracks ahead.
+ */
+export type AutoPreserveMode = 'off' | '1' | '5' | '20' | 'full';
 
 /** Hard cap on the "full" window so a runaway radio can't fill 50 GB. */
 const AUTO_PRESERVE_FULL_CAP = 200;
@@ -54,7 +61,7 @@ export interface PreserveBatch {
   stoppedAtCap: boolean;
 }
 
-const VALID_AUTO_MODES = new Set<AutoPreserveMode>(['off', '5', '20', 'full']);
+const VALID_AUTO_MODES = new Set<AutoPreserveMode>(['off', '1', '5', '20', 'full']);
 
 /**
  * Store-time integrity gate for a fetched audio body. A `fetch` that is cut
@@ -129,15 +136,18 @@ export class PreserveService {
 
   /**
    * Pure helper — how many tracks to keep given current mode + window length.
-   * 'off' disables auto-preserve. '5'/'20' cap at the window size or queue
-   * length, whichever is smaller. 'full' is bounded by AUTO_PRESERVE_FULL_CAP
-   * so a runaway radio never fills tens of GB.
+   * 'off' disables auto-preserve. '1' keeps only what is playing right now.
+   * '5'/'20' cap at the window size or queue length, whichever is smaller.
+   * 'full' is bounded by AUTO_PRESERVE_FULL_CAP so a runaway radio never fills
+   * tens of GB.
    */
   windowSize(trackCount: number): number {
     if (trackCount <= 0) return 0;
     switch (this.autoPreserveMode()) {
       case 'off':
         return 0;
+      case '1':
+        return 1;
       case '5':
         return Math.min(5, trackCount);
       case '20':

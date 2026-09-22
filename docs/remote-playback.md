@@ -31,6 +31,30 @@ brings the audio back to them.
 
 You can also rename the device here (e.g. "Living Room TV") so it is easy to spot in the picker.
 
+### The picker hides when there is nothing to pick (#1262)
+
+The cast button used to render unconditionally, on every device including the
+only one you own. That put a permanent dead control immediately beside Next — a
+near-miss for the thumb aiming at it — whose entire reward was a panel saying
+"no other devices". `canPickOutput` in `DeviceSwitcherComponent` gates it on
+`otherDevices().length > 0`, so on a single-device setup the transport row ends
+at Next.
+
+"Other device" means any row in the roster that is not this one, including a
+listed-but-unavailable one: that is still a device worth telling the listener
+about, and the panel already labels it per row.
+
+Two states keep the button up with an empty roster. **The audio is already
+elsewhere** — hiding it there would strand the listener with no way to pull
+playback back, so `isRemoteActive()` overrides the gate. **The panel is open** —
+`PlayingElsewhereComponent` and the TV player both open the picker without this
+button, and a trigger that vanished out from under an open popover would leave
+it anchored to nothing.
+
+Only the *trigger* is gated. `<app-device-switcher>` stays mounted and the
+panel's own `@if (switcherOpen())` is untouched, which is what keeps those two
+surfaces working.
+
 ### The first tap
 
 A browser will not play sound in a tab that has never been touched. A freshly opened tab is

@@ -12,18 +12,18 @@ import { PlaybackWsService } from '../../services/playback-ws.service';
  */
 const MY_ID = 'self-device';
 
-function makeRemoteStub(devices: RemoteDevice[], activeDeviceId: string | null) {
+function makeRemoteStub(devices: RemoteDevice[], activeDeviceId: string | null, open = true) {
   return {
     devices: signal(devices),
     activeDeviceId: signal(activeDeviceId),
-    switcherOpen: signal(true),
+    switcherOpen: signal(open),
     setSwitcherOpen: () => {},
     switchToDevice: () => {},
   };
 }
 
-function setup(devices: RemoteDevice[], activeDeviceId: string | null = null) {
-  const remoteStub = makeRemoteStub(devices, activeDeviceId);
+function setup(devices: RemoteDevice[], activeDeviceId: string | null = null, open = true) {
+  const remoteStub = makeRemoteStub(devices, activeDeviceId, open);
   TestBed.configureTestingModule({
     imports: [DeviceSwitcherComponent],
     providers: [
@@ -40,10 +40,73 @@ function setup(devices: RemoteDevice[], activeDeviceId: string | null = null) {
 }
 
 describe('DeviceSwitcherComponent', () => {
-  it('always exposes the toggle testid', () => {
-    const { fixture } = setup([]);
+  it('exposes the toggle testid whenever there is somewhere to send the audio', () => {
+    const other: RemoteDevice = {
+      id: 'target-device',
+      name: 'Living Room',
+      type: 'web',
+      lastSeen: Date.now(),
+    };
+    const { fixture } = setup([{ id: MY_ID, name: 'Self', type: 'web', lastSeen: 0 }, other]);
     const el: HTMLElement = fixture.nativeElement;
     expect(el.querySelector('[data-testid="device-switcher-toggle"]')).not.toBeNull();
+  });
+
+  /**
+   * A cast button on a single-device setup is a dead control sitting right
+   * beside Next, and the only thing behind it is "no other devices" (#1262).
+   */
+  describe('with nowhere else to play', () => {
+    const self: RemoteDevice = { id: MY_ID, name: 'Self', type: 'web', lastSeen: 0 };
+
+    it('hides the toggle when this device is the only one', () => {
+      const { fixture } = setup([self], null, false);
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector(
+          '[data-testid="device-switcher-toggle"]',
+        ),
+      ).toBeNull();
+    });
+
+    it('hides it on an empty roster too', () => {
+      const { fixture } = setup([], null, false);
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector(
+          '[data-testid="device-switcher-toggle"]',
+        ),
+      ).toBeNull();
+    });
+
+    /** Hiding it here would strand the listener with no way to pull the audio back. */
+    it('keeps it while the audio is playing somewhere else', () => {
+      const { fixture } = setup([self], 'gone-device', false);
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector(
+          '[data-testid="device-switcher-toggle"]',
+        ),
+      ).not.toBeNull();
+    });
+
+    /** Other surfaces open the picker without this button; the trigger must not
+     *  disappear out from under an open popover. */
+    it('keeps it while the panel is open', () => {
+      const { fixture } = setup([self], null, true);
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector(
+          '[data-testid="device-switcher-toggle"]',
+        ),
+      ).not.toBeNull();
+    });
+
+    /** The panel is never gated — only its trigger is. */
+    it('still renders the panel when something else opened it', () => {
+      const { fixture } = setup([self], null, true);
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector(
+          '[data-testid="device-switcher-panel"]',
+        ),
+      ).not.toBeNull();
+    });
   });
 
   it('renders the panel + self option when the switcher is open', () => {

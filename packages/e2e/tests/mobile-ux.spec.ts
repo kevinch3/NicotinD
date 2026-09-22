@@ -282,19 +282,18 @@ test.describe('mobile UX', () => {
   });
 
   // The live-screens `player-analysis` flow targets the transport controls by
-  // testid; guard that those stable hooks exist and that shuffle reflects state.
-  test('Now Playing exposes transport + queue testids', async ({ page }) => {
+  // testid; guard that those stable hooks exist — and that the two the sheet no
+  // longer offers are really gone, on the sheet as well as the bar (#1262).
+  test('Now Playing exposes transport + queue testids, and no shuffle or repeat', async ({
+    page,
+  }) => {
     await openNowPlaying(page);
-    const shuffle = page.getByTestId('now-playing-shuffle');
-    await expect(shuffle).toBeVisible();
-    await expect(page.getByTestId('now-playing-repeat')).toBeVisible();
+    await expect(page.getByTestId('now-playing-playpause')).toBeVisible();
     await expect(page.getByTestId('now-playing-radio')).toBeVisible();
     await expect(page.getByTestId('now-playing-queue')).toBeVisible();
 
-    // Toggling shuffle flips its pressed state (the screenshot flow relies on it).
-    await expect(shuffle).toHaveAttribute('aria-pressed', 'false');
-    await shuffle.click();
-    await expect(shuffle).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('now-playing-shuffle')).toHaveCount(0);
+    await expect(page.getByTestId('now-playing-repeat')).toHaveCount(0);
   });
 
   // Lyrics — the Track-info sheet exposes a Lyrics section; an admin can write,

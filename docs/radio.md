@@ -68,12 +68,46 @@ search/filters, playlists, stats, or anything about acquisition.
 ## How it works
 
 When `radio` is toggled on (Now Playing sheet), `PlayerService` watches the
-queue length. Once it drops to 2 tracks, it calls the registered
-`RadioProvider`, which hits `GET /api/radio/next` with the current track as
-the seed. The server scores a candidate pool against the seed and returns
-the top matches, which are appended to the queue. Deduplication against
-current + queue + recent history is applied both server-side (via the
-`exclude` parameter) and client-side.
+queue length against `radioQueueTarget` and calls the registered
+`RadioProvider` whenever it sits below it. The provider hits
+`GET /api/radio/next` with the current track as the seed. The server scores a
+candidate pool against the seed and returns the top matches, which are appended
+to the queue. Deduplication against current + queue + recent history is applied
+both server-side (via the `exclude` parameter) and client-side.
+
+### A radio queue has a depth, not a batch size (#1262)
+
+It used to drain to two tracks and then drop ten in. Both halves of that were
+visible from the couch: the "up next" list emptied out in front of the listener,
+then refilled in a lump, and for most of a track there was nothing queued to
+look at. The batch size also lived in `radio-source.service.ts` while the
+threshold lived in `player.service.ts`, so neither file could answer "how deep is
+the queue".
+
+Radio now holds a **depth**. `radioQueueTarget` (default 20) is the number of
+tracks the queue is kept at, and `replenishRadio` asks for exactly the
+shortfall — which after the first fill is one track, the replacement for the one
+just played. `RadioProvider` carries that shortfall as `seed.count` and every
+lane passes it straight to the API, so the depth the listener sees and the number
+fetched can no longer disagree.
+
+Topping up is iterative by design: a round that lands short of the target leaves
+the queue below it, which fires the effect again and asks for what is still
+missing. A round that adds **nothing** latches instead (`radioStarvedSeed`) —
+without it, a library with nothing left to offer would be re-asked on every queue
+mutation for as long as radio stayed on. The latch is keyed on the seed, so a new
+seed, a new strategy or radio being turned on again all un-latch it. A *failed*
+fetch never latches: it says nothing about whether tracks exist, and the next
+drain is the retry.
+
+The depth is admin-owned: `RadioSettings.queueTarget` (`app_settings.radio`,
+5..50, validated by `isValidQueueTarget` in one place the store and the route
+share). `GET /api/settings/radio` is open to any authenticated user precisely so
+the player can read it; `RadioSourceService` fetches it at install and retries
+from the provider, because install runs from the app initializer and on a cold
+launch that is before there is a session. The client keeps its own
+`DEFAULT_RADIO_QUEUE_TARGET` so it still behaves before the fetch lands and
+against a server too old to have an opinion.
 
 ### Scoring algorithm
 

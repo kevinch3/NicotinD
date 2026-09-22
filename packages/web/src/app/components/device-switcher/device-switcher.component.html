@@ -1,19 +1,23 @@
 
     <div class="relative">
-      <button
-        (click)="toggleSwitcher($event)"
-        [attr.title]="'remote.openSwitcher' | t"
-        [attr.aria-label]="'remote.openSwitcher' | t"
-        data-testid="device-switcher-toggle"
-        [class]="'w-7 h-7 flex items-center justify-center rounded-full transition ' +
-          (isRemoteActive() ? 'text-[var(--theme-accent-text)]' : 'text-theme-muted hover:text-theme-secondary')"
-      >
-        <!-- Cast icon -->
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="2" y="7" width="8" height="10" rx="1" />
-          <polygon points="14,5 22,3 22,21 14,19" />
-        </svg>
-      </button>
+      <!-- Only the trigger is gated, never the panel: the host stays mounted so
+           the surfaces that open the picker without this button still can. -->
+      @if (canPickOutput()) {
+        <button
+          (click)="toggleSwitcher($event)"
+          [attr.title]="'remote.openSwitcher' | t"
+          [attr.aria-label]="'remote.openSwitcher' | t"
+          data-testid="device-switcher-toggle"
+          [class]="'w-7 h-7 flex items-center justify-center rounded-full transition ' +
+            (isRemoteActive() ? 'text-[var(--theme-accent-text)]' : 'text-theme-muted hover:text-theme-secondary')"
+        >
+          <!-- Cast icon -->
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="7" width="8" height="10" rx="1" />
+            <polygon points="14,5 22,3 22,21 14,19" />
+          </svg>
+        </button>
+      }
 
       @if (remote.switcherOpen()) {
         <div data-testid="device-switcher-panel" [class]="'absolute right-0 w-64 bg-theme-surface-2 border border-theme rounded-xl shadow-2xl overflow-hidden z-50 ' + (placement() === 'down' ? 'top-10' : 'bottom-10')">

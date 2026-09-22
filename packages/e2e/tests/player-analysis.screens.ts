@@ -4,19 +4,18 @@ import { appeared, firstPresent } from '../playground/screens-ui';
 
 /**
  * Live mobile flow — Player & analysis. Plays a real library track and walks the
- * Now Playing surface (shuffle/repeat/queue/radio) and the track-info sheet
+ * Now Playing surface (transport/queue/radio) and the track-info sheet
  * (BPM/genre/acquisition), capturing a screenshot per state under
  * screenshots/mobile/player-analysis/ and recording timings/gaps via `obs`.
  *
  * Resilient by design: it waits for the (async) album grid before probing, and
- * the transport testids (`now-playing-shuffle/repeat/radio/queue`) are
- * best-effort — a deployed backend a release behind this branch won't have them
- * yet, so those shots are skipped with a note rather than failing the run.
+ * the transport testids (`now-playing-radio/queue`) are best-effort — a
+ * deployed backend a release behind this branch won't have them yet, so those
+ * shots are skipped with a note rather than failing the run.
  *
- * Read-mostly: shuffle/repeat/radio are client-side player state. The only
- * server-mutating steps (BPM analysis writes a tag; genre apply is an admin
- * write) are gated behind PLAYGROUND_ANALYZE=1, so the default run touches no
- * prod data.
+ * Read-mostly: radio is client-side player state. The only server-mutating
+ * steps (BPM analysis writes a tag; genre apply is an admin write) are gated
+ * behind PLAYGROUND_ANALYZE=1, so the default run touches no prod data.
  */
 const FLOW = 'player-analysis';
 const ANALYZE = process.env.PLAYGROUND_ANALYZE === '1';
@@ -54,19 +53,10 @@ test('player & analysis — mobile screens', async ({ page, obs }) => {
   await expect(page.getByTestId('now-playing-heading')).toBeVisible();
   await shot(page, FLOW, 2, 'now playing', { settleMs: 600 });
 
-  // 4) Shuffle on (testid is new — best-effort on older deploys).
-  const shuffle = await firstPresent(page.getByTestId('now-playing-shuffle'));
-  if (shuffle) {
-    await shuffle.click();
-    await expect(shuffle).toHaveAttribute('aria-pressed', 'true');
-    await shot(page, FLOW, 3, 'shuffle on', { settleMs: 250 });
-  }
-
-  // 5) Repeat (cycle once).
-  const repeat = await firstPresent(page.getByTestId('now-playing-repeat'));
-  if (repeat) {
-    await repeat.click();
-    await shot(page, FLOW, 4, 'repeat', { settleMs: 250 });
+  // 4) The transport itself: prev/play/next, the only controls the row carries.
+  const playPause = await firstPresent(page.getByTestId('now-playing-playpause'));
+  if (playPause) {
+    await shot(page, FLOW, 3, 'transport', { settleMs: 250 });
   }
 
   // 6) Queue ("Next up") — testid is new; fall back to the section heading.
@@ -92,7 +82,7 @@ test('player & analysis — mobile screens', async ({ page, obs }) => {
       kind: 'enhancement',
       title: 'Now Playing transport testids not present on this deploy',
       severity: 'low',
-      detail: 'now-playing-shuffle/repeat/radio/queue land with this branch.',
+      detail: 'now-playing-radio/queue land with this branch.',
     });
   }
 

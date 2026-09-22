@@ -281,6 +281,8 @@ export interface StreamingSettings {
 export interface RadioSettings {
   /** Opt-in: score radio's genre axis from the library's audio centroids. Default off. */
   genreAffinity: boolean;
+  /** How many tracks the player keeps queued ahead while radio is on (5..50, default 20). */
+  queueTarget: number;
   /** Genre names with a stored centroid (0 = nothing analysed yet). */
   centroids: number;
   /** Epoch ms of the last centroid rebuild, or null. */
