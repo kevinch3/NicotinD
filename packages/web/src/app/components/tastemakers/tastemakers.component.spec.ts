@@ -178,6 +178,12 @@ describe('TastemakersComponent', () => {
     expect(startRadioWithTracks).toHaveBeenCalledTimes(1);
     const tracks = startRadioWithTracks.mock.calls[0]![0] as Array<{ id: string }>;
     const memberIds = new Set(members.map((m) => m.id));
+    // The session is anchored on the playlist, so the top-up stays about it (#1277).
+    expect(startRadioWithTracks.mock.calls[0]![1]).toEqual({
+      seedIds: ['m1', 'm2', 'm3', 'm4'],
+      memberIds: ['m1', 'm2', 'm3', 'm4'],
+      name: expect.any(String),
+    });
     // First 3 are shuffled playlist members; the variations follow in order.
     expect(tracks.slice(0, 3).every((t) => memberIds.has(t.id))).toBe(true);
     expect(tracks.slice(3).map((t) => t.id)).toEqual(['v1', 'v2']);

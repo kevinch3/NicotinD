@@ -336,9 +336,10 @@ Two fixes, and the first matters more than the bug:
    (the toggle lives in the phone transport and the radio chip), so a remembered `radio = false`
    could never be undone from the couch. Endless playback is the 10-foot expectation and there is no
    "off" worth preserving when there is no way back. Idempotent, and it leaves an in-flight filter
-   vibe alone.
+   vibe alone. Turned on over an album queue it anchors on the album (the whole list, not the
+   shrinking queue); over a bare queue, on the playing track (#1277).
 
-**A song press on Home seeds radio from that song.** `playShelfSong` (`lib/shelf-play.ts`) is the
+**A song press on Home seeds radio from that song, for the whole session.** `playShelfSong` (`lib/shelf-play.ts`) is the
 one decision, shared by the three Home shelves: on phone and desktop the shelf decides (a
 recommendation tile seeds radio, the history shelf plays itself as a queue), on TV every press seeds
 radio and asks for the player. The variety position is the listener's stored strategy — `balanced`

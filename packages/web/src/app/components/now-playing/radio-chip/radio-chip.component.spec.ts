@@ -6,13 +6,17 @@ import { RadioChipComponent } from './radio-chip.component';
 import { PlayerService } from '../../../services/player.service';
 import { RecommendationsApiService } from '../../../services/api/recommendations-api.service';
 import { LibraryApiService } from '../../../services/api/library-api.service';
+import { TranslateService } from '../../../services/translate.service';
 import type { RadioProvenance, StrategyId } from '@nicotind/core';
+import type { RadioAnchor } from '../../../services/player.service';
 
 function setup(
   over: {
     radio?: boolean;
     strategy?: StrategyId;
     filter?: unknown;
+    /** Defaults to a song radio anchored on `seed` (not the playing `s1`). */
+    anchor?: RadioAnchor | null;
     provenance?: RadioProvenance | null;
   } = {},
 ) {
@@ -20,6 +24,8 @@ function setup(
   const player = {
     radio: () => over.radio ?? true,
     radioFilter: () => over.filter ?? null,
+    radioAnchor: () =>
+      over.anchor === undefined ? { kind: 'song', id: 'seed', title: 'Seed Song' } : over.anchor,
     radioStrategy,
     currentTrack: () => ({ id: 's1', title: 'Toxic', artist: 'Britney' }),
     toggleRadio: vi.fn(),
@@ -41,11 +47,13 @@ function setup(
       },
     ],
   });
+  // The stub translator renders keys only, so params are asserted on the call.
+  const t = vi.spyOn(TestBed.inject(TranslateService), 't');
   const fixture = TestBed.createComponent(RadioChipComponent);
   fixture.detectChanges();
   const el = fixture.nativeElement as HTMLElement;
   const q = (id: string) => el.querySelector<HTMLElement>(`[data-testid="${id}"]`);
-  return { fixture, el, q, player, api };
+  return { fixture, el, q, player, api, t };
 }
 
 describe('RadioChipComponent', () => {
@@ -82,14 +90,41 @@ describe('RadioChipComponent', () => {
     q('radio-variety-too-different')!.click();
     expect(player.setRadioStrategy).toHaveBeenCalledWith('similar');
     expect(api.feedback).toHaveBeenCalledTimes(1);
+    // The vote names the anchor as the seed, never the playing track (#1277).
     expect(api.feedback).toHaveBeenCalledWith(
       's1',
       'too_different',
-      expect.objectContaining({ strategyFrom: 'balanced', strategyTo: 'similar', seedId: 's1' }),
+      expect.objectContaining({ strategyFrom: 'balanced', strategyTo: 'similar', seedId: 'seed' }),
     );
     expect(api.setPreferences).toHaveBeenCalledWith('similar');
     fixture.detectChanges();
     expect(q('radio-variety-too-different')!.getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('a vote on a list radio carries the list, and on a station only the filter', () => {
+    const list = setup({ anchor: { kind: 'list', ids: ['p1', 'p2'], members: ['p1', 'p2'] } });
+    list.q('radio-chip-expand')!.click();
+    list.fixture.detectChanges();
+    list.q('radio-variety-too-similar')!.click();
+    expect(list.api.feedback).toHaveBeenCalledWith(
+      's1',
+      'too_similar',
+      expect.objectContaining({ seedIds: ['p1', 'p2'], seedId: undefined }),
+    );
+
+    const station = setup({ filter: { genres: ['Jazz'] } });
+    station.q('radio-chip-expand')!.click();
+    station.fixture.detectChanges();
+    station.q('radio-variety-too-similar')!.click();
+    expect(station.api.feedback).toHaveBeenCalledWith(
+      's1',
+      'too_similar',
+      expect.objectContaining({
+        filter: { genres: ['Jazz'] },
+        seedId: undefined,
+        seedIds: undefined,
+      }),
+    );
   });
 
   it('re-selecting the current position does nothing', () => {
@@ -101,11 +136,25 @@ describe('RadioChipComponent', () => {
     expect(api.feedback).not.toHaveBeenCalled();
   });
 
-  it('describes the seed or the station, and says so when radio is off', () => {
+  it('describes the anchor or the station, and says so when radio is off', () => {
     const seeded = setup();
     seeded.q('radio-chip-expand')!.click();
     seeded.fixture.detectChanges();
     expect(seeded.q('radio-chip-description')!.textContent).toContain('nowPlaying.radioSeed');
+    // The anchor's title, not the playing track's (#1277).
+    expect(seeded.t).toHaveBeenCalledWith('nowPlaying.radioSeed', { title: 'Seed Song' });
+    expect(seeded.t).not.toHaveBeenCalledWith('nowPlaying.radioSeed', { title: 'Toxic' });
+
+    const listed = setup({ anchor: { kind: 'list', ids: ['p1'], members: ['p1'], name: 'Mix' } });
+    listed.q('radio-chip-expand')!.click();
+    listed.fixture.detectChanges();
+    expect(listed.q('radio-chip-description')!.textContent).toContain('nowPlaying.radioList');
+    expect(listed.t).toHaveBeenCalledWith('nowPlaying.radioList', { name: 'Mix' });
+
+    const unanchored = setup({ anchor: null });
+    unanchored.q('radio-chip-expand')!.click();
+    unanchored.fixture.detectChanges();
+    expect(unanchored.t).toHaveBeenCalledWith('nowPlaying.radioSeed', { title: 'Toxic' });
 
     const station = setup({ filter: { genres: ['Jazz'] } });
     station.q('radio-chip-expand')!.click();

@@ -249,7 +249,11 @@ describe('MosaicHomeComponent', () => {
       await settle(fixture);
       await component.start(component.tiles().find((t) => t.kind === 'playlist')!);
       expect(playlistsApi.getPlaylist).toHaveBeenCalledWith('p7');
-      expect(player.startRadioWithTracks).toHaveBeenCalled();
+      // Anchored on the playlist (#1277), so the top-up and heading stay on it.
+      expect(player.startRadioWithTracks).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.objectContaining({ seedIds: ['ps1'] }),
+      );
     });
   });
 

@@ -6,11 +6,19 @@
  *
  * Run once locally (`bun run --filter @nicotind/e2e make-fixtures`) and COMMIT the
  * output under fixtures/music — CI does not have/need ffmpeg. Re-run only when the
- * desired fixture library changes.
+ * desired fixture library changes. **Additive**: a track that already exists is
+ * left alone, so adding a fixture neither re-encodes the committed ones (byte
+ * churn from a newer ffmpeg) nor touches anything else under the tree — the
+ * script used to wipe `fixtures/music` first, which also deleted the committed
+ * cover below. Delete a file by hand to regenerate it.
  *
  * Produces:
  *   - a 7-track album  -> classified `album`, appears in the Albums grid
  *   - a 1-track loose single -> classified `single`, appears on the artist page
+ *   - two genre-tagged catalogues ("E2E Alpha", "E2E Beta") so a radio spec can
+ *     tell a session that stays in its seed's genre from one that drifts (#1277);
+ *     every other artist stays untagged, because several specs write the only
+ *     genre they assert on and read it back by label
  *
  * NOT produced here: `E2E_Test_Artist/E2E_Test_Album/cover.jpg`, a committed
  * 1400x1400 sleeve the scanner picks up as folder art. It exists so screenshots
@@ -23,7 +31,7 @@
  * The loose single is deliberately left WITHOUT art — `mobile-ux.spec.ts` G2
  * asserts the gradient fallback, which needs a genuinely art-less subject.
  */
-import { mkdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -36,6 +44,7 @@ interface Track {
   title: string;
   track: number;
   total: number;
+  genre?: string;
 }
 
 async function writeTrack(t: Track): Promise<void> {
@@ -43,6 +52,10 @@ async function writeTrack(t: Track): Promise<void> {
   const dir = join(musicRoot, safe(t.artist), safe(t.album));
   mkdirSync(dir, { recursive: true });
   const file = join(dir, `${String(t.track).padStart(2, '0')} - ${safe(t.title)}.flac`);
+  if (existsSync(file)) {
+    console.log('  kept ', file.replace(musicRoot + '/', ''));
+    return;
+  }
 
   // 30s of silence at 44.1k, tagged. -y overwrite.
   const args = [
@@ -65,6 +78,7 @@ async function writeTrack(t: Track): Promise<void> {
     `track=${t.track}/${t.total}`,
     '-metadata',
     `date=2024`,
+    ...(t.genre ? ['-metadata', `genre=${t.genre}`] : []),
     file,
   ];
 
@@ -78,7 +92,6 @@ async function writeTrack(t: Track): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  rmSync(musicRoot, { recursive: true, force: true });
   mkdirSync(musicRoot, { recursive: true });
 
   const albumTitles = [
@@ -130,6 +143,27 @@ async function main(): Promise<void> {
     track: 2,
     total: 2,
   });
+
+  // Genre catalogues for the radio-anchor spec. `balanced` caps two tracks per
+  // artist per generation, so a genre needs several artists to fill a queue
+  // depth of five without leaking out of genre; Beta exists to be leaked into.
+  const catalogue = async (genre: string, artists: number) => {
+    console.log(`Genre catalogue: ${genre} (${artists} artists x 2 tracks)`);
+    for (let a = 1; a <= artists; a++) {
+      for (let n = 1; n <= 2; n++) {
+        await writeTrack({
+          artist: `${genre} Artist ${a}`,
+          album: `${genre} Album ${a}`,
+          title: `${genre} ${a}-${n}`,
+          track: n,
+          total: 2,
+          genre,
+        });
+      }
+    }
+  };
+  await catalogue('E2E Alpha', 5);
+  await catalogue('E2E Beta', 2);
 
   console.log('\nDone. Commit the generated files under packages/e2e/fixtures/music.');
 }

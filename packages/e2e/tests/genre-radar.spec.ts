@@ -4,8 +4,8 @@
  * genre-radar.component.spec.ts). The geometry and the component computeds are
  * unit-tested; this asserts the chart actually renders on the curation surface.
  *
- * The fixtures are silent FLACs with no genre tags, so the spec *creates* the
- * data it needs via a curator genre override (which runs a synchronous rescan).
+ * The fixture artist this spec uses carries no genre tag, so the spec *creates*
+ * the data it needs via a curator genre override (which runs a synchronous rescan).
  * Without that the chart legitimately hides and every assertion below would
  * vacuously pass.
  */

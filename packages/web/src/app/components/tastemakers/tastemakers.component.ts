@@ -140,7 +140,7 @@ export class TastemakersComponent implements OnInit {
       const picks = shuffleArray(songs).slice(0, BLEND_PICKS);
       const seedIds = songs.slice(0, SEED_CAP).map((s) => s.id);
       // Degradation, not failure: if the radio engine is unreachable the
-      // picks still play alone (radio's seed lane takes over from there).
+      // picks still play alone (the list-anchored top-up takes over from there).
       const variations = await firstValueFrom(
         this.radioApi
           .getListRadio(seedIds, BLEND_VARIATIONS)
@@ -148,7 +148,15 @@ export class TastemakersComponent implements OnInit {
       );
       const inPlaylist = new Set(songs.map((s) => s.id));
       const extras = variations.filter((s) => !inPlaylist.has(s.id));
-      this.player.startRadioWithTracks([...picks, ...extras].map((s) => toTrack(s)));
+      // The session stays about the playlist, not about whichever pick is playing (#1277).
+      this.player.startRadioWithTracks(
+        [...picks, ...extras].map((s) => toTrack(s)),
+        {
+          seedIds,
+          memberIds: songs.map((s) => s.id),
+          name: detail.name,
+        },
+      );
       this.player.nowPlayingOpen.set(true);
     } catch {
       this.toast.show({ message: "Couldn't start radio — try again", kind: 'error' });

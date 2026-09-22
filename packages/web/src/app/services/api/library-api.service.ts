@@ -598,11 +598,18 @@ export class LibraryApiService {
   }
 
   /** List-seeded radio ("keep the vibe"): one generation scored against the
-   *  centroid of a whole song list — one request, not one radio per seed. */
-  getListRadio(seedIds: string[], count = 10, strategy?: StrategyId) {
-    return this.http.get<Song[]>('/api/radio/next', {
-      params: withStrategy({ seedIds: seedIds.join(','), count }, strategy),
-    });
+   *  centroid of a whole song list — one request, not one radio per seed. The
+   *  player's list-anchored top-up (#1277) is the caller that passes `exclude`
+   *  and asks for provenance; a shelf passes neither. */
+  getListRadio(
+    seedIds: string[],
+    count = 10,
+    strategy?: StrategyId,
+    opts: { exclude?: string[]; provenance?: boolean } = {},
+  ) {
+    const params: Record<string, string | number> = { seedIds: seedIds.join(','), count };
+    if (opts.exclude?.length) params['exclude'] = opts.exclude.join(',');
+    return this.radioGet(withStrategy(params, strategy), opts.provenance === true);
   }
 
   /** Filter-seeded radio (no seed song): start a "vibe" from a LibraryFilter. */

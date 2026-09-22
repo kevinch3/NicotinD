@@ -173,7 +173,7 @@ test.describe('radio evaluation polls', () => {
   }) => {
     // A station scenario has no seed song, so the wizard's `@if (sc.seed)` card
     // renders nothing — a rater would be grading an unexplained list of songs.
-    // The fixture library carries no genre tags, so this uses a year station;
+    // A year station keeps this spec off the genre-tagged fixtures' counts;
     // the genre grading itself is covered in radio.test.ts / station-affinity.
     const login = await request.post('/api/auth/login', { data: ADMIN });
     const adminToken = ((await login.json()) as { token: string }).token;

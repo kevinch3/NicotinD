@@ -724,6 +724,8 @@
   "nowPlaying.radioOn": "Radio on",
   "nowPlaying.radioOptions": "Radio options",
   "nowPlaying.radioSeed": "Based on {title}",
+  "nowPlaying.radioList": "Based on the playlist {name}",
+  "nowPlaying.radioListUnnamed": "Based on a playlist",
   "nowPlaying.radioStation": "Station: {label}",
   "nowPlaying.radioIdle": "Turn radio on to keep the music going after the queue.",
   "nowPlaying.radioFormula": "formula v{version}",

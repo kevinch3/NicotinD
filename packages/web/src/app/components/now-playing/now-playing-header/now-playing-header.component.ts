@@ -28,6 +28,7 @@ export class NowPlayingHeaderComponent {
     nowPlayingHeading({
       radio: this.player.radio(),
       radioFilter: this.player.radioFilter(),
+      radioAnchor: this.player.radioAnchor(),
       context: this.player.context(),
       trackTitle: this.player.currentTrack()?.title ?? null,
     }),

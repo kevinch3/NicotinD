@@ -724,6 +724,8 @@
   "nowPlaying.radioOn": "Radio activada",
   "nowPlaying.radioOptions": "Opciones de radio",
   "nowPlaying.radioSeed": "A partir de {title}",
+  "nowPlaying.radioList": "A partir de la lista {name}",
+  "nowPlaying.radioListUnnamed": "A partir de una lista",
   "nowPlaying.radioStation": "Estación: {label}",
   "nowPlaying.radioIdle": "Activá la radio para que la música siga después de la cola.",
   "nowPlaying.radioFormula": "fórmula v{version}",

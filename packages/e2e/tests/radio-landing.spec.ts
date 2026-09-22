@@ -67,7 +67,7 @@ test.describe('radio landing', () => {
     });
     expect(res.ok()).toBeTruthy();
     const recs = (await res.json()) as Array<{ id: string }>;
-    // The fixture library holds 10 songs, so excluding the 2 seeds still
+    // The fixture library holds 24 songs, so excluding the 2 seeds still
     // leaves candidates — a variation must exist and must not be a seed.
     expect(recs.length).toBeGreaterThan(0);
     for (const seedId of seedIds) {
@@ -83,10 +83,11 @@ test.describe('radio landing', () => {
     page,
     request,
   }) => {
-    // The fixtures are silent FLACs with no genre tag, so the genre row exists
-    // only if this spec makes it (same curator override genre-radar.spec.ts
-    // uses, scoped to a different artist so neither spec moves the other's
-    // counts). Asserted by label, so it reads only what it wrote.
+    // The genre-tagged fixtures (helpers.ts `FIXTURE.genres`) already give the
+    // row something to show; this spec still writes its own genre (the curator
+    // override genre-radar.spec.ts uses, scoped to a different artist so
+    // neither spec moves the other's counts) and asserts by label, so it reads
+    // only what it wrote.
     const GENRE = 'Shoegaze';
     await page.goto('/classic');
     const token = await page.evaluate(() => localStorage.getItem('nicotind_token'));
@@ -125,7 +126,7 @@ test.describe('radio landing', () => {
     const shelf = page.getByTestId('taste-breakers');
     // Never order-dependent: the pick list demotes recent plays rather than
     // excluding them, so the shelf survives a suite that played every fixture
-    // song (the 10-song library would otherwise be fully covered by the last
+    // song (a small library would otherwise be fully covered by the last
     // 20 plays and the shelf would vanish).
     await expect(shelf).toBeVisible({ timeout: 10_000 });
     expect(await shelf.getByTestId('taste-breakers-item').count()).toBeGreaterThan(0);
@@ -159,9 +160,10 @@ test.describe('radio landing', () => {
     await expect(shelf).toBeVisible({ timeout: 10_000 });
     expect(await shelf.getByTestId('tastemaker-item').count()).toBeGreaterThan(0);
 
-    // On the 10-song fixture library every playlist member is also a seed, so
-    // the list-radio variations come back empty and the tap exercises the
-    // picks-only degradation path — assert playback starts, not queue length.
+    // Every playlist member is also a seed, and the untagged fixtures score
+    // alike, so the list-radio variations may come back empty and the tap then
+    // exercises the picks-only degradation path — assert playback starts, not
+    // queue length.
     await shelf.getByTestId('tastemaker-item').first().click();
     await expect(page.getByTestId('player-title')).not.toHaveText('', { timeout: 15_000 });
   });
