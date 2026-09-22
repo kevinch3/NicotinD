@@ -8,7 +8,7 @@ import { ffmpegAvailable, TRANSCODE_DURATION_TOLERANCE_SEC } from './transcode.j
 import { ffmpegBinary } from './ffmpeg-path.js';
 import { extractEmbeddedPicture, preserveFolderCover } from './cover-sources.js';
 import { preparePicture } from './opus-artwork.js';
-import { readAudioTags, type AudioTags } from './audio-tags.js';
+import { readAudioTags, writeAudioTags, type AudioTags } from './audio-tags.js';
 import { quarantineOriginal } from './transcode-quarantine.js';
 import {
   DEFAULT_LIBRARY_FORMAT,
@@ -228,31 +228,104 @@ const ID3_TXXX_FFMPEG_MISNAMES = [
  * would rewrite the whole container again, and at whole-library scale a second
  * rewrite per file is not free.
  */
-async function carriedMetadataArgs(absPath: string): Promise<string[]> {
-  if (!ID3_EXTS.has(extname(absPath).toLowerCase())) return [];
+/**
+ * The mirror image: what `-map_metadata 0` drops going **Vorbis → ID3**.
+ *
+ * `ID3_FRAMES_FFMPEG_DROPS` above covers ID3 → Vorbis, the only direction that
+ * existed while Opus was the only target. Converting *into* mp3 loses a
+ * different set, and nothing covered it until the per-format round-trip test
+ * measured it (#1256): from a FLAC source, an mp3 target arrived missing seven
+ * of twenty-two fields.
+ *
+ * Probed the way #1177's `tmpo` was — every plausible spelling against a real
+ * file, read back with music-metadata:
+ *
+ * | field | key that works | keys that do not |
+ * | --- | --- | --- |
+ * | bpm | `TBPM` | `BPM` |
+ * | key | `TKEY` | `KEY`, `initial_key` |
+ *
+ * The three ids are the **mirror of #1230**, one direction over. ffmpeg names
+ * the TXXX frame after the `-metadata` key it was given, and `readAudioTags`
+ * looks the ids up by their spaced, title-case descriptions (`Acoustid Id`).
+ * So `-metadata ACOUSTID_ID=…` writes a frame that is present in the file and
+ * invisible to every reader here — a "did the data survive?" check says yes
+ * while nothing can find it. They therefore reuse the **description** column of
+ * {@link ID3_TXXX_FFMPEG_MISNAMES} rather than a second copy of those strings.
+ *
+ * Two fields have **no** working `-metadata` key at all and are handled after
+ * the encode by {@link carryPostEncodeId3}: `lyrics` (ffmpeg re-emits USLT as a
+ * TXXX no reader maps back) and `compilation` (needs a TCMP frame ffmpeg's mp3
+ * muxer will not write).
+ */
+const VORBIS_FIELDS_FFMPEG_DROPS = [
+  { field: 'bpm', id3: 'TBPM' },
+  { field: 'key', id3: 'TKEY' },
+  ...ID3_TXXX_FFMPEG_MISNAMES.map((m) => ({ field: m.field, id3: m.description })),
+] as const satisfies ReadonlyArray<{ field: keyof AudioTags; id3: string }>;
+
+/**
+ * The two fields no `-metadata` key can carry into ID3, written after the
+ * encode through node-id3 — the same route `writeAudioTags` already uses to put
+ * lyrics back after an ffmpeg container rewrite.
+ *
+ * Best-effort by construction: the audio is verified and the file is already
+ * correct without these, so a failure is a warning, never a lost conversion.
+ */
+async function carryPostEncodeId3(sourceTags: AudioTags, outPath: string): Promise<void> {
+  const carry: AudioTags = {};
+  if (sourceTags.lyrics !== undefined) carry.lyrics = sourceTags.lyrics;
+  if (sourceTags.compilation) carry.compilation = true;
+  if (Object.keys(carry).length === 0) return;
+  try {
+    await writeAudioTags(outPath, carry);
+  } catch (err) {
+    log.warn({ err, outPath }, 'could not carry lyrics/compilation onto the encoded file');
+  }
+}
+
+async function carriedMetadataArgs(
+  absPath: string,
+  targetExt: string,
+): Promise<{ args: string[]; sourceTags: AudioTags | null }> {
+  const sourceIsId3 = ID3_EXTS.has(extname(absPath).toLowerCase());
+  const targetIsId3 = ID3_EXTS.has(`.${targetExt}`);
+  // Same tag family in and out: `-map_metadata 0` carries everything and there
+  // is nothing to fix up.
+  if (sourceIsId3 === targetIsId3) return { args: [], sourceTags: null };
+
   let tags: AudioTags;
   try {
     tags = await readAudioTags(absPath);
   } catch {
-    return []; // an unreadable source is the encoder's problem, not ours
+    return { args: [], sourceTags: null }; // an unreadable source is the encoder's problem
   }
   const args: string[] = [];
   const present = (v: unknown): v is string | number =>
     v !== undefined && v !== null && String(v) !== '';
 
-  for (const { field, vorbis } of ID3_FRAMES_FFMPEG_DROPS) {
-    const v = tags[field];
-    if (present(v)) args.push('-metadata', `${vorbis}=${String(v)}`);
+  if (sourceIsId3) {
+    for (const { field, vorbis } of ID3_FRAMES_FFMPEG_DROPS) {
+      const v = tags[field];
+      if (present(v)) args.push('-metadata', `${vorbis}=${String(v)}`);
+    }
+    for (const { field, description, vorbis } of ID3_TXXX_FFMPEG_MISNAMES) {
+      const v = tags[field];
+      if (!present(v)) continue;
+      args.push('-metadata', `${vorbis}=${String(v)}`);
+      // Blank the key ffmpeg derives from the TXXX description, so the value
+      // exists once under the name readers actually look for.
+      args.push('-metadata', `${description.toUpperCase()}=`);
+    }
+    return { args, sourceTags: tags };
   }
-  for (const { field, description, vorbis } of ID3_TXXX_FFMPEG_MISNAMES) {
+
+  // Vorbis-family source, ID3 target — the mirror direction (#1256).
+  for (const { field, id3 } of VORBIS_FIELDS_FFMPEG_DROPS) {
     const v = tags[field];
-    if (!present(v)) continue;
-    args.push('-metadata', `${vorbis}=${String(v)}`);
-    // Blank the key ffmpeg derives from the TXXX description, so the value
-    // exists once under the name readers actually look for.
-    args.push('-metadata', `${description.toUpperCase()}=`);
+    if (present(v)) args.push('-metadata', `${id3}=${String(v)}`);
   }
-  return args;
+  return { args, sourceTags: tags };
 }
 
 /** Where the replaced original goes instead of being unlinked. */
@@ -291,7 +364,7 @@ async function carryEmbeddedCover(
     const pic = await extractEmbeddedPicture(sourcePath);
     if (!pic) return false;
     writeFileSync(raw, Buffer.from(pic.data));
-    const prepared = preparePicture(raw, scratch);
+    const prepared = preparePicture(raw, scratch, strategy.maxEmbeddedPictureBytes);
     if (!prepared) return false; // too large to embed readably — say so, move on
     return strategy.embedArt(outPath, prepared.path);
   } catch (err) {
@@ -327,7 +400,7 @@ export async function transcodeToLibraryFormat(
   // (which may equal absPath only if the source were already the target format
   // — excluded by the callers' "already the target" test).
   const tmpPath = transcodeTempPathFor(absPath, format);
-  const carried = await carriedMetadataArgs(absPath);
+  const { args: carried, sourceTags } = await carriedMetadataArgs(absPath, strategy.ext);
   const ffmpegArgs = (strict: boolean) => [
     '-hide_banner',
     '-loglevel',
@@ -391,6 +464,12 @@ export async function transcodeToLibraryFormat(
   // Best-effort by construction: the audio is already verified correct, and a
   // missing cover must never cost the conversion.
   await carryEmbeddedCover(absPath, tmpPath, strategy);
+
+  // Lyrics and the compilation flag have no working `-metadata` key into ID3,
+  // so they go on after the encode, onto the TEMP — the rename below then
+  // promotes a complete file rather than one that gains tags a moment later,
+  // the same discipline the cover carry above follows.
+  if (sourceTags) await carryPostEncodeId3(sourceTags, tmpPath);
 
   try {
     // Promote temp → final, then deal with the original. If dest === source

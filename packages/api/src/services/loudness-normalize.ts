@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import type { Database } from 'bun:sqlite';
 import { createLogger } from '@nicotind/core';
 import { gainForTarget, readOutputGain, writeOutputGain } from './opus-gain.js';
+import { DEFAULT_LIBRARY_FORMAT, libraryFormat, type LibraryFormat } from './library-format.js';
 
 const log = createLogger('loudness-normalize');
 
@@ -69,6 +70,14 @@ export interface NormalizeLoudnessOptions {
   limit?: number;
   /** Resume cursor: only consider song ids strictly greater than this. */
   afterId?: string | null;
+  /**
+   * The library's target format. Defaults to {@link DEFAULT_LIBRARY_FORMAT}.
+   *
+   * Decides which rows are candidates, and whether the pass can run at all — a
+   * format whose `writeGain` is `null` is refused rather than silently visiting
+   * nothing.
+   */
+  format?: LibraryFormat;
   shouldStop?: () => boolean;
   onProgress?: (p: { total: number; visited: number; label: string }) => void;
 }
@@ -90,11 +99,35 @@ interface Row {
   loudness: number | null;
 }
 
+/**
+ * Refuse, loudly, for a target format with no in-header gain field.
+ *
+ * The trap #1256 names: a format selector that silently turns normalization off
+ * is worse than no selector, because the capability loss has no symptom. The
+ * pass would run, visit zero files, report success, and the library would stay
+ * un-normalized with nothing to indicate why.
+ *
+ * `writeGain` being `null` on the strategy is the declaration; this is the one
+ * place that has to act on it, because the whole pass is the capability.
+ */
+function assertCanWriteGain(format: LibraryFormat): void {
+  const strategy = libraryFormat(format);
+  if (strategy.writeGain === null) {
+    throw new Error(
+      `${strategy.id} has no in-header gain field, so loudness cannot be normalized without ` +
+        're-encoding the audio. Refusing rather than reporting a pass that did nothing.',
+    );
+  }
+}
+
 export async function normalizeLibraryLoudness(
   db: Database,
   musicDir: string,
   opts: NormalizeLoudnessOptions,
 ): Promise<NormalizeLoudnessResult> {
+  const format = opts.format ?? DEFAULT_LIBRARY_FORMAT;
+  assertCanWriteGain(format);
+  const strategy = libraryFormat(format);
   const result: NormalizeLoudnessResult = {
     candidates: 0,
     normalized: 0,
@@ -113,16 +146,16 @@ export async function normalizeLibraryLoudness(
   // `ORDER BY id` is load-bearing: without a stable order a bounded pass
   // re-walks an arbitrary head on every call and never finishes.
   const rows = db
-    .query<Row, [string | null, string | null, number]>(
+    .query<Row, [string, string | null, string | null, number]>(
       `SELECT id, path, COALESCE(loudness_measured, loudness) AS loudness
          FROM library_songs
         WHERE hidden = 0
-          AND lower(suffix) = 'opus'
+          AND lower(suffix) = ?
           AND (? IS NULL OR id > ?)
         ORDER BY id
         LIMIT ?`,
     )
-    .all(afterId, afterId, limit);
+    .all(strategy.ext, afterId, afterId, limit);
   result.candidates = rows.length;
 
   let visited = 0;

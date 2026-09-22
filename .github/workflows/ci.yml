@@ -228,6 +228,15 @@ jobs:
       - name: Install-script gate (no unreviewed third-party downloads)
         run: bun run check:install-scripts
 
+      # Every format an operator can standardize their library on must be a
+      # valid choice: scannable, taggable, with a calibrated ladder and a
+      # declared art/gain capability. The failure this prevents is silent and
+      # total — adopting the streaming table's `aac` entry (`-f adts`, `.aac`)
+      # as a library target gives a library the scanner indexes and
+      # `writeAudioTags` refuses every write to, forever (#1256).
+      - name: Library format gate (every choice must be valid)
+        run: bun run check:library-formats
+
       # Without these, 55 `describe.if(ffmpegAvailable())` blocks across 15 files
       # SKIP here and print the same green as a pass. This job reported
       # `136 skip / 0 fail` on #1267 while skipping the very regression test for

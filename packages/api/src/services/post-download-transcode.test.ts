@@ -28,6 +28,7 @@ import {
 } from './post-download-transcode.js';
 import { ffmpegAvailable, transcodeOutputIsAcceptable } from './transcode.js';
 import { readAudioTags, writeAudioTags, type AudioTags } from './audio-tags.js';
+import { LIBRARY_FORMATS } from './library-format.js';
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -203,6 +204,76 @@ describe('transcodeToLibraryFormat', () => {
   });
 });
 
+/**
+ * The denominator, asserted rather than assumed. Adding a field to `AudioTags`
+ * breaks this object at COMPILE time until it is listed, so a new tag cannot
+ * reach the library without someone deciding whether the transcode carries it.
+ * A hand-kept list would silently go stale instead.
+ *
+ * At module scope because two suites share it: the mp3→Opus preservation block
+ * below, and the per-format round-trip at the end of the file. One denominator,
+ * not two that can drift apart.
+ */
+const ALL_AUDIO_TAG_FIELDS: Record<keyof AudioTags, true> = {
+  artist: true,
+  albumArtist: true,
+  album: true,
+  title: true,
+  trackNumber: true,
+  discNumber: true,
+  year: true,
+  genre: true,
+  bpm: true,
+  key: true,
+  lyrics: true,
+  energy: true,
+  loudness: true,
+  valence: true,
+  danceability: true,
+  acousticness: true,
+  instrumental: true,
+  mood: true,
+  compilation: true,
+  acoustIdId: true,
+  mbRecordingId: true,
+  mbReleaseId: true,
+};
+
+/**
+ * Every field the library stores in a tag — all of them, on every source.
+ *
+ * `compilation` used to be excluded here, because node-id3 0.2.9 has no typed
+ * TCMP field and #917 recorded it as unwritable on the ID3 path. That turned
+ * out to be true of node-id3's *API* and false of its *behaviour*: it passes an
+ * unrecognised four-character frame id straight through, so `{ TCMP: '1' }`
+ * writes a real frame (#1256). The exclusion is gone rather than loosened —
+ * while it stood, no test could tell "correctly absent" from "silently lost".
+ */
+const FULL_TAGS = {
+  compilation: true,
+  title: 'T',
+  artist: 'A',
+  albumArtist: 'AA',
+  album: 'Al',
+  trackNumber: 7,
+  discNumber: 2,
+  year: 1994,
+  genre: 'Shoegaze',
+  bpm: 128,
+  key: 'Am',
+  energy: 0.7,
+  loudness: -9.5,
+  valence: 0.4,
+  danceability: 0.6,
+  acousticness: 0.2,
+  instrumental: 0.1,
+  mood: 'happy' as const,
+  lyrics: 'la la la',
+  acoustIdId: '6d1b2f3c-0000-4000-8000-0000000000ac',
+  mbRecordingId: '9e0a1b2c-0000-4000-8000-0000000000mb',
+  mbReleaseId: '1f2e3d4c-0000-4000-8000-0000000000re',
+};
+
 describe('tag preservation through mp3 -> opus', () => {
   function makeMp3(path: string): void {
     execFileSync(
@@ -226,73 +297,11 @@ describe('tag preservation through mp3 -> opus', () => {
     );
   }
 
-  // The denominator, asserted rather than assumed. Adding a field to
-  // `AudioTags` breaks this object at COMPILE time until it is listed, so a new
-  // tag cannot reach the library without someone deciding whether the transcode
-  // carries it. A hand-kept list would silently go stale instead.
-  const ALL_AUDIO_TAG_FIELDS: Record<keyof AudioTags, true> = {
-    artist: true,
-    albumArtist: true,
-    album: true,
-    title: true,
-    trackNumber: true,
-    discNumber: true,
-    year: true,
-    genre: true,
-    bpm: true,
-    key: true,
-    lyrics: true,
-    energy: true,
-    loudness: true,
-    valence: true,
-    danceability: true,
-    acousticness: true,
-    instrumental: true,
-    mood: true,
-    compilation: true,
-    acoustIdId: true,
-    mbRecordingId: true,
-    mbReleaseId: true,
-  };
-
-  // `compilation` is the one field an mp3 source cannot carry: node-id3 0.2.9
-  // has no TCMP frame, so `writeAudioTags` never writes it on the ID3 path
-  // (#917) and there is nothing for the encode to lose. It is covered from a
-  // FLAC source below, where the Vorbis writer does emit it.
-  const NOT_WRITABLE_ON_ID3 = ['compilation'] as const;
-
-  // Every other field the library stores in a tag.
-  const FULL_TAGS = {
-    title: 'T',
-    artist: 'A',
-    albumArtist: 'AA',
-    album: 'Al',
-    trackNumber: 7,
-    discNumber: 2,
-    year: 1994,
-    genre: 'Shoegaze',
-    bpm: 128,
-    key: 'Am',
-    energy: 0.7,
-    loudness: -9.5,
-    valence: 0.4,
-    danceability: 0.6,
-    acousticness: 0.2,
-    instrumental: 0.1,
-    mood: 'happy' as const,
-    lyrics: 'la la la',
-    acoustIdId: '6d1b2f3c-0000-4000-8000-0000000000ac',
-    mbRecordingId: '9e0a1b2c-0000-4000-8000-0000000000mb',
-    mbReleaseId: '1f2e3d4c-0000-4000-8000-0000000000re',
-  };
-
   it('covers every AudioTags field', () => {
     // The gate on the gate: without this, extending `AudioTags` and forgetting
     // to extend `FULL_TAGS` leaves the new field untested while the suite stays
     // green, which is exactly how bpm/key/lyrics were lost unnoticed.
-    expect([...Object.keys(FULL_TAGS), ...NOT_WRITABLE_ON_ID3].sort()).toEqual(
-      Object.keys(ALL_AUDIO_TAG_FIELDS).sort(),
-    );
+    expect(Object.keys(FULL_TAGS).sort()).toEqual(Object.keys(ALL_AUDIO_TAG_FIELDS).sort());
   });
 
   it.skipIf(!ffmpegAvailable())('loses nothing — not bpm, key or lyrics', async () => {
@@ -395,6 +404,68 @@ describe('tag preservation through mp3 -> opus', () => {
     expect(lost).toEqual([]);
     expect(after.compilation).toBe(true);
   });
+});
+
+/**
+ * The same round-trip, for **every** format the library can be standardized on.
+ *
+ * Table-driven off `LIBRARY_FORMATS` rather than a hand-written list, so a
+ * format cannot join the registry without this running against it — the
+ * denominator discipline that `ALL_AUDIO_TAG_FIELDS` already applies to the
+ * fields, applied to the formats too.
+ *
+ * A FLAC source on purpose: it is the one container whose writer emits every
+ * field including `compilation` (node-id3 has no TCMP frame, #917), so each
+ * target is measured against a complete tag set rather than a partial one.
+ *
+ * This is the test #1230's lesson asks for — "a preservation test that does not
+ * assert its own denominator hides exactly this" — and it is what would have
+ * caught #1225 (bpm/key/lyrics), #1230 (TXXX misnaming), #1249 (UFID) and #1177
+ * (the tmpo atom) at the moment each was introduced rather than months later
+ * against quarantined originals.
+ */
+describe.skipIf(!ffmpegAvailable())('every library format carries every tag (#1256)', () => {
+  const FULL_WITH_COMPILATION = { ...FULL_TAGS, compilation: true };
+
+  function makeTaggedFlac(root: string): string {
+    const src = join(root, 'source.flac');
+    makeFlac(src);
+    return src;
+  }
+
+  it('covers every registered format', () => {
+    // The gate on the gate: if a format joins the registry, it appears here
+    // automatically. A hand-kept list would go stale silently, which is the
+    // failure this whole file exists to prevent.
+    expect(Object.keys(LIBRARY_FORMATS).length).toBeGreaterThan(0);
+  });
+
+  for (const [id, strategy] of Object.entries(LIBRARY_FORMATS)) {
+    it(`carries all ${Object.keys(ALL_AUDIO_TAG_FIELDS).length} AudioTags fields into ${id}`, async () => {
+      const root = tmpRoot();
+      const src = makeTaggedFlac(root);
+      expect(await writeAudioTags(src, FULL_WITH_COMPILATION)).toBe(true);
+      const before = await readAudioTags(src);
+      // The source must actually carry what we are about to check for, or a
+      // "nothing was lost" result is vacuous on both sides.
+      expect(before.compilation).toBe(true);
+      expect(before.bpm).toBe(128);
+
+      const out = await transcodeToLibraryFormat(
+        src,
+        128,
+        undefined,
+        id as keyof typeof LIBRARY_FORMATS,
+      );
+      expect(out.endsWith(`.${strategy.ext}`)).toBe(true);
+
+      const after = await readAudioTags(out);
+      const lost = (
+        Object.keys(FULL_WITH_COMPILATION) as Array<keyof typeof FULL_WITH_COMPILATION>
+      ).filter((k) => JSON.stringify(before[k]) !== JSON.stringify(after[k]));
+      expect(lost).toEqual([]);
+    });
+  }
 });
 
 describe('encodeOutputVerdict — fails closed, because the caller then deletes the source', () => {
