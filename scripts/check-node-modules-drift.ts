@@ -16,8 +16,8 @@
  *
  *   bun run scripts/check-node-modules-drift.ts [root]
  */
-import { readFileSync, realpathSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { readFileSync, readdirSync, realpathSync } from 'node:fs';
+import { join, resolve, sep } from 'node:path';
 import { parseBunLock, resolveKey, versionOf, type BunLock } from './check-audit.js';
 
 export interface DriftFinding {
@@ -25,6 +25,12 @@ export interface DriftFinding {
   name: string;
   lockedVersion: string;
   linkedVersion: string;
+}
+
+/** A package installed in the tree that `bun.lock` does not mention at all. */
+export interface OrphanFinding {
+  workspace: string;
+  name: string;
 }
 
 /**
@@ -74,6 +80,96 @@ export function findDrift(
   return findings;
 }
 
+/**
+ * Packages present in the tree that `bun.lock` does not mention **at all**.
+ *
+ * `findDrift` above iterates the LOCKFILE and asks what each entry resolves to
+ * on disk, so a package that left the lockfile is never iterated and is
+ * invisible to it by construction. That is the other direction, and it is not
+ * hypothetical: `bun install` does not prune a package removed from the
+ * lockfile, so the directory survives a full install on a fully up-to-date
+ * checkout (#1266).
+ *
+ * Measured when this was written — five survivors, each from a dependency
+ * removed months apart: `@capacitor/assets` (#1259), `@capacitor/barcode-scanner`
+ * (replaced by zxing), `@tailwindcss/vite`, `@types/react-dom` and
+ * `@vitejs/plugin-react`. The first of those kept `sharp@0.32.6` reachable, so
+ * `check:install-scripts` reported an unreviewed install hook on **every
+ * branch**, for a package no lockfile has pinned since #1259. A gate that is
+ * permanently red is one people stop reading.
+ *
+ * **The predicate is lockfile MEMBERSHIP, not declared-dependency membership.**
+ * Comparing against each workspace's own `package.json` gives 41 false
+ * positives here, because bun hoists plenty into the root `node_modules` that
+ * the root does not declare. Asking "is this name in `lock.packages`?" is exact.
+ */
+export function findOrphans(
+  lock: BunLock,
+  listLinked: (dir: string) => Array<{ name: string; inStore: boolean }>,
+): OrphanFinding[] {
+  const known = new Set(Object.keys(lock.packages));
+  const workspaceNames = new Set(
+    Object.values(lock.workspaces)
+      .map((w) => w.name)
+      .filter((n): n is string => !!n),
+  );
+
+  const findings: OrphanFinding[] = [];
+  for (const [dir, w] of Object.entries(lock.workspaces)) {
+    for (const { name, inStore } of listLinked(dir)) {
+      if (known.has(name) || workspaceNames.has(name)) continue;
+      // Only store-backed links are orphans. A workspace-to-workspace symlink
+      // resolves outside `.bun` and is not something `bun install` manages.
+      if (!inStore) continue;
+      findings.push({ workspace: w.name ?? dir, name });
+    }
+  }
+  return findings;
+}
+
+/**
+ * Every package linked under one workspace's `node_modules`, and whether it
+ * resolves into bun's store.
+ *
+ * **Scope directories are symlinks in this layout**, so descending has to
+ * happen regardless of `isSymbolicLink()` — guarding on it silently skips every
+ * scoped package, which is how a first attempt at this reported zero orphans
+ * while two sat on disk.
+ */
+function listLinkedOnDisk(root: string, dir: string): Array<{ name: string; inStore: boolean }> {
+  const base = join(root, dir, 'node_modules');
+  const out: Array<{ name: string; inStore: boolean }> = [];
+  let entries;
+  try {
+    entries = readdirSync(base, { withFileTypes: true });
+  } catch {
+    return out; // nothing installed for this workspace
+  }
+  const record = (name: string, path: string): void => {
+    try {
+      out.push({ name, inStore: realpathSync(path).includes(`${sep}.bun${sep}`) });
+    } catch {
+      /* a broken link is not an orphan; it is a different problem */
+    }
+  };
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) continue;
+    const full = join(base, entry.name);
+    if (entry.name.startsWith('@')) {
+      let scoped: string[];
+      try {
+        scoped = readdirSync(full);
+      } catch {
+        continue;
+      }
+      for (const child of scoped) record(`${entry.name}/${child}`, join(full, child));
+    } else {
+      record(entry.name, full);
+    }
+  }
+  return out;
+}
+
 /** What's actually linked on disk for one workspace's dependency, or null if unreadable. */
 function resolveOnDisk(root: string, dir: string, name: string): string | null {
   try {
@@ -87,6 +183,33 @@ if (import.meta.main) {
   const root = resolve(process.argv[2] ?? '.');
   const lock = parseBunLock(readFileSync(join(root, 'bun.lock'), 'utf8'));
   const findings = findDrift(lock, (dir, name) => resolveOnDisk(root, dir, name));
+  const orphans = findOrphans(lock, (dir) => listLinkedOnDisk(root, dir));
+
+  // Print the denominator, not only the findings: "0 drifted, 0 orphaned" out
+  // of a known number of workspaces is a different statement from a check that
+  // silently looked at nothing.
+  console.log(
+    `node_modules drift: ${Object.keys(lock.workspaces).length} workspace(s) checked — ` +
+      `${findings.length} version mismatch(es), ${orphans.length} orphaned package(s).`,
+  );
+
+  if (orphans.length) {
+    console.error(
+      `\n${orphans.length} package(s) in ${root} are installed but absent from bun.lock:\n`,
+    );
+    for (const o of orphans) console.error(`  ${o.workspace}: ${o.name}`);
+    console.error(
+      '\n`bun install` does NOT prune a package that left the lockfile, so these\n' +
+        'survive a full install on an up-to-date checkout. They are not inert: an\n' +
+        'orphan drags its own dependencies back into the tree, which is how\n' +
+        '`check:install-scripts` reported sharp@0.32.6 on every branch for weeks\n' +
+        'after #1259 removed the package that pulled it in.\n' +
+        'Fix it in the MAIN checkout, not a worktree: delete the listed directories\n' +
+        '(or `rm -rf node_modules packages/*/node_modules && bun install`), then\n' +
+        're-run link-worktree.sh in every worktree that linked the stale tree.',
+    );
+    process.exit(1);
+  }
 
   if (findings.length) {
     console.error(
