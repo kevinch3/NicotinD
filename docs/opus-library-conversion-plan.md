@@ -467,7 +467,10 @@ until the safety work is in.
    reading the live schema, #1227 the delete-before-scan song-loss fix.
 4. ~~**Tag and artwork preservation.**~~ Shipped: #1225 the three dropped ID3 frames, #1229 the
    harness and the 512 KB reader cap, #1230 art at encode time plus the mis-named MusicBrainz and
-   AcoustID keys, #1233 re-embedding into files that already lost it.
+   AcoustID keys, #1233 re-embedding into files that already lost it. After the conversion: the
+   remaining spaced MusicBrainz names and `ALBUM ARTIST` (#1250, #1231) were left for the heal on
+   every tag write plus `normalize-vorbis-keys.ts`, since the pass that would have normalized them
+   for free had already run; and every tag write had been stripping the embedded cover (#1280).
 5. ~~**Verification hardening.**~~ Shipped: #1227 fails closed before the delete, #1228 quarantine,
    #1235 and #1236 wiring that quarantine into the callers that had silently bypassed it, #1232
    pooled encodes, #1239 a durable run record.

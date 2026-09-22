@@ -11,6 +11,12 @@ import { preparePicture } from './opus-artwork.js';
 import { readAudioTags, writeAudioTags, type AudioTags } from './audio-tags.js';
 import { quarantineOriginal } from './transcode-quarantine.js';
 import {
+  ID3_TXXX_FFMPEG_MISNAMES,
+  UNMODELLED_SPACED_KEYS,
+  planVorbisKeyFixes,
+  type VorbisComment,
+} from './vorbis-keys.js';
+import {
   DEFAULT_LIBRARY_FORMAT,
   libraryFormat,
   TRANSCODE_TEMP_MARKER,
@@ -191,36 +197,6 @@ const ID3_FRAMES_FFMPEG_DROPS = [
 ] as const;
 
 /**
- * The other, quieter failure: frames ffmpeg **keeps but renames wrong**.
- *
- * A TXXX user-text frame becomes a Vorbis comment named after its description,
- * uppercased — so `TXXX:MusicBrainz Track Id` lands as `MUSICBRAINZ TRACK ID`,
- * with spaces. That is not a Vorbis comment name anyone reads: the canonical
- * key is `MUSICBRAINZ_TRACKID`. Measured through the real encode:
- *
- * | ID3 TXXX description | ffmpeg writes | anyone reads |
- * | --- | --- | --- |
- * | `Acoustid Id` | `ACOUSTID ID` | `ACOUSTID_ID` |
- * | `MusicBrainz Track Id` | `MUSICBRAINZ TRACK ID` | `MUSICBRAINZ_TRACKID` |
- * | `MusicBrainz Album Id` | `MUSICBRAINZ ALBUM ID` | `MUSICBRAINZ_ALBUMID` |
- *
- * This is worse than the dropped frames, because the value is still *in* the
- * file — so a "did the data survive?" check says yes while every reader,
- * ours and other players', sees nothing. `acoustIdId` doubles as the
- * "already fingerprinted" marker, so losing it re-fingerprints the track
- * forever; the two MusicBrainz ids are what match a file back to a release.
- *
- * The fix sets the canonical key **and blanks the spaced one**. Setting only
- * the canonical key also reads correctly, but leaves both in the file — six
- * comments for three values, which the next pass would carry again.
- */
-const ID3_TXXX_FFMPEG_MISNAMES = [
-  { field: 'acoustIdId', description: 'Acoustid Id', vorbis: 'ACOUSTID_ID' },
-  { field: 'mbRecordingId', description: 'MusicBrainz Track Id', vorbis: 'MUSICBRAINZ_TRACKID' },
-  { field: 'mbReleaseId', description: 'MusicBrainz Album Id', vorbis: 'MUSICBRAINZ_ALBUMID' },
-] as const;
-
-/**
  * `-metadata` args fixing up what `-map_metadata 0` gets wrong — the frames
  * ffmpeg drops, and the ones it renames into unreadable keys.
  *
@@ -284,6 +260,32 @@ async function carryPostEncodeId3(sourceTags: AudioTags, outPath: string): Promi
   }
 }
 
+/**
+ * The Vorbis comments an ID3 → Vorbis encode produces from `-map_metadata 0`,
+ * as far as spaced names go: each TXXX under its uppercased description, and
+ * the album artist `TPE2` maps to. Empty if the source cannot be parsed.
+ */
+async function encodedVorbisComments(absPath: string, tags: AudioTags): Promise<VorbisComment[]> {
+  const out: VorbisComment[] = [];
+  if (tags.albumArtist) out.push({ id: 'ALBUMARTIST', value: tags.albumArtist });
+  const mm = await getMusicMetadata();
+  if (!mm) return out;
+  try {
+    const parsed = await mm.parseFile(absPath, { duration: false, skipCovers: true });
+    for (const [type, frames] of Object.entries(parsed.native ?? {})) {
+      if (!type.startsWith('ID3v2')) continue;
+      for (const f of frames) {
+        if (!f.id.startsWith('TXXX:')) continue;
+        const id = f.id.slice(5).toUpperCase();
+        for (const value of Array.isArray(f.value) ? f.value : [f.value]) out.push({ id, value });
+      }
+    }
+  } catch {
+    /* the encoder reports an unreadable source */
+  }
+  return out;
+}
+
 async function carriedMetadataArgs(
   absPath: string,
   targetExt: string,
@@ -317,6 +319,12 @@ async function carriedMetadataArgs(
       // exists once under the name readers actually look for.
       args.push('-metadata', `${description.toUpperCase()}=`);
     }
+    // The TXXX frames `AudioTags` does not model land spaced too (#1250), so
+    // the comments the encode *will* write are planned here, from the source.
+    const plan = planVorbisKeyFixes(await encodedVorbisComments(absPath, tags), {
+      keys: UNMODELLED_SPACED_KEYS,
+    });
+    for (const m of plan.metadata) args.push('-metadata', m);
     return { args, sourceTags: tags };
   }
 

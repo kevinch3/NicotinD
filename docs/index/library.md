@@ -56,6 +56,11 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   opens at start, `reconcileTranscodeRunsOnBoot` sweeps orphans, `embedAlbumArt` writes a cover via
   `attachPictureToOpus`, `normalizeLibraryLoudness` puts loudness in the header via `writeOutputGain`.
   → [download-pipeline.md](../download-pipeline.md)
+- **Spaced Vorbis names heal on encode, on rewrite and once library-wide**: `planVorbisKeyFixes`
+  maps `UNMODELLED_SPACED_KEYS` to canonical names; `planVorbisKeyHeal` rides every tag write;
+  `backfillVorbisKeys` runs it once. → [download-pipeline.md](../download-pipeline.md)
+- **A tag write keeps the Ogg cover**: `readOggPicture` reads it before the remux drops it and
+  `attachPictureDataToOpus` puts it back. → [download-pipeline.md](../download-pipeline.md)
 - **The displayed artist spelling is reduced, not first-seen**: `pickDisplayName` picks one of an
   album's spellings (frequency → diacritics → not-shouted → explicit-locale alphabetical) and
   `refreshAlbumArtistDisplay` re-derives it on every incremental touch, so a one-file scan cannot

@@ -353,6 +353,44 @@ describe('tag preservation through mp3 -> opus', () => {
     expect(comments).toEqual(['ACOUSTID_ID', 'MUSICBRAINZ_ALBUMID', 'MUSICBRAINZ_TRACKID']);
   });
 
+  it.skipIf(!ffmpegAvailable())(
+    'writes the unmodelled MusicBrainz TXXX frames under canonical names too (#1250)',
+    async () => {
+      // ffmpeg names each TXXX's Vorbis comment after its description, spaces
+      // intact. The three modelled ids were fixed in #1230; these are the rest,
+      // measured on prod after the conversion.
+      const root = tmpRoot();
+      const src = join(root, 'unmodelled.mp3');
+      execFileSync(
+        'ffmpeg',
+        [
+          ...['-hide_banner', '-loglevel', 'error', '-f', 'lavfi'],
+          ...['-i', 'anullsrc=channel_layout=stereo:sample_rate=44100', '-t', '1'],
+          ...['-c:a', 'libmp3lame', '-id3v2_version', '3'],
+          ...['-metadata', 'album_artist=Same'],
+          ...['-metadata', 'ALBUM ARTIST=Same'],
+          ...['-metadata', 'MusicBrainz Artist Id=artist-1'],
+          ...['-metadata', 'MusicBrainz Release Group Id=rg-1'],
+          ...['-metadata', 'MusicBrainz Album Type=album'],
+          ...['-y', src],
+        ],
+        { stdio: 'ignore' },
+      );
+
+      const out = await transcodeToLibraryFormat(src, 96);
+
+      const mm = await getMusicMetadata();
+      const keys = Object.fromEntries(
+        ((await mm!.parseFile(out)).native?.vorbis ?? []).map((t) => [t.id.toUpperCase(), t.value]),
+      );
+      expect(keys.MUSICBRAINZ_ARTISTID).toBe('artist-1');
+      expect(keys.MUSICBRAINZ_RELEASEGROUPID).toBe('rg-1');
+      expect(keys.RELEASETYPE).toBe('album');
+      expect(keys.ALBUMARTIST).toBe('Same');
+      expect(Object.keys(keys).filter((k) => k.includes(' '))).toEqual([]);
+    },
+  );
+
   it.skipIf(!ffmpegAvailable())('still converts a source carrying no tags at all', async () => {
     const root = tmpRoot();
     const src = join(root, 'bare.mp3');

@@ -3,6 +3,8 @@ import { extname } from 'node:path';
 import { renameSync, unlinkSync } from 'node:fs';
 import { ID3_EXTS, VORBIS_EXTS, createLogger, MOOD_VOCAB, type MoodLabel } from '@nicotind/core';
 import { ffmpegBinary } from './ffmpeg-path.js';
+import { planVorbisKeyFixes, type VorbisKeyPlan } from './vorbis-keys.js';
+import { attachPictureDataToOpus, readOggPicture } from './opus-artwork.js';
 
 const log = createLogger('audio-tags');
 
@@ -638,11 +640,32 @@ const BPM_METADATA_KEY: Record<string, string> = {
   '.m4a': 'tmpo',
 };
 
-function writeFfmpegTags(filepath: string, tags: AudioTags): Promise<boolean> {
+/**
+ * What a rewrite of this Ogg/FLAC file would change to put its spaced comment
+ * names under their canonical ones (#1250, #1231). `null` for other containers
+ * or an unreadable file. `written` is the set of uppercased `-metadata` keys the
+ * same write sets explicitly — see `planVorbisKeyFixes`.
+ */
+export async function planVorbisKeyHeal(
+  filepath: string,
+  written?: ReadonlySet<string>,
+): Promise<VorbisKeyPlan | null> {
+  if (!VORBIS_EXTS.has(extname(filepath).toLowerCase())) return null;
+  const mm = await getMusicMetadata();
+  if (!mm) return null;
+  try {
+    const parsed = await mm.parseFile(filepath, { duration: false, skipCovers: true });
+    return planVorbisKeyFixes(parsed.native?.vorbis ?? [], { written });
+  } catch {
+    return null;
+  }
+}
+
+async function writeFfmpegTags(filepath: string, tags: AudioTags): Promise<boolean> {
   const tmpPath = filepath + '.nicotind.tmp';
   const ext = extname(filepath).toLowerCase();
   const muxer = FFMPEG_MUXERS[ext];
-  if (!muxer) return Promise.resolve(false);
+  if (!muxer) return false;
   const metaArgs: string[] = [];
   if (tags.album !== undefined) metaArgs.push('-metadata', `ALBUM=${tags.album}`);
   // ffmpeg's generic key, not the Vorbis `ALBUMARTIST`: the only name here that
@@ -669,7 +692,34 @@ function writeFfmpegTags(filepath: string, tags: AudioTags): Promise<boolean> {
   if (tags.acoustIdId) metaArgs.push('-metadata', `ACOUSTID_ID=${tags.acoustIdId}`);
   if (tags.mbRecordingId) metaArgs.push('-metadata', `MUSICBRAINZ_TRACKID=${tags.mbRecordingId}`);
   if (tags.mbReleaseId) metaArgs.push('-metadata', `MUSICBRAINZ_ALBUMID=${tags.mbReleaseId}`);
-  if (metaArgs.length === 0) return Promise.resolve(true);
+  // Every rewrite also heals spaced comment names, so a file is normalized the
+  // first time anything touches it. A key this write sets itself is excluded:
+  // the caller's value supersedes whatever the spaced twin said.
+  const written = new Set<string>();
+  for (let i = 1; i < metaArgs.length; i += 2) {
+    written.add(metaArgs[i]!.slice(0, metaArgs[i]!.indexOf('=')).toUpperCase());
+  }
+  const heal = await planVorbisKeyHeal(filepath, written);
+  for (const m of heal?.metadata ?? []) metaArgs.push('-metadata', m);
+  if (metaArgs.length === 0) return true;
+
+  // ffmpeg surfaces an Ogg `METADATA_BLOCK_PICTURE` as a video stream the
+  // opus/ogg muxer cannot carry, so this remux dropped every embedded cover
+  // (#1280). Read it first and re-attach it to the output before the rename;
+  // a picture that is present but unreadable refuses the write instead.
+  const isOgg = ext === '.opus' || ext === '.ogg';
+  let oggPicture: ReturnType<typeof readOggPicture> = null;
+  if (isOgg) {
+    try {
+      oggPicture = readOggPicture(filepath);
+    } catch (err) {
+      log.warn(
+        { err, filepath },
+        'could not read the embedded cover; refusing a write that would drop it',
+      );
+      return false;
+    }
+  }
 
   // Every -metadata also goes to the first audio STREAM (issue #760).
   //
@@ -698,6 +748,10 @@ function writeFfmpegTags(filepath: string, tags: AudioTags): Promise<boolean> {
     '0',
     ...metaArgs,
     ...streamMetaArgs,
+    // Audio only on Ogg: the cover is re-attached separately, and on `.ogg`
+    // default stream selection maps it as mjpeg, which the muxer rejects —
+    // failing every tag write to a covered file outright (#1280).
+    ...(isOgg ? ['-map', '0:a'] : []),
     '-c',
     'copy',
     ...(FFMPEG_MUXER_ARGS[ext] ?? []),
@@ -718,6 +772,8 @@ function writeFfmpegTags(filepath: string, tags: AudioTags): Promise<boolean> {
     proc.on('close', (code) => {
       if (code === 0) {
         try {
+          if (oggPicture && !attachPictureDataToOpus(tmpPath, oggPicture.data, oggPicture.mimeType))
+            throw new Error('embedded cover not re-attached');
           renameSync(tmpPath, filepath);
           resolve(true);
         } catch {
