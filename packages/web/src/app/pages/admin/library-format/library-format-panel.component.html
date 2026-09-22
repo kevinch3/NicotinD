@@ -1,0 +1,108 @@
+<app-settings-group
+  groupId="library-format"
+  icon="database"
+  [title]="'admin.groupLibraryFormatTitle' | t"
+  [description]="'admin.groupLibraryFormatDesc' | t"
+>
+  <section data-testid="library-format-panel">
+    @if (settings(); as s) {
+      <p class="text-xs text-theme-muted mb-4">{{ 'admin.libraryFormatHint' | t }}</p>
+
+      <div class="space-y-3" appTvNavGroup axis="vertical">
+        @for (opt of options(); track opt.id) {
+          <label
+            class="flex items-start justify-between gap-4 p-3 rounded border border-theme-subtle"
+            [attr.data-testid]="'library-format-option-' + opt.id"
+          >
+            <span class="text-sm text-theme-primary">
+              <span class="font-medium">{{ opt.id }}</span>
+              <span class="text-theme-muted">&nbsp;(.{{ opt.ext }})</span>
+
+              <!-- The capability statement, beside the choice rather than in a
+                   doc: a format that cannot normalize loudness must say so
+                   where the decision is made. -->
+              @if (opt.canNormalizeLoudness) {
+                <span class="block text-xs text-theme-muted">{{
+                  'admin.libraryFormatGainYes' | t
+                }}</span>
+              } @else {
+                <span class="block text-xs text-status-warn">{{
+                  'admin.libraryFormatGainNo' | t
+                }}</span>
+              }
+
+              @if (opt.id !== s.format && opt.impact.destructive) {
+                <span class="block text-xs text-status-warn">
+                  {{ 'admin.libraryFormatWouldReEncode' | t }}: {{ opt.impact.wouldReEncode }}
+                </span>
+              }
+            </span>
+
+            <input
+              type="radio"
+              name="library-format"
+              appTvNavItem
+              [checked]="opt.id === s.format"
+              [disabled]="saving() || s.ffmpegAvailable === false"
+              (change)="select(opt)"
+              class="w-4 h-4 mt-1 accent-emerald-500"
+            />
+          </label>
+        }
+      </div>
+
+      @if (s.ffmpegAvailable === false) {
+        <p class="text-xs text-status-warn mt-3">{{ 'admin.ffmpegNotFound' | t }}</p>
+      }
+
+      <!-- Confirmation carries the count. The guard exists because this setting
+           reads like a preference and is not one on a populated library. -->
+      @if (pending(); as p) {
+        <div
+          class="mt-4 p-3 rounded border border-status-warn"
+          data-testid="library-format-confirm"
+        >
+          <p class="text-sm text-theme-primary">
+            {{ 'admin.libraryFormatConfirm' | t }}
+          </p>
+          <p class="text-xs text-theme-muted mt-1">
+            {{ p.id }} — {{ 'admin.libraryFormatWouldReEncode' | t }}:
+            {{ p.impact.wouldReEncode }}
+          </p>
+          <div class="flex gap-2 mt-3" appTvNavGroup axis="horizontal">
+            <button
+              type="button"
+              appTvNavItem
+              class="btn-secondary text-xs"
+              [disabled]="saving()"
+              (click)="cancelPending()"
+              data-testid="library-format-cancel"
+            >
+              {{ 'common.cancel' | t }}
+            </button>
+            <button
+              type="button"
+              appTvNavItem
+              class="btn-danger text-xs"
+              [disabled]="saving()"
+              (click)="confirmPending()"
+              data-testid="library-format-confirm-button"
+            >
+              {{ 'admin.libraryFormatConfirmButton' | t }}
+            </button>
+          </div>
+        </div>
+      }
+
+      @if (message(); as m) {
+        <p
+          class="text-xs mt-3"
+          [class.text-status-ok]="m.type === 'success'"
+          [class.text-status-error]="m.type === 'error'"
+        >
+          {{ m.text }}
+        </p>
+      }
+    }
+  </section>
+</app-settings-group>

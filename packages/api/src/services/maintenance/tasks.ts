@@ -1,6 +1,8 @@
 import type { Database } from 'bun:sqlite';
 import { optimizeAllAlbums, type OptimizeLidarr } from '../metadata-optimize.js';
 import { transcodeLibraryToFormat } from '../library-transcode.js';
+import { getLibraryFormatSettings } from '../library-format-settings.js';
+import { libraryFormat } from '../library-format.js';
 import { backfillArtwork, type BackfillLidarr } from '../artwork-backfill.js';
 import { embedAlbumArt } from '../opus-art-embed.js';
 import { normalizeLibraryLoudness } from '../loudness-normalize.js';
@@ -231,14 +233,26 @@ export function buildMaintenanceTasks(deps: MaintenanceDeps): AnyMaintenanceTask
 
     defineTask<{ apply: boolean; limit?: number; afterId?: string }>({
       id: 'normalize-loudness',
-      label: 'Normalize loudness (Opus header gain)',
-      available: () =>
-        !deps.musicDir
-          ? 'Music directory is not configured'
-          : deps.opusHeaderGain
-            ? true
-            : 'Off by default — set NICOTIND_OPUS_HEADER_GAIN once the Opus header gain is ' +
-              'confirmed to take effect on iOS 18.4+',
+      label: 'Normalize loudness (header gain)',
+      available: () => {
+        if (!deps.musicDir) return 'Music directory is not configured';
+        // Say WHY the button is off when the chosen format cannot do this,
+        // rather than offering a pass that would visit nothing. A selector that
+        // silently disables another capability is the trap #1256 names: the
+        // loss has no symptom, so it has to be stated where it is noticed.
+        const format = getLibraryFormatSettings(deps.db).format;
+        const strategy = libraryFormat(format);
+        if (strategy.writeGain === null) {
+          return (
+            `The library format is ${format}, which has no in-header gain field — ` +
+            'normalizing it would mean re-encoding the audio. Only Opus can be normalized losslessly.'
+          );
+        }
+        return deps.opusHeaderGain
+          ? true
+          : 'Off by default — set NICOTIND_OPUS_HEADER_GAIN once the Opus header gain is ' +
+              'confirmed to take effect on iOS 18.4+';
+      },
       parseParams: (q) => ({
         apply: !flag(q, 'dryRun'),
         limit: positiveInt(q, 'limit'),
@@ -250,6 +264,7 @@ export function buildMaintenanceTasks(deps: MaintenanceDeps): AnyMaintenanceTask
           apply: p.apply,
           limit: p.limit,
           afterId: p.afterId,
+          format: getLibraryFormatSettings(deps.db).format,
           shouldStop: ctx.shouldStop,
           onProgress: (x) => ctx.onProgress({ total: x.total, visited: x.visited, label: x.label }),
         });
@@ -345,6 +360,10 @@ export function buildMaintenanceTasks(deps: MaintenanceDeps): AnyMaintenanceTask
             apply: p.apply,
             limit: p.limit,
             scope: p.scope,
+            // Read per run, not captured at construction: the operator can
+            // change the target between runs and a value frozen at boot would
+            // convert to the old one while the UI showed the new (#1256).
+            format: getLibraryFormatSettings(deps.db).format,
             // Keep every original under `<dataDir>/quarantine/<run>/`. A
             // whole-library re-encode is irreversible and unattended; the disk
             // cost is recoverable, a wrong conversion is not.

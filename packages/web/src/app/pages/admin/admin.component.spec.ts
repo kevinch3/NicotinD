@@ -908,8 +908,10 @@ describe('AdminComponent — group structure (Task 4 regroup)', () => {
     // minus "Import music" — which went with the admin import card, import
     // being internal/API-only now (docs/import.md) — and minus the
     // generation-feedback queue, removed with that feature. 11 with the radio
-    // preferences card (docs/genre-affinity.md).
-    expect(headers.length).toBe(11);
+    // preferences card (docs/genre-affinity.md). 12 with the library format
+    // card (#1256), which is what finally made the irreversible conversion path
+    // configurable from the UI rather than only from compose files.
+    expect(headers.length).toBe(12);
     fixture.destroy();
   });
 
@@ -937,6 +939,7 @@ describe('AdminComponent — group structure (Task 4 regroup)', () => {
       'app-system-health-panel',
       'app-library-maintenance-panel',
       'app-streaming-media-panel',
+      'app-library-format-panel',
       'app-backups-data-panel',
       'app-acquisition-automation-panel',
       'app-review-flags-panel',

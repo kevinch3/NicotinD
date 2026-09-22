@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import type { ProcessingSettings, ProcessingStatus } from '@nicotind/core';
 import type { Role } from '../../../types/core';
 import type {
+  LibraryFormatSettings,
   StreamingSettings,
   RadioSettings,
   DownloadSettings,
@@ -84,6 +85,23 @@ export class SystemApiService {
   // Streaming / transcoding
   getStreamingSettings() {
     return this.http.get<StreamingSettings>('/api/settings/streaming');
+  }
+
+  getLibraryFormatSettings() {
+    return this.http.get<LibraryFormatSettings>('/api/settings/library-format');
+  }
+
+  /**
+   * `confirm` is required by the API when the change would re-encode existing
+   * files — it answers 409 otherwise, with the count. Sending it unconditionally
+   * would defeat the guard, so the caller passes it only after the operator has
+   * seen the number.
+   */
+  saveLibraryFormat(format: string, confirm = false) {
+    return this.http.put<LibraryFormatSettings>('/api/settings/library-format', {
+      format,
+      confirm,
+    });
   }
 
   saveStreamingSettings(patch: Partial<StreamingSettings>) {
