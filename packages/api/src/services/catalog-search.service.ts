@@ -1,5 +1,5 @@
-import { LidarrTimeoutError } from '@nicotind/lidarr-client';
-import type { Lidarr, LidarrAlbum, LidarrArtist } from '@nicotind/lidarr-client';
+import { LidarrTimeoutError } from '../lidarr/index.js';
+import type { Lidarr, LidarrAlbum, LidarrArtist } from '../lidarr/index.js';
 import { createLogger, NicotinDError } from '@nicotind/core';
 import { addArtistFromLookup } from './lidarr-provision.js';
 import { normalizeTitle } from '@nicotind/core';

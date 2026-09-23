@@ -36,7 +36,7 @@ No new matching/download/organizing code.
 
 ### 1. Extend `lidarr-client` with the missing-list endpoint
 
-`packages/lidarr-client/src/api/album.ts` (+ `types.ts`): add `wantedMissing(page, pageSize)`
+`packages/api/src/lidarr/api/album.ts` (+ `types.ts`): add `wantedMissing(page, pageSize)`
 → `GET /api/v1/wanted/missing?sortKey=...&monitored=true`, returning monitored albums Lidarr
 doesn't have. No `command`/import endpoint is needed — NicotinD organizes files itself; Lidarr
 stays metadata-only.
@@ -74,7 +74,7 @@ A read-only "Auto-acquire" status panel + toggle in the admin page, reusing the 
 
 ## Critical files
 
-- `packages/lidarr-client/src/api/album.ts`, `src/types.ts` — `wantedMissing` endpoint
+- `packages/api/src/lidarr/api/album.ts`, `src/types.ts` — `wantedMissing` endpoint
 - `packages/api/src/services/auto-acquire.service.ts` — **new**, patterned on
   `packages/api/src/services/download-retry.service.ts`
 - `packages/api/src/routes/discography.ts` — extract `enqueueHuntDownload` + `albumAlreadyComplete`

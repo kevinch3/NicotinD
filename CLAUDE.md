@@ -132,8 +132,7 @@ NicotinD (Hono API :8484)  — native library scanner + streaming, all in-proces
 | --------------------------- | ---------------------------------------------------------------------------- |
 | `@nicotind/core`            | Shared Zod types, logger, crypto utils, error classes                        |
 | `@nicotind/addon-sdk`       | Published npm SDK: addon protocol v1 DTOs, hunt-query helpers, leaf logger    |
-| `@nicotind/service-manager` | Sub-service lifecycle strategies (Lidarr only since the addon split)          |
-| `@nicotind/api`             | Hono API — routes, JWT auth, search, download watcher, scanner, streaming, DB |
+| `@nicotind/api`             | Hono API — routes, auth, scanner, streaming, DB, Lidarr client + supervisor   |
 | `@nicotind/web`             | Angular v22 web UI (standalone components, signals, Tailwind)                 |
 
 ## Key Design Patterns

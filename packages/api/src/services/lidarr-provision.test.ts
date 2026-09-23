@@ -1,5 +1,5 @@
 import { describe, it, expect, mock } from 'bun:test';
-import type { Lidarr, LidarrArtist } from '@nicotind/lidarr-client';
+import type { Lidarr, LidarrArtist } from '../lidarr/index.js';
 import { addArtistFromLookup } from './lidarr-provision';
 
 function makeArtist(over: Partial<LidarrArtist> = {}): LidarrArtist {

@@ -17,7 +17,7 @@ import {
 import { normalizeTitle, titlesOverlap } from '@nicotind/core';
 import type { AddonAlbumCandidate } from '@nicotind/core';
 import { join } from 'node:path';
-import type { Lidarr } from '@nicotind/lidarr-client';
+import type { Lidarr } from '../lidarr/index.js';
 import type { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
 import { AddonRequestError } from '../services/addons/client.js';
 import { mapAddonJob } from '../services/addons/job-poller.js';

@@ -9,7 +9,7 @@ import {
   TRACK_REPORT_REASONS,
 } from '@nicotind/core';
 import type { Song, Album, Artist } from '@nicotind/core';
-import type { Lidarr } from '@nicotind/lidarr-client';
+import type { Lidarr } from '../lidarr/index.js';
 import type { AuthEnv } from '../middleware/auth.js';
 import { requireAdmin, requireCurator } from '../middleware/current-user.js';
 import { jobAlbumPairs } from '../services/acquisition-job-store.js';

@@ -194,7 +194,7 @@ discovery half now, and later PRs remove the token copy-paste entirely.
   network lane, the downloads enqueue route, and user-browse all light up only while the plugin is
   enabled, with **no changes to those routes**. Its `isAvailable()` reflects `slskdRef.current`.
   **Auto-shared music dir (embedded mode):** `buildSlskdDefinition`
-  (`packages/service-manager/src/services/slskd.ts`) seeds `shares.directories: [musicDir]` into
+  (`packages/api/src/service-manager/services/slskd.ts`) seeds `shares.directories: [musicDir]` into
   the generated `slskd.yml` whenever no shares are configured — a fresh install shares its library
   out of the box (Soulseek etiquette; many peers refuse no-share leechers, which quietly degrades
   search results). Regeneration **merges** with the existing `slskd.yml` rather than replacing it:

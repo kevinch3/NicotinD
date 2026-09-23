@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite';
-import type { Lidarr } from '@nicotind/lidarr-client';
+import type { Lidarr } from '../lidarr/index.js';
 import type { PluginRegistry } from './plugins/registry.js';
 import { getMbid, isMbidTombstoned, usableMbid, upsertMbid } from './mbid-store.js';
 import { normalizeArtistForGrouping } from './album-grouping.js';

@@ -8,7 +8,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import type { Lidarr } from '@nicotind/lidarr-client';
+import type { Lidarr } from '../lidarr/index.js';
 import {
   analyzeBpm,
   analyzeKey,

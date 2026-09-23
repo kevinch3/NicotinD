@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite';
-import type { Lidarr, LidarrAlbum, LidarrTrack } from '@nicotind/lidarr-client';
+import type { Lidarr, LidarrAlbum, LidarrTrack } from '../lidarr/index.js';
 import { createLogger, normalizeTitle } from '@nicotind/core';
 import { addArtistFromLookup } from './lidarr-provision.js';
 import { corroboratesLidarrHit } from './lidarr-confidence.js';

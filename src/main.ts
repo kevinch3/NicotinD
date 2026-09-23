@@ -5,14 +5,15 @@ import { resolve, join } from 'node:path';
 import { parse } from 'yaml';
 import pkg from '../package.json';
 import { NicotinDConfigSchema, createLogger, generateSecret, resolvePort } from '@nicotind/core';
-import { ServiceManager, NativeProcessStrategy } from '@nicotind/service-manager';
-import { Lidarr } from '@nicotind/lidarr-client';
 import {
   createApp,
   findInsecureDefaults,
   getDatabase,
+  Lidarr,
   maybeCheckForUpdate,
+  NativeProcessStrategy,
   optimizeDatabase,
+  ServiceManager,
 } from '@nicotind/api';
 
 const log = createLogger('nicotind');

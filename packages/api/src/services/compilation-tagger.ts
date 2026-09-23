@@ -11,6 +11,8 @@ import {
 import { extractAlbumName, inferMetadataFromPath } from './path-inference.js';
 import type { CompletedDownloadFile } from './path-inference.js';
 import { ffmpegBinary } from './ffmpeg-path.js';
+import { getNodeId3, type NodeId3Api } from './audio-tags.js';
+import { getMusicMetadata, type MusicMetadataApi } from './music-metadata-loader.js';
 
 const log = createLogger('compilation-tagger');
 
@@ -176,59 +178,27 @@ export function classifyFolder(files: FileSignal[], folderName: string): Classif
   return { type: 'leave-alone' };
 }
 
-type NodeId3Api = {
-  read: (filepath: string) => Record<string, unknown> | false | undefined;
-  update: (tags: Record<string, string>, filepath: string) => boolean;
-};
-
-type MusicMetadataCommon = { album?: string; artist?: string; albumartist?: string };
-type MusicMetadataApi = {
-  parseFile: (
-    path: string,
-    opts?: { duration?: boolean },
-  ) => Promise<{ common: MusicMetadataCommon }>;
-};
-
-let nodeId3Promise: Promise<NodeId3Api | null> | null = null;
+// The lazy loaders are shared (audio-tags / music-metadata-loader); this module only
+// adds the once-per-process warning that tagging is off when one is missing.
 let nodeId3MissingLogged = false;
-
-async function getNodeId3(): Promise<NodeId3Api | null> {
-  if (!nodeId3Promise) {
-    nodeId3Promise = import('node-id3')
-      .then((mod) => (mod.default ?? mod) as unknown as NodeId3Api)
-      .catch((err) => {
-        if (!nodeId3MissingLogged) {
-          nodeId3MissingLogged = true;
-          log.warn(
-            { err: err instanceof Error ? err.message : String(err) },
-            'node-id3 not installed, MP3 tagging disabled',
-          );
-        }
-        return null;
-      });
-  }
-  return nodeId3Promise;
-}
-
-let mmPromise: Promise<MusicMetadataApi | null> | null = null;
 let mmMissingLogged = false;
 
-async function getMusicMetadata(): Promise<MusicMetadataApi | null> {
-  if (!mmPromise) {
-    mmPromise = import('music-metadata')
-      .then((mod) => mod as unknown as MusicMetadataApi)
-      .catch((err) => {
-        if (!mmMissingLogged) {
-          mmMissingLogged = true;
-          log.warn(
-            { err: err instanceof Error ? err.message : String(err) },
-            'music-metadata not installed, FLAC/OGG/OPUS tagging disabled',
-          );
-        }
-        return null;
-      });
+async function nodeId3OrWarn(): Promise<NodeId3Api | null> {
+  const api = await getNodeId3();
+  if (!api && !nodeId3MissingLogged) {
+    nodeId3MissingLogged = true;
+    log.warn('node-id3 not installed, MP3 tagging disabled');
   }
-  return mmPromise;
+  return api;
+}
+
+async function musicMetadataOrWarn(): Promise<MusicMetadataApi | null> {
+  const api = await getMusicMetadata();
+  if (!api && !mmMissingLogged) {
+    mmMissingLogged = true;
+    log.warn('music-metadata not installed, FLAC/OGG/OPUS tagging disabled');
+  }
+  return api;
 }
 
 // Tag-container subsets come from core (#845); they are NOT a membership test.
@@ -338,7 +308,7 @@ export class CompilationTagger {
     ext: string,
   ): Promise<{ artist?: string; album?: string; albumArtist?: string; compilation?: boolean }> {
     if (ID3_EXTS.has(ext)) {
-      const nodeId3 = await getNodeId3();
+      const nodeId3 = await nodeId3OrWarn();
       if (!nodeId3) return {};
       try {
         const raw = nodeId3.read(filepath);
@@ -360,7 +330,7 @@ export class CompilationTagger {
       }
     }
     if (VORBIS_EXTS.has(ext)) {
-      const mm = await getMusicMetadata();
+      const mm = await musicMetadataOrWarn();
       if (!mm) return {};
       try {
         const parsed = await mm.parseFile(filepath, { duration: false });
@@ -386,7 +356,7 @@ export class CompilationTagger {
   }
 
   private async writeId3AlbumTags(filepath: string, tags: AlbumTags): Promise<boolean> {
-    const nodeId3 = await getNodeId3();
+    const nodeId3 = await nodeId3OrWarn();
     if (!nodeId3) return false;
 
     const update: Record<string, string> = {

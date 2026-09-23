@@ -11,8 +11,6 @@
     "@hono/swagger-ui": "^0.6.1",
     "@hono/zod-openapi": "^1.6.1",
     "@nicotind/core": "workspace:*",
-    "@nicotind/lidarr-client": "workspace:*",
-    "@nicotind/service-manager": "workspace:*",
     "@sentry/bun": "^10.67.0",
     "hono": "^4.13.5",
     "jose": "^6.2.3",

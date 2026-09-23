@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite';
-import type { Lidarr } from '@nicotind/lidarr-client';
+import type { Lidarr } from '../lidarr/index.js';
 import { createLogger } from '@nicotind/core';
 import { normalizeForGrouping } from './album-grouping.js';
 import {

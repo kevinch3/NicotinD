@@ -1,6 +1,6 @@
 import type { Database } from 'bun:sqlite';
-import type { Lidarr } from '@nicotind/lidarr-client';
-import type { LidarrAlbum } from '@nicotind/lidarr-client';
+import type { Lidarr } from '../lidarr/index.js';
+import type { LidarrAlbum } from '../lidarr/index.js';
 import type { MetadataCandidate, ApplyMetadataRequest, MetadataReleaseType } from '@nicotind/core';
 import { createLogger } from '@nicotind/core';
 import { albumIdFor, artistIdFor } from './library-scanner.js';

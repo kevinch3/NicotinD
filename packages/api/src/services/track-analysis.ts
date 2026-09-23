@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createLogger, type GenreSuggestion } from '@nicotind/core';
-import type { Lidarr } from '@nicotind/lidarr-client';
+import type { Lidarr } from '../lidarr/index.js';
 import { normalizeForGrouping } from './album-grouping.js';
 import { detectKey, isConfidentKey } from './key-detection.js';
 import { ffmpegBinary } from './ffmpeg-path.js';

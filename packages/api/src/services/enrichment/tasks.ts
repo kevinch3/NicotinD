@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Lidarr, LidarrArtist } from '@nicotind/lidarr-client';
+import type { Lidarr, LidarrArtist } from '../../lidarr/index.js';
 import type { ProcessingTaskId } from '@nicotind/core';
 import {
   analyzeBpm as realAnalyzeBpm,

@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite';
-import type { Lidarr } from '@nicotind/lidarr-client';
+import type { Lidarr } from '../lidarr/index.js';
 import { indexLidarrArtists, resolveArtistImageUrl } from './artist-image.js';
 import { buildArtistImageProviders } from './artist-image-providers.js';
 import { isPlaceholderArtist } from './artwork-backfill.js';

@@ -6,6 +6,7 @@ import { ffmpegBinary } from './ffmpeg-path.js';
 import { planVorbisKeyFixes, type VorbisKeyPlan, type VorbisKeyPreference } from './vorbis-keys.js';
 import { attachPictureDataToOpus, readOggPicture } from './opus-artwork.js';
 import { readFreeformAtoms, writeFreeformAtoms } from './mp4-freeform.js';
+import { getMusicMetadata as loadMusicMetadata } from './music-metadata-loader.js';
 
 const log = createLogger('audio-tags');
 
@@ -68,7 +69,7 @@ export interface AudioTags {
 }
 
 type NodeId3UserText = { description: string; value: string };
-type NodeId3Api = {
+export type NodeId3Api = {
   read: (filepath: string) => Record<string, unknown> | false | undefined;
   update: (tags: Record<string, unknown>, filepath: string) => boolean;
 };
@@ -302,9 +303,9 @@ function readVorbisLyrics(
 }
 
 let nodeId3Promise: Promise<NodeId3Api | null> | null = null;
-let mmPromise: Promise<MusicMetadataApi | null> | null = null;
 
-async function getNodeId3(): Promise<NodeId3Api | null> {
+/** The one lazy `node-id3` loader; `null` when the optional dependency is absent. */
+export async function getNodeId3(): Promise<NodeId3Api | null> {
   if (!nodeId3Promise) {
     nodeId3Promise = import('node-id3')
       .then((mod) => (mod.default ?? mod) as unknown as NodeId3Api)
@@ -312,13 +313,9 @@ async function getNodeId3(): Promise<NodeId3Api | null> {
   }
   return nodeId3Promise;
 }
+/** The shared loader, typed for the wider `common` this module reads. */
 async function getMusicMetadata(): Promise<MusicMetadataApi | null> {
-  if (!mmPromise) {
-    mmPromise = import('music-metadata')
-      .then((mod) => mod as unknown as MusicMetadataApi)
-      .catch(() => null);
-  }
-  return mmPromise;
+  return (await loadMusicMetadata()) as unknown as MusicMetadataApi | null;
 }
 
 function pickString(v: unknown): string | undefined {

@@ -1,4 +1,4 @@
-import type { LidarrClient } from '@nicotind/lidarr-client';
+import type { LidarrClient } from '../lidarr/index.js';
 
 type LidarrConfig = {
   bindUrl?: string;

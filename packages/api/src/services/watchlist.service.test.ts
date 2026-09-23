@@ -7,7 +7,7 @@ import { AddonRequestError } from './addons/client.js';
 import { WatchlistService } from './watchlist.service.js';
 import { albumIdFor, artistIdFor } from './library-scanner.js';
 import type { CatalogService } from './catalog-search.service.js';
-import type { Lidarr } from '@nicotind/lidarr-client';
+import type { Lidarr } from '../lidarr/index.js';
 
 // Local fixture shape (the addon owns the real FolderCandidate; api no longer
 // depends on @nicotind/slskd-addon — the hunt runs addon-side over the protocol).

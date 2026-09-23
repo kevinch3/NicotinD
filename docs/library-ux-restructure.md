@@ -142,7 +142,7 @@ Verification:
 
 Goal: new downloads only enter the library after normalization.
 
-- Move slskd's `directories.downloads` from `<musicDir>` to `<dataDir>/slskd/downloads` (config templating in `packages/service-manager/src/services/slskd.ts`).
+- Move slskd's `directories.downloads` from `<musicDir>` to `<dataDir>/slskd/downloads` (config templating in `packages/api/src/service-manager/services/slskd.ts`).
 - `LibraryOrganizer` (existing) becomes the gatekeeper: invoked by `DownloadWatcher` on completion, it normalizes (phantom flatten + tag sanitize + AcoustID enrich) and **then** moves into `<musicDir>`. Failures route to `<dataDir>/unsorted/` (already supported).
 - Navidrome only scans `<musicDir>`; staging is invisible to it.
 - Optional: a `/api/staging` admin endpoint that lists files currently sitting in staging/unsorted with their detected problems, for hand-resolution.
@@ -174,7 +174,7 @@ Everything in Phases 1–4 keeps working unchanged when this lands.
 | `packages/api/src/services/download-watcher.ts` | Call syncer after each scan |
 | `packages/api/src/services/auto-playlist.service.ts` | Migrate to consume canonical DB; eventually merge into curator |
 | `packages/api/src/services/library-organizer.ts` | Stays as-is, becomes the Phase 4 gatekeeper |
-| `packages/service-manager/src/services/slskd.ts` | Phase 4 — staging directory swap |
+| `packages/api/src/service-manager/services/slskd.ts` | Phase 4 — staging directory swap |
 | `packages/web/src/app/pages/library/library.component.ts` | Hidden toggle, collections surfaces |
 | `packages/web/src/app/services/list-controls.service.ts` | Hidden toggle plumbing |
 | `packages/web/src/app/components/cover-art/cover-art.component.ts` | Reuse for collection covers |

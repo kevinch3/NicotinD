@@ -16,7 +16,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
-import { Lidarr } from '@nicotind/lidarr-client';
+import { Lidarr } from '../lidarr/index.js';
 import { optimizeAllAlbums } from '../services/metadata-optimize.js';
 import { expandHome } from '@nicotind/core';
 

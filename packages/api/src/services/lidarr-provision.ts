@@ -1,4 +1,4 @@
-import type { Lidarr, LidarrArtist } from '@nicotind/lidarr-client';
+import type { Lidarr, LidarrArtist } from '../lidarr/index.js';
 import { createLogger } from '@nicotind/core';
 
 const log = createLogger('lidarr-provision');

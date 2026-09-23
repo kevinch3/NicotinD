@@ -43,7 +43,7 @@ import { getMbid, isMbidTombstoned } from '../services/mbid-store.js';
 import { rareGenres } from '../services/genre-distribution.js';
 import { normalizeForGrouping } from '../services/album-grouping.js';
 import type { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
-import type { Lidarr } from '@nicotind/lidarr-client';
+import type { Lidarr } from '../lidarr/index.js';
 import {
   CASE_TEXT_LIMITS,
   CURATION_CASE_KINDS,

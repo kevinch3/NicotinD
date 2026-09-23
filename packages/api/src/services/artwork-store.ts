@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import type { LidarrImage } from '@nicotind/lidarr-client';
+import type { LidarrImage } from '../lidarr/index.js';
 import { lidarrCoverPath } from './remote-cover.js';
 import { DISK_ART_REF_EXT } from './disk-art-cache.js';
 

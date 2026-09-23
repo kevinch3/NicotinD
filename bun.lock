@@ -7,8 +7,6 @@
       "dependencies": {
         "@nicotind/api": "workspace:*",
         "@nicotind/core": "workspace:*",
-        "@nicotind/lidarr-client": "workspace:*",
-        "@nicotind/service-manager": "workspace:*",
         "yaml": "^2.9.0",
       },
       "devDependencies": {
@@ -42,8 +40,6 @@
         "@hono/swagger-ui": "^0.6.1",
         "@hono/zod-openapi": "^1.6.1",
         "@nicotind/core": "workspace:*",
-        "@nicotind/lidarr-client": "workspace:*",
-        "@nicotind/service-manager": "workspace:*",
         "@sentry/bun": "^10.67.0",
         "hono": "^4.13.5",
         "jose": "^6.2.3",
@@ -99,13 +95,6 @@
         "@types/node": "25.5.0",
       },
     },
-    "packages/lidarr-client": {
-      "name": "@nicotind/lidarr-client",
-      "version": "0.1.0",
-      "dependencies": {
-        "@nicotind/core": "workspace:*",
-      },
-    },
     "packages/mobile": {
       "name": "@nicotind/mobile",
       "version": "0.1.0",
@@ -125,14 +114,6 @@
         "@capacitor/cli": "^6.2.0",
         "opentype.js": "^2.0.0",
         "sharp": "^0.35.3",
-      },
-    },
-    "packages/service-manager": {
-      "name": "@nicotind/service-manager",
-      "version": "0.1.0",
-      "dependencies": {
-        "@nicotind/core": "workspace:*",
-        "yaml": "^2.8.3",
       },
     },
     "packages/web": {
@@ -859,11 +840,7 @@
 
     "@nicotind/e2e": ["@nicotind/e2e@workspace:packages/e2e"],
 
-    "@nicotind/lidarr-client": ["@nicotind/lidarr-client@workspace:packages/lidarr-client"],
-
     "@nicotind/mobile": ["@nicotind/mobile@workspace:packages/mobile"],
-
-    "@nicotind/service-manager": ["@nicotind/service-manager@workspace:packages/service-manager"],
 
     "@nicotind/web": ["@nicotind/web@workspace:packages/web"],
 

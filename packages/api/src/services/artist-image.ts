@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite';
-import type { Lidarr, LidarrArtist } from '@nicotind/lidarr-client';
+import type { Lidarr, LidarrArtist } from '../lidarr/index.js';
 
 /**
  * Artist-portrait resolution shared by the manual artwork backfill

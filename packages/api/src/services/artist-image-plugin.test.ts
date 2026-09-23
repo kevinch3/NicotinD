@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
-import type { Lidarr, LidarrArtist } from '@nicotind/lidarr-client';
+import type { Lidarr, LidarrArtist } from '../lidarr/index.js';
 import { applySchema } from '../db.js';
 import { getMbid } from './mbid-store.js';
 import { makePluginArtistImageLookup } from './artist-image-plugin.js';

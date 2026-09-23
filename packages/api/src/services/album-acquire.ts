@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite';
-import type { Lidarr, LidarrTrack } from '@nicotind/lidarr-client';
+import type { Lidarr, LidarrTrack } from '../lidarr/index.js';
 import { createLogger, normalizeTitle, titlesOverlap } from '@nicotind/core';
 import { albumAlreadyComplete, onDiskTitles } from './library-completeness.js';
 import { recordAcquiredArtistIdentity } from './artist-identity-store.js';
