@@ -19,6 +19,7 @@ import { LibraryApiService } from '../../services/api/library-api.service';
 import type { WaveformData } from '@nicotind/core';
 import { firstValueFrom } from 'rxjs';
 import { createPointerDrag } from '../../lib/pointer-drag';
+import { createVerticalSwipe, scrollableAncestorTop, shouldCommit } from '../../lib/vertical-swipe';
 import { ScrollLockService } from '../../services/scroll-lock.service';
 import { ServerConfigService } from '../../services/server-config.service';
 import { isTvUi } from '../../lib/platform';
@@ -35,6 +36,11 @@ import {
 import { LyricsService } from '../../services/lyrics.service';
 import { KaraokeBrowseMode } from '../../lib/karaoke-browse';
 import { resolveLyricsScrollContainer } from '../../lib/lyrics-scroll-container';
+
+/** The `lg:` side-panel layout, where a vertical panel resize has nothing to do. */
+function isDesktopSheet(): boolean {
+  return typeof matchMedia === 'function' && matchMedia('(min-width: 1024px)').matches;
+}
 
 @Component({
   selector: 'app-now-playing',
@@ -205,21 +211,102 @@ export class NowPlayingComponent {
 
   readonly showBuffering = computed(() => this.isActiveDevice() && this.player.bufferingVisible());
 
-  // Live-follow dismiss gesture: the sheet tracks the finger downward and
-  // snaps closed past DISMISS_THRESHOLD_PX, otherwise springs back open.
+  // One body gesture for the whole sheet (header, cover, transport, notch,
+  // tabs, panel). Which of the two things a vertical pull can do — resize the
+  // panel or dismiss the sheet — is decided once, at the first move past slop,
+  // from the origin zone and the current state (the mode table in
+  // docs/web-ui.md "Player expand/collapse gesture"). Collapsing the panel all
+  // the way flips into a dismiss mid-gesture, so one pull reads as "shrink,
+  // then close" instead of stopping dead at the panel's rest height.
   readonly dragOffsetPx = signal(0);
   private static readonly DISMISS_THRESHOLD_PX = 120;
-  private readonly sheetDrag = createPointerDrag({
-    // Downward only — dragging up past the open position is a no-op.
-    onMove: (event, start) => this.dragOffsetPx.set(Math.max(0, event.clientY - start.clientY)),
-    onEnd: () => {
-      if (this.dragOffsetPx() > NowPlayingComponent.DISMISS_THRESHOLD_PX) {
+  private readonly bodyMode = signal<'idle' | 'resize' | 'dismiss'>('idle');
+  private resizeStartExtra = 0;
+  /** dy at which a collapse ran out of panel and the pull became a dismiss. */
+  private dismissBaseDy = 0;
+  private readonly bodySwipe = createVerticalSwipe({
+    resolve: ({ target, dy }) => {
+      const mode = this.resolveBodyMode(target, dy);
+      if (mode === 'release') return 'release';
+      this.bodyMode.set(mode);
+      this.resizeStartExtra = this.queueExtraHeightPx();
+      this.dismissBaseDy = 0;
+      return 'own';
+    },
+    onMove: (dy) => {
+      if (this.bodyMode() === 'resize') {
+        const extra = this.resizeStartExtra - dy;
+        if (extra >= 0 || dy < 0) {
+          this.queueExtraHeightPx.set(this.clampQueueExtra(extra));
+          return;
+        }
+        // Continuation: the panel is at rest and the finger keeps going down.
+        this.queueExtraHeightPx.set(0);
+        this.persistQueueExtra(0);
+        this.dismissBaseDy = this.resizeStartExtra;
+        this.bodyMode.set('dismiss');
+      }
+      this.dragOffsetPx.set(Math.max(0, dy - this.dismissBaseDy));
+    },
+    onEnd: ({ velocity }) => {
+      const mode = this.bodyMode();
+      this.bodyMode.set('idle');
+      if (mode === 'resize') {
+        this.persistQueueExtra(this.queueExtraHeightPx());
+        return;
+      }
+      if (mode !== 'dismiss') return;
+      const offset = this.dragOffsetPx();
+      this.dragOffsetPx.set(0);
+      if (
+        shouldCommit(offset, velocity, { thresholdPx: NowPlayingComponent.DISMISS_THRESHOLD_PX })
+      ) {
         this.player.setNowPlayingOpen(false);
       }
-      this.dragOffsetPx.set(0);
     },
+    onRelease: () => this.bodyMode.set('idle'),
   });
-  readonly dragging = this.sheetDrag.dragging;
+  readonly dragging = this.bodySwipe.dragging;
+  readonly resizingQueue = computed(() => this.bodyMode() === 'resize');
+
+  /** The sheet's transform: a closed sheet rides the mini bar's lift up, an
+   *  open one follows the dismiss drag down. */
+  readonly sheetTransform = computed(() => {
+    const lift = this.player.nowPlayingLiftPx();
+    if (!this.player.nowPlayingOpen() && lift > 0) return `translateY(calc(100% - ${lift}px))`;
+    const offset = this.dragOffsetPx();
+    return offset > 0 ? `translateY(${offset}px)` : null;
+  });
+  readonly sheetInstant = computed(() => this.dragging() || this.player.nowPlayingLiftPx() > 0);
+
+  // Controls and nested drags keep their own pointer: a tap on them must not
+  // become a sheet gesture, the seek/waveform scrubs are horizontal drags, and
+  // a queue row's HTML5 reorder drag would cancel ours anyway.
+  private static readonly BODY_NO_SWIPE =
+    'button, a, input, select, textarea, [data-seek], .seek-range, app-now-playing-waveform, app-menu-panel, [draggable="true"], [data-np-no-swipe]';
+
+  onBodyPointerDown(event: PointerEvent): void {
+    if (this.karaokeFullscreen()) return;
+    const target = event.target;
+    if (target instanceof Element && target.closest(NowPlayingComponent.BODY_NO_SWIPE)) return;
+    this.bodySwipe.start(event);
+  }
+
+  private resolveBodyMode(
+    target: EventTarget | null,
+    dy: number,
+  ): 'resize' | 'dismiss' | 'release' {
+    const extra = this.queueExtraHeightPx();
+    const zone = target instanceof Element ? target.closest('[data-np-zone="panel"]') : null;
+    if (dy < 0) {
+      // Up grows the panel; at lg the panel is a side column with nothing to grow.
+      return !isDesktopSheet() && extra < NowPlayingComponent.QUEUE_EXTRA_MAX_PX
+        ? 'resize'
+        : 'release';
+    }
+    if (zone && scrollableAncestorTop(target, zone) > 0) return 'release';
+    return extra > 0 && !isDesktopSheet() ? 'resize' : 'dismiss';
+  }
 
   // Manual queue resize: dragging the handle up shrinks the cover art and gives
   // the Now-Playing queue more room (the queue is flex-1, so shrinking the cover
@@ -286,22 +373,83 @@ export class NowPlayingComponent {
 
   /** Head of the queue, shown in the TV Next-up chip. */
   readonly nextUp = computed(() => this.player.queue()[0] ?? null);
-  private queueResizeStartExtra = 0;
-  private readonly queueResizeDrag = createPointerDrag({
-    onStart: () => {
-      this.queueResizeStartExtra = this.queueExtraHeightPx();
-    },
-    // Drag up (clientY decreases) → grow the queue / shrink the cover.
-    onMove: (event, start) => {
-      const delta = start.clientY - event.clientY;
-      this.queueExtraHeightPx.set(this.clampQueueExtra(this.queueResizeStartExtra + delta));
-    },
-    onEnd: () => this.persistQueueExtra(this.queueExtraHeightPx()),
-  });
-  readonly resizingQueue = this.queueResizeDrag.dragging;
-
   onQueueResizeStart(event: PointerEvent): void {
-    this.queueResizeDrag.start(event);
+    this.onBodyPointerDown(event);
+  }
+
+  // Desktop (lg) side panel width — the border between the columns is a
+  // splitter. Rides a CSS var (`--np-side-w`) for the same reason the cover cap
+  // does: an inline width would beat the responsive cascade below lg.
+  static readonly SIDE_DEFAULT_PX = 380;
+  static readonly SIDE_MIN_PX = 300;
+  static readonly SIDE_MAX_PX = 640;
+  private static readonly SIDE_KEY_STEP_PX = 16;
+  private static readonly SIDE_WIDTH_STORAGE_KEY = 'nicotind:np-side-width';
+  readonly sidePanelWidthPx = signal(this.readStoredSideWidth());
+  // Templates cannot read statics.
+  readonly sideMinPx = NowPlayingComponent.SIDE_MIN_PX;
+  readonly sideMaxPx = NowPlayingComponent.SIDE_MAX_PX;
+  private sideResizeStartWidth = NowPlayingComponent.SIDE_DEFAULT_PX;
+  private readonly sideResizeDrag = createPointerDrag({
+    onStart: () => {
+      this.sideResizeStartWidth = this.sidePanelWidthPx();
+    },
+    // The panel is on the right: dragging the border left (clientX decreases) grows it.
+    onMove: (event, start) => {
+      const delta = start.clientX - event.clientX;
+      this.sidePanelWidthPx.set(this.clampSideWidth(this.sideResizeStartWidth + delta));
+    },
+    onEnd: () => this.persistSideWidth(this.sidePanelWidthPx()),
+  });
+  readonly resizingSide = this.sideResizeDrag.dragging;
+
+  onSideResizeStart(event: PointerEvent): void {
+    this.sideResizeDrag.start(event);
+  }
+
+  onSideResizeKeydown(event: KeyboardEvent): void {
+    const step = NowPlayingComponent.SIDE_KEY_STEP_PX;
+    const next: Record<string, number | undefined> = {
+      ArrowLeft: this.sidePanelWidthPx() + step,
+      ArrowRight: this.sidePanelWidthPx() - step,
+      Home: NowPlayingComponent.SIDE_MIN_PX,
+      End: NowPlayingComponent.SIDE_MAX_PX,
+    };
+    const width = next[event.key];
+    if (width === undefined) return;
+    event.preventDefault();
+    this.setSideWidth(width);
+  }
+
+  resetSidePanelWidth(): void {
+    this.setSideWidth(NowPlayingComponent.SIDE_DEFAULT_PX);
+  }
+
+  private setSideWidth(px: number): void {
+    this.sidePanelWidthPx.set(this.clampSideWidth(px));
+    this.persistSideWidth(this.sidePanelWidthPx());
+  }
+
+  private clampSideWidth(px: number): number {
+    const max = Math.min(NowPlayingComponent.SIDE_MAX_PX, Math.floor(window.innerWidth / 2));
+    return Math.min(max, Math.max(NowPlayingComponent.SIDE_MIN_PX, Math.round(px)));
+  }
+
+  private readStoredSideWidth(): number {
+    try {
+      const raw = localStorage.getItem(NowPlayingComponent.SIDE_WIDTH_STORAGE_KEY);
+      return raw ? this.clampSideWidth(Number(raw)) : NowPlayingComponent.SIDE_DEFAULT_PX;
+    } catch {
+      return NowPlayingComponent.SIDE_DEFAULT_PX;
+    }
+  }
+
+  private persistSideWidth(px: number): void {
+    try {
+      localStorage.setItem(NowPlayingComponent.SIDE_WIDTH_STORAGE_KEY, String(px));
+    } catch {
+      /* storage unavailable — the width just won't persist */
+    }
   }
 
   private clampQueueExtra(px: number): number {
@@ -569,10 +717,6 @@ export class NowPlayingComponent {
    *  between the 2-line auto-follow view and the full browse list. */
   toggleKaraokeBrowsing(): void {
     this.browse.toggle();
-  }
-
-  onSheetDragStart(event: PointerEvent): void {
-    this.sheetDrag.start(event);
   }
 
   async navigateToArtist(): Promise<void> {

@@ -1,4 +1,4 @@
-import { Component, computed, inject, output } from '@angular/core';
+import { Component, computed, inject } from '@angular/core';
 import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 import { PlayerService } from '../../../services/player.service';
 import { nowPlayingHeading } from '../../../lib/now-playing-heading';
@@ -33,6 +33,4 @@ export class NowPlayingHeaderComponent {
       trackTitle: this.player.currentTrack()?.title ?? null,
     }),
   );
-
-  readonly dragPointerDown = output<PointerEvent>();
 }

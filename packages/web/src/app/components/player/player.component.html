@@ -35,9 +35,12 @@
         <div class="w-10 h-1.5 rounded-full bg-theme-muted"></div>
       </div>
 
-      <!-- Tap / swipe-up to open Now Playing -->
+      <!-- Tap / swipe-up to open Now Playing. touch-none, like the notch: with
+           pan-y the browser reclaimed the vertical pan after ~10px and the swipe
+           never reached the threshold, so only the notch worked. Nothing in the
+           bar scrolls; the seek range owns its own touch-action. -->
       <div
-        class="flex items-center px-3 md:px-4 gap-2 md:gap-4 h-14 cursor-pointer touch-pan-y"
+        class="flex items-center px-3 md:px-4 gap-2 md:gap-4 h-14 cursor-pointer touch-none"
         (pointerdown)="onBarPointerDown($event)"
       >
         <!-- Track info — mobile: the only growing column (flex-1), so it fills the

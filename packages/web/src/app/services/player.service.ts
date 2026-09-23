@@ -189,6 +189,10 @@ export class PlayerService {
   readonly radioQueueTarget = signal(DEFAULT_RADIO_QUEUE_TARGET);
   readonly context = signal<PlayContext | null>(null);
   readonly nowPlayingOpen = signal(false);
+  // How far the CLOSED sheet is lifted above its parked position while the
+  // mini bar is being dragged up (live-follow open). The bar and the sheet are
+  // separate components, so the finger offset crosses here like `nowPlayingOpen`.
+  readonly nowPlayingLiftPx = signal(0);
   readonly currentTime = signal(0);
   readonly duration = signal(0);
   readonly seekTo = signal<number | null>(null);
@@ -728,6 +732,10 @@ export class PlayerService {
 
   setNowPlayingOpen(open: boolean): void {
     this.nowPlayingOpen.set(open);
+  }
+
+  setNowPlayingLiftPx(px: number): void {
+    this.nowPlayingLiftPx.set(px);
   }
 
   setCurrentTime(time: number): void {

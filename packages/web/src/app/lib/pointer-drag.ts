@@ -30,6 +30,9 @@ export interface PointerDrag {
   readonly dragging: Signal<boolean>;
   /** Bind to `(pointerdown)`. No-op for non-primary buttons. */
   start: (e: PointerEvent) => void;
+  /** Detach mid-gesture without firing onEnd — for a caller that has handed
+   *  the finger back to the browser (a released vertical-swipe). */
+  cancel: () => void;
 }
 
 export function createPointerDrag(handlers: PointerDragHandlers): PointerDrag {
@@ -72,5 +75,5 @@ export function createPointerDrag(handlers: PointerDragHandlers): PointerDrag {
 
   inject(DestroyRef).onDestroy(detach);
 
-  return { dragging, start };
+  return { dragging, start, cancel: detach };
 }

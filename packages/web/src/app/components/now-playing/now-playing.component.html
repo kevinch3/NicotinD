@@ -7,12 +7,13 @@
     appTvNavGroup
     [axis]="'vertical'"
     [class]="'fixed inset-0 z-[60] bg-theme-base ease-out flex flex-col ' +
-      (dragging() ? 'transition-none ' : 'transition-transform duration-300 ') +
+      (sheetInstant() ? 'transition-none ' : 'transition-transform duration-300 ') +
       (player.nowPlayingOpen() ? 'translate-y-0' : 'translate-y-full')"
-    [style.transform]="dragOffsetPx() > 0 ? 'translateY(' + dragOffsetPx() + 'px)' : null"
+    [style.transform]="sheetTransform()"
+    (pointerdown)="onBodyPointerDown($event)"
     [style.--np-tv-backdrop]="tvBackdropUrl() ? 'url(' + tvBackdropUrl() + ')' : null"
   >
-    <app-now-playing-header (dragPointerDown)="onSheetDragStart($event)" />
+    <app-now-playing-header />
     <app-playing-elsewhere />
 
     @if (isTv && nextUp(); as next) {
@@ -71,14 +72,14 @@
         />
 
         @if (!isTv && !karaokeFullscreen()) {
-          <!-- Drag handle: pull up to grow the active panel (shrinks the cover).
-               Shell-owned and rendered above the tabs so it works on the Queue AND
-               Lyrics tabs — inside the queue panel it vanished with the tab switch
-               and read as a lost feature. lg:hidden — a vertical resize is
-               meaningless beside the fixed-width side panel; on TV it's a
+          <!-- Resize notch: the visible affordance for the panel resize, which the
+               sheet-root pointerdown now serves from anywhere (mode table in
+               docs/web-ui.md). Shell-owned and rendered above the tabs so it works
+               on the Queue AND Lyrics tabs — inside the queue panel it vanished
+               with the tab switch and read as a lost feature. lg:hidden — a
+               vertical resize is meaningless beside the side panel; on TV it's a
                pointer-drag affordance a D-pad can't use. -->
           <div
-            (pointerdown)="onQueueResizeStart($event)"
             data-testid="now-playing-queue-resize"
             role="separator"
             aria-orientation="horizontal"
@@ -94,8 +95,33 @@
       </div>
 
       @if (!isTv && !karaokeFullscreen()) {
+        <!-- Splitter (lg only): the border between the columns, draggable and
+             keyboard-operable; double-click resets. touch-none so a mouse-less
+             tablet at lg can drag it too. -->
         <div
-          class="contents lg:flex lg:flex-col lg:flex-none lg:w-[380px] lg:min-h-0 lg:border-l lg:border-theme"
+          data-testid="now-playing-side-resize"
+          role="separator"
+          aria-orientation="vertical"
+          tabindex="0"
+          [attr.aria-label]="'nowPlaying.resizeSidePanel' | t"
+          [attr.aria-valuenow]="sidePanelWidthPx()"
+          [attr.aria-valuemin]="sideMinPx"
+          [attr.aria-valuemax]="sideMaxPx"
+          data-np-no-swipe
+          (pointerdown)="onSideResizeStart($event)"
+          (keydown)="onSideResizeKeydown($event)"
+          (dblclick)="resetSidePanelWidth()"
+          class="hidden lg:flex flex-none w-2 -mx-0.5 items-stretch justify-center cursor-col-resize touch-none select-none group/split focus-visible:outline-none"
+        >
+          <span
+            class="w-px transition-colors"
+            [class]="resizingSide() ? 'bg-theme-accent' : 'bg-theme group-hover/split:bg-theme-muted group-focus-visible/split:bg-theme-accent'"
+          ></span>
+        </div>
+        <div
+          data-np-zone="panel"
+          class="contents lg:flex lg:flex-col lg:flex-none lg:w-[var(--np-side-w,380px)] lg:min-h-0"
+          [style.--np-side-w]="sidePanelWidthPx() + 'px'"
         >
           <app-now-playing-panel-tabs
             [activePanel]="activePanel()"

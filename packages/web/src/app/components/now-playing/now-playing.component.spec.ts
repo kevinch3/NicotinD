@@ -18,6 +18,7 @@ function makePlayerStub() {
       null,
     ),
     nowPlayingOpen: signal(true),
+    nowPlayingLiftPx: signal(0),
     isPlaying: signal(false),
     shuffle: signal(false),
     repeat: signal('off'),
@@ -580,8 +581,10 @@ describe('NowPlayingComponent', () => {
     // The handle used to live inside the queue panel, below the Queue/Lyrics tab
     // bar — so it vanished whenever the Lyrics tab was active and read as "lost".
     // It is now owned by the shell, above the tabs, working for both panels.
+    // Bubbling, like a real pointerdown: the notch is served by the sheet
+    // root's gesture, not a handler of its own.
     const pointer = (type: string, clientY: number, button = 0) =>
-      new MouseEvent(type, { clientY, button }) as unknown as PointerEvent;
+      new MouseEvent(type, { clientY, button, bubbles: true }) as unknown as PointerEvent;
 
     function setupWithTrack() {
       const ctx = setup();
@@ -785,65 +788,399 @@ describe('NowPlayingComponent', () => {
     });
   });
 
-  describe('drag-to-dismiss (live-follow)', () => {
-    // jsdom has no PointerEvent constructor; MouseEvent carries clientY + button
-    // and dispatches under any type string, driving the real document listeners.
-    const pointer = (type: string, clientY: number, button = 0) =>
-      new MouseEvent(type, { clientY, button }) as unknown as PointerEvent;
+  describe('sheet body gesture (mode table)', () => {
+    // Stamped so the flick velocity is deterministic (jsdom stamps events at
+    // creation; two in one tick would read as a flick).
+    const pointer = (
+      type: string,
+      clientY: number,
+      opts: { t?: number; target?: Element; clientX?: number; button?: number } = {},
+    ) => {
+      const e = new MouseEvent(type, {
+        clientY,
+        clientX: opts.clientX ?? 0,
+        button: opts.button ?? 0,
+      }) as unknown as PointerEvent;
+      Object.defineProperty(e, 'timeStamp', { value: opts.t ?? 0 });
+      if (opts.target) Object.defineProperty(e, 'target', { value: opts.target });
+      return e;
+    };
+    const move = (y: number, t = 500) => document.dispatchEvent(pointer('pointermove', y, { t }));
+    const up = (y: number, t = 1000) => document.dispatchEvent(pointer('pointerup', y, { t }));
 
-    it('follows the finger downward and closes the sheet past the threshold', () => {
+    /** A panel zone with a scroller inside, as the tabs+panel wrapper renders. */
+    function panelZone(scrollTop: number) {
+      const zone = document.createElement('div');
+      zone.setAttribute('data-np-zone', 'panel');
+      const scroller = document.createElement('div');
+      scroller.style.overflowY = 'auto';
+      Object.defineProperty(scroller, 'scrollTop', { value: scrollTop, configurable: true });
+      const row = document.createElement('div');
+      zone.appendChild(scroller);
+      scroller.appendChild(row);
+      document.body.appendChild(zone);
+      return { zone, row };
+    }
+
+    afterEach(() => {
+      document.querySelectorAll('[data-np-zone]').forEach((n) => n.remove());
+      delete (window as { matchMedia?: unknown }).matchMedia;
+    });
+
+    it('stage + down: follows the finger and closes past the threshold', () => {
       const { fixture, playerStub } = setup();
       const component = fixture.componentInstance;
       const setOpen = vi.spyOn(playerStub, 'setNowPlayingOpen');
 
-      component.onSheetDragStart(pointer('pointerdown', 100));
+      component.onBodyPointerDown(pointer('pointerdown', 100));
       expect(component.dragging()).toBe(true);
-
-      document.dispatchEvent(pointer('pointermove', 280)); // delta 180 > 120 threshold
+      move(280); // delta 180 > 120 threshold
       expect(component.dragOffsetPx()).toBe(180);
+      expect(component.resizingQueue()).toBe(false);
 
-      document.dispatchEvent(pointer('pointerup', 280));
+      up(280);
       expect(setOpen).toHaveBeenCalledWith(false);
       expect(component.dragOffsetPx()).toBe(0);
       expect(component.dragging()).toBe(false);
     });
 
-    it('snaps back without closing for a short drag', () => {
+    it('snaps back without closing for a short, slow drag', () => {
       const { fixture, playerStub } = setup();
       const component = fixture.componentInstance;
       const setOpen = vi.spyOn(playerStub, 'setNowPlayingOpen');
 
-      component.onSheetDragStart(pointer('pointerdown', 100));
-      document.dispatchEvent(pointer('pointermove', 150)); // delta 50 < 120 threshold
-      document.dispatchEvent(pointer('pointerup', 150));
+      component.onBodyPointerDown(pointer('pointerdown', 100));
+      move(150);
+      up(150);
 
       expect(setOpen).not.toHaveBeenCalled();
       expect(component.dragOffsetPx()).toBe(0);
-      expect(component.dragging()).toBe(false);
     });
 
-    it('clamps an upward drag to zero (downward-only)', () => {
-      const { fixture } = setup();
+    it('a short but fast flick down closes', () => {
+      const { fixture, playerStub } = setup();
       const component = fixture.componentInstance;
+      const setOpen = vi.spyOn(playerStub, 'setNowPlayingOpen');
 
-      component.onSheetDragStart(pointer('pointerdown', 200));
-      document.dispatchEvent(pointer('pointermove', 50)); // delta -150
+      component.onBodyPointerDown(pointer('pointerdown', 100));
+      move(140, 20); // 40px in 20ms = 2 px/ms
+      up(140, 20);
+
+      expect(setOpen).toHaveBeenCalledWith(false);
+    });
+
+    it('closes on pointercancel past the threshold (touch may never deliver pointerup)', () => {
+      const { fixture, playerStub } = setup();
+      const component = fixture.componentInstance;
+      const setOpen = vi.spyOn(playerStub, 'setNowPlayingOpen');
+
+      component.onBodyPointerDown(pointer('pointerdown', 100));
+      move(280);
+      document.dispatchEvent(pointer('pointercancel', 280, { t: 1000 }));
+
+      expect(setOpen).toHaveBeenCalledWith(false);
       expect(component.dragOffsetPx()).toBe(0);
     });
 
-    it('ignores non-primary buttons and stops tracking after release', () => {
+    it('stage + up: grows the panel (shrinks the cover) from anywhere, not just the notch', () => {
       const { fixture } = setup();
       const component = fixture.componentInstance;
 
-      component.onSheetDragStart(pointer('pointerdown', 100, 2)); // right-click
-      expect(component.dragging()).toBe(false);
-
-      component.onSheetDragStart(pointer('pointerdown', 100));
-      document.dispatchEvent(pointer('pointerup', 100));
-      // Listeners detached: a post-release move must not move the sheet.
-      document.dispatchEvent(pointer('pointermove', 300));
+      component.onBodyPointerDown(pointer('pointerdown', 400));
+      move(300); // up 100
+      expect(component.queueExtraHeightPx()).toBe(100);
+      expect(component.resizingQueue()).toBe(true);
       expect(component.dragOffsetPx()).toBe(0);
+      up(300);
+      expect(localStorage.getItem('nicotind:np-queue-extra')).toBe('100');
+      expect(component.resizingQueue()).toBe(false);
+    });
+
+    it('stage + down with the panel grown: collapses it, then continues into a dismiss', () => {
+      const { fixture, playerStub } = setup();
+      const component = fixture.componentInstance;
+      const setOpen = vi.spyOn(playerStub, 'setNowPlayingOpen');
+      component.queueExtraHeightPx.set(100);
+
+      component.onBodyPointerDown(pointer('pointerdown', 100));
+      move(160); // down 60: still collapsing
+      expect(component.queueExtraHeightPx()).toBe(40);
+      expect(component.dragOffsetPx()).toBe(0);
+
+      move(250); // down 150: 100 spent on the collapse, 50 into the dismiss
+      expect(component.queueExtraHeightPx()).toBe(0);
+      expect(component.dragOffsetPx()).toBe(50);
+      expect(component.resizingQueue()).toBe(false);
+
+      up(250); // 50 < threshold, slow: springs back, collapse persisted
+      expect(setOpen).not.toHaveBeenCalled();
+      expect(component.dragOffsetPx()).toBe(0);
+      expect(localStorage.getItem('nicotind:np-queue-extra')).toBe('0');
+    });
+
+    it('panel + down with the list scrolled: released to native scrolling', () => {
+      const { fixture } = setup();
+      const component = fixture.componentInstance;
+      const { row } = panelZone(40);
+
+      component.onBodyPointerDown(pointer('pointerdown', 100, { target: row }));
+      move(200);
       expect(component.dragging()).toBe(false);
+      expect(component.dragOffsetPx()).toBe(0);
+      expect(component.queueExtraHeightPx()).toBe(0);
+    });
+
+    it('panel + down at the top with the panel grown: collapses it', () => {
+      const { fixture } = setup();
+      const component = fixture.componentInstance;
+      component.queueExtraHeightPx.set(120);
+      const { row } = panelZone(0);
+
+      component.onBodyPointerDown(pointer('pointerdown', 100, { target: row }));
+      move(150);
+      expect(component.queueExtraHeightPx()).toBe(70);
+      expect(component.dragOffsetPx()).toBe(0);
+      up(150);
+    });
+
+    it('panel + down at the top with the panel at rest: dismisses the sheet', () => {
+      const { fixture } = setup();
+      const component = fixture.componentInstance;
+      const { row } = panelZone(0);
+
+      component.onBodyPointerDown(pointer('pointerdown', 100, { target: row }));
+      move(150);
+      expect(component.dragOffsetPx()).toBe(50);
+      up(150);
+    });
+
+    it('panel + up: grows the panel even from inside the scroller', () => {
+      const { fixture } = setup();
+      const component = fixture.componentInstance;
+      const { row } = panelZone(40);
+
+      component.onBodyPointerDown(pointer('pointerdown', 300, { target: row }));
+      move(250);
+      expect(component.queueExtraHeightPx()).toBe(50);
+      up(250);
+    });
+
+    it('panel + up when fully grown: released so the list scrolls', () => {
+      const { fixture } = setup();
+      const component = fixture.componentInstance;
+      component.queueExtraHeightPx.set(320);
+      const { row } = panelZone(0);
+
+      component.onBodyPointerDown(pointer('pointerdown', 300, { target: row }));
+      move(250);
+      expect(component.dragging()).toBe(false);
+      expect(component.queueExtraHeightPx()).toBe(320);
+    });
+
+    it('at lg (side-panel layout) an up-swipe is released and a down-swipe dismisses', () => {
+      (window as { matchMedia?: unknown }).matchMedia = (q: string) => ({
+        matches: q.includes('1024px'),
+      });
+      const { fixture } = setup();
+      const component = fixture.componentInstance;
+
+      component.onBodyPointerDown(pointer('pointerdown', 300));
+      move(200);
+      expect(component.dragging()).toBe(false);
+      expect(component.queueExtraHeightPx()).toBe(0);
+
+      component.onBodyPointerDown(pointer('pointerdown', 100));
+      move(200);
+      expect(component.dragOffsetPx()).toBe(100);
+      up(200);
+    });
+
+    it.each([
+      ['a button', () => document.createElement('button')],
+      ['a link', () => document.createElement('a')],
+      [
+        'the seek bar',
+        () => {
+          const el = document.createElement('div');
+          el.setAttribute('data-seek', '');
+          return el;
+        },
+      ],
+      [
+        'a menu panel',
+        () => {
+          const menu = document.createElement('app-menu-panel');
+          const inner = document.createElement('div');
+          menu.appendChild(inner);
+          return inner;
+        },
+      ],
+      [
+        'a draggable queue row',
+        () => {
+          const row = document.createElement('li');
+          row.setAttribute('draggable', 'true');
+          const inner = document.createElement('span');
+          row.appendChild(inner);
+          return inner;
+        },
+      ],
+    ])('never starts from %s', (_label, make) => {
+      const { fixture } = setup();
+      const component = fixture.componentInstance;
+      component.onBodyPointerDown(pointer('pointerdown', 100, { target: make() }));
+      expect(component.dragging()).toBe(false);
+    });
+
+    it('never starts while karaoke fullscreen owns the screen', () => {
+      const { fixture } = setup();
+      const component = fixture.componentInstance;
+      component.karaokeFullscreen.set(true);
+      component.onBodyPointerDown(pointer('pointerdown', 100));
+      expect(component.dragging()).toBe(false);
+    });
+
+    it('ignores non-primary buttons', () => {
+      const { fixture } = setup();
+      const component = fixture.componentInstance;
+      component.onBodyPointerDown(pointer('pointerdown', 100, { button: 2 }));
+      expect(component.dragging()).toBe(false);
+    });
+
+    it('the resize notch routes into the same gesture', () => {
+      const { fixture, playerStub } = setup();
+      playerStub.currentTrack.set({ id: '1', title: 'Song', artist: 'Artist' });
+      fixture.detectChanges();
+      const spy = vi.spyOn(fixture.componentInstance, 'onBodyPointerDown');
+      const el: HTMLElement = fixture.nativeElement;
+      el.querySelector('[data-testid="now-playing-queue-resize"]')!.dispatchEvent(
+        new MouseEvent('pointerdown', { bubbles: true }),
+      );
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('closed-sheet lift (live-follow open from the mini bar)', () => {
+    function root(fixture: { nativeElement: HTMLElement }) {
+      return fixture.nativeElement.querySelector<HTMLElement>('.fixed.inset-0')!;
+    }
+
+    it('rides PlayerService.nowPlayingLiftPx while closed, with transitions off', () => {
+      const { fixture, playerStub } = setup();
+      playerStub.currentTrack.set({ id: '1', title: 'Song', artist: 'Artist' });
+      playerStub.nowPlayingOpen.set(false);
+      playerStub.nowPlayingLiftPx.set(80);
+      fixture.detectChanges();
+
+      const el = root(fixture);
+      expect(el.style.transform).toBe('translateY(calc(100% - 80px))');
+      expect(el.classList.contains('transition-none')).toBe(true);
+    });
+
+    it('parks the sheet normally once the lift drops to zero', () => {
+      const { fixture, playerStub } = setup();
+      playerStub.currentTrack.set({ id: '1', title: 'Song', artist: 'Artist' });
+      playerStub.nowPlayingOpen.set(false);
+      playerStub.nowPlayingLiftPx.set(0);
+      fixture.detectChanges();
+
+      const el = root(fixture);
+      expect(el.style.transform).toBe('');
+      expect(el.classList.contains('translate-y-full')).toBe(true);
+      expect(el.classList.contains('transition-none')).toBe(false);
+    });
+  });
+
+  describe('desktop side-panel splitter', () => {
+    const pointer = (type: string, clientX: number, button = 0) =>
+      new MouseEvent(type, { clientX, button }) as unknown as PointerEvent;
+    const key = (k: string) => new KeyboardEvent('keydown', { key: k, cancelable: true });
+
+    beforeEach(() => {
+      localStorage.clear();
+      Object.defineProperty(window, 'innerWidth', { value: 1600, configurable: true });
+    });
+
+    it('defaults to 380px and grows when the border is dragged left', () => {
+      const { fixture } = setup();
+      const component = fixture.componentInstance;
+      expect(component.sidePanelWidthPx()).toBe(380);
+
+      component.onSideResizeStart(pointer('pointerdown', 1000));
+      document.dispatchEvent(pointer('pointermove', 900));
+      expect(component.sidePanelWidthPx()).toBe(480);
+      document.dispatchEvent(pointer('pointerup', 900));
+      expect(localStorage.getItem('nicotind:np-side-width')).toBe('480');
+    });
+
+    it('clamps to [300, 640]', () => {
+      const { fixture } = setup();
+      const component = fixture.componentInstance;
+
+      component.onSideResizeStart(pointer('pointerdown', 1000));
+      document.dispatchEvent(pointer('pointermove', 1200));
+      expect(component.sidePanelWidthPx()).toBe(300);
+      document.dispatchEvent(pointer('pointermove', 0));
+      expect(component.sidePanelWidthPx()).toBe(640);
+      document.dispatchEvent(pointer('pointerup', 0));
+    });
+
+    it('never takes more than half the viewport', () => {
+      Object.defineProperty(window, 'innerWidth', { value: 1100, configurable: true });
+      const { fixture } = setup();
+      const component = fixture.componentInstance;
+
+      component.onSideResizeStart(pointer('pointerdown', 1000));
+      document.dispatchEvent(pointer('pointermove', 0));
+      expect(component.sidePanelWidthPx()).toBe(550);
+      document.dispatchEvent(pointer('pointerup', 0));
+    });
+
+    it('restores the persisted width on a fresh mount', () => {
+      localStorage.setItem('nicotind:np-side-width', '450');
+      const { fixture } = setup();
+      expect(fixture.componentInstance.sidePanelWidthPx()).toBe(450);
+    });
+
+    it('steps with the keyboard: arrows ±16, Home/End to the bounds', () => {
+      const { fixture } = setup();
+      const component = fixture.componentInstance;
+
+      component.onSideResizeKeydown(key('ArrowLeft'));
+      expect(component.sidePanelWidthPx()).toBe(396);
+      component.onSideResizeKeydown(key('ArrowRight'));
+      expect(component.sidePanelWidthPx()).toBe(380);
+      component.onSideResizeKeydown(key('End'));
+      expect(component.sidePanelWidthPx()).toBe(640);
+      component.onSideResizeKeydown(key('Home'));
+      expect(component.sidePanelWidthPx()).toBe(300);
+      expect(localStorage.getItem('nicotind:np-side-width')).toBe('300');
+    });
+
+    it('resets to the default', () => {
+      const { fixture } = setup();
+      const component = fixture.componentInstance;
+      component.sidePanelWidthPx.set(500);
+      component.resetSidePanelWidth();
+      expect(component.sidePanelWidthPx()).toBe(380);
+      expect(localStorage.getItem('nicotind:np-side-width')).toBe('380');
+    });
+
+    it('renders an accessible separator and feeds the width to the side column as a CSS var', () => {
+      const { fixture, playerStub } = setup();
+      playerStub.currentTrack.set({ id: '1', title: 'Song', artist: 'Artist' });
+      fixture.componentInstance.sidePanelWidthPx.set(420);
+      fixture.detectChanges();
+
+      const el: HTMLElement = fixture.nativeElement;
+      const sep = el.querySelector<HTMLElement>('[data-testid="now-playing-side-resize"]')!;
+      expect(sep).not.toBeNull();
+      expect(sep.getAttribute('role')).toBe('separator');
+      expect(sep.getAttribute('aria-orientation')).toBe('vertical');
+      expect(sep.getAttribute('aria-valuenow')).toBe('420');
+      expect(sep.getAttribute('tabindex')).toBe('0');
+      const side = sep.nextElementSibling as HTMLElement;
+      expect(side.style.getPropertyValue('--np-side-w')).toBe('420px');
     });
   });
 });

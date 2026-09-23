@@ -504,12 +504,19 @@ describe('PlayerComponent', () => {
 
   describe('expand gesture', () => {
     const down = (clientY: number, target: HTMLElement, button = 0) =>
-      ({ clientY, button, target }) as unknown as PointerEvent;
+      ({ clientY, clientX: 0, button, target, timeStamp: 0 }) as unknown as PointerEvent;
     // Move/release through the real document listeners the primitive attaches.
-    const move = (clientY: number) =>
-      document.dispatchEvent(new MouseEvent('pointermove', { clientY }));
-    const release = (clientY: number) =>
-      document.dispatchEvent(new MouseEvent('pointerup', { clientY }));
+    // Timestamps are explicit so the flick velocity is deterministic: two
+    // events created in the same jsdom tick would otherwise read as a flick.
+    const stamped = (type: string, clientY: number, timeStamp: number) => {
+      const e = new MouseEvent(type, { clientY });
+      Object.defineProperty(e, 'timeStamp', { value: timeStamp });
+      return e;
+    };
+    const move = (clientY: number, timeStamp = 500) =>
+      document.dispatchEvent(stamped('pointermove', clientY, timeStamp));
+    const release = (clientY: number, timeStamp = 1000) =>
+      document.dispatchEvent(stamped('pointerup', clientY, timeStamp));
 
     it('opens Now Playing on a tap (negligible movement)', () => {
       playerService.setNowPlayingOpen(false);
@@ -519,15 +526,69 @@ describe('PlayerComponent', () => {
       expect(playerService.nowPlayingOpen()).toBe(true);
     });
 
-    it('opens Now Playing on a swipe up past the threshold', () => {
+    it('lifts the sheet with the finger (live-follow) without opening it yet', () => {
       playerService.setNowPlayingOpen(false);
-      component.onBarPointerDown(down(200, document.createElement('div')));
-      // Commits on move (delta -60 < -40) — touch can fire pointercancel before
-      // pointerup, so waiting for release dropped real swipes.
-      move(140);
-      release(140);
+      component.onBarPointerDown(down(300, document.createElement('div')));
+      move(240); // 60px up, slow
+      expect(playerService.nowPlayingLiftPx()).toBe(60);
+      expect(playerService.nowPlayingOpen()).toBe(false);
+    });
+
+    it('opens Now Playing on a slow swipe up past the threshold and drops the lift', () => {
+      playerService.setNowPlayingOpen(false);
+      component.onBarPointerDown(down(300, document.createElement('div')));
+      move(300 - PlayerComponent.OPEN_THRESHOLD_PX - 1);
+      release(300 - PlayerComponent.OPEN_THRESHOLD_PX - 1);
 
       expect(playerService.nowPlayingOpen()).toBe(true);
+      expect(playerService.nowPlayingLiftPx()).toBe(0);
+    });
+
+    it('opens on a short but fast flick up', () => {
+      playerService.setNowPlayingOpen(false);
+      component.onBarPointerDown(down(300, document.createElement('div')));
+      move(270, 20); // 30px in 20ms = 1.5 px/ms
+      release(270, 20);
+
+      expect(playerService.nowPlayingOpen()).toBe(true);
+    });
+
+    it('springs back (no open, lift reset) after a short slow drag', () => {
+      playerService.setNowPlayingOpen(false);
+      component.onBarPointerDown(down(300, document.createElement('div')));
+      move(260);
+      release(260);
+
+      expect(playerService.nowPlayingOpen()).toBe(false);
+      expect(playerService.nowPlayingLiftPx()).toBe(0);
+    });
+
+    // touch can fire pointercancel before pointerup; a cancel past the
+    // threshold still opens (the old end-only check dropped real swipes).
+    it('commits on pointercancel past the threshold', () => {
+      playerService.setNowPlayingOpen(false);
+      component.onBarPointerDown(down(300, document.createElement('div')));
+      move(300 - PlayerComponent.OPEN_THRESHOLD_PX - 1);
+      document.dispatchEvent(
+        stamped('pointercancel', 300 - PlayerComponent.OPEN_THRESHOLD_PX - 1, 1000),
+      );
+
+      expect(playerService.nowPlayingOpen()).toBe(true);
+      expect(playerService.nowPlayingLiftPx()).toBe(0);
+    });
+
+    // The bar body used to be `touch-pan-y`, so the browser reclaimed the pan
+    // after ~10px and the swipe never reached the threshold: only the
+    // `touch-none` notch worked (the report behind this test).
+    it('marks the bar body touch-none so a swipe from anywhere on it is ours', () => {
+      playerService.currentTrack.set(TRACK);
+      fixture.detectChanges();
+      const title = (fixture.nativeElement as HTMLElement).querySelector(
+        '[data-testid="player-title"]',
+      );
+      const body = title?.closest('.touch-none');
+      expect(body, 'bar body carries touch-none').not.toBeNull();
+      expect(body?.classList.contains('touch-pan-y')).toBe(false);
     });
 
     it('does not open on a small downward drag', () => {
