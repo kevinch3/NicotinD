@@ -33,6 +33,7 @@ function makePlayerStub() {
     context: signal(null),
     currentTime: signal(0),
     duration: signal(0),
+    buffering: signal(false),
     bufferingVisible: signal(false),
     bufferedRanges: signal([]),
     setNowPlayingOpen: () => {},
@@ -185,6 +186,32 @@ describe('NowPlayingComponent', () => {
 
       expect(libraryStub.fetchLyrics).toHaveBeenCalledTimes(1);
       expect(component.fetchingLyrics()).toBe(true);
+    });
+  });
+
+  describe('waveform fetch waits for the audio (#1328)', () => {
+    it('does not request peaks while the track is still buffering', () => {
+      const { fixture, playerStub, libraryStub } = setup();
+      playerStub.buffering.set(true);
+      playerStub.currentTrack.set({ id: 'w1', title: 'Song', artist: 'Artist' });
+      fixture.detectChanges();
+      expect(libraryStub.getPeaks).not.toHaveBeenCalled();
+
+      playerStub.buffering.set(false);
+      fixture.detectChanges();
+      expect(libraryStub.getPeaks.mock.calls).toEqual([['w1']]);
+    });
+
+    it('fetches only the track a skip burst lands on', () => {
+      const { fixture, playerStub, libraryStub } = setup();
+      playerStub.buffering.set(true);
+      for (const id of ['b1', 'b2', 'b3']) {
+        playerStub.currentTrack.set({ id, title: id, artist: 'Artist' });
+        fixture.detectChanges();
+      }
+      playerStub.buffering.set(false);
+      fixture.detectChanges();
+      expect(libraryStub.getPeaks.mock.calls).toEqual([['b3']]);
     });
   });
 

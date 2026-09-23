@@ -556,9 +556,13 @@ export class NowPlayingComponent {
     });
 
     // Fetch the waveform artifact whenever the sheet is open and the track
-    // changes — lazily, like lyrics: a closed sheet never costs a decode.
+    // changes — lazily, like lyrics: a closed sheet never costs a decode. And
+    // only once the track's audio is flowing: a cold peaks request is a full
+    // server-side decode that competes with the stream for the disk exactly at
+    // time-to-first-audio, and a skip burst would start one per track (#1328).
     effect(() => {
       if (!this.player.nowPlayingOpen()) return;
+      if (this.player.buffering()) return;
       const id = this.player.currentTrack()?.id ?? null;
       if (!id || id === this.waveformLoadedForId()) return;
       this.loadWaveform(id);
