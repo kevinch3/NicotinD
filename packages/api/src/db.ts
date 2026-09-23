@@ -1114,6 +1114,10 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   // design (no FK cascade — see docs/cache-invalidation.md), so this is what
   // bounds the growth without giving up that design. See `orphan-prune.ts`.
   addColumnIfMissing(db, 'library_embeddings', 'orphaned_at', 'INTEGER');
+  // The genre prediction that rode the same /analyze call as the embedding, as
+  // JSON ({label, style, confidence}); NULL when the sidecar returned none. Lets
+  // the genre-audio task reuse it instead of re-analyzing the file (#1312).
+  addColumnIfMissing(db, 'library_embeddings', 'genre_json', 'TEXT');
 
   // Per-song audio descriptors (timbre / groove / spectral balance) from the
   // sidecar's /descriptors — the RAW named values as one JSON column, so the

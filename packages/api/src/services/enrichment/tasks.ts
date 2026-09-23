@@ -992,14 +992,15 @@ const audioFeaturesTask: EnrichmentTask = {
           db.run(
             // file_size stamps the content this vector describes, so a file
             // replaced at the same path is a cache miss (issue #258).
-            `INSERT OR REPLACE INTO library_embeddings (song_id, model, dim, vec, file_size, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?)`,
+            `INSERT OR REPLACE INTO library_embeddings (song_id, model, dim, vec, file_size, genre_json, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
             [
               song.id,
               result.embedding.model,
               result.embedding.dim,
               Buffer.from(new Float32Array(result.embedding.values).buffer),
               song.size ?? null,
+              result.genre ? JSON.stringify(result.genre) : null,
               Date.now(),
             ],
           );
@@ -1669,9 +1670,12 @@ const genreAudioTask: EnrichmentTask = {
         if (!ctx.fileExists(abs)) continue;
         if (!ctx.analyzeAudioFeatures) return;
 
-        let result: AudioFeaturesResult | null = null;
+        // The audio-features task already ran this exact /analyze on the same
+        // bytes and kept the genre head's answer: reuse it rather than decode
+        // and infer the whole file a second time (#1312).
+        let result: Pick<AudioFeaturesResult, 'genre'> | null = storedGenrePrediction(db, song);
         try {
-          result = await ctx.analyzeAudioFeatures(song.path);
+          result ??= await ctx.analyzeAudioFeatures(song.path);
         } catch (err) {
           if (err instanceof AudioFileRejectedError) {
             noteItemFailure(db, tally, song, 'genre-audio', err);
@@ -2019,4 +2023,28 @@ export const ENRICHMENT_TASKS: readonly EnrichmentTask[] = [
 
 export function getTask(id: ProcessingTaskId): EnrichmentTask | undefined {
   return ENRICHMENT_TASKS.find((t) => t.id === id);
+}
+
+/**
+ * The genre prediction stored beside a song's embedding by the audio-features
+ * task, when it describes the file as it is now (same size stamp, #258) — else
+ * null, and the caller asks the sidecar.
+ */
+function storedGenrePrediction(
+  db: Database,
+  song: { id: string; size?: number | null },
+): Pick<AudioFeaturesResult, 'genre'> | null {
+  const row = db
+    .query<{ genre_json: string; file_size: number | null }, [string]>(
+      `SELECT genre_json, file_size FROM library_embeddings
+        WHERE song_id = ? AND genre_json IS NOT NULL
+        ORDER BY updated_at DESC LIMIT 1`,
+    )
+    .get(song.id);
+  if (!row || song.size == null || row.file_size !== song.size) return null;
+  try {
+    return { genre: JSON.parse(row.genre_json) as AudioFeaturesResult['genre'] };
+  } catch {
+    return null;
+  }
 }
