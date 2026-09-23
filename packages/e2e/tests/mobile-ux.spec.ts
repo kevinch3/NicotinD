@@ -483,4 +483,77 @@ test.describe('mobile UX', () => {
     });
     expect(overflow, 'long lyrics must not widen the page').toBeLessThanOrEqual(1);
   });
+
+  /** Mouse drag between two points; touch itself cannot be driven in Desktop
+   *  Chrome (docs/web-ui.md), so this covers the pointer path and the wiring. */
+  async function drag(page: Page, from: { x: number; y: number }, to: { x: number; y: number }) {
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(to.x, to.y, { steps: 8 });
+    await page.mouse.up();
+  }
+  /** Centre of an element AFTER it has stopped moving: the sheet slides up on
+   *  open, and a box measured mid-transition puts the drag off the element. */
+  async function settledCentre(locator: ReturnType<Page['getByTestId']>) {
+    await locator.hover();
+    const box = (await locator.boundingBox())!;
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2, box };
+  }
+
+  // The bar body, not the notch: with `touch-pan-y` the browser reclaimed the
+  // pan and only the notch opened the sheet.
+  test('swiping up on the mini-player body opens Now Playing', async ({ page }) => {
+    await openAlbum(page);
+    await page.getByTestId('play-album').click();
+    const title = page.getByTestId('player-title');
+    await expect(title).toBeVisible();
+
+    const c = await settledCentre(title);
+    await drag(page, c, { x: c.x, y: c.y - 160 });
+    await expect(page.getByTestId('now-playing-heading')).toBeVisible();
+  });
+
+  test('dragging down on the cover art closes Now Playing', async ({ page }) => {
+    await openNowPlaying(page);
+    const c = await settledCentre(page.getByTestId('now-playing-cover'));
+    await drag(page, c, { x: c.x, y: c.y + 200 });
+    // The closed sheet is parked below the viewport by a transform, so it is
+    // still 'visible' to Playwright — off-viewport is the closed check.
+    await expect(page.getByTestId('now-playing-heading')).not.toBeInViewport();
+  });
+
+  test('swiping up on the panel tabs grows the panel (cover shrinks)', async ({ page }) => {
+    await openNowPlaying(page);
+    const cover = page.getByTestId('now-playing-cover');
+    const { box: lyricsTab } = await settledCentre(page.getByTestId('now-playing-tab-lyrics'));
+    const before = (await cover.boundingBox())!;
+    // Start on the tab row's empty right side (a button never starts the gesture).
+    const x = lyricsTab.x + lyricsTab.width + 24;
+    const y = lyricsTab.y + lyricsTab.height / 2;
+    await drag(page, { x, y }, { x, y: y - 120 });
+    const after = (await cover.boundingBox())!;
+    expect(after.width, 'cover shrinks when the panel is pulled up').toBeLessThan(before.width);
+  });
+
+  test('one pull collapses a grown panel and continues into closing the sheet', async ({
+    page,
+  }) => {
+    await openNowPlaying(page);
+    const h = await settledCentre(page.getByTestId('now-playing-queue-resize'));
+    await drag(page, h, { x: h.x, y: h.y - 100 });
+    const cover = page.getByTestId('now-playing-cover');
+    const grown = (await cover.boundingBox())!;
+    expect(grown.width).toBeLessThan(320);
+
+    const c = await settledCentre(cover);
+    await drag(page, c, { x: c.x, y: c.y + 400 });
+    // The closed sheet is parked below the viewport by a transform, so it is
+    // still 'visible' to Playwright — off-viewport is the closed check.
+    await expect(page.getByTestId('now-playing-heading')).not.toBeInViewport();
+    // Reopen: the collapse persisted (cover back at full width).
+    await page.getByTestId('player-title').click();
+    await expect(page.getByTestId('now-playing-heading')).toBeVisible();
+    const restored = (await cover.boundingBox())!;
+    expect(restored.width).toBeGreaterThan(grown.width);
+  });
 });

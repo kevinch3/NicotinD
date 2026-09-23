@@ -743,6 +743,7 @@
   "nowPlaying.remove": "Remove",
   "nowPlaying.removeFromQueue": "Remove from queue",
   "nowPlaying.resizeQueue": "Resize queue",
+  "nowPlaying.resizeSidePanel": "Resize side panel",
   "nowPlaying.syncEarlier": "Show lyrics earlier",
   "nowPlaying.syncLater": "Show lyrics later",
   "nowPlaying.syncInSync": "In sync",

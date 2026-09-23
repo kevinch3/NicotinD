@@ -87,4 +87,46 @@ test.describe('Now Playing desktop layout', () => {
       /inset\(0(px)? (3\d|4\d|5\d)(\.\d+)?% 0(px)? 0(px)?\)/,
     );
   });
+
+  test('the splitter resizes the side panel and the width survives a reload', async ({ page }) => {
+    await openNowPlaying(page);
+    const splitter = page.getByTestId('now-playing-side-resize');
+    await expect(splitter).toBeVisible();
+    // hover() waits for the sheet's slide-up to settle: a box measured
+    // mid-transition puts the mouse off the splitter.
+    await splitter.hover();
+    const queue = page.getByTestId('now-playing-queue');
+    const before = (await queue.boundingBox())!;
+
+    const box = (await splitter.boundingBox())!;
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x - 120, y, { steps: 8 });
+    await page.mouse.up();
+
+    const after = (await queue.boundingBox())!;
+    expect(after.width - before.width, 'panel grew by the drag').toBeGreaterThan(100);
+
+    await page.reload();
+    await expect(page.getByTestId('player-title')).toBeVisible();
+    await page.getByTestId('player-title').click();
+    await expect(page.getByTestId('now-playing-heading')).toBeVisible();
+    const reloaded = (await page.getByTestId('now-playing-queue').boundingBox())!;
+    expect(Math.abs(reloaded.width - after.width), 'width persisted').toBeLessThan(4);
+  });
+
+  test('the splitter is keyboard-operable', async ({ page }) => {
+    await openNowPlaying(page);
+    const splitter = page.getByTestId('now-playing-side-resize');
+    await splitter.focus();
+    await expect(splitter).toHaveAttribute('aria-valuenow', '380');
+    await page.keyboard.press('ArrowLeft');
+    await expect(splitter).toHaveAttribute('aria-valuenow', '396');
+    await page.keyboard.press('End');
+    await expect(splitter).toHaveAttribute('aria-valuenow', '640');
+    await page.keyboard.press('Home');
+    await expect(splitter).toHaveAttribute('aria-valuenow', '300');
+  });
 });

@@ -71,6 +71,10 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **Pull-to-refresh (touch)**: one layout-hosted gesture on `<main>` (`pull-to-refresh.ts` composing
   `createPointerDrag`) plus a `PullToRefreshService` handler stack pages register into,
   coarse-pointer-gated. → [web-ui.md](../web-ui.md)
+- **Vertical swipe (own-or-release)**: `createVerticalSwipe` arms the touchmove blocker at
+  pointerdown and asks `resolve` once; `shouldCommit` (distance or `flickVelocity`) commits. The
+  mini-bar live-follow open, the Now Playing mode table (resize/dismiss, continuation) and the
+  `lg:` side-panel splitter (`sidePanelWidthPx`). → [web-ui.md](../web-ui.md)
 - **PWA install promotion**: `captureInstallPrompt` stashes `beforeinstallprompt` before bootstrap;
   `InstallPromptService` + `installPromotionVisible` drive a one-time layout strip
   (`InstallPromoBannerComponent`) and a permanent Settings row, iOS gets manual copy.

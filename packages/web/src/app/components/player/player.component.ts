@@ -27,7 +27,7 @@ import { NetworkStatusService } from '../../services/network-status.service';
 import { ToastService } from '../../services/toast.service';
 import { buildMediaMetadata } from '../../lib/media-metadata';
 import * as db from '../../lib/preserve-store';
-import { createPointerDrag } from '../../lib/pointer-drag';
+import { createVerticalSwipe, shouldCommit } from '../../lib/vertical-swipe';
 import { miniPlayerSlideClass } from '../../lib/player-chrome';
 import {
   SEEK_AVAILABILITY_EPSILON_SEC,
@@ -1635,27 +1635,28 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     }
   }
 
-  // Open is tap/swipe-up driven, not live-follow: the 64px mini bar is too short
-  // to meaningfully follow a finger, and the Now Playing sheet lives in a separate
-  // component. Live-follow is reserved for the dismiss drag (now-playing.component).
-  private static readonly OPEN_THRESHOLD_PX = 40;
+  // Live-follow open: the closed sheet rises with the finger (via
+  // PlayerService.nowPlayingLiftPx — the sheet is another component) and snaps
+  // open past the threshold or on a flick, else springs back. The threshold is
+  // larger than the old 40px commit-on-move because a sheet that visibly
+  // follows the finger makes 40px read as accidental; a flick still commits
+  // early. Commit happens on end AND cancel — touch may never deliver pointerup.
+  static readonly OPEN_THRESHOLD_PX = 96;
   private static readonly TAP_TOLERANCE_PX = 10;
 
-  // The bar itself does not move during the gesture; we only track start→end
-  // displacement to distinguish a tap / swipe-up (open Now Playing) from a scroll.
-  private readonly barDrag = createPointerDrag({
-    onMove: (event, start) => {
-      // Commit the open the moment an upward swipe crosses the threshold rather
-      // than waiting for pointerup: on touch the browser can reclaim a vertical
-      // pan and fire pointercancel before pointerup, so the old end-only check
-      // dropped real swipes. Idempotent — set(true) is a no-op once open.
-      if (start.clientY - event.clientY > PlayerComponent.OPEN_THRESHOLD_PX) {
-        this.player.setNowPlayingOpen(true);
-      }
+  private readonly barDrag = createVerticalSwipe({
+    resolve: ({ dy }) => (dy < 0 ? 'own' : 'release'),
+    onMove: (dy) => {
+      this.player.setNowPlayingLiftPx(Math.min(Math.max(0, -dy), window.innerHeight));
     },
-    onEnd: (event, start) => {
-      const deltaY = event.clientY - start.clientY;
-      if (Math.abs(deltaY) <= PlayerComponent.TAP_TOLERANCE_PX) {
+    onEnd: ({ dy, velocity, owned }) => {
+      const lift = this.player.nowPlayingLiftPx();
+      this.player.setNowPlayingLiftPx(0);
+      if (!owned) {
+        if (Math.abs(dy) <= PlayerComponent.TAP_TOLERANCE_PX) this.player.setNowPlayingOpen(true);
+        return;
+      }
+      if (shouldCommit(lift, -velocity, { thresholdPx: PlayerComponent.OPEN_THRESHOLD_PX })) {
         this.player.setNowPlayingOpen(true);
       }
     },

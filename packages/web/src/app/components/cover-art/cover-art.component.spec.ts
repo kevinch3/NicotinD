@@ -1,5 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { CoverArtComponent } from './cover-art.component';
 import { ServerConfigService } from '../../services/server-config.service';
 import {
@@ -19,6 +21,17 @@ describe('CoverArtComponent — imgLoaded loading state', () => {
     });
     return TestBed.createComponent(CoverArtComponent);
   }
+
+  // A mouse drag on a native-draggable <img> starts HTML5 drag-and-drop, which
+  // cancels the pointer stream the Now Playing dismiss gesture rides on.
+  // Asserted on the template: this harness never renders the <img> (the `src`
+  // input does not reach a signal input through setInput here), and the real
+  // DOM is covered by mobile-ux.spec.ts "dragging down on the cover art".
+  it('renders the image non-draggable', () => {
+    const html = readFileSync(join(import.meta.dirname, 'cover-art.component.html'), 'utf8');
+    const img = html.slice(html.indexOf('<img'), html.indexOf('/>', html.indexOf('<img')));
+    expect(img).toContain('draggable="false"');
+  });
 
   it('starts with imgLoaded = false so gradient shows while image downloads', () => {
     const fixture = setup();

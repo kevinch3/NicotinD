@@ -123,3 +123,19 @@ describe('pointercancel', () => {
     expect(host.ends.length).toBe(0);
   });
 });
+
+describe('createPointerDrag — cancel()', () => {
+  it('detaches mid-gesture without firing onEnd, and a later pointerup is a no-op', () => {
+    const fixture = TestBed.createComponent(HostComponent);
+    const host = fixture.componentInstance;
+
+    host.drag.start(pointer('pointerdown', 100));
+    host.drag.cancel();
+    expect(host.drag.dragging()).toBe(false);
+
+    document.dispatchEvent(pointer('pointermove', 150));
+    document.dispatchEvent(pointer('pointerup', 150));
+    expect(host.moves.length).toBe(0);
+    expect(host.ends.length).toBe(0);
+  });
+});

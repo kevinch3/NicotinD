@@ -34,6 +34,7 @@
       [alt]="album() || artist() || 'cover'"
       [attr.loading]="loadingAttr()"
       decoding="async"
+      draggable="false"
       class="absolute inset-0 w-full h-full object-cover transition-opacity duration-300"
       [class.opacity-0]="!imgLoaded()"
       (load)="imgLoaded.set(true)"

@@ -34,3 +34,18 @@ describe('now-playing queue-resize handle', () => {
     expect(/\bpb-\d+\b/.test(handle!)).toBe(false);
   });
 });
+
+describe('now-playing desktop splitter', () => {
+  const html = readFileSync(TEMPLATE, 'utf8');
+  const splitter = html.split('\n').find((l) => l.includes('cursor-col-resize'));
+  const MIN_HIT_PX = 8;
+
+  it('exists as a resize affordance', () => {
+    expect(splitter).toBeDefined();
+  });
+
+  it('has a hit area at least 8px wide (the visible line is 1px)', () => {
+    const w = Number(/\bw-(\d+)\b/.exec(splitter!)?.[1] ?? 0);
+    expect(w * 4).toBeGreaterThanOrEqual(MIN_HIT_PX);
+  });
+});
