@@ -1190,11 +1190,20 @@ deferred, a settled burst loading immediately again, and a handler from a
 superseded load being inert (invoked directly, since dispatching on the element
 would reach the new listeners and prove nothing).
 
-**Deliberately not in scope:** the standby element still pre-loads only in the
-last 30 s of playback, so a skip is a cold load. Extending the preload to the
-queue head at all times would make a single Next near-instant and is the
-natural follow-up; it needs `preloadedTrackId` invalidation on every queue-head
-change, which is a larger change than this one.
+**A committed load reuses the standby (#1301).** Only `onEnded` used to swap to
+the pre-buffered standby; a manual Next inside the 30 s window threw it away and
+started a cold request. `commit()` now checks `standbyHolds(trackId)` — the
+standby's track id **and** the exact src it was pointed at (`preloadedSrc`), so a
+vocal-mute toggle or token change since the preload falls back to a cold load —
+and calls the same `swapToStandby()` `onEnded` uses. The swap flips `audioEl`,
+which re-runs Effect 1; `lastManualSrc` makes that re-run return early, as it
+does for the natural advance. Covered by the `manual Next reuses the pre-buffered
+standby` spec block.
+
+**Still not in scope:** the standby pre-loads only in the last 30 s of playback,
+so a skip earlier in a track is a cold load. Extending the preload to the queue
+head at all times would make every single Next near-instant; it needs
+invalidation on every queue-head change, which is a larger change.
 
 ### Web test harness — plain vitest, NOT `ng test`
 
