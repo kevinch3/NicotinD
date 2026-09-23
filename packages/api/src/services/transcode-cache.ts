@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { mkdirSync, rmSync, statSync } from 'node:fs';
-import { readdir, stat, unlink } from 'node:fs/promises';
+import { readdir, stat, unlink, utimes } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createLogger } from '@nicotind/core';
 import {
@@ -144,6 +144,21 @@ function isUsableCacheFile(p: string): boolean {
 }
 
 /**
+ * Record a cache hit as the file's atime, which the prune evicts by (#1327).
+ * Not mtime: the stream's ETag is size+mtime, so touching it would change the
+ * validator under a player still sending If-Range. An explicit utimes sets
+ * atime even on a noatime mount. Best-effort — a miss here only ages the entry.
+ */
+function markUsed(p: string): void {
+  try {
+    const { mtime } = statSync(p);
+    void utimes(p, new Date(), mtime).catch(() => {});
+  } catch {
+    /* raced deletion — the next request re-transcodes */
+  }
+}
+
+/**
  * Return the path to a transcoded copy of `absPath`, transcoding (once) on a
  * cache miss. The returned file is a complete on-disk file, so the caller can
  * serve it with HTTP range support — this is what makes seeking work on
@@ -172,7 +187,10 @@ export async function getTranscodedFile(
   const st = statSync(absPath);
   const key = transcodeCacheKey(absPath, st.mtimeMs, st.size, format, kbps, variant);
   const outPath = join(cacheDir, `${key}.${transcodeExt(format)}`);
-  if (isUsableCacheFile(outPath)) return outPath;
+  if (isUsableCacheFile(outPath)) {
+    markUsed(outPath);
+    return outPath;
+  }
   // Unusable hit (missing, 0 bytes, or smaller than the floor) — drop it so
   // the upcoming transcode produces a clean file instead of failing to write
   // over a corrupt name.
@@ -197,7 +215,7 @@ export async function getTranscodedFile(
   return pending;
 }
 
-/** Evict oldest cache files (by mtime) until total size is within `budgetBytes`. */
+/** Evict least-recently-used cache files (by atime, see `markUsed`) until total size is within `budgetBytes`. */
 export async function pruneTranscodeCache(cacheDir: string, budgetBytes: number): Promise<void> {
   let names: string[];
   try {
@@ -205,7 +223,7 @@ export async function pruneTranscodeCache(cacheDir: string, budgetBytes: number)
   } catch {
     return; // dir doesn't exist yet
   }
-  const files: { path: string; size: number; mtimeMs: number }[] = [];
+  const files: { path: string; size: number; usedMs: number }[] = [];
   let total = 0;
   for (const name of names) {
     if (name.includes('.tmp-')) continue; // skip in-progress temp files
@@ -213,7 +231,7 @@ export async function pruneTranscodeCache(cacheDir: string, budgetBytes: number)
     try {
       const s = await stat(path);
       if (s.isFile()) {
-        files.push({ path, size: s.size, mtimeMs: s.mtimeMs });
+        files.push({ path, size: s.size, usedMs: s.atimeMs });
         total += s.size;
       }
     } catch {
@@ -221,7 +239,7 @@ export async function pruneTranscodeCache(cacheDir: string, budgetBytes: number)
     }
   }
   if (total <= budgetBytes) return;
-  files.sort((a, b) => a.mtimeMs - b.mtimeMs); // oldest first
+  files.sort((a, b) => a.usedMs - b.usedMs); // least recently used first
   for (const f of files) {
     if (total <= budgetBytes) break;
     // Skip files currently being served — eviction must not yank a file out
