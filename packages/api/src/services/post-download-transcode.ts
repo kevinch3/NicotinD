@@ -29,8 +29,10 @@ const log = createLogger('post-download-transcode');
 export { isLossless };
 
 // Containers that hold either lossy AAC or lossless ALAC — the extension alone
-// can't tell, only the codec inside can.
-const AMBIGUOUS_CONTAINERS = new Set(['m4a', 'm4b', 'mp4']);
+// can't tell, only the codec inside can. Exported: library-transcode.ts and
+// library-format-settings.ts both need the same set, for the same reason —
+// see #1286.
+export const AMBIGUOUS_CONTAINERS = new Set(['m4a', 'm4b', 'mp4']);
 
 /**
  * Codec-aware lossless check. Unambiguous extensions are decided without IO
@@ -427,9 +429,12 @@ export async function transcodeToLibraryFormat(
   const ext = extname(absPath);
   const base = ext ? absPath.slice(0, -ext.length) : absPath;
   const destPath = `${base}.${strategy.ext}`;
-  // Distinct temp name so an interrupted run never half-writes the destination
-  // (which may equal absPath only if the source were already the target format
-  // — excluded by the callers' "already the target" test).
+  // Distinct temp name so an interrupted run never half-writes the
+  // destination. destPath can equal absPath: not just when the source were
+  // already the target format (excluded by the callers' "already the target"
+  // test), but genuinely when an ambiguous-container source (ALAC in `.m4a`)
+  // converts to a target sharing that extension (`aac`, #1286) — the rename
+  // below is written to stay correct for that case too.
   const tmpPath = transcodeTempPathFor(absPath, format);
   const { args: carried, sourceTags } = await carriedMetadataArgs(absPath, strategy.ext);
   const ffmpegArgs = (strict: boolean) => [
@@ -503,10 +508,14 @@ export async function transcodeToLibraryFormat(
   if (sourceTags) await carryPostEncodeTags(sourceTags, tmpPath);
 
   try {
-    // Promote temp → final, then deal with the original. If dest === source
-    // path (impossible here since ext changed) we'd skip it entirely.
-    renameSync(tmpPath, destPath);
-    if (absPath !== destPath) {
+    // Promote temp → final, then deal with the original — except when
+    // destPath and absPath are the SAME path (an ambiguous-container source
+    // converting to a same-extension target, e.g. ALAC → aac, #1286): there,
+    // the rename would silently overwrite the original before it could ever be
+    // preserved, so the original is dealt with FIRST, freeing the path for the
+    // rename that follows. Distinct paths keep the original order, since
+    // nothing there touches absPath before the rename runs.
+    const dealWithOriginal = (): void => {
       if (keepOriginal) {
         // Opt-in, and only the whole-library backfill opts in. A freshly
         // downloaded original is one re-download away, and quarantining every
@@ -517,7 +526,11 @@ export async function transcodeToLibraryFormat(
       } else {
         rmSync(absPath, { force: true });
       }
-    }
+    };
+    const sameLocation = absPath === destPath;
+    if (sameLocation) dealWithOriginal();
+    renameSync(tmpPath, destPath);
+    if (!sameLocation) dealWithOriginal();
     log.debug({ from: absPath, to: destPath, bitRate, format }, 'transcoded to the library format');
     return destPath;
   } catch (err) {

@@ -7,6 +7,7 @@ import {
   libraryFormat,
   type LibraryFormat,
 } from './library-format.js';
+import { AMBIGUOUS_CONTAINERS } from './post-download-transcode.js';
 
 const log = createLogger('library-format-settings');
 
@@ -115,18 +116,28 @@ export interface FormatChangeImpact {
  * confirm, rather than the UI implying the choice is free.
  *
  * Counted with SQL rather than by walking the library: this runs on a page load.
+ *
+ * **Ambiguous-container targets (`aac`, ext `m4a`) are a deliberate exception.**
+ * `suffix` alone can't tell an already-converted AAC file from an ALAC one
+ * wearing the same extension (#1286), and probing every such row would break
+ * the "no per-file walk on a page load" rule above. So when the target itself
+ * is ambiguous, no row is counted as `alreadyTarget` — every one goes to
+ * `wouldReEncode` instead. Overcounting here is the safe direction: it costs
+ * an extra confirmation click, never a silently-skipped file.
  */
 export function formatChangeImpact(db: Database, next: LibraryFormat): FormatChangeImpact {
   const ext = libraryFormat(next).ext;
-  const row = db
-    .query<{ already: number | null; other: number | null }, [string, string]>(
-      `SELECT SUM(CASE WHEN lower(suffix) = ? THEN 1 ELSE 0 END) AS already,
-              SUM(CASE WHEN lower(suffix) = ? THEN 0 ELSE 1 END) AS other
-         FROM library_songs
-        WHERE hidden = 0`,
-    )
-    .get(ext, ext);
-  const alreadyTarget = row?.already ?? 0;
-  const wouldReEncode = row?.other ?? 0;
+  const total =
+    db
+      .query<{ n: number | null }, []>('SELECT COUNT(*) AS n FROM library_songs WHERE hidden = 0')
+      .get()?.n ?? 0;
+  const alreadyTarget = AMBIGUOUS_CONTAINERS.has(ext)
+    ? 0
+    : (db
+        .query<{ n: number | null }, [string]>(
+          'SELECT COUNT(*) AS n FROM library_songs WHERE hidden = 0 AND lower(suffix) = ?',
+        )
+        .get(ext)?.n ?? 0);
+  const wouldReEncode = total - alreadyTarget;
   return { alreadyTarget, wouldReEncode, destructive: wouldReEncode > 0 };
 }

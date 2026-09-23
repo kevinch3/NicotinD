@@ -105,4 +105,20 @@ describe('formatChangeImpact', () => {
     seedSong('hidden', 'mp3', 1);
     expect(formatChangeImpact(db, 'opus').wouldReEncode).toBe(1);
   });
+
+  it('never counts an m4a row as already-aac, since the suffix cannot tell ALAC from AAC (#1286)', () => {
+    // This function is deliberately SQL-only (no per-file codec probe on a page
+    // load — see its own doc comment), so it cannot distinguish a genuinely
+    // already-converted .m4a from an ALAC file merely wearing the same
+    // extension. Undercounting here used to mean `destructive` could read
+    // false and skip the confirmation prompt entirely for a library that still
+    // had real work to do.
+    seedSong('a', 'm4a');
+    seedSong('b', 'flac');
+    expect(formatChangeImpact(db, 'aac')).toEqual({
+      alreadyTarget: 0,
+      wouldReEncode: 2,
+      destructive: true,
+    });
+  });
 });

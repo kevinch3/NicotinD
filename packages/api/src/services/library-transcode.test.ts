@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import { transcodeLibraryToFormat } from './library-transcode.js';
+import { isLosslessFile } from './post-download-transcode.js';
 import { songId } from './library-scanner.js';
 import { ffmpegAvailable } from './transcode.js';
 import { upsertGenreOverride } from './genre-overrides.js';
@@ -398,6 +399,39 @@ describe('transcodeLibraryToFormat', () => {
       expect(existsSync(join(music, aacRel))).toBe(true);
     },
   );
+
+  it.skipIf(!ffmpegAvailable())(
+    'treats ALAC .m4a rows as lossless candidates when the target is aac too (#1286)',
+    async () => {
+      // The bug this guards: aac's own ext is 'm4a', so the "already the
+      // target" shortcut used to match EVERY .m4a row — ALAC included —
+      // before a codec probe ever ran, permanently skipping ALAC files
+      // instead of converting them.
+      const music = tmpMusic();
+      const db = new Database(':memory:');
+      applySchema(db);
+      const alacRel = 'Matias Aguayo/Support Alien Invasion/09 - Spread This Number.m4a';
+      const aacRel = 'Matias Aguayo/Support Alien Invasion/01 - Rollerskate.m4a';
+      makeAudio(music, alacRel, 'Spread This Number', 'alac');
+      makeAudio(music, aacRel, 'Rollerskate', 'aac');
+      seedSongRow(db, alacRel);
+      seedSongRow(db, aacRel);
+      db.run(`UPDATE library_songs SET suffix = 'm4a'`);
+
+      const r = await transcodeLibraryToFormat(db, music, {
+        apply: true,
+        bitRate: 96,
+        format: 'aac',
+      });
+      // Only the ALAC file is a candidate; the already-AAC one is a no-op skip.
+      expect(r.candidates).toBe(1);
+      expect(r.converted).toBe(1);
+      // Same extension in and out, so the path does not change — but the
+      // bytes at it must now be the lossy encode, not the original ALAC.
+      expect(existsSync(join(music, alacRel))).toBe(true);
+      expect(await isLosslessFile(join(music, alacRel))).toBe(false);
+    },
+  );
 });
 
 describe('disk headroom preflight', () => {
@@ -549,6 +583,44 @@ describe.skipIf(!ffmpegAvailable())('keeping originals (back up before transcodi
     expect(r.quarantineRun).toBeUndefined();
     expect(existsSync(join(data, 'quarantine'))).toBe(false);
   });
+
+  it.skipIf(!ffmpegAvailable())(
+    'quarantines the original ALAC when converting it to aac, not the new encode (#1286)',
+    async () => {
+      // The trap the candidate-selection fix exposes: destPath equals absPath
+      // whenever the source is already `.m4a` and the target is too, so the
+      // rename that promotes the new encode would silently overwrite the
+      // original BEFORE the "deal with the original" step ever ran — quarantine
+      // skipped entirely, generation loss unrecoverable. This proves the
+      // ORIGINAL lossless bytes land in the quarantine run, not the new lossy
+      // ones the library path now holds.
+      const music = tmpMusic();
+      const data = tmpMusic();
+      const db = new Database(':memory:');
+      applySchema(db);
+      const rel = 'Matias Aguayo/Support Alien Invasion/09 - Spread This Number.m4a';
+      makeAudio(music, rel, 'Spread This Number', 'alac');
+      seedSongRow(db, rel, { suffix: 'm4a' });
+
+      const r = await transcodeLibraryToFormat(db, music, {
+        apply: true,
+        bitRate: 96,
+        format: 'aac',
+        dataDir: data,
+        statfs: roomy,
+      });
+
+      expect(r.converted).toBe(1);
+      expect(r.quarantineRun).toBeTruthy();
+      // The live library path now holds the new, lossy encode...
+      expect(existsSync(join(music, rel))).toBe(true);
+      expect(await isLosslessFile(join(music, rel))).toBe(false);
+      // ...and the quarantine copy is the untouched, still-lossless original.
+      const quarantined = join(r.quarantineRun!, rel);
+      expect(existsSync(quarantined)).toBe(true);
+      expect(await isLosslessFile(quarantined)).toBe(true);
+    },
+  );
 
   it('requires room for every ORIGINAL when they are kept', async () => {
     // This used to assert the whole projected OUTPUT, on musicDir. Both were
