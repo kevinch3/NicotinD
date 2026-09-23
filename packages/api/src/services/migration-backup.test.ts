@@ -69,7 +69,7 @@ describe('runMigrationBackup', () => {
     expect(existsSync(join(res.dir, 'secrets.json'))).toBe(true);
   });
 
-  it('stays out of the daily rotation entirely', () => {
+  it('stays out of the daily rotation entirely', async () => {
     // A pre-migration snapshot must not evict a daily one, nor rotate out on
     // the 7-day clock: the upgrade it protects may not be noticed as bad for
     // weeks. It sits under backups/pre-migrate/, which listBackups' name
@@ -80,7 +80,7 @@ describe('runMigrationBackup', () => {
     runMigrationBackup(db, { dataDir, fromVersion: 0, toVersion: 1, statfs: plentyOfSpace });
     // Fill the daily rotation well past its keep count.
     for (let i = 0; i < 9; i++) {
-      runBackup(db, { dataDir, keepCount: 2, now: Date.UTC(2026, 0, 1 + i, 12) });
+      await runBackup(db, { dataDir, keepCount: 2, now: Date.UTC(2026, 0, 1 + i, 12) });
     }
 
     expect(listBackups(dataDir).length).toBe(2);

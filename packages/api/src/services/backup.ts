@@ -72,8 +72,34 @@ function infoFor(root: string, name: string): BackupInfo {
   return { name, createdAt: statSync(dir).mtimeMs, sizeBytes, files };
 }
 
+/**
+ * `VACUUM INTO target` without holding the event loop (#1313): on its own
+ * read-only connection in a worker when the database is a file, since the copy
+ * is the whole database and every request waited behind it. An in-memory
+ * database (tests) has no file another connection could open, so it snapshots
+ * in place.
+ */
+export async function snapshotDatabase(db: Database, target: string): Promise<void> {
+  const file = db.filename;
+  if (!file || file === ':memory:') {
+    db.run('VACUUM INTO ?', [target]);
+    return;
+  }
+  const worker = new Worker(new URL('./backup-worker.ts', import.meta.url).href);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      worker.onmessage = (e: MessageEvent<{ ok: boolean; error?: string }>) =>
+        e.data.ok ? resolve() : reject(new Error(e.data.error ?? 'snapshot failed'));
+      worker.onerror = (e) => reject(new Error(e.message));
+      worker.postMessage({ dbPath: file, target });
+    });
+  } finally {
+    worker.terminate();
+  }
+}
+
 /** Create one backup now: DB snapshot (`VACUUM INTO`) + secrets copy, then prune. */
-export function runBackup(db: Database, opts: BackupOptions): BackupInfo {
+export async function runBackup(db: Database, opts: BackupOptions): Promise<BackupInfo> {
   const now = opts.now ?? Date.now();
   const root = backupsRoot(opts.dataDir);
   const name = `nicotind-${stampFor(now)}`;
@@ -82,7 +108,7 @@ export function runBackup(db: Database, opts: BackupOptions): BackupInfo {
   // (second-resolution stamp) guarantees that outside of tests reusing `now`.
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
-  db.run('VACUUM INTO ?', [join(dir, 'nicotind.db')]);
+  await snapshotDatabase(db, join(dir, 'nicotind.db'));
   const secrets = join(opts.dataDir, 'secrets.json');
   if (existsSync(secrets)) copyFileSync(secrets, join(dir, 'secrets.json'));
   pruneBackups(opts.dataDir, resolveKeepCount(opts.keepCount));
@@ -131,23 +157,31 @@ function writeMarker(db: Database, key: string, value: string, now: number): voi
  * calendar day, no earlier than 04:00 local. Disabled by `NICOTIND_BACKUP=off`
  * (or `enabled: false` injected in tests). Returns true when a backup ran.
  */
-export function maybeRunDailyBackup(
+export async function maybeRunDailyBackup(
   db: Database,
   opts: BackupOptions & { enabled?: boolean },
-): boolean {
+): Promise<boolean> {
   const enabled = opts.enabled ?? process.env.NICOTIND_BACKUP?.trim().toLowerCase() !== 'off';
   if (!enabled) return false;
   const now = opts.now ?? Date.now();
   if (new Date(now).getHours() < EARLIEST_HOUR) return false;
   const day = stampFor(now).slice(0, 8); // YYYYMMDD
   if (readMarker(db, DAY_MARKER) === day) return false;
+  // The snapshot now runs off-thread, so the next tick can arrive before it
+  // lands and its marker is written — one backup per data dir at a time.
+  if (dailyInFlight.has(opts.dataDir)) return false;
+  dailyInFlight.add(opts.dataDir);
   try {
-    runBackup(db, { ...opts, now });
+    await runBackup(db, { ...opts, now });
     writeMarker(db, DAY_MARKER, day, now);
     return true;
   } catch (err) {
     // Never let a backup failure break the processing tick; retried next tick.
     log.error({ err }, 'daily backup failed');
     return false;
+  } finally {
+    dailyInFlight.delete(opts.dataDir);
   }
 }
+
+const dailyInFlight = new Set<string>();
