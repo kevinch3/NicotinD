@@ -1368,8 +1368,11 @@ re-anchored on every update. A null 2D context (jsdom, headless) is a no-op fram
 `lib/vfx-scene.ts` is the one place to change the look — the component only paints shapes.
 
 **Fetch lifecycle.** The shell (`now-playing.component.ts`) fetches `getPeaks` lazily, like lyrics:
-only while the sheet is open and the track changed, with a late-response guard so a slow decode for
-a track you've already skipped past can't paint over the current one. Plain `HttpClient` JSON —
+only while the sheet is open and the track changed, **and only once `player.buffering()` has cleared**
+(#1328) — a cold peaks request is a full server-side ffmpeg decode that competed with the stream for
+the disk at time-to-first-audio, and a skip burst started one per track; now a burst fetches only the
+track it lands on. A late-response guard still keeps a slow decode for a track you've already skipped
+past from painting over the current one. Plain `HttpClient` JSON —
 `ngsw-bypass` is only for media Range requests.
 
 ## List loading skeletons
