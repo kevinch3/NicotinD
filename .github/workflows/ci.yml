@@ -104,6 +104,8 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
+      # Also carries the code-shape gates that were regex scripts (#1316):
+      # nicotind/shared-helpers and nicotind/search-matching.
       - name: Lint
         run: bun run lint
 
@@ -125,11 +127,6 @@ jobs:
       - name: Check JSON configs for duplicate keys
         run: bun run check:json
 
-      # A copy-pasted helper drifts silently: one expandHome copy returned '' for
-      # every absolute path, so a documented CLI gate never ran in Docker (#301).
-      - name: Check for locally re-implemented shared helpers
-        run: bun run check:shared-helpers
-
       # An addon downloading into musicDir made every album land twice -- once
       # organized+transcoded, once as the raw peer folder scanned in place
       # (27.5 GB, #827). This keeps walker #15 from re-deriving the exclusion.
@@ -146,13 +143,6 @@ jobs:
       # remembered the registry.
       - name: Check every song-keyed table is carried or exempt on the record
         run: bun run check:song-carry-coverage
-
-      # check:shared-helpers only sees a *re-declared* helper. The MCP agent
-      # surface bypassed the shared matcher with inline `LIKE ? COLLATE NOCASE`
-      # instead (#706, and #719 on the Songs tab) — no local copy to find, so
-      # that gate exited 0 truthfully while the invariant went unmeasured.
-      - name: Check every name search goes through the shared folded matcher
-        run: bun run check:search-matching
 
       # `bun:sqlite` is synchronous, so a quadratic list query is an outage, not
       # a slow page (#1055 held the event loop ~3 min) and nothing in this

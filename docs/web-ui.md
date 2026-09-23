@@ -359,7 +359,7 @@ The same change is the reference for two component idioms:
 ### `lib/relative-time.ts`
 
 The one "Just now / 5m ago / Yesterday / 4d ago" helper, shared by the Downloads feed and the Admin
-users table, and registered in `check:shared-helpers` so a second copy fails CI. The translator is
+users table, and registered in `nicotind/shared-helpers` so a second copy fails CI. The translator is
 an **optional parameter** rather than an injected service: that keeps the module pure (testable as a
 plain function, no Angular DI) and lets a surface that hasn't been through the i18n pass call it and
 get the original English wording verbatim.
@@ -524,7 +524,7 @@ answers 403.
 **The join key is the server's `localAlbumId`.** `DiscographyService` already matches
 each release to a local album with `normalizeForGrouping`, and threads the result
 onto the wire; the web reads it and never re-derives it. That is a rule, not a
-convenience: `check:shared-helpers` registers the `normalizeTitle`/`fold` family
+convenience: `nicotind/shared-helpers` registers the `normalizeTitle`/`fold` family
 precisely because three separate ASCII-only copies shipped as three separate bugs
 (#662, #706, #715). **The visible consequence is that when the server's match misses,
 one album renders twice — once owned, once missing.** That is today's behaviour made

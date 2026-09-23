@@ -4,7 +4,7 @@
  * Extracted from a private, hardcoded-English copy inside
  * `download-item.component.ts` when the Admin users table needed the same
  * rendering for its "last connection" column. Registered in
- * `scripts/check-shared-helpers.ts` so copy #2 fails CI rather than drifting.
+ * `scripts/eslint-rules/shared-helpers.js` so copy #2 fails CI rather than drifting.
  *
  * The translator is an **optional parameter** rather than an injected service so
  * this stays a pure module (no Angular DI, testable as a plain function), and so

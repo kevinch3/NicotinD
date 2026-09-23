@@ -138,7 +138,7 @@ failure modes that both reach SQLite as a bound parameter:
   the cap-10000 endpoint was an **unbounded scan**, which is the more interesting half of the bug.
 
 Exactly one of the twelve already had the intended shape (`|| 200` after the `Number`), so this was
-drift from a local convention rather than a missing one — and `check:shared-helpers` exists to stop
+drift from a local convention rather than a missing one — and `nicotind/shared-helpers` exists to stop
 eleven more copies of it. `clampQueryInt(c, name, { fallback, max })` (`routes/query-params.ts`)
 returns the fallback for anything that is not a finite integer >= 1 and always clamps to `max`.
 

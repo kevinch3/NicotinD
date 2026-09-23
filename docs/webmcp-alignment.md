@@ -72,7 +72,7 @@ Extract the registry contract to a shared leaf, the same move as the addon proto
   `{ db, identity }` and a browser tool takes `{ player, api }`.
 - **Promote `checkToolAccess`** — it is already pure and unit-tested. It must be the one
   predicate both hosts run, not a shape each host reimplements (that is precisely the drift
-  class `check:shared-helpers` exists to catch).
+  class `nicotind/shared-helpers` exists to catch).
 - Add an explicit **`hosts` field**, defaulting to server-only.
 
 `hosts` is the load-bearing part. Exposure becomes a *declared property of the tool* rather

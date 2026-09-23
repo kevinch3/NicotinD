@@ -9,7 +9,7 @@ import type { AcquireAlbumDestination } from '@nicotind/core';
  *
  * Extracted from `addon-url-jobs.project()` when the unified feed needed the
  * same answer: a second inline copy is exactly the duplication
- * `check:shared-helpers` exists to catch. Best-effort by design — a minimal DB
+ * `nicotind/shared-helpers` exists to catch. Best-effort by design — a minimal DB
  * without the library tables must still render a feed.
  */
 export function jobDestinationAlbums(db: Database, jobId: string): AcquireAlbumDestination[] {

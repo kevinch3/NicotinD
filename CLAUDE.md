@@ -70,7 +70,7 @@ in the native migration.
 bun install              # Install all workspace dependencies
 bun run verify           # Every gate the CI gate jobs run — run this before pushing
 bun run typecheck        # tsc --build + Angular templates + e2e specs + web specs (all four surfaces)
-bun run lint             # ESLint over packages/*/src + src + scripts (quote the globs). NOT packages/web (#612)
+bun run lint             # ESLint (quote the globs) + nicotind/* rules; web gets only the latter
 bun run test             # Vitest across packages/ + src/
 bun run test:web         # Angular component tests (vitest, never `ng test`)
 bun run e2e              # Playwright suite — always run before declaring a feature done
@@ -89,15 +89,14 @@ table cannot classify) · `check:route-auth` (an `/api` group mounted with no au
 advisory that both ships and matches the resolved version) · `check:desktop-publish` (a desktop
 packaging job that does not verify its artifacts reached the Release) · `check:install-scripts` (a dependency
 whose install hook is unreviewed, or fetches from a host that is not the npm
-registry) · `check:shared-helpers` (a shared helper
-re-implemented locally) · `check:library-walkers` (a `musicDir` walker that skips the reserved-path
+registry) · `check:library-walkers` (a `musicDir` walker that skips the reserved-path
 predicate) · `check:transcode-quarantine` (a library-transcode caller that deletes the originals
 instead of keeping them) · `check:song-carry-coverage` (a song-id-keyed table neither carried across an id
-change nor exempt on the record) · `check:search-matching` (a name search done in raw SQL, bypassing the shared
-folded matcher) · `check:library-queries` (a library list query whose plan re-derives the song
+change nor exempt on the record) · `check:library-queries` (a library list query whose plan re-derives the song
 predicate per entity row) · `check:feed-eligibility` (a recommendation feed selecting songs without the
 shared eligibility predicate) · `check:json` (duplicate keys) · `check:shipped-issues` (report, not a gate)
-· `check:isolated-specs` (slow, not a gate). → [quality-gates.md](docs/quality-gates.md)
+· `check:isolated-specs` (slow, not a gate). The shared-helper and raw-SQL name-search gates are
+lint rules in `scripts/eslint-rules/`. → [quality-gates.md](docs/quality-gates.md)
 
 **Diagnostics**: `bun run packages/api/src/scripts/prod-probe.ts --orphans --jobs` (read-only prod/dev
 DB probe) → [prod-inspection.md](docs/prod-inspection.md)

@@ -13,7 +13,7 @@
  *
  * Consolidating onto `library-paths.ts` fixes today. This gate is what stops
  * walker #14 from re-deriving the rule and quietly losing the exclusion again —
- * the same way `check:shared-helpers` stops copy #33 of `expandHome`.
+ * the same way `nicotind/shared-helpers` stops copy #33 of `expandHome`.
  *
  * Per the project rule that a gate must assert its own denominator
  * (docs/quality-gates.md): this prints how many modules it examined, fails on any

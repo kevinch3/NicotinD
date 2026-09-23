@@ -11,7 +11,7 @@ import type { Album, DiscographyAlbum } from '../services/api/api-types';
  * The join key is `DiscographyAlbum.localAlbumId` — the server's own
  * `normalizeForGrouping` match (`discography.service.ts`). The web deliberately
  * does **not** re-derive it: three separate ASCII-only normalizer copies shipped as
- * three separate bugs (#662/#706/#715), which is why `check:shared-helpers` guards
+ * three separate bugs (#662/#706/#715), which is why `nicotind/shared-helpers` guards
  * the family. When the server's match misses, an album renders twice — once owned,
  * once missing. That is today's behaviour made visible rather than a new defect;
  * the real fix is the one-album-identity resolver tracked in `docs/album-hunt.md`.

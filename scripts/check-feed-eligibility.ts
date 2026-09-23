@@ -9,7 +9,7 @@
  * playing on radio while it was gone from every listing. Once "may this song be
  * recommended" has one definition (`services/recommendation/eligibility.ts`),
  * the invariant worth asserting is that no feed answers the question its own
- * way. `check:shared-helpers` cannot see that: a bypass re-declares nothing.
+ * way. `nicotind/shared-helpers` cannot see that: a bypass re-declares nothing.
  *
  * A *feed* is a query that proposes songs the listener did not ask for. The
  * separating signal is `ORDER BY RANDOM()` — a listing never samples — plus a
