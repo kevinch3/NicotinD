@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.56](https://github.com/kevinch3/NicotinD/compare/v0.8.55...v0.8.56) (2026-09-23)
+
+### Performance
+
+* **remote-playback:** send compact progress instead of rebroadcasting full state every 2 s ([#1330](https://github.com/kevinch3/NicotinD/issues/1330)) ([5ef7459](https://github.com/kevinch3/NicotinD/commit/5ef74592186fb5bc115acb838cf1de3117c9d90e)), references [#1308](https://github.com/kevinch3/NicotinD/issues/1308)
+* **transcode-cache:** evict least-recently-used entries, not the oldest-created ([#1331](https://github.com/kevinch3/NicotinD/issues/1331)) ([c06dce6](https://github.com/kevinch3/NicotinD/commit/c06dce60580a07b4b8090761a24271ce719937ee)), closes [#1327](https://github.com/kevinch3/NicotinD/issues/1327)
+* **transcode:** write the organizer's settled tags in the lossless encode, not a remux after it ([#1326](https://github.com/kevinch3/NicotinD/issues/1326)) ([62534e7](https://github.com/kevinch3/NicotinD/commit/62534e75236918d1da10c5f38b338fe164e03f31)), references [#1305](https://github.com/kevinch3/NicotinD/issues/1305)
 ## [0.8.55](https://github.com/kevinch3/NicotinD/compare/v0.8.54...v0.8.55) (2026-09-23)
 
 ### Performance

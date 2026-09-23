@@ -1,0 +1,3 @@
+• remote-playback: send compact progress instead of rebroadcasting full state every 2 s (#1330)
+• transcode-cache: evict least-recently-used entries, not the oldest-created (#1331)
+• transcode: write the organizer's settled tags in the lossless encode, not a remux after it (#1326)
