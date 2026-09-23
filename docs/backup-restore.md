@@ -12,6 +12,12 @@ Implementation: `packages/api/src/services/backup.ts`; admin endpoints in
 - `nicotind.db` — an online snapshot of the SQLite database taken with
   `VACUUM INTO`, which is safe under WAL with concurrent writers and produces
   a compact, self-contained file (no `-wal`/`-shm` sidecars to copy).
+  The snapshot runs **off the main thread** (#1313): `snapshotDatabase` hands it to
+  `backup-worker.ts`, which opens its own read-only connection (VACUUM INTO only
+  reads the source) — it used to run on the server's connection and every request
+  waited the whole copy out. An in-memory DB (tests) snapshots in place. The daily
+  guard allows one backup per data dir in flight, since its marker is only written
+  once the off-thread copy lands.
 - `secrets.json` — the auto-generated slskd/Lidarr/JWT secrets (when present).
 
 **Music files are deliberately excluded** — they're plain files on disk;

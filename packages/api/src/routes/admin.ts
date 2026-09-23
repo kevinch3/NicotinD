@@ -335,10 +335,10 @@ export function adminRoutes(deps: AdminRoutesDeps) {
   });
 
   // Take a backup now (also prunes to the keep count).
-  app.post('/backups', (c) => {
+  app.post('/backups', async (c) => {
     if (!deps.dataDir) return c.json({ error: 'Backups not available' }, 503);
     try {
-      const info = runBackup(getDatabase(), { dataDir: deps.dataDir });
+      const info = await runBackup(getDatabase(), { dataDir: deps.dataDir });
       return c.json(info, 201);
     } catch (err) {
       return c.json({ error: `Backup failed: ${err instanceof Error ? err.message : err}` }, 500);

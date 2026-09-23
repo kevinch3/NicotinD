@@ -224,7 +224,7 @@ export class LibraryProcessingService extends EventEmitter {
     if (this.busy) return;
     // Daily data backup (marker-guarded, ≥04:00 local). Deliberately BEFORE the
     // enabled/window checks: backups must not depend on enrichment being on.
-    maybeRunDailyBackup(this.db, { dataDir: this.dataDir, now: this.now().getTime() });
+    void maybeRunDailyBackup(this.db, { dataDir: this.dataDir, now: this.now().getTime() });
     // Daily orphan side-table prune (issue #259). Same placement rationale as
     // the backup: housekeeping must not depend on enrichment being enabled, and
     // it runs before the backup's next snapshot picks the freed bytes up.
