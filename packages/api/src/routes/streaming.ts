@@ -247,6 +247,19 @@ export function streamingRoutes(
    * Registered before `/cover/:id` so the literal `remote` segment wins over the
    * id parameter.
    */
+  // A browser revalidating a cover it already holds (max-age expired) gets a
+  // bodiless 304 instead of the bytes again (#1329).
+  app.use('/cover/*', async (c, next) => {
+    await next();
+    const etag = c.res.headers.get('etag');
+    if (c.res.status === 200 && etag && ifNoneMatchHits(c.req.header('if-none-match'), etag)) {
+      c.res = new Response(null, {
+        status: 304,
+        headers: { etag, 'cache-control': c.res.headers.get('cache-control') ?? '' },
+      });
+    }
+  });
+
   app.get('/cover/remote', async (c) => {
     const size = bucketCoverSize(c.req.query('size'));
     const target = resolveRemoteCoverUrl(c.req.query('u'), lidarrBaseUrl);
@@ -559,8 +572,22 @@ function toBody(data: Uint8Array): BodyInit {
 /** 200 response for resolved cover bytes, with the shared long-lived cache header. */
 function coverResponse(art: CoverArt): Response {
   return new Response(toBody(art.data), {
-    headers: { 'content-type': art.contentType, 'cache-control': COVER_CACHE_CONTROL },
+    headers: {
+      'content-type': art.contentType,
+      'cache-control': COVER_CACHE_CONTROL,
+      // Content-derived, so the same bytes revalidate across ids and restarts (#1329).
+      etag: `"${Bun.hash(art.data).toString(36)}"`,
+    },
   });
+}
+
+/** Whether an `If-None-Match` header lists `etag` (weak comparison, RFC 9110 §13.1.2). */
+export function ifNoneMatchHits(header: string | undefined, etag: string): boolean {
+  if (!header) return false;
+  return header
+    .split(',')
+    .map((t) => t.trim().replace(/^W\//, ''))
+    .some((t) => t === '*' || t === etag);
 }
 
 function extFromContentType(ct: string): string {
