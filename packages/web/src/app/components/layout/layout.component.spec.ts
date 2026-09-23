@@ -481,6 +481,16 @@ describe('LayoutComponent — desktop chrome bar (Electron)', () => {
   });
 });
 
+// With the shelves chosen (#1300) the home is a scrolling page again, and a
+// scrolling page wants the sticky header back.
+describe('headerDisplayClass — the shelves home keeps the header', () => {
+  it('shows the header on / when the home view is shelves', () => {
+    expect(headerDisplayClass('/', 'shelves')).toBe('flex');
+    expect(headerDisplayClass('/', 'mosaic')).toBe('hidden md:flex');
+    expect(headerDisplayClass('/', null)).toBe('hidden md:flex');
+  });
+});
+
 describe('headerDisplayClass — the top bar yields to the mosaic on phones', () => {
   it('collapses below md on the mosaic home, where every control is already md-gated', () => {
     expect(headerDisplayClass('/')).toBe('hidden md:flex');

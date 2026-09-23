@@ -1,0 +1,12 @@
+@if (view() === 'mosaic') {
+  <!-- Floating over the field: the header is hidden below md on the mosaic,
+       so the top-left corner of the stage is the top-left of the screen. -->
+  <div class="absolute left-4 top-[calc(0.75rem+env(safe-area-inset-top))] z-10">
+    <app-home-view-switch [view]="view()" (viewSelected)="select($event)" />
+  </div>
+} @else {
+  <div class="page-shell max-w-3xl pt-4 pb-0">
+    <app-home-view-switch [view]="view()" (viewSelected)="select($event)" />
+  </div>
+}
+<ng-container *ngComponentOutlet="component()" />

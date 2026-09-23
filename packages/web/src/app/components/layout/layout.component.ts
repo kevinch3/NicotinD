@@ -40,6 +40,9 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
 import { createPullToRefresh, PULL_THRESHOLD_PX } from '../../lib/pull-to-refresh';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import { ScrollLockService } from '../../services/scroll-lock.service';
+import { UserPreferencesService } from '../../services/user-preferences.service';
+import { homeViewOf } from '../../pages/home/home.component';
+import type { HomeView } from '@nicotind/core';
 import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.directive';
 
 interface NavItem {
@@ -79,9 +82,11 @@ const HEADER_BASE_CLASSES =
  * surface. Every other route keeps it — a scrolling page wants the sticky
  * backdrop and the safe-area padding it carries.
  */
-export function headerDisplayClass(url: string): string {
+export function headerDisplayClass(url: string, homeView: HomeView | null = null): string {
   const path = url.split(/[?#]/)[0];
-  return path === '/' || path === '' ? 'hidden md:flex' : 'flex';
+  const isHome = path === '/' || path === '';
+  // With the shelves chosen (#1300) the home is a scrolling page again.
+  return isHome && homeViewOf(homeView) === 'mosaic' ? 'hidden md:flex' : 'flex';
 }
 
 @Component({
@@ -124,6 +129,7 @@ export class LayoutComponent implements OnInit, OnDestroy {
   private desktopChrome = inject(DesktopChromeService);
   private readonly p2r = inject(PullToRefreshService);
   private readonly scrollLock = inject(ScrollLockService);
+  private readonly prefs = inject(UserPreferencesService);
 
   /** Current route URL as a signal, for route-dependent chrome (headerClass). */
   private readonly currentUrl = signal(this.router.url);
@@ -202,7 +208,7 @@ export class LayoutComponent implements OnInit, OnDestroy {
    *  the entire bar into a drag handle for the frameless window — see
    *  `electron/window.ts` for the matching shape. */
   readonly headerClass = computed(() => {
-    const base = `${headerDisplayClass(this.currentUrl())} ${HEADER_BASE_CLASSES} sticky top-0 z-40`;
+    const base = `${headerDisplayClass(this.currentUrl(), this.prefs.homeView())} ${HEADER_BASE_CLASSES} sticky top-0 z-40`;
     if (!this.isElectronLinux()) {
       return base;
     }
