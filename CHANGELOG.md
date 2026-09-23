@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.51](https://github.com/kevinch3/NicotinD/compare/v0.8.50...v0.8.51) (2026-09-23)
+
+### Features
+
+* **web:** swipe the player from anywhere, and a desktop side-panel splitter ([#1293](https://github.com/kevinch3/NicotinD/issues/1293)) ([948420f](https://github.com/kevinch3/NicotinD/commit/948420fd356515b82942d713992edc257ed03e41)), references [#993](https://github.com/kevinch3/NicotinD/issues/993) [#1292](https://github.com/kevinch3/NicotinD/issues/1292)
+
+### Bug Fixes
+
+* **transcode:** stop the aac library target from skipping ALAC .m4a files ([#1291](https://github.com/kevinch3/NicotinD/issues/1291)) ([5efbb99](https://github.com/kevinch3/NicotinD/commit/5efbb993a7452ea7b64d7973e1576f0129b65da0)), closes [#1286](https://github.com/kevinch3/NicotinD/issues/1286)
 ## [0.8.50](https://github.com/kevinch3/NicotinD/compare/v0.8.49...v0.8.50) (2026-09-23)
 
 ### Bug Fixes

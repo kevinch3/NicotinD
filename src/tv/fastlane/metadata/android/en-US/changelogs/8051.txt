@@ -1,0 +1,2 @@
+• web: swipe the player from anywhere, and a desktop side-panel splitter (#1293)
+• transcode: stop the aac library target from skipping ALAC .m4a files (#1291)
