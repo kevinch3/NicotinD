@@ -156,9 +156,8 @@ function childPackages(nodeModules: string): string[] {
  * the same way. What runs an install script is what bun links into the tree.
  *
  * Symlinks are followed on purpose and deduped by realpath: bun's layout makes every
- * `node_modules` entry a link into the store, and scripts/link-worktree.sh makes the
- * whole tree links into the main checkout. A walk that refused to follow them would
- * report nothing in every worktree.
+ * `node_modules` entry a link into the store. A walk that refused to follow them would
+ * report nothing at all.
  */
 export function scan(root: string = ROOT): InstallScriptPackage[] {
   const workspaceRoots = [join(root, 'node_modules')];
@@ -250,13 +249,13 @@ if (import.meta.main) {
   const packages = scan();
 
   // A walk that finds nothing is indistinguishable from a clean tree unless it says so.
-  // In a worktree every entry is a symlink into the main checkout, so a scan that stopped
-  // following them would come back empty and read as a pass.
+  // Every entry is a symlink into bun's store, so a scan that stopped following them
+  // would come back empty and read as a pass.
   if (packages.length === 0) {
     console.error(
       `\nNo package with an install hook found in the installed tree.\n\n` +
         `That is not a clean tree — it means the scan found nothing to look at. Run\n` +
-        `\`bun install\` (or scripts/link-worktree.sh in a worktree) and try again.\n`,
+        `\`bun install\` and try again.\n`,
     );
     process.exit(1);
   }

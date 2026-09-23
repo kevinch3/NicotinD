@@ -17,6 +17,27 @@ bun outdated --filter '*'   # every workspace, not just the root
 The `Update` column = latest **within** the current range (safe patch/minor). `Latest` =
 absolute latest; when `Latest > Update` it's a major/out-of-range jump that needs review.
 
+## Worktrees install their own node_modules
+
+`scripts/link-worktree.sh` runs `bun install --frozen-lockfile` in the worktree (#1314). It
+used to **symlink** the main checkout's tree instead, which made every worktree compile against
+whatever the main checkout last installed: a stale version beside the locked one (#1088) or a
+package `bun install` never pruned (#1266) failed typecheck wholesale in a way that looked like
+the branch's fault, and needed a 233-line drift check to refuse up front. An install from the
+worktree's own `bun.lock` has no second tree to drift from, so the check was deleted with it.
+
+Measured 2026-09-23 on a fresh worktree of `437dcae9`, warm bun cache:
+
+| | |
+|---|---|
+| wall time | **1.8 s** (2,960 packages) |
+| new bytes | **~80 MB** — `ffmpeg-static`'s postinstall copies its binary out of its own download cache; everything else (805 MB) is hardlinked from `~/.bun/install/cache` |
+| Electron / Playwright | not re-downloaded: Electron's postinstall is untrusted (no `dist/` in any tree), and Playwright browsers live in `~/.cache/ms-playwright` |
+
+`bun run typecheck` and `bun run test` (5,721 pass) ran green on that tree with no other setup.
+The script still accepts an old symlinked tree and deletes its links first, because an install
+on top of them would write through into the main checkout's store.
+
 ## Security floors (`overrides`)
 
 Two entries in the root `overrides` block are **security floors**, not pins — a minimum
