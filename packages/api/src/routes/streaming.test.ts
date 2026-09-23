@@ -9,6 +9,8 @@ import {
   existsSync,
   statSync,
   utimesSync,
+  readFileSync,
+  readdirSync,
 } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -22,7 +24,10 @@ import {
 import { _resetFfmpegProbe } from '../services/transcode.js';
 import { clearTranscodeFailures, isKnownUntranscodable } from '../services/transcode-failures.js';
 import { _resetWaveformCacheForTests, type PcmDecoder } from '../services/waveform-store.js';
-import { _resetWaveformNegativeCacheForTests } from './streaming.js';
+import { _resetWaveformNegativeCacheForTests, clearCoverNegativeCache } from './streaming.js';
+import { diskArtCacheKey } from '../services/disk-art-cache.js';
+import { purgeDiskArtCache } from '../services/artwork-store.js';
+import { pruneCoverCache } from '../services/cover-cache-prune.js';
 
 let musicDir: string;
 let dataDir: string;
@@ -188,7 +193,8 @@ describe('streaming routes', () => {
     // That write is fire-and-forget (`void cacheCover(...)` — the route responds
     // before the cache lands), so poll briefly instead of racing it: a plain
     // existsSync right after the response flakes on loaded CI runners.
-    const cached = join(dataDir, 'cover-cache', 'song-thumb@80.webp');
+    // Keyed by the image's content hash, not the song id (#1310).
+    const cached = join(dataDir, 'cover-cache', `${diskArtCacheKey(png)}@80.webp`);
     const deadline = Date.now() + 2000;
     while (!existsSync(cached) && Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 25));
@@ -197,14 +203,19 @@ describe('streaming routes', () => {
   });
 
   it('serves a cached @size variant without reading the original first (#1302)', async () => {
-    // Only the sized variant is cached and the id resolves to no track: the old
-    // order read the (absent) original, fell through to on-disk art and 404'd.
+    // Warm song-thumb's @80 variant, then drop the full-size original: the old
+    // order read the (absent) original first and missed a perfectly good thumbnail.
     const cacheDir = join(dataDir, 'cover-cache');
-    mkdirSync(cacheDir, { recursive: true });
+    await app.request('/cover/song-thumb?size=80');
+    const ref = join(cacheDir, 'song-thumb.ref');
+    const deadline = Date.now() + 2000;
+    while (!existsSync(ref) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 25));
+    const key = (JSON.parse(readFileSync(ref, 'utf8')) as { key: string }).key;
     const THUMB = new Uint8Array([0x52, 0x49, 0x46, 0x46, 7, 7, 7]);
-    writeFileSync(join(cacheDir, 'sized-only@80.webp'), THUMB);
+    writeFileSync(join(cacheDir, `${key}@80.webp`), THUMB);
+    rmSync(join(cacheDir, `${key}.png`), { force: true });
 
-    const res = await app.request('/cover/sized-only?size=80');
+    const res = await app.request('/cover/song-thumb?size=80');
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('image/webp');
     expect(Array.from(new Uint8Array(await res.arrayBuffer()))).toEqual(Array.from(THUMB));
@@ -840,5 +851,223 @@ describe('?vocals=off — the center-cancel mute (issue #603, #1024)', () => {
     const res = await app.request('/stream/song-novox');
     expect(res.status).toBe(200);
     expect(res.headers.get('x-nicotind-vocals')).toBeNull();
+  });
+});
+
+describe('on-disk cover art is cached by source, not per song (#1310)', () => {
+  let md: string;
+  let dd: string;
+  let sdb: Database;
+  let sapp: Hono;
+  /** absPath → embedded picture bytes, for the extractor seam. */
+  const embedded = new Map<string, Uint8Array>();
+  let extractCalls = 0;
+  const cacheDir = () => join(dd, 'cover-cache');
+  const files = () => (existsSync(cacheDir()) ? readdirSync(cacheDir()).sort() : []);
+  const images = () => files().filter((f) => f.startsWith('d_'));
+
+  function seed(id: string, albumId: string, relPath: string, track = 1): void {
+    sdb.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, track, duration, path, size, bit_rate, suffix, content_type, created, synced_at)
+       VALUES (?, ?, 'T', 'A', 'art', ?, 0, ?, 10, 320, 'mp3', 'audio/mpeg', '2024-01-01', 1)`,
+      [id, albumId, track, relPath],
+    );
+  }
+  function track(rel: string, pic?: Uint8Array): void {
+    const abs = join(md, rel);
+    mkdirSync(join(abs, '..'), { recursive: true });
+    writeFileSync(abs, AUDIO_BYTES);
+    if (pic) embedded.set(abs, pic);
+  }
+  /** Cache writes are fire-and-forget; wait until the cache holds `n` files. */
+  async function settle(n: number): Promise<void> {
+    const deadline = Date.now() + 2000;
+    while (files().length < n && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    await new Promise((r) => setTimeout(r, 30));
+  }
+  async function body(res: Response): Promise<number[]> {
+    return Array.from(new Uint8Array(await res.arrayBuffer()));
+  }
+
+  beforeAll(() => {
+    md = mkdtempSync(join(tmpdir(), 'nd-src-music-'));
+    dd = mkdtempSync(join(tmpdir(), 'nd-src-data-'));
+    sdb = new Database(':memory:');
+    applySchema(sdb);
+    sapp = new Hono();
+    sapp.route(
+      '/',
+      streamingRoutes(md, sdb, dd, null, {
+        extractEmbedded: async (abs) => {
+          extractCalls++;
+          const data = embedded.get(abs);
+          return data ? { data, contentType: 'image/jpeg' } : null;
+        },
+      }),
+    );
+  });
+  afterAll(() => {
+    rmSync(md, { recursive: true, force: true });
+    rmSync(dd, { recursive: true, force: true });
+  });
+
+  it('stores a 12-track folder-art album once, plus one file per size (dedupe measured)', async () => {
+    const sharp = (await import('sharp')).default;
+    const png = await sharp({
+      create: { width: 400, height: 400, channels: 3, background: { r: 200, g: 20, b: 20 } },
+    })
+      .png()
+      .toBuffer();
+    for (let i = 1; i <= 12; i++) {
+      track(`Folder/Album/${String(i).padStart(2, '0')}.mp3`);
+      seed(`fa-${i}`, 'fa-alb', `Folder/Album/${String(i).padStart(2, '0')}.mp3`, i);
+    }
+    writeFileSync(join(md, 'Folder', 'Album', 'cover.png'), png);
+
+    const ids = ['fa-alb', ...Array.from({ length: 12 }, (_, i) => `fa-${i + 1}`)];
+    const sizes = ['', '?size=80', '?size=320'];
+    for (const id of ids) {
+      for (const q of sizes) expect((await sapp.request(`/cover/${id}${q}`)).status).toBe(200);
+    }
+    await settle(ids.length + 3);
+
+    const key = diskArtCacheKey(png);
+    expect(images()).toEqual([`${key}.png`, `${key}@320.webp`, `${key}@80.webp`]);
+    expect(files().filter((f) => f.endsWith('.ref'))).toHaveLength(ids.length);
+    // Measured dedupe: the per-id cache held (13 ids × 3 variants) = 39 images
+    // for this album; the source-keyed cache holds 3 — a 13× factor, i.e. the
+    // album's track count + 1 (its own id).
+    expect((ids.length * sizes.length) / images().length).toBe(13);
+    // Nothing embedded was extracted: folder art never reaches the tag reader.
+    expect(extractCalls).toBe(0);
+  });
+
+  it('keeps per-track different embedded art distinct, and shares identical art', async () => {
+    const A = new Uint8Array([0xff, 0xd8, 0xff, 1]);
+    const B = new Uint8Array([0xff, 0xd8, 0xff, 2]);
+    track('Emb/Mixed/01.mp3', A);
+    track('Emb/Mixed/02.mp3', B);
+    track('Emb/Mixed/03.mp3', A);
+    seed('em-1', 'em-alb', 'Emb/Mixed/01.mp3', 1);
+    seed('em-2', 'em-alb', 'Emb/Mixed/02.mp3', 2);
+    seed('em-3', 'em-alb', 'Emb/Mixed/03.mp3', 3);
+    const before = images().length;
+
+    expect(await body(await sapp.request(`/cover/em-1`))).toEqual(Array.from(A));
+    expect(await body(await sapp.request('/cover/em-2'))).toEqual(Array.from(B));
+    expect(await body(await sapp.request('/cover/em-3'))).toEqual(Array.from(A));
+    await settle(files().length + 2);
+
+    expect(images().length - before).toBe(2);
+    expect(images()).toContain(`${diskArtCacheKey(A)}.jpg`);
+    expect(images()).toContain(`${diskArtCacheKey(B)}.jpg`);
+    // …and the per-track answer survives the round trip through the cache.
+    expect(await body(await sapp.request('/cover/em-2'))).toEqual(Array.from(B));
+  });
+
+  it('serves a hit from the pointer without re-extracting the picture', async () => {
+    const C = new Uint8Array([0xff, 0xd8, 0xff, 3]);
+    track('Emb/Hit/01.mp3', C);
+    seed('hit-1', 'hit-alb', 'Emb/Hit/01.mp3');
+    expect((await sapp.request('/cover/hit-1')).status).toBe(200);
+    await settle(files().length);
+    const calls = extractCalls;
+    for (let i = 0; i < 3; i++) {
+      expect(await body(await sapp.request('/cover/hit-1'))).toEqual(Array.from(C));
+    }
+    expect(extractCalls).toBe(calls);
+  });
+
+  it('re-resolves on its own when the source changes (retag, replaced folder image)', async () => {
+    const OLD = new Uint8Array([0xff, 0xd8, 0xff, 4]);
+    const NEW = new Uint8Array([0xff, 0xd8, 0xff, 5, 5]);
+    track('Emb/Retag/01.mp3', OLD);
+    seed('rt-1', 'rt-alb', 'Emb/Retag/01.mp3');
+    expect(await body(await sapp.request('/cover/rt-1'))).toEqual(Array.from(OLD));
+    await settle(files().length);
+
+    // A metadata fix rewrites the tag: new bytes, new mtime.
+    const abs = join(md, 'Emb/Retag/01.mp3');
+    embedded.set(abs, NEW);
+    const t = Date.now() / 1000 + 60;
+    utimesSync(abs, t, t);
+    expect(await body(await sapp.request('/cover/rt-1'))).toEqual(Array.from(NEW));
+
+    // A folder image appearing next to it (e.g. a cover set from a track) wins.
+    const FOLDER = new Uint8Array([0xff, 0xd8, 0xff, 6]);
+    writeFileSync(join(md, 'Emb/Retag/cover.jpg'), FOLDER);
+    expect(await body(await sapp.request('/cover/rt-1'))).toEqual(Array.from(FOLDER));
+    expect(await body(await sapp.request('/cover/rt-alb'))).toEqual(Array.from(FOLDER));
+
+    // …and replacing that image is seen by every id, song and album alike.
+    await settle(files().length);
+    const FOLDER2 = new Uint8Array([0xff, 0xd8, 0xff, 7, 7]);
+    writeFileSync(join(md, 'Emb/Retag/cover.jpg'), FOLDER2);
+    expect(await body(await sapp.request('/cover/rt-1'))).toEqual(Array.from(FOLDER2));
+    expect(await body(await sapp.request('/cover/rt-alb'))).toEqual(Array.from(FOLDER2));
+  });
+
+  it('purgeDiskArtCache drops the pointer so the next request re-resolves', async () => {
+    const P = new Uint8Array([0xff, 0xd8, 0xff, 8]);
+    track('Emb/Purge/01.mp3', P);
+    seed('pg-1', 'pg-alb', 'Emb/Purge/01.mp3');
+    expect((await sapp.request('/cover/pg-alb')).status).toBe(200);
+    await settle(files().length);
+    expect(existsSync(join(cacheDir(), 'pg-alb.ref'))).toBe(true);
+
+    purgeDiskArtCache(cacheDir(), 'pg-alb');
+    expect(existsSync(join(cacheDir(), 'pg-alb.ref'))).toBe(false);
+    // The shared image stays: other ids may still point at it, and it is not stale.
+    expect(existsSync(join(cacheDir(), `${diskArtCacheKey(P)}.jpg`))).toBe(true);
+
+    const calls = extractCalls;
+    expect(await body(await sapp.request('/cover/pg-alb'))).toEqual(Array.from(P));
+    expect(extractCalls).toBe(calls + 1);
+  });
+
+  it('clearCoverNegativeCache lets a newly-artful song show at once', async () => {
+    track('Emb/Neg/01.mp3');
+    seed('ng-1', 'ng-alb', 'Emb/Neg/01.mp3');
+    expect((await sapp.request('/cover/ng-1')).status).toBe(404);
+    embedded.set(join(md, 'Emb/Neg/01.mp3'), new Uint8Array([0xff, 0xd8, 0xff, 9]));
+    expect((await sapp.request('/cover/ng-1')).status).toBe(404); // still negative-cached
+    clearCoverNegativeCache('ng-1');
+    expect((await sapp.request('/cover/ng-1')).status).toBe(200);
+  });
+
+  it('keeps a shared-bucket folder image out of every album, serving embedded art (#978)', async () => {
+    const E1 = new Uint8Array([0xff, 0xd8, 0xff, 10]);
+    const E2 = new Uint8Array([0xff, 0xd8, 0xff, 11]);
+    track('Various Artists/Unknown/x.mp3', E1);
+    track('Various Artists/Unknown/y.mp3', E2);
+    writeFileSync(join(md, 'Various Artists/Unknown/cover.jpg'), new Uint8Array([0xff, 0xd8, 0]));
+    seed('bk-x', 'bk-alb-x', 'Various Artists/Unknown/x.mp3');
+    seed('bk-y', 'bk-alb-y', 'Various Artists/Unknown/y.mp3');
+
+    expect(await body(await sapp.request('/cover/bk-x'))).toEqual(Array.from(E1));
+    expect(await body(await sapp.request('/cover/bk-alb-y'))).toEqual(Array.from(E2));
+  });
+
+  it('the daily prune reclaims the old per-song copies and keeps the new keys', async () => {
+    await settle(files().length);
+    // Legacy per-id entries as the old cache wrote them, for live ids.
+    writeFileSync(join(cacheDir(), 'fa-1.png'), new Uint8Array(100));
+    writeFileSync(join(cacheDir(), 'fa-1@80.webp'), new Uint8Array(10));
+    writeFileSync(join(cacheDir(), 'fa-alb.png'), new Uint8Array(100));
+    sdb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, synced_at)
+       VALUES ('fa-alb', 'A', 'Ar', 'art', 12, 0, 1)`,
+    );
+    const keep = files().filter((f) => !['fa-1.png', 'fa-1@80.webp', 'fa-alb.png'].includes(f));
+
+    const r = pruneCoverCache(sdb, cacheDir());
+    expect(r.superseded).toBe(3);
+    expect(r.bytesReclaimed).toBe(210);
+    expect(files()).toEqual(keep);
+
+    // The album still serves from the kept source-keyed entry.
+    expect((await sapp.request('/cover/fa-alb?size=80')).status).toBe(200);
   });
 });

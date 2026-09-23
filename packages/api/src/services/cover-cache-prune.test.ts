@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { applySchema } from '../db.js';
 import { cacheKeyBase, isContentAddressed, pruneCoverCache } from './cover-cache-prune.js';
+import { diskArtCacheKey } from './disk-art-cache.js';
 
 let db: Database;
 let dir: string;
@@ -61,11 +62,14 @@ describe('pruneCoverCache (#311)', () => {
 
   it('keeps a cover whose entity still exists', () => {
     seedAlbum('live');
-    cacheFile('live@320.webp');
-    cacheFile('live.jpg');
+    // An album's live entry is its source pointer; an artist's is an override's
+    // un-prefixed thumbnail.
+    db.run(`INSERT INTO library_artists (id, name, album_count, synced_at) VALUES ('ar','A',1,1)`);
+    cacheFile('live.ref');
+    cacheFile('ar@320.webp');
 
     expect(pruneCoverCache(db, dir, { now: NOW }).deleted).toBe(0);
-    expect(remaining()).toEqual(['live.jpg', 'live@320.webp']);
+    expect(remaining()).toEqual(['ar@320.webp', 'live.ref']);
   });
 
   /**
@@ -106,7 +110,7 @@ describe('pruneCoverCache (#311)', () => {
        VALUES ('song1','al','T','Ar','art',0,'p.opus',1,'2024-01-01',1)`,
     );
     cacheFile('artist1.jpg');
-    cacheFile('song1@80.webp');
+    cacheFile('song1.ref');
 
     expect(pruneCoverCache(db, dir, { now: NOW }).deleted).toBe(0);
   });
@@ -141,5 +145,77 @@ describe('pruneCoverCache (#311)', () => {
     seedAlbum('live');
     const r = pruneCoverCache(db, join(dir, 'nope'), { now: NOW });
     expect(r).toMatchObject({ scanned: 0, deleted: 0 });
+  });
+});
+
+describe('pruneCoverCache — source-keyed disk art (#1310)', () => {
+  const KEY_A = diskArtCacheKey(new Uint8Array([1, 2, 3]));
+  const KEY_B = diskArtCacheKey(new Uint8Array([4, 5, 6]));
+
+  function seedSong(id: string, albumId = 'alb') {
+    db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, created, synced_at)
+       VALUES (?, ?, 'T', 'Ar', 'art', 0, ?, 1, '2024-01-01', 1)`,
+      [id, albumId, `${id}.opus`],
+    );
+  }
+  function ref(id: string, key: string, daysOld = 100) {
+    const p = join(dir, `${id}.ref`);
+    writeFileSync(p, JSON.stringify({ stamp: 'f|/m/cover.jpg|1|1', key }));
+    const t = (NOW - daysOld * DAY) / 1000;
+    utimesSync(p, t, t);
+  }
+
+  it('reclaims the per-song duplicates the old per-id cache wrote, without grace', () => {
+    seedAlbum('alb');
+    for (const id of ['s1', 's2', 's3']) {
+      seedSong(id);
+      cacheFile(`${id}.jpg`, 1, 1000);
+      cacheFile(`${id}@80.webp`, 1, 100);
+    }
+    cacheFile('alb.jpg', 1, 1000);
+
+    const r = pruneCoverCache(db, dir, { now: NOW });
+    expect(r).toMatchObject({ superseded: 7, orphaned: 0, deleted: 7, bytesReclaimed: 4300 });
+    expect(remaining()).toEqual([]);
+  });
+
+  it('keeps a d_ image while a live id points at it, however old', () => {
+    seedAlbum('alb');
+    seedSong('s1');
+    ref('s1', KEY_A);
+    ref('alb', KEY_A);
+    cacheFile(`${KEY_A}.jpg`, 999);
+    cacheFile(`${KEY_A}@80.webp`, 999);
+
+    const r = pruneCoverCache(db, dir, { now: NOW });
+    expect(r.deleted).toBe(0);
+    expect(r.unreferenced).toBe(0);
+    expect(remaining()).toHaveLength(4);
+  });
+
+  it('sweeps an aged d_ image nothing live points at, sparing a fresh one', () => {
+    seedAlbum('alb');
+    seedSong('s1');
+    ref('s1', KEY_A);
+    cacheFile(`${KEY_A}.jpg`, 999);
+    cacheFile(`${KEY_B}.jpg`, 999, 500); // the album's previous cover
+    cacheFile(`${KEY_B}@80.webp`, 999, 50);
+    const fresh = diskArtCacheKey(new Uint8Array([9]));
+    cacheFile(`${fresh}.jpg`, 1); // just written; its .ref may still be landing
+
+    const r = pruneCoverCache(db, dir, { now: NOW });
+    expect(r).toMatchObject({ unreferenced: 3, deleted: 2, bytesReclaimed: 550 });
+    expect(remaining()).toEqual([`${KEY_A}.jpg`, `${fresh}.jpg`, 's1.ref'].sort());
+  });
+
+  it("a dead id's pointer keeps nothing alive, and is itself swept as an orphan", () => {
+    seedAlbum('alb');
+    ref('gone-song', KEY_A);
+    cacheFile(`${KEY_A}.jpg`, 999);
+
+    const r = pruneCoverCache(db, dir, { now: NOW });
+    expect(r).toMatchObject({ orphaned: 1, unreferenced: 1, deleted: 2 });
+    expect(remaining()).toEqual([]);
   });
 });

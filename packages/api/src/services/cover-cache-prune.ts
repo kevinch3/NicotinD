@@ -1,6 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { readdirSync, statSync, rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { DISK_ART_PREFIX, DISK_ART_REF_EXT, readDiskArtRefFile } from './disk-art-cache.js';
 
 /**
  * Sweep cover-cache files whose owning album/artist/song no longer exists
@@ -25,6 +26,17 @@ import { join } from 'node:path';
  * A first measurement that missed this reported 51 % / 2.3 GB orphaned by
  * counting all 9,455 content-addressed files as orphans. Deleting on that basis
  * would have thrown away live entries.
+ *
+ * ## Source-keyed disk art (#1310)
+ *
+ * On-disk art is stored once per image as `d_<sha1>`, with a `<id>.ref` pointer
+ * per song/album id. The pointer is entity-keyed and swept like any other; a
+ * `d_` file is live while a live id's pointer names it, and swept (after grace)
+ * once none does. The un-prefixed `<songId>` / `<albumId>` image files the old
+ * per-id cache wrote are never read again, so they are reclaimed as
+ * **superseded** — immediately, because their owner being alive is exactly why
+ * the orphan rule could never reach them. Un-prefixed files keyed on an artist
+ * id are an override's thumbnails, still read, and keep the orphan rule.
  *
  * ## Grace period, for the same reason as issue #259
  *
@@ -51,6 +63,10 @@ export interface CoverCachePruneResult {
   /** Skipped because they are content-addressed, not entity-keyed. */
   contentAddressed: number;
   orphaned: number;
+  /** Legacy per-song/per-album images the source-keyed cache replaced (#1310). */
+  superseded: number;
+  /** `d_` images no live id's `.ref` points at any more. */
+  unreferenced: number;
   deleted: number;
   bytesReclaimed: number;
   /** Set when the sanity valve refused the sweep. */
@@ -68,20 +84,43 @@ export function isContentAddressed(base: string): boolean {
   return CONTENT_PREFIXES.some((p) => base.startsWith(p));
 }
 
+interface LiveIds {
+  all: Set<string>;
+  /** Song + album ids — the ids whose on-disk art is now source-keyed. */
+  diskArt: Set<string>;
+}
+
 /** Every id a cover can legitimately be keyed on. */
-function liveIds(db: Database): Set<string> {
-  const ids = new Set<string>();
+function liveIds(db: Database): LiveIds {
+  const all = new Set<string>();
+  const diskArt = new Set<string>();
   for (const table of ['library_albums', 'library_artists', 'library_songs']) {
     try {
       for (const row of db.query<{ id: string }, []>(`SELECT id FROM ${table}`).all()) {
-        ids.add(row.id);
+        all.add(row.id);
+        if (table !== 'library_artists') diskArt.add(row.id);
       }
     } catch {
       // A schema-less DB (tests, a fresh boot) yields no ids; the sanity valve
       // below then refuses the sweep rather than deleting everything.
     }
   }
-  return ids;
+  return { all, diskArt };
+}
+
+interface Candidate {
+  path: string;
+  size: number;
+  mtimeMs: number;
+}
+
+function statCandidate(path: string): Candidate | null {
+  try {
+    const st = statSync(path);
+    return { path, size: st.size, mtimeMs: st.mtimeMs };
+  } catch {
+    return null; // vanished under us — nothing to do
+  }
 }
 
 export function pruneCoverCache(
@@ -95,36 +134,51 @@ export function pruneCoverCache(
     scanned: 0,
     contentAddressed: 0,
     orphaned: 0,
+    superseded: 0,
+    unreferenced: 0,
     deleted: 0,
     bytesReclaimed: 0,
   };
   if (!existsSync(coverCacheDir)) return result;
 
   const live = liveIds(db);
-  if (live.size === 0) {
+  if (live.all.size === 0) {
     result.abortedReason = 'library has no rows — refusing to sweep';
     return result;
   }
 
-  const candidates: Array<{ path: string; size: number; mtimeMs: number }> = [];
+  const orphans: Candidate[] = [];
+  const superseded: Candidate[] = [];
+  const diskArtFiles: Array<{ name: string; base: string }> = [];
+  const referenced = new Set<string>();
   let entityKeyed = 0;
 
   for (const name of readdirSync(coverCacheDir)) {
     result.scanned++;
     const base = cacheKeyBase(name);
+    if (base.startsWith(DISK_ART_PREFIX)) {
+      diskArtFiles.push({ name, base });
+      continue;
+    }
     if (isContentAddressed(base)) {
       result.contentAddressed++;
       continue;
     }
     entityKeyed++;
-    if (live.has(base)) continue;
-    result.orphaned++;
     const full = join(coverCacheDir, name);
-    try {
-      const st = statSync(full);
-      candidates.push({ path: full, size: st.size, mtimeMs: st.mtimeMs });
-    } catch {
-      /* vanished under us — nothing to do */
+    if (!live.all.has(base)) {
+      result.orphaned++;
+      const c = statCandidate(full);
+      if (c) orphans.push(c);
+      continue;
+    }
+    if (name.endsWith(DISK_ART_REF_EXT)) {
+      const ref = readDiskArtRefFile(full);
+      if (ref) referenced.add(ref.key);
+    } else if (live.diskArt.has(base)) {
+      result.superseded++;
+      const c = statCandidate(full);
+      if (c) superseded.push(c);
     }
   }
 
@@ -135,10 +189,16 @@ export function pruneCoverCache(
     return result;
   }
 
-  for (const file of candidates) {
-    // mtime is the orphan clock: a re-downloaded file re-mints the same id and
-    // the cache entry is served again, refreshing it.
-    if (now - file.mtimeMs < graceMs) continue;
+  const unreferenced: Candidate[] = [];
+  for (const f of diskArtFiles) {
+    result.contentAddressed++;
+    if (referenced.has(f.base)) continue;
+    result.unreferenced++;
+    const c = statCandidate(join(coverCacheDir, f.name));
+    if (c) unreferenced.push(c);
+  }
+
+  const remove = (file: Candidate) => {
     try {
       rmSync(file.path);
       result.deleted++;
@@ -146,6 +206,15 @@ export function pruneCoverCache(
     } catch {
       /* best-effort */
     }
+  };
+  // Superseded files are never read again, so no grace applies to them.
+  for (const file of superseded) remove(file);
+  for (const file of [...orphans, ...unreferenced]) {
+    // mtime is the orphan clock: a re-downloaded file re-mints the same id and
+    // the cache entry is served again, refreshing it. For a `d_` image it keeps
+    // one just written by a request whose `.ref` is still landing.
+    if (now - file.mtimeMs < graceMs) continue;
+    remove(file);
   }
 
   return result;

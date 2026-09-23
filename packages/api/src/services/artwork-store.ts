@@ -3,6 +3,7 @@ import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import type { LidarrImage } from '@nicotind/lidarr-client';
 import { lidarrCoverPath } from './remote-cover.js';
+import { DISK_ART_REF_EXT } from './disk-art-cache.js';
 
 /**
  * Canonical artwork store (Lidarr/MusicBrainz cover & poster URLs).
@@ -146,11 +147,24 @@ export function purgeCanonicalCache(coverCacheDir: string, key: string): void {
 }
 
 /**
- * Purge the cached *on-disk-art* (un-prefixed `<key>`) image variants for a key —
- * used after an album's folder cover image is replaced so the new one is served.
+ * Purge the cached *on-disk-art* for an id — used after an album's folder cover
+ * image is replaced so the new one is served. Drops the id's `<key>.ref` source
+ * pointer (#1310), so the next request re-reads and re-hashes the source, plus
+ * any un-prefixed `<key>` image variants (legacy per-id entries, and an artist
+ * override's sized thumbnails). The shared `d_<sha1>` image itself is left alone:
+ * it is content-addressed, so it is never stale for the ids still pointing at it,
+ * and the daily prune reclaims it once nothing does.
  */
 export function purgeDiskArtCache(coverCacheDir: string, key: string): void {
   purgeKeyVariants(coverCacheDir, '', key);
+  const ref = join(coverCacheDir, key + DISK_ART_REF_EXT);
+  if (existsSync(ref)) {
+    try {
+      rmSync(ref);
+    } catch {
+      /* best-effort */
+    }
+  }
 }
 
 /**

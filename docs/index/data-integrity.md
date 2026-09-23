@@ -36,7 +36,8 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   (title, artist, duration) and leaving ambiguity to dangle.
   → [cache-invalidation.md](../cache-invalidation.md)
 - **Cover-cache eviction**: `pruneCoverCache` sweeps entity-keyed files whose row is gone, with the
-  same grace period; content-addressed keys have no owning row and are never counted as orphans.
+  same grace period; content-addressed keys are never orphans, and a `d_` disk-art image goes once no
+  live `.ref` names it.
   → [cache-invalidation.md](../cache-invalidation.md)
 - **Cache-invalidation on library mutations**: every write whose handler mutates artists or genres must
   `invalidateLibraryReads()` on success or the cached grid replays the stale list. The full cross-layer
