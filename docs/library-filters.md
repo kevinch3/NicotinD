@@ -127,7 +127,7 @@ id sets** in both cases:
 here ("if filtering ever profiles slow, add a composite index") pointed at the wrong lever.
 The membership probes ride the existing indexes (`idx_library_songs_album_id`,
 `idx_library_songs_artist_id`, `idx_song_artists_artist`, `idx_library_songs_genre`,
-`idx_song_genres_genre`/`idx_song_genres_song`).
+`idx_song_genres_genre`, and the `library_song_genres` primary key for the per-song probe).
 
 Two consequences worth holding onto:
 

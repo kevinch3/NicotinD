@@ -234,7 +234,7 @@ export type SongScanVerdict =
  *   11  0  SEARCH library_artists USING INDEX idx_library_artists_hidden
  *   16  0  SEARCH ls EXISTS USING INDEX idx_library_songs_hidden ← per row
  *
- *   4   0  SEARCH library_albums USING INDEX idx_library_albums_hidden
+ *   4   0  SEARCH library_albums USING INDEX idx_library_albums_grid
  *   10  0  CORRELATED SCALAR SUBQUERY 1
  *   16  10   SEARCH ls USING INDEX idx_library_songs_album_id    ← per row
  *
