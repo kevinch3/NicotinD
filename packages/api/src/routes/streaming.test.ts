@@ -210,6 +210,27 @@ describe('streaming routes', () => {
     expect(Array.from(new Uint8Array(await res.arrayBuffer()))).toEqual(Array.from(THUMB));
   });
 
+  it('answers a matching If-None-Match on a cover with a bodiless 304 (#1329)', async () => {
+    const first = await app.request('/cover/song-1');
+    expect(first.status).toBe(200);
+    const etag = first.headers.get('etag');
+    expect(etag).toMatch(/^"[0-9a-z]+"$/);
+
+    const again = await app.request('/cover/song-1', { headers: { 'if-none-match': etag! } });
+    expect(again.status).toBe(304);
+    expect(again.headers.get('etag')).toBe(etag);
+    expect((await again.arrayBuffer()).byteLength).toBe(0);
+
+    const weak = await app.request('/cover/song-1', {
+      headers: { 'if-none-match': `"other", W/${etag}` },
+    });
+    expect(weak.status).toBe(304);
+
+    const stale = await app.request('/cover/song-1', { headers: { 'if-none-match': '"stale"' } });
+    expect(stale.status).toBe(200);
+    expect(new Uint8Array(await stale.arrayBuffer()).length).toBe(JPEG_BYTES.length);
+  });
+
   it('serves the original (not a thumbnail) when no size is requested', async () => {
     const res = await app.request('/cover/song-thumb');
     expect(res.status).toBe(200);
