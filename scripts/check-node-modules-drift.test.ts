@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { findDrift, versionFromRealpath } from './check-node-modules-drift.js';
+import { findDrift, findOrphans, versionFromRealpath } from './check-node-modules-drift.js';
 import type { BunLock } from './check-audit.js';
 
 describe('versionFromRealpath', () => {
@@ -70,5 +70,67 @@ describe('findDrift', () => {
   it('skips a dependency resolveLinked cannot resolve on disk (not installed here)', () => {
     const findings = findDrift(LOCK, () => null);
     expect(findings).toEqual([]);
+  });
+});
+
+describe('findOrphans', () => {
+  // The other direction from `findDrift`: that one iterates the LOCKFILE, so a
+  // package which left the lockfile is never visited and cannot be reported.
+  const LOCK: BunLock = {
+    workspaces: {
+      '': { name: 'nicotind', dependencies: { '@x/mobile': 'workspace:*' } },
+      'packages/mobile': { name: '@x/mobile', dependencies: { '@capacitor/core': '^7' } },
+    },
+    packages: {
+      '@capacitor/core': ['@capacitor/core@7.0.0', '', {}, 'sha512-x'],
+    },
+  };
+
+  it('flags a store-backed package the lockfile does not mention (#1266)', () => {
+    // `bun install` does not prune a package removed from the lockfile, so the
+    // directory survives a full install on an up-to-date checkout.
+    const orphans = findOrphans(LOCK, (dir) =>
+      dir === 'packages/mobile'
+        ? [
+            { name: '@capacitor/core', inStore: true },
+            { name: '@capacitor/assets', inStore: true },
+          ]
+        : [],
+    );
+    expect(orphans).toEqual([{ workspace: '@x/mobile', name: '@capacitor/assets' }]);
+  });
+
+  it('does not flag a workspace-to-workspace link', () => {
+    // `@x/mobile` resolves into packages/mobile, not the store. It is not
+    // something `bun install` manages and is absent from `packages` by design.
+    const orphans = findOrphans(LOCK, (dir) =>
+      dir === '' ? [{ name: '@x/mobile', inStore: false }] : [],
+    );
+    expect(orphans).toEqual([]);
+  });
+
+  it('does not flag a non-store link that is also unknown', () => {
+    // A stray directory someone dropped in node_modules is a different problem
+    // from a dependency bun failed to prune; only the latter is actionable here.
+    const orphans = findOrphans(LOCK, (dir) =>
+      dir === 'packages/mobile' ? [{ name: 'scratch-notes', inStore: false }] : [],
+    );
+    expect(orphans).toEqual([]);
+  });
+
+  it('judges membership by the LOCKFILE, not by each workspace package.json', () => {
+    // The predicate that matters. bun hoists plenty into the root node_modules
+    // that the root does not declare — comparing against declared dependencies
+    // reported 41 false positives on the real tree, against 5 true orphans.
+    const orphans = findOrphans(LOCK, (dir) =>
+      // Declared by packages/mobile, linked at the ROOT. Not an orphan.
+      dir === '' ? [{ name: '@capacitor/core', inStore: true }] : [],
+    );
+    expect(orphans).toEqual([]);
+  });
+
+  it('finds nothing on a clean tree', () => {
+    const orphans = findOrphans(LOCK, () => [{ name: '@capacitor/core', inStore: true }]);
+    expect(orphans).toEqual([]);
   });
 });
