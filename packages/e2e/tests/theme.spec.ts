@@ -1,4 +1,5 @@
-import { test, expect } from '../helpers';
+import { test, expect, type Page } from '../helpers';
+import { ADMIN, bearer, expandGroup } from '../helpers';
 
 test.describe('e-ink theme', () => {
   // Regression guard for the e-paper legibility fix: stroked icons "blended"
@@ -71,5 +72,50 @@ test.describe('theme utilities + contrast', () => {
     // oled accent (#818cf8) is light → on-accent is dark (#0a0a0a), so text on
     // an accent pill stays legible instead of the old hardcoded white.
     expect(r.onAccent.color).toBe('rgb(10, 10, 10)');
+  });
+});
+
+// Per-user preferences (#1299): the theme and language a person chooses reach
+// the server and come back on a device that has never seen them. Wiping only
+// the device keys (never the session token) is what "another device" means here.
+test.describe('per-user preferences', () => {
+  const DEVICE_KEYS = ['nicotind-theme', 'nicotind-lang', 'nicotind-prefs'];
+  const wipeDeviceKeys = (page: Page) =>
+    page.evaluate((keys) => keys.forEach((k) => localStorage.removeItem(k)), DEVICE_KEYS);
+
+  test.afterEach(async ({ page }) => {
+    // Leave the shared admin as other specs expect it.
+    await page.goto('/settings');
+    await expandGroup(page, 'settings-appearance');
+    await page.locator('button[data-theme="midnight"]').click();
+    await page.getByTestId('settings-language').selectOption('en');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'midnight');
+  });
+
+  test('theme and language survive a wipe of the device keys', async ({ page, request }) => {
+    const token = (
+      (await (await request.post('/api/auth/login', { data: ADMIN })).json()) as { token: string }
+    ).token;
+    await page.goto('/settings');
+    await expandGroup(page, 'settings-appearance');
+    await page.locator('button[data-theme="eink"]').click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'eink');
+    await page.getByTestId('settings-language').selectOption('es');
+    await expect(page.getByTestId('settings-language')).toHaveValue('es');
+    // Let the PATCHes land before the reload races them.
+    await expect
+      .poll(async () => {
+        const res = await request.get('/api/me/preferences', { headers: bearer(token) });
+        const body = (await res.json()) as { theme: string | null; language: string | null };
+        return `${body.theme}/${body.language}`;
+      })
+      .toBe('eink/es');
+
+    await wipeDeviceKeys(page);
+    await page.reload();
+    await expandGroup(page, 'settings-appearance');
+
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'eink');
+    await expect(page.getByTestId('settings-language')).toHaveValue('es');
   });
 });

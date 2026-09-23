@@ -153,8 +153,12 @@ describe('AuthService', () => {
       localStorage.setItem('nicotind_device_id', 'device-123');
       localStorage.setItem('nicotind-group-system-health', 'true');
       localStorage.setItem('nicotind-admin-group-user-management', 'true');
+      localStorage.setItem('nicotind-prefs', '{"theme":"eink"}');
 
       auth.logout();
+
+      // The per-user mirror (#1299) belongs to the person, not the device.
+      expect(localStorage.getItem('nicotind-prefs')).toBeNull();
 
       expect(player.clear).toHaveBeenCalled();
       expect(search.reset).toHaveBeenCalled();

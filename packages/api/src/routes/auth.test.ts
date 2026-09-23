@@ -386,6 +386,32 @@ describe('GET /me', () => {
     expect((await call(authRoutes(SECRET, '30d', true, false))).acquisitionEnabled).toBe(false);
   });
 
+  // App boot hydrates every per-user preference from this one call (#1299).
+  it('embeds the preferences object, reflecting what the per-key routes wrote', async () => {
+    const token = await signJwt(
+      { sub: 'user-123', username: 'testuser', role: 'user' },
+      SECRET,
+      '1h',
+    );
+    testDb.run(
+      "UPDATE user_settings SET radio_strategy = 'similar', theme = 'eink' WHERE user_id = 'user-123'",
+    );
+
+    const res = await app.request('/me', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const body = (await res.json()) as { preferences: Record<string, unknown> };
+    expect(body.preferences).toEqual({
+      homeView: null,
+      theme: 'eink',
+      followSystemTheme: null,
+      language: null,
+      radioStrategy: 'similar',
+      welcomeDismissed: false,
+    });
+  });
+
   it('returns welcomeDismissed true after dismiss-welcome is called', async () => {
     const token = await signJwt(
       { sub: 'user-123', username: 'testuser', role: 'user' },

@@ -1,5 +1,6 @@
 import { Injectable, signal, computed, inject, Injector } from '@angular/core';
 import { PlayerService } from './player.service';
+import { UserPreferencesService } from './user-preferences.service';
 import { SearchService } from './search.service';
 import { TransferService } from './transfer.service';
 import { AcquireService } from './acquire.service';
@@ -26,6 +27,7 @@ import { clearGroupStates } from '../lib/group-state';
 export class AuthService {
   private injector = inject(Injector);
   private player = inject(PlayerService);
+  private prefs = inject(UserPreferencesService);
   private search = inject(SearchService);
   private transfers = inject(TransferService);
   private acquire = inject(AcquireService);
@@ -134,6 +136,9 @@ export class AuthService {
     this.toasts.reset();
     this.listControls.reset();
     this.libraryApi.invalidateLibraryReads();
+
+    // The per-user preferences mirror (#1299) belongs to the person, not the device.
+    this.prefs.clear();
 
     localStorage.removeItem('nicotind_token');
     localStorage.removeItem('nicotind_username');

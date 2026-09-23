@@ -18,6 +18,7 @@ import { authInterceptor } from './interceptors/auth.interceptor';
 import { isNativeShell, serviceWorkerEnabled } from './lib/platform';
 import { SetupService } from './services/setup.service';
 import { ThemeService } from './services/theme.service';
+import { UserPreferencesService } from './services/user-preferences.service';
 import { PreserveService } from './services/preserve.service';
 import { PlayerService } from './services/player.service';
 import { AuthService } from './services/auth.service';
@@ -43,6 +44,7 @@ export function refreshSession(
   api: AuthApiService,
   auth: AuthService,
   player?: PlayerService,
+  preferences?: { prefs: UserPreferencesService; theme: ThemeService; i18n: TranslateService },
 ): void {
   api
     .refreshToken()
@@ -63,6 +65,13 @@ export function refreshSession(
         auth.serverAcquisitionEnabled.set(profile.acquisitionEnabled ?? true);
         // The per-user variety position wins over the device's remembered one.
         if (player && profile.radioStrategy) player.radioStrategy.set(profile.radioStrategy);
+        // Everything that follows the person (#1299): hydrate the door, then
+        // the owners adopt it. An older server omits the object.
+        if (preferences && profile.preferences) {
+          preferences.prefs.hydrate(profile.preferences);
+          preferences.theme.adoptPreferences();
+          void preferences.i18n.adoptPreferences();
+        }
       },
       error: () => {},
     });
@@ -93,7 +102,9 @@ export const appConfig: ApplicationConfig = {
       // not awaited: a slow/failed catalog fetch must never delay or block
       // bootstrap — the UI renders English (or raw keys) and swaps in when it
       // lands, which the impure translate pipe picks up.
-      void inject(TranslateService).init();
+      const i18n = inject(TranslateService);
+      const preferences = { prefs: inject(UserPreferencesService), theme, i18n };
+      void i18n.init();
       theme.apply();
       preserve.init();
       player.restoreState();
@@ -120,7 +131,7 @@ export const appConfig: ApplicationConfig = {
       return setup.check().then(() => {
         if (!auth.isAuthenticated()) return;
         if (!setup.isOffline()) {
-          refreshSession(api, auth, player);
+          refreshSession(api, auth, player, preferences);
           return;
         }
         // Offline launch with a stored session: refresh it automatically the
@@ -130,7 +141,7 @@ export const appConfig: ApplicationConfig = {
           () => {
             if (setup.isOffline()) return;
             ref.destroy();
-            if (auth.isAuthenticated()) refreshSession(api, auth, player);
+            if (auth.isAuthenticated()) refreshSession(api, auth, player, preferences);
           },
           { injector },
         );

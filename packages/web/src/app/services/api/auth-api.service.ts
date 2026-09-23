@@ -1,4 +1,4 @@
-import type { StrategyId } from '@nicotind/core';
+import type { StrategyId, UserPreferences } from '@nicotind/core';
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import type { AuthResult } from './api-types';
@@ -18,6 +18,8 @@ export interface UserProfile {
    * that predates the field (treated as enabled).
    */
   acquisitionEnabled?: boolean;
+  /** Everything that follows the person across devices (#1299); older servers omit it. */
+  preferences?: UserPreferences;
 }
 
 /** Auth endpoints: login, registration, and sliding-session refresh. */

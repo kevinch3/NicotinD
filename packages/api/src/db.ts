@@ -211,6 +211,12 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   addColumnIfMissing(db, 'user_settings', 'welcome_dismissed', 'INTEGER NOT NULL DEFAULT 0');
   // The listener's default radio strategy (docs/radio.md "Strategies"); NULL = balanced.
   addColumnIfMissing(db, 'user_settings', 'radio_strategy', 'TEXT');
+  // Per-user preferences that follow the person across devices (#1299). All
+  // nullable: NULL = never chosen here, the device keeps its own resolution.
+  // `theme` predates this with a NOT NULL 'system' default, read as NULL.
+  addColumnIfMissing(db, 'user_settings', 'home_view', 'TEXT');
+  addColumnIfMissing(db, 'user_settings', 'follow_system_theme', 'INTEGER');
+  addColumnIfMissing(db, 'user_settings', 'language', 'TEXT');
 
   // Add autoplay_on_load column to existing user_settings table (opt-in
   // resume-on-page-load; default off — see PlayerService.maybeResumeAutoplay).

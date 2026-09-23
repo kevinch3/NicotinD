@@ -1,4 +1,6 @@
-import { Injectable, signal, computed } from '@angular/core';
+import { Injectable, signal, computed, inject } from '@angular/core';
+import { PREFERENCE_LANGS, type PreferenceLang } from '@nicotind/core';
+import { UserPreferencesService } from './user-preferences.service';
 
 /**
  * Runtime JSON i18n (issue #236).
@@ -35,7 +37,7 @@ import { Injectable, signal, computed } from '@angular/core';
 
 export const BASE_LANG = 'en';
 /** Languages with a catalog in `public/i18n/`. */
-export const AVAILABLE_LANGS = ['en', 'es'] as const;
+export const AVAILABLE_LANGS = PREFERENCE_LANGS;
 export type Lang = (typeof AVAILABLE_LANGS)[number];
 
 const STORAGE_KEY = 'nicotind-lang';
@@ -46,10 +48,9 @@ export type Catalog = Record<string, string>;
  * Pick the startup language: an explicit past choice wins, else the browser's
  * preference when we have a catalog for it, else English.
  *
- * Per-device (localStorage) rather than per-user on purpose for v1: the login,
- * setup and public share pages all render before any user exists, and a
- * language that only applies after sign-in would leave exactly those pages
- * untranslatable. A per-user `user_settings` mirror is a follow-up.
+ * The device key still exists because the login, setup and public share pages
+ * render before any user exists; the per-user choice (#1299) is layered on
+ * top — its mirror is consulted first at init, and `/me` corrects it after.
  */
 export function resolveInitialLang(
   stored: string | null,
@@ -73,8 +74,13 @@ export function interpolate(template: string, params?: Record<string, string | n
   );
 }
 
+function isPreferenceLang(lang: string): lang is PreferenceLang {
+  return (PREFERENCE_LANGS as readonly string[]).includes(lang);
+}
+
 @Injectable({ providedIn: 'root' })
 export class TranslateService {
+  private readonly prefs = inject(UserPreferencesService);
   private readonly base = signal<Catalog>({});
   private readonly active = signal<Catalog>({});
   readonly lang = signal<string>(BASE_LANG);
@@ -100,20 +106,34 @@ export class TranslateService {
 
   /** Load the base catalog + the resolved language. Call once at bootstrap. */
   async init(fetchFn: typeof fetch = fetch): Promise<void> {
-    const stored = safeRead(STORAGE_KEY);
+    const stored = this.prefs.language() ?? safeRead(STORAGE_KEY);
     const navLangs = typeof navigator !== 'undefined' ? (navigator.languages ?? []) : [];
     this.base.set(await loadCatalog(BASE_LANG, fetchFn));
     this.revision.update((n) => n + 1);
     this.ready.set(true);
-    await this.use(resolveInitialLang(stored, navLangs), fetchFn);
+    await this.use(resolveInitialLang(stored, navLangs), fetchFn, { choice: false });
   }
 
-  /** Switch language, persisting the choice for this device. */
-  async use(lang: string, fetchFn: typeof fetch = fetch): Promise<void> {
+  /**
+   * Switch language, persisting the choice for this device and — when it is a
+   * user's choice rather than a resolution — through the per-user door.
+   */
+  async use(
+    lang: string,
+    fetchFn: typeof fetch = fetch,
+    opts: { choice?: boolean } = {},
+  ): Promise<void> {
     this.lang.set(lang);
     safeWrite(STORAGE_KEY, lang);
+    if (opts.choice !== false && isPreferenceLang(lang)) this.prefs.patch({ language: lang });
     this.active.set(lang === BASE_LANG ? {} : await loadCatalog(lang, fetchFn));
     this.revision.update((n) => n + 1);
+  }
+
+  /** Follow what the per-user door holds after a server hydrate, writing nothing back. */
+  async adoptPreferences(fetchFn: typeof fetch = fetch): Promise<void> {
+    const lang = this.prefs.language();
+    if (lang && lang !== this.lang()) await this.use(lang, fetchFn, { choice: false });
   }
 
   /**

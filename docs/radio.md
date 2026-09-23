@@ -832,7 +832,8 @@ inverted. A move does three things:
    the filter). Votes never exclude;
    they are the raw material for a later per-user taste profile.
 3. **Remembers.** `PUT /api/recommendations/preferences` stores the strategy on
-   `user_settings.radio_strategy`; `GET /api/auth/me` returns it and the app
+   `user_settings.radio_strategy` (an alias of the per-user preferences door,
+   `PATCH /api/me/preferences`, #1299); `GET /api/auth/me` returns it and the app
    applies it on session refresh, ahead of the device's own persisted position
    (`nicotind_player_state.radioStrategy`).
 

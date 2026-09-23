@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { UserPreferencesService } from './user-preferences.service';
 import { Component } from '@angular/core';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { TranslateService, resolveInitialLang, interpolate } from './translate.service';
@@ -97,6 +98,40 @@ describe('TranslateService', () => {
     await svc.init(fakeFetch());
     await svc.use('es', fakeFetch());
     expect(localStorage.getItem('nicotind-lang')).toBe('es');
+  });
+
+  // The per-user door (#1299).
+  it('use() writes the choice through the preferences door', async () => {
+    const patch = vi.spyOn(TestBed.inject(UserPreferencesService), 'patch');
+    await svc.init(fakeFetch());
+    patch.mockClear(); // init resolves the startup language; that is not a choice
+    await svc.use('es', fakeFetch());
+    expect(patch).toHaveBeenCalledWith({ language: 'es' });
+  });
+
+  it('init prefers the mirrored per-user language over the device key', async () => {
+    localStorage.setItem('nicotind-lang', 'en');
+    TestBed.inject(UserPreferencesService).hydrate({
+      homeView: null,
+      theme: null,
+      followSystemTheme: null,
+      language: 'es',
+      radioStrategy: null,
+      welcomeDismissed: false,
+    });
+    await svc.init(fakeFetch());
+    expect(svc.lang()).toBe('es');
+    expect(svc.t('login.title')).toBe('Iniciar sesión');
+  });
+
+  it('adoptPreferences follows a server hydrate without writing it back', async () => {
+    const prefs = TestBed.inject(UserPreferencesService);
+    await svc.init(fakeFetch());
+    const patch = vi.spyOn(prefs, 'patch');
+    prefs.hydrate({ ...prefs.preferences(), language: 'es' });
+    await svc.adoptPreferences(fakeFetch());
+    expect(svc.lang()).toBe('es');
+    expect(patch).not.toHaveBeenCalled();
   });
 
   /** A broken catalog must never break boot. */

@@ -30,6 +30,7 @@ import { adminRoutes } from './routes/admin.js';
 import { presenceRoutes } from './routes/presence.js';
 import { historyRoutes } from './routes/history.js';
 import { privacyRoutes } from './routes/privacy.js';
+import { userPreferencesRoutes } from './routes/user-preferences.js';
 import { recommendationRoutes } from './routes/recommendations.js';
 import { playbackRoutes } from './routes/playback.js';
 import { libraryEventRoutes } from './routes/library-events.js';
@@ -611,6 +612,7 @@ export function createApp({
   app.use('/api/history/*', auth);
   app.use('/api/recommendations/*', auth);
   app.use('/api/privacy/*', auth);
+  app.use('/api/me/*', auth);
   // Radio + catalog were mounted without auth (issue #461). Radio returns real
   // library rows; catalog drives outbound Lidarr/MusicBrainz lookups and its
   // /discography endpoint provisions an artist into Lidarr — all reachable
@@ -729,6 +731,7 @@ export function createApp({
   app.route('/api/presence', presenceRoutes());
   app.route('/api/history', historyRoutes(historyEnabled));
   app.route('/api/privacy', privacyRoutes(historyEnabled));
+  app.route('/api/me', userPreferencesRoutes());
   app.route('/api/recommendations', recommendationRoutes());
   app.route('/api/playback', playbackRoutes());
   // Partial-track discard (#810) deletes files, so it carries the same

@@ -51,3 +51,7 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   never break the audited action. → [roles.md](../roles.md)
 - **Onboarding**: setup wizard for self-hosters (music dir, quality, Lidarr) plus a first-login welcome
   banner for admin-provisioned users. → [onboarding.md](../onboarding.md)
+- **Per-user preferences**: one typed object (`UserPreferences`, `parseUserPreferences`) that follows a person across
+  devices — home view, theme, language, radio strategy, welcome — on `user_settings`, served by
+  `getUserPreferences`/`patchUserPreferences` at `/api/me/preferences` and embedded in `/me`; the web
+  door is `UserPreferencesService` (per-device mirror, optimistic `patch`). → [web-ui.md](../web-ui.md)
