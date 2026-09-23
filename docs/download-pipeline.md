@@ -150,6 +150,18 @@ request and stream for the length of each call and serialized the `TRANSCODE_CON
 them. `exec-file.test.ts` fails if `execFileSync(` reappears in those files; the one left in
 `transcode.ts` is the memoized boot-time `ffmpeg -version` presence probe.
 
+**The encode writes the settled tags itself (#1305).** The organizer's `finishPlacement` settles
+every placed file to its album identity plus the file's junk-stripped artist/title/track
+(`canonicalTagsFor`). For a lossless placement those values used to land in a separate
+`writeAudioTags` pass after the encode — an ffprobe, a picture read and two full-file remuxes on an
+Opus file. `transcodePlacement` now hands the same `CanonicalTags` to `transcodeToLibraryFormat`,
+which appends them (via `canonicalTagMetadataArgs`, the key spellings `writeFfmpegTags` uses) after
+the carried metadata so they win. `finishPlacement` still reads the result back and writes only what
+differs, so it stays the safety net — an `.m4a` or `.mp3` target, whose post-encode carry or ID3
+year spelling can still disagree, simply takes the old path. The compilation flag is left to that
+pass too. Not done yet: carrying the cover inside the encode (an Ogg picture is too large for a
+`-metadata` argument, and an ffmetadata input would replace `-map_metadata 0`).
+
 The in-progress encode is written to a **dot-prefixed** temp path
 (`transcodeTempPathFor`) so that a run killed mid-write — a deploy restart, an OOM — leaves a file
 the scanner cannot ingest. Every *handled* failure already unlinks the temp; the hidden name is

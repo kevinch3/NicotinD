@@ -20,7 +20,13 @@ import {
 import { classifyFolder, type Classification } from './compilation-tagger.js';
 import { extractAlbumName, inferFolderAlbum, inferMetadataFromPath } from './path-inference.js';
 import type { CompletedDownloadFile } from './path-inference.js';
-import { readAudioTags, writeAudioTags, normalizeTagValue, type AudioTags } from './audio-tags.js';
+import {
+  readAudioTags,
+  writeAudioTags,
+  normalizeTagValue,
+  type AudioTags,
+  type CanonicalTags,
+} from './audio-tags.js';
 import {
   sanitizeSegment,
   trackNumberPrefix,
@@ -462,7 +468,7 @@ export class LibraryOrganizer {
       else pending.push(placed);
     }
     const transcodeWallStartedAt = Date.now();
-    await mapPool(pending, TRANSCODE_CONCURRENCY, (p) => this.transcodePlacement(p));
+    await mapPool(pending, TRANSCODE_CONCURRENCY, (p) => this.transcodePlacement(p, folderTags));
     this.batchTranscodeWallMs += Date.now() - transcodeWallStartedAt;
 
     for (const p of pending) {
@@ -859,7 +865,7 @@ export class LibraryOrganizer {
   ): Promise<'moved' | 'skipped' | 'unsorted' | 'failed'> {
     const placed = await this.placeOnDisk(file, folderTags);
     if (placed === 'skipped' || placed === 'failed') return placed;
-    await this.transcodePlacement(placed);
+    await this.transcodePlacement(placed, folderTags);
     return this.finishPlacement(placed, folderTags);
   }
 
@@ -925,7 +931,7 @@ export class LibraryOrganizer {
    * that file's own stem. Nothing here reads batch state, which is why
    * `organizeGroup` may run several of these at once.
    */
-  private async transcodePlacement(p: PendingPlacement): Promise<void> {
+  private async transcodePlacement(p: PendingPlacement, folderTags: AlbumTags): Promise<void> {
     if (p.samePath || !p.plan.wouldTranscode) return;
     const transcodeStartedAt = Date.now();
     try {
@@ -933,6 +939,8 @@ export class LibraryOrganizer {
         p.destPath,
         this.transcodeLossless().bitRate,
         this.keepOriginals,
+        undefined,
+        canonicalTagsFor(p.file.tags, folderTags),
       );
       this.batchTranscoded++;
     } catch (err) {
@@ -953,24 +961,15 @@ export class LibraryOrganizer {
     // Tag rewrite step — run even when the file didn't move, so junk
     // album/artist tags from a prior run get cleaned up idempotently. Loose
     // singles get no forced album tag (the scanner derives album = title).
-    const effectiveAlbum = folderTags.album;
+    // A lossless encode already wrote these (#1305), so for it this finds
+    // nothing to change; it is what settles every other placement.
     const currentRaw = await readAudioTags(destPath);
     const toWrite: AudioTags = {};
-    if (effectiveAlbum && currentRaw.album !== effectiveAlbum) toWrite.album = effectiveAlbum;
-    if (folderTags.albumArtist && currentRaw.albumArtist !== folderTags.albumArtist) {
-      toWrite.albumArtist = folderTags.albumArtist;
+    const canonical = canonicalTagsFor(file.tags, folderTags);
+    for (const key of Object.keys(canonical) as Array<keyof CanonicalTags>) {
+      if (currentRaw[key] !== canonical[key]) Object.assign(toWrite, { [key]: canonical[key] });
     }
     if (folderTags.compilation && !currentRaw.compilation) toWrite.compilation = true;
-    if (folderTags.year !== undefined && currentRaw.year !== folderTags.year) {
-      toWrite.year = folderTags.year;
-    }
-    // Also clean up artist if it had leading junk we stripped
-    const tags = file.tags;
-    if (tags.artist && currentRaw.artist !== tags.artist) toWrite.artist = tags.artist;
-    if (tags.title && currentRaw.title !== tags.title) toWrite.title = tags.title;
-    if (tags.trackNumber !== undefined && currentRaw.trackNumber !== tags.trackNumber) {
-      toWrite.trackNumber = tags.trackNumber;
-    }
     if (Object.keys(toWrite).length > 0) {
       this.batchTagWrites++;
       try {
@@ -1246,4 +1245,21 @@ function sanitizeAlbumTag(raw: string | undefined): string | undefined {
   // "Live @ Wembley" is a real album title.
   if (looksLikeDjSetTag(raw)) return undefined;
   return raw;
+}
+
+/**
+ * The tags every placed file is settled to: the folder's album identity plus
+ * the file's own (junk-stripped) artist, title and track. Loose singles get no
+ * forced album tag (the scanner derives album = title). Shared by the encode,
+ * which writes them itself, and the tag pass that verifies them (#1305).
+ */
+function canonicalTagsFor(tags: AudioTags, folderTags: AlbumTags): CanonicalTags {
+  const out: CanonicalTags = {};
+  if (folderTags.album) out.album = folderTags.album;
+  if (folderTags.albumArtist) out.albumArtist = folderTags.albumArtist;
+  if (folderTags.year !== undefined) out.year = folderTags.year;
+  if (tags.artist) out.artist = tags.artist;
+  if (tags.title) out.title = tags.title;
+  if (tags.trackNumber !== undefined) out.trackNumber = tags.trackNumber;
+  return out;
 }

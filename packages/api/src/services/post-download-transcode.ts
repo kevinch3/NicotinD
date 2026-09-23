@@ -9,7 +9,13 @@ import { ffmpegAvailable, TRANSCODE_DURATION_TOLERANCE_SEC } from './transcode.j
 import { ffmpegBinary } from './ffmpeg-path.js';
 import { extractEmbeddedPicture, preserveFolderCover } from './cover-sources.js';
 import { preparePicture } from './opus-artwork.js';
-import { readAudioTags, writeAudioTags, type AudioTags } from './audio-tags.js';
+import {
+  canonicalTagMetadataArgs,
+  readAudioTags,
+  writeAudioTags,
+  type AudioTags,
+  type CanonicalTags,
+} from './audio-tags.js';
 import { quarantineOriginal } from './transcode-quarantine.js';
 import {
   ID3_TXXX_FFMPEG_MISNAMES,
@@ -420,6 +426,9 @@ export async function transcodeToLibraryFormat(
   bitRate = 128,
   keepOriginal?: TranscodeKeepOriginal,
   format: LibraryFormat = DEFAULT_LIBRARY_FORMAT,
+  // The organizer's settled tags, written by the encode itself so its tag pass
+  // afterwards finds nothing left to change (#1305). Last, so they win.
+  canonical?: CanonicalTags,
 ): Promise<string> {
   const strategy = libraryFormat(format);
   // Materialise the cover BEFORE encoding: `-vn` below discards the attached
@@ -453,6 +462,7 @@ export async function transcodeToLibraryFormat(
     '0',
     // After -map_metadata so these win over anything it carried.
     ...carried,
+    ...(canonical ? canonicalTagMetadataArgs(canonical) : []),
     ...strategy.encodeArgs(bitRate),
     tmpPath,
   ];

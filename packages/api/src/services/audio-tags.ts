@@ -705,6 +705,31 @@ function mp4FreeformValues(tags: AudioTags): Record<string, string> {
   return out;
 }
 
+/** The fields the organizer settles for every placed file (#1305). */
+export type CanonicalTags = Pick<
+  AudioTags,
+  'album' | 'albumArtist' | 'artist' | 'title' | 'trackNumber' | 'year'
+>;
+
+/**
+ * ffmpeg `-metadata` args for the canonical fields, in the key spellings
+ * `writeFfmpegTags` uses — shared so a lossless encode can write them itself
+ * instead of a remux rewriting them afterwards (#1305).
+ */
+export function canonicalTagMetadataArgs(tags: CanonicalTags): string[] {
+  const args: string[] = [];
+  if (tags.album !== undefined) args.push('-metadata', `ALBUM=${tags.album}`);
+  // ffmpeg's generic key, not the Vorbis `ALBUMARTIST`: the only name here that
+  // differs by more than case, so the Vorbis spelling landed beside the old
+  // value instead of replacing it (#914). The muxer still emits ALBUMARTIST.
+  if (tags.albumArtist !== undefined) args.push('-metadata', `album_artist=${tags.albumArtist}`);
+  if (tags.artist !== undefined) args.push('-metadata', `ARTIST=${tags.artist}`);
+  if (tags.title !== undefined) args.push('-metadata', `TITLE=${tags.title}`);
+  if (tags.trackNumber !== undefined) args.push('-metadata', `TRACK=${tags.trackNumber}`);
+  if (tags.year !== undefined) args.push('-metadata', `DATE=${tags.year}`);
+  return args;
+}
+
 async function writeFfmpegTags(
   filepath: string,
   tags: AudioTags,
@@ -714,18 +739,8 @@ async function writeFfmpegTags(
   const ext = extname(filepath).toLowerCase();
   const muxer = FFMPEG_MUXERS[ext];
   if (!muxer) return false;
-  const metaArgs: string[] = [];
-  if (tags.album !== undefined) metaArgs.push('-metadata', `ALBUM=${tags.album}`);
-  // ffmpeg's generic key, not the Vorbis `ALBUMARTIST`: the only name here that
-  // differs by more than case, so the Vorbis spelling landed beside the old
-  // value instead of replacing it (#914). The muxer still emits ALBUMARTIST.
-  if (tags.albumArtist !== undefined)
-    metaArgs.push('-metadata', `album_artist=${tags.albumArtist}`);
-  if (tags.artist !== undefined) metaArgs.push('-metadata', `ARTIST=${tags.artist}`);
-  if (tags.title !== undefined) metaArgs.push('-metadata', `TITLE=${tags.title}`);
-  if (tags.trackNumber !== undefined) metaArgs.push('-metadata', `TRACK=${tags.trackNumber}`);
+  const metaArgs: string[] = canonicalTagMetadataArgs(tags);
   if (tags.discNumber !== undefined) metaArgs.push('-metadata', `DISC=${tags.discNumber}`);
-  if (tags.year !== undefined) metaArgs.push('-metadata', `DATE=${tags.year}`);
   if (tags.genre !== undefined) metaArgs.push('-metadata', `GENRE=${tags.genre}`);
   if (tags.bpm !== undefined)
     metaArgs.push('-metadata', `${BPM_METADATA_KEY[ext] ?? 'BPM'}=${tags.bpm}`);

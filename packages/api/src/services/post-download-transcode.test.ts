@@ -662,6 +662,31 @@ describe.skipIf(!ffmpegAvailable())('cover art survives the transcode', () => {
     expect((await readAudioTags(out)).artist).toBe('TheArtist');
   });
 
+  it('writes canonical tags in the encode, over the source values, and keeps the cover (#1305)', async () => {
+    const root = tmpRoot();
+    const { flac, coverBytes } = makeFlacWithCover(root, 400);
+
+    const out = await transcodeToLibraryFormat(flac, 96, undefined, undefined, {
+      artist: 'Settled Artist',
+      albumArtist: 'Settled Album Artist',
+      album: 'Settled Album',
+      title: 'Settled Title',
+      trackNumber: 7,
+      year: 1999,
+    });
+
+    expect(await readAudioTags(out)).toMatchObject({
+      artist: 'Settled Artist',
+      albumArtist: 'Settled Album Artist',
+      album: 'Settled Album',
+      title: 'Settled Title',
+      trackNumber: 7,
+      year: 1999,
+    });
+    const mm = await getMusicMetadata();
+    expect((await mm!.parseFile(out)).common.picture?.[0]?.data.length).toBe(coverBytes);
+  });
+
   it('carries a cover that is OVER the embed cap, by re-compressing it', async () => {
     // The case nothing covered, and it cost 10% of the library's art. The
     // scratch paths had no image extension, so `ffmpeg -i in -q:v N out` could

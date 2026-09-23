@@ -1036,15 +1036,16 @@ describe('LibraryOrganizer (real fs)', () => {
 
         let inFlight = 0;
         let maxInFlight = 0;
-        const real = (org as unknown as { transcodePlacement: (p: unknown) => Promise<void> })
-          .transcodePlacement;
-        (
-          org as unknown as { transcodePlacement: (p: unknown) => Promise<void> }
-        ).transcodePlacement = async function (this: unknown, p: unknown) {
+        type Placement = (...args: unknown[]) => Promise<void>;
+        const real = (org as unknown as { transcodePlacement: Placement }).transcodePlacement;
+        (org as unknown as { transcodePlacement: Placement }).transcodePlacement = async function (
+          this: unknown,
+          ...args: unknown[]
+        ) {
           inFlight++;
           maxInFlight = Math.max(maxInFlight, inFlight);
           try {
-            return await real.call(this, p);
+            return await real.apply(this, args);
           } finally {
             inFlight--;
           }
@@ -1066,6 +1067,46 @@ describe('LibraryOrganizer (real fs)', () => {
           expect(existsSync(join(root, 'Artist', 'Album', `0${i + 1} - ${t}.opus`))).toBe(true);
           expect(existsSync(join(root, 'Artist', 'Album', `0${i + 1} - ${t}.flac`))).toBe(false);
         }
+      },
+    );
+
+    it.skipIf(!ffmpegAvailable())(
+      'writes the settled tags in the encode, leaving no tag pass to run (#1305)',
+      async () => {
+        const root = tmpRoot();
+        const staging = join(root, '_staging');
+        // The folder names an album artist the file's own tags lack, so the
+        // settled tags differ from the source's: before, a remux added it.
+        seedFlac(staging, 'Various - Encoded Album/02 - Second.flac', {
+          artist: 'Track Artist',
+          album: 'Encoded Album',
+          title: 'Second',
+          trackNumber: 2,
+        });
+        const org = new LibraryOrganizer({
+          musicDir: root,
+          stagingDir: staging,
+          transcodeLossless: { enabled: true, bitRate: 96 },
+        });
+        const result = await org.organizeBatch([
+          {
+            username: 'u',
+            directory: 'Various - Encoded Album',
+            filename: '02 - Second.flac',
+            directoryFileCount: 1,
+          },
+        ]);
+
+        expect(result.moved).toBe(1);
+        const opusRel = Object.keys(snapshotTree(root)).find(
+          (f) => f.endsWith('.opus') && !f.startsWith('_staging/'),
+        );
+        const opus = join(root, opusRel!);
+        const tags = await readAudioTags(opus);
+        expect(tags).toMatchObject({ artist: 'Track Artist', title: 'Second', trackNumber: 2 });
+        expect(tags.album).toBeTruthy();
+        expect(tags.albumArtist).toBeTruthy();
+        expect((org as unknown as { batchTagWrites: number }).batchTagWrites).toBe(0);
       },
     );
 
