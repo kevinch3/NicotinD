@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.59](https://github.com/kevinch3/NicotinD/compare/v0.8.58...v0.8.59) (2026-09-23)
+
+### Features
+
+* **prefs:** per-user preferences endpoint, and theme + language follow the user ([#1321](https://github.com/kevinch3/NicotinD/issues/1321)) ([437dcae](https://github.com/kevinch3/NicotinD/commit/437dcae9449baab30ef05295024007a3f5421ca9)), references [#1299](https://github.com/kevinch3/NicotinD/issues/1299)
 ## [0.8.58](https://github.com/kevinch3/NicotinD/compare/v0.8.57...v0.8.58) (2026-09-23)
 
 ### Performance
