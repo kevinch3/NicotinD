@@ -88,7 +88,7 @@ describe('deleteOne', () => {
       shareRescan: noopScheduler(),
     });
 
-    expect(result).toEqual({ ok: true });
+    expect(result).toEqual({ ok: true, albumId: 'alb' });
     expect(fsState.has('/music/Artist/Album/s1.mp3')).toBe(false);
     expect(sharedDb.query('SELECT id FROM library_songs WHERE id = ?').get('s1')).toBeNull();
   });
@@ -117,8 +117,56 @@ describe('deleteOne', () => {
       musicDir: '/music',
       shareRescan: noopScheduler(),
     });
-    expect(result).toEqual({ ok: true });
+    expect(result).toEqual({ ok: true, albumId: 'alb' });
     expect(sharedDb.query('SELECT id FROM library_songs WHERE id = ?').get('s3')).toBeNull();
+  });
+});
+
+describe('deleteOne — per-song links, without a full rescan (#1303)', () => {
+  beforeEach(() => {
+    fsState.clear();
+    dirEntries.clear();
+  });
+
+  function credit(songId: string, artistId: string, role: string): void {
+    sharedDb.run(
+      `INSERT OR IGNORE INTO library_artists (id, name, album_count, synced_at) VALUES (?, ?, 0, 1)`,
+      [artistId, artistId],
+    );
+    sharedDb.run(
+      `INSERT INTO library_song_artists (song_id, artist_id, role, position) VALUES (?, ?, ?, 0)`,
+      [songId, artistId, role],
+    );
+  }
+  const artistExists = (id: string) =>
+    sharedDb.query('SELECT id FROM library_artists WHERE id = ?').get(id) !== null;
+
+  it('removes the song credits and genres, and prunes a featured artist left with nothing', async () => {
+    seedSong('ln-1', 'alb-ln', '/music/L/ln-1.mp3');
+    seedSong('ln-2', 'alb-ln', '/music/L/ln-2.mp3');
+    fsState.set('/music/L/ln-1.mp3', true);
+    credit('ln-1', 'feat-only-here', 'featured');
+    credit('ln-1', 'feat-elsewhere', 'featured');
+    credit('ln-2', 'feat-elsewhere', 'featured');
+    sharedDb.run(
+      `INSERT INTO library_song_genres (song_id, genre, position) VALUES ('ln-1', 'Rock', 0)`,
+    );
+
+    const result = await deleteOne(sharedDb, 'ln-1', {
+      musicDir: '/music',
+      shareRescan: noopScheduler(),
+    });
+
+    expect(result).toEqual({ ok: true, albumId: 'alb-ln' });
+    const links = (table: string) =>
+      sharedDb.query(`SELECT COUNT(*) AS n FROM ${table} WHERE song_id = 'ln-1'`).get() as {
+        n: number;
+      };
+    expect(links('library_song_artists').n).toBe(0);
+    expect(links('library_song_genres').n).toBe(0);
+    expect(artistExists('feat-only-here')).toBe(false);
+    // Still credited on ln-2, so a full scan would keep it too.
+    expect(artistExists('feat-elsewhere')).toBe(true);
   });
 });
 

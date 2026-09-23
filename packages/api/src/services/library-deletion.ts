@@ -13,7 +13,7 @@ import { basename, dirname, join, normalize, relative } from 'node:path';
 import { existsSync, readdirSync, rmdirSync, rmSync, unlinkSync } from 'node:fs';
 import { AUDIO_EXTENSIONS, createLogger } from '@nicotind/core';
 import { getDatabase } from '../db.js';
-import { pruneOrphanArtist, pruneOrphanAlbum } from './library-aggregates.js';
+import { deleteSongRow, pruneOrphanArtist, pruneOrphanAlbum } from './library-aggregates.js';
 import { refreshGenreCounts } from './genre-split.js';
 import type { ShareRescanScheduler } from './share-rescan-scheduler.js';
 import { expandDir, resolveSongPath, isUnderMusicDir } from './song-path.js';
@@ -216,6 +216,8 @@ export interface DeleteOneResult {
   ok: boolean;
   error?: string;
   status?: number;
+  /** The deleted song's album, so the caller can reclassify just it (#1303). */
+  albumId?: string | null;
 }
 
 /** Delete one song's file (with fallback path resolution) + its DB rows. */
@@ -309,7 +311,7 @@ export async function deleteOne(
         if (orphan) {
           try {
             db.run('DELETE FROM completed_downloads WHERE navidrome_id = ?', [id]);
-            db.run('DELETE FROM library_songs WHERE id = ?', [id]);
+            deleteSongRow(db, id);
             libraryEvents.emit({
               type: 'songs.deleted',
               songIds: [id],
@@ -323,7 +325,7 @@ export async function deleteOne(
           // The file was already gone from disk but slskd may not know yet —
           // rescan so it stops advertising it.
           shareRescan.schedule();
-          return { ok: true };
+          return { ok: true, albumId };
         }
         return { ok: false, error: 'Song file not found on disk', status: 404 };
       }
@@ -340,7 +342,7 @@ export async function deleteOne(
         id,
         relPath,
       ]);
-      db.run('DELETE FROM library_songs WHERE id = ?', [id]);
+      deleteSongRow(db, id);
       libraryEvents.emit({
         type: 'songs.deleted',
         songIds: [id],
@@ -354,7 +356,7 @@ export async function deleteOne(
     }
   }
 
-  return { ok: true };
+  return { ok: true, albumId };
 }
 
 export interface DeleteSongsResult {

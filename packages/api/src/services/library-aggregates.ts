@@ -2,6 +2,44 @@ import type { Database } from 'bun:sqlite';
 import { pickDisplayName } from './album-grouping.js';
 
 /**
+ * Remove a deleted song's row together with the per-song links a full scan
+ * would otherwise be needed to sweep (#1303): its `library_song_artists` and
+ * `library_song_genres` rows, and any artist it credited — primary or featured
+ * — that no song, song credit or album references any more. Returns nothing;
+ * the caller still owns the album (`pruneOrphanAlbum`) and genre-count refresh.
+ */
+export function deleteSongRow(db: Database, songId: string): void {
+  const artistIds = new Set(
+    db
+      .query<{ artist_id: string | null }, [string, string]>(
+        `SELECT artist_id FROM library_songs WHERE id = ?
+         UNION SELECT artist_id FROM library_song_artists WHERE song_id = ?`,
+      )
+      .all(songId, songId)
+      .map((r) => r.artist_id)
+      .filter((a): a is string => !!a),
+  );
+  db.run('DELETE FROM library_songs WHERE id = ?', [songId]);
+  db.run('DELETE FROM library_song_artists WHERE song_id = ?', [songId]);
+  db.run('DELETE FROM library_song_genres WHERE song_id = ?', [songId]);
+  for (const artistId of artistIds) {
+    const referenced = db
+      .query<{ one: number }, [string, string, string, string]>(
+        `SELECT 1 AS one WHERE
+           EXISTS (SELECT 1 FROM library_songs WHERE artist_id = ?)
+           OR EXISTS (SELECT 1 FROM library_song_artists WHERE artist_id = ?)
+           OR EXISTS (SELECT 1 FROM library_albums WHERE artist_id = ?)
+           OR EXISTS (SELECT 1 FROM library_album_artists WHERE artist_id = ?)`,
+      )
+      .get(artistId, artistId, artistId, artistId);
+    if (!referenced) {
+      db.run('DELETE FROM library_artists WHERE id = ?', [artistId]);
+      db.run('DELETE FROM library_artwork WHERE id = ?', [artistId]);
+    }
+  }
+}
+
+/**
  * Clean up an artist's aggregate rows after a release moved away from it (a
  * delete, or a metadata correction that re-assigned the album to a different
  * artist). Without this the orphaned `library_artists` row lingers until the
