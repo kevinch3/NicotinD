@@ -1,0 +1,2 @@
+• analysis: reuse the genre prediction audio-features already got instead of re-analyzing (#1334)
+• covers: content-hash ETag on covers, and a bodiless 304 when the browser already has them (#1333)

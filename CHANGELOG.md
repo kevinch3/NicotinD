@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.58](https://github.com/kevinch3/NicotinD/compare/v0.8.57...v0.8.58) (2026-09-23)
+
+### Performance
+
+* **analysis:** reuse the genre prediction audio-features already got instead of re-analyzing ([#1334](https://github.com/kevinch3/NicotinD/issues/1334)) ([3ba60c4](https://github.com/kevinch3/NicotinD/commit/3ba60c4dd0f4248577dbac677609568984a4026e)), references [#1312](https://github.com/kevinch3/NicotinD/issues/1312)
+* **covers:** content-hash ETag on covers, and a bodiless 304 when the browser already has them ([#1333](https://github.com/kevinch3/NicotinD/issues/1333)) ([5a3e13a](https://github.com/kevinch3/NicotinD/commit/5a3e13a58394a73a2bcf80940735f31de6b859fd)), references [#1329](https://github.com/kevinch3/NicotinD/issues/1329)
 ## [0.8.57](https://github.com/kevinch3/NicotinD/compare/v0.8.56...v0.8.57) (2026-09-23)
 
 ### Performance
