@@ -1,0 +1,3 @@
+• covers: check the cached @size thumbnail before reading the full-size original (#1318)
+• library: coalesce full rescans so a burst of deletes runs one scan, not N (#1317)
+• player: a manual Next swaps to the pre-buffered standby instead of cold-loading (#1319)

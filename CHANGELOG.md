@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.52](https://github.com/kevinch3/NicotinD/compare/v0.8.51...v0.8.52) (2026-09-23)
+
+### Performance
+
+* **covers:** check the cached [@size](https://github.com/size) thumbnail before reading the full-size original ([#1318](https://github.com/kevinch3/NicotinD/issues/1318)) ([2d41ad7](https://github.com/kevinch3/NicotinD/commit/2d41ad7bcb298ae9c6f74b78dc04ba10831222e7)), references [#1302](https://github.com/kevinch3/NicotinD/issues/1302)
+* **library:** coalesce full rescans so a burst of deletes runs one scan, not N ([#1317](https://github.com/kevinch3/NicotinD/issues/1317)) ([03fc856](https://github.com/kevinch3/NicotinD/commit/03fc8568e45ab8e56624a787668f5c519a0643f8)), references [#1303](https://github.com/kevinch3/NicotinD/issues/1303)
+* **player:** a manual Next swaps to the pre-buffered standby instead of cold-loading ([#1319](https://github.com/kevinch3/NicotinD/issues/1319)) ([5b5e5b5](https://github.com/kevinch3/NicotinD/commit/5b5e5b5d3044489fae965968f931c1090af75d62)), references [#1301](https://github.com/kevinch3/NicotinD/issues/1301)
 ## [0.8.51](https://github.com/kevinch3/NicotinD/compare/v0.8.50...v0.8.51) (2026-09-23)
 
 ### Features
