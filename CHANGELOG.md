@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.54](https://github.com/kevinch3/NicotinD/compare/v0.8.53...v0.8.54) (2026-09-23)
+
+### Performance
+
+* **db:** cap the WAL with journal_size_limit and run PRAGMA optimize after full scans ([#1323](https://github.com/kevinch3/NicotinD/issues/1323)) ([1ca1ba4](https://github.com/kevinch3/NicotinD/commit/1ca1ba4c409597f30daeb088ab19a0b5f363d673)), closes [#1307](https://github.com/kevinch3/NicotinD/issues/1307)
+* **transcode:** run ingest-path ffmpeg/ffprobe calls without blocking the event loop ([#1324](https://github.com/kevinch3/NicotinD/issues/1324)) ([b6332f6](https://github.com/kevinch3/NicotinD/commit/b6332f64a8e1827ef53abe3d3ae21311218f0c02)), references [#1304](https://github.com/kevinch3/NicotinD/issues/1304)
 ## [0.8.53](https://github.com/kevinch3/NicotinD/compare/v0.8.52...v0.8.53) (2026-09-23)
 
 ### Performance

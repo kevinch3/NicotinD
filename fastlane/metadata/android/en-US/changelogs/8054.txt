@@ -1,0 +1,2 @@
+• db: cap the WAL with journal_size_limit and run PRAGMA optimize after full scans (#1323)
+• transcode: run ingest-path ffmpeg/ffprobe calls without blocking the event loop (#1324)
