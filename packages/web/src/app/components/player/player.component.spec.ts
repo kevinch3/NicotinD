@@ -670,6 +670,64 @@ describe('PlayerComponent', () => {
 
   // ─── Dead-stream recovery (playback stops with nothing to restart it) ──────
 
+  describe('manual Next reuses the pre-buffered standby (#1301)', () => {
+    let elA: HTMLAudioElement;
+    let elB: HTMLAudioElement;
+
+    // Wire the real A/B pair (the outer setup pins `audioEl` to one element),
+    // start TRACK with TRACK_2 queued, and drive the 30 s pre-load into B.
+    function preloadNext(): void {
+      elA = fakeAudio;
+      elB = document.createElement('audio');
+      const primaryIsA = component['primaryIsA'];
+      for (const [key, value] of [
+        ['audioElA', () => ({ nativeElement: elA })],
+        ['audioElB', () => ({ nativeElement: elB })],
+        ['audioEl', () => ({ nativeElement: primaryIsA() ? elA : elB })],
+      ] as const) {
+        Object.defineProperty(component, key, { value, configurable: true, writable: true });
+      }
+      playerService.isPlaying.set(true);
+      playerService.currentTrack.set(TRACK);
+      playerService.queue.set([TRACK_2]);
+      fixture.detectChanges();
+
+      Object.defineProperty(elA, 'duration', { value: 200, configurable: true });
+      Object.defineProperty(elA, 'currentTime', { value: 180, configurable: true });
+      elA.dispatchEvent(new Event('timeupdate'));
+      expect(elB.src).toContain('/t2');
+      // Out of the skip-burst window so Next commits on the leading edge.
+      component['lastLoadCommitAt'] = 0;
+    }
+
+    it('swaps to the buffered standby instead of re-requesting the stream', () => {
+      preloadNext();
+      const preloaded = elB.src;
+      mockPlay.mockClear();
+
+      playerService.playNext();
+      fixture.detectChanges();
+
+      expect(component['primaryIsA']()).toBe(false);
+      expect(elB.src).toBe(preloaded);
+      expect(elA.getAttribute('src')).toBe('');
+      expect(mockPlay.mock.contexts).toContain(elB);
+      expect(playerService.currentTrack()).toEqual(TRACK_2);
+    });
+
+    it('cold-loads when the standby holds a stale variant (vocal mute toggled since)', () => {
+      preloadNext();
+      playerService.vocalsMuted.set(true);
+
+      playerService.playNext();
+      fixture.detectChanges();
+
+      expect(component['primaryIsA']()).toBe(true);
+      expect(elA.src).toContain('/t2');
+      expect(elA.src).toContain('vocals=off');
+    });
+  });
+
   describe('dead-stream recovery', () => {
     // A stream that dies mid-playback used to be terminal: `error` only cleared
     // the spinner, and a stall raised nothing at all, so the store kept saying

@@ -218,8 +218,10 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   private lastManualSrc: string | null = null;
   // Object URL created by onEnded for a preserved track; needs manual revocation.
   private lastManualObjectUrl: string | null = null;
-  // Track id that has been pre-buffered into the standby element.
+  // Track id that has been pre-buffered into the standby element, and the src
+  // it was pointed at (a vocal-mute toggle or token change since invalidates it).
   private preloadedTrackId: string | null = null;
+  private preloadedSrc: string | null = null;
   // Tracks the last vocal mute state to detect toggle changes (Effect 6b).
   private lastVocalsMuted: boolean | null = null;
   // Load generation: bumped on every resource change — an in-place `audio.src`
@@ -411,6 +413,15 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
           // unreachable stream. Left unguarded, the element stalls on a spinner
           // that never resolves (`onError` only clears buffering). Bail cleanly.
           this.stopForOffline(audio, track.title);
+        } else if (this.standbyHolds(track.id)) {
+          // Already buffered by the 30 s pre-load: swap to it instead of
+          // discarding it for a cold request (#1301). The swap flips
+          // `audioEl`, re-running this effect — `lastManualSrc` makes that
+          // re-run return early, exactly as for the onEnded swap.
+          const standby = this.standbyNativeEl!;
+          this.lastManualSrc = track.id;
+          this.swapToStandby(audio, standby);
+          this.playIfIntended(standby);
         } else {
           this.assignSource(audio, this.streamSrc(track.id, token));
           // See the preserve branch above for why play() is gated here.
@@ -705,6 +716,47 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     audio.src = src;
   }
 
+  /** Whether the standby element is buffering exactly the resource `trackId` would load now. */
+  private standbyHolds(trackId: string): boolean {
+    return (
+      this.standbyNativeEl !== null &&
+      this.preloadedTrackId === trackId &&
+      this.preloadedSrc === this.streamSrc(trackId)
+    );
+  }
+
+  /**
+   * Make the pre-buffered standby element the active one. Shared by onEnded
+   * (natural advance) and a committed load (manual Next, #1301); the caller
+   * starts playback, since only onEnded plays unconditionally.
+   */
+  private swapToStandby(outgoing: HTMLAudioElement, standby: HTMLAudioElement): void {
+    const pendingUrl = this.lastManualObjectUrl;
+    this.lastManualObjectUrl = null;
+    outgoing.pause();
+    outgoing.src = '';
+    if (pendingUrl) URL.revokeObjectURL(pendingUrl);
+
+    // Flip which element Effects reference.
+    this.primaryIsA.update((v) => !v);
+    this.preloadedTrackId = null;
+    this.preloadedSrc = null;
+    // New load on a new element — bump the generation so any stale event still
+    // queued on the now-cleared old element can't make it through (the new
+    // listeners capture the bumped value). Hand-rolled rather than via
+    // `assignSource` because the standby's src is already set (that is the
+    // point of the preload) and the re-bind has to target the standby.
+    this.loadGeneration += 1;
+    // The preloaded element is different audio, with its own recovery budget.
+    this.recoveryAttempts = 0;
+    this.bindAudioListeners(standby);
+
+    // Usually clears within ms (the standby is buffered) — the 250ms visibility
+    // delay means no spinner unless the swap actually stalls.
+    this.player.setBuffering(true);
+    this.player.setBufferedRanges([]);
+  }
+
   /**
    * Start playback only if the user actually asked for it. An `AbortError`
    * from a load this one superseded is expected and ignored — only a revoked
@@ -958,7 +1010,8 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
               const standby = this.standbyNativeEl;
               if (standby) {
                 this.preloadedTrackId = nextTrack.id;
-                standby.src = this.streamSrc(nextTrack.id);
+                this.preloadedSrc = this.streamSrc(nextTrack.id);
+                standby.src = this.preloadedSrc;
                 standby.preload = 'auto';
                 // load() without play() — just buffer the initial bytes
                 standby.load();
@@ -1064,33 +1117,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
 
           if (isPreloaded && standby) {
             // Standby element has the next track already buffered — swap instantly.
-            // Clean up the element that just finished.
-            const pendingUrl = this.lastManualObjectUrl;
-            this.lastManualObjectUrl = null;
-            audio.pause();
-            audio.src = '';
-            if (pendingUrl) URL.revokeObjectURL(pendingUrl);
-
-            // Flip which element Effects reference.
-            this.primaryIsA.update((v) => !v);
-            this.preloadedTrackId = null;
-            // New load on a new element — bump the generation so any stale
-            // event still queued on the now-cleared old element can't make
-            // it through (the new listeners capture the bumped value). Hand
-            // -rolled rather than via `assignSource` because the standby's src
-            // is already set (that is the point of the preload) and the
-            // re-bind has to target the standby, not the element we are in.
-            this.loadGeneration += 1;
-            // Gapless swap — the preloaded element is different audio too.
-            this.recoveryAttempts = 0;
-
-            // Re-bind all audio listeners to the now-active element.
-            this.bindAudioListeners(standby);
-
-            // Usually clears within ms (the standby is buffered) — the 250ms visibility
-            // delay means no spinner unless the swap actually stalls.
-            this.player.setBuffering(true);
-            this.player.setBufferedRanges([]);
+            this.swapToStandby(audio, standby);
 
             // Start playback — the element is already buffered so this is near-instant.
             standby.play().catch((err) => {
