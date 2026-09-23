@@ -1220,6 +1220,17 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
     'INTEGER NOT NULL DEFAULT 0',
   );
 
+  // Enrichment file-tag writes waiting to be flushed once per song (#1311).
+  // `fields` names the columns to mirror; values are re-read from the song row
+  // at flush time, never stored here. See enrichment/pending-tag-writes.ts.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_pending_tag_writes (
+      song_id     TEXT PRIMARY KEY,
+      fields      TEXT NOT NULL,
+      enqueued_at INTEGER NOT NULL
+    )
+  `);
+
   db.run(`
     CREATE TABLE IF NOT EXISTS library_artists (
       id              TEXT PRIMARY KEY,

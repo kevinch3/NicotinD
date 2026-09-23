@@ -88,6 +88,11 @@ export const SONG_CARRY_EXEMPT: readonly SongCarryTable[] = [
     why: 'a ledger of attempts against a file no longer at that id; meaningless once moved',
   },
   {
+    table: 'library_pending_tag_writes',
+    column: 'song_id',
+    why: 'holds field names, not values: the flush mirrors the song row, and a re-minted row was rebuilt from file tags that never got them, so the tasks re-run and re-queue on the new id. The flush drops rows whose song is gone (#1311)',
+  },
+  {
     table: 'play_events',
     column: 'song_id',
     why: 'defended by snapshot instead: title/artist/album are copied onto the event precisely so history survives an id re-mint (db.ts)',

@@ -64,6 +64,7 @@ import {
   leastRecentlyAttemptedOrderSql,
   noteAnalysisAttempt,
 } from './analysis-failures.js';
+import { enqueueTagWrite, type PendingTagField } from './pending-tag-writes.js';
 
 /**
  * Enrichment task registry — the single extension point for the windowed library
@@ -115,6 +116,9 @@ export interface EnrichmentContext {
    *  re-anchor the failure ledger after a tag write moves the file (issue #690);
    *  optional so a caller that never writes tags needn't provide it. */
   fileSize?: (abs: string) => number | null;
+  /** Queue tag writes for a per-song flush instead of writing now (#1311). The
+   *  runner that sets it must call `flushPendingTagWrites` after its tasks. */
+  deferTagWrites?: boolean;
   analyzeBpm: (abs: string, onError?: (err: unknown) => void) => Promise<number | null>;
   /** Sidecar tempo detection (library-relative path) — preferred over the local
    *  music-tempo analyzer, which makes frequent octave (half/double) errors.
@@ -448,11 +452,16 @@ function noteItemFailure(
 }
 
 /**
- * Write a task's result into the file **and** re-anchor the song's file-size
+ * Mirror a task's result into the file **and** re-anchor the song's file-size
  * bookkeeping. Every tag write moves the file by a few hundred bytes, which the
  * failure ledger would otherwise read as a replacement and use to reset another
  * task's attempt counter — the livelock behind issue #690. Always prefer this
  * over a bare `ctx.writeTags` from inside a task.
+ *
+ * With `ctx.deferTagWrites` (the production context) the write is queued instead
+ * and flushed once per song after the batch settles (#1311) — the flush does the
+ * same write and the same re-anchoring. The caller must already have written the
+ * values to the DB: the flush mirrors the song row, not `tags`.
  *
  * Best-effort like the bare write it replaces: a failed write is swallowed and
  * leaves the ledger untouched.
@@ -464,6 +473,13 @@ async function writeTagsRebased(
   abs: string,
   tags: Parameters<EnrichmentContext['writeTags']>[1],
 ): Promise<boolean> {
+  if (ctx.deferTagWrites) {
+    const fields = (Object.keys(tags) as PendingTagField[]).filter(
+      (k) => tags[k as keyof typeof tags] !== undefined,
+    );
+    enqueueTagWrite(db, songId, fields);
+    return true;
+  }
   const ok = await ctx.writeTags(abs, tags).catch(() => false);
   if (!ok) return false;
   const size = ctx.fileSize?.(abs) ?? null;
@@ -519,6 +535,7 @@ export function createEnrichmentContext(deps: {
     ffmpegAvailable: realFfmpegAvailable,
     readTags: (abs) => readAudioTags(abs),
     writeTags: (abs, tags) => writeAudioTags(abs, tags),
+    deferTagWrites: true,
     fileSize: (abs) => {
       try {
         return statSync(abs).size;

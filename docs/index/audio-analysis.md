@@ -15,6 +15,10 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   is unaffected), and the manual way to stand down for another GPU tenant. The failure tally's
   session boundary is one continuous drain (`drained`), not a time window.
   → [library-processing.md](../library-processing.md)
+- **Coalesced enrichment tag writes**: tasks write the DB now and queue the file mirror per song in
+  `library_pending_tag_writes`; the processor flushes one merged write per song after each batch.
+  `enqueueTagWrite`, `flushPendingTagWrites`, `deferTagWrites`.
+  → [library-processing.md](../library-processing.md)
 - **Analysis sidecar GPU behaviour**: `RegistryHolder` + `IdleReleaseGuard` drop the warm registry
   after an idle timeout and reload lazily; `peek()` reads without touching the guard and `can_serve()`
   backs `/health`; `musicnn_batch_size` bounds the one predictor that dominated VRAM.

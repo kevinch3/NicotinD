@@ -28,6 +28,7 @@ import {
 import type { AudioFeaturesClient } from './audio-features-client.js';
 import { captureProcessingFailure, type ProcessingFailureReport } from '../observability/sentry.js';
 import { countSkippedFiles } from './enrichment/analysis-failures.js';
+import { countPendingTagWrites, flushPendingTagWrites } from './enrichment/pending-tag-writes.js';
 import { maybeRunDailyCoverCachePrune } from './cover-cache-prune.js';
 import { optimizeAlbum } from './metadata-optimize.js';
 
@@ -256,6 +257,13 @@ export class LibraryProcessingService extends EventEmitter {
     // stranded download must not depend on enrichment being enabled.
     reapIdleItems(this.db, this.now().getTime());
     const settings = getProcessingSettings(this.db);
+    if (!settings.enabled || settings.paused) {
+      // Tag writes queued before the switch (or before a restart) still land:
+      // they mirror values already in the DB, so they are not new enrichment.
+      if (countPendingTagWrites(this.db) > 0) {
+        await this.guarded(() => this.flushTagWrites(this.contextFactory(settings)));
+      }
+    }
     if (!settings.enabled) {
       this.publish(settings, 'disabled');
       return;
@@ -476,12 +484,26 @@ export class LibraryProcessingService extends EventEmitter {
       this.emitStatus(settings);
     }
 
+    // Every task has settled for this batch's songs: mirror each song's queued
+    // tags into its file in one write (#1311). Also drains rows a restart left.
+    await this.flushTagWrites(ctx);
+
     // Leave phase 'running' between batches; the run's terminal state is set once
     // by finishRun() so SSE clients see a single running→idle completion (not one
     // per batch during a multi-batch drain).
     this.status = { ...this.status, currentTask: null };
     this.emitStatus(settings);
     return { applied: appliedTotal, byTask };
+  }
+
+  /** Write every song's queued enrichment tags once. Never throws upward. */
+  private async flushTagWrites(ctx: EnrichmentContext): Promise<void> {
+    try {
+      const r = await flushPendingTagWrites(this.db, ctx);
+      if (r.written + r.failed + r.dropped > 0) log.info(r, 'enrichment tag writes flushed');
+    } catch (err) {
+      log.warn({ err }, 'enrichment tag-write flush failed');
+    }
   }
 
   /** Settle a finished run to idle and emit once, so clients get one completion. */

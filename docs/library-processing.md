@@ -269,6 +269,44 @@ This is why a backfill that writes only the DB (e.g. a script killed mid-run bef
 its tag writes) reverts, while the background task — which completes tag+DB per song —
 sticks.
 
+### Enrichment tag writes are coalesced per song (issue #1311)
+
+Several tasks mirror a new song's results into its file (`bpm`, `key`, `energy`,
+`audio-features`, and the three genre fills). Each write is a container rewrite — on Opus a
+picture read, a remux and a re-attach — and each moves the file's mtime and size, which are in
+the transcode-cache key (`transcodeCacheKey`), the waveform-cache key and the scanner's stat
+cache. Up to five writes per new song meant five invalidations of each and five re-parses.
+
+So the DB write stays immediate and the **file** write is queued: with `deferTagWrites` set on
+the context (the production `createEnrichmentContext` sets it), `writeTagsRebased` calls
+`enqueueTagWrite`, which merges the field names into the song's row in
+`library_pending_tag_writes`. `LibraryProcessingService` calls `flushPendingTagWrites` at the end
+of every batch — after every task has run over the batch's songs — so a new song gets one write
+carrying every field. A tick with enrichment disabled or paused still flushes what is queued: it
+mirrors values already in the DB rather than doing new enrichment.
+
+- **Per song, never a timer.** The queue is a table keyed by song id and the flush walks it; there
+  is no debounce slot for one song's flush to cancel another's. A song's failure is logged and
+  dropped for that song alone.
+- **Persisted.** A restart loses nothing: the first batch (or disabled tick) after boot flushes
+  the rows the previous process left.
+- **Values are re-read, never stored.** The row holds field names only; the flush reads every
+  value from `library_songs` / `library_song_genres` as it is at flush time. A curator edit made
+  between enqueue and flush is therefore what gets written — a stale derived value cannot
+  overwrite a correction. An edit that lands *while* the write is in flight is caught by
+  re-reading after the write: the row is kept and the next flush mirrors the newer value.
+- **Same write path.** The flush calls the context's `writeTags` (`writeAudioTags`), so picture
+  preservation (#1280), the refusal on an unreadable picture and the mp4 freeform carry all
+  apply unchanged; then it re-anchors the ledger via `rebaseAnalysisFileSize` exactly as the
+  per-task write did (#690, below).
+- **A vanished song is dropped, not carried.** A row whose song is gone gets no write and is
+  deleted. It is `SONG_CARRY_EXEMPT`: a re-minted song was rebuilt from file tags that never got
+  the values, so its columns are NULL and the tasks re-run and re-queue on the new id.
+- **A failed write is best-effort, as before.** It is logged and the row dropped — the DB is
+  authoritative and the tag a mirror, the same contract as the per-task write it replaced.
+
+Scripts and fakes that leave `deferTagWrites` unset keep the immediate write.
+
 All IO-heavy primitives come from the injected `EnrichmentContext`
 (`ffmpegAvailable`, `readTags`, `writeTags`, `analyzeBpm`, `lookupGenre`,
 `fileExists`), so tasks are unit-tested with fakes — no real ffmpeg/Lidarr.
@@ -445,9 +483,9 @@ table (keyed `(song_id, task)`) fix that:
 - **Our own tag writes must not look like a re-download** (issue #690). Enrichment writes
   its results back into the file, moving its size by a few hundred bytes; the ledger then
   read that as new bytes and reset `fail_count` to 1, so the file could never reach the
-  cap. Tasks therefore write through `writeTagsRebased`, which calls
-  `rebaseAnalysisFileSize` to move `library_songs.size` and every ledger row for the song
-  to the post-write size together. A *genuine* outside change — which nothing rebases —
+  cap. Tasks therefore write through `writeTagsRebased` — or its deferred flush, which does
+  the same — which calls `rebaseAnalysisFileSize` to move `library_songs.size` and every
+  ledger row for the song to the post-write size together. A *genuine* outside change — which nothing rebases —
   stays the only thing that resets a counter. On prod this livelocked 62 songs and
   half-landed whole albums, landing 7 of 10 tracks and hiding the album entirely.
 - **Scope now covers the decode + metadata-resolution tasks**, each
