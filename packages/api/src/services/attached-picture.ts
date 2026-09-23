@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileAsync } from './exec-file.js';
 import { existsSync, renameSync, rmSync, statSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
 import { createLogger } from '@nicotind/core';
@@ -58,7 +58,10 @@ export function usesAttachedPicture(path: string): boolean {
  * verified, so every failure is a warning and a `false`, matching
  * `attachPictureToOpus`.
  */
-export function attachPictureAsStream(audioPath: string, coverPath: string): boolean {
+export async function attachPictureAsStream(
+  audioPath: string,
+  coverPath: string,
+): Promise<boolean> {
   const ext = extname(audioPath).toLowerCase();
   const spec = PICTURE_MUXERS[ext];
   if (!spec) {
@@ -78,38 +81,34 @@ export function attachPictureAsStream(audioPath: string, coverPath: string): boo
   };
 
   try {
-    execFileSync(
-      ffmpegBinary(),
-      [
-        '-hide_banner',
-        '-loglevel',
-        'error',
-        '-i',
-        audioPath,
-        '-i',
-        coverPath,
-        // Audio from input 0, picture from input 1. Both stream-copied: the
-        // point is to add art to a verified encode, never to re-encode it.
-        '-map',
-        '0:a',
-        '-map',
-        '1:v',
-        '-c:a',
-        'copy',
-        '-c:v',
-        'copy',
-        // Without this the image is an ordinary video stream and players try to
-        // treat the file as a video rather than showing the cover.
-        '-disposition:v',
-        'attached_pic',
-        ...spec.args,
-        '-f',
-        spec.muxer,
-        '-y',
-        tmp,
-      ],
-      { stdio: 'pipe' },
-    );
+    await execFileAsync(ffmpegBinary(), [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-i',
+      audioPath,
+      '-i',
+      coverPath,
+      // Audio from input 0, picture from input 1. Both stream-copied: the
+      // point is to add art to a verified encode, never to re-encode it.
+      '-map',
+      '0:a',
+      '-map',
+      '1:v',
+      '-c:a',
+      'copy',
+      '-c:v',
+      'copy',
+      // Without this the image is an ordinary video stream and players try to
+      // treat the file as a video rather than showing the cover.
+      '-disposition:v',
+      'attached_pic',
+      ...spec.args,
+      '-f',
+      spec.muxer,
+      '-y',
+      tmp,
+    ]);
     if (!existsSync(tmp) || statSync(tmp).size === 0) {
       cleanup();
       return false;

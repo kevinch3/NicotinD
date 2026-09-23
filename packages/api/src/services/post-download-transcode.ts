@@ -1,4 +1,5 @@
-import { execFileSync, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
+import { execFileAsync } from './exec-file.js';
 import { readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, extname } from 'node:path';
 import { createLogger, ID3_EXTS } from '@nicotind/core';
@@ -397,9 +398,9 @@ async function carryEmbeddedCover(
     const pic = await extractEmbeddedPicture(sourcePath);
     if (!pic) return false;
     writeFileSync(raw, Buffer.from(pic.data));
-    const prepared = preparePicture(raw, scratch, strategy.maxEmbeddedPictureBytes);
+    const prepared = await preparePicture(raw, scratch, strategy.maxEmbeddedPictureBytes);
     if (!prepared) return false; // too large to embed readably — say so, move on
-    return strategy.embedArt(outPath, prepared.path);
+    return await strategy.embedArt(outPath, prepared.path);
   } catch (err) {
     log.debug({ err, sourcePath }, 'no cover carried across the transcode');
     return false;
@@ -645,18 +646,20 @@ async function readSourceDurationSec(absPath: string): Promise<number | null> {
 async function readOutputDurationSec(absPath: string): Promise<number | null> {
   try {
     const ffprobe = ffmpegBinary().replace(/ffmpeg$/, 'ffprobe');
-    const out = execFileSync(
-      ffprobe,
-      [
-        '-v',
-        'error',
-        '-show_entries',
-        'format=duration',
-        '-of',
-        'default=noprint_wrappers=1:nokey=1',
-        absPath,
-      ],
-      { stdio: ['ignore', 'pipe', 'ignore'], timeout: 10_000 },
+    const out = (
+      await execFileAsync(
+        ffprobe,
+        [
+          '-v',
+          'error',
+          '-show_entries',
+          'format=duration',
+          '-of',
+          'default=noprint_wrappers=1:nokey=1',
+          absPath,
+        ],
+        { timeout: 10_000 },
+      )
     )
       .toString()
       .trim();

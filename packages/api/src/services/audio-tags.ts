@@ -756,10 +756,10 @@ async function writeFfmpegTags(
   // (#1280). Read it first and re-attach it to the output before the rename;
   // a picture that is present but unreadable refuses the write instead.
   const isOgg = ext === '.opus' || ext === '.ogg';
-  let oggPicture: ReturnType<typeof readOggPicture> = null;
+  let oggPicture: Awaited<ReturnType<typeof readOggPicture>> = null;
   if (isOgg) {
     try {
-      oggPicture = readOggPicture(filepath);
+      oggPicture = await readOggPicture(filepath);
     } catch (err) {
       log.warn(
         { err, filepath },
@@ -832,10 +832,13 @@ async function writeFfmpegTags(
       }
       resolve(false);
     });
-    proc.on('close', (code) => {
+    proc.on('close', async (code) => {
       if (code === 0) {
         try {
-          if (oggPicture && !attachPictureDataToOpus(tmpPath, oggPicture.data, oggPicture.mimeType))
+          if (
+            oggPicture &&
+            !(await attachPictureDataToOpus(tmpPath, oggPicture.data, oggPicture.mimeType))
+          )
             throw new Error('embedded cover not re-attached');
           if (mp4Carry && !writeFreeformAtoms(tmpPath, mp4Carry.carried, mp4Carry.values))
             throw new Error('mp4 freeform atoms not written');

@@ -367,8 +367,14 @@ describe('AcquireWatcher (registry-driven)', () => {
       scanIncremental: scan,
     });
     const id = await watcher.submit('https://example.com/x');
-    // While organize is blocked, state must still be 'running'.
-    await new Promise((r) => setTimeout(r, 20));
+    // While organize is blocked, state must still be 'running'. Wait for the
+    // call rather than a fixed delay: the bitrate probe before it is an async
+    // ffprobe spawn (#1304), not a synchronous one.
+    const deadline = Date.now() + 5000;
+    while (organize.mock.calls.length === 0 && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(organize).toHaveBeenCalled();
     expect(watcher.getJob(id)?.state).toBe('running');
     resolveOrganize();
     await waitForState(watcher, id, 'done');

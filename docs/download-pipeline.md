@@ -141,6 +141,15 @@ right to decline a second copy. Only the bookkeeping was wrong.
 
 FLAC is overkill for web streaming and large on disk. `downloads.transcodeLossless` is **default-on at 192 kbps** (config / `NICOTIND_TRANSCODE_LOSSLESS_ENABLED` + `NICOTIND_TRANSCODE_LOSSLESS_BITRATE`; set `enabled:false` to keep originals). When enabled, lossless downloads are transcoded to Opus and **already-lossy files (MP3/AAC/…) are left untouched**. The lossless set is shared (`isLossless()` in `library-track-select.ts`); the encoder is `post-download-transcode.ts` `transcodeToLibraryFormat()` (ffmpeg `libopus`, replace-in-place: write `<name>.opus`, drop the original). Everything is gated on `ffmpegAvailable()`.
 
+**No blocking subprocesses on this path (#1304).** Every ffmpeg/ffprobe call made per ingested
+track — the output duration check, the cover re-compress ladder (`preparePicture`), the cover
+attach (`attachPictureToOpus`, `attachPictureAsStream`), the Ogg picture read-back
+(`readOggPicture`) and the staged-file bitrate probe (`probeAudioFile`, bounded to 4 at once) — goes
+through `execFileAsync` (`services/exec-file.ts`). They used `execFileSync`, which froze every HTTP
+request and stream for the length of each call and serialized the `TRANSCODE_CONCURRENCY` pool on
+them. `exec-file.test.ts` fails if `execFileSync(` reappears in those files; the one left in
+`transcode.ts` is the memoized boot-time `ffmpeg -version` presence probe.
+
 The in-progress encode is written to a **dot-prefixed** temp path
 (`transcodeTempPathFor`) so that a run killed mid-write — a deploy restart, an OOM — leaves a file
 the scanner cannot ingest. Every *handled* failure already unlinks the temp; the hidden name is

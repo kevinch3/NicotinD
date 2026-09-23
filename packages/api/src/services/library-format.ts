@@ -42,7 +42,7 @@ export interface FormatStrategy {
    */
   maxEmbeddedPictureBytes: number | null;
   /** Attach a prepared cover to an encoded file. Never throws; `false` means "declined". */
-  embedArt(path: string, coverPath: string): boolean;
+  embedArt(path: string, coverPath: string): Promise<boolean>;
   /**
    * Apply a loudness offset without re-encoding, or `null` when the container
    * has no in-header gain field.

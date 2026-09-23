@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileAsync } from './exec-file.js';
 import { existsSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
 import { createLogger } from '@nicotind/core';
@@ -95,11 +95,11 @@ export interface PreparedPicture {
  * nothing on either ladder gets under the cap — an explicit "do not embed
  * this" the caller has to handle, rather than a path that fails later.
  */
-export function preparePicture(
+export async function preparePicture(
   coverPath: string,
   scratchPath: string,
   maxBytes: number | null = MAX_EMBEDDED_PICTURE_BYTES,
-): PreparedPicture | null {
+): Promise<PreparedPicture | null> {
   const bytes = statSync(coverPath).size;
   // `null` means the target container's reader imposes no ceiling we could
   // measure — mp3 reads a 6.5 MB cover back byte-exact where Ogg throws above
@@ -126,7 +126,7 @@ export function preparePicture(
       args.push('-q:v', String(q), '-y', scratchPath);
 
       try {
-        execFileSync(ffmpegBinary(), args, { stdio: 'pipe' });
+        await execFileAsync(ffmpegBinary(), args);
       } catch (err) {
         // A failure here is about the input, not the setting, so trying the
         // remaining eight combinations would just be eight more failures.
@@ -221,9 +221,13 @@ const escapeFfmetadata = (s: string): string => s.replace(/[=;#\\\n]/g, (c) => '
  * half-written library file. The temp is dot-prefixed for the same reason
  * `transcodeTempPathFor` is: a leaked one must not be scanned as a track.
  */
-export function attachPictureToOpus(opusPath: string, coverPath: string): boolean {
+export async function attachPictureToOpus(opusPath: string, coverPath: string): Promise<boolean> {
   try {
-    return attachPictureDataToOpus(opusPath, readFileSync(coverPath), mimeForCover(coverPath));
+    return await attachPictureDataToOpus(
+      opusPath,
+      readFileSync(coverPath),
+      mimeForCover(coverPath),
+    );
   } catch (err) {
     log.warn({ err, opusPath }, 'could not attach cover art');
     return false;
@@ -231,7 +235,11 @@ export function attachPictureToOpus(opusPath: string, coverPath: string): boolea
 }
 
 /** {@link attachPictureToOpus} for image bytes already in memory. */
-export function attachPictureDataToOpus(opusPath: string, data: Buffer, mimeType: string): boolean {
+export async function attachPictureDataToOpus(
+  opusPath: string,
+  data: Buffer,
+  mimeType: string,
+): Promise<boolean> {
   const dir = dirname(opusPath);
   const stem = basename(opusPath, extname(opusPath));
   const meta = join(dir, `.${stem}.nicotind-art.ffmeta`);
@@ -249,31 +257,27 @@ export function attachPictureDataToOpus(opusPath: string, data: Buffer, mimeType
   try {
     const b64 = pictureBlockBase64(data, mimeType);
     writeFileSync(meta, ';FFMETADATA1\nMETADATA_BLOCK_PICTURE=' + escapeFfmetadata(b64) + '\n');
-    execFileSync(
-      ffmpegBinary(),
-      [
-        '-hide_banner',
-        '-loglevel',
-        'error',
-        '-i',
-        opusPath,
-        '-f',
-        'ffmetadata',
-        '-i',
-        meta,
-        '-map',
-        '0:a',
-        '-map_metadata',
-        '1',
-        '-c:a',
-        'copy',
-        '-f',
-        'ogg',
-        '-y',
-        tmp,
-      ],
-      { stdio: 'pipe' },
-    );
+    await execFileAsync(ffmpegBinary(), [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-i',
+      opusPath,
+      '-f',
+      'ffmetadata',
+      '-i',
+      meta,
+      '-map',
+      '0:a',
+      '-map_metadata',
+      '1',
+      '-c:a',
+      'copy',
+      '-f',
+      'ogg',
+      '-y',
+      tmp,
+    ]);
     if (!existsSync(tmp) || statSync(tmp).size === 0) {
       cleanup();
       return false;
@@ -303,10 +307,11 @@ export function attachPictureDataToOpus(opusPath: string, data: Buffer, mimeType
  * a front cover with no description; the type and description of a
  * `METADATA_BLOCK_PICTURE` are not carried.
  */
-export function readOggPicture(path: string): { data: Buffer; mimeType: string } | null {
-  const streams = execFileSync(
-    ffmpegBinary().replace(/ffmpeg$/, 'ffprobe'),
-    [
+export async function readOggPicture(
+  path: string,
+): Promise<{ data: Buffer; mimeType: string } | null> {
+  const streams = (
+    await execFileAsync(ffmpegBinary().replace(/ffmpeg$/, 'ffprobe'), [
       '-v',
       'error',
       '-select_streams',
@@ -316,15 +321,24 @@ export function readOggPicture(path: string): { data: Buffer; mimeType: string }
       '-of',
       'csv=p=0',
       path,
-    ],
-    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
-  ).trim();
+    ])
+  )
+    .toString()
+    .trim();
   if (streams === '') return null;
-  const data = execFileSync(
-    ffmpegBinary(),
-    ['-v', 'error', '-i', path, '-map', '0:v:0', '-c', 'copy', '-f', 'image2pipe', '-'],
-    { stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 },
-  );
+  const data = await execFileAsync(ffmpegBinary(), [
+    '-v',
+    'error',
+    '-i',
+    path,
+    '-map',
+    '0:v:0',
+    '-c',
+    'copy',
+    '-f',
+    'image2pipe',
+    '-',
+  ]);
   if (data.length === 0) throw new Error('embedded picture present but empty');
   const isPng = data.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
   return { data, mimeType: isPng ? 'image/png' : 'image/jpeg' };
