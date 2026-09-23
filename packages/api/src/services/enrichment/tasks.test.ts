@@ -1681,6 +1681,59 @@ describe('genre-audio task', () => {
     expect(genreAudio.countPending(db)).toBe(0);
   });
 
+  it('reuses the prediction audio-features stored instead of re-analyzing (#1312)', async () => {
+    seedSong('a', { artist: 'Foo', title: 'Bar' });
+    const features = getTask('audio-features')!;
+    const first = await features.run(
+      db,
+      ctx({
+        analyzeAudioFeatures: async () =>
+          audioGenreResult({ genre: 'Rock', style: 'Alternative Rock', confidence: 0.82 }),
+      }),
+      25,
+    );
+    expect(first.applied).toBe(1);
+    ledgerGenreFailed('a');
+
+    let calls = 0;
+    const res = await genreAudio.run(
+      db,
+      ctx({
+        analyzeAudioFeatures: async () => {
+          calls++;
+          return audioGenreResult({ genre: 'Jazz', style: null, confidence: 0.9 });
+        },
+      }),
+      25,
+    );
+    expect(calls).toBe(0);
+    expect(res.applied).toBe(1);
+    expect(getGenreOverride(db, 'song', 'a')?.genres).toEqual(['Rock']);
+  });
+
+  it('asks the sidecar again when the stored prediction is for other bytes', async () => {
+    seedSong('a', { artist: 'Foo', title: 'Bar' });
+    db.run(
+      `INSERT INTO library_embeddings (song_id, model, dim, vec, file_size, genre_json, updated_at)
+       VALUES ('a', 'm', 1, x'00000000', 999, ?, 1)`,
+      [JSON.stringify({ label: 'Rock', style: null, confidence: 0.9 })],
+    );
+    ledgerGenreFailed('a');
+    let calls = 0;
+    await genreAudio.run(
+      db,
+      ctx({
+        analyzeAudioFeatures: async () => {
+          calls++;
+          return audioGenreResult({ genre: 'Jazz', style: null, confidence: 0.9 });
+        },
+      }),
+      25,
+    );
+    expect(calls).toBe(1);
+    expect(getGenreOverride(db, 'song', 'a')?.genres).toEqual(['Jazz']);
+  });
+
   it('writes a confident audio-inferred genre as an essentia-sourced override', async () => {
     seedSong('a', { artist: 'Foo', title: 'Bar' });
     ledgerGenreFailed('a');
