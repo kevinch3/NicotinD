@@ -13,8 +13,8 @@ android {
         // /versionCode\s*=?\s*["'(]*([0-9]+)/ to decide what a tag contains, and a
         // Groovy expression matches nothing — AutoUpdateMode would silently stop
         // seeing new releases. build-gradle.test.ts pins both to package.json.
-        versionCode 8059
-        versionName "0.8.59"
+        versionCode 8060
+        versionName "0.8.60"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

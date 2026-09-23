@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.60](https://github.com/kevinch3/NicotinD/compare/v0.8.59...v0.8.60) (2026-09-23)
+
+### Features
+
+* **home:** a Shelves | Mosaic switch on the home, remembered per user ([#1337](https://github.com/kevinch3/NicotinD/issues/1337)) ([9d79635](https://github.com/kevinch3/NicotinD/commit/9d79635309630259c167c9a43c0376c52dd0be87)), references [#1321](https://github.com/kevinch3/NicotinD/issues/1321) [#1300](https://github.com/kevinch3/NicotinD/issues/1300)
+
+### Performance
+
+* **backup:** take the daily database snapshot in a worker, not on the server's connection ([#1342](https://github.com/kevinch3/NicotinD/issues/1342)) ([871864f](https://github.com/kevinch3/NicotinD/commit/871864f19e870a3352415da7ba104ec2812db1f4)), references [#1313](https://github.com/kevinch3/NicotinD/issues/1313)
+* **covers:** cache on-disk cover art by source, not once per song ([#1340](https://github.com/kevinch3/NicotinD/issues/1340)) ([dde86b7](https://github.com/kevinch3/NicotinD/commit/dde86b7eb90e09728ba3deacc3ecb00370ddddc2)), closes [#1310](https://github.com/kevinch3/NicotinD/issues/1310)
+* **enrichment:** coalesce enrichment file-tag writes into one write per song ([#1341](https://github.com/kevinch3/NicotinD/issues/1341)) ([e155428](https://github.com/kevinch3/NicotinD/commit/e1554284594e8f68026b4a490b116e250e49d22d)), references [#690](https://github.com/kevinch3/NicotinD/issues/690)
+* **scanner:** a full scan writes only the song rows and links that changed ([#1343](https://github.com/kevinch3/NicotinD/issues/1343)) ([3956447](https://github.com/kevinch3/NicotinD/commit/3956447c92b8938fb87f82d31214da449e46278b)), references [#1309](https://github.com/kevinch3/NicotinD/issues/1309)
 ## [0.8.59](https://github.com/kevinch3/NicotinD/compare/v0.8.58...v0.8.59) (2026-09-23)
 
 ### Features

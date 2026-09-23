@@ -1,0 +1,5 @@
+• home: a Shelves | Mosaic switch on the home, remembered per user (#1337)
+• backup: take the daily database snapshot in a worker, not on the server's connection (#1342)
+• covers: cache on-disk cover art by source, not once per song (#1340)
+• enrichment: coalesce enrichment file-tag writes into one write per song (#1341)
+• scanner: a full scan writes only the song rows and links that changed (#1343)
