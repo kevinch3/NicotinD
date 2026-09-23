@@ -26,12 +26,9 @@ line in its `docs/index/<section>.md` only if the *name* or the *location* chang
 ## Every Task Gets Its Own Worktree
 
 **Never work in the shared main checkout.** Branch a worktree from `origin/master` first, then run
-`scripts/link-worktree.sh` — a fresh worktree has no `node_modules`, and a wholesale symlink of one
-resolves the relative `@nicotind/*` links back to the main checkout, so the worktree compiles against
-another commit's `core`. That failure is silent in the direction that matters: a file that cannot
-link takes its whole test file out of the run while the summary still says "pass". The script also
-refuses to link a store that has drifted off `bun.lock` — a stale version beside the locked one
-(#1088), or one `bun install` never pruned (#1266) — fix the main checkout, then re-link.
+`scripts/link-worktree.sh` — it runs `bun install --frozen-lockfile` there (~2 s, hardlinked from
+bun's cache), so each tree builds against its **own** lockfile.
+→ [dependency-management.md](docs/dependency-management.md#worktrees-install-their-own-node_modules)
 
 Sessions run in parallel and share this checkout. Two of them in one tree means one silently commits
 the other's uncommitted work, or clobbers it. Before planning, sweep for stranded work

@@ -159,9 +159,8 @@ describe('staleEntries', () => {
 
 describe('the real repository', () => {
   it('has an install-hook package to check (the denominator)', () => {
-    // Deliberately NOT asserting the repo is clean here. A worktree shares the main
-    // checkout's installed tree (scripts/link-worktree.sh), so after a lockfile change
-    // this tree still reflects the PREVIOUS install until main re-installs. Cleanliness
+    // Deliberately NOT asserting the repo is clean here: after a lockfile change the
+    // installed tree reflects the PREVIOUS install until someone re-installs. Cleanliness
     // is asserted by `bun run check:install-scripts` in CI, which runs against a tree
     // `bun install` just built from the lockfile. What belongs here is the logic and the
     // denominator.
