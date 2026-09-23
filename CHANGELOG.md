@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.55](https://github.com/kevinch3/NicotinD/compare/v0.8.54...v0.8.55) (2026-09-23)
+
+### Performance
+
+* **library:** a song delete reclassifies its album instead of rescanning the whole library ([#1325](https://github.com/kevinch3/NicotinD/issues/1325)) ([d8129de](https://github.com/kevinch3/NicotinD/commit/d8129de2518b4492a42e630b81875e2c57f755bd)), closes [#1303](https://github.com/kevinch3/NicotinD/issues/1303)
 ## [0.8.54](https://github.com/kevinch3/NicotinD/compare/v0.8.53...v0.8.54) (2026-09-23)
 
 ### Performance
