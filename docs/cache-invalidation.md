@@ -339,6 +339,16 @@ Dry-run against the live prod cache: 19,733 entity-keyed + 9,455 content-address
 **4,803 past grace → 1,566 MB reclaimed**, 727 recent orphans spared, valve correctly silent at a
 0.28 ratio.
 
+**Source-keyed disk art (#1310).** On-disk art is now stored once per image as `d_<sha1>` with a
+`<id>.ref` pointer per song/album id (see [library-scanner.md](library-scanner.md) "Native streaming
++ cover art"). The prune follows: a `.ref` is entity-keyed and orphan-swept like any other file; a
+`d_` image is live while a *live* id's pointer names it and is swept after the grace period once none
+does (its mtime spares one written by a request whose pointer is still landing). The un-prefixed
+`<songId>` / `<albumId>` images the per-id cache wrote are never read again and are reclaimed as
+**superseded** on the next daily run, without grace — their owners being alive is exactly why the
+orphan rule could never reach them. Un-prefixed files keyed on an *artist* id are an override's
+thumbnails, still served, and keep the orphan rule.
+
 ## Path-keyed orphans: `scan_cache` and `acquisitions` (issue #313)
 
 Two side tables key on **path**, not on `library_songs.id`, and so were invisible to the #259

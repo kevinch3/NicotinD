@@ -341,6 +341,39 @@ describe('PUT /albums/:id/cover — upload a custom image', () => {
     expect(audit).toContainEqual({ action: 'album.cover', target_id: 'album-1' });
   });
 
+  it('an upload replacing the folder image reaches every song id, not just the album (#1310)', async () => {
+    const app = makeApp();
+    const sharp = (await import('sharp')).default;
+    const oldCover = await sharp({
+      create: { width: 50, height: 50, channels: 3, background: { r: 255, g: 0, b: 0 } },
+    })
+      .webp()
+      .toBuffer();
+    writeFileSync(join(musicDir, 'Aphex Twin', 'Drukqs', 'cover.webp'), oldCover);
+
+    // Warm both ids on the old image.
+    const songBefore = await app.request('/api/cover/song-1');
+    const albumBefore = await app.request('/api/cover/album-1');
+    expect(songBefore.status).toBe(200);
+    expect(albumBefore.status).toBe(200);
+    const oldEtag = songBefore.headers.get('etag');
+    await new Promise((r) => setTimeout(r, 50)); // fire-and-forget cache writes
+
+    const res = await app.request('/albums/album-1/cover', {
+      method: 'PUT',
+      body: uploadForm(await pngBytes(300, 300), 'image/png'),
+    });
+    expect(res.status).toBe(200);
+
+    // The per-song cache used to keep serving the old image to song ids — only the
+    // album id was purged. The source stamp moved, so both re-resolve.
+    const songAfter = await app.request('/api/cover/song-1');
+    const albumAfter = await app.request('/api/cover/album-1');
+    expect(songAfter.headers.get('etag')).not.toBe(oldEtag);
+    expect(albumAfter.headers.get('etag')).toBe(songAfter.headers.get('etag'));
+    expect((await sharp(Buffer.from(await songAfter.arrayBuffer())).metadata()).width).toBe(1200);
+  });
+
   it('415s for a disallowed content type', async () => {
     const res = await makeApp().request('/albums/album-1/cover', {
       method: 'PUT',

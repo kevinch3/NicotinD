@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { join, resolve, dirname, sep } from 'node:path';
 import { existsSync, statSync } from 'node:fs';
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import type { Database } from 'bun:sqlite';
 import { createLogger } from '@nicotind/core';
 import type { AuthEnv } from '../middleware/auth.js';
@@ -16,6 +16,7 @@ import {
 import { COVER_EXTS, COVER_FILE_NAMES, extractEmbeddedPicture } from '../services/cover-sources.js';
 import { resolveArtwork, canonicalCacheKey } from '../services/artwork-store.js';
 import { folderArtBelongsToAlbum } from '../services/album-folder.js';
+import { diskArtCacheKey, readDiskArtRef, writeDiskArtRef } from '../services/disk-art-cache.js';
 import { bucketCoverSize, resizeCover } from '../services/cover-thumbnail.js';
 import { readArtistImageOverride } from '../services/artist-image-override.js';
 import {
@@ -73,6 +74,8 @@ export function streamingRoutes(
   opts: {
     /** Test seam: replaces the ffmpeg PCM decoder behind `/peaks/:id`. */
     waveformDecoder?: PcmDecoder;
+    /** Test seam: replaces the embedded-picture reader behind on-disk cover art. */
+    extractEmbedded?: (absPath: string) => Promise<CoverArt | null>;
   } = {},
 ) {
   const app = new Hono<AuthEnv>();
@@ -80,6 +83,7 @@ export function streamingRoutes(
   const coverCacheDir = join(dataDir, 'cover-cache');
   const transcodeCacheDir = join(dataDir, 'transcode-cache');
   const waveformCacheDir = join(dataDir, 'waveform-cache');
+  const extractEmbedded = opts.extractEmbedded ?? extractEmbeddedPicture;
 
   /** Resolve a library id (song id, or album id) to an absolute, in-root path. */
   function resolvePath(id: string): string | null {
@@ -367,33 +371,80 @@ export function streamingRoutes(
       // Remote fetch failed (offline / dead URL) — fall through to on-disk art.
     }
 
-    // 2. On-disk art (folder image, then embedded tag).
-    const hit = await respondCachedCover(id, size);
-    if (hit) return hit;
-
+    // 2. On-disk art (folder image, then embedded tag), cached by SOURCE so an
+    //    album's one image is stored once, not once per track (#1310).
     const track = resolveTrack(id);
-    if (!track) {
+    const disk = track ? await resolveDiskArt(id, track, size) : null;
+    if (!disk) {
       noArtCache.set(id, Date.now() + NO_ART_TTL_MS);
       return new Response(null, {
         status: 404,
         headers: { 'cache-control': 'public, max-age=300' },
       });
     }
-
-    const art = await extractCover(track.abs, { db, relPath: track.relPath });
-    if (!art) {
-      noArtCache.set(id, Date.now() + NO_ART_TTL_MS);
-      return new Response(null, {
-        status: 404,
-        headers: { 'cache-control': 'public, max-age=300' },
-      });
-    }
-
-    void cacheCover(coverCacheDir, id, art).catch((err) =>
-      log.debug({ err, id }, 'cover cache write failed'),
-    );
-    return respondCover(id, art, size);
+    return disk;
   });
+
+  /**
+   * On-disk art for a resolved track, through the source-keyed cache (see
+   * `disk-art-cache.ts`). A hit costs a stat of the source plus the id's tiny
+   * `.ref` pointer; only a miss — a new id, or a source whose stamp moved —
+   * reads the picture and hashes it. Null when the track has no art.
+   */
+  async function resolveDiskArt(
+    id: string,
+    track: { abs: string; relPath: string },
+    size: number | null,
+  ): Promise<Response | null> {
+    const source = await diskArtSource(track);
+    const ref = await readDiskArtRef(coverCacheDir, id);
+    if (source && ref?.stamp === source.stamp) {
+      const hit = await respondCachedCover(ref.key, size);
+      if (hit) return hit;
+    }
+
+    let art = source?.folderImage ? await readImageFile(source.folderImage) : null;
+    if (!art) art = await extractEmbedded(track.abs);
+    if (!art) return null;
+
+    const key = diskArtCacheKey(art.data);
+    if (source && (ref?.stamp !== source.stamp || ref.key !== key)) {
+      void writeDiskArtRef(coverCacheDir, id, { stamp: source.stamp, key }).catch((err) =>
+        log.debug({ err, id }, 'cover ref write failed'),
+      );
+    }
+    // Another id of the same album may already have stored these bytes.
+    if (!(await readCachedCover(coverCacheDir, key))) {
+      void cacheCover(coverCacheDir, key, art).catch((err) =>
+        log.debug({ err, id }, 'cover cache write failed'),
+      );
+    }
+    return respondCover(key, art, size);
+  }
+
+  /**
+   * The stamp of the image `extractCover` would pick, without reading it: the
+   * album folder's image when folder art applies (never in a shared bucket,
+   * #978), else the audio file itself (embedded art).
+   */
+  async function diskArtSource(track: {
+    abs: string;
+    relPath: string;
+  }): Promise<{ stamp: string; folderImage: string | null } | null> {
+    const folderImage = folderArtBelongsToAlbum(db, track.relPath)
+      ? await folderImagePath(dirname(track.abs))
+      : null;
+    const statPath = folderImage ?? track.abs;
+    try {
+      const st = await stat(statPath);
+      return {
+        stamp: `${folderImage ? 'f' : 'e'}|${statPath}|${st.mtimeMs}|${st.size}`,
+        folderImage,
+      };
+    } catch {
+      return null;
+    }
+  }
 
   /**
    * Waveform artifact for the Now Playing strip + karaoke VFX (issue #643):
@@ -654,6 +705,12 @@ export async function extractCover(
 }
 
 async function folderCover(dir: string): Promise<CoverArt | null> {
+  const path = await folderImagePath(dir);
+  return path ? readImageFile(path) : null;
+}
+
+/** The album folder's image (cover.jpg/folder.jpg/…) as an absolute path, or null. */
+async function folderImagePath(dir: string): Promise<string | null> {
   let entries: string[];
   try {
     entries = await readdir(dir);
@@ -664,16 +721,19 @@ async function folderCover(dir: string): Promise<CoverArt | null> {
   for (const base of COVER_FILE_NAMES) {
     for (const ext of COVER_EXTS) {
       const match = lower.get(base + ext);
-      if (match) {
-        try {
-          const data = await readFile(join(dir, match));
-          const ct = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
-          return { data, contentType: ct };
-        } catch {
-          /* try next */
-        }
-      }
+      if (match) return join(dir, match);
     }
   }
   return null;
+}
+
+async function readImageFile(path: string): Promise<CoverArt | null> {
+  try {
+    const data = await readFile(path);
+    const ext = path.slice(path.lastIndexOf('.')).toLowerCase();
+    const ct = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+    return { data, contentType: ct };
+  } catch {
+    return null;
+  }
 }

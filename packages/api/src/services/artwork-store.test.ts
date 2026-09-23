@@ -12,7 +12,9 @@ import {
   pickArtistImage,
   canonicalCacheKey,
   purgeCanonicalCache,
+  purgeDiskArtCache,
 } from './artwork-store.js';
+import { diskArtCacheKey } from './disk-art-cache.js';
 
 let db: Database;
 
@@ -106,6 +108,29 @@ describe('purgeCanonicalCache', () => {
     expect(existsSync(thumb320)).toBe(false);
     // A different key's variants are untouched.
     expect(existsSync(other)).toBe(true);
+    rmSync(cacheDir, { recursive: true, force: true });
+  });
+});
+
+describe('purgeDiskArtCache (#1310)', () => {
+  it("drops the id's source pointer and legacy variants, never the shared image", () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), 'nd-cache-'));
+    const shared = diskArtCacheKey(new Uint8Array([1, 2]));
+    const ref = join(cacheDir, 'alb.ref');
+    const legacy = join(cacheDir, 'alb.jpg');
+    const legacyThumb = join(cacheDir, 'alb@80.webp');
+    const image = join(cacheDir, `${shared}.jpg`);
+    const siblingRef = join(cacheDir, 'song.ref');
+    for (const p of [ref, legacy, legacyThumb, image, siblingRef]) {
+      writeFileSync(p, new Uint8Array([1]));
+    }
+    purgeDiskArtCache(cacheDir, 'alb');
+    expect(existsSync(ref)).toBe(false);
+    expect(existsSync(legacy)).toBe(false);
+    expect(existsSync(legacyThumb)).toBe(false);
+    // Content-addressed, so not stale for the ids still pointing at it.
+    expect(existsSync(image)).toBe(true);
+    expect(existsSync(siblingRef)).toBe(true);
     rmSync(cacheDir, { recursive: true, force: true });
   });
 });
