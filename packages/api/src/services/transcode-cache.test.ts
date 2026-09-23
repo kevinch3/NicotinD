@@ -269,6 +269,31 @@ describe('transcode cache', () => {
     expect(remaining).toEqual(['b.mp3', 'c.mp3']);
   });
 
+  it('evicts by last use, not creation — a hit keeps an old entry (#1327)', async () => {
+    const t = makeTranscoder();
+    const played = await getTranscodedFile(cacheDir, srcPath, 'mp3', 192, { transcoder: t.fn });
+    const size = statSync(played).size;
+    const long = new Date(Date.now() - 60_000);
+    utimesSync(played, long, long); // created long ago
+    const idle = join(cacheDir, 'idle.mp3');
+    writeFileSync(idle, 'x'.repeat(size));
+    const recent = new Date(Date.now() - 10_000);
+    utimesSync(idle, recent, recent); // created later, never played since
+
+    await getTranscodedFile(cacheDir, srcPath, 'mp3', 192, { transcoder: t.fn });
+    const deadline = Date.now() + 2000;
+    while (statSync(played).atimeMs <= recent.getTime() && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+
+    await pruneTranscodeCache(cacheDir, size + 1);
+    expect(existsSync(played)).toBe(true);
+    expect(existsSync(idle)).toBe(false);
+    // mtime is the stream's ETag input; a hit must never move it.
+    expect(statSync(played).mtimeMs).toBe(long.getTime());
+    expect(t.calls()).toBe(1);
+  });
+
   it('skips pinned files when pruning (an in-flight read cannot be evicted)', async () => {
     // Three 100-byte entries, budget 250 → the two oldest would be evicted,
     // but the middle one is pinned by a live streaming response, so only
