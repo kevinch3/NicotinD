@@ -170,7 +170,7 @@ export async function embedAlbumArt(
       // could not get under the reader's ceiling — an explicit do-not-embed.
       const fit = join(dirname(source), `.nicotind-art-fit-${album.id}.jpg`);
       scratch.push(fit);
-      const prepared = preparePicture(source, fit);
+      const prepared = await preparePicture(source, fit);
       if (!prepared) {
         result.noSource += 1;
         emit();
@@ -196,7 +196,7 @@ export async function embedAlbumArt(
           wrote += 1;
           continue;
         }
-        if (!attachPictureToOpus(abs, prepared.path)) {
+        if (!(await attachPictureToOpus(abs, prepared.path))) {
           result.failed += 1;
           result.errorSample ??= `could not attach cover to ${track.path}`;
           continue;

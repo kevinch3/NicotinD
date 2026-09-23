@@ -116,20 +116,20 @@ describe.skipIf(!TOOLS)("the ceiling is ours, not Opus's", () => {
 });
 
 describe.skipIf(!ffmpegAvailable())('preparePicture keeps covers under the cap', () => {
-  it('passes a small cover through untouched', () => {
+  it('passes a small cover through untouched', async () => {
     const d = scratch();
     const cover = join(d, 'small.jpg');
     const bytes = makeCover(cover, 300);
     expect(bytes).toBeLessThan(MAX_EMBEDDED_PICTURE_BYTES);
 
-    const p = preparePicture(cover, join(d, 'scratch.jpg'));
+    const p = await preparePicture(cover, join(d, 'scratch.jpg'));
 
     // The common case must not pay for a second encode.
     expect(p?.recompressed).toBe(false);
     expect(p?.path).toBe(cover);
   });
 
-  it('re-compresses an oversized cover to fit', () => {
+  it('re-compresses an oversized cover to fit', async () => {
     // 900px of noise: over the cap at q2, and compressible enough that the
     // quality ladder can rescue it. Real covers are photographs and compress
     // far better than noise, so this is the harder end of realistic.
@@ -138,13 +138,13 @@ describe.skipIf(!ffmpegAvailable())('preparePicture keeps covers under the cap',
     const bytes = makeCover(cover, 900, 2);
     expect(bytes).toBeGreaterThan(MAX_EMBEDDED_PICTURE_BYTES);
 
-    const p = preparePicture(cover, join(d, 'scratch.jpg'));
+    const p = await preparePicture(cover, join(d, 'scratch.jpg'));
 
     expect(p?.recompressed).toBe(true);
     expect(p!.bytes).toBeLessThanOrEqual(MAX_EMBEDDED_PICTURE_BYTES);
   });
 
-  it('downscales when no quality reaches the cap', () => {
+  it('downscales when no quality reaches the cap', async () => {
     // #1252. 1100px of noise is over the cap at EVERY quality the ladder will
     // try, so before the edge ladder existed this cover was dropped outright.
     // Real covers hit the same wall at larger dimensions — the one that found
@@ -157,7 +157,7 @@ describe.skipIf(!ffmpegAvailable())('preparePicture keeps covers under the cap',
     // long as quality alone genuinely cannot rescue it. q8 is the softest rung.
     expect(nativeQualityBytes(cover, 8)).toBeGreaterThan(MAX_EMBEDDED_PICTURE_BYTES);
 
-    const p = preparePicture(cover, join(d, 'scratch.jpg'));
+    const p = await preparePicture(cover, join(d, 'scratch.jpg'));
 
     expect(p).not.toBeNull();
     expect(p!.bytes).toBeLessThanOrEqual(MAX_EMBEDDED_PICTURE_BYTES);
@@ -167,7 +167,7 @@ describe.skipIf(!ffmpegAvailable())('preparePicture keeps covers under the cap',
     expect(Math.max(...imageDimensions(p!.path))).toBeGreaterThanOrEqual(1000);
   });
 
-  it('returns null when the input is not a decodable image', () => {
+  it('returns null when the input is not a decodable image', async () => {
     // The null contract still matters, but it is no longer reachable by size:
     // the 1000px rung brings any decodable image under the cap (square noise,
     // the worst case there is, lands ~385 KB there whatever its source size).
@@ -177,7 +177,7 @@ describe.skipIf(!ffmpegAvailable())('preparePicture keeps covers under the cap',
     const cover = join(d, 'not-an-image.jpg');
     writeFileSync(cover, Buffer.alloc(900 * 1024, 0x7f));
 
-    expect(preparePicture(cover, join(d, 'scratch.jpg'))).toBeNull();
+    expect(await preparePicture(cover, join(d, 'scratch.jpg'))).toBeNull();
   });
 
   it.skipIf(!TOOLS)('and what it produces is readable by the app', async () => {
@@ -190,7 +190,7 @@ describe.skipIf(!ffmpegAvailable())('preparePicture keeps covers under the cap',
     makeCover(cover, 900, 2);
     makeWav(wav);
 
-    const p = preparePicture(cover, join(d, 'scratch.jpg'));
+    const p = await preparePicture(cover, join(d, 'scratch.jpg'));
     expect(p).not.toBeNull();
     encodeWithPicture(wav, p!.path, out);
 
@@ -340,7 +340,7 @@ describe.skipIf(!ffmpegAvailable())('attachPictureToOpus — no re-encode, no ne
     const cover = join(d, 'c.jpg');
     const bytes = makeCover(cover, 500, 4);
 
-    expect(attachPictureToOpus(opus, cover)).toBe(true);
+    expect(await attachPictureToOpus(opus, cover)).toBe(true);
 
     expect(await readWithMusicMetadata(opus)).toBe(bytes);
   });
@@ -357,7 +357,7 @@ describe.skipIf(!ffmpegAvailable())('attachPictureToOpus — no re-encode, no ne
     const cover = join(d, 'c.jpg');
     makeCover(cover, 400, 4);
 
-    expect(attachPictureToOpus(opus, cover)).toBe(true);
+    expect(await attachPictureToOpus(opus, cover)).toBe(true);
 
     expect(await vorbisTags(opus)).toEqual(before);
   });
@@ -379,7 +379,7 @@ describe.skipIf(!ffmpegAvailable())('attachPictureToOpus — no re-encode, no ne
     const cover = join(d, 'c.jpg');
     makeCover(cover, 400, 4);
 
-    attachPictureToOpus(opus, cover);
+    await attachPictureToOpus(opus, cover);
 
     const durAfter = execFileSync('ffprobe', [
       '-v',
@@ -401,7 +401,7 @@ describe.skipIf(!ffmpegAvailable())('attachPictureToOpus — no re-encode, no ne
     const cover = join(d, 'c.jpg');
     makeCover(cover, 400, 4);
 
-    attachPictureToOpus(opus, cover);
+    await attachPictureToOpus(opus, cover);
 
     const leaked = readdirSync(d).filter((n) => n.includes('nicotind-art'));
     expect(leaked).toEqual([]);
@@ -414,7 +414,7 @@ describe.skipIf(!ffmpegAvailable())('attachPictureToOpus — no re-encode, no ne
     const opus = taggedOpus(d, { ARTIST: 'A' });
     const before = await vorbisTags(opus);
 
-    expect(attachPictureToOpus(opus, join(d, 'does-not-exist.jpg'))).toBe(false);
+    expect(await attachPictureToOpus(opus, join(d, 'does-not-exist.jpg'))).toBe(false);
 
     expect(await vorbisTags(opus)).toEqual(before);
     expect(readdirSync(d).filter((n) => n.includes('nicotind-art'))).toEqual([]);
@@ -428,9 +428,9 @@ describe.skipIf(!ffmpegAvailable())('attachPictureToOpus — no re-encode, no ne
     const cover = join(d, 'big.jpg');
     makeCover(cover, 900, 2);
 
-    const p = preparePicture(cover, join(d, 'scratch.jpg'));
+    const p = await preparePicture(cover, join(d, 'scratch.jpg'));
     expect(p).not.toBeNull();
-    expect(attachPictureToOpus(opus, p!.path)).toBe(true);
+    expect(await attachPictureToOpus(opus, p!.path)).toBe(true);
 
     expect(await readWithMusicMetadata(opus)).toBe(p!.bytes);
   });

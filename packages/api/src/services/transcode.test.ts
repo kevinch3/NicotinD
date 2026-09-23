@@ -202,7 +202,7 @@ describe('validateTranscodeOutput', () => {
     expect(transcodeOutputIsAcceptable(240, Number.POSITIVE_INFINITY)).toBe(false);
   });
 
-  it('best-effort: returns true when source or output duration is unreadable', () => {
+  it('best-effort: returns true when source or output duration is unreadable', async () => {
     // The check must not block healthy transcodes when ffprobe / music-metadata
     // is unavailable — ffmpeg's strict flags already turn obvious damage into
     // a non-zero exit, so a missing probe is a no-op pass.
@@ -228,12 +228,15 @@ describe('probeAudioFile', () => {
   })();
   const itIf = (cond: boolean) => (cond ? it : it.skip);
 
-  itIf(ffmpegOk)('returns null for a non-existent file (no codec / bitrate parseable)', () => {
-    // Probe is best-effort and must never throw.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { probeAudioFile } = require('./transcode.js') as typeof import('./transcode.js');
-    const r = probeAudioFile('/no/such/file-xyz.mp3');
-    // Either null (ffprobe missing / failure) or { bitRateKbps, codec } (success).
-    expect(r === null || typeof r.bitRateKbps === 'number').toBe(true);
-  });
+  itIf(ffmpegOk)(
+    'returns null for a non-existent file (no codec / bitrate parseable)',
+    async () => {
+      // Probe is best-effort and must never throw.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { probeAudioFile } = require('./transcode.js') as typeof import('./transcode.js');
+      const r = await probeAudioFile('/no/such/file-xyz.mp3');
+      // Either null (ffprobe missing / failure) or { bitRateKbps, codec } (success).
+      expect(r === null || typeof r.bitRateKbps === 'number').toBe(true);
+    },
+  );
 });

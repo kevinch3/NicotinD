@@ -12,6 +12,7 @@ import { deriveAcquireAlbum, type AcquireAlbumDestination } from './acquire-albu
 import { PlaylistService } from './playlist.service.js';
 import { resolveAcquireJobTracks, type AcquireJobTrackRow } from './acquire-playlist.js';
 import { probeAudioFile } from './transcode.js';
+import { mapPool } from './library-scanner.js';
 
 /** Map an acquisition plugin id to an AcquisitionMethod; unknown ids → 'unknown'. */
 function methodForBackend(backend: string): AcquisitionMethod {
@@ -295,15 +296,9 @@ export class AcquireWatcher {
     // path can't be resolved (ffprobe on a path we already know exists).
     // Best-effort: ffprobe failure on any single file is swallowed; the
     // dominant value is computed across what probed successfully.
-    const probeResults = paths
-      .map((p) => {
-        try {
-          return probeAudioFile(p);
-        } catch {
-          return null;
-        }
-      })
-      .filter((r): r is NonNullable<typeof r> => r !== null);
+    const probeResults = (
+      await mapPool(paths, 4, (p) => probeAudioFile(p).catch(() => null))
+    ).filter((r): r is NonNullable<typeof r> => r !== null);
     if (probeResults.length > 0) {
       const { bitRateKbps, codec } = dominantProbe(probeResults);
       if (bitRateKbps > 0) {

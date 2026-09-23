@@ -786,7 +786,7 @@ describe.if(ffmpegAvailable())('spaced Vorbis names heal on any rewrite (#1250, 
       cover,
     ]);
     const { attachPictureToOpus } = await import('./opus-artwork.js');
-    expect(attachPictureToOpus(path, cover)).toBe(true);
+    expect(await attachPictureToOpus(path, cover)).toBe(true);
     return path;
   }
 
@@ -926,7 +926,7 @@ describe.if(ffmpegAvailable())('a tag write keeps the embedded cover (#1280)', (
         codec,
         path,
       ]);
-      expect(attachPictureToOpus(path, cover)).toBe(true);
+      expect(await attachPictureToOpus(path, cover)).toBe(true);
     }
     return path;
   }
@@ -935,11 +935,11 @@ describe.if(ffmpegAvailable())('a tag write keeps the embedded cover (#1280)', (
     it(`keeps the same picture bytes across a title write on .${ext}`, async () => {
       const { readOggPicture } = await import('./opus-artwork.js');
       const path = await withCover(ext);
-      const before = readOggPicture(path);
+      const before = await readOggPicture(path);
       expect(before).not.toBeNull();
       expect(await writeAudioTags(path, { title: 'RETAGGED' })).toBe(true);
       expect((await readAudioTags(path)).title).toBe('RETAGGED');
-      expect(readOggPicture(path)?.data.equals(before!.data)).toBe(true);
+      expect((await readOggPicture(path))?.data.equals(before!.data)).toBe(true);
     });
   }
 
@@ -959,7 +959,7 @@ describe.if(ffmpegAvailable())('a tag write keeps the embedded cover (#1280)', (
       path,
     ]);
     expect(await writeAudioTags(path, { title: 'T' })).toBe(true);
-    expect(readOggPicture(path)).toBeNull();
+    expect(await readOggPicture(path)).toBeNull();
   });
 });
 

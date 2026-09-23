@@ -1,4 +1,5 @@
 import { spawn, execFileSync } from 'node:child_process';
+import { execFileAsync } from './exec-file.js';
 import { existsSync, renameSync, unlinkSync } from 'node:fs';
 import { createLogger } from '@nicotind/core';
 import type { TranscodeFormat } from './streaming-settings.js';
@@ -274,18 +275,20 @@ async function readOutputDurationSec(absPath: string): Promise<number | null> {
   if (!ffmpegPresent) return null;
   try {
     const ffprobe = ffmpegBinary().replace(/ffmpeg$/, 'ffprobe');
-    const out = execFileSync(
-      ffprobe,
-      [
-        '-v',
-        'error',
-        '-show_entries',
-        'format=duration',
-        '-of',
-        'default=noprint_wrappers=1:nokey=1',
-        absPath,
-      ],
-      { stdio: ['ignore', 'pipe', 'ignore'], timeout: 10_000 },
+    const out = (
+      await execFileAsync(
+        ffprobe,
+        [
+          '-v',
+          'error',
+          '-show_entries',
+          'format=duration',
+          '-of',
+          'default=noprint_wrappers=1:nokey=1',
+          absPath,
+        ],
+        { timeout: 10_000 },
+      )
     )
       .toString()
       .trim();
@@ -329,7 +332,7 @@ export interface ProbeResult {
   codec: string;
 }
 
-export function probeAudioFile(absPath: string): ProbeResult | null {
+export async function probeAudioFile(absPath: string): Promise<ProbeResult | null> {
   if (!ffmpegChecked) {
     ffmpegAvailable();
   }
@@ -337,20 +340,22 @@ export function probeAudioFile(absPath: string): ProbeResult | null {
   try {
     // `ffprobe` ships with the same ffmpeg distribution we use for transcoding.
     const ffprobe = ffmpegBinary().replace(/ffmpeg$/, 'ffprobe');
-    const out = execFileSync(
-      ffprobe,
-      [
-        '-v',
-        'error',
-        '-select_streams',
-        'a:0',
-        '-show_entries',
-        'stream=bit_rate,codec_name',
-        '-of',
-        'default=noprint_wrappers=1',
-        absPath,
-      ],
-      { stdio: ['ignore', 'pipe', 'ignore'], timeout: 10_000 },
+    const out = (
+      await execFileAsync(
+        ffprobe,
+        [
+          '-v',
+          'error',
+          '-select_streams',
+          'a:0',
+          '-show_entries',
+          'stream=bit_rate,codec_name',
+          '-of',
+          'default=noprint_wrappers=1',
+          absPath,
+        ],
+        { timeout: 10_000 },
+      )
     )
       .toString()
       .trim();
