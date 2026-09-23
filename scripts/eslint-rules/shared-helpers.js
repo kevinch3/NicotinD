@@ -1,7 +1,8 @@
 /**
- * Fail when a shared helper is re-implemented locally instead of imported.
- *
- *   bun run check:shared-helpers
+ * ESLint rule `nicotind/shared-helpers`: fail when a shared helper is
+ * re-declared locally instead of imported. Formerly `check:shared-helpers`
+ * (#1316); the AST sees a `let`/`var` copy and never a comment, which the line
+ * regex it replaced could not promise.
  *
  * WHY: `expandHome` was copy-pasted into 32 files, and one copy drifted to
  *
@@ -9,41 +10,33 @@
  *                                                        ^^ should be `p`
  *
  * returning an **empty string for every absolute path**. That copy lived in
- * `check-fragments.ts`, which CLAUDE.md documents as a CLI gate — so the gate
- * had never once run in Docker (`NICOTIND_DATA_DIR=/data/nicotind` collapsed to
- * `''`, and the script exited with a plausible-looking "Database not found").
+ * `check-fragments.ts`, a documented CLI gate — so the gate had never once run
+ * in Docker. The broken copy took the `~` branch under a developer's default
+ * `~/.nicotind` and worked perfectly; only an absolute path, i.e. production,
+ * reached it. Consolidating the copies (#306) fixed that day; this is what stops
+ * copy #33.
  *
- * What made it expensive is the shape of the failure, not the duplication: the
- * broken copy took the `~` branch under a developer's default `~/.nicotind` and
- * worked perfectly. It was only reachable with an absolute path — i.e. only in
- * production. Consolidating the copies (issue #306) fixes today; this gate is
- * what stops copy #33.
+ * Re-declaring a helper that already exists is never the intended thing, so
+ * there is no false-positive class. If a local definition ever *is* wanted, give
+ * it a different name — two functions with one name and two behaviours is the
+ * exact bug this prevents.
  *
- * A gate rather than a report (unlike check-shipped-issues.ts): re-declaring a
- * helper that already exists in `@nicotind/core` is never the intended thing, so
- * there is no false-positive class to cry wolf with. If a local definition ever
- * *is* wanted, the fix is to give it a different name — two functions with one
- * name and two behaviours is the exact bug this prevents.
+ * Denominator: `shared-helpers.test.ts` lints every canonical module's own
+ * source under a foreign filename and asserts the rule fires for its helper, so
+ * a registry entry whose declaration shape the rule cannot see fails a test
+ * instead of watching nothing.
  */
-import { readFileSync } from 'node:fs';
-import { resolve, dirname, relative } from 'node:path';
-import { Glob } from 'bun';
+import { relative, resolve } from 'node:path';
 
-const repoRoot = resolve(dirname(new URL(import.meta.url).pathname), '..');
-
-export interface SharedHelper {
-  /** Exported name that must not be re-declared elsewhere. */
-  name: string;
-  /** Repo-relative module that legitimately declares it. */
-  canonical: string;
-}
+const repoRoot = resolve(import.meta.dirname, '../..');
 
 /**
  * Helpers that exist once and are imported everywhere. Add an entry when you
  * extract a helper that was previously duplicated — that is the moment the
  * duplication is most likely to grow back.
  */
-export const SHARED_HELPERS: SharedHelper[] = [
+/** @type {ReadonlyArray<{ name: string, canonical: string }>} */
+export const SHARED_HELPERS = [
   { name: 'expandHome', canonical: 'packages/core/src/utils/expand-home.ts' },
   { name: 'timeAgo', canonical: 'packages/web/src/app/lib/relative-time.ts' },
   // "Which tab is this?" existed twice under one `nicotind_tab_id` key —
@@ -154,83 +147,32 @@ export const SHARED_HELPERS: SharedHelper[] = [
   { name: 'findActiveLine', canonical: 'packages/core/src/lrc.ts' },
 ];
 
-export interface HelperViolation {
-  file: string;
-  name: string;
-  line: number;
-}
-
-/**
- * Find local declarations of a shared helper.
- *
- * Matches the two forms a copy actually takes — `function foo(` and
- * `const foo = ` — anchored to the start of a line (optionally after `export`),
- * so a call, an import, or a mention in a comment never trips it.
- */
-export function findLocalDeclarations(
-  source: string,
-  name: string,
-): Array<{ line: number; text: string }> {
-  const pattern = new RegExp(
-    `^\\s*(?:export\\s+)?(?:function\\s+${name}\\s*\\(|const\\s+${name}\\s*[=:])`,
-  );
-  const out: Array<{ line: number; text: string }> = [];
-  source.split('\n').forEach((text, i) => {
-    if (pattern.test(text)) out.push({ line: i + 1, text: text.trim() });
-  });
-  return out;
-}
-
-async function* concatScans(globs: Glob[], cwd: string): AsyncGenerator<string> {
-  for (const glob of globs) {
-    for await (const rel of glob.scan({ cwd })) yield rel;
-  }
-}
-
-async function main(): Promise<void> {
-  const violations: HelperViolation[] = [];
-  // Two patterns: package sources, plus the `scripts/` dirs where build/CI helpers
-  // live (the Storybook gate runner is `.mjs` and sits outside any `src` tree).
-  const globs = [new Glob('packages/*/src/**/*.ts'), new Glob('packages/*/scripts/**/*.{ts,mjs}')];
-  const seen = new Set<string>();
-
-  for await (const rel of concatScans(globs, repoRoot)) {
-    if (seen.has(rel)) continue;
-    seen.add(rel);
-    if (rel.includes('node_modules') || rel.includes('/dist/')) continue;
-    let source: string;
-    try {
-      source = readFileSync(resolve(repoRoot, rel), 'utf8');
-    } catch {
-      continue;
+/** @type {import('eslint').Rule.RuleModule} */
+export default {
+  meta: {
+    type: 'problem',
+    docs: { description: 'A shared helper must be imported, never re-declared locally' },
+    schema: [],
+  },
+  create(context) {
+    const file = relative(repoRoot, context.filename).replace(/\\/g, '/');
+    // The canonical module is where the helper is supposed to live.
+    const watched = new Map(
+      SHARED_HELPERS.filter((h) => h.canonical !== file).map((h) => [h.name, h.canonical]),
+    );
+    /** @param {import('estree').Node | null | undefined} id */
+    function check(id) {
+      if (id?.type !== 'Identifier' || !watched.has(id.name)) return;
+      context.report({
+        node: id,
+        message:
+          `\`${id.name}\` is a shared helper — import it from ${watched.get(id.name)} ` +
+          'instead of re-declaring it (a duplicated helper drifts silently, #301).',
+      });
     }
-    for (const helper of SHARED_HELPERS) {
-      // The canonical module is where it's supposed to live; its test may
-      // legitimately build fixtures around the same name.
-      const normalized = relative(repoRoot, resolve(repoRoot, rel));
-      if (normalized === helper.canonical) continue;
-      if (!source.includes(helper.name)) continue;
-      for (const hit of findLocalDeclarations(source, helper.name)) {
-        violations.push({ file: normalized, name: helper.name, line: hit.line });
-      }
-    }
-  }
-
-  if (violations.length > 0) {
-    console.error('Shared helpers re-implemented locally:\n');
-    for (const v of violations) {
-      const canonical = SHARED_HELPERS.find((h) => h.name === v.name)!.canonical;
-      console.error(`  ${v.file}:${v.line}  declares \`${v.name}\``);
-      console.error(`    → import it from the canonical module instead (${canonical}).\n`);
-    }
-    console.error('A duplicated helper drifts silently — see issue #301, where one copy returned');
-    console.error("'' for every absolute path and a documented CLI gate never ran in Docker.");
-    process.exit(1);
-  }
-
-  console.log(
-    `Shared helpers: ${SHARED_HELPERS.length} checked, no local re-implementations found.`,
-  );
-}
-
-if (import.meta.main) await main();
+    return {
+      FunctionDeclaration: (node) => check(node.id),
+      VariableDeclarator: (node) => check(node.id),
+    };
+  },
+};

@@ -10,7 +10,7 @@
  * them. One traversal that runs both checks per page is most of that time back, and a
  * pool of contexts is the rest.
  *
- * Extracted rather than copied a third time — see scripts/check-shared-helpers.ts for
+ * Extracted rather than copied a third time — see scripts/eslint-rules/shared-helpers.js for
  * why this repo treats a re-implemented helper as a gate failure.
  */
 import { chromium } from '@playwright/test';

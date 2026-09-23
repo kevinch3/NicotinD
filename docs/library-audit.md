@@ -512,7 +512,7 @@ Design rules it inherits:
   `titlesOverlap`) as `acquireAlbum`, so "incomplete here" means "a hunt would enqueue something".
 - **On-demand only, never polled.** The audit half issues per-row queries — fine as a snapshot,
   poison in the `ServiceReview` interval. The Admin panel fetches on expand.
-- **Shared predicates, derived not restated** (`check:shared-helpers` spirit): `missingAlbumArtSql`
+- **Shared predicates, derived not restated** (`nicotind/shared-helpers` spirit): `missingAlbumArtSql`
   (also adopted by `checkRenderGaps`, `backfillArtwork`, `optimizeAllAlbums`),
   `losslessSuffixSql` (derived from `LOSSLESS` in `library-track-select.ts`) and
   `lowInformationOnlyGenreSql` (derived from `LOW_INFORMATION_GENRES`, the same way

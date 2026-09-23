@@ -397,7 +397,7 @@ not the duplication but the **second full traversal**: two browsers, 138 navigat
 114s + 159s of CI to ask two questions about the same page.
 
 They are now one script over one traversal, with the shared plumbing in
-`packages/e2e/scripts/lib/storybook-runner.mjs` (registered in `check:shared-helpers`, so
+`packages/e2e/scripts/lib/storybook-runner.mjs` (registered in `nicotind/shared-helpers`, so
 a third copy fails the build). Flags select the checks — `--smoke`, `--a11y`, `--strict` —
 and the exit contributions stay independent: smoke always gates, axe only under
 `--strict`. Running both no longer lets a smoke failure hide the axe report, which the old

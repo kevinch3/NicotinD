@@ -1,48 +1,35 @@
 /**
- * Fail when a search surface matches library names with raw SQL instead of the
- * shared folded matcher.
+ * ESLint rule `nicotind/search-matching`: fail when a search surface matches
+ * library names with raw SQL instead of the shared folded matcher. Formerly
+ * `check:search-matching` (#1316), which scanned every source *line*; the rule
+ * reads only string and template literals, so prose can no longer trip it.
  *
- *   bun run check:search-matching
+ * WHY: `nicotind/shared-helpers` asserts that nobody *re-declares* a shared
+ * helper. It cannot see a call site that **bypasses** one. The MCP agent surface
+ * matched artists with `name LIKE ? COLLATE NOCASE` (#706), and the Songs tab did
+ * the same (#719). SQLite's NOCASE collation is ASCII-only: it folds neither
+ * diacritics nor a non-ASCII upper case, so `LIKE '%Americo%'` and even
+ * `LIKE '%AMÉRICO%'` both miss `Américo`.
  *
- * WHY: `check:shared-helpers` asserts that nobody *re-declares* a shared helper.
- * It cannot see a call site that **bypasses** one. The MCP agent surface matched
- * artists with `name LIKE ? COLLATE NOCASE` (issue #706) — no local copy of
- * `matchesAllTokens` to find, so the gate reported "no local re-implementations
- * found" and exited 0 truthfully while the actual invariant — every search
- * surface matches the same way — went unmeasured. SQLite's NOCASE collation is
- * ASCII-only: it folds neither diacritics nor a non-ASCII upper case, so
- * `LIKE '%Americo%'` and even `LIKE '%AMÉRICO%'` both miss `Américo`.
- *
- * This gate asserts the invariant instead of the symbol: a `LIKE` against a
- * library *name* column must live in the canonical matcher's module or carry a
- * reasoned allowlist entry.
- *
- * Per docs/quality-gates.md, a gate must assert its own denominator: this one
- * prints how many SQL string literals it examined and fails when it cannot
- * classify one, so a version that silently finds nothing cannot pass as clean.
+ * This asserts the invariant instead of the symbol: a `LIKE` against a library
+ * *name* column must live in the canonical matcher's module or carry a reasoned
+ * `ALLOWED` entry. Denominator: `search-matching.test.ts` asserts every source
+ * file holding a `LIKE` is one the lint command reaches with this rule on.
  */
-import { readFileSync } from 'node:fs';
-import { resolve, dirname, relative } from 'node:path';
-import { Glob } from 'bun';
+import { relative, resolve } from 'node:path';
 
-const repoRoot = resolve(dirname(new URL(import.meta.url).pathname), '..');
+const repoRoot = resolve(import.meta.dirname, '../..');
 
 /** The columns that hold a human-facing name a user or agent searches by. */
 export const NAME_COLUMNS = ['name', 'title', 'artist', 'album_name', 'artist_name'];
 
 /** Modules allowed to match a name column in SQL, each with the reason why. */
-export const ALLOWED: Array<{ file: string; reason: string }> = [
+export const ALLOWED = [
   {
     file: 'packages/api/src/services/search-tokens.ts',
     reason: 'the canonical matcher itself',
   },
 ];
-
-export interface Bypass {
-  file: string;
-  line: number;
-  snippet: string;
-}
 
 /**
  * Decide whether one SQL fragment is a *search* over a name column — the thing
@@ -72,8 +59,11 @@ export interface Bypass {
  * because that is the shape of every instance of this bug found so far (#706,
  * #719). A false positive costs one allowlist entry with a reason; a false
  * negative is the bug shipping again with a green gate.
+ *
+ * @param {string} sqlFragment
+ * @returns {boolean}
  */
-export function isNameSearch(sqlFragment: string): boolean {
+export function isNameSearch(sqlFragment) {
   // Prose is not SQL: several real comments and docblocks in this repo explain
   // the LIKE below them, and flagging those is noise that trains people to
   // ignore the gate. A `*` continuation line inside a block comment carries no
@@ -94,16 +84,16 @@ export function isNameSearch(sqlFragment: string): boolean {
   // exactly the search this gate exists to catch.
   const LIKE_CLAUSE =
     /(?:\b(?:LOWER|UPPER)\s*\(\s*)?(?:\w+\s*\.\s*)?(\w+)\s*\)?\s+(?:NOT\s+)?LIKE\s+((?:\?|'[^']*'|"[^"]*")(?:\s*\|\|\s*(?:\?|'[^']*'|"[^"]*"))*)/gi;
-  let m: RegExpExecArray | null;
+  let m;
   let sawClause = false;
   while ((m = LIKE_CLAUSE.exec(code)) !== null) {
     sawClause = true;
     const [, column, operand] = m;
-    if (!NAME_COLUMNS.includes(column!.toLowerCase())) continue;
+    if (!NAME_COLUMNS.includes(column.toLowerCase())) continue;
     // A bound parameter anywhere in the operand carries user text and must be
     // folded. An operand made only of quoted literals is a pattern the code
     // chose, and has nothing to fold.
-    if (operand!.includes('?')) return true;
+    if (operand.includes('?')) return true;
   }
 
   // A `LIKE` we could not parse into a clause is unclassified, not clean. Flag
@@ -113,42 +103,49 @@ export function isNameSearch(sqlFragment: string): boolean {
   return !sawClause;
 }
 
-async function main(): Promise<void> {
-  const found: Bypass[] = [];
-  let examined = 0;
-  const allowed = new Set(ALLOWED.map((a) => a.file));
-
-  for await (const rel of new Glob('packages/*/src/**/*.ts').scan({ cwd: repoRoot })) {
-    if (rel.includes('node_modules') || rel.endsWith('.test.ts')) continue;
-    const normalized = relative(repoRoot, resolve(repoRoot, rel));
-    if (allowed.has(normalized)) continue;
-    let source: string;
-    try {
-      source = readFileSync(resolve(repoRoot, rel), 'utf8');
-    } catch {
-      continue;
-    }
-    source.split('\n').forEach((text, i) => {
-      if (!/\bLIKE\b/.test(text)) return;
-      examined++;
-      if (isNameSearch(text)) found.push({ file: normalized, line: i + 1, snippet: text.trim() });
-    });
-  }
-
-  console.log(`Search matching: ${examined} SQL fragments containing LIKE examined.`);
-  if (found.length > 0) {
-    console.error('\nName-column search done in raw SQL instead of the shared matcher:\n');
-    for (const f of found) {
-      console.error(`  ${f.file}:${f.line}`);
-      console.error(`    ${f.snippet}`);
-    }
-    console.error("\nSQLite's NOCASE collation is ASCII-only — it folds neither diacritics nor a");
-    console.error('non-ASCII upper case, so "Americo" and "AMÉRICO" both miss "Américo".');
-    console.error('Route the query through tokenize/matchesAllTokens (services/search-tokens.ts),');
-    console.error('or add a reasoned entry to ALLOWED in this file.');
-    process.exit(1);
-  }
-  console.log('No raw name-column search found outside the canonical matcher.');
+/** @param {import('eslint').Rule.Node} node */
+function insideTemplate(node) {
+  for (let p = node.parent; p; p = p.parent) if (p.type === 'TemplateLiteral') return true;
+  return false;
 }
 
-if (import.meta.main) await main();
+/** @type {import('eslint').Rule.RuleModule} */
+export default {
+  meta: {
+    type: 'problem',
+    docs: { description: 'A LIKE over a library name column must use the shared folded matcher' },
+    schema: [],
+  },
+  create(context) {
+    const file = relative(repoRoot, context.filename).replace(/\\/g, '/');
+    if (ALLOWED.some((a) => a.file === file)) return {};
+    const sourceCode = context.sourceCode;
+
+    /** @param {import('eslint').Rule.Node} node */
+    function visit(node) {
+      // The outermost literal carries the whole SQL, `${}` interpolations
+      // included; judging a nested one again would report the same line twice.
+      if (insideTemplate(node)) return;
+      const text = sourceCode.getText(node);
+      if (!/\bLIKE\b/.test(text)) return;
+      const startLine = node.loc.start.line;
+      text.split('\n').forEach((line, i) => {
+        if (!/\bLIKE\b/.test(line) || !isNameSearch(line)) return;
+        context.report({
+          loc: { line: startLine + i, column: 0 },
+          message:
+            "Name-column search in raw SQL: SQLite's NOCASE folds neither diacritics nor " +
+            'non-ASCII case, so "AMÉRICO" misses "Américo". Route it through ' +
+            'tokenize/matchesAllTokens (services/search-tokens.ts), or add a reasoned ' +
+            'ALLOWED entry in scripts/eslint-rules/search-matching.js.',
+        });
+      });
+    }
+    return {
+      Literal: (node) => {
+        if (typeof node.value === 'string') visit(node);
+      },
+      TemplateLiteral: visit,
+    };
+  },
+};

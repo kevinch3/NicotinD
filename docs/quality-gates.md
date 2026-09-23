@@ -301,10 +301,61 @@ config ignores `packages/web/` wholesale, and `--no-warn-ignored` made that
 silent. It was removed rather than left to imply coverage that doesn't exist.
 Prettier does still format those files — its ignore list is separate.
 
-**`packages/web` (82k LOC, 497 files) remains entirely unlinted.** That is a
-deliberate follow-up, not an oversight: it needs `@angular-eslint`, and a
+**`packages/web` (82k LOC, 497 files) is still held to no recommended rule.** That
+is a deliberate follow-up, not an oversight: it needs `@angular-eslint`, and a
 `@typescript-eslint/utils` root devDependency because `bunfig.toml` sets
-`peer = false` under an isolated linker. Tracked in #612.
+`peer = false` under an isolated linker. Since #1316 it **is** parsed, for the
+`nicotind/*` code-shape rules only — see "Code-shape gates as lint rules" below.
+
+## Code-shape gates as lint rules (#1316)
+
+Two regex `check:*` scripts are now rules in a local ESLint plugin
+(`scripts/eslint-rules/`, registered as `nicotind`), so they report in the editor
+with file:line instead of only in CI:
+
+| Rule | Was | What the AST bought |
+|---|---|---|
+| `nicotind/shared-helpers` | `check:shared-helpers` | a `let`/`var` copy is seen; a comment never is |
+| `nicotind/search-matching` | `check:search-matching` | only string/template literals are read, so prose cannot trip it; a literal nested in an interpolation is judged once |
+
+The lint command gained `packages/*/scripts/**/*.{ts,mjs}` and `packages/web/src`
+(the helpers registry reaches both), which took `bun run lint` from ~11 s to ~20 s.
+`no-restricted-imports` also bans `vitest` outside `packages/web`: everything else
+runs on `bun test`, where a vitest import type-checks nothing and hoists
+`vi.mock` past the imports it was meant to precede.
+
+**A lint rule prints no denominator**, and one that silently matches nothing
+looks exactly like one that checked everything. So each rule's set is asserted by
+its test instead, against the **real** `eslint.config.js`:
+
+- `shared-helpers.test.ts` lints every canonical module's own source under a
+  foreign filename and requires the rule to fire for that helper — the registry
+  entry is proven against the declaration shape it actually has — and requires
+  the rule to be on, and the lint globs to reach, a file beside every canonical
+  module.
+- `search-matching.test.ts` requires every non-test source file holding a `LIKE`
+  to be reached by the lint command with the rule on (12 files when ported).
+- `config.test.ts` lints snippets through the real config, so a rule proven in
+  isolation but never switched on fails.
+
+Narrowing the shared-helpers `files` glob to drop `packages/*/scripts` was
+checked to fail two of those tests.
+
+**Three gates stay scripts**, because what keeps them honest is repo-wide and a
+per-file lint rule cannot express it:
+
+- `check:library-walkers` — its allowlist is checked **both ways**: an exempt file
+  that stops walking `musicDir` fails. A lint rule never runs on a file it has
+  nothing to say about, so a stale exemption would be silent.
+- `check:transcode-quarantine` — fails when any one watched callee matches
+  **zero** call sites across the repo (#1256). That is a count over all files.
+- `check:feed-eligibility` — fails when **no** feed is classified anywhere, and
+  when an allowlist `match` string matches nothing.
+
+**No parallel `scripts/check.ts` runner.** Timed one by one, the 18 remaining
+gates take ~31 s, and `check:claude-md` is 21 s of it; running them in parallel
+would save ~10 s of a multi-minute `verify`, while hiding each gate from
+`check:ci-parity`, which reads `verify` as an `&&` chain.
 
 ## `check:ci-parity` — matching by substring, excluding by job
 
@@ -502,7 +553,7 @@ open:
 It imports `parseConventionalSubject` and `isBumping` from `release-needed.ts`
 rather than re-deriving them. A gate that disagrees with the guard it protects
 is worth nothing, and the disagreement would be invisible until releases
-stopped again — which is the same argument `check:shared-helpers` makes
+stopped again — which is the same argument `nicotind/shared-helpers` makes
 generally.
 
 **Its denominator.** Rule 2's input is `FETCH_HEAD..HEAD`, so the job checks out
@@ -657,9 +708,10 @@ pin is reported as unclassifiable, because its runtime genuinely is not derivabl
 - **`actions/cache` v5+ crosses the cache-service v2 migration.** A cache miss degrades to a slow
   build, it does not fail — so a bump is verified by cache **hits** in the log, not a green step.
 
-## `check:search-matching` — asserting the invariant, not the symbol
+## `nicotind/search-matching` — asserting the invariant, not the symbol
 
-`check:shared-helpers` exists to stop a shared helper being **re-declared**
+A lint rule since #1316 (formerly `check:search-matching`).
+`nicotind/shared-helpers` exists to stop a shared helper being **re-declared**
 locally. It cannot see a call site that **bypasses** one, and that is how the
 same bug shipped three more times.
 
@@ -685,8 +737,9 @@ from both shipped bugs, so the gate is proven to catch what it exists for.
 
 Applying the rules above:
 
-- **Denominator printed:** *"25 SQL fragments containing LIKE examined"*, not
-  "no problems found".
+- **Denominator asserted:** as a script it printed *"25 SQL fragments containing
+  LIKE examined"*; as a rule its test requires every file holding a `LIKE` to be
+  linted with the rule on.
 - **Fails on what it cannot classify** (rule 3). An interpolated
   `` `${col} LIKE ${bind}` `` hides its column from a text scan, so it is
   flagged rather than skipped.
@@ -694,8 +747,9 @@ Applying the rules above:
   a literal directly after `LIKE` with the user's text behind it; stopping at
   the literal would have waved through exactly this bug. That hole was found by
   a test, not by review.
-- **Known limit:** it is a pattern over source text, not a parser (rule 4). SQL
-  assembled across lines is only caught by the unclassified branch. A real
+- **Known limit:** within a literal it is still a pattern over each line, not a
+  SQL parser (rule 4). SQL assembled across lines is only caught by the
+  unclassified branch. A real
   parser is the upgrade if this ever cries wolf.
 
 ## `check:feed-eligibility` — one answer to "may this song be recommended"
@@ -706,7 +760,7 @@ the weekly recipe shelves and the poll generator each carried their own
 `s.hidden = 0 AND s.landed_at IS NOT NULL`. Five copies of a predicate drift,
 and this one had: radio checked the **song's** hidden flag and never the
 **album's**, so an album a curator hid vanished from every listing and kept
-playing on radio. `check:shared-helpers` could not see it — nothing was
+playing on radio. `nicotind/shared-helpers` could not see it — nothing was
 re-declared, the question was simply answered five different ways.
 
 `services/recommendation/eligibility.ts` is now the one answer

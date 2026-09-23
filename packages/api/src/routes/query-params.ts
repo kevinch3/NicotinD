@@ -16,7 +16,7 @@ import type { Context } from 'hono';
  *
  * One site already had the intended shape (`|| 200` after the `Number`), so this
  * was drift from a local convention rather than a missing one — and
- * `check:shared-helpers` exists to stop eleven more copies of it.
+ * `nicotind/shared-helpers` exists to stop eleven more copies of it.
  *
  * Anything that is not a finite integer ≥ 1 yields `fallback`; the result is
  * always clamped to `max`.

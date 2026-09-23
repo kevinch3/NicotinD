@@ -37,7 +37,7 @@ export type TranscodeFmt = Exclude<TranscodeFormat, 'original'>;
  *
  * Exported because the library-conversion path had written the Opus tuple out a
  * second time, inline, and the two drifted apart unnoticed; `library-format.ts`
- * now builds its encode args from here and `check:shared-helpers` fails a third
+ * now builds its encode args from here and `nicotind/shared-helpers` fails a third
  * declaration. It is **not** the library's own table — see `library-format.ts`
  * for why `aac` here (`-f adts`, `.aac`) cannot be a library target.
  */

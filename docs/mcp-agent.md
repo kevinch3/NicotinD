@@ -118,9 +118,9 @@ It now routes through `services/search-tokens.ts` (`tokenize` /
 `providers/library-provider.ts` use: SQL does the cheap row gating, JS does the
 folded per-token AND match. The agent and the curator now find the same things.
 
-`check:shared-helpers` could not have caught this — `routes/mcp.ts` never
+`nicotind/shared-helpers` could not have caught this — `routes/mcp.ts` never
 re-declared `matchesAllTokens`, it *bypassed* it, and a name-based check cannot
-see a bypass. `check:search-matching` asserts that invariant instead of the
+see a bypass. `nicotind/search-matching` asserts that invariant instead of the
 symbol. → [quality-gates.md](quality-gates.md)
 
 ### A case/accent duplicate is a rename, not a refusal (issue #707)

@@ -272,7 +272,7 @@ to click through.
 
 Where they genuinely agree they share: the Opus strategy's `encodeArgs` calls `FORMAT_ARGS.opus.args`
 rather than writing the tuple out again, which is the duplicate this seam removed.
-`check:shared-helpers` registers both names so a third copy fails CI — note it matches on the *name*,
+`nicotind/shared-helpers` registers both names so a third copy fails CI — note it matches on the *name*,
 so it could never have caught the original inline array literal.
 
 `FormatStrategy` makes each per-format fact a field rather than a constant: `ext`, `encodeArgs`,
@@ -999,7 +999,7 @@ paths and names whichever is short.
 `services/disk-space.ts` is the one place that probes free space. `StatfsFn` and `freeBytes` had
 **three byte-identical copies** (the library import, the migration backup, `GET /api/system/disk`),
 and the type was already being imported across module boundaries from whichever file happened to
-declare it — the shape that precedes a fourth. Both names are registered in `check:shared-helpers`,
+declare it — the shape that precedes a fourth. Both names are registered in `nicotind/shared-helpers`,
 so a fourth copy is now a gate failure rather than a discovery.
 
 It lives in `packages/api`, not core, because core is deliberately free of `node:fs` so the Angular
