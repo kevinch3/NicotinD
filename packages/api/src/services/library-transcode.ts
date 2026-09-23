@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import type { Database } from 'bun:sqlite';
 import { createLogger } from '@nicotind/core';
 import {
+  AMBIGUOUS_CONTAINERS,
   isLossless,
   isLosslessFile,
   transcodeToLibraryFormat,
@@ -227,26 +228,31 @@ export async function transcodeLibraryToFormat(
   for (const r of allRows) {
     if (limit > 0 && rows.length >= limit) break;
     const ext = (r.path.split('.').pop() ?? '').toLowerCase();
+    const isAmbiguous = AMBIGUOUS_CONTAINERS.has(ext);
+    // Ambiguous-container rows can't be classified by extension alone: ALAC
+    // (lossless, browser-undecodable) shares the container with lossy AAC.
+    // Probe once, up front, and reuse the answer both for "is this already
+    // the target codec" below and for "is this a lossless candidate" further
+    // down — the same ambiguity this pass used to ask, inconsistently, twice.
+    const abs = isAmbiguous ? join(musicDir, r.path) : null;
+    const ambiguousIsLossless = abs !== null && existsSync(abs) && (await isLosslessFile(abs));
 
     // Already the target format. Re-encoding a file into its own format is pure
     // generation loss for zero gain, and it is the one thing this pass must
-    // never do.
-    if (ext === target.ext || (r.suffix ?? '').toLowerCase() === target.ext) continue;
+    // never do — except an ambiguous-container row sharing the target's
+    // extension isn't necessarily already the target codec (#1286): only the
+    // probe above can say, so it falls through to the lossless-candidate
+    // checks below instead of being skipped on the extension match alone.
+    const extIsTarget = ext === target.ext || (r.suffix ?? '').toLowerCase() === target.ext;
+    if (extIsTarget && !(isAmbiguous && ambiguousIsLossless)) continue;
 
     if (scope === 'all') {
       rows.push(r);
       continue;
     }
 
-    if (isLossless(r.suffix) || isLossless(ext)) {
+    if (isLossless(r.suffix) || isLossless(ext) || (isAmbiguous && ambiguousIsLossless)) {
       rows.push(r);
-      continue;
-    }
-    // .m4a-family rows need a codec probe: ALAC (lossless, browser-undecodable)
-    // shares the extension with lossy AAC. Probe only files that exist.
-    if (['m4a', 'm4b', 'mp4'].includes(ext)) {
-      const abs = join(musicDir, r.path);
-      if (existsSync(abs) && (await isLosslessFile(abs))) rows.push(r);
     }
   }
   result.candidates = rows.length;
