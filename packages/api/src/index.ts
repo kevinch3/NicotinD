@@ -123,6 +123,7 @@ import { createLogger } from '@nicotind/core';
 import { initDatabase } from './db.js';
 import { dirname, join } from 'node:path';
 import { createWebSocketHandlers } from './services/websocket.js';
+import { coalescedRun } from './services/coalesced-run.js';
 import type { AuthEnv } from './middleware/auth.js';
 
 export type ProcessingRef = { current: LibraryProcessingService | null };
@@ -187,7 +188,9 @@ export function createApp({
   // seam can fire an eager processing kick the moment a download is scanned in —
   // late-bound via `.current`, evaluated at call time.
   const processingRef: ProcessingRef = { current: null };
-  const runSyncAndCurate = async (): Promise<void> => {
+  // Coalesced: a song delete, genre edit or artist merge each trigger this, and
+  // a burst of them used to start one overlapping full scan apiece (#1303).
+  const runSyncAndCurate = coalescedRun(async (): Promise<void> => {
     try {
       await scanner.scanFull();
       curator.reclassifyAll('full-sync');
@@ -202,7 +205,7 @@ export function createApp({
     } catch (err) {
       syncLog.error({ err }, 'Library scan/curate cycle failed');
     }
-  };
+  });
   // Reconcile a just-organized batch at the download→library seam: expand the
   // post-move file paths to their album folders and run an album-scoped
   // rescan + orphan-row prune, so cross-wave duplicate rows never surface (not
