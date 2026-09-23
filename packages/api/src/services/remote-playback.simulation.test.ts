@@ -93,6 +93,7 @@ class VirtualDevice {
       deviceType: 'web',
       remoteEnabled: this.remoteEnabled,
       activated: true,
+      compactProgress: true,
     });
   }
 

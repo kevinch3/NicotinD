@@ -204,6 +204,30 @@ describe('DEVICES_SYNC', () => {
   });
 });
 
+describe('PROGRESS (#1308)', () => {
+  it('updates position, duration and the receipt time without any effect', () => {
+    const prev = state({ activeDeviceId: 'tv', remotePosition: 3, remoteDuration: 100 });
+    const r = reduceServerMessage(prev, ctx({ now: 5000 }), {
+      type: 'PROGRESS',
+      payload: { position: 12.5, duration: 180 },
+    });
+    expect(r.state.remotePosition).toBe(12.5);
+    expect(r.state.remoteDuration).toBe(180);
+    expect(r.state.remotePositionTs).toBe(5000);
+    expect(r.state.remoteIsPlaying).toBe(true);
+    expect(r.state.activeDeviceId).toBe('tv');
+    expect(kinds(r)).toEqual([]);
+  });
+
+  it('keeps the last known duration when the output reports none', () => {
+    const r = reduceServerMessage(state({ remoteDuration: 90 }), ctx(), {
+      type: 'PROGRESS',
+      payload: { position: 1, duration: 0 },
+    });
+    expect(r.state.remoteDuration).toBe(90);
+  });
+});
+
 describe('COMMAND', () => {
   const cmd = (action: string, extra: Record<string, unknown> = {}): ServerMessage => ({
     type: 'COMMAND',

@@ -90,7 +90,7 @@ function playerTitle(p: Page): Promise<string> {
  *  (`frames.txt`) so a failure here is diagnosable from CI output alone. */
 class FrameLog {
   readonly lines: string[] = [];
-  /** Positions the controller was told about by STATE_SYNC frames. */
+  /** Positions the controller was told about by STATE_SYNC or PROGRESS frames. */
   readonly positions: number[] = [];
   private readonly t0 = Date.now();
 
@@ -109,9 +109,14 @@ class FrameLog {
     this.lines.push(`${t} ${who} ${dir} ${payload.slice(0, 4000)}`);
     if (dir !== '←') return;
     try {
-      const m = JSON.parse(payload) as { type: string; payload: { state?: { position?: number } } };
+      const m = JSON.parse(payload) as {
+        type: string;
+        payload: { state?: { position?: number }; position?: number };
+      };
       if (m.type === 'STATE_SYNC' && typeof m.payload.state?.position === 'number') {
         this.positions.push(m.payload.state.position);
+      } else if (m.type === 'PROGRESS' && typeof m.payload.position === 'number') {
+        this.positions.push(m.payload.position);
       }
     } catch {
       /* not JSON */

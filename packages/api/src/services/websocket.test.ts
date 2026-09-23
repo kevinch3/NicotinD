@@ -494,7 +494,7 @@ describe('createWebSocketHandlers', () => {
   });
 
   describe('PROGRESS_REPORT', () => {
-    it('updates position and duration when sent by the active device', () => {
+    it('stores position and duration quietly while the session is already playing (#1308)', () => {
       const ws = createMockWs();
       handlers.onOpen!({} as Event, ws);
       registerDevice(handlers, ws);
@@ -503,21 +503,25 @@ describe('createWebSocketHandlers', () => {
         defaultState({ activeDeviceId: 'dev1', isPlaying: true }),
       );
       mockManager.updateState.mockClear();
+      mockManager.updateStateQuiet.mockClear();
+      ws.send.mockClear();
 
       handlers.onMessage!(
         createEvent({ type: 'PROGRESS_REPORT', payload: { position: 45.2, duration: 180 } }),
         ws,
       );
 
-      expect(mockManager.updateState).toHaveBeenCalledTimes(1);
-      const call = (mockManager.updateState.mock.calls[0] as unknown[])[0] as Record<
+      expect(mockManager.updateState).not.toHaveBeenCalled();
+      expect(mockManager.updateStateQuiet).toHaveBeenCalledTimes(1);
+      const call = (mockManager.updateStateQuiet.mock.calls[0] as unknown[])[0] as Record<
         string,
         unknown
       >;
       expect(call.position).toBe(45.2);
       expect(call.duration).toBe(180);
       expect(call.isPlaying).toBe(true);
-      expect(call.timestamp).toBeGreaterThan(0);
+      // Nothing echoes back to the reporter.
+      expect(ws.send).not.toHaveBeenCalled();
     });
 
     it('sets isPlaying: true implicitly (device is playing if reporting progress)', () => {

@@ -14,6 +14,9 @@ type ConnectionInfo = {
   deviceId: string;
   userId: string;
   registration: DeviceRegistration;
+  /** Understands the compact `PROGRESS` frame; an older client did not say
+   *  so and keeps getting a full STATE_SYNC per report (#1308). */
+  compactProgress: boolean;
   /** The REGISTER-time context: its `send` closes over the raw socket. */
   ws: WSContext;
 };
@@ -64,6 +67,27 @@ export function createPlaybackHub(registry: ManagerSource = playbackRegistry) {
     });
   }
 
+  /** Relay the output's progress to the user's OTHER sockets. The sender
+   *  already knows its own position, and with no other socket nothing is
+   *  sent at all (#1308). */
+  function relayProgress(userId: string, senderKey: object, position: number, duration: number) {
+    let compact: string | undefined;
+    let legacy: string | undefined;
+    for (const [key, info] of connections) {
+      if (info.userId !== userId || key === senderKey) continue;
+      if (info.compactProgress) {
+        compact ??= JSON.stringify({ type: 'PROGRESS', payload: { position, duration } });
+        info.ws.send(compact);
+      } else {
+        legacy ??= JSON.stringify({
+          type: 'STATE_SYNC',
+          payload: { state: registry.getOrCreate(userId).getState() },
+        });
+        info.ws.send(legacy);
+      }
+    }
+  }
+
   function handlersFor(userId: string) {
     attachListeners(userId);
     const manager = registry.getOrCreate(userId);
@@ -98,7 +122,13 @@ export function createPlaybackHub(registry: ManagerSource = playbackRegistry) {
                 // the opt-in click that doubled as its gesture.
                 activated: data.payload.activated !== false,
               };
-              connections.set(key, { deviceId: id, userId, registration, ws });
+              connections.set(key, {
+                deviceId: id,
+                userId,
+                registration,
+                compactProgress: data.payload.compactProgress === true,
+                ws,
+              });
               manager.registerDevice(registration);
 
               ws.send(
@@ -174,14 +204,22 @@ export function createPlaybackHub(registry: ManagerSource = playbackRegistry) {
 
             case 'PROGRESS_REPORT': {
               // Only accept progress from the currently active device
-              if (info?.deviceId && info.deviceId === manager.getState().activeDeviceId) {
-                manager.updateState({
-                  position: data.payload.position,
-                  duration: data.payload.duration,
-                  isPlaying: true,
-                  timestamp: Date.now(),
-                });
+              if (!info?.deviceId || info.deviceId !== manager.getState().activeDeviceId) break;
+              const progress = {
+                position: data.payload.position,
+                duration: data.payload.duration,
+                isPlaying: true,
+              };
+              // A report that flips the session to playing is a transition every
+              // socket must hear in full; a steady report only moves the clock.
+              // The stored state is updated either way, so a device connecting
+              // later gets the position in its REGISTER snapshot (#1308).
+              if (!manager.getState().isPlaying) {
+                manager.updateState(progress);
+                break;
               }
+              manager.updateStateQuiet(progress);
+              relayProgress(userId, key, progress.position, progress.duration);
               break;
             }
 

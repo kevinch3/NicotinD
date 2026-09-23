@@ -337,7 +337,7 @@ export class RemotePlaybackService {
       if (this.activeDeviceId() === this.ws.getDeviceId()) this.ws.sendRelease();
     });
 
-    for (const type of ['STATE_SYNC', 'DEVICES_SYNC', 'COMMAND'] as const) {
+    for (const type of ['STATE_SYNC', 'DEVICES_SYNC', 'COMMAND', 'PROGRESS'] as const) {
       this.ws
         .messages<ServerMessage['payload']>(type)
         .pipe(takeUntilDestroyed(this.destroyRef))
