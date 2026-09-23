@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.50](https://github.com/kevinch3/NicotinD/compare/v0.8.49...v0.8.50) (2026-09-23)
+
+### Bug Fixes
+
+* **worktree:** catch packages bun install never pruned, not just drifted ones ([#1276](https://github.com/kevinch3/NicotinD/issues/1276)) ([393eb04](https://github.com/kevinch3/NicotinD/commit/393eb04efd9bc36e64934510d66b6e5f53b6788c)), closes [#1266](https://github.com/kevinch3/NicotinD/issues/1266), references [#1259](https://github.com/kevinch3/NicotinD/issues/1259) [#1259](https://github.com/kevinch3/NicotinD/issues/1259) [#1268](https://github.com/kevinch3/NicotinD/issues/1268)
 ## [0.8.49](https://github.com/kevinch3/NicotinD/compare/v0.8.48...v0.8.49) (2026-09-22)
 
 ### Features

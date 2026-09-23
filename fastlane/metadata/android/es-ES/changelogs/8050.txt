@@ -1,0 +1,1 @@
+• worktree: catch packages bun install never pruned, not just drifted ones (#1276)
