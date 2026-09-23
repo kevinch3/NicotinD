@@ -168,6 +168,10 @@ describe('PlaybackWsService REGISTER payload', () => {
     }
   });
 
+  it('asks for the compact PROGRESS frame instead of a STATE_SYNC per report (#1308)', () => {
+    expect(connectAndCaptureRegister()['compactProgress']).toBe(true);
+  });
+
   it('registers as available by default: the preference is on unless turned off', () => {
     const payload = connectAndCaptureRegister();
     expect(payload['remoteEnabled']).toBe(true);

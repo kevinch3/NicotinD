@@ -143,7 +143,7 @@ describe('connection identity across events (#877)', () => {
     expect(s.manager.getDevices().map((x) => x.id)).toEqual(['d1']);
   });
 
-  it('progress from the active device reaches the controller as STATE_SYNC', () => {
+  it('progress reaches a controller that never asked for PROGRESS as STATE_SYNC (older client)', () => {
     const { controller, receiver } = castSession();
     const before = controller.frames('STATE_SYNC').length;
     receiver.send('PROGRESS_REPORT', { position: 12.5, duration: 180 });
@@ -171,6 +171,80 @@ describe('connection identity across events (#877)', () => {
     live.register();
     stale.close();
     expect(s.manager.getDevices().map((x) => x.id)).toEqual(['same-id']);
+  });
+});
+
+describe('compact progress (#1308)', () => {
+  /** Controller + receiver speaking the compact protocol, cast established and
+   *  playing, with every frame so far cleared. */
+  function playingCast() {
+    const s = session();
+    const controller = s.device('controller');
+    const receiver = s.device('receiver');
+    controller.register({ compactProgress: true });
+    receiver.register({ compactProgress: true });
+    controller.send('SET_ACTIVE_DEVICE', { id: 'receiver' });
+    controller.send('COMMAND', {
+      action: 'SET_TRACK',
+      track: { id: 't1', title: 'One', artist: 'A' },
+    });
+    controller.received.length = 0;
+    receiver.received.length = 0;
+    return { ...s, controller, receiver };
+  }
+
+  it('reaches the other device as a two-number PROGRESS frame, never as STATE_SYNC', () => {
+    const { controller, receiver } = playingCast();
+    receiver.send('PROGRESS_REPORT', { position: 12.5, duration: 180 });
+    expect(controller.received).toEqual([
+      { type: 'PROGRESS', payload: { position: 12.5, duration: 180 } },
+    ]);
+    expect(receiver.received).toEqual([]);
+  });
+
+  it('with no other socket connected, a report sends nothing at all', () => {
+    const s = session();
+    const solo = s.device('solo');
+    solo.register({ compactProgress: true });
+    solo.send('PROGRESS_REPORT', { position: 1, duration: 100 }); // unclaimed: dropped
+    solo.send('CLAIM_OUTPUT', { track: { id: 't1', title: 'One', artist: 'A' }, position: 0 });
+    solo.received.length = 0;
+    for (let i = 1; i <= 5; i++) solo.send('PROGRESS_REPORT', { position: i * 2, duration: 100 });
+    expect(solo.received).toEqual([]);
+    expect(s.manager.getState().position).toBe(10);
+  });
+
+  it('a device connecting later gets the reported position in its snapshot', () => {
+    const { receiver, device } = playingCast();
+    receiver.send('PROGRESS_REPORT', { position: 42, duration: 180 });
+    const late = device('late');
+    late.register({ compactProgress: true });
+    expect(late.last('STATE_SYNC')?.payload['state']).toMatchObject({
+      position: 42,
+      duration: 180,
+      isPlaying: true,
+    });
+  });
+
+  it('a report that flips the session back to playing is broadcast in full', () => {
+    const { controller, receiver } = playingCast();
+    controller.send('COMMAND', { action: 'PAUSE' });
+    controller.received.length = 0;
+    receiver.send('PROGRESS_REPORT', { position: 7, duration: 180 });
+    const f = controller.last('STATE_SYNC');
+    expect(f?.payload['state']).toMatchObject({ isPlaying: true, position: 7 });
+    expect(controller.frames('PROGRESS')).toEqual([]);
+  });
+
+  it('a mixed household: the new client gets PROGRESS, the older one STATE_SYNC', () => {
+    const { controller, receiver, device } = playingCast();
+    const old = device('old-tab');
+    old.register();
+    old.received.length = 0;
+    receiver.send('PROGRESS_REPORT', { position: 30, duration: 180 });
+    expect(controller.frames('PROGRESS')).toHaveLength(1);
+    expect(old.frames('PROGRESS')).toEqual([]);
+    expect((old.last('STATE_SYNC')?.payload['state'] as { position: number }).position).toBe(30);
   });
 });
 

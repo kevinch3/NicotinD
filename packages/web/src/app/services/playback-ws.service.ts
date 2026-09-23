@@ -203,6 +203,9 @@ export class PlaybackWsService {
           deviceType: 'web',
           remoteEnabled: readOutputAvailable(localStorage),
           activated: this.activated,
+          // Relay the output's progress as a two-number PROGRESS frame
+          // instead of a full STATE_SYNC (#1308).
+          compactProgress: true,
         },
       });
       this.startHeartbeat(socket);

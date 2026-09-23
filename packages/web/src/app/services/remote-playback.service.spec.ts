@@ -215,6 +215,22 @@ describe('RemotePlaybackService session behaviour (#877)', () => {
     expect(player.isPlaying()).toBe(false);
   });
 
+  it('a PROGRESS frame moves the mirrored position, duration and receipt time (#1308)', () => {
+    sync({ activeDeviceId: 'tv', isPlaying: true, position: 0, track: t1 }, [tvDevice, meDevice]);
+    vi.spyOn(Date, 'now').mockReturnValue(123_456);
+    try {
+      emit('PROGRESS', { position: 12.5, duration: 180 });
+    } finally {
+      vi.restoreAllMocks();
+    }
+    expect(service.remotePosition()).toBe(12.5);
+    expect(service.remoteDuration()).toBe(180);
+    expect(service.remotePositionTs()).toBe(123_456);
+    expect(service.remoteIsPlaying()).toBe(true);
+    expect(service.activeDeviceId()).toBe('tv');
+    expect(player.isPlaying()).toBe(false);
+  });
+
   describe('castsReceived — "a controller cast to me", which no state can tell (#1128)', () => {
     it('counts a command that made this device play', () => {
       sync({ activeDeviceId: 'me' });

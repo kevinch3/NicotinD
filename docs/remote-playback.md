@@ -91,7 +91,7 @@ All real-time communication uses a single persistent **WebSocket** at `GET /api/
 
 ```
 Client connects (whenever a token exists — the toggle does not gate the socket)
-  → sends REGISTER { id, name, deviceType, remoteEnabled, activated }
+  → sends REGISTER { id, name, deviceType, remoteEnabled, activated, compactProgress }
   → server adds device to in-memory Map, broadcasts DEVICES_SYNC to all
   → server replies with STATE_SYNC (current state + full device list)
 
@@ -220,12 +220,13 @@ All frames are JSON: `{ type: string, payload: object }`.
 
 | Type | Payload | Purpose |
 |------|---------|---------|
-| `REGISTER` | `{ id, name, deviceType, remoteEnabled, activated }` | Announce this device on connect |
+| `REGISTER` | `{ id, name, deviceType, remoteEnabled, activated, compactProgress? }` | Announce this device on connect. `compactProgress: true` opts in to `PROGRESS` frames (absent = an older client, which gets a `STATE_SYNC` per report) |
 | `HEARTBEAT` | `{}` | Keep-alive every 30 s |
 | `COMMAND` | `{ action, ...args }` | Send a playback command (see actions below) |
 | `SET_ACTIVE_DEVICE` | `{ id }` | Nominate a device as the audio output. Ignored unless the target is listed and available |
 | `CLAIM_OUTPUT` | `{ track, trackId, position, isPlaying }` | This device started playing and wants to be the output. Compare-and-set: applied when there is no session, the claimant holds it, or the current output is not available. A refused claim is answered with a private `STATE_SYNC` |
 | `RELEASE_OUTPUT` | `{}` | The output is leaving (`pagehide`): end the session now |
+| `PROGRESS_REPORT` | `{ position, duration }` | The output's position, every 2 s while playing. Accepted only from the output; stored, and relayed to the user's *other* sockets (see *Progress is relayed, not rebroadcast*) |
 | `STATE_UPDATE` | `{ state }` | The output reports its state. Accepted only from the output (or with no session); broadcast when the track or `isPlaying` changed, quiet otherwise |
 | `UPDATE_DEVICE` | `{ remoteEnabled?, activated?, name? }` | Preference, first gesture, rename |
 
@@ -237,6 +238,7 @@ All frames are JSON: `{ type: string, payload: object }`.
 | `DEVICES_SYNC` | `{ devices }` | Device list after a connect/disconnect/preference change; every device, with `available` and `pending` |
 | `COMMAND` | `{ action, ...args }` | Relay of a command to all clients |
 | `HEARTBEAT_ACK` | `{}` | Reply to every `HEARTBEAT` (sent to that client only) |
+| `PROGRESS` | `{ position, duration }` | Relay of a `PROGRESS_REPORT` to every socket of the user **except the reporter**, and only to those that registered `compactProgress`. Implies `isPlaying: true` |
 
 #### COMMAND actions
 
@@ -288,6 +290,19 @@ press ▶
   because broadcast `STATE_SYNC`s never execute — only snapshot replies do.
 - **Commands drive execution, STATE_SYNC drives UI.** Device B executes `PLAY`/`PAUSE`/`SEEK`/`SET_TRACK` only when it receives a `COMMAND` message — not from STATE_SYNC. This avoids the echo loop that occurred when STATE_SYNC triggered a STATE_UPDATE reply that re-triggered another STATE_SYNC.
 - **STATE_UPDATE is quiet.** When a device sends `STATE_UPDATE`, the server stores it but does not re-broadcast (`updateStateQuiet`). This prevents Device B from echoing back state it received from the server.
+- **Progress is relayed, not rebroadcast (#1308).** A `PROGRESS_REPORT` used to run
+  `updateState` and broadcast a full `STATE_SYNC` — the whole `track` object plus the queue — to
+  every socket of the user *including the reporter*, every 2 s, even with one device connected.
+  Now a steady report is stored with `updateStateQuiet` (so a device connecting later still gets
+  the position in its `REGISTER` snapshot, and the idle-release clock still ticks) and relayed as a
+  two-number `PROGRESS { position, duration }` to the user's other sockets only; alone, nothing is
+  sent. A report that flips the session from paused to playing is a transition every socket must
+  hear, so it still goes out as a full `STATE_SYNC`. The client reduces `PROGRESS` into
+  `remotePosition` / `remoteDuration` / `remotePositionTs` (receipt time, as for `STATE_SYNC`) and
+  `remoteIsPlaying: true`. **Compatibility:** a client opts in with `REGISTER { compactProgress:
+  true }`; a socket that did not (an older web build, an older app) is sent the legacy
+  `STATE_SYNC` per report, so a mixed household keeps working. A new client against an older
+  server simply keeps receiving `STATE_SYNC`, which it always handled.
 - **remoteIsPlaying tracks the server's believed state.** The controller reads `remoteIsPlaying` (updated from every STATE_SYNC) to decide whether pressing the button should send `PLAY` or `PAUSE`. Without this, the controller's stale local `isPlaying` caused it to always send the wrong command.
 - **Exactly one output, and a link dropping never wakes a speaker.** `castTo` *yields* the
   controller's player (pauses it logically, not just the `<audio>` element), a device that stops
@@ -373,5 +388,5 @@ nobody asked for. See [tv-ux.md](tv-ux.md).
 
 - **State is ephemeral.** Server restart clears the active device and playback state. All devices reconnect automatically but no track is restored.
 - **Shared library only.** Remote playback works because all devices stream from the same NicotinD instance using their own JWT tokens. External users on different NicotinD instances cannot be targeted.
-- **Every connected tab hears every `STATE_SYNC`.** The presence socket is always up now, so the output's 2 s progress broadcast reaches every logged-in tab. Fine at household scale; a per-tab subscription would be the fix if it ever is not.
+- **Every other connected tab hears the output's progress.** The presence socket is always up, so the 2 s `PROGRESS` relay reaches every other logged-in tab — two numbers per frame since #1308, and nothing at all with one device. Fine at household scale; a per-tab subscription would be the fix if it ever is not.
 - **No queue sync.** The queue lives in each browser's player store. Only the currently playing track is sent via `SET_TRACK`. Advancing to the next track on the receiver plays from its local queue, which may be empty.

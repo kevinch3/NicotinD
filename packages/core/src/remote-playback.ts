@@ -65,7 +65,18 @@ export type ServerMessage =
   | { type: 'STATE_SYNC'; payload: { state: RemotePlaybackSnapshot; devices?: RemoteDevice[] } }
   | { type: 'DEVICES_SYNC'; payload: { devices: RemoteDevice[] } }
   | { type: 'COMMAND'; payload: { action: string; track?: RemoteTrack; position?: number } }
-  | { type: 'HEARTBEAT_ACK'; payload: Record<string, never> };
+  | { type: 'HEARTBEAT_ACK'; payload: Record<string, never> }
+  /** The output's periodic position, relayed to the user's *other* sockets
+   *  only — and only to those that registered with `compactProgress: true`;
+   *  an older client gets the full STATE_SYNC it always did (#1308). Implies
+   *  the output is playing: the server accepts progress only from it. */
+  | { type: 'PROGRESS'; payload: RemoteProgress };
+
+/** The compact progress frame: two numbers instead of the whole state. */
+export interface RemoteProgress {
+  position: number;
+  duration: number;
+}
 
 export type ClientMessage =
   | { type: 'SET_ACTIVE_DEVICE'; payload: { id: string } }
@@ -209,6 +220,17 @@ export function reduceServerMessage(
       return { state: { ...state, devices: msg.payload.devices }, effects: [] };
     case 'COMMAND':
       return reduceCommand(state, ctx, msg.payload);
+    case 'PROGRESS':
+      return {
+        state: {
+          ...state,
+          remoteIsPlaying: true,
+          remotePosition: msg.payload.position,
+          remotePositionTs: ctx.now,
+          remoteDuration: msg.payload.duration || state.remoteDuration,
+        },
+        effects: [],
+      };
     default:
       return { state, effects: [] };
   }
