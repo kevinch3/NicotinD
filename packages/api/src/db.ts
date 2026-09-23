@@ -37,12 +37,29 @@ export function initDatabase(dataDir: string): Database {
  * - `mmap_size`: memory-map up to 256 MiB so reads avoid syscall copies.
  * - `busy_timeout=5000`: wait out a concurrent writer (the background scan)
  *   instead of erroring immediately, matching the one-off scripts.
+ * - `journal_size_limit=64 MiB`: a full scan is one large transaction that
+ *   grows the WAL; without a limit the file is never truncated after a
+ *   checkpoint (#1307).
  */
 export function applyPerformancePragmas(db: Database): void {
   db.run('PRAGMA synchronous=NORMAL');
   db.run('PRAGMA cache_size=-64000');
   db.run('PRAGMA mmap_size=268435456');
   db.run('PRAGMA busy_timeout=5000');
+  db.run('PRAGMA journal_size_limit=67108864');
+}
+
+/**
+ * `PRAGMA optimize`: refresh planner statistics for tables whose shape changed
+ * enough to matter. Run after a full scan and at shutdown (#1307). Best-effort —
+ * a failure (e.g. a busy writer) only logs, never fails the caller.
+ */
+export function optimizeDatabase(db: Database): void {
+  try {
+    db.run('PRAGMA optimize');
+  } catch (err) {
+    log.warn({ err }, 'PRAGMA optimize failed');
+  }
 }
 
 /**

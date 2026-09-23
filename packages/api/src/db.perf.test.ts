@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
 import { Database } from 'bun:sqlite';
-import { applySchema, applyPerformancePragmas } from './db.js';
+import { applySchema, applyPerformancePragmas, optimizeDatabase } from './db.js';
 
 function pragma(db: Database, name: string): number {
   const row = db.query(`PRAGMA ${name}`).get() as Record<string, number> | null;
@@ -21,6 +21,29 @@ describe('applyPerformancePragmas', () => {
     // cache_size is reported negative (KiB) when set that way, or a positive page
     // count; either way it must differ from the tiny default (-2000 KiB / 2000).
     expect(Math.abs(pragma(db, 'cache_size'))).toBeGreaterThan(2000);
+  });
+
+  it('caps the WAL at 64 MiB with journal_size_limit (#1307)', () => {
+    const db = new Database(':memory:');
+    expect(pragma(db, 'journal_size_limit')).toBe(-1);
+    applyPerformancePragmas(db);
+    expect(pragma(db, 'journal_size_limit')).toBe(67108864);
+  });
+});
+
+describe('optimizeDatabase', () => {
+  it('runs PRAGMA optimize', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    const run = spyOn(db, 'run');
+    optimizeDatabase(db);
+    expect(run).toHaveBeenCalledWith('PRAGMA optimize');
+  });
+
+  it('logs instead of throwing when the pragma fails', () => {
+    const db = new Database(':memory:');
+    db.close();
+    expect(() => optimizeDatabase(db)).not.toThrow();
   });
 });
 

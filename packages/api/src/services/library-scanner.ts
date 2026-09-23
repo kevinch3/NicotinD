@@ -58,6 +58,7 @@ import {
   type GenreContext,
 } from './genre-split.js';
 import { libraryEvents } from './library-events.js';
+import { optimizeDatabase } from '../db.js';
 
 const log = createLogger('library-scanner');
 
@@ -928,6 +929,7 @@ export class LibraryScanner {
     if (recovered > 0)
       log.info({ recovered }, 'cleared orphaned_at on scan-cache rows still on disk');
     log.info({ ...result, walkIncomplete: incomplete.length > 0 }, 'Full scan complete');
+    optimizeDatabase(this.db);
     return result;
   }
 
