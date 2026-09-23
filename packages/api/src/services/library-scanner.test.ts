@@ -1,7 +1,7 @@
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it, beforeEach } from 'bun:test';
+import { describe, expect, it, beforeEach, spyOn } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import {
@@ -1801,6 +1801,21 @@ describe('a de-selected duplicate leaves its row behind (issue #964)', () => {
         .get(relMp3);
       expect(stale?.title).toBe('Pegao (Official Video)');
       expect(countSongs(db)).toBe(2);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('scanFull refreshes planner statistics (#1307)', () => {
+  it('runs PRAGMA optimize once the scan has persisted', async () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    const root = mkdtempSync(join(tmpdir(), 'scan-optimize-'));
+    try {
+      const run = spyOn(db, 'run');
+      await new LibraryScanner(root, db).scanFull();
+      expect(run).toHaveBeenCalledWith('PRAGMA optimize');
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

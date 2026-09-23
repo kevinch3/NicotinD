@@ -7,7 +7,13 @@ import pkg from '../package.json';
 import { NicotinDConfigSchema, createLogger, generateSecret, resolvePort } from '@nicotind/core';
 import { ServiceManager, NativeProcessStrategy } from '@nicotind/service-manager';
 import { Lidarr } from '@nicotind/lidarr-client';
-import { createApp, findInsecureDefaults, getDatabase, maybeCheckForUpdate } from '@nicotind/api';
+import {
+  createApp,
+  findInsecureDefaults,
+  getDatabase,
+  maybeCheckForUpdate,
+  optimizeDatabase,
+} from '@nicotind/api';
 
 const log = createLogger('nicotind');
 
@@ -181,6 +187,7 @@ async function main() {
     if (processingRef.current) processingRef.current.stop();
     maintenance.stop();
     await serviceManager.stopAll();
+    optimizeDatabase(getDatabase());
     process.exit(0);
   };
   process.on('SIGTERM', shutdown);
