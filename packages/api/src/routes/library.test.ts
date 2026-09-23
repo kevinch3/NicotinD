@@ -12,6 +12,7 @@ import { libraryRoutes, ARTISTS_PAGE_MAX, __resetDownloadSuppressionCache } from
 import type { AuthEnv } from '../middleware/auth.js';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import type { PluginRegistry } from '../services/plugins/registry.js';
+import type { LibraryCurator } from '../services/library-curator.js';
 import { getArtistMeta, upsertArtistMeta } from '../services/artist-meta-store.js';
 import { mutateArtistMbid } from '../services/artist-mbid-mutate.js';
 import { getArtistOrigin, upsertArtistOrigin } from '../services/artist-origins.js';
@@ -990,6 +991,47 @@ describe('album deletion', () => {
     // Album delete removes canonical rows synchronously; it never needs a rescan.
     expect(runSync).not.toHaveBeenCalled();
     expect(albumRowExists('del-nosync')).toBe(false);
+  });
+
+  it('song delete and bulk delete reclassify the album instead of a full rescan (#1303)', async () => {
+    const dir = '/home/kevinch3/Music/Scoped Artist/Scoped Album';
+    seedAlbum('del-scoped', [
+      { id: 'sc-1', path: `${dir}/01.mp3` },
+      { id: 'sc-2', path: `${dir}/02.mp3` },
+      { id: 'sc-3', path: `${dir}/03.mp3` },
+    ]);
+    for (const n of ['01', '02', '03']) fsState.set(`${dir}/${n}.mp3`, true);
+
+    const runSync = mock(() => Promise.resolve());
+    const reclassify = mock((_ids: readonly string[], _reason: string) => ({}));
+    const localApp = new Hono<AuthEnv>();
+    localApp.use('*', (c, next) => {
+      c.set('user', { sub: 'test-user', role: 'admin', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    localApp.route(
+      '/',
+      libraryRoutes('/home/kevinch3/Music', {
+        runSync,
+        curator: { reclassify } as unknown as LibraryCurator,
+      }),
+    );
+
+    expect((await localApp.request('/songs/sc-1', { method: 'DELETE' })).status).toBe(200);
+    const bulk = await localApp.request('/songs/bulk-delete', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ids: ['sc-2', 'sc-3'] }),
+    });
+    expect(bulk.status).toBe(200);
+
+    expect(runSync).not.toHaveBeenCalled();
+    expect(reclassify.mock.calls).toEqual([
+      [['del-scoped'], 'song-delete'],
+      [['del-scoped'], 'song-delete'],
+    ]);
+    // The last delete emptied the album, which deleteOne prunes on its own.
+    expect(albumRowExists('del-scoped')).toBe(false);
   });
 
   it('gates album delete on the curator role (listener/user 403, refiner 200)', async () => {

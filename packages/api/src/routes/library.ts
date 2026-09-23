@@ -2846,7 +2846,10 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       detail: songRow ? `${songRow.artist} — ${songRow.title}` : undefined,
     });
 
-    if (runSync) void runSync();
+    // deleteOne already removed the row, its links and any emptied album or
+    // artist; only the surviving album's release type can have changed. A
+    // full rescan here cost one whole-library scan per delete (#1303).
+    if (result.albumId) curator?.reclassify([result.albumId], 'song-delete');
 
     return c.json({ ok: true });
   });
@@ -2878,7 +2881,10 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       );
     }
 
-    if (runSync) void runSync();
+    const albumIds = results.flatMap((r) =>
+      r.status === 'fulfilled' && r.value.ok && r.value.albumId ? [r.value.albumId] : [],
+    );
+    if (albumIds.length > 0) curator?.reclassify([...new Set(albumIds)], 'song-delete');
 
     recordAudit(getDatabase(), c.get('user'), 'songs.bulk-delete', {
       targetKind: 'songs',
