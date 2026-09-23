@@ -59,6 +59,13 @@ import {
 } from './genre-split.js';
 import { libraryEvents } from './library-events.js';
 import { optimizeDatabase } from '../db.js';
+import {
+  linkKeysOf,
+  linkTuple,
+  loadLinkKeys,
+  loadStoredSongs,
+  songUnchanged,
+} from './scan-diff.js';
 
 const log = createLogger('library-scanner');
 
@@ -882,6 +889,8 @@ export interface ScanResult {
   genres: number;
   removedAlbums: number;
   removedSongs: number;
+  /** Songs whose row already held what the scan read — stamped, not rewritten (#1309). */
+  unchangedSongs: number;
 }
 
 /**
@@ -1318,6 +1327,7 @@ export class LibraryScanner {
       ON CONFLICT(song_id, genre) DO UPDATE SET
         position = excluded.position
     `);
+    let unchangedSongs = 0;
 
     // Incremental only (#874): a retag (e.g. ALBUMARTIST) re-mints a song's
     // album_id while its own id (path-derived) stays put, moving it out from
@@ -1366,20 +1376,23 @@ export class LibraryScanner {
           syncedAt,
         );
       }
-      // Which of these songs are NEW rows: an open client learns about them
-      // over /api/library/events (songs.landed). Computed before the upsert;
-      // a rescan of existing rows announces nothing.
-      const existingIds = new Set<string>();
-      for (let i = 0; i < built.songs.length; i += 400) {
-        const chunk = built.songs.slice(i, i + 400).map((x) => x.id);
-        const marks = chunk.map(() => '?').join(',');
-        for (const r of this.db
-          .query<{ id: string }, string[]>(`SELECT id FROM library_songs WHERE id IN (${marks})`)
-          .all(...chunk)) {
-          existingIds.add(r.id);
-        }
-      }
+      // The stored rows, read once: which songs are NEW (an open client learns
+      // about them over /api/library/events, songs.landed — a rescan of
+      // existing rows announces nothing), and which would be rewritten with the
+      // values they already hold. Those skip the upsert (#1309): on a full scan
+      // of an unchanged library that was every row, with every index on
+      // library_songs maintained for nothing. A full scan still stamps them,
+      // narrowly, because its prune — and the repoint helpers before it — tell
+      // a surviving row from a vanished one by `synced_at`.
+      const songIds = built.songs.map((x) => x.id);
+      const scope = prune ? null : songIds;
+      const stored = loadStoredSongs(this.db, scope);
       for (const s of built.songs) {
+        const prev = stored.get(s.id);
+        if (prev && songUnchanged(prev, s)) {
+          unchangedSongs++;
+          continue;
+        }
         songStmt.run(
           s.id,
           s.albumId,
@@ -1417,7 +1430,18 @@ export class LibraryScanner {
           syncedAt,
         );
       }
-      const landed = built.songs.filter((x) => !existingIds.has(x.id));
+      if (prune) {
+        // One statement stamps every row the walk found; only the rows it did
+        // not find keep their old synced_at for the prune below to take.
+        const found = new Set(songIds);
+        const vanished = [...stored.keys()].filter((id) => !found.has(id));
+        this.db.run(
+          `UPDATE library_songs SET synced_at = ?
+            WHERE synced_at <> ? AND id NOT IN (SELECT value FROM json_each(?))`,
+          [syncedAt, syncedAt, JSON.stringify(vanished)],
+        );
+      }
+      const landed = built.songs.filter((x) => !stored.has(x.id));
       if (landed.length > 0) {
         libraryEvents.emit({
           type: 'songs.landed',
@@ -1433,9 +1457,25 @@ export class LibraryScanner {
       }
       // Replace, not merge (#1073): buildLibrary derives every rescanned song's
       // complete credit set, so an upsert-only write kept a retag's superseded
-      // artist beside its successor in browse until the next full scan.
-      for (const s of built.songs) songArtistDeleteStmt.run(s.id);
+      // artist beside its successor in browse until the next full scan. Only a
+      // song whose set actually differs is rewritten (#1309) — compared as a
+      // set, not inferred from the song row, since an alias or split decision
+      // can move credits while the file stays the same.
+      const storedCredits = loadLinkKeys(this.db, 'library_song_artists', scope);
+      const builtCredits = linkKeysOf(
+        built.songArtists,
+        (l) => l.parentId,
+        (l) => `${l.artistId}\u0000${l.role}`,
+        (l) => linkTuple(l.artistId, l.role, l.position),
+      );
+      const creditsChanged = new Set(
+        built.songs
+          .filter((x) => (storedCredits.get(x.id) ?? '') !== (builtCredits.get(x.id) ?? ''))
+          .map((x) => x.id),
+      );
+      for (const id of creditsChanged) songArtistDeleteStmt.run(id);
       for (const link of built.songArtists) {
+        if (!creditsChanged.has(link.parentId)) continue;
         songArtistStmt.run(link.parentId, link.artistId, link.role, link.position);
       }
       for (const link of built.albumArtists) {
@@ -1450,11 +1490,20 @@ export class LibraryScanner {
       // curator-written genre whose file-tag write had not landed survived in
       // the mirror and vanished from the set (#770). Applying a newly-reviewed
       // alias to stored rows is `backfillGenresFromAliases`, not a scan.
-      const resolvedGenres = new Set(built.songGenres.map((l) => l.songId));
-      for (const s of built.songs) {
-        if (resolvedGenres.has(s.id)) songGenreDeleteStmt.run(s.id);
+      const storedGenres = loadLinkKeys(this.db, 'library_song_genres', scope);
+      const builtGenres = linkKeysOf(
+        built.songGenres,
+        (l) => l.songId,
+        (l) => l.genre,
+        (l) => linkTuple(l.genre, '', l.position),
+      );
+      const genresChanged = new Set<string>();
+      for (const [id, key] of builtGenres) {
+        if ((storedGenres.get(id) ?? '') !== key) genresChanged.add(id);
       }
+      for (const id of genresChanged) songGenreDeleteStmt.run(id);
       for (const link of built.songGenres) {
+        if (!genresChanged.has(link.songId)) continue;
         songGenreStmt.run(link.songId, link.genre, link.position);
       }
     })();
@@ -1541,6 +1590,7 @@ export class LibraryScanner {
       genres: built.genres.length,
       removedAlbums,
       removedSongs,
+      unchangedSongs,
     };
   }
 
