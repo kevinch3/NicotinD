@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.57](https://github.com/kevinch3/NicotinD/compare/v0.8.56...v0.8.57) (2026-09-23)
+
+### Performance
+
+* **player:** fetch the Now Playing waveform only once the track's audio is flowing ([#1332](https://github.com/kevinch3/NicotinD/issues/1332)) ([82a87c6](https://github.com/kevinch3/NicotinD/commit/82a87c6608d1d8289b82e84806bd079aabc447a8)), references [#1328](https://github.com/kevinch3/NicotinD/issues/1328)
 ## [0.8.56](https://github.com/kevinch3/NicotinD/compare/v0.8.55...v0.8.56) (2026-09-23)
 
 ### Performance

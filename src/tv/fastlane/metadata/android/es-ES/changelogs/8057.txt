@@ -1,0 +1,1 @@
+• player: fetch the Now Playing waveform only once the track's audio is flowing (#1332)
