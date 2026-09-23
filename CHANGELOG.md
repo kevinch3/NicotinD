@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.53](https://github.com/kevinch3/NicotinD/compare/v0.8.52...v0.8.53) (2026-09-23)
+
+### Performance
+
+* **db:** drop six redundant or dead indexes that every full scan pays for ([#1322](https://github.com/kevinch3/NicotinD/issues/1322)) ([717cba0](https://github.com/kevinch3/NicotinD/commit/717cba03f4e6a6d2e04ae95cc82f80b5fa2e5798)), closes [#1306](https://github.com/kevinch3/NicotinD/issues/1306), references [#683](https://github.com/kevinch3/NicotinD/issues/683)
 ## [0.8.52](https://github.com/kevinch3/NicotinD/compare/v0.8.51...v0.8.52) (2026-09-23)
 
 ### Performance

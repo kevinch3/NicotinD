@@ -1,0 +1,1 @@
+• db: drop six redundant or dead indexes that every full scan pays for (#1322)
