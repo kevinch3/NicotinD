@@ -104,6 +104,8 @@ export * from '../../../core/src/types/radio-provenance';
 // Named recommendation strategies + the variety control's vocabulary — pure,
 // browser-safe; the chip and the player both need the value exports.
 export * from '../../../core/src/types/radio-strategy';
+// Per-user preferences (#1299): the schema the API validates against.
+export * from '../../../core/src/types/user-preferences';
 
 // Value re-export: origin vocabulary (ISO codes, cultural regions, closeness,
 // flag emoji) — pure and browser-safe like library-filter above.

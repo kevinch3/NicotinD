@@ -28,6 +28,8 @@ export * from './types/origin.js';
 export * from './types/radio-poll.js';
 export * from './types/radio-provenance.js';
 export * from './types/radio-strategy.js';
+export * from './types/user-preferences.js';
+export * from './types/user-preferences-schema.js';
 
 // Synced-lyrics (LRC) parsing + the render-time offset — shared by the web
 // karaoke surfaces and the API (health detector + MCP read tool).

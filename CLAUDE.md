@@ -161,7 +161,7 @@ stateless services under `services/api/` — inject the specific one; there is n
 
 - **i18n**: runtime JSON (`public/i18n/<lang>.json`, `en` the base), `TranslateService` + a `t` pipe
   that is **impure by measurement** (a pure pipe never re-invokes on a language switch), falling
-  through active → base → key. Language is per-device. Server error `code` fields map through
+  through active → base → key. Language is per-user. Server error `code` fields map through
   `ERROR_CODE_I18N_KEYS`, but only codes whose message is stable across call sites.
   → [i18n.md](docs/i18n.md)
 - **Bundle budget**: `angular.json` carries a budget the project stands behind rather than the

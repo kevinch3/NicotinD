@@ -1,7 +1,14 @@
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import { asRole, hashPassword, verifyPassword } from '@nicotind/core';
-import { DEFAULT_STRATEGY, isStrategyId, type StrategyId } from '@nicotind/core';
+import {
+  DEFAULT_STRATEGY,
+  isStrategyId,
+  UserPreferencesSchema,
+  type StrategyId,
+  type UserPreferences,
+} from '@nicotind/core';
 import { getDatabase } from '../db.js';
+import { getUserPreferences } from '../services/user-preferences.js';
 import { authMiddleware, signJwt } from '../middleware/auth.js';
 import type { AuthEnv } from '../middleware/auth.js';
 import { touchLastSeen } from '../services/user-last-seen.js';
@@ -372,6 +379,7 @@ export function authRoutes(
               schema: UserResponseSchema.extend({
                 welcomeDismissed: z.boolean(),
                 acquisitionEnabled: z.boolean(),
+                preferences: UserPreferencesSchema,
               }).openapi('UserProfile'),
             },
           },
@@ -403,6 +411,8 @@ export function authRoutes(
           radioStrategy: isStrategyId(settings?.radio_strategy)
             ? settings!.radio_strategy
             : DEFAULT_STRATEGY,
+          // Everything that follows the person across devices, in one read (#1299).
+          preferences: getUserPreferences(db, user.sub),
         } as {
           id: string;
           username: string;
@@ -410,6 +420,7 @@ export function authRoutes(
           welcomeDismissed: boolean;
           acquisitionEnabled: boolean;
           radioStrategy: StrategyId;
+          preferences: UserPreferences;
         },
         200,
       );

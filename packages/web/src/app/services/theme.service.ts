@@ -1,7 +1,10 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
+import { THEME_IDS, type ThemeId } from '@nicotind/core';
+import { UserPreferencesService } from './user-preferences.service';
 
-export type ThemeId =
-  'midnight' | 'daylight' | 'warm-paper' | 'oled' | 'twilight' | 'forest' | 'eink';
+// The id list lives in core (#1299) so the API validates a preference against
+// exactly the presets the web renders; re-exported for the existing importers.
+export type { ThemeId };
 
 export interface ThemePreset {
   id: ThemeId;
@@ -45,18 +48,41 @@ export class ThemeService {
   readonly systemTheme = signal(false);
 
   private mqlListener: (() => void) | null = null;
+  private readonly prefs = inject(UserPreferencesService);
 
   constructor() {
     this.loadFromStorage();
+    // The per-user mirror beats the device key: the last person to sign in on
+    // this device chose it, and the server will confirm or correct on /me.
+    this.adoptPreferences();
   }
 
+  /** A user choice: apply here, then write it through the per-user door. */
   setTheme(id: ThemeId): void {
+    this.applyTheme(id);
+    this.prefs.patch({ theme: id });
+  }
+
+  setSystemTheme(on: boolean): void {
+    this.applySystemTheme(on);
+    this.prefs.patch({ followSystemTheme: on });
+  }
+
+  /** Take what the per-user door holds (a server hydrate or the mirror), writing nothing back. */
+  adoptPreferences(): void {
+    const theme = this.prefs.theme();
+    const follow = this.prefs.followSystemTheme();
+    if (theme && theme !== this.theme()) this.applyTheme(theme);
+    if (follow !== null && follow !== this.systemTheme()) this.applySystemTheme(follow);
+  }
+
+  private applyTheme(id: ThemeId): void {
     this.theme.set(id);
     this.applyToDOM();
     this.persist();
   }
 
-  setSystemTheme(on: boolean): void {
+  private applySystemTheme(on: boolean): void {
     this.systemTheme.set(on);
     this.applyToDOM();
     this.persist();
@@ -97,7 +123,7 @@ export class ThemeService {
       const stored = JSON.parse(raw);
       const t = stored.state?.theme;
       const s = stored.state?.systemTheme;
-      if (t && THEME_PRESETS.some((p) => p.id === t)) {
+      if (t && (THEME_IDS as readonly string[]).includes(t)) {
         this.theme.set(t);
       }
       if (typeof s === 'boolean') {
