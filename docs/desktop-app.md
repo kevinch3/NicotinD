@@ -32,7 +32,7 @@ a compiled binary at link time (bun eagerly links the target even under a runtim
 backend unchanged. So the app ships **Variant B**:
 
 - the backend as **unbundled TypeScript source** (`src/main.ts` + the workspace packages it imports —
-  `core`, `slskd-client`, `service-manager`, `lidarr-client`, `api`) run via `bun run <entry>`, so
+  `addon-sdk`, `core`, `api`) run via `bun run <entry>`, so
   `require.resolve` keeps working exactly like dev/CI;
 - a standalone **`bun` binary** (the packaging machine's own — CI runs one job per target OS) so end
   users don't need Bun installed;
@@ -69,7 +69,7 @@ uses `module`/`moduleResolution: nodenext` (`.cts` → `.cjs` CommonJS; `.ts` �
 `tsconfig.scripts.json` (`scripts/` → `dist-scripts/`, typecheck-only, gitignored).
 
 > **@types/node pin:** `electron` depends on `@types/node@^20`, which collides with the repo's bun
-> type environment and breaks `ChildProcess` typing across `api`/`service-manager`. The root
+> type environment and breaks `ChildProcess` typing in `api`. The root
 > `package.json` pins `overrides: { "@types/node": "25.5.0" }` to keep the workspace typecheck green.
 
 ## Sidecar supervisor

@@ -253,8 +253,8 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq --no-install-recommends ffmpeg opus-tools
 
-      - name: Test (API + slskd-client + lidarr-client + core + service-manager + mobile)
-        run: bun test packages/api/src packages/lidarr-client/src packages/core/src packages/addon-sdk/src packages/service-manager/src packages/mobile/src packages/desktop/electron packages/desktop/scripts scripts
+      - name: Test (API + core + addon-sdk + mobile + desktop + scripts)
+        run: bun test packages/api/src packages/core/src packages/addon-sdk/src packages/mobile/src packages/desktop/electron packages/desktop/scripts scripts
 
       - name: Test (e2e playground helpers)
         run: bun test packages/e2e/playground

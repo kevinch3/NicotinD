@@ -19,8 +19,6 @@
   "references": [
     { "path": "packages/addon-sdk" },
     { "path": "packages/core" },
-    { "path": "packages/service-manager" },
-    { "path": "packages/lidarr-client" },
     { "path": "packages/api" },
     { "path": "packages/desktop" },
     { "path": "packages/mobile" },

@@ -5,7 +5,7 @@ import { ADDON_PROTOCOL_VERSION } from '@nicotind/core';
 import { RemoteAddonPlugin } from './addons/remote-addon-plugin.js';
 import { AddonRequestError } from './addons/client.js';
 import { AutoAcquireService } from './auto-acquire.service.js';
-import type { Lidarr, LidarrAlbum } from '@nicotind/lidarr-client';
+import type { Lidarr, LidarrAlbum } from '../lidarr/index.js';
 
 // Local fixture shape (the addon owns the real FolderCandidate; api no longer
 // depends on @nicotind/slskd-addon — the hunt runs addon-side over the protocol).

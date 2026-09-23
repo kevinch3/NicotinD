@@ -6,9 +6,5 @@
     "types": ["bun"]
   },
   "include": ["src"],
-  "references": [
-    { "path": "../core" },
-    { "path": "../lidarr-client" },
-    { "path": "../service-manager" }
-  ]
+  "references": [{ "path": "../core" }]
 }

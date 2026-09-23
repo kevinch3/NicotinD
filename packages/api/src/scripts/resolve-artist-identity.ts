@@ -21,7 +21,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
-import { Lidarr } from '@nicotind/lidarr-client';
+import { Lidarr } from '../lidarr/index.js';
 import { splitOnDelimiters } from '../services/artist-split.js';
 import { artistIdFor } from '../services/library-scanner.js';
 import { deriveMbidAliases, upsertArtistIdentity } from '../services/artist-identity-store.js';

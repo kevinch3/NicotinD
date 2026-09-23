@@ -112,7 +112,7 @@ counts what those seams see.
 
 - `recordProviderCall(provider, outcome)` is called from the two — and only two — places
   every outbound call passes through: `LidarrClient.request()`
-  (`packages/lidarr-client/src/client.ts`, 13 methods behind it) and
+  (`packages/api/src/lidarr/client.ts`, 13 methods behind it) and
   `MusicBrainzClient.fetch()` (`packages/api/src/services/musicbrainz-client.ts`, whose
   `FetchOutcome` already discriminated transient-vs-confirmed for the cache). The counters
   are **module-level, not per-instance**: `MusicBrainzClient` is constructed in eight
@@ -155,7 +155,7 @@ Web DSN is build-time (`environment.prod.ts`); there is no runtime web-DSN chann
 - Web: `app/observability/sentry.spec.ts` (init on/off + prod config).
 - Provider health: `packages/core/src/provider-health.test.ts` (window rollup, rate
   arithmetic, last-failure fields, boundedness), the "provider-health counters" blocks in
-  `packages/lidarr-client/src/client.test.ts` and
+  `packages/api/src/lidarr/client.test.ts` and
   `packages/api/src/services/musicbrainz-client.test.ts` (per-class recording, and the 404
   that must not count as an outage), and "metadata-provider health (#670)" in
   `packages/api/src/routes/review.test.ts` (own field + degraded path).

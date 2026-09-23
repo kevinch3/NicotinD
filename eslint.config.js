@@ -9,6 +9,21 @@ import nicotind from './scripts/eslint-rules/index.js';
  */
 const RECOMMENDED = ['packages/*/src/**/*.ts', 'src/**/*.ts', 'scripts/**/*.{ts,js}'];
 
+/** Each optional tag library, and the one module allowed to import it. */
+export const TAG_LOADERS = {
+  'node-id3': 'packages/api/src/services/audio-tags.ts',
+  'music-metadata': 'packages/api/src/services/music-metadata-loader.ts',
+};
+
+/** @param {string} mod */
+function tagLoaderBan(mod) {
+  const source = `[source.value='${mod}']`;
+  return {
+    selector: `ImportExpression${source}, ImportDeclaration${source}[importKind!='type']`,
+    message: `Load ${mod} through ${TAG_LOADERS[mod]}, the one shared lazy loader (#1315).`,
+  };
+}
+
 export default [
   { ignores: ['**/node_modules/', '**/dist/'] },
   {
@@ -29,6 +44,24 @@ export default [
       '@typescript-eslint/no-explicit-any': 'warn',
     },
   },
+  // One lazy loader per optional tag library (#1315): compilation-tagger carried
+  // its own copies of both. Tests may import them directly to read real bytes.
+  {
+    files: ['packages/api/src/**/*.ts'],
+    ignores: ['**/*.test.ts', ...Object.values(TAG_LOADERS)],
+    rules: { 'no-restricted-syntax': ['error', ...Object.keys(TAG_LOADERS).map(tagLoaderBan)] },
+  },
+  ...Object.entries(TAG_LOADERS).map(([owned, file]) => ({
+    files: [file],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...Object.keys(TAG_LOADERS)
+          .filter((m) => m !== owned)
+          .map(tagLoaderBan),
+      ],
+    },
+  })),
   {
     // Web disables recommended rules it is not (yet) linted with.
     files: ['packages/web/**'],

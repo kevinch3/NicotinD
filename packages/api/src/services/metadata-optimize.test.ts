@@ -4,7 +4,7 @@
  */
 import { describe, expect, it, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
-import type { Lidarr } from '@nicotind/lidarr-client';
+import type { Lidarr } from '../lidarr/index.js';
 import { applySchema } from '../db.js';
 import { optimizeAlbum, optimizeAllAlbums, type OptimizeLidarr } from './metadata-optimize.js';
 import { setArtwork } from './artwork-store.js';

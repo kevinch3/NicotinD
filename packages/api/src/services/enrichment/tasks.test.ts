@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../../db.js';
-import type { LidarrArtist } from '@nicotind/lidarr-client';
+import type { LidarrArtist } from '../../lidarr/index.js';
 import {
   MBID_CONFIDENCE_EXACT,
   MBID_CONFIDENCE_SUBSEQ,

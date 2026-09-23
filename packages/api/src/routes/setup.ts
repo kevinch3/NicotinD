@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { hashPassword } from '@nicotind/core';
 import type { NicotinDConfig } from '@nicotind/core';
-import type { ServiceManager } from '@nicotind/service-manager';
+import type { ServiceManager } from '../service-manager/index.js';
 import { getDatabase } from '../db.js';
 import { signJwt } from '../middleware/auth.js';
 import { updateExternalLidarrCredentials } from '../services/lidarr-config.js';
@@ -97,7 +97,7 @@ export function setupRoutes({ config, serviceManager, saveLidarrSecretsFn }: Set
         await serviceManager.restartService('lidarr');
       } else {
         try {
-          const { LidarrClient } = await import('@nicotind/lidarr-client');
+          const { LidarrClient } = await import('../lidarr/index.js');
           const lidarrClient = new LidarrClient({
             baseUrl: config.lidarr.url,
             apiKey: config.lidarr.apiKey,

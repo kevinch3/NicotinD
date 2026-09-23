@@ -7,7 +7,7 @@ import { describe, expect, it, beforeEach, afterEach, mock } from 'bun:test';
 import { Hono } from 'hono';
 import { Database } from 'bun:sqlite';
 import type { JwtPayload } from '@nicotind/core';
-import type { Lidarr } from '@nicotind/lidarr-client';
+import type { Lidarr } from '../lidarr/index.js';
 import type { AuthEnv } from '../middleware/auth.js';
 import { applySchema } from '../db.js';
 import { libraryRoutes } from './library.js';

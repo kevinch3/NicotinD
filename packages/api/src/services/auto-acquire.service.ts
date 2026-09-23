@@ -1,6 +1,6 @@
 import { createLogger } from '@nicotind/core';
 import type { Database } from 'bun:sqlite';
-import type { Lidarr } from '@nicotind/lidarr-client';
+import type { Lidarr } from '../lidarr/index.js';
 import type { RemoteAddonPlugin } from './addons/remote-addon-plugin.js';
 import { acquireAlbum } from './album-acquire.js';
 

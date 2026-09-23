@@ -10,7 +10,7 @@ import * as realFsNamespace from 'node:fs';
 const realFs = { ...realFsNamespace };
 import { libraryRoutes, ARTISTS_PAGE_MAX, __resetDownloadSuppressionCache } from './library.js';
 import type { AuthEnv } from '../middleware/auth.js';
-import type { Lidarr } from '@nicotind/lidarr-client';
+import type { Lidarr } from '../lidarr/index.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 import type { LibraryCurator } from '../services/library-curator.js';
 import { getArtistMeta, upsertArtistMeta } from '../services/artist-meta-store.js';

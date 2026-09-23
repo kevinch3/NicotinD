@@ -6,8 +6,6 @@ COPY package.json bun.lock bunfig.toml ./
 COPY packages/api/package.json packages/api/
 COPY packages/core/package.json packages/core/
 COPY packages/addon-sdk/package.json packages/addon-sdk/
-COPY packages/service-manager/package.json packages/service-manager/
-COPY packages/lidarr-client/package.json packages/lidarr-client/
 COPY packages/web/package.json packages/web/
 COPY packages/e2e/package.json packages/e2e/
 # Workspace members: only their package.json is needed for the lockfile to
@@ -101,8 +99,6 @@ COPY --from=docker:cli /usr/local/bin/docker /usr/local/bin/docker
 COPY package.json bun.lock bunfig.toml tsconfig.json ./
 COPY packages/core/ packages/core/
 COPY packages/addon-sdk/ packages/addon-sdk/
-COPY packages/lidarr-client/ packages/lidarr-client/
-COPY packages/service-manager/ packages/service-manager/
 COPY packages/api/ packages/api/
 COPY packages/web/package.json packages/web/
 COPY packages/e2e/package.json packages/e2e/
@@ -129,13 +125,9 @@ COPY src/ src/
 # here.
 #
 # --ignore-scripts (matching the web-builder stage): lifecycle scripts have no
-# place in a runtime image — the root `prepare: husky` hook least of all. It was
-# also load-bearing for a transitive sharp@0.32.6 whose `install` script
-# downloads a libvips binary that fails in this stage; with --production that
-# copy no longer installs at all, since it came from @capacitor/assets, a
-# mobile-icon dev tool. The runtime's own image work uses sharp@0.35, whose
-# native binary ships as `@img/sharp-linux-*` packages resolved from the
-# lockfile, with no postinstall.
+# place in a runtime image — the root `prepare: husky` hook least of all. The
+# runtime's image work uses sharp, whose native binary ships as
+# `@img/sharp-linux-*` packages resolved from the lockfile, with no postinstall.
 RUN bun install --frozen-lockfile --ignore-scripts --production
 
 # Copy pre-built web UI

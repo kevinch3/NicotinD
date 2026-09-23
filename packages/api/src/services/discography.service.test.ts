@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, mock } from 'bun:test';
 import { Database } from 'bun:sqlite';
-import type { Lidarr, LidarrAlbum, LidarrArtist, LidarrTrack } from '@nicotind/lidarr-client';
+import type { Lidarr, LidarrAlbum, LidarrArtist, LidarrTrack } from '../lidarr/index.js';
 import { applySchema } from '../db';
 import { DiscographyService } from './discography.service';
 

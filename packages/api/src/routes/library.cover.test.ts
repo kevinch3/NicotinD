@@ -12,7 +12,7 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync } from 'node:
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { JwtPayload } from '@nicotind/core';
-import type { Lidarr } from '@nicotind/lidarr-client';
+import type { Lidarr } from '../lidarr/index.js';
 import type { AuthEnv } from '../middleware/auth.js';
 import { applySchema } from '../db.js';
 import { libraryRoutes } from './library.js';

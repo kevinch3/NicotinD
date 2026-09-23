@@ -28,7 +28,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
-import { Lidarr } from '@nicotind/lidarr-client';
+import { Lidarr } from '../lidarr/index.js';
 import { expandHome } from '@nicotind/core';
 import {
   countArtistsNeedingPortrait,

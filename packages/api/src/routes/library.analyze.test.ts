@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { Hono } from 'hono';
 import { Database } from 'bun:sqlite';
 import type { JwtPayload } from '@nicotind/core';
-import type { Lidarr } from '@nicotind/lidarr-client';
+import type { Lidarr } from '../lidarr/index.js';
 import type { AuthEnv } from '../middleware/auth.js';
 import type { AudioFeaturesClient } from '../services/audio-features-client.js';
 import { applySchema } from '../db.js';

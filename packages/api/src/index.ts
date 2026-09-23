@@ -11,8 +11,8 @@ import type {
   GenreQuery,
   GenreResult,
 } from '@nicotind/core';
-import type { Lidarr } from '@nicotind/lidarr-client';
-import type { ServiceManager } from '@nicotind/service-manager';
+import type { Lidarr } from './lidarr/index.js';
+import type { ServiceManager } from './service-manager/index.js';
 import { authMiddleware } from './middleware/auth.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { authRoutes } from './routes/auth.js';
@@ -1046,6 +1046,8 @@ export function createApp({
 }
 
 export { AutoAcquireService } from './services/auto-acquire.service.js';
+export { Lidarr } from './lidarr/index.js';
+export { ServiceManager, NativeProcessStrategy } from './service-manager/index.js';
 export { initDatabase, getDatabase, optimizeDatabase } from './db.js';
 export { maybeCheckForUpdate } from './services/update-check.js';
 export { findInsecureDefaults, REMOVAL_RELEASE } from './services/insecure-defaults.js';

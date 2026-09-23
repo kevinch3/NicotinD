@@ -1,6 +1,6 @@
 import { dirname, join } from 'node:path';
 import type { Database } from 'bun:sqlite';
-import type { Lidarr } from '@nicotind/lidarr-client';
+import type { Lidarr } from '../lidarr/index.js';
 import {
   normalizeTitle,
   titlesOverlap,

@@ -3,7 +3,7 @@ import { streamSSE } from 'hono/streaming';
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import type { NicotinDConfig } from '@nicotind/core';
-import type { ServiceManager } from '@nicotind/service-manager';
+import type { ServiceManager } from '../service-manager/index.js';
 import type { AuthEnv } from '../middleware/auth.js';
 import type { MaintenanceService } from '../services/maintenance/maintenance.service.js';
 

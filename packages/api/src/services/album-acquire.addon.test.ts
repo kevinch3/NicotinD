@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { ADDON_PROTOCOL_VERSION, type AddonManifest } from '@nicotind/core';
-import type { Lidarr } from '@nicotind/lidarr-client';
+import type { Lidarr } from '../lidarr/index.js';
 import { applySchema } from '../db.js';
 import { albumIdFor, artistIdFor } from './library-scanner.js';
 import { acquireAlbum } from './album-acquire.js';

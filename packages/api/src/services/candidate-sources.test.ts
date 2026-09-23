@@ -6,7 +6,7 @@
  */
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
-import type { LidarrAlbum } from '@nicotind/lidarr-client';
+import type { LidarrAlbum } from '../lidarr/index.js';
 import type { IdentifyOutcome } from '@nicotind/core';
 import { applySchema } from '../db.js';
 import {

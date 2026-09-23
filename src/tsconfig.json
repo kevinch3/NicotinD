@@ -11,8 +11,6 @@
   "include": ["."],
   "references": [
     { "path": "../packages/core" },
-    { "path": "../packages/service-manager" },
-    { "path": "../packages/lidarr-client" },
     { "path": "../packages/api" }
   ]
 }

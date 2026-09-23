@@ -3,7 +3,7 @@ import { appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createLogger } from '@nicotind/core';
 import type { Database } from 'bun:sqlite';
-import type { Lidarr } from '@nicotind/lidarr-client';
+import type { Lidarr } from '../lidarr/index.js';
 import type {
   ProcessingSettings,
   ProcessingStatus,

@@ -752,6 +752,23 @@ Applying the rules above:
   unclassified branch. A real
   parser is the upgrade if this ever cries wolf.
 
+## One lazy loader per tag library — an import restriction, not a name (#1315)
+
+`node-id3` and `music-metadata` are optional dependencies loaded lazily, and
+`compilation-tagger.ts` carried its own copy of both loaders beside the ones in
+`audio-tags.ts` and `music-metadata-loader.ts` (which `audio-tags.ts` itself also
+duplicated for `music-metadata`). `check:shared-helpers` could not see it: the
+copies were private functions, and what they duplicated was an `import()`, not a
+declaration.
+
+So `eslint.config.js` restricts the import itself (`TAG_LOADERS`): outside tests,
+only `audio-tags.ts` may import `node-id3` and only `music-metadata-loader.ts` may
+import `music-metadata`, statically or dynamically; type-only imports are allowed.
+Tests are exempt because they read written bytes back with the library directly.
+`scripts/eslint-tag-loaders.test.ts` lints through the real config, and proves the
+selector against each loader's own source, so an exemption that stopped being the
+loader, or a selector that stopped matching its import shape, fails.
+
 ## `check:feed-eligibility` — one answer to "may this song be recommended"
 
 Every recommendation feed used to decide on its own which songs it could

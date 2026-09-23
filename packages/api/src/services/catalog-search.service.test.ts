@@ -1,7 +1,7 @@
 import { describe, it, expect, mock } from 'bun:test';
 import { NicotinDError } from '@nicotind/core';
-import { LidarrTimeoutError } from '@nicotind/lidarr-client';
-import type { Lidarr, LidarrAlbum, LidarrArtist } from '@nicotind/lidarr-client';
+import { LidarrTimeoutError } from '../lidarr/index.js';
+import type { Lidarr, LidarrAlbum, LidarrArtist } from '../lidarr/index.js';
 import {
   CatalogService,
   filterAlbumsByRelevance,

@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { ADDON_PROTOCOL_VERSION, type AddonManifest } from '@nicotind/core';
-import type { Lidarr } from '@nicotind/lidarr-client';
+import type { Lidarr } from '../lidarr/index.js';
 import { applySchema } from '../db.js';
 import { mintAgentToken } from '../services/agent-tokens.js';
 import { ShareRescanScheduler } from '../services/share-rescan-scheduler.js';

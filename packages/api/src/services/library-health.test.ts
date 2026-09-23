@@ -5,7 +5,7 @@ import { describe, it, expect, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import { artistIdFor } from './library-scanner.js';
-import type { Lidarr } from '@nicotind/lidarr-client';
+import type { Lidarr } from '../lidarr/index.js';
 import { libraryHealth, libraryHealthWithLidarr } from './library-health.js';
 
 let db: Database;

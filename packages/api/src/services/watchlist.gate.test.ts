@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
-import type { Lidarr } from '@nicotind/lidarr-client';
+import type { Lidarr } from '../lidarr/index.js';
 import { applySchema } from '../db.js';
 import { WatchlistService } from './watchlist.service.js';
 import type { CatalogService } from './catalog-search.service.js';

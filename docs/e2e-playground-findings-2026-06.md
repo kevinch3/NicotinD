@@ -448,7 +448,7 @@ raw Soulseek folder-browsing.
 - **Metadata lane is album-only.** `CatalogService.search()`
   (`packages/api/src/services/catalog-search.service.ts:61`) fires only `lidarr.artist.lookup` +
   `lidarr.album.lookup`. The Lidarr client exposes **no recording/track lookup** —
-  `packages/lidarr-client/src/api/track.ts` only does `listByAlbum(albumId)` for an album *already*
+  `packages/api/src/lidarr/api/track.ts` only does `listByAlbum(albumId)` for an album *already*
   in Lidarr. So a song-level metadata search isn't possible through the existing client at all.
 - **Hunt is album-keyed.** Every hunt route is
   `POST /api/discography/albums/:lidarrAlbumId/hunt[-download]`

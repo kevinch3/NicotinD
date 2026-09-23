@@ -6,7 +6,7 @@ import type { AuthEnv } from '../middleware/auth.js';
 import { discographyRoutes } from './discography.js';
 import type { DiscographyService } from '../services/discography.service.js';
 import { AlbumHuntOrchestrator, type SourceHunter } from '../services/source-hunter.js';
-import type { Lidarr } from '@nicotind/lidarr-client';
+import type { Lidarr } from '../lidarr/index.js';
 import type { AcquisitionCandidate } from '@nicotind/core';
 
 const lidarr = () =>
