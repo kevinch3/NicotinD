@@ -887,7 +887,10 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
     })();
   }
 
-  db.run(`CREATE INDEX IF NOT EXISTS idx_library_albums_hidden ON library_albums(hidden)`);
+  // Redundant/dead indexes (#1306), dropped so existing DBs stop paying for
+  // them on every write: `hidden` is the leading column of idx_library_albums_grid
+  // below. docs/library-scanner.md "Database performance".
+  db.run(`DROP INDEX IF EXISTS idx_library_albums_hidden`);
   db.run(
     `CREATE INDEX IF NOT EXISTS idx_library_albums_classification ON library_albums(classification)`,
   );
@@ -910,7 +913,7 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   // single column order across fresh + migrated DBs and, crucially, keeps the
   // 'ep'-migration rebuild's `INSERT ... SELECT *` column counts matched.
   addColumnIfMissing(db, 'library_albums', 'licence', 'TEXT');
-  db.run(`CREATE INDEX IF NOT EXISTS idx_library_albums_licence ON library_albums(licence)`);
+  db.run(`DROP INDEX IF EXISTS idx_library_albums_licence`); // rolled-back #683, unread
 
   db.run(`
     CREATE TABLE IF NOT EXISTS library_songs (
@@ -995,7 +998,7 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
     const [name, ...decl] = col.split(' ');
     addColumnIfMissing(db, 'library_songs', name, decl.join(' '));
   }
-  db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_licence ON library_songs(licence)`);
+  db.run(`DROP INDEX IF EXISTS idx_library_songs_licence`); // rolled-back #683, unread
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_popularity ON library_songs(popularity)`);
 
   // The loudness the audio was MEASURED at, as distinct from whatever `loudness`
@@ -1230,7 +1233,7 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
     )
   `);
   db.run(`CREATE INDEX IF NOT EXISTS idx_song_artists_artist ON library_song_artists(artist_id)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_song_artists_song ON library_song_artists(song_id)`);
+  db.run(`DROP INDEX IF EXISTS idx_song_artists_song`); // the PK leads with song_id (#1306)
 
   db.run(`
     CREATE TABLE IF NOT EXISTS library_album_artists (
@@ -1242,7 +1245,7 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
     )
   `);
   db.run(`CREATE INDEX IF NOT EXISTS idx_album_artists_artist ON library_album_artists(artist_id)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_album_artists_album ON library_album_artists(album_id)`);
+  db.run(`DROP INDEX IF EXISTS idx_album_artists_album`); // the PK leads with album_id (#1306)
 
   db.run(`
     CREATE TABLE IF NOT EXISTS library_genres (
@@ -1540,7 +1543,7 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
     )
   `);
   db.run(`CREATE INDEX IF NOT EXISTS idx_song_genres_genre ON library_song_genres(genre)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_song_genres_song ON library_song_genres(song_id)`);
+  db.run(`DROP INDEX IF EXISTS idx_song_genres_song`); // the PK leads with song_id (#1306)
 
   // Genre alias map (human-gated, like library_artist_aliases): a raw tag
   // value → its canonical form. Canonical may be a ';'-joined LIST (one alias

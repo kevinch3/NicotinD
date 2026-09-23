@@ -1080,3 +1080,59 @@ describe('applySchema — retired-task ledger sweep (issue #779)', () => {
     ).toBe(before);
   });
 });
+
+describe('applySchema — redundant index drop (#1306)', () => {
+  const DROPPED: Array<[string, string, string]> = [
+    ['idx_song_artists_song', 'library_song_artists', 'song_id'],
+    ['idx_album_artists_album', 'library_album_artists', 'album_id'],
+    ['idx_song_genres_song', 'library_song_genres', 'song_id'],
+    ['idx_library_albums_hidden', 'library_albums', 'hidden'],
+    ['idx_library_albums_licence', 'library_albums', 'licence'],
+    ['idx_library_songs_licence', 'library_songs', 'licence'],
+  ];
+  const present = (db: Database) =>
+    db
+      .query<{ name: string }, []>(`SELECT name FROM sqlite_master WHERE type = 'index'`)
+      .all()
+      .map((r) => r.name);
+  const plan = (db: Database, sql: string) =>
+    db
+      .query<{ detail: string }, []>(`EXPLAIN QUERY PLAN ${sql}`)
+      .all()
+      .map((r) => r.detail)
+      .join(' | ');
+
+  it('does not create them on a fresh DB', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    const names = present(db);
+    for (const [idx] of DROPPED) expect(names).not.toContain(idx);
+  });
+
+  it('drops them from a DB that already had them', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    for (const [idx, table, col] of DROPPED) db.run(`CREATE INDEX ${idx} ON ${table}(${col})`);
+    expect(present(db)).toEqual(expect.arrayContaining(DROPPED.map(([idx]) => idx)));
+    applySchema(db);
+    const names = present(db);
+    for (const [idx] of DROPPED) expect(names).not.toContain(idx);
+  });
+
+  it('still serves the lookups they used to from an index', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    expect(plan(db, `DELETE FROM library_song_artists WHERE song_id = 'x'`)).toContain(
+      'sqlite_autoindex_library_song_artists_1 (song_id=?)',
+    );
+    expect(plan(db, `DELETE FROM library_album_artists WHERE album_id = 'x'`)).toContain(
+      'sqlite_autoindex_library_album_artists_1 (album_id=?)',
+    );
+    expect(
+      plan(db, `SELECT genre FROM library_song_genres WHERE song_id = 'x' ORDER BY position`),
+    ).toContain('sqlite_autoindex_library_song_genres_1 (song_id=?)');
+    expect(plan(db, `SELECT id FROM library_albums WHERE hidden = 0`)).toContain(
+      'idx_library_albums_grid (hidden=?)',
+    );
+  });
+});

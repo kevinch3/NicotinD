@@ -51,7 +51,7 @@ describe('judgeSongScans', () => {
 
   it('flags a song scan buried under a CORRELATED subquery', () => {
     const plan = rows(
-      [4, 0, 'SEARCH library_albums USING INDEX idx_library_albums_hidden (hidden=?)'],
+      [4, 0, 'SEARCH library_albums USING INDEX idx_library_albums_grid (hidden=?)'],
       [10, 0, 'CORRELATED SCALAR SUBQUERY 1'],
       [16, 10, 'SEARCH ls USING INDEX idx_library_songs_album_id (album_id=?)'],
     );
@@ -60,7 +60,7 @@ describe('judgeSongScans', () => {
 
   it('judges the table name as well as the `ls` alias', () => {
     const plan = rows(
-      [4, 0, 'SEARCH library_albums USING INDEX idx_library_albums_hidden (hidden=?)'],
+      [4, 0, 'SEARCH library_albums USING INDEX idx_library_albums_grid (hidden=?)'],
       [10, 0, 'CORRELATED SCALAR SUBQUERY 1'],
       [16, 10, 'SCAN library_songs'],
     );
