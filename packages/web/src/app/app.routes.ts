@@ -105,14 +105,17 @@ export const routes: Routes = [
     canActivate: [serverGuard, authGuard],
     children: [
       {
+        // The home shell (#1300): renders the view the user chose — the mosaic
+        // or the classic shelves — and the switch between them; only the
+        // chosen view's chunk is loaded.
         path: '',
         loadComponent: lazy(() =>
-          import('./pages/mosaic-home/mosaic-home.component').then((m) => m.MosaicHomeComponent),
+          import('./pages/home/home.component').then((m) => m.HomeComponent),
         ),
       },
       {
-        // The shelf-based landing the mosaic replaced, kept reachable so the
-        // two are comparable side by side and the swap is a one-line revert.
+        // The shelf-based landing, also reachable directly; the home shell
+        // renders the same component when the user chooses "Shelves".
         path: 'classic',
         loadComponent: lazy(() =>
           import('./pages/radio-landing/radio-landing.component').then(

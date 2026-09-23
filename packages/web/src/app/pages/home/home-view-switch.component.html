@@ -1,0 +1,22 @@
+<div
+  role="radiogroup"
+  data-testid="home-view-switch"
+  [attr.aria-label]="'home.viewSwitch' | t"
+  class="inline-flex gap-1 p-1 bg-theme-surface-2/90 backdrop-blur-sm rounded-xl shadow-sm"
+>
+  @for (option of options; track option) {
+    <button
+      type="button"
+      role="radio"
+      [attr.data-testid]="'home-view-' + option"
+      [attr.aria-checked]="view() === option"
+      (click)="pick(option)"
+      class="min-h-11 px-4 text-sm rounded-lg transition-colors"
+      [class.bg-theme-surface]="view() === option"
+      [class.text-theme-primary]="view() === option"
+      [class.text-theme-muted]="view() !== option"
+    >
+      {{ labelKey(option) | t }}
+    </button>
+  }
+</div>

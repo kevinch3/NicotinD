@@ -101,8 +101,12 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   vibe" — `TasteBreakersComponent` over `getRandomSongs`, fetching without seeds so a fresh install
   still fills, and demoting recent plays rather than excluding them. `POOL_SIZE`, `SHELF_SIZE`.
   → [radio.md](../radio.md)
-- **Mosaic home — one surface, one verb**: the `''` route is an infinite pannable tile field over
-  every landing source where every tile starts a radio; pure `mosaic-tiles`/`mosaic-packing`/
+- **Home view switch**: the `''` route is a `HomeComponent` shell that lazy-loads only the view the
+  user chose (`HOME_VIEW_LOADERS`, `homeViewOf`) — the mosaic by default or the classic shelves —
+  with a `HomeViewSwitchComponent` top-left, remembered per user as `homeView`.
+  → [web-ui.md](../web-ui.md)
+- **Mosaic home — one surface, one verb**: the default home view is an infinite pannable tile field
+  over every landing source where every tile starts a radio; pure `mosaic-tiles`/`mosaic-packing`/
   `mosaic-lens` under a pooled rAF shell. `patchSide`, `cellCount`, `visiblePlacements`,
   `SCORE_WEIGHTS`, `LANE_MIX`. The shelf landing lives on at `/classic`. → [web-ui.md](../web-ui.md)
 - **One tile, two tones**: `VibeTileComponent` renders the classic landing's vibe row and genre row
