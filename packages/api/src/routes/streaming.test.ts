@@ -196,6 +196,20 @@ describe('streaming routes', () => {
     expect(existsSync(cached)).toBe(true);
   });
 
+  it('serves a cached @size variant without reading the original first (#1302)', async () => {
+    // Only the sized variant is cached and the id resolves to no track: the old
+    // order read the (absent) original, fell through to on-disk art and 404'd.
+    const cacheDir = join(dataDir, 'cover-cache');
+    mkdirSync(cacheDir, { recursive: true });
+    const THUMB = new Uint8Array([0x52, 0x49, 0x46, 0x46, 7, 7, 7]);
+    writeFileSync(join(cacheDir, 'sized-only@80.webp'), THUMB);
+
+    const res = await app.request('/cover/sized-only?size=80');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('image/webp');
+    expect(Array.from(new Uint8Array(await res.arrayBuffer()))).toEqual(Array.from(THUMB));
+  });
+
   it('serves the original (not a thumbnail) when no size is requested', async () => {
     const res = await app.request('/cover/song-thumb');
     expect(res.status).toBe(200);

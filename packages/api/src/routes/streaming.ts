@@ -226,6 +226,18 @@ export function streamingRoutes(
     }
   }
 
+  /** Serve `key` from the cover cache, or null on a miss. A sized request
+   *  checks its `@size` variant before the original, so a thumbnail hit never
+   *  reads the full-size image only to discard it (#1302). */
+  async function respondCachedCover(key: string, size: number | null): Promise<Response | null> {
+    if (size != null) {
+      const sized = await readCachedCover(coverCacheDir, `${key}@${size}`);
+      if (sized) return coverResponse(sized);
+    }
+    const original = await readCachedCover(coverCacheDir, key);
+    return original ? respondCover(key, original, size) : null;
+  }
+
   /**
    * Proxy + downscale a catalog (Lidarr/MusicBrainz) cover. Catalog cards have
    * no library id to hang art off, so they carry an upstream URL; serving it to
@@ -249,8 +261,8 @@ export function streamingRoutes(
       });
     }
 
-    const cached = await readCachedCover(coverCacheDir, key);
-    if (cached) return respondCover(key, cached, size);
+    const hit = await respondCachedCover(key, size);
+    if (hit) return hit;
 
     const remote = await fetchRemoteCover(target);
     if (!remote) {
@@ -286,8 +298,8 @@ export function streamingRoutes(
           headers: { 'cache-control': 'public, max-age=300' },
         });
       }
-      const embCached = await readCachedCover(coverCacheDir, embKey);
-      if (embCached) return respondCover(embKey, embCached, size);
+      const embHit = await respondCachedCover(embKey, size);
+      if (embHit) return embHit;
       const abs = resolvePath(id);
       const pic = abs ? await extractEmbeddedPicture(abs) : null;
       if (!pic) {
@@ -330,8 +342,8 @@ export function streamingRoutes(
     const canonicalUrl = canonical ? absolutizeLidarrCoverUrl(canonical.url, lidarrBaseUrl) : null;
     if (canonical && canonicalUrl) {
       const cacheKey = canonicalCacheKey(canonical.key);
-      const cached = await readCachedCover(coverCacheDir, cacheKey);
-      if (cached) return respondCover(cacheKey, cached, size);
+      const hit = await respondCachedCover(cacheKey, size);
+      if (hit) return hit;
       const remote = await fetchRemoteCover(canonicalUrl);
       if (remote) {
         void cacheCover(coverCacheDir, cacheKey, remote).catch((err) =>
@@ -343,8 +355,8 @@ export function streamingRoutes(
     }
 
     // 2. On-disk art (folder image, then embedded tag).
-    const cached = await readCachedCover(coverCacheDir, id);
-    if (cached) return respondCover(id, cached, size);
+    const hit = await respondCachedCover(id, size);
+    if (hit) return hit;
 
     const track = resolveTrack(id);
     if (!track) {
