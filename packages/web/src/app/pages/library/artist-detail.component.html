@@ -175,7 +175,7 @@
                   <app-album-tile
                     [tile]="tile"
                     [artistName]="artist()!.name"
-                    [token]="auth.token()"
+                    [token]="auth.mediaToken()"
                     [busy]="isTileHunting(tile)"
                     [locked]="autoHunt.anyHunting()"
                     [canAcquire]="auth.canAcquire()"
@@ -209,7 +209,7 @@
                   <app-album-tile
                     [tile]="tile"
                     [artistName]="artist()!.name"
-                    [token]="auth.token()"
+                    [token]="auth.mediaToken()"
                     [busy]="isTileHunting(tile)"
                     [locked]="autoHunt.anyHunting()"
                     [canAcquire]="auth.canAcquire()"
@@ -243,7 +243,7 @@
                   <app-album-tile
                     [tile]="tile"
                     [artistName]="'Various Artists'"
-                    [token]="auth.token()"
+                    [token]="auth.mediaToken()"
                     [busy]="isTileHunting(tile)"
                     [locked]="autoHunt.anyHunting()"
                     [canAcquire]="auth.canAcquire()"

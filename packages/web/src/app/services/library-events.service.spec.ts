@@ -37,7 +37,7 @@ function setup(token: string | null = 't0k') {
   TestBed.configureTestingModule({
     providers: [
       LibraryEventsService,
-      { provide: AuthService, useValue: { token: () => token } },
+      { provide: AuthService, useValue: { token: () => token, mediaToken: () => token } },
       {
         provide: ServerConfigService,
         useValue: { sseUrl: (p: string, t: string) => `${p}?token=${t}` },

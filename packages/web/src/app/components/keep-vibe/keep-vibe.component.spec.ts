@@ -54,7 +54,10 @@ function setup(recs: Song[] | 'error', seeds: RecentPlay[]) {
     providers: [
       { provide: LibraryApiService, useValue: { getListRadio } },
       { provide: PlayerService, useValue: { startRadio } },
-      { provide: AuthService, useValue: { token: signal('test-token') } },
+      {
+        provide: AuthService,
+        useValue: { token: signal('test-token'), mediaToken: signal('test-token') },
+      },
     ],
   });
   const fixture = TestBed.createComponent(KeepVibeComponent);

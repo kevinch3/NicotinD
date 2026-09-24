@@ -91,7 +91,7 @@ export class LibraryFindComponent {
   }
 
   coverUrl(coverArt: string | undefined): string | undefined {
-    return coverArt ? `/api/cover/${coverArt}?size=300&token=${this.auth.token()}` : undefined;
+    return coverArt ? `/api/cover/${coverArt}?size=300&token=${this.auth.mediaToken()}` : undefined;
   }
 
   /** The found songs are the queue — a click plays in the context of the

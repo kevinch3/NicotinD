@@ -43,7 +43,7 @@
                      focus-visible:ring-4 focus-visible:ring-theme-accent focus-visible:bg-theme-surface-2"
             >
               <app-cover-art
-                [src]="a.coverArt ? '/api/cover/' + a.coverArt + '?size=400&token=' + auth.token() : undefined"
+                [src]="a.coverArt ? '/api/cover/' + a.coverArt + '?size=400&token=' + auth.mediaToken() : undefined"
                 [artist]="a.artist"
                 [album]="a.name"
                 [size]="200"

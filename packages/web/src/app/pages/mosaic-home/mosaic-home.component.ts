@@ -687,7 +687,7 @@ export class MosaicHomeComponent implements OnInit {
     // reads as a deliberate tile rather than a hole.
     const fallback = placeholderGradient(t.subtitle, t.title);
     const cover = t.coverArt
-      ? this.server.apiUrl(coverUrl(t.coverArt, coverSizeBucket(s), this.auth.token()))
+      ? this.server.apiUrl(coverUrl(t.coverArt, coverSizeBucket(s), this.auth.mediaToken()))
       : null;
     const bg = cover
       ? `background-image:url('${encodeURI(cover)}'),${fallback};background-size:cover;background-position:center`

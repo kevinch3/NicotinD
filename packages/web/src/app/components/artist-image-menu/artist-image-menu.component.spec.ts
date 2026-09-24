@@ -56,7 +56,10 @@ function make(opts: { albums?: unknown[]; getArtistFails?: boolean; sources?: st
     imports: [ArtistImageMenuComponent],
     providers: [
       { provide: LibraryApiService, useValue: api },
-      { provide: AuthService, useValue: { token: () => 'tok', canCurate: () => true } },
+      {
+        provide: AuthService,
+        useValue: { token: () => 'tok', mediaToken: () => 'tok', canCurate: () => true },
+      },
     ],
   });
   const fixture = TestBed.createComponent(ArtistImageMenuComponent);

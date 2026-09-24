@@ -32,7 +32,7 @@ describe('NowPlayingQueuePanelComponent', () => {
             moveInQueue: vi.fn(),
           },
         },
-        { provide: AuthService, useValue: { token: () => 'tok' } },
+        { provide: AuthService, useValue: { token: () => 'tok', mediaToken: () => 'tok' } },
       ],
     });
   });

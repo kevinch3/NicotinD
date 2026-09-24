@@ -80,7 +80,7 @@ describe('PreserveService', () => {
     TestBed.configureTestingModule({
       providers: [
         PreserveService,
-        { provide: AuthService, useValue: { token: signal('tok') } },
+        { provide: AuthService, useValue: { token: signal('tok'), mediaToken: signal('tok') } },
         { provide: PRESERVE_STORE, useValue: store },
       ],
     });
@@ -248,7 +248,7 @@ describe('PreserveService', () => {
       TestBed.configureTestingModule({
         providers: [
           PreserveService,
-          { provide: AuthService, useValue: { token: signal('tok') } },
+          { provide: AuthService, useValue: { token: signal('tok'), mediaToken: signal('tok') } },
           { provide: PRESERVE_STORE, useValue: store },
         ],
       });
@@ -429,7 +429,7 @@ describe('PreserveService', () => {
       TestBed.configureTestingModule({
         providers: [
           PreserveService,
-          { provide: AuthService, useValue: { token: signal('tok') } },
+          { provide: AuthService, useValue: { token: signal('tok'), mediaToken: signal('tok') } },
           { provide: PRESERVE_STORE, useValue: store },
         ],
       });
@@ -443,7 +443,7 @@ describe('PreserveService', () => {
       TestBed.configureTestingModule({
         providers: [
           PreserveService,
-          { provide: AuthService, useValue: { token: signal('tok') } },
+          { provide: AuthService, useValue: { token: signal('tok'), mediaToken: signal('tok') } },
           { provide: PRESERVE_STORE, useValue: store },
         ],
       });

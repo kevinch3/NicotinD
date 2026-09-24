@@ -152,7 +152,7 @@ function setup(opts: SetupOptions = {}) {
       { provide: LibraryApiService, useValue: libraryApi },
       { provide: HistoryApiService, useValue: historyApi },
       { provide: PlaylistsApiService, useValue: playlistsApi },
-      { provide: AuthService, useValue: { token: () => 'tok' } },
+      { provide: AuthService, useValue: { token: () => 'tok', mediaToken: () => 'tok' } },
       { provide: TrackInfoService, useValue: trackInfo },
       { provide: EntityMenuService, useValue: entityMenu },
       { provide: SongMenuService, useValue: songMenu },

@@ -59,6 +59,8 @@ export function refreshSession(
         // Sync role from the (DB-backed) refreshed session so a role change
         // an admin made takes effect on this load, not only on re-login.
         auth.setRole(profile.role);
+        // An older server omits it; the JWT keeps serving media then (#1329).
+        if (profile.mediaKey !== undefined) auth.setMediaKey(profile.mediaKey);
         auth.welcomeDismissed.set(profile.welcomeDismissed);
         // Deployment-wide acquisition kill-switch (#235): default to enabled
         // when an older server omits the field.

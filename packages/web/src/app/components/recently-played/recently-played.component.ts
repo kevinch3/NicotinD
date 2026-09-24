@@ -146,7 +146,7 @@ export class RecentlyPlayedComponent implements OnInit {
    */
   coverSrc(play: RecentPlay): string | undefined {
     return play.coverArt
-      ? `/api/cover/${play.coverArt}?size=300&token=${this.auth.token()}`
+      ? `/api/cover/${play.coverArt}?size=300&token=${this.auth.mediaToken()}`
       : undefined;
   }
 }

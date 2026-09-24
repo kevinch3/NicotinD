@@ -49,7 +49,7 @@
         <div class="flex items-center gap-3 min-w-0 flex-1 md:flex-none md:w-60">
           @if (player.currentTrack(); as track) {
             <app-cover-art
-              [src]="track.coverArt ? '/api/cover/' + track.coverArt + '?size=80&token=' + auth.token() : undefined"
+              [src]="track.coverArt ? '/api/cover/' + track.coverArt + '?size=80&token=' + auth.mediaToken() : undefined"
               [artist]="track.artist"
               [album]="track.album ?? ''"
               [size]="40"

@@ -166,6 +166,7 @@ function setup(
         provide: AuthService,
         useValue: {
           token: signal('tok'),
+          mediaToken: signal('tok'),
           role: signal(role),
           canCurate: () => canCurateRole(asRole(role)),
           // The merged album grid gates its acquire buttons on this.
@@ -703,6 +704,7 @@ function setupMerged(albums: unknown[], discographyFails = false) {
         provide: AuthService,
         useValue: {
           token: signal('tok'),
+          mediaToken: signal('tok'),
           role: signal('admin'),
           canCurate: () => true,
           canAcquire: () => true,

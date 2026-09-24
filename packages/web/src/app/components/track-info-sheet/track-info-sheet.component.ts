@@ -99,7 +99,7 @@ export class TrackInfoSheetComponent implements OnInit {
   readonly headerCoverUrl = computed(() => {
     const id = this.effectiveSong()?.coverArt ?? this.displayCoverArt();
     return id
-      ? this.server.apiUrl(`/api/cover/${id}?size=96&token=${this.auth.token()}`)
+      ? this.server.apiUrl(`/api/cover/${id}?size=96&token=${this.auth.mediaToken()}`)
       : undefined;
   });
 

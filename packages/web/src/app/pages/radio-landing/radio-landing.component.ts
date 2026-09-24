@@ -91,7 +91,7 @@ export class RadioLandingComponent implements OnInit {
    */
   resumeCoverSrc(): string | undefined {
     const coverArt = this.lastTrack()?.coverArt;
-    return coverArt ? coverUrl(coverArt, 160, this.auth.token()) : undefined;
+    return coverArt ? coverUrl(coverArt, 160, this.auth.mediaToken()) : undefined;
   }
 
   /** Resume radio from the last-played track, then hide the resume block. */

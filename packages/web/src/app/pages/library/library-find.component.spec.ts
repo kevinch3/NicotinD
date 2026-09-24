@@ -25,6 +25,7 @@ function local(partial: Partial<Local> = {}): Local {
 
 const authStub = () => ({
   token: signal('tok'),
+  mediaToken: signal('tok'),
   canCurate: () => false,
   canAcquire: () => true,
   isAdmin: () => false,

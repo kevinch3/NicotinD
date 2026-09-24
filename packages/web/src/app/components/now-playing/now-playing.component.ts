@@ -368,7 +368,9 @@ export class NowPlayingComponent {
   readonly tvBackdropUrl = computed(() => {
     const track = this.player.currentTrack();
     if (!this.isTv || !track?.coverArt || !this.player.nowPlayingOpen()) return null;
-    return this.server.apiUrl(`/api/cover/${track.coverArt}?size=600&token=${this.auth.token()}`);
+    return this.server.apiUrl(
+      `/api/cover/${track.coverArt}?size=600&token=${this.auth.mediaToken()}`,
+    );
   });
 
   /** Head of the queue, shown in the TV Next-up chip. */
@@ -582,7 +584,7 @@ export class NowPlayingComponent {
       if (!this.lyricsOpen()) return;
       if (this.colorExtractedForId === track.id) return;
       this.colorExtractedForId = track.id;
-      const token = this.auth.token();
+      const token = this.auth.mediaToken();
       const url = this.server.apiUrl(`/api/cover/${track.coverArt}?size=80&token=${token}`);
       this.extractColorsFromImage(url);
     });
@@ -628,7 +630,7 @@ export class NowPlayingComponent {
       const track = this.player.currentTrack();
       if (track?.coverArt && this.colorExtractedForId !== track.id) {
         this.colorExtractedForId = track.id;
-        const token = this.auth.token();
+        const token = this.auth.mediaToken();
         const url = this.server.apiUrl(`/api/cover/${track.coverArt}?size=80&token=${token}`);
         this.extractColorsFromImage(url);
       }

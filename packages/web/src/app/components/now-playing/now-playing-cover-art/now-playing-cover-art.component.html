@@ -21,7 +21,7 @@
       data-testid="now-playing-cover"
     >
       <app-cover-art
-        [src]="track.coverArt ? '/api/cover/' + track.coverArt + '?size=600&token=' + auth.token() : undefined"
+        [src]="track.coverArt ? '/api/cover/' + track.coverArt + '?size=600&token=' + auth.mediaToken() : undefined"
         [artist]="track.artist"
         [album]="track.album ?? ''"
         [fill]="true"

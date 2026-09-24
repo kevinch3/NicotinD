@@ -12,6 +12,7 @@ import { getUserPreferences } from '../services/user-preferences.js';
 import { authMiddleware, signJwt } from '../middleware/auth.js';
 import type { AuthEnv } from '../middleware/auth.js';
 import { touchLastSeen } from '../services/user-last-seen.js';
+import { mediaKeyFor } from '../services/media-key.js';
 
 const AuthRequestSchema = z.object({
   username: z.string().min(1).openapi({ example: 'admin' }),
@@ -380,6 +381,7 @@ export function authRoutes(
                 welcomeDismissed: z.boolean(),
                 acquisitionEnabled: z.boolean(),
                 preferences: UserPreferencesSchema,
+                mediaKey: z.string().nullable(),
               }).openapi('UserProfile'),
             },
           },
@@ -413,6 +415,9 @@ export function authRoutes(
             : DEFAULT_STRATEGY,
           // Everything that follows the person across devices, in one read (#1299).
           preferences: getUserPreferences(db, user.sub),
+          // Stable credential for media URLs, so a token refresh does not make
+          // every cover a new URL (#1329). A read-only share session gets none.
+          mediaKey: user.share === true ? null : mediaKeyFor(db, jwtSecret, user.sub),
         } as {
           id: string;
           username: string;
@@ -421,6 +426,7 @@ export function authRoutes(
           acquisitionEnabled: boolean;
           radioStrategy: StrategyId;
           preferences: UserPreferences;
+          mediaKey: string | null;
         },
         200,
       );

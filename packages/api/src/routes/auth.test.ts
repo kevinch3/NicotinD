@@ -368,6 +368,32 @@ describe('GET /me', () => {
     expect(body.welcomeDismissed).toBe(false);
   });
 
+  it('hands the user a stable media key, and none to a share session (#1329)', async () => {
+    const token = await signJwt(
+      { sub: 'user-123', username: 'testuser', role: 'user' },
+      SECRET,
+      '1h',
+    );
+    const me = async (t: string) =>
+      (await (
+        await app.request('/me', { method: 'GET', headers: { Authorization: `Bearer ${t}` } })
+      ).json()) as { mediaKey: string | null };
+    const a = (await me(token)).mediaKey;
+    expect(a).toMatch(/^mk1\.user-123\./);
+    const refreshed = await signJwt(
+      { sub: 'user-123', username: 'testuser', role: 'user' },
+      SECRET,
+      '2h',
+    );
+    expect((await me(refreshed)).mediaKey).toBe(a);
+    const share = await signJwt(
+      { sub: 'user-123', username: 'testuser', role: 'user', share: true },
+      SECRET,
+      '1h',
+    );
+    expect((await me(share)).mediaKey).toBeNull();
+  });
+
   it('surfaces the deployment acquisition kill-switch (#235): defaults enabled, false when off', async () => {
     const { authRoutes } = await import('./auth.js');
     const token = await signJwt(

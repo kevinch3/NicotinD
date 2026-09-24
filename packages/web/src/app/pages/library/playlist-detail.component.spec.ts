@@ -60,7 +60,10 @@ function setup(playlist: PlaylistDetail = PLAYLIST) {
       provideHttpClientTesting(),
       { provide: PullToRefreshService, useValue: p2rStub },
       { provide: ActivatedRoute, useValue: { snapshot: { paramMap: { get: () => 'pl1' } } } },
-      { provide: AuthService, useValue: { token: signal('tok'), role: () => 'user' } },
+      {
+        provide: AuthService,
+        useValue: { token: signal('tok'), mediaToken: signal('tok'), role: () => 'user' },
+      },
       { provide: PlayerService, useValue: { play: () => {}, playWithContext: () => {} } },
       {
         provide: PlaylistService,

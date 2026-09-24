@@ -260,7 +260,7 @@ describe('AdminComponent (snapshot-driven via ServiceReview)', () => {
           useValue: { resyncLibrary: mocks.resyncLibrary, getFragments: mocks.getFragments },
         },
         { provide: ServiceReviewService, useValue: mocks.reviewService },
-        { provide: AuthService, useValue: { token: () => null } },
+        { provide: AuthService, useValue: { token: () => null, mediaToken: () => null } },
       ],
     }).compileComponents();
   });
@@ -332,7 +332,7 @@ describe('AdminComponent (orphan side-table rows, #259)', () => {
           },
         },
         { provide: ServiceReviewService, useValue: mocks.reviewService },
-        { provide: AuthService, useValue: { token: () => null } },
+        { provide: AuthService, useValue: { token: () => null, mediaToken: () => null } },
       ],
     }).compileComponents();
 
@@ -404,7 +404,7 @@ describe('AdminComponent (artist portrait coverage, #250)', () => {
           },
         },
         { provide: ServiceReviewService, useValue: mocks.reviewService },
-        { provide: AuthService, useValue: { token: () => null } },
+        { provide: AuthService, useValue: { token: () => null, mediaToken: () => null } },
       ],
     }).compileComponents();
     const f = TestBed.createComponent(AdminComponent);
@@ -508,7 +508,7 @@ describe('AdminComponent (acquisition kill-switch, #235)', () => {
           },
         },
         { provide: ServiceReviewService, useValue: mocks.reviewService },
-        { provide: AuthService, useValue: { token: () => null } },
+        { provide: AuthService, useValue: { token: () => null, mediaToken: () => null } },
       ],
     }).compileComponents();
     const f = TestBed.createComponent(AdminComponent);
@@ -603,7 +603,7 @@ describe('AdminComponent (incompleteJobs / untracked via ServiceReview)', () => 
           },
         },
         { provide: ServiceReviewService, useValue: mocks.reviewService },
-        { provide: AuthService, useValue: { token: () => null } },
+        { provide: AuthService, useValue: { token: () => null, mediaToken: () => null } },
       ],
     }).compileComponents();
   });
@@ -697,7 +697,7 @@ describe('AdminComponent (incompleteJobs / untracked via ServiceReview)', () => 
           },
         },
         { provide: ServiceReviewService, useValue: mocks.reviewService },
-        { provide: AuthService, useValue: { token: () => null } },
+        { provide: AuthService, useValue: { token: () => null, mediaToken: () => null } },
       ],
     }).compileComponents();
     const c = TestBed.createComponent(LibraryMaintenancePanelComponent).componentInstance;
@@ -747,7 +747,7 @@ describe('AdminComponent (TV D-pad navigation, Android TV support phase 4)', () 
           },
         },
         { provide: ServiceReviewService, useValue: mocks.reviewService },
-        { provide: AuthService, useValue: { token: () => null } },
+        { provide: AuthService, useValue: { token: () => null, mediaToken: () => null } },
       ],
     }).compileComponents();
   });
@@ -888,7 +888,7 @@ describe('AdminComponent — group structure (Task 4 regroup)', () => {
           useValue: { resyncLibrary: mocks.resyncLibrary, getFragments: mocks.getFragments },
         },
         { provide: ServiceReviewService, useValue: mocks.reviewService },
-        { provide: AuthService, useValue: { token: () => null } },
+        { provide: AuthService, useValue: { token: () => null, mediaToken: () => null } },
       ],
     }).compileComponents();
 
@@ -1100,7 +1100,7 @@ describe('AdminComponent (actionable fragments, #314)', () => {
         },
         { provide: LibraryApiService, useValue: libraryApi },
         { provide: ServiceReviewService, useValue: mocks.reviewService },
-        { provide: AuthService, useValue: { token: () => null } },
+        { provide: AuthService, useValue: { token: () => null, mediaToken: () => null } },
       ],
     }).compileComponents();
     const fixture = TestBed.createComponent(AdminComponent);
@@ -1214,7 +1214,7 @@ describe('AdminComponent — maintenance passes (issue #622)', () => {
           },
         },
         { provide: ServiceReviewService, useValue: mocks.reviewService },
-        { provide: AuthService, useValue: { token: () => null } },
+        { provide: AuthService, useValue: { token: () => null, mediaToken: () => null } },
       ],
     }).compileComponents();
     // The maintenance passes moved to their own panel; mount that directly

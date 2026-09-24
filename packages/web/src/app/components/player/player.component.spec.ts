@@ -99,7 +99,10 @@ describe('PlayerComponent', () => {
       imports: [PlayerComponent],
       providers: [
         PlayerService,
-        { provide: AuthService, useValue: { token: signal('test-token') } },
+        {
+          provide: AuthService,
+          useValue: { token: signal('test-token'), mediaToken: signal('test-token') },
+        },
         { provide: LikeService, useValue: likes },
         {
           provide: RemotePlaybackService,

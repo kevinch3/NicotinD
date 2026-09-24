@@ -68,6 +68,34 @@ describe('AuthService', () => {
     auth = TestBed.inject(AuthService);
   });
 
+  describe('media key (#1329)', () => {
+    it('serves media with the JWT until a key arrives, then with the key across refreshes', () => {
+      auth.login('jwt-1', 'alice', 'user');
+      expect(auth.mediaToken()).toBe('jwt-1');
+
+      auth.setMediaKey('mk1.u.abc');
+      expect(auth.mediaToken()).toBe('mk1.u.abc');
+      expect(localStorage.getItem('nicotind_media_key')).toBe('mk1.u.abc');
+
+      // A sliding-session refresh changes the JWT but not the cover URLs.
+      auth.setToken('jwt-2');
+      expect(auth.mediaToken()).toBe('mk1.u.abc');
+    });
+
+    it('drops the key on a new login and on logout, never serving another session with it', () => {
+      auth.login('jwt-1', 'alice', 'user');
+      auth.setMediaKey('mk1.alice.abc');
+      auth.login('jwt-bob', 'bob', 'user');
+      expect(auth.mediaKey()).toBeNull();
+      expect(auth.mediaToken()).toBe('jwt-bob');
+
+      auth.setMediaKey('mk1.bob.def');
+      auth.logout();
+      expect(auth.mediaKey()).toBeNull();
+      expect(localStorage.getItem('nicotind_media_key')).toBeNull();
+    });
+  });
+
   describe('setToken (sliding-session renewal)', () => {
     it('updates the token signal and localStorage', () => {
       auth.setToken('fresh-token');

@@ -34,7 +34,7 @@
       }
       @if (showCover()) {
         <app-cover-art
-          [src]="track().coverArt ? '/api/cover/' + track().coverArt + '?size=40&token=' + auth.token() : undefined"
+          [src]="track().coverArt ? '/api/cover/' + track().coverArt + '?size=40&token=' + auth.mediaToken() : undefined"
           [artist]="track().artist"
           [album]="track().album ?? ''"
           [size]="36"
