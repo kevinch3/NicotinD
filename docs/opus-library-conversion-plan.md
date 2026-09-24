@@ -171,6 +171,9 @@ length by the pre-skip, measured at 6.5 ms on a reference encode. The check read
 from `music-metadata` and output duration from `ffprobe`, so the output always looks slightly
 longer than it is. That is far inside the 1.0 s tolerance and harmless today, but it means the
 check is not measuring what it appears to measure.
+*(Update, #1305: the ingest encode now reads an Opus output's duration in-process from the last
+Ogg page's granule minus pre-skip, which matches the encoded length to under 1 ms; ffprobe is only
+the fallback for other targets. The streaming cache check in `transcode.ts` still uses ffprobe.)*
 
 The library database is unaffected — the scanner takes duration from `music-metadata`
 (`library-scanner.ts:1159`), not `ffprobe`. It does round to whole seconds, which is the rounding

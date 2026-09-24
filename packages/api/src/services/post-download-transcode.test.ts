@@ -16,7 +16,17 @@
  */
 import { describe, expect, it, afterEach } from 'bun:test';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readdirSync, rmSync, existsSync, statSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdtempSync,
+  mkdirSync,
+  readdirSync,
+  rmSync,
+  existsSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { getMusicMetadata } from './music-metadata-loader.js';
 import { tmpdir } from 'node:os';
@@ -160,6 +170,43 @@ describe('transcodeToLibraryFormat', () => {
     // No leftover temp file.
     expect(existsSync(join(root, '01 - Song.nicotind-transcode.opus'))).toBe(false);
   });
+
+  // #1305: the Opus output's duration is read in-process from its last Ogg
+  // page. An encode whose output ffmpeg left without a complete final page
+  // must still be refused, because the next statement deletes the original.
+  it.skipIf(!ffmpegAvailable())(
+    'refuses a truncated Opus output and keeps the original',
+    async () => {
+      const root = tmpRoot();
+      const bin = join(root, 'bin');
+      mkdirSync(bin);
+      const realFfmpeg = execFileSync('which', ['ffmpeg'], { encoding: 'utf-8' }).trim();
+      const realFfprobe = execFileSync('which', ['ffprobe'], { encoding: 'utf-8' }).trim();
+      const wrapper = join(bin, 'ffmpeg');
+      // Real ffmpeg, then cut 200 bytes off the transcode temp it wrote.
+      writeFileSync(
+        wrapper,
+        `#!/bin/sh\n"${realFfmpeg}" "$@" || exit $?\nfor last; do :; done\n` +
+          `case "$last" in *.nicotind-transcode.*) truncate -s -200 "$last";; esac\n`,
+      );
+      chmodSync(wrapper, 0o755);
+      symlinkSync(realFfprobe, join(bin, 'ffprobe'));
+      const flac = join(root, 'song.flac');
+      makeLongFlac(flac);
+      const prev = process.env.NICOTIND_FFMPEG_PATH;
+      process.env.NICOTIND_FFMPEG_PATH = wrapper;
+      try {
+        await expect(transcodeToLibraryFormat(flac, 128)).rejects.toThrow(
+          /Refusing to replace .*output duration could not be read/,
+        );
+      } finally {
+        if (prev === undefined) delete process.env.NICOTIND_FFMPEG_PATH;
+        else process.env.NICOTIND_FFMPEG_PATH = prev;
+      }
+      expect(existsSync(flac)).toBe(true);
+      expect(existsSync(join(root, 'song.opus'))).toBe(false);
+    },
+  );
 
   it.skipIf(!ffmpegAvailable())('rejects and leaves the original on a bad input', async () => {
     const root = tmpRoot();

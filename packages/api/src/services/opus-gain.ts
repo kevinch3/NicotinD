@@ -1,4 +1,5 @@
 import { closeSync, openSync, readSync, writeSync } from 'node:fs';
+import { open } from 'node:fs/promises';
 import { createLogger } from '@nicotind/core';
 
 const log = createLogger('opus-gain');
@@ -210,5 +211,89 @@ export function writeOutputGain(path: string, gainDb: number): boolean {
     return false;
   } finally {
     closeSync(fd);
+  }
+}
+
+/** The largest possible Ogg page: 27 header + 255 lacing + 255 × 255 payload. */
+const MAX_OGG_PAGE_BYTES = 27 + 255 + 255 * 255;
+
+/** Header-type flag on the last page of a logical stream. */
+const OGG_EOS = 0x04;
+
+/** Opus granule positions always count 48 kHz samples (RFC 7845 §4). */
+const OPUS_GRANULE_RATE = 48_000;
+
+/** Byte offset of `pre_skip` (uint16 LE) within the `OpusHead` packet. */
+const PRE_SKIP_OFFSET_IN_HEAD = 10;
+
+/**
+ * The complete, CRC-valid page that ends exactly at the end of `tail`, or
+ * `null`. Scans back over `OggS` matches because the pattern can also occur
+ * inside compressed audio.
+ */
+function lastOggPage(tail: Buffer): Buffer | null {
+  let at = tail.lastIndexOf('OggS');
+  while (at >= 0) {
+    if (at + 27 <= tail.length && tail[at + 4] === 0) {
+      const segments = tail[at + 26]!;
+      let length = 27 + segments;
+      if (at + length <= tail.length) {
+        for (let i = 0; i < segments; i++) length += tail[at + 27 + i]!;
+        if (at + length === tail.length) {
+          const page = tail.subarray(at, at + length);
+          if (page.readUInt32LE(22) === oggPageCrc(page)) return page;
+        }
+      }
+    }
+    at = at > 0 ? tail.lastIndexOf('OggS', at - 1) : -1;
+  }
+  return null;
+}
+
+/**
+ * Playable duration of an Ogg-Opus file read in-process: the last page's
+ * granule position minus the `OpusHead` pre-skip, over 48 kHz (RFC 7845 §4).
+ * Replaces an ffprobe spawn on the lossless encode's validation (#1305).
+ *
+ * - `undefined`: not Ogg-Opus at all (no `OggS` + `OpusHead` first page), so
+ *   the caller should use another probe.
+ * - `null`: Ogg-Opus, but the duration cannot be trusted: a first page whose
+ *   CRC fails, no complete CRC-valid page ending at EOF (truncated, or trailing
+ *   bytes), a last page without the end-of-stream flag or from another logical
+ *   stream, or an unset granule. The encode validation **fails closed** on it,
+ *   because a pass there deletes the original.
+ */
+export async function readOggOpusDurationSec(path: string): Promise<number | null | undefined> {
+  let fh;
+  try {
+    fh = await open(path, 'r');
+  } catch {
+    return undefined;
+  }
+  try {
+    const { size } = await fh.stat();
+    const head = Buffer.alloc(Math.min(HEAD_BYTES, size));
+    const { bytesRead: headBytes } = await fh.read(head, 0, head.length, 0);
+    const first = firstOggPage(head.subarray(0, headBytes));
+    if (!first) return undefined;
+    const firstPage = head.subarray(first.start, first.start + first.length);
+    if (firstPage.readUInt32LE(22) !== oggPageCrc(firstPage)) return null;
+    const serial = firstPage.readUInt32LE(14);
+    const preSkip = head.readUInt16LE(first.payloadAt + PRE_SKIP_OFFSET_IN_HEAD);
+
+    const tailLength = Math.min(size, MAX_OGG_PAGE_BYTES);
+    const tail = Buffer.alloc(tailLength);
+    const { bytesRead: tailBytes } = await fh.read(tail, 0, tailLength, size - tailLength);
+    if (tailBytes !== tailLength) return null;
+    const last = lastOggPage(tail);
+    if (!last) return null;
+    if ((last[5]! & OGG_EOS) === 0 || last.readUInt32LE(14) !== serial) return null;
+    const granule = last.readBigInt64LE(6);
+    if (granule < 0n) return null;
+    return Number(granule - BigInt(preSkip)) / OPUS_GRANULE_RATE;
+  } catch {
+    return null;
+  } finally {
+    await fh.close();
   }
 }
