@@ -94,6 +94,17 @@ describe('renderComposeSnippet', () => {
     expect(companionBlock).not.toContain(TOKEN);
   });
 
+  it("references the pot-provider by the addon repo's :release tag, not core's version (#1315)", () => {
+    // The ytdlp addon repo publishes this image now; core's vX.Y.Z tags stop
+    // at the last release that built it, so a NICOTIND_IMAGE_TAG pin would
+    // resolve a frozen server — or none — while the plugin pin moves on.
+    for (const id of ['ytdlp-addon', 'spotdl-addon']) {
+      const snip = renderComposeSnippet(catalogEntry(id)!, TOKEN);
+      expect(snip.services).toContain('ghcr.io/kevinch3/nicotind-pot-provider:release');
+      expect(snip.services).not.toContain('NICOTIND_IMAGE_TAG');
+    }
+  });
+
   it('surfaces the addon data volume + the profile up command', () => {
     const snip = renderComposeSnippet(catalogEntry('spotdl-addon')!, TOKEN);
     expect(snip.volumes).toEqual(['spotdl-addon-data']);

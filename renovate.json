@@ -64,14 +64,6 @@
         "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)\\s+version=(?<currentValue>.*)"
       ],
       "extractVersionTemplate": "^v?(?<version>.*)$"
-    },
-    {
-      "description": "The bgutil PO-token provider version, built from pinned upstream source. Issue #551: the addon-side pins are the ones that can actually break a download.",
-      "customType": "regex",
-      "managerFilePatterns": ["/^packages/pot-provider/Dockerfile$/"],
-      "matchStrings": [
-        "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)\\s+ARG BGUTIL_VERSION=(?<currentValue>.*)"
-      ]
     }
   ]
 }

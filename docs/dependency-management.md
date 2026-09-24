@@ -167,14 +167,13 @@ ships now fails `bun run check:audit`, so waiting for Monday would block `verify
 
 ### What the custom managers cover
 
-Three version pins live outside any package manifest, so nothing else would ever bump them.
+Two version pins live outside any package manifest, so nothing else would ever bump them.
 Each is annotated with a `# renovate:` comment next to the pin:
 
 | Pin | File | Why it matters |
 | --- | --- | --- |
 | `actionlint` | `.github/workflows/ci.yml` | A stale workflow linter is a gate quietly running an old ruleset |
 | `gitleaks` | `.github/workflows/ci.yml` | Same, for the secret scanner — an old ruleset misses newer credential formats |
-| `BGUTIL_VERSION` | `packages/pot-provider/Dockerfile` | Issue #551: the PO-token provider pin is the one that can actually break a download |
 
-The Docker base images (`oven/bun`, `imbios/bun-node`, `python:3.11-slim`, `node:25-bookworm-slim`)
+The Docker base images (`oven/bun`, `imbios/bun-node`, `python:3.11-slim`)
 are covered by Renovate's native `dockerfile` manager, no annotation needed.

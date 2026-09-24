@@ -153,7 +153,7 @@ export const ADDON_CATALOG: readonly AddonCatalogEntry[] = [
       },
       {
         name: 'ytdlp-pot-provider',
-        image: 'ghcr.io/kevinch3/nicotind-pot-provider:${NICOTIND_IMAGE_TAG:-release}',
+        image: 'ghcr.io/kevinch3/nicotind-pot-provider:release',
         profile: 'ytdlp-addon',
         runtime: 'runc',
         networkMode: 'service:ytdlp-addon',
@@ -186,7 +186,7 @@ export const ADDON_CATALOG: readonly AddonCatalogEntry[] = [
       },
       {
         name: 'spotdl-pot-provider',
-        image: 'ghcr.io/kevinch3/nicotind-pot-provider:${NICOTIND_IMAGE_TAG:-release}',
+        image: 'ghcr.io/kevinch3/nicotind-pot-provider:release',
         profile: 'spotdl-addon',
         runtime: 'runc',
         networkMode: 'service:spotdl-addon',

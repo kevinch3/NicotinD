@@ -256,10 +256,10 @@ services:
   # per-invocation extractor-args plumbing needed.
   ytdlp-pot-provider:
     # Our own build of the upstream provider (issue #238, GPL-3.0), published by
-    # the `docker-pot-provider` job in deploy.yml so it tracks our release
-    # cadence rather than a third party's. Override to
+    # the nicotind-ytdlp-addon repo next to the plugin pin it must match
+    # (#1315). `:release` there, not core's version tags. Override to
     # `brainicism/bgutil-ytdlp-pot-provider:<version>` to fall back to upstream.
-    image: ghcr.io/kevinch3/nicotind-pot-provider:${NICOTIND_IMAGE_TAG:-release}
+    image: ghcr.io/kevinch3/nicotind-pot-provider:release
     profiles: ["ytdlp-addon"]
     # A small Node service; observed ~62 MB.
     mem_limit: 512m
@@ -306,7 +306,7 @@ services:
   # the hood; shares the addon's netns so the baked bgutil plugin reaches it at
   # 127.0.0.1:4416).
   spotdl-pot-provider:
-    image: ghcr.io/kevinch3/nicotind-pot-provider:${NICOTIND_IMAGE_TAG:-release}
+    image: ghcr.io/kevinch3/nicotind-pot-provider:release
     profiles: ["spotdl-addon"]
     # A small Node service; observed ~62 MB.
     mem_limit: 512m
