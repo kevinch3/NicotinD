@@ -1,0 +1,1 @@
+• web: keyboard shortcuts for the player, with a ? help sheet (#1368)

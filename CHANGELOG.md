@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.70](https://github.com/kevinch3/NicotinD/compare/v0.8.69...v0.8.70) (2026-09-24)
+
+### Features
+
+* **web:** keyboard shortcuts for the player, with a ? help sheet ([#1368](https://github.com/kevinch3/NicotinD/issues/1368)) ([c678d0b](https://github.com/kevinch3/NicotinD/commit/c678d0b1a90d5a39a4b61858b4cff60953af281f)), references [#438](https://github.com/kevinch3/NicotinD/issues/438) [#1296](https://github.com/kevinch3/NicotinD/issues/1296)
 ## [0.8.69](https://github.com/kevinch3/NicotinD/compare/v0.8.68...v0.8.69) (2026-09-24)
 
 ### Performance
