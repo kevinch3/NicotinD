@@ -6,7 +6,7 @@ import { ffmpegBinary } from './ffmpeg-path.js';
 import { withFfmpegSlot } from './ffmpeg-slots.js';
 import { planVorbisKeyFixes, type VorbisKeyPlan, type VorbisKeyPreference } from './vorbis-keys.js';
 import { attachPictureDataToOpus, readOggPicture } from './opus-artwork.js';
-import { readFreeformAtoms, writeFreeformAtoms } from './mp4-freeform.js';
+import { readFreeformAtoms, tmpoAtom, writeFreeformAtoms } from './mp4-freeform.js';
 import { getMusicMetadata as loadMusicMetadata } from './music-metadata-loader.js';
 
 const log = createLogger('audio-tags');
@@ -447,7 +447,9 @@ export async function readAudioTags(filepath: string): Promise<AudioTags> {
     const mm = await getMusicMetadata();
     if (!mm) return {};
     try {
-      const parsed = await mm.parseFile(filepath, { duration: false });
+      // `AudioTags` has no picture field, so decoding a multi-MB cover here was
+      // pure waste — on every AAC conversion, which reads its source here (#1288).
+      const parsed = await mm.parseFile(filepath, { duration: false, skipCovers: true });
       const c = parsed.common;
       return {
         artist: pickString(c.artist),
@@ -728,6 +730,53 @@ export function canonicalTagMetadataArgs(tags: CanonicalTags): string[] {
   return args;
 }
 
+/**
+ * Every `-metadata` arg a tag write for `ext` sets from `tags`, in the key
+ * spellings that container's muxer reads. Shared by the remux below and by an
+ * encode that writes its tags itself (#1288).
+ */
+export function ffmpegTagMetadataArgs(tags: AudioTags, ext: string): string[] {
+  const metaArgs: string[] = canonicalTagMetadataArgs(tags);
+  if (tags.discNumber !== undefined) metaArgs.push('-metadata', `DISC=${tags.discNumber}`);
+  if (tags.genre !== undefined) metaArgs.push('-metadata', `GENRE=${tags.genre}`);
+  if (tags.bpm !== undefined)
+    metaArgs.push('-metadata', `${BPM_METADATA_KEY[ext] ?? 'BPM'}=${tags.bpm}`);
+  if (tags.key !== undefined) metaArgs.push('-metadata', `KEY=${tags.key}`);
+  if (tags.lyrics !== undefined) metaArgs.push('-metadata', `LYRICS=${tags.lyrics}`);
+  for (const [field, key] of numericFeatureEntries()) {
+    const v = tags[field];
+    if (v !== undefined) metaArgs.push('-metadata', `${key}=${formatFeature(field, v)}`);
+  }
+  if (tags.mood !== undefined) metaArgs.push('-metadata', `${FEATURE_TAG_KEYS.mood}=${tags.mood}`);
+  if (tags.compilation) metaArgs.push('-metadata', 'COMPILATION=1');
+  if (tags.acoustIdId) metaArgs.push('-metadata', `ACOUSTID_ID=${tags.acoustIdId}`);
+  if (tags.mbRecordingId) metaArgs.push('-metadata', `MUSICBRAINZ_TRACKID=${tags.mbRecordingId}`);
+  if (tags.mbReleaseId) metaArgs.push('-metadata', `MUSICBRAINZ_ALBUMID=${tags.mbReleaseId}`);
+  return metaArgs;
+}
+
+/**
+ * Write only the fields the `ipod` muxer drops — key, the perceptual features,
+ * the ids — as freeform atoms, plus `tmpo`, in place: a byte-level patch of
+ * `moov`, not a remux. For a file whose other tags an encode already wrote (#1288).
+ */
+export function writeMp4FreeformTags(filepath: string, tags: AudioTags): boolean {
+  const values = mp4FreeformValues(tags);
+  // `tmpo` too: the encode wrote it, and the cover's remux in between drops it.
+  const standard = tags.bpm !== undefined ? [tmpoAtom(tags.bpm)] : [];
+  if (Object.keys(values).length === 0 && standard.length === 0) return true;
+  try {
+    return writeFreeformAtoms(
+      filepath,
+      readFreeformAtoms(readFileSync(filepath)),
+      values,
+      standard,
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** One ffmpeg slot covers the whole write — picture read, remux, re-attach (#1312). */
 function writeFfmpegTags(
   filepath: string,
@@ -746,22 +795,7 @@ async function remuxFfmpegTags(
   const ext = extname(filepath).toLowerCase();
   const muxer = FFMPEG_MUXERS[ext];
   if (!muxer) return false;
-  const metaArgs: string[] = canonicalTagMetadataArgs(tags);
-  if (tags.discNumber !== undefined) metaArgs.push('-metadata', `DISC=${tags.discNumber}`);
-  if (tags.genre !== undefined) metaArgs.push('-metadata', `GENRE=${tags.genre}`);
-  if (tags.bpm !== undefined)
-    metaArgs.push('-metadata', `${BPM_METADATA_KEY[ext] ?? 'BPM'}=${tags.bpm}`);
-  if (tags.key !== undefined) metaArgs.push('-metadata', `KEY=${tags.key}`);
-  if (tags.lyrics !== undefined) metaArgs.push('-metadata', `LYRICS=${tags.lyrics}`);
-  for (const [field, key] of numericFeatureEntries()) {
-    const v = tags[field];
-    if (v !== undefined) metaArgs.push('-metadata', `${key}=${formatFeature(field, v)}`);
-  }
-  if (tags.mood !== undefined) metaArgs.push('-metadata', `${FEATURE_TAG_KEYS.mood}=${tags.mood}`);
-  if (tags.compilation) metaArgs.push('-metadata', 'COMPILATION=1');
-  if (tags.acoustIdId) metaArgs.push('-metadata', `ACOUSTID_ID=${tags.acoustIdId}`);
-  if (tags.mbRecordingId) metaArgs.push('-metadata', `MUSICBRAINZ_TRACKID=${tags.mbRecordingId}`);
-  if (tags.mbReleaseId) metaArgs.push('-metadata', `MUSICBRAINZ_ALBUMID=${tags.mbReleaseId}`);
+  const metaArgs = ffmpegTagMetadataArgs(tags, ext);
   // Every rewrite also heals spaced comment names, so a file is normalized the
   // first time anything touches it. A key this write sets itself is excluded:
   // the caller's value supersedes whatever the spaced twin said.

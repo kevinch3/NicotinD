@@ -69,6 +69,22 @@ export function freeformAtom(name: string, value: string): Buffer {
   );
 }
 
+/** `data` atom type 21: a big-endian signed integer, the type iTunes writes `tmpo` with. */
+const DATA_TYPE_BE_INT = 21;
+
+/**
+ * The iTunes tempo atom. Not a freeform atom, but it needs the same in-place
+ * route: ffmpeg writes it from `-metadata tmpo=` (#1177), and the cover's own
+ * remux drops it again, so it is re-landed with the freeform atoms (#1288).
+ */
+export function tmpoAtom(bpm: number): Buffer {
+  const dataHeader = Buffer.alloc(8);
+  dataHeader.writeUInt32BE(DATA_TYPE_BE_INT, 0);
+  const value = Buffer.alloc(2);
+  value.writeUInt16BE(Math.max(0, Math.min(0xffff, Math.round(bpm))), 0);
+  return box('tmpo', box('data', dataHeader, value));
+}
+
 /** `mean:name` of a raw `----` atom, or `null` if it is not one. */
 function freeformKey(atom: Buffer): string | null {
   const parts = children(atom, 8, atom.length);
@@ -147,6 +163,8 @@ export function withFreeformAtoms(
   buf: Buffer,
   carried: readonly Buffer[],
   values: Readonly<Record<string, string>>,
+  // Standard (non-`----`) atoms, each replacing any item of its own type.
+  standard: readonly Buffer[] = [],
 ): Buffer | null {
   const found = findIlst(buf);
   if (!found) return null;
@@ -155,15 +173,16 @@ export function withFreeformAtoms(
   if (!items) return null;
 
   const replaced = new Set(Object.keys(values).map((n) => `${ITUNES_MEAN}:${n}`));
+  const standardTypes = new Set(standard.map((a) => a.toString('latin1', 4, 8)));
   const kept = items
-    .filter((a) => a.type !== '----')
+    .filter((a) => a.type !== '----' && !standardTypes.has(a.type))
     .map((a) => buf.subarray(a.offset, a.offset + a.size));
   const carriedKept = carried.filter((a) => {
     const key = freeformKey(a);
     return key !== null && !replaced.has(key);
   });
   const written = Object.entries(values).map(([name, value]) => freeformAtom(name, value));
-  const body = Buffer.concat([...kept, ...carriedKept, ...written]);
+  const body = Buffer.concat([...kept, ...standard, ...carriedKept, ...written]);
 
   const delta = 8 + body.length - ilst.size;
   const out = Buffer.concat([
@@ -188,9 +207,10 @@ export function writeFreeformAtoms(
   path: string,
   carried: readonly Buffer[],
   values: Readonly<Record<string, string>>,
+  standard: readonly Buffer[] = [],
 ): boolean {
   try {
-    const next = withFreeformAtoms(readFileSync(path), carried, values);
+    const next = withFreeformAtoms(readFileSync(path), carried, values, standard);
     if (!next) {
       log.warn(
         { path },

@@ -19,7 +19,10 @@
  * failure, not a pass — an empty registry must not read as "nothing wrong".
  */
 import { AUDIO_EXTENSIONS, ID3_EXTS, VORBIS_EXTS } from '@nicotind/core';
-import { LIBRARY_FORMATS, type FormatStrategy } from '../packages/api/src/services/library-format.js';
+import {
+  LIBRARY_FORMATS,
+  type FormatStrategy,
+} from '../packages/api/src/services/library-format.js';
 import { LADDERS } from '../packages/api/src/services/transcode-bitrate.js';
 
 /**
@@ -94,6 +97,11 @@ export function problemsFor(id: string, s: FormatStrategy): FormatProblem[] {
     add('writeGain must be a function or null (null means "this container has no gain field")');
   }
 
+  // Tag carry: `null` means the encode's `-metadata` lands every field (#1289).
+  if (s.postEncodeTags !== null && typeof s.postEncodeTags !== 'function') {
+    add('postEncodeTags must be a function or null (null means "the encode carries every tag")');
+  }
+
   return out;
 }
 
@@ -104,8 +112,10 @@ function main(): void {
   const summary = entries
     .map(([id, s]) => {
       const gain = s.writeGain ? 'header gain' : 'no gain field';
-      const cap = s.maxEmbeddedPictureBytes === null ? 'no art cap' : `${s.maxEmbeddedPictureBytes}B art cap`;
-      return `${id} (.${s.ext}, ${cap}, ${gain})`;
+      const carry = s.postEncodeTags ? ', post-encode tag carry' : '';
+      const cap =
+        s.maxEmbeddedPictureBytes === null ? 'no art cap' : `${s.maxEmbeddedPictureBytes}B art cap`;
+      return `${id} (.${s.ext}, ${cap}, ${gain}${carry})`;
     })
     .join(', ');
   console.log(`check:library-formats: ${entries.length} library format(s) — ${summary}.`);

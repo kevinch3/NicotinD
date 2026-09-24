@@ -250,9 +250,12 @@ muxer silently ignores `-metadata BPM=`, so `.m4a` files ended with no tempo ato
 re-analysed forever. `BPM_METADATA_KEY` (`audio-tags.ts`) overrides the key to `tmpo` for that one
 container — see *Tags across a container change* below. #1274 then made the other eleven fields
 writable (freeform atoms, same section), and #1279 registered AAC. Two things it needed of its own:
-an `.m4a` target is carried by a full `writeAudioTags` **after** the encode and after the cover
-(`carryPostEncodeTags`) — no `-metadata` spelling reaches what `ipod` drops, and the cover's own
-remux would drop freeform atoms written before it — and it encodes without `+faststart`, because
+an `.m4a` target reads its source's tags and the encode writes every field `ipod` accepts as explicit
+`-metadata` (`ffmpegTagMetadataArgs` — `tmpo` for BPM, which `-map_metadata` alone drops); then,
+**after** the cover, whose own remux drops freeform atoms *and* `tmpo`, the strategy's
+`postEncodeTags` (`writeMp4FreeformTags`) patches the rest into `moov` in place. That hook replaced
+two `targetExt === 'm4a'` checks and a full second `writeAudioTags` remux per file (#1288, #1289), and
+the source read skips covers, since `AudioTags` has no picture field. It encodes without `+faststart`, because
 `writeFreeformAtoms` needs `moov` after `mdat`. A 2.9 MB `covr` reads back byte-exact, so it has no
 art cap. Every post-encode carry write goes through one failure policy (`carryWrite`, #1287):
 `writeAudioTags` signals failure by returning `false` as well as by throwing, and either means the

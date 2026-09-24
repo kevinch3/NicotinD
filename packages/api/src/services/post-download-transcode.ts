@@ -12,6 +12,7 @@ import { extractEmbeddedPicture, preserveFolderCover } from './cover-sources.js'
 import { preparePicture } from './opus-artwork.js';
 import {
   canonicalTagMetadataArgs,
+  ffmpegTagMetadataArgs,
   readAudioTags,
   writeAudioTags,
   type AudioTags,
@@ -262,26 +263,27 @@ const VORBIS_FIELDS_FFMPEG_DROPS = [
 export async function carryPostEncodeTags(
   sourceTags: AudioTags,
   outPath: string,
+  strategy: FormatStrategy,
   warn: CarryWarn = defaultCarryWarn,
 ): Promise<void> {
-  // An `.m4a` target gets the source's whole tag set: the `ipod` muxer drops
-  // key, the perceptual features and the ids from `-map_metadata` and from any
-  // `-metadata` spelling, and `writeAudioTags` is the one writer that lands
-  // them, as freeform atoms (#1274, #1279). Written after the cover, because
-  // the cover's own remux would otherwise drop those atoms.
-  if (extname(outPath).toLowerCase() === '.m4a') {
-    await carryWrite(outPath, sourceTags, 'could not carry tags onto the encoded .m4a', warn);
+  // A container whose muxer drops fields from every `-metadata` spelling
+  // declares a writer for exactly those. The encode already wrote everything
+  // else, so this is an in-place patch, not the second full remux a whole
+  // `writeAudioTags` pass cost (#1288, #1289). After the cover, because the
+  // cover's own remux would drop what was written before it.
+  if (strategy.postEncodeTags) {
+    const write = strategy.postEncodeTags;
+    await carryWrite(outPath, 'could not carry tags onto the encoded file', warn, async () =>
+      write(outPath, sourceTags),
+    );
     return;
   }
   const carry: AudioTags = {};
   if (sourceTags.lyrics !== undefined) carry.lyrics = sourceTags.lyrics;
   if (sourceTags.compilation) carry.compilation = true;
   if (Object.keys(carry).length === 0) return;
-  await carryWrite(
-    outPath,
-    carry,
-    'could not carry lyrics/compilation onto the encoded file',
-    warn,
+  await carryWrite(outPath, 'could not carry lyrics/compilation onto the encoded file', warn, () =>
+    writeAudioTags(outPath, carry),
   );
 }
 
@@ -295,12 +297,12 @@ const defaultCarryWarn: CarryWarn = (ctx, msg) => log.warn(ctx, msg);
  */
 async function carryWrite(
   outPath: string,
-  tags: AudioTags,
   msg: string,
   warn: CarryWarn,
+  write: () => Promise<boolean>,
 ): Promise<void> {
   try {
-    if (!(await writeAudioTags(outPath, tags))) warn({ outPath }, msg);
+    if (!(await write())) warn({ outPath }, msg);
   } catch (err) {
     warn({ err, outPath }, msg);
   }
@@ -334,20 +336,23 @@ async function encodedVorbisComments(absPath: string, tags: AudioTags): Promise<
 
 async function carriedMetadataArgs(
   absPath: string,
-  targetExt: string,
+  strategy: FormatStrategy,
 ): Promise<{ args: string[]; sourceTags: AudioTags | null }> {
+  const targetExt = strategy.ext;
   const sourceIsId3 = ID3_EXTS.has(extname(absPath).toLowerCase());
   const targetIsId3 = ID3_EXTS.has(`.${targetExt}`);
-  // No `-metadata` spelling reaches the fields `ipod` drops, so an `.m4a`
-  // target is carried after the encode instead — see `carryPostEncodeTags`.
-  if (targetExt === 'm4a') {
+  // A muxer with fields no `-metadata` spelling reaches: the encode writes
+  // every field it CAN take explicitly (`tmpo` for BPM, which `-map_metadata`
+  // would drop), and the strategy's writer lands the rest after the encode.
+  if (strategy.postEncodeTags) {
     try {
-      return { args: [], sourceTags: await readAudioTags(absPath) };
+      const tags = await readAudioTags(absPath);
+      return { args: ffmpegTagMetadataArgs(tags, `.${targetExt}`), sourceTags: tags };
     } catch (err) {
       // `readAudioTags` is lenient today (unreadable → `{}`), but if it ever
       // throws, the encode still succeeds and the file lands without every
       // field this carry exists for, so it must not be silent (#1287).
-      log.warn({ err, absPath }, 'could not read source tags; the .m4a lands without them');
+      log.warn({ err, absPath }, 'could not read source tags; the file lands without them');
       return { args: [], sourceTags: null };
     }
   }
@@ -473,7 +478,7 @@ export async function transcodeToLibraryFormat(
   // converts to a target sharing that extension (`aac`, #1286) — the rename
   // below is written to stay correct for that case too.
   const tmpPath = transcodeTempPathFor(absPath, format);
-  const { args: carried, sourceTags } = await carriedMetadataArgs(absPath, strategy.ext);
+  const { args: carried, sourceTags } = await carriedMetadataArgs(absPath, strategy);
   const ffmpegArgs = (strict: boolean) => [
     '-hide_banner',
     '-loglevel',
@@ -543,7 +548,7 @@ export async function transcodeToLibraryFormat(
   // so they go on after the encode, onto the TEMP — the rename below then
   // promotes a complete file rather than one that gains tags a moment later,
   // the same discipline the cover carry above follows.
-  if (sourceTags) await carryPostEncodeTags(sourceTags, tmpPath);
+  if (sourceTags) await carryPostEncodeTags(sourceTags, tmpPath, strategy);
 
   try {
     // Promote temp → final, then deal with the original — except when
