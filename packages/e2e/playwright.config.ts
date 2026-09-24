@@ -3,6 +3,12 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { rmSync } from 'node:fs';
 import { TV_DIST, ensureWebBuild } from './ensure-web-build.js';
+import {
+  E2E_MUSIC_DIR,
+  ONBOARDING_MUSIC_DIR,
+  TV_BUILD_MUSIC_DIR,
+  copyMusicFixtures,
+} from './fixture-music.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../..');
@@ -39,6 +45,16 @@ if (!externalBaseUrl) {
   rmSync(dataDir, { recursive: true, force: true });
   rmSync(onboardingDataDir, { recursive: true, force: true });
   rmSync(tvDataDir, { recursive: true, force: true });
+  // The server writes into its music dir (lyrics and analysis tags, deletes,
+  // landed downloads), so each server gets its own copy of the tracked fixtures
+  // (#1320). Main process only: Playwright re-evaluates this file in every
+  // worker, and re-copying there would pull the tree out from under a running
+  // server mid-suite.
+  if (process.env.TEST_WORKER_INDEX === undefined) {
+    copyMusicFixtures(E2E_MUSIC_DIR);
+    copyMusicFixtures(ONBOARDING_MUSIC_DIR);
+    copyMusicFixtures(TV_BUILD_MUSIC_DIR);
+  }
 }
 
 // The managed server serves the prebuilt packages/web/dist, so build it here —
@@ -71,6 +87,8 @@ const SERVICE_WORKERS_BLOCKED = { serviceWorkers: 'block' } as const;
 
 export default defineConfig({
   testDir: './tests',
+  // Fails the run if anything rewrote the tracked fixtures (#1320).
+  globalSetup: './fixture-guard.ts',
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
@@ -110,9 +128,9 @@ export default defineConfig({
   webServer: externalBaseUrl
     ? undefined
     : [
-        makeServer(PORT, dataDir),
-        makeServer(ONBOARDING_PORT, onboardingDataDir),
-        makeServer(TV_PORT, tvDataDir, { NICOTIND_WEB_DIST: TV_DIST }),
+        makeServer(PORT, dataDir, E2E_MUSIC_DIR),
+        makeServer(ONBOARDING_PORT, onboardingDataDir, ONBOARDING_MUSIC_DIR),
+        makeServer(TV_PORT, tvDataDir, TV_BUILD_MUSIC_DIR, { NICOTIND_WEB_DIST: TV_DIST }),
       ],
 });
 
@@ -179,10 +197,15 @@ function correctnessProjects(): PlaywrightTestConfig['projects'] {
   return projects;
 }
 
-/** Build a managed server config on the given port + throwaway data dir. */
+/** Build a managed server config on the given port + throwaway data and music dirs. */
 type WebServer = Extract<NonNullable<PlaywrightTestConfig['webServer']>, { command: string }>;
 
-function makeServer(port: string, dir: string, extraEnv: Record<string, string> = {}): WebServer {
+function makeServer(
+  port: string,
+  dir: string,
+  musicDir: string,
+  extraEnv: Record<string, string> = {},
+): WebServer {
   return {
     command: 'bun run src/main.ts',
     cwd: repoRoot,
@@ -202,7 +225,7 @@ function makeServer(port: string, dir: string, extraEnv: Record<string, string> 
       NICOTIND_MODE: 'external', // never spawn sub-services
       NICOTIND_LIDARR_URL: 'http://127.0.0.1:1', // isolate from a real Lidarr
       NICOTIND_DATA_DIR: dir,
-      NICOTIND_MUSIC_DIR: resolve(__dirname, 'fixtures/music'),
+      NICOTIND_MUSIC_DIR: musicDir,
       // The silent-FLAC fixtures are ~30s; without this the radio pool's 60s
       // minimum-duration floor (issue #583) would empty every e2e radio queue.
       NICOTIND_RADIO_MIN_DURATION: '0',

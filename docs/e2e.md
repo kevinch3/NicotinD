@@ -35,6 +35,21 @@ screenshot. `library.spec.ts` now asserts the grid image reaches `naturalWidth >
 The loose single is deliberately left **art-less**, because `mobile-ux.spec.ts` G2 asserts the
 gradient fallback and needs a subject that genuinely has no cover.
 
+**No server ever runs on the tracked tree (#1320).** The server writes into its music dir: a lyrics
+save rewrites the file's `LYRICS` tag, analysis writes `LOUDNESS_LUFS`/`ENERGY`, specs delete tracks
+and addon downloads land there. All three managed servers used to point `NICOTIND_MUSIC_DIR` at
+`fixtures/music` itself, so `mobile-ux.spec.ts`'s long-lyrics test left `01 - Opening_Static.flac`
+modified after every full run. Now `playwright.config.ts` copies the fixtures, at config-eval time in
+the main process only, into one throwaway dir per server (`fixture-music.ts`: `.tmp-music`,
+`.tmp-music-onboarding`, `.tmp-music-tvbuild`; the screenshots config reuses `.tmp-music`). A spec
+that reads or plants files on disk uses `E2E_MUSIC_DIR`, never a `fixtures/music` path.
+`preserveMusicFixture` still restores a deleted track, because later specs in the same run expect it.
+
+The guard is `fixture-guard.ts`, the config's `globalSetup`. It hashes every file under `fixtures/`
+before the run, and its teardown **fails the run** and names each file that was rewritten, added or
+removed. A `git status` nobody reads is not a guard. Its logic is unit-tested in
+`playground/fixture-guard.test.ts`.
+
 ## What it covers
 
 | Spec                           | Asserts                                                                                                                                                                                                                                       |
