@@ -44,3 +44,13 @@ export function diffTrees(before: Map<string, string>, after: Map<string, string
   for (const p of after.keys()) if (!before.has(p)) changed.add(p);
   return [...changed].sort();
 }
+
+/**
+ * True in Playwright's main process, false in a test worker. Playwright
+ * re-evaluates the config in every worker; anything that must happen once per
+ * run — wiping the servers' data dirs, copying the fixtures — checks this, or a
+ * worker pulls files out from under the servers already running.
+ */
+export function isMainProcess(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.TEST_WORKER_INDEX === undefined;
+}

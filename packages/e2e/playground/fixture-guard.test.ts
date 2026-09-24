@@ -52,3 +52,32 @@ describe('e2e fixture guard (#1320)', () => {
     ]);
   });
 });
+
+describe('run-once setup stays in the main process', () => {
+  it('isMainProcess is false inside a Playwright worker', async () => {
+    const { isMainProcess } = await import('../fixture-music');
+    expect(isMainProcess({})).toBe(true);
+    expect(isMainProcess({ TEST_WORKER_INDEX: '0' })).toBe(false);
+  });
+
+  it('the config wipes data dirs and copies fixtures only behind isMainProcess()', async () => {
+    // Each worker re-evaluates the config; an unguarded wipe unlinked the live
+    // servers' nicotind.db mid-suite, so any new connection by path failed.
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(join(import.meta.dir, '../playwright.config.ts'), 'utf8');
+    const guard = src.indexOf('if (!externalBaseUrl && isMainProcess()) {');
+    expect(guard).toBeGreaterThan(-1);
+    const end = src.indexOf('\n}\n', guard);
+    const guarded = src.slice(guard, end);
+    const outside = src.slice(0, guard) + src.slice(end);
+    for (const call of [
+      'rmSync(dataDir',
+      'rmSync(onboardingDataDir',
+      'rmSync(tvDataDir',
+      'copyMusicFixtures(',
+    ]) {
+      expect(guarded).toContain(call);
+      expect(outside).not.toContain(call);
+    }
+  });
+});
