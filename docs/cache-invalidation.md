@@ -174,9 +174,14 @@ the design and the class comes back.
   panel (hidden at zero) so the prune is observable rather than silent.
 - **The cover negative-cache has a complete writer set.** `noArtCache` (10 min) short-circuits
   `extractCover()` disk IO for artless ids; every path that can give an id art calls
-  `clearCoverNegativeCache(id)` — album cover set/upload, artist image upload/from-album/reset,
-  `metadata-optimize`, `metadata-fix`, and the `artist-image` enrichment task. Adding a new
-  art-writing path without that call is the one way to reintroduce this bug.
+  `clearCoverNegativeCache(id)` — artist image upload/from-album/reset and the `artist-image`
+  enrichment task — or, for an album, `clearAlbumCoverNegativeCache(db, albumId)`: album cover
+  set/upload, `metadata-optimize`, `metadata-fix` and loose-single enrichment. The album form also
+  evicts every song id of the album, since a song id resolves to its album's cover. Evicting only
+  the album id left a song id that had 404ed still 404ing for up to 10 min (#1336). Adding a new
+  art-writing path without that call is the one way to reintroduce this bug. The bulk
+  `backfill-artwork` script runs as its own process, so it cannot reach the server's cache; its
+  entries simply expire.
 
 ## Server-side memos — all TTL-bounded by design
 

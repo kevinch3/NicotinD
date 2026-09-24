@@ -3,6 +3,7 @@ import { createLogger } from '@nicotind/core';
 import type { CatalogService, CatalogAlbum } from './catalog-search.service.js';
 import { setReleaseType, mapLidarrAlbumType } from './release-meta-store.js';
 import { setArtwork } from './artwork-store.js';
+import { clearAlbumCoverNegativeCache } from '../routes/streaming.js';
 
 const log = createLogger('single-enrichment');
 
@@ -87,6 +88,7 @@ export class SingleEnrichmentService {
     }
     if (album.coverUrl) {
       setArtwork(db, row.id, 'album', album.coverUrl, coverCacheDir);
+      clearAlbumCoverNegativeCache(db, row.id); // in case an id was 404-cached as artless
     }
 
     // Artist photo (audio files carry none) — match the catalog artist by name.
