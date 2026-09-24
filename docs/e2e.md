@@ -134,6 +134,11 @@ same PR that hit it.
   the locator timeout, twice, the day the fixtures grew from 10 to 24 files
   (PR #1281). `seedAdminAndLibrary` therefore also calls `waitForProcessingIdle`,
   which polls `GET /api/admin/processing` until `status.phase` leaves `running`.
+  Its waits are budgeted for a loaded box (60 s scan + 30 s library + 180 s
+  idle), so the seed step raises its own test timeout to their sum: under the
+  default 30 s the idle poll could never spend its budget, and a busy machine
+  failed setup and skipped the whole suite (#1338). A timeout names the last
+  phase it saw.
   A spec that kicks its own scan or genre override mid-suite owns the same wait.
 
 - **A spec must not assert on state it does not own.** One server and one DB mean
