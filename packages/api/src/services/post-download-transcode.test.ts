@@ -35,6 +35,7 @@ import {
   isLosslessFile,
   transcodeToLibraryFormat,
   encodeOutputVerdict,
+  carryPostEncodeTags,
 } from './post-download-transcode.js';
 import { ffmpegAvailable, transcodeOutputIsAcceptable } from './transcode.js';
 import { readAudioTags, writeAudioTags, type AudioTags } from './audio-tags.js';
@@ -794,5 +795,18 @@ describe.skipIf(!ffmpegAvailable())('cover art survives the transcode', () => {
       (n) => n.includes('cover-src') || n.includes('cover-fit'),
     );
     expect(leaked).toEqual([]);
+  });
+});
+
+describe('post-encode tag carry failures (#1287)', () => {
+  it('warns when lyrics/compilation cannot be written back, not only when the write throws', async () => {
+    const warns: string[] = [];
+    const dir = mkdtempSync(join(tmpdir(), 'carry-'));
+    const out = join(dir, 'missing.mp3');
+    await carryPostEncodeTags({ lyrics: 'la', compilation: true }, out, (_ctx, msg) =>
+      warns.push(msg),
+    );
+    rmSync(dir, { recursive: true, force: true });
+    expect(warns).toEqual(['could not carry lyrics/compilation onto the encoded file']);
   });
 });
