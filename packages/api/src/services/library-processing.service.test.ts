@@ -487,3 +487,48 @@ describe('LibraryProcessingService', () => {
     expect(svc2.getState().status.processed).toBe(2);
   });
 });
+
+describe('pending counts are not recounted per status emit (#1356)', () => {
+  it('an idle tick counts each task at most once, not once per emit', async () => {
+    setProcessingSettings(db, {});
+    const counters = { analyzed: 0, genreLookups: 0 };
+    const svc = service({ now: new Date(2024, 0, 1, 12, 0), counters });
+    const { ENRICHMENT_TASKS } = await import('./enrichment/tasks.js');
+    const calls = new Map<string, number>();
+    const restore: Array<() => void> = [];
+    for (const t of ENRICHMENT_TASKS) {
+      const real = t.countPending;
+      t.countPending = (d) => {
+        calls.set(t.id, (calls.get(t.id) ?? 0) + 1);
+        return real(d);
+      };
+      restore.push(() => (t.countPending = real));
+    }
+    const emits: unknown[] = [];
+    svc.on('status', (s) => emits.push(s));
+    try {
+      await svc.tick();
+    } finally {
+      for (const r of restore) r();
+    }
+    // Every status emit still carries counts…
+    expect(emits.length).toBeGreaterThan(3);
+    // …but an idle library is counted once per task, not once per emit.
+    for (const t of ENRICHMENT_TASKS) expect(calls.get(t.id) ?? 0).toBeLessThanOrEqual(1);
+  });
+
+  it('recounts a task that did work, so the published count moves', async () => {
+    for (let i = 0; i < 3; i++) seedSong(`p${i}`);
+    setProcessingSettings(db, {});
+    const counters = { analyzed: 0, genreLookups: 0 };
+    const svc = service({ batchSize: 10, now: new Date(2024, 0, 1, 12, 0), counters });
+    const before = svc.getState().status.taskPending.bpm;
+    expect(before).toBe(3);
+    const seen: number[] = [];
+    svc.on('status', (s: { taskPending: { bpm: number } }) => seen.push(s.taskPending.bpm));
+    await svc.tick();
+    expect(counters.analyzed).toBeGreaterThan(0);
+    expect(seen.at(-1)).toBe(0);
+    expect(svc.getState().status.taskPending.bpm).toBe(0);
+  });
+});

@@ -44,6 +44,8 @@ const PROCESSING_BATCH_SIZE = 25;
 const PROCESSING_CONCURRENCY = 3;
 
 const log = createLogger('library-processing');
+/** How long a status emit outside a batch may reuse cached pending counts (#1356). */
+const PENDING_CACHE_TTL_MS = 60_000;
 
 const STATUS_KEY = 'processing_status';
 const MAX_SNIPPETS = 12;
@@ -217,7 +219,21 @@ export class LibraryProcessingService extends EventEmitter {
   /** Settings + a freshly-computed status snapshot (pending counts, availability). */
   getState(): { settings: ProcessingSettings; status: ProcessingStatus } {
     const settings = getProcessingSettings(this.db);
+    this.countAllPending();
     return { settings, status: this.snapshot(settings) };
+  }
+
+  // Per-task pending counts, cached (#1356). Every status emit used to recount
+  // all 13 tasks — ~16 emits per idle tick, ~17 full passes, measured as two
+  // 1–1.5 s event-loop stalls a minute on prod. A batch counts once at its
+  // start and recounts only a task that applied or failed something.
+  private readonly pending = new Map<ProcessingTaskId, number>();
+  private pendingAt = 0;
+
+  private countAllPending(): Map<ProcessingTaskId, number> {
+    for (const t of ENRICHMENT_TASKS) this.pending.set(t.id, t.countPending(this.db));
+    this.pendingAt = this.now().getTime();
+    return this.pending;
   }
 
   /** Periodic tick: one batch when enabled and inside the window. */
@@ -294,7 +310,8 @@ export class LibraryProcessingService extends EventEmitter {
         if (this.stopRequested) break;
         const settings = getProcessingSettings(this.db);
         const tasks = this.runnableTasks(settings);
-        const pending = tasks.reduce((sum, t) => sum + t.countPending(this.db), 0);
+        const counts = this.countAllPending();
+        const pending = tasks.reduce((sum, t) => sum + (counts.get(t.id) ?? 0), 0);
         if (pending === 0) break;
         const batch = await this.processOneBatch(settings, first);
         mergeFailures(runFailures, batch.byTask);
@@ -433,7 +450,8 @@ export class LibraryProcessingService extends EventEmitter {
   ): Promise<BatchOutcome> {
     const ctx = this.contextFactory(settings);
     const tasks = this.runnableTasks(settings);
-    const total = tasks.reduce((sum, t) => sum + t.countPending(this.db), 0);
+    const counts = this.countAllPending();
+    const total = tasks.reduce((sum, t) => sum + (counts.get(t.id) ?? 0), 0);
 
     // A "run" spans one continuous drain: consecutive batches with work pending
     // continue the tally; the first batch after the queue ran dry (or after
@@ -467,6 +485,9 @@ export class LibraryProcessingService extends EventEmitter {
       this.status = { ...this.status, currentTask: task.id };
       const result = await task.run(this.db, ctx, this.batchSize);
       appliedTotal += result.applied;
+      if (result.applied > 0 || result.failed > 0) {
+        this.pending.set(task.id, task.countPending(this.db));
+      }
       if (result.failed > 0) {
         mergeFailures(
           byTask,
@@ -528,8 +549,14 @@ export class LibraryProcessingService extends EventEmitter {
     const ctx = this.contextFactory(settings);
     const taskPending = {} as Record<ProcessingTaskId, number>;
     const availability = {} as Record<ProcessingTaskId, true | string>;
+    // Outside a batch nothing keeps the cache current, so it expires with the
+    // tick interval: a disabled or paused scheduler counts once a minute, as
+    // it always did, instead of reporting counts from before the pause.
+    if (!this.busy && this.now().getTime() - this.pendingAt >= PENDING_CACHE_TTL_MS) {
+      this.countAllPending();
+    }
     for (const t of ENRICHMENT_TASKS) {
-      taskPending[t.id] = t.countPending(this.db);
+      taskPending[t.id] = this.pending.get(t.id) ?? t.countPending(this.db);
       availability[t.id] = t.available(ctx);
     }
     let phase = this.status.phase;

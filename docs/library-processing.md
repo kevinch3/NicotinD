@@ -548,6 +548,14 @@ enriched item is appended to `<dataDir>/library-processing.log`
 (`<iso>\t<task>\t<label>`) and emitted as a `ProcessingStatus` snapshot on the
 service's `'status'` EventEmitter (the SSE source).
 
+**Pending counts are cached, not recounted per emit (#1356).** A snapshot carries every task's
+`countPending`, and a batch emits after each task — so an idle tick used to run ~17 full passes over
+all 13 tasks' pending predicates (~190 ms a pass on a replay of prod's DB), measured on prod as two
+1–1.5 s event-loop stalls every minute with no request in flight. Now a batch counts once at its
+start (`countAllPending`) and recounts only a task whose `run` applied or failed something; emits
+outside a batch reuse the cache for up to `PENDING_CACHE_TTL_MS` (60 s, the tick interval); the admin
+`getState()` always recounts, so opening the panel shows fresh numbers.
+
 ## Admin API
 
 | Method | Path | Purpose |
