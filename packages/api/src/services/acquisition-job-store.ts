@@ -763,7 +763,36 @@ export function canResourceJob(job: ResourceableJobFacts): boolean {
   if (!huntTracklist(job).length) return false;
   // A job the user has already told to stop is not a job to go find peers for.
   if (job.cancelRequestedAt != null) return false;
-  return job.items.some((i) => RESOURCEABLE_STATE_SET.has(i.state));
+  return (
+    job.items.some((i) => RESOURCEABLE_STATE_SET.has(i.state)) || notOfferedTitles(job).length > 0
+  );
+}
+
+/**
+ * The canonical titles no live item stands for — the `· K not offered` on the
+ * card, by name (#1067, #1146). They have no row at all, which is why a
+ * re-source that only hands EXISTING rows to another peer could never reach
+ * them.
+ *
+ * Gated on the same count `canonicalShortfall` prints (canonical > live items),
+ * so the action is never offered on a card that says nothing is missing, and
+ * on at least one live item: a job the source has not itemised yet has not
+ * *declined* anything. Titles are matched with the shared `normalizeTitle` /
+ * `titlesOverlap`, the pair the hunt and the organizer use. Superseded rows do
+ * not count, exactly as they do not count toward `progress.expected`.
+ */
+export function notOfferedTitles(job: ResourceableJobFacts): string[] {
+  const canonical = job.canonicalTracks ?? [];
+  const live = job.items.filter((i) => i.state !== 'superseded');
+  if (live.length === 0 || canonical.length <= live.length) return [];
+  const offered = live.flatMap((i) => {
+    const n = i.trackTitle ? normalizeTitle(i.trackTitle) : '';
+    return n ? [n] : [];
+  });
+  return canonical.filter((title) => {
+    const needle = normalizeTitle(title);
+    return needle.length > 0 && !offered.some((o) => titlesOverlap(needle, o));
+  });
 }
 
 const RESOURCEABLE_STATE_SET = new Set<AcquisitionJobItemState>([
@@ -773,9 +802,13 @@ const RESOURCEABLE_STATE_SET = new Set<AcquisitionJobItemState>([
   'unavailable',
 ]);
 
-/** Titles on this job that a re-source could take to another peer, in list order. */
+/**
+ * Titles on this job that a re-source could take to another peer: its pending
+ * rows in list order, then the canonical titles the first source never offered
+ * (#1146) in tracklist order.
+ */
 export function resourceableTitles(db: Database, jobId: string): string[] {
-  return db
+  const pending = db
     .query<{ track_title: string | null }, [string]>(
       `SELECT track_title FROM acquisition_job_items
         WHERE job_id = ? AND state IN ${RESOURCEABLE_STATES} AND track_title IS NOT NULL
@@ -783,6 +816,10 @@ export function resourceableTitles(db: Database, jobId: string): string[] {
     )
     .all(jobId)
     .map((r) => r.track_title as string);
+  const job = getJob(db, jobId);
+  if (!job) return pending;
+  const missing = notOfferedTitles({ ...job, cancelRequestedAt: null });
+  return [...pending, ...missing.filter((t) => !pending.includes(t))];
 }
 
 /**
@@ -823,6 +860,39 @@ export function supersedeItems(db: Database, jobId: string, titles: string[]): n
       )
       .get(jobId)?.c ?? 0
   );
+}
+
+/**
+ * Give every title handed to a new peer a row owned by that peer's addon job,
+ * the moment the job is accepted (#1146). A not-offered title has no row at all
+ * until then, and a superseded one has only the abandoned peer's — so without
+ * this the card would read "not offered" for tracks already requested, and
+ * offer to re-source them again, until the addon's first report.
+ *
+ * The row is a placeholder: no peer, no file, no transfer key. The poller's
+ * `mirrorItems` adopts it by (addon job, exact title) — exact because these
+ * titles are what the addon was asked for, and it reports the wanted title
+ * verbatim. One the new peer never itemises is swept to `unavailable` when
+ * that addon job goes terminal, like any other track it did not deliver.
+ *
+ * `progress.expected` climbs by these rows; the printed total does not move,
+ * because the card divides by `jobDenominator` = max(expected, canonical)
+ * (#1067).
+ */
+export function reserveResourcedItems(
+  db: Database,
+  jobId: string,
+  addonJobId: string,
+  titles: string[],
+): void {
+  const now = Date.now();
+  for (const title of titles) {
+    db.run(
+      `INSERT INTO acquisition_job_items (job_id, addon_job_id, track_title, state, updated_at)
+       VALUES (?, ?, ?, 'queued', ?)`,
+      [jobId, addonJobId, title, now],
+    );
+  }
 }
 
 /**

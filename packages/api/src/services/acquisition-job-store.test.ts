@@ -28,6 +28,8 @@ import {
   canResourceJob,
   claimUnattributedItems,
   huntTracklist,
+  notOfferedTitles,
+  reserveResourcedItems,
   resourceableTitles,
   supersedeItems,
 } from './acquisition-job-store.js';
@@ -1633,5 +1635,140 @@ describe('re-sourcing a stuck download (#1065)', () => {
       )
       .all(id);
     expect(owners).toEqual([{ addon_job_id: 'aj-stuck', c: 2 }]);
+  });
+});
+
+describe('re-sourcing the not-offered titles (#1146)', () => {
+  /**
+   * The common shape: the release has three tracks, the peer offered one, and
+   * that one landed. Nothing is pending, so the #1065 verdict alone said no.
+   */
+  function shortOffer() {
+    const id = createJob(db, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      artistName: 'Luis Miguel',
+      albumTitle: 'Romances',
+      canonicalTracks: ['Amanecer', 'Bésame mucho', 'Sabor a mí'],
+      sourceRef: 'addon:slskd:aj-first',
+      username: 'first-peer',
+      files: [{ filename: 'r\\01 Amanecer.flac', size: 1, trackTitle: 'Amanecer' }],
+    });
+    db.run(`UPDATE acquisition_job_items SET state = 'scanned' WHERE job_id = ?`, [id]);
+    recomputeStage(db, id);
+    return id;
+  }
+
+  const facts = (over: Record<string, unknown> = {}) => ({
+    kind: 'album-hunt' as const,
+    artistName: 'Luis Miguel',
+    albumTitle: 'Romances',
+    canonicalTracks: ['Amanecer', 'Bésame mucho', 'Sabor a mí'],
+    cancelRequestedAt: null,
+    items: [{ state: 'scanned' as const, trackTitle: 'Amanecer' }],
+    ...over,
+  });
+
+  it('names the canonical titles no live item stands for, in tracklist order', () => {
+    expect(notOfferedTitles(facts())).toEqual(['Bésame mucho', 'Sabor a mí']);
+  });
+
+  it('matches titles with the shared normalizer, not byte equality', () => {
+    // The peer's spelling of a track it DID offer must not read as missing, or
+    // the action would re-download a track that already landed.
+    expect(
+      notOfferedTitles(
+        facts({
+          items: [
+            { state: 'scanned', trackTitle: 'Amanecer' },
+            { state: 'scanned', trackTitle: 'Besame Mucho' },
+          ],
+        }),
+      ),
+    ).toEqual(['Sabor a mí']);
+  });
+
+  it('answers only when the card itself prints a shortfall', () => {
+    // canonical <= live items: the count `canonicalShortfall` prints is zero,
+    // so the card says nothing is missing and the action must agree.
+    expect(
+      notOfferedTitles(
+        facts({
+          canonicalTracks: ['Amanecer'],
+          items: [{ state: 'scanned', trackTitle: 'Amanecer (Remastered 2020)' }],
+        }),
+      ),
+    ).toEqual([]);
+    // No canonical tracklist, nothing to compare against.
+    expect(notOfferedTitles(facts({ canonicalTracks: null }))).toEqual([]);
+  });
+
+  it('a job the source has not itemised yet has declined nothing', () => {
+    expect(notOfferedTitles(facts({ items: [] }))).toEqual([]);
+    expect(canResourceJob(facts({ items: [] }))).toBe(false);
+  });
+
+  it('does not count a superseded row as offered, exactly as progress.expected does not', () => {
+    expect(
+      notOfferedTitles(
+        facts({
+          items: [
+            { state: 'scanned', trackTitle: 'Amanecer' },
+            { state: 'superseded', trackTitle: 'Bésame mucho' },
+          ],
+        }),
+      ),
+    ).toEqual(['Bésame mucho', 'Sabor a mí']);
+  });
+
+  it('widens canResourceJob to a pure not-offered shortfall', () => {
+    expect(canResourceJob(facts())).toBe(true);
+    // ...but not past the other gates.
+    expect(canResourceJob(facts({ cancelRequestedAt: 1 }))).toBe(false);
+    expect(canResourceJob(facts({ kind: 'direct' }))).toBe(false);
+  });
+
+  it('publishes the verdict on the feed for a delivered partial, and lists the titles', () => {
+    const id = shortOffer();
+    const feed = listJobFeed(db)[0]!;
+    expect(feed.stage).toBe('done');
+    expect(feed.canResource).toBe(true);
+    expect(resourceableTitles(db, id)).toEqual(['Bésame mucho', 'Sabor a mí']);
+  });
+
+  it('pending rows come first, then the not-offered titles', () => {
+    const id = shortOffer();
+    db.run(`UPDATE acquisition_job_items SET state = 'unavailable' WHERE job_id = ?`, [id]);
+    expect(resourceableTitles(db, id)).toEqual(['Amanecer', 'Bésame mucho', 'Sabor a mí']);
+  });
+
+  it('reserving the handed-over titles closes the shortfall without moving the total', () => {
+    const id = shortOffer();
+    const before = listJobFeed(db)[0]!.progress;
+    expect(before).toMatchObject({ expected: 1, delivered: 1, canonical: 3 });
+
+    reserveResourcedItems(db, id, 'aj-second', ['Bésame mucho', 'Sabor a mí']);
+    recomputeStage(db, id);
+
+    const feed = listJobFeed(db)[0]!;
+    // `expected` climbs to the canonical count; the card's denominator is
+    // max(expected, canonical), so the printed total is 3 on both sides.
+    expect(feed.progress).toMatchObject({ expected: 3, delivered: 1, canonical: 3 });
+    expect(Math.max(feed.progress.expected, feed.progress.canonical ?? 0)).toBe(
+      Math.max(before.expected, before.canonical ?? 0),
+    );
+    // A closed partial reopens: the new peer has work to do.
+    expect(feed.stage).toBe('queued');
+    expect(feed.state).toBe('active');
+    // Nothing reads "not offered" any more, so nothing asks to be re-sourced
+    // twice — the titles are pending on the new job's rows instead.
+    expect(notOfferedTitles({ ...getJob(db, id)!, cancelRequestedAt: null })).toEqual([]);
+    const owners = db
+      .query<{ addon_job_id: string | null; c: number }, [string]>(
+        `SELECT addon_job_id, COUNT(*) c FROM acquisition_job_items
+          WHERE job_id = ? AND state = 'queued' GROUP BY addon_job_id`,
+      )
+      .all(id);
+    expect(owners).toEqual([{ addon_job_id: 'aj-second', c: 2 }]);
   });
 });

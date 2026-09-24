@@ -751,7 +751,20 @@ export class AddonJobPoller {
             WHERE job_id = ? AND transfer_key = ? AND ${OWNED_BY_ADDON_JOB}`,
         )
         .get(coreJobId, key, job.id);
-      if (!existing) {
+      // The placeholder the re-source route reserved for this title (#1146):
+      // adopted rather than duplicated, or the card would count it twice.
+      const reserved =
+        existing || !item.title
+          ? null
+          : db
+              .query<{ id: number; state: string }, [string, string, string]>(
+                `SELECT id, state FROM acquisition_job_items
+                  WHERE job_id = ? AND addon_job_id = ? AND transfer_key IS NULL AND track_title = ?
+                  ORDER BY id LIMIT 1`,
+              )
+              .get(coreJobId, job.id, item.title);
+      const row = existing ?? reserved;
+      if (!row) {
         db.run(
           `INSERT INTO acquisition_job_items
              (job_id, addon_job_id, track_title, username, filename, transfer_key, bit_rate_kbps, audio_format, size_bytes, bytes_transferred, state, updated_at)
@@ -773,17 +786,18 @@ export class AddonJobPoller {
         );
         continue;
       }
-      if (existing.state === 'organized' || existing.state === 'scanned') continue;
+      if (row.state === 'organized' || row.state === 'scanned') continue;
       // A superseded row's title now belongs to another peer (#1065). The peer
       // that gave it up may still be reporting on it — that report is stale by
       // construction, and letting it write here would resurrect the row into
       // the tallies and the ingest queue we deliberately removed it from.
-      if (existing.state === 'superseded') continue;
+      if (row.state === 'superseded') continue;
       db.run(
         `UPDATE acquisition_job_items
-         SET track_title = ?, username = ?, filename = ?, bit_rate_kbps = ?, audio_format = ?, size_bytes = ?, bytes_transferred = ?, state = ?, updated_at = ?
+         SET transfer_key = ?, track_title = ?, username = ?, filename = ?, bit_rate_kbps = ?, audio_format = ?, size_bytes = ?, bytes_transferred = ?, state = ?, updated_at = ?
          WHERE id = ?`,
         [
+          key,
           item.title,
           item.username,
           item.filename,
@@ -793,7 +807,7 @@ export class AddonJobPoller {
           item.bytesTransferred ?? null,
           state,
           now,
-          existing.id,
+          row.id,
         ],
       );
     }

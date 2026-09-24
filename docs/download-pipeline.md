@@ -1702,7 +1702,7 @@ that the printed total is identical either side of the attach.
 The card is also still the same acquisition once its scope has grown: card identity is the job id
 recorded at enqueue (#261), and the canonical tracklist never changed — only the source set did.
 
-The attach path itself is #1146, not this.
+The attach path is #1146 — see "Reaching the not-offered titles" under re-sourcing below.
 
 #### Which tracks, not just how many (#746)
 
@@ -1945,12 +1945,38 @@ job creation. A test double more permissive than the real addon cannot fail the 
 does; the fixture now models the guard behind `conflictOnActiveAlbum`, and any spec putting a
 second job on one album must enable it.
 
-### What it cannot reach
+### Reaching the not-offered titles (#1146)
 
 `· K not offered` counts canonical titles the addon never itemised — they have no item row at
-all, so there is nothing to hand to another peer. Reaching them means *inserting* rows, which
-#1067 unblocked by ruling on the denominator ("One denominator, and `expected` is not it" above);
-the insert itself is #1146.
+all, so handing existing rows to another peer could never reach them. `notOfferedTitles` names
+them: the canonical tracklist minus every live (non-superseded) item title, matched with the
+shared `normalizeTitle`/`titlesOverlap`. It answers only when the card itself prints a shortfall
+(canonical > live items) and the source has itemised at least one track — a job not yet itemised
+has not *declined* anything. `resourceableTitles` appends them after the pending rows, so the
+search measures coverage over both and the picker's chosen peer is asked for both, through the
+same `wantedTracks` route. A peer offering the full 14 when the first offered 12 is the common case.
+
+Once the addon accepts the replacement job, `reserveResourcedItems` inserts a **placeholder row**
+for every title handed over — not-offered and superseded alike — owned by the new addon job
+(`addon_job_id`) with no peer, file or transfer key. Without it the card would keep reading
+"not offered" (and keep offering the action) for tracks already requested, until the addon's first
+report. `mirrorItems` adopts a placeholder by (addon job, exact title) rather than inserting a
+second row; exact is safe because the addon reports the wanted title verbatim. A placeholder the
+new peer never itemises is swept to `unavailable` when that addon job goes terminal — honest, and
+re-sourceable again.
+
+The denominator does not move: `expected` climbs 12 → 14, `jobDenominator` was already 14, and
+`notOffered` decays to 0 (#1067 above). A card that had closed as a `done` partial reopens as
+`queued` — `recomputeStage` never treats `done` as terminal — and settles again when the new peer
+does. Cancelling the first addon job first still applies: when it is already terminal or released
+the cancel is a harmless no-op / 404.
+
+No e2e covers this path: a canonical tracklist is only recorded by `hunt-download` and the
+auto-acquire lane, both of which read it from Lidarr, and the e2e environment has no Lidarr. The
+route, the placeholder adoption and the terminal sweep are covered by `bun:test`
+(`routes/downloads.test.ts`, `acquisition-job-store.test.ts`, `job-poller.test.ts`); the existing
+re-source e2e (`download-resource.spec.ts`) asserts the reserved row is adopted by the replacement's
+report rather than joined by a second one.
 
 ### Where the rules live
 
@@ -1958,7 +1984,8 @@ the insert itself is #1146.
 `AcquisitionJobView.canResource` so the web never re-derives it. It requires an
 `album-hunt`/`auto-acquire` job with an artist, album and canonical tracklist — a `direct`
 folder grab has none of them to hunt with, and a `url` acquire has no peers — plus no cancel
-intent and at least one item still `queued`/`downloading`/`failed`/`unavailable`.
+intent and at least one item still `queued`/`downloading`/`failed`/`unavailable` **or** at least
+one not-offered title (`notOfferedTitles`, #1146).
 `coveredTitles` and `rankAlternates` (`download-resource.ts`) are pure and match filenames
 with the shared `normalizeTitle`/`titlesOverlap`, so a peer judged to have a track here is
 judged to have it everywhere else too.
