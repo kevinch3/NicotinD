@@ -11,6 +11,7 @@ import {
 import { extractAlbumName, inferMetadataFromPath } from './path-inference.js';
 import type { CompletedDownloadFile } from './path-inference.js';
 import { ffmpegBinary } from './ffmpeg-path.js';
+import { withFfmpegSlot } from './ffmpeg-slots.js';
 import { getNodeId3, type NodeId3Api } from './audio-tags.js';
 import { getMusicMetadata, type MusicMetadataApi } from './music-metadata-loader.js';
 
@@ -388,39 +389,43 @@ export class CompilationTagger {
 
     const args = ['-y', '-i', filepath, '-map_metadata', '0', ...metaArgs, '-c', 'copy', tmpPath];
 
-    return new Promise<boolean>((resolve) => {
-      const proc = spawn(ffmpegBinary(), args, { stdio: 'ignore' });
-      proc.on('error', () => {
-        try {
-          unlinkSync(tmpPath);
-        } catch {
-          /* ignore */
-        }
-        resolve(false);
-      });
-      proc.on('close', (code) => {
-        if (code === 0) {
-          try {
-            renameSync(tmpPath, filepath);
-            resolve(true);
-          } catch {
+    return withFfmpegSlot(
+      'batch',
+      () =>
+        new Promise<boolean>((resolve) => {
+          const proc = spawn(ffmpegBinary(), args, { stdio: 'ignore' });
+          proc.on('error', () => {
             try {
               unlinkSync(tmpPath);
             } catch {
               /* ignore */
             }
             resolve(false);
-          }
-        } else {
-          try {
-            unlinkSync(tmpPath);
-          } catch {
-            /* ignore */
-          }
-          resolve(false);
-        }
-      });
-    });
+          });
+          proc.on('close', (code) => {
+            if (code === 0) {
+              try {
+                renameSync(tmpPath, filepath);
+                resolve(true);
+              } catch {
+                try {
+                  unlinkSync(tmpPath);
+                } catch {
+                  /* ignore */
+                }
+                resolve(false);
+              }
+            } else {
+              try {
+                unlinkSync(tmpPath);
+              } catch {
+                /* ignore */
+              }
+              resolve(false);
+            }
+          });
+        }),
+    );
   }
 
   private resolveLocalPath(directory: string, filename: string): string | null {

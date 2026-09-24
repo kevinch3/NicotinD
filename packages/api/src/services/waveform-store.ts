@@ -36,7 +36,7 @@ const DEFAULT_BUDGET_BYTES = 512 * 1024 * 1024;
 const inFlight = new Map<string, Promise<WaveformData>>();
 
 const defaultDecoder: PcmDecoder = (absPath, onChunk) =>
-  streamPcm(absPath, { sampleRate: WAVEFORM_SAMPLE_RATE, onChunk });
+  streamPcm(absPath, { sampleRate: WAVEFORM_SAMPLE_RATE, onChunk, priority: 'interactive' });
 
 export function waveformCacheKey(absPath: string, mtimeMs: number, sizeBytes: number): string {
   return createHash('sha1')

@@ -3,6 +3,7 @@ import { extname } from 'node:path';
 import { readFileSync, renameSync, unlinkSync } from 'node:fs';
 import { ID3_EXTS, VORBIS_EXTS, createLogger, MOOD_VOCAB, type MoodLabel } from '@nicotind/core';
 import { ffmpegBinary } from './ffmpeg-path.js';
+import { withFfmpegSlot } from './ffmpeg-slots.js';
 import { planVorbisKeyFixes, type VorbisKeyPlan, type VorbisKeyPreference } from './vorbis-keys.js';
 import { attachPictureDataToOpus, readOggPicture } from './opus-artwork.js';
 import { readFreeformAtoms, writeFreeformAtoms } from './mp4-freeform.js';
@@ -727,7 +728,16 @@ export function canonicalTagMetadataArgs(tags: CanonicalTags): string[] {
   return args;
 }
 
-async function writeFfmpegTags(
+/** One ffmpeg slot covers the whole write — picture read, remux, re-attach (#1312). */
+function writeFfmpegTags(
+  filepath: string,
+  tags: AudioTags,
+  prefer?: ReadonlyMap<string, VorbisKeyPreference>,
+): Promise<boolean> {
+  return withFfmpegSlot('batch', () => remuxFfmpegTags(filepath, tags, prefer));
+}
+
+async function remuxFfmpegTags(
   filepath: string,
   tags: AudioTags,
   prefer?: ReadonlyMap<string, VorbisKeyPreference>,

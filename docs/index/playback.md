@@ -31,6 +31,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   by `schedulePinRelease` (a body wrapper made Bun emit a chunked 206 that Firefox and iOS stall on),
   and a negative cache for the deterministic `TranscodeOutputRejectedError` only.
   → [library-scanner.md](../library-scanner.md)
+- **One process-wide ffmpeg cap**: every ffmpeg/ffprobe child holds a `ffmpegSlots` slot
+  (`withFfmpegSlot`, `NICOTIND_FFMPEG_SLOTS`); batch keeps one free for streams and waveforms.
+  → [download-pipeline.md](../download-pipeline.md)
 - **Frontend false-ended recovery**: `browserDurationIsAcceptable`, `isFalseEnded`, `startRecovery`,
   `loadGeneration`, bounded by `MAX_RECOVERY_ATTEMPTS` with both gates falling back to
   `FALSE_ENDED_ABSOLUTE_FLOOR_SEC` when the known duration is missing; the valve resumes where the

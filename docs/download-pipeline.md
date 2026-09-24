@@ -188,6 +188,22 @@ every core. Measured on prod (8 cores, load ~1.8), four concurrent encodes of a 
 **3.4 s against 10.0 s serial** — most of the way to linear already, so more would mostly be taking
 cores off neighbours.
 
+**One process-wide ffmpeg cap on top (#1312).** The organizer pool, enrichment (3 per task), stream
+transcodes and waveform decodes each cap only themselves, so together they could run far more
+children than the host has cores. Every ffmpeg/ffprobe child now also holds a slot of
+`ffmpegSlots` (`services/ffmpeg-slots.ts`): `execFileAsync` takes one for every probe and remux,
+and each direct `spawn(ffmpegBinary(), …)` is wrapped in `withFfmpegSlot`. The size is
+`NICOTIND_FFMPEG_SLOTS`, or the core count (`os.availableParallelism()`, at least 2). Work a
+listener is waiting on — `transcodeToFile` for `/api/stream`, the `/peaks` waveform decode — is
+`interactive`; everything else is `batch`. Batch may hold at most `size - 1` slots, so one is always
+free for interactive, and a released slot goes to a waiting interactive caller before any queued
+batch one: a batch flood delays a stream by at most one slot's release, and only when interactive
+work already fills the reserved slot. A call made inside a held slot (the tag write re-attaching a
+cover, the transcode's output probe) runs under that slot instead of taking a second, which would
+deadlock once every holder did it. The per-caller limits stay; the slots only bound their sum.
+`ffmpeg-slots.test.ts` proves the ordering and that every direct spawner is wrapped. `fpcalc`
+(AcoustID) is not an ffmpeg child and is not counted.
+
 This makes `transcodeSumMs` no longer the elapsed time: it sums each encode's own duration and so
 exceeds the wall clock once they overlap. `transcodeWallMs` reports the pooled phase's actual
 duration. The sum is the CPU bill, the wall is the wait.
