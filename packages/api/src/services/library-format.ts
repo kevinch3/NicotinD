@@ -3,6 +3,7 @@ import { bitrateFor as ladderBitrateFor } from './transcode-bitrate.js';
 import { attachPictureToOpus, MAX_EMBEDDED_PICTURE_BYTES } from './opus-artwork.js';
 import { attachPictureAsStream } from './attached-picture.js';
 import { writeOutputGain } from './opus-gain.js';
+import { writeMp4FreeformTags, type AudioTags } from './audio-tags.js';
 
 /**
  * What the library standardizes **on disk**, and why this is not the same table
@@ -56,6 +57,19 @@ export interface FormatStrategy {
    * nothing.
    */
   writeGain: ((path: string, gainDb: number) => boolean) | null;
+  /**
+   * Fields this container's muxer drops from every `-metadata` spelling,
+   * written after the encode and the cover, or `null` when the encode carries
+   * everything.
+   *
+   * Non-null also means the encode reads the source's tags and passes them as
+   * explicit `-metadata`, whatever the source's tag family: `-map_metadata`
+   * alone cannot land them (the `ipod` muxer drops `BPM` for want of `tmpo`).
+   * Declared here rather than as an extension check at the call sites, so the
+   * next format whose muxer has the same gap says so where its other
+   * capabilities live (#1289).
+   */
+  postEncodeTags: ((path: string, tags: AudioTags) => boolean) | null;
 }
 
 /**
@@ -76,6 +90,7 @@ export const LIBRARY_FORMATS: Record<LibraryFormat, FormatStrategy> = {
     maxEmbeddedPictureBytes: MAX_EMBEDDED_PICTURE_BYTES,
     embedArt: attachPictureToOpus,
     writeGain: writeOutputGain,
+    postEncodeTags: null,
   },
   mp3: {
     id: 'mp3',
@@ -93,6 +108,7 @@ export const LIBRARY_FORMATS: Record<LibraryFormat, FormatStrategy> = {
     // this format declares the capability absent and every call site is made to
     // handle it by the type.
     writeGain: null,
+    postEncodeTags: null,
   },
   aac: {
     id: 'aac',
@@ -109,6 +125,9 @@ export const LIBRARY_FORMATS: Record<LibraryFormat, FormatStrategy> = {
     embedArt: attachPictureAsStream,
     // Like mp3, no in-header gain field; `iTunNORM`/ReplayGain are advisory.
     writeGain: null,
+    // `ipod` drops key, the features and the ids from any `-metadata`; they go
+    // on as freeform atoms, patched in place after the cover (#1274, #1288).
+    postEncodeTags: writeMp4FreeformTags,
   },
 };
 

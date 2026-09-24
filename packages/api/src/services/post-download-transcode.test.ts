@@ -701,6 +701,27 @@ describe.skipIf(!ffmpegAvailable())('cover art survives the transcode', () => {
     expect(pic?.data.length).toBe(coverBytes);
   });
 
+  it('lands every tag AND the cover in an aac target, the carry patched after the cover (#1288)', async () => {
+    // The freeform atoms go on in place after the cover's own remux, which
+    // would drop them — and every field the encode wrote itself (tmpo for BPM,
+    // the ilst text) must survive that remux too.
+    const root = tmpRoot();
+    const { flac, coverBytes } = makeFlacWithCover(root, 400);
+    const tags = { ...FULL_TAGS, compilation: true };
+    expect(await writeAudioTags(flac, tags)).toBe(true);
+    const before = await readAudioTags(flac);
+
+    const out = await transcodeToLibraryFormat(flac, 128, undefined, 'aac');
+
+    const after = await readAudioTags(out);
+    const lost = (Object.keys(tags) as Array<keyof typeof tags>).filter(
+      (k) => JSON.stringify(before[k]) !== JSON.stringify(after[k]),
+    );
+    expect(lost).toEqual([]);
+    const mm = await getMusicMetadata();
+    expect((await mm!.parseFile(out)).common.picture?.[0]?.data.length).toBe(coverBytes);
+  });
+
   it('keeps the tags while carrying the cover', async () => {
     const root = tmpRoot();
     const { flac } = makeFlacWithCover(root, 400);
@@ -803,8 +824,11 @@ describe('post-encode tag carry failures (#1287)', () => {
     const warns: string[] = [];
     const dir = mkdtempSync(join(tmpdir(), 'carry-'));
     const out = join(dir, 'missing.mp3');
-    await carryPostEncodeTags({ lyrics: 'la', compilation: true }, out, (_ctx, msg) =>
-      warns.push(msg),
+    await carryPostEncodeTags(
+      { lyrics: 'la', compilation: true },
+      out,
+      LIBRARY_FORMATS.mp3,
+      (_ctx, msg) => warns.push(msg),
     );
     rmSync(dir, { recursive: true, force: true });
     expect(warns).toEqual(['could not carry lyrics/compilation onto the encoded file']);
