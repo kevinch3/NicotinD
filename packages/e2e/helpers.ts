@@ -157,6 +157,10 @@ export async function clearGroupState(page: Page): Promise<void> {
  * **Any spec that scans must use this**, never a bare post. Leaving a scan in
  * flight is the e2e equivalent of a dangling promise.
  */
+const SCAN_TIMEOUT_MS = 60_000;
+const LIBRARY_TIMEOUT_MS = 30_000;
+const PROCESSING_IDLE_TIMEOUT_MS = 180_000;
+
 export async function scanAndWait(request: APIRequestContext, token: string): Promise<void> {
   await request.post('/api/system/scan', { headers: bearer(token) });
   // The POST flips `scanning` before it responds, so the first poll already
@@ -168,7 +172,7 @@ export async function scanAndWait(request: APIRequestContext, token: string): Pr
         if (!r.ok()) return true; // treat an unreadable status as "still going"
         return ((await r.json()) as { scanning: boolean }).scanning;
       },
-      { timeout: 60_000, intervals: [200, 500, 1000] },
+      { timeout: SCAN_TIMEOUT_MS, intervals: [200, 500, 1000] },
     )
     .toBe(false);
 }
@@ -188,6 +192,11 @@ export async function seedAdminAndLibrary(
   request: APIRequestContext,
   authFile: string,
 ): Promise<void> {
+  // The waits below are budgeted for a loaded box; under the default 30 s test
+  // timeout the 180 s idle poll could never use its budget (#1338).
+  test
+    .info()
+    .setTimeout(SCAN_TIMEOUT_MS + LIBRARY_TIMEOUT_MS + PROCESSING_IDLE_TIMEOUT_MS + 30_000);
   const status = (await (await request.get('/api/setup/status')).json()) as {
     needsSetup: boolean;
   };
@@ -265,7 +274,7 @@ export async function waitForLibrary(request: APIRequestContext, token: string):
         const albums = (await r.json()) as unknown[];
         return Array.isArray(albums) ? albums.length : 0;
       },
-      { timeout: 30_000, intervals: [500, 1000, 1500] },
+      { timeout: LIBRARY_TIMEOUT_MS, intervals: [500, 1000, 1500] },
     )
     .toBeGreaterThan(0);
 }
@@ -293,15 +302,15 @@ export async function waitForProcessingIdle(
     return state.status?.phase ?? 'unknown';
   };
   let quiet = 0;
-  await expect
-    .poll(
-      async () => {
-        quiet = (await phase()) === 'running' ? 0 : quiet + 1;
-        return quiet;
-      },
-      { timeout: 180_000, intervals: [1000] },
-    )
-    .toBeGreaterThanOrEqual(3);
+  let last = 'none';
+  await expect(async () => {
+    last = await phase();
+    quiet = last === 'running' ? 0 : quiet + 1;
+    expect(
+      quiet,
+      `processing never went quiet 3 samples in a row; last phase: ${last}`,
+    ).toBeGreaterThanOrEqual(3);
+  }).toPass({ timeout: PROCESSING_IDLE_TIMEOUT_MS, intervals: [1000] });
 }
 
 /**
