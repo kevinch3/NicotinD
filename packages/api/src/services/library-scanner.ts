@@ -917,7 +917,7 @@ export class LibraryScanner {
     const startedAt = Date.now();
     const files = await this.walk(this.musicDir, true);
     const incomplete = this.unreadableDirs.slice();
-    const tracks = await this.readTracks(files);
+    const tracks = await this.readTracks(files, 'all');
     const built = buildLibrary(
       tracks,
       this.canonicalByAlbum(),
@@ -967,12 +967,26 @@ export class LibraryScanner {
    * file we already own is never dropped as "foreign" just because a curator
    * corrected its title out of `titlesOverlap` range (issue #776).
    */
-  private knownRelPaths(): Set<string> {
+  private knownRelPaths(among?: readonly ScannedTrack[]): Set<string> {
     const out = new Set<string>();
-    for (const r of this.db
-      .query<{ path: string }, []>('SELECT path FROM library_songs WHERE path IS NOT NULL')
-      .all())
-      out.add(r.path);
+    if (!among) {
+      for (const r of this.db
+        .query<{ path: string }, []>('SELECT path FROM library_songs WHERE path IS NOT NULL')
+        .all())
+        out.add(r.path);
+      return out;
+    }
+    // buildLibrary only asks about the tracks it was given (#1309).
+    const paths = among.map((t) => t.relPath);
+    for (let i = 0; i < paths.length; i += 400) {
+      const chunk = paths.slice(i, i + 400);
+      for (const r of this.db
+        .query<{ path: string }, string[]>(
+          `SELECT path FROM library_songs WHERE path IN (${chunk.map(() => '?').join(',')})`,
+        )
+        .all(...chunk))
+        out.add(r.path);
+    }
     return out;
   }
 
@@ -987,7 +1001,7 @@ export class LibraryScanner {
     const abs = relPaths
       .filter((p) => !isReservedPath(p, this.reserved))
       .map((p) => join(this.musicDir, p));
-    const tracks = await this.readTracks(abs);
+    const tracks = await this.readTracks(abs, 'paths');
     if (tracks.length === 0) return;
     const built = buildLibrary(
       tracks,
@@ -996,7 +1010,7 @@ export class LibraryScanner {
       loadSplitAuthority(this.db),
       loadGenreContext(this.db),
       loadGenreOverrides(this.db),
-      this.knownRelPaths(),
+      this.knownRelPaths(tracks),
     );
     this.persist(built, Date.now(), false);
     log.info({ files: tracks.length, albums: built.albums.length }, 'Incremental scan complete');
@@ -1112,14 +1126,24 @@ export class LibraryScanner {
    * downstream aggregation is deterministic. Newly parsed tracks are written
    * back to the cache so the next scan skips them.
    */
-  private async readTracks(absPaths: string[]): Promise<ScannedTrack[]> {
+  private async readTracks(
+    absPaths: string[],
+    cacheScope: 'all' | 'paths',
+  ): Promise<ScannedTrack[]> {
     const files: FileStat[] = [];
     for (const abs of absPaths) {
       const f = await this.statFile(abs);
       if (f) files.push(f);
     }
 
-    const { hits, misses } = partitionByCache(files, loadScanCache(this.db));
+    const cache =
+      cacheScope === 'all'
+        ? loadScanCache(this.db)
+        : loadScanCache(
+            this.db,
+            files.map((f) => f.relPath),
+          );
+    const { hits, misses } = partitionByCache(files, cache);
     const parsed = await mapPool(misses, TAG_READ_CONCURRENCY, (f) => this.parseTrack(f));
     if (parsed.length > 0) saveScanCache(this.db, parsed);
 
@@ -1671,7 +1695,7 @@ export class LibraryScanner {
     // Album dirs are already below the top level, so the root rule cannot apply.
     for (const d of dirs) abs.push(...(await this.walk(d, false)));
     const syncedAt = Date.now();
-    const tracks = await this.readTracks(abs);
+    const tracks = await this.readTracks(abs, 'paths');
     let touchedAlbumIds: string[] = [];
     if (tracks.length > 0) {
       const built = buildLibrary(
@@ -1684,7 +1708,7 @@ export class LibraryScanner {
         // the touched albums until the next full scan.
         loadGenreContext(this.db),
         loadGenreOverrides(this.db),
-        this.knownRelPaths(),
+        this.knownRelPaths(tracks),
       );
       this.persist(built, syncedAt, false);
       // The ids the rebuild actually produced — the right set to reclassify.

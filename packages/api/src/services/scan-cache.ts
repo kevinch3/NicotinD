@@ -34,16 +34,31 @@ export function partitionByCache(
   return { hits, misses };
 }
 
-/** Load the whole scan cache into memory. Missing table → empty (fresh DB). */
-export function loadScanCache(db: Database): ScanCache {
+/**
+ * Load the scan cache into memory — the whole table, or only `paths` when
+ * given. An incremental scan of one album used to parse every cached track in
+ * the library to look up a dozen (#1309). Missing table → empty (fresh DB).
+ */
+export function loadScanCache(db: Database, paths?: readonly string[]): ScanCache {
   const map: ScanCache = new Map();
-  let rows: Array<{ path: string; size: number; mtime_ms: number; track_json: string }>;
+  type Row = { path: string; size: number; mtime_ms: number; track_json: string };
+  let rows: Row[] = [];
   try {
-    rows = db
-      .query<{ path: string; size: number; mtime_ms: number; track_json: string }, []>(
-        `SELECT path, size, mtime_ms, track_json FROM scan_cache`,
-      )
-      .all();
+    if (!paths) {
+      rows = db.query<Row, []>(`SELECT path, size, mtime_ms, track_json FROM scan_cache`).all();
+    } else {
+      for (let i = 0; i < paths.length; i += 400) {
+        const chunk = paths.slice(i, i + 400) as string[];
+        rows.push(
+          ...db
+            .query<Row, string[]>(
+              `SELECT path, size, mtime_ms, track_json FROM scan_cache
+                WHERE path IN (${chunk.map(() => '?').join(',')})`,
+            )
+            .all(...chunk),
+        );
+      }
+    }
   } catch {
     return map;
   }

@@ -1821,3 +1821,33 @@ describe('scanFull refreshes planner statistics (#1307)', () => {
     }
   });
 });
+
+describe('an album reconcile reads only its own cache rows (#1309)', () => {
+  it('never parses the whole scan cache or loads every song path', async () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    const root = mkdtempSync(join(tmpdir(), 'scan-scoped-'));
+    const dir = join(root, 'Artist', 'Album');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, '01 - One.mp3'), 'x');
+    const scanner = new LibraryScanner(root, db);
+    try {
+      const sql: string[] = [];
+      const realQuery = db.query.bind(db);
+      db.query = ((q: string) => {
+        sql.push(q);
+        return realQuery(q);
+      }) as typeof db.query;
+      await scanner.reconcileAlbums([dir]);
+      const wholeTable = sql.filter(
+        (q) =>
+          /FROM scan_cache\s*$/.test(q.trim()) ||
+          /SELECT path FROM library_songs WHERE path IS NOT NULL/.test(q),
+      );
+      expect(wholeTable).toEqual([]);
+      expect(countSongs(db)).toBe(1);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
