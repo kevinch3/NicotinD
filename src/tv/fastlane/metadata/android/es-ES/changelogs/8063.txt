@@ -1,0 +1,1 @@
+• processing: count each task's pending work once per batch, not once per status emit (#1357)

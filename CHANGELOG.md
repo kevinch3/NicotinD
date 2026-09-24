@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.63](https://github.com/kevinch3/NicotinD/compare/v0.8.62...v0.8.63) (2026-09-24)
+
+### Performance
+
+* **processing:** count each task's pending work once per batch, not once per status emit ([#1357](https://github.com/kevinch3/NicotinD/issues/1357)) ([2ad1c82](https://github.com/kevinch3/NicotinD/commit/2ad1c82926f47e6e96f0327da6834e3d59a5e5ae)), closes [#1356](https://github.com/kevinch3/NicotinD/issues/1356)
 ## [0.8.62](https://github.com/kevinch3/NicotinD/compare/v0.8.61...v0.8.62) (2026-09-24)
 
 ### Features
