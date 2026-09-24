@@ -122,6 +122,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   a worst-first worklist — behind `GET /api/library/health`, the `library-health.ts` CLI, MCP
   `get_library_health` and the Admin `LibraryHealthPanelComponent`. Shared predicates: `missingAlbumArtSql`, `losslessSuffixSql`,
   `lowInformationOnlyGenreSql`. → [library-audit.md](../library-audit.md)
+- **Album completeness badge**: the report's confirmed row for one album (`albumConfirmedIncomplete`)
+  on the album page, plus a curator Complete action through `completeAlbum`, shared with MCP
+  `complete_album`. `AlbumCompletenessComponent`. → [library-audit.md](../library-audit.md)
 - **Metadata optimization**: conservative all-or-nothing bulk Lidarr re-fetch (`optimizeAllAlbums`),
   run as a cancellable background job on `MaintenanceService`, bounded by limit + cursor.
   → [metadata-optimize.md](../metadata-optimize.md)

@@ -68,8 +68,12 @@ export interface JobCanonicalTracklist {
  *
  * `createdAt` is the only key that can order the compound result: the two ids
  * are a TEXT uuid and an INTEGER, so "newest job" is a timestamp comparison.
+ * `keep` narrows by pair BEFORE the JSON parse — the one-album reader's saving.
  */
-export function jobCanonicalTracklists(db: Database): JobCanonicalTracklist[] {
+export function jobCanonicalTracklists(
+  db: Database,
+  keep?: (artistName: string, albumTitle: string) => boolean,
+): JobCanonicalTracklist[] {
   let rows: Array<{
     artist_name: string;
     album_title: string;
@@ -95,6 +99,7 @@ export function jobCanonicalTracklists(db: Database): JobCanonicalTracklist[] {
   }
   const out: JobCanonicalTracklist[] = [];
   for (const r of rows) {
+    if (keep && !keep(r.artist_name, r.album_title)) continue;
     let titles: unknown;
     try {
       titles = JSON.parse(r.canonical_tracks_json);

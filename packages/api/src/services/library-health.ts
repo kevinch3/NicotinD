@@ -20,6 +20,8 @@ import { lowInformationOnlyGenreSql, unresolvedGenreSql } from './genre-split.js
 import { countOpenCurationFlags } from './curation-flags.js';
 import { albumAlreadyComplete, matchingLocalAlbums, onDiskTitles } from './library-completeness.js';
 import { jobCanonicalTracklists, type JobCanonicalTracklist } from './acquisition-job-store.js';
+import { normalizeForGrouping } from './album-grouping.js';
+import { artistIdFor } from './library-scanner.js';
 
 /**
  * Library health report — the one aggregation of every curation dimension:
@@ -539,8 +541,11 @@ function lyricsWorklist(
  * INTEGER, so no id sort can order the compound result. Two jobs written in the
  * same millisecond for one pair tie, and the winner between them is arbitrary.
  */
-function newestJobPerPair(db: Database): JobCanonicalTracklist[] {
-  const jobs = jobCanonicalTracklists(db).sort((a, b) => b.createdAt - a.createdAt);
+function newestJobPerPair(
+  db: Database,
+  keep?: (artistName: string, albumTitle: string) => boolean,
+): JobCanonicalTracklist[] {
+  const jobs = jobCanonicalTracklists(db, keep).sort((a, b) => b.createdAt - a.createdAt);
   const out: JobCanonicalTracklist[] = [];
   const seen = new Set<string>();
   for (const j of jobs) {
@@ -612,6 +617,37 @@ function confirmedIncomplete(
     confirmed: out.sort((a, b) => a.missing - b.missing),
     titleMismatches: titleMismatches.sort((a, b) => b.unmatched - a.unmatched),
   };
+}
+
+/**
+ * The completeness dimension's CONFIRMED row for one local album, or null — the
+ * album page's "incomplete — N of M" badge (issue #737). Same rule as the
+ * report (`confirmedIncomplete` over the newest job per pair, attributed to the
+ * same `albumId`), narrowed to the jobs whose pair matches this album the way
+ * `matchingLocalAlbums` does. Reads the STORED hunt-time tracklist, never
+ * Lidarr: the report's live reconciliation (#1080) is a network fan-out an
+ * album page view must not pay, so the badge can read incomplete where the hunt
+ * then answers `already-complete` — which the Complete action surfaces.
+ * The suspected-gap bucket is advisory and never reaches this.
+ */
+export function albumConfirmedIncomplete(
+  db: Database,
+  albumId: string,
+): ConfirmedIncomplete | null {
+  const album = db
+    .query<{ name: string; artist_id: string }, [string]>(
+      'SELECT name, artist_id FROM library_albums WHERE id = ?',
+    )
+    .get(albumId);
+  if (!album) return null;
+  const titleKey = normalizeForGrouping(album.name);
+  const jobs = newestJobPerPair(
+    db,
+    (artist, title) =>
+      artistIdFor(artist) === album.artist_id && normalizeForGrouping(title) === titleKey,
+  );
+  if (jobs.length === 0) return null;
+  return confirmedIncomplete(db, jobs).confirmed.find((c) => c.albumId === albumId) ?? null;
 }
 
 export function libraryHealth(

@@ -6,7 +6,11 @@ import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import { artistIdFor } from './library-scanner.js';
 import type { Lidarr } from '../lidarr/index.js';
-import { libraryHealth, libraryHealthWithLidarr } from './library-health.js';
+import {
+  albumConfirmedIncomplete,
+  libraryHealth,
+  libraryHealthWithLidarr,
+} from './library-health.js';
 
 let db: Database;
 
@@ -650,6 +654,76 @@ describe('libraryHealth — completeness spans acquisition_jobs too', () => {
     const d = (await libraryHealthWithLidarr(db, {}, lidarr)).dimensions.completeness;
     expect(calls).toEqual([21]);
     expect(d.metric).toMatchObject({ confirmedIncomplete: 0, liveTracklists: 1 });
+  });
+  /** Issue #737: the album page's badge is the report's row, never a second rule. */
+  describe('albumConfirmedIncomplete — one album, the same rule', () => {
+    it("returns exactly the report's confirmed row for that album", () => {
+      seedOwned('al-mhtrtc', 'Music Has the Right to Children', ['Wildlife Analysis']);
+      addAcquisitionJob({
+        id: 'job-a',
+        album: 'Music Has the Right to Children',
+        canonical: ['Wildlife Analysis', 'Telephasic Workshop', 'Roygbiv'],
+        createdAt: 1,
+      });
+      const row = albumConfirmedIncomplete(db, 'al-mhtrtc');
+      expect(row).toMatchObject({ albumId: 'al-mhtrtc', expected: 3, owned: 1, missing: 2 });
+      expect(row).toEqual(libraryHealth(db).dimensions.completeness.worklist.confirmed[0]!);
+    });
+
+    it('is null for a complete album, an unhunted one and an unknown id', () => {
+      seedOwned('al-geo', 'Geogaddi', ['Ready Lets Go', 'Music Is Math']);
+      addAcquisitionJob({
+        id: 'job-b',
+        album: 'Geogaddi',
+        canonical: ['Ready Lets Go', 'Music Is Math'],
+        createdAt: 1,
+      });
+      seedOwned('al-camp', 'The Campfire Headphase', ['Chromakey Dreamcoat']);
+      expect(albumConfirmedIncomplete(db, 'al-geo')).toBeNull();
+      expect(albumConfirmedIncomplete(db, 'al-camp')).toBeNull();
+      expect(albumConfirmedIncomplete(db, 'nope')).toBeNull();
+    });
+
+    it("is not lit by a sibling album's job", () => {
+      seedOwned('al-geo', 'Geogaddi', ['Ready Lets Go']);
+      seedOwned('al-tomo', 'Tomorrows Harvest', ['Gemini']);
+      addAcquisitionJob({
+        id: 'job-c',
+        album: 'Tomorrows Harvest',
+        canonical: ['Gemini', 'White Cyclosa'],
+        createdAt: 1,
+      });
+      expect(albumConfirmedIncomplete(db, 'al-tomo')?.missing).toBe(1);
+      expect(albumConfirmedIncomplete(db, 'al-geo')).toBeNull();
+    });
+
+    it('follows the newest job for the pair, like the report', () => {
+      seedOwned('al-geo', 'Geogaddi', ['Ready Lets Go', 'Music Is Math']);
+      addAcquisitionJob({
+        id: 'job-d',
+        album: 'Geogaddi',
+        canonical: ['Ready Lets Go', 'Music Is Math', 'Sunshine Recorder'],
+        createdAt: 2,
+      });
+      addAlbumJob({
+        album: 'Geogaddi',
+        canonical: ['Ready Lets Go', 'Music Is Math'],
+        createdAt: 3,
+      });
+      expect(albumConfirmedIncomplete(db, 'al-geo')).toBeNull();
+    });
+
+    it('stays out of a title mismatch the hunt would refuse (#758)', () => {
+      seedOwned('al-geo', 'Geogaddi', ['Ready Lets Go', 'Music Is Maths']);
+      addAcquisitionJob({
+        id: 'job-e',
+        album: 'Geogaddi',
+        canonical: ['Ready Lets Go', 'Sunshine Recorder'],
+        createdAt: 1,
+      });
+      expect(libraryHealth(db).dimensions.completeness.worklist.titleMismatches).toHaveLength(1);
+      expect(albumConfirmedIncomplete(db, 'al-geo')).toBeNull();
+    });
   });
 });
 

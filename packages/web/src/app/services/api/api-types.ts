@@ -1080,6 +1080,28 @@ export interface LibraryFragmentReport {
   ok: boolean;
 }
 
+/** `GET /api/library/albums/:id/completeness` (issue #737) — the health
+ *  report's CONFIRMED completeness row for one album; null when it is not
+ *  confirmed incomplete (the suspected-gap bucket never reaches here). */
+export interface AlbumCompleteness {
+  albumId: string;
+  confirmed: { expected: number; owned: number; missing: number } | null;
+}
+
+/** `POST /api/library/albums/:id/complete` — `acquireAlbum`'s outcome. */
+export interface CompleteAlbumResponse {
+  ok: true;
+  outcome:
+    | 'already-complete'
+    | 'in-flight'
+    | 'enqueued'
+    | 'no-candidate'
+    | 'slskd-unavailable'
+    | 'enqueue-failed';
+  detail?: string;
+  lidarrAlbumId: number;
+}
+
 /**
  * Mirrors `LibraryHealthReport` (`packages/api/src/services/library-health.ts`),
  * restated rather than imported for the same reason as every other type here.

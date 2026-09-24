@@ -34,6 +34,7 @@ import { SkeletonComponent } from '../../components/skeleton/skeleton.component'
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
+import { AlbumCompletenessComponent } from './album-completeness.component';
 
 @Component({
   selector: 'app-album-detail',
@@ -51,6 +52,7 @@ import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
     GenreDistributionStripComponent,
     TvNavGroupDirective,
     TvNavItemDirective,
+    AlbumCompletenessComponent,
   ],
   templateUrl: './album-detail.component.html',
 })
@@ -358,6 +360,10 @@ export class AlbumDetailComponent implements OnInit {
       this.localCoverBust(),
       this.events.artworkVersions().get(this.selectedAlbum()?.id ?? '') ?? 0,
     ),
+  );
+  /** Re-reads the completeness badge when this album changes (tracks landed). */
+  readonly albumChangeSeq = computed(
+    () => this.events.changedAlbums().get(this.selectedAlbum()?.id ?? '') ?? 0,
   );
   private lastSeenChange = 0;
   private readonly liveReload = effect(() => {
