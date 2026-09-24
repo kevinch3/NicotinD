@@ -404,85 +404,48 @@ client). The PO-token provider **is no longer one of them**: we build it (below)
 
 **That pairing was enforced by `check:bgutil-pin` (issue #238), and the gate has
 since been retired (issue #550).** It compared the pip plugin baked into the
-*core* `Dockerfile` against `packages/pot-provider/Dockerfile`. Phase 4 moved
-every downloader into its own addon image, so core stopped running yt-dlp at all
-— the gate was guarding a copy nothing executed, and it retired together with
+*core* `Dockerfile` against core's own provider Dockerfile. Phase 4 moved every
+downloader into its own addon image, so core stopped running yt-dlp at all —
+the gate was guarding a copy nothing executed, and it retired together with
 that copy.
 
 The invariant itself is real and unchanged: plugin and provider must be the same
-version or the service starts and YouTube downloads quietly stop working. It now
-applies where the downloaders actually live — `nicotind-ytdlp-addon` and
+version or the service starts and YouTube downloads quietly stop working. It
+applies where the downloaders live — `nicotind-ytdlp-addon` and
 `nicotind-spotdl-addon`, each baking its own `ARG BGUTIL_VERSION` against the
 `nicotind-pot-provider` image it runs beside (issue #551).
 
-#### The pin is published on the artifact
+### We build the PO-token provider — in the ytdlp addon repo (#238, #1315)
 
-Those repos cannot read a file in this one, and a source-to-source check would
-pass while the *published* image is stale — so the canonical version rides on
-the image itself:
+The companion service was `brainicism/bgutil-ytdlp-pot-provider:X`, a
+third-party image whose tag had to be kept in lockstep by hand with the pip
+plugin baked into ours. It is **our own image**,
+`ghcr.io/kevinch3/nicotind-pot-provider:release`, built from pinned upstream
+source (GPL-3.0, compatible with AGPL-3.0-only).
 
-```
-ghcr.io/kevinch3/nicotind-pot-provider   LABEL org.nicotind.bgutil.version=<version>
-```
+Core's release built it until #1315; it is now built and published by the
+[`nicotind-ytdlp-addon`](https://github.com/kevinch3/nicotind-ytdlp-addon) repo
+(`pot-provider/Dockerfile`, CI job `pot-provider`), under the **same image name
+and `release` tag**, so compose resolves it unchanged. That repo also holds the
+plugin pin the server must match, so its pin test now guards the pairing that
+core never could. The spotdl addon consumes the same published image. Its build
+notes, the bump procedure and the live-token smoke test live in that repo's
+README.
 
-wired to `BGUTIL_VERSION` rather than repeated as a literal (a hardcoded label
-would keep reporting the old version after a bump, so every consumer's check
-would pass against a lie — `scripts/pot-provider-pin.test.ts` pins both that and
-the stage-scoped `ARG` re-declaration, without which the label silently
-interpolates to an empty string).
+Compose references it as `:release`, not `${NICOTIND_IMAGE_TAG:-release}`: the
+image no longer carries core's `vX.Y.Z` tags, so a core version pin would
+resolve a frozen server (or none) while the addon's plugin pin moves on.
 
-A consumer reads it without cloning anything:
+The canonical version rides on the image as a label, so a consumer that cannot
+read the ytdlp repo still can check it without cloning anything:
 
 ```bash
 docker buildx imagetools inspect ghcr.io/kevinch3/nicotind-pot-provider:release \
   --format '{{ index .Image.Config.Labels "org.nicotind.bgutil.version" }}'
 ```
 
-**Consumer-side checks are not wired up yet.** The label only exists on images
-built after this change, so each addon repo's CI assertion has to land once a
-release has published a labelled provider. Until then the addon pins are still
-guarded by nothing but a comment.
-
-### We build the PO-token provider ourselves (issue #238)
-
-The companion service was `brainicism/bgutil-ytdlp-pot-provider:X`, a
-third-party image whose tag had to be kept in lockstep by hand with the pip
-plugin baked into ours. It is now **our own image**,
-`ghcr.io/kevinch3/nicotind-pot-provider`, built by the `docker-pot-provider` job
-in `deploy.yml` — same tag scheme and cache scoping as `docker-analysis`, so
-there is one shape to learn for our side-car images.
-
-- **Built from pinned upstream source, not vendored.** `packages/pot-provider/Dockerfile`
-  fetches the tagged tarball and mirrors upstream's own `server/Dockerfile` (node
-  target), so a version bump is a tag change rather than a rewrite. Vendoring a
-  whole Node service into this monorepo would make its dependency updates ours.
-  Upstream is **GPL-3.0**, compatible with this project's AGPL-3.0-only.
-- **The drift gate got better, then obsolete.** `check:bgutil-pin` first compared
-  the pip pin against a *third-party image tag*, then against a second file in
-  this repo — something we control. #550 then removed the core-side pin it read,
-  and the gate with it; see the paragraph above for where the invariant moved.
-- **Two deviations from upstream's Dockerfile**, both because ours must also
-  build on a daemon without buildx: `/app` is chowned before dropping to the
-  `node` user (upstream's BuildKit cache mount side-steps the ordering, so
-  `npm ci` fails with EACCES without it), and `NPM_CONFIG_CACHE` points at a
-  writable path instead of relying on that mount.
-- **Verified end-to-end, not just "it builds"** — the failure mode this issue
-  exists to prevent is a provider that *starts* while minting invalid tokens.
-  Our image was run locally and asked for a real PO token against YouTube's live
-  attestation endpoint; it returned a valid token with the same shape and
-  `version: 1.3.1` as the upstream image did in the same test. To repeat it:
-
-  ```bash
-  docker build -t pot-test packages/pot-provider
-  docker run -d --name pot-test -p 14417:4416 pot-test
-  curl -s http://127.0.0.1:14417/ping
-  curl -s -X POST http://127.0.0.1:14417/get_pot \
-    -H 'content-type: application/json' -d '{"content_binding":"dQw4w9WgXcQ"}'
-  ```
-
-  A `poToken` + `expiresAt` in the response means the provider is genuinely
-  talking to YouTube. Falling back to upstream's image is a one-line compose
-  override if ours ever regresses.
+Falling back to upstream's image is a one-line compose override if ours ever
+regresses.
 
 ### Pinning a version
 

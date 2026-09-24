@@ -73,9 +73,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **Bounded outbound clients**: `LidarrClient` timeouts come in three tiers (local, lookup,
   provision); a timeout is re-thrown as "timed out". MusicBrainz uses a discriminated `FetchOutcome`
   so an outage is never cached as a confirmed absence. → [design-patterns.md](../design-patterns.md)
-- **We build the YouTube PO-token provider**: `ghcr.io/kevinch3/nicotind-pot-provider` built from
-  pinned upstream source; the canonical version is published on the artifact as a label, pinned by
-  `pot-provider-pin.test.ts`. → [deployment.md](../deployment.md)
+- **YouTube PO-token provider image**: `ghcr.io/kevinch3/nicotind-pot-provider:release`, built and
+  published by the ytdlp addon repo, not core's release; compose only references it.
+  → [deployment.md](../deployment.md)
 - **Service modes**: `embedded` (best-effort manage Lidarr) or `external`; the library and streaming
   stack is always in-process. → [design-patterns.md](../design-patterns.md)
 - **Observability (Sentry, opt-in)**: empty DSN = off; the web SDK loads lazily behind a synchronous
