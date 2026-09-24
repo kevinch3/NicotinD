@@ -1,0 +1,3 @@
+• acquisition: re-source a job's not-offered titles to another peer (#1372)
+• web: an Admin Library health panel over the health report (#1373)
+• web: reorder and remove queue rows by touch (#1371)

@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.72](https://github.com/kevinch3/NicotinD/compare/v0.8.71...v0.8.72) (2026-09-24)
+
+### Features
+
+* **acquisition:** re-source a job's not-offered titles to another peer ([#1372](https://github.com/kevinch3/NicotinD/issues/1372)) ([93e261e](https://github.com/kevinch3/NicotinD/commit/93e261e6438721796c0511b14e92162ea428daac)), closes [#1146](https://github.com/kevinch3/NicotinD/issues/1146), references [#1065](https://github.com/kevinch3/NicotinD/issues/1065)
+* **web:** an Admin Library health panel over the health report ([#1373](https://github.com/kevinch3/NicotinD/issues/1373)) ([139fbf3](https://github.com/kevinch3/NicotinD/commit/139fbf3a009f0d1e17e2e199a77079df83984c1e)), references [#736](https://github.com/kevinch3/NicotinD/issues/736)
+* **web:** reorder and remove queue rows by touch ([#1371](https://github.com/kevinch3/NicotinD/issues/1371)) ([dc61f3b](https://github.com/kevinch3/NicotinD/commit/dc61f3b50cf79929852b7c42065436f0d63b63af)), references [#1295](https://github.com/kevinch3/NicotinD/issues/1295)
 ## [0.8.71](https://github.com/kevinch3/NicotinD/compare/v0.8.70...v0.8.71) (2026-09-24)
 
 ### Features
