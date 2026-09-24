@@ -1,0 +1,1 @@
+• mcp: refetch_song_lyrics, and a forced fetch no longer replays the file tag (#1366)

@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.68](https://github.com/kevinch3/NicotinD/compare/v0.8.67...v0.8.68) (2026-09-24)
+
+### Features
+
+* **mcp:** refetch_song_lyrics, and a forced fetch no longer replays the file tag ([#1366](https://github.com/kevinch3/NicotinD/issues/1366)) ([a303821](https://github.com/kevinch3/NicotinD/commit/a3038218c2099358e289e592b082bee6e635251b))
 ## [0.8.67](https://github.com/kevinch3/NicotinD/compare/v0.8.66...v0.8.67) (2026-09-24)
 
 ### Bug Fixes
