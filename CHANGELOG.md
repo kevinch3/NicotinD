@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.71](https://github.com/kevinch3/NicotinD/compare/v0.8.70...v0.8.71) (2026-09-24)
+
+### Features
+
+* **library:** composer and conductor fields, readable and retaggable ([#1370](https://github.com/kevinch3/NicotinD/issues/1370)) ([6db710e](https://github.com/kevinch3/NicotinD/commit/6db710eec1ff9c216234732f2f7c30f5e12a22f4))
 ## [0.8.70](https://github.com/kevinch3/NicotinD/compare/v0.8.69...v0.8.70) (2026-09-24)
 
 ### Features
