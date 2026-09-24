@@ -28,6 +28,7 @@ import { analyzeBpm, verifyGenre } from '../services/track-analysis.js';
 import type { AudioFeaturesClient } from '../services/audio-features-client.js';
 import { readAudioTags, writeAudioTags, type AudioTags } from '../services/audio-tags.js';
 import { getLyrics, setLyrics, setLyricsOffset, deleteLyrics } from '../services/lyrics-store.js';
+import { fetchSongLyrics } from '../services/lyrics-fetch.js';
 import { getArtistMeta, upsertArtistMeta } from '../services/artist-meta-store.js';
 import {
   getMbid,
@@ -2410,92 +2411,30 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // non-customized cached row immediately; otherwise queries each enabled
   // lyrics-capable plugin, persists the first hit, writes the plain text back to
   // the file tag, and returns it. A user-edited row (customized=1) is left
-  // untouched unless `force:true`. 503 when no lyrics source is enabled.
+  // untouched unless `force:true`, which also skips the file-tag recovery
+  // (see `fetchSongLyrics`). 503 when no lyrics source is enabled.
   app.post('/songs/:id/lyrics/fetch', async (c) => {
-    const id = c.req.param('id');
-    const db = getDatabase();
-    const song = db
-      .query<
-        { path: string; title: string; artist: string; duration: number; album: string | null },
-        [string]
-      >(
-        `SELECT s.path, s.title, s.artist, s.duration, a.name AS album
-         FROM library_songs s LEFT JOIN library_albums a ON a.id = s.album_id
-         WHERE s.id = ?`,
-      )
-      .get(id);
-    if (!song) return c.json({ error: 'Song not found' }, 404);
-
     const body = await c.req.json<{ force?: boolean }>().catch(() => ({}) as { force?: boolean });
-    // Return any cached row as-is unless an explicit re-fetch is requested; this
-    // both serves repeat opens cheaply and protects user-edited (customized) rows.
-    const existing = getLyrics(db, id);
-    if (existing && !body.force) return c.json(existing);
-
-    // No DB row: recover lyrics embedded in the file tag before hitting a source.
-    // A transcode/move changes the path-derived songId and orphans the side-table
-    // row, but the plain text was written into the tag, so it travels with the file.
-    if (!existing && musicDir) {
-      const abs = resolveSongPath(expandDir(musicDir), song.path);
-      if (isUnderMusicDir(expandDir(musicDir), abs) && existsSync(abs)) {
-        const tags = await readAudioTags(abs).catch(() => null);
-        if (tags?.lyrics) {
-          return c.json(
-            setLyrics(db, id, {
-              plain: tags.lyrics,
-              synced: null,
-              source: 'file-tag',
-              customized: false,
-            }),
-          );
-        }
-      }
+    const r = await fetchSongLyrics(
+      getDatabase(),
+      { plugins: pluginRegistry, musicDir },
+      c.req.param('id'),
+      { force: body.force },
+    );
+    switch (r.kind) {
+      case 'song-not-found':
+        return c.json({ error: 'Song not found' }, 404);
+      case 'no-source':
+        return c.json({ error: 'No lyrics source enabled' }, 503);
+      // Distinct from a clean miss so the UI can offer "try again" rather
+      // than "no lyrics".
+      case 'source-error':
+        return c.json({ error: 'Lyrics source unavailable' }, 502);
+      case 'no-match':
+        return c.json(null);
+      default:
+        return c.json(r.lyrics);
     }
-
-    if (!pluginRegistry?.hasCapability('lyrics')) {
-      return c.json({ error: 'No lyrics source enabled' }, 503);
-    }
-
-    const query = {
-      title: song.title,
-      artist: song.artist,
-      album: song.album ?? undefined,
-      durationSec: song.duration || undefined,
-    };
-    // Track whether a source *failed* (threw) vs cleanly reported "no match", so
-    // a transient LRCLIB error (rate-limit / 5xx / timeout) doesn't masquerade as
-    // a confident "no lyrics" — the client shows a retry instead of a false empty.
-    let sourceErrored = false;
-    for (const plugin of pluginRegistry.getEnabledWithCapability('lyrics')) {
-      const result = await plugin.lyrics?.fetchLyrics(query).catch(() => {
-        sourceErrored = true;
-        return null;
-      });
-      if (!result) continue;
-      const saved = setLyrics(db, id, {
-        plain: result.plain,
-        synced: result.synced,
-        source: result.source,
-        customized: false,
-        // Recorded so a wrong-take match stays visible after the fact; a source
-        // that reports no duration leaves these null, i.e. unverified (#1212).
-        matchedDurationSec: result.matchedDurationSec ?? null,
-        sourceTrackId: result.sourceTrackId ?? null,
-      });
-      if (result.plain && musicDir) {
-        const abs = resolveSongPath(expandDir(musicDir), song.path);
-        if (isUnderMusicDir(expandDir(musicDir), abs) && existsSync(abs)) {
-          await writeAudioTags(abs, { lyrics: result.plain }).catch(() => false);
-        }
-      }
-      return c.json(saved);
-    }
-    // No match anywhere. Distinguish an authoritative miss (null) from a source
-    // failure (502) so the UI can offer "try again" rather than "no lyrics".
-    if (sourceErrored) {
-      return c.json({ error: 'Lyrics source unavailable' }, 502);
-    }
-    return c.json(null);
   });
 
   // Save user-edited lyrics (admin): marks the row customized so a re-fetch won't
