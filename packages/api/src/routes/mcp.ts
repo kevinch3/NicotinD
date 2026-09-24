@@ -9,6 +9,7 @@ import {
 import { parseLrc, applyLyricsOffset, LYRICS_OFFSET_MAX_MS } from '@nicotind/core';
 import { recordAudit } from '../services/audit-log.js';
 import { getLyrics, setLyricsOffset } from '../services/lyrics-store.js';
+import { fetchSongLyrics } from '../services/lyrics-fetch.js';
 import { deleteAlbum, deleteOne } from '../services/library-deletion.js';
 import { mutateArtistIdentity } from '../services/artist-identity-mutate.js';
 import { upsertGenreAlias } from '../services/genre-alias-mutate.js';
@@ -488,6 +489,71 @@ export const MCP_TOOLS: McpTool[] = [
         null,
         2,
       );
+    },
+  },
+  {
+    name: 'refetch_song_lyrics',
+    description:
+      "Re-fetch a song's lyrics from the lyrics source, replacing the stored row. The fix for WRONG WORDS — get_song_lyrics showing a durationDeltaSec beyond a few seconds, or an overrunBySec above zero, means the source matched another take. Matching is duration-aware, so a row stored before that existed usually comes back right. Never overwrites lyrics a user edited (customized). If the source has no acceptable match the stored row is left UNCHANGED and the result says so — the words are still wrong, so flag it for a human rather than re-timing it with sync_song_lyrics. Returns the before/after source, matched duration and delta. Audit-logged.",
+    access: 'curate',
+    inputSchema: {
+      type: 'object',
+      properties: { songId: { type: 'string' } },
+      required: ['songId'],
+    },
+    handler: async ({ db, identity, metadata }, args) => {
+      const songId = str(args.songId);
+      const before = getLyrics(db, songId);
+      if (before?.customized) {
+        return JSON.stringify({
+          error: 'These lyrics were edited by a user; a re-fetch would discard the edit.',
+        });
+      }
+      const r = await fetchSongLyrics(
+        db,
+        { plugins: metadata.plugins, musicDir: metadata.musicDir },
+        songId,
+        { force: true },
+      );
+      const durationSec =
+        db
+          .query<{ duration: number }, [string]>('SELECT duration FROM library_songs WHERE id = ?')
+          .get(songId)?.duration ?? null;
+      const summary = (l: typeof before) =>
+        l
+          ? {
+              source: l.source,
+              matchedDurationSec: l.matchedDurationSec ?? null,
+              durationDeltaSec:
+                l.matchedDurationSec != null && durationSec
+                  ? l.matchedDurationSec - durationSec
+                  : null,
+              synced: !!l.synced,
+            }
+          : null;
+      switch (r.kind) {
+        case 'song-not-found':
+          return JSON.stringify({ error: 'Song not found' });
+        case 'no-source':
+          return JSON.stringify({ error: 'No lyrics source is enabled on this server.' });
+        case 'source-error':
+          return JSON.stringify({ error: 'The lyrics source failed; try again later.' });
+        case 'no-match':
+          return JSON.stringify({ ok: true, replaced: false, before: summary(before) });
+        default:
+          recordAudit(
+            db,
+            { sub: identity.userId, username: `agent:${identity.tokenId}` },
+            'song.lyrics',
+            { targetKind: 'song', targetId: songId, detail: 're-fetched (via MCP agent)' },
+          );
+          return JSON.stringify({
+            ok: true,
+            replaced: true,
+            before: summary(before),
+            after: summary(r.lyrics),
+          });
+      }
     },
   },
   {

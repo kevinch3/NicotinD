@@ -76,7 +76,7 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   → [design-patterns.md](../design-patterns.md)
 - **Lyrics sync offset**: bad timing is corrected by a stored offset applied at render time
   (`applyLyricsOffset`), never by rewriting the LRC, so it is reversible; `parseLrc` is in core so
-  `syncedBeyondDuration` parses server-side. Tools: `get_song_lyrics`, `sync_song_lyrics`.
+  `syncedBeyondDuration` parses server-side. Tools: `get_song_lyrics`, `sync_song_lyrics`, `refetch_song_lyrics`.
   → [design-patterns.md](../design-patterns.md), [mcp-agent.md](../mcp-agent.md)
 - **Now Playing waveform + karaoke VFX**: rendered from a precomputed artifact.
   → [audio-ml-enrichment.md](../audio-ml-enrichment.md)

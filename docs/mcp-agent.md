@@ -76,6 +76,7 @@ audit-logged.
 | `get_album_tracks` | read | one album: header (year/classification/cover status) + songs with genre, track/disc, suffix, bitrate |
 | `get_song_lyrics` | read | `services/lyrics-store.ts` `getLyrics` + `parseLrc` — source, offset, matched vs local duration, and where the LRC's last line falls |
 | `sync_song_lyrics` | curate | `services/lyrics-store.ts` `setLyricsOffset` + `song.lyrics` audit (render-time offset, text untouched) |
+| `refetch_song_lyrics` | curate | `services/lyrics-fetch.ts` `fetchSongLyrics({ force: true })` + `song.lyrics` audit; refuses a customized row |
 | `set_song_genre` | curate | `services/song-genre-mutate.ts` `mutateSongGenre` + `song.genre` audit |
 | `set_genre_alias` | curate | `services/genre-alias-mutate.ts` `upsertGenreAlias` + `genre.alias` audit |
 | `lookup_song_metadata` | read | `services/candidate-sources.ts` `gatherSongCandidates` + `services/title-clean.ts` `cleanDisplayTitle` |
@@ -179,7 +180,7 @@ The trap these tools exist to prevent is treating one symptom as one defect.
 
 | What is wrong | How `get_song_lyrics` shows it | Fix |
 | --- | --- | --- |
-| **Wrong words** — the source matched another take | `durationDeltaSec` beyond a few seconds, or `overrunBySec` above 0 | re-fetch; the words are not this recording's |
+| **Wrong words** — the source matched another take | `durationDeltaSec` beyond a few seconds, or `overrunBySec` above 0 | `refetch_song_lyrics`; the words are not this recording's |
 | **Right words, wrong clock** — same performance, different master | both of those near 0, but the lines land off the beat | `sync_song_lyrics` |
 
 `overrunBySec` is the load-bearing one, because it needs **nothing from the
@@ -190,6 +191,15 @@ recording existed — which `matched_duration` cannot judge by construction.
 
 **Applying an offset to wrong words hides the defect rather than fixing it**, so
 both tool descriptions say so in the text the agent actually reads.
+
+**`refetch_song_lyrics` (#1205) needed two fixes before it could work.** A
+re-fetch replays the same query, so before duration-aware matching (#1212) it
+returned the identical wrong record. And a forced fetch after a reset
+short-circuited on the file tag, which holds the plain text the *bad* fetch wrote
+— returning the wrong words again without asking the source. `fetchSongLyrics`
+(shared with `POST /songs/:id/lyrics/fetch`) now skips the tag recovery on
+`force`. A miss leaves the stored row unchanged and reports `replaced: false`:
+the words are still wrong, which is a human flag, not an offset.
 
 `offsetMs` is **absolute, not a nudge**. An agent that retries a relative shift
 doubles it, and a doubled correction looks like a worse version of the problem it

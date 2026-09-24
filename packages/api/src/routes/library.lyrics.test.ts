@@ -210,6 +210,44 @@ describe('POST /songs/:id/lyrics/fetch', () => {
   });
 });
 
+describe('a forced fetch skips the file-tag recovery (#1205)', () => {
+  it('asks the source even when the tag holds the words an earlier fetch wrote', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'nicotind-lyrics-'));
+    try {
+      const rel = 'La Portuaria/Huija/01 - Selva.mp3';
+      const abs = join(dir, rel);
+      mkdirSync(dirname(abs), { recursive: true });
+      copyFileSync(join(import.meta.dir, '../../test-fixtures/silence.mp3'), abs);
+      // What a bad match leaves behind once its row is reset: the tag.
+      await writeAudioTags(abs, { lyrics: 'wrong take words' });
+      testDb.run(
+        `INSERT INTO library_songs
+          (id, album_id, title, artist, artist_id, duration, path,
+           size, bit_rate, suffix, content_type, created, synced_at)
+         VALUES ('song-9', 'album-1', 'Selva', 'La Portuaria', 'artist-1', 200, ?,
+           1000, 1000, 'mp3', 'audio/mpeg', '2024-01-01', 0)`,
+        [rel],
+      );
+      const { registry, calls } = makeRegistry({ result: LYRICS });
+      const app = new Hono<AuthEnv>();
+      app.use('*', async (c, next) => {
+        c.set('user', { sub: 'u1', role: 'user', iat: 0, exp: 0 } as JwtPayload);
+        await next();
+      });
+      app.route('/', libraryRoutes(dir, { pluginRegistry: registry }));
+
+      const res = await app.request('/songs/song-9/lyrics/fetch', {
+        method: 'POST',
+        body: JSON.stringify({ force: true }),
+      });
+      expect(calls()).toBe(1);
+      expect(((await res.json()) as { source: string }).source).toBe('lrclib');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('PUT /songs/:id/lyrics', () => {
   it('saves a user edit as customized (admin)', async () => {
     seedSong(testDb, 'song-1');

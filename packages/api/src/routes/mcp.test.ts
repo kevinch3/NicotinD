@@ -13,6 +13,9 @@ import { artistIdFor } from '../services/library-scanner.js';
 import { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
 import { AddonRequestError, type AddonClient } from '../services/addons/client.js';
 import { getMbid, isMbidTombstoned, upsertMbid } from '../services/mbid-store.js';
+import type { LyricsResult } from '@nicotind/core';
+import type { PluginRegistry } from '../services/plugins/registry.js';
+import { getLyrics } from '../services/lyrics-store.js';
 import {
   dispatchTool,
   checkToolAccess,
@@ -2131,6 +2134,67 @@ describe('lyrics tools', () => {
       offsetMs: 500_000,
     });
     expect(out).toMatchObject({ offsetMs: 30_000, clamped: true });
+  });
+
+  describe('refetch_song_lyrics (#1205)', () => {
+    const withSource = (result: LyricsResult | null) => {
+      let calls = 0;
+      const plugins = {
+        hasCapability: () => true,
+        getEnabledWithCapability: () => [
+          {
+            lyrics: {
+              fetchLyrics: async () => {
+                calls++;
+                return result;
+              },
+            },
+          },
+        ],
+      } as unknown as PluginRegistry;
+      const refetch = async (songId: string) => {
+        const res = await dispatchTool(
+          { ...ctx('refiner:curate'), metadata: { musicDir, plugins } },
+          'refetch_song_lyrics',
+          { songId },
+        );
+        return JSON.parse(res.content[0]!.text) as Record<string, unknown>;
+      };
+      return { refetch, calls: () => calls };
+    };
+
+    it('replaces a wrong-take row and reports the before/after match', async () => {
+      seedLyrics({ durationSec: 232, lastLineSec: 200, matched: 222 });
+      const { refetch } = withSource({
+        plain: 'right words',
+        synced: null,
+        source: 'lrclib',
+        matchedDurationSec: 231,
+      });
+      const out = await refetch('s-lyr');
+      expect(out).toMatchObject({
+        ok: true,
+        replaced: true,
+        before: { durationDeltaSec: -10 },
+        after: { durationDeltaSec: -1 },
+      });
+      expect(getLyrics(testDb, 's-lyr')?.plain).toBe('right words');
+    });
+
+    it('never discards a user edit', async () => {
+      seedLyrics({ durationSec: 232, lastLineSec: 200 });
+      testDb.run(`UPDATE library_lyrics SET customized = 1 WHERE song_id = 's-lyr'`);
+      const { refetch, calls } = withSource({ plain: 'x', synced: null, source: 'lrclib' });
+      expect((await refetch('s-lyr')).error).toBeDefined();
+      expect(calls()).toBe(0);
+    });
+
+    it('leaves the stored row alone on a miss, and says so', async () => {
+      seedLyrics({ durationSec: 232, lastLineSec: 200, matched: 222 });
+      const { refetch } = withSource(null);
+      expect(await refetch('s-lyr')).toMatchObject({ ok: true, replaced: false });
+      expect(getLyrics(testDb, 's-lyr')?.plain).toBe('first line\nsecond line');
+    });
   });
 
   it('refuses a song with no lyrics, naming the fix', async () => {
