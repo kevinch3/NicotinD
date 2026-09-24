@@ -466,9 +466,12 @@ export function streamingRoutes(
       .get(id);
     if (!row) return c.body(null, 404);
     const abs = resolve(join(musicRoot, row.path));
-    if ((abs !== musicRoot && !abs.startsWith(musicRoot + sep)) || !existsSync(abs)) {
-      return c.body(null, 404);
-    }
+    if (abs !== musicRoot && !abs.startsWith(musicRoot + sep)) return c.body(null, 404);
+    const present = await stat(abs).then(
+      (s) => s.isFile(),
+      () => false,
+    );
+    if (!present) return c.body(null, 404);
     try {
       const data = await getWaveform(waveformCacheDir, abs, { decoder: opts.waveformDecoder });
       return c.json(data, 200, { 'cache-control': WAVEFORM_CACHE_CONTROL });
