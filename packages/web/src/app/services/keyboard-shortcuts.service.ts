@@ -1,40 +1,49 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { Subscription, fromEvent } from 'rxjs';
-import { filter } from 'rxjs/operators';
 import { PlayerService } from './player.service';
+import { LikeService } from './like.service';
 import { isTvBuild } from '../lib/platform';
+import { isTextEntryTarget } from '../lib/text-entry';
+import { keyToAction, type ShortcutEntry } from '../lib/keyboard-shortcuts';
 
 /**
- * Global keyboard/TV-remote shortcuts: Space/K (play/pause), J/L (prev/next),
- * M (vocal mute), N (now-playing), ArrowLeft/Right (seek), / (Acquire).
- * Escape-as-back is deferred (needs modal handler arbitration); volume shortcuts
- * won't be added (no volume control in this app).
- * Space is suppressed on natively-activatable elements; K always works outside text fields.
+ * Dispatches the keyboard vocabulary in `lib/keyboard-shortcuts.ts` (#1296).
+ * Initialized once from `App`, so the TV shell gets its `/player` seek too;
+ * everything else in the table is desktop-only. Media keys are not in the
+ * table — they stay with the media session. Escape is `BackButtonService`'s.
  */
 @Injectable({ providedIn: 'root' })
 export class KeyboardShortcutsService {
-  private static readonly SEEK_STEP_SECONDS = 10;
+  /** How long `/` waits for the library's find box after navigating there. */
+  private static readonly SEARCH_FOCUS_TIMEOUT_MS = 2000;
+  private static readonly SEARCH_FOCUS_POLL_MS = 50;
 
   private readonly player = inject(PlayerService);
+  private readonly likes = inject(LikeService);
   private readonly router = inject(Router);
 
+  /** The `?` sheet. */
+  readonly helpOpen = signal(false);
+
   initialize(): Subscription {
-    return fromEvent<KeyboardEvent>(window, 'keydown')
-      .pipe(filter((e) => !this.isTypingTarget(e.target)))
-      .subscribe((e) => this.handle(e));
+    return fromEvent<KeyboardEvent>(window, 'keydown').subscribe((e) => this.handle(e));
   }
 
-  /** TV only: is the full-screen player the active route? See the ArrowLeft/
-   *  Right branch — seek belongs to that route and to no other. */
-  private onTvPlayerRoute(): boolean {
-    return this.router.url.split('?')[0] === '/player';
+  setHelpOpen(open: boolean): void {
+    this.helpOpen.set(open);
   }
 
-  private isTypingTarget(target: EventTarget | null): boolean {
-    const el = target as HTMLElement | null;
-    if (!el) return false;
-    return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable;
+  private handle(event: KeyboardEvent): void {
+    const entry = keyToAction(event, {
+      tvBuild: isTvBuild(),
+      tvPlayerRoute: this.router.url.split('?')[0] === '/player',
+      textEntry: isTextEntryTarget(event.target),
+      activatable: this.isNativelyActivatable(event.target),
+    });
+    if (!entry) return;
+    event.preventDefault();
+    this.run(entry);
   }
 
   private isNativelyActivatable(target: EventTarget | null): boolean {
@@ -44,81 +53,81 @@ export class KeyboardShortcutsService {
     return role !== null && ['button', 'switch', 'checkbox', 'menuitem', 'tab'].includes(role);
   }
 
-  private handle(event: KeyboardEvent): void {
-    // Never claim a modifier chord: Ctrl/Cmd/Alt + a letter or arrow is a
-    // browser/OS shortcut (Alt+Arrow = Back/Forward, Ctrl+L = address bar,
-    // Cmd+N = new window …) and `event.key` is still the bare letter/arrow, so
-    // without this every one of them also fired a player action — and the
-    // seek branch's `preventDefault()` actively broke history navigation.
-    // Shift is deliberately NOT in the guard: it only uppercases the letter
-    // (J/K/L/M/N are already handled) and Shift+/ produces '?', which matches
-    // nothing.
-    if (event.ctrlKey || event.metaKey || event.altKey) return;
-    const isSpace = event.code === 'Space';
-    const isK = event.key === 'k' || event.key === 'K';
-    if (isSpace || isK) {
-      if (isSpace && this.isNativelyActivatable(event.target)) return;
-      event.preventDefault();
-      if (this.player.isPlaying()) this.player.pause();
-      else this.player.resume();
-      return;
-    }
-    if (event.key === 'j' || event.key === 'J') {
-      event.preventDefault();
-      this.player.playPrev();
-      return;
-    }
-    if (event.key === 'l' || event.key === 'L') {
-      event.preventDefault();
-      this.player.playNext();
-      return;
-    }
-    if (event.key === 'm' || event.key === 'M') {
-      event.preventDefault();
-      this.player.toggleVocalMute();
-      return;
-    }
-    if (event.key === 'n' || event.key === 'N') {
-      event.preventDefault();
-      this.player.setNowPlayingOpen(true);
-      return;
-    }
-    if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
-      if (event.defaultPrevented) return; // a D-pad nav group already handled this keypress
-      // On a TV build, Left/Right belong to the WebView's spatial focus
-      // navigation — preventDefault() here is what cancelled the D-pad focus
-      // move and made the whole Now Playing sheet horizontally unnavigable
-      // (issue #387).
-      //
-      // The one exception is the TV player route, where seeking IS what
-      // Left/Right mean: the TV surface has no seek bar to focus, because a
-      // native range input eats all four arrow keys and a remote has no Tab to
-      // escape it with (issue #438). Scoping by *active route* rather than by
-      // focus position is deliberate — inferring the mode from what happens to
-      // be focused is exactly the ambiguity that produced #387.
-      if (isTvBuild() && !this.onTvPlayerRoute()) return;
-      // A focused, closed `<select>` changes its selected option on
-      // ArrowLeft/ArrowRight — a preventable default we must not steal (there
-      // are `<select>`s in the Library sort dropdowns, Settings, Admin, the
-      // track-info sheet …). Deliberately narrower than
-      // `isNativelyActivatable`: BUTTON/A/SUMMARY/role=button have no native
-      // arrow-key behaviour to protect, and excluding them would disable
-      // seeking for the very common case of a focused button (D-pad items are
-      // buttons too — inside a nav group the group's own `preventDefault`
-      // already makes the branch above bail).
-      if (event.target instanceof HTMLElement && event.target.tagName === 'SELECT') return;
-      event.preventDefault();
-      const delta =
-        event.key === 'ArrowRight'
-          ? KeyboardShortcutsService.SEEK_STEP_SECONDS
-          : -KeyboardShortcutsService.SEEK_STEP_SECONDS;
-      this.player.seek(Math.max(0, this.player.currentTime() + delta));
-      return;
-    }
-    if (event.key === '/') {
-      event.preventDefault();
-      void this.router.navigate(['/get'], { queryParams: { tab: 'find' } });
-      return;
+  private run(entry: ShortcutEntry): void {
+    switch (entry.id) {
+      case 'togglePlay':
+        if (this.player.isPlaying()) this.player.pause();
+        else this.player.resume();
+        return;
+      case 'seekBack':
+      case 'seekForward':
+      case 'tvSeekBack':
+      case 'tvSeekForward':
+        this.player.seek(Math.max(0, this.player.currentTime() + (entry.seekSeconds ?? 0)));
+        return;
+      case 'prevTrack':
+        this.player.playPrev();
+        return;
+      case 'nextTrack':
+        this.player.playNext();
+        return;
+      case 'like': {
+        const track = this.player.currentTrack();
+        if (track) void this.likes.toggle(track.id);
+        return;
+      }
+      case 'radio': {
+        const track = this.player.currentTrack();
+        if (track) this.player.startRadio(track);
+        return;
+      }
+      case 'toggleNowPlaying':
+        this.player.setNowPlayingOpen(!this.player.nowPlayingOpen());
+        return;
+      case 'queueTab':
+        this.player.showNowPlayingPanel('queue');
+        return;
+      case 'lyricsTab':
+        this.player.showNowPlayingPanel('lyrics');
+        return;
+      case 'vocalMute':
+        this.player.toggleVocalMute();
+        return;
+      case 'search':
+        this.focusSearch();
+        return;
+      case 'help':
+        this.helpOpen.update((open) => !open);
+        return;
+      case 'close':
+        return;
     }
   }
+
+  /** The page's own search box when it has one, else the library's find. */
+  private focusSearch(): void {
+    const local = visibleSearchInput();
+    if (local) {
+      local.focus();
+      return;
+    }
+    void this.router.navigate(['/library']).then(() => {
+      const deadline = Date.now() + KeyboardShortcutsService.SEARCH_FOCUS_TIMEOUT_MS;
+      const attempt = (): void => {
+        const input = visibleSearchInput();
+        if (input) input.focus();
+        else if (Date.now() < deadline)
+          setTimeout(attempt, KeyboardShortcutsService.SEARCH_FOCUS_POLL_MS);
+      };
+      attempt();
+    });
+  }
+}
+
+function visibleSearchInput(): HTMLInputElement | null {
+  const inputs = document.querySelectorAll<HTMLInputElement>('main input[type="search"]');
+  for (const input of Array.from(inputs)) {
+    if (!input.disabled && input.getClientRects().length > 0) return input;
+  }
+  return null;
 }

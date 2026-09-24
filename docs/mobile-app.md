@@ -419,8 +419,8 @@ displays a QR + code and signs itself in with zero typing). Hardware media-key h
 remote's transport buttons) is **verified on the Google TV emulator**: `KEYCODE_MEDIA_PLAY_PAUSE`
 (85) toggles playback and `KEYCODE_MEDIA_NEXT`/`PREVIOUS` (87/88) change tracks through
 `@jofr/capacitor-media-session`'s existing MediaSession action handlers, no code changes needed.
-On TV that is also the answer to the Space/K parity gap: every focused element is a `<button>` (so
-the global Space shortcut is suppressed by design) and a remote has no K key — play/pause belongs
+On TV that is also the answer to the Space/K parity gap: the global keyboard shortcuts are inert on
+a TV build (a focused `<button>` owns Space anyway) and a remote has no K key — play/pause belongs
 to the media keys, which work.
 
 **D-pad navigation (Phase 3 extends this to grids)**: a `'grid'` axis was added
@@ -431,7 +431,7 @@ column, clamped into a shorter final row. Applied to every Library page card gri
 compilations, singles/EPs, artists, genres) + the Library playlists list, artist-detail's
 albums/singles/appears-on grids, the Search page's catalog albums grid + artist chips, the
 album-hunt-modal candidate list, and — via one shared change to `TrackRowComponent` itself — every
-song list built on it (library Songs tab, album/genre/artist/playlist detail pages). **Settings/Admin/Extensions coverage (Phase 4)**: applied to Settings' theme/budget/auto-preserve grids and account action list, the Devices/agent-tokens revoke lists, Admin's services grid, log-service buttons, processing-task checkboxes, and user-management action buttons, and the Extensions (plugins) page's enable/configure buttons per card. Forms stay Tab-order-only by design — native `<input>`/`<select>` elements are never wrapped in `appTvNavItem`, so arrow keys keep their native meaning inside them (caret movement, select-value change, number increment). **Find-a-song flow coverage (issue #389)**: the Library **tabs bar** is a horizontal group; the album-detail **action row** (Play/Select/Download/Share/Fix/Remove) is a horizontal group; **every `TrackRowComponent` is its own horizontal child group** (title + like + remove + ⋯ menu toggle as items) nested inside the surrounding vertical list, enabled by the mixed items+child-groups directive rework; and **`MenuPanelComponent` speaks D-pad** — the first action autofocuses on open, ArrowUp/Down move between actions (stopPropagation so the list behind never navigates underneath), Enter activates, and closing restores focus to the trigger (only when focus was inside the panel — an outside click keeps its own focus). This is what finally exposes `SongMenuService`'s Play next / Add to queue to remote users; the keyboard-only journey is locked in by `packages/e2e/tests/library-dpad-tv.spec.ts`. **The #389 tail is closed (issue #396)**: `TvNavItemDirective` gained an Enter/Space→`click()` activation passthrough for hosts with no native key activation (skipped for buttons/inputs — a synthesized click would double-fire — and for keys coming from a focusable descendant), which is what the Admin **duplicates list** needed — the panel is one vertical group where the find button, every song row (`<label>` wrapping its checkbox; the passthrough makes Enter toggle it, and the label's native forward-to-control means the checkbox flips exactly once) and the delete button share one sweep. The **streaming panel**'s two checkbox rows got per-row horizontal groups with the checkbox as the item, while its `<select>`s deliberately stay **outside every group's subtree** (the structural invariant the user-row test pins: a select inside a group would have its option cycling intercepted) — select rows remain served by the WebView's spatial navigation and the native TV picker dialog. And the **fullscreen karaoke overlay** is now a vertical group of two horizontal rows — header (exit / browse / vocal-mute) + transport (prev / play-pause / next) — so all six buttons are D-pad reachable; the browse-mode lyric lines keep their existing tabindex/Enter handling (D-pad line browsing is possible follow-up work, but browse mode is primarily the wheel/touch gesture surface). The full keyboard shortcut table (Phase 6) is also still just Space/K.
+song list built on it (library Songs tab, album/genre/artist/playlist detail pages). **Settings/Admin/Extensions coverage (Phase 4)**: applied to Settings' theme/budget/auto-preserve grids and account action list, the Devices/agent-tokens revoke lists, Admin's services grid, log-service buttons, processing-task checkboxes, and user-management action buttons, and the Extensions (plugins) page's enable/configure buttons per card. Forms stay Tab-order-only by design — native `<input>`/`<select>` elements are never wrapped in `appTvNavItem`, so arrow keys keep their native meaning inside them (caret movement, select-value change, number increment). **Find-a-song flow coverage (issue #389)**: the Library **tabs bar** is a horizontal group; the album-detail **action row** (Play/Select/Download/Share/Fix/Remove) is a horizontal group; **every `TrackRowComponent` is its own horizontal child group** (title + like + remove + ⋯ menu toggle as items) nested inside the surrounding vertical list, enabled by the mixed items+child-groups directive rework; and **`MenuPanelComponent` speaks D-pad** — the first action autofocuses on open, ArrowUp/Down move between actions (stopPropagation so the list behind never navigates underneath), Enter activates, and closing restores focus to the trigger (only when focus was inside the panel — an outside click keeps its own focus). This is what finally exposes `SongMenuService`'s Play next / Add to queue to remote users; the keyboard-only journey is locked in by `packages/e2e/tests/library-dpad-tv.spec.ts`. **The #389 tail is closed (issue #396)**: `TvNavItemDirective` gained an Enter/Space→`click()` activation passthrough for hosts with no native key activation (skipped for buttons/inputs — a synthesized click would double-fire — and for keys coming from a focusable descendant), which is what the Admin **duplicates list** needed — the panel is one vertical group where the find button, every song row (`<label>` wrapping its checkbox; the passthrough makes Enter toggle it, and the label's native forward-to-control means the checkbox flips exactly once) and the delete button share one sweep. The **streaming panel**'s two checkbox rows got per-row horizontal groups with the checkbox as the item, while its `<select>`s deliberately stay **outside every group's subtree** (the structural invariant the user-row test pins: a select inside a group would have its option cycling intercepted) — select rows remain served by the WebView's spatial navigation and the native TV picker dialog. And the **fullscreen karaoke overlay** is now a vertical group of two horizontal rows — header (exit / browse / vocal-mute) + transport (prev / play-pause / next) — so all six buttons are D-pad reachable; the browse-mode lyric lines keep their existing tabindex/Enter handling (D-pad line browsing is possible follow-up work, but browse mode is primarily the wheel/touch gesture surface). The full keyboard shortcut table now ships as the desktop vocabulary of issue #1296 (see [web-ui.md](web-ui.md) "Keyboard shortcuts"); on the TV build it is inert except the `/player` seek.
 
 **The mini-player grab notch (issue #432)**: the one affordance in the player chrome that had
 **no** D-pad path. Both the notch and the bar were bound solely to `(pointerdown)` →
@@ -562,43 +562,33 @@ the cross-component-boundary case itself — the five consumer page specs cannot
 harness can't bind a nested component's signal inputs (see `src/testing/signal-input.ts`) and they
 stub the rows out.
 
-**Global keyboard shortcuts (Phase 2)**: `KeyboardShortcutsService`
-(`packages/web/src/app/services/keyboard-shortcuts.service.ts`, initialized once from `App`) — so
-far just Space/K toggle play/pause app-wide. Space is suppressed when a focused `<button>`/`<a>`
-would otherwise handle it (native Space/Enter activation wins there — e.g. a focused queue row);
-K has no such native meaning so it always works outside a text field. **The rest of the table now ships (Phase 5)**: `J`/`L` (previous/next track), `M` (toggle vocal
-mute), `N` (open Now Playing), `ArrowLeft`/`ArrowRight` (seek ±10s), and `/` (navigate to Acquire).
+**Global keyboard shortcuts**: `KeyboardShortcutsService`
+(`packages/web/src/app/services/keyboard-shortcuts.service.ts`, initialized once from `App`)
+dispatches the table in `lib/keyboard-shortcuts.ts` — the key list, the guards and the decisions
+live in [web-ui.md](web-ui.md) "Keyboard shortcuts" (issue #1296). The history that shaped the
+guards:
 
-Three guards make the arrow keys safe to own globally:
-
-1. **Never on a modifier chord** — `handle()` bails immediately on
-   `ctrlKey || metaKey || altKey`. Without it, `Alt+ArrowLeft`/`Alt+ArrowRight` (browser
-   Back/Forward) matched the seek branch and were `preventDefault`'d, silently breaking history
-   navigation app-wide, and `Ctrl+J`/`Ctrl+L`/`Ctrl+N`/`Cmd+M`/`Ctrl+K` each _also_ fired their
-   player action because `event.key` for a modifier chord is still the bare letter. `Shift` is
-   deliberately **not** in the guard (it only produces the uppercase `J`/`K`/`L`/`M`/`N` already
-   handled, and `Shift+/` → `'?'`, which matches nothing).
-2. **Never on a focused `<select>`** — a closed `<select>` changes its selected option on
-   ArrowLeft/ArrowRight, a preventable default the seek branch would otherwise steal (there are
-   `<select>`s in the Library sort dropdowns, Settings, Admin and the track-info sheet). The check
-   is narrower than the Space branch's `isNativelyActivatable()` on purpose:
-   `BUTTON`/`A`/`SUMMARY`/`role=button` have no arrow-key behaviour to protect, and excluding them
-   would kill seeking for the very common case of a focused button.
+1. **Never on a modifier chord** — `Alt+ArrowLeft`/`Alt+ArrowRight` (browser Back/Forward) once
+   matched the seek branch and were `preventDefault`'d, silently breaking history navigation
+   app-wide, and `Ctrl+L`/`Ctrl+N`/`Cmd+M`/`Ctrl+K` each _also_ fired their player action because
+   `event.key` for a modifier chord is still the bare letter. `Shift` is not a chord: it selects
+   prev/next on the arrows and produces `?`.
+2. **Never from a text field, including a `<select>`** — a closed `<select>` changes its option on
+   the arrow keys and type-ahead selects on letters, preventable defaults a shortcut would steal.
+   The guard is `isTextEntryTarget`, shared with pull-to-refresh. Space additionally yields to a
+   focused `<button>`/`<a>`/`role=button` (native activation wins — e.g. a focused queue row);
+   `K` has no such native meaning and always works outside a text field.
 3. **Never when a D-pad nav group already claimed the press** — `event.defaultPrevented`. Since
    `TvNavGroupDirective` `preventDefault`s **every key its axis navigates by, including one clamped
    at a group boundary** (see `tv-nav-group.directive.ts`), grid/list navigation and seeking never
    double-fire on the same arrow press — an edge press is a true no-op rather than an unexpected
-   ±10s jump. A key the group's axis does _not_ navigate by (ArrowUp inside a `horizontal` group;
-   ArrowUp at a grid's first row, where there is no row to jump to) stays un-prevented and reaches
-   the global handler — neither is a seek key, so nothing leaks.
-4. **Never on a TV build** (issue #387) — the seek branch returns before `preventDefault()` when
-   `isTvBuild()`. On Android TV, the WebView's built-in D-pad **spatial focus navigation** is what
-   moves focus between elements not covered by a nav group; `preventDefault()` on the keydown is
-   exactly what cancels that focus move. This is why vertical D-pad movement always worked (ArrowUp/
-   Down are never intercepted) while horizontal was dead across the whole Now Playing sheet — the
-   transport row could never even be _entered_ horizontally. Seeking on TV stays available through
-   the focused seek bar (a native `<input type="range">` consumes ArrowLeft/Right to scrub) and the
-   remote's hardware media keys via MediaSession. Non-TV builds keep the seek shortcut unchanged.
+   jump.
+4. **Inert on a TV build** (issues #387, #438) — on Android TV the WebView's built-in D-pad
+   **spatial focus navigation** moves focus between elements not covered by a nav group, and
+   `preventDefault()` on the keydown is exactly what cancels that focus move (horizontal movement
+   across the whole Now Playing sheet was once dead for this reason). The one exception is ◀ ▶ =
+   ±10 s on the `/player` route, which has no seek bar to focus; play/pause and track changes on
+   TV belong to the remote's media keys via MediaSession.
 
 **Hardware Back (issue #394)**: Android's Back button used to finish the activity from anywhere
 (the observed TV behavior of "Back exits the app"). `BackButtonService`
@@ -625,9 +615,8 @@ the artist-image album picker) keep managing their registration per open/close. 
 playlist-rename input keeps its element-scoped Escape (cancel-the-rename is caret-local, not an
 overlay) but now `preventDefault`s so the global listener never also closes an overlay behind it.
 
-**Deliberately not built**: `Escape`-as-back (would need to arbitrate against 7+ existing per-component modal Escape
-handlers with no current shared "is a modal open" signal — real, separate work) and any
-volume shortcut (this app has no volume-level control to wire one to).
+**Deliberately not built**: any volume shortcut (this app has no volume-level control to wire one
+to). Escape is the shared back stack's, above.
 
 **Phase 3/4 final-review follow-ups (issues #356-#359), resolved**:
 

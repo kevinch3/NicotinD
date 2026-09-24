@@ -189,6 +189,8 @@ export class PlayerService {
   readonly radioQueueTarget = signal(DEFAULT_RADIO_QUEUE_TARGET);
   readonly context = signal<PlayContext | null>(null);
   readonly nowPlayingOpen = signal(false);
+  /** One-shot request for the sheet's side panel (Q/Y shortcuts, #1296); Now Playing consumes and clears it. */
+  readonly nowPlayingPanelRequest = signal<'queue' | 'lyrics' | null>(null);
   // How far the CLOSED sheet is lifted above its parked position while the
   // mini bar is being dragged up (live-follow open). The bar and the sheet are
   // separate components, so the finger offset crosses here like `nowPlayingOpen`.
@@ -732,6 +734,12 @@ export class PlayerService {
 
   setNowPlayingOpen(open: boolean): void {
     this.nowPlayingOpen.set(open);
+  }
+
+  /** Open the Now Playing sheet on the given side panel. */
+  showNowPlayingPanel(panel: 'queue' | 'lyrics'): void {
+    this.nowPlayingPanelRequest.set(panel);
+    this.setNowPlayingOpen(true);
   }
 
   setNowPlayingLiftPx(px: number): void {

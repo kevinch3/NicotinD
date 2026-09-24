@@ -1118,5 +1118,21 @@
   "vibe.fast": "120bpm+",
   "vibe.happy": "Alegre",
   "vibe.party": "Fiesta",
-  "vibe.uplifting": "Optimista"
+  "vibe.uplifting": "Optimista",
+  "shortcuts.title": "Atajos de teclado",
+  "shortcuts.closeSheet": "Cerrar atajos de teclado",
+  "shortcuts.togglePlay": "Reproducir / pausar",
+  "shortcuts.seekBack": "Retroceder 5 segundos",
+  "shortcuts.seekForward": "Avanzar 5 segundos",
+  "shortcuts.prevTrack": "Pista anterior",
+  "shortcuts.nextTrack": "Pista siguiente",
+  "shortcuts.like": "Me gusta la pista actual",
+  "shortcuts.radio": "Iniciar una radio desde la pista actual",
+  "shortcuts.toggleNowPlaying": "Abrir o cerrar Reproduciendo",
+  "shortcuts.queueTab": "Mostrar la cola",
+  "shortcuts.lyricsTab": "Mostrar la letra",
+  "shortcuts.vocalMute": "Silenciar o activar la voz",
+  "shortcuts.search": "Buscar",
+  "shortcuts.close": "Cerrar la hoja o superposición abierta",
+  "shortcuts.help": "Mostrar esta lista"
 }

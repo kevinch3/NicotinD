@@ -1,4 +1,13 @@
-import { Component, inject, signal, computed, effect, viewChild, DestroyRef } from '@angular/core';
+import {
+  Component,
+  inject,
+  signal,
+  computed,
+  effect,
+  viewChild,
+  DestroyRef,
+  untracked,
+} from '@angular/core';
 import { Router } from '@angular/router';
 import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
@@ -514,6 +523,16 @@ export class NowPlayingComponent {
       return false;
     });
     this.destroyRef.onDestroy(unregisterBack);
+
+    // Q / Y (#1296): the shortcut asks for a panel; the panel state is ours.
+    effect(() => {
+      const panel = this.player.nowPlayingPanelRequest();
+      if (!panel) return;
+      untracked(() => {
+        this.setActivePanel(panel);
+        this.player.nowPlayingPanelRequest.set(null);
+      });
+    });
 
     // Remote playback interpolation (rAF loop)
     effect((onCleanup) => {

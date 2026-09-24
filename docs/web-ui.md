@@ -1797,6 +1797,52 @@ the row is the grab handle, a drag target the notch rules already protect, and a
 over it would be a tap target sitting on a drag target.
 
 
+## Keyboard shortcuts (issue #1296)
+
+One table, `SHORTCUTS` in `lib/keyboard-shortcuts.ts`, is both what `KeyboardShortcutsService`
+dispatches from and what the `?` sheet (`KeyboardShortcutsSheetComponent`, mounted in the layout
+shell, `data-testid="shortcuts-sheet"`) renders, so a key cannot work without being listed or be
+listed without working. The mapping is the pure `keyToAction(event, context)`: the service reduces
+the DOM to four booleans (TV build, TV `/player` route, text-entry focus, natively activatable
+focus) and the table is unit-tested without a DOM (`keyboard-shortcuts.spec.ts`).
+
+| Key | Action |
+| --- | --- |
+| Space / K | play / pause (Space yields to a focused button's own activation) |
+| ← / → | seek −5 s / +5 s (held keys repeat) |
+| Shift+← / Shift+→ | previous / next track |
+| L | like the current track (`LikeService.toggle`) |
+| R | start a radio from the current track (`PlayerService.startRadio`, the song menu's path — it restarts the track as the anchor) |
+| N | toggle the Now Playing sheet |
+| Q / Y | open the sheet on the Queue / Lyrics tab (`PlayerService.showNowPlayingPanel`) |
+| M | mute / unmute vocals |
+| / | focus the page's own visible search box, else go to the library and focus its find box |
+| Esc | close the innermost overlay |
+| ? | toggle the shortcut sheet |
+
+Decisions:
+
+- **Shift on the arrows means prev/next, not ±30 s.** The issue listed both for the same chord;
+  track skip is the one users reach for, and seeking further is a held arrow.
+- **Esc is listed but not dispatched here.** It belongs to `BackButtonService`'s Escape listener and
+  the shared `BackHandlerStack` (issue #398), which closes karaoke fullscreen, then the track-info
+  sheet, then Now Playing, innermost first — and must keep working from inside a text field, where
+  this table never fires. The row has `scope: 'back-stack'`; the sheet registers its own closer.
+- **Never from a text field**: `isTextEntryTarget` (`lib/text-entry.ts`,
+  `input,textarea,select,[contenteditable]`) is the same guard the pull-to-refresh gesture uses.
+- **Never on a Ctrl/Meta/Alt chord** (Alt+← is Back, Ctrl+L the address bar, Cmd+M minimize), and
+  never on a keypress something already `preventDefault`-ed (a D-pad nav group, the side-panel
+  splitter).
+- **Media keys are not in the table**; they stay with the media session, so nothing double-fires.
+- **Inert on the TV build** except ◀ ▶ = ±10 s on the `/player` route (issue #438, the `tv-player`
+  scope): the D-pad owns every other key there. See [tv-ux.md](tv-ux.md).
+- **No volume keys.** The app has no volume or mute control to drive; M keeps its existing meaning
+  (vocal mute), and ↑ / ↓ volume was not built.
+- **J is gone.** L became like, so the old J/L prev/next pair moved to Shift+← / Shift+→.
+
+`now-playing-desktop.spec.ts` presses Space, Esc, `/` and `?` in a real browser, and checks that
+typing into the focused search box is typing, not a shortcut.
+
 ## Bundle size budget (issue #256)
 
 `packages/web/angular.json` carried the **untouched Angular CLI scaffold defaults**
