@@ -39,7 +39,7 @@ describe('MetadataFixModalComponent cover picker', () => {
             deleteSongs: vi.fn(() => of({ ok: true, deletedCount: 1 })),
           },
         },
-        { provide: AuthService, useValue: { token: () => 'tok' } },
+        { provide: AuthService, useValue: { token: () => 'tok', mediaToken: () => 'tok' } },
         { provide: ServerConfigService, useValue: { apiUrl: (p: string) => p } },
         { provide: ConfirmService, useValue: { ask: vi.fn(() => Promise.resolve(true)) } },
         { provide: ToastService, useValue: { show: vi.fn() } },

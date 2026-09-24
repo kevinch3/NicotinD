@@ -47,6 +47,21 @@ export class AuthService {
   readonly isAuthenticated = computed(() => !!this.token());
 
   /**
+   * Stable per-user credential for media URLs (#1329), from `GET /me`. Covers
+   * and streams carry it in `?token=` instead of the session JWT, which rotates
+   * on every refresh and so made every cover a new URL to the browser cache.
+   * Falls back to the JWT until `/me` has answered (and on an older server).
+   */
+  readonly mediaKey = signal<string | null>(localStorage.getItem('nicotind_media_key'));
+  readonly mediaToken = computed(() => this.mediaKey() ?? this.token());
+
+  setMediaKey(key: string | null): void {
+    if (key) localStorage.setItem('nicotind_media_key', key);
+    else localStorage.removeItem('nicotind_media_key');
+    this.mediaKey.set(key);
+  }
+
+  /**
    * Deployment-wide acquisition kill-switch (#235), mirrored from `GET /me`'s
    * `acquisitionEnabled`. When false the whole acquisition module is off for
    * this install — `canAcquire()` is forced false so every acquisition surface
@@ -85,6 +100,9 @@ export class AuthService {
     this.token.set(token);
     this.username.set(username);
     this.role.set(role);
+    // A key from an earlier session is never another user's credential; `/me`
+    // supplies this one, and the JWT serves media until it does.
+    this.setMediaKey(null);
   }
 
   /**
@@ -141,6 +159,7 @@ export class AuthService {
     this.prefs.clear();
 
     localStorage.removeItem('nicotind_token');
+    localStorage.removeItem('nicotind_media_key');
     localStorage.removeItem('nicotind_username');
     localStorage.removeItem('nicotind_role');
     localStorage.removeItem('nicotind_player_state');
@@ -152,6 +171,7 @@ export class AuthService {
     clearGroupStates(localStorage);
 
     this.token.set(null);
+    this.mediaKey.set(null);
     this.username.set(null);
     this.role.set(null);
     this.welcomeDismissed.set(false);

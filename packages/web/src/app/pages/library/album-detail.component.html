@@ -13,7 +13,7 @@
 
     <div class="flex flex-col sm:flex-row items-center sm:items-end gap-6 mb-8 text-center sm:text-left">
       <app-cover-art
-        [src]="selectedAlbum()!.coverArt ? '/api/cover/' + selectedAlbum()!.coverArt + '?size=300&token=' + auth.token() + (coverBust() ? '&v=' + coverBust() : '') : undefined"
+        [src]="selectedAlbum()!.coverArt ? '/api/cover/' + selectedAlbum()!.coverArt + '?size=300&token=' + auth.mediaToken() + (coverBust() ? '&v=' + coverBust() : '') : undefined"
         [artist]="selectedAlbum()!.artist"
         [album]="selectedAlbum()!.name"
         [size]="192"

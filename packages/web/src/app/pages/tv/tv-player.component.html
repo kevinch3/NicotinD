@@ -14,7 +14,7 @@
   @if (track(); as t) {
     <div class="relative z-10 flex flex-col items-center gap-4 px-[4vw]">
       <app-cover-art
-        [src]="t.coverArt ? '/api/cover/' + t.coverArt + '?size=600&token=' + auth.token() : undefined"
+        [src]="t.coverArt ? '/api/cover/' + t.coverArt + '?size=600&token=' + auth.mediaToken() : undefined"
         [artist]="t.artist"
         [album]="t.album ?? ''"
         [size]="188"

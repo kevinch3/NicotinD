@@ -90,7 +90,10 @@ function setup() {
     providers: [
       provideRouter([]),
       { provide: PlayerService, useValue: playerStub },
-      { provide: AuthService, useValue: { token: signal('tok'), canCurate: () => true } },
+      {
+        provide: AuthService,
+        useValue: { token: signal('tok'), mediaToken: signal('tok'), canCurate: () => true },
+      },
       { provide: LibraryApiService, useValue: libraryStub },
       { provide: RemotePlaybackService, useValue: remoteStub },
       {

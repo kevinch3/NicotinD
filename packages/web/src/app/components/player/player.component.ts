@@ -453,7 +453,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     // the Web Media Session API) as well as the browser.
     effect(() => {
       const track = this.player.currentTrack();
-      const token = this.auth.token();
+      const token = this.auth.mediaToken();
 
       if (!track) {
         this.mediaControls.setMetadata({ title: '', artist: '', album: '', artwork: [] });

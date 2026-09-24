@@ -185,3 +185,63 @@ describe('a database failure is not an auth failure (#927)', () => {
     expect(await res.json()).toEqual({ error: 'Invalid or expired token' });
   });
 });
+
+describe('media key (#1329)', () => {
+  const SECRET = 'test-secret';
+  let app: Hono<AuthEnv>;
+
+  beforeEach(() => {
+    testDb.run(
+      "INSERT OR REPLACE INTO users (id, username, password_hash, role, status) VALUES ('mk-user', 'mk', 'hash-1', 'user', 'active')",
+    );
+    app = new Hono();
+    app.use('/api/*', authMiddleware(SECRET));
+    app.get('/api/cover/:id', (c) => c.json({ user: c.get('user').sub }));
+    app.get('/api/stream/:id', (c) => c.json({ user: c.get('user').sub }));
+    app.post('/api/cover/:id', (c) => c.json({ ok: true }));
+    app.get('/api/library/songs', (c) => c.json({ ok: true }));
+  });
+
+  const key = async () => {
+    const { mediaKeyFor } = await import('../services/media-key.js');
+    return mediaKeyFor(testDb, SECRET, 'mk-user')!;
+  };
+
+  it('authorizes GETs of covers and streams from the query string', async () => {
+    const k = await key();
+    for (const path of ['/api/cover/x', '/api/stream/y']) {
+      const res = await app.request(`${path}?token=${encodeURIComponent(k)}`);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ user: 'mk-user' });
+    }
+  });
+
+  it('is refused outside media GETs', async () => {
+    const k = await key();
+    expect((await app.request(`/api/library/songs?token=${k}`)).status).toBe(401);
+    expect((await app.request(`/api/cover/x?token=${k}`, { method: 'POST' })).status).toBe(401);
+  });
+
+  it('is revoked by a password change and refused for a disabled account', async () => {
+    const k = await key();
+    testDb.run("UPDATE users SET password_hash = 'hash-2' WHERE id = 'mk-user'");
+    expect((await app.request(`/api/cover/x?token=${k}`)).status).toBe(401);
+    const k2 = await key();
+    expect(k2).not.toBe(k);
+    expect((await app.request(`/api/cover/x?token=${k2}`)).status).toBe(200);
+    testDb.run("UPDATE users SET status = 'disabled' WHERE id = 'mk-user'");
+    expect((await app.request(`/api/cover/x?token=${k2}`)).status).toBe(401);
+  });
+
+  it('rejects a forged or malformed key', async () => {
+    const k = await key();
+    const forged = k.slice(0, -2) + (k.endsWith('AA') ? 'BB' : 'AA');
+    for (const bad of [forged, 'mk1.mk-user', 'mk1.nobody.abc', 'mk1..x']) {
+      expect((await app.request(`/api/cover/x?token=${encodeURIComponent(bad)}`)).status).toBe(401);
+    }
+  });
+
+  it('is stable across calls, unlike a JWT', async () => {
+    expect(await key()).toBe(await key());
+  });
+});

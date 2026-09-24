@@ -36,7 +36,10 @@ describe('TrackRowComponent — current-track indicator', () => {
       providers: [
         PlayerService,
         provideRouter([{ path: '**', children: [] }]),
-        { provide: AuthService, useValue: { token: signal('test-token') } },
+        {
+          provide: AuthService,
+          useValue: { token: signal('test-token'), mediaToken: signal('test-token') },
+        },
         { provide: ServerConfigService, useValue: { apiUrl: (u: string) => u } },
         { provide: LikeService, useValue: { isLiked: () => false, toggle: () => {} } },
       ],
@@ -187,7 +190,10 @@ describe('TrackRowComponent inside an appTvNavGroup (cross-component boundary)',
       imports: [HostComponent],
       providers: [
         PlayerService,
-        { provide: AuthService, useValue: { token: signal('test-token') } },
+        {
+          provide: AuthService,
+          useValue: { token: signal('test-token'), mediaToken: signal('test-token') },
+        },
         { provide: ServerConfigService, useValue: { apiUrl: (u: string) => u } },
         { provide: LikeService, useValue: { isLiked: () => false, toggle: () => {} } },
       ],
@@ -293,7 +299,10 @@ describe('TrackRowComponent — entity menu doors', () => {
       providers: [
         PlayerService,
         provideRouter([{ path: '**', children: [] }]),
-        { provide: AuthService, useValue: { token: signal('test-token') } },
+        {
+          provide: AuthService,
+          useValue: { token: signal('test-token'), mediaToken: signal('test-token') },
+        },
         { provide: ServerConfigService, useValue: { apiUrl: (u: string) => u } },
         { provide: LikeService, useValue: { isLiked: () => false, toggle: () => {} } },
       ],

@@ -54,7 +54,10 @@ function setup(pool: Song[] | 'error', seeds: RecentPlay[] = []) {
     providers: [
       { provide: LibraryApiService, useValue: { getRandomSongs } },
       { provide: PlayerService, useValue: { startRadio } },
-      { provide: AuthService, useValue: { token: signal('test-token') } },
+      {
+        provide: AuthService,
+        useValue: { token: signal('test-token'), mediaToken: signal('test-token') },
+      },
     ],
   });
   const fixture = TestBed.createComponent(TasteBreakersComponent);

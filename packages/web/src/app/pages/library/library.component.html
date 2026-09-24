@@ -185,7 +185,7 @@
               class="group relative p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left cursor-pointer break-inside-avoid">
               <app-entity-menu-button [actions]="albumActions(album)" placement="absolute top-2 left-2" />
               <app-cover-art
-                [src]="album.coverArt ? '/api/cover/' + album.coverArt + '?size=300&token=' + auth.token() : undefined"
+                [src]="album.coverArt ? '/api/cover/' + album.coverArt + '?size=300&token=' + auth.mediaToken() : undefined"
                 [artist]="album.artist"
                 [album]="album.name"
                 [fill]="true"
@@ -304,7 +304,7 @@
                 class="group relative p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left cursor-pointer block">
                 <app-entity-menu-button [actions]="albumActions(album)" />
                 <app-cover-art
-                  [src]="album.coverArt ? '/api/cover/' + album.coverArt + '?size=300&token=' + auth.token() : undefined"
+                  [src]="album.coverArt ? '/api/cover/' + album.coverArt + '?size=300&token=' + auth.mediaToken() : undefined"
                   [artist]="album.artist"
                   [album]="album.name"
                   [fill]="true"
@@ -395,7 +395,7 @@
                 class="group relative p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left cursor-pointer block">
                 <app-entity-menu-button [actions]="albumActions(album)" />
                 <app-cover-art
-                  [src]="album.coverArt ? '/api/cover/' + album.coverArt + '?size=300&token=' + auth.token() : undefined"
+                  [src]="album.coverArt ? '/api/cover/' + album.coverArt + '?size=300&token=' + auth.mediaToken() : undefined"
                   [artist]="album.artist"
                   [album]="album.name"
                   [fill]="true"
@@ -489,7 +489,7 @@
                 <app-entity-menu-button [actions]="artistActions(artist)" />
                 <div class="relative">
                   <app-cover-art
-                    [src]="artist.coverArt ? '/api/cover/' + artist.coverArt + '?size=160&token=' + auth.token() + (artistImageVersion() ? '&v=' + artistImageVersion() : '') : undefined"
+                    [src]="artist.coverArt ? '/api/cover/' + artist.coverArt + '?size=160&token=' + auth.mediaToken() + (artistImageVersion() ? '&v=' + artistImageVersion() : '') : undefined"
                     [artist]="artist.name"
                     [size]="80"
                     rounded="rounded-full"

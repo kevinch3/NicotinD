@@ -22,7 +22,7 @@ describe('PresenceService (#882)', () => {
     TestBed.configureTestingModule({
       providers: [
         PresenceService,
-        { provide: AuthService, useValue: { token: signal('t') } },
+        { provide: AuthService, useValue: { token: signal('t'), mediaToken: signal('t') } },
         {
           provide: PlaybackWsService,
           useValue: { getDeviceId: () => `${PROFILE}:tab-7` },

@@ -8,6 +8,8 @@ export interface UserProfile {
   username: string;
   role: string;
   welcomeDismissed: boolean;
+  /** Stable per-user media credential (#1329); null for a share session, absent on older servers. */
+  mediaKey?: string | null;
   /** The remembered variety position (docs/radio.md "Strategies"); older servers omit it. */
   radioStrategy?: StrategyId;
   /** Admin dev-mode: capture generated results as gradeable feedback. */

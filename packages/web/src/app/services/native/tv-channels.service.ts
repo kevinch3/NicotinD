@@ -96,7 +96,7 @@ export class TvChannelsService {
           void plugin.clearPlayNext().catch(() => {});
           return;
         }
-        const token = this.auth.token();
+        const token = this.auth.mediaToken();
         void plugin
           .publishPlayNext({
             title: track.title,
@@ -116,7 +116,7 @@ export class TvChannelsService {
   async syncChannel(): Promise<void> {
     const plugin = this.plugin;
     if (!plugin) return;
-    const token = this.auth.token();
+    const token = this.auth.mediaToken();
     if (!token) {
       await plugin.clearChannel().catch(() => {});
       return;

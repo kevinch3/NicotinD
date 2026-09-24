@@ -10,6 +10,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   short-lived, read-only and non-refreshable. `authGuard` preserves the attempted URL and
   `sanitizeReturnUrl` validates it; an already-logged-in share link resolves in-app without burning
   the public token. → [design-patterns.md](../design-patterns.md), [web-ui.md](../web-ui.md)
+- **Media key for cover URLs**: a stable per-user HMAC credential (`mediaKeyFor`/`verifyMediaKey`)
+  replaces the rotating JWT in cover URLs so the browser cache survives refreshes; accepted only on
+  media GETs (`MEDIA_PATH_RE`), web side `mediaToken()`. → [design-patterns.md](../design-patterns.md)
 - **Public-signup kill-switch**: default-closed `registrationEnabled`; `RegistrationToggle` +
   `GET`/`PUT /api/admin/registration` back the Admin → User Management switch. Unlike acquisition,
   `NICOTIND_REGISTRATION` pins by *presence* (`resolveRegistrationEnabled`): set either way, the

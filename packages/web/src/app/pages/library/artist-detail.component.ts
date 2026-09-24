@@ -212,7 +212,7 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     const a = this.artist();
     if (!a?.coverArt) return undefined;
     const v = this.imageVersion();
-    return `/api/cover/${a.coverArt}?size=200&token=${this.auth.token()}${v ? `&v=${v}` : ''}`;
+    return `/api/cover/${a.coverArt}?size=200&token=${this.auth.mediaToken()}${v ? `&v=${v}` : ''}`;
   });
 
   /** Albums the user can copy a cover from (regular albums + singles/EPs). */

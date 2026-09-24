@@ -118,7 +118,7 @@ export class TvKaraokeComponent {
         return;
       }
       const url = this.server.apiUrl(
-        `/api/cover/${track.coverArt}?size=80&token=${this.auth.token()}`,
+        `/api/cover/${track.coverArt}?size=80&token=${this.auth.mediaToken()}`,
       );
       void loadCoverPalette(url).then((palette) => {
         if (this.player.currentTrack()?.id === track.id) this.colors.set(palette);

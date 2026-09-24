@@ -122,7 +122,7 @@ export class MetadataFixModalComponent implements OnInit {
 
   /** Renderable thumbnail src for a cover option (token + size for our own URLs). */
   coverSrc(c: AlbumCoverCandidate): string {
-    return this.server.apiUrl(coverThumbUrl(c, this.auth.token() ?? ''));
+    return this.server.apiUrl(coverThumbUrl(c, this.auth.mediaToken() ?? ''));
   }
 
   /** Apply a picked cover (Lidarr alt / album-track embedded art). Current = no-op. */

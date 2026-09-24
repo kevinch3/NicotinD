@@ -61,7 +61,10 @@ describe('UserManagementPanelComponent', () => {
             setRegistration,
           },
         },
-        { provide: AuthService, useValue: { token: () => over.token ?? null } },
+        {
+          provide: AuthService,
+          useValue: { token: () => over.token ?? null, mediaToken: () => over.token ?? null },
+        },
         { provide: ConfirmService, useValue: { ask } },
       ],
     }).compileComponents();
@@ -339,7 +342,7 @@ describe('UserManagementPanelComponent', () => {
               setRegistration: vi.fn(),
             },
           },
-          { provide: AuthService, useValue: { token: () => null } },
+          { provide: AuthService, useValue: { token: () => null, mediaToken: () => null } },
           { provide: ConfirmService, useValue: { ask: vi.fn(async () => true) } },
         ],
       }).compileComponents();

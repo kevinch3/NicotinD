@@ -146,7 +146,7 @@ export class KeepVibeComponent {
    */
   coverSrc(song: Song): string | undefined {
     return song.coverArt
-      ? `/api/cover/${song.coverArt}?size=300&token=${this.auth.token()}`
+      ? `/api/cover/${song.coverArt}?size=300&token=${this.auth.mediaToken()}`
       : undefined;
   }
 }

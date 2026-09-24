@@ -59,7 +59,7 @@ describe('TvChannelsService (Play Next + Assistant voice)', () => {
           provide: PlayerService,
           useValue: { currentTrack: signal(null), playSingle },
         },
-        { provide: AuthService, useValue: { token } },
+        { provide: AuthService, useValue: { token, mediaToken: token } },
         { provide: ServerConfigService, useValue: { apiUrl: (u: string) => `http://s${u}` } },
         { provide: LibraryApiService, useValue: { getAllSongs: songs, getAlbums: albums } },
         {

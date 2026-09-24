@@ -28,7 +28,7 @@ describe('NowPlayingCoverArtComponent', () => {
       providers: [
         provideRouter([]),
         { provide: PlayerService, useValue: { currentTrack: () => track } },
-        { provide: AuthService, useValue: { token: () => 'tok' } },
+        { provide: AuthService, useValue: { token: () => 'tok', mediaToken: () => 'tok' } },
         { provide: LikeService, useValue: likes },
         { provide: ReportTrackService, useValue: report },
         {

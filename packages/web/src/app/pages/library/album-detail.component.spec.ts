@@ -67,7 +67,10 @@ function setup(
         provide: LibraryApiService,
         useValue: { getAlbum, deleteSongs, optimizeAlbumMetadata },
       },
-      { provide: AuthService, useValue: { token: signal('tok'), role: () => 'admin' } },
+      {
+        provide: AuthService,
+        useValue: { token: signal('tok'), mediaToken: signal('tok'), role: () => 'admin' },
+      },
       { provide: PlayerService, useValue: { play: () => {}, playWithContext, playSingle } },
       { provide: PlaylistService, useValue: { openPicker: vi.fn() } },
       // The list-controls connect() result is only read through the (unrendered)
@@ -287,7 +290,10 @@ describe('AlbumDetailComponent — disc headers', () => {
         },
         { provide: ActivatedRoute, useValue: { snapshot: { paramMap: { get: () => 'a1' } } } },
         { provide: LibraryApiService, useValue: { getAlbum: () => of({ song: songs }) } },
-        { provide: AuthService, useValue: { token: signal('tok'), role: () => 'admin' } },
+        {
+          provide: AuthService,
+          useValue: { token: signal('tok'), mediaToken: signal('tok'), role: () => 'admin' },
+        },
         { provide: PlayerService, useValue: { play: () => {} } },
         { provide: PlaylistService, useValue: { openPicker: vi.fn() } },
         {

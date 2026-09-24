@@ -4,7 +4,7 @@
   } @else if (album(); as a) {
     <div class="flex gap-10 items-end">
       <app-cover-art
-        [src]="a.coverArt ? '/api/cover/' + a.coverArt + '?size=600&token=' + auth.token() : undefined"
+        [src]="a.coverArt ? '/api/cover/' + a.coverArt + '?size=600&token=' + auth.mediaToken() : undefined"
         [artist]="a.artist"
         [album]="a.name"
         [size]="260"

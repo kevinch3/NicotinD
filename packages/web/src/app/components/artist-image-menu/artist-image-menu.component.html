@@ -110,7 +110,7 @@
             >
               <app-cover-art
                 [src]="
-                  a.coverArt ? '/api/cover/' + a.coverArt + '?size=160&token=' + auth.token() : undefined
+                  a.coverArt ? '/api/cover/' + a.coverArt + '?size=160&token=' + auth.mediaToken() : undefined
                 "
                 [album]="a.name"
                 [size]="120"

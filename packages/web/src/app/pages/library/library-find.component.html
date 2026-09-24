@@ -56,7 +56,7 @@
               data-testid="artist-card"
               class="p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-center cursor-pointer block">
               <app-cover-art
-                [src]="'/api/cover/' + artist.id + '?size=300&token=' + auth.token()"
+                [src]="'/api/cover/' + artist.id + '?size=300&token=' + auth.mediaToken()"
                 [artist]="artist.name"
                 [fill]="true"
                 rounded="rounded-full"

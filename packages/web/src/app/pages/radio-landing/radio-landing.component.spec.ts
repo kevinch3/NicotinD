@@ -51,7 +51,10 @@ function setup(overrides: { getFilterRadio?: () => unknown; getGenres?: () => un
         },
       },
       { provide: ToastService, useValue: { show: toastShow } },
-      { provide: AuthService, useValue: { token: signal('test-token') } },
+      {
+        provide: AuthService,
+        useValue: { token: signal('test-token'), mediaToken: signal('test-token') },
+      },
     ],
     schemas: [NO_ERRORS_SCHEMA],
   });

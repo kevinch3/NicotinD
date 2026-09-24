@@ -35,7 +35,10 @@ function setup(rows: RecentPlay[] | 'error') {
         },
       },
       { provide: PlayerService, useValue: { playWithContext, currentTrack: signal(null) } },
-      { provide: AuthService, useValue: { token: signal('test-token') } },
+      {
+        provide: AuthService,
+        useValue: { token: signal('test-token'), mediaToken: signal('test-token') },
+      },
     ],
   });
   const fixture = TestBed.createComponent(RecentlyPlayedComponent);
@@ -157,7 +160,10 @@ describe('RecentlyPlayedComponent — loading window', () => {
             currentTrack: signal(hasPlayedBefore ? { id: 'x', title: 'X', artist: 'Y' } : null),
           },
         },
-        { provide: AuthService, useValue: { token: signal('test-token') } },
+        {
+          provide: AuthService,
+          useValue: { token: signal('test-token'), mediaToken: signal('test-token') },
+        },
       ],
     });
     const fixture = TestBed.createComponent(RecentlyPlayedComponent);

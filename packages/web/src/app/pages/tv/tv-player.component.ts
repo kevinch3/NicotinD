@@ -64,7 +64,7 @@ export class TvPlayerComponent {
    *  the phone sheet, this component only exists while the route is active. */
   readonly backdrop = computed(() => {
     const art = this.track()?.coverArt;
-    return art ? `url(/api/cover/${art}?size=600&token=${this.auth.token()})` : null;
+    return art ? `url(/api/cover/${art}?size=600&token=${this.auth.mediaToken()})` : null;
   });
 
   togglePlay(): void {
