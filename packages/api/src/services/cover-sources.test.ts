@@ -16,6 +16,7 @@ import {
   selectDistinctEmbeddedCovers,
   extractEmbeddedPicture,
   writeFolderCover,
+  replaceFolderCover,
   type EmbeddedPicture,
 } from './cover-sources.js';
 
@@ -134,6 +135,40 @@ describe('writeFolderCover', () => {
     expect(writeFolderCover(dir, { data: new Uint8Array([1]), contentType: 'image/webp' })).toBe(
       'cover.webp',
     );
+  });
+});
+
+describe('replaceFolderCover (#1336)', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'cover-sources-replace-'));
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+  const webp: EmbeddedPicture = { data: new Uint8Array([9]), contentType: 'image/webp' };
+
+  it('removes every other cover.* the readers would pick first, so the new one is served', () => {
+    writeFileSync(join(dir, 'cover.jpg'), 'old');
+    writeFileSync(join(dir, 'Cover.PNG'), 'old');
+    expect(findFolderCoverName(dir)).not.toBe('cover.webp');
+
+    expect(replaceFolderCover(dir, webp, true)).toBe('cover.webp');
+    expect(findFolderCoverName(dir)).toBe('cover.webp');
+    expect(readdirSync(dir)).toEqual(['cover.webp']);
+  });
+
+  it('leaves other folder-image basenames alone (cover.* outranks them)', () => {
+    writeFileSync(join(dir, 'folder.jpg'), 'keep');
+    writeFileSync(join(dir, 'front.png'), 'keep');
+    replaceFolderCover(dir, webp, true);
+    expect(readdirSync(dir).sort()).toEqual(['cover.webp', 'folder.jpg', 'front.png']);
+    expect(findFolderCoverName(dir)).toBe('cover.webp');
+  });
+
+  it('never deletes anything in a folder the album does not own (shared bucket, #978)', () => {
+    writeFileSync(join(dir, 'cover.jpg'), 'someone else');
+    replaceFolderCover(dir, webp, false);
+    expect(readdirSync(dir).sort()).toEqual(['cover.jpg', 'cover.webp']);
+    expect(readFileSync(join(dir, 'cover.jpg'), 'utf8')).toBe('someone else');
   });
 });
 

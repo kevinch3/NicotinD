@@ -60,6 +60,19 @@ export function clearCoverNegativeCache(id?: string): void {
 }
 
 /**
+ * Evict the negative-art cache for an album AND every song id of it. A song id
+ * resolves to its album's cover, so after a cover change one that was 404-cached
+ * as artless would keep 404ing for up to `NO_ART_TTL_MS` (#1336).
+ */
+export function clearAlbumCoverNegativeCache(db: Database, albumId: string): void {
+  noArtCache.delete(albumId);
+  const songs = db
+    .query<{ id: string }, [string]>('SELECT id FROM library_songs WHERE album_id = ?')
+    .all(albumId);
+  for (const { id } of songs) noArtCache.delete(id);
+}
+
+/**
  * Native streaming + cover art. Replaces the Navidrome media proxy: serves file
  * bytes straight from disk (with HTTP range support) and resolves cover art from
  * folder images or embedded tags. Optional ffmpeg transcoding is gated by the

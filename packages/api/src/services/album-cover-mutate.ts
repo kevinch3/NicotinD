@@ -2,9 +2,14 @@ import type { Database } from 'bun:sqlite';
 import { existsSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { setArtwork, deleteArtwork, purgeDiskArtCache } from './artwork-store.js';
-import { extractEmbeddedPicture, writeFolderCover, type EmbeddedPicture } from './cover-sources.js';
+import {
+  extractEmbeddedPicture,
+  replaceFolderCover,
+  type EmbeddedPicture,
+} from './cover-sources.js';
+import { folderArtBelongsToAlbum } from './album-folder.js';
 import { expandDir, resolveSongPath, isUnderMusicDir } from './song-path.js';
-import { clearCoverNegativeCache } from '../routes/streaming.js';
+import { clearAlbumCoverNegativeCache } from '../routes/streaming.js';
 import { libraryEvents } from './library-events.js';
 
 /**
@@ -50,7 +55,7 @@ export async function applyAlbumCover(
   const coverUrl = body.coverUrl?.trim();
   if (coverUrl) {
     setArtwork(db, albumId, 'album', coverUrl, deps.coverCacheDir);
-    clearCoverNegativeCache(albumId); // in case this id was 404-cached as artless
+    clearAlbumCoverNegativeCache(db, albumId); // in case an id was 404-cached as artless
     libraryEvents.emit({ type: 'artwork.changed', albumId, coverArt: null, version: Date.now() });
     return { ok: true, mode: 'canonical-url' };
   }
@@ -73,10 +78,10 @@ export async function applyAlbumCover(
     }
     const pic = await (deps.extractPicture ?? extractEmbeddedPicture)(abs);
     if (!pic) return { ok: false, error: 'That track has no embedded artwork', status: 400 };
-    writeFolderCover(dirname(abs), pic);
+    replaceFolderCover(dirname(abs), pic, folderArtBelongsToAlbum(db, song.path));
     deleteArtwork(db, albumId, deps.coverCacheDir); // clear canonical → folder art wins
     if (deps.coverCacheDir) purgeDiskArtCache(deps.coverCacheDir, albumId);
-    clearCoverNegativeCache(albumId);
+    clearAlbumCoverNegativeCache(db, albumId);
     libraryEvents.emit({ type: 'artwork.changed', albumId, coverArt: null, version: Date.now() });
     return { ok: true, mode: 'folder-cover' };
   }

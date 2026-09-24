@@ -466,7 +466,7 @@ Invalidation needs no per-id bookkeeping, because a stale answer can only come f
 | tags rewritten (metadata fix, enrichment) | the audio file's mtime moves the stamp |
 | folder image appears/disappears, folder becomes a bucket | the chosen source changes, so the stamp does |
 | `purgeDiskArtCache(id)` (album cover set, artist override removed) | deletes `<id>.ref` (plus legacy `<id>` / `<id>@size` files); the shared `d_` image is left, as it is never stale for the ids still pointing at it |
-| `clearCoverNegativeCache(id)` | unchanged — the negative cache is still keyed by the requested id |
+| `clearCoverNegativeCache(id)` / `clearAlbumCoverNegativeCache(db, albumId)` | unchanged — the negative cache is still keyed by the requested id, so an album cover change evicts the album id and all of its song ids (#1336) |
 
 `GET /api/cover/:id?embedded=1` is a special mode that serves **only** the file's embedded picture — skipping both canonical and folder art — for a _song_ id, cached under a distinct `<id>~emb` key. It backs the Fix-metadata cover picker (so a user can preview/choose the artwork baked into a specific track); extraction is the shared `extractEmbeddedPicture` (`services/cover-sources.ts`), which the normal `extractCover` also delegates to for its embedded fallback. See [metadata-optimize.md](metadata-optimize.md) "Cover picker".
 

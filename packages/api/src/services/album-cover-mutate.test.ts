@@ -91,6 +91,25 @@ describe('applyAlbumCover', () => {
     expect(existsSync(join(dirname(abs), written[0]!))).toBe(true);
   });
 
+  it('songId mode replaces an existing cover.jpg rather than leaving it to shadow the pick (#1336)', async () => {
+    const abs = join(musicDir, relPath);
+    mkdirSync(dirname(abs), { recursive: true });
+    writeFileSync(abs, 'x');
+    writeFileSync(join(dirname(abs), 'cover.jpg'), 'old');
+    const res = await applyAlbumCover(
+      db,
+      {
+        musicDir,
+        extractPicture: async () => ({ contentType: 'image/png', data: Buffer.from('png') }),
+      },
+      'al1',
+      { songId: 's1' },
+    );
+    expect(res).toEqual({ ok: true, mode: 'folder-cover' });
+    expect(readdirSync(dirname(abs)).filter((f) => f.startsWith('cover'))).toEqual(['cover.png']);
+    rmSync(join(dirname(abs), 'cover.png'));
+  });
+
   it('400s a track with no embedded artwork', async () => {
     const abs = join(musicDir, relPath);
     mkdirSync(dirname(abs), { recursive: true });

@@ -253,6 +253,21 @@ describe('POST /albums/:id/cover — cover route reflects the change immediately
     expect(after.status).toBe(200);
     expect(after.headers.get('content-type')).toBe('image/png');
   });
+
+  it('a song id that was 404-cached serves the new cover too, not only the album id (#1336)', async () => {
+    seedAlbum(testDb);
+    const app = makeCombinedApp();
+    expect((await app.request('/api/cover/song-1')).status).toBe(404);
+
+    const apply = await app.request('/albums/album-1/cover', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ coverUrl: 'https://img/new.jpg' }),
+    });
+    expect(apply.status).toBe(200);
+
+    expect((await app.request('/api/cover/song-1')).status).toBe(200);
+  });
 });
 
 describe('PUT /albums/:id/cover — upload a custom image', () => {
@@ -372,6 +387,74 @@ describe('PUT /albums/:id/cover — upload a custom image', () => {
     expect(songAfter.headers.get('etag')).not.toBe(oldEtag);
     expect(albumAfter.headers.get('etag')).toBe(songAfter.headers.get('etag'));
     expect((await sharp(Buffer.from(await songAfter.arrayBuffer())).metadata()).width).toBe(1200);
+  });
+
+  it('an upload over an existing cover.jpg replaces it instead of being shadowed by it (#1336)', async () => {
+    const app = makeApp();
+    const albumDir = join(musicDir, 'Aphex Twin', 'Drukqs');
+    const sharp = (await import('sharp')).default;
+    const oldJpg = await sharp({
+      create: { width: 40, height: 40, channels: 3, background: { r: 255, g: 0, b: 0 } },
+    })
+      .jpeg()
+      .toBuffer();
+    writeFileSync(join(albumDir, 'cover.jpg'), oldJpg);
+    expect((await app.request('/api/cover/album-1')).headers.get('content-type')).toBe(
+      'image/jpeg',
+    );
+
+    const res = await app.request('/albums/album-1/cover', {
+      method: 'PUT',
+      body: uploadForm(await pngBytes(300, 300), 'image/png'),
+    });
+    expect(res.status).toBe(200);
+
+    expect(existsSync(join(albumDir, 'cover.jpg'))).toBe(false);
+    expect(existsSync(join(albumDir, 'cover.webp'))).toBe(true);
+    for (const id of ['album-1', 'song-1']) {
+      const after = await app.request(`/api/cover/${id}`);
+      expect(after.status).toBe(200);
+      expect(after.headers.get('content-type')).toBe('image/webp');
+    }
+  });
+
+  it("clears the negative cache for the album's song ids too, not just the album (#1336)", async () => {
+    const app = makeApp();
+    // Both ids 404 and get memoized as artless before the upload.
+    expect((await app.request('/api/cover/song-1')).status).toBe(404);
+    expect((await app.request('/api/cover/album-1')).status).toBe(404);
+
+    const res = await app.request('/albums/album-1/cover', {
+      method: 'PUT',
+      body: uploadForm(await pngBytes(300, 300), 'image/png'),
+    });
+    expect(res.status).toBe(200);
+
+    expect((await app.request('/api/cover/song-1')).status).toBe(200);
+    expect((await app.request('/api/cover/album-1')).status).toBe(200);
+  });
+
+  it('never deletes a cover in a shared bucket folder (#978)', async () => {
+    // A second album's track in the same directory makes it a bucket.
+    testDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, cover_art, song_count, duration, year, synced_at)
+       VALUES ('album-2', 'Other', 'Aphex Twin', 'artist-1', 'album-2', 1, 120, 2001, 0)`,
+    );
+    testDb.run(
+      `INSERT INTO library_songs
+        (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, synced_at)
+       VALUES ('song-2', 'album-2', 'Other', 'Aphex Twin', 'artist-1', 120,
+         'Aphex Twin/Drukqs/02 - Other.flac', 1000, 1000, 'flac', 'audio/flac', '2024-01-01', 0)`,
+    );
+    const bucketCover = join(musicDir, 'Aphex Twin', 'Drukqs', 'cover.jpg');
+    writeFileSync(bucketCover, "not this album's to delete");
+
+    const res = await makeApp().request('/albums/album-1/cover', {
+      method: 'PUT',
+      body: uploadForm(await pngBytes(300, 300), 'image/png'),
+    });
+    expect(res.status).toBe(200);
+    expect(existsSync(bucketCover)).toBe(true);
   });
 
   it('415s for a disallowed content type', async () => {
