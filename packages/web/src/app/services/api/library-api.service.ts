@@ -27,7 +27,13 @@ import type {
   ArtistIdentityResult,
   AutoFetchImageResult,
 } from './api-types';
-import type { LibraryFragmentReport, LibraryHealthReport, MissplitPreview } from './api-types';
+import type {
+  AlbumCompleteness,
+  CompleteAlbumResponse,
+  LibraryFragmentReport,
+  LibraryHealthReport,
+  MissplitPreview,
+} from './api-types';
 import type { IdentifyApplyFields, IdentifySuggestion } from './api-types';
 import type { SongMetadataCandidates, SongMetadataFields, SongMetadataResult } from './api-types';
 import type { MaintenanceStatus } from './api-types';
@@ -434,6 +440,16 @@ export class LibraryApiService {
 
   getAlbum(id: string) {
     return this.http.get<AlbumDetail>(`/api/library/albums/${id}`);
+  }
+
+  /** Issue #737: the album-scoped completeness row — cheap, unlike the report. */
+  getAlbumCompleteness(id: string): Observable<AlbumCompleteness> {
+    return this.http.get<AlbumCompleteness>(`/api/library/albums/${id}/completeness`);
+  }
+
+  /** Issue #737: hunt ONLY this album's missing tracks (curator; idempotent). */
+  completeAlbum(id: string): Observable<CompleteAlbumResponse> {
+    return this.http.post<CompleteAlbumResponse>(`/api/library/albums/${id}/complete`, {});
   }
 
   // Stable, whole-library reads that the library page re-fetches on every visit.

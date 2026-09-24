@@ -785,6 +785,11 @@ export function createApp({
       audioFeaturesClient,
       mbClient,
       scanIncremental,
+      acquisition: {
+        getAddon: () => activeRemoteAcquisitionAddon(plugins),
+        isAcquisitionEnabled: acquisitionOn,
+        minMatchPct: config.watchlist.minMatchPct,
+      },
       // Same provider chain the windowed artist-image task uses, so the
       // on-demand fill isn't a Lidarr-only shortcut (issue #250).
       lookupArtistImageSpotify: (name) =>

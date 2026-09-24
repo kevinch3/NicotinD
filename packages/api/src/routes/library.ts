@@ -100,7 +100,8 @@ import {
 } from '../services/cover-sources.js';
 import { folderArtBelongsToAlbum } from '../services/album-folder.js';
 import { checkFragments } from '../services/library-fragments.js';
-import { libraryHealthWithLidarr } from '../services/library-health.js';
+import { albumConfirmedIncomplete, libraryHealthWithLidarr } from '../services/library-health.js';
+import { completeAlbum, type CompleteAlbumDeps } from '../services/album-complete.js';
 import { applyAlbumCover } from '../services/album-cover-mutate.js';
 import {
   applyMissplitMerge,
@@ -410,6 +411,9 @@ export interface LibraryRoutesOptions {
   writeTags?: (abs: string, tags: AudioTags) => Promise<boolean>;
   /** Overridable for tests; defaults to services/audio-tags.js `readAudioTags`. */
   readTags?: (abs: string) => Promise<AudioTags>;
+  /** The MCP `complete_album` seams, for the album page's Complete action
+   *  (issue #737). Absent → the action answers 503. */
+  acquisition?: Omit<CompleteAlbumDeps, 'db' | 'lidarr'>;
 }
 
 interface AlbumRow {
@@ -631,6 +635,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     scanIncremental,
     writeTags,
     readTags,
+    acquisition,
   } = options;
   // A deleted file's slskd share entry doesn't go away on its own — see
   // ShareRescanScheduler. Debounced so an album/bulk delete triggers one
@@ -1076,6 +1081,43 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     attachAlbumArtists(db, [album]);
     attachSongArtists(db, songs);
     return c.json({ ...album, song: songs });
+  });
+
+  // Confirmed-incomplete only (issue #737) — the album-scoped slice of the
+  // health report's completeness dimension, cheap enough for every page view.
+  app.get('/albums/:id/completeness', (c) => {
+    const id = c.req.param('id');
+    const db = getDatabase();
+    if (!db.query('SELECT 1 FROM library_albums WHERE id = ?').get(id)) {
+      return c.json({ error: 'Album not found', code: 'ALBUM_NOT_FOUND' }, 404);
+    }
+    const row = albumConfirmedIncomplete(db, id);
+    return c.json({
+      albumId: id,
+      confirmed: row ? { expected: row.expected, owned: row.owned, missing: row.missing } : null,
+    });
+  });
+
+  // "Complete this album" — hunts only the missing tracks; the web twin of the
+  // MCP `complete_album` tool, through the same `completeAlbum`.
+  app.post('/albums/:id/complete', async (c) => {
+    requireCurator(c);
+    if (!acquisition) return c.json({ error: 'Acquisition not available' }, 503);
+    const user = c.get('user');
+    const res = await completeAlbum(
+      { db: getDatabase(), lidarr, ...acquisition },
+      { albumId: c.req.param('id') },
+      { actor: user },
+    );
+    if (res.ok) return c.json(res);
+    const status = {
+      'album-not-found': 404,
+      'no-target': 400,
+      'acquisition-disabled': 403,
+      'lidarr-unconfigured': 503,
+      unresolvable: 422,
+    } as const;
+    return c.json({ error: res.error, reason: res.reason }, status[res.reason]);
   });
 
   app.delete('/albums/:id', async (c) => {

@@ -656,9 +656,42 @@ work, so they get links rather than buttons, and only to pages that exist: album
 genre artists → `/library/artists/:id`, open flags → the `/library/curate` triage round. A library
 with no songs shows an empty state instead of twelve all-zero cards that would read as healthy.
 
+### Album page badge (issue #737)
+
+The album page embeds the **confirmed** completeness row for that one album — never the suspected
+(track-gap) bucket, which is advisory. `AlbumCompletenessComponent` (`pages/library/`) reads
+`GET /api/library/albums/:id/completeness` (any signed-in user) and renders an *incomplete — N of M
+tracks* badge (`data-testid="album-incomplete-badge"`) when `confirmed` is non-null. It re-reads when
+the album changes (the page's `changedAlbums` sequence), so landed tracks clear it.
+
+The route does **not** compute the report. `albumConfirmedIncomplete(db, albumId)` runs the report's
+own `confirmedIncomplete` over the newest job per pair, narrowed — before any tracklist JSON is parsed
+(`jobCanonicalTracklists`' `keep` filter) — to the pairs `matchingLocalAlbums` would map onto this
+album, and returns the row only when the report would attribute it to this `albumId`. The unit tests
+assert it `toEqual` the report's worklist row, so the badge cannot drift into a second rule.
+
+It reads the **stored** hunt-time tracklist, not Lidarr's live one (#1080): the report's live
+reconciliation is a network fan-out an album page view must not pay. So the badge can read
+incomplete where the hunt then answers `already-complete` — which is why the action surfaces that
+outcome as a notice rather than an error.
+
+Curators (`auth.canCurate()`) also get **Complete this album** (`data-testid="album-complete-action"`),
+`POST /api/library/albums/:id/complete` → `completeAlbum` (`services/album-complete.ts`), the one
+implementation shared with the MCP `complete_album` tool: same kill-switch refusal, same Lidarr-id
+resolution, same `acquireAlbum` only-missing-tracks hunt, same `album.acquire` audit (the web
+actor is the user, the MCP actor `agent:<tokenId>`). The button is disabled when `auth.canAcquire()`
+is false — the kill-switch cascade every acquisition surface uses — and after an `enqueued` or
+`in-flight` answer; each outcome is a toast, a failure's addon `detail` appended. There is no
+auto-complete loop — that remains the opt-in auto-acquire job's territory.
+
+`e2e/tests/album-completeness.spec.ts` asserts the real route answers `confirmed: null` for a fixture
+album and the page shows no badge. **The e2e server cannot produce a confirmed-incomplete album**:
+canonical tracklists are recorded only by Lidarr-backed hunts, and e2e has no Lidarr, so the
+incomplete render, curator action and toast are driven through routed responses.
+
 ## Tests / CI
 `library-quality.test.ts`, `library-audit.test.ts`, `library-disk-audit.test.ts`,
-`library-health.test.ts`, `routes/library.health.test.ts`,
+`library-health.test.ts`, `routes/library.health.test.ts`, `routes/library.album-complete.test.ts`,
 and the `library-curator.test.ts` cases run in the `ci` job
 (`bun test packages/api/src`). The pure predicates and `selectPollutionTargets`
 mis-split protection are unit-tested directly; the auditor rules, health dimensions and curator

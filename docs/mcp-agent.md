@@ -458,11 +458,14 @@ one for a tool that spends bandwidth/disk and contacts peers.
 Order of refusals is deliberate: resolve the album, then the **kill-switch**
 (`isAcquisitionEnabled` — the runtime toggle with the `NICOTIND_ACQUISITION=off`
 env floor an agent cannot lift), then Lidarr-id resolution in owner-approved
-scope: **(a)** the newest `album_jobs` row for the artist/title pair (proven
-canonical tracklist — the health report's confirmed-incomplete population),
+scope: **(a)** the newest (`created_at`) `album_jobs ∪ acquisition_jobs` row for
+the artist/title pair (proven canonical tracklist — the health report's
+confirmed-incomplete population),
 **(b)** a `lidarr.album.lookup` hit whose title `normalizeForGrouping`-matches;
 anything else errors toward the web catalog flow — no Lidarr provisioning from
-the agent surface in v1.
+the agent surface in v1. The whole sequence is `completeAlbum`
+(`services/album-complete.ts`), shared with the album page's curator
+**Complete this album** action (issue #737, docs/library-audit.md).
 
 The hunt itself is `acquireAlbum` — the watchlist/auto-acquire shared core — so
 every idempotence guard rides along: `already-complete` comes back as a notice
@@ -817,7 +820,7 @@ fields and unknown-album shape, the album curation tools
 `fix_album_metadata`'s re-mint + audited old→new / empty-body / unknown /
 read-only refusals, `set_album_cover`'s canonical write + error passthrough,
 `set_album_classification`'s override + hide + validation set),
-`complete_album`'s confirm gate, kill-switch refusal, album_jobs-first vs
+`complete_album`'s confirm gate, kill-switch refusal, hunted-job-first vs
 lookup-fallback resolution, idempotent already-complete notice and
 unresolvable-without-audit paths,
 unknown-method JSON-RPC error, and `checkToolAccess` covering the scope +
