@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.66](https://github.com/kevinch3/NicotinD/compare/v0.8.65...v0.8.66) (2026-09-24)
+
+### Bug Fixes
+
+* **transcode:** warn on every failed post-encode tag carry ([#1364](https://github.com/kevinch3/NicotinD/issues/1364)) ([7dd08ae](https://github.com/kevinch3/NicotinD/commit/7dd08aeafafa436347da98655dfb5b72cac1bd81))
 ## [0.8.65](https://github.com/kevinch3/NicotinD/compare/v0.8.64...v0.8.65) (2026-09-24)
 
 ### Bug Fixes
