@@ -1323,6 +1323,10 @@ gives the 20–60 Hz band real bins). It therefore ships on streaming-only insta
 depend on the descriptors store (docs/audio-descriptors.md). Generated **on demand** in the route
 handler — the `getTranscodedFile` precedent — and cached content-addressed on disk
 (`services/waveform-store.ts`; see cache-invalidation.md for the key and the negative cache).
+Every filesystem call on the `/peaks` path is async — the source check, the cache stat and read,
+the artifact write — so a cache hit never blocks the event loop the audio streams share (#1328). A
+test fails if a `*Sync(` call reappears in the store or the handler. The corrupt-artifact delete runs
+only when a file is actually there, since a missing one may be a concurrent decode's about to land.
 
 **The strip** (`NowPlayingWaveformComponent`, pure `lib/waveform-geometry.ts`): a static SVG above
 the seek bar in the sheet's transport. No per-frame work — progress is a CSS `clip-path` on the
