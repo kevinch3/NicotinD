@@ -910,8 +910,9 @@ describe('AdminComponent — group structure (Task 4 regroup)', () => {
     // generation-feedback queue, removed with that feature. 11 with the radio
     // preferences card (docs/genre-affinity.md). 12 with the library format
     // card (#1256), which is what finally made the irreversible conversion path
-    // configurable from the UI rather than only from compose files.
-    expect(headers.length).toBe(12);
+    // configurable from the UI rather than only from compose files. 13 with
+    // the library health report (#736).
+    expect(headers.length).toBe(13);
     fixture.destroy();
   });
 
@@ -938,6 +939,7 @@ describe('AdminComponent — group structure (Task 4 regroup)', () => {
       'app-library-processing-panel',
       'app-system-health-panel',
       'app-library-maintenance-panel',
+      'app-library-health-panel',
       'app-streaming-media-panel',
       'app-library-format-panel',
       'app-backups-data-panel',

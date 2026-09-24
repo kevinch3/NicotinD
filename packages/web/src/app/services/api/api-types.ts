@@ -1079,6 +1079,141 @@ export interface LibraryFragmentReport {
 }
 
 /**
+ * Mirrors `LibraryHealthReport` (`packages/api/src/services/library-health.ts`),
+ * restated rather than imported for the same reason as every other type here.
+ * `GET /api/library/health` — see docs/library-audit.md "Library health report".
+ */
+export interface LibraryHealthAlbumRef {
+  albumId: string;
+  name: string;
+  artist: string;
+}
+
+export interface LibraryHealthReport {
+  collectedAt: number;
+  totals: { artists: number; albums: number; visibleAlbums: number; songs: number };
+  dimensions: {
+    audit: {
+      metric: { high: number; medium: number; low: number };
+      worklist: { rule: string; severity: 'high' | 'medium' | 'low'; count: number }[];
+      remediation: string;
+    };
+    fragments: {
+      metric: { duplicateAlbums: number; hiddenByClassification: number; misSplitAlbums: number };
+      worklist: {
+        displayTitle: string;
+        members: number;
+        totalSongs: number;
+        artistSpellings: string[];
+      }[];
+      remediation: string;
+    };
+    albumCovers: {
+      metric: {
+        visible: number;
+        missing: number;
+        missingMultiTrack: number;
+        noEmbeddedArt: number;
+        unrenderable: number | null;
+      };
+      worklist: (LibraryHealthAlbumRef & { songCount: number })[];
+      remediation: string;
+    };
+    artistPortraits: {
+      metric: { visible: number; withPortrait: number; missing: number; manualOverride: number };
+      remediation: string;
+    };
+    genres: {
+      metric: { songs: number; missing: number; lowInformation: number };
+      worklist: { songId: string; title: string; artist: string }[];
+      lowInformationWorklist: { artistId: string; artist: string; genre: string; songs: number }[];
+      remediation: string;
+    };
+    years: {
+      metric: { visibleAlbums: number; missing: number; missingMultiTrack: number };
+      worklist: (LibraryHealthAlbumRef & { songCount: number })[];
+      remediation: string;
+    };
+    classification: {
+      metric: {
+        visibleUnknown: number;
+        oversized: number;
+        hidden: number;
+        hiddenUnjustified: number;
+      };
+      worklist: (LibraryHealthAlbumRef & {
+        classification: string;
+        songCount: number;
+        reason: string;
+      })[];
+      remediation: string;
+    };
+    formatCohesion: {
+      metric: { mixedFormatAlbums: number; lowBitrateAlbums: number; losslessSongs: number };
+      worklist: {
+        mixed: (LibraryHealthAlbumRef & { songCount: number; suffixes: string[] })[];
+        lowBitrate: (LibraryHealthAlbumRef & { songCount: number; avgKbps: number })[];
+      };
+      remediation: string;
+    };
+    completeness: {
+      metric: {
+        confirmedIncomplete: number;
+        suspected: number;
+        titleMismatch: number;
+        liveTracklists: number | null;
+      };
+      worklist: {
+        confirmed: {
+          albumId: string | null;
+          artist: string;
+          album: string;
+          expected: number;
+          owned: number;
+          missing: number;
+          lidarrAlbumId: number | null;
+          /** Raw per-table job state — display only, never branch on it. */
+          state: string;
+        }[];
+        suspected: (LibraryHealthAlbumRef & { disc: number; maxTrack: number; numbered: number })[];
+        titleMismatches: {
+          albumId: string | null;
+          artist: string;
+          album: string;
+          expected: number;
+          onDisk: number;
+          unmatched: number;
+        }[];
+      };
+      remediation: string;
+    };
+    disk: {
+      metric: { wronglyOrphaned: number | null; measuredAt: number | null };
+      remediation: string;
+    };
+    lyrics: {
+      metric: {
+        songs: number;
+        withLyrics: number;
+        suspectMatches: number;
+        unverified: number;
+        synced: number;
+        syncedBeyondDuration: number;
+      };
+      worklist: {
+        songId: string;
+        title: string;
+        artist: string;
+        deltaSec: number;
+        reason: 'duration' | 'overruns';
+      }[];
+      remediation: string;
+    };
+    flags: { metric: { open: number; oldestAt: number | null }; remediation: string };
+  };
+}
+
+/**
  * Why "Fetch automatically" did or did not replace an artist portrait. One
  * boolean used to stand for five outcomes, so the UI could not tell a
  * curator-locked artist from a Discogs timeout and reported neither (#988).
