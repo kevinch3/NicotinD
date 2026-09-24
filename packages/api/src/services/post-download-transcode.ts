@@ -17,6 +17,7 @@ import {
   type CanonicalTags,
 } from './audio-tags.js';
 import { quarantineOriginal } from './transcode-quarantine.js';
+import { readOggOpusDurationSec } from './opus-gain.js';
 import {
   ID3_TXXX_FFMPEG_MISNAMES,
   UNMODELLED_SPACED_KEYS,
@@ -654,6 +655,10 @@ async function readSourceDurationSec(absPath: string): Promise<number | null> {
 }
 
 async function readOutputDurationSec(absPath: string): Promise<number | null> {
+  // An Opus output is read in-process from its last Ogg page (#1305); its
+  // `null` stays a rejection. ffprobe only for a target that is not Ogg-Opus.
+  const oggSec = await readOggOpusDurationSec(absPath);
+  if (oggSec !== undefined) return oggSec;
   try {
     const ffprobe = ffmpegBinary().replace(/ffmpeg$/, 'ffprobe');
     const out = (

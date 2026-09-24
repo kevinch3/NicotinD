@@ -796,6 +796,17 @@ The ingest/library path is the opposite. Its next statement is
 (`post-download-transcode.ts`) **fails closed**: an output that cannot be probed is rejected, and the
 original survives.
 
+**An Opus output's duration is read in-process (#1305).** `readOggOpusDurationSec` (`opus-gain.ts`,
+next to the `OpusHead` parser) takes the last Ogg page's granule position minus the `OpusHead`
+pre-skip, over 48 kHz (RFC 7845 §4), with no ffprobe spawn. It is stricter than the ffprobe it
+replaces, and returns `null` (a rejection) for: a head page whose CRC fails, no complete CRC-valid
+page ending exactly at EOF (a truncated file, or trailing bytes), a last page without the
+end-of-stream flag or from another logical stream, and an unset granule. ffprobe reported a file
+with 200 bytes cut off its tail as the full 20.0 s, so the old check would have passed it and
+deleted the original. A target that is not Ogg-Opus (`undefined`) still goes to ffprobe. The
+granule value is also the exact playable length, where ffprobe over-reports by the 6.5 ms pre-skip
+(see opus-library-conversion-plan.md).
+
 Two ways it used to fail open, both ending with a delete on no evidence:
 
 1. the shared predicate's `null` best-effort pass, above;

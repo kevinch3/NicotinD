@@ -14,10 +14,16 @@
  */
 import { describe, expect, it, afterEach } from 'bun:test';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { gainForTarget, oggPageCrc, readOutputGain, writeOutputGain } from './opus-gain.js';
+import {
+  gainForTarget,
+  oggPageCrc,
+  readOggOpusDurationSec,
+  readOutputGain,
+  writeOutputGain,
+} from './opus-gain.js';
 import { ffmpegAvailable } from './transcode.js';
 
 const cleanups: Array<() => void> = [];
@@ -228,5 +234,131 @@ describe.skipIf(!ffmpegAvailable())('writeOutputGain', () => {
   it('declines a missing file', () => {
     expect(writeOutputGain('/nope/missing.opus', -4)).toBe(false);
     expect(readOutputGain('/nope/missing.opus')).toBeNull();
+  });
+});
+
+/** ffprobe's container duration, the probe the in-process reader replaces. */
+function ffprobeDuration(path: string): number {
+  return Number(
+    execFileSync(
+      'ffprobe',
+      ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', path],
+      { encoding: 'utf-8' },
+    ),
+  );
+}
+
+/** Byte offset of the last `OggS` capture pattern — the start of the final page. */
+function lastPageAt(buf: Buffer): number {
+  return buf.lastIndexOf('OggS');
+}
+
+describe.skipIf(!ffmpegAvailable())('readOggOpusDurationSec', () => {
+  it.skipIf(!tool('ffprobe'))(
+    'matches ffprobe within 10 ms and the encoded length within 1 ms, across lengths',
+    async () => {
+      const root = tmpRoot();
+      for (const seconds of [0.3, 1, 7.77, 61.3, 183.21]) {
+        const p = join(root, `t${seconds}.opus`);
+        makeOpus(p, seconds);
+        const mine = await readOggOpusDurationSec(p);
+        expect(mine).not.toBeNull();
+        expect(mine).not.toBeUndefined();
+        // ffprobe reports the pre-skip too (312 samples = 6.5 ms); the granule
+        // minus pre-skip is the playable length the encoder was given.
+        expect(Math.abs(mine! - ffprobeDuration(p))).toBeLessThan(0.01);
+        expect(Math.abs(mine! - seconds)).toBeLessThan(0.001);
+      }
+    },
+  );
+
+  it('is null (fail closed) for a file truncated anywhere after its head', async () => {
+    const root = tmpRoot();
+    const p = join(root, 'full.opus');
+    makeOpus(p, 5);
+    const full = readFileSync(p);
+    for (const keep of [full.length - 1, full.length - 200, Math.floor(full.length / 2), 400]) {
+      const cut = join(root, `cut${keep}.opus`);
+      writeFileSync(cut, full.subarray(0, keep));
+      expect(await readOggOpusDurationSec(cut)).toBeNull();
+    }
+  });
+
+  it('is null for trailing bytes after the last page', async () => {
+    const root = tmpRoot();
+    const p = join(root, 'a.opus');
+    makeOpus(p, 2);
+    writeFileSync(p, Buffer.concat([readFileSync(p), Buffer.from('garbage')]));
+    expect(await readOggOpusDurationSec(p)).toBeNull();
+  });
+
+  it('is null when the last page fails its CRC', async () => {
+    const root = tmpRoot();
+    const p = join(root, 'a.opus');
+    makeOpus(p, 2);
+    const buf = readFileSync(p);
+    buf[buf.length - 1] ^= 0xff;
+    writeFileSync(p, buf);
+    expect(await readOggOpusDurationSec(p)).toBeNull();
+  });
+
+  it('is null when the head page fails its CRC', async () => {
+    const root = tmpRoot();
+    const p = join(root, 'a.opus');
+    makeOpus(p, 2);
+    const buf = readFileSync(p);
+    buf[27 + buf[26]! + 9] ^= 0x01; // the channel count inside OpusHead
+    writeFileSync(p, buf);
+    expect(await readOggOpusDurationSec(p)).toBeNull();
+  });
+
+  it('is null when the last page is not flagged end-of-stream', async () => {
+    const root = tmpRoot();
+    const p = join(root, 'a.opus');
+    makeOpus(p, 2);
+    const buf = readFileSync(p);
+    const at = lastPageAt(buf);
+    buf[at + 5] &= ~0x04;
+    const page = buf.subarray(at);
+    page.writeUInt32LE(oggPageCrc(page), 22); // a valid page, just not the end
+    writeFileSync(p, buf);
+    expect(await readOggOpusDurationSec(p)).toBeNull();
+  });
+
+  it('is null when the last page belongs to another logical stream', async () => {
+    const root = tmpRoot();
+    const p = join(root, 'a.opus');
+    makeOpus(p, 2);
+    const buf = readFileSync(p);
+    const at = lastPageAt(buf);
+    buf.writeUInt32LE(buf.readUInt32LE(at + 14) ^ 1, at + 14);
+    const page = buf.subarray(at);
+    page.writeUInt32LE(oggPageCrc(page), 22);
+    writeFileSync(p, buf);
+    expect(await readOggOpusDurationSec(p)).toBeNull();
+  });
+
+  it('is null for a file holding only its OpusHead page (no audio pages)', async () => {
+    const root = tmpRoot();
+    const p = join(root, 'a.opus');
+    makeOpus(p, 2);
+    const buf = readFileSync(p);
+    let headLength = 27 + buf[26]!;
+    for (let i = 0; i < buf[26]!; i++) headLength += buf[27 + i]!;
+    writeFileSync(p, buf.subarray(0, headLength));
+    expect(await readOggOpusDurationSec(p)).toBeNull();
+  });
+
+  it('is undefined — use another probe — for anything that is not Ogg-Opus', async () => {
+    const root = tmpRoot();
+    const empty = join(root, 'empty.opus');
+    writeFileSync(empty, Buffer.alloc(0));
+    const text = join(root, 'text.opus');
+    writeFileSync(text, 'this is not an ogg file');
+    const flac = join(root, 'a.flac');
+    execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'sine=d=1', '-y', flac]);
+    for (const p of [empty, text, flac, join(root, 'missing.opus')]) {
+      expect(await readOggOpusDurationSec(p)).toBeUndefined();
+    }
   });
 });
