@@ -14,7 +14,7 @@ configuring an extension). This refactor draws clean lines.
 | Surface | Route | Audience | Contents |
 | --- | --- | --- | --- |
 | **Settings** | `/settings` | every user | Appearance, Offline storage, Remote playback + device name, Account (sign-out/version/changelog), iOS Now-Playing diagnostics. **Nothing admin- or extension-specific.** Admins also get `Admin →` + `Extensions →` links. |
-| **Admin** | `/admin` (`adminGuard`) | admins | User management, System (services/restart, scan, optimize-metadata, logs), **Streaming**, **Library processing**, **Library maintenance: find-duplicates**, Incomplete albums, Untracked downloads. |
+| **Admin** | `/admin` (`adminGuard`) | admins | User management, System (services/restart, scan, optimize-metadata, logs), **Streaming**, **Library processing**, **Library maintenance: find-duplicates**, **Library health** (on-demand curation report, [library-audit.md](library-audit.md)), Incomplete albums, Untracked downloads. |
 | **Extensions** | `/settings/plugins` (`adminGuard`) | admins | The plugin hub — three collapsible kind-group cards (Acquisition/Metadata/Connectivity), each holding a collapsible per-plugin card (enable/disable/consent + generic `configFields`). Extensions with bespoke settings (slskd) embed them inline in their own card body instead of linking to a separate page (Task 4, settings-cards unification). |
 
 > **slskd's settings used to live at `/settings/plugins/slskd`** — that route now just redirects

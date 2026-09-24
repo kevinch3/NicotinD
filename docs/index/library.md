@@ -119,8 +119,8 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   mis-classified albums via `contradictsTrackCount`, each row carrying its remediation
   (`fragment-remediation.ts`). → [library-scanner.md](../library-scanner.md)
 - **Library health report**: one `libraryHealth` module — every curation dimension as metric plus
-  a worst-first worklist — behind `GET /api/library/health`, the `library-health.ts` CLI and MCP
-  `get_library_health`. Shared predicates: `missingAlbumArtSql`, `losslessSuffixSql`,
+  a worst-first worklist — behind `GET /api/library/health`, the `library-health.ts` CLI, MCP
+  `get_library_health` and the Admin `LibraryHealthPanelComponent`. Shared predicates: `missingAlbumArtSql`, `losslessSuffixSql`,
   `lowInformationOnlyGenreSql`. → [library-audit.md](../library-audit.md)
 - **Metadata optimization**: conservative all-or-nothing bulk Lidarr re-fetch (`optimizeAllAlbums`),
   run as a cancellable background job on `MaintenanceService`, bounded by limit + cursor.

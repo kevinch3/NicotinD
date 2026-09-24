@@ -27,7 +27,7 @@ import type {
   ArtistIdentityResult,
   AutoFetchImageResult,
 } from './api-types';
-import type { LibraryFragmentReport, MissplitPreview } from './api-types';
+import type { LibraryFragmentReport, LibraryHealthReport, MissplitPreview } from './api-types';
 import type { IdentifyApplyFields, IdentifySuggestion } from './api-types';
 import type { SongMetadataCandidates, SongMetadataFields, SongMetadataResult } from './api-types';
 import type { MaintenanceStatus } from './api-types';
@@ -254,6 +254,13 @@ export class LibraryApiService {
    */
   getFragments(): Observable<LibraryFragmentReport> {
     return this.http.get<LibraryFragmentReport>(`/api/library/fragments`);
+  }
+  /**
+   * The curation health report (issue #734). On demand only — it issues many
+   * point queries, so the Admin panel fetches it on expand and never polls.
+   */
+  getLibraryHealth(): Observable<LibraryHealthReport> {
+    return this.http.get<LibraryHealthReport>(`/api/library/health`);
   }
   /** Issue #314: preview a mis-split cluster's members before merging. */
   missplitPreview(key: string): Observable<MissplitPreview> {

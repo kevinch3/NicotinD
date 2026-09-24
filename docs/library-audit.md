@@ -494,7 +494,7 @@ auditor never had: one pure, synchronous, DB-only report where every curation di
 remediation acts on it. The route (`GET /api/library/health?sample=N`, curator), the CLI
 (`scripts/library-health.ts`, always exits 0 — a dashboard, while `audit-library.ts` remains the
 DB+disk *gate*) and the MCP `get_library_health` tool are three renderings of this one object; the
-planned Admin panel (issue #736) is the fourth.
+Admin **Library health** panel (issue #736, below) is the fourth.
 
 Dimensions: audit summary (per-rule counts, no findings array), fragments (dup-album clusters),
 album covers (`missingAlbumArtSql`), artist portraits (`artistImageCoverage`), genres
@@ -628,6 +628,34 @@ Three consequences of unioning, each load-bearing:
   Lidarr albums to re-fetch, so it reads the union once and passes that list into `libraryHealth`
   (its third, optional argument) instead of letting both passes union the two tables.
 
+### The Admin panel (issue #736)
+
+`LibraryHealthPanelComponent` (`pages/admin/library-health/`) is one collapsed `<app-settings-group
+groupId="library-health">` on `/admin`. It calls `LibraryApiService.getLibraryHealth()` from the
+group's `(opened)` hook — once per page visit, again only on **Refresh** — never on page load and
+never on the `ServiceReview` poll. The web mirror of the shape is `LibraryHealthReport` in
+`api-types.ts`, restated rather than imported like every other web type.
+
+`buildHealthCards` (`library-health-cards.lib.ts`, pure) maps the report to one card per dimension:
+its metrics (`null` renders as *not measured*, never 0), each non-empty worklist as a collapsed list,
+and the report's own `remediation` string verbatim — server text, not UI copy, so it is not
+translated. Where a maintenance task's candidate set **is** the dimension's metric, the card carries
+a one-click button that POSTs `/api/admin/maintenance/:task` via `startMaintenance`:
+
+| dimension | task | shown when |
+|---|---|---|
+| `albumCovers` | `artwork-backfill` | `missing > 0` |
+| `years` | `metadata-optimize` | `missing > 0` |
+| `classification` | `metadata-optimize` (writes release type) | `visibleUnknown > 0` |
+| `formatCohesion` | `transcode-library` — **through `ConfirmService`** first | `losslessSongs > 0` |
+
+Every button is disabled while any maintenance pass runs (the same `isMaintenanceRunning` rule the
+Library maintenance panel uses); a 409/503 is reported inline. The other dimensions are judgement
+work, so they get links rather than buttons, and only to pages that exist: album rows →
+`/library/albums/:id` (confirmed/title-mismatch rows only when `albumId` is non-null), low-information
+genre artists → `/library/artists/:id`, open flags → the `/library/curate` triage round. A library
+with no songs shows an empty state instead of twelve all-zero cards that would read as healthy.
+
 ## Tests / CI
 `library-quality.test.ts`, `library-audit.test.ts`, `library-disk-audit.test.ts`,
 `library-health.test.ts`, `routes/library.health.test.ts`,
@@ -635,7 +663,11 @@ and the `library-curator.test.ts` cases run in the `ci` job
 (`bun test packages/api/src`). The pure predicates and `selectPollutionTargets`
 mis-split protection are unit-tested directly; the auditor rules, health dimensions and curator
 auto-hide use a seeded in-memory `bun:sqlite` DB (the health tests enumerate every
-suspected-gap false-positive guard by name).
+suspected-gap false-positive guard by name). The Admin panel is covered by
+`library-health-panel.component.spec.ts` (web vitest: lazy fetch, one card per dimension, task
+mapping, confirm on the transcode, error/empty states, every card key present in every catalog) and
+`e2e/tests/admin-library-health.spec.ts` (no request before expand, the real route renders every
+card, Cancel on the transcode confirm starts nothing).
 
 ## Follow-up (deferred): BPM / genre at acquisition
 On-demand `analyzeBpm` + `verifyGenre` (`track-analysis.ts`) could run in the ingest

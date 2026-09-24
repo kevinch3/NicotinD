@@ -1,0 +1,131 @@
+<app-settings-group
+  groupId="library-health"
+  icon="tag"
+  [title]="'admin.health.groupTitle' | t"
+  [description]="'admin.health.groupDesc' | t"
+  (opened)="onOpened()"
+>
+  <section data-testid="library-health-panel">
+    <div class="flex items-center gap-3 flex-wrap mb-4">
+      <button
+        type="button"
+        (click)="load()"
+        [disabled]="loading()"
+        data-testid="library-health-refresh"
+        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
+      >
+        {{ (loading() ? 'admin.health.loading' : 'admin.health.refresh') | t }}
+      </button>
+      @if (report(); as r) {
+        <span class="text-xs text-theme-muted" data-testid="library-health-totals">
+          {{
+            'admin.health.totals'
+              | t
+                : {
+                    artists: r.totals.artists,
+                    albums: r.totals.visibleAlbums,
+                    songs: r.totals.songs,
+                    when: formatTime(r.collectedAt),
+                  }
+          }}
+        </span>
+      }
+    </div>
+
+    @if (actionMsg(); as msg) {
+      <p class="text-xs text-theme-secondary mb-3" data-testid="library-health-action-msg">
+        {{ msg }}
+      </p>
+    }
+
+    @if (error(); as err) {
+      <p class="text-sm text-status-error mb-3" data-testid="library-health-error">{{ err }}</p>
+    }
+
+    @if (loading() && !report()) {
+      <p class="text-sm text-theme-muted" data-testid="library-health-loading">
+        {{ 'admin.health.loading' | t }}
+      </p>
+    } @else if (report(); as r) {
+      @if (r.totals.songs === 0) {
+        <!-- Nothing scanned yet: every metric would read 0, which looks healthy. -->
+        <p class="text-sm text-theme-muted" data-testid="library-health-empty">
+          {{ 'admin.health.empty' | t }}
+        </p>
+      } @else {
+        <div class="flex flex-col gap-3">
+          @for (card of cards(); track card.dimension) {
+            <article
+              class="rounded-lg border border-theme-subtle p-3"
+              [attr.data-testid]="'health-card-' + card.dimension"
+            >
+              <div class="flex items-start justify-between gap-3 mb-2">
+                <h3 class="text-sm font-semibold text-theme-primary">{{ card.titleKey | t }}</h3>
+                @if (card.action; as action) {
+                  <button
+                    type="button"
+                    (click)="runAction(card)"
+                    [disabled]="actionsDisabled()"
+                    [attr.data-testid]="'health-action-' + card.dimension"
+                    class="shrink-0 px-2.5 py-1 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
+                    [class.text-status-warn]="action.destructive"
+                  >
+                    {{ action.labelKey | t }}
+                  </button>
+                }
+              </div>
+
+              <dl class="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 mb-2">
+                @for (m of card.metrics; track m.labelKey) {
+                  <div class="flex justify-between gap-2 text-xs">
+                    <dt class="text-theme-muted">{{ m.labelKey | t }}</dt>
+                    <dd class="text-theme-primary tabular-nums">{{ m.value }}</dd>
+                  </div>
+                }
+              </dl>
+
+              @for (list of card.lists; track list.titleKey) {
+                <details class="mb-2">
+                  <summary class="text-xs text-theme-secondary cursor-pointer">
+                    {{ list.titleKey | t }} ({{ list.rows.length }})
+                  </summary>
+                  <ul class="mt-1 text-xs">
+                    @for (row of list.rows; track $index) {
+                      <li class="py-0.5 flex gap-2 min-w-0" data-testid="health-row">
+                        @if (row.link) {
+                          <a
+                            [routerLink]="row.link"
+                            class="text-theme-primary underline truncate"
+                            data-testid="health-row-link"
+                            >{{ row.label }}</a
+                          >
+                        } @else {
+                          <span class="text-theme-primary truncate">{{ row.label }}</span>
+                        }
+                        <span class="text-theme-muted truncate">{{ row.detail }}</span>
+                      </li>
+                    }
+                  </ul>
+                </details>
+              }
+
+              @if (card.link; as link) {
+                <a
+                  [routerLink]="link.commands"
+                  class="mb-2 inline-block text-xs underline text-theme-secondary hover:text-theme-primary"
+                  [attr.data-testid]="'health-link-' + card.dimension"
+                  >{{ link.labelKey | t }}</a
+                >
+              }
+
+              <p class="text-[11px] text-theme-muted">
+                <span class="font-medium">{{ 'admin.health.remediation' | t }}:</span>
+                {{ card.remediation }}
+              </p>
+            </article>
+          }
+        </div>
+      }
+    }
+  </section>
+</app-settings-group>
