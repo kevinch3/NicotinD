@@ -76,7 +76,7 @@ export function createRowGesture(options: RowGestureOptions): RowGesture {
   const drag = createPointerDrag({
     onStart: (e) => {
       mode.set('pending');
-      samples = [{ t: e.timeStamp, y: e.clientX }];
+      samples = [{ t: e.timeStamp, pos: e.clientX }];
       if (!canReorder(e)) return;
       timer = setTimeout(() => {
         timer = null;
@@ -102,7 +102,7 @@ export function createRowGesture(options: RowGestureOptions): RowGesture {
         mode.set('swipe');
       }
       if (mode() === 'swipe') {
-        samples.push({ t: e.timeStamp, y: e.clientX });
+        samples.push({ t: e.timeStamp, pos: e.clientX });
         options.onSwipeMove?.(dx);
       } else if (mode() === 'reorder') {
         options.onReorderMove?.(dy, e);
@@ -121,7 +121,7 @@ export function createRowGesture(options: RowGestureOptions): RowGesture {
 
   const finish = (e: PointerEvent, start: PointerEvent, cancelled: boolean): void => {
     const ended = mode();
-    if (ended === 'swipe') samples.push({ t: e.timeStamp, y: e.clientX });
+    if (ended === 'swipe') samples.push({ t: e.timeStamp, pos: e.clientX });
     const velocity = ended === 'swipe' ? flickVelocity(samples) : 0;
     reset();
     if (ended === 'swipe') {

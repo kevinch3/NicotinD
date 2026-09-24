@@ -53,6 +53,8 @@
         <app-now-playing-cover-art
           [coverMaxPx]="coverMaxPx()"
           [resizing]="resizingQueue()"
+          [swipeOffsetPx]="coverSwipeOffsetPx()"
+          [swiping]="coverSwiping()"
           (openTrackInfo)="onOpenTrackInfo($event)"
           (navigateToArtistClicked)="navigateToArtist()"
           (navigateToAlbumClicked)="closeForNavigation()"

@@ -41,12 +41,18 @@
            bar scrolls; the seek range owns its own touch-action. -->
       <div
         class="flex items-center px-3 md:px-4 gap-2 md:gap-4 h-14 cursor-pointer touch-none"
-        (pointerdown)="onBarPointerDown($event)"
+        (pointerdown)="onBarBodyPointerDown($event)"
       >
         <!-- Track info — mobile: the only growing column (flex-1), so it fills the
              bar and pushes the controls to the right edge (two-column layout);
              desktop: fixed width. -->
-        <div class="flex items-center gap-3 min-w-0 flex-1 md:flex-none md:w-60">
+        <div
+          class="flex items-center gap-3 min-w-0 flex-1 md:flex-none md:w-60"
+          [class.transition-transform]="!barSkipping()"
+          [class.duration-200]="!barSkipping()"
+          [style.transform]="barSkipOffsetPx() ? 'translateX(' + barSkipOffsetPx() + 'px)' : null"
+          data-testid="player-track-info"
+        >
           @if (player.currentTrack(); as track) {
             <app-cover-art
               [src]="track.coverArt ? '/api/cover/' + track.coverArt + '?size=80&token=' + auth.mediaToken() : undefined"

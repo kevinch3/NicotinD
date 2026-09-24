@@ -1,12 +1,15 @@
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
+  createHorizontalSwipe,
   createVerticalSwipe,
+  dominantAxis,
   flickVelocity,
   scrollableAncestorTop,
   shouldCommit,
   FLICK_PX_PER_MS,
   SWIPE_SLOP_PX,
+  type HorizontalSwipeEnd,
   type SwipeEnd,
   type SwipeResolveContext,
   type VerticalSwipe,
@@ -45,20 +48,47 @@ class HostComponent {
   });
 }
 
+/** Both axes on one pointer, as the Now Playing cover and the mini bar wire them. */
+@Component({ standalone: true, template: '' })
+class PairHostComponent {
+  vMoves: number[] = [];
+  hMoves: number[] = [];
+  vEnds: SwipeEnd[] = [];
+  hEnds: HorizontalSwipeEnd[] = [];
+  vReleases = 0;
+  hReleases = 0;
+  readonly vertical = createVerticalSwipe({
+    resolve: () => 'own',
+    onMove: (dy) => this.vMoves.push(dy),
+    onEnd: (end) => this.vEnds.push(end),
+    onRelease: () => this.vReleases++,
+  });
+  readonly horizontal = createHorizontalSwipe({
+    resolve: () => 'own',
+    onMove: (dx) => this.hMoves.push(dx),
+    onEnd: (end) => this.hEnds.push(end),
+    onRelease: () => this.hReleases++,
+  });
+  start(e: PointerEvent): void {
+    this.horizontal.start(e);
+    this.vertical.start(e);
+  }
+}
+
 describe('flickVelocity', () => {
   it('is 0 with fewer than two samples', () => {
     expect(flickVelocity([])).toBe(0);
-    expect(flickVelocity([{ t: 0, y: 10 }])).toBe(0);
+    expect(flickVelocity([{ t: 0, pos: 10 }])).toBe(0);
   });
 
   it('measures px/ms over the trailing window only', () => {
     // A slow start (100px over 1s) followed by a fast finish (50px in 50ms):
     // the window must ignore the slow start.
     const samples = [
-      { t: 0, y: 0 },
-      { t: 1000, y: 100 },
-      { t: 1030, y: 130 },
-      { t: 1050, y: 150 },
+      { t: 0, pos: 0 },
+      { t: 1000, pos: 100 },
+      { t: 1030, pos: 130 },
+      { t: 1050, pos: 150 },
     ];
     expect(flickVelocity(samples, 100)).toBeCloseTo(1, 5);
   });
@@ -66,8 +96,8 @@ describe('flickVelocity', () => {
   it('is signed: upward travel is negative', () => {
     expect(
       flickVelocity([
-        { t: 0, y: 100 },
-        { t: 20, y: 60 },
+        { t: 0, pos: 100 },
+        { t: 20, pos: 60 },
       ]),
     ).toBe(-2);
   });
@@ -75,8 +105,8 @@ describe('flickVelocity', () => {
   it('is 0 when the window collapses to a single instant', () => {
     expect(
       flickVelocity([
-        { t: 5, y: 0 },
-        { t: 5, y: 40 },
+        { t: 5, pos: 0 },
+        { t: 5, pos: 40 },
       ]),
     ).toBe(0);
   });
@@ -289,5 +319,173 @@ describe('createVerticalSwipe', () => {
       document.dispatchEvent(e);
       expect(e.defaultPrevented).toBe(false);
     });
+  });
+});
+
+describe('dominantAxis', () => {
+  it('picks the larger component and settles a tie with the given axis', () => {
+    expect(dominantAxis(10, 3, 'y')).toBe('x');
+    expect(dominantAxis(-3, -10, 'x')).toBe('y');
+    expect(dominantAxis(5, -5, 'y')).toBe('y');
+    expect(dominantAxis(5, -5, 'x')).toBe('x');
+  });
+});
+
+describe('createHorizontalSwipe', () => {
+  @Component({ standalone: true, template: '' })
+  class HHost {
+    resolveCalls: SwipeResolveContext[] = [];
+    moves: number[] = [];
+    ends: HorizontalSwipeEnd[] = [];
+    releases = 0;
+    readonly swipe = createHorizontalSwipe({
+      resolve: (ctx) => {
+        this.resolveCalls.push(ctx);
+        return 'own';
+      },
+      onMove: (dx) => this.moves.push(dx),
+      onEnd: (end) => this.ends.push(end),
+      onRelease: () => this.releases++,
+    });
+  }
+  const setup = () => TestBed.createComponent(HHost).componentInstance;
+
+  it('stays silent inside the slop zone', () => {
+    const host = setup();
+    host.swipe.start(pointer('pointerdown', 100, 100));
+    document.dispatchEvent(pointer('pointermove', 100, 100 - SWIPE_SLOP_PX + 1));
+    expect(host.resolveCalls).toHaveLength(0);
+    expect(host.moves).toHaveLength(0);
+    document.dispatchEvent(pointer('pointerup', 100, 100));
+  });
+
+  it('owns a horizontal-dominant move past slop and streams signed dx', () => {
+    const host = setup();
+    host.swipe.start(pointer('pointerdown', 100, 200));
+    document.dispatchEvent(pointer('pointermove', 104, 150));
+    document.dispatchEvent(pointer('pointermove', 104, 120));
+    expect(host.resolveCalls).toHaveLength(1);
+    expect(host.resolveCalls[0]).toMatchObject({ dx: -50, dy: 4 });
+    expect(host.moves).toEqual([-50, -80]);
+    document.dispatchEvent(pointer('pointerup', 104, 120));
+  });
+
+  it('releases a vertical-dominant move without consulting resolve', () => {
+    const host = setup();
+    host.swipe.start(pointer('pointerdown', 100, 100));
+    document.dispatchEvent(pointer('pointermove', 160, 105));
+    expect(host.resolveCalls).toHaveLength(0);
+    expect(host.releases).toBe(1);
+    expect(host.swipe.dragging()).toBe(false);
+  });
+
+  it('takes a pointermove tie (the vertical swipe releases one)', () => {
+    const host = setup();
+    host.swipe.start(pointer('pointerdown', 100, 100));
+    document.dispatchEvent(pointer('pointermove', 120, 120));
+    expect(host.releases).toBe(0);
+    expect(host.moves).toEqual([20]);
+    document.dispatchEvent(pointer('pointerup', 120, 120));
+  });
+
+  it('ends with the final dx and a signed trailing velocity (a leftward flick)', () => {
+    const host = setup();
+    host.swipe.start(pointer('pointerdown', 100, 300, 0));
+    document.dispatchEvent(pointer('pointermove', 100, 280, 80));
+    document.dispatchEvent(pointer('pointermove', 100, 240, 100));
+    document.dispatchEvent(pointer('pointerup', 100, 240, 100));
+    expect(host.ends).toHaveLength(1);
+    expect(host.ends[0]).toMatchObject({ dx: -60, owned: true });
+    expect(host.ends[0].velocity).toBeCloseTo(-0.6, 5); // -60px over the 100ms window
+  });
+
+  it('reports a tap as owned=false', () => {
+    const host = setup();
+    host.swipe.start(pointer('pointerdown', 100, 100));
+    document.dispatchEvent(pointer('pointerup', 100, 103));
+    expect(host.ends).toEqual([{ dx: 3, velocity: 0, owned: false }]);
+  });
+
+  it('blocks a horizontal-dominant first touchmove and lets a vertical one through', () => {
+    const host = setup();
+    host.swipe.start(pointer('pointerdown', 100, 100));
+    const sideways = touchMove(101, 96);
+    document.dispatchEvent(sideways);
+    expect(sideways.defaultPrevented).toBe(true);
+    document.dispatchEvent(pointer('pointerup', 101, 96));
+
+    const other = setup();
+    other.swipe.start(pointer('pointerdown', 100, 100));
+    const tie = touchMove(104, 104); // a blocker tie belongs to the vertical swipe
+    document.dispatchEvent(tie);
+    expect(tie.defaultPrevented).toBe(false);
+    expect(other.resolveCalls).toHaveLength(0);
+    document.dispatchEvent(pointer('pointerup', 104, 104));
+  });
+});
+
+describe('vertical + horizontal swipes on one pointer', () => {
+  const setup = () => TestBed.createComponent(PairHostComponent).componentInstance;
+
+  it('a sideways drag goes to the horizontal swipe only', () => {
+    const host = setup();
+    host.start(pointer('pointerdown', 100, 200));
+    document.dispatchEvent(pointer('pointermove', 106, 150));
+    document.dispatchEvent(pointer('pointermove', 108, 100));
+    document.dispatchEvent(pointer('pointerup', 108, 100));
+    expect(host.vReleases).toBe(1);
+    expect(host.vMoves).toHaveLength(0);
+    expect(host.vEnds).toHaveLength(0);
+    expect(host.hEnds).toEqual([expect.objectContaining({ dx: -100, owned: true })]);
+  });
+
+  it('a vertical drag goes to the vertical swipe only', () => {
+    const host = setup();
+    host.start(pointer('pointerdown', 100, 200));
+    document.dispatchEvent(pointer('pointermove', 150, 206));
+    document.dispatchEvent(pointer('pointerup', 200, 250));
+    expect(host.hReleases).toBe(1);
+    expect(host.hEnds).toHaveLength(0);
+    expect(host.vEnds).toEqual([expect.objectContaining({ dy: 100, owned: true })]);
+  });
+
+  // The two can reach a decision on different events: the vertical blocker
+  // takes a vertical first touchmove, then the finger drifts sideways before
+  // pointermove crosses slop. The claim makes the horizontal one stand down.
+  it('once one owns the pointer the other releases, even if dominance later flips', () => {
+    const host = setup();
+    host.start(pointer('pointerdown', 100, 100));
+    const first = touchMove(104, 101);
+    document.dispatchEvent(first);
+    expect(first.defaultPrevented).toBe(true);
+    document.dispatchEvent(pointer('pointermove', 106, 160));
+    expect(host.hReleases).toBe(1);
+    expect(host.hMoves).toHaveLength(0);
+    document.dispatchEvent(pointer('pointerup', 106, 160));
+    expect(host.hEnds).toHaveLength(0);
+    expect(host.vEnds).toHaveLength(1);
+  });
+
+  it('the reverse: the horizontal blocker wins and the vertical one stands down', () => {
+    const host = setup();
+    host.start(pointer('pointerdown', 100, 100));
+    document.dispatchEvent(touchMove(101, 104));
+    document.dispatchEvent(pointer('pointermove', 160, 106));
+    expect(host.vReleases).toBe(1);
+    expect(host.vMoves).toHaveLength(0);
+    document.dispatchEvent(pointer('pointerup', 160, 106));
+    expect(host.vEnds).toHaveLength(0);
+    expect(host.hEnds).toHaveLength(1);
+  });
+
+  it('a claim does not outlive its gesture', () => {
+    const host = setup();
+    host.start(pointer('pointerdown', 100, 100));
+    document.dispatchEvent(pointer('pointermove', 100, 160));
+    document.dispatchEvent(pointer('pointerup', 100, 160));
+    host.start(pointer('pointerdown', 100, 100));
+    document.dispatchEvent(pointer('pointermove', 160, 100));
+    document.dispatchEvent(pointer('pointerup', 160, 100));
+    expect(host.vEnds).toEqual([expect.objectContaining({ dy: 60, owned: true })]);
   });
 });

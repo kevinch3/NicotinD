@@ -27,7 +27,9 @@ import { NetworkStatusService } from '../../services/network-status.service';
 import { ToastService } from '../../services/toast.service';
 import { buildMediaMetadata } from '../../lib/media-metadata';
 import * as db from '../../lib/preserve-store';
-import { createVerticalSwipe, shouldCommit } from '../../lib/vertical-swipe';
+import { createHorizontalSwipe, createVerticalSwipe, shouldCommit } from '../../lib/vertical-swipe';
+import { canStartSkipSwipe, skipDirection } from '../../lib/swipe-to-skip';
+import { hapticTick } from '../../lib/haptics';
 import { miniPlayerSlideClass } from '../../lib/player-chrome';
 import {
   SEEK_AVAILABILITY_EPSILON_SEC,
@@ -1728,6 +1730,32 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     const target = event.target as HTMLElement;
     if (target.closest('button') || target.closest('[data-seek]')) return;
     this.barDrag.start(event);
+  }
+
+  // Swipe the bar sideways to skip (#1297): ← next, → previous, through the
+  // same handlers as the bar's ⏭/⏮. Started from the same pointerdown as the
+  // swipe-up, so dominance at slop picks exactly one of them.
+  readonly barSkipOffsetPx = signal(0);
+  private readonly barSkip = createHorizontalSwipe({
+    resolve: () => 'own',
+    onMove: (dx) => this.barSkipOffsetPx.set(dx),
+    onEnd: ({ dx, velocity, owned }) => {
+      this.barSkipOffsetPx.set(0);
+      if (!owned) return;
+      const direction = skipDirection(dx, velocity);
+      if (!direction) return;
+      hapticTick();
+      if (direction === 'next') this.handleNext();
+      else this.handlePrev();
+    },
+    onRelease: () => this.barSkipOffsetPx.set(0),
+  });
+  readonly barSkipping = this.barSkip.dragging;
+
+  /** The bar body (not the notch): the swipe-up plus the sideways skip. */
+  onBarBodyPointerDown(event: PointerEvent): void {
+    if (canStartSkipSwipe(event.target)) this.barSkip.start(event);
+    this.onBarPointerDown(event);
   }
 
   formatTime(s: number): string {

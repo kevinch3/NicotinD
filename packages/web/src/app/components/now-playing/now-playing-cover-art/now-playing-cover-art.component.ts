@@ -55,6 +55,19 @@ export class NowPlayingCoverArtComponent {
 
   readonly coverMaxPx = input<number>(320);
   readonly resizing = input(false);
+  /** Live horizontal swipe-to-skip travel (#1297); the cover follows it. */
+  readonly swipeOffsetPx = input(0);
+  /** True while the finger is down, so the cover tracks it without easing. */
+  readonly swiping = input(false);
+
+  /** The covers a skip would land on, peeking in beside the dragged one:
+   *  the next track from the right, the previous from the left. */
+  readonly peekTrack = computed(() => {
+    const offset = this.swipeOffsetPx();
+    if (offset < 0) return this.player.queue()[0] ?? null;
+    if (offset > 0) return this.player.history().at(-1) ?? null;
+    return null;
+  });
 
   /** Fully dragged away — the wrapper drops its padding so no empty band remains. */
   readonly coverCollapsed = computed(() => this.coverMaxPx() <= 0);
