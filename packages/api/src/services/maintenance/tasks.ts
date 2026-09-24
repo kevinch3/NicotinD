@@ -7,6 +7,11 @@ import { backfillArtwork, type BackfillLidarr } from '../artwork-backfill.js';
 import { embedAlbumArt } from '../opus-art-embed.js';
 import { normalizeLibraryLoudness } from '../loudness-normalize.js';
 import { finishTranscodeRun, startTranscodeRun } from '../transcode-run-store.js';
+import {
+  DEFAULT_QUARANTINE_KEEP,
+  planQuarantinePrune,
+  pruneQuarantine,
+} from '../transcode-quarantine.js';
 import { type TranscodeLosslessSource } from '../transcode-settings.js';
 
 /**
@@ -24,6 +29,7 @@ export type MaintenanceTaskId =
   | 'embed-cover-art'
   | 'normalize-loudness'
   | 'transcode-library'
+  | 'prune-quarantine'
   | 'library-sync';
 
 export const MAINTENANCE_TASK_IDS: readonly MaintenanceTaskId[] = [
@@ -32,6 +38,7 @@ export const MAINTENANCE_TASK_IDS: readonly MaintenanceTaskId[] = [
   'embed-cover-art',
   'normalize-loudness',
   'transcode-library',
+  'prune-quarantine',
   'library-sync',
 ];
 
@@ -395,6 +402,7 @@ export function buildMaintenanceTasks(deps: MaintenanceDeps): AnyMaintenanceTask
               // Surfaced so a dry-run figure is never read as exact when part
               // of the set could not be estimated.
               unestimated: r.unestimated,
+              quarantineRunsHeld: r.quarantineRunsHeld ?? 0,
             },
           };
         } catch (err) {
@@ -413,6 +421,38 @@ export function buildMaintenanceTasks(deps: MaintenanceDeps): AnyMaintenanceTask
           });
           throw err;
         }
+      },
+    }),
+
+    defineTask<{ apply: boolean; keep: number }>({
+      id: 'prune-quarantine',
+      label: 'Delete old transcode quarantine runs',
+      available: () =>
+        deps.dataDir || deps.quarantineDir ? true : 'Data directory is not configured',
+      // Deleting originals is the one irreversible thing here, so unlike the
+      // other tasks a bare POST is a dry run: it takes `?apply=1` (#1260).
+      parseParams: (q) => ({
+        apply: flag(q, 'apply'),
+        keep: positiveInt(q, 'keep') ?? DEFAULT_QUARANTINE_KEEP,
+      }),
+      describe: (p) => ({
+        summary: `${p.apply ? 'apply' : 'dry-run'}, keep newest ${p.keep}`,
+        dryRun: !p.apply,
+      }),
+      run: async (ctx, p) => {
+        const dir = deps.quarantineDir ?? deps.dataDir;
+        const { held, doomed } = planQuarantinePrune(dir, p.keep);
+        // The run names are the answer to "what will this delete", so they go
+        // through `lastItems` before anything is removed.
+        doomed.forEach((name, i) =>
+          ctx.onProgress({ total: doomed.length, visited: i + 1, label: name }),
+        );
+        const pruned = p.apply ? pruneQuarantine(dir, p.keep) : 0;
+        return {
+          stopped: false,
+          errorSample: p.apply && pruned < doomed.length ? 'some runs could not be removed' : null,
+          detail: { runsHeld: held.length, runsToPrune: doomed.length, runsPruned: pruned },
+        };
       },
     }),
 

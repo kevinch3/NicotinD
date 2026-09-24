@@ -737,8 +737,18 @@ output can be valid, correct-length and still worse.
 
 So the destructive pass opts in. Pass `dataDir` to `transcodeLibraryToFormat` and each replaced
 original is **moved** to `<dataDir>/quarantine/transcode-<stamp>/`, keeping its musicDir-relative
-path, instead of being deleted. The result carries `quarantineRun` so the operator knows where.
-`services/transcode-quarantine.ts` owns it.
+path, instead of being deleted. The result carries `quarantineRun` so the operator knows where, and
+`quarantineRunsHeld` so accumulation is visible. `services/transcode-quarantine.ts` owns it.
+
+**A conversion never prunes (#1260).** It used to prune to the newest three runs as it finished, so
+the September conversion — five batches, deliberately, because each of the first three surfaced a
+defect — deleted runs 1 and 2 the moment run 5 completed, and with them the originals for 214 of 222
+measured repairs. Retention counted runs, not bytes or age, so batching for safety was exactly what
+it punished; and it was silent, logged at `info` after the fact. Deleting originals is now only the
+`prune-quarantine` maintenance task (`POST /api/admin/maintenance/prune-quarantine`): a bare call is
+a **dry run** that reports `runsHeld`/`runsToPrune` and names each run it would delete in
+`lastItems`; `?apply=1&keep=N` (default 3) deletes. The inverted default is deliberate: this is the
+one task whose apply cannot be undone by anything.
 
 **Opting in is exactly how it failed.** The feature shipped, was tested and documented — and then
 *neither* production caller passed `dataDir`. `MaintenanceDeps` had no such field, so the Admin task

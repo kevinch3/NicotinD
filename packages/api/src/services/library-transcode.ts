@@ -18,11 +18,7 @@ import { checkHeadroom, type StatfsFn } from './disk-space.js';
 export { estimateEncodedBytes } from './transcode-bitrate.js';
 import { estimateEncodedBytes } from './transcode-bitrate.js';
 import { DEFAULT_LIBRARY_FORMAT, libraryFormat, type LibraryFormat } from './library-format.js';
-import {
-  createQuarantineRun,
-  pruneQuarantine,
-  DEFAULT_QUARANTINE_KEEP,
-} from './transcode-quarantine.js';
+import { createQuarantineRun, listQuarantineRuns } from './transcode-quarantine.js';
 
 const log = createLogger('library-transcode');
 
@@ -87,6 +83,11 @@ export interface LibraryTranscodeResult {
    * was given — i.e. when the originals were deleted.
    */
   quarantineRun?: string;
+  /**
+   * Runs the quarantine holds after this pass, this one included. Reported so
+   * accumulation is visible where the operator looks; nothing here prunes.
+   */
+  quarantineRunsHeld?: number;
 }
 
 /** Cumulative progress, emitted after each file. */
@@ -144,8 +145,8 @@ export interface TranscodeAllOptions {
   statfs?: StatfsFn;
   /**
    * Data dir. When given, each replaced original is **kept** under
-   * `<dataDir>/quarantine/<run>/` instead of being unlinked, and older runs are
-   * pruned to `quarantineKeep`. Omit only where losing the source is
+   * `<dataDir>/quarantine/<run>/` instead of being unlinked. Earlier runs are
+   * never touched here — pruning is an explicit operator action (#1260). Omit only where losing the source is
    * acceptable; for a whole-library backfill it is not (#1226 is what an
    * irreversible pass costs when something was missed).
    */
@@ -159,8 +160,6 @@ export interface TranscodeAllOptions {
    * originals in the default location fills `/` and takes the box down.
    */
   quarantineDir?: string;
-  /** Quarantine runs to keep. Count-based, never time-based. */
-  quarantineKeep?: number;
   onProgress?: (p: TranscodeProgress) => void;
 }
 
@@ -479,17 +478,11 @@ export async function transcodeLibraryToFormat(
   }
   if (limit > 0 && rows.length === limit) result.stopped = true;
 
-  // Prune AFTER the pass, never before: the run that just finished is the one
-  // most worth keeping, and pruning first could drop it to make room for
-  // itself. Failure here costs disk, not correctness, so it never fails the
-  // pass.
+  // No prune here (#1260): starting a conversion must not destroy a previous
+  // conversion's safety net. `prune-quarantine` is the only thing that deletes.
   if (quarantineRun && quarantineDir) {
     result.quarantineRun = quarantineRun;
-    try {
-      pruneQuarantine(quarantineDir, opts.quarantineKeep ?? DEFAULT_QUARANTINE_KEEP);
-    } catch (err) {
-      log.warn({ err }, 'quarantine prune failed; originals are still kept');
-    }
+    result.quarantineRunsHeld = listQuarantineRuns(quarantineDir).length;
   }
 
   log.info({ ...result, apply: opts.apply }, 'library transcode pass complete');
