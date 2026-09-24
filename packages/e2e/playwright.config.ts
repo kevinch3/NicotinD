@@ -8,6 +8,7 @@ import {
   ONBOARDING_MUSIC_DIR,
   TV_BUILD_MUSIC_DIR,
   copyMusicFixtures,
+  isMainProcess,
 } from './fixture-music.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -41,20 +42,22 @@ const TV_PORT = process.env.E2E_TV_CHROMIUM_PORT ?? '8588';
 const dataDir = resolve(__dirname, '.tmp-data');
 const onboardingDataDir = resolve(__dirname, '.tmp-data-onboarding');
 const tvDataDir = resolve(__dirname, '.tmp-data-tvbuild');
-if (!externalBaseUrl) {
+// Main process only: Playwright re-evaluates this file in every worker, and a
+// wipe or re-copy there pulls the files out from under the servers already
+// running. The DB wipe was unguarded: each worker unlinked the live nicotind.db
+// (+ -wal/-shm); the server's open handle kept working, but anything opening the
+// path afterwards — the backup worker (#1342), a helper reading the DB — found
+// nothing ("unable to open database file").
+if (!externalBaseUrl && isMainProcess()) {
   rmSync(dataDir, { recursive: true, force: true });
   rmSync(onboardingDataDir, { recursive: true, force: true });
   rmSync(tvDataDir, { recursive: true, force: true });
   // The server writes into its music dir (lyrics and analysis tags, deletes,
   // landed downloads), so each server gets its own copy of the tracked fixtures
-  // (#1320). Main process only: Playwright re-evaluates this file in every
-  // worker, and re-copying there would pull the tree out from under a running
-  // server mid-suite.
-  if (process.env.TEST_WORKER_INDEX === undefined) {
-    copyMusicFixtures(E2E_MUSIC_DIR);
-    copyMusicFixtures(ONBOARDING_MUSIC_DIR);
-    copyMusicFixtures(TV_BUILD_MUSIC_DIR);
-  }
+  // (#1320).
+  copyMusicFixtures(E2E_MUSIC_DIR);
+  copyMusicFixtures(ONBOARDING_MUSIC_DIR);
+  copyMusicFixtures(TV_BUILD_MUSIC_DIR);
 }
 
 // The managed server serves the prebuilt packages/web/dist, so build it here —

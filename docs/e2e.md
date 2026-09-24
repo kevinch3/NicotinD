@@ -45,6 +45,16 @@ the main process only, into one throwaway dir per server (`fixture-music.ts`: `.
 that reads or plants files on disk uses `E2E_MUSIC_DIR`, never a `fixtures/music` path.
 `preserveMusicFixture` still restores a deleted track, because later specs in the same run expect it.
 
+**The data-dir wipe is main-process only too (#1360).** The config also wipes the three servers'
+`.tmp-data*` dirs so each run starts on a fresh DB — but Playwright re-evaluates the config in
+**every worker**, and the wipe used to run there as well. Each worker unlinked the live `nicotind.db`
+(+ `-wal`/`-shm`): a server's open handle kept working on the unlinked file, while anything opening
+the *path* afterwards found nothing — the backup worker's read-only connection (#1342) logged
+`unable to open database file` in CI, and any helper reading the DB by path would have read a
+stranger. Wipe and copy now both sit behind `isMainProcess()` (`fixture-music.ts`), pinned by a
+source-level test in `playground/fixture-guard.test.ts`. Anything added to that config-eval block
+must stay inside the guard.
+
 The guard is `fixture-guard.ts`, the config's `globalSetup`. It hashes every file under `fixtures/`
 before the run, and its teardown **fails the run** and names each file that was rewritten, added or
 removed. A `git status` nobody reads is not a guard. Its logic is unit-tested in
