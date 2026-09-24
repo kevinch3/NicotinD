@@ -254,7 +254,10 @@ an `.m4a` target is carried by a full `writeAudioTags` **after** the encode and 
 (`carryPostEncodeTags`) — no `-metadata` spelling reaches what `ipod` drops, and the cover's own
 remux would drop freeform atoms written before it — and it encodes without `+faststart`, because
 `writeFreeformAtoms` needs `moov` after `mdat`. A 2.9 MB `covr` reads back byte-exact, so it has no
-art cap.
+art cap. Every post-encode carry write goes through one failure policy (`carryWrite`, #1287):
+`writeAudioTags` signals failure by returning `false` as well as by throwing, and either means the
+fields are missing from the library file, so both warn — before, the lyrics/compilation write
+ignored a `false` and the file landed without them silently.
 
 ### Choosing the format (#1256, #1255)
 

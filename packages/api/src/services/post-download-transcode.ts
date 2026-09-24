@@ -259,29 +259,50 @@ const VORBIS_FIELDS_FFMPEG_DROPS = [
  * Best-effort by construction: the audio is verified and the file is already
  * correct without these, so a failure is a warning, never a lost conversion.
  */
-async function carryPostEncodeTags(sourceTags: AudioTags, outPath: string): Promise<void> {
+export async function carryPostEncodeTags(
+  sourceTags: AudioTags,
+  outPath: string,
+  warn: CarryWarn = defaultCarryWarn,
+): Promise<void> {
   // An `.m4a` target gets the source's whole tag set: the `ipod` muxer drops
   // key, the perceptual features and the ids from `-map_metadata` and from any
   // `-metadata` spelling, and `writeAudioTags` is the one writer that lands
   // them, as freeform atoms (#1274, #1279). Written after the cover, because
   // the cover's own remux would otherwise drop those atoms.
   if (extname(outPath).toLowerCase() === '.m4a') {
-    try {
-      if (!(await writeAudioTags(outPath, sourceTags)))
-        log.warn({ outPath }, 'could not carry tags onto the encoded .m4a');
-    } catch (err) {
-      log.warn({ err, outPath }, 'could not carry tags onto the encoded .m4a');
-    }
+    await carryWrite(outPath, sourceTags, 'could not carry tags onto the encoded .m4a', warn);
     return;
   }
   const carry: AudioTags = {};
   if (sourceTags.lyrics !== undefined) carry.lyrics = sourceTags.lyrics;
   if (sourceTags.compilation) carry.compilation = true;
   if (Object.keys(carry).length === 0) return;
+  await carryWrite(
+    outPath,
+    carry,
+    'could not carry lyrics/compilation onto the encoded file',
+    warn,
+  );
+}
+
+export type CarryWarn = (ctx: Record<string, unknown>, msg: string) => void;
+const defaultCarryWarn: CarryWarn = (ctx, msg) => log.warn(ctx, msg);
+
+/**
+ * One failure policy for every post-encode carry (#1287): `writeAudioTags`
+ * reports failure by returning `false` as well as by throwing, and both mean
+ * the fields are missing from the library file, so both warn.
+ */
+async function carryWrite(
+  outPath: string,
+  tags: AudioTags,
+  msg: string,
+  warn: CarryWarn,
+): Promise<void> {
   try {
-    await writeAudioTags(outPath, carry);
+    if (!(await writeAudioTags(outPath, tags))) warn({ outPath }, msg);
   } catch (err) {
-    log.warn({ err, outPath }, 'could not carry lyrics/compilation onto the encoded file');
+    warn({ err, outPath }, msg);
   }
 }
 
@@ -322,7 +343,11 @@ async function carriedMetadataArgs(
   if (targetExt === 'm4a') {
     try {
       return { args: [], sourceTags: await readAudioTags(absPath) };
-    } catch {
+    } catch (err) {
+      // `readAudioTags` is lenient today (unreadable → `{}`), but if it ever
+      // throws, the encode still succeeds and the file lands without every
+      // field this carry exists for, so it must not be silent (#1287).
+      log.warn({ err, absPath }, 'could not read source tags; the .m4a lands without them');
       return { args: [], sourceTags: null };
     }
   }
