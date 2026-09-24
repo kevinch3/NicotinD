@@ -55,6 +55,31 @@
         <p class="text-xs text-status-warn mt-3">{{ 'admin.ffmpegNotFound' | t }}</p>
       }
 
+      <!-- The one setting here that is a matter of taste, and free to change:
+           the normalize pass rewrites six header bytes and re-runs idempotently. -->
+      <label class="flex items-center justify-between gap-4 mt-4" data-testid="loudness-target">
+        <span class="text-sm text-theme-primary">
+          {{ 'admin.loudnessTarget' | t }}
+          <span class="block text-xs text-theme-muted">{{ 'admin.loudnessTargetHint' | t }}</span>
+        </span>
+        <span class="flex items-center gap-2">
+          <input
+            #lufs
+            type="number"
+            appTvNavItem
+            step="1"
+            [min]="lufsMin"
+            [max]="lufsMax"
+            [value]="s.targetLufs ?? -14"
+            [disabled]="saving()"
+            (change)="saveTarget(lufs.value)"
+            class="w-20 rounded bg-theme-surface-2 px-2 py-1 text-sm text-theme-primary"
+            data-testid="loudness-target-input"
+          />
+          <span class="text-xs text-theme-muted">LUFS</span>
+        </span>
+      </label>
+
       <!-- Confirmation carries the count. The guard exists because this setting
            reads like a preference and is not one on a populated library. -->
       @if (pending(); as p) {

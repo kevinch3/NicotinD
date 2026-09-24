@@ -104,6 +104,11 @@ export class SystemApiService {
     });
   }
 
+  /** The loudness target alone — no audio is rewritten, so no confirm (#1255). */
+  saveLoudnessTarget(targetLufs: number) {
+    return this.http.put<LibraryFormatSettings>('/api/settings/library-format', { targetLufs });
+  }
+
   saveStreamingSettings(patch: Partial<StreamingSettings>) {
     return this.http.put<StreamingSettings>('/api/settings/streaming', patch);
   }

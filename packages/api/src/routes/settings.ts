@@ -20,6 +20,8 @@ import { recordAudit } from '../services/audit-log.js';
 import {
   formatChangeImpact,
   getLibraryFormatSettings,
+  TARGET_LUFS_MIN,
+  TARGET_LUFS_MAX,
   LibraryFormatSettingsSchema,
   setLibraryFormatSettings,
 } from '../services/library-format-settings.js';
@@ -120,19 +122,29 @@ export function settingsRoutes(config: NicotinDConfig) {
         403,
       );
     }
-    const body = await c.req.json<{ format?: unknown; confirm?: unknown }>();
-    const parsed = LibraryFormatSettingsSchema.safeParse({ format: body.format });
+    const body = await c.req.json<{ format?: unknown; targetLufs?: unknown; confirm?: unknown }>();
+    const db = getDatabase();
+    const current = getLibraryFormatSettings(db);
+    // Either field may be sent alone; an absent one keeps its current value.
+    const parsed = LibraryFormatSettingsSchema.safeParse({
+      format: body.format ?? current.format,
+      targetLufs: body.targetLufs ?? current.targetLufs,
+    });
     if (!parsed.success) {
+      const badTarget = parsed.error.issues.some((i) => i.path[0] === 'targetLufs');
       return c.json(
-        {
-          error: `Unknown library format. Available: ${Object.keys(LIBRARY_FORMATS).join(', ')}`,
-          code: 'INVALID_FORMAT',
-        },
+        badTarget
+          ? {
+              error: `targetLufs must be a number from ${TARGET_LUFS_MIN} to ${TARGET_LUFS_MAX}`,
+              code: 'INVALID_TARGET_LUFS',
+            }
+          : {
+              error: `Unknown library format. Available: ${Object.keys(LIBRARY_FORMATS).join(', ')}`,
+              code: 'INVALID_FORMAT',
+            },
         400,
       );
     }
-    const db = getDatabase();
-    const current = getLibraryFormatSettings(db);
     const impact = formatChangeImpact(db, parsed.data.format);
     if (parsed.data.format !== current.format && impact.destructive && body.confirm !== true) {
       return c.json(
@@ -147,7 +159,7 @@ export function settingsRoutes(config: NicotinDConfig) {
         409,
       );
     }
-    const next = setLibraryFormatSettings(db, { format: parsed.data.format });
+    const next = setLibraryFormatSettings(db, parsed.data);
     recordAudit(db, user, 'settings.libraryFormat', {
       targetKind: 'setting',
       targetId: 'libraryFormat',
@@ -155,6 +167,9 @@ export function settingsRoutes(config: NicotinDConfig) {
         from: current.format,
         to: next.format,
         wouldReEncode: impact.wouldReEncode,
+        ...(next.targetLufs !== current.targetLufs
+          ? { targetLufs: { from: current.targetLufs, to: next.targetLufs } }
+          : {}),
       }),
     });
     return c.json({ ...next, impact: formatChangeImpact(db, next.format) });

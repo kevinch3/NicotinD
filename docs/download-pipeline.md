@@ -716,8 +716,14 @@ normalized-to-nothing track is worse than an unnormalized one. The gain clamps t
 corrupt reading cannot produce a silent or deafening file.
 
 **The pass that applies it** is `normalizeLibraryLoudness` (`services/loudness-normalize.ts`),
-exposed as the admin task `normalize-loudness`. Target is **−14 LUFS**, the streaming convention;
-the library's median is −10.1, so most of it comes down a few dB.
+exposed as the admin task `normalize-loudness`. The default target is **−14 LUFS**, the streaming
+convention; the library's median is −10.1, so most of it comes down a few dB. **The target is an
+operator setting** (#1255): `LibraryFormatSettings.targetLufs`, edited in the Library format panel
+and bounded to `TARGET_LUFS_MIN`..`TARGET_LUFS_MAX` (−24..−9), read by the task per run and reported
+back in its `detail.targetLufs`. It is the one library setting that is a matter of taste (−14 for
+mixed listening, −18 for classical and jazz) and the only one free to change afterwards, so unlike
+the format it takes no confirm — a later pass re-targets every file by rewriting six header bytes.
+A row written before the field existed parses with the default.
 
 **Off by default, and it says why on screen.** The task reports itself unavailable unless
 `NICOTIND_OPUS_HEADER_GAIN` is set, because nobody has confirmed on a real device that Safari

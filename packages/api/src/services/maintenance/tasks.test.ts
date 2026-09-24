@@ -281,3 +281,22 @@ describe('prune-quarantine is the only thing that deletes originals (#1260)', ()
     expect(listQuarantineRuns(data)).toHaveLength(4);
   });
 });
+
+describe('normalize-loudness runs at the operator target (#1255)', () => {
+  it('reads the target from the library format settings, per run', async () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    setLibraryFormatSettings(db, { targetLufs: -18 });
+    const task = buildMaintenanceTasks({
+      db,
+      lidarr: null,
+      musicDir: tmpDir('lufs-'),
+      dataDir: '/data',
+      opusHeaderGain: true,
+      transcodeLossless: { enabled: true, bitRate: 96 },
+      runSync: null,
+    }).find((t) => t.id === 'normalize-loudness')!;
+    const r = await task.run(ctx, task.parseParams(new URLSearchParams('dryRun=1')));
+    expect(r.detail.targetLufs).toBe(-18);
+  });
+});

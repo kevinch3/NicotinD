@@ -302,6 +302,8 @@ export interface LibraryFormatOption {
 /** What the library is standardized on, and what switching would cost. */
 export interface LibraryFormatSettings {
   format: string;
+  /** Integrated loudness the normalize pass targets, in LUFS (#1255). */
+  targetLufs?: number;
   ffmpegAvailable?: boolean;
   available?: LibraryFormatOption[];
   impact?: { alreadyTarget: number; wouldReEncode: number; destructive: boolean };

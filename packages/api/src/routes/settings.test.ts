@@ -206,3 +206,32 @@ describe('/radio — the learned genre axis (docs/genre-affinity.md)', () => {
     expect(((await res.json()) as { queueTarget: number }).queueTarget).toBe(30);
   });
 });
+
+describe('/library-format — the loudness target (#1255)', () => {
+  const put = async (body: unknown) =>
+    buildApp().request('/library-format', {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${await adminToken()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+  it('changes the target alone, with no confirm — it rewrites no audio', async () => {
+    // A populated library, so a FORMAT change here would need confirm.
+    testDb.run(
+      `INSERT OR IGNORE INTO library_songs (id, album_id, title, artist, artist_id, path, suffix, synced_at)
+       VALUES ('lufs-1', 'a', 'T', 'X', 'art', 'lufs-1.mp3', 'mp3', 1)`,
+    );
+    const res = await put({ targetLufs: -18 });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { targetLufs: number }).targetLufs).toBe(-18);
+  });
+
+  it('refuses a target outside the range, naming the field', async () => {
+    const res = await put({ targetLufs: 0 });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { code: string }).code).toBe('INVALID_TARGET_LUFS');
+  });
+});

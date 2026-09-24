@@ -267,11 +267,15 @@ export function buildMaintenanceTasks(deps: MaintenanceDeps): AnyMaintenanceTask
       }),
       describe: (p) => ({ summary: p.apply ? 'apply' : 'dry-run', dryRun: !p.apply }),
       run: async (ctx, p) => {
+        const target = getLibraryFormatSettings(deps.db).targetLufs;
         const r = await normalizeLibraryLoudness(deps.db, deps.musicDir, {
           apply: p.apply,
           limit: p.limit,
           afterId: p.afterId,
           format: getLibraryFormatSettings(deps.db).format,
+          // Read per run, like the format: the operator can retune it between
+          // passes, and a re-run moves every file to the new target (#1255).
+          targetLufs: target,
           shouldStop: ctx.shouldStop,
           onProgress: (x) => ctx.onProgress({ total: x.total, visited: x.visited, label: x.label }),
         });
@@ -279,6 +283,8 @@ export function buildMaintenanceTasks(deps: MaintenanceDeps): AnyMaintenanceTask
           stopped: r.stopped,
           errorSample: r.errorSample,
           detail: {
+            // Which target this run moved files to — the setting can change between runs.
+            targetLufs: target,
             candidates: r.candidates,
             normalized: r.normalized,
             alreadyCorrect: r.alreadyCorrect,

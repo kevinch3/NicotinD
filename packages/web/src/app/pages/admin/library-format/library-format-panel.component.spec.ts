@@ -27,7 +27,10 @@ const SETTINGS = {
   ],
 };
 
-function setup(save = vi.fn(() => of({ ...SETTINGS, format: 'mp3' }))) {
+function setup(
+  save = vi.fn(() => of({ ...SETTINGS, format: 'mp3' })),
+  saveTarget = vi.fn(() => of({ ...SETTINGS, targetLufs: -18 })),
+) {
   TestBed.configureTestingModule({
     imports: [LibraryFormatPanelComponent],
     providers: [
@@ -36,12 +39,13 @@ function setup(save = vi.fn(() => of({ ...SETTINGS, format: 'mp3' }))) {
         useValue: {
           getLibraryFormatSettings: vi.fn(() => of(structuredClone(SETTINGS))),
           saveLibraryFormat: save,
+          saveLoudnessTarget: saveTarget,
         },
       },
     ],
   });
   const fixture = TestBed.createComponent(LibraryFormatPanelComponent);
-  return { fixture, save };
+  return { fixture, save, saveTarget };
 }
 
 async function render(fixture: ReturnType<typeof setup>['fixture']) {
@@ -53,6 +57,20 @@ async function render(fixture: ReturnType<typeof setup>['fixture']) {
 }
 
 describe('LibraryFormatPanelComponent', () => {
+  it('saves a loudness target on its own, and refuses one out of range (#1255)', async () => {
+    const { fixture, save, saveTarget } = setup();
+    await render(fixture);
+    const c = fixture.componentInstance;
+    await c.saveTarget('-18');
+    expect(saveTarget).toHaveBeenCalledWith(-18);
+    // The target never goes through the format write, which can need a confirm.
+    expect(save).not.toHaveBeenCalled();
+    saveTarget.mockClear();
+    await c.saveTarget('-3');
+    expect(saveTarget).not.toHaveBeenCalled();
+    expect(c.message()?.type).toBe('error');
+  });
+
   it('states each format capability beside the choice, not in a doc', async () => {
     // #1256's stated trap: a selector that silently turns off loudness
     // normalization is worse than no selector, because the capability loss has
