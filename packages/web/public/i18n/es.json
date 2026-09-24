@@ -870,6 +870,8 @@
   "nowPlaying.unmuteVocals": "Activar voz",
   "nowPlaying.vocalModeBasic": "Básico (cancelación central)",
   "player.like": "Me gusta",
+  "player.oggFallbackNotice": "Este navegador no puede reproducir Ogg Opus, el formato de la biblioteca (necesita iOS 18.4 / macOS 15.4 o posterior): el servidor convierte cada pista al reproducirla, así que pueden tardar un poco más en empezar.",
+  "player.oggUnsupported": "«{title}» no se puede reproducir en este dispositivo: necesita iOS 18.4 / macOS 15.4 o posterior para Ogg Opus, y el servidor no pudo convertirla",
   "player.openNowPlaying": "Abrir Reproduciendo ahora",
   "player.streamInterrupted": "La reproducción de «{title}» se interrumpió: se cortó la conexión",
   "player.unavailableOffline": "\"{title}\" no está disponible sin conexión",

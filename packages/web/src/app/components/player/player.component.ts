@@ -88,6 +88,8 @@ export const MAX_RECOVERY_ATTEMPTS = 3;
  * into an unnoticed hiccup.
  */
 export const MEDIA_ERROR_RETRY_MS = 1_000;
+/** localStorage flag: the one-time Ogg-fallback notice was shown (#1254). */
+export const OGG_NOTICE_KEY = 'nicotind_ogg_fallback_noticed';
 
 /**
  * How long playback may make no progress at all before the stream is treated
@@ -301,6 +303,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   private audioListenerCleanups: (() => void)[] = [];
 
   constructor() {
+    this.noteOggFallback();
     // Effect 1: Load track (checks IndexedDB first for offline-preserved tracks)
     effect((onCleanup) => {
       // Revoke any object URL we created in onEnded for a preserved track.
@@ -685,6 +688,23 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       // fresh user gesture and will succeed.
       this.player.pause();
     }
+  }
+
+  /**
+   * Once per device, say that this browser plays the library only through
+   * server-side conversion (#1254). Without it, the slower start of every
+   * converted track reads as a sluggish app, and a server that cannot convert
+   * reads as a broken one.
+   */
+  private noteOggFallback(): void {
+    if (!this.server.oggUnsupported()) return;
+    try {
+      if (localStorage.getItem(OGG_NOTICE_KEY)) return;
+      localStorage.setItem(OGG_NOTICE_KEY, '1');
+    } catch {
+      /* no storage: say it every session rather than never */
+    }
+    this.toast.show({ message: this.i18n.t('player.oggFallbackNotice'), kind: 'info' });
   }
 
   /**
@@ -1491,7 +1511,12 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       this.player.setBuffering(false);
       this.player.pause();
       this.toast.show({
-        message: this.i18n.t('player.streamInterrupted', { title: track.title }),
+        // On an element that cannot open Ogg, the likelier cause is the
+        // container, not the network — name the OS floor rather than blaming
+        // the connection (#1254).
+        message: this.server.oggUnsupported()
+          ? this.i18n.t('player.oggUnsupported', { title: track.title })
+          : this.i18n.t('player.streamInterrupted', { title: track.title }),
         kind: 'error',
       });
       return;

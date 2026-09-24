@@ -870,6 +870,8 @@
   "nowPlaying.unmuteVocals": "Unmute vocals",
   "nowPlaying.vocalModeBasic": "Basic (center-cancel)",
   "player.like": "Like",
+  "player.oggFallbackNotice": "This browser can't play Ogg Opus, the library's format (it needs iOS 18.4 / macOS 15.4 or newer) — the server converts each track as it plays, so tracks may take a moment longer to start.",
+  "player.oggUnsupported": "\"{title}\" can't play on this device: it needs iOS 18.4 / macOS 15.4 or newer for Ogg Opus, and the server could not convert it",
   "player.openNowPlaying": "Open Now Playing",
   "player.streamInterrupted": "Playback of \"{title}\" was interrupted — the connection dropped",
   "player.unavailableOffline": "\"{title}\" isn't available offline",

@@ -1071,3 +1071,75 @@ describe('on-disk cover art is cached by source, not per song (#1310)', () => {
     expect((await sapp.request('/cover/fa-alb?size=80')).status).toBe(200);
   });
 });
+
+describe('?noOgg=1 — a client that cannot open Ogg (#1254)', () => {
+  const TRUE_BIN = existsSync('/usr/bin/true') ? '/usr/bin/true' : '/bin/true';
+  let prevFfmpegPath: string | undefined;
+  let oggAbs = '';
+  let cacheDir = '';
+
+  beforeAll(() => {
+    prevFfmpegPath = process.env.NICOTIND_FFMPEG_PATH;
+    process.env.NICOTIND_FFMPEG_PATH = TRUE_BIN;
+    _resetFfmpegProbe();
+    mkdirSync(join(musicDir, 'NoOgg'), { recursive: true });
+    writeFileSync(join(musicDir, 'NoOgg', 'track.opus'), AUDIO_BYTES);
+    writeFileSync(join(musicDir, 'NoOgg', 'track.mp3'), AUDIO_BYTES);
+    seedSong('song-ogg', 'NoOgg/track.opus');
+    seedSong('song-mp3-noogg', 'NoOgg/track.mp3');
+    oggAbs = resolve(join(resolve(musicDir), 'NoOgg/track.opus'));
+    cacheDir = join(dataDir, 'transcode-cache');
+    mkdirSync(cacheDir, { recursive: true });
+    // Transcoding OFF and the operator's format Opus: the two settings that
+    // would each, on their own, hand an old Safari an Ogg stream.
+    db.run(
+      `INSERT INTO app_settings (key, value) VALUES ('streaming', ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      [
+        JSON.stringify({
+          transcodeEnabled: false,
+          forceTranscode: false,
+          format: 'opus',
+          maxBitRate: 192,
+        }),
+      ],
+    );
+    const st = statSync(oggAbs);
+    writeFileSync(
+      join(cacheDir, `${transcodeCacheKey(oggAbs, st.mtimeMs, st.size, 'mp3', 192, 'plain')}.mp3`),
+      new Uint8Array(2048).fill(7),
+    );
+  });
+
+  afterAll(() => {
+    if (prevFfmpegPath === undefined) delete process.env.NICOTIND_FFMPEG_PATH;
+    else process.env.NICOTIND_FFMPEG_PATH = prevFfmpegPath;
+    _resetFfmpegProbe();
+    _resetTranscodeCacheForTests();
+    clearTranscodeFailures();
+  });
+
+  const request = (path: string) => {
+    const a = new Hono();
+    a.route('/', streamingRoutes(musicDir, db, dataDir, null));
+    return a.request(path);
+  };
+
+  it('converts an Ogg source to mp3 even with transcoding off and the format set to Opus', async () => {
+    const res = await request('/stream/song-ogg?noOgg=1');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('audio/mpeg');
+    expect(new Uint8Array(await res.arrayBuffer())[0]).toBe(7);
+  });
+
+  it('leaves a non-Ogg source as the original file', async () => {
+    const res = await request('/stream/song-mp3-noogg?noOgg=1');
+    expect(res.status).toBe(200);
+    expect(new Uint8Array(await res.arrayBuffer())[0]).toBe(AUDIO_BYTES[0]);
+  });
+
+  it('serves the Ogg original to a client that did not ask', async () => {
+    const res = await request('/stream/song-ogg');
+    expect(new Uint8Array(await res.arrayBuffer())[0]).toBe(AUDIO_BYTES[0]);
+  });
+});

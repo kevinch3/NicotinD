@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { join, resolve, dirname, sep } from 'node:path';
+import { join, resolve, dirname, sep, extname } from 'node:path';
 import { existsSync, statSync } from 'node:fs';
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import type { Database } from 'bun:sqlite';
@@ -36,6 +36,8 @@ const log = createLogger('streaming');
 const noWaveformCache = new Map<string, number>();
 const NO_WAVEFORM_TTL_MS = 10 * 60 * 1_000;
 const WAVEFORM_CACHE_CONTROL = 'public, max-age=86400';
+/** Containers a client without Ogg support cannot open (#1254). */
+const OGG_SUFFIXES = new Set(['.opus', '.ogg', '.oga']);
 
 /** Test-only: forget remembered waveform decode failures. */
 export function _resetWaveformNegativeCacheForTests(): void {
@@ -158,18 +160,29 @@ export function streamingRoutes(
     // one thing that must override `transcodeEnabled`. Still needs ffmpeg; without
     // it we degrade to an unfiltered passthrough rather than 500.
     const vocalRemoval = c.req.query('vocals') === 'off';
+    // A client whose <audio> cannot play the Ogg container (Safari below iOS
+    // 18.4 / macOS 15.4) says so with `?noOgg=1` (#1254). Like the vocal mute
+    // it overrides `transcodeEnabled`: the alternative is not the original file,
+    // it is silence. Only Ogg sources are converted, so every other stream is
+    // untouched.
+    const oggOut = c.req.query('noOgg') === '1';
+    const convertOgg = oggOut && OGG_SUFFIXES.has(extname(abs).toLowerCase());
 
     const wantsTranscode =
       ffmpegAvailable() &&
       (vocalRemoval ||
+        convertOgg ||
         (settings.transcodeEnabled &&
           (settings.forceTranscode || (reqFormat && reqFormat !== 'raw') || reqBitRate != null)));
 
     if (wantsTranscode) {
-      const format =
+      const requested =
         reqFormat && reqFormat !== 'raw' && reqFormat !== 'original'
           ? (reqFormat as 'mp3' | 'opus' | 'aac')
           : settings.format;
+      // Opus streams in an Ogg container, so a client that cannot open one
+      // gets mp3 — the one format every such browser plays.
+      const format = oggOut && requested === 'opus' ? 'mp3' : requested;
       const kbps = reqBitRate && reqBitRate > 0 ? reqBitRate : settings.maxBitRate;
 
       const variant: TranscodeVariant = vocalRemoval ? 'novox' : 'plain';

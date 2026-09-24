@@ -10,6 +10,7 @@ import {
   STREAM_STALL_TIMEOUT_MS,
   LOAD_SETTLE_MS,
   PENDING_SEEK_TIMEOUT_MS,
+  OGG_NOTICE_KEY,
 } from './player.component';
 import { SEEK_AVAILABILITY_EPSILON_SEC } from '../../lib/seek-availability';
 import { PlayerService } from '../../services/player.service';
@@ -21,6 +22,8 @@ import { PreserveService } from '../../services/preserve.service';
 import { MediaControlsService } from '../../services/media-controls.service';
 import { NetworkStatusService } from '../../services/network-status.service';
 import type { Track } from '../../services/player.service';
+import { ServerConfigService } from '../../services/server-config.service';
+import { ToastService } from '../../services/toast.service';
 
 // Note: preserve-store (IndexedDB) is never reached in these tests because
 // the PreserveService mock returns isPreserved() = false, so the component
@@ -195,6 +198,26 @@ describe('PlayerComponent', () => {
   }
 
   // ─── PWA screen-lock: pause event handling ─────────────────────────────────
+
+  describe('the Ogg fallback notice (#1254)', () => {
+    const run = (unsupported: boolean) => {
+      vi.spyOn(TestBed.inject(ServerConfigService), 'oggUnsupported').mockReturnValue(unsupported);
+      const show = vi.spyOn(TestBed.inject(ToastService), 'show');
+      (component as unknown as { noteOggFallback: () => void }).noteOggFallback();
+      return show;
+    };
+
+    it('says once per device that tracks are converted, and never on a browser that plays Ogg', () => {
+      localStorage.removeItem(OGG_NOTICE_KEY);
+      expect(run(false)).not.toHaveBeenCalled();
+      const first = run(true);
+      expect(first).toHaveBeenCalledTimes(1);
+      expect(first.mock.calls[0]![0]).toMatchObject({ kind: 'info' });
+      first.mockClear();
+      run(true);
+      expect(first).not.toHaveBeenCalled();
+    });
+  });
 
   describe('screen lock — pause event handling', () => {
     it('does not propagate an OS-suspended pause to the store when the screen is locked', () => {
