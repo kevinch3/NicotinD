@@ -139,7 +139,7 @@ right to decline a second copy. Only the bookkeeping was wrong.
 
 ## Lossless → Opus standardization (storage + web playback)
 
-FLAC is overkill for web streaming and large on disk. `downloads.transcodeLossless` is **default-on at 192 kbps** (config / `NICOTIND_TRANSCODE_LOSSLESS_ENABLED` + `NICOTIND_TRANSCODE_LOSSLESS_BITRATE`; set `enabled:false` to keep originals). When enabled, lossless downloads are transcoded to Opus and **already-lossy files (MP3/AAC/…) are left untouched**. The lossless set is shared (`isLossless()` in `library-track-select.ts`); the encoder is `post-download-transcode.ts` `transcodeToLibraryFormat()` (ffmpeg `libopus`, replace-in-place: write `<name>.opus`, drop the original). Everything is gated on `ffmpegAvailable()`.
+FLAC is overkill for web streaming and large on disk. `downloads.transcodeLossless` is **default-on at 192 kbps** (config / `NICOTIND_TRANSCODE_LOSSLESS_ENABLED` + `NICOTIND_TRANSCODE_LOSSLESS_BITRATE`; set `enabled:false` to keep originals). When enabled, lossless downloads are transcoded to the library format (Opus by default, see [Choosing the format](#choosing-the-format-1256-1255)) and **already-lossy files (MP3/AAC/…) are left untouched**. The lossless set is shared (`isLossless()` in `library-track-select.ts`); the encoder is `post-download-transcode.ts` `transcodeToLibraryFormat()` (ffmpeg `libopus`, replace-in-place: write `<name>.opus`, drop the original). Everything is gated on `ffmpegAvailable()`.
 
 **No blocking subprocesses on this path (#1304).** Every ffmpeg/ffprobe call made per ingested
 track — the output duration check, the cover re-compress ladder (`preparePicture`), the cover
@@ -266,8 +266,12 @@ A corrupt or unknown persisted value falls back to the default rather than throw
 pass is the thing an operator would use to fix a mess, so a settings row must not take it down.
 
 **It is read per run, never captured at construction.** The Admin task, the `normalize-loudness`
-task and `convert-library.ts` all call `getLibraryFormatSettings` at the moment they run. A value
-frozen at boot would convert to the old target while the UI showed the new one.
+task and `convert-library.ts` all call `getLibraryFormatSettings` at the moment they run, and the
+download path reads it per placement through the organizer's `libraryFormat` reader. A value
+frozen at boot would convert to the old target while the UI showed the new one. Until #1290 the
+download path passed no format at all, so every new acquisition landed as Opus whatever the
+setting said and the library re-diverged from the operator's choice on each download.
+`reorganize-library.ts --transcode` has no DB handle and still targets the default.
 
 **Two things make it honest rather than a dropdown.**
 

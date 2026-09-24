@@ -1071,6 +1071,48 @@ describe('LibraryOrganizer (real fs)', () => {
     );
 
     it.skipIf(!ffmpegAvailable())(
+      "lands a download in the operator's library format, read per batch (#1290)",
+      async () => {
+        const root = tmpRoot();
+        const staging = join(root, '_staging');
+        seedFlac(staging, 'Artist - Album/01 - One.flac', {
+          artist: 'Artist',
+          album: 'Album',
+          title: 'One',
+          trackNumber: 1,
+        });
+        seedFlac(staging, 'Artist - Album/02 - Two.flac', {
+          artist: 'Artist',
+          album: 'Album',
+          title: 'Two',
+          trackNumber: 2,
+        });
+        let format: 'mp3' | 'opus' = 'mp3';
+        const org = new LibraryOrganizer({
+          musicDir: root,
+          stagingDir: staging,
+          transcodeLossless: { enabled: true, bitRate: 128 },
+          libraryFormat: () => format,
+        });
+        const file = (n: string) => ({
+          username: 'u',
+          directory: 'Artist - Album',
+          filename: n,
+          directoryFileCount: 2,
+        });
+
+        await org.organizeBatch([file('01 - One.flac')]);
+        format = 'opus';
+        await org.organizeBatch([file('02 - Two.flac')]);
+
+        const dir = join(root, 'Artist', 'Album');
+        expect(existsSync(join(dir, '01 - One.mp3'))).toBe(true);
+        expect(existsSync(join(dir, '01 - One.opus'))).toBe(false);
+        expect(existsSync(join(dir, '02 - Two.opus'))).toBe(true);
+      },
+    );
+
+    it.skipIf(!ffmpegAvailable())(
       'writes the settled tags in the encode, leaving no tag pass to run (#1305)',
       async () => {
         const root = tmpRoot();

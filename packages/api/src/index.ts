@@ -118,6 +118,7 @@ import { albumIdsForPaths } from './services/album-ids-for-paths.js';
 import { LibraryCurator } from './services/library-curator.js';
 import { LibraryOrganizer } from './services/library-organizer.js';
 import { getDownloadsSettings } from './services/downloads-settings.js';
+import { getLibraryFormatSettings } from './services/library-format-settings.js';
 import { AcoustIdLookup } from './services/acoustid-lookup.js';
 import { normalizeArtistForGrouping, normalizeForGrouping } from './services/album-grouping.js';
 import { createLogger } from '@nicotind/core';
@@ -277,6 +278,7 @@ export function createApp({
     // the stored setting is the only writable home).
     transcodeLossless: () =>
       getDownloadsSettings(db, config.downloads.transcodeLossless).transcodeLossless,
+    libraryFormat: () => getLibraryFormatSettings(db).format,
     jobLookup: (directory) => {
       const exact = db
         .query<{ artist_name: string | null; album_title: string | null }, [string]>(
