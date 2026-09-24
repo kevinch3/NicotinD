@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.62](https://github.com/kevinch3/NicotinD/compare/v0.8.61...v0.8.62) (2026-09-24)
+
+### Features
+
+* **web:** one tile interaction standard — hover ⋯, right-click and hold open one entity menu ([#1345](https://github.com/kevinch3/NicotinD/issues/1345)) ([8c5b0f3](https://github.com/kevinch3/NicotinD/commit/8c5b0f37a8a0fc28197794583ce86b91912329c3)), references [#1300](https://github.com/kevinch3/NicotinD/issues/1300) [#1298](https://github.com/kevinch3/NicotinD/issues/1298)
 ## [0.8.61](https://github.com/kevinch3/NicotinD/compare/v0.8.60...v0.8.61) (2026-09-24)
 
 ### Bug Fixes
