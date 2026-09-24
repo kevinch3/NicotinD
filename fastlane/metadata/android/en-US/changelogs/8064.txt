@@ -1,0 +1,1 @@
+• auth: a stable per-user media key for cover URLs, surviving token refreshes (#1359)

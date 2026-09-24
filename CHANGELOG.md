@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.64](https://github.com/kevinch3/NicotinD/compare/v0.8.63...v0.8.64) (2026-09-24)
+
+### Features
+
+* **auth:** a stable per-user media key for cover URLs, surviving token refreshes ([#1359](https://github.com/kevinch3/NicotinD/issues/1359)) ([71cafd2](https://github.com/kevinch3/NicotinD/commit/71cafd2aaab48836959bb18cd691b02cab20a839)), closes [#1329](https://github.com/kevinch3/NicotinD/issues/1329)
 ## [0.8.63](https://github.com/kevinch3/NicotinD/compare/v0.8.62...v0.8.63) (2026-09-24)
 
 ### Performance
