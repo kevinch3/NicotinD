@@ -848,6 +848,7 @@ export interface MaintenanceStatus {
     | 'embed-cover-art'
     | 'normalize-loudness'
     | 'transcode-library'
+    | 'prune-quarantine'
     | 'library-sync'
     | null;
   label: string | null;

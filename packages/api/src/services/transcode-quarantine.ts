@@ -36,9 +36,15 @@ const log = createLogger('transcode-quarantine');
  *     audio on every full scan;
  *   - it would collide on the path stems the identity remap matches on.
  *
- * Retention copies `migration-backup.ts` exactly: **count-based, scoped to its
- * own name pattern, never time-based, and never a blanket delete of the root.**
+ * Retention copies `migration-backup.ts`: **count-based, scoped to its own
+ * name pattern, never time-based, and never a blanket delete of the root.**
  * A backup deleted to make room for a backup is never the right trade.
+ *
+ * **And never a side effect.** A conversion used to prune to three runs as it
+ * finished, so a library converted deliberately in five batches lost its two
+ * oldest runs' originals — 214 repairs — the moment the fifth completed
+ * (#1260). Pruning is now only the `prune-quarantine` maintenance task: an
+ * operator asks for it, and its dry run names what it would delete.
  */
 
 export const QUARANTINE_SUBDIR = 'quarantine';
@@ -125,6 +131,15 @@ export function listQuarantineRuns(dataDir: string): string[] {
     .reverse();
 }
 
+/** What `pruneQuarantine(dataDir, keep)` would delete, without deleting it. */
+export function planQuarantinePrune(
+  dataDir: string,
+  keep = DEFAULT_QUARANTINE_KEEP,
+): { held: string[]; doomed: string[] } {
+  const held = listQuarantineRuns(dataDir);
+  return { held, doomed: held.slice(Math.max(1, keep)) };
+}
+
 /**
  * Drop all but the newest `keep` runs.
  *
@@ -133,8 +148,7 @@ export function listQuarantineRuns(dataDir: string): string[] {
  * this function exists to bound disk, not to empty the backup.
  */
 export function pruneQuarantine(dataDir: string, keep = DEFAULT_QUARANTINE_KEEP): number {
-  const runs = listQuarantineRuns(dataDir);
-  const doomed = runs.slice(Math.max(1, keep));
+  const { held: runs, doomed } = planQuarantinePrune(dataDir, keep);
   let removed = 0;
   for (const name of doomed) {
     try {

@@ -16,6 +16,7 @@ import { isLosslessFile } from './post-download-transcode.js';
 import { songId } from './library-scanner.js';
 import { ffmpegAvailable } from './transcode.js';
 import { upsertGenreOverride } from './genre-overrides.js';
+import { createQuarantineRun, listQuarantineRuns } from './transcode-quarantine.js';
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -544,6 +545,33 @@ describe.skipIf(!ffmpegAvailable())('keeping originals (back up before transcodi
       expect(r.quarantineRun).toBeTruthy();
       // ...but still on disk, under its library-relative path.
       expect(existsSync(join(r.quarantineRun!, rel))).toBe(true);
+    },
+  );
+
+  it.skipIf(!ffmpegAvailable())(
+    "never prunes an earlier conversion's quarantine run (#1260)",
+    async () => {
+      // A library converted in batches used to lose its oldest runs' originals
+      // the moment a later batch finished: the pass pruned to three.
+      const music = tmpMusic();
+      const data = tmpMusic();
+      for (let day = 1; day <= 4; day++) createQuarantineRun(data, new Date(2026, 8, day));
+      const db = new Database(':memory:');
+      applySchema(db);
+      const rel = 'Aphex Twin/Drukqs/01 - Avril 14th.flac';
+      makeFlac(music, rel, 'Avril 14th');
+      seedSongRow(db, rel, { size: statSync(join(music, rel)).size, duration: 1 });
+
+      const r = await transcodeLibraryToFormat(db, music, {
+        apply: true,
+        bitRate: 96,
+        dataDir: data,
+        statfs: roomy,
+      });
+
+      expect(r.converted).toBe(1);
+      expect(listQuarantineRuns(data)).toHaveLength(5);
+      expect(r.quarantineRunsHeld).toBe(5);
     },
   );
 

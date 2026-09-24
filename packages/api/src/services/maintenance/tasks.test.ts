@@ -21,6 +21,7 @@ import { buildMaintenanceTasks, type MaintenanceRunContext } from './tasks.js';
 import { songId } from '../library-scanner.js';
 import { ffmpegAvailable } from '../transcode.js';
 import { listTranscodeRuns } from '../transcode-run-store.js';
+import { createQuarantineRun, listQuarantineRuns } from '../transcode-quarantine.js';
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -241,5 +242,42 @@ describe('normalize-loudness is off until the flag says otherwise', () => {
     expect(available).not.toBe(true);
     expect(String(available)).toContain('mp3');
     expect(String(available)).toContain('no in-header gain field');
+  });
+});
+
+describe('prune-quarantine is the only thing that deletes originals (#1260)', () => {
+  function setup() {
+    const data = tmpDir('prune-');
+    for (let day = 1; day <= 5; day++) createQuarantineRun(data, new Date(2026, 8, day));
+    const task = buildMaintenanceTasks({
+      db: new Database(':memory:'),
+      lidarr: null,
+      musicDir: '/music',
+      dataDir: data,
+      opusHeaderGain: false,
+      transcodeLossless: { enabled: true, bitRate: 96 },
+      runSync: null,
+    }).find((t) => t.id === 'prune-quarantine')!;
+    return { data, task };
+  }
+
+  it('is a dry run unless asked, and names the runs it would delete', async () => {
+    const { data, task } = setup();
+    const labels: string[] = [];
+    const r = await task.run(
+      { shouldStop: () => false, onProgress: (p) => labels.push(p.label) },
+      task.parseParams(new URLSearchParams('')),
+    );
+    expect(r.detail).toEqual({ runsHeld: 5, runsToPrune: 2, runsPruned: 0 });
+    expect(labels).toEqual(['transcode-20260902-000000', 'transcode-20260901-000000']);
+    expect(listQuarantineRuns(data)).toHaveLength(5);
+  });
+
+  it('deletes the oldest runs past `keep` with ?apply=1', async () => {
+    const { data, task } = setup();
+    const r = await task.run(ctx, task.parseParams(new URLSearchParams('apply=1&keep=4')));
+    expect(r.detail).toEqual({ runsHeld: 5, runsToPrune: 1, runsPruned: 1 });
+    expect(listQuarantineRuns(data)).not.toContain('transcode-20260901-000000');
+    expect(listQuarantineRuns(data)).toHaveLength(4);
   });
 });
