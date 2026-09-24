@@ -702,6 +702,7 @@ export function createApp({
       historyEnabled,
       musicDir: expandedMusicDir,
       dataDir: expandedDataDir,
+      quarantineDir: process.env.NICOTIND_QUARANTINE_DIR || undefined,
       db,
       processing: processingRef.current,
       maintenance,

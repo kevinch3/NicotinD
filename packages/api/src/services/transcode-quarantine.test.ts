@@ -9,6 +9,7 @@ import {
   quarantineOriginal,
   quarantineRoot,
   DEFAULT_QUARANTINE_KEEP,
+  describeQuarantine,
 } from './transcode-quarantine.js';
 
 const cleanups: Array<() => void> = [];
@@ -128,5 +129,29 @@ describe('pruneQuarantine', () => {
     const data = tmp('q-data-');
     expect(pruneQuarantine(data, DEFAULT_QUARANTINE_KEEP)).toBe(0);
     expect(listQuarantineRuns(data)).toEqual([]);
+  });
+});
+
+describe('describeQuarantine (#1255)', () => {
+  it('lists runs newest first with their file counts, and the space under them', () => {
+    const data = tmp('qd-');
+    const older = createQuarantineRun(data, new Date(2026, 8, 1));
+    const newer = createQuarantineRun(data, new Date(2026, 8, 2));
+    put(older, 'A/B/01.flac', 'x');
+    put(older, 'A/B/02.flac', 'x');
+    put(newer, 'C/D/01.flac', 'x');
+    const d = describeQuarantine(data);
+    expect(d.root).toBe(quarantineRoot(data));
+    expect(d.runs).toEqual([
+      { name: 'transcode-20260902-000000', files: 1 },
+      { name: 'transcode-20260901-000000', files: 2 },
+    ]);
+    expect(d.filesystem!.totalBytes).toBeGreaterThan(0);
+  });
+
+  it('answers an empty quarantine, not an error, before any conversion ran', () => {
+    const d = describeQuarantine(tmp('qd-empty-'));
+    expect(d.runs).toEqual([]);
+    expect(d.filesystem).not.toBeNull();
   });
 });

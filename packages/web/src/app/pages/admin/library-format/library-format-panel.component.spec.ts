@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { of } from 'rxjs';
 import { LibraryFormatPanelComponent } from './library-format-panel.component';
+import { ConfirmService } from '../../../services/confirm.service';
+import { TranslateService } from '../../../services/translate.service';
 import { SystemApiService } from '../../../services/api/system-api.service';
 import { expandAllGroups } from '../../../../testing/expand-groups';
 
@@ -27,6 +29,16 @@ const SETTINGS = {
   ],
 };
 
+const QUARANTINE = {
+  root: '/data/quarantine',
+  runs: [
+    { name: 'transcode-20260903-000000', files: 3 },
+    { name: 'transcode-20260902-000000', files: 5 },
+    { name: 'transcode-20260901-000000', files: 8 },
+  ],
+  filesystem: { freeBytes: 2 * 1024 ** 3, totalBytes: 10 * 1024 ** 3 },
+};
+
 function setup(
   save = vi.fn(() => of({ ...SETTINGS, format: 'mp3' })),
   saveTarget = vi.fn(() => of({ ...SETTINGS, targetLufs: -18 })),
@@ -40,6 +52,8 @@ function setup(
           getLibraryFormatSettings: vi.fn(() => of(structuredClone(SETTINGS))),
           saveLibraryFormat: save,
           saveLoudnessTarget: saveTarget,
+          getQuarantine: vi.fn(() => of(structuredClone(QUARANTINE))),
+          pruneQuarantine: vi.fn(() => of({ ok: true })),
         },
       },
     ],
@@ -57,6 +71,39 @@ async function render(fixture: ReturnType<typeof setup>['fixture']) {
 }
 
 describe('LibraryFormatPanelComponent', () => {
+  it('shows kept originals only when asked, and prunes only after the named runs are confirmed (#1255)', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    const { fixture } = setup();
+    await render(fixture);
+    const c = fixture.componentInstance;
+    const api = TestBed.inject(SystemApiService) as unknown as {
+      getQuarantine: ReturnType<typeof vi.fn>;
+      pruneQuarantine: ReturnType<typeof vi.fn>;
+    };
+    expect(api.getQuarantine).not.toHaveBeenCalled();
+    await c.loadQuarantine();
+    expect(c.quarantine()?.runs).toHaveLength(3);
+
+    c.setKeepRuns('2');
+    expect(c.doomedRuns().map((r) => r.name)).toEqual(['transcode-20260901-000000']);
+
+    const ask = vi.spyOn(TestBed.inject(ConfirmService), 'ask');
+    const t = vi.spyOn(TestBed.inject(TranslateService), 't');
+    ask.mockResolvedValueOnce(false);
+    await c.pruneQuarantine();
+    // The confirm names what it would delete, not just a count.
+    const params = t.mock.calls.find((call) => call[0] === 'admin.quarantinePruneConfirm')?.[1];
+    expect(String(params?.['names'])).toContain('transcode-20260901-000000');
+    expect(api.pruneQuarantine).not.toHaveBeenCalled();
+
+    ask.mockResolvedValueOnce(true);
+    const done = c.pruneQuarantine();
+    await vi.advanceTimersByTimeAsync(1000);
+    await done;
+    expect(api.pruneQuarantine).toHaveBeenCalledWith(2);
+    vi.useRealTimers();
+  });
+
   it('saves a loudness target on its own, and refuses one out of range (#1255)', async () => {
     const { fixture, save, saveTarget } = setup();
     await render(fixture);

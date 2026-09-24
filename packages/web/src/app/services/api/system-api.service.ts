@@ -4,6 +4,7 @@ import type { ProcessingSettings, ProcessingStatus } from '@nicotind/core';
 import type { Role } from '../../../types/core';
 import type {
   LibraryFormatSettings,
+  QuarantineDescription,
   StreamingSettings,
   RadioSettings,
   DownloadSettings,
@@ -102,6 +103,22 @@ export class SystemApiService {
       format,
       confirm,
     });
+  }
+
+  /** What the transcode quarantine holds — read-only (#1255). */
+  getQuarantine() {
+    return this.http.get<QuarantineDescription>('/api/admin/quarantine');
+  }
+
+  /**
+   * Delete all but the newest `keep` quarantine runs — the only thing that
+   * deletes kept originals (#1260). Runs as a maintenance pass (202).
+   */
+  pruneQuarantine(keep: number) {
+    return this.http.post<{ ok: boolean }>(
+      `/api/admin/maintenance/prune-quarantine?apply=1&keep=${keep}`,
+      {},
+    );
   }
 
   /** The loudness target alone — no audio is rewritten, so no confirm (#1255). */

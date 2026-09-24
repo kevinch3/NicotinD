@@ -41,6 +41,7 @@ import type { MaintenanceService } from '../services/maintenance/maintenance.ser
 import type { MaintenanceTaskId } from '../services/maintenance/tasks.js';
 import type { Database } from 'bun:sqlite';
 import { listTranscodeRuns } from '../services/transcode-run-store.js';
+import { describeQuarantine } from '../services/transcode-quarantine.js';
 
 export interface AdminRoutesDeps {
   musicDir: string;
@@ -60,6 +61,8 @@ export interface AdminRoutesDeps {
   historyEnabled?: () => boolean;
   /** DB handle, for the transcode run history; absent → that route 503s. */
   db?: Database | null;
+  /** Where kept originals live when not under dataDir (`NICOTIND_QUARANTINE_DIR`). */
+  quarantineDir?: string;
 }
 
 /** The subset of an admin user row the activity ordering reads. */
@@ -604,6 +607,15 @@ export function adminRoutes(deps: AdminRoutesDeps) {
     return c.json({
       runs: listTranscodeRuns(deps.db, Number.isInteger(limit) && limit > 0 ? limit : 20),
     });
+  });
+
+  // What the transcode quarantine holds (#1255): the root, each run with its
+  // file count, and the space left under it. Read-only; deleting runs is the
+  // `prune-quarantine` maintenance task, never this route.
+  app.get('/quarantine', (c) => {
+    const dir = deps.quarantineDir ?? deps.dataDir;
+    if (!dir) return c.json({ error: 'Data directory is not configured' }, 503);
+    return c.json(describeQuarantine(dir));
   });
 
   app.get('/maintenance/status', (c) => {

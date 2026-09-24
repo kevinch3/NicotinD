@@ -759,6 +759,14 @@ a **dry run** that reports `runsHeld`/`runsToPrune` and names each run it would 
 `lastItems`; `?apply=1&keep=N` (default 3) deletes. The inverted default is deliberate: this is the
 one task whose apply cannot be undone by anything.
 
+**Where an operator sees it (#1255).** `GET /api/admin/quarantine` (`describeQuarantine`) answers
+the root (`NICOTIND_QUARANTINE_DIR` or `<dataDir>/quarantine`), each run newest first with its file
+count, and the free/total space of the filesystem under it. It counts files and never sizes them —
+a stat per original would turn a page load into a whole-quarantine I/O walk. The Library format
+panel's **Kept originals** section loads it only when asked, lists the runs, and offers "delete all
+but the newest N" through the `prune-quarantine` task, behind a confirm that **names every run it
+would delete** before anything is.
+
 **Opting in is exactly how it failed.** The feature shipped, was tested and documented — and then
 *neither* production caller passed `dataDir`. `MaintenanceDeps` had no such field, so the Admin task
 could not have passed one; `convert-library.ts` computed a `dataDir` for the database path and simply
