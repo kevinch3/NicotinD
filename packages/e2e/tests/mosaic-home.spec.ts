@@ -87,7 +87,9 @@ test.describe('mosaic home', () => {
     expect(await title.textContent()).toBe(before);
   });
 
-  test('holding a song tile opens its track info instead of starting a radio', async ({ page }) => {
+  test('holding a song tile opens its menu instead of starting a radio, and Song info is in it', async ({
+    page,
+  }) => {
     await page.goto('/');
     const tiles = page.locator('[data-testid="mosaic-tile"][data-tile-kind="song"]');
     await expect(tiles.first()).toBeVisible({ timeout: 10_000 });
@@ -107,8 +109,14 @@ test.describe('mosaic home', () => {
         return { x: r.x, y: r.y, w: r.width, h: r.height };
       }),
     );
+    // Not one under the home view switch (#1300) floating top-left: a press
+    // there is the switch's, and its release would flip the home to the shelves.
+    const switcher = (await page.getByTestId('home-view-switch').boundingBox())!;
+    const clear = (b: { x: number; y: number; w: number; h: number }) =>
+      b.x > switcher.x + switcher.width || b.y > switcher.y + switcher.height;
     const box = boxes.find(
-      (b) => b.x > 0 && b.y > 0 && b.x + b.w < viewport.width && b.y + b.h < viewport.height,
+      (b) =>
+        clear(b) && b.x > 0 && b.y > 0 && b.x + b.w < viewport.width && b.y + b.h < viewport.height,
     )!;
     expect(box).toBeDefined();
 
@@ -117,9 +125,12 @@ test.describe('mosaic home', () => {
     await page.waitForTimeout(700); // past the 450ms hold threshold
     await page.mouse.up();
 
-    await expect(page.getByTestId('track-info-sheet')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('entity-menu')).toBeVisible({ timeout: 10_000 });
     // The release that follows the hold must not have started a radio.
     expect(await title.textContent()).toBe(before);
+    // The old hold-for-info is now an item of the same menu (#1298).
+    await page.getByTestId('entity-action-Song info').click();
+    await expect(page.getByTestId('track-info-sheet')).toBeVisible({ timeout: 10_000 });
   });
 
   test('the classic landing is still reachable', async ({ page }) => {

@@ -1,4 +1,8 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal, Injector } from '@angular/core';
+import { EntityActionsDirective } from '../../directives/entity-actions.directive';
+import { EntityMenuButtonComponent } from '../entity-menu-button/entity-menu-button.component';
+import type { TrackAction } from '../track-row/track-row.component';
+import { SongMenuService } from '../../services/song-menu.service';
 import { catchError, firstValueFrom, of } from 'rxjs';
 import { AuthService } from '../../services/auth.service';
 import { HistoryApiService } from '../../services/api/history-api.service';
@@ -39,7 +43,13 @@ export function shouldShowRecentSkeleton(loading: boolean, hasPlayedBefore: bool
 @Component({
   selector: 'app-recently-played',
   standalone: true,
-  imports: [CoverArtComponent, SkeletonComponent, TranslatePipe],
+  imports: [
+    CoverArtComponent,
+    SkeletonComponent,
+    TranslatePipe,
+    EntityActionsDirective,
+    EntityMenuButtonComponent,
+  ],
   template: `
     @if (showSkeleton()) {
       <section data-testid="recently-played-skeleton">
@@ -55,26 +65,32 @@ export function shouldShowRecentSkeleton(loading: boolean, hasPlayedBefore: bool
         <h2 class="text-lg font-bold text-theme-primary mb-3">{{ 'home.recentlyPlayed' | t }}</h2>
         <div class="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
           @for (play of plays(); track play.songId; let i = $index) {
-            <button
-              type="button"
-              (click)="onPlay(i)"
-              data-testid="recently-played-item"
-              [attr.data-song-id]="play.songId"
-              class="shrink-0 w-28 text-left group active:scale-95 transition"
-            >
-              <app-cover-art
-                [src]="coverSrc(play)"
-                [artist]="play.artist ?? ''"
-                [album]="play.album ?? ''"
-                [size]="112"
-                className="w-28 h-28"
-                rounded="rounded-lg"
+            <div class="relative group shrink-0" [appEntityActions]="songActions(play)">
+              <app-entity-menu-button
+                [actions]="songActions(play)"
+                placement="absolute top-1 right-1"
               />
-              <p class="mt-1.5 text-xs font-semibold text-theme-primary truncate">
-                {{ play.title }}
-              </p>
-              <p class="text-xs text-theme-muted truncate">{{ play.artist }}</p>
-            </button>
+              <button
+                type="button"
+                (click)="onPlay(i)"
+                data-testid="recently-played-item"
+                [attr.data-song-id]="play.songId"
+                class="w-28 text-left group active:scale-95 transition"
+              >
+                <app-cover-art
+                  [src]="coverSrc(play)"
+                  [artist]="play.artist ?? ''"
+                  [album]="play.album ?? ''"
+                  [size]="112"
+                  className="w-28 h-28"
+                  rounded="rounded-lg"
+                />
+                <p class="mt-1.5 text-xs font-semibold text-theme-primary truncate">
+                  {{ play.title }}
+                </p>
+                <p class="text-xs text-theme-muted truncate">{{ play.artist }}</p>
+              </button>
+            </div>
           }
         </div>
       </section>
@@ -82,6 +98,11 @@ export function shouldShowRecentSkeleton(loading: boolean, hasPlayedBefore: bool
   `,
 })
 export class RecentlyPlayedComponent implements OnInit {
+  private readonly injector = inject(Injector);
+  /** The tile's menu (#1298): a recent play is a song. */
+  songActions(play: RecentPlay): () => TrackAction[] {
+    return () => this.injector.get(SongMenuService).build(toTrack(play));
+  }
   private api = inject(HistoryApiService);
   private player = inject(PlayerService);
   private auth = inject(AuthService);
@@ -136,7 +157,9 @@ function toTrack(play: RecentPlay): Track {
     id: play.songId,
     title: play.title ?? '',
     artist: play.artist ?? '',
+    artistId: play.artistId ?? undefined,
     album: play.album ?? undefined,
+    albumId: play.albumId ?? undefined,
     coverArt: play.coverArt ?? undefined,
     duration: play.duration ?? undefined,
   };

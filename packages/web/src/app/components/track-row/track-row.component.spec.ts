@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter } from '@angular/router';
 import { TrackRowComponent } from './track-row.component';
+import { EntityMenuService } from '../../services/entity-menu.service';
 import { EntityLinkComponent } from '../entity-link/entity-link.component';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { PlayerService, type Track } from '../../services/player.service';
@@ -280,5 +281,37 @@ describe('TrackRowComponent inside an appTvNavGroup (cross-component boundary)',
     expect(titles.length).toBe(2);
     fixture.destroy();
     expect(group.childGroups().length).toBe(0);
+  });
+});
+
+// One tile interaction standard (#1298): right-click and hold open the same ⋯ list.
+describe('TrackRowComponent — entity menu doors', () => {
+  it("right-click on the row opens the entity menu with the row's actions", () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [TrackRowComponent],
+      providers: [
+        PlayerService,
+        provideRouter([{ path: '**', children: [] }]),
+        { provide: AuthService, useValue: { token: signal('test-token') } },
+        { provide: ServerConfigService, useValue: { apiUrl: (u: string) => u } },
+        { provide: LikeService, useValue: { isLiked: () => false, toggle: () => {} } },
+      ],
+    });
+    const fixture = TestBed.createComponent(TrackRowComponent);
+    setInputValue(fixture.componentInstance.track, { id: 't1', title: 'T', artist: 'A' });
+    setInputValue(fixture.componentInstance.actions, [{ label: 'Start radio', action: () => {} }]);
+    fixture.detectChanges();
+    const open = vi.spyOn(TestBed.inject(EntityMenuService), 'open');
+    const row = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>(
+      '[data-testid="track-row"]',
+    )!;
+    row.dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 3, clientY: 4 }),
+    );
+    expect(open).toHaveBeenCalledWith({
+      actions: [expect.objectContaining({ label: 'Start radio' })],
+      at: { x: 3, y: 4 },
+    });
   });
 });

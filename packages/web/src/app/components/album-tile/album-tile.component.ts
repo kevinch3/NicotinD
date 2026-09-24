@@ -1,7 +1,11 @@
-import { Component, input, output, computed } from '@angular/core';
+import { Component, input, output, computed, Injector, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
+import { EntityActionsDirective } from '../../directives/entity-actions.directive';
+import { EntityMenuButtonComponent } from '../entity-menu-button/entity-menu-button.component';
+import { EntityMenuService } from '../../services/entity-menu.service';
+import type { TrackAction } from '../track-row/track-row.component';
 import { resolveAlbumRoute } from '../../lib/route-utils';
 import type { AlbumTile } from '../../lib/artist-album-tiles';
 
@@ -30,10 +34,25 @@ const EMPTY_TILE: AlbumTile = {
 @Component({
   selector: 'app-album-tile',
   standalone: true,
-  imports: [RouterLink, CoverArtComponent, TvNavItemDirective],
+  imports: [
+    RouterLink,
+    CoverArtComponent,
+    TvNavItemDirective,
+    EntityActionsDirective,
+    EntityMenuButtonComponent,
+  ],
   templateUrl: './album-tile.component.html',
 })
 export class AlbumTileComponent {
+  private readonly injector = inject(Injector);
+  /** The tile's menu (#1298): an owned or partial album is a library album. */
+  readonly menuActions = (): TrackAction[] => {
+    const t = this.tile();
+    if (!t.localAlbumId) return [];
+    return this.injector
+      .get(EntityMenuService)
+      .build({ kind: 'album', id: t.localAlbumId, name: t.title });
+  };
   // Deliberately NOT `input.required()`: the JIT vitest harness does not register
   // signal inputs on a *nested* component, so a required input throws NG0950 during
   // the HOST's change detection and takes the host's whole spec down with it.

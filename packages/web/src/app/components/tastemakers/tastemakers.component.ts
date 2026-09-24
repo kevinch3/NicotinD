@@ -1,4 +1,8 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, inject, signal, Injector } from '@angular/core';
+import { EntityActionsDirective } from '../../directives/entity-actions.directive';
+import { EntityMenuButtonComponent } from '../entity-menu-button/entity-menu-button.component';
+import type { TrackAction } from '../track-row/track-row.component';
+import { EntityMenuService } from '../../services/entity-menu.service';
 import { catchError, firstValueFrom, of } from 'rxjs';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { PlaylistsApiService } from '../../services/api/playlists-api.service';
@@ -41,53 +45,59 @@ const SEED_CAP = 20;
 @Component({
   selector: 'app-tastemakers',
   standalone: true,
-  imports: [TranslatePipe],
+  imports: [EntityActionsDirective, EntityMenuButtonComponent, TranslatePipe],
   template: `
     @if (shelf().length > 0) {
       <section data-testid="tastemakers">
         <h2 class="text-lg font-bold text-theme-primary mb-3">{{ 'home.tastemakers' | t }}</h2>
         <div class="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
           @for (playlist of shelf(); track playlist.id) {
-            <button
-              type="button"
-              (click)="onPlay(playlist)"
-              [disabled]="starting() !== null"
-              data-testid="tastemaker-item"
-              [attr.data-playlist-id]="playlist.id"
-              class="shrink-0 w-28 text-left group active:scale-95 transition disabled:opacity-50"
-            >
-              <div class="relative w-28 h-28">
-                @if (playlist.coverArt) {
-                  <img
-                    [src]="playlist.coverArt"
-                    [alt]="playlist.name"
-                    class="w-28 h-28 rounded-lg object-cover"
-                  />
-                } @else {
-                  <div
-                    class="w-28 h-28 rounded-lg bg-theme-surface-2 flex items-center justify-center text-2xl font-bold text-theme-muted"
-                    aria-hidden="true"
-                  >
-                    {{ playlist.name.charAt(0) }}
-                  </div>
-                }
-                @if (starting() === playlist.id) {
-                  <span
-                    class="absolute inset-0 flex items-center justify-center rounded-lg bg-black/40"
-                  >
+            <div class="relative group shrink-0" [appEntityActions]="playlistActions(playlist)">
+              <app-entity-menu-button
+                [actions]="playlistActions(playlist)"
+                placement="absolute top-1 right-1"
+              />
+              <button
+                type="button"
+                (click)="onPlay(playlist)"
+                [disabled]="starting() !== null"
+                data-testid="tastemaker-item"
+                [attr.data-playlist-id]="playlist.id"
+                class="w-28 text-left group active:scale-95 transition disabled:opacity-50"
+              >
+                <div class="relative w-28 h-28">
+                  @if (playlist.coverArt) {
+                    <img
+                      [src]="playlist.coverArt"
+                      [alt]="playlist.name"
+                      class="w-28 h-28 rounded-lg object-cover"
+                    />
+                  } @else {
+                    <div
+                      class="w-28 h-28 rounded-lg bg-theme-surface-2 flex items-center justify-center text-2xl font-bold text-theme-muted"
+                      aria-hidden="true"
+                    >
+                      {{ playlist.name.charAt(0) }}
+                    </div>
+                  }
+                  @if (starting() === playlist.id) {
                     <span
-                      class="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin"
-                    ></span>
-                  </span>
-                }
-              </div>
-              <p class="mt-1.5 text-xs font-semibold text-theme-primary truncate">
-                {{ playlist.name }}
-              </p>
-              <p class="text-xs text-theme-muted truncate">
-                {{ playlist.songCount }} {{ 'home.tastemakerSongs' | t }}
-              </p>
-            </button>
+                      class="absolute inset-0 flex items-center justify-center rounded-lg bg-black/40"
+                    >
+                      <span
+                        class="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin"
+                      ></span>
+                    </span>
+                  }
+                </div>
+                <p class="mt-1.5 text-xs font-semibold text-theme-primary truncate">
+                  {{ playlist.name }}
+                </p>
+                <p class="text-xs text-theme-muted truncate">
+                  {{ playlist.songCount }} {{ 'home.tastemakerSongs' | t }}
+                </p>
+              </button>
+            </div>
           }
         </div>
       </section>
@@ -95,6 +105,14 @@ const SEED_CAP = 20;
   `,
 })
 export class TastemakersComponent implements OnInit {
+  private readonly injector = inject(Injector);
+  /** The tile's menu (#1298): a curated playlist. */
+  playlistActions(playlist: PlaylistSummary): () => TrackAction[] {
+    return () =>
+      this.injector
+        .get(EntityMenuService)
+        .build({ kind: 'playlist', id: playlist.id, name: playlist.name });
+  }
   private api = inject(PlaylistsApiService);
   private radioApi = inject(LibraryApiService);
   private player = inject(PlayerService);

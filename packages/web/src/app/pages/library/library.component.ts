@@ -9,6 +9,7 @@ import {
   ElementRef,
   OnInit,
   OnDestroy,
+  Injector,
 } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
@@ -45,6 +46,10 @@ import { LibraryStatsComponent } from './library-stats.component';
 import { LibraryListErrorComponent } from './library-list-error.component';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
+import { EntityActionsDirective } from '../../directives/entity-actions.directive';
+import { EntityMenuButtonComponent } from '../../components/entity-menu-button/entity-menu-button.component';
+import { EntityMenuService } from '../../services/entity-menu.service';
+import type { TrackAction } from '../../components/track-row/track-row.component';
 import { chunk } from '../../lib/tv-nav-grid';
 import {
   LIBRARY_FILTER_PARAM_KEYS,
@@ -131,10 +136,13 @@ function writePersistedState(state: PersistedLibraryState): void {
     LibraryListErrorComponent,
     TvNavGroupDirective,
     TvNavItemDirective,
+    EntityActionsDirective,
+    EntityMenuButtonComponent,
   ],
   templateUrl: './library.component.html',
 })
 export class LibraryComponent implements OnInit, OnDestroy {
+  private readonly injector = inject(Injector);
   /** Chunks a flat grid's items into `role="row"` slices for ARIA grid
    *  conformance (issue #359) — templates can't call an imported free
    *  function directly, so it's re-exposed as a class member. */
@@ -725,9 +733,53 @@ export class LibraryComponent implements OnInit, OnDestroy {
     void this.resetAndLoad();
   }
 
-  async hideAlbum(album: Album, event: Event): Promise<void> {
-    event.preventDefault();
-    event.stopPropagation();
+  /**
+   * Tile menus (#1298): one factory per kind, built only when a menu opens.
+   * The curator's Hide/Unhide rides along as the page's extra action.
+   */
+  albumActions(album: Album): () => TrackAction[] {
+    return () =>
+      this.entityMenu.build(
+        { kind: 'album', id: album.id, name: album.name },
+        {
+          extraActions: this.auth.canCurate()
+            ? [
+                album.hidden
+                  ? {
+                      label: 'Unhide album',
+                      labelKey: 'entityMenu.unhideAlbum',
+                      action: () => void this.unhideAlbum(album),
+                    }
+                  : {
+                      label: 'Hide album',
+                      labelKey: 'entityMenu.hideAlbum',
+                      action: () => void this.hideAlbum(album),
+                    },
+              ]
+            : [],
+        },
+      );
+  }
+
+  artistActions(artist: { id: string; name: string }): () => TrackAction[] {
+    return () => this.entityMenu.build({ kind: 'artist', id: artist.id, name: artist.name });
+  }
+
+  genreActions(genre: { value: string }): () => TrackAction[] {
+    return () => this.entityMenu.build({ kind: 'genre', value: genre.value });
+  }
+
+  playlistActions(pl: { id: string; name: string }): () => TrackAction[] {
+    return () => this.entityMenu.build({ kind: 'playlist', id: pl.id, name: pl.name });
+  }
+
+  private get entityMenu(): EntityMenuService {
+    return this.injector.get(EntityMenuService);
+  }
+
+  async hideAlbum(album: Album, event?: Event): Promise<void> {
+    event?.preventDefault();
+    event?.stopPropagation();
     try {
       await firstValueFrom(this.api.hideAlbum(album.id));
       this.albums.update((existing) => existing.filter((a) => a.id !== album.id));
@@ -736,9 +788,9 @@ export class LibraryComponent implements OnInit, OnDestroy {
     }
   }
 
-  async unhideAlbum(album: Album, event: Event): Promise<void> {
-    event.preventDefault();
-    event.stopPropagation();
+  async unhideAlbum(album: Album, event?: Event): Promise<void> {
+    event?.preventDefault();
+    event?.stopPropagation();
     try {
       await firstValueFrom(this.api.unhideAlbum(album.id));
       void this.resetAndLoad();

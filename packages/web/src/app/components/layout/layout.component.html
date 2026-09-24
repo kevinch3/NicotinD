@@ -137,6 +137,9 @@
       <!-- Global report-a-track dialog host (renders only when a target is open) -->
       <app-report-track-host />
 
+      <!-- The one entity menu (#1298): tiles open it here, at a point or an anchor -->
+      <app-entity-menu-host />
+
       <!-- Changelog modal (renders when version is clicked) -->
       @if (showChangelog()) {
         <app-changelog-modal (close)="showChangelog.set(false)" />

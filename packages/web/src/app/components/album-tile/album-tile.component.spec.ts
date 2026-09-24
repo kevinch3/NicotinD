@@ -119,3 +119,13 @@ describe('AlbumTileComponent', () => {
     expect(ep.componentInstance.subtitle()).toBe('1969 · EP');
   });
 });
+
+// One tile interaction standard (#1298).
+describe('AlbumTileComponent — entity menu doors', () => {
+  it('an owned tile carries the ⋯; a missing tile carries none', () => {
+    const owned = render(tile({ status: 'owned', title: 'Meddle', localAlbumId: 'al1' }));
+    expect(el(owned, '[data-testid="entity-menu-button"]')).not.toBeNull();
+    const missing = render(tile({ status: 'missing', title: 'Atom Heart Mother' }));
+    expect(el(missing, '[data-testid="entity-menu-button"]')).toBeNull();
+  });
+});

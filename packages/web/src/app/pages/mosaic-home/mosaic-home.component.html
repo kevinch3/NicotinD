@@ -23,10 +23,10 @@
     #stage
     data-testid="mosaic-stage"
     role="group"
-    aria-label="Music mosaic — drag to explore, tap a tile to start a radio, press and hold a song for details"
+    aria-label="Music mosaic — drag to explore, tap a tile to start a radio, press and hold a tile for more"
     class="mosaic-stage-contain absolute inset-x-0 top-0 overflow-hidden touch-none select-none cursor-grab"
     [style.bottom.px]="chromeInset()"
-    (pointerdown)="drag.start($event)"
+    (pointerdown)="onStagePointerDown($event)"
   ></div>
 
   <!-- The same tiles as a real, linear, focusable list. Pooled tiles are

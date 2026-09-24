@@ -30,6 +30,7 @@ import { InstallPromoBannerComponent } from '../install-promo/install-promo-bann
 import { BottomNavComponent } from '../bottom-nav/bottom-nav.component';
 import { AddToPlaylistComponent } from '../add-to-playlist/add-to-playlist.component';
 import { ConfirmHostComponent } from '../confirm-host/confirm-host.component';
+import { EntityMenuHostComponent } from '../entity-menu-host/entity-menu-host.component';
 import { TrackInfoHostComponent } from '../track-info-host/track-info-host.component';
 import { ReportTrackHostComponent } from '../report-track-host/report-track-host.component';
 import { ChangelogModalComponent } from '../changelog-modal/changelog-modal.component';
@@ -105,6 +106,7 @@ export function headerDisplayClass(url: string, homeView: HomeView | null = null
     TranslatePipe,
     AddToPlaylistComponent,
     ConfirmHostComponent,
+    EntityMenuHostComponent,
     ChangelogModalComponent,
     TrackInfoHostComponent,
     ReportTrackHostComponent,
