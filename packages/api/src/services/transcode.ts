@@ -4,6 +4,7 @@ import { existsSync, renameSync, unlinkSync } from 'node:fs';
 import { createLogger } from '@nicotind/core';
 import type { TranscodeFormat } from './streaming-settings.js';
 import { ffmpegBinary } from './ffmpeg-path.js';
+import { withFfmpegSlot } from './ffmpeg-slots.js';
 
 const log = createLogger('transcode');
 
@@ -140,6 +141,19 @@ export function transcodeToFile(
   format: TranscodeFmt,
   kbps: number,
   vocalRemoval = false,
+): Promise<void> {
+  // A listener is waiting on this one: never queued behind batch ffmpeg (#1312).
+  return withFfmpegSlot('interactive', () =>
+    encodeToFile(absPath, outPath, format, kbps, vocalRemoval),
+  );
+}
+
+function encodeToFile(
+  absPath: string,
+  outPath: string,
+  format: TranscodeFmt,
+  kbps: number,
+  vocalRemoval: boolean,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const spec = FORMAT_ARGS[format];

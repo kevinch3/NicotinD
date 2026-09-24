@@ -7,6 +7,7 @@ import { isLossless } from './library-track-select.js';
 import { getMusicMetadata } from './music-metadata-loader.js';
 import { ffmpegAvailable, TRANSCODE_DURATION_TOLERANCE_SEC } from './transcode.js';
 import { ffmpegBinary } from './ffmpeg-path.js';
+import { withFfmpegSlot } from './ffmpeg-slots.js';
 import { extractEmbeddedPicture, preserveFolderCover } from './cover-sources.js';
 import { preparePicture } from './opus-artwork.js';
 import {
@@ -560,20 +561,24 @@ function runFfmpeg(
   args: string[],
   tmpPath: string,
 ): Promise<{ code: number | null; stderrTail: string }> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn(ffmpegBinary(), args, { stdio: ['ignore', 'ignore', 'pipe'] });
-    let stderr = '';
-    proc.stderr?.on('data', (chunk: Buffer) => {
-      stderr = (stderr + chunk.toString()).slice(-STDERR_TAIL_CHARS);
-    });
-    proc.on('error', (err) => {
-      cleanup(tmpPath);
-      reject(err);
-    });
-    proc.on('close', (code) => {
-      resolve({ code, stderrTail: stderr.trim().split('\n').at(-1)?.trim() ?? '' });
-    });
-  });
+  return withFfmpegSlot(
+    'batch',
+    () =>
+      new Promise((resolve, reject) => {
+        const proc = spawn(ffmpegBinary(), args, { stdio: ['ignore', 'ignore', 'pipe'] });
+        let stderr = '';
+        proc.stderr?.on('data', (chunk: Buffer) => {
+          stderr = (stderr + chunk.toString()).slice(-STDERR_TAIL_CHARS);
+        });
+        proc.on('error', (err) => {
+          cleanup(tmpPath);
+          reject(err);
+        });
+        proc.on('close', (code) => {
+          resolve({ code, stderrTail: stderr.trim().split('\n').at(-1)?.trim() ?? '' });
+        });
+      }),
+  );
 }
 
 /**
