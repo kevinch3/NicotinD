@@ -129,4 +129,39 @@ test.describe('Now Playing desktop layout', () => {
     await page.keyboard.press('Home');
     await expect(splitter).toHaveAttribute('aria-valuenow', '300');
   });
+
+  /**
+   * Keyboard vocabulary (#1296). Blur first: the click that opened the sheet
+   * leaves focus on a button, where Space is the button's own activation.
+   */
+  test('the keyboard drives the player: Space, Esc, / and ?', async ({ page }) => {
+    await openNowPlaying(page);
+    const playPause = page.getByTestId('player-playpause').first();
+    await expect(playPause).toHaveAttribute('data-playing', 'true');
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+
+    await page.keyboard.press('Space');
+    await expect(playPause).toHaveAttribute('data-playing', 'false');
+    await page.keyboard.press('Space');
+    await expect(playPause).toHaveAttribute('data-playing', 'true');
+
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('now-playing-heading')).not.toBeInViewport();
+
+    await page.keyboard.press('/');
+    const search = page.locator('main input[type="search"]:focus');
+    await expect(search).toBeVisible();
+    // Typing in it is typing, not a shortcut.
+    await page.keyboard.press('k');
+    await expect(search).toHaveValue('k');
+    await expect(playPause).toHaveAttribute('data-playing', 'true');
+
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await page.keyboard.press('?');
+    const sheet = page.getByTestId('shortcuts-sheet');
+    await expect(sheet).toBeVisible();
+    await expect(sheet.getByTestId('shortcuts-row').first()).toContainText('Space');
+    await page.keyboard.press('Escape');
+    await expect(sheet).toHaveCount(0);
+  });
 });

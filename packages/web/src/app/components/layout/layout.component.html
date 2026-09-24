@@ -140,6 +140,9 @@
       <!-- The one entity menu (#1298): tiles open it here, at a point or an anchor -->
       <app-entity-menu-host />
 
+      <!-- The ? keyboard-shortcut sheet (renders only when open) -->
+      <app-keyboard-shortcuts-sheet />
+
       <!-- Changelog modal (renders when version is clicked) -->
       @if (showChangelog()) {
         <app-changelog-modal (close)="showChangelog.set(false)" />

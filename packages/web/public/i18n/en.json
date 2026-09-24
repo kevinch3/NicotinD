@@ -1118,5 +1118,21 @@
   "vibe.fast": "120bpm+",
   "vibe.happy": "Happy",
   "vibe.party": "Party",
-  "vibe.uplifting": "Uplifting"
+  "vibe.uplifting": "Uplifting",
+  "shortcuts.title": "Keyboard shortcuts",
+  "shortcuts.closeSheet": "Close keyboard shortcuts",
+  "shortcuts.togglePlay": "Play / pause",
+  "shortcuts.seekBack": "Back 5 seconds",
+  "shortcuts.seekForward": "Forward 5 seconds",
+  "shortcuts.prevTrack": "Previous track",
+  "shortcuts.nextTrack": "Next track",
+  "shortcuts.like": "Like the current track",
+  "shortcuts.radio": "Start a radio from the current track",
+  "shortcuts.toggleNowPlaying": "Open or close Now Playing",
+  "shortcuts.queueTab": "Show the queue",
+  "shortcuts.lyricsTab": "Show the lyrics",
+  "shortcuts.vocalMute": "Mute or unmute vocals",
+  "shortcuts.search": "Search",
+  "shortcuts.close": "Close the open sheet or overlay",
+  "shortcuts.help": "Show this list"
 }

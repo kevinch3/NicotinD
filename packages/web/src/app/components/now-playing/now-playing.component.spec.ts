@@ -18,6 +18,7 @@ function makePlayerStub() {
       null,
     ),
     nowPlayingOpen: signal(true),
+    nowPlayingPanelRequest: signal<'queue' | 'lyrics' | null>(null),
     nowPlayingLiftPx: signal(0),
     isPlaying: signal(false),
     shuffle: signal(false),
@@ -541,6 +542,17 @@ describe('NowPlayingComponent', () => {
       fixture.componentInstance.setActivePanel('lyrics');
       expect(fixture.componentInstance.activePanel()).toBe('lyrics');
       expect(localStorage.getItem('nicotind:np-active-panel')).toBe('lyrics');
+    });
+
+    it('applies and clears a panel request from the Q / Y shortcuts (#1296)', () => {
+      const { fixture, playerStub } = setup();
+      playerStub.nowPlayingPanelRequest.set('lyrics');
+      fixture.detectChanges();
+      expect(fixture.componentInstance.activePanel()).toBe('lyrics');
+      expect(playerStub.nowPlayingPanelRequest()).toBeNull();
+      playerStub.nowPlayingPanelRequest.set('queue');
+      fixture.detectChanges();
+      expect(fixture.componentInstance.activePanel()).toBe('queue');
     });
   });
 

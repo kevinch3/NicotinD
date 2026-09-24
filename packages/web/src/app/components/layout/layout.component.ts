@@ -34,6 +34,7 @@ import { EntityMenuHostComponent } from '../entity-menu-host/entity-menu-host.co
 import { TrackInfoHostComponent } from '../track-info-host/track-info-host.component';
 import { ReportTrackHostComponent } from '../report-track-host/report-track-host.component';
 import { ChangelogModalComponent } from '../changelog-modal/changelog-modal.component';
+import { KeyboardShortcutsSheetComponent } from '../keyboard-shortcuts-sheet/keyboard-shortcuts-sheet.component';
 import { DesktopWindowControlsComponent } from '../desktop-window-controls/desktop-window-controls.component';
 import { DesktopChromeService } from '../../services/desktop-chrome.service';
 import { isElectronLinux, isCoarsePointer } from '../../lib/platform';
@@ -108,6 +109,7 @@ export function headerDisplayClass(url: string, homeView: HomeView | null = null
     ConfirmHostComponent,
     EntityMenuHostComponent,
     ChangelogModalComponent,
+    KeyboardShortcutsSheetComponent,
     TrackInfoHostComponent,
     ReportTrackHostComponent,
     DesktopWindowControlsComponent,

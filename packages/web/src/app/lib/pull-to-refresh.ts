@@ -21,6 +21,7 @@
  */
 import { DestroyRef, inject, signal, type Signal } from '@angular/core';
 import { createPointerDrag } from './pointer-drag';
+import { TEXT_ENTRY_TARGETS } from './text-entry';
 
 export const PULL_SLOP_PX = 10;
 export const PULL_THRESHOLD_PX = 70;
@@ -48,7 +49,7 @@ export interface PullToRefresh {
   onPointerDown: (e: PointerEvent) => void;
 }
 
-const NON_PULL_TARGETS = 'input,textarea,select,[data-no-p2r]';
+const NON_PULL_TARGETS = `${TEXT_ENTRY_TARGETS},[data-no-p2r]`;
 
 export function createPullToRefresh(options: PullToRefreshOptions): PullToRefresh {
   const phase = signal<PullPhase>('idle');

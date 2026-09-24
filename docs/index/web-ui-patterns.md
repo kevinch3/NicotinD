@@ -22,6 +22,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   (`EntityMenuHostComponent`, `EntityMenuService.open`) on every tile and row; albums, artists,
   genres and playlists get `EntityMenuService.build` (Start radio first), songs keep the song menu;
   `EntityActionsDirective`, `EntityMenuButtonComponent`. → [web-ui.md](../web-ui.md)
+- **Keyboard shortcuts**: one `SHORTCUTS` table is both what `KeyboardShortcutsService` dispatches
+  (via the pure `keyToAction`) and what the `?` sheet renders; `isTextEntryTarget` is the shared
+  typing guard. → [web-ui.md](../web-ui.md)
 - **Unified search**: `GET /api/search?q=` blends local library and parallel network results into one
   source-agnostic list. → [source-agnostic-acquisition.md](../source-agnostic-acquisition.md)
 - **One album grid per artist tab**: library albums and the MusicBrainz discography merge into a
