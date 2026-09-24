@@ -1,6 +1,7 @@
 import { Injectable, signal } from '@angular/core';
 import { DEFAULT_SERVER_URL, normalizeServerUrl, buildApiUrl, buildWsUrl } from '../lib/server-url';
 import { isNativePlatform } from '../lib/platform';
+import { probeOggOpus, type OggSupport } from '../lib/ogg-support';
 import {
   loadServers,
   rememberServer,
@@ -96,8 +97,20 @@ export class ServerConfigService {
    * touching the SW driver when it sees this query param.
    */
   streamUrl(id: string, token: string | null, opts?: { vocalsOff?: boolean }): string {
-    const params = `token=${token}&ngsw-bypass=1${opts?.vocalsOff ? '&vocals=off' : ''}`;
+    const params =
+      `token=${token}&ngsw-bypass=1${opts?.vocalsOff ? '&vocals=off' : ''}` +
+      // An element that cannot play Ogg-Opus asks the server to convert Ogg
+      // sources as they stream, instead of receiving silence (#1254).
+      (this.oggUnsupported() ? '&noOgg=1' : '');
     return this.apiUrl(`/api/stream/${id}?${params}`);
+  }
+
+  private oggProbe: OggSupport | null = null;
+
+  /** True only when the probe positively says this `<audio>` cannot play Ogg-Opus. */
+  oggUnsupported(): boolean {
+    this.oggProbe ??= probeOggOpus();
+    return this.oggProbe === 'no';
   }
 
   /**

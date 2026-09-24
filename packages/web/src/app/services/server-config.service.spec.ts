@@ -24,6 +24,18 @@ describe('ServerConfigService', () => {
     expect(url).toContain('ngsw-bypass=1');
   });
 
+  it('asks the server to convert Ogg only when the probe says the element cannot play it (#1254)', () => {
+    const probe = (v: 'yes' | 'no' | 'unknown') =>
+      ((svc as unknown as { oggProbe: string }).oggProbe = v);
+    probe('no');
+    expect(svc.streamUrl('a', 't')).toBe('/api/stream/a?token=t&ngsw-bypass=1&noOgg=1');
+    probe('yes');
+    expect(svc.streamUrl('a', 't')).not.toContain('noOgg');
+    // A test DOM answers nothing at all — that is not an old Safari.
+    probe('unknown');
+    expect(svc.streamUrl('a', 't')).not.toContain('noOgg');
+  });
+
   it('builds an SSE url with the caller token and ngsw-bypass', () => {
     const url = svc.sseUrl('/api/admin/processing/stream', 'jwt');
     expect(url).toBe('/api/admin/processing/stream?token=jwt&ngsw-bypass=1');

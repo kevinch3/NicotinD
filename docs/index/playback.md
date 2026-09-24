@@ -24,6 +24,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   path, host-allowlisted and content-addressed. `nativeAppCors` is hand-rolled so its Vary append
   cannot strip `Content-Length`. → [library-scanner.md](../library-scanner.md),
   [album-hunt.md](../album-hunt.md)
+- **Ogg fallback below iOS 18.4**: a client whose `<audio>` cannot open Ogg-Opus sends `noOgg=1`
+  and the stream route converts its Ogg sources to mp3; a capability probe, not a UA sniff.
+  `probeOggOpus`, `oggUnsupported`, `OGG_SUFFIXES`. → [opus-library-conversion-plan.md](../opus-library-conversion-plan.md)
 - **RFC 9110-complete range handling**: `serveFileWithRange` serves suffix ranges (`bytes=-N` = the
   *last* N bytes) correctly — returning the head under a mismatched Content-Range stalls iOS Safari's
   tail-probing media loader forever. → [library-scanner.md](../library-scanner.md)

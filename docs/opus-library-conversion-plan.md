@@ -378,6 +378,17 @@ needs two things checked before the conversion rather than after:
   the per-stream transcode path this plan otherwise retires could serve exactly that, which is an
   argument for not deleting it outright.
 
+**Below the floor, as built (#1254).** The per-stream transcode path is the fallback. The web probes
+`canPlayType('audio/ogg; codecs="opus"')` once (`probeOggOpus`) and, only when the element plays mp3
+but not Ogg-Opus, adds `noOgg=1` to every stream URL; the stream route then converts **Ogg sources
+only** to mp3, overriding `transcodeEnabled` the way `?vocals=off` does, since the alternative is
+silence. A probe rather than a user-agent sniff answers what the element will actually play, and an
+element that answers nothing at all (jsdom, a headless test) reads as *unknown*, never as an old
+Safari. The failure has no natural symptom, so the notice is load-bearing: a one-time toast per
+device says tracks are converted as they play, and a stream that still dies names the OS floor
+instead of blaming the connection. The cost is a first-play encode per Ogg track on those clients,
+cached like any other transcode.
+
 **Recommendation: stay on Ogg-Opus.** The server contract is already correct, the files already
 play, and the one-tag-path collapse is worth more than two defects we have not hit. Record WebM as a
 documented escape hatch rather than a decision deferred.
