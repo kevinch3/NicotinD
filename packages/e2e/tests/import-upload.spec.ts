@@ -1,12 +1,6 @@
 import { test, expect } from '../helpers';
-import {
-  mkdtempSync,
-  copyFileSync,
-  mkdirSync,
-  writeFileSync,
-  rmSync,
-  readdirSync,
-} from 'node:fs';
+import { E2E_MUSIC_DIR } from '../fixture-music';
+import { mkdtempSync, copyFileSync, mkdirSync, writeFileSync, rmSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,13 +8,13 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC_FLAC = join(HERE, '../fixtures/addon/addon-song.flac');
 /**
- * `NICOTIND_MUSIC_DIR` is this **tracked** directory (playwright.config.ts), so
- * an import spec that does not clean up rewrites the repo's fixtures and leaves
- * the next run a duplicate album to trip over. Snapshotting the top level and
+ * `NICOTIND_MUSIC_DIR` is the run's copy of the fixtures (fixture-music.ts), so
+ * an import spec that does not clean up leaves every later spec in the run a
+ * duplicate album to trip over. Snapshotting the top level and
  * removing whatever appeared is self-maintaining — no hardcoded artist name to
  * drift when the fixture's tags change.
  */
-const MUSIC_DIR = join(HERE, '../fixtures/music');
+const MUSIC_DIR = E2E_MUSIC_DIR;
 
 /**
  * The browser-upload import lane (docs/import.md).
@@ -62,9 +56,7 @@ test.describe('import from a dropped folder', () => {
 
     // A `webkitdirectory` input takes the directory itself — which is exactly
     // what the picker hands it in a real browser.
-    await page
-      .getByTestId('import-folder-input')
-      .setInputFiles(join(scratch, 'Uploaded Album'));
+    await page.getByTestId('import-folder-input').setInputFiles(join(scratch, 'Uploaded Album'));
 
     // A drop is a proposal: the card appears and waits rather than uploading.
     const card = page.getByTestId('import-drop-card');

@@ -1,8 +1,8 @@
 import type { APIRequestContext, Locator, Page } from '@playwright/test';
 import { expect, test as base } from '@playwright/test';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import { E2E_MUSIC_DIR } from './fixture-music';
 
 export { expect };
 export type { APIRequestContext, BrowserContext, Locator, Page } from '@playwright/test';
@@ -92,25 +92,20 @@ export const FIXTURE = {
 /** auth header for direct API calls in setup/teardown. */
 export const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 
-const MUSIC_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), 'fixtures/music');
-
 /**
  * Snapshot a music fixture and put it back once the calling spec file finishes.
  *
- * **Any spec that deletes a fixture from disk must call this.** The fixtures under
- * `fixtures/music` are **git-tracked**, and `scripts/make-fixtures.ts` needs ffmpeg —
- * which CI does not have — so they are generated once and committed, never
- * regenerated per run (`bun run e2e` is a bare `playwright test`). A spec that
- * deletes one therefore leaves the working tree one file short *permanently*: it
- * passes exactly once per `git checkout`, and every later run fails on a fixture
- * that is simply gone. Restoring here keeps runs repeatable and the tree clean.
+ * **Any spec that deletes a fixture from disk must call this.** The server runs on
+ * a per-run copy of `fixtures/music` (`E2E_MUSIC_DIR`, #1320), so the tracked tree
+ * is safe — but the copy is shared by every spec in the run, and a later spec that
+ * expects the file would otherwise find it gone.
  *
  * Registers its own `beforeAll`/`afterAll`, so just call it at describe scope.
  *
  * @param relPath path under `fixtures/music`, e.g. `'E2E_Test_Artist/E2E_Test_Album/04 - Quiet_Hours.flac'`
  */
 export function preserveMusicFixture(relPath: string): void {
-  const abs = join(MUSIC_ROOT, relPath);
+  const abs = join(E2E_MUSIC_DIR, relPath);
   let snapshot: Buffer | null = null;
 
   test.beforeAll(() => {

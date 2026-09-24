@@ -1,13 +1,13 @@
 import { test, expect } from '../helpers';
+import { E2E_MUSIC_DIR } from '../fixture-music';
 import { rmSync } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { ADMIN, bearer } from '../helpers';
 import { startFixtureAddon, FIXTURE_ADDON_TOKEN, type FixtureAddon } from './helpers/fixture-addon';
 
-/** The ingested release lands INSIDE the git-tracked fixtures/music tree —
- *  it must be removed on the way out or every later run inherits it. */
-const LANDED_DIR = join(dirname(fileURLToPath(import.meta.url)), '../fixtures/music/Addon Artist');
+/** The ingested release lands in the run's music dir — it must be removed on
+ *  the way out or every later spec in the run inherits it. */
+const LANDED_DIR = join(E2E_MUSIC_DIR, 'Addon Artist');
 
 /**
  * Phase 2 of the acquisition addon protocol: with a remote addon registered and

@@ -3,10 +3,11 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { rmSync } from 'node:fs';
 import { ensureWebBuild } from './ensure-web-build.js';
+import { E2E_MUSIC_DIR, copyMusicFixtures } from './fixture-music.js';
 
 /**
  * One-off mobile screenshot harness (not part of CI). Boots the managed test
- * server against the committed fixtures, seeds the admin via the shared
+ * server against a copy of the committed fixtures, seeds the admin via the shared
  * auth.setup.ts, then drives the SPA in a mobile viewport capturing the key
  * screens for UX review. Run with:
  *   bunx playwright test --config=playwright.screenshots.config.ts
@@ -19,6 +20,8 @@ const baseURL = `http://localhost:${PORT}`;
 
 const dataDir = resolve(__dirname, '.tmp-data');
 rmSync(dataDir, { recursive: true, force: true });
+// A throwaway copy of the music fixtures, never the tracked tree (#1320).
+if (process.env.TEST_WORKER_INDEX === undefined) copyMusicFixtures(E2E_MUSIC_DIR);
 
 // Same managed-server/prebuilt-dist hazard as the main config (issue #253): a
 // screenshot harness silently capturing the previous bundle is the whole point
@@ -71,7 +74,7 @@ export default defineConfig({
       NICOTIND_SLSKD_URL: 'http://127.0.0.1:1',
       NICOTIND_LIDARR_URL: 'http://127.0.0.1:1',
       NICOTIND_DATA_DIR: dataDir,
-      NICOTIND_MUSIC_DIR: resolve(__dirname, 'fixtures/music'),
+      NICOTIND_MUSIC_DIR: E2E_MUSIC_DIR,
     },
   },
 });

@@ -12,3 +12,6 @@ node_modules/
 # Screenshot baselines are Linux renderings (CI's); a run elsewhere writes its own, uncommitted.
 tests/**/*-darwin.png
 tests/**/*-win32.png
+.tmp-music/
+.tmp-music-onboarding/
+.tmp-music-tvbuild/

@@ -1,7 +1,7 @@
 import { test, expect, type APIRequestContext } from '../helpers';
+import { E2E_MUSIC_DIR } from '../fixture-music';
 import { existsSync, readdirSync, rmSync } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { ADMIN, bearer } from '../helpers';
 import {
   startFixtureAddon,
@@ -12,7 +12,7 @@ import {
 
 const ADDON_ID = 'fixture-discard-addon';
 const ADDON_AUTH = { Authorization: `Bearer ${FIXTURE_ADDON_TOKEN}` };
-const LANDED_DIR = join(dirname(fileURLToPath(import.meta.url)), '../fixtures/music/Rick Astley');
+const LANDED_DIR = join(E2E_MUSIC_DIR, 'Rick Astley');
 
 /** Audio files under the rickroll's landed folder — the discard's on-disk effect.
  *  The organizer may rename the file, so count formats rather than one path. */
