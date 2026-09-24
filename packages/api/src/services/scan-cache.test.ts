@@ -86,3 +86,19 @@ describe('scan cache persistence', () => {
     expect(cache.get('a.mp3')?.mtimeMs).toBe(2);
   });
 });
+
+describe('scoped scan-cache load (#1309)', () => {
+  it('loads only the requested paths', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    saveScanCache(
+      db,
+      Array.from({ length: 900 }, (_, i) => track({ relPath: `A/B/${i}.mp3` })),
+    );
+    const wanted = ['A/B/3.mp3', 'A/B/899.mp3', 'A/B/not-cached.mp3'];
+    const scoped = loadScanCache(db, wanted);
+    expect([...scoped.keys()].sort()).toEqual(['A/B/3.mp3', 'A/B/899.mp3']);
+    expect(scoped.get('A/B/3.mp3')?.track.relPath).toBe('A/B/3.mp3');
+    expect(loadScanCache(db).size).toBe(900);
+  });
+});

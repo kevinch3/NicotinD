@@ -4,6 +4,7 @@ import type { Lidarr } from '../lidarr/index.js';
 import { normalizeForGrouping } from './album-grouping.js';
 import { detectKey, isConfidentKey } from './key-detection.js';
 import { ffmpegBinary } from './ffmpeg-path.js';
+import { withFfmpegSlot, type FfmpegPriority } from './ffmpeg-slots.js';
 
 const log = createLogger('track-analysis');
 
@@ -69,6 +70,19 @@ export function summarizeFfmpegStderr(stderr: string, maxLen = 400): string {
  * delivered sample is complete.
  */
 export function streamPcm(
+  absPath: string,
+  opts: {
+    sampleRate: number;
+    seconds?: number;
+    onChunk: (samples: Float32Array) => void;
+    /** `interactive` for a decode a listener waits on (the waveform); see ffmpeg-slots.ts. */
+    priority?: FfmpegPriority;
+  },
+): Promise<void> {
+  return withFfmpegSlot(opts.priority ?? 'batch', () => decodeStream(absPath, opts));
+}
+
+function decodeStream(
   absPath: string,
   opts: { sampleRate: number; seconds?: number; onChunk: (samples: Float32Array) => void },
 ): Promise<void> {
