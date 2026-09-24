@@ -20,6 +20,7 @@ import { lowInformationOnlyGenreSql, unresolvedGenreSql } from './genre-split.js
 import { countOpenCurationFlags } from './curation-flags.js';
 import { albumAlreadyComplete, matchingLocalAlbums, onDiskTitles } from './library-completeness.js';
 import { jobCanonicalTracklists, type JobCanonicalTracklist } from './acquisition-job-store.js';
+import { duplicateSongFacts, type DuplicateSongFacts } from './duplicate-songs.js';
 import { normalizeForGrouping } from './album-grouping.js';
 import { artistIdFor } from './library-scanner.js';
 
@@ -300,6 +301,12 @@ export interface LibraryHealthReport {
       }>;
       remediation: string;
     };
+    /**
+     * Song-level duplicate candidates (#951) — the same clusters the Admin
+     * finder lists (`duplicate-songs.ts`), so the count and the worklist it
+     * points at cannot disagree. Candidates, not confirmed duplicates.
+     */
+    duplicateSongs: DuplicateSongFacts & { remediation: string };
     flags: { metric: { open: number; oldestAt: number | null }; remediation: string };
   };
 }
@@ -988,6 +995,11 @@ export function libraryHealth(
         worklist: lyricsWorklist(db, sample, syncedFacts.worklist),
         remediation:
           "reason `duration`: the source matched another take — re-fetch it. reason `overruns`: the LRC outlasts the file, so its timings are not this recording's. Either way, sync_song_lyrics only helps when the WORDS are right and the clock drifts. `unverified` rows predate match recording — unknown, not clean",
+      },
+      duplicateSongs: {
+        ...duplicateSongFacts(db, sample),
+        remediation:
+          'Admin → Library maintenance → Find duplicates keeps the best-quality copy of each cluster. Candidates match on folded artist+title within 2 s, not on a fingerprint — check a cluster before deleting; same-album same-slot copies are the audit rule slot_duplicate',
       },
       flags: {
         metric: { open: countOpenCurationFlags(db), oldestAt: oldestFlag },

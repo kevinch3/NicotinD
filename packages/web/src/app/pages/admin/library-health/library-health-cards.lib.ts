@@ -382,6 +382,29 @@ export function buildHealthCards(r: LibraryHealthReport, t: Translate): HealthCa
       link: null,
     },
     {
+      dimension: 'duplicateSongs',
+      titleKey: 'admin.health.duplicateSongs.title',
+      metrics: [
+        metric('duplicateSongs', 'clusters', n(d.duplicateSongs.metric.clusters)),
+        metric('duplicateSongs', 'redundantFiles', n(d.duplicateSongs.metric.redundantFiles)),
+      ],
+      lists: [
+        {
+          titleKey: 'admin.health.duplicateSongs.list',
+          rows: d.duplicateSongs.worklist.map((w) => ({
+            label: `${w.title} — ${w.artist}`,
+            detail: t('admin.health.row.duplicateSong', {
+              copies: n(w.copies),
+              albums: w.albums.join(' / '),
+            }),
+            link: null,
+          })),
+        },
+      ],
+      remediation: d.duplicateSongs.remediation,
+      link: null,
+    },
+    {
       dimension: 'flags',
       titleKey: 'admin.health.flags.title',
       metrics: [

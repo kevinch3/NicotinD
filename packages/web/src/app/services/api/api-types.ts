@@ -1241,6 +1241,12 @@ export interface LibraryHealthReport {
       }[];
       remediation: string;
     };
+    /** Song-level duplicate candidates — the Admin finder's clusters, counted (#951). */
+    duplicateSongs: {
+      metric: { clusters: number; redundantFiles: number };
+      worklist: { title: string; artist: string; copies: number; albums: string[] }[];
+      remediation: string;
+    };
     flags: { metric: { open: number; oldestAt: number | null }; remediation: string };
   };
 }

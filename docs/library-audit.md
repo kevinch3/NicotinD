@@ -628,6 +628,20 @@ Three consequences of unioning, each load-bearing:
   Lidarr albums to re-fetch, so it reads the union once and passes that list into `libraryHealth`
   (its third, optional argument) instead of letting both passes union the two tables.
 
+### Song-level duplicates, counted (issue #951)
+
+`duplicateSongs` is the Admin finder's own clusters, counted: `services/duplicate-songs.ts`
+(`clusterDuplicateSongs`, `duplicateSongFacts`) is the one rule behind both `GET
+/api/library/duplicates` and this dimension, so the number and the worklist it points at cannot
+disagree. A cluster is visible songs whose folded artist+title match (`normalizeDupKey`, the
+Unicode-aware key fixed in #1016) with durations within `DUPLICATE_DURATION_TOLERANCE_SEC`; the
+metric is `clusters` and `redundantFiles` (copies beyond the best one), the worklist the largest
+clusters with the albums they span. **Candidates, not confirmed duplicates** — #951's fingerprint
+sample confirmed the strongest tier, not every row, so nothing here deletes; the remediation text
+says to check a cluster in the finder first. Same-album same-slot copies are the stronger audit
+rule `slot_duplicate`. The ~6% figure in #951 predates the key fix, so the first run of this
+dimension on prod is the re-measure.
+
 ### The Admin panel (issue #736)
 
 `LibraryHealthPanelComponent` (`pages/admin/library-health/`) is one collapsed `<app-settings-group
