@@ -8,6 +8,7 @@ import {
   type LibraryFormat,
 } from './library-format.js';
 import { AMBIGUOUS_CONTAINERS } from './post-download-transcode.js';
+import { DEFAULT_TARGET_LUFS } from './loudness-normalize.js';
 
 const log = createLogger('library-format-settings');
 
@@ -21,10 +22,22 @@ const log = createLogger('library-format-settings');
  */
 export interface LibraryFormatSettings {
   format: LibraryFormat;
+  /**
+   * Integrated loudness the normalize pass targets (#1255). The one library
+   * setting a person changes as a matter of taste — −14 suits mixed listening,
+   * −18 classical and jazz — and the only one free to change afterwards: on
+   * Opus it rewrites six header bytes per file and re-runs idempotently.
+   */
+  targetLufs: number;
 }
+
+/** The accepted range: quieter than −24 or louder than −9 is a typo, not a taste. */
+export const TARGET_LUFS_MIN = -24;
+export const TARGET_LUFS_MAX = -9;
 
 export const DEFAULT_LIBRARY_FORMAT_SETTINGS: LibraryFormatSettings = {
   format: DEFAULT_LIBRARY_FORMAT,
+  targetLufs: DEFAULT_TARGET_LUFS,
 };
 
 /**
@@ -40,6 +53,8 @@ export const DEFAULT_LIBRARY_FORMAT_SETTINGS: LibraryFormatSettings = {
 const FORMAT_IDS = Object.keys(LIBRARY_FORMATS) as [LibraryFormat, ...LibraryFormat[]];
 export const LibraryFormatSettingsSchema = z.object({
   format: z.enum(FORMAT_IDS),
+  // Defaulted, so a row written before this field existed still parses.
+  targetLufs: z.number().min(TARGET_LUFS_MIN).max(TARGET_LUFS_MAX).default(DEFAULT_TARGET_LUFS),
 });
 
 const KEY = 'libraryFormat';

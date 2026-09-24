@@ -45,6 +45,34 @@ export class LibraryFormatPanelComponent implements OnInit {
 
   readonly options = computed(() => this.settings()?.available ?? []);
 
+  /** The accepted range, mirroring the API's `TARGET_LUFS_MIN`/`MAX`. */
+  readonly lufsMin = -24;
+  readonly lufsMax = -9;
+
+  /**
+   * Save the loudness target (#1255). Takes effect on the next normalize pass,
+   * which re-runs idempotently, so a change is free to make and to undo.
+   */
+  async saveTarget(raw: string): Promise<void> {
+    const value = Number(raw);
+    this.message.set(null);
+    if (!Number.isFinite(value) || value < this.lufsMin || value > this.lufsMax) {
+      this.message.set({ type: 'error', text: this.i18n.t('admin.loudnessTargetInvalid') });
+      return;
+    }
+    if (value === this.settings()?.targetLufs) return;
+    this.saving.set(true);
+    try {
+      await firstValueFrom(this.api.saveLoudnessTarget(value));
+      await this.load();
+      this.message.set({ type: 'success', text: this.i18n.t('admin.loudnessTargetSaved') });
+    } catch {
+      this.message.set({ type: 'error', text: this.i18n.t('admin.libraryFormatSaveFailed') });
+    } finally {
+      this.saving.set(false);
+    }
+  }
+
   ngOnInit(): void {
     void this.load();
   }

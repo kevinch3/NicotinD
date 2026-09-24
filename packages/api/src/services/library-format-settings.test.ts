@@ -49,6 +49,17 @@ describe('library format settings', () => {
     expect(getLibraryFormatSettings(db)).toEqual(DEFAULT_LIBRARY_FORMAT_SETTINGS);
   });
 
+  it('reads a row written before targetLufs existed with the default target (#1255)', () => {
+    db.run(`INSERT INTO app_settings (key, value) VALUES ('libraryFormat', '{"format":"mp3"}')`);
+    expect(getLibraryFormatSettings(db)).toEqual({ format: 'mp3', targetLufs: -14 });
+  });
+
+  it('persists a loudness target, and refuses one outside the sane range', () => {
+    expect(setLibraryFormatSettings(db, { targetLufs: -18 }).targetLufs).toBe(-18);
+    expect(getLibraryFormatSettings(db).targetLufs).toBe(-18);
+    expect(() => setLibraryFormatSettings(db, { targetLufs: -3 })).toThrow();
+  });
+
   it('refuses to persist an unregistered format', () => {
     expect(() =>
       setLibraryFormatSettings(db, { format: 'wma' as keyof typeof LIBRARY_FORMATS }),
