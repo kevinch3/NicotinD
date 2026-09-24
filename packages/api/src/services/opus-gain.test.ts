@@ -331,7 +331,9 @@ describe.skipIf(!ffmpegAvailable())('readOggOpusDurationSec', () => {
     makeOpus(p, 2);
     const buf = readFileSync(p);
     const at = lastPageAt(buf);
-    buf.writeUInt32LE(buf.readUInt32LE(at + 14) ^ 1, at + 14);
+    // `^` yields a signed int; ffmpeg picks the serial at random, so >>> 0 or
+    // half of all serials (>= 2^31) throw in writeUInt32LE.
+    buf.writeUInt32LE((buf.readUInt32LE(at + 14) ^ 1) >>> 0, at + 14);
     const page = buf.subarray(at);
     page.writeUInt32LE(oggPageCrc(page), 22);
     writeFileSync(p, buf);
