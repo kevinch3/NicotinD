@@ -86,6 +86,11 @@ and a message. The CLI groups by rule (worst first); `--rule=<id>` lists one.
   the album has no running order. Same-title collisions are excluded and belong to duplicate
   detection (#951) — measured 298 numbering vs 131 duplicate on prod, and the two want
   opposite remediations, so the titles decide which rule owns the row.
+- `slot_duplicate` (medium) — the other half of that split (#951): the same folded title stored
+  **twice in one `(disc, track)` slot** of one album. The album, the slot and the title all agree,
+  so it is one recording stored twice without needing a fingerprint — measured 131 redundant files
+  across 52 albums on prod, many byte-identical. The message counts the redundant copies. Advisory,
+  never deletable: which copy to keep is a quality call, made in Admin → Find duplicates.
 - `untracked_album` (low) — a multi-track album with songs carrying no track number at all.
 - `brand_artist` (medium) — an artist credited on ≥5 songs and named in **none** of their own
   artist tags (issue #963): `IPAUTA`, a download site whose folder name became a co-credit on
