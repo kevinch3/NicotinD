@@ -1086,6 +1086,8 @@
   "trackInfo.tagAlbum": "Álbum",
   "trackInfo.tagAlbumArtist": "Artista del álbum",
   "trackInfo.tagArtist": "Artista",
+  "trackInfo.tagComposer": "Compositor",
+  "trackInfo.tagConductor": "Director",
   "trackInfo.tagTitle": "Título",
   "trackInfo.tagYear": "Año",
   "trackInfo.tagsActual": "Ahora en el registro:",

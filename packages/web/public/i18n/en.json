@@ -1086,6 +1086,8 @@
   "trackInfo.tagAlbum": "Album",
   "trackInfo.tagAlbumArtist": "Album artist",
   "trackInfo.tagArtist": "Artist",
+  "trackInfo.tagComposer": "Composer",
+  "trackInfo.tagConductor": "Conductor",
   "trackInfo.tagTitle": "Title",
   "trackInfo.tagYear": "Year",
   "trackInfo.tagsActual": "Now on the row:",

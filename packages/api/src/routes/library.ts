@@ -444,6 +444,8 @@ interface SongRow {
   duration: number;
   year: number | null;
   genre: string | null;
+  composer: string | null;
+  conductor: string | null;
   cover_art: string | null;
   path: string;
   size: number | null;
@@ -484,7 +486,7 @@ const ALBUM_SELECT = `
 const SONG_SELECT = `
   SELECT s.id, s.album_id, a.name AS album_name, a.cover_art AS album_cover_art,
          s.title, s.artist, s.artist_id, s.album_artist, s.album_artist_id,
-         s.track, s.disc, s.duration, s.year, s.genre,
+         s.track, s.disc, s.duration, s.year, s.genre, s.composer, s.conductor,
          s.cover_art, s.path, s.size, s.bit_rate, s.sample_rate, s.bit_depth, s.channels,
          s.suffix, s.content_type,
          s.created, s.starred, s.bpm, s.key,
@@ -531,6 +533,8 @@ function rowToSong(r: SongRow): Song {
     disc: r.disc ?? undefined,
     year: r.year ?? undefined,
     genre: r.genre ?? undefined,
+    composer: r.composer ?? undefined,
+    conductor: r.conductor ?? undefined,
     coverArt: r.cover_art ?? r.album_cover_art ?? r.album_id,
     size: r.size ?? 0,
     contentType: r.content_type ?? '',
@@ -2375,7 +2379,9 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
         result.status,
       );
     }
-    const changes = (['title', 'artist', 'albumArtist', 'album', 'year'] as const)
+    const changes = (
+      ['title', 'artist', 'albumArtist', 'album', 'year', 'composer', 'conductor'] as const
+    )
       .filter((k) => result.applied[k] !== undefined)
       .map(
         (k) =>

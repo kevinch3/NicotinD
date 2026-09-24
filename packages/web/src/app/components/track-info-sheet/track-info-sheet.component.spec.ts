@@ -693,9 +693,23 @@ describe('TrackInfoSheetComponent (retag form, issue #724)', () => {
       artist: 'Los Hijos del Sol',
       albumArtist: 'Los Hijos del Sol',
       album: 'Fake YouTube Album',
+      composer: '',
+      conductor: '',
       year: '2019',
     });
     expect(c.hasTagChanges()).toBe(false);
+  });
+
+  it('moves a composer out of artist in one save (#1083)', () => {
+    const c = create();
+    c.startEditTags();
+    c.setTagField('composer', 'Los Hijos del Sol');
+    c.setTagField('artist', 'Cumbia Performer');
+    c.saveTags();
+    expect(fixSongMetadata).toHaveBeenCalledWith('song-1', {
+      artist: 'Cumbia Performer',
+      composer: 'Los Hijos del Sol',
+    });
   });
 
   it('sends only the fields the curator actually changed', () => {

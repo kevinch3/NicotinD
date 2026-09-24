@@ -65,6 +65,10 @@ export interface Song {
   genre?: string;
   /** Full genre set, primary first (from library_song_genres). */
   genres?: string[];
+  /** Composer credit (TCOM / `COMPOSER`), `; `-joined when several (#1083). */
+  composer?: string;
+  /** Conductor credit (TPE3 / `CONDUCTOR`). */
+  conductor?: string;
   coverArt?: string;
   size: number;
   contentType: string;
