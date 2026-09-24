@@ -10,6 +10,7 @@ import { rowPlaybackState } from '../../lib/row-playback-state';
 import type { ArtistCredit } from '../../services/api/api-types';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
+import { EntityActionsDirective } from '../../directives/entity-actions.directive';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 
 /** An album name plus (when known) the id its name links to. */
@@ -47,10 +48,13 @@ function formatDuration(seconds?: number): string {
     TvNavItemDirective,
     TvNavGroupDirective,
     TranslatePipe,
+    EntityActionsDirective,
   ],
   templateUrl: './track-row.component.html',
 })
 export class TrackRowComponent {
+  /** Right-click and hold open the same ⋯ list (#1298). */
+  readonly menuActions = (): TrackAction[] => this.actions();
   readonly auth = inject(AuthService);
   readonly player = inject(PlayerService);
   readonly likes = inject(LikeService);

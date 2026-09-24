@@ -38,6 +38,16 @@ not a link: TV artist names, offline rows without an id.)
   taste, `not_for_me`, routes back to `exclude()` instead of filing a flag. It is the only action
   carrying a `labelKey`, so it renders translated while its `data-testid` stays the English `label`.
 
+## Entity menus: albums, artists, genres, playlists (#1298)
+
+The same rule, one level up. `EntityMenuService.build(ref, ctx)` is the single source of a
+tile's actions for the four entity kinds, in a fixed order: **Start radio** (the app's one verb),
+Play, Play next, Add to queue, Save offline, Open, then `ctx.extraActions` last — the Library's
+curator Hide/Unhide album rides there, exactly as `SongContext.extraActions` does for songs. A tile
+reaches the menu through hover (`EntityMenuButtonComponent`), right-click or a touch hold
+(`EntityActionsDirective`); song tiles and track rows draw their list from `SongMenuService.build()`
+as before, so the two sources never overlap. See [web-ui.md](web-ui.md) "Tile interaction standard".
+
 ## Contextual actions (`SongContext`)
 
 - `hideGoToArtist` / `hideGoToAlbum` — suppress the redundant link on the

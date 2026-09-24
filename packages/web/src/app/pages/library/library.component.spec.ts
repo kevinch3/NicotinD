@@ -4,6 +4,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { vi } from 'vitest';
 import { LibraryComponent } from './library.component';
+import { EntityMenuService } from '../../services/entity-menu.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { CurationApiService } from '../../services/api/curation-api.service';
 import { AuthService } from '../../services/auth.service';
@@ -804,5 +805,51 @@ describe('LibraryComponent — the Songs tab owns its own refetch (#1060)', () =
     expect(component.libFilter()).toEqual({ countries: ['CL'] });
     expect(component.artistsFetched()).toBe(false);
     expect((api.getArtists as ReturnType<typeof vi.fn>).mock.calls.length).toBe(before);
+  });
+});
+
+// One tile interaction standard (#1298): every card carries the directive and
+// the ⋯, and the album card's menu carries the curator's Hide as its last item.
+describe('LibraryComponent — tile menus (#1298)', () => {
+  it('builds the album menu with Start radio first and the curator Hide/Unhide last', () => {
+    const { component } = setup({}, { canCurate: true });
+    const actions = component
+      .albumActions({ id: 'al1', name: 'Al', artist: 'A' } as never)()
+      .map((a) => a.label);
+    expect(actions[0]).toBe('Start radio');
+    expect(actions.at(-1)).toBe('Hide album');
+    const hidden = component
+      .albumActions({ id: 'al1', name: 'Al', artist: 'A', hidden: true } as never)()
+      .map((a) => a.label);
+    expect(hidden.at(-1)).toBe('Unhide album');
+  });
+
+  it('a listener gets the menu without the curator item', () => {
+    const { component } = setup({}, { canCurate: false });
+    const actions = component
+      .albumActions({ id: 'al1', name: 'Al', artist: 'A' } as never)()
+      .map((a) => a.label);
+    expect(actions).not.toContain('Hide album');
+    expect(actions.at(-1)).toBe('Open');
+  });
+
+  it('right-click on an album card opens the entity menu at the pointer', () => {
+    localStorage.clear(); // an earlier describe may have left the Library on another tab
+    const { fixture, filteredItems } = setup();
+    filteredItems.set([{ id: 'al1', name: 'Al', artist: 'A' }] as never);
+    fixture.detectChanges();
+    const open = vi.spyOn(TestBed.inject(EntityMenuService), 'open');
+    const card = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>(
+      '[data-testid="album-card"]',
+    );
+    expect(card, 'album card rendered').not.toBeNull();
+    expect(card!.querySelector('[data-testid="entity-menu-button"]')).not.toBeNull();
+    card!.dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 7, clientY: 8 }),
+    );
+    expect(open).toHaveBeenCalledWith({
+      actions: expect.arrayContaining([expect.objectContaining({ label: 'Start radio' })]),
+      at: { x: 7, y: 8 },
+    });
   });
 });

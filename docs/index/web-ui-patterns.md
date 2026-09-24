@@ -18,6 +18,10 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   artists); Remove routes through `ConfirmService` → `deleteSongs` → `deletedSongIds()`;
   multiselect is one `createSelection()` + `SelectionBarComponent` everywhere.
   → [song-actions.md](../song-actions.md)
+- **Tile interaction standard**: hover ⋯, right-click and touch hold open one entity menu
+  (`EntityMenuHostComponent`, `EntityMenuService.open`) on every tile and row; albums, artists,
+  genres and playlists get `EntityMenuService.build` (Start radio first), songs keep the song menu;
+  `EntityActionsDirective`, `EntityMenuButtonComponent`. → [web-ui.md](../web-ui.md)
 - **Unified search**: `GET /api/search?q=` blends local library and parallel network results into one
   source-agnostic list. → [source-agnostic-acquisition.md](../source-agnostic-acquisition.md)
 - **One album grid per artist tab**: library albums and the MusicBrainz discography merge into a

@@ -3,7 +3,7 @@
          remove and the ⋯ menu toggle are all D-pad reachable, while the row
          registers as a child group of the surrounding vertical track list so
          ArrowUp/Down still move between rows. -->
-    <div data-testid="track-row" appTvNavGroup [axis]="'horizontal'" [attr.data-playback-state]="playbackState()"
+    <div data-testid="track-row" appTvNavGroup [axis]="'horizontal'" [appEntityActions]="menuActions" [attr.data-playback-state]="playbackState()"
       [attr.aria-disabled]="disabled() ? 'true' : null"
       [class]="'flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-theme-hover transition group' + (disabled() ? ' opacity-40 pointer-events-none' : '')">
       @if (selectable()) {

@@ -1,4 +1,9 @@
-import { Component, OnInit, computed, inject, input, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, input, signal, Injector } from '@angular/core';
+import { EntityActionsDirective } from '../../directives/entity-actions.directive';
+import { EntityMenuButtonComponent } from '../entity-menu-button/entity-menu-button.component';
+import type { TrackAction } from '../track-row/track-row.component';
+import { SongMenuService } from '../../services/song-menu.service';
+import type { BaseSong } from '../../lib/track-utils';
 import { catchError, firstValueFrom, of } from 'rxjs';
 import { AuthService } from '../../services/auth.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
@@ -35,7 +40,13 @@ const SHELF_SIZE = 10;
 @Component({
   selector: 'app-taste-breakers',
   standalone: true,
-  imports: [CoverArtComponent, SkeletonComponent, TranslatePipe],
+  imports: [
+    CoverArtComponent,
+    SkeletonComponent,
+    TranslatePipe,
+    EntityActionsDirective,
+    EntityMenuButtonComponent,
+  ],
   template: `
     @if (loading()) {
       <section data-testid="taste-breakers-skeleton">
@@ -48,26 +59,32 @@ const SHELF_SIZE = 10;
         <p class="text-sm text-theme-muted mb-3">{{ 'home.tasteBreakersHint' | t }}</p>
         <div class="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
           @for (song of picks(); track song.id) {
-            <button
-              type="button"
-              (click)="onPlay(song)"
-              data-testid="taste-breakers-item"
-              [attr.data-song-id]="song.id"
-              class="shrink-0 w-28 text-left group active:scale-95 transition"
-            >
-              <app-cover-art
-                [src]="coverSrc(song)"
-                [artist]="song.artist"
-                [album]="song.album"
-                [size]="112"
-                className="w-28 h-28"
-                rounded="rounded-lg"
+            <div class="relative group shrink-0" [appEntityActions]="songActions(song)">
+              <app-entity-menu-button
+                [actions]="songActions(song)"
+                placement="absolute top-1 right-1"
               />
-              <p class="mt-1.5 text-xs font-semibold text-theme-primary truncate">
-                {{ song.title }}
-              </p>
-              <p class="text-xs text-theme-muted truncate">{{ song.artist }}</p>
-            </button>
+              <button
+                type="button"
+                (click)="onPlay(song)"
+                data-testid="taste-breakers-item"
+                [attr.data-song-id]="song.id"
+                class="w-28 text-left group active:scale-95 transition"
+              >
+                <app-cover-art
+                  [src]="coverSrc(song)"
+                  [artist]="song.artist"
+                  [album]="song.album"
+                  [size]="112"
+                  className="w-28 h-28"
+                  rounded="rounded-lg"
+                />
+                <p class="mt-1.5 text-xs font-semibold text-theme-primary truncate">
+                  {{ song.title }}
+                </p>
+                <p class="text-xs text-theme-muted truncate">{{ song.artist }}</p>
+              </button>
+            </div>
           }
         </div>
       </section>
@@ -75,6 +92,11 @@ const SHELF_SIZE = 10;
   `,
 })
 export class TasteBreakersComponent implements OnInit {
+  private readonly injector = inject(Injector);
+  /** The tile's menu (#1298): a song tile draws the song menu. */
+  songActions(song: BaseSong): () => TrackAction[] {
+    return () => this.injector.get(SongMenuService).build(song);
+  }
   private api = inject(LibraryApiService);
   private player = inject(PlayerService);
   private auth = inject(AuthService);

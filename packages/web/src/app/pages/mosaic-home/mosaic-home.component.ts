@@ -19,7 +19,9 @@ import { SetupService } from '../../services/setup.service';
 import { NetworkStatusService } from '../../services/network-status.service';
 import { PreserveService } from '../../services/preserve.service';
 import { TranslateService } from '../../services/translate.service';
-import { TrackInfoService } from '../../services/track-info.service';
+import { EntityMenuService, type EntityRef } from '../../services/entity-menu.service';
+import { SongMenuService } from '../../services/song-menu.service';
+import type { TrackAction } from '../../components/track-row/track-row.component';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { HistoryApiService } from '../../services/api/history-api.service';
 import { PlaylistsApiService } from '../../services/api/playlists-api.service';
@@ -49,6 +51,11 @@ const TAP_SLOP_PX = 6;
 const PAN_GAIN = 1.2;
 /** Hold duration that turns a press into "show me this track's info". */
 const LONG_PRESS_MS = 450;
+/** The hover ⋯ on a face (#1298): delegated, like every other tile event. */
+const MORE_BUTTON =
+  '<button type="button" class="mosaic-more" data-more aria-label="More options">' +
+  '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' +
+  '<circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>';
 
 /** The one torus cell that shows the curated home tiles. */
 const HOME_CELL = '0,0';
@@ -141,7 +148,8 @@ export class MosaicHomeComponent implements OnInit {
   private server = inject(ServerConfigService);
   private i18n = inject(TranslateService);
   private toast = inject(ToastService);
-  private trackInfo = inject(TrackInfoService);
+  private readonly entityMenu = inject(EntityMenuService);
+  private readonly songMenu = inject(SongMenuService);
   private setup = inject(SetupService);
   private network = inject(NetworkStatusService);
   private preserve = inject(PreserveService);
@@ -210,7 +218,7 @@ export class MosaicHomeComponent implements OnInit {
       this.vy = 0;
       this.stageRef()?.nativeElement.classList.add('cursor-grabbing');
       const tile = this.tileFromEvent(e);
-      if (tile) this.schedulePress(tile);
+      if (tile) this.schedulePress(tile, { x: e.clientX, y: e.clientY });
     },
     onMove: (e) => {
       const dx = e.clientX - this.lastX;
@@ -299,6 +307,9 @@ export class MosaicHomeComponent implements OnInit {
 
       const onClick = (e: MouseEvent): void => this.onStageClick(e);
       stage.addEventListener('click', onClick);
+      // Right-click is the desktop door into a tile's menu (#1298).
+      const onContextMenu = (e: MouseEvent): void => this.onStageContextMenu(e);
+      stage.addEventListener('contextmenu', onContextMenu);
 
       start();
       onCleanup(() => {
@@ -307,6 +318,7 @@ export class MosaicHomeComponent implements OnInit {
         io.disconnect();
         document.removeEventListener('visibilitychange', onVisibility);
         stage.removeEventListener('click', onClick);
+        stage.removeEventListener('contextmenu', onContextMenu);
       });
     });
 
@@ -516,11 +528,69 @@ export class MosaicHomeComponent implements OnInit {
   private onStageClick(e: MouseEvent): void {
     if (this.suppressTap) {
       this.suppressTap = false;
+      // The release after a hold: the menu it opened must not be closed by
+      // the host's document-level outside-click as this click bubbles up.
+      e.stopPropagation();
+      return;
+    }
+    // The hover ⋯ inside a face opens the menu anchored to itself.
+    const more = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-more]');
+    if (more) {
+      e.stopPropagation();
+      const tile = this.tileFromEvent(e);
+      const actions = tile ? this.tileActions(tile) : [];
+      if (actions.length > 0) this.entityMenu.open({ actions, anchor: more });
       return;
     }
     if (this.moved > TAP_SLOP_PX) return;
     const tile = this.tileFromEvent(e);
     if (tile) void this.start(tile);
+  }
+
+  /** The stage's pointerdown: a press on a face's ⋯ is the button's, not a pan or a hold. */
+  onStagePointerDown(e: PointerEvent): void {
+    if ((e.target as HTMLElement | null)?.closest('[data-more]')) return;
+    this.drag.start(e);
+  }
+
+  private onStageContextMenu(e: MouseEvent): void {
+    const tile = this.tileFromEvent(e);
+    if (!tile) return;
+    const actions = this.tileActions(tile);
+    if (actions.length === 0) return;
+    e.preventDefault();
+    this.entityMenu.open({ actions, at: { x: e.clientX, y: e.clientY } });
+  }
+
+  /**
+   * A tile's menu (#1298), one source per kind: a song tile draws the song
+   * menu (Song info included — the old hold-for-info is an item of it), a
+   * playlist or genre tile the entity menu, a vibe just its one verb. The
+   * downloads shortcut and an offline tile have nothing to add.
+   */
+  tileActions(tile: MosaicTile): TrackAction[] {
+    const a = tile.action;
+    switch (a.type) {
+      case 'song':
+        return this.songMenu.build(a.track);
+      case 'playlist':
+        return this.entityMenu.build({ kind: 'playlist', id: a.playlistId, name: tile.title });
+      case 'filter': {
+        if (tile.kind === 'genre') {
+          const ref: EntityRef = { kind: 'genre', value: a.filter.genres?.[0] ?? tile.title };
+          return this.entityMenu.build(ref);
+        }
+        return [
+          {
+            label: 'Start radio',
+            labelKey: 'entityMenu.startRadio',
+            action: () => void this.start(tile),
+          },
+        ];
+      }
+      default:
+        return [];
+    }
   }
 
   /** The tile an event landed on, resolved through the cell's content mapping. */
@@ -542,18 +612,13 @@ export class MosaicHomeComponent implements OnInit {
   // -------------------------------------------------------------------------
 
   /** Arm the hold-for-info timer; only song-backed tiles carry track info. */
-  private schedulePress(tile: MosaicTile): void {
-    if (tile.action.type !== 'song') return;
-    const track = tile.action.track;
+  /** A still hold opens the tile's menu at the finger (#1298), and eats the release's tap. */
+  private schedulePress(tile: MosaicTile, at: { x: number; y: number }): void {
+    const actions = this.tileActions(tile);
+    if (actions.length === 0) return;
     this.pressTimer = window.setTimeout(() => {
       this.suppressTap = true;
-      this.trackInfo.open({
-        songId: track.id,
-        title: track.title,
-        artist: track.artist,
-        album: track.album,
-        coverArt: track.coverArt ?? null,
-      });
+      this.entityMenu.open({ actions, at });
     }, LONG_PRESS_MS);
   }
 
@@ -613,6 +678,7 @@ export class MosaicHomeComponent implements OnInit {
       return `<div class="mosaic-face bg-theme-surface-2 text-theme-secondary">
         <span class="mosaic-dot"></span>
         <div><b style="font-size:${titleSize}px">${title}</b><span>${subtitle}</span></div>
+        ${MORE_BUTTON}
       </div>`;
     }
 
@@ -628,6 +694,7 @@ export class MosaicHomeComponent implements OnInit {
       : `background-image:${fallback}`;
     return `<div class="mosaic-face text-white" style="${bg}">
       <div class="mosaic-scrim"><b style="font-size:${titleSize}px">${title}</b><span>${subtitle}</span></div>
+      ${MORE_BUTTON}
     </div>`;
   }
 

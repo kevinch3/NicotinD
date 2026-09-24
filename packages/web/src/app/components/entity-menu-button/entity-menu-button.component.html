@@ -1,0 +1,22 @@
+@if (!tv) {
+  <button
+    type="button"
+    data-testid="entity-menu-button"
+    data-entity-menu-button
+    [attr.aria-label]="'entityMenu.more' | t"
+    [attr.title]="'entityMenu.more' | t"
+    [class]="
+      placement +
+      ' z-10 w-8 h-8 flex items-center justify-center rounded-full bg-black/55 text-white hover:bg-black/75 transition opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
+    "
+    (click)="onClick($event)"
+    (pointerdown)="$event.stopPropagation()"
+    (keydown.enter)="$event.stopPropagation()"
+  >
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <circle cx="5" cy="12" r="2" />
+      <circle cx="12" cy="12" r="2" />
+      <circle cx="19" cy="12" r="2" />
+    </svg>
+  </button>
+}

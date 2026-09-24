@@ -1,0 +1,25 @@
+@if (state(); as s) {
+  <div
+    data-testid="entity-menu"
+    role="menu"
+    class="fixed z-50 bg-theme-surface border border-theme rounded-xl shadow-xl py-1 min-w-40 w-50"
+    [style.left.px]="pos().x"
+    [style.top.px]="pos().y"
+    (click)="$event.stopPropagation()"
+    (pointerdown)="$event.stopPropagation()"
+  >
+    @for (action of s.actions; track action.label) {
+      <button
+        type="button"
+        role="menuitem"
+        [attr.data-testid]="'entity-action-' + action.label"
+        class="w-full text-left px-4 py-2 text-sm transition-colors hover:bg-theme-hover"
+        [class.text-red-400]="action.destructive"
+        [class.text-theme-secondary]="!action.destructive"
+        (click)="run(action)"
+      >
+        {{ action.labelKey ? (action.labelKey | t) : action.label }}
+      </button>
+    }
+  </div>
+}

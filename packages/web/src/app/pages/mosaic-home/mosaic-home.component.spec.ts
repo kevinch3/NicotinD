@@ -11,6 +11,8 @@ import { Router } from '@angular/router';
 import { PlaylistsApiService } from '../../services/api/playlists-api.service';
 import { ToastService } from '../../services/toast.service';
 import { TrackInfoService } from '../../services/track-info.service';
+import { EntityMenuService } from '../../services/entity-menu.service';
+import { SongMenuService } from '../../services/song-menu.service';
 import { SetupService } from '../../services/setup.service';
 import { NetworkStatusService } from '../../services/network-status.service';
 import { PreserveService } from '../../services/preserve.service';
@@ -120,6 +122,19 @@ function setup(opts: SetupOptions = {}) {
     ),
   };
   const trackInfo = { open: vi.fn(), close: vi.fn() };
+  const entityMenu = {
+    open: vi.fn(),
+    close: vi.fn(),
+    build: vi.fn((ref: { kind: string }) => [
+      { label: `Start radio ${ref.kind}`, action: () => {} },
+    ]),
+  };
+  const songMenu = {
+    build: vi.fn(() => [
+      { label: 'Start radio', action: () => {} },
+      { label: 'Song info', action: () => {} },
+    ]),
+  };
   const isOffline = signal(opts.offline ?? false);
   const reconnects = signal(0);
   const preserve = {
@@ -139,6 +154,8 @@ function setup(opts: SetupOptions = {}) {
       { provide: PlaylistsApiService, useValue: playlistsApi },
       { provide: AuthService, useValue: { token: () => 'tok' } },
       { provide: TrackInfoService, useValue: trackInfo },
+      { provide: EntityMenuService, useValue: entityMenu },
+      { provide: SongMenuService, useValue: songMenu },
       { provide: SetupService, useValue: { isOffline } },
       { provide: NetworkStatusService, useValue: { reconnects } },
       { provide: PreserveService, useValue: preserve },
@@ -156,6 +173,8 @@ function setup(opts: SetupOptions = {}) {
     playlistsApi,
     historyApi,
     trackInfo,
+    entityMenu,
+    songMenu,
     preserve,
     router,
     isOffline,
@@ -346,9 +365,11 @@ describe('MosaicHomeComponent', () => {
  * through the DOM here; these tests exercise the glue behind it instead.
  */
 interface MosaicInternals {
-  schedulePress(t: MosaicTile): void;
+  schedulePress(t: MosaicTile, at: { x: number; y: number }): void;
   cancelPress(): void;
   onStageClick(e: MouseEvent): void;
+  onStageContextMenu(e: MouseEvent): void;
+  tileFromEvent(e: Event): MosaicTile | null;
   suppressTap: boolean;
   packing: Packing | null;
   cells: Map<string, unknown>;
@@ -386,25 +407,34 @@ const packedStub = (id: number, size: number): PackedTile => ({
   half: size / 2,
 });
 
-describe('hold-for-info', () => {
-  it('a held press on a song tile opens the track-info sheet and swallows the tap', async () => {
+describe('hold-for-menu (#1298)', () => {
+  it('a held press on a song tile opens the song menu at the finger and swallows the tap', async () => {
     vi.useFakeTimers();
     try {
-      const { component, trackInfo, player, fixture } = setup({
+      const { component, entityMenu, songMenu, player, fixture } = setup({
         tasteBreakers: [song({ id: 'a', title: 'T', artist: 'A' })],
       });
       await settle(fixture);
       const c = internals(component);
-      c.schedulePress(component.tiles().find((t) => t.kind === 'song')!);
-      vi.advanceTimersByTime(450);
-      expect(trackInfo.open).toHaveBeenCalledWith(
-        expect.objectContaining({ songId: 'a', title: 'T', artist: 'A' }),
+      c.schedulePress(
+        component.tiles().find((t) => t.kind === 'song')!,
+        { x: 12, y: 34 },
       );
+      vi.advanceTimersByTime(450);
+      expect(songMenu.build).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }));
+      expect(entityMenu.open).toHaveBeenCalledWith({
+        actions: expect.arrayContaining([expect.objectContaining({ label: 'Song info' })]),
+        at: { x: 12, y: 34 },
+      });
       // The release that follows the hold must not start a radio under the
-      // sheet it just opened — the suppress flag eats exactly one click.
+      // menu it just opened — the suppress flag eats exactly one click — and
+      // must not bubble to the document, where the host would close the menu.
       expect(c.suppressTap).toBe(true);
-      c.onStageClick(new MouseEvent('click'));
+      const release = new MouseEvent('click', { bubbles: true });
+      const stop = vi.spyOn(release, 'stopPropagation');
+      c.onStageClick(release);
       expect(c.suppressTap).toBe(false);
+      expect(stop).toHaveBeenCalled();
       expect(player.startRadio).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
@@ -414,32 +444,66 @@ describe('hold-for-info', () => {
   it('a press released before the hold threshold opens nothing', async () => {
     vi.useFakeTimers();
     try {
-      const { component, trackInfo, fixture } = setup({ tasteBreakers: [song({ id: 'a' })] });
+      const { component, entityMenu, fixture } = setup({ tasteBreakers: [song({ id: 'a' })] });
       await settle(fixture);
       const c = internals(component);
-      c.schedulePress(component.tiles().find((t) => t.kind === 'song')!);
+      c.schedulePress(
+        component.tiles().find((t) => t.kind === 'song')!,
+        { x: 0, y: 0 },
+      );
       vi.advanceTimersByTime(200);
       c.cancelPress();
       vi.advanceTimersByTime(1000);
-      expect(trackInfo.open).not.toHaveBeenCalled();
+      expect(entityMenu.open).not.toHaveBeenCalled();
       expect(c.suppressTap).toBe(false);
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it('holding a non-song tile does nothing — only songs carry track info', async () => {
-    vi.useFakeTimers();
-    try {
-      const { component, trackInfo, fixture } = setup();
-      await settle(fixture);
-      const c = internals(component);
-      c.schedulePress(component.tiles().find((t) => t.kind === 'vibe')!);
-      vi.advanceTimersByTime(1000);
-      expect(trackInfo.open).not.toHaveBeenCalled();
-    } finally {
-      vi.useRealTimers();
-    }
+  it('every tile kind draws its menu from one source: song → song menu, playlist/genre → entity menu, vibe → its one verb', async () => {
+    const { component, entityMenu, fixture } = setup({
+      tasteBreakers: [song({ id: 'a' })],
+      playlists: [playlist({ id: 'p1', name: 'P', kind: 'curated' })],
+      genres: [{ value: 'jazz', songCount: 3, albumCount: 1 }],
+    });
+    await settle(fixture);
+    const byKind = (kind: string) => component.tiles().find((t) => t.kind === kind)!;
+    expect(component.tileActions(byKind('song')).map((a) => a.label)).toContain('Song info');
+    component.tileActions(byKind('playlist'));
+    expect(entityMenu.build).toHaveBeenCalledWith({ kind: 'playlist', id: 'p1', name: 'P' });
+    component.tileActions(byKind('genre'));
+    expect(entityMenu.build).toHaveBeenCalledWith({ kind: 'genre', value: 'jazz' });
+    expect(component.tileActions(byKind('vibe')).map((a) => a.label)).toEqual(['Start radio']);
+  });
+
+  it('right-click on a tile opens its menu at the pointer and suppresses the browser menu', async () => {
+    const { component, entityMenu, fixture } = setup({ tasteBreakers: [song({ id: 'a' })] });
+    await settle(fixture);
+    const c = internals(component);
+    const tile = component.tiles().find((t) => t.kind === 'song')!;
+    // The stage's delegated resolution is covered by the tap tests; here the
+    // event → tile step is stubbed so the assertion is about the menu.
+    vi.spyOn(c, 'tileFromEvent').mockReturnValue(tile);
+    const e = new MouseEvent('contextmenu', { cancelable: true, clientX: 5, clientY: 6 });
+    c.onStageContextMenu(e);
+    expect(e.defaultPrevented).toBe(true);
+    expect(entityMenu.open).toHaveBeenCalledWith({
+      actions: expect.any(Array),
+      at: { x: 5, y: 6 },
+    });
+  });
+
+  it("a press on a face's ⋯ is the button's, not a pan", async () => {
+    const { component, fixture } = setup({ tasteBreakers: [song({ id: 'a' })] });
+    await settle(fixture);
+    const start = vi.spyOn(component.drag, 'start');
+    const more = document.createElement('button');
+    more.setAttribute('data-more', '');
+    const e = new MouseEvent('pointerdown') as unknown as PointerEvent;
+    Object.defineProperty(e, 'target', { value: more });
+    component.onStagePointerDown(e);
+    expect(start).not.toHaveBeenCalled();
   });
 });
 
