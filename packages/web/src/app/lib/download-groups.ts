@@ -122,7 +122,7 @@ export interface DownloadItem {
   /**
    * Dominant bitrate (kbps) of the card's downloads, rolled up server-side
    * (`enrichWithBitrate` joins acquisition_job_items + library_songs.bit_rate)
-   * or, for URL acquires, mirroring `AcquireJob.bitRate` (probed at ingest).
+   * or, for URL acquires, mirroring `AcquireJob.bitRate` (read from the scanned library rows).
    * Drives the "· 320 kbps" chip. Absent when no item has a quality signature.
    */
   bitrateKbps?: number;

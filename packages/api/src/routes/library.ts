@@ -63,7 +63,12 @@ import {
   deleteArtistImageOverride,
   ALLOWED_OVERRIDE_TYPES,
 } from '../services/artist-image-override.js';
-import { clearCoverNegativeCache, extractCover, fetchRemoteCover } from './streaming.js';
+import {
+  clearAlbumCoverNegativeCache,
+  clearCoverNegativeCache,
+  extractCover,
+  fetchRemoteCover,
+} from './streaming.js';
 import { albumGenreDistribution, artistGenreDistribution } from '../services/genre-distribution.js';
 import { mutateArtistIdentity } from '../services/artist-identity-mutate.js';
 import { mutateSongGenre, parseGenreList } from '../services/song-genre-mutate.js';
@@ -90,8 +95,9 @@ import {
   dedupeCoverUrls,
   selectDistinctEmbeddedCovers,
   extractEmbeddedPicture,
-  writeFolderCover,
+  replaceFolderCover,
 } from '../services/cover-sources.js';
+import { folderArtBelongsToAlbum } from '../services/album-folder.js';
 import { checkFragments } from '../services/library-fragments.js';
 import { libraryHealthWithLidarr } from '../services/library-health.js';
 import { applyAlbumCover } from '../services/album-cover-mutate.js';
@@ -1462,10 +1468,10 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       return c.json({ error: 'Could not read that image' }, 400);
     }
 
-    writeFolderCover(dirname(abs), resized);
+    replaceFolderCover(dirname(abs), resized, folderArtBelongsToAlbum(db, song!.path));
     deleteArtwork(db, id, coverCacheDir); // clear canonical → folder art wins
     if (coverCacheDir) purgeDiskArtCache(coverCacheDir, id);
-    clearCoverNegativeCache(id); // in case this id was 404-cached as artless
+    clearAlbumCoverNegativeCache(db, id); // in case an id was 404-cached as artless
     recordAudit(db, c.get('user'), 'album.cover', {
       targetKind: 'album',
       targetId: id,

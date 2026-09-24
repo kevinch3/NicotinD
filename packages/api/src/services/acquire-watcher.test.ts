@@ -321,6 +321,70 @@ describe('AcquireWatcher (registry-driven)', () => {
     expect(h.organize).not.toHaveBeenCalled();
   });
 
+  describe('bitrate chip (#1304)', () => {
+    function landedSong(db: Database, bitRate: number, suffix: string) {
+      db.run(
+        `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, bit_rate, suffix, synced_at)
+         VALUES ('s1', 'al1', 'Track', 'Artist', 'ar1', 'Artist/Album/track.mp3', ?, ?, 0)`,
+        [bitRate, suffix],
+      );
+    }
+
+    function watcherWith(opts: {
+      organize?: (files: CompletedDownloadFile[]) => Promise<void>;
+      scan?: () => Promise<void>;
+    }) {
+      const probe = mock(async () => ({ bitRateKbps: 320, codec: 'mp3' }));
+      const watcher = new AcquireWatcher({
+        db: h.db,
+        dataDir: DATA_DIR,
+        registry: h.registry,
+        organizeBatch:
+          opts.organize ??
+          (async (files) => {
+            for (const f of files) f.relativePath = 'Artist/Album/track.mp3';
+          }),
+        scanIncremental: opts.scan ?? (async () => {}),
+        probeStagedFile: probe,
+      });
+      return { watcher, probe };
+    }
+
+    it('reads the landed bitrate from the scanned library row, spawning no ffprobe', async () => {
+      const { watcher, probe } = watcherWith({ scan: async () => landedSong(h.db, 128, 'OPUS') });
+      await h.registry.enable('fake', 'admin');
+      const id = await watcher.submit('https://example.com/x');
+      await waitForState(watcher, id, 'done');
+      const job = watcher.getJob(id)!;
+      expect(job.bitRate).toBe(128);
+      expect(job.audioFormat).toBe('opus');
+      expect(probe).not.toHaveBeenCalled();
+    });
+
+    it('falls back to probing the staged files when the scan recorded no bitrate', async () => {
+      const { watcher, probe } = watcherWith({});
+      await h.registry.enable('fake', 'admin');
+      const id = await watcher.submit('https://example.com/x');
+      await waitForState(watcher, id, 'done');
+      expect(probe).toHaveBeenCalledTimes(1);
+      expect(watcher.getJob(id)!.bitRate).toBe(320);
+      expect(watcher.getJob(id)!.audioFormat).toBe('mp3');
+    });
+
+    it('still shows a bitrate on a job whose organize failed', async () => {
+      const { watcher, probe } = watcherWith({
+        organize: async () => {
+          throw new Error('disk full');
+        },
+      });
+      await h.registry.enable('fake', 'admin');
+      const id = await watcher.submit('https://example.com/x');
+      await waitForState(watcher, id, 'failed');
+      expect(probe).toHaveBeenCalledTimes(1);
+      expect(watcher.getJob(id)!.bitRate).toBe(320);
+    });
+  });
+
   it('marks job failed and stage error when organizeBatch rejects', async () => {
     const plugin = fakePlugin();
     const { registry } = makeHarness(plugin);

@@ -1,7 +1,7 @@
 import { test, expect } from '../helpers';
+import { E2E_MUSIC_DIR } from '../fixture-music';
 import { rmSync } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { ADMIN, bearer } from '../helpers';
 import {
   startFixtureAddon,
@@ -13,9 +13,9 @@ import {
 const ADDON_ID = 'fixture-hunt-addon';
 const ADDON_AUTH = { Authorization: `Bearer ${FIXTURE_ADDON_TOKEN}` };
 
-/** The ingested release lands INSIDE the git-tracked fixtures/music tree — it
- *  must be removed on the way out or every later run inherits it. */
-const LANDED_DIR = join(dirname(fileURLToPath(import.meta.url)), '../fixtures/music/Rick Astley');
+/** The ingested release lands in the run's music dir — it must be removed on
+ *  the way out or every later spec in the run inherits it. */
+const LANDED_DIR = join(E2E_MUSIC_DIR, 'Rick Astley');
 
 /**
  * The album-hunt → download path through a remote acquisition addon, themed on

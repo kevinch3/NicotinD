@@ -1,0 +1,6 @@
+• covers: a new folder cover replaces the old one and reaches every song id (#1347)
+• acquire: read the download card's bitrate from the scan, not an ffprobe per staged file (#1348)
+• scanner: an album reconcile loads only its own batch's cache rows and paths (#1350)
+• streaming: read the cached waveform and check the source without blocking the event loop (#1346)
+• transcode: one process-wide ffmpeg slot pool, with streams and waveforms ahead of batch work (#1352)
+…and 1 more

@@ -1,4 +1,5 @@
 import { test, expect } from '../helpers';
+import { E2E_MUSIC_DIR } from '../fixture-music';
 import { copyFileSync, existsSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,7 +10,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
  *  the TAGS, not the folder: `live-probe.flac` is tagged "Live Probe Artist /
  *  Live Probe Album / Live Probe Song", so no other spec can add a track to it
  *  (the old plant copied `addon-song.flac` into the shared "Addon Album", #1064). */
-const PLANT_DIR = join(HERE, '../fixtures/music/Live Probe Artist');
+const PLANT_DIR = join(E2E_MUSIC_DIR, 'Live Probe Artist');
 const PLANTED = join(PLANT_DIR, 'Live Probe Album', '01 - Live Probe Song.flac');
 const SOURCE = join(HERE, '../fixtures/plant/live-probe.flac');
 const PLANT_ALBUM = 'Live Probe Album';

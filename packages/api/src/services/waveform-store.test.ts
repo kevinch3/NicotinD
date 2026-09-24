@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import {
   existsSync,
   mkdtempSync,
+  readFileSync,
   readdirSync,
   rmSync,
   statSync,
@@ -98,6 +99,27 @@ describe('getWaveform', () => {
     expect(again.peaks.length).toBeGreaterThan(0);
   });
 
+  it('shares one decode between concurrent requests that both find a corrupt artifact', async () => {
+    const decoder = sineDecoder();
+    await getWaveform(cacheDir, song, { decoder });
+    const st = statSync(song);
+    const file = join(cacheDir, `${waveformCacheKey(song, st.mtimeMs, st.size)}.json`);
+    writeFileSync(file, '{not json');
+    const [a, b] = await Promise.all([
+      getWaveform(cacheDir, song, { decoder }),
+      getWaveform(cacheDir, song, { decoder }),
+    ]);
+    expect(decoder.calls).toBe(2);
+    expect(b).toBe(a);
+    expect(JSON.parse(readFileSync(file, 'utf8')).peaks.length).toBeGreaterThan(0);
+  });
+
+  it('rejects for a missing source file without writing anything', async () => {
+    const decoder = sineDecoder();
+    await expect(getWaveform(cacheDir, join(dir, 'gone.opus'), { decoder })).rejects.toThrow();
+    expect(decoder.calls).toBe(0);
+  });
+
   it('propagates a decode failure (no artifact is written)', async () => {
     const decoder: PcmDecoder = async () => {
       throw new Error('Invalid data found when processing input');
@@ -131,5 +153,20 @@ describe('pruneWaveformCache', () => {
     expect(left).toHaveLength(2);
     const stA = statSync(songs[0]!);
     expect(left).not.toContain(`${waveformCacheKey(songs[0]!, stA.mtimeMs, stA.size)}.json`);
+  });
+});
+
+describe('the /peaks request path never blocks on sync fs (#1328)', () => {
+  it('waveform-store.ts uses no synchronous fs call', () => {
+    const src = readFileSync(join(import.meta.dir, 'waveform-store.ts'), 'utf8');
+    expect(src.match(/\b\w+Sync\(/g) ?? []).toEqual([]);
+  });
+
+  it('the /peaks handler in streaming.ts uses no synchronous fs call', () => {
+    const src = readFileSync(join(import.meta.dir, '../routes/streaming.ts'), 'utf8');
+    const start = src.indexOf("app.get('/peaks/:id'");
+    expect(start).toBeGreaterThan(0);
+    const handler = src.slice(start, src.indexOf('return app;', start));
+    expect(handler.match(/\b\w+Sync\(/g) ?? []).toEqual([]);
   });
 });

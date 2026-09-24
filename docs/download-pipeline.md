@@ -144,7 +144,7 @@ FLAC is overkill for web streaming and large on disk. `downloads.transcodeLossle
 **No blocking subprocesses on this path (#1304).** Every ffmpeg/ffprobe call made per ingested
 track — the output duration check, the cover re-compress ladder (`preparePicture`), the cover
 attach (`attachPictureToOpus`, `attachPictureAsStream`), the Ogg picture read-back
-(`readOggPicture`) and the staged-file bitrate probe (`probeAudioFile`, bounded to 4 at once) — goes
+(`readOggPicture`) and the fallback staged-file bitrate probe (`probeAudioFile`, bounded to 4 at once) — goes
 through `execFileAsync` (`services/exec-file.ts`). They used `execFileSync`, which froze every HTTP
 request and stream for the length of each call and serialized the `TRANSCODE_CONCURRENCY` pool on
 them. `exec-file.test.ts` fails if `execFileSync(` reappears in those files; the one left in
@@ -187,6 +187,22 @@ runs the analysis sidecar and whatever else shares it, and an organize batch sho
 every core. Measured on prod (8 cores, load ~1.8), four concurrent encodes of a 3-minute FLAC took
 **3.4 s against 10.0 s serial** — most of the way to linear already, so more would mostly be taking
 cores off neighbours.
+
+**One process-wide ffmpeg cap on top (#1312).** The organizer pool, enrichment (3 per task), stream
+transcodes and waveform decodes each cap only themselves, so together they could run far more
+children than the host has cores. Every ffmpeg/ffprobe child now also holds a slot of
+`ffmpegSlots` (`services/ffmpeg-slots.ts`): `execFileAsync` takes one for every probe and remux,
+and each direct `spawn(ffmpegBinary(), …)` is wrapped in `withFfmpegSlot`. The size is
+`NICOTIND_FFMPEG_SLOTS`, or the core count (`os.availableParallelism()`, at least 2). Work a
+listener is waiting on — `transcodeToFile` for `/api/stream`, the `/peaks` waveform decode — is
+`interactive`; everything else is `batch`. Batch may hold at most `size - 1` slots, so one is always
+free for interactive, and a released slot goes to a waiting interactive caller before any queued
+batch one: a batch flood delays a stream by at most one slot's release, and only when interactive
+work already fills the reserved slot. A call made inside a held slot (the tag write re-attaching a
+cover, the transcode's output probe) runs under that slot instead of taking a second, which would
+deadlock once every holder did it. The per-caller limits stay; the slots only bound their sum.
+`ffmpeg-slots.test.ts` proves the ordering and that every direct spawner is wrapped. `fpcalc`
+(AcoustID) is not an ffmpeg child and is not counted.
 
 This makes `transcodeSumMs` no longer the elapsed time: it sums each encode's own duration and so
 exceeds the wall clock once they overlap. `transcodeWallMs` reports the pooled phase's actual
@@ -795,6 +811,17 @@ The ingest/library path is the opposite. Its next statement is
 `rmSync(absPath)` on an irreplaceable library file, so `encodeOutputVerdict`
 (`post-download-transcode.ts`) **fails closed**: an output that cannot be probed is rejected, and the
 original survives.
+
+**An Opus output's duration is read in-process (#1305).** `readOggOpusDurationSec` (`opus-gain.ts`,
+next to the `OpusHead` parser) takes the last Ogg page's granule position minus the `OpusHead`
+pre-skip, over 48 kHz (RFC 7845 §4), with no ffprobe spawn. It is stricter than the ffprobe it
+replaces, and returns `null` (a rejection) for: a head page whose CRC fails, no complete CRC-valid
+page ending exactly at EOF (a truncated file, or trailing bytes), a last page without the
+end-of-stream flag or from another logical stream, and an unset granule. ffprobe reported a file
+with 200 bytes cut off its tail as the full 20.0 s, so the old check would have passed it and
+deleted the original. A target that is not Ogg-Opus (`undefined`) still goes to ffprobe. The
+granule value is also the exact playable length, where ffprobe over-reports by the 6.5 ms pre-skip
+(see opus-library-conversion-plan.md).
 
 Two ways it used to fail open, both ending with a delete on no evidence:
 
@@ -1701,7 +1728,7 @@ The frontend unifies both onto `DownloadItem.tracks` (`lib/download-groups.ts`).
 Every download card surfaces the dominant bitrate + codec as a small inline chip next to the method badge (`data-testid="download-bitrate"`). Two source paths feed the chip:
 
 - **slskd** — captured at enqueue time from `SlskdFile.bitRate` (already on the search response), threaded through every `createJob({ files: [{ ..., bitRate, audioFormat }] })` call site: `album-acquire.ts` (auto-acquire), `track-hunter` callers, and `album-fallback.service.ts` (the cross-peer fallback's `repointOrAttachItem` updates the row when a track gets repulled from an alternate peer). Stored on `acquisition_job_items.bit_rate_kbps` / `audio_format`. **Upgraded post-scan** by `enrichWithBitrate` (`routes/downloads.ts`) which `LEFT JOIN library_songs ON path = relative_path` — once the scanner ran, the `library_songs.bit_rate` value wins (the authoritative, post-transcode bitrate, e.g. 192 kbps Opus on a downloaded FLAC after lossless→opus).
-- **URL-acquire (spotdl / yt-dlp / archive)** — `AcquireWatcher.ingest` runs `probeAudioFile()` (ffprobe-based helper in `services/transcode.ts`) on the staged files once the plugin finishes downloading, computes the mode (`dominantProbe`), and writes `acquire_jobs.bit_rate_kbps` / `audio_format`. ffprobe is gated on `ffmpegAvailable()` — if ffmpeg isn't on PATH, no probe runs and the chip stays hidden for that card (the rest of the pipeline is also no-op in that case). The route's `enrichWithBitrate` upgrade path doesn't apply (URL-acquire jobs don't have `acquisition_job_items`).
+- **URL-acquire (spotdl / yt-dlp / archive)** — once the incremental scan returns, `AcquireWatcher.ingest` reads `library_songs.bit_rate` / `suffix` for the landed paths (`recordLibraryBitRate`), computes the mode (`dominantProbe`), and writes `acquire_jobs.bit_rate_kbps` / `audio_format`. That is the scanner's music-metadata parse, so it is the post-transcode value (a FLAC that became Opus shows the Opus bitrate) and needs no ffmpeg. It used to be one ffprobe per staged file before organize (#1304). Only a job whose files never reached the library (organize threw, or every file was unfiled or dup-skipped) falls back to `probeAudioFile()` on what is still staged (`probeStagedBitRate`), so those cards keep their chip too. The chip is empty during the organizing/scanning stages. URL-acquire jobs have no `acquisition_job_items`, so the item rollup below does not apply to them.
 
 The pure `formatQuality(bitrateKbps, audioFormat)` helper in `lib/download-status.ts` decides the chip's display: `"FLAC · 1411 kbps"` for lossless codecs (always show the codec since lossless without kbps is ambiguous), `"320 kbps"` for lossy. Missing both → empty string → chip hidden. The dominant rollup logic lives in `acquisition-job-store.ts listJobFeed` (for the unified feed) and `routes/downloads.ts enrichWithBitrate` (for the slskd live feed); `lib/download-groups.ts collapseJobMembers` collapses a job's multi-peer folders to one chip via the unified-job rollup, falling back to mode-across-members when no job-level value is known yet.
 

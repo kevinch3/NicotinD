@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { createLogger } from '@nicotind/core';
 import { summarizeFfmpegStderr } from './track-analysis.js';
 import { ffmpegBinary } from './ffmpeg-path.js';
+import { withFfmpegSlot } from './ffmpeg-slots.js';
 
 const log = createLogger('loudness-analysis');
 
@@ -101,25 +102,27 @@ export async function analyzeLoudness(
   // Always keep stderr: on success we parse the ebur128 summary from it; on a
   // non-zero exit we surface the tail as the failure reason instead of swallowing
   // it. why: bug where every ebur128 run failed opaquely and the reason was lost.
-  const result = await new Promise<{ code: number | null; stderr: string; timedOut: boolean }>(
-    (resolve) => {
-      const proc = spawn(ffmpegBinary(), args, { stdio: ['ignore', 'ignore', 'pipe'] });
-      const chunks: Buffer[] = [];
-      let timedOut = false;
-      const timer = setTimeout(() => {
-        timedOut = true;
-        proc.kill('SIGKILL');
-      }, EBUR128_TIMEOUT_MS);
-      proc.stderr.on('data', (d: Buffer) => chunks.push(d));
-      proc.on('error', () => {
-        clearTimeout(timer);
-        resolve({ code: -1, stderr: '', timedOut: false });
-      });
-      proc.on('close', (code) => {
-        clearTimeout(timer);
-        resolve({ code, stderr: Buffer.concat(chunks).toString('utf8'), timedOut });
-      });
-    },
+  const result = await withFfmpegSlot(
+    'batch',
+    () =>
+      new Promise<{ code: number | null; stderr: string; timedOut: boolean }>((resolve) => {
+        const proc = spawn(ffmpegBinary(), args, { stdio: ['ignore', 'ignore', 'pipe'] });
+        const chunks: Buffer[] = [];
+        let timedOut = false;
+        const timer = setTimeout(() => {
+          timedOut = true;
+          proc.kill('SIGKILL');
+        }, EBUR128_TIMEOUT_MS);
+        proc.stderr.on('data', (d: Buffer) => chunks.push(d));
+        proc.on('error', () => {
+          clearTimeout(timer);
+          resolve({ code: -1, stderr: '', timedOut: false });
+        });
+        proc.on('close', (code) => {
+          clearTimeout(timer);
+          resolve({ code, stderr: Buffer.concat(chunks).toString('utf8'), timedOut });
+        });
+      }),
   );
   if (result.timedOut) {
     log.warn({ absPath }, 'ebur128 analysis timed out');

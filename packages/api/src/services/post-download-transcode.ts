@@ -7,6 +7,7 @@ import { isLossless } from './library-track-select.js';
 import { getMusicMetadata } from './music-metadata-loader.js';
 import { ffmpegAvailable, TRANSCODE_DURATION_TOLERANCE_SEC } from './transcode.js';
 import { ffmpegBinary } from './ffmpeg-path.js';
+import { withFfmpegSlot } from './ffmpeg-slots.js';
 import { extractEmbeddedPicture, preserveFolderCover } from './cover-sources.js';
 import { preparePicture } from './opus-artwork.js';
 import {
@@ -17,6 +18,7 @@ import {
   type CanonicalTags,
 } from './audio-tags.js';
 import { quarantineOriginal } from './transcode-quarantine.js';
+import { readOggOpusDurationSec } from './opus-gain.js';
 import {
   ID3_TXXX_FFMPEG_MISNAMES,
   UNMODELLED_SPACED_KEYS,
@@ -560,20 +562,24 @@ function runFfmpeg(
   args: string[],
   tmpPath: string,
 ): Promise<{ code: number | null; stderrTail: string }> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn(ffmpegBinary(), args, { stdio: ['ignore', 'ignore', 'pipe'] });
-    let stderr = '';
-    proc.stderr?.on('data', (chunk: Buffer) => {
-      stderr = (stderr + chunk.toString()).slice(-STDERR_TAIL_CHARS);
-    });
-    proc.on('error', (err) => {
-      cleanup(tmpPath);
-      reject(err);
-    });
-    proc.on('close', (code) => {
-      resolve({ code, stderrTail: stderr.trim().split('\n').at(-1)?.trim() ?? '' });
-    });
-  });
+  return withFfmpegSlot(
+    'batch',
+    () =>
+      new Promise((resolve, reject) => {
+        const proc = spawn(ffmpegBinary(), args, { stdio: ['ignore', 'ignore', 'pipe'] });
+        let stderr = '';
+        proc.stderr?.on('data', (chunk: Buffer) => {
+          stderr = (stderr + chunk.toString()).slice(-STDERR_TAIL_CHARS);
+        });
+        proc.on('error', (err) => {
+          cleanup(tmpPath);
+          reject(err);
+        });
+        proc.on('close', (code) => {
+          resolve({ code, stderrTail: stderr.trim().split('\n').at(-1)?.trim() ?? '' });
+        });
+      }),
+  );
 }
 
 /**
@@ -654,6 +660,10 @@ async function readSourceDurationSec(absPath: string): Promise<number | null> {
 }
 
 async function readOutputDurationSec(absPath: string): Promise<number | null> {
+  // An Opus output is read in-process from its last Ogg page (#1305); its
+  // `null` stays a rejection. ffprobe only for a target that is not Ogg-Opus.
+  const oggSec = await readOggOpusDurationSec(absPath);
+  if (oggSec !== undefined) return oggSec;
   try {
     const ffprobe = ffmpegBinary().replace(/ffmpeg$/, 'ffprobe');
     const out = (

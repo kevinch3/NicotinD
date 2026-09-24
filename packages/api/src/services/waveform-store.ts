@@ -11,8 +11,7 @@
  * See docs/cache-invalidation.md.
  */
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { readdir, stat, unlink } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rename, rm, stat, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createLogger } from '@nicotind/core';
 import { streamPcm } from './track-analysis.js';
@@ -36,7 +35,7 @@ const DEFAULT_BUDGET_BYTES = 512 * 1024 * 1024;
 const inFlight = new Map<string, Promise<WaveformData>>();
 
 const defaultDecoder: PcmDecoder = (absPath, onChunk) =>
-  streamPcm(absPath, { sampleRate: WAVEFORM_SAMPLE_RATE, onChunk });
+  streamPcm(absPath, { sampleRate: WAVEFORM_SAMPLE_RATE, onChunk, priority: 'interactive' });
 
 export function waveformCacheKey(absPath: string, mtimeMs: number, sizeBytes: number): string {
   return createHash('sha1')
@@ -44,9 +43,20 @@ export function waveformCacheKey(absPath: string, mtimeMs: number, sizeBytes: nu
     .digest('hex');
 }
 
-function readCached(file: string): WaveformData | null {
+/**
+ * `undefined` = no file at that name; `null` = a file that is not a current
+ * artifact (corrupt, partial, older version). Async so a cache hit on the
+ * `/peaks` path never blocks the event loop (#1328).
+ */
+async function readCached(file: string): Promise<WaveformData | null | undefined> {
+  let text: string;
   try {
-    const parsed = JSON.parse(readFileSync(file, 'utf8')) as WaveformData;
+    text = await readFile(file, 'utf8');
+  } catch {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(text) as WaveformData;
     if (parsed?.version !== WAVEFORM_VERSION || !Array.isArray(parsed.peaks)) return null;
     return parsed;
   } catch {
@@ -61,25 +71,28 @@ export async function getWaveform(
 ): Promise<WaveformData> {
   const decoder = opts.decoder ?? defaultDecoder;
   const budgetBytes = opts.budgetBytes ?? DEFAULT_BUDGET_BYTES;
-  const st = statSync(absPath);
+  const st = await stat(absPath);
   const outPath = join(cacheDir, `${waveformCacheKey(absPath, st.mtimeMs, st.size)}.json`);
 
-  const cached = readCached(outPath);
+  const running = inFlight.get(outPath);
+  if (running) return running;
+  const cached = await readCached(outPath);
   if (cached) return cached;
-  // A corrupt/partial file at the final name is a miss; drop it so the write
-  // below lands on a clean name.
-  rmSync(outPath, { force: true });
 
   let pending = inFlight.get(outPath);
   if (!pending) {
     pending = (async () => {
+      // A corrupt/partial file at the final name is a miss; drop it so the
+      // write below lands on a clean name. Only when one exists: a missing
+      // file may be one a concurrent decode is about to rename into place.
+      if (cached === null) await rm(outPath, { force: true });
       const reducer = createWaveformReducer(WAVEFORM_SAMPLE_RATE);
       await decoder(absPath, (chunk) => reducer.push(chunk));
       const data = reducer.finish();
-      mkdirSync(cacheDir, { recursive: true });
+      await mkdir(cacheDir, { recursive: true });
       const tmp = `${outPath}.tmp-${process.pid}-${Date.now()}`;
-      writeFileSync(tmp, JSON.stringify(data));
-      renameSync(tmp, outPath);
+      await writeFile(tmp, JSON.stringify(data));
+      await rename(tmp, outPath);
       void pruneWaveformCache(cacheDir, budgetBytes).catch((err) =>
         log.debug({ err }, 'waveform cache prune failed'),
       );

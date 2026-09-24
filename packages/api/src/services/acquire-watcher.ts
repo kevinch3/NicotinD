@@ -49,6 +49,8 @@ export interface AcquireWatcherOptions {
    * release type + artwork) run after the incremental scan, then a reclassify.
    */
   enrichSingles?: (relPaths: string[]) => Promise<void>;
+  /** Fallback bitrate probe for files that never reached the library. Tests inject it. */
+  probeStagedFile?: typeof probeAudioFile;
 }
 
 export type { AcquireJob } from '@nicotind/core';
@@ -290,21 +292,6 @@ export class AcquireWatcher {
       filename: p,
       jobMeta,
     }));
-    // Probe the staged files for the download card's "· 320 kbps" chip
-    // (see docs/download-pipeline.md → "Bitrate on download cards"). Runs
-    // before organize so we always have a value even if the post-organize
-    // path can't be resolved (ffprobe on a path we already know exists).
-    // Best-effort: ffprobe failure on any single file is swallowed; the
-    // dominant value is computed across what probed successfully.
-    const probeResults = (
-      await mapPool(paths, 4, (p) => probeAudioFile(p).catch(() => null))
-    ).filter((r): r is NonNullable<typeof r> => r !== null);
-    if (probeResults.length > 0) {
-      const { bitRateKbps, codec } = dominantProbe(probeResults);
-      if (bitRateKbps > 0) {
-        this.setBitRate(id, bitRateKbps, codec);
-      }
-    }
     try {
       this.setStage(id, 'organizing');
       await this.options.organizeBatch(files);
@@ -337,6 +324,10 @@ export class AcquireWatcher {
         await this.options.scanIncremental(relPaths);
         if (this.options.enrichSingles) await this.options.enrichSingles(relPaths);
       }
+      // The card's bitrate chip (docs/download-pipeline.md → "Bitrate on
+      // download cards"): the scanner already parsed every landed file, so read
+      // it back instead of spawning an ffprobe per staged file (#1304).
+      if (!this.recordLibraryBitRate(id, relPaths)) await this.probeStagedBitRate(id, paths);
       this.setStage(id, 'done');
       // Files were downloaded (paths.length > 0) but none were filed into the
       // library (all landed in the unsorted bucket for lack of artist/album
@@ -370,6 +361,7 @@ export class AcquireWatcher {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       log.error({ id, err: msg }, 'Organize/scan after acquire failed');
+      await this.probeStagedBitRate(id, paths);
       this.setStage(id, 'error');
       this.updateState(id, 'failed', msg);
     }
@@ -583,12 +575,49 @@ export class AcquireWatcher {
   }
 
   /**
-   * Record the dominant bitrate (kbps) + codec for the URL-acquire job. The
-   * `enrichWithBitrate` route also upgrades this with `library_songs.bit_rate`
-   * after the scan, so a transcoded FLAC shows its post-transcode bitrate
-   * (192 kbps Opus) once the library knows, while this seeded value covers
-   * the organizing/scanning phase.
+   * Seed the chip from `library_songs` — the scanner's parse of the landed
+   * files, i.e. the post-transcode value (a FLAC that became Opus shows the
+   * Opus bitrate). False when none of the paths has a scanned bitrate.
    */
+  private recordLibraryBitRate(jobId: string, relPaths: string[]): boolean {
+    const rows: Array<{ bitRateKbps: number; codec: string }> = [];
+    try {
+      for (let i = 0; i < relPaths.length; i += 500) {
+        const chunk = relPaths.slice(i, i + 500);
+        rows.push(
+          ...this.db
+            .query<{ bitRateKbps: number; codec: string }, string[]>(
+              `SELECT bit_rate AS bitRateKbps, LOWER(suffix) AS codec FROM library_songs
+                WHERE path IN (${chunk.map(() => '?').join(',')}) AND bit_rate > 0`,
+            )
+            .all(...chunk),
+        );
+      }
+    } catch (err) {
+      log.warn({ jobId, err }, 'Failed to read landed bitrates from library_songs');
+      return false;
+    }
+    if (rows.length === 0) return false;
+    const { bitRateKbps, codec } = dominantProbe(rows);
+    this.setBitRate(jobId, bitRateKbps, codec);
+    return true;
+  }
+
+  /**
+   * Fallback for a job whose files never reached the library (organize threw,
+   * or every file was unfiled/dup-skipped): ffprobe whatever is still staged.
+   * Best-effort; a file that fails to probe is skipped.
+   */
+  private async probeStagedBitRate(jobId: string, paths: string[]): Promise<void> {
+    const probe = this.options.probeStagedFile ?? probeAudioFile;
+    const probed = (await mapPool(paths, 4, (p) => probe(p).catch(() => null))).filter(
+      (r): r is NonNullable<typeof r> => r !== null,
+    );
+    if (probed.length === 0) return;
+    const { bitRateKbps, codec } = dominantProbe(probed);
+    if (bitRateKbps > 0) this.setBitRate(jobId, bitRateKbps, codec);
+  }
+
   private setBitRate(jobId: string, bitRateKbps: number, codec: string): void {
     try {
       this.db.run(`UPDATE acquire_jobs SET bit_rate_kbps = ?, audio_format = ? WHERE id = ?`, [

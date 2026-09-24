@@ -11,7 +11,7 @@
  * `writeFolderCover`) is thin and injected in tests so unit specs use real temp
  * dirs + a stub extractor instead of mocking node builtins.
  */
-import { readdirSync, writeFileSync } from 'node:fs';
+import { readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { getMusicMetadata, type MusicMetadataApi } from './music-metadata-loader.js';
 
@@ -117,6 +117,33 @@ function coverFileName(contentType: string): string {
 export function writeFolderCover(albumDir: string, pic: EmbeddedPicture): string {
   const name = coverFileName(pic.contentType);
   writeFileSync(join(albumDir, name), pic.data);
+  return name;
+}
+
+/**
+ * Replace the album folder's cover with `pic`: write `cover.<ext>`, then remove
+ * every other `cover.*` image. Writing alone is not a replacement — the readers
+ * walk `COVER_EXTS` with `.jpg` first, so an existing `cover.jpg` kept serving
+ * over a freshly written `cover.webp` (#1336).
+ *
+ * `ownsFolder` is `folderArtBelongsToAlbum` for the album's tracks. In a shared
+ * bucket (#978) nothing is removed: those images are not this album's to delete,
+ * and no reader serves folder art there anyway. Other basenames (`folder.jpg`,
+ * `front.png`, ...) are never touched; `cover.*` outranks all of them.
+ */
+export function replaceFolderCover(
+  albumDir: string,
+  pic: EmbeddedPicture,
+  ownsFolder: boolean,
+): string {
+  const name = writeFolderCover(albumDir, pic);
+  if (!ownsFolder) return name;
+  const rivals = new Set(COVER_EXTS.map((ext) => `cover${ext}`));
+  for (const entry of readdirSync(albumDir)) {
+    if (entry !== name && rivals.has(entry.toLowerCase())) {
+      rmSync(join(albumDir, entry), { force: true });
+    }
+  }
   return name;
 }
 

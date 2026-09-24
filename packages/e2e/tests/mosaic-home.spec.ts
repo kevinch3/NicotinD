@@ -101,22 +101,31 @@ test.describe('mosaic home', () => {
 
     // Inertia snaps to a dead stop and there is no idle drift, so a resting
     // pooled tile is a stable press target. Pick one fully inside the viewport
-    // — .first() can be a rim tile whose centre sits off screen.
+    // — .first() can be a rim tile whose centre sits off screen — whose centre
+    // actually hit-tests to the tile: the Shelves | Mosaic switch overlays the
+    // stage's corner, and a 700 ms press on it flipped the user's persisted
+    // home view, failing every later spec that expects the mosaic (#1351).
     const viewport = page.viewportSize()!;
     const boxes = await tiles.evaluateAll((els) =>
       els.map((el) => {
         const r = el.getBoundingClientRect();
-        return { x: r.x, y: r.y, w: r.width, h: r.height };
+        const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+        return {
+          x: r.x,
+          y: r.y,
+          w: r.width,
+          h: r.height,
+          hitsTile: hit?.closest('[data-testid="mosaic-tile"]') === el,
+        };
       }),
     );
-    // Not one under the home view switch (#1300) floating top-left: a press
-    // there is the switch's, and its release would flip the home to the shelves.
-    const switcher = (await page.getByTestId('home-view-switch').boundingBox())!;
-    const clear = (b: { x: number; y: number; w: number; h: number }) =>
-      b.x > switcher.x + switcher.width || b.y > switcher.y + switcher.height;
     const box = boxes.find(
       (b) =>
-        clear(b) && b.x > 0 && b.y > 0 && b.x + b.w < viewport.width && b.y + b.h < viewport.height,
+        b.hitsTile &&
+        b.x > 0 &&
+        b.y > 0 &&
+        b.x + b.w < viewport.width &&
+        b.y + b.h < viewport.height,
     )!;
     expect(box).toBeDefined();
 
