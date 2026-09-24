@@ -11,7 +11,11 @@
  *
  * Call sites keep their own math (offsets, thresholds, persistence); this
  * primitive owns intent, the blocker lifecycle and the flick measurement.
- * See docs/web-ui.md "Player expand/collapse gesture".
+ * `createHorizontalSwipe` is the same machine on the other axis. Both may be
+ * started from one pointerdown: dominance is decided by the same rule on the
+ * same event, and the first to own the pointer claims it, so the other
+ * releases instead of ever firing alongside it.
+ * See docs/web-ui.md "Player expand/collapse gesture" and "Swipe to skip".
  *
  * Must be called within an injection context.
  */
@@ -26,6 +30,7 @@ export const FLICK_PX_PER_MS = 0.5;
 export const FLICK_WINDOW_MS = 100;
 
 export type SwipeIntent = 'own' | 'release';
+export type SwipeAxis = 'x' | 'y';
 
 export interface SwipeResolveContext {
   /** The pointerdown target — where the finger landed, not where it is now. */
@@ -55,6 +60,26 @@ export interface VerticalSwipeOptions {
   onRelease?: () => void;
 }
 
+export interface HorizontalSwipeEnd {
+  /** Signed finger travel since pointerdown; positive is rightward. */
+  dx: number;
+  /** Trailing px/ms, signed like `dx`. 0 for a gesture that never moved. */
+  velocity: number;
+  /** False for a pointerup inside the slop zone (a tap). */
+  owned: boolean;
+}
+
+export interface HorizontalSwipeOptions {
+  /** Called once at the first horizontal-dominant move past slop. */
+  resolve: (ctx: SwipeResolveContext) => SwipeIntent;
+  /** Streams the signed dx while the gesture is owned. */
+  onMove?: (dx: number, e: PointerEvent) => void;
+  /** pointerup OR pointercancel of an owned gesture, plus a tap (owned=false). */
+  onEnd?: (end: HorizontalSwipeEnd) => void;
+  /** The finger went elsewhere (vertical, or `resolve` said release). */
+  onRelease?: () => void;
+}
+
 export interface VerticalSwipe {
   /** True from `start()` until the gesture ends or is released. */
   readonly dragging: Signal<boolean>;
@@ -64,7 +89,8 @@ export interface VerticalSwipe {
 
 export interface VelocitySample {
   t: number;
-  y: number;
+  /** Position along the swipe's axis. */
+  pos: number;
 }
 
 /** Signed px/ms over the trailing `windowMs` of samples; 0 when unmeasurable. */
@@ -77,7 +103,7 @@ export function flickVelocity(samples: VelocitySample[], windowMs = FLICK_WINDOW
     first = samples[i];
   }
   const dt = last.t - first.t;
-  return dt > 0 ? (last.y - first.y) / dt : 0;
+  return dt > 0 ? (last.pos - first.pos) / dt : 0;
 }
 
 /**
@@ -110,16 +136,50 @@ export function scrollableAncestorTop(target: EventTarget | null, boundary: Elem
   return 0;
 }
 
-export function createVerticalSwipe(options: VerticalSwipeOptions): VerticalSwipe {
+/**
+ * Which axis a move belongs to. `tie` settles |dx| === |dy|: the touchmove
+ * blocker hands a tie to the vertical swipe and the pointermove stream to the
+ * horizontal one (the rules `createVerticalSwipe` shipped with), and every
+ * swipe on a pointer asks the same question of the same event.
+ */
+export function dominantAxis(dx: number, dy: number, tie: SwipeAxis): SwipeAxis {
+  if (Math.abs(dx) === Math.abs(dy)) return tie;
+  return Math.abs(dy) > Math.abs(dx) ? 'y' : 'x';
+}
+
+interface AxisSwipeOptions {
+  axis: SwipeAxis;
+  resolve: (ctx: SwipeResolveContext) => SwipeIntent;
+  onMove?: (delta: number, e: PointerEvent) => void;
+  onEnd?: (end: { delta: number; velocity: number; owned: boolean }) => void;
+  onRelease?: () => void;
+}
+
+/** The swipe that owns the pointer of a given pointerdown, if any. Two swipes
+ *  started from the same event compare against it before owning. */
+let claim: { down: PointerEvent; owner: object } | null = null;
+
+function createAxisSwipe(options: AxisSwipeOptions): VerticalSwipe {
+  const self = {};
+  const along = (dx: number, dy: number): number => (options.axis === 'y' ? dy : dx);
+  const coord = (e: { clientX: number; clientY: number }): number =>
+    options.axis === 'y' ? e.clientY : e.clientX;
   let intent: 'undecided' | 'own' | 'release' = 'undecided';
-  let origin: { target: EventTarget | null; x: number; y: number } | null = null;
+  let origin: { down: PointerEvent; target: EventTarget | null; x: number; y: number } | null =
+    null;
   let samples: VelocitySample[] = [];
 
+  const unclaim = (): void => {
+    if (claim?.owner === self) claim = null;
+  };
+
   const decide = (dx: number, dy: number): SwipeIntent => {
-    if (intent === 'undecided') {
-      intent = options.resolve({ target: origin?.target ?? null, dx, dy });
+    if (intent === 'undecided' && origin) {
+      const taken = claim && claim.down === origin.down && claim.owner !== self;
+      intent = taken ? 'release' : options.resolve({ target: origin.target, dx, dy });
+      if (intent === 'own') claim = { down: origin.down, owner: self };
     }
-    return intent;
+    return intent === 'own' ? 'own' : 'release';
   };
 
   const blockTouchMove = (e: TouchEvent): void => {
@@ -133,7 +193,7 @@ export function createVerticalSwipe(options: VerticalSwipeOptions): VerticalSwip
     const dx = t.clientX - origin.x;
     const dy = t.clientY - origin.y;
     // Direction is decisive from the first pixel; dominance mirrors onMove.
-    if (dy === 0 || Math.abs(dy) < Math.abs(dx)) return;
+    if (along(dx, dy) === 0 || dominantAxis(dx, dy, 'y') !== options.axis) return;
     if (decide(dx, dy) === 'own') e.preventDefault();
     else release();
   };
@@ -144,8 +204,8 @@ export function createVerticalSwipe(options: VerticalSwipeOptions): VerticalSwip
   const drag = createPointerDrag({
     onStart: (e) => {
       intent = 'undecided';
-      origin = { target: e.target, x: e.clientX, y: e.clientY };
-      samples = [{ t: e.timeStamp, y: e.clientY }];
+      origin = { down: e, target: e.target, x: e.clientX, y: e.clientY };
+      samples = [{ t: e.timeStamp, pos: coord(e) }];
       attachBlocker();
     },
     onMove: (e, start) => {
@@ -154,13 +214,13 @@ export function createVerticalSwipe(options: VerticalSwipeOptions): VerticalSwip
       const dx = e.clientX - start.clientX;
       if (intent === 'undecided') {
         if (Math.abs(dy) < SWIPE_SLOP_PX && Math.abs(dx) < SWIPE_SLOP_PX) return;
-        if (Math.abs(dy) <= Math.abs(dx) || decide(dx, dy) === 'release') {
+        if (dominantAxis(dx, dy, 'x') !== options.axis || decide(dx, dy) === 'release') {
           release();
           return;
         }
       }
-      samples.push({ t: e.timeStamp, y: e.clientY });
-      options.onMove?.(dy, e);
+      samples.push({ t: e.timeStamp, pos: coord(e) });
+      options.onMove?.(along(dx, dy), e);
     },
     onEnd: (e, start) => finish(e, start),
     onCancel: (e, start) => finish(e, start),
@@ -171,17 +231,19 @@ export function createVerticalSwipe(options: VerticalSwipeOptions): VerticalSwip
   const release = (): void => {
     intent = 'release';
     removeBlocker();
+    unclaim();
     drag.cancel();
     options.onRelease?.();
   };
 
   const finish = (e: PointerEvent, start: PointerEvent): void => {
     removeBlocker();
+    unclaim();
     if (intent === 'release') return;
     const owned = intent === 'own';
-    if (owned) samples.push({ t: e.timeStamp, y: e.clientY });
-    const end: SwipeEnd = {
-      dy: e.clientY - start.clientY,
+    if (owned) samples.push({ t: e.timeStamp, pos: coord(e) });
+    const end = {
+      delta: coord(e) - coord(start),
       velocity: owned ? flickVelocity(samples) : 0,
       owned,
     };
@@ -191,7 +253,37 @@ export function createVerticalSwipe(options: VerticalSwipeOptions): VerticalSwip
     options.onEnd?.(end);
   };
 
-  inject(DestroyRef).onDestroy(removeBlocker);
+  inject(DestroyRef).onDestroy(() => {
+    removeBlocker();
+    unclaim();
+  });
 
   return { dragging: drag.dragging, start: drag.start };
+}
+
+export function createVerticalSwipe(options: VerticalSwipeOptions): VerticalSwipe {
+  return createAxisSwipe({
+    axis: 'y',
+    resolve: options.resolve,
+    onMove: options.onMove,
+    onEnd:
+      options.onEnd &&
+      (({ delta, velocity, owned }) => options.onEnd?.({ dy: delta, velocity, owned })),
+    onRelease: options.onRelease,
+  });
+}
+
+/** The sideways sibling of `createVerticalSwipe`: same slop, blocker and flick
+ *  rules, owning horizontal-dominant moves. Must be called within an injection
+ *  context. */
+export function createHorizontalSwipe(options: HorizontalSwipeOptions): VerticalSwipe {
+  return createAxisSwipe({
+    axis: 'x',
+    resolve: options.resolve,
+    onMove: options.onMove,
+    onEnd:
+      options.onEnd &&
+      (({ delta, velocity, owned }) => options.onEnd?.({ dx: delta, velocity, owned })),
+    onRelease: options.onRelease,
+  });
 }

@@ -556,4 +556,35 @@ test.describe('mobile UX', () => {
     const restored = (await cover.boundingBox())!;
     expect(restored.width).toBeGreaterThan(grown.width);
   });
+
+  // Swipe to skip (#1297): ← next, → previous. The mouse path and the wiring;
+  // the touch blocker and the axis arbitration are unit-tested.
+  test('swiping the Now Playing cover sideways skips, and back again', async ({ page }) => {
+    await openNowPlaying(page);
+    const title = page.getByTestId('player-title');
+    const first = (await title.textContent())!.trim();
+    const c = await settledCentre(page.getByTestId('now-playing-cover'));
+
+    await drag(page, c, { x: c.x - 150, y: c.y });
+    await expect(title).not.toHaveText(first);
+    // A sideways swipe never doubles as a dismiss.
+    await expect(page.getByTestId('now-playing-heading')).toBeInViewport();
+
+    const c2 = await settledCentre(page.getByTestId('now-playing-cover'));
+    await drag(page, c2, { x: c2.x + 150, y: c2.y });
+    await expect(title).toHaveText(first);
+  });
+
+  test('swiping the mini-player sideways skips without opening Now Playing', async ({ page }) => {
+    await openAlbum(page);
+    await page.getByTestId('play-album').click();
+    const title = page.getByTestId('player-title');
+    await expect(title).toBeVisible();
+    const first = (await title.textContent())!.trim();
+
+    const c = await settledCentre(title);
+    await drag(page, c, { x: c.x - 150, y: c.y });
+    await expect(title).not.toHaveText(first);
+    await expect(page.getByTestId('now-playing-heading')).not.toBeInViewport();
+  });
 });

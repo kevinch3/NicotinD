@@ -1112,6 +1112,116 @@ describe('NowPlayingComponent', () => {
     });
   });
 
+  describe('swipe the cover to skip (#1297)', () => {
+    const pointer = (type: string, clientX: number, clientY: number, t = 0, target?: Element) => {
+      const e = new MouseEvent(type, { clientX, clientY, button: 0 }) as unknown as PointerEvent;
+      Object.defineProperty(e, 'timeStamp', { value: t });
+      if (target) Object.defineProperty(e, 'target', { value: target });
+      return e;
+    };
+    function cover(): Element {
+      const box = document.createElement('div');
+      box.setAttribute('data-np-cover', '');
+      const img = document.createElement('img');
+      box.appendChild(img);
+      return img;
+    }
+    function skipSetup() {
+      const ctx = setup();
+      const playNext = vi.fn();
+      const playPrev = vi.fn();
+      Object.assign(ctx.playerStub, { playNext, playPrev });
+      return { ...ctx, playNext, playPrev, component: ctx.fixture.componentInstance };
+    }
+    const drag = (x0: number, x1: number, y = 100, target = cover()) => {
+      const { component } = current!;
+      component.onBodyPointerDown(pointer('pointerdown', x0, y, 0, target));
+      document.dispatchEvent(pointer('pointermove', x1, y + 2, 500));
+      document.dispatchEvent(pointer('pointerup', x1, y + 2, 1000));
+    };
+    let current: ReturnType<typeof skipSetup> | null = null;
+
+    it('a leftward swipe past the threshold plays the next track', () => {
+      current = skipSetup();
+      drag(300, 150);
+      expect(current.playNext).toHaveBeenCalledTimes(1);
+      expect(current.playPrev).not.toHaveBeenCalled();
+      expect(current.component.coverSwipeOffsetPx()).toBe(0);
+    });
+
+    it('a rightward swipe plays the previous track', () => {
+      current = skipSetup();
+      drag(100, 250);
+      expect(current.playPrev).toHaveBeenCalledTimes(1);
+      expect(current.playNext).not.toHaveBeenCalled();
+    });
+
+    it('a short slow swipe springs back without skipping', () => {
+      current = skipSetup();
+      drag(300, 260);
+      expect(current.playNext).not.toHaveBeenCalled();
+      expect(current.playPrev).not.toHaveBeenCalled();
+    });
+
+    it('drives a remote device exactly like the ⏭ button', () => {
+      current = skipSetup();
+      const send = vi.spyOn(TestBed.inject(PlaybackWsService), 'sendCommand');
+      current.remoteStub.isActiveDevice.set(false);
+      drag(300, 150);
+      expect(send).toHaveBeenCalledWith('NEXT');
+      expect(current.playNext).not.toHaveBeenCalled();
+    });
+
+    it('the cover offset follows the finger and resets on release', () => {
+      current = skipSetup();
+      current.component.onBodyPointerDown(pointer('pointerdown', 300, 100, 0, cover()));
+      document.dispatchEvent(pointer('pointermove', 240, 100, 500));
+      expect(current.component.coverSwipeOffsetPx()).toBe(-60);
+      expect(current.component.coverSwiping()).toBe(true);
+      document.dispatchEvent(pointer('pointerup', 240, 100, 1000));
+      expect(current.component.coverSwipeOffsetPx()).toBe(0);
+    });
+
+    it('a sideways drag outside the cover skips nothing', () => {
+      current = skipSetup();
+      drag(300, 100, 100, document.createElement('div'));
+      expect(current.playNext).not.toHaveBeenCalled();
+    });
+
+    it('a vertical drag on the cover still dismisses and never skips', () => {
+      current = skipSetup();
+      const setOpen = vi.spyOn(current.playerStub, 'setNowPlayingOpen');
+      current.component.onBodyPointerDown(pointer('pointerdown', 200, 100, 0, cover()));
+      document.dispatchEvent(pointer('pointermove', 190, 280, 500));
+      expect(current.component.coverSwipeOffsetPx()).toBe(0);
+      document.dispatchEvent(pointer('pointerup', 190, 280, 1000));
+      expect(setOpen).toHaveBeenCalledWith(false);
+      expect(current.playNext).not.toHaveBeenCalled();
+      expect(current.playPrev).not.toHaveBeenCalled();
+    });
+
+    it('a sideways swipe on the cover does not also move the sheet', () => {
+      current = skipSetup();
+      const setOpen = vi.spyOn(current.playerStub, 'setNowPlayingOpen');
+      current.component.onBodyPointerDown(pointer('pointerdown', 300, 100, 0, cover()));
+      document.dispatchEvent(pointer('pointermove', 150, 130, 500));
+      expect(current.component.dragOffsetPx()).toBe(0);
+      document.dispatchEvent(pointer('pointerup', 150, 130, 1000));
+      expect(setOpen).not.toHaveBeenCalled();
+      expect(current.playNext).toHaveBeenCalledTimes(1);
+    });
+
+    it('never starts from a control inside the cover area', () => {
+      current = skipSetup();
+      const box = document.createElement('div');
+      box.setAttribute('data-np-cover', '');
+      const button = document.createElement('button');
+      box.appendChild(button);
+      drag(300, 100, 100, button);
+      expect(current.playNext).not.toHaveBeenCalled();
+    });
+  });
+
   describe('closed-sheet lift (live-follow open from the mini bar)', () => {
     function root(fixture: { nativeElement: HTMLElement }) {
       return fixture.nativeElement.querySelector<HTMLElement>('.fixed.inset-0')!;

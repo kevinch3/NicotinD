@@ -165,4 +165,41 @@ describe('NowPlayingCoverArtComponent', () => {
     expect(cover.style.getPropertyValue('--np-cover-max')).toBe('240px');
     expect(cover.style.maxWidth).toBe('');
   });
+
+  describe('swipe to skip (#1297)', () => {
+    const next = { id: 'n', title: 'Next', artist: 'B', coverArt: 'cn' };
+    const prev = { id: 'p', title: 'Prev', artist: 'C', coverArt: 'cp' };
+    function render(offset: number) {
+      TestBed.overrideProvider(PlayerService, {
+        useValue: { currentTrack: () => track, queue: () => [next], history: () => [prev] },
+      });
+      const fixture = TestBed.createComponent(NowPlayingCoverArtComponent);
+      setInputValue(fixture.componentInstance.swipeOffsetPx, offset);
+      fixture.detectChanges();
+      const el: HTMLElement = fixture.nativeElement;
+      const slider = el.querySelector('[data-testid="now-playing-cover"] > div') as HTMLElement;
+      const peek = el.querySelector('[data-testid="now-playing-cover-peek"]') as HTMLElement | null;
+      return { fixture, slider, peek };
+    }
+
+    it('renders no peek and no transform at rest', () => {
+      const { slider, peek } = render(0);
+      expect(peek).toBeNull();
+      expect(slider.style.transform).toBe('');
+    });
+
+    it('slides with the finger and peeks the next cover in from the right', () => {
+      const { fixture, slider, peek } = render(-60);
+      expect(slider.style.transform).toBe('translateX(-60px)');
+      expect(peek).not.toBeNull();
+      expect(peek!.style.left).toContain('100%');
+      expect(fixture.componentInstance.peekTrack()?.id).toBe('n');
+    });
+
+    it('peeks the previous cover in from the left on a rightward drag', () => {
+      const { fixture, peek } = render(60);
+      expect(peek!.style.right).toContain('100%');
+      expect(fixture.componentInstance.peekTrack()?.id).toBe('p');
+    });
+  });
 });

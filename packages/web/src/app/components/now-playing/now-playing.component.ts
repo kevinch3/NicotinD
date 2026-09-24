@@ -28,7 +28,14 @@ import { LibraryApiService } from '../../services/api/library-api.service';
 import type { WaveformData } from '@nicotind/core';
 import { firstValueFrom } from 'rxjs';
 import { createPointerDrag } from '../../lib/pointer-drag';
-import { createVerticalSwipe, scrollableAncestorTop, shouldCommit } from '../../lib/vertical-swipe';
+import {
+  createHorizontalSwipe,
+  createVerticalSwipe,
+  scrollableAncestorTop,
+  shouldCommit,
+} from '../../lib/vertical-swipe';
+import { canStartSkipSwipe, skipDirection } from '../../lib/swipe-to-skip';
+import { hapticTick } from '../../lib/haptics';
 import { ScrollLockService } from '../../services/scroll-lock.service';
 import { ServerConfigService } from '../../services/server-config.service';
 import { isTvUi } from '../../lib/platform';
@@ -294,10 +301,37 @@ export class NowPlayingComponent {
   private static readonly BODY_NO_SWIPE =
     'button, a, input, select, textarea, [data-seek], .seek-range, app-now-playing-waveform, app-menu-panel, [draggable="true"], [data-np-no-swipe]';
 
+  // Swipe the cover sideways to skip (#1297): started from the same pointerdown
+  // as the body gesture, so the two resolve by dominance at slop and the first
+  // to own the pointer makes the other release — never both.
+  readonly coverSwipeOffsetPx = signal(0);
+  private readonly coverSwipe = createHorizontalSwipe({
+    resolve: () => 'own',
+    onMove: (dx) => this.coverSwipeOffsetPx.set(dx),
+    onEnd: ({ dx, velocity, owned }) => {
+      this.coverSwipeOffsetPx.set(0);
+      if (!owned) return;
+      const direction = skipDirection(dx, velocity);
+      if (!direction) return;
+      hapticTick();
+      if (direction === 'next') this.handleNext();
+      else this.handlePrev();
+    },
+    onRelease: () => this.coverSwipeOffsetPx.set(0),
+  });
+  readonly coverSwiping = this.coverSwipe.dragging;
+
   onBodyPointerDown(event: PointerEvent): void {
     if (this.karaokeFullscreen()) return;
     const target = event.target;
     if (target instanceof Element && target.closest(NowPlayingComponent.BODY_NO_SWIPE)) return;
+    if (
+      target instanceof Element &&
+      target.closest('[data-np-cover]') &&
+      canStartSkipSwipe(target)
+    ) {
+      this.coverSwipe.start(event);
+    }
     this.bodySwipe.start(event);
   }
 

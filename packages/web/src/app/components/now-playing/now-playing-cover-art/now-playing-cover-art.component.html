@@ -5,7 +5,7 @@
        32px of vertical padding would leave an empty band where the artwork was,
        giving back part of the space the drag just reclaimed. -->
   <div
-    class="flex-shrink-0 flex justify-center md:px-8"
+    class="flex-shrink-0 flex justify-center md:px-8 overflow-hidden"
     [class.px-4]="!coverCollapsed()"
     [class.py-4]="!coverCollapsed()"
   >
@@ -19,14 +19,42 @@
       [class.duration-150]="!resizing()"
       [style.--np-cover-max]="coverMaxPx() + 'px'"
       data-testid="now-playing-cover"
+      data-np-cover
     >
-      <app-cover-art
-        [src]="track.coverArt ? '/api/cover/' + track.coverArt + '?size=600&token=' + auth.mediaToken() : undefined"
-        [artist]="track.artist"
-        [album]="track.album ?? ''"
-        [fill]="true"
-        rounded="rounded-lg"
-      />
+      <!-- Swipe to skip (#1297): the cover follows the finger and the cover a
+           skip would land on peeks in beside it; the gesture itself lives on
+           the sheet (onBodyPointerDown). -->
+      <div
+        class="relative"
+        [class.transition-transform]="!swiping()"
+        [class.duration-200]="!swiping()"
+        [style.transform]="swipeOffsetPx() ? 'translateX(' + swipeOffsetPx() + 'px)' : null"
+      >
+        <app-cover-art
+          [src]="track.coverArt ? '/api/cover/' + track.coverArt + '?size=600&token=' + auth.mediaToken() : undefined"
+          [artist]="track.artist"
+          [album]="track.album ?? ''"
+          [fill]="true"
+          rounded="rounded-lg"
+        />
+        @if (peekTrack(); as peek) {
+          <div
+            class="absolute inset-y-0 w-full"
+            [style.left]="swipeOffsetPx() < 0 ? 'calc(100% + 1.5rem)' : null"
+            [style.right]="swipeOffsetPx() > 0 ? 'calc(100% + 1.5rem)' : null"
+            aria-hidden="true"
+            data-testid="now-playing-cover-peek"
+          >
+            <app-cover-art
+              [src]="peek.coverArt ? '/api/cover/' + peek.coverArt + '?size=600&token=' + auth.mediaToken() : undefined"
+              [artist]="peek.artist"
+              [album]="peek.album ?? ''"
+              [fill]="true"
+              rounded="rounded-lg"
+            />
+          </div>
+        }
+      </div>
     </div>
   </div>
 

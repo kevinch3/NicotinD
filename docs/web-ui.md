@@ -144,6 +144,29 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
   flick commit, undo index, keyboard reorder, shared drop path). e2e: `queue-gestures.spec.ts`
   (handle drag-reorder and a `page.mouse` swipe-remove + Undo). **The touch path is a real-device
   gate**, as for the player swipes.
+- **Swipe to skip** (#1297): a horizontal swipe on the Now Playing cover (`data-np-cover`) or the
+  mini-bar body skips — **← next, → previous** — through the same `handleNext`/`handlePrev` as that
+  surface's ⏭/⏮ buttons, so a remote device gets the same `NEXT`/`PREV` command. It is
+  `createHorizontalSwipe()`, the sideways sibling in `lib/vertical-swipe.ts`: both are one
+  `createAxisSwipe` core with the same slop, touchmove blocker and flick measurement, and the
+  commit is `skipDirection()` (`lib/swipe-to-skip.ts`: `shouldCommit` against
+  `SKIP_THRESHOLD_PX` = 80 or a flick). **Both axes start from the same pointerdown** (the sheet's
+  `onBodyPointerDown`, the bar's `onBarBodyPointerDown`), so two rules keep them from both firing:
+  every swipe classifies an event with the same `dominantAxis()` (a blocker tie goes to the vertical
+  swipe, a pointermove tie to the horizontal one, as `createVerticalSwipe` always did), and the first
+  to own the pointer takes a **claim** keyed by that pointerdown, which makes its sibling release
+  instead of resolving — the two channels can decide on different events (a vertical first
+  touchmove, then a sideways drift before pointermove crosses slop), and the claim is what covers
+  that. A skip never starts from `SKIP_SWIPE_EXCLUDE` (buttons, links, form controls, the seek bar,
+  the waveform, menus); the grab notch starts only the vertical swipe. While dragging, the cover
+  follows the finger (`swipeOffsetPx`) and the cover a skip would land on peeks in beside it (the
+  queue head from the right, the history tail from the left); the mini bar slides its track info.
+  A commit calls `hapticTick()` (`lib/haptics.ts`): a `@capacitor/haptics` light impact reached
+  through the Capacitor global, a no-op wherever the plugin is absent — which today is everywhere:
+  the plugin is not yet installed in `packages/mobile`, because a new native plugin changes the
+  published F-Droid APK and needs a `cap sync`, so it ships separately (#1376). TV has no pointer, so nothing changes
+  there. e2e (`mobile-ux.spec.ts`) drives the mouse path on both surfaces; the touch arbitration is
+  unit-tested (`vertical-swipe.spec.ts`), and a real-device pass is the manual gate.
 - **Pull to refresh (touch)**: one gesture, hosted in the layout shell, not per-page. `lib/pull-to-refresh.ts` `createPullToRefresh()` composes `createPointerDrag()` and is bound once in `layout.component.ts` on `<main>`'s `(pointerdown)`, rendering a spinner indicator absolutely positioned inside it; `PullToRefreshService` is the seam a page uses to say what "refresh" means — `register(handler)` pushes onto a handler stack, auto-unregistered on the registrant's `DestroyRef` (route navigation destroys the page component, so this is route-scoped for free), and `trigger()` runs the top-of-stack handler. This is layout-hosted rather than per-page because the scroll container is `window`/`document` (the app has no per-page scrolling `<div>`), so "pulled past the top" is a single global condition (`window.scrollY <= 0`) regardless of which route is mounted — one gesture host, many registrants.
   - **Gates before a pull can start** (`onPointerDown`, all must hold): `isCoarsePointer()` (a real `matchMedia('(pointer: coarse)')` check — desktop mouse/trackpad never engages it), `window.scrollY <= 0` (only from the very top), `!ScrollLockService.locked` (a fullscreen sheet is up), `PullToRefreshService.hasHandler()` (no page registered = nothing to refresh), and no `[data-no-p2r]`/`input`/`textarea`/`select` ancestor (an explicit per-element opt-out for a nested scroller or a form control that needs its own vertical drag).
   - **Why a non-passive `touchmove` `preventDefault()` is required — and why it is armed at pointerdown, not at intent**: `drag.start()` attaches `document.addEventListener('touchmove', blockTouchMove, { passive: false })` immediately, and the blocker decides per event: pull intent → prevent; scroll intent → never; undecided → prevent only a downward-dominant move (`dy > 0 && dy >= |dx|` — the same dominance rule as the intent test, so horizontal tab-strip pans stay native). The timing is the load-bearing part: the browser reclaims an unprevented vertical pan as its own scroll after ~10px, stops delivering `pointermove` (firing `pointercancel` instead), and marks every subsequent `touchmove` non-cancelable — so preventing the **first** `touchmove` is the only winnable round (per the Touch Events spec it suppresses scrolling for the whole interaction). The original implementation attached the blocker only after intent classification, i.e. after ~10px — guaranteeing it lost that race, which left the gesture completely dead on real touch devices (#731). `overscroll-behavior` does **not** fix this: it only suppresses the *visual/navigation* side-effect (Chrome Android's reload glow, iOS's bounce-triggered nav), it does not keep the event stream alive. This is also why **a `pointercancel` while `phase === 'armed'` still commits the refresh** (`finish()` routes cancel through the same commit path as a clean pointerup) — on touch you cannot rely on ever seeing a real `pointerup` once the pull has crossed threshold, the same lesson `pointer-drag.ts`'s cancel handling and the player swipe-up gesture (`onMove`-committing, not `pointerup`-committing) already encode.
