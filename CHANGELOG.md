@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.73](https://github.com/kevinch3/NicotinD/compare/v0.8.72...v0.8.73) (2026-09-24)
+
+### Features
+
+* **streaming:** convert Ogg for clients that cannot open it, and say so ([#1374](https://github.com/kevinch3/NicotinD/issues/1374)) ([e3de039](https://github.com/kevinch3/NicotinD/commit/e3de039882c34cb9a67320dd565a079220935c65))
 ## [0.8.72](https://github.com/kevinch3/NicotinD/compare/v0.8.71...v0.8.72) (2026-09-24)
 
 ### Features
