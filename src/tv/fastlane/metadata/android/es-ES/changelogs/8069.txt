@@ -1,0 +1,1 @@
+• transcode: an aac encode writes its own tags; the carry is an in-place patch (#1367)

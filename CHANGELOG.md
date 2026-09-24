@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.69](https://github.com/kevinch3/NicotinD/compare/v0.8.68...v0.8.69) (2026-09-24)
+
+### Performance
+
+* **transcode:** an aac encode writes its own tags; the carry is an in-place patch ([#1367](https://github.com/kevinch3/NicotinD/issues/1367)) ([a0878f4](https://github.com/kevinch3/NicotinD/commit/a0878f45bf14c3d91857fa4599815da70f47544a))
 ## [0.8.68](https://github.com/kevinch3/NicotinD/compare/v0.8.67...v0.8.68) (2026-09-24)
 
 ### Features
