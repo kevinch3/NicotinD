@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.74](https://github.com/kevinch3/NicotinD/compare/v0.8.73...v0.8.74) (2026-09-24)
+
+### Features
+
+* **library:** the loudness target is an operator setting ([#1375](https://github.com/kevinch3/NicotinD/issues/1375)) ([082966b](https://github.com/kevinch3/NicotinD/commit/082966baa67c4bb992c4e681bdd41e7d646b5e58)), references [#1255](https://github.com/kevinch3/NicotinD/issues/1255)
+* **web:** swipe the cover or mini bar sideways to skip ([#1377](https://github.com/kevinch3/NicotinD/issues/1377)) ([42d066b](https://github.com/kevinch3/NicotinD/commit/42d066bd707a0fbd86747ec98c39aaabc1097657)), references [#1376](https://github.com/kevinch3/NicotinD/issues/1376) [#1298](https://github.com/kevinch3/NicotinD/issues/1298)
 ## [0.8.73](https://github.com/kevinch3/NicotinD/compare/v0.8.72...v0.8.73) (2026-09-24)
 
 ### Features

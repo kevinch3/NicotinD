@@ -1,0 +1,2 @@
+• library: the loudness target is an operator setting (#1375)
+• web: swipe the cover or mini bar sideways to skip (#1377)
