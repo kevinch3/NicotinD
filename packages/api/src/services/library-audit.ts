@@ -531,9 +531,8 @@ export function checkClipsIndexedAsSongs(db: Database): AuditFinding[] {
  * of *With the Beatles* are track 63); the SAME title twice in one slot is a
  * duplicate file. Reporting the union would be ~70% precise in both directions
  * and would recommend the wrong remediation half the time — a retag versus a
- * delete. So the titles decide, and only the numbering half is reported here;
- * the duplicate half belongs to #951's rule, which needs fingerprint
- * confirmation this one deliberately does not attempt.
+ * delete. So the titles decide which rule owns a slot: `track_collision` for
+ * different songs, `slot_duplicate` for the same title stored twice (#951).
  *
  * `untracked_album` is LOW: a multi-track album with unnumbered songs plays in
  * an arbitrary order, but nothing is wrong with the audio or the identity.
@@ -563,14 +562,36 @@ export function checkTrackNumbering(db: Database): AuditFinding[] {
     .all();
 
   const byAlbum = new Map<string, { name: string; artist: string; slots: number }>();
+  const dupByAlbum = new Map<string, { name: string; artist: string; extra: number }>();
   for (const c of collisions) {
     // Same slot + same title (folded) is a duplicate FILE, not a numbering
-    // defect — route it away rather than reporting the wrong remediation.
-    const distinct = new Set(c.titles.split(' | ').map((t) => normalizeForGrouping(t)));
-    if (distinct.size < 2) continue;
+    // defect — reported as `slot_duplicate`, with the other remediation.
+    const titles = c.titles.split(' | ');
+    const distinct = new Set(titles.map((t) => normalizeForGrouping(t)));
+    if (distinct.size < 2) {
+      const prev = dupByAlbum.get(c.album_id);
+      const extra = titles.length - 1;
+      if (prev) prev.extra += extra;
+      else dupByAlbum.set(c.album_id, { name: c.name, artist: c.artist, extra });
+      continue;
+    }
     const prev = byAlbum.get(c.album_id);
     if (prev) prev.slots++;
     else byAlbum.set(c.album_id, { name: c.name, artist: c.artist, slots: 1 });
+  }
+  // #951's high-confidence slice: the album, the slot AND the title agree, so
+  // no fingerprint is needed to call it one recording stored twice (measured
+  // 131 files across 52 albums on prod, many byte-identical). Advisory, never
+  // deletable — which copy to keep is a quality call the dedupe finder makes.
+  for (const [albumId, a] of dupByAlbum) {
+    out.push({
+      rule: 'slot_duplicate',
+      severity: 'medium',
+      subject: albumId,
+      message:
+        `Album "${a.name}" (${a.artist}) stores ${a.extra} song(s) twice in the same track slot ` +
+        `under the same title — redundant files`,
+    });
   }
   for (const [albumId, a] of byAlbum) {
     out.push({

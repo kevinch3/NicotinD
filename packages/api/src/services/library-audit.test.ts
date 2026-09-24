@@ -761,6 +761,27 @@ describe('content rules — what is in the row, not what it is called', () => {
     addSong(db, 'sr1', 'alr', 'arr', 'Iniciado del alba', 4);
     addSong(db, 'sr2', 'alr', 'arr', 'Iniciado del Alba', 4);
     expect(checkTrackNumbering(db).filter((f) => f.rule === 'track_collision')).toEqual([]);
+    // …and reported as what it is, counting the redundant copy (#951).
+    const dup = checkTrackNumbering(db).filter((f) => f.rule === 'slot_duplicate');
+    expect(dup.map((f) => f.subject)).toEqual(['alr']);
+    expect(dup[0]!.message).toContain('1 song(s) twice');
+  });
+
+  it('counts every redundant copy across an album’s duplicated slots, and ignores a clean album (#951)', () => {
+    addArtist(db, 'ard', 'D', 1);
+    addAlbum(db, { id: 'ald', name: 'Dup', artist: 'D', artistId: 'ard', songCount: 5 });
+    addSong(db, 'd1', 'ald', 'ard', 'One', 1);
+    addSong(db, 'd2', 'ald', 'ard', 'One', 1);
+    addSong(db, 'd3', 'ald', 'ard', 'One', 1);
+    addSong(db, 'd4', 'ald', 'ard', 'Two', 2);
+    addSong(db, 'd5', 'ald', 'ard', 'Two', 2);
+    addArtist(db, 'arc', 'C', 1);
+    addAlbum(db, { id: 'alc', name: 'Clean', artist: 'C', artistId: 'arc', songCount: 2 });
+    addSong(db, 'c1', 'alc', 'arc', 'One', 1);
+    addSong(db, 'c2', 'alc', 'arc', 'Two', 2);
+    const dup = checkTrackNumbering(db).filter((f) => f.rule === 'slot_duplicate');
+    expect(dup.map((f) => f.subject)).toEqual(['ald']);
+    expect(dup[0]!.message).toContain('3 song(s) twice');
   });
 
   it('reports a multi-track album whose songs carry no track number (#959)', () => {
