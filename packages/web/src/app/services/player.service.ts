@@ -723,6 +723,14 @@ export class PlayerService {
     this.queue.update((q) => q.filter((_, i) => i !== index));
   }
 
+  /** Put a track back at `index` (clamped) — the undo of `removeFromQueue`. */
+  insertInQueue(index: number, track: Track): void {
+    this.queue.update((q) => {
+      const at = Math.max(0, Math.min(index, q.length));
+      return [...q.slice(0, at), track, ...q.slice(at)];
+    });
+  }
+
   clearQueue(): void {
     this.queue.set([]);
   }

@@ -17,55 +17,92 @@
       <p class="text-sm text-theme-muted">{{ 'nowPlaying.queueEmpty' | t }}</p>
     </div>
   } @else {
-    <div class="flex-1 overflow-y-auto overflow-x-hidden pb-4" appTvNavGroup [axis]="'vertical'">
+    <div class="flex-1 overflow-y-auto overflow-x-hidden pb-4" data-testid="now-playing-queue-list" appTvNavGroup [axis]="'vertical'">
       @for (queueTrack of player.queue(); track queueTrack.id + '-' + $index) {
+        <!-- Row gestures (#1295): swipe left removes, long-press then drag
+             reorders; a plain vertical pan scrolls (touch-pan-y). The sheet's
+             own body gesture never starts here (data-np-no-swipe). -->
         <div
-          class="flex items-center group min-w-0"
-          appTvNavGroup
-          [axis]="'horizontal'"
-          draggable="true"
-          (dragstart)="onQueueDragStart($event, $index)"
+          class="relative"
+          data-testid="queue-item"
+          data-np-no-swipe
+          [class.z-10]="liftIndex() === $index"
+          [class.transition-transform]="liftIndex() !== null && liftIndex() !== $index"
+          [style.transform]="rowTransform($index)"
           (dragover)="onQueueDragOver($event, $index)"
           (drop)="onQueueDrop($event, $index)"
-          (dragend)="onQueueDragEnd()"
-          [class.opacity-40]="dragSourceIndex() === $index"
-          [class.border-t-2]="dropTargetIndex() === $index && dropTargetIndex() !== dragSourceIndex()"
-          [class.border-theme-accent]="dropTargetIndex() === $index && dropTargetIndex() !== dragSourceIndex()"
         >
-          <!-- Laid out like a track row: the title is the jump button and the
-               artist/album line beneath it carries entity links — an anchor may
-               not sit inside a button, so the row itself is the layout element. -->
-          <div data-testid="queue-row" class="flex-1 flex items-center gap-3 px-2 py-2.5 rounded-lg hover:bg-theme-surface transition min-w-0">
-            <span class="text-xs text-theme-muted w-4 flex-shrink-0 cursor-grab">≡</span>
-            <app-cover-art
-              [src]="queueTrack.coverArt ? '/api/cover/' + queueTrack.coverArt + '?size=80&token=' + auth.mediaToken() : undefined"
-              [artist]="queueTrack.artist"
-              [album]="queueTrack.album ?? ''"
-              [size]="32"
-              rounded="rounded"
-            />
-            <div class="min-w-0 flex-1">
-              <button type="button" appTvNavItem data-testid="queue-row-title" (click)="jumpToTrack($index)" class="w-full text-left">
-                <p class="text-sm text-theme-primary truncate">{{ queueTrack.title }}</p>
-              </button>
-              <p class="text-xs text-theme-muted truncate">
-                <app-artist-links [artists]="queueTrack.artists" [fallbackArtist]="queueTrack.artist" [fallbackArtistId]="queueTrack.artistId" (linkFollowed)="linkFollowed.emit()" />@if (queueTrack.album) {<span> · </span><app-entity-link kind="album" [id]="queueTrack.albumId" [name]="queueTrack.album" (followed)="linkFollowed.emit()" />}
-              </p>
+          @if (swipeIndex() === $index) {
+            <div class="absolute inset-0 rounded-lg bg-red-500/80 flex items-center justify-end pr-4 text-white" aria-hidden="true" data-testid="queue-swipe-reveal">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
             </div>
-          </div>
-          <button
-            type="button"
-            appTvNavItem
-            (click)="removeFromQueue($index)"
-            data-testid="queue-remove"
-            [attr.title]="'nowPlaying.remove' | t"
-            [attr.aria-label]="'nowPlaying.removeFromQueue' | t"
-            class="p-1 mr-1 text-theme-muted group-hover:text-theme-secondary hover:!text-red-400 transition flex-shrink-0"
+          }
+          <div
+            class="relative flex items-center group min-w-0 rounded-lg touch-pan-y select-none [-webkit-touch-callout:none]"
+            appTvNavGroup
+            [axis]="'horizontal'"
+            (pointerdown)="onRowPointerDown($event, $index)"
+            (contextmenu)="onRowContextMenu($event)"
+            (dragstart)="onRowDragStart($event)"
+            [style.transform]="swipeTransform($index)"
+            [class.bg-theme-base]="swipeIndex() === $index || liftIndex() === $index"
+            [class.shadow-lg]="liftIndex() === $index"
+            [class.opacity-40]="dragSourceIndex() === $index"
+            [class.border-t-2]="dropTargetIndex() === $index && dropTargetIndex() !== dragSourceIndex()"
+            [class.border-theme-accent]="dropTargetIndex() === $index && dropTargetIndex() !== dragSourceIndex()"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
+            <!-- The handle: long-press hint on touch, the HTML5 drag source for
+                 a mouse, and ArrowUp/ArrowDown reorder when focused. -->
+            <div
+              role="button"
+              tabindex="0"
+              data-queue-handle
+              data-testid="queue-handle"
+              [attr.draggable]="mouseDrag ? 'true' : null"
+              [attr.aria-label]="'nowPlaying.reorderHandle' | t: { title: queueTrack.title }"
+              (dragstart)="onQueueDragStart($event, $index)"
+              (dragend)="onQueueDragEnd()"
+              (keydown)="onHandleKeydown($event, $index)"
+              class="w-11 h-11 -mr-2 flex-shrink-0 flex items-center justify-center rounded-lg text-theme-muted cursor-grab active:cursor-grabbing focus-visible:outline focus-visible:outline-2 focus-visible:outline-theme-accent"
+            >
+              <span aria-hidden="true" class="text-sm leading-none tracking-[-0.2em]">⋮⋮</span>
+            </div>
+            <!-- Laid out like a track row: the title is the jump button and the
+                 artist/album line beneath it carries entity links — an anchor may
+                 not sit inside a button, so the row itself is the layout element. -->
+            <div data-testid="queue-row" class="flex-1 flex items-center gap-3 px-2 py-2.5 rounded-lg hover:bg-theme-surface transition min-w-0">
+              <app-cover-art
+                [src]="queueTrack.coverArt ? '/api/cover/' + queueTrack.coverArt + '?size=80&token=' + auth.mediaToken() : undefined"
+                [artist]="queueTrack.artist"
+                [album]="queueTrack.album ?? ''"
+                [size]="32"
+                rounded="rounded"
+              />
+              <div class="min-w-0 flex-1">
+                <button type="button" appTvNavItem data-testid="queue-row-title" (click)="jumpToTrack($index)" class="w-full text-left">
+                  <p class="text-sm text-theme-primary truncate">{{ queueTrack.title }}</p>
+                </button>
+                <p class="text-xs text-theme-muted truncate">
+                  <app-artist-links [artists]="queueTrack.artists" [fallbackArtist]="queueTrack.artist" [fallbackArtistId]="queueTrack.artistId" (linkFollowed)="linkFollowed.emit()" />@if (queueTrack.album) {<span> · </span><app-entity-link kind="album" [id]="queueTrack.albumId" [name]="queueTrack.album" (followed)="linkFollowed.emit()" />}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              appTvNavItem
+              (click)="removeFromQueue($index)"
+              data-testid="queue-remove"
+              [attr.title]="'nowPlaying.remove' | t"
+              [attr.aria-label]="'nowPlaying.removeFromQueue' | t"
+              class="p-1 mr-1 text-theme-muted group-hover:text-theme-secondary hover:!text-red-400 transition flex-shrink-0"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
         </div>
       }
     </div>

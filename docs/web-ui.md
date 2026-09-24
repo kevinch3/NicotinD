@@ -112,6 +112,38 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
   navigates. **Deliberate e2e gap**, as for pull-to-refresh: CI's Playwright is Desktop Chrome, so
   `mobile-ux.spec.ts` drives the mouse path and the wiring; the touch blocker is unit-tested
   (`vertical-swipe.spec.ts`) and a real-device pass is the manual gate.
+- **Queue row gestures (#1295)**: HTML5 `draggable` never starts from a finger, so the Now Playing
+  queue was read-only on the phone. `createRowGesture()` (`lib/row-gesture.ts`, composed on
+  `createPointerDrag()`, reusing `flickVelocity`/`SWIPE_SLOP_PX`) gives each row two gestures:
+  - **Swipe left removes.** The row follows the finger over a red reveal
+    (`data-testid="queue-swipe-reveal"`) and commits through `shouldCommit()` past
+    `QUEUE_SWIPE_REMOVE_PX` (96) or on a flick; a rightward drag never moves it. The removal is
+    `PlayerService.removeFromQueue`, and the toast offers **Undo** for `QUEUE_UNDO_SECONDS` (5),
+    which calls `PlayerService.insertInQueue(index, track)` (clamped) to put it back where it was.
+    A mouse can swipe too (it is the e2e path).
+  - **Long-press (`LONG_PRESS_MS`, 300) then drag reorders.** The row lifts (scale + shadow),
+    siblings part around it, `reorderTargetIndex` picks the landing index under `moveInList`'s
+    remove-then-insert semantics, and the list auto-scrolls in a 48px band at either edge.
+  - **Ownership** is the #731 lesson turned around for a scroll list: the row is `touch-pan-y`, so
+    a horizontal move is never a browser pan and needs no blocker; a vertical move is the list's
+    scroll *unless* the long-press has fired, so the non-passive `touchmove` blocker is armed only
+    at the long-press. A vertical move past slop before it cancels the timer and hands the finger
+    back. The rows carry `data-np-no-swipe`, so the sheet's body gesture never starts on one.
+  - **One reorder path**: the touch lift, the HTML5 drop and the handle's keys all call
+    `reorder(from, to)` → `PlayerService.moveInQueue`; remove and undo are the same PlayerService
+    mutations, so nothing new reaches remote playback. The ⋮⋮ handle (`data-testid="queue-handle"`,
+    44px, `role="button"`) is the long-press hint, the mouse's only HTML5 drag source (a native
+    link/image drag from the row body is prevented, or it would cancel a mouse swipe), and moves
+    the row one step on ArrowUp/ArrowDown with focus following it. It is a `div`, not a `button`:
+    Firefox never starts an HTML5 drag from a `<button>`. `draggable` is set only on a fine pointer
+    so an Android long-press cannot start a native drag under ours.
+  - A gesture swallows the click its release may synthesize (capture-phase, one tick) so a swipe
+    ending on the title never also jumps; a long-press's `contextmenu` is prevented.
+  TV keeps `now-playing-tv-queue`. Unit: `row-gesture.spec.ts` (blocker armed at the long-press,
+  released on a plain pan, slop, swipe velocity, cancel) and the queue panel spec (threshold and
+  flick commit, undo index, keyboard reorder, shared drop path). e2e: `queue-gestures.spec.ts`
+  (handle drag-reorder and a `page.mouse` swipe-remove + Undo). **The touch path is a real-device
+  gate**, as for the player swipes.
 - **Pull to refresh (touch)**: one gesture, hosted in the layout shell, not per-page. `lib/pull-to-refresh.ts` `createPullToRefresh()` composes `createPointerDrag()` and is bound once in `layout.component.ts` on `<main>`'s `(pointerdown)`, rendering a spinner indicator absolutely positioned inside it; `PullToRefreshService` is the seam a page uses to say what "refresh" means — `register(handler)` pushes onto a handler stack, auto-unregistered on the registrant's `DestroyRef` (route navigation destroys the page component, so this is route-scoped for free), and `trigger()` runs the top-of-stack handler. This is layout-hosted rather than per-page because the scroll container is `window`/`document` (the app has no per-page scrolling `<div>`), so "pulled past the top" is a single global condition (`window.scrollY <= 0`) regardless of which route is mounted — one gesture host, many registrants.
   - **Gates before a pull can start** (`onPointerDown`, all must hold): `isCoarsePointer()` (a real `matchMedia('(pointer: coarse)')` check — desktop mouse/trackpad never engages it), `window.scrollY <= 0` (only from the very top), `!ScrollLockService.locked` (a fullscreen sheet is up), `PullToRefreshService.hasHandler()` (no page registered = nothing to refresh), and no `[data-no-p2r]`/`input`/`textarea`/`select` ancestor (an explicit per-element opt-out for a nested scroller or a form control that needs its own vertical drag).
   - **Why a non-passive `touchmove` `preventDefault()` is required — and why it is armed at pointerdown, not at intent**: `drag.start()` attaches `document.addEventListener('touchmove', blockTouchMove, { passive: false })` immediately, and the blocker decides per event: pull intent → prevent; scroll intent → never; undecided → prevent only a downward-dominant move (`dy > 0 && dy >= |dx|` — the same dominance rule as the intent test, so horizontal tab-strip pans stay native). The timing is the load-bearing part: the browser reclaims an unprevented vertical pan as its own scroll after ~10px, stops delivering `pointermove` (firing `pointercancel` instead), and marks every subsequent `touchmove` non-cancelable — so preventing the **first** `touchmove` is the only winnable round (per the Touch Events spec it suppresses scrolling for the whole interaction). The original implementation attached the blocker only after intent classification, i.e. after ~10px — guaranteeing it lost that race, which left the gesture completely dead on real touch devices (#731). `overscroll-behavior` does **not** fix this: it only suppresses the *visual/navigation* side-effect (Chrome Android's reload glow, iOS's bounce-triggered nav), it does not keep the event stream alive. This is also why **a `pointercancel` while `phase === 'armed'` still commits the refresh** (`finish()` routes cancel through the same commit path as a clean pointerup) — on touch you cannot rely on ever seeing a real `pointerup` once the pull has crossed threshold, the same lesson `pointer-drag.ts`'s cancel handling and the player swipe-up gesture (`onMove`-committing, not `pointerup`-committing) already encode.
@@ -166,7 +198,8 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
     Owns `clearQueue`/`removeFromQueue`/`jumpToTrack`/the HTML5 DnD handlers itself
     (`PlayerService.clearQueue()`/`moveInQueue(from,to)`/`removeFromQueue(index)` underneath — all
     three still unit-tested in `player.service.spec.ts`); a drag dims the source row to 40% opacity
-    and shows an accent top border at the drop target.
+    and shows an accent top border at the drop target. Only the ⋮⋮ handle is the HTML5 drag source
+    now, and touch has its own gestures — see "Queue row gestures" below.
   - `NowPlayingLyricsPanelComponent` — the in-place karaoke-styled lyrics view.
   - The fullscreen overlay's mic button carries `data-vocal-mode` (`off | basic`) and a
     `vocal-mute-status` caption naming the served mute, both derived from

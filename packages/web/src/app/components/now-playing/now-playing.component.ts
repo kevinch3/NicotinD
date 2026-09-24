@@ -290,7 +290,7 @@ export class NowPlayingComponent {
 
   // Controls and nested drags keep their own pointer: a tap on them must not
   // become a sheet gesture, the seek/waveform scrubs are horizontal drags, and
-  // a queue row's HTML5 reorder drag would cancel ours anyway.
+  // a queue row owns its swipe-remove and long-press reorder (#1295).
   private static readonly BODY_NO_SWIPE =
     'button, a, input, select, textarea, [data-seek], .seek-range, app-now-playing-waveform, app-menu-panel, [draggable="true"], [data-np-no-swipe]';
 
