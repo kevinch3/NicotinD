@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.65](https://github.com/kevinch3/NicotinD/compare/v0.8.64...v0.8.65) (2026-09-24)
+
+### Bug Fixes
+
+* **downloads:** land new downloads in the operator's library format ([#1363](https://github.com/kevinch3/NicotinD/issues/1363)) ([68def17](https://github.com/kevinch3/NicotinD/commit/68def17ea18c5e7f08f198ddbfea04fdd44d8789))
 ## [0.8.64](https://github.com/kevinch3/NicotinD/compare/v0.8.63...v0.8.64) (2026-09-24)
 
 ### Features
