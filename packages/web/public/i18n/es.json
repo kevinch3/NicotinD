@@ -531,7 +531,7 @@
   "downloads.resource.selected": "Recuperar {count} seleccionadas",
   "downloads.resource.title": "Completar desde otro par",
   "downloads.resource.searching": "Buscando otros pares…",
-  "downloads.resource.wanted": "Buscando {count} pista(s) pendiente(s)",
+  "downloads.resource.wanted": "Buscando {count} pista(s) faltante(s)",
   "downloads.resource.none": "Ningún otro par tiene estas pistas en este momento.",
   "downloads.resource.offline": "La fuente está desconectada, así que no se pudo contactar a ningún par. Inténtalo de nuevo en unos minutos.",
   "downloads.resource.throttled": "La fuente limitó la búsqueda, así que esta lista puede estar incompleta.",

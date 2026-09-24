@@ -642,3 +642,157 @@ describe('POST /jobs/:id/discard-partial (#810)', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('re-source the not-offered titles (#1146)', () => {
+  const MANIFEST = {
+    id: 'fixture-addon',
+    name: 'Fixture',
+    description: 'x',
+    version: '0.1.0',
+    protocolVersion: '1.0.0',
+    kind: 'acquisition',
+    capabilities: ['search', 'download'],
+  } as import('@nicotind/core').AddonManifest;
+
+  /**
+   * The release has three tracks; the first peer offered one and it landed.
+   * The card reads `1 of 3 · 2 not offered` with nothing pending — the dead
+   * end #1146 is about.
+   */
+  function makeApp() {
+    testDb.run('DELETE FROM acquisition_job_items');
+    testDb.run('DELETE FROM acquisition_jobs');
+    testDb.run('DELETE FROM plugins');
+    testDb.run('DELETE FROM plugin_kv');
+    testDb.run('DELETE FROM audit_log');
+    const calls = {
+      cancelled: [] as string[],
+      created: [] as Array<{ wantedTracks?: { title: string }[]; candidateRef?: string }>,
+    };
+    const client = {
+      baseUrl: 'http://addon:9999',
+      cancelJob: async (id: string) => {
+        calls.cancelled.push(id);
+      },
+      albumsSearch: async () => ({
+        candidates: [
+          {
+            candidateRef: 'c-first',
+            username: 'first-peer',
+            directory: 'LM\\Romances',
+            format: 'FLAC',
+            estimatedSizeMb: 10,
+            files: [{ filename: 'LM\\Romances\\01 Amanecer.flac', size: 1 }],
+          },
+          {
+            candidateRef: 'c-full',
+            username: 'full-peer',
+            directory: 'Luis Miguel\\Romances',
+            format: 'FLAC',
+            estimatedSizeMb: 30,
+            files: [
+              { filename: 'Luis Miguel\\Romances\\01 Amanecer.flac', size: 1 },
+              { filename: 'Luis Miguel\\Romances\\02 Besame Mucho.flac', size: 1 },
+              { filename: 'Luis Miguel\\Romances\\03 Sabor a Mi.flac', size: 1 },
+            ],
+          },
+        ],
+      }),
+      createJob: async (req: { wantedTracks?: { title: string }[]; candidateRef?: string }) => {
+        calls.created.push(req);
+        return { id: 'aj-second', items: [] };
+      },
+    } as unknown as import('../services/addons/client.js').AddonClient;
+    const pluginRegistry = new PluginRegistry({ db: testDb, dataDir: '/tmp/nicotind-test' });
+    pluginRegistry.register(new RemoteAddonPlugin(MANIFEST, client));
+
+    const app = new Hono<AuthEnv>();
+    app.use('*', (c, next) => {
+      c.set('user', { sub: 'u', role: 'user', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    app.route('/', downloadRoutes(new ProviderRegistry(), pluginRegistry));
+
+    const jobId = createJob(testDb, {
+      kind: 'album-hunt',
+      method: 'fixture-addon',
+      userId: 'u',
+      artistName: 'Luis Miguel',
+      albumTitle: 'Romances',
+      canonicalTracks: ['Amanecer', 'Bésame mucho', 'Sabor a mí'],
+      sourceRef: 'addon:fixture-addon:aj-first',
+      username: 'first-peer',
+      files: [{ filename: 'LM\\Romances\\01 Amanecer.flac', size: 1, trackTitle: 'Amanecer' }],
+    });
+    testDb.run(`UPDATE acquisition_job_items SET state = 'scanned' WHERE job_id = ?`, [jobId]);
+    return { app, calls, jobId };
+  }
+
+  const post = (app: Hono<AuthEnv>, path: string, body: unknown) =>
+    app.request(path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+  it('searches for the not-offered titles and offers the peer that has them', async () => {
+    const { app, jobId } = makeApp();
+    const res = await post(app, `/jobs/${jobId}/resource/search`, {});
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      wanted: string[];
+      alternates: { username: string; coveredTitles: string[] }[];
+    };
+    expect(body.wanted).toEqual(['Bésame mucho', 'Sabor a mí']);
+    // The peer already on the card is excluded; the full folder covers both.
+    expect(body.alternates.map((a) => a.username)).toEqual(['full-peer']);
+    expect(body.alternates[0]!.coveredTitles).toEqual(['Bésame mucho', 'Sabor a mí']);
+  });
+
+  it('asks the new peer for only those titles, on the same card, and reserves their rows', async () => {
+    const { app, calls, jobId } = makeApp();
+    const res = await post(app, `/jobs/${jobId}/resource`, {
+      candidateRef: 'c-full',
+      titles: ['Bésame mucho', 'Sabor a mí'],
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { resourced: number }).resourced).toBe(2);
+
+    // Released first (#1069) even though it is already done: the real addon's
+    // one-active-job guard makes the order load-bearing, and a no-op here is harmless.
+    expect(calls.cancelled).toEqual(['aj-first']);
+    expect(calls.created).toHaveLength(1);
+    expect(calls.created[0]!.candidateRef).toBe('c-full');
+    // Never the folder again: the landed track is not in the request.
+    expect(calls.created[0]!.wantedTracks).toEqual([
+      { title: 'Bésame mucho' },
+      { title: 'Sabor a mí' },
+    ]);
+
+    const rows = testDb
+      .query<{ track_title: string; state: string; addon_job_id: string | null }, [string]>(
+        `SELECT track_title, state, addon_job_id FROM acquisition_job_items WHERE job_id = ? ORDER BY id`,
+      )
+      .all(jobId);
+    expect(rows).toEqual([
+      { track_title: 'Amanecer', state: 'scanned', addon_job_id: 'aj-first' },
+      { track_title: 'Bésame mucho', state: 'queued', addon_job_id: 'aj-second' },
+      { track_title: 'Sabor a mí', state: 'queued', addon_job_id: 'aj-second' },
+    ]);
+    // Mapped onto THIS card, so the poller mirrors the new job into it.
+    const map = testDb
+      .query<{ value: string }, []>(`SELECT value FROM plugin_kv WHERE key = 'jobmap:aj-second'`)
+      .get();
+    expect(map?.value).toContain(jobId);
+  });
+
+  it('a title that landed meanwhile, or was never missing, is not handed over', async () => {
+    const { app, calls, jobId } = makeApp();
+    const res = await post(app, `/jobs/${jobId}/resource`, {
+      candidateRef: 'c-full',
+      titles: ['Amanecer', 'Sabor a mí'],
+    });
+    expect(res.status).toBe(200);
+    expect(calls.created[0]!.wantedTracks).toEqual([{ title: 'Sabor a mí' }]);
+  });
+});

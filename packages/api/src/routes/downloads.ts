@@ -23,6 +23,7 @@ import {
   claimUnattributedItems,
   huntTracklist,
   getJob,
+  reserveResourcedItems,
   resourceableTitles,
   supersedeItems,
 } from '../services/acquisition-job-store.js';
@@ -500,6 +501,8 @@ export function downloadRoutes(
 
     mapAddonJob(db, ref.addonId, addonJobId, job.id);
     supersedeItems(db, job.id, titles);
+    // After the supersede, which would otherwise take these queued rows too.
+    reserveResourcedItems(db, job.id, addonJobId, titles);
     recomputeStage(db, job.id);
     recordAudit(db, user, 'download.resource', {
       targetKind: 'acquisition_job',

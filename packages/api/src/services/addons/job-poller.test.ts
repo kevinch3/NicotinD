@@ -21,6 +21,7 @@ import {
   createJob,
   markPartialDiscarded,
   requestJobCancel,
+  reserveResourcedItems,
   supersedeItems,
 } from '../acquisition-job-store.js';
 import type { CompletedDownloadFile } from '../path-inference.js';
@@ -1753,6 +1754,105 @@ describe('re-source: the replacement peer lands on its own row (#1084)', () => {
       { addon_job_id: 'aj-old', state: 'superseded', username: 'peer' },
       { addon_job_id: 'aj-new', state: 'organized', username: 'newpeer' },
     ]);
+  });
+});
+
+describe('re-source: a reserved title is adopted, not duplicated (#1146)', () => {
+  it("fills the placeholder with the new peer's item, and sweeps the one it never offered", async () => {
+    let jobsData = [makeJob({ id: 'aj-old', state: 'done', updatedAt: 2000 })];
+    const h = harness(() => jobsData);
+    await h.registry.enable('fixture-addon', 'admin');
+    await h.poller.tick();
+    await h.poller.idle();
+    const coreId = h.db.query<{ id: string }, []>(`SELECT id FROM acquisition_jobs`).get()!.id;
+
+    // What the re-source route does for two not-offered titles: map the new
+    // addon job onto the card, then reserve a row per title handed over.
+    claimUnattributedItems(h.db, coreId, 'aj-old');
+    mapAddonJob(h.db, 'fixture-addon', 'aj-new', coreId);
+    reserveResourcedItems(h.db, coreId, 'aj-new', ['Song Two', 'Song Three']);
+
+    // The new peer itemises only one of them.
+    jobsData = [
+      makeJob({
+        id: 'aj-new',
+        createdAt: 2500,
+        updatedAt: 3000,
+        items: [
+          {
+            ...makeJob().items[0]!,
+            itemId: 't:song two',
+            title: 'Song Two',
+            username: 'newpeer',
+            filename: 'New\\02 Song Two.flac',
+            state: 'downloading',
+            updatedAt: 3000,
+          },
+        ],
+      }),
+    ];
+    await h.poller.tick();
+    await h.poller.idle();
+
+    const rows = () =>
+      h.db
+        .query<
+          {
+            track_title: string;
+            addon_job_id: string | null;
+            state: string;
+            username: string | null;
+            transfer_key: string | null;
+          },
+          [string]
+        >(
+          `SELECT track_title, addon_job_id, state, username, transfer_key
+             FROM acquisition_job_items WHERE job_id = ? AND addon_job_id = 'aj-new' ORDER BY id`,
+        )
+        .all(coreId);
+    // Adopted in place: still two rows for the new job, the first now carries
+    // the peer and its mirror key.
+    expect(rows()).toEqual([
+      {
+        track_title: 'Song Two',
+        addon_job_id: 'aj-new',
+        state: 'downloading',
+        username: 'newpeer',
+        transfer_key: addonTransferKey('fixture-addon', 't:song two'),
+      },
+      {
+        track_title: 'Song Three',
+        addon_job_id: 'aj-new',
+        state: 'queued',
+        username: null,
+        transfer_key: null,
+      },
+    ]);
+
+    // The new job ends having never offered "Song Three": that placeholder is
+    // a track this source did not deliver, and says so.
+    jobsData = [
+      makeJob({
+        id: 'aj-new',
+        state: 'partial',
+        createdAt: 2500,
+        updatedAt: 4000,
+        items: [
+          {
+            ...makeJob().items[0]!,
+            itemId: 't:song two',
+            title: 'Song Two',
+            username: 'newpeer',
+            filename: 'New\\02 Song Two.flac',
+            state: 'failed',
+            updatedAt: 4000,
+          },
+        ],
+      }),
+    ];
+    await h.poller.tick();
+    await h.poller.idle();
+    expect(rows().map((r) => r.state)).toEqual(['failed', 'unavailable']);
   });
 });
 

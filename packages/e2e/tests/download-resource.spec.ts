@@ -131,7 +131,14 @@ test.describe('re-source a stuck download', () => {
 
     // Still one card: re-sourcing is not a second download.
     const cards = await request.get('/api/downloads/jobs', { headers: auth });
-    const all = (await cards.json()) as Array<{ method: string }>;
+    const all = (await cards.json()) as Array<{
+      id: string;
+      method: string;
+      items: { title: string }[];
+    }>;
     expect(all.filter((j) => j.method === ADDON_ID)).toHaveLength(1);
+    // And still one row for the track: the row reserved at commit (#1146) was
+    // adopted by the replacement's report, not joined by a second one.
+    expect(all.find((j) => j.id === jobId)!.items.map((i) => i.title)).toEqual(['Addon Song']);
   });
 });
