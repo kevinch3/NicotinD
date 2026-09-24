@@ -768,6 +768,22 @@ describe('PlayerService', () => {
     });
   });
 
+  describe('insertInQueue()', () => {
+    it('undoes a removeFromQueue at the same index', () => {
+      service.queue.set([track1, track2, track3]);
+      service.removeFromQueue(1);
+      service.insertInQueue(1, track2);
+      expect(service.queue()).toEqual([track1, track2, track3]);
+    });
+
+    it('clamps an index the queue has since shrunk past', () => {
+      service.queue.set([track1]);
+      service.insertInQueue(5, track2);
+      service.insertInQueue(-3, track3);
+      expect(service.queue()).toEqual([track3, track1, track2]);
+    });
+  });
+
   describe('buffering state', () => {
     beforeEach(() => vi.useFakeTimers());
     afterEach(() => vi.useRealTimers());

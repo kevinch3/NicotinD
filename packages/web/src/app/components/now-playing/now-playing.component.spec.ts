@@ -1067,6 +1067,16 @@ describe('NowPlayingComponent', () => {
           return inner;
         },
       ],
+      [
+        'a queue row, which owns its own swipe and long-press gestures',
+        () => {
+          const row = document.createElement('div');
+          row.setAttribute('data-np-no-swipe', '');
+          const inner = document.createElement('span');
+          row.appendChild(inner);
+          return inner;
+        },
+      ],
     ])('never starts from %s', (_label, make) => {
       const { fixture } = setup();
       const component = fixture.componentInstance;
