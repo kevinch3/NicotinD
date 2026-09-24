@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.75](https://github.com/kevinch3/NicotinD/compare/v0.8.74...v0.8.75) (2026-09-24)
+
+### Features
+
+* **admin:** see the kept originals, and prune them only by name ([#1379](https://github.com/kevinch3/NicotinD/issues/1379)) ([3e58db5](https://github.com/kevinch3/NicotinD/commit/3e58db567e97645cca27747d70845d1619db0719)), references [#1255](https://github.com/kevinch3/NicotinD/issues/1255)
+* **library:** an incomplete badge and a curator Complete action on album pages ([#1378](https://github.com/kevinch3/NicotinD/issues/1378)) ([9bf56e1](https://github.com/kevinch3/NicotinD/commit/9bf56e120e0fef5158bc47b792d3cab148ef1d29)), references [#737](https://github.com/kevinch3/NicotinD/issues/737)
 ## [0.8.74](https://github.com/kevinch3/NicotinD/compare/v0.8.73...v0.8.74) (2026-09-24)
 
 ### Features

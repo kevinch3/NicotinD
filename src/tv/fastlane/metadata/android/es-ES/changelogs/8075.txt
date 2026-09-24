@@ -1,0 +1,2 @@
+• admin: see the kept originals, and prune them only by name (#1379)
+• library: an incomplete badge and a curator Complete action on album pages (#1378)
