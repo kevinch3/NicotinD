@@ -57,6 +57,13 @@ export interface SongMetadataMutateBody {
    */
   track?: number;
   disc?: number;
+  /**
+   * Composer and conductor (#1083). Classical files carry the composer in
+   * `artist`; moving it here is what lets `artist` become the performer
+   * without deleting the composer.
+   */
+  composer?: string;
+  conductor?: string;
 }
 
 /** The subset of a song row a mutation can be verified against. */
@@ -68,6 +75,8 @@ export interface SongMetadataSnapshot {
   year: number | null;
   track: number | null;
   disc: number | null;
+  composer: string | null;
+  conductor: string | null;
 }
 
 export type SongMetadataMutateResult =
@@ -99,16 +108,12 @@ export type SongMetadataMutateResult =
       onDisk?: Partial<SongMetadataSnapshot>;
     };
 
-interface SongRow {
+interface SongRow extends SongMetadataSnapshot {
   path: string;
-  title: string;
-  artist: string;
-  albumArtist: string | null;
-  album: string | null;
-  year: number | null;
-  track: number | null;
-  disc: number | null;
 }
+
+const SNAPSHOT_COLUMNS = `s.title, s.artist, s.album_artist AS albumArtist, a.name AS album, s.year,
+  s.track, s.disc, s.composer, s.conductor`;
 
 export async function mutateSongMetadata(
   db: Database,
@@ -127,8 +132,7 @@ export async function mutateSongMetadata(
 
   const song = db
     .query<SongRow, [string]>(
-      `SELECT s.path, s.title, s.artist, s.album_artist AS albumArtist, a.name AS album, s.year,
-              s.track, s.disc
+      `SELECT s.path, ${SNAPSHOT_COLUMNS}
        FROM library_songs s LEFT JOIN library_albums a ON a.id = s.album_id
        WHERE s.id = ?`,
     )
@@ -159,6 +163,8 @@ export async function mutateSongMetadata(
     year: song.year,
     track: song.track,
     disc: song.disc,
+    composer: song.composer,
+    conductor: song.conductor,
   };
   if (!deps.scanIncremental) {
     // Nothing to read back through — report the request and say so, rather
@@ -194,6 +200,12 @@ export async function mutateSongMetadata(
     diverged.track = after.track;
   }
   if (tags.discNumber !== undefined && after.disc !== tags.discNumber) diverged.disc = after.disc;
+  if (tags.composer !== undefined && after.composer !== tags.composer) {
+    diverged.composer = after.composer;
+  }
+  if (tags.conductor !== undefined && after.conductor !== tags.conductor) {
+    diverged.conductor = after.conductor;
+  }
 
   if (Object.keys(diverged).length > 0) {
     // The row diverging does not mean the write failed. Audit the FILE before
@@ -242,6 +254,8 @@ const SNAPSHOT_TAG_KEYS = {
   year: 'year',
   track: 'trackNumber',
   disc: 'discNumber',
+  composer: 'composer',
+  conductor: 'conductor',
 } as const satisfies Record<keyof SongMetadataSnapshot, keyof AudioTags>;
 
 /**
@@ -292,8 +306,7 @@ function readSnapshot(db: Database, songId: string): SongMetadataSnapshot | null
   return (
     db
       .query<SongMetadataSnapshot, [string]>(
-        `SELECT s.title, s.artist, s.album_artist AS albumArtist, a.name AS album, s.year,
-                s.track, s.disc
+        `SELECT ${SNAPSHOT_COLUMNS}
          FROM library_songs s LEFT JOIN library_albums a ON a.id = s.album_id
          WHERE s.id = ?`,
       )
@@ -313,5 +326,7 @@ function pickApplied(after: SongMetadataSnapshot, tags: AudioTags): Partial<Audi
   if (tags.year !== undefined && after.year !== null) out.year = after.year;
   if (tags.trackNumber !== undefined && after.track !== null) out.trackNumber = after.track;
   if (tags.discNumber !== undefined && after.disc !== null) out.discNumber = after.disc;
+  if (tags.composer !== undefined && after.composer !== null) out.composer = after.composer;
+  if (tags.conductor !== undefined && after.conductor !== null) out.conductor = after.conductor;
   return out;
 }

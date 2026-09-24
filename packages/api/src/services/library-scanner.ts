@@ -151,6 +151,8 @@ export interface ScannedTrack {
    * are valid splitGenres input, so stale cache rows still scan correctly.
    */
   genre?: string | string[];
+  composer?: string;
+  conductor?: string;
   bpm?: number;
   key?: string;
   energy?: number;
@@ -175,6 +177,8 @@ export interface SongRow {
   duration: number;
   year: number | null;
   genre: string | null;
+  composer: string | null;
+  conductor: string | null;
   bpm: number | null;
   key: string | null;
   energy: number | null;
@@ -294,6 +298,12 @@ export function mostCommonGenre(genres: (string | null | undefined)[]): string |
  * NFC is the target because it is the Unicode-recommended interchange form and
  * already dominates here — 16 of 19,184 song artists were decomposed.
  */
+/** A credit array (`common.composer`, `common.conductor`) as one `; `-joined string (#1083). */
+function joinCredits(v: string[] | undefined): string | undefined {
+  const parts = (v ?? []).map((x) => x.trim()).filter(Boolean);
+  return parts.length > 0 ? parts.join('; ') : undefined;
+}
+
 export function nfc(v: string | undefined): string | undefined {
   return v == null ? v : v.normalize('NFC');
 }
@@ -671,6 +681,8 @@ export function buildLibrary(
       duration: t.duration,
       year: year ?? null,
       genre: genres[0] ?? null,
+      composer: t.composer ?? null,
+      conductor: t.conductor ?? null,
       bpm: t.bpm ?? null,
       key: t.key ?? null,
       energy: t.energy ?? null,
@@ -1215,6 +1227,8 @@ export class LibraryScanner {
       year: common?.year ?? undefined,
       // FULL frame array — buildLibrary's splitGenres derives the set/primary.
       genre: common?.genre?.length ? common.genre.map((g) => nfc(g) ?? g) : undefined,
+      composer: nfc(joinCredits(common?.composer)),
+      conductor: nfc(joinCredits(common?.conductor)),
       bpm: typeof common?.bpm === 'number' && common.bpm > 0 ? Math.round(common.bpm) : undefined,
       key: keyFromParse(common?.key, meta?.native),
       // Perceptual features live in custom Vorbis/TXXX frames — parse them from
@@ -1250,11 +1264,11 @@ export class LibraryScanner {
       INSERT INTO library_songs (
         id, album_id, title, artist, artist_id, album_artist, album_artist_id,
         track, disc, duration,
-        year, genre, bpm, key,
+        year, genre, composer, conductor, bpm, key,
         energy, loudness, danceability, valence, acousticness, instrumental, mood,
         cover_art, path, size, bit_rate, sample_rate, bit_depth, channels, suffix, content_type,
         has_embedded_art, created, synced_at, landed_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         album_id = excluded.album_id,
         title = excluded.title,
@@ -1272,6 +1286,9 @@ export class LibraryScanner {
         -- enrichment before the tag lands. A tag that DOES carry a genre still
         -- overrides. (Same durability contract as bpm/key.)
         genre = COALESCE(excluded.genre, library_songs.genre),
+        -- File-derived and written only through the file tag, so the tag wins.
+        composer = excluded.composer,
+        conductor = excluded.conductor,
         -- Keep an existing (e.g. analyzed) bpm when a rescan reads no tag value.
         bpm = COALESCE(excluded.bpm, library_songs.bpm),
         -- Likewise keep an analyzed key when a rescan reads no tag value.
@@ -1430,6 +1447,8 @@ export class LibraryScanner {
           s.duration,
           s.year,
           s.genre,
+          s.composer,
+          s.conductor,
           s.bpm,
           s.key,
           s.energy,

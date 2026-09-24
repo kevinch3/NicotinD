@@ -1069,6 +1069,10 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   // `landing_backfill_v2` block below stamps any row a pre-instant-landing
   // build left NULL, so no listing ever needs to filter on it.
   addColumnIfMissing(db, 'library_songs', 'landed_at', 'INTEGER');
+  // Composer / conductor (#1083): classical files filed the composer in
+  // `artist` because there was nowhere else to put it. File-derived, like title.
+  addColumnIfMissing(db, 'library_songs', 'composer', 'TEXT');
+  addColumnIfMissing(db, 'library_songs', 'conductor', 'TEXT');
   // Album-level artist (e.g. "Various Artists" on compilations) vs track-level
   // artist. Existing rows backfill from the current artist column.
   // The backfill is gated on the column having just been added, matching the
@@ -2025,18 +2029,19 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   //   v3 — `has_embedded_art` (#952): pre-v3 rows were parsed with
   //        `skipCovers: true`, so they carry no answer about attached art.
   //   v4 — track (#1077): pre-v4 rows let an ID3v1 track override ID3v2 TRCK.
+  //   v5 — composer/conductor (#1083): pre-v5 rows never recorded either.
   //
   // Version-marker-gated: a stale marker ⇒ flush once (next scan re-parses all
   // files), then never again.
   const scanCacheVersion = db
     .query<{ value: string }, [string]>(`SELECT value FROM library_sync_state WHERE key = ?`)
     .get('scan_cache_version');
-  if (scanCacheVersion?.value !== '4') {
+  if (scanCacheVersion?.value !== '5') {
     const now = Date.now();
     db.transaction(() => {
       db.run(`DELETE FROM scan_cache`);
       db.run(
-        `INSERT OR REPLACE INTO library_sync_state (key, value, updated_at) VALUES (?, '4', ?)`,
+        `INSERT OR REPLACE INTO library_sync_state (key, value, updated_at) VALUES (?, '5', ?)`,
         ['scan_cache_version', now],
       );
     })();

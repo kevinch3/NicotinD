@@ -83,6 +83,16 @@ stale — it recorded exactly what the parser said. Both tag readers (`parseTrac
 prefers APEv2/ID3v2 frames whenever an ID3v1 tag is present; `scan_cache_version` 4 flushes the
 cache once so rows already holding an ID3v1-clobbered number are re-read.
 
+**Composer and conductor (#1083).** `library_songs.composer` / `conductor` hold TCOM / `COMPOSER` /
+`©wrt` and TPE3 / `CONDUCTOR` / a `----:CONDUCTOR` freeform atom, several credits `; `-joined
+(`joinCredits`). Before them, classical files filed the composer in `artist` — *The People's Tenor*
+carries fourteen composers as artists — and retagging `artist` to the performer would have deleted
+the composer rather than moved it. Both are file-derived like `title` (the upsert takes the tag, no
+`COALESCE`), written only through the file by `mutateSongMetadata` / `fix_song_metadata`, which can
+set `composer` and `artist` in one call. `scan_cache_version` 5 flushes the cache once so every
+existing file gains them — one full re-parse on the next scan. Work/movement (`TIT1`/`MVNM`) are not
+modelled yet.
+
 Non-destructive: unselected files stay on disk but get no `library_songs` row, so a full scan's prune makes them invisible. Physical cleanup is `scripts/repair-album-folders.ts`. Incremental `scanPaths` selects within its batch; the full scan is authoritative.
 
 **An incremental retag orphans the album it left, not just the file it moved (issue #874).** A song's own id is path-derived and survives a pure tag edit, but its `album_id` is not — an ALBUMARTIST retag re-mints it, and the song moves via `persist()`'s `ON CONFLICT(id) DO UPDATE SET album_id = excluded.album_id` upsert. The incremental branch only refreshed the aggregates for `built.albums` — the albums *this batch touched* — so the album a song moved *out of* was never revisited: it kept a stale `song_count` with zero real songs until the next full scan (which prunes by `synced_at` and so happens to catch it). `persist()` now reads each about-to-be-upserted song's *previous* `album_id` before the upsert runs, and afterwards calls the existing `pruneOrphanAlbum` for any that differ from the song's new album and weren't independently touched by this batch — the same refresh-or-drop logic a single-song delete already uses, just reached from a different direction. Measured on prod: 22 empty ghost album rows after retagging 32 songs across 3 clusters, which `checkMisSplitAlbums` then over-counted as mis-split singles.

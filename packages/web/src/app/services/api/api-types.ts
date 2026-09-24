@@ -32,6 +32,8 @@ export interface SongMetadataFields {
   artist?: string;
   albumArtist?: string;
   album?: string;
+  composer?: string;
+  conductor?: string;
   year?: number;
 }
 
@@ -240,6 +242,9 @@ export interface Song {
   genre?: string;
   /** Full genre set, primary first (from library_song_genres). */
   genres?: string[];
+  /** Composer credit, `; `-joined when several (#1083). */
+  composer?: string;
+  conductor?: string;
   year?: number;
   /** ISO timestamp when starred, absent otherwise. */
   starred?: string;

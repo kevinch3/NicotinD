@@ -14,6 +14,9 @@ export interface MMCommon {
   disk?: { no?: number | null };
   year?: number;
   genre?: string[];
+  /** One entry per credit (TCOM / `COMPOSER` / `©wrt`; TPE3 / `CONDUCTOR`) — arrays (#1083). */
+  composer?: string[];
+  conductor?: string[];
   /** Beats per minute from tags (TBPM / `BPM`), when present. */
   bpm?: number;
   /** Musical key from tags (TKEY / `KEY` / `INITIALKEY`), when present. */

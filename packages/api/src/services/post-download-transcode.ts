@@ -206,6 +206,8 @@ const ID3_FRAMES_FFMPEG_DROPS = [
   { field: 'bpm', vorbis: 'BPM' },
   { field: 'key', vorbis: 'KEY' },
   { field: 'lyrics', vorbis: 'LYRICS' },
+  // Not dropped but renamed: ffmpeg reads TPE3 as `performer` (#1083).
+  { field: 'conductor', vorbis: 'CONDUCTOR' },
 ] as const;
 
 /**
@@ -249,6 +251,8 @@ const ID3_FRAMES_FFMPEG_DROPS = [
 const VORBIS_FIELDS_FFMPEG_DROPS = [
   { field: 'bpm', id3: 'TBPM' },
   { field: 'key', id3: 'TKEY' },
+  // ffmpeg writes `CONDUCTOR` as a TXXX node-id3 does not read; TPE3 is the frame.
+  { field: 'conductor', id3: 'TPE3' },
   ...ID3_TXXX_FFMPEG_MISNAMES.map((m) => ({ field: m.field, id3: m.description })),
 ] as const satisfies ReadonlyArray<{ field: keyof AudioTags; id3: string }>;
 
@@ -375,6 +379,9 @@ async function carriedMetadataArgs(
       const v = tags[field];
       if (present(v)) args.push('-metadata', `${vorbis}=${String(v)}`);
     }
+    // TPE3 is the only ID3 source of ffmpeg's `performer`, and it holds the
+    // conductor — so the renamed copy is blanked rather than left mislabelled.
+    if (present(tags.conductor)) args.push('-metadata', 'PERFORMER=');
     for (const { field, description, vorbis } of ID3_TXXX_FFMPEG_MISNAMES) {
       const v = tags[field];
       if (!present(v)) continue;

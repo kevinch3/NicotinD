@@ -81,7 +81,7 @@ audit-logged.
 | `set_genre_alias` | curate | `services/genre-alias-mutate.ts` `upsertGenreAlias` + `genre.alias` audit |
 | `lookup_song_metadata` | read | `services/candidate-sources.ts` `gatherSongCandidates` + `services/title-clean.ts` `cleanDisplayTitle` |
 | `identify_song` | read | `services/identify.ts` `identifySongById` — fpcalc + AcoustID only, the narrow fingerprint lane |
-| `fix_song_metadata` | curate | `services/song-metadata-mutate.ts` `mutateSongMetadata` + `song.metadata` audit |
+| `fix_song_metadata` | curate | `services/song-metadata-mutate.ts` `mutateSongMetadata` + `song.metadata` audit; `composer`/`conductor` since #1083, so a composer filed as `artist` is moved in one call |
 | `lookup_album_metadata` | read | `services/candidate-sources.ts` `gatherCandidates` — the album-scoped candidate search behind the web metadata-fix modal |
 | `fix_album_metadata` | curate | `services/metadata-fix.ts` `applyMetadataFix` + `album.metadata` audit |
 | `set_album_cover` | curate | `services/album-cover-mutate.ts` `applyAlbumCover` + `album.cover` audit |

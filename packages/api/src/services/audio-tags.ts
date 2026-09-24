@@ -26,6 +26,13 @@ export interface AudioTags {
   discNumber?: number;
   year?: number;
   genre?: string;
+  /**
+   * Composer (ID3 TCOM / Vorbis `COMPOSER` / MP4 `©wrt`) and conductor (ID3
+   * TPE3 / Vorbis `CONDUCTOR` / an MP4 freeform atom). Without them classical
+   * files filed the composer in `artist`, and correcting that deleted it (#1083).
+   */
+  composer?: string;
+  conductor?: string;
   /** Beats per minute (TBPM / Vorbis `BPM`). Written by on-demand track analysis. */
   bpm?: number;
   /** Musical key (TKEY / Vorbis `KEY`). Written by on-demand/windowed key analysis. */
@@ -96,6 +103,8 @@ type MusicMetadataApi = {
       mood?: string;
       /** One entry per genre tag frame — an ARRAY, not a string (issue #791). */
       genre?: string[];
+      composer?: string[];
+      conductor?: string[];
       /** Normalised copyright text/URL (music-metadata folds TCOP/COPYRIGHT/©cpy). */
       copyright?: string;
       acoustid_id?: string;
@@ -323,6 +332,12 @@ function pickString(v: unknown): string | undefined {
   return typeof v === 'string' && v.trim().length > 0 ? v.trim() : undefined;
 }
 
+/** A music-metadata credit array (`composer`, `conductor`) as the one string the writers emit. */
+function pickJoined(v: unknown): string | undefined {
+  if (!Array.isArray(v)) return pickString(v);
+  return pickString(v.filter((x) => typeof x === 'string' && x.trim()).join('; '));
+}
+
 /**
  * music-metadata returns `common.genre` as an ARRAY — one entry per tag frame,
  * which is the multi-genre shape `splitGenres` parses (docs/genre-model.md).
@@ -416,6 +431,8 @@ export async function readAudioTags(filepath: string): Promise<AudioTags> {
         albumArtist: pickString(d.performerInfo) ?? pickString(d.band),
         album: pickString(d.album),
         title: pickString(d.title),
+        composer: pickString(d.composer),
+        conductor: pickString(d.conductor),
         trackNumber: parseLeadingNumber(d.trackNumber),
         discNumber: parseLeadingNumber(d.partOfSet),
         bpm: parseLeadingNumber(d.bpm),
@@ -456,6 +473,8 @@ export async function readAudioTags(filepath: string): Promise<AudioTags> {
         albumArtist: pickString(c.albumartist),
         album: pickString(c.album),
         title: pickString(c.title),
+        composer: pickJoined(c.composer),
+        conductor: pickJoined(c.conductor),
         trackNumber: c.track?.no ?? undefined,
         // `writeFfmpegTags` emits DISC and BPM here too, so leaving these
         // unmapped made them write-only on flac/m4a for the same reason (#1151).
@@ -514,6 +533,8 @@ const ID3_VERIFIABLE_FIELDS = [
   'artist',
   'albumArtist',
   'album',
+  'composer',
+  'conductor',
   'genre',
   'key',
   'lyrics',
@@ -572,6 +593,8 @@ async function writeId3Tags(filepath: string, tags: AudioTags): Promise<boolean>
   if (tags.albumArtist !== undefined) update.performerInfo = tags.albumArtist;
   if (tags.artist !== undefined) update.artist = tags.artist;
   if (tags.title !== undefined) update.title = tags.title;
+  if (tags.composer !== undefined) update.composer = tags.composer;
+  if (tags.conductor !== undefined) update.conductor = tags.conductor;
   if (tags.trackNumber !== undefined) update.trackNumber = String(tags.trackNumber);
   if (tags.discNumber !== undefined) update.partOfSet = String(tags.discNumber);
   if (tags.year !== undefined) update.year = String(tags.year);
@@ -694,6 +717,8 @@ export async function planVorbisKeyHeal(
 function mp4FreeformValues(tags: AudioTags): Record<string, string> {
   const out: Record<string, string> = {};
   if (tags.key !== undefined) out[MP4_KEY_ATOM] = tags.key;
+  // `ipod` has `©wrt` for composer and no atom at all for conductor.
+  if (tags.conductor !== undefined) out.CONDUCTOR = tags.conductor;
   for (const [field, key] of numericFeatureEntries()) {
     const v = tags[field];
     if (v !== undefined) out[key] = formatFeature(field, v);
@@ -739,6 +764,8 @@ export function ffmpegTagMetadataArgs(tags: AudioTags, ext: string): string[] {
   const metaArgs: string[] = canonicalTagMetadataArgs(tags);
   if (tags.discNumber !== undefined) metaArgs.push('-metadata', `DISC=${tags.discNumber}`);
   if (tags.genre !== undefined) metaArgs.push('-metadata', `GENRE=${tags.genre}`);
+  if (tags.composer !== undefined) metaArgs.push('-metadata', `COMPOSER=${tags.composer}`);
+  if (tags.conductor !== undefined) metaArgs.push('-metadata', `CONDUCTOR=${tags.conductor}`);
   if (tags.bpm !== undefined)
     metaArgs.push('-metadata', `${BPM_METADATA_KEY[ext] ?? 'BPM'}=${tags.bpm}`);
   if (tags.key !== undefined) metaArgs.push('-metadata', `KEY=${tags.key}`);

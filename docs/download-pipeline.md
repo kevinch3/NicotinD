@@ -917,7 +917,10 @@ complete. The test then pinned today's truth with an explicit `ext === 'm4a'` br
 four containers now assert the same value. An exemption relaxed to "either is fine" would have gone
 on passing after the fix and quietly become a lie.
 
-`ID3_FRAMES_FFMPEG_DROPS` names the three and `carriedMetadataArgs` emits them as explicit
+`ID3_FRAMES_FFMPEG_DROPS` names the three — plus `conductor`, which ffmpeg keeps but renames: TPE3
+becomes `performer`, so the carry writes `CONDUCTOR` and blanks the mislabelled `PERFORMER`; the
+mirror table maps `CONDUCTOR` back to TPE3, since ffmpeg would otherwise write a TXXX node-id3 does
+not read (#1083) — and `carriedMetadataArgs` emits them as explicit
 `-metadata` during the encode. Not as a second `writeAudioTags` pass: that rewrites the whole
 container again, and at whole-library scale a second rewrite per file is not free. They are appended
 **after** `-map_metadata 0` so they win over anything it carried.
