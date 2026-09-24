@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.61](https://github.com/kevinch3/NicotinD/compare/v0.8.60...v0.8.61) (2026-09-24)
+
+### Bug Fixes
+
+* **covers:** a new folder cover replaces the old one and reaches every song id ([#1347](https://github.com/kevinch3/NicotinD/issues/1347)) ([3952f26](https://github.com/kevinch3/NicotinD/commit/3952f2697c4dc7917cf72dcace03935976055820)), closes [#1336](https://github.com/kevinch3/NicotinD/issues/1336), references [#978](https://github.com/kevinch3/NicotinD/issues/978)
+
+### Performance
+
+* **acquire:** read the download card's bitrate from the scan, not an ffprobe per staged file ([#1348](https://github.com/kevinch3/NicotinD/issues/1348)) ([b240f53](https://github.com/kevinch3/NicotinD/commit/b240f53716efd71da72035bd9207c620c9e1f214)), closes [#1304](https://github.com/kevinch3/NicotinD/issues/1304)
+* **scanner:** an album reconcile loads only its own batch's cache rows and paths ([#1350](https://github.com/kevinch3/NicotinD/issues/1350)) ([f692a75](https://github.com/kevinch3/NicotinD/commit/f692a75b8939e3d3dcd03299f4102b63edf964e5)), closes [#1309](https://github.com/kevinch3/NicotinD/issues/1309)
+* **streaming:** read the cached waveform and check the source without blocking the event loop ([#1346](https://github.com/kevinch3/NicotinD/issues/1346)) ([49d2aab](https://github.com/kevinch3/NicotinD/commit/49d2aab6f4f54eb6a7ef97b6b3351fbfc77d2929)), closes [#1328](https://github.com/kevinch3/NicotinD/issues/1328)
+* **transcode:** one process-wide ffmpeg slot pool, with streams and waveforms ahead of batch work ([#1352](https://github.com/kevinch3/NicotinD/issues/1352)) ([ae10c3c](https://github.com/kevinch3/NicotinD/commit/ae10c3ca0063e7513558bb193ccedc53893ed566)), references [#1312](https://github.com/kevinch3/NicotinD/issues/1312)
+* **transcode:** read an Opus encode's duration from its last Ogg page instead of ffprobe ([#1353](https://github.com/kevinch3/NicotinD/issues/1353)) ([635db97](https://github.com/kevinch3/NicotinD/commit/635db97b4e6559a5700c7d55d35de86b886235a0)), references [#1305](https://github.com/kevinch3/NicotinD/issues/1305)
 ## [0.8.60](https://github.com/kevinch3/NicotinD/compare/v0.8.59...v0.8.60) (2026-09-23)
 
 ### Features
