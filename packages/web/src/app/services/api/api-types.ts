@@ -299,6 +299,14 @@ export interface LibraryFormatOption {
   impact: { alreadyTarget: number; wouldReEncode: number; destructive: boolean };
 }
 
+/** What the transcode quarantine holds (GET /api/admin/quarantine, #1255). */
+export interface QuarantineDescription {
+  root: string;
+  /** Newest first. */
+  runs: { name: string; files: number }[];
+  filesystem: { freeBytes: number; totalBytes: number } | null;
+}
+
 /** What the library is standardized on, and what switching would cost. */
 export interface LibraryFormatSettings {
   format: string;

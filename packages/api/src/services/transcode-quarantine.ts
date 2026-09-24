@@ -5,6 +5,7 @@ import {
   readdirSync,
   renameSync,
   rmSync,
+  statfsSync,
   statSync,
   unlinkSync,
 } from 'node:fs';
@@ -160,4 +161,51 @@ export function pruneQuarantine(dataDir: string, keep = DEFAULT_QUARANTINE_KEEP)
   }
   if (removed > 0) log.info({ removed, kept: runs.length - removed }, 'pruned quarantine runs');
   return removed;
+}
+
+export interface QuarantineDescription {
+  /** The quarantine root — `<dir>/quarantine`. */
+  root: string;
+  /** Held runs, newest first, with how many originals each keeps. */
+  runs: { name: string; files: number }[];
+  /** Space on the filesystem holding the root; null when it cannot be read. */
+  filesystem: { freeBytes: number; totalBytes: number } | null;
+}
+
+/**
+ * What the quarantine holds, for an operator to see before deciding anything
+ * (#1255): where the originals are, run by run, and how full the disk under
+ * them is. Retention used to be a side effect nobody saw (#1260); this is the
+ * read half of making it a decision. Counts files, never sizes them — a stat
+ * per original would make a page load cost a whole-quarantine walk of I/O.
+ */
+export function describeQuarantine(dataDir: string): QuarantineDescription {
+  const root = quarantineRoot(dataDir);
+  const runs = listQuarantineRuns(dataDir).map((name) => ({
+    name,
+    files: countFiles(join(root, name)),
+  }));
+  let filesystem: QuarantineDescription['filesystem'] = null;
+  try {
+    const fs = statfsSync(existsSync(root) ? root : dataDir);
+    filesystem = { freeBytes: fs.bavail * fs.bsize, totalBytes: fs.blocks * fs.bsize };
+  } catch {
+    /* an unmounted or missing dir: say "unknown", not zero */
+  }
+  return { root, runs, filesystem };
+}
+
+function countFiles(dir: string): number {
+  let n = 0;
+  let entries: import('node:fs').Dirent[];
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  for (const e of entries) {
+    if (e.isDirectory()) n += countFiles(join(dir, e.name));
+    else if (e.isFile()) n += 1;
+  }
+  return n;
 }

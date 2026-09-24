@@ -80,6 +80,67 @@
         </span>
       </label>
 
+      <!-- Kept originals (#1255): where a conversion's replaced files are, and
+           the one control that deletes them — naming the runs before it does. -->
+      <div class="mt-5 pt-4 border-t border-theme-subtle" data-testid="quarantine-section">
+        <p class="text-sm text-theme-primary">{{ 'admin.quarantineTitle' | t }}</p>
+        <p class="text-xs text-theme-muted mb-2">{{ 'admin.quarantineHint' | t }}</p>
+        @if (quarantine(); as q) {
+          <p class="text-xs text-theme-muted break-all" data-testid="quarantine-root">{{ q.root }}</p>
+          @if (q.filesystem; as fs) {
+            <p class="text-xs text-theme-muted">
+              {{ 'admin.quarantineFree' | t: { free: gib(fs.freeBytes), total: gib(fs.totalBytes) } }}
+            </p>
+          }
+          @if (q.runs.length === 0) {
+            <p class="text-xs text-theme-muted mt-2">{{ 'admin.quarantineEmpty' | t }}</p>
+          } @else {
+            <ul class="mt-2 space-y-0.5 text-xs text-theme-secondary" data-testid="quarantine-runs">
+              @for (r of q.runs; track r.name) {
+                <li>{{ r.name }} — {{ 'admin.quarantineFiles' | t: { count: r.files } }}</li>
+              }
+            </ul>
+            <div class="flex items-center gap-2 mt-3" appTvNavGroup axis="horizontal">
+              <label class="text-xs text-theme-muted" for="quarantine-keep">{{
+                'admin.quarantineKeep' | t
+              }}</label>
+              <input
+                id="quarantine-keep"
+                #keep
+                type="number"
+                min="1"
+                appTvNavItem
+                [value]="keepRuns()"
+                (change)="setKeepRuns(keep.value)"
+                class="w-16 rounded bg-theme-surface-2 px-2 py-1 text-sm text-theme-primary"
+                data-testid="quarantine-keep"
+              />
+              <button
+                type="button"
+                appTvNavItem
+                class="btn-danger text-xs"
+                [disabled]="quarantineBusy() || doomedRuns().length === 0"
+                (click)="pruneQuarantine()"
+                data-testid="quarantine-prune"
+              >
+                {{ 'admin.quarantinePrune' | t: { count: doomedRuns().length } }}
+              </button>
+            </div>
+          }
+        } @else {
+          <button
+            type="button"
+            appTvNavItem
+            class="btn-secondary text-xs"
+            [disabled]="quarantineBusy()"
+            (click)="loadQuarantine()"
+            data-testid="quarantine-load"
+          >
+            {{ 'admin.quarantineShow' | t }}
+          </button>
+        }
+      </div>
+
       <!-- Confirmation carries the count. The guard exists because this setting
            reads like a preference and is not one on a populated library. -->
       @if (pending(); as p) {

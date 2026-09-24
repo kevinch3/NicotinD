@@ -5,7 +5,12 @@ import { TranslatePipe } from '../../../pipes/translate.pipe';
 import { TvNavGroupDirective } from '../../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 import { SystemApiService } from '../../../services/api/system-api.service';
-import type { LibraryFormatOption, LibraryFormatSettings } from '../../../services/api/api-types';
+import type {
+  LibraryFormatOption,
+  LibraryFormatSettings,
+  QuarantineDescription,
+} from '../../../services/api/api-types';
+import { ConfirmService } from '../../../services/confirm.service';
 import { TranslateService } from '../../../services/translate.service';
 
 /**
@@ -36,6 +41,7 @@ import { TranslateService } from '../../../services/translate.service';
 export class LibraryFormatPanelComponent implements OnInit {
   private readonly api = inject(SystemApiService);
   private readonly i18n = inject(TranslateService);
+  private readonly confirm = inject(ConfirmService);
 
   readonly settings = signal<LibraryFormatSettings | null>(null);
   readonly saving = signal(false);
@@ -44,6 +50,58 @@ export class LibraryFormatPanelComponent implements OnInit {
   readonly pending = signal<LibraryFormatOption | null>(null);
 
   readonly options = computed(() => this.settings()?.available ?? []);
+
+  // Kept originals (#1255). Loaded on request, not with the panel: it walks the
+  // quarantine to count files, which an admin page load should not pay for.
+  readonly quarantine = signal<QuarantineDescription | null>(null);
+  readonly quarantineBusy = signal(false);
+  readonly keepRuns = signal(3);
+  /** The runs a prune at `keepRuns` would delete — named before anything is. */
+  readonly doomedRuns = computed(() => {
+    const q = this.quarantine();
+    return q ? q.runs.slice(Math.max(1, this.keepRuns())) : [];
+  });
+
+  async loadQuarantine(): Promise<void> {
+    this.quarantineBusy.set(true);
+    try {
+      this.quarantine.set(await firstValueFrom(this.api.getQuarantine()));
+    } catch {
+      this.message.set({ type: 'error', text: this.i18n.t('admin.quarantineLoadFailed') });
+    } finally {
+      this.quarantineBusy.set(false);
+    }
+  }
+
+  setKeepRuns(raw: string): void {
+    const n = Math.floor(Number(raw));
+    this.keepRuns.set(Number.isFinite(n) && n >= 1 ? n : 1);
+  }
+
+  /** Delete the named older runs, after the operator has read their names. */
+  async pruneQuarantine(): Promise<void> {
+    const doomed = this.doomedRuns();
+    if (doomed.length === 0) return;
+    const names = doomed.map((r) => `${r.name} (${r.files})`).join(', ');
+    const ok = await this.confirm.ask(this.i18n.t('admin.quarantinePruneConfirm', { names }));
+    if (!ok) return;
+    this.quarantineBusy.set(true);
+    try {
+      await firstValueFrom(this.api.pruneQuarantine(this.keepRuns()));
+      // The prune runs as a background pass; it is quick, so re-read shortly.
+      await new Promise((r) => setTimeout(r, 1000));
+      this.quarantine.set(await firstValueFrom(this.api.getQuarantine()));
+      this.message.set({ type: 'success', text: this.i18n.t('admin.quarantinePruned') });
+    } catch {
+      this.message.set({ type: 'error', text: this.i18n.t('admin.quarantinePruneFailed') });
+    } finally {
+      this.quarantineBusy.set(false);
+    }
+  }
+
+  gib(bytes: number): string {
+    return (bytes / 1024 ** 3).toFixed(1);
+  }
 
   /** The accepted range, mirroring the API's `TARGET_LUFS_MIN`/`MAX`. */
   readonly lufsMin = -24;
