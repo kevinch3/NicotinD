@@ -50,6 +50,7 @@ import {
   type TranscodeKeepOriginal,
 } from './post-download-transcode.js';
 import { readTranscodeLossless, type TranscodeLosslessSource } from './transcode-settings.js';
+import { DEFAULT_LIBRARY_FORMAT, type LibraryFormat } from './library-format.js';
 import { mapPool } from './library-scanner.js';
 import { ffmpegAvailable } from './transcode.js';
 import {
@@ -100,6 +101,13 @@ export interface LibraryOrganizerOptions {
    * and a value captured here would ignore every change until the next restart.
    */
   transcodeLossless: TranscodeLosslessSource;
+  /**
+   * The format a transcoded download lands in — the operator's library format
+   * (`library-format-settings.ts`). A reader for the same reason as
+   * `transcodeLossless`: it is admin-editable at runtime, and before #1290 this
+   * path ignored it and always landed Opus. Defaults to {@link DEFAULT_LIBRARY_FORMAT}.
+   */
+  libraryFormat?: () => LibraryFormat;
   /**
    * After placing a batch, remove redundant duplicate copies (`02 - Song (2)`,
    * mixed FLAC/MP3 of the same track) from each album folder it touched. On by
@@ -214,6 +222,7 @@ export class LibraryOrganizer {
   private preferFlacSkipMp3: boolean;
   /** Always a function: a plain value is wrapped at construction. */
   private transcodeLossless: () => { enabled: boolean; bitRate: number };
+  private libraryFormat: () => LibraryFormat;
   private keepOriginals?: TranscodeKeepOriginal;
   private autoDedupe: boolean;
   private dedupeAcrossEditions: boolean;
@@ -257,6 +266,7 @@ export class LibraryOrganizer {
     this.moveLogPath = opts.moveLogPath;
     this.preferFlacSkipMp3 = opts.preferFlacSkipMp3 ?? false;
     this.transcodeLossless = readTranscodeLossless(opts.transcodeLossless);
+    this.libraryFormat = opts.libraryFormat ?? (() => DEFAULT_LIBRARY_FORMAT);
     this.keepOriginals = opts.keepOriginals;
     this.autoDedupe = opts.autoDedupe ?? true;
     this.dedupeAcrossEditions = opts.dedupeAcrossEditions ?? true;
@@ -923,7 +933,7 @@ export class LibraryOrganizer {
   }
 
   /**
-   * Stage 2 — standardize lossless on Opus, before the scan sees the file, so the
+   * Stage 2 — standardize lossless on the library format, before the scan sees the file, so the
    * song's stable id (derived from its final path) is computed once and storage
    * is reclaimed. Best-effort: a failure leaves the original in place.
    *
@@ -939,7 +949,7 @@ export class LibraryOrganizer {
         p.destPath,
         this.transcodeLossless().bitRate,
         this.keepOriginals,
-        undefined,
+        this.libraryFormat(),
         canonicalTagsFor(p.file.tags, folderTags),
       );
       this.batchTranscoded++;
