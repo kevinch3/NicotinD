@@ -58,3 +58,6 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   devices — home view, theme, language, radio strategy, welcome — on `user_settings`, served by
   `getUserPreferences`/`patchUserPreferences` at `/api/me/preferences` and embedded in `/me`; the web
   door is `UserPreferencesService` (per-device mirror, optimistic `patch`). → [web-ui.md](../web-ui.md)
+- **TV profiles**: several people on one TV, switched by `resetSession` + stored token;
+  `TvProfileService`, `loadProfiles`, `rememberProfile`, `forgetProfile`.
+  → [tv-ux.md](../tv-ux.md#profiles-1406)

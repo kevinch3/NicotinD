@@ -49,6 +49,9 @@ test.describe('TV home', () => {
     await browse.focus();
     await page.keyboard.press('ArrowRight');
     await expect(page.getByTestId('tv-nav-settings')).toBeFocused();
+    await page.keyboard.press('ArrowRight');
+    await expect(page.getByTestId('tv-nav-profile')).toBeFocused();
+    await page.keyboard.press('ArrowLeft');
     await page.keyboard.press('ArrowLeft');
     await expect(browse).toBeFocused();
   });

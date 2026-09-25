@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
 import { AuthApiService } from '../../services/api/auth-api.service';
+import { TvProfileService } from '../../services/tv-profile.service';
 import { PasswordFieldComponent } from '../../components/password-field/password-field.component';
 import { ServerConfigService } from '../../services/server-config.service';
 import { sanitizeReturnUrl } from '../../lib/return-url';
@@ -58,6 +59,10 @@ export class LoginComponent implements OnInit, OnDestroy {
   /** TV builds lead with the approve-from-phone panel; the typed form stays
    *  as the fallback behind `showPasswordForm`. */
   readonly isTv = isTvUi();
+  readonly profiles = inject(TvProfileService);
+  /** After `beginAdd()` or a sign-out, the login page is reachable with
+   *  people still stored — this is the way back to them (#1406). */
+  readonly hasPeople = computed(() => this.isTv && this.profiles.profiles().length > 0);
   readonly showPasswordForm = signal(false);
   readonly tvLogin = signal<TvLoginRequestResult | null>(null);
   readonly tvQrDataUrl = signal<string | null>(null);

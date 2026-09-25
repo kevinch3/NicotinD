@@ -96,6 +96,22 @@ export const routes: Routes = [
   // calls `applyTvBuildClass()`. A DOM-based check here is always false and the
   // TV tree silently never registers. Anything picking a route tree at module
   // scope must use the build-time signal.
+  // "Who's listening?" (#1406): server-guarded only, so it is reachable with
+  // NO session — picking a person is how the TV signs in. It sits outside the
+  // shell, so it has no status line (deliberate). A fresh boot with stored
+  // people still lands on /login (authGuard's bounce); /login's back-link
+  // leads here.
+  ...(isTvBuild()
+    ? [
+        {
+          path: 'who',
+          canActivate: [serverGuard],
+          loadComponent: lazy(() =>
+            import('./pages/tv/tv-who.component').then((m) => m.TvWhoComponent),
+          ),
+        },
+      ]
+    : []),
   ...(isTvBuild() ? [tvShellRoute()] : []),
   {
     path: '',

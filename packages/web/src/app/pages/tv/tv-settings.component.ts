@@ -2,6 +2,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { APP_VERSION } from '../../app.config';
 import { AuthService } from '../../services/auth.service';
+import { TvProfileService } from '../../services/tv-profile.service';
 import { TranslateService } from '../../services/translate.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
@@ -30,6 +31,7 @@ export class TvSettingsComponent {
   readonly version = inject(APP_VERSION);
   private readonly router = inject(Router);
   readonly i18n = inject(TranslateService);
+  readonly profiles = inject(TvProfileService);
 
   readonly chooser = signal<Chooser>(null);
   private readonly remote = inject(RemotePlaybackService);
@@ -72,7 +74,8 @@ export class TvSettingsComponent {
   }
 
   signOut(): void {
-    this.auth.logout();
-    void this.router.navigate(['/login']);
+    // The TV forgets THIS person and moves to the next (#1406); the account
+    // itself is untouched.
+    void this.profiles.signOut();
   }
 }
