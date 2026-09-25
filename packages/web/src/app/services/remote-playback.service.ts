@@ -15,13 +15,23 @@
  *
  * Call `initialize()` once at app bootstrap (e.g. in AppComponent constructor).
  */
-import { Injectable, inject, signal, computed, effect, untracked, DestroyRef } from '@angular/core';
+import {
+  Injectable,
+  Injector,
+  inject,
+  signal,
+  computed,
+  effect,
+  untracked,
+  DestroyRef,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   castTo,
   hasControllableSession,
   isAudioOutput,
   onLocalPlayingChanged,
+  onLocalQueueChanged,
   onLocalTrackChanged,
   reduceServerMessage,
   type ClientMessage,
@@ -38,6 +48,8 @@ import {
 } from './playback-ws.service';
 import { PlayerService, Track } from './player.service';
 import { AuthService } from './auth.service';
+import { LibraryApiService } from './api/library-api.service';
+import { toTrack } from '../lib/track-utils';
 
 export type { RemoteDevice } from '@nicotind/core';
 
@@ -47,6 +59,9 @@ export class RemotePlaybackService {
   private readonly player = inject(PlayerService);
   private readonly auth = inject(AuthService);
   private readonly destroyRef = inject(DestroyRef);
+  /** Resolving a session queue needs HTTP; fetched lazily so every consumer
+   *  of this service does not have to provide it. */
+  private readonly injector = inject(Injector);
 
   // ---------------------------------------------------------------------------
   // State signals
@@ -96,8 +111,16 @@ export class RemotePlaybackService {
       remotePositionTs: 0,
       remoteDuration: 0,
       lastRemoteTrackId: null,
+      sessionQueue: null,
     }),
   );
+  /** A session exists and this device is part of it: its queue panel shows
+   *  the session's one queue, not a private one (#895). */
+  readonly sharedQueue = computed(() => {
+    if (this.activeDeviceId() === null) return false;
+    const me = this.ws.getDeviceId();
+    return this.playingElsewhere() || this.devices().some((d) => d.id !== me);
+  });
   /** Why the presence channel is down, when it stayed down. */
   readonly syncStatus = computed(() => this.ws.persistentFailure());
 
@@ -118,6 +141,9 @@ export class RemotePlaybackService {
   // ---------------------------------------------------------------------------
 
   private lastRemoteTrackId: string | null = null;
+  private sessionQueue: string[] | null = null;
+  /** Bumped per `set-queue`, so a slower resolution never overwrites a newer. */
+  private queueGeneration = 0;
   private previousTrackId: string | null = null;
   private previousPlaying = false;
   /** A pick fires both the playing and the track effect; one claim is enough. */
@@ -176,6 +202,7 @@ export class RemotePlaybackService {
       remotePositionTs: this.remotePositionTs(),
       remoteDuration: this.remoteDuration(),
       lastRemoteTrackId: this.lastRemoteTrackId,
+      sessionQueue: this.sessionQueue,
     };
   }
 
@@ -184,6 +211,7 @@ export class RemotePlaybackService {
       myId: this.ws.getDeviceId(),
       remoteEnabled: this.outputAvailable(),
       localTrackId: this.player.currentTrack()?.id ?? null,
+      localQueue: this.player.queue().map((t) => t.id),
       now: Date.now(),
     };
   }
@@ -196,6 +224,7 @@ export class RemotePlaybackService {
     this.remotePositionTs.set(state.remotePositionTs);
     this.remoteDuration.set(state.remoteDuration);
     this.lastRemoteTrackId = state.lastRemoteTrackId;
+    this.sessionQueue = state.sessionQueue;
   }
 
   private apply(effects: PlayerEffect[]): void {
@@ -229,15 +258,57 @@ export class RemotePlaybackService {
           if (e.playing) this.player.resume();
           else this.player.pause();
           break;
+        case 'set-queue':
+          this.adoptQueue(e.ids);
+          break;
       }
     }
+  }
+
+  /**
+   * Replace the local queue with the session's (#895). Ids this device already
+   * holds a track for (queue, history, now playing) cost nothing; the rest are
+   * fetched in one call. An id the library does not know is dropped — the
+   * queue effect then reports the shorter list, so the other side sees it go.
+   * A failed fetch applies nothing rather than a list with holes.
+   */
+  private adoptQueue(ids: string[]): void {
+    const generation = ++this.queueGeneration;
+    const known = new Map<string, Track>();
+    const current = this.player.currentTrack();
+    for (const t of [
+      ...this.player.history(),
+      ...(current ? [current] : []),
+      ...this.player.queue(),
+    ])
+      known.set(t.id, t);
+    const commit = () => {
+      if (generation !== this.queueGeneration) return;
+      this.player.setQueue(ids.flatMap((id) => known.get(id) ?? []));
+    };
+    const missing = [...new Set(ids.filter((id) => !known.has(id)))];
+    if (missing.length === 0) {
+      commit();
+      return;
+    }
+    this.injector
+      .get(LibraryApiService)
+      .resolveSongs(missing)
+      .subscribe({
+        next: (songs) => {
+          for (const song of songs) known.set(song.id, toTrack(song));
+          commit();
+        },
+        error: () => undefined,
+      });
   }
 
   private post(messages: ClientMessage[]): void {
     for (const m of messages) {
       switch (m.type) {
         case 'SET_ACTIVE_DEVICE':
-          this.ws.setActiveDevice(m.payload.id);
+          if (m.payload.queue) this.ws.setActiveDevice(m.payload.id, m.payload.queue);
+          else this.ws.setActiveDevice(m.payload.id);
           break;
         case 'CLAIM_OUTPUT':
           if (this.claimInFlight === m.payload.trackId) break;
@@ -247,9 +318,11 @@ export class RemotePlaybackService {
         case 'RELEASE_OUTPUT':
           this.ws.sendRelease();
           break;
-        case 'COMMAND':
-          this.ws.sendCommand(m.payload.action, { track: m.payload.track });
+        case 'COMMAND': {
+          const { action, ...extra } = m.payload;
+          this.ws.sendCommand(action, extra);
           break;
+        }
         case 'STATE_UPDATE':
           this.ws.sendStateUpdate(m.payload.state);
           break;
@@ -285,6 +358,26 @@ export class RemotePlaybackService {
     // A restored track is not a change: forwarding it would restart the
     // output's audio from a tab that merely reloaded (#882).
     this.previousTrackId = this.player.currentTrack()?.id ?? null;
+
+    // Only the output tops a radio queue up: the queue is shared (#895).
+    effect(() => this.player.radioTopUpHere.set(this.isActiveDevice()));
+
+    // --- Queue forwarding (#895) ---
+    // Registered before the track effect on purpose: an edit that also moves
+    // the track (a jump, an album pick) must reach the server first, or the
+    // track's broadcast would carry the old queue back to this controller.
+    let firstQueueRun = true;
+    effect(() => {
+      const queue = this.player.queue().map((t) => t.id);
+      // The restored queue is not an edit, like the restored track above.
+      if (firstQueueRun) {
+        firstQueueRun = false;
+        return;
+      }
+      const r = untracked(() => onLocalQueueChanged(this.snapshot(), this.context(), queue));
+      this.sessionQueue = r.state.sessionQueue;
+      this.post(r.messages);
+    });
 
     // --- Track change forwarding ---
     effect(() => {
@@ -353,6 +446,8 @@ export class RemotePlaybackService {
     this.remotePositionTs.set(0);
     this.remoteDuration.set(0);
     this.lastRemoteTrackId = null;
+    this.sessionQueue = null;
+    this.queueGeneration++;
     this.previousTrackId = null;
     this.previousPlaying = false;
     this.claimInFlight = null;

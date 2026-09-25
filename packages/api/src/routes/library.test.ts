@@ -1480,6 +1480,30 @@ describe('GET /artists/:id/songs (Songs tab)', () => {
     expect(body.map((s) => s.id)).toEqual(['s1']);
   });
 
+  it('POST /songs/resolve returns songs in request order and drops unknown ids (#895)', async () => {
+    seedAlbum('alb', 'Album');
+    seedSong('s1', { title: 'Alpha' });
+    seedSong('s2', { title: 'Beta' });
+    const res = await makeApp().request('/songs/resolve', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ids: ['s2', 'gone', 's1', 's2'] }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ id: string; title: string }>;
+    expect(body.map((s) => s.id)).toEqual(['s2', 's1', 's2']);
+    expect(body[0]!.title).toBe('Beta');
+  });
+
+  it('POST /songs/resolve rejects a body that is not a list of ids', async () => {
+    const res = await makeApp().request('/songs/resolve', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ids: [1] }),
+    });
+    expect(res.status).toBe(400);
+  });
+
   it('filters to starred only when starred=true', async () => {
     seedAlbum('alb', 'Album');
     seedSong('s1', { title: 'Alpha', starred: null });

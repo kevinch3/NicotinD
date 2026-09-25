@@ -139,6 +139,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   broadcasts over `GET /api/ws/playback` through `createPlaybackHub`; a device that plays claims the
   output (`claimOutput`, compare-and-set), the picker moves it (`castTo`), `hasControllableSession`
   gates the transport; `activeGraceMs`, `idleReleaseMs`. → [remote-playback.md](../remote-playback.md)
+- **One queue per remote-playback session**: the caster's queue rides `SET_ACTIVE_DEVICE`, edits
+  become `SET_QUEUE` via `onLocalQueueChanged`, `adoptQueue` resolves ids; only the output tops
+  radio up (`radioTopUpHere`). → [remote-playback.md](../remote-playback.md)
 - **Auto-preserve queue (PWA lock-screen resilience)**: `AutoPreserveCoordinator` keeps the next-N
   queued tracks as IndexedDB blobs so playback survives the locked-screen network throttle;
   `evictAutoLRU` never evicts user-saved tracks. `windowSize` has a one-track rung, and changing

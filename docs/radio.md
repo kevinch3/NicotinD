@@ -75,6 +75,9 @@ queue length against `radioQueueTarget` and calls the registered
 scores a candidate pool against the seed and returns the top matches, which are
 appended to the queue. Deduplication against current + queue + recent history
 is applied both server-side (via the `exclude` parameter) and client-side.
+During a remote-playback session only the output tops the queue up
+(`radioTopUpHere`): every device in the session holds the same queue, so each
+topping it up would multiply the top-up (see [remote-playback.md](remote-playback.md)).
 
 ### A radio is about its anchor, not about whatever is playing (#1277)
 

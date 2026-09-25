@@ -1,4 +1,5 @@
 import type { WSContext } from 'hono/ws';
+import { sameQueue } from '@nicotind/core';
 import { playbackRegistry } from './playback-registry.js';
 import type { PlaybackStateManager } from './playback-state.js';
 
@@ -28,6 +29,17 @@ type ConnectionInfo = {
  *  the id so any later frame can rebuild a device the stale-sweeper pruned
  *  (issue #433). */
 const connectionKey = (ws: WSContext): object => (ws.raw as object | undefined) ?? ws;
+
+/** Longest session queue the hub stores; a longer one is truncated. */
+export const MAX_SESSION_QUEUE = 2000;
+
+/** A queue off the wire: song ids, or `undefined` when the frame carried none
+ *  (an older client) or something that is not one (#895). */
+function readQueue(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  if (!value.every((id): id is string => typeof id === 'string')) return undefined;
+  return value.slice(0, MAX_SESSION_QUEUE);
+}
 
 /** Where a user's manager comes from — the process-wide registry in prod, a
  *  fresh manager per test in the multi-device harness. */
@@ -154,7 +166,9 @@ export function createPlaybackHub(registry: ManagerSource = playbackRegistry) {
             }
 
             case 'STATE_UPDATE': {
-              const incoming = data.payload.state;
+              const { queue: rawQueue, ...incoming } = data.payload.state ?? {};
+              const queue = readQueue(rawQueue);
+              if (queue) incoming.queue = queue;
               const current = manager.getState();
               // While a session exists only its output may describe it; a
               // controller's local player is paused and would say so.
@@ -168,7 +182,10 @@ export function createPlaybackHub(registry: ManagerSource = playbackRegistry) {
                 incoming.track !== undefined && incoming.track?.id !== current.trackId;
               const playingChanged =
                 typeof incoming.isPlaying === 'boolean' && incoming.isPlaying !== current.isPlaying;
-              if (trackChanged || playingChanged) {
+              // The output consumed or edited the session queue: controllers
+              // render the same list, so they must hear it (#895).
+              const queueChanged = queue !== undefined && !sameQueue(queue, current.queue);
+              if (trackChanged || playingChanged || queueChanged) {
                 manager.updateState(incoming);
               } else {
                 manager.updateStateQuiet(incoming);
@@ -195,6 +212,14 @@ export function createPlaybackHub(registry: ManagerSource = playbackRegistry) {
                   isPlaying: true,
                   position: 0,
                 });
+              } else if (action === 'SET_QUEUE') {
+                // A controller edited the session queue: store it (so the
+                // other controllers mirror it) and relay it for the output.
+                const queue = readQueue(data.payload.queue);
+                if (!queue) break;
+                manager.updateState({ queue });
+                manager.emitCommand({ action, queue });
+                break;
               }
 
               // Relay ALL commands to clients — active device executes, others ignore
@@ -228,7 +253,10 @@ export function createPlaybackHub(registry: ManagerSource = playbackRegistry) {
               // A target that is unknown, opted out, gesture-less or pending
               // release would take the session and ignore every command.
               if (id !== null && !manager.canTarget(id)) break;
-              manager.updateState({ activeDeviceId: id });
+              // A hand-off carries the caster's queue, so the new output
+              // learns it in the same frame that makes it the output (#895).
+              const queue = readQueue(data.payload.queue);
+              manager.updateState({ activeDeviceId: id, ...(queue && { queue }) });
               break;
             }
 
@@ -240,6 +268,7 @@ export function createPlaybackHub(registry: ManagerSource = playbackRegistry) {
                 trackId: p.trackId ?? p.track?.id ?? null,
                 position: typeof p.position === 'number' ? p.position : 0,
                 isPlaying: p.isPlaying !== false,
+                queue: readQueue(p.queue),
               });
               // The loser of a race learns the truth privately; nobody else
               // needs to hear about a claim that changed nothing.

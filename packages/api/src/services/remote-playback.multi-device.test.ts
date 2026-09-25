@@ -450,3 +450,75 @@ describe('claim-on-play (no picker)', () => {
     expect(s.manager.getState().isPlaying).toBe(true);
   });
 });
+
+describe('the session queue (#895)', () => {
+  const queueOf = (f: Frame | undefined) =>
+    (f?.payload['state'] as { queue?: string[] } | undefined)?.queue;
+
+  it('a hand-off stores the caster queue in the frame that names the new output', () => {
+    const s = session();
+    const a = s.device('a');
+    const b = s.device('b');
+    a.register();
+    b.register();
+    a.send('SET_ACTIVE_DEVICE', { id: 'b', queue: ['t2', 't3'] });
+    expect(s.manager.getState().queue).toEqual(['t2', 't3']);
+    const f = b.last('STATE_SYNC')!;
+    expect((f.payload['state'] as { activeDeviceId: string }).activeDeviceId).toBe('b');
+    expect(queueOf(f)).toEqual(['t2', 't3']);
+  });
+
+  it('a hand-off without a queue (an older client) keeps the session queue', () => {
+    const { manager, controller } = castSession();
+    manager.updateStateQuiet({ queue: ['t9'] });
+    controller.send('SET_ACTIVE_DEVICE', { id: 'receiver' });
+    expect(manager.getState().queue).toEqual(['t9']);
+  });
+
+  it('SET_QUEUE is stored, broadcast and relayed for the output to execute', () => {
+    const { manager, controller, receiver } = castSession();
+    controller.send('COMMAND', { action: 'SET_QUEUE', queue: ['t3', 't2'] });
+    expect(manager.getState().queue).toEqual(['t3', 't2']);
+    expect(queueOf(controller.last('STATE_SYNC'))).toEqual(['t3', 't2']);
+    expect(receiver.last('COMMAND')!.payload).toEqual({ action: 'SET_QUEUE', queue: ['t3', 't2'] });
+  });
+
+  it('a SET_QUEUE that is not a list of ids is dropped, not relayed', () => {
+    const { manager, controller, receiver } = castSession();
+    const before = receiver.frames('COMMAND').length;
+    controller.send('COMMAND', { action: 'SET_QUEUE', queue: [1, 2] });
+    controller.send('COMMAND', { action: 'SET_QUEUE', queue: 'nope' });
+    expect(receiver.frames('COMMAND').length).toBe(before);
+    expect(manager.getState().queue).toEqual([]);
+  });
+
+  it("the output's queue report is broadcast when it changed and quiet when it did not", () => {
+    const { manager, controller, receiver } = castSession();
+    receiver.send('STATE_UPDATE', { state: { queue: ['t2'] } });
+    expect(manager.getState().queue).toEqual(['t2']);
+    const syncs = controller.frames('STATE_SYNC').length;
+    expect(queueOf(controller.last('STATE_SYNC'))).toEqual(['t2']);
+    receiver.send('STATE_UPDATE', { state: { queue: ['t2'] } });
+    expect(controller.frames('STATE_SYNC').length).toBe(syncs);
+  });
+
+  it("a controller's queue report is not the session's", () => {
+    const { manager, controller } = castSession();
+    controller.send('STATE_UPDATE', { state: { queue: ['x'] } });
+    expect(manager.getState().queue).toEqual([]);
+  });
+
+  it('a claim carries the claimant queue', () => {
+    const s = session();
+    const a = s.device('a');
+    a.register();
+    a.send('CLAIM_OUTPUT', {
+      track: { id: 't1', title: 'One', artist: 'A' },
+      trackId: 't1',
+      position: 0,
+      isPlaying: true,
+      queue: ['t2'],
+    });
+    expect(s.manager.getState().queue).toEqual(['t2']);
+  });
+});

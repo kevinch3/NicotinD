@@ -187,6 +187,13 @@ export class PlayerService {
    * by `RadioSourceService`; the default stands until that lands.
    */
   readonly radioQueueTarget = signal(DEFAULT_RADIO_QUEUE_TARGET);
+  /**
+   * Whether this device may top the radio queue up. During a remote-playback
+   * session the queue is shared (#895) and only the output tops it up — every
+   * device holding the same list and each appending to it would multiply the
+   * top-up. `RemotePlaybackService` keeps it in step with `isActiveDevice`.
+   */
+  readonly radioTopUpHere = signal(true);
   readonly context = signal<PlayContext | null>(null);
   readonly nowPlayingOpen = signal(false);
   /** One-shot request for the sheet's side panel (Q/Y shortcuts, #1296); Now Playing consumes and clears it. */
@@ -249,7 +256,7 @@ export class PlayerService {
     // (untracked) so it never loops on its own write.
     effect(() => {
       const queueLen = this.queue().length;
-      const radioOn = this.radio();
+      const radioOn = this.radio() && this.radioTopUpHere();
       const target = this.radioQueueTarget();
       if (!radioOn || queueLen >= target) return;
       const hasCurrent = untracked(() => this.currentTrack()) !== null;
@@ -649,7 +656,7 @@ export class PlayerService {
    * that adds nothing latches instead of spinning (`radioStarvedSeed`).
    */
   private async replenishRadio(): Promise<void> {
-    if (!this.radioProvider || this.replenishing) return;
+    if (!this.radioProvider || this.replenishing || !this.radioTopUpHere()) return;
     const deficit = this.radioQueueTarget() - this.queue().length;
     if (deficit <= 0) return;
     if (!this.radioFilter() && !this.radioAnchor()) this.radioAnchor.set(this.deriveAnchor());
@@ -733,6 +740,12 @@ export class PlayerService {
 
   clearQueue(): void {
     this.queue.set([]);
+  }
+
+  /** Adopt a remote-playback session's queue (#895): the list only — what
+   *  plays now and the history are left alone. */
+  setQueue(tracks: Track[]): void {
+    this.queue.set(tracks);
   }
 
   moveInQueue(fromIndex: number, toIndex: number): void {

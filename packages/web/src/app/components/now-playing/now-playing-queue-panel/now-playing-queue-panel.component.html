@@ -1,4 +1,13 @@
 <div class="flex-1 min-h-0 flex flex-col px-4 overflow-hidden" data-testid="now-playing-queue">
+  @if (remote.sharedQueue()) {
+    <p class="text-xs text-theme-accent px-2 mb-1 truncate" data-testid="queue-session-label">
+      @if (remote.playingElsewhere()) {
+        {{ 'nowPlaying.sessionQueueOn' | t: { device: remote.activeDevice()?.name ?? '' } }}
+      } @else {
+        {{ 'nowPlaying.sessionQueueHere' | t }}
+      }
+    </p>
+  }
   @if (player.context() && player.context()!.type !== 'adhoc') {
     <p class="text-xs text-theme-muted px-2 mb-1 truncate">{{ 'nowPlaying.nextFrom' | t: { name: player.context()!.name ?? '' } }}</p>
   }

@@ -892,6 +892,8 @@
   "nowPlaying.radioStrategy.similar": "similar",
   "nowPlaying.radioStrategy.balanced": "equilibrado",
   "nowPlaying.radioStrategy.different": "diferente",
+  "nowPlaying.sessionQueueHere": "Cola compartida · suena en este dispositivo",
+  "nowPlaying.sessionQueueOn": "Cola compartida · suena en {device}",
   "nowPlaying.variety": "Variedad",
   "nowPlaying.varietyTooSimilar": "Muy parecida",
   "nowPlaying.varietyBalanced": "Equilibrada",

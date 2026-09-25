@@ -304,6 +304,71 @@ test.describe('remote playback', () => {
     }
   });
 
+  test("the controller's queue is the session's: cast, edit and jump all land on the output (#895)", async ({
+    page,
+    browser,
+  }, testInfo) => {
+    const {
+      a: controller,
+      b: receiver,
+      frames,
+      close,
+    } = await twoDevices(browser, page, {
+      a: 'e2e-rp4-c',
+      b: 'e2e-rp4-r',
+    });
+    const queueTitles = (p: Page) => p.getByTestId('queue-row-title').allInnerTexts();
+    const openSheet = async (p: Page) => {
+      await p.getByTestId('player-title').first().click();
+      await expect(p.getByTestId('now-playing-heading')).toBeVisible();
+    };
+    try {
+      await playAlbum(controller);
+      await activate(receiver);
+
+      // Cast: the receiver was idle; it now holds the controller's list.
+      await openSwitcher(controller);
+      await controller
+        .locator('[data-testid="device-option"][data-device-id^="e2e-rp4-r:"]')
+        .first()
+        .click();
+      await expect.poll(() => audioPlaying(receiver), { timeout: 15_000 }).toBe(true);
+      // The sheet covers the bar's picker, so it opens after the cast.
+      await openSheet(controller);
+      await expect(controller.getByTestId('queue-session-label')).toContainText('Dev e2e-rp4-r');
+      const built = await queueTitles(controller);
+      expect(built.length).toBeGreaterThanOrEqual(3);
+
+      // The receiver's own sheet — in-app navigation, the socket stays up —
+      // shows the same list and says it is shared.
+      await openSheet(receiver);
+      await expect(receiver.getByTestId('queue-session-label')).toBeVisible();
+      await expect.poll(() => queueTitles(receiver), { timeout: 10_000 }).toEqual(built);
+
+      // An edit on the controller is what the output will play.
+      await controller.getByTestId('queue-item').nth(0).getByTestId('queue-remove').click();
+      const edited = built.slice(1);
+      await expect.poll(() => queueTitles(controller)).toEqual(edited);
+      await expect.poll(() => queueTitles(receiver), { timeout: 10_000 }).toEqual(edited);
+
+      // A jump on the controller plays that row on the output; both lists
+      // drop what the jump consumed.
+      await controller.getByTestId('queue-row-title').nth(1).click();
+      await expect
+        .poll(() => playerTitle(receiver), { timeout: 10_000 })
+        .toContain(edited[1]!.trim());
+      await expect.poll(() => audioPlaying(receiver), { timeout: 10_000 }).toBe(true);
+      expect(await audioPaused(controller)).toBe(true);
+      await expect.poll(() => queueTitles(receiver), { timeout: 10_000 }).toEqual(edited.slice(2));
+      await expect
+        .poll(() => queueTitles(controller), { timeout: 10_000 })
+        .toEqual(edited.slice(2));
+    } finally {
+      await saveFrames(testInfo, frames);
+      await close();
+    }
+  });
+
   test('opting out: the first to play, still the output; hidden from the picker; a play elsewhere claims', async ({
     page,
     browser,
