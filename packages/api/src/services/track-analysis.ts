@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { createLogger, type GenreSuggestion } from '@nicotind/core';
 import type { Lidarr } from '../lidarr/index.js';
 import { normalizeForGrouping } from './album-grouping.js';
-import { detectKey, isConfidentKey } from './key-detection.js';
+import { isConfidentKey, type KeyResult } from './key-detection.js';
 import { ffmpegBinary } from './ffmpeg-path.js';
 import { withFfmpegSlot, type FfmpegPriority } from './ffmpeg-slots.js';
 
@@ -168,6 +168,31 @@ async function decodePcm(absPath: string): Promise<Float32Array> {
 }
 
 /**
+ * Run the key or tempo estimator on a worker thread and resolve with its
+ * result (#1394). The samples' buffer is transferred, not copied — the caller
+ * never touches it again. A worker per call: a few ms to spawn against seconds
+ * of DSP, and a crash cannot wedge a shared one.
+ */
+function inAnalysisWorker<T>(
+  req:
+    | { kind: 'key'; samples: Float32Array; sampleRate: number }
+    | { kind: 'tempo'; samples: Float32Array },
+  field: 'key' | 'tempo',
+): Promise<T> {
+  const worker = new Worker(new URL('./analysis-worker.ts', import.meta.url).href);
+  return new Promise<T>((resolve, reject) => {
+    worker.onmessage = (
+      e: MessageEvent<{ ok: boolean; error?: string } & Record<string, unknown>>,
+    ) =>
+      e.data.ok
+        ? resolve(e.data[field] as T)
+        : reject(new Error(e.data.error ?? 'analysis failed'));
+    worker.onerror = (e) => reject(new Error(e.message));
+    worker.postMessage(req, [req.samples.buffer]);
+  }).finally(() => worker.terminate());
+}
+
+/**
  * Detect a track's tempo by decoding its audio and running music-tempo. Returns
  * a rounded BPM, or null when ffmpeg/music-tempo are unavailable or the signal
  * is too short/quiet to lock a tempo. Pure analysis — no DB or tag writes.
@@ -192,8 +217,7 @@ export async function analyzeBpm(
     return null;
   }
   try {
-    const mt = new MusicTempo(samples);
-    const bpm = Math.round(mt.tempo);
+    const bpm = Math.round(await inAnalysisWorker<number>({ kind: 'tempo', samples }, 'tempo'));
     if (Number.isFinite(bpm) && bpm > 0) return bpm;
     onError?.(new NoConfidentResultError('no confident tempo detected'));
     return null;
@@ -226,7 +250,17 @@ export async function analyzeKey(
     onError?.(new NoConfidentResultError('audio too short to estimate a key'));
     return null;
   }
-  const result = detectKey(samples, ANALYZE_SAMPLE_RATE);
+  let result: KeyResult | null;
+  try {
+    result = await inAnalysisWorker<KeyResult | null>(
+      { kind: 'key', samples, sampleRate: ANALYZE_SAMPLE_RATE },
+      'key',
+    );
+  } catch (err) {
+    log.warn({ err, absPath }, 'key estimation failed');
+    onError?.(new NoConfidentResultError('key estimation failed on this signal'));
+    return null;
+  }
   if (result === null) {
     onError?.(new NoConfidentResultError('no tonal content detected'));
     return null;

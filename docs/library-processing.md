@@ -125,7 +125,10 @@ Launch tasks:
   key if present, else `analyzeKey()` → the pure Krumhansl–Schmuckler estimator in
   `services/key-detection.ts` (chromagram via per-semitone Goertzel filters → KS
   major/minor profile correlation → key + Camelot code). Writes `library_songs.key`
-  (e.g. "C major") and the file tag (ID3 `TKEY` / Vorbis `KEY`). Bulk script:
+  (e.g. "C major") and the file tag (ID3 `TKEY` / Vorbis `KEY`). **The estimator runs on a
+  worker thread** (`services/analysis-worker.ts`, #1394), as does `analyzeBpm`'s music-tempo pass:
+  the decode was already off-thread, but the chroma pass is seconds of pure CPU per track, and a
+  `key` backlog on prod blocked the event loop ~4 s out of every ~4 s until it moved. Bulk script:
   `scripts/analyze-key.ts`. **Confidence-gated** (issue #187 task B5):
   `chromaToKey` always picks *some* key for any non-flat chroma — even white
   noise correlates ~0.5–0.6 with one of the 24 profile rotations — so a raw

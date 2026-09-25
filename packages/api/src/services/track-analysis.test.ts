@@ -275,3 +275,64 @@ describe('streamPcm', () => {
     },
   );
 });
+
+describe('key and tempo estimation leave the event loop free (#1394)', () => {
+  it.skipIf(!ffmpegAvailable())(
+    'a timer keeps firing while a track is analysed',
+    async () => {
+      mkdirSync(tmpdir(), { recursive: true });
+      const root = mkdtempSync(join(tmpdir(), 'nicotind-key-free-'));
+      cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+      const wav = join(root, 'chord.wav');
+      // 30 s of an A-major triad: tonal enough for a confident key, long enough
+      // that the chroma pass is well over the 250 ms the loop may be held.
+      execFileSync(
+        'ffmpeg',
+        [
+          '-hide_banner',
+          '-loglevel',
+          'error',
+          '-f',
+          'lavfi',
+          '-i',
+          'sine=frequency=220:duration=30:sample_rate=44100',
+          '-f',
+          'lavfi',
+          '-i',
+          'sine=frequency=277.18:duration=30:sample_rate=44100',
+          '-f',
+          'lavfi',
+          '-i',
+          'sine=frequency=329.63:duration=30:sample_rate=44100',
+          '-filter_complex',
+          'amix=inputs=3',
+          wav,
+        ],
+        { stdio: 'ignore' },
+      );
+      let last = performance.now();
+      let maxGap = 0;
+      const tick = setInterval(() => {
+        const now = performance.now();
+        maxGap = Math.max(maxGap, now - last);
+        last = now;
+      }, 10);
+      try {
+        const key = await analyzeKey(wav);
+        await analyzeBpm(wav);
+        expect(key).toMatch(/^[A-G]#? (major|minor)$/);
+      } finally {
+        clearInterval(tick);
+      }
+      expect(maxGap).toBeLessThan(250);
+    },
+    60_000,
+  );
+
+  it('track-analysis.ts never runs the estimators on the calling thread', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(join(import.meta.dir, 'track-analysis.ts'), 'utf8');
+    expect(src).not.toContain('detectKey(');
+    expect(src).not.toContain('new MusicTempo(');
+  });
+});
