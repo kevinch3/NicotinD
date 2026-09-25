@@ -61,3 +61,14 @@ export function startLoopBlockMonitor(options: {
   timer.unref?.();
   return () => clearInterval(timer);
 }
+
+/**
+ * Give the event loop one full turn: timers, I/O and pending requests run
+ * before the caller continues. An `await` on an already-settled promise does
+ * not do this — synchronous phases chained by such awaits are one block to the
+ * loop, which is how a full scan's persist, reclassify and enrichment kick
+ * added up to one ~3.9 s stall on prod (#1313).
+ */
+export function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
