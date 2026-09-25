@@ -4194,3 +4194,95 @@ now thinned to the point where continuing would mean smaller and smaller increme
 verification effort. The flags (#19/#23/#25/#27) remain genuinely blocked on an owner decision; #26
 is blocked on the MCP lyrics tool gap (#1205); Daft Punk's real 6-song target and the
 Coldplay-credited songs were never found. All recorded above as the next session's starting point.
+
+## 2026-09-25 — umbrella-genre pass (#1123), owner-authorized
+
+The owner ruled on 2026-09-25 that genre fixes go straight onto prod through the curation MCP tools
+(audit-logged), with a before/after report. Scope: `genres.lowInformation`, the songs whose ONLY
+genre is a catch-all like `Electronic` or `Dance`. Every write was `set_song_genre({mode:
+"replace"})` with the subgenre first and the umbrella kept last, so nothing true was dropped.
+
+**Safety gate, applied per artist.** For each worklist row, the songs *displaying* the umbrella
+genre across all of that artist's albums had to equal the row's `songs` count. If the counts
+differed, the artist was skipped, because the display shows only position 0 and a mismatch means
+some of those songs carry more genres (#1123's Alex Gaudino loss). Every write was read back with
+`get_album_tracks`.
+
+### Baseline (`get_library_health({sample: 50})`)
+
+21,639 songs · `genres.missing` **155** · `genres.lowInformation` **372**.
+
+### Written (112 songs, all read back correctly)
+
+| Worklist row | Songs | Genre written | Count match | Verified |
+| --- | --- | --- | --- | --- |
+| Moderat (*II*, *MORE D4TA*) | 20 | IDM; Downtempo; Electronic | 20 = 20 | y |
+| Pete Tong, HER-O, Jules Buckley (*Chilled Classics*) | 17 | Classical Crossover; House; Dance | 17 = 17 | y |
+| Guy J (*Esperanza*, the `Dance` copies) | 12 | Progressive House; Dance | 12 = 12 | y |
+| Clotta (*Fashion X*) | 11 + 1 | Euro House; Europop; Dance (+ `…; Electronic` on "Eléctrica Salsa") | 11 = 11, then 1 = 1 | y |
+| Coldplay vs. Swedish House Mafia (SHM's *Until Now*) | 9 | Progressive House; Electronic | 9 = 9 | y |
+| Damian Lazarus & The Ancient Moons (*Heart of Sky*) | 9 | Deep House; Downtempo; Electronic | 9 = 9 | y |
+| Joël Fajerman (*Inventions of Life*) | 5 | Ambient; New Age; Soundtrack; Electronic | 5 = 5 | y |
+| Eric Prydz (*OPUS* disc 2) | 4 | Progressive House; Dance | 4 = 4 | y |
+| Paul Kalkbrenner (*Parts of Life*) | 4 | Techno; Minimal Techno; Dance | 4 = 4 | y |
+| ARTBAT (*Upperground*) | 3 | Melodic Techno; Electronic | 3 = 3 | y |
+| Monolink | 3 | Melodic Techno; Electronic | 3 = 3 | y |
+| Nicole Moudaber | 3 | Techno; Electronic | 3 = 3 | y |
+| Tangerine Dream | 3 | Progressive Electronic; Krautrock; Electronic | 3 = 3 | y |
+| Dustin Zahn/Joel Mull | 2 | Techno; Electronic | 2 = 2 | y |
+| Modern Talking | 2 | Europop; Synth-Pop; Electronic | 2 = 2 | y |
+| Anyma & Rebūke | 1 | Melodic Techno; Electronic | 1 = 1 | y |
+| Aqua ("Heat of the Night") | 1 | Eurodance; Dance | 1 = 1 | y |
+| Bart Skils/Heerhorst | 1 | Techno; Electronic | 1 = 1 | y |
+| Carlita/SOFI TUKKER | 1 | House; Electronic | 1 = 1 | y |
+
+Two rows took a search. Clotta and Joël Fajerman were not on the vetted list. Both were settled by
+the Discogs API: *Fashion X* (r8477931 / r28914169, Argentina 1998) is Electronic/Latin with styles
+House, Europop and Euro House; *Inventions of Life* (m404395) is Electronic/Stage & Screen with
+styles Ambient, Soundtrack and New Age. Clotta's `Dance` row cleared first. That exposed a second
+Clotta row (`Electronic`, 1 song), which matched the single song showing `Electronic`, so it was
+written too.
+
+The worklist's display name is a *song's* credit, not the artist row's. `Coldplay vs. Swedish House
+Mafia` is the Swedish House Mafia artist id, and `Abraham (ES) & S.Hai` is Green Velvet's.
+`get_artist` on the id is what shows you the real bucket.
+
+### Skipped
+
+| Worklist row | Worklist | Displayed | Why |
+| --- | --- | --- | --- |
+| Fred again.. | 16 | 38 `Electronic` | count mismatch |
+| David Guetta | 15 | 31 `Electronic` | count mismatch |
+| Eelke Kleijn | 14 | 15 `Electronic` | count mismatch (one song carries more genres; can't tell which) |
+| Avicii | 13 | ≥16 `Dance` | count mismatch |
+| Röyksopp | 12 | 20 `Electronic` | count mismatch |
+| Daft Punk | 6 | 15 `Dance` on RAM alone | count mismatch (same trap as tick 5) |
+| Vangelis | 4 | 19 `Electronic` | count mismatch |
+| Ben Böhmer | 2 | 11 `Electronic` | count mismatch |
+| Dekel | 6 | 8 `Electronic` | count mismatch |
+| Mha Iri | 5 | 3 `Electronic` | count mismatch (fewer shown than listed) |
+| Abraham (ES) & S.Hai → Green Velvet *Factory Town Miami 2026* DJ mix | 30 | 30 | count matched, but a various-artists DJ mix has no release page with a genre, and the search found none. Left alone |
+| Carolina de Jesus → Ibu Selva *Ngo-bo Sontg-pa* | 4 | 4 | count matched, but the only source was Beatport's genre for *other* Ibu Selva tracks (Electronica) plus one sibling (`Organic House`). Not conclusive |
+| Juan Magán | 2 | 2 | count matched, but "Bailando Por Ahí" / "Verano Azul" titles don't make the style unambiguous |
+| Beéle | 1 | 0 | the one album shows `Latin`; the worklist song isn't visible |
+| KAROL G (7 albums), Bandana (13 albums) | 2 / 1 | — | reggaeton / latin-pop artists; an `Electronic` tag is likely a remix, and the albums weren't worth walking for 1–2 songs |
+| ADRIANNA, Boiler Room, singletons below the sample | — | — | not attempted |
+
+### Final (`get_library_health` re-run)
+
+| Metric | Before | After | Δ |
+| --- | --- | --- | --- |
+| `genres.lowInformation` | 372 | **260** | −112 |
+| `genres.missing` | 155 | 155 | 0 |
+| songs | 21,639 | 21,639 | 0 |
+
+The re-run shows −111 after the main batch (372→261). The Clotta `Electronic` write took it to 260.
+Both steps equal the number of songs written, so every write left the low-information set and
+nothing else moved.
+
+**Friction worth an issue (not filed from this pass).** The count-match gate costs one
+`get_album_tracks` call per album of every candidate artist: 60+ calls here, mostly to *disprove*
+artists. That's because no read surface shows a song's full genre list. A per-artist
+`lowInformation` song list (the ids the health check already computes), or full genres in
+`get_album_tracks`, would replace the whole gate with one call and make the Fred again.. / Guetta /
+Avicii rows workable instead of skipped.
