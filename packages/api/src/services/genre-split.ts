@@ -63,6 +63,27 @@ export function buildKnownFromRaw(
   return known;
 }
 
+// genreKey(canonical) → canonical, over every alias value. Derived once per
+// alias table: splitGenres runs twice per track, and rebuilding this on each
+// call was ~43k rebuilds of the same map per full scan — most of the boot
+// stall (#1386). Keyed on the map object, which callers treat as read-only.
+const canonicalDisplayCache = new WeakMap<ReadonlyMap<string, string>, Map<string, string>>();
+
+function canonicalDisplayFor(aliases: ReadonlyMap<string, string>): Map<string, string> {
+  let out = canonicalDisplayCache.get(aliases);
+  if (!out) {
+    out = new Map(
+      [...aliases.values()]
+        .flatMap((v) => v.split(SEPARATORS))
+        .map(norm)
+        .filter(Boolean)
+        .map((c) => [genreKey(c), c] as const),
+    );
+    canonicalDisplayCache.set(aliases, out);
+  }
+  return out;
+}
+
 export function splitGenres(raw: string | string[] | undefined, ctx: GenreContext): string[] {
   const frames = raw == null ? [] : Array.isArray(raw) ? raw : [raw];
   let parts = frames
@@ -85,13 +106,7 @@ export function splitGenres(raw: string | string[] | undefined, ctx: GenreContex
   // one-genre names, while "Pop/Rock" or "Nu Disco / Disco" split cleanly.
   // A curator-typed canonical spelling outranks the vocabulary's vote, else a
   // casing-only alias resolves back to the broken row it names (#1074).
-  const canonicalDisplay = new Map(
-    [...ctx.aliases.values()]
-      .flatMap((v) => v.split(SEPARATORS))
-      .map(norm)
-      .filter(Boolean)
-      .map((c) => [genreKey(c), c] as const),
-  );
+  const canonicalDisplay = canonicalDisplayFor(ctx.aliases);
   const isKnown = (s: string): boolean => {
     const k = genreKey(s);
     return ctx.known.has(k) || ctx.aliases.has(k) || canonicalDisplay.has(k);

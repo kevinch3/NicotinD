@@ -594,3 +594,16 @@ describe('repairGenreMirrorDrift (issue #770)', () => {
     expect(repairGenreMirrorDrift(db)).toEqual({ seeded: 0, cleared: 0 });
   });
 });
+
+describe('canonical display is derived once per alias table (#1386)', () => {
+  it('two contexts with different aliases never share a derived canonical map', () => {
+    const a: GenreContext = { aliases: new Map([['hiphop', 'Hip-Hop']]), known: new Map() };
+    const b: GenreContext = { aliases: new Map([['hiphop', 'Rap']]), known: new Map() };
+    // "Hip-Hop/Rap" splits only when both sides are known (here: via canonicals).
+    expect(splitGenres('HipHop', a)).toEqual(['Hip-Hop']);
+    expect(splitGenres('HipHop', b)).toEqual(['Rap']);
+    expect(splitGenres('Hip-Hop/Pop', a)).toEqual(['Hip-Hop/Pop']);
+    // Repeat calls on the same context give the same answer.
+    for (let i = 0; i < 3; i++) expect(splitGenres('hiphop; Rock', a)).toEqual(['Hip-Hop', 'Rock']);
+  });
+});

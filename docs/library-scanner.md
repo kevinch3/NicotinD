@@ -294,6 +294,8 @@ watches the list converge):
 
 **One song, many genres.** File tags are multi-valued in practice — multiple ID3 genre frames and `;`/`,`/`|`-joined strings ("Alternative Country;Alternative Pop;…"; a prod dry-run found 1,355/9,791 tagged songs with semicolon lists). The scanner keeps the FULL set: `ScannedTrack.genre` holds every frame (old single-string scan-cache rows remain valid input), `buildLibrary` runs each value through the pure `splitGenres` (`genre-split.ts`), writes the ordered set to **`library_song_genres`** (`song_id, genre, position`; position 0 = primary) and mirrors the primary into `library_songs.genre` for zero-breakage single-value reads. `library_genres` counts a song under **every** genre it has.
 
+**`splitGenres` derives the alias canonicals once per alias table (#1386).** The `/`-split rule needs every alias *value* keyed and normalized (`canonicalDisplay`); it used to be rebuilt on every call, and `buildLibrary` calls `splitGenres` twice per track, so a full scan rebuilt the same map ~43k times. It is now cached in a `WeakMap` keyed on the `aliases` map object (`canonicalDisplayFor`) — `loadGenreContext` fills a fresh map before returning it and nothing mutates it after. On a replay of prod's DB, `buildLibrary` went 3.95–4.05 s → 1.29–1.32 s with a byte-identical result (sha256 of the whole `BuiltLibrary`); it is the bulk of the boot scan's synchronous block.
+
 **Every genre reader must match that same set.** A reader that consults the mirrored
 `library_songs.genre` when it means the full set counts genres it cannot list — that was #769,
 measured at 397 of 764 prod genres opening to an empty page. The reader-by-reader table, the
