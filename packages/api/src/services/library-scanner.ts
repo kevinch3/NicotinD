@@ -862,11 +862,14 @@ export function buildLibrary(
     }
   }
 
-  // Ensure all song-level split artists have rows too
+  // Ensure all song-level split artists have rows too. The song is looked up
+  // by id, not `songs.find`: that scanned the whole library once per such
+  // credit, which a full scan of a big library paid thousands of times (#1386).
+  const songById = new Map(songs.map((s) => [s.id, s]));
   for (const link of songArtistLinks) {
     if (!artistAcc.has(link.artistId)) {
       // Find the name from the credits — look up via songs
-      const song = songs.find((s) => s.id === link.parentId);
+      const song = songById.get(link.parentId);
       if (song) {
         const credits = splitCredits(song.artist);
         const credit = credits.find((c) => artistIdFor(c.name) === link.artistId);
