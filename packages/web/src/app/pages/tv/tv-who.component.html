@@ -1,0 +1,34 @@
+<div class="px-[4vw] py-[3vh]" data-testid="tv-who">
+  <h1 class="text-3xl font-bold mb-8 text-theme-primary">{{ 'tv.who' | t }}</h1>
+  <div appTvNavGroup [axis]="'vertical'" class="flex flex-col gap-3 max-w-3xl">
+    @for (p of profiles.profiles(); track p.username) {
+      <button
+        appTvNavItem
+        type="button"
+        (click)="pick(p.username)"
+        data-testid="tv-who-row"
+        [attr.data-username]="p.username"
+        [attr.aria-current]="p.username === profiles.active() ? 'true' : null"
+        class="flex items-center justify-between px-6 py-5 rounded-xl bg-theme-surface-2 text-left
+               focus:outline-none focus-visible:ring-4 focus-visible:ring-theme-accent"
+      >
+        <span class="text-lg text-theme-primary">{{ p.username }}</span>
+        @if (profiles.stale().has(p.username)) {
+          <span class="text-base text-status-error">{{ 'tv.signInAgain' | t }}</span>
+        } @else if (p.username === profiles.active()) {
+          <span class="text-base text-theme-accent-text">●</span>
+        }
+      </button>
+    }
+    <button
+      appTvNavItem
+      type="button"
+      (click)="profiles.beginAdd()"
+      data-testid="tv-who-add"
+      class="px-6 py-5 rounded-xl text-left text-lg text-theme-secondary
+             focus:outline-none focus-visible:ring-4 focus-visible:ring-theme-accent"
+    >
+      {{ 'tv.addPerson' | t }}
+    </button>
+  </div>
+</div>

@@ -96,6 +96,20 @@ export const routes: Routes = [
   // calls `applyTvBuildClass()`. A DOM-based check here is always false and the
   // TV tree silently never registers. Anything picking a route tree at module
   // scope must use the build-time signal.
+  // Profiles' front door (#1406): reachable with NO session, because picking a
+  // person is how the TV signs in. Inside the shell `/who` is auth-guarded
+  // like every other TV route; this copy is the one an authGuard bounce lands on.
+  ...(isTvBuild()
+    ? [
+        {
+          path: 'who',
+          canActivate: [serverGuard],
+          loadComponent: lazy(() =>
+            import('./pages/tv/tv-who.component').then((m) => m.TvWhoComponent),
+          ),
+        },
+      ]
+    : []),
   ...(isTvBuild() ? [tvShellRoute()] : []),
   {
     path: '',
@@ -290,6 +304,12 @@ function tvShellRoute() {
         path: 'settings',
         loadComponent: lazy(() =>
           import('./pages/tv/tv-settings.component').then((m) => m.TvSettingsComponent),
+        ),
+      },
+      {
+        path: 'who',
+        loadComponent: lazy(() =>
+          import('./pages/tv/tv-who.component').then((m) => m.TvWhoComponent),
         ),
       },
     ],
