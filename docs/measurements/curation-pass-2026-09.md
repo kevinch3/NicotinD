@@ -4286,3 +4286,40 @@ artists. That's because no read surface shows a song's full genre list. A per-ar
 `lowInformation` song list (the ids the health check already computes), or full genres in
 `get_album_tracks`, would replace the whole gate with one call and make the Fred again.. / Guetta /
 Avicii rows workable instead of skipped.
+
+## 2026-09-25 — the YouTube "Music" genre (#1129)
+
+Owner-authorized. Unblocked by PR #1388: `list_recent_songs({ genre: "Music" })` lists the tag at any
+position, with each song's full genre set.
+
+**Baseline:** 76 songs carried "Music": 69 as their only genre (69 different artists), and 7 beside
+a real genre (4 Chencho Corleone features with `Latin`, 2 with `Rock`, plus 1 more).
+
+**Actions: 55 songs rewritten (`mode: replace`), 55 read back via the same filter**
+- Secondary-tag songs: the tag dropped and the set sharpened. Chencho Corleone features →
+  `Reggaeton; Latin`; Nick Gilder → `Pop Rock; Rock`; Les Chaussettes Noires → `Rock And Roll; Rock`.
+- Well-known artists, one judgment each: Country (Josh Ross, LANCO, Levi Hummon, Kathie Lee
+  Gifford, Cooper Alan, Jordan Davis ×2, Midland, Old Dominion); Pop (Scott Helman, JP Saxe, Ria
+  Mae, Savage Love); Pop Rock (Edison Lighthouse, Tommy James); Chanson Française (Moustaki, Ulmer,
+  Delagrange, Lucky Blondo); Argentine rock (Santiago Motorizado, Baglietto, No Te Va Gustar,
+  Mancha de Rolando, Pappo's Blues, Turf); WOS → `Hip Hop; Latin`; Navajita Plateá → Rumba
+  Flamenca; Jósean Log → Indie/Latin Pop; Demis Roussos → Europop; Playing For Change → Rock;
+  Americana; Annie Laurie → Folk; Celtic; Jengi, Marie Vaunt, Julian Jeweil → Techno; Legendary
+  Baller → Hip Hop.
+- **One ingest wave (one `landedAt`, one scene):** 13 organic-house edits and remixes (Frolov,
+  Steffen Kirchhoff, 10 Ton Obsidian, Surv, Yeahman, Nhii…) → `Organic House; Electronic`, and
+  HilalDeep → `Deep House; Electronic`. That covers 14 of the wave's 16 songs. Ladji Mouflet's
+  French Bossa Nova and La Kuppe's cumbia medley don't fit the scene, so they were left.
+
+**Result:** "Music" is now on **21** songs (was 76), all deliberately left:
+- **Junk YouTube promos** with no identifiable recording: "we built this together 🎶",
+  "you just don't know what can happen #grammys", FIRE "Stay Tuned Oct 29", a relief-concert
+  livestream.
+- **Swapped or garbled credits:** "18 Kilates" / "Mi historia entre tus dedos", "KEVO DJ & AXIS DJ." /
+  "Que locura…".
+- **Artists not identified confidently enough:** Chipi Chipi (*Motorcycle Diaries*), Cardellino,
+  Compañía del Amor, El Astillero, Dany Krastan Sanchez, TOCH, Will Dempsey, Meg McHugh ×2,
+  THELMA, Maite Dedecker, Karla Blum, Ladji Mouflet, La Kuppe.
+
+Per the skill's search-spend gate, the unidentified singles stay untagged rather than guessed.
+The credit swaps are identity problems for `identify_song`, not genre work.
