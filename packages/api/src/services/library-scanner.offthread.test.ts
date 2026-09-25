@@ -24,11 +24,13 @@ function library(n: number): ScannedTrack[] {
 describe('a full scan builds the library off the event loop (#1313)', () => {
   it('returns exactly what the inline build returns', async () => {
     const tracks = library(300);
-    expect(await buildLibraryOffThread(tracks)).toEqual(buildLibrary(tracks));
+    expect(await buildLibraryOffThread([tracks])).toEqual(buildLibrary(tracks));
   });
 
   it('keeps the event loop responsive while a whole library builds', async () => {
-    const tracks = library(20_000);
+    // 10k tracks: ~350 ms inline, well over the bar, without cloning a
+    // whole-library heap into a worker inside a shared test process.
+    const tracks = library(10_000);
     let last = performance.now();
     let maxGap = 0;
     const tick = setInterval(() => {
@@ -37,25 +39,28 @@ describe('a full scan builds the library off the event loop (#1313)', () => {
       last = now;
     }, 10);
     try {
-      const built = await buildLibraryOffThread(tracks);
-      expect(built.songs).toHaveLength(20_000);
+      const built = await buildLibraryOffThread([tracks]);
+      expect(built.songs).toHaveLength(10_000);
       // Let the timer fire once more, or a synchronous build ends before
       // any tick could record the gap it caused.
       await new Promise((r) => setTimeout(r, 30));
     } finally {
       clearInterval(tick);
     }
-    expect(maxGap).toBeLessThan(250);
+    expect(maxGap).toBeLessThan(150);
   }, 60_000);
 
-  it('falls back to the inline build when the inputs cannot cross to the worker', async () => {
+  it('falls back to the inline build when the worker fails', async () => {
     const tracks = library(50);
-    // A function is not structured-cloneable, so postMessage throws; the build
-    // itself never reads this entry.
-    const overrides = new Map([['unused', { title: 'x', fn: () => 0 } as never]]);
-    expect(await buildLibraryOffThread(tracks, undefined, overrides)).toEqual(
-      buildLibrary(tracks, undefined, overrides),
+    // A worker that loads and then throws, not one terminated mid-boot: an
+    // uncloneable input used to throw from postMessage while the worker was
+    // still starting, and CI's bun crashed shortly after, twice (#1399).
+    const failing = URL.createObjectURL(
+      new Blob(["self.onmessage = () => { throw new Error('boom'); };"], {
+        type: 'application/typescript',
+      }),
     );
+    expect(await buildLibraryOffThread([tracks], failing)).toEqual(buildLibrary(tracks));
   });
 
   it('scanFull uses the worker build', () => {
