@@ -270,8 +270,8 @@ describe('MusicBrainzClient getCanonicalTracklist', () => {
     // A 2-track official edition would have truncated the tracklist.
     expect(calls[1]).toContain('/release/full');
     expect(tracks).toEqual([
-      { position: 1, title: 'One', durationSec: 210 },
-      { position: 2, title: 'Two', durationSec: undefined },
+      { disc: 1, position: 1, title: 'One', durationSec: 210 },
+      { disc: 1, position: 2, title: 'Two', durationSec: undefined },
     ]);
   });
 
@@ -284,6 +284,61 @@ describe('MusicBrainzClient getCanonicalTracklist', () => {
 
     expect(await client.getCanonicalTracklist('rg-2')).toHaveLength(1);
     expect(calls[1]).toContain('/release/boot');
+  });
+
+  // #747: the release was picked for its track count summed over ALL media,
+  // then only media[0] came back — a complete release resolved to disc 1.
+  it('returns every medium, each track carrying its disc and per-disc position', async () => {
+    twoHopFetch(
+      {
+        releases: [
+          { id: 'double', status: 'Official', media: [{ 'track-count': 2 }, { 'track-count': 1 }] },
+        ],
+      },
+      {
+        media: [
+          {
+            position: 1,
+            tracks: [
+              { position: 1, title: 'Intro' },
+              { position: 2, title: 'Song' },
+            ],
+          },
+          { position: 2, tracks: [{ position: 1, title: 'Intro' }] },
+        ],
+      },
+    );
+    const tracks = await testClient().getCanonicalTracklist('rg-double');
+    expect(tracks.map((t) => [t.disc, t.position, t.title])).toEqual([
+      [1, 1, 'Intro'],
+      [1, 2, 'Song'],
+      [2, 1, 'Intro'],
+    ]);
+  });
+
+  it('re-fetches a cached tracklist from before #747 (no disc) instead of serving disc 1 only', async () => {
+    writeFileSync(
+      cacheFile,
+      JSON.stringify({
+        'tracklist:rg-old': {
+          type: 'tracklist',
+          at: Date.now(),
+          result: [{ position: 1, title: 'A' }],
+        },
+      }),
+    );
+    const calls = twoHopFetch(
+      { releases: [{ id: 'r', status: 'Official', media: [{ 'track-count': 1 }] }] },
+      {
+        media: [
+          { position: 1, tracks: [{ position: 1, title: 'A' }] },
+          { position: 2, tracks: [{ position: 1, title: 'B' }] },
+        ],
+      },
+    );
+    const tracks = await testClient().getCanonicalTracklist('rg-old');
+    expect(calls).toHaveLength(2);
+    expect(tracks.map((t) => t.disc)).toEqual([1, 2]);
   });
 
   it('returns an empty list (and caches it) when the group has no releases', async () => {

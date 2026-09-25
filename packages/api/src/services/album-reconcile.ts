@@ -4,6 +4,7 @@ import { extname, join } from 'node:path';
 import { getMusicMetadata, trackNoFromParse } from './music-metadata-loader.js';
 import { selectAlbumTracksDetailed, type SelectableTrack } from './library-track-select.js';
 import { AUDIO_EXTENSIONS } from '@nicotind/core';
+import { parseOrganizerStem } from './path-sanitize.js';
 
 /** Album folders that must never be collapsed as one album (each loose track is its own single). */
 export const SINGLES_DIR_RE = /(^|[/\\])Singles$/i;
@@ -81,7 +82,11 @@ export async function readFolderTracks(dir: string): Promise<ReconcileFile[]> {
     } catch {
       continue;
     }
-    let title = name.slice(0, name.length - ext.length);
+    const stem = name.slice(0, name.length - ext.length);
+    // The organizer's `D-NN - Title` name (#747) is the fallback for an untagged
+    // file: its disc keeps two discs' same-titled tracks apart in this deleting pass.
+    const own = parseOrganizerStem(stem);
+    let title = own?.disc !== undefined ? own.title : stem;
     let bitRate = 0;
     let disc: number | null = null;
     let track: number | null = null;
@@ -96,6 +101,7 @@ export async function readFolderTracks(dir: string): Promise<ReconcileFile[]> {
     } catch {
       // unreadable — fall back to filename stem + 0 bitrate
     }
+    if (disc === null && own?.disc !== undefined) disc = own.disc;
     out.push({ name, title, suffix: ext.slice(1), bitRate, disc, track });
   }
   return out;

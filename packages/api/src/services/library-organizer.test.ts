@@ -48,6 +48,7 @@ function seedAudio(
   if (tags.album) meta.push('-metadata', `ALBUM=${tags.album}`);
   if (tags.title) meta.push('-metadata', `TITLE=${tags.title}`);
   if (tags.trackNumber !== undefined) meta.push('-metadata', `track=${tags.trackNumber}`);
+  if (tags.disc) meta.push('-metadata', `disc=${tags.disc}`);
   execFileSync(
     'ffmpeg',
     [
@@ -79,6 +80,8 @@ interface SeedTags {
   albumArtist?: string;
   trackNumber?: number;
   compilation?: boolean;
+  /** ID3 TPOS, e.g. `2/2` or a bare `2`. */
+  disc?: string;
 }
 
 function seed(dir: string, relPath: string, tags: SeedTags): string {
@@ -92,6 +95,7 @@ function seed(dir: string, relPath: string, tags: SeedTags): string {
   if (tags.albumArtist) id3.performerInfo = tags.albumArtist;
   if (tags.trackNumber !== undefined) id3.trackNumber = String(tags.trackNumber);
   if (tags.compilation) id3.partOfCompilation = '1';
+  if (tags.disc) id3.partOfSet = tags.disc;
   nodeId3.update(id3, dest);
   return dest;
 }
@@ -1419,5 +1423,169 @@ describe('LibraryOrganizer concurrency (#1026)', () => {
       { username: 'u', directory: 'C - Three', filename: '01 - c.mp3', directoryFileCount: 1 },
     ]);
     expect(after.moved).toBe(1);
+  });
+});
+
+// Issue #747 (owner ruling 2026-09-25): a multi-disc release files as
+// `D-NN - Title` in ONE album folder; a single-disc album keeps `NN - Title`.
+describe('LibraryOrganizer multi-disc filenames (#747)', () => {
+  const file = (directory: string, filename: string, count: number) => ({
+    username: 'u',
+    directory,
+    filename,
+    directoryFileCount: count,
+  });
+
+  it('keeps `NN - Title` for a single-disc album tagged 1/1', async () => {
+    const root = tmpRoot();
+    const staging = join(root, '_staging');
+    seed(staging, 'Solo/01 - One.mp3', {
+      artist: 'Solo',
+      album: 'Alone',
+      title: 'One',
+      trackNumber: 1,
+      disc: '1/1',
+    });
+    const org = makeOrg(root, staging);
+    await org.organizeBatch([file('Solo', '01 - One.mp3', 1)]);
+    expect(readdirSync(join(root, 'Solo', 'Alone'))).toEqual(['01 - One.mp3']);
+  });
+
+  it('prefixes the disc on every track of a two-disc release, in one folder', async () => {
+    const root = tmpRoot();
+    const staging = join(root, '_staging');
+    seed(staging, 'Twin/01 - Dawn.mp3', {
+      artist: 'Twin',
+      album: 'Halves',
+      title: 'Dawn',
+      trackNumber: 1,
+      disc: '1/2',
+    });
+    seed(staging, 'Twin/CD2 01 - Dusk.mp3', {
+      artist: 'Twin',
+      album: 'Halves',
+      title: 'Dusk',
+      trackNumber: 1,
+      disc: '2/2',
+    });
+    const org = makeOrg(root, staging);
+    await org.organizeBatch([
+      file('Twin', '01 - Dawn.mp3', 2),
+      file('Twin', 'CD2 01 - Dusk.mp3', 2),
+    ]);
+    expect(readdirSync(join(root, 'Twin', 'Halves')).sort()).toEqual([
+      '1-01 - Dawn.mp3',
+      '2-01 - Dusk.mp3',
+    ]);
+  });
+
+  it('gives disc 2 its own name instead of a ` (2)` collision suffix, and keeps both', async () => {
+    const root = tmpRoot();
+    const staging = join(root, '_staging');
+    // The same title at the same position on both discs: before #747 this was
+    // `01 - Intro.mp3` + `01 - Intro (2).mp3`, indistinguishable from a dup.
+    seed(staging, 'Pair/a/01 - Intro.mp3', {
+      artist: 'Pair',
+      album: 'Mirror',
+      title: 'Intro',
+      trackNumber: 1,
+      disc: '1',
+    });
+    seed(staging, 'Pair/b/01 - Intro.mp3', {
+      artist: 'Pair',
+      album: 'Mirror',
+      title: 'Intro',
+      trackNumber: 1,
+      disc: '2',
+    });
+    const org = makeOrg(root, staging);
+    await org.organizeBatch([
+      file('Pair/a', '01 - Intro.mp3', 1),
+      file('Pair/b', '01 - Intro.mp3', 1),
+    ]);
+    const names = readdirSync(join(root, 'Pair', 'Mirror')).sort();
+    // Disc 1 alone (bare `1`, no total) cannot be told multi-disc; disc 2 can.
+    expect(names).toEqual(['01 - Intro.mp3', '2-01 - Intro.mp3']);
+    expect(names.some((n) => n.includes('(2)'))).toBe(false);
+  });
+
+  it.if(ffmpegAvailable())(
+    'reads a Vorbis disc total: disc 1 of 2 alone still files as 1-NN',
+    async () => {
+      const root = tmpRoot();
+      const staging = join(root, '_staging');
+      seedFlac(staging, 'Half/01 - First.flac', {
+        artist: 'Half',
+        album: 'Whole',
+        title: 'First',
+        trackNumber: 1,
+        disc: '1/2',
+      });
+      const org = makeOrg(root, staging);
+      await org.organizeBatch([file('Half', '01 - First.flac', 1)]);
+      expect(readdirSync(join(root, 'Half', 'Whole'))).toEqual(['1-01 - First.flac']);
+    },
+  );
+
+  it("does not skip a disc-2 MP3 against disc 1's same-titled FLAC", async () => {
+    const root = tmpRoot();
+    const staging = join(root, '_staging');
+    mkdirSync(join(root, 'Pair', 'Mirror'), { recursive: true });
+    writeFileSync(join(root, 'Pair', 'Mirror', '1-01 - Intro.flac'), 'x');
+    seed(staging, 'Pair CD2/01 - Intro.mp3', {
+      artist: 'Pair',
+      album: 'Mirror',
+      title: 'Intro',
+      trackNumber: 1,
+      disc: '2/2',
+    });
+    const org = new LibraryOrganizer({
+      transcodeLossless: { enabled: false, bitRate: 192 },
+      musicDir: root,
+      stagingDir: staging,
+      preferFlacSkipMp3: true,
+      autoDedupe: false,
+    });
+    const result = await org.organizeBatch([file('Pair CD2', '01 - Intro.mp3', 1)]);
+    expect(result.moved).toBe(1);
+    expect(readdirSync(join(root, 'Pair', 'Mirror')).sort()).toEqual([
+      '1-01 - Intro.flac',
+      '2-01 - Intro.mp3',
+    ]);
+  });
+
+  it('still skips an MP3 against the FLAC of the same disc', async () => {
+    const root = tmpRoot();
+    const staging = join(root, '_staging');
+    mkdirSync(join(root, 'Pair', 'Mirror'), { recursive: true });
+    writeFileSync(join(root, 'Pair', 'Mirror', '2-01 - Intro.flac'), 'x');
+    seed(staging, 'Pair CD2/01 - Intro.mp3', {
+      artist: 'Pair',
+      album: 'Mirror',
+      title: 'Intro',
+      trackNumber: 1,
+      disc: '2/2',
+    });
+    const org = new LibraryOrganizer({
+      transcodeLossless: { enabled: false, bitRate: 192 },
+      musicDir: root,
+      stagingDir: staging,
+      preferFlacSkipMp3: true,
+    });
+    const result = await org.organizeBatch([file('Pair CD2', '01 - Intro.mp3', 1)]);
+    expect(result.skipped).toBe(1);
+  });
+
+  it('plans the disc prefix in a dry run too', async () => {
+    const root = tmpRoot();
+    const src = seed(root, 'Loose/05 - Coda.mp3', {
+      artist: 'Loose',
+      album: 'Set',
+      title: 'Coda',
+      trackNumber: 5,
+      disc: '2/3',
+    });
+    const plan = await makeOrg(root).planOrganizeFile(src);
+    expect(plan.destPath).toBe(join(root, 'Loose', 'Set', '2-05 - Coda.mp3'));
   });
 });

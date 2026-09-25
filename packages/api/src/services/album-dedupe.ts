@@ -12,6 +12,7 @@
 import { readdirSync, statSync, unlinkSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { AUDIO_EXTENSIONS } from '@nicotind/core';
+import { parseOrganizerStem } from './path-sanitize.js';
 
 export interface DupFile {
   name: string;
@@ -25,14 +26,24 @@ export interface DupFile {
  * ("live", "acoustic version", …) survive, so distinct tracks stay distinct.
  */
 export function dupKey(filename: string): string {
-  const stem = filename.slice(0, filename.length - extname(filename).length);
-  return stem
-    .replace(/^\d+[\s.\-_]+/, '') // leading track number
-    .replace(/\s*\(\d+\)\s*$/, '') // trailing " (2)" collision suffix
-    .toLowerCase()
-    .replace(/[^\w\s]/g, '') // apostrophe / punctuation variants
-    .replace(/\s+/g, ' ')
-    .trim();
+  let stem = filename.slice(0, filename.length - extname(filename).length);
+  // The organizer's multi-disc `D-NN - Title` (#747): the disc is identity, not
+  // a prefix to strip — `2-05 - Intro` is a different track from disc 1's.
+  // Disc 1 keys like no disc, as `selectAlbumTracks` does.
+  const own = parseOrganizerStem(stem);
+  const discTag = own?.disc !== undefined && own.disc > 1 ? `d${own.disc}|` : '';
+  // Re-shaped to `NN - Title` so the strip below treats both forms identically.
+  if (own?.disc !== undefined) stem = `${own.track} - ${own.title}`;
+  return (
+    discTag +
+    stem
+      .replace(/^\d+[\s.\-_]+/, '') // leading track number
+      .replace(/\s*\(\d+\)\s*$/, '') // trailing " (2)" collision suffix
+      .toLowerCase()
+      .replace(/[^\w\s]/g, '') // apostrophe / punctuation variants
+      .replace(/\s+/g, ' ')
+      .trim()
+  );
 }
 
 const hasSuffix = (name: string): boolean =>

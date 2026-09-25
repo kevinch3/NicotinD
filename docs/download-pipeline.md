@@ -29,6 +29,30 @@ NicotinD is album-centric, but loose tracks (a YouTube single, a Soulseek peer w
 
 `LibraryOrganizer` places tracks at `<Artist>/<Album>/<Track>` when an album is known, or `<Artist>/Singles/` as the fallback bucket.
 
+**A multi-disc release stays in one folder, with the disc in the filename (issue #747).** The track
+file is `NN - Title.ext`, or `D-NN - Title.ext` (`2-01 - Title.flac`) when the placement group is a
+multi-disc release — no `Disc N/` subfolders, because `findCanonicalAlbumFolder`, the per-folder
+dedupe and `classifyFolder` all assume one directory per album. Before this a filename had no disc
+dimension, so disc 2's track 01 collided with disc 1's and `uniquePath` invented a ` (2)` suffix
+indistinguishable from a real duplicate. "Multi-disc" is decided conservatively by
+`isMultiDiscRelease` over the whole peer-directory group: some file's disc tag is above 1, or some
+file's disc total (`discTotal` — ID3 TPOS `1/2`, Vorbis `disk.of`; written back as `n/total`, so
+a transcode carries it) is above 1. Disc `1/1`, a bare
+`1` and no disc tag are single-disc and keep `NN - Title.ext` exactly, so no existing song id
+(path-derived) re-mints. Only an `<Artist>/<Album>` placement gets the disc; `Singles/` and unsorted
+never do. A lone disc-1 file with no disc total cannot be told apart and lands as `NN - Title` — it
+no longer collides with disc 2's `2-NN`, which is the point.
+
+Everything that reads the organizer's names back accepts both shapes through
+`parseOrganizerStem`: `dupKey` keys disc > 1 as its own identity (disc 1 ≡ no disc, as in
+`selectAlbumTracks`), `readFolderTracks` takes the disc from the name when the tag has none,
+`flacTwinExists` only skips an MP3 against a FLAC on the same disc, `inferMetadataFromPath` reads
+`1-01 - Title` as disc 1 track 1 rather than an artist called "01", and `normalize-library.ts`
+A1b groups by `D-NN`. **Existing files are not renamed** by this change — the ` (2)`-suffixed
+population is a separate, owner-gated migration (#1392) that must carry song-id-keyed tables
+(`carrySongCuration`). Note that `reorganize-library.ts --apply` *would* re-file them, so it is
+that migration's tool, not something to run casually.
+
 - **Multi-file downloads**: `classifyFolder` in `compilation-tagger.ts` derives the album from the peer folder name (single-artist consolidation path).
 - **Single-file downloads**: `deriveFolderTags` in `library-organizer.ts` calls `inferFolderAlbum` (`path-inference.ts`) to derive the album from the peer directory's leaf segment when the ID3 album tag is missing. Generic folder names ("downloads", "src", "music", …) and folders that just echo the artist name are blocked by `looksLikeGenericFolder` so they don't become fake albums.
 

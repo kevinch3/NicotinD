@@ -2,7 +2,7 @@ import { describe, expect, it, afterEach } from 'bun:test';
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { dedupeFolder } from './album-dedupe.js';
+import { dedupeFolder, dupKey } from './album-dedupe.js';
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -53,5 +53,33 @@ describe('dedupeFolder', () => {
     const { deleted } = dedupeFolder(dir, { apply: true });
     expect(deleted).toHaveLength(0);
     expect(existsSync(join(dir, '01 - Believe.mp3'))).toBe(true);
+  });
+});
+
+// Issue #747: `D-NN - Title` names a disc, and the disc is identity. A leading
+// `^\d+` strip used to read `1-05` and `2-05` both as "05 …" and collapse them.
+describe('dupKey with a disc prefix', () => {
+  it('keeps the same title on two discs apart', () => {
+    expect(dupKey('1-05 - Intro.flac')).not.toBe(dupKey('2-05 - Intro.flac'));
+  });
+
+  it('treats disc 1 like no disc, so a true copy still collapses', () => {
+    expect(dupKey('1-05 - Intro.flac')).toBe(dupKey('05 - Intro.mp3'));
+    expect(dupKey('2-05 - Intro (2).mp3')).toBe(dupKey('2-05 - Intro.flac'));
+  });
+
+  it('strips the prefix exactly as the NN form does', () => {
+    expect(dupKey('1-11 - 7 Steps.flac')).toBe(dupKey('11 - 7 Steps.flac'));
+  });
+
+  it('dedupeFolder keeps both discs of a repeated title', () => {
+    const dir = tmpFolder([
+      ['1-01 - Intro.flac', 20],
+      ['2-01 - Intro.flac', 20],
+      ['2-01 - Intro (2).mp3', 5],
+    ]);
+    const { deleted } = dedupeFolder(dir, { apply: true });
+    expect(deleted.map((d) => d.name)).toEqual(['2-01 - Intro (2).mp3']);
+    expect(readdirSync(dir).sort()).toEqual(['1-01 - Intro.flac', '2-01 - Intro.flac']);
   });
 });
