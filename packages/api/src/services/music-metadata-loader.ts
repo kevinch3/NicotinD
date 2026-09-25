@@ -17,6 +17,10 @@ export interface MMCommon {
   /** One entry per credit (TCOM / `COMPOSER` / `©wrt`; TPE3 / `CONDUCTOR`) — arrays (#1083). */
   composer?: string[];
   conductor?: string[];
+  /** Work and movement (#1369); Vorbis MOVEMENTNAME/MOVEMENT are native-only. */
+  work?: string;
+  movement?: string;
+  movementIndex?: { no?: number | null };
   /** Beats per minute from tags (TBPM / `BPM`), when present. */
   bpm?: number;
   /** Musical key from tags (TKEY / `KEY` / `INITIALKEY`), when present. */

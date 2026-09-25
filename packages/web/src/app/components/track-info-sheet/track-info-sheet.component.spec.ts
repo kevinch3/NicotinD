@@ -695,6 +695,8 @@ describe('TrackInfoSheetComponent (retag form, issue #724)', () => {
       album: 'Fake YouTube Album',
       composer: '',
       conductor: '',
+      work: '',
+      movement: '',
       year: '2019',
     });
     expect(c.hasTagChanges()).toBe(false);

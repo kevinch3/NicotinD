@@ -370,10 +370,12 @@ export const MCP_TOOLS: McpTool[] = [
             bit_rate: number | null;
             composer: string | null;
             conductor: string | null;
+            work: string | null;
+            movement: string | null;
           },
           [string]
         >(
-          `SELECT id, title, artist, genre, track, disc, suffix, bit_rate, composer, conductor
+          `SELECT id, title, artist, genre, track, disc, suffix, bit_rate, composer, conductor, work, movement
            FROM library_songs WHERE album_id = ? ORDER BY COALESCE(disc, 1), track`,
         )
         .all(id);
@@ -403,6 +405,8 @@ export const MCP_TOOLS: McpTool[] = [
             // Omitted when absent, so a non-classical album reads as before.
             ...(s.composer ? { composer: s.composer } : {}),
             ...(s.conductor ? { conductor: s.conductor } : {}),
+            ...(s.work ? { work: s.work } : {}),
+            ...(s.movement ? { movement: s.movement } : {}),
           })),
         },
         null,
@@ -881,7 +885,7 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'fix_song_metadata',
     description:
-      "Fix a song's own metadata (title, artist, albumArtist, album, year, track, disc, composer, conductor) — the apply half of " +
+      "Fix a song's own metadata (title, artist, albumArtist, album, year, track, disc, composer, conductor, work, movement) — the apply half of " +
       '`lookup_song_metadata`. Retags the file in place and rescans it; NEVER moves or renames the ' +
       'file, so playlists, likes and history keep pointing at the song. Fixing `album` (or just the ' +
       'title) on a loose YouTube single dissolves its fake single-track album into the real one. ' +
@@ -908,6 +912,11 @@ export const MCP_TOOLS: McpTool[] = [
           description: 'Composer credit (TCOM / COMPOSER); `; `-join several.',
         },
         conductor: { type: 'string', description: 'Conductor credit (TPE3 / CONDUCTOR).' },
+        work: { type: 'string', description: 'The work a movement belongs to, e.g. "Requiem".' },
+        movement: {
+          type: 'string',
+          description: 'Movement name, moved out of a title like "Requiem: Lacrimosa".',
+        },
       },
       required: ['songId'],
     },
@@ -923,6 +932,8 @@ export const MCP_TOOLS: McpTool[] = [
         disc: typeof args.disc === 'number' ? args.disc : undefined,
         composer: args.composer === undefined ? undefined : str(args.composer),
         conductor: args.conductor === undefined ? undefined : str(args.conductor),
+        work: args.work === undefined ? undefined : str(args.work),
+        movement: args.movement === undefined ? undefined : str(args.movement),
       };
       const result = await mutateSongMetadata(db, metadata, songId, body);
       if (!result.ok) {
@@ -936,7 +947,17 @@ export const MCP_TOOLS: McpTool[] = [
         });
       }
       const changes = (
-        ['title', 'artist', 'albumArtist', 'album', 'year', 'composer', 'conductor'] as const
+        [
+          'title',
+          'artist',
+          'albumArtist',
+          'album',
+          'year',
+          'composer',
+          'conductor',
+          'work',
+          'movement',
+        ] as const
       )
         .filter((k) => result.applied[k] !== undefined)
         .map((k) => {

@@ -253,7 +253,9 @@ writable (freeform atoms, same section), and #1279 registered AAC. Two things it
 an `.m4a` target reads its source's tags and the encode writes every field `ipod` accepts as explicit
 `-metadata` (`ffmpegTagMetadataArgs` — `tmpo` for BPM, which `-map_metadata` alone drops); then,
 **after** the cover, whose own remux drops freeform atoms *and* `tmpo`, the strategy's
-`postEncodeTags` (`writeMp4FreeformTags`) patches the rest into `moov` in place. That hook replaced
+`postEncodeTags` (`writeMp4FreeformTags`) patches the rest into `moov` in place — including the
+work/movement atoms `©wrk`/`©mvn`/`©mvi` (#1369), which a later retag remux also carries from the
+file (`readStandardAtoms`), since that remux drops them too. That hook replaced
 two `targetExt === 'm4a'` checks and a full second `writeAudioTags` remux per file (#1288, #1289), and
 the source read skips covers, since `AudioTags` has no picture field. It encodes without `+faststart`, because
 `writeFreeformAtoms` needs `moov` after `mdat`. A 2.9 MB `covr` reads back byte-exact, so it has no

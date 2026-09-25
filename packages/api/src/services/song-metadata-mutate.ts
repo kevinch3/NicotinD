@@ -64,6 +64,9 @@ export interface SongMetadataMutateBody {
    */
   composer?: string;
   conductor?: string;
+  /** Work and movement name (#1369), so a movement leaves the title for its own field. */
+  work?: string;
+  movement?: string;
 }
 
 /** The subset of a song row a mutation can be verified against. */
@@ -77,6 +80,8 @@ export interface SongMetadataSnapshot {
   disc: number | null;
   composer: string | null;
   conductor: string | null;
+  work: string | null;
+  movement: string | null;
 }
 
 export type SongMetadataMutateResult =
@@ -113,7 +118,7 @@ interface SongRow extends SongMetadataSnapshot {
 }
 
 const SNAPSHOT_COLUMNS = `s.title, s.artist, s.album_artist AS albumArtist, a.name AS album, s.year,
-  s.track, s.disc, s.composer, s.conductor`;
+  s.track, s.disc, s.composer, s.conductor, s.work, s.movement`;
 
 export async function mutateSongMetadata(
   db: Database,
@@ -165,6 +170,8 @@ export async function mutateSongMetadata(
     disc: song.disc,
     composer: song.composer,
     conductor: song.conductor,
+    work: song.work,
+    movement: song.movement,
   };
   if (!deps.scanIncremental) {
     // Nothing to read back through — report the request and say so, rather
@@ -205,6 +212,10 @@ export async function mutateSongMetadata(
   }
   if (tags.conductor !== undefined && after.conductor !== tags.conductor) {
     diverged.conductor = after.conductor;
+  }
+  if (tags.work !== undefined && after.work !== tags.work) diverged.work = after.work;
+  if (tags.movement !== undefined && after.movement !== tags.movement) {
+    diverged.movement = after.movement;
   }
 
   if (Object.keys(diverged).length > 0) {
@@ -256,6 +267,8 @@ const SNAPSHOT_TAG_KEYS = {
   disc: 'discNumber',
   composer: 'composer',
   conductor: 'conductor',
+  work: 'work',
+  movement: 'movement',
 } as const satisfies Record<keyof SongMetadataSnapshot, keyof AudioTags>;
 
 /**
@@ -328,5 +341,7 @@ function pickApplied(after: SongMetadataSnapshot, tags: AudioTags): Partial<Audi
   if (tags.discNumber !== undefined && after.disc !== null) out.discNumber = after.disc;
   if (tags.composer !== undefined && after.composer !== null) out.composer = after.composer;
   if (tags.conductor !== undefined && after.conductor !== null) out.conductor = after.conductor;
+  if (tags.work !== undefined && after.work !== null) out.work = after.work;
+  if (tags.movement !== undefined && after.movement !== null) out.movement = after.movement;
   return out;
 }

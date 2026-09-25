@@ -1020,6 +1020,17 @@ describe.if(ffmpegAvailable())('.m4a fields the ipod muxer drops (#1274)', () =>
     mbReleaseId: '22222222-2222-2222-2222-222222222222',
   };
 
+  it('keeps work and movement across a later retag that does not touch them (#1369)', async () => {
+    // The retag remux drops ©wrk/©mvn/©mvi like it drops `----` atoms; they are
+    // carried from the file, so changing only the title must not lose them.
+    const path = m4a('work');
+    const classical = { work: 'Requiem', movement: 'Lacrimosa', movementNumber: 8 };
+    expect(await writeAudioTags(path, classical)).toBe(true);
+    expect(await readAudioTags(path)).toMatchObject(classical);
+    expect(await writeAudioTags(path, { title: 'Lacrimosa dies illa' })).toBe(true);
+    expect(await readAudioTags(path)).toMatchObject({ ...classical, title: 'Lacrimosa dies illa' });
+  });
+
   it('writes and reads back every one of the eleven fields', async () => {
     const path = m4a('eleven');
     expect(await writeAudioTags(path, ELEVEN)).toBe(true);

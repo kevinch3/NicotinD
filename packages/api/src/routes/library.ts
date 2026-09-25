@@ -451,6 +451,9 @@ export interface SongRow {
   genre: string | null;
   composer: string | null;
   conductor: string | null;
+  work: string | null;
+  movement: string | null;
+  movement_number: number | null;
   cover_art: string | null;
   path: string;
   size: number | null;
@@ -492,6 +495,7 @@ export const SONG_SELECT = `
   SELECT s.id, s.album_id, a.name AS album_name, a.cover_art AS album_cover_art,
          s.title, s.artist, s.artist_id, s.album_artist, s.album_artist_id,
          s.track, s.disc, s.duration, s.year, s.genre, s.composer, s.conductor,
+         s.work, s.movement, s.movement_number,
          s.cover_art, s.path, s.size, s.bit_rate, s.sample_rate, s.bit_depth, s.channels,
          s.suffix, s.content_type,
          s.created, s.starred, s.bpm, s.key,
@@ -540,6 +544,9 @@ export function rowToSong(r: SongRow): Song {
     genre: r.genre ?? undefined,
     composer: r.composer ?? undefined,
     conductor: r.conductor ?? undefined,
+    work: r.work ?? undefined,
+    movement: r.movement ?? undefined,
+    movementNumber: r.movement_number ?? undefined,
     coverArt: r.cover_art ?? r.album_cover_art ?? r.album_id,
     size: r.size ?? 0,
     contentType: r.content_type ?? '',
@@ -2423,7 +2430,17 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       );
     }
     const changes = (
-      ['title', 'artist', 'albumArtist', 'album', 'year', 'composer', 'conductor'] as const
+      [
+        'title',
+        'artist',
+        'albumArtist',
+        'album',
+        'year',
+        'composer',
+        'conductor',
+        'work',
+        'movement',
+      ] as const
     )
       .filter((k) => result.applied[k] !== undefined)
       .map(
