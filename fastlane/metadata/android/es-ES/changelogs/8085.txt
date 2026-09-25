@@ -1,0 +1,2 @@
+• analysis: stop buffering a stderr line per 100 ms of audio in the loudness pass (#1403)
+• transcode: carry the cover in the Opus encode instead of a remux after it (#1402)

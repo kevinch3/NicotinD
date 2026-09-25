@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.85](https://github.com/kevinch3/NicotinD/compare/v0.8.84...v0.8.85) (2026-09-25)
+
+### Performance
+
+* **analysis:** stop buffering a stderr line per 100 ms of audio in the loudness pass ([#1403](https://github.com/kevinch3/NicotinD/issues/1403)) ([930acee](https://github.com/kevinch3/NicotinD/commit/930acee2d4ed8260eb93955d8bcdb52f39e348fe)), references [#1312](https://github.com/kevinch3/NicotinD/issues/1312)
+* **transcode:** carry the cover in the Opus encode instead of a remux after it ([#1402](https://github.com/kevinch3/NicotinD/issues/1402)) ([ee2cfe6](https://github.com/kevinch3/NicotinD/commit/ee2cfe6cc5a93b772fa90369d9461f5b368a170a)), closes [#1305](https://github.com/kevinch3/NicotinD/issues/1305)
 ## [0.8.84](https://github.com/kevinch3/NicotinD/compare/v0.8.83...v0.8.84) (2026-09-25)
 
 ### Performance
