@@ -90,8 +90,16 @@ carries fourteen composers as artists — and retagging `artist` to the performe
 the composer rather than moved it. Both are file-derived like `title` (the upsert takes the tag, no
 `COALESCE`), written only through the file by `mutateSongMetadata` / `fix_song_metadata`, which can
 set `composer` and `artist` in one call. `scan_cache_version` 5 flushes the cache once so every
-existing file gains them — one full re-parse on the next scan. Work/movement (`TIT1`/`MVNM`) are not
-modelled yet.
+existing file gains them — one full re-parse on the next scan.
+
+**Work and movement (#1369)** follow the same path: `work`, `movement`, `movement_number` from Vorbis
+`WORK` / `MOVEMENTNAME` / `MOVEMENT`, ID3 `TXXX` under those same names, and MP4 `©wrk` / `©mvn` /
+`©mvi` (`workTagsFromParse`, shared with `readAudioTags`: music-metadata maps Vorbis `WORK` and the
+MP4 atoms but not the Vorbis movement keys or the ID3 `TXXX` spellings, so those fall back to the
+native map). ID3 uses `TXXX` because node-id3 silently drops the iTunes `MVNM`/`MVIN` frames —
+measured — though those are still read through `common` when another tagger wrote them; the
+payoff is that ffmpeg already writes a Vorbis `WORK` into exactly that `TXXX` across a family
+change, so no carry table entry is needed. `scan_cache_version` 6 flushes once.
 
 Non-destructive: unselected files stay on disk but get no `library_songs` row, so a full scan's prune makes them invisible. Physical cleanup is `scripts/repair-album-folders.ts`. Incremental `scanPaths` selects within its batch; the full scan is authoritative.
 

@@ -50,6 +50,8 @@ interface TagDraft {
   album: string;
   composer: string;
   conductor: string;
+  work: string;
+  movement: string;
   year: string;
 }
 
@@ -161,6 +163,8 @@ export class TrackInfoSheetComponent implements OnInit {
     album: '',
     composer: '',
     conductor: '',
+    work: '',
+    movement: '',
     year: '',
   });
   readonly tagError = signal<{ reason: string; diverged: string[] } | null>(null);
@@ -175,6 +179,9 @@ export class TrackInfoSheetComponent implements OnInit {
     // Where a classical track's composer belongs, instead of `artist` (#1083).
     { key: 'composer', labelKey: 'trackInfo.tagComposer' },
     { key: 'conductor', labelKey: 'trackInfo.tagConductor' },
+    // Where a movement belongs, instead of crammed into the title (#1369).
+    { key: 'work', labelKey: 'trackInfo.tagWork' },
+    { key: 'movement', labelKey: 'trackInfo.tagMovement' },
   ];
 
   /**
@@ -593,6 +600,8 @@ export class TrackInfoSheetComponent implements OnInit {
       album: s?.album ?? this.displayAlbum(),
       composer: s?.composer ?? '',
       conductor: s?.conductor ?? '',
+      work: s?.work ?? '',
+      movement: s?.movement ?? '',
       year: s?.year ? String(s.year) : '',
     };
   }

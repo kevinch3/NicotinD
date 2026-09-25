@@ -18,6 +18,8 @@ export interface IdentifyApplyBody {
   albumArtist?: string;
   composer?: string;
   conductor?: string;
+  work?: string;
+  movement?: string;
   year?: number;
   trackNumber?: number;
   discNumber?: number;
@@ -46,6 +48,8 @@ export function buildIdentifyApplyTags(body: IdentifyApplyBody): AudioTags | nul
         | 'albumArtist'
         | 'composer'
         | 'conductor'
+        | 'work'
+        | 'movement'
         | 'acoustIdId'
         | 'mbRecordingId'
         | 'mbReleaseId'
@@ -59,6 +63,8 @@ export function buildIdentifyApplyTags(body: IdentifyApplyBody): AudioTags | nul
     ['albumArtist', body.albumArtist],
     ['composer', body.composer],
     ['conductor', body.conductor],
+    ['work', body.work],
+    ['movement', body.movement],
     ['acoustIdId', body.acoustId],
     ['mbRecordingId', body.recordingId],
     ['mbReleaseId', body.releaseId],

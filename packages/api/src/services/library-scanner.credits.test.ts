@@ -27,6 +27,20 @@ describe('scan_cache_version 5', () => {
   });
 });
 
+describe('scan_cache_version 6', () => {
+  it('flushes a v5 cache once, so existing files gain work/movement (#1369)', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    db.run(
+      `INSERT INTO scan_cache (path, size, mtime_ms, track_json) VALUES ('a.mp3', 1, 1, '{}')`,
+    );
+    db.run(`UPDATE library_sync_state SET value = '5' WHERE key = 'scan_cache_version'`);
+    applySchema(db);
+    expect(db.query<{ c: number }, []>(`SELECT COUNT(*) c FROM scan_cache`).get()!.c).toBe(0);
+    db.close();
+  });
+});
+
 describe.if(ffmpegAvailable())('composer and conductor, scanned and retagged', () => {
   let musicDir: string;
   let db: Database;
@@ -75,6 +89,26 @@ describe.if(ffmpegAvailable())('composer and conductor, scanned and retagged', (
         conductor: 'Zubin Mehta',
       });
     }
+  });
+
+  it('reads work and movement from a FLAC and an mp3 (#1369)', async () => {
+    const meta = [
+      '-metadata', 'artist=Wiener Philharmoniker', '-metadata', 'album=Requiem',
+      '-metadata', 'WORK=Requiem in D minor', '-metadata', 'MOVEMENTNAME=Lacrimosa',
+      '-metadata', 'MOVEMENT=8',
+    ]; // prettier-ignore
+    make('Wiener/Requiem/08 - Lacrimosa.flac', [...meta, '-metadata', 'title=Lacrimosa']);
+    make('Wiener/Requiem/09 - Domine Jesu.mp3', [...meta, '-metadata', 'title=Domine Jesu']);
+    await new LibraryScanner(musicDir, db).scanFull();
+    const rows = db
+      .query<{ work: string | null; movement: string | null; movement_number: number | null }, []>(
+        'SELECT work, movement, movement_number FROM library_songs ORDER BY path',
+      )
+      .all();
+    expect(rows).toEqual([
+      { work: 'Requiem in D minor', movement: 'Lacrimosa', movement_number: 8 },
+      { work: 'Requiem in D minor', movement: 'Lacrimosa', movement_number: 8 },
+    ]);
   });
 
   it('moves a composer filed as the artist into composer, losing nothing', async () => {

@@ -6,7 +6,14 @@ import { ffmpegBinary } from './ffmpeg-path.js';
 import { withFfmpegSlot } from './ffmpeg-slots.js';
 import { planVorbisKeyFixes, type VorbisKeyPlan, type VorbisKeyPreference } from './vorbis-keys.js';
 import { attachPictureDataToOpus, readOggPicture } from './opus-artwork.js';
-import { readFreeformAtoms, tmpoAtom, writeFreeformAtoms } from './mp4-freeform.js';
+import {
+  intAtom,
+  readFreeformAtoms,
+  readStandardAtoms,
+  textAtom,
+  tmpoAtom,
+  writeFreeformAtoms,
+} from './mp4-freeform.js';
 import { getMusicMetadata as loadMusicMetadata } from './music-metadata-loader.js';
 
 const log = createLogger('audio-tags');
@@ -33,6 +40,15 @@ export interface AudioTags {
    */
   composer?: string;
   conductor?: string;
+  /**
+   * Work, movement name and movement number (#1369) — Vorbis `WORK` /
+   * `MOVEMENTNAME` / `MOVEMENT`, ID3 `TXXX` under the same names (node-id3
+   * cannot write the iTunes `MVNM`/`MVIN` frames; they are still read), MP4
+   * `©wrk` / `©mvn` / `©mvi`. Without them a movement is crammed into the title.
+   */
+  work?: string;
+  movement?: string;
+  movementNumber?: number;
   /** Beats per minute (TBPM / Vorbis `BPM`). Written by on-demand track analysis. */
   bpm?: number;
   /** Musical key (TKEY / Vorbis `KEY`). Written by on-demand/windowed key analysis. */
@@ -105,6 +121,9 @@ type MusicMetadataApi = {
       genre?: string[];
       composer?: string[];
       conductor?: string[];
+      work?: string;
+      movement?: string;
+      movementIndex?: { no?: number | null };
       /** Normalised copyright text/URL (music-metadata folds TCOP/COPYRIGHT/©cpy). */
       copyright?: string;
       acoustid_id?: string;
@@ -213,6 +232,26 @@ function readNativeValue(native: NativeTagMap | undefined, key: string): unknown
     }
   }
   return undefined;
+}
+
+/**
+ * Work and movement from a music-metadata parse (#1369). music-metadata maps
+ * Vorbis `WORK` and the MP4/iTunes atoms, but not Vorbis `MOVEMENTNAME` /
+ * `MOVEMENT` or the ID3 `TXXX` spellings this app writes — so each falls back
+ * to the native map, the same way `keyFromParse` does. Shared by
+ * `readAudioTags` and the scanner so both read one answer.
+ */
+export function workTagsFromParse(
+  common: { work?: string; movement?: string; movementIndex?: { no?: number | null } } | undefined,
+  native: NativeTagMap | undefined,
+): Pick<AudioTags, 'work' | 'movement' | 'movementNumber'> {
+  return {
+    work: pickString(common?.work) ?? pickString(readNativeValue(native, 'WORK')),
+    movement: pickString(common?.movement) ?? pickString(readNativeValue(native, 'MOVEMENTNAME')),
+    movementNumber:
+      (common?.movementIndex?.no ?? undefined) ||
+      parseLeadingNumber(readNativeValue(native, 'MOVEMENT')),
+  };
 }
 
 /**
@@ -433,6 +472,9 @@ export async function readAudioTags(filepath: string): Promise<AudioTags> {
         title: pickString(d.title),
         composer: pickString(d.composer),
         conductor: pickString(d.conductor),
+        work: readUserText(d, 'WORK'),
+        movement: readUserText(d, 'MOVEMENTNAME'),
+        movementNumber: parseLeadingNumber(readUserText(d, 'MOVEMENT')),
         trackNumber: parseLeadingNumber(d.trackNumber),
         discNumber: parseLeadingNumber(d.partOfSet),
         bpm: parseLeadingNumber(d.bpm),
@@ -475,6 +517,7 @@ export async function readAudioTags(filepath: string): Promise<AudioTags> {
         title: pickString(c.title),
         composer: pickJoined(c.composer),
         conductor: pickJoined(c.conductor),
+        ...workTagsFromParse(c, parsed.native),
         trackNumber: c.track?.no ?? undefined,
         // `writeFfmpegTags` emits DISC and BPM here too, so leaving these
         // unmapped made them write-only on flac/m4a for the same reason (#1151).
@@ -535,6 +578,9 @@ const ID3_VERIFIABLE_FIELDS = [
   'album',
   'composer',
   'conductor',
+  'work',
+  'movement',
+  'movementNumber',
   'genre',
   'key',
   'lyrics',
@@ -625,6 +671,11 @@ async function writeId3Tags(filepath: string, tags: AudioTags): Promise<boolean>
   }
   if (tags.mood !== undefined)
     userText.push({ description: FEATURE_TAG_KEYS.mood, value: tags.mood });
+  if (tags.work !== undefined) userText.push({ description: 'WORK', value: tags.work });
+  if (tags.movement !== undefined)
+    userText.push({ description: 'MOVEMENTNAME', value: tags.movement });
+  if (tags.movementNumber !== undefined)
+    userText.push({ description: 'MOVEMENT', value: String(tags.movementNumber) });
   if (tags.acoustIdId) userText.push({ description: TXXX_ACOUSTID, value: tags.acoustIdId });
   if (tags.mbRecordingId)
     userText.push({ description: TXXX_MB_RECORDING, value: tags.mbRecordingId });
@@ -766,6 +817,10 @@ export function ffmpegTagMetadataArgs(tags: AudioTags, ext: string): string[] {
   if (tags.genre !== undefined) metaArgs.push('-metadata', `GENRE=${tags.genre}`);
   if (tags.composer !== undefined) metaArgs.push('-metadata', `COMPOSER=${tags.composer}`);
   if (tags.conductor !== undefined) metaArgs.push('-metadata', `CONDUCTOR=${tags.conductor}`);
+  if (tags.work !== undefined) metaArgs.push('-metadata', `WORK=${tags.work}`);
+  if (tags.movement !== undefined) metaArgs.push('-metadata', `MOVEMENTNAME=${tags.movement}`);
+  if (tags.movementNumber !== undefined)
+    metaArgs.push('-metadata', `MOVEMENT=${tags.movementNumber}`);
   if (tags.bpm !== undefined)
     metaArgs.push('-metadata', `${BPM_METADATA_KEY[ext] ?? 'BPM'}=${tags.bpm}`);
   if (tags.key !== undefined) metaArgs.push('-metadata', `KEY=${tags.key}`);
@@ -787,10 +842,23 @@ export function ffmpegTagMetadataArgs(tags: AudioTags, ext: string): string[] {
  * the ids — as freeform atoms, plus `tmpo`, in place: a byte-level patch of
  * `moov`, not a remux. For a file whose other tags an encode already wrote (#1288).
  */
+/** Standard iTunes atoms the `ipod` muxer drops, patched in place instead (#1369). */
+const MP4_WORK_ATOM_TYPES = ['©wrk', '©mvn', '©mvi'] as const;
+
+/** The standard (non-`----`) atoms `tags` sets that no `-metadata` spelling lands. */
+function mp4StandardAtoms(tags: AudioTags, withTempo: boolean): Buffer[] {
+  const out: Buffer[] = [];
+  // `tmpo` too, after an encode: the cover's remux in between drops it.
+  if (withTempo && tags.bpm !== undefined) out.push(tmpoAtom(tags.bpm));
+  if (tags.work !== undefined) out.push(textAtom('©wrk', tags.work));
+  if (tags.movement !== undefined) out.push(textAtom('©mvn', tags.movement));
+  if (tags.movementNumber !== undefined) out.push(intAtom('©mvi', tags.movementNumber));
+  return out;
+}
+
 export function writeMp4FreeformTags(filepath: string, tags: AudioTags): boolean {
   const values = mp4FreeformValues(tags);
-  // `tmpo` too: the encode wrote it, and the cover's remux in between drops it.
-  const standard = tags.bpm !== undefined ? [tmpoAtom(tags.bpm)] : [];
+  const standard = mp4StandardAtoms(tags, true);
   if (Object.keys(values).length === 0 && standard.length === 0) return true;
   try {
     return writeFreeformAtoms(
@@ -855,12 +923,24 @@ async function remuxFfmpegTags(
   // The remux below drops every `----` atom the file already carries, not just
   // the fields we could not write — so they are read first and put back, with
   // this write's own values layered on top.
-  let mp4Carry: { carried: Buffer[]; values: Record<string, string> } | null = null;
+  let mp4Carry: { carried: Buffer[]; values: Record<string, string>; standard: Buffer[] } | null =
+    null;
   if (ext === '.m4a') {
     try {
+      const buf = readFileSync(filepath);
+      // The remux drops the work/movement atoms as well as `----` ones: the
+      // file's own are carried, and this write's values replace them by type.
+      const written = mp4StandardAtoms(tags, false);
+      const writtenTypes = new Set(written.map((a) => a.toString('latin1', 4, 8)));
       mp4Carry = {
-        carried: readFreeformAtoms(readFileSync(filepath)),
+        carried: readFreeformAtoms(buf),
         values: mp4FreeformValues(tags),
+        standard: [
+          ...readStandardAtoms(buf, MP4_WORK_ATOM_TYPES).filter(
+            (a) => !writtenTypes.has(a.toString('latin1', 4, 8)),
+          ),
+          ...written,
+        ],
       };
     } catch {
       return false;
@@ -923,7 +1003,10 @@ async function remuxFfmpegTags(
             !(await attachPictureDataToOpus(tmpPath, oggPicture.data, oggPicture.mimeType))
           )
             throw new Error('embedded cover not re-attached');
-          if (mp4Carry && !writeFreeformAtoms(tmpPath, mp4Carry.carried, mp4Carry.values))
+          if (
+            mp4Carry &&
+            !writeFreeformAtoms(tmpPath, mp4Carry.carried, mp4Carry.values, mp4Carry.standard)
+          )
             throw new Error('mp4 freeform atoms not written');
           renameSync(tmpPath, filepath);
           resolve(true);

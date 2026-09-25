@@ -69,6 +69,10 @@ export interface Song {
   composer?: string;
   /** Conductor credit (TPE3 / `CONDUCTOR`). */
   conductor?: string;
+  /** Work, movement name and number (#1369). */
+  work?: string;
+  movement?: string;
+  movementNumber?: number;
   coverArt?: string;
   size: number;
   contentType: string;

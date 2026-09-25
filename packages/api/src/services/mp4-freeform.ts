@@ -78,11 +78,36 @@ const DATA_TYPE_BE_INT = 21;
  * remux drops it again, so it is re-landed with the freeform atoms (#1288).
  */
 export function tmpoAtom(bpm: number): Buffer {
+  return intAtom('tmpo', bpm);
+}
+
+/** A standard iTunes integer atom (`tmpo`, `©mvi`): `data` type 21, 16-bit big-endian. */
+export function intAtom(type: string, n: number): Buffer {
   const dataHeader = Buffer.alloc(8);
   dataHeader.writeUInt32BE(DATA_TYPE_BE_INT, 0);
   const value = Buffer.alloc(2);
-  value.writeUInt16BE(Math.max(0, Math.min(0xffff, Math.round(bpm))), 0);
-  return box('tmpo', box('data', dataHeader, value));
+  value.writeUInt16BE(Math.max(0, Math.min(0xffff, Math.round(n))), 0);
+  return box(type, box('data', dataHeader, value));
+}
+
+/** A standard iTunes text atom (`©wrk`, `©mvn`): `data` type 1, UTF-8. */
+export function textAtom(type: string, value: string): Buffer {
+  const dataHeader = Buffer.alloc(8);
+  dataHeader.writeUInt32BE(DATA_TYPE_UTF8, 0);
+  return box(type, box('data', dataHeader, Buffer.from(value, 'utf8')));
+}
+
+/**
+ * The file's own atoms of the given standard types, raw — carried across a
+ * remux that would drop them, like {@link readFreeformAtoms} does for `----`.
+ */
+export function readStandardAtoms(buf: Buffer, types: readonly string[]): Buffer[] {
+  const found = findIlst(buf);
+  if (!found) return [];
+  const items = children(buf, found.ilst.offset + 8, found.ilst.offset + found.ilst.size) ?? [];
+  return items
+    .filter((a) => types.includes(a.type))
+    .map((a) => Buffer.from(buf.subarray(a.offset, a.offset + a.size)));
 }
 
 /** `mean:name` of a raw `----` atom, or `null` if it is not one. */

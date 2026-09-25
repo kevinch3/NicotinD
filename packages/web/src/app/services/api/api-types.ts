@@ -34,6 +34,8 @@ export interface SongMetadataFields {
   album?: string;
   composer?: string;
   conductor?: string;
+  work?: string;
+  movement?: string;
   year?: number;
 }
 
@@ -245,6 +247,10 @@ export interface Song {
   /** Composer credit, `; `-joined when several (#1083). */
   composer?: string;
   conductor?: string;
+  /** Work, movement name and number (#1369). */
+  work?: string;
+  movement?: string;
+  movementNumber?: number;
   year?: number;
   /** ISO timestamp when starred, absent otherwise. */
   starred?: string;

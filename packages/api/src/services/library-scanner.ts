@@ -15,7 +15,7 @@ import { jobCanonicalTracklists } from './acquisition-job-store.js';
 import { isVariousArtists } from './compilation-tagger.js';
 import { inferFolderAlbum, inferMetadataFromPath, hasUsableValue } from './path-inference.js';
 import { getMusicMetadata, trackNoFromParse } from './music-metadata-loader.js';
-import { featureTagsFromNative, keyFromParse } from './audio-tags.js';
+import { featureTagsFromNative, keyFromParse, workTagsFromParse } from './audio-tags.js';
 import { selectAlbumTracks } from './library-track-select.js';
 import {
   isHiddenFile,
@@ -153,6 +153,9 @@ export interface ScannedTrack {
   genre?: string | string[];
   composer?: string;
   conductor?: string;
+  work?: string;
+  movement?: string;
+  movementNumber?: number;
   bpm?: number;
   key?: string;
   energy?: number;
@@ -179,6 +182,9 @@ export interface SongRow {
   genre: string | null;
   composer: string | null;
   conductor: string | null;
+  work: string | null;
+  movement: string | null;
+  movementNumber: number | null;
   bpm: number | null;
   key: string | null;
   energy: number | null;
@@ -298,6 +304,11 @@ export function mostCommonGenre(genres: (string | null | undefined)[]): string |
  * NFC is the target because it is the Unicode-recommended interchange form and
  * already dominates here — 16 of 19,184 song artists were decomposed.
  */
+/** Work tags with their text NFC-normalised, like every tag string entering the library. */
+function nfcWork(w: Pick<ScannedTrack, 'work' | 'movement' | 'movementNumber'>) {
+  return { work: nfc(w.work), movement: nfc(w.movement), movementNumber: w.movementNumber };
+}
+
 /** A credit array (`common.composer`, `common.conductor`) as one `; `-joined string (#1083). */
 function joinCredits(v: string[] | undefined): string | undefined {
   const parts = (v ?? []).map((x) => x.trim()).filter(Boolean);
@@ -683,6 +694,9 @@ export function buildLibrary(
       genre: genres[0] ?? null,
       composer: t.composer ?? null,
       conductor: t.conductor ?? null,
+      work: t.work ?? null,
+      movement: t.movement ?? null,
+      movementNumber: t.movementNumber ?? null,
       bpm: t.bpm ?? null,
       key: t.key ?? null,
       energy: t.energy ?? null,
@@ -1229,6 +1243,7 @@ export class LibraryScanner {
       genre: common?.genre?.length ? common.genre.map((g) => nfc(g) ?? g) : undefined,
       composer: nfc(joinCredits(common?.composer)),
       conductor: nfc(joinCredits(common?.conductor)),
+      ...nfcWork(workTagsFromParse(common, meta?.native)),
       bpm: typeof common?.bpm === 'number' && common.bpm > 0 ? Math.round(common.bpm) : undefined,
       key: keyFromParse(common?.key, meta?.native),
       // Perceptual features live in custom Vorbis/TXXX frames — parse them from
@@ -1264,11 +1279,11 @@ export class LibraryScanner {
       INSERT INTO library_songs (
         id, album_id, title, artist, artist_id, album_artist, album_artist_id,
         track, disc, duration,
-        year, genre, composer, conductor, bpm, key,
+        year, genre, composer, conductor, work, movement, movement_number, bpm, key,
         energy, loudness, danceability, valence, acousticness, instrumental, mood,
         cover_art, path, size, bit_rate, sample_rate, bit_depth, channels, suffix, content_type,
         has_embedded_art, created, synced_at, landed_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         album_id = excluded.album_id,
         title = excluded.title,
@@ -1289,6 +1304,9 @@ export class LibraryScanner {
         -- File-derived and written only through the file tag, so the tag wins.
         composer = excluded.composer,
         conductor = excluded.conductor,
+        work = excluded.work,
+        movement = excluded.movement,
+        movement_number = excluded.movement_number,
         -- Keep an existing (e.g. analyzed) bpm when a rescan reads no tag value.
         bpm = COALESCE(excluded.bpm, library_songs.bpm),
         -- Likewise keep an analyzed key when a rescan reads no tag value.
@@ -1449,6 +1467,9 @@ export class LibraryScanner {
           s.genre,
           s.composer,
           s.conductor,
+          s.work,
+          s.movement,
+          s.movementNumber,
           s.bpm,
           s.key,
           s.energy,
