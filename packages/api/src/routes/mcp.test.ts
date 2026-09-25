@@ -207,6 +207,32 @@ describe('MCP endpoint (issue #232)', () => {
     expect(parsed.songs.map((s) => s.id)).toEqual(['no-genre']);
   });
 
+  it('list_recent_songs filters by a genre anywhere in the set, and returns the full set', async () => {
+    // #1129: the YouTube category "Music" had no way to be listed at all.
+    seedSong('yt', 'YT', undefined, undefined, { landedAt: 300, genre: 'Music' });
+    seedSong('mixed', 'Mixed', undefined, undefined, { landedAt: 200, genre: 'Tango' });
+    seedSong('other', 'Other', undefined, undefined, { landedAt: 100, genre: 'Rock' });
+    const link = testDb.prepare(
+      'INSERT INTO library_song_genres (song_id, genre, position) VALUES (?, ?, ?)',
+    );
+    link.run('yt', 'Music', 0);
+    link.run('mixed', 'Tango', 0);
+    link.run('mixed', 'Music', 1);
+    link.run('other', 'Rock', 0);
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a' });
+    const body = (await (
+      await rpc(token, 'tools/call', { name: 'list_recent_songs', arguments: { genre: 'music' } })
+    ).json()) as { result: { content: Array<{ text: string }> } };
+    const parsed = JSON.parse(body.result.content[0]!.text) as {
+      songs: Array<{ id: string; genres: string[] }>;
+    };
+    expect(parsed.songs.map((s) => [s.id, s.genres])).toEqual([
+      ['yt', ['Music']],
+      // A non-primary match still lists, with its whole set, so a replace can keep "Tango".
+      ['mixed', ['Tango', 'Music']],
+    ]);
+  });
+
   it('list_recent_songs pages with limit + offset, no overlap or gap', async () => {
     seedSong('s1', 'S1', undefined, undefined, { landedAt: 400 });
     seedSong('s2', 'S2', undefined, undefined, { landedAt: 300 });
