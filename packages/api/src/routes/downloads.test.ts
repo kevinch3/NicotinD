@@ -232,6 +232,141 @@ describe('downloads routes', () => {
     const jobs = (await res.json()) as Array<{ id: string; albumId: string | null }>;
     expect(jobs.find((j) => j.id === id)!.albumId).toBe(albumId);
   });
+
+  // #1294: the web keys its "get, then hear it" intent on this id.
+  it('POST / answers with the id of the job it recorded', async () => {
+    const res = await app.request('/', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        username: 'peerX',
+        files: [{ filename: '@@x\\Music\\A\\B\\01 T.flac', size: 1 }],
+      }),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { ok: boolean; queued: number; jobId: string | null };
+    const row = testDb.query(`SELECT id FROM acquisition_jobs`).get() as { id: string };
+    expect(body).toEqual({ ok: true, queued: 1, jobId: row.id });
+  });
+});
+
+describe('GET /jobs/:id/songs (#1294)', () => {
+  let app: Hono<AuthEnv>;
+
+  function landSong(opts: {
+    id: string;
+    albumId: string;
+    album: string;
+    title: string;
+    track?: number;
+    disc?: number;
+    hidden?: number;
+  }): void {
+    testDb.run(
+      `INSERT OR IGNORE INTO library_albums (id, name, artist, artist_id, song_count, duration, synced_at)
+       VALUES (?, ?, 'Artist', 'art', 1, 0, 1)`,
+      [opts.albumId, opts.album],
+    );
+    testDb.run(
+      `INSERT INTO library_songs (id, album_id, artist_id, path, artist, title, track, disc, hidden, synced_at)
+       VALUES (?, ?, 'art', ?, 'Artist', ?, ?, ?, ?, 1)`,
+      [
+        opts.id,
+        opts.albumId,
+        `p/${opts.id}.opus`,
+        opts.title,
+        opts.track ?? null,
+        opts.disc ?? null,
+        opts.hidden ?? 0,
+      ],
+    );
+  }
+
+  function jobWith(files: string[]): string {
+    return createJob(testDb, {
+      kind: 'direct',
+      method: 'slskd',
+      username: 'peer',
+      files: files.map((filename) => ({ filename })),
+    });
+  }
+
+  function scan(jobId: string, filename: string, songId: string): void {
+    testDb.run(
+      `UPDATE acquisition_job_items SET state = 'scanned', song_id = ?
+        WHERE job_id = ? AND filename = ?`,
+      [songId, jobId, filename],
+    );
+  }
+
+  beforeEach(() => {
+    testDb.run('DELETE FROM acquisition_job_items');
+    testDb.run('DELETE FROM acquisition_jobs');
+    testDb.run('DELETE FROM library_songs');
+    testDb.run('DELETE FROM library_albums');
+    app = new Hono<AuthEnv>();
+    app.use('*', (c, next) => {
+      c.set('user', { sub: 'u', role: 'user', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    app.route('/', downloadRoutes(new ProviderRegistry()));
+  });
+
+  it('returns the songs this job landed, in album order', async () => {
+    const id = jobWith(['c.flac', 'a.flac', 'b.flac']);
+    landSong({ id: 's3', albumId: 'al1', album: 'Album', title: 'Three', track: 1, disc: 2 });
+    landSong({ id: 's1', albumId: 'al1', album: 'Album', title: 'One', track: 1 });
+    landSong({ id: 's2', albumId: 'al1', album: 'Album', title: 'Two', track: 2 });
+    scan(id, 'c.flac', 's3');
+    scan(id, 'a.flac', 's1');
+    scan(id, 'b.flac', 's2');
+
+    const res = await app.request(`/jobs/${id}/songs`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      jobId: string;
+      state: string;
+      songs: Array<{ id: string; albumId: string }>;
+    };
+    expect(body.jobId).toBe(id);
+    expect(body.songs.map((s) => s.id)).toEqual(['s1', 's2', 's3']);
+    expect(body.songs[0]!.albumId).toBe('al1');
+  });
+
+  // Two jobs filling one album must not hand each other their tracks.
+  it("never returns another job's songs from the same album", async () => {
+    const mine = jobWith(['mine.flac']);
+    const theirs = jobWith(['theirs.flac']);
+    landSong({ id: 'm', albumId: 'al1', album: 'Album', title: 'Mine', track: 2 });
+    landSong({ id: 't', albumId: 'al1', album: 'Album', title: 'Theirs', track: 1 });
+    scan(mine, 'mine.flac', 'm');
+    scan(theirs, 'theirs.flac', 't');
+
+    const body = (await (await app.request(`/jobs/${mine}/songs`)).json()) as {
+      songs: Array<{ id: string }>;
+    };
+    expect(body.songs.map((s) => s.id)).toEqual(['m']);
+  });
+
+  it('is empty while nothing has landed, and skips a hidden song', async () => {
+    const id = jobWith(['a.flac', 'b.flac']);
+    const before = (await (await app.request(`/jobs/${id}/songs`)).json()) as {
+      state: string;
+      songs: unknown[];
+    };
+    expect(before).toMatchObject({ state: 'active', songs: [] });
+
+    landSong({ id: 'h', albumId: 'al1', album: 'Album', title: 'Hidden', hidden: 1 });
+    scan(id, 'a.flac', 'h');
+    const after = (await (await app.request(`/jobs/${id}/songs`)).json()) as { songs: unknown[] };
+    expect(after.songs).toEqual([]);
+  });
+
+  it('404s an unknown job', async () => {
+    const res = await app.request('/jobs/nope/songs');
+    expect(res.status).toBe(404);
+    expect(((await res.json()) as { code: string }).code).toBe('JOB_NOT_FOUND');
+  });
 });
 
 describe('addon job actions (acquisition addon protocol phase 2)', () => {

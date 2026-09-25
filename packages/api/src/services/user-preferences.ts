@@ -25,6 +25,7 @@ interface Row {
   language: string | null;
   radio_strategy: string | null;
   welcome_dismissed: number | null;
+  queue_acquired: number | null;
 }
 
 function known<T extends string>(value: string | null, allowed: readonly T[]): T | null {
@@ -34,7 +35,8 @@ function known<T extends string>(value: string | null, allowed: readonly T[]): T
 export function getUserPreferences(db: Database, userId: string): UserPreferences {
   const row = db
     .query<Row, [string]>(
-      `SELECT home_view, theme, follow_system_theme, language, radio_strategy, welcome_dismissed
+      `SELECT home_view, theme, follow_system_theme, language, radio_strategy, welcome_dismissed,
+              queue_acquired
        FROM user_settings WHERE user_id = ?`,
     )
     .get(userId);
@@ -48,6 +50,10 @@ export function getUserPreferences(db: Database, userId: string): UserPreference
     language: known(row?.language ?? null, PREFERENCE_LANGS),
     radioStrategy: known(row?.radio_strategy ?? null, STRATEGY_IDS),
     welcomeDismissed: (row?.welcome_dismissed ?? 0) === 1,
+    queueAcquired:
+      row?.queue_acquired === null || row?.queue_acquired === undefined
+        ? null
+        : row.queue_acquired === 1,
   };
 }
 
@@ -58,6 +64,7 @@ const COLUMN_FOR: Record<keyof UserPreferencesPatch, string> = {
   language: 'language',
   radioStrategy: 'radio_strategy',
   welcomeDismissed: 'welcome_dismissed',
+  queueAcquired: 'queue_acquired',
 };
 
 /** Merge `patch` into the caller's row (created on first write) and return the result. */

@@ -19,6 +19,7 @@ export const UserPreferencesSchema = z
     language: z.enum(PREFERENCE_LANGS).nullable(),
     radioStrategy: z.enum(STRATEGY_IDS).nullable(),
     welcomeDismissed: z.boolean(),
+    queueAcquired: z.boolean().nullable(),
   })
   .strict() satisfies z.ZodType<UserPreferences>;
 
@@ -30,6 +31,7 @@ export const UserPreferencesPatchSchema = z
     language: z.enum(PREFERENCE_LANGS),
     radioStrategy: z.enum(STRATEGY_IDS),
     welcomeDismissed: z.boolean(),
+    queueAcquired: z.boolean(),
   })
   .partial()
   .strict()

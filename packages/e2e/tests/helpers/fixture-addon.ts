@@ -206,13 +206,15 @@ export async function startFixtureAddon(opts: FixtureAddonOptions = {}): Promise
       return readBody(() =>
         json(200, {
           results: [
+            // Derived from the payload, so a search result's Get delivers the
+            // very file it advertised (the default payload keeps the old values).
             {
               kind: 'song',
-              title: 'Addon Song.flac',
+              title: payload.filename.split('\\').at(-1),
               username: 'fixture-peer',
-              directory: 'Music/Addon Album',
-              filename: 'Music\\Addon Album\\Addon Song.flac',
-              size: 12604,
+              directory: payload.filename.split('\\').slice(0, -1).join('/'),
+              filename: payload.filename,
+              size: payloadSize,
               bitRateKbps: 900,
               freeUploadSlots: 1,
               queueLength: 0,

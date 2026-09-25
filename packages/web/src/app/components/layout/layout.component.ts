@@ -17,6 +17,7 @@ import { PlayerService } from '../../services/player.service';
 import { LikeService } from '../../services/like.service';
 import { RecommendationExclusionsService } from '../../services/recommendation-exclusions.service';
 import { LibraryEventsService } from '../../services/library-events.service';
+import { GetThenHearService } from '../../services/get-then-hear.service';
 import { mainBottomPadClass } from '../../lib/player-chrome';
 import { SetupService } from '../../services/setup.service';
 import { TransferService } from '../../services/transfer.service';
@@ -129,6 +130,7 @@ export class LayoutComponent implements OnInit, OnDestroy {
   private likes = inject(LikeService);
   private readonly exclusions = inject(RecommendationExclusionsService);
   private readonly libraryEvents = inject(LibraryEventsService);
+  private readonly getThenHear = inject(GetThenHearService);
 
   private desktopChrome = inject(DesktopChromeService);
   private readonly p2r = inject(PullToRefreshService);
@@ -288,6 +290,8 @@ export class LayoutComponent implements OnInit, OnDestroy {
     // stream per visible tab; the pollers below slow down while it is up.
     this.libraryEvents.start();
     this.transfers.startPolling();
+    // A track got from search joins the queue when it lands (#1294).
+    this.getThenHear.start();
     // Tell the desktop-chrome overlay the shell header (which doubles as
     // the frameless window's drag/controls bar) is now on screen.
     this.desktopChrome.shellHeaderActive.set(true);

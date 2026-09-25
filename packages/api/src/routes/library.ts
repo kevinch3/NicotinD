@@ -434,7 +434,7 @@ interface AlbumRow {
   manual_override: number;
 }
 
-interface SongRow {
+export interface SongRow {
   id: string;
   album_id: string;
   album_name: string;
@@ -488,7 +488,7 @@ const ALBUM_SELECT = `
   FROM library_albums
 `;
 
-const SONG_SELECT = `
+export const SONG_SELECT = `
   SELECT s.id, s.album_id, a.name AS album_name, a.cover_art AS album_cover_art,
          s.title, s.artist, s.artist_id, s.album_artist, s.album_artist_id,
          s.track, s.disc, s.duration, s.year, s.genre, s.composer, s.conductor,
@@ -524,7 +524,7 @@ function rowToAlbum(r: AlbumRow): Album & { classification: string; hidden: bool
   };
 }
 
-function rowToSong(r: SongRow): Song {
+export function rowToSong(r: SongRow): Song {
   return {
     id: r.id,
     title: r.title,

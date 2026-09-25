@@ -1,6 +1,7 @@
 /**
  * UserPreferencesService — the one door for what follows a person across
- * devices (issue #1299): home view, theme, language, radio variety, welcome.
+ * devices (issue #1299): home view, theme, language, radio variety, welcome,
+ * and whether a track got from search joins the queue when it lands (#1294).
  *
  * Two stores, one precedence rule:
  * - a **per-device mirror** in localStorage, read synchronously at construction
@@ -26,6 +27,7 @@ import { HttpClient } from '@angular/common/http';
 import {
   EMPTY_USER_PREFERENCES,
   parseUserPreferences,
+  queueAcquiredOn,
   type UserPreferences,
   type UserPreferencesPatch,
 } from '@nicotind/core';
@@ -83,6 +85,8 @@ export class UserPreferencesService {
   readonly language = computed(() => this.state().language);
   readonly radioStrategy = computed(() => this.state().radioStrategy);
   readonly welcomeDismissed = computed(() => this.state().welcomeDismissed);
+  /** Get, then hear it (#1294): an opt-out, so never chosen reads as on. */
+  readonly queueAcquired = computed(() => queueAcquiredOn(this.state()));
 
   /** The server's word, on `/me`: replaces the state and the mirror. */
   hydrate(server: UserPreferences): void {

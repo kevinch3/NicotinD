@@ -164,6 +164,26 @@
           </div>
         </div>
 
+        <!-- Get, then hear it (#1294): acquirers only — nobody else can press Get -->
+        @if (auth.canAcquire()) {
+          <div class="mt-6 pt-6 border-t border-theme">
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-theme-muted mb-3">{{ 'settings.getThenHearTitle' | t }}</h3>
+            <div class="flex items-start gap-3">
+              <button role="switch" [attr.aria-checked]="prefs.queueAcquired()"
+                appTvNavItem
+                data-testid="queue-acquired-toggle"
+                (click)="toggleQueueAcquired()"
+                [class]="'relative mt-0.5 w-9 h-5 rounded-full transition-colors flex-shrink-0 ' + (prefs.queueAcquired() ? 'bg-[var(--theme-accent)]' : 'bg-theme-hover')">
+                <span [class]="'absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ' + (prefs.queueAcquired() ? 'translate-x-4' : 'translate-x-0')"></span>
+              </button>
+              <div>
+                <p class="text-sm text-theme-primary">{{ 'settings.queueAcquired' | t }}</p>
+                <p class="text-xs text-theme-muted mt-0.5">{{ 'settings.queueAcquiredHint' | t }}</p>
+              </div>
+            </div>
+          </div>
+        }
+
         <!-- Offline storage -->
         <div class="mt-6 pt-6 border-t border-theme">
           <h3 class="text-xs font-semibold uppercase tracking-wider text-theme-muted mb-3">{{ 'settings.offlineStorage' | t }}</h3>

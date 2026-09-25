@@ -16,6 +16,7 @@ import type { AcquireJob } from '../../services/acquire.service';
 import { PluginService, type PluginInfo } from '../../services/plugin.service';
 import { AutoHuntService } from '../../services/auto-hunt.service';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
+import { GetThenHearService } from '../../services/get-then-hear.service';
 
 let registeredHandler: (() => Promise<void> | void) | null = null;
 
@@ -932,5 +933,58 @@ describe('SearchComponent — pull-to-refresh', () => {
     await registeredHandler!();
 
     expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+// #1294: every Get from search leaves an intent behind, keyed on the job it made.
+describe('SearchComponent — get, then hear it', () => {
+  function withJobIds() {
+    const ctx = setup();
+    const downloads = TestBed.inject(DownloadsApiService) as unknown as {
+      enqueueDownload: (u: string, files: unknown[]) => unknown;
+    };
+    downloads.enqueueDownload = vi.fn(() => of({ ok: true, queued: 1, jobId: 'core-job' }));
+    const remember = vi.spyOn(TestBed.inject(GetThenHearService), 'remember');
+    return { ...ctx, remember };
+  }
+
+  it('a single peer file is remembered to play next', async () => {
+    const { component, remember } = withJobIds();
+    await component.handleDownload('peer', { filename: 'Music\\A\\01 Song.flac', size: 10 });
+    expect(remember).toHaveBeenCalledWith('core-job', 'next');
+  });
+
+  it('a folder is remembered to join the end of the queue', async () => {
+    const { component, remember } = withJobIds();
+    await component.downloadFolder({
+      username: 'peer',
+      directory: 'Music\\A',
+      files: [
+        { filename: 'Music\\A\\01.flac', size: 10 },
+        { filename: 'Music\\A\\02.flac', size: 10 },
+      ],
+    } as never);
+    expect(remember).toHaveBeenCalledWith('core-job', 'later');
+  });
+
+  it('a link is remembered with no mode: its size is known only once it lands', async () => {
+    const { component, remember, plugins } = withJobIds();
+    enableArchive(plugins);
+    await component.getBlended({
+      id: 'archive:x',
+      source: 'archive',
+      acquire: { via: 'url', url: 'https://archive.org/details/x' },
+    } as never);
+    expect(remember).toHaveBeenCalledWith('job1');
+  });
+
+  it('a failed enqueue remembers nothing', async () => {
+    const { component, remember } = withJobIds();
+    const downloads = TestBed.inject(DownloadsApiService) as unknown as {
+      enqueueDownload: unknown;
+    };
+    downloads.enqueueDownload = vi.fn(() => throwError(() => new Error('offline')));
+    await component.handleDownload('peer', { filename: 'x.flac', size: 10 });
+    expect(remember).not.toHaveBeenCalled();
   });
 });

@@ -205,6 +205,15 @@ same PR that hit it.
   `library-live.spec.ts` copies `fixtures/plant/live-probe.flac` (committed, since CI
   has no ffmpeg to retag at runtime).
 
+- **A search result's Get button reads the shared feed, keyed by `username:filename`.** The
+  result card's state comes from `TransferService.getStatus(username, filename)` over the unified
+  job feed, which still holds every earlier spec's jobs. A fixture addon whose search advertises a
+  wire path another spec already downloaded renders its row **"Added"** before anything is pressed,
+  and the Get button a spec waits for never exists (`get-then-hear.spec.ts` against
+  `addon-hunt-download.spec.ts`'s rickroll path). The fixture addon's `/search` now advertises its
+  payload's own `filename`, so a spec that drives a search Get gives its payload a wire path no other
+  spec uses.
+
 - **A barrier on a shared endpoint must say *whose* response it is waiting for.**
   `waitForResponse` resolves on the first URL match, so when a page-level loader and
   a modal fetch the same route, the naive barrier armed just before the click is

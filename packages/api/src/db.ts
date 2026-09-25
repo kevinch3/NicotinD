@@ -234,6 +234,9 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   addColumnIfMissing(db, 'user_settings', 'home_view', 'TEXT');
   addColumnIfMissing(db, 'user_settings', 'follow_system_theme', 'INTEGER');
   addColumnIfMissing(db, 'user_settings', 'language', 'TEXT');
+  // Opt-out for "a track got from search joins the queue when it lands" (#1294):
+  // NULL = never chosen, which reads as on.
+  addColumnIfMissing(db, 'user_settings', 'queue_acquired', 'INTEGER');
 
   // Add autoplay_on_load column to existing user_settings table (opt-in
   // resume-on-page-load; default off — see PlayerService.maybeResumeAutoplay).

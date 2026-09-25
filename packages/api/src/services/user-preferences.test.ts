@@ -27,6 +27,7 @@ describe('getUserPreferences', () => {
       language: null,
       radioStrategy: null,
       welcomeDismissed: false,
+      queueAcquired: null,
     });
   });
 
@@ -78,6 +79,14 @@ describe('patchUserPreferences', () => {
       )
       .get('u1');
     expect(row).toEqual({ welcome_dismissed: 1, radio_strategy: 'different' });
+  });
+
+  // #1294: an opt-out, so the column is NULL until the listener chooses.
+  it('round-trips the get-then-hear opt-out, reading an unchosen row as null', () => {
+    patchUserPreferences(db, 'u1', { theme: 'oled' });
+    expect(getUserPreferences(db, 'u1').queueAcquired).toBeNull();
+    expect(patchUserPreferences(db, 'u1', { queueAcquired: false }).queueAcquired).toBe(false);
+    expect(patchUserPreferences(db, 'u1', { queueAcquired: true }).queueAcquired).toBe(true);
   });
 
   it('does not touch the privacy consent column', () => {
