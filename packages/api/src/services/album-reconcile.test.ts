@@ -184,6 +184,14 @@ describe('readFolderTracks', () => {
   it('returns [] for a missing directory', async () => {
     expect(await readFolderTracks(join(tmp, 'nonexistent'))).toEqual([]);
   });
+
+  // #747: an untagged file's organizer name carries its disc, and this pass
+  // deletes — two discs' "Intro" must not key on the same (disc, title).
+  it('takes disc and title from a `D-NN - Title` name when the tag has none', async () => {
+    writeFileSync(join(tmp, '2-01 - Intro.flac'), '');
+    const track = (await readFolderTracks(tmp)).find((r) => r.name === '2-01 - Intro.flac');
+    expect(track).toMatchObject({ title: 'Intro', disc: 2 });
+  });
 });
 
 // A disc field the reader never populates is the shape of issue #747, so this

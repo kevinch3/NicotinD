@@ -50,7 +50,7 @@ import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
 import { initDatabase } from '../db.js';
 import { readAudioTags, writeAudioTags } from '../services/audio-tags.js';
-import { sanitizeSegment } from '../services/path-sanitize.js';
+import { leadingTrackKey, sanitizeSegment } from '../services/path-sanitize.js';
 import { normalizeTagValue } from '../services/audio-tags.js';
 import { MusicBrainzClient } from '../services/musicbrainz-client.js';
 import { AUDIO_EXTENSIONS, expandHome } from '@nicotind/core';
@@ -376,8 +376,6 @@ function phaseA1b_removeDupsByTrackNumber(musicDir: string): void {
   log('\nPhase A1b: Removing format/case duplicates per track number...');
   let removed = 0;
 
-  const TRACK_NUM_RE = /^(\d+)/;
-
   for (const artistName of artistDirs(musicDir)) {
     const artistDir = join(musicDir, artistName);
     if (!isDir(artistDir)) continue;
@@ -393,9 +391,10 @@ function phaseA1b_removeDupsByTrackNumber(musicDir: string): void {
       // Group by track number prefix
       const byTrack = new Map<string, string[]>();
       for (const f of files) {
-        const m = TRACK_NUM_RE.exec(f);
-        if (!m) continue;
-        const num = m[1];
+        // `leadingTrackKey`, not `^\d+` (#747): that read `1-01`/`1-02` as one
+        // track "1" and deleted every MP3 on the disc beside any FLAC.
+        const num = leadingTrackKey(f);
+        if (!num) continue;
         if (!byTrack.has(num)) byTrack.set(num, []);
         byTrack.get(num)!.push(f);
       }

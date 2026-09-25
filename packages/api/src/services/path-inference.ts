@@ -21,7 +21,11 @@ export interface ParsedMetadata {
   artist?: string;
   album?: string;
   trackNumber?: string;
+  /** From a `D-NN - Title` stem — the organizer's multi-disc filename (#747). */
+  discNumber?: string;
 }
+
+const DISC_TRACK = /^(\d{1,2})-(\d{1,3})$/;
 
 function splitPathSegments(input: string): string[] {
   return input.split(/[\\/]+/).filter(Boolean);
@@ -97,6 +101,13 @@ export function inferMetadataFromPath(filename: string, directory: string): Pars
     parsed.album = parts[1];
     parsed.trackNumber = String(Number(parts[2]));
     parsed.title = parts.slice(3).join(' - ');
+  } else if (parts.length >= 2 && DISC_TRACK.test(parts[0] ?? '')) {
+    // `1-01 - Title` / `1-01 - Artist - Title`: disc-track, never an artist "01".
+    const [, disc, track] = parts[0]!.match(DISC_TRACK)!;
+    parsed.discNumber = String(Number(disc));
+    parsed.trackNumber = String(Number(track));
+    if (parts.length >= 3) parsed.artist = parts[1];
+    parsed.title = parts.slice(parts.length >= 3 ? 2 : 1).join(' - ');
   } else if (parts.length >= 3 && /^\d{1,2}$/.test(parts[0] ?? '')) {
     parsed.trackNumber = String(Number(parts[0]));
     parsed.artist = parts[1];

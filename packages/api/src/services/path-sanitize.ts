@@ -1,6 +1,7 @@
 /**
  * Filesystem-safe path-segment sanitization for music library organization.
- * Library destination layout is `<musicDir>/<Artist>/<Album>/<NN - Title>.<ext>`.
+ * Library destination layout is `<musicDir>/<Artist>/<Album>/<NN - Title>.<ext>`,
+ * or `<D-NN - Title>.<ext>` for a track of a multi-disc release (issue #747).
  */
 
 const ILLEGAL = /[<>:"|?*\x00-\x1f\\/]/g;
@@ -21,9 +22,62 @@ export function isPhantomMatch(parentBasename: string, childBasename: string): b
   return parentBasename === childBasename;
 }
 
-export function trackNumberPrefix(n: number | undefined): string {
-  if (n === undefined || !Number.isFinite(n) || n <= 0) return '';
-  return `${String(Math.floor(n)).padStart(2, '0')} - `;
+const positive = (n: number | undefined): n is number =>
+  n !== undefined && Number.isFinite(n) && n > 0;
+
+/**
+ * `NN - `, or `D-NN - ` when `disc` is given. The caller passes a disc only for
+ * a multi-disc release ({@link isMultiDiscRelease}), so a single-disc album keeps
+ * the plain prefix and none of its song ids (path-derived) re-mint.
+ */
+export function trackNumberPrefix(n: number | undefined, disc?: number): string {
+  if (!positive(n)) return '';
+  const track = String(Math.floor(n)).padStart(2, '0');
+  return positive(disc) ? `${Math.floor(disc)}-${track} - ` : `${track} - `;
+}
+
+/**
+ * Whether a release spans more than one disc, judged conservatively from tags:
+ * some track sits on a disc above 1, or some track's disc total is above 1.
+ * `1/1`, a bare `1` and no disc tag at all are all single-disc.
+ */
+export function isMultiDiscRelease(
+  tracks: ReadonlyArray<{ discNumber?: number; discTotal?: number }>,
+): boolean {
+  return tracks.some(
+    (t) =>
+      (positive(t.discNumber) && t.discNumber > 1) || (positive(t.discTotal) && t.discTotal > 1),
+  );
+}
+
+const ORGANIZER_PREFIX = /^\s*(?:(\d{1,2})-)?(\d{1,3})\s+-\s+(\S.*)$/;
+
+/**
+ * Parse the organizer's own filename stem (`NN - Title` / `D-NN - Title`) back
+ * into its parts. Returns null for any other shape. Disc 1 and no disc are
+ * reported as-is; callers that key identity treat them as the same disc.
+ */
+export function parseOrganizerStem(
+  stem: string,
+): { disc?: number; track: number; title: string } | null {
+  const m = stem.match(ORGANIZER_PREFIX);
+  if (!m) return null;
+  const out: { disc?: number; track: number; title: string } = {
+    track: Number(m[2]),
+    title: m[3]!.trim(),
+  };
+  if (m[1] !== undefined) out.disc = Number(m[1]);
+  return out;
+}
+
+/**
+ * The leading track number a filename groups by — `D-NN` for the organizer's
+ * multi-disc shape (so two discs' track 01 stay apart), else the leading digits.
+ * Null when the name has no leading number.
+ */
+export function leadingTrackKey(filename: string): string | null {
+  const m = filename.match(/^(\d{1,2}-\d{1,3}(?=\s+-\s)|\d+)/);
+  return m ? m[1]! : null;
 }
 
 const AUDIO_EXT_SUFFIX = /\.(mp3|flac|ogg|opus|m4a|wav|aac|aiff|alac)$/i;

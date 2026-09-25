@@ -48,7 +48,9 @@ export interface MBReleaseGroupHit {
 
 /** One track of a release's canonical tracklist (issue #413). */
 export interface MBCanonicalTrack {
-  /** 1-based position on the medium, as MusicBrainz numbers it. */
+  /** 1-based medium (disc) position, as MusicBrainz numbers it (issue #747). */
+  disc: number;
+  /** 1-based position on its medium — restarts at 1 on every disc. */
   position: number;
   title: string;
   /** Track length in seconds, when MB knows it. */
@@ -340,14 +342,18 @@ export class MusicBrainzClient {
    * digital editions alongside the real album and a short one would truncate
    * the tracklist a curator is about to apply. Ties keep MB's own ordering.
    *
-   * Only the first medium is returned — a curator applying titles to a
-   * quarantined folder is matching one disc's worth of files, and flattening
-   * multi-disc positions would renumber them wrongly.
+   * Every medium is returned, in disc order, each track carrying its `disc`
+   * and its per-disc `position` (#747). Returning only `media[0]` truncated a
+   * release that was picked *because* its media-summed track count was largest.
+   * Positions are never renumbered across discs — `(disc, position)` is the key.
    */
   async getCanonicalTracklist(releaseGroupId: string): Promise<MBCanonicalTrack[]> {
     const key = `tracklist:${releaseGroupId}`;
     const cached = this.getCached(key);
-    if (cached?.type === 'tracklist') return cached.result;
+    // An entry cached before #747 is disc 1 only and has no `disc`: re-fetch it.
+    if (cached?.type === 'tracklist' && cached.result.every((t) => t.disc !== undefined)) {
+      return cached.result;
+    }
 
     const listUrl =
       `${MB_BASE}/release?release-group=${encodeURIComponent(releaseGroupId)}` +
@@ -379,6 +385,7 @@ export class MusicBrainzClient {
     const detail = this.unwrap(
       await this.fetch<{
         media?: Array<{
+          position?: number;
           tracks?: Array<{ position?: number; number?: string; title?: string; length?: number }>;
         }>;
       }>(`${MB_BASE}/release/${encodeURIComponent(best.id)}?inc=recordings&fmt=json`),
@@ -386,14 +393,17 @@ export class MusicBrainzClient {
     // Transient: do not cache, so the next call retries.
     if (detail === undefined) return [];
 
-    const tracks: MBCanonicalTrack[] = (detail?.media?.[0]?.tracks ?? [])
-      .filter((t) => Boolean(t.title))
-      .map((t, i) => ({
-        position: t.position ?? (Number(t.number) || i + 1),
-        title: t.title!,
-        // MB reports length in milliseconds; seconds is what the library stores.
-        durationSec: typeof t.length === 'number' ? Math.round(t.length / 1000) : undefined,
-      }));
+    const tracks: MBCanonicalTrack[] = (detail?.media ?? []).flatMap((m, mi) =>
+      (m.tracks ?? [])
+        .filter((t) => Boolean(t.title))
+        .map((t, i) => ({
+          disc: m.position ?? mi + 1,
+          position: t.position ?? (Number(t.number) || i + 1),
+          title: t.title!,
+          // MB reports length in milliseconds; seconds is what the library stores.
+          durationSec: typeof t.length === 'number' ? Math.round(t.length / 1000) : undefined,
+        })),
+    );
 
     this.setCached(key, { type: 'tracklist', result: tracks });
     return tracks;

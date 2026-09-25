@@ -30,6 +30,8 @@ import {
 import {
   sanitizeSegment,
   trackNumberPrefix,
+  isMultiDiscRelease,
+  parseOrganizerStem,
   stripAudioExt,
   stripTrackPrefix,
   isTrackNumberFragment,
@@ -605,8 +607,14 @@ export class LibraryOrganizer {
     // Existing title that's just a filename leak ("01-Demasiado", "05. LA SED VERDADERA").
     // Strict pattern (requires .)\-_ separator) avoids stripping legit titles like "99 Red Balloons".
     if (title) {
-      const m = title.match(/^\s*(\d{1,3})\s*[.)\-_]\s*(\S.*)$/);
-      if (m) {
+      // Our own `D-NN - Title` shape first, so its disc is not read as a track.
+      const own = parseOrganizerStem(title);
+      const m = own ? null : title.match(/^\s*(\d{1,3})\s*[.)\-_]\s*(\S.*)$/);
+      if (own) {
+        if (tags.trackNumber === undefined) tags.trackNumber = own.track;
+        if (tags.discNumber === undefined && own.disc !== undefined) tags.discNumber = own.disc;
+        title = own.title;
+      } else if (m) {
         if (tags.trackNumber === undefined) tags.trackNumber = Number(m[1]);
         title = m[2].trim();
       }
@@ -626,6 +634,9 @@ export class LibraryOrganizer {
       album = album ?? normalizeTagValue(inferred.album);
       if (inferred.trackNumber && tags.trackNumber === undefined) {
         tags.trackNumber = Number(inferred.trackNumber);
+      }
+      if (inferred.discNumber && tags.discNumber === undefined) {
+        tags.discNumber = Number(inferred.discNumber);
       }
     }
 
@@ -696,8 +707,17 @@ export class LibraryOrganizer {
     return { ...tags, artist, title, album };
   }
 
-  /** Derives album-level tags for the group (compilation vs single-artist). */
+  /**
+   * Derives album-level tags for the group (compilation vs single-artist), plus
+   * whether the group is a multi-disc release — decided over the whole group so
+   * disc 1 of a set whose files carry no disc total still files as `1-NN`.
+   */
   private deriveFolderTags(files: ResolvedFile[]): AlbumTags {
+    const tags = this.deriveAlbumIdentity(files);
+    return isMultiDiscRelease(files.map((f) => f.tags)) ? { ...tags, multiDisc: true } : tags;
+  }
+
+  private deriveAlbumIdentity(files: ResolvedFile[]): AlbumTags {
     if (files.length === 1) {
       const t = files[0]!.tags;
       const albumArtist = normalizeTagValue(t.albumArtist) ?? normalizeTagValue(t.artist);
@@ -788,8 +808,12 @@ export class LibraryOrganizer {
       kind = 'unsorted';
     }
 
+    // A disc dimension only inside a multi-disc album folder (#747): two discs'
+    // track 01 then no longer collide into a ` (2)` suffix, and a single-disc
+    // album keeps `NN - Title` exactly, so no existing song id re-mints.
+    const disc = kind === 'album' && folderTags.multiDisc ? tags.discNumber : undefined;
     const trackName =
-      `${trackNumberPrefix(tags.trackNumber)}${trackTitle || basename(file.srcPath)}${ext}`.replace(
+      `${trackNumberPrefix(tags.trackNumber, disc)}${trackTitle || basename(file.srcPath)}${ext}`.replace(
         /(\.[^.]+)\1$/,
         '$1',
       );
@@ -797,7 +821,11 @@ export class LibraryOrganizer {
     // Format-preference dedup: drop an incoming MP3 when the same track already
     // exists as FLAC in the destination album folder, so we don't accumulate the
     // mixed-format duplicate albums the usage analysis flagged.
-    if (this.preferFlacSkipMp3 && ext === '.mp3' && flacTwinExists(destDir, trackTitle || title)) {
+    if (
+      this.preferFlacSkipMp3 &&
+      ext === '.mp3' &&
+      flacTwinExists(destDir, trackTitle || title, disc)
+    ) {
       return {
         outcome: 'skipped',
         skipReason: 'flac-twin',
@@ -1110,6 +1138,8 @@ interface AlbumTags {
   albumArtist?: string;
   compilation: boolean;
   year?: number;
+  /** Some file in the group is on disc > 1 or tagged with a disc total > 1. */
+  multiDisc?: boolean;
 }
 
 function classificationToAlbumTags(c: Classification, files: ResolvedFile[]): AlbumTags {
@@ -1179,16 +1209,21 @@ function stripAccents(s: string): string {
  * True if an existing FLAC in `destDir` has the same (normalized) track title as
  * the incoming file — used to skip a redundant MP3 download. Compares with the
  * shared diacritic-folding normalizer so "01 - Canción.flac" matches "cancion".
+ * Disc-aware (#747): `2-05 - Intro.flac` is not a twin of disc 1's `Intro`;
+ * no disc and disc 1 are the same disc, as in `selectAlbumTracks`.
  */
-function flacTwinExists(destDir: string, trackTitle: string | undefined): boolean {
+function flacTwinExists(destDir: string, trackTitle: string | undefined, disc?: number): boolean {
   if (!trackTitle || !existsSync(destDir)) return false;
   const target = normalizeTitle(trackTitle);
   if (!target) return false;
+  const wantDisc = disc ?? 1;
   try {
     for (const entry of readdirSync(destDir)) {
       if (extname(entry).toLowerCase() !== '.flac') continue;
       const base = entry.slice(0, entry.lastIndexOf('.'));
-      if (normalizeTitle(base) === target) return true;
+      const own = parseOrganizerStem(base);
+      if ((own?.disc ?? 1) !== wantDisc) continue;
+      if (normalizeTitle(own?.title ?? base) === target) return true;
     }
   } catch {
     // Unreadable destination dir — treat as no twin and let the normal path run.

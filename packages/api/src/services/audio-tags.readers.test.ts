@@ -235,5 +235,7 @@ describe('the frames that used to be write-only on mp3 (#1151)', () => {
     // and a foreign tagger is where that shape comes from.
     const f = fixture('discpair.mp3', ['-id3v2_version', '3', '-metadata', 'disc=2/3']);
     expect((await readAudioTags(f)).discNumber).toBe(2);
+    // The total is what tells disc 1 of a set from a single-disc album (#747).
+    expect((await readAudioTags(f)).discTotal).toBe(3);
   });
 });

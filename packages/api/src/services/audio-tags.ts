@@ -31,6 +31,12 @@ export interface AudioTags {
   trackNumber?: number;
   /** Disc number (ID3 TPOS / Vorbis `DISCNUMBER`). Added with `track` for #959. */
   discNumber?: number;
+  /**
+   * Disc total (the `of` in ID3 TPOS `1/2`, Vorbis `DISCTOTAL`/`TOTALDISCS`).
+   * Written only alongside `discNumber`, as `n/total`. The organizer uses it
+   * to tell disc 1 of a set from a single-disc album (#747).
+   */
+  discTotal?: number;
   year?: number;
   genre?: string;
   /**
@@ -112,7 +118,7 @@ type MusicMetadataApi = {
       title?: string;
       track?: { no?: number | null };
       /** Disc position, the same `{ no, of }` shape as `track` (#1151). */
-      disk?: { no?: number | null };
+      disk?: { no?: number | null; of?: number | null };
       year?: number;
       bpm?: number;
       key?: string;
@@ -408,6 +414,20 @@ function parseLeadingNumber(raw: unknown): number | undefined {
   return undefined;
 }
 
+/** `n/total` when the total is known, else `n` — TPOS / DISC share the shape. */
+function discPosition(tags: AudioTags): string {
+  return tags.discTotal !== undefined
+    ? `${tags.discNumber}/${tags.discTotal}`
+    : String(tags.discNumber);
+}
+
+/** The total of a `n/total` position string (ID3 TPOS `1/2` → 2). */
+function parseSetTotal(raw: unknown): number | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const m = raw.match(/^\s*\d*\s*\/\s*(\d+)/);
+  return m ? Number(m[1]) : undefined;
+}
+
 function parseYear(raw: unknown): number | undefined {
   if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
   if (typeof raw === 'string') {
@@ -477,6 +497,7 @@ export async function readAudioTags(filepath: string): Promise<AudioTags> {
         movementNumber: parseLeadingNumber(readUserText(d, 'MOVEMENT')),
         trackNumber: parseLeadingNumber(d.trackNumber),
         discNumber: parseLeadingNumber(d.partOfSet),
+        discTotal: parseSetTotal(d.partOfSet),
         bpm: parseLeadingNumber(d.bpm),
         // TYER first, then v2.4's TDRC. node-id3's `update` downgrades the
         // header to v2.3 and writes TYER while leaving any existing TDRC in
@@ -522,6 +543,7 @@ export async function readAudioTags(filepath: string): Promise<AudioTags> {
         // `writeFfmpegTags` emits DISC and BPM here too, so leaving these
         // unmapped made them write-only on flac/m4a for the same reason (#1151).
         discNumber: c.disk?.no ?? undefined,
+        discTotal: c.disk?.of ?? undefined,
         // Vorbis comments are free text, so a BPM can arrive as "128" or "128.5"
         // even where music-metadata's own types promise a number.
         bpm: parseLeadingNumber(c.bpm),
@@ -642,7 +664,7 @@ async function writeId3Tags(filepath: string, tags: AudioTags): Promise<boolean>
   if (tags.composer !== undefined) update.composer = tags.composer;
   if (tags.conductor !== undefined) update.conductor = tags.conductor;
   if (tags.trackNumber !== undefined) update.trackNumber = String(tags.trackNumber);
-  if (tags.discNumber !== undefined) update.partOfSet = String(tags.discNumber);
+  if (tags.discNumber !== undefined) update.partOfSet = discPosition(tags);
   if (tags.year !== undefined) update.year = String(tags.year);
   if (tags.genre !== undefined) update.genre = tags.genre;
   if (tags.bpm !== undefined) update.bpm = String(tags.bpm);
@@ -813,7 +835,7 @@ export function canonicalTagMetadataArgs(tags: CanonicalTags): string[] {
  */
 export function ffmpegTagMetadataArgs(tags: AudioTags, ext: string): string[] {
   const metaArgs: string[] = canonicalTagMetadataArgs(tags);
-  if (tags.discNumber !== undefined) metaArgs.push('-metadata', `DISC=${tags.discNumber}`);
+  if (tags.discNumber !== undefined) metaArgs.push('-metadata', `DISC=${discPosition(tags)}`);
   if (tags.genre !== undefined) metaArgs.push('-metadata', `GENRE=${tags.genre}`);
   if (tags.composer !== undefined) metaArgs.push('-metadata', `COMPOSER=${tags.composer}`);
   if (tags.conductor !== undefined) metaArgs.push('-metadata', `CONDUCTOR=${tags.conductor}`);

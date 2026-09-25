@@ -149,7 +149,7 @@ export class LibraryApiService {
    * scoped to the release group the curator actually picked in the modal.
    */
   getCanonicalTracklist(releaseGroupId: string) {
-    return this.http.get<{ tracks: Array<{ position: number; title: string }> }>(
+    return this.http.get<{ tracks: Array<{ disc: number; position: number; title: string }> }>(
       `/api/library/musicbrainz/release-groups/${encodeURIComponent(releaseGroupId)}/tracklist`,
     );
   }

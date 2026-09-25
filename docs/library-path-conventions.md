@@ -92,7 +92,7 @@ rather than an unexplained gap. Renaming the folder is then an obvious fix.
 
 ### Why the file rule is unrestricted by depth
 
-A dot-prefixed *filename* has no counter-example — the organizer writes `NN - Title.ext`, so a track
+A dot-prefixed *filename* has no counter-example — the organizer writes `NN - Title.ext` (`D-NN - Title.ext` on a multi-disc release), so a track
 file never leads with a dot even when its album title does. And it fixes a live bug: macOS
 AppleDouble sidecars are **currently scanned as audio**, because
 

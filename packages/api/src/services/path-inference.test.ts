@@ -128,3 +128,24 @@ describe('extractAlbumName', () => {
     expect(extractAlbumName('DAFT PUNK - Discovery', 'Daft Punk')).toBe('Discovery');
   });
 });
+
+// Issue #747: the organizer's multi-disc name, read back from an untagged file.
+describe('inferMetadataFromPath with a disc-track prefix', () => {
+  it('reads `1-01 - Title` as disc 1 track 1, not an artist called "01"', () => {
+    const parsed = inferMetadataFromPath('2-07 - Coda.flac', 'Artist/Album');
+    expect(parsed.discNumber).toBe('2');
+    expect(parsed.trackNumber).toBe('7');
+    expect(parsed.title).toBe('Coda');
+    expect(parsed.artist).toBeUndefined();
+  });
+
+  it('takes an artist from `D-NN - Artist - Title`', () => {
+    const parsed = inferMetadataFromPath('1-03 - Someone - Song.mp3', 'x');
+    expect(parsed).toMatchObject({
+      discNumber: '1',
+      trackNumber: '3',
+      artist: 'Someone',
+      title: 'Song',
+    });
+  });
+});

@@ -3,6 +3,9 @@ import {
   sanitizeSegment,
   isPhantomMatch,
   trackNumberPrefix,
+  isMultiDiscRelease,
+  parseOrganizerStem,
+  leadingTrackKey,
   stripAudioExt,
   stripTrackPrefix,
   isTrackNumberFragment,
@@ -206,5 +209,69 @@ describe('stripFeaturingSuffix', () => {
 
   it('returns empty input unchanged', () => {
     expect(stripFeaturingSuffix('')).toBe('');
+  });
+});
+
+// Issue #747: the disc lives in the filename, and only on a multi-disc release.
+describe('trackNumberPrefix with a disc', () => {
+  it('prefixes D-NN when a disc is given', () => {
+    expect(trackNumberPrefix(1, 2)).toBe('2-01 - ');
+    expect(trackNumberPrefix(12, 1)).toBe('1-12 - ');
+  });
+
+  it('keeps NN when no disc is given (single-disc albums never re-mint)', () => {
+    expect(trackNumberPrefix(1, undefined)).toBe('01 - ');
+    expect(trackNumberPrefix(1, 0)).toBe('01 - ');
+  });
+
+  it('adds nothing without a track number, disc or not', () => {
+    expect(trackNumberPrefix(undefined, 2)).toBe('');
+  });
+});
+
+describe('isMultiDiscRelease', () => {
+  it('is false for no disc tags, a bare 1, and 1 of 1', () => {
+    expect(isMultiDiscRelease([{}, {}])).toBe(false);
+    expect(isMultiDiscRelease([{ discNumber: 1 }])).toBe(false);
+    expect(isMultiDiscRelease([{ discNumber: 1, discTotal: 1 }])).toBe(false);
+  });
+
+  it('is true when any track is on a disc above 1', () => {
+    expect(isMultiDiscRelease([{ discNumber: 1 }, { discNumber: 2 }])).toBe(true);
+  });
+
+  it('is true for disc 1 alone when its total says more discs exist', () => {
+    expect(isMultiDiscRelease([{ discNumber: 1, discTotal: 2 }])).toBe(true);
+  });
+});
+
+describe('parseOrganizerStem', () => {
+  it('parses both organizer shapes', () => {
+    expect(parseOrganizerStem('05 - Title')).toEqual({ track: 5, title: 'Title' });
+    expect(parseOrganizerStem('2-05 - Title')).toEqual({ disc: 2, track: 5, title: 'Title' });
+  });
+
+  it('keeps a leading number that belongs to the title (#1089)', () => {
+    expect(parseOrganizerStem('11 - 7 Steps')).toEqual({ track: 11, title: '7 Steps' });
+    expect(parseOrganizerStem('1-11 - 7 Steps')).toEqual({ disc: 1, track: 11, title: '7 Steps' });
+  });
+
+  it('returns null for any other shape', () => {
+    expect(parseOrganizerStem('Artist - Title')).toBeNull();
+    expect(parseOrganizerStem('1989')).toBeNull();
+    expect(parseOrganizerStem('2021 - Title')).toBeNull();
+  });
+});
+
+describe('leadingTrackKey', () => {
+  it('keeps the disc in a D-NN name so two discs never share a group', () => {
+    expect(leadingTrackKey('1-01 - Intro.mp3')).toBe('1-01');
+    expect(leadingTrackKey('2-01 - Intro.flac')).toBe('2-01');
+  });
+
+  it('is the leading digits otherwise, and null without them', () => {
+    expect(leadingTrackKey('01 - Intro.mp3')).toBe('01');
+    expect(leadingTrackKey('01-Intro.mp3')).toBe('01');
+    expect(leadingTrackKey('Intro.mp3')).toBeNull();
   });
 });
