@@ -928,9 +928,10 @@ export interface ScanResult {
  * boot beats a scan that never completes.
  */
 export async function buildLibraryOffThread(
-  ...args: Parameters<typeof buildLibrary>
+  args: Parameters<typeof buildLibrary>,
+  workerUrl = new URL('./build-library-worker.ts', import.meta.url).href,
 ): Promise<BuiltLibrary> {
-  const worker = new Worker(new URL('./build-library-worker.ts', import.meta.url).href);
+  const worker = new Worker(workerUrl);
   try {
     return await new Promise<BuiltLibrary>((resolve, reject) => {
       worker.onmessage = (
@@ -972,7 +973,7 @@ export class LibraryScanner {
     const files = await this.walk(this.musicDir, true);
     const incomplete = this.unreadableDirs.slice();
     const tracks = await this.readTracks(files, 'all');
-    const built = await buildLibraryOffThread(
+    const built = await buildLibraryOffThread([
       tracks,
       this.canonicalByAlbum(),
       loadOverrides(this.db),
@@ -980,7 +981,7 @@ export class LibraryScanner {
       loadGenreContext(this.db),
       loadGenreOverrides(this.db),
       this.knownRelPaths(),
-    );
+    ]);
     if (incomplete.length > 0) {
       log.warn(
         { unreadableDirs: incomplete.slice(0, 10), count: incomplete.length },
