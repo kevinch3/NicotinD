@@ -923,6 +923,31 @@ export interface ScanResult {
 }
 
 /**
+ * `buildLibrary` on a worker thread, for the whole-library build a full scan
+ * does (#1313). A worker that fails falls back to the same call inline: a slow
+ * boot beats a scan that never completes.
+ */
+export async function buildLibraryOffThread(
+  ...args: Parameters<typeof buildLibrary>
+): Promise<BuiltLibrary> {
+  const worker = new Worker(new URL('./build-library-worker.ts', import.meta.url).href);
+  try {
+    return await new Promise<BuiltLibrary>((resolve, reject) => {
+      worker.onmessage = (
+        e: MessageEvent<{ ok: boolean; built?: BuiltLibrary; error?: string }>,
+      ) => (e.data.ok ? resolve(e.data.built!) : reject(new Error(e.data.error ?? 'build failed')));
+      worker.onerror = (e) => reject(new Error(e.message));
+      worker.postMessage(args);
+    });
+  } catch (err) {
+    log.warn({ err }, 'buildLibrary worker failed — building on the main thread');
+    return buildLibrary(...args);
+  } finally {
+    worker.terminate();
+  }
+}
+
+/**
  * Native library scanner — replaces NavidromeSyncer. Walks the music dir,
  * reads tags with music-metadata, and writes the canonical library_* tables
  * directly. Synchronous-from-the-caller's-view (no async external scanner), so
@@ -947,7 +972,7 @@ export class LibraryScanner {
     const files = await this.walk(this.musicDir, true);
     const incomplete = this.unreadableDirs.slice();
     const tracks = await this.readTracks(files, 'all');
-    const built = buildLibrary(
+    const built = await buildLibraryOffThread(
       tracks,
       this.canonicalByAlbum(),
       loadOverrides(this.db),

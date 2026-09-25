@@ -321,6 +321,8 @@ describe('key and tempo estimation leave the event loop free (#1394)', () => {
         const key = await analyzeKey(wav);
         await analyzeBpm(wav);
         expect(key).toMatch(/^[A-G]#? (major|minor)$/);
+        // One more tick, or a stall at the very end is never recorded.
+        await new Promise((r) => setTimeout(r, 30));
       } finally {
         clearInterval(tick);
       }
