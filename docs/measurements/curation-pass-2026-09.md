@@ -4323,3 +4323,75 @@ a real genre (4 Chencho Corleone features with `Latin`, 2 with `Rock`, plus 1 mo
 
 Per the skill's search-spend gate, the unidentified singles stay untagged rather than guessed.
 The credit swaps are identity problems for `identify_song`, not genre work.
+
+## 2026-09-25 — umbrella-genre second pass (#1123)
+
+This pass finished the first pass's eight count-mismatch skips. It used the new
+`list_recent_songs({genre})` filter, which lists every song carrying a genre at any position and
+returns each song's full ordered `genres`. That removes the blocker: the display showed only
+position 0, so you couldn't tell which songs were umbrella-only.
+
+**Method.** I paged through `list_recent_songs({genre: "Electronic", limit: 100})` until it
+returned empty (2,047 songs, offsets 0–2000). I did the same for `({genre: "Dance"})` (500 songs,
+offsets 0–500). I kept a target artist's song only if its `genres` was **exactly** `["Electronic"]` or
+exactly `["Dance"]`. The artist also had to be the primary credit, meaning the first name in
+`artist`. Every write was `set_song_genre({mode: "replace"})` with the song's own umbrella kept
+last. Every write was read back.
+
+### Baseline (`get_library_health({sample: 1})`)
+
+21,691 songs · `genres.missing` 106 · `genres.lowInformation` **260**.
+
+### Written (82 songs, all read back)
+
+| Artist | Umbrella | Songs | Genre written | Found = worklist | Verified |
+| --- | --- | --- | --- | --- | --- |
+| Fred again.. (*Actual Life*, incl. 2 "Fred again.., X" credits) | Electronic | 16 | House; UK Garage; Electronic | 16 = 16 | 16 |
+| David Guetta (*Listen* ×14, *Nothing But The Beat* "I Just Wanna F.") | Electronic | 15 | Dance-Pop; EDM; Electronic | 15 = 15 | 15 |
+| Eelke Kleijn (*Untold Stories*) | Electronic | 14 | Progressive House; Melodic House; Electronic | 14 = 14 | 14 |
+| Avicii (*TIM* ×12 "feat." versions, *True* "Long Road To Hell") | Dance | 13 | Progressive House; EDM; Dance | 13 = 13 | 13 |
+| Röyksopp (*The Understanding* ×11, *Only This Moment*) | Electronic | 12 | Electronica; Downtempo; Electronic | 12 = 12 | 12 |
+| Daft Punk (*Homework*) | Dance | 6 | French House; House; Dance | 6 = 6 | 6 |
+| Vangelis (*Mask* Movements 1, 2, 3, 6) | Electronic | 4 | New Age; Ambient; Electronic | 4 = 4 | 4 |
+| Ben Böhmer (*Begin Again*) | Electronic | 2 | Melodic House; Electronic | 2 = 2 | 2 |
+
+For every artist, the umbrella-only songs found by the filter matched the first pass's worklist
+count exactly, so none were missed. Read-back: the full ordered list was confirmed through
+`list_recent_songs({genre})` for Daft Punk (`French House`), Ben Böhmer (`Melodic House`) and two
+Vangelis songs (`New Age`). The rest were confirmed at position 0 through `get_album_tracks` on
+*Actual Life*, *Listen*, *Nothing But The Beat*, *Untold Stories*, *TIM*, *True*,
+*The Understanding*, *Only This Moment*, *Mask* and *Begin Again*. The metric delta below confirms
+the rest of the list.
+
+### Skipped (not umbrella-only, or not the primary credit)
+
+| Song | Genres | Why |
+| --- | --- | --- |
+| Yng Lvcas/Peso Pluma/David Guetta — "La Bebe - David Guetta Remix" | `Electronic` | Guetta is the remixer, not the primary credit |
+| RAYE/David Guetta/Hypaton — "WHERE IS MY HUSBAND! - Remix" | `Electronic` | Guetta is not the primary credit |
+| Vangelis Kostoxenakis — "Son Of A Gun (Enrico Sangiuliano Remix)" | `Electronic` | a different artist whose name contains "Vangelis" |
+| Fred again.. — Delilah, Kelly, Mustafa, Danielle, Nathan | `Dance; Electronic` | two genres, so not low-information |
+| Daft Punk *Homework* (Da Funk, Alive, …), Vangelis *Mask* Movements 4–5, other Böhmer / Avicii / Guetta tracks | multi-genre | already carry real subgenres |
+
+### Final (`get_library_health` re-run)
+
+| Metric | Before | After | Δ |
+| --- | --- | --- | --- |
+| `genres.lowInformation` | 260 | **178** | −82 |
+| `genres.missing` | 106 | 106 | 0 |
+| songs | 21,691 | 21,691 | 0 |
+
+The −82 equals the number of songs written, so every write left the low-information set and nothing
+else moved. None of the eight artists appears on the worklist any more. The rows left from the
+first pass are Abraham (ES) & S.Hai (30, the Green Velvet DJ mix), Dekel (6), Mha Iri (5),
+Carolina de Jesus (4) and ADRIANNA (2).
+
+**Anomalies.**
+- The library already carries `Edm` and `Uk Garage` in that casing. This pass wrote `EDM` and
+  `UK Garage` as specified, so each tag now exists in two casings. `get_rare_genres` should show
+  whether an alias (`set_genre_alias`) is needed.
+- The `list_recent_songs` schema the MCP client loaded did not list the `genre` parameter, but the
+  server accepted it. The client-side tool description is stale.
+- Paging the filter costs about 25 pages of 100 across the two umbrellas, and each page is 50–60 KB.
+  A server-side `genres = [X]` (exact set) filter, or the per-artist `lowInformation` song ids, would
+  do the same job in one call.
