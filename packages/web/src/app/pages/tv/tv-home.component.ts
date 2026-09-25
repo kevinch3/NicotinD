@@ -1,6 +1,7 @@
 import { Component, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { PlayerService } from '../../services/player.service';
+import { TvProfileService } from '../../services/tv-profile.service';
 import { RadioLandingComponent } from '../radio-landing/radio-landing.component';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
@@ -64,6 +65,17 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
         >
           {{ 'nav.settings' | t }}
         </a>
+        <!-- Who's listening (#1406): the active person, one press from the
+             switcher. Far right so the two original entries keep their order. -->
+        <a
+          appTvNavItem
+          routerLink="/who"
+          data-testid="tv-nav-profile"
+          class="ml-auto px-8 py-4 rounded-2xl bg-theme-surface-2 text-lg font-semibold
+                 focus:outline-none focus-visible:ring-4 focus-visible:ring-theme-accent"
+        >
+          {{ profiles.active() }}
+        </a>
       </nav>
 
       <app-radio-landing />
@@ -72,4 +84,5 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
 })
 export class TvHomeComponent {
   readonly player = inject(PlayerService);
+  readonly profiles = inject(TvProfileService);
 }
