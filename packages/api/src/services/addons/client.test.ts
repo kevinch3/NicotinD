@@ -83,6 +83,29 @@ describe('AddonClient', () => {
     }
   });
 
+  it("carries the addon's own error text into the message, not only the status (#1209)", async () => {
+    const reason = 'the picked folder covers none of the wanted tracks';
+    const { fetchFn } = stubFetch(
+      () => new Response(JSON.stringify({ error: reason }), { status: 400 }),
+    );
+    const client = new AddonClient({ baseUrl: 'http://addon:9999', token: 'tok', fetchFn });
+    const err = (await client
+      .createJob({ intent: 'album', artist: 'El Kuelgue', album: 'Ruli' })
+      .catch((e: unknown) => e)) as AddonRequestError;
+    expect(err).toBeInstanceOf(AddonRequestError);
+    expect(err.status).toBe(400);
+    expect(err.detail).toBe(reason);
+    expect(err.message).toBe(`addon responded 400 for POST /addon/v1/jobs: ${reason}`);
+  });
+
+  it('keeps the bare status message when the body carries no error string', async () => {
+    const { fetchFn } = stubFetch(() => new Response('<html>502</html>', { status: 502 }));
+    const client = new AddonClient({ baseUrl: 'http://addon:9999', token: 'tok', fetchFn });
+    const err = (await client.getStatus().catch((e: unknown) => e)) as AddonRequestError;
+    expect(err.detail).toBeUndefined();
+    expect(err.message).toBe('addon responded 502 for GET /addon/v1/status');
+  });
+
   it('rejects a malformed manifest body', async () => {
     const { fetchFn } = stubFetch(() => Response.json({ id: 'x' }));
     const client = new AddonClient({ baseUrl: 'http://addon:9999', token: 'tok', fetchFn });
