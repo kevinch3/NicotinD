@@ -1,6 +1,17 @@
 @import 'tailwindcss';
 @source "./**/*.ts";
 
+/* iOS zooms the page in on focusing any field under 16px and leaves it zoomed
+   after blur. Unlayered so it beats the `text-sm`/`text-xs` utilities; touch
+   only, so desktop keeps its compact fields. See docs/web-ui.md. */
+@media (pointer: coarse) {
+  input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']),
+  textarea,
+  select {
+    font-size: max(16px, 1em);
+  }
+}
+
 /* ─── Theme tokens ───────────────────────────────────────────────────── */
 @layer base {
   /* Kill the browser's double-tap-to-zoom gesture app-wide (web + native

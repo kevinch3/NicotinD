@@ -588,3 +588,37 @@ test.describe('mobile UX', () => {
     await expect(page.getByTestId('now-playing-heading')).not.toBeInViewport();
   });
 });
+
+// iOS zooms the viewport in on focusing any text field under 16px, and stays
+// zoomed after blur — the "I keep accidentally zooming in" report. A coarse
+// pointer must lift every text field to 16px; a fine pointer keeps text-sm.
+test.describe('focus zoom on touch', () => {
+  test.use({ viewport: PHONE, hasTouch: true, isMobile: true });
+
+  test('text fields render at 16px or larger on a coarse pointer', async ({ page }) => {
+    await page.goto('/library');
+    const find = page.getByTestId('library-find');
+    await expect(find).toBeVisible();
+    expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true);
+
+    const undersized = await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>('input, textarea, select')]
+        .filter(
+          (el) => !['checkbox', 'radio', 'range', 'color'].includes((el as HTMLInputElement).type),
+        )
+        .map((el) => ({
+          id: el.dataset['testid'] ?? el.outerHTML.slice(0, 80),
+          px: parseFloat(getComputedStyle(el).fontSize),
+        }))
+        .filter((f) => f.px < 16),
+    );
+    expect(undersized).toEqual([]);
+  });
+});
+
+test('text fields keep their compact size on a fine pointer', async ({ page }) => {
+  await page.goto('/library');
+  const find = page.getByTestId('library-find');
+  await expect(find).toBeVisible();
+  expect(await find.evaluate((el) => getComputedStyle(el).fontSize)).toBe('14px');
+});
