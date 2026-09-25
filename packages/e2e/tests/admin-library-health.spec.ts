@@ -22,6 +22,7 @@ const DIMENSIONS = [
   'completeness',
   'disk',
   'lyrics',
+  'duplicateSongs',
   'flags',
 ];
 

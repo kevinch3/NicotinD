@@ -29,6 +29,7 @@ import type { AudioFeaturesClient } from '../services/audio-features-client.js';
 import { readAudioTags, writeAudioTags, type AudioTags } from '../services/audio-tags.js';
 import { getLyrics, setLyrics, setLyricsOffset, deleteLyrics } from '../services/lyrics-store.js';
 import { fetchSongLyrics } from '../services/lyrics-fetch.js';
+import { clusterDuplicateSongs } from '../services/duplicate-songs.js';
 import { getArtistMeta, upsertArtistMeta } from '../services/artist-meta-store.js';
 import {
   getMbid,
@@ -117,7 +118,7 @@ import type {
   CoverCandidatesResponse,
   ApplyCoverRequest,
 } from '@nicotind/core';
-import { normalizeTitle, parseLibraryFilter } from '@nicotind/core';
+import { parseLibraryFilter } from '@nicotind/core';
 import { getArtistOrigin, listOriginFacets } from '../services/artist-origins.js';
 import { mutateArtistMbid } from '../services/artist-mbid-mutate.js';
 import { mutateArtistOrigin } from '../services/artist-origin-mutate.js';
@@ -2897,66 +2898,20 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       )
       .all();
     const allSongs = rows.map(rowToSong);
-
-    const groups = new Map<string, Song[]>();
-    for (const song of allSongs) {
-      const key = normalizeDupKey(song.title, song.artist);
-      if (!key) continue;
-      const group = groups.get(key) ?? [];
-      group.push(song);
-      groups.set(key, group);
-    }
-
-    const duplicates: Array<
-      Array<{
-        id: string;
-        title: string;
-        artist: string;
-        album: string;
-        duration?: number;
-        bitRate?: number;
-        suffix?: string;
-        path: string;
-        coverArt?: string;
-      }>
-    > = [];
-
-    for (const [, group] of groups) {
-      if (group.length < 2) continue;
-
-      const clusters: Song[][] = [];
-      for (const song of group) {
-        let placed = false;
-        for (const cluster of clusters) {
-          const refDur = cluster[0]?.duration ?? 0;
-          if (Math.abs((song.duration ?? 0) - refDur) <= 2) {
-            cluster.push(song);
-            placed = true;
-            break;
-          }
-        }
-        if (!placed) clusters.push([song]);
-      }
-
-      for (const cluster of clusters) {
-        if (cluster.length < 2) continue;
-        duplicates.push(
-          cluster
-            .sort((a, b) => qualityScore(b) - qualityScore(a))
-            .map((s) => ({
-              id: s.id,
-              title: s.title,
-              artist: s.artist,
-              album: s.album,
-              duration: s.duration,
-              bitRate: s.bitRate,
-              suffix: s.suffix,
-              path: s.path,
-              coverArt: s.coverArt,
-            })),
-        );
-      }
-    }
+    // One rule with the health report's `duplicateSongs` count (#951).
+    const duplicates = clusterDuplicateSongs(allSongs).map((cluster) =>
+      cluster.map((s) => ({
+        id: s.id,
+        title: s.title,
+        artist: s.artist,
+        album: s.album,
+        duration: s.duration,
+        bitRate: s.bitRate,
+        suffix: s.suffix,
+        path: s.path,
+        coverArt: s.coverArt,
+      })),
+    );
 
     return c.json(duplicates);
   });
@@ -3022,30 +2977,6 @@ function orderByCompletionHistory<T extends { path: string; created?: string; ti
 
 function normalizePath(input: string): string {
   return input.replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase();
-}
-
-/**
- * Group key for the admin duplicate finder, or `null` when the row cannot be
- * identified. Callers MUST treat `null` as "groups with nothing" — the panel
- * pre-arms every non-best member of a group for deletion, so a row that folds
- * to nothing must never join one. → docs/library-processing.md
- */
-function normalizeDupKey(title: string, artist: string): string | null {
-  const t = normalizeTitle(title);
-  const a = normalizeTitle(artist);
-  if (!t || !a) return null;
-  return `${t}|||${a}`;
-}
-
-function qualityScore(song: Song): number {
-  const ext = (song.suffix ?? '').toLowerCase();
-  const formatScore =
-    ext === 'flac' || ext === 'wav' || ext === 'aiff' || ext === 'ape' || ext === 'wv'
-      ? 200
-      : ext === 'opus' || ext === 'ogg' || ext === 'm4a' || ext === 'aac'
-        ? 100
-        : 0;
-  return formatScore + (song.bitRate ?? 0);
 }
 
 function parseCreatedAt(created?: string): number {

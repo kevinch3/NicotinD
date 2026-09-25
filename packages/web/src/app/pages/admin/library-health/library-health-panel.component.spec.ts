@@ -106,6 +106,18 @@ function makeReport(over: Partial<LibraryHealthReport['totals']> = {}): LibraryH
         worklist: [],
         remediation: 'lyrics-remediation',
       },
+      duplicateSongs: {
+        metric: { clusters: 1, redundantFiles: 1 },
+        worklist: [
+          {
+            title: 'Más cerca del cielo',
+            artist: 'Los Pericos',
+            copies: 2,
+            albums: ['Pampas Reggae'],
+          },
+        ],
+        remediation: 'dupes-remediation',
+      },
       flags: { metric: { open: 2, oldestAt: 1 }, remediation: 'flags-remediation' },
     },
   };
@@ -197,6 +209,10 @@ describe('LibraryHealthPanelComponent', () => {
     }
     const covers = el.querySelector('[data-testid="health-card-albumCovers"]')!;
     expect(covers.textContent).toContain('covers-remediation');
+    // #951: the duplicate count and its largest cluster reach the card.
+    expect(el.querySelector('[data-testid="health-card-duplicateSongs"]')!.textContent).toContain(
+      'Los Pericos',
+    );
     expect(covers.textContent).toContain('Drukqs');
     // A null metric is "not measured", never a number.
     expect(covers.textContent).toContain('admin.health.notMeasured');
