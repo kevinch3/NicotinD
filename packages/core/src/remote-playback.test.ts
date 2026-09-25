@@ -6,8 +6,10 @@ import {
   initialRemoteClientState,
   isAudioOutput,
   onLocalPlayingChanged,
+  onLocalQueueChanged,
   onLocalTrackChanged,
   reduceServerMessage,
+  sameQueue,
   type RemoteClientContext,
   type RemoteClientState,
   type RemotePlaybackSnapshot,
@@ -21,6 +23,7 @@ const ctx = (over: Partial<RemoteClientContext> = {}): RemoteClientContext => ({
   myId: 'me',
   remoteEnabled: true,
   localTrackId: null,
+  localQueue: [],
   now: 1000,
   ...over,
 });
@@ -313,14 +316,14 @@ describe('castTo', () => {
     expect(r.state.activeDeviceId).toBe('tv');
     expect(r.effects).toEqual([{ kind: 'yield' }]);
     expect(r.messages).toEqual([
-      { type: 'SET_ACTIVE_DEVICE', payload: { id: 'tv' } },
+      { type: 'SET_ACTIVE_DEVICE', payload: { id: 'tv', queue: [] } },
       { type: 'COMMAND', payload: { action: 'SET_TRACK', track: t1 } },
     ]);
   });
 
   it('with no local track, only the session handoff is sent', () => {
     const r = castTo(state(), ctx(), 'tv', null);
-    expect(r.messages).toEqual([{ type: 'SET_ACTIVE_DEVICE', payload: { id: 'tv' } }]);
+    expect(r.messages).toEqual([{ type: 'SET_ACTIVE_DEVICE', payload: { id: 'tv', queue: [] } }]);
   });
 
   it('taking the session back resumes locally where the remote device was', () => {
@@ -391,7 +394,7 @@ describe('claimOutput', () => {
     expect(r.messages).toEqual([
       {
         type: 'CLAIM_OUTPUT',
-        payload: { track: t1, trackId: 't1', position: 12, isPlaying: true },
+        payload: { track: t1, trackId: 't1', position: 12, isPlaying: true, queue: [] },
       },
     ]);
   });
@@ -461,5 +464,156 @@ describe('STATE_SYNC — mirroring is unconditional', () => {
       sync({ activeDeviceId: 'tv', track: t1 }),
     );
     expect(kinds(r)).toEqual(['yield', 'show-track']);
+  });
+});
+
+describe('the session queue (#895)', () => {
+  const tvOk = { id: 'tv', name: 'TV', type: 'web', lastSeen: 0, available: true };
+  const cmd = (action: string, extra: Record<string, unknown> = {}): ServerMessage => ({
+    type: 'COMMAND',
+    payload: { action, ...extra },
+  });
+
+  it('sameQueue compares ids in order', () => {
+    expect(sameQueue(['a', 'b'], ['a', 'b'])).toBe(true);
+    expect(sameQueue(['a', 'b'], ['b', 'a'])).toBe(false);
+    expect(sameQueue(['a'], null)).toBe(false);
+    expect(sameQueue(null, null)).toBe(true);
+  });
+
+  it('a cast carries the caster queue on the hand-off and records it as the session queue', () => {
+    const r = castTo(state(), ctx({ localTrackId: 't1', localQueue: ['t2', 't3'] }), 'tv', t1);
+    expect(r.messages[0]).toEqual({
+      type: 'SET_ACTIVE_DEVICE',
+      payload: { id: 'tv', queue: ['t2', 't3'] },
+    });
+    expect(r.state.sessionQueue).toEqual(['t2', 't3']);
+  });
+
+  it('taking the session back sends no queue: the server copy is the truth', () => {
+    const r = castTo(state({ activeDeviceId: 'tv' }), ctx({ localQueue: ['x'] }), 'me', t1);
+    expect(r.messages).toEqual([{ type: 'SET_ACTIVE_DEVICE', payload: { id: 'me' } }]);
+  });
+
+  it('a claim carries the claimant queue', () => {
+    const r = claimOutput(state(), ctx({ localQueue: ['t2'] }), t1, 0);
+    expect(r.messages[0]!.payload).toMatchObject({ queue: ['t2'] });
+  });
+
+  it('the device that becomes the output adopts the queue in that frame', () => {
+    const r = reduceServerMessage(
+      state({ activeDeviceId: null }),
+      ctx({ localQueue: ['old'] }),
+      sync({ activeDeviceId: 'me', queue: ['t2', 't3'] }),
+    );
+    expect(r.effects).toContainEqual({ kind: 'set-queue', ids: ['t2', 't3'] });
+    expect(r.state.sessionQueue).toEqual(['t2', 't3']);
+  });
+
+  it('the output ignores a broadcast queue — it can trail its own advance', () => {
+    const r = reduceServerMessage(
+      state({ activeDeviceId: 'me' }),
+      ctx({ localQueue: ['t3'] }),
+      sync({ activeDeviceId: 'me', queue: ['t2', 't3'] }),
+    );
+    expect(kinds(r)).not.toContain('set-queue');
+  });
+
+  it('the output reconciles its queue from a snapshot reply after a reconnect', () => {
+    const r = reduceServerMessage(
+      state({ activeDeviceId: 'me' }),
+      ctx({ localTrackId: 't1', localQueue: ['t2'] }),
+      sync({ activeDeviceId: 'me', track: t1, queue: ['t2', 't9'] }, [tvOk]),
+    );
+    expect(r.effects).toEqual([{ kind: 'set-queue', ids: ['t2', 't9'] }]);
+  });
+
+  it('a controller mirrors the session queue, and says nothing when it already holds it', () => {
+    const differs = reduceServerMessage(
+      state({ activeDeviceId: 'tv' }),
+      ctx({ localQueue: ['mine'] }),
+      sync({ activeDeviceId: 'tv', queue: ['t2'] }),
+    );
+    expect(differs.effects).toEqual([{ kind: 'set-queue', ids: ['t2'] }]);
+    const same = reduceServerMessage(
+      state({ activeDeviceId: 'tv' }),
+      ctx({ localQueue: ['t2'] }),
+      sync({ activeDeviceId: 'tv', queue: ['t2'] }),
+    );
+    expect(same.effects).toEqual([]);
+  });
+
+  it("with no session nothing is mirrored — a local queue is nobody else's business", () => {
+    const r = reduceServerMessage(
+      state(),
+      ctx({ localQueue: ['mine'] }),
+      sync({ activeDeviceId: null, queue: ['t2'] }),
+    );
+    expect(kinds(r)).not.toContain('set-queue');
+  });
+
+  it('SET_QUEUE is executed by the output only', () => {
+    const out = reduceServerMessage(
+      state({ activeDeviceId: 'me' }),
+      ctx(),
+      cmd('SET_QUEUE', { queue: ['t2'] }),
+    );
+    expect(out.effects).toEqual([{ kind: 'set-queue', ids: ['t2'] }]);
+    expect(out.state.sessionQueue).toEqual(['t2']);
+    const controller = reduceServerMessage(
+      state({ activeDeviceId: 'tv' }),
+      ctx(),
+      cmd('SET_QUEUE', { queue: ['t2'] }),
+    );
+    expect(controller.effects).toEqual([]);
+  });
+
+  it('a controller edit becomes SET_QUEUE; its echo does not', () => {
+    const s0 = state({ activeDeviceId: 'tv', devices: [tvOk], sessionQueue: ['t2', 't3'] });
+    const edit = onLocalQueueChanged(s0, ctx(), ['t3']);
+    expect(edit.messages).toEqual([
+      { type: 'COMMAND', payload: { action: 'SET_QUEUE', queue: ['t3'] } },
+    ]);
+    expect(edit.state.sessionQueue).toEqual(['t3']);
+    expect(onLocalQueueChanged(edit.state, ctx(), ['t3']).messages).toEqual([]);
+  });
+
+  it('a mirror just applied is not sent back', () => {
+    expect(
+      onLocalQueueChanged(
+        state({ activeDeviceId: 'tv', devices: [tvOk], sessionQueue: ['t2'] }),
+        ctx(),
+        ['t2'],
+      ).messages,
+    ).toEqual([]);
+  });
+
+  it('the output reports its queue as state (an advance consumes it)', () => {
+    const r = onLocalQueueChanged(
+      state({ activeDeviceId: 'me', sessionQueue: ['t2', 't3'] }),
+      ctx(),
+      ['t3'],
+    );
+    expect(r.messages).toEqual([{ type: 'STATE_UPDATE', payload: { state: { queue: ['t3'] } } }]);
+  });
+
+  it('an edit during the output reconnect grace is still sent: the server keeps it', () => {
+    const r = onLocalQueueChanged(
+      state({ activeDeviceId: 'tv', devices: [{ ...tvOk, pending: true }] }),
+      ctx(),
+      ['t2'],
+    );
+    expect(r.messages.map((m) => m.type)).toEqual(['COMMAND']);
+  });
+
+  it('no session, or an output that opted out, sends nothing', () => {
+    expect(onLocalQueueChanged(state(), ctx(), ['t2']).messages).toEqual([]);
+    expect(
+      onLocalQueueChanged(
+        state({ activeDeviceId: 'tv', devices: [{ ...tvOk, available: false }] }),
+        ctx(),
+        ['t2'],
+      ).messages,
+    ).toEqual([]);
   });
 });

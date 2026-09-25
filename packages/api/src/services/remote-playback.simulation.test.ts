@@ -6,6 +6,7 @@ import {
   initialRemoteClientState,
   isAudioOutput,
   onLocalPlayingChanged,
+  onLocalQueueChanged,
   onLocalTrackChanged,
   reduceServerMessage,
   type ClientMessage,
@@ -34,6 +35,10 @@ import { PlaybackStateManager, type PlaybackStateOptions } from './playback-stat
  * user-visible symptoms behind #877 were all violations of it. Since a device
  * claims the session the moment it plays, a session exists whenever anything
  * plays — so the invariant now says: at most one device is ever audible.
+ *
+ * And, since #895, a second one: the session has ONE queue. Every online
+ * device in a session holds the queue the server holds, so the list a
+ * controller renders is the list the output will play.
  */
 
 type Frame = { type: string; payload: Record<string, unknown> };
@@ -42,12 +47,21 @@ type Handlers = ReturnType<ReturnType<typeof createPlaybackHub>['handlersFor']>;
 const T1: RemoteTrack = { id: 't1', title: 'One', artist: 'A', duration: 200 };
 const T2: RemoteTrack = { id: 't2', title: 'Two', artist: 'A', duration: 200 };
 const T3: RemoteTrack = { id: 't3', title: 'Three', artist: 'A', duration: 200 };
+const T4: RemoteTrack = { id: 't4', title: 'Four', artist: 'A', duration: 200 };
+const T5: RemoteTrack = { id: 't5', title: 'Five', artist: 'A', duration: 200 };
+/** The shared library every device resolves queue ids against. */
+const LIBRARY = new Map([T1, T2, T3, T4, T5].map((t) => [t.id, t]));
+const ids = (q: RemoteTrack[]) => q.map((t) => t.id);
 
 class VirtualDevice {
   // The virtual player — what `PlayerService` + the <audio> element hold.
   track: RemoteTrack | null = null;
   playing = false;
   position = 0;
+  queue: RemoteTrack[] = [];
+  history: RemoteTrack[] = [];
+  /** Ids this device cannot resolve to a playable track. */
+  readonly unresolvable = new Set<string>();
   remoteEnabled = true;
   client: RemoteClientState = initialRemoteClientState();
   online = false;
@@ -56,6 +70,9 @@ class VirtualDevice {
   private raw: object = {};
   private previousTrackId: string | null = null;
   private previousPlaying = false;
+  private previousQueue: string[] = [];
+  /** `queue.set(...)` notifies even when the ids did not change. */
+  private queueSet = false;
 
   constructor(
     private readonly handlers: Handlers,
@@ -119,6 +136,7 @@ class VirtualDevice {
       myId: this.id,
       remoteEnabled: this.remoteEnabled,
       localTrackId: this.track?.id ?? null,
+      localQueue: ids(this.queue),
       now: Date.now(),
     };
   }
@@ -149,12 +167,60 @@ class VirtualDevice {
           this.playing = e.playing;
           break;
         case 'next':
+          this.playNext();
+          break;
         case 'prev':
-          break; // no queue in the simulation
+          if (this.history.length > 0) {
+            if (this.track) this.queue = [this.track, ...this.queue];
+            this.track = this.history.pop()!;
+            this.playing = true;
+            this.position = 0;
+          }
+          break;
+        case 'set-queue':
+          // The adapter's resolution: ids this device cannot play are dropped.
+          this.queue = e.ids
+            .filter((id) => !this.unresolvable.has(id))
+            .map((id) => LIBRARY.get(id))
+            .filter((t): t is RemoteTrack => t !== undefined);
+          this.queueSet = true;
+          break;
       }
     }
+    // The queue effect is registered first in `RemotePlaybackService`, so an
+    // edit that also moves the track (a jump, an album pick) reaches the
+    // server before the track does.
+    this.queueChanged();
     this.playingChanged();
     this.trackChanged();
+  }
+
+  /** `PlayerService.playNext`: consume the queue, or stop at its end. */
+  private playNext(): void {
+    const [next, ...rest] = this.queue;
+    if (!next) {
+      this.playing = false;
+      return;
+    }
+    if (this.track) this.history.push(this.track);
+    this.track = next;
+    this.queue = rest;
+    this.playing = true;
+    this.position = 0;
+  }
+
+  /** The `queue` effect: fires once per change of the id list. */
+  private queueChanged(): void {
+    const now = ids(this.queue);
+    const same =
+      now.length === this.previousQueue.length &&
+      now.every((id, i) => id === this.previousQueue[i]);
+    if (same && !this.queueSet) return;
+    this.queueSet = false;
+    this.previousQueue = now;
+    const r = onLocalQueueChanged(this.client, this.ctx(), now);
+    this.client = r.state; // before posting: delivery is synchronous here
+    this.post(r.messages);
   }
 
   /** The `isPlaying` effect: the output reports it, a device with no
@@ -191,6 +257,44 @@ class VirtualDevice {
     this.position = 0;
     this.playingChanged();
     this.trackChanged();
+  }
+
+  /** An album pick: play the first track, queue the rest. */
+  playAll(tracks: RemoteTrack[]): void {
+    const [first, ...rest] = tracks;
+    this.queue = rest;
+    this.history = [];
+    this.queueChanged();
+    this.playLocally(first!);
+  }
+
+  /** A queue gesture in the panel (remove, move, clear, add next/later). */
+  editQueue(edit: (q: RemoteTrack[]) => RemoteTrack[]): void {
+    this.queue = edit([...this.queue]);
+    this.queueChanged();
+  }
+
+  /** `jumpToQueueIndex`: play queue[i], consuming everything before it. */
+  jumpTo(index: number): void {
+    const target = this.queue[index]!;
+    if (this.track) this.history.push(this.track);
+    this.history.push(...this.queue.slice(0, index));
+    this.queue = this.queue.slice(index + 1);
+    this.queueChanged();
+    this.playLocally(target);
+  }
+
+  /** The Next button: local on the output, a command on a controller. */
+  pressNext(): void {
+    if (isAudioOutput(this.client.activeDeviceId, this.id)) this.applyEffects([{ kind: 'next' }]);
+    else this.send('COMMAND', { action: 'NEXT' });
+  }
+
+  /** The output's `<audio>` fired `ended`. */
+  trackEnds(): void {
+    if (isAudioOutput(this.client.activeDeviceId, this.id) && this.playing) {
+      this.applyEffects([{ kind: 'next' }]);
+    }
   }
 
   cast(targetId: string): void {
@@ -268,6 +372,14 @@ function world(opts: PlaybackStateOptions = {}) {
     /** What the picker on `d` offers. */
     offeredOn: (d: VirtualDevice) =>
       d.client.devices.filter((x) => x.available !== false).map((x) => x.id),
+    /** The session has one queue: every online device holds the server's. */
+    assertOneQueue() {
+      const state = manager.getState();
+      if (state.activeDeviceId === null) return;
+      for (const d of devices.filter((x) => x.online)) {
+        expect({ id: d.id, queue: ids(d.queue) }).toEqual({ id: d.id, queue: state.queue });
+      }
+    },
     /** Holds whenever a session exists. */
     assertOneOutput() {
       const active = manager.getState().activeDeviceId;
@@ -275,6 +387,7 @@ function world(opts: PlaybackStateOptions = {}) {
       const audible = devices.filter((d) => d.online && d.audible).map((d) => d.id);
       expect(audible.length).toBeLessThanOrEqual(1);
       for (const id of audible) expect(id).toBe(active);
+      this.assertOneQueue();
     },
   };
 }
@@ -623,6 +736,148 @@ describe('simulation: claim-on-play — no picker involved', () => {
     a.playLocally(T2);
     expect(a.audible).toBe(true);
     expect(w.manager.getState().activeDeviceId).toBe('A');
+    w.assertOneOutput();
+  });
+});
+
+describe('simulation: the session has one queue (#895)', () => {
+  /** A plays an album locally (claims), then casts to an idle B that had
+   *  its own, unrelated queue. */
+  function albumCast() {
+    const w = world();
+    const a = w.device('A');
+    const b = w.device('B');
+    b.queue = [T5]; // B's own prior local queue
+    a.playAll([T1, T2, T3, T4]);
+    a.cast('B');
+    return { ...w, a, b };
+  }
+
+  it("the cast hands the controller's queue to the output, which replaces its own", () => {
+    const w = albumCast();
+    expect(w.b.track).toEqual(T1);
+    expect(ids(w.b.queue)).toEqual(['t2', 't3', 't4']);
+    expect(ids(w.a.queue)).toEqual(['t2', 't3', 't4']);
+    w.assertOneQueue();
+    w.assertOneOutput();
+  });
+
+  it('the cast queue wins even when the server held a stale queue from an earlier session', () => {
+    const w = world();
+    const a = w.device('A');
+    const b = w.device('B');
+    a.playAll([T5, T4]);
+    a.pressPlayPause(); // A stays the (paused) output with queue [t4]
+    a.editQueue(() => [T2, T3]);
+    a.cast('B');
+    expect(ids(b.queue)).toEqual(['t2', 't3']);
+    expect(ids(a.queue)).toEqual(['t2', 't3']);
+    w.assertOneQueue();
+  });
+
+  it('when the track ends the output advances along the session queue and the controller follows', () => {
+    const w = albumCast();
+    w.b.trackEnds();
+    expect(w.b.track).toEqual(T2);
+    expect(w.a.track).toEqual(T2);
+    expect(ids(w.a.queue)).toEqual(['t3', 't4']);
+    w.assertOneQueue();
+    w.assertOneOutput();
+  });
+
+  it('Next on the controller consumes the session queue on the output', () => {
+    const w = albumCast();
+    w.a.pressNext();
+    expect(w.b.track).toEqual(T2);
+    expect(ids(w.a.queue)).toEqual(['t3', 't4']);
+    w.assertOneQueue();
+  });
+
+  it('controller edits take effect on what plays: remove, move, add next, add later', () => {
+    const w = albumCast();
+    w.a.editQueue((q) => q.filter((t) => t.id !== 't2')); // remove
+    w.assertOneQueue();
+    w.a.editQueue(([x, y]) => [y!, x!]); // move
+    expect(ids(w.b.queue)).toEqual(['t4', 't3']);
+    w.a.editQueue((q) => [T5, ...q]); // play next
+    w.a.editQueue((q) => [...q, T2]); // add to queue
+    expect(ids(w.b.queue)).toEqual(['t5', 't4', 't3', 't2']);
+    w.assertOneQueue();
+    w.b.trackEnds();
+    expect(w.b.track).toEqual(T5); // the edit decided what played next
+    w.assertOneQueue();
+  });
+
+  it('clear on the controller empties the queue; the output stops at the end of its track', () => {
+    const w = albumCast();
+    w.a.editQueue(() => []);
+    expect(w.b.queue).toEqual([]);
+    w.b.trackEnds();
+    expect(w.b.playing).toBe(false);
+    expect(w.b.track).toEqual(T1);
+    w.assertOneQueue();
+  });
+
+  it('a jump on the controller plays that track on the output and drops what it skipped', () => {
+    const w = albumCast();
+    w.a.jumpTo(1); // t3
+    expect(w.b.track).toEqual(T3);
+    expect(ids(w.b.queue)).toEqual(['t4']);
+    expect(w.audible()).toEqual(['B']);
+    w.assertOneQueue();
+  });
+
+  it('an id the output cannot resolve is skipped, and the controller sees it gone', () => {
+    const w = albumCast();
+    w.b.unresolvable.add('t5');
+    w.a.editQueue((q) => [T5, ...q]);
+    expect(ids(w.b.queue)).toEqual(['t2', 't3', 't4']);
+    expect(ids(w.a.queue)).toEqual(['t2', 't3', 't4']);
+    w.assertOneQueue();
+  });
+
+  it('a third device mirrors the same queue', () => {
+    const w = albumCast();
+    const c = w.device('C');
+    expect(ids(c.queue)).toEqual(['t2', 't3', 't4']);
+    w.a.editQueue((q) => q.slice(1));
+    expect(ids(c.queue)).toEqual(['t3', 't4']);
+    w.assertOneQueue();
+  });
+
+  it('the controller disconnecting leaves the output playing the session queue it has', () => {
+    const w = albumCast();
+    w.a.disconnect();
+    w.b.trackEnds();
+    w.b.trackEnds();
+    expect(w.b.track).toEqual(T3);
+    expect(ids(w.b.queue)).toEqual(['t4']);
+    w.a.connect(); // the snapshot reply brings it up to date
+    expect(w.a.track).toEqual(T3);
+    expect(ids(w.a.queue)).toEqual(['t4']);
+    w.assertOneQueue();
+  });
+
+  it('an edit made during the output reconnect blip reaches it on reconnect', () => {
+    const w = castWorld({ activeGraceMs: 10_000 });
+    w.a.editQueue(() => [T2, T3]);
+    w.b.disconnect();
+    w.a.editQueue((q) => [...q, T5]); // B is pending: the server keeps the edit
+    expect(ids(w.b.queue)).toEqual(['t2', 't3']);
+    w.b.connect();
+    expect(ids(w.b.queue)).toEqual(['t2', 't3', 't5']);
+    w.assertOneQueue();
+  });
+
+  it('taking the session back continues along the same queue locally', () => {
+    const w = albumCast();
+    w.b.trackEnds();
+    w.a.cast('A');
+    expect(w.audible()).toEqual(['A']);
+    w.a.trackEnds();
+    expect(w.a.track).toEqual(T3);
+    expect(ids(w.b.queue)).toEqual(['t4']);
+    w.assertOneQueue();
     w.assertOneOutput();
   });
 });

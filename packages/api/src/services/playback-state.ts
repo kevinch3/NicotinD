@@ -18,6 +18,9 @@ export type PlaybackState = {
   timestamp: number; // to calculate drift
   trackId: string | null;
   track: Track | null;
+  /** The session's upcoming queue as song ids, next first (#895). Written by
+   *  a cast hand-off, a claim, a controller's `SET_QUEUE` and the output's
+   *  reports; survives the session ending, so whoever plays next can see it. */
   queue: string[];
 };
 
@@ -49,6 +52,8 @@ export type ClaimSnapshot = {
   trackId: string | null;
   position: number;
   isPlaying: boolean;
+  /** Absent from an older client: the session keeps the queue it had. */
+  queue?: string[];
 };
 
 export type PlaybackStateOptions = {
@@ -135,7 +140,8 @@ export class PlaybackStateManager extends EventEmitter {
     // timer drops the dead device from the list and finds the session already
     // moved, so it releases nothing.
     this.cancelPendingRelease(id);
-    this.updateState({ activeDeviceId: id, ...snapshot });
+    const { queue, ...rest } = snapshot;
+    this.updateState({ activeDeviceId: id, ...rest, ...(queue && { queue }) });
     return true;
   }
 

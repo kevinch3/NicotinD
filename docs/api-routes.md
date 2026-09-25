@@ -76,6 +76,7 @@ follow-up work, not part of the gate fix.
 | `GET`    | `/api/library/albums`                    | Browse albums (excludes in-flight downloads)                |
 | `GET`    | `/api/library/singles`                   | Browse singles & EPs                                        |
 | `GET`    | `/api/library/songs`                     | Whole-library flat song listing (Library "Songs" tab)       |
+| `POST`   | `/api/library/songs/resolve`             | Song ids → songs in order (remote-playback session queue)   |
 | `GET`    | `/api/library/genres`                    | Browse by genre                                             |
 | `GET`    | `/api/library/songs/:id/similar`         | Similar songs (BPM/key/genre scoring)                       |
 | `GET`    | `/api/library/songs/:id/acquisition`     | Acquisition provenance (how/where/when)                     |

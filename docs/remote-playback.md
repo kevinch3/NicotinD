@@ -20,6 +20,18 @@ device picker.
 The picker is the only thing that moves audio. Pressing play on another device never steals it;
 it controls the output instead.
 
+### The queue while casting (#895)
+
+A session has **one queue**, and it is the one you built. When you pick another device, your
+"Next up" list goes with the track and replaces whatever that device had queued. From then on the
+list in your Now Playing sheet *is* what plays there: jump to a row, remove, reorder, clear, "Play
+next" or "Add to queue" on your phone and the output plays the edited list; when a track ends the
+output moves on along the same list and your sheet follows. Every device in the session shows that
+list, with a **"Shared queue · playing on <device>"** line above it.
+
+If you close the app on the phone, the output keeps playing the queue it has; open it again and the
+sheet catches up.
+
 ### The toggle
 
 **Settings → Remote Playback → "Let my other devices play music on this device"** is **on by
@@ -203,7 +215,7 @@ The server (`PlaybackStateManager`) holds a single shared state object:
   timestamp:      number          // wall-clock ms, used to estimate drift
   trackId:        string | null
   track:          Track | null    // full metadata, synced to late-joining receivers
-  queue:          string[]
+  queue:          string[]        // the session's upcoming queue as song ids, next first (#895)
 }
 ```
 
@@ -223,11 +235,11 @@ All frames are JSON: `{ type: string, payload: object }`.
 | `REGISTER` | `{ id, name, deviceType, remoteEnabled, activated, compactProgress? }` | Announce this device on connect. `compactProgress: true` opts in to `PROGRESS` frames (absent = an older client, which gets a `STATE_SYNC` per report) |
 | `HEARTBEAT` | `{}` | Keep-alive every 30 s |
 | `COMMAND` | `{ action, ...args }` | Send a playback command (see actions below) |
-| `SET_ACTIVE_DEVICE` | `{ id }` | Nominate a device as the audio output. Ignored unless the target is listed and available |
-| `CLAIM_OUTPUT` | `{ track, trackId, position, isPlaying }` | This device started playing and wants to be the output. Compare-and-set: applied when there is no session, the claimant holds it, or the current output is not available. A refused claim is answered with a private `STATE_SYNC` |
+| `SET_ACTIVE_DEVICE` | `{ id, queue? }` | Nominate a device as the audio output. Ignored unless the target is listed and available. A hand-off carries the caster's `queue`, stored in the same update |
+| `CLAIM_OUTPUT` | `{ track, trackId, position, isPlaying, queue? }` | This device started playing and wants to be the output. Compare-and-set: applied when there is no session, the claimant holds it, or the current output is not available. A refused claim is answered with a private `STATE_SYNC` |
 | `RELEASE_OUTPUT` | `{}` | The output is leaving (`pagehide`): end the session now |
 | `PROGRESS_REPORT` | `{ position, duration }` | The output's position, every 2 s while playing. Accepted only from the output; stored, and relayed to the user's *other* sockets (see *Progress is relayed, not rebroadcast*) |
-| `STATE_UPDATE` | `{ state }` | The output reports its state. Accepted only from the output (or with no session); broadcast when the track or `isPlaying` changed, quiet otherwise |
+| `STATE_UPDATE` | `{ state }` | The output reports its state — including `{ queue }` when it consumed or edited the session queue. Accepted only from the output (or with no session); broadcast when the track, `isPlaying` or the queue changed, quiet otherwise |
 | `UPDATE_DEVICE` | `{ remoteEnabled?, activated?, name? }` | Preference, first gesture, rename |
 
 #### Server → All clients
@@ -249,8 +261,9 @@ All frames are JSON: `{ type: string, payload: object }`.
 | `SEEK` | `position: number` | Jump to position in seconds |
 | `VOLUME` | `volume: number` | Set volume 0–1 |
 | `SET_TRACK` | `track: Track` | Load and queue a new track |
-| `NEXT` | — | Skip to next track |
+| `NEXT` | — | Skip to next track (along the session queue) |
 | `PREV` | — | Skip to previous track |
+| `SET_QUEUE` | `queue: string[]` | A controller edited the session queue. The server stores it (every controller mirrors it) and relays it; the output replaces its queue. Not a list of ids → dropped |
 
 ### Command flow (controller → receiver)
 
@@ -318,11 +331,51 @@ press ▶
   `remote-playback.ts` (`reduceServerMessage`, `castTo`, `onLocalTrackChanged`, `isAudioOutput`);
   `RemotePlaybackService` feeds it signals and applies its `PlayerEffect`s to `PlayerService`. The
   api-side `remote-playback.simulation.test.ts` runs the same functions for N virtual devices
-  against the real server hub, checking one invariant: at most one device is audible and it is the
-  one the server calls active — now also for scenarios where no picker was ever opened.
+  against the real server hub, checking two invariants: at most one device is audible and it is the
+  one the server calls active — also for scenarios where no picker was ever opened — and, since
+  #895, the session has one queue: every online device holds the queue the server holds. Its
+  virtual devices carry a queue and history, advance on track end and resolve ids against a shared
+  library, with per-device unresolvable ids.
 - **A restored track is not a change.** `RemotePlaybackService` forwards a track change only when
   the player is playing (a pick), so a tab that reloads with a restored, paused track never sends
   `SET_TRACK` at the output (the #882 duplicated-tab hazard).
+- **One queue per session, owned by the controller (#895).** Before this the protocol had no
+  queue: a cast sent one track, and both ends kept a private queue the other could not see — the
+  output advanced along *its own* list while the controller's "Next up", the one the user built,
+  governed nothing. Now:
+  - *Wire.* A queue entry is a **song id**; `PlaybackState.queue` is the session's upcoming list.
+    Each device turns ids into tracks with what it already holds (queue, history, now playing) and
+    one `POST /api/library/songs/resolve` for the rest (`adoptQueue`).
+  - *Cast.* `castTo` sends `SET_ACTIVE_DEVICE { id, queue }`, so the output learns its queue in the
+    very frame that makes it the output (`set-queue` on becoming active). Sending it as a later
+    `SET_QUEUE` instead would let the hand-off's own broadcast carry the server's *stale* queue back
+    to the controller first and overwrite the list being cast. A claim carries the claimant's queue
+    the same way.
+  - *The output's prior local queue is replaced for the session and not restored* when the session
+    ends. Restoring it would make the queue a device plays depend on how it came to stop being the
+    output, and the ruling is that the caster's list is the one that counts.
+  - *Advance.* The output's `playNext` consumes its local queue, which *is* the session's; the
+    queue effect reports the rest (`onLocalQueueChanged` → `STATE_UPDATE { queue }`) and every
+    controller mirrors it (`set-queue`). A broadcast never moves the output's queue (it can trail
+    the output's own advance) — only a hand-off, a snapshot reply after a reconnect, or `SET_QUEUE`.
+  - *Edits.* `PlayerService` stays the one place the queue is mutated — the #1295 gestures, jump,
+    clear, "Play next", "Add to queue", shuffle — and `RemotePlaybackService`'s queue effect turns a
+    controller's change into `SET_QUEUE`. That effect is registered **before** the track effect, so
+    a jump (queue and track change together) sends the queue first. Echoes are suppressed by
+    comparing with `sessionQueue`, the last queue heard from or sent to the server. An edit while
+    the output is in its reconnect grace is still sent: the server keeps it and the output's
+    snapshot reply delivers it. An edit against an output that opted out is not.
+  - *Unresolvable ids.* An id the output cannot resolve is dropped from its queue; the queue effect
+    then reports the shorter list, so the controller sees that row disappear rather than a list
+    that promises a track that will never play. A failed resolve applies nothing.
+  - *Controller gone.* The output holds the resolved tracks locally, so it keeps playing the session
+    queue with no controller at all; a controller that reconnects mirrors the server's queue from
+    its snapshot.
+  - *Radio.* Every device in a session holds the same list, and each topping it up would multiply
+    the top-up, so only the output does (`PlayerService.radioTopUpHere`, kept equal to
+    `isActiveDevice`). A controller's own radio setting therefore does not travel with a cast.
+  - *History stays per device*: `PREV` walks the output's own history, which includes what it
+    played before the cast.
 - **The presence channel retries on return, not forever.** Five failed opens stop the timer-driven
   reconnects (a proxy that drops WebSockets would otherwise be hammered), the failure shows in
   Settings, and the next `online`, `focus` or visible-tab event tries again. The old client turned
@@ -332,9 +385,10 @@ press ▶
 
 | File | Role |
 |------|------|
-| `packages/core/src/remote-playback.ts` | The client's protocol decisions, pure: `reduceServerMessage`, `castTo`, `claimOutput`, `onLocalPlayingChanged`, `onLocalTrackChanged`, `isAudioOutput`, `hasControllableSession` |
+| `packages/core/src/remote-playback.ts` | The client's protocol decisions, pure: `reduceServerMessage`, `castTo`, `claimOutput`, `onLocalPlayingChanged`, `onLocalTrackChanged`, `onLocalQueueChanged`, `sameQueue`, `isAudioOutput`, `hasControllableSession` |
 | `packages/web/src/app/services/playback-ws.service.ts` | Singleton WS service — connect/reconnect + retry-on-return, per-socket handlers, heartbeat + ack watchdog, device ID/name, activation, `sendCommand`, `sendClaim`, `sendRelease` |
-| `packages/web/src/app/services/remote-playback.service.ts` | Angular adapter with signals — feeds the reducer, applies `PlayerEffect`s to `PlayerService`, the `outputAvailable` preference, `playingElsewhere` / `sessionControllable` for the chrome |
+| `packages/web/src/app/services/remote-playback.service.ts` | Angular adapter with signals — feeds the reducer, applies `PlayerEffect`s to `PlayerService` (`adoptQueue` resolves a `set-queue`), the `outputAvailable` preference, `playingElsewhere` / `sessionControllable` / `sharedQueue` for the chrome |
+| `packages/web/src/app/components/now-playing/now-playing-queue-panel/` | The queue panel; its "Shared queue · playing on …" line (`queue-session-label`) while a session has another device in it |
 | `packages/web/src/app/components/playing-elsewhere/` | The "Playing on <device>" strip; opens the switcher |
 | `packages/web/src/app/components/device-switcher/device-switcher.component.ts` | Popover UI for selecting the output; lists every device, offers the available ones |
 | `packages/web/src/app/pages/settings/settings.component.ts` | Remote Playback section — the availability toggle and device rename |
@@ -346,7 +400,8 @@ press ▶
 |------|------|
 | `packages/api/src/services/playback-state.ts` | In-memory state + device registry; `claimOutput` (compare-and-set), `canTarget`, `releaseOutput`, `reset` (end the session, drop devices in their grace, keep live ones); `updateState` (broadcasts) vs `updateStateQuiet` (silent); `activeGraceMs`, `idleReleaseMs` |
 | `packages/api/src/routes/playback.ts` | `GET /api/playback/session` (the state a fresh tab would sync) and `POST /api/playback/session/reset`, both scoped to the caller |
-| `packages/api/src/services/websocket.ts` | `createPlaybackHub` — connection table keyed by raw socket, message handlers, broadcast listeners |
+| `packages/api/src/services/websocket.ts` | `createPlaybackHub` — connection table keyed by raw socket, message handlers, broadcast listeners; `readQueue` validates a wire queue (`MAX_SESSION_QUEUE`) |
+| `packages/api/src/routes/library.ts` | `POST /api/library/songs/resolve` — song ids → songs in order, unknown ids dropped |
 | `packages/api/src/services/remote-playback.multi-device.test.ts` | Server-side virtual devices: real hub + manager, a fresh `WSContext` per event |
 | `packages/api/src/services/remote-playback.simulation.test.ts` | Full simulation: N virtual devices running the core reducer against the real hub |
 | `packages/e2e/tests/remote-playback.spec.ts` | Two real browser contexts through the real adapter: claim-on-play, pick-goes-to-output, closed-tab release, cast + progress + self-pause, opt-out |
@@ -389,4 +444,9 @@ nobody asked for. See [tv-ux.md](tv-ux.md).
 - **State is ephemeral.** Server restart clears the active device and playback state. All devices reconnect automatically but no track is restored.
 - **Shared library only.** Remote playback works because all devices stream from the same NicotinD instance using their own JWT tokens. External users on different NicotinD instances cannot be targeted.
 - **Every other connected tab hears the output's progress.** The presence socket is always up, so the 2 s `PROGRESS` relay reaches every other logged-in tab — two numbers per frame since #1308, and nothing at all with one device. Fine at household scale; a per-tab subscription would be the fix if it ever is not.
-- **No queue sync.** The queue lives in each browser's player store. Only the currently playing track is sent via `SET_TRACK`. Advancing to the next track on the receiver plays from its local queue, which may be empty.
+- **Concurrent queue edits: last write wins.** A controller edit and the output's advance that cross
+  on the wire are applied in server order; the controller can briefly see the other list before
+  its own edit's echo arrives, and an edit made against a list the output already advanced past
+  can put the playing track back in the queue.
+- **Older clients.** A client from before #895 sends no queue and ignores `SET_QUEUE`: with one as
+  the output, the controller's list is stored but not played, as before.

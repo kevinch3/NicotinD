@@ -570,6 +570,12 @@ export class LibraryApiService {
     });
   }
 
+  /** Song ids → songs, in order, unknown ids dropped: how a remote-playback
+   *  session's id-only queue becomes tracks on this device (#895). */
+  resolveSongs(ids: string[]): Observable<Song[]> {
+    return this.http.post<Song[]>('/api/library/songs/resolve', { ids });
+  }
+
   /**
    * How the queue *being listened to* was generated (#1124) — set only by a
    * call that passed `{ provenance: true }`, which is the player's own refill.

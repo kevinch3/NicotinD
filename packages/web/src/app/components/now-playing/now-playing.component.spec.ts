@@ -55,6 +55,7 @@ function makeRemoteStub() {
     remotePositionTs: signal(Date.now()),
     devices: signal([]),
     activeDeviceId: signal(null),
+    sharedQueue: signal(false),
     switcherOpen: signal(false),
     setSwitcherOpen: () => {},
     switchToDevice: () => {},

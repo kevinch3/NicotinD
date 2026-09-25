@@ -29,6 +29,11 @@
  *   out, no user gesture yet, or gone into its reconnect grace) is not
  *   *controllable*: a play or pick on a controller claims locally instead of
  *   driving nothing.
+ * - The session has ONE queue (#895). The device that casts sends its queue
+ *   along and owns it from then on: its edits become `SET_QUEUE` commands the
+ *   output executes, the output's advance consumes it and reports the rest,
+ *   and every other device mirrors it. A queue on the wire is song ids; each
+ *   device resolves them to tracks it can play and drops the ones it cannot.
  */
 
 export interface RemoteTrack {
@@ -59,12 +64,17 @@ export interface RemotePlaybackSnapshot {
   track?: RemoteTrack | null;
   position?: number;
   duration?: number;
+  /** The session's upcoming queue as song ids, next first (#895). */
+  queue?: string[];
 }
 
 export type ServerMessage =
   | { type: 'STATE_SYNC'; payload: { state: RemotePlaybackSnapshot; devices?: RemoteDevice[] } }
   | { type: 'DEVICES_SYNC'; payload: { devices: RemoteDevice[] } }
-  | { type: 'COMMAND'; payload: { action: string; track?: RemoteTrack; position?: number } }
+  | {
+      type: 'COMMAND';
+      payload: { action: string; track?: RemoteTrack; position?: number; queue?: string[] };
+    }
   | { type: 'HEARTBEAT_ACK'; payload: Record<string, never> }
   /** The output's periodic position, relayed to the user's *other* sockets
    *  only — and only to those that registered with `compactProgress: true`;
@@ -79,19 +89,29 @@ export interface RemoteProgress {
 }
 
 export type ClientMessage =
-  | { type: 'SET_ACTIVE_DEVICE'; payload: { id: string } }
+  /** `queue` rides along on a hand-off so the output starts with the caster's
+   *  queue in the same frame that makes it the output (#895). */
+  | { type: 'SET_ACTIVE_DEVICE'; payload: { id: string; queue?: string[] } }
   | {
       type: 'CLAIM_OUTPUT';
-      payload: { track: RemoteTrack; trackId: string; position: number; isPlaying: boolean };
+      payload: {
+        track: RemoteTrack;
+        trackId: string;
+        position: number;
+        isPlaying: boolean;
+        queue: string[];
+      };
     }
   | { type: 'RELEASE_OUTPUT'; payload: Record<string, never> }
   | { type: 'COMMAND'; payload: { action: 'SET_TRACK'; track: RemoteTrack } }
+  | { type: 'COMMAND'; payload: { action: 'SET_QUEUE'; queue: string[] } }
   | {
       type: 'STATE_UPDATE';
       payload: {
         state:
           | { track: RemoteTrack; trackId: string; isPlaying: boolean; position: number }
-          | { isPlaying: boolean; position: number };
+          | { isPlaying: boolean; position: number }
+          | { queue: string[] };
       };
     };
 
@@ -106,6 +126,9 @@ export interface RemoteClientState {
   remoteDuration: number;
   /** The track last applied from the server; the echo guard for SET_TRACK. */
   lastRemoteTrackId: string | null;
+  /** The session's queue as last heard from (or sent to) the server; the echo
+   *  guard for queue edits. `null` until the server has said anything. */
+  sessionQueue: string[] | null;
 }
 
 /** Local facts the decisions need; owned by the player and the settings. */
@@ -113,6 +136,8 @@ export interface RemoteClientContext {
   myId: string;
   remoteEnabled: boolean;
   localTrackId: string | null;
+  /** The local player's upcoming queue as song ids, next first. */
+  localQueue: string[];
   now: number;
 }
 
@@ -128,7 +153,10 @@ export type PlayerEffect =
   /** This device stopped being the output: pause the local player. */
   | { kind: 'yield' }
   /** This device took the session back: continue locally from here. */
-  | { kind: 'resume-local'; position: number; playing: boolean };
+  | { kind: 'resume-local'; position: number; playing: boolean }
+  /** Replace the local upcoming queue with the session's. The adapter
+   *  resolves the ids to tracks and drops any it cannot resolve. */
+  | { kind: 'set-queue'; ids: string[] };
 
 export interface Reduction {
   state: RemoteClientState;
@@ -144,7 +172,15 @@ export function initialRemoteClientState(): RemoteClientState {
     remotePositionTs: 0,
     remoteDuration: 0,
     lastRemoteTrackId: null,
+    sessionQueue: null,
   };
+}
+
+/** Two queues hold the same ids in the same order. */
+export function sameQueue(a: readonly string[] | null, b: readonly string[] | null): boolean {
+  if (a === b) return true;
+  if (a === null || b === null || a.length !== b.length) return false;
+  return a.every((id, i) => id === b[i]);
 }
 
 /** Whether this device plays audio: no session, or a session naming it. */
@@ -172,7 +208,7 @@ function targetIsCastable(state: RemoteClientState, id: string): boolean {
  *  server applies the claim compare-and-set and its broadcast commits it. */
 export function claimOutput(
   _state: RemoteClientState,
-  _ctx: RemoteClientContext,
+  ctx: RemoteClientContext,
   track: RemoteTrack,
   position: number,
 ): { messages: ClientMessage[] } {
@@ -180,7 +216,7 @@ export function claimOutput(
     messages: [
       {
         type: 'CLAIM_OUTPUT',
-        payload: { track, trackId: track.id, position, isPlaying: true },
+        payload: { track, trackId: track.id, position, isPlaying: true, queue: ctx.localQueue },
       },
     ],
   };
@@ -253,6 +289,8 @@ function reduceStateSync(
     next.remotePositionTs = ctx.now;
     next.remoteDuration = snap.duration ?? snap.track?.duration ?? 0;
   }
+  const snapQueue = Array.isArray(snap.queue) ? snap.queue : null;
+  if (snapQueue) next.sessionQueue = snapQueue;
 
   const wasOutput = isAudioOutput(prev.activeDeviceId, ctx.myId);
   const isOutput = isAudioOutput(next.activeDeviceId, ctx.myId);
@@ -277,6 +315,19 @@ function reduceStateSync(
       if (snap.position) effects.push({ kind: 'seek', position: snap.position });
     }
   }
+  // The output takes the session's queue when it becomes the output (a cast
+  // carries the caster's queue in that very frame) and when it reconnects
+  // (edits made while its socket was down reached nobody). After that only
+  // `SET_QUEUE` moves it: a plain broadcast can trail the output's own advance.
+  const becameOutput = amActive && prev.activeDeviceId !== ctx.myId;
+  if (
+    amActive &&
+    (snapshotReply || becameOutput) &&
+    snapQueue &&
+    !sameQueue(snapQueue, ctx.localQueue)
+  ) {
+    effects.push({ kind: 'set-queue', ids: snapQueue });
+  }
 
   // Controller: mirror the remote track so the player bar shows it — even on
   // a device that opted out of being driven; its chrome still names the track.
@@ -287,6 +338,10 @@ function reduceStateSync(
       effects.push({ kind: 'show-track', track: snap.track });
     }
   }
+  // …and its queue: both sides render the session's one list (#895).
+  if (!amActive && hasSession && snapQueue && !sameQueue(snapQueue, ctx.localQueue)) {
+    effects.push({ kind: 'set-queue', ids: snapQueue });
+  }
 
   return { state: next, effects };
 }
@@ -294,7 +349,7 @@ function reduceStateSync(
 function reduceCommand(
   state: RemoteClientState,
   ctx: RemoteClientContext,
-  payload: { action: string; track?: RemoteTrack; position?: number },
+  payload: { action: string; track?: RemoteTrack; position?: number; queue?: string[] },
 ): Reduction {
   // Only the active, opted-in device executes. `null` is not "me": with no
   // session a stray command must not start audio on every connected device.
@@ -320,6 +375,13 @@ function reduceCommand(
       return { state, effects: [{ kind: 'next' }] };
     case 'PREV':
       return { state, effects: [{ kind: 'prev' }] };
+    case 'SET_QUEUE':
+      return Array.isArray(payload.queue)
+        ? {
+            state: { ...state, sessionQueue: payload.queue },
+            effects: [{ kind: 'set-queue', ids: payload.queue }],
+          }
+        : { state, effects: [] };
     default:
       return { state, effects: [] };
   }
@@ -350,6 +412,35 @@ export function onLocalTrackChanged(
   };
 }
 
+/** The local upcoming queue changed. On the output it is the session's queue
+ *  consuming or being edited, so it reports it; on a controller it is an edit,
+ *  sent as `SET_QUEUE` for the output to play — also while the output is in
+ *  its reconnect grace, since the server keeps it and the output's snapshot
+ *  reply delivers it. Not to an output that opted out: it executes nothing, so
+ *  the edit would describe a queue nobody plays. Anything the server already
+ *  holds (a mirror just applied, the echo of a send) says nothing. With no
+ *  session there is nothing to tell: a claim carries the queue when this
+ *  device starts playing. */
+export function onLocalQueueChanged(
+  state: RemoteClientState,
+  ctx: RemoteClientContext,
+  queue: string[],
+): { state: RemoteClientState; messages: ClientMessage[] } {
+  if (state.activeDeviceId === null || sameQueue(queue, state.sessionQueue)) {
+    return { state, messages: [] };
+  }
+  const next = { ...state, sessionQueue: queue };
+  if (state.activeDeviceId === ctx.myId) {
+    return { state: next, messages: [{ type: 'STATE_UPDATE', payload: { state: { queue } } }] };
+  }
+  const output = state.devices.find((d) => d.id === state.activeDeviceId);
+  if (output?.available === false) return { state, messages: [] };
+  return {
+    state: next,
+    messages: [{ type: 'COMMAND', payload: { action: 'SET_QUEUE', queue } }],
+  };
+}
+
 /** The user picked an output device in the switcher. */
 export function castTo(
   state: RemoteClientState,
@@ -361,9 +452,11 @@ export function castTo(
   // it, and a stale click must not point the session at it.
   if (!targetIsCastable(state, targetId)) return { state, effects: [], messages: [] };
   const next = { ...state, activeDeviceId: targetId };
-  const messages: ClientMessage[] = [{ type: 'SET_ACTIVE_DEVICE', payload: { id: targetId } }];
 
   if (targetId === ctx.myId) {
+    // The session's queue is already mirrored here; the server's copy is the
+    // truth and comes back with the broadcast.
+    const messages: ClientMessage[] = [{ type: 'SET_ACTIVE_DEVICE', payload: { id: targetId } }];
     // Taking the session back: continue where the remote device was. Its last
     // reported position ages by wall-clock while it plays.
     const elapsed = state.remoteIsPlaying ? (ctx.now - state.remotePositionTs) / 1000 : 0;
@@ -375,6 +468,12 @@ export function castTo(
     };
   }
 
+  // The caster's queue becomes the session's: the output replaces its own
+  // (not restored when the session ends) and advances along this one (#895).
+  const messages: ClientMessage[] = [
+    { type: 'SET_ACTIVE_DEVICE', payload: { id: targetId, queue: ctx.localQueue } },
+  ];
+  next.sessionQueue = ctx.localQueue;
   if (currentTrack) {
     messages.push({ type: 'COMMAND', payload: { action: 'SET_TRACK', track: currentTrack } });
   }

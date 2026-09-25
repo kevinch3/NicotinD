@@ -3,7 +3,8 @@ import { RemotePlaybackService } from './remote-playback.service';
 import { PlaybackWsService } from './playback-ws.service';
 import { PlayerService } from './player.service';
 import { AuthService } from './auth.service';
-import { EMPTY, Subject } from 'rxjs';
+import { LibraryApiService } from './api/library-api.service';
+import { EMPTY, Subject, of } from 'rxjs';
 import { filter, map } from 'rxjs/operators';
 
 // Provide a full localStorage stub so the test works regardless of the
@@ -126,6 +127,7 @@ describe('RemotePlaybackService session behaviour (#877)', () => {
   let service: RemotePlaybackService;
   let player: PlayerService;
   let incoming: Subject<{ type: string; payload: unknown }>;
+  let resolveSongs: ReturnType<typeof vi.fn>;
   let ws: {
     updateDevice: ReturnType<typeof vi.fn>;
     connect: ReturnType<typeof vi.fn>;
@@ -151,6 +153,9 @@ describe('RemotePlaybackService session behaviour (#877)', () => {
   beforeEach(() => {
     storageStub.clear();
     incoming = new Subject();
+    resolveSongs = vi.fn((ids: string[]) =>
+      of(ids.filter((id) => id !== 'gone').map((id) => ({ id, title: `Song ${id}`, artist: 'R' }))),
+    );
     ws = {
       updateDevice: vi.fn(),
       connect: vi.fn(),
@@ -175,6 +180,7 @@ describe('RemotePlaybackService session behaviour (#877)', () => {
         PlayerService,
         AuthService,
         { provide: PlaybackWsService, useValue: ws },
+        { provide: LibraryApiService, useValue: { resolveSongs } },
       ],
     });
     service = TestBed.inject(RemotePlaybackService);
@@ -188,8 +194,74 @@ describe('RemotePlaybackService session behaviour (#877)', () => {
     TestBed.flushEffects();
     service.switchToDevice('tv');
     expect(player.isPlaying()).toBe(false);
-    expect(ws.setActiveDevice).toHaveBeenCalledWith('tv');
+    expect(ws.setActiveDevice).toHaveBeenCalledWith('tv', []);
     expect(ws.sendCommand).toHaveBeenCalledWith('SET_TRACK', { track: t1 });
+  });
+
+  describe('the session queue (#895)', () => {
+    const ids = () => player.queue().map((t) => t.id);
+
+    it("a cast hands this device's upcoming queue to the output", () => {
+      player.playWithContext([t1, t2, t3] as never, 0);
+      TestBed.flushEffects();
+      service.switchToDevice('tv');
+      expect(ws.setActiveDevice).toHaveBeenCalledWith('tv', ['t2', 't3']);
+    });
+
+    it('a queue edit on a controller becomes SET_QUEUE; a mirrored queue is not echoed', () => {
+      sync({ activeDeviceId: 'tv', isPlaying: true, position: 0, track: t1, queue: ['t2', 't3'] }, [
+        meDevice,
+        tvDevice,
+      ]);
+      expect(ids()).toEqual(['t2', 't3']);
+      TestBed.flushEffects();
+      expect(ws.sendCommand).not.toHaveBeenCalledWith('SET_QUEUE', expect.anything());
+      player.removeFromQueue(0);
+      TestBed.flushEffects();
+      expect(ws.sendCommand).toHaveBeenCalledWith('SET_QUEUE', { queue: ['t3'] });
+    });
+
+    it('the queue edit is sent before the track when a jump moves both', () => {
+      sync({ activeDeviceId: 'tv', isPlaying: true, position: 0, track: t1, queue: ['t2', 't3'] }, [
+        meDevice,
+        tvDevice,
+      ]);
+      TestBed.flushEffects();
+      ws.sendCommand.mockClear();
+      player.jumpToQueueIndex(1);
+      TestBed.flushEffects();
+      expect(ws.sendCommand.mock.calls.map((c) => c[0])).toEqual(['SET_QUEUE', 'SET_TRACK']);
+    });
+
+    it('the output adopts SET_QUEUE, fetching only what it lacks and dropping unknown ids', () => {
+      sync({ activeDeviceId: 'me' }, [meDevice, tvDevice]);
+      player.play(t1);
+      player.setQueue([t2] as never);
+      TestBed.flushEffects();
+      ws.sendStateUpdate.mockClear();
+      emit('COMMAND', { action: 'SET_QUEUE', queue: ['t2', 'x9', 'gone'] });
+      expect(resolveSongs).toHaveBeenCalledWith(['x9', 'gone']);
+      expect(ids()).toEqual(['t2', 'x9']);
+      TestBed.flushEffects();
+      // The shorter list goes back up, so the controller sees 'gone' go.
+      expect(ws.sendStateUpdate).toHaveBeenCalledWith({ queue: ['t2', 'x9'] });
+    });
+
+    it('only the output tops a radio queue up', () => {
+      TestBed.flushEffects();
+      expect(player.radioTopUpHere()).toBe(true);
+      sync({ activeDeviceId: 'tv' }, [meDevice, tvDevice]);
+      TestBed.flushEffects();
+      expect(player.radioTopUpHere()).toBe(false);
+    });
+
+    it('shows as shared once a session has another device in it', () => {
+      expect(service.sharedQueue()).toBe(false);
+      sync({ activeDeviceId: 'me' }, [meDevice]);
+      expect(service.sharedQueue()).toBe(false);
+      sync({ activeDeviceId: 'me' }, [meDevice, tvDevice]);
+      expect(service.sharedQueue()).toBe(true);
+    });
   });
 
   it('the session ending never wakes the former controller', () => {

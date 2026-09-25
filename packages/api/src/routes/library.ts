@@ -316,6 +316,11 @@ let albumKeyCache = new WeakMap<Database, { at: number; byGroupKey: Map<string, 
 // sidecar's candidate window (40-220): that one filters machine guesses, this
 // one only has to reject nonsense, and a human tagging a drum & bass track at
 // its written 174 or a half-time 87 is making a real call either way.
+/** Most ids one `/songs/resolve` answers (the hub's own queue cap). */
+const MAX_RESOLVE_IDS = 2000;
+/** Ids per `IN (…)` statement, well under SQLite's bound-variable limit. */
+const RESOLVE_CHUNK = 500;
+
 const MIN_APPLIABLE_BPM = 20;
 const MAX_APPLIABLE_BPM = 400;
 
@@ -2038,6 +2043,34 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       .map(rowToSong);
     attachSongArtists(db, songs);
     return c.json(songs);
+  });
+
+  // Song ids → songs, in request order, unknown ids dropped. A remote-playback
+  // session carries its queue as ids (#895): the device that plays it, or
+  // mirrors it, resolves the ids it has no metadata for here, in one call.
+  // POST, not GET: a long queue does not fit a URL.
+  app.post('/songs/resolve', async (c) => {
+    const body = (await c.req.json().catch(() => null)) as { ids?: unknown } | null;
+    const raw = body?.ids;
+    if (!Array.isArray(raw) || !raw.every((id): id is string => typeof id === 'string')) {
+      return c.json({ error: 'ids must be an array of song ids' }, 400);
+    }
+    const ids = raw.slice(0, MAX_RESOLVE_IDS);
+    const unique = [...new Set(ids)];
+    const db = getDatabase();
+    const byId = new Map<string, Song>();
+    for (let i = 0; i < unique.length; i += RESOLVE_CHUNK) {
+      const chunk = unique.slice(i, i + RESOLVE_CHUNK);
+      const rows = db
+        .query<SongRow, string[]>(
+          `${SONG_SELECT} WHERE s.id IN (${chunk.map(() => '?').join(',')})`,
+        )
+        .all(...chunk);
+      const songs = rows.map(rowToSong);
+      attachSongArtists(db, songs);
+      for (const song of songs) byId.set(song.id, song);
+    }
+    return c.json(ids.flatMap((id) => byId.get(id) ?? []));
   });
 
   app.get('/songs/:id', (c) => {

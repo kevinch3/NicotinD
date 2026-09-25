@@ -308,8 +308,10 @@ export class PlaybackWsService {
     this.send({ type: 'STATE_UPDATE', payload: { state } });
   }
 
-  setActiveDevice(id: string): void {
-    this.send({ type: 'SET_ACTIVE_DEVICE', payload: { id } });
+  /** `queue` rides along on a hand-off: the caster's queue becomes the
+   *  session's in the same frame (#895). */
+  setActiveDevice(id: string, queue?: string[]): void {
+    this.send({ type: 'SET_ACTIVE_DEVICE', payload: { id, ...(queue && { queue }) } });
   }
 
   sendClaim(payload: {
@@ -317,6 +319,7 @@ export class PlaybackWsService {
     trackId: string;
     position: number;
     isPlaying: boolean;
+    queue: string[];
   }): void {
     this.send({ type: 'CLAIM_OUTPUT', payload });
   }

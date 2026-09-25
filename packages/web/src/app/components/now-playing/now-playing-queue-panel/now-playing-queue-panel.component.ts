@@ -8,6 +8,7 @@ import {
   signal,
 } from '@angular/core';
 import { PlayerService } from '../../../services/player.service';
+import { RemotePlaybackService } from '../../../services/remote-playback.service';
 import { AuthService } from '../../../services/auth.service';
 import { ToastService } from '../../../services/toast.service';
 import { TranslateService } from '../../../services/translate.service';
@@ -47,6 +48,9 @@ const AUTOSCROLL_STEP_PX = 8;
 })
 export class NowPlayingQueuePanelComponent {
   readonly player = inject(PlayerService);
+  /** While casting, the list below is the session's queue (#895): edits here
+   *  go through `PlayerService` as always and the session forwards them. */
+  readonly remote = inject(RemotePlaybackService);
   readonly auth = inject(AuthService);
   private readonly toast = inject(ToastService);
   private readonly i18n = inject(TranslateService);

@@ -1,9 +1,11 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { NowPlayingQueuePanelComponent } from './now-playing-queue-panel.component';
 import { PlayerService } from '../../../services/player.service';
 import { AuthService } from '../../../services/auth.service';
 import { provideRouter } from '@angular/router';
 import { ToastService } from '../../../services/toast.service';
+import { RemotePlaybackService } from '../../../services/remote-playback.service';
 import { LONG_PRESS_MS } from '../../../lib/row-gesture';
 
 // jsdom lacks PointerEvent; MouseEvent stands in (same trick as row-gesture.spec).
@@ -26,6 +28,11 @@ describe('NowPlayingQueuePanelComponent', () => {
   let removeFromQueue: ReturnType<typeof vi.fn>;
   let moveInQueue: ReturnType<typeof vi.fn>;
   let insertInQueue: ReturnType<typeof vi.fn>;
+  const remote = {
+    sharedQueue: signal(false),
+    playingElsewhere: signal(false),
+    activeDevice: signal<{ name: string } | null>(null),
+  };
   let queue: Array<{
     id: string;
     title: string;
@@ -61,7 +68,39 @@ describe('NowPlayingQueuePanelComponent', () => {
           },
         },
         { provide: AuthService, useValue: { token: () => 'tok', mediaToken: () => 'tok' } },
+        { provide: RemotePlaybackService, useValue: remote },
       ],
+    });
+    remote.sharedQueue.set(false);
+    remote.playingElsewhere.set(false);
+    remote.activeDevice.set(null);
+  });
+
+  describe('the shared session label (#895)', () => {
+    const label = (el: HTMLElement) =>
+      el.querySelector('[data-testid="queue-session-label"]')?.textContent?.trim() ?? null;
+
+    it('is absent with no session: the queue is this device’s own', () => {
+      const fixture = TestBed.createComponent(NowPlayingQueuePanelComponent);
+      fixture.detectChanges();
+      expect(label(fixture.nativeElement)).toBeNull();
+    });
+
+    it('names the output while casting', () => {
+      remote.sharedQueue.set(true);
+      remote.playingElsewhere.set(true);
+      remote.activeDevice.set({ name: 'Living Room TV' });
+      const fixture = TestBed.createComponent(NowPlayingQueuePanelComponent);
+      fixture.detectChanges();
+      // No catalog in a unit test: the pipe falls through to the key.
+      expect(label(fixture.nativeElement)).toBe('nowPlaying.sessionQueueOn');
+    });
+
+    it('says so on the output too', () => {
+      remote.sharedQueue.set(true);
+      const fixture = TestBed.createComponent(NowPlayingQueuePanelComponent);
+      fixture.detectChanges();
+      expect(label(fixture.nativeElement)).toBe('nowPlaying.sessionQueueHere');
     });
   });
 

@@ -892,6 +892,8 @@
   "nowPlaying.radioStrategy.similar": "similar",
   "nowPlaying.radioStrategy.balanced": "balanced",
   "nowPlaying.radioStrategy.different": "different",
+  "nowPlaying.sessionQueueHere": "Shared queue · playing on this device",
+  "nowPlaying.sessionQueueOn": "Shared queue · playing on {device}",
   "nowPlaying.variety": "Variety",
   "nowPlaying.varietyTooSimilar": "Too similar",
   "nowPlaying.varietyBalanced": "Balanced",
