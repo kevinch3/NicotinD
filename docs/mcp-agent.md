@@ -71,7 +71,7 @@ audit-logged.
 | --- | --- | --- |
 | `search_library` | read | library artists/albums/songs by name, via the shared folded matcher |
 | `get_library_health` | read | `services/library-health.ts` `libraryHealth` — the curation-pass entry point |
-| `list_recent_songs` | read | recently-landed songs, newest first, paged, optional missing-genre filter |
+| `list_recent_songs` | read | recently-landed songs, newest first, paged, optional missing-genre or any-position `genre` filter; every row carries its full ordered `genres` |
 | `get_artist` | read | one artist + their albums |
 | `get_album_tracks` | read | one album: header (year/classification/cover status) + songs with genre, track/disc, suffix, bitrate |
 | `get_song_lyrics` | read | `services/lyrics-store.ts` `getLyrics` + `parseLrc` — source, offset, matched vs local duration, and where the LRC's last line falls |
@@ -155,6 +155,13 @@ reads `mixed` rather than mislabelling half the call. Only a **byte-identical**
 target is still refused, since that is a true no-op.
 
 ### `list_recent_songs` (issues #676, #678)
+
+**`genre` filter and `genres` (#1129).** `genre` lists songs carrying that genre at *any* position
+(case-insensitive, via `library_song_genres`) — the only way to enumerate a mistag like the YouTube
+category "Music", which lived on 69 songs across 69 artists and could not be listed. Every row now
+carries `genres`, the song's full ordered set, because `set_song_genre(mode: replace)` overwrites
+the whole set and the position-0 `genre` alone has already destroyed real tags (see the curation
+skill).
 
 `search_library`'s missing "browse" counterpart to its "search" — a curator (or an
 agent asked to "curate the most recent downloads") had no way to list songs by

@@ -240,7 +240,7 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'list_recent_songs',
     description:
-      'List recently-landed songs, newest first. Optionally filter to only songs missing a genre.',
+      'List recently-landed songs, newest first. Optionally filter to only songs missing a genre, or to songs carrying one genre anywhere in their set (case-insensitive, e.g. genre: "Music" for the YouTube category tag). Every row carries `genres`, the song\'s FULL ordered genre list — read it before set_song_genre(mode: replace), which overwrites the whole set.',
     access: 'read',
     inputSchema: {
       type: 'object',
@@ -248,13 +248,28 @@ export const MCP_TOOLS: McpTool[] = [
         limit: { type: 'number', description: 'Max results (1–100, default 25).' },
         offset: { type: 'number', description: 'Rows to skip, for paging (default 0).' },
         missingGenre: { type: 'boolean', description: 'Only songs with no genre set.' },
+        genre: {
+          type: 'string',
+          description: 'Only songs carrying this genre at any position (case-insensitive).',
+        },
       },
     },
     handler: ({ db }, args) => {
       const limit = clampLimit(args.limit, 25, 100);
       const offset = Math.max(0, Math.floor(typeof args.offset === 'number' ? args.offset : 0));
       const missingGenre = args.missingGenre === true;
-      const where = missingGenre ? "(s.genre IS NULL OR s.genre = '')" : '1 = 1';
+      const genre = typeof args.genre === 'string' ? args.genre.trim() : '';
+      // `id IN (…)`, not a correlated EXISTS: the set is derived once (#1055).
+      const where = missingGenre
+        ? "(s.genre IS NULL OR s.genre = '')"
+        : genre
+          ? 's.id IN (SELECT song_id FROM library_song_genres WHERE genre = ? COLLATE NOCASE)'
+          : '1 = 1';
+      const params: Array<string | number> = [
+        ...(genre && !missingGenre ? [genre] : []),
+        limit,
+        offset,
+      ];
       const songs = db
         .query<
           {
@@ -266,7 +281,7 @@ export const MCP_TOOLS: McpTool[] = [
             genre: string | null;
             landedAt: number | null;
           },
-          [number, number]
+          Array<string | number>
         >(
           `SELECT s.id, s.title, s.artist, s.album_id AS albumId, a.name AS album,
                   s.genre, s.landed_at AS landedAt
@@ -274,8 +289,14 @@ export const MCP_TOOLS: McpTool[] = [
            WHERE ${where}
            ORDER BY s.landed_at DESC, s.id LIMIT ? OFFSET ?`,
         )
-        .all(limit, offset);
-      return JSON.stringify({ songs, limit, offset }, null, 2);
+        .all(...params);
+      // The full set, for the page only: `genre` is position 0 and a replace
+      // overwrites everything, so the display alone has destroyed real tags.
+      const setOf = db.query<{ genre: string }, [string]>(
+        'SELECT genre FROM library_song_genres WHERE song_id = ? ORDER BY position',
+      );
+      const rows = songs.map((s) => ({ ...s, genres: setOf.all(s.id).map((g) => g.genre) }));
+      return JSON.stringify({ songs: rows, limit, offset }, null, 2);
     },
   },
   {
