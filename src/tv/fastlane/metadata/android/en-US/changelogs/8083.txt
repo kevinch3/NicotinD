@@ -1,0 +1,1 @@
+• scanner: build a full scan's library on a worker thread (#1399)

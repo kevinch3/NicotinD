@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.83](https://github.com/kevinch3/NicotinD/compare/v0.8.82...v0.8.83) (2026-09-25)
+
+### Performance
+
+* **scanner:** build a full scan's library on a worker thread ([#1399](https://github.com/kevinch3/NicotinD/issues/1399)) ([797f612](https://github.com/kevinch3/NicotinD/commit/797f61214bd9ad2caac43a7d074707b6b3b830dc)), references [#1313](https://github.com/kevinch3/NicotinD/issues/1313)
 ## [0.8.82](https://github.com/kevinch3/NicotinD/compare/v0.8.81...v0.8.82) (2026-09-25)
 
 ### Features
