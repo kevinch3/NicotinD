@@ -230,6 +230,42 @@ describe('TvProfileService', () => {
     expect(navigate).toHaveBeenCalledTimes(1);
   });
 
+  it('a repeat press on the row being switched to does not cancel its refresh', async () => {
+    const refresh = new Subject<{ token: string }>();
+    const preferences = { theme: 'eink', language: 'es', radioStrategy: 'similar' };
+    const { service, auth, api } = create(
+      () => refresh,
+      () => of({ ...me, radioStrategy: 'adventurous', preferences }),
+    );
+    const hydrate = vi
+      .spyOn(TestBed.inject(UserPreferencesService), 'hydrate')
+      .mockImplementation(() => {});
+    const theme = vi
+      .spyOn(TestBed.inject(ThemeService), 'adoptPreferences')
+      .mockImplementation(() => {});
+    const i18n = vi
+      .spyOn(TestBed.inject(TranslateService), 'adoptPreferences')
+      .mockResolvedValue(undefined);
+    const player = TestBed.inject(PlayerService);
+    remember('ben', 'jwt-b');
+    auth.login('jwt-a', 'ana', 'user');
+    TestBed.flushEffects();
+
+    const first = service.switchTo('ben');
+    // `/who` is still on screen: OK pressed again on ben's row.
+    await service.switchTo('ben');
+    refresh.next({ token: 'ben-fresh' });
+    refresh.complete();
+    await first;
+
+    expect(api.refreshToken).toHaveBeenCalledTimes(1);
+    expect(hydrate).toHaveBeenCalledWith(preferences);
+    expect(theme).toHaveBeenCalled();
+    expect(i18n).toHaveBeenCalled();
+    expect(player.radioStrategy()).toBe('adventurous');
+    expect(auth.token()).toBe('ben-fresh');
+  });
+
   it('switchTo the active person is a no-op besides navigating Home', async () => {
     const { service, auth, api, navigate, reset } = create();
     auth.login('jwt-a', 'ana', 'user');

@@ -78,14 +78,16 @@ export class TvProfileService {
 
   async switchTo(username: string): Promise<void> {
     if (!isTvBuild()) return;
-    const gen = ++this.generation;
-    const isStale = () => gen !== this.generation;
     // The /who screen renders the active person as a pressable row too —
-    // pressing it must not reset the session it is currently showing.
+    // pressing it must not reset the session it is currently showing. Nor may
+    // it touch the generation: a repeat press on the row being switched to
+    // would cancel that switch's own refresh.
     if (username === this.auth.username()) {
       await this.router.navigate(['/']);
       return;
     }
+    const gen = ++this.generation;
+    const isStale = () => gen !== this.generation;
     const target = this.profiles().find((p) => p.username === username);
     if (!target) return;
     this.auth.resetSession();
