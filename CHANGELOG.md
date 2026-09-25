@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.87](https://github.com/kevinch3/NicotinD/compare/v0.8.86...v0.8.87) (2026-09-25)
+
+### Bug Fixes
+
+* **web:** disable zoom app-wide so stray taps, pinches and field focus stop zooming ([#1408](https://github.com/kevinch3/NicotinD/issues/1408)) ([ef39bc6](https://github.com/kevinch3/NicotinD/commit/ef39bc6fbb39b0c42ec67509b8e379c1a9f7afe7)), references [#1407](https://github.com/kevinch3/NicotinD/issues/1407)
 ## [0.8.86](https://github.com/kevinch3/NicotinD/compare/v0.8.85...v0.8.86) (2026-09-25)
 
 ### Features
