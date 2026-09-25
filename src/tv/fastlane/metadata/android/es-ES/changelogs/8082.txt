@@ -1,0 +1,3 @@
+• organizer: file multi-disc tracks as D-NN in one album folder (#1393)
+• remote-playback: the controller's queue is the session's queue (#1396)
+• analysis: run local key and tempo estimation on a worker thread (#1395)

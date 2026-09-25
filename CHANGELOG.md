@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.82](https://github.com/kevinch3/NicotinD/compare/v0.8.81...v0.8.82) (2026-09-25)
+
+### Features
+
+* **organizer:** file multi-disc tracks as D-NN in one album folder ([#1393](https://github.com/kevinch3/NicotinD/issues/1393)) ([a25b99e](https://github.com/kevinch3/NicotinD/commit/a25b99efa629b906863277d1bce9625f306c3691)), references [#747](https://github.com/kevinch3/NicotinD/issues/747) [#1392](https://github.com/kevinch3/NicotinD/issues/1392) [#747](https://github.com/kevinch3/NicotinD/issues/747)
+* **remote-playback:** the controller's queue is the session's queue ([#1396](https://github.com/kevinch3/NicotinD/issues/1396)) ([6066faf](https://github.com/kevinch3/NicotinD/commit/6066faf0b728e45b1d057c30b82c1b24bb6317e2)), references [#1295](https://github.com/kevinch3/NicotinD/issues/1295)
+
+### Performance
+
+* **analysis:** run local key and tempo estimation on a worker thread ([#1395](https://github.com/kevinch3/NicotinD/issues/1395)) ([d364883](https://github.com/kevinch3/NicotinD/commit/d364883ca2b7b35022f18f547fce4362bc57810e)), closes [#1394](https://github.com/kevinch3/NicotinD/issues/1394)
 ## [0.8.81](https://github.com/kevinch3/NicotinD/compare/v0.8.80...v0.8.81) (2026-09-25)
 
 ### Features
