@@ -128,15 +128,18 @@ test.describe('mobile UX', () => {
     await expect(identity).toContainText(FIXTURE.album.artist);
   });
 
-  // Double-tap-to-zoom is disabled app-wide (stray double taps on cards/controls
-  // zoomed the viewport on touch builds). `touch-action: manipulation` at the
-  // root is the accessibility-preserving opt-out; assert it resolves on <html>.
-  test('double-tap zoom is disabled via root touch-action', async ({ page }) => {
+  // The app has no zoom: stray double taps and pinches zoomed the viewport, and
+  // iOS zoomed in on focusing any field under 16px. The root allows panning
+  // only, and the viewport meta caps the scale (which also stops focus-zoom).
+  test('zoom is disabled via root touch-action and the viewport meta', async ({ page }) => {
     await page.goto('/library');
     const touchAction = await page.evaluate(
       () => getComputedStyle(document.documentElement).touchAction,
     );
-    expect(touchAction).toBe('manipulation');
+    expect(touchAction).toBe('pan-x pan-y');
+    const viewport = await page.locator('meta[name="viewport"]').getAttribute('content');
+    expect(viewport).toContain('maximum-scale=1');
+    expect(viewport).toContain('user-scalable=no');
   });
 
   // The mini-player grab "notch" must be visibly rendered on-screen while the
@@ -587,38 +590,4 @@ test.describe('mobile UX', () => {
     await expect(title).not.toHaveText(first);
     await expect(page.getByTestId('now-playing-heading')).not.toBeInViewport();
   });
-});
-
-// iOS zooms the viewport in on focusing any text field under 16px, and stays
-// zoomed after blur — the "I keep accidentally zooming in" report. A coarse
-// pointer must lift every text field to 16px; a fine pointer keeps text-sm.
-test.describe('focus zoom on touch', () => {
-  test.use({ viewport: PHONE, hasTouch: true, isMobile: true });
-
-  test('text fields render at 16px or larger on a coarse pointer', async ({ page }) => {
-    await page.goto('/library');
-    const find = page.getByTestId('library-find');
-    await expect(find).toBeVisible();
-    expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true);
-
-    const undersized = await page.evaluate(() =>
-      [...document.querySelectorAll<HTMLElement>('input, textarea, select')]
-        .filter(
-          (el) => !['checkbox', 'radio', 'range', 'color'].includes((el as HTMLInputElement).type),
-        )
-        .map((el) => ({
-          id: el.dataset['testid'] ?? el.outerHTML.slice(0, 80),
-          px: parseFloat(getComputedStyle(el).fontSize),
-        }))
-        .filter((f) => f.px < 16),
-    );
-    expect(undersized).toEqual([]);
-  });
-});
-
-test('text fields keep their compact size on a fine pointer', async ({ page }) => {
-  await page.goto('/library');
-  const find = page.getByTestId('library-find');
-  await expect(find).toBeVisible();
-  expect(await find.evaluate((el) => getComputedStyle(el).fontSize)).toBe('14px');
 });

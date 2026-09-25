@@ -1,29 +1,16 @@
 @import 'tailwindcss';
 @source "./**/*.ts";
 
-/* iOS zooms the page in on focusing any field under 16px and leaves it zoomed
-   after blur. Unlayered so it beats the `text-sm`/`text-xs` utilities; touch
-   only, so desktop keeps its compact fields. See docs/web-ui.md. */
-@media (pointer: coarse) {
-  input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']),
-  textarea,
-  select {
-    font-size: max(16px, 1em);
-  }
-}
-
 /* ─── Theme tokens ───────────────────────────────────────────────────── */
 @layer base {
-  /* Kill the browser's double-tap-to-zoom gesture app-wide (web + native
-     WebView). It fires on stray double taps on cards/controls and is never
-     wanted in this SPA; `manipulation` is the accessibility-preserving opt-out
-     (keeps pinch-zoom + scroll, unlike viewport user-scalable=no). Applied at
-     the root so it covers every region. Elements that need a finer gesture (the
-     seek range = `none`, the player drag handles = `touch-pan-y`/`touch-none`)
-     set their own touch-action via higher-specificity utility classes, which
-     win over this element-selector rule. */
+  /* No zoom gesture app-wide (web + native WebView): double-tap and pinch
+     only ever fired by accident on cards/controls. `pan-x pan-y` keeps
+     scrolling and drops both zoom gestures; the viewport meta in index.html
+     covers iOS focus-zoom. Elements that need a finer gesture (the seek range =
+     `none`, the player drag handles = `touch-pan-y`/`touch-none`) set their own
+     touch-action via higher-specificity utility classes. See docs/web-ui.md. */
   html {
-    touch-action: manipulation;
+    touch-action: pan-x pan-y;
   }
 
   /* Suppress Chrome-Android's native pull-to-refresh (a full SPA reload) so the
