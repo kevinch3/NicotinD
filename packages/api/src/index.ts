@@ -126,6 +126,7 @@ import { initDatabase } from './db.js';
 import { dirname, join } from 'node:path';
 import { createWebSocketHandlers } from './services/websocket.js';
 import { coalescedRun } from './services/coalesced-run.js';
+import { runLibrarySyncCycle } from './services/library-sync-cycle.js';
 import type { AuthEnv } from './middleware/auth.js';
 
 export type ProcessingRef = { current: LibraryProcessingService | null };
@@ -194,16 +195,16 @@ export function createApp({
   // a burst of them used to start one overlapping full scan apiece (#1303).
   const runSyncAndCurate = coalescedRun(async (): Promise<void> => {
     try {
-      await scanner.scanFull();
-      curator.reclassifyAll('full-sync');
-      // Once the library is on disk, best-effort backfill acquisition provenance
-      // for songs that predate the `acquisitions` table. Runs once (guarded by a
-      // library_sync_state marker); cheap no-op on subsequent boots.
-      backfillAcquisitions(db);
-      // Nudge enrichment for anything this scan brought in (a fresh install,
-      // or downloads that arrived while the server was down) instead of waiting
-      // for the next tick.
-      void processingRef.current?.enrichNewSongsNow();
+      await runLibrarySyncCycle({
+        scanFull: () => scanner.scanFull(),
+        reclassifyAll: () => curator.reclassifyAll('full-sync'),
+        // Runs once (guarded by a library_sync_state marker); cheap no-op on
+        // subsequent boots.
+        backfillAcquisitions: () => backfillAcquisitions(db),
+        // A fresh install, or downloads that arrived while the server was down,
+        // start enriching now instead of at the next tick.
+        kickEnrichment: () => void processingRef.current?.enrichNewSongsNow(),
+      });
     } catch (err) {
       syncLog.error({ err }, 'Library scan/curate cycle failed');
     }

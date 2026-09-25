@@ -31,6 +31,7 @@ import { countSkippedFiles } from './enrichment/analysis-failures.js';
 import { countPendingTagWrites, flushPendingTagWrites } from './enrichment/pending-tag-writes.js';
 import { maybeRunDailyCoverCachePrune } from './cover-cache-prune.js';
 import { optimizeAlbum } from './metadata-optimize.js';
+import { yieldToEventLoop } from './loop-block-monitor.js';
 
 /**
  * How many songs one task claims per batch, and the worker-pool size for the
@@ -481,6 +482,9 @@ export class LibraryProcessingService extends EventEmitter {
     let appliedTotal = 0;
     const byTask: RunFailures = new Map();
     for (const task of tasks) {
+      // The counts above and each task's selection are synchronous SQL; with
+      // no I/O between them a batch was one event-loop block (#1313).
+      await yieldToEventLoop();
       if (this.stopRequested) break;
       this.status = { ...this.status, currentTask: task.id };
       const result = await task.run(this.db, ctx, this.batchSize);
