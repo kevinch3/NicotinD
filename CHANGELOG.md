@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.78](https://github.com/kevinch3/NicotinD/compare/v0.8.77...v0.8.78) (2026-09-25)
+
+### Features
+
+* **library:** the bitrate ladder is an operator setting, behind "advanced" ([#1382](https://github.com/kevinch3/NicotinD/issues/1382)) ([8c397bf](https://github.com/kevinch3/NicotinD/commit/8c397bfae69cd725b9944ee059f40ff87144e57c)), closes [#1255](https://github.com/kevinch3/NicotinD/issues/1255)
 ## [0.8.77](https://github.com/kevinch3/NicotinD/compare/v0.8.76...v0.8.77) (2026-09-25)
 
 ### Features
