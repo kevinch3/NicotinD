@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.77](https://github.com/kevinch3/NicotinD/compare/v0.8.76...v0.8.77) (2026-09-25)
+
+### Features
+
+* **health:** count song-level duplicate candidates in the health report ([#1381](https://github.com/kevinch3/NicotinD/issues/1381)) ([5374a75](https://github.com/kevinch3/NicotinD/commit/5374a75e95a433f5ab0595ce3765433549c26a5d)), references [#951](https://github.com/kevinch3/NicotinD/issues/951) [#951](https://github.com/kevinch3/NicotinD/issues/951)
 ## [0.8.76](https://github.com/kevinch3/NicotinD/compare/v0.8.75...v0.8.76) (2026-09-25)
 
 ### Features
