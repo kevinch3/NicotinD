@@ -50,25 +50,42 @@ export class TvProfileService {
   }
 
   async switchTo(username: string): Promise<void> {
+    // The /who screen renders the active person as a pressable row too —
+    // pressing it must not reset the session it is currently showing.
+    if (username === this.auth.username()) {
+      await this.router.navigate(['/']);
+      return;
+    }
     const target = this.people().find((p) => p.username === username);
     if (!target) return;
     this.auth.resetSession();
     this.auth.login(target.token, target.username, target.role);
+
+    // The sliding refresh, awaited here so an expired token is known now
+    // rather than as a 401 on the first library call. Only a REFUSED refresh
+    // means the stored token is dead — forget the person and ask for the QR
+    // again. A transient failure past that point (`/me`) is not a reason to
+    // evict a person whose token just proved valid; keep the login, the
+    // stored role stands, and go Home same as a clean switch.
+    let token: string;
     try {
-      // The sliding refresh, awaited here so an expired token is known now
-      // rather than as a 401 on the first library call. Role from /me, as boot does.
-      const { token } = await firstValueFrom(this.api.refreshToken());
-      this.auth.setToken(token);
-      const me = await firstValueFrom(this.api.getMe());
-      this.auth.setRole(me.role);
-      if (me.mediaKey !== undefined) this.auth.setMediaKey(me.mediaKey);
-      this.auth.welcomeDismissed.set(me.welcomeDismissed);
-      await this.router.navigate(['/']);
+      ({ token } = await firstValueFrom(this.api.refreshToken()));
     } catch {
       this.auth.resetSession();
       this.people.set(forgetProfile(localStorage, username));
       await this.router.navigate(['/login']);
+      return;
     }
+    this.auth.setToken(token);
+    try {
+      const me = await firstValueFrom(this.api.getMe());
+      this.auth.setRole(me.role);
+      if (me.mediaKey !== undefined) this.auth.setMediaKey(me.mediaKey);
+      this.auth.welcomeDismissed.set(me.welcomeDismissed);
+    } catch {
+      // Role/welcome stay whatever the stored profile carried.
+    }
+    await this.router.navigate(['/']);
   }
 
   /** Bring a new person in through the QR flow. The current person stays in

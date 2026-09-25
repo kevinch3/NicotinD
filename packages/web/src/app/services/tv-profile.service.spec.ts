@@ -87,6 +87,52 @@ describe('TvProfileService', () => {
     expect(navigate).toHaveBeenCalledWith(['/login']);
   });
 
+  it('keeps the login when refresh succeeds but getMe fails', async () => {
+    const api = {
+      refreshToken: vi.fn(() => of({ token: 'fresh' })),
+      getMe: vi.fn(() => throwError(() => new Error('500'))),
+    };
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter([
+          { path: '', component: BlankComponent },
+          { path: 'login', component: BlankComponent },
+          { path: 'who', component: BlankComponent },
+        ]),
+        { provide: AuthApiService, useValue: api },
+      ],
+    });
+    const auth = TestBed.inject(AuthService);
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+    const service = TestBed.inject(TvProfileService);
+    rememberProfile(localStorage, { username: 'ben', role: 'user', token: 'jwt-b' });
+    auth.login('jwt-a', 'ana', 'user');
+    TestBed.flushEffects();
+
+    await service.switchTo('ben');
+
+    expect(auth.token()).toBe('fresh');
+    expect(
+      loadProfiles(localStorage)
+        .map((p) => p.username)
+        .sort(),
+    ).toEqual(['ana', 'ben']);
+    expect(navigate).toHaveBeenCalledWith(['/']);
+  });
+
+  it('switchTo the active person is a no-op besides navigating Home', async () => {
+    const { service, auth, api, navigate, reset } = create();
+    auth.login('jwt-a', 'ana', 'user');
+    TestBed.flushEffects();
+
+    await service.switchTo('ana');
+
+    expect(reset).not.toHaveBeenCalled();
+    expect(api.refreshToken).not.toHaveBeenCalled();
+    expect(navigate).toHaveBeenCalledWith(['/']);
+  });
+
   it('beginAdd resets the session but keeps the current person in the store', () => {
     const { service, auth, navigate, reset } = create();
     auth.login('jwt-a', 'ana', 'user');
