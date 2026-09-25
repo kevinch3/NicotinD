@@ -825,9 +825,74 @@ describe.skipIf(!ffmpegAvailable())('cover art survives the transcode', () => {
     await transcodeToLibraryFormat(flac, 96);
 
     const leaked = readdirSync(root).filter(
-      (n) => n.includes('cover-src') || n.includes('cover-fit'),
+      (n) => n.includes('cover-src') || n.includes('cover-fit') || n.includes('ffmeta'),
     );
     expect(leaked).toEqual([]);
+  });
+
+  /** Run `fn` with ffmpeg replaced by a wrapper that logs every call's args. */
+  async function withFfmpegLog<T>(
+    root: string,
+    failWhen: string | null,
+    fn: () => Promise<T>,
+  ): Promise<{ result: T; calls: string[] }> {
+    const bin = join(root, 'bin');
+    mkdirSync(bin);
+    const realFfmpeg = execFileSync('which', ['ffmpeg'], { encoding: 'utf-8' }).trim();
+    const log = join(root, 'ffmpeg-calls.log');
+    const wrapper = join(bin, 'ffmpeg');
+    writeFileSync(
+      wrapper,
+      `#!/bin/sh\necho "$*" >> "${log}"\n` +
+        (failWhen ? `case "$*" in ${failWhen}) exit 1;; esac\n` : '') +
+        `exec "${realFfmpeg}" "$@"\n`,
+    );
+    chmodSync(wrapper, 0o755);
+    const prev = process.env.NICOTIND_FFMPEG_PATH;
+    process.env.NICOTIND_FFMPEG_PATH = wrapper;
+    try {
+      const result = await fn();
+      const calls = existsSync(log) ? (await Bun.file(log).text()).trim().split('\n') : [];
+      return { result, calls };
+    } finally {
+      if (prev === undefined) delete process.env.NICOTIND_FFMPEG_PATH;
+      else process.env.NICOTIND_FFMPEG_PATH = prev;
+    }
+  }
+
+  it('embeds the cover in the Opus encode itself — one ffmpeg run, no remux (#1305)', async () => {
+    const root = tmpRoot();
+    const { flac, coverBytes } = makeFlacWithCover(root, 400);
+
+    const { result: out, calls } = await withFfmpegLog(root, null, () =>
+      transcodeToLibraryFormat(flac, 96),
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toContain('ffmetadata');
+    expect(calls[0]).toContain('libopus');
+    const mm = await getMusicMetadata();
+    const parsed = await mm!.parseFile(out);
+    expect(parsed.common.picture?.[0]?.data.length).toBe(coverBytes);
+    expect(parsed.common.artist).toBe('TheArtist');
+  });
+
+  it('still converts, and still carries the cover, when the encode carrying it fails', async () => {
+    const root = tmpRoot();
+    const { flac, coverBytes } = makeFlacWithCover(root, 400);
+
+    // Every encode given the cover fails; the plain encode and the remux do not.
+    const { result: out, calls } = await withFfmpegLog(root, '*ffmetadata*libopus*', () =>
+      transcodeToLibraryFormat(flac, 96),
+    );
+
+    expect(out).toBe(join(root, 'song.opus'));
+    expect(existsSync(flac)).toBe(false);
+    // strict + lenient with the cover, a plain encode, then the remux attaching it.
+    expect(calls).toHaveLength(4);
+    expect(calls[3]).toContain('-c:a copy');
+    const mm = await getMusicMetadata();
+    expect((await mm!.parseFile(out)).common.picture?.[0]?.data.length).toBe(coverBytes);
   });
 });
 

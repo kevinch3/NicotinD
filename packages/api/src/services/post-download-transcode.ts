@@ -416,21 +416,16 @@ export interface TranscodeKeepOriginal {
 }
 
 /**
- * Move the source's embedded cover onto the freshly encoded file.
- *
- * Three steps, each of which can decline without failing the conversion:
- * read the picture out of the source, cap it so our own reader can read it
- * back (`preparePicture` — `music-metadata` throws above ~600 KB in Ogg), and
- * attach it by whatever mechanism the target format uses.
- *
- * Never throws: art is an enhancement on a file whose audio is already
- * verified, so every failure is a warning and a `false`.
+ * The source's embedded cover as a scratch file beside `outPath`, capped so
+ * our own reader can read it back (`preparePicture` — `music-metadata` throws
+ * above ~600 KB in Ogg), or `null` when there is none to carry. Never throws;
+ * the caller runs `cleanup`.
  */
-async function carryEmbeddedCover(
+async function prepareEmbeddedCover(
   sourcePath: string,
   outPath: string,
   strategy: FormatStrategy,
-): Promise<boolean> {
+): Promise<{ path: string; cleanup: () => void } | null> {
   // The `.jpg` matters and is not decoration: `preparePicture` re-compresses an
   // oversized cover with `ffmpeg -i in -q:v N out`, and ffmpeg picks the output
   // muxer from the **extension**. With an extensionless scratch path it cannot,
@@ -439,17 +434,7 @@ async function carryEmbeddedCover(
   // whose art is worth keeping.
   const raw = join(dirname(outPath), `.${basename(outPath)}.cover-src.jpg`);
   const scratch = join(dirname(outPath), `.${basename(outPath)}.cover-fit.jpg`);
-  try {
-    const pic = await extractEmbeddedPicture(sourcePath);
-    if (!pic) return false;
-    writeFileSync(raw, Buffer.from(pic.data));
-    const prepared = await preparePicture(raw, scratch, strategy.maxEmbeddedPictureBytes);
-    if (!prepared) return false; // too large to embed readably — say so, move on
-    return await strategy.embedArt(outPath, prepared.path);
-  } catch (err) {
-    log.debug({ err, sourcePath }, 'no cover carried across the transcode');
-    return false;
-  } finally {
+  const cleanup = (): void => {
     for (const p of [raw, scratch]) {
       try {
         rmSync(p, { force: true });
@@ -457,6 +442,43 @@ async function carryEmbeddedCover(
         /* best effort */
       }
     }
+  };
+  try {
+    const pic = await extractEmbeddedPicture(sourcePath);
+    if (!pic) return null;
+    writeFileSync(raw, Buffer.from(pic.data));
+    const prepared = await preparePicture(raw, scratch, strategy.maxEmbeddedPictureBytes);
+    if (!prepared) {
+      cleanup(); // too large to embed readably — say so, move on
+      return null;
+    }
+    return { path: prepared.path, cleanup };
+  } catch (err) {
+    log.debug({ err, sourcePath }, 'no cover carried across the transcode');
+    cleanup();
+    return null;
+  }
+}
+
+/**
+ * Move the source's embedded cover onto an encoded file, for a format that
+ * cannot carry it in the encode itself. Never throws: art is an enhancement on
+ * a file whose audio is already verified, so every failure is a `false`.
+ */
+async function carryEmbeddedCover(
+  sourcePath: string,
+  outPath: string,
+  strategy: FormatStrategy,
+): Promise<boolean> {
+  const cover = await prepareEmbeddedCover(sourcePath, outPath, strategy);
+  if (!cover) return false;
+  try {
+    return await strategy.embedArt(outPath, cover.path);
+  } catch (err) {
+    log.debug({ err, sourcePath }, 'no cover carried across the transcode');
+    return false;
+  } finally {
+    cover.cleanup();
   }
 }
 
@@ -486,7 +508,22 @@ export async function transcodeToLibraryFormat(
   // below is written to stay correct for that case too.
   const tmpPath = transcodeTempPathFor(absPath, format);
   const { args: carried, sourceTags } = await carriedMetadataArgs(absPath, strategy);
-  const ffmpegArgs = (strict: boolean) => [
+  // Where the format can take the cover in the encode, it goes in there rather
+  // than through a full-file remux afterwards (#1305). Prepared exactly as the
+  // post-encode carry prepares it.
+  const cover = strategy.encodeArtArgs
+    ? await prepareEmbeddedCover(absPath, tmpPath, strategy)
+    : null;
+  const metaPath = join(dirname(tmpPath), `.${basename(tmpPath)}.cover.ffmeta`);
+  let art: { input: string[]; output: string[] } | null = null;
+  if (cover && strategy.encodeArtArgs) {
+    try {
+      art = strategy.encodeArtArgs(cover.path, metaPath);
+    } catch (err) {
+      log.debug({ err, absPath }, 'cover not staged for the encode');
+    }
+  }
+  const ffmpegArgs = (strict: boolean, withArt: boolean) => [
     '-hide_banner',
     '-loglevel',
     'error',
@@ -496,9 +533,11 @@ export async function transcodeToLibraryFormat(
     ...(strict ? ['-err_detect', 'explode', '-xerror'] : []),
     '-i',
     absPath,
+    ...(withArt && art ? art.input : []),
     '-vn',
     '-map_metadata',
     '0',
+    ...(withArt && art ? art.output : []),
     // After -map_metadata so these win over anything it carried.
     ...carried,
     ...(canonical ? canonicalTagMetadataArgs(canonical) : []),
@@ -506,86 +545,107 @@ export async function transcodeToLibraryFormat(
     tmpPath,
   ];
 
-  const strictRun = await runFfmpeg(ffmpegArgs(true), tmpPath);
-  if (strictRun.code !== 0) {
-    const lenientRun = await runFfmpeg(ffmpegArgs(false), tmpPath);
-    if (lenientRun.code !== 0) {
-      cleanup(tmpPath);
-      const detail = lenientRun.stderrTail || strictRun.stderrTail;
-      throw new Error(
-        `ffmpeg exited with code ${lenientRun.code} transcoding ${absPath}${detail ? `: ${detail}` : ''}`,
+  const encode = async (withArt: boolean): Promise<void> => {
+    const strictRun = await runFfmpeg(ffmpegArgs(true, withArt), tmpPath);
+    if (strictRun.code !== 0) {
+      const lenientRun = await runFfmpeg(ffmpegArgs(false, withArt), tmpPath);
+      if (lenientRun.code !== 0) {
+        cleanup(tmpPath);
+        const detail = lenientRun.stderrTail || strictRun.stderrTail;
+        throw new Error(
+          `ffmpeg exited with code ${lenientRun.code} transcoding ${absPath}${detail ? `: ${detail}` : ''}`,
+        );
+      }
+      log.info(
+        { absPath, strictError: strictRun.stderrTail },
+        'strict transcode failed — lenient retry succeeded (imperfect source frame)',
       );
     }
-    log.info(
-      { absPath, strictError: strictRun.stderrTail },
-      'strict transcode failed — lenient retry succeeded (imperfect source frame)',
-    );
-  }
-
-  // Exit 0 isn't enough — ffmpeg can succeed on a truncated source and
-  // produce a valid-but-short Opus file that the browser will play for
-  // 1-2 s then "end". Validate before swapping the library file — and **fail
-  // closed**: the statement after the swap unlinks the original, so anything
-  // short of positive evidence is a rejection. See `encodeOutputVerdict`.
-  let verdict: { ok: true } | { ok: false; reason: string };
-  try {
-    verdict = await validateEncodedOutput(absPath, tmpPath);
-  } catch (err) {
-    // A throw here used to leave the flag at its `true` initial value, so the
-    // original was deleted on the strength of an exception. Unverifiable is a
-    // rejection now, because the next statement is irreversible.
-    verdict = { ok: false, reason: `verification threw: ${(err as Error).message}` };
-  }
-  if (!verdict.ok) {
-    cleanup(tmpPath);
-    throw new Error(
-      `Refusing to replace ${absPath}: ${verdict.reason}. The original is untouched.`,
-    );
-  }
-  // Carry the source's embedded cover across, onto the TEMP — so the rename
-  // below promotes a complete file rather than one that gains art a moment
-  // later. `-vn` in the encode discarded it and nothing else can bring it
-  // back; see the format's `embedArt` for why the obvious routes do not work.
-  //
-  // Best-effort by construction: the audio is already verified correct, and a
-  // missing cover must never cost the conversion.
-  await carryEmbeddedCover(absPath, tmpPath, strategy);
-
-  // Lyrics and the compilation flag have no working `-metadata` key into ID3,
-  // so they go on after the encode, onto the TEMP — the rename below then
-  // promotes a complete file rather than one that gains tags a moment later,
-  // the same discipline the cover carry above follows.
-  if (sourceTags) await carryPostEncodeTags(sourceTags, tmpPath, strategy);
+  };
 
   try {
-    // Promote temp → final, then deal with the original — except when
-    // destPath and absPath are the SAME path (an ambiguous-container source
-    // converting to a same-extension target, e.g. ALAC → aac, #1286): there,
-    // the rename would silently overwrite the original before it could ever be
-    // preserved, so the original is dealt with FIRST, freeing the path for the
-    // rename that follows. Distinct paths keep the original order, since
-    // nothing there touches absPath before the rename runs.
-    const dealWithOriginal = (): void => {
-      if (keepOriginal) {
-        // Opt-in, and only the whole-library backfill opts in. A freshly
-        // downloaded original is one re-download away, and quarantining every
-        // download would fill the disk for no benefit; an irreplaceable
-        // library file is a different proposition, and generation loss is
-        // invisible to every check that runs before this point.
-        quarantineOriginal(keepOriginal.runDir, keepOriginal.musicDir, absPath);
-      } else {
-        rmSync(absPath, { force: true });
-      }
-    };
-    const sameLocation = absPath === destPath;
-    if (sameLocation) dealWithOriginal();
-    renameSync(tmpPath, destPath);
-    if (!sameLocation) dealWithOriginal();
-    log.debug({ from: absPath, to: destPath, bitRate, format }, 'transcoded to the library format');
-    return destPath;
-  } catch (err) {
-    cleanup(tmpPath);
-    throw err;
+    let artInEncode = art !== null;
+    try {
+      await encode(artInEncode);
+    } catch (err) {
+      if (!artInEncode) throw err;
+      // Art must never cost the conversion: encode without it, and attach the
+      // cover afterwards the way every format did before #1305.
+      log.warn({ err, absPath }, 'encode carrying the cover failed — retrying without it');
+      artInEncode = false;
+      await encode(false);
+    }
+
+    // Exit 0 isn't enough — ffmpeg can succeed on a truncated source and
+    // produce a valid-but-short Opus file that the browser will play for
+    // 1-2 s then "end". Validate before swapping the library file — and **fail
+    // closed**: the statement after the swap unlinks the original, so anything
+    // short of positive evidence is a rejection. See `encodeOutputVerdict`.
+    let verdict: { ok: true } | { ok: false; reason: string };
+    try {
+      verdict = await validateEncodedOutput(absPath, tmpPath);
+    } catch (err) {
+      // A throw here used to leave the flag at its `true` initial value, so the
+      // original was deleted on the strength of an exception. Unverifiable is a
+      // rejection now, because the next statement is irreversible.
+      verdict = { ok: false, reason: `verification threw: ${(err as Error).message}` };
+    }
+    if (!verdict.ok) {
+      cleanup(tmpPath);
+      throw new Error(
+        `Refusing to replace ${absPath}: ${verdict.reason}. The original is untouched.`,
+      );
+    }
+    // A format that cannot take the cover in the encode gets it here, onto the
+    // TEMP — so the rename below promotes a complete file rather than one that
+    // gains art a moment later. `-vn` in the encode discarded the source's and
+    // nothing else can bring it back; see the format's `embedArt` for why the
+    // obvious routes do not work. Best-effort: the audio is already verified.
+    if (!strategy.encodeArtArgs) await carryEmbeddedCover(absPath, tmpPath, strategy);
+    else if (cover && !artInEncode) await strategy.embedArt(tmpPath, cover.path);
+
+    // Lyrics and the compilation flag have no working `-metadata` key into ID3,
+    // so they go on after the encode, onto the TEMP — the rename below then
+    // promotes a complete file rather than one that gains tags a moment later,
+    // the same discipline the cover carry above follows.
+    if (sourceTags) await carryPostEncodeTags(sourceTags, tmpPath, strategy);
+
+    try {
+      // Promote temp → final, then deal with the original — except when
+      // destPath and absPath are the SAME path (an ambiguous-container source
+      // converting to a same-extension target, e.g. ALAC → aac, #1286): there,
+      // the rename would silently overwrite the original before it could ever be
+      // preserved, so the original is dealt with FIRST, freeing the path for the
+      // rename that follows. Distinct paths keep the original order, since
+      // nothing there touches absPath before the rename runs.
+      const dealWithOriginal = (): void => {
+        if (keepOriginal) {
+          // Opt-in, and only the whole-library backfill opts in. A freshly
+          // downloaded original is one re-download away, and quarantining every
+          // download would fill the disk for no benefit; an irreplaceable
+          // library file is a different proposition, and generation loss is
+          // invisible to every check that runs before this point.
+          quarantineOriginal(keepOriginal.runDir, keepOriginal.musicDir, absPath);
+        } else {
+          rmSync(absPath, { force: true });
+        }
+      };
+      const sameLocation = absPath === destPath;
+      if (sameLocation) dealWithOriginal();
+      renameSync(tmpPath, destPath);
+      if (!sameLocation) dealWithOriginal();
+      log.debug(
+        { from: absPath, to: destPath, bitRate, format },
+        'transcoded to the library format',
+      );
+      return destPath;
+    } catch (err) {
+      cleanup(tmpPath);
+      throw err;
+    }
+  } finally {
+    cover?.cleanup();
+    rmSync(metaPath, { force: true });
   }
 }
 

@@ -1,6 +1,10 @@
 import { FORMAT_ARGS } from './transcode.js';
 import { bitrateFor as ladderBitrateFor } from './transcode-bitrate.js';
-import { attachPictureToOpus, MAX_EMBEDDED_PICTURE_BYTES } from './opus-artwork.js';
+import {
+  attachPictureToOpus,
+  MAX_EMBEDDED_PICTURE_BYTES,
+  opusEncodeArtArgs,
+} from './opus-artwork.js';
 import { attachPictureAsStream } from './attached-picture.js';
 import { writeOutputGain } from './opus-gain.js';
 import { writeMp4FreeformTags, type AudioTags } from './audio-tags.js';
@@ -44,6 +48,14 @@ export interface FormatStrategy {
   maxEmbeddedPictureBytes: number | null;
   /** Attach a prepared cover to an encoded file. Never throws; `false` means "declined". */
   embedArt(path: string, coverPath: string): Promise<boolean>;
+  /**
+   * ffmpeg args that carry a prepared cover in the encode itself, or `null`
+   * where it goes on afterwards with `embedArt` (#1305). `input` follows the
+   * source's `-i`; `output` follows the encode's metadata mapping. May write
+   * `metaPath`; the caller removes it.
+   */
+  encodeArtArgs:
+    ((coverPath: string, metaPath: string) => { input: string[]; output: string[] }) | null;
   /**
    * Apply a loudness offset without re-encoding, or `null` when the container
    * has no in-header gain field.
@@ -89,6 +101,7 @@ export const LIBRARY_FORMATS: Record<LibraryFormat, FormatStrategy> = {
     bitrateFor: (sourceKbps, lossless) => ladderBitrateFor('opus', sourceKbps, lossless),
     maxEmbeddedPictureBytes: MAX_EMBEDDED_PICTURE_BYTES,
     embedArt: attachPictureToOpus,
+    encodeArtArgs: opusEncodeArtArgs,
     writeGain: writeOutputGain,
     postEncodeTags: null,
   },
@@ -102,6 +115,7 @@ export const LIBRARY_FORMATS: Record<LibraryFormat, FormatStrategy> = {
     // `music-metadata` reading Ogg, not of cover art — see `attached-picture.ts`.
     maxEmbeddedPictureBytes: null,
     embedArt: attachPictureAsStream,
+    encodeArtArgs: null,
     // mp3 has no in-header gain field. ReplayGain is an advisory tag no player
     // is obliged to honour, and baking the gain into the audio is the thing
     // `loudness_measured` exists to make safe but which still re-encodes. So
@@ -123,6 +137,7 @@ export const LIBRARY_FORMATS: Record<LibraryFormat, FormatStrategy> = {
     // cap is an Ogg reader limit and does not apply (#1279).
     maxEmbeddedPictureBytes: null,
     embedArt: attachPictureAsStream,
+    encodeArtArgs: null,
     // Like mp3, no in-header gain field; `iTunNORM`/ReplayGain are advisory.
     writeGain: null,
     // `ipod` drops key, the features and the ids from any `-metadata`; they go

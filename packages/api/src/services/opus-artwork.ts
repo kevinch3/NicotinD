@@ -190,6 +190,33 @@ export function pictureBlockBase64(data: Buffer, mimeType = 'image/jpeg'): strin
  */
 const escapeFfmetadata = (s: string): string => s.replace(/[=;#\\\n]/g, (c) => '\\' + c);
 
+/** An ffmetadata file carrying one picture as `METADATA_BLOCK_PICTURE`. */
+export function writePictureFfmetadata(metaPath: string, data: Buffer, mimeType: string): void {
+  const b64 = pictureBlockBase64(data, mimeType);
+  writeFileSync(metaPath, ';FFMETADATA1\nMETADATA_BLOCK_PICTURE=' + escapeFfmetadata(b64) + '\n');
+}
+
+/**
+ * The args that put a prepared cover into an Opus **encode**, so it needs no
+ * remux afterwards (#1305). `metaPath` is written here; the caller removes it.
+ *
+ * The picture goes onto the output audio stream (`-map_metadata:s:a:0 1:g`),
+ * which leaves the encode's own `-map_metadata 0` and `-metadata` args alone:
+ * measured, every scalar tag — including one `readAudioTags` does not model —
+ * came through, the picture read back byte-exact, and an encode without the
+ * second input carried no picture, so nothing here leaks the source's own.
+ */
+export function opusEncodeArtArgs(
+  coverPath: string,
+  metaPath: string,
+): { input: string[]; output: string[] } {
+  writePictureFfmetadata(metaPath, readFileSync(coverPath), mimeForCover(coverPath));
+  return {
+    input: ['-f', 'ffmetadata', '-i', metaPath],
+    output: ['-map_metadata:s:a:0', '1:g'],
+  };
+}
+
 /**
  * Attach `coverPath` to an existing `.opus` **without re-encoding it**.
  *
@@ -255,8 +282,7 @@ export async function attachPictureDataToOpus(
   };
 
   try {
-    const b64 = pictureBlockBase64(data, mimeType);
-    writeFileSync(meta, ';FFMETADATA1\nMETADATA_BLOCK_PICTURE=' + escapeFfmetadata(b64) + '\n');
+    writePictureFfmetadata(meta, data, mimeType);
     await execFileAsync(ffmpegBinary(), [
       '-hide_banner',
       '-loglevel',

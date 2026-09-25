@@ -329,7 +329,7 @@ so it could never have caught the original inline array literal.
 
 `FormatStrategy` makes each per-format fact a field rather than a constant: `ext`, `encodeArgs`,
 `bitrateFor` (its own ladder — Opus 96k ≈ mp3 160k), `maxEmbeddedPictureBytes` (an Ogg reader limit,
-not a format property), `embedArt`, and `writeGain`. `writeGain` is `((path, db) => boolean) | null`
+not a format property), `embedArt`, `encodeArtArgs` (args that carry the cover in the encode itself, or `null` where `embedArt` attaches it afterwards), and `writeGain`. `writeGain` is `((path, db) => boolean) | null`
 **in the type**: Opus carries `output_gain` in `OpusHead`, mp3 and AAC carry nothing equivalent, and
 a nullable field forces every call site to handle that gap at compile time instead of a user
 discovering that normalization silently did nothing.
@@ -537,10 +537,22 @@ silently dropped. Measured on a real conversion batch: **10% of files**, and pre
 well-tagged albums whose art is worth keeping. Covers under the cap were unaffected, which is why
 every earlier test passed — none of them used an oversized one.
 
-`carryEmbeddedCover` in `post-download-transcode.ts` runs it after the duration verdict passes and before
-the temp file is renamed into place, so a failure leaves a correct audio file with no art rather
-than a damaged one. Every step can decline without failing the conversion: art is an enhancement on
-a file whose audio is already verified.
+**For Opus the cover now rides the encode itself (#1305)**, so a lossless ingest no longer pays that
+remux. `prepareEmbeddedCover` extracts and caps the cover *before* encoding, and
+`opusEncodeArtArgs` hands the same ffmetadata file to the encode as a second input, mapped onto the
+output audio stream (`-f ffmetadata -i meta … -map_metadata 0 -map_metadata:s:a:0 1:g`). Mapping it
+onto the stream rather than the global dictionary is what leaves the encode's own `-map_metadata 0`
+and `-metadata` args untouched. Measured: every scalar tag came through (`COPYRIGHT` included),
+the picture read back byte-exact, and an encode *without* the second input carried no picture, so the
+source's own does not leak. One ffmpeg run per file instead of two; on a 3-minute FLAC with a 510 KB
+cover, median 532 → 480 ms. If the encode carrying the cover fails, the file is encoded again without
+it and the cover goes on with `embedArt`, the pre-#1305 route: art never costs the conversion.
+
+mp3 and AAC have `encodeArtArgs: null`, and `carryEmbeddedCover` in `post-download-transcode.ts`
+attaches their cover after the duration verdict passes and before the temp file is renamed into
+place, so a failure leaves a correct audio file with no art rather than a damaged one. Every step can
+decline without failing the conversion: art is an enhancement on a file whose audio is already
+verified.
 
 So `opus-tools` stays in the image for the harness's `opusinfo`/`opusenc` only, and nothing new was
 added to it.
