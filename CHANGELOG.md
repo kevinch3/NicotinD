@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.79](https://github.com/kevinch3/NicotinD/compare/v0.8.78...v0.8.79) (2026-09-25)
+
+### Features
+
+* **web:** a track got from search joins the queue when it lands ([#1383](https://github.com/kevinch3/NicotinD/issues/1383)) ([05948c0](https://github.com/kevinch3/NicotinD/commit/05948c02da1de4834a8c6f9a322b5dbb4830e720)), references [#1294](https://github.com/kevinch3/NicotinD/issues/1294) [#1299](https://github.com/kevinch3/NicotinD/issues/1299) [#1294](https://github.com/kevinch3/NicotinD/issues/1294)
 ## [0.8.78](https://github.com/kevinch3/NicotinD/compare/v0.8.77...v0.8.78) (2026-09-25)
 
 ### Features
