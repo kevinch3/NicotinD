@@ -6,6 +6,7 @@ import { TvNavGroupDirective } from '../../../directives/tv-nav-group.directive'
 import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 import { SystemApiService } from '../../../services/api/system-api.service';
 import type {
+  BitrateLadderJson,
   LibraryFormatOption,
   LibraryFormatSettings,
   QuarantineDescription,
@@ -50,6 +51,52 @@ export class LibraryFormatPanelComponent implements OnInit {
   readonly pending = signal<LibraryFormatOption | null>(null);
 
   readonly options = computed(() => this.settings()?.available ?? []);
+
+  /** The current format's option, whose ladder the advanced section edits. */
+  readonly currentOption = computed(() =>
+    this.options().find((o) => o.id === this.settings()?.format),
+  );
+  /** An editable copy of the current format's ladder; null until opened. */
+  readonly ladderDraft = signal<BitrateLadderJson | null>(null);
+
+  openLadder(): void {
+    const l = this.currentOption()?.ladder;
+    this.ladderDraft.set(l ? structuredClone(l) : null);
+  }
+
+  setLadderRate(index: number | 'lossless', raw: string): void {
+    const d = this.ladderDraft();
+    if (!d) return;
+    const v = Number(raw);
+    if (index === 'lossless') d.losslessKbps = v;
+    else d.steps[index]!.targetKbps = v;
+    this.ladderDraft.set({ ...d });
+  }
+
+  setLadderBound(index: number, raw: string): void {
+    const d = this.ladderDraft();
+    if (!d) return;
+    d.steps[index]!.upTo = Number(raw);
+    this.ladderDraft.set({ ...d });
+  }
+
+  /** Save the draft, or `null` to go back to the measured default. The server validates. */
+  async saveLadder(ladder: BitrateLadderJson | null): Promise<void> {
+    const format = this.settings()?.format;
+    if (!format) return;
+    this.saving.set(true);
+    this.message.set(null);
+    try {
+      await firstValueFrom(this.api.saveLadder(format, ladder));
+      await this.load();
+      this.openLadder();
+      this.message.set({ type: 'success', text: this.i18n.t('admin.ladderSaved') });
+    } catch {
+      this.message.set({ type: 'error', text: this.i18n.t('admin.ladderInvalid') });
+    } finally {
+      this.saving.set(false);
+    }
+  }
 
   // Kept originals (#1255). Loaded on request, not with the panel: it walks the
   // quarantine to count files, which an admin page load should not pay for.

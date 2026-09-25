@@ -80,6 +80,101 @@
         </span>
       </label>
 
+      <!-- Bitrate ladder (#1255): the knob most likely to be turned and least
+           likely to be turned well, so it sits behind a disclosure with the
+           measured defaults shown beside every rate. -->
+      @if (currentOption(); as cur) {
+        <details class="mt-4" data-testid="ladder-section" (toggle)="openLadder()">
+          <summary class="text-sm text-theme-primary cursor-pointer">
+            {{ 'admin.ladderTitle' | t }} ({{ cur.id }})
+            @if (cur.ladderOverridden) {
+              <span class="text-xs text-status-warn">· {{ 'admin.ladderCustom' | t }}</span>
+            }
+          </summary>
+          <p class="text-xs text-theme-muted mt-2">{{ 'admin.ladderHint' | t }}</p>
+          @if (ladderDraft(); as d) {
+            <table class="mt-2 text-xs text-theme-secondary">
+              <tbody>
+                @for (step of d.steps; track $index; let i = $index; let last = $last) {
+                  <tr>
+                    <td class="pr-2 py-0.5">
+                      @if (last) {
+                        {{ 'admin.ladderHigher' | t }}
+                      } @else {
+                        {{ 'admin.ladderUpTo' | t }}
+                        <input
+                          type="number"
+                          [value]="step.upTo"
+                          (change)="setLadderBound(i, $any($event.target).value)"
+                          class="w-16 rounded bg-theme-surface-2 px-1 text-theme-primary"
+                          [attr.data-testid]="'ladder-bound-' + i"
+                        />
+                        kbps
+                      }
+                    </td>
+                    <td class="pr-2">→</td>
+                    <td>
+                      <input
+                        type="number"
+                        [value]="step.targetKbps"
+                        (change)="setLadderRate(i, $any($event.target).value)"
+                        class="w-16 rounded bg-theme-surface-2 px-1 text-theme-primary"
+                        [attr.data-testid]="'ladder-rate-' + i"
+                      />
+                      kbps
+                      <span class="text-theme-muted">
+                        ({{ 'admin.ladderMeasured' | t }} {{ cur.defaultLadder?.steps?.[i]?.targetKbps ?? '—' }})
+                      </span>
+                    </td>
+                  </tr>
+                }
+                <tr>
+                  <td class="pr-2 py-0.5">{{ 'admin.ladderLossless' | t }}</td>
+                  <td class="pr-2">→</td>
+                  <td>
+                    <input
+                      type="number"
+                      [value]="d.losslessKbps"
+                      (change)="setLadderRate('lossless', $any($event.target).value)"
+                      class="w-16 rounded bg-theme-surface-2 px-1 text-theme-primary"
+                      data-testid="ladder-rate-lossless"
+                    />
+                    kbps
+                    <span class="text-theme-muted">
+                      ({{ 'admin.ladderMeasured' | t }} {{ cur.defaultLadder?.losslessKbps ?? '—' }})
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="flex gap-2 mt-2" appTvNavGroup axis="horizontal">
+              <button
+                type="button"
+                appTvNavItem
+                class="btn-secondary text-xs"
+                [disabled]="saving()"
+                (click)="saveLadder(d)"
+                data-testid="ladder-save"
+              >
+                {{ 'admin.ladderSave' | t }}
+              </button>
+              @if (cur.ladderOverridden) {
+                <button
+                  type="button"
+                  appTvNavItem
+                  class="btn-secondary text-xs"
+                  [disabled]="saving()"
+                  (click)="saveLadder(null)"
+                  data-testid="ladder-reset"
+                >
+                  {{ 'admin.ladderReset' | t }}
+                </button>
+              }
+            </div>
+          }
+        </details>
+      }
+
       <!-- Kept originals (#1255): where a conversion's replaced files are, and
            the one control that deletes them — naming the runs before it does. -->
       <div class="mt-5 pt-4 border-t border-theme-subtle" data-testid="quarantine-section">

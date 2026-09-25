@@ -121,8 +121,10 @@ export function bitrateFor(
   format: LibraryFormat,
   sourceKbps: number | null | undefined,
   lossless: boolean,
+  // The operator's ladder for this format when one is set (#1255); the
+  // measured default otherwise.
+  ladder: BitrateLadder = LADDERS[format],
 ): number {
-  const ladder = LADDERS[format];
   if (lossless) return ladder.losslessKbps;
   if (sourceKbps == null || !Number.isFinite(sourceKbps) || sourceKbps <= 0) {
     return ladder.losslessKbps;
@@ -150,4 +152,61 @@ export function bitrateFor(
 export function estimateEncodedBytes(seconds: number | null, kbps: number): number | null {
   if (!seconds || !Number.isFinite(seconds) || seconds <= 0) return null;
   return Math.round(seconds * kbps * 125);
+}
+
+/**
+ * A ladder as JSON carries it (#1255): the catch-all's `upTo` is `null`, since
+ * JSON has no `Infinity`. The operator's override is stored and sent in this
+ * shape; {@link ladderFromJson} is the only way back into a {@link BitrateLadder}.
+ */
+export interface BitrateLadderJson {
+  steps: Array<{ upTo: number | null; targetKbps: number }>;
+  losslessKbps: number;
+}
+
+/** Bounds on any rate an operator may set — outside them is a typo, not a choice. */
+export const LADDER_MIN_KBPS = 32;
+export const LADDER_MAX_KBPS = 512;
+
+export function ladderToJson(ladder: BitrateLadder): BitrateLadderJson {
+  return {
+    steps: ladder.steps.map((s) => ({
+      upTo: Number.isFinite(s.upTo) ? s.upTo : null,
+      targetKbps: s.targetKbps,
+    })),
+    losslessKbps: ladder.losslessKbps,
+  };
+}
+
+export function ladderFromJson(json: BitrateLadderJson): BitrateLadder {
+  return {
+    steps: json.steps.map((s) => ({ upTo: s.upTo ?? Infinity, targetKbps: s.targetKbps })),
+    losslessKbps: json.losslessKbps,
+  };
+}
+
+/**
+ * Why `json` is not a usable ladder, or `null` when it is. Total by
+ * construction like the built-in ones: `upTo` strictly ascending, only the last
+ * step open-ended, every rate within bounds. A ladder that failed any of these
+ * would either leave a source bitrate with no rung or silently re-shape one.
+ */
+export function ladderProblem(json: BitrateLadderJson): string | null {
+  const { steps } = json;
+  if (steps.length === 0) return 'a ladder needs at least one step';
+  const rate = (k: number) => Number.isFinite(k) && k >= LADDER_MIN_KBPS && k <= LADDER_MAX_KBPS;
+  if (!rate(json.losslessKbps)) {
+    return `the lossless rate must be ${LADDER_MIN_KBPS}–${LADDER_MAX_KBPS} kbps`;
+  }
+  for (const [i, s] of steps.entries()) {
+    const last = i === steps.length - 1;
+    if (!rate(s.targetKbps)) return `every rate must be ${LADDER_MIN_KBPS}–${LADDER_MAX_KBPS} kbps`;
+    if (last && s.upTo !== null) return 'the last step must cover every higher source (upTo: null)';
+    if (!last && (s.upTo === null || !Number.isFinite(s.upTo) || s.upTo <= 0)) {
+      return 'only the last step may be open-ended';
+    }
+    const prev = steps[i - 1]?.upTo;
+    if (!last && prev != null && s.upTo! <= prev) return 'step bounds must strictly ascend';
+  }
+  return null;
 }

@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { optimizeAllAlbums, type OptimizeLidarr } from '../metadata-optimize.js';
 import { transcodeLibraryToFormat } from '../library-transcode.js';
-import { getLibraryFormatSettings } from '../library-format-settings.js';
+import { effectiveLadder, getLibraryFormatSettings } from '../library-format-settings.js';
 import { libraryFormat } from '../library-format.js';
 import { backfillArtwork, type BackfillLidarr } from '../artwork-backfill.js';
 import { embedAlbumArt } from '../opus-art-embed.js';
@@ -368,15 +368,16 @@ export function buildMaintenanceTasks(deps: MaintenanceDeps): AnyMaintenanceTask
           bitRate: 0,
           startedBy: 'maintenance',
         });
+        // Read per run, not captured at construction: the operator can change
+        // the target and its ladder between runs (#1256, #1255).
+        const settings = getLibraryFormatSettings(deps.db);
         try {
           const r = await transcodeLibraryToFormat(deps.db, deps.musicDir, {
             apply: p.apply,
             limit: p.limit,
             scope: p.scope,
-            // Read per run, not captured at construction: the operator can
-            // change the target between runs and a value frozen at boot would
-            // convert to the old one while the UI showed the new (#1256).
-            format: getLibraryFormatSettings(deps.db).format,
+            format: settings.format,
+            ladder: effectiveLadder(settings, settings.format),
             // Keep every original under `<dataDir>/quarantine/<run>/`. A
             // whole-library re-encode is irreversible and unattended; the disk
             // cost is recoverable, a wrong conversion is not.

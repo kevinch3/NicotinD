@@ -20,12 +20,14 @@ import { recordAudit } from '../services/audit-log.js';
 import {
   formatChangeImpact,
   getLibraryFormatSettings,
+  effectiveLadder,
   TARGET_LUFS_MIN,
   TARGET_LUFS_MAX,
   LibraryFormatSettingsSchema,
   setLibraryFormatSettings,
 } from '../services/library-format-settings.js';
 import { LIBRARY_FORMATS } from '../services/library-format.js';
+import { LADDERS, ladderToJson } from '../services/transcode-bitrate.js';
 
 export function settingsRoutes(config: NicotinDConfig) {
   const app = new Hono<AuthEnv>();
@@ -105,6 +107,11 @@ export function settingsRoutes(config: NicotinDConfig) {
         // What switching to it would cost right now, so the confirmation can
         // quote a real number instead of a warning nobody reads.
         impact: formatChangeImpact(db, s.id),
+        // The rates a conversion to it would use, and the measured defaults
+        // shown beside them (#1255).
+        ladder: ladderToJson(effectiveLadder(settings, s.id)),
+        defaultLadder: ladderToJson(LADDERS[s.id]),
+        ladderOverridden: settings.ladders[s.id] !== undefined,
       })),
     });
   });
@@ -122,16 +129,36 @@ export function settingsRoutes(config: NicotinDConfig) {
         403,
       );
     }
-    const body = await c.req.json<{ format?: unknown; targetLufs?: unknown; confirm?: unknown }>();
+    const body = await c.req.json<{
+      format?: unknown;
+      targetLufs?: unknown;
+      // `{ format, ladder }` sets that format's ladder; `ladder: null` restores
+      // the measured default (#1255).
+      ladder?: { format?: unknown; ladder?: unknown };
+      confirm?: unknown;
+    }>();
     const db = getDatabase();
     const current = getLibraryFormatSettings(db);
-    // Either field may be sent alone; an absent one keeps its current value.
+    const ladders: Record<string, unknown> = { ...current.ladders };
+    if (body.ladder && typeof body.ladder.format === 'string') {
+      if (body.ladder.ladder === null) delete ladders[body.ladder.format];
+      else ladders[body.ladder.format] = body.ladder.ladder;
+    }
+    // Every field may be sent alone; an absent one keeps its current value.
     const parsed = LibraryFormatSettingsSchema.safeParse({
       format: body.format ?? current.format,
       targetLufs: body.targetLufs ?? current.targetLufs,
+      ladders,
     });
     if (!parsed.success) {
       const badTarget = parsed.error.issues.some((i) => i.path[0] === 'targetLufs');
+      const badLadder = parsed.error.issues.find((i) => i.path[0] === 'ladders');
+      if (badLadder) {
+        return c.json(
+          { error: `Invalid ladder: ${badLadder.message}`, code: 'INVALID_LADDER' },
+          400,
+        );
+      }
       return c.json(
         badTarget
           ? {
@@ -170,6 +197,7 @@ export function settingsRoutes(config: NicotinDConfig) {
         ...(next.targetLufs !== current.targetLufs
           ? { targetLufs: { from: current.targetLufs, to: next.targetLufs } }
           : {}),
+        ...(body.ladder ? { ladder: body.ladder } : {}),
       }),
     });
     return c.json({ ...next, impact: formatChangeImpact(db, next.format) });

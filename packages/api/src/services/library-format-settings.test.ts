@@ -51,7 +51,7 @@ describe('library format settings', () => {
 
   it('reads a row written before targetLufs existed with the default target (#1255)', () => {
     db.run(`INSERT INTO app_settings (key, value) VALUES ('libraryFormat', '{"format":"mp3"}')`);
-    expect(getLibraryFormatSettings(db)).toEqual({ format: 'mp3', targetLufs: -14 });
+    expect(getLibraryFormatSettings(db)).toEqual({ format: 'mp3', targetLufs: -14, ladders: {} });
   });
 
   it('persists a loudness target, and refuses one outside the sane range', () => {
