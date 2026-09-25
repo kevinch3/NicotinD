@@ -137,7 +137,9 @@ The four manage/observe endpoints are live, exactly as sketched above:
   (re-)init; a down addon logs a warning and never fails enable/boot.
 
 Core-side pieces: `AddonClient` (`services/addons/client.ts`, injected `fetchFn`, 10 s
-timeout, typed `AddonRequestError`), `RemoteAddonPlugin` (`remote-addon-plugin.ts`, adapts
+timeout, typed `AddonRequestError` — which carries the addon's own `{ error }` text from a non-2xx
+body as `detail` and in its message, bounded by `ADDON_ERROR_DETAIL_MAX`, because a 400 is a
+verdict with a reason and the bare status made every no-match read identical, #1209), `RemoteAddonPlugin` (`remote-addon-plugin.ts`, adapts
 the manifest via `pluginManifestFromAddon` with `defaultEnabled:false`), the
 `addon_registrations` table + `services/addons/store.ts` (the outbound bearer is stored
 **plaintext by necessity** — it must be replayed on every call; same credential class as the

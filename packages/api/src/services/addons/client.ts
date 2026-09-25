@@ -17,9 +17,35 @@ export class AddonRequestError extends Error {
   constructor(
     message: string,
     readonly status?: number,
+    /** The addon's own `{ error }` text for a non-2xx, when it sent one (#1209). */
+    readonly detail?: string,
   ) {
-    super(message);
+    super(detail ? `${message}: ${detail}` : message);
     this.name = 'AddonRequestError';
+  }
+}
+
+/** Longest error text carried from an addon's body into a message. */
+const ADDON_ERROR_DETAIL_MAX = 300;
+
+/**
+ * The `error` string from a non-2xx body, bounded and best-effort (#1209).
+ *
+ * The protocol's 400 means "this request cannot be served" and the body says
+ * why — "no candidate reached 80% match", "the picked folder covers none of
+ * the wanted tracks". Throwing on the status alone reduced every one of them
+ * to `addon responded 400 for POST /addon/v1/jobs`, byte-identical across
+ * different albums and causes, which is how a deterministic no-match read as
+ * an unexplained repeat failure for a month.
+ */
+async function readErrorDetail(res: Response): Promise<string | undefined> {
+  try {
+    const text = (await res.text()).slice(0, 4096);
+    const body = JSON.parse(text) as { error?: unknown };
+    if (typeof body.error !== 'string' || !body.error.trim()) return undefined;
+    return body.error.trim().slice(0, ADDON_ERROR_DETAIL_MAX);
+  } catch {
+    return undefined;
   }
 }
 
@@ -249,6 +275,7 @@ export class AddonClient implements AddonTransport {
         throw new AddonRequestError(
           `addon responded ${res.status} for ${method} ${path}`,
           res.status,
+          await readErrorDetail(res),
         );
       }
       const parsed =
