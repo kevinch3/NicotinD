@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'bun:test';
-import { computeEnergy, parseEbur128Output } from './loudness-analysis.js';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { EBUR128_FILTER, computeEnergy, parseEbur128Output } from './loudness-analysis.js';
+import { ffmpegAvailable } from './transcode.js';
 
 /** Realistic tail of ffmpeg `-filter:a ebur128` stderr output. */
 const SUMMARY = `
@@ -82,5 +87,48 @@ describe('computeEnergy', () => {
 
   it('scores silence as zero', () => {
     expect(computeEnergy(-70, 0)).toBe(0);
+  });
+});
+
+describe.skipIf(!ffmpegAvailable())('the ebur128 filter as run (#1312)', () => {
+  it('prints the summary without a line per frame', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'nicotind-ebur128-'));
+    try {
+      const wav = join(dir, 'tone.wav');
+      execFileSync('ffmpeg', [
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-f',
+        'lavfi',
+        '-i',
+        'sine=f=440:d=20',
+        '-y',
+        wav,
+      ]);
+      const run = spawnSync(
+        'ffmpeg',
+        [
+          '-hide_banner',
+          '-nostats',
+          '-i',
+          wav,
+          '-map',
+          'a:0',
+          '-filter:a',
+          EBUR128_FILTER,
+          '-f',
+          'null',
+          '-',
+        ],
+        { encoding: 'utf8' },
+      );
+      // 20 s at the default framelog is ~200 frame lines.
+      expect(run.stderr.split('\n').length).toBeLessThan(50);
+      const parsed = parseEbur128Output(run.stderr);
+      expect(parsed?.integratedLufs).toBeCloseTo(-21.8, 0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
