@@ -142,6 +142,8 @@ Launch tasks:
 - **energy** — `WHERE energy IS NULL`, ffmpeg-gated, **offline**. Reads an
   `ENERGY` tag if present, else `analyzeLoudness()` (`loudness-analysis.ts`:
   ffmpeg `ebur128` → integrated LUFS + loudness range → derived 0..1 energy).
+  The filter runs as `EBUR128_FILTER` (`framelog=verbose`), so ffmpeg prints only the Summary the
+  parser reads: a 4-minute track's buffered stderr drops from ~300 KB to ~1 KB (#1312).
   Writes `library_songs.energy` + `loudness` and the `ENERGY`/`LOUDNESS_LUFS`
   file tags. Bulk script: `scripts/analyze-energy.ts`.
 - **audio-features** — `WHERE danceability IS NULL`, gated on the **analysis

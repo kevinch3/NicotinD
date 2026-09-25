@@ -26,6 +26,14 @@ export interface LoudnessResult {
   energy: number;
 }
 
+/**
+ * The filter as run. `framelog=verbose` moves the per-100 ms frame lines below
+ * ffmpeg's default log level, leaving the Summary this module parses: a 4-minute
+ * track's stderr went from 2,427 lines (301 KB, all buffered) to 27, with the
+ * same I and LRA (#1312).
+ */
+export const EBUR128_FILTER = 'ebur128=framelog=verbose';
+
 /** Silent/near-silent programme material reports -inf or absurdly low LUFS. */
 const SILENCE_FLOOR_LUFS = -70;
 
@@ -94,7 +102,7 @@ export async function analyzeLoudness(
     '-map',
     'a:0',
     '-filter:a',
-    'ebur128',
+    EBUR128_FILTER,
     '-f',
     'null',
     '-',
