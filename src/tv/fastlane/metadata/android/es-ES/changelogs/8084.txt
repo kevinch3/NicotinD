@@ -1,0 +1,1 @@
+• scanner: give the event loop a turn between the sync cycle's steps (#1400)

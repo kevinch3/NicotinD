@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.84](https://github.com/kevinch3/NicotinD/compare/v0.8.83...v0.8.84) (2026-09-25)
+
+### Performance
+
+* **scanner:** give the event loop a turn between the sync cycle's steps ([#1400](https://github.com/kevinch3/NicotinD/issues/1400)) ([25e1632](https://github.com/kevinch3/NicotinD/commit/25e1632634e539ccbc253f1df302fa96bb50356e)), references [#1399](https://github.com/kevinch3/NicotinD/issues/1399) [#1313](https://github.com/kevinch3/NicotinD/issues/1313)
 ## [0.8.83](https://github.com/kevinch3/NicotinD/compare/v0.8.82...v0.8.83) (2026-09-25)
 
 ### Performance
