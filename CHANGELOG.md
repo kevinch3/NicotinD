@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.76](https://github.com/kevinch3/NicotinD/compare/v0.8.75...v0.8.76) (2026-09-25)
+
+### Features
+
+* **audit:** report duplicate files that share one album track slot ([#1380](https://github.com/kevinch3/NicotinD/issues/1380)) ([d80eac0](https://github.com/kevinch3/NicotinD/commit/d80eac039c3c42e1e71b97c5eeb10e97a3b3e18f)), references [#951](https://github.com/kevinch3/NicotinD/issues/951)
 ## [0.8.75](https://github.com/kevinch3/NicotinD/compare/v0.8.74...v0.8.75) (2026-09-24)
 
 ### Features
