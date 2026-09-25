@@ -435,6 +435,7 @@ describe('GET /me', () => {
       language: null,
       radioStrategy: 'similar',
       welcomeDismissed: false,
+      queueAcquired: null,
     });
   });
 

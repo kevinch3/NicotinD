@@ -5,6 +5,7 @@ import {
   PREFERENCE_LANGS,
   THEME_IDS,
   parseUserPreferences,
+  queueAcquiredOn,
 } from './user-preferences.js';
 import { UserPreferencesPatchSchema, UserPreferencesSchema } from './user-preferences-schema.js';
 
@@ -21,6 +22,7 @@ describe('UserPreferencesSchema', () => {
       language: 'es',
       radioStrategy: 'similar',
       welcomeDismissed: true,
+      queueAcquired: false,
     } as const;
     expect(UserPreferencesSchema.parse(full)).toEqual(full);
   });
@@ -70,6 +72,7 @@ describe('parseUserPreferences', () => {
       language: 'es',
       radioStrategy: 'similar',
       welcomeDismissed: true,
+      queueAcquired: false,
     };
     expect(parseUserPreferences(full)).toEqual(full as never);
   });
@@ -82,6 +85,21 @@ describe('parseUserPreferences', () => {
     expect(parseUserPreferences(missing)).toBeNull();
     expect(parseUserPreferences('nope')).toBeNull();
     expect(parseUserPreferences(null)).toBeNull();
+  });
+
+  // A mirror written before #1294 has no `queueAcquired`: it must stay valid,
+  // or every device would drop its remembered theme on the upgrade.
+  it('reads an absent queueAcquired as null, and rejects a non-boolean one', () => {
+    const legacy: Partial<typeof EMPTY_USER_PREFERENCES> = { ...EMPTY_USER_PREFERENCES };
+    delete legacy.queueAcquired;
+    expect(parseUserPreferences(legacy)).toEqual(EMPTY_USER_PREFERENCES);
+    expect(parseUserPreferences({ ...EMPTY_USER_PREFERENCES, queueAcquired: 'yes' })).toBeNull();
+  });
+
+  it('reads an unchosen queueAcquired as on', () => {
+    expect(queueAcquiredOn(EMPTY_USER_PREFERENCES)).toBe(true);
+    expect(queueAcquiredOn({ queueAcquired: true })).toBe(true);
+    expect(queueAcquiredOn({ queueAcquired: false })).toBe(false);
   });
 
   it('agrees with the zod schema on what is valid', () => {

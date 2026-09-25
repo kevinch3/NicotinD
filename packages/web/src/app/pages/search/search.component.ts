@@ -21,6 +21,7 @@ import { WatchlistService } from '../../services/watchlist.service';
 import { AuthService } from '../../services/auth.service';
 import { PluginService } from '../../services/plugin.service';
 import { AutoHuntService } from '../../services/auto-hunt.service';
+import { GetThenHearService, modeForFileCount } from '../../services/get-then-hear.service';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import {
   getSingleDownloadLabel,
@@ -229,6 +230,8 @@ export class SearchComponent implements OnInit, OnDestroy {
   readonly plugins = inject(PluginService);
   readonly auth = inject(AuthService);
   private autoHunt = inject(AutoHuntService);
+  /** Remembers each Get so its songs join the queue when they land (#1294). */
+  private getThenHear = inject(GetThenHearService);
   /** The source hunts one album at a time (#1049): catalog cards wait for the hunt in flight. */
   protected readonly anyHunting = this.autoHunt.anyHunting;
   private p2r = inject(PullToRefreshService);
@@ -531,7 +534,8 @@ export class SearchComponent implements OnInit, OnDestroy {
     const key = `${username}:${file.filename}`;
     this.search.addDownloading(key);
     try {
-      await firstValueFrom(this.downloadsApi.enqueueDownload(username, [file]));
+      const res = await firstValueFrom(this.downloadsApi.enqueueDownload(username, [file]));
+      this.getThenHear.remember(res?.jobId, 'next');
       this.downloadError.set(null);
     } catch (err) {
       this.search.removeDownloading(key);
@@ -549,12 +553,13 @@ export class SearchComponent implements OnInit, OnDestroy {
     for (const [username, files] of byUser.entries()) {
       for (const f of files) this.search.addDownloading(`${username}:${f.filename}`);
       try {
-        await firstValueFrom(
+        const res = await firstValueFrom(
           this.downloadsApi.enqueueDownload(
             username,
             files.map((f) => ({ filename: f.filename, size: f.size })),
           ),
         );
+        this.getThenHear.remember(res?.jobId, modeForFileCount(files.length));
       } catch (err) {
         for (const f of files) this.search.removeDownloading(`${username}:${f.filename}`);
         this.downloadError.set(err instanceof Error ? err.message : 'Download failed');
@@ -567,12 +572,13 @@ export class SearchComponent implements OnInit, OnDestroy {
     this.search.addDownloadedFolder(`${group.username}:${group.directory}`);
     for (const f of validFiles) this.search.addDownloading(`${group.username}:${f.filename}`);
     try {
-      await firstValueFrom(
+      const res = await firstValueFrom(
         this.downloadsApi.enqueueDownload(
           group.username,
           validFiles.map((f) => ({ filename: f.filename, size: f.size })),
         ),
       );
+      this.getThenHear.remember(res?.jobId, modeForFileCount(validFiles.length));
       this.downloadError.set(null);
     } catch (err) {
       for (const f of validFiles) this.search.removeDownloading(`${group.username}:${f.filename}`);
@@ -590,7 +596,8 @@ export class SearchComponent implements OnInit, OnDestroy {
     this.search.addDownloadedFolder(folderKey);
     for (const f of validFiles) this.search.addDownloading(`${username}:${f.filename}`);
     try {
-      await firstValueFrom(this.downloadsApi.enqueueDownload(username, validFiles));
+      const res = await firstValueFrom(this.downloadsApi.enqueueDownload(username, validFiles));
+      this.getThenHear.remember(res?.jobId, modeForFileCount(validFiles.length));
       this.downloadError.set(null);
     } catch (err) {
       for (const f of validFiles) this.search.removeDownloading(`${username}:${f.filename}`);
@@ -771,7 +778,8 @@ export class SearchComponent implements OnInit, OnDestroy {
       // ignore the field; we still send `undefined` so the server skips the
       // override branch entirely.
       const as = intent.source === 'archive' && this.treatAsPlaylist() ? 'playlist' : undefined;
-      await this.acquire.submit(intent.url, undefined, { as });
+      // A link's size is unknown until it lands, so its mode is decided then.
+      this.getThenHear.remember(await this.acquire.submit(intent.url, undefined, { as }));
       // The Downloads feed polls on a 30s idle timer, so without this the card
       // for a link just pasted lagged the nav badge by up to half a minute —
       // the badge reads `acquire.activeJobs()`, which the submit already
@@ -863,7 +871,7 @@ export class SearchComponent implements OnInit, OnDestroy {
     }
     this.blendedAcquired.update((s) => new Set(s).add(c.id));
     try {
-      await this.acquire.submit(c.acquire.url);
+      this.getThenHear.remember(await this.acquire.submit(c.acquire.url));
     } catch {
       this.blendedAcquired.update((s) => {
         const next = new Set(s);

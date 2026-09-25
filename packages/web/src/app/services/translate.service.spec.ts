@@ -118,6 +118,7 @@ describe('TranslateService', () => {
       language: 'es',
       radioStrategy: null,
       welcomeDismissed: false,
+      queueAcquired: null,
     });
     await svc.init(fakeFetch());
     expect(svc.lang()).toBe('es');

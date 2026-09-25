@@ -59,6 +59,7 @@ describe('GET /me/preferences', () => {
       language: null,
       radioStrategy: null,
       welcomeDismissed: false,
+      queueAcquired: null,
     });
   });
 });

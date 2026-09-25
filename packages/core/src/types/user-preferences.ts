@@ -1,7 +1,8 @@
 /**
  * Per-user preferences (issue #1299): the things one person chooses that should
  * follow them from the phone to the laptop — home view, theme, language, the
- * radio variety position, the welcome banner.
+ * radio variety position, the welcome banner, and whether a track got from
+ * search joins the queue when it lands (#1294).
  *
  * Every key is nullable on read: `null` means "nothing chosen on the server",
  * and the client keeps whatever the device resolved (browser language, the
@@ -39,6 +40,11 @@ export interface UserPreferences {
   language: PreferenceLang | null;
   radioStrategy: StrategyId | null;
   welcomeDismissed: boolean;
+  /**
+   * Whether a track or album got from search joins this device's queue when it
+   * lands (#1294). `null` = never chosen, which reads as on: it is an opt-out.
+   */
+  queueAcquired: boolean | null;
 }
 
 /** A patch chooses; it never carries null. At least one key is required. */
@@ -53,6 +59,7 @@ export const EMPTY_USER_PREFERENCES: UserPreferences = {
   language: null,
   radioStrategy: null,
   welcomeDismissed: false,
+  queueAcquired: null,
 };
 
 const KEYS: readonly (keyof UserPreferences)[] = [
@@ -62,10 +69,16 @@ const KEYS: readonly (keyof UserPreferences)[] = [
   'language',
   'radioStrategy',
   'welcomeDismissed',
+  'queueAcquired',
 ];
 
 function oneOf<T extends string>(v: unknown, allowed: readonly T[]): v is T {
   return typeof v === 'string' && (allowed as readonly string[]).includes(v);
+}
+
+/** The opt-out reading of `queueAcquired`: never chosen means on. */
+export function queueAcquiredOn(prefs: Pick<UserPreferences, 'queueAcquired'>): boolean {
+  return prefs.queueAcquired !== false;
 }
 
 /**
@@ -83,6 +96,9 @@ export function parseUserPreferences(v: unknown): UserPreferences | null {
   if (!nullOr(o['language'], (x): x is PreferenceLang => oneOf(x, PREFERENCE_LANGS))) return null;
   if (!nullOr(o['radioStrategy'], (x): x is StrategyId => oneOf(x, STRATEGY_IDS))) return null;
   if (typeof o['welcomeDismissed'] !== 'boolean') return null;
+  // Absent reads as null: a mirror written before the key existed stays valid.
+  const queueAcquired = o['queueAcquired'] ?? null;
+  if (!nullOr(queueAcquired, (x): x is boolean => typeof x === 'boolean')) return null;
   return {
     homeView: o['homeView'] as HomeView | null,
     theme: o['theme'] as ThemeId | null,
@@ -90,5 +106,6 @@ export function parseUserPreferences(v: unknown): UserPreferences | null {
     language: o['language'] as PreferenceLang | null,
     radioStrategy: o['radioStrategy'] as StrategyId | null,
     welcomeDismissed: o['welcomeDismissed'] as boolean,
+    queueAcquired,
   };
 }

@@ -29,6 +29,7 @@ import { ConfirmService } from '../../services/confirm.service';
 import { UpdateService } from '../../services/update.service';
 import { InstallPromptService } from '../../services/install-prompt.service';
 import { ToastService } from '../../services/toast.service';
+import { UserPreferencesService } from '../../services/user-preferences.service';
 import { TranslateService } from '../../services/translate.service';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
@@ -101,6 +102,7 @@ export class SettingsComponent {
   readonly update = inject(UpdateService);
   readonly installPrompt = inject(InstallPromptService);
   private toast = inject(ToastService);
+  readonly prefs = inject(UserPreferencesService);
 
   readonly serverConfig = inject(ServerConfigService);
 
@@ -303,6 +305,11 @@ export class SettingsComponent {
       }
     }
     this.remote.setOutputAvailable(enabled);
+  }
+
+  /** Get, then hear it (#1294): a per-user opt-out, default on. */
+  toggleQueueAcquired(): void {
+    this.prefs.patch({ queueAcquired: !this.prefs.queueAcquired() });
   }
 
   saveDeviceName(): void {

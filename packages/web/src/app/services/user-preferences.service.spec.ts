@@ -15,6 +15,7 @@ const SERVER: UserPreferences = {
   language: 'es',
   radioStrategy: 'similar',
   welcomeDismissed: true,
+  queueAcquired: false,
 };
 
 describe('mergePreferences', () => {
@@ -121,6 +122,16 @@ describe('UserPreferencesService', () => {
     const { svc } = setup({ http: false });
     svc.patch({ theme: 'oled' });
     expect(svc.theme()).toBe('oled');
+  });
+
+  // #1294: an opt-out — never chosen reads as on, only an explicit false is off.
+  it('reads queueAcquired as on until the person turns it off', () => {
+    const { svc: prefs } = setup({ session: false });
+    expect(prefs.queueAcquired()).toBe(true);
+    prefs.patch({ queueAcquired: false });
+    expect(prefs.queueAcquired()).toBe(false);
+    prefs.patch({ queueAcquired: true });
+    expect(prefs.queueAcquired()).toBe(true);
   });
 
   it('clear drops the state and the mirror (logout / server switch)', () => {

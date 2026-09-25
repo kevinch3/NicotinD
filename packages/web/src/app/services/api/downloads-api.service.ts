@@ -9,6 +9,7 @@ import type {
   AlbumJob,
   UntrackedDownload,
   AlternateSourcesResult,
+  Song,
 } from './api-types';
 
 /** Acquisition: slskd transfers/browse, URL-acquire jobs, and the album hunt. */
@@ -17,7 +18,10 @@ export class DownloadsApiService {
   private http = inject(HttpClient);
 
   enqueueDownload(username: string, files: Array<{ filename: string; size: number }>) {
-    return this.http.post<{ ok: boolean }>('/api/downloads', { username, files });
+    return this.http.post<{ ok: boolean; queued: number; jobId: string | null }>('/api/downloads', {
+      username,
+      files,
+    });
   }
 
   startBrowse(username: string) {
@@ -75,6 +79,13 @@ export class DownloadsApiService {
 
   getAcquisitionJobs() {
     return this.http.get<AcquisitionJobView[]>('/api/downloads/jobs');
+  }
+
+  /** The songs one job landed, in album order (#1294). */
+  getJobSongs(jobId: string) {
+    return this.http.get<{ jobId: string; state: string; songs: Song[] }>(
+      `/api/downloads/jobs/${encodeURIComponent(jobId)}/songs`,
+    );
   }
 
   // URL acquisition jobs (yt-dlp / spotdl)

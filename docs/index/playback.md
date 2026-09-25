@@ -3,6 +3,9 @@
 One section of [the index](../index.md). Entry shape and caps are unchanged and
 `bun run check:claude-md` still enforces them here.
 
+- **Get, then hear it**: a track or album got from search joins the queue of the device that pressed
+  Get once its job lands — one toast, enqueued once; a per-user opt-out. `GetThenHearService`,
+  `modeForFileCount`, `getJobSongs`, `queueAcquired`. → [get-then-hear.md](../get-then-hear.md)
 - **Recommendation strategies**: named recipes (weights, artist cap, pool mix, out-of-genre quota)
   chosen by `?strategy=` and stamped on poll scenarios; the Now Playing chip's variety control maps
   complaints to remedies in one core function. `STRATEGIES`, `resolveStrategy`,

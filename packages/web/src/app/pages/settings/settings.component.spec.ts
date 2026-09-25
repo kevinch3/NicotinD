@@ -7,6 +7,7 @@ import type { Mock } from 'vitest';
 import { SwUpdate } from '@angular/service-worker';
 import { SettingsComponent } from './settings.component';
 import { AuthService } from '../../services/auth.service';
+import { UserPreferencesService } from '../../services/user-preferences.service';
 import { ThemeService } from '../../services/theme.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
@@ -119,6 +120,7 @@ function makeProviders(role: 'admin' | 'user', updateOverrides: UpdateOverrides 
           role: signal(role),
           isAdmin: () => role === 'admin',
           canCurate: () => role === 'admin',
+          canAcquire: signal(true),
           welcomeDismissed: signal(false),
           logout: vi.fn(),
         },
@@ -554,6 +556,53 @@ describe('SettingsComponent (desktop music folder, Electron-gated)', () => {
     );
     expect(errorEl?.textContent).toContain('Sidecar exited before becoming healthy');
     fixture.destroy();
+  });
+});
+
+describe('SettingsComponent (get, then hear it opt-out, #1294)', () => {
+  async function makeFixture() {
+    const { list } = makeProviders('user');
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
+    return TestBed.createComponent(SettingsComponent);
+  }
+
+  afterEach(() => localStorage.clear());
+
+  const toggle = (fixture: { nativeElement: HTMLElement }) =>
+    fixture.nativeElement.querySelector<HTMLButtonElement>('[data-testid="queue-acquired-toggle"]');
+
+  it('is on by default, and a click opts out through the per-user preferences', async () => {
+    localStorage.clear();
+    const fixture = await makeFixture();
+    fixture.detectChanges();
+    expandAllGroups(fixture);
+    const prefs = TestBed.inject(UserPreferencesService);
+    expect(toggle(fixture)!.getAttribute('aria-checked')).toBe('true');
+
+    toggle(fixture)!.click();
+    fixture.detectChanges();
+    expect(prefs.preferences().queueAcquired).toBe(false);
+    expect(toggle(fixture)!.getAttribute('aria-checked')).toBe('false');
+
+    toggle(fixture)!.click();
+    fixture.detectChanges();
+    expect(prefs.preferences().queueAcquired).toBe(true);
+    for (const key of ['settings.queueAcquired', 'settings.queueAcquiredHint']) {
+      expect(BASE_CATALOG, `missing catalog key: ${key}`).toHaveProperty([key]);
+    }
+  });
+
+  it('is not offered to someone who cannot press Get', async () => {
+    const fixture = await makeFixture();
+    (
+      TestBed.inject(AuthService) as unknown as { canAcquire: ReturnType<typeof signal<boolean>> }
+    ).canAcquire.set(false);
+    fixture.detectChanges();
+    expandAllGroups(fixture);
+    expect(toggle(fixture)).toBeNull();
   });
 });
 

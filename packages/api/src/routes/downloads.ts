@@ -33,6 +33,8 @@ import { AddonRequestError } from '../services/addons/client.js';
 import { deleteSongs } from '../services/library-deletion.js';
 import { errorHandler } from '../middleware/error-handler.js';
 import { recordAudit } from '../services/audit-log.js';
+import { attachSongArtists } from '../services/artist-attach.js';
+import { SONG_SELECT, rowToSong, type SongRow } from './library.js';
 import type { ShareRescanScheduler } from '../services/share-rescan-scheduler.js';
 
 const log = createLogger('downloads');
@@ -51,6 +53,9 @@ const DownloadResponseSchema = z
   .object({
     ok: z.boolean(),
     queued: z.number(),
+    /** The acquisition job wrapping this grab, or null when recording it failed
+     *  (best-effort). The web keys its "get, then hear it" intent on it (#1294). */
+    jobId: z.string().nullable(),
   })
   .openapi('DownloadResponse');
 
@@ -171,6 +176,7 @@ export function downloadRoutes(
       // canonical metadata here — artist/album are best-effort display hints
       // parsed from the peer's folder segments. Best-effort: must never fail
       // the enqueue that already succeeded.
+      let jobId: string | null = null;
       try {
         const segments = (files[0]?.filename ?? '')
           .replace(/\\/g, '/')
@@ -201,10 +207,11 @@ export function downloadRoutes(
           files,
         });
         if (addonJobId) mapAddonJob(db, provider.name, addonJobId, coreJobId);
+        jobId = coreJobId;
       } catch (err) {
         log.warn({ username, err }, 'Failed to record acquisition job for direct download');
       }
-      return c.json({ ok: true, queued: files.length }, 201);
+      return c.json({ ok: true, queued: files.length, jobId }, 201);
     },
   );
 
@@ -224,6 +231,35 @@ export function downloadRoutes(
           : resolveJobAlbumId(db, job.id, job.artistName, job.albumTitle),
     }));
     return c.json(jobs, 200);
+  });
+
+  /**
+   * The songs one job landed, in album order (#1294, docs/get-then-hear.md) —
+   * what the device that pressed Get puts in its queue once the job is done.
+   * Keyed on the items' own `song_id`, so a job that shares an album with
+   * another never hands back the other job's tracks. `state` rides along so a
+   * caller can tell "not landed yet" from "landed nothing".
+   */
+  app.get('/jobs/:id/songs', (c) => {
+    const db = getDatabase();
+    const id = c.req.param('id');
+    const job = db
+      .query<{ state: string }, [string]>(`SELECT state FROM acquisition_jobs WHERE id = ?`)
+      .get(id);
+    if (!job) return c.json({ error: 'Job not found', code: 'JOB_NOT_FOUND' }, 404);
+    const songs = db
+      .query<SongRow, [string]>(
+        `${SONG_SELECT}
+          WHERE s.hidden = 0
+            AND s.id IN (SELECT song_id FROM acquisition_job_items
+                          WHERE job_id = ? AND song_id IS NOT NULL)
+          ORDER BY a.name COLLATE NOCASE ASC, s.album_id ASC, COALESCE(s.disc, 1) ASC,
+                   s.track ASC NULLS LAST, s.title COLLATE NOCASE ASC`,
+      )
+      .all(id)
+      .map(rowToSong);
+    attachSongArtists(db, songs);
+    return c.json({ jobId: id, state: job.state, songs }, 200);
   });
 
   /**

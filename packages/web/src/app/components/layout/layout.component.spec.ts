@@ -16,6 +16,7 @@ import { PlayerService } from '../../services/player.service';
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
+import { GetThenHearService } from '../../services/get-then-hear.service';
 import { LikeService } from '../../services/like.service';
 import { SetupService } from '../../services/setup.service';
 import { PreserveService } from '../../services/preserve.service';
@@ -131,6 +132,7 @@ describe('LayoutComponent — desktop downloads badge', () => {
       activeDownloadCount: signal(2),
       startPolling: () => {},
       stopPolling: () => {},
+      acquisitionJobs: signal<unknown[]>([]),
     };
     const acquireStub = {
       activeJobs: signal<unknown[]>([{}, {}, {}]),
@@ -161,10 +163,13 @@ describe('LayoutComponent — desktop downloads badge', () => {
       set: { template: `<span>{{ downloadCount() }}</span>`, imports: [] },
     });
 
+    const start = vi.spyOn(TestBed.inject(GetThenHearService), 'start');
     const fixture = TestBed.createComponent(LayoutComponent);
     fixture.detectChanges();
 
     expect(fixture.componentInstance.downloadCount()).toBe(5);
+    // The shell is what keeps "get, then hear it" listening app-wide (#1294).
+    expect(start).toHaveBeenCalledTimes(1);
 
     transfersStub.activeDownloadCount.set(0);
     acquireStub.activeJobs.set([]);
@@ -305,6 +310,7 @@ describe('LayoutComponent — pull-to-refresh wiring on the REAL template', () =
       activeDownloadCount: signal(0),
       startPolling: () => {},
       stopPolling: () => {},
+      acquisitionJobs: signal<unknown[]>([]),
     };
     const acquireStub = { activeJobs: signal<unknown[]>([]), refresh: async () => {} };
     const likesStub = { refresh: async () => {} };
