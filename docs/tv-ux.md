@@ -199,22 +199,29 @@ couch landed in A's history and trained A's radio, and B's phone could not even 
 cast picker, because devices are per user on the server.
 
 Now the TV **remembers people**. `lib/tv-profiles.ts` keeps `{username, role, token}` per person
-in `nicotind_tv_profiles` (the same 30-day device JWT the app already keeps, one per person,
-modelled on the server-registry session stash). The active session keeps living in
+in `nicotind_tv_profiles::<server URL>` (the same 30-day device JWT the app already keeps, one per
+person, keyed per server like the server-registry session stash — "Switch server" never offers one
+server's JWT to another). Only the TV build writes it: `TvProfileService` is root-provided and the
+login page injects it everywhere, so every side effect checks `isTvBuild()`. The active session keeps living in
 `nicotind_token`/`username`/`role`, so nothing else in the app knows about profiles: every API
 call, socket, listen and preference read already keys off the active token.
 
 A **switch** (`TvProfileService.switchTo`) is `resetSession()` — which drops the queue, the
 preferences mirror, likes, remote playback and every per-person key — then `login()` with the
-stored token, then the sliding refresh so an expired token is found now rather than as a 401 on
-the first library call (a refused refresh forgets that person and shows the QR). Holding the
-remote is enough: the owner chose the Netflix model over a PIN.
+stored token, then the same `refreshSession` a boot runs, awaited — so an expired token is found
+now rather than as a 401 on the first library call, and the person's radio variety, theme and
+language follow them. A refused refresh — 401/403 — forgets that person and goes back to `/who`
+(or to the QR when nobody is left); any other failure keeps the login and goes Home. A newer switch
+supersedes an older one still waiting on its refresh, so two quick presses never cross tokens.
+Holding the remote is enough: the owner chose the Netflix model over a PIN.
 
 Surfaces: Home's nav ends with the active name → `/who`, a list of people (active one marked)
 and **Add person**, which is the ordinary QR flow after a reset; the login card shows a way back
 to the people while any are stored. **Sign out** in Settings forgets *that* person on this TV
 and hands the box to the next one, or to the QR when nobody is left. `/who` is server-guarded
-only, because picking a person is how the TV signs in.
+only, because picking a person is how the TV signs in, and sits outside the TV shell, so it has no
+status line. A fresh boot with stored people but no active session lands on `/login`, whose
+back-link leads to `/who`.
 
 Not yet: a cast from a member's phone switching the TV to that member (PR 2, #1406).
 

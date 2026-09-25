@@ -1271,7 +1271,6 @@
   "tv.remoteThisDevice": "Este televisor aparece como «{name}»",
   "tv.seekHint": "Pulsá ← → para saltar 10 segundos",
   "tv.signInAgain": "Volver a iniciar sesión",
-  "tv.signOut": "Cerrar sesión",
   "tv.signOutAs": "Cerrar sesión de {name}",
   "tv.signedInAs": "Sesión de {name}",
   "tv.switchServer": "Cambiar de servidor",

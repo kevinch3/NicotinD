@@ -1,8 +1,14 @@
-import { Injectable, effect, inject, signal, untracked } from '@angular/core';
+import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { Router } from '@angular/router';
-import { firstValueFrom } from 'rxjs';
 import { AuthService } from './auth.service';
 import { AuthApiService } from './api/auth-api.service';
+import { PlayerService } from './player.service';
+import { UserPreferencesService } from './user-preferences.service';
+import { ThemeService } from './theme.service';
+import { TranslateService } from './translate.service';
+import { ServerConfigService } from './server-config.service';
+import { refreshSession } from '../app.config';
+import { isTvBuild } from '../lib/platform';
 import { forgetProfile, loadProfiles, rememberProfile, type TvProfile } from '../lib/tv-profiles';
 
 /**
@@ -13,17 +19,36 @@ import { forgetProfile, loadProfiles, rememberProfile, type TvProfile } from '..
  * and preference read already keys off `nicotind_token`; a switch is therefore
  * `resetSession()` (which drops every per-person cache and key — the queue,
  * the preferences mirror, likes, remote playback) followed by `login()` with
- * the stored token. Holding the remote is enough: the owner chose the Netflix
- * model over a PIN.
+ * the stored token and the same `refreshSession` a boot runs. Holding the
+ * remote is enough: the owner chose the Netflix model over a PIN.
+ *
+ * TV build only: the service is root-provided and the login page injects it on
+ * every build, so each side effect checks `isTvBuild()` — a phone or desktop
+ * must never mirror its tokens into the store.
  */
 @Injectable({ providedIn: 'root' })
 export class TvProfileService {
   private readonly auth = inject(AuthService);
   private readonly api = inject(AuthApiService);
   private readonly router = inject(Router);
+  private readonly player = inject(PlayerService);
+  private readonly prefs = inject(UserPreferencesService);
+  private readonly theme = inject(ThemeService);
+  private readonly i18n = inject(TranslateService);
+  private readonly serverConfig = inject(ServerConfigService);
 
-  private readonly people = signal<TvProfile[]>(loadProfiles(localStorage));
-  readonly profiles = this.people.asReadonly();
+  /** Bumped on every store write, so `profiles` re-reads. */
+  private readonly revision = signal(0);
+  /** The newest switch; an older one still awaiting stops at its next await. */
+  private generation = 0;
+
+  /** This server's people — the store is keyed per server, so "Switch server"
+   *  never offers one server's JWT to another. */
+  readonly profiles = computed<TvProfile[]>(() => {
+    this.revision();
+    this.serverConfig.baseUrl();
+    return isTvBuild() ? loadProfiles(localStorage, this.server()) : [];
+  });
   readonly active = this.auth.username;
   /** People whose stored token the server refused. PR 2's listeners fill it;
    *  a fresh login clears the name. */
@@ -34,12 +59,14 @@ export class TvProfileService {
     // boot-time silent refresh (`setToken`), so a stored token is the newest
     // one this TV has seen for that person.
     effect(() => {
+      if (!isTvBuild()) return;
       const token = this.auth.token();
       const username = this.auth.username();
       const role = this.auth.role() ?? 'user';
       if (!token || !username) return;
       untracked(() => {
-        this.people.set(rememberProfile(localStorage, { username, role, token }));
+        rememberProfile(localStorage, this.server(), { username, role, token });
+        this.revision.update((n) => n + 1);
         if (this.stale().has(username)) {
           const next = new Set(this.stale());
           next.delete(username);
@@ -50,40 +77,39 @@ export class TvProfileService {
   }
 
   async switchTo(username: string): Promise<void> {
+    if (!isTvBuild()) return;
+    const gen = ++this.generation;
+    const isStale = () => gen !== this.generation;
     // The /who screen renders the active person as a pressable row too —
     // pressing it must not reset the session it is currently showing.
     if (username === this.auth.username()) {
       await this.router.navigate(['/']);
       return;
     }
-    const target = this.people().find((p) => p.username === username);
+    const target = this.profiles().find((p) => p.username === username);
     if (!target) return;
     this.auth.resetSession();
     this.auth.login(target.token, target.username, target.role);
 
-    // The sliding refresh, awaited here so an expired token is known now
-    // rather than as a 401 on the first library call. Only a REFUSED refresh
-    // means the stored token is dead — forget the person and ask for the QR
-    // again. A transient failure past that point (`/me`) is not a reason to
-    // evict a person whose token just proved valid; keep the login, the
-    // stored role stands, and go Home same as a clean switch.
-    let token: string;
-    try {
-      ({ token } = await firstValueFrom(this.api.refreshToken()));
-    } catch {
+    // The boot refresh, awaited here so an expired token is known now rather
+    // than as a 401 on the first library call, and so the person's radio
+    // variety, theme and language follow them. Only a REFUSED refresh (401/403)
+    // means the stored token is dead: forget the person and go back to the
+    // people, or to the QR when nobody is left. Any other failure (offline,
+    // 5xx, a `/me` hiccup) keeps the login and goes Home like a clean switch.
+    const result = await refreshSession(
+      this.api,
+      this.auth,
+      this.player,
+      { prefs: this.prefs, theme: this.theme, i18n: this.i18n },
+      { isStale },
+    );
+    if (isStale()) return;
+    if (result === 'refused') {
       this.auth.resetSession();
-      this.people.set(forgetProfile(localStorage, username));
-      await this.router.navigate(['/login']);
+      this.forget(username);
+      await this.router.navigate(this.profiles().length ? ['/who'] : ['/login']);
       return;
-    }
-    this.auth.setToken(token);
-    try {
-      const me = await firstValueFrom(this.api.getMe());
-      this.auth.setRole(me.role);
-      if (me.mediaKey !== undefined) this.auth.setMediaKey(me.mediaKey);
-      this.auth.welcomeDismissed.set(me.welcomeDismissed);
-    } catch {
-      // Role/welcome stay whatever the stored profile carried.
     }
     await this.router.navigate(['/']);
   }
@@ -91,6 +117,7 @@ export class TvProfileService {
   /** Bring a new person in through the QR flow. The current person stays in
    *  the store, so abandoning the QR loses nothing. */
   beginAdd(): void {
+    if (!isTvBuild()) return;
     this.auth.resetSession();
     void this.router.navigate(['/login']);
   }
@@ -98,11 +125,22 @@ export class TvProfileService {
   /** Forget the active person on THIS TV (their token here, not their account)
    *  and hand the box to the next one, or to the QR when nobody is left. */
   async signOut(): Promise<void> {
+    if (!isTvBuild()) return;
     const leaving = this.auth.username();
     this.auth.logout();
-    if (leaving) this.people.set(forgetProfile(localStorage, leaving));
-    const next = this.people()[0];
+    if (leaving) this.forget(leaving);
+    const next = this.profiles()[0];
     if (next) await this.switchTo(next.username);
     else await this.router.navigate(['/login']);
+  }
+
+  /** The saved server URL, read at each call like `AuthService.logout` does. */
+  private server(): string {
+    return localStorage.getItem('nicotind_server_url') ?? '';
+  }
+
+  private forget(username: string): void {
+    forgetProfile(localStorage, this.server(), username);
+    this.revision.update((n) => n + 1);
   }
 }

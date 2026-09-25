@@ -10,7 +10,7 @@ import {
   effect,
 } from '@angular/core';
 import { provideRouter } from '@angular/router';
-import { provideHttpClient, withInterceptors } from '@angular/common/http';
+import { HttpErrorResponse, provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideServiceWorker } from '@angular/service-worker';
 import { routes } from './app.routes';
 import { BufferingErrorHandler } from './observability/buffering-error-handler';
@@ -38,45 +38,66 @@ export const APP_BUILD_INFO = new InjectionToken<BuildInfo>('APP_BUILD_INFO');
 /**
  * Refresh the stored session and sync the per-user profile flags. Runs after the
  * boot connectivity check (online boot), or on the first return to online after
- * an offline launch (see the initializer below).
+ * an offline launch (see the initializer below) — both fire-and-forget — and on
+ * a TV profile switch, which awaits the outcome (#1406).
+ *
+ * Resolves `'refused'` when the server rejected the stored token (401/403) and
+ * `'error'` for any other failure, including a `/me` failure after the token
+ * was already swapped in. Never rejects. `isStale` lets a caller whose session
+ * has since moved on stop this one from landing late.
  */
 export function refreshSession(
   api: AuthApiService,
   auth: AuthService,
   player?: PlayerService,
   preferences?: { prefs: UserPreferencesService; theme: ThemeService; i18n: TranslateService },
-): void {
-  api
-    .refreshToken()
-    .pipe(
-      switchMap((res) => {
-        auth.setToken(res.token);
-        return api.getMe();
-      }),
-    )
-    .subscribe({
-      next: (profile) => {
-        // Sync role from the (DB-backed) refreshed session so a role change
-        // an admin made takes effect on this load, not only on re-login.
-        auth.setRole(profile.role);
-        // An older server omits it; the JWT keeps serving media then (#1329).
-        if (profile.mediaKey !== undefined) auth.setMediaKey(profile.mediaKey);
-        auth.welcomeDismissed.set(profile.welcomeDismissed);
-        // Deployment-wide acquisition kill-switch (#235): default to enabled
-        // when an older server omits the field.
-        auth.serverAcquisitionEnabled.set(profile.acquisitionEnabled ?? true);
-        // The per-user variety position wins over the device's remembered one.
-        if (player && profile.radioStrategy) player.radioStrategy.set(profile.radioStrategy);
-        // Everything that follows the person (#1299): hydrate the door, then
-        // the owners adopt it. An older server omits the object.
-        if (preferences && profile.preferences) {
-          preferences.prefs.hydrate(profile.preferences);
-          preferences.theme.adoptPreferences();
-          void preferences.i18n.adoptPreferences();
-        }
-      },
-      error: () => {},
-    });
+  { isStale = () => false }: { isStale?: () => boolean } = {},
+): Promise<'ok' | 'refused' | 'error'> {
+  return new Promise((resolve) => {
+    let refreshed = false;
+    api
+      .refreshToken()
+      .pipe(
+        switchMap((res) => {
+          refreshed = true;
+          if (!isStale()) auth.setToken(res.token);
+          return api.getMe();
+        }),
+      )
+      .subscribe({
+        next: (profile) => {
+          if (isStale()) return;
+          // Sync role from the (DB-backed) refreshed session so a role change
+          // an admin made takes effect on this load, not only on re-login.
+          auth.setRole(profile.role);
+          // An older server omits it; the JWT keeps serving media then (#1329).
+          if (profile.mediaKey !== undefined) auth.setMediaKey(profile.mediaKey);
+          auth.welcomeDismissed.set(profile.welcomeDismissed);
+          // Deployment-wide acquisition kill-switch (#235): default to enabled
+          // when an older server omits the field.
+          auth.serverAcquisitionEnabled.set(profile.acquisitionEnabled ?? true);
+          // The per-user variety position wins over the device's remembered one.
+          if (player && profile.radioStrategy) player.radioStrategy.set(profile.radioStrategy);
+          // Everything that follows the person (#1299): hydrate the door, then
+          // the owners adopt it. An older server omits the object.
+          if (preferences && profile.preferences) {
+            preferences.prefs.hydrate(profile.preferences);
+            preferences.theme.adoptPreferences();
+            void preferences.i18n.adoptPreferences();
+          }
+          resolve('ok');
+        },
+        error: (err: unknown) => {
+          const refused =
+            !refreshed &&
+            err instanceof HttpErrorResponse &&
+            (err.status === 401 || err.status === 403);
+          resolve(refused ? 'refused' : 'error');
+        },
+        // `/me` completing with no value is not a success either.
+        complete: () => resolve('error'),
+      });
+  });
 }
 
 export const appConfig: ApplicationConfig = {
@@ -133,7 +154,7 @@ export const appConfig: ApplicationConfig = {
       return setup.check().then(() => {
         if (!auth.isAuthenticated()) return;
         if (!setup.isOffline()) {
-          refreshSession(api, auth, player, preferences);
+          void refreshSession(api, auth, player, preferences);
           return;
         }
         // Offline launch with a stored session: refresh it automatically the
@@ -143,7 +164,7 @@ export const appConfig: ApplicationConfig = {
           () => {
             if (setup.isOffline()) return;
             ref.destroy();
-            if (auth.isAuthenticated()) refreshSession(api, auth, player, preferences);
+            if (auth.isAuthenticated()) void refreshSession(api, auth, player, preferences);
           },
           { injector },
         );

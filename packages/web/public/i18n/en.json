@@ -1271,7 +1271,6 @@
   "tv.remoteThisDevice": "This TV appears as “{name}”",
   "tv.seekHint": "Press ← → to skip 10 seconds",
   "tv.signInAgain": "Sign in again",
-  "tv.signOut": "Sign out",
   "tv.signOutAs": "Sign out {name}",
   "tv.signedInAs": "Signed in as {name}",
   "tv.switchServer": "Switch server",

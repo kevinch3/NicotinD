@@ -5,10 +5,11 @@ import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 
 /**
- * "Who's listening?" (#1406): the people this TV knows, one D-pad row each,
- * then Add person. Also the front door when the box has people but no active
- * session (after a sign-out or an abandoned Add), which is why the route is
- * server-guarded only — switching IS the login.
+ * "Who's listening?" (#1406): the people this TV knows on this server, one
+ * D-pad row each, then Add person. Server-guarded only and outside the TV
+ * shell (no status line): it must work with no session, because switching IS
+ * the login. Reached from Home's nav, from /login's back-link, and after a
+ * refused switch while other people remain.
  */
 @Component({
   selector: 'app-tv-who',
