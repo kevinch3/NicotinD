@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.80](https://github.com/kevinch3/NicotinD/compare/v0.8.79...v0.8.80) (2026-09-25)
+
+### Features
+
+* **library:** work and movement fields, readable and retaggable ([#1385](https://github.com/kevinch3/NicotinD/issues/1385)) ([5ec416f](https://github.com/kevinch3/NicotinD/commit/5ec416f0c4dc5f87341a1bf23553ed3af80af0bf)), references [#1369](https://github.com/kevinch3/NicotinD/issues/1369)
+
+### Bug Fixes
+
+* **addons:** carry the addon's own error text, not just its status ([#1384](https://github.com/kevinch3/NicotinD/issues/1384)) ([367140f](https://github.com/kevinch3/NicotinD/commit/367140f6501d7ae5655f19bd49af8769b58d3f86)), references [#1209](https://github.com/kevinch3/NicotinD/issues/1209)
 ## [0.8.79](https://github.com/kevinch3/NicotinD/compare/v0.8.78...v0.8.79) (2026-09-25)
 
 ### Features

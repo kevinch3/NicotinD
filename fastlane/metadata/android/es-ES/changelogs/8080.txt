@@ -1,0 +1,2 @@
+• library: work and movement fields, readable and retaggable (#1385)
+• addons: carry the addon's own error text, not just its status (#1384)
