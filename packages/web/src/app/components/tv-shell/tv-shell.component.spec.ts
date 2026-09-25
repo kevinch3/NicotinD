@@ -9,6 +9,8 @@ import { PlaybackWsService } from '../../services/playback-ws.service';
 import { PlayerComponent } from '../player/player.component';
 import { UpdateBannerComponent } from '../update-banner/update-banner.component';
 import { TvDevicePickerComponent } from '../tv-device-picker/tv-device-picker.component';
+import { APP_VERSION } from '../../app.config';
+import { AuthService } from '../../services/auth.service';
 
 @Component({ selector: 'app-player', template: '' })
 class StubPlayerComponent {}
@@ -30,6 +32,7 @@ describe('TvShellComponent', () => {
           { path: '', component: BlankComponent },
           { path: 'player', component: BlankComponent },
         ]),
+        { provide: APP_VERSION, useValue: '0.1.234' },
       ],
     });
     TestBed.overrideComponent(TvShellComponent, {
@@ -50,6 +53,19 @@ describe('TvShellComponent', () => {
 
   afterEach(() => {
     localStorage.clear();
+  });
+
+  it('names the signed-in user and the version on every screen (#1404)', () => {
+    localStorage.setItem('nicotind_username', 'couch');
+    const { fixture } = create();
+    TestBed.inject(AuthService).username.set('couch');
+    fixture.detectChanges();
+
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('[data-testid="tv-status-user"]')?.textContent?.trim()).toBe('couch');
+    expect(el.querySelector('[data-testid="tv-status-version"]')?.textContent?.trim()).toBe(
+      'v0.1.234',
+    );
   });
 
   it('turns radio on, because a TV has no control that could turn it back on (#1127)', () => {

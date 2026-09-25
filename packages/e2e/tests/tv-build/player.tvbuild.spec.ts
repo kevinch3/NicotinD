@@ -7,7 +7,7 @@
  * assertion is the regression test; the screenshot is the net for the next
  * one.
  */
-import { FIXTURE, KARAOKE_FIXTURE_LYRICS } from '../../helpers';
+import { ADMIN, FIXTURE, KARAOKE_FIXTURE_LYRICS } from '../../helpers';
 import { test, expect, centreOf, expectFitsTheScreen, expectNoNativeFormControls } from './tv-test';
 import type { Page } from '@playwright/test';
 
@@ -47,6 +47,29 @@ test.describe('TV player', () => {
       page.getByTestId('tv-remote-row'),
     );
     await expect(page).toHaveScreenshot('player.png');
+  });
+
+  /**
+   * #1404: the feature rail sits beside the art, not under the transport, so
+   * the couch gets time, the next track and the current output at a glance,
+   * and every TV screen carries who is signed in and which version runs.
+   */
+  test('the rail, the time readout and the status line (#1404)', async ({ page }) => {
+    await playFixtureAlbum(page);
+    const rail = page.getByTestId('tv-player-rail');
+    const transport = page.getByTestId('tv-transport');
+    const art = page.getByTestId('tv-player').locator('app-cover-art');
+    // The rail is beside the art and above the transport.
+    const [r, a, tr] = await Promise.all([centreOf(rail), centreOf(art), centreOf(transport)]);
+    expect(r.x, 'rail is right of the art').toBeGreaterThan(a.x);
+    expect(r.y, 'rail is above the transport').toBeLessThan(tr.y);
+    await expect(page.getByTestId('tv-next-up')).toContainText(FIXTURE.album.artist);
+    await expect(page.getByTestId('tv-remote-row')).toContainText('This TV');
+    await expect(page.getByTestId('tv-player-time')).toHaveText(/^\d+:\d\d \/ \d+:\d\d$/);
+
+    await expect(page.getByTestId('tv-status-user')).toHaveText(ADMIN.username);
+    await expect(page.getByTestId('tv-status-version')).toHaveText(/^v\d+\.\d+\.\d+/);
+    await expectFitsTheScreen(page, page.getByTestId('tv-status'));
   });
 
   /**

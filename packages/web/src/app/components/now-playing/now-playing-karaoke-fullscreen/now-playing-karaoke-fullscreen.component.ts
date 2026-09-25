@@ -6,6 +6,7 @@ import { TranslatePipe } from '../../../pipes/translate.pipe';
 import { TvNavGroupDirective } from '../../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 import { DEFAULT_PALETTE, type CoverPalette } from '../../../lib/cover-colors';
+import { formatTime } from '../../../lib/format-time';
 import type { WaveformData } from '../../../../types/core';
 
 @Component({
@@ -86,9 +87,6 @@ export class NowPlayingKaraokeFullscreenComponent {
   });
 
   formatTime(s: number): string {
-    if (!Number.isFinite(s) || s < 0) return '0:00';
-    const m = Math.floor(s / 60);
-    const sec = Math.floor(s % 60);
-    return `${m}:${sec.toString().padStart(2, '0')}`;
+    return formatTime(s);
   }
 }

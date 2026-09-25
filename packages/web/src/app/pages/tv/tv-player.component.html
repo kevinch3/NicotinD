@@ -1,10 +1,10 @@
 <div
-  class="relative min-h-screen flex flex-col items-center justify-center overflow-hidden"
+  class="relative min-h-[calc(100vh-2rem)] flex flex-col justify-center px-[6vw] py-[3vh]"
   data-testid="tv-player"
 >
   @if (backdrop(); as bg) {
     <div
-      class="absolute inset-0 z-0 bg-cover bg-center"
+      class="fixed inset-0 z-0 bg-cover bg-center"
       [style.background-image]="bg"
       style="filter: blur(56px) brightness(0.45) saturate(1.15); transform: scale(1.12)"
       aria-hidden="true"
@@ -12,19 +12,92 @@
   }
 
   @if (track(); as t) {
-    <div class="relative z-10 flex flex-col items-center gap-4 px-[4vw]">
-      <app-cover-art
-        [src]="t.coverArt ? '/api/cover/' + t.coverArt + '?size=600&token=' + auth.mediaToken() : undefined"
-        [artist]="t.artist"
-        [album]="t.album ?? ''"
-        [size]="188"
-        rounded="rounded-2xl"
-      />
-      <div class="text-center min-w-0 max-w-3xl">
-        <h1 class="text-2xl font-bold truncate text-white" data-testid="tv-player-title">
-          {{ t.title }}
-        </h1>
-        <p class="text-base text-white/70 truncate">{{ t.artist }}</p>
+    <!-- Two columns, because a TV has width to spare and no height (#1404):
+         art and identity on the left, the feature rail on the right, the
+         transport under both. The first layout was one centred column with
+         the features stacked as grey text under the transport, and at 720p the
+         last row sat on the bottom edge. -->
+    <div class="relative z-10 flex flex-col gap-8 max-w-[1400px] w-full mx-auto">
+      <div class="flex items-center gap-[4vw]">
+        <div class="shrink-0 flex flex-col items-center gap-5">
+          <app-cover-art
+            [src]="t.coverArt ? '/api/cover/' + t.coverArt + '?size=600&token=' + auth.token() : undefined"
+            [artist]="t.artist"
+            [album]="t.album ?? ''"
+            [size]="280"
+            rounded="rounded-2xl"
+          />
+        </div>
+
+        <div class="min-w-0 flex-1 flex flex-col gap-6">
+          <div class="min-w-0">
+            <h1 class="text-3xl font-bold truncate text-white" data-testid="tv-player-title">
+              {{ t.title }}
+            </h1>
+            <p class="text-lg text-white/70 truncate">
+              {{ t.artist }}@if (t.album) {<span class="text-white/45"> · {{ t.album }}</span>}
+            </p>
+          </div>
+
+          <!-- The rail: one vertical group, so ▶ from the transport enters it
+               and ◀ leaves it (docs/tv-ux.md "The button contract"). Rows are
+               the Settings rows — label left, state right — so a feature reads
+               as a thing you can press, not a caption. -->
+          <div appTvNavGroup [axis]="'vertical'" class="flex flex-col gap-2" data-testid="tv-player-rail">
+            <!-- Karaoke (#1134) first, because it is what a living room reaches for. -->
+            <button
+              appTvNavItem
+              type="button"
+              (click)="karaokeOpen.set(true)"
+              data-testid="tv-lyrics"
+              class="flex items-center justify-between px-5 py-3 rounded-xl bg-white/10 text-left
+                     focus:outline-none focus-visible:ring-4 focus-visible:ring-white"
+            >
+              <span class="text-base text-white">{{ 'nowPlaying.lyrics' | t }}</span>
+            </button>
+
+            @if (nextUp(); as n) {
+              <button
+                appTvNavItem
+                type="button"
+                (click)="queueOpen.set(true)"
+                data-testid="tv-next-up"
+                class="flex items-center justify-between gap-6 px-5 py-3 rounded-xl bg-white/10 text-left
+                       focus:outline-none focus-visible:ring-4 focus-visible:ring-white"
+              >
+                <span class="text-base text-white shrink-0">{{ 'tv.queue' | t }}</span>
+                <span class="text-base text-white/55 truncate min-w-0">
+                  {{ 'tv.next' | t }}: {{ n.title }} · {{ n.artist }}
+                </span>
+              </button>
+            }
+
+            <!-- Remote playback, stated on the screen that plays the audio (#1128).
+                 Accent-coloured while the audio is elsewhere, because that is a
+                 state of the player and not a notification — the same rule the
+                 phone's "Playing on <device>" strip follows. -->
+            <button
+              appTvNavItem
+              type="button"
+              (click)="openDevices()"
+              data-testid="tv-remote-row"
+              [class]="
+                'flex items-center justify-between gap-6 px-5 py-3 rounded-xl text-left focus:outline-none ' +
+                'focus-visible:ring-4 focus-visible:ring-white ' +
+                (elsewhere() ? 'bg-theme-accent/30 text-theme-accent-text' : 'bg-white/10 text-white')
+              "
+            >
+              <span class="text-base shrink-0">{{ 'remote.playOn' | t }}</span>
+              <span class="text-base truncate min-w-0" [class.text-white/55]="!elsewhere()">
+                @if (elsewhere()) {
+                  {{ elsewhereName() }} · {{ 'tv.playHere' | t }}
+                } @else {
+                  {{ 'tv.thisTv' | t }}
+                }
+              </span>
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- Every button centres its icon with flex, as every other icon button in
@@ -34,114 +107,64 @@
            only reaches inline content. Without this each glyph sat on the left
            edge of its circle, which from the couch reads as the whole row being
            shoved to the right (#1132). -->
-      <div
-        appTvNavGroup
-        [axis]="'horizontal'"
-        class="flex items-center gap-6"
-        data-testid="tv-transport"
-      >
-        <button
-          appTvNavItem
-          type="button"
-          (click)="player.playPrev()"
-          data-testid="tv-prev"
-          aria-label="Previous"
-          class="w-14 h-14 rounded-full bg-white/10 text-white flex items-center justify-center
-                 focus:outline-none focus-visible:ring-4 focus-visible:ring-white"
+      <div class="flex flex-col items-center gap-3">
+        <div
+          appTvNavGroup
+          [axis]="'horizontal'"
+          class="flex items-center gap-6"
+          data-testid="tv-transport"
         >
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path d="M6 6h2v12H6zm3 6l9-6v12z" />
-        </svg>
-        </button>
-        <button
-          appTvNavItem
-          type="button"
-          (click)="togglePlay()"
-          data-testid="tv-playpause"
-          aria-label="Play or pause"
-          class="w-20 h-20 rounded-full bg-white text-black flex items-center justify-center
-                 focus:outline-none focus-visible:ring-4 focus-visible:ring-white"
-        >
-          @if (player.isPlaying()) {
-          <svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M7 5h4v14H7zm6 0h4v14h-4z" />
-          </svg>
-        } @else {
-          <svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M8 5v14l11-7z" />
-          </svg>
-        }
-        </button>
-        <button
-          appTvNavItem
-          type="button"
-          (click)="player.playNext()"
-          data-testid="tv-next"
-          aria-label="Next"
-          class="w-14 h-14 rounded-full bg-white/10 text-white flex items-center justify-center
-                 focus:outline-none focus-visible:ring-4 focus-visible:ring-white"
-        >
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path d="M16 6h2v12h-2zm-1 6L6 18V6z" />
-        </svg>
-        </button>
-      </div>
-
-      <p class="text-sm text-white/50" data-testid="tv-seek-hint">{{ 'tv.seekHint' | t }}</p>
-
-      <!-- Below the transport, one vertical group: the queue and the output
-           picker. ▼ from play/pause lands here, which is the same path the
-           radio chip uses on the phone sheet (docs/tv-ux.md "The button
-           contract"). -->
-      <div appTvNavGroup [axis]="'vertical'" class="flex flex-col items-center gap-2">
-        <!-- Karaoke (#1134): the first row down from the transport, because it
-             is what a living room reaches for. Opens the phone's fullscreen
-             lyrics overlay, adapted for the remote in TvKaraokeComponent. -->
-        <button
-          appTvNavItem
-          type="button"
-          (click)="karaokeOpen.set(true)"
-          data-testid="tv-lyrics"
-          class="text-sm text-white/60 px-4 py-2 rounded-lg
-                 focus:outline-none focus-visible:ring-4 focus-visible:ring-white"
-        >
-          {{ 'nowPlaying.lyrics' | t }}
-        </button>
-
-        @if (nextUp(); as n) {
           <button
             appTvNavItem
             type="button"
-            (click)="queueOpen.set(true)"
-            data-testid="tv-next-up"
-            class="text-sm text-white/60 truncate max-w-2xl px-4 py-2 rounded-lg
+            (click)="player.playPrev()"
+            data-testid="tv-prev"
+            aria-label="Previous"
+            class="w-14 h-14 rounded-full bg-white/10 text-white flex items-center justify-center
                    focus:outline-none focus-visible:ring-4 focus-visible:ring-white"
           >
-            {{ 'tv.queue' | t }}: {{ n.title }} · {{ n.artist }}
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M6 6h2v12H6zm3 6l9-6v12z" />
+            </svg>
           </button>
-        }
+          <button
+            appTvNavItem
+            type="button"
+            (click)="togglePlay()"
+            data-testid="tv-playpause"
+            aria-label="Play or pause"
+            class="w-20 h-20 rounded-full bg-white text-black flex items-center justify-center
+                   focus:outline-none focus-visible:ring-4 focus-visible:ring-white"
+          >
+            @if (player.isPlaying()) {
+              <svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M7 5h4v14H7zm6 0h4v14h-4z" />
+              </svg>
+            } @else {
+              <svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            }
+          </button>
+          <button
+            appTvNavItem
+            type="button"
+            (click)="player.playNext()"
+            data-testid="tv-next"
+            aria-label="Next"
+            class="w-14 h-14 rounded-full bg-white/10 text-white flex items-center justify-center
+                   focus:outline-none focus-visible:ring-4 focus-visible:ring-white"
+          >
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M16 6h2v12h-2zm-1 6L6 18V6z" />
+            </svg>
+          </button>
+        </div>
 
-        <!-- Remote playback, stated on the screen that plays the audio (#1128).
-             Accent-coloured while the audio is elsewhere, because that is a
-             state of the player and not a notification — the same rule the
-             phone's "Playing on <device>" strip follows. -->
-        <button
-          appTvNavItem
-          type="button"
-          (click)="openDevices()"
-          data-testid="tv-remote-row"
-          [class]="
-            'text-sm truncate max-w-2xl px-4 py-2 rounded-lg focus:outline-none ' +
-            'focus-visible:ring-4 focus-visible:ring-white ' +
-            (elsewhere() ? 'text-theme-accent-text bg-white/10' : 'text-white/50')
-          "
-        >
-          @if (elsewhere()) {
-            {{ 'remote.playingOn' | t: { name: elsewhereName() } }} · {{ 'tv.playHere' | t }}
-          } @else {
-            {{ 'remote.playOn' | t }}
-          }
-        </button>
+        <!-- Text only: no bar and no range input, which a remote cannot escape (#438). -->
+        <p class="text-sm text-white/50 tabular-nums" data-testid="tv-seek-hint">
+          <span data-testid="tv-player-time">{{ timeLabel() }}</span> · {{ 'tv.seekHint' | t }}
+        </p>
       </div>
     </div>
   }

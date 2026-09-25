@@ -1,6 +1,11 @@
 <div class="px-[4vw] py-[3vh]" data-testid="tv-settings">
   @if (chooser() === null) {
-    <h1 class="text-3xl font-bold mb-8 text-theme-primary">{{ 'nav.settings' | t }}</h1>
+    <h1 class="text-3xl font-bold mb-2 text-theme-primary">{{ 'nav.settings' | t }}</h1>
+    <!-- The same two facts the shell's status line carries, where a person
+         goes looking for them (#1404). -->
+    <p class="text-base text-theme-muted mb-8" data-testid="tv-settings-identity">
+      {{ 'tv.signedInAs' | t: { name: auth.username() ?? '' } }} · v{{ version }}
+    </p>
     <div appTvNavGroup [axis]="'vertical'" class="flex flex-col gap-3 max-w-3xl">
       <button
         appTvNavItem

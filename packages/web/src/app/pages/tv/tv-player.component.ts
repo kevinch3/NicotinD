@@ -9,6 +9,7 @@ import { TvKaraokeComponent } from './tv-karaoke.component';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import { TranslatePipe } from '../../pipes/translate.pipe';
+import { formatTime } from '../../lib/format-time';
 
 /**
  * The 10-foot player, as a route rather than a sheet.
@@ -45,6 +46,12 @@ export class TvPlayerComponent {
 
   readonly track = this.player.currentTrack;
   readonly nextUp = computed(() => this.player.queue()[0] ?? null);
+
+  /** `1:12 / 3:40` — text, never a range input, which a remote cannot escape
+   *  (#438). The one thing the first layout never told the couch (#1404). */
+  readonly timeLabel = computed(
+    () => `${formatTime(this.player.currentTime())} / ${formatTime(this.player.duration())}`,
+  );
 
   /** The D-pad queue overlay (#399), previously reachable only from the phone
    *  sheet — so a TV build shipped it as dead code and showed one Next-up line
