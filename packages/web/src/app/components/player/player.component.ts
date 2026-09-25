@@ -44,13 +44,7 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
 import { PlayerTransportMiniComponent } from './player-transport-mini/player-transport-mini.component';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import { isTvBuild } from '../../lib/platform';
-
-function formatTime(s: number): string {
-  if (!Number.isFinite(s) || s < 0) return '0:00';
-  const m = Math.floor(s / 60);
-  const sec = Math.floor(s % 60);
-  return `${m}:${sec.toString().padStart(2, '0')}`;
-}
+import { formatTime } from '../../lib/format-time';
 
 /**
  * Absolute floor (seconds) used by both {@link browserDurationIsAcceptable}

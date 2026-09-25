@@ -158,11 +158,21 @@ somewhere unexpected.
 
 ### Player (`/player`)
 
-Full-bleed blurred backdrop, centred art, title/artist, `prev · play/pause · next`, then one vertical
-group: **Lyrics** (the karaoke overlay, below), the Next-up chip that opens the D-pad queue overlay
-(#399), and the remote-playback row. No seek bar — ◀ ▶ seek. A one-line hint teaches it on first
-arrival; its arrows are `← →`, not `◀ ▶`, because the latter have no glyph in the UI font and fall
-through to the colour-emoji face as two orange tiles (#1132).
+Two columns (#1404): the cover (280 px, on a 960×540 WebView that is a third of the panel's height)
+with title · artist · album beside it, then a **rail** of three D-pad rows to the right of the art —
+**Lyrics** (the karaoke overlay, below), **Queue** showing the next track (opens the D-pad queue
+overlay, #399), and **Play on** showing the current output ("This TV", or the device name in accent
+while the audio is elsewhere, #1128). The transport `prev · play/pause · next` sits under both, with
+a text-only `1:12 / 3:40` readout and the seek hint beneath it. The rail rows are the Settings rows —
+label left, state right — so a feature reads as a thing you can press, not a caption.
+
+The first layout was one centred column with the three features stacked as grey text under the
+transport; at 720p the last row sat on the bottom edge while 60% of the width was empty, and the
+route never showed a time.
+
+No seek bar — ◀ ▶ seek. The readout is text and never a range input, which a remote cannot escape
+(#438). The hint's arrows are `← →`, not `◀ ▶`, because the latter have no glyph in the UI font and
+fall through to the colour-emoji face as two orange tiles (#1132).
 
 The three transport buttons centre their icons with `flex items-center justify-center`, like every
 other icon button in the app. Without it each glyph sat on the **left edge** of its circle: Tailwind's
@@ -173,10 +183,18 @@ through a green suite because no Chromium test had ever rendered this template.
 There is **no Radio toggle**, and the original draft above claiming one was aspirational. Radio is
 not a toggle on TV at all — see "Radio is always on" below.
 
+### Status line (every screen)
+
+`TvShellComponent` paints the signed-in username and `v<version>` in the top corners, inside the
+overscan inset, faint and non-interactive (#1404). Nothing in the TV tree said which account the
+box was on or what it ran; the phone puts both on its Settings page, which the TV tree replaced.
+Full-bleed overlays (karaoke, queue, output picker) cover it. Settings repeats the two facts under
+its heading, where a person goes looking for them.
+
 ### Settings (`/settings`)
 
-A vertical list of D-pad rows covering only what a TV needs: **sign out**, **switch server**,
-**language**, **remote-control toggle**. Each choice opens a full-screen list rather than a native
+"Signed in as ‹user› · v‹version›" under the heading, then a vertical list of D-pad rows covering
+only what a TV needs: **sign out**, **switch server**, **language**, **remote-control toggle**. Each choice opens a full-screen list rather than a native
 `<select>`; nothing is a form control. Admin, extensions, agent tokens and devices are absent.
 
 The remote-control screen also **names this TV** — the string other devices' pickers show for it,

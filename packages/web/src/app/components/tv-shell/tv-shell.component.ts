@@ -1,4 +1,6 @@
 import { Component, effect, inject, untracked } from '@angular/core';
+import { APP_VERSION } from '../../app.config';
+import { AuthService } from '../../services/auth.service';
 import { Router, RouterOutlet } from '@angular/router';
 import { PlayerComponent } from '../player/player.component';
 import { PlayerService } from '../../services/player.service';
@@ -22,6 +24,21 @@ import { TvDevicePickerComponent } from '../tv-device-picker/tv-device-picker.co
   imports: [RouterOutlet, PlayerComponent, UpdateBannerComponent, TvDevicePickerComponent],
   template: `
     <div class="min-h-screen bg-theme-base text-theme-primary">
+      <!-- Who and what, on every TV screen (#1404): nothing in the tree said
+           which account this box was on or what it ran. A fixed-height row in
+           the flow, not an absolute overlay — every page starts its content at
+           the same y, and an overlay there sat behind the Home nav and the
+           Settings heading. The player's backdrop is position: fixed, so it bleeds
+           under this row instead of leaving a black band above it. -->
+      <div
+        class="relative z-20 h-8 px-[4vw] flex items-center justify-between text-xs
+               text-theme-muted pointer-events-none select-none"
+        data-testid="tv-status"
+        aria-hidden="true"
+      >
+        <span data-testid="tv-status-user">{{ auth.username() }}</span>
+        <span data-testid="tv-status-version">v{{ version }}</span>
+      </div>
       <router-outlet />
       <!-- Headless on TV: PlayerComponent renders only its <audio> engine here
            (see its template's isTv gate). It is the playback engine, not just
@@ -45,6 +62,8 @@ import { TvDevicePickerComponent } from '../tv-device-picker/tv-device-picker.co
 export class TvShellComponent {
   private readonly player = inject(PlayerService);
   readonly remote = inject(RemotePlaybackService);
+  readonly auth = inject(AuthService);
+  readonly version = inject(APP_VERSION);
   private readonly router = inject(Router);
 
   constructor() {

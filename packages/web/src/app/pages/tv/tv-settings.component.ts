@@ -1,5 +1,6 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
+import { APP_VERSION } from '../../app.config';
 import { AuthService } from '../../services/auth.service';
 import { TranslateService } from '../../services/translate.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
@@ -25,7 +26,8 @@ type Chooser = 'language' | 'remote' | null;
   templateUrl: './tv-settings.component.html',
 })
 export class TvSettingsComponent {
-  private readonly auth = inject(AuthService);
+  readonly auth = inject(AuthService);
+  readonly version = inject(APP_VERSION);
   private readonly router = inject(Router);
   readonly i18n = inject(TranslateService);
 

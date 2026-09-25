@@ -2,6 +2,7 @@
  * Settings on the real TV bundle (#1136): a flat list of D-pad rows, and a
  * full-screen chooser where a phone would put a <select>.
  */
+import { ADMIN } from '../../helpers';
 import { test, expect, expectNoNativeFormControls } from './tv-test';
 
 test.describe('TV settings', () => {
@@ -17,6 +18,9 @@ test.describe('TV settings', () => {
       await expect(page.getByTestId(id)).toBeInViewport({ ratio: 1 });
     }
     await expectNoNativeFormControls(page);
+    // Who and what, where a person goes looking for it (#1404).
+    await expect(page.getByTestId('tv-settings-identity')).toContainText(ADMIN.username);
+    await expect(page.getByTestId('tv-settings-identity')).toContainText(/v\d+\.\d+\.\d+/);
     await expect(page).toHaveScreenshot('settings.png');
   });
 
