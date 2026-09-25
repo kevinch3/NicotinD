@@ -17,7 +17,7 @@ Implementation: `packages/api/src/services/backup.ts`; admin endpoints in
   reads the source) — it used to run on the server's connection and every request
   waited the whole copy out. An in-memory DB (tests) snapshots in place. The daily
   guard allows one backup per data dir in flight, since its marker is only written
-  once the off-thread copy lands.
+  once the off-thread copy lands — see "Off the event loop" below.
 - `secrets.json` — the auto-generated slskd/Lidarr/JWT secrets (when present).
 
 **Music files are deliberately excluded** — they're plain files on disk;
@@ -38,8 +38,55 @@ extension).
   can't double-run it, and a failure is retried on the next tick.
 - After every backup the set is pruned to the newest **7** (only directories
   matching the backup name pattern are ever deleted).
-- The snapshot runs synchronously on the tick (bun:sqlite is synchronous);
-  for typical library DBs this is well under a second, once a day.
+- The tick starts the backup and does not await it; the snapshot itself runs
+  in a worker (see "Off the event loop" below), so neither the tick nor any
+  request waits on the copy.
+
+## Off the event loop (#1313)
+
+`snapshotDatabase` spawns `backup-worker.ts` per run. The worker opens its own
+**read-only** connection to `nicotind.db` and runs `VACUUM INTO` there. The
+database is WAL (`initDatabase` sets `journal_mode=WAL`, which persists in the
+file), so the second connection reads a consistent snapshot that includes
+commits still sitting in the `-wal`, while the server keeps writing.
+
+- **Settles once, always terminates the worker.** A reply, an uncaught throw in
+  the worker, the worker exiting without a reply (Bun's `close` event), or the
+  timeout (default 30 min, `SnapshotOptions.timeoutMs`) each settle the
+  promise; `worker.terminate()` runs in `finally` on every path.
+- **A failed snapshot leaves nothing behind.** `runBackup` removes the
+  half-made `nicotind-<stamp>/` directory before rethrowing — otherwise
+  `listBackups` would count it and pruning could evict a good backup for it.
+  The error reaches the admin route as a 500 and the daily guard logs it and
+  returns false, with the marker unwritten, so the next tick retries.
+- **Shipping.** The worker is a plain `.ts` file next to `backup.ts`, loaded
+  via `new URL('./backup-worker.ts', import.meta.url)`. The Docker runtime
+  stage copies all of `packages/api/`; desktop packaging (`stageBackend`)
+  copies each package's `src/` unbundled. Both include it; nothing bundles the
+  API, so the URL resolves.
+- **Pre-migration snapshots stay in place, on purpose.** `runMigrationBackup`
+  runs inside `initDatabase` (and the two CLI seed/refresh scripts), before
+  `Bun.serve` starts, so no request is waiting on the loop. `applySchema` is
+  synchronous and must not migrate until the snapshot exists, so a worker there
+  would add a boot-time `await` for no responsiveness gain.
+
+Measured with `packages/api/src/scripts/measure-backup-loop.ts` (a 10 ms
+timer's lateness while the snapshot runs; the ticks column counts the timer
+firings in the window):
+
+| DB size | Path | Snapshot | Max timer lateness | Ticks |
+| ------- | ---- | -------- | ------------------ | ----- |
+| 100 MB  | in place (pre-#1313) | 122–128 ms | 123–129 ms | 5 |
+| 100 MB  | worker | 135–136 ms | 1 ms | 18–19 |
+| 375 MB  | in place (pre-#1313) | 401 ms | 402 ms | 5 |
+| 375 MB  | worker | 404 ms | 1 ms | 45 |
+
+In place, the loop is blocked for the whole copy and grows linearly with the
+database; through the worker, it keeps firing on time. These numbers are from
+a warm page cache on NVMe. A cold cache or slower disk makes the copy longer,
+and in place that meant a longer block. The worker costs one thread spawn
+(~10 ms). `backup.test.ts` "event loop during a backup" asserts the same shape
+on a 100 MB database.
 
 ## Configuration
 
