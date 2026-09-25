@@ -45,6 +45,8 @@ export interface BackupOptions {
   keepCount?: number;
   /** Injected clock for tests. */
   now?: number;
+  /** Passed to `snapshotDatabase` (timeout, test worker). */
+  snapshot?: SnapshotOptions;
 }
 
 export function backupsRoot(dataDir: string): string {
@@ -72,28 +74,55 @@ function infoFor(root: string, name: string): BackupInfo {
   return { name, createdAt: statSync(dir).mtimeMs, sizeBytes, files };
 }
 
+/** A snapshot that has not landed by now is treated as failed, never awaited forever. */
+const DEFAULT_SNAPSHOT_TIMEOUT_MS = 30 * 60_000;
+
+export interface SnapshotOptions {
+  /** Fail (and terminate the worker) after this long. Default 30 min. */
+  timeoutMs?: number;
+  /** Worker script override — tests inject crashing / hanging workers. */
+  workerUrl?: string;
+}
+
 /**
  * `VACUUM INTO target` without holding the event loop (#1313): on its own
  * read-only connection in a worker when the database is a file, since the copy
  * is the whole database and every request waited behind it. An in-memory
  * database (tests) has no file another connection could open, so it snapshots
- * in place.
+ * in place. Settles exactly once — on the worker's reply, its crash, its exit
+ * without a reply, or the timeout — and the worker is terminated every time.
  */
-export async function snapshotDatabase(db: Database, target: string): Promise<void> {
+export async function snapshotDatabase(
+  db: Database,
+  target: string,
+  opts: SnapshotOptions = {},
+): Promise<void> {
   const file = db.filename;
   if (!file || file === ':memory:') {
     db.run('VACUUM INTO ?', [target]);
     return;
   }
-  const worker = new Worker(new URL('./backup-worker.ts', import.meta.url).href);
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_SNAPSHOT_TIMEOUT_MS;
+  const worker = new Worker(opts.workerUrl ?? new URL('./backup-worker.ts', import.meta.url).href);
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     await new Promise<void>((resolve, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`snapshot timed out after ${timeoutMs} ms`)),
+        timeoutMs,
+      );
       worker.onmessage = (e: MessageEvent<{ ok: boolean; error?: string }>) =>
         e.data.ok ? resolve() : reject(new Error(e.data.error ?? 'snapshot failed'));
-      worker.onerror = (e) => reject(new Error(e.message));
+      worker.onerror = (e) => reject(new Error(`snapshot worker crashed: ${e.message}`));
+      // Bun-specific: fires when the worker exits. After a reply it is a no-op
+      // (already settled); before one, the worker died without answering.
+      worker.addEventListener('close', () =>
+        reject(new Error('snapshot worker exited without a result')),
+      );
       worker.postMessage({ dbPath: file, target });
     });
   } finally {
+    clearTimeout(timer);
     worker.terminate();
   }
 }
@@ -108,12 +137,21 @@ export async function runBackup(db: Database, opts: BackupOptions): Promise<Back
   // (second-resolution stamp) guarantees that outside of tests reusing `now`.
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
-  await snapshotDatabase(db, join(dir, 'nicotind.db'));
+  const started = performance.now();
+  try {
+    await snapshotDatabase(db, join(dir, 'nicotind.db'), opts.snapshot);
+  } catch (err) {
+    // A failed snapshot must not linger as a backup: listBackups would count
+    // the empty/partial directory and pruning would evict a good one for it.
+    rmSync(dir, { recursive: true, force: true });
+    throw err;
+  }
+  const durationMs = Math.round(performance.now() - started);
   const secrets = join(opts.dataDir, 'secrets.json');
   if (existsSync(secrets)) copyFileSync(secrets, join(dir, 'secrets.json'));
   pruneBackups(opts.dataDir, resolveKeepCount(opts.keepCount));
   const info = infoFor(root, name);
-  log.info({ name, sizeBytes: info.sizeBytes }, 'backup created');
+  log.info({ name, sizeBytes: info.sizeBytes, durationMs }, 'backup created');
   return info;
 }
 

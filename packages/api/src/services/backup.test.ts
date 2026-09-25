@@ -4,7 +4,14 @@ import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { applySchema } from '../db.js';
-import { listBackups, maybeRunDailyBackup, pruneBackups, runBackup } from './backup.js';
+import { measureLoop, buildDatabase } from '../scripts/measure-backup-loop.js';
+import {
+  listBackups,
+  maybeRunDailyBackup,
+  pruneBackups,
+  runBackup,
+  snapshotDatabase,
+} from './backup.js';
 
 const db = new Database(':memory:');
 applySchema(db);
@@ -125,7 +132,6 @@ describe('snapshot off the main thread (#1313)', () => {
     try {
       const fileDb = new Database(join(dir, 'nicotind.db'));
       applySchema(fileDb);
-      const { snapshotDatabase } = await import('./backup.js');
       // A target the worker cannot create: its directory does not exist.
       await expect(snapshotDatabase(fileDb, join(dir, 'missing', 'x.db'))).rejects.toThrow();
       fileDb.close();
@@ -141,4 +147,140 @@ describe('snapshot off the main thread (#1313)', () => {
     ]);
     expect([a, b].filter(Boolean)).toHaveLength(1);
   });
+});
+
+/** A worker whose body is `code`, standing in for backup-worker.ts. */
+function workerOf(code: string): string {
+  return URL.createObjectURL(new Blob([code], { type: 'application/typescript' }));
+}
+
+function fileDatabase(): { dir: string; db: Database } {
+  const dir = mkdtempSync(join(tmpdir(), 'nicotind-backup-worker-'));
+  const fileDb = new Database(join(dir, 'nicotind.db'));
+  fileDb.run('PRAGMA journal_mode=WAL');
+  applySchema(fileDb);
+  fileDb.run(
+    "INSERT INTO users (id, username, password_hash, role, created_at) VALUES ('u3', 'keeper', 'x', 'admin', '2020-01-01')",
+  );
+  return { dir, db: fileDb };
+}
+
+describe('snapshot worker failure handling (#1313)', () => {
+  const crashes = workerOf("self.onmessage = () => { throw new Error('boom'); };");
+  const exits = workerOf('self.onmessage = () => process.exit(3);');
+  const hangs = workerOf('self.onmessage = () => {};');
+
+  it('reports a crashing worker as a failed snapshot', async () => {
+    const { dir, db: fileDb } = fileDatabase();
+    try {
+      await expect(
+        snapshotDatabase(fileDb, join(dir, 'x.db'), { workerUrl: crashes }),
+      ).rejects.toThrow(/crashed/);
+    } finally {
+      fileDb.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reports a worker that exits without answering as a failed snapshot', async () => {
+    const { dir, db: fileDb } = fileDatabase();
+    try {
+      await expect(
+        snapshotDatabase(fileDb, join(dir, 'x.db'), { workerUrl: exits }),
+      ).rejects.toThrow(/exited without a result/);
+    } finally {
+      fileDb.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('times a hung worker out instead of waiting forever', async () => {
+    const { dir, db: fileDb } = fileDatabase();
+    try {
+      const started = performance.now();
+      await expect(
+        snapshotDatabase(fileDb, join(dir, 'x.db'), { workerUrl: hangs, timeoutMs: 150 }),
+      ).rejects.toThrow(/timed out/);
+      expect(performance.now() - started).toBeLessThan(5_000);
+    } finally {
+      fileDb.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('a failed backup leaves no backup behind and frees the daily guard', async () => {
+    const { dir, db: fileDb } = fileDatabase();
+    try {
+      await expect(
+        runBackup(fileDb, {
+          dataDir: dir,
+          now: noon,
+          snapshot: { workerUrl: hangs, timeoutMs: 100 },
+        }),
+      ).rejects.toThrow(/timed out/);
+      expect(listBackups(dir)).toHaveLength(0);
+
+      const failed = await maybeRunDailyBackup(fileDb, {
+        dataDir: dir,
+        now: noon,
+        snapshot: { workerUrl: crashes },
+      });
+      expect(failed).toBe(false);
+      // Not marked done and not stuck in flight: the next tick backs up for real.
+      expect(await maybeRunDailyBackup(fileDb, { dataDir: dir, now: noon })).toBe(true);
+      expect(listBackups(dir)).toHaveLength(1);
+    } finally {
+      fileDb.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('produces a snapshot that passes integrity_check and opens as a live database', async () => {
+    const { dir, db: fileDb } = fileDatabase();
+    try {
+      // Uncheckpointed WAL content must be in the copy: the worker's connection
+      // reads the WAL, not just the main file.
+      fileDb.run(
+        "INSERT INTO users (id, username, password_hash, role, created_at) VALUES ('u4', 'in-wal', 'x', 'user', '2020-01-01')",
+      );
+      const info = await runBackup(fileDb, { dataDir: dir, now: noon });
+      const restored = new Database(join(dir, 'backups', info.name, 'nicotind.db'));
+      expect(
+        restored.query<{ integrity_check: string }, []>('PRAGMA integrity_check').get(),
+      ).toEqual({
+        integrity_check: 'ok',
+      });
+      applySchema(restored);
+      const names = restored
+        .query<{ username: string }, []>('SELECT username FROM users ORDER BY username')
+        .all()
+        .map((r) => r.username);
+      expect(names).toEqual(['in-wal', 'keeper']);
+      restored.close();
+    } finally {
+      fileDb.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('event loop during a backup (#1313)', () => {
+  it('keeps a 10 ms timer firing while a ~100 MB database is snapshotted', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'nicotind-backup-loop-'));
+    try {
+      const big = buildDatabase(join(dir, 'nicotind.db'), 100);
+      const inPlace = await measureLoop(async () => {
+        big.run('VACUUM INTO ?', [join(dir, 'in-place.db')]);
+      });
+      const offThread = await measureLoop(() => snapshotDatabase(big, join(dir, 'worker.db')));
+      big.close();
+      // The probe sees a block: in place, the one late tick is the whole copy.
+      expect(inPlace.maxLateMs).toBeGreaterThanOrEqual(inPlace.durationMs * 0.8);
+      // Off-thread, the loop keeps ticking through a copy of similar length.
+      expect(offThread.maxLateMs).toBeLessThan(offThread.durationMs * 0.5);
+      expect(offThread.ticks).toBeGreaterThan(inPlace.ticks);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
 });
