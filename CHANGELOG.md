@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.86](https://github.com/kevinch3/NicotinD/compare/v0.8.85...v0.8.86) (2026-09-25)
+
+### Features
+
+* **tv:** two-column player with a feature rail, a time readout and a user/version status line ([#1405](https://github.com/kevinch3/NicotinD/issues/1405)) ([7fd0cae](https://github.com/kevinch3/NicotinD/commit/7fd0cae3bcde3591f7b164d9a5c415cceebaa064)), closes [#1404](https://github.com/kevinch3/NicotinD/issues/1404), references [#438](https://github.com/kevinch3/NicotinD/issues/438)
 ## [0.8.85](https://github.com/kevinch3/NicotinD/compare/v0.8.84...v0.8.85) (2026-09-25)
 
 ### Performance
