@@ -9,6 +9,13 @@ import {
 } from './library-format.js';
 import { AMBIGUOUS_CONTAINERS } from './post-download-transcode.js';
 import { DEFAULT_TARGET_LUFS } from './loudness-normalize.js';
+import {
+  LADDERS,
+  ladderFromJson,
+  ladderProblem,
+  type BitrateLadder,
+  type BitrateLadderJson,
+} from './transcode-bitrate.js';
 
 const log = createLogger('library-format-settings');
 
@@ -29,6 +36,14 @@ export interface LibraryFormatSettings {
    * Opus it rewrites six header bytes per file and re-runs idempotently.
    */
   targetLufs: number;
+  /**
+   * The operator's bitrate ladder per format, where one was set (#1255). An
+   * absent format uses its measured default in `LADDERS`. The ladder is the knob
+   * most likely to be turned and least likely to be turned well — the defaults
+   * came from this library's bimodal mp3 distribution — so the UI keeps it
+   * behind an "advanced" disclosure with the defaults shown in place.
+   */
+  ladders: Partial<Record<LibraryFormat, BitrateLadderJson>>;
 }
 
 /** The accepted range: quieter than −24 or louder than −9 is a typo, not a taste. */
@@ -38,6 +53,7 @@ export const TARGET_LUFS_MAX = -9;
 export const DEFAULT_LIBRARY_FORMAT_SETTINGS: LibraryFormatSettings = {
   format: DEFAULT_LIBRARY_FORMAT,
   targetLufs: DEFAULT_TARGET_LUFS,
+  ladders: {},
 };
 
 /**
@@ -51,11 +67,31 @@ export const DEFAULT_LIBRARY_FORMAT_SETTINGS: LibraryFormatSettings = {
  * validating immediately.
  */
 const FORMAT_IDS = Object.keys(LIBRARY_FORMATS) as [LibraryFormat, ...LibraryFormat[]];
+
+const LadderJsonSchema = z
+  .object({
+    steps: z.array(z.object({ upTo: z.number().nullable(), targetKbps: z.number() })),
+    losslessKbps: z.number(),
+  })
+  .superRefine((ladder, ctx) => {
+    const problem = ladderProblem(ladder);
+    if (problem) ctx.addIssue({ code: 'custom', message: problem });
+  });
 export const LibraryFormatSettingsSchema = z.object({
   format: z.enum(FORMAT_IDS),
   // Defaulted, so a row written before this field existed still parses.
   targetLufs: z.number().min(TARGET_LUFS_MIN).max(TARGET_LUFS_MAX).default(DEFAULT_TARGET_LUFS),
+  ladders: z.partialRecord(z.enum(FORMAT_IDS), LadderJsonSchema).default({}),
 });
+
+/** The ladder, as `ladderProblem` checks it. */
+export function effectiveLadder(
+  settings: LibraryFormatSettings,
+  format: LibraryFormat,
+): BitrateLadder {
+  const json = settings.ladders[format];
+  return json ? ladderFromJson(json) : LADDERS[format];
+}
 
 const KEY = 'libraryFormat';
 

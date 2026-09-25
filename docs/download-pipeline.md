@@ -618,6 +618,17 @@ boundaries directly.
 `bitRate` on the pass is now an override for callers that genuinely want one rate. A run row's
 `bit_rate` of `0` means adaptive, not zero kbps.
 
+**The ladder is an operator setting, per format (#1255).** `LibraryFormatSettings.ladders` holds an
+override in JSON form (`BitrateLadderJson`, the catch-all's `upTo` as `null`), validated by
+`ladderProblem` to the same totality the built-in ladders have: bounds strictly ascending, only the
+last step open-ended, every rate `LADDER_MIN_KBPS`..`LADDER_MAX_KBPS`. `effectiveLadder` answers
+the override or the measured default; the `transcode-library` task and `convert-library.ts` pass it
+as the pass's `ladder`, read per run, and `bitRate` still beats both. `PUT
+/api/settings/library-format` with `{ ladder: { format, ladder } }` sets one and `ladder: null`
+restores the default. The panel keeps it behind an **"advanced" disclosure** with the measured rate
+printed beside every input, because it is the knob most likely to be turned and least likely to be
+turned well — a hand-picked flat rate is worse for most of a bimodal library.
+
 ### A pass that dies still has to say what it did
 
 `transcode_runs` (`services/transcode-run-store.ts`) is one row per whole-library

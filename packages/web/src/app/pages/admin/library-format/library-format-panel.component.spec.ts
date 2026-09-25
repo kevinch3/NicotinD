@@ -53,6 +53,7 @@ function setup(
           saveLibraryFormat: save,
           saveLoudnessTarget: saveTarget,
           getQuarantine: vi.fn(() => of(structuredClone(QUARANTINE))),
+          saveLadder: vi.fn(() => of(structuredClone(SETTINGS))),
           pruneQuarantine: vi.fn(() => of({ ok: true })),
         },
       },
@@ -71,6 +72,57 @@ async function render(fixture: ReturnType<typeof setup>['fixture']) {
 }
 
 describe('LibraryFormatPanelComponent', () => {
+  it('edits a copy of the current ladder, saves it, and resets to the measured default (#1255)', async () => {
+    const { fixture } = setup();
+    await render(fixture);
+    const c = fixture.componentInstance;
+    const api = TestBed.inject(SystemApiService) as unknown as {
+      saveLadder: ReturnType<typeof vi.fn>;
+    };
+    // Give the current format (opus) a ladder to edit.
+    c.settings.update((s) => ({
+      ...s!,
+      available: s!.available!.map((o) =>
+        o.id === 'opus'
+          ? {
+              ...o,
+              ladder: {
+                steps: [
+                  { upTo: 159, targetKbps: 96 },
+                  { upTo: null, targetKbps: 128 },
+                ],
+                losslessKbps: 128,
+              },
+              defaultLadder: {
+                steps: [
+                  { upTo: 159, targetKbps: 96 },
+                  { upTo: null, targetKbps: 128 },
+                ],
+                losslessKbps: 128,
+              },
+              ladderOverridden: false,
+            }
+          : o,
+      ),
+    }));
+    c.openLadder();
+    c.setLadderRate(0, '80');
+    // The draft is a copy: the option on screen still shows what is saved.
+    expect(c.currentOption()!.ladder!.steps[0]!.targetKbps).toBe(96);
+    await c.saveLadder(c.ladderDraft());
+    expect(api.saveLadder).toHaveBeenCalledWith(
+      'opus',
+      expect.objectContaining({
+        steps: [
+          { upTo: 159, targetKbps: 80 },
+          { upTo: null, targetKbps: 128 },
+        ],
+      }),
+    );
+    await c.saveLadder(null);
+    expect(api.saveLadder).toHaveBeenLastCalledWith('opus', null);
+  });
+
   it('shows kept originals only when asked, and prunes only after the named runs are confirmed (#1255)', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout'] });
     const { fixture } = setup();

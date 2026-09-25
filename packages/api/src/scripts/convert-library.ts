@@ -19,7 +19,7 @@ import { resolve, join } from 'node:path';
 import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
 import { transcodeLibraryToFormat } from '../services/library-transcode.js';
-import { getLibraryFormatSettings } from '../services/library-format-settings.js';
+import { effectiveLadder, getLibraryFormatSettings } from '../services/library-format-settings.js';
 import { resolveTranscodeLossless } from '../services/transcode-settings.js';
 import { expandHome } from '@nicotind/core';
 
@@ -88,14 +88,16 @@ async function main(): Promise<void> {
 
   // The same setting the Admin task reads, so the CLI and the button cannot
   // convert to different formats on the same library.
-  const format = getLibraryFormatSettings(db).format;
-  console.log(`Format    : ${format}\n`);
+  const settings = getLibraryFormatSettings(db);
+  const format = settings.format;
+  console.log(`Format    : ${format}${settings.ladders[format] ? ' (operator ladder)' : ''}\n`);
 
   const r = await transcodeLibraryToFormat(db, musicDir, {
     apply,
     scope,
     bitRate,
     format,
+    ladder: effectiveLadder(settings, format),
     dataDir: deleteOriginals ? undefined : dataDir,
     quarantineDir: deleteOriginals ? undefined : quarantineDir,
   });

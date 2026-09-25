@@ -7,7 +7,14 @@
  * the arithmetic.
  */
 import { describe, expect, it } from 'bun:test';
-import { LADDERS, bitrateFor, estimateEncodedBytes } from './transcode-bitrate.js';
+import {
+  LADDERS,
+  bitrateFor,
+  estimateEncodedBytes,
+  ladderFromJson,
+  ladderProblem,
+  ladderToJson,
+} from './transcode-bitrate.js';
 import { LIBRARY_FORMATS } from './library-format.js';
 
 const LOSSLESS_OPUS_KBPS = LADDERS.opus.losslessKbps;
@@ -119,5 +126,58 @@ describe('estimateEncodedBytes', () => {
     // conversion plan sizes the run against.
     const bytes = estimateEncodedBytes(240, 96)! * 8153;
     expect(bytes / 1024 ** 3).toBeCloseTo(21.85, 1);
+  });
+});
+
+describe('operator ladders (#1255)', () => {
+  const json = (steps: Array<[number | null, number]>, losslessKbps = 128) => ({
+    steps: steps.map(([upTo, targetKbps]) => ({ upTo, targetKbps })),
+    losslessKbps,
+  });
+
+  it('round-trips the measured defaults through JSON, Infinity as null', () => {
+    const j = ladderToJson(LADDERS.opus);
+    expect(j.steps.at(-1)!.upTo).toBeNull();
+    expect(ladderFromJson(j)).toEqual(LADDERS.opus);
+    expect(ladderProblem(j)).toBeNull();
+  });
+
+  it('uses a given ladder instead of the default', () => {
+    const ladder = ladderFromJson(
+      json(
+        [
+          [159, 80],
+          [null, 120],
+        ],
+        150,
+      ),
+    );
+    expect(bitrateFor('opus', 128, false, ladder)).toBe(80);
+    expect(bitrateFor('opus', 320, false, ladder)).toBe(120);
+    expect(bitrateFor('opus', null, true, ladder)).toBe(150);
+  });
+
+  it('refuses a ladder that is not total, not ascending, or out of bounds', () => {
+    expect(ladderProblem(json([]))).toContain('at least one');
+    expect(ladderProblem(json([[159, 96]]))).toContain('last step');
+    expect(
+      ladderProblem(
+        json([
+          [null, 96],
+          [null, 128],
+        ]),
+      ),
+    ).toContain('only the last');
+    expect(
+      ladderProblem(
+        json([
+          [200, 96],
+          [150, 112],
+          [null, 128],
+        ]),
+      ),
+    ).toContain('ascend');
+    expect(ladderProblem(json([[null, 2000]]))).toContain('kbps');
+    expect(ladderProblem(json([[null, 96]], 8))).toContain('lossless');
   });
 });

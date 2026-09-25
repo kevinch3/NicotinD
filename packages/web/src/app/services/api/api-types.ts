@@ -297,6 +297,17 @@ export interface LibraryFormatOption {
   /** Null where no reader ceiling was measured for this container. */
   maxEmbeddedPictureBytes: number | null;
   impact: { alreadyTarget: number; wouldReEncode: number; destructive: boolean };
+  /** The rates a conversion to this format uses (#1255); `upTo: null` is "every higher source". */
+  ladder?: BitrateLadderJson;
+  /** The measured defaults, shown beside the ladder. */
+  defaultLadder?: BitrateLadderJson;
+  ladderOverridden?: boolean;
+}
+
+/** Source bitrate → target kbps, per format (#1255). */
+export interface BitrateLadderJson {
+  steps: { upTo: number | null; targetKbps: number }[];
+  losslessKbps: number;
 }
 
 /** What the transcode quarantine holds (GET /api/admin/quarantine, #1255). */

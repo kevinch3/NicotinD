@@ -16,7 +16,7 @@ import { refreshAlbumAggregate } from './library-aggregates.js';
 import { checkHeadroom, type StatfsFn } from './disk-space.js';
 // Lives with the bitrate ladder it estimates against.
 export { estimateEncodedBytes } from './transcode-bitrate.js';
-import { estimateEncodedBytes } from './transcode-bitrate.js';
+import { bitrateFor, estimateEncodedBytes, type BitrateLadder } from './transcode-bitrate.js';
 import { DEFAULT_LIBRARY_FORMAT, libraryFormat, type LibraryFormat } from './library-format.js';
 import { createQuarantineRun, listQuarantineRuns } from './transcode-quarantine.js';
 
@@ -160,6 +160,11 @@ export interface TranscodeAllOptions {
    * originals in the default location fills `/` and takes the box down.
    */
   quarantineDir?: string;
+  /**
+   * The operator's ladder for the target format (#1255). Absent ⇒ the measured
+   * default. `bitRate`, a flat per-run override, still wins over both.
+   */
+  ladder?: BitrateLadder;
   onProgress?: (p: TranscodeProgress) => void;
 }
 
@@ -260,7 +265,10 @@ export async function transcodeLibraryToFormat(
   // Per file, not per pass: a 320 kbps source and a 128 kbps source want
   // different rates, and the library holds thousands of each.
   const rateFor = (r: SongRow): number =>
-    opts.bitRate ?? target.bitrateFor(r.bit_rate, isLossless(r.suffix ?? ''));
+    opts.bitRate ??
+    (opts.ladder
+      ? bitrateFor(format, r.bit_rate, isLossless(r.suffix ?? ''), opts.ladder)
+      : target.bitrateFor(r.bit_rate, isLossless(r.suffix ?? '')));
 
   // Headroom preflight. The pass writes each encode beside its source before
   // removing the original, so peak usage is one encode above steady state — but

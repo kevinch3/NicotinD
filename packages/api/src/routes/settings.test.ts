@@ -235,3 +235,54 @@ describe('/library-format — the loudness target (#1255)', () => {
     expect(((await res.json()) as { code: string }).code).toBe('INVALID_TARGET_LUFS');
   });
 });
+
+describe('/library-format — the bitrate ladder (#1255)', () => {
+  const put = async (body: unknown) =>
+    buildApp().request('/library-format', {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${await adminToken()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+  const opusOption = async () => {
+    const res = await buildApp().request('/library-format', {
+      headers: { Authorization: `Bearer ${await adminToken()}` },
+    });
+    const body = (await res.json()) as {
+      available: Array<{
+        id: string;
+        ladderOverridden: boolean;
+        ladder: { losslessKbps: number };
+        defaultLadder: { losslessKbps: number };
+      }>;
+    };
+    return body.available.find((o) => o.id === 'opus')!;
+  };
+  const ladder = { steps: [{ upTo: null, targetKbps: 112 }], losslessKbps: 160 };
+
+  it('sets a format ladder, shows it beside the measured default, and resets it', async () => {
+    expect((await put({ ladder: { format: 'opus', ladder } })).status).toBe(200);
+    let opus = await opusOption();
+    expect(opus.ladderOverridden).toBe(true);
+    expect(opus.ladder.losslessKbps).toBe(160);
+    expect(opus.defaultLadder.losslessKbps).toBe(128);
+
+    expect((await put({ ladder: { format: 'opus', ladder: null } })).status).toBe(200);
+    opus = await opusOption();
+    expect(opus.ladderOverridden).toBe(false);
+    expect(opus.ladder.losslessKbps).toBe(128);
+  });
+
+  it('refuses a ladder that is not total', async () => {
+    const res = await put({
+      ladder: {
+        format: 'opus',
+        ladder: { steps: [{ upTo: 159, targetKbps: 96 }], losslessKbps: 128 },
+      },
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { code: string }).code).toBe('INVALID_LADDER');
+  });
+});

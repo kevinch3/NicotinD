@@ -5,6 +5,7 @@ import type { Role } from '../../../types/core';
 import type {
   LibraryFormatSettings,
   QuarantineDescription,
+  BitrateLadderJson,
   StreamingSettings,
   RadioSettings,
   DownloadSettings,
@@ -102,6 +103,13 @@ export class SystemApiService {
     return this.http.put<LibraryFormatSettings>('/api/settings/library-format', {
       format,
       confirm,
+    });
+  }
+
+  /** Set one format's bitrate ladder, or `null` to restore its measured default (#1255). */
+  saveLadder(format: string, ladder: BitrateLadderJson | null) {
+    return this.http.put<LibraryFormatSettings>('/api/settings/library-format', {
+      ladder: { format, ladder },
     });
   }
 

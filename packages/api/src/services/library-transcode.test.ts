@@ -173,6 +173,23 @@ describe('transcodeLibraryToFormat', () => {
       expect(low.bytesReclaimed).toBeGreaterThan(high.bytesReclaimed);
     });
 
+    it("encodes at the operator's ladder when one is given (#1255)", async () => {
+      const music = tmpMusic();
+      const db = new Database(':memory:');
+      applySchema(db);
+      const rel = 'Aphex Twin/Drukqs/01 - Avril 14th.flac';
+      mkdirSync(dirname(join(music, rel)), { recursive: true });
+      await Bun.write(join(music, rel), 'x');
+      seedSongRow(db, rel, { size: 10_000_000, duration: 120 });
+
+      // A lossless source takes the ladder's lossless rate: 160 instead of 128.
+      const r = await transcodeLibraryToFormat(db, music, {
+        apply: false,
+        ladder: { steps: [{ upTo: Infinity, targetKbps: 96 }], losslessKbps: 160 },
+      });
+      expect(r.bytesReclaimed).toBe(10_000_000 - 120 * 160 * 125);
+    });
+
     it('counts a file with no duration as unestimated rather than guessing', async () => {
       const music = tmpMusic();
       const db = new Database(':memory:');
