@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.81](https://github.com/kevinch3/NicotinD/compare/v0.8.80...v0.8.81) (2026-09-25)
+
+### Features
+
+* **mcp:** list songs by genre, with every song's full genre set ([#1388](https://github.com/kevinch3/NicotinD/issues/1388)) ([5f10e5e](https://github.com/kevinch3/NicotinD/commit/5f10e5e6b480026c34c3710dd47ced690f91bb81)), references [#1129](https://github.com/kevinch3/NicotinD/issues/1129)
+
+### Performance
+
+* **backup:** bound the snapshot worker and measure the loop it frees ([#1389](https://github.com/kevinch3/NicotinD/issues/1389)) ([16710af](https://github.com/kevinch3/NicotinD/commit/16710af6c3067298b3c27117c33b0a8f0e0f5687)), references [#1342](https://github.com/kevinch3/NicotinD/issues/1342) [#1313](https://github.com/kevinch3/NicotinD/issues/1313) [#1313](https://github.com/kevinch3/NicotinD/issues/1313)
+* **scanner:** derive the genre alias canonicals once per alias table, not per call ([#1387](https://github.com/kevinch3/NicotinD/issues/1387)) ([749c185](https://github.com/kevinch3/NicotinD/commit/749c1858d7854e490cc673b02d1cb8a0ecac3eb9)), closes [#1386](https://github.com/kevinch3/NicotinD/issues/1386), references [#1386](https://github.com/kevinch3/NicotinD/issues/1386)
 ## [0.8.80](https://github.com/kevinch3/NicotinD/compare/v0.8.79...v0.8.80) (2026-09-25)
 
 ### Features

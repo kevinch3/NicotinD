@@ -1,0 +1,3 @@
+• mcp: list songs by genre, with every song's full genre set (#1388)
+• backup: bound the snapshot worker and measure the loop it frees (#1389)
+• scanner: derive the genre alias canonicals once per alias table, not per call (#1387)
