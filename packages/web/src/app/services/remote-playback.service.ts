@@ -136,6 +136,15 @@ export class RemotePlaybackService {
    */
   readonly castsReceived = signal(0);
 
+  /** The person the presence socket was opened for. A TV profile switch changes
+   *  the person without ever clearing the token in between (#1406). */
+  private connectedUser: string | null = null;
+  private readonly connectedAsSig = signal<string | null>(null);
+  readonly connectedAs = this.connectedAsSig.asReadonly();
+  /** The person the SERVER has acknowledged this device under: the registration
+   *  reply has arrived on the live socket. The TV's cast listeners hand over on it. */
+  readonly syncedAs = computed(() => (this.ws.synced() ? this.connectedAsSig() : null));
+
   // ---------------------------------------------------------------------------
   // Internal bookkeeping
   // ---------------------------------------------------------------------------
@@ -350,9 +359,25 @@ export class RemotePlaybackService {
 
   initialize(): void {
     // --- Presence channel: up whenever logged in, down on logout ---
+    // Keyed on the person too, not only the token: a TV profile switch
+    // (#1406) swaps one person's token for another's in a single tick, and
+    // connect() alone no-ops on an open socket — the TV stayed registered as
+    // the previous person, castable and drivable from their phone.
     effect(() => {
-      if (this.auth.token()) this.ws.connect();
-      else this.ws.disconnect();
+      const token = this.auth.token();
+      const user = this.auth.username();
+      untracked(() => {
+        if (!token) {
+          this.ws.disconnect();
+          this.connectedUser = null;
+          this.connectedAsSig.set(null);
+          return;
+        }
+        if (this.connectedUser !== null && user !== this.connectedUser) this.ws.disconnect();
+        this.connectedUser = user;
+        this.connectedAsSig.set(user);
+        this.ws.connect();
+      });
     });
 
     // A restored track is not a change: forwarding it would restart the
