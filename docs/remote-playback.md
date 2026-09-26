@@ -143,13 +143,17 @@ later cancels it (`registerDevice` → `cancelPendingRelease`): A's session woul
 playing, forever — A's phone shows "playing on TV", cannot cast back (no transition), and its local
 play's claim is refused because the TV is still targetable. Two releases end it:
 
-- **The main socket releases first.** On a person change, `RemotePlaybackService`'s presence effect
-  sends `RELEASE_OUTPUT` before `disconnect()` when the session names this device, which ends the
-  session at once (`releaseOutput`, no grace).
-- **The listener releases a stale echo.** A `ProfileCastListener` whose registration echo names this
-  device sends `RELEASE_OUTPUT` — it owns no audio, so that session is stale. The listener for the
-  person being switched *to* skips this (`releaseStaleOutput`), since its echo may be describing
-  their fresh cast.
+- **`resetSession` releases this device's output.** `RemotePlaybackService.reset()` — run by every
+  `AuthService.resetSession()`: a TV profile switch, a logout, a native server switch — sends
+  `RELEASE_OUTPUT` when the session names this device, while the socket is still open and before it
+  clears any state. The server ends the session at once (`releaseOutput`, no grace). It has to live
+  in `reset()`: that is what clears `activeDeviceId`, so the presence effect that later closes the
+  socket can no longer see that this device was the output.
+- **A listener releases a stale echo.** A `ProfileCastListener` whose registration echo still names
+  this device sends `RELEASE_OUTPUT` — it owns no audio, so that session is stale. This is the belt
+  for a session the reset could not reach (a reboot, a crash, a release lost on the wire). The
+  listener for the person being switched *to* skips it (`releaseStaleOutput`), since its echo may be
+  describing their fresh cast.
 
 `remote-playback.profile-cast.test.ts` drives the real hub through all three shapes, including the
 unfixed one that stays on the TV.

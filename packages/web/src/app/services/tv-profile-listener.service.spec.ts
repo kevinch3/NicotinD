@@ -235,6 +235,7 @@ describe('TvProfileListenerService', () => {
 
     expect(fetchStub).toHaveBeenCalledWith('http://srv/api/auth/me', {
       headers: { Authorization: 'Bearer tok-ben' },
+      signal: expect.any(AbortSignal),
     });
     expect(listener.stop).toHaveBeenCalled();
   });
@@ -266,6 +267,27 @@ describe('TvProfileListenerService', () => {
     expect(second.start).toHaveBeenCalled();
     expect(service.listening()).toEqual(['ben']);
     expect(markStale).not.toHaveBeenCalled();
+  });
+
+  it('a 401 about a token replaced while the check was in flight marks nobody stale', async () => {
+    let answer!: (r: Response) => void;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>((resolve) => (answer = resolve))),
+    );
+    create();
+    const service = TestBed.inject(TvProfileListenerService);
+    TestBed.flushEffects();
+    listenerFor('tok-ben').onRefused();
+
+    profiles.set([profile('ana', 'tok-ana'), profile('ben', 'tok-ben-2')]);
+    TestBed.flushEffects();
+    expect(service.listening()).toEqual(['ben']);
+    answer(new Response(null, { status: 401 }));
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(markStale).not.toHaveBeenCalled();
+    expect(listenerFor('tok-ben-2').stop).not.toHaveBeenCalled();
   });
 
   it('a stale echo is released only by listeners for people the TV is not switching to', () => {

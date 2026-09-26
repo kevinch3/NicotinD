@@ -41,10 +41,11 @@ interface OpenListener {
  *
  * The ordering alone does not end the outgoing person's session: their main
  * socket's close starts the server's 15 s grace, and their listener's REGISTER
- * of the same id cancels it. Two releases do: the main socket sends
- * RELEASE_OUTPUT before the switch closes it when this TV was the output, and
- * a listener whose registration echo still names this TV releases it (not for
- * the person being switched TO — that echo may be their fresh cast).
+ * of the same id cancels it. Two releases do: `resetSession` (which every
+ * switch runs) releases this TV's output while the socket is still open, and
+ * a listener whose registration echo still names this TV releases it — the
+ * belt for a session the reset could not reach, e.g. a reboot (not for the
+ * person being switched TO — that echo may be their fresh cast).
  *
  * Listeners are keyed by server, person and token: a server switch or a new
  * token stops the old line and opens a fresh one.
@@ -148,10 +149,17 @@ export class TvProfileListenerService {
     try {
       const res = await fetch(this.server.apiUrl('/api/auth/me'), {
         headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(10_000),
       });
       status = res.status;
     } catch {
-      // unreachable: retry below
+      // unreachable or hung: retry below
+    }
+    // The server or the person's token changed while in flight: this answer
+    // is about a line nobody wants any more.
+    if (this.currentKey(username) !== key) {
+      this.cooling.delete(key);
+      return;
     }
     if (status === 401 || status === 403) {
       this.cooling.delete(key);
@@ -162,6 +170,11 @@ export class TvProfileListenerService {
       this.cooling.delete(key);
       this.retryTick.update((n) => n + 1);
     }, LISTENER_RETRY_MS);
+  }
+
+  private currentKey(username: string): string | null {
+    const p = this.profiles.profiles().find((x) => x.username === username);
+    return p ? `${this.server.baseUrl()}|${username}|${p.token}` : null;
   }
 
   private publish(): void {

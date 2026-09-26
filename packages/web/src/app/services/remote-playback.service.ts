@@ -373,13 +373,7 @@ export class RemotePlaybackService {
           this.connectedAsSig.set(null);
           return;
         }
-        if (this.connectedUser !== null && user !== this.connectedUser) {
-          // The outgoing person's session must not stay on this device: a bare
-          // close only starts the grace, and their cast listener re-registering
-          // the same id inside it would keep the session alive (#1406).
-          if (this.activeDeviceId() === this.ws.getDeviceId()) this.ws.sendRelease();
-          this.ws.disconnect();
-        }
+        if (this.connectedUser !== null && user !== this.connectedUser) this.ws.disconnect();
         this.connectedUser = user;
         this.connectedAsSig.set(user);
         this.ws.connect();
@@ -470,6 +464,10 @@ export class RemotePlaybackService {
   }
 
   reset(): void {
+    // A reset (profile switch, logout, server switch) ends this device's
+    // session now: a bare close only starts the server's grace, which a TV
+    // cast listener re-registering the same id would cancel (#1406).
+    if (this.activeDeviceId() === this.ws.getDeviceId()) this.ws.sendRelease();
     this.activeDeviceId.set(null);
     this.devices.set([]);
     this.remoteIsPlaying.set(false);

@@ -235,7 +235,8 @@ down) retries with a fresh listener 30 s later. Listeners are keyed by server, p
 a server switch or a new token replaces them. Listeners exist only while signed in, with Remote
 control on, and a listener never opens for anyone (including the person who just stopped being
 active) until the main socket is acknowledged as the new active person. When the TV was the
-outgoing person's output, the switch releases their session before closing its socket; see
+outgoing person's output, the switch's `resetSession` releases their session before the socket
+closes, and a listener whose echo still names the TV releases it too (a reboot); see
 [remote-playback.md](remote-playback.md#one-device-several-people-tv-profiles-1406) for the
 hand-over.
 
