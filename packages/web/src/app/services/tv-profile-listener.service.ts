@@ -29,6 +29,15 @@ export const PROFILE_CAST_LISTENER_FACTORY = new InjectionToken<
  * the LAST socket holding its id for that user closes, and dropping the active
  * device ends the session. So the caster's listener stays open until the main
  * socket has re-registered as them (`syncedAs`), and only then closes.
+ *
+ * The other direction matters just as much: a NEW listener for anyone else
+ * never opens while `syncedAs !== active`. Opening the outgoing person's
+ * listener again immediately (same device id, their token) would race their
+ * own main socket's teardown — if the listener's REGISTER won, the server
+ * would never drop the TV from their session, so their phone would keep
+ * showing "playing on TV" and a later cast from them would produce no
+ * transition at all. Boot behaves the same way: nobody gets a listener until
+ * the main socket's own registration is acknowledged.
  */
 @Injectable({ providedIn: 'root' })
 export class TvProfileListenerService {
@@ -63,7 +72,10 @@ export class TvProfileListenerService {
               if (this.open.has(p.username) && syncedAs !== active) wanted.set(p.username, p.token);
               continue;
             }
-            wanted.set(p.username, p.token);
+            // A brand-new listener waits for the main socket to have caught
+            // up with whoever is active; an already-open one for someone
+            // else stays open regardless (it isn't part of this hand-over).
+            if (this.open.has(p.username) || syncedAs === active) wanted.set(p.username, p.token);
           }
         }
         for (const [username, listener] of this.open) {

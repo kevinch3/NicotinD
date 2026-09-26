@@ -104,7 +104,7 @@ describe('TvProfileListenerService', () => {
     return { authToken };
   }
 
-  function listenerFor(_username: string, tok: string): FakeListener {
+  function listenerFor(tok: string): FakeListener {
     const url = 'ws://srv/api/ws/playback?token=' + encodeURIComponent(tok);
     const listener = created.get(url);
     if (!listener) throw new Error(`no listener opened for token ${tok}`);
@@ -130,7 +130,7 @@ describe('TvProfileListenerService', () => {
     TestBed.flushEffects();
 
     expect(service.listening()).toEqual(['ben']);
-    const listener = listenerFor('ben', 'tok-ben');
+    const listener = listenerFor('tok-ben');
     expect(listener).toBeDefined();
     expect(listener.start).toHaveBeenCalled();
   });
@@ -139,7 +139,7 @@ describe('TvProfileListenerService', () => {
     const { authToken } = create();
     const service = TestBed.inject(TvProfileListenerService);
     TestBed.flushEffects();
-    const listener = listenerFor('ben', 'tok-ben');
+    const listener = listenerFor('tok-ben');
     expect(service.listening()).toEqual(['ben']);
 
     outputAvailable.set(false);
@@ -165,31 +165,46 @@ describe('TvProfileListenerService', () => {
     expect(service.listening()).toEqual([]);
   });
 
-  it('hands over: switching active keeps the outgoing listener open until synced, then closes it', () => {
+  it('hands over: the outgoing listener stays open, the incoming one waits for sync, then they swap', () => {
     create();
     const service = TestBed.inject(TvProfileListenerService);
     TestBed.flushEffects();
     expect(service.listening()).toEqual(['ben']);
-    const benListener = listenerFor('ben', 'tok-ben');
+    const benListener = listenerFor('tok-ben');
 
     // Active flips to ben (a cast happened); syncedAs has not caught up yet.
+    // Ana's listener must NOT open now — opening it before the server has
+    // dropped ana's main socket would race that teardown.
     active.set('ben');
     TestBed.flushEffects();
-    expect(service.listening().sort()).toEqual(['ana', 'ben']);
+    expect(service.listening()).toEqual(['ben']);
     expect(benListener.stop).not.toHaveBeenCalled();
 
-    // The main socket finally re-registers as ben.
+    // The main socket finally re-registers as ben: ben's listener stops and
+    // only now does ana's open.
     syncedAs.set('ben');
     TestBed.flushEffects();
     expect(service.listening()).toEqual(['ana']);
     expect(benListener.stop).toHaveBeenCalled();
   });
 
-  it("a listener's onCast switches to that person, landing on the player", () => {
+  it('at boot, with syncedAs still null, no listener opens until the main socket syncs as the active person', () => {
     create();
+    syncedAs.set(null);
     const service = TestBed.inject(TvProfileListenerService);
     TestBed.flushEffects();
-    const listener = listenerFor('ben', 'tok-ben');
+    expect(service.listening()).toEqual([]);
+
+    syncedAs.set('ana');
+    TestBed.flushEffects();
+    expect(service.listening()).toEqual(['ben']);
+  });
+
+  it("a listener's onCast switches to that person, landing on the player", () => {
+    create();
+    TestBed.inject(TvProfileListenerService);
+    TestBed.flushEffects();
+    const listener = listenerFor('tok-ben');
 
     listener.onCast();
 
@@ -198,9 +213,9 @@ describe('TvProfileListenerService', () => {
 
   it("a listener's onRefused marks that person stale", () => {
     create();
-    const service = TestBed.inject(TvProfileListenerService);
+    TestBed.inject(TvProfileListenerService);
     TestBed.flushEffects();
-    const listener = listenerFor('ben', 'tok-ben');
+    const listener = listenerFor('tok-ben');
 
     listener.onRefused();
 
@@ -209,9 +224,9 @@ describe('TvProfileListenerService', () => {
 
   it('activation flipping to true updates every open listener', () => {
     create();
-    const service = TestBed.inject(TvProfileListenerService);
+    TestBed.inject(TvProfileListenerService);
     TestBed.flushEffects();
-    const listener = listenerFor('ben', 'tok-ben');
+    const listener = listenerFor('tok-ben');
     expect(listener.update).not.toHaveBeenCalled();
 
     activation.set(true);
