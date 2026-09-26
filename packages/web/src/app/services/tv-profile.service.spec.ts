@@ -278,6 +278,40 @@ describe('TvProfileService', () => {
     expect(navigate).toHaveBeenCalledWith(['/']);
   });
 
+  it('honours opts.landing on a successful switch', async () => {
+    const { service, auth, navigate } = create();
+    remember('ben', 'jwt-b');
+    auth.login('jwt-a', 'ana', 'user');
+    TestBed.flushEffects();
+
+    await service.switchTo('ben', { landing: '/player' });
+
+    expect(navigate).toHaveBeenCalledWith(['/player']);
+  });
+
+  it('honours opts.landing on the same-person early return', async () => {
+    const { service, auth, navigate } = create();
+    auth.login('jwt-a', 'ana', 'user');
+    TestBed.flushEffects();
+
+    await service.switchTo('ana', { landing: '/player' });
+
+    expect(navigate).toHaveBeenCalledWith(['/player']);
+  });
+
+  it('markStale adds a person and a later login of that person clears it', () => {
+    const { service, auth } = create();
+    auth.login('jwt-a', 'ana', 'user');
+    TestBed.flushEffects();
+
+    service.markStale('ben');
+    expect(service.stale().has('ben')).toBe(true);
+
+    auth.login('jwt-b', 'ben', 'user');
+    TestBed.flushEffects();
+    expect(service.stale().has('ben')).toBe(false);
+  });
+
   it('beginAdd resets the session but keeps the current person in the store', () => {
     const { service, auth, navigate, reset } = create();
     auth.login('jwt-a', 'ana', 'user');

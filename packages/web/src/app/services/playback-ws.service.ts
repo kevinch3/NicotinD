@@ -45,6 +45,10 @@ export class PlaybackWsService {
   /** This document has had a user gesture, so `audio.play()` will be allowed.
    *  Per page load, like the browser's own autoplay rule. */
   private activated = false;
+  /** Signal mirror of `activated`, set by `markActivated()` (#1406) — lets a
+   *  cast listener's device registration wait for the same gesture. */
+  private readonly activationSig = signal(false);
+  readonly activation = this.activationSig.asReadonly();
 
   private readonly messageSubject = new Subject<WsMessage>();
 
@@ -354,6 +358,7 @@ export class PlaybackWsService {
   markActivated(): void {
     if (this.activated) return;
     this.activated = true;
+    this.activationSig.set(true);
     this.updateDevice({ activated: true });
   }
 

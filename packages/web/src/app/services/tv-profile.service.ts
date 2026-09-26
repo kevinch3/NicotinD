@@ -76,14 +76,15 @@ export class TvProfileService {
     });
   }
 
-  async switchTo(username: string): Promise<void> {
+  async switchTo(username: string, opts: { landing?: '/' | '/player' } = {}): Promise<void> {
     if (!isTvBuild()) return;
+    const landing = opts.landing ?? '/';
     // The /who screen renders the active person as a pressable row too —
     // pressing it must not reset the session it is currently showing. Nor may
     // it touch the generation: a repeat press on the row being switched to
     // would cancel that switch's own refresh.
     if (username === this.auth.username()) {
-      await this.router.navigate(['/']);
+      await this.router.navigate([landing]);
       return;
     }
     const gen = ++this.generation;
@@ -113,7 +114,12 @@ export class TvProfileService {
       await this.router.navigate(this.profiles().length ? ['/who'] : ['/login']);
       return;
     }
-    await this.router.navigate(['/']);
+    await this.router.navigate([landing]);
+  }
+
+  /** A person whose stored token a listener's socket had refused (#1406). */
+  markStale(username: string): void {
+    this.stale.set(new Set([...this.stale(), username]));
   }
 
   /** Bring a new person in through the QR flow. The current person stays in
