@@ -139,6 +139,37 @@ describe('RemotePlaybackService — the "available as an output" preference', ()
     expect(service.connectedAs()).toBe('ben');
   });
 
+  it('the output releases the outgoing person’s session before the switch closes the socket (#1406)', () => {
+    const service = inject();
+    const auth = TestBed.inject(AuthService);
+    auth.login('tok-a', 'ana', 'user');
+    TestBed.runInInjectionContext(() => service.initialize());
+    TestBed.flushEffects();
+    service.activeDeviceId.set('test-device-id');
+
+    auth.login('tok-b', 'ben', 'user');
+    TestBed.flushEffects();
+    expect(mockWs.sendRelease).toHaveBeenCalledTimes(1);
+    expect(mockWs.disconnect).toHaveBeenCalledTimes(1);
+    expect(mockWs.sendRelease.mock.invocationCallOrder[0]).toBeLessThan(
+      mockWs.disconnect.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('a person switch on a device that is not the output releases nothing', () => {
+    const service = inject();
+    const auth = TestBed.inject(AuthService);
+    auth.login('tok-a', 'ana', 'user');
+    TestBed.runInInjectionContext(() => service.initialize());
+    TestBed.flushEffects();
+    service.activeDeviceId.set('phone');
+
+    auth.login('tok-b', 'ben', 'user');
+    TestBed.flushEffects();
+    expect(mockWs.disconnect).toHaveBeenCalledTimes(1);
+    expect(mockWs.sendRelease).not.toHaveBeenCalled();
+  });
+
   it('a token refresh for the same person does not reconnect', () => {
     const service = inject();
     const auth = TestBed.inject(AuthService);

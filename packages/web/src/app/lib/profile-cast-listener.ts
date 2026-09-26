@@ -11,7 +11,9 @@
  *
  * The first STATE_SYNC carrying `devices` after each open is the registration
  * echo. It seeds the state and is never a cast: a session that named this TV
- * before a reboot must not switch profiles on its own.
+ * before a reboot must not switch profiles on its own. An echo that names this
+ * device is stale — the listener owns no audio — so it releases the output
+ * (`releaseStaleOutput`), which ends that person's session on the server.
  */
 
 export interface ListenerRegistration {
@@ -25,8 +27,13 @@ export interface ProfileCastListenerOptions {
   url: string;
   registration: () => ListenerRegistration;
   onCast: () => void;
-  /** Five closes in a row without an open: the token is dead. */
+  /** Five closes in a row without an open: the token may be dead, or the
+   *  server unreachable — the owner tells the two apart. */
   onRefused: () => void;
+  /** Whether a registration echo naming this device may release the output.
+   *  Default true; false for the person the TV is switching TO, whose fresh
+   *  cast the echo may be describing. */
+  releaseStaleOutput?: () => boolean;
   createSocket?: (url: string) => WebSocket;
 }
 
@@ -40,6 +47,7 @@ export class ProfileCastListener {
   private failures = 0;
   private delay = 1_000;
   private seeded = false;
+  private unansweredBeats = 0;
   private activeDeviceId: string | null = null;
   private heartbeat: ReturnType<typeof setInterval> | null = null;
   private reconnect: ReturnType<typeof setTimeout> | null = null;
@@ -48,6 +56,8 @@ export class ProfileCastListener {
 
   start(): void {
     this.stopped = false;
+    this.failures = 0;
+    this.delay = 1_000;
     this.open();
   }
 
@@ -87,10 +97,18 @@ export class ProfileCastListener {
           compactProgress: true,
         },
       });
-      this.heartbeat = setInterval(
-        () => this.send({ type: 'HEARTBEAT', payload: {} }),
-        HEARTBEAT_MS,
-      );
+      // A beat still unanswered when the next is due means a half-open
+      // socket: close it and let the normal reconnect take over.
+      this.unansweredBeats = 0;
+      this.heartbeat = setInterval(() => {
+        if (this.unansweredBeats > 0) {
+          this.unansweredBeats = 0;
+          socket.close();
+          return;
+        }
+        this.unansweredBeats++;
+        this.send({ type: 'HEARTBEAT', payload: {} });
+      }, HEARTBEAT_MS);
     };
 
     socket.onmessage = (event: MessageEvent) => {
@@ -101,6 +119,10 @@ export class ProfileCastListener {
       } catch {
         return;
       }
+      if (msg.type === 'HEARTBEAT_ACK') {
+        this.unansweredBeats = 0;
+        return;
+      }
       if (msg.type !== 'STATE_SYNC' || typeof msg.payload !== 'object' || msg.payload === null)
         return;
       const payload = msg.payload as {
@@ -108,14 +130,17 @@ export class ProfileCastListener {
         devices?: unknown;
       };
       const next = payload.state?.activeDeviceId;
+      const myId = this.opts.registration().id;
       if (!this.seeded) {
         if (payload.devices === undefined) return;
         this.seeded = true;
         if (next !== undefined) this.activeDeviceId = next;
+        if (next === myId && (this.opts.releaseStaleOutput?.() ?? true)) {
+          this.send({ type: 'RELEASE_OUTPUT', payload: {} });
+        }
         return;
       }
       if (next === undefined) return;
-      const myId = this.opts.registration().id;
       const becameOutput = this.activeDeviceId !== myId && next === myId;
       this.activeDeviceId = next;
       if (becameOutput) this.opts.onCast();

@@ -34,10 +34,11 @@ class FakeSocket {
 
 const TV = 'profile-1:tab-1';
 
-function make() {
+function make(releaseStaleOutput?: () => boolean) {
   const onCast = vi.fn();
   const onRefused = vi.fn();
   const l = new ProfileCastListener({
+    releaseStaleOutput,
     url: 'ws://x/api/ws/playback?token=t',
     registration: () => ({ id: TV, name: 'NicotinD TV', remoteEnabled: true, activated: true }),
     onCast,
@@ -101,6 +102,63 @@ describe('ProfileCastListener', () => {
     expect(onCast).not.toHaveBeenCalled();
   });
 
+  const release = { type: 'RELEASE_OUTPUT', payload: {} };
+
+  it('an echo naming this TV releases the stale output — the listener owns no audio', () => {
+    const { l } = make();
+    l.start();
+    const s = FakeSocket.all[0];
+    s.open();
+    s.frame('STATE_SYNC', { state: { activeDeviceId: TV }, devices: [] });
+    expect(s.sent).toContainEqual(release);
+  });
+
+  it('releaseStaleOutput() false keeps the output — the person being switched to', () => {
+    const { l } = make(() => false);
+    l.start();
+    const s = FakeSocket.all[0];
+    s.open();
+    s.frame('STATE_SYNC', { state: { activeDeviceId: TV }, devices: [] });
+    expect(s.sent).not.toContainEqual(release);
+  });
+
+  it('an echo naming another device releases nothing', () => {
+    const { l } = make();
+    l.start();
+    const s = FakeSocket.all[0];
+    s.open();
+    s.frame('STATE_SYNC', { state: { activeDeviceId: 'phone-1:tab-1' }, devices: [] });
+    s.frame('STATE_SYNC', { state: { activeDeviceId: TV } });
+    expect(s.sent).not.toContainEqual(release);
+  });
+
+  it('a beat still unanswered when the next is due closes the socket and reconnects', () => {
+    const { l } = make();
+    l.start();
+    FakeSocket.all[0].open();
+    vi.advanceTimersByTime(30_000);
+    FakeSocket.all[0].frame('HEARTBEAT_ACK', {});
+    vi.advanceTimersByTime(30_000);
+    expect(FakeSocket.all[0].readyState).toBe(1);
+    vi.advanceTimersByTime(30_000);
+    expect(FakeSocket.all[0].readyState).toBe(3);
+    vi.advanceTimersByTime(1_000);
+    expect(FakeSocket.all).toHaveLength(2);
+  });
+
+  it('start() after a give-up counts failures afresh', () => {
+    const { l, onRefused } = make();
+    l.start();
+    for (let i = 0; i < LISTENER_MAX_FAILURES; i++) {
+      FakeSocket.all[i].drop();
+      vi.advanceTimersByTime(30_000);
+    }
+    l.start();
+    FakeSocket.all.at(-1)!.drop();
+    vi.advanceTimersByTime(30_000);
+    expect(onRefused).toHaveBeenCalledTimes(1);
+  });
+
   it('heartbeats every 30 s while open', () => {
     const { l } = make();
     l.start();
@@ -118,8 +176,9 @@ describe('ProfileCastListener', () => {
     vi.advanceTimersByTime(1_000);
     expect(FakeSocket.all).toHaveLength(2);
     FakeSocket.all[1].open();
-    // The echo after a reconnect names this TV (someone cast while we were down):
-    // still an echo, still not a cast — the main socket's own sync handles playback.
+    // The echo after a reconnect names this TV: still an echo, never a cast.
+    // The main socket is signed in as someone else, so nothing here plays it;
+    // the listener releases it instead (below).
     FakeSocket.all[1].frame('STATE_SYNC', { state: { activeDeviceId: TV }, devices: [] });
     expect(onCast).not.toHaveBeenCalled();
   });

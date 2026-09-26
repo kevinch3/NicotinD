@@ -32,6 +32,7 @@ interface FakeListener {
   update: ReturnType<typeof vi.fn>;
   onCast: () => void;
   onRefused: () => void;
+  releaseStaleOutput?: () => boolean;
 }
 
 describe('TvProfileListenerService', () => {
@@ -44,6 +45,7 @@ describe('TvProfileListenerService', () => {
   let switchTo: ReturnType<typeof vi.fn>;
   let markStale: ReturnType<typeof vi.fn>;
   let created: Map<string, FakeListener>;
+  let baseUrl: ReturnType<typeof signal<string>>;
 
   function create() {
     profiles = signal<TvProfile[]>([profile('ana', 'tok-ana'), profile('ben', 'tok-ben')]);
@@ -55,6 +57,7 @@ describe('TvProfileListenerService', () => {
     switchTo = vi.fn();
     markStale = vi.fn();
     created = new Map();
+    baseUrl = signal('http://srv');
 
     const authToken = signal<string | null>('tok');
 
@@ -83,7 +86,11 @@ describe('TvProfileListenerService', () => {
         },
         {
           provide: ServerConfigService,
-          useValue: { wsUrl: (p: string) => 'ws://srv' + p },
+          useValue: {
+            baseUrl,
+            wsUrl: (p: string) => baseUrl().replace('http', 'ws') + p,
+            apiUrl: (p: string) => baseUrl() + p,
+          },
         },
         {
           provide: PROFILE_CAST_LISTENER_FACTORY,
@@ -94,6 +101,7 @@ describe('TvProfileListenerService', () => {
               update: vi.fn(),
               onCast: opts.onCast,
               onRefused: opts.onRefused,
+              releaseStaleOutput: opts.releaseStaleOutput,
             };
             created.set(opts.url, listener);
             return listener;
@@ -105,7 +113,8 @@ describe('TvProfileListenerService', () => {
   }
 
   function listenerFor(tok: string): FakeListener {
-    const url = 'ws://srv/api/ws/playback?token=' + encodeURIComponent(tok);
+    const url =
+      baseUrl().replace('http', 'ws') + '/api/ws/playback?token=' + encodeURIComponent(tok);
     const listener = created.get(url);
     if (!listener) throw new Error(`no listener opened for token ${tok}`);
     return listener;
@@ -113,6 +122,8 @@ describe('TvProfileListenerService', () => {
 
   afterEach(() => {
     platform.tv = true;
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
   it('off-TV: no listener is created', () => {
@@ -211,15 +222,75 @@ describe('TvProfileListenerService', () => {
     expect(switchTo).toHaveBeenCalledWith('ben', { landing: '/player' });
   });
 
-  it("a listener's onRefused marks that person stale", () => {
+  it('onRefused confirmed by a raw 401 from /api/auth/me marks that person stale', async () => {
+    const fetchStub = vi.fn(async () => new Response(null, { status: 401 }));
+    vi.stubGlobal('fetch', fetchStub);
     create();
     TestBed.inject(TvProfileListenerService);
     TestBed.flushEffects();
     const listener = listenerFor('tok-ben');
 
     listener.onRefused();
+    await vi.waitFor(() => expect(markStale).toHaveBeenCalledWith('ben'));
 
-    expect(markStale).toHaveBeenCalledWith('ben');
+    expect(fetchStub).toHaveBeenCalledWith('http://srv/api/auth/me', {
+      headers: { Authorization: 'Bearer tok-ben' },
+    });
+    expect(listener.stop).toHaveBeenCalled();
+  });
+
+  it('onRefused on a network error is an outage: no stale mark, a fresh listener after 30 s', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('Failed to fetch');
+      }),
+    );
+    create();
+    const service = TestBed.inject(TvProfileListenerService);
+    TestBed.flushEffects();
+    const first = listenerFor('tok-ben');
+
+    first.onRefused();
+    await vi.advanceTimersByTimeAsync(0);
+    TestBed.flushEffects();
+    expect(service.listening()).toEqual([]);
+    expect(markStale).not.toHaveBeenCalled();
+
+    created.clear();
+    await vi.advanceTimersByTimeAsync(30_000);
+    TestBed.flushEffects();
+    const second = listenerFor('tok-ben');
+    expect(second).not.toBe(first);
+    expect(second.start).toHaveBeenCalled();
+    expect(service.listening()).toEqual(['ben']);
+    expect(markStale).not.toHaveBeenCalled();
+  });
+
+  it('a stale echo is released only by listeners for people the TV is not switching to', () => {
+    create();
+    TestBed.inject(TvProfileListenerService);
+    TestBed.flushEffects();
+    const listener = listenerFor('tok-ben');
+    expect(listener.releaseStaleOutput?.()).toBe(true);
+    active.set('ben');
+    expect(listener.releaseStaleOutput?.()).toBe(false);
+  });
+
+  it('a server switch stops the old listener and opens one against the new server', () => {
+    create();
+    const service = TestBed.inject(TvProfileListenerService);
+    TestBed.flushEffects();
+    const old = listenerFor('tok-ben');
+
+    baseUrl.set('http://other');
+    TestBed.flushEffects();
+
+    expect(old.stop).toHaveBeenCalled();
+    const fresh = created.get('ws://other/api/ws/playback?token=tok-ben');
+    expect(fresh?.start).toHaveBeenCalled();
+    expect(service.listening()).toEqual(['ben']);
   });
 
   it('activation flipping to true updates every open listener', () => {

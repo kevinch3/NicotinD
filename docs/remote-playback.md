@@ -133,13 +133,32 @@ this TV in their own picker without touching anyone else's session.
 
 The hand-over order matters as much as the registration: `TvProfileListenerService` closes a
 listener only once the main socket's `syncedAs` names that same person — never at the moment a
-switch merely *starts*. A cast from B closes B's listener only after the main socket has
-re-registered as B, and a listener for the outgoing person A does not reopen until `syncedAs`
-names the new active person either. Getting either order wrong races that person's own socket's
-teardown: the server drops a device only when the *last* socket holding its id for that user
-closes, and dropping the **active** device ends the session — an early second registration under
-the same token would keep the old session's device alive underneath the switch instead of letting
-it end.
+switch merely *starts* — so B's listener, the one that received the cast, stays registered until
+the main socket has re-registered as B. A **new** listener (including one for the outgoing person
+A) opens only once `syncedAs` names the new active person.
+
+The ordering alone does **not** end A's session when the TV was A's output. A's main socket closing
+only starts the 15 s reconnect grace, and A's listener registering the same device id a second
+later cancels it (`registerDevice` → `cancelPendingRelease`): A's session would name the TV,
+playing, forever — A's phone shows "playing on TV", cannot cast back (no transition), and its local
+play's claim is refused because the TV is still targetable. Two releases end it:
+
+- **The main socket releases first.** On a person change, `RemotePlaybackService`'s presence effect
+  sends `RELEASE_OUTPUT` before `disconnect()` when the session names this device, which ends the
+  session at once (`releaseOutput`, no grace).
+- **The listener releases a stale echo.** A `ProfileCastListener` whose registration echo names this
+  device sends `RELEASE_OUTPUT` — it owns no audio, so that session is stale. The listener for the
+  person being switched *to* skips this (`releaseStaleOutput`), since its echo may be describing
+  their fresh cast.
+
+`remote-playback.profile-cast.test.ts` drives the real hub through all three shapes, including the
+unfixed one that stays on the TV.
+
+A listener that fails five opens in a row does not assume a dead token: the service asks
+`/api/auth/me` with that token over a raw `fetch` (never `HttpClient`, whose interceptor would sign
+out the *active* person on the 401, #1410). 401/403 marks the person stale; anything else retries
+with a fresh listener after 30 s. Listeners are keyed by server, person and token, and each one
+closes a socket whose previous heartbeat went unanswered, like the main socket does.
 
 A 30-second heartbeat keeps the connection alive through idle proxies. **Any frame from a
 registered connection is a liveness beat** (progress reports included), and a device that stopped
