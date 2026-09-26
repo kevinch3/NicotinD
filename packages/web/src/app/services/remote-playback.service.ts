@@ -464,6 +464,10 @@ export class RemotePlaybackService {
   }
 
   reset(): void {
+    // A reset (profile switch, logout, server switch) ends this device's
+    // session now: a bare close only starts the server's grace, which a TV
+    // cast listener re-registering the same id would cancel (#1406).
+    if (this.activeDeviceId() === this.ws.getDeviceId()) this.ws.sendRelease();
     this.activeDeviceId.set(null);
     this.devices.set([]);
     this.remoteIsPlaying.set(false);

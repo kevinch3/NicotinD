@@ -122,6 +122,48 @@ the release grace is running). Pickers offer only available devices; the chrome 
 
 A device id is `<profileId>:<tabId>` (`resolveDeviceId`, `packages/web/src/app/lib/device-id.ts`). The profile half is minted once per browser via `crypto.randomUUID()` and persisted in `localStorage` — it survives logout and seeds the display name. The tab half lives in `sessionStorage`, so it survives a reload and an active cast is not dropped when the receiving tab refreshes, but a second tab gets its own id and is separately castable (issue #882). `profileIdOf` recovers the browser half, which is how the switcher marks a sibling tab rather than listing an anonymous twin, and how an id minted before #882 still resolves. The device name is auto-detected from the User-Agent (`"Chrome on Windows"`, `"Safari on iPhone"`, …) — except on a TV UI, where the UA reads "Chrome on Android" and says nothing a cast selector needs, so the default is `"NicotinD TV"` (issue #393) — and can be overridden by the user. The socket also follows the signed-in **person**: a different username on the same device closes it and opens a new one, because a TV profile switch (#1406) replaces one person's token with another's in a single tick and `connect()` no-ops on an open socket — the TV had stayed registered, castable and drivable, as the previous person. A token refresh for the same person reconnects nothing. `syncedAs` names the person the server has acknowledged the device under (its registration reply arrived).
 
+#### One device, several people (TV profiles, #1406)
+
+A TV that remembers several people (`TvProfileService`) opens one idle `ProfileCastListener`
+socket per stored person who is **not** the active one, each registering the TV's *own* device id
+under that person's own token. That is safe only because both the device registry and the
+close-time eviction below are per user: the same id appearing under several tokens is several
+independent registrations, not a collision, so a cast from any of those people's phones targets
+this TV in their own picker without touching anyone else's session.
+
+The hand-over order matters as much as the registration: `TvProfileListenerService` closes a
+listener only once the main socket's `syncedAs` names that same person — never at the moment a
+switch merely *starts* — so B's listener, the one that received the cast, stays registered until
+the main socket has re-registered as B. A **new** listener (including one for the outgoing person
+A) opens only once `syncedAs` names the new active person.
+
+The ordering alone does **not** end A's session when the TV was A's output. A's main socket closing
+only starts the 15 s reconnect grace, and A's listener registering the same device id a second
+later cancels it (`registerDevice` → `cancelPendingRelease`): A's session would name the TV,
+playing, forever — A's phone shows "playing on TV", cannot cast back (no transition), and its local
+play's claim is refused because the TV is still targetable. Two releases end it:
+
+- **`resetSession` releases this device's output.** `RemotePlaybackService.reset()` — run by every
+  `AuthService.resetSession()`: a TV profile switch, a logout, a native server switch — sends
+  `RELEASE_OUTPUT` when the session names this device, while the socket is still open and before it
+  clears any state. The server ends the session at once (`releaseOutput`, no grace). It has to live
+  in `reset()`: that is what clears `activeDeviceId`, so the presence effect that later closes the
+  socket can no longer see that this device was the output.
+- **A listener releases a stale echo.** A `ProfileCastListener` whose registration echo still names
+  this device sends `RELEASE_OUTPUT` — it owns no audio, so that session is stale. This is the belt
+  for a session the reset could not reach (a reboot, a crash, a release lost on the wire). The
+  listener for the person being switched *to* skips it (`releaseStaleOutput`), since its echo may be
+  describing their fresh cast.
+
+`remote-playback.profile-cast.test.ts` drives the real hub through all three shapes, including the
+unfixed one that stays on the TV.
+
+A listener that fails five opens in a row does not assume a dead token: the service asks
+`/api/auth/me` with that token over a raw `fetch` (never `HttpClient`, whose interceptor would sign
+out the *active* person on the 401, #1410). 401/403 marks the person stale; anything else retries
+with a fresh listener after 30 s. Listeners are keyed by server, person and token, and each one
+closes a socket whose previous heartbeat went unanswered, like the main socket does.
+
 A 30-second heartbeat keeps the connection alive through idle proxies. **Any frame from a
 registered connection is a liveness beat** (progress reports included), and a device that stopped
 answering for `STALE_TIMEOUT` (90 s, swept every 30 s) is pruned. The server answers every

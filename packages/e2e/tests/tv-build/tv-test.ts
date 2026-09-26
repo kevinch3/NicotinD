@@ -1,7 +1,8 @@
 // Composes on the suite's `test` (helpers.ts), so the TV lane gets the same
 // per-spec playback-session reset as the phone lane — its server is separate,
 // but its specs play audio too.
-import { test as base, expect, type Locator, type Page } from '../../helpers';
+import type { APIRequestContext } from '@playwright/test';
+import { test as base, bearer, expect, type Locator, type Page } from '../../helpers';
 
 export { expect };
 
@@ -72,4 +73,31 @@ export async function centreOf(locator: Locator): Promise<{ x: number; y: number
  */
 export async function expectFitsTheScreen(page: Page, ...mustSee: Locator[]): Promise<void> {
   for (const el of mustSee) await expect(el).toBeInViewport({ ratio: 1 });
+}
+
+/** A person's API token, from a real password login. */
+export async function tokenFor(
+  request: APIRequestContext,
+  creds: { username: string; password: string },
+): Promise<string> {
+  const res = await request.post('/api/auth/login', { data: creds });
+  expect(res.ok()).toBeTruthy();
+  return ((await res.json()) as { token: string }).token;
+}
+
+/** Drive the TV login card to completion as `creds`: read the code off the
+ *  screen, approve it over the API as that person, wait for the poll. */
+export async function approveOnScreen(
+  page: Page,
+  request: APIRequestContext,
+  creds: { username: string; password: string },
+): Promise<void> {
+  const code = (await page.getByTestId('tv-login-code').textContent())?.trim();
+  expect(code, 'the TV shows a sign-in code').toBeTruthy();
+  const token = await tokenFor(request, creds);
+  const approved = await request.post('/api/devices/login-approve', {
+    headers: bearer(token),
+    data: { code },
+  });
+  expect(approved.ok()).toBeTruthy();
 }

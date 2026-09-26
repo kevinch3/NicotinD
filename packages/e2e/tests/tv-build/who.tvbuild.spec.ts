@@ -4,29 +4,16 @@
  * the API the way login-tv-signin.spec.ts does it.
  */
 import { ADMIN, bearer } from '../../helpers';
-import { test, expect, expectNoNativeFormControls, expectFitsTheScreen } from './tv-test';
-import type { APIRequestContext, Page } from '@playwright/test';
+import {
+  test,
+  expect,
+  expectNoNativeFormControls,
+  expectFitsTheScreen,
+  tokenFor,
+  approveOnScreen,
+} from './tv-test';
 
 const GUEST = { username: `e2e-guest-${Date.now()}`, password: 'e2e-guest-pass-123' };
-
-async function tokenFor(request: APIRequestContext, creds: { username: string; password: string }) {
-  const res = await request.post('/api/auth/login', { data: creds });
-  expect(res.ok()).toBeTruthy();
-  return ((await res.json()) as { token: string }).token;
-}
-
-/** Drive the TV login card to completion as `creds`: read the code off the
- *  screen, approve it over the API as that person, wait for the poll. */
-async function approveOnScreen(page: Page, request: APIRequestContext, creds: typeof GUEST) {
-  const code = (await page.getByTestId('tv-login-code').textContent())?.trim();
-  expect(code, 'the TV shows a sign-in code').toBeTruthy();
-  const token = await tokenFor(request, creds);
-  const approved = await request.post('/api/devices/login-approve', {
-    headers: bearer(token),
-    data: { code },
-  });
-  expect(approved.ok()).toBeTruthy();
-}
 
 test.describe('TV profiles', () => {
   test.beforeAll(async ({ request }) => {

@@ -7,6 +7,7 @@ import { PlayerService } from '../../services/player.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { UpdateBannerComponent } from '../update-banner/update-banner.component';
 import { TvDevicePickerComponent } from '../tv-device-picker/tv-device-picker.component';
+import { TvProfileListenerService } from '../../services/tv-profile-listener.service';
 
 /**
  * The TV chrome: a router outlet and a headless audio engine.
@@ -65,6 +66,8 @@ export class TvShellComponent {
   readonly auth = inject(AuthService);
   readonly version = inject(APP_VERSION);
   private readonly router = inject(Router);
+  // Exists so every stored person can cast to this TV, #1406.
+  private readonly castListeners = inject(TvProfileListenerService);
 
   constructor() {
     // Radio is always on for a TV build. The five TV screens carry no radio
