@@ -1,0 +1,2 @@
+• tv: profiles — several people on one TV, switched from Home (#1411)
+• fdroid: sync the recipe seed version to what's actually on the merge requests (#1412)

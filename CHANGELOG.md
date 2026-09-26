@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.88](https://github.com/kevinch3/NicotinD/compare/v0.8.87...v0.8.88) (2026-09-26)
+
+### Features
+
+* **tv:** profiles — several people on one TV, switched from Home ([#1411](https://github.com/kevinch3/NicotinD/issues/1411)) ([7d90143](https://github.com/kevinch3/NicotinD/commit/7d901431f09fcbc9e571f5a54a55bf58f3cd42ba)), references [#1406](https://github.com/kevinch3/NicotinD/issues/1406) [#1406](https://github.com/kevinch3/NicotinD/issues/1406) [#1406](https://github.com/kevinch3/NicotinD/issues/1406) [#1406](https://github.com/kevinch3/NicotinD/issues/1406) [#1406](https://github.com/kevinch3/NicotinD/issues/1406) [#1406](https://github.com/kevinch3/NicotinD/issues/1406) [#1406](https://github.com/kevinch3/NicotinD/issues/1406) [#1406](https://github.com/kevinch3/NicotinD/issues/1406) [#1406](https://github.com/kevinch3/NicotinD/issues/1406)
+
+### Bug Fixes
+
+* **fdroid:** sync the recipe seed version to what's actually on the merge requests ([#1412](https://github.com/kevinch3/NicotinD/issues/1412)) ([44275ab](https://github.com/kevinch3/NicotinD/commit/44275ab8f26a4fa227064cf7dfd967f3c8348596))
 ## [0.8.87](https://github.com/kevinch3/NicotinD/compare/v0.8.86...v0.8.87) (2026-09-25)
 
 ### Bug Fixes
