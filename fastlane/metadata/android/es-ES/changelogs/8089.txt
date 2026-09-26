@@ -1,0 +1,2 @@
+• tv: a cast from any stored person switches the tv to them (#1416)
+• tv: the playback socket follows the signed-in person after a profile switch (#1406) (#1415)

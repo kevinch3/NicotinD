@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.89](https://github.com/kevinch3/NicotinD/compare/v0.8.88...v0.8.89) (2026-09-26)
+
+### Features
+
+* **tv:** a cast from any stored person switches the tv to them ([#1416](https://github.com/kevinch3/NicotinD/issues/1416)) ([2fe307a](https://github.com/kevinch3/NicotinD/commit/2fe307a43f17b394bfa4910a8cd3324b8a4bed34)), references [#1406](https://github.com/kevinch3/NicotinD/issues/1406) [#1406](https://github.com/kevinch3/NicotinD/issues/1406) [#1406](https://github.com/kevinch3/NicotinD/issues/1406) [#1406](https://github.com/kevinch3/NicotinD/issues/1406) [#1406](https://github.com/kevinch3/NicotinD/issues/1406) [#1406](https://github.com/kevinch3/NicotinD/issues/1406) [#1406](https://github.com/kevinch3/NicotinD/issues/1406) [#1406](https://github.com/kevinch3/NicotinD/issues/1406)
+
+### Bug Fixes
+
+* **tv:** the playback socket follows the signed-in person after a profile switch ([#1406](https://github.com/kevinch3/NicotinD/issues/1406)) ([#1415](https://github.com/kevinch3/NicotinD/issues/1415)) ([eaa2a81](https://github.com/kevinch3/NicotinD/commit/eaa2a81afb0505eaaf2f75a1c993e676e812f2c9))
 ## [0.8.88](https://github.com/kevinch3/NicotinD/compare/v0.8.87...v0.8.88) (2026-09-26)
 
 ### Features
