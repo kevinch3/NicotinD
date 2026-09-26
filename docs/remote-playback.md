@@ -122,6 +122,25 @@ the release grace is running). Pickers offer only available devices; the chrome 
 
 A device id is `<profileId>:<tabId>` (`resolveDeviceId`, `packages/web/src/app/lib/device-id.ts`). The profile half is minted once per browser via `crypto.randomUUID()` and persisted in `localStorage` — it survives logout and seeds the display name. The tab half lives in `sessionStorage`, so it survives a reload and an active cast is not dropped when the receiving tab refreshes, but a second tab gets its own id and is separately castable (issue #882). `profileIdOf` recovers the browser half, which is how the switcher marks a sibling tab rather than listing an anonymous twin, and how an id minted before #882 still resolves. The device name is auto-detected from the User-Agent (`"Chrome on Windows"`, `"Safari on iPhone"`, …) — except on a TV UI, where the UA reads "Chrome on Android" and says nothing a cast selector needs, so the default is `"NicotinD TV"` (issue #393) — and can be overridden by the user. The socket also follows the signed-in **person**: a different username on the same device closes it and opens a new one, because a TV profile switch (#1406) replaces one person's token with another's in a single tick and `connect()` no-ops on an open socket — the TV had stayed registered, castable and drivable, as the previous person. A token refresh for the same person reconnects nothing. `syncedAs` names the person the server has acknowledged the device under (its registration reply arrived).
 
+#### One device, several people (TV profiles, #1406)
+
+A TV that remembers several people (`TvProfileService`) opens one idle `ProfileCastListener`
+socket per stored person who is **not** the active one, each registering the TV's *own* device id
+under that person's own token. That is safe only because both the device registry and the
+close-time eviction below are per user: the same id appearing under several tokens is several
+independent registrations, not a collision, so a cast from any of those people's phones targets
+this TV in their own picker without touching anyone else's session.
+
+The hand-over order matters as much as the registration: `TvProfileListenerService` closes a
+listener only once the main socket's `syncedAs` names that same person — never at the moment a
+switch merely *starts*. A cast from B closes B's listener only after the main socket has
+re-registered as B, and a listener for the outgoing person A does not reopen until `syncedAs`
+names the new active person either. Getting either order wrong races that person's own socket's
+teardown: the server drops a device only when the *last* socket holding its id for that user
+closes, and dropping the **active** device ends the session — an early second registration under
+the same token would keep the old session's device alive underneath the switch instead of letting
+it end.
+
 A 30-second heartbeat keeps the connection alive through idle proxies. **Any frame from a
 registered connection is a liveness beat** (progress reports included), and a device that stopped
 answering for `STALE_TIMEOUT` (90 s, swept every 30 s) is pruned. The server answers every

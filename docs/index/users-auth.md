@@ -59,5 +59,6 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   `getUserPreferences`/`patchUserPreferences` at `/api/me/preferences` and embedded in `/me`; the web
   door is `UserPreferencesService` (per-device mirror, optimistic `patch`). → [web-ui.md](../web-ui.md)
 - **TV profiles**: several people on one TV, switched by `resetSession` + stored token;
-  `TvProfileService`, `loadProfiles`, `rememberProfile`, `forgetProfile`.
+  `TvProfileService`, `loadProfiles`, `rememberProfile`, `forgetProfile`; a cast from a stored
+  person's phone switches the TV to them (`TvProfileListenerService`, `ProfileCastListener`).
   → [tv-ux.md](../tv-ux.md#profiles-1406)

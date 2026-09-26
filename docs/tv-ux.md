@@ -223,7 +223,17 @@ only, because picking a person is how the TV signs in, and sits outside the TV s
 status line. A fresh boot with stored people but no active session lands on `/login`, whose
 back-link leads to `/who`.
 
-Not yet: a cast from a member's phone switching the TV to that member (PR 2, #1406).
+A cast switches the profile too (PR 2, #1406): every stored person who is not the active one has
+a listener (`TvProfileListenerService`, `ProfileCastListener`) registering the TV's own device id
+under their token, so the TV shows up in *their* phone's cast picker even while someone else is on
+screen. A cast from one of those pickers switches the TV to that person and lands it on the
+player. The `STATE_SYNC` a listener's own registration provokes is never a cast — only a later
+change of the active device is. Five refused opens in a row (a dead token) mark that person "sign
+in again" on `/who`. Listeners exist only while signed in, with Remote control on, and — to avoid
+racing the outgoing person's own socket teardown — a listener never opens for anyone (including the
+person who just stopped being active) until the main socket is acknowledged as the new active
+person; see [remote-playback.md](remote-playback.md#one-device-several-people-tv-profiles-1406) for
+the hand-over.
 
 ### Settings (`/settings`)
 
