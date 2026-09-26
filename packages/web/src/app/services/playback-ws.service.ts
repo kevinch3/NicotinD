@@ -37,6 +37,11 @@ export class PlaybackWsService {
   /** Beats sent since the last HEARTBEAT_ACK — the half-open socket detector. */
   private unansweredBeats = 0;
   readonly persistentFailure = signal<string | null>(null);
+  /** True once a `STATE_SYNC` with a `devices` payload has arrived on the live
+   *  socket — the server's acknowledgment that this device is registered.
+   *  False again on that socket's close, on `disconnect()`, and at the start
+   *  of a new `connect()` (#1406). */
+  readonly synced = signal(false);
   /** This document has had a user gesture, so `audio.play()` will be allowed.
    *  Per page load, like the browser's own autoplay rule. */
   private activated = false;
@@ -180,6 +185,8 @@ export class PlaybackWsService {
     const state = this.ws?.readyState;
     if (state === WebSocket.CONNECTING || state === WebSocket.OPEN) return;
 
+    this.synced.set(false);
+
     const url = this.server.wsUrl(`/api/ws/playback?token=${encodeURIComponent(token)}`);
     const socket = new WebSocket(url);
     this.ws = socket;
@@ -216,6 +223,15 @@ export class PlaybackWsService {
         const data = JSON.parse(event.data);
         if (typeof data === 'object' && data !== null && 'type' in data && 'payload' in data) {
           if (data.type === 'HEARTBEAT_ACK') this.unansweredBeats = 0;
+          if (
+            socket === this.ws &&
+            data.type === 'STATE_SYNC' &&
+            data.payload &&
+            typeof data.payload === 'object' &&
+            'devices' in data.payload
+          ) {
+            this.synced.set(true);
+          }
           this.messageSubject.next({ type: String(data.type), payload: data.payload });
         }
       } catch {
@@ -231,6 +247,7 @@ export class PlaybackWsService {
     socket.onclose = () => {
       if (socket !== this.ws) return;
       this.ws = null;
+      this.synced.set(false);
       this.stopHeartbeat();
       if (!opened) {
         this.consecutiveFailures++;
@@ -282,6 +299,7 @@ export class PlaybackWsService {
     const socket = this.ws;
     this.ws = null;
     socket?.close();
+    this.synced.set(false);
     this.consecutiveFailures = 0;
     this.persistentFailure.set(null);
   }

@@ -381,3 +381,46 @@ describe('PlaybackWsService connection lifecycle (#877)', () => {
     expect(service.persistentFailure()).toBeNull();
   });
 });
+
+describe('PlaybackWsService.synced (#1406)', () => {
+  let originalWebSocket: unknown;
+  let service: PlaybackWsService;
+
+  beforeEach(() => {
+    storageStub.clear();
+    storageStub.setItem('nicotind_token', 'test-token');
+    FakeWebSocket.instances = [];
+    originalWebSocket = globalThis.WebSocket;
+    (globalThis as { WebSocket: unknown }).WebSocket = FakeWebSocket;
+    TestBed.configureTestingModule({ providers: [PlaybackWsService, ServerConfigService] });
+    service = TestBed.inject(PlaybackWsService);
+  });
+
+  afterEach(() => {
+    (globalThis as { WebSocket: unknown }).WebSocket = originalWebSocket;
+  });
+
+  it('is false on open, true after a STATE_SYNC with devices, and false again on close', () => {
+    service.connect();
+    const socket = FakeWebSocket.instances[0];
+    socket.open();
+    expect(service.synced()).toBe(false);
+
+    socket.receive({ type: 'STATE_SYNC', payload: { devices: [] } });
+    expect(service.synced()).toBe(true);
+
+    socket.emitClose();
+    expect(service.synced()).toBe(false);
+  });
+
+  it('disconnect() clears it too', () => {
+    service.connect();
+    const socket = FakeWebSocket.instances[0];
+    socket.open();
+    socket.receive({ type: 'STATE_SYNC', payload: { devices: [] } });
+    expect(service.synced()).toBe(true);
+
+    service.disconnect();
+    expect(service.synced()).toBe(false);
+  });
+});

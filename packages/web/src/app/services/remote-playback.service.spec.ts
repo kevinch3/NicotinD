@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { signal, type WritableSignal } from '@angular/core';
 import { RemotePlaybackService } from './remote-playback.service';
 import { PlaybackWsService } from './playback-ws.service';
 import { PlayerService } from './player.service';
@@ -45,6 +46,7 @@ describe('RemotePlaybackService — the "available as an output" preference', ()
     persistentFailure: ReturnType<typeof vi.fn>;
     markActivated: ReturnType<typeof vi.fn>;
     sendRelease: ReturnType<typeof vi.fn>;
+    synced: WritableSignal<boolean>;
   };
 
   beforeEach(() => {
@@ -58,6 +60,7 @@ describe('RemotePlaybackService — the "available as an output" preference', ()
       persistentFailure: vi.fn(() => null),
       markActivated: vi.fn(),
       sendRelease: vi.fn(),
+      synced: signal(false),
     };
     TestBed.configureTestingModule({
       providers: [
@@ -115,6 +118,47 @@ describe('RemotePlaybackService — the "available as an output" preference', ()
     expect(service.syncStatus()).toBe('Connection failed');
     expect(service.outputAvailable()).toBe(true);
     expect(localStorage.getItem('nicotind_remote_available')).toBeNull();
+  });
+
+  it('reconnects when a different person signs in on this device (#1406)', () => {
+    const service = inject();
+    const auth = TestBed.inject(AuthService);
+    auth.login('tok-a', 'ana', 'user');
+    TestBed.runInInjectionContext(() => service.initialize());
+    TestBed.flushEffects();
+    expect(mockWs.connect).toHaveBeenCalledTimes(1);
+    expect(mockWs.disconnect).not.toHaveBeenCalled();
+    expect(service.connectedAs()).toBe('ana');
+
+    // A TV profile switch: reset + login land in one tick, so the effect never
+    // sees an empty token — the username is what changed.
+    auth.login('tok-b', 'ben', 'user');
+    TestBed.flushEffects();
+    expect(mockWs.disconnect).toHaveBeenCalledTimes(1);
+    expect(mockWs.connect).toHaveBeenCalledTimes(2);
+    expect(service.connectedAs()).toBe('ben');
+  });
+
+  it('a token refresh for the same person does not reconnect', () => {
+    const service = inject();
+    const auth = TestBed.inject(AuthService);
+    auth.login('tok-a', 'ana', 'user');
+    TestBed.runInInjectionContext(() => service.initialize());
+    TestBed.flushEffects();
+    auth.setToken('tok-a2');
+    TestBed.flushEffects();
+    expect(mockWs.disconnect).not.toHaveBeenCalled();
+  });
+
+  it('syncedAs names the person only once the server has acknowledged the socket', () => {
+    const service = inject();
+    const auth = TestBed.inject(AuthService);
+    auth.login('tok-a', 'ana', 'user');
+    TestBed.runInInjectionContext(() => service.initialize());
+    TestBed.flushEffects();
+    expect(service.syncedAs()).toBeNull();
+    (mockWs as unknown as { synced: WritableSignal<boolean> }).synced.set(true);
+    expect(service.syncedAs()).toBe('ana');
   });
 });
 
