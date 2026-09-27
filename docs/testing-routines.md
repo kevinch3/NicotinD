@@ -136,3 +136,9 @@ anything persisted to `localStorage` — the i18n work hit that last one during 
   itself.
 - **Degrade, never red**: a missing backend/feature records a `degraded` observation, not a
   test failure, so the report is always produced.
+- **Build output is never a test source**: `bun test` collects compiled `*.test.js` exactly like the
+  source, so the root `test` / `test:tdd` / `test:coverage` scripts ignore every tsconfig `outDir`
+  (`dist`, `dist-test`, `dist-scripts`, `out-tsc`). `dist-scripts` was missing: `typecheck` emits the
+  desktop scripts' tests there, and 29 tests ran twice after any typecheck (#1426).
+  `scripts/test-script-ignores.test.ts` reads every tracked tsconfig and fails when an `outDir` is not
+  ignored, so a new build target cannot reintroduce it.
