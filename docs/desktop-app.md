@@ -264,7 +264,9 @@ because `release` has `needs: [… desktop-package …]`, skipped the version bu
 keep the backend/bun/ffmpeg as real executables outside the asar; **linux** → AppImage + deb
 (category Audio); **macOS** → dmg (**arm64 only** — the Intel/x64 target was dropped: current
 Apple hardware is all Apple Silicon, and building both doubled the ~10×-billed macOS CI time and
-release size; Intel-Mac users build from source). The `dmg.artifactName` is pinned to
+release size; Intel-Mac users build from source). Since Electron 44 the dmg needs **macOS 13
+(Ventura) or later** — Chromium dropped Monterey; Linux is x64-only (Electron 44 publishes no
+32-bit builds, and we never targeted them). The `dmg.artifactName` is pinned to
 `${productName}-${version}-${arch}.${ext}` (→ `NicotinD-<v>-arm64.dmg`) for naming cohesion with
 the AppImage/deb. The icon pack is the multi-size PWA set
 (`packages/web/public/icons/`) staged into `build/icons/{16,24,32,48,64,128,256,512,1024}x{N}.png`
