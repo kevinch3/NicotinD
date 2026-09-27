@@ -24,7 +24,7 @@ env:
   # Pinned, not `latest`: a drifting toolchain makes the dependency cache key below
   # unstable (every bump is a cold install for every job) and makes a green run
   # unreproducible. Bump deliberately.
-  BUN_VERSION: '1.3.11'
+  BUN_VERSION: '1.3.14'
   # ffmpeg-static's install script skips its GitHub download when this names an
   # existing file. Only desktop-package stages the binary, so it clears this; a
   # stray use elsewhere fails loudly instead of fetching (#1087, quality-gates.md).

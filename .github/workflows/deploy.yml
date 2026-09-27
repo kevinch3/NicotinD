@@ -25,7 +25,7 @@ concurrency:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   # Pinned to match ci.yml — see the note there.
-  BUN_VERSION: '1.3.11'
+  BUN_VERSION: '1.3.14'
 
 jobs:
   # Detect which app artifacts a release actually needs to rebuild, so a trivial

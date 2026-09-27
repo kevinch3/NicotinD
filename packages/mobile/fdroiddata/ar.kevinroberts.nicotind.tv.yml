@@ -58,8 +58,8 @@ Builds:
       - rm -f /tmp/node.tar.gz
       - install -d /opt/bun
       - curl -fsSL -o /tmp/bun.zip
-          https://github.com/oven-sh/bun/releases/download/bun-v1.3.11/bun-linux-x64.zip
-      - echo "8611ba935af886f05a6f38740a15160326c15e5d5d07adef966130b4493607ed  /tmp/bun.zip"
+          https://github.com/oven-sh/bun/releases/download/bun-v1.3.14/bun-linux-x64.zip
+      - echo "951ee2aee855f08595aeec6225226a298d3fea83a3dcd6465c09cbccdf7e848f  /tmp/bun.zip"
           | sha256sum -c -
       - unzip -j -d /opt/bun /tmp/bun.zip
       - chmod 755 /opt/bun/bun
