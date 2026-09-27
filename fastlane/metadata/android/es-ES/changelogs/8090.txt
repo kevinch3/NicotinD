@@ -1,0 +1,1 @@
+• web: the playback socket follows the server as well as the person (#1417)

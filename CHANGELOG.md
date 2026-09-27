@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.90](https://github.com/kevinch3/NicotinD/compare/v0.8.89...v0.8.90) (2026-09-27)
+
+### Bug Fixes
+
+* **web:** the playback socket follows the server as well as the person ([#1417](https://github.com/kevinch3/NicotinD/issues/1417)) ([eb83bb4](https://github.com/kevinch3/NicotinD/commit/eb83bb4bf63bdcfb852d0291aa42c27ed7671622)), closes [#1414](https://github.com/kevinch3/NicotinD/issues/1414)
 ## [0.8.89](https://github.com/kevinch3/NicotinD/compare/v0.8.88...v0.8.89) (2026-09-26)
 
 ### Features
