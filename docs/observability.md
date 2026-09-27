@@ -27,8 +27,15 @@ surfaces** and inert when unconfigured.
 - A Sentry DSN is a **public ingest key** by design — the prod DSN is committed in
   `environment.prod.ts`; it is not a secret and does not belong in a runtime channel.
 - Prod config (web/browser): `tracesSampleRate: 0.1`, session replay `0.1` / on-error
-  `1.0`, `sendDefaultPii: false`, and every issue tagged with `release` (app version) +
-  `environment`.
+  `1.0`, `dataCollection: SENTRY_DATA_COLLECTION`, and every issue tagged with `release`
+  (app version) + `environment`.
+- **Data collection is pinned to the SDK v10 default on both sides.** SDK v11 removed
+  `sendDefaultPii` and, left unset, its replacement `dataCollection` collects user info
+  (IP), cookies, all request/response bodies — a login body carries the password — and
+  database/queue payloads. Web and API each export `SENTRY_DATA_COLLECTION`, the
+  migration guide's "keep the v10 default" baseline (no user info, no cookies, no bodies,
+  headers and query params minus the `forwarded`/`-ip`/`remote-`/`via`/`-user` keys), and
+  each `sentry` test asserts it is passed to `init`.
 - **Native shells (Capacitor / Electron) drop Session Replay + browser tracing**
   (`nativeShell=true`, passed via `isNativeShell()` from `main.ts`): both instrument the
   WebView main thread heavily (rrweb DOM recording, wrapping every fetch/XHR) — the prime

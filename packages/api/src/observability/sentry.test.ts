@@ -7,7 +7,7 @@ mock.module('@sentry/bun', () => ({
   captureException: captureExceptionMock,
 }));
 
-import { initServerSentry, captureProcessingFailure } from './sentry.js';
+import { initServerSentry, captureProcessingFailure, SENTRY_DATA_COLLECTION } from './sentry.js';
 
 describe('initServerSentry', () => {
   const original = { ...process.env };
@@ -39,6 +39,13 @@ describe('initServerSentry', () => {
     const cfg = (initMock.mock.calls as unknown[][])[0][0] as Record<string, unknown>;
     expect(cfg.dsn).toBe('https://abc@o1.ingest.sentry.io/1');
     expect(cfg.tracesSampleRate).toBe(0.1);
+    // v11 collects bodies, cookies and user info unless told not to.
+    expect(cfg.dataCollection).toBe(SENTRY_DATA_COLLECTION);
+    expect(SENTRY_DATA_COLLECTION).toMatchObject({
+      userInfo: false,
+      cookies: false,
+      httpBodies: [],
+    });
   });
 
   it('honors a custom traces sample rate', () => {

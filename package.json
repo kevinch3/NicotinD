@@ -89,6 +89,7 @@
   },
   "overrides": {
     "@types/node": "25.5.0",
+    "browserslist": "^4.28.7",
     "js-yaml": "^4.3.2",
     "yaml": "^2.9.0"
   }

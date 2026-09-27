@@ -1,6 +1,25 @@
 import * as Sentry from '@sentry/bun';
 import pkg from '../../../../package.json';
 
+// why: SDK v11 dropped `sendDefaultPii` and defaults to collecting cookies, headers, user
+// info and request/response bodies (a login body carries a password). This is the
+// migration guide's "keep the v10 default" baseline — see docs/observability.md.
+const SENTRY_REDACTED_KEYS = ['forwarded', '-ip', 'remote-', 'via', '-user'];
+export const SENTRY_DATA_COLLECTION = {
+  userInfo: false,
+  cookies: false,
+  httpHeaders: {
+    request: { deny: SENTRY_REDACTED_KEYS },
+    response: { deny: SENTRY_REDACTED_KEYS },
+  },
+  httpBodies: [],
+  urlQueryParams: { deny: SENTRY_REDACTED_KEYS },
+  genAI: { inputs: false, outputs: false },
+  databaseQueryData: false,
+  queues: false,
+  graphQL: { document: false, variables: false },
+} satisfies Sentry.BunOptions['dataCollection'];
+
 /**
  * Initialize server-side Sentry. Opt-in: with no `NICOTIND_SENTRY_DSN` this is a
  * no-op and returns false, so an unconfigured deploy sends nothing. `@sentry/bun`
@@ -18,6 +37,7 @@ export function initServerSentry(): boolean {
     release: pkg.version,
     environment: process.env.NODE_ENV === 'production' ? 'production' : 'development',
     tracesSampleRate,
+    dataCollection: SENTRY_DATA_COLLECTION,
   });
   return true;
 }
