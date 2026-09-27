@@ -225,9 +225,12 @@ via the `?token=` query param.)
 
 The Android WebView **does not support the Web Media Session API**, so `navigator.mediaSession` calls are
 silently ignored — no lock-screen / notification controls appear — and WebView HTML5 audio is **suspended
-when the app is backgrounded**. Both are solved with **`@jofr/capacitor-media-session`**: on Android it
+when the app is backgrounded**. Both are solved with **`@capgo/capacitor-media-session`**: on Android it
 implements a native `MediaSession` **and runs a media-playback foreground service** (keeping audio alive
-backgrounded); on web/iOS it's a thin wrapper over the Web API, so one code path serves all platforms.
+backgrounded); on web it's a thin wrapper over the Web API, so one code path serves Android and web. It
+also ships iOS native code, but iOS routes through `@nicotind/capacitor-now-playing` instead (see
+[ios-app.md](ios-app.md)). It replaced `@jofr/capacitor-media-session`, abandoned on Capacitor 6, with the
+same four methods and option shapes (#226).
 
 > The web build also has an **Auto-preserve queue** toggle in Settings → Offline storage that pre-buffers
 > the next-N queued tracks into IndexedDB so the browser's locked-screen network throttle (Android Chrome,
@@ -247,10 +250,10 @@ Wiring (so it stays maintainable and testable):
   prev/seek), and `setPositionState` on the 2 s progress tick (keeps the notification scrubber in sync and
   enables `seekto`). The plugin **requires** an explicit `setPlaybackState('playing')` + registered
   play/pause handlers for the notification to appear — both are wired.
-- **Artwork is withheld until its URL is proven reachable (issue #441).** The plugin fetches the
-  cover on the Capacitor thread with Java's `HttpURLConnection`, and anything it throws (404 →
-  `FileNotFoundException`, connection failure → `IOException`) surfaces as a `FATAL EXCEPTION` that
-  kills the process. Because `MediaControlsService.setMetadata` runs during startup for the restored
+- **Artwork is withheld until its URL is proven reachable (issue #441).** The old `@jofr` plugin
+  fetched the cover on the Capacitor thread with Java's `HttpURLConnection`, and anything it threw (404
+  → `FileNotFoundException`, connection failure → `IOException`) surfaced as a `FATAL EXCEPTION` that
+  killed the process. Because `MediaControlsService.setMetadata` runs during startup for the restored
   track, an unreachable server meant **the app could not launch at all** — no WebView, force-finished
   activity — which is absurd for an app that otherwise has a full offline mode. The original guard
   probed with `new Image()`, and that has a hole: an `<img>` load can be served from the WebView's
@@ -261,21 +264,51 @@ Wiring (so it stays maintainable and testable):
   free (the fetch just fails). It probes the **same** URL the plugin will use (largest, via the
   shared `pickArtworkUrl`) instead of `artwork[0]`, which was validating a different image than the
   one being handed over. Metadata minus artwork is always sent first, so the controls stay responsive
-  either way. **Residual**: the network can still die between probe and native fetch; that window
-  can't be closed from the JS side — a plugin that crashes its host on any artwork failure is the
-  real defect, and replacing it is tracked in #226. `no-store` is applied **only on native**: on web
+  either way. **Residual, now closed natively**: the network could still die between probe and
+  native fetch. `@capgo` catches that `IOException` and logs it instead of crashing (#226); the probe
+  stays, so a dead cover URL still costs no native fetch. `no-store` is applied **only on native**: on web
   a failed cover merely doesn't render, so bypassing the HTTP cache there would add a full-size cover
   request per track change and buy nothing.
 - Manifest permissions: `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, `POST_NOTIFICATIONS`,
   `WAKE_LOCK`.
 
-**Capacitor version note**: `@jofr/capacitor-media-session@4` officially supports **Capacitor 6**, so
-`packages/mobile` is pinned to Capacitor 6 (CI uses **JDK 17**). This trades "latest Capacitor" for a
-media-session plugin on its supported major — the right call for a feature that can't be validated in CI
-and must work first try on device. Revisit if the plugin (or a equivalent) ships Capacitor 7+ support.
+## Capacitor version
 
-Still device-validated, not CI-validated: confirm on a physical device that playback continues
-backgrounded and the lock-screen controls/scrubber work.
+`packages/mobile` is on **Capacitor 8** (#226, from 6). The native Android project follows the
+Capacitor 7 and 8 migration guides: AGP **8.13.0**, Gradle **8.14.3**, JDK **21**, compileSdk/targetSdk
+**36** (minSdk stays **26**, above Capacitor's 24), the guide's androidx versions in `variables.gradle`,
+`=` property syntax in `app/build.gradle`, and `navigation|density` in the activity's `configChanges`.
+Our own plugins (`capacitor-apk-update`, `capacitor-tv-channels`) pin the same AGP, SDK levels and Java
+21; `capacitor-now-playing`'s pod targets iOS **15.0**. `capacitor-toolchain.test.ts` reads these off the
+installed `@capacitor/android` and `@capacitor/ios` and fails when a Capacitor bump leaves the native
+projects behind — nothing else would, since the Android build runs only on release tags. The toolchain
+holds that remain in `renovate.json` are listed in [dependency-management.md](dependency-management.md).
+
+Target SDK 36 brings Android 15's and 16's behaviour changes in one step:
+
+- **Edge-to-edge is enforced** (no opt-out at 36). Capacitor 8's `SystemBars` core plugin replaced
+  `adjustMarginsForEdgeToEdge`. With `insetsHandling: 'css'` (the default) and `viewport-fit=cover` in
+  `index.html`, it has two paths. On WebView **140+** it passes the real insets through, so the
+  `env(safe-area-inset-*)` paddings the layout, bottom nav, player and Now Playing header already carry
+  for iOS do the work. On older WebViews, whose `env()` reports 0, it pads the decor view by the
+  system-bar insets itself, so nothing sits under the bars either way. It also injects
+  `--safe-area-inset-*` variables, which match `env()` in both cases, so the CSS does not read them.
+  `capacitor.config.ts` sets `SystemBars.initialViewportFitValueHint: 'cover'` to skip the relayout
+  on the first frame. A test keeps that hint in step with `index.html`.
+- **Predictive back is on by default.** `@capacitor/app` delivers `backButton` through AndroidX
+  `OnBackPressedDispatcher`, which predictive back still drives, so `BackButtonService` and the TV
+  `BackHandlerStack` are unaffected. `bun run e2e:tv` exercises hardware Back on an API 36 AVD
+  (WebView 154), and all 18 tests pass at target 36.
+- **`navigation` in `configChanges`** stops a Bluetooth keyboard, gamepad or remote connecting from
+  restarting the activity, which reloads the web app and stops playback. That matters most on TV.
+
+**CI builds the iOS project with CocoaPods, not Capacitor 8's SPM default.** It runs
+`cap add ios --packagemanager CocoaPods` on `macos-26` (Capacitor 8 needs Xcode 26), because
+`capacitor-now-playing` ships only a podspec.
+
+**What still needs a device.** Checking that playback continues in the background, that the
+lock-screen and notification controls and scrubber work, and that the layout clears the system bars
+on an Android 15+ phone.
 
 ## Android TV support
 
@@ -418,7 +451,8 @@ signing in on the TV once (the **approve-from-phone flow** in `docs/device-pairi
 displays a QR + code and signs itself in with zero typing). Hardware media-key handling (a TV
 remote's transport buttons) is **verified on the Google TV emulator**: `KEYCODE_MEDIA_PLAY_PAUSE`
 (85) toggles playback and `KEYCODE_MEDIA_NEXT`/`PREVIOUS` (87/88) change tracks through
-`@jofr/capacitor-media-session`'s existing MediaSession action handlers, no code changes needed.
+the media-session plugin's MediaSession action handlers, no code changes needed (verified with
+`@jofr`; `@capgo` declares androidx's `MediaButtonReceiver` — re-check on device under #226).
 On TV that is also the answer to the Space/K parity gap: the global keyboard shortcuts are inert on
 a TV build (a focused `<button>` owns Space anyway) and a remote has no K key — play/pause belongs
 to the media keys, which work.
@@ -695,7 +729,7 @@ their real Google/Microsoft session. After consent: system browser → server
 callback → `nicotind://` deep link → the app reads `#token=…` →
 `AuthService.login()` → navigates to `/`.
 
-Proposed new deps (already Capacitor 6 compatible): `@capacitor/app`,
+Proposed new deps (Capacitor 8 majors): `@capacitor/app`,
 `@capacitor/browser`. The `nicotind` custom scheme is registered in
 `capacitor.config.ts` + an Android intent-filter in `AndroidManifest.xml`. No
 new native plugin — just the official ones.

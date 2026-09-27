@@ -46,11 +46,16 @@ describe('renovate.json holds', () => {
     ['com.android.tools.build:gradle', '<9'],
     ['gradle', '<9'],
     ['java-jdk', '<22'],
-    ['macos', '<26'],
-    ['@capacitor/**', '<7'],
-  ])('holds %s with Capacitor 6 (%s)', (name, range) => {
+  ])('holds %s with Capacitor 8 (%s)', (name, range) => {
     expect(holdFor(name)?.allowedVersions).toBe(range);
   });
+
+  it.each(['@capacitor/**', 'macos'])(
+    'no longer holds %s, lifted by Capacitor 8 (#226)',
+    (name) => {
+      expect(holdFor(name)).toBeUndefined();
+    },
+  );
 
   it('keeps @types/node on the .nvmrc runtime major', () => {
     const major = Number(readFileSync(join(repoRoot, '.nvmrc'), 'utf8').trim().split('.')[0]);

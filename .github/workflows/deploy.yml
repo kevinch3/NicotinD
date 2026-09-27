@@ -163,8 +163,7 @@ jobs:
       # On 17, D8 keeps javac's synthetic enum switch-map class
       # (`HttpRequestHandler$1`); on 21 it does not — one class out of 5,226, and
       # the only difference between our APK and F-Droid's. It fails their
-      # reproducible-build check. Capacitor 6 documents 17, but 21 builds and is
-      # what the reference binary must match. See docs/fdroid.md.
+      # reproducible-build check. Capacitor 8 requires 21 too. See docs/fdroid.md.
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
@@ -299,8 +298,9 @@ jobs:
   # The native `ios/` project is NOT committed (it must be generated on a Mac), 
   # so CI generates it ephemerally each run and patches Info.plist via a script. 
   # A failure here does not block the server deploy. See docs/ios-app.md.
+  # macos-26: Capacitor 8 requires Xcode 26, which older images do not default to.
   ios:
-    runs-on: macos-14
+    runs-on: macos-26
     # Tag-only; NOT continue-on-error — same fail-loud rationale as the `android`
     # job above (parallel with `deploy`, no `needs` linkage, so it never blocks it).
     # Skipped when the mobile inputs didn't change this release (see `changes`).
@@ -336,11 +336,14 @@ jobs:
         run: bun run --filter @nicotind/web build
 
       # ios/ is not committed (needs a Mac to generate); create it ephemerally.
-      # `cap add ios` is a no-op if it somehow already exists.
+      # `cap add ios` is a no-op if it somehow already exists. CocoaPods, not
+      # Capacitor 8's SPM default: @nicotind/capacitor-now-playing ships only a
+      # podspec, and the build below opens App.xcworkspace, which only the pods
+      # template has.
       - name: Generate + sync iOS project
         working-directory: packages/mobile
         run: |
-          bunx cap add ios || true
+          bunx cap add ios --packagemanager CocoaPods || true
           bunx cap sync ios
 
       # The ios/ project is ephemeral, so its AppIcon + splash are the default

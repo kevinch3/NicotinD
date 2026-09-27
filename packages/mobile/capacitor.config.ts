@@ -22,6 +22,11 @@ const config: CapacitorConfig = {
     // areas itself (BottomNav/player already account for the home indicator).
     contentInset: 'always',
   },
+  plugins: {
+    // index.html declares viewport-fit=cover; telling SystemBars up front skips
+    // a first-frame relayout. See docs/mobile-app.md "Capacitor version".
+    SystemBars: { initialViewportFitValueHint: 'cover' },
+  },
 };
 
 export default config;

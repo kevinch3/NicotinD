@@ -28,7 +28,7 @@
     "@angular/platform-browser": "^22.1.6",
     "@angular/router": "^22.1.6",
     "@angular/service-worker": "^22.1.6",
-    "@jofr/capacitor-media-session": "^4.0.0",
+    "@capgo/capacitor-media-session": "^8.0.32",
     "@sentry/angular": "^11.0.0",
     "qrcode": "^1.5.4",
     "rxjs": "~7.8.2",

@@ -2,11 +2,11 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { MediaControlsService } from './media-controls.service';
 import type { MediaMetadataInit } from '../lib/media-metadata';
 
-// Mimic the @jofr `MediaSession` Capacitor proxy: a `.then` getter that throws
+// Mimic the @capgo `MediaSession` Capacitor proxy: a `.then` getter that throws
 // (the real proxy turns `.then` access into a rejecting native call on web). If
 // the service ever lets a Promise resolve to this object directly, the Promise
 // machinery probes `.then` → `thenProbe()` fires → the regression is back.
-const jofr = vi.hoisted(() => {
+const mediaSession = vi.hoisted(() => {
   const thenProbe = vi.fn();
   const session = {
     get then() {
@@ -21,7 +21,7 @@ const jofr = vi.hoisted(() => {
   return { thenProbe, session };
 });
 
-vi.mock('@jofr/capacitor-media-session', () => ({ MediaSession: jofr.session }));
+vi.mock('@capgo/capacitor-media-session', () => ({ MediaSession: mediaSession.session }));
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
@@ -60,7 +60,7 @@ function asIos(plugin: ReturnType<typeof nativePlugin>): void {
   };
 }
 
-/** Android native: no NicotindNowPlaying plugin, so the @jofr path is used. */
+/** Android native: no NicotindNowPlaying plugin, so the @capgo path is used. */
 function asAndroid(): void {
   (globalThis as { Capacitor?: CapStub }).Capacitor = {
     isNativePlatform: () => true,
@@ -123,15 +123,15 @@ describe('MediaControlsService — iOS native routing', () => {
     expect(plugin.setPositionState).not.toHaveBeenCalled();
   });
 
-  it('routes transport through the native remoteCommand event, not @jofr', () => {
+  it('routes transport through the native remoteCommand event, not @capgo', () => {
     const plugin = nativePlugin();
     asIos(plugin);
     const svc = new MediaControlsService();
     const play = vi.fn();
     svc.setActionHandler('play', play);
     expect(plugin.addListener).toHaveBeenCalledWith('remoteCommand', expect.any(Function));
-    // The web (@jofr) action-handler path must NOT be used on iOS (no double-fire).
-    expect(jofr.session.setActionHandler).not.toHaveBeenCalled();
+    // The web (@capgo) action-handler path must NOT be used on iOS (no double-fire).
+    expect(mediaSession.session.setActionHandler).not.toHaveBeenCalled();
     plugin.emit('play');
     expect(play).toHaveBeenCalledWith(null);
   });
@@ -169,23 +169,23 @@ describe('MediaControlsService — iOS native routing', () => {
   });
 });
 
-describe('MediaControlsService — web (@jofr) path', () => {
+describe('MediaControlsService — web (@capgo) path', () => {
   afterEach(() => {
-    jofr.thenProbe.mockClear();
-    jofr.session.setActionHandler.mockClear();
-    jofr.session.setMetadata.mockClear();
+    mediaSession.thenProbe.mockClear();
+    mediaSession.session.setActionHandler.mockClear();
+    mediaSession.session.setMetadata.mockClear();
   });
 
-  it('invokes the @jofr session without probing the proxy.then (regression: MediaSession.then())', async () => {
-    // No Capacitor global → not iOS-native → routes to @jofr.
+  it('invokes the @capgo session without probing the proxy.then (regression: MediaSession.then())', async () => {
+    // No Capacitor global → not iOS-native → routes to @capgo.
     new MediaControlsService().setActionHandler('play', () => {});
     await flush();
-    expect(jofr.session.setActionHandler).toHaveBeenCalled();
+    expect(mediaSession.session.setActionHandler).toHaveBeenCalled();
     // The fix boxes the proxy so Promise resolution never reads its `.then`.
-    expect(jofr.thenProbe).not.toHaveBeenCalled();
+    expect(mediaSession.thenProbe).not.toHaveBeenCalled();
   });
 
-  it('routes metadata to @jofr on web, testing artwork URLs first', async () => {
+  it('routes metadata to @capgo on web, testing artwork URLs first', async () => {
     // The reachability probe is a real `fetch` rather than an <img> load — see
     // the "artwork reachability probe (issue #441)" block below for why.
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
@@ -193,9 +193,9 @@ describe('MediaControlsService — web (@jofr) path', () => {
     new MediaControlsService().setMetadata(META);
     await flush();
 
-    expect(jofr.session.setMetadata).toHaveBeenCalledWith({ ...META, artwork: [] });
-    expect(jofr.session.setMetadata).toHaveBeenCalledWith(META);
-    expect(jofr.thenProbe).not.toHaveBeenCalled();
+    expect(mediaSession.session.setMetadata).toHaveBeenCalledWith({ ...META, artwork: [] });
+    expect(mediaSession.session.setMetadata).toHaveBeenCalledWith(META);
+    expect(mediaSession.thenProbe).not.toHaveBeenCalled();
 
     vi.unstubAllGlobals();
   });
@@ -203,7 +203,7 @@ describe('MediaControlsService — web (@jofr) path', () => {
   // Issue #441: the app hard-crashed at launch when the restored track's cover
   // could not be fetched natively. The old guard used `new Image()`, but an
   // <img> load can be served from the WebView's HTTP cache without touching the
-  // network — while the @jofr plugin fetches via Java's HttpURLConnection, a
+  // network — while the old @jofr plugin fetched via Java's HttpURLConnection, a
   // different client on a different thread with a different cache. A cached
   // image therefore "proved" reachability that did not exist, the plugin's own
   // fetch threw, and the process died before the WebView ever appeared.
@@ -216,8 +216,8 @@ describe('MediaControlsService — web (@jofr) path', () => {
       await flush();
 
       // Controls still work, just without art — never a crash.
-      expect(jofr.session.setMetadata).toHaveBeenCalledWith({ ...META, artwork: [] });
-      expect(jofr.session.setMetadata).not.toHaveBeenCalledWith(META);
+      expect(mediaSession.session.setMetadata).toHaveBeenCalledWith({ ...META, artwork: [] });
+      expect(mediaSession.session.setMetadata).not.toHaveBeenCalledWith(META);
       vi.unstubAllGlobals();
     });
 
@@ -227,7 +227,7 @@ describe('MediaControlsService — web (@jofr) path', () => {
       new MediaControlsService().setMetadata(META);
       await flush();
 
-      expect(jofr.session.setMetadata).not.toHaveBeenCalledWith(META);
+      expect(mediaSession.session.setMetadata).not.toHaveBeenCalledWith(META);
       vi.unstubAllGlobals();
     });
 
@@ -237,7 +237,7 @@ describe('MediaControlsService — web (@jofr) path', () => {
       new MediaControlsService().setMetadata(META);
       await flush();
 
-      expect(jofr.session.setMetadata).toHaveBeenCalledWith(META);
+      expect(mediaSession.session.setMetadata).toHaveBeenCalledWith(META);
       vi.unstubAllGlobals();
     });
 

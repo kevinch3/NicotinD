@@ -6,9 +6,8 @@ import AVFoundation
 
 /**
  * Native iOS bridge to `MPNowPlayingInfoCenter` (the lock-screen / Control Center
- * "Now Playing" card). The `@jofr/capacitor-media-session` plugin ships no iOS
- * native code, so on iOS it only proxies to WKWebView's Web Media Session API —
- * which wires play/pause to the playing `<audio>` element but does NOT surface
+ * "Now Playing" card). WKWebView's Web Media Session API, which the original
+ * media-session plugin proxied to on iOS, wires play/pause to the playing `<audio>` element but does NOT surface
  * JS-set metadata (title/artist/artwork) or the position scrubber for
  * cross-origin web audio.
  *
