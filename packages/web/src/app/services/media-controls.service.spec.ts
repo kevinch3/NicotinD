@@ -241,20 +241,6 @@ describe('MediaControlsService — web (@capgo) path', () => {
       vi.unstubAllGlobals();
     });
 
-    it("probes native with cache: 'no-store', so a cached cover cannot mask a dead server", async () => {
-      // The whole point: on native the probe must hit the network, or it
-      // repeats the original bug in a new form.
-      asAndroid();
-      const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
-      vi.stubGlobal('fetch', fetchMock);
-
-      new MediaControlsService().setMetadata(META);
-      await flush();
-
-      expect(fetchMock).toHaveBeenCalledWith('big', expect.objectContaining({ cache: 'no-store' }));
-      vi.unstubAllGlobals();
-    });
-
     it('does not bypass the HTTP cache on web, where a failed cover cannot crash anything', async () => {
       // Guards a cost this fix would otherwise add: a full-size cover request
       // on every track change, for no benefit outside the native crash path.
@@ -264,9 +250,30 @@ describe('MediaControlsService — web (@capgo) path', () => {
       new MediaControlsService().setMetadata(META);
       await flush();
 
-      expect(fetchMock).toHaveBeenCalledWith('big', {});
+      expect(fetchMock).toHaveBeenCalledWith('big');
       vi.unstubAllGlobals();
     });
+  });
+
+  // On Android the cover is fetched by @capgo in Java, which catches the
+  // IOException that crashed @jofr (#441), so no WebView probe gates it: a
+  // backgrounded WebView held the probe's fetch until the app came back, and
+  // the lock screen kept the previous song's cover the whole time.
+  it('on Android, clears the previous cover and hands the largest one to the plugin with no WebView fetch', async () => {
+    asAndroid();
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    new MediaControlsService().setMetadata(META);
+    await flush();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    // An empty list would leave @capgo's old bitmap; an empty src clears it.
+    expect(mediaSession.session.setMetadata.mock.calls).toEqual([
+      [{ ...META, artwork: [{ src: '', sizes: '', type: '' }] }],
+      [{ ...META, artwork: [META.artwork![1]] }],
+    ]);
+    vi.unstubAllGlobals();
   });
 
   it('has no native diagnostics on web', async () => {

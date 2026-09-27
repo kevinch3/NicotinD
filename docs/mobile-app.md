@@ -250,25 +250,18 @@ Wiring (so it stays maintainable and testable):
   prev/seek), and `setPositionState` on the 2 s progress tick (keeps the notification scrubber in sync and
   enables `seekto`). The plugin **requires** an explicit `setPlaybackState('playing')` + registered
   play/pause handlers for the notification to appear — both are wired.
-- **Artwork is withheld until its URL is proven reachable (issue #441).** The old `@jofr` plugin
-  fetched the cover on the Capacitor thread with Java's `HttpURLConnection`, and anything it threw (404
-  → `FileNotFoundException`, connection failure → `IOException`) surfaced as a `FATAL EXCEPTION` that
-  killed the process. Because `MediaControlsService.setMetadata` runs during startup for the restored
-  track, an unreachable server meant **the app could not launch at all** — no WebView, force-finished
-  activity — which is absurd for an app that otherwise has a full offline mode. The original guard
-  probed with `new Image()`, and that has a hole: an `<img>` load can be served from the WebView's
-  HTTP cache without touching the network, so it "proved" a reachability that Java — a different
-  client, on a different thread, with a **different cache** — then failed to get. Cover in cache +
-  server gone = still crashed. The probe is now `fetch(url, { cache: 'no-store' })`, which forces a
-  real request, so success actually predicts the native fetch; it also covers the offline case for
-  free (the fetch just fails). It probes the **same** URL the plugin will use (largest, via the
-  shared `pickArtworkUrl`) instead of `artwork[0]`, which was validating a different image than the
-  one being handed over. Metadata minus artwork is always sent first, so the controls stay responsive
-  either way. **Residual, now closed natively**: the network could still die between probe and
-  native fetch. `@capgo` catches that `IOException` and logs it instead of crashing (#226); the probe
-  stays, so a dead cover URL still costs no native fetch. `no-store` is applied **only on native**: on web
-  a failed cover merely doesn't render, so bypassing the HTTP cache there would add a full-size cover
-  request per track change and buy nothing.
+- **Artwork goes straight to the native plugin on Android.** Issue #441: the old `@jofr` plugin
+  fetched the cover with Java's `HttpURLConnection` and let a 404 or connection failure kill the
+  process, so an unreachable server meant the app could not launch. The guard was a WebView probe
+  (`fetch(url, { cache: 'no-store' })`, since an `<img>` load can be answered from the WebView's cache
+  and prove nothing about Java's). `@capgo` catches that `IOException` and logs it (#226), so on Android
+  the probe is gone, and it had become harmful: **a backgrounded WebView held the probe's fetch until
+  the app came back**, so the lock screen kept the previous song's cover (new title, old art) for as
+  long as the app stayed in the background. `setMetadata` now makes two native calls: the first sends
+  the new title with an artwork entry whose `src` is empty, because `@capgo` keeps its previous bitmap on an
+  **empty list** and only an empty `src` clears it; the second sends the largest cover alone
+  (`pickArtworkUrl`), because `@capgo` uses the **first** entry. Web keeps the probe (without
+  `no-store`): there a failed cover merely doesn't render.
 - Manifest permissions: `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, `POST_NOTIFICATIONS`,
   `WAKE_LOCK`.
 
