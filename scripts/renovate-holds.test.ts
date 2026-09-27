@@ -52,6 +52,11 @@ describe('renovate.json holds', () => {
     expect(holdFor(name)?.allowedVersions).toBe(range);
   });
 
+  it('keeps @types/node on the .nvmrc runtime major', () => {
+    const major = Number(readFileSync(join(repoRoot, '.nvmrc'), 'utf8').trim().split('.')[0]);
+    expect(holdFor('@types/node')?.allowedVersions).toBe(`<${major + 1}`);
+  });
+
   it('keeps linuxserver/lidarr off its 0.8-era 8.x tags', () => {
     expect(holdFor('linuxserver/lidarr')?.allowedVersions).toBe('<8');
   });

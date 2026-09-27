@@ -17,7 +17,7 @@
     "packages/*"
   ],
   "engines": {
-    "node": ">=22.22.3"
+    "node": ">=24.19.0"
   },
   "scripts": {
     "dev": "bun run ./scripts/dev.ts",
@@ -88,7 +88,7 @@
     "*.ts": "prettier --write"
   },
   "overrides": {
-    "@types/node": "25.5.0",
+    "@types/node": "24.19.0",
     "js-yaml": "^5",
     "yaml": "^2.9.0"
   }

@@ -70,7 +70,8 @@ uses `module`/`moduleResolution: nodenext` (`.cts` â†’ `.cjs` CommonJS; `.ts` â†
 
 > **@types/node pin:** `electron` depends on `@types/node@^20`, which collides with the repo's bun
 > type environment and breaks `ChildProcess` typing in `api`. The root
-> `package.json` pins `overrides: { "@types/node": "25.5.0" }` to keep the workspace typecheck green.
+> `package.json` pins `overrides: { "@types/node": "24.19.0" }` to keep the workspace typecheck green.
+> The pin matches `.nvmrc`, so the types describe the Node the web build actually runs on.
 
 ## Sidecar supervisor
 

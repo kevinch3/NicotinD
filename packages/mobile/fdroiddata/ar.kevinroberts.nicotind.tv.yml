@@ -49,8 +49,8 @@ Builds:
       # xz: Cannot exec`), and gzip is one fewer thing to have to install.
       - install -d /opt/node
       - curl -fsSL -o /tmp/node.tar.gz
-          https://nodejs.org/dist/v22.22.3/node-v22.22.3-linux-x64.tar.gz
-      - echo "c7a10d6816da8eaaa7534dd73c71c6e2b2c391dbbf845e364902d156615dd1b8  /tmp/node.tar.gz"
+          https://nodejs.org/dist/v24.19.0/node-v24.19.0-linux-x64.tar.gz
+      - echo "f625d97cd707df4ff96254916fbc5ff014f09c09effe5a1e0ca8f6d41a8789d4  /tmp/node.tar.gz"
           | sha256sum -c -
       - tar -xzf /tmp/node.tar.gz -C /opt/node --strip-components=1
       - ln -sf /opt/node/bin/node /usr/local/bin/node

@@ -152,7 +152,7 @@ jobs:
           restore-keys: |
             bun-${{ runner.os }}-${{ env.BUN_VERSION }}-
 
-      # ng build (web) requires Node >= 22.22.3; pin from .nvmrc.
+      # ng build (web) requires Node >= 24.19.0; pin from .nvmrc.
       - uses: actions/setup-node@v7
         with:
           node-version-file: '.nvmrc'
@@ -323,7 +323,7 @@ jobs:
           restore-keys: |
             bun-${{ runner.os }}-${{ env.BUN_VERSION }}-
 
-      # ng build (web) requires Node >= 22.22.3; pin from .nvmrc.
+      # ng build (web) requires Node >= 24.19.0; pin from .nvmrc.
       - uses: actions/setup-node@v7
         with:
           node-version-file: '.nvmrc'
@@ -418,7 +418,7 @@ jobs:
             bun-${{ runner.os }}-${{ env.BUN_VERSION }}-
 
       # electron-builder itself (and ng build for the web bundle it stages)
-      # wants Node >= 22.22.3; pin from .nvmrc, same as android/ios.
+      # wants Node >= 24.19.0; pin from .nvmrc, same as android/ios.
       - uses: actions/setup-node@v7
         with:
           node-version-file: '.nvmrc'

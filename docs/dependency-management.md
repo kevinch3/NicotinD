@@ -54,7 +54,8 @@ GHSA-hh8m-fm6v-7cvg needs `core`/`compiler` ≥ 22.1.0; the rest move in lockste
 framework packages are released and peered as one version).
 
 (`@types/node` in the same block is an exact pin for a different reason — toolchain
-consistency, not security.)
+consistency, not security. It tracks the `.nvmrc` Node version, so its major moves only with a
+Node runtime upgrade.)
 
 Both were surfaced by `bun run check:audit`; see
 [quality-gates.md](quality-gates.md) for why that gate exists rather than a plain

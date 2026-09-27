@@ -45,6 +45,11 @@
       "matchPackageNames": ["com.android.tools.build:gradle", "gradle"],
       "allowedVersions": "<9"
     },
+    {
+      "description": "Types describe the runtime: @types/node stays on the Node major in .nvmrc (24). Lift together with the next Node major.",
+      "matchPackageNames": ["@types/node"],
+      "allowedVersions": "<25"
+    },
     { "matchPackageNames": ["java-jdk"], "allowedVersions": "<22" },
     { "matchPackageNames": ["macos"], "allowedVersions": "<26" },
     {
