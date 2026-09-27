@@ -45,7 +45,7 @@ version required by an advisory, left as a caret so Renovate can still move them
 
 | Override | Why | Reached through |
 | --- | --- | --- |
-| `js-yaml` `^4.3.1` | Quadratic CPU in merge-key chains and `!!omap` resolution (2 high). `electron-updater` asks for `^4.1.0`, so it accepts the fix with no parent bump. | `@nicotind/desktop > electron-updater` |
+| `js-yaml` `^5` | Quadratic CPU in merge-key chains and `!!omap` resolution (2 high). Every consumer asks for `^4.1.0`, so `^5` forces them across a major: v5's `load` drops `<<` merges and YAML 1.1 tags by default and throws on empty or comment-only input. None of their real inputs use those (`latest.yml`, `app-update.yml`, `electron-builder.yml`, the bundled NSIS/snap templates parse identically), and a v4 updater reads a v5-dumped `latest.yml` unchanged. Re-check that before letting it move again. | `@nicotind/desktop > electron-updater`, `electron-builder` (`app-builder-lib`, `builder-util`, `dmg-builder`), `cosmiconfig` (commitlint, postcss-loader, Storybook) |
 | `yaml` `^2.9.0` | Stack overflow on deeply nested collections. Bumping `@hono/zod-openapi` was not enough: it asks for `openapi3-ts ^4.5.0` and bun kept the hoisted `4.5.0`, whose yaml range is `^2.8.0`. | `@nicotind/api > @hono/zod-openapi > openapi3-ts` |
 
 Direct dependencies take the floor in their own range instead: `@nicotind/web` declares every
