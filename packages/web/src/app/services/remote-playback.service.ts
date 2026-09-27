@@ -48,6 +48,7 @@ import {
 } from './playback-ws.service';
 import { PlayerService, Track } from './player.service';
 import { AuthService } from './auth.service';
+import { ServerConfigService } from './server-config.service';
 import { LibraryApiService } from './api/library-api.service';
 import { toTrack } from '../lib/track-utils';
 
@@ -58,6 +59,7 @@ export class RemotePlaybackService {
   private readonly ws = inject(PlaybackWsService);
   private readonly player = inject(PlayerService);
   private readonly auth = inject(AuthService);
+  private readonly server = inject(ServerConfigService);
   private readonly destroyRef = inject(DestroyRef);
   /** Resolving a session queue needs HTTP; fetched lazily so every consumer
    *  of this service does not have to provide it. */
@@ -136,9 +138,10 @@ export class RemotePlaybackService {
    */
   readonly castsReceived = signal(0);
 
-  /** The person the presence socket was opened for. A TV profile switch changes
-   *  the person without ever clearing the token in between (#1406). */
-  private connectedUser: string | null = null;
+  /** Server + person the presence socket was opened for; null = no socket. A
+   *  TV profile switch (#1406) or a native server switch (#1414) changes them
+   *  without ever clearing the token in between. */
+  private connectedKey: string | null = null;
   private readonly connectedAsSig = signal<string | null>(null);
   readonly connectedAs = this.connectedAsSig.asReadonly();
   /** The person the SERVER has acknowledged this device under: the registration
@@ -359,22 +362,24 @@ export class RemotePlaybackService {
 
   initialize(): void {
     // --- Presence channel: up whenever logged in, down on logout ---
-    // Keyed on the person too, not only the token: a TV profile switch
-    // (#1406) swaps one person's token for another's in a single tick, and
-    // connect() alone no-ops on an open socket — the TV stayed registered as
-    // the previous person, castable and drivable from their phone.
+    // Keyed on the server and the person, not only the token: a TV profile
+    // switch (#1406) and a native server switch (#1414) both swap sessions in
+    // a single tick, and connect() alone no-ops on an open socket — the device
+    // stayed registered as the previous person, or on the previous server.
     effect(() => {
       const token = this.auth.token();
       const user = this.auth.username();
+      const server = this.server.baseUrl();
       untracked(() => {
         if (!token) {
           this.ws.disconnect();
-          this.connectedUser = null;
+          this.connectedKey = null;
           this.connectedAsSig.set(null);
           return;
         }
-        if (this.connectedUser !== null && user !== this.connectedUser) this.ws.disconnect();
-        this.connectedUser = user;
+        const key = `${server}\n${user ?? ''}`;
+        if (this.connectedKey !== null && key !== this.connectedKey) this.ws.disconnect();
+        this.connectedKey = key;
         this.connectedAsSig.set(user);
         this.ws.connect();
       });

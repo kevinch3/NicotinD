@@ -4,6 +4,7 @@ import { RemotePlaybackService } from './remote-playback.service';
 import { PlaybackWsService } from './playback-ws.service';
 import { PlayerService } from './player.service';
 import { AuthService } from './auth.service';
+import { ServerConfigService } from './server-config.service';
 import { LibraryApiService } from './api/library-api.service';
 import { EMPTY, Subject, of } from 'rxjs';
 import { filter, map } from 'rxjs/operators';
@@ -171,6 +172,43 @@ describe('RemotePlaybackService — the "available as an output" preference', ()
     TestBed.flushEffects();
     expect(mockWs.disconnect).toHaveBeenCalledTimes(1);
     expect(mockWs.sendRelease).not.toHaveBeenCalled();
+  });
+
+  it('reconnects when the same person moves to another server (#1414)', () => {
+    const service = inject();
+    const auth = TestBed.inject(AuthService);
+    const server = TestBed.inject(ServerConfigService);
+    server.setBaseUrl('https://a.example');
+    auth.login('tok-a', 'ana', 'user');
+    TestBed.runInInjectionContext(() => service.initialize());
+    TestBed.flushEffects();
+    expect(mockWs.connect).toHaveBeenCalledTimes(1);
+
+    // The native server switch: reset, repoint, log in with the stashed
+    // session of the SAME username — all in one tick.
+    auth.resetSession();
+    server.setBaseUrl('https://b.example');
+    auth.login('tok-a-on-b', 'ana', 'user');
+    TestBed.flushEffects();
+    expect(mockWs.disconnect).toHaveBeenCalledTimes(1);
+    expect(mockWs.connect).toHaveBeenCalledTimes(2);
+    expect(mockWs.disconnect.mock.invocationCallOrder[0]).toBeLessThan(
+      mockWs.connect.mock.invocationCallOrder[1],
+    );
+  });
+
+  it('a session restored without a username still reconnects for the next person', () => {
+    const service = inject();
+    const auth = TestBed.inject(AuthService);
+    auth.token.set('tok-legacy'); // a token with no stored username
+    TestBed.runInInjectionContext(() => service.initialize());
+    TestBed.flushEffects();
+    expect(mockWs.connect).toHaveBeenCalledTimes(1);
+
+    auth.login('tok-b', 'ben', 'user');
+    TestBed.flushEffects();
+    expect(mockWs.disconnect).toHaveBeenCalledTimes(1);
+    expect(mockWs.connect).toHaveBeenCalledTimes(2);
   });
 
   it('a token refresh for the same person does not reconnect', () => {
