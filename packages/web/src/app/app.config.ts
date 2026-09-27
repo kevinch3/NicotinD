@@ -10,11 +10,17 @@ import {
   effect,
 } from '@angular/core';
 import { provideRouter } from '@angular/router';
-import { HttpErrorResponse, provideHttpClient, withInterceptors } from '@angular/common/http';
+import {
+  HttpContext,
+  HttpErrorResponse,
+  provideHttpClient,
+  withInterceptors,
+} from '@angular/common/http';
 import { provideServiceWorker } from '@angular/service-worker';
 import { routes } from './app.routes';
 import { BufferingErrorHandler } from './observability/buffering-error-handler';
 import { authInterceptor } from './interceptors/auth.interceptor';
+import { KEEP_SESSION_ON_401 } from './lib/http-context';
 import { isNativeShell, serviceWorkerEnabled } from './lib/platform';
 import { SetupService } from './services/setup.service';
 import { ThemeService } from './services/theme.service';
@@ -51,17 +57,23 @@ export function refreshSession(
   auth: AuthService,
   player?: PlayerService,
   preferences?: { prefs: UserPreferencesService; theme: ThemeService; i18n: TranslateService },
-  { isStale = () => false }: { isStale?: () => boolean } = {},
+  {
+    isStale = () => false,
+    keepSessionOn401 = false,
+  }: { isStale?: () => boolean; keepSessionOn401?: boolean } = {},
 ): Promise<'ok' | 'refused' | 'error'> {
+  // Boot keeps the interceptor's logout-on-401 (a dead token at boot belongs
+  // on the login page); a profile switch reads the refusal itself (#1410).
+  const context = keepSessionOn401 ? new HttpContext().set(KEEP_SESSION_ON_401, true) : undefined;
   return new Promise((resolve) => {
     let refreshed = false;
     api
-      .refreshToken()
+      .refreshToken(context)
       .pipe(
         switchMap((res) => {
           refreshed = true;
           if (!isStale()) auth.setToken(res.token);
-          return api.getMe();
+          return api.getMe(context);
         }),
       )
       .subscribe({

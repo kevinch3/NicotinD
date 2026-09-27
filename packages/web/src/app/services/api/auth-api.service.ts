@@ -1,6 +1,6 @@
 import type { StrategyId, UserPreferences } from '@nicotind/core';
 import { Injectable, inject } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpContext } from '@angular/common/http';
 import type { AuthResult } from './api-types';
 
 export interface UserProfile {
@@ -42,15 +42,15 @@ export class AuthApiService {
   }
 
   // Sliding session: exchange the current valid token for a fresh one.
-  refreshToken() {
-    return this.http.post<{ token: string }>('/api/auth/refresh', {});
+  refreshToken(context?: HttpContext) {
+    return this.http.post<{ token: string }>('/api/auth/refresh', {}, { context });
   }
 
   dismissWelcome() {
     return this.http.post<void>('/api/auth/dismiss-welcome', {});
   }
 
-  getMe() {
-    return this.http.get<UserProfile>('/api/auth/me');
+  getMe(context?: HttpContext) {
+    return this.http.get<UserProfile>('/api/auth/me', { context });
   }
 }

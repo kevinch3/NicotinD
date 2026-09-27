@@ -1,4 +1,6 @@
 import { TestBed } from '@angular/core/testing';
+import { HttpContext } from '@angular/common/http';
+import { KEEP_SESSION_ON_401 } from '../lib/http-context';
 import { provideRouter, Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component } from '@angular/core';
@@ -101,6 +103,12 @@ describe('TvProfileService', () => {
     expect(auth.role()).toBe('user'); // getMe's role wins over the stored one
     expect(auth.token()).toBe('fresh');
     expect(api.refreshToken).toHaveBeenCalled();
+    // Both checks carry the flag: a refusal is the switch's to read, never a
+    // reason for the interceptor to sign out whoever is on screen (#1410).
+    const refreshCtx = (api.refreshToken.mock.calls[0] as unknown[])[0] as HttpContext;
+    const meCtx = (api.getMe.mock.calls[0] as unknown[])[0] as HttpContext;
+    expect(refreshCtx.get(KEEP_SESSION_ON_401)).toBe(true);
+    expect(meCtx.get(KEEP_SESSION_ON_401)).toBe(true);
     expect(navigate).toHaveBeenCalledWith(['/']);
     // Ana is still known to the TV.
     expect(
