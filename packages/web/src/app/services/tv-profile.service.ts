@@ -105,7 +105,9 @@ export class TvProfileService {
       this.auth,
       this.player,
       { prefs: this.prefs, theme: this.theme, i18n: this.i18n },
-      { isStale },
+      // The refusal is ours to read: the interceptor's logout-on-401 would
+      // sign out whoever is on screen now (#1410).
+      { isStale, keepSessionOn401: true },
     );
     if (isStale()) return;
     if (result === 'refused') {

@@ -6,6 +6,7 @@ import { AuthService } from '../services/auth.service';
 import { ServerConfigService } from '../services/server-config.service';
 import { SetupService } from '../services/setup.service';
 import { httpErrorCode } from '../lib/http-error';
+import { KEEP_SESSION_ON_401 } from '../lib/http-context';
 
 // Read requests that hang against an unreachable host (common in the native
 // WebView when connectivity drops) are bounded so they fail fast instead of
@@ -58,7 +59,11 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
       if (err.status === 0 && (req.url.startsWith('/api') || req.url.startsWith('/rest'))) {
         setup.reportServerFailure();
       }
-      if (err.status === 401) {
+      // A flagged request's refusal is the caller's to handle (#1410): a TV
+      // profile switch checking a stored token must not sign out whoever is
+      // on screen now.
+      const keepSession = req.context.get(KEEP_SESSION_ON_401);
+      if (err.status === 401 && !keepSession) {
         auth.logout();
         // Router (not window.location) — a hard navigation breaks in the native
         // WebView where there is no real server at the local origin root.
@@ -68,7 +73,7 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
         // Matches the stable `code` (issue #236), not the English `error`
         // string — that string-match was silently untranslatable and would
         // have broken the moment the server's message changed or localized.
-        if (httpErrorCode(err) === 'ACCOUNT_DISABLED') {
+        if (httpErrorCode(err) === 'ACCOUNT_DISABLED' && !keepSession) {
           auth.logout();
           router.navigateByUrl('/login');
         }

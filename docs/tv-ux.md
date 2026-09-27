@@ -213,6 +213,11 @@ now rather than as a 401 on the first library call, and the person's radio varie
 language follow them. A refused refresh — 401/403 — forgets that person and goes back to `/who`
 (or to the QR when nobody is left); any other failure keeps the login and goes Home. A newer switch
 supersedes an older one still waiting on its refresh, so two quick presses never cross tokens.
+The switch's refresh and `/me` carry `KEEP_SESSION_ON_401` (`lib/http-context.ts`), so the auth
+interceptor does not run its logout-on-401 for them: the switch reads the refusal itself. Without
+it, a superseded switch whose token was refused logged out the person the newer switch had just
+signed in, and a plain refused switch raced the interceptor's `/login` against its own `/who`
+(#1410). Boot's refresh keeps the interceptor's behaviour — a dead token at boot belongs on login.
 Holding the remote is enough: the owner chose the Netflix model over a PIN.
 
 Surfaces: Home's nav ends with the active name → `/who`, a list of people (active one marked)
