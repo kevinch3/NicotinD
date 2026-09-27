@@ -274,6 +274,18 @@ describe('PlaybackWsService device identity across tabs (#882)', () => {
     storageStub.setItem('nicotind_device_id', 'legacy-uuid');
     expect(profileIdOf(openTab())).toBe('legacy-uuid');
   });
+
+  it('closes its tab channel when its injector is destroyed', () => {
+    const close = vi.spyOn(BroadcastChannel.prototype, 'close');
+    try {
+      openTab();
+      expect(close).not.toHaveBeenCalled();
+      TestBed.resetTestingModule();
+      expect(close).toHaveBeenCalledTimes(1);
+    } finally {
+      close.mockRestore();
+    }
+  });
 });
 
 describe('PlaybackWsService connection lifecycle (#877)', () => {

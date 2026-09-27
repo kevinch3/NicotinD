@@ -3,7 +3,7 @@
  * Handles connection, reconnection with exponential backoff, device registration,
  * heartbeat, and message routing via RxJS Observables.
  */
-import { Injectable, inject, signal } from '@angular/core';
+import { DestroyRef, Injectable, inject, signal } from '@angular/core';
 import { Subject, Observable } from 'rxjs';
 import { filter, map } from 'rxjs/operators';
 import { ServerConfigService } from './server-config.service';
@@ -84,8 +84,12 @@ export class PlaybackWsService {
    *  id and any cast pointed at it (issue #882). */
   private guardTabIdentity(): void {
     if (typeof BroadcastChannel !== 'function') return;
+    const channel = new BroadcastChannel(TAB_CHANNEL);
+    // Node's BroadcastChannel spans worker threads: an unclosed one outlives its
+    // injector and fires into a torn-down test environment.
+    inject(DestroyRef).onDestroy(() => channel.close());
     guardTabId({
-      channel: new BroadcastChannel(TAB_CHANNEL),
+      channel,
       tabId: sessionStorage.getItem(TAB_ID_KEY) ?? '',
       persist: (id) => sessionStorage.setItem(TAB_ID_KEY, id),
       onRemint: (id) => {
