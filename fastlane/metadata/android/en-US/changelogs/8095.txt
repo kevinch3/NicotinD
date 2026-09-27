@@ -1,0 +1,1 @@
+• discography: add artists to Lidarr as an explicit background job, not inside a read (#1436)

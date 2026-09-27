@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.95](https://github.com/kevinch3/NicotinD/compare/v0.8.94...v0.8.95) (2026-09-27)
+
+### Features
+
+* **discography:** add artists to Lidarr as an explicit background job, not inside a read ([#1436](https://github.com/kevinch3/NicotinD/issues/1436)) ([3a2bdb7](https://github.com/kevinch3/NicotinD/commit/3a2bdb79666d747e203709164591a672829b14fa)), closes [#644](https://github.com/kevinch3/NicotinD/issues/644)
 ## [0.8.94](https://github.com/kevinch3/NicotinD/compare/v0.8.93...v0.8.94) (2026-09-27)
 
 ### Bug Fixes
