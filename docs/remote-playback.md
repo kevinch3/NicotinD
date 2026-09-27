@@ -227,7 +227,10 @@ Two defects made "the TV disappeared from the device list" **permanent** rather 
   boot holding its original's tab id; `guardTabId` (`lib/tab-id-guard.ts`) announces the id over a
   `BroadcastChannel`, which never echoes to its sender — hearing a claim for the id you hold means
   a twin exists, and the tab that hears "taken" is the newcomer, so the original keeps its id and
-  any cast pointed at it.
+  any cast pointed at it. `PlaybackWsService` closes the channel when its injector is destroyed:
+  in the vitest `threads` pool Node's `BroadcastChannel` spans every worker, so one left open
+  after its spec file answered another file's claim inside a torn-down jsdom
+  (`sessionStorage is not defined`, 8 unhandled errors that fail the run).
 - **A stale close evicted a live device.** The client reuses **one stable device id across
   reconnects**; after a Wi-Fi blip the dead socket's close can land *after* the fresh socket
   re-registered. `onClose` drops the device only if no other connection for that user still holds
