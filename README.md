@@ -225,7 +225,7 @@ tables below group every document by what you're trying to do.
 ## Development
 
 ```bash
-bun install              # Bun >= 1.1, Node >= 22.22.3 (for ng build)
+bun install              # Bun >= 1.1, Node >= 24.19.0 (for ng build)
 bun run src/main.ts      # start the server (embedded mode)
 bun run verify           # every CI gate in one command — run before pushing
 bun run e2e              # Playwright end-to-end suite

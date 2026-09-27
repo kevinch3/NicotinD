@@ -11,7 +11,7 @@ and [CLAUDE.md](CLAUDE.md) (the always-loaded index of design patterns).
 ### Requirements
 
 - [Bun](https://bun.sh/) >= 1.1
-- Node >= 22.22.3 (for `ng build`)
+- Node >= 24.19.0 (for `ng build`)
 
 ### Setup
 

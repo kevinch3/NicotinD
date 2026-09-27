@@ -45,7 +45,7 @@ version required by an advisory, left as a caret so Renovate can still move them
 
 | Override | Why | Reached through |
 | --- | --- | --- |
-| `js-yaml` `^4.3.1` | Quadratic CPU in merge-key chains and `!!omap` resolution (2 high). `electron-updater` asks for `^4.1.0`, so it accepts the fix with no parent bump. | `@nicotind/desktop > electron-updater` |
+| `js-yaml` `^5` | Quadratic CPU in merge-key chains and `!!omap` resolution (2 high). Every consumer asks for `^4.1.0`, so `^5` forces them across a major: v5's `load` drops `<<` merges and YAML 1.1 tags by default and throws on empty or comment-only input. None of their real inputs use those (`latest.yml`, `app-update.yml`, `electron-builder.yml`, the bundled NSIS/snap templates parse identically), and a v4 updater reads a v5-dumped `latest.yml` unchanged. Re-check that before letting it move again. | `@nicotind/desktop > electron-updater`, `electron-builder` (`app-builder-lib`, `builder-util`, `dmg-builder`), `cosmiconfig` (commitlint, postcss-loader, Storybook) |
 | `yaml` `^2.9.0` | Stack overflow on deeply nested collections. Bumping `@hono/zod-openapi` was not enough: it asks for `openapi3-ts ^4.5.0` and bun kept the hoisted `4.5.0`, whose yaml range is `^2.8.0`. | `@nicotind/api > @hono/zod-openapi > openapi3-ts` |
 | `browserslist` `^4.28.7` | Unbounded memory growth and a prototype write via custom stats (2 high). Sentry v11's `@sentry/node` depends on `@sentry/bundler-plugins`, which brought `@babel/core` into the production closure, and bun reused the hoisted dev-only `4.28.1`. The override re-resolves it and its `baseline-browser-mapping` (fixed ≥ 2.11.0). | `@nicotind/api > @sentry/bun > @sentry/node > @sentry/bundler-plugins > @babel/core` |
 
@@ -59,7 +59,8 @@ into production; a lockfile bump to `5.0.12` fixed it with no override, because 
 accepts it and an override would also force the `1.x`/`2.x` copies other packages need.
 
 (`@types/node` in the same block is an exact pin for a different reason — toolchain
-consistency, not security.)
+consistency, not security. It tracks the `.nvmrc` Node version, so its major moves only with a
+Node runtime upgrade.)
 
 All were surfaced by `bun run check:audit`; see
 [quality-gates.md](quality-gates.md) for why that gate exists rather than a plain
@@ -77,6 +78,8 @@ the noted upstream condition changes.
 | --- | --- | --- | --- |
 | `typescript` 6 → 7 | 7.x | `@angular/compiler-cli` (Angular 22) peers `typescript@6.x`. TS 7 is the Go rewrite; adopting it breaks the web build. | Angular ships a release peering `typescript@>=7`. |
 | `@capacitor/*` 6 → 8 | 8.x | `@jofr/capacitor-media-session` (Android lock-screen / background audio) latest (4.0.0) still peers `@capacitor/core@^6.0.0`; no release supports Cap 7/8. Bumping breaks background playback + needs a native android/ios project migration (gradle/pods/minSDK). | The media-session plugin (or a replacement) supports Capacitor 7/8. Treat as its own focused migration, not a routine bump. |
+| AGP / Gradle 8 → 9, `java-jdk` 21 → 25, `macos` runner 14 → 26 | 9.x / 25 / 26 | Coupled to Capacitor 6: JDK 25 needs Gradle ≥ 9.1, which needs AGP 9, and Capacitor 6 builds on neither. Capacitor 8 needs Xcode 26. | They move together with the Capacitor 8 migration (#226). |
+| `linuxserver/lidarr` 3 → "8" | — | Not a real major: the image still carries 0.8-era tags (`8.1.2135`) that sort above the current 3.x line. | Never — the hold is a versioning artefact. |
 
 ## Python sidecar (`packages/analysis/pyproject.toml`)
 
@@ -84,7 +87,9 @@ Runtime deps are **floor-pinned** (`fastapi>=0.110`, `uvicorn>=0.29`, dev `pytes
 `httpx>=0.27` / `ruff>=0.4`), so `pip install` already resolves the latest compatible —
 there is nothing to "bump". The `essentia-tensorflow`, `numpy<2`, and `nvidia-*-cu11==`
 pins are **deliberate ABI locks** (the CUDA-11 ABI TensorFlow 2.5 dlopens) — do not bump
-them casually; they move only together with a tested Essentia/TF upgrade.
+them casually; they move only together with a tested Essentia/TF upgrade. `renovate.json` disables
+them by **package name, for every manager** — Renovate reads this file with its `poetry` manager, so a
+hold scoped to the pip managers never matched (it proposed `numpy<3` on its first run).
 
 ## Automating updates — configured
 
@@ -94,11 +99,11 @@ It is at **step 3**: grouping, major-isolation, weekly PR schedule, **automerge 
 (build trust in the cadence, then enable automerge for patch/minor devDeps) are deliberate
 follow-ups, not oversights.
 
-> **One manual step remains.** The workflow needs a `RENOVATE_TOKEN` repository secret — a
-> fine-grained PAT scoped to this repo with **Contents: read & write**, **Pull requests: read &
-> write** and **Issues: read & write** (the Dependency Dashboard is an issue). Without it the
-> workflow *skips* with an explanatory job summary rather than failing, so an unconfigured repo
-> does not go red every morning — but Renovate is not running until the secret exists.
+> **The token.** The workflow reads a `RENOVATE_TOKEN` repository secret — a fine-grained PAT scoped
+> to this repo with **Contents**, **Pull requests**, **Issues** (the Dependency Dashboard is an
+> issue) and **Workflows** (it bumps `.github/workflows/*`) read & write, plus **Dependabot alerts**
+> read. Without it the workflow *skips* with an explanatory job summary rather than failing. Added
+> 2026-09-27; the first real run opened the Dependency Dashboard (#1419).
 
 ### What "configured but not running" cost (#848)
 
