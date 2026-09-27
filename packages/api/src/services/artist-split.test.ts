@@ -372,6 +372,15 @@ describe('segmentConcatenatedArtist', () => {
   it('returns null for a too-short value', () => {
     expect(segmentConcatenatedArtist('AB', resolver('A', 'B'))).toBeNull();
   });
+
+  // #1427: prod's only two segmentations were both false covers, and both leaned on a
+  // letters-only 2-char piece — `ID` is the DJ-mix "unidentified track" placeholder.
+  it.each([
+    ['IDEMI', ['ID', 'EMI']],
+    ['AMEME', ['AME', 'ME']],
+  ])('does not cover the real name %s with a letters-only 2-char piece', (name, pieces) => {
+    expect(segmentConcatenatedArtist(name, resolver(...pieces))).toBeNull();
+  });
 });
 
 describe('formatArtistDisplay', () => {

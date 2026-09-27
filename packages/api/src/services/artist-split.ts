@@ -103,6 +103,14 @@ export function isAtomicArtist(raw: string): boolean {
 const MIN_ARTIST_SEGMENT = 2;
 
 /**
+ * A 2-char piece must carry a digit ("U2"): letters-only ones ("ID", "ME") are words and
+ * placeholders, and were both of prod's false covers (#1427).
+ */
+const isSegmentLongEnough = (piece: string): boolean =>
+  piece.length > MIN_ARTIST_SEGMENT ||
+  (piece.length === MIN_ARTIST_SEGMENT && /\p{N}/u.test(piece));
+
+/**
  * Segment a delimiter-less artist mash ("2 MinutosTruenoDie Toten Hosen" — three
  * acts run together with no separator) into its constituent artists, or null when
  * it can't be covered entirely by confirmed real artists.
@@ -153,7 +161,7 @@ export function segmentConcatenatedArtist(
       // atomic — an atomic mash confirms itself, exactly the case we want to break).
       if (start === 0 && end === v.length) continue;
       const piece = v.slice(start, end).trim();
-      if (piece.length < MIN_ARTIST_SEGMENT) continue;
+      if (!isSegmentLongEnough(piece)) continue;
       const confirmed = resolveConfirmed(piece);
       if (!confirmed) continue;
       const rest = solve(end);
