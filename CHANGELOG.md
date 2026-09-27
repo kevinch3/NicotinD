@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.93](https://github.com/kevinch3/NicotinD/compare/v0.8.92...v0.8.93) (2026-09-27)
+
+### Bug Fixes
+
+* **mobile:** update the lock-screen cover while the Android app is backgrounded ([#1431](https://github.com/kevinch3/NicotinD/issues/1431)) ([bb2a877](https://github.com/kevinch3/NicotinD/commit/bb2a8770dceb48997b2d7d51775c2db3675285c8)), references [#441](https://github.com/kevinch3/NicotinD/issues/441)
 ## [0.8.92](https://github.com/kevinch3/NicotinD/compare/v0.8.91...v0.8.92) (2026-09-27)
 
 ### Bug Fixes
