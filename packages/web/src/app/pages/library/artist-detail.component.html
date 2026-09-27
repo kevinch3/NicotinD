@@ -163,6 +163,24 @@
           <!-- A line, not a skeleton grid: the local albums are already rendered
                below, and eight placeholder tiles would read as real content. -->
           <span class="ml-auto text-xs text-theme-muted">Checking full discography…</span>
+        } @else if (provisioning()) {
+          <span class="ml-auto text-xs text-theme-muted" data-testid="discography-provisioning">
+            {{ 'discography.addingArtist' | t }}
+          </span>
+        } @else if (notProvisioned()) {
+          <span class="ml-auto flex items-center gap-2 text-xs text-theme-muted">
+            @if (provisionError(); as err) {
+              <span class="text-red-400" data-testid="discography-provision-error">{{ err }}</span>
+            }
+            <button
+              type="button"
+              (click)="addArtistToLidarr()"
+              data-testid="discography-add-artist"
+              class="font-medium text-[var(--theme-accent)] hover:underline"
+            >
+              {{ 'discography.addArtist' | t }}
+            </button>
+          </span>
         }
       </div>
 

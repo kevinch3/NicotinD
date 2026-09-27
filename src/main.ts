@@ -13,6 +13,7 @@ import {
   maybeCheckForUpdate,
   NativeProcessStrategy,
   optimizeDatabase,
+  SERVER_IDLE_TIMEOUT_S,
   ServiceManager,
 } from '@nicotind/api';
 
@@ -135,20 +136,12 @@ async function main() {
     // Default preserves today's behavior (0.0.0.0, reachable via Docker port mapping).
     // The desktop sidecar sets NICOTIND_BIND_HOST=127.0.0.1 to bind loopback-only.
     hostname: process.env.NICOTIND_BIND_HOST || undefined,
-    // Bun's default is 10s, which is too tight for interactive routes that make a
-    // synchronous Lidarr + rate-limited Discogs round-trip (artist-info refresh,
-    // discography lookups) — those were being aborted mid-flight ("request timed
-    // out after 10 seconds"), so an artist bio never came back.
-    //
-    // The binding constraint is `GET /api/discography/artists/:id`: it resolves
-    // through `resolveOrAddArtist`, and `lidarr.artist.add` carries
-    // TIMEOUT_PROVISION_MS (60s) because Lidarr synchronously imports the whole
-    // discography before answering. That is by design, so 60s cannot come down
-    // until that provisioning moves off the request path. (Issue #622's bulk
-    // metadata-optimize loop was the *other* reason and is a background job now,
-    // but fixing it alone was never enough — a single bounded album.lookup is
-    // already 20s.)
-    idleTimeout: 60,
+    // 30s: above a bounded 20s Lidarr lookup, and the library-events SSE pings
+    // every 25s — Bun's 4s idle-timer ticks close a silent socket 26–30s after its
+    // last write, so it cannot go lower. Adding an artist to Lidarr (60s) is a
+    // background job since #644; route groups that still legitimately await longer
+    // (hunts, rescans, MCP tools) keep 60s through `applyIdleBudgets` in createApp.
+    idleTimeout: SERVER_IDLE_TIMEOUT_S,
     fetch: app.fetch,
     websocket,
   });

@@ -196,7 +196,7 @@ The route answered 200 with the finished counters; it now answers **202** with
 only an exact `=== 200` check breaks. Poll `GET /api/admin/maintenance/status` until
 `phase === 'idle'` and read the same counters from `detail`.
 
-There is deliberately **no HTTP `?wait=1` mode**: with `idleTimeout` at 60s and a 20s lookup budget,
+There is deliberately **no HTTP `?wait=1` mode**: with `/api/admin`'s 60s idle budget and a 20s lookup budget,
 the largest bound that provably fits is *two albums*. That is not a feature, and the next person to
 widen it would not know why the cap existed. The bounded synchronous mode lives at the **function**
 layer, where the CLI uses it.

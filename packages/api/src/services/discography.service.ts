@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import type { Lidarr, LidarrAlbum, LidarrTrack } from '../lidarr/index.js';
 import { createLogger, normalizeTitle } from '@nicotind/core';
-import { addArtistFromLookup } from './lidarr-provision.js';
+import type { ArtistNotProvisioned } from './lidarr-provision.js';
 import { corroboratesLidarrHit } from './lidarr-confidence.js';
 import { normalizeArtistForGrouping, normalizeForGrouping } from './album-grouping.js';
 
@@ -59,21 +59,55 @@ export interface ArtistDiscography {
   albums: DiscographyAlbum[];
 }
 
+export interface DiscographyNotProvisioned extends ArtistNotProvisioned {
+  artistId: string;
+  /** The name Lidarr would add, which can drift from the library's (#211). */
+  candidateName: string;
+}
+
+export function upsertDiscographyLink(
+  db: Database,
+  artistId: string,
+  lidarrId: number,
+  mbid: string,
+): void {
+  db.query(
+    `INSERT INTO artist_discography_links (artist_id, lidarr_id, mbid, checked_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(artist_id) DO UPDATE SET
+       lidarr_id = excluded.lidarr_id,
+       mbid = excluded.mbid,
+       checked_at = excluded.checked_at`,
+  ).run(artistId, lidarrId, mbid, Date.now());
+}
+
 export class DiscographyService {
   constructor(
     private lidarr: Lidarr,
     private db: Database,
-    private musicDir?: string,
   ) {}
 
-  async getArtistDiscography(artistId: string): Promise<ArtistDiscography> {
-    const artistRow = this.db
-      .query<{ name: string }, [string]>('SELECT name FROM library_artists WHERE id = ?')
-      .get(artistId);
+  artistName(artistId: string): string | null {
+    return (
+      this.db
+        .query<{ name: string }, [string]>('SELECT name FROM library_artists WHERE id = ?')
+        .get(artistId)?.name ?? null
+    );
+  }
 
-    if (!artistRow) throw new Error(`Artist ${artistId} not found in local library`);
+  /**
+   * Read-only (issue #644): an artist Lidarr does not monitor yet answers
+   * {@link DiscographyNotProvisioned}; adding it is `ArtistProvisioningService`'s job.
+   */
+  async getArtistDiscography(
+    artistId: string,
+  ): Promise<ArtistDiscography | DiscographyNotProvisioned> {
+    const name = this.artistName(artistId);
+    if (name === null) throw new Error(`Artist ${artistId} not found in local library`);
 
-    const lidarrId = await this.resolveOrAddArtist(artistId, artistRow.name);
+    const resolved = await this.resolveArtist(artistId, name);
+    if (typeof resolved !== 'number') return resolved;
+    const lidarrId = resolved;
 
     const [lidarrAlbums, localAlbums, localSongs] = await Promise.all([
       this.lidarr.album.listByArtist(lidarrId),
@@ -110,7 +144,10 @@ export class DiscographyService {
     };
   }
 
-  private async resolveOrAddArtist(artistId: string, artistName: string): Promise<number> {
+  private async resolveArtist(
+    artistId: string,
+    artistName: string,
+  ): Promise<number | DiscographyNotProvisioned> {
     const cached = this.db
       .query<{ lidarr_id: number; checked_at: number }, [string]>(
         'SELECT lidarr_id, checked_at FROM artist_discography_links WHERE artist_id = ?',
@@ -130,7 +167,7 @@ export class DiscographyService {
     );
 
     if (existing) {
-      this.upsertLink(artistId, existing.id, existing.foreignArtistId);
+      upsertDiscographyLink(this.db, artistId, existing.id, existing.foreignArtistId);
       return existing.id;
     }
 
@@ -180,23 +217,13 @@ export class DiscographyService {
       throw new Error(`No confident Lidarr match for "${artistName}"`);
     }
 
-    const added = await addArtistFromLookup(this.lidarr, best, this.musicDir);
-
-    this.upsertLink(artistId, added.id, added.foreignArtistId);
-    return added.id;
-  }
-
-  private upsertLink(artistId: string, lidarrId: number, mbid: string): void {
-    this.db
-      .query(
-        `INSERT INTO artist_discography_links (artist_id, lidarr_id, mbid, checked_at)
-         VALUES (?, ?, ?, ?)
-         ON CONFLICT(artist_id) DO UPDATE SET
-           lidarr_id = excluded.lidarr_id,
-           mbid = excluded.mbid,
-           checked_at = excluded.checked_at`,
-      )
-      .run(artistId, lidarrId, mbid, Date.now());
+    return {
+      notProvisioned: true,
+      artistId,
+      artistName,
+      artistMbid: best.foreignArtistId,
+      candidateName: best.artistName,
+    };
   }
 
   private async fetchAllTracks(albums: LidarrAlbum[]): Promise<Map<number, LidarrTrack[]>> {

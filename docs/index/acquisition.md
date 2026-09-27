@@ -42,6 +42,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **Catalog (metadata-driven) search**: `CatalogService` returns artist/album cards from
   Lidarr/MusicBrainz scoped to the matched artist; a catalog miss opens the folder-first network lane,
   with full-discography load opt-in. → [album-hunt.md](../album-hunt.md)
+- **Explicit artist add**: reads answer `ArtistNotProvisioned`; `ArtistProvisioningService` adds the
+  artist to Lidarr as a background job (`provisionArtist`), so no request holds Lidarr's import.
+  → [album-hunt.md](../album-hunt.md)
 - **URL acquisition (yt-dlp / spotdl / archive)**: `POST /api/acquire` routes a URL via
   `resolveAddonForUrl` to a `resolve`-capable addon, bundled (`LocalAddonTransport`) or external,
   matched by `urlPatterns`; `resolveAcquireAs`, `findInFlightAddonUrlJob`, `applyAddonOutcome`,

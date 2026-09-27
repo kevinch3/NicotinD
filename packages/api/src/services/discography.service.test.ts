@@ -2,7 +2,16 @@ import { describe, it, expect, beforeEach, mock } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import type { Lidarr, LidarrAlbum, LidarrArtist, LidarrTrack } from '../lidarr/index.js';
 import { applySchema } from '../db';
-import { DiscographyService } from './discography.service';
+import {
+  DiscographyService,
+  type ArtistDiscography,
+  type DiscographyNotProvisioned,
+} from './discography.service';
+
+function disc(r: ArtistDiscography | DiscographyNotProvisioned): ArtistDiscography {
+  if ('notProvisioned' in r) throw new Error(`not provisioned: ${r.artistName}`);
+  return r;
+}
 
 function insertArtist(db: Database, id: string, name: string): void {
   db.run(
@@ -141,7 +150,7 @@ describe('DiscographyService', () => {
     });
 
     const svc = new DiscographyService(lidarr, db);
-    const result = await svc.getArtistDiscography('ar1');
+    const result = disc(await svc.getArtistDiscography('ar1'));
 
     const byTitle = Object.fromEntries(result.albums.map((a) => [a.title, a]));
     expect(byTitle['Galería Caribe'].status).toBe('present');
@@ -173,7 +182,7 @@ describe('DiscographyService', () => {
     });
 
     const svc = new DiscographyService(lidarr, db);
-    const result = await svc.getArtistDiscography('ar1');
+    const result = disc(await svc.getArtistDiscography('ar1'));
     expect(result.albums[0].status).toBe('present');
   });
 
@@ -234,10 +243,10 @@ describe('DiscographyService', () => {
     expect(spies.add).not.toHaveBeenCalled();
   });
 
-  it('still provisions across Lidarr canonical-name drift (issue #211/#217)', async () => {
+  it('still offers to provision across Lidarr canonical-name drift (issue #211/#217)', async () => {
     insertArtist(db, 'ar1', 'Eduardo Miño');
 
-    const { lidarr, spies } = makeLidarrStub({
+    const { lidarr } = makeLidarrStub({
       albums: [],
       tracksByAlbum: {},
       lookupArtist: {
@@ -253,8 +262,40 @@ describe('DiscographyService', () => {
     });
 
     const svc = new DiscographyService(lidarr, db);
-    await svc.getArtistDiscography('ar1');
-    expect(spies.add).toHaveBeenCalledTimes(1);
+    const result = await svc.getArtistDiscography('ar1');
+    expect(result).toMatchObject({
+      notProvisioned: true,
+      artistId: 'ar1',
+      artistName: 'Eduardo Miño',
+      artistMbid: 'mbid-mino',
+      candidateName: 'Luis Eduardo Miño Naranjo',
+    });
+  });
+
+  // Issue #644: the GET is read-only — adding runs Lidarr's synchronous
+  // whole-discography import, so it is ArtistProvisioningService's job.
+  it('never adds an artist on read; answers not-provisioned instead', async () => {
+    insertArtist(db, 'ar1', 'Arjona');
+    const { lidarr, spies } = makeLidarrStub({
+      albums: [],
+      tracksByAlbum: {},
+      lookupArtist: {
+        id: 3,
+        foreignArtistId: 'mbid-arjona',
+        artistName: 'Arjona',
+        sortName: 'Arjona',
+        status: 'continuing',
+        images: [],
+        monitored: false,
+      },
+    });
+
+    const result = await new DiscographyService(lidarr, db).getArtistDiscography('ar1');
+
+    expect(spies.add).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ notProvisioned: true, artistMbid: 'mbid-arjona' });
+    const link = db.query('SELECT 1 FROM artist_discography_links WHERE artist_id = ?').get('ar1');
+    expect(link).toBeNull();
   });
 
   // An artist that already resolved must never regress to a 500 just because a
@@ -284,7 +325,7 @@ describe('DiscographyService', () => {
     });
 
     const svc = new DiscographyService(lidarr, db);
-    const result = await svc.getArtistDiscography('ar1');
+    const result = disc(await svc.getArtistDiscography('ar1'));
 
     expect(result.lidarrId).toBe(555); // kept the known link
     expect(spies.add).not.toHaveBeenCalled(); // and did not provision a new one
@@ -313,7 +354,7 @@ describe('DiscographyService', () => {
     });
 
     const svc = new DiscographyService(lidarr, db);
-    const result = await svc.getArtistDiscography('ar1');
+    const result = disc(await svc.getArtistDiscography('ar1'));
     expect(result.albums[0].status).toBe('present');
   });
 
@@ -343,7 +384,7 @@ describe('DiscographyService', () => {
         monitoredArtist: monitoredArjona,
       });
 
-      const result = await new DiscographyService(lidarr, db).getArtistDiscography('ar1');
+      const result = disc(await new DiscographyService(lidarr, db).getArtistDiscography('ar1'));
       expect(result.albums[0].status).toBe('present');
       expect(result.albums[0].tracks[0].hasFile).toBe(true);
     });
@@ -359,7 +400,7 @@ describe('DiscographyService', () => {
         monitoredArtist: monitoredArjona,
       });
 
-      const result = await new DiscographyService(lidarr, db).getArtistDiscography('ar1');
+      const result = disc(await new DiscographyService(lidarr, db).getArtistDiscography('ar1'));
       expect(result.albums[0].status).toBe('present');
     });
 
@@ -374,7 +415,7 @@ describe('DiscographyService', () => {
         monitoredArtist: { ...monitoredArjona, id: 42, artistName: 'Angela Leiva' },
       });
 
-      const result = await new DiscographyService(lidarr, db).getArtistDiscography('ar1');
+      const result = disc(await new DiscographyService(lidarr, db).getArtistDiscography('ar1'));
       expect(result.lidarrId).toBe(42);
       expect(spies.add).not.toHaveBeenCalled(); // did not provision a duplicate
     });
@@ -390,7 +431,7 @@ describe('DiscographyService', () => {
         monitoredArtist: { ...monitoredArjona, artistName: 'Kino' },
       });
 
-      const result = await new DiscographyService(lidarr, db).getArtistDiscography('ar1');
+      const result = disc(await new DiscographyService(lidarr, db).getArtistDiscography('ar1'));
       expect(result.albums[0].status).toBe('missing');
     });
   });

@@ -5,6 +5,7 @@ import { applySchema } from '../db.js';
 import type { AuthEnv } from '../middleware/auth.js';
 import { discographyRoutes } from './discography.js';
 import type { DiscographyService } from '../services/discography.service.js';
+import type { ArtistProvisioningService } from '../services/artist-provisioning.service.js';
 import { AlbumHuntOrchestrator, type SourceHunter } from '../services/source-hunter.js';
 import type { Lidarr } from '../lidarr/index.js';
 import type { AcquisitionCandidate } from '@nicotind/core';
@@ -46,6 +47,7 @@ function makeApp(sourceHunt: AlbumHuntOrchestrator) {
     '/',
     discographyRoutes({
       discography: {} as DiscographyService,
+      provisioning: {} as ArtistProvisioningService,
       getAddon: () => null,
       sourceHunt,
       lidarr: lidarr(),

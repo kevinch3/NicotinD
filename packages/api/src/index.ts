@@ -100,6 +100,8 @@ import {
 import { AcquireWatcher } from './services/acquire-watcher.js';
 import { DiscographyService } from './services/discography.service.js';
 import { CatalogService } from './services/catalog-search.service.js';
+import { ArtistProvisioningService } from './services/artist-provisioning.service.js';
+import { applyIdleBudgets } from './middleware/idle-budget.js';
 import { SingleEnrichmentService } from './services/single-enrichment.service.js';
 import { WatchlistService } from './services/watchlist.service.js';
 import { AutoAcquireService } from './services/auto-acquire.service.js';
@@ -595,6 +597,8 @@ export function createApp({
     }),
   );
 
+  applyIdleBudgets(app);
+
   // Protected routes
   const auth = authMiddleware(config.jwt.secret);
   app.use('/api/search/*', auth);
@@ -906,8 +910,13 @@ export function createApp({
   let enrichSingles: ((relPaths: string[]) => Promise<void>) | undefined;
 
   if (lidarr) {
-    const discographySvc = new DiscographyService(lidarr, db, config.musicDir);
+    const discographySvc = new DiscographyService(lidarr, db);
     const catalogSvc = new CatalogService(lidarr, config.musicDir);
+    const artistProvisioning = new ArtistProvisioningService({
+      lidarr,
+      db,
+      musicDir: config.musicDir,
+    });
     const enrichmentSvc = new SingleEnrichmentService({
       db,
       catalog: catalogSvc,
@@ -927,13 +936,17 @@ export function createApp({
       discographyRoutes({
         getAddon: () => activeRemoteAcquisitionAddon(plugins),
         discography: discographySvc,
+        provisioning: artistProvisioning,
         sourceHunt,
         lidarr,
         db,
         dataDir: expandedDataDir,
       }),
     );
-    app.route('/api/catalog', catalogRoutes({ catalog: catalogSvc }));
+    app.route(
+      '/api/catalog',
+      catalogRoutes({ catalog: catalogSvc, provisioning: artistProvisioning }),
+    );
 
     // Watchlist auto-hunt poller — reuses the same hunter + catalog as the
     // interactive flow, so an auto-acquired album is indistinguishable from a
@@ -1059,6 +1072,7 @@ export { Lidarr } from './lidarr/index.js';
 export { ServiceManager, NativeProcessStrategy } from './service-manager/index.js';
 export { initDatabase, getDatabase, optimizeDatabase } from './db.js';
 export { maybeCheckForUpdate } from './services/update-check.js';
+export { SERVER_IDLE_TIMEOUT_S } from './middleware/idle-budget.js';
 export { findInsecureDefaults, REMOVAL_RELEASE } from './services/insecure-defaults.js';
 // initServerSentry is intentionally NOT re-exported from the barrel: it must be
 // imported via the isolated `@nicotind/api/instrument` subpath so Sentry inits

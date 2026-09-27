@@ -4,6 +4,14 @@ import { NicotinDError } from '@nicotind/core';
 import type { AuthEnv } from '../middleware/auth.js';
 import { catalogRoutes } from './catalog.js';
 import type { CatalogService } from '../services/catalog-search.service.js';
+import type { ArtistProvisioningService } from '../services/artist-provisioning.service.js';
+
+function makeProvisioning(start: 'started' | 'busy' = 'started') {
+  return {
+    start: mock(() => start),
+    getStatus: () => ({ phase: 'running' }),
+  } as unknown as ArtistProvisioningService;
+}
 
 function makeCatalogMock(over: Partial<Record<keyof CatalogService, unknown>> = {}) {
   return {
@@ -23,13 +31,16 @@ function makeCatalogMock(over: Partial<Record<keyof CatalogService, unknown>> = 
   } as unknown as CatalogService;
 }
 
-function makeApp(catalog: CatalogService): Hono<AuthEnv> {
+function makeApp(
+  catalog: CatalogService,
+  provisioning: ArtistProvisioningService = makeProvisioning(),
+): Hono<AuthEnv> {
   const app = new Hono<AuthEnv>();
   app.use('*', (c, next) => {
-    c.set('user', { sub: 'u', role: 'admin', iat: 0, exp: 9999999999 });
+    c.set('user', { sub: 'u', username: 'kevin', role: 'admin', iat: 0, exp: 9999999999 });
     return next();
   });
-  app.route('/', catalogRoutes({ catalog }));
+  app.route('/', catalogRoutes({ catalog, provisioning }));
   return app;
 }
 
@@ -148,5 +159,58 @@ describe('catalog routes', () => {
     const body = (await res.json()) as { error: string; code?: string };
     expect(body.code).toBe('ALBUM_NOT_IN_LIDARR');
     expect(body.error).toMatch(/Lidarr discography/);
+  });
+
+  // Issue #644: both POSTs are a user's button press, so an artist Lidarr lacks
+  // starts the add job and answers 202 instead of adding inside the request.
+  describe('an artist Lidarr lacks', () => {
+    const notProvisioned = {
+      notProvisioned: true,
+      artistName: 'Zara Larsson',
+      artistMbid: 'm',
+    };
+    const post = (path: string) =>
+      app.request(path, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          foreignAlbumId: 'rg',
+          artistMbid: 'm',
+          artistName: 'Zara Larsson',
+          albumTitle: 'Venus',
+        }),
+      });
+
+    it('POST /discography starts the add job and answers 202', async () => {
+      const provisioning = makeProvisioning();
+      app = makeApp(
+        makeCatalogMock({ loadDiscography: mock(async () => notProvisioned) }),
+        provisioning,
+      );
+      const res = await post('/discography');
+      expect(res.status).toBe(202);
+      expect(await res.json()).toMatchObject({ provisioning: true, code: 'ARTIST_PROVISIONING' });
+      expect(provisioning.start).toHaveBeenCalledWith(
+        { artistName: 'Zara Larsson', artistMbid: 'm' },
+        'kevin',
+      );
+    });
+
+    it('POST /resolve starts the add job and answers 202', async () => {
+      app = makeApp(makeCatalogMock({ resolveAlbum: mock(async () => notProvisioned) }));
+      const res = await post('/resolve');
+      expect(res.status).toBe(202);
+      expect(await res.json()).toMatchObject({ provisioning: true });
+    });
+
+    it('answers 409 PROVISIONING_BUSY while a different artist is being added', async () => {
+      app = makeApp(
+        makeCatalogMock({ resolveAlbum: mock(async () => notProvisioned) }),
+        makeProvisioning('busy'),
+      );
+      const res = await post('/resolve');
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({ code: 'PROVISIONING_BUSY' });
+    });
   });
 });

@@ -41,6 +41,7 @@ function setup(
   // PWA share-target query params (?url=/?text=/?title=), consumed by ngOnInit
   // via this.route.snapshot.queryParamMap. Empty by default (no share intent).
   shareParams: { url?: string; text?: string; title?: string } = {},
+  downloadsOverrides: object = {},
 ) {
   registeredHandler = null;
   transferKickPoll.mockClear();
@@ -94,7 +95,11 @@ function setup(
       },
       {
         provide: DownloadsApiService,
-        useValue: { enqueueDownload: () => of({ ok: true }), retryAcquireJob },
+        useValue: {
+          enqueueDownload: () => of({ ok: true }),
+          retryAcquireJob,
+          ...downloadsOverrides,
+        },
       },
       { provide: LibraryApiService, useValue: { resolveArtistIdByName: () => of(null) } },
       {
@@ -846,6 +851,69 @@ describe('SearchComponent — catalog-miss fallback', () => {
     await component.browseFallbackDiscography();
 
     expect(catalogDiscography).toHaveBeenCalled();
+  });
+});
+
+// #644: a catalog POST answers 202 while Lidarr adds the artist; the page shows a
+// pending state, waits for the job and re-sends the same request once.
+describe('SearchComponent — artist provisioning', () => {
+  const target = { artistName: 'Pink Floyd', artistMbid: 'pf-mbid' };
+  const accepted = {
+    provisioning: true,
+    code: 'ARTIST_PROVISIONING',
+    status: { phase: 'running', target },
+  };
+
+  afterEach(() => vi.useRealTimers());
+
+  it('waits for the add, then resolves again and opens the hunt', async () => {
+    vi.useFakeTimers();
+    const catalogResolve = vi
+      .fn()
+      .mockReturnValueOnce(of(accepted))
+      .mockReturnValue(
+        of({ lidarrAlbumId: 55, totalTracks: 10, title: 'Animals', artistName: 'Pink Floyd' }),
+      );
+    const getArtistProvisioning = vi.fn(() =>
+      of({ phase: 'idle', target, lastOutcome: 'completed', lastError: null }),
+    );
+    const { component, autoHunt } = setup({ catalogResolve }, {}, {}, { getArtistProvisioning });
+
+    const hunting = component.huntCatalogAlbum(CATALOG_ALBUM);
+    await flush();
+    expect(component.provisioningArtist()).toBe('Pink Floyd');
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    await hunting;
+    expect(catalogResolve).toHaveBeenCalledTimes(2);
+    expect(component.provisioningArtist()).toBeNull();
+    expect(autoHunt.hunt).toHaveBeenCalledWith(
+      expect.objectContaining({ lidarrId: 55 }),
+      'Pink Floyd',
+      expect.any(Function),
+    );
+  });
+
+  it('shows the job error when the add failed, without re-sending', async () => {
+    vi.useFakeTimers();
+    const catalogDiscography = vi.fn(() => of(accepted));
+    const { component } = setup(
+      { catalogDiscography },
+      {},
+      {},
+      {
+        getArtistProvisioning: () =>
+          of({ phase: 'idle', target, lastOutcome: 'failed', lastError: 'Lidarr said no' }),
+      },
+    );
+
+    const loading = component.activateArtist({ mbid: 'pf-mbid', name: 'Pink Floyd' });
+    await flush();
+    await vi.advanceTimersByTimeAsync(2_000);
+    await loading;
+    expect(catalogDiscography).toHaveBeenCalledTimes(1);
+    expect(component.resolveError()).toBe('Lidarr said no');
+    expect(component.loadingDiscography()).toBe(false);
   });
 });
 

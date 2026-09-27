@@ -469,6 +469,38 @@ export interface DiscographyResult {
   albums: DiscographyAlbum[];
 }
 
+/** Lidarr does not monitor this artist yet; adding it is an explicit job (#644). */
+export interface DiscographyNotProvisioned {
+  notProvisioned: true;
+  artistId: string;
+  artistName: string;
+  artistMbid: string | null;
+  candidateName: string;
+  /** The add job is already running for this artist. */
+  provisioning: boolean;
+}
+
+export type DiscographyResponse = DiscographyResult | DiscographyNotProvisioned;
+
+/** Mirrors the API's ArtistProvisioningService status. */
+export interface ArtistProvisioningStatus {
+  phase: 'idle' | 'running' | 'cancelling';
+  target: { artistName: string; artistMbid?: string | null; localArtistId?: string | null } | null;
+  lidarrId: number | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  lastOutcome: 'completed' | 'cancelled' | 'failed' | null;
+  lastError: string | null;
+  startedBy: string | null;
+}
+
+/** 202 from a route that started adding the artist; re-send once it finishes. */
+export interface ProvisioningAccepted {
+  provisioning: true;
+  code: 'ARTIST_PROVISIONING';
+  status: ArtistProvisioningStatus;
+}
+
 export interface HuntFile {
   filename: string;
   size: number;

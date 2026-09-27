@@ -13,7 +13,9 @@ import type {
   CatalogSearchResult,
   DiscographyAlbum,
   DownloadSettings,
+  ProvisioningAccepted,
 } from '../../services/api/api-types';
+import { awaitProvisioning, isProvisioningAccepted } from '../../lib/await-provisioning';
 import { SearchService, type NetworkResult } from '../../services/search.service';
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService, type AcquireJob } from '../../services/acquire.service';
@@ -269,6 +271,9 @@ export class SearchComponent implements OnInit, OnDestroy {
   // Search is now acquisition-only. "Find what I own" lives in Library/Radio.
   readonly resolvingAlbum = signal<string | null>(null); // foreignAlbumId being resolved
   readonly resolveError = signal<string | null>(null);
+  /** The artist Lidarr is being asked to add before a catalog action can run (#644). */
+  readonly provisioningArtist = signal<string | null>(null);
+  private destroyed = false;
   readonly directSearchOpen = signal(false);
   // Set when a catalog album can't be resolved (not in Lidarr) and we fall back to
   // a raw network search — explains why the results switched to the network lane.
@@ -492,6 +497,7 @@ export class SearchComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.destroyed = true;
     this.stopPoll();
     const id = this.searchId();
     if (id) this.cleanupSearch(id);
@@ -660,7 +666,10 @@ export class SearchComponent implements OnInit, OnDestroy {
     this.loadingDiscography.set(true);
     this.resolveError.set(null);
     try {
-      const loaded = await firstValueFrom(this.api.catalogDiscography(mbid, artistName));
+      const loaded = await this.untilProvisioned(
+        () => firstValueFrom(this.api.catalogDiscography(mbid, artistName)),
+        artistName,
+      );
       const cat = this.catalog();
       this.catalog.set(cat ? applyDiscography(cat, loaded) : loaded);
       this.directSearchOpen.set(shouldOpenDirectSearch(this.catalog()));
@@ -678,13 +687,17 @@ export class SearchComponent implements OnInit, OnDestroy {
     this.resolveError.set(null);
     this.resolvingAlbum.set(album.foreignAlbumId);
     try {
-      const resolved = await firstValueFrom(
-        this.api.catalogResolve({
-          foreignAlbumId: album.foreignAlbumId,
-          artistMbid: album.artistMbid,
-          artistName: album.artistName,
-          albumTitle: album.title,
-        }),
+      const resolved = await this.untilProvisioned(
+        () =>
+          firstValueFrom(
+            this.api.catalogResolve({
+              foreignAlbumId: album.foreignAlbumId,
+              artistMbid: album.artistMbid,
+              artistName: album.artistName,
+              albumTitle: album.title,
+            }),
+          ),
+        album.artistName,
       );
       const discAlbum: DiscographyAlbum = {
         lidarrId: resolved.lidarrAlbumId,
@@ -718,6 +731,40 @@ export class SearchComponent implements OnInit, OnDestroy {
     } finally {
       this.resolvingAlbum.set(null);
     }
+  }
+
+  /**
+   * A catalog POST answers 202 while Lidarr adds the artist (#644): show the
+   * pending state, wait for the job, then send the same request once more.
+   */
+  private async untilProvisioned<T extends object>(
+    send: () => Promise<T | ProvisioningAccepted>,
+    artistName: string,
+  ): Promise<T> {
+    const first = await send();
+    if (!isProvisioningAccepted(first)) return first;
+    const target = first.status.target;
+    const isOurs = (t: typeof target) =>
+      t?.artistName === target?.artistName &&
+      (t?.artistMbid ?? null) === (target?.artistMbid ?? null);
+    this.provisioningArtist.set(artistName);
+    try {
+      const status = await awaitProvisioning(
+        () => firstValueFrom(this.downloadsApi.getArtistProvisioning()),
+        (s) => isOurs(s.target),
+        { alive: () => !this.destroyed },
+      );
+      if (status && isOurs(status.target) && status.lastOutcome === 'failed') {
+        throw new Error(status.lastError ?? `Couldn't add ${artistName} to Lidarr`);
+      }
+    } finally {
+      this.provisioningArtist.set(null);
+    }
+    const second = await send();
+    if (isProvisioningAccepted(second)) {
+      throw new Error(`${artistName} is still being added to Lidarr — try again shortly`);
+    }
+    return second;
   }
 
   // Raw-string network fallback for an album missing from Lidarr's discography

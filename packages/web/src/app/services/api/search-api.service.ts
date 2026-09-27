@@ -6,6 +6,7 @@ import type {
   NetworkResults,
   CatalogSearchResult,
   CatalogResolveResult,
+  ProvisioningAccepted,
 } from './api-types';
 
 /** Search lanes: Soulseek network search + the catalog/archive/spotify lookups. */
@@ -34,24 +35,27 @@ export class SearchApiService {
     return this.http.get<CatalogSearchResult>('/api/catalog/search', { params: { q } });
   }
 
-  // Load an artist's real discography on demand (adds the artist to Lidarr) when
-  // the global lookup surfaced none of their albums. See §A6.
+  // Load an artist's real discography on demand when the global lookup surfaced
+  // none of their albums (§A6); 202 while the artist is being added to Lidarr.
   catalogDiscography(artistMbid: string, artistName: string) {
-    return this.http.post<CatalogSearchResult>('/api/catalog/discography', {
+    return this.http.post<CatalogSearchResult | ProvisioningAccepted>('/api/catalog/discography', {
       artistMbid,
       artistName,
     });
   }
 
-  // Resolves a searched album into a real Lidarr album id (adding the artist on
-  // demand) so the album-hunt flow can run against its canonical tracklist.
+  // Resolves a searched album into a real Lidarr album id so the album-hunt flow
+  // can run against its canonical tracklist; 202 while the artist is being added.
   catalogResolve(payload: {
     foreignAlbumId: string;
     artistMbid: string;
     artistName: string;
     albumTitle: string;
   }) {
-    return this.http.post<CatalogResolveResult>('/api/catalog/resolve', payload);
+    return this.http.post<CatalogResolveResult | ProvisioningAccepted>(
+      '/api/catalog/resolve',
+      payload,
+    );
   }
 
   // archive.org search lane — returns item candidates; download via AcquireService

@@ -1,7 +1,7 @@
 import { LidarrTimeoutError } from '../lidarr/index.js';
 import type { Lidarr, LidarrAlbum, LidarrArtist } from '../lidarr/index.js';
 import { createLogger, NicotinDError } from '@nicotind/core';
-import { addArtistFromLookup } from './lidarr-provision.js';
+import { provisionArtist, type ArtistNotProvisioned } from './lidarr-provision.js';
 import { normalizeTitle } from '@nicotind/core';
 import { tokenize, matchesAllTokens, rankBy, fold } from './search-tokens.js';
 import { proxiedCoverUrl } from './remote-cover.js';
@@ -64,11 +64,12 @@ export interface ResolveAlbumResult {
 /**
  * Bridges free-text search to the album-hunt flow via Lidarr/MusicBrainz.
  *
- * `search()` is a read-only metadata lookup (no Lidarr mutation). `resolveAlbum()`
- * is the add-on-demand step: it ensures the artist exists in Lidarr (adding it
- * from a MusicBrainz lookup if needed), then returns the *real* Lidarr album id so
- * the existing `/api/discography/albums/:id/hunt` flow — which scores Soulseek
- * folders against Lidarr's canonical tracklist — can run unchanged.
+ * Every method here is read-only against Lidarr (issue #644). `resolveAlbum()`
+ * returns the *real* Lidarr album id so the existing
+ * `/api/discography/albums/:id/hunt` flow — which scores Soulseek folders against
+ * Lidarr's canonical tracklist — can run unchanged; an artist Lidarr does not
+ * monitor yet answers {@link ArtistNotProvisioned}, and adding it is
+ * `ArtistProvisioningService`'s job (or {@link provisionArtist} off the request path).
  */
 export class CatalogService {
   constructor(
@@ -176,13 +177,15 @@ export class CatalogService {
   /**
    * Load an artist's *real* discography on demand — the deep fix for §A6. The
    * global `album.lookup` carries none of a non-distinctive artist's own albums,
-   * and Lidarr can only list an artist's albums once it's added, so this **adds
-   * the artist to Lidarr** (same mutation `resolveAlbum` already makes on a hunt)
-   * and returns their `listByArtist` releases as ranked catalog cards. User-
-   * initiated (the web's "Load discography" button), never automatic on search.
+   * and Lidarr can only list an artist's albums once it's added, so an artist it
+   * does not monitor answers {@link ArtistNotProvisioned} and the route starts the add.
    */
-  async loadDiscography(artistMbid: string, artistName: string): Promise<CatalogSearchResult> {
-    const lidarrArtistId = await this.resolveOrAddArtist(artistMbid, artistName);
+  async loadDiscography(
+    artistMbid: string,
+    artistName: string,
+  ): Promise<CatalogSearchResult | ArtistNotProvisioned> {
+    const lidarrArtistId = await this.resolveArtist(artistMbid, artistName);
+    if (lidarrArtistId === null) return notProvisioned(artistMbid, artistName);
     const albums = await this.lidarr.album.listByArtist(lidarrArtistId);
     const cards = rankAlbums(
       albums.map((a) => {
@@ -198,8 +201,9 @@ export class CatalogService {
     return { artists: [], albums: cards, scopedArtist: artistName };
   }
 
-  async resolveAlbum(input: ResolveAlbumInput): Promise<ResolveAlbumResult> {
-    const lidarrArtistId = await this.resolveOrAddArtist(input.artistMbid, input.artistName);
+  async resolveAlbum(input: ResolveAlbumInput): Promise<ResolveAlbumResult | ArtistNotProvisioned> {
+    const lidarrArtistId = await this.resolveArtist(input.artistMbid, input.artistName);
+    if (lidarrArtistId === null) return notProvisioned(input.artistMbid, input.artistName);
 
     const albums = await this.lidarr.album.listByArtist(lidarrArtistId);
     // The album cards come from the *global* `album.lookup`, whose MusicBrainz
@@ -229,24 +233,25 @@ export class CatalogService {
     };
   }
 
-  private async resolveOrAddArtist(artistMbid: string, artistName: string): Promise<number> {
+  /** Off-request-path add for the watchlist poller, which has no user to wait on a job. */
+  async provisionArtist(artistMbid: string, artistName: string): Promise<void> {
+    log.info({ artistMbid, artistName }, 'Adding artist to Lidarr for catalog hunt');
+    await provisionArtist(this.lidarr, { artistName, artistMbid }, { musicDir: this.musicDir });
+  }
+
+  private async resolveArtist(artistMbid: string, artistName: string): Promise<number | null> {
     const monitored = await this.lidarr.artist.list();
     const existing = monitored.find(
       (a) =>
-        a.foreignArtistId === artistMbid ||
+        (!!artistMbid && a.foreignArtistId === artistMbid) ||
         normalizeName(a.artistName) === normalizeName(artistName),
     );
-    if (existing) return existing.id;
-
-    log.info({ artistMbid, artistName }, 'Adding artist to Lidarr for catalog hunt');
-
-    const candidates = await this.lidarr.artist.lookup(artistName);
-    const best = candidates.find((a) => a.foreignArtistId === artistMbid) ?? candidates[0];
-    if (!best) throw new Error(`Lidarr found no artist matching "${artistName}"`);
-
-    const added = await addArtistFromLookup(this.lidarr, best, this.musicDir);
-    return added.id;
+    return existing?.id ?? null;
   }
+}
+
+function notProvisioned(artistMbid: string, artistName: string): ArtistNotProvisioned {
+  return { notProvisioned: true, artistName, artistMbid: artistMbid || null };
 }
 
 /**

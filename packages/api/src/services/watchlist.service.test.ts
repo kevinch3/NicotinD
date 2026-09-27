@@ -56,6 +56,7 @@ interface Harness {
   enqueue: ReturnType<typeof mock>;
   hunt: ReturnType<typeof mock>;
   resolveAlbum: ReturnType<typeof mock>;
+  provisionArtist: ReturnType<typeof mock>;
   listByAlbum: ReturnType<typeof mock>;
 }
 
@@ -116,16 +117,17 @@ function makeHarness(opts: {
     artistName: 'Artist',
   }));
   const listByAlbum = mock(async () => tracks);
+  const provisionArtist = mock(async () => {});
 
   const svc = new WatchlistService({
     db,
-    catalog: { resolveAlbum } as unknown as CatalogService,
+    catalog: { resolveAlbum, provisionArtist } as unknown as CatalogService,
     lidarr: { track: { listByAlbum } } as unknown as Lidarr,
     getAddon: () => addon,
     minMatchPct: opts.minMatchPct ?? 80,
   });
 
-  return { db, svc, enqueue, hunt, resolveAlbum, listByAlbum };
+  return { db, svc, enqueue, hunt, resolveAlbum, provisionArtist, listByAlbum };
 }
 
 function watch(db: Database, over: Partial<Record<string, unknown>> = {}): void {
@@ -276,6 +278,33 @@ describe('WatchlistService', () => {
       await svc.sweep();
 
       expect(resolveAlbum).toHaveBeenCalled();
+      const r = db.query('SELECT lidarr_album_id AS a FROM watchlist WHERE id = 1').get() as {
+        a: number;
+      };
+      expect(r.a).toBe(123);
+    });
+
+    // #644: the catalog resolve is read-only now; the poller adds the artist itself.
+    it('adds an artist Lidarr lacks, then resolves again', async () => {
+      const { db, svc, resolveAlbum, provisionArtist } = makeHarness({
+        candidates: [candidate({ matchPct: 100 })],
+        resolveAlbumId: 123,
+      });
+      resolveAlbum.mockImplementationOnce(
+        async () =>
+          ({ notProvisioned: true, artistName: 'Artist', artistMbid: 'mbid' }) as unknown as {
+            lidarrAlbumId: number;
+            totalTracks: number;
+            title: string;
+            artistName: string;
+          },
+      );
+      watch(db, { lidarr_album_id: null });
+
+      await svc.sweep();
+
+      expect(provisionArtist).toHaveBeenCalledTimes(1);
+      expect(resolveAlbum).toHaveBeenCalledTimes(2);
       const r = db.query('SELECT lidarr_album_id AS a FROM watchlist WHERE id = 1').get() as {
         a: number;
       };
