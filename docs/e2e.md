@@ -475,12 +475,12 @@ A failed build throws rather than falling through to the stale bundle.
 same call; the `hunt` / `live-screens` / `real` configs all require
 `E2E_BASE_URL`, so they never build.
 
-> The web build requires Node ≥ 22.22.3 (`@angular/build` engine check). The
-> version is pinned **once** in `.nvmrc` (`22.22.3`); local dev (`nvm use`), CI
-> (`actions/setup-node@v4` with `node-version-file: .nvmrc`), and the Dockerfile
-> (`imbios/bun-node:…-22.22.3`) all resolve from it, and root + web `package.json`
-> declare `engines.node >= 22.22.3`. If `ng build`/`ng test` fail an engine check,
-> run `nvm use` (the host default nvm Node — `22.22.0` — is below the floor).
+> The web build requires Node ≥ 24.15.0 on the 24 line (`@angular/build` engine check). The
+> version is pinned **once** in `.nvmrc` (`24.19.0`); local dev (`nvm use`), CI
+> (`actions/setup-node@v4` with `node-version-file: .nvmrc`), the Dockerfile
+> (`imbios/bun-node:…-24.19.0`) and the F-Droid recipes all resolve from it, and root + web
+> `package.json` declare `engines.node >= 24.19.0`. If `ng build`/`ng test` fail an engine check,
+> run `nvm use` (the host default nvm Node is a 22.x, below the floor).
 
 ## What a failure leaves behind
 

@@ -34,7 +34,7 @@ A single introduction video in **two segments**:
 | On screen (visual / action) | Narration (voiceover) |
 |---|---|
 | Two cards side by side: "Docker (recommended)" and "Local dev". | You've got two ways to run it. The easy path is **Docker** — one command and you're live. |
-| Highlight the local-dev card: "Bun ≥ 1.1 · Node ≥ 22.22.3". | Or, if you'd rather run it from source, you'll want **Bun 1.1 or newer** and **Node 22** for the web build. We'll focus on Docker — it's the recommended route. |
+| Highlight the local-dev card: "Bun ≥ 1.1 · Node ≥ 24.19.0". | Or, if you'd rather run it from source, you'll want **Bun 1.1 or newer** and **Node 24** for the web build. We'll focus on Docker — it's the recommended route. |
 
 ### Scene A3 — Quick start with Docker
 

@@ -1,5 +1,5 @@
 # Stage 1: Build web UI
-FROM imbios/bun-node:1.3.14-22.22.3-debian AS web-builder
+FROM imbios/bun-node:1.3.14-24.19.0-debian AS web-builder
 WORKDIR /app
 
 COPY package.json bun.lock bunfig.toml ./
