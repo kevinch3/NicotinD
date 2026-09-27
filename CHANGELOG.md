@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.94](https://github.com/kevinch3/NicotinD/compare/v0.8.93...v0.8.94) (2026-09-27)
+
+### Bug Fixes
+
+* **build:** run Bun 1.3.14 everywhere, not the 1.3.11 that crashes starting a Worker ([#1432](https://github.com/kevinch3/NicotinD/issues/1432)) ([9a50443](https://github.com/kevinch3/NicotinD/commit/9a50443d468573779024fbda7fe74725acecd85c)), references [#1395](https://github.com/kevinch3/NicotinD/issues/1395)
 ## [0.8.93](https://github.com/kevinch3/NicotinD/compare/v0.8.92...v0.8.93) (2026-09-27)
 
 ### Bug Fixes
