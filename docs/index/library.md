@@ -22,7 +22,8 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **Multi-artist support (confirmation-gated)**: `splitArtists` splits a compound only when every part
   is a confirmed artist; `segmentConcatenatedArtist` handles delimiter-less mashes;
   `library_artist_identity` + `library_artist_aliases` survive rescans; `corroboratesLidarrHit` and
-  `boundedEditDistance` guard provisioning. → [library-scanner.md](../library-scanner.md)
+  `boundedEditDistance` guard provisioning. → [library-scanner.md](../library-scanner.md),
+  [artist-segmentation-2026-09.md](../measurements/artist-segmentation-2026-09.md)
 - **Artist MBID resolution + homonyms**: one `library_mbids` row per normalized name feeds every
   non-tag artist surface. `pickMbidHit`, `pickByDiscographyOverlap`, `isMbidReResolvable`,
   `mutateArtistMbid` (+ MCP `set_artist_mbid`), `isMbidTombstoned`, `usableMbid`.
