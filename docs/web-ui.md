@@ -1277,6 +1277,12 @@ wired up as one: it **forbids `vi.mock` on relative imports**, which five specs 
 collects a different subset. The root `test:web` script used to point at it and failed on `master`;
 it now aliases the real harness.
 
+The harness is on vitest 5 + jsdom 30. `@angular/build` 22.1 peers `vitest ^4`, so `bun.lock` also
+carries a nested `vitest@4` under it; nothing runs it, because only `ng test` would. It dedupes once
+`@angular/build` reaches 22.2, whose peer range admits `^5`. Vitest 5 turns `clearMocks` on by
+default: a mock's call history is wiped before every test, so assert calls made in `beforeAll` or at
+module scope inside that same hook, not in a later test.
+
 **Specs are type-checked separately, and this is load-bearing.** `tsconfig.app.json` excludes
 `**/*.spec.ts` and vitest transpiles without type-checking, so for a long time a spec stub could
 diverge from the interface it asserts against and every test still passed. That is exactly what
