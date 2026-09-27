@@ -94,7 +94,7 @@ so re-runs are always safe.
 
 ### iOS app
 
-- CI builds an **unsigned** `.ipa` on a `macos-14` runner (`ios` job) on every
+- CI builds an **unsigned** `.ipa` on a `macos-26` runner (`ios` job) on every
   tag push.
 - The unsigned IPA is attached to the GitHub Release — install via **AltStore**
   or **Sideloadly** (re-signs with your own Apple ID; 7-day expiry on a free

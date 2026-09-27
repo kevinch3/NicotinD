@@ -23,7 +23,7 @@
       "matchPackageNames": ["@angular/**", "@angular-devkit/**", "angular-eslint"],
       "groupName": "angular"
     },
-    { "matchPackageNames": ["@capacitor/**"], "groupName": "capacitor" },
+    { "matchPackageNames": ["@capacitor/**", "@capgo/capacitor-media-session"], "groupName": "capacitor" },
     { "matchPackageNames": ["@sentry/**"], "groupName": "sentry" },
     { "matchPackageNames": ["@typescript-eslint/**", "eslint", "prettier"], "groupName": "lint toolchain" },
     { "matchPackageNames": ["tailwindcss", "@tailwindcss/**"], "groupName": "tailwind" },
@@ -36,12 +36,7 @@
       "allowedVersions": "<7"
     },
     {
-      "description": "HELD: @jofr/capacitor-media-session still peers @capacitor/core@^6, and it is what gives Android lock-screen/background audio. Cap 7/8 is its own migration, not a routine bump.",
-      "matchPackageNames": ["@capacitor/**"],
-      "allowedVersions": "<7"
-    },
-    {
-      "description": "HELD with Capacitor 6: JDK 25 needs Gradle >=9.1, which needs AGP 9, and Capacitor 6 builds on neither. Capacitor 8 needs Xcode 26, so the macOS 26 runner moves with it too (#226).",
+      "description": "HELD with Capacitor 8: its migration guide, @capacitor/android and every plugin pin AGP 8.13 / Gradle 8.14.3; AGP 9 is a major Capacitor has not adopted. Moves with the next Capacitor major. capacitor-toolchain.test.ts pins AGP to @capacitor/android's.",
       "matchPackageNames": ["com.android.tools.build:gradle", "gradle"],
       "allowedVersions": "<9"
     },
@@ -50,8 +45,11 @@
       "matchPackageNames": ["@types/node"],
       "allowedVersions": "<25"
     },
-    { "matchPackageNames": ["java-jdk"], "allowedVersions": "<22" },
-    { "matchPackageNames": ["macos"], "allowedVersions": "<26" },
+    {
+      "description": "HELD on 21: fdroiddata builds every app on JDK 21 and the JDK decides classes.dex, so any other major breaks F-Droid's reproducible-build check (docs/fdroid.md). Capacitor 8 requires 21, and JDK 25 needs Gradle 9 anyway.",
+      "matchPackageNames": ["java-jdk"],
+      "allowedVersions": "<22"
+    },
     {
       "description": "Not a real major: linuxserver/lidarr still carries 0.8-era tags like 8.1.2135 that sort above the current 3.x line.",
       "matchPackageNames": ["linuxserver/lidarr"],

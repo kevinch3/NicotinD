@@ -17,7 +17,7 @@
         android:theme="@style/AppTheme">
 
         <activity
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
             android:name=".MainActivity"
             android:label="@string/title_activity_main"
             android:theme="@style/AppTheme.NoActionBarLaunch"
@@ -68,7 +68,7 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Background music playback + system controls: @jofr/capacitor-media-session
+    <!-- Background music playback + system controls: @capgo/capacitor-media-session
          runs a media-playback foreground service so audio keeps playing when
          backgrounded and the media notification / lock-screen controls show.
          POST_NOTIFICATIONS surfaces the notification; WAKE_LOCK keeps the CPU awake

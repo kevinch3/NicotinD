@@ -77,8 +77,8 @@ the noted upstream condition changes.
 | Held | Latest | Blocker | Re-check when |
 | --- | --- | --- | --- |
 | `typescript` 6 → 7 | 7.x | `@angular/compiler-cli` (Angular 22) peers `typescript@6.x`. TS 7 is the Go rewrite; adopting it breaks the web build. | Angular ships a release peering `typescript@>=7`. |
-| `@capacitor/*` 6 → 8 | 8.x | `@jofr/capacitor-media-session` (Android lock-screen / background audio) latest (4.0.0) still peers `@capacitor/core@^6.0.0`; no release supports Cap 7/8. Bumping breaks background playback + needs a native android/ios project migration (gradle/pods/minSDK). | The media-session plugin (or a replacement) supports Capacitor 7/8. Treat as its own focused migration, not a routine bump. |
-| AGP / Gradle 8 → 9, `java-jdk` 21 → 25, `macos` runner 14 → 26 | 9.x / 25 / 26 | Coupled to Capacitor 6: JDK 25 needs Gradle ≥ 9.1, which needs AGP 9, and Capacitor 6 builds on neither. Capacitor 8 needs Xcode 26. | They move together with the Capacitor 8 migration (#226). |
+| AGP / Gradle 8 → 9 | 9.x | Capacitor 8 builds on AGP 8.13 / Gradle 8.14.3: its migration guide, `@capacitor/android` and every plugin's `build.gradle` pin AGP 8.13, and `capacitor-toolchain.test.ts` pins ours to the installed `@capacitor/android`. | A Capacitor major adopts AGP 9. |
+| `java-jdk` 21 → 25 | 25 | fdroiddata builds every app on JDK 21, and the JDK that runs gradle decides `classes.dex`, so any other major fails F-Droid's reproducible-build check ([fdroid.md](fdroid.md)). Capacitor 8 requires 21; JDK 25 would also need Gradle ≥ 9.1. | fdroiddata's buildserver moves off 21. |
 | `linuxserver/lidarr` 3 → "8" | — | Not a real major: the image still carries 0.8-era tags (`8.1.2135`) that sort above the current 3.x line. | Never — the hold is a versioning artefact. |
 
 ## Python sidecar (`packages/analysis/pyproject.toml`)
@@ -133,7 +133,7 @@ undesirable, at the cost of weaker grouping/auto-merge and no reach into the cus
 
 ### Proposed `renovate.json` shape (to add when enabling)
 - `extends: ["config:recommended", ":dependencyDashboard"]`
-- **Grouped** PRs: all `@angular/*` together, all `@capacitor/*` together, `@sentry/*`,
+- **Grouped** PRs: all `@angular/*` together, all `@capacitor/*` together (plus `@capgo/capacitor-media-session`), `@sentry/*`,
   `@typescript-eslint/*`, `tailwindcss` + `@tailwindcss/postcss` — one PR each.
 - `separateMajorMinor: true`; **major** updates land as their own non-automerge PR, so a
   repeat of the TS7 / Capacitor8 / Electron situations is always a reviewable PR.

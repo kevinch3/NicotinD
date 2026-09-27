@@ -351,7 +351,7 @@ pipeline that diverges. Four `assembleTvRelease` builds settle it:
 And the local Temurin 21 build's `classes.dex` is **byte-identical** to F-Droid's Debian 21 one
 (`a33f9db1…`) — so the major version is the entire story, independent of vendor and patch release.
 
-`deploy.yml` therefore builds on 21. Capacitor 6 documents 17; 21 builds fine and is what the
+`deploy.yml` therefore builds on 21, which Capacitor 8 also requires, and which the
 reference binary has to match. Gated against fdroiddata's number, because the failure mode is a
 green release here and a refused rebuild there, one release later.
 

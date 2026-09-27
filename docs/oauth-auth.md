@@ -428,7 +428,7 @@ Add to `packages/mobile/package.json`:
   `window.location.href = url`.
 
 No new native plugin is required — `@capacitor/app` and
-`@capacitor/browser` are official Capacitor 6 packages already pinned.
+`@capacitor/browser` are official Capacitor 8 packages already pinned.
 
 ## Phase 10: Testing
 

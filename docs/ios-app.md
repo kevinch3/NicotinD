@@ -31,9 +31,9 @@ platform-agnostic and works on iOS with no change:
   the `Content-Range`/`Accept-Ranges`/`Content-Length` headers for 206 range
   streaming. **No API change was needed** (only a comment + a test assertion).
 - **Background audio + lock-screen controls** — `MediaControlsService` +
-  `buildMediaMetadata` wrap `@jofr/capacitor-media-session`; on iOS the plugin is
-  a thin wrapper over the Web Media Session API (WKWebView supports it on
-  iOS 16.4+). Same code path.
+  `buildMediaMetadata` wrap `@capgo/capacitor-media-session` on Android and web;
+  iOS routes to our own `@nicotind/capacitor-now-playing` instead (see
+  "iOS Now Playing" below).
 - **Versioning** — the monorepo semver drives the app version. `iosVersion()`
   (`packages/mobile/src/version.ts`) reuses the shared monotonic integer scheme
   to produce `CFBundleShortVersionString` + `CFBundleVersion`, exactly as
@@ -45,7 +45,7 @@ platform-agnostic and works on iOS with no change:
   TestFlight, or App Store. We do not have one yet — see distribution below.
 - **macOS runner + Xcode + CocoaPods** for builds. `cap add ios` and `xcodebuild`
   cannot run on Linux, so the maintainer's Linux host cannot generate or build
-  the iOS project; CI does it on a `macos-14` runner.
+  the iOS project; CI does it on a `macos-26` runner (Capacitor 8 needs Xcode 26).
 - **`UIBackgroundModes: [audio]` in `Info.plist`** for background playback.
   Because the `ios/` project is generated ephemerally (below), this is injected
   by `scripts/ios-plist.ts` rather than hand-edited in a committed plist.
@@ -93,7 +93,7 @@ the authenticated state.
 
 Android committed a hand-generated `android/` Gradle tree. We **cannot** mirror
 that for iOS on a Linux host, so the CI `ios` job **generates `ios/` ephemerally
-each run** (`bunx cap add ios` → `cap sync ios`) and patches `Info.plist` with a
+each run** (`bunx cap add ios --packagemanager CocoaPods` → `cap sync ios`) and patches `Info.plist` with a
 script. Tradeoff: native config does not persist in git and is not reviewable in
 a PR.
 
@@ -148,9 +148,9 @@ source of truth. See [web-ui.md](web-ui.md) "Safe-area header".
 
 ## iOS Now Playing (lock-screen / Control Center card)
 
-**Problem.** `@jofr/capacitor-media-session` ships **no iOS native code** — the
-package contains only `android/` (a real native plugin) and `dist/` (web). So on
-iOS, Capacitor falls back to the **web** implementation, which is literally
+**Problem.** The original media-session plugin, `@jofr/capacitor-media-session`,
+shipped **no iOS native code** — only `android/` and `dist/` (web). So on
+iOS, Capacitor fell back to the **web** implementation, which is literally
 `navigator.mediaSession.metadata = new MediaMetadata(...)` / `setPositionState(...)`
 inside WKWebView. There is **no bridge to `MPNowPlayingInfoCenter`**. WKWebView
 auto-wires play/pause to the actively-playing `<audio>` element (so transport
@@ -189,7 +189,7 @@ Media Session `setActionHandler` on iOS — doing both fires every lock-screen
 action **twice**. So `MediaControlsService.setActionHandler` branches on
 `isIosNative()`: on iOS it stores handlers in a `Map<MediaAction, …>` and attaches
 **one** `addListener('remoteCommand', …)` that dispatches to them; web/Android
-keep the unchanged `@jofr` path. `player.component.ts` is untouched (its Effect 4
+keep the media-session plugin path. `player.component.ts` is untouched (its Effect 4
 already wraps handlers in `zone.run`).
 
 **Wiring.** `MediaControlsService` (`packages/web`) routes `setMetadata` /
@@ -200,10 +200,18 @@ already wraps handlers in `zone.run`).
 `pickArtworkUrl`, which picks the largest declared artwork size) is pure and unit
 -tested in `lib/now-playing.spec.ts`; platform detection in `lib/platform.spec.ts`;
 the iOS routing + transport dispatch in `services/media-controls.service.spec.ts`.
-Android and the web are unchanged (still `@jofr`); if the native plugin is missing,
-*info* falls back to `@jofr` with no regression (transport simply no-ops on iOS
-until the plugin ships — we deliberately do **not** fall back to `@jofr` transport
-to avoid the double-fire).
+Android and the web use the media-session plugin; if the native plugin is missing,
+*info* falls back to it with no regression.
+
+**The replacement plugin has iOS code, and it must stay idle (#226).** Unlike
+`@jofr`, `@capgo/capacitor-media-session` ships a Swift plugin that also writes
+`MPNowPlayingInfoCenter` and registers `MPRemoteCommandCenter` targets. It touches
+the command center **only inside `setActionHandler`**, which the service never
+calls on iOS while `NicotindNowPlaying` is present — so ours stays the single
+owner and each action fires once. **Not yet verified on an iPhone** — it is the
+one iOS item on #226's device checklist. If the native plugin were missing, the
+fallback now registers `@capgo`'s native commands, which is harmless because
+nothing else owns them then.
 
 **Build/CI.** The plugin is a workspace dependency of `@nicotind/mobile`, so
 `cap sync ios` discovers it (via the `capacitor.ios.src` marker +
@@ -251,7 +259,7 @@ now observes `AVAudioSession.interruptionNotification` in `load()` and, on
 ## Background-audio risk (resolved on-device)
 
 Android **guarantees** background audio via the plugin's native media-playback
-foreground service. **iOS was the unknown:** the `@jofr` plugin's iOS path is a
+foreground service. **iOS was the unknown:** the `@jofr` plugin's iOS path was a
 Web Media Session *wrapper*, not a foreground service, so backgrounded playback
 relies on WKWebView honoring `UIBackgroundModes: [audio]` with an actively-playing
 element. **This has now been confirmed working on a real device** — backgrounded
@@ -262,14 +270,18 @@ plugin (larger effort).
 
 ## Capacitor version
 
-Stay pinned to **Capacitor 6** across both platforms — it matches Android and
-`@jofr/capacitor-media-session@4`'s supported major. Do not split majors across
-platforms. Revisit alongside the Android pin if/when the media-session plugin
-ships Capacitor 7+ support.
+**Capacitor 8** on both platforms (#226). Do not split majors across platforms. iOS
+needs **Xcode 26** and a **15.0** deployment target, and
+`NicotindCapacitorNowPlaying.podspec` declares 15.0. `capacitor-toolchain.test.ts`
+keeps that target equal to the installed Capacitor pod's. The Capacitor 8 CLI makes
+**SPM** projects by default. CI passes `--packagemanager CocoaPods` because our
+plugin ships only a podspec, and the build opens `App.xcworkspace`, which only the
+CocoaPods template has. Moving to SPM means adding a `Package.swift` to
+`capacitor-now-playing` first. See [mobile-app.md](mobile-app.md) "Capacitor version".
 
 ## CI job
 
-`.github/workflows/deploy.yml` → `ios` job (`runs-on: macos-14`), gated and
+`.github/workflows/deploy.yml` → `ios` job (`runs-on: macos-26`), gated and
 parallelized exactly like `android`/`deploy` (`workflow_dispatch` or a
 `chore(release):` commit). Steps: build web → `cap add ios`/`cap sync ios` →
 generate the branded AppIcon (`bunx @capacitor/assets generate --ios`, from the
@@ -309,7 +321,7 @@ to the Release. A failure here does **not** block the server deploy.
   `services/media-controls.service.spec.ts` (on iOS, `setMetadata`/
   `setPlaybackState`/`setPositionState` hit the native plugin with mapped args;
   invalid positions are dropped; `setActionHandler` routes through a single
-  `remoteCommand` listener and **not** `@jofr`, each action dispatches to its own
+  `remoteCommand` listener and **not** the media-session plugin, each action dispatches to its own
   handler with `seekTime` only for `seekto`; `getDiagnostics` passes through). These
   run in the web `ci` job (`vitest run`).
 - **The Swift `NowPlayingPlugin` itself has no automated test** — Swift can't run

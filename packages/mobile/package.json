@@ -19,19 +19,19 @@
     "android:version": "bun run scripts/android-version.ts"
   },
   "dependencies": {
-    "@capacitor/android": "^6.2.0",
-    "@capacitor/app": "^6",
-    "@capacitor/core": "^6.2.0",
-    "@capacitor/ios": "^6.2.0",
-    "@capacitor/network": "^6.0.3",
-    "@capacitor/preferences": "^6.0.3",
-    "@jofr/capacitor-media-session": "^4.0.0",
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/ios": "^8.5.2",
+    "@capacitor/network": "^8.0.1",
+    "@capacitor/preferences": "^8.0.1",
+    "@capgo/capacitor-media-session": "^8.0.32",
     "@nicotind/capacitor-now-playing": "workspace:*",
     "@nicotind/capacitor-apk-update": "workspace:*",
     "@nicotind/capacitor-tv-channels": "workspace:*"
   },
   "devDependencies": {
-    "@capacitor/cli": "^6.2.0",
+    "@capacitor/cli": "^8.5.2",
     "opentype.js": "^2.0.0",
     "sharp": "^0.35.3"
   }

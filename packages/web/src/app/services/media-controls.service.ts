@@ -32,7 +32,7 @@ export interface NowPlayingDiagnostics {
   lastArtworkStatus: string;
 }
 
-// Minimal shape of the @jofr/capacitor-media-session `MediaSession` object we use.
+// Minimal shape of the @capgo/capacitor-media-session `MediaSession` object we use.
 interface MediaSessionApi {
   setMetadata(o: MediaMetadataInit): Promise<void>;
   setPlaybackState(o: { playbackState: 'playing' | 'paused' | 'none' }): Promise<void>;
@@ -61,14 +61,13 @@ interface IosNowPlayingPlugin {
  * Bridges the app's playback to the OS media session (lock-screen / notification
  * controls + hardware keys).
  *
- * - **Android / web** use `@jofr/capacitor-media-session`. On Android the plugin
+ * - **Android / web** use `@capgo/capacitor-media-session`. On Android the plugin
  *   runs a media-playback foreground service so audio keeps playing when the app
  *   is backgrounded; on web it wraps the Web Media Session API. (The Android
  *   WebView does not support the Web API, which is why a plugin is required for
  *   system controls to appear at all.)
- * - **iOS** is special: `@jofr` ships no iOS native code, so there it just
- *   proxies WKWebView's Web Media Session — which wires play/pause to the audio
- *   element but does **not** surface JS-set metadata/artwork/position. So the
+ * - **iOS** is special: WKWebView's Web Media Session wires play/pause to the
+ *   audio element but does **not** surface JS-set metadata/artwork/position. So the
  *   *displayed info* (title/artist/album/artwork/duration/elapsed) **and the
  *   transport controls** are routed to the native
  *   `@nicotind/capacitor-now-playing` plugin: it owns the AVAudioSession +
@@ -76,18 +75,18 @@ interface IosNowPlayingPlugin {
  *   play/pause/next/seek back via a `remoteCommand` event. Because the native
  *   plugin owns the commands, iOS **must not** also wire WKWebView's
  *   `setActionHandler` (that would fire every transport action twice). If the
- *   native plugin is unavailable we fall back to `@jofr` for info (no
+ *   native plugin is unavailable we fall back to `@capgo` for info (no
  *   regression); transport just no-ops until the plugin ships. See
  *   docs/ios-app.md "iOS Now Playing".
  *
- * The `@jofr` plugin is **lazily imported** so unit tests and the initial web
+ * The `@capgo` plugin is **lazily imported** so unit tests and the initial web
  * chunk don't pull in Capacitor; every call is best-effort (a browser without
  * media-session support just no-ops). See docs/mobile-app.md "Background audio".
  */
 @Injectable({ providedIn: 'root' })
 export class MediaControlsService {
   // Wrapped in a plain `{ session }` box rather than holding the proxy directly:
-  // the `@jofr` `MediaSession` is a Capacitor plugin proxy that intercepts *every*
+  // the `@capgo` `MediaSession` is a Capacitor plugin proxy that intercepts *every*
   // property get (including `.then`) as a native call. If a Promise ever resolves
   // to the bare proxy, the Promise machinery probes `value.then` to check for
   // thenable-ness, which the proxy turns into a `MediaSession.then()` call that
@@ -110,7 +109,7 @@ export class MediaControlsService {
   }
 
   private session(): Promise<{ session: MediaSessionApi } | null> {
-    return (this.api ??= import('@jofr/capacitor-media-session')
+    return (this.api ??= import('@capgo/capacitor-media-session')
       .then((m) => ({ session: m.MediaSession as unknown as MediaSessionApi }))
       .catch(() => null));
   }
@@ -132,12 +131,10 @@ export class MediaControlsService {
       return;
     }
 
-    // Android/Web: guard against an unreachable cover URL killing the app. The
-    // @jofr plugin fetches the URL on the Capacitor thread via Java's
-    // HttpURLConnection; anything it throws (404 -> FileNotFoundException,
-    // connection failure -> IOException) propagates as a FATAL EXCEPTION and
-    // the process dies — at launch, before the WebView ever appears, since
-    // metadata for the restored track is set during startup (issue #441).
+    // Android/Web: probe the cover URL before handing it to the plugin. The old
+    // @jofr plugin let an unreachable URL's IOException kill the process at
+    // launch (issue #441); @capgo catches it, but the probe stays so a dead URL
+    // costs one metadata call, not a native fetch on every track.
     if (!meta.artwork || meta.artwork.length === 0) {
       this.run((s) => s.setMetadata(meta));
       return;
@@ -204,7 +201,7 @@ export class MediaControlsService {
     const ios = this.iosNowPlaying();
     if (ios) {
       // Native plugin owns the lock-screen commands; route through its single
-      // `remoteCommand` event and do NOT also wire @jofr (would double-fire).
+      // `remoteCommand` event and do NOT also wire @capgo (would double-fire).
       this.iosHandlers.set(action, handler);
       if (!this.iosListenerAttached && ios.addListener) {
         this.iosListenerAttached = true;

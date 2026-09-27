@@ -5,9 +5,11 @@ card (`MPNowPlayingInfoCenter`) directly.
 
 ## Why this exists
 
-`@jofr/capacitor-media-session` (used for Android's background-playback foreground
-service and the browser Media Session) ships **no iOS native code** — its `dist/`
-is a thin wrapper over WKWebView's Web Media Session API. On iOS that API wires
+The original media-session plugin, `@jofr/capacitor-media-session`, shipped **no
+iOS native code**, so on iOS it was a thin wrapper over WKWebView's Web Media
+Session API. Its replacement, `@capgo/capacitor-media-session` (#226), does ship
+Swift, but the app keeps it idle on iOS so this plugin remains the only owner of
+`MPRemoteCommandCenter` (see docs/ios-app.md). On iOS the Web API wires
 play/pause to the playing `<audio>` element but does **not** reliably surface
 JS-set metadata (title / artist / album / artwork) or the position scrubber for
 cross-origin web audio. The result: the iOS lock screen shows controls but no
