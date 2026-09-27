@@ -40,10 +40,21 @@
       "matchPackageNames": ["@capacitor/**"],
       "allowedVersions": "<7"
     },
+    {
+      "description": "HELD with Capacitor 6: JDK 25 needs Gradle >=9.1, which needs AGP 9, and Capacitor 6 builds on neither. Capacitor 8 needs Xcode 26, so the macOS 26 runner moves with it too (#226).",
+      "matchPackageNames": ["com.android.tools.build:gradle", "gradle"],
+      "allowedVersions": "<9"
+    },
+    { "matchPackageNames": ["java-jdk"], "allowedVersions": "<22" },
+    { "matchPackageNames": ["macos"], "allowedVersions": "<26" },
+    {
+      "description": "Not a real major: linuxserver/lidarr still carries 0.8-era tags like 8.1.2135 that sort above the current 3.x line.",
+      "matchPackageNames": ["linuxserver/lidarr"],
+      "allowedVersions": "<8"
+    },
 
     {
       "description": "Deliberate ABI locks: essentia-tensorflow dlopens the CUDA-11 ABI, so numpy<2 and the nvidia-*-cu11 pins move only together with a tested Essentia/TF upgrade.",
-      "matchManagers": ["pep621", "pip_requirements", "pip_setup"],
       "matchPackageNames": ["essentia-tensorflow", "numpy", "nvidia-**"],
       "enabled": false
     },
