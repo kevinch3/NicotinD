@@ -516,12 +516,18 @@ not include the window, so a change silently mixes vectors computed over differe
 one similarity space — the un-versioned-recipe trap. If the window ever changes, it has to enter
 that key.
 
-Real server-side cancellation stays unbuilt and #1139 stays open for it, pending a re-measure
-after the next batch of new songs (or a model-version bump) reopens the backfill: count non-200
-`/analyze` responses against completed analyses, and build only if waste reappears. The shape then
-is `descriptors.py`'s `ProcessRunner` — a killable worker process — not a cancellation token,
-because an abandoned Python thread keeps `models.py`'s registry lock and the next request queues
-behind work you claimed to cancel.
+**Re-measured 2026-09-28, #1139 closed: no waste left.** Over ~8.7 days of real backfill on kpc
+the sidecar created 7,504 TF sessions = 10 model loads (~70 each) + **568 analyses**, against **568
+`POST /analyze` 200s and no non-200**. uvicorn skips the access-log line when the client has
+already gone, so abandoned work would show as surplus sessions, and there were none. The failure
+ledger had no audio-features timeout stamps, and 0 of 21,769 songs were left without features.
+Measured on the GPU, wall time ≈ 1.8 s + 0.014 s per decoded audio-second, so the full 900 s window
+takes 9–12.6 s against the 138 s budget. A duration cutoff would therefore only have rejected
+tracks that finish fine. Real cancellation stays unbuilt. Reopen #1139 if, during a backfill, any
+`/analyze` is non-200 or an audio-features timeout stamp appears. The shape then is
+`descriptors.py`'s `ProcessRunner` (a killable worker process), not a cancellation token, because
+an abandoned Python thread keeps `models.py`'s registry lock and the next request queues behind
+work you claimed to cancel.
 
 Two inherited claims are wrong and should not be re-derived. There is **no healthcheck in the
 compose `analysis` block**: it lives at `packages/analysis/Dockerfile` and already carries
