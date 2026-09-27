@@ -38,6 +38,18 @@ Measured 2026-09-23 on a fresh worktree of `437dcae9`, warm bun cache:
 The script still accepts an old symlinked tree and deletes its links first, because an install
 on top of them would write through into the main checkout's store.
 
+## One Bun everywhere (#1409)
+
+CI, the desktop package and the prod image run the **same** Bun: every workflow's `BUN_VERSION` must
+equal the `oven/bun` / `imbios/bun-node` version in the `Dockerfile`, enforced by
+`scripts/bun-version-parity.test.ts`. The workflows had pinned **1.3.11** while the image shipped
+**1.3.14**, and 1.3.11 segfaults inside its own Worker startup (`web_worker.start`). Once key/tempo
+analysis spawned a worker per call (#1395), e2e shards lost their server mid-run (6 CI crashes in 3
+days, one blocking a release). The desktop app ships the packaging job's own `bun`
+(`prepare-resources.ts`), so its users ran 1.3.11 too. Reproduced locally with the real analysis
+worker (1,500 spawn→analyse→terminate cycles, 6 concurrent): **1.3.11 crashed 3 of 6 runs, 1.3.14
+0 of 12, 1.4.2 0 of 4.** Bump the image, the workflows and the F-Droid recipes' `bun` download + sha256 together: the parity test and `check:fdroid` fail on any one alone.
+
 ## Security floors (`overrides`)
 
 Three entries in the root `overrides` block are **security floors**, not pins — a minimum
