@@ -99,13 +99,25 @@ These are documented in full elsewhere; `CLAUDE.md` links straight to them.
 
   An explicit caller `signal` still wins: the budget is a default, not a ceiling.
 
-  **`idleTimeout` deliberately stays at 60s**, and issue #622's prediction that fixing the bulk
-  metadata-optimize loop would let it revert to 10s was wrong. That loop is a background job now,
-  but two bounded handlers still exceed 10s by design: a single `album.lookup` is `TIMEOUT_LOOKUP_MS`
-  (20s), and `GET /api/discography/artists/:id` resolves through `resolveOrAddArtist` →
-  `lidarr.artist.add`, which carries `TIMEOUT_PROVISION_MS` (60s) because Lidarr synchronously
-  imports the whole discography before answering. The binding constraint is therefore that
-  provisioning call, not metadata-optimize; 60s cannot come down until it moves off the request path.
+  **`idleTimeout` is 30s globally, 60s for the groups that need it (#644)** — `SERVER_IDLE_TIMEOUT_S`
+  and `applyIdleBudgets` in `middleware/idle-budget.ts`. It was 60s because `GET
+  /api/discography/artists/:id` added the artist inside the request (`TIMEOUT_PROVISION_MS`, 60s);
+  that add is a background job now (see [album-hunt.md](album-hunt.md#adding-an-artist-to-lidarr-is-a-job-644)).
+  Two things bound it from below:
+
+  - **The library-events SSE pings every 25s** (`PING_MS`). Bun's idle timer ticks every 4s, so a
+    silent socket is closed 26–30s after its last write, *not* at exactly 30 — measured on Bun 1.3.14:
+    idle 30 / ping 25 held a stream 100s; idle 30 / ping 31 closed at 60s; idle 8 / ping 7 closed at
+    12s. So 30 is the floor for a 25s ping, and `PING_MS/1000 + 4 ≤ SERVER_IDLE_TIMEOUT_S` is asserted
+    in `idle-budget.test.ts`, alongside a real `Bun.serve` run (scaled to idle 8 / ping 2) proving a
+    pinged stream outlives the timeout and an unpinged one does not.
+  - **The provisioning call was never the only handler past 30s.** An audit of the request paths
+    found hunts (`albumsSearch`, 20–45s typical, 180s budget), `hunt-tracks`, `complete_album` over
+    `/api/mcp` and `/api/library`, full rescans awaited inside `/api/library` writes, and first-play
+    transcodes on `/api/stream`. Those groups — `LONG_REQUEST_GROUPS` plus every non-GET under
+    `/api/library` — keep 60s through Bun's per-request `server.timeout()` (Hono hands the server
+    over as `c.env`), so the lower global costs them nothing they had. Library GETs stay on 30s: the
+    web aborts GETs at 30s anyway, and the events SSE must live on its pings, not on a raised budget.
 - **Long admin passes are background jobs, not request handlers (issue #622)**: three
   operator-triggered whole-library passes each awaited a serial loop inside its handler —
   `metadata-optimize` (albums × a 20s Lidarr lookup, *unbounded*), `transcode-library` (ffmpeg per

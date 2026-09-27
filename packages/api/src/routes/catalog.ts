@@ -1,17 +1,35 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { createLogger, NicotinDError } from '@nicotind/core';
 import type { AuthEnv } from '../middleware/auth.js';
 import type { CatalogService } from '../services/catalog-search.service.js';
+import {
+  provisioningResponse,
+  type ArtistProvisioningService,
+} from '../services/artist-provisioning.service.js';
+import { isNotProvisioned } from '../services/lidarr-provision.js';
 
 const log = createLogger('catalog');
 
 export interface CatalogRoutesOptions {
   catalog: CatalogService;
+  /** The add-artist job (issue #644); status lives at /api/discography/provisioning. */
+  provisioning: ArtistProvisioningService;
 }
 
-export function catalogRoutes({ catalog }: CatalogRoutesOptions) {
+export function catalogRoutes({ catalog, provisioning }: CatalogRoutesOptions) {
   const app = new Hono<AuthEnv>();
+
+  // Both POSTs below are already a user's button press, so an artist Lidarr lacks
+  // starts the add job here and answers 202; the web re-sends once it finishes.
+  const startProvisioning = (c: Context<AuthEnv>, artistMbid: string, artistName: string) => {
+    const { status, body } = provisioningResponse(
+      provisioning,
+      { artistName, artistMbid: artistMbid || null },
+      c.get('user')?.username,
+    );
+    return c.json(body, status);
+  };
 
   // GET /api/catalog/search?q=
   // Metadata-driven search: looks the query up against Lidarr/MusicBrainz and
@@ -32,9 +50,9 @@ export function catalogRoutes({ catalog }: CatalogRoutesOptions) {
   });
 
   // POST /api/catalog/resolve
-  // Resolves a searched album into a real Lidarr album id (adding the artist on
-  // demand if needed) so the existing album-hunt flow can run against its
-  // canonical tracklist. Body: { foreignAlbumId, artistMbid, artistName, albumTitle }
+  // Resolves a searched album into a real Lidarr album id so the existing
+  // album-hunt flow can run against its canonical tracklist (202 while the artist
+  // is being added). Body: { foreignAlbumId, artistMbid, artistName, albumTitle }
   app.post('/resolve', async (c) => {
     const body = await c.req
       .json<{
@@ -56,6 +74,9 @@ export function catalogRoutes({ catalog }: CatalogRoutesOptions) {
         artistName: body.artistName,
         albumTitle: body.albumTitle ?? '',
       });
+      if (isNotProvisioned(result)) {
+        return startProvisioning(c, body.artistMbid ?? '', body.artistName);
+      }
       return c.json(result);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -71,8 +92,8 @@ export function catalogRoutes({ catalog }: CatalogRoutesOptions) {
   });
 
   // POST /api/catalog/discography
-  // Loads an artist's real discography on demand (the §A6 deep fix). Adds the
-  // artist to Lidarr if absent — same mutation as resolve — so this is a POST,
+  // Loads an artist's real discography on demand (the §A6 deep fix). An artist
+  // Lidarr lacks starts the add job — same as resolve — so this is a POST,
   // user-initiated only. Body: { artistMbid?, artistName }
   app.post('/discography', async (c) => {
     const body = await c.req.json<{ artistMbid?: string; artistName?: string }>().catch(() => null);
@@ -81,6 +102,9 @@ export function catalogRoutes({ catalog }: CatalogRoutesOptions) {
 
     try {
       const result = await catalog.loadDiscography(body.artistMbid ?? '', body.artistName);
+      if (isNotProvisioned(result)) {
+        return startProvisioning(c, body.artistMbid ?? '', body.artistName);
+      }
       return c.json(result);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

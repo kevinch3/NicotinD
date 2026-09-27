@@ -101,6 +101,14 @@
       </button>
     </div>
   }
+  @if (provisioningArtist(); as artist) {
+    <div
+      class="mb-6 px-4 py-3 rounded-lg bg-blue-950/40 border border-blue-900/50"
+      data-testid="artist-provisioning"
+    >
+      <p class="text-sm text-blue-300">{{ 'acquire.addingArtist' | t: { artist: artist } }}</p>
+    </div>
+  }
   @if (rawFallbackNote()) {
     <div
       class="mb-6 px-4 py-3 rounded-lg bg-blue-950/40 border border-blue-900/50 flex items-center gap-3"

@@ -76,6 +76,9 @@ function setup(
   role = 'admin',
   deleteSongs = vi.fn(() => of({ ok: true, deletedCount: 0 })),
   canAcquire = true,
+  downloadsApi: object = {
+    getArtistDiscography: () => of({ artistId: 'ar1', lidarrId: 0, mbid: '', albums: [] }),
+  },
 ) {
   const playWithContextCalls: unknown[][] = [];
   const addToQueueCalls: unknown[] = [];
@@ -119,9 +122,7 @@ function setup(
       },
       {
         provide: DownloadsApiService,
-        useValue: {
-          getArtistDiscography: () => of({ artistId: 'ar1', lidarrId: 0, mbid: '', albums: [] }),
-        },
+        useValue: downloadsApi,
       },
       {
         provide: LibraryApiService,
@@ -824,5 +825,85 @@ describe('ArtistDetailComponent — merged album grid', () => {
 
     expect(fixture.nativeElement.textContent).not.toContain('Full Discography');
     expect(fixture.nativeElement.querySelector('[data-testid="discography-summary"]')).toBeTruthy();
+  });
+});
+
+describe('ArtistDetailComponent — add artist to Lidarr (#644)', () => {
+  const notProvisioned = {
+    notProvisioned: true,
+    artistId: 'ar1',
+    artistName: 'Natiruts',
+    artistMbid: 'mb',
+    candidateName: 'Natiruts',
+    provisioning: false,
+  };
+  const running = {
+    phase: 'running',
+    target: { artistName: 'Natiruts', localArtistId: 'ar1' },
+    lastOutcome: null,
+    lastError: null,
+  };
+
+  afterEach(() => vi.useRealTimers());
+
+  it('offers Add, runs the job, then loads the discography', async () => {
+    vi.useFakeTimers();
+    const getArtistDiscography = vi
+      .fn()
+      .mockReturnValueOnce(of(notProvisioned))
+      .mockReturnValue(of({ artistId: 'ar1', lidarrId: 9, mbid: 'mb', albums: [] }));
+    const provisionArtist = vi.fn(() => of({ provisioning: true, status: running }));
+    const getArtistProvisioning = vi
+      .fn()
+      .mockReturnValueOnce(of(running))
+      .mockReturnValue(of({ ...running, phase: 'idle', lastOutcome: 'completed' }));
+    const { component } = setup('admin', undefined, true, {
+      getArtistDiscography,
+      provisionArtist,
+      getArtistProvisioning,
+    });
+    await flush();
+    expect(component.notProvisioned()?.artistName).toBe('Natiruts');
+    expect(component.discography()).toBeNull();
+
+    const adding = component.addArtistToLidarr();
+    await flush();
+    expect(provisionArtist).toHaveBeenCalledWith('ar1');
+    expect(component.provisioning()).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(4_000);
+    await adding;
+    expect(getArtistProvisioning).toHaveBeenCalledTimes(2);
+    expect(component.provisioning()).toBe(false);
+    expect(component.notProvisioned()).toBeNull();
+    expect(component.discography()?.lidarrId).toBe(9);
+  });
+
+  it('surfaces the job error instead of reloading when the add failed', async () => {
+    vi.useFakeTimers();
+    const getArtistDiscography = vi.fn(() => of(notProvisioned));
+    const { component } = setup('admin', undefined, true, {
+      getArtistDiscography,
+      provisionArtist: () => of({ provisioning: true, status: running }),
+      getArtistProvisioning: () =>
+        of({ ...running, phase: 'idle', lastOutcome: 'failed', lastError: 'No confident match' }),
+    });
+    await flush();
+    const adding = component.addArtistToLidarr();
+    await vi.advanceTimersByTimeAsync(2_000);
+    await adding;
+    expect(component.provisionError()).toBe('No confident match');
+    expect(getArtistDiscography).toHaveBeenCalledTimes(1);
+  });
+
+  it('resumes the pending state when the job was already running on load', async () => {
+    vi.useFakeTimers();
+    const getArtistProvisioning = vi.fn(() => of(running));
+    const { component } = setup('admin', undefined, true, {
+      getArtistDiscography: () => of({ ...notProvisioned, provisioning: true }),
+      getArtistProvisioning,
+    });
+    await flush();
+    expect(component.provisioning()).toBe(true);
   });
 });

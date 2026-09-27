@@ -4,6 +4,11 @@ import type { Database } from 'bun:sqlite';
 import type { AuthEnv } from '../middleware/auth.js';
 import { getCurrentUser, requireAcquirer } from '../middleware/current-user.js';
 import type { DiscographyService } from '../services/discography.service.js';
+import {
+  provisioningResponse,
+  type ArtistProvisioningService,
+} from '../services/artist-provisioning.service.js';
+import { isNotProvisioned } from '../services/lidarr-provision.js';
 import type { AlbumHuntOrchestrator } from '../services/source-hunter.js';
 import { albumIdFor, artistIdFor } from '../services/library-scanner.js';
 import { albumAlreadyComplete } from '../services/library-completeness.js';
@@ -62,6 +67,8 @@ export interface DiscographyRoutesOptions {
   dataDir?: string;
   /** Live lookup of the active remote acquisition addon (the only hunt engine since phase 3). */
   getAddon: () => RemoteAddonPlugin | null;
+  /** The explicit add-artist job (issue #644). */
+  provisioning: ArtistProvisioningService;
 }
 
 export function discographyRoutes({
@@ -71,6 +78,7 @@ export function discographyRoutes({
   db,
   dataDir,
   getAddon,
+  provisioning,
 }: DiscographyRoutesOptions) {
   const app = new Hono<AuthEnv>();
   const coverCacheDir = dataDir ? join(dataDir, 'cover-cache') : undefined;
@@ -82,11 +90,22 @@ export function discographyRoutes({
   });
 
   // GET /api/discography/artists/:id
-  // Returns complete discography for a local library artist, diffed against Lidarr
+  // Returns complete discography for a local library artist, diffed against Lidarr.
+  // Read-only (#644): an artist Lidarr lacks answers `notProvisioned`, plus whether
+  // the add job is already running for it; POST .../provision adds it.
   app.get('/artists/:id', async (c) => {
     const { id } = c.req.param();
     try {
       const result = await discography.getArtistDiscography(id);
+      if (isNotProvisioned(result)) {
+        return c.json({
+          ...result,
+          provisioning: provisioning.isRunningFor({
+            artistName: result.artistName,
+            localArtistId: id,
+          }),
+        });
+      }
       return c.json(result);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -94,6 +113,24 @@ export function discographyRoutes({
       return c.json({ error: msg }, 500);
     }
   });
+
+  // POST /api/discography/artists/:id/provision — the explicit Add (#644): 202 +
+  // the job's status, 409 while a different artist is being added.
+  app.post('/artists/:id/provision', (c) => {
+    const { id } = c.req.param();
+    const artistName = discography.artistName(id);
+    if (artistName === null) return c.json({ error: 'Artist not found' }, 404);
+    const { status, body } = provisioningResponse(
+      provisioning,
+      { artistName, localArtistId: id },
+      getCurrentUser(c).username,
+    );
+    return c.json(body, status);
+  });
+
+  app.get('/provisioning', (c) => c.json(provisioning.getStatus()));
+
+  app.post('/provisioning/cancel', (c) => c.json({ ok: provisioning.cancel() }));
 
   // POST /api/discography/albums/:lidarrAlbumId/hunt
   // Searches Soulseek for folder candidates matching the album tracklist.

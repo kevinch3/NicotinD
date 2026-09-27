@@ -22,8 +22,11 @@ import type {
   Song,
   DiscographyAlbum,
   DiscographyResult,
+  DiscographyNotProvisioned,
   ArtistIdentityResult,
 } from '../../services/api/api-types';
+import { awaitProvisioning } from '../../lib/await-provisioning';
+import { httpErrorMessage } from '../../lib/http-error';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { PlaylistService } from '../../services/playlist.service';
@@ -446,6 +449,10 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
 
   readonly discography = signal<DiscographyResult | null>(null);
   readonly discographyLoading = signal(false);
+  /** Lidarr lacks this artist; the "Add artist" action starts the job (#644). */
+  readonly notProvisioned = signal<DiscographyNotProvisioned | null>(null);
+  readonly provisioning = signal(false);
+  readonly provisionError = signal<string | null>(null);
   readonly huntingAlbum = signal<DiscographyAlbum | null>(null);
 
   // ─── Merged album grid (library + discography, one set of tiles) ──────────
@@ -531,6 +538,9 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     this.singlesAndEps.set([]);
     this.appearsOn.set([]);
     this.discography.set(null);
+    this.notProvisioned.set(null);
+    this.provisioning.set(false);
+    this.provisionError.set(null);
     this.showAllReleases.set(false);
     this.identityOpen.set(false);
     this.genreOpen.set(false);
@@ -603,12 +613,52 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     this.discographyLoading.set(true);
     try {
       const result = await firstValueFrom(this.downloadsApi.getArtistDiscography(artistId));
-      if (this.artistId === artistId) this.discography.set(result);
+      if (this.artistId !== artistId) return;
+      if ('notProvisioned' in result) {
+        this.notProvisioned.set(result);
+        if (result.provisioning) void this.waitForProvisioning(artistId);
+      } else {
+        this.notProvisioned.set(null);
+        this.discography.set(result);
+      }
     } catch {
       // Lidarr not configured or artist not found — no discography shown
     } finally {
       if (this.artistId === artistId) this.discographyLoading.set(false);
     }
+  }
+
+  async addArtistToLidarr(): Promise<void> {
+    const artistId = this.artistId;
+    if (!artistId || this.provisioning()) return;
+    this.provisionError.set(null);
+    this.provisioning.set(true);
+    try {
+      await firstValueFrom(this.downloadsApi.provisionArtist(artistId));
+    } catch (err) {
+      if (this.artistId === artistId) {
+        this.provisioning.set(false);
+        this.provisionError.set(httpErrorMessage(err, "Couldn't add the artist to Lidarr"));
+      }
+      return;
+    }
+    await this.waitForProvisioning(artistId);
+  }
+
+  private async waitForProvisioning(artistId: string): Promise<void> {
+    this.provisioning.set(true);
+    const status = await awaitProvisioning(
+      () => firstValueFrom(this.downloadsApi.getArtistProvisioning()),
+      (s) => s.target?.localArtistId === artistId,
+      { alive: () => this.artistId === artistId },
+    ).catch(() => null);
+    if (this.artistId !== artistId) return;
+    this.provisioning.set(false);
+    if (status?.target?.localArtistId === artistId && status.lastOutcome === 'failed') {
+      this.provisionError.set(status.lastError ?? "Couldn't add the artist to Lidarr");
+      return;
+    }
+    await this.loadDiscography(artistId);
   }
 
   openHunt(album: DiscographyAlbum): void {

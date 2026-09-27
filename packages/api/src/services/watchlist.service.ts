@@ -4,6 +4,7 @@ import type { Lidarr } from '../lidarr/index.js';
 import type { CatalogService } from './catalog-search.service.js';
 import type { RemoteAddonPlugin } from './addons/remote-addon-plugin.js';
 import { acquireAlbum } from './album-acquire.js';
+import { isNotProvisioned } from './lidarr-provision.js';
 
 const log = createLogger('watchlist');
 
@@ -210,12 +211,19 @@ export class WatchlistService {
   private async resolveAlbumId(row: WatchlistRow): Promise<number | null> {
     if (row.lidarr_album_id) return row.lidarr_album_id;
     if (!row.foreign_album_id || !row.artist_mbid) return null;
-    const resolved = await this.catalog.resolveAlbum({
+    const input = {
       foreignAlbumId: row.foreign_album_id,
       artistMbid: row.artist_mbid,
       artistName: row.artist_name,
       albumTitle: row.album_title,
-    });
+    };
+    let resolved = await this.catalog.resolveAlbum(input);
+    // A poller has no user waiting on the add job, so it adds inline (#644).
+    if (isNotProvisioned(resolved)) {
+      await this.catalog.provisionArtist(row.artist_mbid, row.artist_name);
+      resolved = await this.catalog.resolveAlbum(input);
+      if (isNotProvisioned(resolved)) return null;
+    }
     this.db.run('UPDATE watchlist SET lidarr_album_id = ? WHERE id = ?', [
       resolved.lidarrAlbumId,
       row.id,

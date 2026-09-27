@@ -3,7 +3,9 @@ import { HttpClient } from '@angular/common/http';
 import type { AcquireJob, AcquisitionJobView } from '@nicotind/core';
 import type {
   BrowseJobResult,
-  DiscographyResult,
+  DiscographyResponse,
+  ArtistProvisioningStatus,
+  ProvisioningAccepted,
   HuntResult,
   FolderCandidate,
   AlbumJob,
@@ -103,7 +105,18 @@ export class DownloadsApiService {
 
   // Discography
   getArtistDiscography(artistId: string) {
-    return this.http.get<DiscographyResult>(`/api/discography/artists/${artistId}`);
+    return this.http.get<DiscographyResponse>(`/api/discography/artists/${artistId}`);
+  }
+
+  provisionArtist(artistId: string) {
+    return this.http.post<ProvisioningAccepted>(
+      `/api/discography/artists/${artistId}/provision`,
+      {},
+    );
+  }
+
+  getArtistProvisioning() {
+    return this.http.get<ArtistProvisioningStatus>('/api/discography/provisioning');
   }
 
   huntAlbum(

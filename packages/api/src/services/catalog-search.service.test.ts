@@ -6,7 +6,17 @@ import {
   CatalogService,
   filterAlbumsByRelevance,
   type CatalogAlbum,
+  type CatalogSearchResult,
+  type ResolveAlbumResult,
 } from './catalog-search.service';
+import { isNotProvisioned, type ArtistNotProvisioned } from './lidarr-provision';
+
+function provisioned<T extends CatalogSearchResult | ResolveAlbumResult>(
+  r: T | ArtistNotProvisioned,
+): T {
+  if (isNotProvisioned(r)) throw new Error(`not provisioned: ${r.artistName}`);
+  return r;
+}
 
 function makeArtist(over: Partial<LidarrArtist> & { id: number }): LidarrArtist {
   return {
@@ -447,18 +457,26 @@ describe('CatalogService.search', () => {
 });
 
 describe('CatalogService.loadDiscography', () => {
-  it('adds the artist if absent, then returns their listByArtist albums ranked', async () => {
+  it('answers not-provisioned for an artist Lidarr lacks, adding nothing (#644)', async () => {
     const add = mock(async (a: LidarrArtist) => ({ ...a, id: 7 }));
+    const lookup = mock(async () => []);
+    const lidarr = { artist: { list: mock(async () => []), lookup, add } } as unknown as Lidarr;
+
+    const result = await new CatalogService(lidarr).loadDiscography('zl-mbid', 'Zara Larsson');
+
+    expect(result).toEqual({
+      notProvisioned: true,
+      artistName: 'Zara Larsson',
+      artistMbid: 'zl-mbid',
+    });
+    expect(add).not.toHaveBeenCalled();
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
+  it('returns an added artist listByArtist albums ranked', async () => {
     const lidarr = {
       artist: {
-        list: mock(async () => []),
-        lookup: mock(async () => [
-          makeArtist({ id: 0, foreignArtistId: 'zl-mbid', artistName: 'Zara Larsson' }),
-        ]),
-        getQualityProfiles: mock(async () => [{ id: 1, name: 'Any' }]),
-        getMetadataProfiles: mock(async () => [{ id: 1, name: 'Std' }]),
-        getRootFolders: mock(async () => [{ id: 1, path: '/music', freeSpace: 0 }]),
-        add,
+        list: mock(async () => [makeArtist({ id: 7, foreignArtistId: 'zl-mbid' })]),
       },
       album: {
         listByArtist: mock(async () => [
@@ -469,12 +487,10 @@ describe('CatalogService.loadDiscography', () => {
       },
     } as unknown as Lidarr;
 
-    const result = await new CatalogService(lidarr, '/music').loadDiscography(
-      'zl-mbid',
-      'Zara Larsson',
+    const result = provisioned(
+      await new CatalogService(lidarr).loadDiscography('zl-mbid', 'Zara Larsson'),
     );
 
-    expect(add).toHaveBeenCalledTimes(1);
     // Albums first (newest), Single last; artistName backfilled from input.
     expect(result.albums.map((a) => a.title)).toEqual(['Poster Girl', 'So Good', 'A Single']);
     expect(result.albums.every((a) => a.artistName === 'Zara Larsson')).toBe(true);
@@ -490,7 +506,9 @@ describe('CatalogService.loadDiscography', () => {
       },
     } as unknown as Lidarr;
 
-    const result = await new CatalogService(lidarr).loadDiscography('zl-mbid', 'Zara Larsson');
+    const result = provisioned(
+      await new CatalogService(lidarr).loadDiscography('zl-mbid', 'Zara Larsson'),
+    );
     expect(add).not.toHaveBeenCalled();
     expect(result.albums.map((a) => a.title)).toEqual(['Venus']);
   });
@@ -520,18 +538,33 @@ describe('CatalogService.resolveAlbum', () => {
       },
     } as unknown as Lidarr;
 
-    const result = await new CatalogService(lidarr).resolveAlbum(input);
+    const result = provisioned(await new CatalogService(lidarr).resolveAlbum(input));
 
     expect(result).toMatchObject({ lidarrAlbumId: 10, totalTracks: 5, title: 'Animals' });
     expect(add).not.toHaveBeenCalled();
   });
 
-  it('adds the artist on demand when absent, then resolves the album', async () => {
+  it('answers not-provisioned when the artist is absent, adding nothing (#644)', async () => {
+    const add = mock(async (a: LidarrArtist) => ({ ...a, id: 7 }));
+    const lidarr = { artist: { list: mock(async () => []), add } } as unknown as Lidarr;
+
+    const result = await new CatalogService(lidarr).resolveAlbum(input);
+
+    expect(result).toEqual({
+      notProvisioned: true,
+      artistName: 'Pink Floyd',
+      artistMbid: 'pf-mbid',
+    });
+    expect(add).not.toHaveBeenCalled();
+  });
+
+  it('provisionArtist adds off the request path (the watchlist poller)', async () => {
     const add = mock(async (a: LidarrArtist) => ({ ...a, id: 7 }));
     const lidarr = {
       artist: {
         list: mock(async () => []),
         lookup: mock(async () => [
+          makeArtist({ id: 0, foreignArtistId: 'other', artistName: 'Pink Floyd' }),
           makeArtist({ id: 0, foreignArtistId: 'pf-mbid', artistName: 'Pink Floyd' }),
         ]),
         getQualityProfiles: mock(async () => [{ id: 1, name: 'Any' }]),
@@ -539,17 +572,12 @@ describe('CatalogService.resolveAlbum', () => {
         getRootFolders: mock(async () => [{ id: 1, path: '/music', freeSpace: 0 }]),
         add,
       },
-      album: {
-        listByArtist: mock(async () => [
-          makeAlbum({ id: 10, title: 'Animals', foreignAlbumId: 'rg-10' }),
-        ]),
-      },
     } as unknown as Lidarr;
 
-    const result = await new CatalogService(lidarr, '/music').resolveAlbum(input);
+    await new CatalogService(lidarr, '/music').provisionArtist('pf-mbid', 'Pink Floyd');
 
     expect(add).toHaveBeenCalledTimes(1);
-    expect(result.lidarrAlbumId).toBe(10);
+    expect((add.mock.calls[0] as unknown[])[0]).toMatchObject({ foreignArtistId: 'pf-mbid' });
   });
 
   it('falls back to a normalized-title match when the foreignAlbumId is absent', async () => {
@@ -564,7 +592,7 @@ describe('CatalogService.resolveAlbum', () => {
       },
     } as unknown as Lidarr;
 
-    const result = await new CatalogService(lidarr).resolveAlbum(input);
+    const result = provisioned(await new CatalogService(lidarr).resolveAlbum(input));
     expect(result.lidarrAlbumId).toBe(42);
   });
 
