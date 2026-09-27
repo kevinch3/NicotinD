@@ -11,7 +11,7 @@
     "@hono/swagger-ui": "^0.6.1",
     "@hono/zod-openapi": "^1.6.1",
     "@nicotind/core": "workspace:*",
-    "@sentry/bun": "^10.67.0",
+    "@sentry/bun": "^11.0.0",
     "hono": "^4.13.5",
     "jose": "^6.2.3",
     "music-metadata": "^11.14.0",

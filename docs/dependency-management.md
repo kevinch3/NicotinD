@@ -40,24 +40,29 @@ on top of them would write through into the main checkout's store.
 
 ## Security floors (`overrides`)
 
-Two entries in the root `overrides` block are **security floors**, not pins — a minimum
+Three entries in the root `overrides` block are **security floors**, not pins — a minimum
 version required by an advisory, left as a caret so Renovate can still move them forward:
 
 | Override | Why | Reached through |
 | --- | --- | --- |
 | `js-yaml` `^5` | Quadratic CPU in merge-key chains and `!!omap` resolution (2 high). Every consumer asks for `^4.1.0`, so `^5` forces them across a major: v5's `load` drops `<<` merges and YAML 1.1 tags by default and throws on empty or comment-only input. None of their real inputs use those (`latest.yml`, `app-update.yml`, `electron-builder.yml`, the bundled NSIS/snap templates parse identically), and a v4 updater reads a v5-dumped `latest.yml` unchanged. Re-check that before letting it move again. | `@nicotind/desktop > electron-updater`, `electron-builder` (`app-builder-lib`, `builder-util`, `dmg-builder`), `cosmiconfig` (commitlint, postcss-loader, Storybook) |
 | `yaml` `^2.9.0` | Stack overflow on deeply nested collections. Bumping `@hono/zod-openapi` was not enough: it asks for `openapi3-ts ^4.5.0` and bun kept the hoisted `4.5.0`, whose yaml range is `^2.8.0`. | `@nicotind/api > @hono/zod-openapi > openapi3-ts` |
+| `browserslist` `^4.28.7` | Unbounded memory growth and a prototype write via custom stats (2 high). Sentry v11's `@sentry/node` depends on `@sentry/bundler-plugins`, which brought `@babel/core` into the production closure, and bun reused the hoisted dev-only `4.28.1`. The override re-resolves it and its `baseline-browser-mapping` (fixed ≥ 2.11.0). | `@nicotind/api > @sentry/bun > @sentry/node > @sentry/bundler-plugins > @babel/core` |
 
 Direct dependencies take the floor in their own range instead: `@nicotind/web` declares every
 `@angular/*` package at `^22.1.6` (GHSA-p297-fm68-3q8c needs `@angular/common` ≥ 22.1.1,
 GHSA-hh8m-fm6v-7cvg needs `core`/`compiler` ≥ 22.1.0; the rest move in lockstep, since the
 framework packages are released and peered as one version).
 
+The same Sentry v11 closure pulled the hoisted `brace-expansion@5.0.4` (via `glob > minimatch`)
+into production; a lockfile bump to `5.0.12` fixed it with no override, because every `^5` consumer
+accepts it and an override would also force the `1.x`/`2.x` copies other packages need.
+
 (`@types/node` in the same block is an exact pin for a different reason — toolchain
 consistency, not security. It tracks the `.nvmrc` Node version, so its major moves only with a
 Node runtime upgrade.)
 
-Both were surfaced by `bun run check:audit`; see
+All were surfaced by `bun run check:audit`; see
 [quality-gates.md](quality-gates.md) for why that gate exists rather than a plain
 `bun audit`. **Do not reach for `bun update <transitive>`** to fix one of these: for a
 package that is not a direct dependency it *adds* it as one. Doing that for `js-yaml` put it

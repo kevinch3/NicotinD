@@ -1,6 +1,6 @@
 import { vi } from 'vitest';
 import * as Sentry from '@sentry/angular';
-import { loadSentry } from './sentry';
+import { loadSentry, SENTRY_DATA_COLLECTION } from './sentry';
 import { captureError, _resetErrorBuffer } from './error-buffer';
 
 vi.mock('@sentry/angular', () => ({
@@ -36,9 +36,15 @@ describe('loadSentry', () => {
         tracesSampleRate: 0.1,
         replaysSessionSampleRate: 0.1,
         replaysOnErrorSampleRate: 1.0,
-        sendDefaultPii: false,
+        dataCollection: SENTRY_DATA_COLLECTION,
       }),
     );
+    // v11 collects bodies, cookies and user info unless told not to.
+    expect(SENTRY_DATA_COLLECTION).toMatchObject({
+      userInfo: false,
+      cookies: false,
+      httpBodies: [],
+    });
     // Web keeps the heavy integrations.
     expect(Sentry.browserTracingIntegration).toHaveBeenCalled();
     expect(Sentry.replayIntegration).toHaveBeenCalled();
