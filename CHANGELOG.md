@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.91](https://github.com/kevinch3/NicotinD/compare/v0.8.90...v0.8.91) (2026-09-27)
+
+### Bug Fixes
+
+* **tv:** a profile switch's token check never logs out whoever is on screen ([#1418](https://github.com/kevinch3/NicotinD/issues/1418)) ([198680b](https://github.com/kevinch3/NicotinD/commit/198680b972039936da84f12e8e547505cab0cad3)), closes [#1410](https://github.com/kevinch3/NicotinD/issues/1410)
 ## [0.8.90](https://github.com/kevinch3/NicotinD/compare/v0.8.89...v0.8.90) (2026-09-27)
 
 ### Bug Fixes

@@ -1,0 +1,1 @@
+• tv: a profile switch's token check never logs out whoever is on screen (#1418)
