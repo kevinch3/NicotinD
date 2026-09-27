@@ -82,3 +82,15 @@ describe('SystemBars viewport hint', () => {
     expect(hint).toBe(fit);
   });
 });
+
+describe('native plugins the web bundle reaches through the Capacitor global', () => {
+  // hapticTick() no-ops when the plugin is missing, so a dropped dependency or
+  // an unsynced gradle include would ship silently as "the swipe stopped ticking".
+  const pkg = JSON.parse(read(mobile, 'package.json')) as { dependencies: Record<string, string> };
+  const buildGradle = read(mobile, 'android', 'app', 'capacitor.build.gradle');
+
+  it('ships @capacitor/haptics and builds it into the Android app (#1376)', () => {
+    expect(pkg.dependencies['@capacitor/haptics']).toBeDefined();
+    expect(buildGradle).toContain("implementation project(':capacitor-haptics')");
+  });
+});
