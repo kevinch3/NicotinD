@@ -131,46 +131,36 @@ export class MediaControlsService {
       return;
     }
 
-    // Android/Web: probe the cover URL before handing it to the plugin. The old
-    // @jofr plugin let an unreachable URL's IOException kill the process at
-    // launch (issue #441); @capgo catches it, but the probe stays so a dead URL
-    // costs one metadata call, not a native fetch on every track.
     if (!meta.artwork || meta.artwork.length === 0) {
       this.run((s) => s.setMetadata(meta));
       return;
     }
 
-    // Set metadata without artwork immediately so controls stay responsive.
-    this.run((s) => s.setMetadata({ ...meta, artwork: [] }));
-
     const probeUrl = pickArtworkUrl(meta.artwork);
-    if (!probeUrl) return;
 
-    // `fetch` with `cache: 'no-store'`, not `new Image()`. An <img> load can be
-    // served from the WebView's HTTP cache without touching the network, so it
-    // proved nothing about whether Java — a different client, on a different
-    // thread, with a different cache — could reach the server. That mismatch is
-    // what still crashed the app after the original 404 guard: cover in cache,
-    // server gone. Forcing a real request makes the probe predictive, and it
-    // covers the offline case for free (the fetch simply fails).
-    //
-    // Probes the same URL the plugin will actually use (the largest, via the
-    // shared `pickArtworkUrl`) rather than `artwork[0]`, which was a different
-    // image than the one being validated.
-    //
-    // Residual: the network can still die between probe and native fetch. That
-    // window can't be closed from here — a plugin that crashes its host on any
-    // artwork failure is the real defect (see #226, which replaces it).
-    // `no-store` only where a stale-cache false positive can actually kill the
-    // app. On web a failed cover just doesn't render, so bypassing the HTTP
-    // cache there would mean an extra full-size cover request on every track
-    // change and buy nothing.
-    void fetch(probeUrl, isNativePlatform() ? { cache: 'no-store' } : {})
+    // Android: @capgo fetches the cover in Java and catches the IOException that
+    // killed @jofr at launch (#441), so no WebView probe gates it. The probe was
+    // worse than useless there: a backgrounded WebView held its fetch until the
+    // app returned, and the lock screen kept the previous song's cover. @capgo
+    // keeps its old bitmap on an empty list, so the first call clears it with an
+    // empty src; it also takes the FIRST entry, so pass only the largest.
+    if (isNativePlatform()) {
+      this.run((s) => s.setMetadata({ ...meta, artwork: [{ src: '', sizes: '', type: '' }] }));
+      const largest = meta.artwork.find((a) => a.src === probeUrl);
+      if (largest) this.run((s) => s.setMetadata({ ...meta, artwork: [largest] }));
+      return;
+    }
+
+    // Web: set metadata without artwork immediately so controls stay responsive,
+    // then add the cover once a real fetch confirms it is reachable.
+    this.run((s) => s.setMetadata({ ...meta, artwork: [] }));
+    if (!probeUrl) return;
+    void fetch(probeUrl)
       .then((res) => {
         if (res.ok) this.run((s) => s.setMetadata(meta));
       })
       .catch(() => {
-        /* leave the controls art-less rather than risk killing the app */
+        /* leave the controls art-less */
       });
   }
 
