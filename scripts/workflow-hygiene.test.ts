@@ -18,7 +18,7 @@ import { parse } from 'yaml';
  * Parsed, not grepped, so a comment cannot satisfy it; every file in
  * .github/workflows is covered, so a new workflow is held to it too.
  */
-type Job = { 'timeout-minutes'?: number };
+type Job = { 'timeout-minutes'?: number; uses?: string };
 type Workflow = { permissions?: Record<string, string> | string; jobs: Record<string, Job> };
 
 const dir = join(import.meta.dir, '..', '.github', 'workflows');
@@ -43,6 +43,9 @@ describe('workflow hygiene', () => {
 
     it(`${file} bounds every job with timeout-minutes`, () => {
       for (const [name, job] of Object.entries(wf.jobs)) {
+        // A job that calls a reusable workflow cannot carry timeout-minutes;
+        // the called workflow's own jobs are bounded, and checked here too.
+        if (job.uses) continue;
         const t = job['timeout-minutes'];
         expect({ job: name, bounded: typeof t === 'number' && t > 0 && t < 360 }).toEqual({
           job: name,

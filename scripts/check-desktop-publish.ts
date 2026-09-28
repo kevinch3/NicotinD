@@ -10,18 +10,23 @@
  * `draft` default silently dropped every AppImage, deb, dmg and `latest-*.yml`
  * from v0.1.232 to v0.8.39 — ~40 releases, two months, both jobs green (#1261).
  *
- * Two things had to hold for that to stop, and neither is visible from the file
- * it lives in:
+ * Then v0.8.103: deploy.yml now makes the tag's release as a DRAFT first
+ * (`create-draft`), and the API reports a draft's tag as `untagged-…`. The
+ * publisher, which finds its release by tag, never saw the draft, created a
+ * second release for the tag and published it — desktop files only, `latest`
+ * without the APKs. So electron-builder no longer publishes at all; each
+ * packaging job uploads by release id instead, like android and ios.
  *
- *   1. `packages/desktop/electron-builder.yml` pins `releaseType: release`.
- *      Covered by a unit test next to the config it asserts.
- *   2. Every packaging job checks, *after* publishing, that what it built
- *      actually reached the release. That is a wiring invariant spanning
- *      deploy.yml and packages/desktop/scripts — no unit test sees both ends.
+ * What this gate holds, per packaging job — a wiring invariant spanning
+ * deploy.yml and packages/desktop/scripts that no unit test sees both ends of:
  *
- * This gate is (2). A safety step nobody wired is off: the step can be dropped,
- * renamed, reordered before the upload, or neutered with `continue-on-error`,
- * and every one of those restores the exact silence #1261 shipped in.
+ *   1. electron-builder runs with `--publish never`, never a publishing mode.
+ *   2. An upload step attaches the artifacts by id (scripts/github-release.ts).
+ *   3. After it, a step checks that what was built actually reached the release.
+ *
+ * A safety step nobody wired is off: the step can be dropped, renamed,
+ * reordered before the upload, or neutered with `continue-on-error`, and every
+ * one of those restores the exact silence #1261 shipped in.
  *
  * DENOMINATOR: it fails when it finds FEWER packaging jobs than it expects
  * rather than passing over an empty set. A gate that stops finding its subject
@@ -43,8 +48,15 @@ const WORKFLOW = '.github/workflows/deploy.yml';
  */
 export const PACKAGING_JOBS = ['desktop-linux', 'desktop-mac'];
 
-/** The publish step: electron-builder invoked with a publish flag. */
-const PUBLISH_STEP = /electron-builder\b[^\n]*--publish/;
+/** electron-builder invoked in a mode that publishes (anything but `never`). */
+const BUILDER_PUBLISHES =
+  /electron-builder\b[^\n]*--publish(?:[ =](?!never\b)|\s*$)|electron-builder\b[^\n]*\s-p\s+(?!never\b)/;
+
+/** The build step: electron-builder, publishing or not. */
+const BUILD_STEP = /electron-builder\b/;
+
+/** The publish step: the upload into the draft by release id. */
+const PUBLISH_STEP = /scripts\/github-release\.ts upload\b/;
 
 /** The backstop step: whatever invokes the verifier. */
 const VERIFY_STEP = /verify-published-assets/;
@@ -64,21 +76,47 @@ type Job = { steps?: Step[] };
  */
 export function auditJob(name: string, steps: Step[]): string[] {
   const errors: string[] = [];
+  const buildAt = steps.findIndex((s) => BUILD_STEP.test(s.run ?? ''));
   const publishAt = steps.findIndex((s) => PUBLISH_STEP.test(s.run ?? ''));
   const verifyAt = steps.findIndex((s) => VERIFY_STEP.test(s.run ?? ''));
 
-  if (publishAt === -1) {
+  if (buildAt === -1) {
     errors.push(
-      `${WORKFLOW}: job \`${name}\` no longer runs \`electron-builder --publish\`. If desktop ` +
-        `packaging moved or was dropped, update PACKAGING_JOBS in this gate deliberately.`,
+      `${WORKFLOW}: job \`${name}\` no longer runs electron-builder. If desktop packaging ` +
+        `moved or was dropped, update PACKAGING_JOBS in this gate deliberately.`,
     );
     return errors;
   }
 
+  for (const step of steps) {
+    if (BUILDER_PUBLISHES.test(step.run ?? '')) {
+      errors.push(
+        `${WORKFLOW}: job \`${name}\` lets electron-builder publish. Its publisher finds the ` +
+          `release by tag and cannot see the draft, so it creates and publishes a second ` +
+          `release (v0.8.103). Run it with \`--publish never\` and upload by id.`,
+      );
+    }
+  }
+
+  if (publishAt === -1) {
+    errors.push(
+      `${WORKFLOW}: job \`${name}\` builds desktop artifacts but never uploads them to the ` +
+        `release — add a step running \`scripts/github-release.ts upload --id\` after the build.`,
+    );
+    return errors;
+  }
+
+  if (publishAt < buildAt) {
+    errors.push(
+      `${WORKFLOW}: job \`${name}\` uploads at step ${publishAt + 1}, BEFORE electron-builder ` +
+        `builds at step ${buildAt + 1}.`,
+    );
+  }
+
   if (verifyAt === -1) {
     errors.push(
-      `${WORKFLOW}: job \`${name}\` publishes with electron-builder but never verifies the ` +
-        `artifacts landed. The publisher exits 0 when it skips every upload (#1261) — add a step ` +
+      `${WORKFLOW}: job \`${name}\` uploads desktop artifacts but never verifies the ` +
+        `artifacts landed. An upload that skips files can still exit 0 (#1261) — add a step ` +
         `running packages/desktop/scripts/verify-published-assets.ts after the publish step.`,
     );
     return errors;
@@ -87,7 +125,7 @@ export function auditJob(name: string, steps: Step[]): string[] {
   if (verifyAt < publishAt) {
     errors.push(
       `${WORKFLOW}: job \`${name}\` verifies published artifacts at step ${verifyAt + 1}, BEFORE ` +
-        `it publishes at step ${publishAt + 1}. Checking before the upload asserts nothing.`,
+        `it uploads at step ${publishAt + 1}. Checking before the upload asserts nothing.`,
     );
   }
 
@@ -138,7 +176,7 @@ function main(): void {
     for (const e of errors) console.error(`  - ${e}`);
     process.exit(1);
   }
-  console.log('✅ Every desktop packaging job verifies its artifacts reached the Release.');
+  console.log('✅ Every desktop packaging job uploads by release id and verifies what arrived.');
 }
 
 if (import.meta.main) main();

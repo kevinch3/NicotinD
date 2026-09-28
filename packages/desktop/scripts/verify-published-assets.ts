@@ -12,11 +12,13 @@
  * ~40 releases, two months, green every time, and `latest-*.yml` missing with
  * them so every installed app lost its update feed too (#1261).
  *
- * electron-builder.yml now pins `releaseType: release`, which fixes that
- * instance. This exists because the *class* outlives the fix: any future
- * publisher-side skip — a token that cannot write, a renamed target, a draft
- * created by a job that won the race — looks identical from outside. A step
- * that produces files and publishes none must be red.
+ * electron-builder.yml pinned `releaseType: release`, which fixed that
+ * instance, and since v0.8.103 the publisher does not upload at all:
+ * deploy.yml attaches the files by release id (release-artifacts.ts +
+ * scripts/github-release.ts). This exists because the *class* outlives any one
+ * fix: a skipped upload — a token that cannot write, a renamed target, a file
+ * landing on the wrong release — looks identical from outside. A step that
+ * produces files and publishes none must be red.
  *
  * DENOMINATOR: the expectation is read off what electron-builder actually wrote
  * to `release/`, never a hardcoded asset list, which would quietly stop

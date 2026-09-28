@@ -159,6 +159,30 @@ Notes on the choices, because several are deliberate and non-obvious:
 - **The hook runs outside the transaction, and must.** SQLite refuses
   `VACUUM INTO` from within one.
 
+## Pre-deploy snapshots
+
+Every host deploy (`deploy-host.yml`: each release, and every manual rollback)
+takes a snapshot **after pulling the new images and before replacing the
+server**, into `<dataDir>/backups/pre-deploy/pre-deploy-<version>-<stamp>/`
+(`nicotind.db` via `VACUUM INTO`, plus `secrets.json`).
+
+It exists because the pre-migration snapshot rarely fires: `SCHEMA_VERSION` only
+moves for run-once steps, while most schema changes are additive ones applied
+on every boot, and a downgrade boots an older server against the newer schema
+with a warning only. "Just before this deploy" is the one point a rollback can
+return to cleanly, and only the deploy knows when that is.
+
+- `packages/api/src/scripts/pre-deploy-snapshot.ts` (the service is
+  `services/pre-deploy-snapshot.ts`, sharing `snapshotDatabase` with the
+  pre-migration snapshot). It runs inside the **running** server's container if
+  that image has the script, otherwise inside the image just pulled — the first
+  deploy after it shipped, or a host whose stack is down.
+- **A failure stops the deploy**, including "not enough disk": replacing the
+  server without the snapshot it asked for is the outcome to avoid.
+- Nothing to snapshot (no database yet, or an empty one) is a no-op.
+- Kept: the newest 5 (`NICOTIND_PREDEPLOY_KEEP`). Outside the daily rotation,
+  like `pre-migrate/`, so a burst of deploys cannot evict a daily backup.
+
 ## Admin surface
 
 - `GET /api/admin/backups` — list (name, createdAt, sizeBytes, files),

@@ -17,14 +17,14 @@ import { parse } from 'yaml';
  * a guard at all.
  */
 const repoRoot = join(import.meta.dir, '..');
-const deploy = parse(readFileSync(join(repoRoot, '.github/workflows/deploy.yml'), 'utf8')) as {
+const deploy = parse(readFileSync(join(repoRoot, '.github/workflows/deploy-host.yml'), 'utf8')) as {
   jobs: Record<string, { steps?: { name?: string; run?: string }[] }>;
 };
 
 const deployScript = (): string => {
   const steps = Object.values(deploy.jobs).flatMap((job) => job.steps ?? []);
   const step = steps.find((s) => s.name === 'Deploy via SSH');
-  expect(step, 'deploy.yml must still have a "Deploy via SSH" step').toBeDefined();
+  expect(step, 'deploy-host.yml must still have a "Deploy via SSH" step').toBeDefined();
   return step!.run ?? '';
 };
 

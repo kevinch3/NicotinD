@@ -1,0 +1,288 @@
+name: Deploy host
+
+# Puts one exact image version on the deploy host, snapshots the database first,
+# and verifies the host serves what was asked for. Two ways in:
+#
+# - `workflow_call` from deploy.yml, after `promote`, for every release tag.
+# - `workflow_dispatch` by hand: the one-click rollback (or redeploy). Pick an
+#   older `vX.Y.Z` for both inputs. docs/deployment.md "Rollback".
+#
+# Holding deploys (keeping the host on what it runs, e.g. after a rollback) is
+# the repository variable DEPLOY_HOLD=true, not a NICOTIND_VERSION pin in the
+# host's .env. The deploy refuses to run over such a pin rather than override it.
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Image tag to run (vX.Y.Z)
+        type: string
+        required: true
+      ref:
+        description: Git ref the host checks out for its compose files (vX.Y.Z, a commit sha, or origin/master)
+        type: string
+        required: true
+      expect_commit:
+        description: Commit /api/health must report (empty = check the version only)
+        type: string
+        default: ''
+      force:
+        description: Deploy even while DEPLOY_HOLD is set
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Image tag to run (vX.Y.Z) — pick an older one to roll back
+        type: string
+        required: true
+      ref:
+        description: Git ref for the compose files — normally the same vX.Y.Z
+        type: string
+        required: true
+      force:
+        description: Deploy even while DEPLOY_HOLD is set (a manual rollback usually wants this)
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  # A skipped deploy must never look like a deployed one (#457), so a hold says
+  # so in the run instead of the deploy job simply not appearing.
+  hold:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: vars.DEPLOY_HOLD == 'true' && !inputs.force
+    steps:
+      - name: Report the hold
+        run: |
+          msg="DEPLOY_HOLD is set, so ${{ inputs.version }} was NOT deployed. The host keeps what it runs. Clear the repository variable (Settings → Variables) and re-run, or dispatch 'Deploy host' with force."
+          echo "::warning::$msg"
+          echo "$msg" >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: vars.DEPLOY_HOLD != 'true' || inputs.force
+    # DEPLOY_* and TS_OAUTH_* live in this environment, deployable from `v*`
+    # tags and master only (docs/dependency-management.md).
+    environment: production
+    # Host deploys queue behind each other and never cancel one mid-`up -d`.
+    # NOT named `deploy-host`: deploy.yml holds that group at workflow level
+    # while it calls this job, and sharing the name would deadlock the call.
+    concurrency:
+      group: host-deploy
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      # Both inputs end up inside a shell command on the host, so they are held
+      # to exactly the shapes a deploy uses before anything interpolates them.
+      - name: Validate inputs
+        env:
+          VERSION: ${{ inputs.version }}
+          REF: ${{ inputs.ref }}
+          EXPECT_COMMIT: ${{ inputs.expect_commit }}
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::version '$VERSION' is not vX.Y.Z"; exit 1; }
+          [[ "$REF" =~ ^(v[0-9]+\.[0-9]+\.[0-9]+|[0-9a-f]{40}|origin/master)$ ]] || { echo "::error::ref '$REF' is not vX.Y.Z, a full commit sha, or origin/master"; exit 1; }
+          [[ -z "$EXPECT_COMMIT" || "$EXPECT_COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::expect_commit '$EXPECT_COMMIT' is not a full commit sha"; exit 1; }
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # A rollback to a version that was never published (v0.1.329, #457) or
+      # predates the analysis image (< v0.1.231) must fail here, before the host
+      # has been touched, not halfway through a pull.
+      - name: Both images exist for this version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          for image in ghcr.io/kevinch3/nicotind ghcr.io/kevinch3/nicotind-analysis; do
+            docker buildx imagetools inspect "$image:$VERSION" >/dev/null \
+              || { echo "::error::$image:$VERSION does not exist — nothing to deploy"; exit 1; }
+            echo "$image:$VERSION resolves"
+          done
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd # v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      # Pin the deploy host's SSH key into known_hosts so we can drop the
+      # insecure `-o StrictHostKeyChecking=no` (which accepts any key on
+      # first connect, vulnerable to MITM). `ssh-keyscan` runs at workflow
+      # start over the Tailscale network, so the key is fetched from the
+      # genuine host. If the host's SSH key changes (reinstall/reprovision),
+      # ssh-keyscan will pick up the new key automatically — no manual secret
+      # rotation needed. This is strictly safer than the old flag.
+      #
+      # Retried, because "Tailscale is running and connected" only means the
+      # local daemon authenticated — it does NOT mean the peer path to the
+      # deploy host is established yet (direct/DERP negotiation is still in
+      # flight, or the host is briefly asleep). `ssh-keyscan` is a one-shot
+      # probe with no retry of its own and exits 1 on no answer, so under
+      # `bash -e` a momentary blip failed the WHOLE deploy — after every image
+      # had already been built, pushed and manifest-verified. That is what
+      # killed v0.3.18 and v0.3.20 (identical exit 1 here ~1h apart, with
+      # v0.3.19 succeeding in between: the host flaps, it is not cleanly down).
+      - name: Pin deploy host SSH key
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            if ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts \
+               && [ -s ~/.ssh/known_hosts ]; then
+              echo "Pinned deploy host key on attempt $attempt."
+              exit 0
+            fi
+            # Truncate: a failed scan can leave a partial/empty append, and the
+            # -s check above must test THIS attempt, not a previous remnant.
+            : > ~/.ssh/known_hosts
+            if [ "$attempt" -lt 5 ]; then
+              delay=$((2 ** attempt))
+              echo "ssh-keyscan found no key (attempt $attempt/5); retrying in ${delay}s..."
+              sleep "$delay"
+            fi
+          done
+          echo "::error::Could not reach the deploy host over Tailscale after 5 attempts." \
+               "Every image for this version is already published to GHCR — only this deploy" \
+               "needs re-running once the host is reachable (Actions -> Re-run failed jobs)."
+          exit 1
+
+      - name: Deploy via SSH
+        run: |
+          ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} '
+            set -e
+            if systemctl --user is-active --quiet nicotind; then
+              echo "ERROR: systemd nicotind is active on the host — Docker deploy would collide on :5030/:8484. Run: systemctl --user disable --now nicotind" >&2
+              exit 1
+            fi
+            cd ~/Documents/nicotind &&
+            # The deploy names its version explicitly (below), which would silently
+            # override a NICOTIND_VERSION pin left in .env — so refuse instead.
+            # Holding the host is DEPLOY_HOLD now (docs/deployment.md "Rollback").
+            if grep -qE "^[[:space:]]*NICOTIND_VERSION=" .env 2>/dev/null; then
+              echo "ERROR: .env pins NICOTIND_VERSION, and this deploy would override it. Remove that line from ~/Documents/nicotind/.env; to hold the host on a version, set the DEPLOY_HOLD repository variable instead." >&2
+              exit 1
+            fi &&
+            # --force: the deploy host is a pure mirror of origin, but its local clone
+            # had a divergent tag (v0.1.26) that made a plain `fetch --tags` exit 1 with
+            # "would clobber existing tag", aborting the deploy. Force tags to match
+            # origin so a stale local tag can never block a release again.
+            git fetch --force --tags origin master &&
+            git reset --hard ${{ inputs.ref }} &&
+            # The exact version, not the floating `release`: a deploy (and a
+            # rollback) runs precisely what it was asked to, whatever `release`
+            # points at by the time the pull happens.
+            export NICOTIND_VERSION=${{ inputs.version }} &&
+            # Pull every image WE publish that this host actually runs, derived
+            # from the resolved compose config rather than restated here. The
+            # list used to be hardcoded (`pull nicotind analysis`), so the three
+            # addon images and the pot-provider were never pulled — and since
+            # `up -d` will not recreate a container whose image reference is
+            # unchanged, a rebuilt `:latest` addon kept running the old bytes.
+            # A green deploy shipped a stale addon for 8 h that way (issue #606,
+            # the #457 shape). Deriving it means adding a service to compose
+            # cannot silently miss the deploy.
+            #
+            # Scoped to our own registry on purpose: a bare `docker compose pull`
+            # would also pull linuxserver/lidarr + slskd/slskd, letting an
+            # unrelated third-party registry hiccup abort a release. It also
+            # self-scopes per host — a streaming-only deployment resolves no
+            # addons, so none are pulled.
+            #
+            # A pull failure still aborts (set -e): a missing image must be loud,
+            # never skipped (#457). Requires the GHCR packages to be public or a
+            # `docker login ghcr.io` on the host — see docs/deployment.md.
+            images=$(docker compose config --images | grep "^ghcr\.io/kevinch3/" | sort -u) &&
+            # An empty list means compose failed to resolve, not that there is
+            # nothing to pull: without `pipefail` a broken `config` would flow an
+            # empty string into `xargs -r`, which cheerfully does nothing and
+            # returns 0 — a silent skip that deploys stale images behind a green
+            # run, the very #457 shape this step exists to prevent.
+            if [ -z "$images" ]; then
+              echo "ERROR: no ghcr.io/kevinch3 images resolved from compose — refusing to deploy without pulling" >&2
+              exit 1
+            fi &&
+            # Headroom on the filesystem Docker ACTUALLY writes to. Resolved from
+            # DockerRootDir, never assumed to be /var/lib/docker: this host keeps
+            # its data root on another disk entirely, and a df against the wrong
+            # filesystem reads green while the real one is full — which is how a
+            # 4.2 GB pull landed on a volume at 0 bytes free, taking Lidarr (its
+            # SQLite could no longer write), the API and the vocal-separation
+            # sidecar (since removed, #1024) down at once (issue #1021). The
+            # images below are multi-GB, so this refuses
+            # to start rather than half-pull into a full disk.
+            root=$(docker info --format "{{.DockerRootDir}}") &&
+            avail_kb=$(df -Pk "$root" | tail -1 | tr -s " " | cut -d" " -f4) &&
+            if [ "${avail_kb:-0}" -lt 10485760 ]; then
+              echo "::error::Docker disk is nearly full: $((${avail_kb:-0} / 1048576)) GiB free on $root, need 10 GiB. Every image for this version is already published — reclaim space and re-run this job. Reclaim with: docker builder prune -af && docker image prune -af" >&2
+              exit 1
+            fi &&
+            echo "Docker disk: $((avail_kb / 1048576)) GiB free on $root" &&
+            echo "$images" | xargs -n1 docker pull &&
+            # Snapshot the database before anything replaces the server: schema
+            # changes run on boot and a downgrade does not undo them, so this is
+            # the one clean point a rollback can return to (docs/backup-restore.md).
+            # Run by the running server if its image has the script, otherwise
+            # by the image just pulled — the first deploy after the script landed,
+            # or a host whose stack is down. A failure stops the deploy.
+            snap=packages/api/src/scripts/pre-deploy-snapshot.ts &&
+            if docker compose exec -T nicotind test -f "$snap" 2>/dev/null; then
+              docker compose exec -T nicotind bun "$snap" "$NICOTIND_VERSION"
+            else
+              docker compose run --rm --no-deps -T nicotind bun "$snap" "$NICOTIND_VERSION"
+            fi &&
+            # --build is kept for any host-local override that still carries a
+            # `build:` key (no-op otherwise).
+            docker compose up --build -d
+          '
+
+      # `docker compose up -d` returns when the container is CREATED, not when it
+      # is serving. The workflow used to end there, so a container that
+      # crash-looped, or one that came up still running the previous image, was
+      # indistinguishable from a good deploy — the run went green either way.
+      #
+      # That is the #457 shape, and #457 actually happened: a failed GHCR push
+      # produced a green deploy that silently redeployed the previous version.
+      # Everything upstream of here guards against shipping the wrong bytes; this
+      # is the only step that confirms the right ones are RUNNING — by version,
+      # and by build commit when the caller knows it.
+      - name: Verify the deploy is serving the version we shipped
+        run: |
+          ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} '
+            want_version="${{ inputs.version }}"
+            want_version="${want_version#v}"
+            want_commit="${{ inputs.expect_commit }}"
+            got=""
+            got_commit=""
+            for _ in $(seq 1 60); do
+              body="$(curl -fsS --max-time 5 http://localhost:8484/api/health 2>/dev/null || true)"
+              if [ -n "$body" ]; then
+                got="$(printf "%s" "$body" | tr "," "\n" | sed -n "s/.*\"version\":\"\([^\"]*\)\".*/\1/p")"
+                got_commit="$(printf "%s" "$body" | tr "," "\n" | sed -n "s/.*\"commit\":\"\([^\"]*\)\".*/\1/p")"
+                if [ "$got" = "$want_version" ] && { [ -z "$want_commit" ] || [ "$got_commit" = "$want_commit" ]; }; then
+                  echo "Deploy verified: /api/health reports $got${got_commit:+ at $got_commit}"
+                  exit 0
+                fi
+              fi
+              sleep 5
+            done
+            echo "ERROR: after 5 min /api/health reports \"${got:-unreachable}\"${got_commit:+ at $got_commit}, expected \"$want_version\"${want_commit:+ at $want_commit}" >&2
+            echo "Containers were recreated but are not serving this version. Recent logs:" >&2
+            cd ~/Documents/nicotind && docker compose logs --tail=60 nicotind >&2 || true
+            exit 1
+          '

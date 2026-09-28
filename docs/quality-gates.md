@@ -514,13 +514,16 @@ than no-ops. None of it confirmed the right bytes were *running*.
 
 The deploy now polls `/api/health` on the host for up to 5 minutes and requires
 the version to match the tag being deployed, dumping `docker compose logs` on
-failure. On a manual `workflow_dispatch` it asserts health only — the host
-redeploys whatever `release` currently points at, so there is no version to
-expect and inventing one would be a check that cannot fail honestly.
+failure. It lives in `deploy-host.yml`, which always deploys an **exact**
+version — the release calls it with the tag, and a manual run (a rollback) must
+name one — so there is always a version to expect, and the check never
+degrades to "healthy". When the caller also knows the build, it checks the
+`commit` `/api/health` now reports.
 
-This is also what makes the documented rollback actionable: pinning
-`NICOTIND_VERSION` and redeploying only helps if you know the release is bad, and
-until now the way you found out was a user telling you.
+This is also what makes the documented rollback actionable
+([deployment.md](deployment.md#rollback)): rolling back only helps if you know
+the release is bad, and until this check the way you found out was a user
+telling you.
 
 ## `check:pr-title` — the commit message GitHub writes for you (#1263)
 
@@ -1119,6 +1122,15 @@ because a build that produced nothing is the vacuous pass this whole section is 
 gate checks the *wiring*, not the mechanism: it fails a packaging job whose verification was
 deleted, renamed, reordered before the upload, or neutered with `continue-on-error`, and it fails
 when it stops finding the packaging jobs at all rather than passing over an empty set.
+
+**v0.8.103** added a rule. With the release draft-first, the publisher — which finds its release
+by tag, while the API reports a draft's tag as `untagged-…` — never saw the draft, created and
+published a second, desktop-only release, and that one became `latest` without the APKs. So the
+gate now also fails a packaging job that runs electron-builder in any publishing mode (`--publish`
+or `-p` with anything but `never`), or that lacks a `scripts/github-release.ts upload` step between
+the build and the verification: every artifact reaches the release by id. `ensureDraft` matches a
+draft by its `name` for the same reason, so a re-run of `create-draft` finds the draft it made
+instead of creating a second.
 
 ## A release is only cut when something releasable landed (#755)
 

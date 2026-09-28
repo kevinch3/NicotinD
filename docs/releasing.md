@@ -126,6 +126,11 @@ The tag's GitHub Release starts as a **draft**. `deploy.yml`'s `create-draft`
 job makes it (or reuses it on a re-run) and hands every other job its id;
 `release-notes`, `android`, `ios` and both desktop jobs write into that draft by
 id (`scripts/github-release.ts`, and `verify-published-assets.ts --release-id`).
+Nothing looks the draft up by tag: the API reports a draft's tag as
+`untagged-…`, so a tag lookup misses it. electron-builder's own publisher did
+exactly that on v0.8.103, published a second, desktop-only release, and made it
+`latest` without the APKs; the desktop jobs now build with `--publish never` and
+upload by id (docs/desktop-app.md "Publishing to the GitHub Release").
 `publish-release` publishes it once `release-notes`, `android` and both desktop
 jobs have succeeded **and** the four assets updaters read are on it — both APKs,
 `latest-linux.yml` and `latest-mac.yml`.
@@ -184,11 +189,11 @@ release with nothing on it — the in-app APK updater would offer a download tha
   `release:major`), then `git push --follow-tags origin master`. This is the
   same tool CI runs (`bun run release` = auto-detected bump), so the tag flows
   through `deploy.yml` identically.
-- **Re-deploy the server without a new version** (e.g. after a deploy-host
-  hiccup): Actions → `deploy.yml` → _Run workflow_ — a manual dispatch checks
-  out the tip of `master` on the host (compose files, scripts) but re-runs the
-  current **`release` image** (no image is published from an untagged tip) and
-  skips the app builds.
+- **Re-deploy or roll back the server**: Actions → **Deploy host** → _Run
+  workflow_ with the exact `vX.Y.Z` (both inputs). It snapshots the database
+  first and verifies the version; `deploy.yml` has no manual trigger any more.
+  Holding the host on a version is the `DEPLOY_HOLD` repository variable — see
+  [deployment.md](deployment.md#rollback).
 - **A deploy job failed but the tag exists**: fix the cause, then re-run the
   failed `deploy.yml` jobs from the Actions UI — don't re-tag.
 - **The credentials a release uses** (`RELEASE_TOKEN`, the deploy host's, the Android signing

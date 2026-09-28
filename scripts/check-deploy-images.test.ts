@@ -13,7 +13,7 @@ import { join } from 'node:path';
  * here would be the very second-place-to-forget the fix removes.
  */
 const repoRoot = join(import.meta.dir, '..');
-const deployYml = readFileSync(join(repoRoot, '.github/workflows/deploy.yml'), 'utf8');
+const deployYml = readFileSync(join(repoRoot, '.github/workflows/deploy-host.yml'), 'utf8');
 const composeYml = readFileSync(join(repoRoot, 'docker-compose.yml'), 'utf8');
 
 /** The single ssh block that runs on the deploy host. */

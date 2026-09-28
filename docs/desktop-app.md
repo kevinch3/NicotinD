@@ -333,8 +333,8 @@ signed)` gates behavior (pure, unit-tested in the electron-free `update-mode.ts`
   once real mac signing lands — `updateMode('darwin', true) → 'apply'`.)
 
 Auto-update is a no-op in dev (`!app.isPackaged`) and wrapped so a failed/offline check never crashes
-the app. This is why the packaging jobs use electron-builder's **`--publish always`**: only its own
-publish uploads the `latest-*.yml` metadata the updater polls.
+the app. The packaging jobs attach the `latest-*.yml` feeds the updater polls along with the
+installers — electron-builder writes them to `release/` even with `--publish never`.
 
 ## Build & CI
 
@@ -346,13 +346,16 @@ build that publishes nothing — see "Publishing to the GitHub Release" below. T
 the server `deploy` job: it runs in parallel with no `needs` linkage, so its success is independent
 of packaging.
 
-- `desktop-linux` (ubuntu) → `electron-builder --linux --publish always` (AppImage/deb + `latest-linux.yml`).
-- `desktop-mac` (macos-14) → `electron-builder --mac --publish always` (dmg + `latest-mac.yml`).
+- `desktop-linux` (ubuntu) → `electron-builder --linux --publish never` (AppImage/deb + `latest-linux.yml`).
+- `desktop-mac` (macos-14) → `electron-builder --mac --publish never` (dmg + `latest-mac.yml`).
+
+Each then attaches what it built to the tag's draft release **by id**:
+`release-artifacts.ts` lists the files, `scripts/github-release.ts upload --id` uploads them.
 
 ### Publishing to the GitHub Release
 
-`--publish always` and a fail-loud job are **not** a promise that anything was published. The
-GitHub publisher refuses to upload into a release whose type does not match its own `releaseType`,
+A fail-loud job is **not** a promise that anything was published. electron-builder's GitHub
+publisher, when it still did the uploading, refused to upload into a release whose type does not match its own `releaseType`,
 and the way it refuses is one `skipped publishing` line per file and **exit code 0**.
 
 That is exactly what shipped from **v0.1.232 to v0.8.39** (#1261). `deploy.yml`'s `release-notes`
@@ -364,16 +367,22 @@ lost its update feed. The one visible trace was v0.6.37, where the desktop job w
 and left its artifacts on an **orphan draft** sharing the tag name — invisible on the releases page,
 invisible to the updater.
 
-Two things keep it fixed, and they are deliberately in different places:
+The first fix, `publish.releaseType: release`, held until the release became draft-first
+([releasing.md](releasing.md#a-release-is-published-only-once-its-artifacts-are-attached)). Then
+**v0.8.103** broke the other way: the publisher finds its release by tag, and the API reports a
+draft's tag as `untagged-…`, so it never saw the draft `create-draft` made. It created a second
+release for the tag — published, as `releaseType: release` says — holding only the desktop files,
+and that release became `latest` without the APKs while they sat on the draft.
 
-1. **The release the publisher finds is the one it should use.** Since the release became
-   draft-first ([releasing.md](releasing.md#a-release-is-published-only-once-its-artifacts-are-attached)),
-   `deploy.yml`'s `create-draft` job makes the tag's release as a **draft** before any packaging
-   job starts, and electron-builder's publisher always uploads into an existing draft for the tag,
-   whatever its `releaseType`. `publish.releaseType: release` stays pinned (asserted by
-   `electron-builder-config.test.ts`) for the case the draft is missing: the publisher then creates
-   a release it is allowed to upload into, rather than a second draft nobody publishes.
-2. **A post-publish verification step in every packaging job.**
+Two things keep it fixed now, and they are deliberately in different places:
+
+1. **electron-builder never publishes.** The packaging jobs build with `--publish never` and
+   upload by the release id `create-draft` handed out, the same path the android and ios jobs use —
+   an id cannot miss a draft. `check:desktop-publish` fails a packaging job whose electron-builder
+   runs in any publishing mode, or that has no upload-by-id step after the build.
+   `publish.releaseType: release` stays pinned (asserted by `electron-builder-config.test.ts`):
+   the `publish` block is still baked into `app-update.yml`, which tells the updater where to poll.
+2. **A post-upload verification step in every packaging job.**
    `verify-published-assets.ts` lists what electron-builder actually wrote to `release/`, then
    asserts each of those names is on **the release `create-draft` handed out**, read by id
    (`--release-id`): `/releases/tags/{tag}` cannot see a draft, and an id still catches artifacts

@@ -678,18 +678,43 @@ auto-updaters (Watchtower-style) for the same reason.
 
 ## Rollback
 
-Pin the previous version in `.env` and `docker compose up -d`. Caveat: the
-SQLite schema is **forward-migrated on boot** — an older server may not
-understand a newer schema. Treat downgrades as best-effort and take a backup of
-the data volume before major upgrades (see Backups below).
+**The production host** is rolled back from GitHub, not by hand:
 
-> **⚠️ Un-pin after you recover — a left-behind pin silently freezes every future
-> auto-deploy.** The release `deploy` job (`deploy.yml`) does `git reset --hard
-> <tag>` + `docker compose pull`, but it **never touches the gitignored `.env`**.
-> So a `NICOTIND_VERSION=<old>` pin keeps the host on `<old>` through every
-> subsequent release — the deploy looks green but the app never moves. When the
-> incident is resolved, delete the pin line and `docker compose pull nicotind &&
-> docker compose up -d nicotind` so the host follows `:release` again.
+1. Set the repository variable **`DEPLOY_HOLD=true`** (Settings → Secrets and
+   variables → Actions → Variables), so the next release does not undo the
+   rollback. A held release says so in its run (a `hold` job with a warning)
+   rather than just not deploying.
+2. Actions → **Deploy host** → *Run workflow*, with `version` and `ref` both set
+   to the release to return to (e.g. `v0.8.100`). `force` defaults to on, so it
+   runs despite the hold.
+3. When the cause is fixed, delete `DEPLOY_HOLD`; the next release deploys
+   normally.
+
+`deploy-host.yml` is the same job every release uses (deploy.yml calls it after
+`promote`). It:
+
+- checks both images exist for that version (a never-published version such as
+  v0.1.329, or one older than the analysis image, fails before the host is
+  touched);
+- refuses to run while the host's `.env` pins `NICOTIND_VERSION` — it names the
+  version explicitly, which would silently override such a pin, so the pin is
+  retired in favour of `DEPLOY_HOLD`. Remove the line from the host's `.env`;
+- checks out that tag's compose files and runs **exactly** that image version
+  (`NICOTIND_VERSION=vX.Y.Z` for the deploy), never the floating `release`;
+- **snapshots the database** into `backups/pre-deploy/` before replacing the
+  server ([backup-restore.md](backup-restore.md#pre-deploy-snapshots)), and stops
+  if it cannot;
+- verifies `/api/health` reports that version (and, when the caller passes one,
+  the build `commit`, which the image now reports).
+
+Caveat: the SQLite schema is **forward-migrated on boot** — an older server may
+not understand a newer schema, and it boots with a warning only. If the rolled
+back server misbehaves, restore the pre-deploy snapshot taken just before the
+bad version went out ([backup-restore.md](backup-restore.md#restore-manual-by-design)).
+
+**A self-hosted install** without this workflow rolls back as before: pin the
+previous version in `.env` and `docker compose up -d` — and remove the pin once
+you want to follow `:release` again.
 
 ### Incident runbook — the 2026-07 GPU deploy wedge
 
@@ -709,12 +734,12 @@ analysis container couldn't start **at all**, wedging the stack. The nicotind
 image itself was fine.
 
 **Recovery (what actually fixes it).**
-1. Roll the app back only if you must — pin `NICOTIND_VERSION` in `.env`. (The
-   image was never the problem here, so this step was precautionary.)
+1. Roll the app back only if you must — see [Rollback](#rollback). (The image
+   was never the problem here, so this step was precautionary.)
 2. Stop requesting the GPU: don't enable `docker-compose.gpu.yml`, and remove any
    GPU device block from the host override. `docker compose up -d` — the CPU
    image runs healthy.
-3. **Un-pin** per the warning above so auto-deploys resume.
+3. **Clear `DEPLOY_HOLD`** (see [Rollback](#rollback)) so releases deploy again.
 
 **Guardrails now in place so it can't recur.**
 - GPU is opt-in via a **separate** `docker-compose.gpu.yml` overlay, never the
@@ -777,11 +802,13 @@ available to a genuine stale build later in the same session.
 
 ## Healthcheck
 
-`GET /api/health` → `{ ok: true, version: "X.Y.Z" }` — unauthenticated
+`GET /api/health` → `{ ok: true, version: "X.Y.Z", commit: "<sha>" | null }` — unauthenticated
 liveness probe used by the Dockerfile `HEALTHCHECK`, the compose healthcheck,
 the desktop sidecar handshake, and the e2e web server wait. `version` is
-informational (verify what a deploy shipped with one `curl`); clients must only
-rely on `ok`.
+informational (verify what a deploy shipped with one `curl`); `commit` is the git
+sha the image was built from (`NICOTIND_BUILD_COMMIT`, stamped by the release
+build; `null` for an unstamped build), which is what a deploy of an untagged
+commit verifies. Clients must only rely on `ok`.
 
 ## Update check + version history
 

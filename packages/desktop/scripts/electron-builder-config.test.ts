@@ -23,8 +23,9 @@ describe('electron-builder.yml', () => {
 
   // Regression #1261: with the default `draft`, the publisher refused to upload
   // into the published release deploy.yml used to create first — skipping every
-  // file and exiting 0 for two months. The release is now a draft the publisher
-  // always uses; this pin decides what it does if that draft is ever missing.
+  // file and exiting 0 for two months. Release CI no longer lets the publisher
+  // upload at all (v0.8.103, see check:desktop-publish); the pin stays for any
+  // manual `--publish` run.
   it('pins publish.releaseType to release, so the publisher matches the release deploy.yml creates', () => {
     expect(config.publish.provider).toBe('github');
     expect(config.publish.releaseType).toBe('release');

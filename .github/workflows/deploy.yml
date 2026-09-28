@@ -4,7 +4,8 @@ on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch: {}
+  # No workflow_dispatch: redeploying or rolling back the host is the
+  # "Deploy host" workflow (deploy-host.yml), which takes the exact version.
 
 # One release deploys at a time, whatever the tag. `github.sha` grouped by
 # *commit*, so two releases were two groups and raced `docker compose up -d`
@@ -387,12 +388,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bun scripts/github-release.ts upload --id "${{ needs.create-draft.outputs.id }}" packages/mobile/ios/App/NicotinD-*-unsigned.ipa
 
-  # Build the Linux desktop app (AppImage + deb) via electron-builder and
-  # publish it — together with electron-updater's `latest-linux.yml` feed
-  # metadata — to the tag's GitHub Release. `--publish always` is required
-  # (not a manual upload of just the AppImage/deb): electron-updater
-  # (Task 12) polls `latest-linux.yml`, which only electron-builder's own
-  # publish step generates and uploads. Tag-only; NOT continue-on-error — same
+  # Build the Linux desktop app (AppImage + deb) via electron-builder and attach
+  # it — together with electron-updater's `latest-linux.yml` feed, which
+  # electron-builder writes to `release/` even with `--publish never` — to the
+  # tag's draft release BY ID. electron-builder never publishes itself: its
+  # publisher looks the release up by tag, the API reports a draft's tag as
+  # `untagged-…`, and it then created and published a second, desktop-only
+  # release that became `latest` without the APKs (v0.8.103). Tag-only; NOT continue-on-error — same
   # fail-loud rationale as android/ios above: a broken deb/AppImage must turn the
   # run red (e.g. the scoped-name deb bug that silently shipped no Linux artifacts),
   # yet it still never blocks `deploy`, which runs in parallel with no `needs` link.
@@ -440,30 +442,33 @@ jobs:
       - name: Stage desktop resources
         run: bun run --filter @nicotind/desktop prepare-resources
 
-      - name: Package + publish Linux desktop app
+      - name: Package Linux desktop app
         working-directory: packages/desktop
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # electron-builder is a Node CLI and crashes under Bun's runtime
         # (`--bun`) via source-map-support; run it under Node (setup-node above).
         # Override the desktop package version (static 0.1.0) with the release
-        # version from the tag (v0.1.207 -> 0.1.207) so artifacts are versioned
-        # correctly AND electron-builder publishes to THIS release instead of
-        # creating a stray `v0.1.0` one.
-        run: bunx electron-builder --linux --publish always -c.extraMetadata.version="${GITHUB_REF_NAME#v}"
+        # version from the tag (v0.1.207 -> 0.1.207) so the artifacts and the
+        # update feed carry THIS release's version.
+        run: bunx electron-builder --linux --publish never -c.extraMetadata.version="${GITHUB_REF_NAME#v}"
 
-      # `--publish always` is not a promise that anything was published: the
-      # publisher logs `skipped publishing` per file and exits 0 when it will not
-      # upload (#1261 — ~40 green releases with no Linux artifact and no updater
-      # feed). This compares the release against what the step above actually
-      # wrote to `release/`, so the next skip is red. Runs AFTER the upload,
+      # By id, like android/ios: the one upload path that sees the draft.
+      - name: Attach the Linux desktop artifacts to the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bun run packages/desktop/scripts/release-artifacts.ts | xargs bun scripts/github-release.ts upload --id "${{ needs.create-draft.outputs.id }}"
+
+      # An upload step that exits 0 is not a promise that everything arrived:
+      # electron-builder's publisher once logged `skipped publishing` per file and
+      # exited 0 (#1261 — ~40 green releases with no Linux artifact and no updater
+      # feed). This compares the release against what electron-builder actually
+      # wrote to `release/`, so any future skip is red. Runs AFTER the upload,
       # never between build and upload.
       - name: Verify the Linux artifacts reached the Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bun run packages/desktop/scripts/verify-published-assets.ts --label desktop-linux --release-id "${{ needs.create-draft.outputs.id }}"
 
-  # Build the macOS desktop app (dmg, arm64 only — Intel/x64 dropped) and publish
+  # Build the macOS desktop app (dmg, arm64 only — Intel/x64 dropped) and attach
   # it the same way (electron-updater reads `latest-mac.yml`). Ad-hoc signed — no
   # Apple Developer ID in scope for v1, so electron-builder.yml leaves `identity`
   # UNSET (never `identity: null`, which would re-break arm64);
@@ -505,14 +510,19 @@ jobs:
       - name: Stage desktop resources
         run: bun run --filter @nicotind/desktop prepare-resources
 
-      - name: Package + publish macOS desktop app
+      - name: Package macOS desktop app
         working-directory: packages/desktop
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
         # Run electron-builder under Node, not Bun (`--bun` crashes it).
         # extraMetadata.version: use the release tag's version (see desktop-linux).
-        run: bunx electron-builder --mac --publish always -c.extraMetadata.version="${GITHUB_REF_NAME#v}"
+        run: bunx electron-builder --mac --publish never -c.extraMetadata.version="${GITHUB_REF_NAME#v}"
+
+      # By id — see desktop-linux for why electron-builder does not publish.
+      - name: Attach the macOS desktop artifacts to the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bun run packages/desktop/scripts/release-artifacts.ts | xargs bun scripts/github-release.ts upload --id "${{ needs.create-draft.outputs.id }}"
 
       # Same backstop as desktop-linux — see the rationale there.
       - name: Verify the macOS artifacts reached the Release
@@ -790,200 +800,19 @@ jobs:
             done
           done
 
+  # Put this release on the host: an exact-version deploy with a database
+  # snapshot first and a version check after, in deploy-host.yml so the same
+  # job is the manual rollback. It pulls `vX.Y.Z`, the images promote just
+  # proved, not whatever `release` points at by then.
+  #
+  # Needs promote, and plain `needs` semantics are the #457 guard: a skipped or
+  # failed promote (a failed push, smoke or scan upstream) skips the deploy
+  # rather than redeploying the previous version behind a green run.
   deploy:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    # DEPLOY_* and TS_OAUTH_* live in this environment, deployable from `v*`
-    # tags and master only, so a workflow on any other branch cannot read the
-    # deploy host's address or Tailscale credentials (docs/dependency-management.md).
-    environment: production
-    # On a tag push the host pulls the `release` images promote just moved,
-    # so deploy must wait for it. On workflow_dispatch the docker jobs and
-    # promote are skipped and the host redeploys the current `release` images
-    # (NOT master source — the compose file's `image:` defaults;
-    # build-from-source now lives in an override file).
-    #
-    # The `skipped` tolerance is scoped to workflow_dispatch on purpose (issue
-    # #457). A downstream job whose `needs` FAILED also reports `skipped`, so an
-    # unscoped tolerance could not tell "nothing to build" from "the build
-    # broke" — and on v0.1.329 a failed GHCR push produced a GREEN deploy that
-    # silently redeployed the previous version. On a tag push the docker jobs
-    # always run, so `skipped` there can only ever mean upstream failure.
     needs: [promote]
-    if: ${{ !cancelled() && (needs.promote.result == 'success' || (github.event_name == 'workflow_dispatch' && needs.promote.result == 'skipped')) }}
-    steps:
-      # Resolve exactly what the server should check out. On a tag push (the normal
-      # release path) deploy that exact tag; on a manual workflow_dispatch deploy the
-      # remote tip of master. NOTE: `github.ref_name` is never empty, so a bare
-      # `${{ github.ref_name || 'origin/master' }}` would resolve to the (stale, local)
-      # branch name on dispatch — hence the explicit branch here.
-      - name: Resolve deploy ref
-        id: ref
-        run: |
-          if [ "${{ github.ref_type }}" = "tag" ]; then
-            echo "ref=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "ref=origin/master" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Connect to Tailscale
-        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd # v4
-        with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          tags: tag:ci
-
-      # Pin the deploy host's SSH key into known_hosts so we can drop the
-      # insecure `-o StrictHostKeyChecking=no` (which accepts any key on
-      # first connect, vulnerable to MITM). `ssh-keyscan` runs at workflow
-      # start over the Tailscale network, so the key is fetched from the
-      # genuine host. If the host's SSH key changes (reinstall/reprovision),
-      # ssh-keyscan will pick up the new key automatically — no manual secret
-      # rotation needed. This is strictly safer than the old flag.
-      #
-      # Retried, because "Tailscale is running and connected" only means the
-      # local daemon authenticated — it does NOT mean the peer path to the
-      # deploy host is established yet (direct/DERP negotiation is still in
-      # flight, or the host is briefly asleep). `ssh-keyscan` is a one-shot
-      # probe with no retry of its own and exits 1 on no answer, so under
-      # `bash -e` a momentary blip failed the WHOLE deploy — after every image
-      # had already been built, pushed and manifest-verified. That is what
-      # killed v0.3.18 and v0.3.20 (identical exit 1 here ~1h apart, with
-      # v0.3.19 succeeding in between: the host flaps, it is not cleanly down).
-      # Same bounded-backoff convention the release job's git push already uses.
-      - name: Pin deploy host SSH key
-        run: |
-          mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          for attempt in 1 2 3 4 5; do
-            if ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts \
-               && [ -s ~/.ssh/known_hosts ]; then
-              echo "Pinned deploy host key on attempt $attempt."
-              exit 0
-            fi
-            # Truncate: a failed scan can leave a partial/empty append, and the
-            # -s check above must test THIS attempt, not a previous remnant.
-            : > ~/.ssh/known_hosts
-            if [ "$attempt" -lt 5 ]; then
-              delay=$((2 ** attempt))
-              echo "ssh-keyscan found no key (attempt $attempt/5); retrying in ${delay}s..."
-              sleep "$delay"
-            fi
-          done
-          echo "::error::Could not reach the deploy host over Tailscale after 5 attempts." \
-               "Every image for this tag is already published to GHCR — only this deploy" \
-               "step needs re-running once the host is reachable (Actions -> Re-run failed jobs)."
-          exit 1
-
-      - name: Deploy via SSH
-        run: |
-          ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} '
-            set -e
-            if systemctl --user is-active --quiet nicotind; then
-              echo "ERROR: systemd nicotind is active on the host — Docker deploy would collide on :5030/:8484. Run: systemctl --user disable --now nicotind" >&2
-              exit 1
-            fi
-            cd ~/Documents/nicotind &&
-            # --force: the deploy host is a pure mirror of origin, but its local clone
-            # had a divergent tag (v0.1.26) that made a plain `fetch --tags` exit 1 with
-            # "would clobber existing tag", aborting the deploy. Force tags to match
-            # origin so a stale local tag can never block a release again.
-            git fetch --force --tags origin master &&
-            git reset --hard ${{ steps.ref.outputs.ref }} &&
-            # Pull every image WE publish that this host actually runs, derived
-            # from the resolved compose config rather than restated here. The
-            # list used to be hardcoded (`pull nicotind analysis`), so the three
-            # addon images and the pot-provider were never pulled — and since
-            # `up -d` will not recreate a container whose image reference is
-            # unchanged, a rebuilt `:latest` addon kept running the old bytes.
-            # A green deploy shipped a stale addon for 8 h that way (issue #606,
-            # the #457 shape). Deriving it means adding a service to compose
-            # cannot silently miss the deploy.
-            #
-            # Scoped to our own registry on purpose: a bare `docker compose pull`
-            # would also pull linuxserver/lidarr + slskd/slskd, letting an
-            # unrelated third-party registry hiccup abort a release. It also
-            # self-scopes per host — a streaming-only deployment resolves no
-            # addons, so none are pulled.
-            #
-            # A pull failure still aborts (set -e): a missing image must be loud,
-            # never skipped (#457). Requires the GHCR packages to be public or a
-            # `docker login ghcr.io` on the host — see docs/deployment.md.
-            images=$(docker compose config --images | grep "^ghcr\.io/kevinch3/" | sort -u) &&
-            # An empty list means compose failed to resolve, not that there is
-            # nothing to pull: without `pipefail` a broken `config` would flow an
-            # empty string into `xargs -r`, which cheerfully does nothing and
-            # returns 0 — a silent skip that deploys stale images behind a green
-            # run, the very #457 shape this step exists to prevent.
-            if [ -z "$images" ]; then
-              echo "ERROR: no ghcr.io/kevinch3 images resolved from compose — refusing to deploy without pulling" >&2
-              exit 1
-            fi &&
-            # Headroom on the filesystem Docker ACTUALLY writes to. Resolved from
-            # DockerRootDir, never assumed to be /var/lib/docker: this host keeps
-            # its data root on another disk entirely, and a df against the wrong
-            # filesystem reads green while the real one is full — which is how a
-            # 4.2 GB pull landed on a volume at 0 bytes free, taking Lidarr (its
-            # SQLite could no longer write), the API and the vocal-separation
-            # sidecar (since removed, #1024) down at once (issue #1021). The
-            # images below are multi-GB, so this refuses
-            # to start rather than half-pull into a full disk.
-            root=$(docker info --format "{{.DockerRootDir}}") &&
-            avail_kb=$(df -Pk "$root" | tail -1 | tr -s " " | cut -d" " -f4) &&
-            if [ "${avail_kb:-0}" -lt 10485760 ]; then
-              echo "::error::Docker disk is nearly full: $((${avail_kb:-0} / 1048576)) GiB free on $root, need 10 GiB. Every image for this tag is already published — reclaim space and re-run this job. Reclaim with: docker builder prune -af && docker image prune -af" >&2
-              exit 1
-            fi &&
-            echo "Docker disk: $((avail_kb / 1048576)) GiB free on $root" &&
-            echo "$images" | xargs -n1 docker pull &&
-            # --build is kept for any host-local override that still carries a
-            # `build:` key (no-op otherwise).
-            docker compose up --build -d
-          '
-
-      # On a tag push we know exactly which version must appear. On a manual
-      # dispatch we do not (the host redeploys whatever `release` currently
-      # points at), so there we assert health only rather than inventing an
-      # expectation we cannot check.
-      - name: Expected version
-        id: ver
-        run: |
-          if [ "${{ github.ref_type }}" = "tag" ]; then
-            echo "expected=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-          else
-            echo "expected=" >> "$GITHUB_OUTPUT"
-          fi
-
-      # `docker compose up -d` returns when the container is CREATED, not when it
-      # is serving. The workflow used to end there, so a container that
-      # crash-looped, or one that came up still running the previous image, was
-      # indistinguishable from a good deploy — the run went green either way.
-      #
-      # That is the #457 shape, and #457 actually happened: a failed GHCR push
-      # produced a green deploy that silently redeployed the previous version.
-      # Everything upstream of here guards against shipping the wrong bytes; this
-      # is the only step that confirms the right ones are RUNNING.
-      #
-      # It is also what makes the documented rollback (pin NICOTIND_VERSION and
-      # redeploy) actionable: it turns a bad release from something a user
-      # reports into something the release run tells you.
-      - name: Verify the deploy is serving the version we shipped
-        run: |
-          ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} '
-            expected="${{ steps.ver.outputs.expected }}"
-            got=""
-            for _ in $(seq 1 60); do
-              body="$(curl -fsS --max-time 5 http://localhost:8484/api/health 2>/dev/null || true)"
-              if [ -n "$body" ]; then
-                got="$(printf "%s" "$body" | tr "," "\n" | sed -n "s/.*\"version\":\"\([^\"]*\)\".*/\1/p")"
-                if [ -z "$expected" ] || [ "$got" = "$expected" ]; then
-                  echo "Deploy verified: /api/health reports ${got:-ok}"
-                  exit 0
-                fi
-              fi
-              sleep 5
-            done
-            echo "ERROR: after 5 min /api/health reports \"${got:-unreachable}\", expected \"$expected\"" >&2
-            echo "Containers were recreated but are not serving this release. Recent logs:" >&2
-            cd ~/Documents/nicotind && docker compose logs --tail=60 nicotind >&2 || true
-            exit 1
-          '
+    if: github.ref_type == 'tag'
+    uses: ./.github/workflows/deploy-host.yml
+    with:
+      version: ${{ github.ref_name }}
+      ref: ${{ github.ref_name }}
+    secrets: inherit

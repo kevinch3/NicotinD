@@ -25,6 +25,7 @@ export type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
 export interface Release {
   id: number;
   tag_name: string;
+  name?: string | null;
   draft: boolean;
   upload_url?: string;
   assets?: Array<{ id: number; name: string }>;
@@ -58,7 +59,15 @@ async function call<T>(api: Api, path: string, init: RequestInit = {}): Promise<
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
 
-/** Every release for a tag, drafts included (the token must be able to see drafts). */
+/**
+ * Every release for a tag, drafts included (the token must be able to see drafts).
+ *
+ * A draft is matched on its `name` as well: the API reports a draft's tag as
+ * `untagged-<hash>` even when the tag exists, so `tag_name` alone never finds
+ * the draft `ensureDraft` made (v0.8.103). That is also why nothing that looks
+ * a release up by tag — electron-builder's publisher included — may upload to
+ * it; everything goes by id.
+ */
 export async function releasesForTag(api: Api, tag: string): Promise<Release[]> {
   const found: Release[] = [];
   for (let page = 1; ; page += 1) {
@@ -66,7 +75,7 @@ export async function releasesForTag(api: Api, tag: string): Promise<Release[]> 
       api,
       `/repos/${api.repo}/releases?per_page=100&page=${page}`,
     );
-    found.push(...batch.filter((r) => r.tag_name === tag));
+    found.push(...batch.filter((r) => r.tag_name === tag || (r.draft && r.name === tag)));
     if (batch.length < 100) return found;
   }
 }
