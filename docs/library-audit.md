@@ -689,6 +689,19 @@ own `confirmedIncomplete` over the newest job per pair, narrowed — before any 
 album, and returns the row only when the report would attribute it to this `albumId`. The unit tests
 assert it `toEqual` the report's worklist row, so the badge cannot drift into a second rule.
 
+### Admin Incomplete Albums (issue #1444)
+
+The Library maintenance panel's **Incomplete Albums** table is the same confirmed worklist, acted
+on: each row has a one-click **Complete** that runs the shared per-album hunt (`AutoHuntService`,
+see [album-hunt.md](album-hunt.md)), so the button carries that album's live status. It reads
+`GET /api/library/incomplete-albums` (admin), which is `incompleteAlbums(db, lidarr)`: the report's
+`confirmedIncomplete` with the same live-tracklist pass (`liveTracklists`, #1080), without computing
+the other dimensions. Loaded on **Check**, never on the `ServiceReview` poll, for the report's reason.
+
+It used to be a snapshot slice reading `album_jobs WHERE state IN ('exhausted','active')`. Nothing has
+written `album_jobs` since the addon cutover, so on prod it showed the same 50 pre-cutover rows forever
+(measured 2026-09-28). `acquisition_jobs` was no substitute: finished jobs are pruned after 7 days.
+
 It reads the **stored** hunt-time tracklist, not Lidarr's live one (#1080): the report's live
 reconciliation is a network fan-out an album page view must not pay. So the badge can read
 incomplete where the hunt then answers `already-complete` — which is why the action surfaces that

@@ -9,7 +9,7 @@ import { LibraryApiService } from '../../../services/api/library-api.service';
 import { SystemApiService } from '../../../services/api/system-api.service';
 import type {
   DiscographyAlbum,
-  IncompleteAlbumJob,
+  IncompleteAlbum,
   LibraryDuplicateAlbumCluster,
   LibraryFragmentFinding,
   LibraryFragmentReport,
@@ -25,6 +25,9 @@ import {
 } from '../../../lib/maintenance-progress';
 import { ServiceReviewService } from '../../../services/service-review.service';
 import { TranslateService } from '../../../services/translate.service';
+import { AutoHuntService } from '../../../services/auto-hunt.service';
+import { IDLE_HUNT, type AlbumHuntStatus } from '../../../lib/album-hunt-status';
+import { stageLabel } from '../../../lib/pipeline-stage';
 
 /** A copy in a duplicate group — shape returned by the maintenance duplicates API. */
 type DuplicateSong = {
@@ -42,11 +45,12 @@ type DuplicateSong = {
 /**
  * Admin card for library maintenance: whole-library passes (resync, metadata
  * optimize), duplicate finding, the fragmentation report and its remediations,
- * orphan/artist-image/play-event counters, and the incomplete/untracked job
- * tables with their retry-hunt modal.
+ * orphan/artist-image/play-event counters, the untracked-downloads table, and
+ * the incomplete-albums worklist with its one-click Complete.
  *
  * Every counter here is a `ServiceReview` slice, so the panel starts no poll of
- * its own; the action buttons ask for a refresh, which coalesces.
+ * its own; the action buttons ask for a refresh, which coalesces. The
+ * incomplete-albums list is the exception: loaded on demand (#1444).
  */
 @Component({
   selector: 'app-library-maintenance-panel',
@@ -66,10 +70,9 @@ export class LibraryMaintenancePanelComponent {
   private readonly libraryApi = inject(LibraryApiService);
   readonly i18n = inject(TranslateService);
   protected readonly reviewSvc = inject(ServiceReviewService);
+  private readonly autoHunt = inject(AutoHuntService);
 
   readonly maintenance = this.reviewSvc.maintenance;
-  readonly incompleteJobs = this.reviewSvc.incompleteJobs;
-  readonly incompleteJobsCount = this.reviewSvc.incompleteJobsCount;
   readonly untracked = this.reviewSvc.untracked;
   readonly untrackedCount = this.reviewSvc.untrackedCount;
   readonly orphanRows = this.reviewSvc.orphanRows;
@@ -95,8 +98,13 @@ export class LibraryMaintenancePanelComponent {
   readonly duplicatesMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
   readonly deletingDuplicates = signal(false);
 
-  readonly retryAlbum = signal<DiscographyAlbum | null>(null);
-  readonly retryArtist = signal('');
+  /** Null until the admin asks — the list is too heavy for the review poll (#1444). */
+  readonly incompleteAlbums = signal<IncompleteAlbum[] | null>(null);
+  readonly incompleteLoading = signal(false);
+  readonly incompleteError = signal<string | null>(null);
+  /** The manual picker, when a one-click hunt falls back to it. */
+  readonly manualHuntAlbum = signal<DiscographyAlbum | null>(null);
+  readonly manualHuntArtist = signal('');
 
   readonly missplitState = signal<{
     key: string;
@@ -384,38 +392,52 @@ export class LibraryMaintenancePanelComponent {
     }
   }
 
-  retryHunt(job: IncompleteAlbumJob): void {
-    if (job.lidarrAlbumId == null) return;
-    this.retryArtist.set(job.artistName ?? '');
-    this.retryAlbum.set({
-      lidarrId: job.lidarrAlbumId,
-      title: job.albumTitle ?? job.directory,
-      foreignAlbumId: '',
-      albumType: 'Album',
-      secondaryTypes: [],
-      totalTracks: 0,
-      localTrackCount: 0,
-      status: 'partial',
-      tracks: [],
-    });
+  async loadIncompleteAlbums(): Promise<void> {
+    if (this.incompleteLoading()) return;
+    this.incompleteLoading.set(true);
+    this.incompleteError.set(null);
+    try {
+      this.incompleteAlbums.set(await firstValueFrom(this.libraryApi.incompleteAlbums()));
+    } catch (err) {
+      this.incompleteError.set(
+        err instanceof Error ? err.message : this.i18n.t('admin.incompleteLoadFailed'),
+      );
+    } finally {
+      this.incompleteLoading.set(false);
+    }
   }
 
-  onRetryClosed(): void {
-    this.retryAlbum.set(null);
+  rowHuntStatus(row: IncompleteAlbum): AlbumHuntStatus {
+    return row.lidarrAlbumId == null ? IDLE_HUNT : this.autoHunt.statusFor(row.lidarrAlbumId);
   }
 
-  onRetryDownloaded(): void {
-    this.retryAlbum.set(null);
-    setTimeout(() => this.reviewSvc.refresh(), 1500);
-  }
-
-  jobStateClass(state: string): string {
-    if (state === 'exhausted') return 'text-status-error';
-    if (state === 'active') return 'text-status-warn';
-    return 'text-theme-secondary';
+  huntLabel(status: AlbumHuntStatus): string {
+    if (status.phase === 'job') return stageLabel(status.stage, (key) => this.i18n.t(key));
+    return this.i18n.t(status.phase === 'searching' ? 'acquire.finding' : 'admin.completeAlbum');
   }
 
   formatTimestamp(ms: number): string {
     return new Date(ms).toLocaleDateString();
+  }
+
+  /** The same one-click hunt as the artist page, so the row carries its live status. */
+  completeAlbum(row: IncompleteAlbum): void {
+    if (row.lidarrAlbumId == null) return;
+    const album: DiscographyAlbum = {
+      lidarrId: row.lidarrAlbumId,
+      title: row.album,
+      foreignAlbumId: '',
+      albumType: 'Album',
+      secondaryTypes: [],
+      totalTracks: row.expected,
+      localTrackCount: row.owned,
+      status: 'partial',
+      ...(row.albumId ? { localAlbumId: row.albumId } : {}),
+      tracks: [],
+    };
+    this.autoHunt.hunt(album, row.artist, () => {
+      this.manualHuntArtist.set(row.artist);
+      this.manualHuntAlbum.set(album);
+    });
   }
 }

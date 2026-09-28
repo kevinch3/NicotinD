@@ -868,17 +868,19 @@ export interface ProcessingSummary {
   updatedAt: string | null;
 }
 
-/** Compact album-job row for the Admin Incomplete-Albums table. */
-export interface IncompleteAlbumJob {
-  id: number;
+/**
+ * One row of the Admin Incomplete-Albums worklist (#1444) — the health
+ * report's confirmed-incomplete entry: a hunt would enqueue `missing` tracks.
+ */
+export interface IncompleteAlbum {
+  albumId: string | null;
+  artist: string;
+  album: string;
+  expected: number;
+  owned: number;
+  missing: number;
   lidarrAlbumId: number | null;
-  artistName: string | null;
-  albumTitle: string | null;
-  username: string;
-  directory: string;
   state: string;
-  fallbackAttempts: number;
-  createdAt: number;
 }
 
 /** Compact untracked-download row for the Admin Untracked-Downloads table. */
@@ -992,7 +994,6 @@ export interface ServiceReview {
   backupsSummary: BackupsSummary;
   processing: ProcessingSummary | null;
   maintenance: MaintenanceStatus | null;
-  incompleteJobsCount: number;
   untrackedCount: number;
   /**
    * Per-song side-table rows whose owning song is gone (issue #259). Reported
@@ -1005,7 +1006,6 @@ export interface ServiceReview {
   auditTail: AuditEntry[];
   /** Open human-review flags (issue #682), oldest first — the curation queue. */
   reviewFlags: CurationFlag[];
-  incompleteJobs: IncompleteAlbumJob[];
   untracked: UntrackedDownload[];
   /** Human-readable sub-fetch errors the snapshot degraded around. */
   errors: string[];

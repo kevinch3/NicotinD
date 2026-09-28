@@ -126,6 +126,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **Album completeness badge**: the report's confirmed row for one album (`albumConfirmedIncomplete`)
   on the album page, plus a curator Complete action through `completeAlbum`, shared with MCP
   `complete_album`. `AlbumCompletenessComponent`. → [library-audit.md](../library-audit.md)
+- **Admin Incomplete Albums**: the confirmed worklist on demand, live-checked, each row completed
+  through the per-album hunt (`incompleteAlbums`, `liveTracklists`, `loadIncompleteAlbums`).
+  → [library-audit.md](../library-audit.md)
 - **Metadata optimization**: conservative all-or-nothing bulk Lidarr re-fetch (`optimizeAllAlbums`),
   run as a cancellable background job on `MaintenanceService`, bounded by limit + cursor.
   → [metadata-optimize.md](../metadata-optimize.md)

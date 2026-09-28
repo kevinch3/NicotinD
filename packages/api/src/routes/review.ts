@@ -2,7 +2,7 @@
  * ServiceReview — the Admin page's single read-only snapshot of the running
  * server. Replaces the page's N independent fetchers (`systemStatus`,
  * `scanStatus`, `updateCheck`, `backups`, `audit`, `processing` summary,
- * `incompleteJobs`, `untracked`, hardware metrics) with one resource that one
+ * `untracked`, hardware metrics) with one resource that one
  * poll keeps fresh. Every sub-fetch has a `try`/`catch` so a single broken
  * integration degrades that one field instead of dropping the whole response;
  * sub-fetches themselves are injected so the unit tests can drive every
@@ -82,19 +82,6 @@ export interface AuditEntry {
   detail: string | null;
 }
 
-/** Compact album-job row for the Admin Incomplete-Albums panel. */
-export interface IncompleteAlbumJob {
-  id: number;
-  lidarrAlbumId: number | null;
-  artistName: string | null;
-  albumTitle: string | null;
-  username: string;
-  directory: string;
-  state: string;
-  fallbackAttempts: number;
-  createdAt: number;
-}
-
 /** Compact untracked-download row for the Admin Untracked panel. */
 export interface UntrackedDownload {
   transferKey: string;
@@ -136,12 +123,11 @@ export interface ServiceReview {
   processing: ProcessingSummary | null;
   /** Operator-triggered whole-library pass in flight, if any (issue #622). */
   maintenance: MaintenanceStatus | null;
-  incompleteJobsCount: number;
   untrackedCount: number;
   /**
    * Per-song side-table rows whose owning song is gone (issue #259). Reported
    * rather than merely swept so an admin can see whether the daily prune is
-   * keeping up — same spirit as `untracked`/`incompleteJobs`.
+   * keeping up — same spirit as `untracked`.
    */
   orphanRows: OrphanCount[];
   /**
@@ -155,8 +141,6 @@ export interface ServiceReview {
   auditTail: AuditEntry[];
   /** Open human-review flags (issue #682), oldest first — the curation queue. */
   reviewFlags: CurationFlag[];
-  /** Snapshot of incomplete album hunts (active + exhausted) for the Admin panel. */
-  incompleteJobs: IncompleteAlbumJob[];
   /** Snapshot of completed downloads with no recorded library path. */
   untracked: UntrackedDownload[];
   errors: string[];
@@ -174,14 +158,12 @@ export interface ReviewSubFns {
   backupsList: () => BackupInfo[] | Promise<BackupInfo[]>;
   processingSummary: () => ProcessingSummary | null;
   maintenance: () => MaintenanceStatus | null;
-  incompleteJobCount: () => number;
   untrackedCount: () => number;
   orphanRows: () => OrphanCount[];
   playEvents: () => number;
   artistImages: () => ArtistImageCoverage;
   auditTail: (limit: number) => AuditEntry[];
   reviewFlags: () => CurationFlag[];
-  incompleteJobs: () => IncompleteAlbumJob[];
   untracked: () => UntrackedDownload[];
 }
 
@@ -397,40 +379,7 @@ function defaultAuditTail(limit: number): AuditEntry[] {
   }
 }
 
-const INCOMPLETE_JOBS_LIMIT = 50;
 const UNTRACKED_LIMIT = 50;
-
-function defaultIncompleteJobs(): IncompleteAlbumJob[] {
-  try {
-    const db = getDatabase();
-    return db
-      .query<
-        {
-          id: number;
-          lidarrAlbumId: number | null;
-          artistName: string | null;
-          albumTitle: string | null;
-          username: string;
-          directory: string;
-          state: string;
-          fallbackAttempts: number;
-          createdAt: number;
-        },
-        []
-      >(
-        `SELECT id, lidarr_album_id AS lidarrAlbumId, artist_name AS artistName,
-                album_title AS albumTitle, username, directory, state,
-                fallback_attempts AS fallbackAttempts, created_at AS createdAt
-         FROM album_jobs
-         WHERE state IN ('exhausted', 'active')
-         ORDER BY created_at DESC
-         LIMIT ${INCOMPLETE_JOBS_LIMIT}`,
-      )
-      .all() as IncompleteAlbumJob[];
-  } catch {
-    return [];
-  }
-}
 
 function defaultUntracked(): UntrackedDownload[] {
   try {
@@ -467,8 +416,8 @@ function defaultUntracked(): UntrackedDownload[] {
  * why: the gather used to destructure 13 names positionally out of one
  * `Promise.all([...])`, so adding a slice meant editing the name list and the
  * array in exact lockstep — and a mismatch was invisible to the type-checker
- * wherever two slices share a type (`incompleteJobsCount`/`untrackedCount` are
- * both `number`; `incompleteJobs`/`untracked` are both object arrays). A swap
+ * wherever two slices share a type (`untrackedCount`/`playEvents` are both
+ * `number`; `auditTail`/`untracked` are both object arrays). A swap
  * type-checked cleanly and produced a wrong Admin panel. Keyed, a mismatch is a
  * compile error instead.
  *
@@ -528,14 +477,12 @@ export function reviewRoutes(deps: ReviewRoutesDeps = {}) {
       backups,
       processing,
       maintenance,
-      incompleteCount,
       untracked,
       orphanRows,
       playEvents,
       artistImages,
       audit,
       flags,
-      incompleteList,
       untrackedList,
     } = await allNamed({
       metrics: safe(
@@ -586,12 +533,6 @@ export function reviewRoutes(deps: ReviewRoutesDeps = {}) {
         () => sub.processingSummary?.() ?? defaultProcessing(deps.processing),
         null as ProcessingSummary | null,
       ),
-      incompleteCount: safe(
-        errors,
-        'incompleteJobsCount',
-        () => sub.incompleteJobCount?.() ?? defaultIncompleteJobs().length,
-        0,
-      ),
       untracked: safe(
         errors,
         'untrackedCount',
@@ -629,12 +570,6 @@ export function reviewRoutes(deps: ReviewRoutesDeps = {}) {
         () => sub.reviewFlags?.() ?? listOpenCurationFlags(getDatabase(), REVIEW_FLAG_LIMIT),
         [] as CurationFlag[],
       ),
-      incompleteList: safe(
-        errors,
-        'incompleteJobsList',
-        () => sub.incompleteJobs?.() ?? defaultIncompleteJobs(),
-        [] as IncompleteAlbumJob[],
-      ),
       untrackedList: safe(
         errors,
         'untrackedList',
@@ -664,14 +599,12 @@ export function reviewRoutes(deps: ReviewRoutesDeps = {}) {
       backupsSummary: summarizeBackups(backups),
       processing,
       maintenance,
-      incompleteJobsCount: incompleteCount,
       untrackedCount: untracked,
       orphanRows,
       playEvents,
       artistImages,
       auditTail: audit,
       reviewFlags: flags,
-      incompleteJobs: incompleteList,
       untracked: untrackedList,
       errors,
     };

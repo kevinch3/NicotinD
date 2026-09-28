@@ -8,6 +8,7 @@ import { artistIdFor } from './library-scanner.js';
 import type { Lidarr } from '../lidarr/index.js';
 import {
   albumConfirmedIncomplete,
+  incompleteAlbums,
   libraryHealth,
   libraryHealthWithLidarr,
 } from './library-health.js';
@@ -516,6 +517,30 @@ describe('libraryHealth — completeness (confirmed, the album_jobs arm)', () =>
 
     const none = (await libraryHealthWithLidarr(db, {}, null)).dimensions.completeness;
     expect(none.metric.liveTracklists).toBeNull();
+  });
+
+  /** #1444: the Admin panel's list is the report's confirmed worklist, live-checked the same way. */
+  it('incompleteAlbums lists what the report confirms, and trusts the live tracklist', async () => {
+    seedOwned('al-tob', 'Tyranny of Beauty', ['Catwalk', 'Haze of Fame']);
+    addJob({
+      album: 'Tyranny of Beauty',
+      canonical: ['Catwalk', 'Haze of Fame', 'Quasar'],
+      lidarrAlbumId: 12182,
+    });
+    const offline = await incompleteAlbums(db, null);
+    expect(offline).toEqual(libraryHealth(db).dimensions.completeness.worklist.confirmed);
+    expect(offline[0]).toMatchObject({
+      albumId: 'al-tob',
+      expected: 3,
+      owned: 2,
+      missing: 1,
+      lidarrAlbumId: 12182,
+    });
+
+    const agrees = {
+      track: { listByAlbum: async () => [{ title: 'Catwalk' }, { title: 'Haze of Fame' }] },
+    } as unknown as Pick<Lidarr, 'track'>;
+    expect(await incompleteAlbums(db, agrees)).toEqual([]);
   });
 
   /** A genuine gap must still reach `confirmed` — the guard is not a blanket. */

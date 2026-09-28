@@ -82,3 +82,68 @@ test.describe('admin maintenance passes', () => {
     expect([202, 503]).toContain(res.status());
   });
 });
+
+/**
+ * Incomplete Albums (#1444): the health report's confirmed worklist, loaded on
+ * Check. With no Lidarr no hunt records a tracklist, so the real route can only
+ * answer empty; a routed row drives the table and the one-click Complete.
+ */
+test.describe('admin incomplete albums', () => {
+  test('loads nothing until Check, then the real (empty) worklist', async ({ page }) => {
+    let reads = 0;
+    page.on('request', (r) => {
+      if (new URL(r.url()).pathname === '/api/library/incomplete-albums') reads++;
+    });
+    await page.goto('/admin');
+    await expandGroup(page, 'library-maintenance');
+    const panel = page.getByTestId('incomplete-albums');
+    await expect(panel).toBeVisible();
+    expect(reads).toBe(0);
+
+    await panel.getByTestId('incomplete-albums-check').click();
+    await expect(panel).toContainText('No incomplete albums');
+    expect(reads).toBe(1);
+  });
+
+  test('a row shows owned of expected, and Complete hunts that album', async ({ page }) => {
+    await page.route('**/api/library/incomplete-albums', (route) =>
+      route.fulfill({
+        json: [
+          {
+            albumId: null,
+            artist: 'Soda Stereo',
+            album: 'Canción Animal',
+            expected: 11,
+            owned: 9,
+            missing: 2,
+            lidarrAlbumId: 4242,
+            state: 'done',
+          },
+        ],
+      }),
+    );
+    const hunts: string[] = [];
+    await page.route('**/api/discography/albums/4242/hunt/base', (route) => {
+      hunts.push(route.request().method());
+      return route.fulfill({ json: { candidates: [], totalTracks: 11, skewNeeded: false } });
+    });
+
+    await page.goto('/admin');
+    await expandGroup(page, 'library-maintenance');
+    const panel = page.getByTestId('incomplete-albums');
+    await panel.getByTestId('incomplete-albums-check').click();
+
+    const row = panel.getByTestId('incomplete-album-row');
+    await expect(row).toContainText('Canción Animal');
+    await expect(row).toContainText('9 of 11');
+    const complete = row.getByTestId('incomplete-album-complete');
+    await expect(complete).toHaveText('Complete album');
+    await complete.click();
+
+    await expect(
+      page.getByTestId('toast').filter({ hasText: 'No confident match found' }),
+    ).toBeVisible();
+    expect(hunts).toEqual(['POST']);
+    await expect(complete).toBeEnabled();
+  });
+});

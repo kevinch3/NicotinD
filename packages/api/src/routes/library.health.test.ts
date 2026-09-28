@@ -9,6 +9,7 @@ import { Database } from 'bun:sqlite';
 import type { JwtPayload } from '@nicotind/core';
 import type { AuthEnv } from '../middleware/auth.js';
 import { applySchema } from '../db.js';
+import { artistIdFor } from '../services/library-scanner.js';
 import { libraryRoutes } from './library.js';
 
 let testDb: Database = (() => {
@@ -23,7 +24,7 @@ mock.module('../db.js', () => ({
   applySchema,
 }));
 
-function makeApp(role: 'refiner' | 'user'): Hono<AuthEnv> {
+function makeApp(role: 'admin' | 'refiner' | 'user'): Hono<AuthEnv> {
   const app = new Hono<AuthEnv>();
   app.use('*', async (c, next) => {
     c.set('user', { sub: 'u1', username: 'curator', role, iat: 0, exp: 0 } as JwtPayload);
@@ -79,5 +80,50 @@ describe('GET /health', () => {
       dimensions: { albumCovers: { worklist: unknown[] } };
     };
     expect(body.dimensions.albumCovers.worklist).toHaveLength(2);
+  });
+});
+
+// #1444: the Admin Incomplete Albums panel — admin-only, like the panel it feeds.
+describe('GET /incomplete-albums', () => {
+  it('403s a curator who is not an admin', async () => {
+    const res = await makeApp('refiner').request('/incomplete-albums');
+    expect(res.status).toBe(403);
+  });
+
+  it('lists an album a hunt would complete', async () => {
+    testDb.run(
+      `INSERT INTO library_artists (id, name, album_count, synced_at) VALUES (?, 'A', 1, 1)`,
+      [artistIdFor('A')],
+    );
+    testDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, classification, hidden, synced_at)
+       VALUES ('al1', 'Jazz', 'A', ?, 1, 'album', 0, 1)`,
+      [artistIdFor('A')],
+    );
+    testDb.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, suffix, synced_at)
+       VALUES ('s1', 'al1', 'Mustapha', 'A', ?, '/m/s1.opus', 'opus', 1)`,
+      [artistIdFor('A')],
+    );
+    testDb.run(
+      `INSERT INTO acquisition_jobs
+         (id, kind, method, state, stage, artist_name, album_title, lidarr_album_id,
+          canonical_tracks_json, created_at, updated_at)
+       VALUES ('j1', 'album-hunt', 'slskd', 'done', 'done', 'A', 'Jazz', 7, ?, 1, 1)`,
+      [JSON.stringify(['Mustapha', 'Jealousy'])],
+    );
+
+    const res = await makeApp('admin').request('/incomplete-albums');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<Record<string, unknown>>;
+    expect(body).toEqual([
+      expect.objectContaining({
+        album: 'Jazz',
+        expected: 2,
+        owned: 1,
+        missing: 1,
+        lidarrAlbumId: 7,
+      }),
+    ]);
   });
 });
