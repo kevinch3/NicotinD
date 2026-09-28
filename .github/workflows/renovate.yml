@@ -52,6 +52,8 @@ jobs:
   renovate:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # RENOVATE_TOKEN lives in this environment, deployable from master only.
+    environment: renovate
     steps:
       # Skip cleanly instead of failing when the token is absent.
       #

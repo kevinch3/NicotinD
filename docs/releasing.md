@@ -158,6 +158,10 @@ latest release first.
   skips the app builds.
 - **A deploy job failed but the tag exists**: fix the cause, then re-run the
   failed `deploy.yml` jobs from the Actions UI — don't re-tag.
+- **The credentials a release uses** (`RELEASE_TOKEN`, the deploy host's, the Android signing
+  keys) live in GitHub environments that only `master` and `v*` tags can use — see
+  [dependency-management.md](dependency-management.md#secrets-live-in-environments). A
+  `workflow_dispatch` from any other branch will not get them.
 - **Never hand-edit** `CHANGELOG.md` or the `package.json` version — both are
   generated; hand edits get overwritten by the next release and can break the
   version detection.
