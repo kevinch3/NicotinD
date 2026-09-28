@@ -58,12 +58,13 @@ describe('floating image tags move only after the release image is proven', () =
     expect(smoke?.run).toContain('steps.build.outputs.digest');
   });
 
-  it('deploy waits for promote, tolerating `skipped` only on a manual dispatch (#457)', () => {
+  it('deploy waits for promote and deploys that exact version (#457)', () => {
+    // Plain `needs` semantics are the #457 guard: a skipped or failed promote
+    // skips the deploy rather than redeploying the previous version.
     expect(needsOf(deploy.jobs.deploy)).toEqual(['promote']);
-    const cond = deploy.jobs.deploy?.if ?? '';
-    expect(cond).toContain("needs.promote.result == 'success'");
-    expect(cond).toContain(
-      "github.event_name == 'workflow_dispatch' && needs.promote.result == 'skipped'",
-    );
+    const job = deploy.jobs.deploy as Job & { uses?: string; with?: Record<string, string> };
+    expect(job.if).toBe("github.ref_type == 'tag'");
+    expect(job.uses).toBe('./.github/workflows/deploy-host.yml');
+    expect(job.with).toEqual({ version: '${{ github.ref_name }}', ref: '${{ github.ref_name }}' });
   });
 });

@@ -184,11 +184,11 @@ release with nothing on it — the in-app APK updater would offer a download tha
   `release:major`), then `git push --follow-tags origin master`. This is the
   same tool CI runs (`bun run release` = auto-detected bump), so the tag flows
   through `deploy.yml` identically.
-- **Re-deploy the server without a new version** (e.g. after a deploy-host
-  hiccup): Actions → `deploy.yml` → _Run workflow_ — a manual dispatch checks
-  out the tip of `master` on the host (compose files, scripts) but re-runs the
-  current **`release` image** (no image is published from an untagged tip) and
-  skips the app builds.
+- **Re-deploy or roll back the server**: Actions → **Deploy host** → _Run
+  workflow_ with the exact `vX.Y.Z` (both inputs). It snapshots the database
+  first and verifies the version; `deploy.yml` has no manual trigger any more.
+  Holding the host on a version is the `DEPLOY_HOLD` repository variable — see
+  [deployment.md](deployment.md#rollback).
 - **A deploy job failed but the tag exists**: fix the cause, then re-run the
   failed `deploy.yml` jobs from the Actions UI — don't re-tag.
 - **The credentials a release uses** (`RELEASE_TOKEN`, the deploy host's, the Android signing

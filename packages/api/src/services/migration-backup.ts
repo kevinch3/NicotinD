@@ -80,7 +80,7 @@ export function hasSomethingToLose(db: Database): boolean {
   return (row?.c ?? 0) > 0;
 }
 
-function stamp(now: number): string {
+export function stamp(now: number): string {
   const d = new Date(now);
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
@@ -131,6 +131,45 @@ export function pruneMigrationBackups(dataDir: string, keepCount: number): void 
 }
 
 /**
+ * A consistent snapshot of the database (plus `secrets.json`) into
+ * `<root>/<baseName>` — the core shared by the pre-migration snapshot below and
+ * the pre-deploy one (`pre-deploy-snapshot.ts`). Throws, never returns a
+ * partial result: `onNoRoom` words the "not enough disk" error for its caller.
+ */
+export function snapshotDatabase(
+  db: Database,
+  opts: {
+    dataDir: string;
+    root: string;
+    baseName: string;
+    statfs?: StatfsFn;
+    onNoRoom: (needMb: number, haveMb: number) => string;
+  },
+): MigrationBackupResult {
+  const { dataDir, root } = opts;
+  const statfs = opts.statfs ?? realStatfs;
+
+  // Preflight, so a full disk reads as "not enough room" instead of a partial
+  // file and a mid-VACUUM ENOSPC.
+  const need = Math.ceil(dbSizeBytes(dataDir) * SIZE_HEADROOM);
+  const free = freeBytes(dataDir, statfs);
+  if (free !== null && need > 0 && free < need) {
+    throw new Error(opts.onNoRoom(Math.ceil(need / 1e6), Math.floor(free / 1e6)));
+  }
+
+  mkdirSync(root, { recursive: true });
+  const name = freeName(root, opts.baseName);
+  const dir = join(root, name);
+  mkdirSync(dir, { recursive: true });
+  // VACUUM INTO, never copyFileSync: the connection is WAL, so the .db file
+  // alone is not a consistent snapshot.
+  db.run('VACUUM INTO ?', [join(dir, 'nicotind.db')]);
+  const secrets = join(dataDir, 'secrets.json');
+  if (existsSync(secrets)) copyFileSync(secrets, join(dir, 'secrets.json'));
+  return { dir, name, sizeBytes: dirSize(dir) };
+}
+
+/**
  * Snapshot the database before migrating it. Throws rather than returning a
  * failure: the caller is about to run an irreversible schema change, and
  * proceeding without the net it just asked for is the one outcome nobody wants.
@@ -139,35 +178,23 @@ export function pruneMigrationBackups(dataDir: string, keepCount: number): void 
 export function runMigrationBackup(db: Database, deps: MigrationBackupDeps): MigrationBackupResult {
   const { dataDir, fromVersion, toVersion } = deps;
   const now = deps.now ?? Date.now();
-  const statfs = deps.statfs ?? realStatfs;
-
-  // Preflight, so a full disk reads as "not enough room" instead of a partial
-  // file and a mid-VACUUM ENOSPC.
-  const need = Math.ceil(dbSizeBytes(dataDir) * SIZE_HEADROOM);
-  const free = freeBytes(dataDir, statfs);
-  if (free !== null && need > 0 && free < need) {
-    throw new Error(
-      `cannot snapshot the database before migrating: need ~${Math.ceil(need / 1e6)} MB free in ${dataDir}, ` +
-        `have ${Math.floor(free / 1e6)} MB. Free space and restart, or set NICOTIND_MIGRATION_BACKUP=off ` +
-        `to migrate without a snapshot (irreversible).`,
-    );
-  }
-
-  const root = migrationBackupsRoot(dataDir);
-  mkdirSync(root, { recursive: true });
-  const name = freeName(root, `v${fromVersion}-to-v${toVersion}-${stamp(now)}`);
-  const dir = join(root, name);
-  mkdirSync(dir, { recursive: true });
-  // VACUUM INTO, never copyFileSync: the connection is WAL, so the .db file
-  // alone is not a consistent snapshot.
-  db.run('VACUUM INTO ?', [join(dir, 'nicotind.db')]);
-  const secrets = join(dataDir, 'secrets.json');
-  if (existsSync(secrets)) copyFileSync(secrets, join(dir, 'secrets.json'));
+  const result = snapshotDatabase(db, {
+    dataDir,
+    root: migrationBackupsRoot(dataDir),
+    baseName: `v${fromVersion}-to-v${toVersion}-${stamp(now)}`,
+    ...(deps.statfs ? { statfs: deps.statfs } : {}),
+    onNoRoom: (needMb, haveMb) =>
+      `cannot snapshot the database before migrating: need ~${needMb} MB free in ${dataDir}, ` +
+      `have ${haveMb} MB. Free space and restart, or set NICOTIND_MIGRATION_BACKUP=off ` +
+      `to migrate without a snapshot (irreversible).`,
+  });
 
   pruneMigrationBackups(dataDir, deps.keepCount ?? resolveKeep());
-  const sizeBytes = dirSize(dir);
-  log.info({ name, fromVersion, toVersion, sizeBytes }, 'pre-migration backup created');
-  return { dir, name, sizeBytes };
+  log.info(
+    { name: result.name, fromVersion, toVersion, sizeBytes: result.sizeBytes },
+    'pre-migration backup created',
+  );
+  return result;
 }
 
 function resolveKeep(): number {

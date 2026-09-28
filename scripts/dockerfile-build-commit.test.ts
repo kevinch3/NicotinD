@@ -60,10 +60,19 @@ describe(`${ARG_NAME} stamps the web bundle (#453)`, () => {
     // Read the `build-args:` blocks rather than the whole file: an arg named in
     // a comment somewhere else would satisfy a file-wide `toContain`, and a
     // failure would print 800 lines of workflow instead of the one block.
-    const buildArgs = [...deployWorkflow.matchAll(/^ {10}build-args: \|\n((?: {12}\S.*\n)+)/gm)].map(
-      (m) => m[1]!,
-    );
+    const buildArgs = [
+      ...deployWorkflow.matchAll(/^ {10}build-args: \|\n((?: {12}\S.*\n)+)/gm),
+    ].map((m) => m[1]!);
     expect(buildArgs.length).toBeGreaterThan(0);
     expect(buildArgs.join('')).toContain(`${ARG_NAME}=\${{ github.sha }}`);
+  });
+
+  // /api/health reports it (routes/health.ts), so a deploy can verify the exact
+  // build it rolled out. ARG is per stage: the web-builder's does not reach the
+  // runtime, so the production stage must declare its own and export it.
+  it('is exported into the runtime image, for /api/health', () => {
+    const production = dockerfile.slice(dockerfile.lastIndexOf('\nFROM '));
+    expect(production).toMatch(new RegExp(`^ARG ${ARG_NAME}=`, 'm'));
+    expect(production).toMatch(new RegExp(`^ENV ${ARG_NAME}=\\$\\{${ARG_NAME}\\}$`, 'm'));
   });
 });

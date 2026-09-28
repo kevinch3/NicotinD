@@ -157,4 +157,10 @@ EXPOSE 8484
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
   CMD curl -f http://localhost:8484/api/health || exit 1
 
+# The git sha this image was built from, reported by /api/health so a deploy can
+# verify the exact build it rolled out, not just the release version. Last, so
+# a per-commit value invalidates no layer above it. → docs/deployment.md
+ARG NICOTIND_BUILD_COMMIT=""
+ENV NICOTIND_BUILD_COMMIT=${NICOTIND_BUILD_COMMIT}
+
 CMD ["bun", "run", "src/main.ts"]
