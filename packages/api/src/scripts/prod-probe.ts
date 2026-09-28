@@ -14,6 +14,7 @@
  *   --orphans     per-side-table row + orphan counts (rows whose song_id is gone)
  *   --jobs        acquisition jobs by state/stage, + item-state breakdown
  *   --transfers   hidden_transfers size (the removal fallback's backlog)
+ *   --loop-blocks persisted event-loop blocks: the window they cover + recent rows (#1058)
  *   --sql "<q>"   one-off read, forced read-only (see assertReadOnlySql)
  *   --json        emit JSON instead of the text tables
  *   --db <path>   override the database path
@@ -188,6 +189,108 @@ export function probeTransfers(db: Database): TransferCounts {
   };
 }
 
+/**
+ * Mirrors of services/loop-block-store.ts. This file is shipped alone into the
+ * container, so it cannot import them; a test pins them equal.
+ */
+export const PROBE_LOOP_BLOCK_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+export const PROBE_LOOP_BLOCK_MAX_ROWS = 10_000;
+
+export interface LoopBlockSummary {
+  /** When a recorder first ran against this DB; null = never, so zero rows proves nothing. */
+  recording_since: string | null;
+  /** "No blocks" holds from here: the later of recording_since, the age cutoff, and — if the row cap was hit — the oldest kept row. */
+  window_start: string | null;
+  blocks: number;
+  blocks_ge_5s: number;
+  max_ms: number | null;
+  /** Blocks with any request in flight. */
+  request_attributed: number;
+  /** Blocks with an /api/library request in flight — #1058's reopen trigger. */
+  library_attributed: number;
+}
+
+export interface LoopBlockRow {
+  at: string;
+  blocked_ms: number;
+  in_flight: string;
+}
+
+/** The #1058 re-measure: persisted loop blocks, surviving container recreation. */
+export function probeLoopBlocks(
+  db: Database,
+  now = Date.now(),
+  recentLimit = 50,
+): { summary: LoopBlockSummary; recent: LoopBlockRow[] } {
+  const empty: LoopBlockSummary = {
+    recording_since: null,
+    window_start: null,
+    blocks: 0,
+    blocks_ge_5s: 0,
+    max_ms: null,
+    request_attributed: 0,
+    library_attributed: 0,
+  };
+  if (!tableExists(db, 'loop_blocks')) return { summary: empty, recent: [] };
+
+  const since = db
+    .query<{ value: string }, [string]>(`SELECT value FROM library_sync_state WHERE key = ?`)
+    .get('loop_blocks_recording_since');
+  const agg = db
+    .query<
+      {
+        blocks: number;
+        ge5: number | null;
+        max_ms: number | null;
+        oldest: number | null;
+        req: number | null;
+        lib: number | null;
+      },
+      []
+    >(
+      `SELECT COUNT(*) blocks,
+              SUM(blocked_ms >= 5000) ge5,
+              MAX(blocked_ms) max_ms,
+              MIN(at) oldest,
+              SUM(in_flight <> '[]') req,
+              SUM(in_flight LIKE '%/api/library%') lib
+       FROM loop_blocks`,
+    )
+    .get()!;
+
+  let windowStart: number | null = null;
+  if (since) {
+    windowStart = Math.max(Number(since.value), now - PROBE_LOOP_BLOCK_RETENTION_MS);
+    if (agg.blocks >= PROBE_LOOP_BLOCK_MAX_ROWS && agg.oldest !== null) {
+      windowStart = Math.max(windowStart, agg.oldest);
+    }
+  }
+
+  const recent = db
+    .query<{ at: number; blocked_ms: number; in_flight: string }, [number]>(
+      `SELECT at, blocked_ms, in_flight FROM loop_blocks ORDER BY at DESC, id DESC LIMIT ?`,
+    )
+    .all(recentLimit)
+    .map((r) => ({
+      at: new Date(r.at).toISOString(),
+      blocked_ms: r.blocked_ms,
+      in_flight: (JSON.parse(r.in_flight) as string[]).join('; '),
+    }));
+
+  return {
+    summary: {
+      recording_since: since ? new Date(Number(since.value)).toISOString() : null,
+      window_start: windowStart === null ? null : new Date(windowStart).toISOString(),
+      blocks: agg.blocks,
+      blocks_ge_5s: agg.ge5 ?? 0,
+      max_ms: agg.max_ms,
+      request_attributed: agg.req ?? 0,
+      library_attributed: agg.lib ?? 0,
+    },
+    recent,
+  };
+}
+
 function resolveDbPath(argv: string[]): string {
   const flag = argv.indexOf('--db');
   if (flag !== -1 && argv[flag + 1]) return argv[flag + 1];
@@ -221,11 +324,12 @@ function main(): void {
     orphans: argv.includes('--orphans'),
     jobs: argv.includes('--jobs'),
     transfers: argv.includes('--transfers'),
+    loopBlocks: argv.includes('--loop-blocks'),
   };
-  const any = modes.orphans || modes.jobs || modes.transfers || sql;
+  const any = modes.orphans || modes.jobs || modes.transfers || modes.loopBlocks || sql;
   if (!any) {
     console.error(
-      'Usage: prod-probe.ts [--orphans] [--jobs] [--transfers] [--sql "SELECT …"] [--json] [--db <path>]',
+      'Usage: prod-probe.ts [--orphans] [--jobs] [--transfers] [--loop-blocks] [--sql "SELECT …"] [--json] [--db <path>]',
     );
     process.exit(1);
   }
@@ -250,6 +354,11 @@ function main(): void {
     if (modes.orphans) result.orphans = probeOrphans(db);
     if (modes.jobs) result.jobs = probeJobs(db);
     if (modes.transfers) result.transfers = probeTransfers(db);
+    if (modes.loopBlocks) {
+      const { summary, recent } = probeLoopBlocks(db);
+      result.loop_blocks = summary;
+      result.loop_blocks_recent = recent;
+    }
     if (sql !== undefined) result.sql = db.query(sql).all();
 
     if (asJson) {

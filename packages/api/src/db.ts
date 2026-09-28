@@ -1810,6 +1810,20 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
     )
   `);
 
+  // Event-loop blocks reported by startLoopBlockMonitor (#1058). Container logs
+  // die with every recreate; this is the history a re-measure reads
+  // (services/loop-block-store.ts, docs/host-monitoring.md). in_flight is a
+  // JSON array of the monitor's request labels.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS loop_blocks (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      at         INTEGER NOT NULL,
+      blocked_ms INTEGER NOT NULL,
+      in_flight  TEXT NOT NULL DEFAULT '[]'
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_loop_blocks_at ON loop_blocks (at)`);
+
   // Admin audit log: who did which destructive/curation action to what, when.
   // Written by recordAudit (services/audit-log.ts) from curator/admin routes.
   db.run(`

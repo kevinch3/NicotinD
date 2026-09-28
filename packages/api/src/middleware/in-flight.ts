@@ -14,11 +14,25 @@ import { createMiddleware } from 'hono/factory';
  */
 const live = new Set<{ label: string; startedAt: number }>();
 
-/** Labels of the requests currently in a handler, longest-running first. */
-export function inFlightRequests(): string[] {
-  return [...live]
+/**
+ * Requests that finished recently. A synchronous blocker has already returned
+ * (and left `live`) before the monitor's timer can run, so without these it is
+ * never the one named (#1443).
+ */
+const recent: Array<{ label: string; startedAt: number; endedAt: number }> = [];
+const RECENT_MAX = 64;
+
+/**
+ * Labels of the requests in a handler, longest-running first. With `since`
+ * (a `performance.now()` instant), also those that finished after it.
+ */
+export function inFlightRequests(since?: number): string[] {
+  const now = performance.now();
+  const entries = [...live].map((e) => ({ ...e, endedAt: now }));
+  if (since !== undefined) entries.push(...recent.filter((e) => e.endedAt >= since));
+  return entries
     .sort((a, b) => a.startedAt - b.startedAt)
-    .map((e) => `${e.label} (${Math.round(performance.now() - e.startedAt)}ms)`);
+    .map((e) => `${e.label} (${Math.round(e.endedAt - e.startedAt)}ms)`);
 }
 
 /**
@@ -37,6 +51,8 @@ export function trackInFlight() {
       await next();
     } finally {
       live.delete(entry);
+      recent.push({ ...entry, endedAt: performance.now() });
+      if (recent.length > RECENT_MAX) recent.shift();
     }
   });
 }
@@ -44,4 +60,5 @@ export function trackInFlight() {
 /** Test seam: drop any entries a failed test left behind. */
 export function resetInFlight(): void {
   live.clear();
+  recent.length = 0;
 }

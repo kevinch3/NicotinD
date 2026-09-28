@@ -177,6 +177,10 @@ It measures **timer lateness, not request duration**, which is what makes it qui
 legitimately long *async* response (a stream) never stops timers from running and is never
 reported, while a synchronous `.all()` is reported by definition. The in-flight label
 carries query param *names* only — a filter value is library content, not a log line.
+Attribution covers requests that finished since the last on-time tick, because the blocker
+has already returned when the timer runs (#1443), and every block is persisted to
+`loop_blocks` so the history survives a redeploy — see
+[host-monitoring.md](host-monitoring.md#event-loop-blocks-are-persisted).
 
 ### Why nothing here pre-empts
 

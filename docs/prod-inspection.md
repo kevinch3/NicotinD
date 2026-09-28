@@ -41,6 +41,7 @@ ssh kpc 'docker exec nicotind-nicotind-1 rm -f /tmp/probe.ts'   # clean up after
 | `--orphans`   | per-side-table row + orphan counts (#259)                                         |
 | `--jobs`      | acquisition jobs by state/stage — the "stranded at `active/scanning`" view (#262) |
 | `--transfers` | `hidden_transfers` backlog; should trend to zero after #265                       |
+| `--loop-blocks` | persisted event-loop blocks: covered window + recent rows (#1058) → [host-monitoring.md](host-monitoring.md#event-loop-blocks-are-persisted) |
 | `--sql "<q>"` | one-off read, forced read-only                                                    |
 | `--json`      | machine-readable output instead of text tables                                    |
 | `--db <path>` | override the database path (default `$NICOTIND_DATA_DIR/nicotind.db`)             |

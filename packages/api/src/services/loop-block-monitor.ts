@@ -12,7 +12,7 @@ export const LOOP_BLOCK_BUDGET_MS = 1_000;
 export interface LoopBlock {
   /** Milliseconds the loop was unable to run timers. */
   blockedMs: number;
-  /** Requests in flight when the loop came back, newest first. */
+  /** Requests in a handler at any point since the last on-time tick, oldest first. */
   inFlight: string[];
 }
 
@@ -35,7 +35,8 @@ export interface LoopBlock {
  * off this loop entirely, which is still open on #1058.
  */
 export function startLoopBlockMonitor(options: {
-  inFlight: () => string[];
+  /** Requests active since `since` (a `performance.now()` instant). */
+  inFlight: (since: number) => string[];
   onBlock?: (block: LoopBlock) => void;
   intervalMs?: number;
   budgetMs?: number;
@@ -51,9 +52,13 @@ export function startLoopBlockMonitor(options: {
     // interval. A legitimately slow *async* response never shows up here —
     // only work that stops timers from running at all does.
     const blockedMs = now - expected;
+    const lastTick = expected - intervalMs;
     expected = now + intervalMs;
     if (blockedMs < budgetMs) return;
-    const block: LoopBlock = { blockedMs: Math.round(blockedMs), inFlight: options.inFlight() };
+    const block: LoopBlock = {
+      blockedMs: Math.round(blockedMs),
+      inFlight: options.inFlight(lastTick),
+    };
     log.warn(block, 'Event loop was blocked');
     options.onBlock?.(block);
   }, intervalMs);

@@ -50,6 +50,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   that is up and unreachable reports perfect health from inside. Its `decide` state machine debounces,
   de-storms and checks a control host before blaming the target. Swap and memory alarms are measured
   useless here; load discriminates. → [host-monitoring.md](../host-monitoring.md)
+- **Loop-block history**: `startLoopBlockRecorder` persists every event-loop block to
+  `loop_blocks` (90 days / 10k rows) so a re-measure outlives a redeploy; read it with
+  `prod-probe.ts --loop-blocks`. → [host-monitoring.md](../host-monitoring.md)
 - **Container memory limits**: every compose service declares `mem_limit` and `memswap_limit`, set
   equal so no container may swap, enforced by `compose-memory-limits.test.ts` against a whole-stack
   budget. → [deployment.md](../deployment.md)
