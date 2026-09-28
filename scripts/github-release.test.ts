@@ -41,7 +41,15 @@ function fakeGitHub(initial: Release[] = []) {
     }
     if (u.pathname.endsWith('/releases') && method === 'POST') {
       const body = JSON.parse(String(init.body));
-      const r: Release = { id: nextId++, tag_name: body.tag_name, draft: body.draft, assets: [] };
+      // What GitHub really answers for a draft (v0.8.103): the tag it was
+      // created for is reported as `untagged-<hash>`; only `name` keeps it.
+      const r: Release = {
+        id: nextId++,
+        tag_name: body.draft ? `untagged-${nextId}` : body.tag_name,
+        name: body.name,
+        draft: body.draft,
+        assets: [],
+      };
       releases.unshift(r);
       return json(r, 201);
     }
@@ -66,13 +74,23 @@ describe('ensureDraft', () => {
   it('creates a draft when the tag has no release', async () => {
     const gh = fakeGitHub([release(1, 'v1.0.0', false)]);
     const r = await ensureDraft(gh.api, 'v1.0.1');
-    expect(r).toMatchObject({ tag_name: 'v1.0.1', draft: true });
+    expect(r).toMatchObject({ name: 'v1.0.1', draft: true });
     expect(gh.releases).toHaveLength(2);
   });
 
   it('reuses the existing release on a re-run instead of creating a second', async () => {
     const gh = fakeGitHub([release(7, 'v1.0.1', true)]);
     expect((await ensureDraft(gh.api, 'v1.0.1')).id).toBe(7);
+    expect(gh.releases).toHaveLength(1);
+  });
+
+  // v0.8.103: the draft's tag_name reads `untagged-…`, so matching on tag_name
+  // alone never finds it and a re-run would create a second draft.
+  it('finds its own draft by name, since GitHub reports a draft tag as untagged', async () => {
+    const gh = fakeGitHub();
+    const first = await ensureDraft(gh.api, 'v1.0.1');
+    expect(first.tag_name).toStartWith('untagged-');
+    expect((await ensureDraft(gh.api, 'v1.0.1')).id).toBe(first.id);
     expect(gh.releases).toHaveLength(1);
   });
 

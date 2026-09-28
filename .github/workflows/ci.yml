@@ -198,12 +198,12 @@ jobs:
       - name: F-Droid build variant gate
         run: bun run check:fdroid
 
-      # electron-builder's publisher skips every upload and exits 0 when it will
-      # not write to the release, so `--publish always` plus a fail-loud job was
-      # still green through ~40 releases that shipped no desktop artifact and no
-      # updater feed (#1261). This fails a packaging job whose post-publish
-      # verification was dropped, reordered before the upload, or made
-      # continue-on-error — the wiring, not the mechanism.
+      # electron-builder's publisher skipped every upload and exited 0 through ~40
+      # releases that shipped no desktop artifact and no updater feed (#1261), and
+      # later, unable to see the draft release, published a second desktop-only
+      # one (v0.8.103). This fails a packaging job that lets electron-builder
+      # publish, or whose upload-by-id or post-upload verification was dropped,
+      # reordered, or made continue-on-error — the wiring, not the mechanism.
       - name: Desktop publish gate (a packaging job must verify what it uploaded)
         run: bun run check:desktop-publish
 

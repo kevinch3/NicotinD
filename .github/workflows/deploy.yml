@@ -388,12 +388,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bun scripts/github-release.ts upload --id "${{ needs.create-draft.outputs.id }}" packages/mobile/ios/App/NicotinD-*-unsigned.ipa
 
-  # Build the Linux desktop app (AppImage + deb) via electron-builder and
-  # publish it — together with electron-updater's `latest-linux.yml` feed
-  # metadata — to the tag's GitHub Release. `--publish always` is required
-  # (not a manual upload of just the AppImage/deb): electron-updater
-  # (Task 12) polls `latest-linux.yml`, which only electron-builder's own
-  # publish step generates and uploads. Tag-only; NOT continue-on-error — same
+  # Build the Linux desktop app (AppImage + deb) via electron-builder and attach
+  # it — together with electron-updater's `latest-linux.yml` feed, which
+  # electron-builder writes to `release/` even with `--publish never` — to the
+  # tag's draft release BY ID. electron-builder never publishes itself: its
+  # publisher looks the release up by tag, the API reports a draft's tag as
+  # `untagged-…`, and it then created and published a second, desktop-only
+  # release that became `latest` without the APKs (v0.8.103). Tag-only; NOT continue-on-error — same
   # fail-loud rationale as android/ios above: a broken deb/AppImage must turn the
   # run red (e.g. the scoped-name deb bug that silently shipped no Linux artifacts),
   # yet it still never blocks `deploy`, which runs in parallel with no `needs` link.
@@ -441,30 +442,33 @@ jobs:
       - name: Stage desktop resources
         run: bun run --filter @nicotind/desktop prepare-resources
 
-      - name: Package + publish Linux desktop app
+      - name: Package Linux desktop app
         working-directory: packages/desktop
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # electron-builder is a Node CLI and crashes under Bun's runtime
         # (`--bun`) via source-map-support; run it under Node (setup-node above).
         # Override the desktop package version (static 0.1.0) with the release
-        # version from the tag (v0.1.207 -> 0.1.207) so artifacts are versioned
-        # correctly AND electron-builder publishes to THIS release instead of
-        # creating a stray `v0.1.0` one.
-        run: bunx electron-builder --linux --publish always -c.extraMetadata.version="${GITHUB_REF_NAME#v}"
+        # version from the tag (v0.1.207 -> 0.1.207) so the artifacts and the
+        # update feed carry THIS release's version.
+        run: bunx electron-builder --linux --publish never -c.extraMetadata.version="${GITHUB_REF_NAME#v}"
 
-      # `--publish always` is not a promise that anything was published: the
-      # publisher logs `skipped publishing` per file and exits 0 when it will not
-      # upload (#1261 — ~40 green releases with no Linux artifact and no updater
-      # feed). This compares the release against what the step above actually
-      # wrote to `release/`, so the next skip is red. Runs AFTER the upload,
+      # By id, like android/ios: the one upload path that sees the draft.
+      - name: Attach the Linux desktop artifacts to the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bun run packages/desktop/scripts/release-artifacts.ts | xargs bun scripts/github-release.ts upload --id "${{ needs.create-draft.outputs.id }}"
+
+      # An upload step that exits 0 is not a promise that everything arrived:
+      # electron-builder's publisher once logged `skipped publishing` per file and
+      # exited 0 (#1261 — ~40 green releases with no Linux artifact and no updater
+      # feed). This compares the release against what electron-builder actually
+      # wrote to `release/`, so any future skip is red. Runs AFTER the upload,
       # never between build and upload.
       - name: Verify the Linux artifacts reached the Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bun run packages/desktop/scripts/verify-published-assets.ts --label desktop-linux --release-id "${{ needs.create-draft.outputs.id }}"
 
-  # Build the macOS desktop app (dmg, arm64 only — Intel/x64 dropped) and publish
+  # Build the macOS desktop app (dmg, arm64 only — Intel/x64 dropped) and attach
   # it the same way (electron-updater reads `latest-mac.yml`). Ad-hoc signed — no
   # Apple Developer ID in scope for v1, so electron-builder.yml leaves `identity`
   # UNSET (never `identity: null`, which would re-break arm64);
@@ -506,14 +510,19 @@ jobs:
       - name: Stage desktop resources
         run: bun run --filter @nicotind/desktop prepare-resources
 
-      - name: Package + publish macOS desktop app
+      - name: Package macOS desktop app
         working-directory: packages/desktop
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
         # Run electron-builder under Node, not Bun (`--bun` crashes it).
         # extraMetadata.version: use the release tag's version (see desktop-linux).
-        run: bunx electron-builder --mac --publish always -c.extraMetadata.version="${GITHUB_REF_NAME#v}"
+        run: bunx electron-builder --mac --publish never -c.extraMetadata.version="${GITHUB_REF_NAME#v}"
+
+      # By id — see desktop-linux for why electron-builder does not publish.
+      - name: Attach the macOS desktop artifacts to the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bun run packages/desktop/scripts/release-artifacts.ts | xargs bun scripts/github-release.ts upload --id "${{ needs.create-draft.outputs.id }}"
 
       # Same backstop as desktop-linux — see the rationale there.
       - name: Verify the macOS artifacts reached the Release

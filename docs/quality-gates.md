@@ -1123,6 +1123,15 @@ gate checks the *wiring*, not the mechanism: it fails a packaging job whose veri
 deleted, renamed, reordered before the upload, or neutered with `continue-on-error`, and it fails
 when it stops finding the packaging jobs at all rather than passing over an empty set.
 
+**v0.8.103** added a rule. With the release draft-first, the publisher — which finds its release
+by tag, while the API reports a draft's tag as `untagged-…` — never saw the draft, created and
+published a second, desktop-only release, and that one became `latest` without the APKs. So the
+gate now also fails a packaging job that runs electron-builder in any publishing mode (`--publish`
+or `-p` with anything but `never`), or that lacks a `scripts/github-release.ts upload` step between
+the build and the verification: every artifact reaches the release by id. `ensureDraft` matches a
+draft by its `name` for the same reason, so a re-run of `create-draft` finds the draft it made
+instead of creating a second.
+
 ## A release is only cut when something releasable landed (#755)
 
 `commit-and-tag-version` patch-bumps **even when nothing since the last tag bumps anything**,

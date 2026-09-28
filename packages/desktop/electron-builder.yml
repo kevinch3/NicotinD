@@ -155,12 +155,13 @@ publish:
   provider: github
   owner: kevinch3
   repo: NicotinD
-  # Keep `release`. deploy.yml's `create-draft` job makes the tag's release as a
-  # draft before this runs, and the publisher always uploads into an existing
-  # draft. This setting decides what happens if that draft is missing: `release`
-  # creates one the publisher may upload into, where the default (`draft`) once
-  # refused a published release, logged `skipped publishing` per file and exited
-  # 0 for ~40 releases (#1261). verify-published-assets.ts is the backstop that
-  # makes the next such skip red instead of green. → docs/desktop-app.md
+  # Release CI never lets this publisher upload (`--publish never`): it finds the
+  # release by tag, the API reports deploy.yml's draft as `untagged-…`, and it
+  # published a second, desktop-only release instead (v0.8.103). deploy.yml
+  # attaches the artifacts by release id; check:desktop-publish holds that.
+  # This block still matters: it is baked into app-update.yml, which tells
+  # electron-updater where to poll. `releaseType: release` is kept from #1261,
+  # when the `draft` default refused a published release, logged `skipped
+  # publishing` per file and exited 0 for ~40 releases. → docs/desktop-app.md
   releaseType: release
 

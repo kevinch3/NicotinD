@@ -126,6 +126,11 @@ The tag's GitHub Release starts as a **draft**. `deploy.yml`'s `create-draft`
 job makes it (or reuses it on a re-run) and hands every other job its id;
 `release-notes`, `android`, `ios` and both desktop jobs write into that draft by
 id (`scripts/github-release.ts`, and `verify-published-assets.ts --release-id`).
+Nothing looks the draft up by tag: the API reports a draft's tag as
+`untagged-…`, so a tag lookup misses it. electron-builder's own publisher did
+exactly that on v0.8.103, published a second, desktop-only release, and made it
+`latest` without the APKs; the desktop jobs now build with `--publish never` and
+upload by id (docs/desktop-app.md "Publishing to the GitHub Release").
 `publish-release` publishes it once `release-notes`, `android` and both desktop
 jobs have succeeded **and** the four assets updaters read are on it — both APKs,
 `latest-linux.yml` and `latest-mac.yml`.
