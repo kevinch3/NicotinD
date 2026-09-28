@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.99](https://github.com/kevinch3/NicotinD/compare/v0.8.98...v0.8.99) (2026-09-28)
+
+### Features
+
+* **monitoring:** persist event-loop block events ([#1445](https://github.com/kevinch3/NicotinD/issues/1445)) ([848c863](https://github.com/kevinch3/NicotinD/commit/848c863ccef3301ea0f9ca523d46880fd0710958)), closes [#1443](https://github.com/kevinch3/NicotinD/issues/1443), references [#1058](https://github.com/kevinch3/NicotinD/issues/1058) [#1443](https://github.com/kevinch3/NicotinD/issues/1443) [#1058](https://github.com/kevinch3/NicotinD/issues/1058)
 ## [0.8.98](https://github.com/kevinch3/NicotinD/compare/v0.8.97...v0.8.98) (2026-09-28)
 
 ### Bug Fixes
