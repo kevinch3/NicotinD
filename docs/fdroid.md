@@ -305,8 +305,11 @@ Three things in `scanner.py` decide that shape, and all three are worth knowing 
   `build.gradle` were ever flagged — an unknown maven repo, say — `scandelete` would delete it and
   gradle would fail on a missing project. That is why the React Native recipes in fdroiddata pair a
   broad `scandelete: node_modules/` with a `scanignore` list of plugin `build.gradle` paths. We need
-  no such list today: none of the five gradle-referenced plugin subtrees contains a flagged file.
+  no such list today: none of the six gradle-referenced plugin subtrees contains a flagged file.
   Re-check that if a plugin is added — the failure is a deleted build file, not a scan error.
+  `@capacitor/haptics` (#1376) was checked by reading its tree: Java, a manifest and a `build.gradle`
+  with the same repository block as the other `@capacitor/*` plugins, no binaries. Its first release
+  still needs the recipe and the reproducibility comparison re-run.
 
 Verified by running fdroidserver's own `scan_source()` against this checkout, and by intersecting
 the flagged set with every `node_modules` path the gradle build references. (Locally that scan also

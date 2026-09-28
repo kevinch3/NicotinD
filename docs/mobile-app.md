@@ -263,7 +263,20 @@ Wiring (so it stays maintainable and testable):
   (`pickArtworkUrl`), because `@capgo` uses the **first** entry. Web keeps the probe (without
   `no-store`): there a failed cover merely doesn't render.
 - Manifest permissions: `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, `POST_NOTIFICATIONS`,
-  `WAKE_LOCK`.
+  `WAKE_LOCK`. (`VIBRATE` comes from `@capacitor/haptics` — see **Haptics** below.)
+
+## Haptics
+
+**`@capacitor/haptics`** is a `packages/mobile` dependency (#1376). It gives swipe-to-skip its tick:
+`hapticTick()` (`packages/web/src/app/lib/haptics.ts`) reaches the plugin through the Capacitor global
+and no-ops wherever it is absent, so the web bundle imports nothing (see [web-ui.md](web-ui.md) "Swipe
+to skip"). On Android the plugin drives the platform `Vibrator` (no Play Services, so F-Droid is
+unaffected) and merges one manifest permission, the normal (install-time, no prompt) **`VIBRATE`**.
+iOS gets the pod on `cap sync ios`. The vertical swipes (#1292) do not tick.
+Because a missing plugin is silent, `capacitor-toolchain.test.ts` fails if the dependency or its
+gradle include is dropped.
+
+**What still needs a device.** One light tick per committed skip, on Android and iOS.
 
 ## Capacitor version
 
