@@ -13,12 +13,15 @@ import {
 
 const repoRoot = resolve(dirname(new URL(import.meta.url).pathname), '..');
 
-const ref = (action: string, version: string): ActionRef => ({
+const ref = (action: string, version: string, tag?: string): ActionRef => ({
   action,
   version,
+  ...(tag ? { tag } : {}),
   file: 'w.yml',
   line: 1,
 });
+
+const SHA = '3d3c42e5aac5ba805825da76410c181273ba90b1';
 
 describe('parseUses', () => {
   it('reads action and version off a step', () => {
@@ -49,6 +52,17 @@ describe('parseUses', () => {
   // The composite lives in this repo and is scanned as a file in its own right.
   it('ignores local composite refs, which carry no version', () => {
     expect(parseUses('- uses: ./.github/actions/playwright-deps\n')).toEqual([]);
+  });
+
+  it('reads the version comment after a SHA pin', () => {
+    expect(parseUses(`      - uses: docker/login-action@${SHA} # v4\n`)[0]).toEqual({
+      action: 'docker/login-action',
+      version: SHA,
+      tag: 'v4',
+      file: '',
+      line: 1,
+    });
+    expect(parseUses(`- uses: aquasecurity/trivy-action@${SHA} # v0.36.0`)[0]?.tag).toBe('v0.36.0');
   });
 
   it('keeps a non-major pin intact', () => {
@@ -114,7 +128,27 @@ describe('checkRefs', () => {
     expect(f.unusedFloors).toEqual([]);
   });
 
-  it('reports a SHA pin as unclassifiable rather than passing it', () => {
+  it('classifies a SHA pin by its version comment', () => {
+    const ok = checkRefs([ref('actions/checkout', SHA, 'v7'), ref('some/composite', 'v1')], floors);
+    expect(ok.unclassified).toEqual([]);
+    expect(ok.belowFloor).toEqual([]);
+
+    const old = checkRefs(
+      [ref('actions/checkout', SHA, 'v4'), ref('some/composite', 'v1')],
+      floors,
+    );
+    expect(old.belowFloor.map((b) => b.ref.version)).toEqual([SHA]);
+  });
+
+  it('reports a short SHA as unclassifiable even with a comment', () => {
+    const f = checkRefs(
+      [ref('actions/checkout', '3d3c42e', 'v7'), ref('some/composite', 'v1')],
+      floors,
+    );
+    expect(f.unclassified).toHaveLength(1);
+  });
+
+  it('reports a SHA pin with no version comment as unclassifiable rather than passing it', () => {
     const f = checkRefs(
       [
         ref('actions/checkout', '3d3c42e5aac5ba805825da76410c181273ba90b1'),

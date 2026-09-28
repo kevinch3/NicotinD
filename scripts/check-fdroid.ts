@@ -41,6 +41,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { FDROID_APPS } from '../packages/mobile/src/fdroid-repo.js';
 import { androidVersion } from '../packages/mobile/src/version.js';
+import { releaseJdk } from './fdroid-jdk';
 
 const repoRoot = resolve(dirname(new URL(import.meta.url).pathname), '..');
 const errors: string[] = [];
@@ -373,9 +374,7 @@ const { versionCode: currentVersionCode, versionName: currentVersionName } = and
   // they move, this gate is what makes it a red build here instead of a failed
   // reproducibility check there, one release later.
   const FDROID_JDK = '21';
-  const jdk = /setup-java@v\d+\s*\n\s*with:\s*\n(?:\s*\w+:.*\n)*?\s*java-version:\s*'([^']+)'/.exec(
-    deploy,
-  )?.[1];
+  const jdk = releaseJdk(deploy);
   if (jdk !== FDROID_JDK) {
     errors.push(
       `.github/workflows/deploy.yml builds the release APK on JDK ${jdk ?? 'unknown'}, but ` +

@@ -124,9 +124,14 @@ export const RUNTIME_FLOORS: Record<string, RuntimeFloor> = {
 export interface ActionRef {
   action: string;
   version: string;
+  /** The `# vX[.Y.Z]` comment after a commit-SHA pin: the version the SHA was taken from. */
+  tag?: string;
   file: string;
   line: number;
 }
+
+/** A full commit SHA. A short one is not accepted: it is not a pin, it is a prefix. */
+const FULL_SHA = /^[0-9a-f]{40}$/;
 
 /** Files this gate examines. Sorted so the printed denominator is stable. */
 export function workflowFiles(root = repoRoot): string[] {
@@ -155,7 +160,8 @@ export function parseUses(source: string, file = ''): ActionRef[] {
     if (!m) return;
     const [, action, version] = m;
     if (!action || !version || action.startsWith('./')) return;
-    refs.push({ action, version, file, line: i + 1 });
+    const tag = raw.match(/#\s*(v?\d[\w.-]*)\s*$/)?.[1];
+    refs.push({ action, version, ...(tag ? { tag } : {}), file, line: i + 1 });
   });
   return refs;
 }
@@ -163,9 +169,11 @@ export function parseUses(source: string, file = ''): ActionRef[] {
 /**
  * The major from a pinned ref, or null when there isn't one.
  *
- * Null is the honest answer for a commit-SHA pin: the runtime is not derivable
- * from a SHA without a network call, and this gate reports what it cannot
- * classify rather than waving it through.
+ * A commit SHA on its own yields null: the runtime is not derivable from a SHA
+ * without a network call, and this gate reports what it cannot classify rather
+ * than waving it through. {@link checkRefs} reads a SHA pin's `# vX` comment
+ * instead — the convention Renovate's `helpers:pinGitHubActionDigests` keeps
+ * current.
  */
 export function majorOf(version: string): number | null {
   const m = version.match(/^v?(\d+)(?:\.|$)/);
@@ -202,11 +210,17 @@ export function checkRefs(
     seen.add(ref.action);
     if (floor.composite) continue;
 
-    const major = majorOf(ref.version);
+    // A SHA pin is classified by the version comment it carries (`@<sha> # v7`):
+    // the SHA is what runs, the comment is what it was taken from. Without the
+    // comment there is nothing to read offline, so it stays unclassified.
+    const readable = FULL_SHA.test(ref.version) ? ref.tag : ref.version;
+    const major = readable === undefined ? null : majorOf(readable);
     if (major === null) {
       unclassified.push({
         ref,
-        why: 'pinned to a commit SHA or an unreadable version — the runtime cannot be derived from it offline',
+        why: FULL_SHA.test(ref.version)
+          ? 'pinned to a commit SHA with no `# vX` comment — add the version the SHA was taken from'
+          : 'pinned to an unreadable version (a short SHA or branch?) — the runtime cannot be derived from it offline',
       });
       continue;
     }
