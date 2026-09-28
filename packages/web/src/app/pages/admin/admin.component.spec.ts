@@ -4,7 +4,7 @@ import { provideRouter } from '@angular/router';
 import type { DebugElement } from '@angular/core';
 import { expandAllGroups } from '../../../testing/expand-groups';
 import { vi, beforeEach, describe, it, expect } from 'vitest';
-import { of, throwError } from 'rxjs';
+import { type Observable, of, throwError } from 'rxjs';
 import { AdminComponent } from './admin.component';
 import { LibraryMaintenancePanelComponent } from './library-maintenance/library-maintenance-panel.component';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
@@ -574,6 +574,9 @@ describe('AdminComponent (incomplete albums / untracked)', () => {
     state: 'done',
   };
   const incompleteAlbumsApi = vi.fn(() => of([INCOMPLETE]));
+  const resyncLibraryApi = vi.fn((): Observable<{ ok: boolean; started?: boolean }> =>
+    of({ ok: true }),
+  );
   const autoHunt = {
     hunt: vi.fn(),
     statusFor: vi.fn((_id: number): AlbumHuntStatus => ({ phase: 'idle' })),
@@ -581,6 +584,8 @@ describe('AdminComponent (incomplete albums / untracked)', () => {
 
   beforeEach(async () => {
     incompleteAlbumsApi.mockClear();
+    resyncLibraryApi.mockReset();
+    resyncLibraryApi.mockReturnValue(of({ ok: true }));
     autoHunt.hunt.mockClear();
     autoHunt.statusFor.mockReset();
     autoHunt.statusFor.mockReturnValue({ phase: 'idle' });
@@ -608,7 +613,7 @@ describe('AdminComponent (incomplete albums / untracked)', () => {
         {
           provide: LibraryApiService,
           useValue: {
-            resyncLibrary: vi.fn(() => of({ ok: true })),
+            resyncLibrary: resyncLibraryApi,
             incompleteAlbums: incompleteAlbumsApi,
             getFragments: vi.fn(() =>
               of({
@@ -679,6 +684,36 @@ describe('AdminComponent (incomplete albums / untracked)', () => {
     // as settings.component.spec.ts / setup.component.spec.ts.
     expect(c.syncMsg()).toBe('admin.syncComplete');
     expect(BASE_CATALOG).toHaveProperty(['admin.syncComplete']);
+  });
+
+  // #1448: on the maintenance runner the 202 means the rescan has only started —
+  // saying "complete" there was false; progress is the maintenance block's job.
+  it('says a runner-backed rescan has started, not completed', async () => {
+    resyncLibraryApi.mockReturnValue(of({ ok: true, started: true }));
+    const c = TestBed.createComponent(LibraryMaintenancePanelComponent).componentInstance;
+    await c.syncLibrary();
+    expect(c.syncMsg()).toBe('admin.maintenanceStarted');
+    expect(BASE_CATALOG).toHaveProperty(['admin.maintenanceStarted']);
+  });
+
+  it('says a pass is already running on a 409, rather than failing', async () => {
+    resyncLibraryApi.mockReturnValue(
+      throwError(() => ({
+        status: 409,
+        error: { error: 'A maintenance pass is already running' },
+      })),
+    );
+    const c = TestBed.createComponent(LibraryMaintenancePanelComponent).componentInstance;
+    await c.syncLibrary();
+    expect(c.syncMsg()).toBe('admin.maintenanceBusy');
+  });
+
+  it('does not start a rescan while another maintenance pass runs', async () => {
+    const c = TestBed.createComponent(LibraryMaintenancePanelComponent).componentInstance;
+    vi.spyOn(c, 'maintenanceRunning').mockReturnValue(true);
+    expect(c.syncLibraryDisabled()).toBe(true);
+    await c.syncLibrary();
+    expect(resyncLibraryApi).not.toHaveBeenCalled();
   });
 
   it('syncLibrary surfaces an error message on failure', async () => {

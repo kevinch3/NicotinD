@@ -78,7 +78,7 @@
     <div class="flex items-center gap-3">
       <button
         (click)="syncLibrary()"
-        [disabled]="syncing()"
+        [disabled]="syncLibraryDisabled()"
         data-testid="sync-library"
         class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
       >

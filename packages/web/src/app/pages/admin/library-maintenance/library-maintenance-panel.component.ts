@@ -24,6 +24,7 @@ import {
   maintenanceProgressPercent as computeMaintenanceProgressPercent,
 } from '../../../lib/maintenance-progress';
 import { ServiceReviewService } from '../../../services/service-review.service';
+import { httpErrorMessage } from '../../../lib/http-error';
 import { TranslateService } from '../../../services/translate.service';
 import { AutoHuntService } from '../../../services/auto-hunt.service';
 import { IDLE_HUNT, type AlbumHuntStatus } from '../../../lib/album-hunt-status';
@@ -309,16 +310,28 @@ export class LibraryMaintenancePanelComponent {
     }
   }
 
+  syncLibraryDisabled(): boolean {
+    return this.syncing() || this.maintenanceRunning();
+  }
+
   async syncLibrary(): Promise<void> {
-    if (this.syncing()) return;
+    if (this.syncLibraryDisabled()) return;
     this.syncing.set(true);
     this.syncMsg.set(null);
     try {
-      await firstValueFrom(this.libraryApi.resyncLibrary());
-      this.syncMsg.set(this.i18n.t('admin.syncComplete'));
+      const res = await firstValueFrom(this.libraryApi.resyncLibrary());
+      // On the maintenance runner (#622) the answer means "started": the rescan's
+      // progress and outcome are the shared maintenance block's to show (#1448).
+      this.syncMsg.set(
+        this.i18n.t(res.started ? 'admin.maintenanceStarted' : 'admin.syncComplete'),
+      );
       await this.reviewSvc.refresh();
     } catch (err) {
-      this.syncMsg.set(err instanceof Error ? err.message : this.i18n.t('admin.syncFailed'));
+      this.syncMsg.set(
+        (err as { status?: number }).status === 409
+          ? this.i18n.t('admin.maintenanceBusy')
+          : httpErrorMessage(err, this.i18n.t('admin.syncFailed')),
+      );
     } finally {
       this.syncing.set(false);
     }
