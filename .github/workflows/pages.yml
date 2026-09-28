@@ -39,9 +39,15 @@ env:
   # Pinned to match ci.yml — see the note there.
   BUN_VERSION: '1.3.14'
 
+# Least privilege by default: a job gets a read-only token unless it declares
+# its own `permissions:`, which REPLACES this block rather than adding to it.
+permissions:
+  contents: read
+
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     # `workflow_run` fires on `completed`, which includes FAILURE and CANCELLED —
     # there is no `types: [succeeded]`. Without this, a failed release triggers a
     # republish, and a release that failed before attaching its APKs is exactly

@@ -27,6 +27,11 @@ env:
   # Pinned to match ci.yml — see the note there.
   BUN_VERSION: '1.3.14'
 
+# Least privilege by default: a job gets a read-only token unless it declares
+# its own `permissions:`, which REPLACES this block rather than adding to it.
+permissions:
+  contents: read
+
 jobs:
   # Every release builds every app artifact. A `changes` job used to diff
   # tag-to-tag to skip unchanged apps, but the release commit itself bumps the
@@ -42,6 +47,7 @@ jobs:
   # asset-upload steps (which pass no `body`), regardless of job ordering.
   release-notes:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: github.ref_type == 'tag'
     permissions:
       contents: write
@@ -80,6 +86,7 @@ jobs:
   # See docs/mobile-app.md "Release & signing".
   android:
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     # Only on a tag push: these jobs attach assets to the tag's GitHub Release (none
     # exists for a manual dispatch). NOT continue-on-error: a genuine packaging break
     # (unresolved dependency/repo, manifest-merge failure, bad signing) must turn the
@@ -261,6 +268,7 @@ jobs:
   # macos-26: Capacitor 8 requires Xcode 26, which older images do not default to.
   ios:
     runs-on: macos-26
+    timeout-minutes: 45
     # Tag-only; NOT continue-on-error — same fail-loud rationale as the `android`
     # job above (parallel with `deploy`, no `needs` linkage, so it never blocks it).
     if: github.ref_type == 'tag'
@@ -358,6 +366,7 @@ jobs:
   # `check:desktop-publish` keeps it wired to every packaging job.
   desktop-linux:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     if: github.ref_type == 'tag'
     permissions:
       contents: write
@@ -425,6 +434,7 @@ jobs:
   # runner's keychain for a signing identity to auto-use.
   desktop-mac:
     runs-on: macos-14
+    timeout-minutes: 40
     # NOT continue-on-error — see desktop-linux above for the fail-loud rationale.
     if: github.ref_type == 'tag'
     permissions:
@@ -480,6 +490,7 @@ jobs:
   # image rather than publishing from an untagged master tip.
   docker:
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
     if: github.ref_type == 'tag'
     permissions:
       contents: read
@@ -571,6 +582,7 @@ jobs:
   # scan it. The floating tags move in `promote`, after this job succeeds.
   docker-merge:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [docker]
     if: github.ref_type == 'tag'
     permissions:
@@ -639,6 +651,7 @@ jobs:
   # `vX.Y.Z` here, the floating tags in `promote`.
   docker-analysis:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     if: github.ref_type == 'tag'
     permissions:
       contents: read
@@ -677,6 +690,7 @@ jobs:
   # the same digest, never a rebuild.
   promote:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: [docker-merge, docker-analysis]
     if: github.ref_type == 'tag'
     permissions:
@@ -715,6 +729,7 @@ jobs:
 
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     # On a tag push the host pulls the `release` images promote just moved,
     # so deploy must wait for it. On workflow_dispatch the docker jobs and
     # promote are skipped and the host redeploys the current `release` images
