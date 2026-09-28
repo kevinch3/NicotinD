@@ -397,7 +397,9 @@ it gates nothing, so excluding it is meaningless. The job actually missing was
 runs. The reasoning named one half of a similarly-named pair and the hole was in
 the other half.
 
-`GATE_JOBS` is now every job in `release.needs`, checked **both ways**:
+`GATE_JOBS` is now every job in `release.needs` — since releases moved to `release.yml`,
+`edge-image.needs` (`RELEASE_JOB`), the job that ships every green master commit — checked
+**both ways**:
 
 - `gateJobsNotBlockingRelease` — a gate job that stops blocking the release is
   advisory (the #457 shape).
@@ -514,11 +516,11 @@ than no-ops. None of it confirmed the right bytes were *running*.
 
 The deploy now polls `/api/health` on the host for up to 5 minutes and requires
 the version to match the tag being deployed, dumping `docker compose logs` on
-failure. It lives in `deploy-host.yml`, which always deploys an **exact**
-version — the release calls it with the tag, and a manual run (a rollback) must
-name one — so there is always a version to expect, and the check never
-degrades to "healthy". When the caller also knows the build, it checks the
-`commit` `/api/health` now reports.
+failure. It lives in `deploy-host.yml`, which always deploys an **exact** build
+— `edge` with the commit every green merge dispatches, or a `vX.Y.Z` a manual
+rollback must name — so there is always something to expect, and the check
+never degrades to "healthy". For `edge`, which carries the last release's
+version number, it checks the `commit` `/api/health` now reports.
 
 This is also what makes the documented rollback actionable
 ([deployment.md](deployment.md#rollback)): rolling back only helps if you know

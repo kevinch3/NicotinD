@@ -155,7 +155,7 @@ undesirable, at the cost of weaker grouping/auto-merge and no reach into the cus
 - `customManagers` for the actionlint pin and `pyproject.toml` floors.
 
 ### Release-loop interaction (important)
-Merges to `master` trigger `ci.yml`'s `release` job. Renovate commits are `chore(deps): …`;
+Releases are cut by `release.yml` (daily, or by hand) from master's tip. Renovate commits are `chore(deps): …`;
 under Conventional Commits / `commit-and-tag-version`, `chore` does **not** bump the
 version — so auto-merged dependency PRs won't spuriously cut a release (the job runs,
 finds no version-bumping commit, no-ops).
@@ -217,7 +217,7 @@ and only on the refs that environment's deployment rule allows.
 | --- | --- | --- | --- |
 | `production` | `DEPLOY_HOST`, `DEPLOY_USER`, `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_SECRET` | tags `v*`, branch `master` | `deploy.yml` › `deploy` |
 | `release-signing` | `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` | tags `v*` | `deploy.yml` › `android` |
-| `release` | `RELEASE_TOKEN` | branch `master` | `ci.yml` › `release` |
+| `release` | `RELEASE_TOKEN` | branch `master` | `release.yml` › `release` |
 | `github-pages` | `FDROID_REPO_KEYSTORE_BASE64`, `FDROID_REPO_KEYSTORE_PASSWORD`, `FDROID_REPO_KEY_ALIAS` | branch `master` | `pages.yml` › `publish` |
 | `renovate` | `RENOVATE_TOKEN` | branch `master` | `renovate.yml` › `renovate` |
 

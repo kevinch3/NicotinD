@@ -62,7 +62,7 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **CI boots the shipped artifact**: the docker build is unconditional and loaded, then a smoke step
   waits on the image's own healthcheck and asserts `/api/health` reports the expected version,
   matrixed over both published arches on native runners, never QEMU; the release re-runs the same
-  `smoke-image.sh` on the pushed digest. The deploy then polls the host for that version. → [quality-gates.md](../quality-gates.md)
+  `smoke-image.sh` on the pushed digest. The deploy then polls the host for that version or commit. → [quality-gates.md](../quality-gates.md)
 - **Published Docker image**: multi-arch GHCR image published per release tag via native-runner digest
   builds, one manifest merge, and a `promote` job that moves `release` last. The deploy *derives* which images to pull from the resolved compose
   config rather than a hardcoded list. Release tagging is orphan-tag-proof.

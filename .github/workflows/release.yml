@@ -1,0 +1,187 @@
+name: Release
+
+# Cuts a public release (tag, GitHub Release, apps, `release` image) from
+# master's tip, on a schedule or on demand — not on every merge. Every green
+# master commit already reaches the deploy host as `edge` (ci.yml); a release is
+# what self-hosters, app users and the F-Droid repo get
+# (docs/releasing.md "Edge and releases").
+#
+# Releasing on every merge cut 685 tags in 140 days, 65 % of them one commit,
+# each an app update and a `release` image for everyone. A daily batch keeps
+# the changelog meaningful; `workflow_dispatch` releases right away when a fix
+# cannot wait.
+
+on:
+  schedule:
+    # 10:17 in Buenos Aires (13:17 UTC), daily. Off the hour on purpose: most
+    # scheduled workflows start at :00 and queue behind each other.
+    - cron: '17 13 * * *'
+  workflow_dispatch: {}
+
+# Least privilege by default: a job gets a read-only token unless it declares
+# its own `permissions:`, which REPLACES this block rather than adding to it.
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # Pinned to match ci.yml — see the note there.
+  BUN_VERSION: '1.3.14'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # RELEASE_TOKEN lives in this environment, deployable from master only
+    # (docs/dependency-management.md "Secrets live in environments").
+    environment: release
+    # A scheduled run and a manual one must never tag and push at once. Queue,
+    # never cancel: the job is re-entrant (it releases the true remote tip via
+    # `reset --hard FETCH_HEAD`, guarded by release-needed.ts and pushed
+    # `--atomic`), so a superseded release is absorbed by the next one.
+    concurrency:
+      group: ci-release-master
+      cancel-in-progress: false
+    if: github.ref == 'refs/heads/master'
+    permissions:
+      contents: write
+      # To read master's tip's `edge` check run (the proof it passed CI).
+      checks: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Cache bun dependencies
+        uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ env.BUN_VERSION }}-${{ hashFiles('bun.lock', 'bunfig.toml') }}
+          restore-keys: |
+            bun-${{ runner.os }}-${{ env.BUN_VERSION }}-
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      # Idempotent, self-healing, orphan-tag-proof release.
+      #
+      # The failure this guards against (seen 2026-07-23, wedged every release
+      # for a day): the old step pushed with `git push --follow-tags`, which is
+      # NON-ATOMIC. When a concurrent merge advanced master, the branch update
+      # was rejected non-fast-forward but the *tag* still landed — leaving an
+      # orphan `vX` tag pointing at a `chore(release)` commit that never reached
+      # master. From then on the dry-run kept proposing that same version, and
+      # the old `tag exists → skip` guard read the orphan as "already published"
+      # and silently exited 0 (green!) on every subsequent push. No new tag → no
+      # deploy.yml run → releases frozen, invisibly.
+      #
+      # Two independent defenses, either of which alone prevents recurrence:
+      #   1. `--atomic`: a rejected branch push no longer lets the tag through.
+      #   2. self-heal: a `vX` tag that is NOT an ancestor of master is treated
+      #      as the orphan it is — deleted and re-cut from real master, instead
+      #      of masking the freeze as a skip. (This also auto-repairs the
+      #      existing orphan on the first master run after this lands.)
+      # Plus a bounded retry that re-syncs to the real tip so a merge racing the
+      # release is retried, never orphaned.
+      - name: Release (idempotent, self-healing bump + tag + atomic push)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          attempt=0
+          max=4
+          while :; do
+            attempt=$((attempt + 1))
+
+            # Always cut the release on top of the true remote tip so the push
+            # is a fast-forward; also refresh tags for the orphan check below.
+            git fetch --tags --force origin master
+            git reset --hard FETCH_HEAD # HEAD now == remote master tip
+
+            version="$(bunx commit-and-tag-version --dry-run 2>&1 \
+              | grep -oP 'tagging release v\K[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+            if [ -z "$version" ]; then
+              echo "Could not determine next version from dry-run output" >&2
+              exit 1
+            fi
+            tag="v$version"
+
+            # Nothing releasable landed? Don't cut a version for it (#755).
+            # `commit-and-tag-version` patch-bumps even with zero bumping
+            # commits, so two master-push runs in flight produced v0.5.21 (real)
+            # and v0.5.22 (empty changelog, same tree, full docker build +
+            # deploy). Run B's `reset --hard` above lands it ON run A's
+            # `chore(release)` commit, which the `if:` guard cannot see because
+            # it reads the *pushed* head commit, not the tip after re-sync.
+            # Exit 1 means "not needed" — see scripts/release-needed.test.ts.
+            if ! bun run scripts/release-needed.ts; then
+              exit 0
+            fi
+
+            # Release only a commit CI proved. This job no longer runs inside the
+            # CI run of the commit it releases, so it cannot `needs:` the gates;
+            # ci.yml's `edge` job can only succeed after every gate job did, so
+            # its success on this exact tip is that proof. Pending (CI still
+            # running) or red: not released now, and says so — the next run or a
+            # manual dispatch once CI is green picks it up.
+            tip="$(git rev-parse HEAD)"
+            green="$(gh api "repos/$GITHUB_REPOSITORY/commits/$tip/check-runs?check_name=edge" \
+              --jq '[.check_runs[] | select(.conclusion == "success")] | length')"
+            if [ "$green" = "0" ]; then
+              echo "::warning::master's tip $tip has no successful \`edge\` run yet (CI still running, or red) — not releasing it now."
+              echo "master's tip $tip is not CI-green yet; nothing released." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+
+            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              if git merge-base --is-ancestor "$tag^{commit}" HEAD; then
+                echo "$tag already reachable from master — genuinely published, skipping."
+                exit 0
+              fi
+              # Tag exists but is not on master: a stale orphan from a
+              # half-failed push. Delete it and re-release from real master.
+              echo "::warning::$tag is an orphan tag (not an ancestor of master); deleting and re-releasing."
+              git push --delete origin "$tag" || true
+              git tag -d "$tag" || true
+            fi
+
+            bun run release
+
+            # The release commit generates files no earlier CI run has seen —
+            # the per-versionCode F-Droid changelogs above all, capped at 500
+            # bytes. Check them HERE, before anything is pushed: CI no longer
+            # re-runs on the chore(release) commit, and even when it did, it
+            # judged the files only after the tag had already shipped.
+            if ! bun run check:fdroid; then
+              echo "::error::check:fdroid failed on the generated release commit; nothing was pushed." >&2
+              git tag -d "$tag" || true
+              exit 1
+            fi
+
+            # --atomic: if the branch update is rejected (a merge raced us) the
+            # tag is rejected too, so a failed push can never orphan a tag again.
+            if git push --atomic --follow-tags origin HEAD:refs/heads/master; then
+              echo "Published $tag."
+              exit 0
+            fi
+
+            # Roll back the local tag so the retry re-cuts cleanly on the new tip.
+            git tag -d "$tag" || true
+            if [ "$attempt" -ge "$max" ]; then
+              echo "Release push still rejected after $max attempts." >&2
+              exit 1
+            fi
+            echo "Push rejected (master advanced); re-syncing and retrying ($attempt/$max)…" >&2
+            sleep "$((attempt * 3))"
+          done

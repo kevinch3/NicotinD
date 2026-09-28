@@ -189,7 +189,7 @@ version, which turned the old advice ("run it after `bun run release`") into a g
 master on every release until someone remembered. Automating the step was the fix; the gate alone
 just moved the cost.
 
-**The release job runs `check:fdroid` on the release commit before pushing it** (`ci.yml`), and
+**The release job runs `check:fdroid` on the release commit before pushing it** (`release.yml`), and
 removes the local tag and fails if it does not pass. The generated changelogs are the one file class
 only that commit produces, and CI does not re-run on `chore(release)` pushes
 ([releasing.md](releasing.md)), so this is the only place they are checked — and it now happens

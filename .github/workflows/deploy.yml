@@ -4,21 +4,20 @@ on:
   push:
     tags:
       - 'v*'
-  # No workflow_dispatch: redeploying or rolling back the host is the
-  # "Deploy host" workflow (deploy-host.yml), which takes the exact version.
+  # No workflow_dispatch, and no host deploy: the host runs `edge`, deployed
+  # from every green master commit by ci.yml, and rolling back is the "Deploy
+  # host" workflow (deploy-host.yml). A release publishes images and apps.
 
-# One release deploys at a time, whatever the tag. `github.sha` grouped by
-# *commit*, so two releases were two groups and raced `docker compose up -d`
-# against each other on the same host (issue #768) — it only ever deduped
-# re-runs of one commit. The group is workflow-level rather than on the `deploy`
-# job alone so releases stay ordered: `deploy` waits on `docker-merge`, and with
-# only the job serialized a later tag could finish building first, deploy, and
-# then be overwritten by the earlier one downgrading the host.
+# One release at a time, whatever the tag. `github.sha` grouped by *commit*, so
+# two releases were two groups and raced each other (issue #768): on the host
+# (which releases no longer deploy — see deploy-host.yml) and over the shared
+# `:release` / `:vX` tags, which `promote` moves. The group is workflow-level so
+# releases stay ordered: with only `promote` serialized, a later tag could
+# finish building first, promote, and then be overwritten by the earlier one.
 #
-# `cancel-in-progress: false` is the load-bearing half — abandoning a deploy
-# mid-`up -d` leaves the host half-applied, which is worse than queueing behind
-# it. Same shape as pages.yml; ci.yml keys on `github.ref` because it
-# serializes per-branch, not per-host.
+# `cancel-in-progress: false` is the load-bearing half — abandoning a release
+# mid-publish leaves it half-applied, which is worse than queueing behind it.
+# Same shape as pages.yml.
 concurrency:
   group: deploy-host
   cancel-in-progress: false
@@ -799,20 +798,3 @@ jobs:
               echo "::endgroup::"
             done
           done
-
-  # Put this release on the host: an exact-version deploy with a database
-  # snapshot first and a version check after, in deploy-host.yml so the same
-  # job is the manual rollback. It pulls `vX.Y.Z`, the images promote just
-  # proved, not whatever `release` points at by then.
-  #
-  # Needs promote, and plain `needs` semantics are the #457 guard: a skipped or
-  # failed promote (a failed push, smoke or scan upstream) skips the deploy
-  # rather than redeploying the previous version behind a green run.
-  deploy:
-    needs: [promote]
-    if: github.ref_type == 'tag'
-    uses: ./.github/workflows/deploy-host.yml
-    with:
-      version: ${{ github.ref_name }}
-      ref: ${{ github.ref_name }}
-    secrets: inherit

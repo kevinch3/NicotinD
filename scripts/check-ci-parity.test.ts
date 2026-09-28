@@ -59,11 +59,11 @@ jobs:
     steps:
       - name: Stage desktop resources
         run: bun run --filter @nicotind/desktop prepare-resources
-  release:
+  edge-image:
     needs: [ci, web-test, storybook, e2e, e2e-shard, analysis, docker, desktop-package]
     steps:
-      - name: Release
-        run: bun run release
+      - name: Build + push by digest
+        uses: docker/build-push-action@v7
 `;
 
 const SCRIPTS = {
@@ -273,7 +273,7 @@ describe('gateJobsNotBlockingRelease', () => {
 
   it('throws rather than silently passing when the release job was renamed', () => {
     expect(() => gateJobsNotBlockingRelease('jobs:\n  ci:\n    steps: []\n')).toThrow(
-      /no `release` job/,
+      /no `edge-image` job/,
     );
   });
 });

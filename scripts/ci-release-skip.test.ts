@@ -27,10 +27,13 @@ const ci = parse(readFileSync(join(repoRoot, '.github/workflows/ci.yml'), 'utf8'
 // as not-a-release rather than lean on startsWith(null) semantics.
 const SKIP = "!startsWith(github.event.head_commit.message || '', 'chore(release):')";
 
+const release = parse(readFileSync(join(repoRoot, '.github/workflows/release.yml'), 'utf8')) as {
+  jobs: Record<string, Job>;
+};
+
 describe('CI skips the release commit, and the release job checks it instead', () => {
-  it('every job except `release` skips a chore(release) push', () => {
+  it('every ci.yml job skips a chore(release) push', () => {
     for (const [name, job] of Object.entries(ci.jobs)) {
-      if (name === 'release') continue;
       expect({ name, if: job.if }).toEqual({ name, if: expect.stringContaining(SKIP) });
     }
   });
@@ -43,12 +46,26 @@ describe('CI skips the release commit, and the release job checks it instead', (
 
   it('the release step runs check:fdroid after cutting the release and before pushing it', () => {
     const run =
-      (ci.jobs.release?.steps ?? []).find((s) => s.run?.includes('bun run release'))?.run ?? '';
+      (release.jobs.release?.steps ?? []).find((s) => s.run?.includes('bun run release'))?.run ??
+      '';
     const cut = run.indexOf('bun run release');
     const check = run.indexOf('bun run check:fdroid');
     const push = run.indexOf('git push --atomic');
     expect(cut).toBeGreaterThan(-1);
     expect(check).toBeGreaterThan(cut);
     expect(push).toBeGreaterThan(check);
+  });
+
+  // release.yml no longer runs inside the CI run of the commit it releases, so
+  // it cannot `needs:` the gates. The `edge` job succeeding on the exact tip is
+  // the proof instead, and it must be checked before anything is cut.
+  it('releases only a tip whose edge run succeeded, checked before the release is cut', () => {
+    const run =
+      (release.jobs.release?.steps ?? []).find((s) => s.run?.includes('bun run release'))?.run ??
+      '';
+    const green = run.indexOf('check_name=edge');
+    expect(green).toBeGreaterThan(-1);
+    expect(green).toBeLessThan(run.search(/^\s*bun run release$/m));
+    expect(run).toContain('select(.conclusion == "success")');
   });
 });

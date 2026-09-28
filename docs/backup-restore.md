@@ -161,7 +161,8 @@ Notes on the choices, because several are deliberate and non-obvious:
 
 ## Pre-deploy snapshots
 
-Every host deploy (`deploy-host.yml`: each release, and every manual rollback)
+Every host deploy (`deploy-host.yml`: each green master commit's `edge`, and
+every manual rollback)
 takes a snapshot **after pulling the new images and before replacing the
 server**, into `<dataDir>/backups/pre-deploy/pre-deploy-<version>-<stamp>/`
 (`nicotind.db` via `VACUUM INTO`, plus `secrets.json`).
