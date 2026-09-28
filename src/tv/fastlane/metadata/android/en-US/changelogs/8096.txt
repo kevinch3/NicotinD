@@ -1,0 +1,1 @@
+• mobile: install @capacitor/haptics so swipe-to-skip ticks (#1435)

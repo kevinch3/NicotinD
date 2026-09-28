@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.96](https://github.com/kevinch3/NicotinD/compare/v0.8.95...v0.8.96) (2026-09-28)
+
+### Features
+
+* **mobile:** install @capacitor/haptics so swipe-to-skip ticks ([#1435](https://github.com/kevinch3/NicotinD/issues/1435)) ([632d3fa](https://github.com/kevinch3/NicotinD/commit/632d3fa773e1393afb746f7fff12b491ec38ccba)), references [#1376](https://github.com/kevinch3/NicotinD/issues/1376)
 ## [0.8.95](https://github.com/kevinch3/NicotinD/compare/v0.8.94...v0.8.95) (2026-09-27)
 
 ### Features
