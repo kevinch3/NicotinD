@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.104](https://github.com/kevinch3/NicotinD/compare/v0.8.103...v0.8.104) (2026-09-28)
+
+### Features
+
+* **deploy:** one host-deploy workflow with rollback, hold and a pre-deploy snapshot ([#1455](https://github.com/kevinch3/NicotinD/issues/1455)) ([99cecfa](https://github.com/kevinch3/NicotinD/commit/99cecfa468cea9cfe7eda622533a2542b9321964)), references [#457](https://github.com/kevinch3/NicotinD/issues/457)
 ## [0.8.103](https://github.com/kevinch3/NicotinD/compare/v0.8.102...v0.8.103) (2026-09-28)
 
 ### Bug Fixes
