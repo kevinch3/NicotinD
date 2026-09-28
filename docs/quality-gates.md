@@ -1166,6 +1166,25 @@ the versions Trivy named (`util-linux` `2.41-5` → `2.41.5-0+deb13u1`, `libcap2
 `1:2.75-10+b8` → `1:2.75-10+deb13u1+b1`). It costs byte-reproducibility of that layer, which
 was never there anyway — none of the packages beside it are version-pinned.
 
+## Least-privilege tokens and bounded jobs
+
+Every workflow declares a **workflow-level `permissions:` block that grants no write**
+(`contents: read`). Before, only `renovate.yml` did: every other job that declared nothing ran
+with the repository's default `GITHUB_TOKEN`, which may be read-write, including the `ci.yml`
+jobs that execute a pull request's code. A job that needs more (`release`: `contents: write`;
+the image jobs: `packages: write`; the app jobs: `contents: write` to attach assets) declares
+it itself, and a job-level block **replaces** the default rather than adding to it, so each job
+holds exactly what it names.
+
+Every job also carries **`timeout-minutes`**. GitHub's default is 360: a hung SSH to the deploy
+host, a stuck emulator or a runaway build would hold a runner — and, for `deploy.yml`, the one
+`deploy-host` concurrency slot every later release queues behind — for six hours. The values are
+a few times each job's observed duration, not tight budgets: the point is a bound, not a
+performance gate.
+
+`scripts/workflow-hygiene.test.ts` holds both over **every** file in `.github/workflows`, so a
+new workflow is held to them without anyone remembering to add it.
+
 ## Hardware cast: the drift this uncovered
 
 `CLAUDE.md` described Chromecast/DLNA casting in the present tense as shipped —

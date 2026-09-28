@@ -51,6 +51,7 @@ permissions:
 jobs:
   renovate:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       # Skip cleanly instead of failing when the token is absent.
       #

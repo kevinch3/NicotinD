@@ -29,9 +29,15 @@ concurrency:
 env:
   BUN_VERSION: '1.3.14'
 
+# Least privilege by default: a job gets a read-only token unless it declares
+# its own `permissions:`, which REPLACES this block rather than adding to it.
+permissions:
+  contents: read
+
 jobs:
   pr-title:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:

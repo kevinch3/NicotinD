@@ -30,6 +30,11 @@ env:
   # stray use elsewhere fails loudly instead of fetching (#1087, quality-gates.md).
   FFMPEG_BIN: /bin/false
 
+# Least privilege by default: a job gets a read-only token unless it declares
+# its own `permissions:`, which REPLACES this block rather than adding to it.
+permissions:
+  contents: read
+
 jobs:
   # Every job except `release` skips a `chore(release):` push. That commit only
   # adds generated version files (package.json, CHANGELOG.md, build.gradle, the
@@ -49,6 +54,7 @@ jobs:
   # enforces that across every job in its GATE_JOBS list, which this is one of.
   ci:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: "!startsWith(github.event.head_commit.message || '', 'chore(release):')"
     steps:
       # Full history: the secret scan below walks every commit, and a shallow
@@ -272,6 +278,7 @@ jobs:
   # with the type/lint gates, so it runs beside them rather than after them.
   web-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: "!startsWith(github.event.head_commit.message || '', 'chore(release):')"
     steps:
       - uses: actions/checkout@v7
@@ -300,6 +307,7 @@ jobs:
   # build the web app — `e2e`, `desktop-package` and `desktop-smoke` each still do.
   storybook:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: "!startsWith(github.event.head_commit.message || '', 'chore(release):')"
     steps:
       - uses: actions/checkout@v7
@@ -358,6 +366,7 @@ jobs:
   # golden tests (real models) auto-skip without ANALYSIS_MODELS_DIR.
   analysis:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: "!startsWith(github.event.head_commit.message || '', 'chore(release):')"
     steps:
       - uses: actions/checkout@v7
@@ -382,6 +391,7 @@ jobs:
   # is why a spec that reads another spec's leftovers had to be fixed first.
   e2e-shard:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     if: "!startsWith(github.event.head_commit.message || '', 'chore(release):')"
     strategy:
       # A failing shard must not cancel the others: knowing which three passed is
@@ -491,6 +501,7 @@ jobs:
     needs: [e2e-shard]
     if: "always() && !startsWith(github.event.head_commit.message || '', 'chore(release):')"
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Every shard passed
         env:
@@ -518,6 +529,7 @@ jobs:
   # regression reaching a release.
   desktop-package:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: "!startsWith(github.event.head_commit.message || '', 'chore(release):')"
     env:
       FFMPEG_BIN: ''
@@ -562,6 +574,7 @@ jobs:
 
   desktop-smoke:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: "!startsWith(github.event.head_commit.message || '', 'chore(release):')"
     continue-on-error: true
     steps:
@@ -655,6 +668,7 @@ jobs:
   # pass, so the gate stays wired without touching `needs`.
   docker:
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
     if: "!startsWith(github.event.head_commit.message || '', 'chore(release):')"
     strategy:
       # Both arches should report; one failing must not hide the other's result.
@@ -775,6 +789,7 @@ jobs:
 
   release:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # The per-commit group above deliberately lets two master merges run at
     # once. Two `release` jobs tagging and pushing at once is a different
     # matter, so this restores exactly the serialization the shared workflow
