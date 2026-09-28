@@ -1203,7 +1203,13 @@ host, a stuck emulator or a runaway build would hold a runner — and, for `depl
 a few times each job's observed duration, not tight budgets: the point is a bound, not a
 performance gate.
 
-`scripts/workflow-hygiene.test.ts` holds both over **every** file in `.github/workflows`, so a
+A job that calls a reusable workflow must also **grant every permission the called workflow's
+jobs ask for**. GitHub does not run a workflow that breaks this at all, and it reports nothing
+until the run starts: v0.8.104's whole Build & Deploy run was a `startup_failure`, with no image
+and no release, because `deploy.yml`'s `deploy` job (`contents: read`) called `deploy-host.yml`,
+whose job asks for `packages: read`.
+
+`scripts/workflow-hygiene.test.ts` holds all three over **every** file in `.github/workflows`, so a
 new workflow is held to them without anyone remembering to add it.
 
 ## Hardware cast: the drift this uncovered
