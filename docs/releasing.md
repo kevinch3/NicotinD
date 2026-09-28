@@ -123,7 +123,9 @@ pipeline now separates the two things a merge was doing:
   image (`smoke-image.sh`), and `edge` merges them into
   `ghcr.io/kevinch3/nicotind:edge`. The analysis sidecar gets an `:edge` too:
   rebuilt only if `packages/analysis` changed since the last release, otherwise
-  the last release's image. Then it dispatches **Deploy host** with
+  the last release's image. "The last release" is the newest `v*` tag whose
+  analysis image exists: a tag whose build never ran has none (v0.8.104), and
+  retagging from it failed the first edge deploy. Then it dispatches **Deploy host** with
   `version=edge` and the commit, which `/api/health` must report. Nothing about
   it is public except the tag, which any self-hoster can opt into with
   `NICOTIND_VERSION=edge`.

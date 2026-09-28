@@ -917,11 +917,24 @@ jobs:
       # The analysis image is heavy and changes rarely, so it is rebuilt only
       # when its sources changed since the last release; otherwise that
       # release's image IS this tree's, and `edge` is pointed at it.
+      #
+      # "The last release" is the newest v* tag whose analysis image EXISTS, not
+      # the newest tag: a tag whose build never ran has none (v0.8.104's
+      # Build & Deploy was a startup_failure), and retagging from it failed the
+      # first edge deploy.
       - name: Analysis image changed since the last release?
         id: analysis
         run: |
           set -euo pipefail
-          prev="$(git describe --tags --abbrev=0 --match 'v*')"
+          prev=""
+          for t in $(git tag --merged HEAD --list 'v*' --sort=-v:refname | head -n 20); do
+            if docker buildx imagetools inspect "$ANALYSIS:$t" >/dev/null 2>&1; then prev="$t"; break; fi
+            echo "::notice::$ANALYSIS:$t does not exist; trying an older release"
+          done
+          if [ -z "$prev" ]; then
+            echo "::error::No analysis image among the 20 newest v* tags; cannot seed $ANALYSIS:edge." >&2
+            exit 1
+          fi
           echo "prev=$prev" >> "$GITHUB_OUTPUT"
           if git diff --name-only "$prev"..HEAD | grep -qE '^packages/analysis/(Dockerfile|\.dockerignore|pyproject\.toml|app/)'; then
             echo "build=true" >> "$GITHUB_OUTPUT"
