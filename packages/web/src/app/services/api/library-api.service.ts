@@ -247,7 +247,8 @@ export class LibraryApiService {
     return this.http.get<IncompleteAlbum[]>(`/api/library/incomplete-albums`);
   }
   resyncLibrary() {
-    return this.http.post<{ ok: boolean }>(`/api/library/sync`, {}).pipe(
+    // `started` (202): queued on the maintenance runner, not finished (#622, #1448).
+    return this.http.post<{ ok: boolean; started?: boolean }>(`/api/library/sync`, {}).pipe(
       // A full resync rebuilds library_artists/library_genres, so the cached
       // artists/genres lists are stale afterwards (issue #237, same shape as #210).
       tap(() => this.invalidateLibraryReads()),

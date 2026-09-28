@@ -23,7 +23,7 @@ invalidation rule is narrow and checkable:
 | `applyGenre`                                   | ✅           | added in `7e7e549`                          |
 | `applyMetadata`                                | ✅           | can re-point an album's artist              |
 | `deleteSongs` / `deleteAlbum`                  | ✅           | `pruneOrphanArtist` + orphan-genre prune    |
-| `resyncLibrary`                                | ✅           | full rescan rebuilds both tables            |
+| `resyncLibrary`                                | ✅           | fires when the rescan *starts* (202); the walk's own `songs.landed`/`songs.deleted` events clear it again when rows change |
 | `hideAlbum` / `unhideAlbum`                    | ❌ correct   | `/artists` filters `library_artists.hidden`, not album hidden; the albums list is uncached |
 | `reclassifyAlbum` / `clearAlbumOverride`       | ❌ correct   | moves an album between tabs; the albums list is uncached |
 | artist-image / album-cover / lyrics            | ❌ correct   | `coverArt` is id-stable; no list membership change |

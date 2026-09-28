@@ -84,6 +84,35 @@ test.describe('admin maintenance passes', () => {
 });
 
 /**
+ * Sync library (#1448): the route answers 202 as soon as the rescan is queued on
+ * the maintenance runner, so the button must say it started — never "complete".
+ * Routed, because whether this harness wires the runner is not the contract.
+ */
+test.describe('admin sync library', () => {
+  test('a queued rescan reads as started; a busy runner reads as busy', async ({ page }) => {
+    let answer: { status: number; json: object } = {
+      status: 202,
+      json: { ok: true, started: true },
+    };
+    await page.route('**/api/library/sync', (route) => route.fulfill(answer));
+    await page.goto('/admin');
+    await expandGroup(page, 'library-maintenance');
+
+    await page.getByTestId('sync-library').click();
+    const msg = page.getByTestId('sync-library-msg');
+    await expect(msg).toContainText('Started');
+    await expect(msg).not.toContainText('complete');
+
+    answer = {
+      status: 409,
+      json: { error: 'A maintenance pass is already running', code: 'MAINTENANCE_RUNNING' },
+    };
+    await page.getByTestId('sync-library').click();
+    await expect(msg).toHaveText('A maintenance pass is already running.');
+  });
+});
+
+/**
  * Incomplete Albums (#1444): the health report's confirmed worklist, loaded on
  * Check. With no Lidarr no hunt records a tracklist, so the real route can only
  * answer empty; a routed row drives the table and the one-click Complete.

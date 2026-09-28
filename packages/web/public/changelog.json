@@ -1,5 +1,57 @@
 [
   {
+    "version": "0.8.104",
+    "date": "2026-09-28",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.103...v0.8.104",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**deploy:** one host-deploy workflow with rollback, hold and a pre-deploy snapshot ([#1455](https://github.com/kevinch3/NicotinD/issues/1455)) ([99cecfa](https://github.com/kevinch3/NicotinD/commit/99cecfa468cea9cfe7eda622533a2542b9321964)), references [#457](https://github.com/kevinch3/NicotinD/issues/457)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.8.103",
+    "date": "2026-09-28",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.102...v0.8.103",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**release:** publish a GitHub Release only once its artifacts are attached ([#1454](https://github.com/kevinch3/NicotinD/issues/1454)) ([70c4e7f](https://github.com/kevinch3/NicotinD/commit/70c4e7f410225057717aa5d8cd94682f44543556))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.8.102",
+    "date": "2026-09-28",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.101...v0.8.102",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**release:** check the release commit before pushing it, and stop re-running CI on it ([#1449](https://github.com/kevinch3/NicotinD/issues/1449)) ([b292a9b](https://github.com/kevinch3/NicotinD/commit/b292a9b1cc9dd9efe95b256949a6e205e634186f))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.8.101",
+    "date": "2026-09-28",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.100...v0.8.101",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**deploy:** smoke and scan the shipped image before any floating tag moves ([#1447](https://github.com/kevinch3/NicotinD/issues/1447)) ([1a8843d](https://github.com/kevinch3/NicotinD/commit/1a8843da01beba06b1b1da007923a1fb51884c45)), references [#457](https://github.com/kevinch3/NicotinD/issues/457)"
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.8.100",
     "date": "2026-09-28",
     "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.99...v0.8.100",
@@ -652,67 +704,6 @@
         "title": "Performance",
         "items": [
           "**library:** a song delete reclassifies its album instead of rescanning the whole library ([#1325](https://github.com/kevinch3/NicotinD/issues/1325)) ([d8129de](https://github.com/kevinch3/NicotinD/commit/d8129de2518b4492a42e630b81875e2c57f755bd)), closes [#1303](https://github.com/kevinch3/NicotinD/issues/1303)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.8.54",
-    "date": "2026-09-23",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.53...v0.8.54",
-    "sections": [
-      {
-        "title": "Performance",
-        "items": [
-          "**db:** cap the WAL with journal_size_limit and run PRAGMA optimize after full scans ([#1323](https://github.com/kevinch3/NicotinD/issues/1323)) ([1ca1ba4](https://github.com/kevinch3/NicotinD/commit/1ca1ba4c409597f30daeb088ab19a0b5f363d673)), closes [#1307](https://github.com/kevinch3/NicotinD/issues/1307)",
-          "**transcode:** run ingest-path ffmpeg/ffprobe calls without blocking the event loop ([#1324](https://github.com/kevinch3/NicotinD/issues/1324)) ([b6332f6](https://github.com/kevinch3/NicotinD/commit/b6332f64a8e1827ef53abe3d3ae21311218f0c02)), references [#1304](https://github.com/kevinch3/NicotinD/issues/1304)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.8.53",
-    "date": "2026-09-23",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.52...v0.8.53",
-    "sections": [
-      {
-        "title": "Performance",
-        "items": [
-          "**db:** drop six redundant or dead indexes that every full scan pays for ([#1322](https://github.com/kevinch3/NicotinD/issues/1322)) ([717cba0](https://github.com/kevinch3/NicotinD/commit/717cba03f4e6a6d2e04ae95cc82f80b5fa2e5798)), closes [#1306](https://github.com/kevinch3/NicotinD/issues/1306), references [#683](https://github.com/kevinch3/NicotinD/issues/683)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.8.52",
-    "date": "2026-09-23",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.51...v0.8.52",
-    "sections": [
-      {
-        "title": "Performance",
-        "items": [
-          "**covers:** check the cached [@size](https://github.com/size) thumbnail before reading the full-size original ([#1318](https://github.com/kevinch3/NicotinD/issues/1318)) ([2d41ad7](https://github.com/kevinch3/NicotinD/commit/2d41ad7bcb298ae9c6f74b78dc04ba10831222e7)), references [#1302](https://github.com/kevinch3/NicotinD/issues/1302)",
-          "**library:** coalesce full rescans so a burst of deletes runs one scan, not N ([#1317](https://github.com/kevinch3/NicotinD/issues/1317)) ([03fc856](https://github.com/kevinch3/NicotinD/commit/03fc8568e45ab8e56624a787668f5c519a0643f8)), references [#1303](https://github.com/kevinch3/NicotinD/issues/1303)",
-          "**player:** a manual Next swaps to the pre-buffered standby instead of cold-loading ([#1319](https://github.com/kevinch3/NicotinD/issues/1319)) ([5b5e5b5](https://github.com/kevinch3/NicotinD/commit/5b5e5b5d3044489fae965968f931c1090af75d62)), references [#1301](https://github.com/kevinch3/NicotinD/issues/1301)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.8.51",
-    "date": "2026-09-23",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.50...v0.8.51",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**web:** swipe the player from anywhere, and a desktop side-panel splitter ([#1293](https://github.com/kevinch3/NicotinD/issues/1293)) ([948420f](https://github.com/kevinch3/NicotinD/commit/948420fd356515b82942d713992edc257ed03e41)), references [#993](https://github.com/kevinch3/NicotinD/issues/993) [#1292](https://github.com/kevinch3/NicotinD/issues/1292)"
-        ]
-      },
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**transcode:** stop the aac library target from skipping ALAC .m4a files ([#1291](https://github.com/kevinch3/NicotinD/issues/1291)) ([5efbb99](https://github.com/kevinch3/NicotinD/commit/5efbb993a7452ea7b64d7973e1576f0129b65da0)), closes [#1286](https://github.com/kevinch3/NicotinD/issues/1286)"
         ]
       }
     ]
