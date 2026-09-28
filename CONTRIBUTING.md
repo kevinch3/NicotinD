@@ -77,8 +77,9 @@ enforced by a commitlint `commit-msg` hook:
 <type>(<optional scope>): <description>
 ```
 
-`feat` → minor bump, `fix`/`perf` → patch, `!` or `BREAKING CHANGE:` → major;
-`chore`/`refactor`/`docs`/`test`/`ci`/`style`/`build` don't bump and stay out
+While the version is `0.x`, `feat`/`fix`/`perf` bump the patch and `!` or
+`BREAKING CHANGE:` bumps the minor (from 1.0: `feat` → minor, `fix`/`perf` →
+patch, breaking → major); `chore`/`refactor`/`docs`/`test`/`ci`/`style`/`build` don't bump and stay out
 of the changelog. The full table is in
 [CLAUDE.md](CLAUDE.md#commit-conventions). Releases cut themselves from the
 commit history — see [docs/releasing.md](docs/releasing.md); never hand-edit

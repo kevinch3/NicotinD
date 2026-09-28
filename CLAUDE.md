@@ -108,11 +108,12 @@ master and is the only thing the release guard reads — an untyped title freeze
 check green (#1263). `check:pr-title` gates it in CI, because the `commit-msg` hook never sees a
 merge GitHub performs.
 
-| Bumps version                 | Does not bump                                                      |
-| ----------------------------- | ------------------------------------------------------------------ |
-| `feat` minor · `fix` `perf` patch | `chore` `refactor` `style` `docs` `test` `ci` `build`           |
+| Bumps version (patch while `0.x`) | Does not bump                                           |
+| --------------------------------- | ------------------------------------------------------- |
+| `feat` `fix` `perf`               | `chore` `refactor` `style` `docs` `test` `ci` `build`   |
 
-`BREAKING CHANGE:` in the body or `!` after the type triggers a major bump.
+`BREAKING CHANGE:` in the body or `!` after the type bumps the minor while `0.x` (the major from
+1.0, when `feat` also becomes a minor). → [releasing.md](docs/releasing.md)
 
 **Closing issues**: put **`Closes #N` in the PR body** — that is the action GitHub honours on merge.
 `(#N)` in a commit subject only *references*, and the issue stays open forever. Use `Refs #N` for

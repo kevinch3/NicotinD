@@ -174,7 +174,7 @@ finds no version-bumping commit, no-ops).
 3. ~~Install the Renovate GitHub App (or a self-hosted workflow) — the config does nothing
    until something runs it.~~ Done — self-hosted via `.github/workflows/renovate.yml` (#848),
    chosen over the App so the schedule lives in the repo and no third-party app access is needed.
-   **Add the `RENOVATE_TOKEN` secret** to actually start it.
+   Running since the `RENOVATE_TOKEN` secret was added on 2026-09-27.
 4. Let it run 1–2 weeks to build trust in the PR cadence.
 5. Enable automerge for patch/minor devDeps once the cadence looks safe.
 6. Revisit the held majors when their upstream blockers clear (table above).

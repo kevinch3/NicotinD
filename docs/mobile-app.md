@@ -358,7 +358,7 @@ cold-start voice launch isn't lost before the web layer attaches. Web side:
 `services/native/tv-channels.service.ts` publishes on track change (the MediaSession-artwork URL
 recipe) and answers voice queries via the pure `lib/play-from-search.ts` ranker (core `fold`,
 exact-title > title-prefix > all-tokens; null keeps current playback) over a `q=`-filtered
-`/api/library/songs` page. `deploy.yml`'s mobile path filter includes the new package.
+`/api/library/songs` page.
 
 **Launcher channel row (issue #395)**: the same plugin also maintains ONE preview channel on the
 launcher home — `publishChannel`/`clearChannel` via androidx.tvprovider `Channel`/`PreviewProgram`

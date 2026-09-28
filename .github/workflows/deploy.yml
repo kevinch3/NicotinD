@@ -28,54 +28,16 @@ env:
   BUN_VERSION: '1.3.14'
 
 jobs:
-  # Detect which app artifacts a release actually needs to rebuild, so a trivial
-  # backend/core change doesn't fire the expensive per-platform builds (the two
-  # macOS jobs bill at ~10x ubuntu). GitHub `paths:` filters don't work for tag
-  # pushes, so we diff against the previous release tag ourselves and emit
-  # per-area booleans consumed by the app jobs' `if:` below. The server image
-  # (`docker`) + `deploy` are NOT gated here — every release publishes a server
-  # image and redeploys (deploy waits on docker-merge for the pull).
-  #   mobile  (android/ios): wrap packages/web/dist only — NOT the backend.
-  #   desktop (desktop-*):   bundle the backend source + web + shell (Variant B).
-  changes:
-    runs-on: ubuntu-latest
-    if: github.ref_type == 'tag'
-    outputs:
-      mobile: ${{ steps.f.outputs.mobile }}
-      desktop: ${{ steps.f.outputs.desktop }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0 # full history + tags for the diff base
-      - id: f
-        name: Detect changed areas since the previous release tag
-        run: |
-          set -euo pipefail
-          # Previous release by ancestry (robust to version-sort quirks / re-tags).
-          prev="$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)"
-          if [ -z "$prev" ]; then
-            echo "No previous tag — building all apps (safe default)."
-            echo "mobile=true"  >> "$GITHUB_OUTPUT"
-            echo "desktop=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          files="$(git diff --name-only "$prev"..HEAD)"
-          echo "Changed since $prev:"; echo "$files"
-          mob=false; desk=false
-          if echo "$files" | grep -qE '^(packages/(web|mobile|capacitor-now-playing|capacitor-tv-channels|capacitor-apk-update)/|package\.json$|bun\.lock$|\.nvmrc$|tsconfig.*\.json$|\.github/workflows/deploy\.yml$)'; then
-            mob=true
-          fi
-          if echo "$files" | grep -qE '^(packages/(web|desktop|api|core|slskd-client|slskd-addon)/|src/|config/|package\.json$|bun\.lock$|\.nvmrc$|tsconfig.*\.json$|\.github/workflows/deploy\.yml$)'; then
-            desk=true
-          fi
-          echo "Result: mobile=$mob desktop=$desk"
-          echo "mobile=$mob"   >> "$GITHUB_OUTPUT"
-          echo "desktop=$desk" >> "$GITHUB_OUTPUT"
-
+  # Every release builds every app artifact. A `changes` job used to diff
+  # tag-to-tag to skip unchanged apps, but the release commit itself bumps the
+  # root package.json and build.gradle, which its own regexes matched, so it never
+  # skipped anything. It was also unsafe to make work: the in-app APK updater,
+  # electron-updater and the F-Droid repo (pages.yml, and fdroiddata's `Binaries:`)
+  # all read the LATEST release and expect its assets, so a release without an APK
+  # breaks them. See docs/releasing.md.
+  #
   # Set the GitHub Release description to this version's CHANGELOG.md section.
-  # NOT gated by `changes` (unlike the app jobs): the release notes must be set
-  # for every tagged release, including backend-only ones where mobile/desktop
-  # are skipped. softprops/action-gh-release MERGES into the tag's release —
+  # softprops/action-gh-release MERGES into the tag's release —
   # setting only `body` here, so it neither clobbers nor is clobbered by the
   # asset-upload steps (which pass no `body`), regardless of job ordering.
   release-notes:
@@ -124,9 +86,7 @@ jobs:
     # release run RED so it's caught — not silently ship a release with no APK, as the
     # osbarcode-repo + minSdk breakage did across v0.1.222. It still never blocks the
     # server `deploy` job, which runs in parallel with no `needs` linkage to this one.
-    # Skipped when the mobile inputs didn't change this release (see `changes`).
-    needs: [changes]
-    if: github.ref_type == 'tag' && needs.changes.outputs.mobile == 'true'
+    if: github.ref_type == 'tag'
     permissions:
       contents: write
     steps:
@@ -285,8 +245,8 @@ jobs:
       # the F-Droid verification sat here instead, failed on missing signing env,
       # and took the already-built phone and TV APKs down with it. The artifacts
       # users install are the job's product; anything that merely *checks*
-      # something runs after they are safely uploaded. `check:fdroid` asserts
-      # this ordering so the steps cannot drift back.
+      # something runs after they are safely uploaded. No gate enforces this
+      # ordering, so keep it by hand.
       - name: Attach APKs to the GitHub Release
         uses: softprops/action-gh-release@v3
         with:
@@ -303,9 +263,7 @@ jobs:
     runs-on: macos-26
     # Tag-only; NOT continue-on-error — same fail-loud rationale as the `android`
     # job above (parallel with `deploy`, no `needs` linkage, so it never blocks it).
-    # Skipped when the mobile inputs didn't change this release (see `changes`).
-    needs: [changes]
-    if: github.ref_type == 'tag' && needs.changes.outputs.mobile == 'true'
+    if: github.ref_type == 'tag'
     permissions:
       contents: write
     steps:
@@ -400,9 +358,7 @@ jobs:
   # `check:desktop-publish` keeps it wired to every packaging job.
   desktop-linux:
     runs-on: ubuntu-latest
-    # Skipped when the desktop inputs didn't change this release (see `changes`).
-    needs: [changes]
-    if: github.ref_type == 'tag' && needs.changes.outputs.desktop == 'true'
+    if: github.ref_type == 'tag'
     permissions:
       contents: write
     steps:
@@ -469,10 +425,8 @@ jobs:
   # runner's keychain for a signing identity to auto-use.
   desktop-mac:
     runs-on: macos-14
-    # Skipped when the desktop inputs didn't change this release (see `changes`).
     # NOT continue-on-error — see desktop-linux above for the fail-loud rationale.
-    needs: [changes]
-    if: github.ref_type == 'tag' && needs.changes.outputs.desktop == 'true'
+    if: github.ref_type == 'tag'
     permissions:
       contents: write
     steps:

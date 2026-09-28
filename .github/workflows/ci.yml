@@ -672,7 +672,7 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.streaming-only.yml config -q
 
       # `paths:` filters can't express "job runs always, one step conditionally",
-      # so diff explicitly (same approach as deploy.yml's `changes` job).
+      # so diff explicitly against the push's or PR's base.
       #
       # Only the ANALYSIS image is gated this way now. The main image builds on
       # every run: the point of the smoke step below is to catch a change that

@@ -20,9 +20,9 @@ on:
       - 'packages/core/**'
       - '.github/workflows/pages.yml'
   # The F-Droid half is what a release changes, and `paths:` filters do not work
-  # for tag pushes (see deploy.yml's `changes` job), so this keys off the release
-  # workflow finishing instead of the tag itself. That is also the moment the
-  # F-Droid APKs actually exist as release assets.
+  # for tag pushes, so this keys off the release workflow finishing instead of
+  # the tag itself. That is also the moment the F-Droid APKs actually exist as
+  # release assets.
   workflow_run:
     workflows: ['Build & Deploy']
     types: [completed]
