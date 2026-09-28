@@ -712,7 +712,10 @@ function setupMerged(albums: unknown[], discographyFails = false) {
         },
       },
       { provide: PlayerService, useValue: { playWithContext: () => {}, addToQueue: () => {} } },
-      { provide: TransferService, useValue: { deletedSongIds: signal(new Set<string>()) } },
+      {
+        provide: TransferService,
+        useValue: { deletedSongIds: signal(new Set<string>()), acquisitionJobs: signal([]) },
+      },
     ],
     schemas: [NO_ERRORS_SCHEMA],
   });

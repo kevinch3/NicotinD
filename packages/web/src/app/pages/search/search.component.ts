@@ -23,6 +23,8 @@ import { WatchlistService } from '../../services/watchlist.service';
 import { AuthService } from '../../services/auth.service';
 import { PluginService } from '../../services/plugin.service';
 import { AutoHuntService } from '../../services/auto-hunt.service';
+import { IDLE_HUNT, type AlbumHuntStatus } from '../../lib/album-hunt-status';
+import { stageLabel } from '../../lib/pipeline-stage';
 import { GetThenHearService, modeForFileCount } from '../../services/get-then-hear.service';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import {
@@ -234,8 +236,6 @@ export class SearchComponent implements OnInit, OnDestroy {
   private autoHunt = inject(AutoHuntService);
   /** Remembers each Get so its songs join the queue when they land (#1294). */
   private getThenHear = inject(GetThenHearService);
-  /** The source hunts one album at a time (#1049): catalog cards wait for the hunt in flight. */
-  protected readonly anyHunting = this.autoHunt.anyHunting;
   private p2r = inject(PullToRefreshService);
   readonly i18n = inject(TranslateService);
   private readonly translate: Translator = (key, params) => this.i18n.t(key, params);
@@ -270,6 +270,8 @@ export class SearchComponent implements OnInit, OnDestroy {
   // NOTE: local-library search results were removed from this page (issue #227) —
   // Search is now acquisition-only. "Find what I own" lives in Library/Radio.
   readonly resolvingAlbum = signal<string | null>(null); // foreignAlbumId being resolved
+  /** foreignAlbumId → Lidarr id, learned on resolve: hunt status is keyed by the Lidarr id. */
+  private readonly resolvedLidarrIds = signal<ReadonlyMap<string, number>>(new Map());
   readonly resolveError = signal<string | null>(null);
   /** The artist Lidarr is being asked to add before a catalog action can run (#644). */
   readonly provisioningArtist = signal<string | null>(null);
@@ -680,6 +682,17 @@ export class SearchComponent implements OnInit, OnDestroy {
     }
   }
 
+  catalogHuntStatus(album: CatalogAlbum): AlbumHuntStatus {
+    const lidarrId = this.resolvedLidarrIds().get(album.foreignAlbumId);
+    return lidarrId === undefined ? IDLE_HUNT : this.autoHunt.statusFor(lidarrId);
+  }
+
+  catalogHuntLabel(status: AlbumHuntStatus): string {
+    return status.phase === 'job'
+      ? stageLabel(status.stage, (key) => this.i18n.t(key))
+      : this.i18n.t('acquire.finding');
+  }
+
   // Resolve a searched album into a real Lidarr album, then open the same
   // album-hunt modal used by the discography flow.
   async huntCatalogAlbum(album: CatalogAlbum): Promise<void> {
@@ -713,6 +726,9 @@ export class SearchComponent implements OnInit, OnDestroy {
         tracks: [],
       };
       const artistName = resolved.artistName || album.artistName;
+      this.resolvedLidarrIds.update((m) =>
+        new Map(m).set(album.foreignAlbumId, resolved.lidarrAlbumId),
+      );
       this.huntingArtistName.set(artistName);
       this.autoHunt.hunt(discAlbum, artistName, () => this.huntingAlbum.set(discAlbum));
     } catch (err) {

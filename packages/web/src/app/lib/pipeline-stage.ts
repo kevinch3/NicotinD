@@ -31,6 +31,13 @@ export function stageBadge(stage: PipelineStage): StageBadge {
   return BADGES[stage] ?? BADGES.queued;
 }
 
+/** The stage's translated label, falling back to the map's English (#664 lands the rest). */
+export function stageLabel(stage: PipelineStage, translate: (key: string) => string): string {
+  const badge = stageBadge(stage);
+  const translated = translate(badge.key);
+  return translated === badge.key ? badge.label : translated;
+}
+
 /** Ordered stages shown in the stepper (terminal `error` is rendered inline). */
 export const STAGE_STEPS: readonly PipelineStage[] = [
   'resolving',

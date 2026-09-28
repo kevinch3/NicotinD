@@ -311,11 +311,12 @@
             @for (row of chunk(catalog()!.albums, catalogAlbumsGrid.gridColumns()); track $index) {
               <div role="row" style="display: contents">
                 @for (album of row; track album.foreignAlbumId) {
+                  @let huntStatus = catalogHuntStatus(album);
                   <button
                     appTvNavItem
                     (click)="huntCatalogAlbum(album)"
-                    [disabled]="resolvingAlbum() !== null || anyHunting()"
-                    [title]="anyHunting() ? 'Another hunt is running — wait for it to finish' : ''"
+                    [disabled]="resolvingAlbum() !== null || huntStatus.phase !== 'idle'"
+                    [attr.data-hunt-phase]="huntStatus.phase"
                     class="group text-left rounded-lg overflow-hidden border border-zinc-800/80 transition hover:border-zinc-600 disabled:opacity-60"
                     style="background: var(--theme-surface)"
                   >
@@ -338,6 +339,17 @@
                             class="inline-block w-5 h-5 border-2 border-zinc-500 border-t-zinc-200 rounded-full animate-spin"
                           ></span>
                           <span class="text-xs text-zinc-300">{{ 'acquire.preparing' | t }}</span>
+                        </div>
+                      } @else if (huntStatus.phase !== 'idle') {
+                        <div
+                          class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60"
+                        >
+                          <span
+                            class="inline-block w-5 h-5 border-2 border-zinc-500 border-t-zinc-200 rounded-full animate-spin"
+                          ></span>
+                          <span class="text-xs text-zinc-300" data-testid="catalog-album-hunt-status">{{
+                            catalogHuntLabel(huntStatus)
+                          }}</span>
                         </div>
                       }
                       <!-- Watchlist star — auto-acquire when a complete folder appears

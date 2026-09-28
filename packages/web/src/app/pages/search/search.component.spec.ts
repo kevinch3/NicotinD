@@ -15,6 +15,7 @@ import { AcquireService } from '../../services/acquire.service';
 import type { AcquireJob } from '../../services/acquire.service';
 import { PluginService, type PluginInfo } from '../../services/plugin.service';
 import { AutoHuntService } from '../../services/auto-hunt.service';
+import type { AlbumHuntStatus } from '../../lib/album-hunt-status';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import { GetThenHearService } from '../../services/get-then-hear.service';
 
@@ -50,7 +51,10 @@ function setup(
   const acquireRefresh = vi.fn(() => Promise.resolve());
   const acquireJobs = signal<AcquireJob[]>([]);
   const retryAcquireJob = vi.fn(() => of({ jobId: 'job2' }));
-  const autoHunt = { hunt: vi.fn(), anyHunting: () => false };
+  const autoHunt = {
+    hunt: vi.fn(),
+    statusFor: vi.fn((_id: number): AlbumHuntStatus => ({ phase: 'idle' })),
+  };
   const p2rStub = {
     register: (h: () => Promise<void> | void) => {
       registeredHandler = h;
@@ -263,6 +267,23 @@ describe('SearchComponent — metadata-driven search', () => {
     );
     expect(component.huntingArtistName()).toBe('Pink Floyd');
     expect(component.resolvingAlbum()).toBeNull();
+  });
+
+  // Hunt status is keyed by the Lidarr id, which a catalog card only learns on
+  // resolve — before that it can only be idle; after, it follows its own hunt.
+  it('a catalog card follows its own hunt once resolved', async () => {
+    const { component, autoHunt } = setup();
+    autoHunt.statusFor.mockImplementation((id) =>
+      id === 55 ? { phase: 'job', stage: 'downloading' } : { phase: 'idle' },
+    );
+    expect(component.catalogHuntStatus(CATALOG_ALBUM)).toEqual({ phase: 'idle' });
+
+    await component.huntCatalogAlbum(CATALOG_ALBUM);
+
+    const status = component.catalogHuntStatus(CATALOG_ALBUM);
+    expect(status).toEqual({ phase: 'job', stage: 'downloading' });
+    expect(component.catalogHuntLabel(status)).toBe('Downloading');
+    expect(autoHunt.statusFor).toHaveBeenCalledWith(55);
   });
 
   it('surfaces a resolve failure without opening the modal', async () => {
