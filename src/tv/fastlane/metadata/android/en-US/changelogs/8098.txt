@@ -1,0 +1,1 @@
+• library: judge artist-identity coverage on artist_key and store identity text NFC (#1441)

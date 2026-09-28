@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.98](https://github.com/kevinch3/NicotinD/compare/v0.8.97...v0.8.98) (2026-09-28)
+
+### Bug Fixes
+
+* **library:** judge artist-identity coverage on artist_key and store identity text NFC ([#1441](https://github.com/kevinch3/NicotinD/issues/1441)) ([5a40be1](https://github.com/kevinch3/NicotinD/commit/5a40be15135e176fac31b1ec83a0ce94bd506db8)), closes [#1440](https://github.com/kevinch3/NicotinD/issues/1440)
 ## [0.8.97](https://github.com/kevinch3/NicotinD/compare/v0.8.96...v0.8.97) (2026-09-28)
 
 ### Features
