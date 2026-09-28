@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.100](https://github.com/kevinch3/NicotinD/compare/v0.8.99...v0.8.100) (2026-09-28)
+
+### Features
+
+* **web:** per-album live hunt status on album cards ([#1442](https://github.com/kevinch3/NicotinD/issues/1442)) ([f4e6996](https://github.com/kevinch3/NicotinD/commit/f4e69968a5484d2bfd90cd37efbd4992e99b5258)), references [#1049](https://github.com/kevinch3/NicotinD/issues/1049)
 ## [0.8.99](https://github.com/kevinch3/NicotinD/compare/v0.8.98...v0.8.99) (2026-09-28)
 
 ### Features

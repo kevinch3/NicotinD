@@ -1,0 +1,1 @@
+• web: per-album live hunt status on album cards (#1442)
