@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.102](https://github.com/kevinch3/NicotinD/compare/v0.8.101...v0.8.102) (2026-09-28)
+
+### Bug Fixes
+
+* **release:** check the release commit before pushing it, and stop re-running CI on it ([#1449](https://github.com/kevinch3/NicotinD/issues/1449)) ([b292a9b](https://github.com/kevinch3/NicotinD/commit/b292a9b1cc9dd9efe95b256949a6e205e634186f))
 ## [0.8.101](https://github.com/kevinch3/NicotinD/compare/v0.8.100...v0.8.101) (2026-09-28)
 
 ### Bug Fixes

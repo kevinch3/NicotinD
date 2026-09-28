@@ -1,0 +1,1 @@
+• release: check the release commit before pushing it, and stop re-running CI on it (#1449)
