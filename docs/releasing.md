@@ -70,6 +70,22 @@ design, not a failure. The release job is also **idempotent**: it skips itself
 on `chore(release)` pushes and exits early if the computed tag already exists,
 so re-runs are always safe.
 
+### The release commit is checked before it is pushed
+
+The `chore(release)` commit only adds generated files: the version in
+`package.json` and `build.gradle`, the `CHANGELOG.md` section, and the
+per-versionCode F-Droid changelogs. The release job runs `check:fdroid` on it
+**after** `bun run release` cuts it and **before** `git push`; a failure removes
+the local tag and fails the job, so nothing is published.
+
+That is why **no CI job runs on a `chore(release)` push** — every job in
+`ci.yml` except `release` carries
+`if: "!startsWith(github.event.head_commit.message || '', 'chore(release):')"`.
+Re-running all fourteen jobs there checked the generated files only after the tag
+had already started `deploy.yml`, and nothing waited for the result.
+`scripts/ci-release-skip.test.ts` keeps both halves in place: a skip without the
+in-job check would leave those changelogs checked by nothing.
+
 ## What each release ships, and how it reaches people
 
 | Artifact                                  | Built when                | How it reaches users                                                                                                            |

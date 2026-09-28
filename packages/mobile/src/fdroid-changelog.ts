@@ -10,8 +10,32 @@
  */
 
 /** F-Droid truncates the displayed changelog; keep entries inside it ourselves
- * so the cut lands between entries instead of mid-URL. */
+ * so the cut lands between entries instead of mid-URL. In UTF-8 **bytes**, the
+ * unit `check:fdroid` and F-Droid measure — not JS string length: the `•`
+ * every entry starts with is one UTF-16 unit but three bytes, so a note of many
+ * short entries used to pass here at 477 characters and fail the gate at 517
+ * bytes, on the `chore(release)` commit, after the tag was already cut. */
 export const FDROID_CHANGELOG_LIMIT = 500;
+
+const encoder = new TextEncoder();
+
+/** UTF-8 byte length — the measure every limit in this module is in. */
+export function utf8Bytes(text: string): number {
+  return encoder.encode(text).length;
+}
+
+/** The longest prefix of `text` within `maxBytes`, never splitting a code point. */
+function truncateToBytes(text: string, maxBytes: number): string {
+  let out = '';
+  let used = 0;
+  for (const ch of text) {
+    const size = utf8Bytes(ch);
+    if (used + size > maxBytes) break;
+    out += ch;
+    used += size;
+  }
+  return out;
+}
 
 /**
  * The body of `## [<version>]`'s section, up to the next version heading.
@@ -76,22 +100,25 @@ export function toFdroidChangelog(section: string, limit = FDROID_CHANGELOG_LIMI
   const kept: string[] = [];
   let used = 0;
   for (const entry of entries) {
-    const cost = (kept.length === 0 ? 0 : 1) + entry.length;
+    const cost = (kept.length === 0 ? 0 : 1) + utf8Bytes(entry);
     if (used + cost > limit) break;
     kept.push(entry);
     used += cost;
   }
 
   // Nothing fits: one hard-truncated entry beats an empty changelog.
-  if (kept.length === 0) return entries[0].slice(0, limit - 1).trimEnd() + '…';
+  if (kept.length === 0) {
+    const ellipsis = '…';
+    return truncateToBytes(entries[0], limit - utf8Bytes(ellipsis)).trimEnd() + ellipsis;
+  }
 
   if (kept.length === entries.length) return kept.join('\n');
 
   // Making room for the note can itself drop an entry, so the count has to be
   // recomputed from what survives — not read once before the loop.
   const note = () => `…and ${entries.length - kept.length} more`;
-  while (kept.length > 1 && used + 1 + note().length > limit) {
-    used -= kept.pop()!.length + 1;
+  while (kept.length > 1 && used + 1 + utf8Bytes(note()) > limit) {
+    used -= utf8Bytes(kept.pop()!) + 1;
   }
   return [...kept, note()].join('\n');
 }
