@@ -1149,10 +1149,11 @@ so keeping the two disjoint means a failure in either is unambiguous about what 
 blocking a release on one would only train us to bypass the gate. A finding here therefore
 always means: **a fixed version exists, bump or patch the base image.**
 
-It runs as a step inside `docker-merge` rather than as its own job. The image is already
-pushed by then, so a failure does not un-publish it — it stops `deploy` from putting it on a
-host, through the existing `needs: [docker-merge]`. A separate job would have meant editing
-`deploy`'s `if:` expression, and that expression is precisely the #457 shape.
+It runs as a step inside `docker-merge`, which by then has tagged only the exact `vX.Y.Z`.
+The floating `vX` and `release` tags move in the later `promote` job, so a finding leaves
+self-hosters on the previous, clean release and stops `deploy` (which needs `promote`) from
+putting the image on a host. It used to run *after* `docker-merge` had already moved
+`release`, so a finding blocked the deploy but not the tag everyone pulls.
 
 ### What the first scan found
 

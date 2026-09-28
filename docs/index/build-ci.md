@@ -57,14 +57,14 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   equal so no container may swap, enforced by `compose-memory-limits.test.ts` against a whole-stack
   budget. → [deployment.md](../deployment.md)
 - **Secret + image scanning**: gitleaks runs over every commit as a pinned binary, needing
-  `fetch-depth: 0`; Trivy scans the published image scoped to OS vulns and unfixed-ignored, as a
-  *step* so blocking the deploy needs no `if:` edit. → [quality-gates.md](../quality-gates.md)
+  `fetch-depth: 0`; Trivy scans the exact `vX.Y.Z` image, scoped to OS vulns and unfixed-ignored,
+  before `promote` moves `release`. → [quality-gates.md](../quality-gates.md)
 - **CI boots the shipped artifact**: the docker build is unconditional and loaded, then a smoke step
   waits on the image's own healthcheck and asserts `/api/health` reports the expected version,
-  matrixed over both published arches on native runners, never QEMU. The deploy then polls the host
-  for that version. → [quality-gates.md](../quality-gates.md)
+  matrixed over both published arches on native runners, never QEMU; the release re-runs the same
+  `smoke-image.sh` on the pushed digest. The deploy then polls the host for that version. → [quality-gates.md](../quality-gates.md)
 - **Published Docker image**: multi-arch GHCR image published per release tag via native-runner digest
-  builds and one manifest merge. The deploy *derives* which images to pull from the resolved compose
+  builds, one manifest merge, and a `promote` job that moves `release` last. The deploy *derives* which images to pull from the resolved compose
   config rather than a hardcoded list. Release tagging is orphan-tag-proof.
   → [deployment.md](../deployment.md)
 - **The runtime image ships only what it runs**: the production stage installs with `--production`

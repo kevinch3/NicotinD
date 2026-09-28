@@ -731,49 +731,8 @@ jobs:
       # Waits on the image's OWN HEALTHCHECK rather than a hand-rolled poll, so
       # this exercises the same mechanism compose and the deploy host rely on.
       - name: Smoke — boot the built image and verify it serves
-        run: |
-          set -euo pipefail
-          expected="$(jq -r .version package.json)"
-
-          docker run -d --name nicotind-smoke \
-            -e NICOTIND_MODE=external \
-            -e NICOTIND_DATA_DIR=/data/nicotind \
-            -e NICOTIND_MUSIC_DIR=/data/music \
-            -p 8484:8484 \
-            nicotind:ci
-
-          ok=false
-          for _ in $(seq 1 90); do
-            state="$(docker inspect -f '{{.State.Status}}' nicotind-smoke)"
-            # `none` guards the case where the HEALTHCHECK is dropped from the
-            # Dockerfile: without it this loop would spin to timeout and report
-            # "never became healthy", which is a confusing way to say "there is
-            # no healthcheck any more".
-            health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' nicotind-smoke)"
-            if [ "$health" = "none" ]; then
-              echo "::error::the image has no HEALTHCHECK — this smoke test relies on it"
-              exit 1
-            fi
-            [ "$state" != "running" ] && break
-            [ "$health" = "healthy" ] && { ok=true; break; }
-            sleep 2
-          done
-
-          if [ "$ok" != true ]; then
-            echo "::error::built image never became healthy (state=$state health=$health)"
-            docker logs nicotind-smoke 2>&1 | tail -60
-            exit 1
-          fi
-
-          # Health says "serving"; this says "serving the code we just built".
-          # A container that comes up on a stale layer is the #457 shape.
-          got="$(curl -fsS --max-time 10 http://localhost:8484/api/health | jq -r .version)"
-          if [ "$got" != "$expected" ]; then
-            echo "::error::/api/health reports version '$got', expected '$expected'"
-            docker logs nicotind-smoke 2>&1 | tail -60
-            exit 1
-          fi
-          echo "Container smoke: healthy, serving $got"
+        # Same script deploy.yml runs against the image a release pushes.
+        run: bash scripts/smoke-image.sh nicotind:ci "$(jq -r .version package.json)"
 
       - name: Smoke — container logs on failure
         if: failure()

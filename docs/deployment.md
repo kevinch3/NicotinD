@@ -102,9 +102,22 @@ by `.github/workflows/deploy.yml` on every `v*` release tag:
 - the `docker` job builds each arch **on a native runner** (`ubuntu-latest` /
   `ubuntu-24.04-arm` — no QEMU: Bun's JIT is unreliable under emulation) and
   pushes **by digest** only;
-- the `docker-merge` job stitches the digests into one multi-arch manifest and
-  moves the tags. Because tagging is a single atomic step at the end, a
-  half-failed release can never move `release` to a partial image.
+- the same job then **pulls the image back by digest and boots it**
+  (`scripts/smoke-image.sh`, the script CI's own smoke step runs): it must turn
+  healthy on its own `HEALTHCHECK` and report the tag's version on
+  `/api/health`;
+- the `docker-merge` job stitches the digests into one multi-arch manifest
+  tagged **only** `vX.Y.Z`, verifies that tag resolves, and Trivy-scans it;
+- the `promote` job then moves `vX` and `release`, for this image **and** the
+  analysis image, to the same digests, and verifies all three tags resolve.
+
+Because the floating tags move last and in one job, neither a half-failed
+build, a failed boot nor a scan finding can move `release`: self-hosters stay
+on the previous release, and only the exact `vX.Y.Z` exists for anyone who
+pins it. Before this, `docker-merge` moved all three tags *before* Trivy ran
+and `docker-analysis` moved its own `release` in parallel, unverified, so a
+finding stopped the deploy but not the tag everyone pulls.
+`scripts/deploy-promotion.test.ts` keeps that ordering.
 
 ### Tag semantics
 
@@ -126,7 +139,7 @@ success** — redeploying the host against the previous `release` image while
 GitHub showed all-green. That version has no image to this day.
 
 The cause was the deploy guard, not the transient 403. `deploy` tolerated
-`needs.docker-merge.result == 'skipped'` unconditionally, because on a manual
+`needs.docker-merge.result == 'skipped'` (today `needs.promote.result`) unconditionally, because on a manual
 `workflow_dispatch` the docker jobs legitimately don't run and the host should
 just redeploy the current `release` images. But **a downstream job whose `needs`
 failed also reports `skipped`**, so the condition could not distinguish
@@ -137,8 +150,9 @@ Two changes close it:
 1. **The `skipped` tolerance is scoped to `workflow_dispatch`.** On a tag push
    the docker jobs always run, so `skipped` there can only mean upstream
    failure, and the deploy is now correctly blocked.
-2. **`docker-merge` verifies every tag it claimed actually resolves**
-   (`vX.Y.Z`, `vX`, `release`) before the job succeeds — so a publish hole
+2. **Every tag claimed is verified to resolve** before the job that claimed it
+   succeeds (`vX.Y.Z` in `docker-merge`; `vX` and `release`, for both images,
+   in `promote`) — so a publish hole
    fails the release rather than being discovered months later by whoever pins
    to the missing version.
 
@@ -161,8 +175,9 @@ curl -sI -o /dev/null -w '%{http_code}\n' \
 
 ### The analysis sidecar image
 
-`ghcr.io/kevinch3/nicotind-analysis`, same tag semantics, published by the
-`docker-analysis` job. **amd64 only** — essentia-tensorflow ships x86_64-only
+`ghcr.io/kevinch3/nicotind-analysis`, same tag semantics: the
+`docker-analysis` job pushes only `vX.Y.Z`, and `promote` moves its `vX` and
+`release` together with the server image's. **amd64 only** — essentia-tensorflow ships x86_64-only
 wheels, so this sidecar has never been runnable on arm64; on an arm64 host
 remove/disable the `analysis` service (everything degrades gracefully — only
 the audio-features enrichment task pauses). GPU inference still builds from
@@ -1025,10 +1040,9 @@ The `deploy` job SSHes to the host and runs `docker compose pull` + `up -d`. Two
 releases cut close together — exactly what happens when several PRs land in one
 sitting — reached that step concurrently, racing container restarts against each
 other, with the second deploy able to pull an image the first was mid-way
-through starting. A second, quieter race sat in `docker-merge`: its manifest
-push claims `:release` and `:vX` as well as `:vX.Y.Z`, and those two are shared
-mutable tags, so concurrent releases fought over which one they finally pointed
-at.
+through starting. A second, quieter race sat in the tag push: it claims `:release` and `:vX` as
+well as `:vX.Y.Z` (today in `promote`), and those two are shared mutable tags, so
+concurrent releases fought over which one they finally pointed at.
 
 Fixed with a constant group and queueing:
 
@@ -1046,7 +1060,7 @@ host half-applied — strictly worse than waiting for it. This is the same shape
 
 The group is **workflow-level, not on the `deploy` job alone**. Serializing only
 the job looks tighter — expensive per-platform builds would still overlap — but
-`deploy` waits on `docker-merge`, so a later tag whose build finished first
+`deploy` waits on the image jobs, so a later tag whose build finished first
 would deploy first and then be overwritten by the earlier release still in
 flight. That is a version downgrade wearing a green check, which is the #457
 failure shape. Ordering is worth more here than build overlap.

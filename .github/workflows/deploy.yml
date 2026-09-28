@@ -510,8 +510,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Push by digest (no tag): tagging happens once in docker-merge, so a
-      # half-published release can never move the `release`/version tags.
+      # Push by digest (no tag): the version tag is added once in docker-merge
+      # and the floating tags only in `promote`, so a half-published or broken
+      # release can never move `release`/`vX`.
       - name: Build + push by digest
         id: build
         uses: docker/build-push-action@v7
@@ -533,6 +534,25 @@ jobs:
           cache-from: type=gha,scope=docker-${{ env.PLATFORM_PAIR }}
           cache-to: type=gha,mode=max,scope=docker-${{ env.PLATFORM_PAIR }}
 
+      # Boot the image this release actually pushed — pulled back by digest,
+      # not the local build cache — before anything tags it. The ci.yml smoke
+      # ran on a PR build; this one runs on the bytes self-hosters will pull,
+      # and asserts it reports the tag's own version.
+      - name: Smoke — boot the pushed image and verify it serves
+        run: |
+          set -euo pipefail
+          ref="$IMAGE@${{ steps.build.outputs.digest }}"
+          docker pull "$ref"
+          bash scripts/smoke-image.sh "$ref" "${GITHUB_REF_NAME#v}"
+
+      - name: Smoke — container logs on failure
+        if: failure()
+        run: docker logs nicotind-smoke 2>&1 | tail -100 || true
+
+      - name: Smoke — clean up
+        if: always()
+        run: docker rm -f nicotind-smoke 2>/dev/null || true
+
       - name: Export digest
         run: |
           mkdir -p "${{ runner.temp }}/digests"
@@ -546,12 +566,9 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  # Merge the per-arch digests into one multi-arch manifest, tagged:
-  #   vX.Y.Z  — exact release (pin this to hold/rollback a version)
-  #   vX      — major metatag (Immich-style; excludes nothing today at v0)
-  #   release — stable metatag, the docker-compose.yml default
-  # Deliberately NO `latest` tag: `release` is the explicit equivalent, and it
-  # never points at an untagged build.
+  # Merge the per-arch digests into one multi-arch manifest tagged ONLY with
+  # the exact release, `vX.Y.Z` (pin this to hold/rollback a version), then
+  # scan it. The floating tags move in `promote`, after this job succeeds.
   docker-merge:
     runs-on: ubuntu-latest
     needs: [docker]
@@ -583,25 +600,15 @@ jobs:
           major="${version%%.*}"       # vX
           refs=()
           for d in *; do refs+=("$IMAGE@sha256:$d"); done
-          docker buildx imagetools create \
-            -t "$IMAGE:$version" -t "$IMAGE:$major" -t "$IMAGE:release" \
-            "${refs[@]}"
+          docker buildx imagetools create -t "$IMAGE:$version" "${refs[@]}"
 
       # `imagetools create` can report success while a tag ends up unresolvable
       # (issue #457: v0.1.329's push 403'd and that version has no image to this
-      # day). Assert every tag we just claimed actually resolves, so a publish
+      # day). Assert the tag we just claimed actually resolves, so a publish
       # hole fails the release instead of being discovered months later by
       # whoever pins to it.
-      - name: Verify published tags resolve
-        run: |
-          set -euo pipefail
-          version="${GITHUB_REF_NAME}"
-          major="${version%%.*}"
-          for tag in "$version" "$major" release; do
-            echo "::group::inspect $IMAGE:$tag"
-            docker buildx imagetools inspect "$IMAGE:$tag"
-            echo "::endgroup::"
-          done
+      - name: Verify the version tag resolves
+        run: docker buildx imagetools inspect "$IMAGE:${GITHUB_REF_NAME}"
 
       # Scans the BASE IMAGE's OS packages. Deliberately non-overlapping with
       # `check:audit`, which owns npm dependencies and structurally cannot see
@@ -613,11 +620,10 @@ jobs:
       # A finding here therefore always means: a fixed version exists, bump the
       # base image in the Dockerfile.
       #
-      # This runs inside docker-merge on purpose. The image is already pushed by
-      # now, so a failure does not un-publish it — it stops `deploy`, through the
-      # existing `needs: [docker-merge]`, from putting it on the host. Doing it
-      # as its own job would mean editing deploy's `if:` expression, and that
-      # expression is exactly the #457 shape.
+      # This runs before `promote`, so a finding leaves `release` and `vX` on the
+      # previous, clean release: only the exact `vX.Y.Z` exists, and nothing
+      # pulls that unless it is pinned. It also stops `deploy`, through
+      # `promote`, from putting it on the host.
       - name: Scan the published image for OS vulnerabilities
         uses: aquasecurity/trivy-action@v0.36.0
         with:
@@ -630,8 +636,8 @@ jobs:
 
   # Publish the analysis sidecar image (amd64 only: essentia-tensorflow ships
   # x86_64-only wheels, so an arm64 build has never been possible). Single-arch
-  # → no digest/merge dance, tags pushed directly. Same tag semantics as the
-  # server image.
+  # → no digest/merge dance. Same tag semantics as the server image: only
+  # `vX.Y.Z` here, the floating tags in `promote`.
   docker-analysis:
     runs-on: ubuntu-latest
     if: github.ref_type == 'tag'
@@ -651,31 +657,70 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Compute tags
-        id: tags
-        run: |
-          set -euo pipefail
-          version="${GITHUB_REF_NAME}" # vX.Y.Z
-          major="${version%%.*}"       # vX
-          echo "tags=${IMAGE}:${version},${IMAGE}:${major},${IMAGE}:release" >> "$GITHUB_OUTPUT"
-
       - name: Build + push
         uses: docker/build-push-action@v7
         with:
           context: packages/analysis
           platforms: linux/amd64
           push: true
-          tags: ${{ steps.tags.outputs.tags }}
+          tags: ${{ env.IMAGE }}:${{ github.ref_name }}
           cache-from: type=gha,scope=analysis-linux-amd64
           cache-to: type=gha,mode=max,scope=analysis-linux-amd64
 
+  # Move the floating tags, for both images, only once the release's own
+  # images exist, booted (docker) and scanned (docker-merge):
+  #   vX      — major metatag (Immich-style; excludes nothing today at v0)
+  #   release — stable metatag, the docker-compose.yml default
+  # Deliberately NO `latest` tag: `release` is the explicit equivalent, and it
+  # never points at an untagged build. Both images move in one job, so the
+  # server and analysis `release` tags can no longer disagree after a failure
+  # in one of them. Each tag is created from the verified `vX.Y.Z`, so it is
+  # the same digest, never a rebuild.
+  promote:
+    runs-on: ubuntu-latest
+    needs: [docker-merge, docker-analysis]
+    if: github.ref_type == 'tag'
+    permissions:
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Point vX and release at this release
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME}" # vX.Y.Z
+          major="${version%%.*}"       # vX
+          for image in ghcr.io/kevinch3/nicotind ghcr.io/kevinch3/nicotind-analysis; do
+            docker buildx imagetools create -t "$image:$major" -t "$image:release" "$image:$version"
+          done
+
+      # Same #457 check as docker-merge, for the tags this job claimed.
+      - name: Verify the floating tags resolve
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME}"
+          major="${version%%.*}"
+          for image in ghcr.io/kevinch3/nicotind ghcr.io/kevinch3/nicotind-analysis; do
+            for tag in "$version" "$major" release; do
+              echo "::group::inspect $image:$tag"
+              docker buildx imagetools inspect "$image:$tag"
+              echo "::endgroup::"
+            done
+          done
+
   deploy:
     runs-on: ubuntu-latest
-    # On a tag push the host pulls the images the docker jobs just published,
-    # so deploy must wait for them. On workflow_dispatch the docker jobs are
-    # skipped and the host redeploys the current `release` images (NOT master
-    # source — the compose file's `image:` defaults; build-from-source now
-    # lives in an override file).
+    # On a tag push the host pulls the `release` images promote just moved,
+    # so deploy must wait for it. On workflow_dispatch the docker jobs and
+    # promote are skipped and the host redeploys the current `release` images
+    # (NOT master source — the compose file's `image:` defaults;
+    # build-from-source now lives in an override file).
     #
     # The `skipped` tolerance is scoped to workflow_dispatch on purpose (issue
     # #457). A downstream job whose `needs` FAILED also reports `skipped`, so an
@@ -683,8 +728,8 @@ jobs:
     # broke" — and on v0.1.329 a failed GHCR push produced a GREEN deploy that
     # silently redeployed the previous version. On a tag push the docker jobs
     # always run, so `skipped` there can only ever mean upstream failure.
-    needs: [docker-merge, docker-analysis]
-    if: ${{ !cancelled() && (needs.docker-merge.result == 'success' || (github.event_name == 'workflow_dispatch' && needs.docker-merge.result == 'skipped')) && (needs.docker-analysis.result == 'success' || (github.event_name == 'workflow_dispatch' && needs.docker-analysis.result == 'skipped')) }}
+    needs: [promote]
+    if: ${{ !cancelled() && (needs.promote.result == 'success' || (github.event_name == 'workflow_dispatch' && needs.promote.result == 'skipped')) }}
     steps:
       # Resolve exactly what the server should check out. On a tag push (the normal
       # release path) deploy that exact tag; on a manual workflow_dispatch deploy the
