@@ -31,6 +31,14 @@ env:
   FFMPEG_BIN: /bin/false
 
 jobs:
+  # Every job except `release` skips a `chore(release):` push. That commit only
+  # adds generated version files (package.json, CHANGELOG.md, build.gradle, the
+  # F-Droid changelogs), and the release job validates them with check:fdroid
+  # BEFORE pushing. Re-running all fourteen jobs on it produced a result nothing
+  # waited for: the tag it carries has already started deploy.yml. A pull
+  # request has no head_commit, so `|| ''` keeps PR runs unaffected.
+  # See docs/releasing.md.
+
   # Static gates + unit tests. Deliberately holds nothing browser-driven and nothing
   # that takes minutes: this job used to be the workflow's entire critical path (10m09
   # steady-state, 14m16 on a bad run) while every other job finished and idled, because
@@ -41,6 +49,7 @@ jobs:
   # enforces that across every job in its GATE_JOBS list, which this is one of.
   ci:
     runs-on: ubuntu-latest
+    if: "!startsWith(github.event.head_commit.message || '', 'chore(release):')"
     steps:
       # Full history: the secret scan below walks every commit, and a shallow
       # clone would silently shrink what it examines to one.
@@ -263,6 +272,7 @@ jobs:
   # with the type/lint gates, so it runs beside them rather than after them.
   web-test:
     runs-on: ubuntu-latest
+    if: "!startsWith(github.event.head_commit.message || '', 'chore(release):')"
     steps:
       - uses: actions/checkout@v7
 
@@ -290,6 +300,7 @@ jobs:
   # build the web app — `e2e`, `desktop-package` and `desktop-smoke` each still do.
   storybook:
     runs-on: ubuntu-latest
+    if: "!startsWith(github.event.head_commit.message || '', 'chore(release):')"
     steps:
       - uses: actions/checkout@v7
 
@@ -347,6 +358,7 @@ jobs:
   # golden tests (real models) auto-skip without ANALYSIS_MODELS_DIR.
   analysis:
     runs-on: ubuntu-latest
+    if: "!startsWith(github.event.head_commit.message || '', 'chore(release):')"
     steps:
       - uses: actions/checkout@v7
 
@@ -370,6 +382,7 @@ jobs:
   # is why a spec that reads another spec's leftovers had to be fixed first.
   e2e-shard:
     runs-on: ubuntu-latest
+    if: "!startsWith(github.event.head_commit.message || '', 'chore(release):')"
     strategy:
       # A failing shard must not cancel the others: knowing which three passed is
       # what tells you whether a failure is local to one block or systemic.
@@ -476,7 +489,7 @@ jobs:
   # one it exists to fix — a required check that silently never arrives.
   e2e:
     needs: [e2e-shard]
-    if: always()
+    if: "always() && !startsWith(github.event.head_commit.message || '', 'chore(release):')"
     runs-on: ubuntu-latest
     steps:
       - name: Every shard passed
@@ -505,6 +518,7 @@ jobs:
   # regression reaching a release.
   desktop-package:
     runs-on: ubuntu-latest
+    if: "!startsWith(github.event.head_commit.message || '', 'chore(release):')"
     env:
       FFMPEG_BIN: ''
     steps:
@@ -548,6 +562,7 @@ jobs:
 
   desktop-smoke:
     runs-on: ubuntu-latest
+    if: "!startsWith(github.event.head_commit.message || '', 'chore(release):')"
     continue-on-error: true
     steps:
       - uses: actions/checkout@v7
@@ -640,6 +655,7 @@ jobs:
   # pass, so the gate stays wired without touching `needs`.
   docker:
     runs-on: ${{ matrix.runner }}
+    if: "!startsWith(github.event.head_commit.message || '', 'chore(release):')"
     strategy:
       # Both arches should report; one failing must not hide the other's result.
       fail-fast: false
@@ -866,6 +882,17 @@ jobs:
             fi
 
             bun run release
+
+            # The release commit generates files no earlier CI run has seen —
+            # the per-versionCode F-Droid changelogs above all, capped at 500
+            # bytes. Check them HERE, before anything is pushed: CI no longer
+            # re-runs on the chore(release) commit, and even when it did, it
+            # judged the files only after the tag had already shipped.
+            if ! bun run check:fdroid; then
+              echo "::error::check:fdroid failed on the generated release commit; nothing was pushed." >&2
+              git tag -d "$tag" || true
+              exit 1
+            fi
 
             # --atomic: if the branch update is rejected (a merge raced us) the
             # tag is rejected too, so a failed push can never orphan a tag again.

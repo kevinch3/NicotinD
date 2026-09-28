@@ -6,6 +6,7 @@ import {
   changelogSection,
   formatEntry,
   toFdroidChangelog,
+  utf8Bytes,
 } from './fdroid-changelog.js';
 
 const REAL_CHANGELOG = readFileSync(
@@ -85,7 +86,7 @@ describe('toFdroidChangelog', () => {
       '\n',
     );
     const out = toFdroidChangelog(section);
-    expect(out.length).toBeLessThanOrEqual(FDROID_CHANGELOG_LIMIT);
+    expect(utf8Bytes(out)).toBeLessThanOrEqual(FDROID_CHANGELOG_LIMIT);
     expect(out).toMatch(/\n…and \d+ more$/);
     // Every line except the note is a complete entry.
     for (const line of out.split('\n').slice(0, -1)) {
@@ -107,8 +108,30 @@ describe('toFdroidChangelog', () => {
 
   it('truncates a single oversized entry rather than returning nothing', () => {
     const out = toFdroidChangelog(`* ${'x'.repeat(900)}`);
-    expect(out.length).toBeLessThanOrEqual(FDROID_CHANGELOG_LIMIT);
+    expect(utf8Bytes(out)).toBeLessThanOrEqual(FDROID_CHANGELOG_LIMIT);
     expect(out.endsWith('…')).toBe(true);
+  });
+
+  // check:fdroid and F-Droid count UTF-8 bytes. The bullet is 3 bytes, so
+  // measuring JS length let this exact input out at 517 bytes.
+  it('stays within the limit in bytes, not characters, for many short entries', () => {
+    const section = Array.from({ length: 30 }, (_, i) => `* **scope:** entry number ${i}`).join(
+      '\n',
+    );
+    expect(utf8Bytes(toFdroidChangelog(section))).toBeLessThanOrEqual(FDROID_CHANGELOG_LIMIT);
+  });
+
+  it('truncates a non-ASCII entry by bytes without splitting a character', () => {
+    const out = toFdroidChangelog(`* ${'é'.repeat(900)}`);
+    expect(utf8Bytes(out)).toBeLessThanOrEqual(FDROID_CHANGELOG_LIMIT);
+    expect(out).toMatch(/^• é+…$/);
+    expect(out).not.toContain('\uFFFD');
+  });
+
+  it('counts bytes exactly', () => {
+    expect(utf8Bytes('abc')).toBe(3);
+    expect(utf8Bytes('•')).toBe(3);
+    expect(utf8Bytes('é')).toBe(2);
   });
 
   it('fits the real current release section and carries no markdown or URLs', () => {
@@ -118,7 +141,7 @@ describe('toFdroidChangelog', () => {
     const section = changelogSection(REAL_CHANGELOG, version);
     expect(section).not.toBe('');
     const out = toFdroidChangelog(section);
-    expect(out.length).toBeLessThanOrEqual(FDROID_CHANGELOG_LIMIT);
+    expect(utf8Bytes(out)).toBeLessThanOrEqual(FDROID_CHANGELOG_LIMIT);
     expect(out).not.toContain('http');
     expect(out).not.toContain('](');
     expect(out).not.toContain('**');
