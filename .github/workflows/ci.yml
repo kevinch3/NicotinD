@@ -789,6 +789,9 @@ jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # RELEASE_TOKEN lives in this environment, deployable from master only
+    # (docs/dependency-management.md "Secrets live in environments").
+    environment: release
     # The per-commit group above deliberately lets two master merges run at
     # once. Two `release` jobs tagging and pushing at once is a different
     # matter, so this restores exactly the serialization the shared workflow

@@ -87,6 +87,9 @@ jobs:
   android:
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    # The ANDROID_KEYSTORE_* signing secrets live in this environment,
+    # deployable from `v*` tags only (docs/dependency-management.md).
+    environment: release-signing
     # Only on a tag push: these jobs attach assets to the tag's GitHub Release (none
     # exists for a manual dispatch). NOT continue-on-error: a genuine packaging break
     # (unresolved dependency/repo, manifest-merge failure, bad signing) must turn the
@@ -726,6 +729,10 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # DEPLOY_* and TS_OAUTH_* live in this environment, deployable from `v*`
+    # tags and master only, so a workflow on any other branch cannot read the
+    # deploy host's address or Tailscale credentials (docs/dependency-management.md).
+    environment: production
     # On a tag push the host pulls the `release` images promote just moved,
     # so deploy must wait for it. On workflow_dispatch the docker jobs and
     # promote are skipped and the host redeploys the current `release` images

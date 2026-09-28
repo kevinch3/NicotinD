@@ -206,6 +206,37 @@ bumps with the `# vX` comment updated alongside, and will also propose pinning t
 `check:action-runtimes` reads the comment to classify a SHA pin, and `check:fdroid` reads the JDK
 through one (`scripts/fdroid-jdk.ts`), so either PR stays green.
 
+### Secrets live in environments
+
+A **repository** secret is handed to any workflow on any branch: a branch that adds a
+`push`-triggered workflow can print it, and this repo has hundreds of branches, many pushed by
+automated sessions. An **environment** secret is only handed to a job that names the environment,
+and only on the refs that environment's deployment rule allows.
+
+| Environment | Secrets | Deployable from | Job |
+| --- | --- | --- | --- |
+| `production` | `DEPLOY_HOST`, `DEPLOY_USER`, `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_SECRET` | tags `v*`, branch `master` | `deploy.yml` › `deploy` |
+| `release-signing` | `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` | tags `v*` | `deploy.yml` › `android` |
+| `release` | `RELEASE_TOKEN` | branch `master` | `ci.yml` › `release` |
+| `github-pages` | `FDROID_REPO_KEYSTORE_BASE64`, `FDROID_REPO_KEYSTORE_PASSWORD`, `FDROID_REPO_KEY_ALIAS` | branch `master` | `pages.yml` › `publish` |
+| `renovate` | `RENOVATE_TOKEN` | branch `master` | `renovate.yml` › `renovate` |
+
+The workflows bind each job to its environment, and
+`scripts/workflow-secret-environments.test.ts` fails a job that reads one of these secrets without
+it. The **rules and the secrets themselves live in repository settings**, which no test can read, so
+this is the checklist (Settings → Environments):
+
+1. Open each environment (GitHub created them on first use) and set *Deployment branches and tags*
+   to *Selected* with the refs in the table.
+2. Add each secret to its environment, run one release to confirm it deploys, then **delete the
+   repository-level copy** — until then the old copy is still readable from any branch.
+3. No required reviewers: this is a single-maintainer repo and the gate is the ref rule, not a
+   person.
+
+Replacing the `RELEASE_TOKEN` personal access token with a GitHub App installation token (scoped to
+`contents: write` on this repository, and added as the `Protect master` ruleset's bypass actor) is
+the remaining step: a PAT carries its owner's access to every repository they can push to.
+
 ### What the custom managers cover
 
 Two version pins live outside any package manifest, so nothing else would ever bump them.
