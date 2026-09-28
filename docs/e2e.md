@@ -597,10 +597,11 @@ Use read-only/login-style specs only — do not seed or destroy prod data.
 The `e2e` job in `.github/workflows/ci.yml` installs deps + the Chromium browser,
 builds web twice — the phone bundle the Hono server serves from `packages/web/dist` and the
 TV bundle in `dist-tv` (`Build (web, TV configuration)`) — runs the suite, and uploads
-the Playwright HTML report on failure. `release` depends on every gate job (`ci`,
-`web-test`, `storybook`, `e2e`, `analysis`, `docker`, `desktop-package`),
-so a red e2e run blocks the deploy. `e2e` **is** in `check-ci-parity.ts`'s `GATE_JOBS`
-— that list is now *every* job in `release.needs`, enforced both ways. What is exempt is
+the Playwright HTML report on failure. `edge-image` — what ships from every merge —
+depends on every gate job (`ci`, `web-test`, `storybook`, `e2e`, `analysis`, `docker`,
+`desktop-package`), so a red e2e run blocks the deploy, and `release.yml` only releases a
+tip whose `edge` succeeded. `e2e` **is** in `check-ci-parity.ts`'s `GATE_JOBS`
+— that list is now *every* job in `edge-image.needs`, enforced both ways. What is exempt is
 the one command, not the job: `--filter @nicotind/e2e test` carries an `ALLOWLIST` entry
 with its reason, because CLAUDE.md quality gate 2 keeps `bun run e2e` out of
 `bun run verify` on purpose. The unit of the exemption is the thing that cannot run

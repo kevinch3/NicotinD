@@ -18,6 +18,9 @@ interface Step {
   name?: string;
   run?: string;
 }
+const release = parse(readFileSync(join(repoRoot, '.github/workflows/release.yml'), 'utf8')) as {
+  jobs: Record<string, { concurrency?: { group?: string; 'cancel-in-progress'?: boolean } }>;
+};
 const ci = parse(readFileSync(join(repoRoot, '.github/workflows/ci.yml'), 'utf8')) as {
   concurrency?: { group?: string; 'cancel-in-progress'?: string | boolean };
   jobs: Record<string, { concurrency?: { group?: string }; steps?: Step[] }>;
@@ -33,21 +36,20 @@ describe('every master commit gets its own CI run (issue #906)', () => {
   });
 
   it('still refuses to cancel a running master push (issue #360)', () => {
-    // The release job pushes a version-bump commit to master, which must not
-    // cancel the very run that produced it.
+    // Every green master commit ships as `edge`; a cancelled master run is a
+    // commit that never reached the host.
     expect(String(ci.concurrency?.['cancel-in-progress'])).toContain(
       "github.ref != 'refs/heads/master'",
     );
   });
 
-  it('serializes the release job, which per-commit groups would otherwise run in parallel', () => {
-    // Per-SHA workflow groups mean two master merges no longer queue behind
-    // each other — which is the point — but two `release` jobs tagging and
-    // pushing at once is not. A constant job-level group restores exactly the
-    // serialization the shared workflow group used to provide, and nothing else.
-    const group = ci.jobs.release?.concurrency?.group;
+  it('serializes the release job, so a scheduled and a manual run never tag at once', () => {
+    // release.yml runs on a schedule and on demand; two `release` jobs tagging
+    // and pushing at once would race. A constant group queues them.
+    const group = release.jobs.release?.concurrency?.group;
     expect(group).toBeString();
     expect(group).not.toContain('${{');
+    expect(release.jobs.release?.concurrency?.['cancel-in-progress']).toBe(false);
   });
 });
 
@@ -83,7 +85,7 @@ describe('the sidecar image filter sees the source the image is built from (issu
    * that actually decides whether a 3 GB GPU image gets built.
    */
   describe('behaviour of the extracted patterns', () => {
-    const patterns = [...((filter?.run ?? '').matchAll(/grep -qE '([^']+)'/g))].map(
+    const patterns = [...(filter?.run ?? '').matchAll(/grep -qE '([^']+)'/g)].map(
       (m) => new RegExp(m[1]!),
     );
     const [analysis] = patterns;

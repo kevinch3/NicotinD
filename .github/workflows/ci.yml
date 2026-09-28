@@ -1,4 +1,4 @@
-name: CI & Release
+name: CI & Edge
 
 on:
   push:
@@ -13,10 +13,10 @@ concurrency:
   # them `fix:` (issue #906). `cancel-in-progress: false` could not help: it
   # governs the *running* member and has no say over the pending one.
   group: ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
-  # The release job pushes a version-bump commit to master, which triggers a
-  # new run — which must not cancel THIS run (the one that just produced the
-  # release) out from under itself (issue #360). master pushes must never
-  # cancel each other; only superseded PR pushes should.
+  # Every green master commit ships (the `edge` jobs), so master pushes must
+  # never cancel each other — a cancelled run is a commit that never reached
+  # the host (and, before releases moved to release.yml, a release cancelled
+  # out from under itself, issue #360). Only superseded PR pushes cancel.
   cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 
 env:
@@ -36,13 +36,12 @@ permissions:
   contents: read
 
 jobs:
-  # Every job except `release` skips a `chore(release):` push. That commit only
-  # adds generated version files (package.json, CHANGELOG.md, build.gradle, the
-  # F-Droid changelogs), and the release job validates them with check:fdroid
-  # BEFORE pushing. Re-running all fourteen jobs on it produced a result nothing
-  # waited for: the tag it carries has already started deploy.yml. A pull
-  # request has no head_commit, so `|| ''` keeps PR runs unaffected.
-  # See docs/releasing.md.
+  # Every job skips a `chore(release):` push. That commit only adds generated
+  # version files (package.json, CHANGELOG.md, build.gradle, the F-Droid
+  # changelogs), and release.yml validates them with check:fdroid BEFORE
+  # pushing. Re-running every job on it produced a result nothing waited for:
+  # the tag it carries has already started deploy.yml. A pull request has no
+  # head_commit, so `|| ''` keeps PR runs unaffected. See docs/releasing.md.
 
   # Static gates + unit tests. Deliberately holds nothing browser-driven and nothing
   # that takes minutes: this job used to be the workflow's entire critical path (10m09
@@ -519,7 +518,7 @@ jobs:
   # Playwright's `_electron` and asserts the window loads + the sidecar
   # backend answers. Best-effort — `_electron` + a headless Linux display is
   # heavier/flakier than the browser-driven `e2e` job above, so it must not
-  # block `release`. NOT in `needs` below for the same reason.
+  # block what ships (`edge-image`). NOT in its `needs` for the same reason.
   # Desktop packaging IS deterministic (unlike the flaky Electron-launch smoke
   # test below), so it's a real blocking gate — and it's the only PR-time check
   # that runs `prepare-resources`'s production backend staging, which
@@ -664,7 +663,7 @@ jobs:
   # build (the docker exporter cannot export a manifest list), which is why this
   # is a matrix rather than a `platforms:` list on one step.
   #
-  # `release.needs` lists `docker` by job id, and a matrix requires every leg to
+  # `edge-image.needs` lists `docker` by job id, and a matrix requires every leg to
   # pass, so the gate stays wired without touching `needs`.
   docker:
     runs-on: ${{ matrix.runner }}
@@ -786,144 +785,175 @@ jobs:
           cache-from: type=gha,scope=analysis-linux-amd64
           cache-to: type=gha,mode=max,scope=analysis-linux-amd64
 
-  release:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    # RELEASE_TOKEN lives in this environment, deployable from master only
-    # (docs/dependency-management.md "Secrets live in environments").
-    environment: release
-    # The per-commit group above deliberately lets two master merges run at
-    # once. Two `release` jobs tagging and pushing at once is a different
-    # matter, so this restores exactly the serialization the shared workflow
-    # group used to provide, and nothing else. Queue, never cancel: the job is
-    # already re-entrant (it releases the true remote tip via
-    # `reset --hard FETCH_HEAD`, guarded by release-needed.ts and pushed
-    # `--atomic`), so a superseded release is absorbed by the next one.
-    concurrency:
-      group: ci-release-master
-      cancel-in-progress: false
+  # ---------------------------------------------------------------------------
+  # EDGE: every green master commit becomes `ghcr.io/kevinch3/nicotind:edge` and
+  # goes onto the deploy host (docs/releasing.md "Edge and releases"). Public
+  # releases are cut separately, on a schedule, by release.yml.
+  #
+  # This is what ships from every merge now, so it is what every gate job must
+  # block: `check:ci-parity` compares THIS job's needs to its GATE_JOBS, both
+  # ways. It rebuilds instead of reusing the `docker` job's image because that
+  # job also runs pull-request code, and must never hold a token that can push.
+  # ---------------------------------------------------------------------------
+  edge-image:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
     needs: [ci, web-test, storybook, e2e, e2e-shard, analysis, docker, desktop-package]
-    if: "github.event_name == 'push' && github.ref == 'refs/heads/master' && !startsWith(github.event.head_commit.message, 'chore(release):')"
+    if: "github.event_name == 'push' && github.ref == 'refs/heads/master' && !startsWith(github.event.head_commit.message || '', 'chore(release):')"
     permissions:
-      contents: write
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    env:
+      IMAGE: ghcr.io/kevinch3/nicotind
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Prepare platform slug
+        run: |
+          platform="${{ matrix.platform }}"
+          echo "PLATFORM_PAIR=${platform//\//-}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Same cache scope as the `docker` job above, which built this exact tree
+      # minutes ago, so this is mostly cache hits. NICOTIND_BUILD_COMMIT is what
+      # the host's /api/health reports, and what the edge deploy verifies.
+      - name: Build + push by digest
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          build-args: |
+            NICOTIND_BUILD_COMMIT=${{ github.sha }}
+          cache-from: type=gha,scope=docker-${{ env.PLATFORM_PAIR }}
+
+      - name: Smoke — boot the pushed image and verify it serves
+        run: |
+          set -euo pipefail
+          ref="$IMAGE@${{ steps.build.outputs.digest }}"
+          docker pull "$ref"
+          bash scripts/smoke-image.sh "$ref" "$(jq -r .version package.json)"
+
+      - name: Smoke — container logs on failure
+        if: failure()
+        run: docker logs nicotind-smoke 2>&1 | tail -100 || true
+
+      - name: Smoke — clean up
+        if: always()
+        run: docker rm -f nicotind-smoke 2>/dev/null || true
+
+      - name: Export digest
+        run: |
+          mkdir -p "${{ runner.temp }}/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: edge-digests-${{ env.PLATFORM_PAIR }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Stitch the per-arch digests into `:edge`, give the analysis sidecar an
+  # `:edge` too (compose runs both off one NICOTIND_VERSION), then hand the host
+  # this exact commit. The host verifies it by the commit /api/health reports,
+  # since an edge build still carries the last release's version number.
+  edge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: [edge-image]
+    if: "github.event_name == 'push' && github.ref == 'refs/heads/master' && !startsWith(github.event.head_commit.message || '', 'chore(release):')"
+    permissions:
+      contents: read
+      packages: write
+      actions: write
+    env:
+      IMAGE: ghcr.io/kevinch3/nicotind
+      ANALYSIS: ghcr.io/kevinch3/nicotind-analysis
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
-          token: ${{ secrets.RELEASE_TOKEN }}
+          fetch-depth: 0 # tags + history, for the analysis diff below
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: actions/download-artifact@v8
         with:
-          bun-version: ${{ env.BUN_VERSION }}
+          path: ${{ runner.temp }}/digests
+          pattern: edge-digests-*
+          merge-multiple: true
 
-      - name: Cache bun dependencies
-        uses: actions/cache@v6
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
-          path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ env.BUN_VERSION }}-${{ hashFiles('bun.lock', 'bunfig.toml') }}
-          restore-keys: |
-            bun-${{ runner.os }}-${{ env.BUN_VERSION }}-
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install dependencies
-        run: bun install
-
-      - name: Configure git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      # Idempotent, self-healing, orphan-tag-proof release.
-      #
-      # The failure this guards against (seen 2026-07-23, wedged every release
-      # for a day): the old step pushed with `git push --follow-tags`, which is
-      # NON-ATOMIC. When a concurrent merge advanced master, the branch update
-      # was rejected non-fast-forward but the *tag* still landed — leaving an
-      # orphan `vX` tag pointing at a `chore(release)` commit that never reached
-      # master. From then on the dry-run kept proposing that same version, and
-      # the old `tag exists → skip` guard read the orphan as "already published"
-      # and silently exited 0 (green!) on every subsequent push. No new tag → no
-      # deploy.yml run → releases frozen, invisibly.
-      #
-      # Two independent defenses, either of which alone prevents recurrence:
-      #   1. `--atomic`: a rejected branch push no longer lets the tag through.
-      #   2. self-heal: a `vX` tag that is NOT an ancestor of master is treated
-      #      as the orphan it is — deleted and re-cut from real master, instead
-      #      of masking the freeze as a skip. (This also auto-repairs the
-      #      existing orphan on the first master run after this lands.)
-      # Plus a bounded retry that re-syncs to the real tip so a merge racing the
-      # release is retried, never orphaned.
-      - name: Release (idempotent, self-healing bump + tag + atomic push)
+      - name: Point edge at this commit
+        working-directory: ${{ runner.temp }}/digests
         run: |
           set -euo pipefail
+          refs=()
+          for d in *; do refs+=("$IMAGE@sha256:$d"); done
+          docker buildx imagetools create -t "$IMAGE:edge" "${refs[@]}"
+          docker buildx imagetools inspect "$IMAGE:edge"
 
-          attempt=0
-          max=4
-          while :; do
-            attempt=$((attempt + 1))
+      # The analysis image is heavy and changes rarely, so it is rebuilt only
+      # when its sources changed since the last release; otherwise that
+      # release's image IS this tree's, and `edge` is pointed at it.
+      - name: Analysis image changed since the last release?
+        id: analysis
+        run: |
+          set -euo pipefail
+          prev="$(git describe --tags --abbrev=0 --match 'v*')"
+          echo "prev=$prev" >> "$GITHUB_OUTPUT"
+          if git diff --name-only "$prev"..HEAD | grep -qE '^packages/analysis/(Dockerfile|\.dockerignore|pyproject\.toml|app/)'; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          fi
 
-            # Always cut the release on top of the true remote tip so the push
-            # is a fast-forward; also refresh tags for the orphan check below.
-            git fetch --tags --force origin master
-            git reset --hard FETCH_HEAD # HEAD now == remote master tip
+      - name: Build + push the analysis image as edge
+        if: steps.analysis.outputs.build == 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: packages/analysis
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.ANALYSIS }}:edge
+          cache-from: type=gha,scope=analysis-linux-amd64
 
-            version="$(bunx commit-and-tag-version --dry-run 2>&1 \
-              | grep -oP 'tagging release v\K[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
-            if [ -z "$version" ]; then
-              echo "Could not determine next version from dry-run output" >&2
-              exit 1
-            fi
-            tag="v$version"
+      - name: Point the analysis edge at the last release's image
+        if: steps.analysis.outputs.build == 'false'
+        env:
+          PREV: ${{ steps.analysis.outputs.prev }}
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create -t "$ANALYSIS:edge" "$ANALYSIS:$PREV"
+          docker buildx imagetools inspect "$ANALYSIS:edge"
 
-            # Nothing releasable landed? Don't cut a version for it (#755).
-            # `commit-and-tag-version` patch-bumps even with zero bumping
-            # commits, so two master-push runs in flight produced v0.5.21 (real)
-            # and v0.5.22 (empty changelog, same tree, full docker build +
-            # deploy). Run B's `reset --hard` above lands it ON run A's
-            # `chore(release)` commit, which the `if:` guard cannot see because
-            # it reads the *pushed* head commit, not the tip after re-sync.
-            # Exit 1 means "not needed" — see scripts/release-needed.test.ts.
-            if ! bun run scripts/release-needed.ts; then
-              exit 0
-            fi
-
-            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
-              if git merge-base --is-ancestor "$tag^{commit}" HEAD; then
-                echo "$tag already reachable from master — genuinely published, skipping."
-                exit 0
-              fi
-              # Tag exists but is not on master: a stale orphan from a
-              # half-failed push. Delete it and re-release from real master.
-              echo "::warning::$tag is an orphan tag (not an ancestor of master); deleting and re-releasing."
-              git push --delete origin "$tag" || true
-              git tag -d "$tag" || true
-            fi
-
-            bun run release
-
-            # The release commit generates files no earlier CI run has seen —
-            # the per-versionCode F-Droid changelogs above all, capped at 500
-            # bytes. Check them HERE, before anything is pushed: CI no longer
-            # re-runs on the chore(release) commit, and even when it did, it
-            # judged the files only after the tag had already shipped.
-            if ! bun run check:fdroid; then
-              echo "::error::check:fdroid failed on the generated release commit; nothing was pushed." >&2
-              git tag -d "$tag" || true
-              exit 1
-            fi
-
-            # --atomic: if the branch update is rejected (a merge raced us) the
-            # tag is rejected too, so a failed push can never orphan a tag again.
-            if git push --atomic --follow-tags origin HEAD:refs/heads/master; then
-              echo "Published $tag."
-              exit 0
-            fi
-
-            # Roll back the local tag so the retry re-cuts cleanly on the new tip.
-            git tag -d "$tag" || true
-            if [ "$attempt" -ge "$max" ]; then
-              echo "Release push still rejected after $max attempts." >&2
-              exit 1
-            fi
-            echo "Push rejected (master advanced); re-syncing and retrying ($attempt/$max)…" >&2
-            sleep "$((attempt * 3))"
-          done
+      # A dispatch, not a call: deploy-host.yml queues host deploys on its own
+      # group, and a newer edge commit simply deploys after this one. Honours
+      # DEPLOY_HOLD (force=false).
+      - name: Deploy this commit to the host
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run deploy-host.yml --ref master \
+            -f version=edge -f ref=${{ github.sha }} -f expect_commit=${{ github.sha }} -f force=false

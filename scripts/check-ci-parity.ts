@@ -66,7 +66,7 @@ export const ALLOWLIST: Array<{ match: string; reason: string }> = [
  * covered: a gate that quietly leaves this list is exactly the drift this file exists to
  * catch, only with a job boundary hiding it.
  *
- * It is now **every job in `release.needs`**, enforced both ways (see
+ * It is now **every job in `edge-image.needs`** (see RELEASE_JOB), enforced both ways (see
  * `releaseJobsNotGated` and `gateJobsNotBlockingRelease`). Excluding whole jobs was the
  * bug: the previous list left out `e2e`, `analysis`, `docker` and `desktop-package`, and
  * the note explaining that named `desktop-smoke` — a DIFFERENT job, `continue-on-error`,
@@ -95,11 +95,15 @@ export const GATE_JOBS = [
 ] as const;
 
 /**
- * The job that cuts the release tag. Every gate job must block it, or splitting a gate
- * out silently stops it gating the release — the #457 shape, where a job that did not
- * actually pass still let a deploy through.
+ * The job that ships: `edge-image` builds the image every green master commit deploys to
+ * the host (docs/releasing.md "Edge and releases"). It used to be `release`, which cut the
+ * tag on every merge; releases now run from release.yml and release only a tip whose
+ * `edge` succeeded, so this is still the one job everything that reaches users waits on.
+ * Every gate job must block it, or splitting a gate out silently stops it gating what
+ * ships — the #457 shape, where a job that did not actually pass still let a deploy
+ * through. (The function names below keep "release" for continuity.)
  */
-export const RELEASE_JOB = 'release';
+export const RELEASE_JOB = 'edge-image';
 
 export interface WorkflowStep {
   name?: string;

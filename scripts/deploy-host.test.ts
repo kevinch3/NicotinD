@@ -29,18 +29,24 @@ const step = (name: string): string => (deploy.steps ?? []).find((s) => s.name =
 const ssh = step('Deploy via SSH');
 
 describe('deploy-host.yml', () => {
-  it('is both the release deploy and the manual rollback', () => {
-    expect(Object.keys(host.on).sort()).toEqual(['workflow_call', 'workflow_dispatch']);
-    for (const trigger of ['workflow_call', 'workflow_dispatch']) {
-      expect(Object.keys(host.on[trigger]!.inputs)).toEqual(
-        expect.arrayContaining(['version', 'ref', 'force']),
-      );
-    }
+  it('is dispatched — by the edge job and by hand for a rollback', () => {
+    expect(Object.keys(host.on)).toEqual(['workflow_dispatch']);
+    expect(Object.keys(host.on.workflow_dispatch!.inputs)).toEqual(
+      expect.arrayContaining(['version', 'ref', 'expect_commit', 'force']),
+    );
   });
 
-  // deploy.yml holds its `deploy-host` group at workflow level while it calls
-  // this job; a job-level group with the same name waits on its own caller.
-  it('queues host deploys on a group that cannot deadlock against its caller', () => {
+  // An edge build carries the last release's version number, so only its
+  // commit identifies it.
+  it('accepts edge only together with a commit to verify', () => {
+    const v = step('Validate inputs');
+    expect(v).toContain('|edge)$');
+    expect(v).toContain('version edge needs expect_commit');
+  });
+
+  // One pending run per group: sharing deploy.yml's workflow-level group would
+  // let a queued edge deploy evict a queued release build.
+  it('queues host deploys on their own group, never on the release lane', () => {
     expect(deploy.concurrency?.group).toBeString();
     expect(deploy.concurrency?.group).not.toBe(release.concurrency.group);
     expect(deploy.concurrency?.['cancel-in-progress']).toBe(false);
@@ -51,7 +57,7 @@ describe('deploy-host.yml', () => {
     const names = (deploy.steps ?? []).map((s) => s.name);
     expect(names.indexOf('Validate inputs')).toBe(0);
     const v = step('Validate inputs');
-    expect(v).toContain('^v[0-9]+\\.[0-9]+\\.[0-9]+$');
+    expect(v).toContain('v[0-9]+\\.[0-9]+\\.[0-9]+');
     expect(v).toContain('[0-9a-f]{40}');
   });
 

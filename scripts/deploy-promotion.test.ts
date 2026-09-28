@@ -58,13 +58,13 @@ describe('floating image tags move only after the release image is proven', () =
     expect(smoke?.run).toContain('steps.build.outputs.digest');
   });
 
-  it('deploy waits for promote and deploys that exact version (#457)', () => {
-    // Plain `needs` semantics are the #457 guard: a skipped or failed promote
-    // skips the deploy rather than redeploying the previous version.
-    expect(needsOf(deploy.jobs.deploy)).toEqual(['promote']);
-    const job = deploy.jobs.deploy as Job & { uses?: string; with?: Record<string, string> };
-    expect(job.if).toBe("github.ref_type == 'tag'");
-    expect(job.uses).toBe('./.github/workflows/deploy-host.yml');
-    expect(job.with).toEqual({ version: '${{ github.ref_name }}', ref: '${{ github.ref_name }}' });
+  // The host runs `edge`, deployed from every green master commit by ci.yml;
+  // a release deploying it too would move it BACKWARD onto an older commit,
+  // over a schema the newer one already migrated.
+  it('a release publishes images and apps but never deploys the host', () => {
+    expect(Object.keys(deploy.jobs)).not.toContain('deploy');
+    const text = JSON.stringify(deploy.jobs);
+    expect(text).not.toContain('DEPLOY_HOST');
+    expect(text).not.toContain('deploy-host.yml');
   });
 });

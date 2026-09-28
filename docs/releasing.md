@@ -1,9 +1,14 @@
 # Releases — how they work and how to run one
 
-One release = one `vX.Y.Z` git tag. Everything ships from that tag: the
-production server deploy **and** the app artifacts (Android APK, iOS IPA,
-desktop packages) attached to its GitHub Release. You never build a release by
-hand — you land commits and the pipeline does the rest.
+Two things ship, on two clocks (see [Edge and releases](#edge-and-releases)):
+
+- **Every green master commit** becomes the `:edge` image and is deployed to
+  the production host within minutes.
+- **A release** — one `vX.Y.Z` git tag, cut once a day or on demand — publishes
+  the `release`/`vX` images self-hosters pull and the app artifacts (Android
+  APK, iOS IPA, desktop packages) attached to its GitHub Release.
+
+You never build either by hand — you land commits and the pipeline does the rest.
 
 ## The day-to-day flow (this is the whole job)
 
@@ -16,21 +21,27 @@ hand — you land commits and the pipeline does the rest.
    major. `chore`/`docs`/`refactor`/`test`/`ci` don't bump and won't appear in
    the changelog. Full table in [CLAUDE.md](../CLAUDE.md#commit-conventions).
 2. **Do nothing else.** When `ci.yml` goes green on the master push, its
-   `release` job bumps the version from the commit history, regenerates
-   `CHANGELOG.md`, commits `chore(release): X.Y.Z`, tags `vX.Y.Z`, and pushes
-   the tag.
-3. **The tag triggers `deploy.yml`**, which deploys the server and builds
+   `edge-image` and `edge` jobs publish `:edge` and dispatch **Deploy host**,
+   which puts that exact commit on the production host.
+3. **Once a day** (13:17 UTC) `release.yml` releases master's tip if it holds a
+   bumping commit and its `edge` run succeeded: it bumps the version from the
+   commit history, regenerates `CHANGELOG.md`, commits `chore(release): X.Y.Z`,
+   tags `vX.Y.Z`, and pushes the tag. **Need it now?** Actions → **Release** →
+   *Run workflow*.
+4. **The tag triggers `deploy.yml`**, which publishes the images and builds
    **every** app artifact — an API-only release still rebuilds the APKs, the IPA
    and the desktop packages. That is deliberate: the in-app APK updater,
    electron-updater and the F-Droid repo all read the *latest* release and
    expect its assets (see [Why every release builds every app](#why-every-release-builds-every-app)).
-4. **Verify** (takes a minute):
-   - Actions: `ci.yml` → release job pushed the tag; `deploy.yml` run for the
-     tag is green.
+   It does **not** deploy the host, which already runs that code as `edge`.
+5. **Verify** (takes a minute):
+   - Actions: `ci.yml` → `edge` green and a **Deploy host** run for the commit;
+     after a release, `release.yml` pushed the tag and the `deploy.yml` run for
+     the tag is green.
    - The tag's **GitHub Release page** carries the expected artifacts. A
      release that is still a **draft** means `publish-release` did not run:
      see [A release is published only once its artifacts are attached](#a-release-is-published-only-once-its-artifacts-are-attached).
-   - The production server reports the new version (`GET /api/health` →
+   - The production server reports the new **commit** (`GET /api/health` →
      `{ ok, version }`, Settings footer, or `GET /api/system/status`), and the
      in-app changelog modal (click the version string) shows the new entry.
 
@@ -68,9 +79,10 @@ history, so land the next bumping commit normally. The tree ships in full
 appear in `CHANGELOG.md` — note it in the follow-up PR so the record exists.
 
 If a merge contained only non-bumping types, no release is cut — that's by
-design, not a failure. The release job is also **idempotent**: it skips itself
-on `chore(release)` pushes and exits early if the computed tag already exists,
-so re-runs are always safe.
+design, not a failure. The release job is also **idempotent**: it exits early if
+the computed tag already exists, and releases nothing while master's tip has no
+successful `edge` run (CI still running, or red — it says so in a warning), so
+re-runs are always safe.
 
 ### The release commit is checked before it is pushed
 
@@ -81,7 +93,7 @@ per-versionCode F-Droid changelogs. The release job runs `check:fdroid` on it
 the local tag and fails the job, so nothing is published.
 
 That is why **no CI job runs on a `chore(release)` push** — every job in
-`ci.yml` except `release` carries
+`ci.yml` carries
 `if: "!startsWith(github.event.head_commit.message || '', 'chore(release):')"`.
 Re-running all fourteen jobs there checked the generated files only after the tag
 had already started `deploy.yml`, and nothing waited for the result.
@@ -93,10 +105,54 @@ in-job check would leave those changelogs checked by nothing.
 | Artifact                                  | Built when                | How it reaches users                                                                                                            |
 | ----------------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | **Server image**                          | every tag                 | multi-arch image published to `ghcr.io/kevinch3/nicotind` (`vX.Y.Z` + `vX` + `release` tags); self-hosters `docker compose pull` |
-| **Server (production host)**              | every tag                 | auto-deployed over Tailscale SSH: pulls the just-published image — nothing to do                                                 |
+| **Server (production host)**              | every green master commit | runs `:edge`, deployed by **Deploy host** (exact commit, snapshot first) — nothing to do                                          |
 | **Android APK** (+ a separate TV APK)     | every tag                 | download from the GitHub Release and sideload (see below); signed when `ANDROID_KEYSTORE_*` secrets are present                  |
 | **iOS IPA** (unsigned)                    | every tag                 | re-sign + install via AltStore/Sideloadly (see below)                                                                            |
 | **Desktop** Linux AppImage/deb + macOS dmg | every tag                 | GitHub Release download; **existing installs auto-update** via electron-updater — Linux applies updates itself, macOS only notifies (ad-hoc signing) |
+
+### Edge and releases
+
+Every merge used to be a public release: 685 tags in 140 days, 65 % of them a
+single commit, each one an update prompt in every installed app, a new
+`release` image for every self-hoster, and a CI run on the bump commit. The
+pipeline now separates the two things a merge was doing:
+
+- **`edge` — every green master commit, to the production host.** `ci.yml`'s
+  `edge-image` job (which `needs` every gate job, so `check:ci-parity` holds
+  it to them) builds both arches with `NICOTIND_BUILD_COMMIT`, boots the pushed
+  image (`smoke-image.sh`), and `edge` merges them into
+  `ghcr.io/kevinch3/nicotind:edge`. The analysis sidecar gets an `:edge` too:
+  rebuilt only if `packages/analysis` changed since the last release, otherwise
+  the last release's image. Then it dispatches **Deploy host** with
+  `version=edge` and the commit, which `/api/health` must report. Nothing about
+  it is public except the tag, which any self-hoster can opt into with
+  `NICOTIND_VERSION=edge`.
+- **Releases — daily, or on demand.** `release.yml` runs the same idempotent,
+  orphan-tag-proof release step the per-merge job used to, and releases **only
+  a tip whose `edge` run succeeded** — it no longer runs inside the CI run of
+  the commit it releases, so that check is its proof the gates passed.
+
+Consequences worth knowing:
+
+- **The host is ahead of the latest release** between releases. `/api/health`
+  keeps reporting the last release's `version` until the next one (an edge
+  build carries the version in `package.json`); `commit` says which build it is.
+- **Releases never deploy the host.** It already runs that code, and deploying
+  the tag would move it *backward* onto an older commit, over a schema the
+  newer one already migrated.
+- **A burst of merges** queues host deploys; the newest pending one replaces
+  older pending ones (one pending run per concurrency group), so the host skips
+  straight to the newest commit.
+- **`:edge` is smoke-tested but not Trivy-scanned** (releases are, before
+  `release` moves). The host can run a base-image CVE with a published fix for
+  up to a day, until the next release's scan flags it.
+- **The `edge` job's success is what releases require.** A failed dispatch of
+  Deploy host fails `edge` and holds the release until a later commit is green;
+  the host being unreachable does not (the dispatch succeeds, the Deploy host
+  run fails on its own).
+- `:edge` pushes accumulate untagged versions in GHCR. They are not cleaned up
+  automatically: deleting "untagged" versions also deletes the per-arch
+  manifests behind every multi-arch tag.
 
 ### Why every release builds every app
 

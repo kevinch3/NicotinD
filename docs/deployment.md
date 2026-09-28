@@ -126,6 +126,7 @@ finding stopped the deploy but not the tag everyone pulls.
 | `vX.Y.Z` | exact release, immutable in practice — pin this to hold or roll back |
 | `vX` | major metatag: latest release within major `X` |
 | `release` | stable metatag: latest tagged release; the compose default |
+| `edge` | the latest **green master commit**, not a release — what the production host runs ([releasing.md](releasing.md#edge-and-releases)). Opt in with `NICOTIND_VERSION=edge`; its `/api/health` `version` is the last release's, and `commit` names the build |
 
 There is deliberately **no `latest` tag**. `release` is the explicit
 equivalent, and it can only ever point at a tagged release (Immich's
@@ -681,17 +682,17 @@ auto-updaters (Watchtower-style) for the same reason.
 **The production host** is rolled back from GitHub, not by hand:
 
 1. Set the repository variable **`DEPLOY_HOLD=true`** (Settings → Secrets and
-   variables → Actions → Variables), so the next release does not undo the
-   rollback. A held release says so in its run (a `hold` job with a warning)
-   rather than just not deploying.
+   variables → Actions → Variables), so the next merge's `edge` deploy does not
+   undo the rollback. A held deploy says so in its run (a `hold` job with a
+   warning) rather than just not deploying.
 2. Actions → **Deploy host** → *Run workflow*, with `version` and `ref` both set
    to the release to return to (e.g. `v0.8.100`). `force` defaults to on, so it
    runs despite the hold.
-3. When the cause is fixed, delete `DEPLOY_HOLD`; the next release deploys
-   normally.
+3. When the cause is fixed, delete `DEPLOY_HOLD`; the next green merge deploys
+   `edge` normally.
 
-`deploy-host.yml` is the same job every release uses (deploy.yml calls it after
-`promote`). It:
+`deploy-host.yml` is the same workflow every merge uses (ci.yml's `edge` job
+dispatches it with `version=edge` and the commit). It:
 
 - checks both images exist for that version (a never-published version such as
   v0.1.329, or one older than the analysis image, fails before the host is
@@ -704,8 +705,8 @@ auto-updaters (Watchtower-style) for the same reason.
 - **snapshots the database** into `backups/pre-deploy/` before replacing the
   server ([backup-restore.md](backup-restore.md#pre-deploy-snapshots)), and stops
   if it cannot;
-- verifies `/api/health` reports that version (and, when the caller passes one,
-  the build `commit`, which the image now reports).
+- verifies `/api/health` reports that version — or, for `edge`, which carries
+  the last release's version number, the build `commit`.
 
 Caveat: the SQLite schema is **forward-migrated on boot** — an older server may
 not understand a newer schema, and it boots with a warning only. If the rolled
@@ -983,7 +984,8 @@ builds warm the release cache. The `release` job in `ci.yml` requires the
 
 ## The release job (orphan-tag-proof tagging)
 
-`ci.yml`'s `release` job cuts the `vX.Y.Z` tag whose push fires this whole
+`release.yml`'s `release` job (daily, or by hand; it used to be a `ci.yml` job
+that ran on every merge) cuts the `vX.Y.Z` tag whose push fires this whole
 `deploy.yml` pipeline. It bumps via `commit-and-tag-version` and pushes the
 `chore(release)` commit + tag to master. Two properties make it safe to re-run
 and impossible to wedge:

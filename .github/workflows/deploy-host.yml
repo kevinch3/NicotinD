@@ -1,9 +1,10 @@
 name: Deploy host
 
 # Puts one exact image version on the deploy host, snapshots the database first,
-# and verifies the host serves what was asked for. Two ways in:
+# and verifies the host serves what was asked for. Dispatch-only, two callers:
 #
-# - `workflow_call` from deploy.yml, after `promote`, for every release tag.
+# - `workflow_dispatch` from ci.yml's `edge` job, for every green master
+#   commit: version=edge, verified by the commit /api/health reports.
 # - `workflow_dispatch` by hand: the one-click rollback (or redeploy). Pick an
 #   older `vX.Y.Z` for both inputs. docs/deployment.md "Rollback".
 #
@@ -12,34 +13,20 @@ name: Deploy host
 # host's .env. The deploy refuses to run over such a pin rather than override it.
 
 on:
-  workflow_call:
-    inputs:
-      version:
-        description: Image tag to run (vX.Y.Z)
-        type: string
-        required: true
-      ref:
-        description: Git ref the host checks out for its compose files (vX.Y.Z, a commit sha, or origin/master)
-        type: string
-        required: true
-      expect_commit:
-        description: Commit /api/health must report (empty = check the version only)
-        type: string
-        default: ''
-      force:
-        description: Deploy even while DEPLOY_HOLD is set
-        type: boolean
-        default: false
   workflow_dispatch:
     inputs:
       version:
-        description: Image tag to run (vX.Y.Z) — pick an older one to roll back
+        description: Image tag to run (vX.Y.Z, or edge with expect_commit) — pick an older vX.Y.Z to roll back
         type: string
         required: true
       ref:
         description: Git ref for the compose files — normally the same vX.Y.Z
         type: string
         required: true
+      expect_commit:
+        description: Commit /api/health must report (required for edge; empty for a release)
+        type: string
+        default: ''
       force:
         description: Deploy even while DEPLOY_HOLD is set (a manual rollback usually wants this)
         type: boolean
@@ -72,9 +59,11 @@ jobs:
     # DEPLOY_* and TS_OAUTH_* live in this environment, deployable from `v*`
     # tags and master only (docs/dependency-management.md).
     environment: production
-    # Host deploys queue behind each other and never cancel one mid-`up -d`.
-    # NOT named `deploy-host`: deploy.yml holds that group at workflow level
-    # while it calls this job, and sharing the name would deadlock the call.
+    # Host deploys queue behind each other and never cancel one mid-`up -d`;
+    # a burst of merges lets the newest pending edge replace older pending ones.
+    # NOT named `deploy-host`: that is deploy.yml's workflow-level group, and a
+    # pending host deploy must never share a slot with a release build (one
+    # pending run per group — an edge deploy would evict a queued release).
     concurrency:
       group: host-deploy
       cancel-in-progress: false
@@ -91,7 +80,10 @@ jobs:
           EXPECT_COMMIT: ${{ inputs.expect_commit }}
         run: |
           set -euo pipefail
-          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::version '$VERSION' is not vX.Y.Z"; exit 1; }
+          [[ "$VERSION" =~ ^(v[0-9]+\.[0-9]+\.[0-9]+|edge)$ ]] || { echo "::error::version '$VERSION' is not vX.Y.Z or edge"; exit 1; }
+          # An edge build carries the last release's version number, so only
+          # its commit can say which build is running.
+          [[ "$VERSION" != edge || -n "$EXPECT_COMMIT" ]] || { echo "::error::version edge needs expect_commit"; exit 1; }
           [[ "$REF" =~ ^(v[0-9]+\.[0-9]+\.[0-9]+|[0-9a-f]{40}|origin/master)$ ]] || { echo "::error::ref '$REF' is not vX.Y.Z, a full commit sha, or origin/master"; exit 1; }
           [[ -z "$EXPECT_COMMIT" || "$EXPECT_COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::expect_commit '$EXPECT_COMMIT' is not a full commit sha"; exit 1; }
 
@@ -265,7 +257,8 @@ jobs:
         run: |
           ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} '
             want_version="${{ inputs.version }}"
-            want_version="${want_version#v}"
+            # edge carries the last release number; it is verified by commit.
+            case "$want_version" in edge) want_version="" ;; *) want_version="${want_version#v}" ;; esac
             want_commit="${{ inputs.expect_commit }}"
             got=""
             got_commit=""
@@ -274,7 +267,7 @@ jobs:
               if [ -n "$body" ]; then
                 got="$(printf "%s" "$body" | tr "," "\n" | sed -n "s/.*\"version\":\"\([^\"]*\)\".*/\1/p")"
                 got_commit="$(printf "%s" "$body" | tr "," "\n" | sed -n "s/.*\"commit\":\"\([^\"]*\)\".*/\1/p")"
-                if [ "$got" = "$want_version" ] && { [ -z "$want_commit" ] || [ "$got_commit" = "$want_commit" ]; }; then
+                if { [ -z "$want_version" ] || [ "$got" = "$want_version" ]; } && { [ -z "$want_commit" ] || [ "$got_commit" = "$want_commit" ]; }; then
                   echo "Deploy verified: /api/health reports $got${got_commit:+ at $got_commit}"
                   exit 0
                 fi
