@@ -1161,7 +1161,9 @@ always passes, caught only by running it against the real repo.
 
 ## Image scanning — the base layer `bun audit` cannot see
 
-Trivy runs in `deploy.yml`'s `docker-merge` job, scoped to **OS packages only**
+Trivy runs in `deploy.yml`'s `docker-merge` job, and on every `:edge` image in `ci.yml`
+(each arch's digest in `edge-image`, the analysis image in `edge`) with the same pin and
+policy, before either edge tag moves. It is scoped to **OS packages only**
 (`vuln-type: os`). That scoping is the point: [`check:audit`](#checkaudit--a-supply-chain-gate-that-measures-what-ships)
 owns npm dependencies and structurally cannot see a Debian package in the `oven/bun` layer,
 so keeping the two disjoint means a failure in either is unambiguous about what to fix.
