@@ -2007,6 +2007,49 @@ describe('artist-identity task', () => {
     ]);
     expect(task.countPending(db)).toBe(0);
   });
+
+  // Issue #1440: prod held a user row whose raw_name was NFD ("Rebūke")
+  // while the scanner stores NFC ("Rebūke"). Both fold to one artist_key,
+  // so the Lidarr write was a silent no-op under the user row, and the byte
+  // comparison left the name pending forever — one Lidarr lookup per minute.
+  it('an identity row covers every spelling of its artist key (NFD row, NFC song)', async () => {
+    const nfc = 'Anyma & Rebūke';
+    const nfd = 'Anyma & Rebūke';
+    seedSong('a', { artist: nfc });
+    db.run(
+      `INSERT INTO library_artist_identity (artist_key, raw_name, decision, members, source, checked_at)
+       VALUES (?, ?, 'split', ?, 'user', 1)`,
+      [artistIdFor(nfd), nfd, JSON.stringify(['Anyma', 'Rebūke'])],
+    );
+    let calls = 0;
+    const c = ctx({
+      resolveArtistIdentity: async () => {
+        calls++;
+        return { decision: 'split' as const, members: ['Anyma', 'Rebūke'] };
+      },
+    });
+    expect(task.countPending(db)).toBe(0);
+    await task.run(db, c, 25);
+    expect(calls).toBe(0);
+  });
+
+  it('two spellings of one compound share one fresh row instead of taking turns', async () => {
+    seedSong('a', { artist: 'CamelPhat & Anyma' });
+    seedSong('b', { artist: 'CAMELPHAT & ANYMA' });
+    let calls = 0;
+    const c = ctx({
+      resolveArtistIdentity: async () => {
+        calls++;
+        return { decision: 'split' as const, members: ['CamelPhat', 'Anyma'] };
+      },
+    });
+    await task.run(db, c, 25);
+    const first = calls;
+    expect(first).toBe(1);
+    await task.run(db, c, 25);
+    expect(calls).toBe(first);
+    expect(task.countPending(db)).toBe(0);
+  });
 });
 
 describe('popularity task (issue #220)', () => {

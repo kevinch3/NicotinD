@@ -240,7 +240,8 @@ Launch tasks:
   (two artists) should be split, and caches the decision in `library_artist_identity` so
   the **synchronous scanner** can split with zero network calls (see
   [library-scanner.md](library-scanner.md) "Multi-artist support"). Pending = distinct
-  delimited `artist`/`album_artist` strings lacking a fresh (7-day TTL) authority row.
+  delimited `artist`/`album_artist` strings lacking a fresh (7-day TTL) authority row, judged
+  on `artist_key` so one row covers every spelling of the compound (#1440).
   Available with **Lidarr** configured (`ctx.resolveArtistIdentity`, a memoized
   `artist.lookup` wrapper). Per compound it records `single` (the whole string is a
   canonical artist → keep whole), `split` (every part resolves to a real artist →

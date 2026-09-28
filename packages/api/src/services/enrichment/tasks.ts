@@ -1374,24 +1374,46 @@ const DELIMITED_ARTIST_SQL = `(
 /** Re-resolve a compound's identity at most this often. */
 export const ARTIST_IDENTITY_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-/** Distinct delimited artist/album-artist strings lacking a fresh authority row. */
+/**
+ * Distinct delimited artist/album-artist strings lacking a fresh authority row.
+ *
+ * Coverage is judged on `artist_key` (`artistIdFor`), the table's own key — never on
+ * `raw_name`. The key folds case, accents and Unicode form, so every spelling of one
+ * compound shares one row, and the scanner reads that row by the same folded form. A
+ * byte comparison against `raw_name` left a spelling the row did not literally carry
+ * pending forever: on prod an NFD user row for an NFC song name was re-resolved against
+ * Lidarr every minute, each write a silent no-op under the user row (issue #1440). One
+ * name per uncovered key, so two spellings cost one lookup instead of taking turns.
+ */
 export function pendingArtistIdentityRows(db: Database, cutoff: number, limit?: number): string[] {
-  const rows = db
-    .query<{ name: string }, [number] | [number, number]>(
+  const candidates = db
+    .query<{ name: string }, []>(
       `SELECT name FROM (
          SELECT DISTINCT artist AS name FROM library_songs WHERE artist IS NOT NULL
          UNION
          SELECT DISTINCT album_artist AS name FROM library_songs WHERE album_artist IS NOT NULL
        ) t
        WHERE ${DELIMITED_ARTIST_SQL}
-         AND NOT EXISTS (
-           SELECT 1 FROM library_artist_identity i
-           WHERE i.raw_name = t.name AND (i.checked_at > ? OR i.source = 'user')
-         )
-       ORDER BY name${limit != null ? ' LIMIT ?' : ''}`,
+       ORDER BY name`,
     )
-    .all(...((limit != null ? [cutoff, limit] : [cutoff]) as [number] | [number, number]));
-  return rows.map((r) => r.name);
+    .all();
+  const covered = new Set(
+    db
+      .query<{ artist_key: string }, [number]>(
+        `SELECT artist_key FROM library_artist_identity WHERE checked_at > ? OR source = 'user'`,
+      )
+      .all(cutoff)
+      .map((r) => r.artist_key),
+  );
+  const pending: string[] = [];
+  for (const { name } of candidates) {
+    if (limit != null && pending.length >= limit) break;
+    const key = artistIdFor(name);
+    if (covered.has(key)) continue;
+    covered.add(key);
+    pending.push(name);
+  }
+  return pending;
 }
 
 /**

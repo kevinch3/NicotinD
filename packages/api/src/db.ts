@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { createLogger, PROCESSING_TASK_IDS } from '@nicotind/core';
 import { repairGenreMirrorDrift } from './services/genre-split.js';
+import { repairArtistIdentityNfc } from './services/artist-identity-store.js';
 import {
   hasSomethingToLose,
   migrationBackupEnabled,
@@ -2009,6 +2010,25 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
       `INSERT OR REPLACE INTO library_sync_state (key, value, updated_at) VALUES (?, '1', ?)`,
       ['genre_mirror_drift_repair_v1', now],
     );
+  }
+
+  // One-time NFC pass over curator-written identity/alias text (issue #1440). The
+  // writers compose now; this composes the rows written before they did. Only text
+  // columns change — both tables' keys already fold the two forms.
+  const identityNfcRepaired = db
+    .query<{ value: string }, [string]>(`SELECT value FROM library_sync_state WHERE key = ?`)
+    .get('artist_identity_nfc_v1');
+  if (!identityNfcRepaired) {
+    db.transaction(() => {
+      const result = repairArtistIdentityNfc(db);
+      if (result.identity > 0 || result.aliases > 0) {
+        log.info(result, 'composed NFD artist identity/alias text');
+      }
+      db.run(
+        `INSERT OR REPLACE INTO library_sync_state (key, value, updated_at) VALUES (?, '1', ?)`,
+        ['artist_identity_nfc_v1', Date.now()],
+      );
+    })();
   }
 
   // Retired-task ledger sweep (issue #779). `library_song_analysis_failures` is

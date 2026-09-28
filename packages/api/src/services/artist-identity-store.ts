@@ -158,7 +158,7 @@ export function upsertArtistAlias(
        source = excluded.source,
        created_at = excluded.created_at
      WHERE library_artist_aliases.source != 'user' OR excluded.source = 'user'`,
-    [row.aliasNorm, row.canonicalName, row.mbid ?? null, row.source, Date.now()],
+    [row.aliasNorm, row.canonicalName.normalize('NFC'), row.mbid ?? null, row.source, Date.now()],
   );
   return true;
 }
@@ -263,11 +263,57 @@ export function recordAcquiredArtistIdentity(
 }
 
 /**
+ * Compose (NFC) identity and alias text written before these writers did (issue #1440).
+ *
+ * The scanner stores every tag string NFC since #961, but these two side tables took
+ * curator text as sent, and a macOS client sends it decomposed. The keys are
+ * unaffected — `artist_key` and `alias_norm` both go through
+ * `normalizeArtistForGrouping`, which folds the two forms — so only the text columns
+ * change, and nothing keyed on them moves. Idempotent: a composed row is left alone.
+ */
+export function repairArtistIdentityNfc(db: Database): { identity: number; aliases: number } {
+  let identity = 0;
+  let aliases = 0;
+  const idRows = db
+    .query<{ artist_key: string; raw_name: string; members: string | null }, []>(
+      `SELECT artist_key, raw_name, members FROM library_artist_identity`,
+    )
+    .all();
+  for (const r of idRows) {
+    const raw = r.raw_name.normalize('NFC');
+    const members = r.members?.normalize('NFC') ?? null;
+    if (raw === r.raw_name && members === r.members) continue;
+    db.run(`UPDATE library_artist_identity SET raw_name = ?, members = ? WHERE artist_key = ?`, [
+      raw,
+      members,
+      r.artist_key,
+    ]);
+    identity++;
+  }
+  const aliasRows = db
+    .query<{ alias_norm: string; canonical_name: string }, []>(
+      `SELECT alias_norm, canonical_name FROM library_artist_aliases`,
+    )
+    .all();
+  for (const r of aliasRows) {
+    const canonical = r.canonical_name.normalize('NFC');
+    if (canonical === r.canonical_name) continue;
+    db.run(`UPDATE library_artist_aliases SET canonical_name = ? WHERE alias_norm = ?`, [
+      canonical,
+      r.alias_norm,
+    ]);
+    aliases++;
+  }
+  return { identity, aliases };
+}
+
+/**
  * Upsert a resolved split decision (written by the enrichment task / seed script /
  * acquisition / the admin fix flow). A `source='user'` row is the highest authority:
  * background writers (lidarr/mb/library) can never overwrite it — only another user
  * decision can. See also {@link pendingArtistIdentityRows}, which keeps user rows out
- * of the background task's pending set permanently (no TTL re-resolution).
+ * of the background task's pending set permanently (no TTL re-resolution). Text is
+ * stored NFC, like every tag string the scanner writes (issue #1440).
  */
 export function upsertArtistIdentity(
   db: Database,
@@ -291,9 +337,11 @@ export function upsertArtistIdentity(
      WHERE library_artist_identity.source != 'user' OR excluded.source = 'user'`,
     [
       row.artistKey,
-      row.rawName,
+      row.rawName.normalize('NFC'),
       row.decision,
-      row.members && row.members.length ? JSON.stringify(row.members) : null,
+      row.members && row.members.length
+        ? JSON.stringify(row.members.map((m) => m.normalize('NFC')))
+        : null,
       row.source,
       Date.now(),
     ],

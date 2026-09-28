@@ -1136,3 +1136,39 @@ describe('applySchema — redundant index drop (#1306)', () => {
     );
   });
 });
+
+describe('applySchema — artist identity NFC repair (artist_identity_nfc_v1, #1440)', () => {
+  const nfd = 'Anyma & Rebu\u0304ke';
+  const rawName = (db: Database) =>
+    db.query<{ raw_name: string }, []>('SELECT raw_name FROM library_artist_identity').get()!
+      .raw_name;
+
+  function legacyDb(): Database {
+    const db = new Database(':memory:');
+    applySchema(db);
+    db.run(
+      `INSERT INTO library_artist_identity (artist_key, raw_name, decision, members, source, checked_at)
+       VALUES ('k', ?, 'split', '["Anyma","Rebu\u0304ke"]', 'user', 1)`,
+      [nfd],
+    );
+    db.run(`DELETE FROM library_sync_state WHERE key = 'artist_identity_nfc_v1'`);
+    return db;
+  }
+
+  it('composes the stored text once and sets the marker', () => {
+    const db = legacyDb();
+    applySchema(db);
+    expect(rawName(db)).toBe('Anyma & Reb\u016Bke');
+    expect(
+      db.query(`SELECT 1 FROM library_sync_state WHERE key = 'artist_identity_nfc_v1'`).get(),
+    ).not.toBeNull();
+  });
+
+  it('does not run again once the marker is set', () => {
+    const db = legacyDb();
+    applySchema(db);
+    db.run(`UPDATE library_artist_identity SET raw_name = ?`, [nfd]);
+    applySchema(db);
+    expect(rawName(db)).toBe(nfd);
+  });
+});

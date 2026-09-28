@@ -6,6 +6,7 @@ import {
   isPlaceholderAliasKey,
   loadSplitAuthority,
   recordAcquiredArtistIdentity,
+  repairArtistIdentityNfc,
   upsertArtistAlias,
   upsertArtistIdentity,
 } from './artist-identity-store.js';
@@ -288,5 +289,95 @@ describe('placeholder-keyed artist aliases are refused at the door', () => {
     expect(aliasCount()).toBe(1);
     expect(isPlaceholderAliasKey('pericos')).toBe(false);
     expect(isPlaceholderAliasKey('metallica')).toBe(false);
+  });
+});
+
+// Issue #1440: a curator's client sent "Anyma & Rebu\u0304ke" decomposed (NFD),
+// and it was stored as sent — while every tag string is NFC since #961.
+describe('artist identity text is stored NFC', () => {
+  const nfd = 'Anyma & Rebu\u0304ke';
+  const nfc = 'Anyma & Reb\u016Bke';
+
+  function identity(): { raw_name: string; members: string | null } | null {
+    return db
+      .query<{ raw_name: string; members: string | null }, []>(
+        'SELECT raw_name, members FROM library_artist_identity',
+      )
+      .get();
+  }
+
+  it('upsertArtistIdentity composes the raw name and the members', () => {
+    upsertArtistIdentity(db, {
+      artistKey: artistIdFor(nfd),
+      rawName: nfd,
+      decision: 'split',
+      members: ['Anyma', 'Rebu\u0304ke'],
+      source: 'user',
+    });
+    const row = identity()!;
+    expect(row.raw_name).toBe(nfc);
+    expect(JSON.parse(row.members!)).toEqual(['Anyma', 'Reb\u016Bke']);
+  });
+
+  it('upsertArtistAlias composes the canonical name the scanner mints from', () => {
+    upsertArtistAlias(db, {
+      aliasNorm: 'donny benet',
+      canonicalName: 'Donny Bene\u0301t',
+      source: 'user',
+    });
+    const row = db
+      .query<{ canonical_name: string }, []>('SELECT canonical_name FROM library_artist_aliases')
+      .get()!;
+    expect(row.canonical_name).toBe('Donny Ben\u00E9t');
+  });
+
+  it('repairArtistIdentityNfc composes rows written before the fix and touches nothing else', () => {
+    const put = (key: string, raw: string, members: string | null, source: string) =>
+      db.run(
+        `INSERT INTO library_artist_identity (artist_key, raw_name, decision, members, source, checked_at)
+         VALUES (?, ?, 'split', ?, ?, 42)`,
+        [key, raw, members, source],
+      );
+    put(artistIdFor(nfd), nfd, JSON.stringify(['Anyma', 'Rebu\u0304ke']), 'user');
+    put(artistIdFor('Bob Marley, Peter Tosh'), 'Bob Marley, Peter Tosh', null, 'lidarr');
+    db.run(
+      `INSERT INTO library_artist_aliases (alias_norm, canonical_name, mbid, source, created_at)
+       VALUES ('donny benet', 'Donny Bene\u0301t', NULL, 'user', 7), ('pericos', 'Los Pericos', NULL, 'user', 7)`,
+    );
+    const before = db.query('SELECT * FROM library_artist_identity ORDER BY artist_key').all();
+
+    expect(repairArtistIdentityNfc(db)).toEqual({ identity: 1, aliases: 1 });
+
+    const after = db
+      .query<Record<string, unknown>, []>(
+        'SELECT * FROM library_artist_identity ORDER BY artist_key',
+      )
+      .all();
+    const anyma = after.find((r) => r.artist_key === artistIdFor(nfc))!;
+    expect(anyma.raw_name).toBe(nfc);
+    expect(anyma.members).toBe(JSON.stringify(['Anyma', 'Reb\u016Bke']));
+    // key, decision, source and checked_at are untouched — the key already folded both forms.
+    expect(after.map((r) => ({ ...r, raw_name: 0, members: 0 }))).toEqual(
+      (before as Record<string, unknown>[]).map((r) => ({ ...r, raw_name: 0, members: 0 })),
+    );
+    expect(after.find((r) => r.raw_name === 'Bob Marley, Peter Tosh')).toEqual(
+      (before as Record<string, unknown>[]).find((r) => r.raw_name === 'Bob Marley, Peter Tosh'),
+    );
+    expect(
+      db
+        .query(
+          'SELECT alias_norm, canonical_name, source, created_at FROM library_artist_aliases ORDER BY alias_norm',
+        )
+        .all(),
+    ).toEqual([
+      {
+        alias_norm: 'donny benet',
+        canonical_name: 'Donny Ben\u00E9t',
+        source: 'user',
+        created_at: 7,
+      },
+      { alias_norm: 'pericos', canonical_name: 'Los Pericos', source: 'user', created_at: 7 },
+    ]);
+    expect(repairArtistIdentityNfc(db)).toEqual({ identity: 0, aliases: 0 });
   });
 });
