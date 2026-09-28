@@ -2,8 +2,8 @@ import { OpenAPIHono } from '@hono/zod-openapi';
 import { swaggerUI } from '@hono/swagger-ui';
 import { serveStatic, createBunWebSocket } from 'hono/bun';
 import { nativeAppCors } from './middleware/cors.js';
-import { inFlightRequests, trackInFlight } from './middleware/in-flight.js';
-import { startLoopBlockMonitor } from './services/loop-block-monitor.js';
+import { trackInFlight } from './middleware/in-flight.js';
+import { startLoopBlockRecorder } from './services/loop-block-store.js';
 import type {
   NicotinDConfig,
   TrackStatus,
@@ -247,7 +247,7 @@ export function createApp({
   // before auth so a request that never reaches a route still cannot be the
   // unexplained one.
   app.use('/api/*', trackInFlight());
-  startLoopBlockMonitor({ inFlight: inFlightRequests });
+  startLoopBlockRecorder(db);
 
   app.route('/api/health', healthRoutes(version));
 

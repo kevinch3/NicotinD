@@ -43,6 +43,25 @@ describe('trackInFlight', () => {
     expect(inFlightRequests()).toEqual([]);
   });
 
+  it('still names a synchronous blocker after it returned, when asked since the last tick (#1443)', async () => {
+    const app = new Hono();
+    app.use('*', trackInFlight());
+    app.get('/api/library/artists', (c) => {
+      const until = performance.now() + 30;
+      while (performance.now() < until) {
+        /* spin */
+      }
+      return c.json([]);
+    });
+    const lastTick = performance.now();
+    await app.request('/api/library/artists?country=CL');
+    expect(inFlightRequests()).toEqual([]);
+    const seen = inFlightRequests(lastTick);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatch(/^GET \/api\/library\/artists\?country \(\d+ms\)$/);
+    expect(inFlightRequests(performance.now() + 1)).toEqual([]);
+  });
+
   it('orders concurrent requests longest-running first', async () => {
     const app = new Hono();
     app.use('*', trackInFlight());

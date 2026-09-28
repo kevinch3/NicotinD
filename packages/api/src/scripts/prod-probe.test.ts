@@ -8,10 +8,19 @@ import {
   ORPHAN_PROBE_TABLES,
   assertReadOnlySql,
   openReadOnlyDb,
+  PROBE_LOOP_BLOCK_MAX_ROWS,
+  PROBE_LOOP_BLOCK_RETENTION_MS,
   probeJobs,
+  probeLoopBlocks,
   probeOrphans,
   probeTransfers,
 } from './prod-probe.js';
+import {
+  LOOP_BLOCK_MAX_ROWS,
+  LOOP_BLOCK_RETENTION_MS,
+  recordLoopBlock,
+  startLoopBlockRecorder,
+} from '../services/loop-block-store.js';
 
 describe('assertReadOnlySql — the --sql escape hatch cannot mutate prod', () => {
   it('accepts the read forms', () => {
@@ -203,5 +212,72 @@ describe('probes', () => {
   it('reports the hidden-transfer fallback size', () => {
     db.run(`INSERT INTO hidden_transfers (id) VALUES ('t1')`);
     expect(probeTransfers(db).hiddenTransfers).toBe(1);
+  });
+});
+
+describe('probeLoopBlocks — the #1058 re-measure read path', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+
+  it('mirrors the recorder retention (the probe ships alone into the container, so it cannot import it)', () => {
+    expect(PROBE_LOOP_BLOCK_RETENTION_MS).toBe(LOOP_BLOCK_RETENTION_MS);
+    expect(PROBE_LOOP_BLOCK_MAX_ROWS).toBe(LOOP_BLOCK_MAX_ROWS);
+  });
+
+  it('says nothing was recorded on a database the recorder never ran against', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    const out = probeLoopBlocks(db, 10 * DAY);
+    expect(out.summary).toMatchObject({ recording_since: null, window_start: null, blocks: 0 });
+    expect(out.recent).toEqual([]);
+  });
+
+  it('summarises the window and names library-attributed blocks, newest first', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    startLoopBlockRecorder(db)();
+    db.run(`UPDATE library_sync_state SET value = ? WHERE key = 'loop_blocks_recording_since'`, [
+      String(DAY),
+    ]);
+    const now = 200 * DAY;
+    recordLoopBlock(db, { blockedMs: 1304, inFlight: [] }, now - 3 * DAY);
+    recordLoopBlock(
+      db,
+      { blockedMs: 6200, inFlight: ['GET /api/library/artists?country (6100ms)'] },
+      now - 2 * DAY,
+    );
+    recordLoopBlock(db, { blockedMs: 1100, inFlight: ['GET /api/health (1ms)'] }, now - DAY);
+
+    const out = probeLoopBlocks(db, now);
+    expect(out.summary).toEqual({
+      recording_since: new Date(DAY).toISOString(),
+      // Recording began before the retention cutoff, so the cutoff bounds the window.
+      window_start: new Date(now - LOOP_BLOCK_RETENTION_MS).toISOString(),
+      blocks: 3,
+      blocks_ge_5s: 1,
+      max_ms: 6200,
+      request_attributed: 2,
+      library_attributed: 1,
+    });
+    expect(out.recent.map((r) => r.blocked_ms)).toEqual([1100, 6200, 1304]);
+    expect(out.recent[1]).toEqual({
+      at: new Date(now - 2 * DAY).toISOString(),
+      blocked_ms: 6200,
+      in_flight: 'GET /api/library/artists?country (6100ms)',
+    });
+  });
+
+  it('starts the window at the recording stamp when that is more recent than the cutoff', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    startLoopBlockRecorder(db)();
+    const since = Number(
+      (
+        db
+          .query(`SELECT value FROM library_sync_state WHERE key = 'loop_blocks_recording_since'`)
+          .get() as { value: string }
+      ).value,
+    );
+    const out = probeLoopBlocks(db, since + DAY);
+    expect(out.summary.window_start).toBe(new Date(since).toISOString());
   });
 });

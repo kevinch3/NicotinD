@@ -136,12 +136,64 @@ Three runs should log two `fail n/3` lines then a `NOTIFIED:` (or
 `NOTIFY-SKIPPED:`) line. Remove the state file afterwards:
 `rm ~/.local/state/kpc-probe/state`.
 
+## Event-loop blocks are persisted
+
+NicotinD ships an in-process saturation detector, `startLoopBlockMonitor`, which
+fired at 07:13–07:14Z on the incident day (`blockedMs` 1242/1723/1054) — **1h36m
+before** the outage. Its output used to go only to the container log, and prod's
+container logs use Docker's default `json-file` driver, so they die with every
+deploy: the 2026-09-28 #1058 re-measure could only say "no stalls" for the 29
+minutes since the last one.
+
+`createApp` now starts it through `startLoopBlockRecorder`
+(`packages/api/src/services/loop-block-store.ts`), which writes every reported
+block to the **`loop_blocks`** table in the app's SQLite DB under
+`NICOTIND_DATA_DIR` — the volume that survives redeploys:
+
+| column | meaning |
+| --- | --- |
+| `at` | epoch ms when the loop came back |
+| `blocked_ms` | how late the monitor's timer ran (the block) |
+| `in_flight` | JSON array of the requests active since the last on-time tick, as `METHOD /path?paramNames (Nms)` |
+
+**What counts as a block** is unchanged: timer lateness ≥ 1 s
+(`LOOP_BLOCK_BUDGET_MS`). **In-flight attribution** includes requests that
+*finished* since the last on-time tick, not only ones still in a handler — a
+synchronous blocker has already returned by the time the monitor's timer runs,
+so before #1443 it was never the one named and every block logged `inFlight: []`.
+
+**Retention: 90 days or 10,000 rows, whichever is smaller**, pruned on each write
+by two index range deletes (`at`, then rowid) that almost always match nothing.
+90 days spans many deploys and a quarterly re-measure; blocks ≥ 1 s are rare (two
+per boot, from the curator's full sync, is the normal count), so the row cap only
+matters in a pathological storm — at most ~1 row/s, bounded to ~1 MB. Measured
+cost of one write at the cap, file DB in WAL: **median 0.04 ms, p99 0.11 ms** (the
+rare ~20 ms outlier is a WAL auto-checkpoint). A failed write logs and is dropped;
+it never throws.
+
+`startLoopBlockRecorder` also stamps `library_sync_state`
+`loop_blocks_recording_since` once, so **zero rows** can be read as "none since
+then" rather than "nothing was recording".
+
+### Reading it
+
+```bash
+ssh kpc 'docker exec -i nicotind-nicotind-1 sh -lc "cat > /tmp/probe.ts && bun /tmp/probe.ts --loop-blocks"' \
+  < packages/api/src/scripts/prod-probe.ts
+```
+
+`--loop-blocks` prints a summary — `window_start` (the later of the recording
+stamp, the 90-day cutoff and, if the cap was hit, the oldest kept row: the instant
+from which "no blocks" holds), `blocks`, `blocks_ge_5s`, `max_ms`,
+`request_attributed`, and `library_attributed` (a block with an `/api/library`
+request in flight — **#1058's reopen trigger**) — then the 50 most recent rows.
+Add `--json` for machine-readable output. See
+[prod-inspection.md](prod-inspection.md).
+
 ## Not yet built
 
 - **The load precursor probe on kpc** — would have fired ~9 minutes earlier, at
   08:41:30Z. Needs a threshold well above the 11.49 eight-day maximum and well
   below the 191.09 spike; 30 is the obvious first choice.
-- **Wiring `startLoopBlockMonitor`'s `onBlock` hook.** NicotinD already ships a
-  saturation detector that fired at 07:13–07:14Z (`blockedMs` 1242/1723/1054) —
-  **1h36m before** the outage — and its output goes nowhere but the log. This is
-  the cheapest remaining lead-time win in the system.
+- **Alerting on a persisted block.** Blocks are now durable and readable, but
+  nothing notifies on one; they are for re-measures, not paging.
