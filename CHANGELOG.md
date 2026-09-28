@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.97](https://github.com/kevinch3/NicotinD/compare/v0.8.96...v0.8.97) (2026-09-28)
+
+### Features
+
+* **acquisition:** log each addon hunt's duration and outcome ([#1438](https://github.com/kevinch3/NicotinD/issues/1438)) ([1e11b0d](https://github.com/kevinch3/NicotinD/commit/1e11b0d7c9516b401e55c8f9628867765bb0a208)), closes [#1437](https://github.com/kevinch3/NicotinD/issues/1437)
 ## [0.8.96](https://github.com/kevinch3/NicotinD/compare/v0.8.95...v0.8.96) (2026-09-28)
 
 ### Features

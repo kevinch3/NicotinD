@@ -1,0 +1,1 @@
+• acquisition: log each addon hunt's duration and outcome (#1438)
