@@ -41,18 +41,51 @@ jobs:
   # all read the LATEST release and expect its assets, so a release without an APK
   # breaks them. See docs/releasing.md.
   #
-  # Set the GitHub Release description to this version's CHANGELOG.md section.
-  # softprops/action-gh-release MERGES into the tag's release —
-  # setting only `body` here, so it neither clobbers nor is clobbered by the
-  # asset-upload steps (which pass no `body`), regardless of job ordering.
-  release-notes:
+  # The tag's GitHub Release starts as a DRAFT, and `publish-release` publishes
+  # it only once the APKs and both desktop feeds are attached. It used to be
+  # published within seconds of the tag, with the artifacts landing minutes
+  # later: for that window `releases/latest` — what the in-app APK updater,
+  # electron-updater and the F-Droid repo read — had nothing on it, and a failed
+  # artifact job (v0.8.65's desktop-mac) left it published without its files.
+  # Every job addresses the release by the id this job outputs, because
+  # `/releases/tags/{tag}` cannot see a draft (scripts/github-release.ts).
+  create-draft:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     if: github.ref_type == 'tag'
     permissions:
       contents: write
+    outputs:
+      id: ${{ steps.draft.outputs.id }}
     steps:
       - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Find or create the tag's draft release
+        id: draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          id="$(bun scripts/github-release.ts draft --tag "$GITHUB_REF_NAME")"
+          echo "Release $GITHUB_REF_NAME is id $id"
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+  # Set the draft's description to this version's CHANGELOG.md section.
+  release-notes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [create-draft]
+    if: github.ref_type == 'tag'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
 
       # Extract the `## [<version>] …` section (up to the next version heading)
       # from CHANGELOG.md — the file commit-and-tag-version regenerates on each
@@ -73,11 +106,11 @@ jobs:
           fi
           echo "----- release notes -----"; cat release-notes.md
 
-      - name: Set the GitHub Release description
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
-        with:
-          tag_name: ${{ github.ref_name }}
-          body_path: release-notes.md
+      - name: Set the release description
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bun scripts/github-release.ts body --id "${{ needs.create-draft.outputs.id }}" --file release-notes.md
+
 
   # Build and sign the Android APK and attach it to the GitHub Release. Runs in
   # parallel with `deploy`; a failure here (e.g. missing signing secrets) does not 
@@ -96,6 +129,7 @@ jobs:
     # release run RED so it's caught — not silently ship a release with no APK, as the
     # osbarcode-repo + minSdk breakage did across v0.1.222. It still never blocks the
     # server `deploy` job, which runs in parallel with no `needs` linkage to this one.
+    needs: [create-draft]
     if: github.ref_type == 'tag'
     permissions:
       contents: write
@@ -258,11 +292,9 @@ jobs:
       # something runs after they are safely uploaded. No gate enforces this
       # ordering, so keep it by hand.
       - name: Attach APKs to the GitHub Release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: ${{ runner.temp }}/apks/*.apk
-          fail_on_unmatched_files: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bun scripts/github-release.ts upload --id "${{ needs.create-draft.outputs.id }}" "$RUNNER_TEMP"/apks/*.apk
 
   # Build an UNSIGNED iOS .ipa and attach it to the GitHub Release.
   # The native `ios/` project is NOT committed (it must be generated on a Mac), 
@@ -274,6 +306,7 @@ jobs:
     timeout-minutes: 45
     # Tag-only; NOT continue-on-error — same fail-loud rationale as the `android`
     # job above (parallel with `deploy`, no `needs` linkage, so it never blocks it).
+    needs: [create-draft]
     if: github.ref_type == 'tag'
     permissions:
       contents: write
@@ -347,17 +380,17 @@ jobs:
           # already in $GITHUB_ENV from the "Derive iOS version" step above.
           zip -r "NicotinD-${NICOTIND_IOS_SHORT_VERSION}-unsigned.ipa" Payload
 
+      # By id, so it lands whether publish-release has already published the
+      # release or not: iOS is deliberately NOT in publish-release's needs.
       - name: Attach unsigned IPA to the GitHub Release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: packages/mobile/ios/App/NicotinD-*-unsigned.ipa
-          fail_on_unmatched_files: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bun scripts/github-release.ts upload --id "${{ needs.create-draft.outputs.id }}" packages/mobile/ios/App/NicotinD-*-unsigned.ipa
 
   # Build the Linux desktop app (AppImage + deb) via electron-builder and
   # publish it — together with electron-updater's `latest-linux.yml` feed
   # metadata — to the tag's GitHub Release. `--publish always` is required
-  # (not a manual softprops upload of just the AppImage/deb): electron-updater
+  # (not a manual upload of just the AppImage/deb): electron-updater
   # (Task 12) polls `latest-linux.yml`, which only electron-builder's own
   # publish step generates and uploads. Tag-only; NOT continue-on-error — same
   # fail-loud rationale as android/ios above: a broken deb/AppImage must turn the
@@ -370,6 +403,7 @@ jobs:
   desktop-linux:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    needs: [create-draft]
     if: github.ref_type == 'tag'
     permissions:
       contents: write
@@ -427,7 +461,7 @@ jobs:
       - name: Verify the Linux artifacts reached the Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bun run packages/desktop/scripts/verify-published-assets.ts --label desktop-linux
+        run: bun run packages/desktop/scripts/verify-published-assets.ts --label desktop-linux --release-id "${{ needs.create-draft.outputs.id }}"
 
   # Build the macOS desktop app (dmg, arm64 only — Intel/x64 dropped) and publish
   # it the same way (electron-updater reads `latest-mac.yml`). Ad-hoc signed — no
@@ -439,6 +473,7 @@ jobs:
     runs-on: macos-14
     timeout-minutes: 40
     # NOT continue-on-error — see desktop-linux above for the fail-loud rationale.
+    needs: [create-draft]
     if: github.ref_type == 'tag'
     permissions:
       contents: write
@@ -483,7 +518,36 @@ jobs:
       - name: Verify the macOS artifacts reached the Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bun run packages/desktop/scripts/verify-published-assets.ts --label desktop-mac
+        run: bun run packages/desktop/scripts/verify-published-assets.ts --label desktop-mac --release-id "${{ needs.create-draft.outputs.id }}"
+
+  # Publish the draft once everything users update from is on it: both APKs
+  # (the in-app updater and F-Droid) and both electron-updater feeds. The unsigned
+  # IPA is deliberately not required — it is sideload-only, and a flaky macOS
+  # runner there must not hold the APK back from Android users. The script
+  # re-checks the assets itself rather than trusting the needs alone, and
+  # publishes with make_latest=legacy so a release published late (a re-run)
+  # cannot take `latest` from a newer one.
+  publish-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [create-draft, release-notes, android, desktop-linux, desktop-mac]
+    if: github.ref_type == 'tag'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          v="${GITHUB_REF_NAME#v}"
+          bun scripts/github-release.ts publish --id "${{ needs.create-draft.outputs.id }}" \
+            --expect "NicotinD-$v.apk,NicotinD-TV-$v.apk,latest-linux.yml,latest-mac.yml"
 
   # Build + publish the multi-arch server image to GHCR (Immich-style): one
   # native-runner build per arch pushed by digest, then `docker-merge` stitches

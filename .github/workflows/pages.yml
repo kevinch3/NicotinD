@@ -148,7 +148,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p fdroid-apks
-          tag="$(gh release list --limit 1 --json tagName --jq '.[0].tagName')"
+          tag="$(gh release list --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName')"
           echo "Latest release: $tag"
           # `|| true`: a release predating the F-Droid APKs has none, which is a
           # skip rather than a failure — the catalog still publishes.

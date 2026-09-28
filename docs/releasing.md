@@ -27,7 +27,9 @@ hand — you land commits and the pipeline does the rest.
 4. **Verify** (takes a minute):
    - Actions: `ci.yml` → release job pushed the tag; `deploy.yml` run for the
      tag is green.
-   - The tag's **GitHub Release page** carries the expected artifacts.
+   - The tag's **GitHub Release page** carries the expected artifacts. A
+     release that is still a **draft** means `publish-release` did not run:
+     see [A release is published only once its artifacts are attached](#a-release-is-published-only-once-its-artifacts-are-attached).
    - The production server reports the new version (`GET /api/health` →
      `{ ok, version }`, Settings footer, or `GET /api/system/status`), and the
      in-app changelog modal (click the version string) shows the new entry.
@@ -117,6 +119,37 @@ release:
 
 Skipping app builds safely would need all four to look further back than the
 latest release first.
+
+### A release is published only once its artifacts are attached
+
+The tag's GitHub Release starts as a **draft**. `deploy.yml`'s `create-draft`
+job makes it (or reuses it on a re-run) and hands every other job its id;
+`release-notes`, `android`, `ios` and both desktop jobs write into that draft by
+id (`scripts/github-release.ts`, and `verify-published-assets.ts --release-id`).
+`publish-release` publishes it once `release-notes`, `android` and both desktop
+jobs have succeeded **and** the four assets updaters read are on it — both APKs,
+`latest-linux.yml` and `latest-mac.yml`.
+
+Before, `release-notes` published the release within seconds of the tag and the
+artifacts arrived minutes later. For that window `releases/latest` pointed at a
+release with nothing on it — the in-app APK updater would offer a download that
+404s — and a failed artifact job left it published without its files for good
+(v0.8.65's `desktop-mac`).
+
+- **The unsigned IPA does not block publishing.** It is sideload-only, and a
+  flaky macOS runner there must not hold the APK back from Android users. The
+  `ios` job uploads by id, so it lands whether the release is still a draft or
+  already published. It still fails loud.
+- **A failed required job leaves the release a draft.** Fix the cause and
+  re-run the failed jobs; `publish-release` runs again and publishes. It uses
+  `make_latest: legacy`, so a release published late cannot take `latest` from
+  a newer one.
+- **More than one release for a tag** (a stray draft, the v0.6.37 shape) makes
+  `create-draft` fail rather than guess; delete the stray one by hand.
+- `pages.yml` lists releases with `--exclude-drafts`, so the F-Droid repo never
+  reads a draft.
+- softprops/action-gh-release is no longer used: it publishes an existing draft
+  at the end of any step that does not pass `draft: true`.
 
 ### Android app
 

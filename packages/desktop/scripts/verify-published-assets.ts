@@ -6,9 +6,8 @@
  * WHY: electron-builder's GitHub publisher refuses to upload into a release
  * whose type does not match its own `releaseType`. It logs one
  * `skipped publishing` line per file — and exits 0. deploy.yml's `release-notes`
- * job is ungated and has no `needs`, so it creates the tag's release as
- * *published* seconds after the tag lands, while the publisher was still on its
- * `draft` default. From v0.1.232 to v0.8.39 both desktop jobs built the
+ * job used to create the tag's release as *published* seconds after the tag
+ * landed, while the publisher was still on its `draft` default. From v0.1.232 to v0.8.39 both desktop jobs built the
  * AppImage, the deb and the dmg, uploaded none of them, and reported success:
  * ~40 releases, two months, green every time, and `latest-*.yml` missing with
  * them so every installed app lost its update feed too (#1261).
@@ -67,16 +66,22 @@ export function missingFromRelease(produced: string[], assets: string[]): string
 export type AssetFetcher = (tag: string) => Promise<string[]>;
 
 /**
- * Read a tag's release assets from the GitHub API.
+ * Read a release's assets from the GitHub API.
  *
- * `/releases/tags/{tag}` deliberately resolves only *published* releases —
- * drafts are invisible to it. That is the assertion we want: v0.6.37 proved a
- * run can leave its artifacts on an orphan draft sharing the tag name, where
- * the releases page never shows them and the updater never finds them.
+ * With `releaseId`, reads exactly that release — the draft deploy.yml's
+ * `create-draft` job made, which every artifact job uploads into and
+ * `publish-release` publishes. By id, not by tag: `/releases/tags/{tag}`
+ * resolves only *published* releases, so it cannot see the draft at all. The
+ * id also still catches the v0.6.37 shape — artifacts left on a *different*
+ * draft sharing the tag name are simply not on this one.
+ *
+ * Without `releaseId` it falls back to the tag, for checking a release that is
+ * already published.
  */
-export function githubAssetFetcher(repo: string, token: string): AssetFetcher {
+export function githubAssetFetcher(repo: string, token: string, releaseId?: string): AssetFetcher {
   return async (tag) => {
-    const res = await fetch(`https://api.github.com/repos/${repo}/releases/tags/${tag}`, {
+    const path = releaseId ? `releases/${releaseId}` : `releases/tags/${tag}`;
+    const res = await fetch(`https://api.github.com/repos/${repo}/${path}`, {
       headers: {
         authorization: `Bearer ${token}`,
         accept: 'application/vnd.github+json',
@@ -86,7 +91,7 @@ export function githubAssetFetcher(repo: string, token: string): AssetFetcher {
       signal: AbortSignal.timeout(30_000),
     });
     if (!res.ok) {
-      throw new Error(`GitHub API ${res.status} ${res.statusText} for release tag ${tag}`);
+      throw new Error(`GitHub API ${res.status} ${res.statusText} for ${path} (${tag})`);
     }
     const body = (await res.json()) as { assets?: Array<{ name: string }> };
     return (body.assets ?? []).map((a) => a.name);
@@ -128,6 +133,7 @@ async function main(): Promise<void> {
   const repo = flag('repo') ?? process.env.GITHUB_REPOSITORY;
   const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
   const label = flag('label') ?? 'desktop';
+  const releaseId = flag('release-id');
 
   if (!tag) throw new Error('No release tag: pass --tag or set GITHUB_REF_NAME.');
   if (!repo) throw new Error('No repository: pass --repo owner/name or set GITHUB_REPOSITORY.');
@@ -150,7 +156,7 @@ async function main(): Promise<void> {
 
   console.log(`${label}: built ${produced.length} artifact(s):\n  ${produced.join('\n  ')}`);
 
-  const missing = await verifyPublished(produced, githubAssetFetcher(repo, token), tag);
+  const missing = await verifyPublished(produced, githubAssetFetcher(repo, token, releaseId), tag);
   if (missing.length > 0) {
     throw new Error(
       `${label}: electron-builder built ${produced.length} artifact(s) but ${missing.length} ` +

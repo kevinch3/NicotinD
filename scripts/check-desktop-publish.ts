@@ -5,10 +5,10 @@
  *
  * WHY: electron-builder's GitHub publisher declines to upload into a release
  * whose type does not match its `releaseType`, logs `skipped publishing` once
- * per file, and **exits 0**. deploy.yml's `release-notes` job creates the tag's
- * release as published seconds after the tag lands, so the publisher's `draft`
- * default silently dropped every AppImage, deb, dmg and `latest-*.yml` from
- * v0.1.232 to v0.8.39 — ~40 releases, two months, both jobs green (#1261).
+ * per file, and **exits 0**. deploy.yml's `release-notes` job used to create the
+ * tag's release as published seconds after the tag landed, so the publisher's
+ * `draft` default silently dropped every AppImage, deb, dmg and `latest-*.yml`
+ * from v0.1.232 to v0.8.39 — ~40 releases, two months, both jobs green (#1261).
  *
  * Two things had to hold for that to stop, and neither is visible from the file
  * it lives in:

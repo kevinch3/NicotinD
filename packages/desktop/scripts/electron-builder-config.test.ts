@@ -21,10 +21,10 @@ describe('electron-builder.yml', () => {
     expect(config.deb.artifactName).toBe('${productName}_${version}_${arch}.${ext}');
   });
 
-  // Regression #1261: the publisher's default is `draft`, and it refuses to
-  // upload into the *published* release that deploy.yml's `release-notes` job
-  // creates first — skipping every file and exiting 0. Two months of releases
-  // shipped no AppImage, deb, dmg or updater feed while both jobs stayed green.
+  // Regression #1261: with the default `draft`, the publisher refused to upload
+  // into the published release deploy.yml used to create first — skipping every
+  // file and exiting 0 for two months. The release is now a draft the publisher
+  // always uses; this pin decides what it does if that draft is ever missing.
   it('pins publish.releaseType to release, so the publisher matches the release deploy.yml creates', () => {
     expect(config.publish.provider).toBe('github');
     expect(config.publish.releaseType).toBe('release');

@@ -104,10 +104,6 @@ export const RUNTIME_FLOORS: Record<string, RuntimeFloor> = {
     minMajor: 4,
     note: 'v3 is node20. v4 removed the `config`, `config-inline` and `install` inputs — none used here',
   },
-  'softprops/action-gh-release': {
-    minMajor: 3,
-    note: 'v2 is node20. Publishes the GitHub Release in deploy.yml, so it is only exercised on a real tag',
-  },
   'android-actions/setup-android': { minMajor: 4, note: 'v3 is node20' },
   'oven-sh/setup-bun': { minMajor: 2, note: 'v2 already declares node24' },
   'tailscale/github-action': { minMajor: 3, note: 'v3+ declares node24; v4 is current' },

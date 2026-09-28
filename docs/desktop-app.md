@@ -366,13 +366,18 @@ invisible to the updater.
 
 Two things keep it fixed, and they are deliberately in different places:
 
-1. **`publish.releaseType: release`** in `electron-builder.yml` — the publisher now matches the
-   release `release-notes` creates. Asserted by `electron-builder-config.test.ts`, next to the
-   config it constrains.
+1. **The release the publisher finds is the one it should use.** Since the release became
+   draft-first ([releasing.md](releasing.md#a-release-is-published-only-once-its-artifacts-are-attached)),
+   `deploy.yml`'s `create-draft` job makes the tag's release as a **draft** before any packaging
+   job starts, and electron-builder's publisher always uploads into an existing draft for the tag,
+   whatever its `releaseType`. `publish.releaseType: release` stays pinned (asserted by
+   `electron-builder-config.test.ts`) for the case the draft is missing: the publisher then creates
+   a release it is allowed to upload into, rather than a second draft nobody publishes.
 2. **A post-publish verification step in every packaging job.**
    `verify-published-assets.ts` lists what electron-builder actually wrote to `release/`, then
-   asserts each of those names is on the tag's *published* release
-   (`/releases/tags/{tag}` never resolves a draft, which is the point). It expects what the build
+   asserts each of those names is on **the release `create-draft` handed out**, read by id
+   (`--release-id`): `/releases/tags/{tag}` cannot see a draft, and an id still catches artifacts
+   left on a *different* draft sharing the tag name, the v0.6.37 shape. It expects what the build
    produced rather than a hardcoded asset list, so adding a target extends the check for free, and
    an **empty** artifact set fails too — a build that produced nothing must not pass for lack of
    anything to check. It runs strictly *after* the upload, and retries a bounded number of times so

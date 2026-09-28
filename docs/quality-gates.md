@@ -1089,7 +1089,7 @@ that is what ran.
 
 electron-builder's GitHub publisher refuses to upload into a release whose type does not match its
 own `releaseType`. The refusal is one `skipped publishing` line per file in the log — and exit
-code **0**. `deploy.yml`'s `release-notes` job is ungated and has no `needs`, so it creates the
+code **0**. `deploy.yml`'s `release-notes` job was ungated and had no `needs`, so it created the
 tag's release as *published* within seconds of the tag push, while the publisher sat on its default
 `draft`. From **v0.1.232 to v0.8.39** — ~40 releases — both desktop jobs built the AppImage, the deb
 and the dmg, uploaded none of them, and reported success. The `latest-*.yml` feeds went with them,
@@ -1105,8 +1105,10 @@ The root-cause fix is one line, `publish.releaseType: release`, asserted by a un
 config. The gate is the other half, and it is aimed at the class rather than the instance: **a step
 that produces artifacts and publishes none must be red**. `verify-published-assets.ts` runs after
 the upload in each packaging job, lists what electron-builder actually wrote to `release/`, and
-fails unless every one of those names is on the tag's *published* release —
-`/releases/tags/{tag}` resolves no drafts, which is the assertion we want given how v0.6.37 failed.
+fails unless every one of those names is on the tag's release. Since the release became draft-first
+([releasing.md](releasing.md#a-release-is-published-only-once-its-artifacts-are-attached)) it reads
+that release **by the id** `create-draft` handed out: `/releases/tags/{tag}` cannot see a draft,
+and an id still catches artifacts left on a *different* draft sharing the tag, the v0.6.37 shape.
 
 Two denominator decisions, per the rule at the top of this page. The expectation is read from the
 build's own output rather than a hardcoded asset list, so a target someone adds is covered without
