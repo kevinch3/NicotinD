@@ -9,18 +9,21 @@ hand — you land commits and the pipeline does the rest.
 
 1. **Land your work on `master` through a PR**, with
    [Conventional Commit](https://www.conventionalcommits.org/) messages
-   (commitlint-enforced): `feat` → minor bump, `fix`/`perf` → patch,
-   `!`/`BREAKING CHANGE:` → major. `chore`/`docs`/`refactor`/`test`/`ci` don't
-   bump and won't appear in the changelog. Full table in
-   [CLAUDE.md](../CLAUDE.md#commit-conventions).
+   (commitlint-enforced). While the version is `0.x`, `feat`, `fix` and `perf`
+   all bump the **patch** and `!`/`BREAKING CHANGE:` bumps the **minor** —
+   `commit-and-tag-version`'s pre-1.0 rule, which is why a `feat` took v0.8.95 to
+   v0.8.96. From 1.0 it becomes `feat` → minor, `fix`/`perf` → patch, breaking →
+   major. `chore`/`docs`/`refactor`/`test`/`ci` don't bump and won't appear in
+   the changelog. Full table in [CLAUDE.md](../CLAUDE.md#commit-conventions).
 2. **Do nothing else.** When `ci.yml` goes green on the master push, its
    `release` job bumps the version from the commit history, regenerates
    `CHANGELOG.md`, commits `chore(release): X.Y.Z`, tags `vX.Y.Z`, and pushes
    the tag.
-3. **The tag triggers `deploy.yml`**, which deploys the server and builds only
-   the apps whose inputs actually changed since the previous release (a
-   `changes` job diffs tag-to-tag) — an API-only release won't rebuild the APK
-   or the desktop packages.
+3. **The tag triggers `deploy.yml`**, which deploys the server and builds
+   **every** app artifact — an API-only release still rebuilds the APKs, the IPA
+   and the desktop packages. That is deliberate: the in-app APK updater,
+   electron-updater and the F-Droid repo all read the *latest* release and
+   expect its assets (see [Why every release builds every app](#why-every-release-builds-every-app)).
 4. **Verify** (takes a minute):
    - Actions: `ci.yml` → release job pushed the tag; `deploy.yml` run for the
      tag is green.
@@ -73,9 +76,31 @@ so re-runs are always safe.
 | ----------------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | **Server image**                          | every tag                 | multi-arch image published to `ghcr.io/kevinch3/nicotind` (`vX.Y.Z` + `vX` + `release` tags); self-hosters `docker compose pull` |
 | **Server (production host)**              | every tag                 | auto-deployed over Tailscale SSH: pulls the just-published image — nothing to do                                                 |
-| **Android APK** (+ a separate TV APK)     | mobile/web inputs changed | download from the GitHub Release and sideload (see below); signed when `ANDROID_KEYSTORE_*` secrets are present                  |
-| **iOS IPA** (unsigned)                    | mobile/web inputs changed | re-sign + install via AltStore/Sideloadly (see below)                                                                            |
-| **Desktop** Linux AppImage/deb + macOS dmg | desktop inputs changed    | GitHub Release download; **existing installs auto-update** via electron-updater — Linux applies updates itself, macOS only notifies (ad-hoc signing) |
+| **Android APK** (+ a separate TV APK)     | every tag                 | download from the GitHub Release and sideload (see below); signed when `ANDROID_KEYSTORE_*` secrets are present                  |
+| **iOS IPA** (unsigned)                    | every tag                 | re-sign + install via AltStore/Sideloadly (see below)                                                                            |
+| **Desktop** Linux AppImage/deb + macOS dmg | every tag                 | GitHub Release download; **existing installs auto-update** via electron-updater — Linux applies updates itself, macOS only notifies (ad-hoc signing) |
+
+### Why every release builds every app
+
+`deploy.yml` once had a `changes` job that diffed tag-to-tag and skipped the app
+builds whose inputs had not changed. It never skipped anything: the
+`chore(release)` commit bumps the root `package.json` and
+`packages/mobile/android/app/build.gradle`, which its own path regexes matched,
+so every release built every app — v0.8.97, a backend-only change, still shipped
+APKs, an IPA and both desktop packages. It was removed rather than fixed,
+because a working version would have broken every consumer of the latest
+release:
+
+- the in-app APK updater builds `…/download/v<latest>/NicotinD-<v>.apk` from
+  `releases/latest` and does not check the asset exists (`lib/apk-update.ts`);
+- electron-updater reads `latest-*.yml` from the latest release;
+- `pages.yml` refuses to publish when the latest release has no APKs and a
+  repository is already live;
+- fdroiddata's `Binaries:` points at every tag's APK for the reproducible-build
+  check.
+
+Skipping app builds safely would need all four to look further back than the
+latest release first.
 
 ### Android app
 
