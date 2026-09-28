@@ -208,6 +208,19 @@ every *exact* comparison, where the difference cannot be seen in a log, a query 
 artist into two rows that print the same. `nfc()` normalises at `parseTrack`, the single boundary
 where tag text enters, so nothing downstream has to think about it.
 
+**The tag boundary was not the only door (#1440).** Curator text reaches `library_artist_identity`
+and `library_artist_aliases` from the HTTP route and MCP tools, and a macOS client sent
+`Anyma & Rebūke` decomposed. The row's `artist_key` folded both forms, so the scanner honoured it;
+but `pendingArtistIdentityRows` compared `raw_name` byte-for-byte, so the NFC song name stayed
+pending and the artist-identity task asked Lidarr about it every minute (~1,440×/day), each answer a
+silent no-op under the `source='user'` row. Three changes: `upsertArtistIdentity` and
+`upsertArtistAlias` store NFC (an alias's `canonical_name` becomes the stored artist name, so an NFD
+one would bypass `nfc()`); the pending set is judged on `artist_key`, one name per uncovered key, so
+no spelling variant — Unicode form, case or accent — can sit pending beside a row that covers it;
+and `repairArtistIdentityNfc` composes the rows written before, once, behind the
+`artist_identity_nfc_v1` marker. On the 09-28 snapshot that was 2 of 1,074 identity rows (both
+`user`), 0 of 187 aliases, no key changed.
+
 **A partial walk pruned everything it did not reach (#968).** `walk` caught a `readdir` failure,
 logged a warning and returned `[]` — indistinguishable from an empty directory — and the full scan's
 prune is `DELETE FROM library_songs WHERE synced_at < ?`. So one unreadable directory silently
