@@ -309,3 +309,44 @@ describe('AddonClient → circuit-breaker integration', () => {
     expect(trips).toEqual([]); // never reached 2 consecutive
   });
 });
+
+// #1437: hunts run behind a 60 s socket budget while this call allows 180 s, and
+// nothing recorded how long real hunts take. Every hunt now logs its duration.
+describe('AddonClient.albumsSearch duration log', () => {
+  const REQ = { artist: 'A', album: 'B', trackCount: 3 } as unknown as Parameters<
+    AddonClient['albumsSearch']
+  >[0];
+  const fakeLog = () => {
+    const calls: { level: 'info' | 'warn'; obj: Record<string, unknown>; msg: string }[] = [];
+    return {
+      calls,
+      info: (obj: Record<string, unknown>, msg: string) => calls.push({ level: 'info', obj, msg }),
+      warn: (obj: Record<string, unknown>, msg: string) => calls.push({ level: 'warn', obj, msg }),
+    };
+  };
+
+  it('logs the duration and candidate count of a completed hunt', async () => {
+    const { fetchFn } = stubFetch(() =>
+      Response.json({ candidates: [{}, {}], queries: [], skewNeeded: false }),
+    );
+    const log = fakeLog();
+    const client = new AddonClient({ baseUrl: 'http://addon:9999', token: 'tok', fetchFn, log });
+    await client.albumsSearch(REQ);
+    expect(log.calls).toHaveLength(1);
+    expect(log.calls[0]).toMatchObject({
+      level: 'info',
+      obj: { baseUrl: 'http://addon:9999', candidates: 2 },
+    });
+    expect(typeof log.calls[0]!.obj.durationMs).toBe('number');
+  });
+
+  it('logs the duration of a failed hunt, then rethrows', async () => {
+    const { fetchFn } = stubFetch(() => new Response('nope', { status: 502 }));
+    const log = fakeLog();
+    const client = new AddonClient({ baseUrl: 'http://addon:9999', token: 'tok', fetchFn, log });
+    await expect(client.albumsSearch(REQ)).rejects.toThrow();
+    expect(log.calls).toHaveLength(1);
+    expect(log.calls[0]).toMatchObject({ level: 'warn', obj: { baseUrl: 'http://addon:9999' } });
+    expect(typeof log.calls[0]!.obj.durationMs).toBe('number');
+  });
+});
