@@ -26,11 +26,13 @@ const APP_JOBS = ['android', 'ios', 'desktop-linux', 'desktop-mac'];
 
 describe('every release builds every app artifact', () => {
   for (const name of APP_JOBS) {
-    it(`${name} runs on every tag, gated on nothing else`, () => {
+    it(`${name} runs on every tag, gated on nothing but the draft release`, () => {
       const job = deploy.jobs[name];
       expect(job).toBeDefined();
       expect(job?.if).toBe("github.ref_type == 'tag'");
-      expect(job?.needs).toBeUndefined();
+      // create-draft only hands out the release id to upload into; it filters
+      // nothing (docs/releasing.md).
+      expect(job?.needs).toEqual(['create-draft']);
     });
   }
 });

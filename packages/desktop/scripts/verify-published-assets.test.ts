@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import {
+  githubAssetFetcher,
   isPublishedArtifact,
   missingFromRelease,
   publishedArtifacts,
@@ -124,5 +125,32 @@ describe('verifyPublished', () => {
     );
     expect(missing).toEqual(['NicotinD-0.8.39.AppImage', 'latest-linux.yml']);
     expect(call).toBe(3);
+  });
+});
+
+describe('githubAssetFetcher', () => {
+  async function urlFetched(releaseId?: string): Promise<string> {
+    const original = globalThis.fetch;
+    let seen = '';
+    globalThis.fetch = (async (url: string) => {
+      seen = url;
+      return new Response(JSON.stringify({ assets: [{ name: 'a' }] }));
+    }) as typeof fetch;
+    try {
+      expect(await githubAssetFetcher('o/r', 't', releaseId)('v1.2.3')).toEqual(['a']);
+    } finally {
+      globalThis.fetch = original;
+    }
+    return seen;
+  }
+
+  // deploy.yml uploads into a draft; `/releases/tags/{tag}` cannot see drafts,
+  // so the draft is verified by the id create-draft handed out.
+  it('reads the draft by id when one is given', async () => {
+    expect(await urlFetched('42')).toBe('https://api.github.com/repos/o/r/releases/42');
+  });
+
+  it('falls back to the published release for the tag', async () => {
+    expect(await urlFetched()).toBe('https://api.github.com/repos/o/r/releases/tags/v1.2.3');
   });
 });

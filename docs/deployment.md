@@ -983,9 +983,10 @@ idempotency guard was `tag exists → skip`, so from that moment every master
 push resolved the next version to the still-uncreated `0.1.244`, saw the orphan
 tag, and **silently exited green** without tagging. No tag ⇒ no `deploy.yml`
 run: releases froze for a day (PRs #189/#196/#197 merged with green CI but shipped
-nothing) while every CI run looked healthy. Because `softprops/action-gh-release`
-merges into a tag's release and the `docker` job overwrites by tag, re-cutting
-a version is safe — so the self-heal simply deletes the orphan and re-releases.
+nothing) while every CI run looked healthy. Because `create-draft` reuses a
+tag's existing release, uploads replace same-named assets, and the `docker` job
+overwrites by tag, re-cutting a version is safe — so the self-heal simply deletes
+the orphan and re-releases.
 
 ### A master push must never cancel another master push (issue #360)
 
