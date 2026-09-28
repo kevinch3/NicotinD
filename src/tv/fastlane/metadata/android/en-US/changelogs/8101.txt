@@ -1,0 +1,1 @@
+• deploy: smoke and scan the shipped image before any floating tag moves (#1447)

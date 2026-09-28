@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.101](https://github.com/kevinch3/NicotinD/compare/v0.8.100...v0.8.101) (2026-09-28)
+
+### Bug Fixes
+
+* **deploy:** smoke and scan the shipped image before any floating tag moves ([#1447](https://github.com/kevinch3/NicotinD/issues/1447)) ([1a8843d](https://github.com/kevinch3/NicotinD/commit/1a8843da01beba06b1b1da007923a1fb51884c45)), references [#457](https://github.com/kevinch3/NicotinD/issues/457)
 ## [0.8.100](https://github.com/kevinch3/NicotinD/compare/v0.8.99...v0.8.100) (2026-09-28)
 
 ### Features
