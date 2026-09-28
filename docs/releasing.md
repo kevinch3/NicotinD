@@ -27,7 +27,8 @@ You never build either by hand — you land commits and the pipeline does the re
    bumping commit and its `edge` run succeeded: it bumps the version from the
    commit history, regenerates `CHANGELOG.md`, commits `chore(release): X.Y.Z`,
    tags `vX.Y.Z`, and pushes the tag. **Need it now?** Actions → **Release** →
-   *Run workflow*.
+   *Run workflow* (tick `force` only if `edge` is red for a host-side reason:
+   see [Forcing a release](#forcing-a-release)).
 4. **The tag triggers `deploy.yml`**, which publishes the images and builds
    **every** app artifact — an API-only release still rebuilds the APKs, the IPA
    and the desktop packages. That is deliberate: the in-app APK updater,
@@ -125,7 +126,10 @@ pipeline now separates the two things a merge was doing:
   rebuilt only if `packages/analysis` changed since the last release, otherwise
   the last release's image. "The last release" is the newest `v*` tag whose
   analysis image exists: a tag whose build never ran has none (v0.8.104), and
-  retagging from it failed the first edge deploy. Then it dispatches **Deploy host** with
+  retagging from it failed the first edge deploy. Both images are Trivy-scanned
+  with the release scan's pin and policy (each arch's pushed digest in
+  `edge-image`, the analysis image — rebuilt or the release's — in `edge`), and
+  both `:edge` tags move only after both scans pass. Then it dispatches **Deploy host** with
   `version=edge` and the commit, which `/api/health` must report. Nothing about
   it is public except the tag, which any self-hoster can opt into with
   `NICOTIND_VERSION=edge`.
@@ -145,16 +149,63 @@ Consequences worth knowing:
 - **A burst of merges** queues host deploys; the newest pending one replaces
   older pending ones (one pending run per concurrency group), so the host skips
   straight to the newest commit.
-- **`:edge` is smoke-tested but not Trivy-scanned** (releases are, before
-  `release` moves). The host can run a base-image CVE with a published fix for
-  up to a day, until the next release's scan flags it.
+- **A Trivy finding stops edge.** A base-image CVE with a published fix fails
+  `edge-image` (or `edge`, for the analysis image): the host keeps running the
+  previous `:edge`, and releases hold, until the base image is bumped. The
+  analysis image is scanned even when it is the last release's, so a fix
+  published since that release blocks too.
 - **The `edge` job's success is what releases require.** A failed dispatch of
   Deploy host fails `edge` and holds the release until a later commit is green;
   the host being unreachable does not (the dispatch succeeds, the Deploy host
-  run fails on its own).
-- `:edge` pushes accumulate untagged versions in GHCR. They are not cleaned up
-  automatically: deleting "untagged" versions also deletes the per-arch
-  manifests behind every multi-arch tag.
+  run fails on its own). A manual release can [force](#forcing-a-release) past it.
+- `:edge` pushes accumulate untagged versions in GHCR; the
+  [retention workflow](#ghcr-retention) prunes them.
+
+### Forcing a release
+
+**Release**'s *Run workflow* has a `force` checkbox (off by default). It skips
+the one check that the tip has a successful `edge` run — for when `edge` is red
+for a reason that is not the code, e.g. Deploy host could not be dispatched —
+and nothing else: `release-needed.ts`, the orphan-tag handling, `check:fdroid`
+and the atomic push all still apply. A forced release writes a **Forced
+release** block to the job summary naming the tip and who forced it. The
+scheduled run never forces (`inputs` is honoured only on `workflow_dispatch`).
+
+Before forcing, confirm the tip's gate jobs passed: the `edge` check is the
+release's only proof of them.
+
+### GHCR retention
+
+Every green master commit pushes per-arch images by digest and re-points
+`:edge`, leaving the previous edge's versions untagged. A generic "delete
+untagged versions" cannot clean them: a multi-arch tag is an image index whose
+per-platform manifests and buildx attestation manifests are **separate,
+untagged package versions**, so it would delete what `:edge`, `release` and
+every `vX.Y.Z` point to.
+
+`.github/workflows/ghcr-retention.yml` runs `scripts/ghcr-retention.ts` over
+`nicotind` and `nicotind-analysis`. It reads every tagged version's manifest
+from the registry, follows indexes (nested ones too) to the digests they
+reference, and deletes only an untagged version that no tag reaches **and**
+that is older than the age floor (`min_age_days`, default 14; an in-flight edge
+build's digests are untagged for minutes). A tagged manifest it cannot read
+aborts the run before anything is deleted.
+
+It is a **dry run** unless told otherwise — it lists what it would delete in the
+log and a count per package in the job summary:
+
+- Weekly (Mondays 05:43 UTC): dry run, unless the repository variable
+  `GHCR_RETENTION_DELETE` is `true`.
+- Actions → **GHCR retention** → *Run workflow* with `delete` ticked: deletes.
+- Off master, it never deletes.
+
+Locally (needs a token with `read:packages`, and `delete:packages` for
+`--delete`):
+
+```sh
+GH_TOKEN=… bun run scripts/ghcr-retention.ts --owner kevinch3 \
+  --package nicotind --package nicotind-analysis [--min-age-days 14] [--delete]
+```
 
 ### Why every release builds every app
 

@@ -9,14 +9,20 @@ name: Release
 # Releasing on every merge cut 685 tags in 140 days, 65 % of them one commit,
 # each an app update and a `release` image for everyone. A daily batch keeps
 # the changelog meaningful; `workflow_dispatch` releases right away when a fix
-# cannot wait.
+# cannot wait. A manual run can tick `force` to skip the `edge` check below —
+# never a scheduled one (docs/releasing.md "Forcing a release").
 
 on:
   schedule:
     # 10:17 in Buenos Aires (13:17 UTC), daily. Off the hour on purpose: most
     # scheduled workflows start at :00 and queue behind each other.
     - cron: '17 13 * * *'
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Release even though master's tip has no successful `edge` run (e.g. a host-side edge deploy failure)
+        type: boolean
+        default: false
 
 # Least privilege by default: a job gets a read-only token unless it declares
 # its own `permissions:`, which REPLACES this block rather than adding to it.
@@ -96,6 +102,9 @@ jobs:
       - name: Release (idempotent, self-healing bump + tag + atomic push)
         env:
           GH_TOKEN: ${{ github.token }}
+          # Only a person can force: `inputs` is empty on a scheduled run, and
+          # the event check keeps it that way should one ever be added.
+          FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force }}
         run: |
           set -euo pipefail
 
@@ -138,7 +147,18 @@ jobs:
             tip="$(git rev-parse HEAD)"
             green="$(gh api "repos/$GITHUB_REPOSITORY/commits/$tip/check-runs?check_name=edge" \
               --jq '[.check_runs[] | select(.conclusion == "success")] | length')"
-            if [ "$green" = "0" ]; then
+            if [ "$green" = "0" ] && [ "$FORCE" = "true" ]; then
+              # A failed edge dispatch or host deploy fails `edge` and would hold
+              # every release until the next green merge. Forcing skips only
+              # this check; the rest of the release path is unchanged.
+              echo "::warning::FORCED: releasing master's tip $tip WITHOUT a successful \`edge\` run (manual run by $GITHUB_ACTOR)."
+              {
+                echo "## :warning: Forced release"
+                echo ""
+                echo "master's tip \`$tip\` has **no successful \`edge\` run**; $GITHUB_ACTOR released it anyway with \`force\`."
+                echo "Check that its CI gates passed: the \`edge\` check is this workflow's only proof of them."
+              } >> "$GITHUB_STEP_SUMMARY"
+            elif [ "$green" = "0" ]; then
               echo "::warning::master's tip $tip has no successful \`edge\` run yet (CI still running, or red) — not releasing it now."
               echo "master's tip $tip is not CI-green yet; nothing released." >> "$GITHUB_STEP_SUMMARY"
               exit 0

@@ -857,6 +857,20 @@ jobs:
         if: always()
         run: docker rm -f nicotind-smoke 2>/dev/null || true
 
+      # The same scan, policy and pin as a release's (deploy.yml `docker-merge`),
+      # on each arch's pushed digest: a finding fails this job, so `:edge` never
+      # moves to the image and the host deploy is never dispatched
+      # (docs/releasing.md "Edge and releases").
+      - name: Scan the pushed image for OS vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          vuln-type: os
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+          exit-code: 1
+          format: table
+
       - name: Export digest
         run: |
           mkdir -p "${{ runner.temp }}/digests"
@@ -870,8 +884,8 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  # Stitch the per-arch digests into `:edge`, give the analysis sidecar an
-  # `:edge` too (compose runs both off one NICOTIND_VERSION), then hand the host
+  # Stitch the per-arch digests into `:edge`, give the analysis sidecar a
+  # scanned `:edge` too (compose runs both off one NICOTIND_VERSION), then hand the host
   # this exact commit. The host verifies it by the commit /api/health reports,
   # since an edge build still carries the last release's version number.
   edge:
@@ -905,15 +919,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Point edge at this commit
-        working-directory: ${{ runner.temp }}/digests
-        run: |
-          set -euo pipefail
-          refs=()
-          for d in *; do refs+=("$IMAGE@sha256:$d"); done
-          docker buildx imagetools create -t "$IMAGE:edge" "${refs[@]}"
-          docker buildx imagetools inspect "$IMAGE:edge"
-
       # The analysis image is heavy and changes rarely, so it is rebuilt only
       # when its sources changed since the last release; otherwise that
       # release's image IS this tree's, and `edge` is pointed at it.
@@ -942,23 +947,54 @@ jobs:
             echo "build=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build + push the analysis image as edge
+      # Pushed by digest, not as `edge`: the tag moves only after the scan below.
+      - name: Build + push the analysis image by digest
+        id: analysis-build
         if: steps.analysis.outputs.build == 'true'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: packages/analysis
           platforms: linux/amd64
-          push: true
-          tags: ${{ env.ANALYSIS }}:edge
+          outputs: type=image,name=${{ env.ANALYSIS }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=analysis-linux-amd64
 
-      - name: Point the analysis edge at the last release's image
-        if: steps.analysis.outputs.build == 'false'
+      - name: Pick the analysis image edge will point at
+        id: analysis-ref
         env:
+          BUILT: ${{ steps.analysis-build.outputs.digest }}
           PREV: ${{ steps.analysis.outputs.prev }}
         run: |
+          if [ -n "$BUILT" ]; then echo "ref=$ANALYSIS@$BUILT"; else echo "ref=$ANALYSIS:$PREV"; fi >> "$GITHUB_OUTPUT"
+
+      # Scanned even when it is the last release's image: a fix published since
+      # that release is a finding now (same scan as edge-image's).
+      - name: Scan the analysis image for OS vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.analysis-ref.outputs.ref }}
+          vuln-type: os
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+          exit-code: 1
+          format: table
+
+      # Both edge tags move only once both images passed their scans, so a
+      # finding in either leaves the pair where it was.
+      - name: Point edge at this commit
+        working-directory: ${{ runner.temp }}/digests
+        run: |
           set -euo pipefail
-          docker buildx imagetools create -t "$ANALYSIS:edge" "$ANALYSIS:$PREV"
+          refs=()
+          for d in *; do refs+=("$IMAGE@sha256:$d"); done
+          docker buildx imagetools create -t "$IMAGE:edge" "${refs[@]}"
+          docker buildx imagetools inspect "$IMAGE:edge"
+
+      - name: Point the analysis edge at it
+        env:
+          REF: ${{ steps.analysis-ref.outputs.ref }}
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create -t "$ANALYSIS:edge" "$REF"
           docker buildx imagetools inspect "$ANALYSIS:edge"
 
       # A dispatch, not a call: deploy-host.yml queues host deploys on its own

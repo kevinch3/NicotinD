@@ -58,7 +58,8 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   budget. → [deployment.md](../deployment.md)
 - **Secret + image scanning**: gitleaks runs over every commit as a pinned binary, needing
   `fetch-depth: 0`; Trivy scans the exact `vX.Y.Z` image, scoped to OS vulns and unfixed-ignored,
-  before `promote` moves `release`. → [quality-gates.md](../quality-gates.md)
+  before `promote` moves `release`, and each `:edge` image before its tag moves.
+  → [quality-gates.md](../quality-gates.md)
 - **CI boots the shipped artifact**: the docker build is unconditional and loaded, then a smoke step
   waits on the image's own healthcheck and asserts `/api/health` reports the expected version,
   matrixed over both published arches on native runners, never QEMU; the release re-runs the same
@@ -67,6 +68,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   builds, one manifest merge, and a `promote` job that moves `release` last. The deploy *derives* which images to pull from the resolved compose
   config rather than a hardcoded list. Release tagging is orphan-tag-proof.
   → [deployment.md](../deployment.md)
+- **GHCR retention**: `ghcr-retention.yml` prunes untagged versions no tag's manifest list reaches
+  (`selectDeletable`), past an age floor; a dry run unless told to delete.
+  → [releasing.md](../releasing.md#ghcr-retention)
 - **The runtime image ships only what it runs**: the production stage installs with `--production`
   from the isolated store, `.dockerignore` excludes tests, and `USER bun` needs `/data` chowned.
   → [deployment.md](../deployment.md)
