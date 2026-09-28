@@ -194,8 +194,7 @@
                     [tile]="tile"
                     [artistName]="artist()!.name"
                     [token]="auth.mediaToken()"
-                    [busy]="isTileHunting(tile)"
-                    [locked]="autoHunt.anyHunting()"
+                    [status]="tileHuntStatus(tile)"
                     [canAcquire]="auth.canAcquire()"
                     (acquire)="huntTile(tile)"
                   />
@@ -228,8 +227,7 @@
                     [tile]="tile"
                     [artistName]="artist()!.name"
                     [token]="auth.mediaToken()"
-                    [busy]="isTileHunting(tile)"
-                    [locked]="autoHunt.anyHunting()"
+                    [status]="tileHuntStatus(tile)"
                     [canAcquire]="auth.canAcquire()"
                     (acquire)="huntTile(tile)"
                   />
@@ -262,8 +260,7 @@
                     [tile]="tile"
                     [artistName]="'Various Artists'"
                     [token]="auth.mediaToken()"
-                    [busy]="isTileHunting(tile)"
-                    [locked]="autoHunt.anyHunting()"
+                    [status]="tileHuntStatus(tile)"
                     [canAcquire]="auth.canAcquire()"
                     (acquire)="huntTile(tile)"
                   />

@@ -56,6 +56,7 @@
   "acquire.peersResponded": "{count} peers responded",
   "acquire.placeholder": "Search music or paste a link…",
   "acquire.preparing": "Preparing…",
+  "acquire.finding": "Finding…",
   "acquire.queued": "Queued",
   "acquire.recentSearches": "Recent searches",
   "acquire.resizeBrowser": "Resize folder browser height",

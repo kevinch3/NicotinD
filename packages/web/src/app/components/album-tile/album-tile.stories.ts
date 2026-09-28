@@ -24,7 +24,7 @@ const meta: Meta<AlbumTileComponent> = {
     },
   },
   decorators: [applicationConfig({ providers: storyProviders() })],
-  args: { artistName: 'Pink Floyd', canAcquire: true, busy: false },
+  args: { artistName: 'Pink Floyd', canAcquire: true, status: { phase: 'idle' } },
 };
 
 export default meta;
@@ -59,11 +59,37 @@ export const Missing: Story = {
   },
 };
 
-/** A hunt is in flight — the button holds its place rather than disappearing. */
+/** Clicked, no job yet — the button holds its place rather than disappearing. */
 export const Hunting: Story = {
   args: {
     tile: tile({ status: 'missing', title: 'Atom Heart Mother', year: 1970 }),
-    busy: true,
+    status: { phase: 'searching' },
+  },
+};
+
+/**
+ * The job is live, so the card carries its own stage in the Downloads page's words.
+ * Only this album's card is busy — another album's hunt never disables a tile.
+ */
+export const Downloading: Story = {
+  args: {
+    tile: tile({ status: 'missing', title: 'Atom Heart Mother', year: 1970 }),
+    status: { phase: 'job', stage: 'downloading' },
+  },
+};
+
+/** A partial album being completed shows the same stages on its own button. */
+export const CompletingQueued: Story = {
+  args: {
+    tile: tile({
+      status: 'partial',
+      title: 'A Saucerful of Secrets',
+      year: 1968,
+      localAlbumId: 'a2',
+      localTrackCount: 4,
+      totalTracks: 7,
+    }),
+    status: { phase: 'job', stage: 'queued' },
   },
 };
 

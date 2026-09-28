@@ -68,6 +68,7 @@ import {
 } from '../../lib/artist-album-tiles';
 import { NavigationService } from '../../services/navigation.service';
 import { AutoHuntService } from '../../services/auto-hunt.service';
+import { IDLE_HUNT, type AlbumHuntStatus } from '../../lib/album-hunt-status';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import { SkeletonComponent } from '../../components/skeleton/skeleton.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
@@ -496,8 +497,8 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     if (tile.source) this.openHunt(tile.source);
   }
 
-  isTileHunting(tile: AlbumTile): boolean {
-    return tile.source ? this.autoHunt.isHunting(tile.source.lidarrId) : false;
+  tileHuntStatus(tile: AlbumTile): AlbumHuntStatus {
+    return tile.source ? this.autoHunt.statusFor(tile.source.lidarrId) : IDLE_HUNT;
   }
 
   // Lazy-load the next song page when the sentinel scrolls into view, but only

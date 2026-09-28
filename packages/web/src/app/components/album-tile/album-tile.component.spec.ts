@@ -4,6 +4,7 @@ import { AlbumTileComponent } from './album-tile.component';
 import { ServerConfigService } from '../../services/server-config.service';
 import { setInputValue } from '../../../testing/signal-input';
 import type { AlbumTile } from '../../lib/artist-album-tiles';
+import type { AlbumHuntStatus } from '../../lib/album-hunt-status';
 
 const tile = (over: Partial<AlbumTile> & Pick<AlbumTile, 'status'>): AlbumTile => ({
   key: 'k',
@@ -13,7 +14,10 @@ const tile = (over: Partial<AlbumTile> & Pick<AlbumTile, 'status'>): AlbumTile =
   ...over,
 });
 
-function render(t: AlbumTile, inputs: Partial<{ canAcquire: boolean; busy: boolean }> = {}) {
+function render(
+  t: AlbumTile,
+  inputs: Partial<{ canAcquire: boolean; status: AlbumHuntStatus }> = {},
+) {
   // One fresh component per scenario (signal-input.ts landmine 2), which means a
   // reset — TestBed refuses to be reconfigured once it has been instantiated.
   TestBed.resetTestingModule();
@@ -32,7 +36,7 @@ function render(t: AlbumTile, inputs: Partial<{ canAcquire: boolean; busy: boole
   setInputValue(c.artistName, 'Pink Floyd');
   setInputValue(c.token, 'tok');
   setInputValue(c.canAcquire, inputs.canAcquire ?? true);
-  setInputValue(c.busy, inputs.busy ?? false);
+  setInputValue(c.status, inputs.status ?? { phase: 'idle' });
   fixture.detectChanges();
   return fixture;
 }
@@ -88,12 +92,37 @@ describe('AlbumTileComponent', () => {
     }
   });
 
-  it('disables the action and says Finding… while a hunt is in flight', () => {
-    const fixture = render(tile({ status: 'missing' }), { busy: true });
+  it('disables the action and says Finding… while its own hunt searches', () => {
+    const fixture = render(tile({ status: 'missing' }), { status: { phase: 'searching' } });
     const button = el(fixture, '[data-testid="album-tile-action"]') as HTMLButtonElement;
 
     expect(button.disabled).toBe(true);
-    expect(button.textContent).toContain('Finding…');
+    expect(el(fixture, '[data-testid="album-tile-hunt-status"]')!.textContent).toBe('Finding…');
+  });
+
+  it('carries its live job stage, worded as on the Downloads page', () => {
+    for (const [status, stage, label] of [
+      ['missing', 'queued', 'Queued'],
+      ['partial', 'downloading', 'Downloading'],
+      ['missing', 'organizing', 'Organizing'],
+    ] as const) {
+      const fixture = render(tile({ status, localAlbumId: 'a', totalTracks: 7 }), {
+        status: { phase: 'job', stage },
+      });
+      const button = el(fixture, '[data-testid="album-tile-action"]') as HTMLButtonElement;
+      expect(button.disabled).toBe(true);
+      expect(button.dataset['huntPhase']).toBe('job');
+      expect(el(fixture, '[data-testid="album-tile-hunt-status"]')!.textContent).toBe(label);
+    }
+  });
+
+  // The site-wide lock is gone: an idle album is clickable whatever else is hunting.
+  it('an idle album stays clickable, with no busy text', () => {
+    const fixture = render(tile({ status: 'missing' }));
+    const button = el(fixture, '[data-testid="album-tile-action"]') as HTMLButtonElement;
+
+    expect(button.disabled).toBe(false);
+    expect(el(fixture, '[data-testid="album-tile-hunt-status"]')).toBeNull();
   });
 
   it('prefers the local cover over the remote one, and falls back to remote when unowned', () => {

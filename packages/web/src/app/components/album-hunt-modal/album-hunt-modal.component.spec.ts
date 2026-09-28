@@ -10,6 +10,7 @@ import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
 import { PluginService } from '../../services/plugin.service';
 import { ToastService } from '../../services/toast.service';
+import { AutoHuntService } from '../../services/auto-hunt.service';
 
 const ALBUM: DiscographyAlbum = {
   lidarrId: 42,
@@ -46,10 +47,16 @@ describe('AlbumHuntModalComponent', () => {
   const archiveSearchAlbum = vi.fn(() => of({ candidates: [] as ArchiveCandidate[] }));
   const acquireSubmit = vi.fn(() => Promise.resolve('job1'));
   const toastShow = vi.fn();
+  const kickPoll = vi.fn(() => Promise.resolve());
+  const autoHunt = { beginSearch: vi.fn(), endSearch: vi.fn() };
   let archiveEnabled = false;
 
   beforeEach(async () => {
     toastShow.mockClear();
+    kickPoll.mockClear();
+    kickPoll.mockImplementation(() => Promise.resolve());
+    autoHunt.beginSearch.mockClear();
+    autoHunt.endSearch.mockClear();
     huntAlbumBase.mockClear();
     huntAlbumBase.mockReturnValue(of({ candidates: [], totalTracks: 0, skewNeeded: false }));
     huntAlbumSkew.mockClear();
@@ -69,7 +76,8 @@ describe('AlbumHuntModalComponent', () => {
           useValue: { huntAlbumBase, huntAlbumSkew, huntDownload },
         },
         { provide: SearchApiService, useValue: { archiveSearchAlbum } },
-        { provide: TransferService, useValue: { poll: vi.fn(), kickPoll: vi.fn() } },
+        { provide: TransferService, useValue: { poll: vi.fn(), kickPoll } },
+        { provide: AutoHuntService, useValue: autoHunt },
         { provide: AcquireService, useValue: { submit: acquireSubmit } },
         {
           provide: PluginService,
@@ -180,6 +188,43 @@ describe('AlbumHuntModalComponent', () => {
       }),
       false,
     );
+  });
+
+  // The card behind the modal shows this album busy too (per-album hunt status).
+  it('holds the album busy for the whole search, even when it fails', async () => {
+    const c = create();
+    (c as unknown as { album: () => DiscographyAlbum }).album = () => ALBUM;
+    (c as unknown as { artistName: () => string }).artistName = () => 'Artist';
+    let heldDuringSearch = false;
+    huntAlbumBase.mockImplementation(() => {
+      heldDuringSearch =
+        autoHunt.beginSearch.mock.calls.length === 1 && autoHunt.endSearch.mock.calls.length === 0;
+      return throwError(() => new Error('boom'));
+    });
+
+    await c.startHunt();
+
+    expect(heldDuringSearch).toBe(true);
+    expect(c.state()).toBe('error');
+    expect(autoHunt.beginSearch).toHaveBeenCalledWith(42);
+    expect(autoHunt.endSearch).toHaveBeenCalledWith(42);
+  });
+
+  it('releases the album only after the new job is polled in', async () => {
+    const c = create();
+    (c as unknown as { album: () => DiscographyAlbum }).album = () => ALBUM;
+    c.candidates.set([candidate({ username: 'best' })]);
+    let releasedBeforePoll = true;
+    kickPoll.mockImplementation(async () => {
+      releasedBeforePoll = autoHunt.endSearch.mock.calls.length > 0;
+    });
+
+    await c.downloadSelected();
+
+    expect(kickPoll).toHaveBeenCalledTimes(1);
+    expect(releasedBeforePoll).toBe(false);
+    expect(autoHunt.beginSearch).toHaveBeenCalledWith(42);
+    expect(autoHunt.endSearch).toHaveBeenCalledWith(42);
   });
 
   it('forwards the resolved localAlbumId so the server filters out on-disk tracks', async () => {

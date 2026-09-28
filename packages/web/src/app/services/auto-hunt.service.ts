@@ -3,6 +3,8 @@ import { firstValueFrom, of, switchMap, map } from 'rxjs';
 import { DownloadsApiService } from './api/downloads-api.service';
 import { TransferService } from './transfer.service';
 import { ToastService } from './toast.service';
+import type { AcquisitionJobView } from '@nicotind/core';
+import { IDLE_HUNT, SEARCHING_HUNT, type AlbumHuntStatus } from '../lib/album-hunt-status';
 import { huntCutShort, type DiscographyAlbum, type FolderCandidate } from './api/api-types';
 import { mergeCandidates } from '../lib/merge-candidates';
 import {
@@ -23,39 +25,71 @@ export class AutoHuntService {
   private api = inject(DownloadsApiService);
   private transfer = inject(TransferService);
   private toasts = inject(ToastService);
-  readonly huntingAlbumIds = signal<Set<number>>(new Set());
   /**
-   * Any hunt in flight. The source runs one hunt session at a time (#1049), so
-   * a second trigger would only queue behind the first; the triggers disable on
-   * this instead of letting the user stack hunts that all wait.
+   * Albums clicked whose job is not visible yet, refcounted: the auto-hunt and
+   * the manual modal can hold the same album at once.
    */
-  readonly anyHunting = computed(() => this.huntingAlbumIds().size > 0);
+  private readonly pending = signal<ReadonlyMap<number, number>>(new Map());
 
-  isHunting(lidarrId: number): boolean {
-    return this.huntingAlbumIds().has(lidarrId);
+  /** The newest active job per Lidarr album; finished jobs never lock a card. */
+  private readonly activeJobByAlbum = computed(() => {
+    const byAlbum = new Map<number, AcquisitionJobView>();
+    for (const job of this.transfer.acquisitionJobs()) {
+      if (job.state !== 'active' || job.lidarrAlbumId === null) continue;
+      const seen = byAlbum.get(job.lidarrAlbumId);
+      if (!seen || job.createdAt > seen.createdAt) byAlbum.set(job.lidarrAlbumId, job);
+    }
+    return byAlbum;
+  });
+
+  statusFor(lidarrId: number): AlbumHuntStatus {
+    if (this.pending().has(lidarrId)) return SEARCHING_HUNT;
+    const job = this.activeJobByAlbum().get(lidarrId);
+    return job ? { phase: 'job', stage: job.stage } : IDLE_HUNT;
   }
 
-  reset(): void {
-    this.huntingAlbumIds.set(new Set());
+  /** Hold an album as `searching` until the matching `endSearch`. */
+  beginSearch(lidarrId: number): void {
+    this.pending.update((m) => new Map(m).set(lidarrId, (m.get(lidarrId) ?? 0) + 1));
   }
 
-  hunt(album: DiscographyAlbum, artistName: string, openManual: () => void): void {
-    if (this.huntingAlbumIds().has(album.lidarrId)) return;
-    this.huntingAlbumIds.update((s) => new Set(s).add(album.lidarrId));
-    void this._run(album, artistName, openManual).finally(() => {
-      this.huntingAlbumIds.update((s) => {
-        const next = new Set(s);
-        next.delete(album.lidarrId);
-        return next;
-      });
+  endSearch(lidarrId: number): void {
+    this.pending.update((m) => {
+      const next = new Map(m);
+      const count = (next.get(lidarrId) ?? 0) - 1;
+      if (count > 0) next.set(lidarrId, count);
+      else next.delete(lidarrId);
+      return next;
     });
   }
 
+  reset(): void {
+    this.pending.set(new Map());
+  }
+
+  hunt(album: DiscographyAlbum, artistName: string, openManual: () => void): void {
+    if (this.statusFor(album.lidarrId).phase !== 'idle') return;
+    this.beginSearch(album.lidarrId);
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      this.endSearch(album.lidarrId);
+    };
+    // The hold outlives _run(): a confident match hands off to a countdown toast,
+    // and the card must stay busy until that settles and the job is visible.
+    this._run(album, artistName, openManual, release).then((handedOff) => {
+      if (!handedOff) release();
+    }, release);
+  }
+
+  /** Resolves true when the hunt handed off to the countdown, which then owns `release`. */
   private async _run(
     album: DiscographyAlbum,
     artistName: string,
     openManual: () => void,
-  ): Promise<void> {
+    release: () => void,
+  ): Promise<boolean> {
     let candidates: FolderCandidate[] = [];
     // Why an empty result was empty (#1040/#1049): the source never reached its
     // network, or its search lanes were busy and this hunt was cut short. Either
@@ -120,7 +154,7 @@ export class AutoHuntService {
           },
         ],
       });
-      return;
+      return false;
     }
 
     const confident = candidates[0] !== undefined && candidates[0].matchPct >= AUTO_THRESHOLD;
@@ -141,7 +175,7 @@ export class AutoHuntService {
           },
         ],
       });
-      return;
+      return false;
     }
 
     // The source's search lanes were busy, so this hunt was cut short (#1049).
@@ -169,7 +203,7 @@ export class AutoHuntService {
           },
         ],
       });
-      return;
+      return false;
     }
 
     const best = candidates[0];
@@ -194,7 +228,7 @@ export class AutoHuntService {
           },
         ],
       });
-      return;
+      return false;
     }
 
     let toastId!: string;
@@ -206,24 +240,33 @@ export class AutoHuntService {
         {
           label: 'Download Now',
           callback: () => {
-            void this._download(toastId, album, candidates, openManual);
+            void this._download(toastId, album, candidates, openManual).finally(release);
           },
         },
         {
           label: 'Cancel',
           callback: () => {
             this.toasts.dismiss(toastId);
+            release();
           },
         },
         {
           label: 'Choose Manually',
           callback: () => {
             this.toasts.dismiss(toastId);
+            release();
             openManual();
           },
         },
       ],
     });
+    // At the toast cap a countdown is dropped unseen and never fires, so nothing
+    // would ever release this album — hand the user the manual picker instead.
+    if (!this.toasts.toasts().some((t) => t.id === toastId)) {
+      openManual();
+      return false;
+    }
+    return true;
   }
 
   private async _download(
@@ -277,11 +320,13 @@ export class AutoHuntService {
           return;
         }
 
-        this.transfer.kickPoll();
         this.toasts.show({
           message: `Downloading "${album.title}"`,
           kind: 'success',
         });
+        // Awaited so the caller's release lands after the job is in
+        // acquisitionJobs — the card goes searching → job with no idle gap.
+        await this.transfer.kickPoll();
         return;
       } catch (err) {
         const outcome = classifyHuntDownloadError(err);

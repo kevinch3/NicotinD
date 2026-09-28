@@ -14,6 +14,7 @@ import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
 import { PluginService } from '../../services/plugin.service';
 import { ToastService } from '../../services/toast.service';
+import { AutoHuntService } from '../../services/auto-hunt.service';
 import { baseQueries, skewedQueries } from '../../lib/hunt-queries';
 import { mergeCandidates } from '../../lib/merge-candidates';
 import {
@@ -68,6 +69,7 @@ export class AlbumHuntModalComponent implements OnInit {
   private acquire = inject(AcquireService);
   private plugins = inject(PluginService);
   private toast = inject(ToastService);
+  private autoHunt = inject(AutoHuntService);
 
   readonly album = input.required<DiscographyAlbum>();
   readonly artistName = input.required<string>();
@@ -274,6 +276,9 @@ export class AlbumHuntModalComponent implements OnInit {
     }
     this.queryStates.set(initialStates);
 
+    // The card behind the modal shows this search too, not idle.
+    const lidarrId = this.album().lidarrId;
+    this.autoHunt.beginSearch(lidarrId);
     try {
       // Phase 1 — base queries.
       this._setPhaseState(baseQueries(artist, album), 'searching');
@@ -347,6 +352,8 @@ export class AlbumHuntModalComponent implements OnInit {
     } catch (err) {
       this.errorMsg.set(err instanceof Error ? err.message : 'Hunt failed');
       this.state.set('error');
+    } finally {
+      this.autoHunt.endSearch(lidarrId);
     }
   }
 
@@ -371,10 +378,12 @@ export class AlbumHuntModalComponent implements OnInit {
       .map((c) => ({ username: c.username, directory: c.directory, files: toFiles(c) }));
 
     this.state.set('downloading');
+    const lidarrId = this.album().lidarrId;
+    this.autoHunt.beginSearch(lidarrId);
     try {
       const res = await firstValueFrom(
         this.api.huntDownload(
-          this.album().lidarrId,
+          lidarrId,
           {
             selected: {
               username: candidate.username,
@@ -395,10 +404,10 @@ export class AlbumHuntModalComponent implements OnInit {
         this.state.set('already-complete');
         return;
       }
-      // Surface the new transfers immediately in the global download UI.
-      this.transfer.kickPoll();
       this.downloaded.emit();
       this.close();
+      // Surface the new job before the hold drops, so the card goes straight to its stage.
+      await this.transfer.kickPoll();
     } catch (err) {
       // The server rejects a duplicate acquisition with 409 + a machine code;
       // those are positive notices (already have it / already downloading), not
@@ -410,6 +419,8 @@ export class AlbumHuntModalComponent implements OnInit {
         this.errorMsg.set(outcome.message);
         this.state.set('error');
       }
+    } finally {
+      this.autoHunt.endSearch(lidarrId);
     }
   }
 

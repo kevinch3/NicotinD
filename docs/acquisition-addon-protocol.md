@@ -187,9 +187,10 @@ source:
   second of two hunts. The response carries `searchesFired` / `searchesAnswered`;
   `huntCutShort` (fewer answered than fired) maps to `slskd-unavailable` in
   `acquireAlbum`, the auto-hunt toast says "source busy — n of m searches
-  completed" with a Retry, the modal shows a `hunt-source-busy` state, and the
-  hunt triggers disable on `anyHunting` because the source takes one hunt at a
-  time anyway. The addon side (waves of two, an 8 s per-search timeout, one
+  completed" with a Retry, and the modal shows a `hunt-source-busy` state. The
+  triggers do not serialize hunts site-wide: each card is disabled only by its
+  own album's hunt (`statusFor`), and a hunt the lanes cut short takes this
+  Retry path. → [album-hunt.md](album-hunt.md) The addon side (waves of two, an 8 s per-search timeout, one
   `SearchLanes` queue with user hunts ahead of fallback waves) lives in the slskd
   addon's protocol doc.
 - **An addon that deletes needs somewhere it may write.** The slskd addon's

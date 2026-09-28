@@ -298,6 +298,31 @@ Note this makes item 2 below **user-visible**: when the discography diff's `norm
 match misses, the same album now renders twice in one grid (once owned, once missing) instead of
 once in each of two distant grids.
 
+## Per-album hunt status (#1439)
+
+Every hunt trigger — the artist-page tiles, the search catalog cards, the manual modal — reads one
+per-album status, `AutoHuntService.statusFor(lidarrId)`: `searching` while a click has no job
+visible yet, `job` (with its `PipelineStage`) while an **active** acquisition job carries that
+`lidarrAlbumId` (newest wins), else `idle`. The job half is a join over `TransferService`'s
+`acquisitionJobs`, which is already live app-wide, so a card shows the same stage words as the
+Downloads page (`stageLabel`) with no new transport. A card is disabled only by its own album.
+
+**The `searching` hold outlives the search.** A confident match hands off to a 3 s countdown toast,
+so the hold is released on the countdown's terminal outcome — Cancel, Choose Manually, a failure
+toast — or, on success, only **after `await kickPoll()`**, when the new job is already in
+`acquisitionJobs`. Releasing when the search resolved (as the old lock did) left the card idle
+through countdown → enqueue → first poll, and a second click started a second hunt for the same
+album. A countdown dropped unseen at the toast cap never fires, so that case falls back to the
+manual picker instead of holding forever. Holds are refcounted (`beginSearch`/`endSearch`), since
+the modal and the auto-hunt can hold one album at once.
+
+**No site-wide lock.** #1049 disabled every trigger while any hunt ran (`anyHunting`), because the
+source has two search lanes. That lock only ever covered the search, and extending it to cover the
+job would have locked the whole UI for minutes per album. Concurrent hunts now run; one the lanes
+cut short comes back `huntCutShort` and gets the "source busy — Retry" toast, which is the honest
+answer anyway. A catalog card knows its Lidarr id only once resolved, so after a reload it reads
+idle until clicked; the click resolves it and `hunt()` no-ops onto the live job.
+
 ## Deferred: unify the hunt engines
 
 The fixes above are targeted; the underlying structure still has avoidable duplication worth folding

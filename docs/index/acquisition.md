@@ -25,7 +25,7 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   → [acquisition-addon-protocol.md](../acquisition-addon-protocol.md)
 - **Search-lane honesty**: a hunt reports how many searches it fired vs answered, so one the
   source cut short (its two search lanes held by other work) is retried, not recorded as a miss
-  (`huntCutShort`, `searchesAnswered`, `anyHunting`).
+  (`huntCutShort`, `searchesAnswered`).
   → [acquisition-addon-protocol.md](../acquisition-addon-protocol.md)
 - **Addon download lifecycle**: the addon owns a job's downloaded bytes until core releases the
   job, so a release must be earned — `pendingIngestCount` is zero only when everything wanted is
@@ -72,6 +72,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   `recordAcquireJobTrack`. → [playlist-from-acquisition.md](../playlist-from-acquisition.md)
 - **Guided acquire UX**: catalog cards are the primary path, the raw peer lane sits behind Advanced;
   `pickNetworkView` defaults to Folders for album intent, `AutoHuntService` self-heals one-click Get.
+  → [album-hunt.md](../album-hunt.md)
+- **Per-album hunt status**: each hunt trigger shows its own album's search or live job stage and
+  is disabled by nothing else (`statusFor`, `AlbumHuntStatus`, `beginSearch`).
   → [album-hunt.md](../album-hunt.md)
 - **Merged `/get` workspace**: Acquire + Downloads are one route with a `?tab=find|downloads` shell
   (`GetComponent`); the `@if` is load-bearing (destroying the inactive tab unregisters its handlers).

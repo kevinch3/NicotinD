@@ -1,6 +1,6 @@
 import { Component, input, computed, inject } from '@angular/core';
 import type { PipelineStage } from '@nicotind/core';
-import { stageBadge } from '../../lib/pipeline-stage';
+import { stageBadge, stageLabel } from '../../lib/pipeline-stage';
 import { TranslateService } from '../../services/translate.service';
 
 /**
@@ -20,12 +20,7 @@ export class PipelineStageBadgeComponent {
   private readonly i18n = inject(TranslateService);
 
   readonly badge = computed(() => stageBadge(this.stage()));
-  /** Translated label, falling back to the map's English (#664 lands the rest). */
-  readonly label = computed(() => {
-    const badge = this.badge();
-    const translated = this.i18n.t(badge.key);
-    return translated === badge.key ? badge.label : translated;
-  });
+  readonly label = computed(() => stageLabel(this.stage(), (key) => this.i18n.t(key)));
 
   readonly toneClass = computed(() => {
     switch (this.badge().tone) {

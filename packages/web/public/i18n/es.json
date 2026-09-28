@@ -56,6 +56,7 @@
   "acquire.peersResponded": "{count} peers respondieron",
   "acquire.placeholder": "Busca música o pega un enlace…",
   "acquire.preparing": "Preparando…",
+  "acquire.finding": "Buscando…",
   "acquire.queued": "En cola",
   "acquire.recentSearches": "Búsquedas recientes",
   "acquire.resizeBrowser": "Redimensionar el explorador de carpetas",
