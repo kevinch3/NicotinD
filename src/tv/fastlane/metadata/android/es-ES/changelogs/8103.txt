@@ -1,0 +1,1 @@
+• release: publish a GitHub Release only once its artifacts are attached (#1454)
