@@ -9,8 +9,14 @@ import {
   type AddonSearchRequest,
   type AddonSearchResponse,
   type AddonStatusRow,
+  createLogger,
 } from '@nicotind/core';
 import type { AddonTransport, AddonCallOutcome } from './transport.js';
+
+type HuntLog = {
+  info(obj: Record<string, unknown>, msg: string): void;
+  warn(obj: Record<string, unknown>, msg: string): void;
+};
 
 /** A failed request to an addon — carries the HTTP status when there was one. */
 export class AddonRequestError extends Error {
@@ -131,6 +137,8 @@ export interface AddonClientOptions {
   timeoutMs?: number;
   /** Reports every JSON call's outcome (wire to the circuit-breaker). */
   onOutcome?: (outcome: AddonCallOutcome) => void;
+  /** Where `albumsSearch` records each hunt's duration (#1437); defaults to the app logger. */
+  log?: HuntLog;
 }
 
 /**
@@ -144,6 +152,7 @@ export class AddonClient implements AddonTransport {
   private fetchFn: typeof fetch;
   private timeoutMs: number;
   private onOutcome?: (outcome: AddonCallOutcome) => void;
+  private log: HuntLog;
 
   constructor(opts: AddonClientOptions) {
     this.baseUrl = opts.baseUrl.replace(/\/+$/, '');
@@ -151,6 +160,7 @@ export class AddonClient implements AddonTransport {
     this.fetchFn = opts.fetchFn ?? fetch;
     this.timeoutMs = opts.timeoutMs ?? 10_000;
     this.onOutcome = opts.onOutcome;
+    this.log = opts.log ?? createLogger('addon-client');
   }
 
   /**
@@ -199,12 +209,35 @@ export class AddonClient implements AddonTransport {
   }
 
   async albumsSearch(req: AddonAlbumSearchRequest): Promise<AddonAlbumSearchResponse> {
-    // A hunt (base + skew passes) legitimately takes minutes.
-    return (await this.request('POST', '/addon/v1/albums/search', {
-      auth: true,
-      json: req,
-      timeoutMs: 180_000,
-    })) as AddonAlbumSearchResponse;
+    // A hunt (base + skew passes) can take minutes here, but its route answers
+    // behind a 60 s socket budget: the duration log measures which one binds (#1437).
+    const started = performance.now();
+    try {
+      const res = (await this.request('POST', '/addon/v1/albums/search', {
+        auth: true,
+        json: req,
+        timeoutMs: 180_000,
+      })) as AddonAlbumSearchResponse;
+      this.log.info(
+        {
+          baseUrl: this.baseUrl,
+          durationMs: Math.round(performance.now() - started),
+          candidates: res.candidates.length,
+        },
+        'addon hunt completed',
+      );
+      return res;
+    } catch (err) {
+      this.log.warn(
+        {
+          baseUrl: this.baseUrl,
+          durationMs: Math.round(performance.now() - started),
+          err: err instanceof Error ? err.message : String(err),
+        },
+        'addon hunt failed',
+      );
+      throw err;
+    }
   }
 
   async createJob(req: AddonJobRequest, idempotencyKey?: string): Promise<AddonJob> {

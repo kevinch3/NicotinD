@@ -182,6 +182,8 @@ The `LibraryCurator` won't auto-hide a deliberately-hunted release (its normaliz
 
 **Two-phase hunt for live progress**: the hunt modal uses two separate requests — `POST .../hunt/base` (base queries only, returns `{ candidates, skewNeeded }`) followed by `POST .../hunt/skew` (skew queries only, if needed) — so the UI can highlight each query row in real time (idle → searching → done/skipped). The single-shot `POST .../hunt` endpoint is preserved for watchlist/catalog callers.
 
+**Every hunt logs its duration (#1437).** `AddonClient.albumsSearch` allows an addon 180 s, but the hunt routes answer behind the 60 s socket budget, so a hunt that runs past ~56 s without writing a byte is idle-killed before the addon's own ceiling. Nothing recorded real hunt times, so each call now logs `addon hunt completed` / `addon hunt failed` with `durationMs` and `baseUrl` (and `candidates` on success). Read those on prod before choosing a fix: if no hunt nears 55 s, lower the client timeout to fit the budget so failures are typed; if some do, move the hunt to a job like artist provisioning, rather than raising the socket budget.
+
 **Transparency**: the album-hunt modal's loading screen lists the exact query strings it fires via the web helper `lib/hunt-queries.ts`, which now **re-exports** `baseQueries`/`skewedQueries`/`stripTitleQualifiers` from **`@nicotind/core`** — one shared source, not a hand-synced copy (the pure `hunt-queries.ts` module carries no pino/node deps, so the web bundle can import it; it's surfaced through the browser-safe `web/src/types/core.ts` shim like the roles ladder). The old two-copy sync risk is gone.
 
 ---
