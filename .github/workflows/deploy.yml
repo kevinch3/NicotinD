@@ -597,7 +597,6 @@ jobs:
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME}" # vX.Y.Z
-          major="${version%%.*}"       # vX
           refs=()
           for d in *; do refs+=("$IMAGE@sha256:$d"); done
           docker buildx imagetools create -t "$IMAGE:$version" "${refs[@]}"
