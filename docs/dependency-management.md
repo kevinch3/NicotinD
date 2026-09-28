@@ -187,6 +187,25 @@ week, and it would defeat the deliberately unscheduled `vulnerabilityAlerts` blo
 (`"schedule": ["at any time"]`, `"prCreation": "immediate"`) — an advisory against something that
 ships now fails `bun run check:audit`, so waiting for Monday would block `verify` in the meantime.
 
+### GitHub Actions are pinned by commit SHA
+
+Every action **not published by GitHub itself** (`docker/*`, `softprops/action-gh-release`,
+`tailscale/github-action`, `aquasecurity/trivy-action`, `android-actions/setup-android`,
+`oven-sh/setup-bun`, `renovatebot/github-action`) is pinned as `owner/action@<40-hex sha> # vX`.
+A tag is mutable: whoever controls the action's repository can move `v4` to any commit, and the
+next run executes it with this repo's token and, in `deploy.yml`, the deploy host's Tailscale and
+SSH access. That is how `tj-actions/changed-files` was used against thousands of repositories.
+A SHA cannot be moved.
+
+The first pins were checked before they were written: each SHA is the commit its tag resolved to
+**and** an ancestor of the action's own default branch — a hijacked tag points at a commit outside
+it, and pinning that would freeze the compromise in place.
+
+Renovate keeps them current: `helpers:pinGitHubActionDigests` (in `renovate.json`) proposes digest
+bumps with the `# vX` comment updated alongside, and will also propose pinning the `actions/*` ones.
+`check:action-runtimes` reads the comment to classify a SHA pin, and `check:fdroid` reads the JDK
+through one (`scripts/fdroid-jdk.ts`), so either PR stays green.
+
 ### What the custom managers cover
 
 Two version pins live outside any package manifest, so nothing else would ever bump them.

@@ -698,8 +698,13 @@ zero files, because Bun's `Glob` skips dot-directories by default and every path
 this document opens with.
 
 Composite actions (`trivy-action`, `upload-pages-artifact`) are recorded in the table **explicitly**
-rather than skipped, so "no Node runtime" is a classification someone made rather than a gap. A SHA
-pin is reported as unclassifiable, because its runtime genuinely is not derivable offline.
+rather than skipped, so "no Node runtime" is a classification someone made rather than a gap.
+
+A commit-SHA pin is classified by the **version comment** it carries (`@<40-hex sha> # v4`): the
+SHA is what runs, the comment is the release it was taken from, and Renovate's
+`helpers:pinGitHubActionDigests` keeps the two moving together. A SHA with no comment, or a short
+SHA, stays unclassifiable, because its runtime genuinely is not derivable offline.
+([dependency-management.md](dependency-management.md#github-actions-are-pinned-by-commit-sha))
 
 ### Two couplings the table carries as notes
 

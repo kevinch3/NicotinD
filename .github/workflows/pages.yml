@@ -66,7 +66,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
@@ -132,7 +132,7 @@ jobs:
           pipx install 'fdroidserver==2.4.5'
           fdroid --version
 
-      - uses: android-actions/setup-android@v4
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4
         if: steps.key.outputs.has_key == 'true'
         with:
           packages: platform-tools build-tools;34.0.0
