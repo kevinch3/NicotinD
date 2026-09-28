@@ -167,7 +167,6 @@ describe('GET /api/admin/review', () => {
         startedAt: null,
         updatedAt: null,
       })),
-      incompleteJobCount: mock(() => 0),
       untrackedCount: mock(() => 0),
       // Default gatherer needs the global DB (initDatabase); stub it so this
       // file is green standalone, not only inside the full suite.
@@ -176,7 +175,6 @@ describe('GET /api/admin/review', () => {
       artistImages: mock(() => ({ visible: 0, withPortrait: 0, missing: 0, manualOverride: 0 })),
       reviewFlags: mock(() => []),
       auditTail: mock(() => []),
-      incompleteJobs: mock(() => []),
       untracked: mock(() => []),
     };
     const app = makeApp(subFns, { version: '0.1.234' });
@@ -186,7 +184,6 @@ describe('GET /api/admin/review', () => {
     expect(data.version).toBe('0.1.234');
     expect(data.library.scanning).toBe(false);
     expect(data.library.indexedSongCount).toBe(1234);
-    expect(data.incompleteJobsCount).toBe(0);
     expect(data.untrackedCount).toBe(0);
     expect(data.updateCheck?.latestVersion).toBe('0.1.235');
     expect(data.backups).toHaveLength(1);
@@ -213,17 +210,11 @@ describe('GET /api/admin/review', () => {
         throw new Error('backups dir missing');
       }),
       processingSummary: mock(() => null),
-      incompleteJobCount: mock(() => {
-        throw new Error('count failed');
-      }),
       untrackedCount: mock(() => {
         throw new Error('count failed');
       }),
       auditTail: mock(() => {
         throw new Error('audit broken');
-      }),
-      incompleteJobs: mock(() => {
-        throw new Error('incomplete list broken');
       }),
       untracked: mock(() => {
         throw new Error('untracked list broken');
@@ -237,13 +228,11 @@ describe('GET /api/admin/review', () => {
     expect(data.errors.some((e) => e.startsWith('metrics'))).toBe(true);
     expect(data.errors.some((e) => e.startsWith('scanStatus'))).toBe(true);
     expect(data.errors.some((e) => e.startsWith('backups'))).toBe(true);
-    expect(data.errors.some((e) => e.startsWith('incompleteJobsCount'))).toBe(true);
     expect(data.errors.some((e) => e.startsWith('untrackedCount'))).toBe(true);
     expect(data.errors.some((e) => e.startsWith('auditTail'))).toBe(true);
     // Fallbacks preserved.
     expect(data.load.cpu.percent).toBe(0);
     expect(data.library.indexedSongCount).toBe(0);
-    expect(data.incompleteJobsCount).toBe(0);
     expect(data.untrackedCount).toBe(0);
     expect(data.auditTail).toEqual([]);
     expect(data.backups).toEqual([]);
@@ -270,10 +259,8 @@ describe('GET /api/admin/review', () => {
           }>,
       ),
       processingSummary: mock(() => null),
-      incompleteJobCount: mock(() => 0),
       untrackedCount: mock(() => 0),
       auditTail: mock(() => []),
-      incompleteJobs: mock(() => []),
       untracked: mock(() => []),
     };
     const app = makeApp(subFns);
@@ -306,10 +293,8 @@ describe('GET /api/admin/review', () => {
           }>,
       ),
       processingSummary: mock(() => null),
-      incompleteJobCount: mock(() => 0),
       untrackedCount: mock(() => 0),
       auditTail: mock(() => []),
-      incompleteJobs: mock(() => []),
       untracked: mock(() => []),
     };
     const app = makeApp(subFns);
@@ -328,7 +313,6 @@ describe('GET /api/admin/review', () => {
       updateCheck: mock(async () => null),
       backupsList: mock(() => [] as never),
       processingSummary: mock(() => null),
-      incompleteJobCount: mock(() => 0),
       untrackedCount: mock(() => 0),
       // Default gatherer needs the global DB (initDatabase); stub it so this
       // file is green standalone, not only inside the full suite.
@@ -337,7 +321,6 @@ describe('GET /api/admin/review', () => {
       artistImages: mock(() => ({ visible: 0, withPortrait: 0, missing: 0, manualOverride: 0 })),
       reviewFlags: mock(() => []),
       auditTail: mock(() => []),
-      incompleteJobs: mock(() => []),
       untracked: mock(() => []),
     });
     const data = (await (await app.request('/')).json()) as ServiceReview;
@@ -392,8 +375,8 @@ describe('GET /api/admin/review', () => {
  * Issue #274. The slices used to be destructured positionally out of one
  * `Promise.all`, so adding one meant editing the name list and the array in
  * exact lockstep. A mismatch is invisible to the type-checker where slices
- * share a type — `incompleteJobsCount`/`untrackedCount` are both `number`, and
- * `incompleteJobs`/`untracked` are both arrays of objects — so a swap would
+ * share a type — `untrackedCount`/`playEvents` are both `number`, and
+ * `untracked`/`auditTail` are both arrays of objects — so a swap would
  * type-check cleanly and just produce a wrong Admin panel.
  *
  * Distinct sentinels per gatherer make that impossible to introduce silently.
@@ -402,11 +385,9 @@ describe('GET /api/admin/review — every slice lands in its own field (#274)', 
   it('does not cross-wire the same-typed slices', async () => {
     const subFns = {
       collectMetrics: mock(async () => emptyMetrics),
-      // The two `number` slices: distinct values, so a swap flips them.
-      incompleteJobCount: mock(() => 11),
+      // The `number` slices: distinct values, so a swap flips them.
       untrackedCount: mock(() => 22),
-      // The two object-array slices: distinguishable by shape AND content.
-      incompleteJobs: mock(() => [{ id: 'incomplete-sentinel' }]),
+      // The object-array slices: distinguishable by shape AND content.
       untracked: mock(() => [{ id: 'untracked-sentinel' }]),
       orphanRows: mock(() => [{ table: 'orphan-sentinel', rows: 1, orphans: 1 }]),
       playEvents: mock(() => 7),
@@ -419,13 +400,11 @@ describe('GET /api/admin/review — every slice lands in its own field (#274)', 
     const res = await makeApp(subFns).request('/');
     const body = (await res.json()) as ServiceReview;
 
-    expect(body.incompleteJobsCount).toBe(11);
     expect(body.untrackedCount).toBe(22);
-    expect(body.incompleteJobs[0]).toMatchObject({ id: 'incomplete-sentinel' });
     expect(body.untracked[0]).toMatchObject({ id: 'untracked-sentinel' });
     expect(body.orphanRows[0]).toMatchObject({ table: 'orphan-sentinel' });
-    // A same-typed number next to incompleteJobsCount/untrackedCount — exactly
-    // the swap `allNamed` exists to prevent (#274), so assert it lands.
+    // A same-typed number next to untrackedCount — exactly the swap `allNamed`
+    // exists to prevent (#274), so assert it lands.
     expect(body.playEvents).toBe(7);
     expect(body.auditTail[0]).toMatchObject({ id: 'audit-sentinel' });
     expect(body.backups[0]).toMatchObject({ name: 'backup-sentinel' });

@@ -34,7 +34,7 @@ import type {
   LibraryHealthReport,
   MissplitPreview,
 } from './api-types';
-import type { IdentifyApplyFields, IdentifySuggestion } from './api-types';
+import type { IdentifyApplyFields, IdentifySuggestion, IncompleteAlbum } from './api-types';
 import type { SongMetadataCandidates, SongMetadataFields, SongMetadataResult } from './api-types';
 import type { MaintenanceStatus } from './api-types';
 import type { WaveformData } from '../../../types/core';
@@ -241,6 +241,10 @@ export class LibraryApiService {
   /** Abort the running maintenance pass. `ok:false` when nothing was running. */
   cancelMaintenance() {
     return this.http.post<{ ok: boolean }>(`/api/admin/maintenance/cancel`, {});
+  }
+  /** The confirmed-incomplete worklist (#1444) — on demand, live-checked against Lidarr. */
+  incompleteAlbums() {
+    return this.http.get<IncompleteAlbum[]>(`/api/library/incomplete-albums`);
   }
   resyncLibrary() {
     return this.http.post<{ ok: boolean }>(`/api/library/sync`, {}).pipe(

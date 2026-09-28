@@ -1026,6 +1026,29 @@ export async function libraryHealthWithLidarr(
   // One job read for both passes — the candidate scan below and the report
   // itself would otherwise each union `album_jobs` with `acquisition_jobs`.
   const jobs = newestJobPerPair(db);
+  const live = await liveTracklists(db, jobs, lidarr);
+  return libraryHealth(db, { ...opts, liveTracklists: live }, jobs);
+}
+
+/**
+ * The confirmed-incomplete worklist alone, live-checked like the report's — the
+ * Admin Incomplete Albums panel (#1444). Every row is one a hunt would enqueue.
+ */
+export async function incompleteAlbums(
+  db: Database,
+  lidarr: Pick<Lidarr, 'track'> | null | undefined,
+): Promise<ConfirmedIncomplete[]> {
+  const jobs = newestJobPerPair(db);
+  const live = lidarr ? await liveTracklists(db, jobs, lidarr) : undefined;
+  return confirmedIncomplete(db, jobs, live).confirmed;
+}
+
+/** Lidarr's live tracklist per candidate album; a failed fetch keeps the stored list. */
+async function liveTracklists(
+  db: Database,
+  jobs: readonly JobCanonicalTracklist[],
+  lidarr: Pick<Lidarr, 'track'>,
+): Promise<Map<number, string[]>> {
   const ids = [
     ...new Set(
       confirmedIncomplete(db, jobs)
@@ -1048,5 +1071,5 @@ export async function libraryHealthWithLidarr(
       }),
     );
   }
-  return libraryHealth(db, { ...opts, liveTracklists: live }, jobs);
+  return live;
 }

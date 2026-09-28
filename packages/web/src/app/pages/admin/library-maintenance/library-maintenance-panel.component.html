@@ -483,93 +483,81 @@
     }
   </section>
 
-  <!-- Incomplete Albums (snapshot-based via ServiceReview). -->
-  <div>
+  <!-- Incomplete Albums (#1444): the health report's confirmed worklist, on demand —
+       per-row queries plus a Lidarr tracklist check are too heavy for the poll. -->
+  <div data-testid="incomplete-albums">
     <div class="flex items-center justify-between mb-8">
       <h2 class="text-xl font-bold text-theme-primary">{{ 'admin.incompleteAlbums' | t }}</h2>
       <button
-        (click)="reviewSvc.refresh()"
-        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition"
+        data-testid="incomplete-albums-check"
+        (click)="loadIncompleteAlbums()"
+        [disabled]="incompleteLoading()"
+        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
       >
-        {{ 'admin.refresh' | t }}
+        {{ (incompleteAlbums() === null ? 'admin.checkIncomplete' : 'admin.refresh') | t }}
       </button>
     </div>
 
-    @if (incompleteJobsCount() === 0 && incompleteJobs().length === 0) {
-      <p class="text-theme-muted text-sm">{{ 'admin.noIncompleteHunts' | t }}</p>
-    } @else if (incompleteJobs().length === 0) {
-      <p class="text-theme-muted text-sm">{{ 'admin.loadingAlbumJobs' | t }}</p>
-    } @else {
-      <section class="section-flush">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="border-b border-theme">
-              <th
-                class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
-              >
-                {{ 'admin.colAlbum' | t }}
-              </th>
-              <th
-                class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
-              >
-                {{ 'admin.colState' | t }}
-              </th>
-              <th
-                class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted hidden sm:table-cell"
-              >
-                {{ 'admin.colAttempts' | t }}
-              </th>
-              <th
-                class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted hidden sm:table-cell"
-              >
-                {{ 'admin.colCreated' | t }}
-              </th>
-              <th
-                class="text-right px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
-              >
-                {{ 'admin.colActions' | t }}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            @for (job of incompleteJobs(); track job.id) {
-              <tr class="border-b border-theme last:border-0">
-                <td class="px-4 py-3 text-theme-primary">
-                  <div class="font-medium">{{ job.albumTitle ?? job.directory }}</div>
-                  @if (job.artistName) {
-                    <div class="text-xs text-theme-muted">{{ job.artistName }}</div>
-                  }
-                </td>
-                <td class="px-4 py-3">
-                  <span [class]="'text-xs font-medium ' + jobStateClass(job.state)">{{
-                    job.state
-                  }}</span>
-                </td>
-                <td class="px-4 py-3 text-theme-muted text-xs hidden sm:table-cell">
-                  {{ job.fallbackAttempts }}
-                </td>
-                <td class="px-4 py-3 text-theme-muted text-xs hidden sm:table-cell">
-                  {{ formatTimestamp(job.createdAt) }}
-                </td>
-                <td class="px-4 py-3 text-right">
-                  <button
-                    (click)="retryHunt(job)"
-                    [disabled]="job.lidarrAlbumId == null"
-                    [title]="
-                      job.lidarrAlbumId == null
-                        ? i18n.t('admin.noLidarrAlbumId')
-                        : i18n.t('admin.rehuntAlbum')
-                    "
-                    class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-inverse text-theme-inverse hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    {{ 'admin.retryHunt' | t }}
-                  </button>
-                </td>
+    @if (incompleteLoading()) {
+      <p class="text-theme-muted text-sm">{{ 'admin.checkingIncomplete' | t }}</p>
+    } @else if (incompleteError(); as err) {
+      <p class="text-status-error text-sm">{{ err }}</p>
+    } @else if (incompleteAlbums(); as rows) {
+      @if (rows.length === 0) {
+        <p class="text-theme-muted text-sm">{{ 'admin.noIncompleteAlbums' | t }}</p>
+      } @else {
+        <section class="section-flush">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-theme">
+                <th
+                  class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
+                >
+                  {{ 'admin.colAlbum' | t }}
+                </th>
+                <th
+                  class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
+                >
+                  {{ 'admin.colTracks' | t }}
+                </th>
+                <th
+                  class="text-right px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted"
+                >
+                  {{ 'admin.colActions' | t }}
+                </th>
               </tr>
-            }
-          </tbody>
-        </table>
-      </section>
+            </thead>
+            <tbody>
+              @for (row of rows; track row.artist + '\u0000' + row.album) {
+                @let huntStatus = rowHuntStatus(row);
+                <tr class="border-b border-theme last:border-0" data-testid="incomplete-album-row">
+                  <td class="px-4 py-3 text-theme-primary">
+                    <div class="font-medium">{{ row.album }}</div>
+                    <div class="text-xs text-theme-muted">{{ row.artist }}</div>
+                  </td>
+                  <td class="px-4 py-3 text-theme-muted text-xs">
+                    {{ 'admin.tracksOwned' | t: { owned: row.owned, expected: row.expected } }}
+                  </td>
+                  <td class="px-4 py-3 text-right">
+                    <button
+                      data-testid="incomplete-album-complete"
+                      (click)="completeAlbum(row)"
+                      [disabled]="row.lidarrAlbumId == null || huntStatus.phase !== 'idle'"
+                      [attr.data-hunt-phase]="huntStatus.phase"
+                      [title]="row.lidarrAlbumId == null ? i18n.t('admin.noLidarrAlbumId') : ''"
+                      class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-inverse text-theme-inverse hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {{ huntLabel(huntStatus) }}
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </section>
+      }
+    } @else {
+      <p class="text-theme-muted text-sm">{{ 'admin.incompleteHint' | t }}</p>
     }
   </div>
 
@@ -645,13 +633,12 @@
   </div>
 </app-settings-group>
 
-<!-- Retry-hunt modal (reuses the album-hunt flow) -->
-@if (retryAlbum(); as album) {
+<!-- Manual picker, when Complete's one-click hunt falls back to it -->
+@if (manualHuntAlbum(); as album) {
   <app-album-hunt-modal
     [album]="album"
-    [artistName]="retryArtist()"
-    [replace]="true"
-    (closed)="onRetryClosed()"
-    (downloaded)="onRetryDownloaded()"
+    [artistName]="manualHuntArtist()"
+    (closed)="manualHuntAlbum.set(null)"
+    (downloaded)="manualHuntAlbum.set(null)"
   />
 }

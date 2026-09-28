@@ -73,7 +73,6 @@ export class ServiceReviewService {
   readonly maintenance = computed(() => this.review()?.maintenance ?? null);
 
   // Counts that used to live on their own endpoints
-  readonly incompleteJobsCount = computed(() => this.review()?.incompleteJobsCount ?? 0);
   readonly untrackedCount = computed(() => this.review()?.untrackedCount ?? 0);
   readonly orphanRows = computed(() => this.review()?.orphanRows ?? []);
   /** Listening-history size — the measurement behind the keep-forever policy. */
@@ -97,7 +96,6 @@ export class ServiceReviewService {
    *  the Admin card costs no poll of its own. */
   readonly reviewFlags = computed(() => this.review()?.reviewFlags ?? []);
   /** Snapshots of the Admin tables — drained from ServiceReview instead of polled per-table. */
-  readonly incompleteJobs = computed(() => this.review()?.incompleteJobs ?? []);
   readonly untracked = computed(() => this.review()?.untracked ?? []);
 
   // Version + uptime

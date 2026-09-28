@@ -101,7 +101,11 @@ import {
 } from '../services/cover-sources.js';
 import { folderArtBelongsToAlbum } from '../services/album-folder.js';
 import { checkFragments } from '../services/library-fragments.js';
-import { albumConfirmedIncomplete, libraryHealthWithLidarr } from '../services/library-health.js';
+import {
+  albumConfirmedIncomplete,
+  incompleteAlbums,
+  libraryHealthWithLidarr,
+} from '../services/library-health.js';
 import { completeAlbum, type CompleteAlbumDeps } from '../services/album-complete.js';
 import { applyAlbumCover } from '../services/album-cover-mutate.js';
 import {
@@ -1980,6 +1984,13 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
         lidarr,
       ),
     );
+  });
+
+  // The Admin Incomplete Albums panel (#1444): the health report's confirmed
+  // worklist alone. On demand for the same reason as /health — per-row queries.
+  app.get('/incomplete-albums', async (c) => {
+    requireAdmin(c);
+    return c.json(await incompleteAlbums(getDatabase(), lidarr));
   });
 
   app.get('/fragments', (c) => {

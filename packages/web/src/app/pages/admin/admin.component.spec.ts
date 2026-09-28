@@ -11,10 +11,12 @@ import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import { SystemApiService } from '../../services/api/system-api.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { ServiceReviewService } from '../../services/service-review.service';
+import { AutoHuntService } from '../../services/auto-hunt.service';
+import type { AlbumHuntStatus } from '../../lib/album-hunt-status';
 import type {
   AdminUser,
   AlbumJob,
-  IncompleteAlbumJob,
+  IncompleteAlbum,
   LibraryFragmentReport,
   ServiceReview,
   UntrackedDownload,
@@ -88,14 +90,12 @@ function makeReview(over: Partial<ServiceReview> = {}): ServiceReview {
     backupsSummary: { total: 0, totalBytes: 0, newestAt: null, lastBackupName: null },
     processing: null,
     maintenance: null,
-    incompleteJobsCount: 0,
     untrackedCount: 0,
     orphanRows: [],
     playEvents: 0,
     artistImages: { visible: 0, withPortrait: 0, missing: 0, manualOverride: 0 },
     auditTail: [],
     reviewFlags: [],
-    incompleteJobs: [],
     untracked: [],
     errors: [],
     ...over,
@@ -121,8 +121,6 @@ function makeSvc(over: Partial<ServiceReview> = {}) {
     backupsSummary: (() => r.backupsSummary) as ServiceReviewService['backupsSummary'],
     auditTail: (() => r.auditTail) as ServiceReviewService['auditTail'],
     reviewFlags: (() => r.reviewFlags) as ServiceReviewService['reviewFlags'],
-    incompleteJobsCount: (() =>
-      r.incompleteJobsCount) as ServiceReviewService['incompleteJobsCount'],
     untrackedCount: (() => r.untrackedCount) as ServiceReviewService['untrackedCount'],
     orphanRows: (() => r.orphanRows) as ServiceReviewService['orphanRows'],
     orphanRowCount: (() =>
@@ -136,7 +134,6 @@ function makeSvc(over: Partial<ServiceReview> = {}) {
       r.artistImages.visible > 0
         ? r.artistImages.withPortrait / r.artistImages.visible
         : 1) as ServiceReviewService['artistImageCoverageRatio'],
-    incompleteJobs: (() => r.incompleteJobs) as ServiceReviewService['incompleteJobs'],
     untracked: (() => r.untracked) as ServiceReviewService['untracked'],
   };
   return svc;
@@ -565,13 +562,34 @@ describe('AdminComponent (acquisition kill-switch, #235)', () => {
   });
 });
 
-describe('AdminComponent (incompleteJobs / untracked via ServiceReview)', () => {
+describe('AdminComponent (incomplete albums / untracked)', () => {
+  const INCOMPLETE: IncompleteAlbum = {
+    albumId: 'al-ca',
+    artist: 'Soda Stereo',
+    album: 'Canción Animal',
+    expected: 11,
+    owned: 9,
+    missing: 2,
+    lidarrAlbumId: 10,
+    state: 'done',
+  };
+  const incompleteAlbumsApi = vi.fn(() => of([INCOMPLETE]));
+  const autoHunt = {
+    hunt: vi.fn(),
+    statusFor: vi.fn((_id: number): AlbumHuntStatus => ({ phase: 'idle' })),
+  };
+
   beforeEach(async () => {
+    incompleteAlbumsApi.mockClear();
+    autoHunt.hunt.mockClear();
+    autoHunt.statusFor.mockReset();
+    autoHunt.statusFor.mockReturnValue({ phase: 'idle' });
     const mocks = makeAdminMocks();
     await TestBed.configureTestingModule({
       imports: [AdminComponent],
       providers: [
         provideRouter([]),
+        { provide: AutoHuntService, useValue: autoHunt },
         { provide: DownloadsApiService, useValue: {} },
         {
           provide: SystemApiService,
@@ -591,6 +609,7 @@ describe('AdminComponent (incompleteJobs / untracked via ServiceReview)', () => 
           provide: LibraryApiService,
           useValue: {
             resyncLibrary: vi.fn(() => of({ ok: true })),
+            incompleteAlbums: incompleteAlbumsApi,
             getFragments: vi.fn(() =>
               of({
                 duplicateAlbums: [],
@@ -608,45 +627,49 @@ describe('AdminComponent (incompleteJobs / untracked via ServiceReview)', () => 
     }).compileComponents();
   });
 
-  it('retryHunt builds a DiscographyAlbum from the incomplete-job and sets the artist', () => {
+  // #1444: the list is the health report's confirmed worklist, fetched on demand —
+  // never from the review snapshot, whose old album_jobs source had no writer.
+  it('loads incomplete albums only when asked', async () => {
     const c = TestBed.createComponent(LibraryMaintenancePanelComponent).componentInstance;
-    const job: IncompleteAlbumJob = {
-      id: 1,
-      lidarrAlbumId: 10,
-      artistName: 'Soda Stereo',
-      albumTitle: 'Canción Animal',
-      username: 'peer',
-      directory: 'Soda Stereo - Cancion Animal',
-      state: 'exhausted',
-      fallbackAttempts: 5,
-      createdAt: 1_700_000_000_000,
-    };
-    c.retryHunt(job);
-    expect(c.retryArtist()).toBe('Soda Stereo');
-    expect(c.retryAlbum()?.lidarrId).toBe(10);
-    expect(c.retryAlbum()?.title).toBe('Canción Animal');
+    expect(c.incompleteAlbums()).toBeNull();
+    expect(incompleteAlbumsApi).not.toHaveBeenCalled();
+
+    await c.loadIncompleteAlbums();
+
+    expect(incompleteAlbumsApi).toHaveBeenCalledTimes(1);
+    expect(c.incompleteAlbums()).toEqual([INCOMPLETE]);
   });
 
-  it('retryHunt is a no-op when the job has no Lidarr album id', () => {
+  it('Complete hunts the album through the shared per-album hunt', () => {
     const c = TestBed.createComponent(LibraryMaintenancePanelComponent).componentInstance;
-    c.retryHunt({
-      id: 1,
-      lidarrAlbumId: null,
-      artistName: '',
-      albumTitle: null,
-      username: '',
-      directory: '',
-      state: 'exhausted',
-      fallbackAttempts: 0,
-      createdAt: 1,
-    });
-    expect(c.retryAlbum()).toBeNull();
+    c.completeAlbum(INCOMPLETE);
+    expect(autoHunt.hunt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        lidarrId: 10,
+        title: 'Canción Animal',
+        localAlbumId: 'al-ca',
+        totalTracks: 11,
+        localTrackCount: 9,
+      }),
+      'Soda Stereo',
+      expect.any(Function),
+    );
   });
 
-  it('jobStateClass maps states to colors', () => {
+  it('Complete is a no-op without a Lidarr album id', () => {
     const c = TestBed.createComponent(LibraryMaintenancePanelComponent).componentInstance;
-    expect(c.jobStateClass('exhausted')).toContain('status-error');
-    expect(c.jobStateClass('active')).toContain('status-warn');
+    c.completeAlbum({ ...INCOMPLETE, lidarrAlbumId: null });
+    expect(autoHunt.hunt).not.toHaveBeenCalled();
+    expect(c.rowHuntStatus({ ...INCOMPLETE, lidarrAlbumId: null })).toEqual({ phase: 'idle' });
+  });
+
+  it("a row's button carries its album's live hunt stage", () => {
+    const c = TestBed.createComponent(LibraryMaintenancePanelComponent).componentInstance;
+    autoHunt.statusFor.mockReturnValue({ phase: 'job', stage: 'downloading' });
+    const status = c.rowHuntStatus(INCOMPLETE);
+    expect(autoHunt.statusFor).toHaveBeenCalledWith(10);
+    expect(c.huntLabel(status)).toBe('Downloading');
+    expect(c.huntLabel({ phase: 'idle' })).toBe('admin.completeAlbum');
   });
 
   it('syncLibrary calls resyncLibrary and reports success', async () => {
@@ -666,6 +689,7 @@ describe('AdminComponent (incompleteJobs / untracked via ServiceReview)', () => 
       imports: [AdminComponent],
       providers: [
         provideRouter([]),
+        { provide: AutoHuntService, useValue: autoHunt },
         { provide: DownloadsApiService, useValue: {} },
         {
           provide: SystemApiService,
