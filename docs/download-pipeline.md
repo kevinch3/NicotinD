@@ -2161,18 +2161,27 @@ constants answering different questions: "may this item still speak?" versus "is
 
 ### The idle valve runs on the tick, not only at boot (#710)
 
-`reconcileOnBoot` was called from `packages/api/src/index.ts` and nowhere else, so the valve sampled
-staleness exactly **once per process lifetime**. That made a *stable* host the worst case: the two
+#710 was diagnosed as the valve sampling staleness **once per process lifetime**, because
+`reconcileOnBoot` is only called from `packages/api/src/index.ts` (see the correction below: that
+file also runs it on a 60 s timer). On that reading a *stable* host was the worst case: the two
 prod jobs that prompted the issue were 12.3 h old at the only boot (correctly under the threshold),
-crossed 24 h with the server up, and would have stayed stranded until the next restart. On a host
-that restarts nightly the bug is nearly invisible.
+crossed 24 h with the server up, and would have stayed stranded until the next restart.
 
 `reapIdleItems` is the valve split out of `reconcileOnBoot`, called from the 60 s processor tick
 alongside the daily backup/prune hooks — and deliberately **not** marker-guarded like those, since
 frequent sampling is the entire point. It sits before the `enabled` check for the same reason they
 do: a stranded download must not depend on background enrichment being switched on. `reconcileOnBoot`
-keeps the genuinely boot-shaped work (the item-less ghost sweep and the TTL prune) and now calls
-`reapIdleItems` for the valve half.
+keeps the item-less ghost sweep and the TTL prune, and calls `reapIdleItems` for the valve half.
+
+Despite its name, `reconcileOnBoot` is **not** boot-only: since #496 the 60 s `jobHygieneTimer` in
+`packages/api/src/index.ts` calls it every minute, as well as once at startup. So the item-less sweep
+(an `active` job with no items and no `updated_at` movement for 24 h is failed "never started")
+fires within a minute of crossing the threshold on a long-running host, not at the next restart.
+The one item-less job it deliberately never reaches is one the addon still reports as `active`:
+`applyAddonOutcome` refreshes the row's `updated_at` on every poll, because while the addon is
+working its word outranks core's guess. An addon that has forgotten the job (404) is failed by
+`reconcileOrphanedJobs` instead; one stuck at `active` forever is the addon's bug, and its card
+stays cancellable and removable on the Downloads page.
 
 ### A released job is not an orphaned one (#744)
 
