@@ -4395,3 +4395,57 @@ Carolina de Jesus (4) and ADRIANNA (2).
 - Paging the filter costs about 25 pages of 100 across the two umbrellas, and each page is 50–60 KB.
   A server-side `genres = [X]` (exact set) filter, or the per-artist `lowInformation` song ids, would
   do the same job in one call.
+
+## 2026-09-29 — acquire step: 10 single-track hunts, plus the #1209 fix
+
+This is the playbook's acquire step against the confirmed-incomplete worklist, run within the
+per-session budget of 10 or fewer hunts. I picked albums missing **exactly one** track in state
+`done`, and skipped any `exhausted` album or one whose `owned + missing ≠ expected`. Every hunt was
+`complete_album({albumId, confirm: true})`, and I read every result back against prod's
+`acquisition_job_items` joined to `library_songs`.
+
+### Baseline (`get_library_health`)
+
+`completeness.confirmedIncomplete` **77** · `suspected` 519 (advisory, not hunted) ·
+`titleMismatch` 57 · `liveTracklists` 106 · open review flags **2** (both `servable: false`).
+
+### Hunts
+
+| Album | Outcome | Landed |
+| --- | --- | --- |
+| El Kuelgue – *Ruli* | enqueued | exact track, completed |
+| Los Auténticos Decadentes – *Club Atlético Decadente* | enqueued | exact track, completed |
+| Molotov – *¿Dónde jugarán las niñas?* | enqueued | exact track, completed |
+| Paulina Rubio – *Paulina* | 400, then **enqueued after #1467** | exact track (artist-prefixed title), completed |
+| Michael Gray – *Analog Is On* | enqueued | *The Weekend – Radio Edit*: right song, other edit; still counts as missing |
+| Luis Alberto Spinetta – *Spinettalandia y sus amigos* | enqueued | *La búsqueda de la estrella* for *Estrella*: very likely the same song under its full title; still counts as missing |
+| Eelke Kleijn – *Untold Stories* | enqueued | **wrong track**: *Arpeggiator Stories Continued*, already owned (#1468) |
+| Marta Sánchez – *Lo Mejor De* | enqueued | **wrong track**: *Profundo Valor*, already owned (#1468) |
+| Cultura Profética – *Sobrevolando Instrumental* | no-candidate | — |
+| Çantamarta – *la esquina + violenta* | 400, then **no-candidate after #1467** ("none carries any of the 1 wanted tracks") | — |
+
+Two of the first ten hunts failed with `addon responded 400 … the picked folder covers none of the
+wanted tracks`. Core picked the first confident folder before checking it held any wanted track.
+That was #1209, fixed in #1467, and both albums were re-run once prod ran the fix.
+
+### Review flags
+
+- Flag 23, "ABBA *Voyage*": the album was ABBA *Gold: Greatest Hits* (1992) under the wrong name.
+  None of *Voyage*'s ten songs were present; its 17 ABBA tracks match *Gold*'s running order slot
+  for slot, and the file tags read "Voyage [Japan Limited Edition]".
+  - `fix_album_metadata`: *Gold: Greatest Hits*, 1992, compilation, plus the score-100 Lidarr cover.
+  - The fingerprint-identified Cyndi Lauper stray moved to *She's So Unusual*.
+  - Both were read back and the flag resolved. *Gold* still lacks *Mamma Mia* and *Gimme! Gimme! Gimme!*.
+- Flag 26: a listener's lyrics report on a song id that no longer resolves, with no title or artist
+  to re-file against. Resolved with a note.
+
+### Final (`get_library_health` re-run, 0 active acquisition jobs)
+
+`confirmedIncomplete` **73** (−4) · `suspected` 518 · `titleMismatch` 58 · `liveTracklists` 102 ·
+open review flags **0**.
+
+### Friction filed
+
+- #1209, a hunt picking a folder without the wanted track: fixed in #1467 and verified on prod.
+- #1468: the title rule (at least 70% of the *wanted* title's words present) accepts a longer,
+  different title that contains them. 2 of 8 downloads fetched an already-owned neighbouring track.
