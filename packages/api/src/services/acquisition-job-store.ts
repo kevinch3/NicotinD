@@ -1292,8 +1292,9 @@ export function reapIdleItems(db: Database, now = Date.now()): void {
 }
 
 /**
- * Boot-shaped reconciliation: the item valve (now also on the tick), plus the
- * ghost-card sweep and TTL prune, which are genuinely once-per-start work.
+ * Job hygiene: the item valve, the item-less ghost-card sweep and the TTL
+ * prune. Not boot-only despite the name — the 60 s `jobHygieneTimer` in
+ * index.ts also calls it every minute (docs/download-pipeline.md, #710).
  */
 export function reconcileOnBoot(db: Database, now = Date.now()): void {
   reapIdleItems(db, now);
