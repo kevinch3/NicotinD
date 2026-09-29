@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'bun:test';
-import { foldTitleText, normalizeTitle, titlesOverlap } from './title-match.js';
+import {
+  filesMatchingTitles,
+  foldTitleText,
+  normalizeFileBasename,
+  normalizeTitle,
+  titlesOverlap,
+} from './title-match.js';
 
 describe('normalizeTitle', () => {
   it('folds accents, strips track numbers and punctuation', () => {
@@ -50,5 +56,24 @@ describe('titlesOverlap', () => {
     // Both normalized to "", so the `canonical === filename` fast path made
     // every pair of non-Latin titles "the same track".
     expect(titlesOverlap(normalizeTitle('Ночь'), normalizeTitle('Группа крови'))).toBe(false);
+  });
+});
+
+describe('filesMatchingTitles (the slskd addon coverage rule, #1209)', () => {
+  const folder = [
+    { filename: 'Music\\Artist\\Album\\01 - Canción de Amor.flac' },
+    { filename: 'Music/Artist/Album/02 Otra Canción.mp3' },
+  ];
+
+  it('keeps only the files that carry a wanted title, accent-folded', () => {
+    expect(filesMatchingTitles(folder, ['Otra cancion'])).toEqual([folder[1]]);
+  });
+
+  it('is empty when the folder carries none of the wanted titles', () => {
+    expect(filesMatchingTitles(folder, ['Bonus Track (Demo)'])).toEqual([]);
+  });
+
+  it('normalizes a basename by dropping the path, extension and track prefix', () => {
+    expect(normalizeFileBasename('Music\\A\\03 - Tictac.opus')).toBe('tictac');
   });
 });

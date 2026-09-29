@@ -1,6 +1,6 @@
 import type { Database } from 'bun:sqlite';
 import type { Lidarr, LidarrTrack } from '../lidarr/index.js';
-import { createLogger, normalizeTitle, titlesOverlap } from '@nicotind/core';
+import { createLogger, filesMatchingTitles, normalizeTitle, titlesOverlap } from '@nicotind/core';
 import { albumAlreadyComplete, onDiskTitles } from './library-completeness.js';
 import { recordAcquiredArtistIdentity } from './artist-identity-store.js';
 import { artistIdFor } from './library-scanner.js';
@@ -150,43 +150,59 @@ async function acquireViaAddon(
   const addonId = addon.manifest.id;
   const titles = tracks.map((t) => t.title);
 
-  let best;
+  let res;
   try {
-    const res = await addon.client.albumsSearch({
+    res = await addon.client.albumsSearch({
       artist: artistName,
       album: albumTitle,
       canonicalTracks: titles.map((title) => ({ title })),
     });
-    best = res.candidates.find((c) => c.matchPct >= minMatchPct);
+  } catch (err) {
+    log.warn({ lidarrAlbumId, addonId, err }, 'Addon album search failed');
+    return { outcome: 'slskd-unavailable', detail: causeOf(err) };
+  }
+  const confident = res.candidates.filter((c) => c.matchPct >= minMatchPct);
+
+  // Library knowledge stays core-side: the addon acquires only the tracks not
+  // already on disk (the same complete-only discipline as the direct path).
+  // Only consulted once a candidate cleared the bar — an empty hunt is a
+  // no-candidate/deferral whatever is on disk.
+  let wanted = titles;
+  if (confident.length) {
+    const onDisk = onDiskTitles(db, artistName, albumTitle);
+    wanted = titles.filter((t) => !onDisk.some((d) => titlesOverlap(d, normalizeTitle(t))));
+    if (wanted.length === 0) return { outcome: 'already-complete' };
+  }
+
+  // The addon scopes the job to `wanted` and refuses a folder carrying none of
+  // them with a 400 (#1209) — so the pick skips such a folder under the addon's
+  // own rule. A candidate listing no files gives nothing to judge; the addon
+  // keeps the final word on it.
+  const best = confident.find(
+    (c) => c.files.length === 0 || filesMatchingTitles(c.files, wanted).length > 0,
+  );
+  if (!best) {
     // The hunt never reached the source's network (slskd running but logged out
-    // of Soulseek, #1040). An empty result then says nothing about the album, so
-    // it must not be recorded as 'no-candidate' — that token means "we looked and
-    // it isn't there", which stops a curator asking and makes the watchlist
-    // re-decide the same wrong thing every sweep. A candidate that *did* clear
-    // the bar is real, so a partial outage still acquires.
-    if (!best && res.sourceOffline) {
+    // of Soulseek, #1040), or its search lanes were held by other work and some
+    // of this hunt's searches never ran (#1049). The result then says nothing
+    // about the album, so it must not be recorded as 'no-candidate' — that token
+    // means "we looked and it isn't there". A candidate that *did* clear the bar
+    // is real, so a partial outage still acquires.
+    if (res.sourceOffline) {
       return { outcome: 'slskd-unavailable', detail: 'Source offline — the hunt never reached it' };
     }
-    // The source's search lanes were held by other work and some of this hunt's
-    // searches never ran (#1049). Same logic: an empty result then says nothing
-    // about the album, so the caller retries instead of recording a miss.
-    if (!best && huntCutShort(res)) {
+    if (huntCutShort(res)) {
       return {
         outcome: 'slskd-unavailable',
         detail: `Source busy — only ${res.searchesAnswered} of ${res.searchesFired} searches completed`,
       };
     }
-  } catch (err) {
-    log.warn({ lidarrAlbumId, addonId, err }, 'Addon album search failed');
-    return { outcome: 'slskd-unavailable', detail: causeOf(err) };
+    if (!confident.length) return { outcome: 'no-candidate' };
+    return {
+      outcome: 'no-candidate',
+      detail: `${confident.length} candidate${confident.length === 1 ? '' : 's'} cleared ${minMatchPct}% but none carries any of the ${wanted.length} wanted tracks`,
+    };
   }
-  if (!best) return { outcome: 'no-candidate' };
-
-  // Library knowledge stays core-side: the addon acquires only the tracks not
-  // already on disk (the same complete-only discipline as the direct path).
-  const onDisk = onDiskTitles(db, artistName, albumTitle);
-  const wanted = titles.filter((t) => !onDisk.some((d) => titlesOverlap(d, normalizeTitle(t))));
-  if (wanted.length === 0) return { outcome: 'already-complete' };
 
   try {
     recordAcquiredArtistIdentity(db, {
