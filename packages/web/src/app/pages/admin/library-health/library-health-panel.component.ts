@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, inject, output, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { SettingsGroupComponent } from '../../../components/settings-group/settings-group.component';
@@ -37,6 +37,8 @@ export class LibraryHealthPanelComponent {
   readonly error = signal<string | null>(null);
   readonly starting = signal(false);
   readonly actionMsg = signal<string | null>(null);
+  /** The completeness card's jump to Library maintenance → Incomplete Albums. */
+  readonly showIncompleteAlbums = output<void>();
 
   readonly cards = computed<HealthCard[]>(() => {
     const r = this.report();

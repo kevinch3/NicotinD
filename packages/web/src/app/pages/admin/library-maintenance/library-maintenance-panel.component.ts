@@ -1,4 +1,12 @@
-import { Component, inject, signal } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  Injector,
+  ViewChild,
+  afterNextRender,
+  inject,
+  signal,
+} from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { SettingsGroupComponent } from '../../../components/settings-group/settings-group.component';
 import { AlbumHuntModalComponent } from '../../../components/album-hunt-modal/album-hunt-modal.component';
@@ -47,7 +55,8 @@ type DuplicateSong = {
  * Admin card for library maintenance: whole-library passes (resync, metadata
  * optimize), duplicate finding, the fragmentation report and its remediations,
  * orphan/artist-image/play-event counters, the untracked-downloads table, and
- * the incomplete-albums worklist with its one-click Complete.
+ * the incomplete-albums worklist with its one-click Complete — the one list of
+ * confirmed-incomplete albums; the Library health card links here (#1444).
  *
  * Every counter here is a `ServiceReview` slice, so the panel starts no poll of
  * its own; the action buttons ask for a refresh, which coalesces. The
@@ -72,6 +81,11 @@ export class LibraryMaintenancePanelComponent {
   readonly i18n = inject(TranslateService);
   protected readonly reviewSvc = inject(ServiceReviewService);
   private readonly autoHunt = inject(AutoHuntService);
+  private readonly injector = inject(Injector);
+  private readonly host: ElementRef<HTMLElement> = inject(ElementRef);
+  // Decorator, not viewChild(): signal queries never populate under the JIT
+  // vitest harness (see menu-panel.component.ts).
+  @ViewChild(SettingsGroupComponent) private group?: SettingsGroupComponent;
 
   readonly maintenance = this.reviewSvc.maintenance;
   readonly untracked = this.reviewSvc.untracked;
@@ -418,6 +432,19 @@ export class LibraryMaintenancePanelComponent {
     } finally {
       this.incompleteLoading.set(false);
     }
+  }
+
+  /** The Library health card's jump: open the group, load the list, scroll to it. */
+  revealIncompleteAlbums(): void {
+    this.group?.expand();
+    if (this.incompleteAlbums() === null) void this.loadIncompleteAlbums();
+    afterNextRender(
+      () =>
+        this.host.nativeElement
+          .querySelector('[data-testid="incomplete-albums"]')
+          ?.scrollIntoView?.({ block: 'start' }),
+      { injector: this.injector },
+    );
   }
 
   rowHuntStatus(row: IncompleteAlbum): AlbumHuntStatus {

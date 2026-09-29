@@ -67,6 +67,17 @@ describe('SettingsGroupComponent', () => {
     expect(el.querySelector('[data-testid="settings-group-body"]')).toBeNull();
   });
 
+  it('expand() opens a collapsed group and leaves an open one open', () => {
+    const { fixture, el } = render({ groupId: 'expand-test', defaultOpen: false });
+    fixture.componentInstance.expand();
+    fixture.detectChanges();
+    expect(el.querySelector('[data-testid="settings-group-body"]')).not.toBeNull();
+    expect(localStorage.getItem(`${GROUP_STATE_PREFIX}expand-test`)).toBe('true');
+    fixture.componentInstance.expand();
+    fixture.detectChanges();
+    expect(el.querySelector('[data-testid="settings-group-body"]')).not.toBeNull();
+  });
+
   it('persists the toggle to localStorage under the new group-state prefix', () => {
     const { el } = render({ groupId: 'persist-test', defaultOpen: false });
     const toggle = el.querySelector('[data-testid="settings-group-toggle"]') as HTMLButtonElement;

@@ -118,6 +118,17 @@
                 >
               }
 
+              @if (card.reveal; as reveal) {
+                <button
+                  type="button"
+                  (click)="showIncompleteAlbums.emit()"
+                  class="mb-2 block text-xs underline text-theme-secondary hover:text-theme-primary"
+                  [attr.data-testid]="'health-reveal-' + card.dimension"
+                >
+                  {{ reveal.labelKey | t }}
+                </button>
+              }
+
               <p class="text-[11px] text-theme-muted">
                 <span class="font-medium">{{ 'admin.health.remediation' | t }}:</span>
                 {{ card.remediation }}

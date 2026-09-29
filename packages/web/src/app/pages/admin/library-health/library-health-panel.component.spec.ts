@@ -228,13 +228,31 @@ describe('LibraryHealthPanelComponent', () => {
       '[data-testid="health-card-genres"] [data-testid="health-row-link"]',
     )!;
     expect(artistLink.getAttribute('href')).toBe('/library/artists/ar1');
-    // A confirmed-incomplete row with no local album id has nowhere to go.
-    expect(
-      el.querySelector('[data-testid="health-card-completeness"] [data-testid="health-row-link"]'),
-    ).toBeNull();
     expect(el.querySelector('[data-testid="health-link-flags"]')!.getAttribute('href')).toBe(
       '/library/curate',
     );
+  });
+
+  it('keeps the confirmed-incomplete count but lists the rows only in Incomplete Albums', async () => {
+    const { fixture, el, c } = await renderOpen();
+    const card = el.querySelector('[data-testid="health-card-completeness"]')!;
+    expect(card.textContent).not.toContain('Geogaddi');
+    expect(card.querySelector('[data-testid="health-row"]')).toBeNull();
+
+    const emitted = vi.fn();
+    c.showIncompleteAlbums.subscribe(emitted);
+    card.querySelector<HTMLButtonElement>('[data-testid="health-reveal-completeness"]')!.click();
+    await settle(fixture);
+    expect(emitted).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers no jump when nothing is confirmed incomplete', async () => {
+    const report = makeReport();
+    report.dimensions.completeness.metric.confirmedIncomplete = 0;
+    report.dimensions.completeness.worklist.confirmed = [];
+    getLibraryHealth.mockReturnValueOnce(of(report));
+    const { el } = await renderOpen();
+    expect(el.querySelector('[data-testid="health-reveal-completeness"]')).toBeNull();
   });
 
   it('offers a maintenance pass only where one acts on a non-zero metric', async () => {
@@ -326,6 +344,7 @@ describe('buildHealthCards', () => {
       c.lists.forEach((l) => keys.add(l.titleKey));
       if (c.action) keys.add(c.action.labelKey);
       if (c.link) keys.add(c.link.labelKey);
+      if (c.reveal) keys.add(c.reveal.labelKey);
     }
     // Sub-lists the fixture leaves empty are filtered out; name them directly.
     for (const k of [

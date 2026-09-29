@@ -1,5 +1,5 @@
 import { test, expect } from '../helpers';
-import { ADMIN, bearer, expandGroup } from '../helpers';
+import { ADMIN, bearer, clearGroupState, expandGroup } from '../helpers';
 
 /**
  * The maintenance panel after issue #622 turned the whole-library passes into
@@ -174,5 +174,45 @@ test.describe('admin incomplete albums', () => {
     ).toBeVisible();
     expect(hunts).toEqual(['POST']);
     await expect(complete).toBeEnabled();
+  });
+
+  // The health card keeps only the count; its jump opens this table, checked.
+  test('the Library health completeness card jumps to the table', async ({ page }) => {
+    await page.route('**/api/library/health', async (route) => {
+      const res = await route.fetch();
+      const body = (await res.json()) as {
+        dimensions: { completeness: { metric: { confirmedIncomplete: number } } };
+      };
+      body.dimensions.completeness.metric.confirmedIncomplete = 1;
+      await route.fulfill({ response: res, json: body });
+    });
+    await page.route('**/api/library/incomplete-albums', (route) =>
+      route.fulfill({
+        json: [
+          {
+            albumId: null,
+            artist: 'Soda Stereo',
+            album: 'Canción Animal',
+            expected: 11,
+            owned: 9,
+            missing: 2,
+            lidarrAlbumId: 4242,
+            state: 'done',
+          },
+        ],
+      }),
+    );
+
+    await page.goto('/admin');
+    await clearGroupState(page);
+    await page.reload();
+    await expandGroup(page, 'library-health');
+    const card = page.getByTestId('health-card-completeness');
+    await expect(card).toBeVisible();
+
+    await card.getByTestId('health-reveal-completeness').click();
+    const row = page.getByTestId('incomplete-albums').getByTestId('incomplete-album-row');
+    await expect(row).toContainText('Canción Animal');
+    await expect(page.getByTestId('incomplete-albums')).toBeInViewport();
   });
 });
