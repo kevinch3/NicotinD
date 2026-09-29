@@ -28,7 +28,10 @@ const CANDIDATE = {
   format: 'MP3 320kbps',
   estimatedSizeMb: 10,
   isLive: false,
-  files: [],
+  files: [
+    { filename: 'Music\\Album\\01 - Song One.flac', size: 1 },
+    { filename: 'Music\\Album\\02 - Song Two.flac', size: 1 },
+  ],
 };
 
 function lidarrStub(): Lidarr {
@@ -169,6 +172,106 @@ describe('acquireAlbum via a remote addon', () => {
 // asking, and the watchlist keeps re-deciding the same wrong thing — when the
 // truth is "we never asked Soulseek". The two outcomes differ in what a caller
 // should DO, which is the whole reason they are separate tokens.
+// #1209. The addon scopes an album job to the wanted (missing) tracks and
+// refuses a folder that carries none of them with a 400 — deterministic, so
+// the same album failed identically on every retry. The pick has to skip such
+// a folder, under the addon's own rule, before asking.
+describe('acquireAlbum picks a folder that covers a wanted track', () => {
+  /** "Song One" on disk, so only "Song Two" is wanted. */
+  function withSongOneOnDisk(db: Database) {
+    const albumId = albumIdFor('Artist', 'Album');
+    db.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, created, synced_at)
+       VALUES (?, 'Album', 'Artist', ?, 1, 0, '2024-01-01', 0)`,
+      [albumId, artistIdFor('Artist')],
+    );
+    db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, synced_at)
+       VALUES ('s1', ?, 'Song One', 'Artist', ?, 'Artist/Album/01.flac', 0)`,
+      [albumId, artistIdFor('Artist')],
+    );
+  }
+  const lacking = {
+    ...CANDIDATE,
+    candidateRef: 'ref-lacking',
+    files: [{ filename: 'Music\\Album\\01 - Song One.flac', size: 1 }],
+  };
+  const covering = { ...CANDIDATE, candidateRef: 'ref-covering', matchPct: 90 };
+
+  it('falls through to a later candidate that carries the wanted track', async () => {
+    const h = makeDeps({
+      albumsSearch: async () => ({
+        candidates: [lacking, covering],
+        queries: [],
+        skewNeeded: false,
+      }),
+    });
+    withSongOneOnDisk(h.db);
+    expect(await acquireAlbum(h.deps, INPUT)).toEqual({ outcome: 'enqueued' });
+    expect(h.jobRequests).toHaveLength(1);
+    expect(h.jobRequests[0]).toMatchObject({
+      candidateRef: 'ref-covering',
+      wantedTracks: [{ title: 'Song Two' }],
+    });
+  });
+
+  it('returns no-candidate, without asking the addon, when no folder carries one', async () => {
+    const h = makeDeps({
+      albumsSearch: async () => ({
+        candidates: [lacking, { ...lacking, candidateRef: 'ref-lacking-2' }],
+        queries: [],
+        skewNeeded: false,
+      }),
+    });
+    withSongOneOnDisk(h.db);
+    const result = await acquireAlbum(h.deps, INPUT);
+    expect(result.outcome).toBe('no-candidate');
+    expect(result.detail).toMatch(/2 candidates.*none carries any of the 1 wanted/i);
+    expect(h.jobRequests).toHaveLength(0);
+  });
+
+  it('does not let a covering folder below the threshold through', async () => {
+    const h = makeDeps({
+      albumsSearch: async () => ({
+        candidates: [lacking, { ...covering, matchPct: 40 }],
+        queries: [],
+        skewNeeded: false,
+      }),
+    });
+    withSongOneOnDisk(h.db);
+    expect((await acquireAlbum(h.deps, INPUT)).outcome).toBe('no-candidate');
+    expect(h.jobRequests).toHaveLength(0);
+  });
+
+  it('defers instead of recording a miss when the uncovered result came from a cut-short hunt', async () => {
+    const h = makeDeps({
+      albumsSearch: async () => ({
+        candidates: [lacking],
+        queries: ['a', 'b'],
+        skewNeeded: false,
+        searchesFired: 2,
+        searchesAnswered: 1,
+      }),
+    });
+    withSongOneOnDisk(h.db);
+    expect((await acquireAlbum(h.deps, INPUT)).outcome).toBe('slskd-unavailable');
+    expect(h.jobRequests).toHaveLength(0);
+  });
+
+  // The coverage rule is the slskd addon's; a candidate listing no files gives
+  // core nothing to judge, so the addon keeps the final word on it.
+  it('leaves a candidate that lists no files to the addon', async () => {
+    const h = makeDeps({
+      albumsSearch: async () => ({
+        candidates: [{ ...CANDIDATE, files: [] }],
+        queries: [],
+        skewNeeded: false,
+      }),
+    });
+    expect((await acquireAlbum(h.deps, INPUT)).outcome).toBe('enqueued');
+  });
+});
+
 describe('acquireAlbum when the source is offline', () => {
   it('reports slskd-unavailable, not no-candidate, for an offline empty hunt', async () => {
     const h = makeDeps({

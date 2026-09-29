@@ -48,3 +48,31 @@ export function titlesOverlap(canonical: string, filename: string): boolean {
   const overlap = cWords.filter((w) => fWords.has(w)).length;
   return cWords.length > 0 && overlap / cWords.length >= 0.7;
 }
+
+/**
+ * A peer filename's basename, extension dropped, normalized for matching
+ * against canonical titles. The slskd addon's own rule, byte for byte —
+ * including the no-extension case, which drops the last character.
+ */
+export function normalizeFileBasename(filename: string): string {
+  const base = filename.replace(/\\/g, '/').split('/').pop() ?? filename;
+  const noExt = base.slice(0, base.lastIndexOf('.') || base.length);
+  return normalizeTitle(noExt);
+}
+
+/**
+ * The files of a candidate folder that carry any of `titles` — the rule the
+ * slskd addon scopes an album job's enqueue with, and refuses the job on when
+ * it comes back empty ("the picked folder covers none of the wanted tracks").
+ * Shared so a host can skip such a folder before asking (NicotinD#1209).
+ */
+export function filesMatchingTitles<T extends { filename: string }>(
+  files: T[],
+  titles: string[],
+): T[] {
+  const normalized = titles.map(normalizeTitle);
+  return files.filter((f) => {
+    const base = normalizeFileBasename(f.filename);
+    return normalized.some((t) => titlesOverlap(t, base));
+  });
+}

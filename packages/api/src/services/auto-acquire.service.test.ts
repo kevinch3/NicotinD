@@ -34,7 +34,12 @@ function candidate(overrides: Partial<FolderCandidate>): FolderCandidate {
   return {
     directory: 'Artist/Album',
     username: 'peer',
-    files: [{ filename: 'Artist/Album/01 Song.flac', size: 1 }],
+    // Real track names: the addon refuses a folder carrying none of the wanted
+    // tracks, and so does the pick now (#1209).
+    files: [
+      { filename: 'Artist/Album/01 Song One.flac', size: 1 },
+      { filename: 'Artist/Album/02 Song Two.flac', size: 1 },
+    ],
     matchedTracks: 10,
     totalTracks: 10,
     matchPct: 100,

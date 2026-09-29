@@ -496,8 +496,22 @@ alone was worst on `slskd-unavailable`, which is returned for *three* conditions
 no addon enabled (`detail: 'No acquisition addon is enabled'`), the addon
 unreachable, and the search throwing. The `detail` is omitted, not empty, on the
 outcomes that already say everything (`enqueued`, `already-complete`,
-`in-flight`, `no-candidate`). The watchlist stores the same string as a row's
-`last_error` in place of the old constant `'Enqueue failed'`.
+`in-flight`, and a `no-candidate` where nothing cleared the bar). The watchlist
+stores the same string as a row's `last_error` in place of the old constant
+`'Enqueue failed'`.
+
+**A pick covers a wanted track (issue #1209).** For a missing-tracks-only hunt the
+addon scopes the job to `wantedTracks` and refuses a folder carrying none of them
+(`the picked folder covers none of the wanted tracks`, a 400 — the same album
+failed identically on every retry). `acquireAlbum` therefore picks the first
+candidate that clears `minMatchPct` **and** has a file matching a wanted title,
+under the addon's own rule (`filesMatchingTitles` in `@nicotind/addon-sdk`: the
+normalized file basename `titlesOverlap`s a normalized wanted title). When
+confident folders exist but none covers one, the outcome is `no-candidate` with a
+`detail` saying so, and the addon is never asked; a candidate listing no files is
+left to the addon. An offline or cut-short hunt still defers as
+`slskd-unavailable`, since the covering folder may be among the searches that
+never answered.
 
 ### Destructive writes: the extraction that unblocked each one
 
