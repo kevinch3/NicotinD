@@ -11,7 +11,9 @@ export const NATIVE_APP_ORIGINS = [
   'capacitor://localhost',
 ];
 
-const ALLOW_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'];
+// PATCH: `/api/me/preferences` is a PATCH; without it the preflight fails, the
+// optimistic write reverts and the home view switch "blinks" back on mobile.
+const ALLOW_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'];
 const ALLOW_HEADERS = ['Authorization', 'Content-Type', 'Range', 'Accept'];
 const EXPOSE_HEADERS = ['Content-Range', 'Accept-Ranges', 'Content-Length', 'X-Truncated'];
 const MAX_AGE_SECONDS = 86400;
