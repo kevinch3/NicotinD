@@ -50,6 +50,8 @@ describe('nativeAppCors', () => {
     const allowMethods = res.headers.get('Access-Control-Allow-Methods') ?? '';
     expect(allowMethods).toContain('GET');
     expect(allowMethods).toContain('OPTIONS');
+    // Preferences are written with PATCH — a native preflight must permit it.
+    expect(allowMethods).toContain('PATCH');
   });
 
   it('reflects the iOS WKWebView origin (capacitor://localhost) so iOS is covered', async () => {
