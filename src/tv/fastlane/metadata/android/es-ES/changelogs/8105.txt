@@ -1,0 +1,7 @@
+• release: batch public releases; deploy every green master commit as edge (#1456)
+• web: list confirmed-incomplete albums once, in Incomplete Albums (#1466)
+• acquisition: pick a candidate folder that covers a wanted track (#1467)
+• admin: say a queued library rescan has started, not completed (#1463)
+• admin: source Incomplete Albums from the health report's confirmed worklist (#1453)
+• api: allow PATCH in native-app CORS so the home view switch persists (#1464)
+…and 1 more

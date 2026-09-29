@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.105](https://github.com/kevinch3/NicotinD/compare/v0.8.104...v0.8.105) (2026-09-29)
+
+### Features
+
+* **release:** batch public releases; deploy every green master commit as edge ([#1456](https://github.com/kevinch3/NicotinD/issues/1456)) ([aeadf56](https://github.com/kevinch3/NicotinD/commit/aeadf5686e08138c35d3e8a20d7c08bd1db6c651))
+* **web:** list confirmed-incomplete albums once, in Incomplete Albums ([#1466](https://github.com/kevinch3/NicotinD/issues/1466)) ([638bb13](https://github.com/kevinch3/NicotinD/commit/638bb13dbe5fadddbb7c749fe5ab9513e264ef56))
+
+### Bug Fixes
+
+* **acquisition:** pick a candidate folder that covers a wanted track ([#1467](https://github.com/kevinch3/NicotinD/issues/1467)) ([cfa00b4](https://github.com/kevinch3/NicotinD/commit/cfa00b4a3845c9ed357e8e9f9995a9c1e4817d9b))
+* **admin:** say a queued library rescan has started, not completed ([#1463](https://github.com/kevinch3/NicotinD/issues/1463)) ([1fb6327](https://github.com/kevinch3/NicotinD/commit/1fb632703ff25bcfd343bdb1d83a8febc5cabdfe)), references [#622](https://github.com/kevinch3/NicotinD/issues/622)
+* **admin:** source Incomplete Albums from the health report's confirmed worklist ([#1453](https://github.com/kevinch3/NicotinD/issues/1453)) ([08de45e](https://github.com/kevinch3/NicotinD/commit/08de45e39191183c2b7bb0ca4ef6d9f2e5be9aab)), references [#1080](https://github.com/kevinch3/NicotinD/issues/1080)
+* **api:** allow PATCH in native-app CORS so the home view switch persists ([#1464](https://github.com/kevinch3/NicotinD/issues/1464)) ([8ca7b07](https://github.com/kevinch3/NicotinD/commit/8ca7b07c9fa0aa8072becd827050630bff6a9118))
+* **ci:** seed the analysis edge image from a release that has one ([#1457](https://github.com/kevinch3/NicotinD/issues/1457)) ([b78e7ef](https://github.com/kevinch3/NicotinD/commit/b78e7ef2fa42b83020b306fcd9bcc14716a5d8b0))
 ## [0.8.104](https://github.com/kevinch3/NicotinD/compare/v0.8.103...v0.8.104) (2026-09-28)
 
 ### Features
