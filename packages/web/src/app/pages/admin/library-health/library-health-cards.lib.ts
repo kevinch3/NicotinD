@@ -37,6 +37,8 @@ export interface HealthCard {
   remediation: string;
   action: HealthAction | null;
   link: { labelKey: string; commands: string[] } | null;
+  /** A same-page jump to the list that lives in another admin panel. */
+  reveal: { labelKey: string } | null;
 }
 
 /**
@@ -101,7 +103,7 @@ export function buildHealthCards(r: LibraryHealthReport, t: Translate): HealthCa
   });
   const d = r.dimensions;
 
-  const cards: Omit<HealthCard, 'action'>[] = [
+  const cards: (Omit<HealthCard, 'action' | 'reveal'> & { reveal?: HealthCard['reveal'] })[] = [
     {
       dimension: 'audit',
       titleKey: 'admin.health.audit.title',
@@ -302,19 +304,6 @@ export function buildHealthCards(r: LibraryHealthReport, t: Translate): HealthCa
       ],
       lists: [
         {
-          titleKey: 'admin.health.completeness.confirmedList',
-          rows: d.completeness.worklist.confirmed.map((w) => ({
-            label: w.album,
-            detail: t('admin.health.row.confirmed', {
-              artist: w.artist,
-              owned: n(w.owned),
-              expected: n(w.expected),
-              state: w.state,
-            }),
-            link: albumLink(w.albumId),
-          })),
-        },
-        {
           titleKey: 'admin.health.completeness.titleMismatchList',
           rows: d.completeness.worklist.titleMismatches.map((w) => ({
             label: w.album,
@@ -341,6 +330,12 @@ export function buildHealthCards(r: LibraryHealthReport, t: Translate): HealthCa
       ],
       remediation: d.completeness.remediation,
       link: null,
+      // The confirmed rows are listed once, with their Complete buttons, in
+      // Library maintenance → Incomplete Albums; this card keeps the count.
+      reveal:
+        d.completeness.metric.confirmedIncomplete > 0
+          ? { labelKey: 'admin.health.completeness.openIncomplete' }
+          : null,
     },
     {
       dimension: 'disk',
@@ -425,6 +420,7 @@ export function buildHealthCards(r: LibraryHealthReport, t: Translate): HealthCa
     ...c,
     // An empty sub-list is dropped rather than rendered as a bare heading.
     lists: c.lists.filter((l) => l.rows.length > 0),
+    reveal: c.reveal ?? null,
     action: actionable(r, c.dimension) ? (HEALTH_ACTIONS[c.dimension] ?? null) : null,
   }));
 }

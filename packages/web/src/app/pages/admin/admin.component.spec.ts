@@ -645,6 +645,27 @@ describe('AdminComponent (incomplete albums / untracked)', () => {
     expect(c.incompleteAlbums()).toEqual([INCOMPLETE]);
   });
 
+  // The Library health card's jump: the list lives only here.
+  it('revealIncompleteAlbums opens the group and loads the list once', async () => {
+    localStorage.clear();
+    const fixture = TestBed.createComponent(LibraryMaintenancePanelComponent);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('[data-testid="incomplete-albums"]')).toBeNull();
+
+    fixture.componentInstance.revealIncompleteAlbums();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(el.querySelector('[data-testid="incomplete-album-row"]')).toBeTruthy();
+    expect(incompleteAlbumsApi).toHaveBeenCalledTimes(1);
+
+    // A second jump keeps the loaded list rather than re-running the check.
+    fixture.componentInstance.revealIncompleteAlbums();
+    await fixture.whenStable();
+    expect(incompleteAlbumsApi).toHaveBeenCalledTimes(1);
+  });
+
   it('Complete hunts the album through the shared per-album hunt', () => {
     const c = TestBed.createComponent(LibraryMaintenancePanelComponent).componentInstance;
     c.completeAlbum(INCOMPLETE);

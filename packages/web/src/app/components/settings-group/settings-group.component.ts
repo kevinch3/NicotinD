@@ -64,6 +64,11 @@ export class SettingsGroupComponent {
     });
   }
 
+  /** Opens the group if collapsed — for a same-page jump into its body. */
+  expand(): void {
+    if (!this.open()) this.toggle();
+  }
+
   toggle(): void {
     const next = !this.open();
     this.stored.set(next);

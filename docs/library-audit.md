@@ -671,9 +671,17 @@ a one-click button that POSTs `/api/admin/maintenance/:task` via `startMaintenan
 Every button is disabled while any maintenance pass runs (the same `isMaintenanceRunning` rule the
 Library maintenance panel uses); a 409/503 is reported inline. The other dimensions are judgement
 work, so they get links rather than buttons, and only to pages that exist: album rows →
-`/library/albums/:id` (confirmed/title-mismatch rows only when `albumId` is non-null), low-information
+`/library/albums/:id` (title-mismatch rows only when `albumId` is non-null), low-information
 genre artists → `/library/artists/:id`, open flags → the `/library/curate` triage round. A library
 with no songs shows an empty state instead of twelve all-zero cards that would read as healthy.
+
+The completeness card shows the `confirmedIncomplete` **count** but not its rows: those are listed
+once, in Library maintenance → **Incomplete Albums** (below), because that table carries the per-row
+**Complete** action and a second, read-only copy of the same list was pure duplication. When the
+count is non-zero the card has a jump (`data-testid="health-reveal-completeness"`) that emits
+`showIncompleteAlbums`; the Admin page wires it to `revealIncompleteAlbums()` on the maintenance
+panel, which expands that group (`SettingsGroupComponent.expand()`), runs the Check if the list has
+not loaded yet, and scrolls the table into view.
 
 ### Album page badge (issue #737)
 
@@ -691,8 +699,8 @@ assert it `toEqual` the report's worklist row, so the badge cannot drift into a 
 
 ### Admin Incomplete Albums (issue #1444)
 
-The Library maintenance panel's **Incomplete Albums** table is the same confirmed worklist, acted
-on: each row has a one-click **Complete** that runs the shared per-album hunt (`AutoHuntService`,
+The Library maintenance panel's **Incomplete Albums** table is the confirmed worklist's only list
+in the UI (the Library health card keeps just the count and a jump here), acted on: each row has a one-click **Complete** that runs the shared per-album hunt (`AutoHuntService`,
 see [album-hunt.md](album-hunt.md)), so the button carries that album's live status. It reads
 `GET /api/library/incomplete-albums` (admin), which is `incompleteAlbums(db, lidarr)`: the report's
 `confirmedIncomplete` with the same live-tracklist pass (`liveTracklists`, #1080), without computing
@@ -730,9 +738,11 @@ mis-split protection are unit-tested directly; the auditor rules, health dimensi
 auto-hide use a seeded in-memory `bun:sqlite` DB (the health tests enumerate every
 suspected-gap false-positive guard by name). The Admin panel is covered by
 `library-health-panel.component.spec.ts` (web vitest: lazy fetch, one card per dimension, task
-mapping, confirm on the transcode, error/empty states, every card key present in every catalog) and
+mapping, confirm on the transcode, error/empty states, every card key present in every catalog, the
+completeness jump in place of the confirmed rows) and
 `e2e/tests/admin-library-health.spec.ts` (no request before expand, the real route renders every
-card, Cancel on the transcode confirm starts nothing).
+card, Cancel on the transcode confirm starts nothing); `e2e/tests/admin-maintenance.spec.ts` drives
+the jump from the health card to a loaded, in-view Incomplete Albums table.
 
 ## Follow-up (deferred): BPM / genre at acquisition
 On-demand `analyzeBpm` + `verifyGenre` (`track-analysis.ts`) could run in the ingest
