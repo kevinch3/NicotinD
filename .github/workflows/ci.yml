@@ -840,6 +840,7 @@ jobs:
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
           build-args: |
             NICOTIND_BUILD_COMMIT=${{ github.sha }}
+            APT_REFRESH=${{ github.run_id }}
           cache-from: type=gha,scope=docker-${{ env.PLATFORM_PAIR }}
 
       - name: Smoke — boot the pushed image and verify it serves

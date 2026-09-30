@@ -1025,6 +1025,13 @@ fix, and a workflow that stops passing the value lets the Dockerfile's own defau
 without breaking the build. It also rejects a constant value, which would satisfy both halves
 and restore the bug on the second build.
 
+**Every build that pushes the main image passes it, not only the release one.** The edge build
+(#1456) read the release's gha cache without `APT_REFRESH`, so on 2026-09-30 it shipped the
+cached `apt-get upgrade` layer. That layer still held OpenSSL `3.5.7-1~deb13u2`, which has two
+HIGH CVEs fixed in `deb13u3`. The edge Trivy scan (#1462) blocked every edge deploy. The test now
+finds every `docker/build-push-action` step, in any workflow, that builds the root `Dockerfile`
+and pushes, and requires a per-run value in each.
+
 ## An install must not depend on a third-party download (#1087)
 
 `ffmpeg-static` (a devDependency of `@nicotind/desktop`, trusted by Bun's default list) runs an
