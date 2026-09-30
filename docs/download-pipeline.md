@@ -48,10 +48,92 @@ Everything that reads the organizer's names back accepts both shapes through
 `selectAlbumTracks`), `readFolderTracks` takes the disc from the name when the tag has none,
 `flacTwinExists` only skips an MP3 against a FLAC on the same disc, `inferMetadataFromPath` reads
 `1-01 - Title` as disc 1 track 1 rather than an artist called "01", and `normalize-library.ts`
-A1b groups by `D-NN`. **Existing files are not renamed** by this change — the ` (2)`-suffixed
-population is a separate, owner-gated migration (#1392) that must carry song-id-keyed tables
-(`carrySongCuration`). Note that `reorganize-library.ts --apply` *would* re-file them, so it is
-that migration's tool, not something to run casually.
+A1b groups by `D-NN`. **Existing files are not renamed** by this change; the one-off pass below
+does that. `reorganize-library.ts --apply` would also re-file them, but it carries no song ids, so
+it is not the migration.
+
+#### Migrating existing multi-disc files (#1392)
+
+`scripts/migrate-multidisc-names.ts` renames the files already on disk to the same shape, and
+carries every song-id-keyed row onto the re-minted ids. Song ids are `sha1(path)`, so a rename
+without the carry silently drops playlists, likes, lyrics, plays and analysis.
+
+**What it renames.** `planMultiDiscRenames` works from the library rows alone. It is pure and
+deterministic, so re-planning halfway through a run yields exactly the remainder:
+
+- Scope is an `<Artist>/<Album>/<file>` folder where some row has disc > 1. `Singles/`, unsorted and
+  every reserved path (`isReservedPath`) are out of scope, as they are for the organizer. The scanner
+  stores no disc total, so a folder holding only disc 1 of a set keeps its names. It has nothing to
+  collide with.
+- `NN - Title.ext` becomes `D-NN - Title.ext`, using the row's disc and the file's own number, in the
+  same folder. A name already `D-NN` for its own disc counts as done.
+- A trailing ` (N)` is `uniquePath`'s collision suffix, and it comes off, when either of two things
+  holds. A sibling still holds the unsuffixed name, which is the disc-collision proof. Or the tag
+  title does not end in ` (N)`, which means the sibling it dodged has since gone. On prod every one
+  of them is the second kind.
+- Skipped and listed: `unparsed` (no organizer track prefix, which is the organizer's own output
+  when a track has no number), `no-disc` (the organizer names those `NN - ` too), `disc-mismatch`,
+  and `duplicate`. `duplicate` means two sources map to one target, or a target another row already
+  holds. That is a same-disc duplicate, and duplicates are dedupe's job.
+
+**Staged against the filesystem.** `stageRenames` resolves every entry on the disk the apply will
+run on. The source must exist and the target must not. Anything else is `missing` or `conflict`, and
+the apply refuses the whole run and writes nothing.
+
+**Order, and why a crash resumes.** For each file, serially:
+
+1. journal `begin`
+2. `link(src, dst)`. A hard link fails rather than clobbering an existing target.
+3. `unlink(src)`
+4. one transaction, `migrateSongIdentity`
+5. journal `done`
+
+The disk moves first, so the DB never names a path that does not exist yet. Every intermediate
+state can be seen from disk and DB alone. Both names on one inode is `linked`, so the next step is
+the unlink. Only the target present, with the row still at the source, is `moved`, so the next step
+is the DB step. A re-run therefore finishes a partial apply, and it changes nothing that is already
+done. The journal is the audit log and the input to `--revert`. Resuming does not need it.
+
+**What the carry moves.** `migrateSongIdentity` rewrites the `library_songs` row under the new id and
+path. It copies every column, so starred, hidden, analysis and tag edits survive. It does not
+rescan, because a rescan would depend on the file's tags parsing back identically. Then:
+
+- `carrySongCuration` moves `SONG_CARRY_TABLES`, the song genre override and `acquisitions`.
+- `RENAME_ALSO_MOVES` covers the tables that `carrySongCuration` exempts because its other callers
+  re-encode or re-scan: `library_song_artists`, `library_song_genres`, the analysis-failure ledger,
+  pending tag writes, `play_events` (play counts and recency join on `song_id`), and
+  `acquisition_job_items` (addon playlists). It also covers `curation_flags` and
+  `curation_flag_reports` on `target_kind = 'song'`, which a name-based sweep cannot see.
+- `RENAME_KEEPS` records what stays put: the radio-poll measurements, the provenance log and the
+  audit log.
+
+`scan_cache` is dropped for the old path, never moved, because its cached track embeds the old
+`relPath` and would re-mint the old id. A test enumerates the live schema's song-keyed columns and
+fails on any column in none of the three lists.
+
+**Measured on prod (2026-09-30, read-only, the real planner over the real rows).** 21,773 rows. 132
+multi-disc folders. **2,943 renames** in 131 folders, 119 of which drop a ` (N)` suffix. 22 are
+already `D-NN`. 0 duplicates. Skipped: 642 `unparsed` and 82 `no-disc`. All 2,943 sources exist,
+and no target is occupied. For the sandbox evidence (a prod DB copy plus placeholder files), see
+the description of the PR that closed #1392.
+
+**Owner run procedure** (inside the container: `docker compose exec nicotind sh -lc 'cd /app && …'`):
+
+1. `bun run packages/api/src/scripts/migrate-multidisc-names.ts > /data/nicotind/backups/multidisc-dry.txt`
+   Read the summary at the end. `BLOCKED` lines mean the apply will refuse.
+2. `bun run packages/api/src/scripts/migrate-multidisc-names.ts --apply` takes a `VACUUM INTO`
+   snapshot `backups/pre-multidisc-rename-<ts>.db` first, and cannot run without one. It then renames
+   and carries. It prints the carried row counts before and after, and a re-plan count, which should
+   be 0.
+3. Verify. Re-run the dry run: expect `Planned renames: 0`. The `missing_file` count in library
+   health should be unchanged. A playlist that holds a renamed track still plays it.
+4. **Rollback.** `--revert backups/multidisc-rename-<ts>.jsonl` replays the journal backwards through
+   the same staged, resumable path. Names, ids and everything carried go back, and whatever was
+   played or starred in between is kept. The last resort is restoring the snapshot, but it only
+   covers the DB. The files would then need the revert's renames.
+
+A full rescan after the apply is safe. The renamed rows' ids already match their paths, so the scan
+updates them in place.
 
 - **Multi-file downloads**: `classifyFolder` in `compilation-tagger.ts` derives the album from the peer folder name (single-artist consolidation path).
 - **Single-file downloads**: `deriveFolderTags` in `library-organizer.ts` calls `inferFolderAlbum` (`path-inference.ts`) to derive the album from the peer directory's leaf segment when the ID3 album tag is missing. Generic folder names ("downloads", "src", "music", …) and folders that just echo the artist name are blocked by `looksLikeGenericFolder` so they don't become fake albums.

@@ -35,6 +35,10 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   `repointPlaylistsBeforePrune` runs *inside* the prune, before the delete, matching on a unique
   (title, artist, duration) and leaving ambiguity to dangle.
   → [cache-invalidation.md](../cache-invalidation.md)
+- **Multi-disc rename migration**: one-off, dry-run-by-default pass renaming existing multi-disc
+  files to `D-NN - Title`, staged against the disk, crash-resumable (link → unlink → one DB
+  transaction), journaled for `--revert`, carrying every song-keyed row. `planMultiDiscRenames`,
+  `migrateSongIdentity`, `RENAME_ALSO_MOVES`. → [download-pipeline.md](../download-pipeline.md)
 - **Cover-cache eviction**: `pruneCoverCache` sweeps entity-keyed files whose row is gone, with the
   same grace period; content-addressed keys are never orphans, and a `d_` disk-art image goes once no
   live `.ref` names it.
