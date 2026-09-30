@@ -50,6 +50,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   that is up and unreachable reports perfect health from inside. Its `decide` state machine debounces,
   de-storms and checks a control host before blaming the target. Swap and memory alarms are measured
   useless here; load discriminates. → [host-monitoring.md](../host-monitoring.md)
+- **Precursor alerts**: the same probe reads `/api/health/signals` (`recentLoopBlockDurations`)
+  and pages on a load spike (`load_breach`, with hysteresis) and severe event-loop blocks
+  (`blocks_breach`) through the one `run_check`. → [host-monitoring.md](../host-monitoring.md)
 - **Loop-block history**: `startLoopBlockRecorder` persists every event-loop block to
   `loop_blocks` (90 days / 10k rows) so a re-measure outlives a redeploy; read it with
   `prod-probe.ts --loop-blocks`. → [host-monitoring.md](../host-monitoring.md)

@@ -41,8 +41,8 @@ days the maximum 1-minute load was **11.49**, and nothing exceeded 20. On the
 incident day exactly two samples exceeded 20: **ldavg-1 191.09 at 08:41:30Z — nine
 minutes before the tailnet went silent at 08:50Z** — and a second spike at
 12:11:37Z, exactly the analysis-container restart. A load probe is the precursor;
-the reachability probe is the confirmation. (The load probe itself is not yet
-built — see "Not yet built" below.)
+the reachability probe is the confirmation. The load probe is the same script —
+see [Precursors](#precursors-load-and-event-loop-blocks).
 
 ### A correction worth recording
 
@@ -60,7 +60,11 @@ continuous external probe rather than a resource alarm.
 ## The state machine
 
 `decide` is a pure function (`scripts/kpc-probe.sh decide …`), gated by
-`scripts/kpc-probe.test.ts`, because an alerter's failure modes are quiet ones:
+`scripts/kpc-probe.test.ts`, because an alerter's failure modes are quiet ones.
+Every check the probe runs — reachability and the two
+[precursors](#precursors-load-and-event-loop-blocks) — goes through this one
+function via `run_check`, with its own state file (`state`, `state.load`,
+`state.blocks`) and the one `notify`:
 
 | Action | When |
 | --- | --- |
@@ -77,6 +81,92 @@ host (Home Assistant on the same tailnet). If it cannot reach *anything*, the fa
 is local — the droplet's network, its `tailscaled`, DNS — and saying "kpc is down"
 would be precisely the error a human made during this incident. Unreachable-from-here
 is a property of the path, not the target.
+
+## Precursors: load and event-loop blocks
+
+On the same per-minute pass, once kpc has answered, the probe reads
+`GET /api/health/signals` — the host's load average and the durations of the
+API's event-loop blocks in the last 15 minutes — and runs two more checks
+through the same state machine. Threshold is 1 for both (a precursor that waits
+for a second breach lets a one-minute storm decay under the trigger), so each
+pages on the first breach, then waits, reminds every `KPC_RENOTIFY_MINS`, and
+sends one "back to normal" when it clears.
+
+### Why the droplet reads them, rather than kpc paging itself
+
+- **An on-kpc alerter would deliver across the path that fails.** Home
+  Assistant's address is a tailnet IP; on 09-14 the tailnet session is what
+  died. A job on kpc could page only in the window *before* the path fails —
+  the same window in which the droplet can read kpc. It buys nothing and costs
+  a second cron, a second copy of the HA token, a second log and a second
+  alerting implementation to keep alive.
+- **No host agent is needed.** A container reads the host's `/proc/loadavg`
+  (measured on kpc: host `0.57 0.50 0.54`, container `0.57 0.50 0.54`), so the
+  API can serve the host's load itself.
+- **Not SSH:** kpc's SSH is Tailscale SSH in check mode, which hangs a
+  non-interactive session until someone approves it in a browser — and it would
+  put a shell key to prod on the internet-facing box.
+- **Not the API paging on its own blocks:** that is a second alerting
+  implementation in TypeScript with a second token in the app's environment. The
+  API exposes numbers; the policy lives in one place, `kpc-probe.sh`.
+
+The cost: readings arrive only while the path works. That is what a precursor
+is — on 09-14 the load spike came nine minutes before the tailnet went silent —
+and once the path fails, the reachability alert takes over. A minute whose
+read times out (the storm itself can do that) or answers malformed, or an API
+too old to serve `/signals`, leaves that check's state untouched: an unknown
+reading is never scored as "clear". Every reading is appended to the `ok` log
+line (`ok (0s) load=0.57/0.50/0.54 blocks15m=[]`), so thresholds can be
+re-derived from `probe.log` later.
+
+`/signals` is as public as `/api/health` (the droplet's nginx proxies all of
+`:8484`), so it returns numbers only — never the in-flight request paths
+`loop_blocks` stores.
+
+### Load: trips at 1-min ≥ 30 or 5-min ≥ 20, clears under 5-min 12
+
+| Data | 1-min max | 5-min max |
+| --- | --- | --- |
+| 8 clean days before 09-14 (~1,150 sar samples) | 11.49 | — |
+| 2026-09-21..30 (1,204 sar samples, including the full-library Opus transcode — the heaviest legitimate work kpc has run) | 9.78 | 9.38 |
+| 09-14 precursor, 08:41:30Z | **191.09** | — |
+
+- **1-min ≥ 30**: 2.6× the highest clean reading, 6× under the precursor. sar
+  samples one minute in ten, so the per-minute probe *will* see peaks sar never
+  did; the margin is for those.
+- **5-min ≥ 20**: 2.1× the highest clean 5-min reading. A one-minute storm at
+  ~190 lifts the 5-min average to roughly 190·(1−e^(−1/5)) ≈ 35 and holds it
+  there for minutes, so a probe that misses the peak minute (or times out
+  during it) still catches it.
+- **Clear under 5-min 12 (hysteresis)**: above the 9.38 normal maximum, so it
+  clears under heavy legitimate work, and under the trigger, so a load
+  hovering near 20 cannot flap alert/recovered every minute.
+
+### Event-loop blocks: any ≥ 10 s, or ≥ 3 of ≥ 5 s, in 15 minutes
+
+Derived from everything `loop_blocks` held on 2026-09-30 (recording since
+2026-09-28T10:31Z, read with `prod-probe.ts --loop-blocks`):
+
+| Population | Blocks |
+| --- | --- |
+| All recorded (~45 h, three deploys) | 23, every one 1.1–2.9 s; **zero ≥ 5 s** |
+| A boot | a pair ~2 s apart: 1531/1704, 1588/1727, 1424/1700 ms |
+| Busiest 15 min (09-29 11:12–11:18Z, an MCP curation session) | 4, max 2256 ms |
+| Longest single (09-30 00:01Z, midnight jobs) | 2898 ms |
+
+- **Any block ≥ 10 s** — the probe's own request timeout: a block that long
+  makes the API time out for a client. 3.4× the longest recorded.
+- **≥ 3 blocks ≥ 5 s in the window** — sustained multi-second stalls. None has
+  ever been recorded; a boot's pair is both under 5 s and only two.
+
+**What this does not catch, measured:** the 09-14 block precursor (three blocks
+of 1054–1723 ms in two minutes) would *not* page. At the ≥ 1 s level it is
+indistinguishable from an ordinary curation session — four blocks, up to
+2256 ms, in six minutes — so any rule that paged on it would page on normal
+use. The load probe is the precursor; block alerts page on stalls a user would
+feel. Nor is request attribution a paging signal: 11 of the 17 attributed
+blocks name only `GET /api/health` — this probe — because attribution names
+what was in flight, not what blocked.
 
 ## Install (edge droplet)
 
@@ -121,6 +211,17 @@ never look like a delivered one.
 | `KPC_RENOTIFY_MINS` | `30` | repeat interval while still down |
 | `KPC_TIMEOUT` | `10` | per-probe curl timeout, seconds |
 | `KPC_STATE_DIR` | `~/.local/state/kpc-probe` | state + `probe.log` |
+| `KPC_SIGNALS_URL` | `$KPC_TARGET_URL/signals` | load + block readings |
+| `KPC_LOAD1_TRIGGER` | `30` | 1-min load that trips the load alert |
+| `KPC_LOAD5_TRIGGER` | `20` | 5-min load that trips it |
+| `KPC_LOAD5_CLEAR` | `12` | 5-min load under which an alerted spike is over |
+| `KPC_BLOCK_SEVERE_MS` | `10000` | one block this long pages |
+| `KPC_BLOCK_MIN_MS` | `5000` | a block this long counts toward… |
+| `KPC_BLOCK_MIN_COUNT` | `3` | …this many in 15 min, which pages |
+| `KPC_TITLE_PREFIX` | *(empty)* | prepended to every notification title (test fires) |
+
+Upgrading an install from before the precursors is only step 1 — copy the new
+script over the old one. No env change; the state file carries over.
 
 ## Verify it works
 
@@ -135,6 +236,22 @@ tail ~/.local/state/kpc-probe/probe.log
 Three runs should log two `fail n/3` lines then a `NOTIFIED:` (or
 `NOTIFY-SKIPPED:`) line. Remove the state file afterwards:
 `rm ~/.local/state/kpc-probe/state`.
+
+Test-fire the precursors the same way, in a throwaway state dir so the real
+probe's state is untouched. Forcing the thresholds to zero makes the first run
+page both, and a second run on the defaults pages both recoveries:
+
+```bash
+T=$(mktemp -d)
+KPC_STATE_DIR=$T KPC_TITLE_PREFIX='[TEST] ' KPC_LOAD1_TRIGGER=0 KPC_BLOCK_MIN_COUNT=0 ~/bin/kpc-probe.sh
+KPC_STATE_DIR=$T KPC_TITLE_PREFIX='[TEST] ' ~/bin/kpc-probe.sh
+cat $T/probe.log; rm -r $T
+```
+
+Expect `NOTIFIED: [TEST] kpc load spike`, `NOTIFIED: [TEST] kpc API stalling`,
+then `NOTIFIED: [TEST] kpc load back to normal` and `… stalls cleared`. An `ok`
+line ending `signals=unavailable` means the running API predates
+`/api/health/signals` — deploy first.
 
 ## Event-loop blocks are persisted
 
@@ -190,10 +307,14 @@ request in flight — **#1058's reopen trigger**) — then the 50 most recent ro
 Add `--json` for machine-readable output. See
 [prod-inspection.md](prod-inspection.md).
 
-## Not yet built
+The droplet probe pages on the last 15 minutes of this table, through
+`GET /api/health/signals` (`recentLoopBlockDurations`) — see
+[Precursors](#precursors-load-and-event-loop-blocks).
 
-- **The load precursor probe on kpc** — would have fired ~9 minutes earlier, at
-  08:41:30Z. Needs a threshold well above the 11.49 eight-day maximum and well
-  below the 191.09 spike; 30 is the obvious first choice.
-- **Alerting on a persisted block.** Blocks are now durable and readable, but
-  nothing notifies on one; they are for re-measures, not paging.
+## Known limits
+
+- **A precursor needs a working path.** If the tailnet dies with no load spike
+  first, the reachability alert (~3 minutes) is the first page.
+- **The 09-14 block pattern does not page** — see the block thresholds above.
+- **Thresholds come from ~17 days of load and ~45 hours of blocks.** Re-derive
+  them from `probe.log`'s `load=` / `blocks15m=` fields once it has a few weeks.

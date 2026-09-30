@@ -249,7 +249,7 @@ export function createApp({
   app.use('/api/*', trackInFlight());
   startLoopBlockRecorder(db);
 
-  app.route('/api/health', healthRoutes(version));
+  app.route('/api/health', healthRoutes(version, undefined, { db }));
 
   // Documentation
   app.doc('/openapi.json', {
