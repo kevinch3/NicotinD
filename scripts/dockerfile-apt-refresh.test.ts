@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 /**
@@ -74,4 +74,32 @@ describe(`${ARG_NAME} keeps the apt layer out of the build cache (#730)`, () => 
     expect(passed).toBeDefined();
     expect(passed).toMatch(/\$\{\{/);
   });
+
+  /**
+   * Every step that PUSHES the main image must pass it, not only the release one:
+   * the edge build (#1456) read the release's gha cache without it, so it
+   * shipped a pre-fix OpenSSL and Trivy (#1462) blocked every edge deploy on
+   * 2026-09-30 — #730 again on a path that did not exist when #730 was fixed.
+   */
+  it.each(pushingMainImageBuilds())('%s passes a per-run value', (_where, block) => {
+    expect(block).toMatch(new RegExp(`${ARG_NAME}=\\$\\{\\{ github\\.run_id \\}\\}`));
+  });
 });
+
+/** Each docker/build-push-action step that builds the root Dockerfile and pushes. */
+function pushingMainImageBuilds(): [string, string][] {
+  const dir = resolve(ROOT, '.github/workflows');
+  const out: [string, string][] = [];
+  for (const f of readdirSync(dir).filter((n) => n.endsWith('.yml'))) {
+    const steps = readFileSync(resolve(dir, f), 'utf8').split(/\n(?=\s+- )/);
+    steps.forEach((step, i) => {
+      const buildsMain =
+        /docker\/build-push-action/.test(step) &&
+        /context: \.\s*$/m.test(step) &&
+        !/^\s+file:/m.test(step);
+      const pushes = /push=true|^\s+push: true/m.test(step);
+      if (buildsMain && pushes) out.push([`${f} step ${i}`, step]);
+    });
+  }
+  return out;
+}
