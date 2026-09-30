@@ -4418,9 +4418,9 @@ per-session budget of 10 or fewer hunts. I picked albums missing **exactly one**
 | Molotov – *¿Dónde jugarán las niñas?* | enqueued | exact track, completed |
 | Paulina Rubio – *Paulina* | 400, then **enqueued after #1467** | exact track (artist-prefixed title), completed |
 | Michael Gray – *Analog Is On* | enqueued | *The Weekend – Radio Edit*: right song, other edit; still counts as missing |
-| Luis Alberto Spinetta – *Spinettalandia y sus amigos* | enqueued | *La búsqueda de la estrella* for *Estrella*: very likely the same song under its full title; still counts as missing |
 | Eelke Kleijn – *Untold Stories* | enqueued | **wrong track**: *Arpeggiator Stories Continued*, already owned (#1468) |
 | Marta Sánchez – *Lo Mejor De* | enqueued | **wrong track**: *Profundo Valor*, already owned (#1468) |
+| Luis Alberto Spinetta – *Spinettalandia y sus amigos* | enqueued | **wrong track**: *La búsqueda de la estrella*, the album's own track 6, for *Estrella* (track 5) (#1468) |
 | Cultura Profética – *Sobrevolando Instrumental* | no-candidate | — |
 | Çantamarta – *la esquina + violenta* | 400, then **no-candidate after #1467** ("none carries any of the 1 wanted tracks") | — |
 
@@ -4448,4 +4448,6 @@ open review flags **0**.
 
 - #1209, a hunt picking a folder without the wanted track: fixed in #1467 and verified on prod.
 - #1468: the title rule (at least 70% of the *wanted* title's words present) accepts a longer,
-  different title that contains them. 2 of 8 downloads fetched an already-owned neighbouring track.
+  different title that contains them. 3 of 8 downloads fetched an already-owned neighbouring track
+  (Eelke Kleijn, Marta Sánchez, Spinetta); the 09-27 hunt that took the live *Los Tontos* (track 21)
+  for the studio one is the same defect.

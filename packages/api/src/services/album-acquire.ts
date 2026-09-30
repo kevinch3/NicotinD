@@ -179,7 +179,7 @@ async function acquireViaAddon(
   // own rule. A candidate listing no files gives nothing to judge; the addon
   // keeps the final word on it.
   const best = confident.find(
-    (c) => c.files.length === 0 || filesMatchingTitles(c.files, wanted).length > 0,
+    (c) => c.files.length === 0 || filesMatchingTitles(c.files, wanted, titles).length > 0,
   );
   if (!best) {
     // The hunt never reached the source's network (slskd running but logged out

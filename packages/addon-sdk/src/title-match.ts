@@ -61,18 +61,194 @@ export function normalizeFileBasename(filename: string): string {
 }
 
 /**
+ * Version qualifiers a peer tacks onto a title without making it another
+ * recording ("(2011 Remaster)", "- Radio Edit", "[Album Version]"). A file
+ * title's extra words are forgiven only when they are one of these or a bare
+ * number (a year); any other extra word means a different title (#1468).
+ */
+const NEUTRAL_EXTRA_WORDS = new Set([
+  'remaster',
+  'remastered',
+  'remasterizado',
+  'remasterizada',
+  'version',
+  'edit',
+  'radio',
+  'live',
+  'original',
+  'mono',
+  'stereo',
+  'explicit',
+  'bonus',
+  'track',
+  'digital',
+  'album',
+  'single',
+]);
+
+/**
+ * Drop the `[...]`/`{...}` technical tags and a `feat. X` credit from one
+ * title. A bare `feat. X` runs only to the next bracket: in `Los Tontos Feat.
+ * Kiko Veneno (Live At Npr's Tiny Desk)` the live qualifier is what makes it
+ * another track.
+ */
+function stripTitleNoise(title: string): string {
+  return fold(title)
+    .replace(/\[[^\]]*\]|\{[^}]*\}/g, ' ')
+    .replace(/\((?:feat|ft|featuring)\b\.?[^)]*\)/g, ' ')
+    .replace(/\s(?:feat|ft|featuring)\b\.?\s[^([]*/, ' ');
+}
+
+function titleWords(title: string): string[] {
+  return normalizeTitle(stripTitleNoise(title)).split(' ').filter(Boolean);
+}
+
+/**
+ * The titles a peer filename may carry: its whole basename, and every suffix
+ * after a ` - ` separator — so `07 Paulina Rubio - Sexy Dance` and
+ * `Molotov - 02 - Molotov Coktail Party` offer the bare title too. Each
+ * candidate is word-split after `normalizeTitle` (which drops a track prefix).
+ */
+function fileTitleCandidates(filename: string): string[][] {
+  const base = filename.replace(/\\/g, '/').split('/').pop() ?? filename;
+  const dot = base.lastIndexOf('.');
+  const noExt = dot > 0 ? base.slice(0, dot) : base;
+  const segments = noExt.split(/\s+[-–—]\s+/).map(stripTitleNoise);
+  const out: string[][] = [];
+  for (let i = 0; i < segments.length; i++) {
+    const words = normalizeTitle(segments.slice(i).join(' ')).split(' ').filter(Boolean);
+    if (words.length) out.push(words);
+  }
+  return out;
+}
+
+/**
+ * How closely one file title matches one wanted title, 0 (no match) to 1
+ * (exact). Symmetric: at least 70% of the WANTED words must be in the file
+ * AND at least 70% of the FILE's words must be in the wanted title — a
+ * version qualifier or a bare number among the file's extra words is not
+ * counted. One-sided containment was the #1468 defect: "Arpeggiator Stories
+ * Continued" carries every word of "Arpeggiator Stories" and is another track.
+ */
+function pairScore(wanted: string[], file: string[]): number {
+  if (!wanted.length || !file.length) return 0;
+  if (wanted.join(' ') === file.join(' ')) return 1;
+  const fileSet = new Set(file);
+  const wantedSet = new Set(wanted);
+  const inWanted = wanted.filter((w) => fileSet.has(w)).length / wanted.length;
+  const counted = file.filter((w) => wantedSet.has(w) || !isNeutralExtra(w));
+  if (!counted.length) return 0;
+  const inFile = counted.filter((w) => wantedSet.has(w)).length / counted.length;
+  if (inWanted < 0.7 || inFile < 0.7) return 0;
+  // Below an exact match however close, so an exact file always wins a tie.
+  return ((inWanted + inFile) / 2) * 0.99;
+}
+
+function isNeutralExtra(word: string): boolean {
+  return NEUTRAL_EXTRA_WORDS.has(word) || /^\d+$/.test(word);
+}
+
+/** The best {@link pairScore} of any of a file's title candidates against one title. */
+export function fileTitleScore(title: string, filename: string): number {
+  const wanted = titleWords(title);
+  let best = 0;
+  for (const cand of fileTitleCandidates(filename)) best = Math.max(best, pairScore(wanted, cand));
+  return best;
+}
+
+export interface FileTitleMatch<T> {
+  file: T;
+  /** The wanted title (as passed in) this file was assigned to. */
+  title: string;
+  score: number;
+}
+
+/**
+ * Assign a candidate folder's files to the wanted titles (#1468):
+ *
+ * 1. Each file goes to the title it matches BEST among the whole album
+ *    (`canonical` plus `wanted`), and is kept only if that title is a wanted
+ *    one — a file that is really an owned neighbouring track ("Arpeggiator
+ *    Stories Continued", track 4) is never taken for the wanted one (track 3).
+ *    A tie between two different titles is ambiguous and taken for neither.
+ * 2. Each wanted title keeps only its closest file — never also the superset.
+ *
+ * Returned in folder order. With no `canonical`, the wanted titles are the
+ * whole pool, and only the symmetric score guards against a neighbour.
+ *
+ * A whole-album hunt (every `canonical` title wanted) keeps the one-sided
+ * `titlesOverlap` rule: no track is owned, so there is no neighbour to take by
+ * mistake, and the strict score would only drop a rip's noisier names.
+ */
+export function matchFilesToTitles<T extends { filename: string }>(
+  files: T[],
+  wanted: string[],
+  canonical: string[] = [],
+): FileTitleMatch<T>[] {
+  const pool = new Map<string, { title: string; words: string[]; wanted: boolean }>();
+  for (const t of wanted) {
+    const words = titleWords(t);
+    const key = words.join(' ');
+    if (key && !pool.has(key)) pool.set(key, { title: t, words, wanted: true });
+  }
+  for (const t of canonical) {
+    const words = titleWords(t);
+    const key = words.join(' ');
+    if (key && !pool.has(key)) pool.set(key, { title: t, words, wanted: false });
+  }
+  const wholeAlbum = canonical.length > 0 && [...pool.values()].every((e) => e.wanted);
+  const assigned: Array<FileTitleMatch<T> & { key: string; index: number }> = [];
+  files.forEach((file, index) => {
+    const cands = fileTitleCandidates(file.filename);
+    let bestKey: string | null = null;
+    let bestScore = 0;
+    let tied = false;
+    for (const [key, entry] of pool) {
+      let score = 0;
+      for (const c of cands) score = Math.max(score, pairScore(entry.words, c));
+      if (score === 0) continue;
+      if (score > bestScore) {
+        bestKey = key;
+        bestScore = score;
+        tied = false;
+      } else if (score === bestScore) {
+        tied = true;
+      }
+    }
+    const entry = bestKey ? pool.get(bestKey) : undefined;
+    if (entry && !tied && entry.wanted) {
+      assigned.push({ file, title: entry.title, score: bestScore, key: bestKey!, index });
+    } else if (wholeAlbum) {
+      const base = normalizeFileBasename(file.filename);
+      const loose = wanted.find((t) => titlesOverlap(normalizeTitle(t), base));
+      if (loose) assigned.push({ file, title: loose, score: 0, key: `#${index}`, index });
+    }
+  });
+  const closest = new Map<string, (typeof assigned)[number]>();
+  for (const m of assigned) {
+    if (wholeAlbum) {
+      closest.set(`#${m.index}`, m);
+      continue;
+    }
+    const prev = closest.get(m.key);
+    if (!prev || m.score > prev.score) closest.set(m.key, m);
+  }
+  return [...closest.values()]
+    .sort((a, b) => a.index - b.index)
+    .map(({ file, title, score }) => ({ file, title, score }));
+}
+
+/**
  * The files of a candidate folder that carry any of `titles` — the rule the
  * slskd addon scopes an album job's enqueue with, and refuses the job on when
  * it comes back empty ("the picked folder covers none of the wanted tracks").
  * Shared so a host can skip such a folder before asking (NicotinD#1209).
+ * `canonical` is the album's whole tracklist; see {@link matchFilesToTitles}.
  */
 export function filesMatchingTitles<T extends { filename: string }>(
   files: T[],
   titles: string[],
+  canonical: string[] = [],
 ): T[] {
-  const normalized = titles.map(normalizeTitle);
-  return files.filter((f) => {
-    const base = normalizeFileBasename(f.filename);
-    return normalized.some((t) => titlesOverlap(t, base));
-  });
+  return matchFilesToTitles(files, titles, canonical).map((m) => m.file);
 }

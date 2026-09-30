@@ -270,6 +270,47 @@ describe('acquireAlbum picks a folder that covers a wanted track', () => {
     });
     expect((await acquireAlbum(h.deps, INPUT)).outcome).toBe('enqueued');
   });
+
+  // #1468, the real Eelke Kleijn case: "Arpeggiator Stories Continued" carries
+  // every word of the wanted "Arpeggiator Stories", but it is the album's own
+  // track 4, already on disk — so a folder carrying only it covers nothing.
+  it('does not take an owned neighbouring track whose title contains the wanted one', async () => {
+    const h = makeDeps({
+      albumsSearch: async () => ({
+        candidates: [
+          {
+            ...CANDIDATE,
+            files: [
+              { filename: 'Music\\Album\\01 - Song One.flac', size: 1 },
+              {
+                filename: 'Music\\Album\\04 - Eelke Kleijn - Arpeggiator Stories Continued.flac',
+                size: 1,
+              },
+            ],
+          },
+        ],
+        queries: [],
+        skewNeeded: false,
+      }),
+    });
+    h.deps.lidarr = {
+      track: {
+        listByAlbum: async () => [
+          { title: 'Song One' },
+          { title: 'Arpeggiator Stories' },
+          { title: 'Arpeggiator Stories Continued' },
+        ],
+      },
+    } as unknown as Lidarr;
+    withSongOneOnDisk(h.db);
+    h.db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, synced_at)
+       VALUES ('s4', ?, 'Arpeggiator Stories Continued', 'Artist', ?, 'Artist/Album/04.flac', 0)`,
+      [albumIdFor('Artist', 'Album'), artistIdFor('Artist')],
+    );
+    expect((await acquireAlbum(h.deps, INPUT)).outcome).toBe('no-candidate');
+    expect(h.jobRequests).toHaveLength(0);
+  });
 });
 
 describe('acquireAlbum when the source is offline', () => {
