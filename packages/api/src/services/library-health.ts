@@ -264,7 +264,7 @@ export interface LibraryHealthReport {
      */
     disk: {
       metric: {
-        /** scan_cache rows staged for deletion whose file is still present. */
+        /** Files on disk the last full scan left without a song row, minus same-album duplicates (#1479). */
         wronglyOrphaned: number | null;
         /** When the scan that produced these numbers finished. */
         measuredAt: number | null;
@@ -982,7 +982,7 @@ export function libraryHealth(
       disk: {
         metric: diskFacts(db),
         remediation:
-          'a non-zero count is always a bug (#968); the full worklist stays in audit-library.ts --rule=orphan_file',
+          'each counted file is music the library cannot serve (#968, #1479); the full worklist stays in audit-library.ts --rule=orphan_file',
       },
       lyrics: {
         metric: {

@@ -74,8 +74,8 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   → [library-scanner.md](../library-scanner.md)
 - **A walk that did not finish must not prune**: `unreadableDirs` makes a swallowed `readdir` failure
   visible, `scanFull` skips the prune when it is non-empty, and
-  `recoverPresentOrphanedCacheRows` unstamps cache rows whose file is present — surfaced as the
-  health report's `disk` dimension. → [library-scanner.md](../library-scanner.md)
+  `recoverPresentOrphanedCacheRows` unstamps cache rows whose file is present; `recordUnindexedFiles`
+  feeds the health report's `disk` dimension. → [library-scanner.md](../library-scanner.md)
 - **Multi-genre support (primary + extras)**: `splitGenres` parses full tag frames into
   `library_song_genres` (position 0 = primary); human-gated `library_genre_aliases` and
   `segmentConcatenatedGenre` fix concatenations at scan time; `backfillGenresFromAliases`.

@@ -16,7 +16,7 @@ import { isVariousArtists } from './compilation-tagger.js';
 import { inferFolderAlbum, inferMetadataFromPath, hasUsableValue } from './path-inference.js';
 import { getMusicMetadata, trackNoFromParse } from './music-metadata-loader.js';
 import { featureTagsFromNative, keyFromParse, workTagsFromParse } from './audio-tags.js';
-import { selectAlbumTracks } from './library-track-select.js';
+import { selectAlbumTracksDetailed, trackIdentityKey } from './library-track-select.js';
 import {
   isHiddenFile,
   isReservedPath,
@@ -257,6 +257,12 @@ export interface BuiltLibrary {
   songArtists: ArtistLink[];
   albumArtists: ArtistLink[];
   songGenres: SongGenreLink[];
+  /**
+   * Files the selector dropped because a same-album keeper carries the same
+   * `trackIdentityKey` — exact duplicates, served by the keeper. Plain data so
+   * it survives the worker's structured clone (#1479).
+   */
+  sameTrackDuplicates: Array<{ relPath: string; keptRelPath: string }>;
 }
 
 const UNKNOWN_ARTIST = 'Unknown Artist';
@@ -509,6 +515,19 @@ export function selectLibraryTracks(
   overrides?: ReadonlyMap<string, MetadataOverrideValue>,
   knownRelPaths?: ReadonlySet<string>,
 ): ScannedTrack[] {
+  return selectLibraryTracksDetailed(tracks, canonicalByAlbum, overrides, knownRelPaths).kept;
+}
+
+/** {@link selectLibraryTracks} plus the exact duplicates it collapsed (#1479). */
+export function selectLibraryTracksDetailed(
+  tracks: ScannedTrack[],
+  canonicalByAlbum?: Map<string, string[]>,
+  overrides?: ReadonlyMap<string, MetadataOverrideValue>,
+  knownRelPaths?: ReadonlySet<string>,
+): {
+  kept: ScannedTrack[];
+  sameTrackDuplicates: Array<{ relPath: string; keptRelPath: string }>;
+} {
   const byAlbum = new Map<
     string,
     Array<{
@@ -541,12 +560,59 @@ export function selectLibraryTracks(
     byAlbum.set(albId, arr);
   }
   const kept: ScannedTrack[] = [];
+  const sameTrackDuplicates: Array<{ relPath: string; keptRelPath: string }> = [];
   for (const [albId, group] of byAlbum) {
-    for (const sel of selectAlbumTracks(group, canonicalByAlbum?.get(albId), knownRelPaths)) {
-      kept.push(sel.track);
+    const sel = selectAlbumTracksDetailed(group, canonicalByAlbum?.get(albId), knownRelPaths);
+    for (const k of sel.kept) kept.push(k.track);
+    for (const [loser, winner] of sel.supersededBy) {
+      if (
+        trackIdentityKey(loser.title, loser.trackNumber, loser.disc) ===
+        trackIdentityKey(winner.title, winner.trackNumber, winner.disc)
+      )
+        sameTrackDuplicates.push({ relPath: loser.relPath, keptRelPath: winner.relPath });
     }
   }
-  return kept;
+  return { kept, sameTrackDuplicates };
+}
+
+/**
+ * For each unindexed path, the indexed song that serves it: same album (as the
+ * scanner resolves it from cached tags + overrides) and same
+ * `trackIdentityKey`. The audit's cross-folder counterpart of the scan's
+ * `sameTrackDuplicates` — the selector dedupes by album, not folder, so a
+ * folder-scoped twin check calls a by-design drop an orphan (#1479). A path
+ * with no cache row or no such keeper is absent from the result.
+ */
+export function findSameAlbumKeepers(
+  db: Database,
+  unindexedRelPaths: readonly string[],
+): Map<string, string> {
+  const out = new Map<string, string>();
+  if (unindexedRelPaths.length === 0) return out;
+  const cache = loadScanCache(db, unindexedRelPaths);
+  const overrides = loadOverrides(db);
+  const byAlbum = new Map<string, Map<string, string>>();
+  for (const r of db
+    .query<
+      { album_id: string; title: string; track: number | null; disc: number | null; path: string },
+      []
+    >('SELECT album_id, title, track, disc, path FROM library_songs WHERE path IS NOT NULL')
+    .all()) {
+    const keys = byAlbum.get(r.album_id) ?? new Map<string, string>();
+    const k = trackIdentityKey(r.title, r.track, r.disc);
+    if (!keys.has(k)) keys.set(k, r.path);
+    byAlbum.set(r.album_id, keys);
+  }
+  for (const p of unindexedRelPaths) {
+    const t = cache.get(p)?.track;
+    if (!t) continue;
+    const { albumArtist, album, title } = resolveTags(t, overrides);
+    const keeper = byAlbum
+      .get(albumIdFor(albumArtist, album))
+      ?.get(trackIdentityKey(title, t.track, t.disc));
+    if (keeper && keeper !== p) out.set(p, keeper);
+  }
+  return out;
 }
 
 /**
@@ -564,7 +630,8 @@ export function buildLibrary(
   genreOverrides: OverrideIndex = emptyOverrideIndex(),
   knownRelPaths?: ReadonlySet<string>,
 ): BuiltLibrary {
-  tracks = selectLibraryTracks(tracks, canonicalByAlbum, overrides, knownRelPaths);
+  const selection = selectLibraryTracksDetailed(tracks, canonicalByAlbum, overrides, knownRelPaths);
+  tracks = selection.kept;
 
   // Genre context: the caller's loaded vocabulary/aliases (db-settled display
   // casing wins) merged over the in-batch vocabulary, so the `/` rule and
@@ -907,6 +974,7 @@ export function buildLibrary(
     songArtists: songArtistLinks,
     albumArtists: albumArtistLinks,
     songGenres: songGenreLinks,
+    sameTrackDuplicates: selection.sameTrackDuplicates,
   };
 }
 
@@ -992,6 +1060,7 @@ export class LibraryScanner {
     const recovered = this.recoverPresentOrphanedCacheRows(files);
     if (recovered > 0)
       log.info({ recovered }, 'cleared orphaned_at on scan-cache rows still on disk');
+    this.recordUnindexedFiles(files, built);
     log.info({ ...result, walkIncomplete: incomplete.length > 0 }, 'Full scan complete');
     optimizeDatabase(this.db);
     return result;
@@ -1085,19 +1154,39 @@ export class LibraryScanner {
   private unreadableDirs: string[] = [];
 
   /**
+   * Record how many walked files this scan left without a song row, excluding
+   * exact duplicates a same-album keeper serves — the health report's
+   * `disk.wronglyOrphaned` (#1479). A level computed from this scan alone, so
+   * every full scan of the same state reads the same number; the old count of
+   * prune-stamped rows read N on the first scan after the nightly prune and 0
+   * on the next, and counted by-design duplicate drops as losses. What remains
+   * is real: a fuzzy canonical binding (#1034), a title collision (#1089).
+   */
+  private recordUnindexedFiles(walkedAbsPaths: string[], built: BuiltLibrary): number {
+    const indexed = new Set(built.songs.map((s) => s.path));
+    const served = new Set(built.sameTrackDuplicates.map((d) => d.relPath));
+    const unindexed = walkedAbsPaths
+      .map((p) => relative(this.musicDir, p))
+      .filter((p) => !indexed.has(p) && !served.has(p));
+    this.db.run(
+      `INSERT INTO library_sync_state (key, value, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      ['scan_cache_wrongly_orphaned', String(unindexed.length), Date.now()],
+    );
+    if (unindexed.length > 0)
+      log.warn(
+        { count: unindexed.length, sample: unindexed.slice(0, 10) },
+        'files on disk with no library row and no same-track keeper',
+      );
+    return unindexed.length;
+  }
+
+  /**
    * Clear `orphaned_at` on every `scan_cache` row whose file the walk just
-   * found (issue #968).
-   *
-   * `orphaned_at` on this table means "the song row is gone, stage the cached
-   * tags for deletion". A row whose FILE is still on disk is therefore always a
-   * bug: the tags are about to be discarded for a file we will have to re-parse.
-   * Recovery is free — the row already holds its `track_json` — and the count is
-   * the invariant worth watching, so it is recorded for the health report
-   * rather than only logged (issue #955: a disk dimension invisible to the tool
-   * a curator uses is a dimension that never gets worked).
-   *
-   * The underlying cause of the marking is NOT claimed here. This clears the
-   * symptom and measures it; #968 stays open for the cause.
+   * found (issue #968). The nightly prune stamps any path with no song row,
+   * which includes a live file the selector dropped as a duplicate; the walk
+   * is the proof it is present, and clearing keeps its cached tags. Not a
+   * measurement — see `recordUnindexedFiles` (#1479).
    */
   private recoverPresentOrphanedCacheRows(walkedAbsPaths: string[]): number {
     const present = new Set(walkedAbsPaths.map((p) => relative(this.musicDir, p)));
@@ -1106,22 +1195,11 @@ export class LibraryScanner {
       .query<{ path: string }, []>('SELECT path FROM scan_cache WHERE orphaned_at IS NOT NULL')
       .all()
       .filter((r) => present.has(r.path));
-    const recordCount = (n: number): void => {
-      this.db.run(
-        `INSERT INTO library_sync_state (key, value, updated_at) VALUES (?, ?, ?)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-        ['scan_cache_wrongly_orphaned', String(n), Date.now()],
-      );
-    };
-    if (stamped.length === 0) {
-      recordCount(0);
-      return 0;
-    }
+    if (stamped.length === 0) return 0;
     const clear = this.db.prepare('UPDATE scan_cache SET orphaned_at = NULL WHERE path = ?');
     this.db.transaction(() => {
       for (const r of stamped) clear.run(r.path);
     })();
-    recordCount(stamped.length);
     return stamped.length;
   }
 

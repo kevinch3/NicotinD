@@ -80,4 +80,17 @@ describe('diskFindings', () => {
     expect(f.find((x) => x.rule === 'missing_file')!.severity).toBe('high');
     expect(f.find((x) => x.rule === 'orphan_file')!.severity).toBe('medium');
   });
+
+  // #1479: a title twin in another folder IS proof when the scanner resolved
+  // both to one album — the keeper map comes from tags, not folder names.
+  it('reports a copy kept from another folder of the same album as redundant, not orphan', () => {
+    const dropped = 'Various Artists/El Madrileño (La Sobremesa)/17 - Yate.opus';
+    const keeper = 'C. Tangana/El Madrileño (La Sobremesa)/17 - Yate.opus';
+    const scan: DiskScan = { audioPaths: [keeper, dropped], emptyDirs: [] };
+    const f = diskFindings(scan, [keeper], new Map([[dropped, keeper]]));
+    expect(f.filter((x) => x.rule === 'orphan_file')).toEqual([]);
+    const r = f.find((x) => x.subject === dropped)!;
+    expect(r.rule).toBe('redundant_copy');
+    expect(r.message).toContain(keeper);
+  });
 });

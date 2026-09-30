@@ -102,10 +102,16 @@ function sizeLabel(bytes: number | undefined): string {
  *   - `redundant_copy` (low)   — an unindexed file whose folder already serves the
  *                                same title from an indexed, present file (#1079).
  *   - `empty_dir`     (low)    — a directory with no entries (leftover folder).
- * Only a same-folder twin counts: artist folders vary (`Rafaga`/`Ráfaga`), so a
- * cross-folder title match is a hypothesis, not proof of redundancy.
+ * A twin counts when it shares the folder, or when `sameAlbumKeepers` (built by
+ * `findSameAlbumKeepers` from tags) names the indexed keeper of the same album
+ * in another folder (#1479). A bare cross-folder title match stays a
+ * hypothesis: artist folders vary (`Rafaga`/`Ráfaga`) without sharing an album.
  */
-export function diskFindings(scan: DiskScan, dbSongPaths: Iterable<string>): AuditFinding[] {
+export function diskFindings(
+  scan: DiskScan,
+  dbSongPaths: Iterable<string>,
+  sameAlbumKeepers: ReadonlyMap<string, string> = new Map(),
+): AuditFinding[] {
   const out: AuditFinding[] = [];
   const onDisk = new Set(scan.audioPaths);
   const inDb = new Set(dbSongPaths);
@@ -134,6 +140,17 @@ export function diskFindings(scan: DiskScan, dbSongPaths: Iterable<string>): Aud
     const bytes = scan.sizes?.get(p);
     const key = fileTitleKey(p);
     const twin = key.length >= 3 ? indexedByDir.get(dirOf(p))?.get(key) : undefined;
+    const albumKeeper = twin ? undefined : sameAlbumKeepers.get(p);
+    if (albumKeeper) {
+      out.push({
+        rule: 'redundant_copy',
+        severity: 'low',
+        subject: p,
+        bytes,
+        message: `Unindexed "${p}"${sizeLabel(bytes)} duplicates indexed "${albumKeeper}" of the same album in another folder — reclaim candidate; verify before deleting`,
+      });
+      continue;
+    }
     out.push(
       twin
         ? {

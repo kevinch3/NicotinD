@@ -30,6 +30,7 @@ import {
 } from '../services/library-audit.js';
 import { scanMusicDir, diskFindings } from '../services/library-disk-audit.js';
 import { resolveReservedDirs } from '../services/library-paths.js';
+import { findSameAlbumKeepers } from '../services/library-scanner.js';
 import { expandHome } from '@nicotind/core';
 
 function loadConfig(): { dataDir: string; musicDir: string; reserved: ReadonlySet<string> } {
@@ -76,7 +77,12 @@ function main(): void {
       .query<{ path: string }, []>('SELECT path FROM library_songs')
       .all()
       .map((r) => r.path);
-    findings = [...findings, ...diskFindings(scan, dbPaths)];
+    const indexed = new Set(dbPaths);
+    const keepers = findSameAlbumKeepers(
+      db,
+      scan.audioPaths.filter((p) => !indexed.has(p)),
+    );
+    findings = [...findings, ...diskFindings(scan, dbPaths, keepers)];
   } else {
     console.warn(`⚠️  musicDir ${musicDir} not found — skipping disk checks.`);
   }

@@ -121,6 +121,20 @@ function normalizeTrackTitle(title: string, track: number | null | undefined): s
   return foldTitleText(isOwnTrackNumber ? folded.slice(m[0].length) : folded);
 }
 
+/**
+ * A track's own identity within one album: `disc:normalizedTitle`, never the
+ * canonical entry it bound to. Two files sharing it are the same track, so a
+ * dropped one is served by its keeper; two that merely bound to one canonical
+ * entry (#1034) are different recordings and the dropped one is a loss (#1479).
+ */
+export function trackIdentityKey(
+  title: string,
+  track: number | null | undefined,
+  disc: number | null | undefined,
+): string {
+  return `${disc ?? 1}:${normalizeTrackTitle(title, track)}`;
+}
+
 function canonicalEntryFor(canon: readonly string[], norm: string): string | null {
   let best: string | null = null;
   let bestScore = 0;
