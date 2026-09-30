@@ -101,9 +101,10 @@ export const ORPHAN_TABLES: OrphanTable[] = [
   // A pure ledger of analysis attempts — meaningless without its song.
   { table: 'library_song_analysis_failures', idColumn: 'song_id' },
   // Raw tag JSON keyed on path+size+mtime, purely to skip re-parsing an
-  // unchanged file. An entry whose path is gone can never be hit again — the
-  // lookup is by path — so this is the one table where an orphan is provably
-  // unreachable rather than merely unused (issue #313). Prod: 2,969 orphans of
+  // unchanged file. "No song row" is not "file gone": a live file the selector
+  // drops as a same-album duplicate has no row either, is hit on every scan,
+  // and is re-stamped here nightly — the full scan's walk clears that stamp, so
+  // only a path the walk stops finding ages into the sweep (#313, #1479). Prod: 2,969 orphans of
   // 17,549 (17 %, 1.16 MB of tag JSON). The only existing DELETE is a full wipe
   // on a schema-version bump, so orphans otherwise accumulate until that fires.
   { table: 'scan_cache', idColumn: 'path', parent: { table: 'library_songs', column: 'path' } },

@@ -231,10 +231,19 @@ deleted every row beneath it: **496 files on disk with no library row**, whole a
 Orphaning is destructive to visibility, so it now requires positive evidence a file is gone: the
 walk records the directories it could not read, and `scanFull` skips the prune when that list is
 non-empty. `recoverPresentOrphanedCacheRows` additionally clears `orphaned_at` on any `scan_cache`
-row whose file the walk just found — that state is always a bug, and recovery is free because the
-row already holds its `track_json`. The count is written to `library_sync_state` and surfaced as the
-health report's `disk` dimension, because a disk rule that only `audit-library.ts` reports is a
-dimension no curation pass ever works (#955).
+row whose file the walk just found, so its cached tags survive.
+
+That stamp is **not** a bug signal, and it no longer feeds the health report (#1479). The nightly
+prune stamps every cache path with no song row, which includes a live file the selector dropped
+as a same-album duplicate — so the old count of "stamped but present" rows fired on by-design
+dedupe (an album merged across two folders, identical rips) and read N on the first full scan
+after the prune, then 0 on the next, for the same state. `recordUnindexedFiles` now measures a
+level from the scan itself: walked files with no song row, minus the build's
+`sameTrackDuplicates` (dropped files whose same-album keeper has the same `trackIdentityKey`,
+`disc:normalizedTitle`). What remains is music the library cannot serve — a fuzzy canonical
+binding of two recordings (#1034), a title collision (#1089). It is written to
+`library_sync_state` and surfaced as the health report's `disk` dimension, because a disk rule
+that only `audit-library.ts` reports is a dimension no curation pass ever works (#955).
 
 **This clears the symptom and measures it; it does not claim the cause.** The unreadable-directory
 path is a proven mechanism for the shape, not proof it produced these particular 496 rows — #968
