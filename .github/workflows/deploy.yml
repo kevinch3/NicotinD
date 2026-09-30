@@ -749,6 +749,8 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: ${{ env.IMAGE }}:${{ github.ref_name }}
+          build-args: |
+            APT_REFRESH=${{ github.run_id }}
           cache-from: type=gha,scope=analysis-linux-amd64
           cache-to: type=gha,mode=max,scope=analysis-linux-amd64
 
