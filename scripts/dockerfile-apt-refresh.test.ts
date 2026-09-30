@@ -86,7 +86,7 @@ describe(`${ARG_NAME} keeps the apt layer out of the build cache (#730)`, () => 
   });
 });
 
-/** Each docker/build-push-action step that builds the root Dockerfile and pushes. */
+/** Each build-push step that pushes the root or the analysis Dockerfile. */
 function pushingMainImageBuilds(): [string, string][] {
   const dir = resolve(ROOT, '.github/workflows');
   const out: [string, string][] = [];
@@ -95,7 +95,7 @@ function pushingMainImageBuilds(): [string, string][] {
     steps.forEach((step, i) => {
       const buildsMain =
         /docker\/build-push-action/.test(step) &&
-        /context: \.\s*$/m.test(step) &&
+        /context: (\.|packages\/analysis)\s*$/m.test(step) &&
         !/^\s+file:/m.test(step);
       const pushes = /push=true|^\s+push: true/m.test(step);
       if (buildsMain && pushes) out.push([`${f} step ${i}`, step]);
@@ -103,3 +103,25 @@ function pushingMainImageBuilds(): [string, string][] {
   }
   return out;
 }
+
+/**
+ * The analysis image had no upgrade at all, and the edge job reuses the last
+ * release's analysis image when its sources are unchanged: on 2026-09-30 that
+ * image (v0.8.105) carried OpenSSL deb13u2 and failed the edge Trivy scan.
+ */
+describe(`${ARG_NAME} in the analysis image`, () => {
+  const analysis = readFileSync(resolve(ROOT, 'packages/analysis/Dockerfile'), 'utf8');
+  const upgradeRun = analysis
+    .replace(/\\\n/g, ' ')
+    .split('\n')
+    .find((l) => /^RUN .*apt-get upgrade/.test(l));
+
+  it('declares the arg', () => {
+    expect(analysis).toMatch(new RegExp(`^ARG ${ARG_NAME}=`, 'm'));
+  });
+
+  it('upgrades inside a RUN that interpolates it', () => {
+    expect(upgradeRun).toBeDefined();
+    expect(upgradeRun).toContain(`\${${ARG_NAME}}`);
+  });
+});

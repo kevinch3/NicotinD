@@ -1032,6 +1032,13 @@ HIGH CVEs fixed in `deb13u3`. The edge Trivy scan (#1462) blocked every edge dep
 finds every `docker/build-push-action` step, in any workflow, that builds the root `Dockerfile`
 and pushes, and requires a per-run value in each.
 
+**The analysis image had the same gap, only worse:** it ran no `apt-get upgrade` at all. The edge
+job reuses the last release's analysis image while `packages/analysis` is unchanged, and on the
+same day that image (v0.8.105) failed the edge scan on the same OpenSSL CVEs.
+`packages/analysis/Dockerfile` now upgrades inside a RUN that interpolates `APT_REFRESH`, every
+pushing analysis build passes it, and the same test covers both images. A *reused* release image
+can still go stale when a new CVE lands after its release; that fallback is tracked separately.
+
 ## An install must not depend on a third-party download (#1087)
 
 `ffmpeg-static` (a devDependency of `@nicotind/desktop`, trusted by Bun's default list) runs an

@@ -10,7 +10,12 @@ ARG GPU=0
 
 # ffmpeg does ALL audio decoding (essentia's bundled AudioLoader lacks Opus —
 # the library's standard codec — see app/models.py load_audio).
-RUN apt-get update \
+# `apt-get upgrade` + a per-run APT_REFRESH keep Debian security fixes out of the
+# build cache, as in the root Dockerfile (#730, docs/quality-gates.md).
+ARG APT_REFRESH=unset
+RUN echo "apt refresh: ${APT_REFRESH}" \
+    && apt-get update \
+    && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 

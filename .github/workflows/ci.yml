@@ -957,6 +957,8 @@ jobs:
           context: packages/analysis
           platforms: linux/amd64
           outputs: type=image,name=${{ env.ANALYSIS }},push-by-digest=true,name-canonical=true,push=true
+          build-args: |
+            APT_REFRESH=${{ github.run_id }}
           cache-from: type=gha,scope=analysis-linux-amd64
 
       - name: Pick the analysis image edge will point at
