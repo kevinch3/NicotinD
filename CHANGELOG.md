@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.106](https://github.com/kevinch3/NicotinD/compare/v0.8.105...v0.8.106) (2026-09-30)
+
+### Features
+
+* **library:** migrate existing multi-disc files to D-NN, carrying song ids ([#1474](https://github.com/kevinch3/NicotinD/issues/1474)) ([73aa786](https://github.com/kevinch3/NicotinD/commit/73aa78609aed4ffce04028713d64f653fe2caf77)), closes [#1392](https://github.com/kevinch3/NicotinD/issues/1392), references [#1393](https://github.com/kevinch3/NicotinD/issues/1393)
+* **monitoring:** page on kpc load spikes and severe event-loop blocks from the droplet probe ([#1470](https://github.com/kevinch3/NicotinD/issues/1470)) ([6b9e37c](https://github.com/kevinch3/NicotinD/commit/6b9e37ce531b82d94e0637d5ebf00e9db18981b6)), closes [#1143](https://github.com/kevinch3/NicotinD/issues/1143)
+
+### Bug Fixes
+
+* **acquisition:** a missing-track hunt takes the wanted title, not a longer neighbour ([#1471](https://github.com/kevinch3/NicotinD/issues/1471)) ([71037ae](https://github.com/kevinch3/NicotinD/commit/71037aea2dd36a5dc8c54522c1b4a92281dd315c)), closes [#1468](https://github.com/kevinch3/NicotinD/issues/1468), references [#1468](https://github.com/kevinch3/NicotinD/issues/1468) [#1468](https://github.com/kevinch3/NicotinD/issues/1468)
+* **ci:** refresh the apt layer in the edge image build too ([#1476](https://github.com/kevinch3/NicotinD/issues/1476)) ([08df709](https://github.com/kevinch3/NicotinD/commit/08df7090d53aba4ba1ce35a2d0219b800edf014d)), references [#1462](https://github.com/kevinch3/NicotinD/issues/1462) [#1470](https://github.com/kevinch3/NicotinD/issues/1470) [#1471](https://github.com/kevinch3/NicotinD/issues/1471) [#1474](https://github.com/kevinch3/NicotinD/issues/1474) [#730](https://github.com/kevinch3/NicotinD/issues/730) [#730](https://github.com/kevinch3/NicotinD/issues/730)
+* **ci:** upgrade Debian packages in the analysis image, refreshed per run ([#1478](https://github.com/kevinch3/NicotinD/issues/1478)) ([daeb61e](https://github.com/kevinch3/NicotinD/commit/daeb61e8524836ba29edffeaddba80731a248a2a)), references [#1477](https://github.com/kevinch3/NicotinD/issues/1477)
+* **library:** count unindexed files as a level, not prune-stamped cache rows ([#1480](https://github.com/kevinch3/NicotinD/issues/1480)) ([03c0164](https://github.com/kevinch3/NicotinD/commit/03c0164eb085caf1d45f395ddd7f2b0c6e4181dd)), closes [#1479](https://github.com/kevinch3/NicotinD/issues/1479)
 ## [0.8.105](https://github.com/kevinch3/NicotinD/compare/v0.8.104...v0.8.105) (2026-09-29)
 
 ### Features

@@ -1,0 +1,6 @@
+• library: migrate existing multi-disc files to D-NN, carrying song ids (#1474)
+• monitoring: page on kpc load spikes and severe event-loop blocks from the droplet probe (#1470)
+• acquisition: a missing-track hunt takes the wanted title, not a longer neighbour (#1471)
+• ci: refresh the apt layer in the edge image build too (#1476)
+• ci: upgrade Debian packages in the analysis image, refreshed per run (#1478)
+…and 1 more
