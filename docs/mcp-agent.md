@@ -505,13 +505,40 @@ addon scopes the job to `wantedTracks` and refuses a folder carrying none of the
 (`the picked folder covers none of the wanted tracks`, a 400 — the same album
 failed identically on every retry). `acquireAlbum` therefore picks the first
 candidate that clears `minMatchPct` **and** has a file matching a wanted title,
-under the addon's own rule (`filesMatchingTitles` in `@nicotind/addon-sdk`: the
-normalized file basename `titlesOverlap`s a normalized wanted title). When
+under the addon's own rule (`filesMatchingTitles` in `@nicotind/addon-sdk`, given the
+album's whole tracklist). When
 confident folders exist but none covers one, the outcome is `no-candidate` with a
 `detail` saying so, and the addon is never asked; a candidate listing no files is
 left to the addon. An offline or cut-short hunt still defers as
 `slskd-unavailable`, since the covering folder may be among the searches that
 never answered.
+
+**A file carries a wanted title only if it is that title (issue #1468).** The rule
+was one-sided — at least 70% of the *wanted* title's words in the file — so a
+longer, different title passed: the 2026-09-29 pass fetched *Arpeggiator Stories
+Continued* for *Arpeggiator Stories*, *La búsqueda de la estrella* for *Estrella*
+and a mislabelled *De Mujer A Mujer, Profundo Valor* for *De mujer a mujer*, all
+tracks the albums already owned (and 09-27 a live *Los Tontos* for the studio one).
+`matchFilesToTitles` now:
+
+- reads each file's candidate titles from its basename with `[...]`/`{...}` tags and
+  a `feat. X` credit dropped, the whole name **and** every suffix after a ` - `
+  (`07 Paulina Rubio - Sexy Dance`, `Molotov - 02 - Molotov Coktail Party`), a
+  leading track number stripped;
+- scores a pair **symmetrically** (`fileTitleScore`): at least 70% of the wanted
+  words in the file *and* at least 70% of the file's words in the wanted title,
+  where a version qualifier (`remaster`, `radio edit`, `live`, …) or a bare number
+  among the file's extras is not counted;
+- assigns each file to the album track it matches **best** and keeps it only when
+  that track is a wanted one (a tie is taken for neither), then keeps only the
+  **closest** file per wanted title, never also the superset.
+
+Replayed on every prod `acquisition_job_items` row with a filename (71): the four
+neighbours above flip to rejected, and nothing else changes. A whole-album hunt (every
+tracklist title wanted) keeps the one-sided `titlesOverlap` rule: nothing is owned,
+so there is no neighbour to mistake. The slskd addon scopes its album job with the
+same `title-match.ts`, kept byte-identical in its vendored SDK copy
+(nicotind-slskd-addon#20); its fallback paths still use `titlesOverlap`.
 
 ### Destructive writes: the extraction that unblocked each one
 
