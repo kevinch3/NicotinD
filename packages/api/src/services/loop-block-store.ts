@@ -50,3 +50,33 @@ export function startLoopBlockRecorder(
     ...tuning,
   });
 }
+
+/** How far back `/api/health/signals` reports blocks: the droplet probe's alert window. */
+export const LOOP_BLOCK_SIGNAL_WINDOW_MS = 15 * 60 * 1000;
+/** A storm is already an alert well before this many; the cap keeps the probe's payload small. */
+const LOOP_BLOCK_SIGNAL_MAX = 200;
+
+/**
+ * Durations of the blocks recorded in the last `windowMs`, most recent first —
+ * the raw material the droplet probe applies its paging policy to
+ * (docs/host-monitoring.md). Only durations: the endpoint is public, request
+ * paths are not. Never throws: a failed read is `null` — "unknown", which the
+ * probe must not mistake for "no blocks".
+ */
+export function recentLoopBlockDurations(
+  db: Database,
+  windowMs = LOOP_BLOCK_SIGNAL_WINDOW_MS,
+  now = Date.now(),
+): number[] | null {
+  try {
+    return db
+      .query<{ blocked_ms: number }, [number, number]>(
+        'SELECT blocked_ms FROM loop_blocks WHERE at >= ? ORDER BY at DESC, id DESC LIMIT ?',
+      )
+      .all(now - windowMs, LOOP_BLOCK_SIGNAL_MAX)
+      .map((r) => r.blocked_ms);
+  } catch (err) {
+    log.error({ err }, 'loop block read failed');
+    return null;
+  }
+}

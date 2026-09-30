@@ -811,6 +811,11 @@ sha the image was built from (`NICOTIND_BUILD_COMMIT`, stamped by the release
 build; `null` for an unstamped build), which is what a deploy of an untagged
 commit verifies. Clients must only rely on `ok`.
 
+`GET /api/health/signals` → `{ ok, load: [1, 5, 15-min], cpus, loopBlocks: { windowMs,
+blockedMs: number[] | null } }` — also unauthenticated, and numbers only: the host
+load average and the durations of the last 15 minutes' event-loop blocks, which the
+edge droplet's probe pages on. → [host-monitoring.md](host-monitoring.md#precursors-load-and-event-loop-blocks)
+
 ## Update check + version history
 
 The server polls the GitHub releases API at most once per 24h (1h backoff on
