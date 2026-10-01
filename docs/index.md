@@ -14,6 +14,9 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   → [oauth-auth.md](oauth-auth.md); WebMCP host exposure, client-side WebGPU/WebNN a NO-GO
   → [webmcp-alignment.md](webmcp-alignment.md),
   [client-side-ml-feasibility.md](client-side-ml-feasibility.md)
+- **Native phone/TV client, deferred** — proposed, NOT built: an isolated codename repo with a KMP
+  core and SwiftUI/Compose UIs; waits while desktop still needs the Angular build.
+  → [native-mobile-client.md](native-mobile-client.md)
 
 ## Sections
 
