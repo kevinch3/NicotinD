@@ -516,8 +516,9 @@ Design rules it inherits:
 
 - **A metric is what its remediation acts on** (the `NEEDS_PORTRAIT_SQL` doctrine): the covers
   number is `backfillArtwork`'s candidate set; the lossless-remaining count is
-  `transcodeLibraryToFormat`'s; the confirmed-incomplete rows use the *same* matcher (`onDiskTitles` +
-  `titlesOverlap`) as `acquireAlbum`, so "incomplete here" means "a hunt would enqueue something".
+  `transcodeLibraryToFormat`'s; the confirmed-incomplete rows use the *same* rule (`onDiskTitles` +
+  `titlesMissingFromOwned`) as `acquireAlbum`, so "incomplete here" means "a hunt would enqueue
+  something". See [mcp-agent.md](mcp-agent.md) for the owned-title rule (#1473).
 - **On-demand only, never polled.** The audit half issues per-row queries — fine as a snapshot,
   poison in the `ServiceReview` interval. The Admin panel fetches on expand.
 - **Shared predicates, derived not restated** (`nicotind/shared-helpers` spirit): `missingAlbumArtSql`

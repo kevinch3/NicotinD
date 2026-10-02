@@ -402,6 +402,16 @@ describe('libraryHealth — completeness (confirmed, the album_jobs arm)', () =>
     expect(row.albumId).toBe('al-jazz');
   });
 
+  // #1473, measured on prod: an owned "Love Me" counted as owning "Love Me
+  // Tender", so the album never read as incomplete and was never hunted.
+  it('does not count a shorter owned title as owning a longer canonical one', () => {
+    seedOwned('al-gold', 'Gold', ['Love Me', 'Hound Dog']);
+    addJob({ album: 'Gold', canonical: ['Love Me', 'Love Me Tender', 'Hound Dog'] });
+    const d = libraryHealth(db).dimensions.completeness;
+    expect(d.metric.confirmedIncomplete).toBe(1);
+    expect(d.worklist.confirmed[0]).toMatchObject({ expected: 3, owned: 2, missing: 1 });
+  });
+
   it('skips complete albums and albums no longer in the library at all', () => {
     seedOwned('al-done', 'News of the World', ['We Will Rock You', 'We Are the Champions']);
     addJob({ album: 'News of the World', canonical: ['We Will Rock You', 'We Are the Champions'] });
@@ -454,15 +464,18 @@ describe('libraryHealth — completeness (confirmed, the album_jobs arm)', () =>
     });
   });
 
-  /** #1080: one on-disk song satisfying several canonical titles (remixes). */
-  it('never reports owned above the songs actually on disk', () => {
+  /**
+   * #1080: one on-disk song satisfied several canonical titles (remixes). Since
+   * #1473 a remix is its own track, so "Maps" no longer owns "Maps (Slaptop remix)".
+   */
+  it('counts a remix of an owned track as missing, and owned never above the songs on disk', () => {
     seedOwned('al-v', 'V', ['Maps', 'Animals']);
     addJob({
       album: 'V',
       canonical: ['Maps', 'Animals', 'Maps (Slaptop remix)', 'Animals (Gryffin remix)', 'Sugar'],
     });
     const row = libraryHealth(db).dimensions.completeness.worklist.confirmed[0]!;
-    expect(row).toMatchObject({ expected: 5, missing: 1, owned: 2 });
+    expect(row).toMatchObject({ expected: 5, missing: 3, owned: 2 });
   });
 
   /**

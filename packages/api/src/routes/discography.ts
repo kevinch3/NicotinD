@@ -19,7 +19,7 @@ import {
   pendingIngestForAddonJob,
   supersedeActiveJobs,
 } from '../services/acquisition-job-store.js';
-import { normalizeTitle, titlesOverlap } from '@nicotind/core';
+import { titlesMissingFromOwned } from '@nicotind/core';
 import type { AddonAlbumCandidate } from '@nicotind/core';
 import { join } from 'node:path';
 import type { Lidarr } from '../lidarr/index.js';
@@ -535,7 +535,7 @@ export function discographyRoutes({
       const titles = tracks.map((t) => t.title);
       const onDisk =
         artistName && albumTitle ? onDiskTitles(db, artistName, albumTitle, body.localAlbumId) : [];
-      const wanted = titles.filter((t) => !onDisk.some((d) => titlesOverlap(d, normalizeTitle(t))));
+      const wanted = titlesMissingFromOwned(titles, onDisk);
       if (titles.length > 0 && wanted.length === 0) {
         return c.json({ ok: true, queued: 0, alreadyComplete: true }, 200);
       }
