@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.107](https://github.com/kevinch3/NicotinD/compare/v0.8.106...v0.8.107) (2026-10-02)
+
+### Bug Fixes
+
+* **completeness:** an owned title owns only its own track, so a neighbour is hunted ([#1473](https://github.com/kevinch3/NicotinD/issues/1473)) ([#1483](https://github.com/kevinch3/NicotinD/issues/1483)) ([8bc65a9](https://github.com/kevinch3/NicotinD/commit/8bc65a9567482842494520fe14813313a2f8c929)), references [#1468](https://github.com/kevinch3/NicotinD/issues/1468)
+* **deps:** bump Angular to 22.2.1 for the router SSR advisory GHSA-ff3f-86qr-9cv3 ([#1482](https://github.com/kevinch3/NicotinD/issues/1482)) ([8c72c82](https://github.com/kevinch3/NicotinD/commit/8c72c8295002c2a2ee7f9d989a37827aa7cc2f19))
 ## [0.8.106](https://github.com/kevinch3/NicotinD/compare/v0.8.105...v0.8.106) (2026-09-30)
 
 ### Features

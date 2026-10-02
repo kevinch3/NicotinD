@@ -1,0 +1,2 @@
+• completeness: an owned title owns only its own track, so a neighbour is hunted (#1473) (#1483)
+• deps: bump Angular to 22.2.1 for the router SSR advisory GHSA-ff3f-86qr-9cv3 (#1482)
