@@ -540,6 +540,21 @@ so there is no neighbour to mistake. The slskd addon scopes its album job with t
 same `title-match.ts`, kept byte-identical in its vendored SDK copy
 (nicotind-slskd-addon#20); its fallback paths still use `titlesOverlap`.
 
+**An owned title owns only the track it is (issue #1473).** The on-disk check that
+decides which tracklist titles are missing — the health report's confirmed-incomplete
+rows, `acquireAlbum`'s `already-complete` and the manual Get — asked
+`titlesOverlap(owned, wanted)`, one-sided the other way round: every word of the *owned*
+title in the wanted one. So an owned *Love Me* owned *Love Me Tender*, part I owned part
+II, and *Maps* owned *Maps (Slaptop remix)*: those tracks never read as missing and were
+never hunted. `titlesMissingFromOwned` scores each owned title against the whole
+tracklist with the same symmetric score, forgiving a version qualifier on **either**
+side (the tracklist's *(2009 Remaster)* is still owned by a plain *Hey Jude*), and counts
+it toward the one track it matches best; a tie owns both. The 70% bound is unchanged, so
+one extra word in four still matches. Replayed on prod's 382 hunted albums with tracks on
+disk (2026-10-02): albums with a missing title went from 149 to 174 — 72 gained a missing
+title (remixes, instrumentals, live and demo cuts, sequels), and 33 lost one, where a
+`feat.` credit or a qualifier had kept an owned track from matching.
+
 ### Destructive writes: the extraction that unblocked each one
 
 The delete path used to be inline in `routes/library.ts` (folder-first `rmSync`

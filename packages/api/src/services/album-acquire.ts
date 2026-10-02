@@ -1,6 +1,6 @@
 import type { Database } from 'bun:sqlite';
 import type { Lidarr, LidarrTrack } from '../lidarr/index.js';
-import { createLogger, filesMatchingTitles, normalizeTitle, titlesOverlap } from '@nicotind/core';
+import { createLogger, filesMatchingTitles, titlesMissingFromOwned } from '@nicotind/core';
 import { albumAlreadyComplete, onDiskTitles } from './library-completeness.js';
 import { recordAcquiredArtistIdentity } from './artist-identity-store.js';
 import { artistIdFor } from './library-scanner.js';
@@ -170,7 +170,7 @@ async function acquireViaAddon(
   let wanted = titles;
   if (confident.length) {
     const onDisk = onDiskTitles(db, artistName, albumTitle);
-    wanted = titles.filter((t) => !onDisk.some((d) => titlesOverlap(d, normalizeTitle(t))));
+    wanted = titlesMissingFromOwned(titles, onDisk);
     if (wanted.length === 0) return { outcome: 'already-complete' };
   }
 

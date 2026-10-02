@@ -2,8 +2,7 @@ import { dirname, join } from 'node:path';
 import type { Database } from 'bun:sqlite';
 import type { Lidarr } from '../lidarr/index.js';
 import {
-  normalizeTitle,
-  titlesOverlap,
+  titlesMissingFromOwned,
   parseLrc,
   applyLyricsOffset,
   LYRICS_DURATION_TOLERANCE_SEC,
@@ -581,12 +580,10 @@ function confirmedIncomplete(
     const titles =
       (j.lidarrAlbumId != null ? live?.get(j.lidarrAlbumId) : undefined) ?? j.canonicalTracks;
     if (titles.length === 0) continue;
-    // Same matcher acquireAlbum uses, so "incomplete here" ⇒ "a hunt would enqueue".
+    // Same rule acquireAlbum uses, so "incomplete here" ⇒ "a hunt would enqueue".
     const onDisk = onDiskTitles(db, j.artistName, j.albumTitle);
     if (onDisk.length === 0) continue; // absent, not partial — deletion is a curator decision
-    const missing = titles.filter(
-      (t) => !onDisk.some((d) => titlesOverlap(d, normalizeTitle(t))),
-    ).length;
+    const missing = titlesMissingFromOwned(titles, onDisk).length;
     if (missing === 0) continue;
     const local = matchingLocalAlbums(db, j.artistName, j.albumTitle);
     // This list's contract is "a hunt would enqueue these" — so it must apply

@@ -239,6 +239,35 @@ export function matchFilesToTitles<T extends { filename: string }>(
 }
 
 /**
+ * The tracklist titles no owned title stands for (#1473). Each owned title
+ * counts toward the ONE tracklist title it matches best — so an owned
+ * "Arpeggiator Stories Continued" owns track 4 and never also hides a missing
+ * track 3 — under the symmetric {@link pairScore}, except that a version
+ * qualifier is forgiven on either side: the tracklist's "(2009 Remaster)" is
+ * still owned by a plain "Hey Jude". A tie between two titles owns both.
+ */
+export function titlesMissingFromOwned(tracklist: string[], owned: string[]): string[] {
+  const entries = tracklist.map((title) => ({ title, words: titleWords(title) }));
+  const ownedKeys = new Set<number>();
+  for (const o of owned) {
+    const file = titleWords(o);
+    const fileSet = new Set(file);
+    let best = 0;
+    let at: number[] = [];
+    entries.forEach((e, i) => {
+      const wanted = e.words.filter((w) => fileSet.has(w) || !isNeutralExtra(w));
+      const score = pairScore(wanted.length ? wanted : e.words, file);
+      if (score === 0 || score < best) return;
+      if (score > best) at = [];
+      best = score;
+      at.push(i);
+    });
+    for (const i of at) ownedKeys.add(i);
+  }
+  return entries.filter((_, i) => !ownedKeys.has(i)).map((e) => e.title);
+}
+
+/**
  * The files of a candidate folder that carry any of `titles` — the rule the
  * slskd addon scopes an album job's enqueue with, and refuses the job on when
  * it comes back empty ("the picked folder covers none of the wanted tracks").

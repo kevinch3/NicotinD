@@ -6,6 +6,7 @@ import {
   matchFilesToTitles,
   normalizeFileBasename,
   normalizeTitle,
+  titlesMissingFromOwned,
   titlesOverlap,
 } from './title-match.js';
 
@@ -244,5 +245,56 @@ describe('matchFilesToTitles (#1468: a longer, different title is another track)
     // The same folder for a missing-track hunt: only the exact neighbour is known,
     // and the rework is not "Arpeggiator Stories".
     expect(filesMatchingTitles(folder, ['Arpeggiator Stories'], album)).toEqual([]);
+  });
+});
+
+// Every case is an album the prod replay moved (#1473): the old on-disk check
+// was one-sided, so an owned title hid any canonical title it shared words with.
+describe('titlesMissingFromOwned (#1473)', () => {
+  it('does not let a shorter owned title own a longer, different one', () => {
+    expect(titlesMissingFromOwned(['Love Me', 'Love Me Tender'], ['love me'])).toEqual([
+      'Love Me Tender',
+    ]);
+    expect(
+      titlesMissingFromOwned(
+        ['Se remata el siglo I', 'Se remata el siglo II'],
+        ['se remata el siglo i'],
+      ),
+    ).toEqual(['Se remata el siglo II']);
+  });
+
+  it('does not let a longer owned title own a shorter, different one', () => {
+    expect(
+      titlesMissingFromOwned(
+        ['Arpeggiator Stories', 'Intro'],
+        ['arpeggiator stories continued', 'intro'],
+      ),
+    ).toEqual(['Arpeggiator Stories']);
+  });
+
+  it('counts each owned title toward its closest track only', () => {
+    expect(
+      titlesMissingFromOwned(
+        ['Theme for Spliffy (intro mix)', 'Theme for Spliffy'],
+        ['theme for spliffy'],
+      ),
+    ).toEqual(['Theme for Spliffy (intro mix)']);
+    expect(
+      titlesMissingFromOwned(
+        ['Electrica Salsa', 'Electrica Salsa (Extended)'],
+        ['electrica salsa', 'electrica salsa remix'],
+      ),
+    ).toEqual(['Electrica Salsa (Extended)']);
+  });
+
+  it('forgives a version qualifier and a feat. credit on either side', () => {
+    expect(titlesMissingFromOwned(['Vivo (Alive)'], ['vivo alive album version'])).toEqual([]);
+    expect(titlesMissingFromOwned(['Hey Jude (2009 Remaster)'], ['hey jude'])).toEqual([]);
+    expect(titlesMissingFromOwned(['Los tontos'], ['Los tontos (feat. Kiko Veneno)'])).toEqual([]);
+  });
+
+  it('owns nothing from an empty library and everything from an exact one', () => {
+    expect(titlesMissingFromOwned(['A', 'B'], [])).toEqual(['A', 'B']);
+    expect(titlesMissingFromOwned(['Ночь', 'Группа крови'], ['ночь', 'группа крови'])).toEqual([]);
   });
 });
