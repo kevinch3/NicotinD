@@ -494,6 +494,7 @@
   "admin.system": "System Health",
   "admin.taskArtistOrigin": "Artist origins",
   "admin.taskAudioFeatures": "Audio features (mood, valence, danceability)",
+  "admin.taskEmbeddings": "Audio embeddings (re-embed songs with a missing or outdated vector)",
   "admin.taskDescriptors": "Audio descriptors (timbre, groove, frequency balance)",
   "admin.taskBpm": "BPM analysis",
   "admin.taskEnergy": "Energy & loudness",

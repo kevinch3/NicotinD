@@ -16,6 +16,28 @@ interface EmbeddingRow {
 }
 
 /**
+ * The model the analysis sidecar embeds with (`EMBEDDING_MODEL` in
+ * packages/analysis/app/models.py). The pending predicate below is "no usable
+ * vector under *this* model", so a model swap there must be mirrored here.
+ */
+export const EMBEDDING_MODEL = 'discogs-effnet-bs64-1';
+
+/**
+ * SQL predicate (no leading AND, no bind params) selecting songs with feature
+ * columns filled but no usable embedding: no row under the current model, or a
+ * row whose recorded size no longer matches the file (#258). A NULL stamp counts
+ * as usable, matching {@link loadEmbeddings}. `danceability IS NULL` songs are
+ * excluded — the audio-features task owns them and writes the vector itself.
+ */
+export function embeddingPendingClause(alias = 'library_songs'): string {
+  return `${alias}.danceability IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM library_embeddings e
+     WHERE e.song_id = ${alias}.id AND e.model = '${EMBEDDING_MODEL}'
+       AND (e.file_size IS NULL OR e.file_size IS ${alias}.size)
+  )`;
+}
+
+/**
  * The embedding model to compare within. Embeddings only compare against the
  * same model, so we pin the seed's model. Returns null when the seed has none
  * (comparison needs both sides → the whole axis is skipped downstream).

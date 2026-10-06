@@ -201,6 +201,12 @@ per-track `spawn` would pay it 7043×. A warm service amortizes it to ~zero.
   durability contract in library-processing.md).
 - `ProcessingTaskId` gains `'audio-features'` (+ web shim + Settings checkbox).
 
+**Embedding freshness (#1485).** `library_embeddings.file_size` is the #258 content check, and every
+enrichment tag write moves the file. `rebaseAnalysisFileSize` re-anchors the embedding and descriptor
+stamps together with `library_songs.size` (only rows that matched the pre-write size, so a real
+replacement stays a miss). The separate `embeddings` task re-embeds the rest — see
+[library-processing.md](library-processing.md).
+
 ## 3. Deterministic test strategy
 
 Model inference is float-valued, so we **don't** assert exact numbers in CI. Three

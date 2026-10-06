@@ -494,6 +494,7 @@
   "admin.system": "Estado del sistema",
   "admin.taskArtistOrigin": "Orígenes de artistas",
   "admin.taskAudioFeatures": "Características de audio (ánimo, valencia, bailabilidad)",
+  "admin.taskEmbeddings": "Embeddings de audio (re-analiza canciones con vector ausente o desactualizado)",
   "admin.taskDescriptors": "Descriptores de audio (timbre, groove, balance de frecuencias)",
   "admin.taskBpm": "Análisis de BPM",
   "admin.taskEnergy": "Energía y sonoridad",

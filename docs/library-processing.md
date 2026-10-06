@@ -161,6 +161,16 @@ Launch tasks:
   un-ledgered (environmental — see the exclusion section below). Bulk script:
   `scripts/analyze-audio-features.ts`. See
   [audio-ml-enrichment.md](audio-ml-enrichment.md).
+- **embeddings** (issue #1485) — `embeddingPendingClause`: features filled but no
+  `library_embeddings` row under `EMBEDDING_MODEL`, or one whose `file_size` no longer matches
+  the file (#258). Covers what `audio-features` cannot: tag-first adoption writes no vector, and
+  the Opus conversion changed sizes under existing ones. Writes **only** the vector — no feature
+  overwrite, no tag write — one worker (the sidecar serializes `/analyze`). **Default off**: it is
+  ~9k songs of shared-GPU time, so the owner opts in. Measured on prod (2026-10-06): of 6,109
+  stale rows, 3,442 had grown by ≤16 KB (our own tag writes) and 2,656 shrank >16 KB (transcode);
+  only 6 of 6,114 stamps matched. Hence `rebaseAnalysisFileSize` also moves the embedding and
+  descriptor stamps when they matched the pre-write size — without it every re-embed is re-staled
+  by the next tag write and the pool never drains.
 - **descriptors** (issue #641) — songs with no usable current-version row in
   `library_song_descriptors` (`descriptorsPendingClause`: no row, an older
   `DESCRIPTOR_VERSION`, or a stale `file_size`), gated on the sidecar's

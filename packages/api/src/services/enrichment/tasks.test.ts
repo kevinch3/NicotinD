@@ -2700,6 +2700,117 @@ describe('descriptors task', () => {
   });
 });
 
+describe('embeddings task (issue #1485)', () => {
+  const embeddings = getTask('embeddings')!;
+
+  const seedFeatured = (id: string): void => {
+    seedSong(id);
+    db.run('UPDATE library_songs SET danceability = 0.5 WHERE id = ?', [id]);
+  };
+  const seedVec = (id: string, fileSize: number | null, model = 'discogs-effnet-bs64-1'): void => {
+    db.run(
+      `INSERT INTO library_embeddings (song_id, model, dim, vec, file_size, updated_at)
+       VALUES (?, ?, 1, ?, ?, 1)`,
+      [id, model, Buffer.from(new Float32Array([9]).buffer), fileSize],
+    );
+  };
+  const stamp = (id: string): number | null | undefined =>
+    db
+      .query<{ file_size: number | null }, [string]>(
+        'SELECT file_size FROM library_embeddings WHERE song_id = ?',
+      )
+      .get(id)?.file_size;
+
+  it('is unavailable without a configured sidecar, or when unreachable', () => {
+    expect(embeddings.available(ctx({ analyzeAudioFeatures: null }))).toBe(
+      'analysis sidecar not configured',
+    );
+    expect(embeddings.available(ctx({ audioFeaturesAvailable: () => false }))).toBe(
+      'analysis sidecar unreachable',
+    );
+    expect(embeddings.available(ctx())).toBe(true);
+  });
+
+  it('is pending for filled features + stale embedding, and for a tag-adopted song with no row', () => {
+    seedFeatured('stale');
+    seedVec('stale', 99); // size is 10
+    seedFeatured('adopted'); // no embedding row at all
+    seedFeatured('fresh');
+    seedVec('fresh', 10);
+    seedFeatured('legacy');
+    seedVec('legacy', null); // pre-column row stays usable
+    seedFeatured('other-model');
+    seedVec('other-model', 10, 'some-other-model');
+    expect(embeddings.countPending(db)).toBe(3); // stale, adopted, other-model
+    // audio-features is NOT re-queued by any of them — danceability is filled.
+    expect(getTask('audio-features')!.countPending(db)).toBe(0);
+  });
+
+  it('leaves NULL-danceability songs to audio-features', () => {
+    seedSong('new');
+    expect(embeddings.countPending(db)).toBe(0);
+  });
+
+  it('writes only the embedding: no feature overwrite, no tag write, stamp = current size', async () => {
+    seedFeatured('a');
+    seedVec('a', 99);
+    let tagWrites = 0;
+    const res = await embeddings.run(
+      db,
+      ctx({
+        writeTags: async () => {
+          tagWrites++;
+          return true;
+        },
+      }),
+      25,
+    );
+    expect(res.applied).toBe(1);
+    expect(tagWrites).toBe(0);
+    expect(stamp('a')).toBe(10);
+    expect(
+      db
+        .query<{ danceability: number }, [string]>(
+          'SELECT danceability FROM library_songs WHERE id = ?',
+        )
+        .get('a')?.danceability,
+    ).toBe(0.5);
+    expect(embeddings.countPending(db)).toBe(0);
+  });
+
+  it('does not re-queue a song after another task writes tags into its file (churn)', async () => {
+    seedFeatured('a');
+    await embeddings.run(db, ctx(), 25);
+    expect(embeddings.countPending(db)).toBe(0);
+    // The key task writes its result back, which grows the file 10 → 300.
+    db.run("UPDATE library_songs SET key = NULL, bpm = 120 WHERE id = 'a'");
+    await getTask('key')!.run(db, ctx({ fileSize: () => 300 }), 25);
+    expect(
+      db.query<{ size: number }, []>("SELECT size FROM library_songs WHERE id = 'a'").get()?.size,
+    ).toBe(300);
+    expect(embeddings.countPending(db)).toBe(0);
+  });
+
+  it('stays pending when the sidecar returns nothing, without a ledger strike', async () => {
+    seedFeatured('a');
+    const res = await embeddings.run(db, ctx({ analyzeAudioFeatures: async () => null }), 25);
+    expect(res.applied).toBe(0);
+    expect(res.failed).toBe(1);
+    expect(embeddings.countPending(db)).toBe(1);
+  });
+
+  it('ledgers an undecodable file so it stops being retried', async () => {
+    seedFeatured('a');
+    const c = ctx({
+      analyzeAudioFeatures: async () => {
+        throw new AudioFileRejectedError('bad', 422);
+      },
+    });
+    for (let i = 0; i < MAX_ANALYSIS_ATTEMPTS; i++) await embeddings.run(db, c, 25);
+    expect(embeddings.countPending(db)).toBe(0);
+  });
+});
+
 describe('registry', () => {
   it('exposes every enrichment task id', () => {
     expect(ENRICHMENT_TASKS.map((t) => t.id).sort()).toEqual([
@@ -2710,6 +2821,7 @@ describe('registry', () => {
       'audio-features',
       'bpm',
       'descriptors',
+      'embeddings',
       'energy',
       'genre',
       'genre-audio',
