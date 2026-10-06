@@ -26,6 +26,7 @@ import type {
   ProvenanceRecord,
   ArtistIdentityResult,
   AutoFetchImageResult,
+  RelatedArtistsResponse,
 } from './api-types';
 import type {
   AlbumCompleteness,
@@ -319,6 +320,14 @@ export class LibraryApiService {
       genreCount: number;
       slices: Array<{ genre: string; count: number; weight: number }>;
     }>(`/api/library/artists/${encodeURIComponent(id)}/genre-distribution`);
+  }
+
+  /** Library artists related to this one (docs/related-artists.md). */
+  getRelatedArtists(id: string, limit?: number) {
+    return this.http.get<RelatedArtistsResponse>(
+      `/api/library/artists/${encodeURIComponent(id)}/related`,
+      limit ? { params: { limit } } : {},
+    );
   }
 
   /** Genre weight distribution for one album (issue #222 listener-facing strip). */

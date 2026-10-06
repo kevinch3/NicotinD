@@ -72,6 +72,11 @@ import {
   fetchRemoteCover,
 } from './streaming.js';
 import { albumGenreDistribution, artistGenreDistribution } from '../services/genre-distribution.js';
+import {
+  RELATED_LIMIT_DEFAULT,
+  RELATED_LIMIT_MAX,
+  relatedArtists,
+} from '../services/related-artists.js';
 import { mutateArtistIdentity } from '../services/artist-identity-mutate.js';
 import { mutateSongGenre, parseGenreList } from '../services/song-genre-mutate.js';
 import {
@@ -1854,6 +1859,20 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       .get(id);
     if (!artist) return c.json({ error: 'Artist not found' }, 404);
     return c.json({ artist: artist.name, ...artistGenreDistribution(db, id) });
+  });
+
+  app.get('/artists/:id/related', (c) => {
+    const db = getDatabase();
+    const id = c.req.param('id');
+    const artist = db
+      .query<{ id: string }, [string]>(`SELECT id FROM library_artists WHERE id = ?`)
+      .get(id);
+    if (!artist) return c.json({ error: 'Artist not found' }, 404);
+    const raw = Number(c.req.query('limit') ?? RELATED_LIMIT_DEFAULT);
+    const limit = Number.isFinite(raw)
+      ? Math.min(RELATED_LIMIT_MAX, Math.max(1, Math.trunc(raw)))
+      : RELATED_LIMIT_DEFAULT;
+    return c.json(relatedArtists(db, id, limit));
   });
 
   // Album-scoped counterpart of the above (issue #222 listener-facing strip).

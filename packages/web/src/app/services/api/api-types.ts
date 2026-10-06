@@ -470,6 +470,29 @@ export interface DiscographyResult {
 }
 
 /** Lidarr does not monitor this artist yet; adding it is an explicit job (#644). */
+/**
+ * Per-source evidence behind one related artist. Today only `audio`; cultural
+ * relations (#1486) arrive as another optional key, not a new shape.
+ */
+export interface RelatedArtistSignals {
+  audio?: { cosine: number; members: number; coherence: number };
+}
+
+export interface RelatedArtist {
+  id: string;
+  name: string;
+  coverArt: string | null;
+  albumCount: number;
+  score: number;
+  signals: RelatedArtistSignals;
+}
+
+export interface RelatedArtistsResponse {
+  artists: RelatedArtist[];
+  /** No source knows the artist yet (e.g. too few analysed tracks). */
+  reason?: 'no-signal';
+}
+
 export interface DiscographyNotProvisioned {
   notProvisioned: true;
   artistId: string;

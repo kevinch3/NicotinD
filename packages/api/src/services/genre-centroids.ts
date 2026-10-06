@@ -18,6 +18,7 @@
 import type { Database } from 'bun:sqlite';
 import { createLogger } from '@nicotind/core';
 import { dominantEmbeddingModel } from './embedding-store.js';
+import { decodeVec, encodeVec, normalise } from './embedding-vec.js';
 import { genreKey, isRealGenre } from './genre-split.js';
 import { feedEligibilitySql } from './recommendation/eligibility.js';
 import { makeGenreAffinity, type GenreAffinityFn, type GenreCentroid } from './genre-affinity.js';
@@ -39,26 +40,6 @@ interface CentroidRow {
   vec: Uint8Array;
   members: number;
   coherence: number;
-}
-
-/** Decode a stored BLOB back into a Float32Array (copy — the BLOB is a view). */
-function decodeVec(vec: Uint8Array): Float32Array {
-  const bytes = Uint8Array.from(vec);
-  return new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
-}
-
-function encodeVec(vec: Float32Array): Uint8Array {
-  return new Uint8Array(vec.buffer, vec.byteOffset, vec.byteLength);
-}
-
-/** In-place L2 normalisation; false when the vector is all zeros (unusable). */
-function normalise(v: Float32Array): boolean {
-  let n = 0;
-  for (let i = 0; i < v.length; i++) n += v[i]! * v[i]!;
-  if (n === 0) return false;
-  const inv = 1 / Math.sqrt(n);
-  for (let i = 0; i < v.length; i++) v[i]! *= inv;
-  return true;
 }
 
 /** The real (non-junk) genre set of one member row, keyed, display kept. */

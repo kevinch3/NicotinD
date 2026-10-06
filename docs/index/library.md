@@ -169,3 +169,7 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   genres/styles, MBID-first via `parseDiscogsRef` then corroborated `selectBestRelease`; the
   album-scoped `genre-discogs` task writes gated `library_genre_overrides`.
   → [discogs-plugin.md](../discogs-plugin.md)
+- **Related artists**: per-artist audio centroids (primary credits only) rebuilt daily, read
+  through an in-memory index; sources merge into `RelatedSignals`, ranked once by `rankRelated`,
+  visibility filtered at read time. `computeArtistCentroids`, `audioNeighbours`, `relatedArtists`,
+  `RelatedArtistsComponent`. → [related-artists.md](../related-artists.md)

@@ -1,0 +1,18 @@
+@if (artists().length > 0) {
+  <section class="mt-10" data-testid="related-artists" [attr.aria-label]="'artist.related' | t">
+    <h2 class="text-lg font-semibold text-theme-primary">{{ 'artist.related' | t }}</h2>
+    <p class="text-xs text-theme-muted mb-3">{{ 'artist.relatedHint' | t }}</p>
+    <div class="flex gap-4 overflow-x-auto pb-2 -mx-1 px-1" appTvNavGroup axis="horizontal">
+      @for (a of artists(); track a.id) {
+        <a
+          [routerLink]="['/library/artists', a.id]"
+          data-testid="related-artist-tile"
+          class="flex-shrink-0 w-24 flex flex-col items-center gap-2 rounded-lg p-1 hover:bg-theme-surface-2 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-accent)]"
+        >
+          <app-cover-art [src]="coverSrc(a)" [artist]="a.name" [size]="88" rounded="rounded-full" />
+          <span class="w-full text-center text-xs text-theme-secondary truncate" [title]="a.name">{{ a.name }}</span>
+        </a>
+      }
+    </div>
+  </section>
+}

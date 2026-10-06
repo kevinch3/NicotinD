@@ -428,6 +428,14 @@ same PR that hit it.
   would write. Anything random per run is masked (`mask:` — the login QR and code, the Taste
   breakers shelf), never waited out.
 
+- **No song has an embedding.** The e2e server runs no analysis sidecar, so
+  `library_embeddings` is empty and everything built on it is dark: the radio's embedding
+  axis, genre centroids, and related artists (every artist answers `reason: 'no-signal'`).
+  A spec can pin that empty case (`related-artists.spec.ts` does); the populated behaviour
+  lives in the bun:test and component suites, which seed vectors directly. Do not fake
+  embeddings here to get a populated row — a hand-written vector proves the seed, not the
+  pipeline.
+
 ## Running locally
 
 ```bash

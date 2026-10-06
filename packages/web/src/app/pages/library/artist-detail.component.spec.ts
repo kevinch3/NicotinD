@@ -137,6 +137,20 @@ function setup(
             getAlbumCalls.push(id);
             return of(ALBUM_DETAILS[id]);
           },
+          // Each artist's row names its seed, so a test can tell whose row is showing.
+          getRelatedArtists: (id: string) =>
+            of({
+              artists: [
+                {
+                  id: `rel-of-${id}`,
+                  name: `Related to ${id}`,
+                  coverArt: null,
+                  albumCount: 1,
+                  score: 0.9,
+                  signals: {},
+                },
+              ],
+            }),
           getArtistSongs: (
             id: string,
             size: number,
@@ -506,6 +520,19 @@ describe('ArtistDetailComponent — reacts to :id changes', () => {
     expect(component.songs()).toEqual([]);
     expect(component.songsLoaded()).toBe(false);
     expect(component.activeTab()).toBe('albums');
+  });
+});
+
+describe('ArtistDetailComponent — related artists', () => {
+  it("loads the artist's related row and swaps it on artist→artist navigation", async () => {
+    const { component, paramMap } = setup();
+    await fixture_stable();
+    await flush();
+    expect(component.relatedArtists().map((a) => a.id)).toEqual(['rel-of-ar1']);
+
+    paramMap.next(convertToParamMap({ id: 'ar2' }));
+    await flush();
+    expect(component.relatedArtists().map((a) => a.id)).toEqual(['rel-of-ar2']);
   });
 });
 

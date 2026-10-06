@@ -1202,6 +1202,20 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
     )
   `);
 
+  // The per-artist twin of the table above (docs/related-artists.md). Derived and
+  // rebuilt whole every day, so no orphan marker: a merged artist simply drops out.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_artist_centroids (
+      artist_id   TEXT PRIMARY KEY,
+      model       TEXT NOT NULL,
+      dim         INTEGER NOT NULL,
+      vec         BLOB NOT NULL,
+      members     INTEGER NOT NULL,
+      coherence   REAL NOT NULL,
+      computed_at INTEGER NOT NULL
+    )
+  `);
+
   // Per-(song, task) analysis failure ledger. A file that hard-fails a decode/
   // sidecar analysis (e.g. a corrupt "Invalid data" mp3) is recorded here; once
   // fail_count reaches the task's attempt cap the windowed processor excludes it
