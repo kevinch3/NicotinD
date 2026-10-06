@@ -74,17 +74,43 @@ Charly García. El Polaco → Ke Personajes, La T y La M (cumbia). Edgardo Donat
 Lomuto, Canaro (tango). Röyksopp → WhoMadeWho, The Chemical Brothers, Moderat.
 
 - **`MIN_ARTIST_MEMBERS = 3`.** Below that a centroid is one or two songs, not an artist.
-- **`MIN_RELATED_COSINE = 0.75`** is an absolute floor, set just above the 12th neighbour's
-  p5. Effnet space shares a large common component, so cosines run high and an absolute floor
-  separates little; the ranking can be relative (see below).
+- **`MIN_RELATED_COSINE = 0.70`** is a sanity floor only. Effnet space shares a large common
+  component, so cosines run high and an absolute floor separates little. The selector is the
+  relative cut below.
 - **Coverage is capped by #1485, not by the floor.** 43% of songs carry a stale or missing
   embedding and are never re-queued (most of them from the Opus conversion), so many artists
   have fewer analysed tracks than they own.
 
 ## Ranking
 
-`rankRelated(candidates, limit)` receives the visible candidates. They come in source order:
-audio by cosine, highest first, with the seed already excluded. Each candidate carries
-`signals.audio = { cosine, members, coherence }`. Every rule must keep the contract in
-`related-artists.test.ts`: at most `limit` picks, drawn from the candidates, no duplicates,
-scores non-increasing, and nothing returned when nothing is close.
+`rankRelated(candidates, limit)` receives the visible candidates. Each carries
+`signals.audio = { cosine, members, coherence }`. The rule:
+
+1. Sort by audio cosine.
+2. Keep a candidate if it is within **`RELATED_RELATIVE_CUT = 0.1` of the seed's own best
+   match** and above the `MIN_RELATED_COSINE` sanity floor.
+3. Take the first `limit`.
+
+There is **no member-count term**. Both choices come from one calibration on prod
+(2026-10-06): subsample the 119 artists with ≥ 30 analysed tracks to 3, 5 or 10 tracks, then
+compare each subsample's cosines with the full centroid's.
+
+| centroid from | mean cosine lost on its true top 12 | top-12 overlap with the full centroid |
+|---|---|---|
+| 3 tracks | −0.065 | 66% |
+| 5 tracks | −0.040 | 73% |
+| 10 tracks | −0.020 | 82% |
+
+- **A thin centroid scores LOW, not high** (about −0.2/n). A size discount would penalise
+  small artists twice, so there is none. The deficit already acts as a conservative shrink.
+- **A thin seed depresses all its cosines alike**, so only the *gap* to its best match is
+  comparable across artists. An absolute floor high enough to select would empty a small
+  artist's whole row. That is why the cut is relative and the floor sits low.
+- **0.1, not 0.08:** at 0.08, Walter Olmos (cuarteto) lost Leo Mattioli, Los Palmeras and
+  La K'onga, which are correct cumbia picks. At 0.1 they stay, and Alejandro Franov's row still
+  drops Moderat, Röyksopp and Billie Eilish (0.81 to 0.80 against a best of 0.92). Pick counts
+  at 0.1 across all artists, capped at 12: p10 = 7, p25 and above = 12.
+
+**When #1486 lands**, blending cultural signals goes here. The contract in
+`related-artists.test.ts` still holds: at most `limit` picks, drawn from the candidates, no
+duplicates, scores non-increasing, and nothing returned when nothing is close.

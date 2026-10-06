@@ -29,19 +29,33 @@ export interface RelatedCandidate {
 }
 
 /**
+ * How far below the seed's own best match a pick may sit. 0.08 dropped correct
+ * cumbia picks from a cuarteto seed's row on prod; 0.1 kept them and still cut
+ * the stragglers (docs/related-artists.md "Ranking").
+ */
+export const RELATED_RELATIVE_CUT = 0.1;
+
+/**
  * Turn the visible candidates for one artist into the row the page shows:
  * which survive and in what order. Candidates arrive in the order the sources
  * produced them (audio: cosine, highest first), the seed already excluded.
+ *
+ * Relative to the seed's best match, not absolute: a thin seed depresses all
+ * its cosines alike, so only the gap is comparable across artists. No member
+ * discount — a thin candidate already scores low (measured ~0.2/n).
  */
 export function rankRelated(
   candidates: readonly RelatedCandidate[],
   limit: number,
 ): { id: string; score: number }[] {
-  // TODO(#1484): the ranking rule — see docs/related-artists.md "Ranking".
-  return candidates
-    .filter((c) => (c.signals.audio?.cosine ?? 0) >= MIN_RELATED_COSINE)
-    .slice(0, limit)
-    .map((c) => ({ id: c.id, score: c.signals.audio!.cosine }));
+  const scored = candidates
+    .filter((c) => c.signals.audio)
+    .map((c) => ({ id: c.id, score: c.signals.audio!.cosine }))
+    .sort((a, b) => b.score - a.score);
+  const best = scored[0]?.score ?? 0;
+  return scored
+    .filter((c) => c.score >= MIN_RELATED_COSINE && c.score >= best - RELATED_RELATIVE_CUT)
+    .slice(0, limit);
 }
 
 export interface RelatedArtist {

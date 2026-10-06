@@ -30,10 +30,11 @@ const log = createLogger('artist-centroids');
 export const MIN_ARTIST_MEMBERS = 3;
 
 /**
- * The absolute floor. Effnet space shares a large common component, so cosines
- * run high: on prod the 1st neighbour's p1 is 0.80 and the 12th's p5 is 0.73.
+ * A sanity floor, not the selector (that is the relative cut in `rankRelated`).
+ * Kept low on purpose: a thin centroid's cosines all run ~0.2/n under its true
+ * ones, so a higher absolute floor would empty a small artist's whole row.
  */
-export const MIN_RELATED_COSINE = 0.75;
+export const MIN_RELATED_COSINE = 0.7;
 
 export interface ComputeArtistCentroidsResult {
   model: string | null;

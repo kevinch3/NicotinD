@@ -1,8 +1,17 @@
 import { describe, expect, it, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
-import { computeArtistCentroids, MIN_ARTIST_MEMBERS } from './artist-centroids.js';
-import { rankRelated, relatedArtists, type RelatedCandidate } from './related-artists.js';
+import {
+  computeArtistCentroids,
+  MIN_ARTIST_MEMBERS,
+  MIN_RELATED_COSINE,
+} from './artist-centroids.js';
+import {
+  rankRelated,
+  relatedArtists,
+  RELATED_RELATIVE_CUT,
+  type RelatedCandidate,
+} from './related-artists.js';
 
 let db: Database;
 let songSeq = 0;
@@ -126,5 +135,52 @@ describe('rankRelated contract', () => {
 
   it('is empty for no candidates', () => {
     expect(rankRelated([], 12)).toEqual([]);
+  });
+});
+
+describe('rankRelated rule', () => {
+  const audio = (id: string, cosine: number, members = 20): RelatedCandidate => ({
+    id,
+    signals: { audio: { cosine, members, coherence: 0.8 } },
+  });
+
+  it("cuts relative to the seed's own best match, not at a fixed cosine", () => {
+    // Prod's Alejandro Franov row: Juana Molina 0.920 … Billie Eilish 0.803.
+    const row = [
+      audio('molina', 0.92),
+      audio('mid-air', 0.849),
+      audio('whomadewho', 0.828),
+      audio('eilish', 0.803),
+    ];
+    expect(rankRelated(row, 12).map((p) => p.id)).toEqual(['molina', 'mid-air', 'whomadewho']);
+    expect(0.92 - 0.828).toBeLessThanOrEqual(RELATED_RELATIVE_CUT);
+  });
+
+  it("keeps a thin seed's whole row when every cosine runs uniformly low", () => {
+    // A 3-track seed depresses every cosine ~0.065; the gaps survive, so does the row.
+    const row = [audio('a', 0.78), audio('b', 0.75), audio('c', 0.72)];
+    expect(rankRelated(row, 12).map((p) => p.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('still applies the absolute sanity floor', () => {
+    const row = [audio('a', MIN_RELATED_COSINE + 0.02), audio('b', MIN_RELATED_COSINE - 0.01)];
+    expect(rankRelated(row, 12).map((p) => p.id)).toEqual(['a']);
+  });
+
+  it('does not discount a candidate for having few tracks', () => {
+    const row = [audio('thin', 0.9, 3), audio('deep', 0.89, 120)];
+    expect(rankRelated(row, 12).map((p) => p.id)).toEqual(['thin', 'deep']);
+  });
+
+  it('orders by score whatever order the candidates arrive in, and skips signal-less ones', () => {
+    const row: RelatedCandidate[] = [
+      audio('b', 0.85),
+      { id: 'none', signals: {} },
+      audio('a', 0.9),
+    ];
+    expect(rankRelated(row, 12)).toEqual([
+      { id: 'a', score: 0.9 },
+      { id: 'b', score: 0.85 },
+    ]);
   });
 });
