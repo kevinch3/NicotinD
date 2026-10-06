@@ -103,6 +103,23 @@ export function recordAnalysisFailure(
  * change — which nothing rebases — as the only thing that still resets a counter.
  */
 export function rebaseAnalysisFileSize(db: Database, songId: string, newSize: number): void {
+  // The cached embedding and descriptors follow the file too, but only when they
+  // described it *before* this write: a row already stale (a replacement) must
+  // stay a miss. Read the old size first — the UPDATE below overwrites it (#1485).
+  const old = db
+    .query<{ size: number | null }, [string]>('SELECT size FROM library_songs WHERE id = ?')
+    .get(songId)?.size;
+  if (old != null) {
+    db.run('UPDATE library_embeddings SET file_size = ? WHERE song_id = ? AND file_size = ?', [
+      newSize,
+      songId,
+      old,
+    ]);
+    db.run(
+      'UPDATE library_song_descriptors SET file_size = ? WHERE song_id = ? AND file_size = ?',
+      [newSize, songId, old],
+    );
+  }
   db.run('UPDATE library_songs SET size = ? WHERE id = ?', [newSize, songId]);
   db.run('UPDATE library_song_analysis_failures SET file_size = ? WHERE song_id = ?', [
     newSize,

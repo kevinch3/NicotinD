@@ -29,6 +29,9 @@ export const DEFAULT_PROCESSING_SETTINGS: ProcessingSettings = {
     'artist-info': true,
     energy: true,
     'audio-features': true,
+    // Re-embeds songs whose vector is missing or describes another file (#1485).
+    // Off until the owner opts in: ~9k songs of shared-GPU sidecar time.
+    embeddings: false,
     // Timbre/groove/band descriptors from the sidecar's /descriptors
     // (docs/audio-descriptors.md) — ~5 s CPU per track, stored raw for the
     // composite radio axes. Default-on, never a gate.

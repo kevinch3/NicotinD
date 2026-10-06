@@ -20,6 +20,7 @@ import type {
 } from '../audio-features-client.js';
 import { AudioFileRejectedError } from '../audio-features-client.js';
 import { descriptorsPendingClause, upsertDescriptors } from '../descriptor-store.js';
+import { embeddingPendingClause } from '../embedding-store.js';
 import { ffmpegAvailable as realFfmpegAvailable } from '../transcode.js';
 import { resolveSongAbsPath, planGenreBackfill } from '../track-backfill.js';
 import { appendSongGenres, setSongGenres, unresolvedGenreSql } from '../genre-split.js';
@@ -1041,6 +1042,93 @@ const audioFeaturesTask: EnrichmentTask = {
 };
 
 /**
+ * Re-embed songs whose feature columns are filled but whose vector is missing
+ * (tag-first adoption writes none) or describes another file (#1485). Writes
+ * **only** the embedding row — scalar features are left as they are and no tags
+ * are written, so the file does not move and the stamp cannot go stale again.
+ * Sidecar `/analyze` is shared with audio-features, hence the single worker (#1139).
+ */
+const embeddingsTask: EnrichmentTask = {
+  id: 'embeddings',
+  label: 'Audio embeddings (missing or outdated vectors)',
+  available: (ctx) => {
+    if (!ctx.analyzeAudioFeatures) return 'analysis sidecar not configured';
+    return ctx.audioFeaturesAvailable() ? true : 'analysis sidecar unreachable';
+  },
+  countPending: (db) =>
+    Number(
+      (
+        db
+          .query<{ n: number }, []>(
+            `SELECT COUNT(*) AS n FROM library_songs s WHERE ${embeddingPendingClause('s')}${notPermanentlyFailedClause(
+              'embeddings',
+              's',
+            )}`,
+          )
+          .get() ?? { n: 0 }
+      ).n,
+    ),
+  run: async (db, ctx, limit, albumId) => {
+    const params: (string | number)[] = albumId ? [albumId, limit] : [limit];
+    const rows = db
+      .query<SongRow, (string | number)[]>(
+        `SELECT s.id, s.path, s.artist, s.title, s.size FROM library_songs s WHERE ${embeddingPendingClause(
+          's',
+        )}${notPermanentlyFailedClause('embeddings', 's')}${albumId ? ' AND s.album_id = ?' : ''}${leastRecentlyAttemptedOrderSql(
+          'embeddings',
+          's',
+        )} LIMIT ?`,
+      )
+      .all(...params);
+
+    const labels: string[] = [];
+    const tally: FailureTally = { failed: 0, sample: null };
+    let applied = 0;
+    for (const song of rows) {
+      if (!ctx.analyzeAudioFeatures) break;
+      if (!ctx.fileExists(resolveSongAbsPath(ctx.musicDir, song.path))) continue;
+      let result: AudioFeaturesResult | null = null;
+      try {
+        result = await ctx.analyzeAudioFeatures(song.path);
+      } catch (err) {
+        if (err instanceof AudioFileRejectedError) {
+          noteItemFailure(db, tally, song, 'embeddings', err);
+        } else {
+          if (!ctx.audioFeaturesAvailable()) break;
+          // Stamp the attempt (not a strike) or the song livelocks the window (#1048).
+          noteAnalysisAttempt(db, song.id, 'embeddings', song.size);
+          recordFailure(tally, err instanceof Error ? err : new Error(String(err)));
+        }
+        continue;
+      }
+      if (!result) {
+        if (!ctx.audioFeaturesAvailable()) break;
+        noteAnalysisAttempt(db, song.id, 'embeddings', song.size);
+        recordFailure(tally, new Error('analysis sidecar could not analyze file (see logs)'));
+        continue;
+      }
+      db.run(
+        `INSERT OR REPLACE INTO library_embeddings (song_id, model, dim, vec, file_size, genre_json, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          song.id,
+          result.embedding.model,
+          result.embedding.dim,
+          Buffer.from(new Float32Array(result.embedding.values).buffer),
+          song.size ?? null,
+          result.genre ? JSON.stringify(result.genre) : null,
+          Date.now(),
+        ],
+      );
+      clearAnalysisFailure(db, song.id, 'embeddings');
+      applied++;
+      labels.push(`${song.artist} — ${song.title} → embedding`);
+    }
+    return { applied, labels, failed: tally.failed, errorSample: tally.sample };
+  },
+};
+
+/**
  * Backfill real artist portraits into `library_artwork (kind='artist')` so the
  * artist grid shows a face, not a (often misleading) representative album cover —
  * which the cover route now declines to serve for an artist id. Resolves each
@@ -2050,6 +2138,7 @@ export const ENRICHMENT_TASKS: readonly EnrichmentTask[] = [
   keyTask,
   energyTask,
   audioFeaturesTask,
+  embeddingsTask,
   descriptorsTask,
   artistImageTask,
   artistInfoTask,

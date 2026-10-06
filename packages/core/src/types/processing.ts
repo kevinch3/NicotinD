@@ -23,6 +23,7 @@ export const PROCESSING_TASK_IDS = [
   'artist-info',
   'energy',
   'audio-features',
+  'embeddings',
   'descriptors',
   'artist-identity',
   'genre-audio',

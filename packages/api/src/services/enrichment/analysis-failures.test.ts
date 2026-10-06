@@ -222,6 +222,62 @@ describe('rebaseAnalysisFileSize (issue #690)', () => {
 
     expect(failCount('s1', 'bpm')).toBe(1);
   });
+
+  describe('cached analysis rows (issue #1485)', () => {
+    const seedEmbedding = (id: string, fileSize: number | null): void => {
+      db.run(
+        `INSERT INTO library_embeddings (song_id, model, dim, vec, file_size, updated_at)
+         VALUES (?, 'm', 1, ?, ?, 1)`,
+        [id, Buffer.from(new Float32Array([1]).buffer), fileSize],
+      );
+    };
+    const seedDescriptors = (id: string, fileSize: number | null): void => {
+      db.run(
+        `INSERT INTO library_song_descriptors (song_id, version, features, file_size, updated_at)
+         VALUES (?, 1, '{}', ?, 1)`,
+        [id, fileSize],
+      );
+    };
+    const stamp = (table: string, id: string): number | null =>
+      db
+        .query<{ file_size: number | null }, [string]>(
+          `SELECT file_size FROM ${table} WHERE song_id = ?`,
+        )
+        .get(id)?.file_size ?? null;
+
+    it('re-anchors an embedding and descriptors that described the pre-write file', () => {
+      seedSong('s1', 100);
+      seedEmbedding('s1', 100);
+      seedDescriptors('s1', 100);
+
+      // Our own tag write moved the file; the vector still describes the audio.
+      rebaseAnalysisFileSize(db, 's1', 269);
+
+      expect(stamp('library_embeddings', 's1')).toBe(269);
+      expect(stamp('library_song_descriptors', 's1')).toBe(269);
+    });
+
+    it('does not bless a row that was already stale when the write happened', () => {
+      seedSong('s1', 100);
+      // Stamped against bytes that are no longer the file (a replacement): stays a miss.
+      seedEmbedding('s1', 40);
+      seedDescriptors('s1', 40);
+
+      rebaseAnalysisFileSize(db, 's1', 269);
+
+      expect(stamp('library_embeddings', 's1')).toBe(40);
+      expect(stamp('library_song_descriptors', 's1')).toBe(40);
+    });
+
+    it('leaves a NULL stamp (written before the column existed) alone', () => {
+      seedSong('s1', 100);
+      seedEmbedding('s1', null);
+
+      rebaseAnalysisFileSize(db, 's1', 269);
+
+      expect(stamp('library_embeddings', 's1')).toBeNull();
+    });
+  });
 });
 
 describe('noteAnalysisAttempt — a stamp, not a strike (issue #851)', () => {
