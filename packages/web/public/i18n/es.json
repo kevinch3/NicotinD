@@ -31,6 +31,8 @@
   "acquire.addingArtist": "Añadiendo a {artist} a Lidarr — importa toda su discografía y puede tardar un minuto. Continúa aquí al terminar.",
   "discography.addArtist": "Aún no está en Lidarr — añade al artista para ver la discografía completa",
   "discography.addingArtist": "Añadiendo a Lidarr — importando la discografía…",
+  "artist.related": "Artistas relacionados",
+  "artist.relatedHint": "Artistas de tu biblioteca con un sonido parecido",
   "acquire.done": "✓ Listo",
   "acquire.download": "Descargar",
   "acquire.downloadAllCount": "Descargar todo ({count})",

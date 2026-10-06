@@ -8,17 +8,11 @@
  * batch loader — one query for a whole candidate pool, no per-row round-trips.
  */
 import type { Database } from 'bun:sqlite';
+import { decodeVec } from './embedding-vec.js';
 
 interface EmbeddingRow {
   song_id: string;
   vec: Uint8Array;
-}
-
-/** Decode a stored BLOB back into a Float32Array (copy — the BLOB is a view). */
-function decodeVec(vec: Uint8Array): Float32Array {
-  // Copy so the backing buffer is exactly the vector's bytes and 4-byte aligned.
-  const bytes = Uint8Array.from(vec);
-  return new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
 }
 
 /**

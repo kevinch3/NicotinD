@@ -19,6 +19,7 @@ import { reapIdleItems } from './acquisition-job-store.js';
 import { maybeRunDailyBackup } from './backup.js';
 import { maybeRunDailyOrphanPrune } from './orphan-prune.js';
 import { maybeRunDailyGenreCentroids } from './genre-centroids.js';
+import { maybeRunDailyArtistCentroids } from './artist-centroids.js';
 import {
   ENRICHMENT_TASKS,
   createEnrichmentContext,
@@ -254,6 +255,8 @@ export class LibraryProcessingService extends EventEmitter {
     if (maybeRunDailyGenreCentroids(this.db, { now: this.now().getTime() })) {
       log.info('genre centroids rebuilt');
     }
+    // Its per-artist twin, the audio source of related artists (docs/related-artists.md).
+    maybeRunDailyArtistCentroids(this.db, { now: this.now().getTime() });
     // Daily cover-cache sweep (issue #311): the cache had no eviction at all —
     // prod measured 3.6 GB, 1.6 GB of it belonging to rows that are gone. Same
     // placement + marker-guard as the two above.

@@ -24,6 +24,7 @@ import type {
   DiscographyResult,
   DiscographyNotProvisioned,
   ArtistIdentityResult,
+  RelatedArtist,
 } from '../../services/api/api-types';
 import { awaitProvisioning } from '../../lib/await-provisioning';
 import { httpErrorMessage } from '../../lib/http-error';
@@ -47,6 +48,7 @@ import { ArtistIdentityModalComponent } from '../../components/artist-identity-m
 import { ArtistGenreModalComponent } from '../../components/artist-genre-modal/artist-genre-modal.component';
 import { ArtistInfoComponent } from '../../components/artist-info/artist-info.component';
 import { ArtistOriginComponent } from '../../components/artist-origin/artist-origin.component';
+import { RelatedArtistsComponent } from '../../components/related-artists/related-artists.component';
 import {
   GenreDistributionStripComponent,
   type GenreSlice,
@@ -98,6 +100,7 @@ const SONGS_PAGE_SIZE = 60;
     ArtistInfoComponent,
     ArtistOriginComponent,
     GenreDistributionStripComponent,
+    RelatedArtistsComponent,
     TvNavGroupDirective,
   ],
   templateUrl: './artist-detail.component.html',
@@ -578,6 +581,7 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     this.loadAppearsOn(id);
     this.loadDiscography(id);
     this.loadGenreDistribution(id);
+    this.loadRelatedArtists(id);
   }
 
   ngOnDestroy(): void {
@@ -598,6 +602,19 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
       if (this.artistId === artistId) this.genreDistribution.set(data);
     } catch {
       /* no-op — an empty/failed distribution just hides the strip */
+    }
+  }
+
+  // ─── Related artists (docs/related-artists.md) ────────────────────────────
+  readonly relatedArtists = signal<RelatedArtist[]>([]);
+
+  private async loadRelatedArtists(artistId: string): Promise<void> {
+    this.relatedArtists.set([]);
+    try {
+      const data = await firstValueFrom(this.api.getRelatedArtists(artistId));
+      if (this.artistId === artistId) this.relatedArtists.set(data.artists);
+    } catch {
+      /* no-op — no row is the right failure */
     }
   }
 

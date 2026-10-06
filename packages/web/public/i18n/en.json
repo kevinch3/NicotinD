@@ -31,6 +31,8 @@
   "acquire.addingArtist": "Adding {artist} to Lidarr — this imports their whole discography and can take a minute. It continues here when done.",
   "discography.addArtist": "Not in Lidarr yet — add artist for the full discography",
   "discography.addingArtist": "Adding to Lidarr — importing the discography…",
+  "artist.related": "Related artists",
+  "artist.relatedHint": "Artists in your library that sound alike",
   "acquire.done": "✓ Done",
   "acquire.download": "Download",
   "acquire.downloadAllCount": "Download all ({count})",
