@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.108](https://github.com/kevinch3/NicotinD/compare/v0.8.107...v0.8.108) (2026-10-06)
+
+### Features
+
+* **library:** related artists on the artist page from audio centroids ([#1489](https://github.com/kevinch3/NicotinD/issues/1489)) ([5513a17](https://github.com/kevinch3/NicotinD/commit/5513a17ab3a94c7b001b9fb1c27a75a715343cae)), references [#1486](https://github.com/kevinch3/NicotinD/issues/1486) [#1484](https://github.com/kevinch3/NicotinD/issues/1484)
+
+### Bug Fixes
+
+* **deps:** bump sharp to 0.35.5 and fast-copy to 4.1.2 for the audit advisories ([#1488](https://github.com/kevinch3/NicotinD/issues/1488)) ([0d0c65b](https://github.com/kevinch3/NicotinD/commit/0d0c65bfdc159c9d6eb6b3547d12440861da7724)), references [#1487](https://github.com/kevinch3/NicotinD/issues/1487)
+* **enrichment:** re-embed songs with a missing or stale vector, keep tag writes from re-staling it ([#1490](https://github.com/kevinch3/NicotinD/issues/1490)) ([f062d7a](https://github.com/kevinch3/NicotinD/commit/f062d7ab904a0a82aba93214e29681ace3db8fc8)), references [#1485](https://github.com/kevinch3/NicotinD/issues/1485)
 ## [0.8.107](https://github.com/kevinch3/NicotinD/compare/v0.8.106...v0.8.107) (2026-10-02)
 
 ### Bug Fixes
