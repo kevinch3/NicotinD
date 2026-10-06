@@ -1,5 +1,66 @@
 [
   {
+    "version": "0.8.107",
+    "date": "2026-10-02",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.106...v0.8.107",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**completeness:** an owned title owns only its own track, so a neighbour is hunted ([#1473](https://github.com/kevinch3/NicotinD/issues/1473)) ([#1483](https://github.com/kevinch3/NicotinD/issues/1483)) ([8bc65a9](https://github.com/kevinch3/NicotinD/commit/8bc65a9567482842494520fe14813313a2f8c929)), references [#1468](https://github.com/kevinch3/NicotinD/issues/1468)",
+          "**deps:** bump Angular to 22.2.1 for the router SSR advisory GHSA-ff3f-86qr-9cv3 ([#1482](https://github.com/kevinch3/NicotinD/issues/1482)) ([8c72c82](https://github.com/kevinch3/NicotinD/commit/8c72c8295002c2a2ee7f9d989a37827aa7cc2f19))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.8.106",
+    "date": "2026-09-30",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.105...v0.8.106",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**library:** migrate existing multi-disc files to D-NN, carrying song ids ([#1474](https://github.com/kevinch3/NicotinD/issues/1474)) ([73aa786](https://github.com/kevinch3/NicotinD/commit/73aa78609aed4ffce04028713d64f653fe2caf77)), closes [#1392](https://github.com/kevinch3/NicotinD/issues/1392), references [#1393](https://github.com/kevinch3/NicotinD/issues/1393)",
+          "**monitoring:** page on kpc load spikes and severe event-loop blocks from the droplet probe ([#1470](https://github.com/kevinch3/NicotinD/issues/1470)) ([6b9e37c](https://github.com/kevinch3/NicotinD/commit/6b9e37ce531b82d94e0637d5ebf00e9db18981b6)), closes [#1143](https://github.com/kevinch3/NicotinD/issues/1143)"
+        ]
+      },
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**acquisition:** a missing-track hunt takes the wanted title, not a longer neighbour ([#1471](https://github.com/kevinch3/NicotinD/issues/1471)) ([71037ae](https://github.com/kevinch3/NicotinD/commit/71037aea2dd36a5dc8c54522c1b4a92281dd315c)), closes [#1468](https://github.com/kevinch3/NicotinD/issues/1468), references [#1468](https://github.com/kevinch3/NicotinD/issues/1468) [#1468](https://github.com/kevinch3/NicotinD/issues/1468)",
+          "**ci:** refresh the apt layer in the edge image build too ([#1476](https://github.com/kevinch3/NicotinD/issues/1476)) ([08df709](https://github.com/kevinch3/NicotinD/commit/08df7090d53aba4ba1ce35a2d0219b800edf014d)), references [#1462](https://github.com/kevinch3/NicotinD/issues/1462) [#1470](https://github.com/kevinch3/NicotinD/issues/1470) [#1471](https://github.com/kevinch3/NicotinD/issues/1471) [#1474](https://github.com/kevinch3/NicotinD/issues/1474) [#730](https://github.com/kevinch3/NicotinD/issues/730) [#730](https://github.com/kevinch3/NicotinD/issues/730)",
+          "**ci:** upgrade Debian packages in the analysis image, refreshed per run ([#1478](https://github.com/kevinch3/NicotinD/issues/1478)) ([daeb61e](https://github.com/kevinch3/NicotinD/commit/daeb61e8524836ba29edffeaddba80731a248a2a)), references [#1477](https://github.com/kevinch3/NicotinD/issues/1477)",
+          "**library:** count unindexed files as a level, not prune-stamped cache rows ([#1480](https://github.com/kevinch3/NicotinD/issues/1480)) ([03c0164](https://github.com/kevinch3/NicotinD/commit/03c0164eb085caf1d45f395ddd7f2b0c6e4181dd)), closes [#1479](https://github.com/kevinch3/NicotinD/issues/1479)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.8.105",
+    "date": "2026-09-29",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.104...v0.8.105",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**release:** batch public releases; deploy every green master commit as edge ([#1456](https://github.com/kevinch3/NicotinD/issues/1456)) ([aeadf56](https://github.com/kevinch3/NicotinD/commit/aeadf5686e08138c35d3e8a20d7c08bd1db6c651))",
+          "**web:** list confirmed-incomplete albums once, in Incomplete Albums ([#1466](https://github.com/kevinch3/NicotinD/issues/1466)) ([638bb13](https://github.com/kevinch3/NicotinD/commit/638bb13dbe5fadddbb7c749fe5ab9513e264ef56))"
+        ]
+      },
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**acquisition:** pick a candidate folder that covers a wanted track ([#1467](https://github.com/kevinch3/NicotinD/issues/1467)) ([cfa00b4](https://github.com/kevinch3/NicotinD/commit/cfa00b4a3845c9ed357e8e9f9995a9c1e4817d9b))",
+          "**admin:** say a queued library rescan has started, not completed ([#1463](https://github.com/kevinch3/NicotinD/issues/1463)) ([1fb6327](https://github.com/kevinch3/NicotinD/commit/1fb632703ff25bcfd343bdb1d83a8febc5cabdfe)), references [#622](https://github.com/kevinch3/NicotinD/issues/622)",
+          "**admin:** source Incomplete Albums from the health report's confirmed worklist ([#1453](https://github.com/kevinch3/NicotinD/issues/1453)) ([08de45e](https://github.com/kevinch3/NicotinD/commit/08de45e39191183c2b7bb0ca4ef6d9f2e5be9aab)), references [#1080](https://github.com/kevinch3/NicotinD/issues/1080)",
+          "**api:** allow PATCH in native-app CORS so the home view switch persists ([#1464](https://github.com/kevinch3/NicotinD/issues/1464)) ([8ca7b07](https://github.com/kevinch3/NicotinD/commit/8ca7b07c9fa0aa8072becd827050630bff6a9118))",
+          "**ci:** seed the analysis edge image from a release that has one ([#1457](https://github.com/kevinch3/NicotinD/issues/1457)) ([b78e7ef](https://github.com/kevinch3/NicotinD/commit/b78e7ef2fa42b83020b306fcd9bcc14716a5d8b0))"
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.8.104",
     "date": "2026-09-28",
     "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.103...v0.8.104",
@@ -663,47 +724,6 @@
         "items": [
           "**analysis:** reuse the genre prediction audio-features already got instead of re-analyzing ([#1334](https://github.com/kevinch3/NicotinD/issues/1334)) ([3ba60c4](https://github.com/kevinch3/NicotinD/commit/3ba60c4dd0f4248577dbac677609568984a4026e)), references [#1312](https://github.com/kevinch3/NicotinD/issues/1312)",
           "**covers:** content-hash ETag on covers, and a bodiless 304 when the browser already has them ([#1333](https://github.com/kevinch3/NicotinD/issues/1333)) ([5a3e13a](https://github.com/kevinch3/NicotinD/commit/5a3e13a58394a73a2bcf80940735f31de6b859fd)), references [#1329](https://github.com/kevinch3/NicotinD/issues/1329)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.8.57",
-    "date": "2026-09-23",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.56...v0.8.57",
-    "sections": [
-      {
-        "title": "Performance",
-        "items": [
-          "**player:** fetch the Now Playing waveform only once the track's audio is flowing ([#1332](https://github.com/kevinch3/NicotinD/issues/1332)) ([82a87c6](https://github.com/kevinch3/NicotinD/commit/82a87c6608d1d8289b82e84806bd079aabc447a8)), references [#1328](https://github.com/kevinch3/NicotinD/issues/1328)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.8.56",
-    "date": "2026-09-23",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.55...v0.8.56",
-    "sections": [
-      {
-        "title": "Performance",
-        "items": [
-          "**remote-playback:** send compact progress instead of rebroadcasting full state every 2 s ([#1330](https://github.com/kevinch3/NicotinD/issues/1330)) ([5ef7459](https://github.com/kevinch3/NicotinD/commit/5ef74592186fb5bc115acb838cf1de3117c9d90e)), references [#1308](https://github.com/kevinch3/NicotinD/issues/1308)",
-          "**transcode-cache:** evict least-recently-used entries, not the oldest-created ([#1331](https://github.com/kevinch3/NicotinD/issues/1331)) ([c06dce6](https://github.com/kevinch3/NicotinD/commit/c06dce60580a07b4b8090761a24271ce719937ee)), closes [#1327](https://github.com/kevinch3/NicotinD/issues/1327)",
-          "**transcode:** write the organizer's settled tags in the lossless encode, not a remux after it ([#1326](https://github.com/kevinch3/NicotinD/issues/1326)) ([62534e7](https://github.com/kevinch3/NicotinD/commit/62534e75236918d1da10c5f38b338fe164e03f31)), references [#1305](https://github.com/kevinch3/NicotinD/issues/1305)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.8.55",
-    "date": "2026-09-23",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.54...v0.8.55",
-    "sections": [
-      {
-        "title": "Performance",
-        "items": [
-          "**library:** a song delete reclassifies its album instead of rescanning the whole library ([#1325](https://github.com/kevinch3/NicotinD/issues/1325)) ([d8129de](https://github.com/kevinch3/NicotinD/commit/d8129de2518b4492a42e630b81875e2c57f755bd)), closes [#1303](https://github.com/kevinch3/NicotinD/issues/1303)"
         ]
       }
     ]
