@@ -555,7 +555,7 @@ jobs:
         run: |
           set -euo pipefail
           v="${GITHUB_REF_NAME#v}"
-          bun scripts/github-release.ts publish --id "${{ needs.create-draft.outputs.id }}" \
+          bun scripts/github-release.ts publish --id "${{ needs.create-draft.outputs.id }}" --tag "$GITHUB_REF_NAME" \
             --expect "NicotinD-$v.apk,NicotinD-TV-$v.apk,latest-linux.yml,latest-mac.yml"
 
   # Build + publish the multi-arch server image to GHCR (Immich-style): one

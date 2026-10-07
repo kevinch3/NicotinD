@@ -36,6 +36,9 @@ function fakeGitHub(initial: Release[] = []) {
     if (byId && method === 'GET') return json(releases.find((r) => r.id === Number(byId[1])));
     if (byId && method === 'PATCH') {
       const r = releases.find((x) => x.id === Number(byId[1]))!;
+      // Measured on v0.8.105–v0.8.108: publishing a draft without naming the
+      // tag leaves the placeholder in place, so the release is never bound to
+      // its tag and /releases/download/<tag>/… 404s.
       Object.assign(r, JSON.parse(String(init.body)));
       return json(r);
     }
@@ -63,9 +66,12 @@ function fakeGitHub(initial: Release[] = []) {
   return { api, releases, calls };
 }
 
+// A draft is reported as `untagged-…` with the tag only in `name`, exactly as
+// GitHub answers; a fixture that gave a draft its real tag hid #1493.
 const release = (id: number, tag: string, draft: boolean, names: string[] = []): Release => ({
   id,
-  tag_name: tag,
+  tag_name: draft ? `untagged-${id}` : tag,
+  name: tag,
   draft,
   assets: names.map((name, i) => ({ id: id * 10 + i, name })),
 });
@@ -126,7 +132,7 @@ describe('uploadAsset', () => {
 describe('publish', () => {
   it('keeps the release a draft when an expected asset is missing', async () => {
     const gh = fakeGitHub([release(5, 'v1', true, ['NicotinD-1.apk'])]);
-    await expect(publish(gh.api, 5, ['NicotinD-1.apk', 'latest-mac.yml'])).rejects.toThrow(
+    await expect(publish(gh.api, 5, 'v1', ['NicotinD-1.apk', 'latest-mac.yml'])).rejects.toThrow(
       'latest-mac.yml',
     );
     expect(gh.releases[0]!.draft).toBe(true);
@@ -134,14 +140,36 @@ describe('publish', () => {
 
   it('publishes with make_latest=legacy once everything is attached', async () => {
     const gh = fakeGitHub([release(5, 'v1', true, ['NicotinD-1.apk', 'latest-mac.yml'])]);
-    const r = await publish(gh.api, 5, ['NicotinD-1.apk', 'latest-mac.yml']);
+    const r = await publish(gh.api, 5, 'v1', ['NicotinD-1.apk', 'latest-mac.yml']);
     expect(r.draft).toBe(false);
     expect((gh.releases[0] as Release & { make_latest?: string }).make_latest).toBe('legacy');
   });
 
-  it('leaves an already-published release alone', async () => {
+  // #1493: v0.8.105–v0.8.108 were published as `untagged-…`, so every
+  // /releases/download/<tag>/… URL (F-Droid's `Binaries:`) 404ed.
+  it('binds the published release to its tag, not the draft placeholder', async () => {
+    const gh = fakeGitHub([release(5, 'v1', true, ['a'])]);
+    const r = await publish(gh.api, 5, 'v1', ['a']);
+    expect(r.tag_name).toBe('v1');
+    expect(gh.releases[0]!.tag_name).toBe('v1');
+  });
+
+  it('refuses to publish a release made for a different tag', async () => {
+    const gh = fakeGitHub([release(5, 'v1', true, ['a'])]);
+    await expect(publish(gh.api, 5, 'v2', ['a'])).rejects.toThrow('v1');
+    expect(gh.releases[0]!.draft).toBe(true);
+  });
+
+  it('leaves an already-published, correctly tagged release alone', async () => {
     const gh = fakeGitHub([release(5, 'v1', false, ['a'])]);
-    await publish(gh.api, 5, ['a']);
+    await publish(gh.api, 5, 'v1', ['a']);
     expect(gh.calls.filter((c) => c.startsWith('PATCH'))).toEqual([]);
+  });
+
+  // The repair path for the releases #1493 already published: a re-run binds them.
+  it('re-binds an already-published release that is still untagged', async () => {
+    const gh = fakeGitHub([{ ...release(5, 'v1', false, ['a']), tag_name: 'untagged-abc' }]);
+    const r = await publish(gh.api, 5, 'v1', ['a']);
+    expect(r.tag_name).toBe('v1');
   });
 });

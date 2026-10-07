@@ -7,7 +7,7 @@
  *   bun run scripts/github-release.ts draft   --tag v1.2.3            → prints the release id
  *   bun run scripts/github-release.ts body    --id N --file notes.md
  *   bun run scripts/github-release.ts upload  --id N <file>...
- *   bun run scripts/github-release.ts publish --id N --expect <name>...
+ *   bun run scripts/github-release.ts publish --id N --tag v1.2.3 --expect <name>...
  *
  * WHY a script and not softprops/action-gh-release: deploy.yml used to publish
  * the release within seconds of the tag (release-notes created it) and attach
@@ -135,28 +135,54 @@ export async function uploadAsset(api: Api, id: number, name: string, data: Blob
 }
 
 /**
- * Publish the draft, but only if every expected asset is on it.
+ * Publish the draft, but only if every expected asset is on it, bound to `tag`.
+ *
+ * `tag_name` must be sent with the publish: the API reports a draft's tag as
+ * `untagged-<hash>`, and flipping `draft` alone published v0.8.105–v0.8.108
+ * under that placeholder, so `/releases/download/<tag>/…` — F-Droid's
+ * `Binaries:` URL — 404ed (#1493). The draft's `name` is the tag it was made
+ * for, so a mismatch means the wrong id and is refused before anything changes.
  *
  * `make_latest: legacy` lets GitHub pick "latest" by date and version, so a
  * release published late — its failed job re-run after a newer one shipped —
- * does not take `latest` from the newer one. A release that is already
- * published is left alone (idempotent re-run).
+ * does not take `latest` from the newer one. A published release already bound
+ * to its tag is left alone (idempotent re-run); one still untagged is re-bound,
+ * which is also how the releases #1493 already shipped are repaired.
  */
-export async function publish(api: Api, id: number, expected: string[]): Promise<Release> {
+export async function publish(
+  api: Api,
+  id: number,
+  tag: string,
+  expected: string[],
+): Promise<Release> {
   const release = await call<Release>(api, `/repos/${api.repo}/releases/${id}`);
+  if (release.name && release.name !== tag && release.tag_name !== tag) {
+    throw new Error(
+      `Release ${id} was made for ${release.name}, not ${tag}; refusing to publish it.`,
+    );
+  }
   const present = new Set((release.assets ?? []).map((a) => a.name));
   const missing = expected.filter((name) => !present.has(name)).sort();
   if (missing.length > 0) {
     throw new Error(
-      `Release ${release.tag_name} is missing ${missing.length} expected asset(s), so it stays a ` +
+      `Release ${tag} is missing ${missing.length} expected asset(s), so it stays a ` +
         `draft:\n  ${missing.join('\n  ')}`,
     );
   }
-  if (!release.draft) return release;
-  return call<Release>(api, `/repos/${api.repo}/releases/${id}`, {
+  if (!release.draft && release.tag_name === tag) return release;
+  const published = await call<Release>(api, `/repos/${api.repo}/releases/${id}`, {
     method: 'PATCH',
-    body: JSON.stringify({ draft: false, make_latest: 'legacy' }),
+    body: JSON.stringify(
+      release.draft ? { tag_name: tag, draft: false, make_latest: 'legacy' } : { tag_name: tag },
+    ),
   });
+  if (published.tag_name !== tag) {
+    throw new Error(
+      `Release ${id} published as ${published.tag_name}, not ${tag}: /releases/download/${tag}/… ` +
+        `would 404 (#1493).`,
+    );
+  }
+  return published;
 }
 
 function flag(args: string[], name: string): string | undefined {
@@ -204,8 +230,11 @@ async function main(argv: string[]): Promise<void> {
     }
     case 'publish': {
       const expected = (flag(args, 'expect') ?? '').split(',').filter(Boolean);
-      if (!id || expected.length === 0) throw new Error('publish needs --id and --expect a,b,c.');
-      const release = await publish(api, id, expected);
+      const tag = flag(args, 'tag') ?? process.env.GITHUB_REF_NAME;
+      if (!id || !tag || expected.length === 0) {
+        throw new Error('publish needs --id, --tag (or GITHUB_REF_NAME) and --expect a,b,c.');
+      }
+      const release = await publish(api, id, tag, expected);
       console.log(`${release.tag_name} is published (draft=${release.draft}).`);
       return;
     }
