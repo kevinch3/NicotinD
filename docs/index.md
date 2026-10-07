@@ -13,7 +13,8 @@ The index proper. Each line: what it is, what to grep for, where the detail live
   → [cast-integration.md](cast-integration.md); OAuth as an `auth` plugin kind
   → [oauth-auth.md](oauth-auth.md); WebMCP host exposure, client-side WebGPU/WebNN a NO-GO
   → [webmcp-alignment.md](webmcp-alignment.md),
-  [client-side-ml-feasibility.md](client-side-ml-feasibility.md)
+  [client-side-ml-feasibility.md](client-side-ml-feasibility.md); one-click internet access via an
+  embedded `tsnet` Funnel + external probe → [remote-access-options.md](remote-access-options.md)
 - **Native phone/TV client, deferred** — proposed, NOT built: an isolated codename repo with a KMP
   core and SwiftUI/Compose UIs; waits while desktop still needs the Angular build.
   → [native-mobile-client.md](native-mobile-client.md)
