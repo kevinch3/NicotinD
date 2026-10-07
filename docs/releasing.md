@@ -258,6 +258,14 @@ release with nothing on it — the in-app APK updater would offer a download tha
   re-run the failed jobs; `publish-release` runs again and publishes. It uses
   `make_latest: legacy`, so a release published late cannot take `latest` from
   a newer one.
+- **Publishing binds the release to its tag.** `publish --tag` sends
+  `tag_name` with `draft: false`; flipping `draft` alone kept the `untagged-…`
+  placeholder, so v0.8.105–v0.8.108 shipped with every
+  `/releases/download/<tag>/…` URL 404ing — F-Droid's `Binaries:` included
+  (#1493). It refuses a release whose `name` is another tag, fails if the
+  result is not bound, and re-binds an already-published untagged release, so
+  `bun scripts/github-release.ts publish --id N --tag vX.Y.Z --expect …` also
+  repairs one by hand.
 - **More than one release for a tag** (a stray draft, the v0.6.37 shape) makes
   `create-draft` fail rather than guess; delete the stray one by hand.
 - `pages.yml` lists releases with `--exclude-drafts`, so the F-Droid repo never
