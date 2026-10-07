@@ -1,0 +1,2 @@
+• release: bind a published release to its tag, not the draft's untagged placeholder (#1494)
+• mobile: enable R8 for the release APK, as F-Droid's reviewer asked (#1492)

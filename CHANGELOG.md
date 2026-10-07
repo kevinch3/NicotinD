@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.109](https://github.com/kevinch3/NicotinD/compare/v0.8.108...v0.8.109) (2026-10-07)
+
+### Bug Fixes
+
+* **release:** bind a published release to its tag, not the draft's untagged placeholder ([#1494](https://github.com/kevinch3/NicotinD/issues/1494)) ([be3d8e2](https://github.com/kevinch3/NicotinD/commit/be3d8e21c39ac0b4c46fb712967cf360cb937aa0)), references [#1493](https://github.com/kevinch3/NicotinD/issues/1493)
+
+### Performance
+
+* **mobile:** enable R8 for the release APK, as F-Droid's reviewer asked ([#1492](https://github.com/kevinch3/NicotinD/issues/1492)) ([fdf9b32](https://github.com/kevinch3/NicotinD/commit/fdf9b3267df0e9d11eec77ca70c934fa2bddee1a)), references [#1168](https://github.com/kevinch3/NicotinD/issues/1168)
 ## [0.8.108](https://github.com/kevinch3/NicotinD/compare/v0.8.107...v0.8.108) (2026-10-06)
 
 ### Features
