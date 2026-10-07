@@ -19,3 +19,9 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Capacitor's own consumer rules keep every Plugin subclass and its @PluginMethods.
+# The WebView bridge is reached from JS by name, so nothing may rename or drop it.
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}

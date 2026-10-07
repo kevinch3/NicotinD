@@ -503,8 +503,14 @@ It is behaviour-neutral for the PWA: `ngsw-worker.js` reads `timestamp` only und
 
 `dependenciesInfo { includeInApk false }` is off in `build.gradle` for the same reason — AGP
 otherwise embeds an encrypted, Google-readable dependency blob in the signing block, which is the
-wrong thing to carry into a byte comparison. `minifyEnabled false` stays: R8 is not deterministic
-across versions, so turning it on needs its own rebuild comparison first.
+wrong thing to carry into a byte comparison. `minifyEnabled true` since F-Droid's reviewer asked
+for R8 on MR 49342 (its scanner reports "APK has no R8 Marker" otherwise). R8's output is fixed by
+the AGP version, so the rebuild comparison tracks it like the JDK: two clean `assembleTvRelease`
+builds on JDK 21 were byte-identical (APK 4.4 MB → 2.3 MB), the `~~R8` marker is present, and an
+APK on the TV emulator boots and loads the bundle. Capacitor's consumer rules keep every `Plugin`
+subclass; `proguard-rules.pro` adds the one thing they omit, `@JavascriptInterface` methods (the
+WebView bridge — a build is green without it and the app never reaches native code). Playback and
+the media session were **not** exercised on the R8 build: they need a server.
 
 `check:fdroid` guards all of it, because every one of these fails **silently** — the build stays
 green and only F-Droid's next rebuild notices.

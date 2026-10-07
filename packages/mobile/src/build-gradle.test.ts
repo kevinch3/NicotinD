@@ -56,7 +56,9 @@ describe('build.gradle — reproducible build', () => {
     expect(gradle).toMatch(/dependenciesInfo\s*\{[\s\S]*?includeInBundle\s*=\s*false/);
   });
 
-  it('leaves minification off, which R8 would make non-deterministic', () => {
-    expect(gradle).toContain('minifyEnabled false');
+  it('minifies with R8, which F-Droid asked for and which needs its bridge keep rule', () => {
+    expect(gradle).toContain('minifyEnabled true');
+    const rules = readFileSync(join(import.meta.dir, '../android/app/proguard-rules.pro'), 'utf8');
+    expect(rules).toContain('@android.webkit.JavascriptInterface');
   });
 });
