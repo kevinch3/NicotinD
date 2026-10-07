@@ -297,6 +297,25 @@ const { versionCode: currentVersionCode, versionName: currentVersionName } = and
       );
     }
   }
+  // F-Droid's reviewer asked for R8 on MR 49342; its scanner reports "no R8 marker"
+  // otherwise. The keep rule is what stops R8 stripping the JS bridge, which a
+  // green build cannot show — the app just stops talking to its WebView.
+  if (!/minifyEnabled\s+true/.test(gradleSource)) {
+    errors.push(
+      'packages/mobile/android/app/build.gradle does not set `minifyEnabled true` for release. ' +
+        'F-Droid asked for R8 on MR 49342 and its scanner flags an APK without the R8 marker.',
+    );
+  }
+  const proguardSource = readFileSync(
+    join(repoRoot, 'packages/mobile/android/app/proguard-rules.pro'),
+    'utf8',
+  );
+  if (!/@android\.webkit\.JavascriptInterface/.test(proguardSource)) {
+    errors.push(
+      'proguard-rules.pro no longer keeps @JavascriptInterface methods. With R8 on, the Capacitor ' +
+        'WebView bridge would be renamed and the app would load but never reach native code.',
+    );
+  }
   if (/\.\/gradlew assembleRelease\b/.test(deploy)) {
     errors.push(
       `.github/workflows/deploy.yml runs a bare \`./gradlew assembleRelease\`. With product ` +

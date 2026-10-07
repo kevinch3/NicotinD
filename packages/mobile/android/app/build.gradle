@@ -71,10 +71,9 @@ android {
     }
     buildTypes {
         release {
-            // Also a reproducibility property, not only a size one: R8 is not
-            // deterministic across versions, so turning this on needs its own
-            // rebuild comparison first. See docs/fdroid.md.
-            minifyEnabled false
+            // F-Droid requires R8 (MR 49342). It is pinned by the AGP version, which the
+            // reproducible-build comparison already tracks. See docs/fdroid.md.
+            minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
             if (System.getenv("ANDROID_KEYSTORE_FILE")) {
                 signingConfig signingConfigs.release
