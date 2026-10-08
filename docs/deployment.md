@@ -416,7 +416,8 @@ that is a one-line change to the predicate.
 Images the app doesn't own are version-pinned so users can't drift on risky
 components (Immich digest-pins theirs): `slskd` (already pinned),
 `linuxserver/lidarr` (was `:latest` — a silent Lidarr major can break the API
-client). The PO-token provider **is no longer one of them**: we build it (below).
+client), and `qmcgaw/gluetun` in the VPN overlay (a gluetun major can rename the
+settings `vpn.env` holds). The PO-token provider **is no longer one of them**: we build it (below).
 
 **That pairing was enforced by `check:bgutil-pin` (issue #238), and the gate has
 since been retired (issue #550).** It compared the pip plugin baked into the
@@ -916,6 +917,37 @@ CI lints this combination alongside the other compose files.
 (persisted, no restart) — env-only remains the confidently-safe subset, because
 the background services are constructed at boot and can't be cleanly torn down
 live.
+
+## Routing peer-to-peer addons through a VPN: `docker-compose.vpn.yml`
+
+A peer-to-peer source (slskd today, a torrent client later) shows this host's
+public IP to every peer and uploads to them. The opt-in VPN overlay moves those
+containers into a [gluetun](https://github.com/qdm12/gluetun) container's network
+namespace, so the tunnel is their only route out; core, streaming and the
+HTTP-only addons stay on the normal network.
+
+```bash
+cp vpn.env.example vpn.env   # fill in your provider's WireGuard details
+docker compose -f docker-compose.yml -f docker-compose.vpn.yml --profile slskd-addon up -d
+docker compose exec vpn wget -qO- https://ipinfo.io/ip   # must print the VPN's IP
+```
+
+- **Kill switch by construction.** slskd has no interface but the vpn
+  container's. gluetun's firewall allows only the tunnel (plus the compose
+  network itself, which is how the addon reaches it), so a dropped tunnel means
+  no network, never the home connection. Verified on a local stack with a dead
+  tunnel: off-network addresses that a normal container reached were blocked
+  from slskd's namespace.
+- **Nothing to re-register.** The vpn container answers to `slskd` on the
+  compose network, so the addon's `http://slskd:5030` is unchanged.
+- **After a vpn container restart**, slskd is left with loopback only (it fails
+  closed, and the addon reports its source offline). `docker compose up -d` does
+  not notice; `docker compose restart slskd` recovers it.
+- Needs Compose v2.24.4+ (`!reset`, `env_file.required`).
+  `scripts/compose-vpn-overlay.test.ts` holds the invariants and asks
+  `docker compose config` itself; CI lints the combination with the template as
+  `vpn.env`. Choosing a provider and port forwarding:
+  [acquisition-egress-vpn.md](acquisition-egress-vpn.md).
 
 ## Resource notes
 

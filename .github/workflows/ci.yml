@@ -699,6 +699,10 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.override.example.yml config -q
           docker compose -f docker-compose.yml -f docker-compose.gpu.yml config -q
           docker compose -f docker-compose.yml -f docker-compose.streaming-only.yml config -q
+          # The VPN overlay requires a vpn.env; the committed template stands in.
+          cp vpn.env.example vpn.env
+          docker compose -f docker-compose.yml -f docker-compose.vpn.yml --profile slskd-addon config -q
+          rm vpn.env
 
       # `paths:` filters can't express "job runs always, one step conditionally",
       # so diff explicitly against the push's or PR's base.

@@ -1,6 +1,10 @@
 # Acquisition egress: VPN for peer-to-peer addons
 
-> **Proposed, NOT built.** Companion to [remote-access-options.md](remote-access-options.md),
+> **Partly built.** The Docker VPN overlay (option 1 below) ships as `docker-compose.vpn.yml`
+> and routes slskd through the tunnel; how to run it is in
+> [deployment.md](deployment.md#routing-peer-to-peer-addons-through-a-vpn-docker-composevpnyml).
+> The disclosure, the verification checks and the desktop options are still proposals.
+> Companion to [remote-access-options.md](remote-access-options.md),
 > which covers the *inbound* direction (a phone reaching the server). This page covers the
 > *outbound* direction: what an acquisition addon's traffic reveals, and how to route it through a
 > VPN without breaking anything else. Researched 2026-10.
@@ -46,35 +50,44 @@ per capability, and the registry records who consented and when. It is missing t
 
 Ranked by how hard it is to leak.
 
-### 1. Network-namespace isolation (Docker): recommended
+### 1. Network-namespace isolation (Docker): recommended, shipped
 
 Run a VPN container ([gluetun](https://github.com/qdm12/gluetun): WireGuard/OpenVPN, about 30
-providers, a built-in firewall) and attach the addon to its network stack:
+providers, a built-in firewall) and attach the peer-to-peer service to its network stack. This is
+`docker-compose.vpn.yml`, in essence:
 
 ```yaml
 vpn:
-  image: qmcgaw/gluetun:<pinned>
+  image: qmcgaw/gluetun:v3.41.3
+  profiles: ["slskd-addon"]          # comes up exactly when the P2P service does
   cap_add: [NET_ADMIN]
-  devices: [/dev/net/tun]
-  environment:
-    VPN_SERVICE_PROVIDER: ${VPN_PROVIDER}
-    VPN_TYPE: wireguard
-    WIREGUARD_PRIVATE_KEY: ${VPN_WG_KEY}
-    FIREWALL_OUTBOUND_SUBNETS: 172.16.0.0/12   # lets the addon answer core on the compose network
-    VPN_PORT_FORWARDING: ${VPN_PORT_FORWARDING:-off}
-torrent-addon:
-  network_mode: "service:vpn"   # no network stack of its own
+  devices: [/dev/net/tun:/dev/net/tun]
+  env_file: [{ path: ./vpn.env, required: true }]   # any gluetun provider, or a raw WireGuard peer
+  networks: { internal: { aliases: [slskd] } }      # answers to the joined service's name
+slskd:
+  network_mode: "service:vpn"        # no network stack of its own
+  networks: !reset null
 ```
 
-- **The kill switch is structural.** The addon has no interface except the tunnel, so when the VPN
-  drops it has no network at all. There is no setting to get wrong, and no leak through DHT, UDP,
-  or DNS.
-- Core reaches the addon at the `vpn` service's hostname, because the addon's ports live on that
-  container.
-- The compose file already uses this exact mechanism: `ytdlp-pot-provider` shares
-  `ytdlp-addon`'s stack with `network_mode: "service:ytdlp-addon"`. Shipping it is a compose
-  profile (`vpn`) plus documentation, not new code in core.
-- **Port forwarding** decides torrent speed. Without an inbound port, the client can only connect
+- **The kill switch is structural.** The service has no interface except the vpn container's, and
+  gluetun's firewall passes only the tunnel and the local compose network. When the VPN drops it
+  has no route out at all. There is no setting to get wrong, and no leak through DHT, UDP or DNS.
+  Checked on a local stack with a tunnel that never came up: addresses off the compose network that
+  a normal container reached were blocked from slskd's namespace, while the addon still reached
+  slskd by name.
+- **Only the peer.** slskd is the process that talks to strangers; `slskd-addon` only talks to
+  slskd and core, so it stays on the normal network. The alias keeps `http://slskd:5030` resolving,
+  so nothing is re-registered. `FIREWALL_OUTBOUND_SUBNETS` is not needed: slskd only *answers* the
+  compose network, it never dials into it.
+- The compose file already used this mechanism: `ytdlp-pot-provider` shares `ytdlp-addon`'s
+  stack with `network_mode: "service:ytdlp-addon"`.
+- **Restart caveat.** If the vpn *container* restarts (gluetun heals a dropped tunnel in place
+  without doing that), the joined container keeps a dead namespace with loopback only. It fails
+  closed. `docker compose restart slskd` recovers it; `up -d` does not notice.
+- `scripts/compose-vpn-overlay.test.ts` keeps the invariants: every service in its `PEER_TO_PEER`
+  list is joined, its networks are reset, the aliases match, the profiles match, nothing is
+  published, the firewall stays on, the image is pinned, and Compose itself resolves the overlay.
+- **Port forwarding** decides peer-to-peer speed. Without an inbound port, the client can only connect
   to peers that are reachable themselves. Proton (paid plans) and a few others forward a port and
   gluetun can pass it on. Mullvad dropped port forwarding in 2023: it works, but more slowly.
 
@@ -142,7 +155,7 @@ Same idea as the inbound checklist: prove it, do not assume it.
 | Phase | What | Where |
 |---|---|---|
 | 1 | `network.peerToPeer` / `uploads` manifest fields, consent line, off by default, egress status on the card | `addon-sdk` + core + web |
-| 2 | `vpn` compose profile (gluetun) + docs for P2P addons; probe endpoint returns caller IP | `docker-compose.yml`, Worker |
+| 2 | **Shipped:** `docker-compose.vpn.yml` (gluetun) for slskd + `vpn.env.example`. Still to do: the probe endpoint that returns the caller IP; following a provider's changing forwarded port | `docker-compose.vpn.yml`, Worker |
 | 3 | Egress / DNS / kill-switch checks, and pausing jobs on a leak | core + addon health contract |
 | 4 | Spike: `tsnet` + Mullvad exit node for desktop; otherwise userspace WireGuard in the addon | helper / addon repo |
 

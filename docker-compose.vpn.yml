@@ -1,0 +1,75 @@
+# Opt-in VPN overlay: peer-to-peer addons reach the internet ONLY through a VPN.
+#
+# A peer-to-peer source publishes this host's public IP to every peer it talks
+# to, and uploads to them (slskd shares the library). This overlay moves those
+# containers into the network namespace of a gluetun VPN container, so their
+# only route out is the tunnel. Core, streaming, Lidarr, the analysis sidecar
+# and the HTTP-only addons (yt-dlp, spotDL) stay on the normal network.
+# → docs/acquisition-egress-vpn.md
+#
+# 1. Copy vpn.env.example to vpn.env (next to this file) and fill it in for
+#    your provider. It is git-ignored; compose refuses to start without it.
+# 2. Enable this overlay. It is NOT auto-merged; name it per command:
+#
+#      docker compose -f docker-compose.yml -f docker-compose.vpn.yml \
+#        --profile slskd-addon up -d
+#
+#    or persistently in `.env`:
+#
+#      COMPOSE_FILE=docker-compose.yml:docker-compose.vpn.yml
+#      COMPOSE_PROFILES=slskd-addon
+#
+#    If you also use docker-compose.override.yml, list it too, LAST (see the
+#    header of docker-compose.gpu.yml for why the order matters, #1009).
+# 3. Check it: `docker compose exec vpn wget -qO- https://ipinfo.io/ip` must
+#    print the VPN's address, not your home one. (Run it in `vpn`: the slskd
+#    image ships no wget, and both containers share one network namespace.)
+#
+# Needs Docker Compose v2.24.4+ for the `!reset` tags and `env_file.required`.
+#
+# KILL SWITCH. The joined services have no network interface of their own.
+# gluetun's firewall blocks everything but the tunnel from the moment it starts,
+# so when the VPN is down they have no network at all; nothing falls back to
+# the home connection. That is also why they wait only for the VPN container to
+# START, not to be healthy (the boot-gate rule, scripts/compose-boot-gates.test.ts):
+# there is nothing to leak while the tunnel is still coming up.
+#
+# After the vpn CONTAINER restarts (not a tunnel reconnect, which gluetun heals
+# in place), the joined containers keep a dead namespace with only loopback:
+# they fail closed and the addon reports its source offline. `docker compose
+# up -d` does NOT notice (they are still "running"); `docker compose restart
+# slskd` does.
+services:
+  vpn:
+    # Pinned: a gluetun major can rename settings. Bump deliberately after
+    # reading its release notes.
+    image: qmcgaw/gluetun:v3.41.3
+    # Same profiles as every service that joins it, so the tunnel comes up
+    # exactly when a peer-to-peer addon does. Kept in sync by
+    # scripts/compose-vpn-overlay.test.ts.
+    profiles: ["slskd-addon"]
+    # A Go binary plus the tunnel; observed well under 100 MB.
+    mem_limit: 256m
+    memswap_limit: 256m
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    # Provider, keys and server choice. Every gluetun option works here, so any
+    # of its ~30 providers or a raw WireGuard config (VPN_SERVICE_PROVIDER=custom).
+    env_file:
+      - path: ./vpn.env
+        required: true
+    networks:
+      internal:
+        # The joined services' ports now live on THIS container, so it answers
+        # to their names: the addon keeps reaching http://slskd:5030 unchanged.
+        aliases:
+          - slskd
+    # No `ports:`. Nothing here is published to the host or the LAN.
+    restart: unless-stopped
+
+  slskd:
+    network_mode: "service:vpn"
+    # A service in another's namespace may not declare networks of its own.
+    networks: !reset null

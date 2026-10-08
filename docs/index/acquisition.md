@@ -6,6 +6,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **Source-agnostic acquisition (the north star)**: every acquirable result from any source maps to
   one `AcquisitionCandidate` in one blended ranked list; a new source is one adapter + a pure mapper.
   → [source-agnostic-acquisition.md](../source-agnostic-acquisition.md)
+- **VPN overlay for peer-to-peer addons**: `docker-compose.vpn.yml` puts slskd in a gluetun
+  container's network namespace (kill switch by construction), credentials in `vpn.env`;
+  invariants in `compose-vpn-overlay.test.ts`. → [acquisition-egress-vpn.md](../acquisition-egress-vpn.md)
 - **Acquisition addon protocol**: open HTTP protocol (`validateAddonManifest`, `AddonClient`,
   `RemoteAddonPlugin`, `addon_registrations`, `loadRegisteredAddons`); `AddonSearchProvider` and
   `AddonJobPoller` light up every lane with no route changes.
