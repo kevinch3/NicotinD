@@ -510,7 +510,10 @@ builds on JDK 21 were byte-identical (APK 4.4 MB → 2.3 MB), the `~~R8` marker 
 APK on the TV emulator boots and loads the bundle. Capacitor's consumer rules keep every `Plugin`
 subclass; `proguard-rules.pro` adds the one thing they omit, `@JavascriptInterface` methods (the
 WebView bridge — a build is green without it and the app never reaches native code). Playback and
-the media session were **not** exercised on the R8 build: they need a server.
+the media session were **not** exercised on the R8 build: they need a server. Measured on `v0.8.109`,
+the first R8 release and the recipes' seed: both APKs rebuilt from the recipe (node 24.19.0,
+bun 1.3.14, JDK 21) are sha256-identical to the published ones once `apksigcopier copy` carries the
+signature over.
 
 `check:fdroid` guards all of it, because every one of these fails **silently** — the build stays
 green and only F-Droid's next rebuild notices.
