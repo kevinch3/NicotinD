@@ -1,0 +1,1 @@
+• deps: bump music-metadata to 11.16.1 for three advisories that crash or hang the scanner (#1497)

@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.110](https://github.com/kevinch3/NicotinD/compare/v0.8.109...v0.8.110) (2026-10-09)
+
+### Bug Fixes
+
+* **deps:** bump music-metadata to 11.16.1 for three advisories that crash or hang the scanner ([#1497](https://github.com/kevinch3/NicotinD/issues/1497)) ([4eba51b](https://github.com/kevinch3/NicotinD/commit/4eba51bc73e632f8e83e5a59ee867d0dd5098841)), references [#1496](https://github.com/kevinch3/NicotinD/issues/1496)
 ## [0.8.109](https://github.com/kevinch3/NicotinD/compare/v0.8.108...v0.8.109) (2026-10-07)
 
 ### Bug Fixes
