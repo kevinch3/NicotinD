@@ -443,6 +443,11 @@ const { versionCode: currentVersionCode, versionName: currentVersionName } = and
   if (!ciBun) errors.push('.github/workflows/deploy.yml no longer defines BUN_VERSION.');
 
   const digests = new Set<string>();
+  const uncommentedRecipe = (src: string): string =>
+    src
+      .split('\n')
+      .filter((l) => !/^\s*#/.test(l))
+      .join('\n');
 
   for (const app of FDROID_APPS) {
     const rel = `packages/mobile/fdroiddata/${app.applicationId}.yml`;
@@ -456,33 +461,37 @@ const { versionCode: currentVersionCode, versionName: currentVersionName } = and
     }
     const source = readFileSync(recipe, 'utf8');
 
-    if (ciBun && !source.includes(`bun-v${ciBun}/`)) {
+    // F-Droid's reviewer asked for Debian's node (MR 49342), and fdroiddata's
+    // other JS apps all take their toolchain from Debian and npm. Angular's CLI
+    // refuses trixie's node 20, hence forky; its patch level does not reach the
+    // APK (the v0.8.109 bundle is byte-identical under node 24.19.0 and 24.21.0).
+    if (!/^\s*- apt-get install -y -t forky (?:nodejs )?npm\s*$/m.test(source)) {
       errors.push(
-        `${rel} pins a different bun than CI (BUN_VERSION ${ciBun}). F-Droid would build with ` +
-          `a toolchain no release was ever built with. Update the download URL and its sha256 ` +
-          `together — a stale checksum fails the build loudly, a stale version does not.`,
+        `${rel} does not install node and npm from Debian forky. F-Droid reviewers want ` +
+          `toolchains from Debian, and trixie's node is older than Angular's CLI accepts.`,
       );
     }
-    // bun shells out to the system node for `ng`, and F-Droid's buildserver
-    // ships an older one than Angular's CLI accepts — `fdroid build` failed on
-    // exactly this. The recipe pins node itself, and the pin has to track the
-    // version we actually build with.
-    const nvmrc = readFileSync(join(repoRoot, '.nvmrc'), 'utf8').trim();
-    // Archive format deliberately not pinned here: .tar.gz replaced .tar.xz
-    // once the buildserver turned out to have no xz binary, and that is a
-    // packaging detail, not the thing this arm is protecting.
-    if (!new RegExp(`node-v${nvmrc.replace(/\./g, '\\.')}-linux-x64\\.tar\\.`).test(source)) {
+    if (
+      ciBun &&
+      !new RegExp(`npm -g install .*\\bbun@${ciBun.replace(/\./g, '\\.')}\\s*$`, 'm').test(source)
+    ) {
       errors.push(
-        `${rel} does not pin node ${nvmrc} (the .nvmrc version). F-Droid's buildserver ships ` +
-          `its own node, and Angular's CLI refuses an older one — the build fails there while ` +
-          `passing everywhere we test.`,
+        `${rel} does not install bun@${ciBun} (CI's BUN_VERSION) from npm. F-Droid would ` +
+          `build with a toolchain no release was ever built with.`,
       );
     }
-
-    if (!source.includes('sha256sum -c -')) {
+    if (/\b(?:curl|wget)\b/.test(uncommentedRecipe(source))) {
       errors.push(
-        `${rel} downloads the bun toolchain without verifying a sha256. F-Droid reviewers ` +
-          `reject unverified binary downloads, and so should we.`,
+        `${rel} downloads a file directly. Take the toolchain from Debian or npm like the ` +
+          `rest of fdroiddata — a hand-checksummed download is what the reviewer pushed back on.`,
+      );
+    }
+    // GitHub left `untagged-…` tags behind four broken releases (#1493);
+    // checkupdates would consider them without a pattern.
+    if (!/^UpdateCheckMode: Tags \^v\[0-9\.\]\+\$$/m.test(source)) {
+      errors.push(
+        `${rel} does not restrict \`UpdateCheckMode: Tags\` to release tags (^v[0-9.]+$). ` +
+          `The repo carries non-release tags that checkupdates would otherwise read.`,
       );
     }
     // Both raised by an F-Droid reviewer on MR 49342, and both are invisible
@@ -514,17 +523,6 @@ const { versionCode: currentVersionCode, versionName: currentVersionName } = and
           );
         }
       }
-    }
-
-    // `bunx` is a separate name on PATH (bun dispatches on argv[0]); the zip we
-    // unpack contains only `bun`, so the symlink has to be explicit. Missing it
-    // fails the prebuild AFTER the web build has succeeded, which reads as a
-    // capacitor problem rather than a PATH one.
-    if (source.includes('bunx ') && !source.includes('/usr/local/bin/bunx')) {
-      errors.push(
-        `${rel} runs \`bunx\` but never links it onto PATH. The bun release zip ships only the ` +
-          `\`bun\` binary — F-Droid's build dies on "bunx: command not found".`,
-      );
     }
 
     // fdroidserver scans the source tree between prebuild and gradle and fails

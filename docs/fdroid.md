@@ -251,9 +251,9 @@ The Angular CLI requires a minimum Node.js version of v22.22.3 or v24.15.0 or v2
 ```
 
 bun installs fine and runs the workspace scripts, but `ng` is executed by the **system node**, so
-the bun pin never covered this. The recipe now installs node too — same version as `.nvmrc`,
-checksummed against nodejs.org's published `SHASUMS256.txt`, and gated so the pin cannot drift
-away from the version we actually build with.
+the bun pin never covered this. The recipe then installed node too — the `.nvmrc` version from
+nodejs.org, checksummed against its `SHASUMS256.txt`. That download is gone since 2026-10-09; see
+[Toolchain from Debian and npm](#toolchain-from-debian-and-npm).
 
 **Use the `.tar.gz`, not the `.tar.xz`.** The next run got as far as `/tmp/node.tar.gz: OK` and then
 died on `tar (child): xz: Cannot exec: No such file or directory` — the buildserver has no xz. Both
@@ -261,8 +261,7 @@ formats are published with checksums, and gzip is one fewer thing to have to ins
 deliberately does not pin the extension: that is packaging, not the thing worth protecting.
 
 Worth generalising: every build input F-Droid supplies is one we do not control and never test
-against. The bun and node pins exist for the same reason, and both are gated for the same reason —
-a mismatch fails only there.
+against, and a mismatch fails only there — which is why each one is gated.
 
 ### `bunx` needs its own symlink
 
@@ -275,7 +274,40 @@ bash: line 1: bunx: command not found
 The bun release **zip contains only the `bun` binary**. `bunx` is a separate name on `PATH` that
 bun's own installer creates as a symlink to that same binary — bun dispatches on `argv[0]`. Our
 sudo block linked `bun` and not `bunx`, so the prebuild died three commands later, which reads like
-a Capacitor problem rather than a `PATH` one. Gated.
+a Capacitor problem rather than a `PATH` one. Moot since bun comes from npm, whose package ships
+`bunx` as its own bin.
+
+### Toolchain from Debian and npm
+
+F-Droid's reviewer asked for node from Debian (MR 49342, 2026-10-09), and that is fdroiddata's house
+pattern: of its recipes, ~650 build entries add forky and `apt-get install -y -t forky npm`, and the
+merged bun apps install bun with `npm -g install bun@<version>`. So the recipe downloads nothing by
+hand any more:
+
+```yaml
+sudo:
+  - echo "deb https://deb.debian.org/debian forky main" > /etc/apt/sources.list.d/forky.list
+  - apt-get update
+  - apt-get install -y -t forky npm
+  - npm -g install --allow-scripts=bun bun@1.3.14
+```
+
+- **Forky, not trixie.** The buildserver image is `buildserver-trixie`, whose `nodejs` is 20.19 —
+  below Angular's floor. Forky had 24.21.0 (2026-10-09); there is no trixie backport.
+- **Node's patch level is not pinned, and does not need to be.** Our CI builds with `.nvmrc`
+  (24.19.0), F-Droid with whatever forky carries. Measured on `v0.8.109` with
+  `SOURCE_DATE_EPOCH` fixed: the web bundle built under node 24.19.0 and 24.21.0 is byte-identical,
+  all 149 files — node runs `ng`, and esbuild, not node, emits the bundle. A forky jump to node 26
+  stays inside Angular's accepted range. If a future comparison fails on `assets/public/`, a node
+  change is the first suspect.
+- **bun stays pinned** to CI's `BUN_VERSION`: it resolves `bun.lock` and runs the scripts. The npm
+  package is the same release; its postinstall takes the binary from `@oven/bun-linux-x64` on the npm
+  registry, which is why the install needs `--allow-scripts=bun`.
+- **`UpdateCheckMode: Tags ^v[0-9.]+$`.** The four releases #1493 broke left `untagged-…` tags on
+  GitHub; the pattern keeps checkupdates on release tags whether or not those are deleted.
+
+`check:fdroid` holds all four: forky npm, `bun@<BUN_VERSION>` from npm, no `curl`/`wget` outside a
+comment, and the tag pattern.
 
 ### The source scanner rejects what `bun install` leaves behind
 
