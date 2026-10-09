@@ -410,8 +410,8 @@ rather than writing the tuple out again, which is the duplicate this seam remove
 so it could never have caught the original inline array literal.
 
 `FormatStrategy` makes each per-format fact a field rather than a constant: `ext`, `encodeArgs`,
-`bitrateFor` (its own ladder — Opus 96k ≈ mp3 160k), `maxEmbeddedPictureBytes` (an Ogg reader limit,
-not a format property), `embedArt`, `encodeArtArgs` (args that carry the cover in the encode itself, or `null` where `embedArt` attaches it afterwards), and `writeGain`. `writeGain` is `((path, db) => boolean) | null`
+`bitrateFor` (its own ladder — Opus 96k ≈ mp3 160k), `maxEmbeddedPictureBytes` (an Ogg reader limit
+in `music-metadata` ≤ 11.14, not a format property), `embedArt`, `encodeArtArgs` (args that carry the cover in the encode itself, or `null` where `embedArt` attaches it afterwards), and `writeGain`. `writeGain` is `((path, db) => boolean) | null`
 **in the type**: Opus carries `output_gain` in `OpusHead`, mp3 and AAC carry nothing equivalent, and
 a nullable field forces every call site to handle that gap at compile time instead of a user
 discovering that normalization silently did nothing.
@@ -543,6 +543,11 @@ for the cover picker, the scanner for `has_embedded_art`. Measured on opusenc ou
 
 The same 730 KB image reads fine from an **mp3**, so it is specific to Opus — consistent with a large
 comment spanning Ogg pages, which cap at 65,025 payload bytes each.
+
+**That table is `music-metadata` ≤ 11.14.** 11.16.1 (the #1495 security bump) reads every size above
+byte-exact, and covers up to 11.6 MB, so the boundary the cap was set under no longer exists — the
+dependency moved, as the next paragraph warned it could. The cap is unchanged for now and is
+therefore stricter than the reader needs; lifting it is #1496.
 
 A file the app cannot read is worse than no file: the picker shows nothing and `has_embedded_art`
 says false, while the bytes are still paid for. So `preparePicture`
