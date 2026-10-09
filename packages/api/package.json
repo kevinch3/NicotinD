@@ -14,7 +14,7 @@
     "@sentry/bun": "^11.0.0",
     "hono": "^4.13.5",
     "jose": "^6.2.3",
-    "music-metadata": "^11.14.0",
+    "music-metadata": "^11.16.1",
     "music-tempo": "^1.0.3",
     "node-id3": "^0.2.9",
     "sharp": "^0.35.5",

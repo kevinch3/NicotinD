@@ -15,7 +15,9 @@ const log = createLogger('opus-artwork');
  * library every read path in this app goes through — `extractEmbeddedPicture`
  * for the cover picker, and the scanner for `has_embedded_art`.
  *
- * Measured on opusenc output, same image each time:
+ * Measured on opusenc output, same image each time, with music-metadata
+ * <= 11.14. 11.16 reads all of these, up to 11.6 MB (#1495); lifting the cap
+ * is #1496.
  *
  * | cover bytes | music-metadata |
  * | --- | --- |
@@ -40,7 +42,8 @@ const log = createLogger('opus-artwork');
 
 /**
  * Largest cover we will embed, with margin under the ~600 KB point where
- * `music-metadata` starts throwing. Anything bigger is re-compressed first.
+ * `music-metadata` <= 11.14 started throwing. Anything bigger is re-compressed
+ * first.
  */
 export const MAX_EMBEDDED_PICTURE_BYTES = 512 * 1024;
 
