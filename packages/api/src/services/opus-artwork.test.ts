@@ -80,10 +80,10 @@ describe.skipIf(!TOOLS)('opusenc writes a correct picture block', () => {
     expect(await readWithMusicMetadata(out)).toBe(bytes);
   });
 
-  it('writes a correct file even when our reader cannot read it', async () => {
+  it('writes a correct file at a size music-metadata 11.14 could not read', async () => {
     // The finding the first spike inverted. A big cover produces a VALID file
-    // — opusinfo reads it back byte-exact — that music-metadata throws on. The
-    // writer was never the problem.
+    // — opusinfo reads it back byte-exact — that music-metadata <= 11.14 threw
+    // on. The writer was never the problem; 11.16 reads it (#1495, #1496).
     const d = scratch();
     const cover = join(d, 'big.jpg');
     const wav = join(d, 'a.wav');
@@ -95,7 +95,7 @@ describe.skipIf(!TOOLS)('opusenc writes a correct picture block', () => {
     encodeWithPicture(wav, cover, out);
 
     expect(opusinfoPictureBytes(out)).toBe(bytes); // file: correct
-    expect(await readWithMusicMetadata(out)).toBeNull(); // reader: cannot
+    expect(await readWithMusicMetadata(out)).toBe(bytes); // reader: can, since 11.16
   });
 });
 
@@ -287,9 +287,9 @@ describe.skipIf(!TOOLS)('merging one field into a tagged file', () => {
 
 describe('the cap itself', () => {
   it('sits under the measured boundary with margin', () => {
-    // music-metadata read 598,039 and threw on 676,153. The cap is not set AT
-    // the boundary: the exact figure is a property of a dependency we do not
-    // control, and it can move on an upgrade.
+    // music-metadata <= 11.14 read 598,039 and threw on 676,153. The cap is not
+    // set AT the boundary: the exact figure is a property of a dependency we do
+    // not control, and it can move on an upgrade — 11.16 removed it (#1496).
     expect(MAX_EMBEDDED_PICTURE_BYTES).toBeLessThan(598_039);
   });
 });
