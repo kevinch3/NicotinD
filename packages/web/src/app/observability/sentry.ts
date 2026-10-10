@@ -48,8 +48,12 @@ export async function loadSentry(
   env: SentryEnvironment,
   release: string,
   nativeShell = false,
+  capacitor = false,
 ): Promise<boolean> {
-  if (!env.sentryDsn) return false;
+  // The Android/TV/iOS apps report nothing: even with no integrations passed,
+  // Sentry's defaults send a session on every launch, which F-Droid counts as
+  // tracking (#1502). Web and Electron keep error reporting.
+  if (!env.sentryDsn || capacitor) return false;
   const Sentry: typeof SentryNs = await import('@sentry/angular');
   Sentry.init({
     dsn: env.sentryDsn,

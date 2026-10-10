@@ -6,7 +6,7 @@ surfaces** and inert when unconfigured.
 ## Web (Angular)
 
 - **The SDK is loaded lazily (issue #285).** Sentry is ~272 kB — 42 % of the initial
-  chunk, Session Replay alone 124 kB — so `loadSentry(environment, release, nativeShell?)`
+  chunk, Session Replay alone 124 kB — so `loadSentry(environment, release, nativeShell?, capacitor?)`
   (`app/observability/sentry.ts`) reaches the SDK only via a dynamic
   `import('@sentry/angular')`, which esbuild splits into a lazy chunk off the first-paint
   path. `main.ts` calls it in the post-bootstrap `.then()` (and on the `.catch()` for a
@@ -36,8 +36,15 @@ surfaces** and inert when unconfigured.
   migration guide's "keep the v10 default" baseline (no user info, no cookies, no bodies,
   headers and query params minus the `forwarded`/`-ip`/`remote-`/`via`/`-user` keys), and
   each `sentry` test asserts it is passed to `init`.
-- **Native shells (Capacitor / Electron) drop Session Replay + browser tracing**
-  (`nativeShell=true`, passed via `isNativeShell()` from `main.ts`): both instrument the
+- **The Capacitor apps (Android, TV, iOS) load no Sentry at all (#1502).** `main.ts` passes
+  `isNativePlatform()` as `capacitor`, and `loadSentry` returns before the dynamic import. Passing
+  `integrations: []` was not enough: Sentry 11 *merges* a user array with its defaults, and those
+  include `browserSessionIntegration`, so every launch sent a session to sentry.io — F-Droid's
+  Tracking anti-feature, found while preparing the F-Droid submission. The SDK stays in the shared
+  web bundle as a lazy chunk that never loads there.
+- **Electron drops Session Replay + browser tracing**
+  (`nativeShell=true`, passed via `isNativeShell()` from `main.ts`; this once covered Capacitor
+  too): both instrument the
   WebView main thread heavily (rrweb DOM recording, wrapping every fetch/XHR) — the prime
   suspect for the Android **release** ANR on an offline launch, where they churned on the
   failing offline requests. Error reporting is kept; only replay/tracing (and their sample
