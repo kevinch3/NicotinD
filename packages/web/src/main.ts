@@ -4,7 +4,7 @@ import { App } from './app/app';
 import { environment } from './environments/environment';
 import { loadSentry } from './app/observability/sentry';
 import { installStartupErrorCapture, captureError } from './app/observability/error-buffer';
-import { isNativeShell, applyTvBuildClass, isTvBuild } from './app/lib/platform';
+import { isNativeShell, isNativePlatform, applyTvBuildClass, isTvBuild } from './app/lib/platform';
 import { clearStaleChunkMarker } from './app/lib/stale-chunk';
 import { applyOverscan, loadOverscanPreset } from './app/lib/tv-overscan';
 import { captureInstallPrompt } from './app/lib/install-prompt';
@@ -25,9 +25,10 @@ if (isTvBuild()) applyOverscan(loadOverscanPreset());
 // to exist before Angular does — InstallPromptService reads the stash later.
 if (!isNativeShell()) captureInstallPrompt();
 
-// Native shells get a trimmed init (no Session Replay / tracing) — see loadSentry.
+// Electron gets a trimmed init (no Session Replay / tracing); the Capacitor apps
+// get none at all — see loadSentry.
 function startSentry(): void {
-  loadSentry(environment, pkg.version, isNativeShell()).catch((err) =>
+  loadSentry(environment, pkg.version, isNativeShell(), isNativePlatform()).catch((err) =>
     console.error('Sentry load failed', err),
   );
 }

@@ -50,6 +50,19 @@ describe('loadSentry', () => {
     expect(Sentry.replayIntegration).toHaveBeenCalled();
   });
 
+  // #1502: the F-Droid APKs must not contact sentry.io — the SDK's default
+  // session integration alone sends one envelope per launch.
+  it('never loads the SDK inside the Capacitor apps, even with a DSN', async () => {
+    const result = await loadSentry(
+      { production: true, sentryDsn: 'https://abc@o1.ingest.sentry.io/1' },
+      '1.2.3',
+      true,
+      true,
+    );
+    expect(result).toBe(false);
+    expect(Sentry.init).not.toHaveBeenCalled();
+  });
+
   it('drops Session Replay + browser tracing on native shells', async () => {
     // Regression: rrweb DOM recording + fetch/XHR wrapping on the WebView main
     // thread (running before bootstrap, churning on failing offline requests) was
