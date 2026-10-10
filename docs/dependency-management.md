@@ -48,7 +48,7 @@ analysis spawned a worker per call (#1395), e2e shards lost their server mid-run
 days, one blocking a release). The desktop app ships the packaging job's own `bun`
 (`prepare-resources.ts`), so its users ran 1.3.11 too. Reproduced locally with the real analysis
 worker (1,500 spawn→analyse→terminate cycles, 6 concurrent): **1.3.11 crashed 3 of 6 runs, 1.3.14
-0 of 12, 1.4.2 0 of 4.** Bump the image, the workflows and the F-Droid recipes' `bun` download + sha256 together: the parity test and `check:fdroid` fail on any one alone.
+0 of 12, 1.4.2 0 of 4.** Bump the image, the workflows and the F-Droid recipes' `npm -g install bun@<version>` together: the parity test and `check:fdroid` fail on any one alone.
 
 ## Security floors (`overrides`)
 
