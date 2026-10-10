@@ -1,5 +1,5 @@
 import { Injectable, signal } from '@angular/core';
-import { DEFAULT_SERVER_URL, normalizeServerUrl, buildApiUrl, buildWsUrl } from '../lib/server-url';
+import { normalizeServerUrl, buildApiUrl, buildWsUrl } from '../lib/server-url';
 import { isNativePlatform } from '../lib/platform';
 import { probeOggOpus, type OggSupport } from '../lib/ogg-support';
 import {
@@ -17,19 +17,16 @@ const STORAGE_KEY = 'nicotind_server_url';
 
 /**
  * Holds the API base URL. On the web build this stays '' (same-origin, relative
- * paths — unchanged behavior). In the native (Capacitor) shell it defaults to the
- * canonical self-hosted server and is user-overridable via the server-picker
- * screen. `apiUrl()`/`wsUrl()` turn the app's relative `/api` paths absolute so
+ * paths — unchanged behavior). In the native (Capacitor) shell it is whatever the
+ * user picked on the server-picker screen, and '' until they have. `apiUrl()`/`wsUrl()` turn the app's relative `/api` paths absolute so
  * the bundled WebView app can reach a remote self-hosted server.
  */
 @Injectable({ providedIn: 'root' })
 export class ServerConfigService {
   readonly native = isNativePlatform();
-  // Native first launch (no stored choice) seeds the canonical server so the app
-  // is usable out of the box; the user can still change it on the picker screen.
-  readonly baseUrl = signal<string>(
-    localStorage.getItem(STORAGE_KEY) ?? (this.native ? DEFAULT_SERVER_URL : ''),
-  );
+  // No default server: a fresh native install contacts nothing until the user
+  // picks one (#1500, raised in F-Droid review).
+  readonly baseUrl = signal<string>(localStorage.getItem(STORAGE_KEY) ?? '');
 
   /** Known servers, most recently used first (native server-picker list). */
   readonly servers = signal<SavedServer[]>(loadServers(localStorage));

@@ -8,6 +8,20 @@ describe('ServerConfigService', () => {
     svc = new ServerConfigService();
   });
 
+  // #1500: a fresh native install used to start pointed at the author's
+  // instance, and the boot probe contacted it before the user chose anything.
+  it('starts a fresh native install with no server, needing configuration', () => {
+    const g = globalThis as { Capacitor?: unknown };
+    g.Capacitor = { isNativePlatform: () => true };
+    try {
+      const native = new ServerConfigService();
+      expect(native.baseUrl()).toBe('');
+      expect(native.needsConfiguration()).toBe(true);
+    } finally {
+      delete g.Capacitor;
+    }
+  });
+
   it('builds a same-origin stream URL with the token and an ngsw-bypass flag', () => {
     const url = svc.streamUrl('abc123', 'tok');
     expect(url).toBe('/api/stream/abc123?token=tok&ngsw-bypass=1');

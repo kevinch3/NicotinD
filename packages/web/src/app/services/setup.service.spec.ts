@@ -5,6 +5,7 @@ import { Observable, of, throwError } from 'rxjs';
 import { SetupService, SERVER_RECOVERY_POLL_MS } from './setup.service';
 import { SystemApiService } from './api/system-api.service';
 import { NetworkStatusService } from './network-status.service';
+import { ServerConfigService } from './server-config.service';
 import type { SetupStatus } from './api/api-types';
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -19,6 +20,7 @@ function configure(
   online: boolean,
   api: ReturnType<typeof makeApi>,
   whenReady: () => Promise<void> = () => Promise.resolve(),
+  needsConfiguration = false,
 ) {
   const reconnects = signal(0);
   const onlineSig = signal(online);
@@ -40,6 +42,10 @@ function configure(
       SetupService,
       { provide: SystemApiService, useValue: api },
       { provide: NetworkStatusService, useValue: net as unknown as NetworkStatusService },
+      {
+        provide: ServerConfigService,
+        useValue: { needsConfiguration: () => needsConfiguration } as ServerConfigService,
+      },
     ],
   });
   return { svc: TestBed.inject(SetupService), net };
@@ -48,6 +54,24 @@ function configure(
 const okStatus = (needsSetup: boolean) => () => of({ needsSetup } as SetupStatus);
 
 describe('SetupService', () => {
+  // #1500: with no server chosen, every probe path must stay silent — the boot
+  // probe is what contacted a host the user never picked.
+  it('never probes while no server has been chosen', async () => {
+    const api = makeApi(okStatus(false));
+    const { svc, net } = configure(true, api, undefined, true);
+
+    await svc.check();
+    svc.reportServerFailure();
+    net.setOnline(false);
+    net.setOnline(true);
+    TestBed.tick();
+    await flush();
+
+    expect(api.getSetupStatus).not.toHaveBeenCalled();
+    expect(svc.checked()).toBe(true);
+    expect(svc.isOffline()).toBe(false);
+  });
+
   it('skips the HTTP probe entirely and is offline when the device reports offline', async () => {
     // Regression: an offline launch previously blocked bootstrap on a ~3s setup
     // probe (blank WebView → Android ANR). Offline is now known up front.

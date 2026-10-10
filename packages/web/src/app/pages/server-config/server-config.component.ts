@@ -3,12 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { ServerConfigService } from '../../services/server-config.service';
 import { AuthService } from '../../services/auth.service';
-import {
-  DEFAULT_SERVER_URL,
-  normalizeServerUrl,
-  buildApiUrl,
-  isHealthyResponse,
-} from '../../lib/server-url';
+import { normalizeServerUrl, buildApiUrl, isHealthyResponse } from '../../lib/server-url';
 import {
   parsePairingPayload,
   probeCandidates,
@@ -22,7 +17,7 @@ import { errorMessageForCode } from '../../lib/http-error';
 
 /**
  * Server-picker screen (native shell). Lets the user point the app at any
- * self-hosted NicotinD server, defaulting to the canonical instance. Validates
+ * self-hosted NicotinD server; the field starts empty (#1500). Validates
  * the entry against `GET /api/health` before persisting and routing to login.
  * Never shown on web (guarded by serverGuard → needsConfiguration() is false).
  *
@@ -63,12 +58,6 @@ export class ServerConfigComponent {
 
   /** The add-server form is shown directly when there's nothing saved yet. */
   readonly formVisible = computed(() => this.showAddForm() || this.servers().length === 0);
-
-  constructor() {
-    // Pre-fill the form with the canonical default only on a fresh install —
-    // an added server should start from a blank field.
-    if (this.servers().length === 0) this.url = this.server.baseUrl() || DEFAULT_SERVER_URL;
-  }
 
   back(): void {
     this.router.navigateByUrl('/settings');
