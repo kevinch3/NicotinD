@@ -246,8 +246,16 @@ describe('UpdateService', () => {
       await vi.waitFor(() => expect(service.enabled()).toBe(false));
     });
 
+    // #1503: root/Shizuku installs of F-Droid clients report these.
+    for (const installer of ['com.android.shell', null]) {
+      it(`hides itself for installer ${installer} — not a sideload`, async () => {
+        const service = provideNativeWithInstaller(installer);
+        await vi.waitFor(() => expect(service.enabled()).toBe(false));
+      });
+    }
+
     it('stays enabled for a sideload, where it is the only update path', async () => {
-      const service = provideNativeWithInstaller(null);
+      const service = provideNativeWithInstaller('com.google.android.packageinstaller');
       await vi.waitFor(() =>
         expect(
           (
