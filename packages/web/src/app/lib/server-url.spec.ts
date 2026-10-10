@@ -1,11 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  DEFAULT_SERVER_URL,
-  normalizeServerUrl,
-  buildApiUrl,
-  buildWsUrl,
-  isHealthyResponse,
-} from './server-url';
+import { normalizeServerUrl, buildApiUrl, buildWsUrl, isHealthyResponse } from './server-url';
 
 describe('normalizeServerUrl', () => {
   it('returns empty for blank input (web same-origin sentinel)', () => {
@@ -32,10 +26,6 @@ describe('normalizeServerUrl', () => {
 
   it('returns empty for unparseable input', () => {
     expect(normalizeServerUrl('http://')).toBe('');
-  });
-
-  it('the default constant is a clean origin', () => {
-    expect(normalizeServerUrl(DEFAULT_SERVER_URL)).toBe(DEFAULT_SERVER_URL);
   });
 });
 

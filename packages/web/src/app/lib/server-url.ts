@@ -1,11 +1,9 @@
 // Server-URL helpers for the self-hosted/native app. On the web build the app is
 // served same-origin and `baseUrl` is '' (relative paths, unchanged behavior). In
 // the Capacitor Android shell there is no same-origin server, so the user picks a
-// server (default below) and every `/api`/`/rest` request is rewritten to absolute.
+// server and every `/api`/`/rest` request is rewritten to absolute.
 // Kept pure + DI-free so the logic is unit-testable without Angular (the web JIT
 // test runner can't drive component input() signals — see project memory).
-
-export const DEFAULT_SERVER_URL = 'https://nicotined.kevinroberts.ar';
 
 /**
  * Normalize user-entered server input into a canonical origin: trims, defaults to

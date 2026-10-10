@@ -2,6 +2,7 @@ import { Injectable, inject, signal, computed, effect, untracked } from '@angula
 import { SystemApiService } from './api/system-api.service';
 import type { SetupStatus } from './api/api-types';
 import { NetworkStatusService } from './network-status.service';
+import { ServerConfigService } from './server-config.service';
 import { firstValueFrom, timeout } from 'rxjs';
 
 /**
@@ -30,6 +31,7 @@ const PROBE_TIMEOUT_MS = 3000;
 export class SetupService {
   private api = inject(SystemApiService);
   private network = inject(NetworkStatusService);
+  private server = inject(ServerConfigService);
 
   readonly status = signal<SetupStatus | null>(null);
   readonly checked = signal(false);
@@ -142,6 +144,10 @@ export class SetupService {
    * exists exactly once.
    */
   private async verify(): Promise<void> {
+    // No server chosen yet (fresh native install): there is nothing to probe,
+    // and probing anyway is how a first launch contacted a host the user never
+    // picked (#1500).
+    if (this.server.needsConfiguration()) return;
     // A concurrent call is *coalesced*, not dropped. Dropping it stranded the
     // app offline for a full recovery period: a probe started while the device
     // was still down is doomed, and if the reconnect fired while that one was

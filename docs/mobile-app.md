@@ -1,8 +1,9 @@
 # Mobile app (Capacitor Android)
 
 NicotinD ships a native **Android app** that wraps the existing Angular web UI in a
-[Capacitor](https://capacitorjs.com/) shell. It connects to any self-hosted NicotinD server
-(default `https://nicotined.kevinroberts.ar`) and adds native value on top of the web — chiefly
+[Capacitor](https://capacitorjs.com/) shell. It connects to any self-hosted NicotinD server the
+user picks — there is no default, and nothing is contacted before that choice (#1500) — and adds
+native value on top of the web — chiefly
 **background audio with lock-screen controls**.
 
 ## Why wrap instead of going native (the Immich divergence)
@@ -77,8 +78,8 @@ same-origin server, so this was made runtime-configurable — safe on web (a no-
 native:
 
 - **`ServerConfigService`** (`packages/web/src/app/services/server-config.service.ts`) holds the API
-  `baseUrl` (persisted in `localStorage`). It is `''` on web (relative, unchanged) and defaults to the
-  canonical server on native. `apiUrl(path)` / `wsUrl(path)` turn `/api`…/`/rest`… paths absolute. Pure
+  `baseUrl` (persisted in `localStorage`). It is `''` on web (relative, unchanged) and on a fresh
+  native install, until the user picks a server — there is no default (#1500). `apiUrl(path)` / `wsUrl(path)` turn `/api`…/`/rest`… paths absolute. Pure
   URL logic lives in `lib/server-url.ts` (`normalizeServerUrl`, `buildApiUrl`, `buildWsUrl`,
   `isHealthyResponse`) and platform detection in `lib/platform.ts` (`isNativePlatform()` reads
   Capacitor's injected global — **no `@capacitor/core` dependency in the web bundle**, so the same
@@ -93,7 +94,10 @@ native:
 - **Server-picker screen** (`pages/server-config/`, route `/server`): validates the entry against
   `GET /api/health`, persists, routes to `/login`. **`serverGuard`** (`guards/auth.guard.ts`) forces it on
   native first launch (`needsConfiguration()`); on web `needsConfiguration()` is always false, so the
-  picker **never appears** and the existing e2e suite is unaffected.
+  picker **never appears** and the existing e2e suite is unaffected. While it is true, `SetupService`
+  never probes: the initializer's setup probe runs before `serverGuard`, and with the old default it
+  contacted the author's instance on every fresh install — found in F-Droid review, where a
+  PCAPdroid run is part of the tester checklist (#1500).
 - **QR device pairing** (see [device-pairing.md](device-pairing.md)): the server shows a
   Link-a-device QR whose link opens its own `/pair` page, so the **OS camera app** connects a phone
   and signs it in in one scan. There is no in-app scanner — #1168 removed it with
@@ -120,7 +124,7 @@ native:
 
 Offline used to be inferred **once**, at boot, from the startup setup probe failing — with **no**
 `navigator.onLine`, no window online/offline listeners, and no `@capacitor/network`. On an offline
-**launch** the native default server (`DEFAULT_SERVER_URL`) is unreachable, so bootstrap blocked on the
+**launch** the configured server is unreachable, so bootstrap blocked on the
 `SetupService.check()` probe for its full ~3 s timeout on a blank WebView, which on slower devices read
 as **"app not responding" (ANR) → close-after-a-blink**. The offline state also never updated at
 runtime, so dropping the network mid-session never re-routed the UI to on-device tracks.
@@ -752,7 +756,7 @@ bunx cap sync android                      # copy web + plugins into android/
 bunx cap run android                       # build & launch on device/emulator
 ```
 
-The app opens to the **server-picker** (default `https://nicotined.kevinroberts.ar`); connect → login →
+The app opens to the **server-picker** (empty field); connect → login →
 browse → play.
 
 ## Release & signing
