@@ -15,7 +15,7 @@ allowlist, no manifest overlay.
 | Policy | How it is satisfied |
 | --- | --- |
 | Prebuilt binaries are trusted only from Debian, Maven Central, Google Maven, OSS Sonatype, OSS JFrog, JitPack and Clojars | `@capacitor/barcode-scanner`'s native lib came from OutSystems' private Azure Maven feed. #1168 removed the plugin outright rather than working around it — see mobile-app.md "The QR scanner, and why it is gone". |
-| An app must not download executable binaries without opt-in consent explaining it bypasses F-Droid's checks | The self-updater is **hidden at runtime** when a store installed the app: `getInstallerPackage` (the apk-update plugin) + `isStoreManagedInstaller` (`lib/apk-update.ts`). A sideload keeps it, because there it is the only update path. |
+| An app must not download executable binaries without opt-in consent explaining it bypasses F-Droid's checks | The self-updater **shows only for a sideload**: `getInstallerPackage` (the apk-update plugin) + `isSideloadInstaller` (`lib/apk-update.ts`), true only when Android's own package installer installed the app. Every store, tool or unknown installer hides it. |
 | "All applications must have their own distinct Android Application ID" | The TV build carries `.tv` on every channel (`androidAppId`), so phone and TV are two entries. |
 
 ### Why runtime rather than a build flavour
@@ -25,10 +25,15 @@ release lane produced **four** APKs. Who installed the app is a fact the system 
 #1168 asks it instead — and the same binary is then correct in both channels. `REQUEST_INSTALL_PACKAGES`
 stays declared because the sideloaded copy genuinely needs it.
 
-The list in `isStoreManagedInstaller` covers the F-Droid **clients** people use (F-Droid, F-Droid
-Basic, Droid-ify, Neo Store), not just the official one. An unlisted client keeps the in-app
-updater, which is the safe direction to be wrong in: the opposite error strands a sideloading user on
-an old build with no way to move.
+**An allowlist, not a blocklist (#1503).** The first version hid the updater for a list of F-Droid
+clients (F-Droid, F-Droid Basic, Droid-ify, Neo Store). An F-Droid reviewer pointed out that those
+same clients installing through root or Shizuku report `com.android.shell` or no installer, so the
+updater still appeared beside the store. `isSideloadInstaller` instead matches `*.packageinstaller`
+— Android's own installer, which is what a downloaded APK *and* our `ACTION_VIEW` self-update
+report (OEMs ship their own, e.g. `com.miui.packageinstaller`). Its failure mode is a device that
+reports no installer for a plain sideload: it loses the button and updates from the release page or
+our F-Droid repo instead. A shell too old to have `getInstallerPackage` keeps the button — it
+predates F-Droid, so it can only be a sideload.
 
 ### Migration, once
 

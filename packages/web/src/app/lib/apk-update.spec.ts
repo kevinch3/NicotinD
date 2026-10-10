@@ -1,9 +1,4 @@
-import {
-  apkAssetUrl,
-  apkFileName,
-  isStoreManagedInstaller,
-  parseLatestRelease,
-} from './apk-update';
+import { apkAssetUrl, apkFileName, isSideloadInstaller, parseLatestRelease } from './apk-update';
 
 describe('apk-update helpers (sideloaded APK self-update from GitHub releases)', () => {
   it('parses the latest-release version, stripping the v prefix', () => {
@@ -34,34 +29,39 @@ describe('apk-update helpers (sideloaded APK self-update from GitHub releases)',
   });
 });
 
-describe('isStoreManagedInstaller', () => {
-  it('recognises F-Droid and the clients people actually use', () => {
-    // One APK serves both channels since #1168, so this decides at runtime what
-    // used to be a build flavor. Forks matter: most F-Droid users are not on the
-    // official client.
+describe('isSideloadInstaller', () => {
+  it("recognises Android's own package installer, OEM variants included", () => {
+    // A downloaded APK and our ACTION_VIEW self-update both report it.
+    for (const installer of [
+      'com.google.android.packageinstaller',
+      'com.android.packageinstaller',
+      'com.miui.packageinstaller',
+    ]) {
+      expect(isSideloadInstaller(installer), installer).toBe(true);
+    }
+  });
+
+  // #1503: the blocklist this replaced missed F-Droid clients installing via
+  // root/Shizuku, which report the shell or no installer at all.
+  it('treats every store, tool and unknown installer as not a sideload', () => {
     for (const installer of [
       'org.fdroid.fdroid',
       'org.fdroid.basic',
       'com.looker.droidify',
       'com.machiav3lli.fdroid',
+      'com.android.vending',
+      'com.android.shell',
+      'org.fdroid.fdroid.privileged',
+      '',
     ]) {
-      expect(isStoreManagedInstaller(installer), installer).toBe(true);
+      expect(isSideloadInstaller(installer), installer).toBe(false);
     }
+    expect(isSideloadInstaller(null)).toBe(false);
+    expect(isSideloadInstaller(undefined)).toBe(false);
   });
 
-  it('treats an unknown or absent installer as a sideload', () => {
-    // Failing this way leaves the in-app updater available. The opposite error
-    // strands a sideloading user on an old build with no way to move.
-    expect(isStoreManagedInstaller(null)).toBe(false);
-    expect(isStoreManagedInstaller(undefined)).toBe(false);
-    expect(isStoreManagedInstaller('')).toBe(false);
-    expect(isStoreManagedInstaller('com.android.packageinstaller')).toBe(false);
-    expect(isStoreManagedInstaller('org.fdroid.fdroid.privileged')).toBe(false);
-  });
-
-  it('does not match on a substring', () => {
-    // 'com.evil.org.fdroid.fdroid' is not F-Droid.
-    expect(isStoreManagedInstaller('com.evil.org.fdroid.fdroid')).toBe(false);
-    expect(isStoreManagedInstaller('org.fdroid')).toBe(false);
+  it('matches the whole name, not a substring', () => {
+    expect(isSideloadInstaller('packageinstaller')).toBe(false);
+    expect(isSideloadInstaller('com.android.packageinstaller.evil')).toBe(false);
   });
 });

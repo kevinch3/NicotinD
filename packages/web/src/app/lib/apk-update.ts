@@ -33,35 +33,23 @@ export function apkAssetUrl(version: string, tv: boolean): string {
 }
 
 /**
- * Package names of app stores that manage updates for what they installed.
+ * True when Android's own package installer installed this app: a downloaded
+ * APK, or our own `ACTION_VIEW` self-update (#1503). That is the one case where
+ * nothing else will update it.
  *
- * Since #1168 there is ONE Android APK: the same binary is sideloaded from
- * GitHub releases and served from our F-Droid repository. Self-updating is
- * right for the first and wrong for the second — F-Droid updates what it
- * installed, and offering a second path beside it means two update prompts and
- * an in-app one that bypasses the store's own integrity checks.
+ * Since #1168 there is ONE Android APK, sideloaded from GitHub releases and
+ * served from F-Droid, so who installed it decides whether the in-app updater
+ * appears. This used to be a blocklist of store clients, which missed the
+ * root/Shizuku installs of those same clients — they report `com.android.shell`
+ * or no installer at all — and an F-Droid reviewer caught it. An allowlist
+ * fails the other way: a device that reports no installer for a plain sideload
+ * loses the button, and still updates from the release page or our F-Droid repo.
  *
- * Asking the system who installed us is what replaced a build flavor here, so
- * the list has to cover the F-Droid *clients* people actually use, not just the
- * official one; an unlisted fork simply keeps the in-app updater, which is the
- * safe direction to be wrong in.
+ * OEMs ship their own installer (`com.miui.packageinstaller`, …), hence the
+ * suffix rather than a list.
  */
-const STORE_MANAGED_INSTALLERS = new Set([
-  'org.fdroid.fdroid', // F-Droid
-  'org.fdroid.basic', // F-Droid Basic
-  'com.looker.droidify', // Droid-ify
-  'com.machiav3lli.fdroid', // Neo Store
-  'com.android.vending', // Play Store, for completeness
-]);
-
-/**
- * True when `installer` is a store that will update this app itself, so the
- * in-app updater should stay hidden.
- *
- * A null/unknown installer means a sideload (or a platform that will not say),
- * and that keeps self-update available — the failure mode of guessing wrong here is
- * a user stranded on an old build with no way to move.
- */
-export function isStoreManagedInstaller(installer: string | null | undefined): boolean {
-  return installer !== null && installer !== undefined && STORE_MANAGED_INSTALLERS.has(installer);
+export function isSideloadInstaller(installer: string | null | undefined): boolean {
+  return (
+    typeof installer === 'string' && /^[a-z0-9_]+(\.[a-z0-9_]+)*\.packageinstaller$/.test(installer)
+  );
 }

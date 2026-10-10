@@ -16,7 +16,7 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   file's. → [api-routes.md](../api-routes.md)
 - **One APK per form factor, F-Droid included**: no build flavour — the single build is
   policy-clean and hides its self-updater at runtime via `getInstallerPackage` +
-  `isStoreManagedInstaller`; `androidAppId` gives TV its own id. → [fdroid.md](../fdroid.md)
+  `isSideloadInstaller`; `androidAppId` gives TV its own id. → [fdroid.md](../fdroid.md)
 - **Own signed F-Droid repository**: `build-fdroid-repo.ts` + `FDROID_APPS` assemble and sign it
   from the release's APKs; `pages.yml` publishes it beside the Storybook catalog.
   → [fdroid.md](../fdroid.md)

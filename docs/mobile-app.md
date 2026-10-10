@@ -797,7 +797,8 @@ The sideloaded APK has no store channel, so the app updates **itself**: Settings
 **Check for updates** (the same button the PWA uses; `UpdateService.enabled` is true on the native
 Android shell even without a service worker). **Sideloaded** is the operative word — the same binary
 installed from our F-Droid repository hides this control, because F-Droid is then the updater; the
-runtime check is `getInstallerPackage` + `isStoreManagedInstaller` → [fdroid.md](fdroid.md). The
+runtime check is `getInstallerPackage` + `isSideloadInstaller`, an allowlist of Android's own
+package installer (#1503) → [fdroid.md](fdroid.md). The
 native check fetches
 `api.github.com/…/releases/latest` directly (unauthenticated, CORS-open; the same endpoint the
 server's daily update-check polls) and compares the tag against the build's `APP_VERSION` via the
