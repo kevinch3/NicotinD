@@ -1,0 +1,3 @@
+• mobile: contact no server before the user picks one (#1501)
+• mobile: load no Sentry in the Capacitor apps, which sent a session per launch (#1504)
+• mobile: show the in-app updater only for a sideload, not for every non-store installer (#1505)

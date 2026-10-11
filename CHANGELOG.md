@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.111](https://github.com/kevinch3/NicotinD/compare/v0.8.110...v0.8.111) (2026-10-11)
+
+### Bug Fixes
+
+* **mobile:** contact no server before the user picks one ([#1501](https://github.com/kevinch3/NicotinD/issues/1501)) ([9a5b1e2](https://github.com/kevinch3/NicotinD/commit/9a5b1e2ebd7ac28d2bb3952ab61514e5358726a3))
+* **mobile:** load no Sentry in the Capacitor apps, which sent a session per launch ([#1504](https://github.com/kevinch3/NicotinD/issues/1504)) ([7260836](https://github.com/kevinch3/NicotinD/commit/7260836129cd9dc1e8d3dc8924d3944e34c8024a))
+* **mobile:** show the in-app updater only for a sideload, not for every non-store installer ([#1505](https://github.com/kevinch3/NicotinD/issues/1505)) ([dccc07b](https://github.com/kevinch3/NicotinD/commit/dccc07b0736a4a3a5496b1de2597b0733cb7303e))
 ## [0.8.110](https://github.com/kevinch3/NicotinD/compare/v0.8.109...v0.8.110) (2026-10-09)
 
 ### Bug Fixes
