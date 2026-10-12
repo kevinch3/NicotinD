@@ -33,9 +33,9 @@ Repo: https://github.com/kevinch3/NicotinD.git
 Binaries: https://github.com/kevinch3/NicotinD/releases/download/v%v/NicotinD-%v.apk
 
 Builds:
-  - versionName: 0.8.109
-    versionCode: 8109
-    commit: e123e93448d2b490f318efcad5d53592bb22c944
+  - versionName: 0.8.111
+    versionCode: 8111
+    commit: 1dfdff03b7b28aaf193841a1afaf91eba3456e63
     subdir: packages/mobile/android/app
     sudo:
       # Toolchain from Debian and npm only, the way fdroiddata's other JS apps
@@ -75,6 +75,6 @@ Builds:
 AutoUpdateMode: Version
 # Release tags only: four broken releases left `untagged-…` tags behind (#1493).
 UpdateCheckMode: Tags ^v[0-9.]+$
-CurrentVersion: 0.8.109
-CurrentVersionCode: 8109
+CurrentVersion: 0.8.111
+CurrentVersionCode: 8111
 AllowedAPKSigningKeys: 5bf701a0ff9a2cd75f279404d2c8b4bf16ed2bb8591709ae2c8560bc557d6bea
