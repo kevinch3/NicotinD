@@ -1243,6 +1243,21 @@ export function pendingIngestForAddonJob(
   return row ? pendingIngestCount(db, row.id) : 0;
 }
 
+/**
+ * The album's live acquisition, if any. `active` spans queued → downloading →
+ * organizing → scanning, so a job whose files are still landing counts.
+ */
+export function findActiveAlbumJob(db: Database, lidarrAlbumId: number): { id: string } | null {
+  return (
+    db
+      .query<{ id: string }, [number]>(
+        `SELECT id FROM acquisition_jobs WHERE state = 'active' AND lidarr_album_id = ?
+         ORDER BY created_at DESC LIMIT 1`,
+      )
+      .get(lidarrAlbumId) ?? null
+  );
+}
+
 /** Mirror of the hunt route's `?replace=true`: retire prior active jobs for the album. */
 export function supersedeActiveJobs(db: Database, target: { lidarrAlbumId: number }): void {
   db.run(
