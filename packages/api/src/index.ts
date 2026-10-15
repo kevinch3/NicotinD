@@ -43,6 +43,9 @@ import { shareRoutes } from './routes/share.js';
 import { radioPollAdminRoutes, radioPollPublicRoutes } from './routes/radio-polls.js';
 import { devicesRoutes } from './routes/devices.js';
 import { agentTokensRoutes } from './routes/agent-tokens.js';
+import { subsonicKeysRoutes } from './routes/subsonic-keys.js';
+import { openSubsonicRoutes } from './routes/opensubsonic.js';
+import { internalUpstream } from './services/opensubsonic-upstream.js';
 import { mcpRoutes } from './routes/mcp.js';
 import { remoteAccessRoutes } from './routes/remote-access.js';
 import { importRoutes } from './routes/import.js';
@@ -124,7 +127,7 @@ import { getLibraryFormatSettings } from './services/library-format-settings.js'
 import { AcoustIdLookup } from './services/acoustid-lookup.js';
 import { normalizeArtistForGrouping, normalizeForGrouping } from './services/album-grouping.js';
 import { createLogger } from '@nicotind/core';
-import { initDatabase } from './db.js';
+import { getDatabase, initDatabase } from './db.js';
 import { dirname, join } from 'node:path';
 import { createWebSocketHandlers } from './services/websocket.js';
 import { coalescedRun } from './services/coalesced-run.js';
@@ -650,6 +653,8 @@ export function createApp({
   // runs behind the normal JWT auth. `/api/mcp` is deliberately NOT here — it
   // authenticates with the agent token itself, not a JWT.
   app.use('/api/agent-tokens/*', auth);
+  // OpenSubsonic API keys: self-service, any signed-in user (docs/opensubsonic.md).
+  app.use('/api/subsonic-keys/*', auth);
   // Deployment kill-switch (#235): the whole acquisition surface hard-404s when
   // the install disabled acquisition. Mounted after auth so 401 still precedes
   // 404. `/api/search` is deliberately NOT here — it must keep returning library
@@ -716,6 +721,20 @@ export function createApp({
   );
   // MCP agent (issue #232): agent-token-authenticated (not JWT), refiner-capped.
   app.route('/api/agent-tokens', agentTokensRoutes());
+  app.route('/api/subsonic-keys', subsonicKeysRoutes(getDatabase));
+  // OpenSubsonic (docs/opensubsonic.md): outside /api because every Subsonic
+  // client hard-codes /rest. It authenticates each call with an API key itself,
+  // then runs it against this same app as the key's owner.
+  const librarySearch = new LibrarySearchProvider(db);
+  app.route(
+    '/rest',
+    openSubsonicRoutes({
+      getDb: getDatabase,
+      serverVersion: version ?? 'dev',
+      upstream: internalUpstream((req) => app.fetch(req), config.jwt.secret),
+      searchLibrary: async (q) => (await librarySearch.search(q)).results,
+    }),
+  );
   app.route(
     '/api/mcp',
     mcpRoutes(

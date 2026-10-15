@@ -3,7 +3,7 @@ import { songOrderBy } from './song-sort.js';
 
 describe('songOrderBy', () => {
   it('orders by title (case-insensitive) for sort=title', () => {
-    expect(songOrderBy('title')).toBe('s.title COLLATE NOCASE ASC');
+    expect(songOrderBy('title')).toBe('s.title COLLATE NOCASE ASC, s.id');
   });
 
   it('groups by album then disc/track for sort=album', () => {
@@ -12,9 +12,13 @@ describe('songOrderBy', () => {
   });
 
   it('defaults to newest-first for unknown / missing sort (no raw input leaks)', () => {
-    const newest = 's.created DESC, s.title COLLATE NOCASE ASC';
+    const newest = 's.created DESC, s.title COLLATE NOCASE ASC, s.id';
     expect(songOrderBy('newest')).toBe(newest);
     expect(songOrderBy('')).toBe(newest);
     expect(songOrderBy('; DROP TABLE library_songs')).toBe(newest);
+  });
+
+  it('ends every order on the unique id, so paging is stable across ties', () => {
+    for (const sort of ['title', 'album', 'newest']) expect(songOrderBy(sort)).toEndWith(', s.id');
   });
 });

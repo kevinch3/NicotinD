@@ -26,6 +26,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   bearer capped at refiner (`AGENT_EFFECTIVE_ROLE`); `checkToolAccess` gates scope + destructive
   confirm and `dispatchTool` audits writes. Shared mutation modules (`library-deletion.ts` …
   `album-cover-mutate.ts`) back HTTP and MCP alike. → [mcp-agent.md](../mcp-agent.md)
+- **OpenSubsonic API**: `/rest/*` for Music Assistant and Subsonic apps, signed in with a revocable
+  `subsonic_api_keys` key (`verifySubsonicKey`); `openSubsonicRoutes` translates each method onto
+  `/api` as the owner via `internalUpstream`. → [opensubsonic.md](../opensubsonic.md)
 - **Curator origin + rare-genre tools**: `get_artist` returns origin *and* mbid (a wrong origin is
   usually an inherited wrong MBID); `set_artist_origin` writes the shared `mutateArtistOrigin`,
   `set_artist_mbid` fixes the cause behind it, and `get_rare_genres` (`rareGenres`) surfaces
