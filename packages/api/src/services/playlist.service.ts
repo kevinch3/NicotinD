@@ -430,4 +430,17 @@ export class PlaylistService {
       .all(userId)
       .map((r) => r.song_id);
   }
+
+  /** Liked song id → when it was liked (epoch ms), for OpenSubsonic `starred`. */
+  likedSongDates(userId: string): Map<string, number> {
+    const rows = this.db
+      .query<{ song_id: string; added_at: number }, [string]>(
+        `SELECT ps.song_id, ps.added_at
+           FROM playlist_songs ps
+           JOIN playlists p ON p.id = ps.playlist_id
+          WHERE p.user_id = ? AND p.kind = 'liked'`,
+      )
+      .all(userId);
+    return new Map(rows.map((r) => [r.song_id, r.added_at]));
+  }
 }

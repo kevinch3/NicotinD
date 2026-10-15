@@ -707,6 +707,23 @@ export interface AgentTokenMintResponse {
   token: string;
 }
 
+// ── OpenSubsonic API keys (docs/opensubsonic.md) ─────────────────────────
+
+/** A live key as listed — never carries the secret. */
+export interface SubsonicKeyRow {
+  id: string;
+  name: string;
+  createdAt: number;
+  lastUsedAt: number | null;
+}
+
+/** Response to a mint call — `key` is the raw secret, shown exactly once. */
+export interface SubsonicKeyMintResponse {
+  id: string;
+  name: string;
+  key: string;
+}
+
 // ── Library fragmentation diagnostic (admin) ──────────────────────────────
 //
 // `GET /api/library/fragments` reports the three defect classes that turn
