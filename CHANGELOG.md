@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.112](https://github.com/kevinch3/NicotinD/compare/v0.8.111...v0.8.112) (2026-10-16)
+
+### Features
+
+* **api:** serve an OpenSubsonic API at /rest for Music Assistant and Subsonic apps ([#1513](https://github.com/kevinch3/NicotinD/issues/1513)) ([89dd3a0](https://github.com/kevinch3/NicotinD/commit/89dd3a0ac032077a04b9d67e9416d2e3ae4eb890))
 ## [0.8.111](https://github.com/kevinch3/NicotinD/compare/v0.8.110...v0.8.111) (2026-10-11)
 
 ### Bug Fixes
