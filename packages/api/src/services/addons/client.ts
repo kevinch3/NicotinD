@@ -246,8 +246,22 @@ export class AddonClient implements AddonTransport {
       json: req,
       timeoutMs: 180_000,
       headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
-    })) as { job: AddonJob };
-    return body.job;
+    })) as { job: AddonJob | null } | null;
+    const job = body?.job ?? null;
+    // A keyed replay answers with whatever job the key last minted — `null`
+    // once that job was deleted, a dead one once it was cancelled (#1507). The
+    // key is a lost-response guard, not "this album may never be fetched again",
+    // so ask afresh; the addon's own per-album active-job 409 still dedupes.
+    // Only answers a fresh create can never give, so no addon is asked twice.
+    if (idempotencyKey && (!job || job.state === 'cancelled')) {
+      this.log.info(
+        { baseUrl: this.baseUrl, idempotencyKey, replayedState: job?.state ?? null },
+        'idempotency key replayed a dead job — re-issuing without it',
+      );
+      return this.createJob(req);
+    }
+    if (!job) throw new AddonContractError('createJob answered without a job');
+    return job;
   }
 
   async listJobs(sinceMs?: number): Promise<AddonJob[]> {
