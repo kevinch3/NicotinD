@@ -29,13 +29,15 @@
                 <span class="ml-2 text-status-progress normal-case font-normal">{{ activeFeedCount() }} in progress</span>
               }
             </h2>
-            <div class="flex items-center gap-3">
-              @if (activeFeedCount() > 0) {
-                <button (click)="cancelAll()" class="text-xs text-status-error hover:text-status-error transition">{{ 'downloads.cancelAll' | t }}</button>
-              }
-              @if (clearableFeedCount() > 0) {
-                <button (click)="clearAllFinished()" class="text-xs text-theme-muted hover:text-theme-secondary transition">{{ 'downloads.clearFinished' | t }}</button>
-              }
+            <!-- Fixed slots (#1506): a button that does not apply is hidden in
+                 place, never removed, so the other can't slide under a click. -->
+            <div class="flex items-center gap-6">
+              <button (click)="clearAllFinished()" data-testid="downloads-clear-finished"
+                [disabled]="clearableFeedCount() === 0" [class.invisible]="clearableFeedCount() === 0"
+                class="text-xs text-theme-muted hover:text-theme-secondary transition">{{ 'downloads.clearFinished' | t }}</button>
+              <button (click)="requestCancelAll()" data-testid="downloads-cancel-all"
+                [disabled]="cancellableFeedCount() === 0" [class.invisible]="cancellableFeedCount() === 0"
+                class="rounded-full border border-status-error/40 px-3 py-1 text-xs text-status-error hover:bg-status-error/10 transition">{{ 'downloads.cancelAll' | t }}</button>
             </div>
           </div>
           <div class="grid gap-2">
@@ -73,7 +75,7 @@
       @if (showConfirm()) {
         <app-confirm-dialog
           [message]="confirmMessage()"
-          confirmLabel="Remove"
+          [confirmLabel]="confirmLabel()"
           (confirm)="onConfirm()"
           (cancel)="onCancelConfirm()"
         >

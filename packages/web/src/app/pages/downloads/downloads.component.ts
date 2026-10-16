@@ -83,14 +83,17 @@ export class DownloadsComponent {
   );
   readonly confirmOptionLabel = signal<string | null>(null);
   readonly confirmOptionChecked = signal(false);
+  readonly confirmLabel = signal('Remove');
   readonly showConfirm = computed(() => this.confirmCallback() !== null);
 
   private askConfirm(
     message: string,
     cb: (optionChecked: boolean) => void | Promise<void>,
     optionLabel?: string,
+    confirmLabel = 'Remove',
   ): void {
     this.confirmMessage.set(message);
+    this.confirmLabel.set(confirmLabel);
     this.confirmOptionLabel.set(optionLabel ?? null);
     this.confirmOptionChecked.set(false);
     this.confirmCallback.set(cb);
@@ -133,6 +136,11 @@ export class DownloadsComponent {
   readonly activeFeedCount = computed(
     () => this.downloadFeed().filter((i) => i.stage !== 'done' && i.stage !== 'error').length,
   );
+  /** The rows Cancel all would act on (#806) — also what its confirm counts. */
+  private readonly cancellableFeed = computed(() =>
+    this.downloadFeed().filter((i) => i.canCancel && !i.cancelRequested),
+  );
+  readonly cancellableFeedCount = computed(() => this.cancellableFeed().length);
   readonly clearableFeedCount = computed(
     () => this.downloadFeed().filter((i) => i.stage === 'done' || i.stage === 'error').length,
   );
@@ -325,12 +333,25 @@ export class DownloadsComponent {
     }
   }
 
+  /** The header button: never cancels outright (#1506) — re-queuing means
+   *  re-searching, and the button used to fire on a stray double-click. */
+  requestCancelAll(): void {
+    const count = this.cancellableFeedCount();
+    if (count === 0) return;
+    this.askConfirm(
+      this.i18n.t('downloads.cancelAllConfirm', { count }),
+      () => this.cancelAll(),
+      undefined,
+      this.i18n.t('downloads.cancelAll'),
+    );
+  }
+
   /** Cancel every in-flight card: addon jobs via their job endpoint, URL
    *  acquire jobs via their delete. Only genuinely cancellable rows (#806):
    *  the old any-non-terminal filter re-fired at `processing` jobs — which
    *  have nothing left to cancel — on every click. */
   async cancelAll(): Promise<void> {
-    const active = this.downloadFeed().filter((i) => i.canCancel && !i.cancelRequested);
+    const active = this.cancellableFeed();
     await Promise.all(
       active.map((i) =>
         i.kind === 'network' && i.jobId
