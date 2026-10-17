@@ -18,6 +18,7 @@ COPY packages/capacitor-tv-channels/package.json packages/capacitor-tv-channels/
 # desktop (Electron) is never built in the image, but it's a workspace member,
 # so its manifest must be present for the frozen lockfile to resolve.
 COPY packages/desktop/package.json packages/desktop/
+COPY packages/curator-runner/package.json packages/curator-runner/
 # Skip postinstall scripts — sharp's binary download fails in this stage and
 # generate-icons is never run in Docker (outputs are committed).
 RUN bun install --frozen-lockfile --ignore-scripts
@@ -107,6 +108,10 @@ COPY packages/capacitor-now-playing/package.json packages/capacitor-now-playing/
 COPY packages/capacitor-apk-update/package.json packages/capacitor-apk-update/
 COPY packages/capacitor-tv-channels/package.json packages/capacitor-tv-channels/
 COPY packages/desktop/package.json packages/desktop/
+# The unattended curation runner (#1516) rides this image rather than a second
+# one: the compose `curator` profile starts it with its own entrypoint. It has
+# no dependencies, so it adds only its source.
+COPY packages/curator-runner/ packages/curator-runner/
 COPY src/ src/
 
 # --production: do NOT install devDependencies.
@@ -139,7 +144,7 @@ COPY --from=web-builder /app/packages/web/dist packages/web/dist
 # the CI smoke test) it calls `mkdir /data` at startup, and `/` is root-owned.
 # Creating them here owned by `bun` makes the image runnable standalone, and a
 # fresh named volume inherits this ownership when Docker initialises it.
-RUN mkdir -p /data/nicotind /data/music && chown -R bun:bun /data
+RUN mkdir -p /data/nicotind /data/music /data/curator && chown -R bun:bun /data
 
 # Drop root. `docker-compose.yml` already runs this service as `1000:1000`, and
 # the base image's `bun` user is exactly uid=1000 gid=1000 — so for the

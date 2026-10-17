@@ -12,6 +12,10 @@ are the machinery; this document is the process.
 completeness affordance (issue #737) will render the same report this playbook consumes — the
 playbook's waves are the spec for what those surfaces automate.
 
+**Between passes**, the genre wave can run unattended on a schedule: the
+[curator runner](curator-runner.md) works genre-less and catch-all-only songs with any model, under
+a server-policed `refiner:auto` token, and by default files cards instead of writing (#1516).
+
 ## Principles
 
 1. **A metric is what its remediation acts on.** Every number in the health report is by
