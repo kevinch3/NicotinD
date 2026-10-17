@@ -36,6 +36,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **A missing MCP argument is an error, not empty data**: `missingRequiredArgs` rejects on each
   tool's own `inputSchema.required`, naming the keys sent; `htmlEntityArgs` refuses a literal HTML
   entity. → [mcp-agent.md](../mcp-agent.md)
+- **Unattended `refiner:auto` tokens**: a scheduled runner's scope, policed by the server, not the
+  prompt — `AUTO_SCOPE_WRITE_TOOLS` allowlist, `unknownArgs`, `autoGenreRefusal` (fill-only, library
+  vocabulary), `autoBudgetRefusal` daily caps. → [mcp-agent.md](../mcp-agent.md)
 - **`identify_song` — identity from the audio**: `identifySongById` is fpcalc + AcoustID and nothing
   else, batchable where `lookup_song_metadata`'s fan-out is not; typed outcome, suggests only,
   carries no genre. → [mcp-agent.md](../mcp-agent.md)

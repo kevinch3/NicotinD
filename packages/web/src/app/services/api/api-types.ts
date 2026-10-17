@@ -684,7 +684,7 @@ export interface PairedDevice {
 
 // ── MCP agent tokens (issue #232) ──────────────────────────────────────────
 
-export type AgentScope = 'refiner:read' | 'refiner:curate';
+export type AgentScope = 'refiner:read' | 'refiner:curate' | 'refiner:auto';
 
 /** A minted token row as listed — never carries the secret. */
 export interface AgentTokenRow {
