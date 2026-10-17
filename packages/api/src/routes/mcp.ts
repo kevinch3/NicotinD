@@ -350,7 +350,7 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'get_album_tracks',
     description:
-      'One album by id: its header (year, classification, hidden, canonical-cover status) and its songs with genre, track/disc numbers and technical format (suffix, bitrate kbps).',
+      "One album by id: its header (year, classification, hidden, canonical-cover status) and its songs with genre (position 0), genres (the song's FULL ordered genre list — read it before set_song_genre(mode: replace)), track/disc numbers and technical format (suffix, bitrate kbps).",
     access: 'read',
     inputSchema: {
       type: 'object',
@@ -400,6 +400,11 @@ export const MCP_TOOLS: McpTool[] = [
            FROM library_songs WHERE album_id = ? ORDER BY COALESCE(disc, 1), track`,
         )
         .all(id);
+      // The full set beside the position-0 `genre`: a replace overwrites every
+      // genre, and the display alone has hidden real tags behind a bare one.
+      const setOf = db.query<{ genre: string }, [string]>(
+        'SELECT genre FROM library_song_genres WHERE song_id = ? ORDER BY position',
+      );
       return JSON.stringify(
         {
           album: album
@@ -419,6 +424,7 @@ export const MCP_TOOLS: McpTool[] = [
             title: s.title,
             artist: s.artist,
             genre: s.genre,
+            genres: setOf.all(s.id).map((g) => g.genre),
             track: s.track,
             disc: s.disc,
             suffix: s.suffix,
