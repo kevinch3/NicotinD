@@ -12,7 +12,7 @@ Genre-focused pass over `genres.lowInformation` (songs whose only genre is a cat
 | Metric | Baseline | Final | Delta |
 | --- | --- | --- | --- |
 | genres.lowInformation | 169 | 134 | −35 |
-| genres.missing | 118 | 101 | −17 |
+| genres.missing | 118 | 100 | −18 |
 | flags.open | 1 | 1 | 0 |
 
 Every other dimension was unchanged between the two reads. `lowInformation` was re-read from
@@ -25,6 +25,7 @@ Every other dimension was unchanged between the two reads. `lowInformation` was 
 | Green Velvet — *Factory Town Miami 2026: La La Land (DJ Mix)* | 30 | `Electronic` → `Tech House` | Track list: Cajmere/Percolator, Street Slang, CASSIMM, Green Velvet's own tracks. Read back: 30/30. |
 | Mha Iri — *Hold On*, *Post Punk*, *Elements of Dance*, *Neon Storm*, *No Return* | 5 | `Electronic` → `Techno` | Press describes the artist as a peak-time/hard techno act. |
 | Gondwana — *Together* (11), *Carpe Diem* (6) | 17 | none → `Reggae` | Ten other Gondwana albums (1997–2014) independently carry `Reggae`; a Chilean reggae band. Read back 16/17 first pass; the 17th write hit a mistyped id (`Song not found`), re-written from the album read and ok. |
+| El Quinto Carajillo — *Al Tanto Que Va de Canto* | 1 | none → `Rumba` | Venue listing: Sant Joan de Vilatorrada's rumba act, blended with rock and reggae. Read back ok. `missing` was not re-read after this write; −18 is 118 − 17 − 1. |
 
 All writes were `mode: replace`; the worklist only lists songs whose catch-all is their only
 genre, so no other genre was dropped.
@@ -37,6 +38,8 @@ genre, so no other genre was dropped.
   (*Milonga*, `Organic House`) does not propagate.
 - **Kauffman / Rob Brainstorm / Murilo Salles cluster** (~8 genre-less singles): the search
   returned only namesakes.
+- **Peter Capusotto / Bombita Rodríguez — *Blues de Perón***, **Joaquín Da Rosa — *El Traje del PSG***:
+  sources describe the character / the sound but name no genre (cumbia-adjacent is a guess).
 - **Latin club remixes in *01 - Pop Aguante*** (KAROL G ×2, Bandana, Beéle): the titles say
   "Club Mix", which is not a self-declared genre; no source for the specific remixes.
 
