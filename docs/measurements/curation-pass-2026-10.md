@@ -12,7 +12,7 @@ Genre-focused pass over `genres.lowInformation` (songs whose only genre is a cat
 | Metric | Baseline | Final | Delta |
 | --- | --- | --- | --- |
 | genres.lowInformation | 169 | 134 | −35 |
-| genres.missing | 118 | 118 | 0 |
+| genres.missing | 118 | 101 | −17 |
 | flags.open | 1 | 1 | 0 |
 
 Every other dimension was unchanged between the two reads. `lowInformation` was re-read from
@@ -24,6 +24,7 @@ Every other dimension was unchanged between the two reads. `lowInformation` was 
 | --- | --- | --- | --- |
 | Green Velvet — *Factory Town Miami 2026: La La Land (DJ Mix)* | 30 | `Electronic` → `Tech House` | Track list: Cajmere/Percolator, Street Slang, CASSIMM, Green Velvet's own tracks. Read back: 30/30. |
 | Mha Iri — *Hold On*, *Post Punk*, *Elements of Dance*, *Neon Storm*, *No Return* | 5 | `Electronic` → `Techno` | Press describes the artist as a peak-time/hard techno act. |
+| Gondwana — *Together* (11), *Carpe Diem* (6) | 17 | none → `Reggae` | Ten other Gondwana albums (1997–2014) independently carry `Reggae`; a Chilean reggae band. Read back 16/17 first pass; the 17th write hit a mistyped id (`Song not found`), re-written from the album read and ok. |
 
 All writes were `mode: replace`; the worklist only lists songs whose catch-all is their only
 genre, so no other genre was dropped.
@@ -34,6 +35,8 @@ genre, so no other genre was dropped.
   (Out of Orbit, Freedom Fighters) suggest psychedelic dance music, but that is inference.
 - **Ibu Selva — *Ngo-bo Sontg-pa*** (4 Electronic-only songs): nothing found. A lone sibling
   (*Milonga*, `Organic House`) does not propagate.
+- **Kauffman / Rob Brainstorm / Murilo Salles cluster** (~8 genre-less singles): the search
+  returned only namesakes.
 - **Latin club remixes in *01 - Pop Aguante*** (KAROL G ×2, Bandana, Beéle): the titles say
   "Club Mix", which is not a self-declared genre; no source for the specific remixes.
 
