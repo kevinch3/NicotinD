@@ -86,6 +86,28 @@ describe('AgentTokensComponent', () => {
     expect(c.name).toBe('');
   });
 
+  it('offers the unattended refiner:auto scope and mints with it (#1516)', () => {
+    let sentScope: unknown;
+    const fixture = setup({
+      mintToken: (_name: string, scope: string) => {
+        sentScope = scope;
+        return of(MINT);
+      },
+    });
+    expandAllGroups(fixture);
+    const select: HTMLSelectElement = fixture.nativeElement.querySelector(
+      '[data-testid="agent-token-scope-select"]',
+    );
+    expect(Array.from(select.options).map((o) => o.value)).toContain('refiner:auto');
+    expect(BASE_CATALOG).toHaveProperty(['agentTokens.scopeAuto']);
+
+    const c = fixture.componentInstance;
+    c.name = 'cron';
+    c.scope = 'refiner:auto';
+    c.mint();
+    expect(sentScope).toBe('refiner:auto');
+  });
+
   it('does not mint with an empty/whitespace name', () => {
     let called = false;
     const fixture = setup({

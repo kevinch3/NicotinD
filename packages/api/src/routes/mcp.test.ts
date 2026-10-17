@@ -21,6 +21,7 @@ import {
   checkToolAccess,
   missingRequiredArgs,
   htmlEntityArgs,
+  unknownArgs,
   MCP_TOOLS,
   type McpToolContext,
 } from './mcp.js';
@@ -2038,6 +2039,157 @@ describe('checkToolAccess (scope + confirm gates)', () => {
     expect(checkToolAccess(destructiveTool, 'refiner:read', { confirm: true })).toContain(
       'read-only',
     );
+  });
+});
+
+describe('checkToolAccess — refiner:auto (#1516)', () => {
+  it('allows reads and the allowlisted writes, refuses every other write and any destructive tool', () => {
+    const byName = (n: string) => MCP_TOOLS.find((t) => t.name === n)!;
+    expect(checkToolAccess(byName('search_library'), 'refiner:auto', {})).toBeNull();
+    expect(checkToolAccess(byName('set_song_genre'), 'refiner:auto', {})).toBeNull();
+    expect(checkToolAccess(byName('flag_for_review'), 'refiner:auto', {})).toBeNull();
+    for (const name of [
+      'delete_song',
+      'delete_album',
+      'merge_artist',
+      'complete_album',
+      'set_genre_alias',
+      'set_artist_mbid',
+      'fix_song_metadata',
+      'resolve_review_flag',
+    ]) {
+      expect(checkToolAccess(byName(name), 'refiner:auto', { confirm: true })).toContain(
+        'refiner:auto',
+      );
+    }
+  });
+});
+
+describe('unknownArgs', () => {
+  const tool = {
+    name: 't',
+    inputSchema: { type: 'object', properties: { songId: {}, genre: {} } },
+  };
+  it('names the undeclared keys and the declared ones', () => {
+    expect(unknownArgs(tool, { songId: 'x', genre: 'y' })).toBeNull();
+    const refusal = unknownArgs(tool, { songId: 'x', force: true });
+    expect(refusal).toContain('"force"');
+    expect(refusal).toContain('songId, genre');
+  });
+});
+
+describe('MCP refiner:auto token end to end (#1516)', () => {
+  beforeEach(() => {
+    testDb.run('DELETE FROM library_genres');
+    testDb.run(
+      `INSERT INTO library_genres (name, song_count, album_count, synced_at) VALUES ('Tech House', 12, 3, 1)`,
+    );
+  });
+
+  const call = async (token: string, name: string, args: Record<string, unknown>) =>
+    (
+      (await (await rpc(token, 'tools/call', { name, arguments: args })).json()) as {
+        result: { content: Array<{ text: string }>; isError?: boolean };
+      }
+    ).result;
+
+  const autoToken = () =>
+    mintAgentToken(testDb, { userId: 'u1', name: 'cron', scope: 'refiner:auto' }).token;
+
+  it('lists only the tools it may call, and says so in initialize', async () => {
+    const token = autoToken();
+    const listed = (await (await rpc(token, 'tools/list')).json()) as {
+      result: { tools: Array<{ name: string }> };
+    };
+    const names = listed.result.tools.map((t) => t.name);
+    expect(names).toContain('search_library');
+    expect(names).toContain('set_song_genre');
+    expect(names).toContain('flag_for_review');
+    expect(names).not.toContain('delete_song');
+    expect(names).not.toContain('merge_artist');
+    expect(names).not.toContain('set_genre_alias');
+    const init = (await (await rpc(token, 'initialize')).json()) as {
+      result: { instructions: string };
+    };
+    expect(init.result.instructions).toContain('unattended');
+  });
+
+  it('list_genre_vocabulary returns exactly the genres set_song_genre will accept', async () => {
+    testDb.run(
+      `INSERT INTO library_genres (name, song_count, album_count, synced_at) VALUES ('Electronic', 99, 9, 1), ('Typo Genre', 1, 1, 1)`,
+    );
+    const res = await call(autoToken(), 'list_genre_vocabulary', {});
+    expect(JSON.parse(res.content[0]!.text)).toEqual({ genres: ['Tech House'] });
+  });
+
+  it('refuses a destructive tool even with confirm:true, and the song survives', async () => {
+    seedSong('s1', 'Song');
+    const res = await call(autoToken(), 'delete_song', { songId: 's1', confirm: true });
+    expect(res.isError).toBe(true);
+    expect(testDb.query('SELECT id FROM library_songs WHERE id = ?').get('s1')).not.toBeNull();
+  });
+
+  it('fills a catch-all-only song with a vocabulary genre, and reads back', async () => {
+    seedSong('s1', 'Song', undefined, undefined, { genre: 'Electronic' });
+    testDb.run(
+      `INSERT INTO library_song_genres (song_id, genre, position) VALUES ('s1', 'Electronic', 0)`,
+    );
+    const res = await call(autoToken(), 'set_song_genre', {
+      songId: 's1',
+      genre: 'Tech House',
+      mode: 'replace',
+    });
+    expect(res.isError).toBeUndefined();
+    const stored = testDb
+      .query<{ genre: string }, [string]>(
+        'SELECT genre FROM library_song_genres WHERE song_id = ? ORDER BY position',
+      )
+      .all('s1');
+    expect(stored.map((g) => g.genre)).toEqual(['Tech House']);
+  });
+
+  it('refuses an invented genre, a song with a real genre, and an unknown key — writing nothing', async () => {
+    seedSong('s1', 'Song', undefined, undefined, { genre: 'Electronic' });
+    testDb.run(
+      `INSERT INTO library_song_genres (song_id, genre, position) VALUES ('s1', 'Electronic', 0), ('s1', 'Techno', 1)`,
+    );
+    seedSong('s2', 'Other', 'p/s2.opus');
+    const token = autoToken();
+    const refusals = [
+      await call(token, 'set_song_genre', { songId: 's2', genre: 'Psybient', mode: 'replace' }),
+      await call(token, 'set_song_genre', { songId: 's1', genre: 'Tech House', mode: 'replace' }),
+      await call(token, 'set_song_genre', {
+        songId: 's2',
+        genre: 'Tech House',
+        mode: 'replace',
+        force: true,
+      }),
+    ];
+    for (const r of refusals) expect(r.isError).toBe(true);
+    expect(testDb.query('SELECT 1 FROM library_genre_overrides').all()).toHaveLength(0);
+  });
+
+  it('stops at the daily budget', async () => {
+    const { id, token } = mintAgentToken(testDb, {
+      userId: 'u1',
+      name: 'cron',
+      scope: 'refiner:auto',
+    });
+    const now = Date.now();
+    for (let i = 0; i < 200; i++) {
+      testDb.run(
+        `INSERT INTO audit_log (at, user_id, username, action) VALUES (?, 'u1', ?, 'song.genre')`,
+        [now, `agent:${id}`],
+      );
+    }
+    seedSong('s1', 'Song');
+    const res = await call(token, 'set_song_genre', {
+      songId: 's1',
+      genre: 'Tech House',
+      mode: 'replace',
+    });
+    expect(res.isError).toBe(true);
+    expect(res.content[0]!.text).toContain('budget exhausted');
   });
 });
 
