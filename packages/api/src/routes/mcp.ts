@@ -20,7 +20,7 @@ import {
   listOpenCurationFlags,
   resolveCurationFlag,
 } from '../services/curation-flags.js';
-import { libraryHealthWithLidarr } from '../services/library-health.js';
+import { libraryHealthWithLidarr, pickHealthDimensions } from '../services/library-health.js';
 import { missingAlbumArtSql } from '../services/artwork-store.js';
 import { ShareRescanScheduler } from '../services/share-rescan-scheduler.js';
 import { tokenize, matchesAllTokens, rankBy } from '../services/search-tokens.js';
@@ -218,24 +218,36 @@ export const MCP_TOOLS: McpTool[] = [
       type: 'object',
       properties: {
         sample: { type: 'number', description: 'Worklist size per dimension (1–50, default 10).' },
+        dimensions: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            'Only these dimensions, e.g. ["genres", "flags"]; totals are always included. Omit for the whole report, which at sample 50 is too big for one result.',
+        },
       },
     },
-    handler: async ({ db, metadata, acquisition }, args) =>
-      JSON.stringify(
-        await libraryHealthWithLidarr(
-          db,
-          {
-            sampleSize: clampLimit(args.sample, 10, 50),
-            // Lets the artwork dimension probe the folder tier, so `unrenderable`
-            // is a number rather than "not measured" (#952).
-            ...(metadata.musicDir ? { musicDir: metadata.musicDir } : {}),
-          },
-          // The tracklist complete_album will fetch, not the stored one (#1080).
-          acquisition.lidarr,
-        ),
-        null,
-        2,
-      ),
+    handler: async ({ db, metadata, acquisition }, args) => {
+      const report = await libraryHealthWithLidarr(
+        db,
+        {
+          sampleSize: clampLimit(args.sample, 10, 50),
+          // Lets the artwork dimension probe the folder tier, so `unrenderable`
+          // is a number rather than "not measured" (#952).
+          ...(metadata.musicDir ? { musicDir: metadata.musicDir } : {}),
+        },
+        // The tracklist complete_album will fetch, not the stored one (#1080).
+        acquisition.lidarr,
+      );
+      const names = strList(args.dimensions, '');
+      if (names.length === 0) return JSON.stringify(report, null, 2);
+      const picked = pickHealthDimensions(report, names);
+      if ('unknown' in picked) {
+        throw new Error(
+          `Unknown dimension(s): ${picked.unknown.join(', ')}. Valid: ${picked.valid.join(', ')}`,
+        );
+      }
+      return JSON.stringify(picked, null, 2);
+    },
   },
   {
     name: 'list_recent_songs',

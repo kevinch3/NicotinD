@@ -407,7 +407,8 @@ audit ran only via SSH), so a pass could neither plan nor prove progress.
 
 `get_library_health` wraps `libraryHealth` (`services/library-health.ts`, → see
 docs/library-audit.md "Library health report"): every curation dimension as a
-metric + bounded worst-first worklist + remediation hint. The intended loop is
+metric + bounded worst-first worklist + remediation hint, optionally narrowed to
+`dimensions: [...]` (#1391). The intended loop is
 **snapshot → work the worklists → snapshot again**, so a pass records its own
 delta. The completeness dimension's `suspected` bucket is advisory-only — the
 tool description says so, and the agent rule stands: ambiguity goes to

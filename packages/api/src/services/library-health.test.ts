@@ -206,6 +206,24 @@ describe('libraryHealth — genres, years, classification', () => {
   });
 
   /**
+   * #1391: a DJ mix filed under Green Velvet carries one credit per track, so the
+   * row was labelled with whichever guest sorted first ("Abraham (ES) & S.Hai").
+   * An agent tagging by that label would have judged the wrong artist.
+   */
+  it('labels a worklist row with the artist it groups, not a song credit', () => {
+    addArtist('ar-gv', 'Green Velvet', 1);
+    addAlbum({ id: 'al-mix', name: 'Mix', artistId: 'ar-gv', songCount: 2 });
+    addSong({ id: 's-g1', albumId: 'al-mix', artist: 'Abraham (ES) & S.Hai', artistId: 'ar-gv' });
+    addSongGenres('s-g1', ['Electronic']);
+    addSong({ id: 's-g2', albumId: 'al-mix', artist: 'Cajmere', artistId: 'ar-gv' });
+    addSongGenres('s-g2', ['Electronic']);
+
+    expect(libraryHealth(db).dimensions.genres.lowInformationWorklist).toEqual([
+      { artistId: 'ar-gv', artist: 'Green Velvet', genre: 'Electronic', songs: 2 },
+    ]);
+  });
+
+  /**
    * The exclusion is the load-bearing half of the metric, so it is pinned: `Pop`
    * and `Rock` are legitimately broad and cover 3,206 prod songs against
    * `Electronic`+`Dance`'s 516. Widening the set to reach them turns an
