@@ -2114,6 +2114,14 @@ describe('MCP refiner:auto token end to end (#1516)', () => {
     expect(init.result.instructions).toContain('unattended');
   });
 
+  it('list_genre_vocabulary returns exactly the genres set_song_genre will accept', async () => {
+    testDb.run(
+      `INSERT INTO library_genres (name, song_count, album_count, synced_at) VALUES ('Electronic', 99, 9, 1), ('Typo Genre', 1, 1, 1)`,
+    );
+    const res = await call(autoToken(), 'list_genre_vocabulary', {});
+    expect(JSON.parse(res.content[0]!.text)).toEqual({ genres: ['Tech House'] });
+  });
+
   it('refuses a destructive tool even with confirm:true, and the song survives', async () => {
     seedSong('s1', 'Song');
     const res = await call(autoToken(), 'delete_song', { songId: 's1', confirm: true });

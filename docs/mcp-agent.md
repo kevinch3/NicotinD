@@ -73,6 +73,7 @@ audit-logged.
 | tool | access | fronts |
 | --- | --- | --- |
 | `search_library` | read | library artists/albums/songs by name, via the shared folded matcher |
+| `list_genre_vocabulary` | read | `services/agent-policy.ts` `autoGenreVocabulary` — the genres an auto token may write |
 | `get_library_health` | read | `services/library-health.ts` `libraryHealth` — the curation-pass entry point |
 | `list_recent_songs` | read | recently-landed songs, newest first, paged, optional missing-genre or any-position `genre` filter; every row carries its full ordered `genres` |
 | `get_artist` | read | one artist + their albums |
@@ -742,7 +743,8 @@ shared gates:
   - Every genre written must already be on at least `AUTO_VOCAB_MIN_SONGS`
     library songs, and must not be junk, a catch-all or a slash join
     (`autoGenreVocabulary`). An invented genre, a typo, or a one-off mistag
-    cannot be written.
+    cannot be written. The read tool `list_genre_vocabulary` returns that exact
+    set, so a runner can turn it into an enum for constrained decoding.
 - **Daily budgets** per token per UTC day (`AUTO_DAILY_LIMITS`: 200 genre
   writes, 25 flags). They are counted from the audit rows the writes already
   leave, so the count covers writes that landed. The refusal says "budget

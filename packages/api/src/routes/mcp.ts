@@ -57,8 +57,10 @@ import { describeTarget } from '../services/curation/describe-target.js';
 import type { MusicBrainzClient } from '../services/musicbrainz-client.js';
 import {
   AUTO_SCOPE_WRITE_TOOLS,
+  AUTO_VOCAB_MIN_SONGS,
   autoBudgetRefusal,
   autoGenreRefusal,
+  autoGenreVocabulary,
 } from '../services/agent-policy.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 import type { readAudioTags, writeAudioTags } from '../services/audio-tags.js';
@@ -462,6 +464,16 @@ export const MCP_TOOLS: McpTool[] = [
       const limit = typeof args.limit === 'number' ? args.limit : undefined;
       return JSON.stringify({ genres: rareGenres(db, { maxCount, limit }) }, null, 2);
     },
+  },
+  {
+    name: 'list_genre_vocabulary',
+    description: `The specific genres the library already uses (each on at least ${AUTO_VOCAB_MIN_SONGS} songs; junk and the Electronic/Dance catch-alls excluded), alphabetical. This is exactly the set a refiner:auto token may write with set_song_genre — pick from it rather than inventing a name. Read-only.`,
+    access: 'read',
+    inputSchema: { type: 'object', properties: {} },
+    handler: ({ db }) =>
+      JSON.stringify({
+        genres: [...autoGenreVocabulary(db).values()].sort((a, b) => a.localeCompare(b)),
+      }),
   },
   {
     name: 'get_song_lyrics',
