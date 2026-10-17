@@ -13,6 +13,7 @@
  * because the stored blob is still a trust boundary (older rows, direct SQL).
  */
 import {
+  SONG_GENRE_EFFECT_MAX_SONGS,
   CASE_TEXT_LIMITS,
   isActionableEffect,
   isCurationCaseKind,
@@ -25,7 +26,13 @@ import type { CurationFlag } from '../curation-flags.js';
 export type CaseTarget = CurationCase['target'];
 
 /** Effect types this build can actually dispatch. See `applyCaseEffect`. */
-const KNOWN_EFFECTS = ['resolve-only', 'song-metadata', 'artist-merge', 'song-delete'] as const;
+const KNOWN_EFFECTS = [
+  'resolve-only',
+  'song-metadata',
+  'artist-merge',
+  'song-delete',
+  'song-genre',
+] as const;
 
 /**
  * The option the server appends when the agent offered no "change nothing"
@@ -82,6 +89,15 @@ function effectProblem(effect: unknown): string | null {
       return null;
     case 'song-delete':
       return nonEmpty(e.songId) ? null : 'song-delete needs a songId';
+    case 'song-genre':
+      if (!nonEmpty(e.genre) || !e.genre.trim()) return 'song-genre needs a genre';
+      if (!Array.isArray(e.songIds) || e.songIds.length === 0 || !e.songIds.every(nonEmpty)) {
+        return 'song-genre needs songIds, a non-empty array of song ids';
+      }
+      if (e.songIds.length > SONG_GENRE_EFFECT_MAX_SONGS) {
+        return `song-genre takes at most ${SONG_GENRE_EFFECT_MAX_SONGS} songIds`;
+      }
+      return null;
     default:
       return `unknown effect type ${JSON.stringify(e.type)} (expected ${KNOWN_EFFECTS.join('|')})`;
   }
@@ -151,7 +167,7 @@ export function validateCaseOptions(raw: unknown): OptionsValidation {
     return {
       ok: false,
       error:
-        'options must include at least one choice that changes data (song-metadata, artist-merge or song-delete) — a case with nothing to apply is not a decision',
+        'options must include at least one choice that changes data (song-metadata, song-genre, artist-merge or song-delete) — a case with nothing to apply is not a decision',
     };
   }
   return { ok: true, options };

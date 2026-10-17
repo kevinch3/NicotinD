@@ -2,6 +2,7 @@ import { describe, it, expect, mock } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import type { SongMetadataMutateBody } from '../song-metadata-mutate.js';
 import type { ArtistIdentityMutateBody } from '../artist-identity-mutate.js';
+import type { SongGenreMutateBody } from '../song-genre-mutate.js';
 import { applySchema } from '../../db.js';
 import { applyCaseEffect } from './apply.js';
 
@@ -23,6 +24,14 @@ const deps = () => ({
     moved: 3,
   })),
   deleteSong: mock(async (_db: Database, _songId: string, _deps: unknown) => ({ ok: true })),
+  mutateSongGenre: mock(
+    async (_db: Database, _deps: unknown, _songId: string, _body: SongGenreMutateBody) => ({
+      ok: true as const,
+      genres: [],
+      tagWritten: null,
+    }),
+  ),
+  songGenreDeps: {} as never,
   songMetadataDeps: {} as never,
   artistIdentityDeps: {} as never,
   deletionDeps: {} as never,
@@ -66,6 +75,45 @@ describe('applyCaseEffect', () => {
     );
     expect(res.ok).toBe(true);
     expect(d.mutateArtistIdentity).toHaveBeenCalledTimes(1);
+  });
+
+  it('song-genre replaces the genre on every song, and nothing else', async () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    for (const id of ['s1', 's2']) {
+      db.run(
+        `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, synced_at) VALUES (?, 'al', 't', 'a', 'ar', ?, 1)`,
+        [id, `/m/${id}.opus`],
+      );
+    }
+    const d = deps();
+    const res = await applyCaseEffect(
+      db,
+      { type: 'song-genre', songIds: ['s1', 's2'], genre: 'Tech House' },
+      d,
+    );
+    expect(res).toEqual({ ok: true, detail: 'genre Tech House on 2 song(s)' });
+    expect(d.mutateSongGenre.mock.calls.map((c) => [c[2], c[3]])).toEqual([
+      ['s1', { genre: 'Tech House', mode: 'replace' }],
+      ['s2', { genre: 'Tech House', mode: 'replace' }],
+    ]);
+    expect(d.mutateSongMetadata).not.toHaveBeenCalled();
+  });
+
+  it('song-genre writes nothing when any song is gone', async () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, synced_at) VALUES ('s1', 'al', 't', 'a', 'ar', '/m/s1.opus', 1)`,
+    );
+    const d = deps();
+    const res = await applyCaseEffect(
+      db,
+      { type: 'song-genre', songIds: ['s1', 'gone'], genre: 'Techno' },
+      d,
+    );
+    expect(res.ok).toBe(false);
+    expect(d.mutateSongGenre).not.toHaveBeenCalled();
   });
 
   it('song-delete delegates to deleteOne and touches no other service', async () => {

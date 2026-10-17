@@ -55,7 +55,13 @@ export type CaseEffect =
       fields: { title?: string; artist?: string; album?: string; albumArtist?: string };
     }
   | { type: 'artist-merge'; mergeInto: string; rawName: string }
-  | { type: 'song-delete'; songId: string };
+  | { type: 'song-delete'; songId: string }
+  /** `set_song_genre` with mode `replace` on each song: one genre judgement
+   *  about an artist cluster, applied in one tap (#1516). */
+  | { type: 'song-genre'; songIds: string[]; genre: string };
+
+/** Most songs one `song-genre` effect may retag — a card is one cluster, not a sweep. */
+export const SONG_GENRE_EFFECT_MAX_SONGS = 100;
 
 /** An effect that changes library data — the thing that makes a case a decision. */
 export function isActionableEffect(effect: CaseEffect): boolean {
