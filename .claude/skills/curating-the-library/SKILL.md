@@ -196,7 +196,8 @@ UI here runs in Spanish); put every finding in `reason`, which the card folds un
 Caps: question 160, label 80, rationale 160.
 
 - One option per real outcome, each with the effect that produces it: `song-metadata` to retag or
-  re-home, `artist-merge` to credit, `song-delete` for a redundant copy (confirmed in-card),
+  re-home, `song-genre` (`songIds` + `genre`, a replace on each) for a genre you narrowed to a
+  few candidates but cannot settle, `artist-merge` to credit, `song-delete` for a redundant copy (confirmed in-card),
   `resolve-only` as a labelled "keep as is" when doing nothing is a genuine answer.
 - Do not offer an effect you would not apply yourself if the human picked it; the tap is the
   whole decision.

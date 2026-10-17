@@ -149,6 +149,17 @@ export function curationRoutes(deps: CurationRouteDeps) {
       targetId: found.target.id,
       detail: `${found.kind}/${option.id}: ${result.detail}`,
     });
+    // Likewise a genre card writes `song.genre` rows, so a genre written by tap
+    // counts wherever agent and HTTP genre writes are counted.
+    if (option.effect.type === 'song-genre') {
+      for (const songId of option.effect.songIds) {
+        recordAudit(db, user, 'song.genre', {
+          targetKind: 'song',
+          targetId: songId,
+          detail: `replace: ${option.effect.genre} (via curation case ${found.id})`,
+        });
+      }
+    }
     // A delete through a card is still a delete: it must count wherever
     // `song.delete` rows are counted, not hide under a curation action.
     if (option.effect.type === 'song-delete') {

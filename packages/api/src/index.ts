@@ -37,6 +37,7 @@ import { libraryEventRoutes } from './routes/library-events.js';
 import { curationRoutes, describeTarget } from './routes/curation.js';
 import { deleteOne } from './services/library-deletion.js';
 import { mutateSongMetadata } from './services/song-metadata-mutate.js';
+import { mutateSongGenre } from './services/song-genre-mutate.js';
 import { mutateArtistIdentity } from './services/artist-identity-mutate.js';
 import { usersRoutes } from './routes/users.js';
 import { shareRoutes } from './routes/share.js';
@@ -785,8 +786,10 @@ export function createApp({
         // tool run (docs/curator-triage.md §4).
         mutateSongMetadata,
         mutateArtistIdentity,
+        mutateSongGenre,
         deleteSong: deleteOne,
         songMetadataDeps: { musicDir: config.musicDir, scanIncremental },
+        songGenreDeps: { musicDir: config.musicDir },
         artistIdentityDeps: { dataDir: expandedDataDir },
         deletionDeps: {
           musicDir: config.musicDir,
