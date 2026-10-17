@@ -54,3 +54,20 @@ Matías Aguayo. Applying one genre per row *label* would have mis-tagged them. R
 ## Open
 
 - Flag 28 (listener `quality` report) has no question/options, so it is `servable:false`.
+
+## Duplicate songs (checked, nothing deleted)
+
+`duplicateSongs`: 952 clusters / 1,029 redundant files. The top 50 clusters (sample 50) are almost
+all one pattern: one recording on a studio album, a greatest-hits/compilation and often a single
+(Britney, Chencho Corleone × `SOLO`, Lenny Kravitz, Juanes, Paul Kalkbrenner, ...). Two clusters
+fingerprint-checked with `identify_song`:
+
+| Cluster | Copies | acoustId | recordingId | Verdict |
+| --- | --- | --- | --- | --- |
+| Paul Kalkbrenner — *Mothertrucker* | 3 (`2015 - 7`, `7 (2015)`, `7 Tour - Nantes 21 mars 2019`) | all `ca5b3077…` | all `b5db30bd…` | one recording. The "Nantes" album holds the studio take, not a live one. |
+| Chencho Corleone — *Menta* | 3 (`SOLO`, `Menta` ×2 songs) | all `83245b22…` | all `f83c4a5d…` | one recording |
+
+Same `acoustId` proves same recording. Not deleted: deleting removes a track from an album or
+compilation, and deletes need the owner's go-ahead. Admin → Library maintenance → Find duplicates
+keeps the best-quality copy per cluster.
+
