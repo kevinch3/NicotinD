@@ -42,6 +42,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **`identify_song` — identity from the audio**: `identifySongById` is fpcalc + AcoustID and nothing
   else, batchable where `lookup_song_metadata`'s fan-out is not; typed outcome, suggests only,
   carries no genre. → [mcp-agent.md](../mcp-agent.md)
+- **Curator runner (unattended curation)**: `packages/curator-runner`, a one-shot CLI a scheduler
+  starts; `runCuration` loops album clusters, a model fills one `verdictSchema` answer, `decide`
+  needs unanimous samples to write, cards by default. → [curator-runner.md](../curator-runner.md)
 - **Presence tracking + last connection (admin-only)**: in-memory `PresenceService` from 60s
   heartbeats merged into `GET /api/admin/users` and ordered by `compareUsersByActivity`; the derived
   `last_seen_at` is persisted by `touchLastSeen` because an in-memory map reports "never" after every

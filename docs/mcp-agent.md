@@ -77,7 +77,7 @@ audit-logged.
 | `get_library_health` | read | `services/library-health.ts` `libraryHealth` — the curation-pass entry point |
 | `list_recent_songs` | read | recently-landed songs, newest first, paged, optional missing-genre or any-position `genre` filter; every row carries its full ordered `genres` |
 | `get_artist` | read | one artist + their albums |
-| `get_album_tracks` | read | one album: header (year/classification/cover status) + songs with genre, track/disc, suffix, bitrate |
+| `get_album_tracks` | read | one album: header (year/classification/cover status) + songs with genre, full ordered `genres`, track/disc, suffix, bitrate |
 | `get_song_lyrics` | read | `services/lyrics-store.ts` `getLyrics` + `parseLrc` — source, offset, matched vs local duration, and where the LRC's last line falls |
 | `sync_song_lyrics` | curate | `services/lyrics-store.ts` `setLyricsOffset` + `song.lyrics` audit (render-time offset, text untouched) |
 | `refetch_song_lyrics` | curate | `services/lyrics-fetch.ts` `fetchSongLyrics({ force: true })` + `song.lyrics` audit; refuses a customized row |

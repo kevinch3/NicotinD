@@ -1648,6 +1648,25 @@ describe('library health & flag tools (issue #734)', () => {
     expect(parsed.songs[0]).toMatchObject({ track: 3, disc: 1, suffix: 'opus', bitRateKbps: 192 });
   });
 
+  it("get_album_tracks carries each song's full genre set, not just position 0 (#1516)", async () => {
+    testDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, cover_art, song_count, classification, hidden, year, synced_at)
+       VALUES ('al', 'Album', 'Artist', 'art', 'al', 1, 'album', 0, 1999, 1)`,
+    );
+    seedSong('s1', 'One', 'p/s1.opus', 'al', { genre: 'Dance' });
+    testDb.run(
+      `INSERT INTO library_song_genres (song_id, genre, position) VALUES ('s1', 'Dance', 0), ('s1', 'Electronic', 1), ('s1', 'House', 2)`,
+    );
+    const res = await dispatchTool(ctx('refiner:read'), 'get_album_tracks', { id: 'al' });
+    const parsed = JSON.parse(res.content[0]!.text) as {
+      songs: Array<{ genre: string; genres: string[] }>;
+    };
+    expect(parsed.songs[0]).toMatchObject({
+      genre: 'Dance',
+      genres: ['Dance', 'Electronic', 'House'],
+    });
+  });
+
   it('get_album_tracks returns album: null for an unknown album', async () => {
     const res = await dispatchTool(ctx('refiner:read'), 'get_album_tracks', { id: 'nope' });
     const parsed = JSON.parse(res.content[0]!.text) as { album: unknown; songs: unknown[] };

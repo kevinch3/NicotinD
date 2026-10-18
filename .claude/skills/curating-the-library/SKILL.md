@@ -69,10 +69,10 @@ non-zero-position match, and pass the full corrected ordered list back, not the 
 string that was wrong. Position-0 matches are the only ones safe to fix with a bare
 single-genre `replace`.
 
-**`get_album_tracks` and `get_artist` show only the position-0 genre string, so a song can
-look like a clean single-tag catch-all without being one.** `list_recent_songs` returns every
-song's full ordered `genres` (and `genre: "X"` lists songs carrying X at any position) — read
-the set there before a `replace`. The `lowInformationWorklist`
+**`get_artist` (album rows) and the `genre` field show only the position-0 genre string, so a
+song can look like a clean single-tag catch-all without being one.** `list_recent_songs` and
+`get_album_tracks` return every song's full ordered `genres` (and `list_recent_songs({genre: "X"})`
+lists songs carrying X at any position) — read the set there before a `replace`. The `lowInformationWorklist`
 health-report count is safe *because* that mechanism checks a song's full genre list
 server-side before including it — matching your candidate count against that number is
 the actual safety check, not the fact that the display showed one bare string. Measured
