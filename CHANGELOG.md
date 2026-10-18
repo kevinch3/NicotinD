@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.113](https://github.com/kevinch3/NicotinD/compare/v0.8.112...v0.8.113) (2026-10-18)
+
+### Features
+
+* **api:** add a refiner:auto agent token the server polices for unattended curation ([#1517](https://github.com/kevinch3/NicotinD/issues/1517)) ([8705978](https://github.com/kevinch3/NicotinD/commit/87059783c1d51a5ac28bb3f1703c3cef75d63cd1))
+* **curation:** add a song-genre card effect, so a genre proposal applies in one tap ([#1518](https://github.com/kevinch3/NicotinD/issues/1518)) ([3585523](https://github.com/kevinch3/NicotinD/commit/3585523a9143813babf6c65b712b2b3ecf34b3e0))
+* **curation:** add the curator runner for scheduled genre curation with any model ([#1519](https://github.com/kevinch3/NicotinD/issues/1519)) ([9a2fd70](https://github.com/kevinch3/NicotinD/commit/9a2fd70e193cef6d8ca2b1b31c5ca1e87a05c9cb))
+
+### Bug Fixes
+
+* **api:** label genre worklist rows with the artist, and let agents narrow the health report ([#1515](https://github.com/kevinch3/NicotinD/issues/1515)) ([a15a9b1](https://github.com/kevinch3/NicotinD/commit/a15a9b15b9dfc3659fa10e81ecb695074a094250))
 ## [0.8.112](https://github.com/kevinch3/NicotinD/compare/v0.8.111...v0.8.112) (2026-10-16)
 
 ### Features

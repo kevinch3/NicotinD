@@ -1,0 +1,4 @@
+• api: add a refiner:auto agent token the server polices for unattended curation (#1517)
+• curation: add a song-genre card effect, so a genre proposal applies in one tap (#1518)
+• curation: add the curator runner for scheduled genre curation with any model (#1519)
+• api: label genre worklist rows with the artist, and let agents narrow the health report (#1515)
