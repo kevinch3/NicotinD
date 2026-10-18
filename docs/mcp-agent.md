@@ -41,7 +41,9 @@ auth + `requireCurator`** (a logged-in curator manages the agents that will
 curate *their* library):
 
 - `POST /` — mint (`{ name, scope?, expiresInDays? }` → `{ id, name, scope,
-  token }`, the token shown once). Audit-logged (`agent-token.mint`).
+  token }`, the token shown once). Audit-logged (`agent-token.mint`). The scope
+  is `refiner:read`, `refiner:curate` (the default) or `refiner:auto`; an auto
+  token always expires.
 - `GET /` — list the caller's own tokens (no secret).
 - `DELETE /:id` — revoke (audit-logged `agent-token.revoke`).
 
@@ -63,13 +65,15 @@ it, and runs capped at refiner. An invalid/revoked token → 401.
 `MCP_TOOLS` is the registry; each tool declares `access: 'read' | 'curate'` and
 an optional `destructive` flag. `checkToolAccess` (pure, unit-tested) is the
 guard: a `curate` tool needs the `:curate` scope (a `refiner:read` token is
-refused), and a `destructive` tool needs `args.confirm === true`. `dispatchTool`
+refused), and a `destructive` tool needs `args.confirm === true`. A
+`refiner:auto` token gets a narrower policy, described under "Unattended tokens". `dispatchTool`
 applies it, then `missingRequiredArgs`, then runs the handler; every write is
 audit-logged.
 
 | tool | access | fronts |
 | --- | --- | --- |
 | `search_library` | read | library artists/albums/songs by name, via the shared folded matcher |
+| `list_genre_vocabulary` | read | `services/agent-policy.ts` `autoGenreVocabulary` — the genres an auto token may write |
 | `get_library_health` | read | `services/library-health.ts` `libraryHealth` — the curation-pass entry point |
 | `list_recent_songs` | read | recently-landed songs, newest first, paged, optional missing-genre or any-position `genre` filter; every row carries its full ordered `genres` |
 | `get_artist` | read | one artist + their albums |
@@ -717,6 +721,40 @@ construction, and it walks arrays because the identity arguments that matter
 most (`merge_artist.rawNames`) are lists of names. `reason` and `note` are
 exempt: they are free text written for a human to read, never an identity, so
 quoting an entity in one is a legitimate thing to do.
+
+### Unattended tokens: `refiner:auto` (issue #1516)
+
+A scheduled runner may drive a small quantized model, and every rule above that
+lives only in prose is one such a model eventually breaks. `confirm: true` is a
+boolean any model can send. So the `refiner:auto` scope moves the rules into
+the server (`services/agent-policy.ts`), applied in `dispatchTool` after the
+shared gates:
+
+- **Allowlist.** Reads, `set_song_genre` and `flag_for_review`
+  (`AUTO_SCOPE_WRITE_TOOLS`). Every other write, and every destructive tool, is
+  refused whatever `confirm` says. `tools/list` shows such a token only what it
+  may call, and `initialize` states the rules.
+- **Unknown keys refused** (`unknownArgs`). A curate token still ignores them.
+  A small model that invents `force: true` must not read the silence as success.
+- **Genre invariant** (`autoGenreRefusal`):
+  - `mode` must be `replace`.
+  - The song must be genre-less, junk-only or catch-all-only
+    (`isAutoReplaceableGenreSet`, from `JUNK_GENRES` and
+    `LOW_INFORMATION_GENRES`), so a replace can never drop a real genre.
+  - Every genre written must already be on at least `AUTO_VOCAB_MIN_SONGS`
+    library songs, and must not be junk, a catch-all or a slash join
+    (`autoGenreVocabulary`). An invented genre, a typo, or a one-off mistag
+    cannot be written. The read tool `list_genre_vocabulary` returns that exact
+    set, so a runner can turn it into an enum for constrained decoding.
+- **Daily budgets** per token per UTC day (`AUTO_DAILY_LIMITS`: 200 genre
+  writes, 25 flags). They are counted from the audit rows the writes already
+  leave, so the count covers writes that landed. The refusal says "budget
+  exhausted", and the runner treats that as a stop.
+- **Always expires.** It defaults to 30 days and is capped at 90
+  (`AUTO_TOKEN_DEFAULT_DAYS`, `AUTO_TOKEN_MAX_DAYS`), so a forgotten cron job
+  does not hold a write credential forever.
+
+Anything outside these limits is a `flag_for_review` card for a human.
 
 ### `identify_song` — identity from the audio (issue #777)
 

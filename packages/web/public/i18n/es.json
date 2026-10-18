@@ -540,6 +540,7 @@
   "agentTokens.scope": "Alcance",
   "agentTokens.scopeCurate": "Leer + curar",
   "agentTokens.scopeRead": "Solo lectura",
+  "agentTokens.scopeAuto": "Desatendido (ejecución programada: géneros + avisos, caduca)",
   "agentTokens.shownOnce": "Esta es la única vez que se muestra el token — copialo ahora. No se volverá a mostrar.",
   "agentTokens.subtitle": "Permití que un LLM/agente externo que hable MCP se conecte para organizar y curar tu biblioteca. Un token de agente está limitado al rol refiner — nunca puede otorgar administración del servidor.",
   "agentTokens.title": "Tokens de agente",

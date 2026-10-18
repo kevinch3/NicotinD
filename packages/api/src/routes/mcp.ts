@@ -55,6 +55,13 @@ import {
 } from '../services/curation/case-sources.js';
 import { describeTarget } from '../services/curation/describe-target.js';
 import type { MusicBrainzClient } from '../services/musicbrainz-client.js';
+import {
+  AUTO_SCOPE_WRITE_TOOLS,
+  AUTO_VOCAB_MIN_SONGS,
+  autoBudgetRefusal,
+  autoGenreRefusal,
+  autoGenreVocabulary,
+} from '../services/agent-policy.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 import type { readAudioTags, writeAudioTags } from '../services/audio-tags.js';
 
@@ -469,6 +476,16 @@ export const MCP_TOOLS: McpTool[] = [
       const limit = typeof args.limit === 'number' ? args.limit : undefined;
       return JSON.stringify({ genres: rareGenres(db, { maxCount, limit }) }, null, 2);
     },
+  },
+  {
+    name: 'list_genre_vocabulary',
+    description: `The specific genres the library already uses (each on at least ${AUTO_VOCAB_MIN_SONGS} songs; junk and the Electronic/Dance catch-alls excluded), alphabetical. This is exactly the set a refiner:auto token may write with set_song_genre — pick from it rather than inventing a name. Read-only.`,
+    access: 'read',
+    inputSchema: { type: 'object', properties: {} },
+    handler: ({ db }) =>
+      JSON.stringify({
+        genres: [...autoGenreVocabulary(db).values()].sort((a, b) => a.localeCompare(b)),
+      }),
   },
   {
     name: 'get_song_lyrics',
@@ -1549,7 +1566,18 @@ export function checkToolAccess(
   scope: AgentIdentity['scope'],
   args: Record<string, unknown>,
 ): string | null {
-  if (tool.access === 'curate' && scope !== 'refiner:curate') {
+  // An unattended token gets reads plus a short allowlist, and never a
+  // destructive tool however `confirm` is set (#1516).
+  if (
+    scope === 'refiner:auto' &&
+    (tool.destructive || (tool.access !== 'read' && !AUTO_SCOPE_WRITE_TOOLS.has(tool.name)))
+  ) {
+    return (
+      `"${tool.name}" is not available to an unattended (refiner:auto) token. ` +
+      `Allowed writes: ${[...AUTO_SCOPE_WRITE_TOOLS].join(', ')}; file a flag_for_review card for anything else.`
+    );
+  }
+  if (tool.access === 'curate' && scope === 'refiner:read') {
     return 'This token is read-only; curation tools require a refiner:curate token.';
   }
   if (tool.destructive && args.confirm !== true) {
@@ -1667,9 +1695,31 @@ export function htmlEntityArgs(
 }
 
 /**
+ * Pure guard: the argument keys the tool's `inputSchema` does not declare, as a
+ * refusal naming them and the declared keys, or null. Applied to `refiner:auto`
+ * tokens only — a small model invents parameters, and a silently ignored
+ * `force: true` reads to it as a call that did what it asked (#1516).
+ */
+export function unknownArgs(
+  tool: Pick<McpTool, 'name' | 'inputSchema'>,
+  args: Record<string, unknown>,
+): string | null {
+  const declared = Object.keys(
+    (tool.inputSchema.properties as Record<string, unknown> | undefined) ?? {},
+  );
+  const unknown = Object.keys(args).filter((k) => !declared.includes(k));
+  if (unknown.length === 0) return null;
+  return (
+    `"${tool.name}" does not take ${unknown.map((k) => `"${k}"`).join(', ')}. ` +
+    `Its arguments are: ${declared.join(', ') || '(none)'}.`
+  );
+}
+
+/**
  * Run one tool call under an agent identity: resolve the tool, apply
- * `checkToolAccess`, `missingRequiredArgs` and `htmlEntityArgs`, then run its
- * handler. Returns an MCP tool result; never throws (a handler error becomes an
+ * `checkToolAccess`, `missingRequiredArgs` and `htmlEntityArgs` — plus, for a
+ * `refiner:auto` token, `unknownArgs`, the daily budget and the genre invariant
+ * (`services/agent-policy.ts`) — then run its handler. Returns an MCP tool result; never throws (a handler error becomes an
  * `isError` result).
  */
 export async function dispatchTool(
@@ -1685,6 +1735,19 @@ export async function dispatchTool(
   if (missing) return err(missing);
   const entity = htmlEntityArgs(tool, args);
   if (entity) return err(entity);
+  if (ctx.identity.scope === 'refiner:auto') {
+    const policy =
+      unknownArgs(tool, args) ??
+      autoBudgetRefusal(ctx.db, ctx.identity.tokenId, tool.name) ??
+      (tool.name === 'set_song_genre'
+        ? autoGenreRefusal(ctx.db, {
+            songId: str(args.songId),
+            genre: str(args.genre),
+            mode: str(args.mode),
+          })
+        : null);
+    if (policy) return err(policy);
+  }
   try {
     const text = await tool.handler(ctx, args);
     return { content: [{ type: 'text', text }] };
@@ -1702,6 +1765,10 @@ interface JsonRpcRequest {
 }
 
 const SERVER_INFO = { name: 'nicotind-mcp', version: '1' };
+const AUTO_SCOPE_INSTRUCTIONS =
+  ' This is an unattended token: reads, set_song_genre (mode "replace", only on songs with no ' +
+  'genre or only Electronic/Dance, only genres the library already uses) and flag_for_review ' +
+  'cards. Daily budgets apply; a "budget exhausted" refusal means stop.';
 const PROTOCOL_VERSION = '2024-11-05';
 
 export function mcpRoutes(
@@ -1742,7 +1809,9 @@ export function mcpRoutes(
           capabilities: { tools: {} },
           serverInfo: SERVER_INFO,
           // Surfaced so an agent knows what it can do without a round-trip.
-          instructions: `You are connected to a NicotinD music library as a ${AGENT_EFFECTIVE_ROLE} (curation, no server admin). Scope: ${identity.scope}.`,
+          instructions:
+            `You are connected to a NicotinD music library as a ${AGENT_EFFECTIVE_ROLE} (curation, no server admin). Scope: ${identity.scope}.` +
+            (identity.scope === 'refiner:auto' ? AUTO_SCOPE_INSTRUCTIONS : ''),
         });
       case 'ping':
         return reply({});
@@ -1751,7 +1820,13 @@ export function mcpRoutes(
         return c.body(null, 204);
       case 'tools/list':
         return reply({
-          tools: MCP_TOOLS.map((t) => ({
+          // An auto token is shown only what it may call: a small model offered
+          // thirty tools spends its calls on refusals.
+          tools: MCP_TOOLS.filter(
+            (t) =>
+              identity.scope !== 'refiner:auto' ||
+              checkToolAccess(t, identity.scope, { confirm: true }) === null,
+          ).map((t) => ({
             name: t.name,
             description: t.description,
             inputSchema: t.inputSchema,

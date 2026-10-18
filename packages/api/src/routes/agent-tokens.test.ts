@@ -145,6 +145,26 @@ describe('agent-tokens routes', () => {
     expect(((await bad.json()) as { code: string }).code).toBe('VALIDATION_ERROR');
   });
 
+  it('an unattended refiner:auto token always expires: 30 days by default, 90 at most (#1516)', async () => {
+    const day = 24 * 3_600_000;
+    const mint = async (body: object) =>
+      (await (
+        await req('refiner', '/', { method: 'POST', body: JSON.stringify(body) })
+      ).json()) as { scope: string; expiresAt: number | null };
+
+    const before = Date.now();
+    const dflt = await mint({ name: 'cron', scope: 'refiner:auto' });
+    expect(dflt.scope).toBe('refiner:auto');
+    expect(dflt.expiresAt! - before).toBeGreaterThanOrEqual(30 * day);
+    expect(dflt.expiresAt! - before).toBeLessThan(31 * day);
+
+    const capped = await mint({ name: 'cron2', scope: 'refiner:auto', expiresInDays: 365 });
+    expect(capped.expiresAt! - before).toBeLessThan(91 * day);
+
+    // A curate token keeps its old behaviour: no expiry unless asked.
+    expect((await mint({ name: 'human' })).expiresAt).toBeNull();
+  });
+
   it('revokes a token and 404s an unknown id, with a stable code (#236)', async () => {
     const mint = await req('refiner', '/', { method: 'POST', body: JSON.stringify({ name: 'x' }) });
     const { id } = (await mint.json()) as { id: string };

@@ -540,6 +540,7 @@
   "agentTokens.scope": "Scope",
   "agentTokens.scopeCurate": "Read + curate",
   "agentTokens.scopeRead": "Read only",
+  "agentTokens.scopeAuto": "Unattended (scheduled runner: genre fills + flags, expires)",
   "agentTokens.shownOnce": "This is the only time the token is shown — copy it now. It won't be shown again.",
   "agentTokens.subtitle": "Let an external MCP-speaking LLM/agent connect to organize and curate your library. An agent token is capped at the refiner role — it can never grant server admin.",
   "agentTokens.title": "Agent tokens",
