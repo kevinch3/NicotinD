@@ -685,14 +685,17 @@ export function libraryHealth(
 
   // Grouped by (artist, catch-all): one row is one judgement. The predicate
   // guarantees a single genre row per song, so the JOIN is 1:1 and `MIN(g.genre)`
-  // is that genre rather than a pick from several.
+  // is that genre rather than a pick from several. The label is the artist row's
+  // name: `MIN(s.artist)` was one song's credit, which on a DJ mix names a guest
+  // rather than the artist the row groups (#1391).
   const lowInfoGenreWhere = `library_songs WHERE ${lowInformationOnlyGenreSql()}`;
   const lowInfoGenreWorklist = db
     .query<{ artist_id: string; artist: string; genre: string; songs: number }, [number]>(
-      `SELECT s.artist_id AS artist_id, MIN(s.artist) AS artist, MIN(g.genre) AS genre,
-              COUNT(*) AS songs
+      `SELECT s.artist_id AS artist_id, COALESCE(MIN(a.name), MIN(s.artist)) AS artist,
+              MIN(g.genre) AS genre, COUNT(*) AS songs
          FROM library_songs s
          JOIN library_song_genres g ON g.song_id = s.id
+         LEFT JOIN library_artists a ON a.id = s.artist_id
         WHERE ${lowInformationOnlyGenreSql('s.id')}
         GROUP BY s.artist_id, LOWER(TRIM(g.genre))
         ORDER BY songs DESC, artist LIMIT ?`,
@@ -1025,6 +1028,27 @@ export async function libraryHealthWithLidarr(
   const jobs = newestJobPerPair(db);
   const live = await liveTracklists(db, jobs, lidarr);
   return libraryHealth(db, { ...opts, liveTracklists: live }, jobs);
+}
+
+export type LibraryHealthDimension = keyof LibraryHealthReport['dimensions'];
+
+/**
+ * The report narrowed to the named dimensions; totals and `collectedAt` stay. At
+ * `sample: 50` the whole report is ~110 KB, over an MCP result's limit, so an
+ * agent working one dimension asks for that one (#1391). Returns the unknown
+ * names instead when any is not a dimension, so a typo is never an empty report.
+ */
+export function pickHealthDimensions(
+  report: LibraryHealthReport,
+  names: readonly string[],
+): LibraryHealthReport | { unknown: string[]; valid: string[] } {
+  const valid = Object.keys(report.dimensions);
+  const unknown = names.filter((n) => !valid.includes(n));
+  if (unknown.length > 0) return { unknown, valid };
+  const dimensions = Object.fromEntries(
+    names.map((n) => [n, report.dimensions[n as LibraryHealthDimension]]),
+  ) as LibraryHealthReport['dimensions'];
+  return { ...report, dimensions };
 }
 
 /**

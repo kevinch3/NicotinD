@@ -1545,6 +1545,25 @@ describe('library health & flag tools (issue #734)', () => {
     expect(parsed.dimensions.albumCovers.worklist).toHaveLength(1);
   });
 
+  it('get_library_health returns only the requested dimensions, and refuses an unknown one (#1391)', async () => {
+    const narrowed = await dispatchTool(ctx('refiner:read'), 'get_library_health', {
+      dimensions: ['genres', 'flags'],
+    });
+    const parsed = JSON.parse(narrowed.content[0]!.text) as {
+      totals: unknown;
+      dimensions: Record<string, unknown>;
+    };
+    expect(parsed.totals).toBeDefined();
+    expect(Object.keys(parsed.dimensions).sort()).toEqual(['flags', 'genres']);
+
+    const typo = await dispatchTool(ctx('refiner:read'), 'get_library_health', {
+      dimensions: ['genre'],
+    });
+    expect(typo.isError).toBe(true);
+    expect(typo.content[0]!.text).toContain('Unknown dimension(s): genre');
+    expect(typo.content[0]!.text).toContain('genres');
+  });
+
   it('resolve_review_flag resolves an open flag as the agent and audit-logs it', async () => {
     const flagged = await dispatchTool(ctx('refiner:curate'), 'flag_for_review', {
       targetKind: 'album',
