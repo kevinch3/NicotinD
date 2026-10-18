@@ -1,0 +1,73 @@
+# Curation pass — 2026-10 (umbrella-only genres; the worklist's artist label is not the songs' artist)
+
+Genre-focused pass over `genres.lowInformation` (songs whose only genre is a catch-all such as
+`Electronic`). Run against prod over MCP on 2026-10-17 at v0.8.112.
+
+## Library totals (2026-10-17)
+
+4,303 artists · 7,597 albums (7,596 visible) · 22,302 songs.
+
+## Baseline → final
+
+| Metric | Baseline | Final | Delta |
+| --- | --- | --- | --- |
+| genres.lowInformation | 169 | 134 | −35 |
+| genres.missing | 118 | 100 | −18 |
+| flags.open | 1 | 1 | 0 |
+
+Every other dimension was unchanged between the two reads. `lowInformation` was re-read from
+`get_library_health` after each batch; the 35 matches the 30 + 5 songs written below.
+
+## Actions
+
+| Scope | Songs | Genre | Evidence |
+| --- | --- | --- | --- |
+| Green Velvet — *Factory Town Miami 2026: La La Land (DJ Mix)* | 30 | `Electronic` → `Tech House` | Track list: Cajmere/Percolator, Street Slang, CASSIMM, Green Velvet's own tracks. Read back: 30/30. |
+| Mha Iri — *Hold On*, *Post Punk*, *Elements of Dance*, *Neon Storm*, *No Return* | 5 | `Electronic` → `Techno` | Press describes the artist as a peak-time/hard techno act. |
+| Gondwana — *Together* (11), *Carpe Diem* (6) | 17 | none → `Reggae` | Ten other Gondwana albums (1997–2014) independently carry `Reggae`; a Chilean reggae band. Read back 16/17 first pass; the 17th write hit a mistyped id (`Song not found`), re-written from the album read and ok. |
+| El Quinto Carajillo — *Al Tanto Que Va de Canto* | 1 | none → `Rumba` | Venue listing: Sant Joan de Vilatorrada's rumba act, blended with rock and reggae. Read back ok. `missing` was not re-read after this write; −18 is 118 − 17 − 1. |
+
+All writes were `mode: replace`; the worklist only lists songs whose catch-all is their only
+genre, so no other genre was dropped.
+
+## Left untagged (search inconclusive, per the skill's rule)
+
+- **Dekel — *Ancient Future*** (8 songs): the search found no such release. Collaborators
+  (Out of Orbit, Freedom Fighters) suggest psychedelic dance music, but that is inference.
+- **Ibu Selva — *Ngo-bo Sontg-pa*** (4 Electronic-only songs): nothing found. A lone sibling
+  (*Milonga*, `Organic House`) does not propagate.
+- **Kauffman / Rob Brainstorm / Murilo Salles cluster** (~8 genre-less singles): the search
+  returned only namesakes.
+- **Peter Capusotto / Bombita Rodríguez — *Blues de Perón***, **Joaquín Da Rosa — *El Traje del PSG***:
+  sources describe the character / the sound but name no genre (cumbia-adjacent is a guess).
+- **Latin club remixes in *01 - Pop Aguante*** (KAROL G ×2, Bandana, Beéle): the titles say
+  "Club Mix", which is not a self-declared genre; no source for the specific remixes.
+
+## Finding: a worklist row's artist name is not the artist of its songs
+
+`lowInformationWorklist` is grouped by album-artist id but labelled with a song artist. The row
+`Abraham (ES) & S.Hai` (30 songs) resolved to Green Velvet's DJ-mix album, whose 30 tracks have
+30 different artists; `Carolina de Jesus` (4) resolved to Ibu Selva and `Boiler Room` (2) to
+Matías Aguayo. Applying one genre per row *label* would have mis-tagged them. Read the album
+(`get_album_tracks`) before writing.
+
+## Open
+
+- Flag 28 (listener `quality` report) has no question/options, so it is `servable:false`.
+
+## Duplicate songs (checked, nothing deleted)
+
+`duplicateSongs`: 952 clusters / 1,029 redundant files. The top 50 clusters (sample 50) are almost
+all one pattern: one recording on a studio album, a greatest-hits/compilation and often a single
+(Britney, Chencho Corleone × `SOLO`, Lenny Kravitz, Juanes, Paul Kalkbrenner, ...). Two clusters
+fingerprint-checked with `identify_song`:
+
+| Cluster | Copies | acoustId | recordingId | Verdict |
+| --- | --- | --- | --- | --- |
+| Paul Kalkbrenner — *Mothertrucker* | 3 (`2015 - 7`, `7 (2015)`, `7 Tour - Nantes 21 mars 2019`) | all `ca5b3077…` | all `b5db30bd…` | one recording. The "Nantes" album holds the studio take, not a live one. |
+| Chencho Corleone — *Menta* | 3 (`SOLO`, `Menta` ×2 songs) | all `83245b22…` | all `f83c4a5d…` | one recording |
+
+Same `acoustId` proves same recording. Not deleted: deleting removes a track from an album or
+compilation, and deletes need the owner's go-ahead. Admin → Library maintenance → Find duplicates
+keeps the best-quality copy per cluster.
+
