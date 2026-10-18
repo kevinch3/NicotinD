@@ -413,7 +413,7 @@ prose ones, so the backlog the round hides is one click away rather than invisib
 (half a card is refused); the question is trimmed and capped; each option needs a unique `id`
 (never the reserved `resolve`), a `label` under the cap, an optional string `rationale` under the
 cap, and an `effect` this build can dispatch — `song-metadata` (`title|artist|album|albumArtist`
-strings only), `artist-merge`, `song-delete`, or `resolve-only` as a labelled "keep". **At least one
+strings only), `song-genre`, `artist-merge`, `song-delete`, or `resolve-only` as a labelled "keep". **At least one
 option must change data.** The error names the option index and the problem
 (`options[1] effect: fields.year is not one of …`). The caps live in core as `CASE_TEXT_LIMITS`
 so the tool description, the parser and any future card renderer quote one number. The read-side
@@ -434,6 +434,17 @@ The third effect, dispatched to `deleteOne` (the same path `delete_song` and the
 with the same `ShareRescanScheduler` the download routes carry, so a deleted file stops being
 advertised to Soulseek. The apply route writes a `song.delete` audit row beside the `curation.case`
 one, because prod probes count deletes by that action and a delete through a card must not hide.
+
+### `song-genre` (issue #1516)
+
+`{type:'song-genre', songIds, genre}` is one genre judgement about an artist cluster, the way an
+unattended runner proposes it: a card per artist, one option per candidate genre, and a tap
+applies `mutateSongGenre` with mode `replace` to each song. `songIds` is capped at
+`SONG_GENRE_EFFECT_MAX_SONGS` (100), so a card is one cluster, not a sweep. The effect is all or
+nothing: if any song has left the library it writes nothing, because the route audits only an
+applied effect and a half-applied card would leave writes no row records. Like `song-delete`, the
+route writes one `song.genre` audit row per song beside `curation.case`, so a genre set by tap
+counts wherever genre writes are counted.
 
 ### What did not change
 
