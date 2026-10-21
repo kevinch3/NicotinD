@@ -47,7 +47,7 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **A dead stream is reloaded, not abandoned**: a media `error` — or a stall that raises nothing at
   all — reloads the track and resumes where it stopped, bounded by `MAX_RECOVERY_ATTEMPTS`, while an
   outage holds the intent until the network returns. `recoverFromDeadStream`, `armStallWatchdog`,
-  `STREAM_STALL_TIMEOUT_MS`, `holdPausedState`, `parkedGeneration`. → [web-ui.md](../web-ui.md)
+  `STREAM_STALL_TIMEOUT_MS`, `holdPausedState`, `parkedGeneration`, `isStarved`. → [web-ui.md](../web-ui.md)
 - **A seek is an intent, not a poke**: a forward seek past the loaded region is held and applied once
   `audio.seekable` covers it, never assigned and silently clamped into a false `ended`.
   `pendingSeek`, `requestSeek`, `applyPendingSeek`, `seekTargetIsAvailable`,
@@ -55,6 +55,10 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **A skip burst costs one load**: navigation stays instant while the byte-level load settles on the
   trailing edge, and every `src` change bumps the load generation rather than only element swaps.
   `LOAD_SETTLE_MS`, `assignSource`, `playIfIntended`. → [web-ui.md](../web-ui.md)
+- **iOS background advance**: on iOS WebKit (locked or app switched away) the advance re-points the
+  playing element instead of swapping to the standby, and a preserved next track's blob is read ahead so
+  `play()` shares a task with `ended`. `isAppleMobileWebKit`, `prepareNext`, `takeNextBlobUrl`.
+  → [web-ui.md](../web-ui.md)
 - **Playback loading feedback (HDD-aware)**: one `buffering` signal (delayed `bufferingVisible`)
   drives spinners, row indicators and the buffered band; every stream URL goes through `streamUrl()`,
   which appends `ngsw-bypass`. Restore-on-load never autoplays — `wasPlaying` is written, not read.
