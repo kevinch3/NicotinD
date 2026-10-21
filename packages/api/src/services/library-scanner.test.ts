@@ -16,6 +16,8 @@ import {
   type ScannedTrack,
 } from './library-scanner.js';
 import { normalizeArtistForGrouping } from './album-grouping.js';
+import { loadSplitAuthority } from './artist-identity-store.js';
+import { mutateArtistIdentity } from './artist-identity-mutate.js';
 import { loadGenreOverrides, upsertGenreOverride } from './genre-overrides.js';
 import { loadGenreContext } from './genre-split.js';
 
@@ -1066,6 +1068,43 @@ describe('buildLibrary — multi-artist splitting (conservative, confirmation-ga
     expect(built.artists.find((a) => a.name === 'Bob Marley & The Wailers')?.splitCompound).toBe(
       false,
     );
+  });
+
+  // The whole path a curator takes: the identity write, the authority the next
+  // scan loads, the rebuild. "Gordo/Feid" has no delimiter the lexical splitter
+  // honours, so before #1520 the decision was stored and then never applied.
+  it('applies a user split decision to a compound no delimiter can see (#1520)', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    const result = mutateArtistIdentity(
+      db,
+      {},
+      { rawName: 'Gordo/Feid', decision: 'split', members: ['Gordo', 'Feid'] },
+    );
+    expect(result.ok).toBe(true);
+
+    const relPath = 'Gordo/Hombres y Mujeres/01.mp3';
+    const built = buildLibrary(
+      [
+        track({
+          relPath,
+          artist: 'Gordo/Feid',
+          albumArtist: 'Gordo/Feid',
+          album: 'Hombres y Mujeres',
+          title: 'Hombres y Mujeres',
+        }),
+      ],
+      undefined,
+      undefined,
+      loadSplitAuthority(db),
+    );
+    const credits = built.songArtists
+      .filter((l) => l.parentId === songId(relPath))
+      .sort((a, b) => a.position - b.position)
+      .map((l) => l.artistId);
+    expect(credits).toEqual([artistIdFor('Gordo'), artistIdFor('Feid')]);
+    expect(built.artists.find((a) => a.name === 'Gordo/Feid')?.splitCompound).toBe(true);
+    db.close();
   });
 });
 
