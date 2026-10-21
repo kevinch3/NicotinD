@@ -30,6 +30,7 @@ import type {
 } from '../artist-identity-mutate.js';
 import type { DeletionDeps } from '../library-deletion.js';
 import type { SongGenreMutateBody, SongGenreMutateDeps } from '../song-genre-mutate.js';
+import type { RebucketResult } from '../library-scanner.js';
 
 export type ApplyEffectResult = { ok: true; detail: string } | { ok: false; error: string };
 
@@ -69,6 +70,8 @@ export interface ApplyEffectDeps {
   songGenreDeps: SongGenreMutateDeps;
   artistIdentityDeps: ArtistIdentityMutateDeps;
   deletionDeps: DeletionDeps;
+  /** Scoped re-bucket (#1521); without it an applied merge waited for the next full scan. */
+  rebucket?: (names: string[]) => Promise<RebucketResult>;
 }
 
 export async function applyCaseEffect(
@@ -102,6 +105,7 @@ export async function applyCaseEffect(
         mergeInto: effect.mergeInto,
       });
       if (!res.ok) return { ok: false, error: res.error };
+      await deps.rebucket?.([effect.rawName, effect.mergeInto]);
       return { ok: true, detail: `merged ${effect.rawName} into ${effect.mergeInto}` };
     }
 

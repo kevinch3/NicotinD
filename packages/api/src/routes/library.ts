@@ -77,7 +77,8 @@ import {
   RELATED_LIMIT_MAX,
   relatedArtists,
 } from '../services/related-artists.js';
-import { mutateArtistIdentity } from '../services/artist-identity-mutate.js';
+import { mutateArtistIdentity, verifyIdentityApplied } from '../services/artist-identity-mutate.js';
+import type { RebucketResult } from '../services/library-scanner.js';
 import { mutateSongGenre, parseGenreList } from '../services/song-genre-mutate.js';
 import {
   createCurationFlag,
@@ -390,6 +391,8 @@ function downloadingExclusion(db: Database): { sql: string; params: string[] } {
 export interface LibraryRoutesOptions {
   curator?: LibraryCurator;
   runSync?: () => Promise<void>;
+  /** Re-bucket only what a curation fix touched (#1521); absent → `runSync`. */
+  rebucket?: (names: string[]) => Promise<RebucketResult>;
   /** Shared maintenance runner (issue #622); absent → /sync runs inline. */
   maintenance?: MaintenanceService | null;
   /** Lidarr client for genre verification + metadata optimization; null when unconfigured. */
@@ -649,6 +652,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   const {
     curator,
     runSync,
+    rebucket,
     maintenance,
     lidarr,
     coverCacheDir,
@@ -1795,10 +1799,19 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const result = mutateArtistIdentity(db, { dataDir }, body ?? {});
     if (!result.ok) return c.json({ error: result.error }, result.status);
 
-    // Re-bucket synchronously so the caller sees the change immediately (the UI
-    // shows a spinner meanwhile). scan-cache skips unchanged files, so a no-op
-    // rescan is cheap; the same await pattern backs POST /sync below.
-    if (runSync) await runSync();
+    // Re-bucket only the artists this decision names, then read the library
+    // back: a full scan took 15 s on prod to move 3 songs, and a 200 over an
+    // unchanged library is how a split showed a green toast and did nothing
+    // (#1520, #1521). The fallback full sync keeps its old, unverified reply.
+    let notLanded: string | null = null;
+    if (rebucket) {
+      await rebucket(
+        [body?.rawName, body?.rename, body?.mergeInto, ...(body?.members ?? [])].filter(
+          (n): n is string => typeof n === 'string' && n.trim() !== '',
+        ),
+      );
+      notLanded = verifyIdentityApplied(db, body ?? {}, result.kind);
+    } else if (runSync) await runSync();
     recordAudit(db, c.get('user'), 'artist.identity', {
       targetKind: 'artist',
       targetId: body?.rawName?.trim() ?? '',
@@ -1816,9 +1829,10 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
             ? `split → ${(body.members ?? []).map((m) => m.trim()).join(', ')}`
             : (body?.decision ?? ''),
     });
+    if (notLanded) return c.json({ error: notLanded, applied: false }, 422);
     return c.json({
       ok: true,
-      resynced: Boolean(runSync),
+      resynced: Boolean(rebucket ?? runSync),
       kind: result.kind,
       artistId: result.artistId,
     });
@@ -1933,13 +1947,14 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     // immediately instead of wondering whether it took. The backfill matters on
     // its own because a scan of a large library takes minutes.
     backfillGenreOverrides(db, setSongGenres);
-    if (runSync) await runSync();
+    if (rebucket) await rebucket([artist.name]);
+    else if (runSync) await runSync();
     recordAudit(db, c.get('user'), 'artist.genre', {
       targetKind: 'artist',
       targetId: artist.name,
       detail: genres.join(';'),
     });
-    return c.json({ ok: true, genres, resynced: Boolean(runSync) });
+    return c.json({ ok: true, genres, resynced: Boolean(rebucket ?? runSync) });
   });
 
   app.delete('/artists/:id/genre', async (c) => {
@@ -1951,9 +1966,10 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     if (!artist) return c.json({ error: 'Artist not found' }, 404);
 
     const removed = deleteGenreOverride(db, 'artist', normalizeArtistForGrouping(artist.name));
-    // A reset needs the full rescan to rebuild the set from tags — the backfill
-    // can only add an override's effect, never undo one.
-    if (runSync) await runSync();
+    // A reset rebuilds the set from tags — the backfill can only add an
+    // override's effect, never undo one. The artist's albums are enough.
+    if (rebucket) await rebucket([artist.name]);
+    else if (runSync) await runSync();
     recordAudit(db, c.get('user'), 'artist.genre', {
       targetKind: 'artist',
       targetId: artist.name,
@@ -2048,16 +2064,24 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     }
     if (!musicDir) return c.json({ error: 'musicDir not configured' }, 503);
     const db = getDatabase();
+    // Captured before the retag: the files are what changed on disk.
+    const paths = albumIds.flatMap((id) =>
+      db
+        .query<{ path: string }, [string]>('SELECT path FROM library_songs WHERE album_id = ?')
+        .all(id)
+        .map((r) => r.path),
+    );
     const result = await applyMissplitMerge(db, musicDir, albumIds, albumArtist);
     recordAudit(db, c.get('user'), 'library.missplit_merge', {
       targetKind: 'album',
       targetId: albumIds.join(','),
       detail: `albumArtist="${albumArtist}" tagged=${result.tagged} failed=${result.failed}`,
     });
-    // Re-bucket synchronously so the report the caller refreshes reflects the
-    // merge (same await pattern as the identity fix above).
-    if (runSync) await runSync();
-    return c.json({ ...result, resynced: Boolean(runSync) });
+    // Reconcile just these albums' folders so the report the caller refreshes
+    // reflects the merge, not the whole library (#1521).
+    if (scanIncremental) await scanIncremental(paths);
+    else if (runSync) await runSync();
+    return c.json({ ...result, resynced: Boolean(scanIncremental ?? runSync) });
   });
 
   // --- Songs --------------------------------------------------------------------

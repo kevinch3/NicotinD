@@ -305,7 +305,7 @@ the usual `(via MCP agent)` suffix.
 One root cause routinely produces several corrupted spellings of the same artist
 — a single DJ-set-tag cluster needed **7** sequential `merge_artist` calls. The
 tool now also takes `rawNames: string[]` (≤50, deduped) sharing one `mergeInto`,
-one `confirm`, and **one** resync at the end instead of one rescan per name.
+one `confirm`, and **one** scoped re-bucket of every raw name + the target at the end (#1521; [library-scanner.md](library-scanner.md) "Scoped re-bucket").
 Failures are per-name (`failed[]`) rather than aborting the batch, and each
 successful merge still writes its own `artist.identity` audit row keyed on that
 raw name, so the log stays greppable per artist. `kind` and `artistId` remain
@@ -589,11 +589,11 @@ surface is narrower than the route's: only `merge_artist` (mergeInto) shipped �
 `single`/`split` are exposed to the curator UI but not to an agent, since a
 merge is the one case with an unambiguous, single, LLM-describable target name
 and a split's member list is harder to hand to a tool call safely.
-`artistIdentity: { dataDir, runSync }` on
+`artistIdentity: { dataDir, runSync, rebucket }` on
 `McpToolContext` is separate from `deletion` — a different HTTP route wires
-these in `index.ts` (`expandedDataDir`, `runSyncAndCurate`), so `mcpRoutes` now
-takes both pairs of deps explicitly rather than growing an implicit shared
-context object.
+these in `index.ts` (`expandedDataDir`, `{ runSync: runSyncAndCurate, rebucket }`),
+so `mcpRoutes` takes both sets of deps explicitly rather than growing an implicit
+shared context object; `rebucket` wins, `runSync` is the fallback.
 
 ### `lookup_song_metadata` / `fix_song_metadata` (issue #722)
 

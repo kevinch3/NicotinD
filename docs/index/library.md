@@ -41,6 +41,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **Artist curation survives an identity fix**: `carryArtistCuration` moves artwork, uploads, bio and
   the name-keyed genre override at the fix site when a rename/merge re-mints the artist id.
   → [library-scanner.md](../library-scanner.md)
+- **Scoped re-bucket**: a curation fix rebuilds only the albums it names from cached tags
+  (`rebucketArtists`, `refreshArtistRow`, mutex shared with `scanFull`), then `verifyIdentityApplied`.
+  → [library-scanner.md](../library-scanner.md)
 - **Canonical artwork**: `library_artwork` stores canonical URLs keyed on deterministic ids, so they
   survive rescans. → [library-scanner.md](../library-scanner.md)
 - **Artwork is three tiers, and the metric names which one**: `missingAlbumArtSql` measures a
