@@ -151,3 +151,52 @@ export function mutateArtistIdentity(
 
   return { ok: true, kind, artistId: resultArtistId };
 }
+
+/**
+ * Read the library back after the re-bucket and say, in one sentence the
+ * modal can show, if the decision did not land — `null` when it did. The
+ * route answered 200 on a stored decision alone, so "Gordo/Feid" split showed
+ * a green toast over an unchanged library (#1520, #1521). The stored decision
+ * is kept either way: it is the curator's intent.
+ */
+export function verifyIdentityApplied(
+  db: Database,
+  body: ArtistIdentityMutateBody,
+  kind: 'renamed' | 'merged' | 'single' | 'split',
+): string | null {
+  const raw = body.rawName?.trim() ?? '';
+  const artistRow = (name: string) =>
+    db
+      .query<{ split_compound: number }, [string]>(
+        'SELECT split_compound FROM library_artists WHERE id = ?',
+      )
+      .get(artistIdFor(name));
+
+  if (kind === 'split') {
+    const compound = artistRow(raw);
+    const members = (body.members ?? []).map((m) => m.trim()).filter(Boolean);
+    const landed =
+      (!compound || compound.split_compound === 1) && members.every((m) => artistRow(m) != null);
+    return landed
+      ? null
+      : `The split was saved, but the library still lists “${raw}” as one artist.`;
+  }
+  if (kind === 'single') {
+    const compound = artistRow(raw);
+    return compound && compound.split_compound === 0
+      ? null
+      : `The change was saved, but “${raw}” is still split.`;
+  }
+  const target = (body.rename ?? body.mergeInto ?? '').trim();
+  const oldId = artistIdFor(raw);
+  const stillFiled =
+    oldId !== artistIdFor(target) &&
+    db
+      .query<{ one: number }, [string, string]>(
+        'SELECT 1 AS one FROM library_songs WHERE artist_id = ? OR album_artist_id = ? LIMIT 1',
+      )
+      .get(oldId, oldId) != null;
+  return artistRow(target) != null && !stillFiled
+    ? null
+    : `The change was saved, but songs are still filed under “${raw}”.`;
+}

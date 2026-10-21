@@ -8,7 +8,7 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
-import { mutateArtistIdentity } from './artist-identity-mutate.js';
+import { mutateArtistIdentity, verifyIdentityApplied } from './artist-identity-mutate.js';
 import { artistIdFor } from './library-scanner.js';
 
 const db = new Database(':memory:');
@@ -234,5 +234,94 @@ describe('a whitespace-only display-name fix (issue #956)', () => {
     expect(mutateArtistIdentity(db, { dataDir: '/tmp' }, { rename: 'X', rawName: 'X' }).ok).toBe(
       false,
     );
+  });
+});
+
+// #1521/#1520: the route used to answer 200 whether or not the rescan moved
+// anything ("Gordo/Feid" split → green toast → unchanged). The check reads the
+// library back.
+describe('verifyIdentityApplied', () => {
+  beforeEach(() => {
+    db.run('DELETE FROM library_artists');
+    db.run('DELETE FROM library_songs');
+  });
+
+  const artist = (name: string, splitCompound = 0) =>
+    db.run(
+      `INSERT INTO library_artists (id, name, album_count, split_compound, synced_at) VALUES (?, ?, 1, ?, 1)`,
+      [artistIdFor(name), name, splitCompound],
+    );
+  const songOwnedBy = (name: string) =>
+    db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, album_artist, album_artist_id, duration, path, size, bit_rate, suffix, content_type, created, synced_at)
+       VALUES (?, 'alb', 'T', ?, ?, ?, ?, 0, ?, 10, 320, 'mp3', 'audio/mpeg', '2026-01-01', 1)`,
+      [
+        `s-${Math.random()}`,
+        name,
+        artistIdFor(name),
+        name,
+        artistIdFor(name),
+        `${Math.random()}.mp3`,
+      ],
+    );
+
+  const split = { rawName: 'Gordo/Feid', decision: 'split' as const, members: ['Gordo', 'Feid'] };
+
+  it('split: landed when the compound is flagged and every member has a row', () => {
+    artist('Gordo/Feid', 1);
+    artist('Gordo');
+    artist('Feid');
+    expect(verifyIdentityApplied(db, split, 'split')).toBeNull();
+  });
+
+  it('split: not landed while the compound is still one unflagged artist', () => {
+    artist('Gordo/Feid', 0);
+    expect(verifyIdentityApplied(db, split, 'split')).toBe(
+      'The split was saved, but the library still lists “Gordo/Feid” as one artist.',
+    );
+  });
+
+  it('split: not landed when a member has no row', () => {
+    artist('Gordo/Feid', 1);
+    artist('Gordo');
+    expect(verifyIdentityApplied(db, split, 'split')).not.toBeNull();
+  });
+
+  it('rename: landed when the target exists and nothing is filed under the old name', () => {
+    artist('Alpha Prime');
+    songOwnedBy('Alpha Prime');
+    expect(
+      verifyIdentityApplied(db, { rawName: 'Alpha', rename: 'Alpha Prime' }, 'renamed'),
+    ).toBeNull();
+  });
+
+  it('merge: not landed while songs are still filed under the old name', () => {
+    artist('Bravo');
+    songOwnedBy('Bravo Variant');
+    expect(
+      verifyIdentityApplied(db, { rawName: 'Bravo Variant', mergeInto: 'Bravo' }, 'merged'),
+    ).toBe('The change was saved, but songs are still filed under “Bravo Variant”.');
+  });
+
+  it('rename to the same id (accent fix): landed when the row exists', () => {
+    artist('Los Auténticos');
+    songOwnedBy('Los Auténticos');
+    expect(
+      verifyIdentityApplied(db, { rawName: 'Los Áutenticos', rename: 'Los Auténticos' }, 'renamed'),
+    ).toBeNull();
+  });
+
+  it('single: not landed while the compound is still split', () => {
+    artist('Wisin & Yandel', 1);
+    expect(
+      verifyIdentityApplied(db, { rawName: 'Wisin & Yandel', decision: 'single' }, 'single'),
+    ).toBe('The change was saved, but “Wisin & Yandel” is still split.');
+  });
+
+  it('single: landed when the compound is one unflagged artist', () => {
+    artist('Wisin & Yandel', 0);
+    expect(
+      verifyIdentityApplied(db, { rawName: 'Wisin & Yandel', decision: 'single' }, 'single'),
+    ).toBeNull();
   });
 });
