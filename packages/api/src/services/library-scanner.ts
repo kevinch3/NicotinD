@@ -1924,29 +1924,33 @@ export class LibraryScanner {
         .map((r) => r.album_id);
       if (albumIds.length === 0) return { songs: 0, albumIds: [] };
 
-      const albumList = albumIds.map(() => '?').join(',');
-      const inScope = `SELECT id FROM library_songs WHERE album_id IN (${albumList})`;
+      // One JSON parameter, not one placeholder per album: a wide scope (a short
+      // name hits the text arm across most of the library) passes Bun's
+      // 65,535-binding ceiling at five lists, and the count wraps silently.
+      const albumJson = JSON.stringify(albumIds);
+      const albumSet = `SELECT value FROM json_each(?)`;
+      const inScope = `SELECT id FROM library_songs WHERE album_id IN (${albumSet})`;
       const paths = this.db
-        .query<{ path: string }, string[]>(
-          `SELECT path FROM library_songs WHERE album_id IN (${albumList})`,
+        .query<{ path: string }, [string]>(
+          `SELECT path FROM library_songs WHERE album_id IN (${albumSet})`,
         )
-        .all(...albumIds)
+        .all(albumJson)
         .map((r) => r.path);
       const artistsBefore = this.db
         .query<{ id: string }, string[]>(
-          `SELECT artist_id AS id FROM library_songs WHERE album_id IN (${albumList})
-           UNION SELECT album_artist_id FROM library_songs WHERE album_id IN (${albumList})
+          `SELECT artist_id AS id FROM library_songs WHERE album_id IN (${albumSet})
+           UNION SELECT album_artist_id FROM library_songs WHERE album_id IN (${albumSet})
            UNION SELECT artist_id FROM library_song_artists WHERE song_id IN (${inScope})
-           UNION SELECT artist_id FROM library_albums WHERE id IN (${albumList})
-           UNION SELECT artist_id FROM library_album_artists WHERE album_id IN (${albumList})`,
+           UNION SELECT artist_id FROM library_albums WHERE id IN (${albumSet})
+           UNION SELECT artist_id FROM library_album_artists WHERE album_id IN (${albumSet})`,
         )
-        .all(...albumIds, ...albumIds, ...albumIds, ...albumIds, ...albumIds)
+        .all(albumJson, albumJson, albumJson, albumJson, albumJson)
         .map((r) => r.id);
       const genresBefore = this.db
-        .query<{ genre: string }, string[]>(
+        .query<{ genre: string }, [string]>(
           `SELECT DISTINCT genre FROM library_song_genres WHERE song_id IN (${inScope})`,
         )
-        .all(...albumIds)
+        .all(albumJson)
         .map((r) => r.genre);
 
       const tracks = await this.readTracks(
@@ -1963,7 +1967,7 @@ export class LibraryScanner {
         this.knownRelPaths(tracks),
       );
       // Replace the album credit set, as persist already does for songs (#1073).
-      this.db.run(`DELETE FROM library_album_artists WHERE album_id IN (${albumList})`, albumIds);
+      this.db.run(`DELETE FROM library_album_artists WHERE album_id IN (${albumSet})`, [albumJson]);
       this.persist(built, Date.now(), false);
       for (const id of new Set([...artistsBefore, ...built.artists.map((a) => a.id)])) {
         if (id) refreshArtistRow(this.db, id);

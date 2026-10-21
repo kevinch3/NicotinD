@@ -221,7 +221,7 @@ describe('LibraryScanner.rebucketArtists', () => {
 // rows here — rebucket never touches a song outside its scope, so it needs no
 // file — and the target artist is real files with cached tags.
 describe('rebucketArtists on a prod-sized library', () => {
-  it('rebuckets one artist in a 20k-song library in well under a second', async () => {
+  it('rebuckets one artist in a 28k-song library in well under a second', async () => {
     for (let i = 1; i <= 8; i++)
       put(`T/Album ${i % 3}/${i}.mp3`, {
         artist: 'Target Artist',
@@ -244,13 +244,13 @@ describe('rebucketArtists on a prod-sized library', () => {
     );
     db.transaction(() => {
       for (let a = 0; a < 4300; a++) artist.run(`ar${a}`, `Artist ${a}`);
-      for (let b = 0; b < 7600; b++)
+      for (let b = 0; b < 14000; b++)
         album.run(`al${b}`, `Album ${b}`, `Artist ${b % 4300}`, `ar${b % 4300}`);
-      for (let s = 0; s < 22000; s++) {
+      for (let s = 0; s < 28000; s++) {
         const a = s % 4300;
         song.run(
           `s${s}`,
-          `al${s % 7600}`,
+          `al${s % 14000}`,
           `Artist ${a}`,
           `ar${a}`,
           `Artist ${a}`,
@@ -271,5 +271,12 @@ describe('rebucketArtists on a prod-sized library', () => {
 
     expect(result.songs).toBe(8);
     expect(ms).toBeLessThan(1000);
+
+    // A short name hits the raw-text arm across most of the library: 14k
+    // albums, five lists of them — past what Bun's SQLite binds (a count above
+    // 65,535 wraps: "expected 34464 values, received 100000") if each id is its
+    // own placeholder.
+    const wide = await scanner.rebucketArtists(['Artist']);
+    expect(wide.albumIds.length).toBeGreaterThan(13500);
   });
 });
