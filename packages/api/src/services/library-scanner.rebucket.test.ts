@@ -215,3 +215,61 @@ describe('LibraryScanner.rebucketArtists', () => {
     });
   });
 });
+
+// Prod shape (kpc, 2026-10-21): 22,491 songs, 7,611 albums, 4,313 artists. A
+// full scan took 15.3 s to write 3 of them. The rest of the library is plain
+// rows here — rebucket never touches a song outside its scope, so it needs no
+// file — and the target artist is real files with cached tags.
+describe('rebucketArtists on a prod-sized library', () => {
+  it('rebuckets one artist in a 20k-song library in well under a second', async () => {
+    for (let i = 1; i <= 8; i++)
+      put(`T/Album ${i % 3}/${i}.mp3`, {
+        artist: 'Target Artist',
+        album: `Album ${i % 3}`,
+        title: `t${i}`,
+      });
+    await scanner.scanPaths(
+      Array.from({ length: 8 }, (_, k) => `T/Album ${(k + 1) % 3}/${k + 1}.mp3`),
+    );
+
+    const song = db.prepare(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, album_artist, album_artist_id, duration, path, size, bit_rate, suffix, content_type, created, synced_at)
+       VALUES (?, ?, 't', ?, ?, ?, ?, 200, ?, 10, 320, 'mp3', 'audio/mpeg', '2026-01-01', 1)`,
+    );
+    const album = db.prepare(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, synced_at) VALUES (?, ?, ?, ?, 3, 600, 1)`,
+    );
+    const artist = db.prepare(
+      `INSERT INTO library_artists (id, name, album_count, split_compound, synced_at) VALUES (?, ?, 2, 0, 1)`,
+    );
+    db.transaction(() => {
+      for (let a = 0; a < 4300; a++) artist.run(`ar${a}`, `Artist ${a}`);
+      for (let b = 0; b < 7600; b++)
+        album.run(`al${b}`, `Album ${b}`, `Artist ${b % 4300}`, `ar${b % 4300}`);
+      for (let s = 0; s < 22000; s++) {
+        const a = s % 4300;
+        song.run(
+          `s${s}`,
+          `al${s % 7600}`,
+          `Artist ${a}`,
+          `ar${a}`,
+          `Artist ${a}`,
+          `ar${a}`,
+          `x/${s}.mp3`,
+        );
+      }
+    })();
+
+    upsertArtistAlias(db, {
+      aliasNorm: 'target artist',
+      canonicalName: 'Target Artiste',
+      source: 'user',
+    });
+    const started = performance.now();
+    const result = await scanner.rebucketArtists(['Target Artist', 'Target Artiste']);
+    const ms = performance.now() - started;
+
+    expect(result.songs).toBe(8);
+    expect(ms).toBeLessThan(1000);
+  });
+});
