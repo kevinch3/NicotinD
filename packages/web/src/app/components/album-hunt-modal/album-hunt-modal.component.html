@@ -1,15 +1,16 @@
-<!-- Backdrop — on mobile anchor to top (below the sticky header) to keep the footer
-     download button above the fixed player + tab bar. Desktop stays centered. -->
+<!-- Backdrop — on mobile anchor to top (the directive reserves the sticky header
+     above and the player + tab bar below) to keep the footer download button on
+     screen. Desktop stays centered. -->
 <div
-  class="fixed inset-0 z-50 flex items-start justify-center pt-14 px-3 pb-2 md:items-center md:p-4 bg-black/60 backdrop-blur-sm"
+  class="fixed inset-0 z-50 flex items-start justify-center pt-4 px-3 pb-2 md:items-center md:p-4 bg-black/60 backdrop-blur-sm"
   appBottomChromeSafe
   (click)="close()"
 >
-  <!-- max-h: the directive-measured chrome inset + this backdrop's own static
-       padding (pt-14 + pb-2 = 4rem) — replaces a hardcoded 11.5rem that baked in
-       player + tab bar heights and drifted from the real chrome. -->
+  <!-- max-h: the directive-measured chrome insets at both edges (modal-max-h) —
+       replaces hardcoded guesses at the header and player + tab bar heights
+       that drifted from the real chrome (#1522). -->
   <div
-    class="relative w-full max-w-2xl max-h-[calc(100dvh-var(--bottom-chrome-inset,0px)-4rem)] md:max-h-[90vh] flex flex-col rounded-2xl bg-theme-surface border border-theme-surface-2 shadow-2xl overflow-hidden"
+    class="relative w-full max-w-2xl modal-max-h md:max-h-[90vh] flex flex-col rounded-2xl bg-theme-surface border border-theme-surface-2 shadow-2xl overflow-hidden"
     role="dialog"
     aria-modal="true"
     aria-label="Find complete album"

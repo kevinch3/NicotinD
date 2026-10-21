@@ -159,6 +159,9 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   // ─── Artist identity fix (admin: one act / split / merge-variant / rename) ──
   readonly identityOpen = signal(false);
   readonly genreOpen = signal(false);
+  /** Parked until redesigned: users found the editor hard to understand and
+   *  unreachable on a phone (docs/library-scanner.md "Artist genre editor is hidden"). */
+  readonly genreEditorEnabled = false;
 
   /**
    * The server ran the rescan synchronously and told us where the change landed.

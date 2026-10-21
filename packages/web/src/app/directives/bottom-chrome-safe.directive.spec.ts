@@ -5,7 +5,11 @@ import { BottomChromeSafeDirective } from './bottom-chrome-safe.directive';
 @Component({
   standalone: true,
   imports: [BottomChromeSafeDirective],
-  template: `<div appBottomChromeSafe class="backdrop" style="padding-bottom: 16px">
+  template: `<div
+    appBottomChromeSafe
+    class="backdrop"
+    style="padding-bottom: 16px; padding-top: 16px"
+  >
     <div class="dialog">content</div>
   </div>`,
 })
@@ -158,5 +162,36 @@ describe('BottomChromeSafeDirective', () => {
       fixture.destroy();
       expect(disconnected).toBe(true);
     });
+  });
+});
+
+// The sticky app header painted over modal panels on iOS, burying their close
+// button (#1522). The backdrop reserves it like the bottom chrome.
+describe('BottomChromeSafeDirective — top chrome', () => {
+  function addHeader(heightPx: number): HTMLElement {
+    const el = document.createElement('header');
+    el.setAttribute('data-top-chrome', '');
+    el.getBoundingClientRect = () => ({ top: 0, height: heightPx }) as DOMRect;
+    document.body.appendChild(el);
+    return el;
+  }
+
+  afterEach(() => {
+    document.querySelectorAll('[data-top-chrome]').forEach((el) => el.remove());
+  });
+
+  it('leaves the top padding untouched when no header is present', () => {
+    const { fixture, backdrop } = setup();
+    fixture.detectChanges();
+    expect(backdrop.style.paddingTop).toBe('16px');
+    expect(backdrop.style.getPropertyValue('--top-chrome-inset')).toBe('0px');
+  });
+
+  it('adds the measured header height on top of the backdrop’s own padding', () => {
+    addHeader(83);
+    const { fixture, backdrop } = setup();
+    fixture.detectChanges();
+    expect(backdrop.style.paddingTop).toBe('99px');
+    expect(backdrop.style.getPropertyValue('--top-chrome-inset')).toBe('83px');
   });
 });

@@ -45,7 +45,7 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   under the mini-player. → [design-patterns.md](../design-patterns.md)
 - **Bottom-chrome stacking + scroll lock**: mini-player and tab bar share one plane;
   `ScrollLockService` pins the document under sheets; `BottomChromeSafeDirective` +
-  `measureBottomChromeInset` keep tall modals reachable.
+  `measureBottomChromeInset`/`measureTopChromeInset` + `modal-max-h` keep modals reachable.
   → [design-patterns.md](../design-patterns.md)
 - **Page & section idioms**: every routed page inside the shell has a `page-shell` root with a width
   cap, grouped pages share `SettingsGroupComponent`, tables use `section-flush`; `page-shell.spec.ts`
