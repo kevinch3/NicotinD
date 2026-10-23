@@ -15,12 +15,17 @@ export interface ArtistCredit {
  *   duos like "Wisin & Yandel"). These are kept whole even when both members are
  *   independently confirmed.
  *
+ * - `explicitSplits` — a curator's split decision: the compound maps to exactly these
+ *   members, with no delimiter or confirmation needed ("Gordo/Feid", whose unspaced
+ *   `/` the lexical pass deliberately ignores so AC/DC survives — issue #1520).
+ *
  * With empty sets the parser keeps every compound whole (the safe default) — it only
  * ever splits on positive confirmation, never mangling a band/duo name.
  */
 export interface KnownArtistSets {
   confirmedArtists?: ReadonlySet<string>;
   canonicalWhole?: ReadonlySet<string>;
+  explicitSplits?: ReadonlyMap<string, readonly string[]>;
 }
 
 const FEAT_BRACKET = /\s*[([]\s*(?:feat\.?|ft\.?|featuring|with|w\/)\s+([^)\]]+)[)\]]/gi;
@@ -216,7 +221,10 @@ export function splitArtists(raw: string, known: KnownArtistSets = {}): ArtistCr
   const { primary, featuring } = extractFeaturing(raw);
 
   let primaryNames: string[];
-  if (canonicalWhole.has(normalize(primary))) {
+  const decided = known.explicitSplits?.get(normalize(primary));
+  if (decided && decided.length > 1) {
+    primaryNames = [...decided];
+  } else if (canonicalWhole.has(normalize(primary))) {
     // Lidarr/MB says this compound is one act (band/duo) — never split it.
     primaryNames = [primary];
   } else {
