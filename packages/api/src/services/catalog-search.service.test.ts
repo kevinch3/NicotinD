@@ -183,6 +183,63 @@ describe('CatalogService.search', () => {
     expect(result.albums.map((a) => a.title)).toEqual(['Venus']);
   });
 
+  // #1566, measured on prod: artist.lookup("Christian Löffler") returns the
+  // artist Lidarr has (id 1336) and a namesake (no id, another MBID). The global
+  // album.lookup carried only the namesake's 2008–2014 EPs, never "Mare".
+  it("leads with a provisioned artist's own Lidarr discography", async () => {
+    const real = makeArtist({
+      id: 1336,
+      artistName: 'Christian Löffler',
+      foreignArtistId: 'mbid-real',
+    });
+    const namesake = {
+      ...makeArtist({ id: 0, artistName: 'Christian Löffler', foreignArtistId: 'mbid-other' }),
+      id: undefined,
+    } as unknown as LidarrArtist;
+    const listByArtist = mock(async () => [
+      makeAlbum({ id: 10, title: 'Mare', releaseDate: '2016-03-11' }),
+      makeAlbum({ id: 11, title: 'A Life', releaseDate: '2024-04-26' }),
+    ]);
+    const lidarr = {
+      artist: { lookup: mock(async () => [real, namesake]) },
+      album: {
+        lookup: mock(async () => [
+          makeAlbum({ id: 1, title: 'Raise Your Hands EP', albumType: 'EP', artist: namesake }),
+          makeAlbum({ id: 11, title: 'A Life', artist: real }),
+        ]),
+        listByArtist,
+      },
+    } as unknown as Lidarr;
+
+    const result = await new CatalogService(lidarr).search('Christian Löffler');
+    expect(listByArtist).toHaveBeenCalledWith(1336);
+    expect(result.albums.map((a) => a.title)).toEqual(['A Life', 'Mare', 'Raise Your Hands EP']);
+    expect(result.albums[1]).toMatchObject({
+      artistName: 'Christian Löffler',
+      artistMbid: 'mbid-real',
+    });
+  });
+
+  it('falls back to the lookup alone when the discography read fails', async () => {
+    const lidarr = {
+      artist: { lookup: mock(async () => [makeArtist({ id: 5, artistName: 'Zara Larsson' })]) },
+      album: {
+        lookup: mock(async () => [
+          makeAlbum({
+            id: 1,
+            title: 'Venus',
+            artist: makeArtist({ id: 5, artistName: 'Zara Larsson' }),
+          }),
+        ]),
+        listByArtist: mock(async () => {
+          throw new Error('lidarr down');
+        }),
+      },
+    } as unknown as Lidarr;
+    const result = await new CatalogService(lidarr).search('Zara Larsson');
+    expect(result.albums.map((a) => a.title)).toEqual(['Venus']);
+  });
+
   it('suppresses junk + flags discographyUnavailable when the named artist has no own albums', async () => {
     // Zara Larsson is matched as an artist, but album.lookup carries only
     // mashups/tributes by *other* artists — none of her real albums. §A6.
