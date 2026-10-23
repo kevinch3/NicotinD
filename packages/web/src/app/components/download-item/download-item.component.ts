@@ -198,6 +198,8 @@ export class DownloadItemComponent {
   readonly titleClass = DOWNLOAD_ITEM_TITLE_CLASS;
 
   readonly item = input.required<DownloadItem>();
+  /** The source's manifest name, for an addon the web has no badge of its own for. */
+  readonly sourceName = input<string | null>(null);
   readonly retrying = input(false);
   /** True while the parent's cancel request is in flight (#806). */
   readonly cancelling = input(false);
@@ -238,7 +240,7 @@ export class DownloadItemComponent {
   /** Template access to the pure label helper. */
   readonly failureLabel = failureClassLabel;
 
-  readonly badge = computed(() => methodBadge(this.item().method));
+  readonly badge = computed(() => methodBadge(this.item().method, this.sourceName()));
   /** Gates the "N tracks landed — Discard" line on a cancelled partial (#810). */
   readonly showPartialDiscard = computed(() => canShowPartialDiscard(this.item()));
   /** Compact "· FLAC · 1411 kbps" / "· 320 kbps" chip text, '' when unknown. */

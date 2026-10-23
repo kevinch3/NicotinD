@@ -127,6 +127,8 @@ export class AlbumHuntModalComponent implements OnInit {
   // The exact Soulseek search strings this hunt fires — shown in the loading
   // message so the user can see what's being searched (and which skew variants
   // are tried). Mirrors the server's query builder.
+  /** The hunting source's own name (its manifest), never a hardcoded brand. */
+  readonly networkLabel = computed(() => this.plugins.networkSource()?.name ?? 'the network');
   readonly baseSearchQueries = computed(() => baseQueries(this.artistName(), this.album().title));
   readonly skewSearchQueries = computed(() =>
     this.skewSearch() ? skewedQueries(this.artistName(), this.album().title) : [],

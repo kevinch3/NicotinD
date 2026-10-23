@@ -20,6 +20,8 @@ import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import { AuthService } from '../../services/auth.service';
 import type { FolderGroup } from '../../lib/folder-utils';
 import { GetThenHearService } from '../../services/get-then-hear.service';
+import { ConfirmService } from '../../services/confirm.service';
+import { formatBytes } from '../../lib/disk-usage';
 
 let registeredHandler: (() => Promise<void> | void) | null = null;
 
@@ -512,8 +514,8 @@ describe('SearchComponent — metadata-driven search', () => {
     transfers.getStatus = () => ({ state: 'Completed, Succeeded' });
 
     const candidate = {
-      id: 'soulseek:u:f.flac',
-      source: 'soulseek' as const,
+      id: 'network:u:f.flac',
+      source: 'network' as const,
       sourceLabel: 'Soulseek',
       title: 'Song',
       subtitle: 'peer',
@@ -660,6 +662,48 @@ describe('SearchComponent — one album = one download in the folder lane (#1539
       artist: 'Damian Lazarus & The Ancient Moons',
       title: 'Message From The Other Side',
     });
+  });
+});
+
+describe('SearchComponent — Download all asks first (#1542)', () => {
+  const peer = (username: string, n: number) => ({
+    username,
+    freeUploadSlots: 1,
+    uploadSpeed: 1,
+    queueLength: 0,
+    files: Array.from({ length: n }, (_, i) => ({
+      filename: `Music\\${username}\\0${i + 1} T.flac`,
+      size: 1_000_000,
+    })),
+  });
+
+  function seeded(answer: boolean) {
+    const enqueueDownload = vi.fn(() => of({ ok: true, queued: 1, jobId: 'j' }));
+    const ctx = setup({}, {}, {}, { enqueueDownload });
+    ctx.search.network.set([peer('a', 2), peer('b', 3)] as never);
+    const confirm = TestBed.inject(ConfirmService);
+    const ask = vi.spyOn(confirm, 'ask').mockResolvedValue(answer);
+    return { ...ctx, ask, enqueueDownload };
+  }
+
+  it('names the count, the peers and the size before queuing anything', async () => {
+    const { component, ask, enqueueDownload } = seeded(false);
+    await component.requestDownloadAll();
+    expect(ask).toHaveBeenCalledTimes(1);
+    expect(ask.mock.calls[0]![0]).toBe(
+      component.i18n.t('acquire.downloadAllConfirm', {
+        count: 5,
+        peers: 2,
+        size: formatBytes(5_000_000),
+      }),
+    );
+    expect(enqueueDownload).not.toHaveBeenCalled();
+  });
+
+  it('queues one download per peer once confirmed', async () => {
+    const { component, enqueueDownload } = seeded(true);
+    await component.requestDownloadAll();
+    expect(enqueueDownload).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -1019,7 +1063,7 @@ describe('SearchComponent — transcode reminder', () => {
     const { component } = setup();
     const base = {
       id: 'x',
-      source: 'soulseek' as const,
+      source: 'network' as const,
       sourceLabel: 'Soulseek',
       title: 't',
       subtitle: '',

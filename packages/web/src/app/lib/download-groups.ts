@@ -30,6 +30,12 @@ export interface DownloadItem {
   /** Artist for network hunts; absent for acquire. */
   subtitle?: string;
   method: AcquisitionMethod;
+  /**
+   * The raw plugin/addon id that ran this job, before `methodForBackend`
+   * collapses ids it has no badge for to `'unknown'` — so a third-party addon can
+   * still be named by its manifest (`methodBadge(method, name)`).
+   */
+  backend?: string;
   stage: PipelineStage;
   /** When the download started (ms epoch), if known. */
   startedAt?: number;
@@ -306,6 +312,7 @@ export function acquireJobToDownloadItem(job: AcquireJob): DownloadItem {
     kind: 'acquire',
     title: acquireJobLabel(job),
     method: methodForBackend(job.backend),
+    backend: job.backend,
     stage,
     startedAt: job.created_at ? job.created_at * 1000 : undefined,
     storagePath: job.storage_path ?? undefined,
@@ -396,6 +403,7 @@ export function mergeAcquisitionJobs(
       // the title verbatim whenever the title had come from artistName.
       subtitle: derived.kind === 'text' ? derived.subtitle : (job.artistName ?? undefined),
       method,
+      backend: job.method ?? undefined,
       stage: job.stage,
       // Mirrors the acquire lane's rule: a job whose files landed in several
       // albums has no single "Open in Library" target, so it offers the

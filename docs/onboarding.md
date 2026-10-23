@@ -69,7 +69,7 @@ dedicated `onboarding` Playwright project against a **second, never-seeded serve
 
 When an admin-provisioned user (`role: 'user'`) logs in for the first time, a dismissable banner appears at the top of the layout:
 
-> *Welcome! Your admin has set up your account. Browse the library, search Soulseek, or start playing music.*
+> *Welcome! Your admin has set up your account. Browse the library, find new music, or start playing.*
 
 Clicking **Got it** calls `POST /api/auth/dismiss-welcome` which sets `welcome_dismissed = 1` in `user_settings`. The banner never reappears after dismissal.
 

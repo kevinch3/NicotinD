@@ -673,7 +673,7 @@ describe('download-item track drilldown', () => {
 });
 
 describe('download-item expansion (issue #1066)', () => {
-  function setup(over: Partial<DownloadItem>) {
+  function setup(over: Partial<DownloadItem>, sourceName?: string) {
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       imports: [DownloadItemComponent],
@@ -686,6 +686,7 @@ describe('download-item expansion (issue #1066)', () => {
     });
     const fixture = TestBed.createComponent(DownloadItemComponent);
     setInputValue(fixture.componentInstance.item, item(over));
+    if (sourceName) setInputValue(fixture.componentInstance.sourceName, sourceName);
     fixture.detectChanges();
     return fixture;
   }
@@ -694,6 +695,16 @@ describe('download-item expansion (issue #1066)', () => {
     { title: 'Amanecer', status: 'pending' },
     { title: 'Bésame mucho', status: 'done' },
   ];
+
+  it("names a third-party addon's job by the addon, not as an unknown source", () => {
+    const fixture = setup(
+      { kind: 'network', stage: 'downloading', method: 'unknown' },
+      'Demo Source',
+    );
+    const badge = fixture.nativeElement.querySelector('[data-testid="method-badge"]')!;
+    expect(badge.textContent).toContain('Demo Source');
+    expect(badge.textContent).not.toContain('Unknown source');
+  });
 
   it('identifies the download without expanding it', () => {
     // The header is the contract from #1066: source, title, artist, stage and

@@ -1,7 +1,7 @@
 // Source-agnostic blended results for the search page + album-hunt modal.
 //
-// Every acquirable result — a Soulseek peer file, an archive.org item, a Spotify
-// album — maps to one `BlendedCandidate` so the UI renders ONE ranked list with a
+// Every acquirable result — a network-source peer file, an archive.org item, a
+// Spotify album — maps to one `BlendedCandidate` so the UI renders ONE ranked list with a
 // neutral per-row source chip and a single Get action (no "primary network" +
 // secondary "Also on…" lanes). The `acquire` intent is a discriminated union the
 // Get handler dispatches on. See docs/source-agnostic-acquisition.md.
@@ -11,10 +11,15 @@ import { formatBadge, fileExt, type SongResult } from './song-results';
 import { archiveSubtitle } from './archive-display';
 import { spotifySubtitle } from './spotify-display';
 
-export type CandidateSource = 'soulseek' | 'archive' | 'spotify';
+/**
+ * `network` is whichever acquisition addon runs the network lane — it has no
+ * fixed label because it has no fixed identity: the caller names it from the
+ * addon's manifest (`PluginService.networkSource`). archive.org and Spotify are
+ * first-party lanes with names of their own.
+ */
+export type CandidateSource = 'network' | 'archive' | 'spotify';
 
-export const SOURCE_LABELS: Record<CandidateSource, string> = {
-  soulseek: 'Soulseek',
+export const SOURCE_LABELS: Record<Exclude<CandidateSource, 'network'>, string> = {
   archive: 'Internet Archive',
   spotify: 'Spotify',
 };
@@ -27,7 +32,7 @@ export interface BlendedCandidate {
   title: string;
   /** "artist · year · N tracks · format" — already source-formatted, may be ''. */
   subtitle: string;
-  /** Short format badge ("FLAC", "320k MP3") when known (Soulseek files). */
+  /** Short format badge ("FLAC", "320k MP3") when known (network files). */
   format?: string;
   coverUrl?: string;
   /** Cross-source ranking key (higher = better). */
@@ -43,8 +48,11 @@ const LOSSLESS_FORMAT_BONUS = 30;
 // artist must not lead with whichever FLAC sorts first (#1537).
 const RELEVANCE_WEIGHT = 10;
 
-/** Soulseek song → candidate. Score rewards query relevance, then lossless + a free slot. */
-export function songResultToCandidate(s: SongResult): BlendedCandidate {
+/**
+ * Network song → candidate, chip-labelled `sourceLabel` (the network addon's
+ * name). Score rewards query relevance, then lossless + a free slot.
+ */
+export function songResultToCandidate(s: SongResult, sourceLabel: string): BlendedCandidate {
   const ext = fileExt(s.best.filename);
   const lossless =
     ext === 'flac' || ext === 'wav' || ext === 'aiff' || ext === 'ape' || ext === 'wv';
@@ -56,9 +64,9 @@ export function songResultToCandidate(s: SongResult): BlendedCandidate {
     (hasSlot ? 15 : 0);
   const subtitle = [s.artist, formatBadge(s.best)].filter(Boolean).join(' · ');
   return {
-    id: `soulseek:${s.best.username}:${s.best.filename}`,
-    source: 'soulseek',
-    sourceLabel: SOURCE_LABELS.soulseek,
+    id: `network:${s.best.username}:${s.best.filename}`,
+    source: 'network',
+    sourceLabel,
     title: s.title,
     subtitle,
     format: formatBadge(s.best),
@@ -98,7 +106,7 @@ export function spotifyToCandidate(s: SpotifyCandidate): BlendedCandidate {
   };
 }
 
-const SOURCE_ORDER: Record<CandidateSource, number> = { soulseek: 0, archive: 1, spotify: 2 };
+const SOURCE_ORDER: Record<CandidateSource, number> = { network: 0, archive: 1, spotify: 2 };
 
 /**
  * Merge candidate lists into one ranked list: best score first, then source.

@@ -29,6 +29,17 @@ every result lands in the same organized, tagged, analyzed library.
   listener to admin, per-user settings on a shared library, opt-in everything
   (acquisition is a plugin system, off by default).
 
+## See it in action
+
+<p align="center">
+  <img src="docs/images/tour.gif" alt="Searching for an album, one tap to get it, and it landing in the library" width="720" />
+</p>
+
+<p align="center"><sub>Search → one tap → downloaded, tagged and filed.</sub></p>
+
+> Recorded from the real app over a generated demo catalog — invented artists, synthesized audio —
+> by `bun run --filter @nicotind/e2e tour` + `tour:cut`; see [docs/product-tour.md](docs/product-tour.md).
+
 ## Screenshots
 
 <p align="center">

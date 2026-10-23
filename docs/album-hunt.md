@@ -46,7 +46,8 @@ Again*. The page already holds every folder the network search answered with, so
 - **`availabilityFor`** gives each catalog card its peers, best copy, lossless flag and completeness,
   over the **un-deduped** folders (`allFolderGroups`), since the dedupe merges exactly the copies
   being counted. The card prints "2 peers · FLAC · complete". A card no peer holds reads **"Not on
-  Soulseek"** (the source's own `SOURCE_LABELS` name) and is dimmed. Its watch star stays visible as
+  <source>"** — the network addon's own manifest name (`PluginService.networkSource`), never a
+  hardcoded brand — and is dimmed. Its watch star stays visible as
   its action, and it sinks to the end of the grid (`orderedCatalogAlbums`). Both happen **only once
   the network search is `complete`**, so a slow peer never demotes an album.
 - **`providerOnlyAlbums`** lists the albums the network holds for the matched artist

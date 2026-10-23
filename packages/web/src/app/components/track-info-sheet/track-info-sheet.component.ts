@@ -25,6 +25,8 @@ import { identifyFailureKey } from '../../lib/identify-failure';
 import { LikeService } from '../../services/like.service';
 import { ServerConfigService } from '../../services/server-config.service';
 import { methodBadge } from '../../lib/acquisition-method';
+import { methodForBackend } from '../../lib/download-groups';
+import { PluginService } from '../../services/plugin.service';
 import { parseLrc } from '@nicotind/core';
 import { moveInList } from '../../lib/move-in-list';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
@@ -79,6 +81,7 @@ export class TrackInfoSheetComponent implements OnInit {
   private router = inject(Router);
   private toast = inject(ToastService);
   readonly likes = inject(LikeService);
+  private readonly plugins = inject(PluginService);
 
   readonly songId = input.required<string>();
   readonly song = input<Song | null>(null);
@@ -301,6 +304,8 @@ export class TrackInfoSheetComponent implements OnInit {
   }
 
   ngOnInit(): void {
+    // The acquisition badge names third-party sources from the plugin list.
+    void this.plugins.refresh();
     const provided = this.song();
     if (provided?.bpm) {
       this.bpm.set(provided.bpm);
@@ -695,12 +700,23 @@ export class TrackInfoSheetComponent implements OnInit {
     };
   }
 
+  /**
+   * The stored method is the raw plugin/addon id that acquired the song
+   * (`slskd-addon`, a third-party addon's id, …): normalise it to a first-party
+   * method where there is one, and name any other addon by its manifest.
+   */
+  private sourceBadge(method: AcquisitionMethod | null | undefined) {
+    // A legacy or partial record can carry no method at all.
+    if (!method) return methodBadge(null);
+    return methodBadge(methodForBackend(method), this.plugins.names().get(method));
+  }
+
   methodLabel(method: AcquisitionMethod): string {
-    return methodBadge(method).label;
+    return this.sourceBadge(method).label;
   }
 
   methodGlyph(method: AcquisitionMethod): string {
-    return methodBadge(method).glyph;
+    return this.sourceBadge(method).glyph;
   }
 
   onDragStart(e: PointerEvent): void {

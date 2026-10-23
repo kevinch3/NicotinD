@@ -12,6 +12,12 @@
 # Install was `-qq` and printed nothing, so it now prints its progress, runs
 # debconf non-interactively and suspends needrestart — a prompt nobody can
 # answer is the one hang a retry never fixes.
+#
+# With progress printed, the hang showed itself: every attempt of one run
+# stalled on the SAME file (libcodec2-1.2, 9 MB) from azure.archive.ubuntu.com,
+# trickling, so `Acquire::http::Timeout` never fired and the mirror list's
+# fallback never engaged. A retry against that mirror repeats the stall, so
+# each retry reads the archive from a different mirror.
 set -euo pipefail
 
 NO_HOOKS=$(mktemp)
@@ -19,17 +25,27 @@ printf '#clear APT::Update::Post-Invoke-Success;\n#clear APT::Update::Post-Invok
 
 APT_OPTS=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=90)
 
-UPDATE_OPTS=()
+# Attempt 1 keeps the image's own mirror; each retry swaps in the next one.
+FALLBACK_MIRRORS=(http://archive.ubuntu.com/ubuntu http://mirrors.edge.kernel.org/ubuntu)
+
+SOURCE_OPTS=()
+parts=
 if [[ -f /etc/apt/sources.list.d/ubuntu.sources ]]; then
   parts=$(mktemp -d)
   cp /etc/apt/sources.list.d/ubuntu.sources "$parts/"
-  UPDATE_OPTS=(-o Dir::Etc::SourceList=/dev/null -o "Dir::Etc::SourceParts=$parts")
+  SOURCE_OPTS=(-o Dir::Etc::SourceList=/dev/null -o "Dir::Etc::SourceParts=$parts")
 fi
 
 for attempt in 1 2 3; do
-  if timeout 150 sudo apt-get -c "$NO_HOOKS" "${APT_OPTS[@]}" "${UPDATE_OPTS[@]}" update -q &&
+  if [[ -n "$parts" && $attempt -gt 1 ]]; then
+    mirror=${FALLBACK_MIRRORS[attempt - 2]}
+    sed -E "s#^URIs:.*#URIs: ${mirror}#" /etc/apt/sources.list.d/ubuntu.sources >"$parts/ubuntu.sources"
+    echo "apt attempt ${attempt}: reading the archive from ${mirror}" >&2
+  fi
+  # Install reads the same sources as update, so its lists match the mirror.
+  if timeout 150 sudo apt-get -c "$NO_HOOKS" "${APT_OPTS[@]}" "${SOURCE_OPTS[@]}" update -q &&
     timeout 150 sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1 \
-      apt-get "${APT_OPTS[@]}" install -y -q --no-install-recommends "$@"; then
+      apt-get "${APT_OPTS[@]}" "${SOURCE_OPTS[@]}" install -y -q --no-install-recommends "$@"; then
     exit 0
   fi
   echo "apt attempt ${attempt} failed or timed out; retrying" >&2

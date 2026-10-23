@@ -6,6 +6,7 @@ import { TransferService } from '../../services/transfer.service';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import { ToastService } from '../../services/toast.service';
 import { TranslateService } from '../../services/translate.service';
+import { PluginService } from '../../services/plugin.service';
 import { httpErrorMessage } from '../../lib/http-error';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
 import type { AcquireJob } from '@nicotind/core';
@@ -54,6 +55,7 @@ export class DownloadsComponent {
   private readonly p2r = inject(PullToRefreshService);
   private readonly toasts = inject(ToastService);
   private readonly i18n = inject(TranslateService);
+  private readonly plugins = inject(PluginService);
 
   readonly retrying = signal(new Set<string>());
   /** Feed keys with a cancel request in flight (#806) — the `retrying` pattern.
@@ -67,11 +69,19 @@ export class DownloadsComponent {
 
   constructor() {
     this.p2r.register(() => this.transferService.kickPoll());
+    // Names the badge of any source the web has no badge for. Loaded here, not
+    // left to the Add tab: a direct link to Activity never mounts that page.
+    void this.plugins.refresh();
     firstValueFrom(this.systemApi.getDiskUsage())
       .then((d) => this.diskUsage.set(d))
       .catch(() => {
         /* disk usage is non-essential; leave the pill hidden */
       });
+  }
+
+  /** The manifest name of the addon that ran `item`, when it is a registered one. */
+  sourceName(item: DownloadItem): string | null {
+    return (item.backend && this.plugins.names().get(item.backend)) || null;
   }
 
   // Confirm dialog. The optional checkbox (#810: "also discard the N tracks
@@ -84,6 +94,7 @@ export class DownloadsComponent {
   readonly confirmOptionLabel = signal<string | null>(null);
   readonly confirmOptionChecked = signal(false);
   readonly confirmLabel = signal('Remove');
+  readonly cancelLabel = signal('Cancel');
   readonly showConfirm = computed(() => this.confirmCallback() !== null);
 
   private askConfirm(
@@ -91,9 +102,11 @@ export class DownloadsComponent {
     cb: (optionChecked: boolean) => void | Promise<void>,
     optionLabel?: string,
     confirmLabel = 'Remove',
+    cancelLabel = this.i18n.t('common.cancel'),
   ): void {
     this.confirmMessage.set(message);
     this.confirmLabel.set(confirmLabel);
+    this.cancelLabel.set(cancelLabel);
     this.confirmOptionLabel.set(optionLabel ?? null);
     this.confirmOptionChecked.set(false);
     this.confirmCallback.set(cb);
@@ -199,6 +212,9 @@ export class DownloadsComponent {
           if (discard) await this.discardPartial(jobId);
         },
         this.i18n.t('downloads.cancelAlsoDiscard', { count: landed }),
+        // "Cancel" would answer "Cancel this download?" both ways (#1542).
+        this.i18n.t('downloads.stopDownload'),
+        this.i18n.t('downloads.keepDownloading'),
       );
     } else {
       const j = this.transferService.acquireJobs().find((x) => x.id === item.key);
@@ -343,6 +359,7 @@ export class DownloadsComponent {
       () => this.cancelAll(),
       undefined,
       this.i18n.t('downloads.cancelAll'),
+      this.i18n.t('downloads.keepDownloading'),
     );
   }
 

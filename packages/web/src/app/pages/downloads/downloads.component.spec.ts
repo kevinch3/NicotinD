@@ -10,7 +10,9 @@ import { TransferService } from '../../services/transfer.service';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import { ToastService } from '../../services/toast.service';
 import { TranslateService } from '../../services/translate.service';
+import { PluginService } from '../../services/plugin.service';
 import type { AcquireJob } from '@nicotind/core';
+import type { DownloadItem } from '../../lib/download-groups';
 
 function setup(opts: { acquireJobs?: AcquireJob[]; api?: Record<string, unknown> } = {}) {
   let scanned = false;
@@ -34,6 +36,10 @@ function setup(opts: { acquireJobs?: AcquireJob[]; api?: Record<string, unknown>
   };
 
   const toastShow = vi.fn().mockReturnValue('toast-id');
+  const pluginStub = {
+    names: signal(new Map([['demo-source', 'Demo Source']])),
+    refresh: vi.fn().mockResolvedValue(undefined),
+  };
 
   TestBed.configureTestingModule({
     imports: [DownloadsComponent],
@@ -53,6 +59,7 @@ function setup(opts: { acquireJobs?: AcquireJob[]; api?: Record<string, unknown>
       },
       { provide: TransferService, useValue: transferStub },
       { provide: PullToRefreshService, useValue: p2rStub },
+      { provide: PluginService, useValue: pluginStub },
     ],
     schemas: [NO_ERRORS_SCHEMA],
   });
@@ -67,8 +74,37 @@ function setup(opts: { acquireJobs?: AcquireJob[]; api?: Record<string, unknown>
     transferService: transferStub,
     getRegisteredHandler: () => registeredHandler,
     toastShow,
+    pluginStub,
   };
 }
+
+describe('DownloadsComponent source names', () => {
+  const item = (backend?: string): DownloadItem =>
+    ({
+      key: 'k',
+      kind: 'network',
+      title: 't',
+      method: 'unknown',
+      backend,
+      stage: 'downloading',
+    }) as DownloadItem;
+
+  it('loads the plugin list itself, so a direct link to Activity still names sources', () => {
+    const { pluginStub } = setup();
+    expect(pluginStub.refresh).toHaveBeenCalled();
+  });
+
+  it('names a job by the manifest name of the addon that ran it', () => {
+    const { component } = setup();
+    expect(component.sourceName(item('demo-source'))).toBe('Demo Source');
+  });
+
+  it('has no name for an unregistered addon or a job with no backend', () => {
+    const { component } = setup();
+    expect(component.sourceName(item('gone-addon'))).toBeNull();
+    expect(component.sourceName(item())).toBeNull();
+  });
+});
 
 function job(id: string, state: AcquireJob['state']): AcquireJob {
   return {
@@ -291,8 +327,10 @@ describe('DownloadsComponent — cancel guard (#806)', () => {
       component.requestCancelAll();
       expect(component.showConfirm()).toBe(true);
       expect(t).toHaveBeenCalledWith('downloads.cancelAllConfirm', { count: 2 });
-      expect(component.confirmLabel()).toBe(t.mock.results.at(-1)?.value);
-      expect(t.mock.calls.at(-1)?.[0]).toBe('downloads.cancelAll');
+      const i18n = TestBed.inject(TranslateService);
+      expect(component.confirmLabel()).toBe(i18n.t('downloads.cancelAll'));
+      // The way out names itself: "Cancel" would read as yes to "Cancel N downloads?" (#1542).
+      expect(component.cancelLabel()).toBe(i18n.t('downloads.keepDownloading'));
       expect(cancelJob).not.toHaveBeenCalled();
     });
 
@@ -354,6 +392,9 @@ describe('DownloadsComponent — partial discard (#810)', () => {
     expect(cancelJob).not.toHaveBeenCalled();
     expect(component.showConfirm()).toBe(true);
     expect(component.confirmOptionLabel()).toBeTruthy();
+    const i18n = TestBed.inject(TranslateService);
+    expect(component.confirmLabel()).toBe(i18n.t('downloads.stopDownload'));
+    expect(component.cancelLabel()).toBe(i18n.t('downloads.keepDownloading'));
 
     component.confirmOptionChecked.set(true);
     component.onConfirm();

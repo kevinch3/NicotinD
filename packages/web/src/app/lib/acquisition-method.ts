@@ -18,7 +18,22 @@ const BADGES: Record<AcquisitionMethod, MethodBadge> = {
   unknown: { label: 'Unknown source', glyph: '?' },
 };
 
-/** Resolve the badge for a method, defaulting to the unknown badge. */
-export function methodBadge(method: AcquisitionMethod | null | undefined): MethodBadge {
-  return (method && BADGES[method]) || BADGES.unknown;
+/** Any addon the web has no badge of its own for: an extension piece. */
+const ADDON_GLYPH = '🧩';
+
+/**
+ * Resolve the badge for a method. A first-party method keeps its own badge;
+ * any other source — a third-party addon — is named by `sourceName`, its
+ * manifest name (`PluginService.names`). Sources are user-added, so the web
+ * cannot know them all and must not call one it does not know "unknown"; only
+ * a source with no name at all is (docs/source-agnostic-acquisition.md).
+ */
+export function methodBadge(
+  method: AcquisitionMethod | null | undefined,
+  sourceName?: string | null,
+): MethodBadge {
+  const known = method ? BADGES[method] : undefined;
+  if (known && method !== 'unknown') return known;
+  if (sourceName) return { label: sourceName, glyph: ADDON_GLYPH };
+  return BADGES.unknown;
 }

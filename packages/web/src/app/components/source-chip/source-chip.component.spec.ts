@@ -6,7 +6,7 @@ import { sourceChipToneClass } from './source-chip.component';
 // (e.g. text-indigo-300) that render near-invisible on light backgrounds.
 describe('sourceChipToneClass', () => {
   it('maps each known source to its theme-aware tone class', () => {
-    expect(sourceChipToneClass('soulseek')).toBe('chip-tone-soulseek');
+    expect(sourceChipToneClass('network')).toBe('chip-tone-network');
     expect(sourceChipToneClass('archive')).toBe('chip-tone-archive');
     expect(sourceChipToneClass('spotify')).toBe('chip-tone-spotify');
   });
@@ -16,7 +16,7 @@ describe('sourceChipToneClass', () => {
   });
 
   it('never emits raw Tailwind palette tints (theme-blind colours)', () => {
-    for (const source of ['soulseek', 'archive', 'spotify'] as const) {
+    for (const source of ['network', 'archive', 'spotify'] as const) {
       expect(sourceChipToneClass(source)).not.toMatch(/-\d{3}\b/);
     }
   });
