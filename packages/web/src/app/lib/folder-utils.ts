@@ -92,13 +92,38 @@ export function fileQualityLabel(file: { filename: string; bitRate?: number }): 
   return ext ? ext.toUpperCase() : 'Unknown';
 }
 
+/** More audio files than this is a discography or a pack, not one album. */
+const MAX_ALBUM_FILES = 40;
+/** Below this many files the numbering signal is too thin to judge. */
+const MIN_FILES_TO_JUDGE_NUMBERING = 6;
+
 /**
- * Rank folder candidates so the best copies float to the top: a free upload slot
- * first (instant vs queued), then lossless, then more tracks (more complete),
- * then faster upload. Stable for equal keys. See §A7.
+ * Whether a folder is a grab-bag (a genre pack, a "best of" dump) rather than
+ * one album. Search results carry filenames, not tags, so it reads their shape:
+ * too many tracks, or files that mostly carry no track number ("Artist - Song").
+ * The addon's hunt makes the same call against a known tracklist (its bloat ratio).
+ */
+export function isGrabBagFolder(g: Pick<FolderGroup, 'files'>): boolean {
+  const audio = folderAudioFiles(g);
+  if (audio.length > MAX_ALBUM_FILES) return true;
+  if (audio.length < MIN_FILES_TO_JUDGE_NUMBERING) return false;
+  const numbered = audio.filter((f) =>
+    /^\d{1,3}(?:[-.]\d{1,3})?(?=[\s._-])/.test(folderBasename(f.filename)),
+  ).length;
+  return numbered * 2 < audio.length;
+}
+
+/**
+ * Rank folder candidates so the best copies float to the top: an album-shaped
+ * folder ahead of a grab-bag (#1541; a slot never redeems a genre pack, the way
+ * the addon ranks bloat ahead of peer health), then a free upload slot (instant
+ * vs queued), then lossless, then more tracks (more complete), then faster
+ * upload. Stable for equal keys. See §A7.
  */
 export function rankFolders(groups: FolderGroup[]): FolderGroup[] {
   return [...groups].sort((a, b) => {
+    const bag = (g: FolderGroup) => (isGrabBagFolder(g) ? 1 : 0);
+    if (bag(a) !== bag(b)) return bag(a) - bag(b);
     const free = (g: FolderGroup) => ((g.freeUploadSlots ?? 0) > 0 ? 1 : 0);
     if (free(a) !== free(b)) return free(b) - free(a);
     const lossless = (g: FolderGroup) => (folderFormat(g)?.lossless ? 1 : 0);

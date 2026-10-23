@@ -60,7 +60,11 @@ Again*. The page already holds every folder the network search answered with, so
 
 The folder badge is the folder's **majority** format (`folderFormat`): a lossless minority reads
 "Mixed". The prod "Trip-Hop" grab-bag, one FLAC among 50 mostly-128k files, wore a FLAC badge and
-took `rankFolders`' lossless boost (#1541).
+took `rankFolders`' lossless boost (#1541). It also ranked first, because it had the most
+tracks. `rankFolders` now puts any album-shaped folder ahead of a grab-bag
+(`isGrabBagFolder`), even when the bag has a free slot, the way the addon ranks bloat ahead of
+peer health. Search results carry filenames, not tags, so a grab-bag is judged by shape: more than
+40 audio files, or files that mostly carry no track number.
 
 ## Adding an artist to Lidarr is a job (#644)
 

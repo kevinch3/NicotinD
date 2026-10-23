@@ -17,7 +17,7 @@
 | 4   | ✅     | High     | Catalog search    | Album grid is Lidarr's lookup, not what the provider has (#1538)           |
 | 5   | ◑      | High     | Folder grab       | One card, every file twice, "14 of 28 · 14 unavailable" (#1540)           |
 | 6   | ✅     | Medium   | One-click Get     | Silent 400; missable countdown toast; card label lags the stage (#1543)    |
-| 7   | ◑      | Medium   | Folders view      | A mixed grab-bag folder ranks first wearing a FLAC badge (#1541)           |
+| 7   | ✅     | Medium   | Folders view      | A mixed grab-bag folder ranks first wearing a FLAC badge (#1541)           |
 | 8   | ◑      | Medium   | Acquire actions   | No icons, hover-only star, unconfirmed Download all, Cancel/Remove (#1542) |
 | 9   | ◻️     | Low      | Add / Activity    | Half-restored tab state, premature "Added to library" (#1544)              |
 
@@ -67,7 +67,9 @@ Alaska*, *Mare*. All landed.
   countdown names format, track count and peer; the card reads "Starting download…" during the
   enqueue and shows n/m progress once the job exists (#1552).
 - **(Medium) The first folder for "Christian Löffler" is `Trip-Hop`**, a 50-file, mostly-128 kbps
-  grab-bag with 0 slots, badged **FLAC** because one file is. **◻️ Open** (#1541).
+  grab-bag with 0 slots, badged **FLAC** because one file is. **✅ Fixed** (#1541): the badge
+  is the majority format (#1554), and `rankFolders` puts album-shaped folders ahead of grab-bags
+  (`isGrabBagFolder`: over 40 tracks, or mostly unnumbered files).
 - **(Medium) Action affordances.** Text-only Get / Download / Download folder; the watch star only on
   hover; "Download all (2339)" with no confirm; the cancel dialog asks "Cancel this download?" with
   buttons **Cancel** and **Remove**. **✅ Fixed** (#1542): one verb, **Get**, with the `download`
@@ -90,7 +92,7 @@ _Status (same day, later):_ shipped in v0.8.115 or the PR after it.
     remain (#1540).
   - Card labels (#1552): show stage + progress now, but the silent 400 and the missable toast
     remain (#1543).
-  - Folder badge (#1538 PR): majority-based now, but grab-bags are still not demoted below album
-    folders of lossy formats (#1541).
+  - Folder badge (#1538 PR): majority-based now; grab-bags rank below album folders since
+    `isGrabBagFolder` (#1541).
   - Download icon + touch-visible star: the Download-all confirm and the Cancel dialog wording
     remain (#1542).
