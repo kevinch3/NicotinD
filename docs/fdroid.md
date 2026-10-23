@@ -550,7 +550,8 @@ WebView bridge — a build is green without it and the app never reaches native 
 the media session were **not** exercised on the R8 build: they need a server. Measured on `v0.8.109`,
 the first R8 release and the recipes' seed: both APKs rebuilt from the recipe (node 24.19.0,
 bun 1.3.14, JDK 21) are sha256-identical to the published ones once `apksigcopier copy` carries the
-signature over.
+signature over. `v0.8.111`, the first release with Debian's node in the recipe, passed F-Droid's own
+comparison on both MRs ("compared built binary to supplied reference binary successfully").
 
 `check:fdroid` guards all of it, because every one of these fails **silently** — the build stays
 green and only F-Droid's next rebuild notices.

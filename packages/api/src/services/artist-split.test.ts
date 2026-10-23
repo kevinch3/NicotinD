@@ -125,6 +125,39 @@ describe('splitArtists', () => {
     });
   });
 
+  describe('explicit split decisions (issue #1520)', () => {
+    const explicit = (raw: string, members: string[]) => ({
+      explicitSplits: new Map([[raw.toLowerCase(), members]]),
+    });
+
+    it('splits a compound no delimiter can see, into exactly the decided members', () => {
+      const result = splitArtists('Gordo/Feid', explicit('Gordo/Feid', ['Gordo', 'Feid']));
+      expect(primaries(result)).toEqual(['Gordo', 'Feid']);
+    });
+
+    it('needs no confirmation of the members — the decision is the authority', () => {
+      const result = splitArtists('Gordo/Feid', {
+        ...explicit('Gordo/Feid', ['Gordo', 'Feid']),
+        confirmedArtists: new Set(),
+      });
+      expect(primaries(result)).toEqual(['Gordo', 'Feid']);
+    });
+
+    it('still extracts a featuring credit around the decided primary', () => {
+      const result = splitArtists(
+        'Gordo/Feid feat. Ozuna',
+        explicit('Gordo/Feid', ['Gordo', 'Feid']),
+      );
+      expect(primaries(result)).toEqual(['Gordo', 'Feid']);
+      expect(featuring(result)).toEqual(['Ozuna']);
+    });
+
+    it('leaves every other compound to the lexical gate', () => {
+      const result = splitArtists('AC/DC', explicit('Gordo/Feid', ['Gordo', 'Feid']));
+      expect(primaries(result)).toEqual(['AC/DC']);
+    });
+  });
+
   describe('keep-whole guard — the conservative default', () => {
     it('keeps a compound whole when NO parts are confirmed', () => {
       const result = splitArtists('Bob Marley & The Wailers');

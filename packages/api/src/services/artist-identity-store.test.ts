@@ -59,6 +59,20 @@ describe('loadSplitAuthority', () => {
     const auth = loadSplitAuthority(db);
     expect(auth.confirmedArtists.has('bob marley')).toBe(true);
     expect(auth.confirmedArtists.has('peter tosh')).toBe(true);
+    // An enrichment row only confirms its members; it never forces the split.
+    expect(auth.explicitSplits?.size ?? 0).toBe(0);
+  });
+
+  it('maps a USER split decision to its exact members (issue #1520)', () => {
+    upsertArtistIdentity(db, {
+      artistKey: artistIdFor('Gordo/Feid'),
+      rawName: 'Gordo/Feid',
+      decision: 'split',
+      members: ['Gordo', 'Feid'],
+      source: 'user',
+    });
+    const auth = loadSplitAuthority(db);
+    expect(auth.explicitSplits?.get('gordo/feid')).toEqual(['Gordo', 'Feid']);
   });
 
   it('ignores an "unknown" row (no opinion — leaves it to library-only logic)', () => {

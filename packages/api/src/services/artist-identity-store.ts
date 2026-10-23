@@ -16,6 +16,8 @@ export interface SplitAuthority {
   canonicalWhole: ReadonlySet<string>;
   /** normalizeArtistForGrouping(variant) → canonical display spelling (see deriveMbidAliases). */
   aliases: ReadonlyMap<string, string>;
+  /** User split decisions only: normalized compound → its members (issue #1520). */
+  explicitSplits?: ReadonlyMap<string, readonly string[]>;
 }
 
 export function emptyAuthority(): SplitAuthority {
@@ -28,11 +30,15 @@ export function emptyAuthority(): SplitAuthority {
  *   confirmed individual artist — a compound can never confirm itself this way.
  * - `library_artist_identity` rows contribute Lidarr/MB decisions: `single` → protect
  *   the whole compound (`canonicalWhole`); `split` → each resolved member is confirmed.
+ *   A *user* split is also the split itself (`explicitSplits`): the curator named the
+ *   members, so it must not wait on a delimiter the lexical pass can see (#1520).
+ *   Lidarr/MB rows keep the confirm-only meaning they have always had.
  */
 export function loadSplitAuthority(db: Database): SplitAuthority {
   const confirmedArtists = new Set<string>();
   const canonicalWhole = new Set<string>();
   const aliases = new Map<string, string>();
+  const explicitSplits = new Map<string, string[]>();
 
   try {
     const rows = db
@@ -52,8 +58,8 @@ export function loadSplitAuthority(db: Database): SplitAuthority {
 
   try {
     const rows = db
-      .query<{ raw_name: string; decision: string; members: string | null }, []>(
-        `SELECT raw_name, decision, members FROM library_artist_identity`,
+      .query<{ raw_name: string; decision: string; members: string | null; source: string }, []>(
+        `SELECT raw_name, decision, members, source FROM library_artist_identity`,
       )
       .all();
     for (const r of rows) {
@@ -67,9 +73,10 @@ export function loadSplitAuthority(db: Database): SplitAuthority {
           continue;
         }
         if (Array.isArray(members)) {
-          for (const m of members) {
-            if (typeof m === 'string' && m) confirmedArtists.add(normalizeArtistForGrouping(m));
-          }
+          const names = members.filter((m): m is string => typeof m === 'string' && m !== '');
+          for (const m of names) confirmedArtists.add(normalizeArtistForGrouping(m));
+          if (r.source === 'user' && names.length > 1)
+            explicitSplits.set(normalizeArtistForGrouping(r.raw_name), names);
         }
       }
     }
@@ -88,7 +95,7 @@ export function loadSplitAuthority(db: Database): SplitAuthority {
     // library_artist_aliases absent (pre-migration) — no alias rewriting.
   }
 
-  return { confirmedArtists, canonicalWhole, aliases };
+  return { confirmedArtists, canonicalWhole, aliases, explicitSplits };
 }
 
 /**
