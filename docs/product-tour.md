@@ -18,6 +18,9 @@ Playwright expects — for a machine whose preinstalled browser build does not m
 CI and not part of `verify`: it produces an asset, it asserts nothing about the product a spec
 does not already.
 
+The README embeds the GIF (`docs/images/tour.gif`) and links the MP4 (`docs/images/tour.mp4`). To
+refresh them, copy `tour-output/nicotind-tour.{gif,mp4}` over those two files after a new cut.
+
 ## What is real
 
 Everything on screen is the real server and the real SPA. Two stand-ins sit behind it, each
