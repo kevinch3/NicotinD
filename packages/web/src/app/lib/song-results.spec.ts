@@ -160,6 +160,41 @@ describe('groupBySong', () => {
     expect(results[0].best.filename).toBe('x\\04 Amber Palace.flac');
   });
 
+  // #1537, the prod rows for "Message From The Other Side": the same track as
+  // "Amber Palace" (tagged) and "damian lazarus and the ancient moons-amber palace".
+  it('splits an artist prefix the folder confirms off an untagged title, and merges the copy', () => {
+    const dir =
+      'Elektronika\\Damian Lazarus & The Ancient Moons - Message From The Other Side [2015]';
+    const results = groupBySong([
+      v({
+        username: 'a',
+        filename: `${dir}\\damian lazarus and the ancient moons-amber palace.mp3`,
+      }),
+      v({
+        username: 'b',
+        filename: 'y\\Amber Palace.flac',
+        artist: 'Damian Lazarus',
+        title: 'Amber Palace',
+      }),
+    ]);
+    expect(results).toHaveLength(1);
+    expect(results[0].versions).toHaveLength(2);
+  });
+
+  it('leaves a dash inside a title alone when the folder does not name the prefix', () => {
+    const [r] = groupBySong([v({ filename: 'Music\\Mix\\Come and Go - Re-Shape.mp3' })]);
+    expect(r.title).toBe('Come and Go - Re-Shape');
+  });
+
+  it('gives an untagged row an artist hint from its folder, without changing its key', () => {
+    const [r] = groupBySong([
+      v({ filename: 'Music\\Damian Lazarus\\Smoke The Monster Out [2009]\\03 Moment.flac' }),
+    ]);
+    expect(r.artist).toBe('');
+    expect(r.artistHint).toBe('Damian Lazarus');
+    expect(r.key).toBe('moment');
+  });
+
   it('keeps an untagged copy apart when two artists share the title', () => {
     const results = groupBySong([
       v({ filename: 'Intro.flac' }),
