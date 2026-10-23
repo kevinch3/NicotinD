@@ -147,6 +147,97 @@ describe('downloads routes', () => {
     expect(job2.album_title).toBeNull();
   });
 
+  describe('one album = one download across lanes (#1539)', () => {
+    const FOLDER =
+      '@@nncnz\\Johnson\\Flac albumi\\Elektronika\\Damian Lazarus & The Ancient Moons - Message From The Other Side [2015]';
+    const albumGrab = (extra: object = {}) => ({
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        username: 'Johnyboy123',
+        files: ['01 House Of The Hidden Places', '02 Adventures', '03 Vermillion'].map((t) => ({
+          filename: `${FOLDER}\\${t}.flac`,
+          size: 1,
+        })),
+        ...extra,
+      }),
+    });
+    const liveCatalogJob = () =>
+      createJob(testDb, {
+        kind: 'album-hunt',
+        method: 'slskd',
+        artistName: 'Damian Lazarus',
+        albumTitle: 'Message From the Other Side',
+        lidarrAlbumId: 4275,
+        files: [],
+      });
+
+    // The prod card read artist "Elektronika" — the genre folder above the album.
+    it('names the job from an "Artist - Album [Year]" folder, not its parent', async () => {
+      const res = await app.request('/', albumGrab());
+      expect(res.status).toBe(201);
+      const job = testDb.query(`SELECT artist_name, album_title FROM acquisition_jobs`).get() as {
+        artist_name: string;
+        album_title: string;
+      };
+      expect(job).toEqual({
+        artist_name: 'Damian Lazarus & The Ancient Moons',
+        album_title: 'Message From The Other Side',
+      });
+    });
+
+    it('refuses a folder grab of an album the catalog lane is already downloading', async () => {
+      const live = liveCatalogJob();
+      const res = await app.request('/', albumGrab());
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ error: 'already-downloading', jobId: live });
+      expect(slskdMock.transfers.enqueue).not.toHaveBeenCalled();
+      expect(testDb.query(`SELECT COUNT(*) AS n FROM acquisition_jobs`).get()).toEqual({ n: 1 });
+    });
+
+    it('replace supersedes the live job and enqueues this copy', async () => {
+      const live = liveCatalogJob();
+      const res = await app.request('/', albumGrab({ replace: true }));
+      expect(res.status).toBe(201);
+      const old = testDb.query(`SELECT state FROM acquisition_jobs WHERE id = ?`).get(live) as {
+        state: string;
+      };
+      expect(old.state).toBe('superseded');
+    });
+
+    it("the client's album naming wins over the folder guess", async () => {
+      const live = liveCatalogJob();
+      const res = await app.request('/', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          username: 'peer',
+          files: [{ filename: 'x\\misc\\track.flac', size: 1 }],
+          album: {
+            artist: 'Damian Lazarus',
+            title: 'Message From the Other Side',
+            lidarrAlbumId: 4275,
+          },
+        }),
+      });
+      expect(res.status).toBe(409);
+      expect(((await res.json()) as { jobId: string }).jobId).toBe(live);
+    });
+
+    it('never blocks a one-track grab on a folder-name guess', async () => {
+      liveCatalogJob();
+      const res = await app.request('/', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          username: 'peer',
+          files: [{ filename: `${FOLDER}\\07 Message From The Other Side.flac`, size: 1 }],
+        }),
+      });
+      expect(res.status).toBe(201);
+    });
+  });
+
   it('GET /jobs returns the unified job feed with per-state progress', async () => {
     const id = createJob(testDb, {
       kind: 'album-hunt',

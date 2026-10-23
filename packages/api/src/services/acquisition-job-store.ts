@@ -1,6 +1,6 @@
 import type { Database } from 'bun:sqlite';
 import type { AcquireAlbumDestination, AcquisitionJobView, TrackStatus } from '@nicotind/core';
-import { fold } from '@nicotind/core';
+import { fold, sameAlbum } from '@nicotind/core';
 import { normalizeTitle, titlesOverlap } from '@nicotind/core';
 import { albumIdFor } from './library-scanner.js';
 import { jobDestinationAlbums } from './job-destinations.js';
@@ -1243,27 +1243,64 @@ export function pendingIngestForAddonJob(
   return row ? pendingIngestCount(db, row.id) : 0;
 }
 
-/**
- * The album's live acquisition, if any. `active` spans queued → downloading →
- * organizing → scanning, so a job whose files are still landing counts.
- */
-export function findActiveAlbumJob(db: Database, lidarrAlbumId: number): { id: string } | null {
-  return (
-    db
-      .query<{ id: string }, [number]>(
-        `SELECT id FROM acquisition_jobs WHERE state = 'active' AND lidarr_album_id = ?
-         ORDER BY created_at DESC LIMIT 1`,
-      )
-      .get(lidarrAlbumId) ?? null
-  );
+/** The album a guard is asked about: a Lidarr id, a name, or both (#1539). */
+export interface AlbumTarget {
+  lidarrAlbumId?: number | null;
+  artist?: string | null;
+  title?: string | null;
 }
 
-/** Mirror of the hunt route's `?replace=true`: retire prior active jobs for the album. */
-export function supersedeActiveJobs(db: Database, target: { lidarrAlbumId: number }): void {
+/**
+ * Every live acquisition of the album, newest first. `active` spans queued →
+ * downloading → organizing → scanning, so a job whose files are still landing
+ * counts. A job matches on its Lidarr id **or** on `sameAlbum` by name — the
+ * second is what lets a catalog Get see the peer-folder grab of the same album
+ * (no Lidarr id) that #1539 downloaded twice. Live jobs are few, so the name
+ * comparison runs in JS over all of them rather than in SQL.
+ */
+function activeAlbumJobIds(db: Database, target: AlbumTarget): string[] {
+  const rows = db
+    .query<
+      {
+        id: string;
+        lidarr_album_id: number | null;
+        artist_name: string | null;
+        album_title: string | null;
+      },
+      []
+    >(
+      `SELECT id, lidarr_album_id, artist_name, album_title FROM acquisition_jobs
+        WHERE state = 'active' ORDER BY created_at DESC`,
+    )
+    .all();
+  const named =
+    target.artist && target.title ? { artist: target.artist, title: target.title } : null;
+  return rows
+    .filter(
+      (r) =>
+        (target.lidarrAlbumId != null && r.lidarr_album_id === target.lidarrAlbumId) ||
+        (named !== null &&
+          r.artist_name !== null &&
+          r.album_title !== null &&
+          sameAlbum(named, { artist: r.artist_name, title: r.album_title })),
+    )
+    .map((r) => r.id);
+}
+
+/** The album's newest live acquisition, if any (see `activeAlbumJobIds`). */
+export function findActiveAlbumJob(db: Database, target: AlbumTarget): { id: string } | null {
+  const [id] = activeAlbumJobIds(db, target);
+  return id ? { id } : null;
+}
+
+/** Mirror of `?replace=true`: retire every live acquisition of the album. */
+export function supersedeActiveJobs(db: Database, target: AlbumTarget): void {
+  const ids = activeAlbumJobIds(db, target);
+  if (ids.length === 0) return;
   db.run(
     `UPDATE acquisition_jobs SET state = 'superseded', updated_at = ?
-     WHERE state = 'active' AND lidarr_album_id = ?`,
-    [Date.now(), target.lidarrAlbumId],
+      WHERE state = 'active' AND id IN (${ids.map(() => '?').join(',')})`,
+    [Date.now(), ...ids],
   );
 }
 

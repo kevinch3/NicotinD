@@ -4,7 +4,7 @@ import type { AuthEnv } from '../middleware/auth.js';
 import type { ProviderRegistry } from '../services/provider-registry.js';
 import { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
-import { createLogger, isGenericFolderName, type DownloadReceipt } from '@nicotind/core';
+import { createLogger, folderAlbumIdentity, type DownloadReceipt } from '@nicotind/core';
 import { getDatabase } from '../db.js';
 import { getCurrentUser, requireAcquirer } from '../middleware/current-user.js';
 import { ForbiddenError, asRole, canCurate } from '@nicotind/core';
@@ -26,6 +26,8 @@ import {
   reserveResourcedItems,
   resourceableTitles,
   supersedeItems,
+  findActiveAlbumJob,
+  supersedeActiveJobs,
 } from '../services/acquisition-job-store.js';
 import { rankAlternates } from '../services/download-resource.js';
 import { mapAddonJob } from '../services/addons/job-poller.js';
@@ -47,7 +49,30 @@ const DownloadFileSchema = z.object({
 const EnqueueDownloadRequestSchema = z.object({
   username: z.string().min(1).openapi({ example: 'slsk_user' }),
   files: z.array(DownloadFileSchema).min(1),
+  /** The album this grab is, when the client knows (#1539). Wins over the
+   *  folder-name guess for both the duplicate guard and the job's name. */
+  album: z
+    .object({
+      artist: z.string().min(1),
+      title: z.string().min(1),
+      lidarrAlbumId: z.number().int().nullable().optional(),
+    })
+    .optional(),
+  /** Supersede a live acquisition of the same album instead of refusing. */
+  replace: z.boolean().optional(),
 });
+
+/** Below this many files from one folder a grab is a track or two, not an album. */
+const ALBUM_GRAB_MIN_FILES = 3;
+
+function directoryOf(filename: string): string {
+  const parts = filename.replace(/\\/g, '/').split('/').filter(Boolean);
+  return parts.slice(0, -1).join('/');
+}
+
+const AlreadyDownloadingSchema = z
+  .object({ error: z.literal('already-downloading'), jobId: z.string() })
+  .openapi('AlreadyDownloading');
 
 const DownloadResponseSchema = z
   .object({
@@ -127,6 +152,14 @@ export function downloadRoutes(
           },
           description: 'Bad request',
         },
+        409: {
+          content: {
+            'application/json': {
+              schema: AlreadyDownloadingSchema,
+            },
+          },
+          description: 'The same album is already downloading (any lane)',
+        },
         502: {
           content: {
             'application/json': {
@@ -146,13 +179,39 @@ export function downloadRoutes(
       },
     }),
     async (c) => {
-      const { username, files } = c.req.valid('json');
+      const { username, files, album, replace } = c.req.valid('json');
 
       const networkProviders = registry.getByType('network');
       const provider = networkProviders[0];
 
       if (!provider?.download) {
         return c.json({ error: 'No download provider available' }, 503);
+      }
+
+      // One album = one download across every lane (#1539): an album-shaped grab
+      // is refused while the same album is live — a catalog Get, another peer's
+      // folder — unless the caller asked to replace it. The client's own naming
+      // wins; otherwise the folder is read ("Artist - Album [2015]", or
+      // parent/leaf). Generic containers name nothing and guard nothing.
+      const dir = directoryOf(files[0]!.filename);
+      const oneFolder = files.every((f) => directoryOf(f.filename) === dir);
+      const guessed = oneFolder ? folderAlbumIdentity(dir) : { artist: null, title: null };
+      const identity = album ?? (guessed.artist && guessed.title ? guessed : null);
+      const albumShaped =
+        album !== undefined || (oneFolder && files.length >= ALBUM_GRAB_MIN_FILES);
+      if (identity?.artist && identity.title && albumShaped) {
+        const target = {
+          lidarrAlbumId: album?.lidarrAlbumId ?? null,
+          artist: identity.artist,
+          title: identity.title,
+        };
+        const db = getDatabase();
+        if (replace) supersedeActiveJobs(db, target);
+        else {
+          const active = findActiveAlbumJob(db, target);
+          if (active)
+            return c.json({ error: 'already-downloading' as const, jobId: active.id }, 409);
+        }
       }
 
       let receipt: DownloadReceipt | void;
@@ -178,16 +237,10 @@ export function downloadRoutes(
       // the enqueue that already succeeded.
       let jobId: string | null = null;
       try {
-        const segments = (files[0]?.filename ?? '')
-          .replace(/\\/g, '/')
-          .split('/')
-          .filter(Boolean)
-          .slice(0, -1); // drop the file basename
-        // A generic segment ("complete", "FLAC") stores NULL, not the junk:
-        // NULL self-heals via the poller's COALESCE backfill from the addon's
+        // Display hints, from the client's album or the folder guess above. A
+        // generic segment ("complete", "FLAC") stores NULL, not the junk: NULL
+        // self-heals via the poller's COALESCE backfill from the addon's
         // metadata; a junk hint blocks that backfill forever (#674).
-        const hintFor = (segment: string | undefined): string | null =>
-          segment && !isGenericFolderName(segment) ? segment : null;
         const db = getDatabase();
         // When an addon runs the grab, this row must be THE mirror of its job:
         // `source_ref` is what `/jobs/:id/cancel` resolves the owning addon
@@ -200,8 +253,9 @@ export function downloadRoutes(
           // The provider's name is the source id (the addon's manifest id).
           method: provider.name,
           userId: getCurrentUser(c).sub,
-          artistName: hintFor(segments.length >= 2 ? segments[segments.length - 2] : undefined),
-          albumTitle: hintFor(segments[segments.length - 1]),
+          artistName: album?.artist ?? guessed.artist,
+          albumTitle: album?.title ?? guessed.title,
+          lidarrAlbumId: album?.lidarrAlbumId ?? null,
           sourceRef: addonJobId ? `addon:${provider.name}:${addonJobId}` : username,
           username,
           files,

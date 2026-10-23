@@ -4,7 +4,7 @@ import { createLogger, filesMatchingTitles, titlesMissingFromOwned } from '@nico
 import { albumAlreadyComplete, onDiskTitles } from './library-completeness.js';
 import { recordAcquiredArtistIdentity } from './artist-identity-store.js';
 import { artistIdFor } from './library-scanner.js';
-import { createJob } from './acquisition-job-store.js';
+import { createJob, findActiveAlbumJob } from './acquisition-job-store.js';
 import type { RemoteAddonPlugin } from './addons/remote-addon-plugin.js';
 import { AddonRequestError } from './addons/client.js';
 import { mapAddonJob, sanitizeAddonError } from './addons/job-poller.js';
@@ -117,6 +117,12 @@ export async function acquireAlbum(
 ): Promise<AcquireResult> {
   const { db, lidarr } = deps;
   const { lidarrAlbumId, artistName, albumTitle } = input;
+
+  // Already downloading through any lane — checked before the hunt, which would
+  // otherwise spend the source's search lanes on an album in flight (#1539).
+  if (findActiveAlbumJob(db, { lidarrAlbumId, artist: artistName, title: albumTitle })) {
+    return { outcome: 'in-flight' };
+  }
 
   const tracks = await lidarr.track.listByAlbum(lidarrAlbumId);
 

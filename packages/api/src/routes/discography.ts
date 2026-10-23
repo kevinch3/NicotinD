@@ -470,7 +470,10 @@ export function discographyRoutes({
     // addon's 409 below cannot see. (The `album_jobs` lookup that once lived
     // here was dead since the addon cutover, #748.) `replace` supersedes instead.
     if (replace) supersedeActiveJobs(db, { lidarrAlbumId: albumId });
-    else if (findActiveAlbumJob(db, albumId)) return c.json({ error: 'already-downloading' }, 409);
+    else {
+      const active = findActiveAlbumJob(db, { lidarrAlbumId: albumId });
+      if (active) return c.json({ error: 'already-downloading', jobId: active.id }, 409);
+    }
 
     // Fetch canonical metadata up front — needed for the completeness guard and
     // the recorded job. Best-effort: a Lidarr hiccup must not block the download.
@@ -480,6 +483,17 @@ export function discographyRoutes({
     ]);
     const artistName = album?.artist?.artistName ?? null;
     const albumTitle = album?.title ?? null;
+
+    // The same album under another lane's naming: a peer-folder grab carries no
+    // Lidarr id, so only its name can match (#1539).
+    if (artistName && albumTitle) {
+      const named = { artist: artistName, title: albumTitle };
+      if (replace) supersedeActiveJobs(db, named);
+      else {
+        const other = findActiveAlbumJob(db, named);
+        if (other) return c.json({ error: 'already-downloading', jobId: other.id }, 409);
+      }
+    }
 
     // Persist canonical artwork keyed on the same ids the scanner will mint, so
     // the album/artist render the exact image the hunt tool showed (rather than
@@ -594,7 +608,11 @@ export function discographyRoutes({
                 );
               }
             }
-            supersedeActiveJobs(db, { lidarrAlbumId: albumId });
+            supersedeActiveJobs(db, {
+              lidarrAlbumId: albumId,
+              artist: artistName,
+              title: albumTitle,
+            });
             addonJob = await createAddonSide();
           } catch (retryErr) {
             const msg = retryErr instanceof Error ? retryErr.message : 'replace failed';
