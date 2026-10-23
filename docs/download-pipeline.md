@@ -1658,6 +1658,16 @@ a provider that returns a receipt the real one didn't. The provider now declares
 `Promise<DownloadReceipt>` — non-void, so the compiler refuses a bare
 create-and-forget — and `search-provider.test.ts` asserts the receipt itself.
 
+**One card, but every file twice (issue #1540).** The route seeds one item per
+file, keyed `transferKeyFor(username, filename)`, so the card counts its tracks
+before the first poll; the addon then reports the same files under its own ids
+(`addon:<id>:<itemId>`). `mirrorItems` matched only its own key, so it inserted
+a second row per file: a 14-file album read "14 of 28", the seeded half frozen at
+`downloading` until the close turned it `unavailable`. `mirrorItems` now adopts
+the seeded row for the same peer and path, rewriting its key to the addon's, the
+way it already adopts a re-source placeholder by title. An untitled track row
+shows the file's own name, with the share path on hover (`trackLabel`).
+
 **A junk path hint is worse than no hint (issue #674).** The route parses
 best-effort artist/album display hints from the peer's folder segments; a peer
 sharing straight out of their slskd transfer dir put "complete" in the artist

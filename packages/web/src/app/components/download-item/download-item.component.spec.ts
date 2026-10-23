@@ -8,6 +8,7 @@ import {
   DOWNLOAD_ITEM_HEADER_CLASS,
   DOWNLOAD_ITEM_BODY_CLASS,
   trackDetail,
+  trackLabel,
   canOpenInLibrary,
   canOpenPlaylist,
   hasMultipleDestinationAlbums,
@@ -623,7 +624,10 @@ describe('download-item track drilldown', () => {
   it('falls back to the filename when a track has no title', () => {
     const fixture = setup({ kind: 'network', stage: 'error', tracks: TRACKS });
     const rows = fixture.nativeElement.querySelectorAll('[data-testid="download-track-row"]');
-    expect(rows[2].textContent).toContain('05x22 - Untitled.flac');
+    expect(rows[2].textContent).toContain('05x22 - Untitled');
+    expect(rows[2].querySelector('[title]')?.getAttribute('title')).toContain(
+      '05x22 - Untitled.flac',
+    );
   });
 
   /**
@@ -833,5 +837,24 @@ describe('download-item re-sourcing (issue #1065)', () => {
     changeInputValue(fixture.componentInstance.item, item({ ...STUCK, key: 'job:another' }));
     fixture.detectChanges();
     expect(fixture.componentInstance.selectedCount()).toBe(0);
+  });
+});
+
+describe('download-item track label (issue #1540)', () => {
+  it('names an untitled track by its file, not the peer share path', () => {
+    expect(
+      trackLabel({
+        title: '',
+        status: 'done',
+        filename: '@@nncnz\\Johnson\\Flac albumi\\Elektronika\\Album\\03 - Lovers Game.flac',
+      }),
+    ).toBe('03 - Lovers Game');
+  });
+
+  it('prefers the title, and says nothing when there is nothing', () => {
+    expect(trackLabel({ title: 'Lovers Game', status: 'done', filename: 'x/03.flac' })).toBe(
+      'Lovers Game',
+    );
+    expect(trackLabel({ title: '', status: 'pending' })).toBe('—');
   });
 });

@@ -20,6 +20,7 @@ import {
   createJob,
   markItemsScanned,
   recomputeStage,
+  transferKeyFor,
   type AcquisitionJobKind,
   type TransferJobMeta,
 } from '../acquisition-job-store.js';
@@ -763,7 +764,18 @@ export class AddonJobPoller {
                   ORDER BY id LIMIT 1`,
               )
               .get(coreJobId, job.id, item.title);
-      const row = existing ?? reserved;
+      // The row a folder grab seeded for this exact file (#1540): keyed by peer
+      // path until the addon names it, so it is adopted rather than doubled.
+      const seeded =
+        existing || reserved || !item.username
+          ? null
+          : db
+              .query<{ id: number; state: string }, [string, string, string]>(
+                `SELECT id, state FROM acquisition_job_items
+                  WHERE job_id = ? AND transfer_key = ? AND ${OWNED_BY_ADDON_JOB}`,
+              )
+              .get(coreJobId, transferKeyFor(item.username, item.filename), job.id);
+      const row = existing ?? reserved ?? seeded;
       if (!row) {
         db.run(
           `INSERT INTO acquisition_job_items
