@@ -18,6 +18,7 @@ import { AutoHuntService } from '../../services/auto-hunt.service';
 import type { AlbumHuntStatus } from '../../lib/album-hunt-status';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import { AuthService } from '../../services/auth.service';
+import type { FolderGroup } from '../../lib/folder-utils';
 import { GetThenHearService } from '../../services/get-then-hear.service';
 
 let registeredHandler: (() => Promise<void> | void) | null = null;
@@ -55,6 +56,10 @@ function setup(
   const autoHunt = {
     hunt: vi.fn(),
     statusFor: vi.fn((_id: number): AlbumHuntStatus => ({ phase: 'idle' })),
+    statusForAlbum: vi.fn(
+      (_target: { artist?: string | null; title?: string | null; lidarrAlbumId?: number | null }) =>
+        ({ phase: 'idle' }) as AlbumHuntStatus,
+    ),
   };
   const p2rStub = {
     register: (h: () => Promise<void> | void) => {
@@ -291,19 +296,27 @@ describe('SearchComponent — metadata-driven search', () => {
 
   // Hunt status is keyed by the Lidarr id, which a catalog card only learns on
   // resolve — before that it can only be idle; after, it follows its own hunt.
-  it('a catalog card follows its own hunt once resolved', async () => {
+  // #1539: the card asks by its album — any lane's job shows on it, before any
+  // click — and adds its Lidarr id once it has resolved one.
+  it('a catalog card asks by its album, and by its Lidarr id once resolved', async () => {
     const { component, autoHunt } = setup();
-    autoHunt.statusFor.mockImplementation((id) =>
-      id === 55 ? { phase: 'job', stage: 'downloading' } : { phase: 'idle' },
+    autoHunt.statusForAlbum.mockImplementation((target) =>
+      target.lidarrAlbumId === 55
+        ? { phase: 'job', stage: 'downloading', delivered: 4, expected: 10 }
+        : { phase: 'idle' },
     );
     expect(component.catalogHuntStatus(CATALOG_ALBUM)).toEqual({ phase: 'idle' });
+    expect(autoHunt.statusForAlbum).toHaveBeenLastCalledWith({
+      artist: 'Pink Floyd',
+      title: 'The Dark Side of the Moon',
+      lidarrAlbumId: null,
+    });
 
     await component.huntCatalogAlbum(CATALOG_ALBUM);
 
     const status = component.catalogHuntStatus(CATALOG_ALBUM);
-    expect(status).toEqual({ phase: 'job', stage: 'downloading' });
-    expect(component.catalogHuntLabel(status)).toBe('Downloading');
-    expect(autoHunt.statusFor).toHaveBeenCalledWith(55);
+    expect(status).toMatchObject({ phase: 'job', stage: 'downloading' });
+    expect(component.catalogHuntLabel(status)).toBe('Downloading · 4/10');
   });
 
   it('surfaces a resolve failure without opening the modal', async () => {
@@ -482,6 +495,60 @@ describe('SearchComponent — metadata-driven search', () => {
     };
 
     expect(component.blendedState(candidate)).toBe('done');
+  });
+});
+
+describe('SearchComponent — one album = one download in the folder lane (#1539)', () => {
+  const folder = (n: number): FolderGroup => ({
+    username: 'Johnyboy123',
+    uploadSpeed: 1,
+    directory:
+      'Elektronika\\Damian Lazarus & The Ancient Moons - Message From The Other Side [2015]',
+    files: Array.from({ length: n }, (_, i) => ({
+      filename: `Elektronika\\Damian Lazarus & The Ancient Moons - Message From The Other Side [2015]\\0${i + 1} T.flac`,
+      size: 10,
+    })),
+  });
+
+  it('names an album-shaped folder by its "Artist - Album" leaf, and a 2-track one not at all', () => {
+    const { component } = setup();
+    expect(component.folderAlbumTarget(folder(3))).toEqual({
+      artist: 'Damian Lazarus & The Ancient Moons',
+      title: 'Message From The Other Side',
+    });
+    expect(component.folderAlbumTarget(folder(2))).toBeNull();
+  });
+
+  it('sends the album intent with the folder grab', async () => {
+    const enqueueDownload = vi.fn(() => of({ ok: true, queued: 3, jobId: 'j1' }));
+    const { component } = setup({}, {}, {}, { enqueueDownload });
+    await component.downloadFolder(folder(3));
+    expect(enqueueDownload).toHaveBeenCalledWith('Johnyboy123', expect.any(Array), {
+      album: { artist: 'Damian Lazarus & The Ancient Moons', title: 'Message From The Other Side' },
+      replace: false,
+    });
+  });
+
+  it("treats the server's already-downloading 409 as news, not an error, and un-marks the folder", async () => {
+    const enqueueDownload = vi.fn(() =>
+      throwError(() => ({ status: 409, error: { error: 'already-downloading', jobId: 'live' } })),
+    );
+    const { component, search } = setup({}, {}, {}, { enqueueDownload });
+    const group = folder(3);
+    await component.downloadFolder(group);
+    expect(component.downloadError()).toBeNull();
+    expect(search.downloadedFolders().has(`${group.username}:${group.directory}`)).toBe(false);
+    expect(transferKickPoll).toHaveBeenCalled();
+  });
+
+  it('shows the album downloading elsewhere on a folder whose own files are idle', () => {
+    const { component, autoHunt } = setup();
+    autoHunt.statusForAlbum.mockReturnValue({ phase: 'job', stage: 'downloading', jobId: 'cat-1' });
+    expect(component.folderElsewhereStatus(folder(3))).toMatchObject({ jobId: 'cat-1' });
+    expect(autoHunt.statusForAlbum).toHaveBeenLastCalledWith({
+      artist: 'Damian Lazarus & The Ancient Moons',
+      title: 'Message From The Other Side',
+    });
   });
 });
 

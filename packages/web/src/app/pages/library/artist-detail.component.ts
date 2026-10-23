@@ -503,8 +503,14 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     if (tile.source) this.openHunt(tile.source);
   }
 
+  /** Any lane's live job for the release — a peer-folder grab included (#1539). */
   tileHuntStatus(tile: AlbumTile): AlbumHuntStatus {
-    return tile.source ? this.autoHunt.statusFor(tile.source.lidarrId) : IDLE_HUNT;
+    if (!tile.source) return IDLE_HUNT;
+    return this.autoHunt.statusForAlbum({
+      lidarrAlbumId: tile.source.lidarrId,
+      artist: this.artist()?.name,
+      title: tile.title,
+    });
   }
 
   // Lazy-load the next song page when the sentinel scrolls into view, but only

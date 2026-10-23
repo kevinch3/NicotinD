@@ -3,10 +3,11 @@ import { firstValueFrom, of, switchMap, map } from 'rxjs';
 import { DownloadsApiService } from './api/downloads-api.service';
 import { TransferService } from './transfer.service';
 import { ToastService } from './toast.service';
-import type { AcquisitionJobView } from '@nicotind/core';
+import { sameAlbum, type AcquisitionJobView } from '@nicotind/core';
 import { IDLE_HUNT, SEARCHING_HUNT, type AlbumHuntStatus } from '../lib/album-hunt-status';
 import { huntCutShort, type DiscographyAlbum, type FolderCandidate } from './api/api-types';
 import { mergeCandidates } from '../lib/merge-candidates';
+import { hasCommittedTotal, jobDenominator } from '../lib/download-groups';
 import {
   classifyHuntDownloadResult,
   classifyHuntDownloadError,
@@ -19,6 +20,18 @@ const COUNTDOWN_SECONDS = 3;
 // attempts, so a systemic failure (addon down) fails fast with its real reason
 // instead of burning through the whole candidate list.
 const MAX_DOWNLOAD_ATTEMPTS = 3;
+
+function jobStatus(job: AcquisitionJobView): AlbumHuntStatus {
+  return {
+    phase: 'job',
+    stage: job.stage,
+    jobId: job.id,
+    // A total the job has not committed to (a lazily-enumerated URL) is not one.
+    ...(hasCommittedTotal(job)
+      ? { delivered: job.progress.delivered, expected: jobDenominator(job.progress) }
+      : {}),
+  };
+}
 
 @Injectable({ providedIn: 'root' })
 export class AutoHuntService {
@@ -42,10 +55,46 @@ export class AutoHuntService {
     return byAlbum;
   });
 
+  /** Every live job, newest first — the pool `statusForAlbum` matches by name. */
+  private readonly activeJobs = computed(() =>
+    this.transfer
+      .acquisitionJobs()
+      .filter((j) => j.state === 'active')
+      .sort((a, b) => b.createdAt - a.createdAt),
+  );
+
   statusFor(lidarrId: number): AlbumHuntStatus {
     if (this.pending().has(lidarrId)) return SEARCHING_HUNT;
     const job = this.activeJobByAlbum().get(lidarrId);
-    return job ? { phase: 'job', stage: job.stage } : IDLE_HUNT;
+    return job ? jobStatus(job) : IDLE_HUNT;
+  }
+
+  /**
+   * The album's status whichever lane is fetching it (#1539): its Lidarr id when
+   * the surface has one, else — or also — any live job naming the same album
+   * (`sameAlbum`, the server guard's own rule). So a catalog card shows the peer
+   * folder grab of its album, a folder shows the catalog Get of its album, and
+   * all of it survives a reload, since it is read off the job feed.
+   */
+  statusForAlbum(target: {
+    artist?: string | null;
+    title?: string | null;
+    lidarrAlbumId?: number | null;
+  }): AlbumHuntStatus {
+    const id = target.lidarrAlbumId ?? null;
+    if (id !== null) {
+      const byId = this.statusFor(id);
+      if (byId.phase !== 'idle') return byId;
+    }
+    if (!target.artist || !target.title) return IDLE_HUNT;
+    const named = { artist: target.artist, title: target.title };
+    const job = this.activeJobs().find(
+      (j) =>
+        j.artistName !== null &&
+        j.albumTitle !== null &&
+        sameAlbum(named, { artist: j.artistName, title: j.albumTitle }),
+    );
+    return job ? jobStatus(job) : IDLE_HUNT;
   }
 
   /** Hold an album as `searching` until the matching `endSearch`. */

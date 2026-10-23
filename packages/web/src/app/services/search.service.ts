@@ -92,6 +92,15 @@ export class SearchService {
     });
   }
 
+  removeDownloadedFolder(key: string): void {
+    this.downloadedFolders.update((s) => {
+      const updated = new Set(s);
+      updated.delete(key);
+      localStorage.setItem(DOWNLOADED_FOLDERS_KEY, JSON.stringify(Array.from(updated)));
+      return updated;
+    });
+  }
+
   addDownloadedFolder(key: string): void {
     this.downloadedFolders.update((s) => {
       const updated = new Set(s).add(key);
