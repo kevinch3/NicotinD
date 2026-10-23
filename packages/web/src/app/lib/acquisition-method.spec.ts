@@ -15,6 +15,22 @@ describe('methodBadge', () => {
     expect(methodBadge(undefined).label).toBe('Unknown source');
   });
 
+  it('names a third-party addon by its manifest name instead of "Unknown source"', () => {
+    const badge = methodBadge('unknown', 'Demo Source');
+    expect(badge.label).toBe('Demo Source');
+    expect(badge.glyph).toBe('🧩');
+    expect(methodBadge(null, 'Demo Source').label).toBe('Demo Source');
+  });
+
+  it('keeps a first-party badge even when a source name is passed', () => {
+    expect(methodBadge('slskd', 'Soulseek (addon)').label).toBe('Soulseek');
+  });
+
+  it('is "Unknown source" only when there is no name to show', () => {
+    expect(methodBadge('unknown', null).label).toBe('Unknown source');
+    expect(methodBadge('unknown', '').label).toBe('Unknown source');
+  });
+
   it('provides a glyph for every method', () => {
     for (const m of ['slskd', 'ytdlp', 'spotdl', 'archive', 'import', 'unknown'] as const) {
       expect(methodBadge(m).glyph.length).toBeGreaterThan(0);

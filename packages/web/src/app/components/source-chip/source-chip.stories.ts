@@ -5,7 +5,7 @@ const meta: Meta<SourceChipComponent> = {
   title: 'Components/SourceChip',
   component: SourceChipComponent,
   tags: ['autodocs'],
-  args: { source: 'soulseek', label: 'Soulseek' },
+  args: { source: 'network', label: 'Soulseek' },
 };
 
 export default meta;
@@ -16,7 +16,9 @@ type Story = StoryObj<SourceChipComponent>;
  * from every source renders in one ranked list with one Get, and the chip is the only
  * thing that says where it came from.
  */
-export const Soulseek: Story = {};
+export const NetworkSource: Story = {};
+/** The network chip carries whatever the addon calls itself — not a fixed brand. */
+export const ThirdPartyNetworkSource: Story = { args: { label: 'Demo Source' } };
 export const InternetArchive: Story = { args: { source: 'archive', label: 'Internet Archive' } };
 export const Spotify: Story = { args: { source: 'spotify', label: 'Spotify' } };
 export const YouTube: Story = { args: { source: 'youtube', label: 'YouTube' } };
