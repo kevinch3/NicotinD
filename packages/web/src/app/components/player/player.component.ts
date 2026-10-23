@@ -43,7 +43,7 @@ import { ListeningTrackerService } from '../../services/listening-tracker.servic
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { PlayerTransportMiniComponent } from './player-transport-mini/player-transport-mini.component';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
-import { isTvBuild } from '../../lib/platform';
+import { isAppleMobileWebKit, isTvBuild } from '../../lib/platform';
 import { formatTime } from '../../lib/format-time';
 
 /**
@@ -220,6 +220,17 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   // it was pointed at (a vocal-mute toggle or token change since invalidates it).
   private preloadedTrackId: string | null = null;
   private preloadedSrc: string | null = null;
+  // iOS lets a page that is off screen (locked, or another app in front) keep
+  // using the element that is already playing, but refuses play() on a
+  // different one — so on iOS the advance stays on the active element, and
+  // nothing is pre-buffered into the standby.
+  private readonly singleElement = isAppleMobileWebKit();
+  // The next track's preserved blob, read out of IndexedDB during the last 30 s
+  // so onEnded can call play() in the same task as `ended`. iOS suspends a
+  // backgrounded page soon after it goes silent, so an IndexedDB read between
+  // `ended` and play() is where a background advance died.
+  // `url` stays null until the read lands, or if the blob turned out missing.
+  private nextBlob: { trackId: string; url: string | null } | null = null;
   // Tracks the last vocal mute state to detect toggle changes (Effect 6b).
   private lastVocalsMuted: boolean | null = null;
   // Load generation: bumped on every resource change — an in-place `audio.src`
@@ -785,6 +796,59 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     });
   }
 
+  /**
+   * Get the queue head ready for onEnded: its preserved blob as an object URL,
+   * or else its stream buffering in the standby element — except on iOS, where
+   * the standby could never be started (see `singleElement`) and the advance
+   * re-points the active element instead.
+   */
+  private prepareNext(trackId: string): void {
+    if (untracked(() => this.preserve.isPreserved(trackId))) {
+      this.prepareNextBlob(trackId);
+      return;
+    }
+    this.discardNextBlob();
+    if (this.singleElement || trackId === this.preloadedTrackId) return;
+    const standby = this.standbyNativeEl;
+    if (!standby) return;
+    this.preloadedTrackId = trackId;
+    this.preloadedSrc = this.streamSrc(trackId);
+    standby.src = this.preloadedSrc;
+    standby.preload = 'auto';
+    // load() without play() — just buffer the initial bytes
+    standby.load();
+  }
+
+  private prepareNextBlob(trackId: string): void {
+    if (this.nextBlob?.trackId === trackId) return;
+    this.discardNextBlob();
+    const entry: { trackId: string; url: string | null } = { trackId, url: null };
+    this.nextBlob = entry;
+    void db
+      .getBlob(trackId)
+      .then((blob) => {
+        // Superseded (the queue moved on) or missing: onEnded's async path
+        // covers a missing blob, so leave `url` null.
+        if (this.nextBlob === entry && blob) entry.url = URL.createObjectURL(blob.audio);
+      })
+      .catch(() => {
+        /* onEnded falls back to reading the blob itself */
+      });
+  }
+
+  /** Hand over the pre-resolved object URL for `trackId`; the caller owns revoking it. */
+  private takeNextBlobUrl(trackId: string): string | null {
+    const entry = this.nextBlob;
+    if (entry?.trackId !== trackId || entry.url === null) return null;
+    this.nextBlob = null;
+    return entry.url;
+  }
+
+  private discardNextBlob(): void {
+    if (this.nextBlob?.url) URL.revokeObjectURL(this.nextBlob.url);
+    this.nextBlob = null;
+  }
+
   /** Park the element with no resource: remote device took over, or queue empty. */
   private teardownAudio(audio: HTMLAudioElement): void {
     this.pausingByStore = true;
@@ -986,6 +1050,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     // does not: it is the one thing that legitimately outlives its own bind,
     // and it carries its own generation check.)
     this.clearStallTimeout();
+    this.starvedReplayed = false;
 
     // Capture the load generation at bind time. Every handler below closes
     // over this number and bails if `loadGeneration` has moved on (the standby
@@ -1015,25 +1080,12 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
           }
         }
       }
-      // Pre-buffer next track when 30 s remain so the element swap at onEnded is instant.
+      // Prepare the next track when 30 s remain so the advance at onEnded is instant.
       if (Number.isFinite(audio.duration) && audio.duration > 0) {
         const remaining = audio.duration - value;
         if (remaining > 0 && remaining < 30) {
           const nextTrack = untracked(() => this.player.queue()[0]);
-          if (nextTrack && nextTrack.id !== this.preloadedTrackId) {
-            const isPreserved = untracked(() => this.preserve.isPreserved(nextTrack.id));
-            if (!isPreserved) {
-              const standby = this.standbyNativeEl;
-              if (standby) {
-                this.preloadedTrackId = nextTrack.id;
-                this.preloadedSrc = this.streamSrc(nextTrack.id);
-                standby.src = this.preloadedSrc;
-                standby.preload = 'auto';
-                // load() without play() — just buffer the initial bytes
-                standby.load();
-              }
-            }
-          }
+          if (nextTrack) this.prepareNext(nextTrack.id);
         }
       }
     };
@@ -1159,7 +1211,14 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
               });
             };
 
-            if (isPreserved) {
+            const readyUrl = isPreserved ? this.takeNextBlobUrl(nextTrack.id) : null;
+            if (readyUrl) {
+              // Resolved ahead of time — play() lands in this task, before iOS
+              // can suspend the now-silent backgrounded page.
+              this.lastManualObjectUrl = readyUrl;
+              this.assignSource(audio, readyUrl);
+              playNext();
+            } else if (isPreserved) {
               void db.getBlob(nextTrack.id).then((blob) => {
                 if (blob) {
                   const url = URL.createObjectURL(blob.audio);
@@ -1205,6 +1264,21 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     const onPause = () => {
       if (boundGen !== this.loadGeneration) return;
       if (this.pausingByStore || this.recoveringStream) return;
+      // WebKit pauses the element itself when its platform player stalls — on
+      // iOS, a far seek whose bytes have not arrived. Committing that pause
+      // left a paused player under a spinner that only a tap could clear, and
+      // the tap only ever did a play(). So keep the intent, issue that play()
+      // once, and let the stall watchdog bound the rest.
+      if (this.player.isPlaying() && this.isStarved(audio)) {
+        if (!this.starvedReplayed) {
+          this.starvedReplayed = true;
+          audio.play().catch((err) => {
+            if (err.name === 'NotAllowedError') this.handlePlayRejection();
+          });
+        }
+        this.armStallWatchdog(audio, boundGen);
+        return;
+      }
       if (document.visibilityState === 'hidden') {
         this.resumePendingAfterVisible = this.player.isPlaying();
         return;
@@ -1230,6 +1304,9 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     const onSeeking = () => {
       if (boundGen !== this.loadGeneration) return;
       this.player.setBuffering(true);
+      // Not every engine follows a seek into missing data with `waiting`, and
+      // a seek that never lands must still be bounded.
+      this.armStallWatchdog(audio, boundGen);
     };
     // Seeking into an already-buffered region fires no playing/canplay while
     // paused (readyState never dips), so seeked must clear the flag itself —
@@ -1250,6 +1327,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       if (boundGen !== this.loadGeneration) return;
       this.player.setBuffering(false);
       this.clearStallTimeout();
+      this.starvedReplayed = false;
     };
     const onCanPlay = () => {
       if (boundGen !== this.loadGeneration) return;
@@ -1420,6 +1498,12 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
    * whole path exists to remove.
    */
   private recoveringStream = false;
+  /**
+   * Set once a starved pause (see `isStarved`) has had its one automatic
+   * `play()`, so an engine that keeps pausing cannot loop us; cleared when
+   * bytes flow again (`playing`) or a new resource binds.
+   */
+  private starvedReplayed = false;
 
   /**
    * Take ownership of the element's paused state for the length of a recovery:
@@ -1432,6 +1516,22 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       clearTimeout(this.backgroundPauseTimer);
       this.backgroundPauseTimer = null;
     }
+  }
+
+  /**
+   * Is the element waiting on bytes it does not have — a seek in flight, or a
+   * buffering episode the element reported — rather than at rest? A pause
+   * raised in that state is the engine giving up on a stall, not a listener
+   * asking for silence. Never true at the end of a track: `pause` fires just
+   * before `ended`, and replaying there would restart the track.
+   */
+  private isStarved(audio: HTMLAudioElement): boolean {
+    if (audio.ended) return false;
+    if (audio.seeking) return true;
+    return (
+      untracked(() => this.player.buffering()) &&
+      audio.readyState < HTMLMediaElement.HAVE_FUTURE_DATA
+    );
   }
 
   private clearMediaRetryTimeout(): void {
@@ -1460,9 +1560,13 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     this.stallTimeout = setTimeout(() => {
       this.stallTimeout = null;
       if (boundGen !== this.loadGeneration) return;
-      // A seek in flight, or the false-ended valve mid-flight, owns the
-      // element's silence and has its own bounded resolution. Don't race them.
-      if (audio.seeking) return;
+      // A seek still held as an intent, or the false-ended valve mid-flight,
+      // owns the element's silence and has its own bounded resolution. Don't
+      // race them. A seek already *committed* to the element has no such
+      // valve (the intent is dropped on commit), so `audio.seeking` alone is
+      // not a reason to stand down: on iOS every seek commits at once, and one
+      // whose bytes never arrived used to hold the spinner up indefinitely.
+      if (this.pendingSeekTarget() !== null) return;
       if (untracked(() => this.player.recoveryState()) === 'awaiting-duration') return;
       if (audio.currentTime > this.stallWatchFrom + 0.5) return;
       this.recoverFromDeadStream(audio, boundGen);
@@ -1607,6 +1711,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     this.clearMediaRetryTimeout();
     this.clearStallTimeout();
     this.clearPendingSeekTimeout();
+    this.discardNextBlob();
     if (this.progressReportInterval) clearInterval(this.progressReportInterval);
     if (this.rafId) cancelAnimationFrame(this.rafId);
     this.releaseWakeLock();
