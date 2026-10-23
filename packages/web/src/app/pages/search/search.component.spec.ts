@@ -17,6 +17,7 @@ import { PluginService, type PluginInfo } from '../../services/plugin.service';
 import { AutoHuntService } from '../../services/auto-hunt.service';
 import type { AlbumHuntStatus } from '../../lib/album-hunt-status';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
+import { AuthService } from '../../services/auth.service';
 import { GetThenHearService } from '../../services/get-then-hear.service';
 
 let registeredHandler: (() => Promise<void> | void) | null = null;
@@ -178,6 +179,25 @@ describe('SearchComponent — metadata-driven search', () => {
     expect(component.hasCatalog()).toBe(true);
     expect(component.catalog()?.albums[0]?.title).toBe('The Dark Side of the Moon');
     expect(component.directSearchOpen()).toBe(false);
+  });
+
+  // #1536: the proxied catalog cover is behind auth and an <img> sends no
+  // header — without the media token every card fell back to its placeholder.
+  // The template binds catalogCoverUrl(); the JIT harness cannot drive the
+  // child's signal input, so the binding's value is asserted here.
+  it('requests a proxied catalog cover with the media token', async () => {
+    const remote = `/api/cover/remote?u=${encodeURIComponent('https://images.lidarr.audio/c.jpg')}`;
+    const { component, search } = setup({
+      catalogSearch: () => of({ artists: [], albums: [{ ...CATALOG_ALBUM, coverUrl: remote }] }),
+    });
+    TestBed.inject(AuthService).setMediaKey('mk-1');
+    search.setQuery('pink floyd');
+
+    component.handleSearch(new Event('submit'));
+    await flush();
+
+    const album = component.catalog()!.albums[0]!;
+    expect(component.catalogCoverUrl(album)).toBe(`${remote}&token=mk-1`);
   });
 
   it('renders the catalog albums grid as an appTvNavGroup with grid axis', async () => {

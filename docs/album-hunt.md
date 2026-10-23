@@ -66,6 +66,12 @@ a working answer for the relative case (the server can reach Lidarr even though
 the browser cannot — `resolveRemoteCoverUrl` resolves it against the configured
 base URL).
 
+The proxied URL is **built server-side and carries no credential**, while
+`/api/cover/*` sits behind auth and an `<img>` never sends the interceptor's
+header — so the web appends the viewer's media token with `withMediaToken`
+(`lib/cover-url.ts`) at the binding. Before that (#1536) every catalog cover
+401'd into its letter placeholder.
+
 **Why a proxy rather than a size parameter on the CDN URL:** the Lidarr image
 cache offers no resize parameter, and it would not have fixed the relative-URL
 case at all.
