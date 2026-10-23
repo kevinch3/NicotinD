@@ -3,7 +3,7 @@ import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { vi } from 'vitest';
-import { SearchComponent } from './search.component';
+import { SearchComponent, getHighlightTerms } from './search.component';
 import { SearchApiService } from '../../services/api/search-api.service';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
@@ -1342,5 +1342,20 @@ describe('SearchComponent — get, then hear it', () => {
     downloads.enqueueDownload = vi.fn(() => throwError(() => new Error('offline')));
     await component.handleDownload('peer', { filename: 'x.flac', size: 10 });
     expect(remember).not.toHaveBeenCalled();
+  });
+});
+
+describe('getHighlightTerms (#1537)', () => {
+  it('marks a multi-word query as one phrase first, then its words', () => {
+    expect(getHighlightTerms('Christian  Löffler')).toEqual([
+      'Christian Löffler',
+      'Christian',
+      'Löffler',
+    ]);
+  });
+
+  it('never marks a stop-word or a single letter', () => {
+    expect(getHighlightTerms('Message From The Other Side')).not.toContain('The');
+    expect(getHighlightTerms('a b Mare')).toEqual(['Mare']);
   });
 });

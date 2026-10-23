@@ -117,10 +117,20 @@ function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function getHighlightTerms(query: string): string[] {
-  return Array.from(new Set(query.trim().split(/\s+/).filter(Boolean))).sort(
-    (a, b) => b.length - a.length,
-  );
+/** Words too common to be worth a highlight ("The" marked in every title, #1537). */
+const HIGHLIGHT_STOP_WORDS = new Set(['the', 'a', 'an', 'and', 'of', 'de', 'la', 'el', 'y', '&']);
+
+/**
+ * The query's words worth marking, longest first, plus the whole query as one
+ * phrase, so "Christian Löffler" is one highlight, not two chips side by side.
+ */
+export function getHighlightTerms(query: string): string[] {
+  const phrase = query.trim().replace(/\s+/g, ' ');
+  const words = phrase
+    .split(' ')
+    .filter((w) => w.length > 1 && !HIGHLIGHT_STOP_WORDS.has(w.toLowerCase()));
+  const terms = words.length > 1 && !/[&<>"]/.test(phrase) ? [phrase, ...words] : words;
+  return Array.from(new Set(terms)).sort((a, b) => b.length - a.length);
 }
 
 function extractName(filepath: string) {

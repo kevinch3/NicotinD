@@ -64,7 +64,10 @@ version required by an advisory, left as a caret so Renovate can still move them
 Direct dependencies take the floor in their own range instead: `@nicotind/web` declares every
 `@angular/*` package at `^22.1.6` (GHSA-p297-fm68-3q8c needs `@angular/common` ≥ 22.1.1,
 GHSA-hh8m-fm6v-7cvg needs `core`/`compiler` ≥ 22.1.0; the rest move in lockstep, since the
-framework packages are released and peered as one version).
+framework packages are released and peered as one version). `@nicotind/core`, `@nicotind/api` and
+`@nicotind/addon-sdk` declare `zod` at `^4.6.6` (GHSA-mrhx-c7xc-m3w5: memory exhaustion when
+validating oversized constrained collections, fixed in 4.6.6). The bump was the one hoisted lock entry
+plus its sha512, so nothing else re-resolved.
 
 The same Sentry v11 closure pulled the hoisted `brace-expansion@5.0.4` (via `glob > minimatch`)
 into production; a lockfile bump to `5.0.12` fixed it with no override, because every `^5` consumer

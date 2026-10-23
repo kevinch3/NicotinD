@@ -13,7 +13,7 @@
 | --- | ------ | -------- | ----------------- | ------------------------------------------------------------------------- |
 | 1   | ✅     | High     | Get album         | One album downloaded twice through two lanes → two library albums (#1539)  |
 | 2   | ✅     | High     | Catalog search    | Every catalog cover 401s — no media token on `/api/cover/remote` (#1536)   |
-| 3   | ◑      | High     | Acquire results   | Results are alphabetical; the score never sees the query (#1537)           |
+| 3   | ✅     | High     | Acquire results   | Results are alphabetical; the score never sees the query (#1537)           |
 | 4   | ✅     | High     | Catalog search    | Album grid is Lidarr's lookup, not what the provider has (#1538)           |
 | 5   | ◑      | High     | Folder grab       | One card, every file twice, "14 of 28 · 14 unavailable" (#1540)           |
 | 6   | ✅     | Medium   | One-click Get     | Silent 400; missable countdown toast; card label lags the stage (#1543)    |
@@ -43,11 +43,16 @@ Alaska*, *Mare*. All landed.
   into the landed album id), one reserve-then-call guard, one job-feed-derived status, one Get control.
 - **(High) Every catalog album cover is a letter placeholder.** 5/5 `/api/cover/remote` → 401: the
   proxied URL carries no `token`, and an `<img>` never sends the interceptor's header. Library covers
-  have always appended `mediaToken()`. **◻️ Open** (#1536).
+  have always appended `mediaToken()`. **✅ Fixed** (#1536, `withMediaToken`).
 - **(High) Results for "Damian Lazarus" start with `[untitled]` by Kassem Mosse.** The candidate score
   is lossless + free slot only, so every FLAC row ties and the title tiebreak sorts the list
   alphabetically. Also: rows with no artist, the same track three times (case/prefix variants), "The"
-  highlighted in every title. **◻️ Open** (#1537).
+  highlighted in every title. **✅ Fixed** (#1537):
+  - #1548 ranks by relevance (artist ≫ title ≫ path).
+  - An untagged `Artist - Title` stem loses its prefix when the folder confirms it, so the copy
+    merges with the tagged song.
+  - An untagged row shows an `artistHint` from its filename or folder.
+  - Highlights skip stop-words and mark a multi-word query as one phrase.
 - **(High) The album grid shows the catalog's guess, not the provider's stock.** Joining the network
   result already in memory against the cards: 5 of 6 Lazarus cards have peers (*Neverending* has none,
   same look); Löffler's grid is 8 early EPs/singles while peers hold *Mare* (20 folders), *A Life*,
