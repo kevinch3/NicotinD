@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.116](https://github.com/kevinch3/NicotinD/compare/v0.8.115...v0.8.116) (2026-10-23)
+
+### Features
+
+* **web:** album cards show what the provider holds, and albums only it has ([#1554](https://github.com/kevinch3/NicotinD/issues/1554)) ([70b3d4b](https://github.com/kevinch3/NicotinD/commit/70b3d4b371ebc1d3f2a19483534645c2f68577bc)), closes [#1538](https://github.com/kevinch3/NicotinD/issues/1538), references [#1541](https://github.com/kevinch3/NicotinD/issues/1541) [#1542](https://github.com/kevinch3/NicotinD/issues/1542)
 ## [0.8.115](https://github.com/kevinch3/NicotinD/compare/v0.8.114...v0.8.115) (2026-10-23)
 
 ### Features

@@ -1,0 +1,1 @@
+• web: album cards show what the provider holds, and albums only it has (#1554)
