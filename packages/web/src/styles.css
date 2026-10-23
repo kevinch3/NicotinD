@@ -391,6 +391,13 @@
    is a raw var() too even though text-theme-secondary IS @theme-registered, for consistency
    with the other raw-var() declarations in this block rather than mixing @apply and raw var()
    within the same idiom set. */
+/* A modal panel's height bound: the viewport minus the chrome the backdrop's
+   BottomChromeSafeDirective reserves at both edges and its p-4 gutter (#1522).
+   Pair with a flex-col panel whose body alone scrolls, so the title/close and
+   the actions stay on screen (docs/design-patterns.md "Bottom-chrome-safe modals"). */
+@utility modal-max-h {
+  max-height: calc(100dvh - var(--top-chrome-inset, 0px) - var(--bottom-chrome-inset, 0px) - 2rem);
+}
 @utility page-shell {
   @apply mx-auto px-4 py-5 md:px-6 md:py-8;
 }

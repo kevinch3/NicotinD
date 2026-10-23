@@ -1,17 +1,23 @@
-<!-- No items-center + m-auto panel: keeps an overflowing panel's top reachable
-     (docs/design-patterns.md "Bottom-chrome-safe modals"). -->
+<!-- No items-center + m-auto panel: keeps an overflowing panel's top reachable.
+     Header and footer are pinned and only the body scrolls, so the close button
+     and Save stay on screen on a phone (#1522; docs/design-patterns.md
+     "Bottom-chrome-safe modals"). -->
 <div class="fixed inset-0 z-50 flex justify-center p-4 bg-black/60" appBottomChromeSafe
   data-testid="artist-identity-modal" (click)="closed.emit()">
-  <div class="w-full max-w-md m-auto max-h-[calc(100dvh-var(--bottom-chrome-inset,0px)-2rem)] overflow-y-auto rounded-xl bg-theme-surface border border-theme p-4 shadow-2xl"
-    (click)="$event.stopPropagation()">
+  <div class="w-full max-w-md m-auto modal-max-h flex flex-col overflow-hidden rounded-xl bg-theme-surface border border-theme shadow-2xl"
+    data-testid="artist-identity-panel" (click)="$event.stopPropagation()">
+    <div class="shrink-0 px-4 pt-4">
     <div class="flex items-center justify-between mb-1">
       <h2 class="text-base font-semibold text-theme-primary">Fix artist identity</h2>
-      <button type="button" (click)="closed.emit()" aria-label="Close"
+      <button type="button" (click)="closed.emit()" aria-label="Close" data-testid="artist-identity-close"
         class="w-8 h-8 flex items-center justify-center rounded-lg text-theme-muted hover:bg-theme-surface-2 transition">
         <app-icon name="close" />
       </button>
     </div>
-    <p class="text-sm text-theme-muted mb-4 break-words">“{{ rawName() }}”</p>
+    <p class="text-sm text-theme-muted mb-3 break-words">“{{ rawName() }}”</p>
+    </div>
+
+    <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4" data-testid="artist-identity-body">
 
     <div class="flex flex-col gap-2 mb-4" role="radiogroup">
       <label class="flex items-start gap-2 text-sm text-theme-secondary cursor-pointer">
@@ -73,6 +79,9 @@
         class="w-full px-3 py-1.5 mb-4 rounded-lg bg-theme-surface-2 text-sm text-theme-primary border border-theme focus:outline-none" />
     }
 
+    </div>
+
+    <div class="shrink-0 px-4 pt-3 pb-4 border-t border-theme">
     @if (error()) {
       <div class="mb-3 px-3 py-2 rounded-lg status-error text-sm" data-testid="identity-error">{{ error() }}</div>
     }
@@ -86,6 +95,7 @@
         class="px-3 py-1.5 rounded-lg text-sm font-medium bg-theme-inverse text-theme-inverse hover:opacity-90 transition disabled:opacity-50">
         {{ busy() ? 'Saving…' : 'Save fix' }}
       </button>
+    </div>
     </div>
   </div>
 </div>

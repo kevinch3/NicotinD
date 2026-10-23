@@ -1,18 +1,24 @@
+<!-- Title and Close are pinned and only the body scrolls, so the modal can be
+     dismissed on a phone without scrolling to the end (#1522). -->
 <div
-  class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+  class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
   appBottomChromeSafe
   (click)="cancel.emit()"
 >
   <div
-    class="bg-theme-surface border border-theme rounded-xl p-6 max-w-lg w-full mx-4 shadow-2xl max-h-[85vh] overflow-y-auto"
+    class="bg-theme-surface border border-theme rounded-xl max-w-lg w-full shadow-2xl modal-max-h md:max-h-[85vh] flex flex-col overflow-hidden"
     data-testid="metadata-fix-modal"
     data-no-p2r
     (click)="$event.stopPropagation()"
   >
+    <div class="shrink-0 px-6 pt-6">
     <h2 class="text-theme-primary text-lg font-semibold mb-1">Fix metadata</h2>
     <p class="text-theme-muted text-xs mb-4">
       Search for the correct release and confirm — even a rough match. Or enter the details by hand.
     </p>
+    </div>
+
+    <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6">
 
     <!-- Cover picker — change just the artwork, independent of the fields below. -->
     @if (coverOptions().length) {
@@ -208,7 +214,9 @@
         </button>
       </div>
     </details>
+    </div>
 
+    <div class="shrink-0 px-6 pb-6">
     @if (msg(); as m) {
       <p class="text-theme-muted text-xs mt-3" data-testid="metadata-fix-msg">{{ m }}</p>
     }
@@ -220,6 +228,7 @@
       >
         Close
       </button>
+    </div>
     </div>
   </div>
 </div>

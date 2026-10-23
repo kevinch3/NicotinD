@@ -47,6 +47,7 @@
             >
               <app-icon name="edit" />
             </button>
+            @if (genreEditorEnabled) {
             <button
               type="button"
               data-testid="artist-genre-fix"
@@ -57,6 +58,7 @@
             >
               <app-icon name="tag" />
             </button>
+            }
           }
         </div>
         <app-artist-origin
