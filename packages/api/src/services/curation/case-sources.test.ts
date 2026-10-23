@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import { CASE_TEXT_LIMITS } from '@nicotind/core';
+import { CASE_TEXT_LIMITS, SONG_GENRE_EFFECT_MAX_SONGS } from '@nicotind/core';
 import {
   FALLBACK_OPTION_ID,
   flagHasActionableOptions,
@@ -230,6 +230,19 @@ describe('validateCaseOptions', () => {
     expect(bad([{ ...retag, rationale: 'x'.repeat(CASE_TEXT_LIMITS.rationale + 1) }])).toContain(
       `over ${CASE_TEXT_LIMITS.rationale}`,
     );
+  });
+
+  it('accepts a song-genre effect and refuses a malformed or oversized one (#1516)', () => {
+    const genre = (effect: object) => bad([{ id: 'g', label: 'Tech House', effect }]);
+    expect(genre({ type: 'song-genre', songIds: ['s1', 's2'], genre: 'Tech House' })).toBeNull();
+    expect(genre({ type: 'song-genre', songIds: [], genre: 'Techno' })).toContain('songIds');
+    expect(genre({ type: 'song-genre', songIds: 's1', genre: 'Techno' })).toContain('songIds');
+    expect(genre({ type: 'song-genre', songIds: ['s1', ''], genre: 'Techno' })).toContain(
+      'songIds',
+    );
+    expect(genre({ type: 'song-genre', songIds: ['s1'], genre: '  ' })).toContain('genre');
+    const many = Array.from({ length: SONG_GENRE_EFFECT_MAX_SONGS + 1 }, (_, i) => `s${i}`);
+    expect(genre({ type: 'song-genre', songIds: many, genre: 'Techno' })).toContain('at most');
   });
 
   it('forces destructive on a delete and keeps an explicit destructive flag', () => {

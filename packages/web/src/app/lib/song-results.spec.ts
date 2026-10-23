@@ -108,6 +108,66 @@ describe('groupBySong', () => {
     );
     expect(results[0].title).toBe('Toxic');
   });
+
+  // #1537, the prod "Damian Lazarus" search: the artist's own track must lead,
+  // another act's remix of him next, and an unrelated row last.
+  it('ranks an artist match above a title match above a path-only match', () => {
+    const results = groupBySong(
+      [
+        v({
+          filename: 'x\\Kassem Mosse\\[untitled].flac',
+          artist: 'Kassem Mosse',
+          title: '[untitled]',
+        }),
+        v({
+          filename: 'TEED\\A Dream I Have (Damian Lazarus Re-Shape Remix).flac',
+          artist: 'TEED',
+        }),
+        v({ filename: 'music\\Damian Lazarus\\Smoke The Monster Out [2009]\\01. Moment.flac' }),
+        v({ filename: 'Lazarus\\Moment.flac', artist: 'Damian Lazarus', title: 'Neverending' }),
+      ],
+      'Damian Lazarus',
+    );
+    expect(results.map((r) => r.title)).toEqual([
+      'Neverending',
+      'A Dream I Have (Damian Lazarus Re-Shape Remix)',
+      'Moment',
+      '[untitled]',
+    ]);
+    expect(results.map((r) => r.relevance)).toEqual([6, 4, 2, 0]);
+  });
+
+  it('matches a query term regardless of diacritics', () => {
+    const [r] = groupBySong(
+      [v({ artist: 'Christian Löffler', title: 'Mare' })],
+      'christian loffler',
+    );
+    expect(r.relevance).toBe(6);
+  });
+
+  it('folds an untagged copy into the one tagged song with that title', () => {
+    const results = groupBySong([
+      v({ username: 'a', filename: 'x\\04 Amber Palace.flac' }),
+      v({
+        username: 'b',
+        filename: 'y\\Amber Palace.mp3',
+        artist: 'Damian Lazarus',
+        title: 'Amber Palace',
+      }),
+    ]);
+    expect(results).toHaveLength(1);
+    expect(results[0].versions).toHaveLength(2);
+    expect(results[0].best.filename).toBe('x\\04 Amber Palace.flac');
+  });
+
+  it('keeps an untagged copy apart when two artists share the title', () => {
+    const results = groupBySong([
+      v({ filename: 'Intro.flac' }),
+      v({ filename: 'a\\Intro.mp3', artist: 'A', title: 'Intro' }),
+      v({ filename: 'b\\Intro.mp3', artist: 'B', title: 'Intro' }),
+    ]);
+    expect(results).toHaveLength(3);
+  });
 });
 
 describe('formatBadge', () => {

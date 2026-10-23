@@ -20,7 +20,8 @@ The user does not use the Subsonic mobile ecosystem (DSub, Symfonium, etc.), so 
 ## Non-goals
 
 - Replacing Navidrome in this iteration. (Tracked as a follow-on; the design must not block it.)
-- Subsonic API compatibility — confirmed not in use, deprioritized.
+- Subsonic API compatibility — confirmed not in use, deprioritized. (Later reversed for Music
+  Assistant: a native OpenSubsonic API, not the Navidrome proxy — [opensubsonic.md](opensubsonic.md).)
 - Touching the player / playback / preserve (offline cache) layers.
 
 ## Architecture shift

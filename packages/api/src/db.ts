@@ -850,6 +850,37 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   db.run(`CREATE INDEX IF NOT EXISTS idx_agent_tokens_user ON agent_tokens (user_id)`);
   db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_tokens_hash ON agent_tokens (token_hash)`);
 
+  // OpenSubsonic API keys (docs/opensubsonic.md): the credential a Subsonic
+  // client (Music Assistant, Symfonium…) presents on /rest/*. Only the sha256
+  // hash is stored — Subsonic's md5 token auth needs a plaintext secret, which
+  // is exactly what this table refuses to keep.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS subsonic_api_keys (
+      id           TEXT    PRIMARY KEY,
+      user_id      TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name         TEXT    NOT NULL,
+      key_hash     TEXT    NOT NULL,
+      created_at   INTEGER NOT NULL,
+      last_used_at INTEGER,
+      revoked_at   INTEGER
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_subsonic_api_keys_user ON subsonic_api_keys (user_id)`);
+  db.run(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_subsonic_api_keys_hash ON subsonic_api_keys (key_hash)`,
+  );
+  // Per-user stars on albums and artists, set through Subsonic `star`. A song
+  // star is a like (the Liked Songs playlist), so songs never land here.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS user_starred_items (
+      user_id    TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      item_type  TEXT    NOT NULL CHECK (item_type IN ('album','artist')),
+      item_id    TEXT    NOT NULL,
+      starred_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, item_type, item_id)
+    )
+  `);
+
   // Canonical library tables — populated by the native LibraryScanner. The UI
   // reads exclusively from these; the scanner mints stable ids and groups
   // editions at scan time, so hide/classify/group all happen here.

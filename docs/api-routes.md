@@ -7,7 +7,9 @@ and the interactive `/doc` explorer.
 Public routes (no JWT): `/api/setup/*` (locked after first user), `/api/auth/*`,
 `/api/health`, `/api/ws/playback` (token in query), `/share/:token` (link
 preview), `/api/radio-polls/public/*` (the poll token is the credential — see
-[radio-eval-polls.md](radio-eval-polls.md)), `/openapi.json`, `/doc`.
+[radio-eval-polls.md](radio-eval-polls.md)), `/openapi.json`, `/doc`. `/rest/*` (OpenSubsonic)
+sits outside `/api` and authenticates every call with its own API key — see
+[opensubsonic.md](opensubsonic.md).
 
 All other `/api/*` routes require a `Bearer` JWT (30-day sliding session, silent
 refresh on boot) or a read-only share token. The `check:route-auth` CI gate
@@ -45,6 +47,12 @@ The rule generalises to every `check:*` script: **a gate must report how much it
 examined, and that number must be independently derived.** A gate that can
 quietly inspect a subset and still print a confident summary is worse than no
 gate, because it is believed.
+
+A mount **outside `/api`** is the same blind spot from the other side: the
+denominator counted it, yet nothing audited it, because the JWT middleware is
+an `/api` affair. `/rest` (OpenSubsonic, [opensubsonic.md](opensubsonic.md)) was
+the first. Every such mount must now be named in `NON_API_MOUNTS` with how it
+authenticates, or the gate fails.
 
 Four groups the regex had never seen carry `PUBLIC_ROUTES` entries as a result.
 Each was checked against its route file rather than assumed safe: `/api/auth`
@@ -109,6 +117,10 @@ follow-up work, not part of the gate fix.
 | `GET`    | `/api/radio-polls/public/:token`         | Public radio-eval poll view (+ short-lived media JWT)       |
 | `POST`   | `/api/radio-polls/public/:token/votes`   | Anonymous poll votes (upsert per rater/candidate)           |
 | `POST`   | `/api/admin/radio-polls`                 | Create a poll — freezes scenarios (admin)                   |
+| `GET`    | `/api/subsonic-keys`                     | The caller's OpenSubsonic API keys (never the secret)       |
+| `POST`   | `/api/subsonic-keys`                     | Mint a key — the raw secret is returned once                |
+| `DELETE` | `/api/subsonic-keys/:id`                 | Revoke one of the caller's keys                             |
+| `GET`    | `/rest/<method>`                         | OpenSubsonic API (API-key auth) — [opensubsonic.md](opensubsonic.md) |
 | `GET`    | `/api/watchlist`                         | Watchlist entries                                           |
 | `POST`   | `/api/watchlist`                         | Toggle watch on a catalog album                             |
 | `GET`    | `/api/plugins`                           | List plugins + capability status                            |

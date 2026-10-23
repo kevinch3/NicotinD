@@ -21,6 +21,7 @@ const PAGE_TIERS: Array<[string, '6xl' | '3xl']> = [
   ['settings/about/about.component.html', '3xl'],
   ['settings/devices/devices.component.html', '3xl'],
   ['settings/agent-tokens/agent-tokens.component.html', '3xl'],
+  ['settings/subsonic-keys/subsonic-keys.component.html', '3xl'],
   ['plugins/plugins.component.html', '3xl'],
   ['admin/admin.component.html', '3xl'],
   ['radio-landing/radio-landing.component.html', '3xl'],
@@ -35,6 +36,7 @@ const IDIOM_PAGES = [
   'settings/about/about.component.html',
   'settings/devices/devices.component.html',
   'settings/agent-tokens/agent-tokens.component.html',
+  'settings/subsonic-keys/subsonic-keys.component.html',
   'plugins/plugins.component.html',
   'admin/admin.component.html',
 ];

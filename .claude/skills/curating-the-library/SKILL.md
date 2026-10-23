@@ -69,10 +69,10 @@ non-zero-position match, and pass the full corrected ordered list back, not the 
 string that was wrong. Position-0 matches are the only ones safe to fix with a bare
 single-genre `replace`.
 
-**`get_album_tracks` and `get_artist` show only the position-0 genre string, so a song can
-look like a clean single-tag catch-all without being one.** `list_recent_songs` returns every
-song's full ordered `genres` (and `genre: "X"` lists songs carrying X at any position) — read
-the set there before a `replace`. The `lowInformationWorklist`
+**`get_artist` (album rows) and the `genre` field show only the position-0 genre string, so a
+song can look like a clean single-tag catch-all without being one.** `list_recent_songs` and
+`get_album_tracks` return every song's full ordered `genres` (and `list_recent_songs({genre: "X"})`
+lists songs carrying X at any position) — read the set there before a `replace`. The `lowInformationWorklist`
 health-report count is safe *because* that mechanism checks a song's full genre list
 server-side before including it — matching your candidate count against that number is
 the actual safety check, not the fact that the display showed one bare string. Measured
@@ -196,7 +196,8 @@ UI here runs in Spanish); put every finding in `reason`, which the card folds un
 Caps: question 160, label 80, rationale 160.
 
 - One option per real outcome, each with the effect that produces it: `song-metadata` to retag or
-  re-home, `artist-merge` to credit, `song-delete` for a redundant copy (confirmed in-card),
+  re-home, `song-genre` (`songIds` + `genre`, a replace on each) for a genre you narrowed to a
+  few candidates but cannot settle, `artist-merge` to credit, `song-delete` for a redundant copy (confirmed in-card),
   `resolve-only` as a labelled "keep as is" when doing nothing is a genuine answer.
 - Do not offer an effect you would not apply yourself if the human picked it; the tap is the
   whole decision.

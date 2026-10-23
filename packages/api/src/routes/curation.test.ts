@@ -28,6 +28,8 @@ const applyDeps: ApplyEffectDeps = {
   mutateSongMetadata: async () => ({ ok: true }),
   mutateArtistIdentity: () => ({ ok: true }),
   deleteSong: async () => ({ ok: true }),
+  mutateSongGenre: async () => ({ ok: true }),
+  songGenreDeps: {},
   songMetadataDeps: {},
   artistIdentityDeps: {},
   deletionDeps: {} as never,
@@ -349,6 +351,39 @@ describe('POST /cases/:id/apply', () => {
       .all()
       .map((r) => r.action);
     expect(actions).toEqual(['curation.case', 'song.delete']);
+  });
+
+  // A genre written by tap is still a genre write (#1516).
+  it('a song-genre apply retags every song and writes a song.genre audit row per song', async () => {
+    seedSong('song-g1', 'T1', 'A');
+    seedSong('song-g2', 'T2', 'A');
+    const written: string[] = [];
+    const id = seedCase('song-g1', 'song', [
+      {
+        id: 'th',
+        label: 'Tech House',
+        effect: { type: 'song-genre', songIds: ['song-g1', 'song-g2'], genre: 'Tech House' },
+      },
+    ]);
+
+    const res = await post(
+      makeApp('admin', {
+        mutateSongGenre: async (_db, _deps, songId, body) => {
+          written.push(`${songId}=${body.genre}/${body.mode}`);
+          return { ok: true };
+        },
+      }),
+      `/cases/flag:${id}/apply`,
+      { optionId: 'th' },
+    );
+
+    expect(res.status).toBe(200);
+    expect(written).toEqual(['song-g1=Tech House/replace', 'song-g2=Tech House/replace']);
+    const actions = sharedDb
+      .query<{ action: string }, []>('SELECT action FROM audit_log ORDER BY id')
+      .all()
+      .map((r) => r.action);
+    expect(actions).toEqual(['curation.case', 'song.genre', 'song.genre']);
   });
 
   it('409s a second apply of the same case and dispatches exactly once', async () => {
