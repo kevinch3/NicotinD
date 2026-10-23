@@ -28,6 +28,39 @@ Trade-off accepted: every hunted album becomes a monitored Lidarr artist — con
 
 ---
 
+## What the provider holds — availability + provider-only albums (#1538)
+
+The catalog grid is Lidarr's free-text `album.lookup` filtered to the artist, so it is neither the
+artist's discography nor what the network can deliver. On prod (2026-10-23) 5 of Damian Lazarus's 6
+cards had peer copies, and *Neverending* had none but looked the same. Christian Löffler's grid was 8
+early EPs and singles while peers held *Mare* (20 folders), *A Life*, *Lys* and *Until We Meet
+Again*. The page already holds every folder the network search answered with, so
+`lib/provider-albums.ts` joins the two client-side, with no new call:
+
+- **`folderIsAlbum`** decides whether a peer folder is a copy of an album. One path **segment** must
+  fold to the album's title key (`normalizeForGrouping`, after an `Artist - ` / `2016 - ` prefix),
+  and the path must name one of the album's acts (`artistCredits`, so collaborations count).
+  Segment equality, never a substring: *Mare* doesn't match *Mare Reworks*. Any segment, not only
+  the leaf: `fabric 54 - Damian Lazarus` matches *Fabric 54: Damian Lazarus*. Only album-shaped
+  folders (≥ `MIN_ALBUM_TRACKS` = 3) count.
+- **`availabilityFor`** gives each catalog card its peers, best copy, lossless flag and completeness,
+  over the **un-deduped** folders (`allFolderGroups`), since the dedupe merges exactly the copies
+  being counted. The card prints "2 peers · FLAC · complete". A card no peer holds reads **"Not on
+  Soulseek"** (the source's own `SOURCE_LABELS` name) and is dimmed. Its watch star stays visible as
+  its action, and it sinks to the end of the grid (`orderedCatalogAlbums`). Both happen **only once
+  the network search is `complete`**, so a slow peer never demotes an album.
+- **`providerOnlyAlbums`** lists the albums the network holds for the matched artist
+  (`scopedArtist`) that no card covers, grouped by title key and ranked by peers. They render as a
+  second grid, "More albums your sources have". A folder whose title is only the artist's name is a
+  container and is skipped. A card **opens its copies** in the folders lane (`folderFilter` →
+  `visibleFolderGroups`, with a "Copies of X · Show all folders" bar). Its download icon gets the
+  fullest copy outright through `downloadFolder`, so the album intent and the cross-lane guard
+  (#1539) apply, and its overlay is `statusForAlbum`.
+
+The folder badge is the folder's **majority** format (`folderFormat`): a lossless minority reads
+"Mixed". The prod "Trip-Hop" grab-bag, one FLAC among 50 mostly-128k files, wore a FLAC badge and
+took `rankFolders`' lossless boost (#1541).
+
 ## Adding an artist to Lidarr is a job (#644)
 
 Lidarr's `POST /artist` imports the artist's whole discography before it answers (`TIMEOUT_PROVISION_MS`, 60s). It used to run inside three request handlers — and one of them was a **GET**: opening any artist page Lidarr did not monitor yet silently added the artist and held the socket up to 60s, which is what kept `idleTimeout` at 60s. Now:

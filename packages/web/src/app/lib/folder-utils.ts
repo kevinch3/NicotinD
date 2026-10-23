@@ -66,12 +66,20 @@ export function folderAudioFiles(g: Pick<FolderGroup, 'files'>): FolderGroup['fi
   return g.files.filter((f) => AUDIO_EXT.has(fileExt(f.filename)));
 }
 
-/** The dominant audio format of a folder, for a badge — null if no audio. */
+/**
+ * The dominant audio format of a folder, for a badge — null if no audio. Lossless
+ * only when most tracks are: one FLAC in a 50-track, mostly-128k grab-bag used to
+ * badge (and rank) the whole folder as FLAC (#1541). A lossless minority reads
+ * "Mixed".
+ */
 export function folderFormat(g: Pick<FolderGroup, 'files'>): FolderFormat | null {
   const audio = folderAudioFiles(g);
   if (audio.length === 0) return null;
-  const lossless = audio.find((f) => isLossless(f.filename));
-  if (lossless) return { label: fileExt(lossless.filename).toUpperCase(), lossless: true };
+  const lossless = audio.filter((f) => isLossless(f.filename));
+  if (lossless.length * 2 > audio.length) {
+    return { label: fileExt(lossless[0]!.filename).toUpperCase(), lossless: true };
+  }
+  if (lossless.length > 0) return { label: 'Mixed', lossless: false };
   const maxBr = Math.max(0, ...audio.map((f) => f.bitRate ?? 0));
   return { label: maxBr ? `${maxBr}k` : 'MP3', lossless: false };
 }
