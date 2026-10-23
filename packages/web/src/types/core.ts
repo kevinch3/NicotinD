@@ -125,6 +125,9 @@ export * from '../../../core/src/version';
 export * from '../../../core/src/utils/download-title';
 export * from '../../../core/src/utils/download-failure';
 export * from '../../../core/src/utils/folder-name';
+// Album identity (#1539): the web's Get surfaces match live jobs by the same
+// `sameAlbum` rule the server's duplicate guard uses. Browser-safe.
+export * from '../../../core/src/album-identity';
 export * from '../../../core/src/types/classify-acquire-url';
 
 // Value re-export: slskd hunt query builders (pure, browser-safe) — the single

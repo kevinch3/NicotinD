@@ -321,6 +321,20 @@ visible yet, `job` (with its `PipelineStage`) while an **active** acquisition jo
 `acquisitionJobs`, which is already live app-wide, so a card shows the same stage words as the
 Downloads page (`stageLabel`) with no new transport. A card is disabled only by its own album.
 
+**Asked by the album, not the lane (#1539).** The artist-page tiles and the catalog cards ask
+`statusForAlbum({artist, title, lidarrAlbumId?})`. It checks the Lidarr id when the surface has one,
+then any live job whose `artistName`/`albumTitle` is the same album by **`sameAlbum`**, the rule the
+server's duplicate guard uses (imported from `@nicotind/core` through the web's `types/core.ts`
+shim). So a catalog card shows a peer-folder grab of its album before anyone clicks it, and that
+survives a reload, because it is read off the job feed. A Search **folder** whose album is already
+live elsewhere (`folderElsewhereStatus`; only album-shaped folders of 3+ tracks, named by
+`folderAlbumIdentity`) shows that job's progress linked to Downloads, plus **Replace with this copy**
+(`downloadFolder(group, true)`, the server's `replace`), instead of an enabled "Download folder". A
+folder grab sends its album as the enqueue's `album` intent, and the server's 409
+`already-downloading` is treated as news, not an error. Every surface prints one label,
+`albumHuntLabel`: "Finding…", or the stage with its count ("Downloading · 7/13", over
+`jobDenominator`, and only once `hasCommittedTotal`).
+
 **The `searching` hold outlives the search.** A confident match hands off to a 3 s countdown toast,
 so the hold is released on the countdown's terminal outcome — Cancel, Choose Manually, a failure
 toast — or, on success, only **after `await kickPoll()`**, when the new job is already in

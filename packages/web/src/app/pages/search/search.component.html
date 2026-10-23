@@ -807,19 +807,51 @@
                         }
                       </p>
                     </div>
-                    <button
-                      (click)="downloadFolder(group)"
-                      [disabled]="
-                        getFolderBtn(group).disabled || getFolderValidFiles(group).length === 0
-                      "
-                      [class]="
-                        'px-2 py-1 rounded text-xs font-medium transition shrink-0 ' +
-                        btnClasses[getFolderBtn(group).variant] +
-                        (getFolderBtn(group).disabled ? ' cursor-default' : '')
-                      "
-                    >
-                      {{ getFolderBtn(group).label }}
-                    </button>
+                    <!-- One album = one download (#1539): when another lane or peer is
+                         already fetching this folder's album, say so and offer to swap
+                         copies instead of starting a second download. -->
+                    @let elsewhere = folderElsewhereStatus(group);
+                    @if (elsewhere.phase === 'job') {
+                      <a
+                        routerLink="/get"
+                        [queryParams]="{ tab: 'downloads' }"
+                        data-testid="folder-album-elsewhere"
+                        [title]="'acquire.albumDownloadingElsewhere' | t"
+                        class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs shrink-0 text-[var(--theme-accent)] hover:underline"
+                      >
+                        <span
+                          aria-hidden="true"
+                          class="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"
+                        ></span>
+                        {{ catalogHuntLabel(elsewhere) }}
+                      </a>
+                      <button
+                        (click)="downloadFolder(group, true)"
+                        data-testid="folder-replace"
+                        [title]="'acquire.replaceWithThisCopyHint' | t"
+                        class="px-2 py-1 rounded text-xs text-zinc-400 hover:text-zinc-200 transition shrink-0"
+                      >
+                        {{ 'acquire.replaceWithThisCopy' | t }}
+                      </button>
+                    } @else {
+                      <button
+                        (click)="downloadFolder(group)"
+                        data-testid="folder-download"
+                        [disabled]="
+                          getFolderBtn(group).disabled || getFolderValidFiles(group).length === 0
+                        "
+                        [class]="
+                          'inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition shrink-0 ' +
+                          btnClasses[getFolderBtn(group).variant] +
+                          (getFolderBtn(group).disabled ? ' cursor-default' : '')
+                        "
+                      >
+                        @if (!getFolderBtn(group).disabled) {
+                          <app-icon name="download" [size]="14" />
+                        }
+                        {{ getFolderBtn(group).label }}
+                      </button>
+                    }
                     @if (search.canBrowse()) {
                       <button
                         (click)="toggleBrowser(getFolderKey(group))"

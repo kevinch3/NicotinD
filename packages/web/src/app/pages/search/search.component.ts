@@ -23,8 +23,7 @@ import { WatchlistService } from '../../services/watchlist.service';
 import { AuthService } from '../../services/auth.service';
 import { PluginService } from '../../services/plugin.service';
 import { AutoHuntService } from '../../services/auto-hunt.service';
-import { IDLE_HUNT, type AlbumHuntStatus } from '../../lib/album-hunt-status';
-import { stageLabel } from '../../lib/pipeline-stage';
+import { IDLE_HUNT, albumHuntLabel, type AlbumHuntStatus } from '../../lib/album-hunt-status';
 import { withMediaToken } from '../../lib/cover-url';
 import { GetThenHearService, modeForFileCount } from '../../services/get-then-hear.service';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
@@ -42,8 +41,11 @@ import {
   folderFormat,
   fileQualityLabel,
   pickNetworkView,
+  folderAudioFiles,
   type FolderGroup,
 } from '../../lib/folder-utils';
+import { folderAlbumIdentity } from '@nicotind/core';
+import { IconComponent } from '../../components/icon/icon.component';
 import { groupBySong, formatBadge, isLossless, type SongResult } from '../../lib/song-results';
 import {
   songResultToCandidate,
@@ -204,6 +206,12 @@ function escapeHtml(text: string): string {
 // `/downloads` redirect onto it. It keeps its SearchComponent name because the
 // backend is still `/api/search`. #227's open product question is answered: the
 // library-find box shipped as the Library page's cross-type find bar.
+/** The server's cross-lane duplicate answer (#1539): the album is already live. */
+function isAlreadyDownloading(err: unknown): boolean {
+  const e = err as { status?: number; error?: { error?: string } };
+  return e?.status === 409 && e.error?.error === 'already-downloading';
+}
+
 @Component({
   selector: 'app-search',
   imports: [
@@ -217,6 +225,7 @@ function escapeHtml(text: string): string {
     TranslatePipe,
     TvNavGroupDirective,
     TvNavItemDirective,
+    IconComponent,
   ],
   templateUrl: './search.component.html',
 })
@@ -576,21 +585,49 @@ export class SearchComponent implements OnInit, OnDestroy {
     }
   }
 
-  async downloadFolder(group: FolderGroup): Promise<void> {
+  /** The album a peer folder is, when it is album-shaped (3+ tracks, a name to go by). */
+  folderAlbumTarget(group: FolderGroup): { artist: string; title: string } | null {
+    if (folderAudioFiles(group).length < 3) return null;
+    const { artist, title } = folderAlbumIdentity(group.directory);
+    return artist && title ? { artist, title } : null;
+  }
+
+  /**
+   * The folder's album downloading through another lane or peer (#1539) — a
+   * catalog Get, a different folder. This folder's own in-flight files already
+   * show on its button, so they are not reported twice.
+   */
+  folderElsewhereStatus(group: FolderGroup): AlbumHuntStatus {
+    const target = this.folderAlbumTarget(group);
+    if (!target || this.getFolderBtn(group).disabled) return IDLE_HUNT;
+    return this.autoHunt.statusForAlbum(target);
+  }
+
+  async downloadFolder(group: FolderGroup, replace = false): Promise<void> {
     const validFiles = group.files.filter((f) => f.size > 0);
-    this.search.addDownloadedFolder(`${group.username}:${group.directory}`);
+    const folderKey = `${group.username}:${group.directory}`;
+    const album = this.folderAlbumTarget(group) ?? undefined;
+    this.search.addDownloadedFolder(folderKey);
     for (const f of validFiles) this.search.addDownloading(`${group.username}:${f.filename}`);
     try {
       const res = await firstValueFrom(
         this.downloadsApi.enqueueDownload(
           group.username,
           validFiles.map((f) => ({ filename: f.filename, size: f.size })),
+          { album, replace },
         ),
       );
       this.getThenHear.remember(res?.jobId, modeForFileCount(validFiles.length));
       this.downloadError.set(null);
     } catch (err) {
+      this.search.removeDownloadedFolder(folderKey);
       for (const f of validFiles) this.search.removeDownloading(`${group.username}:${f.filename}`);
+      // Another lane got there first: not a failure. The live job is on the
+      // feed, so the next poll shows it on this folder as "downloading elsewhere".
+      if (isAlreadyDownloading(err)) {
+        void this.transfers.kickPoll();
+        return;
+      }
       this.downloadError.set(err instanceof Error ? err.message : 'Folder download failed');
     }
   }
@@ -687,15 +724,17 @@ export class SearchComponent implements OnInit, OnDestroy {
     return withMediaToken(album.coverUrl, this.auth.mediaToken());
   }
 
+  /** Any lane's live job for this album — not only one this card started (#1539). */
   catalogHuntStatus(album: CatalogAlbum): AlbumHuntStatus {
-    const lidarrId = this.resolvedLidarrIds().get(album.foreignAlbumId);
-    return lidarrId === undefined ? IDLE_HUNT : this.autoHunt.statusFor(lidarrId);
+    return this.autoHunt.statusForAlbum({
+      artist: album.artistName,
+      title: album.title,
+      lidarrAlbumId: this.resolvedLidarrIds().get(album.foreignAlbumId) ?? null,
+    });
   }
 
   catalogHuntLabel(status: AlbumHuntStatus): string {
-    return status.phase === 'job'
-      ? stageLabel(status.stage, (key) => this.i18n.t(key))
-      : this.i18n.t('acquire.finding');
+    return albumHuntLabel(status, (key) => this.i18n.t(key));
   }
 
   // Resolve a searched album into a real Lidarr album, then open the same

@@ -74,9 +74,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **Guided acquire UX**: catalog cards are the primary path, the raw peer lane sits behind Advanced;
   `pickNetworkView` defaults to Folders for album intent, `AutoHuntService` self-heals one-click Get.
   → [album-hunt.md](../album-hunt.md)
-- **Per-album hunt status**: each hunt trigger shows its own album's search or live job stage and
-  is disabled by nothing else (`statusFor`, `AlbumHuntStatus`, `beginSearch`).
-  → [album-hunt.md](../album-hunt.md)
+- **Per-album hunt status**: every Get surface shows its album's search or live job (any lane, by
+  name too) with progress, and is disabled by nothing else (`statusFor`, `statusForAlbum`,
+  `AlbumHuntStatus`, `albumHuntLabel`, `beginSearch`). → [album-hunt.md](../album-hunt.md)
 - **Merged `/get` workspace**: Acquire + Downloads are one route with a `?tab=find|downloads` shell
   (`GetComponent`); the `@if` is load-bearing (destroying the inactive tab unregisters its handlers).
   → [web-ui.md](../web-ui.md)

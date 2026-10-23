@@ -8,9 +8,8 @@ import { EntityMenuService } from '../../services/entity-menu.service';
 import type { TrackAction } from '../track-row/track-row.component';
 import { resolveAlbumRoute } from '../../lib/route-utils';
 import type { AlbumTile } from '../../lib/artist-album-tiles';
-import { stageLabel } from '../../lib/pipeline-stage';
 import { TranslateService } from '../../services/translate.service';
-import { IDLE_HUNT, type AlbumHuntStatus } from '../../lib/album-hunt-status';
+import { IDLE_HUNT, albumHuntLabel, type AlbumHuntStatus } from '../../lib/album-hunt-status';
 
 /**
  * One album in an artist's grid, in whichever of three states it is in.
@@ -103,10 +102,5 @@ export class AlbumTileComponent {
   readonly busy = computed(() => this.status().phase !== 'idle');
 
   /** `Finding…` before a job exists, then the job's own stage, worded as on Downloads. */
-  readonly busyLabel = computed(() => {
-    const status = this.status();
-    return status.phase === 'job'
-      ? stageLabel(status.stage, (key) => this.i18n.t(key))
-      : 'Finding…';
-  });
+  readonly busyLabel = computed(() => albumHuntLabel(this.status(), (key) => this.i18n.t(key)));
 }

@@ -19,10 +19,20 @@ import type {
 export class DownloadsApiService {
   private http = inject(HttpClient);
 
-  enqueueDownload(username: string, files: Array<{ filename: string; size: number }>) {
+  /**
+   * `album` names the album an album-shaped grab is, so the server's duplicate
+   * guard and the job's name use it rather than a folder-name guess; `replace`
+   * supersedes a live acquisition of that album instead of a 409 (#1539).
+   */
+  enqueueDownload(
+    username: string,
+    files: Array<{ filename: string; size: number }>,
+    opts: { album?: { artist: string; title: string }; replace?: boolean } = {},
+  ) {
     return this.http.post<{ ok: boolean; queued: number; jobId: string | null }>('/api/downloads', {
       username,
       files,
+      ...opts,
     });
   }
 

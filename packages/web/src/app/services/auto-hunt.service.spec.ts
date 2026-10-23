@@ -79,8 +79,12 @@ describe('AutoHuntService', () => {
       id: 'j1',
       state: 'active',
       stage: 'downloading',
+      kind: 'album-hunt',
       lidarrAlbumId: 42,
+      artistName: null,
+      albumTitle: null,
       createdAt: 1,
+      progress: { expected: 10, delivered: 3, unavailable: 0, canonical: 10 },
       ...over,
     } as AcquisitionJobView;
   }
@@ -295,7 +299,7 @@ describe('AutoHuntService', () => {
       acquisitionJobs.set([job({ stage: 'queued' })]);
       resolvePoll();
       await flush();
-      expect(svc().statusFor(42)).toEqual({ phase: 'job', stage: 'queued' });
+      expect(svc().statusFor(42)).toMatchObject({ phase: 'job', stage: 'queued' });
     });
 
     it('releases on Cancel and on Choose Manually', async () => {
@@ -357,7 +361,7 @@ describe('AutoHuntService', () => {
         job({ id: 'other', lidarrAlbumId: 7, state: 'failed', stage: 'error' }),
       ]);
       const service = svc();
-      expect(service.statusFor(42)).toEqual({ phase: 'job', stage: 'organizing' });
+      expect(service.statusFor(42)).toMatchObject({ phase: 'job', stage: 'organizing' });
       expect(service.statusFor(7)).toEqual({ phase: 'idle' });
     });
 
@@ -596,4 +600,66 @@ describe('AutoHuntService', () => {
 
   // Issue #451: this path creates the generation_feedback row server-side but
   // never offered a grading prompt, so ~39 prod captures were never graded.
+  // #1539: every surface asks by the album, so one lane's job shows on all of them.
+  describe('statusForAlbum', () => {
+    it('reports a live job by Lidarr id, with its progress and id', () => {
+      acquisitionJobs.set([job({ id: 'j9', stage: 'downloading' })]);
+      expect(svc().statusForAlbum({ lidarrAlbumId: 42 })).toEqual({
+        phase: 'job',
+        stage: 'downloading',
+        jobId: 'j9',
+        delivered: 3,
+        expected: 10,
+      });
+    });
+
+    it('finds a peer-folder grab of the album by name — no Lidarr id on it', () => {
+      acquisitionJobs.set([
+        job({
+          id: 'folder-1',
+          kind: 'direct',
+          lidarrAlbumId: null,
+          artistName: 'Damian Lazarus & The Ancient Moons',
+          albumTitle: 'Message From The Other Side',
+        }),
+      ]);
+      const status = svc().statusForAlbum({
+        artist: 'Damian Lazarus',
+        title: 'Message From the Other Side',
+        lidarrAlbumId: 4275,
+      });
+      expect(status).toMatchObject({ phase: 'job', jobId: 'folder-1' });
+    });
+
+    it('stays idle for another album by the same artist, and for a finished job', () => {
+      acquisitionJobs.set([
+        job({ lidarrAlbumId: null, artistName: 'Christian Löffler', albumTitle: 'Mare Reworks' }),
+        job({
+          id: 'done',
+          state: 'done',
+          lidarrAlbumId: null,
+          artistName: 'Christian Löffler',
+          albumTitle: 'Mare',
+        }),
+      ]);
+      expect(svc().statusForAlbum({ artist: 'Christian Löffler', title: 'Mare' })).toEqual({
+        phase: 'idle',
+      });
+    });
+
+    it('prints no count for a URL job whose total is not committed yet', () => {
+      acquisitionJobs.set([
+        job({
+          kind: 'url',
+          lidarrAlbumId: null,
+          artistName: 'A',
+          albumTitle: 'B',
+          progress: { expected: 4, delivered: 1, unavailable: 0, canonical: null },
+        } as Partial<AcquisitionJobView>),
+      ]);
+      const status = svc().statusForAlbum({ artist: 'A', title: 'B' });
+      expect(status).toMatchObject({ phase: 'job' });
+      expect(status).not.toHaveProperty('expected');
+    });
+  });
 });
