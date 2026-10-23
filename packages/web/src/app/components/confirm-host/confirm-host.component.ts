@@ -22,7 +22,7 @@ import { ConfirmService } from '../../services/confirm.service';
               class="px-4 py-2 rounded-lg text-theme-secondary hover:bg-theme-hover transition"
               (click)="confirm.resolve(false)"
             >
-              Cancel
+              {{ req.cancelLabel ?? 'Cancel' }}
             </button>
             <button
               type="button"
@@ -30,7 +30,7 @@ import { ConfirmService } from '../../services/confirm.service';
               class="px-4 py-2 rounded-lg status-error hover:opacity-80 transition"
               (click)="confirm.resolve(true)"
             >
-              Confirm
+              {{ req.confirmLabel ?? 'Confirm' }}
             </button>
           </div>
         </div>

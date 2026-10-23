@@ -13,9 +13,9 @@ const entry = (state: TransferEntry['state'], percent = 0): TransferEntry => ({ 
 describe('getSingleDownloadLabel', () => {
   const noStatus = (_u: string, _f: string): TransferEntry | undefined => undefined;
 
-  it('returns Download when no status and not queued', () => {
+  it('returns Get when no status and not queued', () => {
     const r = getSingleDownloadLabel('u', 'f', false, noStatus);
-    expect(r.label).toBe('Download');
+    expect(r.label).toBe('Get');
     expect(r.variant).toBe('default');
     expect(r.disabled).toBe(false);
   });
@@ -97,10 +97,10 @@ describe('getSingleDownloadLabel', () => {
 });
 
 describe('getFolderDownloadLabel', () => {
-  it('returns Download folder when no files have status', () => {
+  it('returns Get folder when no files have status', () => {
     const files = [{ username: 'u', filename: 'a.mp3' }];
     const r = getFolderDownloadLabel(files, false, () => undefined);
-    expect(r.label).toBe('Download folder');
+    expect(r.label).toBe('Get folder');
     expect(r.variant).toBe('default');
   });
 

@@ -67,7 +67,9 @@ Alaska*, *Mare*. All landed.
   grab-bag with 0 slots, badged **FLAC** because one file is. **◻️ Open** (#1541).
 - **(Medium) Action affordances.** Text-only Get / Download / Download folder; the watch star only on
   hover; "Download all (2339)" with no confirm; the cancel dialog asks "Cancel this download?" with
-  buttons **Cancel** and **Remove**. **◻️ Open** (#1542).
+  buttons **Cancel** and **Remove**. **✅ Fixed** (#1542): one verb, **Get**, with the `download`
+  icon on every Add-page grab; the star shows under `(hover: none)`; "Download all" confirms with the
+  file count, peers and size; the cancel dialogs answer **Stop download** / **Keep downloading**.
 - **(Low) Polish.** Add tab returns with Results but without the album cards; "Added to library ✓" on
   rows that were only queued; four spellings of the tab param. **◻️ Open** (#1544).
 

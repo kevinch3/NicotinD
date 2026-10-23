@@ -12,8 +12,9 @@
         <div class="flex gap-3 justify-end">
           <button
             class="px-4 py-2 text-sm text-theme-secondary hover:text-theme-primary rounded-lg transition-colors"
+            data-testid="confirm-cancel"
             (click)="cancel.emit()">
-            Cancel
+            {{ cancelLabel() }}
           </button>
           <button
             class="px-4 py-2 text-sm status-error hover:opacity-80 rounded-lg transition-colors"

@@ -327,8 +327,10 @@ describe('DownloadsComponent — cancel guard (#806)', () => {
       component.requestCancelAll();
       expect(component.showConfirm()).toBe(true);
       expect(t).toHaveBeenCalledWith('downloads.cancelAllConfirm', { count: 2 });
-      expect(component.confirmLabel()).toBe(t.mock.results.at(-1)?.value);
-      expect(t.mock.calls.at(-1)?.[0]).toBe('downloads.cancelAll');
+      const i18n = TestBed.inject(TranslateService);
+      expect(component.confirmLabel()).toBe(i18n.t('downloads.cancelAll'));
+      // The way out names itself: "Cancel" would read as yes to "Cancel N downloads?" (#1542).
+      expect(component.cancelLabel()).toBe(i18n.t('downloads.keepDownloading'));
       expect(cancelJob).not.toHaveBeenCalled();
     });
 
@@ -390,6 +392,9 @@ describe('DownloadsComponent — partial discard (#810)', () => {
     expect(cancelJob).not.toHaveBeenCalled();
     expect(component.showConfirm()).toBe(true);
     expect(component.confirmOptionLabel()).toBeTruthy();
+    const i18n = TestBed.inject(TranslateService);
+    expect(component.confirmLabel()).toBe(i18n.t('downloads.stopDownload'));
+    expect(component.cancelLabel()).toBe(i18n.t('downloads.keepDownloading'));
 
     component.confirmOptionChecked.set(true);
     component.onConfirm();
