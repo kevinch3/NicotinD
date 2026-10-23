@@ -205,6 +205,33 @@ describe('SearchComponent — metadata-driven search', () => {
     expect(component.catalogCoverUrl(album)).toBe(`${remote}&token=mk-1`);
   });
 
+  // #1543: the album cards land ~10 s before Results; the collapsed lane header
+  // must say peers are still answering.
+  it('spins on the collapsed network header while peers are answering', async () => {
+    const { component, search, fixture } = setup({
+      search: () =>
+        of({
+          searchId: '11111111-1111-1111-1111-111111111111',
+          errors: [],
+          networkAvailable: true,
+        }),
+    });
+    TestBed.inject(AuthService).role.set('admin');
+    search.setQuery('pink floyd');
+    component.handleSearch(new Event('submit'));
+    await flush();
+    search.setNetworkState('searching');
+    fixture.detectChanges();
+    const header = () =>
+      (fixture.nativeElement as HTMLElement).querySelector(
+        '[data-testid="network-searching-header"]',
+      );
+    expect(header()).not.toBeNull();
+    search.setNetworkState('complete');
+    fixture.detectChanges();
+    expect(header()).toBeNull();
+  });
+
   it('renders the catalog albums grid as an appTvNavGroup with grid axis', async () => {
     const { component, search, fixture } = setup();
     search.setQuery('pink floyd');

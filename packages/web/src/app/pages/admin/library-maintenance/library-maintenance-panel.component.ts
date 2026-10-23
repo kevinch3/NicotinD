@@ -453,6 +453,7 @@ export class LibraryMaintenancePanelComponent {
 
   huntLabel(status: AlbumHuntStatus): string {
     if (status.phase === 'job') return stageLabel(status.stage, (key) => this.i18n.t(key));
+    if (status.phase === 'starting') return this.i18n.t('acquire.startingDownload');
     return this.i18n.t(status.phase === 'searching' ? 'acquire.finding' : 'admin.completeAlbum');
   }
 

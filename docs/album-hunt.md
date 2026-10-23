@@ -365,7 +365,8 @@ live elsewhere (`folderElsewhereStatus`; only album-shaped folders of 3+ tracks,
 (`downloadFolder(group, true)`, the server's `replace`), instead of an enabled "Download folder". A
 folder grab sends its album as the enqueue's `album` intent, and the server's 409
 `already-downloading` is treated as news, not an error. Every surface prints one label,
-`albumHuntLabel`: "Finding…", or the stage with its count ("Downloading · 7/13", over
+`albumHuntLabel`: "Finding…", "Starting download…" (`starting`: the pick is being enqueued, no
+job yet), or the stage with its count ("Downloading · 7/13", over
 `jobDenominator`, and only once `hasCommittedTotal`).
 
 **The `searching` hold outlives the search.** A confident match hands off to a 3 s countdown toast,
@@ -376,6 +377,12 @@ through countdown → enqueue → first poll, and a second click started a secon
 album. A countdown dropped unseen at the toast cap never fires, so that case falls back to the
 manual picker instead of holding forever. Holds are refcounted (`beginSearch`/`endSearch`), since
 the modal and the auto-hunt can hold one album at once.
+
+**The countdown names its pick, and a failure stays on screen (#1543).** The toast reads "Best
+match: FLAC · 13/13 tracks from bunraku — downloading … in 3s", because that toast is where the
+peer and format get decided. A failed enqueue's error toast offers Dismiss / Find Manually and
+stays until one is taken: `ToastService` gives an `error` toast with actions no timer. At the
+4-second default, the prod failure looked like nothing had happened.
 
 **No site-wide lock.** #1049 disabled every trigger while any hunt ran (`anyHunting`), because the
 source has two search lanes. That lock only ever covered the search, and extending it to cover the

@@ -114,6 +114,11 @@ describe('AutoHuntService', () => {
         kind: 'info',
       }),
     );
+    // The pick is decided here, so the toast says what it is (#1543).
+    const message = show.mock.calls.find((c) => c[0].countdown)![0].message;
+    expect(message).toContain('FLAC');
+    expect(message).toContain('10/10');
+    expect(message).toContain('peer1');
   });
 
   it('auto-downloads when countdown expires', async () => {
@@ -294,7 +299,8 @@ describe('AutoHuntService', () => {
       downloadNow!.callback();
       await flush();
       expect(huntDownload).toHaveBeenCalledTimes(1);
-      expect(svc().statusFor(42)).toEqual({ phase: 'searching' });
+      // Past the search: the card stops saying "Finding…" (#1543).
+      expect(svc().statusFor(42)).toEqual({ phase: 'starting' });
 
       acquisitionJobs.set([job({ stage: 'queued' })]);
       resolvePoll();
