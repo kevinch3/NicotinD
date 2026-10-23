@@ -5,6 +5,7 @@ import {
   getDirectFiles,
   formatPeerInfo,
   rankFolders,
+  isGrabBagFolder,
   dedupeFolders,
   folderFormat,
   fileQualityLabel,
@@ -196,6 +197,24 @@ describe('rankFolders', () => {
     expect(ranked).toEqual(['fmp3', 'qflac', 'qmp3big']);
   });
 
+  // #1541: "Trip-Hop", a 50-file mostly-128k genre bag, led Löffler's Folders.
+  it('ranks a grab-bag below an album-shaped folder, even when the bag has a slot', () => {
+    const bag = folder({
+      directory: 'Music\\Trip-Hop',
+      freeUploadSlots: 1,
+      files: Array.from({ length: 50 }, (_, i) => f(`Artist ${i} - Song ${i}.mp3`, 128)),
+    });
+    const album = folder({
+      directory: 'Christian Löffler\\2016 - Mare',
+      freeUploadSlots: 0,
+      files: Array.from({ length: 8 }, (_, i) => f(`0${i + 1} - Track.mp3`, 320)),
+    });
+    expect(rankFolders([bag, album]).map((g) => g.directory)).toEqual([
+      'Christian Löffler\\2016 - Mare',
+      'Music\\Trip-Hop',
+    ]);
+  });
+
   it('does not mutate the input array', () => {
     const input = [folder({ directory: 'a' }), folder({ directory: 'b', freeUploadSlots: 1 })];
     const copy = [...input];
@@ -265,5 +284,34 @@ describe('dedupeFolders', () => {
     const input = [flacPosterGirl('p1'), flacPosterGirl('p2')];
     dedupeFolders(input);
     expect(input.every((g) => g.duplicatePeers === undefined)).toBe(true);
+  });
+});
+
+describe('isGrabBagFolder', () => {
+  const tracks = (n: number, name: (i: number) => string) =>
+    folder({ directory: 'd', files: Array.from({ length: n }, (_, i) => f(name(i))) });
+
+  it('calls a folder bigger than any album a grab-bag', () => {
+    expect(isGrabBagFolder(tracks(41, (i) => `${String(i + 1).padStart(2, '0')} T.flac`))).toBe(
+      true,
+    );
+  });
+
+  it('calls a folder whose files mostly carry no track number a grab-bag', () => {
+    expect(isGrabBagFolder(tracks(10, (i) => `Artist ${i} - Song.mp3`))).toBe(true);
+  });
+
+  it('keeps numbered albums, multi-disc numbering and short folders album-shaped', () => {
+    expect(isGrabBagFolder(tracks(12, (i) => `${String(i + 1).padStart(2, '0')} - T.flac`))).toBe(
+      false,
+    );
+    expect(isGrabBagFolder(tracks(20, (i) => `${i < 10 ? 1 : 2}-0${i % 10} T.flac`))).toBe(false);
+    expect(isGrabBagFolder(tracks(3, (i) => `Song ${i}.mp3`))).toBe(false);
+  });
+
+  it('ignores non-audio files when counting', () => {
+    const g = tracks(8, (i) => `0${i + 1} T.flac`);
+    g.files.push(...Array.from({ length: 40 }, (_, i) => f(`scan${i}.jpg`)));
+    expect(isGrabBagFolder(g)).toBe(false);
   });
 });
