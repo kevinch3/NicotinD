@@ -115,7 +115,7 @@
             class="inline-block w-6 h-6 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"
           ></span>
           <span class="text-sm"
-            >Searching Soulseek for "{{ artistName() }} — {{ album().title }}"…</span
+            >Searching {{ networkLabel() }} for "{{ artistName() }} — {{ album().title }}"…</span
           >
 
           <!-- Per-query progress list. Each row highlights as its phase fires. -->
@@ -427,7 +427,7 @@
 
       <!-- Other sources — archive.org + Spotify blended into ONE chip-labelled,
            ranked list (no separate "Also on…" lanes). Runs in parallel with the
-           Soulseek hunt; a tap hands the item to /api/acquire. -->
+           network hunt; a tap hands the item to /api/acquire. -->
       @if (
         (hasArchive() || hasSpotify()) &&
         state() !== 'searching' &&

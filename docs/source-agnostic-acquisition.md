@@ -79,7 +79,7 @@ peer/queue stats, and its album hunt is a **two-phase** flow that drives the
 modal's progress animation. So Soulseek keeps its specialized search
 (`/api/search` + `/{searchId}/network` poll) and two-phase hunt endpoints — but
 its results are **mapped into the same blended list client-side**
-(`songResultToCandidate`, the slskd folder candidates in the hunt modal). The
+(`songResultToCandidate`, the network folder candidates in the hunt modal). The
 `CandidateSource`/`SourceHunter` abstractions cover the request/response metadata
 sources (archive.org, Spotify, future). The user sees one list either way.
 
@@ -91,10 +91,24 @@ sources (archive.org, Spotify, future). The user sees one list either way.
    Unit-test both.
 3. Register a `CandidateSource` (search) and/or `SourceHunter` (album hunt)
    adapter at the composition root, gated by `plugins.isEnabled('<id>')`.
-4. Add the source label to `SOURCE_LABELS` (core + web) and a chip tone in
-   `app-source-chip`.
+4. A metadata lane gets its label in `SOURCE_LABELS` (core + web) and a chip tone in
+   `app-source-chip`. A **network** addon needs neither: the web names it from its manifest.
 5. Do **not** add a new route or a new UI section. If you find yourself adding a
    "From <source>" lane, stop — it belongs in the blended list.
+
+## Sources are named by their manifest, not a list
+
+The network lane — raw search, album hunts, folder browse — runs on whichever addon the server
+picks (`activeRemoteAcquisitionAddon`: the first enabled remote acquisition addon that can
+download). The web mirrors that rule in `PluginService.networkSource` and labels the lane with
+**that addon's manifest name** everywhere it shows: the "Sources:" line, each result's chip
+(`CandidateSource` `'network'`, labelled by the caller), the "Not on …" card, the Advanced toggle,
+the searching / no-results states and the hunt modal. A job's method badge falls back the same way:
+`methodBadge(method, name)` keeps a first-party badge and otherwise names the addon by its manifest
+(`PluginService.names`), so a source the web has never heard of reads as itself — "Unknown source"
+is left for a source nothing can name (a removed addon). Before this, every network addon read as
+"Soulseek" and every third-party addon's download as "Unknown source"; the product tour's demo source
+is what made it visible (docs/product-tour.md).
 
 ## Unified search
 

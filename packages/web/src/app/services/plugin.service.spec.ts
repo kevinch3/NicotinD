@@ -83,6 +83,41 @@ describe('PluginService', () => {
     expect(svc.hasSpotdl()).toBe(true);
   });
 
+  it('networkSource is the first enabled remote addon that can download, like the server', async () => {
+    get.mockReturnValue(
+      of([
+        // Not remote: an in-process plugin never runs the network lane.
+        plugin({ id: 'ytdlp', capabilities: ['resolve', 'download'], enabled: true }),
+        // Remote but disabled.
+        plugin({ id: 'slskd-addon', name: 'Soulseek', remote: true, enabled: false }),
+        // Remote and enabled, but cannot download.
+        plugin({ id: 'meta', name: 'Meta', remote: true, enabled: true, capabilities: ['search'] }),
+        plugin({ id: 'demo-source', name: 'Demo Source', remote: true, enabled: true }),
+      ]),
+    );
+    await svc.refresh();
+    expect(svc.networkSource()?.name).toBe('Demo Source');
+  });
+
+  it('networkSource is null when no remote downloader is enabled', async () => {
+    get.mockReturnValue(of([plugin({ id: 'slskd-addon', remote: true, enabled: false })]));
+    await svc.refresh();
+    expect(svc.networkSource()).toBeNull();
+  });
+
+  it('names maps every plugin id to its display name, enabled or not', async () => {
+    get.mockReturnValue(
+      of([
+        plugin({ id: 'demo-source', name: 'Demo Source', remote: true }),
+        plugin({ id: 'archive', name: 'Internet Archive' }),
+      ]),
+    );
+    await svc.refresh();
+    expect(svc.names().get('demo-source')).toBe('Demo Source');
+    expect(svc.names().get('archive')).toBe('Internet Archive');
+    expect(svc.names().get('nope')).toBeUndefined();
+  });
+
   it('saveConfig PUTs the payload and refreshes', async () => {
     await svc.saveConfig('spotify', { clientId: 'id' });
     expect(put).toHaveBeenCalledWith('/api/plugins/spotify/config', { clientId: 'id' });

@@ -44,6 +44,7 @@
             @for (item of downloadFeed(); track item.key) {
               <app-download-item
                 [item]="item"
+                [sourceName]="sourceName(item)"
                 [retrying]="retrying().has(item.key)"
                 [cancelling]="cancelling().has(item.key)"
                 (retry)="onItemRetry(item)"

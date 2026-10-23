@@ -251,7 +251,7 @@
      dark themes the text lightens and on light themes (daylight/warm-paper/eink)
      it darkens, instead of the old fixed `text-*-300` tints that vanished on
      light backgrounds. */
-  .chip-tone-soulseek {
+  .chip-tone-network {
     background-color: color-mix(in srgb, #6366f1 16%, var(--theme-surface));
     color: color-mix(in srgb, #6366f1 60%, var(--theme-text-primary));
   }

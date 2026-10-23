@@ -3,6 +3,9 @@
 One section of [the index](../index.md). Entry shape and caps are unchanged and
 `bun run check:claude-md` still enforces them here.
 
+- **Product tour video**: a Playwright spec drives the real app over the generated demo catalog and
+  writes its own cut list; `cut-tour.ts` assembles the MP4 + GIF. Stand-ins: `startDemoLidarr`,
+  `startDemoAddon`; catalog `DEMO_ALBUMS`, `renderTone`, `coverSvg`. → [product-tour.md](../product-tour.md)
 - **Cache directives for the static build**: `cacheControlForStatic` splits content-hashed output
   (`immutable`) from everything whose name outlives its bytes (`no-cache`), because Hono's
   `serveStatic` sends no freshness at all and a heuristically-cached `index.html`/`ngsw.json` strands

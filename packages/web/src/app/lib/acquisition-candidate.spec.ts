@@ -22,10 +22,11 @@ const song = (over: Partial<SongResult['best']> = {}): SongResult => {
 };
 
 describe('songResultToCandidate', () => {
-  it('maps a Soulseek song to an enqueue candidate', () => {
-    const c = songResultToCandidate(song());
-    expect(c.source).toBe('soulseek');
-    expect(c.sourceLabel).toBe('Soulseek');
+  it('maps a network song to an enqueue candidate, labelled with the name it is given', () => {
+    const c = songResultToCandidate(song(), 'Demo Source');
+    expect(c.source).toBe('network');
+    // The network lane has no fixed brand: the label is the addon's manifest name.
+    expect(c.sourceLabel).toBe('Demo Source');
     expect(c.acquire).toEqual({
       via: 'enqueue',
       username: 'peer',
@@ -35,9 +36,10 @@ describe('songResultToCandidate', () => {
   });
 
   it('scores FLAC + free slot above lossy + no slot', () => {
-    const flac = songResultToCandidate(song({ filename: 'a.flac', freeUploadSlots: 1 }));
+    const flac = songResultToCandidate(song({ filename: 'a.flac', freeUploadSlots: 1 }), 'Net');
     const mp3 = songResultToCandidate(
       song({ filename: 'a.mp3', bitRate: 192, freeUploadSlots: 0 }),
+      'Net',
     );
     expect(flac.score).toBeGreaterThan(mp3.score);
   });
@@ -79,7 +81,7 @@ describe('archiveToCandidate / spotifyToCandidate', () => {
 
 describe('mergeAndRank', () => {
   it('blends sources into one list, best score first', () => {
-    const flacSong = songResultToCandidate(song({ filename: 'a.flac', freeUploadSlots: 1 }));
+    const flacSong = songResultToCandidate(song({ filename: 'a.flac', freeUploadSlots: 1 }), 'Net');
     const archive = archiveToCandidate({
       identifier: 'p',
       title: 'P',
@@ -88,28 +90,31 @@ describe('mergeAndRank', () => {
       detailsUrl: 'u',
     });
     const merged = mergeAndRank([archive], [flacSong]);
-    expect(merged[0].source).toBe('soulseek'); // FLAC+slot (95) > archive (62)
+    expect(merged[0].source).toBe('network'); // FLAC+slot (95) > archive (62)
     expect(merged).toHaveLength(2);
   });
 
   it('ranks a relevant lossy copy above an irrelevant FLAC with a free slot', () => {
-    const relevant = songResultToCandidate({
-      ...song({ filename: 'a.mp3', bitRate: 320, freeUploadSlots: 0 }),
-      relevance: 6,
-    });
-    const flac = songResultToCandidate({ ...song({ filename: 'b.flac' }), relevance: 0 });
+    const relevant = songResultToCandidate(
+      {
+        ...song({ filename: 'a.mp3', bitRate: 320, freeUploadSlots: 0 }),
+        relevance: 6,
+      },
+      'Net',
+    );
+    const flac = songResultToCandidate({ ...song({ filename: 'b.flac' }), relevance: 0 }, 'Net');
     expect(mergeAndRank([flac, relevant])[0]).toBe(relevant);
   });
 
   // #1537: a title tiebreak sorted equal-score rows alphabetically, so
   // "[untitled]" led a search for "Damian Lazarus".
   it('keeps the source order for equal scores instead of sorting by title', () => {
-    const b = songResultToCandidate({ ...song(), title: 'Zebra' });
-    const a = songResultToCandidate({ ...song(), title: '[untitled]' });
+    const b = songResultToCandidate({ ...song(), title: 'Zebra' }, 'Net');
+    const a = songResultToCandidate({ ...song(), title: '[untitled]' }, 'Net');
     expect(mergeAndRank([b, a]).map((c) => c.title)).toEqual(['Zebra', '[untitled]']);
   });
 
-  it('is a stable, neutral ordering across sources at equal score', () => {
-    expect(Object.keys(SOURCE_LABELS)).toEqual(['soulseek', 'archive', 'spotify']);
+  it('names only the first-party lanes — the network lane is named by its addon', () => {
+    expect(Object.keys(SOURCE_LABELS)).toEqual(['archive', 'spotify']);
   });
 });

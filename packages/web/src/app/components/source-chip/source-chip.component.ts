@@ -16,8 +16,8 @@ export type ChipSource = CandidateSource | LinkSource;
  */
 export function sourceChipToneClass(source: ChipSource): string {
   switch (source) {
-    case 'soulseek':
-      return 'chip-tone-soulseek';
+    case 'network':
+      return 'chip-tone-network';
     case 'archive':
       return 'chip-tone-archive';
     case 'spotify':
@@ -28,8 +28,8 @@ export function sourceChipToneClass(source: ChipSource): string {
 }
 
 /**
- * Neutral per-row source chip for the blended acquisition results ("Soulseek",
- * "Internet Archive", "Spotify"). The point of source-agnostic UX: every source
+ * Neutral per-row source chip for the blended acquisition results (the network
+ * addon's own name, "Internet Archive", "Spotify"). The point of source-agnostic UX: every source
  * gets the same visual weight — no "primary network" framing. Tone → theme
  * classes map here; nothing source-specific leaks beyond colour.
  */

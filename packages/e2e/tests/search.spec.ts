@@ -29,12 +29,10 @@ test.describe('acquire', () => {
     await expect(page.getByTestId('search-input')).toBeVisible();
   });
 
-  test('the Soulseek peer lane is hidden when Soulseek is not an available source', async ({
-    page,
-  }) => {
-    // The e2e server has no Soulseek creds (the network provider is disabled), so a
-    // user without the slskd extension must never see the raw peer-browsing lane —
-    // nor a nonsensical "No Soulseek results" empty state for a source they don't have.
+  test('the network peer lane is hidden when no network source is enabled', async ({ page }) => {
+    // The e2e server has no network addon enabled, so a user without one must
+    // never see the raw peer-browsing lane — nor a nonsensical "No … results"
+    // empty state for a source they don't have.
     await page.goto('/acquire');
     await page.getByTestId('search-input').fill('nonexistent test query xyz');
     await page.getByTestId('search-submit').click();
@@ -43,7 +41,7 @@ test.describe('acquire', () => {
     await expect(page.getByTestId('source-status')).toContainText('No acquisition sources enabled');
 
     await expect(page.getByTestId('advanced-network-search')).toHaveCount(0);
-    await expect(page.getByText(/No Soulseek results/)).toHaveCount(0);
+    await expect(page.getByText(/^No .+ results for /)).toHaveCount(0);
     // The old raw-first framing must also be gone.
     await expect(page.getByText('Search Soulseek directly')).toHaveCount(0);
   });

@@ -485,8 +485,8 @@ describe('SearchComponent — metadata-driven search', () => {
     transfers.getStatus = () => ({ state: 'Completed, Succeeded' });
 
     const candidate = {
-      id: 'soulseek:u:f.flac',
-      source: 'soulseek' as const,
+      id: 'network:u:f.flac',
+      source: 'network' as const,
       sourceLabel: 'Soulseek',
       title: 'Song',
       subtitle: 'peer',
@@ -992,7 +992,7 @@ describe('SearchComponent — transcode reminder', () => {
     const { component } = setup();
     const base = {
       id: 'x',
-      source: 'soulseek' as const,
+      source: 'network' as const,
       sourceLabel: 'Soulseek',
       title: 't',
       subtitle: '',

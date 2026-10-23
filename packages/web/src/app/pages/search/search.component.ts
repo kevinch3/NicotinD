@@ -59,7 +59,6 @@ import {
   archiveToCandidate,
   spotifyToCandidate,
   mergeAndRank,
-  SOURCE_LABELS,
   type BlendedCandidate,
 } from '../../lib/acquisition-candidate';
 import { parseLinkIntent, type LinkIntent } from '../../lib/link-intent';
@@ -426,13 +425,13 @@ export class SearchComponent implements OnInit, OnDestroy {
   readonly songResults = computed(() => groupBySong(this.flatNetwork(), this.search.query()));
 
   // ─── Source-agnostic blended results ────────────────────────────────
-  // One ranked list across every enabled source (Soulseek peer files +
-  // archive.org + Spotify), each row chip-labelled with a single Get action.
+  // One ranked list across every enabled source (the network addon's peer
+  // files + archive.org + Spotify), each row chip-labelled with a single Get action.
   // Replaces the old "primary network + Also-on-X lanes" hierarchy. See
   // docs/source-agnostic-acquisition.md.
   readonly blendedResults = computed<BlendedCandidate[]>(() =>
     mergeAndRank(
-      this.songResults().map(songResultToCandidate),
+      this.songResults().map((s) => songResultToCandidate(s, this.networkLabel())),
       this.search.archive().map(archiveToCandidate),
       this.search.spotify().map(spotifyToCandidate),
     ),
@@ -476,11 +475,20 @@ export class SearchComponent implements OnInit, OnDestroy {
       this.blendedResults().some((c) => this.isLosslessCandidate(c)) ||
       this.folderGroups().some((g) => folderFormat(g)?.lossless),
   );
+  /**
+   * What the network lane is called: the manifest name of the addon running it,
+   * never a hardcoded brand — a source the web has never heard of reads as
+   * itself. The fallback covers the moment before `/api/plugins` answers.
+   */
+  readonly networkLabel = computed(
+    () => this.plugins.networkSource()?.name ?? this.i18n.t('acquire.networkSourceFallback'),
+  );
+
   // Sources that contributed (or are still searching) — drives the neutral
-  // "Soulseek · Internet Archive · Spotify" availability line.
+  // "<network> · Internet Archive · Spotify" availability line.
   readonly availableSources = computed(() => {
     const names: string[] = [];
-    if (this.networkConnected()) names.push('Soulseek');
+    if (this.networkConnected()) names.push(this.networkLabel());
     if (this.plugins.hasArchive()) names.push('Internet Archive');
     if (this.plugins.hasSpotify()) names.push('Spotify');
     return names;
@@ -813,9 +821,6 @@ export class SearchComponent implements OnInit, OnDestroy {
     );
   }
 
-  /** The folder lane's source, named on the "not on …" badge. */
-  readonly folderSourceLabel = SOURCE_LABELS.soulseek;
-
   /** Get the best copy outright: most tracks, then the lane's own ranking. */
   getBestProviderCopy(album: ProviderOnlyAlbum, event: Event): void {
     event.stopPropagation();
@@ -928,7 +933,7 @@ export class SearchComponent implements OnInit, OnDestroy {
 
   // Raw-string network fallback for an album missing from Lidarr's discography
   // (compilations/singles Lidarr doesn't track as an album). Rather than dead-end
-  // on the resolve 404, search Soulseek for "<artist> <album>" and open the
+  // on the resolve 404, search the network for "<artist> <album>" and open the
   // network lane — folder-first for this album-intent query — so the user gets
   // downloadable folder candidates for the exact album they clicked. The full
   // discography is **opt-in** now (the banner CTA), because loading it auto-adds
@@ -941,7 +946,7 @@ export class SearchComponent implements OnInit, OnDestroy {
     void this.executeSearch({ forceDirectOpen: true });
     this.rawFallbackAlbum.set(album);
     this.rawFallbackNote.set(
-      `"${album.title}" isn't in ${album.artistName}'s Lidarr catalog — download it from the Soulseek folders below.`,
+      `"${album.title}" isn't in ${album.artistName}'s Lidarr catalog — download it from the ${this.networkLabel()} folders below.`,
     );
   }
 

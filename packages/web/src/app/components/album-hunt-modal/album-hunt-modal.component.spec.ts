@@ -81,7 +81,11 @@ describe('AlbumHuntModalComponent', () => {
         { provide: AcquireService, useValue: { submit: acquireSubmit } },
         {
           provide: PluginService,
-          useValue: { hasArchive: () => archiveEnabled, hasSpotify: () => false },
+          useValue: {
+            hasArchive: () => archiveEnabled,
+            hasSpotify: () => false,
+            networkSource: () => ({ name: 'Demo Source' }),
+          },
         },
         { provide: ToastService, useValue: { show: toastShow } },
       ],

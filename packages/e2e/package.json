@@ -14,6 +14,8 @@
     "playground:real": "playwright test --config=playwright.real.config.ts",
     "screens:live": "playwright test --config=playwright.live-screens.config.ts",
     "screens:readme": "bun run scripts/update-readme-screenshots.ts",
+    "tour": "playwright test --config=playwright.tour.config.ts",
+    "tour:cut": "bun run tour/cut-tour.ts",
     "make-fixtures": "bun run scripts/make-fixtures.ts",
     "typecheck": "tsc --noEmit",
     "smoke:storybook": "node scripts/storybook-gates.mjs --smoke",

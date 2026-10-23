@@ -116,6 +116,24 @@ export class PluginService {
     ),
   );
 
+  /**
+   * The source the network lane runs on — raw search, album hunts, folder
+   * browse. Mirrors the server's `activeRemoteAcquisitionAddon`: the first
+   * enabled remote acquisition addon that can download. The UI names that lane
+   * by this addon's manifest name, never by a hardcoded brand, so a source the
+   * web has never heard of reads as itself (docs/source-agnostic-acquisition.md).
+   */
+  readonly networkSource = computed(
+    () =>
+      this.plugins().find(
+        (p) =>
+          p.enabled && p.remote && p.kind === 'acquisition' && p.capabilities.includes('download'),
+      ) ?? null,
+  );
+
+  /** Display name per plugin/addon id — labels a job by the source that ran it. */
+  readonly names = computed(() => new Map(this.plugins().map((p) => [p.id, p.name])));
+
   async refresh(): Promise<void> {
     try {
       const list = await firstValueFrom(this.http.get<PluginInfo[]>('/api/plugins'));

@@ -10,8 +10,15 @@ import { LikeService } from '../../services/like.service';
 import { TranslateService } from '../../services/translate.service';
 import { ToastService } from '../../services/toast.service';
 import { ServerConfigService } from '../../services/server-config.service';
+import { PluginService } from '../../services/plugin.service';
 import { provideRouter } from '@angular/router';
 import { setInputValue } from '../../../testing/signal-input';
+
+/** Names the registered addons; the sheet badges a third-party source by its name. */
+const PLUGINS_STUB = {
+  names: signal(new Map([['demo-source', 'Demo Source']])),
+  refresh: vi.fn().mockResolvedValue(undefined),
+};
 
 // Instantiated without detectChanges so ngOnInit (which reads required inputs +
 // fetches provenance) never runs; the analysis methods are exercised directly.
@@ -82,6 +89,7 @@ describe('TrackInfoSheetComponent (analysis)', () => {
           },
         },
         { provide: TranslateService, useValue: { t: (k: string) => k } },
+        { provide: PluginService, useValue: PLUGINS_STUB },
         {
           provide: AuthService,
           useValue: { role, canCurate: computed(() => canCurateRole(asRole(role()))) },
@@ -97,6 +105,24 @@ describe('TrackInfoSheetComponent (analysis)', () => {
     (c as unknown as { songId: () => string }).songId = () => 'song-1';
     return c;
   }
+
+  it('badges the acquiring source by the addon that ran it, not as unknown', () => {
+    const c = create();
+    // A first-party addon id resolves to its own badge…
+    expect(c.methodLabel('slskd-addon')).toBe('Soulseek');
+    // …a third-party addon reads as itself, named by its manifest…
+    expect(c.methodLabel('demo-source')).toBe('Demo Source');
+    expect(c.methodGlyph('demo-source')).toBe('🧩');
+    // …and only a source nothing can name is unknown.
+    expect(c.methodLabel('removed-addon')).toBe('Unknown source');
+  });
+
+  it('renders "Unknown source" rather than throwing for a record with no method', () => {
+    const c = create();
+    // The Storybook fixture's acquisition record has none: this threw and aborted the render.
+    expect(c.methodLabel(undefined as never)).toBe('Unknown source');
+    expect(c.methodGlyph(null as never)).toBe('?');
+  });
 
   it('analyze() stores the detected bpm and its source', () => {
     const c = create();
@@ -403,6 +429,7 @@ describe('TrackInfoSheetComponent (multi-genre chips)', () => {
           },
         },
         { provide: TranslateService, useValue: { t: (k: string) => k } },
+        { provide: PluginService, useValue: PLUGINS_STUB },
         {
           provide: AuthService,
           useValue: { role, canCurate: computed(() => canCurateRole(asRole(role()))) },
@@ -482,6 +509,7 @@ describe('TrackInfoSheetComponent (genre chip editor, issue #684)', () => {
           },
         },
         { provide: TranslateService, useValue: { t: (k: string) => k } },
+        { provide: PluginService, useValue: PLUGINS_STUB },
         {
           provide: AuthService,
           useValue: { role, canCurate: computed(() => canCurateRole(asRole(role()))) },
@@ -667,6 +695,7 @@ describe('TrackInfoSheetComponent (retag form, issue #724)', () => {
           },
         },
         { provide: TranslateService, useValue: { t: (k: string) => k } },
+        { provide: PluginService, useValue: PLUGINS_STUB },
         {
           provide: AuthService,
           useValue: { role, canCurate: computed(() => canCurateRole(asRole(role()))) },
@@ -892,6 +921,7 @@ describe('TrackInfoSheetComponent (identity header links)', () => {
           },
         },
         { provide: TranslateService, useValue: { t: (k: string) => k } },
+        { provide: PluginService, useValue: PLUGINS_STUB },
         { provide: ServerConfigService, useValue: { apiUrl: (u: string) => u } },
         {
           provide: AuthService,
