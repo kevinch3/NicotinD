@@ -33,6 +33,8 @@ export interface SongResult {
   best: SongVersion;
   /** Every copy, best-first — backs an optional "N versions" affordance. */
   versions: SongVersion[];
+  /** How well it matches the query (`songRelevance`); 0 when there is none. */
+  relevance?: number;
 }
 
 const LOSSLESS = new Set(['flac', 'wav', 'aiff', 'aif', 'ape', 'wv', 'alac']);
@@ -102,6 +104,8 @@ export function songTitle(f: SongVersion): string {
 
 function normalize(s: string): string {
   return s
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^\w\s]/g, '')
     .replace(/\s+/g, ' ')
@@ -124,10 +128,37 @@ function queryTerms(query?: string): string[] {
     .filter((t) => t.length > 1);
 }
 
+/**
+ * Per query term: in the artist 3, else in the title 2, else anywhere in the
+ * best copy's folder path 1. The artist outranks the title so a search for an
+ * artist leads with their own tracks, not with other acts' remixes of them; the
+ * path catches the many peer files that carry no artist tag (#1537).
+ */
 function relevance(r: SongResult, terms: string[]): number {
   if (!terms.length) return 0;
-  const hay = normalize(`${r.artist} ${r.title}`);
-  return terms.reduce((n, t) => (hay.includes(t) ? n + 1 : n), 0);
+  const artist = normalize(r.artist);
+  const title = normalize(r.title);
+  const path = normalize(r.best.filename.replace(/[\\/]/g, ' '));
+  return terms.reduce((n, t) => {
+    if (artist.includes(t)) return n + 3;
+    if (title.includes(t)) return n + 2;
+    return path.includes(t) ? n + 1 : n;
+  }, 0);
+}
+
+/**
+ * An untagged copy keys on its title alone; when exactly one tagged song has
+ * that title it is the same track, so the copy joins it instead of becoming a
+ * second row ("Amber Palace" twice).
+ */
+function mergeUntagged(map: Map<string, SongVersion[]>): void {
+  for (const [key, versions] of map) {
+    if (key.includes('␟')) continue;
+    const tagged = [...map.keys()].filter((k) => k.endsWith(`␟${key}`));
+    if (tagged.length !== 1) continue;
+    map.get(tagged[0])!.push(...versions);
+    map.delete(key);
+  }
 }
 
 /**
@@ -146,6 +177,9 @@ export function groupBySong(files: SongVersion[], query?: string): SongResult[] 
     else map.set(key, [f]);
   }
 
+  mergeUntagged(map);
+
+  const terms = queryTerms(query);
   const results: SongResult[] = [];
   for (const [key, versions] of map) {
     versions.sort(compareVersions);
@@ -157,11 +191,12 @@ export function groupBySong(files: SongVersion[], query?: string): SongResult[] 
       best,
       versions,
     });
+    const result = results[results.length - 1];
+    result.relevance = relevance(result, terms);
   }
 
-  const terms = queryTerms(query);
   results.sort(
-    (a, b) => relevance(b, terms) - relevance(a, terms) || compareVersions(a.best, b.best),
+    (a, b) => (b.relevance ?? 0) - (a.relevance ?? 0) || compareVersions(a.best, b.best),
   );
   return results;
 }

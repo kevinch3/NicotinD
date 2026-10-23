@@ -1,0 +1,14 @@
+{
+  "name": "@nicotind/curator-runner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Unattended, scheduled library curation for NicotinD over MCP, with any model: Claude, GitHub Models, or a self-hosted quantized model behind an OpenAI-compatible endpoint.",
+  "license": "AGPL-3.0-only",
+  "bin": {
+    "nicotind-curator": "src/main.ts"
+  },
+  "scripts": {
+    "start": "bun run src/main.ts"
+  }
+}

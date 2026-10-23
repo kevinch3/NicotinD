@@ -241,6 +241,14 @@ export const routes: Routes = [
         canActivate: [curatorGuard],
       },
       {
+        path: 'settings/subsonic',
+        loadComponent: lazy(() =>
+          import('./pages/settings/subsonic-keys/subsonic-keys.component').then(
+            (m) => m.SubsonicKeysComponent,
+          ),
+        ),
+      },
+      {
         path: 'settings/plugins',
         loadComponent: lazy(() =>
           import('./pages/plugins/plugins.component').then((m) => m.PluginsComponent),

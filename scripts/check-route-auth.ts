@@ -80,6 +80,20 @@ export const PUBLIC_ROUTES: Array<{ route: string; reason: string }> = [
   },
 ];
 
+/**
+ * Groups mounted outside `/api`. The JWT middleware is an `/api` affair, so a
+ * mount elsewhere was simply out of this gate's sight — counted in the
+ * denominator, audited by nothing. Each one now has to be named, with how it
+ * authenticates.
+ */
+export const NON_API_MOUNTS: Array<{ route: string; reason: string }> = [
+  {
+    route: '/rest',
+    reason:
+      'OpenSubsonic API — Subsonic clients hard-code /rest and present an API key (or the key as a password) on every call, which openSubsonicRoutes verifies itself before running the call against /api as the key owner; getOpenSubsonicExtensions alone is public, as the spec requires — see docs/opensubsonic.md',
+  },
+];
+
 export interface AuthAudit {
   mounted: string[];
   authed: string[];
@@ -92,6 +106,10 @@ export interface AuthAudit {
   unknownReceivers: string[];
   /** `app.route()` calls whose first argument is not a plain string literal. */
   unreadableMounts: string[];
+  /** Mounts outside `/api` — each must be explained in NON_API_MOUNTS. */
+  nonApi: string[];
+  /** Non-`/api` mounts that NON_API_MOUNTS does not explain. */
+  unexplainedNonApi: string[];
 }
 
 /** Is this call `<receiver>.<method>(...)`? Returns the receiver name if so. */
@@ -136,6 +154,17 @@ export function mountedRoutes(source: string): string[] {
   return [...new Set(paths)].sort();
 }
 
+/** Groups mounted with `app.route('<not /api>', …)`. */
+export function nonApiMounts(source: string): string[] {
+  const paths: string[] = [];
+  for (const { receiver, node } of calls(source, 'route')) {
+    if (receiver !== ROUTER) continue;
+    const first = node.arguments[0];
+    if (first && ts.isStringLiteralLike(first) && !isApiPath(first.text)) paths.push(first.text);
+  }
+  return [...new Set(paths)].sort();
+}
+
 /** Prefixes covered by `app.use('/api/.../*', auth)`. */
 export function authedPrefixes(source: string): string[] {
   const prefixes: string[] = [];
@@ -175,6 +204,8 @@ export function auditRouteAuth(source: string): AuthAudit {
       return !first || !ts.isStringLiteralLike(first);
     })
     .map((c) => c.node.getText().split('\n')[0]?.trim() ?? '<unknown>');
+  const nonApi = nonApiMounts(source);
+  const explained = new Set(NON_API_MOUNTS.map((m) => m.route));
 
   return {
     mounted,
@@ -184,6 +215,8 @@ export function auditRouteAuth(source: string): AuthAudit {
     routeCallsInSource: (source.match(/\.route\(/g) ?? []).length,
     unknownReceivers,
     unreadableMounts,
+    nonApi,
+    unexplainedNonApi: nonApi.filter((r) => !explained.has(r)),
   };
 }
 
@@ -233,6 +266,16 @@ if (import.meta.main) {
     process.exit(1);
   }
 
+  if (audit.unexplainedNonApi.length > 0) {
+    console.error(`\n${audit.unexplainedNonApi.length} group(s) mounted outside /api:\n`);
+    for (const r of audit.unexplainedNonApi) console.error(`  ✗ ${r}`);
+    console.error(
+      `\nThe JWT middleware only covers /api, so nothing here protects them. Name each\n` +
+        `in NON_API_MOUNTS in scripts/check-route-auth.ts with how it authenticates.\n`,
+    );
+    process.exit(1);
+  }
+
   if (unprotected.length > 0) {
     console.error(`\n${unprotected.length} /api route group(s) mounted without auth:\n`);
     for (const r of unprotected) console.error(`  ✗ ${r}`);
@@ -248,6 +291,6 @@ if (import.meta.main) {
   console.log(
     `Route auth: ${mounted.length} /api groups (${routeCallsInSource} mount calls) — ` +
       `${mounted.length - PUBLIC_ROUTES.length} behind auth, ` +
-      `${PUBLIC_ROUTES.length} deliberately public.`,
+      `${PUBLIC_ROUTES.length} deliberately public; ${audit.nonApi.length} outside /api, each explained.`,
   );
 }

@@ -349,6 +349,42 @@ services:
       - internal
     restart: unless-stopped
 
+  # Unattended curation (#1516): ONE run, then exit — schedule it from the host,
+  # e.g. a cron line `docker compose --profile curator run --rm curator`. Same
+  # image as nicotind, own entrypoint. Needs an Unattended (refiner:auto) agent
+  # token and a model; the default endpoint is an Ollama on the host.
+  # → docs/curator-runner.md
+  curator:
+    image: ghcr.io/kevinch3/nicotind:${NICOTIND_VERSION:-release}
+    profiles: ["curator"]
+    user: "1000:1000"
+    entrypoint: ["bun", "run", "packages/curator-runner/src/main.ts"]
+    # A one-shot HTTP client: model inference happens elsewhere.
+    mem_limit: 256m
+    memswap_limit: 256m
+    environment:
+      CURATOR_MCP_URL: http://nicotind:8484/api/mcp
+      CURATOR_MCP_TOKEN: ${CURATOR_MCP_TOKEN:-}
+      CURATOR_MODEL_PROVIDER: ${CURATOR_MODEL_PROVIDER:-openai}
+      CURATOR_MODEL_BASE_URL: ${CURATOR_MODEL_BASE_URL:-http://host.docker.internal:11434/v1}
+      CURATOR_MODEL: ${CURATOR_MODEL:-}
+      CURATOR_MODEL_API_KEY: ${CURATOR_MODEL_API_KEY:-}
+      CURATOR_APPLY: ${CURATOR_APPLY:-propose}
+      CURATOR_CARD_LANGUAGE: ${CURATOR_CARD_LANGUAGE:-en}
+      CURATOR_STATE_DB: /data/curator/curator-state.sqlite
+    volumes:
+      - curator-state:/data/curator
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # service_started, like every gate here (#1019): a run against an API not
+    # yet up fails fast and the next scheduled run tries again.
+    depends_on:
+      nicotind:
+        condition: service_started
+    networks:
+      - internal
+    restart: "no"
+
 networks:
   internal:
     driver: bridge
@@ -361,3 +397,4 @@ volumes:
   ytdlp-addon-data:
   spotdl-addon-data:
   lidarr-config:
+  curator-state:

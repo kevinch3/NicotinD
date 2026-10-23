@@ -1,0 +1,122 @@
+<div class="page-shell max-w-3xl">
+  <div class="flex items-center gap-3 mb-1">
+    <a routerLink="/settings" class="text-theme-muted hover:text-theme-secondary text-sm">{{
+      'common.backToSettings' | t
+    }}</a>
+  </div>
+  <h1 class="page-title mb-1">{{ 'subsonicKeys.title' | t }}</h1>
+  <p class="text-sm text-theme-muted mb-8">
+    {{ 'subsonicKeys.subtitle' | t }}
+  </p>
+
+  @if (error()) {
+    <div class="mb-4 px-4 py-2.5 rounded-xl text-sm status-error">{{ error() }}</div>
+  }
+
+  @if (minted(); as m) {
+    <div class="mb-8 p-4 rounded-xl bg-theme-surface border border-theme" data-testid="subsonic-key-minted">
+      <p class="font-medium text-theme-primary">{{ 'subsonicKeys.created' | t: { name: m.name } }}</p>
+      <p class="text-sm text-theme-muted mt-1">
+        {{ 'subsonicKeys.shownOnce' | t }}
+      </p>
+      <div class="mt-3 flex items-center gap-2">
+        <code class="flex-1 min-w-0 truncate px-3 py-2 rounded-lg bg-theme-elevated text-sm" data-testid="subsonic-key-secret">{{ m.key }}</code>
+        <button
+          (click)="copy(m.key, 'key')"
+          data-testid="subsonic-key-copy"
+          class="shrink-0 px-3 py-2 rounded-lg text-sm font-medium bg-theme-accent text-white"
+        >
+          {{ (copied() === 'key' ? 'subsonicKeys.copied' : 'subsonicKeys.copy') | t }}
+        </button>
+      </div>
+      <button (click)="dismissMinted()" class="mt-3 text-sm text-theme-muted hover:text-theme-secondary">
+        {{ 'subsonicKeys.done' | t }}
+      </button>
+    </div>
+  }
+
+  <app-settings-group
+    groupId="subsonic-connect"
+    icon="speaker"
+    [title]="'subsonicKeys.connect' | t"
+    [description]="'subsonicKeys.connectDesc' | t"
+  >
+    <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm" data-testid="subsonic-connect-details">
+      <dt class="text-theme-muted">{{ 'subsonicKeys.serverUrl' | t }}</dt>
+      <dd class="min-w-0 flex items-center gap-2">
+        <code class="truncate" data-testid="subsonic-server-url">{{ serverUrl() }}</code>
+        <button (click)="copy(serverUrl(), 'url')" class="shrink-0 text-xs text-theme-secondary hover:text-theme-primary">
+          {{ (copied() === 'url' ? 'subsonicKeys.copied' : 'subsonicKeys.copy') | t }}
+        </button>
+      </dd>
+      <dt class="text-theme-muted">{{ 'subsonicKeys.username' | t }}</dt>
+      <dd><code>{{ auth.username() }}</code></dd>
+      <dt class="text-theme-muted">{{ 'subsonicKeys.password' | t }}</dt>
+      <dd class="text-theme-secondary">{{ 'subsonicKeys.passwordIsKey' | t }}</dd>
+    </dl>
+    <p class="text-xs text-theme-muted mt-4">{{ 'subsonicKeys.musicAssistantHint' | t }}</p>
+  </app-settings-group>
+
+  <app-settings-group
+    groupId="subsonic-keys-new"
+    icon="add"
+    [title]="'subsonicKeys.newKey' | t"
+    [description]="'subsonicKeys.newKeyDesc' | t"
+  >
+    <div class="flex flex-col sm:flex-row gap-3 sm:items-end">
+      <div class="flex-1 min-w-0">
+        <label class="block text-xs text-theme-muted mb-1" for="subsonic-key-name">{{
+          'subsonicKeys.name' | t
+        }}</label>
+        <input
+          id="subsonic-key-name"
+          type="text"
+          [(ngModel)]="name"
+          [placeholder]="'subsonicKeys.namePlaceholder' | t"
+          data-testid="subsonic-key-name-input"
+          class="w-full px-3 py-2 rounded-lg bg-theme-elevated text-theme-primary text-sm"
+        />
+      </div>
+      <button
+        (click)="mint()"
+        [disabled]="busy() || !name.trim()"
+        data-testid="subsonic-key-mint"
+        class="shrink-0 px-4 py-2 rounded-lg text-sm font-medium bg-theme-accent text-white disabled:opacity-50"
+      >
+        {{ (busy() ? 'subsonicKeys.creating' : 'subsonicKeys.create') | t }}
+      </button>
+    </div>
+  </app-settings-group>
+
+  <app-settings-group
+    groupId="subsonic-keys-list"
+    icon="tag"
+    [title]="'subsonicKeys.yourKeys' | t"
+    [description]="'subsonicKeys.yourKeysDesc' | t"
+  >
+    <div appTvNavGroup axis="vertical">
+      @for (k of keys(); track k.id) {
+        <div class="mb-2 p-4 rounded-xl bg-theme-surface border border-theme flex items-center justify-between gap-4"
+             data-testid="subsonic-key-row">
+          <div class="min-w-0">
+            <p class="font-medium text-theme-primary">{{ k.name }}</p>
+            <p class="text-xs text-theme-muted mt-0.5">
+              {{ 'subsonicKeys.keyMeta' | t: { createdAt: formatWhen(k.createdAt), lastUsedAt: formatWhen(k.lastUsedAt) } }}
+            </p>
+          </div>
+          <button
+            appTvNavItem
+            (click)="revoke(k)"
+            data-testid="subsonic-key-revoke"
+            class="shrink-0 text-sm text-status-error hover:underline"
+          >
+            {{ 'subsonicKeys.revoke' | t }}
+          </button>
+        </div>
+      }
+    </div>
+    @if (keys().length === 0) {
+      <p class="text-sm text-theme-muted" data-testid="subsonic-keys-empty">{{ 'subsonicKeys.empty' | t }}</p>
+    }
+  </app-settings-group>
+</div>
