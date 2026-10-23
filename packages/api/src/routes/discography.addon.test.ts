@@ -295,6 +295,28 @@ describe('discography routes through a remote addon', () => {
       expect(h.jobRequests).toHaveLength(0);
     });
 
+    // The live-row guard reads `acquisition_jobs`, which the route writes only
+    // after the addon answers: two Gets of one album in flight together both passed.
+    it('answers already-downloading while another Get of the album is still with the addon', async () => {
+      let finish!: () => void;
+      let calls = 0;
+      // Only the first call waits on the addon; a second would answer at once.
+      const blocked = mock(async () => {
+        if (calls++ === 0) await new Promise<void>((resolve) => (finish = resolve));
+        return { id: `aj-${calls}`, intent: 'album', items: [] };
+      });
+      h = harness({ createJob: blocked as unknown as AddonClient['createJob'] });
+      const first = h.app.request('/albums/42/hunt-download', jsonPost(pick));
+      for (let i = 0; i < 50 && !finish; i++) await new Promise((r) => setTimeout(r, 0));
+      expect(finish).toBeDefined();
+      const second = await h.app.request('/albums/42/hunt-download', jsonPost(pick));
+      expect(second.status).toBe(409);
+      expect(await second.json()).toEqual({ error: 'already-downloading' });
+      finish();
+      expect((await first).status).toBe(201);
+      expect(blocked).toHaveBeenCalledTimes(1);
+    });
+
     /**
      * #1539, the prod duplicate: a peer-folder grab of the album was already
      * downloading (no Lidarr id, named from the folder), and the catalog card's

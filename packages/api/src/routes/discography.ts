@@ -17,6 +17,7 @@ import { recordAcquiredArtistIdentity } from '../services/artist-identity-store.
 import {
   createJob,
   findActiveAlbumJob,
+  holdAlbum,
   pendingIngestForAddonJob,
   supersedeActiveJobs,
 } from '../services/acquisition-job-store.js';
@@ -474,197 +475,212 @@ export function discographyRoutes({
       const active = findActiveAlbumJob(db, { lidarrAlbumId: albumId });
       if (active) return c.json({ error: 'already-downloading', jobId: active.id }, 409);
     }
+    // Held until this request's job row exists: the row is what the guard reads,
+    // and it is written only after the addon answers, so a concurrent Get of the
+    // same album would otherwise pass the guard too.
+    const release = holdAlbum({ lidarrAlbumId: albumId });
+    if (!release) return c.json({ error: 'already-downloading' }, 409);
+    let releaseNamed: (() => void) | null = null;
+    try {
+      // Fetch canonical metadata up front — needed for the completeness guard and
+      // the recorded job. Best-effort: a Lidarr hiccup must not block the download.
+      const [album, tracks] = await Promise.all([
+        lidarr.album.get(albumId).catch(() => null),
+        lidarr.track.listByAlbum(albumId).catch(() => []),
+      ]);
+      const artistName = album?.artist?.artistName ?? null;
+      const albumTitle = album?.title ?? null;
 
-    // Fetch canonical metadata up front — needed for the completeness guard and
-    // the recorded job. Best-effort: a Lidarr hiccup must not block the download.
-    const [album, tracks] = await Promise.all([
-      lidarr.album.get(albumId).catch(() => null),
-      lidarr.track.listByAlbum(albumId).catch(() => []),
-    ]);
-    const artistName = album?.artist?.artistName ?? null;
-    const albumTitle = album?.title ?? null;
-
-    // The same album under another lane's naming: a peer-folder grab carries no
-    // Lidarr id, so only its name can match (#1539).
-    if (artistName && albumTitle) {
-      const named = { artist: artistName, title: albumTitle };
-      if (replace) supersedeActiveJobs(db, named);
-      else {
-        const other = findActiveAlbumJob(db, named);
-        if (other) return c.json({ error: 'already-downloading', jobId: other.id }, 409);
-      }
-    }
-
-    // Persist canonical artwork keyed on the same ids the scanner will mint, so
-    // the album/artist render the exact image the hunt tool showed (rather than
-    // the rip's embedded art) the moment the download lands. Best-effort.
-    if (album && artistName && albumTitle) {
-      try {
-        const albumCover = pickAlbumCover(album.images);
-        if (albumCover) {
-          setArtwork(db, albumIdFor(artistName, albumTitle), 'album', albumCover, coverCacheDir);
+      // The same album under another lane's naming: a peer-folder grab carries no
+      // Lidarr id, so only its name can match (#1539).
+      if (artistName && albumTitle) {
+        const named = { artist: artistName, title: albumTitle };
+        if (replace) supersedeActiveJobs(db, named);
+        else {
+          const other = findActiveAlbumJob(db, named);
+          if (other) return c.json({ error: 'already-downloading', jobId: other.id }, 409);
         }
-        const artistImage = pickArtistImage(album.artist?.images);
-        if (artistImage) {
-          setArtwork(db, artistIdFor(artistName), 'artist', artistImage, coverCacheDir);
-        }
-      } catch (err) {
-        log.warn({ albumId, err }, 'Failed to persist canonical artwork');
-      }
-      // Same rationale as the artwork: persist the canonical artist identity
-      // (one-act decision + MBID) so the scan that lands this download already
-      // knows the artist — no waiting on the artist-identity background task.
-      try {
-        recordAcquiredArtistIdentity(db, {
-          artistKey: artistIdFor(artistName),
-          artistName,
-          mbid: album.artist?.foreignArtistId ?? null,
-        });
-      } catch (err) {
-        log.warn({ albumId, err }, 'Failed to persist acquired artist identity');
-      }
-    }
-
-    // Guard 2: the album is already complete in the library — don't acquire a
-    // duplicate edition. Skipped on explicit replace.
-    if (!replace && artistName && albumTitle && tracks.length > 0) {
-      if (albumAlreadyComplete(db, artistName, albumTitle, tracks.length)) {
-        return c.json({ error: 'already-complete' }, 409);
-      }
-    }
-
-    // Addon cutover: the user's exact pick (candidateRef) is acquired
-    // addon-side — hunt scoping, enqueue and the per-peer fallback (alternates
-    // come from the addon's own cached hunt siblings, so the web-sent
-    // `alternates` are unused here). Library knowledge stays core-side:
-    // wantedTracks is the canonical titles not already on disk.
-    if (addon) {
-      if (!body.selected.candidateRef) {
-        // A selection without the hunt token cannot be resolved addon-side —
-        // either the candidates predate the addon cutover or the addon's hunt
-        // cache expired. Logged because the web flattening this very reason is
-        // what kept #530 invisible.
-        log.warn({ albumId }, 'hunt-download rejected: selection has no candidateRef');
-        return c.json({ error: 'Selection expired — run the search again' }, 400);
-      }
-      const titles = tracks.map((t) => t.title);
-      const onDisk =
-        artistName && albumTitle ? onDiskTitles(db, artistName, albumTitle, body.localAlbumId) : [];
-      const wanted = titlesMissingFromOwned(titles, onDisk);
-      if (titles.length > 0 && wanted.length === 0) {
-        return c.json({ ok: true, queued: 0, alreadyComplete: true }, 200);
+        // A folder grab of the album holds it by name, with no Lidarr id.
+        releaseNamed = holdAlbum(named);
+        if (!releaseNamed) return c.json({ error: 'already-downloading' }, 409);
       }
 
-      // Same key the auto-acquire lane uses (`album-acquire.ts`), so a manual
-      // Get and the poller dedupe against *each other* — one album is one
-      // download whichever lane starts it. Omitted under `replace`, which is
-      // the user explicitly asking for another run: reusing the key there would
-      // hand back the very job they want replaced.
-      const idempotencyKey = replace ? undefined : `acquire:${albumId}`;
-      const createAddonSide = () =>
-        addon.client.createJob(
-          {
-            intent: 'album',
-            artist: artistName ?? undefined,
-            album: albumTitle ?? undefined,
-            canonicalTracks: titles.map((title) => ({ title })),
-            wantedTracks: wanted.map((title) => ({ title })),
-            candidateRef: body.selected.candidateRef,
-          },
-          idempotencyKey,
-        );
-
-      let addonJob;
-      try {
-        addonJob = await createAddonSide();
-      } catch (err) {
-        if (err instanceof AddonRequestError && err.status === 409) {
-          if (!replace) return c.json({ error: 'already-downloading' }, 409);
-          // Admin re-hunt: supersede the addon's active job, then retry.
-          try {
-            const active = (await addon.client.listJobs()).find(
-              (j) =>
-                j.intent === 'album' &&
-                j.state === 'active' &&
-                j.artist === artistName &&
-                j.album === albumTitle,
-            );
-            if (active) {
-              await addon.client.cancelJob(active.id).catch(() => {});
-              // Releasing a job now makes the addon delete its downloaded files
-              // (NicotinD#1052). A re-hunt means "get me a better copy", never
-              // "throw away the tracks that already arrived" — and `supersedeActiveJobs`
-              // below only retires the job row, leaving those items live for the
-              // poller's next tick. So only release once nothing of ours is still
-              // waiting on those bytes; otherwise leave them to the addon's
-              // retention sweep, which reclaims them on its own schedule.
-              const pending = pendingIngestForAddonJob(db, addon.manifest.id, active.id);
-              if (pending === 0) {
-                await addon.client.deleteJob(active.id).catch(() => {});
-              } else {
-                log.info(
-                  { albumId, addonJobId: active.id, pending },
-                  'replace: keeping the superseded addon job, its files are still landing',
-                );
-              }
-            }
-            supersedeActiveJobs(db, {
-              lidarrAlbumId: albumId,
-              artist: artistName,
-              title: albumTitle,
-            });
-            addonJob = await createAddonSide();
-          } catch (retryErr) {
-            const msg = retryErr instanceof Error ? retryErr.message : 'replace failed';
-            log.warn({ albumId, err: msg }, 'hunt-download replace failed');
-            return c.json({ error: msg }, 502);
+      // Persist canonical artwork keyed on the same ids the scanner will mint, so
+      // the album/artist render the exact image the hunt tool showed (rather than
+      // the rip's embedded art) the moment the download lands. Best-effort.
+      if (album && artistName && albumTitle) {
+        try {
+          const albumCover = pickAlbumCover(album.images);
+          if (albumCover) {
+            setArtwork(db, albumIdFor(artistName, albumTitle), 'album', albumCover, coverCacheDir);
           }
-        } else if (err instanceof AddonRequestError && err.status === 400) {
-          log.warn({ albumId, err: err.message }, 'hunt-download rejected by the addon');
-          return c.json({ error: err.message }, 400);
-        } else {
-          // Keep the offline framing (it is the dominant real cause) but carry
-          // the addon's own reason — "they may be offline" alone made a
-          // systemic addon failure indistinguishable from one flaky peer.
-          const detail = err instanceof Error && err.message ? `: ${err.message}` : '';
-          log.warn(
-            { albumId, username: body.selected.username, err },
-            'hunt-download enqueue failed addon-side',
-          );
-          return c.json(
-            {
-              error: `Download failed for user "${body.selected.username}" — they may be offline${detail}`,
-            },
-            502,
-          );
+          const artistImage = pickArtistImage(album.artist?.images);
+          if (artistImage) {
+            setArtwork(db, artistIdFor(artistName), 'artist', artistImage, coverCacheDir);
+          }
+        } catch (err) {
+          log.warn({ albumId, err }, 'Failed to persist canonical artwork');
+        }
+        // Same rationale as the artwork: persist the canonical artist identity
+        // (one-act decision + MBID) so the scan that lands this download already
+        // knows the artist — no waiting on the artist-identity background task.
+        try {
+          recordAcquiredArtistIdentity(db, {
+            artistKey: artistIdFor(artistName),
+            artistName,
+            mbid: album.artist?.foreignArtistId ?? null,
+          });
+        } catch (err) {
+          log.warn({ albumId, err }, 'Failed to persist acquired artist identity');
         }
       }
 
-      try {
-        const coreJobId = createJob(db, {
-          kind: 'album-hunt',
-          method: addon.manifest.id,
-          userId: getCurrentUser(c).sub,
-          artistName,
-          albumTitle,
-          lidarrAlbumId: albumId,
-          releaseMbid: album?.foreignAlbumId ?? null,
-          artistMbid: album?.artist?.foreignArtistId ?? null,
-          genres: album?.genres?.length ? album.genres : (album?.artist?.genres ?? null),
-          year: album?.releaseDate ? new Date(album.releaseDate).getUTCFullYear() : null,
-          canonicalTracks: titles,
-          sourceRef: `addon:${addon.manifest.id}:${addonJob.id}`,
-          files: [],
-        });
-        mapAddonJob(db, addon.manifest.id, addonJob.id, coreJobId);
-      } catch (err) {
-        log.warn({ albumId, err }, 'Failed to record acquisition job (addon)');
+      // Guard 2: the album is already complete in the library — don't acquire a
+      // duplicate edition. Skipped on explicit replace.
+      if (!replace && artistName && albumTitle && tracks.length > 0) {
+        if (albumAlreadyComplete(db, artistName, albumTitle, tracks.length)) {
+          return c.json({ error: 'already-complete' }, 409);
+        }
       }
 
-      return c.json({ ok: true, queued: addonJob.items.length }, 201);
-    }
+      // Addon cutover: the user's exact pick (candidateRef) is acquired
+      // addon-side — hunt scoping, enqueue and the per-peer fallback (alternates
+      // come from the addon's own cached hunt siblings, so the web-sent
+      // `alternates` are unused here). Library knowledge stays core-side:
+      // wantedTracks is the canonical titles not already on disk.
+      if (addon) {
+        if (!body.selected.candidateRef) {
+          // A selection without the hunt token cannot be resolved addon-side —
+          // either the candidates predate the addon cutover or the addon's hunt
+          // cache expired. Logged because the web flattening this very reason is
+          // what kept #530 invisible.
+          log.warn({ albumId }, 'hunt-download rejected: selection has no candidateRef');
+          return c.json({ error: 'Selection expired — run the search again' }, 400);
+        }
+        const titles = tracks.map((t) => t.title);
+        const onDisk =
+          artistName && albumTitle
+            ? onDiskTitles(db, artistName, albumTitle, body.localAlbumId)
+            : [];
+        const wanted = titlesMissingFromOwned(titles, onDisk);
+        if (titles.length > 0 && wanted.length === 0) {
+          return c.json({ ok: true, queued: 0, alreadyComplete: true }, 200);
+        }
 
-    // (unreachable — the addon branch above always returns)
+        // Same key the auto-acquire lane uses (`album-acquire.ts`), so a manual
+        // Get and the poller dedupe against *each other* — one album is one
+        // download whichever lane starts it. Omitted under `replace`, which is
+        // the user explicitly asking for another run: reusing the key there would
+        // hand back the very job they want replaced.
+        const idempotencyKey = replace ? undefined : `acquire:${albumId}`;
+        const createAddonSide = () =>
+          addon.client.createJob(
+            {
+              intent: 'album',
+              artist: artistName ?? undefined,
+              album: albumTitle ?? undefined,
+              canonicalTracks: titles.map((title) => ({ title })),
+              wantedTracks: wanted.map((title) => ({ title })),
+              candidateRef: body.selected.candidateRef,
+            },
+            idempotencyKey,
+          );
+
+        let addonJob;
+        try {
+          addonJob = await createAddonSide();
+        } catch (err) {
+          if (err instanceof AddonRequestError && err.status === 409) {
+            if (!replace) return c.json({ error: 'already-downloading' }, 409);
+            // Admin re-hunt: supersede the addon's active job, then retry.
+            try {
+              const active = (await addon.client.listJobs()).find(
+                (j) =>
+                  j.intent === 'album' &&
+                  j.state === 'active' &&
+                  j.artist === artistName &&
+                  j.album === albumTitle,
+              );
+              if (active) {
+                await addon.client.cancelJob(active.id).catch(() => {});
+                // Releasing a job now makes the addon delete its downloaded files
+                // (NicotinD#1052). A re-hunt means "get me a better copy", never
+                // "throw away the tracks that already arrived" — and `supersedeActiveJobs`
+                // below only retires the job row, leaving those items live for the
+                // poller's next tick. So only release once nothing of ours is still
+                // waiting on those bytes; otherwise leave them to the addon's
+                // retention sweep, which reclaims them on its own schedule.
+                const pending = pendingIngestForAddonJob(db, addon.manifest.id, active.id);
+                if (pending === 0) {
+                  await addon.client.deleteJob(active.id).catch(() => {});
+                } else {
+                  log.info(
+                    { albumId, addonJobId: active.id, pending },
+                    'replace: keeping the superseded addon job, its files are still landing',
+                  );
+                }
+              }
+              supersedeActiveJobs(db, {
+                lidarrAlbumId: albumId,
+                artist: artistName,
+                title: albumTitle,
+              });
+              addonJob = await createAddonSide();
+            } catch (retryErr) {
+              const msg = retryErr instanceof Error ? retryErr.message : 'replace failed';
+              log.warn({ albumId, err: msg }, 'hunt-download replace failed');
+              return c.json({ error: msg }, 502);
+            }
+          } else if (err instanceof AddonRequestError && err.status === 400) {
+            log.warn({ albumId, err: err.message }, 'hunt-download rejected by the addon');
+            return c.json({ error: err.message }, 400);
+          } else {
+            // Keep the offline framing (it is the dominant real cause) but carry
+            // the addon's own reason — "they may be offline" alone made a
+            // systemic addon failure indistinguishable from one flaky peer.
+            const detail = err instanceof Error && err.message ? `: ${err.message}` : '';
+            log.warn(
+              { albumId, username: body.selected.username, err },
+              'hunt-download enqueue failed addon-side',
+            );
+            return c.json(
+              {
+                error: `Download failed for user "${body.selected.username}" — they may be offline${detail}`,
+              },
+              502,
+            );
+          }
+        }
+
+        try {
+          const coreJobId = createJob(db, {
+            kind: 'album-hunt',
+            method: addon.manifest.id,
+            userId: getCurrentUser(c).sub,
+            artistName,
+            albumTitle,
+            lidarrAlbumId: albumId,
+            releaseMbid: album?.foreignAlbumId ?? null,
+            artistMbid: album?.artist?.foreignArtistId ?? null,
+            genres: album?.genres?.length ? album.genres : (album?.artist?.genres ?? null),
+            year: album?.releaseDate ? new Date(album.releaseDate).getUTCFullYear() : null,
+            canonicalTracks: titles,
+            sourceRef: `addon:${addon.manifest.id}:${addonJob.id}`,
+            files: [],
+          });
+          mapAddonJob(db, addon.manifest.id, addonJob.id, coreJobId);
+        } catch (err) {
+          log.warn({ albumId, err }, 'Failed to record acquisition job (addon)');
+        }
+
+        return c.json({ ok: true, queued: addonJob.items.length }, 201);
+      }
+
+      // (unreachable — the addon branch above always returns)
+    } finally {
+      release();
+      releaseNamed?.();
+    }
   });
 
   return app;

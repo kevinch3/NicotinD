@@ -132,6 +132,29 @@ describe('acquireAlbum via a remote addon', () => {
     expect(h.jobRequests).toHaveLength(0);
   });
 
+  // Two sweeps (watchlist + auto-acquire) reaching one album together: the job
+  // row lands after the addon answers, so the second used to hunt and enqueue too.
+  it('answers in-flight while another acquire of the album is still with the addon', async () => {
+    let finish!: () => void;
+    let calls = 0;
+    h = makeDeps({
+      createJob: (async (req: unknown) => {
+        h.jobRequests.push(req);
+        if (calls++ === 0) await new Promise<void>((resolve) => (finish = resolve));
+        return { id: `aj-${calls}`, intent: 'album', items: [] };
+      }) as unknown as AddonClient['createJob'],
+    });
+    const first = acquireAlbum(h.deps, INPUT);
+    for (let i = 0; i < 50 && !finish; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(finish).toBeDefined();
+    expect(await acquireAlbum(h.deps, INPUT)).toEqual({ outcome: 'in-flight' });
+    finish();
+    expect(await first).toEqual({ outcome: 'enqueued' });
+    expect(h.jobRequests).toHaveLength(1);
+    // Released: the next sweep is answered by the job row, not a leftover hold.
+    expect(await acquireAlbum(h.deps, INPUT)).toEqual({ outcome: 'in-flight' });
+  });
+
   it('carries why the enqueue failed (issue #858)', async () => {
     h = makeDeps({
       createJob: async () => {

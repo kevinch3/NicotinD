@@ -195,6 +195,26 @@ describe('downloads routes', () => {
       expect(testDb.query(`SELECT COUNT(*) AS n FROM acquisition_jobs`).get()).toEqual({ n: 1 });
     });
 
+    // The guard reads job rows, but the row is written after the provider call:
+    // two grabs of one album in flight together both passed it.
+    it('refuses a second grab of the album while the first is still enqueueing', async () => {
+      let finish!: () => void;
+      slskdMock.transfers.enqueue.mockImplementationOnce(
+        () => new Promise<void>((resolve) => (finish = resolve)),
+      );
+      const first = app.request('/', albumGrab());
+      for (let i = 0; i < 20 && !finish; i++) await new Promise((r) => setTimeout(r, 0));
+      expect(finish).toBeDefined();
+      const second = await app.request('/', albumGrab());
+      expect(second.status).toBe(409);
+      expect(await second.json()).toEqual({ error: 'already-downloading' });
+      finish();
+      expect((await first).status).toBe(201);
+      // Released: a later grab is judged by the job row again, not by a stale hold.
+      expect((await app.request('/', albumGrab())).status).toBe(409);
+      expect(testDb.query(`SELECT COUNT(*) AS n FROM acquisition_jobs`).get()).toEqual({ n: 1 });
+    });
+
     it('replace supersedes the live job and enqueues this copy', async () => {
       const live = liveCatalogJob();
       const res = await app.request('/', albumGrab({ replace: true }));

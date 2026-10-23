@@ -1273,18 +1273,46 @@ function activeAlbumJobIds(db: Database, target: AlbumTarget): string[] {
         WHERE state = 'active' ORDER BY created_at DESC`,
     )
     .all();
-  const named =
-    target.artist && target.title ? { artist: target.artist, title: target.title } : null;
   return rows
-    .filter(
-      (r) =>
-        (target.lidarrAlbumId != null && r.lidarr_album_id === target.lidarrAlbumId) ||
-        (named !== null &&
-          r.artist_name !== null &&
-          r.album_title !== null &&
-          sameAlbum(named, { artist: r.artist_name, title: r.album_title })),
+    .filter((r) =>
+      albumTargetsMatch(target, {
+        lidarrAlbumId: r.lidarr_album_id,
+        artist: r.artist_name,
+        title: r.album_title,
+      }),
     )
     .map((r) => r.id);
+}
+
+/** One album: the same Lidarr id, or the same album by name (`sameAlbum`). */
+export function albumTargetsMatch(a: AlbumTarget, b: AlbumTarget): boolean {
+  if (a.lidarrAlbumId != null && a.lidarrAlbumId === b.lidarrAlbumId) return true;
+  return (
+    !!a.artist &&
+    !!a.title &&
+    !!b.artist &&
+    !!b.title &&
+    sameAlbum({ artist: a.artist, title: a.title }, { artist: b.artist, title: b.title })
+  );
+}
+
+/** Albums a request is between its guard check and its job row (see `holdAlbum`). */
+const heldAlbums = new Set<AlbumTarget>();
+
+/**
+ * Reserve the album for one request until its job row exists. The guard reads
+ * `acquisition_jobs`, but every lane awaits the addon before writing its row, so
+ * two near-simultaneous Gets of one album both passed the check (#1539's known
+ * limit). Returns the release, or null when another request holds a matching
+ * album. In memory: the API is one process. A caller may fill in `artist`/
+ * `title` on the held target once it learns them; the hold reads the object.
+ */
+export function holdAlbum(target: AlbumTarget): (() => void) | null {
+  for (const held of heldAlbums) if (albumTargetsMatch(held, target)) return null;
+  heldAlbums.add(target);
+  return () => {
+    heldAlbums.delete(target);
+  };
 }
 
 /** The album's newest live acquisition, if any (see `activeAlbumJobIds`). */

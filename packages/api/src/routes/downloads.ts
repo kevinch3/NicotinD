@@ -27,6 +27,7 @@ import {
   resourceableTitles,
   supersedeItems,
   findActiveAlbumJob,
+  holdAlbum,
   supersedeActiveJobs,
 } from '../services/acquisition-job-store.js';
 import { rankAlternates } from '../services/download-resource.js';
@@ -71,7 +72,11 @@ function directoryOf(filename: string): string {
 }
 
 const AlreadyDownloadingSchema = z
-  .object({ error: z.literal('already-downloading'), jobId: z.string() })
+  .object({
+    error: z.literal('already-downloading'),
+    // Absent when another request holds the album and has no job row yet.
+    jobId: z.string().optional(),
+  })
   .openapi('AlreadyDownloading');
 
 const DownloadResponseSchema = z
@@ -199,6 +204,7 @@ export function downloadRoutes(
       const identity = album ?? (guessed.artist && guessed.title ? guessed : null);
       const albumShaped =
         album !== undefined || (oneFolder && files.length >= ALBUM_GRAB_MIN_FILES);
+      let release: (() => void) | null = null;
       if (identity?.artist && identity.title && albumShaped) {
         const target = {
           lidarrAlbumId: album?.lidarrAlbumId ?? null,
@@ -212,60 +218,67 @@ export function downloadRoutes(
           if (active)
             return c.json({ error: 'already-downloading' as const, jobId: active.id }, 409);
         }
+        // Held from here until the job row exists: the row is the guard's evidence.
+        release = holdAlbum(target);
+        if (!release) return c.json({ error: 'already-downloading' as const }, 409);
       }
 
-      let receipt: DownloadReceipt | void;
       try {
-        receipt = await provider.download(username, files);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes('request failed')) {
-          return c.json(
-            {
-              error: `Download failed for user "${username}" — they may be offline or rejecting transfers`,
-            },
-            502,
-          );
+        let receipt: DownloadReceipt | void;
+        try {
+          receipt = await provider.download(username, files);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg.includes('request failed')) {
+            return c.json(
+              {
+                error: `Download failed for user "${username}" — they may be offline or rejecting transfers`,
+              },
+              502,
+            );
+          }
+          return c.json({ error: 'Soulseek is temporarily unreachable' }, 503);
         }
-        return c.json({ error: 'Soulseek is temporarily unreachable' }, 503);
-      }
 
-      // Wrap even raw folder-browser grabs in a lightweight acquisition job so
-      // every transfer belongs to a job (uniform feed, stored linkage). No
-      // canonical metadata here — artist/album are best-effort display hints
-      // parsed from the peer's folder segments. Best-effort: must never fail
-      // the enqueue that already succeeded.
-      let jobId: string | null = null;
-      try {
-        // Display hints, from the client's album or the folder guess above. A
-        // generic segment ("complete", "FLAC") stores NULL, not the junk: NULL
-        // self-heals via the poller's COALESCE backfill from the addon's
-        // metadata; a junk hint blocks that backfill forever (#674).
-        const db = getDatabase();
-        // When an addon runs the grab, this row must be THE mirror of its job:
-        // `source_ref` is what `/jobs/:id/cancel` resolves the owning addon
-        // from, and the jobmap is what stops the poller minting a twin row on
-        // its next tick (the twin got the files and the Remove button; this
-        // row sat "Downloading 0 of N" forever — the Kaleo card).
-        const addonJobId = receipt?.addonJobId;
-        const coreJobId = createJob(db, {
-          kind: 'direct',
-          // The provider's name is the source id (the addon's manifest id).
-          method: provider.name,
-          userId: getCurrentUser(c).sub,
-          artistName: album?.artist ?? guessed.artist,
-          albumTitle: album?.title ?? guessed.title,
-          lidarrAlbumId: album?.lidarrAlbumId ?? null,
-          sourceRef: addonJobId ? `addon:${provider.name}:${addonJobId}` : username,
-          username,
-          files,
-        });
-        if (addonJobId) mapAddonJob(db, provider.name, addonJobId, coreJobId);
-        jobId = coreJobId;
-      } catch (err) {
-        log.warn({ username, err }, 'Failed to record acquisition job for direct download');
+        // Wrap even raw folder-browser grabs in a lightweight acquisition job so
+        // every transfer belongs to a job (uniform feed, stored linkage). No
+        // canonical metadata here — artist/album are best-effort display hints
+        // parsed from the peer's folder segments. Best-effort: must never fail
+        // the enqueue that already succeeded.
+        let jobId: string | null = null;
+        try {
+          // Display hints, from the client's album or the folder guess above. A
+          // generic segment ("complete", "FLAC") stores NULL, not the junk: NULL
+          // self-heals via the poller's COALESCE backfill from the addon's
+          // metadata; a junk hint blocks that backfill forever (#674).
+          const db = getDatabase();
+          // When an addon runs the grab, this row must be THE mirror of its job:
+          // `source_ref` is what `/jobs/:id/cancel` resolves the owning addon
+          // from, and the jobmap is what stops the poller minting a twin row on
+          // its next tick (the twin got the files and the Remove button; this
+          // row sat "Downloading 0 of N" forever — the Kaleo card).
+          const addonJobId = receipt?.addonJobId;
+          const coreJobId = createJob(db, {
+            kind: 'direct',
+            // The provider's name is the source id (the addon's manifest id).
+            method: provider.name,
+            userId: getCurrentUser(c).sub,
+            artistName: album?.artist ?? guessed.artist,
+            albumTitle: album?.title ?? guessed.title,
+            lidarrAlbumId: album?.lidarrAlbumId ?? null,
+            sourceRef: addonJobId ? `addon:${provider.name}:${addonJobId}` : username,
+            username,
+            files,
+          });
+          if (addonJobId) mapAddonJob(db, provider.name, addonJobId, coreJobId);
+          jobId = coreJobId;
+        } catch (err) {
+          log.warn({ username, err }, 'Failed to record acquisition job for direct download');
+        }
+        return c.json({ ok: true, queued: files.length, jobId }, 201);
+      } finally {
+        release?.();
       }
-      return c.json({ ok: true, queued: files.length, jobId }, 201);
     },
   );
 
