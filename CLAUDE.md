@@ -211,7 +211,7 @@ bundle silently tests the previous code. → [e2e.md](docs/e2e.md),
 
 ### Real-use feedback
 
-[feedback-log-2026-08.md](docs/feedback-log-2026-08.md) is a rolling, dated log of friction noticed
+[feedback-log-2026-10.md](docs/feedback-log-2026-10.md) is a rolling, dated log of friction noticed
 while actually *using* the app, one entry per observation with Severity/Status. Rotate monthly.
 
 ### Curation playbook
