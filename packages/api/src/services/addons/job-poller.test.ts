@@ -669,6 +669,37 @@ describe('AddonJobPoller', () => {
       expect(row).toEqual({ state: 'active', stage: 'queued' });
     });
 
+    // Issue #1540: a folder grab seeds one item per file, keyed by peer path; the
+    // addon then reports the same files under its own ids. Two keys for one file
+    // listed every track twice and closed "14 of 28 · 14 unavailable".
+    it('adopts the rows a folder grab seeded instead of listing each file twice', async () => {
+      const job = makeJob({ intent: 'browse-grab' });
+      h = harness(() => [job]);
+      await h.registry.enable('fixture-addon', 'admin');
+      const coreJobId = createJob(h.db, {
+        kind: 'direct',
+        method: 'fixture-addon',
+        sourceRef: `addon:fixture-addon:${job.id}`,
+        username: 'peer',
+        files: [{ filename: 'Music\\Album\\01 Song One.mp3', size: 100 }],
+      });
+      mapAddonJob(h.db, 'fixture-addon', job.id, coreJobId);
+      await h.poller.tick();
+      await h.poller.idle();
+      const items = h.db
+        .query<{ transfer_key: string; state: string; track_title: string | null }, []>(
+          `SELECT transfer_key, state, track_title FROM acquisition_job_items`,
+        )
+        .all();
+      expect(items).toEqual([
+        {
+          transfer_key: 'addon:fixture-addon:t:song one',
+          state: 'downloading',
+          track_title: 'Song One',
+        },
+      ]);
+    });
+
     // An addon that knows the track count up front (spotDL's `Found 100 songs`)
     // can send 100 `queued` placeholders on its first poll so the card reads
     // "0 of 100" from the start; when it closes, whatever is still queued was

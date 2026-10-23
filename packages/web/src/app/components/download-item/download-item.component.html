@@ -273,14 +273,12 @@
                     type="checkbox"
                     class="flex-shrink-0 accent-blue-500"
                     data-testid="download-track-select"
-                    [attr.aria-label]="t.title || t.filename"
+                    [attr.aria-label]="trackLabel(t)"
                     [checked]="isSelected(t)"
                     (change)="toggle(t)"
                   />
                 }
-                <!-- Falls back to the filename: an untitled item is exactly the
-                     one whose identity the user most needs. -->
-                <span class="truncate flex-1 min-w-0">{{ t.title || t.filename || '—' }}</span>
+                <span class="truncate flex-1 min-w-0" [attr.title]="t.filename || null">{{ trackLabel(t) }}</span>
                 @if (showTrackPeer() && t.username) {
                   <span class="opacity-70 truncate max-w-[8rem] flex-shrink-0">{{ t.username }}</span>
                 }

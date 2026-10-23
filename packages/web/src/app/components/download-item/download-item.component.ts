@@ -41,6 +41,17 @@ export function trackDetail(track: DownloadTrack): string {
   return parts.join(' · ');
 }
 
+/**
+ * A track row's label: its title, else the file's own name. An untitled item is
+ * the one whose identity the user most needs, and a peer's whole share path
+ * buries it (#1540); the path stays on hover.
+ */
+export function trackLabel(track: DownloadTrack): string {
+  if (track.title) return track.title;
+  const base = track.filename?.split(/[\\/]/).pop();
+  return base ? base.replace(/\.[a-z0-9]{2,4}$/i, '') : '—';
+}
+
 export const DOWNLOAD_ITEM_HOST_CLASS = 'block min-w-0';
 
 /** Per-instance suffix for `aria-controls` — the ids must be unique per document. */
@@ -307,6 +318,7 @@ export class DownloadItemComponent {
   readonly showTrackPeer = computed(() => (this.item().sources?.length ?? 0) > 1);
 
   readonly trackDetail = trackDetail;
+  readonly trackLabel = trackLabel;
 
   /**
    * Whether there is anything behind the disclosure. Without this the caret
