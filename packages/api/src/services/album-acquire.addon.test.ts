@@ -112,6 +112,26 @@ describe('acquireAlbum via a remote addon', () => {
     expect(await acquireAlbum(h.deps, INPUT)).toEqual({ outcome: 'in-flight' });
   });
 
+  // #1539: a watchlist / auto-acquire sweep must not start a second copy of an
+  // album a user is already fetching through a peer folder — and must not even
+  // spend a hunt finding that out.
+  it('answers in-flight for a same-album job from another lane, before hunting', async () => {
+    let searched = false;
+    h = makeDeps({
+      albumsSearch: async () => {
+        searched = true;
+        return { candidates: [CANDIDATE], queries: [], skewNeeded: false };
+      },
+    });
+    h.db.run(
+      `INSERT INTO acquisition_jobs (id, kind, method, state, stage, artist_name, album_title, created_at, updated_at)
+       VALUES ('folder-1', 'direct', 'fixture-addon', 'active', 'downloading', 'Artist & Guest', 'Artist - Album (2020)', 1, 1)`,
+    );
+    expect(await acquireAlbum(h.deps, INPUT)).toEqual({ outcome: 'in-flight' });
+    expect(searched).toBe(false);
+    expect(h.jobRequests).toHaveLength(0);
+  });
+
   it('carries why the enqueue failed (issue #858)', async () => {
     h = makeDeps({
       createJob: async () => {

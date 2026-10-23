@@ -48,6 +48,10 @@ export * from './pairing-code.js';
 // api-side multi-device simulation (#877).
 export * from './remote-playback.js';
 
+// Album identity (shared by the API's grouping/scanner, every Get lane's
+// duplicate guard, and the web's Get control) — #1539
+export * from './album-identity.js';
+
 // MusicBrainz id shape (shared by the curator route + tag-sourced lookups)
 export * from './mbid.js';
 
