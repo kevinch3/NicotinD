@@ -38,14 +38,22 @@ export interface BlendedCandidate {
 }
 
 const LOSSLESS_FORMAT_BONUS = 30;
+// Per relevance point (`groupBySong`): an artist match on a two-word query is
+// 6 points, so relevance outweighs lossless + a free slot (45) — a search for an
+// artist must not lead with whichever FLAC sorts first (#1537).
+const RELEVANCE_WEIGHT = 10;
 
-/** Soulseek song → candidate. Score rewards lossless + an available peer slot. */
+/** Soulseek song → candidate. Score rewards query relevance, then lossless + a free slot. */
 export function songResultToCandidate(s: SongResult): BlendedCandidate {
   const ext = fileExt(s.best.filename);
   const lossless =
     ext === 'flac' || ext === 'wav' || ext === 'aiff' || ext === 'ape' || ext === 'wv';
   const hasSlot = (s.best.freeUploadSlots ?? 0) > 0;
-  const score = 50 + (lossless ? LOSSLESS_FORMAT_BONUS : 0) + (hasSlot ? 15 : 0);
+  const score =
+    50 +
+    (s.relevance ?? 0) * RELEVANCE_WEIGHT +
+    (lossless ? LOSSLESS_FORMAT_BONUS : 0) +
+    (hasSlot ? 15 : 0);
   const subtitle = [s.artist, formatBadge(s.best)].filter(Boolean).join(' · ');
   return {
     id: `soulseek:${s.best.username}:${s.best.filename}`,
@@ -93,15 +101,14 @@ export function spotifyToCandidate(s: SpotifyCandidate): BlendedCandidate {
 const SOURCE_ORDER: Record<CandidateSource, number> = { soulseek: 0, archive: 1, spotify: 2 };
 
 /**
- * Merge candidate lists into one ranked list (best-first by score, then a stable
- * source/title tiebreak). Pure — unit-tested; drives the blended Results list.
+ * Merge candidate lists into one ranked list: best score first, then source.
+ * Equal scores keep each source's own order (`sort` is stable) — that order is
+ * already ranked by relevance, which a title tiebreak used to throw away and
+ * turn the list alphabetical (#1537). Pure — unit-tested.
  */
 export function mergeAndRank(...lists: BlendedCandidate[][]): BlendedCandidate[] {
   return lists.flat().sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
-    if (SOURCE_ORDER[a.source] !== SOURCE_ORDER[b.source]) {
-      return SOURCE_ORDER[a.source] - SOURCE_ORDER[b.source];
-    }
-    return a.title.localeCompare(b.title);
+    return SOURCE_ORDER[a.source] - SOURCE_ORDER[b.source];
   });
 }
