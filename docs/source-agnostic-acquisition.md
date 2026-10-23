@@ -37,6 +37,14 @@ are deliberately undoing.
    "From archive.org"/"From Spotify" as separate sections, "Also on …". Status
    copy is source-neutral ("Sources: …"), never "Soulseek network available".
 
+   **Ranking.** A Soulseek row's `score` leads with **query relevance** from
+   `groupBySong` (per term: artist 3, else title 2, else folder path 1, all
+   diacritic-insensitive), then lossless and a free slot. `mergeAndRank` breaks a
+   tie by source and otherwise keeps each source's own order. Its old title
+   tiebreak made every equal-score list alphabetical, so "[untitled]" led a
+   search for "Damian Lazarus" (#1537). An untagged copy folds into the single
+   tagged song with the same title.
+
 3. **Sources are discovered/gated via the registry.** A source contributes
    nothing until its plugin is enabled (default-off compliance posture). Gating
    is `PluginRegistry`-driven (`isEnabled(id)` / `hasAnyAcquisitionEnabled()`),

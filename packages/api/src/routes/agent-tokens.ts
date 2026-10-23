@@ -9,8 +9,9 @@ import {
   type AgentScope,
 } from '../services/agent-tokens.js';
 import { recordAudit } from '../services/audit-log.js';
+import { AUTO_TOKEN_DEFAULT_DAYS, AUTO_TOKEN_MAX_DAYS } from '../services/agent-policy.js';
 
-const VALID_SCOPES: readonly AgentScope[] = ['refiner:read', 'refiner:curate'];
+const VALID_SCOPES: readonly AgentScope[] = ['refiner:read', 'refiner:curate', 'refiner:auto'];
 const MAX_NAME_LEN = 100;
 
 /**
@@ -47,8 +48,15 @@ export function agentTokensRoutes() {
       return c.json({ error: 'invalid scope', code: 'VALIDATION_ERROR' }, 400);
 
     const now = Date.now();
-    const days = body.expiresInDays;
-    const expiresAt = typeof days === 'number' && days > 0 ? now + days * 24 * 3_600_000 : null;
+    const asked =
+      typeof body.expiresInDays === 'number' && body.expiresInDays > 0 ? body.expiresInDays : null;
+    // An unattended token always expires: a forgotten cron job must not hold a
+    // write credential forever (#1516).
+    const days =
+      scope === 'refiner:auto'
+        ? Math.min(asked ?? AUTO_TOKEN_DEFAULT_DAYS, AUTO_TOKEN_MAX_DAYS)
+        : asked;
+    const expiresAt = days != null ? now + days * 24 * 3_600_000 : null;
 
     const db = getDatabase();
     const { id, token } = mintAgentToken(db, {

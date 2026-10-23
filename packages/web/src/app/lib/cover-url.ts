@@ -17,6 +17,18 @@ export function coverUrl(coverArt: string, size: number, token: string | null): 
 }
 
 /**
+ * Credential a server-built cover URL (the catalog's `/api/cover/remote?u=…`).
+ * `/api/cover/*` is behind auth and an `<img>` never carries the interceptor's
+ * header, so the server — which has no per-user media key — cannot bake one in.
+ * Only our own relative `/api/cover/` URLs gain a token; anything else (an
+ * external Spotify/archive URL) and a URL that already has one pass through.
+ */
+export function withMediaToken(url: string | undefined, token: string | null): string | undefined {
+  if (!url || !token || !url.startsWith('/api/cover/') || /[?&]token=/.test(url)) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`;
+}
+
+/**
  * Snap a rendered box size to a served cover size, so a 64px tile does not pull
  * a 256px JPEG. The buckets match what the cover route's downscale cache
  * already holds for other call sites; an unbucketed size would miss the cache

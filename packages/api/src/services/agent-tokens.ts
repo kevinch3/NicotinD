@@ -15,8 +15,10 @@ import type { Database } from 'bun:sqlite';
 
 /** Scopes an agent token can carry. `:read` is GET-equivalent; `:curate` adds
  *  writes. Destructive ops (delete/merge) are additionally gated per-call by a
- *  `confirm` flag at the tool layer, not by scope. */
-export type AgentScope = 'refiner:read' | 'refiner:curate';
+ *  `confirm` flag at the tool layer, not by scope. `:auto` is the unattended
+ *  runner's: reads plus server-policed genre writes and flags, never a
+ *  destructive tool (`services/agent-policy.ts`, #1516). */
+export type AgentScope = 'refiner:read' | 'refiner:curate' | 'refiner:auto';
 
 /** Every agent session runs as a refiner, never higher, whatever the owner is. */
 export const AGENT_EFFECTIVE_ROLE = 'refiner' as const;

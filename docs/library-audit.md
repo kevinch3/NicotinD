@@ -531,6 +531,12 @@ Design rules it inherits:
   subgenre judgement about a canonical artist covered 9 artists / 83 songs in the pass that filed
   #1115. Listing the same 83 songs would have described one decision as 83 pieces of work — the
   reporting error that makes a real backlog look unaffordable.
+  A row is labelled with the artist row's name (`library_artists.name` on the grouped
+  `artist_id`), never a song's credit: a DJ mix under Green Velvet carries one guest credit per
+  track, and the old `MIN(song.artist)` label named a guest (#1391).
+- **An agent can narrow the report.** The MCP tool takes `dimensions: ["genres", …]` and returns
+  only those, plus totals (`pickHealthDimensions`); an unknown name is refused with the valid list.
+  The whole report at `sample: 50` is ~110 KB, over an MCP result's limit (#1391).
 
 ### New detectors and their calibration (prod, 2026-08-26, 16,386 songs / 5,173 visible albums)
 

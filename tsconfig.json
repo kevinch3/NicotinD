@@ -19,6 +19,7 @@
   "references": [
     { "path": "packages/addon-sdk" },
     { "path": "packages/core" },
+    { "path": "packages/curator-runner" },
     { "path": "packages/api" },
     { "path": "packages/desktop" },
     { "path": "packages/mobile" },

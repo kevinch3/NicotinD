@@ -94,6 +94,29 @@ export function serviceWorkerEnabled(devMode: boolean, nativeShell: boolean): bo
   return !devMode && !nativeShell;
 }
 
+/**
+ * Pure check for an iPhone/iPad/iPod WebKit engine from a user agent. iPadOS
+ * Safari asks for the desktop site and reports itself as a Mac, so a "Macintosh"
+ * UA with touch points is an iPad too (no shipping Mac has a touchscreen). Every
+ * iOS browser is WebKit, so Chrome/Firefox for iOS count — same media rules.
+ */
+export function isAppleMobileUserAgent(userAgent: string, maxTouchPoints: number): boolean {
+  if (/iPhone|iPad|iPod/.test(userAgent)) return true;
+  return /Macintosh/.test(userAgent) && maxTouchPoints > 1;
+}
+
+/**
+ * True on iOS / iPadOS WebKit (Safari, a home-screen PWA, any iOS browser, the
+ * Capacitor iOS shell). Its media rules differ from Chromium's in a way the
+ * player has to design around: a page that is off screen may keep using the
+ * `<audio>` element already playing but not start another, and it is suspended
+ * soon after it goes silent — see docs/web-ui.md "iOS background advance".
+ */
+export function isAppleMobileWebKit(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return isAppleMobileUserAgent(navigator.userAgent ?? '', navigator.maxTouchPoints ?? 0);
+}
+
 /** True on devices whose primary pointer is coarse (touch phones/tablets).
  *  Gates touch-only affordances like pull-to-refresh. */
 export function isCoarsePointer(): boolean {

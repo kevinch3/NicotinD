@@ -629,6 +629,10 @@ function albumOrderBy(type: string): string {
       return 'created DESC';
     case 'starred':
       return 'starred DESC, name COLLATE NOCASE ASC';
+    case 'alphabeticalByArtist':
+      return 'artist COLLATE NOCASE ASC, year ASC NULLS LAST, name COLLATE NOCASE ASC';
+    case 'byYear':
+      return 'year ASC NULLS LAST, name COLLATE NOCASE ASC';
     case 'alphabeticalByName':
     default:
       return 'name COLLATE NOCASE ASC';
@@ -1028,7 +1032,10 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const wheres: string[] = [];
     const params: Array<string | number> = [];
     if (!includeHidden) wheres.push('hidden = 0');
-    if (classification && VALID_CLASSIFICATIONS.has(classification)) {
+    if (classification === 'any') {
+      // Every release type in one ordered page — the OpenSubsonic album lists
+      // (docs/opensubsonic.md), which have no album/single split to honour.
+    } else if (classification && VALID_CLASSIFICATIONS.has(classification)) {
       // Explicit classification filter (power users / internal callers).
       wheres.push('classification = ?');
       params.push(classification);

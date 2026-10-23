@@ -1098,11 +1098,14 @@ stall watchdog alike:
   handed to `player.restoredTime`, so the listener lands where the stream died rather than at 0 —
   the same restore mechanism the vocal-mute toggle uses.
 - **The stall watchdog** (`armStallWatchdog`, `STREAM_STALL_TIMEOUT_MS`). Armed by
-  `waiting`/`stalled`, disarmed by the first byte that moves the clock (`playing`/`canplay`/
+  `waiting`/`stalled`/`seeking`, disarmed by the first byte that moves the clock (`playing`/`canplay`/
   `timeupdate`), so it only ever fires for a load that made no progress for the whole window. The
   threshold sits far above a slow first load — an HDD spin-up plus a server-side transcode is
-  seconds, not tens of seconds — and it stands down while a seek or the false-ended valve is in
-  flight, since both own the element's silence and resolve on their own bounded clocks.
+  seconds, not tens of seconds — and it stands down while a seek is still *held as an intent* or the
+  false-ended valve is in flight, since both own the element's silence and resolve on their own
+  bounded clocks. A seek already committed to the element is **not** exempt: the held intent's
+  valve is dropped on commit, so before this a committed seek whose bytes never arrived had no
+  bound at all (see "A far seek that stalls" below).
 - **The failure's own `pause` is suppressed** (`recoveringStream`, `holdPausedState`). A fatal media
   error pauses the element, and `onPause` would commit that to the store 250 ms later — before the
   reload runs, and against an intent the listener never withdrew. The first version of this fix
@@ -1192,6 +1195,53 @@ the timeout landing at the reachable edge, a skip voiding the intent, a token
 refresh *not* voiding it, and remote-device forwarding). Plus
 `seek-availability.spec.ts` for the pure helpers.
 
+### A far seek that stalls (iOS)
+
+**The report.** On an iPhone, a seek past the loaded region left the player
+under a spinner with no sound, and only tapping play brought it back.
+
+**Why the intent machinery above never saw it.** The server answers Range
+requests for every stream, transcodes included, so iOS reports the whole file
+as `seekable` from the first byte. `seekTargetReachable` is therefore true for
+any target, and the seek is committed to the element at once — the held-intent
+path, and its valve, never run on iOS. What follows is up to the engine, and
+two gaps met there:
+
+1. **WebKit pauses the element itself when its platform player stalls.** The
+   `pause` it raises looks like any other to `onPause`, which committed it to
+   the store 250 ms later. The spinner stayed up (the seek was still loading),
+   the store said paused, and nothing resumes a paused player — until the tap,
+   which is just a `play()`.
+2. **The stall watchdog stood down for `audio.seeking`**, on the assumption
+   that the pending-seek valve owned the silence. It does only while the seek is
+   held; once committed the intent and its valve are gone. So a committed seek
+   that never landed was bounded by nothing.
+
+**The fix.** `onPause` asks `isStarved(audio)` first: a seek in flight, or a
+buffering episode the element reported (`buffering` with `readyState` below
+`HAVE_FUTURE_DATA`). A pause raised while starved, with `isPlaying` still set,
+is the engine giving up on a stall rather than a listener asking for silence:
+the intent is kept, `play()` is re-issued **once** (`starvedReplayed`, cleared by
+`playing` or a new resource, so an engine that keeps pausing cannot loop us),
+and the stall watchdog is armed. The watchdog now stands down only for a seek
+still *held* as an intent, and `seeking` arms it as well (not every engine
+follows a seek into missing data with `waiting`). A seek that never lands is
+reloaded after `STREAM_STALL_TIMEOUT_MS` at the target — `recoverFromDeadStream`
+reads `currentTime`, which already holds it mid-seek.
+
+**Two pauses are deliberately left alone.** `isStarved` is never true at the
+end of a track (`audio.ended`): `pause` fires just before `ended`, and a
+`play()` there would restart the track. And a pause while the element is at
+rest still commits, so a user's pause from outside the app (headphones, an OS
+control) works as before. The narrow cost: an OS pause that lands in the middle
+of a stall is overridden once.
+
+Regression coverage: `player.component.spec.ts` `a far seek that stalls` block —
+the starved pause kept as playing with one `play()`, no loop on repeated
+pauses, a fresh replay after bytes flow, the reload at the target when the
+seek never lands, a pause at rest still committing, no replay at `ended`, and a
+held intent still left to its own valve.
+
 ## Rapid track changes — a skip burst costs one load
 
 Five quick Next presses used to fire five stream requests and abort four. On an
@@ -1262,6 +1312,59 @@ standby` spec block.
 so a skip earlier in a track is a cold load. Extending the preload to the queue
 head at all times would make every single Next near-instant; it needs
 invalidation on every queue-head change, which is a larger change.
+
+## iOS background advance
+
+iPhone listeners on the web app (Safari or a home-screen PWA) heard the current
+track to its end whenever the app was not on screen — the phone locked, *or*
+unlocked with another app in front — and then silence: the queue never
+advanced until they came back. With the app open it advanced fine.
+Auto-preserve (above) had already taken the network out of the picture, so
+this was not the "a backgrounded page gets no responses" limitation — it was
+two WebKit rules for a hidden page that the advance broke.
+
+1. **A hidden page may keep its playing element, not start another.** The
+   gapless path swaps to the standby element at `ended` and calls `play()` on
+   it. In the foreground iOS allows that; with the page hidden it refuses
+   `play()` on an element that was not already the one playing. `onEnded`
+   then only queues a resume for when the page is visible again — hence
+   "advances fine while I'm looking at it".
+2. **A hidden page is suspended once it goes silent.** Once `ended` fires
+   nothing is playing, and iOS suspends the backgrounded page's process soon
+   after. The preserved-track advance read the blob out of IndexedDB *between*
+   `ended` and `play()` — an async round trip the suspension can land in the
+   middle of. With auto-preserve on, that is the path nearly every advance
+   takes.
+
+Locked and "switched to another app" are the same state to the page
+(`document.visibilityState === 'hidden'`), which is why both fail and why one
+fix covers both.
+
+**The fixes, one per rule.** On iOS WebKit (`isAppleMobileWebKit`, which counts
+iPadOS's Mac-looking UA by its touch points) the player runs single-element:
+`prepareNext` never buffers into the standby, so `standbyHolds` is never true,
+and both the natural advance and a manual Next re-point the element that is
+already playing (`assignSource` + `play()` in the same `ended` task, like the
+cold path on every other platform). The cost is a short gap between tracks on
+iOS while the next stream's first bytes arrive. Everywhere else the standby
+swap is unchanged. On every platform, when the queue head is preserved, the
+last 30 s now read its blob ahead (`prepareNextBlob`) and hold an object URL,
+so `onEnded` hands it over through `takeNextBlobUrl` and calls `play()`
+synchronously. The read happens once per track, is revoked when the queue head
+changes or the player is destroyed, and when it has not landed by `ended` (a
+track under 30 s, a slow store) the old read-at-`ended` path still runs.
+
+**What this does not fix.** A stream that is *not* preserved still needs the
+network after `ended`; that is auto-preserve's job, and why it exists. And an
+iOS lock-screen Next while a burst is settling still pays `LOAD_SETTLE_MS` on
+a timer the OS may throttle — single presses commit on the leading edge.
+
+Regression coverage: `player.component.spec.ts` `background advance` block —
+iOS never touching the standby and advancing on the playing element (visible
+and hidden), the gapless swap kept elsewhere, a preserved next track playing
+in the same task as `ended` with no second read, one read across many
+`timeupdate`s, revocation on a queue-head change, and the fallback when the
+read-ahead has not landed.
 
 ### Web test harness — plain vitest, NOT `ng test`
 

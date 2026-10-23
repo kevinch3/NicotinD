@@ -684,7 +684,7 @@ export interface PairedDevice {
 
 // ── MCP agent tokens (issue #232) ──────────────────────────────────────────
 
-export type AgentScope = 'refiner:read' | 'refiner:curate';
+export type AgentScope = 'refiner:read' | 'refiner:curate' | 'refiner:auto';
 
 /** A minted token row as listed — never carries the secret. */
 export interface AgentTokenRow {
@@ -705,6 +705,23 @@ export interface AgentTokenMintResponse {
   scope: AgentScope;
   expiresAt: number | null;
   token: string;
+}
+
+// ── OpenSubsonic API keys (docs/opensubsonic.md) ─────────────────────────
+
+/** A live key as listed — never carries the secret. */
+export interface SubsonicKeyRow {
+  id: string;
+  name: string;
+  createdAt: number;
+  lastUsedAt: number | null;
+}
+
+/** Response to a mint call — `key` is the raw secret, shown exactly once. */
+export interface SubsonicKeyMintResponse {
+  id: string;
+  name: string;
+  key: string;
 }
 
 // ── Library fragmentation diagnostic (admin) ──────────────────────────────

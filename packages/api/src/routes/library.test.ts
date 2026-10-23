@@ -1321,6 +1321,31 @@ describe('singles & EPs presentation', () => {
     expect(ids).not.toContain('ep');
   });
 
+  it('GET /albums?classification=any lists every release type (OpenSubsonic)', async () => {
+    seedAlbum('full', 'Real Album', 'art', 'album');
+    seedAlbum('comp', 'Greatest Hits', 'art', 'compilation');
+    seedAlbum('sng', 'Loose Single', 'art', 'single');
+    seedAlbum('ep', 'Some EP', 'art', 'ep');
+
+    const body = (await (
+      await makeApp().request('/albums?classification=any&type=alphabeticalByName')
+    ).json()) as Array<{ id: string }>;
+    expect(body.map((a) => a.id)).toEqual(['comp', 'sng', 'full', 'ep']);
+  });
+
+  it('GET /albums?type=alphabeticalByArtist orders by artist, then year', async () => {
+    testDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, year, classification, hidden, synced_at)
+       VALUES ('b2', 'Later', 'Bjork', 'b', 1, 60, 2001, 'album', 0, 1),
+              ('b1', 'Debut', 'Bjork', 'b', 1, 60, 1993, 'album', 0, 1),
+              ('a1', 'Zebra', 'ABBA', 'a', 1, 60, 1980, 'album', 0, 1)`,
+    );
+    const body = (await (
+      await makeApp().request('/albums?type=alphabeticalByArtist')
+    ).json()) as Array<{ id: string }>;
+    expect(body.map((a) => a.id)).toEqual(['a1', 'b1', 'b2']);
+  });
+
   it('GET /compilations returns only compilations', async () => {
     seedAlbum('full', 'Real Album', 'art', 'album');
     seedAlbum('comp', 'Greatest Hits', 'art', 'compilation');

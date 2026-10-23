@@ -2,6 +2,7 @@ import { describe, it, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
+  NON_API_MOUNTS,
   PUBLIC_ROUTES,
   auditRouteAuth,
   authedPrefixes,
@@ -138,7 +139,19 @@ describe('the real index.ts', () => {
     // account for the whole file, not clear a floor.
     const source = readFileSync(resolve(ROOT, 'packages/api/src/index.ts'), 'utf8');
     const audit = auditRouteAuth(source);
-    expect(audit.mounted.length).toBe(audit.routeCallsInSource);
+    expect(audit.mounted.length + audit.nonApi.length).toBe(audit.routeCallsInSource);
+    expect(audit.unexplainedNonApi).toEqual([]);
+  });
+
+  it('names every mount outside /api, since the JWT middleware never sees them', () => {
+    const audit = auditRouteAuth(`
+      app.route('/api/health', healthRoutes());
+      app.route('/rest', openSubsonicRoutes());
+      app.route('/feed', feedRoutes());
+    `);
+    expect(audit.nonApi).toEqual(['/feed', '/rest']);
+    expect(audit.unexplainedNonApi).toEqual(['/feed']);
+    for (const m of NON_API_MOUNTS) expect(m.reason.length).toBeGreaterThan(20);
   });
 
   it('protects radio and catalog (issue #461)', () => {

@@ -12,7 +12,7 @@
     "@hono/zod-openapi": "^1.6.1",
     "@nicotind/core": "workspace:*",
     "@sentry/bun": "^11.0.0",
-    "hono": "^4.13.5",
+    "hono": "^4.13.13",
     "jose": "^6.2.3",
     "music-metadata": "^11.16.1",
     "music-tempo": "^1.0.3",

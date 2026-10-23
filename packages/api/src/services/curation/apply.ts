@@ -29,6 +29,7 @@ import type {
   ArtistIdentityMutateDeps,
 } from '../artist-identity-mutate.js';
 import type { DeletionDeps } from '../library-deletion.js';
+import type { SongGenreMutateBody, SongGenreMutateDeps } from '../song-genre-mutate.js';
 
 export type ApplyEffectResult = { ok: true; detail: string } | { ok: false; error: string };
 
@@ -37,6 +38,9 @@ type SongMetadataApplyResult = { ok: true } | { ok: false; error: string };
 
 /** The result shape this dispatcher reads back from `mutateArtistIdentity`. */
 type ArtistIdentityApplyResult = { ok: true } | { ok: false; error: string };
+
+/** The result shape this dispatcher reads back from `mutateSongGenre`. */
+type SongGenreApplyResult = { ok: true } | { ok: false; error: string };
 
 /** The result shape this dispatcher reads back from `deleteOne`. */
 type DeleteSongApplyResult = { ok: boolean; error?: string };
@@ -55,7 +59,14 @@ export interface ApplyEffectDeps {
   ) => ArtistIdentityApplyResult;
   /** `deleteOne` — the same file-and-rows path `delete_song` and the HTTP delete run. */
   deleteSong: (db: Database, songId: string, deps: DeletionDeps) => Promise<DeleteSongApplyResult>;
+  mutateSongGenre: (
+    db: Database,
+    deps: SongGenreMutateDeps,
+    songId: string,
+    body: SongGenreMutateBody,
+  ) => Promise<SongGenreApplyResult>;
   songMetadataDeps: SongMetadataMutateDeps;
+  songGenreDeps: SongGenreMutateDeps;
   artistIdentityDeps: ArtistIdentityMutateDeps;
   deletionDeps: DeletionDeps;
 }
@@ -92,6 +103,35 @@ export async function applyCaseEffect(
       });
       if (!res.ok) return { ok: false, error: res.error };
       return { ok: true, detail: `merged ${effect.rawName} into ${effect.mergeInto}` };
+    }
+
+    case 'song-genre': {
+      // All or nothing up front: the route audits only an applied effect, so a
+      // half-applied card would leave genre writes no audit row records. A
+      // missing song is the one per-song failure `mutateSongGenre` has.
+      const missing = effect.songIds.filter(
+        (id) => !db.query('SELECT 1 FROM library_songs WHERE id = ?').get(id),
+      );
+      if (missing.length > 0) {
+        return { ok: false, error: `songs no longer in the library: ${missing.join(', ')}` };
+      }
+      // Sequential: each call rewrites `library_genres` counts.
+      const failed: string[] = [];
+      for (const songId of effect.songIds) {
+        const res = await deps.mutateSongGenre(db, deps.songGenreDeps, songId, {
+          genre: effect.genre,
+          mode: 'replace',
+        });
+        if (!res.ok) failed.push(`${songId}: ${res.error}`);
+      }
+      const applied = effect.songIds.length - failed.length;
+      if (failed.length > 0) {
+        return {
+          ok: false,
+          error: `genre ${effect.genre} on ${applied}/${effect.songIds.length}; ${failed.join('; ')}`,
+        };
+      }
+      return { ok: true, detail: `genre ${effect.genre} on ${applied} song(s)` };
     }
 
     case 'song-delete': {
