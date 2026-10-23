@@ -24,10 +24,16 @@ import { NetworkStatusService } from '../../services/network-status.service';
 import type { Track } from '../../services/player.service';
 import { ServerConfigService } from '../../services/server-config.service';
 import { ToastService } from '../../services/toast.service';
+import * as db from '../../lib/preserve-store';
 
-// Note: preserve-store (IndexedDB) is never reached in these tests because
-// the PreserveService mock returns isPreserved() = false, so the component
-// always takes the streaming path and never calls db.getBlob / db.updateLastAccessed.
+// jsdom has no IndexedDB. Most tests never reach the store — the PreserveService
+// mock returns isPreserved() = false, so the component takes the streaming path —
+// and the ones that do drive `getBlob` themselves.
+vi.mock('../../lib/preserve-store', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/preserve-store')>()),
+  getBlob: vi.fn().mockResolvedValue(undefined),
+  updateLastAccessed: vi.fn(),
+}));
 
 const TRACK: Track = { id: 't1', title: 'Test Track', artist: 'Test Artist' };
 const TRACK_2: Track = { id: 't2', title: 'Next Track', artist: 'Test Artist' };
@@ -832,6 +838,267 @@ describe('PlayerComponent', () => {
       expect(component['primaryIsA']()).toBe(true);
       expect(elA.src).toContain('/t2');
       expect(elA.src).toContain('vocals=off');
+    });
+  });
+
+  describe('background advance', () => {
+    // iPhone users on the web app heard the current track to its end whenever
+    // the app was off screen (locked, or another app in front), and then
+    // silence. Two ways the advance died there, both pinned here: a hidden iOS
+    // page may not play() an element other than the one already playing, which
+    // the standby swap asked for; and a preserved next track was read out of
+    // IndexedDB *between* `ended` and play(), a gap in which iOS suspends the
+    // now-silent backgrounded page.
+    let elA: HTMLAudioElement;
+    let elB: HTMLAudioElement;
+    const getBlob = vi.mocked(db.getBlob);
+    const origCreate = URL.createObjectURL;
+    const origRevoke = URL.revokeObjectURL;
+    let createObjectURL: ReturnType<typeof vi.fn>;
+    let revokeObjectURL: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      let n = 0;
+      createObjectURL = vi.fn(() => `blob:http://localhost/next-${++n}`);
+      revokeObjectURL = vi.fn();
+      URL.createObjectURL = createObjectURL as typeof URL.createObjectURL;
+      URL.revokeObjectURL = revokeObjectURL as typeof URL.revokeObjectURL;
+      getBlob.mockResolvedValue({
+        id: 't2',
+        audio: new Blob(['x'], { type: 'audio/mpeg' }),
+      } as Awaited<ReturnType<typeof db.getBlob>>);
+    });
+
+    afterEach(() => {
+      URL.createObjectURL = origCreate;
+      URL.revokeObjectURL = origRevoke;
+      getBlob.mockResolvedValue(undefined);
+    });
+
+    function startNearTheEnd(opts: { ios: boolean }): void {
+      elA = fakeAudio;
+      elB = document.createElement('audio');
+      const primaryIsA = component['primaryIsA'];
+      for (const [key, value] of [
+        ['audioElA', () => ({ nativeElement: elA })],
+        ['audioElB', () => ({ nativeElement: elB })],
+        ['audioEl', () => ({ nativeElement: primaryIsA() ? elA : elB })],
+        ['singleElement', opts.ios],
+      ] as const) {
+        Object.defineProperty(component, key, { value, configurable: true, writable: true });
+      }
+      playerService.isPlaying.set(true);
+      playerService.currentTrack.set(TRACK);
+      playerService.queue.set([TRACK_2]);
+      fixture.detectChanges();
+
+      Object.defineProperty(elA, 'duration', { value: 200, configurable: true });
+      Object.defineProperty(elA, 'currentTime', { value: 180, configurable: true });
+      elA.dispatchEvent(new Event('timeupdate'));
+    }
+
+    it('on iOS, never buffers into the standby, and advances on the element already playing', () => {
+      startNearTheEnd({ ios: true });
+      expect(elB.getAttribute('src')).toBeNull();
+      mockPlay.mockClear();
+
+      Object.defineProperty(elA, 'currentTime', { value: 200, configurable: true });
+      elA.dispatchEvent(new Event('ended'));
+
+      expect(component['primaryIsA']()).toBe(true);
+      expect(elA.src).toContain('/t2');
+      expect(mockPlay.mock.contexts).toEqual([elA]);
+      expect(playerService.currentTrack()).toEqual(TRACK_2);
+    });
+
+    it('on iOS with the app in the background, starts the next track at once rather than deferring', () => {
+      startNearTheEnd({ ios: true });
+      setVisibility('hidden');
+      mockPlay.mockClear();
+
+      Object.defineProperty(elA, 'currentTime', { value: 200, configurable: true });
+      elA.dispatchEvent(new Event('ended'));
+
+      expect(elA.src).toContain('/t2');
+      expect(mockPlay.mock.contexts).toEqual([elA]);
+      expect(component['resumePendingAfterVisible']).toBe(false);
+    });
+
+    it('elsewhere, keeps the gapless swap to the buffered standby', () => {
+      startNearTheEnd({ ios: false });
+      expect(elB.src).toContain('/t2');
+      mockPlay.mockClear();
+
+      Object.defineProperty(elA, 'currentTime', { value: 200, configurable: true });
+      elA.dispatchEvent(new Event('ended'));
+
+      expect(component['primaryIsA']()).toBe(false);
+      expect(mockPlay.mock.contexts).toContain(elB);
+    });
+
+    it('starts a preserved next track in the same task as `ended`, from a blob read ahead', async () => {
+      preserveMock.isPreserved.mockImplementation((id: string) => id === 't2');
+      startNearTheEnd({ ios: true });
+      expect(getBlob).toHaveBeenCalledWith('t2');
+      await Promise.resolve(); // the ahead-of-time read lands
+      getBlob.mockClear();
+      mockPlay.mockClear();
+
+      Object.defineProperty(elA, 'currentTime', { value: 200, configurable: true });
+      elA.dispatchEvent(new Event('ended'));
+
+      // Synchronous: no await between `ended` and play(), and no second read.
+      expect(elA.src).toBe('blob:http://localhost/next-1');
+      expect(mockPlay.mock.contexts).toEqual([elA]);
+      expect(getBlob).not.toHaveBeenCalled();
+      expect(playerService.currentTrack()).toEqual(TRACK_2);
+    });
+
+    it('reads the blob only once across the many timeupdates of the last 30 s', async () => {
+      preserveMock.isPreserved.mockImplementation((id: string) => id === 't2');
+      startNearTheEnd({ ios: true });
+      await Promise.resolve();
+      elA.dispatchEvent(new Event('timeupdate'));
+      elA.dispatchEvent(new Event('timeupdate'));
+
+      expect(getBlob).toHaveBeenCalledTimes(1);
+      expect(createObjectURL).toHaveBeenCalledTimes(1);
+    });
+
+    it('revokes the read-ahead URL when the queue head changes before the end', async () => {
+      const TRACK_3: Track = { id: 't3', title: 'Third', artist: 'Test Artist' };
+      preserveMock.isPreserved.mockImplementation((id: string) => id !== 't1');
+      startNearTheEnd({ ios: true });
+      await Promise.resolve();
+
+      playerService.queue.set([TRACK_3]);
+      elA.dispatchEvent(new Event('timeupdate'));
+
+      expect(revokeObjectURL).toHaveBeenCalledWith('blob:http://localhost/next-1');
+      expect(getBlob).toHaveBeenLastCalledWith('t3');
+    });
+
+    it('falls back to reading at `ended` when the read-ahead has not landed', async () => {
+      preserveMock.isPreserved.mockImplementation((id: string) => id === 't2');
+      startNearTheEnd({ ios: true });
+      // No flush: the read-ahead is still in flight when the track ends.
+      getBlob.mockClear();
+
+      Object.defineProperty(elA, 'currentTime', { value: 200, configurable: true });
+      elA.dispatchEvent(new Event('ended'));
+      expect(getBlob).toHaveBeenCalledWith('t2');
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(elA.src).toMatch(/^blob:/);
+      expect(playerService.currentTrack()).toEqual(TRACK_2);
+    });
+  });
+
+  describe('a far seek that stalls', () => {
+    // Reported from an iPhone: seek past the loaded region and the player sat
+    // under a spinner until play was tapped. iOS commits every seek at once
+    // (the server's Range support makes the whole file seekable), and WebKit
+    // pauses the element itself when the fetch for the new position stalls.
+    // That pause used to be committed to the store, and a committed seek was
+    // exempt from the stall watchdog — so nothing ever resumed it.
+    const knownTrack: Track = {
+      id: 't1',
+      title: 'Test Track',
+      artist: 'Test Artist',
+      duration: 380,
+    };
+
+    function seekFarAndStall(target = 344): void {
+      playerService.currentTrack.set(knownTrack);
+      fixture.detectChanges();
+      playerService.isPlaying.set(true);
+      fixture.detectChanges(); // flush the play/pause sync before counting play()
+      // The element is mid-seek: currentTime already reads the target.
+      Object.defineProperty(fakeAudio, 'currentTime', { value: target, configurable: true });
+      Object.defineProperty(fakeAudio, 'seeking', { value: true, configurable: true });
+      fakeAudio.dispatchEvent(new Event('seeking'));
+      mockPlay.mockClear();
+    }
+
+    it('does not record a pause the engine raised while the seek was starved, and plays again', () => {
+      vi.useFakeTimers();
+      seekFarAndStall();
+
+      fakeAudio.dispatchEvent(new Event('pause'));
+      vi.advanceTimersByTime(300); // past the deferred-pause window
+
+      expect(playerService.isPlaying()).toBe(true);
+      expect(mockPlay.mock.contexts).toEqual([fakeAudio]);
+      vi.useRealTimers();
+    });
+
+    it('re-issues play() only once per stall, so an engine that keeps pausing cannot loop', () => {
+      seekFarAndStall();
+
+      fakeAudio.dispatchEvent(new Event('pause'));
+      fakeAudio.dispatchEvent(new Event('pause'));
+      fakeAudio.dispatchEvent(new Event('pause'));
+
+      expect(mockPlay).toHaveBeenCalledTimes(1);
+    });
+
+    it('allows another replay once bytes have flowed again', () => {
+      seekFarAndStall();
+      fakeAudio.dispatchEvent(new Event('pause'));
+      fakeAudio.dispatchEvent(new Event('playing'));
+      fakeAudio.dispatchEvent(new Event('pause'));
+
+      expect(mockPlay).toHaveBeenCalledTimes(2);
+    });
+
+    it('reloads at the seek target when the committed seek never lands', () => {
+      vi.useFakeTimers();
+      seekFarAndStall(344);
+
+      vi.advanceTimersByTime(STREAM_STALL_TIMEOUT_MS + 10);
+      vi.advanceTimersByTime(MEDIA_ERROR_RETRY_MS + 10);
+
+      expect(fakeAudio.src).toContain('/api/stream/t1');
+      expect(playerService.restoredTime).toBe(344);
+      expect(mockPlay).toHaveBeenCalled();
+      vi.useRealTimers();
+    });
+
+    it('still honours a pause while the element is at rest', () => {
+      vi.useFakeTimers();
+      seekFarAndStall();
+      Object.defineProperty(fakeAudio, 'seeking', { value: false, configurable: true });
+      playerService.setBuffering(false);
+
+      fakeAudio.dispatchEvent(new Event('pause'));
+      vi.advanceTimersByTime(300);
+
+      expect(playerService.isPlaying()).toBe(false);
+      expect(mockPlay).not.toHaveBeenCalled();
+      vi.useRealTimers();
+    });
+
+    it('does not replay the pause that precedes `ended`', () => {
+      seekFarAndStall();
+      Object.defineProperty(fakeAudio, 'seeking', { value: false, configurable: true });
+      Object.defineProperty(fakeAudio, 'ended', { value: true, configurable: true });
+      playerService.setBuffering(true);
+
+      fakeAudio.dispatchEvent(new Event('pause'));
+
+      expect(mockPlay).not.toHaveBeenCalled();
+    });
+
+    it('leaves a seek still held as an intent to its own valve', () => {
+      vi.useFakeTimers();
+      seekFarAndStall();
+      playerService.pendingSeek.set({ trackId: 't1', time: 344 });
+
+      vi.advanceTimersByTime(STREAM_STALL_TIMEOUT_MS + MEDIA_ERROR_RETRY_MS + 20);
+
+      expect(playerService.restoredTime).toBeNull();
+      vi.useRealTimers();
     });
   });
 
