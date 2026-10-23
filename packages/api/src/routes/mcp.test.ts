@@ -2451,3 +2451,31 @@ describe('lyrics tools', () => {
     );
   });
 });
+
+// #1521: one scoped re-bucket for the whole batch instead of a full scan.
+describe('merge_artist re-buckets the merged names', () => {
+  it('calls rebucket once with every raw name and the target, never runSync', async () => {
+    const rebucket = mock(async (_names: string[]) => ({ songs: 0, albumIds: [] }));
+    const runSync = mock(async () => {});
+    const ctx: McpToolContext = {
+      db: testDb,
+      identity: { tokenId: 't', userId: 'u1', scope: 'refiner:curate' },
+      deletion: { musicDir, shareRescan: new ShareRescanScheduler(async () => {}) },
+      artistIdentity: { rebucket, runSync },
+      songGenre: { musicDir },
+      metadata: { musicDir },
+      curation: {},
+      acquisition: { getAddon: () => null, isAcquisitionEnabled: () => false, minMatchPct: 80 },
+    };
+    await dispatchTool(ctx, 'merge_artist', {
+      rawNames: ['Ke Personajes', 'Ke Personajes Oficial'],
+      mergeInto: 'Ke Personaje',
+      confirm: true,
+    });
+    expect(rebucket).toHaveBeenCalledTimes(1);
+    expect(rebucket.mock.calls[0]![0].sort()).toEqual(
+      ['Ke Personaje', 'Ke Personajes', 'Ke Personajes Oficial'].sort(),
+    );
+    expect(runSync).not.toHaveBeenCalled();
+  });
+});

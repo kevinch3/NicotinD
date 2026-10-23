@@ -118,7 +118,7 @@ import { ProviderRegistry } from './services/provider-registry.js';
 import { LibrarySearchProvider } from './services/providers/library-provider.js';
 import { reservedDirsFor } from './services/library-paths.js';
 import { sweepStaleTranscodeTemps } from './services/post-download-transcode.js';
-import { LibraryScanner } from './services/library-scanner.js';
+import { LibraryScanner, type RebucketResult } from './services/library-scanner.js';
 import { backfillAcquisitions } from './services/acquisition-backfill.js';
 import { albumIdsForPaths } from './services/album-ids-for-paths.js';
 import { LibraryCurator } from './services/library-curator.js';
@@ -220,6 +220,13 @@ export function createApp({
   // rescan + orphan-row prune, so cross-wave duplicate rows never surface (not
   // only after the next full scan). Synchronous from the caller's view — no
   // async external scanner, so no scan-timing races.
+  // A curation fix re-buckets only the artists it names (#1521): a full scan
+  // took 15 s on prod to move 3 songs. Reclassifies just the albums touched.
+  const rebucket = async (names: string[]): Promise<RebucketResult> => {
+    const result = await scanner.rebucketArtists(names);
+    curator.reclassify(result.albumIds, 'curation-fix');
+    return result;
+  };
   const scanIncremental = async (relPaths: string[]): Promise<void> => {
     try {
       // Nothing landed → nothing to reconcile and nothing to reclassify. This
@@ -742,7 +749,7 @@ export function createApp({
       config.musicDir,
       notifyAddonLibraryChanged,
       expandedDataDir,
-      runSyncAndCurate,
+      { runSync: runSyncAndCurate, rebucket },
       {
         lidarr,
         mb: mbClient,
@@ -791,6 +798,7 @@ export function createApp({
         songMetadataDeps: { musicDir: config.musicDir, scanIncremental },
         songGenreDeps: { musicDir: config.musicDir },
         artistIdentityDeps: { dataDir: expandedDataDir },
+        rebucket,
         deletionDeps: {
           musicDir: config.musicDir,
           shareRescan: new ShareRescanScheduler(notifyAddonLibraryChanged),
@@ -804,6 +812,7 @@ export function createApp({
     libraryRoutes(config.musicDir, {
       curator,
       runSync: runSyncAndCurate,
+      rebucket,
       lidarr,
       coverCacheDir: `${expandedDataDir}/cover-cache`,
       dataDir: expandedDataDir,

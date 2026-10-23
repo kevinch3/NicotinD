@@ -77,6 +77,21 @@ describe('applyCaseEffect', () => {
     expect(d.mutateArtistIdentity).toHaveBeenCalledTimes(1);
   });
 
+  // A merge applied from the triage page used to re-bucket nothing at all: it
+  // stayed invisible until the next full scan (#1521).
+  it('artist-merge re-buckets the raw and target names', async () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    const rebucket = mock(async (_names: string[]) => ({ songs: 1, albumIds: ['a'] }));
+    const res = await applyCaseEffect(
+      db,
+      { type: 'artist-merge', mergeInto: 'Rocky', rawName: 'rocky ' },
+      { ...deps(), rebucket },
+    );
+    expect(res.ok).toBe(true);
+    expect(rebucket.mock.calls[0]![0]).toEqual(['rocky ', 'Rocky']);
+  });
+
   it('song-genre replaces the genre on every song, and nothing else', async () => {
     const db = new Database(':memory:');
     applySchema(db);

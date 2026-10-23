@@ -3007,3 +3007,111 @@ describe('GET /duplicates — grouping key (issue #951)', () => {
     expect(await groupsOf()).toEqual([['desp-a', 'desp-b']]);
   });
 });
+
+// #1521: a curation fix re-buckets what it touched instead of awaiting a full
+// library scan (15.4 s on prod to write 3 songs), and the identity route says
+// so when the library did not actually change.
+describe('curation fixes re-bucket instead of rescanning the library', () => {
+  function appWith(deps: Parameters<typeof libraryRoutes>[1]) {
+    const localApp = new Hono<AuthEnv>();
+    localApp.use('*', (c, next) => {
+      c.set('user', { sub: 'u', role: 'admin', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    localApp.route('/', libraryRoutes('/music', deps));
+    return localApp;
+  }
+  const post = (a: Hono<AuthEnv>, path: string, body: unknown, method = 'POST') =>
+    a.request(path, {
+      method,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  const putArtist = (name: string, splitCompound = 0) =>
+    sharedDb.run(
+      `INSERT OR REPLACE INTO library_artists (id, name, album_count, split_compound, synced_at) VALUES (?, ?, 1, ?, 1)`,
+      [artistIdFor(name), name, splitCompound],
+    );
+
+  beforeEach(() => {
+    sharedDb.run('DELETE FROM library_artists');
+    sharedDb.run('DELETE FROM library_songs');
+    sharedDb.run('DELETE FROM library_artist_identity');
+    sharedDb.run('DELETE FROM library_artist_aliases');
+  });
+
+  it('POST /artists/identity re-buckets the named artists instead of a full sync', async () => {
+    const runSync = mock(() => Promise.resolve());
+    const rebucket = mock(async (_names: string[]) => {
+      putArtist('Alpha Prime');
+      return { songs: 1, albumIds: ['a'] };
+    });
+    const res = await post(appWith({ runSync, rebucket }), '/artists/identity', {
+      rawName: 'Alpha',
+      rename: 'Alpha Prime',
+    });
+    expect(res.status).toBe(200);
+    expect(rebucket.mock.calls[0]![0]).toEqual(['Alpha', 'Alpha Prime']);
+    expect(runSync).not.toHaveBeenCalled();
+  });
+
+  it('POST /artists/identity answers 422 when the change did not land', async () => {
+    putArtist('Gordo/Feid', 0);
+    const rebucket = mock(async () => ({ songs: 1, albumIds: ['a'] }));
+    const res = await post(appWith({ rebucket }), '/artists/identity', {
+      rawName: 'Gordo/Feid',
+      decision: 'split',
+      members: ['Gordo', 'Feid'],
+    });
+    expect(res.status).toBe(422);
+    expect(await res.json()).toEqual({
+      error: 'The split was saved, but the library still lists “Gordo/Feid” as one artist.',
+      applied: false,
+    });
+  });
+
+  it('POST /artists/:id/genre re-buckets the artist', async () => {
+    putArtist('Ana Tijoux');
+    const rebucket = mock(async (_names: string[]) => ({ songs: 0, albumIds: [] as string[] }));
+    const runSync = mock(() => Promise.resolve());
+    const res = await post(
+      appWith({ rebucket, runSync }),
+      `/artists/${artistIdFor('Ana Tijoux')}/genre`,
+      {
+        genres: 'Hip Hop',
+      },
+    );
+    expect(res.status).toBe(200);
+    expect(rebucket.mock.calls[0]![0]).toEqual(['Ana Tijoux']);
+    expect(runSync).not.toHaveBeenCalled();
+  });
+
+  it('DELETE /artists/:id/genre re-buckets the artist', async () => {
+    putArtist('Ana Tijoux');
+    const rebucket = mock(async (_names: string[]) => ({ songs: 0, albumIds: [] as string[] }));
+    const res = await post(
+      appWith({ rebucket }),
+      `/artists/${artistIdFor('Ana Tijoux')}/genre`,
+      {},
+      'DELETE',
+    );
+    expect(res.status).toBe(200);
+    expect(rebucket.mock.calls[0]![0]).toEqual(['Ana Tijoux']);
+  });
+
+  it('POST /fragments/missplit-merge reconciles the albums’ files captured before the retag', async () => {
+    sharedDb.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, album_artist, duration, path, size, bit_rate, suffix, content_type, created, synced_at)
+       VALUES ('m1', 'alb-m', 'T', 'X', 'x', 'X', 0, 'X/Album/01.mp3', 10, 320, 'mp3', 'audio/mpeg', '2026-01-01', 1)`,
+    );
+    const scanIncremental = mock(async (_paths: string[]) => {});
+    const runSync = mock(() => Promise.resolve());
+    const res = await post(appWith({ scanIncremental, runSync }), '/fragments/missplit-merge', {
+      albumIds: ['alb-m'],
+      albumArtist: 'Various Artists',
+    });
+    expect(res.status).toBe(200);
+    expect(scanIncremental.mock.calls[0]![0]).toEqual(['X/Album/01.mp3']);
+    expect(runSync).not.toHaveBeenCalled();
+  });
+});

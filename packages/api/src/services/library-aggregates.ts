@@ -23,20 +23,47 @@ export function deleteSongRow(db: Database, songId: string): void {
   db.run('DELETE FROM library_song_artists WHERE song_id = ?', [songId]);
   db.run('DELETE FROM library_song_genres WHERE song_id = ?', [songId]);
   for (const artistId of artistIds) {
-    const referenced = db
-      .query<{ one: number }, [string, string, string, string]>(
-        `SELECT 1 AS one WHERE
-           EXISTS (SELECT 1 FROM library_songs WHERE artist_id = ?)
-           OR EXISTS (SELECT 1 FROM library_song_artists WHERE artist_id = ?)
-           OR EXISTS (SELECT 1 FROM library_albums WHERE artist_id = ?)
-           OR EXISTS (SELECT 1 FROM library_album_artists WHERE artist_id = ?)`,
-      )
-      .get(artistId, artistId, artistId, artistId);
-    if (!referenced) {
-      db.run('DELETE FROM library_artists WHERE id = ?', [artistId]);
-      db.run('DELETE FROM library_artwork WHERE id = ?', [artistId]);
-    }
+    if (!artistReferenced(db, artistId)) deleteArtistRow(db, artistId);
   }
+}
+
+/** Anything still pointing at the artist: an owned song or album, or a credit on either. */
+function artistReferenced(db: Database, artistId: string): boolean {
+  return !!db
+    .query<{ one: number }, [string, string, string, string]>(
+      `SELECT 1 AS one WHERE
+         EXISTS (SELECT 1 FROM library_songs WHERE artist_id = ?)
+         OR EXISTS (SELECT 1 FROM library_song_artists WHERE artist_id = ?)
+         OR EXISTS (SELECT 1 FROM library_albums WHERE artist_id = ?)
+         OR EXISTS (SELECT 1 FROM library_album_artists WHERE artist_id = ?)`,
+    )
+    .get(artistId, artistId, artistId, artistId);
+}
+
+function deleteArtistRow(db: Database, artistId: string): void {
+  db.run('DELETE FROM library_artists WHERE id = ?', [artistId]);
+  db.run('DELETE FROM library_artwork WHERE id = ?', [artistId]);
+}
+
+/**
+ * Repair one artist row after a scoped re-bucket (#1521): drop it when nothing
+ * references it any more, else recount its albums the way `buildLibrary` does —
+ * owned or album-credited — because an incremental `persist` writes a count of
+ * the batch only. Unlike {@link pruneOrphanArtist} a song credit keeps the row,
+ * so a split member that owns nothing survives.
+ */
+export function refreshArtistRow(db: Database, artistId: string): void {
+  if (!artistReferenced(db, artistId)) {
+    deleteArtistRow(db, artistId);
+    return;
+  }
+  db.run(
+    `UPDATE library_artists SET album_count = (
+       SELECT COUNT(*) FROM (SELECT id FROM library_albums WHERE artist_id = ?
+                             UNION SELECT album_id FROM library_album_artists WHERE artist_id = ?))
+      WHERE id = ?`,
+    [artistId, artistId, artistId],
+  );
 }
 
 /**

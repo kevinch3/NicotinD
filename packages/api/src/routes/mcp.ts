@@ -64,6 +64,7 @@ import {
 } from '../services/agent-policy.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 import type { readAudioTags, writeAudioTags } from '../services/audio-tags.js';
+import type { RebucketResult } from '../services/library-scanner.js';
 
 /**
  * MCP server for external LLM/agents (issue #232), served **inside the Hono app**
@@ -96,9 +97,13 @@ export interface McpToolContext {
   /** Deletion dependencies (issue #232) — musicDir + a debounced share rescan. */
   deletion: { musicDir?: string; shareRescan: ShareRescanScheduler };
   /** Artist-identity dependencies (issue #339) — dataDir for curation-carry,
-   *  plus a library resync so a merge/rename takes effect immediately, same
-   *  as the HTTP route's `await runSync()`. */
-  artistIdentity: { dataDir?: string; runSync?: () => Promise<void> };
+   *  plus a scoped re-bucket (#1521) so a merge/rename takes effect
+   *  immediately, same as the HTTP route; `runSync` is the fallback. */
+  artistIdentity: {
+    dataDir?: string;
+    runSync?: () => Promise<void>;
+    rebucket?: (names: string[]) => Promise<RebucketResult>;
+  };
   /** Song-genre dependencies (issue #677) — musicDir for the file-tag mirror. */
   songGenre: { musicDir?: string };
   /** Song-metadata dependencies (issue #722) — the online lookup clients (each
@@ -1528,8 +1533,10 @@ export const MCP_TOOLS: McpTool[] = [
           },
         );
       }
-      // A rescan is minutes of work; run it once, and only if something changed.
-      if (merged.length > 0 && artistIdentity.runSync) await artistIdentity.runSync();
+      // One re-bucket for the whole batch, and only if something changed.
+      if (merged.length > 0 && artistIdentity.rebucket) {
+        await artistIdentity.rebucket([...merged.map((m) => m.rawName), mergeInto]);
+      } else if (merged.length > 0 && artistIdentity.runSync) await artistIdentity.runSync();
       const kinds = new Set(merged.map((m) => m.kind));
       return JSON.stringify(
         {
@@ -1781,7 +1788,10 @@ export function mcpRoutes(
   musicDir?: string,
   notifyLibraryChanged?: () => Promise<void>,
   dataDir?: string,
-  runSync?: () => Promise<void>,
+  resync: {
+    runSync?: () => Promise<void>;
+    rebucket?: McpToolContext['artistIdentity']['rebucket'];
+  } = {},
   metadata?: Omit<McpToolContext['metadata'], 'musicDir'>,
   curation?: McpToolContext['curation'],
   acquisition?: McpToolContext['acquisition'],
@@ -1847,7 +1857,7 @@ export function mcpRoutes(
             db: getDatabase(),
             identity,
             deletion: { musicDir, shareRescan },
-            artistIdentity: { dataDir, runSync },
+            artistIdentity: { dataDir, ...resync },
             songGenre: { musicDir },
             metadata: { ...metadata, musicDir },
             curation: curation ?? {},

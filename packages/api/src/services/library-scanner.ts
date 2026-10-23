@@ -34,6 +34,7 @@ import {
   pruneOrphanAlbum,
   refreshAlbumAggregate,
   refreshAlbumArtistDisplay,
+  refreshArtistRow,
 } from './library-aggregates.js';
 import { findRepresentedFragments, type ArtistAlbumScope } from './library-quality.js';
 import {
@@ -55,6 +56,7 @@ import {
   genreKey,
   loadGenreContext,
   emptyGenreContext,
+  refreshGenreCounts,
   type GenreContext,
 } from './genre-split.js';
 import { libraryEvents } from './library-events.js';
@@ -621,6 +623,12 @@ export function findSameAlbumKeepers(
  * passed through `selectLibraryTracks` so the built library is always a clean
  * one-best-file-per-track view (see that helper + `selectAlbumTracks`).
  */
+/** What a scoped re-bucket rebuilt; the caller reclassifies `albumIds`. */
+export interface RebucketResult {
+  songs: number;
+  albumIds: string[];
+}
+
 export function buildLibrary(
   tracks: ScannedTrack[],
   canonicalByAlbum?: Map<string, string[]>,
@@ -1035,8 +1043,22 @@ export class LibraryScanner {
     private reserved: ReadonlySet<string> = reservedDirsFor(),
   ) {}
 
+  /** Full scans and scoped re-buckets take turns: a scan builds from authority
+   *  it loaded up front, so a fix persisted mid-build would be overwritten. */
+  private queue: Promise<unknown> = Promise.resolve();
+
+  private exclusive<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.queue.then(fn, fn);
+    this.queue = run.catch(() => undefined);
+    return run;
+  }
+
   /** Full rescan: walk the whole music dir and reconcile the library tables. */
   async scanFull(): Promise<ScanResult> {
+    return this.exclusive(() => this.scanFullNow());
+  }
+
+  private async scanFullNow(): Promise<ScanResult> {
     const startedAt = Date.now();
     const files = await this.walk(this.musicDir, true);
     const incomplete = this.unreadableDirs.slice();
@@ -1871,6 +1893,94 @@ export class LibraryScanner {
     // A pruned-away album stays in this list; reclassifying a missing row is a
     // no-op, so callers need not filter.
     return touchedAlbumIds;
+  }
+
+  /**
+   * Re-bucket what a curation fix touches (#1521) — the songs credited to,
+   * owned by, or naming any of `names`, widened to their whole albums — from
+   * cached tags, instead of a whole-library scan (15.4 s on prod to write 3
+   * songs). Then repair the artist rows and genre counts the move touched,
+   * which an incremental `persist` leaves as batch-only snapshots.
+   */
+  async rebucketArtists(names: string[]): Promise<RebucketResult> {
+    return this.exclusive(async () => {
+      const startedAt = Date.now();
+      const wanted = [...new Set(names.map((n) => n.trim()).filter(Boolean))];
+      if (wanted.length === 0) return { songs: 0, albumIds: [] };
+      const ids = wanted.map((n) => artistIdFor(n));
+      const idList = ids.map(() => '?').join(',');
+      // The text arm catches a compound credit that fell back to its owner (#817).
+      const textArm = wanted
+        .map(() => `instr(lower(s.artist), ?) > 0 OR instr(lower(s.album_artist), ?) > 0`)
+        .join(' OR ');
+      const albumIds = this.db
+        .query<{ album_id: string }, string[]>(
+          `SELECT DISTINCT s.album_id FROM library_songs s
+            WHERE s.artist_id IN (${idList}) OR s.album_artist_id IN (${idList})
+               OR s.id IN (SELECT song_id FROM library_song_artists WHERE artist_id IN (${idList}))
+               OR ${textArm}`,
+        )
+        .all(...ids, ...ids, ...ids, ...wanted.flatMap((n) => [n.toLowerCase(), n.toLowerCase()]))
+        .map((r) => r.album_id);
+      if (albumIds.length === 0) return { songs: 0, albumIds: [] };
+
+      // One JSON parameter, not one placeholder per album: a wide scope (a short
+      // name hits the text arm across most of the library) passes Bun's
+      // 65,535-binding ceiling at five lists, and the count wraps silently.
+      const albumJson = JSON.stringify(albumIds);
+      const albumSet = `SELECT value FROM json_each(?)`;
+      const inScope = `SELECT id FROM library_songs WHERE album_id IN (${albumSet})`;
+      const paths = this.db
+        .query<{ path: string }, [string]>(
+          `SELECT path FROM library_songs WHERE album_id IN (${albumSet})`,
+        )
+        .all(albumJson)
+        .map((r) => r.path);
+      const artistsBefore = this.db
+        .query<{ id: string }, string[]>(
+          `SELECT artist_id AS id FROM library_songs WHERE album_id IN (${albumSet})
+           UNION SELECT album_artist_id FROM library_songs WHERE album_id IN (${albumSet})
+           UNION SELECT artist_id FROM library_song_artists WHERE song_id IN (${inScope})
+           UNION SELECT artist_id FROM library_albums WHERE id IN (${albumSet})
+           UNION SELECT artist_id FROM library_album_artists WHERE album_id IN (${albumSet})`,
+        )
+        .all(albumJson, albumJson, albumJson, albumJson, albumJson)
+        .map((r) => r.id);
+      const genresBefore = this.db
+        .query<{ genre: string }, [string]>(
+          `SELECT DISTINCT genre FROM library_song_genres WHERE song_id IN (${inScope})`,
+        )
+        .all(albumJson)
+        .map((r) => r.genre);
+
+      const tracks = await this.readTracks(
+        paths.map((p) => join(this.musicDir, p)),
+        'paths',
+      );
+      const built = buildLibrary(
+        tracks,
+        this.canonicalByAlbum(),
+        loadOverrides(this.db),
+        loadSplitAuthority(this.db),
+        loadGenreContext(this.db),
+        loadGenreOverrides(this.db),
+        this.knownRelPaths(tracks),
+      );
+      // Replace the album credit set, as persist already does for songs (#1073).
+      this.db.run(`DELETE FROM library_album_artists WHERE album_id IN (${albumSet})`, [albumJson]);
+      this.persist(built, Date.now(), false);
+      for (const id of new Set([...artistsBefore, ...built.artists.map((a) => a.id)])) {
+        if (id) refreshArtistRow(this.db, id);
+      }
+      refreshGenreCounts(this.db, [...genresBefore, ...built.songGenres.map((g) => g.genre)]);
+
+      const touched = [...new Set([...albumIds, ...built.albums.map((a) => a.id)])];
+      log.info(
+        { names: wanted, songs: tracks.length, albums: touched.length, ms: Date.now() - startedAt },
+        'Scoped re-bucket complete',
+      );
+      return { songs: tracks.length, albumIds: touched };
+    });
   }
 
   /** Delete library_songs rows for the given albums whose file is gone from disk. */
