@@ -69,6 +69,9 @@ export class ToastService {
         }
       }, TICK_MS);
       this.timers.set(id, interval);
+    } else if (config.kind === 'error' && config.actions?.length && config.duration === undefined) {
+      // A failure that offers a way forward stays until the user takes or
+      // dismisses it: at 4 s it read as silence (#1543). The cap still evicts it.
     } else {
       const durationMs = (config.duration ?? 4) * 1000;
       const timer = setTimeout(() => {

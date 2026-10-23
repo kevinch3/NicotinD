@@ -4,7 +4,12 @@ import { DownloadsApiService } from './api/downloads-api.service';
 import { TransferService } from './transfer.service';
 import { ToastService } from './toast.service';
 import { sameAlbum, type AcquisitionJobView } from '@nicotind/core';
-import { IDLE_HUNT, SEARCHING_HUNT, type AlbumHuntStatus } from '../lib/album-hunt-status';
+import {
+  IDLE_HUNT,
+  SEARCHING_HUNT,
+  STARTING_HUNT,
+  type AlbumHuntStatus,
+} from '../lib/album-hunt-status';
 import { huntCutShort, type DiscographyAlbum, type FolderCandidate } from './api/api-types';
 import { mergeCandidates } from '../lib/merge-candidates';
 import { hasCommittedTotal, jobDenominator } from '../lib/download-groups';
@@ -43,6 +48,8 @@ export class AutoHuntService {
    * the manual modal can hold the same album at once.
    */
   private readonly pending = signal<ReadonlyMap<number, number>>(new Map());
+  /** Held albums whose pick is being enqueued: past "Finding…", no job yet. */
+  private readonly starting = signal<ReadonlySet<number>>(new Set());
 
   /** The newest active job per Lidarr album; finished jobs never lock a card. */
   private readonly activeJobByAlbum = computed(() => {
@@ -64,7 +71,8 @@ export class AutoHuntService {
   );
 
   statusFor(lidarrId: number): AlbumHuntStatus {
-    if (this.pending().has(lidarrId)) return SEARCHING_HUNT;
+    if (this.pending().has(lidarrId))
+      return this.starting().has(lidarrId) ? STARTING_HUNT : SEARCHING_HUNT;
     const job = this.activeJobByAlbum().get(lidarrId);
     return job ? jobStatus(job) : IDLE_HUNT;
   }
@@ -114,6 +122,16 @@ export class AutoHuntService {
 
   reset(): void {
     this.pending.set(new Map());
+    this.starting.set(new Set());
+  }
+
+  private setStarting(lidarrId: number, on: boolean): void {
+    this.starting.update((s) => {
+      const next = new Set(s);
+      if (on) next.add(lidarrId);
+      else next.delete(lidarrId);
+      return next;
+    });
   }
 
   hunt(album: DiscographyAlbum, artistName: string, openManual: () => void): void {
@@ -123,6 +141,7 @@ export class AutoHuntService {
     const release = () => {
       if (released) return;
       released = true;
+      this.setStarting(album.lidarrId, false);
       this.endSearch(album.lidarrId);
     };
     // The hold outlives _run(): a confident match hands off to a countdown toast,
@@ -280,9 +299,11 @@ export class AutoHuntService {
       return false;
     }
 
+    // The countdown is where the pick is decided, so it names the pick (#1543).
+    const pick = `${best.format} · ${best.matchedTracks}/${best.totalTracks} tracks from ${best.username}`;
     let toastId!: string;
     toastId = this.toasts.show({
-      message: `Best match found — downloading "${album.title}" in ${COUNTDOWN_SECONDS}s`,
+      message: `Best match: ${pick} — downloading "${album.title}" in ${COUNTDOWN_SECONDS}s`,
       kind: 'info',
       countdown: COUNTDOWN_SECONDS,
       actions: [
@@ -325,6 +346,7 @@ export class AutoHuntService {
     openManual: () => void,
   ): Promise<void> {
     this.toasts.dismiss(countdownToastId);
+    this.setStarting(album.lidarrId, true);
 
     const toFiles = (c: FolderCandidate) =>
       c.files.map((f) => ({ filename: f.filename, size: f.size }));

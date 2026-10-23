@@ -16,7 +16,7 @@
 | 3   | ◑      | High     | Acquire results   | Results are alphabetical; the score never sees the query (#1537)           |
 | 4   | ✅     | High     | Catalog search    | Album grid is Lidarr's lookup, not what the provider has (#1538)           |
 | 5   | ◑      | High     | Folder grab       | One card, every file twice, "14 of 28 · 14 unavailable" (#1540)           |
-| 6   | ◑      | Medium   | One-click Get     | Silent 400; missable countdown toast; card label lags the stage (#1543)    |
+| 6   | ✅     | Medium   | One-click Get     | Silent 400; missable countdown toast; card label lags the stage (#1543)    |
 | 7   | ◑      | Medium   | Folders view      | A mixed grab-bag folder ranks first wearing a FLAC badge (#1541)           |
 | 8   | ◑      | Medium   | Acquire actions   | No icons, hover-only star, unconfirmed Download all, Cancel/Remove (#1542) |
 | 9   | ◻️     | Low      | Add / Activity    | Half-restored tab state, premature "Added to library" (#1544)              |
@@ -62,7 +62,10 @@ Alaska*, *Mare*. All landed.
 - **(Medium) The first one-click Get failed silently.** `hunt-download` 400 and the card went back to
   idle with nothing on screen; the retry a minute later was 201. The "Best match found — downloading
   in 3s" toast that decides the peer and format never names either, and the card reads "Finding…"
-  while the download is already being enqueued. **◻️ Open** (#1543).
+  while the download is already being enqueued. **✅ Fixed** (#1543): the error toast stays until
+  dismissed (the 400 itself was shown, for 4 s; its cause is gone with the container's logs); the
+  countdown names format, track count and peer; the card reads "Starting download…" during the
+  enqueue and shows n/m progress once the job exists (#1552).
 - **(Medium) The first folder for "Christian Löffler" is `Trip-Hop`**, a 50-file, mostly-128 kbps
   grab-bag with 0 slots, badged **FLAC** because one file is. **◻️ Open** (#1541).
 - **(Medium) Action affordances.** Text-only Get / Download / Download folder; the watch star only on

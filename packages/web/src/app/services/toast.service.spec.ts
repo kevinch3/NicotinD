@@ -34,6 +34,18 @@ describe('ToastService', () => {
     expect(svc.toasts().find((t) => t.id === id)).toBeUndefined();
   });
 
+  // #1543: a failed Get's toast offered "Find Manually" and vanished at 4 s —
+  // the failure read as silence to anyone who looked a few seconds later.
+  it('keeps an error toast that offers actions until the user acts', () => {
+    const id = svc.show({
+      message: 'Download failed',
+      kind: 'error',
+      actions: [{ label: 'Dismiss', callback: () => svc.dismiss(id) }],
+    });
+    vi.advanceTimersByTime(60_000);
+    expect(svc.toasts().find((t) => t.id === id)).toBeDefined();
+  });
+
   it('respects custom duration', () => {
     const id = svc.show({ message: 'Custom', kind: 'info', duration: 2 });
     vi.advanceTimersByTime(1999);

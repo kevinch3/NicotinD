@@ -62,6 +62,7 @@
   "acquire.placeholder": "Search music or paste a link…",
   "acquire.preparing": "Preparing…",
   "acquire.finding": "Finding…",
+  "acquire.startingDownload": "Starting download…",
   "acquire.completeCopy": "complete",
   "acquire.getBestCopy": "Get the fullest copy of {album}",
   "acquire.moreOnProvider": "More albums your sources have",

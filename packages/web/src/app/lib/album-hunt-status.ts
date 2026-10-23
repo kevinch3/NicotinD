@@ -10,6 +10,8 @@ import { stageLabel } from './pipeline-stage';
 export type AlbumHuntStatus =
   | { phase: 'idle' }
   | { phase: 'searching' }
+  /** A pick is made and its download is being enqueued — no job visible yet. */
+  | { phase: 'starting' }
   | {
       phase: 'job';
       stage: PipelineStage;
@@ -22,6 +24,7 @@ export type AlbumHuntStatus =
 
 export const IDLE_HUNT: AlbumHuntStatus = { phase: 'idle' };
 export const SEARCHING_HUNT: AlbumHuntStatus = { phase: 'searching' };
+export const STARTING_HUNT: AlbumHuntStatus = { phase: 'starting' };
 
 /**
  * The one busy label every Get surface shows — "Finding…", or the job's stage
@@ -31,8 +34,12 @@ export const SEARCHING_HUNT: AlbumHuntStatus = { phase: 'searching' };
 export function albumHuntLabel(status: AlbumHuntStatus, t: (key: string) => string): string {
   if (status.phase !== 'job') {
     // English fallback for an unloaded key, the way `stageLabel` does it.
-    const finding = t('acquire.finding');
-    return finding === 'acquire.finding' ? 'Finding…' : finding;
+    const [key, english] =
+      status.phase === 'starting'
+        ? ['acquire.startingDownload', 'Starting download…']
+        : ['acquire.finding', 'Finding…'];
+    const label = t(key);
+    return label === key ? english : label;
   }
   const stage = stageLabel(status.stage, t);
   return status.expected ? `${stage} · ${status.delivered ?? 0}/${status.expected}` : stage;
