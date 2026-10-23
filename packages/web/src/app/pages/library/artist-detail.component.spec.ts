@@ -950,3 +950,17 @@ describe('ArtistDetailComponent — add artist to Lidarr (#644)', () => {
     expect(component.provisioning()).toBe(true);
   });
 });
+
+// #1544: the header read "2 albums" beside "8 releases · 2 complete" — two
+// unlabelled counts of different things.
+describe('ArtistDetailComponent — header count names what it counts', () => {
+  it('says the albums are the ones in your library', async () => {
+    const { fixture } = setup('admin');
+    await fixture_stable();
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('[data-testid="artist-album-count"]')?.textContent).toMatch(
+      /\d+ albums? in your library/,
+    );
+  });
+});

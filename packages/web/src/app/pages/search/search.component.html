@@ -613,8 +613,10 @@
                 <p class="truncate text-xs text-zinc-500 mt-0.5">{{ c.subtitle }}</p>
               }
             </div>
-            @if (blendedState(c) === 'done') {
-              <span class="shrink-0 text-xs text-emerald-400">{{ 'acquire.added' | t }}</span>
+            @if (blendedState(c) === 'done' || blendedState(c) === 'queued') {
+              <span class="shrink-0 text-xs text-emerald-400">{{
+                (blendedState(c) === 'done' ? 'acquire.downloadedCheck' : 'acquire.queuedCheck') | t
+              }}</span>
             } @else {
               <button
                 (click)="getBlended(c)"
@@ -943,7 +945,7 @@
                     @if (elsewhere.phase === 'job') {
                       <a
                         routerLink="/get"
-                        [queryParams]="{ tab: 'downloads' }"
+                        [queryParams]="{ tab: 'activity' }"
                         data-testid="folder-album-elsewhere"
                         [title]="'acquire.albumDownloadingElsewhere' | t"
                         class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs shrink-0 text-[var(--theme-accent)] hover:underline"

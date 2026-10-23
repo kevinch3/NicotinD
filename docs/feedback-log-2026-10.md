@@ -19,7 +19,7 @@
 | 6   | ✅     | Medium   | One-click Get     | Silent 400; missable countdown toast; card label lags the stage (#1543)    |
 | 7   | ◑      | Medium   | Folders view      | A mixed grab-bag folder ranks first wearing a FLAC badge (#1541)           |
 | 8   | ◑      | Medium   | Acquire actions   | No icons, hover-only star, unconfirmed Download all, Cancel/Remove (#1542) |
-| 9   | ◻️     | Low      | Add / Activity    | Half-restored tab state, premature "Added to library" (#1544)              |
+| 9   | ✅     | Low      | Add / Activity    | Half-restored tab state, premature "Added to library" (#1544)              |
 
 ---
 
@@ -74,7 +74,14 @@ Alaska*, *Mare*. All landed.
   icon on every Add-page grab; the star shows under `(hover: none)`; "Download all" confirms with the
   file count, peers and size; the cancel dialogs answer **Stop download** / **Keep downloading**.
 - **(Low) Polish.** Add tab returns with Results but without the album cards; "Added to library ✓" on
-  rows that were only queued; four spellings of the tab param. **◻️ Open** (#1544).
+  rows that were only queued; four spellings of the tab param. **✅ Fixed** (#1544):
+  - The album cards live on `SearchService`, so the tab restores them.
+  - Rows say **Queued ✓** / **Downloaded ✓**, never "in the library".
+  - The app's own links write `add`/`activity`.
+  - "Choose a folder" reads "Upload a folder from this device", with the drop hint on hover.
+  - The artist header reads "N albums in your library" beside the MusicBrainz strip.
+  - Found on the way: every search ran the logout wipe, emptying the history dropdown and the
+    persisted folder marks. `SearchService.resetResults()` is the per-search reset now (#1563).
 
 _What worked:_ per-album hunt status (one card busy never blocks another), the guided Get landing
 *Smoke the Monster Out* 13/13 in ~2 minutes, and the Library artist page — real covers and a

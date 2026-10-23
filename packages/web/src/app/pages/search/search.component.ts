@@ -10,7 +10,6 @@ import { SystemApiService } from '../../services/api/system-api.service';
 import type {
   CatalogAlbum,
   CatalogArtist,
-  CatalogSearchResult,
   DiscographyAlbum,
   DownloadSettings,
   ProvisioningAccepted,
@@ -285,7 +284,7 @@ export class SearchComponent implements OnInit, OnDestroy {
 
   // Metadata-driven (catalog) search state. The catalog lookup is the primary
   // result; the raw Soulseek search below is the always-available fallback.
-  readonly catalog = signal<CatalogSearchResult | null>(null);
+  readonly catalog = this.search.catalog;
   readonly catalogUnavailable = signal(false); // Lidarr not configured / lookup failed
   // NOTE: local-library search results were removed from this page (issue #227) —
   // Search is now acquisition-only. "Find what I own" lives in Library/Radio.
@@ -735,7 +734,7 @@ export class SearchComponent implements OnInit, OnDestroy {
     this.search.setAutoSearch(true);
     // The merged route directly, not the legacy /acquire alias — going through
     // the redirect would re-enter the page we're already on.
-    this.router.navigate(['/get'], { queryParams: { tab: 'find' } });
+    this.router.navigate(['/get'], { queryParams: { tab: 'add' } });
   }
 
   // ─── Catalog (metadata) results ─────────────────────────────────
@@ -1109,8 +1108,12 @@ export class SearchComponent implements OnInit, OnDestroy {
     }
   }
 
-  /** Get-button label/state for a blended candidate (reuses per-source state). */
-  blendedState(c: BlendedCandidate): 'idle' | 'working' | 'done' {
+  /**
+   * Get-button label/state for a blended candidate (reuses per-source state).
+   * Neither end state is "in the library" (#1544): a link job is only queued,
+   * and a finished transfer still has to be organized and scanned.
+   */
+  blendedState(c: BlendedCandidate): 'idle' | 'working' | 'queued' | 'done' {
     if (c.acquire.via === 'enqueue') {
       const key = `${c.acquire.username}:${c.acquire.file.filename}`;
       const status = this.transfers.getStatus(c.acquire.username, c.acquire.file.filename);
@@ -1119,7 +1122,7 @@ export class SearchComponent implements OnInit, OnDestroy {
       if (this.search.downloading().has(key) || status) return 'working';
       return 'idle';
     }
-    return this.blendedAcquired().has(c.id) ? 'done' : 'idle';
+    return this.blendedAcquired().has(c.id) ? 'queued' : 'idle';
   }
 
   blendedPercent(c: BlendedCandidate): number {
@@ -1255,7 +1258,7 @@ export class SearchComponent implements OnInit, OnDestroy {
   // ─── Private ────────────────────────────────────────────────────
 
   private resetResultSurfaces(): void {
-    this.search.reset();
+    this.search.resetResults();
     this.errors.set([]);
     this.searchError.set(null);
     this.downloadError.set(null);
@@ -1264,7 +1267,6 @@ export class SearchComponent implements OnInit, OnDestroy {
     // a normal user-initiated search clears them here so they never linger.
     this.rawFallbackNote.set(null);
     this.rawFallbackAlbum.set(null);
-    this.catalog.set(null);
     this.catalogUnavailable.set(false);
     this.resultsExpanded.set(false);
     this.artistsExpanded.set(false);

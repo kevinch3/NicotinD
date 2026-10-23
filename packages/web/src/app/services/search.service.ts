@@ -1,5 +1,6 @@
 import { Injectable, signal } from '@angular/core';
 import type { ArchiveCandidate, SpotifyCandidate } from '@nicotind/core';
+import type { CatalogSearchResult } from './api/api-types';
 
 export interface NetworkResult {
   username: string;
@@ -63,6 +64,9 @@ export class SearchService {
   readonly autoSearch = signal(false);
   readonly history = signal(loadHistory());
   readonly openBrowserKey = signal<string | null>(null);
+  /** The query's album cards. Here, not on the page, so leaving the Add tab and
+   *  coming back restores them along with the Results (#1544). */
+  readonly catalog = signal<CatalogSearchResult | null>(null);
 
   setQuery(query: string): void {
     this.query.set(query);
@@ -152,7 +156,8 @@ export class SearchService {
     this.spotifyState.set(state);
   }
 
-  reset(): void {
+  /** What one search produced — cleared when a new search starts. */
+  resetResults(): void {
     this.network.set([]);
     this.networkState.set('idle');
     this.networkResponseCount.set(0);
@@ -161,11 +166,18 @@ export class SearchService {
     this.spotify.set([]);
     this.spotifyState.set('idle');
     this.canBrowse.set(false);
+    this.autoSearch.set(false);
+    this.openBrowserKey.set(null);
+    this.catalog.set(null);
+  }
+
+  /** Logout: everything the user left behind. A new search must not call this —
+   *  it wiped the history and the persisted folder marks on every query (#1563). */
+  reset(): void {
+    this.resetResults();
     this.downloading.set(new Set());
     this.downloadedFolders.set(new Set());
     this.history.set([]);
-    this.autoSearch.set(false);
-    this.openBrowserKey.set(null);
     localStorage.removeItem(DOWNLOADED_FOLDERS_KEY);
   }
 }
