@@ -662,6 +662,7 @@
   "downloads.stage.scanning": "Escaneando",
   "downloads.cancelling": "Cancelando…",
   "downloads.cancelConfirm": "¿Cancelar esta descarga?",
+  "downloads.cancelAllConfirm": "¿Cancelar {count} descarga(s)? Recuperarlas implica buscarlas de nuevo.",
   "downloads.cancelAlsoDiscard": "Descartar también las {count} pistas ya descargadas",
   "downloads.partialLanded": "{count} añadidas",
   "downloads.discardPartialConfirm": "¿Descartar las {count} pistas que trajo esta descarga? Los archivos se eliminarán.",

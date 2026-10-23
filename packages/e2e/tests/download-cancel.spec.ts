@@ -119,4 +119,58 @@ test.describe('byte progress + cancel on an addon download', () => {
       )
       .toBe('error');
   });
+
+  /**
+   * #1506: Cancel all fired with no confirm, and when the last download ended
+   * "Clear finished" slid into its slot under a double-click. Both buttons now
+   * keep fixed slots, and Cancel all only acts through the dialog.
+   */
+  test('Cancel all asks before cancelling, and both header buttons keep their slots', async ({
+    page,
+    request,
+  }) => {
+    const created = await request.post(`${addon.url}/addon/v1/jobs`, {
+      headers: ADDON_AUTH,
+      data: { intent: 'album', artist: 'Cancel Artist', album: 'Cancel All Album' },
+    });
+    expect(created.status()).toBe(201);
+    const before = addon.cancelRequests.length;
+
+    // Wait for the poller to mirror the job before the page reads the feed.
+    await expect
+      .poll(
+        async () => {
+          const res = await request.get('/api/downloads/jobs', { headers: auth });
+          if (!res.ok()) return '';
+          const jobs = (await res.json()) as Array<{ albumTitle: string | null; stage: string }>;
+          return jobs.find((j) => j.albumTitle === 'Cancel All Album')?.stage ?? '';
+        },
+        { timeout: 20_000 },
+      )
+      .toMatch(/^(queued|downloading)$/);
+
+    await page.goto('/downloads');
+    const cancelAll = page.getByTestId('downloads-cancel-all');
+    const clearFinished = page.getByTestId('downloads-clear-finished');
+    await expect(cancelAll).toBeVisible({ timeout: 15_000 });
+    await expect(clearFinished).toHaveCount(1);
+
+    // Dismissed: nothing is cancelled.
+    await cancelAll.click();
+    await expect(page.getByTestId('confirm-ok')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('confirm-ok')).toHaveCount(0);
+    expect(addon.cancelRequests).toHaveLength(before);
+
+    // Confirmed: the download is cancelled.
+    await cancelAll.click();
+    await page.getByTestId('confirm-ok').click();
+    await expect.poll(() => addon.cancelRequests.length).toBe(before + 1);
+
+    // Nothing left to cancel: the button hides in place rather than leaving the DOM.
+    await expect(cancelAll).toBeHidden({ timeout: 10_000 });
+    await expect(cancelAll).toHaveCount(1);
+    await expect(clearFinished).toHaveCount(1);
+    addon.confirmCancels();
+  });
 });

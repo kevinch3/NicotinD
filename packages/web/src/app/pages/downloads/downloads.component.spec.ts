@@ -9,6 +9,7 @@ import { SystemApiService } from '../../services/api/system-api.service';
 import { TransferService } from '../../services/transfer.service';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import { ToastService } from '../../services/toast.service';
+import { TranslateService } from '../../services/translate.service';
 import type { AcquireJob } from '@nicotind/core';
 
 function setup(opts: { acquireJobs?: AcquireJob[]; api?: Record<string, unknown> } = {}) {
@@ -268,6 +269,62 @@ describe('DownloadsComponent — cancel guard (#806)', () => {
     await component.cancelAll();
     expect(cancelJob).toHaveBeenCalledTimes(1);
     expect(cancelJob).toHaveBeenCalledWith('j1');
+  });
+
+  // #1506: Cancel all fired on a stray double-click, and re-queuing means
+  // re-searching every album.
+  describe('Cancel all asks first (#1506)', () => {
+    function withFeed() {
+      const cancelJob = vi.fn().mockReturnValue(of({ ok: true }));
+      const ctx = setup({ api: { cancelJob } });
+      vi.spyOn(ctx.component, 'downloadFeed').mockReturnValue([
+        networkRow(),
+        networkRow({ key: 'job:j2', jobId: 'j2' }),
+        networkRow({ key: 'job:j3', jobId: 'j3', stage: 'scanning', canCancel: false }),
+      ] as never);
+      return { ...ctx, cancelJob };
+    }
+
+    it('opens a confirm naming the count, and cancels nothing yet', () => {
+      const { component, cancelJob } = withFeed();
+      const t = vi.spyOn(TestBed.inject(TranslateService), 't');
+      component.requestCancelAll();
+      expect(component.showConfirm()).toBe(true);
+      expect(t).toHaveBeenCalledWith('downloads.cancelAllConfirm', { count: 2 });
+      expect(component.confirmLabel()).toBe(t.mock.results.at(-1)?.value);
+      expect(t.mock.calls.at(-1)?.[0]).toBe('downloads.cancelAll');
+      expect(cancelJob).not.toHaveBeenCalled();
+    });
+
+    it('cancels every cancellable row once confirmed', async () => {
+      const { component, cancelJob } = withFeed();
+      component.requestCancelAll();
+      component.onConfirm();
+      for (let i = 0; i < 4; i++) await Promise.resolve();
+      expect(cancelJob.mock.calls.map(([id]) => id)).toEqual(['j1', 'j2']);
+    });
+
+    it('cancels nothing when the confirm is dismissed', () => {
+      const { component, cancelJob } = withFeed();
+      component.requestCancelAll();
+      component.onCancelConfirm();
+      expect(component.showConfirm()).toBe(false);
+      expect(cancelJob).not.toHaveBeenCalled();
+    });
+
+    it('asks nothing when no row is cancellable', () => {
+      const { component } = setup({ api: {} });
+      component.requestCancelAll();
+      expect(component.showConfirm()).toBe(false);
+    });
+
+    it('a row removal still confirms with "Remove"', () => {
+      const { component } = withFeed();
+      component.requestCancelAll();
+      component.onCancelConfirm();
+      component.onItemRemove(networkRow({ canRemove: true }));
+      expect(component.confirmLabel()).toBe('Remove');
+    });
   });
 });
 
