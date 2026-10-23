@@ -25,6 +25,7 @@ import { PluginService } from '../../services/plugin.service';
 import { AutoHuntService } from '../../services/auto-hunt.service';
 import { IDLE_HUNT, type AlbumHuntStatus } from '../../lib/album-hunt-status';
 import { stageLabel } from '../../lib/pipeline-stage';
+import { withMediaToken } from '../../lib/cover-url';
 import { GetThenHearService, modeForFileCount } from '../../services/get-then-hear.service';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import {
@@ -680,6 +681,10 @@ export class SearchComponent implements OnInit, OnDestroy {
     } finally {
       this.loadingDiscography.set(false);
     }
+  }
+
+  catalogCoverUrl(album: CatalogAlbum): string | undefined {
+    return withMediaToken(album.coverUrl, this.auth.mediaToken());
   }
 
   catalogHuntStatus(album: CatalogAlbum): AlbumHuntStatus {

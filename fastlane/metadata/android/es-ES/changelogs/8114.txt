@@ -1,0 +1,2 @@
+• deps: bump hono to 4.13.13 for GHSA-5r4p-p66f-jhc7 (#1529)
+• web: keep the iOS queue advancing in the background and recover a stalled far seek (#1528)

@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.114](https://github.com/kevinch3/NicotinD/compare/v0.8.113...v0.8.114) (2026-10-22)
+
+### Bug Fixes
+
+* **deps:** bump hono to 4.13.13 for GHSA-5r4p-p66f-jhc7 ([#1529](https://github.com/kevinch3/NicotinD/issues/1529)) ([f5978d3](https://github.com/kevinch3/NicotinD/commit/f5978d32ccdb359d1461f2b4b1b11db5ea897b31))
+* **web:** keep the iOS queue advancing in the background and recover a stalled far seek ([#1528](https://github.com/kevinch3/NicotinD/issues/1528)) ([707bcb6](https://github.com/kevinch3/NicotinD/commit/707bcb6ef2232901f85ca7a4eafa204b3c6aa5f7))
 ## [0.8.113](https://github.com/kevinch3/NicotinD/compare/v0.8.112...v0.8.113) (2026-10-18)
 
 ### Features
