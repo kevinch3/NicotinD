@@ -519,7 +519,9 @@ Why the helper exists at all: `TransferService` had no gate. Started app-wide by
 
 ### Tab state is in the URL, unlike Library's
 
-Library keeps its tab in `localStorage`; `/get` keeps its tab in the URL. The difference is intentional — "show me my downloads" has to be linkable, and `/downloads` redirects onto it. `?tab=` is user-editable, so `parseGetTab` treats anything unrecognized (including `'DOWNLOADS'`) as the `find` default rather than rendering a blank pane.
+Library keeps its tab in `localStorage`; `/get` keeps its tab in the URL. The difference is intentional — "show me my downloads" has to be linkable, and `/downloads` redirects onto it. `?tab=` is user-editable, so `parseGetTab` treats anything unrecognized (including `'DOWNLOADS'`) as the `add` default rather than rendering a blank pane. The legacy `find`/`downloads` stay parsed for bookmarks, but the app's own links write `add`/`activity` (#1544).
+
+A search's results live on the root `SearchService`, which outlives the tab, so switching Add → Activity → Add restores the Results *and* the album cards (`SearchService.catalog`, #1544). A new search clears them with `resetResults()`. `reset()` is the logout wipe: it also drops the search history, the per-file download marks and the persisted folder marks. Calling it per search emptied all three on every query (#1563).
 
 ### Redirects need a *function* `redirectTo`
 

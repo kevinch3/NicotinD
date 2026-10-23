@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
-import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
+import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { vi } from 'vitest';
 import { SearchComponent } from './search.component';
@@ -234,6 +234,31 @@ describe('SearchComponent — metadata-driven search', () => {
     expect(header()).toBeNull();
   });
 
+  // #1563: every search used to call the logout wipe, emptying the history
+  // dropdown and the persisted "✓ Done" folder marks.
+  it('a search keeps the history and the folder marks, and holds its album cards app-wide', async () => {
+    const { component, search } = setup();
+    search.addToHistory('christian löffler');
+    search.addDownloadedFolder('peer::Music\\Mare');
+    search.setQuery('pink floyd');
+    component.handleSearch(new Event('submit'));
+    await flush();
+    expect(search.history()).toEqual(['pink floyd', 'christian löffler']);
+    expect(search.downloadedFolders().has('peer::Music\\Mare')).toBe(true);
+    // #1544: the cards live on the service, so the Add tab restores them.
+    expect(search.catalog()?.albums.length).toBeGreaterThan(0);
+    expect(component.catalog).toBe(search.catalog);
+  });
+
+  // #1544: the app's own links wrote ?tab=find / ?tab=downloads (legacy, still
+  // parsed for bookmarks) beside ?tab=add / ?tab=activity.
+  it('navigates with the canonical tab name', () => {
+    const { component } = setup();
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+    component.navigateAndSearch('mare');
+    expect(navigate).toHaveBeenCalledWith(['/get'], { queryParams: { tab: 'add' } });
+  });
+
   it('renders the catalog albums grid as an appTvNavGroup with grid axis', async () => {
     const { component, search, fixture } = setup();
     search.setQuery('pink floyd');
@@ -442,7 +467,7 @@ describe('SearchComponent — metadata-driven search', () => {
     expect(component.searchError()).toBeNull();
   });
 
-  it('getBlended submits a url candidate through the acquire pipeline and marks it added to library', async () => {
+  it('getBlended submits a url candidate through the acquire pipeline and marks it queued, not in the library', async () => {
     const { component, acquireSubmit } = setup();
     const candidate = {
       id: 'archive:a1',
@@ -457,7 +482,7 @@ describe('SearchComponent — metadata-driven search', () => {
     await component.getBlended(candidate);
 
     expect(acquireSubmit).toHaveBeenCalledWith('https://archive.org/details/a1');
-    expect(component.blendedState(candidate)).toBe('done');
+    expect(component.blendedState(candidate)).toBe('queued');
   });
 
   // A failed album.lookup surfaces as a retryable outage note, never as the
