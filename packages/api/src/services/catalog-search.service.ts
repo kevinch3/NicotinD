@@ -129,6 +129,26 @@ export class CatalogService {
     const normQuery = normalizeName(query);
     const matchedArtist = artists.find((a) => normalizeName(a.name) === normQuery);
 
+    // An artist Lidarr already has: its own discography is the authority, and the
+    // global lookup's top hits can miss it entirely (#1566: "Mare" never appeared
+    // for "Christian Löffler", whose lookup led with a namesake's old EPs). Those
+    // cards lead; the lookup's releases by other same-named artists follow.
+    const provisioned = await this.provisionedDiscography(artistHits, normQuery);
+    if (provisioned.length > 0) {
+      const mbids = new Set(provisioned.map((a) => a.artistMbid));
+      const seen = new Set(provisioned.map((a) => a.foreignAlbumId));
+      const rest = ownAlbums.filter((a) => !seen.has(a.foreignAlbumId));
+      return {
+        artists,
+        albums: [
+          ...rankAlbums([...provisioned, ...rest.filter((a) => mbids.has(a.artistMbid))]),
+          ...rest.filter((a) => !mbids.has(a.artistMbid)),
+        ],
+        scopedArtist: matchedArtist?.name,
+        ...failed,
+      };
+    }
+
     if (ownAlbums.length > 0) {
       // Real discography found — show it (junk already filtered out).
       return { artists, albums: ownAlbums, scopedArtist: matchedArtist?.name, ...failed };
@@ -153,6 +173,34 @@ export class CatalogService {
     // (accent-insensitive, over title + artist) so the grid is relevant instead of
     // first-token noise; the network/folder lane still carries anything we drop.
     return { artists, albums: filterAlbumsByRelevance(allAlbums, query), ...failed };
+  }
+
+  /** Cards from the own Lidarr discography of each query-named artist Lidarr has. */
+  private async provisionedDiscography(
+    hits: LidarrArtist[],
+    normQuery: string,
+  ): Promise<CatalogAlbum[]> {
+    const owned = hits.filter((h) => h.id && normalizeName(h.artistName) === normQuery).slice(0, 2);
+    const lists = await Promise.all(
+      owned.map(async (h) => {
+        try {
+          const albums = await this.lidarr.album.listByArtist(h.id);
+          // listByArtist payloads may omit the nested artist — backfill from the hit.
+          return albums.map((a) => {
+            const card = mapAlbum(a);
+            return {
+              ...card,
+              artistName: card.artistName || h.artistName,
+              artistMbid: card.artistMbid || h.foreignArtistId,
+            };
+          });
+        } catch (err) {
+          log.warn({ err, artistId: h.id }, 'Provisioned discography read failed');
+          return [];
+        }
+      }),
+    );
+    return lists.flat();
   }
 
   /**
