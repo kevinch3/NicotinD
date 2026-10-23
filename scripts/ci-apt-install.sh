@@ -5,12 +5,13 @@
 # packages (VA/VDPAU drivers, SDL2, PulseAudio) no decode path reaches.
 #
 # `update` reads ONLY the Ubuntu archive (the image's other sources are never
-# installed from) and runs WITHOUT apt's update hooks. The hooks were the hang:
-# with progress printed, every attempt fetched 11 MB in 1 s and then sat after
-# "Reading package lists..." until the bound (2026-10-23, #1550) — that is where
-# APT::Update::Post-Invoke runs appstream's cache refresh and command-not-found's
-# database rebuild, neither of which CI needs. `#clear` empties those lists;
-# a `::=` override would only append an empty hook.
+# installed from) and runs without apt's update hooks, which CI does not need.
+#
+# The hang is in `install`, not `update` (#1550): on 2026-10-23 each failed
+# attempt died exactly 150 s after update's last line, i.e. at install's bound.
+# Install was `-qq` and printed nothing, so it now prints its progress, runs
+# debconf non-interactively and suspends needrestart — a prompt nobody can
+# answer is the one hang a retry never fixes.
 set -euo pipefail
 
 NO_HOOKS=$(mktemp)
@@ -27,7 +28,8 @@ fi
 
 for attempt in 1 2 3; do
   if timeout 150 sudo apt-get -c "$NO_HOOKS" "${APT_OPTS[@]}" "${UPDATE_OPTS[@]}" update -q &&
-    timeout 150 sudo apt-get "${APT_OPTS[@]}" install -y -qq --no-install-recommends "$@"; then
+    timeout 150 sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1 \
+      apt-get "${APT_OPTS[@]}" install -y -q --no-install-recommends "$@"; then
     exit 0
   fi
   echo "apt attempt ${attempt} failed or timed out; retrying" >&2
