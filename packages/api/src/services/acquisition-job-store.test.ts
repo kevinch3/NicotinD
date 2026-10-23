@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import {
+  holdAlbum,
   backfillDirectJobAlbum,
   createJob,
   getJob,
@@ -1770,5 +1771,35 @@ describe('re-sourcing the not-offered titles (#1146)', () => {
       )
       .all(id);
     expect(owners).toEqual([{ addon_job_id: 'aj-second', c: 2 }]);
+  });
+});
+
+describe('holdAlbum (reserve before the addon call)', () => {
+  it('refuses a second hold on the same album by id or by name, until released', () => {
+    const release = holdAlbum({ lidarrAlbumId: 7 })!;
+    expect(release).not.toBeNull();
+    expect(holdAlbum({ lidarrAlbumId: 7 })).toBeNull();
+    release();
+    const again = holdAlbum({ lidarrAlbumId: 7 });
+    expect(again).not.toBeNull();
+    again!();
+  });
+
+  it('sees names a caller fills in after taking the hold', () => {
+    const target: { lidarrAlbumId: number; artist?: string; title?: string } = { lidarrAlbumId: 9 };
+    const release = holdAlbum(target)!;
+    target.artist = 'Damian Lazarus & The Ancient Moons';
+    target.title = 'Message From the Other Side';
+    // A peer-folder grab of the same album carries no id, only its name.
+    expect(
+      holdAlbum({
+        artist: 'Damian Lazarus & The Ancient Moons',
+        title: 'Message From The Other Side',
+      }),
+    ).toBeNull();
+    const other = holdAlbum({ artist: 'Damian Lazarus', title: 'Smoke the Monster Out' });
+    expect(other).not.toBeNull();
+    other!();
+    release();
   });
 });

@@ -4,7 +4,7 @@ import { createLogger, filesMatchingTitles, titlesMissingFromOwned } from '@nico
 import { albumAlreadyComplete, onDiskTitles } from './library-completeness.js';
 import { recordAcquiredArtistIdentity } from './artist-identity-store.js';
 import { artistIdFor } from './library-scanner.js';
-import { createJob, findActiveAlbumJob } from './acquisition-job-store.js';
+import { createJob, findActiveAlbumJob, holdAlbum } from './acquisition-job-store.js';
 import type { RemoteAddonPlugin } from './addons/remote-addon-plugin.js';
 import { AddonRequestError } from './addons/client.js';
 import { mapAddonJob, sanitizeAddonError } from './addons/job-poller.js';
@@ -120,22 +120,27 @@ export async function acquireAlbum(
 
   // Already downloading through any lane — checked before the hunt, which would
   // otherwise spend the source's search lanes on an album in flight (#1539).
-  if (findActiveAlbumJob(db, { lidarrAlbumId, artist: artistName, title: albumTitle })) {
-    return { outcome: 'in-flight' };
-  }
+  const target = { lidarrAlbumId, artist: artistName, title: albumTitle };
+  if (findActiveAlbumJob(db, target)) return { outcome: 'in-flight' };
+  // Held until the job row exists, as every Get lane does (`holdAlbum`).
+  const release = holdAlbum(target);
+  if (!release) return { outcome: 'in-flight' };
+  try {
+    const tracks = await lidarr.track.listByAlbum(lidarrAlbumId);
 
-  const tracks = await lidarr.track.listByAlbum(lidarrAlbumId);
+    // Already on disk (any edition) → done, no download.
+    if (albumAlreadyComplete(db, artistName, albumTitle, tracks.length || 1)) {
+      return { outcome: 'already-complete' };
+    }
 
-  // Already on disk (any edition) → done, no download.
-  if (albumAlreadyComplete(db, artistName, albumTitle, tracks.length || 1)) {
-    return { outcome: 'already-complete' };
+    const addon = deps.getAddon();
+    if (!addon) {
+      return { outcome: 'slskd-unavailable', detail: 'No acquisition addon is enabled' };
+    }
+    return await acquireViaAddon(deps, input, addon, tracks);
+  } finally {
+    release();
   }
-
-  const addon = deps.getAddon();
-  if (!addon) {
-    return { outcome: 'slskd-unavailable', detail: 'No acquisition addon is enabled' };
-  }
-  return acquireViaAddon(deps, input, addon, tracks);
 }
 
 /**

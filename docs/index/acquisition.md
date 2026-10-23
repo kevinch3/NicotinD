@@ -33,8 +33,8 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   + the library's own file), never on a title match alone.
   → [acquisition-addon-protocol.md](../acquisition-addon-protocol.md)
 - **Idempotent hunt — one album = one download**: 409 guards across every Get lane, matched by
-  Lidarr id or by name (`findActiveAlbumJob`, `sameAlbum`, `folderAlbumIdentity`) + only-missing-tracks
-  enqueue; "already have it" is a notice, not an error. → [album-hunt.md](../album-hunt.md)
+  Lidarr id or by name (`findActiveAlbumJob`, `sameAlbum`, `folderAlbumIdentity`), held across the
+  addon call (`holdAlbum`) + only-missing-tracks enqueue; "already have it" is a notice, not an error. → [album-hunt.md](../album-hunt.md)
 - **Watchlist auto-hunt**: star a catalog album; a poller auto-hunts and downloads on a confident
   match. → [album-hunt.md](../album-hunt.md)
 - **Auto-acquisition loop (opt-in)**: default-off poller over Lidarr `wanted/missing`, routed through

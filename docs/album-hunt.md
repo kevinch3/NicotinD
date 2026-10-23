@@ -317,7 +317,12 @@ Idempotent: an album already on disk (`albumAlreadyComplete`, shared in `library
 
    **The same guard on the other lanes.** `POST /api/downloads` (folder, file and browse grabs) refuses an album-shaped grab of a live album: either an explicit `album: {artist, title, lidarrAlbumId?}` intent from the client, or **3+ files from one folder**, so a one-track Get or a multi-folder "Download all" is never blocked by a name guess. It takes `replace` too. Without an intent the grab is named by `folderAlbumIdentity`: an `"Artist - Album [2015]"` leaf names both, a date prefix (`2016 - Mare`) is dropped, and otherwise the parent is the artist and the leaf the album. The old parent/leaf-only hint filed that prod folder under the artist **"Elektronika"**, its genre folder. `acquireAlbum` (watchlist, auto-acquire, `complete_album`) checks the same guard **before** its hunt and answers `in-flight`. The identity functions moved to core so the web's Get control can match jobs the way the server does. `albumGroupKey` moved verbatim (it is sha1'd into album ids), and the API's `album-grouping.ts` re-exports it.
 
-   *Not yet:* the URL lane keeps its own reserve-before-call (#714). The album lanes check before the addon call rather than reserving a row, so two clicks in different lanes within one addon round-trip can still both pass.
+   **Held across the addon call.** The guard reads job rows, and every album lane writes its row only after the addon answers. So two Gets within one round-trip both passed it, the window the URL lane closes with its reserved row (#714). Each album lane now takes `holdAlbum(target)` right after the guard and releases it in `finally`:
+   - `hunt-download` holds by Lidarr id, then also by name once Lidarr names the album.
+   - The album-shaped folder grab holds by its album identity.
+   - `acquireAlbum` holds by both.
+
+   A second request that meets a hold answers `already-downloading` with no `jobId`, since no row exists yet; for `acquireAlbum` it's `in-flight`. Holds live in memory because the API is one process. They match with the guard's own rule, `albumTargetsMatch`.
 
 2. Returns **409 `already-complete`** if the library already holds the album — `albumAlreadyComplete` matches by `normalizeForGrouping(artist)+title` with `song_count >= canonical track count`.
 3. On `?replace=true` (admin re-hunt) `supersedeActiveJobs` marks the album's prior active `acquisition_jobs` rows `'superseded'` first, so at most one stays active.
