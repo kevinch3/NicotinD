@@ -10,7 +10,7 @@ import type { ArtistProvisioningService } from '../services/artist-provisioning.
 import type { AlbumHuntOrchestrator } from '../services/source-hunter.js';
 import type { Lidarr } from '../lidarr/index.js';
 import { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
-import { AddonRequestError, type AddonClient } from '../services/addons/client.js';
+import { AddonClient, AddonRequestError } from '../services/addons/client.js';
 
 const MANIFEST: AddonManifest = {
   id: 'fixture-addon',
@@ -277,6 +277,63 @@ describe('discography routes through a remote addon', () => {
         .query<{ state: string }, []>(`SELECT state FROM acquisition_jobs WHERE id = 'old-1'`)
         .get()!;
       expect(old.state).toBe('superseded');
+    });
+
+    /**
+     * #1507: the addon 409 cannot see a job whose files are still landing, and
+     * a stale addon idempotency key used to 500 the route. The album's own live
+     * row answers first — and every peer the web would walk gets the same 409.
+     */
+    it('answers already-downloading from the album’s live core job, before the addon', async () => {
+      h.db.run(
+        `INSERT INTO acquisition_jobs (id, kind, method, state, stage, lidarr_album_id, created_at, updated_at)
+         VALUES ('live-1', 'album-hunt', 'fixture-addon', 'active', 'organizing', 42, 1, 1)`,
+      );
+      const res = await h.app.request('/albums/42/hunt-download', jsonPost(pick));
+      expect(res.status).toBe(409);
+      expect(((await res.json()) as { error: string }).error).toBe('already-downloading');
+      expect(h.jobRequests).toHaveLength(0);
+    });
+
+    it('a finished or failed job for the album does not block a new one', async () => {
+      h.db.run(
+        `INSERT INTO acquisition_jobs (id, kind, method, state, stage, lidarr_album_id, created_at, updated_at)
+         VALUES ('gone-1', 'album-hunt', 'fixture-addon', 'failed', 'error', 42, 1, 1)`,
+      );
+      const res = await h.app.request('/albums/42/hunt-download', jsonPost(pick));
+      expect(res.status).toBe(201);
+    });
+
+    /**
+     * #1507, the prod 500 (`null is not an object (evaluating 'addonJob.items')`,
+     * 21× in a week): Cancel → Clear finished deleted the addon job, and the
+     * slskd addon still replayed `acquire:<id>` as `201 { job: null }` for an
+     * hour. Driven through the real HTTP client so the replay is the addon's.
+     */
+    it('a replayed key whose addon job was deleted starts a fresh download, not a 500', async () => {
+      const keys: Array<string | null> = [];
+      const real = new AddonClient({
+        baseUrl: 'http://addon:9999',
+        token: 'tok',
+        fetchFn: (async (_url: string, init?: RequestInit) => {
+          const key = new Headers(init?.headers).get('idempotency-key');
+          keys.push(key);
+          return Response.json(
+            key
+              ? { job: null }
+              : { job: { id: 'aj-fresh', intent: 'album', state: 'active', items: [] } },
+            { status: 201 },
+          );
+        }) as typeof fetch,
+      });
+      h = harness({ createJob: real.createJob.bind(real) });
+      const res = await h.app.request('/albums/42/hunt-download', jsonPost(pick));
+      expect(res.status).toBe(201);
+      expect(keys).toEqual(['acquire:42', null]);
+      const job = h.db
+        .query<{ source_ref: string }, []>(`SELECT source_ref FROM acquisition_jobs`)
+        .get()!;
+      expect(job.source_ref).toBe('addon:fixture-addon:aj-fresh');
     });
   });
 
