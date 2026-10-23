@@ -4,6 +4,7 @@ import { createLogger, normalizeTitle } from '@nicotind/core';
 import type { ArtistNotProvisioned } from './lidarr-provision.js';
 import { corroboratesLidarrHit } from './lidarr-confidence.js';
 import { normalizeArtistForGrouping, normalizeForGrouping } from './album-grouping.js';
+import { stripFeaturingSuffix } from './path-sanitize.js';
 
 const log = createLogger('discography');
 
@@ -15,7 +16,9 @@ const log = createLogger('discography');
  *    keeps punctuation, because "Miranda!" and "Miranda" are different acts.
  *  - **album titles** → `normalizeForGrouping`: additionally drops edition
  *    qualifiers, so a local "Hot Space" answers Lidarr's "Hot Space (Deluxe)".
- *  - **track titles** → `normalizeTitle`: folds and strips leading track numbers.
+ *  - **track titles** → `trackKey`: `normalizeTitle` (folds, strips leading track
+ *    numbers) after dropping a featuring credit, which a file tag carries and a
+ *    tracklist usually does not ("Felt (feat. Henry Green)" vs "Felt", #1565).
  *
  * This file used to declare one local `normalizeTitle` for all three, and that
  * copy stripped `[^\w\s]` *without* folding first — so an accent was deleted
@@ -23,6 +26,10 @@ const log = createLogger('discography');
  * local file tags routinely disagree about accents, so an album you owned was
  * reported missing whenever only one side carried them.
  */
+
+function trackKey(title: string): string {
+  return normalizeTitle(stripFeaturingSuffix(title));
+}
 
 // Cache artist lookups for 7 days before re-querying Lidarr
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -282,12 +289,12 @@ export class DiscographyService {
       ? localSongs.filter((s) => s.album_id === matchedLocal.id)
       : [];
 
-    const localNormalizedTitles = new Set(localAlbumSongs.map((s) => normalizeTitle(s.title)));
+    const localNormalizedTitles = new Set(localAlbumSongs.map((s) => trackKey(s.title)));
     const totalTracks = lidarrAlbum.statistics?.totalTrackCount ?? tracks.length;
 
     let localTrackCount = 0;
     const discographyTracks: DiscographyTrack[] = tracks.map((t) => {
-      const matched = localNormalizedTitles.has(normalizeTitle(t.title));
+      const matched = localNormalizedTitles.has(trackKey(t.title));
       if (matched) localTrackCount++;
       return {
         lidarrId: t.id,

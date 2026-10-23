@@ -591,6 +591,14 @@ visible rather than a new defect (the two grids simply kept it far apart), and a
 pins it so it cannot be mistaken for an accident. The real fix is the single
 album-identity resolver deferred in [album-hunt.md](album-hunt.md).
 
+**Track counts match titles without featuring credits (#1565).** Inside a matched album,
+`localTrackCount` counts the release's tracklist titles found among the local songs. A file
+tag's "Felt (feat. Henry Green)" never equalled Lidarr's "Felt", so prod's *A Life* (one
+local song then) read **0/11** while owned. The server's `trackKey` drops the credit
+(`stripFeaturingSuffix`) before `normalizeTitle`. A tile prints its "n/N tracks" only when
+at least one track matched: an owned album whose tracklist matches nothing (another
+edition) shows its partial state without a false "0/N".
+
 **The missing tail is filtered, the library never is.** A release we do *not* own
 whose `secondaryTypes` include Live / Compilation / Remix / Demo / Soundtrack /
 Mixtape / DJ-mix, or whose `albumType` is not Album/EP/Single, sits behind a
