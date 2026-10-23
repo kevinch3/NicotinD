@@ -15,3 +15,7 @@ tests/**/*-win32.png
 .tmp-music/
 .tmp-music-onboarding/
 .tmp-music-tvbuild/
+.tmp-demo/
+.tmp-data-tour/
+.tmp-music-tour/
+tour-output/
