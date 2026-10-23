@@ -261,11 +261,12 @@ jobs:
       #
       # `--no-install-recommends` for the reason `e2e-shard` gives: it drops ~100
       # packages (VA/VDPAU drivers, SDL2, PulseAudio) no decode path reaches.
+      # Bounded + retried (#1550): unbounded, this ~20 s step twice hung until the
+      # job's 20-min timeout cancelled it. A dpkg lock still held by the runner's
+      # unattended-upgrades or a stalled mirror is retried, not waited out.
       - name: Install ffmpeg and opus-tools (so the gated tests actually run)
-        run: |
-          set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq --no-install-recommends ffmpeg opus-tools
+        timeout-minutes: 8
+        run: scripts/ci-apt-install.sh ffmpeg opus-tools
 
       - name: Test (API + core + addon-sdk + mobile + desktop + scripts)
         run: bun test packages/api/src packages/core/src packages/addon-sdk/src packages/mobile/src packages/desktop/electron packages/desktop/scripts scripts
@@ -461,10 +462,8 @@ jobs:
       # `--no-install-recommends` drops ~100 packages (VA/VDPAU drivers, SDL2,
       # PulseAudio, pocketsphinx) that no decode-to-Opus path reaches.
       - name: Install ffmpeg
-        run: |
-          set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq --no-install-recommends ffmpeg
+        timeout-minutes: 8
+        run: scripts/ci-apt-install.sh ffmpeg
 
       # E2E_SKIP_BUILD: `Build (web)` above already produced the dist from this
       # checkout, but ensureWebBuild() has no freshness check, so every run paid a
