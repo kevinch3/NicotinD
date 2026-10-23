@@ -62,7 +62,8 @@ export function songResultToCandidate(s: SongResult, sourceLabel: string): Blend
     (s.relevance ?? 0) * RELEVANCE_WEIGHT +
     (lossless ? LOSSLESS_FORMAT_BONUS : 0) +
     (hasSlot ? 15 : 0);
-  const subtitle = [s.artist, formatBadge(s.best)].filter(Boolean).join(' · ');
+  // An untagged row names the artist its filename or folder gives (#1537).
+  const subtitle = [s.artist || s.artistHint, formatBadge(s.best)].filter(Boolean).join(' · ');
   return {
     id: `network:${s.best.username}:${s.best.filename}`,
     source: 'network',

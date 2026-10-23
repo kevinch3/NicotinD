@@ -8,6 +8,8 @@
 // (FLAC > other lossless > highest-bitrate lossy, then the most available peer) so
 // a single click downloads the right file. See docs/e2e-playground-findings §F1.
 
+import { folderAlbumIdentity } from '@nicotind/core';
+
 export interface SongVersion {
   username: string;
   filename: string;
@@ -29,6 +31,9 @@ export interface SongResult {
   title: string;
   /** Display artist (from the best version; may be ''). */
   artist: string;
+  /** For an untagged best copy: the artist its filename prefix or folder names.
+   *  Display only — it scopes no key and scores no relevance (#1537). */
+  artistHint?: string;
   /** The auto-selected best copy across all peers. */
   best: SongVersion;
   /** Every copy, best-first — backs an optional "N versions" affordance. */
@@ -112,6 +117,42 @@ function normalize(s: string): string {
     .trim();
 }
 
+/** Small words an "Artist - Title" prefix may carry that a folder spells "&" or drops. */
+const PREFIX_FILLER = new Set(['and', 'the', 'y', 'el', 'la', 'los', 'las']);
+
+function dirOf(filename: string): string {
+  const i = Math.max(filename.lastIndexOf('\\'), filename.lastIndexOf('/'));
+  return i >= 0 ? filename.slice(0, i) : '';
+}
+
+/**
+ * An untagged "Artist - Title" stem, split only when every word of the artist
+ * half appears in the file's folder path: "damian lazarus and the ancient
+ * moons-amber palace" under ".../Damian Lazarus & The Ancient Moons - ..." is
+ * "amber palace" (#1537), while "Come and Go - Re-Shape" in a mix folder stays whole.
+ */
+function stemArtistSplit(f: SongVersion): { artist: string; title: string } | null {
+  if (f.title?.trim()) return null;
+  const m = songTitle(f).match(/^(.+?)\s*[-–]\s*(.+)$/);
+  if (!m) return null;
+  const words = normalize(m[1]!)
+    .split(' ')
+    .filter((w) => w && !PREFIX_FILLER.has(w));
+  if (!words.length) return null;
+  const path = new Set(normalize(dirOf(f.filename).replace(/[\\/]/g, ' ')).split(' '));
+  return words.every((w) => path.has(w)) ? { artist: m[1]!.trim(), title: m[2]!.trim() } : null;
+}
+
+/** The title a row groups and shows under: the tag, else the stem minus a confirmed artist prefix. */
+function rowTitle(f: SongVersion): string {
+  return stemArtistSplit(f)?.title ?? songTitle(f);
+}
+
+function artistHintFor(f: SongVersion): string | undefined {
+  if (f.artist?.trim()) return undefined;
+  return stemArtistSplit(f)?.artist ?? folderAlbumIdentity(dirOf(f.filename)).artist ?? undefined;
+}
+
 /** Dedupe key. Artist scopes the title so two different "Intro" tracks don't
  * merge; when the artist is unknown we key on title alone (best effort). */
 export function songKey(artist: string, title: string): string {
@@ -170,7 +211,7 @@ export function groupBySong(files: SongVersion[], query?: string): SongResult[] 
   const map = new Map<string, SongVersion[]>();
   for (const f of files) {
     if (!f.size) continue;
-    const key = songKey(f.artist?.trim() ?? '', songTitle(f));
+    const key = songKey(f.artist?.trim() ?? '', rowTitle(f));
     if (!key) continue;
     const bucket = map.get(key);
     if (bucket) bucket.push(f);
@@ -186,8 +227,9 @@ export function groupBySong(files: SongVersion[], query?: string): SongResult[] 
     const best = versions[0];
     results.push({
       key,
-      title: songTitle(best),
+      title: rowTitle(best),
       artist: best.artist?.trim() ?? '',
+      artistHint: artistHintFor(best),
       best,
       versions,
     });
