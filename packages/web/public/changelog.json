@@ -1,5 +1,106 @@
 [
   {
+    "version": "0.8.113",
+    "date": "2026-10-18",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.112...v0.8.113",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**api:** add a refiner:auto agent token the server polices for unattended curation ([#1517](https://github.com/kevinch3/NicotinD/issues/1517)) ([8705978](https://github.com/kevinch3/NicotinD/commit/87059783c1d51a5ac28bb3f1703c3cef75d63cd1))",
+          "**curation:** add a song-genre card effect, so a genre proposal applies in one tap ([#1518](https://github.com/kevinch3/NicotinD/issues/1518)) ([3585523](https://github.com/kevinch3/NicotinD/commit/3585523a9143813babf6c65b712b2b3ecf34b3e0))",
+          "**curation:** add the curator runner for scheduled genre curation with any model ([#1519](https://github.com/kevinch3/NicotinD/issues/1519)) ([9a2fd70](https://github.com/kevinch3/NicotinD/commit/9a2fd70e193cef6d8ca2b1b31c5ca1e87a05c9cb))"
+        ]
+      },
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**api:** label genre worklist rows with the artist, and let agents narrow the health report ([#1515](https://github.com/kevinch3/NicotinD/issues/1515)) ([a15a9b1](https://github.com/kevinch3/NicotinD/commit/a15a9b15b9dfc3659fa10e81ecb695074a094250))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.8.112",
+    "date": "2026-10-16",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.111...v0.8.112",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**api:** serve an OpenSubsonic API at /rest for Music Assistant and Subsonic apps ([#1513](https://github.com/kevinch3/NicotinD/issues/1513)) ([89dd3a0](https://github.com/kevinch3/NicotinD/commit/89dd3a0ac032077a04b9d67e9416d2e3ae4eb890))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.8.111",
+    "date": "2026-10-11",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.110...v0.8.111",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**mobile:** contact no server before the user picks one ([#1501](https://github.com/kevinch3/NicotinD/issues/1501)) ([9a5b1e2](https://github.com/kevinch3/NicotinD/commit/9a5b1e2ebd7ac28d2bb3952ab61514e5358726a3))",
+          "**mobile:** load no Sentry in the Capacitor apps, which sent a session per launch ([#1504](https://github.com/kevinch3/NicotinD/issues/1504)) ([7260836](https://github.com/kevinch3/NicotinD/commit/7260836129cd9dc1e8d3dc8924d3944e34c8024a))",
+          "**mobile:** show the in-app updater only for a sideload, not for every non-store installer ([#1505](https://github.com/kevinch3/NicotinD/issues/1505)) ([dccc07b](https://github.com/kevinch3/NicotinD/commit/dccc07b0736a4a3a5496b1de2597b0733cb7303e))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.8.110",
+    "date": "2026-10-09",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.109...v0.8.110",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**deps:** bump music-metadata to 11.16.1 for three advisories that crash or hang the scanner ([#1497](https://github.com/kevinch3/NicotinD/issues/1497)) ([4eba51b](https://github.com/kevinch3/NicotinD/commit/4eba51bc73e632f8e83e5a59ee867d0dd5098841)), references [#1496](https://github.com/kevinch3/NicotinD/issues/1496)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.8.109",
+    "date": "2026-10-07",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.108...v0.8.109",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**release:** bind a published release to its tag, not the draft's untagged placeholder ([#1494](https://github.com/kevinch3/NicotinD/issues/1494)) ([be3d8e2](https://github.com/kevinch3/NicotinD/commit/be3d8e21c39ac0b4c46fb712967cf360cb937aa0)), references [#1493](https://github.com/kevinch3/NicotinD/issues/1493)"
+        ]
+      },
+      {
+        "title": "Performance",
+        "items": [
+          "**mobile:** enable R8 for the release APK, as F-Droid's reviewer asked ([#1492](https://github.com/kevinch3/NicotinD/issues/1492)) ([fdf9b32](https://github.com/kevinch3/NicotinD/commit/fdf9b3267df0e9d11eec77ca70c934fa2bddee1a)), references [#1168](https://github.com/kevinch3/NicotinD/issues/1168)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.8.108",
+    "date": "2026-10-06",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.107...v0.8.108",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**library:** related artists on the artist page from audio centroids ([#1489](https://github.com/kevinch3/NicotinD/issues/1489)) ([5513a17](https://github.com/kevinch3/NicotinD/commit/5513a17ab3a94c7b001b9fb1c27a75a715343cae)), references [#1486](https://github.com/kevinch3/NicotinD/issues/1486) [#1484](https://github.com/kevinch3/NicotinD/issues/1484)"
+        ]
+      },
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**deps:** bump sharp to 0.35.5 and fast-copy to 4.1.2 for the audit advisories ([#1488](https://github.com/kevinch3/NicotinD/issues/1488)) ([0d0c65b](https://github.com/kevinch3/NicotinD/commit/0d0c65bfdc159c9d6eb6b3547d12440861da7724)), references [#1487](https://github.com/kevinch3/NicotinD/issues/1487)",
+          "**enrichment:** re-embed songs with a missing or stale vector, keep tag writes from re-staling it ([#1490](https://github.com/kevinch3/NicotinD/issues/1490)) ([f062d7a](https://github.com/kevinch3/NicotinD/commit/f062d7ab904a0a82aba93214e29681ace3db8fc8)), references [#1485](https://github.com/kevinch3/NicotinD/issues/1485)"
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.8.107",
     "date": "2026-10-02",
     "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.106...v0.8.107",
@@ -626,104 +727,6 @@
         "title": "Features",
         "items": [
           "**auth:** a stable per-user media key for cover URLs, surviving token refreshes ([#1359](https://github.com/kevinch3/NicotinD/issues/1359)) ([71cafd2](https://github.com/kevinch3/NicotinD/commit/71cafd2aaab48836959bb18cd691b02cab20a839)), closes [#1329](https://github.com/kevinch3/NicotinD/issues/1329)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.8.63",
-    "date": "2026-09-24",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.62...v0.8.63",
-    "sections": [
-      {
-        "title": "Performance",
-        "items": [
-          "**processing:** count each task's pending work once per batch, not once per status emit ([#1357](https://github.com/kevinch3/NicotinD/issues/1357)) ([2ad1c82](https://github.com/kevinch3/NicotinD/commit/2ad1c82926f47e6e96f0327da6834e3d59a5e5ae)), closes [#1356](https://github.com/kevinch3/NicotinD/issues/1356)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.8.62",
-    "date": "2026-09-24",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.61...v0.8.62",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**web:** one tile interaction standard — hover ⋯, right-click and hold open one entity menu ([#1345](https://github.com/kevinch3/NicotinD/issues/1345)) ([8c5b0f3](https://github.com/kevinch3/NicotinD/commit/8c5b0f37a8a0fc28197794583ce86b91912329c3)), references [#1300](https://github.com/kevinch3/NicotinD/issues/1300) [#1298](https://github.com/kevinch3/NicotinD/issues/1298)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.8.61",
-    "date": "2026-09-24",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.60...v0.8.61",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**covers:** a new folder cover replaces the old one and reaches every song id ([#1347](https://github.com/kevinch3/NicotinD/issues/1347)) ([3952f26](https://github.com/kevinch3/NicotinD/commit/3952f2697c4dc7917cf72dcace03935976055820)), closes [#1336](https://github.com/kevinch3/NicotinD/issues/1336), references [#978](https://github.com/kevinch3/NicotinD/issues/978)"
-        ]
-      },
-      {
-        "title": "Performance",
-        "items": [
-          "**acquire:** read the download card's bitrate from the scan, not an ffprobe per staged file ([#1348](https://github.com/kevinch3/NicotinD/issues/1348)) ([b240f53](https://github.com/kevinch3/NicotinD/commit/b240f53716efd71da72035bd9207c620c9e1f214)), closes [#1304](https://github.com/kevinch3/NicotinD/issues/1304)",
-          "**scanner:** an album reconcile loads only its own batch's cache rows and paths ([#1350](https://github.com/kevinch3/NicotinD/issues/1350)) ([f692a75](https://github.com/kevinch3/NicotinD/commit/f692a75b8939e3d3dcd03299f4102b63edf964e5)), closes [#1309](https://github.com/kevinch3/NicotinD/issues/1309)",
-          "**streaming:** read the cached waveform and check the source without blocking the event loop ([#1346](https://github.com/kevinch3/NicotinD/issues/1346)) ([49d2aab](https://github.com/kevinch3/NicotinD/commit/49d2aab6f4f54eb6a7ef97b6b3351fbfc77d2929)), closes [#1328](https://github.com/kevinch3/NicotinD/issues/1328)",
-          "**transcode:** one process-wide ffmpeg slot pool, with streams and waveforms ahead of batch work ([#1352](https://github.com/kevinch3/NicotinD/issues/1352)) ([ae10c3c](https://github.com/kevinch3/NicotinD/commit/ae10c3ca0063e7513558bb193ccedc53893ed566)), references [#1312](https://github.com/kevinch3/NicotinD/issues/1312)",
-          "**transcode:** read an Opus encode's duration from its last Ogg page instead of ffprobe ([#1353](https://github.com/kevinch3/NicotinD/issues/1353)) ([635db97](https://github.com/kevinch3/NicotinD/commit/635db97b4e6559a5700c7d55d35de86b886235a0)), references [#1305](https://github.com/kevinch3/NicotinD/issues/1305)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.8.60",
-    "date": "2026-09-23",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.59...v0.8.60",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**home:** a Shelves | Mosaic switch on the home, remembered per user ([#1337](https://github.com/kevinch3/NicotinD/issues/1337)) ([9d79635](https://github.com/kevinch3/NicotinD/commit/9d79635309630259c167c9a43c0376c52dd0be87)), references [#1321](https://github.com/kevinch3/NicotinD/issues/1321) [#1300](https://github.com/kevinch3/NicotinD/issues/1300)"
-        ]
-      },
-      {
-        "title": "Performance",
-        "items": [
-          "**backup:** take the daily database snapshot in a worker, not on the server's connection ([#1342](https://github.com/kevinch3/NicotinD/issues/1342)) ([871864f](https://github.com/kevinch3/NicotinD/commit/871864f19e870a3352415da7ba104ec2812db1f4)), references [#1313](https://github.com/kevinch3/NicotinD/issues/1313)",
-          "**covers:** cache on-disk cover art by source, not once per song ([#1340](https://github.com/kevinch3/NicotinD/issues/1340)) ([dde86b7](https://github.com/kevinch3/NicotinD/commit/dde86b7eb90e09728ba3deacc3ecb00370ddddc2)), closes [#1310](https://github.com/kevinch3/NicotinD/issues/1310)",
-          "**enrichment:** coalesce enrichment file-tag writes into one write per song ([#1341](https://github.com/kevinch3/NicotinD/issues/1341)) ([e155428](https://github.com/kevinch3/NicotinD/commit/e1554284594e8f68026b4a490b116e250e49d22d)), references [#690](https://github.com/kevinch3/NicotinD/issues/690)",
-          "**scanner:** a full scan writes only the song rows and links that changed ([#1343](https://github.com/kevinch3/NicotinD/issues/1343)) ([3956447](https://github.com/kevinch3/NicotinD/commit/3956447c92b8938fb87f82d31214da449e46278b)), references [#1309](https://github.com/kevinch3/NicotinD/issues/1309)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.8.59",
-    "date": "2026-09-23",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.58...v0.8.59",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**prefs:** per-user preferences endpoint, and theme + language follow the user ([#1321](https://github.com/kevinch3/NicotinD/issues/1321)) ([437dcae](https://github.com/kevinch3/NicotinD/commit/437dcae9449baab30ef05295024007a3f5421ca9)), references [#1299](https://github.com/kevinch3/NicotinD/issues/1299)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.8.58",
-    "date": "2026-09-23",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.57...v0.8.58",
-    "sections": [
-      {
-        "title": "Performance",
-        "items": [
-          "**analysis:** reuse the genre prediction audio-features already got instead of re-analyzing ([#1334](https://github.com/kevinch3/NicotinD/issues/1334)) ([3ba60c4](https://github.com/kevinch3/NicotinD/commit/3ba60c4dd0f4248577dbac677609568984a4026e)), references [#1312](https://github.com/kevinch3/NicotinD/issues/1312)",
-          "**covers:** content-hash ETag on covers, and a bodiless 304 when the browser already has them ([#1333](https://github.com/kevinch3/NicotinD/issues/1333)) ([5a3e13a](https://github.com/kevinch3/NicotinD/commit/5a3e13a58394a73a2bcf80940735f31de6b859fd)), references [#1329](https://github.com/kevinch3/NicotinD/issues/1329)"
         ]
       }
     ]

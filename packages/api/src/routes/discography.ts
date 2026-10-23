@@ -16,6 +16,7 @@ import { setArtwork, pickAlbumCover, pickArtistImage } from '../services/artwork
 import { recordAcquiredArtistIdentity } from '../services/artist-identity-store.js';
 import {
   createJob,
+  findActiveAlbumJob,
   pendingIngestForAddonJob,
   supersedeActiveJobs,
 } from '../services/acquisition-job-store.js';
@@ -464,12 +465,12 @@ export function discographyRoutes({
       return c.json({ error: 'Missing selected candidate' }, 400);
     }
 
-    // The in-flight guard is the addon's own 409 below, not an `album_jobs`
-    // lookup: nothing has written that table since the addon cutover, so the
-    // check that used to live here could never fire (#748). What remains is
-    // superseding — previously gated behind that same dead lookup, which is why
-    // `replace` quietly stacked a second live card instead of replacing one.
+    // In-flight guard, core side (#1507): the album's own `acquisition_jobs`
+    // row, which also covers a job whose files are still landing — a state the
+    // addon's 409 below cannot see. (The `album_jobs` lookup that once lived
+    // here was dead since the addon cutover, #748.) `replace` supersedes instead.
     if (replace) supersedeActiveJobs(db, { lidarrAlbumId: albumId });
+    else if (findActiveAlbumJob(db, albumId)) return c.json({ error: 'already-downloading' }, 409);
 
     // Fetch canonical metadata up front — needed for the completeness guard and
     // the recorded job. Best-effort: a Lidarr hiccup must not block the download.

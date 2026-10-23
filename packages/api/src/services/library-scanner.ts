@@ -676,7 +676,7 @@ export function buildLibrary(
     if (isAtomicArtist(trackArtistOwner))
       confirmedArtists.add(normalizeArtistForGrouping(aliasFix(trackArtistOwner)));
   }
-  const known = { confirmedArtists, canonicalWhole };
+  const known = { confirmedArtists, canonicalWhole, explicitSplits: authority.explicitSplits };
 
   // Pass 2: build songs, albums, artists, and artist-link join rows.
   const songs: SongRow[] = [];

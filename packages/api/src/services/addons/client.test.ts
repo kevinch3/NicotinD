@@ -23,6 +23,7 @@ interface Captured {
   method: string;
   auth: string | null;
   body: string | null;
+  idempotencyKey: string | null;
 }
 
 function stubFetch(
@@ -35,6 +36,7 @@ function stubFetch(
       method: init?.method ?? 'GET',
       auth: new Headers(init?.headers).get('authorization'),
       body: typeof init?.body === 'string' ? init.body : null,
+      idempotencyKey: new Headers(init?.headers).get('idempotency-key'),
     };
     captured.push(req);
     return respond(req);
@@ -126,13 +128,55 @@ describe('AddonClient', () => {
 describe('AddonClient engine surface', () => {
   it('creates a job with an idempotency key and unwraps the body', async () => {
     const { fetchFn, captured } = stubFetch(() =>
-      Response.json({ job: { id: 'j1', intent: 'album', items: [] } }),
+      Response.json({ job: { id: 'j1', intent: 'album', state: 'active', items: [] } }),
     );
     const client = new AddonClient({ baseUrl: 'http://addon:9999', token: 'tok', fetchFn });
     const job = await client.createJob({ intent: 'album', artist: 'A', album: 'B' }, 'key-1');
     expect(job.id).toBe('j1');
+    expect(captured).toHaveLength(1);
     expect(captured[0]!.url).toBe('http://addon:9999/addon/v1/jobs');
     expect(captured[0]!.auth).toBe('Bearer tok');
+    expect(captured[0]!.idempotencyKey).toBe('key-1');
+  });
+
+  // #1507: the slskd addon's key map outlives the job it names. A replay of a
+  // deleted job came back `{ job: null }` and core 500'd reading `.items`.
+  it.each([
+    ['deleted', null],
+    ['cancelled', { id: 'old', intent: 'album', state: 'cancelled', items: [] }],
+  ])('re-issues without the key when it replays a %s job', async (_label, replayed) => {
+    const { fetchFn, captured } = stubFetch((req) =>
+      Response.json(
+        req.idempotencyKey
+          ? { job: replayed }
+          : { job: { id: 'fresh', intent: 'album', state: 'active', items: [] } },
+      ),
+    );
+    const client = new AddonClient({ baseUrl: 'http://addon:9999', token: 'tok', fetchFn });
+    const job = await client.createJob({ intent: 'album', artist: 'A', album: 'B' }, 'key-1');
+    expect(job.id).toBe('fresh');
+    expect(captured.map((c) => c.idempotencyKey)).toEqual(['key-1', null]);
+  });
+
+  // A fresh create can legitimately come back finished or failed; re-issuing on
+  // those would ask an addon for the same download twice.
+  it('returns a replayed finished job as is', async () => {
+    const { fetchFn, captured } = stubFetch(() =>
+      Response.json({ job: { id: 'old', intent: 'url', state: 'done', items: [] } }),
+    );
+    const client = new AddonClient({ baseUrl: 'http://addon:9999', token: 'tok', fetchFn });
+    const job = await client.createJob({ intent: 'url', url: 'https://x' }, 'url:https://x');
+    expect(job.id).toBe('old');
+    expect(captured).toHaveLength(1);
+  });
+
+  it('throws a contract error rather than hand back a missing job', async () => {
+    const { fetchFn, captured } = stubFetch(() => Response.json({ job: null }));
+    const client = new AddonClient({ baseUrl: 'http://addon:9999', token: 'tok', fetchFn });
+    await expect(
+      client.createJob({ intent: 'album', artist: 'A', album: 'B' }, 'key-1'),
+    ).rejects.toBeInstanceOf(AddonContractError);
+    expect(captured).toHaveLength(2);
   });
 
   it('lists jobs since a cursor', async () => {
