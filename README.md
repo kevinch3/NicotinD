@@ -35,7 +35,7 @@ every result lands in the same organized, tagged, analyzed library.
   <img src="docs/images/tour.gif" alt="Searching for an album, one tap to get it, and it landing in the library" width="720" />
 </p>
 
-<p align="center"><sub>Search → one tap → downloaded, tagged and filed. <a href="docs/images/tour.mp4">Watch the full 50-second tour (MP4)</a> — finding, playing, synced lyrics, radio.</sub></p>
+<p align="center"><sub>Search → one tap → downloaded, tagged and filed.</sub></p>
 
 > Recorded from the real app over a generated demo catalog — invented artists, synthesized audio —
 > by `bun run --filter @nicotind/e2e tour` + `tour:cut`; see [docs/product-tour.md](docs/product-tour.md).

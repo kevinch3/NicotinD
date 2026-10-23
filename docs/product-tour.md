@@ -18,8 +18,9 @@ Playwright expects — for a machine whose preinstalled browser build does not m
 CI and not part of `verify`: it produces an asset, it asserts nothing about the product a spec
 does not already.
 
-The README embeds the GIF (`docs/images/tour.gif`) and links the MP4 (`docs/images/tour.mp4`). To
-refresh them, copy `tour-output/nicotind-tour.{gif,mp4}` over those two files after a new cut.
+The README embeds the GIF (`docs/images/tour.gif`); refresh it by copying
+`tour-output/nicotind-tour.gif` over it after a new cut. The MP4 is not committed: GitHub plays a
+video inline only from an upload made in its web editor.
 
 ## What is real
 
