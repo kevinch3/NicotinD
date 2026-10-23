@@ -159,6 +159,41 @@ describe('DiscographyService', () => {
     expect(byTitle['Adentro'].status).toBe('missing');
   });
 
+  // #1565, measured on prod: the local "A Life" held only "Felt (feat. Henry
+  // Green)"; Lidarr's tracklist says "Felt". The credit defeated the match, so
+  // the owned album read 0/11 and its tile was counted partial.
+  it('matches a track whose local title carries a featuring credit', async () => {
+    insertArtist(db, 'ar1', 'Christian Löffler');
+    insertAlbum(db, 'al1', 'A Life', 'ar1');
+    insertSong(db, 's1', 'al1', 'Felt (feat. Henry Green)', 'ar1');
+
+    const { lidarr } = makeLidarrStub({
+      albums: [
+        makeLidarrAlbum({
+          id: 1,
+          title: 'A Life',
+          statistics: { trackCount: 2, totalTrackCount: 2, sizeOnDisk: 0, percentOfTracks: 100 },
+        }),
+      ],
+      tracksByAlbum: { 1: [makeTrack(11, 1, 'Roused'), makeTrack(12, 1, 'Felt')] },
+      monitoredArtist: {
+        id: 99,
+        foreignArtistId: 'mbid-loffler',
+        artistName: 'Christian Löffler',
+        sortName: 'Löffler, Christian',
+        status: 'continuing',
+        images: [],
+        monitored: true,
+      },
+    });
+
+    const result = disc(await new DiscographyService(lidarr, db).getArtistDiscography('ar1'));
+    const aLife = result.albums.find((a) => a.title === 'A Life')!;
+    expect(aLife.localTrackCount).toBe(1);
+    expect(aLife.status).toBe('partial');
+    expect(aLife.tracks.find((t) => t.title === 'Felt')?.hasFile).toBe(true);
+  });
+
   it('normalizes track-number prefixes and remaster suffixes when matching', async () => {
     insertArtist(db, 'ar1', 'Artist');
     insertAlbum(db, 'al1', 'Greatest Hits (Remastered)', 'ar1');

@@ -86,8 +86,10 @@ export class AlbumTileComponent {
     const parts: string[] = [];
     if (tile.year !== null) parts.push(String(tile.year));
     if (tile.kind) parts.push(tile.kind);
-    if (tile.status === 'partial' && tile.totalTracks) {
-      parts.push(`${tile.localTrackCount ?? 0}/${tile.totalTracks} tracks`);
+    // An owned album whose tracklist matched nothing printed "0/11 tracks" for
+    // music the user has (#1565): no matched count, no count.
+    if (tile.status === 'partial' && tile.totalTracks && tile.localTrackCount) {
+      parts.push(`${tile.localTrackCount}/${tile.totalTracks} tracks`);
     }
     return parts.join(' · ');
   });

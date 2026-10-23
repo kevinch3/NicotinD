@@ -69,6 +69,13 @@ describe('AlbumTileComponent', () => {
     );
   });
 
+  it('an owned album whose tracklist matched nothing claims no "0/N" (#1565)', () => {
+    const fixture = render(
+      tile({ status: 'partial', localAlbumId: 'a2', localTrackCount: 0, totalTracks: 11 }),
+    );
+    expect(el(fixture, '[data-testid="album-tile"]')!.textContent).not.toContain('0/11');
+  });
+
   it('a missing album does not navigate and offers Get album', () => {
     const fixture = render(
       tile({ status: 'missing', title: 'Atom Heart Mother', year: 1970, totalTracks: 5 }),
