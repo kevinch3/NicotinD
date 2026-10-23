@@ -25,6 +25,8 @@ import { PluginService } from '../../services/plugin.service';
 import { AutoHuntService } from '../../services/auto-hunt.service';
 import { IDLE_HUNT, albumHuntLabel, type AlbumHuntStatus } from '../../lib/album-hunt-status';
 import { withMediaToken } from '../../lib/cover-url';
+import { formatBytes } from '../../lib/disk-usage';
+import { ConfirmService } from '../../services/confirm.service';
 import { GetThenHearService, modeForFileCount } from '../../services/get-then-hear.service';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import {
@@ -256,6 +258,7 @@ export class SearchComponent implements OnInit, OnDestroy {
   private getThenHear = inject(GetThenHearService);
   private p2r = inject(PullToRefreshService);
   readonly i18n = inject(TranslateService);
+  private readonly confirm = inject(ConfirmService);
   private readonly translate: Translator = (key, params) => this.i18n.t(key, params);
 
   constructor() {
@@ -613,6 +616,20 @@ export class SearchComponent implements OnInit, OnDestroy {
       this.search.removeDownloading(key);
       this.downloadError.set(err instanceof Error ? err.message : 'Download failed');
     }
+  }
+
+  /** A fuzzy search can hold thousands of files from dozens of peers, so the
+   *  one-click grab says what it will queue first (#1542). */
+  async requestDownloadAll(): Promise<void> {
+    const flat = this.flatNetwork();
+    if (flat.length === 0) return;
+    const peers = new Set(flat.map((f) => f.username)).size;
+    const size = formatBytes(flat.reduce((sum, f) => sum + (f.size || 0), 0));
+    const ok = await this.confirm.ask(
+      this.i18n.t('acquire.downloadAllConfirm', { count: flat.length, peers, size }),
+      { confirmLabel: this.i18n.t('acquire.downloadAllGo') },
+    );
+    if (ok) await this.downloadAll();
   }
 
   async downloadAll(): Promise<void> {

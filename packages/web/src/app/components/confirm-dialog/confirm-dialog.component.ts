@@ -11,6 +11,7 @@ import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.d
 export class ConfirmDialogComponent {
   message = input.required<string>();
   confirmLabel = input<string>('Delete');
+  cancelLabel = input<string>('Cancel');
   confirm = output<void>();
   cancel = output<void>();
 

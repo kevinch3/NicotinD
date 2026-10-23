@@ -15,15 +15,16 @@ export const DOWNLOAD_STATUS_KEYS: Record<LabelKind, string> = {
   downloadFolder: 'acquire.downloadFolder',
 };
 
-/** English fallback, byte-identical to the pre-i18n wording (see relative-time.ts
- *  for the translator-as-param pattern this module follows). */
+/** English fallback, matching `en.json` (see relative-time.ts for the
+ *  translator-as-param pattern this module follows). One verb across lanes,
+ *  "Get", the catalog card's and Results row's word (#1542). */
 const ENGLISH_LABELS: Record<LabelKind, string> = {
-  download: 'Download',
+  download: 'Get',
   queued: 'Queued',
   downloading: 'Downloading…',
   done: '✓ Done',
   error: '✗ Error',
-  downloadFolder: 'Download folder',
+  downloadFolder: 'Get folder',
 };
 
 function labelFor(kind: LabelKind, t?: Translator): string {

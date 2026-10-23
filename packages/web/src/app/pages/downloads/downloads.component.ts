@@ -84,6 +84,7 @@ export class DownloadsComponent {
   readonly confirmOptionLabel = signal<string | null>(null);
   readonly confirmOptionChecked = signal(false);
   readonly confirmLabel = signal('Remove');
+  readonly cancelLabel = signal('Cancel');
   readonly showConfirm = computed(() => this.confirmCallback() !== null);
 
   private askConfirm(
@@ -91,9 +92,11 @@ export class DownloadsComponent {
     cb: (optionChecked: boolean) => void | Promise<void>,
     optionLabel?: string,
     confirmLabel = 'Remove',
+    cancelLabel = this.i18n.t('common.cancel'),
   ): void {
     this.confirmMessage.set(message);
     this.confirmLabel.set(confirmLabel);
+    this.cancelLabel.set(cancelLabel);
     this.confirmOptionLabel.set(optionLabel ?? null);
     this.confirmOptionChecked.set(false);
     this.confirmCallback.set(cb);
@@ -199,6 +202,9 @@ export class DownloadsComponent {
           if (discard) await this.discardPartial(jobId);
         },
         this.i18n.t('downloads.cancelAlsoDiscard', { count: landed }),
+        // "Cancel" would answer "Cancel this download?" both ways (#1542).
+        this.i18n.t('downloads.stopDownload'),
+        this.i18n.t('downloads.keepDownloading'),
       );
     } else {
       const j = this.transferService.acquireJobs().find((x) => x.id === item.key);
@@ -343,6 +349,7 @@ export class DownloadsComponent {
       () => this.cancelAll(),
       undefined,
       this.i18n.t('downloads.cancelAll'),
+      this.i18n.t('downloads.keepDownloading'),
     );
   }
 
