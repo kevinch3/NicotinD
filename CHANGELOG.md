@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.115](https://github.com/kevinch3/NicotinD/compare/v0.8.114...v0.8.115) (2026-10-23)
+
+### Features
+
+* **acquisition:** one album identity and one duplicate guard for every Get ([#1549](https://github.com/kevinch3/NicotinD/issues/1549)) ([dc4a6da](https://github.com/kevinch3/NicotinD/commit/dc4a6da6afa39734f9ff125b78a9b1403e240d67)), references [#1539](https://github.com/kevinch3/NicotinD/issues/1539) [#1540](https://github.com/kevinch3/NicotinD/issues/1540)
+* **web:** show an album's download on every Get surface, whichever lane started it ([#1552](https://github.com/kevinch3/NicotinD/issues/1552)) ([337c1c7](https://github.com/kevinch3/NicotinD/commit/337c1c7140a4cbbcd46bdf9933f717551165ddb8)), closes [#1539](https://github.com/kevinch3/NicotinD/issues/1539)
+
+### Bug Fixes
+
+* **acquisition:** a replayed key naming a deleted job no longer 500s hunt-download ([#1510](https://github.com/kevinch3/NicotinD/issues/1510)) ([0011fb7](https://github.com/kevinch3/NicotinD/commit/0011fb7fdf8d53485a3cfeb7c1307c59da8281cd))
+* **api:** apply a curator's artist split even when no delimiter separates the names ([#1523](https://github.com/kevinch3/NicotinD/issues/1523)) ([d74bcbe](https://github.com/kevinch3/NicotinD/commit/d74bcbea3876fdcf5387578a0de7ad66da748929))
+* **web:** confirm "Cancel all" and give it a slot "Clear finished" can't slide into ([#1512](https://github.com/kevinch3/NicotinD/issues/1512)) ([b2b0166](https://github.com/kevinch3/NicotinD/commit/b2b0166b40362d525c2aa37bc7f8713a701e5b94)), references [#1511](https://github.com/kevinch3/NicotinD/issues/1511)
+* **web:** keep modal close buttons and actions on screen on phones, and hide the artist genre editor ([#1524](https://github.com/kevinch3/NicotinD/issues/1524)) ([060efac](https://github.com/kevinch3/NicotinD/commit/060efacec7c225ed9b4e55631745b118432c8d9f))
+* **web:** rank acquire results by relevance to the query ([#1548](https://github.com/kevinch3/NicotinD/issues/1548)) ([17eb028](https://github.com/kevinch3/NicotinD/commit/17eb028c19b939af5f6bf2a6f50f9a747a07021b)), references [#1537](https://github.com/kevinch3/NicotinD/issues/1537)
+* **web:** send the media token with catalog covers ([#1546](https://github.com/kevinch3/NicotinD/issues/1546)) ([fd19287](https://github.com/kevinch3/NicotinD/commit/fd1928738192a6700606342e868a98795f1c3b32)), closes [#1536](https://github.com/kevinch3/NicotinD/issues/1536)
+
+### Performance
+
+* **api:** curation fixes re-bucket only what they touch instead of rescanning the whole library ([#1527](https://github.com/kevinch3/NicotinD/issues/1527)) ([26d9e37](https://github.com/kevinch3/NicotinD/commit/26d9e3761bb66f71328a89dbb5f1e7e7983b9549)), closes [#1521](https://github.com/kevinch3/NicotinD/issues/1521) [#1521](https://github.com/kevinch3/NicotinD/issues/1521), references [#1520](https://github.com/kevinch3/NicotinD/issues/1520) [#1521](https://github.com/kevinch3/NicotinD/issues/1521) [#1521](https://github.com/kevinch3/NicotinD/issues/1521) [#1521](https://github.com/kevinch3/NicotinD/issues/1521)
 ## [0.8.114](https://github.com/kevinch3/NicotinD/compare/v0.8.113...v0.8.114) (2026-10-22)
 
 ### Bug Fixes

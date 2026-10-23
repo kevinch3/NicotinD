@@ -1,0 +1,6 @@
+• acquisition: one album identity and one duplicate guard for every Get (#1549)
+• web: show an album's download on every Get surface, whichever lane started it (#1552)
+• acquisition: a replayed key naming a deleted job no longer 500s hunt-download (#1510)
+• api: apply a curator's artist split even when no delimiter separates the names (#1523)
+• web: confirm "Cancel all" and give it a slot "Clear finished" can't slide into (#1512)
+…and 4 more
