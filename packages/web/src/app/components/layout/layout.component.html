@@ -10,6 +10,7 @@
            GTK convention). -->
       <header
         data-testid="app-header"
+        data-top-chrome
         [class]="headerClass()"
         [attr.data-electron-title-bar]="isElectronLinux() ? '' : null"
         (dblclick)="onHeaderDoubleClick()"

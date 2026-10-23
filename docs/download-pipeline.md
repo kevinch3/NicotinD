@@ -1787,6 +1787,14 @@ cadence) while staying infinitely re-clickable. The durable marker inverts that:
   and "Cancel all" targets only `canCancel && !cancelRequested` rows instead of re-firing at
   post-download jobs that have nothing left to cancel. The client keeps the fast 3 s poll through
   every live stage (`jobKeepsFastCadence`) instead of dropping to 30 s the moment the stage moves.
+- **"Cancel all" asks first, from a slot of its own (#1506).** It fired with no confirm, and the
+  header rendered it and "Clear finished" conditionally in one row — when the last download ended,
+  Clear finished slid under the cursor, so a double-click landed on the other action. Both buttons
+  now always render in fixed slots (Clear finished first, Cancel all last as a danger pill), hidden
+  in place with `invisible` + `disabled` when they do not apply. `requestCancelAll` opens the shared
+  confirm with the count it would act on (`cancellableFeedCount`, the same `canCancel &&
+  !cancelRequested` rows); only the confirm runs `cancelAll`. Re-queuing a cancelled album means
+  re-searching it, and album-hunt cards have no Retry yet (#1511).
 
 #### A cancelled partial is a decision point, not an opaque card (#810)
 

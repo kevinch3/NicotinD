@@ -80,7 +80,11 @@ async function openGenreModal(page: Page, artistId: string): Promise<void> {
   expect(body.slices, 'the seeded genres reached the distribution').toHaveLength(3);
 }
 
-test.describe('genre radar', () => {
+// Parked with the editor's entry point (docs/library-scanner.md "Artist genre
+// editor is hidden"): the modal is unreachable while
+// ArtistDetailComponent.genreEditorEnabled is false. Re-enable with the flag.
+// The modal-geometry guarantee these covered lives on in modal-viewport.spec.ts.
+test.describe.skip('genre radar', () => {
   test('the artist genre-fix modal charts the genre spread with a value table', async ({
     page,
     request,
@@ -134,7 +138,7 @@ test.describe('genre radar', () => {
 // the growth, and the unbounded centered panel clipped. The upgraded
 // BottomChromeSafeDirective (ResizeObserver re-measure + --bottom-chrome-inset
 // panel bound + m-auto centering) must keep the whole panel reachable.
-test.describe('genre modal bottom-chrome geometry', () => {
+test.describe.skip('genre modal bottom-chrome geometry', () => {
   const PHONE = { width: 412, height: 915 }; // Pixel 7
   test.use({ viewport: PHONE });
 

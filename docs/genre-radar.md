@@ -7,6 +7,8 @@ their real identity.
 
 ## Placement: the curation surface, not the artist page
 
+**The modal's entry point is hidden for now** — see [library-scanner.md](library-scanner.md) "Artist genre editor is hidden". The album strip below is unaffected.
+
 It lives inside `ArtistGenreModalComponent`, which the issue itself calls the highest-value spot
 ("the radar as a *review aid* for reclassification proposals is arguably the highest-value
 placement"). That choice also **sidesteps the issue's open product question** — "is this a

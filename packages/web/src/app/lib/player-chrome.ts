@@ -73,3 +73,38 @@ export function measureBottomChromeInset(): number {
     window.innerHeight,
   );
 }
+
+/**
+ * The top-edge twin of {@link bottomChromeInset}: how far the sticky app header
+ * (tagged `data-top-chrome`) reaches down into the viewport. A modal reserves it
+ * instead of trusting z-index — on iOS the header's `backdrop-filter` layer
+ * painted over a `z-50` modal and buried its close button (#1522). A header
+ * that is hidden (`height` 0) or scrolled above the viewport reserves nothing.
+ */
+export function topChromeInset(rects: ChromeRect[]): number {
+  const bottoms = rects
+    .filter((r) => r.height > 0 && r.top + r.height > 0)
+    .map((r) => r.top + r.height);
+  return bottoms.length ? Math.max(...bottoms) : 0;
+}
+
+/**
+ * Measures `[data-top-chrome]` and floors it at the status-bar safe area, so a
+ * route that collapses the header (the phone mosaic home) still keeps a modal
+ * out from under the notch. `env()` only resolves through a real style, hence
+ * the probe; jsdom resolves it to nothing, i.e. 0.
+ */
+export function measureTopChromeInset(): number {
+  const header = topChromeInset(
+    Array.from(document.querySelectorAll<HTMLElement>('[data-top-chrome]')).map((el) => {
+      const rect = el.getBoundingClientRect();
+      return { top: rect.top, height: rect.height };
+    }),
+  );
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:fixed;visibility:hidden;padding-top:env(safe-area-inset-top,0px)';
+  document.body.appendChild(probe);
+  const safeArea = parseFloat(getComputedStyle(probe).paddingTop) || 0;
+  probe.remove();
+  return Math.max(header, safeArea);
+}

@@ -399,6 +399,19 @@ describe('ArtistDetailComponent — image override', () => {
   });
 });
 
+// The genre editor is parked until it is redesigned (docs/library-scanner.md
+// "Artist genre editor is hidden"). Its sibling identity fix must stay.
+describe('ArtistDetailComponent — artist genre editor is hidden', () => {
+  it('offers a curator the identity fix but not the genre fix', async () => {
+    const { fixture } = setup('admin');
+    await fixture_stable();
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('[data-testid="artist-identity-fix"]')).not.toBeNull();
+    expect(el.querySelector('[data-testid="artist-genre-fix"]')).toBeNull();
+  });
+});
+
 describe('ArtistDetailComponent — delete (admin only)', () => {
   it('exposes a destructive "Remove from library" track action for admins', async () => {
     const { component } = setup('admin');

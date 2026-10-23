@@ -295,6 +295,45 @@ describe('discography routes through a remote addon', () => {
       expect(h.jobRequests).toHaveLength(0);
     });
 
+    /**
+     * #1539, the prod duplicate: a peer-folder grab of the album was already
+     * downloading (no Lidarr id, named from the folder), and the catalog card's
+     * Get started a second copy from another peer. The name answers now.
+     */
+    it('answers already-downloading for a folder grab of the same album from another lane', async () => {
+      h.db.run(
+        `INSERT INTO acquisition_jobs (id, kind, method, state, stage, artist_name, album_title, created_at, updated_at)
+         VALUES ('folder-1', 'direct', 'fixture-addon', 'active', 'downloading',
+                 'Soda Stereo & Friends', 'Soda Stereo - Dynamo [1992]', 1, 1)`,
+      );
+      const res = await h.app.request('/albums/42/hunt-download', jsonPost(pick));
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ error: 'already-downloading', jobId: 'folder-1' });
+      expect(h.jobRequests).toHaveLength(0);
+    });
+
+    it('replace retires a same-album job from another lane too', async () => {
+      h.db.run(
+        `INSERT INTO acquisition_jobs (id, kind, method, state, stage, artist_name, album_title, created_at, updated_at)
+         VALUES ('folder-2', 'direct', 'fixture-addon', 'active', 'downloading', 'Soda Stereo', 'Dynamo', 1, 1)`,
+      );
+      const res = await h.app.request('/albums/42/hunt-download?replace=true', jsonPost(pick));
+      expect(res.status).toBe(201);
+      const old = h.db
+        .query<{ state: string }, []>(`SELECT state FROM acquisition_jobs WHERE id = 'folder-2'`)
+        .get()!;
+      expect(old.state).toBe('superseded');
+    });
+
+    it('a different album by the same artist does not block', async () => {
+      h.db.run(
+        `INSERT INTO acquisition_jobs (id, kind, method, state, stage, artist_name, album_title, created_at, updated_at)
+         VALUES ('other-1', 'direct', 'fixture-addon', 'active', 'downloading', 'Soda Stereo', 'Sueño Stereo', 1, 1)`,
+      );
+      const res = await h.app.request('/albums/42/hunt-download', jsonPost(pick));
+      expect(res.status).toBe(201);
+    });
+
     it('a finished or failed job for the album does not block a new one', async () => {
       h.db.run(
         `INSERT INTO acquisition_jobs (id, kind, method, state, stage, lidarr_album_id, created_at, updated_at)

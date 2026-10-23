@@ -6,7 +6,7 @@ import {
   OnDestroy,
   inject,
 } from '@angular/core';
-import { measureBottomChromeInset } from '../lib/player-chrome';
+import { measureBottomChromeInset, measureTopChromeInset } from '../lib/player-chrome';
 
 /**
  * Reserves space for the fixed bottom chrome (mini-player + mobile tab bar) at
@@ -28,8 +28,8 @@ import { measureBottomChromeInset } from '../lib/player-chrome';
  *   than the available space; `overscroll-behavior: contain` keeps that scroll
  *   from chaining into the page behind the modal.
  * - `--bottom-chrome-inset` is published on the backdrop so the dialog panel
- *   can self-bound with the canonical recipe
- *   `max-h-[calc(100dvh-var(--bottom-chrome-inset,0px)-<static padding>)]`
+ *   can self-bound with the `modal-max-h` utility (styles.css), which
+ *   subtracts it together with `--top-chrome-inset`
  *   (see docs/design-patterns.md "Bottom-chrome-safe modals").
  *
  * Re-measure triggers, all funnelled into `reposition()`:
@@ -41,6 +41,12 @@ import { measureBottomChromeInset } from '../lib/player-chrome';
  * - `transitionend` bubbling from a `[data-bottom-chrome]` layer — the
  *   mini-player shows/hides via a transform transition, which never changes
  *   any observed element's box, so neither trigger above sees it.
+ *
+ * The top edge gets the same treatment (#1522): `padding-top` grows by the
+ * sticky header (`[data-top-chrome]`, floored at the status-bar safe area) and
+ * `--top-chrome-inset` is published for the panel's `max-h`. Reserving beats
+ * out-ranking: on iOS the header's backdrop-filter layer painted over the
+ * `z-50` modal regardless of z-index.
  */
 @Directive({
   selector: '[appBottomChromeSafe]',
@@ -49,11 +55,13 @@ import { measureBottomChromeInset } from '../lib/player-chrome';
 export class BottomChromeSafeDirective implements AfterViewInit, OnDestroy {
   private readonly el = inject(ElementRef<HTMLElement>);
   private basePaddingBottom = 0;
+  private basePaddingTop = 0;
   private resizeObserver: ResizeObserver | null = null;
 
   ngAfterViewInit(): void {
     const host = this.el.nativeElement;
     this.basePaddingBottom = parseFloat(getComputedStyle(host).paddingBottom) || 0;
+    this.basePaddingTop = parseFloat(getComputedStyle(host).paddingTop) || 0;
     host.style.overflowY = 'auto';
     host.style.overscrollBehavior = 'contain';
     this.reposition();
@@ -81,5 +89,8 @@ export class BottomChromeSafeDirective implements AfterViewInit, OnDestroy {
     const inset = measureBottomChromeInset();
     host.style.paddingBottom = `${this.basePaddingBottom + inset}px`;
     host.style.setProperty('--bottom-chrome-inset', `${inset}px`);
+    const top = measureTopChromeInset();
+    host.style.paddingTop = `${this.basePaddingTop + top}px`;
+    host.style.setProperty('--top-chrome-inset', `${top}px`);
   }
 }

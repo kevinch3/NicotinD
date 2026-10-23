@@ -4,6 +4,8 @@ import {
   mainBottomPadClass,
   bottomChromeInset,
   measureBottomChromeInset,
+  topChromeInset,
+  measureTopChromeInset,
 } from './player-chrome';
 
 describe('miniPlayerSlideClass', () => {
@@ -108,5 +110,44 @@ describe('measureBottomChromeInset', () => {
     addChromeLayer(vh - 56, 56); // tab bar
     addChromeLayer(vh - 128, 72); // mini-player stacked above it
     expect(measureBottomChromeInset()).toBe(128);
+  });
+});
+
+// The sticky app header painted OVER modal panels on iOS, burying the close
+// button (#1522). Modals reserve it the way they reserve the bottom chrome.
+describe('topChromeInset', () => {
+  it('is 0 when no chrome is present (the header collapses on the mosaic home)', () => {
+    expect(topChromeInset([])).toBe(0);
+  });
+
+  it('is the bottom edge of the header pinned at the top', () => {
+    expect(topChromeInset([{ top: 0, height: 83 }])).toBe(83);
+  });
+
+  it('ignores a hidden (height 0) layer', () => {
+    expect(topChromeInset([{ top: 0, height: 0 }])).toBe(0);
+  });
+
+  it('ignores a header scrolled away above the viewport', () => {
+    expect(topChromeInset([{ top: -120, height: 83 }])).toBe(0);
+  });
+});
+
+describe('measureTopChromeInset', () => {
+  afterEach(() => {
+    document.querySelectorAll('[data-top-chrome]').forEach((el) => el.remove());
+  });
+
+  it('measures the live rect of the tagged header', () => {
+    const el = document.createElement('header');
+    el.setAttribute('data-top-chrome', '');
+    el.getBoundingClientRect = () =>
+      ({ top: 0, height: 83, bottom: 83, left: 0, right: 0, width: 0, x: 0, y: 0 }) as DOMRect;
+    document.body.appendChild(el);
+    expect(measureTopChromeInset()).toBe(83);
+  });
+
+  it('is 0 when no [data-top-chrome] layer exists', () => {
+    expect(measureTopChromeInset()).toBe(0);
   });
 });
