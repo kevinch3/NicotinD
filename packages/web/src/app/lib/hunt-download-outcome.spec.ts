@@ -73,6 +73,24 @@ describe('classifyHuntDownloadError', () => {
     });
   });
 
+  // #1507: a bare 500 was a core TypeError, identical for every peer — treating
+  // it as "peer unavailable" walked the whole alternate list into the same fault.
+  it('keeps a server fault (500) and a missing source (503) terminal', () => {
+    expect(
+      classifyHuntDownloadError({ status: 500, error: { error: 'Internal server error' } }),
+    ).toMatchObject({ kind: 'error', message: 'Internal server error', retriable: false });
+    expect(
+      classifyHuntDownloadError({
+        status: 503,
+        error: { error: 'No acquisition addon registered' },
+      }),
+    ).toMatchObject({ kind: 'error', retriable: false });
+  });
+
+  it('marks a gateway timeout (504) retriable', () => {
+    expect(classifyHuntDownloadError({ status: 504 })).toMatchObject({ retriable: true });
+  });
+
   it('marks a network failure (status 0) retriable', () => {
     expect(classifyHuntDownloadError({ status: 0 })).toMatchObject({
       kind: 'error',

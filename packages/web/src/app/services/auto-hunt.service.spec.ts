@@ -569,6 +569,20 @@ describe('AutoHuntService', () => {
       expect(lastToast?.message).toContain('Selection expired');
     });
 
+    // #1507: one core 500 read as "hardkorr unavailable — trying holden093…",
+    // and every hop hit the same fault.
+    it('does not walk the alternates on a server fault (500)', async () => {
+      huntDownload.mockReturnValue(
+        throwError(() => ({ status: 500, error: { error: 'Internal server error' } })),
+      );
+
+      await runDownload([candidate(85, 'peer1'), candidate(80, 'peer2')]);
+
+      expect(huntDownload).toHaveBeenCalledTimes(1);
+      expect(show.mock.calls.some(([t]) => t.message.includes('unavailable'))).toBe(false);
+      expect(show.mock.calls.at(-1)?.[0]?.kind).toBe('error');
+    });
+
     it('never retries with a below-threshold candidate', async () => {
       huntDownload.mockReturnValue(throwError(() => offline('peer1')));
 

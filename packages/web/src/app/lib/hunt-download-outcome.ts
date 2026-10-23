@@ -28,9 +28,11 @@ export interface HuntDownloadErrorOutcome {
   // Only meaningful for `kind: 'error'`; the dedicated states carry their own copy.
   message: string;
   /**
-   * Whether trying a *different* candidate could plausibly succeed. A 5xx (peer
-   * offline / addon hiccup) or a network failure is a per-attempt condition; a
-   * 4xx (stale selection, validation) will fail identically for every peer.
+   * Whether trying a *different* candidate could plausibly succeed. Only the
+   * route's per-peer enqueue failure (502), a gateway timeout (504) or a network
+   * failure qualify. A 4xx (stale selection), a 500 (server fault) and a 503
+   * (no addon / source down) fail identically for every peer — walking the
+   * alternates there only multiplied one fault into several toasts (#1507).
    */
   retriable: boolean;
 }
@@ -50,7 +52,7 @@ export function classifyHuntDownloadError(err: unknown): HuntDownloadErrorOutcom
   if (code === 'already-downloading')
     return { kind: 'already-downloading', message: '', retriable: false };
   const status = (err as { status?: number })?.status;
-  const retriable = status === 0 || (typeof status === 'number' && status >= 500);
+  const retriable = status === 0 || status === 502 || status === 504;
   const message =
     (typeof code === 'string' && code) || (err instanceof Error ? err.message : 'Download failed');
   return { kind: 'error', message, retriable };

@@ -27,6 +27,22 @@ describe('a full scan builds the library off the event loop (#1313)', () => {
     expect(await buildLibraryOffThread([tracks])).toEqual(buildLibrary(tracks));
   });
 
+  // The authority crosses postMessage; a curator's split (a Map) must survive the
+  // clone, or scanFull — the path the identity route runs — drops it (#1520).
+  it('carries a user split decision across the worker boundary', async () => {
+    const tracks = [{ ...library(1)[0]!, artist: 'Gordo/Feid', albumArtist: 'Gordo/Feid' }];
+    const authority = {
+      confirmedArtists: new Set<string>(),
+      canonicalWhole: new Set<string>(),
+      aliases: new Map<string, string>(),
+      explicitSplits: new Map([['gordo/feid', ['Gordo', 'Feid']]]),
+    };
+    const args = [tracks, undefined, undefined, authority] as const;
+    const offThread = await buildLibraryOffThread([...args]);
+    expect(offThread).toEqual(buildLibrary(...args));
+    expect(offThread.artists.find((a) => a.name === 'Gordo/Feid')?.splitCompound).toBe(true);
+  });
+
   it('keeps the event loop responsive while a whole library builds', async () => {
     // 10k tracks: ~350 ms inline, well over the bar, without cloning a
     // whole-library heap into a worker inside a shared test process.
