@@ -92,6 +92,23 @@ describe('mergeAndRank', () => {
     expect(merged).toHaveLength(2);
   });
 
+  it('ranks a relevant lossy copy above an irrelevant FLAC with a free slot', () => {
+    const relevant = songResultToCandidate({
+      ...song({ filename: 'a.mp3', bitRate: 320, freeUploadSlots: 0 }),
+      relevance: 6,
+    });
+    const flac = songResultToCandidate({ ...song({ filename: 'b.flac' }), relevance: 0 });
+    expect(mergeAndRank([flac, relevant])[0]).toBe(relevant);
+  });
+
+  // #1537: a title tiebreak sorted equal-score rows alphabetically, so
+  // "[untitled]" led a search for "Damian Lazarus".
+  it('keeps the source order for equal scores instead of sorting by title', () => {
+    const b = songResultToCandidate({ ...song(), title: 'Zebra' });
+    const a = songResultToCandidate({ ...song(), title: '[untitled]' });
+    expect(mergeAndRank([b, a]).map((c) => c.title)).toEqual(['Zebra', '[untitled]']);
+  });
+
   it('is a stable, neutral ordering across sources at equal score', () => {
     expect(Object.keys(SOURCE_LABELS)).toEqual(['soulseek', 'archive', 'spotify']);
   });
