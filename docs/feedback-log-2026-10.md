@@ -11,14 +11,14 @@
 
 | #   | Status | Severity | Flow              | Issue                                                                     |
 | --- | ------ | -------- | ----------------- | ------------------------------------------------------------------------- |
-| 1   | ◻️     | High     | Get album         | One album downloaded twice through two lanes → two library albums (#1539)  |
-| 2   | ◻️     | High     | Catalog search    | Every catalog cover 401s — no media token on `/api/cover/remote` (#1536)   |
-| 3   | ◻️     | High     | Acquire results   | Results are alphabetical; the score never sees the query (#1537)           |
-| 4   | ◻️     | High     | Catalog search    | Album grid is Lidarr's lookup, not what the provider has (#1538)           |
-| 5   | ◻️     | High     | Folder grab       | One card, every file twice, "14 of 28 · 14 unavailable" (#1540)           |
-| 6   | ◻️     | Medium   | One-click Get     | Silent 400; missable countdown toast; card label lags the stage (#1543)    |
-| 7   | ◻️     | Medium   | Folders view      | A mixed grab-bag folder ranks first wearing a FLAC badge (#1541)           |
-| 8   | ◻️     | Medium   | Acquire actions   | No icons, hover-only star, unconfirmed Download all, Cancel/Remove (#1542) |
+| 1   | ✅     | High     | Get album         | One album downloaded twice through two lanes → two library albums (#1539)  |
+| 2   | ✅     | High     | Catalog search    | Every catalog cover 401s — no media token on `/api/cover/remote` (#1536)   |
+| 3   | ◑      | High     | Acquire results   | Results are alphabetical; the score never sees the query (#1537)           |
+| 4   | ✅     | High     | Catalog search    | Album grid is Lidarr's lookup, not what the provider has (#1538)           |
+| 5   | ◑      | High     | Folder grab       | One card, every file twice, "14 of 28 · 14 unavailable" (#1540)           |
+| 6   | ◑      | Medium   | One-click Get     | Silent 400; missable countdown toast; card label lags the stage (#1543)    |
+| 7   | ◑      | Medium   | Folders view      | A mixed grab-bag folder ranks first wearing a FLAC badge (#1541)           |
+| 8   | ◑      | Medium   | Acquire actions   | No icons, hover-only star, unconfirmed Download all, Cancel/Remove (#1542) |
 | 9   | ◻️     | Low      | Add / Activity    | Half-restored tab state, premature "Added to library" (#1544)              |
 
 ---
@@ -74,3 +74,18 @@ Alaska*, *Mare*. All landed.
 _What worked:_ per-album hunt status (one card busy never blocks another), the guided Get landing
 *Smoke the Monster Out* 13/13 in ~2 minutes, and the Library artist page — real covers and a
 per-release complete/partial/missing strip — which is the presentation the Add grid should reuse.
+
+_Status (same day, later):_ shipped in v0.8.115 or the PR after it.
+- **Fixed:** covers (#1546); one album = one download across lanes, with server guard + shared web
+  status (#1549, #1552; a near-simultaneous two-lane race is documented as still possible);
+  availability + provider-only cards (#1538).
+- **Partial:**
+  - Results ranking (#1548): the subtitle path fallback and stop-word highlighting are still open.
+  - Folder-grab card (#1549): named from the folder now ("Elektronika" gone), but the doubled items
+    remain (#1540).
+  - Card labels (#1552): show stage + progress now, but the silent 400 and the missable toast
+    remain (#1543).
+  - Folder badge (#1538 PR): majority-based now, but grab-bags are still not demoted below album
+    folders of lossy formats (#1541).
+  - Download icon + touch-visible star: the Download-all confirm and the Cancel dialog wording
+    remain (#1542).

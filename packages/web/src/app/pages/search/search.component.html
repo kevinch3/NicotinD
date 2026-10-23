@@ -308,16 +308,21 @@
             axis="grid"
             #catalogAlbumsGrid="appTvNavGroup"
           >
-            @for (row of chunk(catalog()!.albums, catalogAlbumsGrid.gridColumns()); track $index) {
+            @for (row of chunk(orderedCatalogAlbums(), catalogAlbumsGrid.gridColumns()); track $index) {
               <div role="row" style="display: contents">
                 @for (album of row; track album.foreignAlbumId) {
                   @let huntStatus = catalogHuntStatus(album);
+                  @let availability = catalogAvailabilityOf(album);
                   <button
                     appTvNavItem
                     (click)="huntCatalogAlbum(album)"
                     [disabled]="resolvingAlbum() !== null || huntStatus.phase !== 'idle'"
                     [attr.data-hunt-phase]="huntStatus.phase"
+                    [attr.data-availability]="
+                      availability === undefined ? 'unknown' : availability ? 'available' : 'none'
+                    "
                     class="group text-left rounded-lg overflow-hidden border border-zinc-800/80 transition hover:border-zinc-600 disabled:opacity-60"
+                    [class.opacity-50]="availability === null && huntStatus.phase === 'idle'"
                     style="background: var(--theme-surface)"
                   >
                     <div class="aspect-square bg-zinc-800 relative" data-testid="catalog-album-cover">
@@ -371,8 +376,8 @@
                               ? 'Watching — auto-downloads when found'
                               : 'Watch — auto-download when found'
                           "
-                          class="absolute top-1.5 right-1.5 w-7 h-7 flex items-center justify-center rounded-full bg-black/55 hover:bg-black/75 transition cursor-pointer opacity-0 group-hover:opacity-100 focus:opacity-100"
-                          [class.!opacity-100]="watchlist.isWatched(album.foreignAlbumId)"
+                          class="absolute top-1.5 right-1.5 w-7 h-7 flex items-center justify-center rounded-full bg-black/55 hover:bg-black/75 transition cursor-pointer opacity-0 group-hover:opacity-100 focus:opacity-100 [@media(hover:none)]:opacity-100"
+                          [class.!opacity-100]="watchlist.isWatched(album.foreignAlbumId) || availability === null"
                         >
                           <svg
                             width="15"
@@ -407,8 +412,102 @@
                         }}{{ album.albumType
                         }}{{ album.trackCount ? ' · ' + album.trackCount + ' tracks' : '' }}
                       </p>
+                      @if (availability) {
+                        <p
+                          class="text-xs truncate mt-0.5 text-emerald-400/90"
+                          data-testid="catalog-album-availability"
+                        >
+                          {{ availabilityLabel(availability) }}
+                        </p>
+                      } @else if (availability === null) {
+                        <p
+                          class="text-xs truncate mt-0.5"
+                          style="color: var(--theme-text-muted)"
+                          data-testid="catalog-album-unavailable"
+                          [title]="'acquire.notOnProviderHint' | t"
+                        >
+                          {{ 'acquire.notOnProvider' | t: { source: folderSourceLabel } }}
+                        </p>
+                      }
                     </div>
                   </button>
+                }
+              </div>
+            }
+          </div>
+        </div>
+      }
+      <!-- The provider's own discography (#1538): albums peers hold that the
+           catalog lookup never listed. A card opens its copies in the folders
+           lane; the icon gets the fullest copy outright. -->
+      @if (providerAlbums().length > 0) {
+        <div data-testid="provider-albums">
+          <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-3">
+            {{ 'acquire.moreOnProvider' | t }}
+          </h2>
+          <div
+            class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3"
+            appTvNavGroup
+            axis="grid"
+            #providerAlbumsGrid="appTvNavGroup"
+          >
+            @for (row of chunk(providerAlbums(), providerAlbumsGrid.gridColumns()); track $index) {
+              <div role="row" style="display: contents">
+                @for (album of row; track album.key) {
+                  @let status = providerAlbumStatus(album);
+                  <div
+                    class="group relative text-left rounded-lg overflow-hidden border border-zinc-800/80 transition hover:border-zinc-600"
+                    style="background: var(--theme-surface)"
+                    data-testid="provider-album"
+                  >
+                    <button
+                      appTvNavItem
+                      (click)="showProviderCopies(album)"
+                      class="block w-full text-left"
+                      [title]="'acquire.showCopiesHint' | t"
+                    >
+                      <div class="aspect-square bg-zinc-800 relative">
+                        <app-cover-art
+                          [artist]="album.artist"
+                          [album]="album.title"
+                          [fill]="true"
+                          rounded="rounded-none"
+                        />
+                        @if (status.phase !== 'idle') {
+                          <div
+                            class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60"
+                          >
+                            <span
+                              class="inline-block w-5 h-5 border-2 border-zinc-500 border-t-zinc-200 rounded-full animate-spin"
+                            ></span>
+                            <span class="text-xs text-zinc-300">{{ catalogHuntLabel(status) }}</span>
+                          </div>
+                        }
+                      </div>
+                      <div class="p-2">
+                        <p class="text-sm truncate" style="color: var(--theme-text-primary)">
+                          {{ album.title }}
+                        </p>
+                        <p class="text-xs truncate" style="color: var(--theme-text-secondary)">
+                          {{ album.artist }}
+                        </p>
+                        <p class="text-xs truncate mt-0.5 text-emerald-400/90">
+                          {{ availabilityLabel(album.availability) }}
+                        </p>
+                      </div>
+                    </button>
+                    @if (status.phase === 'idle') {
+                      <button
+                        (click)="getBestProviderCopy(album, $event)"
+                        data-testid="provider-album-get"
+                        [attr.aria-label]="'acquire.getBestCopy' | t: { album: album.title }"
+                        [title]="'acquire.getBestCopy' | t: { album: album.title }"
+                        class="absolute top-1.5 right-1.5 w-8 h-8 flex items-center justify-center rounded-full bg-black/60 hover:bg-black/80 text-white transition"
+                      >
+                        <app-icon name="download" [size]="16" />
+                      </button>
+                    }
+                  </div>
                 }
               </div>
             }
@@ -754,7 +853,26 @@
             </div>
           } @else {
             <div class="space-y-2">
-              @for (group of folderGroups(); track getFolderKey(group)) {
+              @if (folderFilter(); as filter) {
+                <div
+                  class="flex items-center justify-between gap-2 mb-2 px-2 py-1.5 rounded-md text-xs"
+                  style="background: var(--theme-hover)"
+                  data-testid="folder-filter"
+                >
+                  <span style="color: var(--theme-text-secondary)">
+                    {{ 'acquire.showingCopiesOf' | t: { album: filter.title } }}
+                  </span>
+                  <button
+                    (click)="folderFilter.set(null)"
+                    class="inline-flex items-center gap-1 text-zinc-400 hover:text-zinc-200"
+                    [attr.aria-label]="'acquire.showAllFolders' | t"
+                  >
+                    <app-icon name="close" [size]="12" />
+                    {{ 'acquire.showAllFolders' | t }}
+                  </button>
+                </div>
+              }
+              @for (group of visibleFolderGroups(); track getFolderKey(group)) {
                 <div
                   class="rounded-lg border border-zinc-800/80 overflow-hidden"
                   style="background: var(--theme-surface)"

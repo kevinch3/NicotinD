@@ -45,6 +45,13 @@ import {
   type FolderGroup,
 } from '../../lib/folder-utils';
 import { folderAlbumIdentity } from '@nicotind/core';
+import {
+  availabilityFor,
+  folderIsAlbum,
+  providerOnlyAlbums,
+  type ProviderAvailability,
+  type ProviderOnlyAlbum,
+} from '../../lib/provider-albums';
 import { IconComponent } from '../../components/icon/icon.component';
 import { groupBySong, formatBadge, isLossless, type SongResult } from '../../lib/song-results';
 import {
@@ -52,6 +59,7 @@ import {
   archiveToCandidate,
   spotifyToCandidate,
   mergeAndRank,
+  SOURCE_LABELS,
   type BlendedCandidate,
 } from '../../lib/acquisition-candidate';
 import { parseLinkIntent, type LinkIntent } from '../../lib/link-intent';
@@ -359,9 +367,55 @@ export class SearchComponent implements OnInit, OnDestroy {
   // Ranked so the best copies (free slot, lossless, complete, fast) lead, then
   // deduped so the ~100 near-identical album folders collapse to one card per
   // distinct copy (distinct editions/formats survive). See §A7.
-  readonly folderGroups = computed(() =>
-    dedupeFolders(rankFolders(groupByDirectory(this.flatNetwork()))),
-  );
+  // Every peer folder, before the dedupe collapses copies — availability counts peers.
+  readonly allFolderGroups = computed(() => groupByDirectory(this.flatNetwork()));
+  readonly folderGroups = computed(() => dedupeFolders(rankFolders(this.allFolderGroups())));
+
+  // ─── What the provider holds (#1538) ───────────────────────────
+  /** True once every peer has answered — only then is "no copy" a fact. */
+  readonly networkComplete = computed(() => this.search.networkState() === 'complete');
+
+  /** Per catalog album, the peers holding it (null: none). Empty until results arrive. */
+  readonly catalogAvailability = computed(() => {
+    const folders = this.allFolderGroups();
+    const byAlbum = new Map<string, ProviderAvailability | null>();
+    if (folders.length === 0) return byAlbum;
+    for (const album of this.catalog()?.albums ?? []) {
+      byAlbum.set(album.foreignAlbumId, availabilityFor(album, folders));
+    }
+    return byAlbum;
+  });
+
+  /**
+   * Catalog cards, available first. A card no peer holds stays (its watch star
+   * is the useful action) but sinks to the end, dimmed — only once the network
+   * search completed, so a slow peer never demotes an album.
+   */
+  readonly orderedCatalogAlbums = computed(() => {
+    const albums = this.catalog()?.albums ?? [];
+    if (!this.networkComplete() || !this.hasNetwork()) return albums;
+    const avail = this.catalogAvailability();
+    return [...albums].sort(
+      (a, b) =>
+        Number(avail.get(a.foreignAlbumId) == null) - Number(avail.get(b.foreignAlbumId) == null),
+    );
+  });
+
+  /** The provider's albums no catalog card covers — "Mare" for Christian Löffler. */
+  readonly providerAlbums = computed(() => {
+    const artist = this.catalog()?.scopedArtist;
+    if (!artist) return [];
+    return providerOnlyAlbums(this.allFolderGroups(), this.catalog()?.albums ?? [], artist);
+  });
+
+  /** A provider card opened: the folders lane, narrowed to that album's copies. */
+  readonly folderFilter = signal<ProviderOnlyAlbum | null>(null);
+  readonly visibleFolderGroups = computed(() => {
+    const filter = this.folderFilter();
+    if (!filter) return this.folderGroups();
+    const target = { artistName: filter.artist, title: filter.title };
+    return this.folderGroups().filter((g) => folderIsAlbum(g, target));
+  });
   // Template helpers for folder format badge + per-file quality label (§A7).
   readonly folderFormat = folderFormat;
   readonly fileQualityLabel = fileQualityLabel;
@@ -722,6 +776,51 @@ export class SearchComponent implements OnInit, OnDestroy {
 
   catalogCoverUrl(album: CatalogAlbum): string | undefined {
     return withMediaToken(album.coverUrl, this.auth.mediaToken());
+  }
+
+  /** "No copy" only once the search finished; null while it is still unknown. */
+  catalogAvailabilityOf(album: CatalogAlbum): ProviderAvailability | null | undefined {
+    const avail = this.catalogAvailability().get(album.foreignAlbumId);
+    if (avail) return avail;
+    return this.networkComplete() && this.hasNetwork() ? null : undefined;
+  }
+
+  /** "12 peers · FLAC · complete" — what a card can promise before it is clicked. */
+  availabilityLabel(a: ProviderAvailability): string {
+    const parts = [this.i18n.t('acquire.peersCount', { count: a.peers })];
+    // The best format any copy offers: a lossless copy if one exists, else the fullest's.
+    const losslessCopy = a.folders.find((f) => folderFormat(f)?.lossless);
+    const format = folderFormat(losslessCopy ?? a.folders[0]!)?.label;
+    if (format) parts.push(format);
+    if (a.complete) parts.push(this.i18n.t('acquire.completeCopy'));
+    return parts.join(' · ');
+  }
+
+  providerAlbumStatus(album: ProviderOnlyAlbum): AlbumHuntStatus {
+    return this.autoHunt.statusForAlbum({ artist: album.artist, title: album.title });
+  }
+
+  /** Show every copy of a provider album in the folders lane, to pick one. */
+  showProviderCopies(album: ProviderOnlyAlbum): void {
+    this.folderFilter.set(album);
+    this.directSearchOpen.set(true);
+    this.networkView.set('folders');
+    // The lane renders below the fold; take the user to the copies they asked for.
+    setTimeout(() =>
+      document
+        .querySelector('[data-testid="advanced-network-search"]')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+    );
+  }
+
+  /** The folder lane's source, named on the "not on …" badge. */
+  readonly folderSourceLabel = SOURCE_LABELS.soulseek;
+
+  /** Get the best copy outright: most tracks, then the lane's own ranking. */
+  getBestProviderCopy(album: ProviderOnlyAlbum, event: Event): void {
+    event.stopPropagation();
+    const best = album.availability.folders[0];
+    if (best) void this.downloadFolder(best);
   }
 
   /** Any lane's live job for this album — not only one this card started (#1539). */
@@ -1147,6 +1246,7 @@ export class SearchComponent implements OnInit, OnDestroy {
     this.catalogUnavailable.set(false);
     this.resultsExpanded.set(false);
     this.artistsExpanded.set(false);
+    this.folderFilter.set(null);
   }
 
   private async executeSearch(opts?: { forceDirectOpen?: boolean }): Promise<void> {

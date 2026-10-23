@@ -498,6 +498,90 @@ describe('SearchComponent — metadata-driven search', () => {
   });
 });
 
+describe('SearchComponent — what the provider holds (#1538)', () => {
+  const peer = (username: string, dir: string, n: number) => ({
+    username,
+    freeUploadSlots: 1,
+    uploadSpeed: 1,
+    queueLength: 0,
+    files: Array.from({ length: n }, (_, i) => ({
+      filename: `${dir}\\0${i + 1} T.flac`,
+      size: 10,
+    })),
+  });
+  const WYWH: CatalogAlbum = {
+    ...CATALOG_ALBUM,
+    foreignAlbumId: 'wywh',
+    title: 'Wish You Were Here',
+    trackCount: 5,
+  };
+
+  function seeded(state: 'searching' | 'complete') {
+    const ctx = setup();
+    ctx.component.catalog.set({
+      artists: [],
+      albums: [CATALOG_ALBUM, WYWH],
+      scopedArtist: 'Pink Floyd',
+    });
+    ctx.search.network.set([
+      peer('a', 'Music\\Pink Floyd\\The Dark Side of the Moon (1973)', 10),
+      peer('b', 'Pink Floyd - The Dark Side of the Moon [FLAC]', 10),
+      peer('c', 'Music\\Pink Floyd\\1979 - The Wall', 26),
+    ] as never);
+    ctx.search.setNetworkState(state);
+    return ctx;
+  }
+
+  it('marks a catalog card with the peers holding it', () => {
+    const { component } = seeded('complete');
+    expect(component.catalogAvailabilityOf(CATALOG_ALBUM)).toMatchObject({
+      peers: 2,
+      complete: true,
+      lossless: true,
+    });
+    expect(component.availabilityLabel(component.catalogAvailabilityOf(CATALOG_ALBUM)!)).toContain(
+      'FLAC',
+    );
+  });
+
+  // A slow peer must never demote an album: "none" is a fact only once every peer answered.
+  it('says "no copy" only after the network search completed', () => {
+    const { component, search } = seeded('searching');
+    expect(component.catalogAvailabilityOf(WYWH)).toBeUndefined();
+    search.setNetworkState('complete');
+    expect(component.catalogAvailabilityOf(WYWH)).toBeNull();
+  });
+
+  it('sinks the cards no peer holds to the end, once complete', () => {
+    const { component, search } = seeded('complete');
+    component.catalog.set({
+      artists: [],
+      albums: [WYWH, CATALOG_ALBUM],
+      scopedArtist: 'Pink Floyd',
+    });
+    expect(component.orderedCatalogAlbums().map((a) => a.foreignAlbumId)).toEqual([
+      'dsotm-rg',
+      'wywh',
+    ]);
+    search.setNetworkState('searching');
+    expect(component.orderedCatalogAlbums().map((a) => a.foreignAlbumId)).toEqual([
+      'wywh',
+      'dsotm-rg',
+    ]);
+  });
+
+  it('offers the albums only the provider holds, and opens their copies in the folders lane', () => {
+    const { component } = seeded('complete');
+    const [wall] = component.providerAlbums();
+    expect(wall).toMatchObject({ title: 'The Wall', artist: 'Pink Floyd' });
+
+    component.showProviderCopies(wall!);
+    expect(component.directSearchOpen()).toBe(true);
+    expect(component.networkView()).toBe('folders');
+    expect(component.visibleFolderGroups().map((g) => g.username)).toEqual(['c']);
+  });
+});
+
 describe('SearchComponent — one album = one download in the folder lane (#1539)', () => {
   const folder = (n: number): FolderGroup => ({
     username: 'Johnyboy123',

@@ -151,6 +151,18 @@ describe('folderFormat', () => {
     ).toEqual({ label: '320k', lossless: false });
   });
 
+  // #1541: the prod "Trip-Hop" grab-bag — 50 files, one FLAC — wore a FLAC badge.
+  it('badges a folder by its majority, and a lossless minority as Mixed', () => {
+    const files = [f('a.flac'), ...Array.from({ length: 5 }, (_, i) => f(`t${i}.mp3`, 128))];
+    expect(folderFormat(folder({ directory: 'd', files }))).toEqual({
+      label: 'Mixed',
+      lossless: false,
+    });
+    expect(
+      folderFormat(folder({ directory: 'd', files: [f('a.flac'), f('b.flac'), f('c.mp3', 320)] })),
+    ).toEqual({ label: 'FLAC', lossless: true });
+  });
+
   it('ignores non-audio files and returns null when there is no audio', () => {
     expect(
       folderFormat(folder({ directory: 'd', files: [f('cover.jpg'), f('info.nfo')] })),
