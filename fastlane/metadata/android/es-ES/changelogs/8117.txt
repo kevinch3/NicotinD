@@ -1,0 +1,6 @@
+• demo: product tour GIF, generated demo catalog, and source names from addon manifests (#1559)
+• acquisition: hold an album across the addon call, so two Gets cannot both pass the guard (#1571)
+• catalog: an artist Lidarr already has shows its own discography on the Add page (#1569)
+• deps: bump zod to 4.6.6 for the oversized-collection memory advisory (#1570)
+• downloads: a folder grab lists each file once, by its own name (#1557)
+…and 6 more

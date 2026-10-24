@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.117](https://github.com/kevinch3/NicotinD/compare/v0.8.116...v0.8.117) (2026-10-24)
+
+### Features
+
+* **demo:** product tour GIF, generated demo catalog, and source names from addon manifests ([#1559](https://github.com/kevinch3/NicotinD/issues/1559)) ([77a30fa](https://github.com/kevinch3/NicotinD/commit/77a30fa21142ccc409fa3bb3cf6e923063309bd4))
+
+### Bug Fixes
+
+* **acquisition:** hold an album across the addon call, so two Gets cannot both pass the guard ([#1571](https://github.com/kevinch3/NicotinD/issues/1571)) ([fcd54db](https://github.com/kevinch3/NicotinD/commit/fcd54db1dfae5b57127c1633f82dff1d00335e97))
+* **catalog:** an artist Lidarr already has shows its own discography on the Add page ([#1569](https://github.com/kevinch3/NicotinD/issues/1569)) ([c517a05](https://github.com/kevinch3/NicotinD/commit/c517a056294e4b94348bd5d6eb59b8d5189b8458)), closes [#1566](https://github.com/kevinch3/NicotinD/issues/1566)
+* **deps:** bump zod to 4.6.6 for the oversized-collection memory advisory ([#1570](https://github.com/kevinch3/NicotinD/issues/1570)) ([d7efe1a](https://github.com/kevinch3/NicotinD/commit/d7efe1a686314eb550940abe6ab8c7761c1014cc))
+* **downloads:** a folder grab lists each file once, by its own name ([#1557](https://github.com/kevinch3/NicotinD/issues/1557)) ([e20ecbc](https://github.com/kevinch3/NicotinD/commit/e20ecbc2136d4c0ee504100462fe1a2e244bee8d)), references [#1540](https://github.com/kevinch3/NicotinD/issues/1540)
+* **library:** an owned album's track count ignores featuring credits, and never reads 0/N ([#1567](https://github.com/kevinch3/NicotinD/issues/1567)) ([8ce827b](https://github.com/kevinch3/NicotinD/commit/8ce827bc8df389262a924a3f17a134e0c3d3dcca)), closes [#1565](https://github.com/kevinch3/NicotinD/issues/1565)
+* **web:** a failed one-click Get stays on screen, and the countdown names its pick ([#1560](https://github.com/kevinch3/NicotinD/issues/1560)) ([485ef61](https://github.com/kevinch3/NicotinD/commit/485ef6186d9e9c766e3e7fe0243504e538b5cdcf)), closes [#1543](https://github.com/kevinch3/NicotinD/issues/1543)
+* **web:** a genre grab-bag folder ranks below the albums, whatever its slots ([#1562](https://github.com/kevinch3/NicotinD/issues/1562)) ([56c033f](https://github.com/kevinch3/NicotinD/commit/56c033feff6834c4f2d642930bcb5abbcc7d977b)), closes [#1541](https://github.com/kevinch3/NicotinD/issues/1541)
+* **web:** confirm "Download all", name the cancel dialog's choices, one "Get" verb ([#1558](https://github.com/kevinch3/NicotinD/issues/1558)) ([0b7a239](https://github.com/kevinch3/NicotinD/commit/0b7a2395b6fdcfd3a4c06cd041bffb6e331f4cff)), closes [#1542](https://github.com/kevinch3/NicotinD/issues/1542)
+* **web:** result rows merge an artist-prefixed copy, name an untagged artist, and highlight less ([#1568](https://github.com/kevinch3/NicotinD/issues/1568)) ([ac5f68f](https://github.com/kevinch3/NicotinD/commit/ac5f68f9d3dd2ea480968873a5999b70de864e55)), closes [#1537](https://github.com/kevinch3/NicotinD/issues/1537), references [#1537](https://github.com/kevinch3/NicotinD/issues/1537)
+* **web:** the Add tab restores its album cards, and a search keeps the history ([#1564](https://github.com/kevinch3/NicotinD/issues/1564)) ([0b67259](https://github.com/kevinch3/NicotinD/commit/0b6725958a4710ba8051f55b4a01079a1fd35d21)), closes [#1544](https://github.com/kevinch3/NicotinD/issues/1544) [#1563](https://github.com/kevinch3/NicotinD/issues/1563), references [#1563](https://github.com/kevinch3/NicotinD/issues/1563)
 ## [0.8.116](https://github.com/kevinch3/NicotinD/compare/v0.8.115...v0.8.116) (2026-10-23)
 
 ### Features
