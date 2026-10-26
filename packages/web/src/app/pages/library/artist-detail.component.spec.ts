@@ -79,6 +79,7 @@ function setup(
   downloadsApi: object = {
     getArtistDiscography: () => of({ artistId: 'ar1', lidarrId: 0, mbid: '', albums: [] }),
   },
+  artistGenreDistribution?: (id: string) => unknown,
 ) {
   const playWithContextCalls: unknown[][] = [];
   const addToQueueCalls: unknown[] = [];
@@ -175,6 +176,7 @@ function setup(
           },
           deleteSongs,
           invalidateLibraryReads,
+          ...(artistGenreDistribution ? { artistGenreDistribution } : {}),
         },
       },
       {
@@ -409,6 +411,96 @@ describe('ArtistDetailComponent — artist genre editor is hidden', () => {
     const el: HTMLElement = fixture.nativeElement;
     expect(el.querySelector('[data-testid="artist-identity-fix"]')).not.toBeNull();
     expect(el.querySelector('[data-testid="artist-genre-fix"]')).toBeNull();
+  });
+});
+
+// #1572: the header names the main genre(s); everything else sits in a
+// collapsed About block that stays mounted so the bio auto-fetch still runs.
+describe('ArtistDetailComponent — genre headline + About block', () => {
+  const share = (slices: { genre: string; count: number; weight: number }[]) => (id: string) =>
+    of({
+      artist: id,
+      trackCount: 10,
+      genreCount: slices.length,
+      slices: [],
+      primary: { taggedCount: 10, slices },
+    });
+
+  function render(dist?: (id: string) => unknown, role = 'listener') {
+    const ctx = setup(role, undefined, true, undefined, dist);
+    return ctx;
+  }
+
+  async function settle(ctx: ReturnType<typeof setup>) {
+    await flush();
+    ctx.fixture.detectChanges();
+    return ctx.fixture.nativeElement as HTMLElement;
+  }
+
+  const chips = (el: HTMLElement) =>
+    Array.from(el.querySelectorAll('[data-testid="artist-headline-genre"]')).map((c) =>
+      c.textContent?.trim(),
+    );
+
+  it('names the two main genres from the primary share', async () => {
+    const el = await settle(
+      render(
+        share([
+          { genre: 'Pop', count: 5, weight: 0.5 },
+          { genre: 'Salsa', count: 3, weight: 0.3 },
+          { genre: 'Other', count: 2, weight: 0.2 },
+        ]),
+      ),
+    );
+    expect(chips(el)).toEqual(['Pop', 'Salsa']);
+  });
+
+  it('names a single genre when one dominates', async () => {
+    const el = await settle(
+      render(
+        share([
+          { genre: 'Rock', count: 8, weight: 0.8 },
+          { genre: 'Blues', count: 2, weight: 0.2 },
+        ]),
+      ),
+    );
+    expect(chips(el)).toEqual(['Rock']);
+  });
+
+  it('shows no chips and no About block when there is nothing to put in either', async () => {
+    const el = await settle(render(share([])));
+    expect(el.querySelector('[data-testid="artist-headline-genres"]')).toBeNull();
+    expect(el.querySelector('[data-testid="artist-about"]')).toBeNull();
+  });
+
+  it('keeps the About body mounted but hidden until toggled', async () => {
+    const ctx = render(share([{ genre: 'Pop', count: 10, weight: 1 }]));
+    const el = await settle(ctx);
+    const body = el.querySelector('#artist-about-body') as HTMLElement;
+    expect(body).not.toBeNull();
+    expect(body.hidden).toBe(true);
+    expect(body.querySelector('app-artist-info')).not.toBeNull();
+
+    (el.querySelector('[data-testid="artist-about-toggle"]') as HTMLButtonElement).click();
+    ctx.fixture.detectChanges();
+    expect(body.hidden).toBe(false);
+    expect(
+      el.querySelector('[data-testid="artist-about-toggle"]')?.getAttribute('aria-expanded'),
+    ).toBe('true');
+  });
+
+  it('no longer renders the overlapping genre strip on the artist page', async () => {
+    const el = await settle(render(share([{ genre: 'Pop', count: 10, weight: 1 }])));
+    expect(el.querySelector('app-genre-distribution-strip')).toBeNull();
+  });
+
+  it('collapses About again on artist→artist navigation', async () => {
+    const ctx = render(share([{ genre: 'Pop', count: 10, weight: 1 }]));
+    await settle(ctx);
+    ctx.component.aboutOpen.set(true);
+    ctx.paramMap.next(convertToParamMap({ id: 'ar2' }));
+    await flush();
+    expect(ctx.component.aboutOpen()).toBe(false);
   });
 });
 
@@ -737,7 +829,13 @@ function setupMerged(albums: unknown[], discographyFails = false) {
           getArtist: () => of({ artist: ARTIST, albums: ALBUMS, singlesAndEps: [] }),
           getArtistAppearsOn: () => of([]),
           getArtistSongs: () => of({ songs: [], total: 0 }),
-          artistGenreDistribution: () => of({ slices: [], trackCount: 0, genreCount: 0 }),
+          artistGenreDistribution: () =>
+            of({
+              slices: [],
+              trackCount: 0,
+              genreCount: 0,
+              primary: { taggedCount: 0, slices: [] },
+            }),
           invalidateLibraryReads: () => {},
         },
       },

@@ -110,6 +110,8 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   read-only `GenreDistributionStripComponent`; pure `radar-geometry.ts` + `genre-projection.ts`;
   album aggregate is `mostCommonGenre`. Weights deliberately do not sum to 1.
   → [genre-radar.md](../genre-radar.md)
+- **Artist genre headline**: `PrimaryGenreShare` (sums to 1) drives header chips via `headlineGenres`
+  and a `GenreShareBarComponent` in the collapsed About block. → [genre-radar.md](../genre-radar.md)
 - **Artist origin / nationality**: `library_artist_origins` (MB-first, TTL tombstones, permanent user
   rows); core `origin.ts` vocab + `originCloseness`; a radio axis, a filter, and an artist-page flag
   line with curator edit. → [artist-origin.md](../artist-origin.md)

@@ -56,7 +56,7 @@ async function openGenreModal(page: Page, artistId: string): Promise<void> {
       { timeout: 10_000 },
     );
 
-  // The artist page loads the same distribution for its read-only strip, so let
+  // The artist page loads the same distribution for its genre chips, so let
   // that one land before arming the modal's — otherwise it would satisfy the
   // barrier below while the modal's request was still in flight.
   const strip = distribution();

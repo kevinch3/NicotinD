@@ -21,6 +21,25 @@ export interface GenreDistribution {
   /** Distinct genres before the "Other" fold; lets the UI say what it hid. */
   genreCount: number;
   slices: GenreSlice[];
+  /** Each track counted once, by its primary genre — see {@link PrimaryGenreShare}. */
+  primary: PrimaryGenreShare;
+}
+
+/** Segments beyond this fold into "Other" — a stacked bar past ~5 stops reading. */
+export const MAX_SHARE_SEGMENTS = 5;
+
+/**
+ * The part-to-whole companion of the overlapping {@link GenreSlice} weights:
+ * every track counts once, under its primary genre (`position = 0`), so the
+ * weights **do** sum to 1 and read as "how much of this artist is Pop".
+ * The artist page shows this one; the overlapping weights stay on the
+ * curation radar and the album strip. See docs/genre-radar.md.
+ */
+export interface PrimaryGenreShare {
+  /** Tracks with a primary genre — the denominator. Untagged tracks are left out. */
+  taggedCount: number;
+  /** Top {@link MAX_SHARE_SEGMENTS}, then an exact "Other" (primaries never overlap). */
+  slices: GenreSlice[];
 }
 
 /**
@@ -65,7 +84,8 @@ function genreDistribution(
       .query<{ n: number }, string[]>(`SELECT COUNT(*) AS n FROM library_songs WHERE ${scopeWhere}`)
       .get(...scopeParams)?.n ?? 0;
 
-  if (trackCount === 0) return { trackCount: 0, genreCount: 0, slices: [] };
+  if (trackCount === 0)
+    return { trackCount: 0, genreCount: 0, slices: [], primary: { taggedCount: 0, slices: [] } };
 
   const rows = db
     .query<{ genre: string; count: number }, string[]>(
@@ -78,11 +98,41 @@ function genreDistribution(
     )
     .all(...scopeParamsAliased);
 
+  const primaryRows = db
+    .query<{ genre: string; count: number }, string[]>(
+      `SELECT sg.genre AS genre, COUNT(DISTINCT s.id) AS count
+         FROM library_song_genres sg
+         JOIN library_songs s ON s.id = sg.song_id
+        WHERE sg.position = 0 AND ${scopeWhereAliased}
+        GROUP BY sg.genre
+        ORDER BY count DESC, sg.genre ASC`,
+    )
+    .all(...scopeParamsAliased);
+
   return {
     trackCount,
     genreCount: rows.length,
     slices: foldTail(rows, trackCount),
+    primary: primaryShare(primaryRows),
   };
+}
+
+/** Unlike {@link foldTail}, the "Other" count here is exact: one primary per track. */
+function primaryShare(rows: { genre: string; count: number }[]): PrimaryGenreShare {
+  const taggedCount = rows.reduce((n, r) => n + r.count, 0);
+  if (taggedCount === 0) return { taggedCount: 0, slices: [] };
+  const head = rows.slice(0, MAX_SHARE_SEGMENTS);
+  const tail = rows.slice(MAX_SHARE_SEGMENTS);
+  const slices: GenreSlice[] = head.map((r) => ({
+    genre: r.genre,
+    count: r.count,
+    weight: r.count / taggedCount,
+  }));
+  if (tail.length > 0) {
+    const count = tail.reduce((n, r) => n + r.count, 0);
+    slices.push({ genre: 'Other', count, weight: count / taggedCount });
+  }
+  return { taggedCount, slices };
 }
 
 /**

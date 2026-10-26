@@ -319,6 +319,11 @@ export class LibraryApiService {
       trackCount: number;
       genreCount: number;
       slices: Array<{ genre: string; count: number; weight: number }>;
+      /** Each track once, by primary genre — sums to 1 (#1572). */
+      primary: {
+        taggedCount: number;
+        slices: Array<{ genre: string; count: number; weight: number }>;
+      };
     }>(`/api/library/artists/${encodeURIComponent(id)}/genre-distribution`);
   }
 

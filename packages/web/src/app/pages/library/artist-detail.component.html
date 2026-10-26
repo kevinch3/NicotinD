@@ -71,6 +71,29 @@
         <p class="text-theme-muted text-sm mt-0.5" data-testid="artist-album-count">
           {{ albums().length }} album{{ albums().length !== 1 ? 's' : '' }} in your library
         </p>
+        <!-- The one-glance answer; the full split lives in the About block (#1572). -->
+        @if (headline(); as h) {
+          <div class="mt-1.5 flex flex-wrap gap-1.5" data-testid="artist-headline-genres">
+            @if (h.kind === 'mixed') {
+              <span
+                class="px-2 py-0.5 rounded-full text-xs bg-theme-surface-2 text-theme-secondary"
+                data-testid="artist-headline-genre"
+                [attr.title]="h.genres.join(', ')"
+              >
+                {{ 'artist.genreMixed' | t }}
+              </span>
+            } @else {
+              @for (g of h.genres; track g) {
+                <span
+                  class="px-2 py-0.5 rounded-full text-xs bg-theme-surface-2 text-theme-secondary"
+                  data-testid="artist-headline-genre"
+                >
+                  {{ g }}
+                </span>
+              }
+            }
+          </div>
+        }
         <div class="mt-3 flex items-center gap-2">
           @if (albums().length > 0) {
             <button
@@ -98,23 +121,42 @@
       </div>
     </div>
 
-    @if (artist(); as a) {
-      <app-artist-info
-        [artistId]="a.id"
-        [bio]="a.bio"
-        [urls]="a.urls"
-        [metaExists]="a.metaExists"
-        [manualOverride]="a.manualOverride"
-        (updated)="onArtistInfoUpdated($event)"
-      />
-    }
-
-    @if (genreDistribution(); as gd) {
-      <app-genre-distribution-strip
-        [slices]="gd.slices"
-        [trackCount]="gd.trackCount"
-        [genreCount]="gd.genreCount"
-      />
+    <!-- About: bio, sources, refresh and the genre split, collapsed by default (#1572).
+         [hidden], not @if — ArtistInfoComponent's first-load auto-fetch must still
+         run while the block is closed. -->
+    @if (hasAbout() && artist(); as a) {
+      <section class="mt-4 mb-6 rounded-lg bg-theme-surface/30" data-testid="artist-about">
+        <button
+          type="button"
+          class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-theme-secondary hover:text-theme-primary"
+          data-testid="artist-about-toggle"
+          [attr.aria-expanded]="aboutOpen()"
+          aria-controls="artist-about-body"
+          (click)="aboutOpen.set(!aboutOpen())"
+        >
+          <span>{{ 'artist.about' | t: { name: a.name } }}</span>
+          <span aria-hidden="true">{{ aboutOpen() ? '▴' : '▾' }}</span>
+        </button>
+        <div id="artist-about-body" class="px-4 pb-4" [hidden]="!aboutOpen()">
+          <app-artist-info
+            [artistId]="a.id"
+            [bio]="a.bio"
+            [urls]="a.urls"
+            [metaExists]="a.metaExists"
+            [manualOverride]="a.manualOverride"
+            [embedded]="true"
+            (updated)="onArtistInfoUpdated($event)"
+          />
+          @if (genreShare(); as gs) {
+            @if (gs.slices.length) {
+              <h3 class="mt-4 mb-2 text-xs font-semibold uppercase tracking-wide text-theme-muted">
+                {{ 'artist.genres' | t }}
+              </h3>
+              <app-genre-share-bar [slices]="gs.slices" [taggedCount]="gs.taggedCount" />
+            }
+          }
+        </div>
+      </section>
     }
 
     <!-- Only collapse to the "no releases" slate for release tabs; Songs and

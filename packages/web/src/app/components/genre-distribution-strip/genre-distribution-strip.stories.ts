@@ -15,7 +15,7 @@ type Story = StoryObj<GenreDistributionStripComponent>;
 /**
  * The listener-facing counterpart to `GenreRadar`. Plain CSS bar fills, not the SVG
  * radar: the radar is a curation review aid inside the genre-fix modal, this is a
- * read-only summary on artist and album pages.
+ * read-only summary on album pages and library stats (the artist page uses `GenreShareBar`).
  */
 export const Default: Story = {};
 
