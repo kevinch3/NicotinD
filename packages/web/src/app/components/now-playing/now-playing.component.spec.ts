@@ -1113,7 +1113,7 @@ describe('NowPlayingComponent', () => {
     });
   });
 
-  describe('swipe the cover to skip (#1297)', () => {
+  describe('swipe the sheet to skip (#1297)', () => {
     const pointer = (type: string, clientX: number, clientY: number, t = 0, target?: Element) => {
       const e = new MouseEvent(type, { clientX, clientY, button: 0 }) as unknown as PointerEvent;
       Object.defineProperty(e, 'timeStamp', { value: t });
@@ -1183,10 +1183,28 @@ describe('NowPlayingComponent', () => {
       expect(current.component.coverSwipeOffsetPx()).toBe(0);
     });
 
-    it('a sideways drag outside the cover skips nothing', () => {
+    it('a sideways drag beside the cover, on the sheet background, skips too', () => {
       current = skipSetup();
       drag(300, 100, 100, document.createElement('div'));
+      expect(current.playNext).toHaveBeenCalledTimes(1);
+    });
+
+    it('a sideways drag inside the scrolling panel skips nothing', () => {
+      current = skipSetup();
+      const zone = document.createElement('div');
+      zone.setAttribute('data-np-zone', 'panel');
+      const row = document.createElement('span');
+      zone.appendChild(row);
+      drag(300, 100, 100, row);
       expect(current.playNext).not.toHaveBeenCalled();
+    });
+
+    it('marks the sheet touch-pan-y so the browser never claims a sideways pan', () => {
+      const { fixture, playerStub } = setup();
+      playerStub.currentTrack.set({ id: '1', title: 'Song', artist: 'Artist' });
+      fixture.detectChanges();
+      const root = (fixture.nativeElement as HTMLElement).querySelector('.fixed.inset-0')!;
+      expect(root.classList.contains('touch-pan-y')).toBe(true);
     });
 
     it('a vertical drag on the cover still dismisses and never skips', () => {

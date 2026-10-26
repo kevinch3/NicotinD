@@ -6,7 +6,7 @@
   <div
     appTvNavGroup
     [axis]="'vertical'"
-    [class]="'fixed inset-0 z-[60] bg-theme-base ease-out flex flex-col ' +
+    [class]="'fixed inset-0 z-[60] bg-theme-base ease-out flex flex-col touch-pan-y ' +
       (sheetInstant() ? 'transition-none ' : 'transition-transform duration-300 ') +
       (player.nowPlayingOpen() ? 'translate-y-0' : 'translate-y-full')"
     [style.transform]="sheetTransform()"

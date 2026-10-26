@@ -1,5 +1,5 @@
 /**
- * The skip decision shared by the Now Playing cover and the mini bar
+ * The skip decision of the full Now Playing sheet
  * (issue #1297): a leftward swipe goes to the next track, a rightward one to
  * the previous, each committing past `SKIP_THRESHOLD_PX` or on a flick, by the
  * same `shouldCommit` rule as the vertical swipes. See docs/web-ui.md
@@ -23,4 +23,17 @@ export function skipDirection(dx: number, velocity: number): 'next' | 'prev' | n
 /** True when a pointerdown on `target` may start a skip swipe. */
 export function canStartSkipSwipe(target: EventTarget | null): boolean {
   return !(target instanceof Element && target.closest(SKIP_SWIPE_EXCLUDE));
+}
+
+/** The scrolling queue/lyrics zone of the sheet: a sideways drag there is the
+ *  panel's own (row swipe-remove, lyric scroll), never a skip. */
+export const SKIP_SWIPE_PANEL_ZONE = '[data-np-zone="panel"]';
+
+/** True when a pointerdown on `target` may start a skip on the full sheet:
+ *  anywhere on it except the panel zone and the excluded controls. */
+export function canStartSheetSkip(target: EventTarget | null): boolean {
+  return (
+    canStartSkipSwipe(target) &&
+    !(target instanceof Element && target.closest(SKIP_SWIPE_PANEL_ZONE))
+  );
 }
