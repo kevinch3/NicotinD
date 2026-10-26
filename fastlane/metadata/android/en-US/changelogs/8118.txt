@@ -1,0 +1,1 @@
+• web: swipe-to-skip works across the full player and leaves the mini bar (#1574)

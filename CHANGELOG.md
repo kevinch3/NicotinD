@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.118](https://github.com/kevinch3/NicotinD/compare/v0.8.117...v0.8.118) (2026-10-26)
+
+### Bug Fixes
+
+* **web:** swipe-to-skip works across the full player and leaves the mini bar ([#1574](https://github.com/kevinch3/NicotinD/issues/1574)) ([a4619dd](https://github.com/kevinch3/NicotinD/commit/a4619dde0630c0efb10b043ef2f086bfae1a74ef)), closes [#1573](https://github.com/kevinch3/NicotinD/issues/1573)
 ## [0.8.117](https://github.com/kevinch3/NicotinD/compare/v0.8.116...v0.8.117) (2026-10-24)
 
 ### Features
