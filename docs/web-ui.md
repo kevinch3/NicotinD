@@ -144,14 +144,20 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
   flick commit, undo index, keyboard reorder, shared drop path). e2e: `queue-gestures.spec.ts`
   (handle drag-reorder and a `page.mouse` swipe-remove + Undo). **The touch path is a real-device
   gate**, as for the player swipes.
-- **Swipe to skip** (#1297): a horizontal swipe on the Now Playing cover (`data-np-cover`) or the
-  mini-bar body skips — **← next, → previous** — through the same `handleNext`/`handlePrev` as that
-  surface's ⏭/⏮ buttons, so a remote device gets the same `NEXT`/`PREV` command. It is
+- **Swipe to skip** (#1297): a horizontal swipe on the **full Now Playing sheet** skips —
+  **← next, → previous** — through the same `handleNext`/`handlePrev` as its ⏭/⏮ buttons, so a remote
+  device gets the same `NEXT`/`PREV` command. **The minimized mini bar does not skip**: it only opens the
+  sheet (tap / swipe up). The swipe may start anywhere on the sheet except the scrolling panel
+  (`[data-np-zone="panel"]`) and `SKIP_SWIPE_EXCLUDE`, not just on the 60vw artwork — a swipe that began
+  beside the cover used to do nothing. The sheet root is `touch-pan-y` as a defensive measure: the
+  touchmove blocker alone already passes real CDP touch events in Chromium (`mobile-ux.spec.ts` "touch
+  swipe"), so this is not shown to be required there, but it keeps a WebView from claiming a sideways
+  pan; the queue's vertical scroll is unaffected. It is
   `createHorizontalSwipe()`, the sideways sibling in `lib/vertical-swipe.ts`: both are one
   `createAxisSwipe` core with the same slop, touchmove blocker and flick measurement, and the
   commit is `skipDirection()` (`lib/swipe-to-skip.ts`: `shouldCommit` against
   `SKIP_THRESHOLD_PX` = 80 or a flick). **Both axes start from the same pointerdown** (the sheet's
-  `onBodyPointerDown`, the bar's `onBarBodyPointerDown`), so two rules keep them from both firing:
+  `onBodyPointerDown`), so two rules keep them from both firing:
   every swipe classifies an event with the same `dominantAxis()` (a blocker tie goes to the vertical
   swipe, a pointermove tie to the horizontal one, as `createVerticalSwipe` always did), and the first
   to own the pointer takes a **claim** keyed by that pointerdown, which makes its sibling release
@@ -160,11 +166,11 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
   that. A skip never starts from `SKIP_SWIPE_EXCLUDE` (buttons, links, form controls, the seek bar,
   the waveform, menus); the grab notch starts only the vertical swipe. While dragging, the cover
   follows the finger (`swipeOffsetPx`) and the cover a skip would land on peeks in beside it (the
-  queue head from the right, the history tail from the left); the mini bar slides its track info.
+  queue head from the right, the history tail from the left).
   A commit calls `hapticTick()` (`lib/haptics.ts`): a `@capacitor/haptics` light impact reached
   through the Capacitor global, a no-op wherever the plugin is absent (web, Electron). The plugin
   is a `packages/mobile` dependency (#1376), so the Android and iOS shells tick — see
-  [mobile-app.md](mobile-app.md) "Haptics". TV has no pointer, so nothing changes there. e2e (`mobile-ux.spec.ts`) drives the mouse path on both surfaces; the touch arbitration is
+  [mobile-app.md](mobile-app.md) "Haptics". TV has no pointer, so nothing changes there. e2e (`mobile-ux.spec.ts`) drives the mouse path on the sheet (cover and background) and asserts the mini bar does not skip; the touch arbitration is
   unit-tested (`vertical-swipe.spec.ts`), and a real-device pass is the manual gate.
 - **Pull to refresh (touch)**: one gesture, hosted in the layout shell, not per-page. `lib/pull-to-refresh.ts` `createPullToRefresh()` composes `createPointerDrag()` and is bound once in `layout.component.ts` on `<main>`'s `(pointerdown)`, rendering a spinner indicator absolutely positioned inside it; `PullToRefreshService` is the seam a page uses to say what "refresh" means — `register(handler)` pushes onto a handler stack, auto-unregistered on the registrant's `DestroyRef` (route navigation destroys the page component, so this is route-scoped for free), and `trigger()` runs the top-of-stack handler. This is layout-hosted rather than per-page because the scroll container is `window`/`document` (the app has no per-page scrolling `<div>`), so "pulled past the top" is a single global condition (`window.scrollY <= 0`) regardless of which route is mounted — one gesture host, many registrants.
   - **Gates before a pull can start** (`onPointerDown`, all must hold): `isCoarsePointer()` (a real `matchMedia('(pointer: coarse)')` check — desktop mouse/trackpad never engages it), `window.scrollY <= 0` (only from the very top), `!ScrollLockService.locked` (a fullscreen sheet is up), `PullToRefreshService.hasHandler()` (no page registered = nothing to refresh), and no `[data-no-p2r]`/`input`/`textarea`/`select` ancestor (an explicit per-element opt-out for a nested scroller or a form control that needs its own vertical drag).

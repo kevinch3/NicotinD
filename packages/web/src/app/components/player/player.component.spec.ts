@@ -649,84 +649,39 @@ describe('PlayerComponent', () => {
       expect(playerService.nowPlayingOpen()).toBe(false);
     });
 
-    describe('swipe the bar sideways to skip (#1297)', () => {
-      const at = (x: number, y: number, t: number, type: string, target?: Element) => {
+    // Skip-by-swipe belongs to the full Now Playing sheet; the minimized bar
+    // only opens it (docs/web-ui.md "Swipe to skip").
+    describe('a sideways swipe on the bar does not skip', () => {
+      const at = (x: number, y: number, t: number, type: string) => {
         const e = new MouseEvent(type, { clientX: x, clientY: y, button: 0 });
         Object.defineProperty(e, 'timeStamp', { value: t });
-        if (target) Object.defineProperty(e, 'target', { value: target });
+        Object.defineProperty(e, 'target', { value: document.createElement('div') });
         return e as unknown as PointerEvent;
       };
-      const swipe = (x0: number, x1: number, target: Element = document.createElement('div')) => {
-        component.onBarBodyPointerDown(at(x0, 100, 0, 'pointerdown', target));
-        document.dispatchEvent(at(x1, 102, 500, 'pointermove'));
-        document.dispatchEvent(at(x1, 102, 1000, 'pointerup'));
-      };
 
-      it("← plays next, → plays previous, through the bar's own handlers", () => {
+      it('skips neither way and neither opens nor lifts the sheet', () => {
         const next = vi.spyOn(component, 'handleNext').mockImplementation(() => {});
         const prev = vi.spyOn(component, 'handlePrev').mockImplementation(() => {});
-        swipe(300, 150);
-        expect(next).toHaveBeenCalledTimes(1);
-        swipe(100, 250);
-        expect(prev).toHaveBeenCalledTimes(1);
-        expect(component.barSkipOffsetPx()).toBe(0);
-      });
-
-      it('a sideways swipe neither opens nor lifts the sheet', () => {
-        vi.spyOn(component, 'handleNext').mockImplementation(() => {});
         playerService.setNowPlayingOpen(false);
-        swipe(300, 150);
+        for (const [x0, x1] of [
+          [300, 150],
+          [100, 250],
+        ]) {
+          component.onBarPointerDown(at(x0, 100, 0, 'pointerdown'));
+          document.dispatchEvent(at(x1, 102, 500, 'pointermove'));
+          document.dispatchEvent(at(x1, 102, 1000, 'pointerup'));
+        }
+        expect(next).not.toHaveBeenCalled();
+        expect(prev).not.toHaveBeenCalled();
         expect(playerService.nowPlayingOpen()).toBe(false);
         expect(playerService.nowPlayingLiftPx()).toBe(0);
       });
 
-      it('a swipe up still opens and never skips', () => {
-        const next = vi.spyOn(component, 'handleNext').mockImplementation(() => {});
-        playerService.setNowPlayingOpen(false);
-        component.onBarBodyPointerDown(
-          at(200, 300, 0, 'pointerdown', document.createElement('div')),
-        );
-        document.dispatchEvent(at(205, 150, 500, 'pointermove'));
-        document.dispatchEvent(at(205, 150, 1000, 'pointerup'));
-        expect(playerService.nowPlayingOpen()).toBe(true);
-        expect(next).not.toHaveBeenCalled();
-      });
-
       it('a tap still opens Now Playing', () => {
         playerService.setNowPlayingOpen(false);
-        component.onBarBodyPointerDown(
-          at(200, 100, 0, 'pointerdown', document.createElement('div')),
-        );
+        component.onBarPointerDown(at(200, 100, 0, 'pointerdown'));
         document.dispatchEvent(at(202, 101, 100, 'pointerup'));
         expect(playerService.nowPlayingOpen()).toBe(true);
-      });
-
-      it.each([
-        ['a control button', () => document.createElement('button')],
-        ['a link', () => document.createElement('a')],
-        [
-          'the seek bar',
-          () => {
-            const el = document.createElement('div');
-            el.setAttribute('data-seek', '');
-            return el;
-          },
-        ],
-      ])('never skips from %s', (_label, make) => {
-        const next = vi.spyOn(component, 'handleNext').mockImplementation(() => {});
-        swipe(300, 100, make());
-        expect(next).not.toHaveBeenCalled();
-      });
-
-      it('the bar body is wired to the skip-aware handler', () => {
-        playerService.currentTrack.set(TRACK);
-        fixture.detectChanges();
-        const spy = vi.spyOn(component, 'onBarBodyPointerDown');
-        const info = (fixture.nativeElement as HTMLElement).querySelector(
-          '[data-testid="player-track-info"]',
-        )!;
-        info.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
-        expect(spy).toHaveBeenCalledTimes(1);
       });
     });
 

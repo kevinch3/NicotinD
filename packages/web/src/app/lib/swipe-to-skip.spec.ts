@@ -1,4 +1,9 @@
-import { SKIP_THRESHOLD_PX, canStartSkipSwipe, skipDirection } from './swipe-to-skip';
+import {
+  SKIP_THRESHOLD_PX,
+  canStartSheetSkip,
+  canStartSkipSwipe,
+  skipDirection,
+} from './swipe-to-skip';
 import { FLICK_PX_PER_MS } from './vertical-swipe';
 
 describe('skipDirection', () => {
@@ -55,5 +60,25 @@ describe('canStartSkipSwipe', () => {
     expect(canStartSkipSwipe(document.createElement('img'))).toBe(true);
     expect(canStartSkipSwipe(document.createElement('p'))).toBe(true);
     expect(canStartSkipSwipe(null)).toBe(true);
+  });
+});
+
+describe('canStartSheetSkip', () => {
+  it('allows the sheet background and the cover, not just the artwork', () => {
+    expect(canStartSheetSkip(document.createElement('div'))).toBe(true);
+    expect(canStartSheetSkip(document.createElement('img'))).toBe(true);
+  });
+
+  it('refuses anything inside the scrolling panel zone', () => {
+    const zone = document.createElement('div');
+    zone.setAttribute('data-np-zone', 'panel');
+    const row = document.createElement('span');
+    zone.appendChild(row);
+    expect(canStartSheetSkip(row)).toBe(false);
+  });
+
+  it('still refuses controls and a missing target', () => {
+    expect(canStartSheetSkip(document.createElement('button'))).toBe(false);
+    expect(canStartSheetSkip(null)).toBe(true);
   });
 });

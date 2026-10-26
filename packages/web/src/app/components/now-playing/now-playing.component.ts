@@ -34,7 +34,7 @@ import {
   scrollableAncestorTop,
   shouldCommit,
 } from '../../lib/vertical-swipe';
-import { canStartSkipSwipe, skipDirection } from '../../lib/swipe-to-skip';
+import { canStartSheetSkip, skipDirection } from '../../lib/swipe-to-skip';
 import { hapticTick } from '../../lib/haptics';
 import { ScrollLockService } from '../../services/scroll-lock.service';
 import { ServerConfigService } from '../../services/server-config.service';
@@ -301,7 +301,7 @@ export class NowPlayingComponent {
   private static readonly BODY_NO_SWIPE =
     'button, a, input, select, textarea, [data-seek], .seek-range, app-now-playing-waveform, app-menu-panel, [draggable="true"], [data-np-no-swipe]';
 
-  // Swipe the cover sideways to skip (#1297): started from the same pointerdown
+  // Swipe the sheet sideways to skip (#1297), the cover following the finger: started from the same pointerdown
   // as the body gesture, so the two resolve by dominance at slop and the first
   // to own the pointer makes the other release — never both.
   readonly coverSwipeOffsetPx = signal(0);
@@ -325,13 +325,9 @@ export class NowPlayingComponent {
     if (this.karaokeFullscreen()) return;
     const target = event.target;
     if (target instanceof Element && target.closest(NowPlayingComponent.BODY_NO_SWIPE)) return;
-    if (
-      target instanceof Element &&
-      target.closest('[data-np-cover]') &&
-      canStartSkipSwipe(target)
-    ) {
-      this.coverSwipe.start(event);
-    }
+    // Anywhere on the sheet but its scrolling panel, not just the artwork: the
+    // cover is 60vw wide, and a swipe that started beside it did nothing.
+    if (canStartSheetSkip(target)) this.coverSwipe.start(event);
     this.bodySwipe.start(event);
   }
 

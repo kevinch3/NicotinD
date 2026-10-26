@@ -578,7 +578,8 @@ test.describe('mobile UX', () => {
     await expect(title).toHaveText(first);
   });
 
-  test('swiping the mini-player sideways skips without opening Now Playing', async ({ page }) => {
+  // Skip-by-swipe is the full sheet's gesture; the minimized bar only opens it.
+  test('swiping the mini-player sideways neither skips nor opens Now Playing', async ({ page }) => {
     await openAlbum(page);
     await page.getByTestId('play-album').click();
     const title = page.getByTestId('player-title');
@@ -587,7 +588,73 @@ test.describe('mobile UX', () => {
 
     const c = await settledCentre(title);
     await drag(page, c, { x: c.x - 150, y: c.y });
-    await expect(title).not.toHaveText(first);
+    await expect(title).toHaveText(first);
     await expect(page.getByTestId('now-playing-heading')).not.toBeInViewport();
+  });
+
+  test('swiping beside the cover, on the sheet background, also skips', async ({ page }) => {
+    await openNowPlaying(page);
+    const title = page.getByTestId('player-title');
+    const first = (await title.textContent())!.trim();
+    const c = await settledCentre(page.getByTestId('now-playing-title'));
+
+    await drag(page, c, { x: c.x - 150, y: c.y });
+    await expect(title).not.toHaveText(first);
+  });
+
+  // The mouse specs above cannot model the browser reclaiming a touch pan
+  // (pointercancel); real CDP touch events can. This is the PWA path.
+  test.describe('touch swipe (CDP touch events)', () => {
+    test.use({ hasTouch: true });
+
+    async function touchSwipe(page: Page, from: { x: number; y: number }, dx: number) {
+      const cdp = await page.context().newCDPSession(page);
+      const send = (type: 'touchStart' | 'touchMove' | 'touchEnd', x: number, y: number) =>
+        cdp.send('Input.dispatchTouchEvent', {
+          type,
+          touchPoints: type === 'touchEnd' ? [] : [{ x, y }],
+        });
+      await send('touchStart', from.x, from.y);
+      for (let i = 1; i <= 10; i++) {
+        await send('touchMove', from.x + (dx * i) / 10, from.y + i);
+        await page.waitForTimeout(16);
+      }
+      await send('touchEnd', from.x + dx, from.y + 10);
+    }
+
+    test('touch-swiping the cover skips next, then previous', async ({ page }) => {
+      await openNowPlaying(page);
+      const title = page.getByTestId('player-title');
+      const first = (await title.textContent())!.trim();
+      const c = await settledCentre(page.getByTestId('now-playing-cover'));
+      await touchSwipe(page, c, -170);
+      await expect(title).not.toHaveText(first);
+      await expect(page.getByTestId('now-playing-heading')).toBeInViewport();
+      const c2 = await settledCentre(page.getByTestId('now-playing-cover'));
+      await touchSwipe(page, c2, 170);
+      await expect(title).toHaveText(first);
+    });
+
+    test('touch-swiping beside the cover, over the title, skips', async ({ page }) => {
+      await openNowPlaying(page);
+      const title = page.getByTestId('player-title');
+      const first = (await title.textContent())!.trim();
+      // Right of the album line: empty sheet background, clear of the ⋯ button.
+      const c = await settledCentre(page.getByTestId('now-playing-album'));
+      await touchSwipe(page, { x: 380, y: c.y }, -170);
+      await expect(title).not.toHaveText(first);
+    });
+
+    test('touch-swiping the mini bar does not skip', async ({ page }) => {
+      await openAlbum(page);
+      await page.getByTestId('play-album').click();
+      const title = page.getByTestId('player-title');
+      await expect(title).toBeVisible();
+      const first = (await title.textContent())!.trim();
+      const c = await settledCentre(title);
+      await touchSwipe(page, { x: 300, y: c.y }, -170);
+      await page.waitForTimeout(500);
+      await expect(title).toHaveText(first);
+    });
   });
 });

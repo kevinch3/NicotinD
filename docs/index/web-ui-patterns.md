@@ -85,7 +85,7 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **Queue row gestures**: `createRowGesture` — swipe left removes with Undo (`insertInQueue`),
   long-press then drag reorders (`reorderTargetIndex`); blocker armed only at the long-press.
   → [web-ui.md](../web-ui.md)
-- **Swipe to skip**: `createHorizontalSwipe` on the Now Playing cover and the mini bar, arbitrated
+- **Swipe to skip**: `createHorizontalSwipe` on the full Now Playing sheet (not the mini bar), arbitrated
   against the vertical swipe by `dominantAxis` and a per-pointer claim; `skipDirection` commits,
   `hapticTick` ticks. → [web-ui.md](../web-ui.md)
 - **PWA install promotion**: `captureInstallPrompt` stashes `beforeinstallprompt` before bootstrap;
