@@ -17,6 +17,14 @@ bun outdated --filter '*'   # every workspace, not just the root
 The `Update` column = latest **within** the current range (safe patch/minor). `Latest` =
 absolute latest; when `Latest > Update` it's a major/out-of-range jump that needs review.
 
+## Workflow installs are frozen
+
+Every `bun install` in `.github/workflows/` passes `--frozen-lockfile`, so CI and the signing
+jobs build exactly the versions `bun.lock` records. Dependencies use `^` ranges; an unfrozen
+install re-resolves any range that drifted from the lockfile, which would let a freshly
+published (or hijacked) release reach a build nobody reviewed.
+`scripts/workflow-frozen-installs.test.ts` fails on any workflow install without the flag.
+
 ## Worktrees install their own node_modules
 
 `scripts/link-worktree.sh` runs `bun install --frozen-lockfile` in the worktree (#1314). It

@@ -113,7 +113,7 @@ jobs:
             bun-${{ runner.os }}-${{ env.BUN_VERSION }}-
 
       - name: Install dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
       - name: Typecheck
         run: bun run typecheck
@@ -296,7 +296,7 @@ jobs:
             bun-${{ runner.os }}-${{ env.BUN_VERSION }}-
 
       - name: Install dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
       - name: Test (web)
         run: bun run --filter @nicotind/web test
@@ -325,7 +325,7 @@ jobs:
             bun-${{ runner.os }}-${{ env.BUN_VERSION }}-
 
       - name: Install dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
       - name: Build (Storybook)
         run: bun run build:storybook
@@ -419,7 +419,7 @@ jobs:
           node-version-file: '.nvmrc'
 
       - name: Install dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
       # See the note in the `storybook` job: the browser download was uncached in every
       # job that needed one.
@@ -559,7 +559,7 @@ jobs:
       - name: Install dependencies (bounded retry — third-party binary download)
         run: |
           for attempt in 1 2 3; do
-            if bun install; then exit 0; fi
+            if bun install --frozen-lockfile; then exit 0; fi
             echo "::warning::bun install failed (attempt ${attempt}/3); retrying"
             sleep $((attempt * 10))
           done
@@ -595,7 +595,7 @@ jobs:
           node-version-file: '.nvmrc'
 
       - name: Install dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
       # The smoke test's sidecar boots in dev mode straight off
       # packages/web/dist (see electron/paths.ts) — no packaged resources/
