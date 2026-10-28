@@ -99,6 +99,29 @@ These are documented in full elsewhere; `CLAUDE.md` links straight to them.
 
   An explicit caller `signal` still wins: the budget is a default, not a ceiling.
 
+  **Background calls back off (issue #1581).** A budget bounds one call, not the stream of them:
+  while Lidarr sat at its memory limit throwing `OutOfMemoryException`, enrichment kept sending it
+  10–20s requests, adding load to the thing that was failing. `LidarrCircuit` (`lidarr/circuit.ts`)
+  sees every call's outcome inside `request()` — a timeout, a network error or a **5xx** counts
+  against it; a 4xx is Lidarr answering — and opens after 3 consecutive failures. Only the
+  **background view** (`LidarrClient.background()` / `Lidarr.background()`, wired into the
+  processing service, the portrait plugin lookup, the watchlist and auto-acquire pollers) consults
+  it, throwing `LidarrUnavailableError` without calling Lidarr; interactive routes keep the plain
+  client, so a person's request is never refused, and **any** answered call closes the breaker.
+  Open, it stays open until something succeeds: after each cool-down (60s, doubling per failed
+  probe to 15 min) exactly one background call is admitted as the probe. Because the Lidarr-backed
+  tasks sit out while it is open, the processing service sends that probe itself
+  (`Lidarr.probe()`, a `GET /api/v1/system/status`) before a batch and at the top of each `runNow`
+  iteration — otherwise nothing in the background would ever find out Lidarr was back.
+
+  The tasks sit out rather than fail fast because each turns a failed call into **data**: `genre`
+  spends an attempt toward its permanent-failure cap, `artist-info` tombstones the bio (#1582),
+  `artist-origin` / `artist-identity` stamp a recheck weeks out, and the new-album metadata fill
+  advances its watermark past the album. Failing fast would push their whole queues through that
+  in seconds; `available()` returns "Lidarr paused after repeated failures" instead, and
+  `fillNewAlbumMetadata` returns without advancing. Read the breaker through `lidarrCircuit()` —
+  enrichment contexts and test doubles pass partial Lidarr stubs.
+
   **`idleTimeout` is 30s globally, 60s for the groups that need it (#644)** — `SERVER_IDLE_TIMEOUT_S`
   and `applyIdleBudgets` in `middleware/idle-budget.ts`. It was 60s because `GET
   /api/discography/artists/:id` added the artist inside the request (`TIMEOUT_PROVISION_MS`, 60s);

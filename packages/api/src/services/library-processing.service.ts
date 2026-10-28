@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { createLogger } from '@nicotind/core';
 import type { Database } from 'bun:sqlite';
 import type { Lidarr } from '../lidarr/index.js';
+import { lidarrCircuit } from '../lidarr/index.js';
 import type {
   ProcessingSettings,
   ProcessingStatus,
@@ -312,6 +313,9 @@ export class LibraryProcessingService extends EventEmitter {
       let first = true;
       for (;;) {
         if (this.stopRequested) break;
+        // Before the pending check: with Lidarr paused its tasks count nothing,
+        // and the drain would stop without ever asking whether it is back.
+        await this.probeLidarrIfDue();
         const settings = getProcessingSettings(this.db);
         const tasks = this.runnableTasks(settings);
         const counts = this.countAllPending();
@@ -408,6 +412,9 @@ export class LibraryProcessingService extends EventEmitter {
    */
   private async fillNewAlbumMetadata(settings: ProcessingSettings): Promise<void> {
     if (!this.lidarr) return;
+    // A miss advances the watermark for good, so a paused Lidarr must not be
+    // asked: the album would be skipped forever (#1581).
+    if (lidarrCircuit(this.lidarr)?.isOpen) return;
     const key = LibraryProcessingService.ALBUM_METADATA_WATERMARK;
     const since = Number(
       this.db
@@ -432,6 +439,7 @@ export class LibraryProcessingService extends EventEmitter {
 
     const coverCacheDir = this.contextFactory(settings).coverCacheDir;
     for (const row of rows) {
+      if (lidarrCircuit(this.lidarr)?.isOpen) return;
       try {
         await optimizeAlbum(this.db, this.lidarr, row.id, { apply: true, coverCacheDir });
       } catch (err) {
@@ -447,11 +455,21 @@ export class LibraryProcessingService extends EventEmitter {
     }
   }
 
+  /**
+   * While Lidarr's breaker is open its tasks sit out (#1581), so no background
+   * call would ever find out it recovered. Once the cool-down is due, one cheap
+   * status call is the probe that closes it — or extends the pause.
+   */
+  private async probeLidarrIfDue(): Promise<void> {
+    if (lidarrCircuit(this.lidarr)?.probeDue) await this.lidarr!.probe();
+  }
+
   /** One bounded batch across each runnable task. */
   private async processOneBatch(
     settings: ProcessingSettings,
     fresh = false,
   ): Promise<BatchOutcome> {
+    await this.probeLidarrIfDue();
     const ctx = this.contextFactory(settings);
     const tasks = this.runnableTasks(settings);
     const counts = this.countAllPending();

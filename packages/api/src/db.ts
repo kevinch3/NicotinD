@@ -1375,6 +1375,16 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
     )
   `);
 
+  // When the artist-image task last came back empty for an artist, so it drops
+  // out of the queue for PORTRAIT_RETRY_TTL_MS instead of being re-asked every
+  // processing tick (issue #1581). Keyed on the artist id, like library_artwork.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS artist_portrait_attempts (
+      artist_id    TEXT PRIMARY KEY,
+      attempted_at INTEGER NOT NULL
+    )
+  `);
+
   // Authoritative release type (album / ep / single / compilation) from
   // Lidarr/MusicBrainz, keyed on the scanner's deterministic albumId — same
   // side-table pattern as library_artwork: survives full rescans/prunes and can

@@ -5,9 +5,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { applySchema } from '../db.js';
 import {
+  PORTRAIT_RETRY_TTL_MS,
   artistImageCoverage,
   countArtistsNeedingPortrait,
   fillArtistImages,
+  recordPortraitAttempts,
   selectArtistsNeedingPortrait,
 } from './artist-image-fill.js';
 import { parseLimit } from '../scripts/backfill-artist-images.js';
@@ -40,6 +42,45 @@ beforeEach(() => {
   db = new Database(':memory:');
   applySchema(db);
   coverCacheDir = mkdtempSync(join(tmpdir(), 'artist-img-'));
+});
+
+describe('portrait attempt ledger (#1581)', () => {
+  const NOW = 10_000_000;
+
+  it('keeps a recently-tried artist out of the queue only when asked to', () => {
+    seedArtist('a', 'Tried', { albums: 9 });
+    seedArtist('b', 'Fresh');
+    recordPortraitAttempts(db, ['a'], NOW);
+
+    const due = { triedBefore: NOW - PORTRAIT_RETRY_TTL_MS };
+    expect(selectArtistsNeedingPortrait(db, 10, due).map((a) => a.name)).toEqual(['Fresh']);
+    expect(countArtistsNeedingPortrait(db, due)).toBe(1);
+    // The operator's backfill script asks without the TTL and still sees both.
+    expect(countArtistsNeedingPortrait(db)).toBe(2);
+  });
+
+  it('lets a tried artist back in once the retry TTL has passed', () => {
+    seedArtist('a', 'Tried');
+    recordPortraitAttempts(db, ['a'], NOW);
+    const later = { triedBefore: NOW + 1 };
+    expect(countArtistsNeedingPortrait(db, later)).toBe(1);
+  });
+
+  it('records nothing for an artist that got a portrait in the same batch', () => {
+    seedArtist('a', 'Resolved');
+    seedPortrait('a');
+    recordPortraitAttempts(db, ['a'], NOW);
+    const n = db
+      .query<{ n: number }, []>('SELECT COUNT(*) AS n FROM artist_portrait_attempts')
+      .get()?.n;
+    expect(n).toBe(0);
+  });
+
+  it('keeps coverage honest: a tried artist still counts as missing a portrait', () => {
+    seedArtist('a', 'Tried');
+    recordPortraitAttempts(db, ['a'], NOW);
+    expect(artistImageCoverage(db).missing).toBe(1);
+  });
 });
 
 describe('selectArtistsNeedingPortrait / countArtistsNeedingPortrait (#250)', () => {

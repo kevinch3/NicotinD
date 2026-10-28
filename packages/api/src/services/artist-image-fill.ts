@@ -109,27 +109,72 @@ export async function fillArtistImages(
 export const NEEDS_PORTRAIT_SQL = `a.hidden = 0 AND a.manual_override = 0
    AND NOT EXISTS (SELECT 1 FROM library_artwork w WHERE w.id = a.id AND w.kind = 'artist')`;
 
-/** Artists still lacking a portrait, most-prolific first (headline names soonest). */
-export function selectArtistsNeedingPortrait(db: Database, limit: number): ArtistImageTarget[] {
-  return db
-    .query<ArtistImageTarget, [number]>(
-      `SELECT id, name FROM library_artists a
-       WHERE ${NEEDS_PORTRAIT_SQL}
-       ORDER BY a.album_count DESC, a.name LIMIT ?`,
-    )
-    .all(limit);
+/**
+ * How long an artist the provider chain came back empty for stays out of the
+ * queue (issue #1581). The queue is ordered by album count and the task runs every
+ * processing tick, so without this the same unresolvable headliners were re-asked
+ * every minute — each a full Lidarr artist list plus MBID lookups.
+ */
+export const PORTRAIT_RETRY_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * `triedBefore`: leave out artists attempted after this instant — the task passes
+ * now minus {@link PORTRAIT_RETRY_TTL_MS}; the backfill script omits it, so an
+ * operator's explicit run still covers everyone.
+ */
+export interface PortraitQueueOptions {
+  triedBefore?: number;
 }
 
-/** How many artists still lack a portrait. */
-export function countArtistsNeedingPortrait(db: Database): number {
+function dueClause(opts: PortraitQueueOptions): { sql: string; params: number[] } {
+  if (opts.triedBefore === undefined) return { sql: '', params: [] };
+  return {
+    sql: ` AND a.id NOT IN (SELECT artist_id FROM artist_portrait_attempts WHERE attempted_at > ?)`,
+    params: [opts.triedBefore],
+  };
+}
+
+/** Artists still lacking a portrait, most-prolific first (headline names soonest). */
+export function selectArtistsNeedingPortrait(
+  db: Database,
+  limit: number,
+  opts: PortraitQueueOptions = {},
+): ArtistImageTarget[] {
+  const due = dueClause(opts);
+  return db
+    .query<ArtistImageTarget, number[]>(
+      `SELECT id, name FROM library_artists a
+       WHERE ${NEEDS_PORTRAIT_SQL}${due.sql}
+       ORDER BY a.album_count DESC, a.name LIMIT ?`,
+    )
+    .all(...due.params, limit);
+}
+
+/** How many artists still lack a portrait (and, with `triedBefore`, are due a try). */
+export function countArtistsNeedingPortrait(db: Database, opts: PortraitQueueOptions = {}): number {
+  const due = dueClause(opts);
   return Number(
     (
       db
-        .query<{ n: number }, []>(
-          `SELECT COUNT(*) AS n FROM library_artists a WHERE ${NEEDS_PORTRAIT_SQL}`,
+        .query<{ n: number }, number[]>(
+          `SELECT COUNT(*) AS n FROM library_artists a WHERE ${NEEDS_PORTRAIT_SQL}${due.sql}`,
         )
-        .get() ?? { n: 0 }
+        .get(...due.params) ?? { n: 0 }
     ).n,
+  );
+}
+
+/** Stamp an attempt on each of these artists that is still without a portrait. */
+export function recordPortraitAttempts(db: Database, artistIds: string[], at: number): void {
+  if (artistIds.length === 0) return;
+  const placeholders = artistIds.map(() => '?').join(',');
+  db.run(
+    `INSERT INTO artist_portrait_attempts (artist_id, attempted_at)
+     SELECT id, ? FROM library_artists
+      WHERE id IN (${placeholders})
+        AND id NOT IN (SELECT id FROM library_artwork WHERE kind = 'artist')
+     ON CONFLICT(artist_id) DO UPDATE SET attempted_at = excluded.attempted_at`,
+    [at, ...artistIds],
   );
 }
 
@@ -137,9 +182,10 @@ export function countArtistsNeedingPortrait(db: Database): number {
  * Portrait coverage for the Admin overview (issue #250 gap 3).
  *
  * `missing` reuses `NEEDS_PORTRAIT_SQL` rather than restating it, so the number
- * an admin reads is by construction the number of artists a fill would actually
- * act on — the two can't drift into disagreeing the way the fragment reporter
- * and the curator did (issue #314).
+ * an admin reads is by construction the number of artists an operator's fill
+ * would act on — the two can't drift into disagreeing the way the fragment
+ * reporter and the curator did (issue #314). It deliberately ignores the task's
+ * retry TTL (#1581): an artist tried last week still has no portrait.
  *
  * `visible` counts only `hidden = 0` rows, because a hidden artist (a
  * `split_compound` whose members represent it) is not something the grid shows,

@@ -3,6 +3,7 @@ import { providerHealthSnapshot, resetProviderHealth } from '@nicotind/core';
 import {
   LidarrClient,
   LidarrTimeoutError,
+  LidarrUnavailableError,
   TIMEOUT_LOCAL_MS,
   TIMEOUT_LOOKUP_MS,
   TIMEOUT_PROVISION_MS,
@@ -207,5 +208,67 @@ describe('provider-health counters', () => {
     const { fetchFn } = recordingFetch();
     await clientWith(fetchFn).request('/api/v1/artist');
     expect(providerHealthSnapshot().musicbrainz).toMatchObject({ ok: 0, failed: 0 });
+  });
+});
+
+/**
+ * Issue #1581. While Lidarr was out of memory, background enrichment kept
+ * sending it 10-20 s requests. The breaker counts every call's outcome; only the
+ * background view is refused while it is open, so a person's request still goes
+ * out — and its answer is what re-closes the breaker.
+ */
+describe('circuit breaker', () => {
+  function counting(status: number): { fetchFn: typeof fetch; count: () => number } {
+    let n = 0;
+    const fetchFn = (async () => {
+      n++;
+      return new Response('[]', { status });
+    }) as unknown as typeof fetch;
+    return { fetchFn, count: () => n };
+  }
+
+  it('opens after repeated 5xx, then the background view fails fast without calling Lidarr', async () => {
+    const { fetchFn, count } = counting(503);
+    const client = new LidarrClient({ baseUrl: 'http://lidarr:8686', apiKey: 'k', fetchFn });
+    const background = client.background();
+    for (let i = 0; i < 3; i++)
+      await expect(background.request('/api/v1/artist')).rejects.toThrow();
+    expect(client.circuit.isOpen).toBe(true);
+
+    await expect(background.request('/api/v1/artist')).rejects.toBeInstanceOf(
+      LidarrUnavailableError,
+    );
+    expect(count()).toBe(3);
+  });
+
+  it('never refuses an interactive call, and its answer closes the breaker', async () => {
+    let status = 503;
+    const fetchFn = (async () => new Response('[]', { status })) as unknown as typeof fetch;
+    const client = new LidarrClient({ baseUrl: 'http://lidarr:8686', apiKey: 'k', fetchFn });
+    for (let i = 0; i < 3; i++) await expect(client.request('/api/v1/artist')).rejects.toThrow();
+    expect(client.circuit.isOpen).toBe(true);
+
+    status = 200;
+    await expect(client.request('/api/v1/artist')).resolves.toEqual([]);
+    expect(client.circuit.isOpen).toBe(false);
+    await expect(client.background().request('/api/v1/artist')).resolves.toEqual([]);
+  });
+
+  it('treats a 4xx as an answer, not a failure', async () => {
+    const { fetchFn } = counting(404);
+    const client = new LidarrClient({ baseUrl: 'http://lidarr:8686', apiKey: 'k', fetchFn });
+    for (let i = 0; i < 5; i++) await expect(client.request('/api/v1/album/9')).rejects.toThrow();
+    expect(client.circuit.isOpen).toBe(false);
+  });
+
+  it('counts timeouts toward opening', async () => {
+    const client = new LidarrClient({
+      baseUrl: 'http://lidarr:8686',
+      apiKey: 'k',
+      fetchFn: hangingFetch,
+    });
+    for (let i = 0; i < 3; i++)
+      await expect(client.request('/api/v1/artist', {}, 5)).rejects.toThrow();
+    expect(client.circuit.isOpen).toBe(true);
   });
 });

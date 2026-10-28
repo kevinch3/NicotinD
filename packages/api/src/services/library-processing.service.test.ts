@@ -532,3 +532,100 @@ describe('pending counts are not recounted per status emit (#1356)', () => {
     expect(svc.getState().status.taskPending.bpm).toBe(0);
   });
 });
+
+/**
+ * #1581: while Lidarr's breaker is open every Lidarr-backed task sits out, so
+ * nothing in the background would ever call Lidarr again to close it. The
+ * service sends the one probe per cool-down instead.
+ */
+describe('Lidarr breaker', () => {
+  function breakerLidarr(state: { isOpen: boolean; probeDue: boolean; probeAnswers?: boolean }) {
+    let probes = 0;
+    let lookups = 0;
+    const lidarr = {
+      circuit: {
+        get isOpen() {
+          return state.isOpen;
+        },
+        get probeDue() {
+          return state.probeDue;
+        },
+        lastFailureAt: null,
+      },
+      probe: async () => {
+        probes += 1;
+        state.probeDue = false;
+        if (state.probeAnswers) state.isOpen = false;
+        return !!state.probeAnswers;
+      },
+      album: {
+        lookup: async () => ((lookups += 1), []),
+        get: async () => null,
+      },
+      artist: { list: async () => [], lookup: async () => [] },
+      track: { listByAlbum: async () => [] },
+    };
+    return { lidarr, probes: () => probes, lookups: () => lookups };
+  }
+
+  function serviceWith(lidarr: unknown): LibraryProcessingService {
+    return new LibraryProcessingService({
+      db,
+      lidarr: lidarr as never,
+      musicDir: '/music',
+      dataDir,
+      now: () => new Date(2024, 0, 1, 12, 0),
+      contextFactory: fakeCtx({ analyzed: 0, genreLookups: 0 }),
+    });
+  }
+
+  /** A freshly landed album with no cover — what new-album metadata fills. */
+  function seedLandedAlbum() {
+    db.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, classification, synced_at)
+       VALUES ('alb', 'Album', 'Artist', 'art', 1, 0, 'album', 1)`,
+    );
+    seedSong('s1');
+  }
+
+  const watermark = () =>
+    db
+      .query<{ value: string }, []>(
+        `SELECT value FROM library_sync_state WHERE key = 'album_metadata_watermark_v1'`,
+      )
+      .get()?.value ?? null;
+
+  it('probes a paused Lidarr once its cool-down is due, and not before', async () => {
+    setProcessingSettings(db, {});
+    const due = breakerLidarr({ isOpen: true, probeDue: true });
+    await serviceWith(due.lidarr).runNow();
+    expect(due.probes()).toBe(1);
+
+    const cooling = breakerLidarr({ isOpen: true, probeDue: false });
+    await serviceWith(cooling.lidarr).runNow();
+    expect(cooling.probes()).toBe(0);
+  });
+
+  it('skips new-album metadata while paused, without advancing past the album', async () => {
+    seedLandedAlbum();
+    setProcessingSettings(db, {});
+    const paused = breakerLidarr({ isOpen: true, probeDue: false });
+
+    await serviceWith(paused.lidarr).enrichNewSongsNow();
+
+    expect(paused.lookups()).toBe(0);
+    expect(watermark()).toBeNull();
+  });
+
+  it('fills new-album metadata as before once the probe closes the breaker', async () => {
+    seedLandedAlbum();
+    setProcessingSettings(db, {});
+    const back = breakerLidarr({ isOpen: true, probeDue: true, probeAnswers: true });
+
+    await serviceWith(back.lidarr).enrichNewSongsNow();
+
+    expect(back.probes()).toBe(1);
+    expect(back.lookups()).toBeGreaterThan(0);
+    expect(watermark()).not.toBeNull();
+  });
+});
