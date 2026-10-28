@@ -62,7 +62,7 @@ services:
   # both live behind the `slskd-addon` profile and deploy together.
   slskd:
     profiles: ["slskd-addon"]
-    image: slskd/slskd:0.25.1
+    image: slskd/slskd:0.25.1@sha256:ab9ed50e028b524cefdb7c1dd8ebca368a076e18441ee8ac2326473eb850b4c3
     user: "1000:1000"
     # Steady state ~350 MB.
     mem_limit: 1g
@@ -321,7 +321,7 @@ services:
   lidarr:
     # Pinned (was :latest): a silent Lidarr major bump can break the API
     # client. Bump deliberately after checking the Lidarr changelog.
-    image: linuxserver/lidarr:3.1.0
+    image: linuxserver/lidarr:3.1.0@sha256:d8549ff9ea29b4015c32257360652c1000c31ea471a2b3f0835ae77292faf35b
     # Steady state ~270 MB; .NET, so give the GC room before it is a hard wall.
     mem_limit: 1g
     memswap_limit: 1g

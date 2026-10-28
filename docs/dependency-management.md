@@ -259,4 +259,5 @@ Each is annotated with a `# renovate:` comment next to the pin:
 | `gitleaks` | `.github/workflows/ci.yml` | Same, for the secret scanner — an old ruleset misses newer credential formats |
 
 The Docker base images (`oven/bun`, `imbios/bun-node`, `python:3.11-slim`)
-are covered by Renovate's native `dockerfile` manager, no annotation needed.
+are covered by Renovate's native `dockerfile` manager, no annotation needed. They are pinned by
+digest too (see "Image digests").
