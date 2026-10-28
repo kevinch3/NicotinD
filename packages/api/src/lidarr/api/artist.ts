@@ -69,6 +69,27 @@ export class ArtistApi {
   }
 
   /**
+   * Point artists at another root folder. `moveFiles` is pinned to `false` and not
+   * a parameter: Lidarr's editor then only rewrites stored paths, and a move could
+   * otherwise transfer the music library itself (#1580).
+   */
+  async reassignRootFolder(artistIds: number[], rootFolderPath: string): Promise<void> {
+    await this.client.request<unknown>(
+      '/api/v1/artist/editor',
+      {
+        method: 'PUT',
+        body: JSON.stringify({ artistIds, rootFolderPath, moveFiles: false }),
+      },
+      TIMEOUT_PROVISION_MS,
+    );
+  }
+
+  /** Unregister a root folder. Lidarr drops the row only; nothing on disk is touched. */
+  async deleteRootFolder(id: number): Promise<void> {
+    await this.client.request<unknown>(`/api/v1/rootfolder/${id}`, { method: 'DELETE' });
+  }
+
+  /**
    * Lidarr's POST /api/v1/rootfolder requires a complete payload with default
    * profile IDs and monitor options, not just `path`. We fetch the default
    * profiles here and submit them so the call succeeds on a fresh Lidarr.

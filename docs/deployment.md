@@ -36,6 +36,7 @@ slskd web API, `SLSKD_ADDON_TOKEN` for core→addon auth). Core carries none of 
 | `nicotind-data` | NicotinD SQLite database, secrets, and artist-overrides            |
 | `slskd-data`    | slskd application directory (`/app`, including config and state)   |
 | `lidarr-config` | Lidarr database and config (metadata optimization)                 |
+| `lidarr-metadata` | Lidarr's empty root folder, mounted at `/config/nicotind-metadata` (#1580) |
 
 ### Using a host directory for music
 
@@ -50,6 +51,53 @@ services:
     volumes:
       - /path/to/your/music:/data/music
 ```
+
+Lidarr gets **no** music mount — see the next section.
+
+### Lidarr is a metadata source (issue #1580)
+
+NicotinD reads Lidarr's catalogue (discographies, tracklists, covers, the wanted list) and never
+lets it download or import: placement is `LibraryOrganizer`'s job. But Lidarr files every artist
+under a root folder and rescans and import-evaluates each root daily. Until #1580 that root was
+the music library itself — registered by NicotinD at boot and on the first artist add — so on prod
+Lidarr matched ~20k library files against ~975k catalogue tracks every day and ran out of its 1 GB
+(`OutOfMemoryException` in `ImportDecisionMaker`), timing out every lookup NicotinD made. Nothing
+read the result: `hasFile` on a discography comes from NicotinD's own library, and the one consumer
+of Lidarr's file view, the auto-acquire loop, now pages past what we already hold
+([auto-acquisition-plan.md](auto-acquisition-plan.md)). It was also a hazard — a "delete artist +
+files" in Lidarr's UI would have deleted library files.
+
+Now:
+
+- **The root is an empty metadata root**: `lidarr.rootFolder` / `NICOTIND_LIDARR_ROOT_FOLDER`,
+  defaulting to `/config/nicotind-metadata` in `external` mode (the `lidarr-metadata` volume —
+  inside `/config` because linuxserver's init chowns `/config` to the Lidarr user on every start,
+  which is what Lidarr's exists + writable root-folder validators need) and to
+  `<dataDir>/lidarr-metadata` in `embedded` mode, which NicotinD creates itself.
+  `ensureArtistRootFolder` (`services/lidarr-root.ts`) picks it — or any root kept apart from the
+  library — and registers it when missing. **It never registers the music dir.** If the metadata
+  root cannot be registered (an older compose without the volume) it falls back to an existing root
+  with a warning, so adds keep working; with no root at all the add fails naming the fix.
+- **Lidarr has no music mount** in `docker-compose.yml`, so it cannot touch the library at all.
+- **Boot warns** (`provisionLidarrRootAtBoot`) while any registered root overlaps the music dir.
+- Monitoring is unchanged: unmonitored adds would silently empty `wanted/missing` for anyone who
+  enables auto-acquire.
+
+**Migrating a Lidarr provisioned before #1580** (existing artists still point at the library):
+
+1. Remove the `lidarr:` music bind from your `docker-compose.override.yml` (the example no longer
+   has one) and deploy; Lidarr restarts with the metadata volume and without the library.
+2. Dry run, then apply, from the API container (it carries the Lidarr URL and key):
+
+   ```bash
+   docker compose exec nicotind bun run packages/api/src/scripts/lidarr-isolate-root.ts
+   docker compose exec nicotind bun run packages/api/src/scripts/lidarr-isolate-root.ts --apply
+   ```
+
+   `isolateLidarrRoot` reassigns artists with `moveFiles: false` — Lidarr's editor then only rewrites
+   stored paths (`MoveArtistService` skips the transfer, and with the library unmounted skips the
+   artist outright), and the overlapping root is unregistered only once a re-read shows no artist
+   left under it. It exits non-zero if any remain.
 
 ## What the image contains (and what it deliberately doesn't)
 

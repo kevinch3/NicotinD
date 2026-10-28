@@ -50,7 +50,10 @@ describe('addArtistFromLookup', () => {
       rootFolders: [{ id: 1, path: '/music', freeSpace: 0 }],
     });
 
-    const result = await addArtistFromLookup(lidarr, makeArtist(), '/fallback');
+    const result = await addArtistFromLookup(lidarr, makeArtist(), {
+      metadataRoot: '/config/nicotind-metadata',
+      musicDir: '/data/music',
+    });
 
     expect(result.id).toBe(42);
     expect(add).toHaveBeenCalledTimes(1);
@@ -58,18 +61,29 @@ describe('addArtistFromLookup', () => {
     expect(addRootFolder).not.toHaveBeenCalled();
   });
 
-  it('auto-provisions a root folder from musicDir when none exists', async () => {
+  it('registers the metadata root, never the music library, when none exists (#1580)', async () => {
     const { lidarr, add, addRootFolder } = makeLidarr({ rootFolders: [] });
 
-    await addArtistFromLookup(lidarr, makeArtist(), '/data/music');
+    await addArtistFromLookup(lidarr, makeArtist(), {
+      metadataRoot: '/config/nicotind-metadata',
+      musicDir: '/data/music',
+    });
 
-    expect(addRootFolder).toHaveBeenCalledWith('/data/music');
-    expect(add.mock.calls[0]?.[2]).toBe('/data/music');
+    expect(addRootFolder.mock.calls[0]?.[0]).toBe('/config/nicotind-metadata');
+    expect(add.mock.calls[0]?.[2]).toBe('/config/nicotind-metadata');
   });
 
-  it('throws when no root folder exists and no musicDir is given', async () => {
-    const { lidarr } = makeLidarr({ rootFolders: [] });
-    await expect(addArtistFromLookup(lidarr, makeArtist())).rejects.toThrow(/no root folders/i);
+  it('does not add under a root that overlaps the music library when the metadata root is free', async () => {
+    const { lidarr, add } = makeLidarr({
+      rootFolders: [{ id: 1, path: '/data/music', freeSpace: 0 }],
+    });
+
+    await addArtistFromLookup(lidarr, makeArtist(), {
+      metadataRoot: '/config/nicotind-metadata',
+      musicDir: '/data/music',
+    });
+
+    expect(add.mock.calls[0]?.[2]).toBe('/config/nicotind-metadata');
   });
 
   it('throws when no quality profile is configured', async () => {

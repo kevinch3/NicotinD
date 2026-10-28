@@ -105,6 +105,7 @@ import { AcquireWatcher } from './services/acquire-watcher.js';
 import { DiscographyService } from './services/discography.service.js';
 import { CatalogService } from './services/catalog-search.service.js';
 import { ArtistProvisioningService } from './services/artist-provisioning.service.js';
+import { lidarrRootPolicyFor } from './services/lidarr-root.js';
 import { applyIdleBudgets } from './middleware/idle-budget.js';
 import { SingleEnrichmentService } from './services/single-enrichment.service.js';
 import { WatchlistService } from './services/watchlist.service.js';
@@ -954,12 +955,12 @@ export function createApp({
 
   if (lidarr) {
     const discographySvc = new DiscographyService(lidarr, db);
-    const catalogSvc = new CatalogService(lidarr, config.musicDir);
-    const artistProvisioning = new ArtistProvisioningService({
-      lidarr,
-      db,
-      musicDir: config.musicDir,
+    const rootPolicy = lidarrRootPolicyFor(config, {
+      dataDir: expandedDataDir,
+      musicDir: expandedMusicDir,
     });
+    const catalogSvc = new CatalogService(lidarr, rootPolicy);
+    const artistProvisioning = new ArtistProvisioningService({ lidarr, db, rootPolicy });
     const enrichmentSvc = new SingleEnrichmentService({
       db,
       catalog: catalogSvc,
@@ -1112,6 +1113,7 @@ export function createApp({
 
 export { AutoAcquireService } from './services/auto-acquire.service.js';
 export { Lidarr } from './lidarr/index.js';
+export { lidarrRootPolicyFor, provisionLidarrRootAtBoot } from './services/lidarr-root.js';
 export { ServiceManager, NativeProcessStrategy } from './service-manager/index.js';
 export { initDatabase, getDatabase, optimizeDatabase } from './db.js';
 export { maybeCheckForUpdate } from './services/update-check.js';

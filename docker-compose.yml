@@ -330,9 +330,12 @@ services:
       PGID: 1000
       TZ: Etc/UTC
       LIDARR__AUTH__APIKEY: nicotind-lidarr-internal
+    # Metadata only: no music mount, so Lidarr can neither rescan nor touch the
+    # library. Its root folder is this empty volume — inside /config, which the
+    # image chowns to its user on start (#1580, docs/deployment.md).
     volumes:
       - lidarr-config:/config
-      - music:/data/music
+      - lidarr-metadata:/config/nicotind-metadata
     healthcheck:
       test:
         - CMD
@@ -397,4 +400,5 @@ volumes:
   ytdlp-addon-data:
   spotdl-addon-data:
   lidarr-config:
+  lidarr-metadata:
   curator-state:

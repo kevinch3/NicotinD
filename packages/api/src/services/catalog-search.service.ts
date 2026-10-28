@@ -2,6 +2,7 @@ import { LidarrTimeoutError } from '../lidarr/index.js';
 import type { Lidarr, LidarrAlbum, LidarrArtist } from '../lidarr/index.js';
 import { createLogger, NicotinDError } from '@nicotind/core';
 import { provisionArtist, type ArtistNotProvisioned } from './lidarr-provision.js';
+import type { LidarrRootPolicy } from './lidarr-root.js';
 import { normalizeTitle } from '@nicotind/core';
 import { tokenize, matchesAllTokens, rankBy, fold } from './search-tokens.js';
 import { proxiedCoverUrl } from './remote-cover.js';
@@ -74,7 +75,7 @@ export interface ResolveAlbumResult {
 export class CatalogService {
   constructor(
     private lidarr: Lidarr,
-    private musicDir?: string,
+    private rootPolicy?: LidarrRootPolicy,
   ) {}
 
   async search(query: string): Promise<CatalogSearchResult> {
@@ -284,7 +285,7 @@ export class CatalogService {
   /** Off-request-path add for the watchlist poller, which has no user to wait on a job. */
   async provisionArtist(artistMbid: string, artistName: string): Promise<void> {
     log.info({ artistMbid, artistName }, 'Adding artist to Lidarr for catalog hunt');
-    await provisionArtist(this.lidarr, { artistName, artistMbid }, { musicDir: this.musicDir });
+    await provisionArtist(this.lidarr, { artistName, artistMbid }, { rootPolicy: this.rootPolicy });
   }
 
   private async resolveArtist(artistMbid: string, artistName: string): Promise<number | null> {

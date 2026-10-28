@@ -111,12 +111,21 @@ version is smaller and reuses more:
   `detail` as `last_error`; `no-candidate|slskd-unavailable` → touch/retry). The watchlist tests
   stayed green, proving the extraction was behavior-preserving.
 - **`AutoAcquireService`** (`services/auto-acquire.service.ts`) is therefore just the interval
-  poller: each sweep pulls `lidarr.album.wantedMissing(1, maxPerSweep)` and feeds each record to
-  `acquireAlbum`. No new dedupe table — the `already-complete`/`in-flight` outcomes make repeated
-  sweeps idempotent. The optional admin status panel (§4 above) was **not** built; the existing
+  poller, feeding `wantedMissing` records to `acquireAlbum`. No new dedupe table — the
+  `already-complete`/`in-flight` outcomes make repeated sweeps idempotent.
+- **Lidarr's "missing" is not ours (#1580).** It is Lidarr's own file scan, and Lidarr's root
+  folder is now an empty metadata root ([deployment.md](deployment.md#lidarr-is-a-metadata-source-issue-1580)),
+  so to Lidarr *every* monitored album is missing. The sweep originally read
+  `wantedMissing(1, maxPerSweep)` — page 1, forever — which would be albums the library already
+  holds. It now reads fixed pages (`AUTO_ACQUIRE_PAGE_SIZE`, at most `AUTO_ACQUIRE_MAX_PAGES` per
+  sweep) from a cursor that persists across sweeps, skips an album `albumAlreadyComplete` says we
+  hold (using the record's `statistics.totalTrackCount` when Lidarr states it), and only an album
+  actually attempted spends `maxPerSweep`. A page the budget cuts short is re-read next sweep; the
+  short last page wraps the cursor to 1. The optional admin status panel (§4 above) was **not** built; the existing
   `/api/discography/jobs` view already surfaces what the loop queued.
 - **Config** landed under `downloads.autoAcquire{Enabled,IntervalMs,MaxPerSweep}` (default off),
   env `NICOTIND_AUTO_ACQUIRE_ENABLED`; `minMatchPct` reuses `watchlist.minMatchPct`.
 - **Tests:** `album-acquire.addon.test.ts` (every outcome), `auto-acquire.service.test.ts` (sweep
-  enqueues once, respects `maxPerSweep`, gated on acquisition, skips artistless records),
+  enqueues once, fixed pages, pages past owned albums, complete albums don't spend the budget,
+  cursor carries across sweeps, gated on acquisition, skips artistless records),
   `lidarr-client/src/api/album.test.ts` (request shape). All under existing CI globs.

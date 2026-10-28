@@ -146,7 +146,9 @@ export class LidarrClient {
     }
 
     recordProviderCall('lidarr', { ok: true });
-    return res.json() as Promise<T>;
+    // A `void` Lidarr action (DELETE /rootfolder/:id) answers 200 with no body.
+    const text = await res.text();
+    return (text ? JSON.parse(text) : undefined) as T;
   }
 
   async ping(): Promise<boolean> {

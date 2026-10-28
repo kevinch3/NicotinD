@@ -2,14 +2,21 @@ import type { Lidarr, LidarrArtist } from '../lidarr/index.js';
 import { createLogger } from '@nicotind/core';
 import { corroboratesLidarrHit } from './lidarr-confidence.js';
 import { normalizeArtistForGrouping } from './album-grouping.js';
+import {
+  LIDARR_METADATA_ROOT_DEFAULT,
+  ensureArtistRootFolder,
+  type LidarrRootPolicy,
+} from './lidarr-root.js';
 
 const log = createLogger('lidarr-provision');
+
+const DEFAULT_ROOT_POLICY: LidarrRootPolicy = { metadataRoot: LIDARR_METADATA_ROOT_DEFAULT };
 
 /**
  * Adds an artist to Lidarr from a `lookup()` candidate, provisioning the
  * prerequisites Lidarr's POST /artist requires (a quality profile, a metadata
- * profile, a root folder). When no root folder exists yet we auto-provision one
- * pointing at `musicDir` — a fresh Lidarr ships with none.
+ * profile, a root folder). The root is the empty metadata root, never the music
+ * library (#1580) — see `ensureArtistRootFolder`.
  *
  * Shared by the discography flow (add-on-demand for a local-library artist) and
  * catalog search (add-on-demand for a MusicBrainz hit that has no local row), so
@@ -18,29 +25,22 @@ const log = createLogger('lidarr-provision');
 export async function addArtistFromLookup(
   lidarr: Lidarr,
   candidate: LidarrArtist,
-  musicDir?: string,
+  rootPolicy: LidarrRootPolicy = DEFAULT_ROOT_POLICY,
 ): Promise<LidarrArtist> {
-  const [profiles, metadataProfiles, initialRootFolders] = await Promise.all([
+  const [profiles, metadataProfiles] = await Promise.all([
     lidarr.artist.getQualityProfiles(),
     lidarr.artist.getMetadataProfiles(),
-    lidarr.artist.getRootFolders(),
   ]);
 
   if (!profiles.length) throw new Error('Lidarr has no quality profiles configured');
   if (!metadataProfiles.length) throw new Error('Lidarr has no metadata profiles configured');
 
-  let rootFolders = initialRootFolders;
-  if (!rootFolders.length) {
-    if (!musicDir) throw new Error('Lidarr has no root folders configured');
-    log.info({ path: musicDir }, 'No Lidarr root folder — provisioning music dir');
-    const added = await lidarr.artist.addRootFolder(musicDir);
-    rootFolders = [added];
-  }
+  const { path: rootFolderPath } = await ensureArtistRootFolder(lidarr, rootPolicy);
 
   const added = await lidarr.artist.add(
     candidate,
     profiles[0].id,
-    rootFolders[0].path,
+    rootFolderPath,
     metadataProfiles[0].id,
   );
 
@@ -86,7 +86,7 @@ export function sameProvisionTarget(a: ProvisionTarget, b: ProvisionTarget): boo
 export async function provisionArtist(
   lidarr: Lidarr,
   target: ProvisionTarget,
-  opts: { musicDir?: string; shouldStop?: () => boolean } = {},
+  opts: { rootPolicy?: LidarrRootPolicy; shouldStop?: () => boolean } = {},
 ): Promise<{ artist: LidarrArtist; added: boolean } | null> {
   const key = normalizeArtistForGrouping(target.artistName);
   const monitored = await lidarr.artist.list();
@@ -106,5 +106,5 @@ export async function provisionArtist(
     throw new Error(`No confident Lidarr match for "${target.artistName}"`);
   }
   if (opts.shouldStop?.()) return null;
-  return { artist: await addArtistFromLookup(lidarr, best, opts.musicDir), added: true };
+  return { artist: await addArtistFromLookup(lidarr, best, opts.rootPolicy), added: true };
 }
