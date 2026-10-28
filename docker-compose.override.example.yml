@@ -88,6 +88,4 @@ services:
       # Writable staging only — see docker-compose.yml (#1052).
       - /path/to/your/music/.downloads:/data/music/.downloads
 
-  lidarr:
-    volumes:
-      - /path/to/your/music:/data/music
+  # No `lidarr` entry: Lidarr is a metadata source and gets no music mount (#1580).
