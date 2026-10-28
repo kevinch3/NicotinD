@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.119](https://github.com/kevinch3/NicotinD/compare/v0.8.118...v0.8.119) (2026-10-28)
+
+### Bug Fixes
+
+* **lidarr:** file artists under an empty metadata root, never the music library ([#1588](https://github.com/kevinch3/NicotinD/issues/1588)) ([d3aff33](https://github.com/kevinch3/NicotinD/commit/d3aff331440f607b6bb73fca712147e228fa3651)), closes [#1580](https://github.com/kevinch3/NicotinD/issues/1580)
+* **lidarr:** stop re-asking Lidarr for unresolvable portraits and back off while it fails ([#1589](https://github.com/kevinch3/NicotinD/issues/1589)) ([c9e8bf4](https://github.com/kevinch3/NicotinD/commit/c9e8bf487205b3dd9cdb430454aa545bd736c2cc)), closes [#1581](https://github.com/kevinch3/NicotinD/issues/1581)
 ## [0.8.118](https://github.com/kevinch3/NicotinD/compare/v0.8.117...v0.8.118) (2026-10-26)
 
 ### Bug Fixes

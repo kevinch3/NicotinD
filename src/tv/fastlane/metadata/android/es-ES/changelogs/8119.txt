@@ -1,0 +1,2 @@
+• lidarr: file artists under an empty metadata root, never the music library (#1588)
+• lidarr: stop re-asking Lidarr for unresolvable portraits and back off while it fails (#1589)
