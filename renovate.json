@@ -14,8 +14,10 @@
   "separateMajorMinor": true,
   "major": { "automerge": false },
   "automerge": false,
+  "minimumReleaseAge": "3 days",
   "vulnerabilityAlerts": {
     "enabled": true,
+    "minimumReleaseAge": null,
     "schedule": ["at any time"],
     "prCreation": "immediate",
     "labels": ["security"]
