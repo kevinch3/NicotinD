@@ -3,6 +3,7 @@ import type { Database } from 'bun:sqlite';
 import { createLogger } from '@nicotind/core';
 import type { Lidarr } from '../lidarr/index.js';
 import { provisionArtist, sameProvisionTarget, type ProvisionTarget } from './lidarr-provision.js';
+import type { LidarrRootPolicy } from './lidarr-root.js';
 import { upsertDiscographyLink } from './discography.service.js';
 
 const log = createLogger('artist-provisioning');
@@ -50,7 +51,7 @@ export class ArtistProvisioningService extends EventEmitter {
   private readonly now: () => Date;
 
   constructor(
-    private readonly deps: { lidarr: Lidarr; db: Database; musicDir?: string },
+    private readonly deps: { lidarr: Lidarr; db: Database; rootPolicy?: LidarrRootPolicy },
     opts: { now?: () => Date } = {},
   ) {
     super();
@@ -103,7 +104,7 @@ export class ArtistProvisioningService extends EventEmitter {
     let outcome: ProvisioningOutcome = 'completed';
     try {
       const result = await provisionArtist(this.deps.lidarr, target, {
-        musicDir: this.deps.musicDir,
+        rootPolicy: this.deps.rootPolicy,
         shouldStop: () => this.stopRequested,
       });
       if (!result) {

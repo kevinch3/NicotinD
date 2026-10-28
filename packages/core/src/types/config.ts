@@ -157,6 +157,9 @@ export const NicotinDConfigSchema = z.object({
       url: z.string().url().default('http://localhost:8686'),
       port: z.number().default(8686),
       apiKey: z.string().default(''),
+      // Where Lidarr files the artists NicotinD adds, as Lidarr's container sees
+      // it. Unset → per-mode default (`resolveLidarrMetadataRoot`, #1580).
+      rootFolder: z.string().optional(),
     })
     .optional(),
 

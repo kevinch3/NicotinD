@@ -10,9 +10,11 @@ import {
   findInsecureDefaults,
   getDatabase,
   Lidarr,
+  lidarrRootPolicyFor,
   maybeCheckForUpdate,
   NativeProcessStrategy,
   optimizeDatabase,
+  provisionLidarrRootAtBoot,
   SERVER_IDLE_TIMEOUT_S,
   ServiceManager,
 } from '@nicotind/api';
@@ -85,18 +87,24 @@ async function main() {
     : null;
 
   if (lidarr) {
-    try {
-      const rootFolders = await lidarr.artist.getRootFolders();
-      if (rootFolders.length === 0) {
-        await lidarr.artist.addRootFolder(config.musicDir);
-        log.info({ path: config.musicDir }, 'Registered music dir as Lidarr root folder');
+    const home = (p: string) =>
+      p.startsWith('~') ? join(process.env.HOME ?? '/root', p.slice(1)) : p;
+    const rootPolicy = lidarrRootPolicyFor(config, {
+      dataDir: home(config.dataDir),
+      musicDir: home(config.musicDir),
+    });
+    // Embedded Lidarr shares our filesystem, so its metadata root is ours to create.
+    if (config.mode === 'embedded') {
+      try {
+        mkdirSync(rootPolicy.metadataRoot, { recursive: true });
+      } catch (err) {
+        log.warn(
+          { err, path: rootPolicy.metadataRoot },
+          'Could not create the Lidarr metadata root',
+        );
       }
-    } catch (err) {
-      log.warn(
-        { err },
-        'Lidarr root folder provisioning failed — discography may not work until Lidarr is reachable',
-      );
     }
+    await provisionLidarrRootAtBoot(lidarr, rootPolicy);
   }
 
   // 4. Create and start API server
@@ -340,6 +348,9 @@ export function loadConfig() {
       apiKey: secrets.lidarrApiKey,
       ...((fileConfig as Record<string, unknown>).lidarr as Record<string, unknown>),
       ...(process.env.NICOTIND_LIDARR_URL ? { url: process.env.NICOTIND_LIDARR_URL } : {}),
+      ...(process.env.NICOTIND_LIDARR_ROOT_FOLDER
+        ? { rootFolder: process.env.NICOTIND_LIDARR_ROOT_FOLDER }
+        : {}),
       ...(process.env.LIDARR_API_KEY ? { apiKey: process.env.LIDARR_API_KEY } : {}),
     },
     analysis: {

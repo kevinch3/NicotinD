@@ -136,6 +136,26 @@ describe('per-method tiers', () => {
   });
 });
 
+describe('root-folder bookkeeping (#1580)', () => {
+  it('resolves a void Lidarr action that answers 200 with an empty body', async () => {
+    const fetchFn = (async () => new Response('', { status: 200 })) as unknown as typeof fetch;
+    const c = new LidarrClient({ baseUrl: 'http://lidarr:8686', apiKey: 'k', fetchFn });
+    await expect(new ArtistApi(c).deleteRootFolder(3)).resolves.toBeUndefined();
+  });
+
+  it('reassigns a root folder without ever asking Lidarr to move files', async () => {
+    const { fetchFn, calls } = recordingFetch();
+    const c = new LidarrClient({ baseUrl: 'http://lidarr:8686', apiKey: 'k', fetchFn });
+    await new ArtistApi(c).reassignRootFolder([1, 2], '/config/nicotind-metadata');
+    expect(calls[0]?.method).toBe('PUT');
+    expect(JSON.parse(String(calls[0]?.body))).toEqual({
+      artistIds: [1, 2],
+      rootFolderPath: '/config/nicotind-metadata',
+      moveFiles: false,
+    });
+  });
+});
+
 /**
  * Issue #670. Every outcome was observed once, as a log line, and then swallowed
  * into `[]`/`null` by ~20 call sites — so `GET /api/admin/review` could not tell

@@ -631,7 +631,10 @@ describe('CatalogService.resolveAlbum', () => {
       },
     } as unknown as Lidarr;
 
-    await new CatalogService(lidarr, '/music').provisionArtist('pf-mbid', 'Pink Floyd');
+    await new CatalogService(lidarr, { metadataRoot: '/music' }).provisionArtist(
+      'pf-mbid',
+      'Pink Floyd',
+    );
 
     expect(add).toHaveBeenCalledTimes(1);
     expect((add.mock.calls[0] as unknown[])[0]).toMatchObject({ foreignArtistId: 'pf-mbid' });
