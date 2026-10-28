@@ -2,6 +2,7 @@ import type { Database } from 'bun:sqlite';
 import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Lidarr, LidarrArtist } from '../../lidarr/index.js';
+import { lidarrCircuit } from '../../lidarr/index.js';
 import type { ProcessingTaskId } from '@nicotind/core';
 import {
   analyzeBpm as realAnalyzeBpm,
@@ -33,8 +34,10 @@ import {
 import { planDiscogsAlbumGenres, type DiscogsGenreAlbum } from '../genre-discogs.js';
 import { mapDiscogsGenres } from '../discogs-genre-vocab.js';
 import {
+  PORTRAIT_RETRY_TTL_MS,
   countArtistsNeedingPortrait,
   fillArtistImages,
+  recordPortraitAttempts,
   selectArtistsNeedingPortrait,
 } from '../artist-image-fill.js';
 import { configuredArtistImageSources } from '../artist-image-providers.js';
@@ -666,10 +669,23 @@ const bpmTask: EnrichmentTask = {
   },
 };
 
+/**
+ * A task that calls Lidarr sits batches out while Lidarr's breaker is open
+ * (#1581). Each of them records a failed call as an outcome — a spent attempt, a
+ * tombstone, a stamped recheck — so failing fast through the queue would turn an
+ * outage into data. The processing service probes Lidarr to close it again.
+ */
+const LIDARR_PAUSED = 'Lidarr paused after repeated failures';
+
+function lidarrPaused(ctx: EnrichmentContext): boolean {
+  return lidarrCircuit(ctx.lidarr)?.isOpen === true;
+}
+
 const genreTask: EnrichmentTask = {
   id: 'genre',
   label: 'Genre',
-  available: (ctx) => (ctx.lidarr ? true : 'Lidarr not configured'),
+  available: (ctx) =>
+    !ctx.lidarr ? 'Lidarr not configured' : lidarrPaused(ctx) ? LIDARR_PAUSED : true,
   countPending: (db) =>
     Number(
       (
@@ -1142,17 +1158,25 @@ const embeddingsTask: EnrichmentTask = {
 const artistImageTask: EnrichmentTask = {
   id: 'artist-image',
   label: 'Artist images',
-  available: (ctx) =>
-    configuredArtistImageSources({
-      lidarr: ctx.lidarr,
-      spotifyLookup: ctx.lookupArtistImageSpotify,
-      discogsLookup: ctx.lookupArtistImageDiscogs,
-    }).length > 0
-      ? true
-      : 'No artist-image provider configured',
-  countPending: (db) => countArtistsNeedingPortrait(db),
+  available: (ctx) => {
+    if (
+      configuredArtistImageSources({
+        lidarr: ctx.lidarr,
+        spotifyLookup: ctx.lookupArtistImageSpotify,
+        discogsLookup: ctx.lookupArtistImageDiscogs,
+      }).length === 0
+    ) {
+      return 'No artist-image provider configured';
+    }
+    return lidarrPaused(ctx) ? LIDARR_PAUSED : true;
+  },
+  countPending: (db) =>
+    countArtistsNeedingPortrait(db, { triedBefore: Date.now() - PORTRAIT_RETRY_TTL_MS }),
   run: async (db, ctx, limit) => {
-    const rows = selectArtistsNeedingPortrait(db, limit);
+    const startedAt = Date.now();
+    const rows = selectArtistsNeedingPortrait(db, limit, {
+      triedBefore: startedAt - PORTRAIT_RETRY_TTL_MS,
+    });
     // Shared with the on-demand route + backfill script (issue #250) so the
     // resolve→persist sequence — provider chain, placeholder skip, setArtwork,
     // cover negative-cache eviction — has exactly one implementation.
@@ -1166,6 +1190,16 @@ const artistImageTask: EnrichmentTask = {
       },
       rows,
     );
+    // An empty answer drops the artist out of the queue for the retry TTL — but
+    // not when Lidarr failed during the batch: an outage is not an absence (#1581).
+    const lastFailure = lidarrCircuit(ctx.lidarr)?.lastFailureAt ?? null;
+    if (lastFailure === null || lastFailure < startedAt) {
+      recordPortraitAttempts(
+        db,
+        rows.map((r) => r.id),
+        Date.now(),
+      );
+    }
     return { applied, labels, failed: 0, errorSample: null };
   },
 };
@@ -1200,7 +1234,12 @@ export const BIO_MIN_MBID_CONFIDENCE = MBID_CONFIDENCE_EXACT;
 const artistInfoTask: EnrichmentTask = {
   id: 'artist-info',
   label: 'Artist bios',
-  available: (ctx) => (ctx.lookupArtistInfo ? true : 'No artist-info provider configured'),
+  available: (ctx) =>
+    !ctx.lookupArtistInfo
+      ? 'No artist-info provider configured'
+      : lidarrPaused(ctx)
+        ? LIDARR_PAUSED
+        : true,
   countPending: (db) =>
     Number(
       (
@@ -1375,7 +1414,12 @@ const ORIGIN_PENDING_WHERE = `
 const artistOriginTask: EnrichmentTask = {
   id: 'artist-origin',
   label: 'Artist origins',
-  available: (ctx) => (ctx.lookupArtistOrigin ? true : 'No origin lookup available'),
+  available: (ctx) =>
+    !ctx.lookupArtistOrigin
+      ? 'No origin lookup available'
+      : lidarrPaused(ctx)
+        ? LIDARR_PAUSED
+        : true,
   countPending: (db) =>
     Number(
       (
@@ -1515,7 +1559,8 @@ export function pendingArtistIdentityRows(db: Database, cutoff: number, limit?: 
 const artistIdentityTask: EnrichmentTask = {
   id: 'artist-identity',
   label: 'Artist identity',
-  available: (ctx) => (ctx.resolveArtistIdentity ? true : 'Lidarr not configured'),
+  available: (ctx) =>
+    !ctx.resolveArtistIdentity ? 'Lidarr not configured' : lidarrPaused(ctx) ? LIDARR_PAUSED : true,
   countPending: (db) => pendingArtistIdentityRows(db, Date.now() - ARTIST_IDENTITY_TTL_MS).length,
   run: async (db, ctx, limit) => {
     if (!ctx.resolveArtistIdentity) return { applied: 0, labels: [], failed: 0, errorSample: null };

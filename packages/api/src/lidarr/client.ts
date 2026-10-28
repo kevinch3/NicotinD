@@ -1,4 +1,5 @@
 import { createLogger, recordProviderCall, type Logger } from '@nicotind/core';
+import { LidarrCircuit } from './circuit.js';
 
 export interface LidarrClientOptions {
   baseUrl: string;
@@ -49,13 +50,20 @@ export const TIMEOUT_LOOKUP_MS = 20_000;
  */
 export const TIMEOUT_PROVISION_MS = 60_000;
 
+/** A background call refused because the breaker is open — Lidarr was never asked. */
+export class LidarrUnavailableError extends Error {}
+
 export class LidarrClient {
   private baseUrl: string;
   private apiKey: string;
   private log: Logger;
   private fetchFn?: typeof fetch;
+  /** Shared by this client and its {@link background} view. */
+  readonly circuit: LidarrCircuit;
+  private readonly failFast: boolean;
+  private backgroundView: LidarrClient | null = null;
 
-  constructor(options: LidarrClientOptions) {
+  constructor(options: LidarrClientOptions, internal?: { circuit: LidarrCircuit }) {
     this.baseUrl = options.baseUrl.replace(/\/$/, '');
     this.apiKey = options.apiKey;
     // Stored WITHOUT a `?? fetch` default: resolving the global here would
@@ -64,6 +72,22 @@ export class LidarrClient {
     // resolved per call instead.
     this.fetchFn = options.fetchFn;
     this.log = createLogger('lidarr-client');
+    this.circuit = internal?.circuit ?? new LidarrCircuit();
+    this.failFast = !!internal;
+  }
+
+  /**
+   * The same client for work nobody is waiting on — enrichment, pollers. It
+   * shares the breaker, and while the breaker is open it throws
+   * {@link LidarrUnavailableError} instead of calling Lidarr (#1581).
+   */
+  background(): LidarrClient {
+    if (this.failFast) return this;
+    this.backgroundView ??= new LidarrClient(
+      { baseUrl: this.baseUrl, apiKey: this.apiKey, fetchFn: this.fetchFn },
+      { circuit: this.circuit },
+    );
+    return this.backgroundView;
   }
 
   /**
@@ -79,6 +103,9 @@ export class LidarrClient {
     timeoutMs: number = TIMEOUT_LOCAL_MS,
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
+    if (this.failFast && !this.circuit.admit()) {
+      throw new LidarrUnavailableError(`Lidarr paused after repeated failures: ${path}`);
+    }
     let res: Response;
     try {
       res = await (this.fetchFn ?? fetch)(url, {
@@ -96,6 +123,7 @@ export class LidarrClient {
       // callers swallow this into `[]`/`null`, so the log line is the only place
       // the distinction between "Lidarr said no" and "Lidarr never answered"
       // survives.
+      this.circuit.recordFailure();
       if (err instanceof Error && err.name === 'TimeoutError') {
         this.log.warn({ url, timeoutMs }, 'Lidarr request timed out');
         recordProviderCall('lidarr', { ok: false, kind: 'timeout' });
@@ -104,6 +132,11 @@ export class LidarrClient {
       recordProviderCall('lidarr', { ok: false, kind: 'network' });
       throw err;
     }
+
+    // A 4xx is Lidarr answering; only a 5xx (its OutOfMemoryException surfaced
+    // as a 503) says it is failing.
+    if (res.status >= 500) this.circuit.recordFailure();
+    else this.circuit.recordSuccess();
 
     if (!res.ok) {
       const body = await res.text().catch(() => '');

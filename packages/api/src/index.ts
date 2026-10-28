@@ -177,6 +177,10 @@ export function createApp({
     ? config.musicDir.replace('~', process.env.HOME ?? '/root')
     : config.musicDir;
 
+  // Work nobody is waiting on — enrichment, pollers — fails fast while Lidarr's
+  // breaker is open instead of queueing more requests into it (#1581).
+  const backgroundLidarr = lidarr?.background() ?? null;
+
   // Canonical-library pipeline: the native LibraryScanner reads tags off disk
   // straight into our sqlite (replacing Navidrome's async scan), LibraryCurator
   // hides/classifies. The UI reads only from these tables.
@@ -369,9 +373,12 @@ export function createApp({
   };
   // Plugin-backed (Discogs) portrait lookup for the same chain (issue #422) —
   // same ref-bridge: populated once the plugin registry exists below.
+  // `interactive` backs the on-demand fill route: a person's click is never
+  // refused by Lidarr's breaker, only background work is (#1581).
   const artistImagePluginRef: {
     lookup: ((artist: { id: string; name: string }) => Promise<string | null>) | null;
-  } = { lookup: null };
+    interactive: ((artist: { id: string; name: string }) => Promise<string | null>) | null;
+  } = { lookup: null, interactive: null };
 
   // Discogs artist-info lookup for the artist-info enrichment task (issue #195).
   // Same ref-bridge as spotifyArtistImageRef: LibraryProcessingService is
@@ -399,7 +406,7 @@ export function createApp({
   const acquisitionOnRef: { enabled: (() => boolean) | null } = { enabled: null };
   processingRef.current = new LibraryProcessingService({
     db,
-    lidarr,
+    lidarr: backgroundLidarr,
     musicDir: expandedMusicDir,
     dataDir: expandedDataDir,
     lookupArtistImageSpotify: (name) =>
@@ -558,7 +565,12 @@ export function createApp({
   // Populate the plugin-backed artist-image ref (issue #422): enablement is
   // re-checked inside on every call, so a live plugin toggle takes effect
   // without a restart.
-  artistImagePluginRef.lookup = makePluginArtistImageLookup({ db, lidarr, plugins });
+  artistImagePluginRef.lookup = makePluginArtistImageLookup({
+    db,
+    lidarr: backgroundLidarr,
+    plugins,
+  });
+  artistImagePluginRef.interactive = makePluginArtistImageLookup({ db, lidarr, plugins });
   // (The pre-plugin acquisition migration was retired with the last in-process
   // acquisition plugin — spotdl/yt-dlp are external addons now, so there is
   // nothing left to seed enabled on an upgrade.)
@@ -832,7 +844,7 @@ export function createApp({
       lookupArtistImageSpotify: (name) =>
         spotifyArtistImageRef.lookup?.(name) ?? Promise.resolve(null),
       lookupArtistImageDiscogs: (artist) =>
-        artistImagePluginRef.lookup?.(artist) ?? Promise.resolve(null),
+        artistImagePluginRef.interactive?.(artist) ?? Promise.resolve(null),
     }),
   );
   app.route(
@@ -985,7 +997,7 @@ export function createApp({
     const watchlistSvc = new WatchlistService({
       db,
       catalog: catalogSvc,
-      lidarr,
+      lidarr: lidarr.background(),
       getAddon: () => activeRemoteAcquisitionAddon(plugins),
       intervalMs: config.watchlist.intervalMs,
       minMatchPct: config.watchlist.minMatchPct,
@@ -1008,7 +1020,7 @@ export function createApp({
       const autoAcquireSvc = new AutoAcquireService({
         db,
         getAddon: () => activeRemoteAcquisitionAddon(plugins),
-        lidarr,
+        lidarr: lidarr.background(),
         intervalMs: config.downloads.autoAcquireIntervalMs,
         maxPerSweep: config.downloads.autoAcquireMaxPerSweep,
         minMatchPct: config.watchlist.minMatchPct,

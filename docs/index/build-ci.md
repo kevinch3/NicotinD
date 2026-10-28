@@ -86,6 +86,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **Bounded outbound clients**: `LidarrClient` timeouts come in three tiers (local, lookup,
   provision); a timeout is re-thrown as "timed out". MusicBrainz uses a discriminated `FetchOutcome`
   so an outage is never cached as a confirmed absence. → [design-patterns.md](../design-patterns.md)
+- **Lidarr back-pressure**: `LidarrCircuit` opens on repeated failures; the `background()` view
+  fails fast with `LidarrUnavailableError`, Lidarr-backed tasks sit out, and the processing service
+  sends the probe. → [design-patterns.md](../design-patterns.md)
 - **YouTube PO-token provider image**: `ghcr.io/kevinch3/nicotind-pot-provider:release`, built and
   published by the ytdlp addon repo, not core's release; compose only references it.
   → [deployment.md](../deployment.md)

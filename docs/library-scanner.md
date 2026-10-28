@@ -563,8 +563,9 @@ an Admin row plus a coverage bar, hidden entirely once nothing is missing.
 Two decisions worth keeping:
 
 - **`missing` reuses `NEEDS_PORTRAIT_SQL`** rather than restating the predicate, so the number an
-  admin reads is by construction the number a fill would act on. Restating it is how the fragment
-  reporter and the curator ended up disagreeing (issue #314).
+  admin reads is by construction the number an operator's fill would act on. Restating it is how the
+  fragment reporter and the curator ended up disagreeing (issue #314). It ignores the task's retry
+  TTL (below): an artist tried last week still has no portrait.
 - **`withPortrait` is computed directly, never as `visible - missing`.** A curator upload is served
   from `<dataDir>/artist-overrides` and has **no `library_artwork` row at all**, so subtraction
   reports 138 real prod portraits as missing. "Has a portrait" is `manual_override = 1` **or** an
@@ -625,6 +626,7 @@ The scanner sets album `coverArt = albumId` and artist `coverArt = artistId` (so
 
 1. `hunt-download` writes album + artist artwork from the Lidarr payload.
 2. The **`artist-image` windowed enrichment task** auto-fills artist posters in the background — see [library-processing.md](library-processing.md). It's the standing population path; the script below remains for one-shot/manual runs.
+   **An empty answer is remembered (issue #1581).** The queue is "the 25 portrait-less artists with the most albums" and the task runs every 60 s processing tick, so an artist no provider could resolve was asked again every minute — on prod the same compound names (Gramatik/Luxas, Chet Baker & Strings, …) cost a full `GET /artist` plus MBID lookups each tick. `recordPortraitAttempts` stamps `artist_portrait_attempts` for every artist the batch left without a portrait, and the task's selection and `countPending` skip artists stamped within `PORTRAIT_RETRY_TTL_MS` (7 days) — so the queue moves on through the backlog and the task idles once everyone has had a turn. A batch during which Lidarr failed (its breaker's `lastFailureAt` falls inside the batch) records nothing: an outage is not an absence. Failures inside the Spotify/Discogs providers are swallowed below this layer and do count as a miss — the worst case is a portrait a week late. The backfill script and the on-demand route ignore the ledger.
 3. `scripts/backfill-artwork.ts` (dry-run default, `--apply`) backfills the existing library by matching artists via `artist_discography_links`/name and albums via edition-stripped group key against the monitored Lidarr list (`artwork-backfill.ts`).
 
 Two opt-in passes widen coverage when the artist isn't monitored:

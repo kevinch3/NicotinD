@@ -560,6 +560,50 @@ describe('artist-image task', () => {
     ).toBe(0);
   });
 
+  /**
+   * #1581: the queue is "top 25 portrait-less artists by album count", run every
+   * 60 s tick — so an artist no provider can resolve was re-asked every minute.
+   */
+  it('drops an artist no provider can resolve out of the queue instead of re-asking it', async () => {
+    seedArtist('art-1', { name: 'Gramatik/Luxas', albumCount: 36 });
+    let lookups = 0;
+    const spotifyMiss = async () => ((lookups += 1), null);
+    const c = ctx({ lidarr: lidarrWithPosters({}), lookupArtistImageSpotify: spotifyMiss });
+
+    await artistImage.run(db, c, 25);
+    expect(artistImage.countPending(db)).toBe(0);
+    await artistImage.run(db, c, 25);
+    expect(lookups).toBe(1);
+  });
+
+  it('records no attempt for a batch during which Lidarr failed — an outage is not an absence', async () => {
+    seedArtist('art-1', { name: 'Gramatik/Luxas' });
+    let failedAt: number | null = null;
+    const failing = {
+      circuit: {
+        isOpen: false,
+        get lastFailureAt() {
+          return failedAt;
+        },
+      },
+      artist: {
+        list: async () => {
+          failedAt = Date.now();
+          throw new Error('Lidarr request failed: 503 /api/v1/artist');
+        },
+        lookup: async () => [],
+      },
+    } as unknown as EnrichmentContext['lidarr'];
+
+    await artistImage.run(
+      db,
+      ctx({ lidarr: failing, lookupArtistImageSpotify: async () => null }),
+      25,
+    );
+
+    expect(artistImage.countPending(db)).toBe(1);
+  });
+
   it('falls back to Spotify when Lidarr has no poster, labelling the source', async () => {
     seedArtist('art-1', { name: 'Obscure Band' });
     const c = ctx({
@@ -2878,5 +2922,46 @@ describe('a junk genre is not a resolved genre (issue #694)', () => {
     recordAnalysisFailure(db, 's1', 'genre', new Error('Lidarr has no genre'), 10);
 
     expect(getTask('genre-audio')!.countPending(db)).toBe(1);
+  });
+});
+
+/**
+ * #1581: each of these turns a failed Lidarr call into a recorded outcome — a
+ * spent genre attempt, a tombstoned bio (#1582), an origin or identity stamped
+ * for weeks. While the breaker is open they must not run at all, rather than
+ * fail fast through their whole queue.
+ */
+describe('Lidarr breaker gate', () => {
+  const lidarrTasks = [
+    'genre',
+    'artist-image',
+    'artist-info',
+    'artist-origin',
+    'artist-identity',
+  ] as const;
+  const configured = {
+    lookupArtistInfo: async () => null,
+    lookupArtistOrigin: async () => ({ ok: true, country: null }),
+    resolveArtistIdentity: async () => ({ decision: 'unknown' as const, members: [] }),
+  };
+  const withBreaker = (isOpen: boolean) =>
+    ({ circuit: { isOpen, lastFailureAt: null } }) as unknown as EnrichmentContext['lidarr'];
+
+  it('pauses every Lidarr-backed task while the breaker is open', () => {
+    const c = ctx({ ...configured, lidarr: withBreaker(true) });
+    for (const id of lidarrTasks) {
+      expect(getTask(id)!.available(c)).toMatch(/Lidarr paused/);
+    }
+  });
+
+  it('runs them normally while it is closed', () => {
+    const c = ctx({ ...configured, lidarr: withBreaker(false) });
+    for (const id of lidarrTasks) expect(getTask(id)!.available(c)).toBe(true);
+  });
+
+  it('leaves tasks that never call Lidarr alone', () => {
+    const c = ctx({ ...configured, lidarr: withBreaker(true) });
+    for (const id of ['bpm', 'key', 'energy'] as const)
+      expect(getTask(id)!.available(c)).toBe(true);
   });
 });

@@ -36,7 +36,8 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **Artist images (auto + override)**: priority-ordered provider chain
   (`buildArtistImageProviders` → lidarr/spotify/discogs) walked by `resolveArtistImageUrl`; one shared
   `fillArtistImages` behind the task, the one-shot route and the backfill script;
-  `ArtistImageMenuComponent`, `NEEDS_PORTRAIT_SQL`, `artistImageCoverage`.
+  `ArtistImageMenuComponent`, `NEEDS_PORTRAIT_SQL`, `artistImageCoverage`; an empty answer waits
+  `PORTRAIT_RETRY_TTL_MS` (`recordPortraitAttempts`).
   → [library-scanner.md](../library-scanner.md)
 - **Artist curation survives an identity fix**: `carryArtistCuration` moves artwork, uploads, bio and
   the name-keyed genre override at the fix site when a rename/merge re-mints the artist id.
