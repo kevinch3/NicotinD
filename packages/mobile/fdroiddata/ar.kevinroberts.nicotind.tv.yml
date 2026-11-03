@@ -36,9 +36,9 @@ Repo: https://github.com/kevinch3/NicotinD.git
 Binaries: https://github.com/kevinch3/NicotinD/releases/download/v%v/NicotinD-TV-%v.apk
 
 Builds:
-  - versionName: 0.8.119
-    versionCode: 8119
-    commit: b591028d0885ed50e49ef38c9d3852a029f8431a
+  - versionName: 0.8.120
+    versionCode: 8120
+    commit: 9383b6c4ae08f4b8a171a17c8f94d2a35d08d067
     subdir: packages/mobile/android/app
     sudo:
       # Toolchain from Debian and npm only, the way fdroiddata's other JS apps
@@ -78,6 +78,6 @@ Builds:
 AutoUpdateMode: Version
 # Release tags only: four broken releases left `untagged-…` tags behind (#1493).
 UpdateCheckMode: Tags ^v[0-9.]+$
-CurrentVersion: 0.8.119
-CurrentVersionCode: 8119
+CurrentVersion: 0.8.120
+CurrentVersionCode: 8120
 AllowedAPKSigningKeys: 5bf701a0ff9a2cd75f279404d2c8b4bf16ed2bb8591709ae2c8560bc557d6bea
