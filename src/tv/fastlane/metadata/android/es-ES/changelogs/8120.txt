@@ -1,0 +1,1 @@
+• web: stop the background loops that overheat the iOS PWA offline (#1593)

@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.120](https://github.com/kevinch3/NicotinD/compare/v0.8.119...v0.8.120) (2026-11-03)
+
+### Bug Fixes
+
+* **web:** stop the background loops that overheat the iOS PWA offline ([#1593](https://github.com/kevinch3/NicotinD/issues/1593)) ([6e49c77](https://github.com/kevinch3/NicotinD/commit/6e49c77dd96d4f3992ec1e8286da46dfed2f588d))
 ## [0.8.119](https://github.com/kevinch3/NicotinD/compare/v0.8.118...v0.8.119) (2026-10-28)
 
 ### Bug Fixes
