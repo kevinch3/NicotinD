@@ -20,7 +20,9 @@
 # our CI used to use), AND it is what makes fdroidserver read this app's store
 # listing from `src/tv/fastlane/` instead of inheriting the phone's.
 Categories:
-  - Multimedia
+  # From fdroiddata config/categories.yml; a reviewer asked for the specific
+  # category over the generic Multimedia.
+  - Online Media Player
 License: AGPL-3.0-only
 AuthorName: Kevin Roberts
 SourceCode: https://github.com/kevinch3/NicotinD
@@ -34,9 +36,9 @@ Repo: https://github.com/kevinch3/NicotinD.git
 Binaries: https://github.com/kevinch3/NicotinD/releases/download/v%v/NicotinD-TV-%v.apk
 
 Builds:
-  - versionName: 0.8.111
-    versionCode: 8111
-    commit: 1dfdff03b7b28aaf193841a1afaf91eba3456e63
+  - versionName: 0.8.119
+    versionCode: 8119
+    commit: b591028d0885ed50e49ef38c9d3852a029f8431a
     subdir: packages/mobile/android/app
     sudo:
       # Toolchain from Debian and npm only, the way fdroiddata's other JS apps
@@ -76,6 +78,6 @@ Builds:
 AutoUpdateMode: Version
 # Release tags only: four broken releases left `untagged-…` tags behind (#1493).
 UpdateCheckMode: Tags ^v[0-9.]+$
-CurrentVersion: 0.8.111
-CurrentVersionCode: 8111
+CurrentVersion: 0.8.119
+CurrentVersionCode: 8119
 AllowedAPKSigningKeys: 5bf701a0ff9a2cd75f279404d2c8b4bf16ed2bb8591709ae2c8560bc557d6bea
