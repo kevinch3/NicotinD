@@ -1,6 +1,7 @@
-import { Injectable, effect, inject } from '@angular/core';
+import { Injectable, effect, inject, untracked } from '@angular/core';
 import { PlayerService } from './player.service';
 import { PreserveService } from './preserve.service';
+import { SetupService } from './setup.service';
 import type { Track } from './player.service';
 
 /**
@@ -13,17 +14,34 @@ import type { Track } from './player.service';
  * means the player sources them as fully-local `blob:` URLs and is unaffected
  * by screen lock or network state.
  *
- * Reads signals (not the player API surface) so the coordinator runs cheaply
- * on every queue mutation. `untracked` is used only inside the no-dependency
- * helper below to keep the effect from subscribing to its own writes.
+ * The effect tracks ONLY connectivity, mode, the current track and the queue.
+ * The call into PreserveService runs `untracked`: its synchronous prefix reads
+ * `preservedIds` and `preserving` and then writes `preserving`, so a tracked
+ * call subscribed the effect to its own writes. Every failed fetch (offline it
+ * rejects in milliseconds) cleared `preserving`, re-ran the effect and fetched
+ * the same track again — a tight loop that pinned the CPU and the radio, which
+ * an iOS PWA user felt as the phone getting very hot offline.
  */
 @Injectable({ providedIn: 'root' })
 export class AutoPreserveCoordinator {
   private player = inject(PlayerService);
   private preserve = inject(PreserveService);
+  private setup = inject(SetupService);
 
   constructor() {
+    let wasOffline = false;
     effect(() => {
+      // Offline (no network, or the server unreachable) every fetch is doomed:
+      // ask for nothing. Tracked, so the reconnect re-runs this and resumes.
+      if (this.setup.isOffline()) {
+        wasOffline = true;
+        return;
+      }
+      if (wasOffline) {
+        wasOffline = false;
+        untracked(() => this.preserve.forgetAutoPreserveFailures());
+      }
+
       const mode = this.preserve.autoPreserveMode();
       const current = this.player.currentTrack();
       const queue = this.player.queue();
@@ -34,9 +52,9 @@ export class AutoPreserveCoordinator {
       const target = needed > 0 ? window.slice(0, needed) : [];
       if (target.length === 0) return;
 
-      // Fire-and-forget — preserve failures are non-fatal and the effect must
-      // not re-fire on its own write to the preserving/preservedIds signals.
-      void this.preserve.ensureAutoPreservedFor(target);
+      // Fire-and-forget — preserve failures are non-fatal. Untracked: see the
+      // class comment for the loop a tracked call caused.
+      untracked(() => void this.preserve.ensureAutoPreservedFor(target));
     });
   }
 }

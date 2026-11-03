@@ -3,7 +3,10 @@ import { signal } from '@angular/core';
 import { vi } from 'vitest';
 import { AutoPreserveCoordinator } from './auto-preserve-coordinator';
 import { PlayerService } from './player.service';
-import { PreserveService } from './preserve.service';
+import { PRESERVE_STORE, PreserveService } from './preserve.service';
+import type { PreserveStore } from './preserve.service';
+import { SetupService } from './setup.service';
+import { AuthService } from './auth.service';
 import type { Track } from './player.service';
 
 function track(id: string): Track {
@@ -25,7 +28,9 @@ describe('AutoPreserveCoordinator', () => {
     autoPreserveMode: ReturnType<typeof signal<'off' | '5' | '20' | 'full'>>;
     windowSize: ReturnType<typeof vi.fn>;
     ensureAutoPreservedFor: ReturnType<typeof vi.fn>;
+    forgetAutoPreserveFailures: ReturnType<typeof vi.fn>;
   };
+  let setup: { isOffline: ReturnType<typeof signal<boolean>> };
 
   beforeEach(() => {
     player = {
@@ -36,13 +41,16 @@ describe('AutoPreserveCoordinator', () => {
       autoPreserveMode: signal<'off' | '5' | '20' | 'full'>('off'),
       windowSize: vi.fn((n: number) => Math.min(5, Math.max(0, n))),
       ensureAutoPreservedFor: vi.fn(async () => {}),
+      forgetAutoPreserveFailures: vi.fn(),
     };
+    setup = { isOffline: signal(false) };
 
     TestBed.configureTestingModule({
       providers: [
         AutoPreserveCoordinator,
         { provide: PlayerService, useValue: player },
         { provide: PreserveService, useValue: preserve },
+        { provide: SetupService, useValue: setup },
       ],
     });
     // Constructing the coordinator subscribes the effect.
@@ -114,5 +122,94 @@ describe('AutoPreserveCoordinator', () => {
     await new Promise((r) => setTimeout(r, 0));
     const arg = preserve.ensureAutoPreservedFor.mock.calls[0]?.[0] as Track[];
     expect(arg.map((t) => t.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('asks for nothing while offline, and resumes on reconnect with failures forgotten', async () => {
+    preserve.autoPreserveMode.set('5');
+    setup.isOffline.set(true);
+    player.currentTrack.set(track('a'));
+    player.queue.set([track('b')]);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(preserve.ensureAutoPreservedFor).not.toHaveBeenCalled();
+
+    setup.isOffline.set(false);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(preserve.forgetAutoPreserveFailures).toHaveBeenCalledTimes(1);
+    const arg = preserve.ensureAutoPreservedFor.mock.calls[0]?.[0] as Track[];
+    expect(arg.map((t) => t.id)).toEqual(['a', 'b']);
+  });
+
+  it('never re-runs on the signals ensureAutoPreservedFor reads and writes', async () => {
+    // The real service reads `preserving` synchronously, then writes it again
+    // once the fetch settles — after the effect's run, which is what re-ran a
+    // tracked call: offline that settle comes milliseconds later, every time.
+    const preserving = signal(new Set<string>());
+    preserve.ensureAutoPreservedFor.mockImplementation(async (tracks: Track[]) => {
+      const seen = preserving();
+      await Promise.resolve();
+      preserving.set(new Set([...seen, ...tracks.map((t) => t.id)]));
+    });
+    preserve.autoPreserveMode.set('5');
+    player.currentTrack.set(track('a'));
+    for (let i = 0; i < 5; i++) {
+      TestBed.tick();
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    expect(preserve.ensureAutoPreservedFor).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not forget failures on an ordinary queue change', async () => {
+    preserve.autoPreserveMode.set('5');
+    player.currentTrack.set(track('a'));
+    await new Promise((r) => setTimeout(r, 0));
+    player.queue.set([track('b')]);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(preserve.forgetAutoPreserveFailures).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The coordinator against the REAL PreserveService. The suite above mocks the
+ * service, which is exactly why it never saw the loop: the bug lived in what
+ * the effect tracked through the service's own signal reads and writes.
+ */
+describe('AutoPreserveCoordinator × PreserveService (failing fetch)', () => {
+  it('fetches each failing track once instead of looping on its own writes', async () => {
+    // What WebKit's fetch does offline: reject at once.
+    const fetchSpy = vi.fn(async () => {
+      throw new TypeError('Load failed');
+    });
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    const store = {
+      getAll: vi.fn(async () => []),
+      evictAutoLRU: vi.fn(async () => []),
+      preserve: vi.fn(async () => {}),
+    } as unknown as PreserveStore;
+    const player = {
+      currentTrack: signal<Track | null>(track('a')),
+      queue: signal<Track[]>([track('b'), track('c')]),
+    };
+
+    TestBed.configureTestingModule({
+      providers: [
+        AutoPreserveCoordinator,
+        { provide: PlayerService, useValue: player },
+        // Online as far as the app knows: the case the offline gate cannot
+        // catch (the server only just went away), so the loop guard must.
+        { provide: SetupService, useValue: { isOffline: signal(false) } },
+        { provide: AuthService, useValue: { token: signal('tok'), mediaToken: signal('tok') } },
+        { provide: PRESERVE_STORE, useValue: store },
+      ],
+    });
+    TestBed.inject(PreserveService).autoPreserveMode.set('5');
+    TestBed.inject(AutoPreserveCoordinator);
+
+    // Give a self-retriggering effect every chance to spin: before the fix
+    // this window saw hundreds of fetches for a three-track queue.
+    for (let i = 0; i < 50; i++) {
+      TestBed.tick();
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
   });
 });

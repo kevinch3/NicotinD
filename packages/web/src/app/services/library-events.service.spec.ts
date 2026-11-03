@@ -1,9 +1,11 @@
 import { TestBed, getTestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
 import { vi } from 'vitest';
 import { HIDDEN_GRACE_MS, LibraryEventsService } from './library-events.service';
 import { AuthService } from './auth.service';
 import { ServerConfigService } from './server-config.service';
 import { LibraryApiService } from './api/library-api.service';
+import { SetupService } from './setup.service';
 
 class FakeEventSource {
   static instances: FakeEventSource[] = [];
@@ -28,8 +30,10 @@ class FakeEventSource {
 }
 
 const live: LibraryEventsService[] = [];
+const offline = signal(false);
 
 function setup(token: string | null = 't0k') {
+  offline.set(false);
   FakeEventSource.instances = [];
   vi.stubGlobal('EventSource', FakeEventSource);
   const invalidate = vi.fn();
@@ -43,6 +47,7 @@ function setup(token: string | null = 't0k') {
         useValue: { sseUrl: (p: string, t: string) => `${p}?token=${t}` },
       },
       { provide: LibraryApiService, useValue: { invalidateLibraryReads: invalidate } },
+      { provide: SetupService, useValue: { isOffline: offline } },
     ],
   });
   const svc = TestBed.inject(LibraryEventsService);
@@ -144,5 +149,46 @@ describe('LibraryEventsService', () => {
     expect(FakeEventSource.instances).toHaveLength(2);
     expect(FakeEventSource.instances[1]!.url).toContain('since=7');
     svc.stop();
+  });
+
+  it('opens no stream while offline', () => {
+    setVisibility('visible');
+    const { svc } = setup();
+    offline.set(true);
+    svc.start();
+    TestBed.tick();
+    expect(FakeEventSource.instances).toHaveLength(0);
+  });
+
+  it('closes the stream when the app goes offline and reopens from the last seq on reconnect', () => {
+    setVisibility('visible');
+    const { svc } = setup();
+    svc.start();
+    TestBed.tick();
+    const first = FakeEventSource.instances[0]!;
+    first.emit('library', { seq: 4, at: 4, event: { type: 'job.changed', jobId: 'x' } });
+
+    offline.set(true);
+    TestBed.tick();
+    expect(first.closed).toBe(true);
+    expect(FakeEventSource.instances).toHaveLength(1);
+
+    offline.set(false);
+    TestBed.tick();
+    expect(FakeEventSource.instances).toHaveLength(2);
+    expect(FakeEventSource.instances[1]!.url).toContain('since=4');
+  });
+
+  it('a stopped service no longer follows connectivity', () => {
+    setVisibility('visible');
+    const { svc } = setup();
+    svc.start();
+    TestBed.tick();
+    svc.stop();
+    offline.set(true);
+    TestBed.tick();
+    offline.set(false);
+    TestBed.tick();
+    expect(FakeEventSource.instances).toHaveLength(1);
   });
 });

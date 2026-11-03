@@ -49,7 +49,17 @@ export type AutoPreserveMode = 'off' | '1' | '5' | '20' | 'full';
 /** Hard cap on the "full" window so a runaway radio can't fill 50 GB. */
 const AUTO_PRESERVE_FULL_CAP = 200;
 /** Concurrency limit for auto-preserve fetches — bounds memory + parallel network. */
-const AUTO_PRESERVE_CONCURRENCY = 3;
+export const AUTO_PRESERVE_CONCURRENCY = 3;
+/**
+ * How long a track whose auto-preserve fetch failed is left alone before the
+ * coordinator may ask for it again. A failure is cheap to produce (offline,
+ * the fetch rejects in milliseconds; a 404 answers just as fast), so without
+ * this every queue mutation re-fetched every broken track in the window.
+ */
+export const AUTO_PRESERVE_RETRY_MS = 60_000;
+
+/** What one preserve attempt did: `skipped` (already saved, in flight, no token) is not a failure. */
+type PreserveOutcome = 'stored' | 'skipped' | 'failed';
 
 /** Live progress for an in-flight collection ("Download album/playlist/genre") preserve. */
 export interface PreserveBatch {
@@ -109,6 +119,16 @@ export class PreserveService {
    * background network usage.
    */
   readonly autoPreserveMode = signal<AutoPreserveMode>(loadAutoPreserveMode());
+
+  /**
+   * The one auto-preserve work queue, shared by every `ensureAutoPreservedFor`
+   * call. Plain fields, not signals: nothing renders them, and a signal here
+   * would be one more thing the coordinator's effect could accidentally track.
+   */
+  private autoQueue: Track[] = [];
+  private autoWorkers = 0;
+  /** Track id → when its last auto-preserve fetch failed (see AUTO_PRESERVE_RETRY_MS). */
+  private readonly autoFailedAt = new Map<string, number>();
 
   async init(): Promise<void> {
     await this.refreshList();
@@ -177,14 +197,16 @@ export class PreserveService {
     await this.preserveWithSource(track, 'auto');
   }
 
-  private async preserveWithSource(track: Track, source: PreserveSource): Promise<void> {
+  private async preserveWithSource(track: Track, source: PreserveSource): Promise<PreserveOutcome> {
     const token = this.auth.token();
-    if (!token || this.preserving().has(track.id) || this.preservedIds().has(track.id)) return;
+    if (!token || this.preserving().has(track.id) || this.preservedIds().has(track.id)) {
+      return 'skipped';
+    }
 
     this.preserving.update((s) => new Set(s).add(track.id));
     try {
       const blobs = await this.fetchTrackBlobs(track, token);
-      if (!blobs) return;
+      if (!blobs) return 'failed';
       // Single-track save evicts least-recently-played tracks to make room (LRU).
       // Auto paths route through evictAutoLRU first (never touches user rows);
       // user paths route through evictLRU (auto-first, user fallback).
@@ -195,41 +217,76 @@ export class PreserveService {
       }
       await this.storeTrack(track, blobs, source);
       await this.refreshList();
+      return 'stored';
     } catch {
-      /* swallow — failure leaves the track un-preserved */
+      // Swallow — failure leaves the track un-preserved.
+      return 'failed';
     } finally {
       this.clearPreserving(track.id);
     }
   }
 
   /**
-   * Idempotent batch entry point for the auto-preserve coordinator. Walks
-   * `tracks`, skipping any already-preserved or in-flight. Caps concurrency
-   * at AUTO_PRESERVE_CONCURRENCY so a long radio queue can't spike memory or
-   * saturate the network on a slow device.
+   * Idempotent batch entry point for the auto-preserve coordinator. Skips any
+   * track already preserved, in flight, or inside its failure backoff.
+   *
+   * The latest window wins: `tracks` REPLACES whatever was still waiting, so a
+   * skip-ahead stops fetching tracks that left the window. Every call feeds the
+   * one shared queue, drained by at most AUTO_PRESERVE_CONCURRENCY workers in
+   * total — per-call workers multiplied the cap by the number of calls, and the
+   * coordinator calls on every queue mutation. Resolves once the workers THIS
+   * call started are done; a call that only refilled the queue resolves at once.
    */
   async ensureAutoPreservedFor(tracks: Track[]): Promise<void> {
     if (this.autoPreserveMode() === 'off') return;
-    const token = this.auth.token();
-    if (!token) return;
+    if (!this.auth.token()) return;
 
-    const todo = tracks.filter(
-      (t) => t && !this.preservedIds().has(t.id) && !this.preserving().has(t.id),
+    const now = Date.now();
+    this.autoQueue = tracks.filter(
+      (t) =>
+        t &&
+        !this.preservedIds().has(t.id) &&
+        !this.preserving().has(t.id) &&
+        !this.inAutoBackoff(t.id, now),
     );
-    if (todo.length === 0) return;
 
-    // Bounded-concurrency queue — process AUTO_PRESERVE_CONCURRENCY at a time.
-    let cursor = 0;
-    const workers = Array.from(
-      { length: Math.min(AUTO_PRESERVE_CONCURRENCY, todo.length) },
-      async () => {
-        while (cursor < todo.length) {
-          const idx = cursor++;
-          await this.autoPreserve(todo[idx]);
+    const started: Promise<void>[] = [];
+    while (this.autoWorkers < AUTO_PRESERVE_CONCURRENCY && this.autoQueue.length > 0) {
+      started.push(this.runAutoWorker());
+    }
+    await Promise.all(started);
+  }
+
+  /**
+   * Let every track that failed to auto-preserve be asked for again now. The
+   * coordinator calls this on reconnect: a failure from before the app noticed
+   * it was offline says nothing about the network that just came back.
+   */
+  forgetAutoPreserveFailures(): void {
+    this.autoFailedAt.clear();
+  }
+
+  private inAutoBackoff(id: string, now: number): boolean {
+    const failedAt = this.autoFailedAt.get(id);
+    return failedAt !== undefined && now - failedAt < AUTO_PRESERVE_RETRY_MS;
+  }
+
+  private async runAutoWorker(): Promise<void> {
+    this.autoWorkers++;
+    try {
+      for (let next = this.autoQueue.shift(); next; next = this.autoQueue.shift()) {
+        // Turning auto-preserve off stops the downloads, including queued ones.
+        if (this.autoPreserveMode() === 'off') {
+          this.autoQueue = [];
+          return;
         }
-      },
-    );
-    await Promise.all(workers);
+        const outcome = await this.preserveWithSource(next, 'auto');
+        if (outcome === 'failed') this.autoFailedAt.set(next.id, Date.now());
+        else if (outcome === 'stored') this.autoFailedAt.delete(next.id);
+      }
+    } finally {
+      this.autoWorkers--;
+    }
   }
 
   /**

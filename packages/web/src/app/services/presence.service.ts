@@ -1,6 +1,6 @@
 /**
  * PresenceService — reports this tab's presence to the server every 60s while
- * authenticated, so admins can see who is currently active. Best-effort: heartbeat
+ * authenticated and online (`SetupService.isOffline()` pauses it), so admins can see who is currently active. Best-effort: heartbeat
  * errors are swallowed (the auth interceptor already handles 401/403 logout).
  *
  * deviceId is shared with the playback WS; since #882 it embeds this same tabId,
@@ -11,6 +11,7 @@ import { Injectable, inject, effect } from '@angular/core';
 import { AuthService } from './auth.service';
 import { PlaybackWsService } from './playback-ws.service';
 import { SystemApiService } from './api/system-api.service';
+import { SetupService } from './setup.service';
 import { profileIdOf, resolveTabId } from '../lib/device-id';
 
 const HEARTBEAT_INTERVAL = 60_000;
@@ -20,17 +21,21 @@ export class PresenceService {
   private auth = inject(AuthService);
   private ws = inject(PlaybackWsService);
   private api = inject(SystemApiService);
+  private setup = inject(SetupService);
 
   private timer: ReturnType<typeof setInterval> | null = null;
   private readonly tabId = resolveTabId(sessionStorage);
 
   /** Call once at app bootstrap (from the root App component). */
   initialize(): void {
-    // Start/refresh the heartbeat loop whenever auth state changes.
+    // Start/refresh the heartbeat loop whenever auth state or connectivity
+    // changes. Offline a heartbeat can only fail — and each one wakes the
+    // radio — so it stops, and the reconnect reports at once.
     effect(() => {
       const token = this.auth.token();
+      const offline = this.setup.isOffline();
       this.stop();
-      if (token) {
+      if (token && !offline) {
         this.send(); // immediate first report — don't wait 60s
         this.timer = setInterval(() => this.send(), HEARTBEAT_INTERVAL);
       }

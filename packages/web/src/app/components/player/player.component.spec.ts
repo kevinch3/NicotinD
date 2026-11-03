@@ -130,6 +130,7 @@ describe('PlayerComponent', () => {
             remoteIsPlaying: signal(false),
             remotePosition: signal(0),
             remotePositionTs: signal(0),
+            remoteClock: signal(0),
             remoteDuration: signal(0),
             setRemoteProgress: vi.fn(),
           },

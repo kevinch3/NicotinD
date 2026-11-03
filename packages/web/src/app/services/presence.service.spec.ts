@@ -6,6 +6,7 @@ import { resolveTabId } from '../lib/device-id';
 import { AuthService } from './auth.service';
 import { PlaybackWsService } from './playback-ws.service';
 import { SystemApiService } from './api/system-api.service';
+import { SetupService } from './setup.service';
 
 /**
  * Presence counts DEVICES (`amountOfDevices` is a set of `deviceId`), so it
@@ -16,7 +17,7 @@ import { SystemApiService } from './api/system-api.service';
 describe('PresenceService (#882)', () => {
   const PROFILE = 'profile-uuid';
 
-  function setup() {
+  function setup(offline = signal(false)) {
     const calls: { deviceId: string; tabId: string }[] = [];
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
@@ -27,6 +28,7 @@ describe('PresenceService (#882)', () => {
           provide: PlaybackWsService,
           useValue: { getDeviceId: () => `${PROFILE}:tab-7` },
         },
+        { provide: SetupService, useValue: { isOffline: offline } },
         {
           provide: SystemApiService,
           useValue: {
@@ -50,5 +52,60 @@ describe('PresenceService (#882)', () => {
 
   it('still distinguishes tabs, through the shared tab-id helper', () => {
     expect(setup()[0].tabId).toBe(resolveTabId(sessionStorage));
+  });
+});
+
+describe('PresenceService offline', () => {
+  function setup(offline: ReturnType<typeof signal<boolean>>) {
+    const calls: string[] = [];
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        PresenceService,
+        { provide: AuthService, useValue: { token: signal('t'), mediaToken: signal('t') } },
+        { provide: PlaybackWsService, useValue: { getDeviceId: () => 'p:tab' } },
+        { provide: SetupService, useValue: { isOffline: offline } },
+        {
+          provide: SystemApiService,
+          useValue: {
+            postHeartbeat: (deviceId: string) => {
+              calls.push(deviceId);
+              return of(null);
+            },
+          },
+        },
+      ],
+    });
+    const service = TestBed.inject(PresenceService);
+    TestBed.runInInjectionContext(() => service.initialize());
+    TestBed.tick();
+    return calls;
+  }
+
+  afterEach(() => vi.useRealTimers());
+
+  it('sends no heartbeat while offline, and reports at once on reconnect', () => {
+    vi.useFakeTimers();
+    const offline = signal(true);
+    const calls = setup(offline);
+    vi.advanceTimersByTime(5 * 60_000);
+    expect(calls).toHaveLength(0);
+
+    offline.set(false);
+    TestBed.tick();
+    expect(calls).toHaveLength(1);
+    vi.advanceTimersByTime(60_000);
+    expect(calls).toHaveLength(2);
+  });
+
+  it('going offline stops the heartbeat timer', () => {
+    vi.useFakeTimers();
+    const offline = signal(false);
+    const calls = setup(offline);
+    expect(calls).toHaveLength(1);
+    offline.set(true);
+    TestBed.tick();
+    vi.advanceTimersByTime(5 * 60_000);
+    expect(calls).toHaveLength(1);
   });
 });

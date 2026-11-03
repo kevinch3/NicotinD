@@ -361,6 +361,15 @@ press ▶
   true }`; a socket that did not (an older web build, an older app) is sent the legacy
   `STATE_SYNC` per report, so a mixed household keeps working. A new client against an older
   server simply keeps receiving `STATE_SYNC`, which it always handled.
+- **One remote clock, at the local player's cadence.** Between reports a controller extrapolates
+  the output's playhead on the wall clock: `RemotePlaybackService.remoteClock`, written by one
+  `setInterval` at `REMOTE_CLOCK_TICK_MS` (250 ms — what a local `timeupdate` gives the bar anyway)
+  through the pure `remoteClockAt` (`lib/remote-clock.ts`), clamped to the duration and stopped
+  there. It ticks only while another device plays **and** `ws.synced()`: a dropped socket (offline,
+  server gone) leaves `remoteIsPlaying` true with no report ever coming, so the clock freezes at
+  its last estimate instead of guessing forever. It replaced a `requestAnimationFrame` loop that
+  ran in the mini-player and the Now Playing sheet at once — 60–120 signal writes a second each,
+  past the end of the track, and on through a dead socket — a cost iOS users felt as heat.
 - **remoteIsPlaying tracks the server's believed state.** The controller reads `remoteIsPlaying` (updated from every STATE_SYNC) to decide whether pressing the button should send `PLAY` or `PAUSE`. Without this, the controller's stale local `isPlaying` caused it to always send the wrong command.
 - **Exactly one output, and a link dropping never wakes a speaker.** `castTo` *yields* the
   controller's player (pauses it logically, not just the `<audio>` element), a device that stops

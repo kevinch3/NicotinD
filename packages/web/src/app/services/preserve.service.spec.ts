@@ -5,6 +5,8 @@ import {
   PreserveService,
   PRESERVE_STORE,
   UNLIMITED_BUDGET,
+  AUTO_PRESERVE_CONCURRENCY,
+  AUTO_PRESERVE_RETRY_MS,
   preservedAudioLooksComplete,
 } from './preserve.service';
 import type { PreserveStore } from './preserve.service';
@@ -335,6 +337,118 @@ describe('PreserveService', () => {
       svc.setAutoPreserveMode('off');
       await svc.ensureAutoPreservedFor([track('a'), track('b')]);
       expect(store.preserve).not.toHaveBeenCalled();
+    });
+
+    it('leaves a failed track alone for AUTO_PRESERVE_RETRY_MS, then asks again', async () => {
+      svc.setAutoPreserveMode('5');
+      const failing = vi.fn(async () => {
+        throw new TypeError('Load failed');
+      });
+      globalThis.fetch = failing as unknown as typeof fetch;
+      const now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
+      try {
+        await svc.ensureAutoPreservedFor([track('a')]);
+        await svc.ensureAutoPreservedFor([track('a')]);
+        expect(failing).toHaveBeenCalledTimes(1);
+
+        now.mockReturnValue(1_000_000 + AUTO_PRESERVE_RETRY_MS);
+        await svc.ensureAutoPreservedFor([track('a')]);
+        expect(failing).toHaveBeenCalledTimes(2);
+      } finally {
+        now.mockRestore();
+      }
+    });
+
+    it('treats a non-OK response as a failure too (no re-fetch on the next call)', async () => {
+      svc.setAutoPreserveMode('5');
+      const notFound = vi.fn(async () => ({ ok: false }));
+      globalThis.fetch = notFound as unknown as typeof fetch;
+      await svc.ensureAutoPreservedFor([track('a')]);
+      await svc.ensureAutoPreservedFor([track('a')]);
+      expect(notFound).toHaveBeenCalledTimes(1);
+    });
+
+    it('forgetAutoPreserveFailures lifts the backoff at once', async () => {
+      svc.setAutoPreserveMode('5');
+      globalThis.fetch = vi.fn(async () => {
+        throw new TypeError('Load failed');
+      }) as unknown as typeof fetch;
+      await svc.ensureAutoPreservedFor([track('a')]);
+
+      globalThis.fetch = mockFetch();
+      svc.forgetAutoPreserveFailures();
+      await svc.ensureAutoPreservedFor([track('a')]);
+      expect(svc.preservedIds().has('a')).toBe(true);
+    });
+
+    it('caps concurrency across calls, not per call', async () => {
+      svc.setAutoPreserveMode('full');
+      let inFlight = 0;
+      let peak = 0;
+      const release: Array<() => void> = [];
+      const ok = mockFetch();
+      globalThis.fetch = vi.fn(async (...args: Parameters<typeof fetch>) => {
+        inFlight++;
+        peak = Math.max(peak, inFlight);
+        await new Promise<void>((r) => release.push(r));
+        inFlight--;
+        return ok(...args);
+      }) as unknown as typeof fetch;
+
+      const ids = ['a', 'b', 'c', 'd', 'e', 'f'];
+      // The coordinator calls once per queue mutation; each call used to bring
+      // its own workers, multiplying the cap.
+      const first = svc.ensureAutoPreservedFor(ids.map(track));
+      void svc.ensureAutoPreservedFor(ids.map(track));
+      void svc.ensureAutoPreservedFor(ids.map(track));
+      while (svc.preservedIds().size < ids.length) {
+        await new Promise((r) => setTimeout(r, 0));
+        release.splice(0).forEach((r) => r());
+      }
+      await first;
+      expect(peak).toBe(AUTO_PRESERVE_CONCURRENCY);
+    });
+
+    it('the latest window replaces the tracks still waiting', async () => {
+      svc.setAutoPreserveMode('full');
+      const release: Array<() => void> = [];
+      const ok = mockFetch();
+      const fetched: string[] = [];
+      globalThis.fetch = vi.fn(async (...args: Parameters<typeof fetch>) => {
+        fetched.push(String(args[0]));
+        await new Promise<void>((r) => release.push(r));
+        return ok(...args);
+      }) as unknown as typeof fetch;
+
+      // a, b, c start; d and e wait. A skip-ahead then names a new window.
+      const first = svc.ensureAutoPreservedFor(['a', 'b', 'c', 'd', 'e'].map(track));
+      void svc.ensureAutoPreservedFor(['x'].map(track));
+      while (release.length > 0 || svc.preserving().size > 0) {
+        release.splice(0).forEach((r) => r());
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      await first;
+      expect(svc.preservedIds()).toEqual(new Set(['a', 'b', 'c', 'x']));
+    });
+
+    it('turning auto-preserve off drops the tracks still waiting', async () => {
+      svc.setAutoPreserveMode('full');
+      const release: Array<() => void> = [];
+      const ok = mockFetch();
+      globalThis.fetch = vi.fn(async (...args: Parameters<typeof fetch>) => {
+        await new Promise<void>((r) => release.push(r));
+        return ok(...args);
+      }) as unknown as typeof fetch;
+
+      const run = svc.ensureAutoPreservedFor(['a', 'b', 'c', 'd', 'e'].map(track));
+      svc.setAutoPreserveMode('off');
+      while (release.length > 0 || svc.preserving().size > 0) {
+        release.splice(0).forEach((r) => r());
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      await run;
+      // The three already in flight finish; d and e are never fetched.
+      expect(svc.preservedIds()).toEqual(new Set(['a', 'b', 'c']));
     });
   });
 

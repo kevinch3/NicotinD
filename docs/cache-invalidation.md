@@ -56,7 +56,9 @@ Three rules make it safe to rely on:
   bumps `resync` instead of pretending nothing happened. A hole in the sequence on the client side
   triggers the same.
 - **Stands down like a poller.** The stream closes 30 s after the tab hides and reopens from the
-  last seq on return (#717 discipline). `TransferService` slows its poll 4× while the stream is
+  last seq on return (#717 discipline). It closes **offline** too (`SetupService.isOffline()`) and
+  reopens from the last seq on reconnect — an `EventSource` otherwise retries by itself every few
+  seconds into a network that is not there. `TransferService` slows its poll 4× while the stream is
   connected (10 s active / 120 s idle); the poll stays as the safety net.
 
 SSE rather than the playback WebSocket, deliberately: that socket connects only when remote
