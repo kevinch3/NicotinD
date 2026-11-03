@@ -53,6 +53,7 @@ function makeRemoteStub() {
     remoteDuration: signal(0),
     remotePosition: signal(0),
     remotePositionTs: signal(Date.now()),
+    remoteClock: signal(0),
     devices: signal([]),
     activeDeviceId: signal(null),
     sharedQueue: signal(false),

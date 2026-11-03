@@ -51,6 +51,7 @@ import { AuthService } from './auth.service';
 import { ServerConfigService } from './server-config.service';
 import { LibraryApiService } from './api/library-api.service';
 import { toTrack } from '../lib/track-utils';
+import { REMOTE_CLOCK_TICK_MS, remoteClockAt } from '../lib/remote-clock';
 
 export type { RemoteDevice } from '@nicotind/core';
 
@@ -87,6 +88,13 @@ export class RemotePlaybackService {
   readonly remotePositionTs = signal(0);
   /** Audio duration reported by the active device */
   readonly remoteDuration = signal(0);
+  /**
+   * The remote output's playhead, extrapolated between reports at
+   * `REMOTE_CLOCK_TICK_MS` — one timer for every view that shows it, running
+   * only while another device is playing AND the socket is synced. See
+   * `lib/remote-clock.ts`.
+   */
+  readonly remoteClock = signal(0);
 
   /** Whether this browser tab is the active audio output device */
   readonly isActiveDevice = computed(() =>
@@ -361,6 +369,28 @@ export class RemotePlaybackService {
   // ---------------------------------------------------------------------------
 
   initialize(): void {
+    // --- Remote clock (see `remoteClock`) ---
+    effect((onCleanup) => {
+      const pos = this.remotePosition();
+      const at = this.remotePositionTs();
+      const dur = this.remoteDuration();
+      const playing = this.remoteIsPlaying();
+      const elsewhere = !this.isActiveDevice();
+      // A dropped socket (offline, server gone) leaves `remoteIsPlaying` true
+      // with no report ever coming: freeze at the last estimate rather than
+      // ticking a guess forever.
+      const live = this.ws.synced();
+      const now = (): number => (playing ? remoteClockAt(pos, at, dur, Date.now()) : pos);
+      this.remoteClock.set(now());
+      if (!elsewhere || !playing || !live) return;
+      const timer = setInterval(() => {
+        const t = now();
+        this.remoteClock.set(t);
+        if (dur > 0 && t >= dur) clearInterval(timer); // the end needs no more ticks
+      }, REMOTE_CLOCK_TICK_MS);
+      onCleanup(() => clearInterval(timer));
+    });
+
     // --- Presence channel: up whenever logged in, down on logout ---
     // Keyed on the server and the person, not only the token: a TV profile
     // switch (#1406) and a native server switch (#1414) both swap sessions in

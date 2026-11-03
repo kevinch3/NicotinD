@@ -78,10 +78,20 @@ export interface BunLock {
  * build, the same discipline as check-claude-md's EXTERNAL_SYMBOLS rather than
  * its ALLOWLIST. A one-way list only grows, and grows into a mute button.
  *
- * This ships EMPTY on purpose. The two findings it was written against were
- * fixed by bumping, not excused — so there is no precedent here for excusing one.
+ * It shipped EMPTY on purpose: the findings it was written against were fixed by
+ * bumping, not excused. An entry needs a path that cannot run AND no bump to take.
  */
-export const ACCEPTED: Map<string, string> = new Map([]);
+const SENTRY_BUNDLER_PLUGINS =
+  'only via @sentry/node > @sentry/bundler-plugins, the build-time sourcemap ' +
+  'uploaders behind the `@sentry/node/bundler-plugin/*` subpath exports; nothing ' +
+  'here imports them (the API uses `@sentry/bun` only), so the code never loads. ' +
+  'No bump exists: bundler-plugins 11.10.0 (latest) still pins glob ^13.0.6 and ' +
+  'no 13.x carries the fix, and a top-level override would force glob 14 onto the ' +
+  "glob 7 that electron's asar packaging calls through its callback API.";
+export const ACCEPTED: Map<string, string> = new Map([
+  ['glob@13.0.6', SENTRY_BUNDLER_PLUGINS],
+  ['minimatch@10.2.4', SENTRY_BUNDLER_PLUGINS],
+]);
 
 /**
  * bun.lock is JSONC — trailing commas before `}` / `]`. Strip them string-aware

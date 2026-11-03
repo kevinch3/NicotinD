@@ -256,6 +256,7 @@ describe('RemotePlaybackService session behaviour (#877)', () => {
     sendRelease: ReturnType<typeof vi.fn>;
     markActivated: ReturnType<typeof vi.fn>;
     persistentFailure: () => string | null;
+    synced: WritableSignal<boolean>;
     messages: (type: string) => unknown;
   };
 
@@ -284,6 +285,7 @@ describe('RemotePlaybackService session behaviour (#877)', () => {
       sendRelease: vi.fn(),
       markActivated: vi.fn(),
       persistentFailure: () => null,
+      synced: signal(true),
       messages: (type: string) =>
         incoming.pipe(
           filter((m) => m.type === type),
@@ -579,5 +581,92 @@ describe('RemotePlaybackService session behaviour (#877)', () => {
     expect(service.activeDevice()?.name).toBe('TV');
     sync({ activeDeviceId: null });
     expect(service.activeDevice()).toBeNull();
+  });
+});
+
+describe('RemotePlaybackService — remoteClock', () => {
+  let synced: WritableSignal<boolean>;
+  let service: RemotePlaybackService;
+
+  beforeEach(() => {
+    storageStub.clear();
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000_000);
+    synced = signal(true);
+    TestBed.configureTestingModule({
+      providers: [
+        RemotePlaybackService,
+        PlayerService,
+        AuthService,
+        {
+          provide: PlaybackWsService,
+          useValue: {
+            updateDevice: vi.fn(),
+            connect: vi.fn(),
+            disconnect: vi.fn(),
+            getDeviceId: vi.fn(() => 'me'),
+            messages: vi.fn(() => EMPTY),
+            persistentFailure: vi.fn(() => null),
+            markActivated: vi.fn(),
+            sendRelease: vi.fn(),
+            synced,
+          },
+        },
+      ],
+    });
+    service = TestBed.inject(RemotePlaybackService);
+    TestBed.runInInjectionContext(() => service.initialize());
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  const playElsewhere = (position: number, duration: number) => {
+    service.setActiveDeviceId('tv');
+    service.setRemoteIsPlaying(true);
+    service.setRemoteProgress(position, duration);
+    TestBed.flushEffects();
+  };
+
+  it('advances at the local timeupdate cadence while another device plays', () => {
+    playElsewhere(10, 200);
+    expect(service.remoteClock()).toBe(10);
+    vi.advanceTimersByTime(1_000);
+    expect(service.remoteClock()).toBe(11);
+  });
+
+  it('stops ticking at the end of the track', () => {
+    playElsewhere(199.5, 200);
+    vi.advanceTimersByTime(1_000);
+    expect(service.remoteClock()).toBe(200);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('freezes when the socket drops instead of ticking a guess forever', () => {
+    playElsewhere(10, 200);
+    vi.advanceTimersByTime(2_000);
+    synced.set(false);
+    TestBed.flushEffects();
+    expect(service.remoteClock()).toBe(12);
+    vi.advanceTimersByTime(10_000);
+    expect(service.remoteClock()).toBe(12);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('runs no timer while this device is the output', () => {
+    service.setActiveDeviceId('me');
+    service.setRemoteIsPlaying(true);
+    service.setRemoteProgress(10, 200);
+    TestBed.flushEffects();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('shows the reported position, untimed, while the remote is paused', () => {
+    service.setActiveDeviceId('tv');
+    service.setRemoteIsPlaying(false);
+    service.setRemoteProgress(42, 200);
+    TestBed.flushEffects();
+    vi.advanceTimersByTime(5_000);
+    expect(service.remoteClock()).toBe(42);
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

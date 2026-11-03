@@ -183,7 +183,9 @@ export class MosaicHomeComponent implements OnInit {
   private lastX = 0;
   private lastY = 0;
   private moved = 0;
+  /** The scheduled frame's id, 0 when none is pending. */
   private raf = 0;
+  /** Allowed to draw: the stage is on screen and the document visible. */
   private running = false;
   private stamp = 0;
   private live = new Map<string, PoolRecord>();
@@ -217,6 +219,7 @@ export class MosaicHomeComponent implements OnInit {
       this.vx = 0;
       this.vy = 0;
       this.stageRef()?.nativeElement.classList.add('cursor-grabbing');
+      this.wake();
       const tile = this.tileFromEvent(e);
       if (tile) this.schedulePress(tile, { x: e.clientX, y: e.clientY });
     },
@@ -231,9 +234,11 @@ export class MosaicHomeComponent implements OnInit {
       this.cy -= dy * PAN_GAIN;
       this.vx = -dx * PAN_GAIN;
       this.vy = -dy * PAN_GAIN;
+      this.wake();
     },
     onEnd: () => {
       this.dragging = false;
+      this.wake(); // coast out on the release velocity
       this.cancelPress();
       this.stageRef()?.nativeElement.classList.remove('cursor-grabbing');
     },
@@ -278,11 +283,12 @@ export class MosaicHomeComponent implements OnInit {
       const start = (): void => {
         if (this.running) return;
         this.running = true;
-        this.raf = requestAnimationFrame(this.frame);
+        this.wake();
       };
       const stop = (): void => {
         this.running = false;
         cancelAnimationFrame(this.raf);
+        this.raf = 0;
       };
 
       // Repack on resize: tile size is derived from the stage's short side, so
@@ -324,6 +330,7 @@ export class MosaicHomeComponent implements OnInit {
 
     destroyRef.onDestroy(() => {
       cancelAnimationFrame(this.raf);
+      this.raf = 0;
       this.running = false;
       this.cancelPress();
     });
@@ -413,13 +420,16 @@ export class MosaicHomeComponent implements OnInit {
       this.api.getRandomSongs(packing.tiles.length).pipe(catchError(() => of([]))),
     );
     if (this.cells.get(cell) !== 'loading') return; // evicted while in flight
+    // A resting mosaic draws no frames, so the batch landing has to ask for one.
     if (!songs.length) {
       this.cells.set(cell, 'base');
+      this.wake();
       return;
     }
     const slots = assignSongsToSlots(packing.tiles, songs, this.weights);
     this.cells.set(cell, slots);
     this.appendDiscovered(slots);
+    this.wake();
   }
 
   /** Mirror a cell's new tiles into the accessible list, deduped and capped. */
@@ -659,6 +669,7 @@ export class MosaicHomeComponent implements OnInit {
     for (const rec of this.live.values()) rec.el.remove();
     this.live.clear();
     this.pool.length = 0;
+    this.wake();
   }
 
   private tileHtml(p: PackedTile, t: MosaicTile): string {
@@ -779,9 +790,20 @@ export class MosaicHomeComponent implements OnInit {
     face.classList.add('mosaic-pop');
   }
 
+  /**
+   * Ask for one frame. The loop draws only while something moves — a drag, or
+   * the coast after one — and otherwise sleeps: a resting mosaic used to redo
+   * the whole lens every frame (60–120 a second) to write nothing. Everything
+   * that changes what a frame would draw (input, a repack, a cell's batch
+   * landing, the stage coming back on screen) calls this.
+   */
+  private wake(): void {
+    if (this.running && this.raf === 0) this.raf = requestAnimationFrame(this.frame);
+  }
+
   private frame = (): void => {
+    this.raf = 0;
     if (!this.running) return;
-    this.raf = requestAnimationFrame(this.frame);
 
     const stage = this.stageRef()?.nativeElement;
     const packing = this.packing;
@@ -842,5 +864,7 @@ export class MosaicHomeComponent implements OnInit {
         this.live.delete(key);
       }
     }
+
+    if (this.dragging || this.vx !== 0 || this.vy !== 0) this.wake();
   };
 }

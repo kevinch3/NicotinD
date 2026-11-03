@@ -375,6 +375,13 @@ interface MosaicInternals {
   cells: Map<string, unknown>;
   loadCell(cell: string): Promise<void>;
   enterCell(cell: string): unknown;
+  frame(): void;
+  wake(): void;
+  running: boolean;
+  raf: number;
+  dragging: boolean;
+  vx: number;
+  vy: number;
 }
 
 const preservedMeta = (over: Partial<PreservedTrackMeta> = {}): PreservedTrackMeta => ({
@@ -561,6 +568,86 @@ describe('discovery cells', () => {
     await c.loadCell('2,2'); // never marked 'loading' — the cell was evicted meanwhile
     expect(c.cells.has('2,2')).toBe(false);
     expect(component.discovered()).toEqual([]);
+  });
+});
+
+describe('the loop sleeps at rest', () => {
+  let scheduled: FrameRequestCallback[];
+
+  const ready = async () => {
+    const { component, libraryApi, fixture } = setup();
+    await settle(fixture);
+    const c = internals(component);
+    // Take the loop over from whatever the mount scheduled.
+    cancelAnimationFrame(c.raf);
+    scheduled = [];
+    // Only the mosaic's own frames: Angular's zoneless scheduler races a
+    // requestAnimationFrame of its own against a timeout.
+    const realRaf = globalThis.requestAnimationFrame.bind(globalThis);
+    vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
+      if (cb !== c.frame) return realRaf(cb);
+      scheduled.push(cb);
+      return scheduled.length;
+    });
+    // jsdom renders no stage for this fixture's field; frames need one.
+    const stage = document.createElement('div');
+    Object.defineProperty(component, 'stageRef', { value: () => ({ nativeElement: stage }) });
+    c.raf = 0;
+    c.running = true;
+    c.dragging = false;
+    c.vx = 0;
+    c.vy = 0;
+    c.packing = { W: 500, tiles: [packedStub(0, 100)] };
+    return { c, libraryApi };
+  };
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it('draws a frame and asks for no other while nothing moves', async () => {
+    const { c } = await ready();
+    c.frame();
+    expect(scheduled).toHaveLength(0);
+  });
+
+  it('keeps drawing while it coasts, then stops once friction brings it to rest', async () => {
+    const { c } = await ready();
+    c.vx = 40;
+    c.frame();
+    let frames = 1;
+    while (scheduled.length > 0 && frames < 1_000) {
+      scheduled.shift()!(0);
+      frames++;
+    }
+    expect(scheduled).toHaveLength(0);
+    expect(c.vx).toBe(0);
+    expect(frames).toBeGreaterThan(2);
+    expect(frames).toBeLessThan(1_000);
+  });
+
+  it('keeps drawing for as long as a drag is held', async () => {
+    const { c } = await ready();
+    c.dragging = true;
+    c.frame();
+    expect(scheduled).toHaveLength(1);
+  });
+
+  it('wake asks for one frame however often it is called, and none off screen', async () => {
+    const { c } = await ready();
+    c.running = false;
+    c.wake();
+    expect(scheduled).toHaveLength(0);
+    c.running = true;
+    c.wake();
+    c.wake();
+    expect(scheduled).toHaveLength(1);
+  });
+
+  it('a discovery batch landing wakes the sleeping loop to draw it', async () => {
+    const { c, libraryApi } = await ready();
+    c.cells.set('1,0', 'loading');
+    libraryApi.getRandomSongs.mockReturnValue(of([song({ id: 'x' })]) as never);
+    await c.loadCell('1,0');
+    expect(scheduled).toHaveLength(1);
   });
 });
 

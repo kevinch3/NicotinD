@@ -16,6 +16,7 @@ Admin-only, ephemeral visibility into which users are currently active on the ap
 
 - **In-memory only — for live session state.** Presence is ephemeral, high-churn data. Writing session state to SQLite on every heartbeat is wasteful and creates stale-on-restart problems. The `PresenceService` holds a `Map<sessionId, Session>` that resets on server restart — which is correct, because all sessions are gone too. The **derived** `users.last_seen_at` timestamp *is* persisted; see [Persisted last-seen vs ephemeral presence](#persisted-last-seen-vs-ephemeral-presence) for why that is not a contradiction.
 - **HTTP heartbeat, not WebSocket.** Presence is admin-only visibility, not real-time UX. A 60-second HTTP POST is simpler than a persistent WS per tab, avoids a second WS connection, and is sufficient for dashboard-level accuracy (data is at most ~2 min stale).
+- **Silent offline.** The client's heartbeat stops while `SetupService.isOffline()` (no network, or the server unreachable) and reports at once on reconnect: a heartbeat into a dead network can only fail, and on a phone each attempt wakes the radio.
 - **Admin-only.** Non-admin users cannot read presence data for other users. The heartbeat endpoint is open to all authenticated users (they report their own presence), but the admin user list is the only consumer of the aggregated stats.
 - **Client-generated tabId.** Each tab generates a UUID in `sessionStorage` so the server can distinguish multiple tabs on the same device without assigning state.
 
@@ -24,7 +25,7 @@ Admin-only, ephemeral visibility into which users are currently active on the ap
 ```
 Browser Tab 1 ──┐                                ┌── Admin UI
 Browser Tab 2 ──┼── POST /api/presence/heartbeat ──┤   (reads enriched user list)
-Mobile App    ──┘    (every 60s when auth'd)      └── GET /api/admin/users
+Mobile App    ──┘    (every 60s, auth'd + online) └── GET /api/admin/users
                            │                          (presence fields merged)
                     PresenceService
                     (in-memory Map)

@@ -1,8 +1,17 @@
-import { Injectable, Injector, inject, signal } from '@angular/core';
+import {
+  Injectable,
+  Injector,
+  effect,
+  inject,
+  signal,
+  untracked,
+  type EffectRef,
+} from '@angular/core';
 import { Subject } from 'rxjs';
 import { AuthService } from './auth.service';
 import { ServerConfigService } from './server-config.service';
 import { LibraryApiService } from './api/library-api.service';
+import { SetupService } from './setup.service';
 
 /** Mirror of the API's `LibraryEvent` union (services/library-events.ts). */
 export type LibraryEvent =
@@ -31,7 +40,10 @@ export const HIDDEN_GRACE_MS = 30_000;
  *
  * Stands down like every poller here: the stream closes `HIDDEN_GRACE_MS`
  * after the tab hides and reopens on return, asking for everything since the
- * last seq it saw. A gap (the server's buffer no longer reaches that seq) or an
+ * last seq it saw. It stands down offline too (no network, or the server
+ * unreachable): an `EventSource` retries by itself every few seconds forever,
+ * which kept the radio busy for a stream that cannot connect; it reopens with
+ * `since` on reconnect, so nothing is missed. A gap (the server's buffer no longer reaches that seq) or an
  * explicit `resync` drops the cached whole-library reads and bumps `resync` so
  * pages that care can refetch.
  *
@@ -64,6 +76,7 @@ export class LibraryEventsService {
   private lastSeq = 0;
   private hideTimer: ReturnType<typeof setTimeout> | null = null;
   private started = false;
+  private offlineWatch: EffectRef | null = null;
   private readonly onVisibility = () => this.applyVisibility();
 
   start(): void {
@@ -71,14 +84,30 @@ export class LibraryEventsService {
     this.started = true;
     document.addEventListener('visibilitychange', this.onVisibility);
     this.applyVisibility();
+    // Connectivity flips re-apply; the first run is a no-op repeat of the above.
+    this.offlineWatch = effect(
+      () => {
+        this.isOffline();
+        untracked(() => this.applyVisibility());
+      },
+      { injector: this.injector },
+    );
   }
 
   stop(): void {
     if (!this.started) return;
     this.started = false;
     document.removeEventListener('visibilitychange', this.onVisibility);
+    this.offlineWatch?.destroy();
+    this.offlineWatch = null;
     this.clearHideTimer();
     this.close();
+  }
+
+  /** Lazy for the same cycle as AuthService; tolerant of hosts that stub it. */
+  private isOffline(): boolean {
+    const setup = this.injector.get(SetupService, null) as { isOffline?: () => boolean } | null;
+    return typeof setup?.isOffline === 'function' ? setup.isOffline() : false;
   }
 
   /** Forget landed ids a consumer has acted on. */
@@ -88,6 +117,11 @@ export class LibraryEventsService {
   }
 
   private applyVisibility(): void {
+    if (untracked(() => this.isOffline())) {
+      this.clearHideTimer();
+      this.close();
+      return;
+    }
     if (document.visibilityState === 'hidden') {
       if (this.source && this.hideTimer === null) {
         this.hideTimer = setTimeout(() => {

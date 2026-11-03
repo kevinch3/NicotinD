@@ -922,9 +922,14 @@ input is the #457/#606/#273 shape, and two of these filters exist precisely to n
 input.
 
 `ACCEPTED` is checked in **both** directions — an entry matching nothing fails too, the
-`EXTERNAL_SYMBOLS` discipline rather than the `ALLOWLIST` one. It ships **empty**: the three
-findings it was written against were fixed by bumping, not excused, so there is no precedent
-in it for excusing one.
+`EXTERNAL_SYMBOLS` discipline rather than the `ALLOWLIST` one. It shipped **empty**: the three
+findings it was written against were fixed by bumping, not excused. An entry needs both a code
+path that cannot run and no bump to take. The first two (2026-11) are `glob@13.0.6` and
+`minimatch@10.2.4`, reached only through `@sentry/bundler-plugins` — build-time sourcemap
+uploaders behind `@sentry/node`'s `bundler-plugin/*` subpath exports, which nothing imports —
+with no patched `glob` 13.x and a top-level override ruled out by the `glob` 7 that electron's
+asar packaging needs. Because the list is checked both ways, the entries fail the gate the day
+Sentry ships a fixed resolution, and have to go.
 
 Both filters are red-proofed. Disabling the closure filter fails 2 tests; disabling the
 semver match fails 1.

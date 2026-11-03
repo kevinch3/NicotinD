@@ -252,9 +252,6 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   // *not* a track change (a token refresh) doesn't void an in-flight seek.
   private loadedTrackId: string | null = null;
 
-  // Playback progress interpolation
-  private interpolatedTime = signal(0);
-
   readonly isActiveDevice = this.remote.isActiveDevice;
   /** The transport acts on the local player when this device is the output —
    *  or when the session's device cannot be driven, in which case a play here
@@ -266,7 +263,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   readonly slideClass = computed(() => miniPlayerSlideClass(this.player.currentTrack() !== null));
 
   readonly displayTime = computed(() => {
-    if (!this.isActiveDevice()) return this.interpolatedTime();
+    if (!this.isActiveDevice()) return this.remote.remoteClock();
     // A seek waiting on data shows its target, not the position the element is
     // still playing from: the user asked to be at 3:00, so the bar reads 3:00
     // while the bytes are fetched. Guarded on track id — a skip during the
@@ -632,35 +629,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       onCleanup(() => clearInterval(interval));
     });
 
-    // Effect 8: Remote playback interpolation (rAF loop)
-    effect((onCleanup) => {
-      const isActive = this.isActiveDevice();
-
-      if (isActive) {
-        this.interpolatedTime.set(this.player.currentTime());
-        return;
-      }
-
-      const remPlaying = this.remote.remoteIsPlaying();
-      const remPos = this.remote.remotePosition();
-      const remPosTs = this.remote.remotePositionTs();
-      const remDur = this.remote.remoteDuration();
-
-      if (!remPlaying) {
-        this.interpolatedTime.set(remPos);
-        return;
-      }
-
-      let rafId: number;
-      const tick = () => {
-        const elapsed = (Date.now() - remPosTs) / 1000;
-        const maxTime = remDur || Infinity;
-        this.interpolatedTime.set(Math.min(remPos + elapsed, maxTime));
-        rafId = requestAnimationFrame(tick);
-      };
-      rafId = requestAnimationFrame(tick);
-      onCleanup(() => cancelAnimationFrame(rafId));
-    });
+    // (Effect 8, the remote-position rAF loop, is RemotePlaybackService.remoteClock.)
 
     // Effect 9: resume a stream the network killed, the moment it comes back.
     //

@@ -191,9 +191,6 @@ export class NowPlayingComponent {
   readonly karaokeFullscreenPanel = viewChild(NowPlayingKaraokeFullscreenComponent);
   private colorExtractedForId: string | null = null;
 
-  // Playback progress interpolation
-  private interpolatedTime = signal(0);
-
   readonly isActiveDevice = this.remote.isActiveDevice;
   /** See PlayerComponent.drivesLocalPlayer. */
   readonly drivesLocalPlayer = computed(
@@ -202,7 +199,7 @@ export class NowPlayingComponent {
 
   readonly displayTime = computed(() => {
     if (this.isActiveDevice()) return this.player.currentTime();
-    return this.interpolatedTime();
+    return this.remote.remoteClock();
   });
 
   readonly displayDuration = computed(() => {
@@ -562,36 +559,6 @@ export class NowPlayingComponent {
         this.setActivePanel(panel);
         this.player.nowPlayingPanelRequest.set(null);
       });
-    });
-
-    // Remote playback interpolation (rAF loop)
-    effect((onCleanup) => {
-      const isActive = this.isActiveDevice();
-
-      if (isActive) {
-        this.interpolatedTime.set(this.player.currentTime());
-        return;
-      }
-
-      const remPlaying = this.remote.remoteIsPlaying();
-      const remPos = this.remote.remotePosition();
-      const remPosTs = this.remote.remotePositionTs();
-      const remDur = this.remote.remoteDuration();
-
-      if (!remPlaying) {
-        this.interpolatedTime.set(remPos);
-        return;
-      }
-
-      let rafId: number;
-      const tick = () => {
-        const elapsed = (Date.now() - remPosTs) / 1000;
-        const maxTime = remDur || Infinity;
-        this.interpolatedTime.set(Math.min(remPos + elapsed, maxTime));
-        rafId = requestAnimationFrame(tick);
-      };
-      rafId = requestAnimationFrame(tick);
-      onCleanup(() => cancelAnimationFrame(rafId));
     });
 
     // Lock the document while the full-screen sheet is actually on screen (open
