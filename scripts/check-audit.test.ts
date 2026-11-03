@@ -199,8 +199,11 @@ describe('auditShipped — ACCEPTED is checked both ways', () => {
     expect(a.staleAccepted).toEqual(['nested@1.0.0']);
   });
 
-  it('ships empty, so it cannot start life as a mute button', () => {
-    expect([...ACCEPTED.keys()]).toEqual([]);
+  it('holds only the entries reviewed on the record, each with a reason', () => {
+    // Started empty so it could not start life as a mute button. A new entry is
+    // a decision, so it has to change this test too (docs/quality-gates.md).
+    expect([...ACCEPTED.keys()].sort()).toEqual(['glob@13.0.6', 'minimatch@10.2.4']);
+    for (const reason of ACCEPTED.values()) expect(reason.length).toBeGreaterThan(40);
   });
 });
 
