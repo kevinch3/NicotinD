@@ -38,8 +38,15 @@ import { BUILD_INFO, type BuildInfo } from './lib/build-info';
 
 export const APP_VERSION = new InjectionToken<string>('APP_VERSION');
 
-/** Commit identity of this bundle, for the About page's §13 source offer. */
-export const APP_BUILD_INFO = new InjectionToken<BuildInfo>('APP_BUILD_INFO');
+/**
+ * Commit identity of this bundle: the About page's §13 source offer, and what
+ * the update check compares with the server's `/api/health` commit. Defaults to
+ * the bundle's own stamp, so a consumer never needs it provided.
+ */
+export const APP_BUILD_INFO = new InjectionToken<BuildInfo>('APP_BUILD_INFO', {
+  providedIn: 'root',
+  factory: () => BUILD_INFO,
+});
 
 /**
  * Refresh the stored session and sync the per-user profile flags. Runs after the

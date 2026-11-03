@@ -10,7 +10,7 @@ import {
 } from '@angular/core';
 import { SwUpdate, VersionReadyEvent } from '@angular/service-worker';
 import { filter } from 'rxjs';
-import { APP_VERSION } from '../app.config';
+import { APP_BUILD_INFO, APP_VERSION } from '../app.config';
 import {
   apkAssetUrl,
   apkFileName,
@@ -21,11 +21,28 @@ import {
 import { getCapacitorPlugin, getPlatform, isNativePlatform, isTvUi } from '../lib/platform';
 import { createVisibilityPoller, type VisibilityPoller } from '../lib/visibility-poller';
 import { canApplyUpdateNow } from '../lib/update-policy';
+import {
+  afterUpdateReload,
+  clearPendingUpdate,
+  parseHealth,
+  readPendingUpdate,
+  resetServiceWorker,
+  servedBuildVerdict,
+  writePendingUpdate,
+  type BuildVerdict,
+} from '../lib/update-check';
 import { compareVersions } from '@nicotind/core';
 import { PlayerService } from './player.service';
 import { ServerConfigService } from './server-config.service';
 
-export type CheckUpdateOutcome = 'unavailable' | 'available' | 'up-to-date';
+/** `offline`: the server could not be reached, so nothing was checked. */
+export type CheckUpdateOutcome = 'unavailable' | 'available' | 'up-to-date' | 'offline';
+
+/** A health probe slower than this is an unreachable server, not a slow answer. */
+export const HEALTH_PROBE_TIMEOUT_MS = 8_000;
+
+type ServerProbe =
+  { reachable: false } | { reachable: true; verdict: BuildVerdict; commit: string | null };
 
 /** How often a foregrounded tab re-asks. Paused while hidden — a resume fires
  *  its own check, which is the only "navigation" an installed PWA has. */
@@ -44,6 +61,7 @@ interface ApkUpdatePlugin {
 export class UpdateService {
   private sw = inject(SwUpdate);
   private version = inject(APP_VERSION);
+  private build = inject(APP_BUILD_INFO);
   private zone = inject(NgZone);
   private player = inject(PlayerService);
   private serverConfig = inject(ServerConfigService);
@@ -86,6 +104,9 @@ export class UpdateService {
 
   /** True from the moment `applyUpdate` starts until the reload replaces us. */
   readonly applying = signal(false);
+
+  /** The build the server serves, when the last probe found it differs from ours. */
+  private targetCommit: string | null = null;
 
   /** Convenience for templates that want to render the manual control. */
   readonly checkAvailable = computed(() => this.enabled() && !this.updateAvailable());
@@ -166,6 +187,7 @@ export class UpdateService {
   start(): void {
     if (this.started || !this.sw.isEnabled) return;
     this.started = true;
+    void this.verifyLastApply();
 
     this.poller = createVisibilityPoller({
       poll: () => this.backgroundCheck(),
@@ -212,13 +234,20 @@ export class UpdateService {
       // … return false`), so asking it again about an update it is already
       // holding reports "you're on the latest version" (#1126).
       if (this.ready()) return 'available';
-      if (await this.sw.checkForUpdate()) {
+      // The server first: it is the only side that knows what is being served.
+      // The worker answers "no new version" both for a version it already holds
+      // and for a manifest it could not fetch, and a version string cannot tell
+      // two edge builds of one release apart — the commit can.
+      const server = await this.probeServerBuild();
+      // Unreachable is not "up to date": nothing was checked, and saying so is
+      // how a phone offline reported the old build as current.
+      if (!server.reachable) return 'offline';
+      if (server.verdict === 'update') {
         this.ready.set(true);
         return 'available';
       }
-      // The worker said no. It can be wrong — a wedged or stale-manifest worker
-      // says no forever — and the server knows what it is actually serving.
-      if (await this.serverIsNewer()) {
+      // Same build as the server — but a newer one may already be staged.
+      if (await this.sw.checkForUpdate()) {
         this.ready.set(true);
         return 'available';
       }
@@ -244,26 +273,35 @@ export class UpdateService {
   }
 
   /**
-   * Is the server serving something newer than the build running here?
+   * What build is the server serving, compared with the one running here?
    *
-   * `GET /api/health` reports the running server version and needs no auth. It
-   * is the only signal that survives a service worker holding a stale manifest,
-   * which is exactly the state a user reports as "it says I'm up to date".
-   * `no-store` so no cache — HTTP or otherwise — can answer for it.
+   * `GET /api/health` needs no auth and reports `{ version, commit }`; the
+   * verdict is `servedBuildVerdict` (lib/update-check.ts). `no-store` so no
+   * cache — HTTP or the worker's — can answer for it, and bounded so a server
+   * that never answers reads as unreachable instead of a check that hangs.
    */
-  private async serverIsNewer(): Promise<boolean> {
+  private async probeServerBuild(): Promise<ServerProbe> {
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), HEALTH_PROBE_TIMEOUT_MS);
     try {
       const res = await fetch(this.serverConfig.apiUrl('/api/health'), {
         cache: 'no-store',
         headers: { accept: 'application/json' },
+        signal: abort.signal,
       });
-      if (!res.ok) return false;
-      const body = (await res.json()) as { version?: unknown };
-      const served = typeof body.version === 'string' ? body.version : null;
-      if (!served || served === 'unknown') return false;
-      return compareVersions(served, this.version) > 0;
+      if (!res.ok) return { reachable: false };
+      const served = parseHealth(await res.json());
+      if (!served) return { reachable: false };
+      const verdict = servedBuildVerdict(served, {
+        version: this.version,
+        commit: this.build.commit,
+      });
+      this.targetCommit = verdict === 'update' ? served.commit : null;
+      return { reachable: true, verdict, commit: served.commit };
     } catch {
-      return false;
+      return { reachable: false };
+    } finally {
+      clearTimeout(timer);
     }
   }
 
@@ -271,10 +309,13 @@ export class UpdateService {
   private async backgroundCheck(): Promise<void> {
     if (!this.sw.isEnabled || this.ready()) return;
     try {
-      if (await this.sw.checkForUpdate()) this.ready.set(true);
-      else if (await this.serverIsNewer()) this.ready.set(true);
+      const server = await this.probeServerBuild();
+      // Unreachable: the worker's manifest fetch would fail the same way.
+      if (!server.reachable) return;
+      if (server.verdict === 'update') this.ready.set(true);
+      else if (await this.sw.checkForUpdate()) this.ready.set(true);
     } catch {
-      // Offline, or the worker is busy. The next tick asks again.
+      // The worker is busy or broken. The next tick asks again.
     }
     this.maybeAutoApply();
   }
@@ -307,12 +348,59 @@ export class UpdateService {
       return;
     }
     this.applying.set(true);
+    // Remember what this reload should land on, so the next boot can tell
+    // whether it did (`verifyLastApply`).
+    writePendingUpdate(localStorage, { commit: this.targetCommit, attempts: 1, at: Date.now() });
+    try {
+      // When the server found the update, the worker may not have it yet — and a
+      // reload is a navigation the worker answers from its OLD cache. Make it
+      // fetch the new manifest first; `false` here also means "already staged".
+      if (this.targetCommit) await this.sw.checkForUpdate();
+    } catch {
+      /* the reload, then verifyLastApply, are the recovery */
+    }
     try {
       await this.sw.activateUpdate();
     } catch {
-      // No version staged here — the "available" came from the server
-      // comparison, so a reload is what fetches the newer shell. Deliberately
-      // not fatal: the reload below is the recovery.
+      // Nothing staged to activate. Deliberately not fatal: the reload is the
+      // recovery, and verifyLastApply escalates if it came back stale.
+    }
+    this.reload();
+  }
+
+  /**
+   * The boot after an apply: did the reload land on the build it aimed at?
+   *
+   * If it came back on the old build, the worker served its stale cache to the
+   * navigation. Reset the worker and reload once more — but only after reaching
+   * the server, because a reset with no network would leave an installed app
+   * with nothing to load. Bounded by `MAX_UPDATE_ATTEMPTS`.
+   */
+  private async verifyLastApply(): Promise<void> {
+    const pending = readPendingUpdate(localStorage);
+    if (!pending) return;
+    const action = afterUpdateReload(pending, this.build.commit, Date.now());
+    if (action !== 'escalate') {
+      clearPendingUpdate(localStorage);
+      return;
+    }
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    const server = await this.probeServerBuild();
+    if (!server.reachable || server.verdict !== 'update') {
+      // Unreachable: try again on a later boot. Current: the server moved to
+      // this very build in the meantime — nothing left to do.
+      if (server.reachable) clearPendingUpdate(localStorage);
+      return;
+    }
+    writePendingUpdate(localStorage, {
+      commit: server.commit,
+      attempts: pending.attempts + 1,
+      at: Date.now(),
+    });
+    try {
+      await resetServiceWorker();
+    } catch {
+      /* a failed reset still reloads; the attempt is counted either way */
     }
     this.reload();
   }
