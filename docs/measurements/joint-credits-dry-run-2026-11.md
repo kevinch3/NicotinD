@@ -44,8 +44,11 @@ the album floor, which is why this "before" is 4,230 rather than today's unfilte
 | Song artist links | 25,099 | 27,772 |
 | Artist rows | 4,419 | 5,626 |
 | Artists grid | 4,230 | 3,492 |
-| Unresolved joint credits | 1,717 | 38 (35 `human`, 3 `auto` expected to clear on the next scan) |
+| Unresolved joint credits | 1,717 | 35 `human` |
 | Gramatik-first songs on a Gramatik radio (count 30) | 23 | 1 |
+
+The detector first read 38. The other 3 were its own false positive, fixed in #1612: a user alias
+makes `Osvaldo Pugliese/Orquesta Osvaldo Pugliese` one artist, so its single link is correct.
 
 The artist row count ended about 110 above the dry run, probably because the library took in songs
 and Lidarr answered more credits between the two; that difference was not traced. `Orquesta Tipica` and `Su Orquesta Tipica` were fixed

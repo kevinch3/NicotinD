@@ -110,6 +110,19 @@ describe('findUnresolvedJointCredits', () => {
     ).toEqual([]);
   });
 
+  it('skips a credit whose names an alias makes one artist', () => {
+    const credit = 'Osvaldo Pugliese/Orquesta Osvaldo Pugliese';
+    expect(
+      findUnresolvedJointCredits([row(credit, { links: 1 })], {
+        ...known('Osvaldo Pugliese'),
+        aliases: new Map([[norm('Orquesta Osvaldo Pugliese'), 'Osvaldo Pugliese']]),
+      }),
+    ).toEqual([]);
+    expect(
+      findUnresolvedJointCredits([row(credit, { links: 1 })], known('Osvaldo Pugliese')),
+    ).toHaveLength(1);
+  });
+
   it('skips what a decision already settled', () => {
     expect(
       findUnresolvedJointCredits([row('AC/DC')], {
