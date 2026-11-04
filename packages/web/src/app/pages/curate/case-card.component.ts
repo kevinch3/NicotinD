@@ -39,7 +39,11 @@ export class CaseCardComponent {
 
   /** The credit a server-written joint-credit card asks about; an agent writes its own words. */
   jointCredit(c: CurationCase): string | null {
-    return c.options.find((o) => o.id === 'joint-split')?.effect?.rawName ?? null;
+    return (
+      c.options.find((o) => o.id === 'joint-split')?.effect?.rawName ??
+      c.options.find((o) => o.id === 'joint-one-act')?.effect?.rawName ??
+      null
+    );
   }
 
   /** The i18n key of an option the server wrote, or null for one an agent wrote. */

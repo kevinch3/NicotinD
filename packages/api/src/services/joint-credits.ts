@@ -20,6 +20,7 @@ import {
 } from './artist-split.js';
 import { createCurationFlag, resolveCurationFlag, type CurationFlag } from './curation-flags.js';
 import { artistIdFor } from './library-scanner.js';
+import { looksLikeSentence, looksLikeSourceWatermark } from './library-quality.js';
 
 export interface JointCreditRow {
   credit: string;
@@ -149,22 +150,41 @@ const capped = (text: string, limit: number) =>
 export const jointCreditQuestion = (credit: string) =>
   capped(`Is "${credit}" several artists?`, CASE_TEXT_LIMITS.question);
 
-/** The card's two answers. The web localizes both through their ids. */
+const isPlausibleMember = (member: string): boolean => {
+  if (!member || !member.trim()) return false;
+  if (member.includes(',')) return false;
+  if (looksLikeSentence(member) || looksLikeSourceWatermark(member)) return false;
+  return true;
+};
+
+const canProposeSplit = (credit: string, members: readonly string[]): boolean => {
+  if (looksLikeSentence(credit) || looksLikeSourceWatermark(credit)) return false;
+  return members.length >= 2 && members.every(isPlausibleMember);
+};
+
+/**
+ * The card's answers. Suppress the split option when any proposed member still
+ * holds a comma or looks like a sentence or promo watermark (#1613): offering
+ * "Separate" there would store nonsense artist members, so only "One act" (and
+ * the route-appended "Leave as is") remain.
+ */
 export function jointCreditOptions(credit: string, members: string[]): CaseOption[] {
-  return [
-    {
+  const options: CaseOption[] = [];
+  if (canProposeSplit(credit, members)) {
+    options.push({
       id: JOINT_SPLIT_OPTION_ID,
       label: capped(`Separate: ${members.join(' + ')}`, CASE_TEXT_LIMITS.label),
       rationale: '',
       effect: { type: 'artist-split', rawName: credit, members },
-    },
-    {
-      id: JOINT_ONE_ACT_OPTION_ID,
-      label: 'One act',
-      rationale: '',
-      effect: { type: 'artist-single', rawName: credit },
-    },
-  ];
+    });
+  }
+  options.push({
+    id: JOINT_ONE_ACT_OPTION_ID,
+    label: 'One act',
+    rationale: '',
+    effect: { type: 'artist-single', rawName: credit },
+  });
+  return options;
 }
 
 const ABOUT_THE_CREDIT = /\b(misplaced|mistagged)\b/;

@@ -37,6 +37,12 @@ const WATERMARK_KEYWORDS = [
   'acapella pack',
   'descargas',
   'mp3 download',
+  'pre-order',
+  'pre-save',
+  'pre order',
+  'pre save',
+  'preorder',
+  'presave',
 ];
 
 /** A bare domain token, e.g. "ftpdjemilio.com" / "musicauno.com" — never a real artist name. */
@@ -128,6 +134,42 @@ export function djSetArtistName(name: string | undefined | null): string | null 
 }
 
 /**
+ * Sentence-ending punctuation following a 3+ letter word and followed by a space:
+ * "for you. Pre-order" / "welcome. Please listen".
+ * Spares abbreviations / initials with 1-2 letter words ("J. Cole", "Dr. Dre", "St. Vincent").
+ */
+const SENTENCE_PUNCTUATION_RE = /\b[a-z]{3,}\.\s+/i;
+
+/** Trailing sentence punctuation on a phrase of 3 or more words ("This EP is for you."). */
+const TRAILING_SENTENCE_PUNCT_RE = /\b[a-z]{2,}[.!?]$/i;
+
+/**
+ * True when `name` looks like a sentence or promo fragment rather than an artist name.
+ * Real artist names are proper nouns (typically capitalized, <= 6 words, without sentence punctuation).
+ */
+export function looksLikeSentence(name: string | undefined | null): boolean {
+  if (!name) return false;
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+
+  // Mid-phrase sentence break: "for you. Pre-order"
+  if (SENTENCE_PUNCTUATION_RE.test(trimmed)) return true;
+
+  const words = trimmed.split(/\s+/);
+
+  // A lead or fragment of > 6 words landed mid-sentence (same bound as plausibleArtistLead)
+  if (words.length > 6) return true;
+
+  // Trailing punctuation on a multi-word phrase: "This EP is for you."
+  if (words.length >= 3 && TRAILING_SENTENCE_PUNCT_RE.test(trimmed)) return true;
+
+  // Lowercase lead on a multi-word fragment: "pre-save now and be part of this journey"
+  if (words.length >= 3 && /^[a-z]/.test(trimmed)) return true;
+
+  return false;
+}
+
+/**
  * Accept a recovered lead only while it still looks like a name: non-empty, at
  * most 6 words, and not itself junk. A longer lead means the split landed
  * mid-sentence and recovery is not safe.
@@ -135,7 +177,7 @@ export function djSetArtistName(name: string | undefined | null): string | null 
 function plausibleArtistLead(raw: string | undefined): string | null {
   const v = (raw ?? '').trim().replace(/\s+/g, ' ');
   if (!v || v.split(' ').length > 6) return null;
-  if (looksLikeSourceWatermark(v) || isNumericLikeName(v)) return null;
+  if (looksLikeSourceWatermark(v) || isNumericLikeName(v) || looksLikeSentence(v)) return null;
   return v;
 }
 

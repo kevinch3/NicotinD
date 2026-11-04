@@ -160,6 +160,40 @@ describe('jointCreditOptions', () => {
     const [split] = jointCreditOptions(members.join('/'), members);
     expect(split!.label.length).toBeLessThanOrEqual(80);
   });
+
+  it('suppresses the split option when a proposed member still holds a comma (#1613)', () => {
+    const options = jointCreditOptions('Pete Tong, HER-O, Jules Buckley, Au/Ra', [
+      'Pete Tong, HER-O, Jules Buckley, Au',
+      'Ra',
+    ]);
+    expect(options).toHaveLength(1);
+    expect(options[0]!.id).toBe('joint-one-act');
+    expect(options[0]!.effect).toEqual({
+      type: 'artist-single',
+      rawName: 'Pete Tong, HER-O, Jules Buckley, Au/Ra',
+    });
+  });
+
+  it('suppresses the split option when proposed members look like sentences or promo text (#1613)', () => {
+    const credit = 'This EP is for you. Pre-order/pre-save now and be part of this journey';
+    const options = jointCreditOptions(credit, [
+      'This EP is for you. Pre-order',
+      'pre-save now and be part of this journey',
+    ]);
+    expect(options).toHaveLength(1);
+    expect(options[0]!.id).toBe('joint-one-act');
+    expect(options[0]!.effect).toEqual({
+      type: 'artist-single',
+      rawName: credit,
+    });
+  });
+
+  it('preserves the split option for legitimate artists with initials or periods', () => {
+    const options = jointCreditOptions('J. Cole/Dr. Dre', ['J. Cole', 'Dr. Dre']);
+    expect(options).toHaveLength(2);
+    expect(options[0]!.id).toBe('joint-split');
+    expect(options[1]!.id).toBe('joint-one-act');
+  });
 });
 
 describe('over the database', () => {

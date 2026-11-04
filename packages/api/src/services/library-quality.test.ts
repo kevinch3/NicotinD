@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'bun:test';
 import {
   looksLikeSourceWatermark,
+  looksLikeSentence,
   isNumericLikeName,
   looksLikeDjSetTag,
   looksLikeVenueCredit,
@@ -21,6 +22,17 @@ describe('looksLikeSourceWatermark', () => {
     expect(looksLikeSourceWatermark('Batea Especial Casamientos + 50 Años')).toBe(true);
   });
 
+  it('flags pre-order and pre-save promo keywords (#1613)', () => {
+    expect(
+      looksLikeSourceWatermark(
+        'This EP is for you. Pre-order/pre-save now and be part of this journey',
+      ),
+    ).toBe(true);
+    expect(looksLikeSourceWatermark('Pre-order now')).toBe(true);
+    expect(looksLikeSourceWatermark('Pre-save on Spotify')).toBe(true);
+    expect(looksLikeSourceWatermark('Available for preorder')).toBe(true);
+  });
+
   it('does not flag legitimate artists (incl. bare "DJ" prefix)', () => {
     expect(looksLikeSourceWatermark('DJ Snake')).toBe(false);
     expect(looksLikeSourceWatermark('Soda Stereo')).toBe(false);
@@ -28,6 +40,34 @@ describe('looksLikeSourceWatermark', () => {
     expect(looksLikeSourceWatermark('blink-182')).toBe(false);
     expect(looksLikeSourceWatermark('')).toBe(false);
     expect(looksLikeSourceWatermark(undefined)).toBe(false);
+  });
+});
+
+describe('looksLikeSentence', () => {
+  it('flags sentence punctuation and mid-phrase clause breaks (#1613)', () => {
+    expect(looksLikeSentence('This EP is for you. Pre-order')).toBe(true);
+    expect(looksLikeSentence('Welcome to the album. Stream it now')).toBe(true);
+    expect(looksLikeSentence('This is not a real artist.')).toBe(true);
+  });
+
+  it('flags long prose or lowercase-leading sentence fragments (#1613)', () => {
+    expect(looksLikeSentence('pre-save now and be part of this journey')).toBe(true);
+    expect(looksLikeSentence('and be part of this journey')).toBe(true);
+    expect(looksLikeSentence('a very long text that goes on and on without stopping')).toBe(true);
+  });
+
+  it('does not flag legitimate artists, abbreviations, or initials', () => {
+    expect(looksLikeSentence('Pete Tong')).toBe(false);
+    expect(looksLikeSentence('Au/Ra')).toBe(false);
+    expect(looksLikeSentence('J. Cole')).toBe(false);
+    expect(looksLikeSentence('Dr. Dre')).toBe(false);
+    expect(looksLikeSentence('St. Vincent')).toBe(false);
+    expect(looksLikeSentence('A.B.C.')).toBe(false);
+    expect(looksLikeSentence('Godspeed You! Black Emperor')).toBe(false);
+    expect(looksLikeSentence('P!nk')).toBe(false);
+    expect(looksLikeSentence('fun.')).toBe(false);
+    expect(looksLikeSentence('')).toBe(false);
+    expect(looksLikeSentence(null)).toBe(false);
   });
 });
 
