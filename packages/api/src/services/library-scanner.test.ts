@@ -774,6 +774,39 @@ describe('LibraryScanner.persist', () => {
     }
   });
 
+  describe('a changed album credit set (#1598)', () => {
+    const albumCredits = (id: string) =>
+      db
+        .query<{ name: string }, [string]>(
+          `SELECT a.name FROM library_album_artists aa
+           JOIN library_artists a ON a.id = aa.artist_id
+           WHERE aa.album_id = ? ORDER BY aa.position`,
+        )
+        .all(id)
+        .map((r) => r.name);
+
+    for (const prune of [false, true]) {
+      it(`drops the superseded credit on a ${prune ? 'full' : 'incremental'} rescan`, () => {
+        const t0 = Date.now();
+        const joint = track({ relPath: 'A, B/Pop/01.mp3', artist: 'A, B', album: 'Pop' });
+        const first = buildLibrary([joint]);
+        scanner.persist(first, t0, true);
+        const id = first.albums[0]!.id;
+        expect(albumCredits(id)).toEqual(['A, B']);
+
+        const authority = {
+          confirmedArtists: new Set(['a', 'b']),
+          canonicalWhole: new Set<string>(),
+          aliases: new Map<string, string>(),
+        };
+        const second = buildLibrary([joint], undefined, undefined, authority);
+        scanner.persist(second, t0 + 1, prune);
+
+        expect(albumCredits(id)).toEqual(['A', 'B']);
+      });
+    }
+  });
+
   it('incremental persist does not prune untouched rows', () => {
     scanner.persist(
       buildLibrary([
