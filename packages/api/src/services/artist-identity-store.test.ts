@@ -37,6 +37,16 @@ describe('loadSplitAuthority', () => {
     expect(auth.confirmedArtists.has('charly garcia y luis alberto spinetta')).toBe(false);
   });
 
+  it('never lets a list credit confirm itself, but keeps a real slash name (#1526)', () => {
+    seed('Gramatik');
+    seed('Gramatik/Luxas');
+    seed('AC/DC');
+    const auth = loadSplitAuthority(db);
+    expect(auth.confirmedArtists.has('gramatik')).toBe(true);
+    expect(auth.confirmedArtists.has('gramatik/luxas')).toBe(false);
+    expect(auth.confirmedArtists.has('ac/dc')).toBe(true);
+  });
+
   it('contributes canonicalWhole from a "single" authority row', () => {
     upsertArtistIdentity(db, {
       artistKey: artistIdFor('Wisin & Yandel'),

@@ -11,7 +11,7 @@ by every library list view and by the API's SQL builder. The rule of thumb it im
 | Albums tab | `GET /api/library/albums` | server-paginated grid |
 | Compilations tab | `GET /api/library/compilations` | |
 | Singles & EPs tab | `GET /api/library/singles` | |
-| Artists tab | `GET /api/library/artists` | with no filter params the query is unchanged (back-compat for existing clients) |
+| Artists tab | `GET /api/library/artists` | with no filter params the query adds no filter clause (back-compat for existing clients); an artist with no album is never listed ([library-scanner.md](library-scanner.md)) |
 | Artist page → Songs tab | `GET /api/library/artists/:id/songs` | filters apply to the songs directly |
 | Library Songs tab | `GET /api/library/songs` | also accepts a transient `q` query param (free-text — see below) |
 

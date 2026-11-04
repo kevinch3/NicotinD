@@ -24,7 +24,7 @@ import {
   reservedDirsFor,
 } from './library-paths.js';
 import { loadOverrides, type MetadataOverrideValue } from './metadata-override-store.js';
-import { splitArtists, isAtomicArtist, type ArtistCredit } from './artist-split.js';
+import { confirmAtomicNames, splitArtists, type ArtistCredit } from './artist-split.js';
 import {
   loadSplitAuthority,
   emptyAuthority,
@@ -461,7 +461,7 @@ function resolveTags(
   // title still collapse via the shared normalized-title group key.
   if (isLooseSinglesBucket(dir, album)) {
     album = title;
-    // A loose single has exactly one performer by construction, so a
+    // A loose single belongs to whoever performed it, so a
     // "Various Artists" album artist is meaningless here — it only means the
     // source tagged a playlist, not a compilation (issue #593: spotdl writes
     // ALBUMARTIST=Various Artists + ALBUM=Unknown on every track of a Spotify
@@ -674,16 +674,16 @@ export function buildLibrary(
     confirmedArtists.add(aliasNorm);
     confirmedArtists.add(normalizeArtistForGrouping(canonical));
   }
-  for (const t of tracks) {
-    // The OWNER, not the credit: a compound credit ("A, B") must never be
-    // confirmed as an artist in its own right, or it becomes the authority that
-    // lets the next compound through the split gate (issue #817).
-    const { albumArtist, trackArtistOwner } = resolveTags(t, overrides);
-    if (isAtomicArtist(albumArtist))
-      confirmedArtists.add(normalizeArtistForGrouping(aliasFix(albumArtist)));
-    if (isAtomicArtist(trackArtistOwner))
-      confirmedArtists.add(normalizeArtistForGrouping(aliasFix(trackArtistOwner)));
-  }
+  // The OWNER, not the credit: a compound credit ("A, B") must never be
+  // confirmed as an artist in its own right, or it becomes the authority that
+  // lets the next compound through the split gate (issue #817).
+  confirmAtomicNames(
+    tracks.flatMap((t) => {
+      const { albumArtist, trackArtistOwner } = resolveTags(t, overrides);
+      return [aliasFix(albumArtist), aliasFix(trackArtistOwner)];
+    }),
+    confirmedArtists,
+  );
   const known = { confirmedArtists, canonicalWhole, explicitSplits: authority.explicitSplits };
 
   // Pass 2: build songs, albums, artists, and artist-link join rows.
@@ -754,12 +754,16 @@ export function buildLibrary(
       genreAcc.set(key, g);
     }
 
+    // A compound owner that split keeps no artist row of its own, and radio counts
+    // a song under this id, so the song belongs to the compound's first artist (#1526).
+    const ownerCredits = splitCredits(trackArtistOwner);
+
     songs.push({
       id,
       albumId: albId,
       title,
       artist: trackArtist,
-      artistId: trackArtistId,
+      artistId: ownerCredits.length > 1 ? artistIdFor(ownerCredits[0]!.name) : trackArtistId,
       albumArtist,
       albumArtistId,
       track: t.track ?? null,
@@ -798,10 +802,8 @@ export function buildLibrary(
     // the door a compound sneaks an artist row in through. `splitCredits` is
     // confirmation-gated: an unknown collaborator leaves the credit whole, and
     // linking that whole string would mint an `album_count = 0` artist named
-    // "Green Velvet, Riva Starr" — and the artists query filters on
-    // `split_compound = 0` without an album-count floor, so it would render as a
-    // real tile. *Unshakable* alone has 13 collaborators, i.e. up to 13 phantom
-    // tiles (issue #817).
+    // "Green Velvet, Riva Starr", a phantom that search and links would surface.
+    // *Unshakable* alone has 13 collaborators, i.e. up to 13 of them (issue #817).
     //
     // So an unsplit credit that is not already the owner falls back to the owner.
     // Nothing is lost: the verbatim credit still lives in `library_songs.artist`,
@@ -1107,6 +1109,20 @@ export class LibraryScanner {
       if (!prev || canonicalTracks.length > prev.length) map.set(id, canonicalTracks);
     }
     return map;
+  }
+
+  /** What a full scan would build from the cached tags, without touching anything. */
+  previewFullBuild(): BuiltLibrary {
+    const tracks = [...loadScanCache(this.db).values()].map((e) => e.track);
+    return buildLibrary(
+      tracks,
+      this.canonicalByAlbum(),
+      loadOverrides(this.db),
+      loadSplitAuthority(this.db),
+      loadGenreContext(this.db),
+      loadGenreOverrides(this.db),
+      this.knownRelPaths(),
+    );
   }
 
   /**

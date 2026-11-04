@@ -367,6 +367,146 @@ describe('loose singles (un-bucketing)', () => {
     expect(built.artists.map((a) => a.name)).toEqual(['Paulo Londra']);
   });
 
+  describe('list credits (#1526)', () => {
+    const solo = track({
+      relPath: 'Gramatik/Epigram/01 - Solo.opus',
+      artist: 'Gramatik',
+      albumArtist: 'Gramatik',
+      album: 'Epigram',
+      title: 'Solo',
+    });
+    const creditsOf = (built: ReturnType<typeof buildLibrary>, path: string) => {
+      const id = built.songs.find((s) => s.path === path)!.id;
+      return built.songArtists.filter((l) => l.parentId === id).map((l) => l.artistId);
+    };
+
+    it('links both artists on a normal album, however the file bills them', () => {
+      const path = 'Gramatik/Epigram/02 - Duet.opus';
+      const built = buildLibrary([
+        solo,
+        track({
+          relPath: path,
+          artist: 'Luxas/Gramatik',
+          albumArtist: 'Gramatik',
+          album: 'Epigram',
+          title: 'Duet',
+        }),
+      ]);
+      expect(creditsOf(built, path)).toEqual([artistIdFor('Luxas'), artistIdFor('Gramatik')]);
+      expect(built.artists.map((a) => a.name)).toContain('Luxas');
+    });
+
+    it('turns a playlist file from a fake artist into its members', () => {
+      const path = 'Various Artists/Unknown/1-13 - Lachesis.opus';
+      const built = buildLibrary([
+        solo,
+        track({
+          relPath: path,
+          artist: 'Gramatik/Luxas',
+          albumArtist: 'Various Artists',
+          album: 'Unknown',
+          title: 'Lachesis',
+        }),
+      ]);
+      expect(creditsOf(built, path)).toEqual([artistIdFor('Gramatik'), artistIdFor('Luxas')]);
+
+      const fake = built.artists.find((a) => a.name === 'Gramatik/Luxas')!;
+      expect(fake.splitCompound).toBe(true);
+      const album = built.albums.find((a) => a.name === 'Lachesis')!;
+      expect(
+        built.albumArtists.filter((l) => l.parentId === album.id).map((l) => l.artistId),
+      ).toEqual([artistIdFor('Gramatik'), artistIdFor('Luxas')]);
+    });
+
+    it('keeps the song id and album id, so nothing keyed on them moves', () => {
+      const file = track({
+        relPath: 'Various Artists/Unknown/1-13 - Lachesis.opus',
+        artist: 'Gramatik/Luxas',
+        albumArtist: 'Various Artists',
+        album: 'Unknown',
+        title: 'Lachesis',
+      });
+      const whole = buildLibrary([file]);
+      const split = buildLibrary([solo, file]);
+      const song = (b: typeof whole) => b.songs.find((s) => s.path === file.relPath)!;
+      expect(song(split).id).toBe(song(whole).id);
+      expect(song(split).albumId).toBe(song(whole).albumId);
+    });
+
+    it('files a split playlist song under its first credited artist, keeping its album', () => {
+      const file = track({
+        relPath: 'Various Artists/Unknown/1-13 - Lachesis.opus',
+        artist: 'Gramatik/Luxas',
+        albumArtist: 'Various Artists',
+        album: 'Unknown',
+        title: 'Lachesis',
+      });
+      const song = buildLibrary([solo, file]).songs.find((s) => s.path === file.relPath)!;
+      expect(song.artistId).toBe(artistIdFor('Gramatik'));
+      expect(song.albumArtistId).toBe(artistIdFor('Gramatik/Luxas'));
+    });
+
+    it('leaves a split song on a normal album with the owner it credits', () => {
+      const path = 'Rihanna/Reloaded/15 - Duet.opus';
+      const built = buildLibrary([
+        track({
+          relPath: 'Rihanna/Solo/01.opus',
+          artist: 'Rihanna',
+          albumArtist: 'Rihanna',
+          album: 'Solo',
+        }),
+        track({
+          relPath: path,
+          artist: 'Maroon 5/Rihanna',
+          albumArtist: 'Rihanna',
+          album: 'Reloaded',
+          title: 'Duet',
+        }),
+      ]);
+      expect(built.songs.find((s) => s.path === path)!.artistId).toBe(artistIdFor('Rihanna'));
+    });
+
+    it('keeps a song with its album artist when the credit does not name them', () => {
+      const path = 'JACKBOYS/JACKBOYS 2/05 - Duet.opus';
+      const built = buildLibrary([
+        track({
+          relPath: 'Travis Scott/Solo/01.opus',
+          artist: 'Travis Scott',
+          albumArtist: 'Travis Scott',
+          album: 'Solo',
+        }),
+        track({
+          relPath: path,
+          artist: 'Travis Scott/GloRilla',
+          albumArtist: 'JACKBOYS',
+          album: 'JACKBOYS 2',
+          title: 'Duet',
+        }),
+      ]);
+      expect(built.songs.find((s) => s.path === path)!.artistId).toBe(artistIdFor('JACKBOYS'));
+      expect(creditsOf(built, path)).toEqual([
+        artistIdFor('Travis Scott'),
+        artistIdFor('GloRilla'),
+      ]);
+    });
+
+    it('leaves AC/DC as one artist', () => {
+      const path = 'AC DC/Back in Black/01 - Hells Bells.opus';
+      const built = buildLibrary([
+        solo,
+        track({
+          relPath: path,
+          artist: 'AC/DC',
+          albumArtist: 'AC/DC',
+          album: 'Back in Black',
+          title: 'Hells Bells',
+        }),
+      ]);
+      expect(creditsOf(built, path)).toEqual([artistIdFor('AC/DC')]);
+      expect(built.artists.find((a) => a.name === 'AC/DC')!.splitCompound).toBe(false);
+    });
+  });
+
   it('leaves a real multi-track Various Artists compilation grouped under VA', () => {
     const comp = (n: string, artist: string) =>
       track({

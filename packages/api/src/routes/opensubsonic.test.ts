@@ -85,8 +85,8 @@ function seed() {
   const now = Date.now();
   db.run(
     `INSERT INTO library_artists (id, name, album_count, synced_at) VALUES
-       ('ar1', 'Air', 2, ?), ('ar2', 'The Beatles', 0, ?)`,
-    [now, now],
+       ('ar1', 'Air', 2, ?), ('ar2', 'The Beatles', 1, ?), ('ar3', 'Guest Only', 0, ?)`,
+    [now, now, now],
   );
   db.run(
     `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, year, genre, created, classification, synced_at) VALUES
@@ -214,6 +214,16 @@ describe('OpenSubsonic browsing', () => {
     };
     expect(a.artist.name).toBe('Air');
     expect(a.artist.album.map((x) => x.id).sort()).toEqual(['al1', 'al2']);
+  });
+
+  it('leaves an artist with no album out of the index, as an empty page would be (#1526)', async () => {
+    const r = (await ok('getArtists')) as {
+      artists: { index: Array<{ name: string; artist: R[] }> };
+    };
+    const names = r.artists.index.flatMap((i) => i.artist.map((a) => a.name));
+    expect(names).not.toContain('Guest Only');
+    const guest = (await ok('getArtist', { id: 'ar3' })) as { artist: { name: string } };
+    expect(guest.artist.name).toBe('Guest Only');
   });
 
   it('returns an album with its songs in track order', async () => {

@@ -1,6 +1,6 @@
 import type { Database } from 'bun:sqlite';
 import { normalizeArtistForGrouping } from './album-grouping';
-import { isAtomicArtist } from './artist-split';
+import { confirmAtomicNames } from './artist-split';
 import { createLogger } from '@nicotind/core';
 
 const log = createLogger('artist-identity-store');
@@ -48,10 +48,10 @@ export function loadSplitAuthority(db: Database): SplitAuthority {
          SELECT DISTINCT album_artist AS name FROM library_songs WHERE album_artist IS NOT NULL`,
       )
       .all();
-    for (const r of rows) {
-      if (r.name && isAtomicArtist(r.name))
-        confirmedArtists.add(normalizeArtistForGrouping(r.name));
-    }
+    confirmAtomicNames(
+      rows.map((r) => r.name),
+      confirmedArtists,
+    );
   } catch {
     // library_songs absent (fresh db) — nothing to seed from.
   }

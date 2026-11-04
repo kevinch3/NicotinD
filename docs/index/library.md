@@ -19,8 +19,8 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   per-track collaboration credit is storable without fragmenting the artist grid;
   `classifyFolder` detects compilations; Compilations tab, VA hidden from artists.
   → [library-scanner.md](../library-scanner.md)
-- **Multi-artist support (confirmation-gated)**: `splitArtists` splits a compound only when every part
-  is a confirmed artist; `segmentConcatenatedArtist` handles delimiter-less mashes;
+- **Multi-artist support (confirmation-gated)**: `splitArtists` splits a list credit (`/`, `;`) on one
+  confirmed name, any other compound on all of them; `segmentConcatenatedArtist` handles mashes;
   `library_artist_identity` + `library_artist_aliases` survive rescans; `corroboratesLidarrHit` and
   `boundedEditDistance` guard provisioning. → [library-scanner.md](../library-scanner.md),
   [artist-segmentation-2026-09.md](../measurements/artist-segmentation-2026-09.md)

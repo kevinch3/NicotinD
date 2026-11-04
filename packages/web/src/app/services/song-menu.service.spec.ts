@@ -120,6 +120,22 @@ describe('SongMenuService.build', () => {
     expect(labels(song({ artistId: 'ar1' }), svc)).not.toContain('Go to album');
   });
 
+  it('sends Go to artist to the first credited artist, not a split compound', () => {
+    const { svc, router } = setup();
+    const actions = svc.build(
+      song({
+        artistId: 'compound',
+        artists: [
+          { id: 'one', name: 'One', role: 'primary' },
+          { id: 'two', name: 'Two', role: 'primary' },
+        ],
+      }),
+      {},
+    );
+    actions.find((a) => a.label === 'Go to artist')!.action();
+    expect(router.navigate).toHaveBeenCalledWith(['/library', 'artists', 'one']);
+  });
+
   it('hides Go to artist without artistId', () => {
     const { svc } = setup();
     expect(labels(song({ albumId: 'al1' }), svc)).not.toContain('Go to artist');

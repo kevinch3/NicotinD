@@ -20,7 +20,8 @@ export interface ArtistCredit {
  *   `/` the lexical pass deliberately ignores so AC/DC survives — issue #1520).
  *
  * With empty sets the parser keeps every compound whole (the safe default) — it only
- * ever splits on positive confirmation, never mangling a band/duo name.
+ * ever splits on positive confirmation, never mangling a band/duo name. A list credit
+ * (`/`, `;`) needs one confirmed name, every other delimiter needs all of them.
  */
 export interface KnownArtistSets {
   confirmedArtists?: ReadonlySet<string>;
@@ -115,6 +116,12 @@ const cut = (s: string, on: RegExp): string[] =>
     .map((p) => p.trim())
     .filter(Boolean);
 
+/** A slash between two-letter fragments is a name (`AC/DC`, `Au/Ra`, `VE/RA`), never a list. */
+const slashSides = (piece: string): string[] => {
+  const sides = cut(piece, BARE_SLASH);
+  return sides.every((s) => s.length <= 2) ? [piece] : sides;
+};
+
 /** The credit without its `feat.` guests, which `splitArtists` handles on their own. */
 export function primaryCredit(raw: string): string {
   return extractFeaturing(raw).primary;
@@ -122,7 +129,7 @@ export function primaryCredit(raw: string): string {
 
 /** Every name a list credit could hold, before asking which are artists. */
 export function listCreditSides(raw: string): string[] {
-  return cut(raw, LIST_BREAK).flatMap((piece) => cut(piece, BARE_SLASH));
+  return cut(raw, LIST_BREAK).flatMap(slashSides);
 }
 
 /** A name the library knows as an artist, whole or (`Oden & Fatzo`) through each of its parts. */
@@ -140,9 +147,27 @@ export function isKnownMember(name: string, known: KnownArtistSets): boolean {
  */
 export function listCreditMembers(raw: string, known: KnownArtistSets): string[] {
   return cut(raw, LIST_BREAK).flatMap((piece) => {
-    const sides = cut(piece, BARE_SLASH);
-    return sides.length > 1 && sides.some((s) => isKnownMember(s, known)) ? sides : [piece];
+    const sides = slashSides(piece);
+    return sides.some((s) => isKnownMember(s, known)) ? sides : [piece];
   });
+}
+
+/**
+ * Add each atomic name to `into`. A list credit must not confirm itself, or it
+ * becomes the authority that lets the next compound through the split gate; a slash
+ * name with no known side (`AC/DC`) still may, so it waits until the rest are in.
+ */
+export function confirmAtomicNames(names: Iterable<string>, into: Set<string>): void {
+  const slashNames: string[] = [];
+  for (const name of names) {
+    if (!name || !isAtomicArtist(name)) continue;
+    if (listCreditSides(name).length > 1) slashNames.push(name);
+    else into.add(normalize(name));
+  }
+  for (const name of slashNames) {
+    const sides = listCreditSides(name);
+    if (!sides.some((s) => isKnownMember(s, { confirmedArtists: into }))) into.add(normalize(name));
+  }
 }
 
 /** Shortest artist segment a concatenation split may produce ("U2"/"M83" are real). */
@@ -226,6 +251,30 @@ export function segmentConcatenatedArtist(
 }
 
 /**
+ * A list credit's artists, or null when no name in it is a known artist. One known
+ * name is enough, because a `/` or `;` is a list far more often than a band name and
+ * collaborators rarely appear solo (measured on prod, #1526). A member with its own
+ * delimiter splits only under the all-confirmed gate, so it is never shredded.
+ */
+function listCreditSplit(primary: string, known: KnownArtistSets): string[] | null {
+  const members = listCreditMembers(primary, known);
+  if (members.length < 2 || !members.some((m) => isKnownMember(m, known))) return null;
+  const confirmed = known.confirmedArtists ?? EMPTY;
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const member of members) {
+    const whole = confirmed.has(normalize(member)) || known.canonicalWhole?.has(normalize(member));
+    const parts = whole ? [member] : splitOnDelimiters(member);
+    const names = parts.every((p) => confirmed.has(normalize(p))) ? parts : [member];
+    for (const name of names) {
+      if (!seen.has(normalize(name))) out.push(name);
+      seen.add(normalize(name));
+    }
+  }
+  return out.length > 1 ? out : null;
+}
+
+/**
  * Segment every delimiter candidate, all-or-nothing: a candidate contributes its
  * confirmed segments, or itself when it is a confirmed artist, and one candidate
  * that is neither abandons the whole split. Same discipline as
@@ -262,12 +311,15 @@ export function splitArtists(raw: string, known: KnownArtistSets = {}): ArtistCr
   const { primary, featuring } = extractFeaturing(raw);
 
   let primaryNames: string[];
+  let listed: string[] | null;
   const decided = known.explicitSplits?.get(normalize(primary));
   if (decided && decided.length > 1) {
     primaryNames = [...decided];
   } else if (canonicalWhole.has(normalize(primary))) {
     // Lidarr/MB says this compound is one act (band/duo) — never split it.
     primaryNames = [primary];
+  } else if ((listed = listCreditSplit(primary, known))) {
+    primaryNames = listed;
   } else {
     const candidates = splitOnDelimiters(primary);
     // Conservative: split only when every candidate is an independently confirmed
