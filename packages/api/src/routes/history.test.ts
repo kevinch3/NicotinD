@@ -147,6 +147,25 @@ describe('GET /recent', () => {
     expect(body.find((r) => r.songId === 'b')?.coverArt).toBeNull();
   });
 
+  it('ships every credited artist so a replay keeps its links', async () => {
+    testDb.run(
+      `INSERT INTO library_artists (id, name, synced_at) VALUES ('id-one', 'One', 0), ('id-two', 'Two', 0)`,
+    );
+    testDb.run(
+      `INSERT INTO library_song_artists (song_id, artist_id, role, position)
+       VALUES ('a', 'id-one', 'primary', 0), ('a', 'id-two', 'primary', 1)`,
+    );
+    await post(makeApp('u1'), [
+      event({ songId: 'a', startedAt: 1_000 }),
+      event({ songId: 'b', startedAt: 2_000 }),
+    ]);
+
+    const res = await makeApp('u1').request('/recent');
+    const body = (await res.json()) as Array<{ songId: string; artists?: Array<{ name: string }> }>;
+    expect(body.find((r) => r.songId === 'a')?.artists?.map((a) => a.name)).toEqual(['One', 'Two']);
+    expect(body.find((r) => r.songId === 'b')?.artists).toBeUndefined();
+  });
+
   it('never returns another user’s history', async () => {
     await post(makeApp('u1'), [event({ songId: 'mine' })]);
     const res = await makeApp('u2').request('/recent');

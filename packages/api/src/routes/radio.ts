@@ -8,6 +8,7 @@ import {
   type Song,
 } from '@nicotind/core';
 import { getDatabase } from '../db.js';
+import { attachSongArtists } from '../services/artist-attach.js';
 import {
   rankCandidates,
   RADIO_FORMULA_VERSION,
@@ -304,8 +305,10 @@ export interface RadioResult {
 }
 
 /** Extract the ranked candidates as full Song rows (the route's response shape). */
-export function radioSongs(result: RadioResult): Song[] {
-  return result.ranked.map((e) => rowToSong(e.song._row));
+export function radioSongs(db: ReturnType<typeof getDatabase>, result: RadioResult): Song[] {
+  const songs: Song[] = result.ranked.map((e) => rowToSong(e.song._row));
+  attachSongArtists(db, songs);
+  return songs;
 }
 
 /**
@@ -334,12 +337,13 @@ export function radioProvenance(
  * an unconditional change breaks a phone that simply has not been updated.
  */
 export function radioBody(
+  db: ReturnType<typeof getDatabase>,
   result: RadioResult,
   strategy: RecommendationStrategy,
   lane: RadioLane,
   wantsProvenance: boolean,
 ): Song[] | { songs: Song[]; provenance: RadioProvenance } {
-  const songs = radioSongs(result);
+  const songs = radioSongs(db, result);
   return wantsProvenance ? { songs, provenance: radioProvenance(result, strategy, lane) } : songs;
 }
 
@@ -1009,6 +1013,7 @@ export function radioRoutes() {
       if (seedRows.length === 0) return c.json({ error: 'No seed songs found' }, 404);
       return c.json(
         radioBody(
+          db,
           buildListRadio(db, seedRows, {
             count,
             excludeIds,
@@ -1035,6 +1040,7 @@ export function radioRoutes() {
       }
       return c.json(
         radioBody(
+          db,
           buildFilterRadio(db, filter, { count, excludeIds, userId, strategy }),
           strategy,
           'filter',
@@ -1050,6 +1056,7 @@ export function radioRoutes() {
 
     return c.json(
       radioBody(
+        db,
         buildSeedRadio(db, seedRow, { count, excludeIds, userId, strategy, learnedGenreAffinity }),
         strategy,
         'seed',

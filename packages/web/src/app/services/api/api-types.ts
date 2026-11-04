@@ -1095,6 +1095,7 @@ export interface RecentPlay {
   title: string | null;
   artist: string | null;
   artistId: string | null;
+  artists?: ArtistCredit[];
   album: string | null;
   albumId: string | null;
   duration: number | null;

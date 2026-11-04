@@ -983,6 +983,9 @@ docs/curated-playlists.md "Covers").
 | ------ | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
 | GET    | `/api/radio/next` | **one of** `seedId` (seed radio), `seedIds` (comma-separated, list-seeded "keep the vibe" — capped at 20, unknown ids skipped, 404 only when none resolve) **or** a serialized `LibraryFilter` (filter radio — `mood`, `genre`, `bpmMin`, axis buckets, …); plus `exclude` (comma-separated IDs), `count` (1–50, default 10), `provenance=1` (envelope, below) | `Song[]` (`[]` if a filter matches nothing), or `{ songs, provenance }` with `provenance=1` |
 
+Every returned song carries `artists`, the credits the player links
+([library-scanner.md](library-scanner.md)).
+
 ## Perceptual features (shipped)
 
 The Essentia/ffmpeg enrichment landed exactly along the planned extension

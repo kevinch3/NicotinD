@@ -4,9 +4,9 @@ import type { ArtistCredit } from '@nicotind/core';
 /** Minimal shape both the full `Song`/`Album` and the lighter search results satisfy. */
 type HasArtists = { id: string; artists?: ArtistCredit[] };
 
-export function attachSongArtists(db: Database, songs: HasArtists[]): void {
-  if (songs.length === 0) return;
-  const ids = songs.map((s) => s.id);
+/** Each song's credited artists, in billing order. A song with none has no entry. */
+export function songCredits(db: Database, ids: string[]): Map<string, ArtistCredit[]> {
+  if (ids.length === 0) return new Map();
   const placeholders = ids.map(() => '?').join(',');
   const rows = db
     .query<
@@ -26,9 +26,18 @@ export function attachSongArtists(db: Database, songs: HasArtists[]): void {
     arr.push({ id: r.artist_id, name: r.name, role: r.role as 'primary' | 'featuring' });
     map.set(r.song_id, arr);
   }
+  return map;
+}
+
+export function attachSongArtists(db: Database, songs: HasArtists[]): void {
+  if (songs.length === 0) return;
+  const credits = songCredits(
+    db,
+    songs.map((s) => s.id),
+  );
   for (const song of songs) {
-    const artists = map.get(song.id);
-    if (artists && artists.length > 0) song.artists = artists;
+    const artists = credits.get(song.id);
+    if (artists) song.artists = artists;
   }
 }
 

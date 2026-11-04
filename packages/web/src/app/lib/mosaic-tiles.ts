@@ -282,7 +282,10 @@ const recentToTrack = (p: RecentPlay): Track =>
     id: p.songId,
     title: p.title ?? 'Unknown title',
     artist: p.artist ?? 'Unknown artist',
+    artistId: p.artistId ?? undefined,
+    artists: p.artists,
     album: p.album ?? undefined,
+    albumId: p.albumId ?? undefined,
     coverArt: p.coverArt ?? undefined,
     duration: p.duration ?? undefined,
   });
