@@ -2085,6 +2085,21 @@ describe('artist-identity task', () => {
       expect(cards()).toHaveLength(1);
     });
 
+    it('treats a failed lookup as a failure, not as an answer', async () => {
+      seedSong('open', { artist: 'Duo Rey Silva/Mario Catalán' });
+      const c = ctx({
+        resolveArtistIdentity: async () => {
+          throw new Error('Lidarr is down');
+        },
+      });
+
+      const res = await task.run(db, c, 25);
+
+      expect(res.failed).toBe(1);
+      expect(db.query('SELECT 1 FROM library_artist_identity').get()).toBeNull();
+      expect(db.query('SELECT 1 FROM curation_flags').get()).toBeNull();
+    });
+
     it('files no card when Lidarr answers', async () => {
       seedSong('band', { artist: 'AC/DC' });
       const c = ctx({
@@ -2667,6 +2682,18 @@ describe('MBID resolution helpers (issue #211)', () => {
       });
       expect(result).toBeNull();
     });
+  });
+
+  it('the Lidarr resolver lets a failed lookup surface (#1607)', async () => {
+    const lidarr = {
+      artist: {
+        lookup: async () => {
+          throw new Error('503');
+        },
+      },
+    } as unknown as Parameters<typeof makeLidarrArtistIdentityResolver>[0];
+    const resolve = makeLidarrArtistIdentityResolver(lidarr);
+    await expect(resolve('A, B', ['A', 'B'])).rejects.toThrow('503');
   });
 
   describe('makeLidarrArtistIdentityResolver (issue #211 widening on the single decision)', () => {

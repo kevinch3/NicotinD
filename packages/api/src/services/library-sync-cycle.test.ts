@@ -34,17 +34,19 @@ describe('runLibrarySyncCycle (#1313)', () => {
     const order: string[] = [];
     await runLibrarySyncCycle({
       scanFull: async () => void order.push('scan'),
+      closeResolvedCards: () => void order.push('cards'),
       reclassifyAll: () => void order.push('reclassify'),
       backfillAcquisitions: () => void order.push('backfill'),
       kickEnrichment: () => void order.push('kick'),
     });
-    expect(order).toEqual(['scan', 'reclassify', 'backfill', 'kick']);
+    expect(order).toEqual(['scan', 'cards', 'reclassify', 'backfill', 'kick']);
   });
 
   it('lets the event loop run between synchronous steps', async () => {
     const gap = await maxLoopGap(() =>
       runLibrarySyncCycle({
         scanFull: async () => busy(120),
+        closeResolvedCards: () => {},
         reclassifyAll: () => busy(120),
         backfillAcquisitions: () => busy(120),
         kickEnrichment: () => {},

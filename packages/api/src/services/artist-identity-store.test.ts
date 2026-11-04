@@ -26,6 +26,44 @@ function seed(artist: string, albumArtist = artist): void {
   );
 }
 
+describe('upsertArtistIdentity keeps a decision it cannot improve on (#1607)', () => {
+  const row = () =>
+    db
+      .query<{ decision: string; members: string | null; checked_at: number }, []>(
+        'SELECT decision, members, checked_at FROM library_artist_identity',
+      )
+      .get()!;
+  const write = (decision: 'single' | 'split' | 'unknown', members?: string[]) =>
+    upsertArtistIdentity(db, {
+      artistKey: artistIdFor('A, B'),
+      rawName: 'A, B',
+      decision,
+      members,
+      source: 'lidarr',
+    });
+
+  it('an unknown leaves a stored split, and still counts as checked', () => {
+    write('split', ['A', 'B']);
+    db.run('UPDATE library_artist_identity SET checked_at = 1');
+    write('unknown');
+    expect(row().decision).toBe('split');
+    expect(JSON.parse(row().members!)).toEqual(['A', 'B']);
+    expect(row().checked_at).toBeGreaterThan(1);
+  });
+
+  it('an unknown leaves a stored one-act decision', () => {
+    write('single');
+    write('unknown');
+    expect(row().decision).toBe('single');
+  });
+
+  it('a real answer still replaces the last one', () => {
+    write('split', ['A', 'B']);
+    write('single');
+    expect(row()).toMatchObject({ decision: 'single', members: null });
+  });
+});
+
 describe('loadSplitAuthority', () => {
   it('confirms atomic library artist names but never a compound (self-confirmation guard)', () => {
     seed('Charly García');

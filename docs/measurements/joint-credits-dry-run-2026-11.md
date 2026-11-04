@@ -29,6 +29,29 @@ Of 1,235 new names, two are not artists, and nothing lexical separates them from
 `Orquesta Tipica` (`Ariel Ardit/Orquesta Tipica`, 3 songs) and `Su Orquesta Tipica`
 (`Carlos Di Sarli/Su Orquesta Tipica`, 1 song). Merge each into its bandleader.
 
+## After the deploy
+
+Measured on prod against a baseline taken just before merging, same day. The grid figures both use
+the album floor, which is why this "before" is 4,230 rather than today's unfiltered count.
+
+| Measure | Before | After |
+| --- | --- | --- |
+| Album ids moved | | **0** |
+| Songs lost | | **0** |
+| Curated artist rows (starred, edited or hidden) | 123 | 123, none lost |
+| User identity decisions | 47 | 47 |
+| Play events | 8,737 | 8,737 |
+| Song artist links | 25,099 | 27,772 |
+| Artist rows | 4,419 | 5,626 |
+| Artists grid | 4,230 | 3,492 |
+| Unresolved joint credits | 1,717 | 38 (35 `human`, 3 `auto` expected to clear on the next scan) |
+| Gramatik-first songs on a Gramatik radio (count 30) | 23 | 1 |
+
+The artist row count ended about 110 above the dry run, probably because the library took in songs
+and Lidarr answered more credits between the two; that difference was not traced. `Orquesta Tipica` and `Su Orquesta Tipica` were fixed
+by retagging their 4 songs, not by a merge: `merge_artist` writes a permanent alias, which would
+credit a later `Juan D'Arienzo/Su Orquesta Tipica` to Carlos Di Sarli.
+
 ## What this run could not check
 
 The full list of 1,626 changed credits was scanned by rule for generic and short names, and read in

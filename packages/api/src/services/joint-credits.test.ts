@@ -2,10 +2,12 @@ import { beforeEach, describe, expect, it } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import { normalizeArtistForGrouping as norm } from './album-grouping.js';
-import type { CurationFlag } from './curation-flags.js';
+import { recordListenerReport, type CurationFlag } from './curation-flags.js';
 import { listCreditMembers } from './artist-split.js';
 import { artistIdFor } from './library-scanner.js';
 import {
+  closeResolvedJointCards,
+  fileJointCreditCard,
   findUnresolvedJointCredits,
   jointCreditFacts,
   jointCreditOptions,
@@ -203,6 +205,52 @@ describe('over the database', () => {
     const facts = jointCreditFacts(db, 1);
     expect(facts.metric).toMatchObject({ credits: 3, songs: 3, auto: 2, human: 1, fakeArtists: 2 });
     expect(facts.worklist).toHaveLength(1);
+  });
+
+  describe('closeResolvedJointCards (#1610)', () => {
+    const openCards = () =>
+      db
+        .query<{ target_id: string }, []>(
+          'SELECT target_id FROM curation_flags WHERE resolved_at IS NULL',
+        )
+        .all()
+        .map((r) => r.target_id);
+
+    it('closes a filed card once its credit resolved, and keeps the open ones', () => {
+      fileJointCreditCard(db, 'Mina/Miguel Bosé', ['Mina', 'Miguel Bosé']);
+      song('open', 'Duo Rey/Mario', ['Duo Rey/Mario']);
+      fileJointCreditCard(db, 'Duo Rey/Mario', ['Duo Rey', 'Mario']);
+      expect(closeResolvedJointCards(db)).toBe(0);
+
+      db.run(`DELETE FROM library_song_artists WHERE song_id = 'mina'`);
+      for (const [i, name] of ['Mina', 'Miguel Bosé'].entries()) {
+        db.run(
+          `INSERT INTO library_song_artists (song_id, artist_id, role, position) VALUES ('mina', ?, 'primary', ?)`,
+          [artistIdFor(name), i],
+        );
+      }
+
+      expect(closeResolvedJointCards(db)).toBe(1);
+      expect(openCards()).toEqual(['open']);
+    });
+
+    it('closes a card whose song is gone', () => {
+      fileJointCreditCard(db, 'Mina/Miguel Bosé', ['Mina', 'Miguel Bosé']);
+      db.run(`DELETE FROM library_songs WHERE id = 'mina'`);
+      expect(closeResolvedJointCards(db)).toBe(1);
+    });
+
+    it('leaves a listener report alone, which may be about something else', () => {
+      recordListenerReport(db, {
+        targetKind: 'song',
+        targetId: 'solo',
+        reason: 'misplaced',
+        reasonId: 'misplaced',
+        userId: 'u1',
+      });
+      expect(closeResolvedJointCards(db)).toBe(0);
+      expect(openCards()).toEqual(['solo']);
+    });
   });
 
   it('gives a listener report on such a song a card', () => {
