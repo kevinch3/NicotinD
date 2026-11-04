@@ -319,8 +319,9 @@ export function repairArtistIdentityNfc(db: Database): { identity: number; alias
  * acquisition / the admin fix flow). A `source='user'` row is the highest authority:
  * background writers (lidarr/mb/library) can never overwrite it — only another user
  * decision can. See also {@link pendingArtistIdentityRows}, which keeps user rows out
- * of the background task's pending set permanently (no TTL re-resolution). Text is
- * stored NFC, like every tag string the scanner writes (issue #1440).
+ * of the background task's pending set permanently (no TTL re-resolution). An `unknown`
+ * answers nothing, so it keeps a stored decision and only marks it checked (#1607). Text
+ * is stored NFC, like every tag string the scanner writes (issue #1440).
  */
 export function upsertArtistIdentity(
   db: Database,
@@ -337,9 +338,9 @@ export function upsertArtistIdentity(
      VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(artist_key) DO UPDATE SET
        raw_name = excluded.raw_name,
-       decision = excluded.decision,
-       members = excluded.members,
-       source = excluded.source,
+       decision = CASE WHEN excluded.decision = 'unknown' THEN decision ELSE excluded.decision END,
+       members = CASE WHEN excluded.decision = 'unknown' THEN members ELSE excluded.members END,
+       source = CASE WHEN excluded.decision = 'unknown' THEN source ELSE excluded.source END,
        checked_at = excluded.checked_at
      WHERE library_artist_identity.source != 'user' OR excluded.source = 'user'`,
     [

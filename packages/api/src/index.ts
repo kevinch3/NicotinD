@@ -134,6 +134,7 @@ import { dirname, join } from 'node:path';
 import { createWebSocketHandlers } from './services/websocket.js';
 import { coalescedRun } from './services/coalesced-run.js';
 import { runLibrarySyncCycle } from './services/library-sync-cycle.js';
+import { closeResolvedJointCards } from './services/joint-credits.js';
 import type { AuthEnv } from './middleware/auth.js';
 
 export type ProcessingRef = { current: LibraryProcessingService | null };
@@ -208,6 +209,7 @@ export function createApp({
     try {
       await runLibrarySyncCycle({
         scanFull: () => scanner.scanFull(),
+        closeResolvedCards: () => void closeResolvedJointCards(db),
         reclassifyAll: () => curator.reclassifyAll('full-sync'),
         // Runs once (guarded by a library_sync_state marker); cheap no-op on
         // subsequent boots.

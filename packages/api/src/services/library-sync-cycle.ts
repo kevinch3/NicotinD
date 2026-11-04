@@ -2,6 +2,8 @@ import { yieldToEventLoop } from './loop-block-monitor.js';
 
 export interface LibrarySyncCycleSteps {
   scanFull: () => Promise<unknown>;
+  /** A review card whose credit this scan resolved must not be answered (#1610). */
+  closeResolvedCards: () => void;
   reclassifyAll: () => void;
   /** Best-effort acquisition provenance for songs that predate the table. */
   backfillAcquisitions: () => void;
@@ -17,6 +19,8 @@ export interface LibrarySyncCycleSteps {
  */
 export async function runLibrarySyncCycle(steps: LibrarySyncCycleSteps): Promise<void> {
   await steps.scanFull();
+  await yieldToEventLoop();
+  steps.closeResolvedCards();
   await yieldToEventLoop();
   steps.reclassifyAll();
   await yieldToEventLoop();
