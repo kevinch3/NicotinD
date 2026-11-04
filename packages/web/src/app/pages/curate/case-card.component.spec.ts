@@ -87,6 +87,41 @@ describe('CaseCardComponent', () => {
     expect(options(f)[0].getAttribute('data-fallback')).toBeNull();
   });
 
+  it('renders a joint-credit card in the reader language, from its own data', () => {
+    const f = render(
+      aCase({
+        question: 'Is "Mina/Miguel Bosé" several artists?',
+        options: [
+          {
+            id: 'joint-split',
+            label: 'Separate: Mina + Miguel Bosé',
+            rationale: '',
+            effect: { rawName: 'Mina/Miguel Bosé', members: ['Mina', 'Miguel Bosé'] },
+          },
+          { id: 'joint-one-act', label: 'One act', rationale: '' },
+          { id: 'resolve', label: 'Leave as is', rationale: '' },
+        ],
+      }),
+    );
+    expect(el(f).querySelector('[data-testid="case-question"]')!.textContent).toContain(
+      'curate.jointCredit.question',
+    );
+    const labels = [...options(f)].map((o) => o.textContent!.trim());
+    expect(labels).toEqual([
+      'curate.jointCredit.separate',
+      'curate.jointCredit.oneAct',
+      'curate.leaveAsIs',
+    ]);
+  });
+
+  it('keeps an agent card in the words the agent wrote', () => {
+    const f = render(aCase());
+    expect(el(f).querySelector('[data-testid="case-question"]')!.textContent).toContain(
+      'Which Rocky is this?',
+    );
+    expect(options(f)[0]!.textContent).toContain('The French band');
+  });
+
   it('disables the options while a choice is being applied', () => {
     const f = render(aCase(), true);
     expect(options(f)[0].disabled).toBe(true);

@@ -30,6 +30,8 @@ const KNOWN_EFFECTS = [
   'resolve-only',
   'song-metadata',
   'artist-merge',
+  'artist-split',
+  'artist-single',
   'song-delete',
   'song-genre',
 ] as const;
@@ -87,6 +89,14 @@ function effectProblem(effect: unknown): string | null {
       if (!nonEmpty(e.rawName)) return 'artist-merge needs a rawName';
       if (!nonEmpty(e.mergeInto)) return 'artist-merge needs a mergeInto';
       return null;
+    case 'artist-split':
+      if (!nonEmpty(e.rawName)) return 'artist-split needs a rawName';
+      if (!Array.isArray(e.members) || e.members.length < 2 || !e.members.every(nonEmpty)) {
+        return 'artist-split needs members, at least 2 names';
+      }
+      return null;
+    case 'artist-single':
+      return nonEmpty(e.rawName) ? null : 'artist-single needs a rawName';
     case 'song-delete':
       return nonEmpty(e.songId) ? null : 'song-delete needs a songId';
     case 'song-genre':

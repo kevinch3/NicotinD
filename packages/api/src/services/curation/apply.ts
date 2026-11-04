@@ -109,6 +109,27 @@ export async function applyCaseEffect(
       return { ok: true, detail: `merged ${effect.rawName} into ${effect.mergeInto}` };
     }
 
+    case 'artist-split': {
+      const res = deps.mutateArtistIdentity(db, deps.artistIdentityDeps, {
+        rawName: effect.rawName,
+        decision: 'split',
+        members: effect.members,
+      });
+      if (!res.ok) return { ok: false, error: res.error };
+      await deps.rebucket?.([effect.rawName, ...effect.members]);
+      return { ok: true, detail: `split ${effect.rawName} into ${effect.members.join(' + ')}` };
+    }
+
+    case 'artist-single': {
+      const res = deps.mutateArtistIdentity(db, deps.artistIdentityDeps, {
+        rawName: effect.rawName,
+        decision: 'single',
+      });
+      if (!res.ok) return { ok: false, error: res.error };
+      await deps.rebucket?.([effect.rawName]);
+      return { ok: true, detail: `kept ${effect.rawName} as one act` };
+    }
+
     case 'song-genre': {
       // All or nothing up front: the route audits only an applied effect, so a
       // half-applied card would leave genre writes no audit row records. A

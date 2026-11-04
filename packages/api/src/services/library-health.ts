@@ -17,6 +17,7 @@ import { findFolderCoverName } from './cover-sources.js';
 import { losslessSuffixSql } from './library-track-select.js';
 import { lowInformationOnlyGenreSql, unresolvedGenreSql } from './genre-split.js';
 import { countOpenCurationFlags } from './curation-flags.js';
+import { jointCreditFacts, type JointCreditFacts } from './joint-credits.js';
 import { albumAlreadyComplete, matchingLocalAlbums, onDiskTitles } from './library-completeness.js';
 import { jobCanonicalTracklists, type JobCanonicalTracklist } from './acquisition-job-store.js';
 import { duplicateSongFacts, type DuplicateSongFacts } from './duplicate-songs.js';
@@ -306,6 +307,8 @@ export interface LibraryHealthReport {
      * points at cannot disagree. Candidates, not confirmed duplicates.
      */
     duplicateSongs: DuplicateSongFacts & { remediation: string };
+    /** List credits (`A/B`) whose song links fewer artists than they name (#1600). */
+    jointCredits: JointCreditFacts & { remediation: string };
     flags: { metric: { open: number; oldestAt: number | null }; remediation: string };
   };
 }
@@ -1000,6 +1003,11 @@ export function libraryHealth(
         ...duplicateSongFacts(db, sample),
         remediation:
           'Admin → Library maintenance → Find duplicates keeps the best-quality copy of each cluster. Candidates match on folded artist+title within 2 s, not on a fingerprint — check a cluster before deleting; same-album same-slot copies are the audit rule slot_duplicate',
+      },
+      jointCredits: {
+        ...jointCreditFacts(db, sample),
+        remediation:
+          'decision `auto`: a name in it is a known artist, so the scanner list rule (#1526) resolves it. decision `human`: no name is known, so split_artist or keep_artist_whole (MCP) or answer its review card.',
       },
       flags: {
         metric: { open: countOpenCurationFlags(db), oldestAt: oldestFlag },

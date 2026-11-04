@@ -413,7 +413,7 @@ prose ones, so the backlog the round hides is one click away rather than invisib
 (half a card is refused); the question is trimmed and capped; each option needs a unique `id`
 (never the reserved `resolve`), a `label` under the cap, an optional string `rationale` under the
 cap, and an `effect` this build can dispatch — `song-metadata` (`title|artist|album|albumArtist`
-strings only), `song-genre`, `artist-merge`, `song-delete`, or `resolve-only` as a labelled "keep". **At least one
+strings only), `song-genre`, `artist-merge`, `artist-split`, `artist-single`, `song-delete`, or `resolve-only` as a labelled "keep". **At least one
 option must change data.** The error names the option index and the problem
 (`options[1] effect: fields.year is not one of …`). The caps live in core as `CASE_TEXT_LIMITS`
 so the tool description, the parser and any future card renderer quote one number. The read-side

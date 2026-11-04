@@ -104,6 +104,47 @@ export function isAtomicArtist(raw: string): boolean {
   return splitOnDelimiters(primary).length === 1;
 }
 
+/** Only ever separate names: a `;`, or a run of spaces where a separator was stripped. */
+const LIST_BREAK = /\s*;\s*|\s{2,}/;
+/** ID3v2.3's list separator once a transcode flattens it: separates names, except `AC/DC`. */
+const BARE_SLASH = /(?<=\S)\/(?=\S)/;
+
+const cut = (s: string, on: RegExp): string[] =>
+  s
+    .split(on)
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+/** The credit without its `feat.` guests, which `splitArtists` handles on their own. */
+export function primaryCredit(raw: string): string {
+  return extractFeaturing(raw).primary;
+}
+
+/** Every name a list credit could hold, before asking which are artists. */
+export function listCreditSides(raw: string): string[] {
+  return cut(raw, LIST_BREAK).flatMap((piece) => cut(piece, BARE_SLASH));
+}
+
+/** A name the library knows as an artist, whole or (`Oden & Fatzo`) through each of its parts. */
+export function isKnownMember(name: string, known: KnownArtistSets): boolean {
+  const key = normalize(name);
+  if (known.confirmedArtists?.has(key) || known.canonicalWhole?.has(key)) return true;
+  const parts = splitOnDelimiters(name);
+  return parts.length > 1 && parts.every((p) => known.confirmedArtists?.has(normalize(p)));
+}
+
+/**
+ * A list credit's members. A bare `/` separates only when one of its sides is a
+ * known artist, so a real slash name (`Au/Ra`) survives, even inside a list.
+ * Splitting the list first is what keeps `Wisin & Yandel/ROSALÍA` from shredding.
+ */
+export function listCreditMembers(raw: string, known: KnownArtistSets): string[] {
+  return cut(raw, LIST_BREAK).flatMap((piece) => {
+    const sides = cut(piece, BARE_SLASH);
+    return sides.length > 1 && sides.some((s) => isKnownMember(s, known)) ? sides : [piece];
+  });
+}
+
 /** Shortest artist segment a concatenation split may produce ("U2"/"M83" are real). */
 const MIN_ARTIST_SEGMENT = 2;
 

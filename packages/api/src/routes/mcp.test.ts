@@ -457,6 +457,89 @@ describe('MCP endpoint (issue #232)', () => {
     expect(entry?.detail).toContain('merge → Ke Personaje');
   });
 
+  it('split_artist stores the members and audit-logs them (#1600)', async () => {
+    testDb.run('DELETE FROM library_artist_identity');
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:curate' });
+
+    const body = (await (
+      await rpc(token, 'tools/call', {
+        name: 'split_artist',
+        arguments: { rawName: 'Mina/Miguel Bosé', members: ['Mina', 'Miguel Bosé'], confirm: true },
+      })
+    ).json()) as { result: { content: Array<{ text: string }> } };
+
+    expect(JSON.parse(body.result.content[0]!.text)).toMatchObject({ ok: true, kind: 'split' });
+    const row = testDb
+      .query<{ decision: string; members: string; source: string }, []>(
+        'SELECT decision, members, source FROM library_artist_identity',
+      )
+      .get();
+    expect(row).toEqual({
+      decision: 'split',
+      members: JSON.stringify(['Mina', 'Miguel Bosé']),
+      source: 'user',
+    });
+    const audit = testDb.query('SELECT action, detail FROM audit_log').all() as Array<{
+      action: string;
+      detail: string;
+    }>;
+    expect(audit.find((a) => a.action === 'artist.identity')?.detail).toContain(
+      'split → Mina, Miguel Bosé',
+    );
+  });
+
+  it('split_artist refuses without confirm, and with fewer than two members', async () => {
+    testDb.run('DELETE FROM library_artist_identity');
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:curate' });
+    const text = async (args: Record<string, unknown>) =>
+      JSON.stringify(
+        await (await rpc(token, 'tools/call', { name: 'split_artist', arguments: args })).json(),
+      );
+
+    expect(await text({ rawName: 'A/B', members: ['A', 'B'] })).toContain('confirm');
+    expect(await text({ rawName: 'A/B', members: ['A'], confirm: true })).toContain('at least 2');
+    expect(testDb.query('SELECT 1 FROM library_artist_identity').get()).toBeNull();
+  });
+
+  it('keep_artist_whole records one act (#1600)', async () => {
+    testDb.run('DELETE FROM library_artist_identity');
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:curate' });
+
+    const body = (await (
+      await rpc(token, 'tools/call', {
+        name: 'keep_artist_whole',
+        arguments: { rawName: 'AC/DC', confirm: true },
+      })
+    ).json()) as { result: { content: Array<{ text: string }> } };
+
+    expect(JSON.parse(body.result.content[0]!.text)).toMatchObject({ ok: true, kind: 'single' });
+    expect(
+      testDb.query<{ decision: string }, []>('SELECT decision FROM library_artist_identity').get(),
+    ).toEqual({ decision: 'single' });
+  });
+
+  it('list_review_flags shows a report on a joint credit as servable (#1600)', async () => {
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:curate' });
+    seedSong('joint', 'Agua y sal');
+    testDb.run(`UPDATE library_songs SET artist = 'Mina/Miguel Bosé' WHERE id = 'joint'`);
+    seedSong('solo', 'Solo');
+    testDb.run(`UPDATE library_songs SET artist = 'Miguel Bosé' WHERE id = 'solo'`);
+    testDb.run(
+      `INSERT INTO curation_flags (target_kind, target_id, reason, created_by, created_at, source, report_count)
+       VALUES ('song', 'joint', 'misplaced', 'u1', 1, 'listener', 1)`,
+    );
+
+    const body = (await (
+      await rpc(token, 'tools/call', { name: 'list_review_flags', arguments: {} })
+    ).json()) as { result: { content: Array<{ text: string }> } };
+
+    const { flags } = JSON.parse(body.result.content[0]!.text) as {
+      flags: Array<{ servable: boolean; question: string }>;
+    };
+    expect(flags[0]!.servable).toBe(true);
+    expect(flags[0]!.question).toContain('Mina/Miguel Bosé');
+  });
+
   it('merge_artist merges a batch of rawNames into one target (issue #680)', async () => {
     const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a', scope: 'refiner:curate' });
     const body = (await (

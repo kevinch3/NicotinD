@@ -43,8 +43,9 @@ import {
 import { configuredArtistImageSources } from '../artist-image-providers.js';
 import { normalizeArtistForGrouping, albumGroupKey } from '../album-grouping.js';
 import { pickByDiscographyOverlap } from '../mbid-corroboration.js';
-import { splitOnDelimiters } from '../artist-split.js';
-import { upsertArtistIdentity } from '../artist-identity-store.js';
+import { listCreditSides, primaryCredit, splitOnDelimiters } from '../artist-split.js';
+import { fileJointCreditCard, listRuleSplits } from '../joint-credits.js';
+import { loadSplitAuthority, upsertArtistIdentity } from '../artist-identity-store.js';
 import { artistIdFor } from '../library-scanner.js';
 import { ListenBrainzClient, normalizePopularity } from '../listenbrainz-client.js';
 import {
@@ -1498,7 +1499,8 @@ const artistOriginTask: EnrichmentTask = {
  * out, so a permissive match is fine.
  */
 const DELIMITED_ARTIST_SQL = `(
-  name LIKE '% & %' OR name LIKE '%, %' OR name LIKE '% / %' OR name LIKE '% + %'
+  name LIKE '% & %' OR name LIKE '%, %' OR name LIKE '%/%' OR name LIKE '% + %'
+  OR name LIKE '%;%' OR name LIKE '%  %'
   OR name LIKE '% and %' OR name LIKE '% y %' OR name LIKE '% x %' OR name LIKE '% con %'
   OR name LIKE '% vs %' OR name LIKE '% vs. %'
 )`;
@@ -1537,12 +1539,15 @@ export function pendingArtistIdentityRows(db: Database, cutoff: number, limit?: 
       .all(cutoff)
       .map((r) => r.artist_key),
   );
+  const known = loadSplitAuthority(db);
   const pending: string[] = [];
   for (const { name } of candidates) {
     if (limit != null && pending.length >= limit) break;
     const key = artistIdFor(name);
     if (covered.has(key)) continue;
     covered.add(key);
+    // The scanner settles these offline; 1,700 of them must not become Lidarr lookups.
+    if (listRuleSplits(name, known)) continue;
     pending.push(name);
   }
   return pending;
@@ -1569,7 +1574,9 @@ const artistIdentityTask: EnrichmentTask = {
     const tally: FailureTally = { failed: 0, sample: null };
     let applied = 0;
     for (const name of names) {
-      const parts = splitOnDelimiters(name);
+      const sides = listCreditSides(primaryCredit(name));
+      const isList = sides.length > 1;
+      const parts = isList ? sides : splitOnDelimiters(name);
       try {
         const { decision, members } = await ctx.resolveArtistIdentity(name, parts);
         upsertArtistIdentity(db, {
@@ -1580,6 +1587,7 @@ const artistIdentityTask: EnrichmentTask = {
           source: 'lidarr',
         });
         applied++;
+        if (decision === 'unknown' && isList) fileJointCreditCard(db, name, sides);
         if (decision === 'split') labels.push(`${name} → ${members.join(' + ')}`);
         else if (decision === 'single') labels.push(`${name} (one act)`);
       } catch (err) {

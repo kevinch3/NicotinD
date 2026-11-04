@@ -130,6 +130,22 @@ describe('auditLibrary', () => {
     expect(report.totals).toMatchObject({ artists: 1, albums: 1, songs: 2, visibleSingles: 0 });
   });
 
+  it('reports a joint credit with fewer links than names, and only that (#1600)', () => {
+    addArtist(db, 'ar1', 'Gramatik', 1);
+    addAlbum(db, { id: 'al1', name: 'Epigram', artist: 'Gramatik', artistId: 'ar1' });
+    addSong(db, 'solo', 'al1', 'ar1');
+    addSong(db, 'joint', 'al1', 'ar1');
+    db.run(`UPDATE library_songs SET artist = 'Gramatik' WHERE id = 'solo'`);
+    db.run(`UPDATE library_songs SET artist = 'Gramatik/Luxas' WHERE id = 'joint'`);
+
+    const found = auditLibrary(db).findings.filter((f) => f.rule === 'joint_credit');
+
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ severity: 'medium', subject: 'joint' });
+    expect(found[0]!.message).toContain('Gramatik/Luxas');
+    expect(found[0]!.message).toContain('Luxas');
+  });
+
   it('flags a watermark artist (ftpdjemilio.com)', () => {
     addArtist(db, 'arw', 'ftpdjemilio.com', 1);
     addAlbum(db, { id: 'alw', name: 'Some Track', artist: 'ftpdjemilio.com', artistId: 'arw' });

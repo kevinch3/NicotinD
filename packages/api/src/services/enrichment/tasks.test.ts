@@ -2037,6 +2037,62 @@ describe('artist-identity task', () => {
     expect(byName['Some, Weird Combo']!.decision).toBe('unknown');
   });
 
+  describe('list credits (#1600)', () => {
+    it('leaves a credit the list rule settles to the scanner, and asks about the rest', async () => {
+      seedSong('solo', { artist: 'Gramatik' });
+      seedSong('settled', { artist: 'Gramatik/Luxas' });
+      seedSong('open', { artist: 'Duo Rey Silva/Mario Catalán' });
+      const asked: Array<[string, string[]]> = [];
+      const c = ctx({
+        resolveArtistIdentity: async (rawName: string, parts: string[]) => {
+          asked.push([rawName, parts]);
+          return { decision: 'unknown' as const, members: [] };
+        },
+      });
+
+      expect(task.countPending(db)).toBe(1);
+      await task.run(db, c, 25);
+
+      expect(asked).toEqual([['Duo Rey Silva/Mario Catalán', ['Duo Rey Silva', 'Mario Catalán']]]);
+    });
+
+    it('files one card for an unknown credit, and never asks again once it is closed', async () => {
+      seedSong('open', { artist: 'Duo Rey Silva/Mario Catalán' });
+      const c = ctx({
+        resolveArtistIdentity: async () => ({ decision: 'unknown' as const, members: [] }),
+      });
+      const cards = () =>
+        db
+          .query<{ question: string; options_json: string; resolved_at: number | null }, []>(
+            `SELECT question, options_json, resolved_at FROM curation_flags`,
+          )
+          .all();
+
+      await task.run(db, c, 25);
+      expect(cards()).toHaveLength(1);
+      expect(cards()[0]!.question).toContain('Duo Rey Silva/Mario Catalán');
+      expect(JSON.parse(cards()[0]!.options_json)[0].effect).toEqual({
+        type: 'artist-split',
+        rawName: 'Duo Rey Silva/Mario Catalán',
+        members: ['Duo Rey Silva', 'Mario Catalán'],
+      });
+
+      db.run('UPDATE curation_flags SET resolved_at = 1');
+      db.run('UPDATE library_artist_identity SET checked_at = 1');
+      await task.run(db, c, 25);
+      expect(cards()).toHaveLength(1);
+    });
+
+    it('files no card when Lidarr answers', async () => {
+      seedSong('band', { artist: 'AC/DC' });
+      const c = ctx({
+        resolveArtistIdentity: async () => ({ decision: 'single' as const, members: [] }),
+      });
+      await task.run(db, c, 25);
+      expect(db.query('SELECT 1 FROM curation_flags').get()).toBeNull();
+    });
+  });
+
   it('never re-resolves a user decision (permanent authority, no TTL)', async () => {
     seedSong('a', { artist: 'Bob Marley, Peter Tosh' });
     upsertArtistIdentity(db, {

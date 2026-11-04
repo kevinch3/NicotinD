@@ -1337,6 +1337,19 @@ export interface LibraryHealthReport {
       worklist: { title: string; artist: string; copies: number; albums: string[] }[];
       remediation: string;
     };
+    /** List credits (`A/B`) whose song links fewer artists than they name (#1600). */
+    jointCredits: {
+      metric: { credits: number; songs: number; auto: number; human: number; fakeArtists: number };
+      worklist: {
+        credit: string;
+        songs: number;
+        songId: string;
+        artistId: string | null;
+        members: { name: string; known: boolean }[];
+        decision: 'auto' | 'human';
+      }[];
+      remediation: string;
+    };
     flags: { metric: { open: number; oldestAt: number | null }; remediation: string };
   };
 }
@@ -1368,6 +1381,8 @@ export interface CaseOption {
   label: string;
   rationale: string;
   destructive?: boolean;
+  /** The fields a server-written card localizes from; other effects are the server's. */
+  effect?: { rawName?: string; members?: string[] };
 }
 
 export interface CurationCase {

@@ -179,6 +179,29 @@ describe('flagToCase', () => {
   });
 });
 
+describe('the joint-credit effects', () => {
+  const option = (effect: unknown) => [{ id: 'o', label: 'O', effect }];
+
+  it('accepts a split and a one-act answer', () => {
+    for (const effect of [
+      { type: 'artist-split', rawName: 'A/B', members: ['A', 'B'] },
+      { type: 'artist-single', rawName: 'A/B' },
+    ]) {
+      expect(validateCaseOptions(option(effect)).ok).toBe(true);
+    }
+  });
+
+  it('refuses a split into fewer than two names, and an unnamed compound', () => {
+    for (const effect of [
+      { type: 'artist-split', rawName: 'A/B', members: ['A'] },
+      { type: 'artist-split', members: ['A', 'B'] },
+      { type: 'artist-single' },
+    ]) {
+      expect(validateCaseOptions(option(effect)).ok).toBe(false);
+    }
+  });
+});
+
 describe('validateCaseOptions', () => {
   const bad = (raw: unknown) => {
     const r = validateCaseOptions(raw);

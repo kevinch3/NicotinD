@@ -11,7 +11,8 @@ import { recordAudit } from '../services/audit-log.js';
 import { getLyrics, setLyricsOffset } from '../services/lyrics-store.js';
 import { fetchSongLyrics } from '../services/lyrics-fetch.js';
 import { deleteAlbum, deleteOne } from '../services/library-deletion.js';
-import { mutateArtistIdentity } from '../services/artist-identity-mutate.js';
+import { mutateArtistIdentity, verifyIdentityApplied } from '../services/artist-identity-mutate.js';
+import { lazyAuthority, withJointCreditCard } from '../services/joint-credits.js';
 import { upsertGenreAlias } from '../services/genre-alias-mutate.js';
 import { mutateSongGenre } from '../services/song-genre-mutate.js';
 import {
@@ -167,6 +168,38 @@ const clampLimit = (v: unknown, def: number, max: number): number => {
 };
 
 // ── Tool registry ───────────────────────────────────────────────────────────
+/** A split or one-act decision: store it, re-bucket what it names, then read the library back. */
+async function decideArtistIdentity(
+  { db, identity, artistIdentity }: McpToolContext,
+  body: { rawName: string; decision: 'split' | 'single'; members?: string[] },
+): Promise<string> {
+  const result = mutateArtistIdentity(db, artistIdentity, body);
+  if (!result.ok) return JSON.stringify({ error: result.error });
+  recordAudit(
+    db,
+    { sub: identity.userId, username: `agent:${identity.tokenId}` },
+    'artist.identity',
+    {
+      targetKind: 'artist',
+      targetId: body.rawName.trim(),
+      detail:
+        body.decision === 'split'
+          ? `split → ${(body.members ?? []).map((m) => m.trim()).join(', ')} (via MCP agent)`
+          : 'single (via MCP agent)',
+    },
+  );
+  let notLanded: string | null = null;
+  if (artistIdentity.rebucket) {
+    await artistIdentity.rebucket([body.rawName, ...(body.members ?? [])]);
+    notLanded = verifyIdentityApplied(db, body, result.kind);
+  } else if (artistIdentity.runSync) await artistIdentity.runSync();
+  return JSON.stringify(
+    { ok: notLanded === null, kind: result.kind, ...(notLanded ? { warning: notLanded } : {}) },
+    null,
+    2,
+  );
+}
+
 export const MCP_TOOLS: McpTool[] = [
   {
     name: 'search_library',
@@ -1265,7 +1298,7 @@ export const MCP_TOOLS: McpTool[] = [
   },
   {
     name: 'flag_for_review',
-    description: `Put one decision in front of a human, as a card: a one-sentence question plus closed options, each of which applies a fix in one tap. Use it when a fix has no unambiguous answer — a b2b DJ credit naming two acts, two plausible identities, an unconfirmed duplicate — and YOU have already done the research; the human spends only the judgement. Changes no library data. Re-flagging the same target replaces the open flag's card. A flag with no options is agent-only: it never reaches a human (list_review_flags shows it as servable:false), so give question + options whenever a human could decide by choosing. question: ≤${CASE_TEXT_LIMITS.question} chars, the choice in one sentence. options: 1+ of {id, label (≤${CASE_TEXT_LIMITS.label} chars, the button), rationale (≤${CASE_TEXT_LIMITS.rationale} chars, one line under it), effect}, at least one with an effect that changes data; effect is {type:'song-metadata',songId,fields:{title|artist|album|albumArtist}} | {type:'song-genre',songIds:[…],genre} (replace on each song, ≤100) | {type:'artist-merge',rawName,mergeInto} | {type:'song-delete',songId} (destructive, confirmed in-card) | {type:'resolve-only'} (a labelled "keep as is"; the server adds a generic one if you give none). reason: your evidence and research, folded under the card — write it for the record, not the card. caseKind (${CURATION_CASE_KINDS.join('|')}) sets the card's eyebrow.`,
+    description: `Put one decision in front of a human, as a card: a one-sentence question plus closed options, each of which applies a fix in one tap. Use it when a fix has no unambiguous answer — a b2b DJ credit naming two acts, two plausible identities, an unconfirmed duplicate — and YOU have already done the research; the human spends only the judgement. Changes no library data. Re-flagging the same target replaces the open flag's card. A flag with no options is agent-only: it never reaches a human (list_review_flags shows it as servable:false), so give question + options whenever a human could decide by choosing. question: ≤${CASE_TEXT_LIMITS.question} chars, the choice in one sentence. options: 1+ of {id, label (≤${CASE_TEXT_LIMITS.label} chars, the button), rationale (≤${CASE_TEXT_LIMITS.rationale} chars, one line under it), effect}, at least one with an effect that changes data; effect is {type:'song-metadata',songId,fields:{title|artist|album|albumArtist}} | {type:'song-genre',songIds:[…],genre} (replace on each song, ≤100) | {type:'artist-merge',rawName,mergeInto} | {type:'artist-split',rawName,members:[...]} | {type:'artist-single',rawName} | {type:'song-delete',songId} (destructive, confirmed in-card) | {type:'resolve-only'} (a labelled "keep as is"; the server adds a generic one if you give none). reason: your evidence and research, folded under the card — write it for the record, not the card. caseKind (${CURATION_CASE_KINDS.join('|')}) sets the card's eyebrow.`,
     access: 'curate',
     inputSchema: {
       type: 'object',
@@ -1355,18 +1388,23 @@ export const MCP_TOOLS: McpTool[] = [
       type: 'object',
       properties: { limit: { type: 'number', description: 'Max results (1–100, default 25).' } },
     },
-    handler: ({ db }, args) =>
-      JSON.stringify(
+    handler: ({ db }, args) => {
+      const authority = lazyAuthority(db);
+      return JSON.stringify(
         {
-          flags: listOpenCurationFlags(db, clampLimit(args.limit, 25, 100)).map((f) => ({
-            ...f,
-            servable: flagHasActionableOptions(f),
-            targetMissing: describeTarget(db, f.targetKind, f.targetId) === null,
-          })),
+          flags: listOpenCurationFlags(db, clampLimit(args.limit, 25, 100)).map((raw) => {
+            const f = withJointCreditCard(db, raw, authority);
+            return {
+              ...f,
+              servable: flagHasActionableOptions(f),
+              targetMissing: describeTarget(db, f.targetKind, f.targetId) === null,
+            };
+          }),
         },
         null,
         2,
-      ),
+      );
+    },
   },
   {
     name: 'resolve_review_flag',
@@ -1467,6 +1505,49 @@ export const MCP_TOOLS: McpTool[] = [
         failedCount: result.failedCount,
       });
     },
+  },
+  {
+    name: 'split_artist',
+    description:
+      'Record that one credit is several artists (rawName "Gordo/Feid", members ["Gordo", "Feid"]). Takes display names, works on a credit with no artist row of its own, and outranks every automatic decision. Corroborate against the track first: a composer credit is not a collaboration. Requires confirm: true.',
+    access: 'curate',
+    destructive: true,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        rawName: { type: 'string', description: 'The credit exactly as the library shows it.' },
+        members: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'The artists it credits, at least 2, in billing order.',
+        },
+        confirm: { type: 'boolean', description: 'Must be true to proceed.' },
+      },
+      required: ['rawName', 'members', 'confirm'],
+    },
+    handler: (ctx, args) =>
+      decideArtistIdentity(ctx, {
+        rawName: str(args.rawName),
+        decision: 'split',
+        members: strList(args.members, ''),
+      }),
+  },
+  {
+    name: 'keep_artist_whole',
+    description:
+      'Record that a credit which looks like several artists is one act ("AC/DC"), so nothing splits it or asks about it again. Requires confirm: true.',
+    access: 'curate',
+    destructive: true,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        rawName: { type: 'string', description: 'The credit exactly as the library shows it.' },
+        confirm: { type: 'boolean', description: 'Must be true to proceed.' },
+      },
+      required: ['rawName', 'confirm'],
+    },
+    handler: (ctx, args) =>
+      decideArtistIdentity(ctx, { rawName: str(args.rawName), decision: 'single' }),
   },
   {
     name: 'merge_artist',

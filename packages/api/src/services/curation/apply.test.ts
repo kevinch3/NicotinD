@@ -92,6 +92,37 @@ describe('applyCaseEffect', () => {
     expect(rebucket.mock.calls[0]![0]).toEqual(['rocky ', 'Rocky']);
   });
 
+  it('artist-split stores the members and re-buckets the compound and each of them', async () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    const d = deps();
+    const rebucket = mock(async (_names: string[]) => ({ songs: 1, albumIds: ['a'] }));
+    const res = await applyCaseEffect(
+      db,
+      { type: 'artist-split', rawName: 'Mina/Miguel Bosé', members: ['Mina', 'Miguel Bosé'] },
+      { ...d, rebucket },
+    );
+    expect(res.ok).toBe(true);
+    expect(d.mutateArtistIdentity.mock.calls[0]![2]).toEqual({
+      rawName: 'Mina/Miguel Bosé',
+      decision: 'split',
+      members: ['Mina', 'Miguel Bosé'],
+    });
+    expect(rebucket.mock.calls[0]![0]).toEqual(['Mina/Miguel Bosé', 'Mina', 'Miguel Bosé']);
+  });
+
+  it('artist-single records one act', async () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    const d = deps();
+    const res = await applyCaseEffect(db, { type: 'artist-single', rawName: 'AC/DC' }, d);
+    expect(res.ok).toBe(true);
+    expect(d.mutateArtistIdentity.mock.calls[0]![2]).toEqual({
+      rawName: 'AC/DC',
+      decision: 'single',
+    });
+  });
+
   it('song-genre replaces the genre on every song, and nothing else', async () => {
     const db = new Database(':memory:');
     applySchema(db);

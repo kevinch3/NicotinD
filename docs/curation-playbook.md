@@ -70,6 +70,7 @@ Dry-run first where supported; each step's counter is its health dimension.
 | --- | --- |
 | Polluted titles / fake single-albums | `lookup_song_metadata` → `fix_song_metadata` |
 | Duplicate-artist spellings (fragments) | `merge_artist` |
+| Joint credits nothing could resolve (`jointCredits`, decision `human`) | `split_artist` / `keep_artist_whole` |
 | Watermark / wrong-field albums, missing years | `lookup_album_metadata` → `fix_album_metadata` |
 | Visible `unknown` / oversized classification | `set_album_classification` |
 | Coverless albums with a confident candidate URL | `set_album_cover` |

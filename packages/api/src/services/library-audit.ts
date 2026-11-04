@@ -3,6 +3,7 @@ import { isUnknownLike } from './audio-tags.js';
 import { isPlaceholderArtistStrict } from './artwork-backfill.js';
 import { missingAlbumArtSql } from './artwork-store.js';
 import { normalizeForGrouping, normalizeArtistForGrouping } from './album-grouping.js';
+import { jointCreditFindings } from './joint-credits.js';
 import {
   looksLikeSourceWatermark,
   isNumericLikeName,
@@ -254,6 +255,27 @@ export function checkFragmentedArtists(db: Database): AuditFinding[] {
       `(${c.fragments.slice(0, 3).join('; ')}${c.fragments.length > 3 ? '; …' : ''}) — ` +
       `confirm each is not a real collaboration, then merge into "${c.base}"`,
   }));
+}
+
+/**
+ * A list credit (`A/B`, `A; B`) whose song links fewer artists than the credit
+ * names. Per credit, against the song, because a credit that fell back to its
+ * owner has no artist row of its own to report (#1600).
+ */
+export function checkJointCredits(db: Database): AuditFinding[] {
+  return jointCreditFindings(db).map((f) => {
+    const names = f.members.map((m) => m.name).join(' + ');
+    return {
+      rule: 'joint_credit',
+      severity: 'medium' as const,
+      subject: f.songId,
+      message:
+        `${f.songs} song(s) credit "${f.credit}" but link fewer artists — ` +
+        (f.decision === 'auto'
+          ? `the list rule resolves it to ${names}`
+          : `no name in it is a known artist: split into ${names}, or keep it as one act`),
+    };
+  });
 }
 
 /**
@@ -907,6 +929,7 @@ export function auditLibrary(db: Database, extraFindings: AuditFinding[] = []): 
     ...checkAlbumIntegrity(db),
     ...checkPollutedArtists(db),
     ...checkFragmentedArtists(db),
+    ...checkJointCredits(db),
     ...checkPollutedAlbums(db),
     ...checkMisSplitAlbums(db),
     ...checkWatermarkedTitles(db),
