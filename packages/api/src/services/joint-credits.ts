@@ -18,7 +18,7 @@ import {
   primaryCredit,
   type KnownArtistSets,
 } from './artist-split.js';
-import { createCurationFlag, type CurationFlag } from './curation-flags.js';
+import { createCurationFlag, resolveCurationFlag, type CurationFlag } from './curation-flags.js';
 import { artistIdFor } from './library-scanner.js';
 
 export interface JointCreditRow {
@@ -221,4 +221,28 @@ export function fileJointCreditCard(db: Database, credit: string, members: strin
     optionsJson: JSON.stringify(jointCreditOptions(credit, members)),
   });
   return true;
+}
+
+/**
+ * Close the task's cards whose credit no longer needs an answer. One split teaches
+ * the library an artist, so answering one card can settle others on the next full
+ * scan, and "One act" on a stale card would undo a correct split. A listener's
+ * report stays open, since it may be about something other than the credit.
+ */
+export function closeResolvedJointCards(db: Database): number {
+  const cards = db
+    .query<{ id: number; credit: string | null }, [string]>(
+      `SELECT f.id, s.artist AS credit
+         FROM curation_flags f LEFT JOIN library_songs s ON s.id = f.target_id
+        WHERE f.resolved_at IS NULL AND f.target_kind = 'song' AND f.created_by = ?`,
+    )
+    .all(IDENTITY_TASK_ACTOR);
+  if (cards.length === 0) return 0;
+  const open = new Set(jointCreditFindings(db).map((f) => f.credit));
+  let closed = 0;
+  for (const card of cards) {
+    if (card.credit !== null && open.has(card.credit)) continue;
+    if (resolveCurationFlag(db, card.id, IDENTITY_TASK_ACTOR)) closed++;
+  }
+  return closed;
 }

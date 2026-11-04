@@ -418,7 +418,13 @@ and sets aside what a decision settled (`single`, or a user `split`). Each findi
 
 The `artist-identity` task covers the `human` ones only, so the about 1,700 list credits on prod do
 not become Lidarr lookups. When Lidarr has no answer it files one card, once: a card someone closed
-is an answer, and the weekly re-check must not ask again.
+is an answer, and the weekly re-check must not ask again. A failed lookup is a failure to retry, not
+an answer, so an outage files nothing (#1607).
+
+`closeResolvedJointCards` closes the task's cards whose credit no longer needs an answer, after each
+full scan. One split teaches the library an artist, so answering one card can settle others, and
+"One act" on a stale card would undo a correct split (#1610). A listener's report stays open, since
+it may be about something other than the credit.
 
 A listener's `misplaced` or `mistagged` report on such a song is served as a card too.
 `withJointCreditCard` derives it on read, so reports filed before this shipped get one and a credit

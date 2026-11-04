@@ -317,12 +317,9 @@ export function makeLidarrArtistIdentityResolver(
     const key = normalizeArtistForGrouping(term);
     const cached = memo.get(key);
     if (cached) return cached;
-    let hits: LidarrArtist[];
-    try {
-      hits = await lidarr.artist.lookup(term);
-    } catch {
-      hits = [];
-    }
+    // A failed lookup must surface: read as "no such artist", an outage would
+    // answer `unknown` for every credit it touched and file a card for each (#1607).
+    const hits = await lidarr.artist.lookup(term);
     memo.set(key, hits);
     return hits;
   };
