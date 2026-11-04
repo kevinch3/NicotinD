@@ -292,6 +292,24 @@ describe('buildMosaicTiles', () => {
   });
 });
 
+describe('a recent-play tile', () => {
+  it('keeps the links and ids the player needs to reach each artist', () => {
+    const artists = [
+      { id: 'one', name: 'One', role: 'primary' as const },
+      { id: 'two', name: 'Two', role: 'primary' as const },
+    ];
+    const [tile] = buildMosaicTiles(
+      emptySources({
+        recentPlays: [recent(1, { artist: 'One/Two', artistId: 'owner', albumId: 'alb', artists })],
+      }),
+    );
+    expect(tile!.action).toMatchObject({
+      type: 'song',
+      track: { artists, artistId: 'owner', albumId: 'alb' },
+    });
+  });
+});
+
 describe('drawFrom', () => {
   const items = ['a', 'b', 'c', 'd', 'e'];
 
