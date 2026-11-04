@@ -37,6 +37,23 @@ export class CaseCardComponent {
     return o.id === 'resolve';
   }
 
+  /** The credit a server-written joint-credit card asks about; an agent writes its own words. */
+  jointCredit(c: CurationCase): string | null {
+    return c.options.find((o) => o.id === 'joint-split')?.effect?.rawName ?? null;
+  }
+
+  /** The i18n key of an option the server wrote, or null for one an agent wrote. */
+  optionKey(o: CaseOption): string | null {
+    if (this.isFallback(o)) return 'curate.leaveAsIs';
+    if (o.id === 'joint-split') return 'curate.jointCredit.separate';
+    if (o.id === 'joint-one-act') return 'curate.jointCredit.oneAct';
+    return null;
+  }
+
+  optionParams(o: CaseOption): Record<string, string> {
+    return { members: o.effect?.members?.join(' + ') ?? '' };
+  }
+
   pick(o: CaseOption): void {
     if (o.destructive && this.confirming() !== o.id) {
       this.confirming.set(o.id);

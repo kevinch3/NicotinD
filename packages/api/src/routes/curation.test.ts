@@ -8,6 +8,7 @@ import type { AuthEnv } from '../middleware/auth.js';
 import {
   createCurationFlag,
   listOpenCurationFlags,
+  recordListenerReport,
   type FlagTargetKind,
 } from '../services/curation-flags.js';
 import { artistIdFor } from '../services/library-scanner.js';
@@ -111,6 +112,56 @@ beforeEach(() => {
   sharedDb.run('DELETE FROM library_songs');
   sharedDb.run('DELETE FROM library_albums');
   sharedDb.run('DELETE FROM library_artists');
+});
+
+describe('a listener report on a joint credit (#1600)', () => {
+  beforeEach(() => {
+    seedSong('solo', 'Solo', 'Miguel Bosé');
+    seedSong('joint', 'Agua y sal', 'Mina/Miguel Bosé');
+    recordListenerReport(sharedDb, {
+      targetKind: 'song',
+      targetId: 'joint',
+      reason: 'misplaced',
+      reasonId: 'misplaced',
+      userId: 'u1',
+    });
+  });
+
+  it('is served as a card with the proposed members', async () => {
+    const body = (await (await makeApp().request('/round')).json()) as {
+      cases: Array<{ question: string; options: Array<{ id: string }> }>;
+      awaitingAgent: number;
+    };
+    expect(body.awaitingAgent).toBe(0);
+    expect(body.cases[0]!.question).toContain('Mina/Miguel Bosé');
+    expect(body.cases[0]!.options.map((o) => o.id)).toEqual([
+      'joint-split',
+      'joint-one-act',
+      'resolve',
+    ]);
+  });
+
+  it('applies the split in one tap', async () => {
+    const mutateArtistIdentity = mock((_db: unknown, _deps: unknown, _body: unknown) => ({
+      ok: true as const,
+    }));
+    const app = makeApp('admin', { mutateArtistIdentity });
+    const { cases } = (await (await app.request('/round')).json()) as {
+      cases: Array<{ id: string }>;
+    };
+
+    const res = await app.request(`/cases/${cases[0]!.id}/apply`, {
+      method: 'POST',
+      body: JSON.stringify({ optionId: 'joint-split' }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mutateArtistIdentity.mock.calls[0]![2]).toEqual({
+      rawName: 'Mina/Miguel Bosé',
+      decision: 'split',
+      members: ['Mina', 'Miguel Bosé'],
+    });
+  });
 });
 
 describe('GET /round', () => {

@@ -55,10 +55,18 @@ export type CaseEffect =
       fields: { title?: string; artist?: string; album?: string; albumArtist?: string };
     }
   | { type: 'artist-merge'; mergeInto: string; rawName: string }
+  /** The compound is these artists: a `split` identity decision (#1600). */
+  | { type: 'artist-split'; rawName: string; members: string[] }
+  /** The compound is one act: a `single` identity decision. */
+  | { type: 'artist-single'; rawName: string }
   | { type: 'song-delete'; songId: string }
   /** `set_song_genre` with mode `replace` on each song: one genre judgement
    *  about an artist cluster, applied in one tap (#1516). */
   | { type: 'song-genre'; songIds: string[]; genre: string };
+
+/** Options of a server-written joint-credit card, which the web renders in the reader's language. */
+export const JOINT_SPLIT_OPTION_ID = 'joint-split';
+export const JOINT_ONE_ACT_OPTION_ID = 'joint-one-act';
 
 /** Most songs one `song-genre` effect may retag — a card is one cluster, not a sweep. */
 export const SONG_GENRE_EFFECT_MAX_SONGS = 100;

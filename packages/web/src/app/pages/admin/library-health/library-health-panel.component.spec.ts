@@ -118,6 +118,23 @@ function makeReport(over: Partial<LibraryHealthReport['totals']> = {}): LibraryH
         ],
         remediation: 'dupes-remediation',
       },
+      jointCredits: {
+        metric: { credits: 2, songs: 37, auto: 1, human: 1, fakeArtists: 1 },
+        worklist: [
+          {
+            credit: 'Gramatik/Luxas',
+            songs: 36,
+            songId: 's1',
+            artistId: 'fake1',
+            members: [
+              { name: 'Gramatik', known: true },
+              { name: 'Luxas', known: false },
+            ],
+            decision: 'auto' as const,
+          },
+        ],
+        remediation: 'joint-remediation',
+      },
       flags: { metric: { open: 2, oldestAt: 1 }, remediation: 'flags-remediation' },
     },
   };
@@ -209,6 +226,10 @@ describe('LibraryHealthPanelComponent', () => {
     }
     const covers = el.querySelector('[data-testid="health-card-albumCovers"]')!;
     expect(covers.textContent).toContain('covers-remediation');
+    // #1600: the worst joint credit reaches the card, linked to its artist row.
+    const joint = el.querySelector('[data-testid="health-card-jointCredits"]')!;
+    expect(joint.textContent).toContain('Gramatik/Luxas');
+    expect(joint.textContent).toContain('joint-remediation');
     // #951: the duplicate count and its largest cluster reach the card.
     expect(el.querySelector('[data-testid="health-card-duplicateSongs"]')!.textContent).toContain(
       'Los Pericos',

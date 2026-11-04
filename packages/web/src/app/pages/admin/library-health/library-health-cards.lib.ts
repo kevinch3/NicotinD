@@ -400,6 +400,32 @@ export function buildHealthCards(r: LibraryHealthReport, t: Translate): HealthCa
       link: null,
     },
     {
+      dimension: 'jointCredits',
+      titleKey: 'admin.health.jointCredits.title',
+      metrics: [
+        metric('jointCredits', 'credits', n(d.jointCredits.metric.credits)),
+        metric('jointCredits', 'songs', n(d.jointCredits.metric.songs)),
+        metric('jointCredits', 'auto', n(d.jointCredits.metric.auto)),
+        metric('jointCredits', 'human', n(d.jointCredits.metric.human)),
+        metric('jointCredits', 'fakeArtists', n(d.jointCredits.metric.fakeArtists)),
+      ],
+      lists: [
+        {
+          titleKey: 'admin.health.jointCredits.list',
+          rows: d.jointCredits.worklist.map((w) => ({
+            label: w.credit,
+            detail: t('admin.health.row.jointCredit', {
+              songs: n(w.songs),
+              members: w.members.map((m) => m.name).join(' + '),
+            }),
+            link: w.artistId ? ['/library/artists', w.artistId] : null,
+          })),
+        },
+      ],
+      remediation: d.jointCredits.remediation,
+      link: null,
+    },
+    {
       dimension: 'flags',
       titleKey: 'admin.health.flags.title',
       metrics: [

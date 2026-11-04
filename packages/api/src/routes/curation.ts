@@ -23,6 +23,7 @@ import {
   type FlagTargetKind,
 } from '../services/curation-flags.js';
 import { flagToCase } from '../services/curation/case-sources.js';
+import { lazyAuthority, withJointCreditCard } from '../services/joint-credits.js';
 import { describeTarget, type CaseTarget } from '../services/curation/describe-target.js';
 import { assembleRound } from '../services/curation/round.js';
 import { applyCaseEffect, type ApplyEffectDeps } from '../services/curation/apply.js';
@@ -64,9 +65,10 @@ export function curationRoutes(deps: CurationRouteDeps) {
   const buildPool = (db: Database, now = Date.now()): Pool => {
     const cases: CurationCase[] = [];
     let awaitingAgent = 0;
+    const authority = lazyAuthority(db);
     for (const flag of listOpenCurationFlags(db, POOL_LIMIT, { excludeSnoozedAt: now })) {
       const target = deps.describeTarget(flag.targetKind, flag.targetId);
-      const kase = target && flagToCase(flag, target);
+      const kase = target && flagToCase(withJointCreditCard(db, flag, authority), target);
       if (kase) cases.push(kase);
       else awaitingAgent++;
     }

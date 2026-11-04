@@ -56,6 +56,10 @@ and a message. The CLI groups by rule (worst first); `--rule=<id>` lists one.
   real and the artist is usually recoverable, so the finding carries its own
   remediation (`merge into "…"` from `djSetArtistName`), or says a human must
   decide when the credit is ambiguous.
+- `joint_credit` (medium) — a list credit (`Gramatik/Luxas`, `Portavoz;Cidtronyck`) whose song links
+  fewer artists than the credit names (issue #1600). Reported per credit against one of its songs,
+  because a credit that fell back to its owner has no artist row of its own. Each finding proposes
+  the members; see *Joint credits* below. **Never deletable**.
 - `fragmented_artist` (medium) — a base artist name plus N rows extending it with a
   per-track credit (issue #864): `Sanampay, V. PARRA`, `Luciano Pavarotti, Philharmonia
   Orchestra, Piero Gamba`. One album arrives as a dozen tiles in the artists grid.
@@ -394,6 +398,32 @@ Two paths, depending on whether a live metadata service is available:
   accuracy, when Lidarr is configured. The admin route is **asynchronous** since issue #622: it
   answers 202 and reports progress through `GET /api/admin/review`; the script stays synchronous.
   See [metadata-optimize.md](metadata-optimize.md).
+
+## Joint credits (issue #1600)
+
+A list credit names several artists in one tag. A `;` or a run of spaces always separates names. A
+bare `/` usually does, because spotDL writes artists as an ID3v2.3 list and the Opus conversion
+leaves it as plain text, but `AC/DC`, `Au/Ra` and `HUNTR/X` are real names. No predicate over the
+string can tell them apart, so `listCreditMembers` asks the library: a bare `/` separates only when
+one of its sides is a known artist. It splits the list first, so a member with its own delimiter
+(`Wisin & Yandel/ROSALÍA`) survives.
+
+`jointCreditFindings` reports a credit when its songs link fewer artists than it should resolve to,
+and sets aside what a decision settled (`single`, or a user `split`). Each finding is one of two:
+
+| `decision` | Meaning | What closes it |
+| --- | --- | --- |
+| `auto` | at least one name is a known artist | the scanner's list rule (#1526) |
+| `human` | no name is known | `split_artist`, `keep_artist_whole`, or its review card |
+
+The `artist-identity` task covers the `human` ones only, so the about 1,700 list credits on prod do
+not become Lidarr lookups. When Lidarr has no answer it files one card, once: a card someone closed
+is an answer, and the weekly re-check must not ask again.
+
+A listener's `misplaced` or `mistagged` report on such a song is served as a card too.
+`withJointCreditCard` derives it on read, so reports filed before this shipped get one and a credit
+that has since resolved stops offering it. The health report's `jointCredits` dimension carries the
+counts and the worst credits, and the Admin panel renders them.
 
 ## Why a name predicate cannot decide `fragmented_artist` (issue #864)
 

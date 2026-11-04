@@ -165,6 +165,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **Library quality auditor**: assert (audit) + clean (repair/retag) + prevent (ingest sanitize) for
   DJ-pool/VA-source pollution across DB and disk; structural DJ-set tags recover their real
   artist via `djSetArtistName`. → [library-audit.md](../library-audit.md)
+- **Joint credits are found against the library, not the string**: `listCreditMembers` splits a bare
+  `/` only beside a known artist; `jointCreditFindings` feeds `joint_credit` and the `jointCredits`
+  dimension; `withJointCreditCard` turns a report into a card. → [library-audit.md](../library-audit.md)
 - **A wrong artist *name* is relational, not lexical**: `fragmented_artist` clusters
   `"<base>, …"` rows against a base that is itself an artist row
   (`findArtistFragmentClusters`), because no predicate over a single name separates a

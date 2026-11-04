@@ -96,6 +96,8 @@ audit-logged.
 | `complete_album` | curate, **destructive** | `services/album-acquire.ts` `acquireAlbum` (only-missing-tracks hunt) + `album.acquire` audit |
 | `delete_song` | curate, **destructive** | `services/library-deletion.ts` `deleteOne` + `song.delete` audit |
 | `delete_album` | curate, **destructive** | `services/library-deletion.ts` `deleteAlbum` + `album.delete` audit |
+| `split_artist` | curate, **destructive** | `services/artist-identity-mutate.ts` `mutateArtistIdentity` (split mode) + re-bucket + `verifyIdentityApplied` + `artist.identity` audit |
+| `keep_artist_whole` | curate, **destructive** | `services/artist-identity-mutate.ts` `mutateArtistIdentity` (single mode) + re-bucket + `verifyIdentityApplied` + `artist.identity` audit |
 | `merge_artist` | curate, **destructive** | `services/artist-identity-mutate.ts` `mutateArtistIdentity` (merge mode, one or many raw names) + `artist.identity` audit |
 
 ### `search_library` matches the way the UI does (issue #706)

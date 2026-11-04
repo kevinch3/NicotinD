@@ -6,7 +6,13 @@
       <p class="text-sm text-theme-secondary">{{ c.target.subtitle }}</p>
     </header>
 
-    <p class="mb-4 text-lg" data-testid="case-question">{{ c.question }}</p>
+    <p class="mb-4 text-lg" data-testid="case-question">
+      @if (jointCredit(c); as credit) {
+        {{ 'curate.jointCredit.question' | t: { credit } }}
+      } @else {
+        {{ c.question }}
+      }
+    </p>
 
     <div class="flex flex-col gap-2">
       @for (o of c.options; track o.id) {
@@ -45,7 +51,11 @@
             [disabled]="busy()"
             (click)="pick(o)"
           >
-            <span class="block font-medium">{{ isFallback(o) ? ('curate.leaveAsIs' | t) : o.label }}</span>
+            @if (optionKey(o); as key) {
+              <span class="block font-medium">{{ key | t: optionParams(o) }}</span>
+            } @else {
+              <span class="block font-medium">{{ o.label }}</span>
+            }
             @if (!isFallback(o) && o.rationale) {
               <span class="block text-sm text-theme-secondary">{{ o.rationale }}</span>
             }

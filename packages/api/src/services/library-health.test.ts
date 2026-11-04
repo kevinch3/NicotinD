@@ -119,6 +119,32 @@ function addCover(albumId: string): void {
   );
 }
 
+describe('libraryHealth — joint credits (#1600)', () => {
+  it('counts open list credits and names the proposed members', () => {
+    expect(libraryHealth(db).dimensions.jointCredits.metric.credits).toBe(0);
+    db.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, created, synced_at)
+       VALUES ('jc', 'A', 'Gramatik', 'x', 1, 0, '2024-01-01', 0)`,
+    );
+    for (const [id, artist] of [
+      ['j1', 'Gramatik'],
+      ['j2', 'Gramatik/Luxas'],
+    ] as const) {
+      db.run(
+        `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, created, synced_at)
+         VALUES (?, 'jc', ?, ?, 'x', 200, ?, 0, '2024-01-01', 0)`,
+        [id, id, artist, `/m/${id}.opus`],
+      );
+    }
+
+    const d = libraryHealth(db).dimensions.jointCredits;
+
+    expect(d.metric).toMatchObject({ credits: 1, songs: 1, auto: 1, human: 0 });
+    expect(d.worklist[0]!.members.map((m) => m.name)).toEqual(['Gramatik', 'Luxas']);
+    expect(d.remediation).toContain('split_artist');
+  });
+});
+
 describe('libraryHealth — report shape & totals', () => {
   it('reports totals and every dimension on an empty library', () => {
     const r = libraryHealth(db);

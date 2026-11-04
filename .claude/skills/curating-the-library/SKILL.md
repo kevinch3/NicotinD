@@ -33,6 +33,8 @@ So a wrong signature costs a retry, not a wrong conclusion. Save the retry:
 | `get_artist` | `id` | `name` |
 | `get_album_tracks` | `id` | `albumId` |
 | `merge_artist` | `mergeInto` + `rawName`/`rawNames` + `confirm` | ids of any kind |
+| `split_artist` | `rawName` + `members` + `confirm` | ids of any kind |
+| `keep_artist_whole` | `rawName` + `confirm` | ids of any kind |
 
 `merge_artist` takes **display names, not ids**, and requires `confirm`:
 
@@ -126,6 +128,17 @@ The same rule cuts the other way: a compound is not junk because it has a comma.
 `Charlotte de Witte, David Robertson` is a real collaboration. The `fragmented_artist`
 audit rule reports clusters at ≥2 deliberately, so **you** judge each one — it is advisory
 and finding a real duo in the list is expected, not a bug.
+
+## Joint credits: work `jointCredits`, not one flag at a time
+
+`get_library_health({dimensions: ["jointCredits"]})` lists list credits (`A/B`, `A; B`) that link
+fewer artists than they name, each with proposed `members` and a `decision`. Leave `auto` alone: a
+name in it is a known artist, so the scanner's rule settles it. `human` means no name is known, so
+it is yours: corroborate against the track, then `split_artist` or `keep_artist_whole`. One split
+also teaches the library that artist, so it can settle other credits naming them.
+
+The file's own `ARTISTS` tag can settle one, but no tool reads it yet (#1601). A listener's report
+on such a song already serves its own card, so do not re-file it.
 
 ## Spend searches on artists and clusters, never on songs
 
