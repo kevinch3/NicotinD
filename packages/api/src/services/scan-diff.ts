@@ -88,25 +88,27 @@ export function loadStoredSongs(db: Database, ids: string[] | null): Map<string,
 }
 
 /**
- * Each song's current link set in `table` as one comparable string per song —
- * `(target, role?, position)` tuples, sorted. Songs with no rows are absent.
+ * Each owner's current link set in `table` as one comparable string per owner —
+ * `(target, role?, position)` tuples, sorted. An owner is a song, or an album for
+ * `library_album_artists`. Owners with no rows are absent.
  */
 export function loadLinkKeys(
   db: Database,
-  table: 'library_song_artists' | 'library_song_genres',
+  table: 'library_song_artists' | 'library_album_artists' | 'library_song_genres',
   ids: string[] | null,
 ): Map<string, string> {
+  const owner = table === 'library_album_artists' ? 'album_id' : 'song_id';
   const select =
-    table === 'library_song_artists'
-      ? 'SELECT song_id, artist_id AS target, role, position FROM library_song_artists'
-      : "SELECT song_id, genre AS target, '' AS role, position FROM library_song_genres";
+    table === 'library_song_genres'
+      ? `SELECT song_id AS owner_id, genre AS target, '' AS role, position FROM ${table}`
+      : `SELECT ${owner} AS owner_id, artist_id AS target, role, position FROM ${table}`;
   const tuples = new Map<string, string[]>();
-  type LinkRow = { song_id: string; target: string; role: string; position: number };
+  type LinkRow = { owner_id: string; target: string; role: string; position: number };
   const add = (rows: LinkRow[]) => {
     for (const r of rows) {
-      const list = tuples.get(r.song_id) ?? [];
+      const list = tuples.get(r.owner_id) ?? [];
       list.push(linkTuple(r.target, r.role, r.position));
-      tuples.set(r.song_id, list);
+      tuples.set(r.owner_id, list);
     }
   };
   if (ids === null) add(db.query<LinkRow, []>(select).all());
@@ -114,7 +116,7 @@ export function loadLinkKeys(
     const chunk = ids.slice(i, i + 400);
     add(
       db
-        .query<LinkRow, string[]>(`${select} WHERE song_id IN (${chunk.map(() => '?').join(',')})`)
+        .query<LinkRow, string[]>(`${select} WHERE ${owner} IN (${chunk.map(() => '?').join(',')})`)
         .all(...chunk),
     );
   }

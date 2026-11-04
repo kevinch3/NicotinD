@@ -60,7 +60,7 @@ describe('persist writes only what changed (#1309)', () => {
     // 300 narrow synced_at stamps, plus the few hundred album/artist/genre and
     // bookkeeping upserts — not the ~1,500 song + credit + genre rewrites.
     const aggregates = built.albums.length + built.artists.length + built.genres.length;
-    expect(writes).toBeLessThanOrEqual(300 + aggregates + built.albumArtists.length + 5);
+    expect(writes).toBeLessThanOrEqual(300 + aggregates + 5);
     // Every surviving row was stamped, so the prune contract still holds.
     expect(
       (
