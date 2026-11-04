@@ -158,6 +158,7 @@ function toTrack(play: RecentPlay): Track {
     title: play.title ?? '',
     artist: play.artist ?? '',
     artistId: play.artistId ?? undefined,
+    artists: play.artists,
     album: play.album ?? undefined,
     albumId: play.albumId ?? undefined,
     coverArt: play.coverArt ?? undefined,

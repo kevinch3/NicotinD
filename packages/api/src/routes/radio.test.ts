@@ -793,6 +793,64 @@ describe('radio /next', () => {
  * test, so it is boolean and every candidate passes it — these cover the three
  * things that made an "Electronic" station serve Queen next to Calvin Harris.
  */
+describe('radio /next — artist credits', () => {
+  let app: Hono;
+
+  const credit = (songId: string, artistId: string, name: string, position: number): void => {
+    testDb.run(`INSERT OR IGNORE INTO library_artists (id, name, synced_at) VALUES (?, ?, 0)`, [
+      artistId,
+      name,
+    ]);
+    testDb.run(
+      `INSERT INTO library_song_artists (song_id, artist_id, role, position) VALUES (?, ?, 'primary', ?)`,
+      [songId, artistId, position],
+    );
+  };
+
+  beforeEach(() => {
+    testDb = createTestDb();
+    app = new Hono();
+    app.route('/radio', radioRoutes());
+    seedSong(testDb, {
+      id: 'seed',
+      title: 'Seed',
+      artist: 'Solo',
+      album: 'A',
+      albumId: 'a',
+      genre: 'Rock',
+    });
+    seedSong(testDb, {
+      id: 'joint',
+      title: 'Joint',
+      artist: 'One/Two',
+      album: 'B',
+      albumId: 'b',
+      genre: 'Rock',
+    });
+    credit('joint', 'id-one', 'One', 0);
+    credit('joint', 'id-two', 'Two', 1);
+  });
+
+  const names = (songs: Array<{ id: string; artists?: Array<{ name: string }> }>) =>
+    songs.find((s) => s.id === 'joint')?.artists?.map((a) => a.name);
+
+  it.each([
+    ['seed', '/radio/next?seedId=seed'],
+    ['list', '/radio/next?seedIds=seed'],
+    ['filter', '/radio/next?genre=Rock'],
+  ])('the %s lane returns every credited artist', async (_lane, url) => {
+    const res = await app.request(url);
+    expect(res.status).toBe(200);
+    expect(names((await res.json()) as Array<{ id: string }>)).toEqual(['One', 'Two']);
+  });
+
+  it('the provenance envelope carries them too', async () => {
+    const res = await app.request('/radio/next?seedId=seed&provenance=1');
+    const body = (await res.json()) as { songs: Array<{ id: string }> };
+    expect(names(body.songs)).toEqual(['One', 'Two']);
+  });
+});
+
 describe('radio /next — genre stations', () => {
   beforeEach(() => {
     testDb = createTestDb();

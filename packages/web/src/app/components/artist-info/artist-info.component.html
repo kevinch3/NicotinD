@@ -1,5 +1,5 @@
 @if (effectiveBio() || allSources().length > 0) {
-  <div class="mt-4 p-4 rounded-lg bg-theme-surface/30" data-testid="artist-info-section">
+  <div [class]="cardClass()" data-testid="artist-info-section">
     @if (formatted().bio; as bioText) {
       <p
         #bio
@@ -64,10 +64,7 @@
     }
   </div>
 } @else if (auth.canCurate()) {
-  <div
-    class="mt-4 p-4 rounded-lg bg-theme-surface/30 text-sm text-theme-muted"
-    data-testid="artist-info-section"
-  >
+  <div [class]="cardClass() + ' text-sm text-theme-muted'" data-testid="artist-info-section">
     No bio available.
     <button
       type="button"

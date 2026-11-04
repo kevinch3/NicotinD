@@ -1,4 +1,6 @@
 import type { Database } from 'bun:sqlite';
+import type { ArtistCredit } from '@nicotind/core';
+import { songCredits } from './artist-attach.js';
 import { recordingKey } from './recording-identity.js';
 
 /**
@@ -55,6 +57,8 @@ export interface RecentPlay {
   artist: string | null;
   /** Live ids so a shelf tile's names can link to their pages. */
   artistId: string | null;
+  /** Every credited artist, so a replay from the shelf links each of them. */
+  artists?: ArtistCredit[];
   album: string | null;
   albumId: string | null;
   duration: number | null;
@@ -181,7 +185,7 @@ export function recentPlays(db: Database, userId: string, limit: number): Recent
   // Over-fetch, then collapse: two rows of one recording must not take two
   // tiles, and collapsing *after* a LIMIT would silently return a short shelf.
   const seen = new Set<string>();
-  return db
+  const plays: RecentPlay[] = db
     .query<
       {
         song_id: string;
@@ -236,6 +240,14 @@ export function recentPlays(db: Database, userId: string, limit: number): Recent
       coverArt: r.cover_art,
       playedAt: r.played_at,
     }));
+  const credits = songCredits(
+    db,
+    plays.map((p) => p.songId),
+  );
+  return plays.map((p) => {
+    const artists = credits.get(p.songId);
+    return artists ? { ...p, artists } : p;
+  });
 }
 
 /**

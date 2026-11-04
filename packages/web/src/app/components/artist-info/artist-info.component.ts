@@ -3,6 +3,7 @@ import {
   Component,
   ElementRef,
   OnDestroy,
+  computed,
   effect,
   inject,
   input,
@@ -64,6 +65,12 @@ export class ArtistInfoComponent implements AfterViewInit, OnDestroy {
   /** A curator's hand-edit (`source='user', manual_override=1`). Auto-fetch
    *  must never touch this — the curator wins. */
   readonly manualOverride = input(false);
+  /** Rendered inside the artist page's About block (#1572), which already
+   *  draws the card — so drop this component's own card chrome. */
+  readonly embedded = input(false);
+  protected readonly cardClass = computed(() =>
+    this.embedded() ? '' : 'mt-4 p-4 rounded-lg bg-theme-surface/30',
+  );
   /** Emitted after a successful refresh so the parent page can update its own signal. */
   readonly updated = output<{ bio: string | null; urls: string[] }>();
 

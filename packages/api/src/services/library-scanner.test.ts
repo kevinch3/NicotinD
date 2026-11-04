@@ -1,4 +1,5 @@
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, beforeEach, spyOn } from 'bun:test';
@@ -910,6 +911,39 @@ describe('LibraryScanner.persist', () => {
         scanner.persist(buildLibrary(prune ? [retagged, sibling] : [retagged]), t0 + 1, prune);
 
         expect(creditsOf(id)).toEqual(['Bad Bunny']);
+      });
+    }
+  });
+
+  describe('a changed album credit set (#1598)', () => {
+    const albumCredits = (id: string) =>
+      db
+        .query<{ name: string }, [string]>(
+          `SELECT a.name FROM library_album_artists aa
+           JOIN library_artists a ON a.id = aa.artist_id
+           WHERE aa.album_id = ? ORDER BY aa.position`,
+        )
+        .all(id)
+        .map((r) => r.name);
+
+    for (const prune of [false, true]) {
+      it(`drops the superseded credit on a ${prune ? 'full' : 'incremental'} rescan`, () => {
+        const t0 = Date.now();
+        const joint = track({ relPath: 'A, B/Pop/01.mp3', artist: 'A, B', album: 'Pop' });
+        const first = buildLibrary([joint]);
+        scanner.persist(first, t0, true);
+        const id = first.albums[0]!.id;
+        expect(albumCredits(id)).toEqual(['A, B']);
+
+        const authority = {
+          confirmedArtists: new Set(['a', 'b']),
+          canonicalWhole: new Set<string>(),
+          aliases: new Map<string, string>(),
+        };
+        const second = buildLibrary([joint], undefined, undefined, authority);
+        scanner.persist(second, t0 + 1, prune);
+
+        expect(albumCredits(id)).toEqual(['A', 'B']);
       });
     }
   });
@@ -1832,8 +1866,26 @@ describe('an incomplete walk must not prune (issue #968)', () => {
     mkdirSync(join(root, 'Radiohead', 'Pablo Honey'), { recursive: true });
     writeFileSync(join(root, 'Radiohead', 'Pablo Honey', '01.mp3'), 'x');
 
+    const unreadable = join(root, 'Fred again');
+    mkdirSync(unreadable, { recursive: true });
+
+    // Inject a failing readdir so the test does not rely on filesystem
+    // permission bits (which root bypasses in containers/cloud runners; issue #1532).
+    const failingReaddir = (async (
+      path: Parameters<typeof readdir>[0],
+      options: Parameters<typeof readdir>[1],
+    ) => {
+      if (String(path) === unreadable) {
+        const err = Object.assign(new Error(`EACCES: permission denied, scandir '${unreadable}'`), {
+          code: 'EACCES',
+        });
+        throw err;
+      }
+      return readdir(path, options as unknown as { withFileTypes: true });
+    }) as unknown as typeof readdir;
+
     // Seed a row for a file in a directory the walk will fail to read.
-    const scanner = new LibraryScanner(root, db);
+    const scanner = new LibraryScanner(root, db, undefined, failingReaddir);
     scanner.persist(
       buildLibrary([
         track({
@@ -1849,9 +1901,6 @@ describe('an incomplete walk must not prune (issue #968)', () => {
     );
     expect(countSongs(db)).toBe(1);
 
-    const unreadable = join(root, 'Fred again');
-    mkdirSync(unreadable, { recursive: true });
-    chmodSync(unreadable, 0o000);
     try {
       await scanner.scanFull();
       // Before the fix the prune ran anyway and this row was gone.
@@ -1860,7 +1909,6 @@ describe('an incomplete walk must not prune (issue #968)', () => {
         db.query("SELECT id FROM library_songs WHERE path LIKE 'Fred again/%'").get(),
       ).not.toBeNull();
     } finally {
-      chmodSync(unreadable, 0o755);
       rmSync(root, { recursive: true, force: true });
     }
   });

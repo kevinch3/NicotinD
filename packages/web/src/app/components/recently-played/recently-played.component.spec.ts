@@ -116,6 +116,19 @@ describe('RecentlyPlayedComponent', () => {
     expect(playWithContext.mock.calls[0][0][0]).toMatchObject({ coverArt: 'cov1' });
   });
 
+  it('threads every credited artist onto the queued tracks so the player links them', async () => {
+    const artists = [
+      { id: 'one', name: 'One', role: 'primary' as const },
+      { id: 'two', name: 'Two', role: 'primary' as const },
+    ];
+    const { fixture, playWithContext } = setup([play({ artist: 'One/Two', artists })]);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="recently-played-item"]').click();
+    expect(playWithContext.mock.calls[0][0][0].artists).toEqual(artists);
+  });
+
   it('tolerates a play with no live metadata', async () => {
     const { fixture, playWithContext } = setup([
       play({ title: null, artist: null, album: null, duration: null }),

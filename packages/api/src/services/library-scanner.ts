@@ -1043,6 +1043,8 @@ export class LibraryScanner {
     /** Reserved top-level names. Derived from config by the caller so the dir
      *  the organizer writes to is the dir the walk skips. */
     private reserved: ReadonlySet<string> = reservedDirsFor(),
+    /** Directory reader, injectable for testing (issue #1532). */
+    private readdirFn: typeof readdir = readdir,
   ) {}
 
   /** Full scans and scoped re-buckets take turns: a scan builds from authority
@@ -1246,7 +1248,7 @@ export class LibraryScanner {
     if (isRoot) this.unreadableDirs = [];
     let entries;
     try {
-      entries = await readdir(dir, { withFileTypes: true });
+      entries = await this.readdirFn(dir, { withFileTypes: true });
     } catch (err) {
       log.warn({ err, dir }, 'walk: readdir failed');
       this.unreadableDirs.push(dir);
@@ -1516,6 +1518,9 @@ export class LibraryScanner {
     const songArtistDeleteStmt = this.db.prepare(
       `DELETE FROM library_song_artists WHERE song_id = ?`,
     );
+    const albumArtistDeleteStmt = this.db.prepare(
+      `DELETE FROM library_album_artists WHERE album_id = ?`,
+    );
     const albumArtistStmt = this.db.prepare(`
       INSERT INTO library_album_artists (album_id, artist_id, role, position)
       VALUES (?, ?, ?, ?)
@@ -1687,7 +1692,27 @@ export class LibraryScanner {
         if (!creditsChanged.has(link.parentId)) continue;
         songArtistStmt.run(link.parentId, link.artistId, link.role, link.position);
       }
+      const storedAlbumCredits = loadLinkKeys(
+        this.db,
+        'library_album_artists',
+        prune ? null : built.albums.map((a) => a.id),
+      );
+      const builtAlbumCredits = linkKeysOf(
+        built.albumArtists,
+        (l) => l.parentId,
+        (l) => `${l.artistId}\u0000${l.role}`,
+        (l) => linkTuple(l.artistId, l.role, l.position),
+      );
+      const albumCreditsChanged = new Set(
+        built.albums
+          .filter(
+            (a) => (storedAlbumCredits.get(a.id) ?? '') !== (builtAlbumCredits.get(a.id) ?? ''),
+          )
+          .map((a) => a.id),
+      );
+      for (const id of albumCreditsChanged) albumArtistDeleteStmt.run(id);
       for (const link of built.albumArtists) {
+        if (!albumCreditsChanged.has(link.parentId)) continue;
         albumArtistStmt.run(link.parentId, link.artistId, link.role, link.position);
       }
       // Replace (not merge) each rescanned song's genre set so a changed tag
@@ -1982,7 +2007,7 @@ export class LibraryScanner {
         loadGenreOverrides(this.db),
         this.knownRelPaths(tracks),
       );
-      // Replace the album credit set, as persist already does for songs (#1073).
+      // An album this re-bucket emptied gets no build row, so persist cannot clear it.
       this.db.run(`DELETE FROM library_album_artists WHERE album_id IN (${albumSet})`, [albumJson]);
       this.persist(built, Date.now(), false);
       for (const id of new Set([...artistsBefore, ...built.artists.map((a) => a.id)])) {

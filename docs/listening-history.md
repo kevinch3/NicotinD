@@ -170,6 +170,9 @@ real covers; the client builds the `/api/cover/:id?size=&token=` URL itself, lik
 call site — `Track.coverArt`/`RecentPlay.coverArt` are always ids, never URLs (passing the raw id as
 an `<img src>` is exactly the bug that left the home tiles on their letter placeholders).
 
+Each row also ships `artists`, so a replay from the shelf or a mosaic tile links every credited
+artist like any other playback (#1597).
+
 ## Stats (phase 2)
 
 `GET /api/history/stats?period=30d|year|all` (`listeningStats`) → the Library **Stats** tab, rendered
