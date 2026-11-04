@@ -259,7 +259,7 @@ esac
       h.signals([0.6, 0.5, 0.5], []);
       await h.probe();
       expect(h.notified()).toEqual([]);
-      expect(h.log()).toContain('ok (0s) load=0.6/0.5/0.5 blocks15m=[]');
+      expect(h.log()).toMatch(/ok \(\d+s\) load=0\.6\/0\.5\/0\.5 blocks15m=\[\]/);
 
       h.signals([191.09, 40, 10], []);
       await h.probe();
