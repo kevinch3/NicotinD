@@ -380,6 +380,12 @@ The list is cut first, so a member with its own delimiter survives (`Wisin & Yan
 
 **What a split does and does not move.** Album ids stay put, because the album is still keyed on the raw album artist: a playlist file's `Gramatik/Luxas` keeps its album, and its compound row stays with `split_compound = 1` while the members take the links. Only `library_songs.artist_id` moves when the *owner* is the compound, to the compound's first artist, since a split compound with no album keeps no row and radio counts a song under this id. A song on someone else's album keeps that owner: `Travis Scott/GloRilla` on a JACKBOYS album still appears on JACKBOYS' page.
 
+**The file's own artist list (#1601).** A file can hold the credit as a list: an `ARTISTS` tag (Picard) or ID3v2.4 values. `artistFieldsFromParse` keeps it as `ScannedTrack.artistList`, and `buildLibrary` links those names over any guess from the credit's text, because the file states them. A person's decision still wins. The displayed `artist` and the song's owner do not change, so `KAROL G` still reads `KAROL G` while linking both artists. Listed names also count as known artists for the list rule.
+
+ID3v2.2 and 2.3 keep one string, so music-metadata cuts it at each `/` and `common.artist` is only the first piece: `Hugo Fattoruso/Ruben Rada` reads as `Hugo Fattoruso`, and `AC/DC` as `AC`. That cut is not a list, so the text is put back and goes through the list rule like any other credit.
+
+Rows cached before this have no list, and reading every file at once would be a heavy pass, so the `artist-list` task reads them at one batch per tick, about 16 hours for prod's library. It writes only `scan_cache`, never a file, and links change on the next full scan.
+
 **An `unknown` never replaces a decision (#1607).** The identity task re-checks Lidarr weekly, and `unknown` only means it found nothing this time, so `upsertArtistIdentity` keeps a stored `split` or `single` and just marks it checked. A real answer still replaces the last one.
 
 **Deploying the rule is the backfill.** A full scan runs at boot, so review `joint-credits-dry-run.ts` before merging any change to this rule. It builds from the scan cache with the real `buildLibrary`, writes nothing, and reports credit changes, album ids that would move, and curated artist rows that would go. Measured before this shipped: [joint-credits-dry-run-2026-11.md](measurements/joint-credits-dry-run-2026-11.md).

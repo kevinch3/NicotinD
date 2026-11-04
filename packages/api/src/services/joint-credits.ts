@@ -59,14 +59,25 @@ function openCredit(
   };
 }
 
+type CreditAuthority = KnownArtistSets & { aliases?: ReadonlyMap<string, string> };
+
+/** How many artists these names are once aliases apply, which is what a song can link. */
+function distinctArtists(names: { name: string }[], known: CreditAuthority): number {
+  const keyOf = (name: string) => {
+    const key = normalizeArtistForGrouping(name);
+    return normalizeArtistForGrouping(known.aliases?.get(key) ?? key);
+  };
+  return new Set(names.map((n) => keyOf(n.name))).size;
+}
+
 export function findUnresolvedJointCredits(
   rows: readonly JointCreditRow[],
-  known: KnownArtistSets,
+  known: CreditAuthority,
 ): JointCreditFinding[] {
   const out: JointCreditFinding[] = [];
   for (const r of rows) {
     const open = openCredit(r.credit, known);
-    if (!open || r.links >= open.members.length) continue;
+    if (!open || r.links >= distinctArtists(open.members, known)) continue;
     out.push({ credit: r.credit, songs: r.songs, songId: r.songId, ...open });
   }
   return out.sort((a, b) => b.songs - a.songs || a.credit.localeCompare(b.credit, 'en'));
@@ -127,8 +138,8 @@ export function listRuleSplits(credit: string, known: KnownArtistSets): boolean 
 }
 
 /** One authority load per request, and none when no flag needs it. */
-export function lazyAuthority(db: Database): () => KnownArtistSets {
-  let loaded: KnownArtistSets | undefined;
+export function lazyAuthority(db: Database): () => CreditAuthority {
+  let loaded: CreditAuthority | undefined;
   return () => (loaded ??= loadSplitAuthority(db));
 }
 
@@ -166,7 +177,7 @@ const ABOUT_THE_CREDIT = /\b(misplaced|mistagged)\b/;
 export function withJointCreditCard(
   db: Database,
   flag: CurationFlag,
-  authority: () => KnownArtistSets = () => loadSplitAuthority(db),
+  authority: () => CreditAuthority = () => loadSplitAuthority(db),
 ): CurationFlag {
   if (flag.optionsJson || flag.targetKind !== 'song' || !ABOUT_THE_CREDIT.test(flag.reason)) {
     return flag;

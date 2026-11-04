@@ -185,6 +185,7 @@ function makeAdminMocks(review: Partial<ServiceReview> = {}) {
       'genre-discogs': 0,
       popularity: 0,
       'artist-origin': 0,
+      'artist-list': 0,
     },
     availability: {
       bpm: true,
@@ -201,6 +202,7 @@ function makeAdminMocks(review: Partial<ServiceReview> = {}) {
       'genre-discogs': true,
       popularity: true,
       'artist-origin': true,
+      'artist-list': true,
     },
     skipped: 0,
   };

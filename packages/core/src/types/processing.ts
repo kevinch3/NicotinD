@@ -30,6 +30,7 @@ export const PROCESSING_TASK_IDS = [
   'genre-discogs',
   'popularity',
   'artist-origin',
+  'artist-list',
 ] as const;
 
 /** Identifier of an enrichment task. */

@@ -39,6 +39,8 @@ export const DEFAULT_PROCESSING_SETTINGS: ProcessingSettings = {
     // Resolves compound artist strings (bands/duos vs collabs) via Lidarr/MB so the
     // scanner can split them; auto-skips when Lidarr is absent. Per-artist, never a gate.
     'artist-identity': true,
+    // Reads each file's own artist list once; no network and no file write (#1601).
+    'artist-list': true,
     // Audio-inferred genre fallback (issue #187 task A2) — runs only when the
     // `genre` task above has nothing; confidence-gated, never a gate itself
     // (a weak classifier must never strand a fresh download).

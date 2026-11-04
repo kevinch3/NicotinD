@@ -6,6 +6,7 @@ import { describe, expect, it, beforeEach, spyOn } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import {
+  artistFieldsFromParse,
   buildLibrary,
   songId,
   albumIdFor,
@@ -33,6 +34,109 @@ function track(p: Partial<ScannedTrack> & { relPath: string }): ScannedTrack {
     ...p,
   };
 }
+
+describe('artistFieldsFromParse (#1601)', () => {
+  const parse = (artist: string, artists: string[], tagTypes: string[] = ['vorbis']) =>
+    artistFieldsFromParse({ artist, artists }, { tagTypes });
+
+  it('trusts a list the file stores as a list', () => {
+    expect(parse('KAROL G', ['KAROL G;Marco Antonio Solís'])).toEqual({
+      artist: 'KAROL G',
+      artistList: ['KAROL G', 'Marco Antonio Solís'],
+    });
+    expect(parse('A', ['A', 'B'], ['ID3v2.4'])).toEqual({ artist: 'A', artistList: ['A', 'B'] });
+  });
+
+  it('restores an ID3v2.3 credit the parser cut at its slash, and never trusts the cut', () => {
+    expect(parse('Hugo Fattoruso', ['Hugo Fattoruso', 'Ruben Rada'], ['ID3v2.3', 'ID3v1'])).toEqual(
+      {
+        artist: 'Hugo Fattoruso/Ruben Rada',
+      },
+    );
+    expect(parse('AC', ['AC', 'DC'], ['ID3v2.3'])).toEqual({ artist: 'AC/DC' });
+  });
+
+  it('does not mistake a plain ARTIST with a semicolon for a list the file stores', () => {
+    expect(parse('Foo; Bar', ['Foo; Bar'])).toEqual({ artist: 'Foo; Bar' });
+  });
+
+  it('adds nothing for a single artist', () => {
+    expect(parse('Daft Punk', ['Daft Punk'])).toEqual({ artist: 'Daft Punk' });
+    expect(parse('Gramatik/Luxas', ['Gramatik/Luxas'])).toEqual({ artist: 'Gramatik/Luxas' });
+    expect(artistFieldsFromParse(undefined, undefined)).toEqual({ artist: undefined });
+  });
+});
+
+describe('buildLibrary — the file own artist list (#1601)', () => {
+  const file = track({
+    relPath: 'KAROL G/Album/01.opus',
+    artist: 'KAROL G',
+    albumArtist: 'KAROL G',
+    album: 'Album',
+    title: 'Song',
+    artistList: ['KAROL G', 'Marco Antonio Solís'],
+  });
+  const links = (built: ReturnType<typeof buildLibrary>) =>
+    built.songArtists.map((l) => l.artistId);
+
+  it('links every name, even with no name known, and leaves the displayed credit alone', () => {
+    const built = buildLibrary([file]);
+    expect(links(built)).toEqual([artistIdFor('KAROL G'), artistIdFor('Marco Antonio Solís')]);
+    expect(built.songs[0]!.artist).toBe('KAROL G');
+    expect(built.songs[0]!.artistId).toBe(artistIdFor('KAROL G'));
+    expect(built.artists.map((a) => a.name)).toContain('Marco Antonio Solís');
+  });
+
+  it('settles a stripped separator the name rule could not', () => {
+    const built = buildLibrary([
+      track({
+        relPath: 'Duo/Tango/01.opus',
+        artist: 'Duo Uno  Duo Dos',
+        albumArtist: 'Duo Uno  Duo Dos',
+        album: 'Tango',
+        artistList: ['Duo Uno', 'Duo Dos'],
+      }),
+    ]);
+    expect(links(built)).toEqual([artistIdFor('Duo Uno'), artistIdFor('Duo Dos')]);
+    expect(built.artists.find((a) => a.name === 'Duo Uno  Duo Dos')!.splitCompound).toBe(true);
+  });
+
+  it('yields to a person who said it is one act', () => {
+    const built = buildLibrary([file], undefined, undefined, {
+      confirmedArtists: new Set<string>(),
+      canonicalWhole: new Set(['karol g']),
+      aliases: new Map<string, string>(),
+    });
+    expect(links(built)).toEqual([artistIdFor('KAROL G')]);
+  });
+
+  it('yields to a person who named the members', () => {
+    const built = buildLibrary([file], undefined, undefined, {
+      confirmedArtists: new Set<string>(),
+      canonicalWhole: new Set<string>(),
+      aliases: new Map<string, string>(),
+      explicitSplits: new Map([['karol g', ['KAROL G', 'Someone Else']]]),
+    });
+    expect(links(built)).toEqual([artistIdFor('KAROL G'), artistIdFor('Someone Else')]);
+  });
+
+  it('applies an alias to a listed name', () => {
+    const built = buildLibrary([file], undefined, undefined, {
+      confirmedArtists: new Set<string>(),
+      canonicalWhole: new Set<string>(),
+      aliases: new Map([['marco antonio solis', 'Marco A. Solís']]),
+    });
+    expect(links(built)).toContain(artistIdFor('Marco A. Solís'));
+  });
+
+  it('keeps a guest the credit bills as featuring', () => {
+    const built = buildLibrary([{ ...file, artist: 'KAROL G feat. Marco Antonio Solís' }]);
+    expect(built.songArtists.map((l) => [l.artistId, l.role])).toEqual([
+      [artistIdFor('KAROL G'), 'primary'],
+      [artistIdFor('Marco Antonio Solís'), 'featuring'],
+    ]);
+  });
+});
 
 describe('buildLibrary (pure aggregation)', () => {
   it('groups tracks into albums + artists and mints stable ids', () => {
