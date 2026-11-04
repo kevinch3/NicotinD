@@ -14,7 +14,8 @@ import { PlaybackWsService } from '../../services/playback-ws.service';
 import { PreserveService } from '../../services/preserve.service';
 import { MediaControlsService } from '../../services/media-controls.service';
 import { ConfirmService } from '../../services/confirm.service';
-import { APP_VERSION } from '../../app.config';
+import { APP_BUILD_INFO, APP_VERSION } from '../../app.config';
+import { resolveBuildInfo } from '../../lib/build-info';
 import { isElectron } from '../../lib/platform';
 import { pickDirectory, setMusicDir, revealLogs } from '../../services/native/native-capabilities';
 import { ToastService } from '../../services/toast.service';
@@ -875,6 +876,43 @@ describe('SettingsComponent (manual PWA update check)', () => {
     expect(toast.show.mock.calls[0][0].message).toBe('settings.updateUpToDate');
     expect(BASE_CATALOG).toHaveProperty(['settings.updateUpToDate']);
     btn.textContent = 'Check for updates';
+    fixture.destroy();
+  });
+
+  it('names the build in the up-to-date toast when the bundle is stamped', async () => {
+    const { list, toast, update } = makeProviders('user', { enabled: true });
+    update.checkForUpdate.mockResolvedValueOnce('up-to-date');
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: [
+        ...list,
+        { provide: APP_BUILD_INFO, useValue: resolveBuildInfo('37eae47aaba5e5233efdd2abd49b4930') },
+      ],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    await fixture.componentInstance.searchForUpdates();
+    // An edge build reads the last release's version, so the build is what
+    // tells two "v0.8.119"s apart.
+    expect(toast.show.mock.calls[0][0].message).toBe('settings.updateUpToDateBuild');
+    expect(BASE_CATALOG).toHaveProperty(['settings.updateUpToDateBuild']);
+    fixture.destroy();
+  });
+
+  it('says the server was unreachable instead of "up to date" when offline', async () => {
+    const { list, toast, update } = makeProviders('user', { enabled: true });
+    update.checkForUpdate.mockResolvedValueOnce('offline');
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    await fixture.componentInstance.searchForUpdates();
+    expect(toast.show).toHaveBeenCalledTimes(1);
+    expect(toast.show.mock.calls[0][0].kind).toBe('error');
+    expect(toast.show.mock.calls[0][0].message).toBe('settings.updateOffline');
+    expect(BASE_CATALOG).toHaveProperty(['settings.updateOffline']);
     fixture.destroy();
   });
 

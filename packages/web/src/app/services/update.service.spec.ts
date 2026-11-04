@@ -7,7 +7,9 @@ import {
   VersionEvent,
   VersionReadyEvent,
 } from '@angular/service-worker';
-import { APP_VERSION } from '../app.config';
+import { APP_BUILD_INFO, APP_VERSION } from '../app.config';
+import { resolveBuildInfo } from '../lib/build-info';
+import { PENDING_UPDATE_KEY, readPendingUpdate } from '../lib/update-check';
 import { UpdateService } from './update.service';
 
 function makeSwStub(
@@ -168,7 +170,8 @@ describe('UpdateService', () => {
     const second = await service.checkForUpdate();
 
     expect(second).toBe('unavailable');
-    expect(sw.checkForUpdate).toHaveBeenCalledTimes(1);
+    // The worker is asked once the server probe has answered.
+    await vi.waitFor(() => expect(sw.checkForUpdate).toHaveBeenCalledTimes(1));
 
     resolveCheck(false);
     const firstResult = await first;
@@ -373,7 +376,7 @@ describe('UpdateService', () => {
       expect(await unknown.checkForUpdate()).toBe('up-to-date');
     });
 
-    it('survives an unreachable server rather than reporting an update', async () => {
+    it('reports an unreachable server as offline — never as up to date', async () => {
       const sw = makeSwStub(true, 'false');
       vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
       TestBed.configureTestingModule({
@@ -384,7 +387,12 @@ describe('UpdateService', () => {
       });
       const service = TestBed.inject(UpdateService);
 
-      expect(await service.checkForUpdate()).toBe('up-to-date');
+      // "Up to date" here is how a phone with no route to the server reported
+      // its old build as current: nothing was checked, so say that.
+      expect(await service.checkForUpdate()).toBe('offline');
+      expect(service.updateAvailable()).toBe(false);
+      // The worker's manifest fetch would fail the same way: not asked.
+      expect(sw.checkForUpdate).not.toHaveBeenCalled();
     });
   });
 
@@ -404,5 +412,149 @@ describe('UpdateService', () => {
     expect(activated).toBe(true);
     await inFlight;
     expect(sw.activateUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  describe('the build decides, not the version string', () => {
+    const RUNNING = 'b591028d0885ed50e49ef38c9d3852a029f8431a';
+    const SERVED = '37eae47aaba5e5233efdd2abd49b49305385cdc5';
+
+    function provideBuild(
+      sw: ReturnType<typeof makeSwStub>,
+      health: { status?: number; version?: string; commit?: string | null } = {},
+    ) {
+      const fetchMock = vi.fn().mockImplementation(
+        async () =>
+          new Response(
+            JSON.stringify({
+              ok: true,
+              version: health.version ?? '0.1.300',
+              commit: health.commit === undefined ? SERVED : health.commit,
+            }),
+            { status: health.status ?? 200 },
+          ),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: SwUpdate, useValue: sw },
+          { provide: APP_VERSION, useValue: '0.1.300' },
+          { provide: APP_BUILD_INFO, useValue: resolveBuildInfo(RUNNING) },
+        ],
+      });
+      return { service: TestBed.inject(UpdateService), fetchMock };
+    }
+
+    beforeEach(() => localStorage.removeItem(PENDING_UPDATE_KEY));
+
+    it('reports an edge build of the same version as an update', async () => {
+      // The reported case: server on 37eae47, phone on b591028, both "0.8.119",
+      // and a worker that says there is nothing new.
+      const sw = makeSwStub(true, 'false');
+      const { service } = provideBuild(sw);
+
+      expect(await service.checkForUpdate()).toBe('available');
+      expect(service.updateAvailable()).toBe(true);
+    });
+
+    it('is up to date when the server serves this very build', async () => {
+      const sw = makeSwStub(true, 'false');
+      const { service } = provideBuild(sw, { commit: RUNNING.slice(0, 7) });
+
+      expect(await service.checkForUpdate()).toBe('up-to-date');
+      // Same build, so the worker is still asked about a staged newer one.
+      expect(sw.checkForUpdate).toHaveBeenCalledTimes(1);
+    });
+
+    it('treats a health endpoint that errors as offline', async () => {
+      const { service } = provideBuild(makeSwStub(true, 'false'), { status: 502 });
+      expect(await service.checkForUpdate()).toBe('offline');
+    });
+
+    it('applying a server-found update makes the worker fetch it before reloading', async () => {
+      const sw = makeSwStub(true, 'false');
+      const { service } = provideBuild(sw);
+      await service.checkForUpdate();
+      sw.checkForUpdate.mockClear();
+
+      await service.applyUpdate();
+
+      expect(sw.checkForUpdate).toHaveBeenCalledTimes(1);
+      expect(sw.checkForUpdate.mock.invocationCallOrder[0]).toBeLessThan(
+        sw.activateUpdate.mock.invocationCallOrder[0],
+      );
+      expect(readPendingUpdate(localStorage)).toEqual(
+        expect.objectContaining({ commit: SERVED, attempts: 1 }),
+      );
+    });
+
+    describe('verifying the reload landed', () => {
+      let unregister: ReturnType<typeof vi.fn>;
+      let deleteCache: ReturnType<typeof vi.fn>;
+
+      beforeEach(() => {
+        unregister = vi.fn().mockResolvedValue(true);
+        deleteCache = vi.fn().mockResolvedValue(true);
+        vi.stubGlobal('caches', {
+          keys: vi.fn().mockResolvedValue(['ngsw:/:1:assets:app:cache', 'other-cache']),
+          delete: deleteCache,
+        });
+        Object.defineProperty(navigator, 'serviceWorker', {
+          configurable: true,
+          value: { getRegistrations: vi.fn().mockResolvedValue([{ unregister }]) },
+        });
+        Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
+      });
+
+      const pending = (commit: string, attempts: number) =>
+        localStorage.setItem(
+          PENDING_UPDATE_KEY,
+          JSON.stringify({ commit, attempts, at: Date.now() }),
+        );
+
+      it('forgets the record once the reload landed on the target build', async () => {
+        pending(RUNNING, 1);
+        const { service } = provideBuild(makeSwStub(true, 'false'), { commit: RUNNING });
+        service.start();
+
+        await vi.waitFor(() => expect(readPendingUpdate(localStorage)).toBeNull());
+        expect(unregister).not.toHaveBeenCalled();
+      });
+
+      it('resets the worker once when the reload came back on the old build', async () => {
+        pending(SERVED, 1);
+        const { service } = provideBuild(makeSwStub(true, 'false'));
+        service.start();
+
+        await vi.waitFor(() => expect(unregister).toHaveBeenCalledTimes(1));
+        // Only the worker's own caches: offline downloads are IndexedDB.
+        await vi.waitFor(() =>
+          expect(deleteCache).toHaveBeenCalledWith('ngsw:/:1:assets:app:cache'),
+        );
+        expect(deleteCache).not.toHaveBeenCalledWith('other-cache');
+        expect(readPendingUpdate(localStorage)).toEqual(
+          expect.objectContaining({ commit: SERVED, attempts: 2 }),
+        );
+      });
+
+      it('never resets the worker while offline — the record waits for a later boot', async () => {
+        pending(SERVED, 1);
+        Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
+        const { service } = provideBuild(makeSwStub(true, 'false'));
+        service.start();
+        await new Promise((r) => setTimeout(r, 0));
+
+        expect(unregister).not.toHaveBeenCalled();
+        expect(readPendingUpdate(localStorage)).not.toBeNull();
+      });
+
+      it('gives up after the reset attempt instead of reloading forever', async () => {
+        pending(SERVED, 2);
+        const { service } = provideBuild(makeSwStub(true, 'false'));
+        service.start();
+
+        await vi.waitFor(() => expect(readPendingUpdate(localStorage)).toBeNull());
+        expect(unregister).not.toHaveBeenCalled();
+      });
+    });
   });
 });

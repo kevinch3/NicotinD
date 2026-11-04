@@ -11,7 +11,7 @@ import {
   type AutoPreserveMode,
 } from '../../services/preserve.service';
 import { ChangelogModalComponent } from '../../components/changelog-modal/changelog-modal.component';
-import { APP_VERSION } from '../../app.config';
+import { APP_BUILD_INFO, APP_VERSION } from '../../app.config';
 import {
   MediaControlsService,
   type NowPlayingDiagnostics,
@@ -138,6 +138,7 @@ export class SettingsComponent {
   readonly themePresets = THEME_PRESETS;
   readonly myDeviceId = this.ws.getDeviceId();
   readonly version = inject(APP_VERSION);
+  private readonly build = inject(APP_BUILD_INFO);
   readonly showChangelog = signal(false);
   readonly showLogoutDialog = signal(false);
   readonly cleanPreserveOnLogout = signal(false);
@@ -180,7 +181,14 @@ export class SettingsComponent {
     });
   }
 
-  private showUpdateToast(outcome: 'available' | 'up-to-date'): string {
+  private showUpdateToast(outcome: 'available' | 'up-to-date' | 'offline'): string {
+    if (outcome === 'offline') {
+      return this.toast.show({
+        message: this.i18n.t('settings.updateOffline'),
+        kind: 'error',
+        duration: 5,
+      });
+    }
     if (outcome === 'available') {
       // A pending APK version means the native GitHub-release path found it:
       // the action downloads + opens the installer rather than reloading.
@@ -201,8 +209,13 @@ export class SettingsComponent {
       });
       return id;
     }
+    // The build, not only the version: an edge build reads the last release's
+    // version, so "v0.8.119" alone cannot say which of two builds this is.
+    const commit = this.build.shortCommit;
     return this.toast.show({
-      message: this.i18n.t('settings.updateUpToDate', { version: this.version }),
+      message: commit
+        ? this.i18n.t('settings.updateUpToDateBuild', { version: this.version, commit })
+        : this.i18n.t('settings.updateUpToDate', { version: this.version }),
       kind: 'success',
       duration: 3,
     });

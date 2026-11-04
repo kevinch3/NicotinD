@@ -99,8 +99,8 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   → [mobile-app.md](../mobile-app.md)
 - **PWA updates apply themselves**: `UpdateService.start()` re-checks on resume, `pageshow` and a
   30-min timer — the navigations an installed standalone app never makes — and `canApplyUpdateNow`
-  activates in the background, never while playing or visible; `serverIsNewer` outvotes a worker
-  holding a stale manifest. → [web-ui.md](../web-ui.md)
+  activates in the background, never while playing or visible; `probeServerBuild` compares commits
+  (`servedBuildVerdict`), and `verifyLastApply` resets a worker that reloaded stale. → [web-ui.md](../web-ui.md)
 - **The TV says where the audio is**: `TvDevicePickerComponent` is the D-pad output chooser (a
   full-screen list, never the phone popover a remote cannot dismiss), sharing `otherDevicesFor` with
   it; `TvShellComponent` routes to the player when a cast lands here.

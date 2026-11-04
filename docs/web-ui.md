@@ -1792,7 +1792,17 @@ That was first reported as "I deployed a new version and my browser kept showing
 | `pageshow` | A bfcache restore can arrive with no visibility transition |
 | every 30 min while foregrounded | The parked-tab case; paused while hidden, where a suspended app would not run it anyway |
 
-`ready` is a sticky signal written from **three** sources, because no one of them is reliable: the `VERSION_READY` event, a `checkForUpdate()` that resolved `true`, and `serverIsNewer()` — `GET /api/health` reports the version the server is actually serving and is the only signal that survives a worker holding a stale manifest. `unrecoverable` reloads.
+`ready` is a sticky signal written from **three** sources, because no one of them is reliable: the `VERSION_READY` event, a `checkForUpdate()` that resolved `true`, and `probeServerBuild()` — `GET /api/health` reports the build the server is actually serving and is the only signal that survives a worker holding a stale manifest. `unrecoverable` reloads.
+
+### The build decides, and an apply is verified
+
+It came back a third time, from an iOS standalone install again: the server was on the heat-fix `:edge` build, the phone stayed on the previous release, and **Check for updates** kept answering **"You're on v0.8.119"**. Three more defects, each sufficient on its own:
+
+1. **The version string cannot see an edge build.** Every green master commit is deployed as `:edge` carrying the *last release's* `package.json` version, so the server and the stale phone both said `0.8.119` and `serverIsNewer()` — a strict version comparison — said no. The commit can tell them apart: the bundle is stamped with it (`BUILD_INFO.commit`, from `NICOTIND_BUILD_COMMIT`) and `/api/health` reports the image's. `servedBuildVerdict` (`lib/update-check.ts`, pure) compares **commits whenever both sides have one** — a different build is an update, since this server is the only thing that ever serves the shell — and falls back to "strictly newer version" only when either side is unstamped.
+2. **"Couldn't check" was reported as "up to date".** Offline, the driver logs `Check for update aborted. (Client or server offline.)` and resolves `false`, and the health fallback swallowed its network error — so a phone with no route to the server announced its old build as current. The server is now asked **first**, with an 8 s bound (`HEALTH_PROBE_TIMEOUT_MS`); unreachable is its own outcome, `'offline'`, and the worker is not asked either, since its manifest fetch would fail the same way. The background check stands down the same way, which is also one less doomed request per resume offline.
+3. **The reload could land on the old build.** When the server found the update but the worker had not staged it, `applyUpdate` activated nothing and reloaded — a navigation the worker answers **from its old cache**. It now makes the worker fetch the new manifest (`sw.checkForUpdate()`) before activating, and records what the reload should land on (`PENDING_UPDATE_KEY` in localStorage). The next boot's `verifyLastApply` compares that with the running commit (`afterUpdateReload`): landed → forget it; came back stale → **reset the worker** (`resetServiceWorker`: unregister it and drop only its `ngsw:*` caches — offline downloads are IndexedDB `nicotind-preserve` and untouched) and reload once more; out of attempts (`MAX_UPDATE_ATTEMPTS`, 2) or older than `PENDING_UPDATE_TTL_MS` → give up. The reset runs **only after reaching the server** (and never while `navigator.onLine` is false): a reset with no network would leave an installed app with nothing to load.
+
+The up-to-date toast now names the build (`settings.updateUpToDateBuild`, "You're on v0.8.119 (build 37eae47)"), because a version alone cannot say which of two builds is running; About shows the same commit.
 
 ### Applying it in the background
 
@@ -1828,14 +1838,15 @@ is a latent landmine under any shared-worker config. Re-evaluate behind
   - `applying: Signal<boolean>` — true from the moment `applyUpdate` starts until the reload replaces the page; the banner reads it.
   - `searching: Signal<boolean>` — gates duplicate clicks while a manual check is in flight.
   - `checkAvailable: Signal<boolean>` — `enabled && !updateAvailable`; the manual control only renders when this is true (the banner already owns the CTA once an update is staged).
-  - `checkForUpdate(): Promise<'available' | 'up-to-date' | 'unavailable'>` — short-circuits to `'unavailable'` when `!enabled` or already `searching`. Then, in order: a version already staged is **`'available'` without asking the worker** (defect 1 above); otherwise `sw.checkForUpdate()`; otherwise `serverIsNewer()`. Only when all three say no is the answer `'up-to-date'`.
+  - `checkForUpdate(): Promise<'available' | 'up-to-date' | 'offline' | 'unavailable'>` — short-circuits to `'unavailable'` when `!enabled` or already `searching`. Then, in order: a version already staged is **`'available'` without asking the worker** (defect 1 above); otherwise `probeServerBuild()` — unreachable is **`'offline'`**, a different build is `'available'`; otherwise (same build) `sw.checkForUpdate()`, for a newer one already staged. Only then is the answer `'up-to-date'`.
   - `start(): void` — the background loop. A no-op wherever the SW is disabled.
-  - `applyUpdate(): Promise<void>` — `sw.activateUpdate()` then `document.location.reload()`. A failed activation is swallowed rather than fatal: when the "available" came from the server comparison there is nothing staged to activate, and the reload is what fetches the newer shell. (jsdom doesn't allow redefining `location.reload`, so the test asserts against the stub's `activateUpdate`.)
+  - `applyUpdate(): Promise<void>` — records the target build, makes the worker fetch the new manifest when the server found the update, then `sw.activateUpdate()` and `document.location.reload()`. A failed activation is swallowed rather than fatal: `verifyLastApply` on the next boot is the recovery (see "The build decides, and an apply is verified"). (jsdom doesn't allow redefining `location.reload`, so the test asserts against the stub's `activateUpdate`.)
 
 - **UI** (`packages/web/src/app/pages/settings/settings.component.{ts,html}`): the Account section grows a `@if (update.checkAvailable()) { … }` button. On browsers it follows `SwUpdate.isEnabled` (so dev builds and Electron hide it); on the native Android/TV shell `enabled` is true via the APK path instead. It shows **Check for updates** by default and **Checking for updates…** + `disabled` while the check is in flight.
 
 - **Outcomes → toasts** (existing `ToastService`, no new component):
-  - `'up-to-date'` → green `"You're on v{version}"` toast (3 s).
+  - `'up-to-date'` → green `"You're on v{version} (build {commit})"` toast (3 s); `"You're on v{version}"` on an unstamped build.
+  - `'offline'` → red `"Couldn't reach the server, so nothing was checked — connect and try again."` toast (5 s).
   - `'available'` → blue toast (8 s) with **Reload** and **Later** actions; **Reload** dismisses the toast and calls `applyUpdate()`. The sticky banner appears once `VERSION_READY` fires anyway — the toast is the immediate feedback, the banner is the universal CTA.
   - error → red `"Couldn't check for updates — try again later."` toast.
   - Stale toast from a previous check is dismissed on a new click.
@@ -1856,13 +1867,14 @@ is a latent landmine under any shared-worker config. Re-evaluate behind
 The manual-button design rejected both halves of what now ships. Both rejections were reasonable and both were wrong in the standalone-PWA case, so they are recorded rather than quietly deleted:
 
 1. **"Don't poll — it blocks SW registration."** True of the Angular docs' canonical snippet, which starts an unconditional `interval` at bootstrap. The loop here is a `createVisibilityPoller`: it stands down while hidden, its first tick is 30 minutes out, and registration is `registerWhenStable:30000` — a 30-minute timer is not what keeps an app from stabilizing. The reason the original reasoning does not carry is that "a user who stays parked on one tab" was treated as the edge case; on an installed PWA it is *every* session.
-2. **"The server version is not the PWA's version."** Still true, and it is why `serverIsNewer()` is the **last** resort rather than the signal: `SwUpdate` is asked first, twice over. But a server on a newer version than the running shell is proof the shell is stale, whatever the worker believes — and "the worker believes wrong" is exactly the reported state. A false positive costs one reload; the false negative it replaces cost weeks on an old build.
+2. **"The server version is not the PWA's version."** Still true of the *version*, which is why the comparison is now the **build**: this server is the only thing that serves the shell, so a server on a different commit than the running shell is proof the shell is stale, whatever the worker believes — and "the worker believes wrong" is exactly the reported state. It was once the last resort behind `SwUpdate`; since the edge-build report it is asked first. A false positive costs one reload; the false negative it replaces cost weeks on an old build.
 3. **`sw.unrecoverable` → reload.** Was deferred "until a real stuck-cache report lands". It reloads now: an unrecoverable cache serves a broken app forever, and re-registering from scratch is the documented way out.
 
 ### Files touched
 
-- `packages/web/src/app/services/update.service.ts` — `enabled`, `searching`, `checkAvailable`, `checkForUpdate`; then (#1126) the sticky `ready` signal, `start()`, `serverIsNewer()`, `applying` and the auto-apply.
+- `packages/web/src/app/services/update.service.ts` — `enabled`, `searching`, `checkAvailable`, `checkForUpdate`; then (#1126) the sticky `ready` signal, `start()`, `applying` and the auto-apply; then `probeServerBuild()` and `verifyLastApply()`.
 - `packages/web/src/app/lib/update-policy.ts` — `canApplyUpdateNow`, the whole auto-apply policy, pure.
+- `packages/web/src/app/lib/update-check.ts` — `servedBuildVerdict`, `parseHealth`, `afterUpdateReload`, the pending-update record and `resetServiceWorker`; spec'd in `update-check.spec.ts`.
 - `packages/api/src/services/static-cache.ts` — `cacheControlForStatic`, plus the middleware in `packages/api/src/index.ts`.
 - `packages/web/src/app/services/update.service.spec.ts` — enable/disable, search guard, available/up-to-date/error outcomes, reentrant safety, `applyUpdate` activation, and the #1126 group: a staged version never reports "up to date", the server beats a worker that says no, an older/unknown/unreachable server never invents an update.
 - `packages/web/src/app/pages/settings/settings.component.ts` + `.html` — `searchForUpdates()` + `reloadToUpdate()` handlers; new `@if` button above the version chip.
