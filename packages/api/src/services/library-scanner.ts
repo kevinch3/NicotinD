@@ -1041,6 +1041,8 @@ export class LibraryScanner {
     /** Reserved top-level names. Derived from config by the caller so the dir
      *  the organizer writes to is the dir the walk skips. */
     private reserved: ReadonlySet<string> = reservedDirsFor(),
+    /** Directory reader, injectable for testing (issue #1532). */
+    private readdirFn: typeof readdir = readdir,
   ) {}
 
   /** Full scans and scoped re-buckets take turns: a scan builds from authority
@@ -1230,7 +1232,7 @@ export class LibraryScanner {
     if (isRoot) this.unreadableDirs = [];
     let entries;
     try {
-      entries = await readdir(dir, { withFileTypes: true });
+      entries = await this.readdirFn(dir, { withFileTypes: true });
     } catch (err) {
       log.warn({ err, dir }, 'walk: readdir failed');
       this.unreadableDirs.push(dir);

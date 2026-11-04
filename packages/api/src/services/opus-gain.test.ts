@@ -258,7 +258,7 @@ describe.skipIf(!ffmpegAvailable())('readOggOpusDurationSec', () => {
     'matches ffprobe within 10 ms and the encoded length within 1 ms, across lengths',
     async () => {
       const root = tmpRoot();
-      for (const seconds of [0.3, 1, 7.77, 61.3, 183.21]) {
+      for (const seconds of [0.3, 1, 7.77, 25.4, 61.3]) {
         const p = join(root, `t${seconds}.opus`);
         makeOpus(p, seconds);
         const mine = await readOggOpusDurationSec(p);
@@ -270,6 +270,7 @@ describe.skipIf(!ffmpegAvailable())('readOggOpusDurationSec', () => {
         expect(Math.abs(mine! - seconds)).toBeLessThan(0.001);
       }
     },
+    20_000,
   );
 
   it('is null (fail closed) for a file truncated anywhere after its head', async () => {

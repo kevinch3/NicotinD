@@ -1,4 +1,5 @@
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, beforeEach, spyOn } from 'bun:test';
@@ -1725,8 +1726,26 @@ describe('an incomplete walk must not prune (issue #968)', () => {
     mkdirSync(join(root, 'Radiohead', 'Pablo Honey'), { recursive: true });
     writeFileSync(join(root, 'Radiohead', 'Pablo Honey', '01.mp3'), 'x');
 
+    const unreadable = join(root, 'Fred again');
+    mkdirSync(unreadable, { recursive: true });
+
+    // Inject a failing readdir so the test does not rely on filesystem
+    // permission bits (which root bypasses in containers/cloud runners; issue #1532).
+    const failingReaddir = (async (
+      path: Parameters<typeof readdir>[0],
+      options: Parameters<typeof readdir>[1],
+    ) => {
+      if (String(path) === unreadable) {
+        const err = Object.assign(new Error(`EACCES: permission denied, scandir '${unreadable}'`), {
+          code: 'EACCES',
+        });
+        throw err;
+      }
+      return readdir(path, options as unknown as { withFileTypes: true });
+    }) as unknown as typeof readdir;
+
     // Seed a row for a file in a directory the walk will fail to read.
-    const scanner = new LibraryScanner(root, db);
+    const scanner = new LibraryScanner(root, db, undefined, failingReaddir);
     scanner.persist(
       buildLibrary([
         track({
@@ -1742,9 +1761,6 @@ describe('an incomplete walk must not prune (issue #968)', () => {
     );
     expect(countSongs(db)).toBe(1);
 
-    const unreadable = join(root, 'Fred again');
-    mkdirSync(unreadable, { recursive: true });
-    chmodSync(unreadable, 0o000);
     try {
       await scanner.scanFull();
       // Before the fix the prune ran anyway and this row was gone.
@@ -1753,7 +1769,6 @@ describe('an incomplete walk must not prune (issue #968)', () => {
         db.query("SELECT id FROM library_songs WHERE path LIKE 'Fred again/%'").get(),
       ).not.toBeNull();
     } finally {
-      chmodSync(unreadable, 0o755);
       rmSync(root, { recursive: true, force: true });
     }
   });
