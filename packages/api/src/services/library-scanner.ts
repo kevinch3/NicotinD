@@ -24,7 +24,12 @@ import {
   reservedDirsFor,
 } from './library-paths.js';
 import { loadOverrides, type MetadataOverrideValue } from './metadata-override-store.js';
-import { confirmAtomicNames, splitArtists, type ArtistCredit } from './artist-split.js';
+import {
+  confirmAtomicNames,
+  primaryCredit,
+  splitArtists,
+  type ArtistCredit,
+} from './artist-split.js';
 import {
   loadSplitAuthority,
   emptyAuthority,
@@ -119,6 +124,10 @@ const CONTENT_TYPES: Record<string, string> = {
 
 /** Raw, IO-derived view of one audio file — the pure aggregation input. */
 export interface ScannedTrack {
+  /** Every artist the file itself lists, when it stores them as a list (#1601). */
+  artistList?: string[];
+  /** The file has been read for that list; absent on rows cached before it existed. */
+  artistListRead?: boolean;
   relPath: string;
   size: number;
   mtimeMs: number;
@@ -321,6 +330,28 @@ function nfcWork(w: Pick<ScannedTrack, 'work' | 'movement' | 'movementNumber'>) 
 function joinCredits(v: string[] | undefined): string | undefined {
   const parts = (v ?? []).map((x) => x.trim()).filter(Boolean);
   return parts.length > 0 ? parts.join('; ') : undefined;
+}
+
+/**
+ * The artist fields a parse yields. A list the file stores as a list (an `ARTISTS`
+ * tag, ID3v2.4 values) is trusted. ID3v2.2/2.3 keeps one string, so music-metadata
+ * cuts it at each `/`, and `common.artist` is only the first piece: `AC/DC` reads as
+ * `AC`. That text is put back and left to the scanner's list rule (#1601).
+ */
+export function artistFieldsFromParse(
+  common: { artist?: string; artists?: string[] } | undefined,
+  format: { tagTypes?: string[] } | undefined,
+): { artist: string | undefined; artistList?: string[] } {
+  // music-metadata copies a lone ARTIST into `artists`: that is the credit, not a list.
+  const raw = common?.artists ?? [];
+  if (raw.length === 1 && raw[0] === common?.artist) return { artist: common?.artist };
+  const list = raw
+    .flatMap((a) => a.split(';'))
+    .map((a) => a.trim())
+    .filter(Boolean);
+  if (list.length < 2) return { artist: common?.artist };
+  const cutAtSlash = format?.tagTypes?.some((t) => t === 'ID3v2.2' || t === 'ID3v2.3');
+  return cutAtSlash ? { artist: list.join('/') } : { artist: common?.artist, artistList: list };
 }
 
 export function nfc(v: string | undefined): string | undefined {
@@ -665,6 +696,24 @@ export function buildLibrary(
   // Split, then canonicalize each credit's spelling too (a member can be a variant).
   const splitCredits = (raw: string): ArtistCredit[] =>
     splitArtists(raw, known).map((c) => ({ ...c, name: aliasFix(c.name) }));
+  // What the file lists outranks a guess from the credit's text, but never a decision.
+  const creditsOf = (t: ScannedTrack, credit: string): ArtistCredit[] => {
+    const fromText = splitCredits(credit);
+    const key = normalizeArtistForGrouping(primaryCredit(credit));
+    const decided = canonicalWhole.has(key) || authority.explicitSplits?.has(key);
+    if (!t.artistList || t.artistList.length < 2 || decided) return fromText;
+    const guests = new Set(
+      fromText.filter((c) => c.role === 'featuring').map((c) => artistIdFor(c.name)),
+    );
+    const seen = new Set<string>();
+    return t.artistList.flatMap((listed) => {
+      const name = aliasFix(listed);
+      const id = artistIdFor(name);
+      if (seen.has(id)) return [];
+      seen.add(id);
+      return [{ name, role: guests.has(id) ? ('featuring' as const) : ('primary' as const) }];
+    });
+  };
 
   const confirmedArtists = new Set<string>(authority.confirmedArtists);
   const canonicalWhole = authority.canonicalWhole;
@@ -684,11 +733,16 @@ export function buildLibrary(
     }),
     confirmedArtists,
   );
+  for (const t of tracks) {
+    for (const name of t.artistList ?? []) confirmedArtists.add(normalizeArtistForGrouping(name));
+  }
   const known = { confirmedArtists, canonicalWhole, explicitSplits: authority.explicitSplits };
 
   // Pass 2: build songs, albums, artists, and artist-link join rows.
   const songs: SongRow[] = [];
   const songArtistLinks: ArtistLink[] = [];
+  /** First spelling of each credited artist, so a credit-only artist gets a row. */
+  const creditedNames = new Map<string, string>();
   const albumArtistLinks: ArtistLink[] = [];
   const songGenreLinks: SongGenreLink[] = [];
   const genreAcc = new Map<string, { display: string; songs: number; albums: Set<string> }>();
@@ -809,12 +863,15 @@ export function buildLibrary(
     // Nothing is lost: the verbatim credit still lives in `library_songs.artist`,
     // and once the collaborator is independently in the library the gate opens
     // and the real split lands on the next scan.
-    const trackCredits = splitCredits(trackArtist);
+    const trackCredits = creditsOf(t, trackArtist);
     const credited =
       trackCredits.length === 1 && artistIdFor(trackCredits[0]!.name) !== trackArtistId
         ? [{ name: trackArtistOwner, role: trackCredits[0]!.role }]
         : trackCredits;
     for (let i = 0; i < credited.length; i++) {
+      if (!creditedNames.has(artistIdFor(credited[i]!.name))) {
+        creditedNames.set(artistIdFor(credited[i]!.name), credited[i]!.name);
+      }
       songArtistLinks.push({
         parentId: id,
         artistId: artistIdFor(credited[i]!.name),
@@ -939,20 +996,9 @@ export function buildLibrary(
     }
   }
 
-  // Ensure all song-level split artists have rows too. The song is looked up
-  // by id, not `songs.find`: that scanned the whole library once per such
-  // credit, which a full scan of a big library paid thousands of times (#1386).
-  const songById = new Map(songs.map((s) => [s.id, s]));
-  for (const link of songArtistLinks) {
-    if (!artistAcc.has(link.artistId)) {
-      // Find the name from the credits — look up via songs
-      const song = songById.get(link.parentId);
-      if (song) {
-        const credits = splitCredits(song.artist);
-        const credit = credits.find((c) => artistIdFor(c.name) === link.artistId);
-        if (credit) ensureArtist(link.artistId, credit.name);
-      }
-    }
+  // Ensure all song-level split artists have rows too.
+  for (const [artistId, name] of creditedNames) {
+    if (!artistAcc.has(artistId)) ensureArtist(artistId, name);
   }
 
   const artists: ArtistRow[] = [...artistAcc.values()].map((a) => {
@@ -1358,7 +1404,12 @@ export class LibraryScanner {
     }
     const common = meta?.common;
     const format = meta?.format;
+    const artists = artistFieldsFromParse(common, format);
     return {
+      artistListRead: true,
+      ...(artists.artistList
+        ? { artistList: artists.artistList.map((a) => a.normalize('NFC')) }
+        : {}),
       relPath,
       size: f.size,
       mtimeMs: f.mtimeMs,
@@ -1380,7 +1431,7 @@ export class LibraryScanner {
       // Every tag string is NFC-normalised HERE, at the one boundary where text
       // enters the library, so nothing downstream has to think about it (#961).
       title: nfc(common?.title),
-      artist: nfc(common?.artist),
+      artist: nfc(artists.artist),
       albumArtist: nfc(common?.albumartist),
       album: nfc(common?.album),
       track: trackNoFromParse(meta),

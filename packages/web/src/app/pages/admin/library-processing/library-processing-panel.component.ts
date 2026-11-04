@@ -70,6 +70,7 @@ export class LibraryProcessingPanelComponent implements OnInit, OnDestroy {
     { id: 'genre-audio', labelKey: 'admin.taskGenreAudio' },
     { id: 'popularity', labelKey: 'admin.taskPopularity' },
     { id: 'artist-origin', labelKey: 'admin.taskArtistOrigin' },
+    { id: 'artist-list', labelKey: 'admin.taskArtistList' },
   ];
 
   ngOnInit(): void {

@@ -19,6 +19,7 @@ import { mapDiscogsGenres } from '../discogs-genre-vocab.js';
 import { NoConfidentResultError } from '../track-analysis.js';
 import { AudioFileRejectedError } from '../audio-features-client.js';
 import { upsertArtistIdentity } from '../artist-identity-store.js';
+import { saveScanCache } from '../scan-cache.js';
 import { artistIdFor } from '../library-scanner.js';
 import {
   MBID_AMBIGUITY_FIX_AT,
@@ -68,6 +69,7 @@ function ctx(overrides: Partial<EnrichmentContext> = {}): EnrichmentContext {
     coverCacheDir: '/data/cover-cache',
     lidarr: {} as never,
     concurrency: 2,
+    readArtistFields: async () => null,
     ffmpegAvailable: () => true,
     readTags: async () => ({}),
     writeTags: async () => true,
@@ -2917,6 +2919,7 @@ describe('registry', () => {
       'artist-identity',
       'artist-image',
       'artist-info',
+      'artist-list',
       'artist-origin',
       'audio-features',
       'bpm',
@@ -2950,6 +2953,70 @@ describe('a task writing tags keeps another task’s ledger anchored (issue #690
     db.run('UPDATE library_songs SET size = ? WHERE id = ?', [GROWN, 's1']);
 
     expect(getTask('key')!.countPending(db)).toBe(0);
+  });
+});
+
+describe('artist-list task (#1601)', () => {
+  const task = getTask('artist-list')!;
+  const cached = (path: string, track: Record<string, unknown> = {}) =>
+    saveScanCache(db, [
+      {
+        relPath: path,
+        size: 1,
+        mtimeMs: 1,
+        suffix: 'opus',
+        contentType: '',
+        duration: 1,
+        bitRate: 1,
+        ...track,
+      },
+    ] as never);
+  const row = (path: string) =>
+    JSON.parse(
+      db
+        .query<{ track_json: string }, [string]>('SELECT track_json FROM scan_cache WHERE path = ?')
+        .get(path)!.track_json,
+    );
+  const reader = (fields: Record<string, unknown> | null) =>
+    ctx({ readArtistFields: async () => fields as never });
+
+  it('counts every cached file not read yet, and none once read', async () => {
+    cached('a.opus');
+    cached('b.opus', { artistListRead: true });
+    expect(task.countPending(db)).toBe(1);
+    await task.run(db, reader({ artist: 'A' }), 25);
+    expect(task.countPending(db)).toBe(0);
+  });
+
+  it('stores what the file says, keeping the rest of the cached tags', async () => {
+    cached('a.opus', { artist: 'KAROL G', title: 'Keep me' });
+    const res = await task.run(
+      db,
+      reader({ artist: 'KAROL G', artistList: ['KAROL G', 'Marco Antonio Solís'] }),
+      25,
+    );
+    expect(res.applied).toBe(1);
+    expect(row('a.opus')).toMatchObject({
+      title: 'Keep me',
+      artist: 'KAROL G',
+      artistList: ['KAROL G', 'Marco Antonio Solís'],
+      artistListRead: true,
+    });
+  });
+
+  it('marks an unreadable file read and keeps its tags, so it is not retried forever', async () => {
+    cached('gone.opus', { artist: 'Kept' });
+    const res = await task.run(db, reader(null), 25);
+    expect(res.failed).toBe(0);
+    expect(row('gone.opus')).toMatchObject({ artist: 'Kept', artistListRead: true });
+    expect(task.countPending(db)).toBe(0);
+  });
+
+  it('honours the batch limit', async () => {
+    cached('a.opus');
+    cached('b.opus');
+    await task.run(db, reader({ artist: 'A' }), 1);
+    expect(task.countPending(db)).toBe(1);
   });
 });
 

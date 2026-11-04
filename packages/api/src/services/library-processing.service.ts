@@ -667,6 +667,7 @@ export class LibraryProcessingService extends EventEmitter {
         'genre-discogs': 0,
         popularity: 0,
         'artist-origin': 0,
+        'artist-list': 0,
       },
       availability: {
         bpm: 'unknown',
@@ -679,6 +680,7 @@ export class LibraryProcessingService extends EventEmitter {
         embeddings: 'unknown',
         descriptors: 'unknown',
         'artist-identity': 'unknown',
+        'artist-list': 'unknown',
         'genre-audio': 'unknown',
         'genre-discogs': 'unknown',
         popularity: 'unknown',

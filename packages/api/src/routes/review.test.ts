@@ -148,6 +148,7 @@ describe('GET /api/admin/review', () => {
           'genre-discogs': 0,
           popularity: 0,
           'artist-origin': 0,
+          'artist-list': 0,
         },
         availability: {
           bpm: true as const,
@@ -165,6 +166,7 @@ describe('GET /api/admin/review', () => {
           'genre-discogs': true as const,
           popularity: true as const,
           'artist-origin': true as const,
+          'artist-list': true as const,
         },
         startedAt: null,
         updatedAt: null,

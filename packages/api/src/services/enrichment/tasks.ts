@@ -46,7 +46,8 @@ import { pickByDiscographyOverlap } from '../mbid-corroboration.js';
 import { listCreditSides, primaryCredit, splitOnDelimiters } from '../artist-split.js';
 import { fileJointCreditCard, listRuleSplits } from '../joint-credits.js';
 import { loadSplitAuthority, upsertArtistIdentity } from '../artist-identity-store.js';
-import { artistIdFor } from '../library-scanner.js';
+import { artistFieldsFromParse, artistIdFor } from '../library-scanner.js';
+import { getMusicMetadata } from '../music-metadata-loader.js';
 import { ListenBrainzClient, normalizePopularity } from '../listenbrainz-client.js';
 import {
   getMbid,
@@ -92,6 +93,8 @@ interface SongRow {
 }
 
 /** Injected dependencies + swappable primitives for an enrichment run. */
+type ArtistFields = { artist?: string; artistList?: string[] };
+
 export interface EnrichmentContext {
   musicDir: string;
   /** Canonical-artwork cache dir — passed to setArtwork so a corrected URL purges
@@ -179,6 +182,8 @@ export interface EnrichmentContext {
    *  when no artist-info-capable plugin is enabled+configured — the task then
    *  reports itself unavailable. */
   lookupArtistInfo: ((mbid: string) => Promise<ArtistInfoResult | null>) | null;
+  /** The artist fields a file holds, or null when it cannot be read (#1601). */
+  readArtistFields: (abs: string) => Promise<ArtistFields | null>;
   /** Resolve genres for one release via a metadata provider (Discogs, issue #194),
    *  or null when the source has no confident match. Null *member* when no
    *  genre-capable metadata plugin is enabled+configured — the `genre-discogs`
@@ -567,6 +572,20 @@ export function createEnrichmentContext(deps: {
     lookupArtistInfo: deps.lookupArtistInfo ?? null,
     lookupGenreForRelease: deps.lookupGenreForRelease ?? null,
     resolveArtistIdentity: deps.lidarr ? makeLidarrArtistIdentityResolver(deps.lidarr) : null,
+    readArtistFields: async (abs) => {
+      const mm = await getMusicMetadata();
+      if (!mm) return null;
+      try {
+        const meta = await mm.parseFile(abs, { duration: false, skipCovers: true });
+        const fields = artistFieldsFromParse(meta.common, meta.format);
+        return {
+          artist: fields.artist?.normalize('NFC'),
+          artistList: fields.artistList?.map((a) => a.normalize('NFC')),
+        };
+      } catch {
+        return null;
+      }
+    },
     lookupPopularity: makePopularityLookup(deps.dataDir ?? null),
     lookupArtistOrigin: deps.lookupArtistOrigin ?? makeArtistOriginLookup(deps.dataDir ?? null),
     lookupArtistReleaseGroups:
@@ -2185,6 +2204,48 @@ const descriptorsTask: EnrichmentTask = {
 };
 
 /** All registered enrichment tasks, in run order. */
+/**
+ * Read the artist list out of files cached before the scanner kept it (#1601). No
+ * network and no file write, one batch per tick, so it needs no maintenance window.
+ * The scan cache holds the result, so links change on the next full scan.
+ */
+const ARTIST_LIST_UNREAD = `orphaned_at IS NULL AND json_extract(track_json, '$.artistListRead') IS NULL`;
+
+const artistListTask: EnrichmentTask = {
+  id: 'artist-list',
+  label: 'Artist lists in files',
+  available: () => true,
+  countPending: (db) =>
+    db
+      .query<{ n: number }, []>(`SELECT COUNT(*) AS n FROM scan_cache WHERE ${ARTIST_LIST_UNREAD}`)
+      .get()?.n ?? 0,
+  run: async (db, ctx, limit, albumId) => {
+    // Files landing now are read by the scan itself, so an album-scoped kick has nothing to do.
+    if (albumId) return { applied: 0, labels: [], failed: 0, errorSample: null };
+    const rows = db
+      .query<{ path: string; track_json: string }, [number]>(
+        `SELECT path, track_json FROM scan_cache WHERE ${ARTIST_LIST_UNREAD} LIMIT ?`,
+      )
+      .all(limit);
+    for (const row of rows) {
+      const fields = await ctx.readArtistFields(resolveSongAbsPath(ctx.musicDir, row.path));
+      const track = JSON.parse(row.track_json) as Record<string, unknown>;
+      db.run('UPDATE scan_cache SET track_json = ? WHERE path = ?', [
+        JSON.stringify({
+          ...track,
+          // Unreadable counts as read: a retry per tick would never end, and the
+          // scanner re-reads the file the moment it changes.
+          artistListRead: true,
+          ...(fields?.artist ? { artist: fields.artist } : {}),
+          ...(fields?.artistList ? { artistList: fields.artistList } : {}),
+        }),
+        row.path,
+      ]);
+    }
+    return { applied: rows.length, labels: [], failed: 0, errorSample: null };
+  },
+};
+
 export const ENRICHMENT_TASKS: readonly EnrichmentTask[] = [
   bpmTask,
   genreTask,
@@ -2200,6 +2261,7 @@ export const ENRICHMENT_TASKS: readonly EnrichmentTask[] = [
   genreDiscogsTask,
   genreAudioTask,
   popularityTask,
+  artistListTask,
 ];
 
 export function getTask(id: ProcessingTaskId): EnrichmentTask | undefined {

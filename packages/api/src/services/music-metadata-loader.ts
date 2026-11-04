@@ -8,6 +8,8 @@
 export interface MMCommon {
   title?: string;
   artist?: string;
+  /** Each credited artist; a single-artist tag yields one entry. */
+  artists?: string[];
   albumartist?: string;
   album?: string;
   track?: { no?: number | null };
@@ -33,6 +35,8 @@ export interface MMCommon {
 }
 
 export interface MMFormat {
+  /** Tag formats found in the file, e.g. `ID3v2.3`, `vorbis`. */
+  tagTypes?: string[];
   duration?: number;
   bitrate?: number;
   container?: string;

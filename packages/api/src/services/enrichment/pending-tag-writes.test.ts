@@ -38,6 +38,7 @@ function ctx(
     musicDir: dir,
     coverCacheDir: join(dir, 'cover-cache'),
     lidarr: {} as never,
+    readArtistFields: async () => null,
     concurrency: 2,
     ffmpegAvailable: () => true,
     readTags: async () => ({}),

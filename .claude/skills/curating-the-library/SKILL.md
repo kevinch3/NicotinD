@@ -137,8 +137,7 @@ name in it is a known artist, so the scanner's rule settles it. `human` means no
 it is yours: corroborate against the track, then `split_artist` or `keep_artist_whole`. One split
 also teaches the library that artist, so it can settle other credits naming them.
 
-The file's own `ARTISTS` tag can settle one, but no tool reads it yet (#1601). A listener's report
-on such a song already serves its own card, so do not re-file it.
+A listener's report on such a song already serves its own card, so do not re-file it.
 
 ## Spend searches on artists and clusters, never on songs
 

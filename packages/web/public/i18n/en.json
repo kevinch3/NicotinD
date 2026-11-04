@@ -38,6 +38,7 @@
   "admin.health.jointCredits.songs": "Songs",
   "admin.health.jointCredits.title": "Joint artist credits",
   "admin.health.row.jointCredit": "{songs} songs · {members}",
+  "admin.taskArtistList": "Artist lists in files",
   "curate.jointCredit.oneAct": "It's one act",
   "curate.jointCredit.question": "Is “{credit}” several artists?",
   "curate.jointCredit.separate": "Separate: {members}",

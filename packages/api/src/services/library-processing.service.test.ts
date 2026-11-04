@@ -28,6 +28,7 @@ function fakeCtx(counters: { analyzed: number; genreLookups: number }) {
     musicDir: '/music',
     coverCacheDir: '/data/cover-cache',
     lidarr: {} as never,
+    readArtistFields: async () => null,
     concurrency: 2,
     ffmpegAvailable: () => true,
     readTags: async () => ({}),

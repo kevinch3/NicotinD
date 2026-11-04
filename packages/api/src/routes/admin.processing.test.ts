@@ -45,6 +45,7 @@ function makeService(): LibraryProcessingService {
       musicDir: '/music',
       coverCacheDir: '/tmp/cover-cache',
       lidarr: null,
+      readArtistFields: async () => null,
       ffmpegAvailable: () => false,
       readTags: async () => ({}),
       writeTags: async () => true,

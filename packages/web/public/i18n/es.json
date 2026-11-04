@@ -38,6 +38,7 @@
   "admin.health.jointCredits.songs": "Canciones",
   "admin.health.jointCredits.title": "Créditos de varios artistas",
   "admin.health.row.jointCredit": "{songs} canciones · {members}",
+  "admin.taskArtistList": "Listas de artistas en archivos",
   "curate.jointCredit.oneAct": "Es un solo artista",
   "curate.jointCredit.question": "¿“{credit}” son varios artistas?",
   "curate.jointCredit.separate": "Separar: {members}",
