@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.121](https://github.com/kevinch3/NicotinD/compare/v0.8.120...v0.8.121) (2026-11-04)
+
+### Features
+
+* **curation:** detect joint artist credits and resolve them in one tap ([#1604](https://github.com/kevinch3/NicotinD/issues/1604)) ([6402947](https://github.com/kevinch3/NicotinD/commit/6402947df64329db337cc5a03d8e03dc3bb469cc)), closes [#1600](https://github.com/kevinch3/NicotinD/issues/1600), references [#864](https://github.com/kevinch3/NicotinD/issues/864) [#1526](https://github.com/kevinch3/NicotinD/issues/1526)
+* **library:** artist page names its main genres, with the split behind an About block ([#1605](https://github.com/kevinch3/NicotinD/issues/1605)) ([090dcfc](https://github.com/kevinch3/NicotinD/commit/090dcfcbc78c506d0202d41ef95a3e3b86235dbd)), references [#1572](https://github.com/kevinch3/NicotinD/issues/1572)
+
+### Bug Fixes
+
+* **library:** a full scan replaces a changed album credit set ([#1603](https://github.com/kevinch3/NicotinD/issues/1603)) ([a370552](https://github.com/kevinch3/NicotinD/commit/a370552e4b1b5c563de2cc3e2c15c7770f4b7a3f)), closes [#1598](https://github.com/kevinch3/NicotinD/issues/1598)
+* **library:** a Lidarr re-check keeps a decision, and a resolved card closes itself ([#1611](https://github.com/kevinch3/NicotinD/issues/1611)) ([9ff1abd](https://github.com/kevinch3/NicotinD/commit/9ff1abd03c8b938c93d1999d31de5781faff62ad)), closes [#1607](https://github.com/kevinch3/NicotinD/issues/1607) [#1610](https://github.com/kevinch3/NicotinD/issues/1610)
+* **library:** read the artist list a file already carries ([#1612](https://github.com/kevinch3/NicotinD/issues/1612)) ([b22149f](https://github.com/kevinch3/NicotinD/commit/b22149f4baf4f29bc10e554642677dd8d279ce10)), closes [#1601](https://github.com/kevinch3/NicotinD/issues/1601)
+* **library:** split a joint credit on one known name, and list artists with albums ([#1608](https://github.com/kevinch3/NicotinD/issues/1608)) ([0608296](https://github.com/kevinch3/NicotinD/commit/0608296380f3d4801f987d6fad37305635a56c7f)), closes [#1600](https://github.com/kevinch3/NicotinD/issues/1600) [#1526](https://github.com/kevinch3/NicotinD/issues/1526), references [#864](https://github.com/kevinch3/NicotinD/issues/864) [#1526](https://github.com/kevinch3/NicotinD/issues/1526)
+* **radio:** radio and recent plays send every credited artist to the player ([#1602](https://github.com/kevinch3/NicotinD/issues/1602)) ([4280748](https://github.com/kevinch3/NicotinD/commit/42807487162744b2ef214fc5a6be942541070163)), closes [#1597](https://github.com/kevinch3/NicotinD/issues/1597)
+* **web:** make the PWA update check compare builds and verify the reload ([#1595](https://github.com/kevinch3/NicotinD/issues/1595)) ([82b9a78](https://github.com/kevinch3/NicotinD/commit/82b9a78d21e3f5251e98acbebceade9c53b0faea))
 ## [0.8.120](https://github.com/kevinch3/NicotinD/compare/v0.8.119...v0.8.120) (2026-11-03)
 
 ### Bug Fixes

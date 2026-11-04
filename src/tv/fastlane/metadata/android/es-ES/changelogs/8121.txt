@@ -1,0 +1,7 @@
+• curation: detect joint artist credits and resolve them in one tap (#1604)
+• library: artist page names its main genres, with the split behind an About block (#1605)
+• library: a full scan replaces a changed album credit set (#1603)
+• library: a Lidarr re-check keeps a decision, and a resolved card closes itself (#1611)
+• library: read the artist list a file already carries (#1612)
+• library: split a joint credit on one known name, and list artists with albums (#1608)
+…and 2 more
