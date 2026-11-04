@@ -1415,6 +1415,20 @@ describe('singles & EPs presentation', () => {
     expect(names).not.toContain('Eelke Kleijn, Ost');
   });
 
+  it('GET /artists leaves out an artist with no album, who stays reachable by link and search', async () => {
+    testDb.run(`DELETE FROM library_artists`);
+    testDb.run(
+      `INSERT INTO library_artists (id, name, album_count, synced_at)
+       VALUES ('owner', 'Rihanna', 8, 1), ('guest', 'Kardinal Offishall', 0, 1)`,
+    );
+
+    const body = (await (await makeApp().request('/artists')).json()) as Array<{ name: string }>;
+    expect(body.map((a) => a.name)).toEqual(['Rihanna']);
+
+    const page = await makeApp().request('/artists/guest');
+    expect(page.status).toBe(200);
+  });
+
   it('GET /artists/:id splits albums from singlesAndEps', async () => {
     testDb.run(
       `INSERT INTO library_artists (id, name, album_count, synced_at) VALUES ('art', 'Alfredo Casero', 3, 1)`,

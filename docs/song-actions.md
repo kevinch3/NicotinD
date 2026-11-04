@@ -21,6 +21,8 @@ itself a link — `EntityLinkComponent`, see [web-ui.md](web-ui.md) "Track rows"
 these menu items are the fallback for surfaces where the name is not shown or is
 not a link: TV artist names, offline rows without an id.)
 
+**Go to artist** opens the first credited artist, and falls back to `artistId` only when a song has no credits.
+
 - **Like / Unlike** (issue #225) leads the menu — a primary gesture. The label
   reflects `LikeService.isLiked(song.id)`; the action calls `LikeService.toggle()`.
 - **Play** is not a menu item — the row title/play button already plays.

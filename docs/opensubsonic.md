@@ -80,6 +80,8 @@ extension). The `.view` suffix older clients add is accepted.
 | Discovery | `getSimilarSongs(2)` `getTopSongs` | `/songs/:id/similar`, `popularity` |
 | Empty by design | `getNowPlaying` `getInternetRadioStations` `getPodcasts` `getNewestPodcasts` `getBookmarks` `getPlayQueue` `getShares` | — |
 
+The artist index leaves out an artist with no album, as the web grid does, since their page would list nothing. Their `getArtist` still answers, so a song's artist link keeps working (#1526).
+
 ### Mapping notes
 
 - **Albums of every release type.** The web grid shows full-length albums only and puts singles and

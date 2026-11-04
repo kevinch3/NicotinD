@@ -692,10 +692,11 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
         // Alberto Spinetta") is represented by its member tiles, not its own —
         // the row stays reachable via direct links/search. fragment_of IS NULL is
         // the other direction (#864): a compound that did NOT split, whose base
-        // row already represents the same album.
+        // row already represents the same album. album_count > 0: a guest credited
+        // on someone else's song stays reachable by link and search, not as a tile.
         `SELECT id, name, album_count, cover_art, starred
          FROM library_artists
-         WHERE hidden = 0 AND split_compound = 0 AND fragment_of IS NULL AND name != 'Various Artists' COLLATE NOCASE${filterClause}
+         WHERE hidden = 0 AND split_compound = 0 AND fragment_of IS NULL AND album_count > 0 AND name != 'Various Artists' COLLATE NOCASE${filterClause}
          ORDER BY name COLLATE NOCASE ASC LIMIT ? OFFSET ?`,
       )
       // One row past the page is what proves there is a next one, so the cap

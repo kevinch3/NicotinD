@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'bun:test';
+import { normalizeArtistForGrouping } from './album-grouping.js';
 import {
+  confirmAtomicNames,
   splitArtists,
   formatArtistDisplay,
   isAtomicArtist,
@@ -60,9 +62,12 @@ describe('splitArtists', () => {
       expect(primaries(result)).toEqual(['Artist A', 'Artist B']);
     });
 
-    it('keeps a ";"-joined compound whole when a part is unconfirmed', () => {
+    it('splits a ";"-joined list on one confirmed name, unlike the delimiters band names use (#1526)', () => {
       const result = splitArtists('C. Tangana; Andrés Calamaro', confirmed('c. tangana'));
-      expect(primaries(result)).toEqual(['C. Tangana; Andrés Calamaro']);
+      expect(primaries(result)).toEqual(['C. Tangana', 'Andrés Calamaro']);
+      expect(
+        primaries(splitArtists('C. Tangana, Andrés Calamaro', confirmed('c. tangana'))),
+      ).toEqual(['C. Tangana, Andrés Calamaro']);
     });
 
     it('splits on " y " (Spanish and) when both parts confirmed', () => {
@@ -448,5 +453,116 @@ describe('formatArtistDisplay', () => {
         { name: 'D', role: 'featuring' },
       ]),
     ).toBe('A & B feat. C & D');
+  });
+});
+
+describe('splitArtists — list credits (#1526)', () => {
+  const known = (...names: string[]) => ({
+    confirmedArtists: new Set(names.map(normalizeArtistForGrouping)),
+  });
+  const names = (raw: string, sets: Parameters<typeof splitArtists>[1]) =>
+    splitArtists(raw, sets).map((c) => c.name);
+
+  it('splits a bare slash once one side is a known artist, even when the other never appears solo', () => {
+    expect(names('Gramatik/Luxas', known('Gramatik'))).toEqual(['Gramatik', 'Luxas']);
+    expect(names('Maroon 5/Rihanna', known('Rihanna'))).toEqual(['Maroon 5', 'Rihanna']);
+    expect(names('Hugo Lobo/Mimi Maura/Sergio Rotman', known('Hugo Lobo'))).toEqual([
+      'Hugo Lobo',
+      'Mimi Maura',
+      'Sergio Rotman',
+    ]);
+  });
+
+  it('keeps a real slash name whole', () => {
+    expect(names('AC/DC', known('Rihanna'))).toEqual(['AC/DC']);
+    expect(names('Au/Ra', known('Rihanna'))).toEqual(['Au/Ra']);
+    expect(names('Duo Rey Silva/Mario Catalán', known('Rihanna'))).toEqual([
+      'Duo Rey Silva/Mario Catalán',
+    ]);
+  });
+
+  it('lets a one-act decision win, even when a side is known', () => {
+    expect(
+      names('AC/DC', {
+        confirmedArtists: new Set(['ac']),
+        canonicalWhole: new Set([normalizeArtistForGrouping('AC/DC')]),
+      }),
+    ).toEqual(['AC/DC']);
+  });
+
+  it('never shreds a member that carries its own delimiter', () => {
+    expect(names('Wisin & Yandel/ROSALÍA', known('Wisin & Yandel'))).toEqual([
+      'Wisin & Yandel',
+      'ROSALÍA',
+    ]);
+    expect(names('Tyler, The Creator/Kali Uchis', known('Tyler, The Creator'))).toEqual([
+      'Tyler, The Creator',
+      'Kali Uchis',
+    ]);
+  });
+
+  it('splits such a member only when each of its own parts is confirmed', () => {
+    expect(names('Oden & Fatzo/Poppy', known('Oden', 'Fatzo'))).toEqual(['Oden', 'Fatzo', 'Poppy']);
+    expect(names('Oden & Fatzo/Poppy', known('Poppy'))).toEqual(['Oden & Fatzo', 'Poppy']);
+  });
+
+  it('splits a semicolon list on one known name, keeping a slash name inside it', () => {
+    expect(names('Portavoz;Cidtronyck', known('Portavoz'))).toEqual(['Portavoz', 'Cidtronyck']);
+    expect(names('CamelPhat;Au/Ra', known('CamelPhat'))).toEqual(['CamelPhat', 'Au/Ra']);
+  });
+
+  it('keeps a list with no known name whole', () => {
+    expect(names('Foo; Bar', known('Rihanna'))).toEqual(['Foo; Bar']);
+  });
+
+  it('treats a run of spaces as a stripped separator', () => {
+    expect(names('Charly García  Pedro Aznar', known('Charly García'))).toEqual([
+      'Charly García',
+      'Pedro Aznar',
+    ]);
+  });
+
+  it('credits a repeated name once', () => {
+    expect(names('Gramatik/Luxas/gramatik', known('Gramatik'))).toEqual(['Gramatik', 'Luxas']);
+  });
+
+  it('still separates a featured guest', () => {
+    expect(splitArtists('Gramatik/Luxas feat. Foo', known('Gramatik'))).toEqual([
+      { name: 'Gramatik', role: 'primary' },
+      { name: 'Luxas', role: 'primary' },
+      { name: 'Foo', role: 'featuring' },
+    ]);
+  });
+
+  it('leaves the stricter gate on the delimiters that real band names use', () => {
+    expect(names('Medeski, Martin & Wood', known('Medeski'))).toEqual(['Medeski, Martin & Wood']);
+    expect(names('Bob Marley & The Wailers', known('Bob Marley'))).toEqual([
+      'Bob Marley & The Wailers',
+    ]);
+  });
+});
+
+describe('confirmAtomicNames', () => {
+  const confirmed = (...names: string[]) => {
+    const set = new Set<string>();
+    confirmAtomicNames(names, set);
+    return set;
+  };
+
+  it('confirms a plain name and never a delimited one', () => {
+    expect(confirmed('Gramatik', 'A & B')).toEqual(new Set(['gramatik']));
+  });
+
+  it('lets a real slash name confirm itself, whatever order it arrives in', () => {
+    expect(confirmed('AC/DC', 'Rihanna').has(normalizeArtistForGrouping('AC/DC'))).toBe(true);
+  });
+
+  it('never lets a list credit confirm itself', () => {
+    for (const set of [
+      confirmed('Gramatik/Luxas', 'Gramatik'),
+      confirmed('Gramatik', 'Gramatik/Luxas'),
+    ]) {
+      expect(set.has(normalizeArtistForGrouping('Gramatik/Luxas'))).toBe(false);
+    }
   });
 });

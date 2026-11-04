@@ -71,7 +71,12 @@ export class SongMenuService {
     if (song.artistId && !ctx.hideGoToArtist) {
       actions.push({
         label: 'Go to artist',
-        action: () => void this.router.navigate(resolveArtistRoute(song.artistId)),
+        action: () =>
+          void this.router.navigate(
+            resolveArtistRoute(
+              song.artists?.find((a) => a.role === 'primary')?.id ?? song.artistId,
+            ),
+          ),
       });
     }
     if (song.albumId && !ctx.hideGoToAlbum) {
