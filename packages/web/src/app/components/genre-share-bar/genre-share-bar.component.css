@@ -1,0 +1,76 @@
+:host {
+  display: block;
+}
+
+.bar {
+  display: flex;
+  gap: 2px;
+  height: 10px;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.seg {
+  /* A sliver still shows: a 1% genre is real, not rounding noise. */
+  min-width: 3px;
+  flex-basis: 0;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+
+.legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.name {
+  color: var(--theme-text-secondary);
+}
+
+.value {
+  color: var(--theme-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.caption {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--theme-text-muted);
+}
+
+/* One hue stepped down by rank; "Other" is neutral. */
+.tone-0 {
+  background: var(--theme-accent);
+}
+.tone-1 {
+  background: color-mix(in srgb, var(--theme-accent) 72%, var(--theme-surface-2));
+}
+.tone-2 {
+  background: color-mix(in srgb, var(--theme-accent) 50%, var(--theme-surface-2));
+}
+.tone-3 {
+  background: color-mix(in srgb, var(--theme-accent) 34%, var(--theme-surface-2));
+}
+.tone-4 {
+  background: color-mix(in srgb, var(--theme-accent) 22%, var(--theme-surface-2));
+}
+.tone-other {
+  background: color-mix(in srgb, var(--theme-text-muted) 40%, var(--theme-surface-2));
+}

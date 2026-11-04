@@ -93,10 +93,43 @@ passes vacuously.
 The issue's second sub-goal — "settle the multi-genre UX" — is decided: yes, a weighted multi-genre
 identity is now listener-facing. `GenreDistributionStripComponent`
 (`components/genre-distribution-strip/`) is a **read-only** bar-list strip (the plain CSS bar-fill
-pattern from `TrackStatsBarsComponent`, not the SVG radar — a strip is a linear form) rendered near
-the header on both the artist page (`artist-detail.component`) and the album page
-(`album-detail.component`). It has no interaction with `ArtistGenreModalComponent` or the
+pattern from `TrackStatsBarsComponent`, not the SVG radar — a strip is a linear form) rendered on
+the album page (`album-detail.component`) and in library stats. The artist page used it too until
+#1572 replaced it there — see the next section. It has no interaction with `ArtistGenreModalComponent` or the
 reclassify/curation flow; the radar stays the curation review aid described above.
+
+## The artist page: a headline and a part-to-whole bar (#1572)
+
+On the artist page the strip read as a bug: nine rows whose percentages summed past 150%, related
+genres (`Pop` / `Latin Pop` / `Dance-Pop`) side by side as peers, and every visit paying the
+vertical space for something most only need one word of. The artist page now shows a different
+number, in two places:
+
+- **The number: primary-genre share.** `primary` on the distribution response (`PrimaryGenreShare`)
+  counts each track **once**, under its `position = 0` genre, so the shares **do** sum to 1 and
+  read as "how much of this artist is Pop". Untagged tracks are left out of the denominator
+  (`taggedCount`), not drawn as a segment. The top `MAX_SHARE_SEGMENTS` (5) are kept and the rest
+  fold into an "Other" whose count is exact — primaries never overlap, so no cap is needed, unlike
+  the overlapping fold above. The album endpoint carries the field too; nothing reads it there yet.
+- **The header: one or two chips.** `headlineGenres` (`lib/headline-genres.ts`) names one genre at
+  ≥ 60%, two when they cover ≥ 70% together and the second is ≥ 20%, otherwise a single
+  "Mixed genres" chip (top three in its tooltip). "Other" is never headlined. **These thresholds
+  are provisional** — set from one screenshot, not a measurement; tune them from a prod dump, in
+  that one file.
+- **The detail: a collapsed About block.** The bio, Sources, Refresh and a `GenreShareBarComponent`
+  (one stacked bar, legend carrying every exact percent) share one disclosure, closed by default
+  and closed again on artist→artist navigation. `ArtistInfoComponent` renders inside it with
+  `embedded` (the block draws the card). The body is hidden with `[hidden]`, **not** `@if`: the
+  component's first-load bio auto-fetch (#213) and its measured show-more must keep running while
+  the block is closed.
+
+The bar is one hue stepped down by rank (ordinal), with "Other" neutral — a categorical palette
+would imply the genres are unrelated, and the legend text carries every value, so colour is never
+the only carrier.
+
+The overlapping, position-blind weights are **not** shown on the artist page any more. They remain
+the album strip's number and the curation radar's, where "also tagged Latin on 30% of tracks" is the
+point. Showing both on one page means two percentages for the same genre that disagree.
 
 The album side needed its own endpoint: `albumGenreDistribution` (`genre-distribution.ts`) and
 `GET /api/library/albums/:id/genre-distribution` mirror the artist function/route exactly (same

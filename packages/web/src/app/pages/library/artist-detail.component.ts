@@ -50,9 +50,10 @@ import { ArtistInfoComponent } from '../../components/artist-info/artist-info.co
 import { ArtistOriginComponent } from '../../components/artist-origin/artist-origin.component';
 import { RelatedArtistsComponent } from '../../components/related-artists/related-artists.component';
 import {
-  GenreDistributionStripComponent,
-  type GenreSlice,
-} from '../../components/genre-distribution-strip/genre-distribution-strip.component';
+  GenreShareBarComponent,
+  type ShareSegment,
+} from '../../components/genre-share-bar/genre-share-bar.component';
+import { headlineGenres } from '../../lib/headline-genres';
 import {
   LIBRARY_FILTER_PARAM_KEYS,
   isEmptyLibraryFilter,
@@ -99,7 +100,7 @@ const SONGS_PAGE_SIZE = 60;
     ArtistGenreModalComponent,
     ArtistInfoComponent,
     ArtistOriginComponent,
-    GenreDistributionStripComponent,
+    GenreShareBarComponent,
     RelatedArtistsComponent,
     TvNavGroupDirective,
   ],
@@ -557,6 +558,7 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     this.showAllReleases.set(false);
     this.identityOpen.set(false);
     this.genreOpen.set(false);
+    this.aboutOpen.set(false);
     this.imageVersion.set(0);
     // Reset the Songs tab (lazy list + observer rewire happens via the effect).
     this.songs.set([]);
@@ -597,20 +599,35 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     this.songsObserver?.disconnect();
   }
 
-  // ─── Genre distribution strip (issue #222 sub-goal 2, listener-facing) ────
-  readonly genreDistribution = signal<{
-    slices: GenreSlice[];
-    trackCount: number;
-    genreCount: number;
-  } | null>(null);
+  // ─── Genre headline + About block (#1572) ─────────────────────────────────
+  /** Primary-genre share: each track once, so it sums to 100% (docs/genre-radar.md). */
+  readonly genreShare = signal<{ taggedCount: number; slices: ShareSegment[] } | null>(null);
+
+  /** One or two main genres for the header, or "mixed"; null hides the chips. */
+  readonly headline = computed(() => headlineGenres(this.genreShare()?.slices ?? []));
+
+  /** Bio, sources, refresh and the genre chart, collapsed by default. */
+  readonly aboutOpen = signal(false);
+
+  /** Shown when it would hold anything: a bio, sources, a curator's refresh, or genres. */
+  readonly hasAbout = computed(() => {
+    const a = this.artist();
+    if (!a) return false;
+    return (
+      !!a.bio ||
+      a.urls.length > 0 ||
+      this.auth.canCurate() ||
+      (this.genreShare()?.slices.length ?? 0) > 0
+    );
+  });
 
   private async loadGenreDistribution(artistId: string): Promise<void> {
-    this.genreDistribution.set(null);
+    this.genreShare.set(null);
     try {
       const data = await firstValueFrom(this.api.artistGenreDistribution(artistId));
-      if (this.artistId === artistId) this.genreDistribution.set(data);
+      if (this.artistId === artistId) this.genreShare.set(data.primary);
     } catch {
-      /* no-op — an empty/failed distribution just hides the strip */
+      /* no-op — an empty/failed distribution just hides the chips and chart */
     }
   }
 

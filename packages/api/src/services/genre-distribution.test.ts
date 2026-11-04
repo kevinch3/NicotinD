@@ -5,6 +5,7 @@ import {
   albumGenreDistribution,
   artistGenreDistribution,
   MAX_AXES,
+  MAX_SHARE_SEGMENTS,
   rareGenres,
 } from './genre-distribution.js';
 
@@ -114,7 +115,54 @@ describe('artistGenreDistribution', () => {
       trackCount: 0,
       genreCount: 0,
       slices: [],
+      primary: { taggedCount: 0, slices: [] },
     });
+  });
+});
+
+describe('artistGenreDistribution primary share (#1572)', () => {
+  it('counts each track once, by its primary genre, so shares sum to 1', () => {
+    const d = db();
+    song(d, 's1', ['Pop', 'Latin']);
+    song(d, 's2', ['Pop', 'Latin Pop']);
+    song(d, 's3', ['Salsa', 'Latin']);
+    song(d, 's4', ['Pop']);
+
+    const { primary } = artistGenreDistribution(d, 'a1');
+
+    expect(primary.taggedCount).toBe(4);
+    expect(primary.slices).toEqual([
+      { genre: 'Pop', count: 3, weight: 0.75 },
+      { genre: 'Salsa', count: 1, weight: 0.25 },
+    ]);
+    expect(primary.slices.reduce((n, s) => n + s.weight, 0)).toBeCloseTo(1);
+  });
+
+  it('leaves untagged tracks out of the denominator', () => {
+    const d = db();
+    song(d, 's1', ['Rock']);
+    song(d, 's2', []);
+
+    const dist = artistGenreDistribution(d, 'a1');
+
+    expect(dist.trackCount).toBe(2);
+    expect(dist.primary).toEqual({
+      taggedCount: 1,
+      slices: [{ genre: 'Rock', count: 1, weight: 1 }],
+    });
+  });
+
+  it('folds the tail into an exact "Other", still summing to 1', () => {
+    const d = db();
+    const genres = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
+    genres.forEach((g, i) => song(d, `s${i}`, [g]));
+
+    const { primary } = artistGenreDistribution(d, 'a1');
+
+    expect(primary.slices).toHaveLength(MAX_SHARE_SEGMENTS + 1);
+    const other = primary.slices.at(-1);
+    expect(other).toEqual({ genre: 'Other', count: 2, weight: 2 / 7 });
+    expect(primary.slices.reduce((n, s) => n + s.weight, 0)).toBeCloseTo(1);
   });
 });
 
@@ -139,6 +187,7 @@ describe('albumGenreDistribution', () => {
       trackCount: 0,
       genreCount: 0,
       slices: [],
+      primary: { taggedCount: 0, slices: [] },
     });
   });
 });
