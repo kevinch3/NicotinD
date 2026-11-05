@@ -123,8 +123,9 @@ pipeline now separates the two things a merge was doing:
   it to them) builds both arches with `NICOTIND_BUILD_COMMIT`, boots the pushed
   image (`smoke-image.sh`), and `edge` merges them into
   `ghcr.io/kevinch3/nicotind:edge`. The analysis sidecar gets an `:edge` too:
-  rebuilt only if `packages/analysis` changed since the last release, otherwise
-  the last release's image. "The last release" is the newest `v*` tag whose
+  rebuilt if `packages/analysis` changed since the last release or if the last
+  release's image has a finding with a published fix (#1477), otherwise the last
+  release's image. "The last release" is the newest `v*` tag whose
   analysis image exists: a tag whose build never ran has none (v0.8.104), and
   retagging from it failed the first edge deploy. Both images are Trivy-scanned
   with the release scan's pin and policy (each arch's pushed digest in
@@ -152,8 +153,11 @@ Consequences worth knowing:
 - **A Trivy finding stops edge.** A base-image CVE with a published fix fails
   `edge-image` (or `edge`, for the analysis image): the host keeps running the
   previous `:edge`, and releases hold, until the base image is bumped. The
-  analysis image is scanned even when it is the last release's, so a fix
-  published since that release blocks too.
+  analysis image is the exception for a fix published since its release: `edge`
+  rebuilds it with a fresh apt layer and scans the rebuild, because a reused image
+  could never pick that fix up. Every push until the next release rebuilds again,
+  since the comparison is against the release's image. The strict scan still
+  decides, so a finding the rebuild does not clear stops edge as before.
 - **The `edge` job's success is what releases require.** A failed dispatch of
   Deploy host fails `edge` and holds the release until a later commit is green;
   the host being unreachable does not (the dispatch succeeds, the Deploy host

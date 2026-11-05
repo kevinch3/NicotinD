@@ -959,10 +959,42 @@ jobs:
             echo "build=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # A reused image cannot pick up a fix published after its release, so a CVE
+      # fixed since then would block every edge deploy until the next release or
+      # analysis change (#1477). This scan only decides whether to rebuild, so it
+      # reports instead of failing; the strict scan below still judges the result.
+      - name: Scan the reused analysis image for fixes published since its release
+        id: analysis-reused-scan
+        if: steps.analysis.outputs.build == 'false'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.ANALYSIS }}:${{ steps.analysis.outputs.prev }}
+          vuln-type: os
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+          exit-code: 0
+          format: json
+          output: analysis-reused-scan.json
+
+      - name: Does the reused analysis image need a rebuild?
+        id: analysis-stale
+        if: steps.analysis.outputs.build == 'false'
+        env:
+          PREV: ${{ steps.analysis.outputs.prev }}
+        run: |
+          set -euo pipefail
+          findings=$(jq '[.Results[]?.Vulnerabilities[]?.VulnerabilityID] | unique | length' analysis-reused-scan.json)
+          if [ "$findings" -gt 0 ]; then
+            echo "::warning::$ANALYSIS:$PREV has $findings fixable finding(s); rebuilding it for this edge (#1477)"
+            echo "rebuild=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "rebuild=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # Pushed by digest, not as `edge`: the tag moves only after the scan below.
       - name: Build + push the analysis image by digest
         id: analysis-build
-        if: steps.analysis.outputs.build == 'true'
+        if: steps.analysis.outputs.build == 'true' || steps.analysis-stale.outputs.rebuild == 'true'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: packages/analysis
@@ -980,8 +1012,8 @@ jobs:
         run: |
           if [ -n "$BUILT" ]; then echo "ref=$ANALYSIS@$BUILT"; else echo "ref=$ANALYSIS:$PREV"; fi >> "$GITHUB_OUTPUT"
 
-      # Scanned even when it is the last release's image: a fix published since
-      # that release is a finding now (same scan as edge-image's).
+      # The image edge will actually use, rebuilt or the last release's, under the
+      # same strict scan as edge-image's.
       - name: Scan the analysis image for OS vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
