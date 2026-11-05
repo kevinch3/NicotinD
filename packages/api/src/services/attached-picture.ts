@@ -17,11 +17,10 @@ const log = createLogger('attached-picture');
  * mechanism — which is why this is a second module rather than a parameter on
  * the first.
  *
- * **No size cap, measured rather than assumed.** The Opus path caps covers at
- * 512 KB because `music-metadata` throws above ~600 KB *in Ogg*. That is a
- * property of the reader against that container, not of cover art, and it does
- * not transfer. Measured here on real files, reading back with the same
- * `music-metadata` every read path in this app uses:
+ * **No size cap, measured rather than assumed.** `music-metadata` <= 11.14 threw
+ * above ~600 KB *in Ogg*. That was the reader against that container, not a
+ * property of cover art, and it never applied here. Measured on real files, reading
+ * back with the same `music-metadata` every read path in this app uses:
  *
  * | cover bytes | attached | read back | byte-exact |
  * | --- | --- | --- | --- |
@@ -31,10 +30,9 @@ const log = createLogger('attached-picture');
  * | 2,593,122 | yes | 2,593,122 | yes |
  * | 6,553,147 | yes | 6,553,147 | yes |
  *
- * Ten times the Ogg ceiling with no failure, so carrying the 512 KB cap here
- * would re-compress covers that read back perfectly — degrading them for a
- * reason that does not apply. Disk cost is a separate question from reader
- * capability and belongs in operator settings, not disguised as a limit.
+ * Re-compressing here would degrade covers that read back perfectly. Disk cost is
+ * a separate question from reader capability; the Opus format's budget is that
+ * question answered for Opus (`MAX_EMBEDDED_PICTURE_BYTES`, #1496).
  */
 
 /** ffmpeg muxer + extra args per container, so the tmp path's extension is irrelevant. */

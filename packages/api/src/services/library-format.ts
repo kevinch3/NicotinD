@@ -110,9 +110,8 @@ export const LIBRARY_FORMATS: Record<LibraryFormat, FormatStrategy> = {
     ext: 'mp3',
     encodeArgs: (kbps) => FORMAT_ARGS.mp3.args(kbps),
     bitrateFor: (sourceKbps, lossless) => ladderBitrateFor('mp3', sourceKbps, lossless),
-    // No ceiling we could measure: a 6.5 MB cover reads back byte-exact, ten
-    // times the point where Ogg throws. The 512 KB cap is a property of
-    // `music-metadata` reading Ogg, not of cover art — see `attached-picture.ts`.
+    // No ceiling we could measure: a 6.5 MB cover reads back byte-exact — see
+    // `attached-picture.ts`.
     maxEmbeddedPictureBytes: null,
     embedArt: attachPictureAsStream,
     encodeArtArgs: null,
@@ -133,8 +132,7 @@ export const LIBRARY_FORMATS: Record<LibraryFormat, FormatStrategy> = {
     ext: 'm4a',
     encodeArgs: (kbps) => ['-c:a', 'aac', '-b:a', `${kbps}k`, '-f', 'ipod'],
     bitrateFor: (sourceKbps, lossless) => ladderBitrateFor('aac', sourceKbps, lossless),
-    // Measured: a 2.9 MB cover reads back byte-exact from `covr`. The 512 KB
-    // cap is an Ogg reader limit and does not apply (#1279).
+    // Measured: a 2.9 MB cover reads back byte-exact from `covr` (#1279).
     maxEmbeddedPictureBytes: null,
     embedArt: attachPictureAsStream,
     encodeArtArgs: null,
