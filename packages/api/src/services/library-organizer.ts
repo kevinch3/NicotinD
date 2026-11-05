@@ -15,6 +15,7 @@ import {
   cleanFolderName,
   createLogger,
   expandHome,
+  isUnknownLike,
   parseYearFromFolder,
 } from '@nicotind/core';
 import { classifyFolder, type Classification } from './compilation-tagger.js';
@@ -41,7 +42,7 @@ import {
 } from './path-sanitize.js';
 import { isAbsolute } from 'node:path';
 import type { AcoustIdLookup } from './acoustid-lookup.js';
-import { isUnknownLike, normalizeTitle } from '@nicotind/core';
+import { normalizeTitle } from '@nicotind/core';
 import { reconcileAlbumFolder } from './album-reconcile.js';
 import { albumGroupKey } from './album-grouping.js';
 import { DEFAULT_UNSORTED_DIR } from './library-paths.js';
