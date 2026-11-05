@@ -366,10 +366,10 @@ function isCompoundSingle(hits: readonly LidarrArtist[], name: string): boolean 
  * discipline that guards against the documented same-name false pair), then
  * widens to a whole-token-subsequence + `albumCount > 0` corroboration match
  * for canonical-name drift (library `Eduardo Miño` → Lidarr `Luis Eduardo
- * Miño Naranjo`). Returns `{ mbid, confidence }` so the caller can persist the
- * lower confidence the widened path reports — a tag/id-source write
- * discipline, not a runtime one. Never throws — a lookup blip degrades to
- * null, same as the identity resolver above.
+ * Miño Naranjo`). A `resolved` answer carries the confidence so the caller can
+ * persist the lower one the widened path reports — a tag/id-source write
+ * discipline, not a runtime one. Never throws: a failed lookup is `unavailable`,
+ * which a caller must not record as an absence (#1582).
  */
 export interface MbidCorroboration {
   /** Album titles this artist has in the library — the evidence a name lacks. */
@@ -378,25 +378,31 @@ export interface MbidCorroboration {
   releaseGroupsFor: (mbid: string) => Promise<readonly string[]>;
 }
 
+/** `no-match` is an answer; `unavailable` is the lack of one (#1582). */
+export type MbidResolution =
+  | { status: 'resolved'; mbid: string; confidence: number }
+  | { status: 'no-match' }
+  | { status: 'unavailable' };
+
 export async function resolveMbidViaLidarr(
   lidarr: Lidarr,
   name: string,
   corroborate?: MbidCorroboration,
-): Promise<{ mbid: string; confidence: number } | null> {
+): Promise<MbidResolution> {
   let hits: LidarrArtist[];
   try {
     hits = await lidarr.artist.lookup(name);
   } catch {
-    return null;
+    return { status: 'unavailable' };
   }
   const direct = pickMbidHit(hits, name);
-  if (direct) return direct;
+  if (direct) return { status: 'resolved', ...direct };
 
   // Stage 3 (issue #610): `pickMbidHit` returned null because several hits
   // carry this exact name. Break the tie on the library's own discography —
   // one MB call per homonym, so only ever on the genuinely ambiguous path.
   const exact = exactMbidHits(hits, name);
-  if (exact.length < 2 || !corroborate) return null;
+  if (exact.length < 2 || !corroborate) return { status: 'no-match' };
   try {
     const candidates = await Promise.all(
       exact.map(async (h) => ({
@@ -405,10 +411,12 @@ export async function resolveMbidViaLidarr(
       })),
     );
     const picked = pickByDiscographyOverlap(candidates, corroborate.libraryAlbums);
-    return picked ? { mbid: picked, confidence: MBID_CONFIDENCE_CORROBORATED } : null;
+    return picked
+      ? { status: 'resolved', mbid: picked, confidence: MBID_CONFIDENCE_CORROBORATED }
+      : { status: 'no-match' };
   } catch {
     // An MB blip must leave the artist re-triable, never write a guess.
-    return null;
+    return { status: 'unavailable' };
   }
 }
 
@@ -1311,7 +1319,9 @@ const artistInfoTask: EnrichmentTask = {
           artist.name,
           corroborationFor(db, ctx, artist.id),
         );
-        if (resolved) {
+        // Nothing written, so the artist stays pending and the next window retries.
+        if (resolved.status === 'unavailable') continue;
+        if (resolved.status === 'resolved') {
           mbid = resolved.mbid;
           mbidConfidence = resolved.confidence;
           upsertMbid(db, {
@@ -1472,7 +1482,8 @@ const artistOriginTask: EnrichmentTask = {
           artist.name,
           corroborationFor(db, ctx, artist.id),
         );
-        if (resolved) {
+        if (resolved.status === 'unavailable') continue; // not a 30-day "no identity" stamp
+        if (resolved.status === 'resolved') {
           mbid = resolved.mbid;
           upsertMbid(db, {
             scope: 'artist',

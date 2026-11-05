@@ -711,13 +711,31 @@ describe('artist-origin task', () => {
 
   it('tombstones a no-MBID artist (no batch livelock) and the TTL reopens it', async () => {
     seedArtist('a1', { name: 'Unresolvable' });
-    const c = ctx({ lookupArtistOrigin: async () => ({ ok: true, country: 'AR' }) });
+    const c = ctx({ lidarr: null, lookupArtistOrigin: async () => ({ ok: true, country: 'AR' }) });
     await artistOrigin.run(db, c, 10);
     expect(getArtistOrigin(db, 'a1')).toMatchObject({ country: null });
     expect(artistOrigin.countPending(db)).toBe(0);
     db.run(`UPDATE library_artist_origins SET checked_at = ?`, [
       Date.now() - ORIGIN_RECHECK_TTL_MS - 1,
     ]);
+    expect(artistOrigin.countPending(db)).toBe(1);
+  });
+
+  it('stamps nothing while Lidarr cannot answer, so the outage costs no 30-day wait (#1582)', async () => {
+    seedArtist('a1', { name: 'Unresolved' });
+    const c = ctx({
+      lidarr: {
+        artist: {
+          list: async () => [],
+          lookup: async () => {
+            throw new Error('Lidarr request timed out');
+          },
+        },
+      } as unknown as EnrichmentContext['lidarr'],
+      lookupArtistOrigin: async () => ({ ok: true, country: 'AR' }),
+    });
+    await artistOrigin.run(db, c, 10);
+    expect(getArtistOrigin(db, 'a1')).toBeNull();
     expect(artistOrigin.countPending(db)).toBe(1);
   });
 
@@ -756,6 +774,7 @@ describe('artist-info task', () => {
   it('writes a tombstone (no applied) for an artist with no known MBID', async () => {
     seedArtist('a1', { name: 'Artist One' });
     const c = ctx({
+      lidarr: null,
       lookupArtistInfo: async () => ({ bio: 'x', urls: [], source: 'discogs', confidence: 0.95 }),
     });
     const result = await artistInfo.run(db, c, 10);
@@ -964,6 +983,90 @@ describe('artist-info task', () => {
     expect(result.applied).toBe(0);
     expect(getArtistMeta(db, 'a1')?.bio).toBeNull();
     expect(getMbid(db, 'artist', 'artist one')).toBeNull();
+  });
+
+  describe('a Lidarr outage is not an absence (#1582)', () => {
+    const failingLidarr = {
+      artist: {
+        list: async () => [],
+        lookup: async () => {
+          throw new Error('Lidarr request timed out');
+        },
+      },
+    } as unknown as EnrichmentContext['lidarr'];
+
+    it('leaves the artist pending instead of tombstoning its bio', async () => {
+      seedArtist('a1', { name: 'Artist One' });
+      const c = ctx({
+        lidarr: failingLidarr,
+        lookupArtistInfo: async () => ({ bio: 'x', urls: [], source: 'discogs', confidence: 0.95 }),
+      });
+      const result = await artistInfo.run(db, c, 10);
+      expect(result.applied).toBe(0);
+      expect(getArtistMeta(db, 'a1')).toBeNull();
+      expect(artistInfo.countPending(db)).toBe(1);
+    });
+
+    it('still fetches the other artists in the batch that have a cached id', async () => {
+      seedArtist('a1', { name: 'Artist One' });
+      seedArtist('a2', { name: 'Artist Two' });
+      upsertMbid(db, {
+        scope: 'artist',
+        key: 'artist two',
+        mbid: 'mbid-2',
+        source: 'tag',
+        confidence: 1,
+      });
+      const c = ctx({
+        lidarr: failingLidarr,
+        lookupArtistInfo: async () => ({
+          bio: 'Cached bio',
+          urls: [],
+          source: 'discogs',
+          confidence: 0.95,
+        }),
+      });
+      const result = await artistInfo.run(db, c, 10);
+      expect(result.applied).toBe(1);
+      expect(getArtistMeta(db, 'a1')).toBeNull();
+      expect(getArtistMeta(db, 'a2')?.bio).toBe('Cached bio');
+    });
+
+    it('does not write a bio from a stale id it could not re-resolve', async () => {
+      seedArtist('a1', { name: 'Gondwana' });
+      upsertMbid(db, {
+        scope: 'artist',
+        key: 'gondwana',
+        mbid: 'mbid-stale',
+        source: 'lidarr',
+        confidence: 0.8,
+      });
+      db.run(`UPDATE library_mbids SET checked_at = ?`, [MBID_AMBIGUITY_FIX_AT - 1]);
+      const c = ctx({
+        lidarr: failingLidarr,
+        lookupArtistInfo: async () => ({ bio: 'x', urls: [], source: 'discogs', confidence: 0.95 }),
+      });
+      await artistInfo.run(db, c, 10);
+      expect(getArtistMeta(db, 'a1')).toBeNull();
+      expect(artistInfo.countPending(db)).toBe(1);
+    });
+
+    it('leaves the artist pending when only the homonym check failed', async () => {
+      seedArtist('a1', { name: 'Emilia' });
+      const c = ctx({
+        lidarr: lidarrWithLookup([
+          { artistName: 'Emilia', foreignArtistId: 'mbid-a' },
+          { artistName: 'Emilia', foreignArtistId: 'mbid-b' },
+        ]),
+        lookupArtistReleaseGroups: async () => {
+          throw new Error('MusicBrainz down');
+        },
+        lookupArtistInfo: async () => ({ bio: 'x', urls: [], source: 'discogs', confidence: 0.95 }),
+      });
+      await artistInfo.run(db, c, 10);
+      expect(getArtistMeta(db, 'a1')).toBeNull();
+      expect(artistInfo.countPending(db)).toBe(1);
+    });
   });
 
   it('falls through to a tombstone when Lidarr is not configured (lidarr: null)', async () => {
@@ -2569,7 +2672,7 @@ describe('MBID resolution helpers (issue #211)', () => {
         },
       } as unknown as EnrichmentContext['lidarr'];
       const result = await resolveMbidViaLidarr(lidarr as never, 'Eduardo Miño');
-      expect(result).toEqual({ mbid: 'mbid-wide', confidence: 0.5 });
+      expect(result).toEqual({ status: 'resolved', mbid: 'mbid-wide', confidence: 0.5 });
     });
 
     it('returns the exact match with confidence 0.8 when both exact and subsequence hits exist', async () => {
@@ -2587,10 +2690,10 @@ describe('MBID resolution helpers (issue #211)', () => {
         },
       } as unknown as EnrichmentContext['lidarr'];
       const result = await resolveMbidViaLidarr(lidarr as never, 'Eduardo Miño');
-      expect(result).toEqual({ mbid: 'mbid-exact', confidence: 0.8 });
+      expect(result).toEqual({ status: 'resolved', mbid: 'mbid-exact', confidence: 0.8 });
     });
 
-    it('returns null when a Lidarr blip raises (no widening on transport error)', async () => {
+    it('reports a Lidarr blip as unavailable, not as no match (#1582)', async () => {
       const lidarr = {
         artist: {
           list: async () => [],
@@ -2600,7 +2703,7 @@ describe('MBID resolution helpers (issue #211)', () => {
         },
       } as unknown as EnrichmentContext['lidarr'];
       const result = await resolveMbidViaLidarr(lidarr as never, 'Eduardo Miño');
-      expect(result).toBeNull();
+      expect(result).toEqual({ status: 'unavailable' });
     });
 
     // Issue #610 — corroboration plumbing. The *verdict* lives in the pure
@@ -2636,9 +2739,9 @@ describe('MBID resolution helpers (issue #211)', () => {
       expect(looked.sort()).toEqual(['mbid-emilia-mernes', 'mbid-swedish-mc']);
     });
 
-    it('stays null on an ambiguous name when no corroboration is available', async () => {
+    it('is no match on an ambiguous name when no corroboration is available', async () => {
       const { lidarr } = ambiguousLidarr();
-      expect(await resolveMbidViaLidarr(lidarr, 'Emilia')).toBeNull();
+      expect(await resolveMbidViaLidarr(lidarr, 'Emilia')).toEqual({ status: 'no-match' });
     });
 
     it('never corroborates an unambiguous exact match', async () => {
@@ -2656,7 +2759,7 @@ describe('MBID resolution helpers (issue #211)', () => {
           return [];
         },
       });
-      expect(result).toEqual({ mbid: 'mbid-only', confidence: 0.8 });
+      expect(result).toEqual({ status: 'resolved', mbid: 'mbid-only', confidence: 0.8 });
       expect(looked).toEqual([]);
     });
 
@@ -2669,10 +2772,10 @@ describe('MBID resolution helpers (issue #211)', () => {
             ? ['perfectas', 'No_se_ve.mp3', 'GTA.mp3', '.mp3']
             : ['Alla mot alla'],
       });
-      expect(result).toEqual({ mbid: 'mbid-emilia-mernes', confidence: 0.7 });
+      expect(result).toEqual({ status: 'resolved', mbid: 'mbid-emilia-mernes', confidence: 0.7 });
     });
 
-    it('degrades to null when a release-group lookup throws', async () => {
+    it('reports a release-group blip as unavailable, leaving the artist re-triable', async () => {
       const { lidarr } = ambiguousLidarr();
       const result = await resolveMbidViaLidarr(lidarr, 'Emilia', {
         libraryAlbums: ['perfectas'],
@@ -2680,7 +2783,7 @@ describe('MBID resolution helpers (issue #211)', () => {
           throw new Error('MB down');
         },
       });
-      expect(result).toBeNull();
+      expect(result).toEqual({ status: 'unavailable' });
     });
   });
 

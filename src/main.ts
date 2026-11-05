@@ -104,7 +104,7 @@ async function main() {
         );
       }
     }
-    await provisionLidarrRootAtBoot(lidarr, rootPolicy);
+    void provisionLidarrRootAtBoot(lidarr, rootPolicy); // retries in the background (#1591)
   }
 
   // 4. Create and start API server

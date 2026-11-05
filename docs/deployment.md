@@ -79,7 +79,9 @@ Now:
   root cannot be registered (an older compose without the volume) it falls back to an existing root
   with a warning, so adds keep working; with no root at all the add fails naming the fix.
 - **Lidarr has no music mount** in `docker-compose.yml`, so it cannot touch the library at all.
-- **Boot warns** (`provisionLidarrRootAtBoot`) while any registered root overlaps the music dir.
+- **Boot warns** (`provisionLidarrRootAtBoot`) while any registered root overlaps the music dir. The
+  pass runs off the boot path and retries with back-off for about an hour, because compose only
+  waits for Lidarr's `service_started` and the first attempt usually finds it still booting (#1591).
 - Monitoring is unchanged: unmonitored adds would silently empty `wanted/missing` for anyone who
   enables auto-acquire.
 

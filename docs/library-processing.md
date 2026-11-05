@@ -241,6 +241,8 @@ Launch tasks:
   external links via MBID-first lookup (`getMbid` for a cached MusicBrainz id →
   `ctx.lookupArtistInfo(mbid)`), writes the result to `library_artist_meta` via
   `upsertArtistMeta`, or writes a tombstone (bio=NULL, urls=[]) on no MBID / no result.
+  A lookup that could not answer (Lidarr or MusicBrainz down) writes nothing, so the artist stays
+  pending: `resolveMbidViaLidarr` reports `unavailable` apart from `no-match` (#1582).
   Skips `manual_override = 1` rows entirely (writes never run; pending predicate excludes
   them). See
   [library-scanner.md](library-scanner.md) "Artist bios".

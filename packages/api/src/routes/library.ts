@@ -226,7 +226,10 @@ async function fetchAndStoreArtistInfo(
           }
         : undefined,
     );
-    if (resolved) {
+    if (resolved.status === 'unavailable') {
+      return { kind: 'error', message: 'Artist identity source unavailable' };
+    }
+    if (resolved.status === 'resolved') {
       mbid = resolved.mbid;
       mbidConfidence = resolved.confidence;
       upsertMbid(db, {

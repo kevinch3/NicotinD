@@ -56,29 +56,49 @@ export function lidarrRootPolicyFor(
   };
 }
 
+/** First wait between boot attempts; doubles up to {@link BOOT_RETRY_MAX_MS}. */
+export const BOOT_RETRY_BASE_MS = 5_000;
+export const BOOT_RETRY_MAX_MS = 5 * 60_000;
+/** About an hour of waiting. The next artist add still registers the root lazily after that. */
+export const BOOT_MAX_ATTEMPTS = 16;
+
 /**
  * Boot-time root provisioning: register the metadata root, then warn — once per
- * boot, naming the fix — if a root still overlaps the library. Never throws:
- * Lidarr may simply not be up yet.
+ * boot, naming the fix — if a root still overlaps the library. Never rejects.
+ *
+ * Retries with back-off because compose starts Lidarr alongside NicotinD and only
+ * waits for `service_started`, so the first attempt routinely hits a Lidarr still
+ * booting (#1591). Callers must not await this on the boot path.
  */
 export async function provisionLidarrRootAtBoot(
   lidarr: Lidarr,
   policy: LidarrRootPolicy,
+  sleep: (ms: number) => Promise<void> = (ms) => Bun.sleep(ms),
 ): Promise<void> {
-  try {
-    const { overlapping } = await ensureArtistRootFolder(lidarr, policy);
-    if (overlapping.length > 0) {
-      log.warn(
-        { roots: overlapping.map((r) => r.path), musicDir: policy.musicDir },
-        'A Lidarr root folder overlaps the music library, so Lidarr rescans it daily (#1580). ' +
-          'Run packages/api/src/scripts/lidarr-isolate-root.ts to move artists to the metadata root.',
-      );
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const { overlapping } = await ensureArtistRootFolder(lidarr, policy);
+      if (overlapping.length > 0) {
+        log.warn(
+          { roots: overlapping.map((r) => r.path), musicDir: policy.musicDir },
+          'A Lidarr root folder overlaps the music library, so Lidarr rescans it daily (#1580). ' +
+            'Run packages/api/src/scripts/lidarr-isolate-root.ts to move artists to the metadata root.',
+        );
+      }
+      return;
+    } catch (err) {
+      if (attempt >= BOOT_MAX_ATTEMPTS) {
+        log.warn(
+          { err, attempts: attempt },
+          'Lidarr root folder provisioning gave up — discography may not work until Lidarr is reachable',
+        );
+        return;
+      }
+      const delayMs = Math.min(BOOT_RETRY_BASE_MS * 2 ** (attempt - 1), BOOT_RETRY_MAX_MS);
+      // Expected on every deploy, so not a warning until the attempts run out.
+      log.info({ attempt, delayMs }, 'Lidarr not ready for root folder provisioning, will retry');
+      await sleep(delayMs);
     }
-  } catch (err) {
-    log.warn(
-      { err },
-      'Lidarr root folder provisioning failed — discography may not work until Lidarr is reachable',
-    );
   }
 }
 
