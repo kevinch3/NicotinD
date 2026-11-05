@@ -6,9 +6,11 @@ import { ADMIN, FIXTURE, bearer } from '../helpers';
  * discography read answers "not provisioned", the user presses Add, the page shows
  * the pending job and loads the discography once it finishes.
  *
- * The e2e server has no Lidarr, so the three discography endpoints are stubbed at
- * the network seam; the server half (read-only GET, 202 job, status, cancel) is
- * covered by routes/discography.provision.test.ts against real services.
+ * The three discography endpoints stay stubbed although the fixture Lidarr now exists
+ * (#1547): this spec holds the job at a chosen stage to read the pending UI, and a real
+ * add finishes before it could look. The real add job runs in guided-acquire.spec.ts,
+ * and the server half (read-only GET, 202 job, status, cancel) is covered by
+ * routes/discography.provision.test.ts against real services.
  */
 async function token(request: APIRequestContext): Promise<string> {
   const res = await request.post('/api/auth/login', { data: ADMIN });

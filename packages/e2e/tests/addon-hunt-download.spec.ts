@@ -28,9 +28,9 @@ const LANDED_DIR = join(E2E_MUSIC_DIR, 'Rick Astley');
  * 2. A hunt-shaped album job downloads + ingests to the library end-to-end, so
  *    "Rick Astley" appearing in the library is proof of the whole loop.
  *
- * (The browser hunt *modal* is Lidarr-gated and Lidarr isn't in the e2e env, so
- * the rateLimited UI toast/empty-state is covered by the modal unit spec; here
- * we prove the protocol surface + the download.)
+ * (The rateLimited UI toast/empty-state is covered by the modal unit spec, and the
+ * browser's guided path by guided-acquire.spec.ts; here we prove the protocol
+ * surface + the download.)
  */
 test.describe('hunt + download through a remote addon (rickroll)', () => {
   let addon: FixtureAddon;

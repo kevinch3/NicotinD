@@ -70,6 +70,7 @@ removed. A `git status` nobody reads is not a guard. Its logic is unit-tested in
 | `tests/playback.spec.ts`       | Play Album fires a `206`/`200` on `/api/stream/...` and an `<audio>` element advances                                                                                                                                                         |
 | `tests/player.spec.ts`         | pause/resume, next-track, seek (click the progress bar → position jumps), shuffle toggle                                                                                                                                                      |
 | `tests/plugins.spec.ts`        | the compliance contract: the URL-acquire box is absent until an admin enables the consent-gated yt-dlp `resolve` plugin, and reappears/disappears with enable/disable                                                                         |
+| `tests/guided-acquire.spec.ts` | the guided path against a real server (fixture Lidarr + addon, nothing of ours stubbed): search, a catalog card whose cover decodes, the 202 add job, hunt, Get, Activity, library. Also the raw-search fallback for a compilation, and one job for a folder grab + catalog card (#1539). |
 | `tests/onboarding.spec.ts`     | (**`onboarding` project**, own fresh server) drives the 4-step setup wizard end-to-end incl. the Advanced/Lidarr panel, then confirms it lands authenticated in the app                                                                       |
 | `tests/welcome-banner.spec.ts` | an admin-provisioned user sees the first-login welcome banner and can dismiss it (seeded server)                                                                                                                                              |
 | `tests/song-menu.spec.ts`      | on an album detail page: the unified `⋯` row menu's common actions + "Go to album" suppression, "Song info" opens the track-info sheet, admin "Remove from library" → global `ConfirmHost` → row removal (see `docs/song-actions.md#testing`) |
@@ -398,11 +399,22 @@ same PR that hit it.
   plugin-gating suite's "fresh install enables nothing" assertion stays true
   in any order.
 
-- **No slskd, no Lidarr, no network egress assumptions.** Both URLs point at
-  `http://127.0.0.1:1` (dead on purpose); anything that fans out to them
-  fails soft. A spec can't exercise a real download/hunt — cover that logic
-  at the unit/integration level and test the _surface_ (gating, forwarding,
-  rendering) in e2e.
+- **No slskd, no network egress assumptions.** slskd's URL points at `http://127.0.0.1:1` (dead on
+  purpose), and anything that fans out to it fails soft.
+
+- **Lidarr is a fixture, and it is empty until you seed it (#1547).** The main server's
+  `NICOTIND_LIDARR_URL` points at `tests/helpers/fixture-lidarr.ts`, a `webServer` of its own on
+  `E2E_LIDARR_PORT` (default 8589), because the server reads that URL once at boot. It answers `[]` to
+  every lookup, so a spec that does not ask for a catalog sees no albums. To drive the guided path, call
+  `seedFixtureLidarr` in the spec and `resetFixtureLidarr` when done, since its state outlives the spec.
+  An artist seeded without `provisioned` goes through the real 202 add job; an album seeded `lookupOnly`
+  resolves to `ALBUM_NOT_IN_LIDARR`. The onboarding and TV servers keep the dead URL.
+
+  **Its shapes come from `packages/api/src/lidarr/types.ts`, not a recording of a real Lidarr**, so it
+  proves the wiring and is as permissive as our own types. Recording a prod response once would close that
+  gap (`guided-acquire.spec.ts` is the spec that would notice). The addon is a fixture too, so a spec can
+  run the whole loop from search to library; see that spec. `artist-provisioning.spec.ts` keeps its route
+  stubs on purpose, and says why.
 
 - **The fixture library is minimal.** Silent FLACs from `fixtures/music/**`,
   no acquire jobs, no user playlists, no curated content beyond what boot
