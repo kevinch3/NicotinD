@@ -37,6 +37,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **`check:install-scripts`**: no dependency runs an unreviewed install hook, keyed on its command
   text and walked from the workspace roots. `scan`, `unreviewed`, `staleEntries`.
   → [quality-gates.md](../quality-gates.md)
+- **`check:lockfile-platforms`**: every optional dependency a `bun.lock` entry lists resolves to a lock
+  entry that satisfies its range, so a dropped platform binary fails here rather than on macOS or
+  arm64. `checkOptionalDeps`. → [dependency-management.md](../dependency-management.md#bumping-one-dependency-safely)
 - **`check:pr-title`**: a squash merge writes the PR title as master's subject, and the release guard
   reads subjects — so an untyped title freezes releases with every check green. The `pr-title` job
   fails that, and a title that does not bump while its commits do. `checkPrTitle`,

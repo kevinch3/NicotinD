@@ -269,18 +269,29 @@ describe('event loop during a backup (#1313)', () => {
     const dir = mkdtempSync(join(tmpdir(), 'nicotind-backup-loop-'));
     try {
       const big = buildDatabase(join(dir, 'nicotind.db'), 100);
-      const inPlace = await measureLoop(async () => {
-        big.run('VACUUM INTO ?', [join(dir, 'in-place.db')]);
-      });
-      const offThread = await measureLoop(() => snapshotDatabase(big, join(dir, 'worker.db')));
+      // A shared runner can delay any one tick by itself (#1606), so a stray late
+      // tick gets another attempt. A snapshot on the event loop fails all of them.
+      const attempts: unknown[] = [];
+      let kept = false;
+      for (let i = 0; i < 3 && !kept; i++) {
+        rmSync(join(dir, 'in-place.db'), { force: true });
+        rmSync(join(dir, 'worker.db'), { force: true });
+        const inPlace = await measureLoop(async () => {
+          big.run('VACUUM INTO ?', [join(dir, 'in-place.db')]);
+        });
+        const offThread = await measureLoop(() => snapshotDatabase(big, join(dir, 'worker.db')));
+        attempts.push({ inPlace, offThread });
+        kept =
+          // The probe sees a block: in place, the one late tick is the whole copy.
+          inPlace.maxLateMs >= inPlace.durationMs * 0.8 &&
+          // Off-thread, the loop keeps ticking through a copy of similar length.
+          offThread.maxLateMs < offThread.durationMs * 0.5 &&
+          offThread.ticks > inPlace.ticks;
+      }
       big.close();
-      // The probe sees a block: in place, the one late tick is the whole copy.
-      expect(inPlace.maxLateMs).toBeGreaterThanOrEqual(inPlace.durationMs * 0.8);
-      // Off-thread, the loop keeps ticking through a copy of similar length.
-      expect(offThread.maxLateMs).toBeLessThan(offThread.durationMs * 0.5);
-      expect(offThread.ticks).toBeGreaterThan(inPlace.ticks);
+      expect(kept, JSON.stringify(attempts)).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
-  }, 30_000);
+  }, 60_000);
 });

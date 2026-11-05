@@ -86,7 +86,8 @@ table cannot classify) · `check:route-auth` (an `/api` group mounted with no au
 advisory that both ships and matches the resolved version) · `check:desktop-publish` (a desktop
 packaging job that does not verify its artifacts reached the Release) · `check:install-scripts` (a dependency
 whose install hook is unreviewed, or fetches from a host that is not the npm
-registry) · `check:library-walkers` (a `musicDir` walker that skips the reserved-path
+registry) · `check:lockfile-platforms` (a lock entry whose optional platform binary has no lock entry)
+· `check:library-walkers` (a `musicDir` walker that skips the reserved-path
 predicate) · `check:transcode-quarantine` (a library-transcode caller that deletes the originals
 instead of keeping them) · `check:song-carry-coverage` (a song-id-keyed table neither carried across an id
 change nor exempt on the record) · `check:library-queries` (a library list query whose plan re-derives the song

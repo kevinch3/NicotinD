@@ -25,6 +25,22 @@ install re-resolves any range that drifted from the lockfile, which would let a 
 published (or hijacked) release reach a build nobody reviewed.
 `scripts/workflow-frozen-installs.test.ts` fails on any workflow install without the flag.
 
+## Bumping one dependency safely
+
+`bun add` has rewritten `bun.lock` with every non-linux-x64 `@rollup/rollup-*` binary gone (#1533, a
+212-line diff for a one-package bump). Linux x64 CI stays green on such a file, because the binary it
+needs is still there; macOS, the arm64 image and desktop packaging break after the merge. It did not
+reproduce on bun 1.3.11 with `bun add hono@latest` in this repo, so treat it as intermittent rather
+than fixed.
+
+**`check:lockfile-platforms`** is the guard. Every `optionalDependencies` name in a lock entry must
+resolve, nearest entry first as bun resolves it, to an entry satisfying its range. The parent keeps
+listing its binaries after they are dropped, so no previous lockfile is needed to compare against.
+
+If it fires, restore `bun.lock` and edit the bump by hand: change the version in the `package.json`
+and in the package's two `bun.lock` lines, take the integrity hash from
+`npm view <pkg>@<version> dist.integrity`, then confirm with `bun install --frozen-lockfile`.
+
 ## Worktrees install their own node_modules
 
 `scripts/link-worktree.sh` runs `bun install --frozen-lockfile` in the worktree (#1314). It
