@@ -315,6 +315,7 @@
                   @let availability = catalogAvailabilityOf(album);
                   <button
                     appTvNavItem
+                    data-testid="catalog-album"
                     (click)="huntCatalogAlbum(album)"
                     [disabled]="resolvingAlbum() !== null || huntStatus.phase !== 'idle'"
                     [attr.data-hunt-phase]="huntStatus.phase"

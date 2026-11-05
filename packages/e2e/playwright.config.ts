@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { rmSync } from 'node:fs';
 import { TV_DIST, ensureWebBuild } from './ensure-web-build.js';
+import { FIXTURE_LIDARR_PORT, FIXTURE_LIDARR_URL } from './tests/helpers/fixture-lidarr.js';
 import {
   E2E_MUSIC_DIR,
   ONBOARDING_MUSIC_DIR,
@@ -131,7 +132,16 @@ export default defineConfig({
   webServer: externalBaseUrl
     ? undefined
     : [
-        makeServer(PORT, dataDir, E2E_MUSIC_DIR),
+        // Started beside the server, whose boot pass retries until it answers.
+        {
+          command: 'bun run tests/helpers/fixture-lidarr.ts',
+          cwd: __dirname,
+          url: `${FIXTURE_LIDARR_URL}/__fixture/health`,
+          reuseExistingServer: false,
+          timeout: 30_000,
+          env: { E2E_LIDARR_PORT: FIXTURE_LIDARR_PORT },
+        },
+        makeServer(PORT, dataDir, E2E_MUSIC_DIR, { NICOTIND_LIDARR_URL: FIXTURE_LIDARR_URL }),
         makeServer(ONBOARDING_PORT, onboardingDataDir, ONBOARDING_MUSIC_DIR),
         makeServer(TV_PORT, tvDataDir, TV_BUILD_MUSIC_DIR, { NICOTIND_WEB_DIST: TV_DIST }),
       ],
