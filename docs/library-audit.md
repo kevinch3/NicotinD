@@ -90,6 +90,10 @@ and a message. The CLI groups by rule (worst first); `--rule=<id>` lists one.
   the album has no running order. Same-title collisions are excluded and belong to duplicate
   detection (#951) — measured 298 numbering vs 131 duplicate on prod, and the two want
   opposite remediations, so the titles decide which rule owns the row.
+- `single_on_owned_album` (low) — a single whose artist already has the same title on a full album
+  (issue #1583). A rip of an owned track lands on its own tags as a single, and the duplicate finder's
+  2 s duration window misses a shorter cut. Reported per song; **never deletable**, since a real single
+  can also be on the album.
 - `slot_duplicate` (medium) — the other half of that split (#951): the same folded title stored
   **twice in one `(disc, track)` slot** of one album. The album, the slot and the title all agree,
   so it is one recording stored twice without needing a fingerprint — measured 131 redundant files

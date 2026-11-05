@@ -1283,6 +1283,7 @@
   "time.justNow": "Just now",
   "time.minutesAgo": "{value}m ago",
   "time.yesterday": "Yesterday",
+  "trackInfo.identifyUnlinked": "Recognised by AcoustID, but not linked to MusicBrainz yet, so there is nothing to apply.",
   "trackInfo.editTags": "Edit tags",
   "trackInfo.findMatches": "Find matches",
   "trackInfo.noMatches": "No candidate releases found.",

@@ -25,7 +25,17 @@ const MIN_INTERVAL_MS = 334; // ~3 req/s, AcoustID's free limit
 export type AcoustIdResult = IdentifyResult & {
   albumArtist?: string;
   trackNumber?: number;
+  /** Every release of the recording, so a caller can prefer one already owned. */
+  releases?: AcoustIdRelease[];
 };
+
+export interface AcoustIdRelease {
+  id?: string;
+  title?: string;
+  albumArtist?: string;
+  year?: number;
+  trackNumber?: number;
+}
 
 /**
  * {@link IdentifyOutcome} narrowed to this engine's richer result type. Stays
@@ -254,19 +264,24 @@ export class AcoustIdLookup {
     const title = recording.title;
     const artist = recording.artists?.[0]?.name;
 
-    const release = recording.releases?.[0];
-    const album = release?.title;
-    const albumArtist = release?.artists?.[0]?.name;
-    const year = release?.date?.year;
-
-    let trackNumber: number | undefined;
-    const medium = release?.mediums?.[0];
-    if (medium?.tracks) {
-      const idx = medium.tracks.findIndex(
-        (t) => t.title && title && t.title.toLowerCase() === title.toLowerCase(),
-      );
-      if (idx >= 0) trackNumber = medium.tracks[idx]!.position ?? idx + 1;
-    }
+    const releases = (recording.releases ?? []).map((release): AcoustIdRelease => {
+      let trackNumber: number | undefined;
+      const medium = release.mediums?.[0];
+      if (medium?.tracks) {
+        const idx = medium.tracks.findIndex(
+          (t) => t.title && title && t.title.toLowerCase() === title.toLowerCase(),
+        );
+        if (idx >= 0) trackNumber = medium.tracks[idx]!.position ?? idx + 1;
+      }
+      return {
+        id: release.id,
+        title: release.title,
+        albumArtist: release.artists?.[0]?.name,
+        year: release.date?.year,
+        trackNumber,
+      };
+    });
+    const release = releases[0];
 
     return {
       kind: 'match',
@@ -274,13 +289,14 @@ export class AcoustIdLookup {
         acoustId: best.id,
         score: best.score,
         artist,
-        albumArtist,
-        album,
+        albumArtist: release?.albumArtist,
+        album: release?.title,
         title,
-        year,
-        trackNumber,
+        year: release?.year,
+        trackNumber: release?.trackNumber,
         recordingId: recording.id,
         releaseId: release?.id,
+        releases,
       },
     };
   }

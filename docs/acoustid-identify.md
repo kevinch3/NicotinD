@@ -100,6 +100,27 @@ its Debian package **and** re-derives the premise from the source that spawns
 it, so renaming the default fails the test rather than silently voiding the
 mapping. Add an entry there when introducing a new spawned binary.
 
+## A match with nothing linked, and fingerprinting at landing (issue #1583)
+
+AcoustID can recognise a fingerprint with no MusicBrainz recording linked to its cluster. `identify()`
+correctly returns just `{ acoustId, score }`, but the card rendered "Unknown artist — Unknown title" with
+an Apply button, and the apply could only write `ACOUSTID_ID`, the organizer's negative-cache marker. So
+the file was never fingerprinted again, even after AcoustID linked the cluster.
+
+- **No Apply on such a match.** The card reads "Recognised by AcoustID, but not linked to MusicBrainz yet",
+  and `buildIdentifyApplyTags` refuses a body holding only the AcoustID id.
+- **The marker expires.** `fingerprintMarkerIsCurrent` treats a marker with no recording as current for 30
+  days of the file's mtime (`UNLINKED_FINGERPRINT_RECHECK_MS`). One with a recording stays final.
+- **URL-acquired files are fingerprinted at landing even when tagged.** yt-dlp always fills artist and
+  title, so the organizer's `!artist || !title` gate let a rip of an owned track through on its own tags.
+  The hit files a file with no album under one of the recording's releases, preferring one already on
+  disk. It must agree with the file on artist and title first, because the name AcoustID attaches to a
+  recording is community-submitted (#951): one sampled hit named another band. A cut with an unlinked
+  cluster keeps its tags, and `single_on_owned_album` ([library-audit.md](library-audit.md)) reports it.
+
+Whether a plain-text lyrics fallback should apply past the ±5 s tolerance (`LYRICS_DURATION_TOLERANCE_SEC`)
+is an owner decision the issue leaves open.
+
 ## Identify outcome taxonomy (issue #414)
 
 `identifyTrack` answers `IdentifyResult | null`, which collapsed four

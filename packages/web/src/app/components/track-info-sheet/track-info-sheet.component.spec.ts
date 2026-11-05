@@ -333,6 +333,13 @@ describe('TrackInfoSheetComponent (analysis)', () => {
     expect(c.identifying()).toBe(false);
   });
 
+  it('reads a match with no linked recording as nothing to apply (#1583)', () => {
+    const c = create();
+    expect(c.identifyIsUnlinked({})).toBe(true);
+    expect(c.identifyIsUnlinked({ recordingId: 'r' })).toBe(false);
+    expect(c.identifyIsUnlinked({ title: 'Real Title' })).toBe(false);
+  });
+
   it('identifyNow() stores a typed failure and clears the spinner', () => {
     identifyLibrarySong.mockReturnValueOnce(
       of({ result: null, outcome: { kind: 'undecodable' as const, detail: 'bad data' } } as never),
