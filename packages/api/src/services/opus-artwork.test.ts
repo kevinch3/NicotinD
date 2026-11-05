@@ -39,6 +39,11 @@ import {
 } from './opus-artwork.fixtures.js';
 import { getMusicMetadata } from './music-metadata-loader.js';
 
+/** music-metadata <= 11.14 read 598,039 bytes and threw on this many. */
+const OLD_READER_THREW_AT = 676_153;
+/** The largest cover measured byte-exact on music-metadata 11.16.1 (#1496). */
+const READER_MEASURED_TO = 11_639_665;
+
 const cleanups: Array<() => void> = [];
 afterEach(() => {
   while (cleanups.length) cleanups.pop()!();
@@ -89,7 +94,7 @@ describe.skipIf(!TOOLS)('opusenc writes a correct picture block', () => {
     const wav = join(d, 'a.wav');
     const out = join(d, 'a.opus');
     const bytes = makeCover(cover, 1100, 2);
-    expect(bytes).toBeGreaterThan(MAX_EMBEDDED_PICTURE_BYTES);
+    expect(bytes).toBeGreaterThan(OLD_READER_THREW_AT);
     makeWav(wav);
 
     encodeWithPicture(wav, cover, out);
@@ -99,7 +104,7 @@ describe.skipIf(!TOOLS)('opusenc writes a correct picture block', () => {
   });
 });
 
-describe.skipIf(!TOOLS)("the ceiling is ours, not Opus's", () => {
+describe.skipIf(!TOOLS)('the writer was never the problem', () => {
   it('reads the same oversized image fine from an mp3', async () => {
     // Which is what makes this a reader limitation specific to Opus rather
     // than anything about the image.
@@ -130,12 +135,12 @@ describe.skipIf(!ffmpegAvailable())('preparePicture keeps covers under the cap',
   });
 
   it('re-compresses an oversized cover to fit', async () => {
-    // 900px of noise: over the cap at q2, and compressible enough that the
+    // 1300px of noise: over the cap at q2, and compressible enough that the
     // quality ladder can rescue it. Real covers are photographs and compress
     // far better than noise, so this is the harder end of realistic.
     const d = scratch();
     const cover = join(d, 'big.jpg');
-    const bytes = makeCover(cover, 900, 2);
+    const bytes = makeCover(cover, 1300, 2);
     expect(bytes).toBeGreaterThan(MAX_EMBEDDED_PICTURE_BYTES);
 
     const p = await preparePicture(cover, join(d, 'scratch.jpg'));
@@ -145,13 +150,11 @@ describe.skipIf(!ffmpegAvailable())('preparePicture keeps covers under the cap',
   });
 
   it('downscales when no quality reaches the cap', async () => {
-    // #1252. 1100px of noise is over the cap at EVERY quality the ladder will
+    // #1252. 1700px of noise is over the cap at EVERY quality the ladder will
     // try, so before the edge ladder existed this cover was dropped outright.
-    // Real covers hit the same wall at larger dimensions — the one that found
-    // this was 3000×3000 and 605 KB at q8.
     const d = scratch();
     const cover = join(d, 'wide.jpg');
-    const bytes = makeCover(cover, 1100, 2);
+    const bytes = makeCover(cover, 1700, 2);
     expect(bytes).toBeGreaterThan(MAX_EMBEDDED_PICTURE_BYTES);
     // Assert the denominator: this fixture is only a regression test for as
     // long as quality alone genuinely cannot rescue it. q8 is the softest rung.
@@ -175,7 +178,7 @@ describe.skipIf(!ffmpegAvailable())('preparePicture keeps covers under the cap',
     // needs an explicit "do not embed" rather than a path that fails later.
     const d = scratch();
     const cover = join(d, 'not-an-image.jpg');
-    writeFileSync(cover, Buffer.alloc(900 * 1024, 0x7f));
+    writeFileSync(cover, Buffer.alloc(2 * MAX_EMBEDDED_PICTURE_BYTES, 0x7f));
 
     expect(await preparePicture(cover, join(d, 'scratch.jpg'))).toBeNull();
   });
@@ -187,7 +190,7 @@ describe.skipIf(!ffmpegAvailable())('preparePicture keeps covers under the cap',
     const cover = join(d, 'big.jpg');
     const wav = join(d, 'a.wav');
     const out = join(d, 'a.opus');
-    makeCover(cover, 900, 2);
+    makeCover(cover, 1300, 2);
     makeWav(wav);
 
     const p = await preparePicture(cover, join(d, 'scratch.jpg'));
@@ -285,13 +288,36 @@ describe.skipIf(!TOOLS)('merging one field into a tagged file', () => {
   });
 });
 
-describe('the cap itself', () => {
-  it('sits under the measured boundary with margin', () => {
-    // music-metadata <= 11.14 read 598,039 and threw on 676,153. The cap is not
-    // set AT the boundary: the exact figure is a property of a dependency we do
-    // not control, and it can move on an upgrade — 11.16 removed it (#1496).
-    expect(MAX_EMBEDDED_PICTURE_BYTES).toBeLessThan(598_039);
+describe('the cap itself (#1496)', () => {
+  it('is a size budget: past the old reader limit, far under what the reader handles', () => {
+    expect(MAX_EMBEDDED_PICTURE_BYTES).toBeGreaterThan(OLD_READER_THREW_AT);
+    expect(MAX_EMBEDDED_PICTURE_BYTES).toBeLessThan(READER_MEASURED_TO);
   });
+
+  it('keeps the real 3000x3000 cover that q4 leaves at 982 KB at native size', () => {
+    expect(MAX_EMBEDDED_PICTURE_BYTES).toBeGreaterThan(982 * 1024);
+  });
+
+  // The cap no longer protects the reader, so a regression in a later
+  // music-metadata upgrade would otherwise show up only as covers quietly missing.
+  it.skipIf(!TOOLS)(
+    'the reader still handles a picture spanning many Ogg pages',
+    async () => {
+      const d = scratch();
+      const cover = join(d, 'huge.jpg');
+      const wav = join(d, 'a.wav');
+      const out = join(d, 'a.opus');
+      const bytes = makeCover(cover, 2500, 2);
+      const OGG_PAGE_PAYLOAD_BYTES = 65_025;
+      expect(bytes).toBeGreaterThan(OGG_PAGE_PAYLOAD_BYTES * 30);
+      makeWav(wav);
+
+      encodeWithPicture(wav, cover, out);
+
+      expect(await readWithMusicMetadata(out)).toBe(bytes);
+    },
+    20_000,
+  );
 });
 
 describe.skipIf(!ffmpegAvailable())('attachPictureToOpus — no re-encode, no new dependency', () => {

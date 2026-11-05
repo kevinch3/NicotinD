@@ -524,7 +524,7 @@ itself means every event it kept shows the final counters. `visited` is also cou
 rather than at pick-up: the pooled phase starts a whole batch before any of it finishes, so counting
 at pick-up reports the batch as done the moment it begins.
 
-### Embedding cover art in Opus: the ceiling is ours
+### Embedding cover art in Opus: a size budget, not a reader limit
 
 `-vn` in the encoder discards the attached picture, and the comment there is right — ffmpeg's Ogg
 muxer **cannot** attach one. Dropping `-vn` does not help: ffmpeg re-encodes the JPEG as a **Theora
@@ -533,28 +533,32 @@ video stream** inside the Ogg, which is worse than losing it.
 **`opusenc --picture` writes a correct block.** `opusinfo` reads a 730 KB cover back byte-exact and
 `ffprobe` reports the right dimensions. `opus-tools` is in the image for this reason and no other.
 
-**What fails is `music-metadata`**, which every read path here goes through — `extractEmbeddedPicture`
-for the cover picker, the scanner for `has_embedded_art`. Measured on opusenc output, same image:
+**What used to fail was `music-metadata`**, which every read path here goes through —
+`extractEmbeddedPicture` for the cover picker, the scanner for `has_embedded_art`. Up to 11.14, same
+image each time on opusenc output:
 
-| cover bytes | music-metadata |
-| --- | --- |
-| 7,607 · 104,076 · 415,118 · 457,336 · 598,039 | reads it |
-| **676,153** · 730,846 · 886,362 | throws `Out of bounds access` |
+| cover bytes | music-metadata ≤ 11.14 | 11.16.1 |
+| --- | --- | --- |
+| 7,607 · 104,076 · 415,118 · 457,336 · 598,039 | reads it | reads it |
+| **676,153** · 730,846 · 886,362 | throws `Out of bounds access` | byte-exact |
+| 1,862,558 · 3,528,896 · 6,553,147 · 11,639,665 | — | byte-exact |
 
-The same 730 KB image reads fine from an **mp3**, so it is specific to Opus — consistent with a large
+The same 730 KB image read fine from an **mp3**, so it was specific to Opus, consistent with a large
 comment spanning Ogg pages, which cap at 65,025 payload bytes each.
 
-**That table is `music-metadata` ≤ 11.14.** 11.16.1 (the #1495 security bump) reads every size above
-byte-exact, and covers up to 11.6 MB, so the boundary the cap was set under no longer exists — the
-dependency moved, as the next paragraph warned it could. The cap is unchanged for now and is
-therefore stricter than the reader needs; lifting it is #1496.
+**So `MAX_EMBEDDED_PICTURE_BYTES` is a file-size budget now, at 1 MiB (#1496).** It was 512 KB, under
+the boundary above, which left it re-compressing covers for a limit that no longer exists. It is kept
+rather than lifted because every track of an album carries its own copy: at the library's 128 kbps a
+4-minute track is about 3.8 MB of audio, so an 11 MB cover would triple it. 1 MiB keeps a real 3000×3000
+cover at native size (982 KB at q4) and costs at most about a quarter of a typical track. Files already
+converted stay as they are: the source covers are gone for most of them, so there is nothing better to
+re-embed.
 
 A file the app cannot read is worse than no file: the picker shows nothing and `has_embedded_art`
-says false, while the bytes are still paid for. So `preparePicture`
-(`services/opus-artwork.ts`) caps covers at **512 KB** — under the measured boundary with margin,
-because the exact figure belongs to a dependency we do not control and can move on an upgrade — and
-re-compresses anything larger. It returns **null** when nothing fits, an explicit "do not embed"
-rather than a path that fails in the encoder.
+says false, while the bytes are still paid for. The dependency moved once and can move back, so
+`opus-artwork.test.ts` pins the reader on a picture spanning 30+ Ogg pages, which fails loudly on a bad
+upgrade. `preparePicture` (`services/opus-artwork.ts`) re-compresses anything over budget and returns
+**null** when nothing fits, an explicit "do not embed" rather than a path that fails in the encoder.
 
 **The re-compress walks two ladders, quality then dimensions, and the order is the whole design.**
 Quality comes first (`RECOMPRESS_QUALITY` q4 → q6 → q8) so a cover that is merely saved wastefully
@@ -566,7 +570,7 @@ quality reaches the cap does it start capping the longest edge (`RECOMPRESS_EDGE
 | | native | 1500px | 1000px |
 | --- | --- | --- | --- |
 | q4 | 982 KB | 348 KB | 175 KB |
-| q8 | **605 KB — over the cap, so no art** | 198 KB | 102 KB |
+| q8 | 605 KB, over the 512 KB cap of the time, so no art | 198 KB | 102 KB |
 
 1500px q4 is both smaller *and* better-looking than native q8 — at any realistic display size q8's
 artifacts show more than the resample does. So once a cover is over the cap, downscaling dominates
@@ -604,7 +608,7 @@ Three things had to be measured, because two of them look like they rule the app
   `readAudioTags` does not even model: it survives.
 - **It is reproducible.** An earlier attempt at this route was abandoned as flaky. Re-run three
   times across three cover sizes it is byte-exact every time — the confound was oversize, not the
-  method, and the 512 KB cap removes it.
+  method, and the size cap removes it.
 
 **Every later tag write has to put the picture back (#1280).** ffmpeg surfaces an Ogg
 `METADATA_BLOCK_PICTURE` as a video stream the opus/ogg muxer cannot carry, so `writeFfmpegTags`'

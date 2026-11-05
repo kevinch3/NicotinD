@@ -7,45 +7,31 @@ import { ffmpegBinary } from './ffmpeg-path.js';
 const log = createLogger('opus-artwork');
 
 /**
- * Embedding cover art in Opus, and the ceiling our own reader imposes on it.
+ * Embedding cover art in Opus, and what the size cap is for.
  *
  * **The file is not the hard part.** `opusenc --picture` writes a correct
  * `METADATA_BLOCK_PICTURE`: `opusinfo` reads a 730 KB cover back byte-exact and
- * `ffprobe` reports the right dimensions. What fails is `music-metadata`, the
- * library every read path in this app goes through — `extractEmbeddedPicture`
- * for the cover picker, and the scanner for `has_embedded_art`.
+ * `ffprobe` reports the right dimensions. What used to fail was `music-metadata`,
+ * the library every read path in this app goes through — `extractEmbeddedPicture`
+ * for the cover picker, and the scanner for `has_embedded_art`. Up to 11.14 it
+ * threw "Out of bounds access" past about 600 KB (598,039 read, 676,153 threw),
+ * because a large comment spans Ogg pages, which cap at 65,025 payload bytes each.
+ * 11.16 reads all of them, measured byte-exact up to 11.6 MB (#1495).
  *
- * Measured on opusenc output, same image each time, with music-metadata
- * <= 11.14. 11.16 reads all of these, up to 11.6 MB (#1495); lifting the cap
- * is #1496.
- *
- * | cover bytes | music-metadata |
- * | --- | --- |
- * | 7,607 | reads it |
- * | 104,076 | reads it |
- * | 415,118 | reads it |
- * | 457,336 | reads it |
- * | 598,039 | reads it |
- * | **676,153** | **throws "Out of bounds access"** |
- * | 730,846 | throws |
- * | 886,362 | throws |
- *
- * The same 730 KB image embedded in an **mp3** reads fine, so this is specific
- * to Opus — consistent with a large comment spanning Ogg pages, which are
- * capped at 65,025 payload bytes each.
- *
- * A file the app cannot read is worse than no file: the picker shows nothing
- * and `has_embedded_art` says false, so the art is invisible while still
- * costing the bytes. Hence the cap below, chosen with margin under the
- * measured boundary rather than at it.
+ * So the cap below is a file-size budget now, not a reader limit (#1496). Every
+ * track of an album carries its own copy, and at the library's 128 kbps a 4-minute
+ * track is about 3.8 MB of audio. A test still pins the reader on a multi-page
+ * picture, so a regression in a later upgrade fails loudly rather than silently
+ * hiding the art again: a file the app cannot read is worse than no file, since
+ * the picker shows nothing while the bytes are still paid for.
  */
 
 /**
- * Largest cover we will embed, with margin under the ~600 KB point where
- * `music-metadata` <= 11.14 started throwing. Anything bigger is re-compressed
- * first.
+ * Largest cover we will embed. Keeps a real 3000×3000 cover at native size (982 KB
+ * at q4, #1252) and costs at most about a quarter of a typical track. Anything bigger
+ * is re-compressed first.
  */
-export const MAX_EMBEDDED_PICTURE_BYTES = 512 * 1024;
+export const MAX_EMBEDDED_PICTURE_BYTES = 1024 * 1024;
 
 /** Quality ladder tried, in order, when a cover is over the cap. */
 const RECOMPRESS_QUALITY = [4, 6, 8] as const;
@@ -60,12 +46,13 @@ const RECOMPRESS_QUALITY = [4, 6, 8] as const;
  * The later entries exist because quality is the *weaker* axis once an image
  * is large in **dimensions**: there is a point past which no quality setting
  * reaches the cap, and the ladder used to exhaust there and drop the art
- * entirely. Measured on a real 3000×3000 cover this was dropping (#1252):
+ * entirely. Measured on a real 3000×3000 cover, which that dropped under the old
+ * 512 KB cap (#1252):
  *
  * | | native | 1500px | 1000px |
  * | --- | --- | --- | --- |
  * | q4 | 982 KB | 348 KB | 175 KB |
- * | q8 | **605 KB — over the cap** | 198 KB | 102 KB |
+ * | q8 | 605 KB | 198 KB | 102 KB |
  *
  * Note that 1500px q4 is both smaller *and* better-looking than native q8: at
  * any realistic display size q8's artifacts show more than the resample does.
@@ -83,7 +70,7 @@ export interface PreparedPicture {
 }
 
 /**
- * Ensure `coverPath` is small enough for the app to read back after embedding,
+ * Ensure `coverPath` is within the format's budget,
  * re-compressing into `scratchPath` when it is not.
  *
  * Tries quality before dimensions: the pixel dimensions are what a listener
@@ -104,10 +91,8 @@ export async function preparePicture(
   maxBytes: number | null = MAX_EMBEDDED_PICTURE_BYTES,
 ): Promise<PreparedPicture | null> {
   const bytes = statSync(coverPath).size;
-  // `null` means the target container's reader imposes no ceiling we could
-  // measure — mp3 reads a 6.5 MB cover back byte-exact where Ogg throws above
-  // ~600 KB. Re-compressing there would degrade a cover for a reason that does
-  // not apply to it, so the cap travels with the format rather than the module.
+  // `null` means the format sets no budget (mp3 and m4a). The cap travels with the
+  // format rather than the module, so one format's choice never degrades another's.
   if (maxBytes === null || bytes <= maxBytes) {
     return { path: coverPath, recompressed: false, bytes };
   }

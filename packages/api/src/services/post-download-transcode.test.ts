@@ -15,6 +15,7 @@
  * shape, including this one.
  */
 import { describe, expect, it, afterEach } from 'bun:test';
+import { MAX_EMBEDDED_PICTURE_BYTES } from './opus-artwork.js';
 import { execFileSync } from 'node:child_process';
 import {
   chmodSync,
@@ -775,8 +776,13 @@ describe.skipIf(!ffmpegAvailable())('cover art survives the transcode', () => {
     // cover was silently dropped. Small covers kept working, which is why the
     // earlier tests all passed.
     const root = tmpRoot();
-    const { flac, coverBytes } = makeFlacWithCover(root, 1800, 2, 'mandelbrot=s=1800x1800');
-    expect(coverBytes).toBeGreaterThan(512 * 1024); // ~597 KB, over the cap
+    const { flac, coverBytes } = makeFlacWithCover(
+      root,
+      1300,
+      2,
+      'nullsrc=s=1300x1300,geq=random(1)*255:128:128',
+    );
+    expect(coverBytes).toBeGreaterThan(MAX_EMBEDDED_PICTURE_BYTES);
 
     const out = await transcodeToLibraryFormat(flac, 96);
 
@@ -784,7 +790,7 @@ describe.skipIf(!ffmpegAvailable())('cover art survives the transcode', () => {
     const pic = (await mm!.parseFile(out)).common.picture?.[0];
     expect(pic).toBeDefined();
     // Re-compressed to fit, not carried verbatim and not dropped.
-    expect(pic!.data.length).toBeLessThanOrEqual(512 * 1024);
+    expect(pic!.data.length).toBeLessThanOrEqual(MAX_EMBEDDED_PICTURE_BYTES);
     expect(pic!.data.length).toBeGreaterThan(0);
   });
 
