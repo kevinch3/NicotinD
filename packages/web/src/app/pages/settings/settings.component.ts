@@ -193,6 +193,15 @@ export class SettingsComponent {
       // A pending APK version means the native GitHub-release path found it:
       // the action downloads + opens the installer rather than reloading.
       const apkVersion = this.update.pendingApkVersion();
+      // The strip already offers Reload, and one action belongs on one surface
+      // (#1596). The toast then only answers the click.
+      if (!apkVersion && this.update.updateAvailable()) {
+        return this.toast.show({
+          message: this.i18n.t('settings.updateAvailable'),
+          kind: 'info',
+          duration: 5,
+        });
+      }
       const id = this.toast.show({
         message: apkVersion
           ? this.i18n.t('settings.updateAvailableApk', { version: apkVersion })

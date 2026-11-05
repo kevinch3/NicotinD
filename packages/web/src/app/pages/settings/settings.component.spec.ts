@@ -940,6 +940,26 @@ describe('SettingsComponent (manual PWA update check)', () => {
     fixture.destroy();
   });
 
+  it('leaves Reload to the strip when the strip is already up (#1596)', async () => {
+    const { list, toast, update } = makeProviders('user', { enabled: true });
+    // The check itself is what raises the strip: it sets `ready` as it answers.
+    update.checkForUpdate.mockImplementationOnce(async () => {
+      update.updateAvailable.set(true);
+      return 'available';
+    });
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    await fixture.componentInstance.searchForUpdates();
+    expect(toast.show).toHaveBeenCalledTimes(1);
+    expect(toast.show.mock.calls[0][0].message).toBe('settings.updateAvailable');
+    expect(toast.show.mock.calls[0][0].actions).toBeUndefined();
+    fixture.destroy();
+  });
+
   it('offers Install (not Reload) when the native APK path found the update', async () => {
     const { list, toast, update } = makeProviders('user', {
       enabled: true,
