@@ -791,10 +791,19 @@ export function createApp({
   // debounced share-rescan the review inbox's discard uses.
   app.route(
     '/api/downloads',
-    downloadRoutes(registry, plugins, {
-      musicDir: config.musicDir,
-      shareRescan: new ShareRescanScheduler(notifyAddonLibraryChanged),
-    }),
+    downloadRoutes(
+      registry,
+      plugins,
+      {
+        musicDir: config.musicDir,
+        shareRescan: new ShareRescanScheduler(notifyAddonLibraryChanged),
+      },
+      {
+        lidarr: lidarr ?? null,
+        getAddon: () => activeRemoteAcquisitionAddon(plugins),
+        minMatchPct: config.watchlist.minMatchPct,
+      },
+    ),
   );
   // Mounted before the library routes so `/events` is not shadowed by a
   // parameterised library path. Curator triage rides the same rule.

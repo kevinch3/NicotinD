@@ -94,6 +94,15 @@ export interface AcquireAlbumInput {
   minMatchPct: number;
   /** Lidarr/MusicBrainz artist id, when the caller has it — persisted as identity. */
   artistMbid?: string | null;
+  /** Who asked, when someone did. The job's owner may discard its partial tracks. */
+  userId?: string | null;
+  /**
+   * Skip the idempotency key: someone asked for this album again, and the addon
+   * would replay the failed job the key still names (#1511).
+   */
+  retry?: boolean;
+  /** A caller answering a request passes its budget; unattended lanes can wait longer. */
+  huntTimeoutMs?: number;
 }
 
 /**
@@ -163,11 +172,14 @@ async function acquireViaAddon(
 
   let res;
   try {
-    res = await addon.client.albumsSearch({
-      artist: artistName,
-      album: albumTitle,
-      canonicalTracks: titles.map((title) => ({ title })),
-    });
+    res = await addon.client.albumsSearch(
+      {
+        artist: artistName,
+        album: albumTitle,
+        canonicalTracks: titles.map((title) => ({ title })),
+      },
+      { timeoutMs: input.huntTimeoutMs },
+    );
   } catch (err) {
     log.warn({ lidarrAlbumId, addonId, err }, 'Addon album search failed');
     return { outcome: 'slskd-unavailable', detail: causeOf(err) };
@@ -236,7 +248,7 @@ async function acquireViaAddon(
         wantedTracks: wanted.map((title) => ({ title })),
         candidateRef: best.candidateRef,
       },
-      `acquire:${lidarrAlbumId}`,
+      input.retry ? undefined : `acquire:${lidarrAlbumId}`,
     );
   } catch (err) {
     if (err instanceof AddonRequestError && err.status === 409) return { outcome: 'in-flight' };
@@ -265,6 +277,7 @@ async function acquireViaAddon(
       artistMbid: artistMbid ?? null,
       canonicalTracks: titles,
       sourceRef: `addon:${addonId}:${addonJob.id}`,
+      userId: input.userId ?? null,
       files: [],
     });
     // `addonJob.createdAt` is what lets a later poll tell "this exact job's

@@ -376,3 +376,16 @@ full rescan re-reads the value from the tag instead of wiping it.
    rewiring those web handlers onto the enriched feed. Left as a follow-up: higher
    regression risk on the URL-download UX for a one-endpoint gain. `/acquire/jobs`
    stays regardless (the search page's link-intent card polls it).
+
+## Retrying a failed album
+
+`POST /api/downloads/jobs/:id/retry` hunts a failed or cancelled `album-hunt` or `auto-acquire` job again
+by its Lidarr album id, through `acquireAlbum`, under the unattended match bar (#1511). The original
+`candidateRef` expired with the addon's hunt cache, so replaying the old pick is not an option, and the
+create carries no idempotency key, because the addon would answer with the failed job the key still names.
+The new job replaces the failed card only once it exists: a hunt that finds nothing (`no-candidate`) or a
+source that is down (503) leaves the card and its reason in place. A live job for the same album answers
+409 `already-downloading`. A job without a Lidarr album has nothing to hunt, so the card offers no Retry.
+
+The Downloads header's **Retry failed** walks the failed cards one at a time, since hunts fired together
+cut each other's searches short (#1049), and reports one summary toast.

@@ -15,6 +15,14 @@ export const IDLE_TIMER_GRANULARITY_S = 4;
 /** The budget the route groups that legitimately work longer keep (the old global). */
 export const LONG_REQUEST_IDLE_S = 60;
 
+/**
+ * How long a handler may wait on an addon hunt before answering. Past the socket's
+ * idle budget the client sees a dropped connection instead of a reason, so the wait
+ * ends just inside it, leaving time to write the typed failure (#1437).
+ */
+export const INTERACTIVE_HUNT_TIMEOUT_MS =
+  (LONG_REQUEST_IDLE_S - IDLE_TIMER_GRANULARITY_S - 1) * 1000;
+
 interface IdleTimeoutServer {
   timeout?: (request: Request, seconds: number) => void;
 }

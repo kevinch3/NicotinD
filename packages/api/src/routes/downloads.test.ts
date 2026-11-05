@@ -9,6 +9,7 @@ import { ProviderRegistry } from '../services/provider-registry.js';
 import { TestNetworkProvider } from '../test-helpers/network-provider.js';
 import { applySchema } from '../db.js';
 import { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
+import { AddonRequestError } from '../services/addons/client.js';
 import { PluginRegistry } from '../services/plugins/registry.js';
 
 // Mock getDatabase to use an in-memory DB
@@ -184,6 +185,25 @@ describe('downloads routes', () => {
         artist_name: 'Damian Lazarus & The Ancient Moons',
         album_title: 'Message From The Other Side',
       });
+    });
+
+    it('marks a folder-guessed album as a guess, and a client album intent as not (#1540)', async () => {
+      const fromFolder = () =>
+        testDb
+          .query<{ album_from_folder: number }, []>(
+            `SELECT album_from_folder FROM acquisition_jobs ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+          )
+          .get()?.album_from_folder;
+      expect((await app.request('/', albumGrab())).status).toBe(201);
+      expect(fromFolder()).toBe(1);
+      testDb.run('DELETE FROM acquisition_job_items');
+      testDb.run('DELETE FROM acquisition_jobs');
+      const res = await app.request(
+        '/',
+        albumGrab({ album: { artist: 'Told', title: 'By The Client' } }),
+      );
+      expect(res.status).toBe(201);
+      expect(fromFolder()).toBe(0);
     });
 
     it('refuses a folder grab of an album the catalog lane is already downloading', async () => {
@@ -1040,5 +1060,197 @@ describe('re-source the not-offered titles (#1146)', () => {
     });
     expect(res.status).toBe(200);
     expect(calls.created[0]!.wantedTracks).toEqual([{ title: 'Sabor a mí' }]);
+  });
+});
+
+describe('POST /jobs/:id/retry re-hunts a failed album (#1511)', () => {
+  const MANIFEST = {
+    id: 'fixture-addon',
+    name: 'Fixture',
+    description: 'x',
+    version: '0.1.0',
+    protocolVersion: '1.0.0',
+    kind: 'acquisition',
+    capabilities: ['search', 'download'],
+  } as import('@nicotind/core').AddonManifest;
+
+  const candidate = {
+    candidateRef: 'c-1',
+    username: 'peer',
+    directory: 'A\\B',
+    format: 'FLAC',
+    estimatedSizeMb: 10,
+    matchPct: 100,
+    files: [{ filename: 'A\\B\\01 One.flac', size: 1 }],
+  };
+
+  function makeApp(
+    opts: {
+      candidates?: unknown[];
+      searchThrows?: boolean;
+      createStatus?: number;
+      lidarr?: boolean;
+    } = {},
+  ) {
+    const calls = {
+      searched: [] as unknown[],
+      created: [] as string[],
+      cancelled: [] as string[],
+      deleted: [] as string[],
+    };
+    const client = {
+      baseUrl: 'http://addon:9999',
+      getHealth: async () => ({ ok: true, ready: true }),
+      albumsSearch: async (req: unknown) => {
+        calls.searched.push(req);
+        if (opts.searchThrows) throw new Error('addon down');
+        return { candidates: opts.candidates ?? [candidate] };
+      },
+      createJob: async (_req: unknown, key?: string) => {
+        calls.created.push(key ?? '');
+        if (opts.createStatus) throw new AddonRequestError('refused', opts.createStatus);
+        return {
+          id: 'aj-new',
+          intent: 'album',
+          state: 'active',
+          items: [],
+          createdAt: 1,
+        };
+      },
+      cancelJob: async (id: string) => void calls.cancelled.push(id),
+      deleteJob: async (id: string) => void calls.deleted.push(id),
+    } as unknown as import('../services/addons/client.js').AddonClient;
+    const addon = new RemoteAddonPlugin(MANIFEST, client);
+    const pluginRegistry = new PluginRegistry({ db: testDb, dataDir: '/tmp/nicotind-test' });
+    pluginRegistry.register(addon);
+
+    const lidarr = {
+      track: { listByAlbum: async () => [{ title: 'One' }] },
+    } as unknown as import('../lidarr/index.js').Lidarr;
+    const app = new Hono<AuthEnv>();
+    app.use('*', (c, next) => {
+      c.set('user', { sub: 'u', role: 'user', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    app.route(
+      '/',
+      downloadRoutes(new ProviderRegistry(), pluginRegistry, undefined, {
+        lidarr: opts.lidarr === false ? null : lidarr,
+        getAddon: () => addon,
+        minMatchPct: 80,
+      }),
+    );
+    return { app, calls };
+  }
+
+  function failedJob(
+    over: { kind?: 'album-hunt' | 'auto-acquire' | 'direct'; lidarrAlbumId?: number | null } = {},
+  ): string {
+    const id = createJob(testDb, {
+      kind: over.kind ?? 'album-hunt',
+      method: 'fixture-addon',
+      artistName: 'Retry Artist',
+      albumTitle: 'Retry Album',
+      lidarrAlbumId: over.lidarrAlbumId === undefined ? 77 : over.lidarrAlbumId,
+      canonicalTracks: ['One'],
+      sourceRef: 'addon:fixture-addon:aj-old',
+      files: [],
+    });
+    testDb.run(`UPDATE acquisition_jobs SET state = 'failed', stage = 'error' WHERE id = ?`, [id]);
+    return id;
+  }
+
+  const post = (app: Hono<AuthEnv>, id: string) =>
+    app.request(`/jobs/${id}/retry`, { method: 'POST' });
+  const rowExists = (id: string) =>
+    !!testDb.query('SELECT 1 FROM acquisition_jobs WHERE id = ?').get(id);
+
+  beforeEach(() => {
+    testDb.run('DELETE FROM acquisition_job_items');
+    testDb.run('DELETE FROM acquisition_jobs');
+  });
+
+  it('hunts again by Lidarr album and replaces the failed card with the new job', async () => {
+    const { app, calls } = makeApp();
+    const id = failedJob();
+    const res = await post(app, id);
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual({ outcome: 'enqueued' });
+    expect(calls.searched).toHaveLength(1);
+    // No key: the addon would answer with the failed job it still names.
+    expect(calls.created).toEqual(['']);
+    expect(rowExists(id)).toBe(false);
+    expect(calls.deleted).toEqual(['aj-old']);
+    const fresh = testDb
+      .query<{ source_ref: string; user_id: string; state: string }, []>(
+        'SELECT source_ref, user_id, state FROM acquisition_jobs',
+      )
+      .all();
+    expect(fresh).toEqual([
+      { source_ref: 'addon:fixture-addon:aj-new', user_id: 'u', state: 'active' },
+    ]);
+  });
+
+  it('retries an auto-acquire job the same way', async () => {
+    const { app } = makeApp();
+    expect((await post(app, failedJob({ kind: 'auto-acquire' }))).status).toBe(201);
+  });
+
+  it('keeps the failed card when the hunt finds nothing', async () => {
+    const { app, calls } = makeApp({ candidates: [] });
+    const id = failedJob();
+    const res = await post(app, id);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { outcome: string }).outcome).toBe('no-candidate');
+    expect(rowExists(id)).toBe(true);
+    expect(calls.deleted).toEqual([]);
+  });
+
+  it('keeps the failed card and reports 503 when the source is down', async () => {
+    const { app } = makeApp({ searchThrows: true });
+    const id = failedJob();
+    const res = await post(app, id);
+    expect(res.status).toBe(503);
+    expect(rowExists(id)).toBe(true);
+  });
+
+  it('answers already-downloading, and creates nothing, while the album is live elsewhere', async () => {
+    const { app, calls } = makeApp();
+    const id = failedJob();
+    createJob(testDb, {
+      kind: 'album-hunt',
+      method: 'fixture-addon',
+      artistName: 'Retry Artist',
+      albumTitle: 'Retry Album',
+      lidarrAlbumId: 77,
+      files: [],
+    });
+    const res = await post(app, id);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'already-downloading' });
+    expect(calls.searched).toEqual([]);
+    expect(rowExists(id)).toBe(true);
+  });
+
+  it('refuses a job with no Lidarr album to hunt', async () => {
+    const { app, calls } = makeApp();
+    expect((await post(app, failedJob({ lidarrAlbumId: null }))).status).toBe(400);
+    expect((await post(app, failedJob({ kind: 'direct' }))).status).toBe(400);
+    expect(calls.searched).toEqual([]);
+  });
+
+  it('refuses a job that has not failed', async () => {
+    const { app, calls } = makeApp();
+    const id = failedJob();
+    testDb.run(`UPDATE acquisition_jobs SET state = 'active', stage = 'downloading' WHERE id = ?`, [
+      id,
+    ]);
+    expect((await post(app, id)).status).toBe(409);
+    expect(calls.searched).toEqual([]);
+  });
+
+  it('answers 503 without Lidarr, and 404 for an unknown job', async () => {
+    expect((await post(makeApp({ lidarr: false }).app, failedJob())).status).toBe(503);
+    expect((await post(makeApp().app, 'nope')).status).toBe(404);
   });
 });

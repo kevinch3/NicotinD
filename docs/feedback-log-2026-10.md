@@ -15,7 +15,7 @@
 | 2   | ✅     | High     | Catalog search    | Every catalog cover 401s — no media token on `/api/cover/remote` (#1536)   |
 | 3   | ✅     | High     | Acquire results   | Results are alphabetical; the score never sees the query (#1537)           |
 | 4   | ✅     | High     | Catalog search    | Album grid is Lidarr's lookup, not what the provider has (#1538)           |
-| 5   | ◑      | High     | Folder grab       | One card, every file twice, "14 of 28 · 14 unavailable" (#1540)           |
+| 5   | ✅      | High     | Folder grab       | One card, every file twice, "14 of 28 · 14 unavailable" (#1540)           |
 | 6   | ✅     | Medium   | One-click Get     | Silent 400; missable countdown toast; card label lags the stage (#1543)    |
 | 7   | ✅     | Medium   | Folders view      | A mixed grab-bag folder ranks first wearing a FLAC badge (#1541)           |
 | 8   | ◑      | Medium   | Acquire actions   | No icons, hover-only star, unconfirmed Download all, Cancel/Remove (#1542) |
@@ -62,7 +62,7 @@ Alaska*, *Mare*. All landed.
   count collaborations.
 - **(High) One folder click → one card that lists every file twice.** "Done · 14 of 28 · 14
   unavailable" for a complete album, artist "Elektronika" (a genre folder), items shown as raw peer
-  paths, album filed under the folder name. **◻️ Open** (#1540) — the one-card flip side of August's
+  paths, album filed under the folder name. **✅ Fixed** (#1540) — the one-card flip side of August's
   twin-rows entry.
 - **(Medium) The first one-click Get failed silently.** `hunt-download` 400 and the card went back to
   idle with nothing on screen; the retry a minute later was 201. The "Best match found — downloading

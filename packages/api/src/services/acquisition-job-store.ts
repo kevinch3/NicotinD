@@ -167,6 +167,8 @@ export interface CreateJobInput {
    * id and steers the organizer, so a playlist name belongs here instead.
    */
   displayTitle?: string | null;
+  /** `albumTitle` was guessed from the peer's folder name (see `TransferJobMeta`). */
+  albumFromFolder?: boolean;
   lidarrAlbumId?: number | null;
   releaseMbid?: string | null;
   artistMbid?: string | null;
@@ -292,8 +294,8 @@ export function createJob(db: Database, input: CreateJobInput): string {
       `INSERT INTO acquisition_jobs
          (id, kind, method, stage, artist_name, album_title, display_title, lidarr_album_id,
           release_mbid, artist_mbid, genres_json, year, canonical_tracks_json, album_job_id,
-          source_ref, source_url, user_id, is_playlist, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          source_ref, source_url, user_id, is_playlist, album_from_folder, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         input.kind,
@@ -313,6 +315,7 @@ export function createJob(db: Database, input: CreateJobInput): string {
         input.sourceUrl ?? null,
         input.userId ?? null,
         input.isPlaylist ? 1 : 0,
+        input.albumFromFolder ? 1 : 0,
         now,
         now,
       ],
@@ -450,6 +453,8 @@ export interface TransferJobMeta {
   kind: AcquisitionJobKind;
   artistName: string | null;
   albumTitle: string | null;
+  /** `albumTitle` is a guess from a folder name, so a file's own album tag outranks it. */
+  albumFromFolder?: boolean;
   lidarrAlbumId: number | null;
   genres: string[] | null;
   year: number | null;

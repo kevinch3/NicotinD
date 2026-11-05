@@ -135,6 +135,8 @@ export interface DownloadItem {
   /** Codec/format string ("FLAC", "MP3", …) attached alongside the bitrate. */
   audioFormat?: string;
   canRetry: boolean;
+  /** Which route a network-lane Retry takes: an album hunts again, a URL re-submits. */
+  retryMode?: 'url' | 'album';
   canCancel: boolean;
   canRemove: boolean;
   /**
@@ -394,6 +396,10 @@ export function mergeAcquisitionJobs(
     // An admin import is a mirror row (docs/import.md): `import_jobs` owns its
     // lifecycle and its own routes, so the job-scoped controls don't apply.
     const isImport = job.kind === 'import';
+    const retriesAlbum =
+      (job.kind === 'album-hunt' || job.kind === 'auto-acquire') &&
+      job.lidarrAlbumId !== null &&
+      job.stage === 'error';
     const notOffered = canonicalShortfall(job.progress);
     merged.push({
       key: `job:${job.id}`,
@@ -446,8 +452,14 @@ export function mergeAcquisitionJobs(
       // retry` has always supported it; the card simply never offered it. A
       // *partial* one closes 'done' carrying the addon's warning, and is the
       // case retry helps most: the addons resume rather than restart.
+      //
+      // A failed or cancelled **album** hunts again by its Lidarr id (#1511): the
+      // pick it started from expired with the addon's hunt cache. A partial album
+      // stays with Re-source, which targets just the tracks it is missing.
       canRetry:
-        job.kind === 'url' && (job.stage === 'error' || (job.stage === 'done' && !!job.error)),
+        (job.kind === 'url' && (job.stage === 'error' || (job.stage === 'done' && !!job.error))) ||
+        retriesAlbum,
+      retryMode: job.kind === 'url' ? 'url' : retriesAlbum ? 'album' : undefined,
       // 'queued' counts: an addon URL job is mirrored at submit, before the
       // addon has fetched a byte, and a link that never resolves must not be
       // left with no control at all. An **import** is excluded: its card is a

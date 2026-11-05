@@ -1675,6 +1675,16 @@ the seeded row for the same peer and path, rewriting its key to the addon's, the
 way it already adopts a re-source placeholder by title. An untitled track row
 shows the file's own name, with the share path on hover (`trackLabel`).
 
+**A folder's name names the card, not the album (issue #1540).** A grab with no album intent
+guesses its identity from the peer's path, which is enough for the card and the duplicate guard. The
+job marks that with `album_from_folder`, and `applyJobCanonicalName` then leaves a file's own album
+tag alone; the guess only fills in for a file with none. Before this the guess overwrote the tag, so
+the album filed under the peer's spelling of its folder and could not merge with the same album from
+another lane. A Get with a real intent (a Lidarr album, or `album` from the client) still names the
+album outright. A parent folder that is a genre shelf (`Elektronika`, `Rock`, `isGenreShelfName`) stores
+no artist rather than a genre. It is not in `isGenericFolderName`, because a leaf with that name can be a
+real album, such as U2's *Pop*.
+
 **A junk path hint is worse than no hint (issue #674).** The route parses
 best-effort artist/album display hints from the peer's folder segments; a peer
 sharing straight out of their slskd transfer dir put "complete" in the artist

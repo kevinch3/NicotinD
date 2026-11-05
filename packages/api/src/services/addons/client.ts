@@ -61,6 +61,14 @@ async function readErrorDetail(res: Response): Promise<string | undefined> {
  * (transport / HTTP status): a contract violation is the *addon's* fault and is
  * what the circuit-breaker (§4) counts, whereas a timeout/5xx is transient.
  */
+/** The call ran out of time: a slow answer, not an unreachable addon (#1437). */
+export class AddonTimeoutError extends AddonRequestError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AddonTimeoutError';
+  }
+}
+
 export class AddonContractError extends Error {
   constructor(message: string) {
     super(`addon contract violation: ${message}`);
@@ -208,15 +216,21 @@ export class AddonClient implements AddonTransport {
     })) as AddonSearchResponse;
   }
 
-  async albumsSearch(req: AddonAlbumSearchRequest): Promise<AddonAlbumSearchResponse> {
-    // A hunt (base + skew passes) can take minutes here, but its route answers
-    // behind a 60 s socket budget: the duration log measures which one binds (#1437).
+  /**
+   * A hunt (base + skew passes) can take minutes, which a background lane can wait
+   * for. A route answering a person cannot: it passes `INTERACTIVE_HUNT_TIMEOUT_MS`,
+   * or the socket closes first and the failure has no reason attached (#1437).
+   */
+  async albumsSearch(
+    req: AddonAlbumSearchRequest,
+    opts: { timeoutMs?: number } = {},
+  ): Promise<AddonAlbumSearchResponse> {
     const started = performance.now();
     try {
       const res = (await this.request('POST', '/addon/v1/albums/search', {
         auth: true,
         json: req,
-        timeoutMs: 180_000,
+        timeoutMs: opts.timeoutMs ?? 180_000,
       })) as AddonAlbumSearchResponse;
       this.log.info(
         {
@@ -353,6 +367,9 @@ export class AddonClient implements AddonTransport {
         signal: AbortSignal.timeout(opts.timeoutMs ?? this.timeoutMs),
       });
     } catch (err) {
+      if (err instanceof Error && err.name === 'TimeoutError') {
+        throw new AddonTimeoutError(`addon at ${this.baseUrl} timed out: ${method} ${path}`);
+      }
       throw new AddonRequestError(
         `addon unreachable at ${this.baseUrl}: ${err instanceof Error ? err.message : String(err)}`,
       );
