@@ -26,11 +26,16 @@ import type { AddonAlbumCandidate } from '@nicotind/core';
 import { join } from 'node:path';
 import type { Lidarr } from '../lidarr/index.js';
 import type { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
-import { AddonRequestError } from '../services/addons/client.js';
+import { AddonRequestError, AddonTimeoutError } from '../services/addons/client.js';
+import { INTERACTIVE_HUNT_TIMEOUT_MS } from '../middleware/idle-budget.js';
 import { mapAddonJob } from '../services/addons/job-poller.js';
 import { onDiskTitles } from '../services/library-completeness.js';
 
 const log = createLogger('discography');
+
+/** A person is waiting on these, behind the socket's idle budget (#1437). */
+const HUNT_OPTS = { timeoutMs: INTERACTIVE_HUNT_TIMEOUT_MS };
+const HUNT_TIMED_OUT = 'The source did not finish searching in time. Try again in a moment.';
 
 /**
  * An addon album candidate in the wire shape the hunt modal renders (the
@@ -159,12 +164,15 @@ export function discographyRoutes({
 
       const addon = getAddon();
       if (!addon) return c.json({ error: 'No acquisition addon registered' }, 503);
-      const res = await addon.client.albumsSearch({
-        artist: artistName,
-        album: albumTitle,
-        canonicalTracks: tracks.map((t) => ({ title: t.title })),
-        skew: body.skewSearch,
-      });
+      const res = await addon.client.albumsSearch(
+        {
+          artist: artistName,
+          album: albumTitle,
+          canonicalTracks: tracks.map((t) => ({ title: t.title })),
+          skew: body.skewSearch,
+        },
+        HUNT_OPTS,
+      );
       return c.json({
         candidates: res.candidates.map(wireCandidate),
         totalTracks: tracks.length,
@@ -183,6 +191,7 @@ export function discographyRoutes({
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       log.warn({ albumId, err: msg }, 'Album hunt failed');
+      if (err instanceof AddonTimeoutError) return c.json({ error: HUNT_TIMED_OUT }, 504);
       return c.json({ error: msg }, 500);
     }
   });
@@ -327,12 +336,15 @@ export function discographyRoutes({
       // two-phase animation collapses to a single completed phase. Hunt-match
       // feedback capture is dormant until the protocol's feedback capability
       // lands (the raw responses live addon-side).
-      const res = await addon.client.albumsSearch({
-        artist: artistName,
-        album: albumTitle,
-        canonicalTracks: tracks.map((t) => ({ title: t.title })),
-        skew: body.skewSearch,
-      });
+      const res = await addon.client.albumsSearch(
+        {
+          artist: artistName,
+          album: albumTitle,
+          canonicalTracks: tracks.map((t) => ({ title: t.title })),
+          skew: body.skewSearch,
+        },
+        HUNT_OPTS,
+      );
       return c.json({
         candidates: res.candidates.map(wireCandidate),
         totalTracks: tracks.length,
@@ -349,6 +361,7 @@ export function discographyRoutes({
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       log.warn({ albumId, err: msg }, 'Album hunt (base phase) failed');
+      if (err instanceof AddonTimeoutError) return c.json({ error: HUNT_TIMED_OUT }, 504);
       return c.json({ error: msg }, 500);
     }
   });
@@ -375,12 +388,15 @@ export function discographyRoutes({
 
       const addon = getAddon?.() ?? null;
       if (!addon) return c.json({ error: 'No acquisition addon registered' }, 503);
-      const res = await addon.client.albumsSearch({
-        artist: artistName,
-        album: albumTitle,
-        canonicalTracks: tracks.map((t) => ({ title: t.title })),
-        skew: true,
-      });
+      const res = await addon.client.albumsSearch(
+        {
+          artist: artistName,
+          album: albumTitle,
+          canonicalTracks: tracks.map((t) => ({ title: t.title })),
+          skew: true,
+        },
+        HUNT_OPTS,
+      );
       return c.json({
         candidates: res.candidates.map(wireCandidate),
         rateLimited: res.rateLimited ?? false,
@@ -393,6 +409,7 @@ export function discographyRoutes({
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       log.warn({ albumId, err: msg }, 'Album hunt (skew phase) failed');
+      if (err instanceof AddonTimeoutError) return c.json({ error: HUNT_TIMED_OUT }, 504);
       return c.json({ error: msg }, 500);
     }
   });

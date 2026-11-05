@@ -32,7 +32,8 @@ import {
 } from '../services/acquisition-job-store.js';
 import { rankAlternates } from '../services/download-resource.js';
 import { mapAddonJob } from '../services/addons/job-poller.js';
-import { AddonRequestError } from '../services/addons/client.js';
+import { AddonRequestError, AddonTimeoutError } from '../services/addons/client.js';
+import { INTERACTIVE_HUNT_TIMEOUT_MS } from '../middleware/idle-budget.js';
 import { deleteSongs } from '../services/library-deletion.js';
 import { errorHandler } from '../middleware/error-handler.js';
 import { recordAudit } from '../services/audit-log.js';
@@ -515,11 +516,22 @@ export function downloadRoutes(
     // delivered since the tick cannot rule out every peer.
     const required = (body.require ?? []).filter((t) => wanted.includes(t));
 
-    const res = await addon.client.albumsSearch({
-      artist: job.artistName ?? '',
-      album: job.albumTitle ?? '',
-      canonicalTracks: found.tracklist.map((title) => ({ title })),
-    });
+    let res;
+    try {
+      res = await addon.client.albumsSearch(
+        {
+          artist: job.artistName ?? '',
+          album: job.albumTitle ?? '',
+          canonicalTracks: found.tracklist.map((title) => ({ title })),
+        },
+        { timeoutMs: INTERACTIVE_HUNT_TIMEOUT_MS },
+      );
+    } catch (err) {
+      if (err instanceof AddonTimeoutError) {
+        return c.json({ error: 'The source did not finish searching in time.' }, 504);
+      }
+      throw err;
+    }
     const ranked = rankAlternates(wanted, res.candidates, activePeers(db, job.id));
     return c.json({
       wanted,
@@ -741,6 +753,7 @@ export function downloadRoutes(
         artistMbid: job.artist_mbid,
         userId: user.sub,
         retry: true,
+        huntTimeoutMs: INTERACTIVE_HUNT_TIMEOUT_MS,
       },
     );
     recordAudit(db, user, 'album.acquire', {

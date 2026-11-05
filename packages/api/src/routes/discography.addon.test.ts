@@ -10,7 +10,12 @@ import type { ArtistProvisioningService } from '../services/artist-provisioning.
 import type { AlbumHuntOrchestrator } from '../services/source-hunter.js';
 import type { Lidarr } from '../lidarr/index.js';
 import { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
-import { AddonClient, AddonRequestError } from '../services/addons/client.js';
+import { AddonClient, AddonRequestError, AddonTimeoutError } from '../services/addons/client.js';
+import {
+  IDLE_TIMER_GRANULARITY_S,
+  INTERACTIVE_HUNT_TIMEOUT_MS,
+  LONG_REQUEST_IDLE_S,
+} from '../middleware/idle-budget.js';
 
 const MANIFEST: AddonManifest = {
   id: 'fixture-addon',
@@ -106,7 +111,8 @@ function harness(clientOver: Partial<AddonClient> = {}) {
       getAddon: () => addon,
     }),
   );
-  return { app, db, jobRequests, jobKeys };
+  const albumsSearch = client.albumsSearch as unknown as ReturnType<typeof mock>;
+  return { app, db, jobRequests, jobKeys, albumsSearch };
 }
 
 const jsonPost = (body: unknown) => ({
@@ -120,6 +126,30 @@ describe('discography routes through a remote addon', () => {
 
   beforeEach(() => {
     h = harness();
+  });
+
+  describe('a hunt someone is waiting on (#1437)', () => {
+    it('ends inside the socket budget, leaving time to answer', () => {
+      expect(INTERACTIVE_HUNT_TIMEOUT_MS).toBeLessThan(
+        (LONG_REQUEST_IDLE_S - IDLE_TIMER_GRANULARITY_S) * 1000,
+      );
+    });
+
+    it.each(['hunt', 'hunt/base', 'hunt/skew'])('%s passes that budget to the addon', async (r) => {
+      await h.app.request(`/albums/42/${r}`, jsonPost({}));
+      expect(h.albumsSearch.mock.calls.at(-1)?.[1]).toEqual({
+        timeoutMs: INTERACTIVE_HUNT_TIMEOUT_MS,
+      });
+    });
+
+    it.each(['hunt', 'hunt/base', 'hunt/skew'])('%s answers a timeout as a 504', async (r) => {
+      h.albumsSearch.mockImplementationOnce(async () => {
+        throw new AddonTimeoutError('timed out');
+      });
+      const res = await h.app.request(`/albums/42/${r}`, jsonPost({}));
+      expect(res.status).toBe(504);
+      expect(((await res.json()) as { error: string }).error).toContain('in time');
+    });
   });
 
   it('hunt/base maps addon candidates to the modal wire shape (no second skew phase)', async () => {

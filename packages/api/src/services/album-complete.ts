@@ -2,6 +2,7 @@ import type { Database } from 'bun:sqlite';
 import type { JwtPayload } from '@nicotind/core';
 import type { Lidarr } from '../lidarr/index.js';
 import { acquireAlbum, type AcquireOutcome } from './album-acquire.js';
+import { INTERACTIVE_HUNT_TIMEOUT_MS } from '../middleware/idle-budget.js';
 import { normalizeForGrouping } from './album-grouping.js';
 import { artistIdFor } from './library-scanner.js';
 import { recordAudit } from './audit-log.js';
@@ -125,6 +126,8 @@ export async function completeAlbum(
       albumTitle: album,
       minMatchPct: deps.minMatchPct,
       artistMbid: null,
+      // Reached from the HTTP route and an MCP tool: someone is waiting on the answer.
+      huntTimeoutMs: INTERACTIVE_HUNT_TIMEOUT_MS,
     },
   );
   recordAudit(db, audit.actor, 'album.acquire', {

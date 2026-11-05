@@ -35,7 +35,10 @@ export interface AddonTransport {
   getStatus(): Promise<AddonStatusRow[]>;
   putConfig(config: Record<string, unknown>): Promise<void>;
   search(req: AddonSearchRequest): Promise<AddonSearchResponse>;
-  albumsSearch(req: AddonAlbumSearchRequest): Promise<AddonAlbumSearchResponse>;
+  albumsSearch(
+    req: AddonAlbumSearchRequest,
+    opts?: { timeoutMs?: number },
+  ): Promise<AddonAlbumSearchResponse>;
   browse(user: string): Promise<{ directories: unknown[] }>;
   createJob(req: AddonJobRequest, idempotencyKey?: string): Promise<AddonJob>;
   listJobs(sinceMs?: number): Promise<AddonJob[]>;

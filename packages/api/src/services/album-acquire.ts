@@ -101,6 +101,8 @@ export interface AcquireAlbumInput {
    * would replay the failed job the key still names (#1511).
    */
   retry?: boolean;
+  /** A caller answering a request passes its budget; unattended lanes can wait longer. */
+  huntTimeoutMs?: number;
 }
 
 /**
@@ -170,11 +172,14 @@ async function acquireViaAddon(
 
   let res;
   try {
-    res = await addon.client.albumsSearch({
-      artist: artistName,
-      album: albumTitle,
-      canonicalTracks: titles.map((title) => ({ title })),
-    });
+    res = await addon.client.albumsSearch(
+      {
+        artist: artistName,
+        album: albumTitle,
+        canonicalTracks: titles.map((title) => ({ title })),
+      },
+      { timeoutMs: input.huntTimeoutMs },
+    );
   } catch (err) {
     log.warn({ lidarrAlbumId, addonId, err }, 'Addon album search failed');
     return { outcome: 'slskd-unavailable', detail: causeOf(err) };

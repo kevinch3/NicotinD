@@ -6,6 +6,7 @@ import {
   AddonContractError,
   AddonRequestError,
   MAX_ADDON_RESPONSE_BYTES,
+  AddonTimeoutError,
 } from './client.js';
 
 const MANIFEST: AddonManifest = {
@@ -351,6 +352,42 @@ describe('AddonClient → circuit-breaker integration', () => {
     bad = true;
     await client.getStatus().catch(() => {}); // violation (1 again)
     expect(trips).toEqual([]); // never reached 2 consecutive
+  });
+});
+
+// #1437: a hunt a person waits on must fail inside the socket's budget, with a reason.
+describe('AddonClient.albumsSearch timeout', () => {
+  const REQ = { artist: 'A', album: 'B' } as Parameters<AddonClient['albumsSearch']>[0];
+  /** Answers only when aborted, the way a hunt that outlives its budget behaves. */
+  const neverAnswers = (async (_url: string, init: RequestInit) =>
+    new Promise((_resolve, reject) => {
+      init.signal!.addEventListener('abort', () => reject(init.signal!.reason));
+    })) as unknown as typeof fetch;
+
+  it('throws a typed timeout, not a generic unreachable', async () => {
+    const client = new AddonClient({
+      baseUrl: 'http://addon:9999',
+      token: 'tok',
+      fetchFn: neverAnswers,
+      log: { info: () => {}, warn: () => {} },
+    });
+    await expect(client.albumsSearch(REQ, { timeoutMs: 5 })).rejects.toBeInstanceOf(
+      AddonTimeoutError,
+    );
+  });
+
+  it('still reads a refused connection as unreachable', async () => {
+    const client = new AddonClient({
+      baseUrl: 'http://addon:9999',
+      token: 'tok',
+      fetchFn: (async () => {
+        throw new TypeError('ConnectionRefused');
+      }) as unknown as typeof fetch,
+      log: { info: () => {}, warn: () => {} },
+    });
+    const err = await client.albumsSearch(REQ, { timeoutMs: 5 }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AddonRequestError);
+    expect(err).not.toBeInstanceOf(AddonTimeoutError);
   });
 });
 
