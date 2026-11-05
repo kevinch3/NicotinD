@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.122](https://github.com/kevinch3/NicotinD/compare/v0.8.121...v0.8.122) (2026-11-05)
+
+### Features
+
+* **downloads:** retry a failed album, group failure toasts, trust a file's own album tag ([#1618](https://github.com/kevinch3/NicotinD/issues/1618)) ([83a512d](https://github.com/kevinch3/NicotinD/commit/83a512d6f2587abce7c7c0a332ada256bc2aa816)), closes [#1511](https://github.com/kevinch3/NicotinD/issues/1511) [#1509](https://github.com/kevinch3/NicotinD/issues/1509) [#1540](https://github.com/kevinch3/NicotinD/issues/1540) [#1437](https://github.com/kevinch3/NicotinD/issues/1437), references [#1511](https://github.com/kevinch3/NicotinD/issues/1511) [#1509](https://github.com/kevinch3/NicotinD/issues/1509)
+
+### Bug Fixes
+
+* **ci:** rebuild a reused analysis image when a fix lands after its release ([#1617](https://github.com/kevinch3/NicotinD/issues/1617)) ([09db16f](https://github.com/kevinch3/NicotinD/commit/09db16f89e1ebf5751d13585fdfece97dfc59bb7)), closes [#1477](https://github.com/kevinch3/NicotinD/issues/1477)
+* **library:** a joint-credit card offers no split it cannot stand behind ([#1621](https://github.com/kevinch3/NicotinD/issues/1621)) ([ff53527](https://github.com/kevinch3/NicotinD/commit/ff535275533809ca3309e05cf9aaa06ea695902c)), closes [#1613](https://github.com/kevinch3/NicotinD/issues/1613)
+* **library:** carry song-level review flags across an id change ([#1614](https://github.com/kevinch3/NicotinD/issues/1614)) ([79d0a4d](https://github.com/kevinch3/NicotinD/commit/79d0a4d1f0f73512aab67470e1ef93e8a6dd6914)), closes [#1475](https://github.com/kevinch3/NicotinD/issues/1475)
+* **library:** place a URL rip by fingerprint, and stop an unlinked match disabling it ([#1622](https://github.com/kevinch3/NicotinD/issues/1622)) ([bbf9748](https://github.com/kevinch3/NicotinD/commit/bbf974802087f2bb1a00a8db8dfe02c5932c83a3)), closes [#1583](https://github.com/kevinch3/NicotinD/issues/1583), references [#951](https://github.com/kevinch3/NicotinD/issues/951) [#1583](https://github.com/kevinch3/NicotinD/issues/1583)
+* **library:** the Opus cover cap is a size budget now, not a reader limit ([#1620](https://github.com/kevinch3/NicotinD/issues/1620)) ([0c3ecd4](https://github.com/kevinch3/NicotinD/commit/0c3ecd47474d3f685617067f969cbd388193d9c1)), closes [#1496](https://github.com/kevinch3/NicotinD/issues/1496)
+* **lidarr:** an outage is not an absence, and boot provisioning waits for Lidarr ([#1615](https://github.com/kevinch3/NicotinD/issues/1615)) ([dc95ffa](https://github.com/kevinch3/NicotinD/commit/dc95ffae5df8f43196f6d036a5f12acfb31821db)), closes [#1582](https://github.com/kevinch3/NicotinD/issues/1582) [#1591](https://github.com/kevinch3/NicotinD/issues/1591)
+* **web:** one tap on the update strip, and it says which build it loads ([#1619](https://github.com/kevinch3/NicotinD/issues/1619)) ([71d33ea](https://github.com/kevinch3/NicotinD/commit/71d33eaae9d3b1e7849377d25daeb49715d44655)), closes [#1596](https://github.com/kevinch3/NicotinD/issues/1596)
 ## [0.8.121](https://github.com/kevinch3/NicotinD/compare/v0.8.120...v0.8.121) (2026-11-04)
 
 ### Features

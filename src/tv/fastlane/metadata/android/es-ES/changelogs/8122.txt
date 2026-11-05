@@ -1,0 +1,6 @@
+• downloads: retry a failed album, group failure toasts, trust a file's own album tag (#1618)
+• ci: rebuild a reused analysis image when a fix lands after its release (#1617)
+• library: a joint-credit card offers no split it cannot stand behind (#1621)
+• library: carry song-level review flags across an id change (#1614)
+• library: place a URL rip by fingerprint, and stop an unlinked match disabling it (#1622)
+…and 3 more
