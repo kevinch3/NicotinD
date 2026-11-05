@@ -114,6 +114,27 @@ describe('CaseCardComponent', () => {
     ]);
   });
 
+  it('renders a joint-credit card when the split option was suppressed (#1613)', () => {
+    const f = render(
+      aCase({
+        options: [
+          {
+            id: 'joint-one-act',
+            label: 'One act',
+            rationale: '',
+            effect: { rawName: 'Pete Tong, HER-O, Jules Buckley, Au/Ra' },
+          },
+          { id: 'resolve', label: 'Leave as is', rationale: '' },
+        ],
+      }),
+    );
+    expect(el(f).querySelector('[data-testid="case-question"]')!.textContent).toContain(
+      'curate.jointCredit.question',
+    );
+    const labels = [...options(f)].map((o) => o.textContent!.trim());
+    expect(labels).toEqual(['curate.jointCredit.oneAct', 'curate.leaveAsIs']);
+  });
+
   it('keeps an agent card in the words the agent wrote', () => {
     const f = render(aCase());
     expect(el(f).querySelector('[data-testid="case-question"]')!.textContent).toContain(

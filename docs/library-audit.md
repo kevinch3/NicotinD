@@ -431,6 +431,13 @@ A listener's `misplaced` or `mistagged` report on such a song is served as a car
 that has since resolved stops offering it. The health report's `jointCredits` dimension carries the
 counts and the worst credits, and the Admin panel renders them.
 
+**A card only offers a split it can stand behind (#1613).** `listCreditSides` understands `;`, spaces and
+a bare `/`, so it can propose nonsense: `Pete Tong, HER-O, Jules Buckley, Au/Ra` keeps its commas and tears
+`Au/Ra`, and a promo text in the artist tag becomes two sentence fragments. `jointCreditOptions` drops
+**Separate** when a proposed member still holds a comma, or when the credit or a member `looksLikeSentence`
+or `looksLikeSourceWatermark`, so only **One act** and **Leave as is** remain. Pre-order and pre-save text
+also joins the watermark rules. Initials, titled names and `feat.` do not read as sentences.
+
 ## Why a name predicate cannot decide `fragmented_artist` (issue #864)
 
 Every other rule in this catalogue judges a name **on its own**. This one cannot, and
