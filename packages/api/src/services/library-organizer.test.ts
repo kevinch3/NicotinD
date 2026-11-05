@@ -142,136 +142,6 @@ function makeOrg(musicDir: string, stagingDir?: string) {
 }
 
 describe('LibraryOrganizer (real fs)', () => {
-  it('strips a featured-artist suffix from the artist folder name', async () => {
-    const root = tmpRoot();
-    const staging = join(root, '_staging');
-    seed(staging, 'Daft Punk - Discovery/01 - Get Lucky.mp3', {
-      artist: 'Daft Punk feat. Pharrell',
-      album: 'Discovery',
-      title: 'Get Lucky',
-      trackNumber: 1,
-    });
-    const org = makeOrg(root, staging);
-    const result = await org.organizeBatch([
-      {
-        username: 'u',
-        directory: 'Daft Punk - Discovery',
-        filename: '01 - Get Lucky.mp3',
-        directoryFileCount: 1,
-      },
-    ]);
-    expect(result.moved).toBe(1);
-    expect(existsSync(join(root, 'Daft Punk', 'Discovery', '01 - Get Lucky.mp3'))).toBe(true);
-    expect(existsSync(join(root, 'Daft Punk feat. Pharrell'))).toBe(false);
-  });
-
-  // Issue #679: a DJ-set line in the artist tag used to mint a junk artist row
-  // that a curator then had to merge away by hand.
-  it('recovers the real artist from a DJ-set line in the artist tag', async () => {
-    const root = tmpRoot();
-    const staging = join(root, '_staging');
-    seed(staging, 'set rip/01 - Biomorph.mp3', {
-      artist: 'Enrico Sangiuliano @ Awakenings',
-      album: 'Biomorph',
-      title: 'Biomorph',
-      trackNumber: 1,
-    });
-    const org = makeOrg(root, staging);
-    const result = await org.organizeBatch([
-      { username: 'u', directory: 'set rip', filename: '01 - Biomorph.mp3', directoryFileCount: 1 },
-    ]);
-    expect(result.moved).toBe(1);
-    expect(existsSync(join(root, 'Enrico Sangiuliano'))).toBe(true);
-    expect(existsSync(join(root, 'Enrico Sangiuliano @ Awakenings'))).toBe(false);
-  });
-
-  it('does not mint an artist folder from an ambiguous b2b credit', async () => {
-    const root = tmpRoot();
-    const staging = join(root, '_staging');
-    seed(staging, 'b2b rip/01 - Untitled.mp3', {
-      artist: 'Secret Cinema B2B Egbert',
-      album: 'Some Set',
-      title: 'Untitled',
-      trackNumber: 1,
-    });
-    const org = makeOrg(root, staging);
-    await org.organizeBatch([
-      { username: 'u', directory: 'b2b rip', filename: '01 - Untitled.mp3', directoryFileCount: 1 },
-    ]);
-    // Two acts, no basis for picking one — the tag is dropped rather than guessed.
-    expect(existsSync(join(root, 'Secret Cinema B2B Egbert'))).toBe(false);
-  });
-
-  it('names a hunted album folder after the job canonical title, not the peer edition tag', async () => {
-    const root = tmpRoot();
-    const staging = join(root, '_staging');
-    // Peer tagged this as a deluxe edition; the job knows the canonical album.
-    seed(staging, 'Queen - Hot Space (Deluxe)/01 - Staying Power.mp3', {
-      artist: 'Queen',
-      album: 'Hot Space (Deluxe Remastered Version)',
-      title: 'Staying Power',
-      trackNumber: 1,
-    });
-    const org = new LibraryOrganizer({
-      transcodeLossless: { enabled: false, bitRate: 192 },
-      musicDir: root,
-      stagingDir: staging,
-      jobLookup: (dir) =>
-        dir === 'Queen - Hot Space (Deluxe)' ? { artist: 'Queen', album: 'Hot Space' } : null,
-    });
-    const result = await org.organizeBatch([
-      {
-        username: 'u',
-        directory: 'Queen - Hot Space (Deluxe)',
-        filename: '01 - Staying Power.mp3',
-        directoryFileCount: 1,
-      },
-    ]);
-    expect(result.moved).toBe(1);
-    expect(existsSync(join(root, 'Queen', 'Hot Space', '01 - Staying Power.mp3'))).toBe(true);
-    expect(existsSync(join(root, 'Queen', 'Hot Space (Deluxe Remastered Version)'))).toBe(false);
-  });
-
-  it('prefers the per-file acquisition-job metadata over the folder-string jobLookup', async () => {
-    const root = tmpRoot();
-    const staging = join(root, '_staging');
-    // Alternate-peer fallback: the folder name matches nothing the jobLookup
-    // knows, but the file carries its job identity directly.
-    seed(staging, 'weird peer folder xyz/01 - Staying Power.mp3', {
-      artist: 'Queen',
-      album: 'Hot Space (Deluxe Remastered Version)',
-      title: 'Staying Power',
-      trackNumber: 1,
-    });
-    const org = new LibraryOrganizer({
-      transcodeLossless: { enabled: false, bitRate: 192 },
-      musicDir: root,
-      stagingDir: staging,
-      jobLookup: () => null, // folder matching finds nothing
-    });
-    const result = await org.organizeBatch([
-      {
-        username: 'alt-peer',
-        directory: 'weird peer folder xyz',
-        filename: '01 - Staying Power.mp3',
-        directoryFileCount: 1,
-        jobMeta: {
-          jobId: 'j1',
-          kind: 'album-hunt',
-          artistName: 'Queen',
-          albumTitle: 'Hot Space',
-          lidarrAlbumId: null,
-          genres: null,
-          year: null,
-          canonicalTracks: null,
-        },
-      },
-    ]);
-    expect(result.moved).toBe(1);
-    expect(existsSync(join(root, 'Queen', 'Hot Space', '01 - Staying Power.mp3'))).toBe(true);
-    expect(existsSync(join(root, 'Queen', 'Hot Space (Deluxe Remastered Version)'))).toBe(false);
-  });
-
   /**
    * Issue #1583. yt-dlp always fills artist and title, so the organizer never
    * fingerprinted a rip, and "Low" landed as a single while the album was owned.
@@ -401,6 +271,136 @@ describe('LibraryOrganizer (real fs)', () => {
         fingerprintMarkerIsCurrent(tags, file, mtime + UNLINKED_FINGERPRINT_RECHECK_MS + 1),
       ).toBe(false);
     });
+  });
+
+  it('strips a featured-artist suffix from the artist folder name', async () => {
+    const root = tmpRoot();
+    const staging = join(root, '_staging');
+    seed(staging, 'Daft Punk - Discovery/01 - Get Lucky.mp3', {
+      artist: 'Daft Punk feat. Pharrell',
+      album: 'Discovery',
+      title: 'Get Lucky',
+      trackNumber: 1,
+    });
+    const org = makeOrg(root, staging);
+    const result = await org.organizeBatch([
+      {
+        username: 'u',
+        directory: 'Daft Punk - Discovery',
+        filename: '01 - Get Lucky.mp3',
+        directoryFileCount: 1,
+      },
+    ]);
+    expect(result.moved).toBe(1);
+    expect(existsSync(join(root, 'Daft Punk', 'Discovery', '01 - Get Lucky.mp3'))).toBe(true);
+    expect(existsSync(join(root, 'Daft Punk feat. Pharrell'))).toBe(false);
+  });
+
+  // Issue #679: a DJ-set line in the artist tag used to mint a junk artist row
+  // that a curator then had to merge away by hand.
+  it('recovers the real artist from a DJ-set line in the artist tag', async () => {
+    const root = tmpRoot();
+    const staging = join(root, '_staging');
+    seed(staging, 'set rip/01 - Biomorph.mp3', {
+      artist: 'Enrico Sangiuliano @ Awakenings',
+      album: 'Biomorph',
+      title: 'Biomorph',
+      trackNumber: 1,
+    });
+    const org = makeOrg(root, staging);
+    const result = await org.organizeBatch([
+      { username: 'u', directory: 'set rip', filename: '01 - Biomorph.mp3', directoryFileCount: 1 },
+    ]);
+    expect(result.moved).toBe(1);
+    expect(existsSync(join(root, 'Enrico Sangiuliano'))).toBe(true);
+    expect(existsSync(join(root, 'Enrico Sangiuliano @ Awakenings'))).toBe(false);
+  });
+
+  it('does not mint an artist folder from an ambiguous b2b credit', async () => {
+    const root = tmpRoot();
+    const staging = join(root, '_staging');
+    seed(staging, 'b2b rip/01 - Untitled.mp3', {
+      artist: 'Secret Cinema B2B Egbert',
+      album: 'Some Set',
+      title: 'Untitled',
+      trackNumber: 1,
+    });
+    const org = makeOrg(root, staging);
+    await org.organizeBatch([
+      { username: 'u', directory: 'b2b rip', filename: '01 - Untitled.mp3', directoryFileCount: 1 },
+    ]);
+    // Two acts, no basis for picking one — the tag is dropped rather than guessed.
+    expect(existsSync(join(root, 'Secret Cinema B2B Egbert'))).toBe(false);
+  });
+
+  it('names a hunted album folder after the job canonical title, not the peer edition tag', async () => {
+    const root = tmpRoot();
+    const staging = join(root, '_staging');
+    // Peer tagged this as a deluxe edition; the job knows the canonical album.
+    seed(staging, 'Queen - Hot Space (Deluxe)/01 - Staying Power.mp3', {
+      artist: 'Queen',
+      album: 'Hot Space (Deluxe Remastered Version)',
+      title: 'Staying Power',
+      trackNumber: 1,
+    });
+    const org = new LibraryOrganizer({
+      transcodeLossless: { enabled: false, bitRate: 192 },
+      musicDir: root,
+      stagingDir: staging,
+      jobLookup: (dir) =>
+        dir === 'Queen - Hot Space (Deluxe)' ? { artist: 'Queen', album: 'Hot Space' } : null,
+    });
+    const result = await org.organizeBatch([
+      {
+        username: 'u',
+        directory: 'Queen - Hot Space (Deluxe)',
+        filename: '01 - Staying Power.mp3',
+        directoryFileCount: 1,
+      },
+    ]);
+    expect(result.moved).toBe(1);
+    expect(existsSync(join(root, 'Queen', 'Hot Space', '01 - Staying Power.mp3'))).toBe(true);
+    expect(existsSync(join(root, 'Queen', 'Hot Space (Deluxe Remastered Version)'))).toBe(false);
+  });
+
+  it('prefers the per-file acquisition-job metadata over the folder-string jobLookup', async () => {
+    const root = tmpRoot();
+    const staging = join(root, '_staging');
+    // Alternate-peer fallback: the folder name matches nothing the jobLookup
+    // knows, but the file carries its job identity directly.
+    seed(staging, 'weird peer folder xyz/01 - Staying Power.mp3', {
+      artist: 'Queen',
+      album: 'Hot Space (Deluxe Remastered Version)',
+      title: 'Staying Power',
+      trackNumber: 1,
+    });
+    const org = new LibraryOrganizer({
+      transcodeLossless: { enabled: false, bitRate: 192 },
+      musicDir: root,
+      stagingDir: staging,
+      jobLookup: () => null, // folder matching finds nothing
+    });
+    const result = await org.organizeBatch([
+      {
+        username: 'alt-peer',
+        directory: 'weird peer folder xyz',
+        filename: '01 - Staying Power.mp3',
+        directoryFileCount: 1,
+        jobMeta: {
+          jobId: 'j1',
+          kind: 'album-hunt',
+          artistName: 'Queen',
+          albumTitle: 'Hot Space',
+          lidarrAlbumId: null,
+          genres: null,
+          year: null,
+          canonicalTracks: null,
+        },
+      },
+    ]);
+    expect(result.moved).toBe(1);
+    expect(existsSync(join(root, 'Queen', 'Hot Space', '01 - Staying Power.mp3'))).toBe(true);
+    expect(existsSync(join(root, 'Queen', 'Hot Space (Deluxe Remastered Version)'))).toBe(false);
   });
 
   /**

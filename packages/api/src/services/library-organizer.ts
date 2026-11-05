@@ -12,6 +12,7 @@ import {
 import { basename, dirname, extname, join, relative, sep } from 'node:path';
 import {
   AUDIO_EXTENSIONS,
+  artistsOverlap,
   cleanFolderName,
   createLogger,
   expandHome,
@@ -41,7 +42,7 @@ import {
 } from './path-sanitize.js';
 import { isAbsolute } from 'node:path';
 import type { AcoustIdLookup, AcoustIdRelease, AcoustIdResult } from './acoustid-lookup.js';
-import { artistsOverlap, normalizeTitle } from '@nicotind/core';
+import { normalizeTitle } from '@nicotind/core';
 import { reconcileAlbumFolder } from './album-reconcile.js';
 import { albumGroupKey } from './album-grouping.js';
 import { DEFAULT_UNSORTED_DIR } from './library-paths.js';
