@@ -40,8 +40,8 @@ import {
   stripFeaturingSuffix,
 } from './path-sanitize.js';
 import { isAbsolute } from 'node:path';
-import type { AcoustIdLookup } from './acoustid-lookup.js';
-import { normalizeTitle } from '@nicotind/core';
+import type { AcoustIdLookup, AcoustIdRelease, AcoustIdResult } from './acoustid-lookup.js';
+import { artistsOverlap, normalizeTitle } from '@nicotind/core';
 import { reconcileAlbumFolder } from './album-reconcile.js';
 import { albumGroupKey } from './album-grouping.js';
 import { DEFAULT_UNSORTED_DIR } from './library-paths.js';
@@ -202,6 +202,27 @@ interface PendingPlacement {
 // pass pools the same call and must not pick a second, different number.
 
 /** A batch that did nothing: no files in, no dirs touched. */
+/**
+ * How long an AcoustID with no MusicBrainz link answers "we already looked". AcoustID
+ * clusters get linked later, so a marker with no recording must not stay final (#1583).
+ */
+export const UNLINKED_FINGERPRINT_RECHECK_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** Whether the `ACOUSTID_ID` tag still spares this file a fingerprint round-trip. */
+export function fingerprintMarkerIsCurrent(
+  tags: { acoustIdId?: string; mbRecordingId?: string },
+  path: string,
+  now = Date.now(),
+): boolean {
+  if (!tags.acoustIdId) return false;
+  if (tags.mbRecordingId) return true;
+  try {
+    return now - statSync(path).mtimeMs < UNLINKED_FINGERPRINT_RECHECK_MS;
+  } catch {
+    return true;
+  }
+}
+
 function emptyOrganizeResult(): OrganizeResult {
   return {
     moved: 0,
@@ -448,7 +469,9 @@ export class LibraryOrganizer {
       }
       const flat = this.flattenPhantomDir(src);
       const finalSrc = flat ?? src;
-      const tags = await this.readWithFallback(finalSrc, directory);
+      const tags = await this.readWithFallback(finalSrc, directory, {
+        fingerprintTagged: file.jobMeta?.kind === 'url',
+      });
       resolved.push({
         srcPath: finalSrc,
         peerDirectory: directory,
@@ -598,7 +621,15 @@ export class LibraryOrganizer {
   private async readWithFallback(
     path: string,
     peerDirectory: string,
-    opts?: { persist?: boolean },
+    opts?: {
+      persist?: boolean;
+      /**
+       * Fingerprint even a fully tagged file. yt-dlp always fills artist and title,
+       * so a rip of an owned track was otherwise filed on its own tags as a single
+       * (#1583).
+       */
+      fingerprintTagged?: boolean;
+    },
   ): Promise<AudioTags> {
     const tags = await readAudioTags(path);
     let artist = sanitizeArtistTag(normalizeTagValue(tags.artist));
@@ -662,11 +693,36 @@ export class LibraryOrganizer {
 
     // Skip the AcoustID round-trip if we've already fingerprinted this file
     // in a prior run — the ACOUSTID_ID tag is our negative cache marker.
-    const alreadyFingerprinted = !!tags.acoustIdId;
+    const alreadyFingerprinted = fingerprintMarkerIsCurrent(tags, path);
+    const untagged = !artist || !title;
 
-    if ((!artist || !title) && this.acoustid && !alreadyFingerprinted) {
+    if ((untagged || opts?.fingerprintTagged) && this.acoustid && !alreadyFingerprinted) {
       const hit = await this.acoustid.lookup(path);
-      if (hit) {
+      if (hit && !untagged) {
+        tags.acoustIdId = hit.acoustId;
+        if (hit.recordingId) tags.mbRecordingId = hit.recordingId;
+        const release = album ? null : this.releaseForTaggedFile(artist!, title!, hit);
+        if (release) {
+          album = normalizeTagValue(release.title);
+          tags.album = album;
+          if (release.id) tags.mbReleaseId = release.id;
+          if (!tags.albumArtist) tags.albumArtist = release.albumArtist;
+          if (tags.year === undefined) tags.year = release.year;
+          if (tags.trackNumber === undefined) tags.trackNumber = release.trackNumber;
+          log.info({ path, album, recordingId: hit.recordingId }, 'AcoustID placed a tagged file');
+        }
+        if (opts?.persist !== false) {
+          await writeAudioTags(path, {
+            album: release ? album : undefined,
+            albumArtist: release ? tags.albumArtist : undefined,
+            year: release ? tags.year : undefined,
+            trackNumber: release ? tags.trackNumber : undefined,
+            acoustIdId: tags.acoustIdId,
+            mbRecordingId: tags.mbRecordingId,
+            mbReleaseId: tags.mbReleaseId,
+          });
+        }
+      } else if (hit) {
         // Always persist the AcoustID — even when no MB metadata came back —
         // so a re-run can skip the fingerprint+HTTP round-trip on this file.
         tags.acoustIdId = hit.acoustId;
@@ -705,6 +761,28 @@ export class LibraryOrganizer {
     }
 
     return { ...tags, artist, title, album };
+  }
+
+  /**
+   * The release a fingerprint hit files a tagged, album-less file under: one already
+   * owned if the recording is on any, else the first. Null unless the hit agrees with
+   * the file on artist and title, because the name AcoustID attaches to a recording
+   * is community-submitted, and one sampled hit named another band entirely (#951).
+   */
+  private releaseForTaggedFile(
+    artist: string,
+    title: string,
+    hit: AcoustIdResult,
+  ): AcoustIdRelease | null {
+    if (!hit.recordingId || !hit.artist || !hit.title) return null;
+    if (!artistsOverlap(artist, hit.artist)) return null;
+    if (normalizeTitle(title) !== normalizeTitle(hit.title)) return null;
+    const releases = (hit.releases ?? []).filter((r) => r.title);
+    return (
+      releases.find((r) => this.findCanonicalAlbumFolder(artist, r.title!) !== null) ??
+      releases[0] ??
+      null
+    );
   }
 
   /**

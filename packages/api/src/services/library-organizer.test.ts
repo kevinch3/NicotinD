@@ -9,7 +9,7 @@
  *   ffmpeg -f lavfi -i 'anullsrc=channel_layout=mono:sample_rate=22050' \
  *     -t 0.1 -b:a 32k -id3v2_version 3 packages/api/test-fixtures/silence.mp3
  */
-import { describe, expect, it, afterEach } from 'bun:test';
+import { describe, expect, it, afterEach, mock } from 'bun:test';
 import { execFileSync } from 'node:child_process';
 import {
   mkdtempSync,
@@ -26,7 +26,12 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import nodeId3 from 'node-id3';
 import { readAudioTags } from './audio-tags.js';
-import { LibraryOrganizer } from './library-organizer.js';
+import {
+  fingerprintMarkerIsCurrent,
+  LibraryOrganizer,
+  UNLINKED_FINGERPRINT_RECHECK_MS,
+} from './library-organizer.js';
+import type { AcoustIdLookup, AcoustIdResult } from './acoustid-lookup.js';
 import { ffmpegAvailable } from './transcode.js';
 
 /** Generate a tagged FLAC via ffmpeg (lossless source for the transcode hook). */
@@ -265,6 +270,137 @@ describe('LibraryOrganizer (real fs)', () => {
     expect(result.moved).toBe(1);
     expect(existsSync(join(root, 'Queen', 'Hot Space', '01 - Staying Power.mp3'))).toBe(true);
     expect(existsSync(join(root, 'Queen', 'Hot Space (Deluxe Remastered Version)'))).toBe(false);
+  });
+
+  /**
+   * Issue #1583. yt-dlp always fills artist and title, so the organizer never
+   * fingerprinted a rip, and "Low" landed as a single while the album was owned.
+   */
+  describe('fingerprinting a URL-acquired file at landing', () => {
+    const urlJob = {
+      jobId: 'j1583',
+      kind: 'url' as const,
+      artistName: null,
+      albumTitle: null,
+      lidarrAlbumId: null,
+      genres: null,
+      year: null,
+      canonicalTracks: null,
+    };
+    const hitFor = (over: Partial<AcoustIdResult> = {}): AcoustIdResult => ({
+      acoustId: 'ac-1',
+      score: 0.95,
+      artist: 'Lenny Kravitz',
+      title: 'Low',
+      recordingId: 'rec-1',
+      releases: [
+        { id: 'r-other', title: 'Some Compilation', year: 2020 },
+        { id: 'r-owned', title: 'Raise Vibration', year: 2018, trackNumber: 2 },
+      ],
+      ...over,
+    });
+
+    /** Where the rip landed, whichever folder it was given. */
+    const landedAt = (root: string): string | undefined => {
+      const artistDir = join(root, 'Lenny Kravitz');
+      const found = readdirSync(artistDir, { recursive: true }) as string[];
+      const rel = found.find((f) => f.endsWith('Low.mp3'));
+      return rel ? join(artistDir, rel) : undefined;
+    };
+
+    async function land(
+      hit: AcoustIdResult | null,
+      opts: { job?: typeof urlJob | null; ownedAlbum?: boolean; tags?: Partial<SeedTags> } = {},
+    ) {
+      const root = tmpRoot();
+      const staging = join(root, '_staging');
+      if (opts.ownedAlbum) {
+        mkdirSync(join(root, 'Lenny Kravitz', 'Raise Vibration'), { recursive: true });
+        writeFileSync(join(root, 'Lenny Kravitz', 'Raise Vibration', 'x.mp3'), '');
+      }
+      seed(staging, 'rip/Low.mp3', { artist: 'Lenny Kravitz', title: 'Low', ...opts.tags });
+      const lookup = mock(async () => hit);
+      const org = new LibraryOrganizer({
+        transcodeLossless: { enabled: false, bitRate: 192 },
+        musicDir: root,
+        stagingDir: staging,
+        jobLookup: () => null,
+        acoustid: { lookup } as unknown as AcoustIdLookup,
+      });
+      await org.organizeBatch([
+        {
+          username: 'ytdlp',
+          directory: 'rip',
+          filename: 'Low.mp3',
+          directoryFileCount: 1,
+          jobMeta: opts.job === undefined ? urlJob : (opts.job ?? undefined),
+        },
+      ]);
+      return { root, lookup };
+    }
+
+    it('files the rip under the release already owned, not the first one', async () => {
+      const { root } = await land(hitFor(), { ownedAlbum: true });
+      expect(landedAt(root)).toContain(join('Raise Vibration', '02 - Low.mp3'));
+    });
+
+    it('takes the first release when none is owned', async () => {
+      const { root } = await land(hitFor());
+      expect(existsSync(join(root, 'Lenny Kravitz', 'Some Compilation'))).toBe(true);
+    });
+
+    it('ignores a hit that names another artist or another title', async () => {
+      // The name on a recording is community-submitted: #951 sampled a Lenny Kravitz
+      // track whose fingerprint read "Metro Station — Now That We're Done".
+      for (const over of [{ artist: 'Metro Station' }, { title: "Now That We're Done" }]) {
+        const { root } = await land(hitFor(over), { ownedAlbum: true });
+        expect(landedAt(root)).toBeDefined();
+        expect(landedAt(root)).not.toContain('Raise Vibration');
+      }
+    });
+
+    it('keeps its own tags on an unlinked cluster, and writes the marker', async () => {
+      const { root } = await land({ acoustId: 'ac-unlinked', score: 0.98 }, { ownedAlbum: true });
+      expect(landedAt(root)).not.toContain('Raise Vibration');
+      expect((await readAudioTags(landedAt(root)!)).acoustIdId).toBe('ac-unlinked');
+    });
+
+    it('leaves an album the file already names alone', async () => {
+      const { root } = await land(hitFor(), { tags: { album: 'Own Album' } });
+      expect(existsSync(join(root, 'Lenny Kravitz', 'Own Album'))).toBe(true);
+    });
+
+    it('does not fingerprint a tagged file from any other lane', async () => {
+      const { lookup } = await land(hitFor(), { job: null });
+      expect(lookup).not.toHaveBeenCalled();
+    });
+
+    it('lands the file even when the lookup finds nothing', async () => {
+      const { root } = await land(null);
+      expect(landedAt(root)).toBeDefined();
+    });
+  });
+
+  describe('fingerprintMarkerIsCurrent (#1583)', () => {
+    const NOW = 1_800_000_000_000;
+    it('is final once a recording is linked, and absent with no marker', () => {
+      expect(fingerprintMarkerIsCurrent({}, '/nope', NOW)).toBe(false);
+      expect(
+        fingerprintMarkerIsCurrent({ acoustIdId: 'a', mbRecordingId: 'r' }, '/nope', NOW),
+      ).toBe(true);
+    });
+
+    it('expires for an unlinked cluster, which can be linked later', () => {
+      const root = tmpRoot();
+      const file = join(root, 'f');
+      writeFileSync(file, '');
+      const mtime = statSync(file).mtimeMs;
+      const tags = { acoustIdId: 'a' };
+      expect(fingerprintMarkerIsCurrent(tags, file, mtime + 1000)).toBe(true);
+      expect(
+        fingerprintMarkerIsCurrent(tags, file, mtime + UNLINKED_FINGERPRINT_RECHECK_MS + 1),
+      ).toBe(false);
+    });
   });
 
   /**

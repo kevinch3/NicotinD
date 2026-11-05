@@ -13,6 +13,15 @@ import type { PluginRegistry } from './plugins/registry.js';
 import { buildIdentifyApplyTags, identifySongById } from './identify.js';
 
 describe('buildIdentifyApplyTags', () => {
+  // #1583: it could only write the marker that stops the file being fingerprinted again.
+  it('refuses a body holding nothing but the AcoustID id', () => {
+    expect(buildIdentifyApplyTags({ acoustId: 'ac-1' })).toBeNull();
+    expect(buildIdentifyApplyTags({ acoustId: 'ac-1', title: 'T' })).toEqual({
+      acoustIdId: 'ac-1',
+      title: 'T',
+    });
+  });
+
   it('maps every field, renaming the MBID keys onto their tag names', () => {
     expect(
       buildIdentifyApplyTags({

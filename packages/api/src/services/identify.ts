@@ -33,7 +33,9 @@ export interface IdentifyApplyBody {
  * Empty/placeholder strings and out-of-range numbers are ignored, never
  * written — an apply can only add/replace tags, not clear them, so a thin
  * AcoustID match can't wipe an existing tag. Returns null when nothing
- * survives (the route 400s). MBID fields map onto their tag names:
+ * survives (the route 400s), and when only the AcoustID id does: that names no
+ * metadata, and writing it would only mark the file as already fingerprinted
+ * (#1583). MBID fields map onto their tag names:
  * acoustId → acoustIdId, recordingId → mbRecordingId, releaseId →
  * mbReleaseId (the organizer's persist set — see library-organizer.ts).
  */
@@ -82,7 +84,8 @@ export function buildIdentifyApplyTags(body: IdentifyApplyBody): AudioTags | nul
   if (Number.isInteger(body.discNumber) && body.discNumber! >= 1) {
     tags.discNumber = body.discNumber;
   }
-  return Object.keys(tags).length > 0 ? tags : null;
+  const fields = Object.keys(tags);
+  return fields.length > 0 && !(fields.length === 1 && tags.acoustIdId) ? tags : null;
 }
 
 export function identifyPlugin(

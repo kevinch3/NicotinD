@@ -1279,6 +1279,7 @@
   "time.justNow": "Ahora mismo",
   "time.minutesAgo": "hace {value} min",
   "time.yesterday": "Ayer",
+  "trackInfo.identifyUnlinked": "AcoustID lo reconoce, pero todavía no está vinculado a MusicBrainz, así que no hay nada que aplicar.",
   "trackInfo.editTags": "Editar etiquetas",
   "trackInfo.findMatches": "Buscar coincidencias",
   "trackInfo.noMatches": "No se encontraron ediciones candidatas.",

@@ -1,4 +1,5 @@
 import type { Database } from 'bun:sqlite';
+import { normalizeTitle } from '@nicotind/core';
 import { isUnknownLike } from './audio-tags.js';
 import { isPlaceholderArtistStrict } from './artwork-backfill.js';
 import { missingAlbumArtSql } from './artwork-store.js';
@@ -502,6 +503,55 @@ export function checkWatermarkedTitles(db: Database): AuditFinding[] {
     }));
 }
 
+/**
+ * A single whose artist already has the same title on a full album (#1583).
+ *
+ * A rip of an owned track lands on its own tags as a single, and Lidarr often has a
+ * single of that name, so enrichment confirms it. The duplicate finder needs durations
+ * within 2 s and so misses a shorter cut (286 s against 319 s, the case that found
+ * this). Low and never deletable: a real single can also be on the album, and only a
+ * listen settles whether this copy earns its place.
+ */
+export function checkSinglesOnOwnedAlbums(db: Database): AuditFinding[] {
+  const key = (artistId: string, title: string): string | null => {
+    const t = normalizeTitle(title);
+    return t ? `${artistId} ${t}` : null;
+  };
+  const songsOf = (classification: string) =>
+    db
+      .query<
+        { id: string; title: string; artist: string; artist_id: string; album: string },
+        [string]
+      >(
+        `SELECT s.id, s.title, s.artist, s.artist_id, a.name AS album
+           FROM library_songs s JOIN library_albums a ON a.id = s.album_id
+          WHERE a.classification = ? AND a.hidden = 0 AND s.hidden = 0
+            AND s.title IS NOT NULL AND s.artist_id IS NOT NULL`,
+      )
+      .all(classification);
+
+  const singles = songsOf('single');
+  if (singles.length === 0) return [];
+  const owned = new Map<string, string>();
+  for (const s of songsOf('album')) {
+    const k = key(s.artist_id, s.title);
+    if (k && !owned.has(k)) owned.set(k, s.album);
+  }
+  const out: AuditFinding[] = [];
+  for (const s of singles) {
+    const k = key(s.artist_id, s.title);
+    const album = k ? owned.get(k) : undefined;
+    if (!album) continue;
+    out.push({
+      rule: 'single_on_owned_album',
+      severity: 'low',
+      subject: s.id,
+      message: `Single "${s.title}" (${s.artist}) is also on the album "${album}" — possibly a duplicate copy`,
+    });
+  }
+  return out;
+}
+
 /** A track shorter than this, with no track number and no siblings, is a clip. */
 const CLIP_MAX_SECONDS = 45;
 
@@ -933,6 +983,7 @@ export function auditLibrary(db: Database, extraFindings: AuditFinding[] = []): 
     ...checkPollutedAlbums(db),
     ...checkMisSplitAlbums(db),
     ...checkWatermarkedTitles(db),
+    ...checkSinglesOnOwnedAlbums(db),
     ...checkClipsIndexedAsSongs(db),
     ...checkTrackNumbering(db),
     ...checkBrandArtists(db),

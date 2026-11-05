@@ -556,6 +556,15 @@ export class TrackInfoSheetComponent implements OnInit {
     });
   }
 
+  /**
+   * AcoustID knows the fingerprint, but no recording is linked to it. There is nothing
+   * to apply, and applying used to write only the marker that stops the organizer ever
+   * fingerprinting the file again (#1583).
+   */
+  identifyIsUnlinked(s: { artist?: string; title?: string; album?: string; recordingId?: string }) {
+    return !s.artist && !s.title && !s.album && !s.recordingId;
+  }
+
   /** Human copy for the current identify failure (shared #414 taxonomy). */
   identifyFailureLabel(): string {
     const failure = this.identifyFailure();

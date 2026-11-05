@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import {
+  checkSinglesOnOwnedAlbums,
   auditLibrary,
   summarize,
   checkMisSplitAlbums,
@@ -702,6 +703,71 @@ describe('content rules — what is in the row, not what it is called', () => {
   beforeEach(() => {
     db = new Database(':memory:');
     applySchema(db);
+  });
+
+  // #1583: a 286 s rip of "Low" landed as a single while the 319 s studio track was
+  // owned on Raise Vibration. The duration window of the duplicate finder misses it.
+  describe('single_on_owned_album', () => {
+    const seedOwned = () => {
+      addArtist(db, 'lk', 'Lenny Kravitz', 2);
+      addAlbum(db, {
+        id: 'rv',
+        name: 'Raise Vibration',
+        artist: 'Lenny Kravitz',
+        artistId: 'lk',
+        songCount: 1,
+        classification: 'album',
+        year: 2018,
+      });
+      addSong(db, 'studio', 'rv', 'lk', 'Low', 1, { duration: 319 });
+      addAlbum(db, {
+        id: 'sg',
+        name: 'Low',
+        artist: 'Lenny Kravitz',
+        artistId: 'lk',
+        songCount: 1,
+        classification: 'single',
+        year: 2018,
+      });
+    };
+
+    it('reports a single whose title the artist owns on an album, whatever its length', () => {
+      seedOwned();
+      addSong(db, 'rip', 'sg', 'lk', 'LOW', 1, { duration: 286 });
+      const found = checkSinglesOnOwnedAlbums(db);
+      expect(found.map((f) => f.subject)).toEqual(['rip']);
+      expect(found[0]).toMatchObject({ rule: 'single_on_owned_album', severity: 'low' });
+      expect(found[0]!.message).toContain('Raise Vibration');
+    });
+
+    it('stays quiet for a single with a different title', () => {
+      seedOwned();
+      addSong(db, 'rip', 'sg', 'lk', 'Fly Away', 1);
+      expect(checkSinglesOnOwnedAlbums(db)).toEqual([]);
+    });
+
+    it('stays quiet when another artist owns that title', () => {
+      seedOwned();
+      addArtist(db, 'other', 'Someone Else', 1);
+      addAlbum(db, {
+        id: 'osg',
+        name: 'Low',
+        artist: 'Someone Else',
+        artistId: 'other',
+        songCount: 1,
+        classification: 'single',
+        year: 2018,
+      });
+      addSong(db, 'theirs', 'osg', 'other', 'Low', 1);
+      expect(checkSinglesOnOwnedAlbums(db)).toEqual([]);
+    });
+
+    it('never matches a title that folds to nothing', () => {
+      seedOwned();
+      addSong(db, 'punct1', 'rv', 'lk', '???', 2);
+      addSong(db, 'punct2', 'sg', 'lk', '!!!', 1);
+      expect(checkSinglesOnOwnedAlbums(db)).toEqual([]);
+    });
   });
 
   // Issue #957: the album and the artist are both clean; only the titles are
