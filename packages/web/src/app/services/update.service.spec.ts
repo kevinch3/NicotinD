@@ -547,6 +547,96 @@ describe('UpdateService', () => {
         expect(readPendingUpdate(localStorage)).not.toBeNull();
       });
 
+      /**
+       * #1596: tapping Reload landed on the old build, the worker's navigation
+       * check found the update again, and the same strip came straight back
+       * while the verification was about to reload anyway.
+       */
+      describe('no second strip after an apply (#1596)', () => {
+        /** A health probe that answers only when told to, holding verification open. */
+        function holdHealth(fetchMock: ReturnType<typeof vi.fn>) {
+          let release!: () => void;
+          const gate = new Promise<void>((r) => (release = r));
+          const answer = fetchMock.getMockImplementation() as () => Promise<Response>;
+          fetchMock.mockImplementation(async () => {
+            await gate;
+            return answer();
+          });
+          return release;
+        }
+
+        it('hides a VERSION_READY that arrives while the reload is being verified', async () => {
+          pending(SERVED, 1);
+          const sw = makeSwStub(true, 'false');
+          const { service, fetchMock } = provideBuild(sw);
+          const release = holdHealth(fetchMock);
+          service.start();
+
+          sw.versionUpdates.next(versionReady);
+          expect(service.updateAvailable()).toBe(false);
+
+          release();
+          await vi.waitFor(() => expect(unregister).toHaveBeenCalledTimes(1));
+          // The page is being replaced: the strip stays down to the end.
+          await new Promise((r) => setTimeout(r, 0));
+          expect(service.updateAvailable()).toBe(false);
+        });
+
+        it('does not start a second apply while verifying', async () => {
+          pending(SERVED, 1);
+          const sw = makeSwStub(true, 'false');
+          const { service, fetchMock } = provideBuild(sw);
+          const release = holdHealth(fetchMock);
+          service.start();
+          Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+          try {
+            sw.versionUpdates.next(versionReady);
+            await new Promise((r) => setTimeout(r, 0));
+            expect(sw.activateUpdate).not.toHaveBeenCalled();
+            // A second apply would reset the attempt counter and reload for ever.
+            expect(readPendingUpdate(localStorage)?.attempts).toBe(1);
+          } finally {
+            Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+            release();
+          }
+        });
+
+        it('offers a real update once the reload is known to have landed', async () => {
+          pending(RUNNING, 1);
+          const sw = makeSwStub(true, 'false');
+          const { service } = provideBuild(sw, { commit: RUNNING });
+          sw.versionUpdates.next(versionReady);
+          expect(service.updateAvailable()).toBe(false);
+          service.start();
+          await vi.waitFor(() => expect(service.updateAvailable()).toBe(true));
+        });
+
+        it('offers it again when the attempts ran out, so an update is never lost', async () => {
+          pending(SERVED, 2);
+          const sw = makeSwStub(true, 'false');
+          const { service } = provideBuild(sw);
+          sw.versionUpdates.next(versionReady);
+          service.start();
+          await vi.waitFor(() => expect(service.updateAvailable()).toBe(true));
+        });
+
+        it('lets the strip back when the server cannot be reached to verify', async () => {
+          pending(SERVED, 1);
+          const sw = makeSwStub(true, 'false');
+          const { service } = provideBuild(sw, { status: 503 });
+          sw.versionUpdates.next(versionReady);
+          service.start();
+          await vi.waitFor(() => expect(service.updateAvailable()).toBe(true));
+          expect(unregister).not.toHaveBeenCalled();
+        });
+
+        it('names the build it is about to load', async () => {
+          const { service } = provideBuild(makeSwStub(true, 'false'));
+          await service.checkForUpdate();
+          expect(service.targetBuild()).toBe(SERVED);
+        });
+      });
+
       it('gives up after the reset attempt instead of reloading forever', async () => {
         pending(SERVED, 2);
         const { service } = provideBuild(makeSwStub(true, 'false'));

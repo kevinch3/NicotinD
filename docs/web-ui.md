@@ -1804,6 +1804,8 @@ It came back a third time, from an iOS standalone install again: the server was 
 
 The up-to-date toast now names the build (`settings.updateUpToDateBuild`, "You're on v0.8.119 (build 37eae47)"), because a version alone cannot say which of two builds is running; About shows the same commit.
 
+**A verification that is still running hides the strip (#1596).** Tapping Reload could land on the old build; the worker's navigation check then found the update again, and the same strip came back while `verifyLastApply` was about to reload anyway, which read as "Reload needs two taps". `updateAvailable` is now false until that verification settles, and neither `backgroundCheck` nor `maybeAutoApply` runs in that window, since a second apply would reset the attempt counter. An escalating reload leaves it set, so the strip stays down on the page being replaced. Anything else (landed, attempts spent, server unreachable) lets a staged update show again, so none is lost. The strip also names the build it is about to load (`targetBuild`), which tells a real second deploy from a failed first reload.
+
 ### Applying it in the background
 
 Requested in as many words: *"force the update in the background too, to avoid dismissals."* `canApplyUpdateNow` (`lib/update-policy.ts`, pure) is the whole policy, and it has exactly two constraints:

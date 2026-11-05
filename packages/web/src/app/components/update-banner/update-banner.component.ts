@@ -24,6 +24,11 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
       >
         <span class="text-sm" style="color: var(--theme-text-secondary);">
           {{ (update.applying() ? 'settings.updateApplying' : 'settings.updateAvailable') | t }}
+          @if (update.targetBuild(); as build) {
+            <span class="ml-1 font-mono text-xs opacity-70" data-testid="update-banner-build">{{
+              build.slice(0, 7)
+            }}</span>
+          }
         </span>
         @if (!update.applying()) {
           <button

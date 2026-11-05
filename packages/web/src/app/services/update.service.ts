@@ -100,13 +100,28 @@ export class UpdateService {
    * indefinitely behind a banner that never appeared (#1126).
    */
   private readonly ready = signal(false);
-  readonly updateAvailable = this.ready.asReadonly();
+
+  /**
+   * This boot follows an apply whose outcome is not known yet (`verifyLastApply`).
+   * If the reload came back on the old build, the worker's navigation check finds
+   * the update again and would raise the strip the user just tapped, right before
+   * the verification reloads anyway (#1596). So nothing is offered or applied
+   * until it settles.
+   */
+  private readonly verifying = signal(
+    this.sw.isEnabled && readPendingUpdate(localStorage) !== null,
+  );
+
+  readonly updateAvailable = computed(() => this.ready() && !this.verifying());
 
   /** True from the moment `applyUpdate` starts until the reload replaces us. */
   readonly applying = signal(false);
 
-  /** The build the server serves, when the last probe found it differs from ours. */
-  private targetCommit: string | null = null;
+  /**
+   * The build the server serves, when the last probe found it differs from ours.
+   * Shown on the strip, so a real second update can be told from a failed first.
+   */
+  readonly targetBuild = signal<string | null>(null);
 
   /** Convenience for templates that want to render the manual control. */
   readonly checkAvailable = computed(() => this.enabled() && !this.updateAvailable());
@@ -187,7 +202,7 @@ export class UpdateService {
   start(): void {
     if (this.started || !this.sw.isEnabled) return;
     this.started = true;
-    void this.verifyLastApply();
+    void this.settleLastApply();
 
     this.poller = createVisibilityPoller({
       poll: () => this.backgroundCheck(),
@@ -296,7 +311,7 @@ export class UpdateService {
         version: this.version,
         commit: this.build.commit,
       });
-      this.targetCommit = verdict === 'update' ? served.commit : null;
+      this.targetBuild.set(verdict === 'update' ? served.commit : null);
       return { reachable: true, verdict, commit: served.commit };
     } catch {
       return { reachable: false };
@@ -307,7 +322,7 @@ export class UpdateService {
 
   /** A periodic/resume check. Never reports, never throws — it only stages. */
   private async backgroundCheck(): Promise<void> {
-    if (!this.sw.isEnabled || this.ready()) return;
+    if (!this.sw.isEnabled || this.ready() || this.verifying()) return;
     try {
       const server = await this.probeServerBuild();
       // Unreachable: the worker's manifest fetch would fail the same way.
@@ -321,7 +336,7 @@ export class UpdateService {
   }
 
   private maybeAutoApply(): void {
-    if (this.applying()) return;
+    if (this.applying() || this.verifying()) return;
     const decide = canApplyUpdateNow({
       ready: this.ready(),
       playing: this.player.isPlaying(),
@@ -350,12 +365,13 @@ export class UpdateService {
     this.applying.set(true);
     // Remember what this reload should land on, so the next boot can tell
     // whether it did (`verifyLastApply`).
-    writePendingUpdate(localStorage, { commit: this.targetCommit, attempts: 1, at: Date.now() });
+    const target = this.targetBuild();
+    writePendingUpdate(localStorage, { commit: target, attempts: 1, at: Date.now() });
     try {
       // When the server found the update, the worker may not have it yet — and a
       // reload is a navigation the worker answers from its OLD cache. Make it
       // fetch the new manifest first; `false` here also means "already staged".
-      if (this.targetCommit) await this.sw.checkForUpdate();
+      if (target) await this.sw.checkForUpdate();
     } catch {
       /* the reload, then verifyLastApply, are the recovery */
     }
@@ -375,22 +391,24 @@ export class UpdateService {
    * navigation. Reset the worker and reload once more — but only after reaching
    * the server, because a reset with no network would leave an installed app
    * with nothing to load. Bounded by `MAX_UPDATE_ATTEMPTS`.
+   *
+   * Answers whether it reloaded, which leaves this page with nothing more to do.
    */
-  private async verifyLastApply(): Promise<void> {
+  private async verifyLastApply(): Promise<boolean> {
     const pending = readPendingUpdate(localStorage);
-    if (!pending) return;
+    if (!pending) return false;
     const action = afterUpdateReload(pending, this.build.commit, Date.now());
     if (action !== 'escalate') {
       clearPendingUpdate(localStorage);
-      return;
+      return false;
     }
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
     const server = await this.probeServerBuild();
     if (!server.reachable || server.verdict !== 'update') {
       // Unreachable: try again on a later boot. Current: the server moved to
       // this very build in the meantime — nothing left to do.
       if (server.reachable) clearPendingUpdate(localStorage);
-      return;
+      return false;
     }
     writePendingUpdate(localStorage, {
       commit: server.commit,
@@ -403,6 +421,20 @@ export class UpdateService {
       /* a failed reset still reloads; the attempt is counted either way */
     }
     this.reload();
+    return true;
+  }
+
+  private async settleLastApply(): Promise<void> {
+    let reloading = false;
+    try {
+      reloading = await this.verifyLastApply();
+    } finally {
+      // Left set on a reload: the strip must not flash on the page being replaced.
+      if (!reloading) {
+        this.verifying.set(false);
+        this.maybeAutoApply();
+      }
+    }
   }
 
   private reload(): void {
