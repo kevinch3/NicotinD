@@ -21,6 +21,25 @@ function library(n: number): ScannedTrack[] {
   }));
 }
 
+/** The longest a 10 ms timer waited while `work` ran. */
+async function maxTimerGapDuring(work: () => Promise<void>): Promise<number> {
+  let last = performance.now();
+  let maxGap = 0;
+  const tick = setInterval(() => {
+    const now = performance.now();
+    maxGap = Math.max(maxGap, now - last);
+    last = now;
+  }, 10);
+  try {
+    await work();
+    // One more tick, or a synchronous build ends before any tick records its gap.
+    await new Promise((r) => setTimeout(r, 30));
+  } finally {
+    clearInterval(tick);
+  }
+  return maxGap;
+}
+
 describe('a full scan builds the library off the event loop (#1313)', () => {
   it('returns exactly what the inline build returns', async () => {
     const tracks = library(300);
@@ -44,26 +63,27 @@ describe('a full scan builds the library off the event loop (#1313)', () => {
   });
 
   it('keeps the event loop responsive while a whole library builds', async () => {
-    // 10k tracks: ~350 ms inline, well over the bar, without cloning a
-    // whole-library heap into a worker inside a shared test process.
+    // 10k tracks: ~350 ms inline, without cloning a whole-library heap into a
+    // worker inside a shared test process.
     const tracks = library(10_000);
-    let last = performance.now();
-    let maxGap = 0;
-    const tick = setInterval(() => {
-      const now = performance.now();
-      maxGap = Math.max(maxGap, now - last);
-      last = now;
-    }, 10);
-    try {
-      const built = await buildLibraryOffThread([tracks]);
-      expect(built.songs).toHaveLength(10_000);
-      // Let the timer fire once more, or a synchronous build ends before
-      // any tick could record the gap it caused.
-      await new Promise((r) => setTimeout(r, 30));
-    } finally {
-      clearInterval(tick);
+
+    // The bar is the inline build measured beside it, not a fixed number of ms: a
+    // shared runner can delay a 10 ms timer by itself (#1606), and that load slows
+    // the inline build as well. A build on the event loop blocks for its own whole
+    // length, so it can never come in under half of itself. Noise can, once, which
+    // is why a later attempt may pass and a real regression fails all of them.
+    const attempts: { inline: number; offThread: number }[] = [];
+    for (let i = 0; i < 3; i++) {
+      const inline = await maxTimerGapDuring(async () => {
+        expect(buildLibrary(tracks).songs).toHaveLength(10_000);
+      });
+      const offThread = await maxTimerGapDuring(async () => {
+        expect((await buildLibraryOffThread([tracks])).songs).toHaveLength(10_000);
+      });
+      attempts.push({ inline, offThread });
+      if (offThread < inline / 2) return;
     }
-    expect(maxGap).toBeLessThan(150);
+    throw new Error(`the build blocked the event loop: ${JSON.stringify(attempts)}`);
   }, 60_000);
 
   it('falls back to the inline build when the worker fails', async () => {

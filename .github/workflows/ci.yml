@@ -240,6 +240,12 @@ jobs:
       - name: Install-script gate (no unreviewed third-party downloads)
         run: bun run check:install-scripts
 
+      # A lockfile missing another platform's optional binary still installs on
+      # this runner, so nothing else here would notice before macOS, arm64 and
+      # desktop packaging break (#1533).
+      - name: Lockfile platform gate (no dropped optional binaries)
+        run: bun run check:lockfile-platforms
+
       # Every format an operator can standardize their library on must be a
       # valid choice: scannable, taggable, with a calibrated ladder and a
       # declared art/gain capability. The failure this prevents is silent and
