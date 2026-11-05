@@ -38,7 +38,7 @@ export function makePluginArtistImageLookup(deps: {
     let mbid = usableMbid(cached);
     if (!mbid && deps.lidarr) {
       const resolved = await resolveMbidViaLidarr(deps.lidarr, artist.name);
-      if (resolved) {
+      if (resolved.status === 'resolved') {
         mbid = resolved.mbid;
         upsertMbid(deps.db, {
           scope: 'artist',

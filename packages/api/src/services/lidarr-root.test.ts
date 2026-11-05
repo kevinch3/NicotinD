@@ -1,11 +1,15 @@
 import { describe, it, expect, mock } from 'bun:test';
 import type { Lidarr, LidarrArtist, LidarrRootFolder } from '../lidarr/index.js';
 import {
+  BOOT_MAX_ATTEMPTS,
+  BOOT_RETRY_BASE_MS,
+  BOOT_RETRY_MAX_MS,
   LIDARR_METADATA_ROOT_DEFAULT,
   ensureArtistRootFolder,
   isolateLidarrRoot,
   pathsOverlap,
   pickArtistRootFolder,
+  provisionLidarrRootAtBoot,
   resolveLidarrMetadataRoot,
 } from './lidarr-root';
 
@@ -150,6 +154,48 @@ describe('ensureArtistRootFolder', () => {
     await expect(ensureArtistRootFolder(lidarr, policy)).rejects.toThrow(
       /nicotind-metadata.*mount/i,
     );
+  });
+});
+
+describe('provisionLidarrRootAtBoot (#1591)', () => {
+  function recordingSleep() {
+    const waits: number[] = [];
+    return { waits, sleep: async (ms: number) => void waits.push(ms) };
+  }
+
+  it('registers the root on the first answer without waiting', async () => {
+    const { lidarr, addRootFolder } = makeLidarr({});
+    const { waits, sleep } = recordingSleep();
+    await provisionLidarrRootAtBoot(lidarr, policy, sleep);
+    expect(addRootFolder).toHaveBeenCalledTimes(1);
+    expect(waits).toEqual([]);
+  });
+
+  it('retries while Lidarr is still starting, then registers the root', async () => {
+    const { lidarr, addRootFolder } = makeLidarr({});
+    const answer = lidarr.artist.getRootFolders;
+    let refused = 2;
+    lidarr.artist.getRootFolders = mock(async () => {
+      if (refused-- > 0) throw new Error('ConnectionRefused');
+      return answer();
+    });
+    const { waits, sleep } = recordingSleep();
+    await provisionLidarrRootAtBoot(lidarr, policy, sleep);
+    expect(waits).toEqual([BOOT_RETRY_BASE_MS, BOOT_RETRY_BASE_MS * 2]);
+    expect(addRootFolder).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives up after the bounded attempts, without rejecting, and caps the back-off', async () => {
+    const { lidarr } = makeLidarr({});
+    const getRootFolders = mock(async () => {
+      throw new Error('ConnectionRefused');
+    });
+    lidarr.artist.getRootFolders = getRootFolders;
+    const { waits, sleep } = recordingSleep();
+    await provisionLidarrRootAtBoot(lidarr, policy, sleep);
+    expect(getRootFolders).toHaveBeenCalledTimes(BOOT_MAX_ATTEMPTS);
+    expect(waits).toHaveLength(BOOT_MAX_ATTEMPTS - 1);
+    expect(Math.max(...waits)).toBe(BOOT_RETRY_MAX_MS);
   });
 });
 

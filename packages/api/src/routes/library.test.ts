@@ -2258,6 +2258,28 @@ describe('artist-info routes', () => {
     expect(getArtistMeta(testDb, artistId)?.bio).toBe('Bio via Lidarr MBID');
   });
 
+  it('POST /artists/:id/refresh-info answers 502 and tombstones nothing when Lidarr cannot answer (#1582)', async () => {
+    const artistId = seedArtistWithAlbum('art-outage', 'Outage Artist');
+    const { registry } = makeRegistry({
+      result: { bio: 'x', urls: [], source: 'discogs', confidence: 0.9 },
+    });
+    const lidarr = {
+      artist: {
+        lookup: async () => {
+          throw new Error('Lidarr request timed out');
+        },
+      },
+    } as unknown as Lidarr;
+    const res = await makeApp('refiner', registry, lidarr).request(
+      `/artists/${artistId}/refresh-info`,
+      { method: 'POST' },
+    );
+    expect(res.status).toBe(502);
+    expect(
+      testDb.query('SELECT 1 FROM library_artist_meta WHERE artist_id = ?').get(artistId),
+    ).toBeNull();
+  });
+
   it('POST /artists/:id/refresh-info resolves the issue #211 widening but will not publish a bio from it', async () => {
     // Real prod case (issue #211): library "Eduardo Miño" → Lidarr canonical
     // "Luis Eduardo Miño Naranjo" (contains the library name as a whole-token

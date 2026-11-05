@@ -79,6 +79,7 @@ Miss semantics (the three-way split):
 | No MBID (after the live Lidarr fallback) | TTL-tombstone (re-checked after 30 days) |
 | MB answered, no usable country (XW/XE) | TTL-tombstone                             |
 | Transient MB failure (`ok: false`)     | Nothing written — retried next window     |
+| Lidarr or MB could not answer the id lookup (#1582) | Nothing written — retried next window |
 
 **Why the TTL tombstone (a deliberate amendment to the original spec):** the
 spec wanted no-MBID artists left pending forever so a later-acquired MBID
