@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parse } from 'yaml';
 
@@ -49,7 +50,10 @@ type ScanStep = Step & { uses?: string; with?: Record<string, unknown> };
 const deploy = parse(
   readFileSync(join(import.meta.dir, '..', '.github/workflows/deploy.yml'), 'utf8'),
 ) as { jobs: Record<string, { steps?: ScanStep[] }> };
-const isScan = (s: ScanStep) => s.uses?.startsWith('aquasecurity/trivy-action') ?? false;
+const isTrivy = (s: ScanStep) => s.uses?.startsWith('aquasecurity/trivy-action') ?? false;
+/** The one Trivy step that only decides on a rebuild, and so may not fail the job. */
+const REUSED_SCAN_ID = 'analysis-reused-scan';
+const isScan = (s: ScanStep) => isTrivy(s) && s.id !== REUSED_SCAN_ID;
 const steps = (job: string) => (ci.jobs[job]?.steps ?? []) as ScanStep[];
 
 describe('edge images are scanned before they ship (#1461)', () => {
@@ -89,5 +93,82 @@ describe('edge images are scanned before they ship (#1461)', () => {
     // The rebuilt analysis image is pushed untagged; only the retag names `edge`.
     const build = s.find((x) => x.id === 'analysis-build') as ScanStep | undefined;
     expect(JSON.stringify(build?.with)).not.toContain(':edge');
+  });
+});
+
+/**
+ * A reused image cannot pick up a fix published after its release, so a CVE fixed
+ * since then used to block every edge deploy until someone changed
+ * packages/analysis or cut a release (#1477).
+ */
+describe('a reused analysis image with a newly fixable CVE is rebuilt, not a blocker', () => {
+  const s = steps('edge');
+  const reused = s.find((x) => x.id === REUSED_SCAN_ID)!;
+  const stale = s.find((x) => x.id === 'analysis-stale')!;
+  const build = s.find((x) => x.id === 'analysis-build') as ScanStep & { if?: string };
+  const strict = s.find(isScan)!;
+  const release = (deploy.jobs['docker-merge']?.steps ?? []).find(isScan)!;
+
+  it('looks for the same findings as the strict scan, on the image it would reuse', () => {
+    for (const key of ['vuln-type', 'ignore-unfixed', 'severity']) {
+      expect(reused.with?.[key]).toEqual(release.with?.[key]);
+    }
+    expect(reused.uses).toBe(release.uses!);
+    expect(reused.with?.['image-ref']).toBe(
+      '${{ env.ANALYSIS }}:${{ steps.analysis.outputs.prev }}',
+    );
+  });
+
+  it('runs before the build it decides on, and the build honours it', () => {
+    expect(s.indexOf(reused)).toBeLessThan(s.indexOf(stale));
+    expect(s.indexOf(stale)).toBeLessThan(s.indexOf(build));
+    expect(build.if).toContain("steps.analysis.outputs.build == 'true'");
+    expect(build.if).toContain("steps.analysis-stale.outputs.rebuild == 'true'");
+  });
+
+  it('leaves the strict scan as what decides, after any rebuild', () => {
+    expect(s.indexOf(build)).toBeLessThan(s.indexOf(strict));
+    expect(strict.with?.['exit-code']).toBe(1);
+    expect((strict as ScanStep & { if?: string }).if).toBeUndefined();
+  });
+
+  const decide = (report: string): { code: number; output: string } => {
+    const dir = mkdtempSync(join(tmpdir(), 'edge-stale-'));
+    try {
+      writeFileSync(join(dir, 'analysis-reused-scan.json'), report);
+      const output = join(dir, 'out');
+      writeFileSync(output, '');
+      const r = Bun.spawnSync(['bash', '-c', stale.run!], {
+        cwd: dir,
+        env: {
+          PATH: process.env.PATH!,
+          GITHUB_OUTPUT: output,
+          ANALYSIS: 'img',
+          PREV: 'v1',
+        },
+      });
+      return { code: r.exitCode, output: readFileSync(output, 'utf8').trim() };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  it('rebuilds on a finding', () => {
+    const report = {
+      Results: [
+        { Vulnerabilities: [{ VulnerabilityID: 'CVE-1' }, { VulnerabilityID: 'CVE-1' }] },
+        { Target: 'clean' },
+      ],
+    };
+    expect(decide(JSON.stringify(report))).toEqual({ code: 0, output: 'rebuild=true' });
+  });
+
+  it('does not rebuild a clean image, including a report with no Results key', () => {
+    expect(decide('{"Results":[{"Target":"x"}]}').output).toBe('rebuild=false');
+    expect(decide('{}').output).toBe('rebuild=false');
+  });
+
+  it('fails on an unreadable report rather than reading it as clean', () => {
+    expect(decide('not json').code).not.toBe(0);
   });
 });
