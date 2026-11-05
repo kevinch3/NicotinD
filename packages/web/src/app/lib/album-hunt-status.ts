@@ -9,7 +9,8 @@ import { stageLabel } from './pipeline-stage';
  */
 export type AlbumHuntStatus =
   | { phase: 'idle' }
-  | { phase: 'searching' }
+  /** `ahead`: hunts the server runs before this one (#1625); absent once it is searching. */
+  | { phase: 'searching'; ahead?: number }
   /** A pick is made and its download is being enqueued — no job visible yet. */
   | { phase: 'starting' }
   | {
@@ -32,6 +33,14 @@ export const STARTING_HUNT: AlbumHuntStatus = { phase: 'starting' };
  * rather than only that it is busy.
  */
 export function albumHuntLabel(status: AlbumHuntStatus, t: (key: string) => string): string {
+  if (status.phase === 'searching' && status.ahead) {
+    const key = 'acquire.queuedAhead';
+    const label = t(key);
+    return (label === key ? 'Queued · {ahead} ahead' : label).replace(
+      '{ahead}',
+      String(status.ahead),
+    );
+  }
   if (status.phase !== 'job') {
     // English fallback for an unloaded key, the way `stageLabel` does it.
     const [key, english] =

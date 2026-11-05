@@ -152,10 +152,19 @@ test.describe('admin incomplete albums', () => {
       }),
     );
     const hunts: string[] = [];
-    await page.route('**/api/discography/albums/4242/hunt/base', (route) => {
+    // A hunt queues on the server and is polled (#1625).
+    await page.route('**/api/discography/albums/4242/hunt/queue', (route) => {
       hunts.push(route.request().method());
-      return route.fulfill({ json: { candidates: [], totalTracks: 11, skewNeeded: false } });
+      return route.fulfill({
+        status: 202,
+        json: { huntId: 'h-4242', state: 'queued', position: 0, etaMs: 0 },
+      });
     });
+    await page.route('**/api/discography/hunts/h-4242', (route) =>
+      route.fulfill({
+        json: { state: 'done', result: { candidates: [], totalTracks: 11, skewNeeded: false } },
+      }),
+    );
 
     await page.goto('/admin');
     await expandGroup(page, 'library-maintenance');

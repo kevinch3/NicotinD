@@ -409,10 +409,42 @@ stays until one is taken: `ToastService` gives an `error` toast with actions no 
 
 **No site-wide lock.** #1049 disabled every trigger while any hunt ran (`anyHunting`), because the
 source has two search lanes. That lock only ever covered the search, and extending it to cover the
-job would have locked the whole UI for minutes per album. Concurrent hunts now run; one the lanes
-cut short comes back `huntCutShort` and gets the "source busy — Retry" toast, which is the honest
-answer anyway. A catalog card knows its Lidarr id only once resolved, so after a reload it reads
-idle until clicked; the click resolves it and `hunt()` no-ops onto the live job.
+job would have locked the whole UI for minutes per album. Every card can be clicked; the hunts
+queue on the server (next section) rather than in the UI, and one the lanes still cut short comes
+back `huntCutShort` and gets the "source busy — Retry" toast. A catalog card knows its Lidarr id
+only once resolved, so after a reload it reads idle until clicked; the click resolves it and
+`hunt()` no-ops onto the live job.
+
+## Interactive hunts queue in core (#1625)
+
+The slskd addon runs **one hunt at a time** (`SearchLanes`), and a base-only hunt holds the lanes
+~11 s. A burst of clicks is therefore a queue whether we model it or not. It used to be modelled as
+one held request per click with one 55 s budget (`INTERACTIVE_HUNT_TIMEOUT_MS`) covering *queue
+wait plus search*, so the 5th hunt of a burst timed out having never searched. On kpc, 13 h before
+the fix: **26 of 70 hunts failed, all 26 that 55 s timeout**. 0 of 23 failed when no other hunt
+was in flight, 40–75% failed with one or more ahead. Live, 7 clicks: 12.4 / 22.3 / 34.5 / 45.5 s →
+200, then 55.1 s × 3 → 504. Retrying "after cooling down" worked only because it let the queue
+drain. Measurement: [acquisition-errors-2026-11.md](measurements/acquisition-errors-2026-11.md).
+
+Now the wait is free and only the running hunt spends a budget:
+
+- `POST /api/discography/albums/:id/hunt/queue` answers **202** `{huntId, state, position, etaMs}`
+  at once. `GET /api/discography/hunts/:huntId` answers `queued(position, etaMs)` |
+  `searching(elapsedMs, etaMs)` | `done(result)` | `failed(error, timedOut)`. `result` is exactly
+  the `hunt/base` body.
+- `HuntQueue` (`packages/api/src/services/hunt-queue.ts`) runs one hunt at a time. The same album
+  hunted twice joins the hunt already waiting. The running hunt gets 120 s (a base wave plus two
+  skew waves), because no request is held. `etaMs` = hunts ahead × the mean of the last 10
+  durations (12 s before any finish; a timed-out hunt is not a sample, since it measures the budget,
+  not the source). More than 50 waiting answers 429. Finished hunts stay readable for 5 min.
+- The web's `DownloadsApiService.huntAlbumBase` posts to the queue and polls every 1.5 s
+  (`HUNT_POLL_MS`), emitting the result once, so `AutoHuntService` and the manual modal are
+  unchanged above it. While a hunt waits, the tile reads **"Queued · N ahead"** (`searching` with
+  `ahead`). A hunt that ran and failed throws `HuntFailedError`, and its toast says why.
+- The hunt id is sent to the addon as `X-NicotinD-Attempt`, so core's `addon hunt completed` line
+  and the addon's `hunt summary` join on it (#1626).
+- `POST …/hunt/base`, the synchronous hunt, stays for installed apps that carry an older web
+  bundle. Nothing in the current web calls it.
 
 ## Deferred: unify the hunt engines
 

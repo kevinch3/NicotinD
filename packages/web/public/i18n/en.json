@@ -79,6 +79,7 @@
   "acquire.placeholder": "Search music or paste a link…",
   "acquire.preparing": "Preparing…",
   "acquire.finding": "Finding…",
+  "acquire.queuedAhead": "Queued · {ahead} ahead",
   "acquire.startingDownload": "Starting download…",
   "acquire.completeCopy": "complete",
   "acquire.getBestCopy": "Get the fullest copy of {album}",

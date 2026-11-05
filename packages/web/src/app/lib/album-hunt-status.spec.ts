@@ -10,6 +10,11 @@ describe('albumHuntLabel', () => {
     expect(albumHuntLabel(IDLE_HUNT, t)).toBe('Finding…');
   });
 
+  it('says how many hunts run first while one waits its turn (#1625)', () => {
+    expect(albumHuntLabel({ phase: 'searching', ahead: 3 }, t)).toBe('Queued · 3 ahead');
+    expect(albumHuntLabel({ phase: 'searching', ahead: 0 }, t)).toBe('Finding…');
+  });
+
   it('stops saying "Finding…" once the pick is being enqueued (#1543)', () => {
     expect(albumHuntLabel(STARTING_HUNT, t)).toBe('Starting download…');
   });

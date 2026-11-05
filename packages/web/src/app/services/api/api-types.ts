@@ -596,6 +596,19 @@ export interface HuntResult {
   searchesAnswered?: number;
 }
 
+/**
+ * A queued album hunt's poll answer (#1625). The source runs one hunt at a
+ * time, so a hunt waits its turn on the server instead of inside a request.
+ */
+export type QueuedHuntStatus =
+  | { state: 'queued'; position: number; etaMs: number }
+  | { state: 'searching'; elapsedMs: number; etaMs: number }
+  | { state: 'done'; result: HuntResult & { skewNeeded: boolean } }
+  | { state: 'failed'; error: string; timedOut: boolean };
+
+/** The two poll answers that mean "not finished yet". */
+export type QueuedHuntWaiting = Extract<QueuedHuntStatus, { state: 'queued' | 'searching' }>;
+
 /** True when a hunt response says the source cut the hunt short (#1049). */
 export function huntCutShort(res: { searchesFired?: number; searchesAnswered?: number }): boolean {
   return (

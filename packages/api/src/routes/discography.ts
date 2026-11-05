@@ -30,12 +30,18 @@ import { AddonRequestError, AddonTimeoutError } from '../services/addons/client.
 import { INTERACTIVE_HUNT_TIMEOUT_MS } from '../middleware/idle-budget.js';
 import { mapAddonJob } from '../services/addons/job-poller.js';
 import { onDiskTitles } from '../services/library-completeness.js';
+import { HuntQueue, HuntQueueFullError } from '../services/hunt-queue.js';
 
 const log = createLogger('discography');
 
 /** A person is waiting on these, behind the socket's idle budget (#1437). */
 const HUNT_OPTS = { timeoutMs: INTERACTIVE_HUNT_TIMEOUT_MS };
 const HUNT_TIMED_OUT = 'The source did not finish searching in time. Try again in a moment.';
+// A queued hunt holds no request (#1625), so the running one gets the addon's
+// whole multi-wave budget: a base wave plus two skew waves at 30 s each.
+const QUEUED_HUNT_TIMEOUT_MS = 120_000;
+
+class HuntTimedOutError extends Error {}
 
 /**
  * An addon album candidate in the wire shape the hunt modal renders (the
@@ -309,61 +315,127 @@ export function discographyRoutes({
     }
   });
 
+  type HuntBody = { artistName?: string; albumTitle?: string; skewSearch?: boolean };
+
+  /**
+   * One album hunt against the addon, answered in the shape the web's hunt
+   * surfaces read. Shared by the synchronous `/hunt/base` (kept for installed
+   * apps that still call it) and the queued path.
+   */
+  async function runAlbumHunt(
+    albumId: number,
+    body: HuntBody,
+    opts: { timeoutMs: number; attemptId?: string },
+  ) {
+    const [album, tracks] = await Promise.all([
+      lidarr.album.get(albumId),
+      lidarr.track.listByAlbum(albumId),
+    ]);
+    const artistName = body.artistName ?? album.artist?.artistName ?? '';
+    const albumTitle = body.albumTitle ?? album.title;
+    const addon = getAddon();
+    if (!addon) throw new Error('No acquisition addon registered');
+    // The addon runs its own base→skew policy in one call, so the modal's
+    // two-phase animation collapses to a single completed phase. Hunt-match
+    // feedback capture is dormant until the protocol's feedback capability
+    // lands (the raw responses live addon-side).
+    const res = await addon.client.albumsSearch(
+      {
+        artist: artistName,
+        album: albumTitle,
+        canonicalTracks: tracks.map((t) => ({ title: t.title })),
+        skew: body.skewSearch,
+      },
+      opts,
+    );
+    return {
+      candidates: res.candidates.map(wireCandidate),
+      totalTracks: tracks.length,
+      skewNeeded: false,
+      rateLimited: res.rateLimited ?? false,
+      // The queries never reached the source's network (#1040) — an empty
+      // result here is not evidence the album is unavailable.
+      sourceOffline: res.sourceOffline ?? false,
+      // Submitted vs completed inside the hunt's deadline (#1049): fewer answered
+      // means the source's search lanes were busy and the hunt was cut short.
+      searchesFired: res.searchesFired,
+      searchesAnswered: res.searchesAnswered,
+    };
+  }
+
+  const huntQueue = new HuntQueue<Awaited<ReturnType<typeof runAlbumHunt>>>({
+    isTimeout: (err) => err instanceof HuntTimedOutError,
+  });
+
   // POST /api/discography/albums/:lidarrAlbumId/hunt/base
-  // Phase-1 of the two-phase hunt: fires only the base queries and returns
-  // whether skew variants are needed. Used by the hunt modal to animate
-  // per-query progress (base rows → searching → done, then skew rows if needed).
+  // The synchronous hunt: one held request, one 55 s budget for everything. The
+  // web no longer calls it (it queues, below); installed apps carrying an older
+  // web bundle still do.
   app.post('/albums/:lidarrAlbumId/hunt/base', async (c) => {
     const { lidarrAlbumId } = c.req.param();
     const albumId = Number(lidarrAlbumId);
     if (Number.isNaN(albumId)) return c.json({ error: 'Invalid album ID' }, 400);
-
-    type HuntBody = { artistName?: string; albumTitle?: string; skewSearch?: boolean };
     const body = await c.req.json<HuntBody>().catch(() => ({}) as HuntBody);
+    if (!getAddon()) return c.json({ error: 'No acquisition addon registered' }, 503);
 
     try {
-      const [album, tracks] = await Promise.all([
-        lidarr.album.get(albumId),
-        lidarr.track.listByAlbum(albumId),
-      ]);
-
-      const artistName = body.artistName ?? album.artist?.artistName ?? '';
-      const albumTitle = body.albumTitle ?? album.title;
-
-      const addon = getAddon();
-      if (!addon) return c.json({ error: 'No acquisition addon registered' }, 503);
-      // The addon runs its own base→skew policy in one call, so the modal's
-      // two-phase animation collapses to a single completed phase. Hunt-match
-      // feedback capture is dormant until the protocol's feedback capability
-      // lands (the raw responses live addon-side).
-      const res = await addon.client.albumsSearch(
-        {
-          artist: artistName,
-          album: albumTitle,
-          canonicalTracks: tracks.map((t) => ({ title: t.title })),
-          skew: body.skewSearch,
-        },
-        HUNT_OPTS,
-      );
-      return c.json({
-        candidates: res.candidates.map(wireCandidate),
-        totalTracks: tracks.length,
-        skewNeeded: false,
-        rateLimited: res.rateLimited ?? false,
-        // The queries never reached the source's network (#1040) — an empty
-        // result here is not evidence the album is unavailable.
-        sourceOffline: res.sourceOffline ?? false,
-        // Submitted vs completed inside the hunt's deadline (#1049): fewer answered
-        // means the source's search lanes were busy and the hunt was cut short.
-        searchesFired: res.searchesFired,
-        searchesAnswered: res.searchesAnswered,
-      });
+      return c.json(await runAlbumHunt(albumId, body, HUNT_OPTS));
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       log.warn({ albumId, err: msg }, 'Album hunt (base phase) failed');
       if (err instanceof AddonTimeoutError) return c.json({ error: HUNT_TIMED_OUT }, 504);
       return c.json({ error: msg }, 500);
     }
+  });
+
+  // POST /api/discography/albums/:lidarrAlbumId/hunt/queue → 202 {huntId, position, etaMs}
+  // A hunt waits its turn here instead of inside a request (#1625): the source
+  // runs one hunt at a time, so the 5th click of a burst used to spend its whole
+  // 55 s budget queued and fail having never searched. Poll GET /hunts/:huntId.
+  app.post('/albums/:lidarrAlbumId/hunt/queue', async (c) => {
+    const { lidarrAlbumId } = c.req.param();
+    const albumId = Number(lidarrAlbumId);
+    if (Number.isNaN(albumId)) return c.json({ error: 'Invalid album ID' }, 400);
+    const body = await c.req.json<HuntBody>().catch(() => ({}) as HuntBody);
+    if (!getAddon()) return c.json({ error: 'No acquisition addon registered' }, 503);
+
+    const queuedAt = Date.now();
+    let queued;
+    try {
+      queued = huntQueue.enqueue(String(albumId), async (huntId) => {
+        const startedAt = Date.now();
+        const trace = { huntId, albumId, queuedMs: startedAt - queuedAt };
+        try {
+          const res = await runAlbumHunt(albumId, body, {
+            timeoutMs: QUEUED_HUNT_TIMEOUT_MS,
+            attemptId: huntId,
+          });
+          log.info(
+            { ...trace, searchMs: Date.now() - startedAt, candidates: res.candidates.length },
+            'Queued album hunt finished',
+          );
+          return res;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          log.warn(
+            { ...trace, searchMs: Date.now() - startedAt, err: msg },
+            'Queued album hunt failed',
+          );
+          throw err instanceof AddonTimeoutError ? new HuntTimedOutError(HUNT_TIMED_OUT) : err;
+        }
+      });
+    } catch (err) {
+      if (err instanceof HuntQueueFullError) return c.json({ error: err.message }, 429);
+      throw err;
+    }
+    return c.json({ huntId: queued.id, ...huntQueue.status(queued.id) }, 202);
+  });
+
+  // GET /api/discography/hunts/:huntId → queued | searching | done(result) | failed
+  app.get('/hunts/:huntId', (c) => {
+    const status = huntQueue.status(c.req.param('huntId'));
+    if (!status) return c.json({ error: 'Unknown or expired hunt' }, 404);
+    return c.json(status);
   });
 
   // POST /api/discography/albums/:lidarrAlbumId/hunt/skew

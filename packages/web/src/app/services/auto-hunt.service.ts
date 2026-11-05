@@ -1,7 +1,7 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { firstValueFrom, of, switchMap, map } from 'rxjs';
-import { DownloadsApiService } from './api/downloads-api.service';
+import { DownloadsApiService, HuntFailedError } from './api/downloads-api.service';
 import { TransferService } from './transfer.service';
 import { ToastService, type ToastAction } from './toast.service';
 import { sameAlbum, type AcquisitionJobView } from '@nicotind/core';
@@ -54,6 +54,8 @@ export class AutoHuntService {
   private readonly pending = signal<ReadonlyMap<number, number>>(new Map());
   /** Held albums whose pick is being enqueued: past "Finding…", no job yet. */
   private readonly starting = signal<ReadonlySet<number>>(new Set());
+  /** Held albums still waiting their turn on the server: hunts ahead of each (#1625). */
+  private readonly queuedAhead = signal<ReadonlyMap<number, number>>(new Map());
 
   /** The newest active job per Lidarr album; finished jobs never lock a card. */
   private readonly activeJobByAlbum = computed(() => {
@@ -75,8 +77,11 @@ export class AutoHuntService {
   );
 
   statusFor(lidarrId: number): AlbumHuntStatus {
-    if (this.pending().has(lidarrId))
-      return this.starting().has(lidarrId) ? STARTING_HUNT : SEARCHING_HUNT;
+    if (this.pending().has(lidarrId)) {
+      if (this.starting().has(lidarrId)) return STARTING_HUNT;
+      const ahead = this.queuedAhead().get(lidarrId);
+      return ahead ? { phase: 'searching', ahead } : SEARCHING_HUNT;
+    }
     const job = this.activeJobByAlbum().get(lidarrId);
     return job ? jobStatus(job) : IDLE_HUNT;
   }
@@ -127,6 +132,17 @@ export class AutoHuntService {
   reset(): void {
     this.pending.set(new Map());
     this.starting.set(new Set());
+    this.queuedAhead.set(new Map());
+  }
+
+  private setQueuedAhead(lidarrId: number, ahead: number): void {
+    this.queuedAhead.update((m) => {
+      if ((m.get(lidarrId) ?? 0) === ahead) return m;
+      const next = new Map(m);
+      if (ahead > 0) next.set(lidarrId, ahead);
+      else next.delete(lidarrId);
+      return next;
+    });
   }
 
   private setStarting(lidarrId: number, on: boolean): void {
@@ -146,6 +162,7 @@ export class AutoHuntService {
       if (released) return;
       released = true;
       this.setStarting(album.lidarrId, false);
+      this.setQueuedAhead(album.lidarrId, 0);
       this.endSearch(album.lidarrId);
     };
     // The hold outlives _run(): a confident match hands off to a countdown toast,
@@ -177,11 +194,12 @@ export class AutoHuntService {
       // two microtask ticks, breaking tests that only flush one tick).
       const hunt = await firstValueFrom(
         this.api
-          .huntAlbumBase(album.lidarrId, {
-            artistName,
-            albumTitle: album.title,
-            skewSearch: true,
-          })
+          .huntAlbumBase(
+            album.lidarrId,
+            { artistName, albumTitle: album.title, skewSearch: true },
+            (wait) =>
+              this.setQueuedAhead(album.lidarrId, wait.state === 'queued' ? wait.position : 0),
+          )
           .pipe(
             switchMap((baseResult) => {
               if (baseResult.skewNeeded) {
@@ -205,10 +223,14 @@ export class AutoHuntService {
         fired += phase.searchesFired ?? 0;
         answered += phase.searchesAnswered ?? 0;
       }
-    } catch {
+    } catch (err) {
+      this.setQueuedAhead(album.lidarrId, 0);
+      // A queued hunt that ran and failed says why (#1625); anything else is a
+      // transport failure with nothing more useful to add.
+      const why = err instanceof HuntFailedError ? ` — ${err.message}` : '';
       let searchErrId!: string;
       searchErrId = this.toasts.show({
-        message: `Search failed for "${album.title}"`,
+        message: `Search failed for "${album.title}"${why}`,
         kind: 'error',
         actions: [
           {
