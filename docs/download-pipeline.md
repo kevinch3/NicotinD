@@ -98,12 +98,12 @@ done. The journal is the audit log and the input to `--revert`. Resuming does no
 path. It copies every column, so starred, hidden, analysis and tag edits survive. It does not
 rescan, because a rescan would depend on the file's tags parsing back identically. Then:
 
-- `carrySongCuration` moves `SONG_CARRY_TABLES`, the song genre override and `acquisitions`.
+- `carrySongCuration` moves `SONG_CARRY_TABLES` (including `curation_flags` and
+  `curation_flag_reports` on `target_kind = 'song'`), the song genre override and `acquisitions`.
 - `RENAME_ALSO_MOVES` covers the tables that `carrySongCuration` exempts because its other callers
   re-encode or re-scan: `library_song_artists`, `library_song_genres`, the analysis-failure ledger,
   pending tag writes, `play_events` (play counts and recency join on `song_id`), and
-  `acquisition_job_items` (addon playlists). It also covers `curation_flags` and
-  `curation_flag_reports` on `target_kind = 'song'`, which a name-based sweep cannot see.
+  `acquisition_job_items` (addon playlists).
 - `RENAME_KEEPS` records what stays put: the radio-poll measurements, the provenance log and the
   audit log.
 
@@ -461,14 +461,17 @@ alone.
 
 #### Which tables, and who decides
 
-`SONG_CARRY_TABLES` and `SONG_CARRY_EXEMPT` are the two lists, and
+`SONG_CARRY_TABLES` and `SONG_CARRY_EXEMPT` are the two lists. A polymorphic `(target_kind, target_id)`
+pair counts as a song column too, and its entry must carry a `scope` selecting the song rows, or the
+carry would also move an artist or album row sharing the id (#1475).
 **`check:song-carry-coverage` reads the denominator from the live schema** — `applySchema` into an
 in-memory database, then `pragma_table_info` over every table — so a table added later is in scope
 whether or not anyone remembered the registry. Both directions fail: an unclassified column, and a
 registered entry the schema no longer has.
 
 Carried, because nothing else restores them: `playlist_songs`, `library_lyrics` (synced LRC offsets
-exist only here), `recommendation_feedback`, plus `library_embeddings` and
+exist only here), `recommendation_feedback`, `curation_flags`, `curation_flag_reports`, plus
+`library_embeddings` and
 `library_song_descriptors` — regenerable, but the first is ~46% of the database and the second is
 hours of recompute across a whole-library pass.
 

@@ -27,13 +27,16 @@ import {
 
 /** Columns that hold a `library_songs.id`. Name-based, and that is a limit. */
 const SONG_ID_COLUMN = /^(song_id|seed_song_id|candidate_song_id|song_path)$/;
+/** A `(target_kind, target_id)` pair can point at a song without naming one (#1475). */
+const POLYMORPHIC_KIND = 'target_kind';
+const POLYMORPHIC_ID = 'target_id';
 
 interface Found {
   table: string;
   column: string;
 }
 
-function schemaSongColumns(): Found[] {
+export function schemaSongColumns(): Found[] {
   const db = new Database(':memory:');
   applySchema(db);
   const tables = db
@@ -50,6 +53,9 @@ function schemaSongColumns(): Found[] {
       .all()
       .map((c) => c.name);
     for (const column of cols) if (SONG_ID_COLUMN.test(column)) found.push({ table, column });
+    if (cols.includes(POLYMORPHIC_KIND) && cols.includes(POLYMORPHIC_ID)) {
+      found.push({ table, column: POLYMORPHIC_ID });
+    }
   }
   db.close();
   return found.sort((a, b) => (a.table + a.column).localeCompare(b.table + b.column));
@@ -88,6 +94,10 @@ function main(): void {
 
   for (const e of [...SONG_CARRY_TABLES, ...SONG_CARRY_EXEMPT]) {
     if (!e.why.trim()) problems.push(`${key(e)} has no reason recorded`);
+    // Unscoped, the carry would also move the artist or album row sharing that id.
+    if (e.column === POLYMORPHIC_ID && !e.scope) {
+      problems.push(`${key(e)} is polymorphic but has no scope to select its song rows`);
+    }
   }
 
   // Print what was examined, so a shrinking denominator is visible.
@@ -107,4 +117,4 @@ function main(): void {
   }
 }
 
-main();
+if (import.meta.main) main();
