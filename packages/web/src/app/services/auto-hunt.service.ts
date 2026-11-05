@@ -1,8 +1,9 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
+import { Router } from '@angular/router';
 import { firstValueFrom, of, switchMap, map } from 'rxjs';
 import { DownloadsApiService } from './api/downloads-api.service';
 import { TransferService } from './transfer.service';
-import { ToastService } from './toast.service';
+import { ToastService, type ToastAction } from './toast.service';
 import { sameAlbum, type AcquisitionJobView } from '@nicotind/core';
 import {
   IDLE_HUNT,
@@ -43,6 +44,9 @@ export class AutoHuntService {
   private api = inject(DownloadsApiService);
   private transfer = inject(TransferService);
   private toasts = inject(ToastService);
+  private router = inject(Router);
+  /** The failure toast on screen, so a run of failures groups into one (#1509). */
+  private failureToast: { id: string; titles: string[] } | null = null;
   /**
    * Albums clicked whose job is not visible yet, refcounted: the auto-hunt and
    * the manual modal can hold the same album at once.
@@ -406,7 +410,12 @@ export class AutoHuntService {
           return;
         }
         if (outcome.kind === 'already-downloading') {
-          this.toasts.show({ message: `"${album.title}" is already downloading`, kind: 'info' });
+          let queuedId!: string;
+          queuedId = this.toasts.show({
+            message: `"${album.title}" is already downloading`,
+            kind: 'info',
+            actions: [this.viewInDownloads(() => queuedId)],
+          });
           return;
         }
         const next = attempts[i + 1];
@@ -417,30 +426,65 @@ export class AutoHuntService {
           });
           continue;
         }
-        let dlErrId!: string;
-        dlErrId = this.toasts.show({
-          message: outcome.message
-            ? `Download failed for "${album.title}" — ${outcome.message}`
-            : `Download failed for "${album.title}"`,
-          kind: 'error',
-          actions: [
-            {
-              label: 'Dismiss',
-              callback: () => {
-                this.toasts.dismiss(dlErrId);
-              },
-            },
-            {
-              label: 'Find Manually',
-              callback: () => {
-                this.toasts.dismiss(dlErrId);
-                openManual();
-              },
-            },
-          ],
-        });
+        this.showDownloadFailure(album, outcome.message, openManual);
         return;
       }
     }
+  }
+
+  private viewInDownloads(toastId: () => string): ToastAction {
+    return {
+      label: 'View in Downloads',
+      callback: () => {
+        this.toasts.dismiss(toastId());
+        void this.router.navigateByUrl('/get?tab=activity');
+      },
+    };
+  }
+
+  /**
+   * The last word on a failed Get. A failure while an earlier one is still on
+   * screen folds into it, or a burst of album clicks pushes everything else off the
+   * capped stack. A group offers no Find Manually: there is no one album to find.
+   * Nor does an album that a job is already fetching (#1509).
+   */
+  private showDownloadFailure(
+    album: DiscographyAlbum,
+    reason: string,
+    openManual: () => void,
+  ): void {
+    const prior = this.failureToast;
+    const onScreen = prior && this.toasts.toasts().some((t) => t.id === prior.id);
+    const titles = [...new Set([...(onScreen ? prior.titles : []), album.title])];
+    if (onScreen) this.toasts.dismiss(prior.id);
+
+    let id!: string;
+    const dismiss: ToastAction = { label: 'Dismiss', callback: () => this.toasts.dismiss(id) };
+    if (titles.length > 1) {
+      const named = titles.map((t) => `"${t}"`).join(', ');
+      id = this.toasts.show({
+        message: `${titles.length} albums failed: ${named}`,
+        kind: 'error',
+        actions: [dismiss],
+      });
+    } else {
+      const next: ToastAction = this.activeJobByAlbum().has(album.lidarrId)
+        ? this.viewInDownloads(() => id)
+        : {
+            label: 'Find Manually',
+            callback: () => {
+              this.toasts.dismiss(id);
+              openManual();
+            },
+          };
+      id = this.toasts.show({
+        message: reason
+          ? `Download failed for "${album.title}" — ${reason}`
+          : `Download failed for "${album.title}"`,
+        kind: 'error',
+        actions: [dismiss, next],
+      });
+    }
+    this.failureToast = { id, titles };
   }
 }

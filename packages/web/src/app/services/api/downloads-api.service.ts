@@ -54,6 +54,14 @@ export class DownloadsApiService {
     return this.http.post<{ ok: boolean }>(`/api/downloads/jobs/${jobId}/cancel`, {});
   }
 
+  /** Hunt a failed or cancelled album again (#1511). Takes as long as a hunt does. */
+  retryAlbumJob(jobId: string) {
+    return this.http.post<{
+      outcome: 'enqueued' | 'already-complete' | 'no-candidate';
+      detail?: string;
+    }>(`/api/downloads/jobs/${jobId}/retry`, {});
+  }
+
   /** Remove a job from the feed (and the owning addon, when addon-backed). */
   deleteJob(jobId: string) {
     return this.http.delete<{ ok: boolean }>(`/api/downloads/jobs/${jobId}`);

@@ -36,6 +36,8 @@ import { AddonRequestError } from '../services/addons/client.js';
 import { deleteSongs } from '../services/library-deletion.js';
 import { errorHandler } from '../middleware/error-handler.js';
 import { recordAudit } from '../services/audit-log.js';
+import { acquireAlbum } from '../services/album-acquire.js';
+import type { Lidarr } from '../lidarr/index.js';
 import { attachSongArtists } from '../services/artist-attach.js';
 import { SONG_SELECT, rowToSong, type SongRow } from './library.js';
 import type { ShareRescanScheduler } from '../services/share-rescan-scheduler.js';
@@ -109,10 +111,20 @@ export interface DownloadDiscardDeps {
   shareRescan: ShareRescanScheduler;
 }
 
+/** What re-hunting a failed album needs: the same inputs the unattended lanes use. */
+export interface AlbumRetryDeps {
+  lidarr: Lidarr | null;
+  getAddon: () => RemoteAddonPlugin | null;
+  minMatchPct: number;
+}
+
+const RETRYABLE_ALBUM_KINDS = new Set(['album-hunt', 'auto-acquire']);
+
 export function downloadRoutes(
   registry: ProviderRegistry,
   pluginRegistry?: PluginRegistry,
   discardDeps?: DownloadDiscardDeps,
+  albumRetry?: AlbumRetryDeps,
 ) {
   const app = new OpenAPIHono<AuthEnv>();
   // Self-contained error mapping (the download-review.ts pattern): the
@@ -265,6 +277,7 @@ export function downloadRoutes(
             userId: getCurrentUser(c).sub,
             artistName: album?.artist ?? guessed.artist,
             albumTitle: album?.title ?? guessed.title,
+            albumFromFolder: !album && guessed.title !== null,
             lidarrAlbumId: album?.lidarrAlbumId ?? null,
             sourceRef: addonJobId ? `addon:${provider.name}:${addonJobId}` : username,
             username,
@@ -615,18 +628,17 @@ export function downloadRoutes(
     return c.json({ ok: true, resourced: titles.length, addonJobId });
   });
 
-  app.delete('/jobs/:id', async (c) => {
-    const db = getDatabase();
-    const job = db
-      .query<{ id: string; method: string; source_ref: string | null }, [string]>(
-        `SELECT id, method, source_ref FROM acquisition_jobs WHERE id = ?`,
-      )
-      .get(c.req.param('id'));
-    if (!job) return c.json({ error: 'Job not found' }, 404);
-    // The feed row is core-owned and always deletable (issue #533 — legacy
-    // peer-ref rows and url mirrors used to 400 here, pointing at per-transfer
-    // routes that no longer exist, so Remove silently no-opped). The addon
-    // half is best-effort and only applies when the ref actually names one.
+  /**
+   * Drop a job's row and its addon half. The feed row is core-owned and always
+   * deletable (issue #533 — legacy peer-ref rows and url mirrors used to 400 here,
+   * pointing at per-transfer routes that no longer exist, so Remove silently
+   * no-opped). The addon half is best-effort and only applies when the ref actually
+   * names one. Reports what happened to the addon job, for the audit trail.
+   */
+  async function removeJob(
+    db: ReturnType<typeof getDatabase>,
+    job: { id: string; method: string; source_ref: string | null },
+  ): Promise<string> {
     const ref = parseAddonRef(job.source_ref);
     let released = 'no addon job';
     if (ref && ref.addonId === job.method) {
@@ -655,12 +667,101 @@ export function downloadRoutes(
     }
     db.run(`DELETE FROM acquisition_job_items WHERE job_id = ?`, [job.id]);
     db.run(`DELETE FROM acquisition_jobs WHERE id = ?`, [job.id]);
+    return released;
+  }
+
+  app.delete('/jobs/:id', async (c) => {
+    const db = getDatabase();
+    const job = db
+      .query<{ id: string; method: string; source_ref: string | null }, [string]>(
+        `SELECT id, method, source_ref FROM acquisition_jobs WHERE id = ?`,
+      )
+      .get(c.req.param('id'));
+    if (!job) return c.json({ error: 'Job not found' }, 404);
+    const released = await removeJob(db, job);
     recordAudit(db, getCurrentUser(c), 'download.remove', {
       targetKind: 'acquisition_job',
       targetId: job.id,
       detail: released,
     });
     return c.json({ ok: true });
+  });
+
+  /**
+   * Retry a failed or cancelled album (#1511). The original `candidateRef` expired
+   * with the addon's hunt cache, so this hunts again by Lidarr album id, the path
+   * auto-acquire takes, under the same unattended match bar. The new job replaces
+   * the failed card only once it exists, so a hunt that finds nothing leaves the
+   * card and its reason where they were.
+   */
+  app.post('/jobs/:id/retry', async (c) => {
+    const db = getDatabase();
+    const job = db
+      .query<
+        {
+          id: string;
+          kind: string;
+          state: string;
+          method: string;
+          source_ref: string | null;
+          artist_name: string | null;
+          album_title: string | null;
+          lidarr_album_id: number | null;
+          artist_mbid: string | null;
+        },
+        [string]
+      >(
+        `SELECT id, kind, state, method, source_ref, artist_name, album_title, lidarr_album_id,
+                artist_mbid
+           FROM acquisition_jobs WHERE id = ?`,
+      )
+      .get(c.req.param('id'));
+    if (!job) return c.json({ error: 'Job not found' }, 404);
+    if (
+      !RETRYABLE_ALBUM_KINDS.has(job.kind) ||
+      job.lidarr_album_id === null ||
+      !job.artist_name ||
+      !job.album_title
+    ) {
+      return c.json({ error: 'This download has no album to hunt again' }, 400);
+    }
+    if (job.state !== 'failed') {
+      return c.json({ error: 'Only a failed download can be retried' }, 409);
+    }
+    if (!albumRetry?.lidarr) return c.json({ error: 'Lidarr not configured' }, 503);
+
+    const user = getCurrentUser(c);
+    const { outcome, detail } = await acquireAlbum(
+      { db, lidarr: albumRetry.lidarr, getAddon: albumRetry.getAddon },
+      {
+        lidarrAlbumId: job.lidarr_album_id,
+        artistName: job.artist_name,
+        albumTitle: job.album_title,
+        minMatchPct: albumRetry.minMatchPct,
+        artistMbid: job.artist_mbid,
+        userId: user.sub,
+        retry: true,
+      },
+    );
+    recordAudit(db, user, 'album.acquire', {
+      targetKind: 'acquisition_job',
+      targetId: job.id,
+      detail: `retry outcome=${outcome} lidarrAlbumId=${job.lidarr_album_id}${detail ? ` detail=${detail}` : ''}`,
+    });
+    switch (outcome) {
+      case 'enqueued':
+        await removeJob(db, job);
+        return c.json({ outcome }, 201);
+      case 'in-flight':
+        return c.json({ error: 'already-downloading' as const }, 409);
+      case 'already-complete':
+      case 'no-candidate':
+        return c.json({ outcome, detail });
+      case 'slskd-unavailable':
+        return c.json({ error: detail ?? 'The source is unavailable' }, 503);
+      default:
+        return c.json({ error: detail ?? 'The download could not be queued' }, 502);
+    }
   });
 
   return app;

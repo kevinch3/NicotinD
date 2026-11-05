@@ -7,6 +7,7 @@ import { AutoHuntService } from './auto-hunt.service';
 import { DownloadsApiService } from './api/downloads-api.service';
 import { TransferService } from './transfer.service';
 import { ToastService } from './toast.service';
+import { Router } from '@angular/router';
 import type { DiscographyAlbum, FolderCandidate } from './api/api-types';
 
 const ALBUM: DiscographyAlbum = {
@@ -410,6 +411,93 @@ describe('AutoHuntService', () => {
 
     const lastCall = show.mock.calls.at(-1)?.[0];
     expect(lastCall?.kind).toBe('info');
+  });
+
+  /** Run one Get through to its result, firing the countdown toast's download. */
+  async function getAlbum(album: typeof ALBUM, openManual = vi.fn()): Promise<void> {
+    huntAlbumBase.mockReturnValue(
+      of({ candidates: [candidate(85)], totalTracks: 10, skewNeeded: false }),
+    );
+    let downloadCb: (() => void) | undefined;
+    show.mockImplementationOnce((config) => {
+      downloadCb = config.actions?.[0]?.callback;
+      return `countdown-${album.lidarrId}`;
+    });
+    svc().hunt(album, 'Pink Floyd', openManual);
+    await flush();
+    downloadCb?.();
+    await flush();
+  }
+
+  describe('actionable toasts (#1509)', () => {
+    const labels = (call: { actions?: { label: string }[] } | undefined) =>
+      call?.actions?.map((a) => a.label);
+
+    it('links "already downloading" to the Downloads page', async () => {
+      huntDownload.mockReturnValue(throwError(() => ({ error: { error: 'already-downloading' } })));
+      await getAlbum(ALBUM);
+      const toast = show.mock.calls.at(-1)?.[0];
+      expect(toast?.message).toContain('is already downloading');
+      expect(labels(toast)).toEqual(['View in Downloads']);
+
+      const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+      toast?.actions?.[0]?.callback();
+      expect(navigate).toHaveBeenCalledWith('/get?tab=activity');
+      expect(dismiss).toHaveBeenCalled();
+    });
+
+    it('keeps Find Manually on a plain failure', async () => {
+      huntDownload.mockReturnValue(throwError(() => ({ status: 400, error: { error: 'nope' } })));
+      const openManual = vi.fn();
+      await getAlbum(ALBUM, openManual);
+      const toast = show.mock.calls.at(-1)?.[0];
+      expect(toast?.kind).toBe('error');
+      expect(labels(toast)).toEqual(['Dismiss', 'Find Manually']);
+      toast?.actions?.[1]?.callback();
+      expect(openManual).toHaveBeenCalled();
+    });
+
+    it('does not offer Find Manually for an album a job is already fetching', async () => {
+      // The job appears while the Get is in flight: another lane started it.
+      huntDownload.mockImplementation(() => {
+        acquisitionJobs.set([job({ lidarrAlbumId: ALBUM.lidarrId })]);
+        return throwError(() => ({ status: 400, error: { error: 'nope' } }));
+      });
+      await getAlbum(ALBUM);
+      expect(labels(show.mock.calls.at(-1)?.[0])).toEqual(['Dismiss', 'View in Downloads']);
+    });
+
+    it('collapses failures into one toast while the last is on screen', async () => {
+      huntDownload.mockReturnValue(throwError(() => ({ status: 400, error: { error: 'nope' } })));
+      show.mockReturnValue('failure-1');
+      await getAlbum(ALBUM);
+      show.mockReturnValue('failure-2');
+      await getAlbum({ ...ALBUM, lidarrId: ALBUM.lidarrId + 1, title: 'Second' });
+
+      expect(dismiss).toHaveBeenCalledWith('failure-1');
+      const toast = show.mock.calls.at(-1)?.[0];
+      expect(toast?.message).toBe(`2 albums failed: "${ALBUM.title}", "Second"`);
+      expect(labels(toast)).toEqual(['Dismiss']);
+    });
+
+    it('starts over once the failure toast has left the screen', async () => {
+      huntDownload.mockReturnValue(throwError(() => ({ status: 400, error: { error: 'nope' } })));
+      show.mockReturnValue('failure-1');
+      await getAlbum(ALBUM);
+      toastsVisible = false;
+      await getAlbum({ ...ALBUM, lidarrId: ALBUM.lidarrId + 1, title: 'Second' });
+      expect(show.mock.calls.at(-1)?.[0]?.message).toContain('Download failed for "Second"');
+    });
+
+    it('a repeat failure of the same album stays a single-album toast', async () => {
+      huntDownload.mockReturnValue(throwError(() => ({ status: 400, error: { error: 'nope' } })));
+      show.mockReturnValue('failure-1');
+      await getAlbum(ALBUM);
+      await getAlbum(ALBUM);
+      const toast = show.mock.calls.at(-1)?.[0];
+      expect(toast?.message).toContain(`Download failed for "${ALBUM.title}"`);
+      expect(labels(toast)).toEqual(['Dismiss', 'Find Manually']);
+    });
   });
 
   it('shows info toast (not error) on 409 already-complete', async () => {

@@ -268,6 +268,64 @@ describe('LibraryOrganizer (real fs)', () => {
   });
 
   /**
+   * Issue #1540. A grab with no album intent guesses its name from the peer's
+   * folder. That is good enough for the card, and not for the file: it filed the
+   * album under the peer's spelling, so it never merged with another lane's copy.
+   */
+  describe('an album name guessed from a folder', () => {
+    const guess = {
+      jobId: 'j1540',
+      kind: 'direct' as const,
+      artistName: 'Elektronika',
+      albumTitle: 'Peers Own Spelling',
+      albumFromFolder: true,
+      lidarrAlbumId: null,
+      genres: null,
+      year: null,
+      canonicalTracks: null,
+    };
+
+    async function grab(album: string | undefined) {
+      const root = tmpRoot();
+      const staging = join(root, '_staging');
+      seed(staging, 'peer folder/01 - Vermillion.mp3', {
+        artist: 'Damian Lazarus',
+        album,
+        title: 'Vermillion',
+        trackNumber: 1,
+      });
+      const org = new LibraryOrganizer({
+        transcodeLossless: { enabled: false, bitRate: 192 },
+        musicDir: root,
+        stagingDir: staging,
+        jobLookup: () => null,
+      });
+      await org.organizeBatch([
+        {
+          username: 'peer',
+          directory: 'peer folder',
+          filename: '01 - Vermillion.mp3',
+          directoryFileCount: 1,
+          jobMeta: guess,
+        },
+      ]);
+      return root;
+    }
+
+    it("never overrides the file's own album tag", async () => {
+      const root = await grab('Message From The Other Side');
+      const landed = join(root, 'Damian Lazarus', 'Message From The Other Side');
+      expect(existsSync(join(landed, '01 - Vermillion.mp3'))).toBe(true);
+      expect(existsSync(join(root, 'Damian Lazarus', guess.albumTitle))).toBe(false);
+    });
+
+    it('fills in for a file whose album tag is a placeholder', async () => {
+      const root = await grab('Unknown');
+      expect(existsSync(join(root, 'Damian Lazarus', guess.albumTitle))).toBe(true);
+    });
+  });
+
+  /**
    * Issue #997. spotdl wrote `ALBUM=Unknown` on all 13 files of a self-titled
    * release, so the tag is a placeholder and the folder name (`Gondwana`) is
    * one `inferFolderAlbum` refuses to use — it equals the artist. The job's

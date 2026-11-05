@@ -306,6 +306,11 @@ Idempotent: an album already on disk (`albumAlreadyComplete`, shared in `library
 
 ---
 
+**Failure toasts (#1509).** "Already downloading" links to the Activity tab. A failure while an earlier one
+is still on screen folds into it ("2 albums failed: …"), so a burst of Gets cannot push everything else off
+the capped stack. A group offers no **Find Manually**, since there is no one album to find, and neither does
+an album a job is already fetching, which offers **View in Downloads** instead.
+
 ## Idempotent hunt — one album = one download = one folder
 
 `POST /api/discography/albums/:id/hunt-download` (`packages/api/src/routes/discography.ts`) guards against duplicate downloads:

@@ -572,6 +572,40 @@ describe('mergeAcquisitionJobs', () => {
       expect(merged[0]!.canRetry).toBe(false);
     });
 
+    describe('album retry (#1511)', () => {
+      const album = (over: Parameters<typeof acqJob>[0]) =>
+        mergeAcquisitionJobs([], [acqJob({ lidarrAlbumId: 7, ...over })])[0]!;
+
+      it.each(['album-hunt', 'auto-acquire'] as const)(
+        'offers a hunt-again Retry on a failed %s',
+        (kind) => {
+          const item = album({ kind, stage: 'error' });
+          expect(item.canRetry).toBe(true);
+          expect(item.retryMode).toBe('album');
+        },
+      );
+
+      it('has nothing to hunt without a Lidarr album', () => {
+        expect(album({ kind: 'album-hunt', stage: 'error', lidarrAlbumId: null }).canRetry).toBe(
+          false,
+        );
+      });
+
+      it('leaves a live or a partial album to its other controls', () => {
+        expect(album({ kind: 'album-hunt', stage: 'downloading' }).canRetry).toBe(false);
+        expect(album({ kind: 'album-hunt', stage: 'done', error: '1 of 2' }).canRetry).toBe(false);
+      });
+
+      it('does not retry a folder grab or an import', () => {
+        expect(album({ kind: 'direct', stage: 'error' }).canRetry).toBe(false);
+        expect(album({ kind: 'import', stage: 'error' }).canRetry).toBe(false);
+      });
+
+      it('sends a URL job down the acquire route', () => {
+        expect(album({ kind: 'url', stage: 'error' }).retryMode).toBe('url');
+      });
+    });
+
     it('never offers Retry on a clean done URL acquire', () => {
       const merged = mergeAcquisitionJobs([], [acqJob({ kind: 'url', stage: 'done' })]);
       expect(merged[0]!.canRetry).toBe(false);

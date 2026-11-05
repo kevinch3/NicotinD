@@ -13,7 +13,7 @@
  * sources: a catalog credits "Damian Lazarus", the peer's folder and tags
  * "Damian Lazarus & The Ancient Moons".
  */
-import { cleanFolderName, isGenericFolderName } from './utils/folder-name.js';
+import { cleanFolderName, isGenericFolderName, isGenreShelfName } from './utils/folder-name.js';
 
 // Words that mark a bracketed/dashed segment as an *edition* qualifier rather
 // than part of the album title — so "(2011 Deluxe Remaster)", "[Explicit]",
@@ -157,7 +157,8 @@ export function sameAlbum(a: AlbumIdentity, b: AlbumIdentity): boolean {
  * peer convention); otherwise the parent folder is the artist and the leaf the
  * album. Generic containers ("music", "FLAC", "CD1") name nothing — a wrong
  * name blocks a later backfill (#674) and, here, would make a guard match a
- * stranger. Null fields when nothing usable is there.
+ * stranger — and a genre shelf names no artist (#1540). Null fields when nothing
+ * usable is there.
  */
 export function folderAlbumIdentity(directory: string): {
   artist: string | null;
@@ -177,5 +178,9 @@ export function folderAlbumIdentity(directory: string): {
     return { artist: left, title: right };
   }
   const album = datePrefixed && right ? right : cleaned || leaf;
-  return { artist: usable(segments[segments.length - 2]), title: usable(album) };
+  const parent = segments[segments.length - 2];
+  return {
+    artist: parent && isGenreShelfName(parent) ? null : usable(parent),
+    title: usable(album),
+  };
 }

@@ -154,6 +154,15 @@ export class DownloadsComponent {
     this.downloadFeed().filter((i) => i.canCancel && !i.cancelRequested),
   );
   readonly cancellableFeedCount = computed(() => this.cancellableFeed().length);
+  /** The rows Retry failed would act on (#1511): network cards that actually failed. */
+  private readonly retriableFailed = computed(() =>
+    this.downloadFeed().filter(
+      (i) =>
+        i.kind === 'network' && i.canRetry && i.stage === 'error' && !this.retrying().has(i.key),
+    ),
+  );
+  readonly retriableFailedCount = computed(() => this.retriableFailed().length);
+  readonly retryingAllFailed = signal(false);
   readonly clearableFeedCount = computed(
     () => this.downloadFeed().filter((i) => i.stage === 'done' || i.stage === 'error').length,
   );
@@ -190,7 +199,7 @@ export class DownloadsComponent {
     // An addon-run URL acquire renders in the network lane but retries through
     // the acquire endpoint (which re-submits the stored link). Without this the
     // Retry button would render and do nothing.
-    if (item.jobId) void this.retryJobById(item.jobId, item.key);
+    if (item.jobId) void this.retryJobById(item);
   }
 
   onItemCancel(item: DownloadItem): void {
@@ -321,32 +330,79 @@ export class DownloadsComponent {
   }
 
   /**
-   * Retry a unified-feed job by id (addon URL acquires; see `onItemRetry`).
-   *
-   * `feedKey` is separate from `jobId` on purpose: the template asks
-   * `retrying().has(item.key)`, and a network-lane item's key is
-   * `job:<id>`, not the bare id. Registering the id here meant the two never
-   * matched, so Retry stayed enabled through the whole resolve window — which
-   * is what made #714's server-side race trivially reachable by clicking.
+   * Retry one network-lane card and report what became of it; the caller decides
+   * how to tell the user. Marked by `item.key` rather than the job id: the template
+   * asks `retrying().has(item.key)`, and a network-lane key is `job:<id>`. Registering
+   * the id meant the two never matched, so Retry stayed enabled through the whole
+   * resolve window — which is what made #714's server-side race trivially reachable
+   * by clicking.
    */
-  private async retryJobById(jobId: string, feedKey: string): Promise<void> {
-    if (this.retrying().has(feedKey)) return;
-    this.retrying.update((prev) => new Set(prev).add(feedKey));
+  private async retryNetworkItem(item: DownloadItem): Promise<{ ok: boolean; message?: string }> {
+    const jobId = item.jobId;
+    if (!jobId || this.retrying().has(item.key)) return { ok: true };
+    this.retrying.update((prev) => new Set(prev).add(item.key));
     try {
-      await firstValueFrom(this.api.retryAcquireJob(jobId));
+      if (item.retryMode !== 'album') {
+        await firstValueFrom(this.api.retryAcquireJob(jobId));
+        return { ok: true };
+      }
+      const { outcome, detail } = await firstValueFrom(this.api.retryAlbumJob(jobId));
+      if (outcome === 'already-complete') {
+        return {
+          ok: true,
+          message: this.i18n.t('downloads.retryAlreadyHave', { title: item.title }),
+        };
+      }
+      if (outcome === 'no-candidate') {
+        return {
+          ok: false,
+          message: detail ?? this.i18n.t('downloads.retryNoSource', { title: item.title }),
+        };
+      }
+      return { ok: true };
     } catch (err) {
-      this.toasts.show({
-        message: httpErrorMessage(err, 'Could not retry this download'),
-        kind: 'error',
-      });
+      const code = (err as { error?: { error?: string } })?.error?.error;
+      // Already fetching through another card: what Retry was asking for anyway.
+      if (code === 'already-downloading') return { ok: true };
+      return { ok: false, message: httpErrorMessage(err, 'Could not retry this download') };
     } finally {
       this.retrying.update((prev) => {
         const next = new Set(prev);
-        next.delete(feedKey);
+        next.delete(item.key);
         return next;
       });
-      await this.transferService.kickPoll();
     }
+  }
+
+  private async retryJobById(item: DownloadItem): Promise<void> {
+    const { ok, message } = await this.retryNetworkItem(item);
+    if (message) this.toasts.show({ message, kind: ok ? 'info' : 'error' });
+    await this.transferService.kickPoll();
+  }
+
+  /**
+   * The header button (#1511). One at a time: each album is a full hunt, and firing
+   * them together would cut each other's searches short (#1049). One summary toast,
+   * rather than a toast per album pushing the rest off the capped stack.
+   */
+  async retryFailed(): Promise<void> {
+    if (this.retryingAllFailed()) return;
+    const failed = this.retriableFailed();
+    if (failed.length === 0) return;
+    this.retryingAllFailed.set(true);
+    let retried = 0;
+    try {
+      for (const item of failed) {
+        if ((await this.retryNetworkItem(item)).ok) retried++;
+        await this.transferService.kickPoll();
+      }
+    } finally {
+      this.retryingAllFailed.set(false);
+    }
+    this.toasts.show({
+      message: this.i18n.t('downloads.retryFailedResult', { retried, total: failed.length }),
+      kind: retried === failed.length ? 'info' : 'error',
+    });
   }
 
   /** The header button: never cancels outright (#1506) — re-queuing means

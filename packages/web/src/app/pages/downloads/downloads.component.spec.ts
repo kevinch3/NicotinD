@@ -222,6 +222,117 @@ describe('DownloadsComponent — active feed', () => {
     expect(transferService.kickPoll).toHaveBeenCalled();
   });
 
+  describe('album retry (#1511)', () => {
+    const flush = async () => {
+      for (let i = 0; i < 12; i++) await Promise.resolve();
+    };
+
+    it('hunts a failed album again through the job route', async () => {
+      const retryAlbumJob = vi.fn().mockReturnValue(of({ outcome: 'enqueued' }));
+      const retryAcquireJob = vi.fn();
+      const { component, toastShow, transferService } = setup({
+        api: { retryAlbumJob, retryAcquireJob },
+      });
+      component.onItemRetry(networkRow({ retryMode: 'album' }));
+      await flush();
+      expect(retryAlbumJob).toHaveBeenCalledWith('j1');
+      expect(retryAcquireJob).not.toHaveBeenCalled();
+      expect(toastShow).not.toHaveBeenCalled();
+      expect(transferService.kickPoll).toHaveBeenCalled();
+    });
+
+    it('says so when the new hunt found no source', async () => {
+      const { component, toastShow } = setup({
+        api: { retryAlbumJob: () => of({ outcome: 'no-candidate' }) },
+      });
+      component.onItemRetry(networkRow({ retryMode: 'album', title: 'Album X' }));
+      await flush();
+      expect(toastShow).toHaveBeenCalledWith(expect.objectContaining({ kind: 'error' }));
+    });
+
+    it('reads an album already on disk as good news', async () => {
+      const { component, toastShow } = setup({
+        api: { retryAlbumJob: () => of({ outcome: 'already-complete' }) },
+      });
+      component.onItemRetry(networkRow({ retryMode: 'album' }));
+      await flush();
+      expect(toastShow).toHaveBeenCalledWith(expect.objectContaining({ kind: 'info' }));
+    });
+
+    it('treats an album already downloading as done, not as a failure', async () => {
+      const { throwError } = await import('rxjs');
+      const { component, toastShow } = setup({
+        api: {
+          retryAlbumJob: () =>
+            throwError(() => ({ status: 409, error: { error: 'already-downloading' } })),
+        },
+      });
+      component.onItemRetry(networkRow({ retryMode: 'album' }));
+      await flush();
+      expect(toastShow).not.toHaveBeenCalled();
+    });
+
+    it('Retry failed walks the failed cards one at a time, with one summary toast', async () => {
+      const { Subject } = await import('rxjs');
+      const pending: InstanceType<typeof Subject<{ outcome: string }>>[] = [];
+      const retryAlbumJob = vi.fn(() => {
+        const s = new Subject<{ outcome: string }>();
+        pending.push(s);
+        return s;
+      });
+      const retryAcquireJob = vi.fn().mockReturnValue(of({ jobId: 'n' }));
+      const { component, toastShow } = setup({ api: { retryAlbumJob, retryAcquireJob } });
+      vi.spyOn(component, 'downloadFeed').mockReturnValue([
+        networkRow({ key: 'job:a', jobId: 'a', retryMode: 'album' }),
+        networkRow({ key: 'job:b', jobId: 'b', retryMode: 'album' }),
+        networkRow({ key: 'job:u', jobId: 'u', retryMode: 'url' }),
+        // Not failed: a partial URL job keeps its own Retry, outside the bulk.
+        networkRow({ key: 'job:p', jobId: 'p', retryMode: 'url', stage: 'done' }),
+        // Not retriable.
+        networkRow({ key: 'job:n', jobId: 'n', canRetry: false }),
+      ] as never);
+
+      const run = component.retryFailed();
+      await flush();
+      expect(retryAlbumJob).toHaveBeenCalledTimes(1); // the second waits for the first
+      pending[0]!.next({ outcome: 'enqueued' });
+      pending[0]!.complete();
+      await flush();
+      expect(retryAlbumJob).toHaveBeenCalledTimes(2);
+      pending[1]!.next({ outcome: 'no-candidate' });
+      pending[1]!.complete();
+      await run;
+
+      expect(retryAlbumJob.mock.calls).toEqual([['a'], ['b']]);
+      expect(retryAcquireJob.mock.calls).toEqual([['u']]);
+      expect(toastShow).toHaveBeenCalledTimes(1);
+      expect(toastShow).toHaveBeenCalledWith(expect.objectContaining({ kind: 'error' }));
+    });
+
+    it('does nothing with no failed card', async () => {
+      const { component, toastShow } = setup();
+      await component.retryFailed();
+      expect(toastShow).not.toHaveBeenCalled();
+    });
+
+    it('ignores a second click while running', async () => {
+      const { Subject } = await import('rxjs');
+      const gate = new Subject<{ outcome: string }>();
+      const retryAlbumJob = vi.fn(() => gate);
+      const { component } = setup({ api: { retryAlbumJob } });
+      vi.spyOn(component, 'downloadFeed').mockReturnValue([
+        networkRow({ retryMode: 'album' }),
+      ] as never);
+      const first = component.retryFailed();
+      await flush();
+      await component.retryFailed();
+      expect(retryAlbumJob).toHaveBeenCalledTimes(1);
+      gate.next({ outcome: 'enqueued' });
+      gate.complete();
+      await first;
+    });
+  });
+
   it('surfaces a failed retry instead of swallowing it', async () => {
     const { throwError } = await import('rxjs');
     const { component, toastShow } = setup({

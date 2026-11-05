@@ -443,6 +443,9 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   // by carrying an id forward), whether the addon classified the link as a
   // playlist, and — once generated — which playlist to keep in sync.
   addColumnIfMissing(db, 'acquisition_jobs', 'user_id', 'TEXT');
+  // `album_title` came from the peer's folder name, not from anyone who knew the
+  // album: enough for the card and the duplicate guard, not to retag a file (#1540).
+  addColumnIfMissing(db, 'acquisition_jobs', 'album_from_folder', 'INTEGER NOT NULL DEFAULT 0');
   addColumnIfMissing(db, 'acquisition_jobs', 'is_playlist', 'INTEGER NOT NULL DEFAULT 0');
   addColumnIfMissing(db, 'acquisition_jobs', 'playlist_id', 'TEXT');
 

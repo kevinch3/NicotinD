@@ -63,6 +63,50 @@ const GENERIC_FOLDER_NAMES = new Set([
   'incomplete',
 ]);
 
+/**
+ * Genre sorting folders. A *parent* folder named this is a shelf, not an artist
+ * (#1540). Kept apart from the generic list because a leaf with one of these names
+ * can be a real album: U2's "Pop", or any album called "Soul". A band really called
+ * this loses only a display hint, which the addon's metadata refills.
+ */
+const GENRE_SHELF_NAMES = new Set([
+  'ambient',
+  'blues',
+  'classical',
+  'country',
+  'dance',
+  'disco',
+  'downtempo',
+  'electronic',
+  'electronica',
+  'elektronika',
+  'folk',
+  'funk',
+  'hip hop',
+  'hip-hop',
+  'house',
+  'indie',
+  'jazz',
+  'latin',
+  'metal',
+  'ost',
+  'pop',
+  'punk',
+  'rap',
+  'reggae',
+  'rock',
+  'soul',
+  'soundtrack',
+  'soundtracks',
+  'techno',
+  'trance',
+  'world',
+]);
+
+export function isGenreShelfName(folderName: string): boolean {
+  return GENRE_SHELF_NAMES.has(folderName.toLowerCase().trim());
+}
+
 export function isGenericFolderName(folderName: string): boolean {
   const lower = folderName.toLowerCase().trim();
   if (lower.length <= 2) return true;

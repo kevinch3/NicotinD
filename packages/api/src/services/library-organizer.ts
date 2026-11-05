@@ -41,7 +41,7 @@ import {
 } from './path-sanitize.js';
 import { isAbsolute } from 'node:path';
 import type { AcoustIdLookup } from './acoustid-lookup.js';
-import { normalizeTitle } from '@nicotind/core';
+import { isUnknownLike, normalizeTitle } from '@nicotind/core';
 import { reconcileAlbumFolder } from './album-reconcile.js';
 import { albumGroupKey } from './album-grouping.js';
 import { DEFAULT_UNSORTED_DIR } from './library-paths.js';
@@ -464,10 +464,16 @@ export class LibraryOrganizer {
     // an alternate-peer fallback folder matches no jobLookup entry, but its
     // files carry their job identity directly.
     const jobMeta = resolved.find((r) => r.source?.jobMeta)?.source?.jobMeta ?? null;
+    // Read off the files: by now the derived tags may hold a folder inference too.
+    const ownAlbumTag = resolved.some((r) => {
+      const album = normalizeTagValue(r.tags.album);
+      return !!album && !isUnknownLike(album);
+    });
     const folderTags = this.applyJobCanonicalName(
       directory,
       this.deriveFolderTags(resolved),
       jobMeta,
+      jobMeta?.albumFromFolder === true && ownAlbumTag,
     );
 
     // Place every file serially — stage 1 owns batch-shared state and its order
@@ -501,13 +507,17 @@ export class LibraryOrganizer {
    * If this peer directory was recorded as an album hunt, name the destination
    * folder after the Lidarr canonical album (overriding the peer's edition tag)
    * so every edition/re-hunt of the album lands in one `<Artist>/<album>` dir.
-   * No match → tags pass through unchanged.
+   * No match → tags pass through unchanged. A name guessed from the peer's folder
+   * only fills a gap: it never overrides the album tag the file carries, which is
+   * what lets the album merge with the same one from any other lane (#1540).
    */
   private applyJobCanonicalName(
     directory: string,
     tags: AlbumTags,
     jobMeta?: { artistName: string | null; albumTitle: string | null } | null,
+    keepFileTag = false,
   ): AlbumTags {
+    if (keepFileTag) return tags;
     const job =
       jobMeta?.albumTitle != null
         ? { artist: jobMeta.artistName, album: jobMeta.albumTitle }

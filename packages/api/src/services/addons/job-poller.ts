@@ -1126,6 +1126,7 @@ export class AddonJobPoller {
           kind: AcquisitionJobKind;
           artist_name: string | null;
           album_title: string | null;
+          album_from_folder: number;
           lidarr_album_id: number | null;
           genres_json: string | null;
           year: number | null;
@@ -1140,6 +1141,7 @@ export class AddonJobPoller {
       kind: row.kind,
       artistName: row.artist_name,
       albumTitle: row.album_title,
+      albumFromFolder: row.album_from_folder === 1,
       lidarrAlbumId: row.lidarr_album_id,
       genres: row.genres_json ? (JSON.parse(row.genres_json) as string[]) : null,
       year: row.year,

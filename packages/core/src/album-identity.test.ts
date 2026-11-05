@@ -74,6 +74,20 @@ describe('sameAlbum', () => {
 });
 
 describe('folderAlbumIdentity', () => {
+  // #1540: "Elektronika" showed as the artist of a grab from a genre folder.
+  it('does not read a genre shelf as the artist', () => {
+    expect(folderAlbumIdentity('Music\\Elektronika\\Message From The Other Side')).toEqual({
+      artist: null,
+      title: 'Message From The Other Side',
+    });
+    expect(folderAlbumIdentity('Rock/Abbey Road').artist).toBeNull();
+  });
+
+  it('still takes an album whose own title is a genre word', () => {
+    expect(folderAlbumIdentity('Prince/Pop')).toEqual({ artist: 'Prince', title: 'Pop' });
+    expect(folderAlbumIdentity('Share/Prince - Soul')).toEqual({ artist: 'Prince', title: 'Soul' });
+  });
+
   it('reads both names from an "Artist - Album [Year]" leaf', () => {
     expect(
       folderAlbumIdentity(
