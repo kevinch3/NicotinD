@@ -253,16 +253,6 @@ export const RENAME_ALSO_MOVES: readonly SongCarryTable[] = [
     column: 'song_id',
     why: 'addon playlists resolve a job item to its song through this column',
   },
-  {
-    table: 'curation_flags',
-    column: 'target_id',
-    why: "an open flag on the song (target_kind 'song')",
-  },
-  {
-    table: 'curation_flag_reports',
-    column: 'target_id',
-    why: "a listener's report on the song (target_kind 'song')",
-  },
 ];
 
 /** Song-keyed columns a rename deliberately leaves. Each is a record, not a link. */
@@ -336,12 +326,11 @@ export function migrateSongIdentity(db: Database, m: IdentityMove): IdentityMove
 
   for (const e of RENAME_ALSO_MOVES) {
     if (!tableExists(db, e.table)) continue;
-    const scope = e.column === 'target_id' ? ` AND target_kind = 'song'` : '';
-    const upd = db.run(
-      `UPDATE OR IGNORE ${e.table} SET ${e.column} = ? WHERE ${e.column} = ?${scope}`,
-      [m.toId, m.fromId],
-    );
-    db.run(`DELETE FROM ${e.table} WHERE ${e.column} = ?${scope}`, [m.fromId]);
+    const upd = db.run(`UPDATE OR IGNORE ${e.table} SET ${e.column} = ? WHERE ${e.column} = ?`, [
+      m.toId,
+      m.fromId,
+    ]);
+    db.run(`DELETE FROM ${e.table} WHERE ${e.column} = ?`, [m.fromId]);
     if (Number(upd.changes ?? 0) > 0) result.moved[e.table] = Number(upd.changes);
   }
   if (tableExists(db, 'acquisition_job_items')) {
@@ -368,10 +357,8 @@ export function countCarriedRows(db: Database, ids: readonly string[]): Record<s
   const specs: { table: string; column: string; scope?: string }[] = [
     { table: 'library_songs', column: 'id' },
     ...SONG_CARRY_TABLES,
-    ...RENAME_ALSO_MOVES.map((e) =>
-      e.column === 'target_id' ? { ...e, scope: ` AND target_kind = 'song'` } : e,
-    ),
-    { table: 'library_genre_overrides', column: 'key', scope: ` AND scope = 'song'` },
+    ...RENAME_ALSO_MOVES,
+    { table: 'library_genre_overrides', column: 'key', scope: `scope = 'song'` },
   ];
   for (const spec of specs) {
     if (!tableExists(db, spec.table)) continue;
@@ -381,7 +368,8 @@ export function countCarriedRows(db: Database, ids: readonly string[]): Record<s
       const row = db
         .query<{ c: number }, string[]>(
           `SELECT COUNT(*) AS c FROM ${spec.table}
-            WHERE ${spec.column} IN (${chunk.map(() => '?').join(',')})${spec.scope ?? ''}`,
+            WHERE ${spec.column} IN (${chunk.map(() => '?').join(',')})
+              ${spec.scope ? `AND ${spec.scope}` : ''}`,
         )
         .get(...chunk);
       n += row?.c ?? 0;

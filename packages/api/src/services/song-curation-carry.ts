@@ -38,6 +38,8 @@ export interface SongCarryTable {
   table: string;
   /** The column holding the song id. */
   column: string;
+  /** SQL predicate for a polymorphic table, where only some rows hold a song id. */
+  scope?: string;
   /** Why it must move, or why it must not. Read by whoever adds the next table. */
   why: string;
 }
@@ -67,6 +69,18 @@ export const SONG_CARRY_TABLES: readonly SongCarryTable[] = [
     table: 'library_song_descriptors',
     column: 'song_id',
     why: 'regenerable at ~5s each, which is hours across a whole-library pass',
+  },
+  {
+    table: 'curation_flags',
+    column: 'target_id',
+    scope: `target_kind = 'song'`,
+    why: 'an open review flag; left behind it reports targetMissing and its question can no longer be answered (#1475)',
+  },
+  {
+    table: 'curation_flag_reports',
+    column: 'target_id',
+    scope: `target_kind = 'song'`,
+    why: "a listener's report; a re-report after the move would otherwise count them twice (#1475)",
   },
 ];
 
@@ -116,6 +130,12 @@ export const SONG_CARRY_EXEMPT: readonly SongCarryTable[] = [
     table: 'library_song_provenance',
     column: 'song_path',
     why: 'path-keyed, not id-keyed, and superseded by `acquisitions` for anything live',
+  },
+  {
+    table: 'audit_log',
+    column: 'target_id',
+    scope: `target_kind = 'song'`,
+    why: 'an audit trail records what was true then; rewriting it would falsify the record',
   },
 ];
 
@@ -192,12 +212,13 @@ function moveRows(
   fromId: string,
   toId: string,
 ): { moved: number; dropped: number } {
-  const upd = db.run(
-    `UPDATE OR IGNORE ${entry.table} SET ${entry.column} = ? WHERE ${entry.column} = ?`,
-    [toId, fromId],
-  );
+  const where = `${entry.column} = ?${entry.scope ? ` AND ${entry.scope}` : ''}`;
+  const upd = db.run(`UPDATE OR IGNORE ${entry.table} SET ${entry.column} = ? WHERE ${where}`, [
+    toId,
+    fromId,
+  ]);
   const moved = Number(upd.changes ?? 0);
-  const del = db.run(`DELETE FROM ${entry.table} WHERE ${entry.column} = ?`, [fromId]);
+  const del = db.run(`DELETE FROM ${entry.table} WHERE ${where}`, [fromId]);
   return { moved, dropped: Number(del.changes ?? 0) };
 }
 

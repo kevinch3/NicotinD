@@ -238,6 +238,60 @@ describe('the registry, and the tables it newly covers', () => {
     ]);
   });
 
+  describe('song-level review flags (#1475)', () => {
+    const flag = (kind: string, id: string, resolvedAt: number | null = null) =>
+      db.run(
+        `INSERT INTO curation_flags (target_kind, target_id, reason, created_by, created_at, resolved_at)
+         VALUES (?, ?, 'r', 'c', 1, ?)`,
+        [kind, id, resolvedAt],
+      );
+    const flagged = (id: string) =>
+      db
+        .query<{ c: number }, [string]>(
+          `SELECT COUNT(*) AS c FROM curation_flags WHERE target_kind = 'song' AND target_id = ?`,
+        )
+        .get(id)!.c;
+
+    it('moves open and resolved flags, and listener reports, onto the new id', () => {
+      flag('song', 'old');
+      flag('song', 'old', 5);
+      db.run(
+        `INSERT INTO curation_flag_reports (target_kind, target_id, user_id, reason, at)
+         VALUES ('song', 'old', 'u1', 'wrong lyrics', 1)`,
+      );
+      const r = carrySongCuration(db, { fromId: 'old', toId: 'new' });
+      expect(flagged('new')).toBe(2);
+      expect(flagged('old')).toBe(0);
+      expect(r.moved['curation_flags']).toBe(2);
+      expect(r.moved['curation_flag_reports']).toBe(1);
+    });
+
+    it('leaves an artist or album flag that happens to share the id alone', () => {
+      flag('artist', 'old');
+      flag('album', 'old');
+      carrySongCuration(db, { fromId: 'old', toId: 'new' });
+      const rows = db
+        .query<{ target_kind: string; target_id: string }, []>(
+          `SELECT target_kind, target_id FROM curation_flags ORDER BY target_kind`,
+        )
+        .all();
+      expect(rows).toEqual([
+        { target_kind: 'album', target_id: 'old' },
+        { target_kind: 'artist', target_id: 'old' },
+      ]);
+    });
+
+    it('keeps the destination open flag when both ids have one, without aborting', () => {
+      // `idx_curation_flags_open` allows one open flag per target.
+      flag('song', 'old');
+      flag('song', 'new');
+      const r = carrySongCuration(db, { fromId: 'old', toId: 'new' });
+      expect(flagged('new')).toBe(1);
+      expect(flagged('old')).toBe(0);
+      expect(r.dropped['curation_flags']).toBe(1);
+    });
+  });
+
   it('reports what it moved, per table', () => {
     db.run(`INSERT INTO library_lyrics (song_id, plain_text, updated_at) VALUES ('old', 'la', 1)`);
     const r = carrySongCuration(db, { fromId: 'old', toId: 'new' });
