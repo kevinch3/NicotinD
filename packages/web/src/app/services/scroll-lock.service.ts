@@ -1,4 +1,5 @@
 import { Injectable } from '@angular/core';
+import { scrollRootElement } from '../lib/scroll-root';
 
 /**
  * Ref-counted document scroll lock for full-screen overlays.
@@ -15,8 +16,8 @@ import { Injectable } from '@angular/core';
 @Injectable({ providedIn: 'root' })
 export class ScrollLockService {
   private count = 0;
-  private prevOverflow = '';
-  private prevOverscroll = '';
+  private targets: HTMLElement[] = [];
+  private prev: [string, string][] = [];
 
   /** Whether the document is currently locked (≥1 holder). Exposed for tests. */
   get locked(): boolean {
@@ -26,19 +27,26 @@ export class ScrollLockService {
   lock(): void {
     this.count += 1;
     if (this.count > 1) return;
-    const el = document.documentElement;
-    this.prevOverflow = el.style.overflow;
-    this.prevOverscroll = el.style.overscrollBehavior;
-    el.style.overflow = 'hidden';
-    el.style.overscrollBehavior = 'none';
+    // The page scrolls inside the shell's <main>, so lock that as well as the root.
+    this.targets = [document.documentElement, scrollRootElement()].filter(
+      (e): e is HTMLElement => !!e,
+    );
+    this.prev = this.targets.map((el) => [el.style.overflow, el.style.overscrollBehavior]);
+    for (const el of this.targets) {
+      el.style.overflow = 'hidden';
+      el.style.overscrollBehavior = 'none';
+    }
   }
 
   unlock(): void {
     if (this.count === 0) return;
     this.count -= 1;
     if (this.count > 0) return;
-    const el = document.documentElement;
-    el.style.overflow = this.prevOverflow;
-    el.style.overscrollBehavior = this.prevOverscroll;
+    this.targets.forEach((el, i) => {
+      el.style.overflow = this.prev[i][0];
+      el.style.overscrollBehavior = this.prev[i][1];
+    });
+    this.targets = [];
+    this.prev = [];
   }
 }

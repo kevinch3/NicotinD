@@ -1,5 +1,5 @@
 
-    <div class="min-h-screen flex flex-col bg-theme-base">
+    <div class="h-dvh flex flex-col overflow-hidden bg-theme-base">
       <!-- Top nav. On Linux/Windows Electron with `frame: false` this header
            is the window's drag region (`-webkit-app-region: drag` baked into
            `headerClass()`); every interactive child below opts back into
@@ -78,7 +78,7 @@
       <!-- Content — pad bottom so the fixed player + mobile tab bar never cover the last item.
            `relative` anchors the pull-to-refresh indicator; the pointerdown feeds the
            layout-hosted pull gesture (coarse-pointer only — see lib/pull-to-refresh.ts). -->
-      <main [class]="'relative flex-1 ' + mainPadClass()" (pointerdown)="pull.onPointerDown($event)">
+      <main data-scroll-root [class]="'relative flex-1 min-h-0 overflow-y-auto overscroll-y-contain ' + mainPadClass()" (pointerdown)="pull.onPointerDown($event)">
         @if (pull.phase() !== 'idle') {
           <div
             data-testid="pull-refresh-indicator"

@@ -61,6 +61,37 @@ test.describe('mobile UX', () => {
     expect(box.x + box.width, 'right edge within viewport').toBeLessThanOrEqual(PHONE.width);
   });
 
+  // On an iOS standalone PWA the fixed player + tab bar rode the page scroll (they
+  // stopped following the viewport bottom and floated mid-screen over the content).
+  // The shell now scrolls inside <main>, so the document itself must never scroll
+  // and the bottom chrome must stay pinned to the viewport bottom while it does.
+  test('scrolling a long page leaves the player and tab bar pinned to the bottom', async ({
+    page,
+  }) => {
+    await openAlbum(page);
+    await page.getByTestId('play-album').click();
+    await expect(page.getByTestId('player-title')).toBeVisible();
+
+    const gap = () =>
+      page.evaluate(() => {
+        const nav = document.querySelector('app-bottom-nav > *')!.getBoundingClientRect();
+        return { navBottom: Math.round(nav.bottom), vh: window.innerHeight, docY: window.scrollY };
+      });
+    const before = await gap();
+
+    const scrolled = await page.evaluate(() => {
+      const root = document.querySelector('[data-scroll-root]') as HTMLElement;
+      root.scrollTop = root.scrollHeight;
+      return root.scrollTop;
+    });
+    expect(scrolled, 'the page scrolls inside <main>').toBeGreaterThan(0);
+
+    const after = await gap();
+    expect(after.docY, 'the document itself never scrolls').toBe(0);
+    expect(after.navBottom, 'tab bar stays at the viewport bottom').toBe(before.navBottom);
+    expect(after.navBottom).toBe(after.vh);
+  });
+
   // A track-row `⋯` menu opened low on the list must not be hidden behind the
   // fixed mini-player + tab bar (the mobile context-menu-under-the-player bug).
   // With a track playing, open the LAST row's menu and assert its box clears the
@@ -211,8 +242,11 @@ test.describe('mobile UX', () => {
     // overflow (the same trap the #616 comment above describes).
     await expect(page.getByRole('heading', { level: 1, name: 'Activity' })).toBeVisible();
     const overflow = await page.evaluate(() => {
-      const el = document.scrollingElement ?? document.documentElement;
-      return el.scrollWidth - el.clientWidth;
+      // The shell's <main> is the page scroller (the document no longer scrolls), so
+      // overflow is measured on both — either one widening is the bug.
+      return [document.documentElement, document.querySelector('[data-scroll-root]')]
+        .filter((el): el is Element => !!el)
+        .reduce((max, el) => Math.max(max, el.scrollWidth - el.clientWidth), 0);
     });
     expect(overflow, 'no horizontal page overflow at phone width').toBeLessThanOrEqual(1);
   });
@@ -230,8 +264,11 @@ test.describe('mobile UX', () => {
     await expandGroup(page, 'library-processing');
     await expect(page.getByTestId('processing-panel')).toBeVisible();
     const overflow = await page.evaluate(() => {
-      const el = document.scrollingElement ?? document.documentElement;
-      return el.scrollWidth - el.clientWidth;
+      // The shell's <main> is the page scroller (the document no longer scrolls), so
+      // overflow is measured on both — either one widening is the bug.
+      return [document.documentElement, document.querySelector('[data-scroll-root]')]
+        .filter((el): el is Element => !!el)
+        .reduce((max, el) => Math.max(max, el.scrollWidth - el.clientWidth), 0);
     });
     expect(overflow, 'no horizontal page overflow at phone width').toBeLessThanOrEqual(1);
   });
@@ -249,8 +286,11 @@ test.describe('mobile UX', () => {
     // for it so the full toolbar is measured, not a partial one.
     await expect(page.getByRole('button', { name: 'Select' })).toBeVisible();
     const overflow = await page.evaluate(() => {
-      const el = document.scrollingElement ?? document.documentElement;
-      return el.scrollWidth - el.clientWidth;
+      // The shell's <main> is the page scroller (the document no longer scrolls), so
+      // overflow is measured on both — either one widening is the bug.
+      return [document.documentElement, document.querySelector('[data-scroll-root]')]
+        .filter((el): el is Element => !!el)
+        .reduce((max, el) => Math.max(max, el.scrollWidth - el.clientWidth), 0);
     });
     expect(overflow, 'no horizontal page overflow at phone width').toBeLessThanOrEqual(1);
   });
@@ -331,8 +371,11 @@ test.describe('mobile UX', () => {
       expectOneRow(boxes, `${mode} toolbar`);
     }
     const overflow = await page.evaluate(() => {
-      const el = document.scrollingElement ?? document.documentElement;
-      return el.scrollWidth - el.clientWidth;
+      // The shell's <main> is the page scroller (the document no longer scrolls), so
+      // overflow is measured on both — either one widening is the bug.
+      return [document.documentElement, document.querySelector('[data-scroll-root]')]
+        .filter((el): el is Element => !!el)
+        .reduce((max, el) => Math.max(max, el.scrollWidth - el.clientWidth), 0);
     });
     expect(overflow, 'no horizontal page overflow at 360 px').toBeLessThanOrEqual(1);
   });
@@ -564,8 +607,11 @@ test.describe('mobile UX', () => {
     await expect(page.getByTestId('now-playing-lyrics')).toBeVisible();
 
     const overflow = await page.evaluate(() => {
-      const el = document.scrollingElement ?? document.documentElement;
-      return el.scrollWidth - el.clientWidth;
+      // The shell's <main> is the page scroller (the document no longer scrolls), so
+      // overflow is measured on both — either one widening is the bug.
+      return [document.documentElement, document.querySelector('[data-scroll-root]')]
+        .filter((el): el is Element => !!el)
+        .reduce((max, el) => Math.max(max, el.scrollWidth - el.clientWidth), 0);
     });
     expect(overflow, 'long lyrics must not widen the page').toBeLessThanOrEqual(1);
   });
