@@ -7,6 +7,7 @@ import {
   THETA_MAX,
   TILE_BASE,
   decayVelocity,
+  lockBreakPx,
   visiblePlacements,
 } from './mosaic-lens';
 import type { PackedTile } from './mosaic-packing';
@@ -150,5 +151,18 @@ describe('decayVelocity', () => {
     }
     expect(v).toEqual({ vx: 0, vy: 0 });
     expect(steps).toBeLessThan(1000);
+  });
+});
+
+describe('lockBreakPx', () => {
+  it('scales with the stage, and asks a finger to travel further than a mouse', () => {
+    expect(lockBreakPx(390, 'touch')).toBeCloseTo(54.6, 1);
+    expect(lockBreakPx(860, 'mouse')).toBeCloseTo(77.4, 1);
+    expect(lockBreakPx(600, 'touch')).toBeGreaterThan(lockBreakPx(600, 'mouse'));
+  });
+
+  it('stays feelable on a tiny stage and escapable on a huge one', () => {
+    expect(lockBreakPx(100, 'mouse')).toBe(40);
+    expect(lockBreakPx(4000, 'touch')).toBe(140);
   });
 });

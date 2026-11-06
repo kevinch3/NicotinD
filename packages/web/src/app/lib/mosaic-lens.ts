@@ -162,3 +162,15 @@ export function visiblePlacements(
   }
   return out;
 }
+
+/**
+ * How far a drag must travel, in screen px, before the playing tile lets go of
+ * the field (#1638). A share of the stage's shorter side, so the detent feels
+ * the same on a phone and a desktop, and larger for touch than for a mouse or
+ * pen: a thumb wobbles and sweeps further than a wrist. Clamped so a tiny or a
+ * huge stage still gets a detent you can feel and escape.
+ */
+export function lockBreakPx(stageMin: number, pointerType: string | undefined): number {
+  const share = pointerType === 'touch' ? 0.14 : 0.09;
+  return Math.min(140, Math.max(40, stageMin * share));
+}

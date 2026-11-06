@@ -93,6 +93,7 @@ interface SetupOptions {
 function setup(opts: SetupOptions = {}) {
   const player = {
     currentTrack: signal<Track | null>(null),
+    isPlaying: signal(false),
     nowPlayingOpen: signal(false),
     startRadio: vi.fn(),
     startRadioWithFilter: vi.fn(),
@@ -229,7 +230,8 @@ describe('MosaicHomeComponent', () => {
       const tile = component.tiles().find((t) => t.kind === 'song')!;
       await component.start(tile);
       expect(player.startRadio).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }));
-      expect(player.nowPlayingOpen()).toBe(true);
+      // The mosaic centres the tile instead of raising the sheet over it (#1638).
+      expect(player.nowPlayingOpen()).toBe(false);
     });
 
     it('a recently-played tile also starts a radio, not queued playback', async () => {
@@ -375,6 +377,11 @@ interface MosaicInternals {
   tileFromEvent(e: Event): MosaicTile | null;
   suppressTap: boolean;
   packing: Packing | null;
+  byId: Map<number, PackedTile>;
+  cx: number;
+  cy: number;
+  now: () => number;
+  anchor: { x: number; y: number; trackId: string | null } | null;
   cells: Map<string, unknown>;
   loadCell(cell: string): Promise<void>;
   enterCell(cell: string): unknown;
@@ -587,7 +594,7 @@ describe('mosaic depth (#1638)', () => {
 
   describe('in the loop', () => {
     const drawn = async () => {
-      const { component, fixture } = setup();
+      const { component, fixture, player } = setup();
       await settle(fixture);
       const c = internals(component);
       cancelAnimationFrame(c.raf);
@@ -605,7 +612,7 @@ describe('mosaic depth (#1638)', () => {
       c.packing = { W: 500, tiles: [packedStub(0, 100)] };
       c.frame();
       const el = stage.querySelector<HTMLElement>('.mosaic-tile')!;
-      return { component, c, el };
+      return { component, c, el, player };
     };
 
     afterEach(() => vi.restoreAllMocks());
@@ -653,6 +660,80 @@ describe('mosaic depth (#1638)', () => {
       pointer(component.drag, 'pointerup', 3);
       c.frame();
       expect(stage.classList.contains('is-moving')).toBe(false);
+    });
+
+    /** Run frames on a fake clock until the glide lands (or a cap is hit). */
+    const settleGlide = (c: MosaicInternals, from: number, ms: number): void => {
+      for (let t = from; t <= from + ms; t += 16) {
+        c.now = () => t;
+        c.frame();
+      }
+    };
+
+    it('a tap centres the tapped copy with a glide, and starts it without raising the sheet', async () => {
+      const { c, el, player } = await drawn();
+      c.byId.set(0, c.packing!.tiles[0]);
+      c.cells.set('1,0', 'base');
+      el.dataset['cell'] = '1,0';
+      c.now = () => 0;
+      const click = new MouseEvent('click', { bubbles: true });
+      Object.defineProperty(click, 'target', { value: el });
+      c.onStageClick(click);
+      expect(player.startRadio).toHaveBeenCalled();
+      expect(player.nowPlayingOpen()).toBe(false);
+      // Copy (1,0) of a tile at plane (0,0) sits one patch width (500) along.
+      c.now = () => 120;
+      c.frame();
+      expect(c.cx).toBeGreaterThan(0);
+      expect(c.cx).toBeLessThan(500);
+      settleGlide(c, 120, 1_000);
+      expect(c.cx).toBeCloseTo(500, 3);
+      expect(c.cy).toBeCloseTo(0, 3);
+    });
+
+    describe('the playing tile is sticky', () => {
+      const locked = async () => {
+        const ctx = await drawn();
+        ctx.c.anchor = { x: 0, y: 0, trackId: 'slot0' };
+        ctx.c.cx = 0;
+        ctx.c.cy = 0;
+        ctx.player.isPlaying.set(true);
+        ctx.player.currentTrack.set({ id: 'slot0', title: '', artist: '' } as Track);
+        return ctx;
+      };
+
+      it('a short drag only gives a little, and springs back on release', async () => {
+        const { component, c } = await locked();
+        pointer(component.drag, 'pointerdown', 0);
+        pointer(component.drag, 'pointermove', 15);
+        expect(Math.abs(c.cx)).toBeGreaterThan(0);
+        expect(Math.abs(c.cx)).toBeLessThan(15 * 0.5);
+        c.now = () => 0;
+        pointer(component.drag, 'pointerup', 15);
+        settleGlide(c, 0, 1_000);
+        expect(c.cx).toBeCloseTo(0, 3);
+        expect(c.anchor).not.toBeNull();
+      });
+
+      it('a drag past the detent breaks free and pans', async () => {
+        const { component, c } = await locked();
+        pointer(component.drag, 'pointerdown', 0);
+        pointer(component.drag, 'pointermove', 20);
+        pointer(component.drag, 'pointermove', 60);
+        pointer(component.drag, 'pointermove', 100);
+        expect(c.anchor).toBeNull();
+        expect(Math.abs(c.cx)).toBeGreaterThan(20);
+        pointer(component.drag, 'pointerup', 100);
+      });
+
+      it('nothing sticks once that tile is no longer what is playing', async () => {
+        const { component, c, player } = await locked();
+        player.currentTrack.set({ id: 'other', title: '', artist: '' } as Track);
+        pointer(component.drag, 'pointerdown', 0);
+        pointer(component.drag, 'pointermove', 15);
+        expect(Math.abs(c.cx)).toBeGreaterThan(15 * 0.5);
+        pointer(component.drag, 'pointerup', 15);
+      });
     });
 
     it('a held tile that leaves the lens is let down as it is parked', async () => {
