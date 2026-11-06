@@ -1,4 +1,9 @@
-<div class="absolute inset-0 overflow-hidden" data-testid="mosaic-home">
+<div
+  class="absolute inset-0 overflow-hidden"
+  data-testid="mosaic-home"
+  [class.mosaic-holding]="holding()"
+  [style.--mosaic-inset]="tileInsetPx"
+>
   @if (loading()) {
     <!-- Shape-matched: scattered squares where the packed field will appear,
          not a list skeleton borrowed from another page. -->
@@ -17,8 +22,8 @@
     </div>
   }
 
-  <!-- The stage. Children are pooled elements written by the render loop, not
-       by Angular, so this element is deliberately empty in the template. -->
+  <!-- The stage. Its tiles are pooled elements written by the render loop, not
+       by Angular; the template only gives it the veil a held tile rises above. -->
   <div
     #stage
     data-testid="mosaic-stage"
@@ -27,7 +32,20 @@
     class="mosaic-stage-contain absolute inset-x-0 top-0 overflow-hidden touch-none select-none cursor-grab"
     [style.bottom.px]="chromeInset()"
     (pointerdown)="onStagePointerDown($event)"
-  ></div>
+  >
+    <div class="mosaic-veil" aria-hidden="true"></div>
+  </div>
+
+  <!-- Depth toward the edges (#1638): one composited layer over the field,
+       never a per-tile filter the loop would have to rewrite every frame. -->
+  @if (!loading() && !isEmpty()) {
+    <div
+      class="mosaic-rim absolute inset-x-0 top-0"
+      aria-hidden="true"
+      data-testid="mosaic-rim"
+      [style.bottom.px]="chromeInset()"
+    ></div>
+  }
 
   <!-- The same tiles as a real, linear, focusable list. Pooled tiles are
        recycled as they cross the lens, so they can carry no stable focus

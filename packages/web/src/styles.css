@@ -208,6 +208,44 @@
   [data-theme="eink"] svg {
     stroke-width: 3;
   }
+
+  /* Elevation + glass (#1638). One set for the dark themes, one for the light
+     ones: a shadow dark enough to read on midnight is a smudge on daylight.
+     `tile` is a resting mosaic face, `raised` a held one, `overlay` a floating
+     panel; `glass-edge` is the hairline a translucent panel needs to keep its
+     shape over busy artwork. `glass-alpha` is how much surface a glass panel
+     keeps: the lowest that holds secondary text at 4.5:1 over pure white AND
+     pure black, per theme, with a little margin (`theme-glass.spec.ts`).
+     eink has no shadows and no transparency. */
+  :root {
+    --theme-glass-alpha: 88%;
+    --theme-elevation-tile: 0 3px 10px -3px rgb(0 0 0 / 0.6), 0 1px 2px rgb(0 0 0 / 0.35);
+    --theme-elevation-raised: 0 16px 36px -8px rgb(0 0 0 / 0.7), 0 3px 8px rgb(0 0 0 / 0.4);
+    --theme-elevation-overlay: 0 18px 44px -12px rgb(0 0 0 / 0.7), 0 2px 8px rgb(0 0 0 / 0.35);
+    --theme-glass-edge: rgb(255 255 255 / 0.1);
+  }
+  [data-theme="daylight"],
+  [data-theme="warm-paper"] {
+    --theme-elevation-tile: 0 3px 10px -3px rgb(24 24 27 / 0.22), 0 1px 2px rgb(24 24 27 / 0.08);
+    --theme-elevation-raised: 0 16px 36px -8px rgb(24 24 27 / 0.32), 0 3px 8px rgb(24 24 27 / 0.1);
+    --theme-elevation-overlay: 0 18px 44px -12px rgb(24 24 27 / 0.28), 0 2px 8px rgb(24 24 27 / 0.08);
+    --theme-glass-edge: rgb(24 24 27 / 0.1);
+    --theme-glass-alpha: 84%;
+  }
+  /* Their secondary text sits closest to their surface, so they keep more. */
+  [data-theme="twilight"] {
+    --theme-glass-alpha: 94%;
+  }
+  [data-theme="forest"] {
+    --theme-glass-alpha: 92%;
+  }
+  [data-theme="eink"] {
+    --theme-glass-alpha: 100%;
+    --theme-elevation-tile: none;
+    --theme-elevation-raised: none;
+    --theme-elevation-overlay: none;
+    --theme-glass-edge: var(--theme-border);
+  }
 }
 
 /* ─── Semantic utility classes ───────────────────────────────────────── */
@@ -464,10 +502,14 @@
 }
 /* Faces rest slightly inside their box and grow to fill it on hover. The
    headroom is the point: `contain: strict` on the tile clips paint at the box,
-   so a scale past 1 would grow into the clip and read as a crop, not a lift. */
+   so a scale past 1 would grow into the clip and read as a crop, not a lift.
+   The same clip is why the face sits `--mosaic-inset` inside the box (the
+   component sizes the box and sets the variable): that margin is the only room
+   its shadow has to paint in (#1638). */
 .mosaic-face {
-  width: 100%;
-  height: 100%;
+  width: calc(100% - 2 * var(--mosaic-inset, 0px));
+  height: calc(100% - 2 * var(--mosaic-inset, 0px));
+  margin: var(--mosaic-inset, 0px);
   box-sizing: border-box;
   position: relative;
   border-radius: 14px;
@@ -480,18 +522,91 @@
   overflow: hidden;
   border: 0.5px solid var(--theme-border);
   background-color: var(--theme-surface);
+  box-shadow: var(--theme-elevation-tile);
   transform: scale(0.97);
-  transition: transform 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.2s ease;
 }
 @media (hover: hover) {
   .mosaic-tile:hover .mosaic-face {
     transform: scale(1);
   }
 }
+/* The tile whose menu is open (#1638) rises above the veil. It leaves paint
+   containment for as long as it is held, because a lift and its shadow must
+   overflow the box — one tile, at rest, so the field keeps its single paint. */
+.mosaic-tile.is-held {
+  z-index: 3;
+  contain: layout size style;
+}
+.mosaic-tile.is-held .mosaic-face {
+  transform: scale(1.04);
+  box-shadow:
+    var(--theme-elevation-raised),
+    0 0 0 1px var(--theme-glass-edge);
+}
+/* One layer over the whole field, between the tiles and the held one: fading
+   it is a compositor opacity change, where dimming every face would repaint
+   each of them. */
+.mosaic-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background-color: color-mix(in srgb, var(--theme-bg) 55%, transparent);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.mosaic-holding .mosaic-veil {
+  opacity: 1;
+}
+/* Depth toward the rim (#1638). The lens already shrinks and fades it
+   (`mosaic-lens.ts`); this adds the blur, as one masked backdrop over the stage
+   rather than a per-tile filter, which the loop would have to rewrite on every
+   tile every frame of a pan. The mask is a circle reaching the stage's farther
+   edge, which is about where the lens puts its rim (R·sin THETA_MAX with
+   R = the stage's shorter side) — so a phone's near side edges, still close
+   to the lens centre, stay sharp, and the far ends recede. A viewport-shaped
+   ellipse blurred the side tiles of a portrait phone halfway to the middle. */
+.mosaic-rim {
+  pointer-events: none;
+  background-color: color-mix(in srgb, var(--theme-bg) 30%, transparent);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  -webkit-mask-image: radial-gradient(
+    circle farthest-side,
+    transparent 55%,
+    rgb(0 0 0 / 0.55) 78%,
+    #000 100%
+  );
+  mask-image: radial-gradient(
+    circle farthest-side,
+    transparent 55%,
+    rgb(0 0 0 / 0.55) 78%,
+    #000 100%
+  );
+  transition: opacity 0.2s ease;
+}
+/* A held tile near the edge must not sit under the blur meant for the field. */
+.mosaic-holding .mosaic-rim {
+  opacity: 0;
+}
 @media (prefers-reduced-motion: reduce) {
-  .mosaic-face {
+  .mosaic-face,
+  .mosaic-veil,
+  .mosaic-rim {
     transition: none;
   }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .mosaic-rim {
+    display: none;
+  }
+}
+[data-theme='eink'] .mosaic-rim,
+[data-theme='eink'] .mosaic-veil {
+  display: none;
 }
 .mosaic-face b {
   font-weight: 500;
@@ -543,6 +658,51 @@
   }
   100% {
     transform: scale(1);
+  }
+}
+
+/* ─── Glass panel (#1638) ────────────────────────────────────────────────
+   A floating panel over content of unknown colour: the entity menu over the
+   mosaic's artwork. How translucent it may be is a per-theme contrast floor
+   (`--theme-glass-alpha`); the blur does the rest of the "glass". Opaque
+   wherever transparency is unwanted or unsupported. */
+.glass-panel {
+  background-color: color-mix(in srgb, var(--theme-surface) var(--theme-glass-alpha), transparent);
+  -webkit-backdrop-filter: blur(16px) saturate(1.5);
+  backdrop-filter: blur(16px) saturate(1.5);
+  border: 1px solid var(--theme-glass-edge);
+  box-shadow: var(--theme-elevation-overlay);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass-panel {
+    background-color: var(--theme-surface);
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .glass-panel {
+    background-color: var(--theme-surface);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+[data-theme='eink'] .glass-panel {
+  background-color: var(--theme-surface);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.panel-enter {
+  animation: panel-enter 0.14s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transform-origin: top left;
+}
+@keyframes panel-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .panel-enter {
+    animation: none;
   }
 }
 

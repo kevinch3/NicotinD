@@ -137,9 +137,16 @@ test.describe('mosaic home', () => {
     await expect(page.getByTestId('entity-menu')).toBeVisible({ timeout: 10_000 });
     // The release that follows the hold must not have started a radio.
     expect(await title.textContent()).toBe(before);
+    // The held tile is lifted above a veiled field while its menu is open (#1638).
+    const held = page.locator('[data-testid="mosaic-tile"].is-held');
+    await expect(held).toHaveCount(1);
+    await expect(page.getByTestId('mosaic-home')).toHaveClass(/mosaic-holding/);
     // The old hold-for-info is now an item of the same menu (#1298).
     await page.getByTestId('entity-action-Song info').click();
     await expect(page.getByTestId('track-info-sheet')).toBeVisible({ timeout: 10_000 });
+    // Running an item closes the menu, and that lets the tile down.
+    await expect(held).toHaveCount(0);
+    await expect(page.getByTestId('mosaic-home')).not.toHaveClass(/mosaic-holding/);
   });
 
   test('the classic landing is still reachable', async ({ page }) => {

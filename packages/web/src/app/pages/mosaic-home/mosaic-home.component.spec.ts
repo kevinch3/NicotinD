@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { vi } from 'vitest';
 import { of, throwError } from 'rxjs';
-import { MosaicHomeComponent } from './mosaic-home.component';
+import { MosaicHomeComponent, TILE_INSET } from './mosaic-home.component';
 import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
@@ -122,9 +122,11 @@ function setup(opts: SetupOptions = {}) {
     ),
   };
   const trackInfo = { open: vi.fn(), close: vi.fn() };
+  const menuState = signal<unknown>(null);
   const entityMenu = {
-    open: vi.fn(),
-    close: vi.fn(),
+    state: menuState.asReadonly(),
+    open: vi.fn((s: unknown) => menuState.set(s)),
+    close: vi.fn(() => menuState.set(null)),
     build: vi.fn((ref: { kind: string }) => [
       { label: `Start radio ${ref.kind}`, action: () => {} },
     ]),
@@ -365,7 +367,8 @@ describe('MosaicHomeComponent', () => {
  * through the DOM here; these tests exercise the glue behind it instead.
  */
 interface MosaicInternals {
-  schedulePress(t: MosaicTile, at: { x: number; y: number }): void;
+  schedulePress(t: MosaicTile, at: { x: number; y: number }, el?: HTMLElement | null): void;
+  markHeld(el: HTMLElement | null): void;
   cancelPress(): void;
   onStageClick(e: MouseEvent): void;
   onStageContextMenu(e: MouseEvent): void;
@@ -511,6 +514,107 @@ describe('hold-for-menu (#1298)', () => {
     Object.defineProperty(e, 'target', { value: more });
     component.onStagePointerDown(e);
     expect(start).not.toHaveBeenCalled();
+  });
+});
+
+describe('the held tile (#1638)', () => {
+  const tileEl = (): { el: HTMLElement; target: HTMLElement } => {
+    const el = document.createElement('div');
+    el.className = 'mosaic-tile';
+    el.dataset['tileId'] = '0';
+    const target = document.createElement('b');
+    el.appendChild(target);
+    return { el, target };
+  };
+
+  it('a hold lifts the tile whose menu it opened, and the menu closing lets it down', async () => {
+    vi.useFakeTimers();
+    try {
+      const { component, entityMenu, fixture } = setup({ tasteBreakers: [song({ id: 'a' })] });
+      await settle(fixture);
+      const c = internals(component);
+      const { el } = tileEl();
+      c.schedulePress(
+        component.tiles().find((t) => t.kind === 'song')!,
+        { x: 1, y: 2 },
+        el,
+      );
+      expect(el.classList.contains('is-held')).toBe(false);
+      vi.advanceTimersByTime(450);
+      expect(el.classList.contains('is-held')).toBe(true);
+      expect(component.holding()).toBe(true);
+      // Escape, an outside tap, Back and running an item all end in close().
+      entityMenu.close();
+      fixture.detectChanges();
+      expect(el.classList.contains('is-held')).toBe(false);
+      expect(component.holding()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('right-click lifts the tile under the pointer, and a second menu moves the lift', async () => {
+    const { component, fixture } = setup({ tasteBreakers: [song({ id: 'a' })] });
+    await settle(fixture);
+    const c = internals(component);
+    vi.spyOn(c, 'tileFromEvent').mockReturnValue(component.tiles().find((t) => t.kind === 'song')!);
+    const first = tileEl();
+    const second = tileEl();
+    for (const { target } of [first, second]) {
+      const e = new MouseEvent('contextmenu', { cancelable: true });
+      Object.defineProperty(e, 'target', { value: target });
+      c.onStageContextMenu(e);
+      fixture.detectChanges();
+    }
+    expect(first.el.classList.contains('is-held')).toBe(false);
+    expect(second.el.classList.contains('is-held')).toBe(true);
+  });
+
+  describe('in the loop', () => {
+    const drawn = async () => {
+      const { component, fixture } = setup();
+      await settle(fixture);
+      const c = internals(component);
+      cancelAnimationFrame(c.raf);
+      const realRaf = globalThis.requestAnimationFrame.bind(globalThis);
+      vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) =>
+        cb === c.frame ? 1 : realRaf(cb),
+      );
+      const stage = document.createElement('div');
+      Object.defineProperty(component, 'stageRef', { value: () => ({ nativeElement: stage }) });
+      c.raf = 0;
+      c.running = true;
+      c.dragging = false;
+      c.vx = 0;
+      c.vy = 0;
+      c.packing = { W: 500, tiles: [packedStub(0, 100)] };
+      c.frame();
+      const el = stage.querySelector<HTMLElement>('.mosaic-tile')!;
+      return { component, c, el };
+    };
+
+    afterEach(() => vi.restoreAllMocks());
+
+    it('a pooled tile is its face plus shadow room on every side, centred where the lens put the face', async () => {
+      const { el } = await drawn();
+      // `contain: strict` clips paint at the box, so the shadow needs room inside it.
+      expect(el.style.width).toBe(`${100 + 2 * TILE_INSET}px`);
+      expect(el.style.height).toBe(`${100 + 2 * TILE_INSET}px`);
+      // The lens places a 100px face at (-50, -50); the bigger box shifts back by the inset.
+      expect(el.style.transform).toContain(
+        `translate(${-50 - TILE_INSET}.0px,${-50 - TILE_INSET}.0px)`,
+      );
+    });
+
+    it('a held tile that leaves the lens is let down as it is parked', async () => {
+      const { component, c, el } = await drawn();
+      c.markHeld(el);
+      expect(component.holding()).toBe(true);
+      c.packing = { W: 500, tiles: [] };
+      c.frame();
+      expect(el.classList.contains('is-held')).toBe(false);
+      expect(component.holding()).toBe(false);
+    });
   });
 });
 

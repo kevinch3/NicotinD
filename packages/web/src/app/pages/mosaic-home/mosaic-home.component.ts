@@ -49,8 +49,14 @@ import { decayVelocity, visiblePlacements } from '../../lib/mosaic-lens';
 const TAP_SLOP_PX = 6;
 /** Camera px per pointer px. >1 makes the plane feel light under the finger. */
 const PAN_GAIN = 1.2;
-/** Hold duration that turns a press into "show me this track's info". */
+/** Hold duration that turns a press into the tile's menu. */
 const LONG_PRESS_MS = 450;
+/**
+ * Shadow room, in px, each pooled tile keeps around its face (#1638).
+ * `contain: strict` clips paint at the tile box, so the box is the packed face
+ * plus this on every side; packing, spacing and hit-testing stay in face units.
+ */
+export const TILE_INSET = 7;
 /** The hover ⋯ on a face (#1298): delegated, like every other tile event. */
 const MORE_BUTTON =
   '<button type="button" class="mosaic-more" data-more aria-label="More options">' +
@@ -161,6 +167,9 @@ export class MosaicHomeComponent implements OnInit {
   readonly tiles = signal<MosaicTile[]>([]);
   readonly starting = signal<string | null>(null);
   readonly chromeInset = signal(0);
+  /** A tile's menu is open: the field is veiled and that tile lifted above it. */
+  readonly holding = signal(false);
+  readonly tileInsetPx = `${TILE_INSET}px`;
   readonly isEmpty = computed(() => !this.loading() && this.tiles().length === 0);
   /** Tiles the discovery cells have surfaced, mirrored into the accessible list. */
   readonly discovered = signal<MosaicTile[]>([]);
@@ -203,6 +212,8 @@ export class MosaicHomeComponent implements OnInit {
   // --- Long press ---
   private pressTimer = 0;
   private suppressTap = false;
+  /** The pooled element whose menu is open, if any. */
+  private held: HTMLElement | null = null;
 
   // --- Connectivity ---
   /** Guards against a slow load landing after a newer one replaced it. */
@@ -221,7 +232,7 @@ export class MosaicHomeComponent implements OnInit {
       this.stageRef()?.nativeElement.classList.add('cursor-grabbing');
       this.wake();
       const tile = this.tileFromEvent(e);
-      if (tile) this.schedulePress(tile, { x: e.clientX, y: e.clientY });
+      if (tile) this.schedulePress(tile, { x: e.clientX, y: e.clientY }, this.tileElement(e));
     },
     onMove: (e) => {
       const dx = e.clientX - this.lastX;
@@ -254,6 +265,13 @@ export class MosaicHomeComponent implements OnInit {
     effect(() => {
       this.tiles();
       queueMicrotask(() => this.repack());
+    });
+
+    // Whatever closes the menu (Escape, an outside tap, Back, running an item)
+    // lets the held tile down. A menu replaced by another never reads null
+    // here, which is why markHeld moves the lift itself.
+    effect(() => {
+      if (this.entityMenu.state() === null) this.markHeld(null);
     });
 
     // Rebuild the mosaic when connectivity changes, in either direction: lose
@@ -549,7 +567,10 @@ export class MosaicHomeComponent implements OnInit {
       e.stopPropagation();
       const tile = this.tileFromEvent(e);
       const actions = tile ? this.tileActions(tile) : [];
-      if (actions.length > 0) this.entityMenu.open({ actions, anchor: more });
+      if (actions.length > 0) {
+        this.markHeld(this.tileElement(e));
+        this.entityMenu.open({ actions, anchor: more });
+      }
       return;
     }
     if (this.moved > TAP_SLOP_PX) return;
@@ -569,6 +590,7 @@ export class MosaicHomeComponent implements OnInit {
     const actions = this.tileActions(tile);
     if (actions.length === 0) return;
     e.preventDefault();
+    this.markHeld(this.tileElement(e));
     this.entityMenu.open({ actions, at: { x: e.clientX, y: e.clientY } });
   }
 
@@ -603,9 +625,14 @@ export class MosaicHomeComponent implements OnInit {
     }
   }
 
+  /** The pooled element an event landed in. */
+  private tileElement(e: Event): HTMLElement | null {
+    return (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-tile-id]') ?? null;
+  }
+
   /** The tile an event landed on, resolved through the cell's content mapping. */
   private tileFromEvent(e: Event): MosaicTile | null {
-    const el = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-tile-id]');
+    const el = this.tileElement(e);
     if (!el) return null;
     const packed = this.byId.get(Number(el.dataset['tileId']));
     if (!packed) return null;
@@ -618,18 +645,35 @@ export class MosaicHomeComponent implements OnInit {
   }
 
   // -------------------------------------------------------------------------
-  // Long press → quick info
+  // Long press → the tile's menu
   // -------------------------------------------------------------------------
 
-  /** Arm the hold-for-info timer; only song-backed tiles carry track info. */
   /** A still hold opens the tile's menu at the finger (#1298), and eats the release's tap. */
-  private schedulePress(tile: MosaicTile, at: { x: number; y: number }): void {
+  private schedulePress(
+    tile: MosaicTile,
+    at: { x: number; y: number },
+    el: HTMLElement | null = null,
+  ): void {
     const actions = this.tileActions(tile);
     if (actions.length === 0) return;
     this.pressTimer = window.setTimeout(() => {
       this.suppressTap = true;
+      this.markHeld(el);
       this.entityMenu.open({ actions, at });
     }, LONG_PRESS_MS);
+  }
+
+  /**
+   * Lift the tile whose menu is open above a veiled field (#1638), or let it
+   * down with null. Only one tile is ever held: a second menu moves the lift.
+   * Class writes, not a binding, because pooled tiles are not Angular's.
+   */
+  private markHeld(el: HTMLElement | null): void {
+    if (this.held === el) return;
+    this.held?.classList.remove('is-held');
+    el?.classList.add('is-held');
+    this.held = el;
+    this.holding.set(el !== null);
   }
 
   private cancelPress(): void {
@@ -666,6 +710,7 @@ export class MosaicHomeComponent implements OnInit {
     this.cellStamp.clear();
     this.discovered.set([]);
     // Every pooled element now holds markup for a stale packing.
+    this.markHeld(null);
     for (const rec of this.live.values()) rec.el.remove();
     this.live.clear();
     this.pool.length = 0;
@@ -772,8 +817,9 @@ export class MosaicHomeComponent implements OnInit {
       el.className = 'mosaic-tile';
       this.stageRef()?.nativeElement.appendChild(el);
     }
-    el.style.width = `${p.size}px`;
-    el.style.height = `${p.size}px`;
+    const box = p.size + 2 * TILE_INSET;
+    el.style.width = `${box}px`;
+    el.style.height = `${box}px`;
     el.style.display = '';
     el.dataset['tileId'] = String(p.id);
     el.setAttribute('data-testid', 'mosaic-tile');
@@ -844,7 +890,9 @@ export class MosaicHomeComponent implements OnInit {
         rec.content = content.key;
         this.pop(rec.el);
       }
-      const transform = `translate(${pl.left.toFixed(1)}px,${pl.top.toFixed(1)}px) scale(${pl.scale.toFixed(3)})`;
+      // The box is wider than the face by the inset, so it starts that much
+      // earlier; scaling about its centre keeps the face where the lens put it.
+      const transform = `translate(${(pl.left - TILE_INSET).toFixed(1)}px,${(pl.top - TILE_INSET).toFixed(1)}px) scale(${pl.scale.toFixed(3)})`;
       if (transform !== rec.transform) {
         rec.el.style.transform = transform;
         rec.transform = transform;
@@ -859,6 +907,7 @@ export class MosaicHomeComponent implements OnInit {
     // Anything not touched this frame has left the lens — park it for reuse.
     for (const [key, rec] of this.live) {
       if (rec.stamp !== this.stamp) {
+        if (rec.el === this.held) this.markHeld(null);
         rec.el.style.display = 'none';
         this.pool.push(rec.el);
         this.live.delete(key);
