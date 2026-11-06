@@ -223,6 +223,8 @@
     --theme-elevation-raised: 0 16px 36px -8px rgb(0 0 0 / 0.7), 0 3px 8px rgb(0 0 0 / 0.4);
     --theme-elevation-overlay: 0 18px 44px -12px rgb(0 0 0 / 0.7), 0 2px 8px rgb(0 0 0 / 0.35);
     --theme-glass-edge: rgb(255 255 255 / 0.1);
+    /* A layer that floats over content *above* it: the mini player. */
+    --theme-elevation-up: 0 -10px 28px -14px rgb(0 0 0 / 0.75), 0 -1px 0 rgb(255 255 255 / 0.05);
   }
   [data-theme="daylight"],
   [data-theme="warm-paper"] {
@@ -231,6 +233,7 @@
     --theme-elevation-overlay: 0 18px 44px -12px rgb(24 24 27 / 0.28), 0 2px 8px rgb(24 24 27 / 0.08);
     --theme-glass-edge: rgb(24 24 27 / 0.1);
     --theme-glass-alpha: 84%;
+    --theme-elevation-up: 0 -10px 28px -14px rgb(24 24 27 / 0.22), 0 -1px 0 rgb(24 24 27 / 0.06);
   }
   /* Their secondary text sits closest to their surface, so they keep more. */
   [data-theme="twilight"] {
@@ -244,6 +247,7 @@
     --theme-elevation-tile: none;
     --theme-elevation-raised: none;
     --theme-elevation-overlay: none;
+    --theme-elevation-up: 0 -1px 0 var(--theme-border);
     --theme-glass-edge: var(--theme-border);
   }
 }
@@ -742,6 +746,89 @@
 @media (prefers-reduced-motion: reduce) {
   .panel-enter {
     animation: none;
+  }
+}
+
+/* ─── Mini player chrome (#1638) ─────────────────────────────────────────
+   The bar used to be the tab bar's own surface with a hairline between them,
+   so player and nav read as one slab. It now lifts off the content above it
+   (`--theme-elevation-up`) and descends a few percent toward the page colour,
+   so its lower edge meets the tab bar as a seam. Opaque on purpose: the mosaic
+   stops above the bottom chrome, so a blur would have nothing to show, and
+   fixed layers with backdrop-filter already misbehave on iOS (#1635). */
+.player-chrome {
+  background-color: var(--theme-surface);
+  background-image: linear-gradient(
+    to bottom,
+    var(--theme-surface),
+    color-mix(in srgb, var(--theme-surface) 82%, var(--theme-bg))
+  );
+  box-shadow: var(--theme-elevation-up);
+}
+
+/* The mini player's scrubbers are the slim kind: a 3px track with a fainter
+   buffered band, and a thumb that stays small until it is used. The 20px hit
+   box (the input's height) is untouched; the sheet's scrubber keeps its look.
+   On touch the thumb is hidden at rest — the fill says where you are, and the
+   native range still jumps to the tapped point. */
+.player-mini-seek .seek-range {
+  --seek-buffered-color: color-mix(in srgb, var(--theme-accent) 18%, var(--theme-surface-2));
+}
+.player-mini-seek .seek-range::-webkit-slider-runnable-track {
+  height: 3px;
+}
+.player-mini-seek .seek-range::-moz-range-track,
+.player-mini-seek .seek-range::-moz-range-progress {
+  height: 3px;
+}
+.player-mini-seek .seek-range::-webkit-slider-thumb {
+  width: 10px;
+  height: 10px;
+  margin-top: -3.5px;
+  transition: transform 0.15s ease;
+}
+.player-mini-seek .seek-range::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  transition: transform 0.15s ease;
+}
+.player-mini-seek .seek-range:active::-webkit-slider-thumb,
+.player-mini-seek .seek-range:focus-visible::-webkit-slider-thumb {
+  transform: scale(1.4);
+}
+.player-mini-seek .seek-range:active::-moz-range-thumb,
+.player-mini-seek .seek-range:focus-visible::-moz-range-thumb {
+  transform: scale(1.4);
+}
+/* Hover only where hover is real: on touch it sticks after a tap. */
+@media (hover: hover) {
+  .player-mini-seek .seek-range:hover::-webkit-slider-thumb {
+    transform: scale(1.4);
+  }
+  .player-mini-seek .seek-range:hover::-moz-range-thumb {
+    transform: scale(1.4);
+  }
+}
+@media (pointer: coarse) {
+  .player-mini-seek .seek-range::-webkit-slider-thumb {
+    transform: scale(0);
+  }
+  .player-mini-seek .seek-range::-moz-range-thumb {
+    transform: scale(0);
+  }
+  .player-mini-seek .seek-range:active::-webkit-slider-thumb,
+  .player-mini-seek .seek-range:focus-visible::-webkit-slider-thumb {
+    transform: scale(1.4);
+  }
+  .player-mini-seek .seek-range:active::-moz-range-thumb,
+  .player-mini-seek .seek-range:focus-visible::-moz-range-thumb {
+    transform: scale(1.4);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .player-mini-seek .seek-range::-webkit-slider-thumb,
+  .player-mini-seek .seek-range::-moz-range-thumb {
+    transition: none;
   }
 }
 

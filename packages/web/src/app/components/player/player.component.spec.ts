@@ -484,6 +484,25 @@ describe('PlayerComponent', () => {
     });
   });
 
+  // ─── Separation + refined seek (#1638) ────────────────────────────────────
+
+  describe('chrome', () => {
+    it('draws the bar as its own lifted layer, not a flat surface with a hairline', () => {
+      const bar = (fixture.nativeElement as HTMLElement).querySelector('[data-bottom-chrome]')!;
+      expect(bar.classList.contains('player-chrome')).toBe(true);
+      // The flat look it replaces: same surface as the tab bar, a border the only seam.
+      expect(bar.classList.contains('bg-theme-surface')).toBe(false);
+      expect(bar.classList.contains('border-t')).toBe(false);
+    });
+
+    it("scopes the slim seek style to the mini player's own bars, both of them", () => {
+      const root = fixture.nativeElement as HTMLElement;
+      const bars = root.querySelectorAll('.player-mini-seek app-seek-bar');
+      // Desktop inline bar + mobile bar; the sheet's scrubber keeps its own look.
+      expect(bars.length).toBe(2);
+    });
+  });
+
   // ─── Like button — quick interaction on the mini-player itself ────────────
 
   describe('like button', () => {

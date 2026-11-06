@@ -24,7 +24,7 @@
         [attr.aria-label]="playing() ? 'Pause' : 'Play'"
         [attr.data-playing]="playing()"
         [attr.data-buffering]="buffering()"
-        class="w-10 h-10 -translate-y-1 z-10 ring-2 ring-theme-surface shadow-lg rounded-full bg-theme-inverse text-theme-inverse flex items-center justify-center hover:opacity-90 transition"
+        class="w-10 h-10 -translate-y-1 z-10 ring-2 ring-theme-surface shadow-md rounded-full bg-theme-inverse text-theme-inverse flex items-center justify-center hover:opacity-90 transition"
       >
         @if (buffering()) {
           <span class="inline-block w-[1.125rem] h-[1.125rem] border-2 border-current border-t-transparent rounded-full animate-spin"></span>
