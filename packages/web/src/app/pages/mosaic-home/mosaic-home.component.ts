@@ -43,14 +43,43 @@ import {
   type PlayWeights,
 } from '../../lib/mosaic-tiles';
 import { packMosaic, type PackedTile, type Packing } from '../../lib/mosaic-packing';
-import { decayVelocity, visiblePlacements } from '../../lib/mosaic-lens';
+import {
+  CENTER_SCALE,
+  TILE_BASE,
+  decayVelocity,
+  lockBreakPx,
+  visiblePlacements,
+} from '../../lib/mosaic-lens';
 
 /** Pointer travel, in px, above which a pointerup is a pan and not a tap. */
 const TAP_SLOP_PX = 6;
-/** Camera px per pointer px. >1 makes the plane feel light under the finger. */
-const PAN_GAIN = 1.2;
-/** Hold duration that turns a press into "show me this track's info". */
+/**
+ * Camera px per pointer px. >1 makes the plane feel light under the finger;
+ * divided by the fisheye's centre magnification, because a plane px at the
+ * centre is CENTER_SCALE screen px and the content must track the finger.
+ */
+const PAN_GAIN = 1.2 / CENTER_SCALE;
+/** How long a tapped tile takes to glide to the centre. */
+const GLIDE_MS = 420;
+/** How long a released, unbroken lock takes to spring back. */
+const SPRING_BACK_MS = 200;
+/**
+ * The playing tile is sticky (#1638): until a drag covers `lockBreakPx` the
+ * field only gives by this share of the finger's travel, and springs back on
+ * release.
+ */
+const LOCK_GIVE = 0.25;
+
+const easeOutCubic = (t: number): number => 1 - (1 - t) ** 3;
+
+/** Hold duration that turns a press into the tile's menu. */
 const LONG_PRESS_MS = 450;
+/**
+ * Shadow room, in px, each pooled tile keeps around its face (#1638).
+ * `contain: strict` clips paint at the tile box, so the box is the packed face
+ * plus this on every side; packing, spacing and hit-testing stay in face units.
+ */
+export const TILE_INSET = 7;
 /** The hover ⋯ on a face (#1298): delegated, like every other tile event. */
 const MORE_BUTTON =
   '<button type="button" class="mosaic-more" data-more aria-label="More options">' +
@@ -76,6 +105,9 @@ const LOADING_FACE_HTML = '<div class="mosaic-face skeleton-block"></div>';
  * feed, which needs the server and is useless in this state.
  */
 const DOWNLOADS_PATH = '/library';
+
+const clampPx = (v: number, min: number, max: number): number =>
+  Math.round(Math.min(max, Math.max(min, v)));
 
 const escapeHtml = (s: string): string =>
   s.replace(
@@ -161,6 +193,9 @@ export class MosaicHomeComponent implements OnInit {
   readonly tiles = signal<MosaicTile[]>([]);
   readonly starting = signal<string | null>(null);
   readonly chromeInset = signal(0);
+  /** A tile's menu is open: the field is veiled and that tile lifted above it. */
+  readonly holding = signal(false);
+  readonly tileInsetPx = `${TILE_INSET}px`;
   readonly isEmpty = computed(() => !this.loading() && this.tiles().length === 0);
   /** Tiles the discovery cells have surfaced, mirrored into the accessible list. */
   readonly discovered = signal<MosaicTile[]>([]);
@@ -203,6 +238,27 @@ export class MosaicHomeComponent implements OnInit {
   // --- Long press ---
   private pressTimer = 0;
   private suppressTap = false;
+  /** The pooled element whose menu is open, if any. */
+  private held: HTMLElement | null = null;
+  /** A pan or its coast is under way; mirrored as `is-moving` on the stage. */
+  private moving = false;
+
+  // --- Centring + the sticky playing tile (#1638) ---
+  /** The frame clock; a field so specs can drive glides deterministically. */
+  private now = (): number => performance.now();
+  private glide: { x0: number; y0: number; x1: number; y1: number; t0: number; ms: number } | null =
+    null;
+  /**
+   * Where the tile that started playback sits, centred. While it is what is
+   * playing the field holds it (see `lockHolds`); a drag past the detent lets go.
+   */
+  private anchor: { x: number; y: number; trackId: string | null } | null = null;
+  /** This drag began on a holding lock and has not broken it yet. */
+  private lockHeld = false;
+  private lockX = 0;
+  private lockY = 0;
+  /** This drag's detent, from the stage size and the pointer that started it. */
+  private lockBreak = 0;
 
   // --- Connectivity ---
   /** Guards against a slow load landing after a newer one replaced it. */
@@ -218,10 +274,19 @@ export class MosaicHomeComponent implements OnInit {
       this.lastY = e.clientY;
       this.vx = 0;
       this.vy = 0;
+      this.glide = null;
+      this.lockHeld = this.lockHolds();
+      this.lockX = 0;
+      this.lockY = 0;
+      const stage = this.stageRef()?.nativeElement;
+      this.lockBreak = lockBreakPx(
+        Math.min(stage?.clientWidth ?? 0, stage?.clientHeight ?? 0),
+        e.pointerType,
+      );
       this.stageRef()?.nativeElement.classList.add('cursor-grabbing');
       this.wake();
       const tile = this.tileFromEvent(e);
-      if (tile) this.schedulePress(tile, { x: e.clientX, y: e.clientY });
+      if (tile) this.schedulePress(tile, { x: e.clientX, y: e.clientY }, this.tileElement(e));
     },
     onMove: (e) => {
       const dx = e.clientX - this.lastX;
@@ -229,7 +294,26 @@ export class MosaicHomeComponent implements OnInit {
       this.lastX = e.clientX;
       this.lastY = e.clientY;
       this.moved += Math.abs(dx) + Math.abs(dy);
-      if (this.moved > TAP_SLOP_PX) this.cancelPress();
+      if (this.moved > TAP_SLOP_PX) {
+        this.cancelPress();
+        this.setMoving(true);
+      }
+      if (this.lockHeld && this.anchor) {
+        this.lockX += dx;
+        this.lockY += dy;
+        if (Math.hypot(this.lockX, this.lockY) < this.lockBreak) {
+          // Held: the field gives a little under the finger, nothing more.
+          this.cx = this.anchor.x - this.lockX * PAN_GAIN * LOCK_GIVE;
+          this.cy = this.anchor.y - this.lockY * PAN_GAIN * LOCK_GIVE;
+          this.vx = 0;
+          this.vy = 0;
+          this.wake();
+          return;
+        }
+        // Broken free: pan on from where the give left it, unanchored.
+        this.lockHeld = false;
+        this.anchor = null;
+      }
       this.cx -= dx * PAN_GAIN;
       this.cy -= dy * PAN_GAIN;
       this.vx = -dx * PAN_GAIN;
@@ -238,6 +322,10 @@ export class MosaicHomeComponent implements OnInit {
     },
     onEnd: () => {
       this.dragging = false;
+      if (this.lockHeld && this.anchor) {
+        this.lockHeld = false;
+        this.glideTo(this.anchor.x, this.anchor.y, SPRING_BACK_MS);
+      }
       this.wake(); // coast out on the release velocity
       this.cancelPress();
       this.stageRef()?.nativeElement.classList.remove('cursor-grabbing');
@@ -254,6 +342,13 @@ export class MosaicHomeComponent implements OnInit {
     effect(() => {
       this.tiles();
       queueMicrotask(() => this.repack());
+    });
+
+    // Whatever closes the menu (Escape, an outside tap, Back, running an item)
+    // lets the held tile down. A menu replaced by another never reads null
+    // here, which is why markHeld moves the lift itself.
+    effect(() => {
+      if (this.entityMenu.state() === null) this.markHeld(null);
     });
 
     // Rebuild the mosaic when connectivity changes, in either direction: lose
@@ -447,7 +542,7 @@ export class MosaicHomeComponent implements OnInit {
   // Actions — every one of them starts a radio
   // -------------------------------------------------------------------------
 
-  async start(tile: MosaicTile): Promise<void> {
+  async start(tile: MosaicTile, focused = false): Promise<void> {
     // The one tile that navigates rather than plays, so it skips the playback
     // busy-guard and never opens Now Playing.
     if (tile.action.type === 'route') {
@@ -471,7 +566,9 @@ export class MosaicHomeComponent implements OnInit {
           this.playDownloaded(tile.action.track);
           break;
       }
-      this.player.nowPlayingOpen.set(true);
+      // The mosaic answers a tap by centring the tile, not by raising the
+      // sheet over it (#1638); the mini-player is still one tap away.
+      if (!focused) this.focusTile(tile);
     } catch {
       this.toast.show({ message: "Couldn't start radio — try again", kind: 'error' });
     } finally {
@@ -549,12 +646,71 @@ export class MosaicHomeComponent implements OnInit {
       e.stopPropagation();
       const tile = this.tileFromEvent(e);
       const actions = tile ? this.tileActions(tile) : [];
-      if (actions.length > 0) this.entityMenu.open({ actions, anchor: more });
+      if (actions.length > 0) {
+        this.markHeld(this.tileElement(e));
+        this.entityMenu.open({ actions, anchor: more });
+      }
       return;
     }
     if (this.moved > TAP_SLOP_PX) return;
     const tile = this.tileFromEvent(e);
-    if (tile) void this.start(tile);
+    if (!tile) return;
+    const el = this.tileElement(e);
+    const focused = el !== null && this.focusElement(el, tile);
+    void this.start(tile, focused);
+  }
+
+  /** Glide the exact copy that was tapped to the centre. */
+  private focusElement(el: HTMLElement, tile: MosaicTile): boolean {
+    const packed = this.byId.get(Number(el.dataset['tileId']));
+    const W = this.packing?.W;
+    if (!packed || !W) return false;
+    const [i, j] = (el.dataset['cell'] ?? HOME_CELL).split(',').map(Number);
+    this.anchorOn(packed.x + i * W, packed.y + j * W, tile);
+    return true;
+  }
+
+  /** From the accessible list: the home copy of the tile nearest the camera. */
+  private focusTile(tile: MosaicTile): void {
+    const packing = this.packing;
+    const packed = packing?.tiles.find((p) => p.tile.key === tile.key);
+    if (!packing || !packed) return;
+    const W = packing.W;
+    const i = Math.round((this.cx - packed.x) / W);
+    const j = Math.round((this.cy - packed.y) / W);
+    this.anchorOn(packed.x + i * W, packed.y + j * W, tile);
+  }
+
+  private anchorOn(x: number, y: number, tile: MosaicTile): void {
+    const a = tile.action;
+    const trackId = a.type === 'song' || a.type === 'offline' ? a.track.id : null;
+    this.anchor = { x, y, trackId };
+    this.glideTo(x, y, GLIDE_MS);
+  }
+
+  /**
+   * The anchored tile holds the field while it is what is playing: the seed
+   * song itself for a song tile, any playback for a radio a vibe, genre or
+   * playlist tile started (those have no single track to compare).
+   */
+  private lockHolds(): boolean {
+    const a = this.anchor;
+    if (!a || !this.player.isPlaying()) return false;
+    return a.trackId === null || this.player.currentTrack()?.id === a.trackId;
+  }
+
+  private glideTo(x: number, y: number, ms: number): void {
+    this.vx = 0;
+    this.vy = 0;
+    if (this.reducedMotion) {
+      this.cx = x;
+      this.cy = y;
+      this.glide = null;
+    } else {
+      this.glide = { x0: this.cx, y0: this.cy, x1: x, y1: y, t0: this.now(), ms };
+      this.setMoving(true);
+    }
+    this.wake();
   }
 
   /** The stage's pointerdown: a press on a face's ⋯ is the button's, not a pan or a hold. */
@@ -569,6 +725,7 @@ export class MosaicHomeComponent implements OnInit {
     const actions = this.tileActions(tile);
     if (actions.length === 0) return;
     e.preventDefault();
+    this.markHeld(this.tileElement(e));
     this.entityMenu.open({ actions, at: { x: e.clientX, y: e.clientY } });
   }
 
@@ -603,9 +760,14 @@ export class MosaicHomeComponent implements OnInit {
     }
   }
 
+  /** The pooled element an event landed in. */
+  private tileElement(e: Event): HTMLElement | null {
+    return (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-tile-id]') ?? null;
+  }
+
   /** The tile an event landed on, resolved through the cell's content mapping. */
   private tileFromEvent(e: Event): MosaicTile | null {
-    const el = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-tile-id]');
+    const el = this.tileElement(e);
     if (!el) return null;
     const packed = this.byId.get(Number(el.dataset['tileId']));
     if (!packed) return null;
@@ -618,18 +780,35 @@ export class MosaicHomeComponent implements OnInit {
   }
 
   // -------------------------------------------------------------------------
-  // Long press → quick info
+  // Long press → the tile's menu
   // -------------------------------------------------------------------------
 
-  /** Arm the hold-for-info timer; only song-backed tiles carry track info. */
   /** A still hold opens the tile's menu at the finger (#1298), and eats the release's tap. */
-  private schedulePress(tile: MosaicTile, at: { x: number; y: number }): void {
+  private schedulePress(
+    tile: MosaicTile,
+    at: { x: number; y: number },
+    el: HTMLElement | null = null,
+  ): void {
     const actions = this.tileActions(tile);
     if (actions.length === 0) return;
     this.pressTimer = window.setTimeout(() => {
       this.suppressTap = true;
+      this.markHeld(el);
       this.entityMenu.open({ actions, at });
     }, LONG_PRESS_MS);
+  }
+
+  /**
+   * Lift the tile whose menu is open above a veiled field (#1638), or let it
+   * down with null. Only one tile is ever held: a second menu moves the lift.
+   * Class writes, not a binding, because pooled tiles are not Angular's.
+   */
+  private markHeld(el: HTMLElement | null): void {
+    if (this.held === el) return;
+    this.held?.classList.remove('is-held');
+    el?.classList.add('is-held');
+    this.held = el;
+    this.holding.set(el !== null);
   }
 
   private cancelPress(): void {
@@ -650,7 +829,7 @@ export class MosaicHomeComponent implements OnInit {
     const stageMin = Math.max(1, Math.min(stage.clientWidth, stage.clientHeight));
     if (stageMin <= 1) return;
 
-    this.packing = packMosaic(list, (t) => tileSize(t.score, stageMin));
+    this.packing = packMosaic(list, (t) => tileSize(t.score, stageMin) * TILE_BASE);
     this.lensRadius = stageMin;
     this.cx = this.packing.W / 2;
     this.cy = this.packing.W / 2;
@@ -666,6 +845,7 @@ export class MosaicHomeComponent implements OnInit {
     this.cellStamp.clear();
     this.discovered.set([]);
     // Every pooled element now holds markup for a stale packing.
+    this.markHeld(null);
     for (const rec of this.live.values()) rec.el.remove();
     this.live.clear();
     this.pool.length = 0;
@@ -674,19 +854,22 @@ export class MosaicHomeComponent implements OnInit {
 
   private tileHtml(p: PackedTile, t: MosaicTile): string {
     const s = p.size;
-    const titleSize = s > 180 ? 17 : s > 130 ? 15 : 13;
+    // Type and padding scale with the face: packed small under the fisheye,
+    // fixed 12px padding and 13px titles clipped every small tile's label.
+    const titleSize = clampPx(s * 0.12, 9, 17);
+    const faceVars = `--face-pad:${clampPx(s * 0.08, 5, 12)}px;--face-sub:${clampPx(s * 0.085, 7, 12)}px`;
     const title = escapeHtml(this.label(t));
     const subtitle = escapeHtml(t.subtitle);
 
     if (t.kind === 'vibe' || t.kind === 'downloads') {
-      return `<div class="mosaic-face bg-gradient-to-br ${t.gradient} text-white">
+      return `<div class="mosaic-face bg-gradient-to-br ${t.gradient} text-white" style="${faceVars}">
         <span style="font-size:${Math.round(s * 0.22)}px" aria-hidden="true">${t.emoji ?? ''}</span>
         <div><b style="font-size:${titleSize}px">${title}</b><span>${subtitle}</span></div>
       </div>`;
     }
 
     if (t.kind === 'genre') {
-      return `<div class="mosaic-face bg-theme-surface-2 text-theme-secondary">
+      return `<div class="mosaic-face bg-theme-surface-2 text-theme-secondary" style="${faceVars}">
         <span class="mosaic-dot"></span>
         <div><b style="font-size:${titleSize}px">${title}</b><span>${subtitle}</span></div>
         ${MORE_BUTTON}
@@ -698,12 +881,15 @@ export class MosaicHomeComponent implements OnInit {
     // reads as a deliberate tile rather than a hole.
     const fallback = placeholderGradient(t.subtitle, t.title);
     const cover = t.coverArt
-      ? this.server.apiUrl(coverUrl(t.coverArt, coverSizeBucket(s), this.auth.mediaToken()))
+      ? this.server.apiUrl(
+          // Sized for the centre, where the fisheye draws it largest.
+          coverUrl(t.coverArt, coverSizeBucket(s * CENTER_SCALE), this.auth.mediaToken()),
+        )
       : null;
     const bg = cover
       ? `background-image:url('${encodeURI(cover)}'),${fallback};background-size:cover;background-position:center`
       : `background-image:${fallback}`;
-    return `<div class="mosaic-face text-white" style="${bg}">
+    return `<div class="mosaic-face text-white" style="${faceVars};${bg}">
       <div class="mosaic-scrim"><b style="font-size:${titleSize}px">${title}</b><span>${subtitle}</span></div>
       ${MORE_BUTTON}
     </div>`;
@@ -772,8 +958,9 @@ export class MosaicHomeComponent implements OnInit {
       el.className = 'mosaic-tile';
       this.stageRef()?.nativeElement.appendChild(el);
     }
-    el.style.width = `${p.size}px`;
-    el.style.height = `${p.size}px`;
+    const box = p.size + 2 * TILE_INSET;
+    el.style.width = `${box}px`;
+    el.style.height = `${box}px`;
     el.style.display = '';
     el.dataset['tileId'] = String(p.id);
     el.setAttribute('data-testid', 'mosaic-tile');
@@ -809,7 +996,14 @@ export class MosaicHomeComponent implements OnInit {
     const packing = this.packing;
     if (!stage || !packing) return;
 
-    if (!this.dragging) {
+    if (this.glide) {
+      const g = this.glide;
+      const t = Math.min(1, Math.max(0, (this.now() - g.t0) / g.ms));
+      const e = easeOutCubic(t);
+      this.cx = g.x0 + (g.x1 - g.x0) * e;
+      this.cy = g.y0 + (g.y1 - g.y0) * e;
+      if (t >= 1) this.glide = null;
+    } else if (!this.dragging) {
       this.cx += this.vx;
       this.cy += this.vy;
       // Friction with a hard snap to zero — the mosaic comes to an actual
@@ -844,7 +1038,9 @@ export class MosaicHomeComponent implements OnInit {
         rec.content = content.key;
         this.pop(rec.el);
       }
-      const transform = `translate(${pl.left.toFixed(1)}px,${pl.top.toFixed(1)}px) scale(${pl.scale.toFixed(3)})`;
+      // The box is wider than the face by the inset, so it starts that much
+      // earlier; scaling about its centre keeps the face where the lens put it.
+      const transform = `translate(${(pl.left - TILE_INSET).toFixed(1)}px,${(pl.top - TILE_INSET).toFixed(1)}px) scale(${pl.scale.toFixed(3)})`;
       if (transform !== rec.transform) {
         rec.el.style.transform = transform;
         rec.transform = transform;
@@ -859,12 +1055,29 @@ export class MosaicHomeComponent implements OnInit {
     // Anything not touched this frame has left the lens — park it for reuse.
     for (const [key, rec] of this.live) {
       if (rec.stamp !== this.stamp) {
+        if (rec.el === this.held) this.markHeld(null);
         rec.el.style.display = 'none';
         this.pool.push(rec.el);
         this.live.delete(key);
       }
     }
 
-    if (this.dragging || this.vx !== 0 || this.vy !== 0) this.wake();
+    if (this.dragging || this.glide || this.vx !== 0 || this.vy !== 0) this.wake();
+    else this.setMoving(false);
   };
+
+  /**
+   * The rim blur stands down while the field moves and comes back at rest
+   * (#1638): measured on a weak GPU, a `backdrop-filter` re-blurring the whole
+   * field every frame of a pan quadrupled the dropped frames, and with it off
+   * mid-pan the pan cost the same as before the blur existed. Set on the move
+   * that crosses the tap slop, so a tap or a still hold never flickers it;
+   * cleared by the frame that finds the field at rest. A class write, not a
+   * signal, like every other write the loop makes.
+   */
+  private setMoving(moving: boolean): void {
+    if (this.moving === moving) return;
+    this.moving = moving;
+    this.stageRef()?.nativeElement.classList.toggle('is-moving', moving);
+  }
 }

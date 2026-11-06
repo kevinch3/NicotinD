@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { vi } from 'vitest';
 import { of, throwError } from 'rxjs';
-import { MosaicHomeComponent } from './mosaic-home.component';
+import { MosaicHomeComponent, TILE_INSET } from './mosaic-home.component';
 import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
@@ -93,6 +93,7 @@ interface SetupOptions {
 function setup(opts: SetupOptions = {}) {
   const player = {
     currentTrack: signal<Track | null>(null),
+    isPlaying: signal(false),
     nowPlayingOpen: signal(false),
     startRadio: vi.fn(),
     startRadioWithFilter: vi.fn(),
@@ -122,9 +123,11 @@ function setup(opts: SetupOptions = {}) {
     ),
   };
   const trackInfo = { open: vi.fn(), close: vi.fn() };
+  const menuState = signal<unknown>(null);
   const entityMenu = {
-    open: vi.fn(),
-    close: vi.fn(),
+    state: menuState.asReadonly(),
+    open: vi.fn((s: unknown) => menuState.set(s)),
+    close: vi.fn(() => menuState.set(null)),
     build: vi.fn((ref: { kind: string }) => [
       { label: `Start radio ${ref.kind}`, action: () => {} },
     ]),
@@ -227,7 +230,8 @@ describe('MosaicHomeComponent', () => {
       const tile = component.tiles().find((t) => t.kind === 'song')!;
       await component.start(tile);
       expect(player.startRadio).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }));
-      expect(player.nowPlayingOpen()).toBe(true);
+      // The mosaic centres the tile instead of raising the sheet over it (#1638).
+      expect(player.nowPlayingOpen()).toBe(false);
     });
 
     it('a recently-played tile also starts a radio, not queued playback', async () => {
@@ -365,13 +369,19 @@ describe('MosaicHomeComponent', () => {
  * through the DOM here; these tests exercise the glue behind it instead.
  */
 interface MosaicInternals {
-  schedulePress(t: MosaicTile, at: { x: number; y: number }): void;
+  schedulePress(t: MosaicTile, at: { x: number; y: number }, el?: HTMLElement | null): void;
+  markHeld(el: HTMLElement | null): void;
   cancelPress(): void;
   onStageClick(e: MouseEvent): void;
   onStageContextMenu(e: MouseEvent): void;
   tileFromEvent(e: Event): MosaicTile | null;
   suppressTap: boolean;
   packing: Packing | null;
+  byId: Map<number, PackedTile>;
+  cx: number;
+  cy: number;
+  now: () => number;
+  anchor: { x: number; y: number; trackId: string | null } | null;
   cells: Map<string, unknown>;
   loadCell(cell: string): Promise<void>;
   enterCell(cell: string): unknown;
@@ -511,6 +521,230 @@ describe('hold-for-menu (#1298)', () => {
     Object.defineProperty(e, 'target', { value: more });
     component.onStagePointerDown(e);
     expect(start).not.toHaveBeenCalled();
+  });
+});
+
+describe('mosaic depth (#1638)', () => {
+  const tileEl = (): { el: HTMLElement; target: HTMLElement } => {
+    const el = document.createElement('div');
+    el.className = 'mosaic-tile';
+    el.dataset['tileId'] = '0';
+    const target = document.createElement('b');
+    el.appendChild(target);
+    return { el, target };
+  };
+
+  it('a hold lifts the tile whose menu it opened, and the menu closing lets it down', async () => {
+    vi.useFakeTimers();
+    try {
+      const { component, entityMenu, fixture } = setup({ tasteBreakers: [song({ id: 'a' })] });
+      await settle(fixture);
+      const c = internals(component);
+      const { el } = tileEl();
+      c.schedulePress(
+        component.tiles().find((t) => t.kind === 'song')!,
+        { x: 1, y: 2 },
+        el,
+      );
+      expect(el.classList.contains('is-held')).toBe(false);
+      vi.advanceTimersByTime(450);
+      expect(el.classList.contains('is-held')).toBe(true);
+      expect(component.holding()).toBe(true);
+      // Escape, an outside tap, Back and running an item all end in close().
+      entityMenu.close();
+      fixture.detectChanges();
+      expect(el.classList.contains('is-held')).toBe(false);
+      expect(component.holding()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('right-click lifts the tile under the pointer, and a second menu moves the lift', async () => {
+    const { component, fixture } = setup({ tasteBreakers: [song({ id: 'a' })] });
+    await settle(fixture);
+    const c = internals(component);
+    vi.spyOn(c, 'tileFromEvent').mockReturnValue(component.tiles().find((t) => t.kind === 'song')!);
+    const first = tileEl();
+    const second = tileEl();
+    for (const { target } of [first, second]) {
+      const e = new MouseEvent('contextmenu', { cancelable: true });
+      Object.defineProperty(e, 'target', { value: target });
+      c.onStageContextMenu(e);
+      fixture.detectChanges();
+    }
+    expect(first.el.classList.contains('is-held')).toBe(false);
+    expect(second.el.classList.contains('is-held')).toBe(true);
+  });
+
+  it("a face's type and padding scale with its size, so a small tile's label is not clipped", async () => {
+    const { component, fixture } = setup({ tasteBreakers: [song({ id: 'a' })] });
+    await settle(fixture);
+    const html = (size: number) =>
+      (component as unknown as { tileHtml(p: PackedTile, t: MosaicTile): string }).tileHtml(
+        packedStub(0, size),
+        component.tiles().find((t) => t.kind === 'song')!,
+      );
+    expect(html(60)).toContain('--face-pad:5px');
+    expect(html(60)).toContain('font-size:9px');
+    // Big faces keep the sizes they always had.
+    expect(html(220)).toContain('--face-pad:12px');
+    expect(html(220)).toContain('font-size:17px');
+  });
+
+  describe('in the loop', () => {
+    const drawn = async () => {
+      const { component, fixture, player } = setup();
+      await settle(fixture);
+      const c = internals(component);
+      cancelAnimationFrame(c.raf);
+      const realRaf = globalThis.requestAnimationFrame.bind(globalThis);
+      vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) =>
+        cb === c.frame ? 1 : realRaf(cb),
+      );
+      const stage = document.createElement('div');
+      Object.defineProperty(component, 'stageRef', { value: () => ({ nativeElement: stage }) });
+      c.raf = 0;
+      c.running = true;
+      c.dragging = false;
+      c.vx = 0;
+      c.vy = 0;
+      c.packing = { W: 500, tiles: [packedStub(0, 100)] };
+      c.frame();
+      const el = stage.querySelector<HTMLElement>('.mosaic-tile')!;
+      return { component, c, el, player };
+    };
+
+    afterEach(() => vi.restoreAllMocks());
+
+    it('a pooled tile is its face plus shadow room on every side, centred where the lens put the face', async () => {
+      const { el } = await drawn();
+      // `contain: strict` clips paint at the box, so the shadow needs room inside it.
+      expect(el.style.width).toBe(`${100 + 2 * TILE_INSET}px`);
+      expect(el.style.height).toBe(`${100 + 2 * TILE_INSET}px`);
+      // The lens places a 100px face at (-50, -50); the bigger box shifts back by the inset.
+      expect(el.style.transform).toContain(
+        `translate(${-50 - TILE_INSET}.0px,${-50 - TILE_INSET}.0px)`,
+      );
+    });
+
+    /** Drive the stage's drag the way the browser does: down on the stage, the rest on document. */
+    const pointer = (drag: MosaicHomeComponent['drag'], type: string, x: number): void => {
+      const e = new MouseEvent(type, { clientX: x, clientY: 0, bubbles: true });
+      if (type === 'pointerdown') drag.start(e as unknown as PointerEvent);
+      else document.dispatchEvent(e);
+    };
+
+    it('a pan stands the rim blur down, and the coast coming to rest brings it back', async () => {
+      const { component, c, el } = await drawn();
+      const stage = el.parentElement!;
+      pointer(component.drag, 'pointerdown', 0);
+      pointer(component.drag, 'pointermove', 20);
+      // Measured on a weak GPU: the blur re-renders the whole field every
+      // frame of a pan and quadrupled the dropped frames (#1638).
+      expect(stage.classList.contains('is-moving')).toBe(true);
+      pointer(component.drag, 'pointerup', 20);
+      let frames = 0;
+      while ((c.vx !== 0 || c.vy !== 0) && frames++ < 1_000) c.frame();
+      c.frame();
+      expect(stage.classList.contains('is-moving')).toBe(false);
+    });
+
+    it('a tap or a still hold leaves the blur alone — no flicker on every press', async () => {
+      const { component, c, el } = await drawn();
+      const stage = el.parentElement!;
+      pointer(component.drag, 'pointerdown', 0);
+      pointer(component.drag, 'pointermove', 3); // inside the tap slop
+      c.frame();
+      expect(stage.classList.contains('is-moving')).toBe(false);
+      pointer(component.drag, 'pointerup', 3);
+      c.frame();
+      expect(stage.classList.contains('is-moving')).toBe(false);
+    });
+
+    /** Run frames on a fake clock until the glide lands (or a cap is hit). */
+    const settleGlide = (c: MosaicInternals, from: number, ms: number): void => {
+      for (let t = from; t <= from + ms; t += 16) {
+        c.now = () => t;
+        c.frame();
+      }
+    };
+
+    it('a tap centres the tapped copy with a glide, and starts it without raising the sheet', async () => {
+      const { c, el, player } = await drawn();
+      c.byId.set(0, c.packing!.tiles[0]);
+      c.cells.set('1,0', 'base');
+      el.dataset['cell'] = '1,0';
+      c.now = () => 0;
+      const click = new MouseEvent('click', { bubbles: true });
+      Object.defineProperty(click, 'target', { value: el });
+      c.onStageClick(click);
+      expect(player.startRadio).toHaveBeenCalled();
+      expect(player.nowPlayingOpen()).toBe(false);
+      // Copy (1,0) of a tile at plane (0,0) sits one patch width (500) along.
+      c.now = () => 120;
+      c.frame();
+      expect(c.cx).toBeGreaterThan(0);
+      expect(c.cx).toBeLessThan(500);
+      settleGlide(c, 120, 1_000);
+      expect(c.cx).toBeCloseTo(500, 3);
+      expect(c.cy).toBeCloseTo(0, 3);
+    });
+
+    describe('the playing tile is sticky', () => {
+      const locked = async () => {
+        const ctx = await drawn();
+        ctx.c.anchor = { x: 0, y: 0, trackId: 'slot0' };
+        ctx.c.cx = 0;
+        ctx.c.cy = 0;
+        ctx.player.isPlaying.set(true);
+        ctx.player.currentTrack.set({ id: 'slot0', title: '', artist: '' } as Track);
+        return ctx;
+      };
+
+      it('a short drag only gives a little, and springs back on release', async () => {
+        const { component, c } = await locked();
+        pointer(component.drag, 'pointerdown', 0);
+        pointer(component.drag, 'pointermove', 15);
+        expect(Math.abs(c.cx)).toBeGreaterThan(0);
+        expect(Math.abs(c.cx)).toBeLessThan(15 * 0.5);
+        c.now = () => 0;
+        pointer(component.drag, 'pointerup', 15);
+        settleGlide(c, 0, 1_000);
+        expect(c.cx).toBeCloseTo(0, 3);
+        expect(c.anchor).not.toBeNull();
+      });
+
+      it('a drag past the detent breaks free and pans', async () => {
+        const { component, c } = await locked();
+        pointer(component.drag, 'pointerdown', 0);
+        pointer(component.drag, 'pointermove', 20);
+        pointer(component.drag, 'pointermove', 60);
+        pointer(component.drag, 'pointermove', 100);
+        expect(c.anchor).toBeNull();
+        expect(Math.abs(c.cx)).toBeGreaterThan(20);
+        pointer(component.drag, 'pointerup', 100);
+      });
+
+      it('nothing sticks once that tile is no longer what is playing', async () => {
+        const { component, c, player } = await locked();
+        player.currentTrack.set({ id: 'other', title: '', artist: '' } as Track);
+        pointer(component.drag, 'pointerdown', 0);
+        pointer(component.drag, 'pointermove', 15);
+        expect(Math.abs(c.cx)).toBeGreaterThan(15 * 0.5);
+        pointer(component.drag, 'pointerup', 15);
+      });
+    });
+
+    it('a held tile that leaves the lens is let down as it is parked', async () => {
+      const { component, c, el } = await drawn();
+      c.markHeld(el);
+      expect(component.holding()).toBe(true);
+      c.packing = { W: 500, tiles: [] };
+      c.frame();
+      expect(el.classList.contains('is-held')).toBe(false);
+      expect(component.holding()).toBe(false);
+    });
   });
 });
 
