@@ -238,8 +238,9 @@ test.describe('mobile UX', () => {
 
   // The Library Songs tab toolbar (search + sort + Filters + Select) used a
   // non-wrapping flex row whose combined min-width exceeded the phone, pushing a
-  // horizontal scroll that shifted the whole page (header/tabs clipped). It now
-  // wraps like the other tabs; guard there's no horizontal page overflow.
+  // horizontal scroll that shifted the whole page (header/tabs clipped). The
+  // controls are icons now and the search takes what is left; guard there's no
+  // horizontal page overflow.
   test('library Songs tab toolbar does not overflow horizontally', async ({ page }) => {
     await page.goto('/library');
     await page.getByRole('button', { name: 'Songs', exact: true }).click();
@@ -252,6 +253,88 @@ test.describe('mobile UX', () => {
       return el.scrollWidth - el.clientWidth;
     });
     expect(overflow, 'no horizontal page overflow at phone width').toBeLessThanOrEqual(1);
+  });
+
+  // A fresh device opens the Library on Songs — the first tab — and at the
+  // narrowest phone the tab bar and each tab's toolbar are ONE row: icons, with
+  // only the active tab labelled. Run in Spanish, whose labels are the longest
+  // ("Recopilaciones"), with every tab active in turn.
+  test('library tab bar and toolbars fit one row at 360 px, Songs first', async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 780 });
+    await page.addInitScript(() => {
+      localStorage.removeItem('nicotind-library-mode');
+      localStorage.setItem('nicotind-lang', 'es');
+    });
+    await page.goto('/library');
+    const tabs = page.getByTestId('library-tabs').getByRole('button');
+    await expect(tabs).toHaveCount(8);
+    await expect(tabs.first()).toHaveAccessibleName('Canciones');
+    await expect(tabs.first()).toHaveAttribute('aria-current', 'true');
+    await expect(page.getByTestId('library-songs')).toBeVisible();
+
+    type Box = { top: number; right: number; width: number };
+    const expectOneRow = (boxes: Box[], what: string) => {
+      const shown = boxes.filter((b) => b.width > 0);
+      expect(shown.length, `${what}: controls measured`).toBeGreaterThan(1);
+      const top = Math.min(...shown.map((b) => b.top));
+      for (const b of shown) {
+        expect(b.top - top, `${what}: a control wrapped to a second row`).toBeLessThan(4);
+        expect(b.right, `${what}: a control overflows the viewport`).toBeLessThanOrEqual(361);
+      }
+    };
+    const boxesOf = (els: Element[]): Box[] =>
+      els.map((el) => {
+        const r = el.getBoundingClientRect();
+        return { top: r.top, right: r.right, width: r.width };
+      });
+
+    const modes = await tabs.evaluateAll((els) => els.map((el) => el.getAttribute('data-mode')));
+    for (const [i, mode] of modes.entries()) {
+      await tabs.nth(i).click();
+      await expect(tabs.nth(i)).toHaveAttribute('aria-current', 'true');
+      expectOneRow(await tabs.evaluateAll(boxesOf), `tabs (${mode} active)`);
+    }
+
+    // Every tab with a toolbar: the row's controls share one line. The sort
+    // control's host is `display: contents`, so its buttons are measured.
+    const searchTestIds: Record<string, string> = {
+      songs: 'library-songs-search',
+      albums: 'library-search',
+      compilations: 'library-compilations-search',
+      singles: 'library-singles-search',
+      artists: 'library-artists-search',
+    };
+    for (const [mode, searchTestId] of Object.entries(searchTestIds)) {
+      const tab = page.locator(`[data-testid="library-tabs"] [data-mode="${mode}"]`);
+      await tab.click();
+      await expect(tab).toHaveAttribute('aria-current', 'true');
+      // This tab's own field, not the previous tab's one about to be removed.
+      const search = page.getByTestId(searchTestId);
+      await expect(search).toBeVisible();
+      const boxes = await search.evaluate((input) => {
+        const row = input.closest('app-search-field')!.parentElement!;
+        const items: Element[] = [];
+        for (const child of Array.from(row.children)) {
+          if (getComputedStyle(child).display === 'contents')
+            items.push(...Array.from(child.children));
+          else items.push(child);
+        }
+        return items.map((item) => {
+          const r = item.getBoundingClientRect();
+          return { top: r.top, right: r.right, width: r.width };
+        });
+      });
+      expect(
+        boxes.length,
+        `${mode} toolbar: search, sort and filters at least`,
+      ).toBeGreaterThanOrEqual(3);
+      expectOneRow(boxes, `${mode} toolbar`);
+    }
+    const overflow = await page.evaluate(() => {
+      const el = document.scrollingElement ?? document.documentElement;
+      return el.scrollWidth - el.clientWidth;
+    });
+    expect(overflow, 'no horizontal page overflow at 360 px').toBeLessThanOrEqual(1);
   });
 
   // The sticky header folds env(safe-area-inset-top) into its top padding so it

@@ -254,6 +254,10 @@ export async function seedAdminAndLibrary(
       localStorage.setItem('nicotind_token', t);
       localStorage.setItem('nicotind_username', u);
       localStorage.setItem('nicotind_role', 'admin');
+      // A fresh device opens the Library on Songs; the suite browses from the
+      // album grid, so the seeded user last left it on Albums (docs/e2e.md).
+      // The Songs-first default itself is asserted in mobile-ux.spec.ts.
+      localStorage.setItem('nicotind-library-mode', 'albums');
     },
     { t: token, u: ADMIN.username },
   );

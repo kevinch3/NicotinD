@@ -390,6 +390,15 @@ same PR that hit it.
   explicit header. Assuming otherwise yields 401s that read like route bugs
   (this bit `playlist-from-acquire.spec.ts` on first landing).
 
+- **`/library` opens on Albums only because the seed says so.** A fresh device
+  opens the Library on Songs, its first tab (`DEFAULT_LIBRARY_MODE`). The suite
+  browses from the album grid in ~90 places, so `seedAdminAndLibrary` also
+  writes `nicotind-library-mode=albums` into the saved `storageState`: the seed
+  user last left the Library on Albums. A context without that state — a spec
+  that signs in through the form, or one that clears the key — lands on Songs
+  and must click the Albums tab. `mobile-ux.spec.ts` removes the key to assert
+  the real default.
+
 - **No resolve/acquisition plugin is enabled on a fresh server.** Acquisition
   is default-off, so every capability-gated surface — the link-intent card,
   acquire buttons, `POST /api/acquire` succeeding — is absent until a spec

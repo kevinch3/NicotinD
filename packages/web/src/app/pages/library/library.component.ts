@@ -24,7 +24,13 @@ import { TransferService } from '../../services/transfer.service';
 import { ListControlsService, type SortOption } from '../../services/list-controls.service';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { LibraryFilterPanelComponent } from '../../components/library-filter-panel/library-filter-panel.component';
-import { IconComponent } from '../../components/icon/icon.component';
+import { IconComponent, type IconName } from '../../components/icon/icon.component';
+import { SearchFieldComponent } from '../../components/search-field/search-field.component';
+import {
+  SortSelectComponent,
+  toSortChoices,
+  type SortChoice,
+} from '../../components/sort-select/sort-select.component';
 import { LibrarySongsComponent } from './library-songs.component';
 import { SkeletonComponent } from '../../components/skeleton/skeleton.component';
 import { LibraryFindComponent } from './library-find.component';
@@ -63,6 +69,9 @@ export type { AlbumListType };
 
 type LibraryMode =
   'albums' | 'compilations' | 'singles' | 'artists' | 'genre' | 'songs' | 'playlists' | 'stats';
+
+/** The tab a fresh device opens on: the first one in the tab bar. */
+export const DEFAULT_LIBRARY_MODE: LibraryMode = 'songs';
 
 interface AlbumTypeOption {
   value: AlbumListType;
@@ -131,6 +140,8 @@ function writePersistedState(state: PersistedLibraryState): void {
     LibraryFindComponent,
     SkeletonComponent,
     IconComponent,
+    SearchFieldComponent,
+    SortSelectComponent,
     TranslatePipe,
     LibraryStatsComponent,
     LibraryListErrorComponent,
@@ -197,16 +208,17 @@ export class LibraryComponent implements OnInit, OnDestroy {
   }
 
   // ─── Mode ─────────────────────────────────────────────────────────
-  readonly modes = [
-    // `label` is an i18n key (issue #236), rendered through the `t` pipe.
-    { value: 'albums' as LibraryMode, label: 'library.tab.albums' },
-    { value: 'compilations' as LibraryMode, label: 'library.tab.compilations' },
-    { value: 'singles' as LibraryMode, label: 'library.tab.singles' },
-    { value: 'artists' as LibraryMode, label: 'library.tab.artists' },
-    { value: 'genre' as LibraryMode, label: 'library.tab.genre' },
-    { value: 'songs' as LibraryMode, label: 'library.tab.songs' },
-    { value: 'playlists' as LibraryMode, label: 'library.tab.playlists' },
-    { value: 'stats' as LibraryMode, label: 'library.tab.stats' },
+  // `label` is an i18n key (issue #236), rendered through the `t` pipe. The
+  // first entry is also the default tab (`DEFAULT_LIBRARY_MODE`).
+  readonly modes: ReadonlyArray<{ value: LibraryMode; label: string; icon: IconName }> = [
+    { value: 'songs', label: 'library.tab.songs', icon: 'music' },
+    { value: 'albums', label: 'library.tab.albums', icon: 'disc-album' },
+    { value: 'compilations', label: 'library.tab.compilations', icon: 'layers' },
+    { value: 'singles', label: 'library.tab.singles', icon: 'disc' },
+    { value: 'artists', label: 'library.tab.artists', icon: 'mic-vocal' },
+    { value: 'genre', label: 'library.tab.genre', icon: 'tag' },
+    { value: 'playlists', label: 'library.tab.playlists', icon: 'list-music' },
+    { value: 'stats', label: 'library.tab.stats', icon: 'chart' },
   ];
 
   /** Bumped after a portrait change so the grid's cover URLs re-fetch (#250). */
@@ -217,7 +229,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
   }
 
   readonly libraryMode = signal<LibraryMode>(
-    (localStorage.getItem('nicotind-library-mode') as LibraryMode) ?? 'albums',
+    (localStorage.getItem('nicotind-library-mode') as LibraryMode | null) ?? DEFAULT_LIBRARY_MODE,
   );
 
   // ─── Cross-type find ─────────────────────────────────────────────
@@ -318,10 +330,11 @@ export class LibraryComponent implements OnInit, OnDestroy {
   private scrollSentinel = viewChild<ElementRef<HTMLElement>>('scrollSentinel');
 
   readonly gridSortOptions: SortOption[] = [
-    { field: 'name', label: 'Name' },
-    { field: 'artist', label: 'Artist' },
-    { field: 'year', label: 'Year' },
+    { field: 'name', label: 'library.sortBy.name' },
+    { field: 'artist', label: 'library.sortBy.artist' },
+    { field: 'year', label: 'library.sortBy.year' },
   ];
+  readonly gridSortChoices: SortChoice[] = toSortChoices(this.gridSortOptions);
 
   // Search-only (empty sortOptions): the grid must preserve the *server* order
   // from `albumListType`; a client sort would override Most Played / Newest /…
@@ -455,9 +468,10 @@ export class LibraryComponent implements OnInit, OnDestroy {
   );
 
   readonly artistSortOptions: SortOption[] = [
-    { field: 'name', label: 'Name' },
-    { field: 'albumCount', label: 'Albums' },
+    { field: 'name', label: 'library.sortBy.name' },
+    { field: 'albumCount', label: 'library.sortBy.albumCount' },
   ];
+  readonly artistSortChoices: SortChoice[] = toSortChoices(this.artistSortOptions);
 
   readonly artistControls = this.listControls.connect({
     pageKey: 'library-artists',
@@ -565,8 +579,12 @@ export class LibraryComponent implements OnInit, OnDestroy {
     // Clear any pending dirty state on load to avoid unnecessary fetches
     this.transferService.clearLibraryDirty();
 
+    // Albums is a lazy tab like the others now that Songs opens first: fetch
+    // it here only when it is the tab on screen, else on the first switch.
     const persisted = readPersistedState();
-    if (
+    if (this.libraryMode() !== 'albums') {
+      this.albumsStale = true;
+    } else if (
       persisted &&
       persisted.type === initialType &&
       persisted.loaded > PAGE_SIZE &&

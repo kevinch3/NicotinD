@@ -26,6 +26,17 @@ export const ICON_NAMES: IconName[] = [
   'database',
   'mic',
   'camera',
+  'search',
+  'sort',
+  'arrow-up',
+  'check-square',
+  'music',
+  'disc-album',
+  'disc',
+  'layers',
+  'mic-vocal',
+  'list-music',
+  'chart',
 ];
 
 const meta: Meta<IconComponent> = {

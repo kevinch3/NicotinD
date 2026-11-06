@@ -3,7 +3,8 @@ import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { vi } from 'vitest';
-import { LibraryComponent } from './library.component';
+import { DEFAULT_LIBRARY_MODE, LibraryComponent } from './library.component';
+import { LibrarySongsComponent } from './library-songs.component';
 import { EntityMenuService } from '../../services/entity-menu.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { CurationApiService } from '../../services/api/curation-api.service';
@@ -32,8 +33,14 @@ function setup(
     confirmResult?: boolean;
     canCurate?: boolean;
     openCases?: number;
+    /** The tab persisted from a previous visit; omitted = a fresh device. */
+    mode?: string;
   } = {},
 ) {
+  // Specs share one jsdom localStorage, and setMode() writes it — reset the
+  // persisted tab so every setup starts from the state it asks for.
+  localStorage.removeItem('nicotind-library-mode');
+  if (opts.mode) localStorage.setItem('nicotind-library-mode', opts.mode);
   // Minimal filteredItems signal returned by every connect() call — empty by
   // default so isEmpty computeds can be driven by setting the signal directly.
   const filteredItems = signal<unknown[]>([]);
@@ -164,6 +171,9 @@ function setup(
     ],
     schemas: [NO_ERRORS_SCHEMA],
   });
+  // Songs is the default tab; its child has its own spec and its own service
+  // graph, so the page spec renders it as an inert unknown element.
+  TestBed.overrideComponent(LibraryComponent, { remove: { imports: [LibrarySongsComponent] } });
 
   const fixture = TestBed.createComponent(LibraryComponent);
   return {
@@ -199,7 +209,7 @@ describe('LibraryComponent — standardized metadata filters', () => {
   });
 
   it('maps a legacy type=starred URL onto the starred filter + newest sort', async () => {
-    const { component, albumCalls } = setup({ type: 'starred' });
+    const { component, albumCalls } = setup({ type: 'starred' }, { mode: 'albums' });
     await component.ngOnInit();
     expect(component.libFilter().starred).toBe(true);
     expect(component.albumSort()).toBe('newest');
@@ -208,7 +218,7 @@ describe('LibraryComponent — standardized metadata filters', () => {
   });
 
   it('passes the active filter to getAlbums on load', async () => {
-    const { component, albumCalls } = setup({ energy: 'high' });
+    const { component, albumCalls } = setup({ energy: 'high' }, { mode: 'albums' });
     await component.ngOnInit();
     expect(albumCalls[0]?.opts['filter']).toEqual({ buckets: { energy: ['high'] } });
   });
@@ -224,7 +234,7 @@ describe('LibraryComponent — standardized metadata filters', () => {
   });
 
   it('onFilterChange refetches the active tab and invalidates the others', async () => {
-    const { component, albumCalls } = setup();
+    const { component, albumCalls } = setup({}, { mode: 'albums' });
     await component.ngOnInit();
     component.singlesFetched.set(true);
     const before = albumCalls.length;
@@ -333,7 +343,7 @@ describe('LibraryComponent — isXxxEmpty flash-prevention computeds', () => {
 
 describe('LibraryComponent — TV D-pad nav (issue android-tv phase3)', () => {
   it('renders the albums grid as one appTvNavGroup with grid axis', () => {
-    const { fixture, filteredItems } = setup();
+    const { fixture, filteredItems } = setup({}, { mode: 'albums' });
     filteredItems.set([{ id: 'a1', name: 'Album One', artist: 'Artist' }] as never);
     fixture.detectChanges();
     const el: HTMLElement = fixture.nativeElement;
@@ -372,7 +382,7 @@ describe('LibraryComponent — TV D-pad nav (issue android-tv phase3)', () => {
   // non-empty, working item list — an empty items() (the cross-component
   // boundary bug) moves no focus at all.
   it('ArrowRight moves focus along the albums grid (real D-pad behaviour)', () => {
-    const { fixture, filteredItems } = setup();
+    const { fixture, filteredItems } = setup({}, { mode: 'albums' });
     filteredItems.set([
       { id: 'a1', name: 'Album One', artist: 'Artist' },
       { id: 'a2', name: 'Album Two', artist: 'Artist' },
@@ -834,8 +844,7 @@ describe('LibraryComponent — tile menus (#1298)', () => {
   });
 
   it('right-click on an album card opens the entity menu at the pointer', () => {
-    localStorage.clear(); // an earlier describe may have left the Library on another tab
-    const { fixture, filteredItems } = setup();
+    const { fixture, filteredItems } = setup({}, { mode: 'albums' });
     filteredItems.set([{ id: 'al1', name: 'Al', artist: 'A' }] as never);
     fixture.detectChanges();
     const open = vi.spyOn(TestBed.inject(EntityMenuService), 'open');
@@ -851,5 +860,99 @@ describe('LibraryComponent — tile menus (#1298)', () => {
       actions: expect.arrayContaining([expect.objectContaining({ label: 'Start radio' })]),
       at: { x: 7, y: 8 },
     });
+  });
+});
+
+// One-line tab bar: Songs leads and is the default; every tab is an icon and
+// only the active one shows its label, while inactive labels stay in the DOM
+// (sr-only) so each button keeps its accessible name for screen readers and
+// the e2e `getByRole('button', { name })` locators.
+describe('LibraryComponent — compact tab bar', () => {
+  function tabButtons(fixture: { nativeElement: HTMLElement }): HTMLButtonElement[] {
+    return Array.from(
+      fixture.nativeElement.querySelectorAll<HTMLButtonElement>(
+        '[data-testid="library-tabs"] button',
+      ),
+    );
+  }
+
+  it('puts Songs first and opens on it on a fresh device', () => {
+    const { component, fixture } = setup();
+    expect(component.modes[0]?.value).toBe('songs');
+    expect(DEFAULT_LIBRARY_MODE).toBe('songs');
+    expect(component.libraryMode()).toBe('songs');
+    fixture.detectChanges();
+    expect(tabButtons(fixture).map((b) => b.dataset['mode'])).toEqual([
+      'songs',
+      'albums',
+      'compilations',
+      'singles',
+      'artists',
+      'genre',
+      'playlists',
+      'stats',
+    ]);
+  });
+
+  it('still honours the tab a previous visit left behind', () => {
+    const { component } = setup({}, { mode: 'artists' });
+    expect(component.libraryMode()).toBe('artists');
+  });
+
+  it('labels only the active tab, keeping every name accessible', () => {
+    const { fixture } = setup();
+    fixture.detectChanges();
+    for (const btn of tabButtons(fixture)) {
+      const label = btn.querySelector<HTMLElement>('[data-testid="library-tab-label"]')!;
+      const key = `library.tab.${btn.dataset['mode']}`;
+      const active = btn.dataset['mode'] === 'songs';
+      // The label text is always there — it is the button's accessible name.
+      expect(label.textContent?.trim()).toBe(key);
+      expect(btn.getAttribute('title')).toBe(key);
+      expect(label.classList.contains('sr-only')).toBe(!active);
+      expect(btn.getAttribute('aria-current')).toBe(active ? 'true' : null);
+      expect(btn.querySelector('app-icon')).not.toBeNull();
+    }
+  });
+
+  it('moves the visible label with the active tab', () => {
+    const { component, fixture } = setup();
+    fixture.detectChanges();
+    component.setMode('stats');
+    fixture.detectChanges();
+    const visible = tabButtons(fixture).filter(
+      (b) => !b.querySelector('[data-testid="library-tab-label"]')!.classList.contains('sr-only'),
+    );
+    expect(visible.map((b) => b.dataset['mode'])).toEqual(['stats']);
+  });
+
+  it('lets inactive tabs share the row and the active one shrink to fit', () => {
+    const { fixture } = setup();
+    fixture.detectChanges();
+    const [songs, albums] = tabButtons(fixture);
+    expect(albums!.classList).toContain('flex-1');
+    expect(albums!.classList).toContain('min-w-8');
+    expect(songs!.classList).toContain('flex-initial');
+    expect(songs!.classList).toContain('min-w-0');
+    // No horizontal scroller any more: the whole bar is one row.
+    const bar = fixture.nativeElement.querySelector('[data-testid="library-tabs"]') as HTMLElement;
+    expect(bar.classList).not.toContain('overflow-x-auto');
+  });
+
+  it('defers the albums fetch until the Albums tab is opened', async () => {
+    const { component, albumCalls } = setup();
+    await component.ngOnInit();
+    expect(albumCalls).toHaveLength(0);
+    component.setMode('albums');
+    await Promise.resolve();
+    expect(albumCalls).toHaveLength(1);
+  });
+
+  it('a sort change from the Albums sort control refetches in the new order', async () => {
+    const { component, albumCalls } = setup({}, { mode: 'albums' });
+    await component.ngOnInit();
+    await component.setAlbumSort('frequent');
+    expect(component.albumSort()).toBe('frequent');
+    expect(albumCalls.at(-1)?.type).toBe('frequent');
   });
 });

@@ -34,6 +34,10 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **Library cross-type find bar**: one box above the Library tabs searching everything you own at once
   (`LibraryFindComponent`); a non-empty query *replaces* the tab content rather than filtering the
   active tab, debounced into `?find=` so it is linkable. → [web-ui.md](../web-ui.md)
+- **Library tab bar and toolbars, one row each**: tabs are icons with only the active one labelled
+  (inactive labels `sr-only`), Songs first and `DEFAULT_LIBRARY_MODE`; toolbars are
+  `SearchFieldComponent` + `SortSelectComponent` (a transparent native select over an icon) + the
+  filter panel's `compact` trigger. → [web-ui.md](../web-ui.md)
 - **Library "Songs" tab**: `GET /api/library/songs` backs a first-class flat listing with the shared
   filter, `TrackRowComponent` and multi-select; offline it swaps its source to
   `PreserveService.preservedTracks`. → [web-ui.md](../web-ui.md)

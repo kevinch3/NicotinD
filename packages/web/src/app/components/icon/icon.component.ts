@@ -36,7 +36,18 @@ export type IconName =
   | 'wrench'
   | 'database'
   | 'mic'
-  | 'camera';
+  | 'camera'
+  | 'search'
+  | 'sort'
+  | 'arrow-up'
+  | 'check-square'
+  | 'music'
+  | 'disc-album'
+  | 'disc'
+  | 'layers'
+  | 'mic-vocal'
+  | 'list-music'
+  | 'chart';
 
 /** Play is the only filled glyph; the rest are stroked outlines. DI-free so the
  *  branch is unit-testable (the JIT harness can't drive the `name` input). */
