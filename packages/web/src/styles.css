@@ -513,14 +513,16 @@
   box-sizing: border-box;
   position: relative;
   border-radius: 14px;
-  padding: 12px;
+  /* Per-face, from its size (the component sets both variables). */
+  padding: var(--face-pad, 12px);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   line-height: 1.2;
   cursor: pointer;
   overflow: hidden;
-  border: 0.5px solid var(--theme-border);
+  /* No border: a 0.5px stroke on a lens-scaled layer rasterised into a light,
+     uneven fringe around the rounded corners. The shadow draws the edge. */
   background-color: var(--theme-surface);
   box-shadow: var(--theme-elevation-tile);
   transform: scale(0.97);
@@ -586,16 +588,36 @@
     rgb(0 0 0 / 0.55) 78%,
     #000 100%
   );
-  transition: opacity 0.2s ease;
+  /* Back at rest: drawn again at once, faded in after a beat. */
+  transition:
+    opacity 0.35s ease 0.1s,
+    visibility 0s linear 0s;
 }
-/* A held tile near the edge must not sit under the blur meant for the field. */
+/* Off while the field moves — a backdrop blur over a moving field re-renders
+   every frame, and measured on a weak GPU that quadrupled a pan's dropped
+   frames (the component sets `is-moving` past the tap slop and clears it at
+   rest). Off while a tile is held, too, so a held tile near the edge stays
+   sharp. Gone at once, not faded: a fade-out is a few frames of blur over a
+   field that is already moving, which measured as a hitch at the start of
+   every pan. `visibility: hidden` so it is not drawn at all. */
+.mosaic-stage-contain.is-moving ~ .mosaic-rim {
+  opacity: 0;
+  visibility: hidden;
+  transition: none;
+}
 .mosaic-holding .mosaic-rim {
   opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.12s ease,
+    visibility 0s linear 0.12s;
 }
 @media (prefers-reduced-motion: reduce) {
   .mosaic-face,
   .mosaic-veil,
-  .mosaic-rim {
+  .mosaic-rim,
+  .mosaic-stage-contain.is-moving ~ .mosaic-rim,
+  .mosaic-holding .mosaic-rim {
     transition: none;
   }
 }
@@ -617,7 +639,7 @@
 }
 .mosaic-face span {
   display: block;
-  font-size: 12px;
+  font-size: var(--face-sub, 12px);
   margin-top: 3px;
   opacity: 0.75;
   white-space: nowrap;
@@ -627,9 +649,9 @@
 /* Cover tiles put their text over artwork of unknown brightness, so the label
    sits on its own gradient scrim rather than trusting a drop-shadow. */
 .mosaic-scrim {
-  margin: -12px;
+  margin: calc(-1 * var(--face-pad, 12px));
   margin-top: auto;
-  padding: 28px 12px 12px;
+  padding: calc(2.3 * var(--face-pad, 12px)) var(--face-pad, 12px) var(--face-pad, 12px);
   /* Three stops, not two: a linear fade to 0.75 leaves the label sitting on
      ~40% black over the busiest part of a cover. The label band itself is
      near-opaque and the fade happens above it. */

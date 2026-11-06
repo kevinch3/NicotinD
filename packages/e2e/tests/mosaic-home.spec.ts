@@ -78,13 +78,23 @@ test.describe('mosaic home', () => {
 
     // A drag that both starts and ends over the tile field. Without the
     // tap-slop test this pointerup would land on a tile and start a radio.
+    // The rim blur is drawn at rest and stands down mid-pan (#1638): measured,
+    // re-blurring a moving field every frame quadrupled a weak GPU's drops.
+    const rim = page.getByTestId('mosaic-rim');
+    await expect(rim).toHaveCSS('visibility', 'visible');
+
     await page.mouse.move(cx, cy);
     await page.mouse.down();
     await page.mouse.move(cx - 120, cy - 80, { steps: 12 });
+    await expect(page.getByTestId('mosaic-stage')).toHaveClass(/is-moving/);
+    await expect(rim).toHaveCSS('visibility', 'hidden');
     await page.mouse.up();
 
     await page.waitForTimeout(750);
     expect(await title.textContent()).toBe(before);
+    // The coast comes to rest, and the blur comes back.
+    await expect(page.getByTestId('mosaic-stage')).not.toHaveClass(/is-moving/, { timeout: 5_000 });
+    await expect(rim).toHaveCSS('visibility', 'visible');
   });
 
   test('holding a song tile opens its menu instead of starting a radio, and Song info is in it', async ({

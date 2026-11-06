@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { COS_MAX, FRICTION, THETA_MAX, decayVelocity, visiblePlacements } from './mosaic-lens';
+import {
+  CENTER_SCALE,
+  FISHEYE_K,
+  FRICTION,
+  RIM_SCALE,
+  THETA_MAX,
+  TILE_BASE,
+  decayVelocity,
+  visiblePlacements,
+} from './mosaic-lens';
 import type { PackedTile } from './mosaic-packing';
 import type { MosaicTile } from './mosaic-tiles';
 
@@ -26,11 +35,12 @@ const W = 1600;
 const R = 600;
 
 describe('visiblePlacements', () => {
-  it('puts the tile under the camera at the viewport centre, unscaled', () => {
+  it('puts the tile under the camera at the viewport centre, magnified (#1638 fisheye)', () => {
     const out = visiblePlacements([packed(0, 800, 800)], { x: 800, y: 800 }, VIEW, W, R);
     const centre = out.find((p) => p.packed.id === 0 && p.left === VIEW.w / 2 - 50);
     expect(centre).toBeDefined();
-    expect(centre!.scale).toBeCloseTo(1, 5);
+    expect(centre!.scale).toBeCloseTo(CENTER_SCALE, 2);
+    expect(CENTER_SCALE).toBeGreaterThan(1.5);
     expect(centre!.top).toBeCloseTo(VIEW.h / 2 - 50);
     expect(centre!.opacity).toBe(1);
   });
@@ -46,13 +56,37 @@ describe('visiblePlacements', () => {
   it('culls everything beyond the lens angle', () => {
     const beyond = R * THETA_MAX + 10;
     const out = visiblePlacements([packed(0, 800 + beyond, 800)], { x: 800, y: 800 }, VIEW, W, R);
-    expect(out.filter((p) => Math.abs(p.scale - 1) < 1e-6)).toHaveLength(0);
+    expect(out.filter((p) => p.i === 0 && p.j === 0)).toHaveLength(0);
   });
 
-  it('never returns a scale below the rim cosine', () => {
+  // The fisheye is logarithmic: screen radius grows as ln(1 + K·u), so the
+  // magnification (its slope) falls as 1/(1 + K·u) — its reciprocal is linear
+  // in the distance from the camera.
+  it('magnification falls off logarithmically: 1/scale grows linearly with distance', () => {
+    const at = (d: number) =>
+      visiblePlacements([packed(0, 800 + d, 800)], { x: 800, y: 800 }, VIEW, W, R)[0];
+    const limit = R * THETA_MAX;
+    const [a, b, c] = [0.1, 0.3, 0.5].map((u) => at(u * limit));
+    const step1 = 1 / b.scale - 1 / a.scale;
+    const step2 = 1 / c.scale - 1 / b.scale;
+    expect(step2).toBeCloseTo(step1, 2);
+    expect(step1 / (0.2 * FISHEYE_K)).toBeCloseTo(1 / CENTER_SCALE, 2);
+    // …and screen distance itself is concave: equal plane steps cover less and less screen.
+    const x = (p: ReturnType<typeof at>) => p.left + 50 - VIEW.w / 2;
+    expect(x(b) - x(a)).toBeGreaterThan(x(c) - x(b));
+  });
+
+  // Packed at full size, the magnified gaps left the field sparse; the packing
+  // base must compensate the centre so it stays about its old size, whatever K is.
+  it('packs tiles small enough that the centre tile is about its pre-fisheye size', () => {
+    expect(TILE_BASE * CENTER_SCALE).toBeGreaterThanOrEqual(1);
+    expect(TILE_BASE * CENTER_SCALE).toBeLessThanOrEqual(1.2);
+  });
+
+  it('never returns a scale below the rim scale', () => {
     const many = Array.from({ length: 30 }, (_, i) => packed(i, (i * 137) % W, (i * 251) % W));
     for (const p of visiblePlacements(many, { x: 400, y: 900 }, VIEW, W, R)) {
-      expect(p.scale).toBeGreaterThanOrEqual(COS_MAX - 1e-6);
+      expect(p.scale).toBeGreaterThanOrEqual(RIM_SCALE - 1e-3);
       expect(p.opacity).toBeGreaterThanOrEqual(0);
       expect(p.opacity).toBeLessThanOrEqual(1);
     }

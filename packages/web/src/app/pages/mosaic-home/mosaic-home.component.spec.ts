@@ -517,7 +517,7 @@ describe('hold-for-menu (#1298)', () => {
   });
 });
 
-describe('the held tile (#1638)', () => {
+describe('mosaic depth (#1638)', () => {
   const tileEl = (): { el: HTMLElement; target: HTMLElement } => {
     const el = document.createElement('div');
     el.className = 'mosaic-tile';
@@ -570,6 +570,21 @@ describe('the held tile (#1638)', () => {
     expect(second.el.classList.contains('is-held')).toBe(true);
   });
 
+  it("a face's type and padding scale with its size, so a small tile's label is not clipped", async () => {
+    const { component, fixture } = setup({ tasteBreakers: [song({ id: 'a' })] });
+    await settle(fixture);
+    const html = (size: number) =>
+      (component as unknown as { tileHtml(p: PackedTile, t: MosaicTile): string }).tileHtml(
+        packedStub(0, size),
+        component.tiles().find((t) => t.kind === 'song')!,
+      );
+    expect(html(60)).toContain('--face-pad:5px');
+    expect(html(60)).toContain('font-size:9px');
+    // Big faces keep the sizes they always had.
+    expect(html(220)).toContain('--face-pad:12px');
+    expect(html(220)).toContain('font-size:17px');
+  });
+
   describe('in the loop', () => {
     const drawn = async () => {
       const { component, fixture } = setup();
@@ -604,6 +619,40 @@ describe('the held tile (#1638)', () => {
       expect(el.style.transform).toContain(
         `translate(${-50 - TILE_INSET}.0px,${-50 - TILE_INSET}.0px)`,
       );
+    });
+
+    /** Drive the stage's drag the way the browser does: down on the stage, the rest on document. */
+    const pointer = (drag: MosaicHomeComponent['drag'], type: string, x: number): void => {
+      const e = new MouseEvent(type, { clientX: x, clientY: 0, bubbles: true });
+      if (type === 'pointerdown') drag.start(e as unknown as PointerEvent);
+      else document.dispatchEvent(e);
+    };
+
+    it('a pan stands the rim blur down, and the coast coming to rest brings it back', async () => {
+      const { component, c, el } = await drawn();
+      const stage = el.parentElement!;
+      pointer(component.drag, 'pointerdown', 0);
+      pointer(component.drag, 'pointermove', 20);
+      // Measured on a weak GPU: the blur re-renders the whole field every
+      // frame of a pan and quadrupled the dropped frames (#1638).
+      expect(stage.classList.contains('is-moving')).toBe(true);
+      pointer(component.drag, 'pointerup', 20);
+      let frames = 0;
+      while ((c.vx !== 0 || c.vy !== 0) && frames++ < 1_000) c.frame();
+      c.frame();
+      expect(stage.classList.contains('is-moving')).toBe(false);
+    });
+
+    it('a tap or a still hold leaves the blur alone — no flicker on every press', async () => {
+      const { component, c, el } = await drawn();
+      const stage = el.parentElement!;
+      pointer(component.drag, 'pointerdown', 0);
+      pointer(component.drag, 'pointermove', 3); // inside the tap slop
+      c.frame();
+      expect(stage.classList.contains('is-moving')).toBe(false);
+      pointer(component.drag, 'pointerup', 3);
+      c.frame();
+      expect(stage.classList.contains('is-moving')).toBe(false);
     });
 
     it('a held tile that leaves the lens is let down as it is parked', async () => {

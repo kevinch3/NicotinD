@@ -43,12 +43,16 @@ import {
   type PlayWeights,
 } from '../../lib/mosaic-tiles';
 import { packMosaic, type PackedTile, type Packing } from '../../lib/mosaic-packing';
-import { decayVelocity, visiblePlacements } from '../../lib/mosaic-lens';
+import { CENTER_SCALE, TILE_BASE, decayVelocity, visiblePlacements } from '../../lib/mosaic-lens';
 
 /** Pointer travel, in px, above which a pointerup is a pan and not a tap. */
 const TAP_SLOP_PX = 6;
-/** Camera px per pointer px. >1 makes the plane feel light under the finger. */
-const PAN_GAIN = 1.2;
+/**
+ * Camera px per pointer px. >1 makes the plane feel light under the finger;
+ * divided by the fisheye's centre magnification, because a plane px at the
+ * centre is CENTER_SCALE screen px and the content must track the finger.
+ */
+const PAN_GAIN = 1.2 / CENTER_SCALE;
 /** Hold duration that turns a press into the tile's menu. */
 const LONG_PRESS_MS = 450;
 /**
@@ -82,6 +86,9 @@ const LOADING_FACE_HTML = '<div class="mosaic-face skeleton-block"></div>';
  * feed, which needs the server and is useless in this state.
  */
 const DOWNLOADS_PATH = '/library';
+
+const clampPx = (v: number, min: number, max: number): number =>
+  Math.round(Math.min(max, Math.max(min, v)));
 
 const escapeHtml = (s: string): string =>
   s.replace(
@@ -214,6 +221,8 @@ export class MosaicHomeComponent implements OnInit {
   private suppressTap = false;
   /** The pooled element whose menu is open, if any. */
   private held: HTMLElement | null = null;
+  /** A pan or its coast is under way; mirrored as `is-moving` on the stage. */
+  private moving = false;
 
   // --- Connectivity ---
   /** Guards against a slow load landing after a newer one replaced it. */
@@ -240,7 +249,10 @@ export class MosaicHomeComponent implements OnInit {
       this.lastX = e.clientX;
       this.lastY = e.clientY;
       this.moved += Math.abs(dx) + Math.abs(dy);
-      if (this.moved > TAP_SLOP_PX) this.cancelPress();
+      if (this.moved > TAP_SLOP_PX) {
+        this.cancelPress();
+        this.setMoving(true);
+      }
       this.cx -= dx * PAN_GAIN;
       this.cy -= dy * PAN_GAIN;
       this.vx = -dx * PAN_GAIN;
@@ -694,7 +706,7 @@ export class MosaicHomeComponent implements OnInit {
     const stageMin = Math.max(1, Math.min(stage.clientWidth, stage.clientHeight));
     if (stageMin <= 1) return;
 
-    this.packing = packMosaic(list, (t) => tileSize(t.score, stageMin));
+    this.packing = packMosaic(list, (t) => tileSize(t.score, stageMin) * TILE_BASE);
     this.lensRadius = stageMin;
     this.cx = this.packing.W / 2;
     this.cy = this.packing.W / 2;
@@ -719,19 +731,22 @@ export class MosaicHomeComponent implements OnInit {
 
   private tileHtml(p: PackedTile, t: MosaicTile): string {
     const s = p.size;
-    const titleSize = s > 180 ? 17 : s > 130 ? 15 : 13;
+    // Type and padding scale with the face: packed small under the fisheye,
+    // fixed 12px padding and 13px titles clipped every small tile's label.
+    const titleSize = clampPx(s * 0.12, 9, 17);
+    const faceVars = `--face-pad:${clampPx(s * 0.08, 5, 12)}px;--face-sub:${clampPx(s * 0.085, 7, 12)}px`;
     const title = escapeHtml(this.label(t));
     const subtitle = escapeHtml(t.subtitle);
 
     if (t.kind === 'vibe' || t.kind === 'downloads') {
-      return `<div class="mosaic-face bg-gradient-to-br ${t.gradient} text-white">
+      return `<div class="mosaic-face bg-gradient-to-br ${t.gradient} text-white" style="${faceVars}">
         <span style="font-size:${Math.round(s * 0.22)}px" aria-hidden="true">${t.emoji ?? ''}</span>
         <div><b style="font-size:${titleSize}px">${title}</b><span>${subtitle}</span></div>
       </div>`;
     }
 
     if (t.kind === 'genre') {
-      return `<div class="mosaic-face bg-theme-surface-2 text-theme-secondary">
+      return `<div class="mosaic-face bg-theme-surface-2 text-theme-secondary" style="${faceVars}">
         <span class="mosaic-dot"></span>
         <div><b style="font-size:${titleSize}px">${title}</b><span>${subtitle}</span></div>
         ${MORE_BUTTON}
@@ -743,12 +758,15 @@ export class MosaicHomeComponent implements OnInit {
     // reads as a deliberate tile rather than a hole.
     const fallback = placeholderGradient(t.subtitle, t.title);
     const cover = t.coverArt
-      ? this.server.apiUrl(coverUrl(t.coverArt, coverSizeBucket(s), this.auth.mediaToken()))
+      ? this.server.apiUrl(
+          // Sized for the centre, where the fisheye draws it largest.
+          coverUrl(t.coverArt, coverSizeBucket(s * CENTER_SCALE), this.auth.mediaToken()),
+        )
       : null;
     const bg = cover
       ? `background-image:url('${encodeURI(cover)}'),${fallback};background-size:cover;background-position:center`
       : `background-image:${fallback}`;
-    return `<div class="mosaic-face text-white" style="${bg}">
+    return `<div class="mosaic-face text-white" style="${faceVars};${bg}">
       <div class="mosaic-scrim"><b style="font-size:${titleSize}px">${title}</b><span>${subtitle}</span></div>
       ${MORE_BUTTON}
     </div>`;
@@ -915,5 +933,21 @@ export class MosaicHomeComponent implements OnInit {
     }
 
     if (this.dragging || this.vx !== 0 || this.vy !== 0) this.wake();
+    else this.setMoving(false);
   };
+
+  /**
+   * The rim blur stands down while the field moves and comes back at rest
+   * (#1638): measured on a weak GPU, a `backdrop-filter` re-blurring the whole
+   * field every frame of a pan quadrupled the dropped frames, and with it off
+   * mid-pan the pan cost the same as before the blur existed. Set on the move
+   * that crosses the tap slop, so a tap or a still hold never flickers it;
+   * cleared by the frame that finds the field at rest. A class write, not a
+   * signal, like every other write the loop makes.
+   */
+  private setMoving(moving: boolean): void {
+    if (this.moving === moving) return;
+    this.moving = moving;
+    this.stageRef()?.nativeElement.classList.toggle('is-moving', moving);
+  }
 }
