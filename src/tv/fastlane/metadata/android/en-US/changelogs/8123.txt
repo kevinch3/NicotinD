@@ -1,0 +1,1 @@
+• slskd: run slskd 0.26.2, which retries and resumes transient download failures (#1630)

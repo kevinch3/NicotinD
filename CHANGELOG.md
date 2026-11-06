@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.123](https://github.com/kevinch3/NicotinD/compare/v0.8.122...v0.8.123) (2026-11-06)
+
+### Bug Fixes
+
+* **slskd:** run slskd 0.26.2, which retries and resumes transient download failures ([#1630](https://github.com/kevinch3/NicotinD/issues/1630)) ([524c7cc](https://github.com/kevinch3/NicotinD/commit/524c7cce810f014633e6678a3a410272016b7bd7)), references [#1021](https://github.com/kevinch3/NicotinD/issues/1021)
 ## [0.8.122](https://github.com/kevinch3/NicotinD/compare/v0.8.121...v0.8.122) (2026-11-05)
 
 ### Features
