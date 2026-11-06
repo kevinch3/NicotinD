@@ -1,8 +1,9 @@
-import { signal } from '@angular/core';
+import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { of } from 'rxjs';
 import { LibrarySongsComponent } from './library-songs.component';
+import { TrackRowComponent } from '../../components/track-row/track-row.component';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
@@ -79,7 +80,9 @@ const OFFLINE: PreservedTrackMeta[] = [
   },
 ];
 
-function setup(opts: { offline?: boolean; role?: string; emptyRows?: boolean } = {}) {
+function setup(
+  opts: { offline?: boolean; role?: string; emptyRows?: boolean; stubRows?: boolean } = {},
+) {
   const calls: Array<{
     size: number;
     offset: number;
@@ -161,6 +164,14 @@ function setup(opts: { offline?: boolean; role?: string; emptyRows?: boolean } =
     ],
   });
 
+  // `stubRows` renders rows as inert unknown elements, for tests about the
+  // toolbar that need a non-empty list but not TrackRowComponent's inputs.
+  if (opts.stubRows) {
+    TestBed.overrideComponent(LibrarySongsComponent, {
+      remove: { imports: [TrackRowComponent] },
+      add: { schemas: [NO_ERRORS_SCHEMA] },
+    });
+  }
   const fixture = TestBed.createComponent(LibrarySongsComponent);
   const component = fixture.componentInstance;
   setInputValue(component.offline, opts.offline ?? false);
@@ -360,5 +371,48 @@ describe('LibrarySongsComponent — the filter input is the source of truth (#10
     fixture.detectChanges();
     await Promise.resolve();
     expect(calls.length).toBe(afterOwnChange);
+  });
+});
+
+describe('LibrarySongsComponent — one-line toolbar', () => {
+  it('Select is an icon button that keeps its accessible name', async () => {
+    const { component, fixture } = setup({ stubRows: true });
+    fixture.detectChanges();
+    await component.loadSongs(true);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    const select = el.querySelector<HTMLButtonElement>('[data-testid="library-songs-select"]')!;
+    expect(select).not.toBeNull();
+    expect(select.getAttribute('aria-label')).toBe('library.songs.select');
+    expect(select.getAttribute('title')).toBe('library.songs.select');
+    expect(select.querySelector('app-icon')?.getAttribute('name')).toBe('check-square');
+    expect(select.textContent?.trim()).toBe('');
+    select.click();
+    expect(component.selection.active()).toBe(true);
+  });
+
+  it('never wraps: no flex-wrap row, the search takes the remaining width', () => {
+    const { fixture } = setup({ emptyRows: true });
+    fixture.detectChanges();
+    const row = (fixture.nativeElement as HTMLElement).querySelector('app-search-field')
+      ?.parentElement as HTMLElement;
+    expect(row.classList).toContain('flex');
+    expect(row.classList).not.toContain('flex-wrap');
+    expect(row.querySelector('app-sort-select')).not.toBeNull();
+    expect(row.querySelector('app-library-filter-panel')).not.toBeNull();
+  });
+
+  it('sort options are catalog keys, so the picker translates', () => {
+    const { component } = setup();
+    expect(component.sortOptions.map((o) => o.label)).toEqual([
+      'library.sortBy.recentlyAdded',
+      'library.sortBy.title',
+      'library.sortBy.album',
+    ]);
+    expect(component.offlineSortChoices.map((o) => o.value)).toEqual([
+      'preservedAt',
+      'title',
+      'artist',
+    ]);
   });
 });

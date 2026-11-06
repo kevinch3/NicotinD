@@ -1,0 +1,16 @@
+<label
+  class="flex h-9 min-w-0 flex-1 cursor-text items-center gap-2 rounded-lg bg-theme-surface-2 pl-2.5 pr-3 focus-within:ring-1 focus-within:ring-[var(--theme-accent)]">
+  <app-icon name="search" [size]="16" class="flex shrink-0 text-theme-muted" />
+  <input
+    type="search"
+    [attr.data-testid]="testId() || null"
+    [attr.aria-label]="label() | t"
+    [placeholder]="placeholder() | t"
+    [value]="value()"
+    (input)="valueChange.emit($any($event.target).value)"
+    class="min-w-0 flex-1 text-ellipsis bg-transparent text-sm text-theme-primary placeholder:text-theme-muted focus:outline-none" />
+  @if (hint()) {
+    <span [attr.data-testid]="hintTestId() || null"
+      class="shrink-0 whitespace-nowrap text-xs tabular-nums text-theme-muted">{{ hint() }}</span>
+  }
+</label>

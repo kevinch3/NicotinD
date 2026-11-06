@@ -1,5 +1,7 @@
 import { Component, computed, input, output } from '@angular/core';
 import { MenuPanelComponent } from '../menu-panel/menu-panel.component';
+import { IconComponent } from '../icon/icon.component';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 import {
   CAMELOT_WHEEL,
   MOOD_VOCAB,
@@ -25,7 +27,7 @@ type DurationField = 'durationMin' | 'durationMax';
  */
 @Component({
   selector: 'app-library-filter-panel',
-  imports: [MenuPanelComponent],
+  imports: [MenuPanelComponent, IconComponent, TranslatePipe],
   templateUrl: './library-filter-panel.component.html',
 })
 export class LibraryFilterPanelComponent {
@@ -38,6 +40,8 @@ export class LibraryFilterPanelComponent {
   readonly testIdPrefix = input('library');
   /** Count of active page-specific filters projected via the content slot. */
   readonly extraCount = input(0);
+  /** Icon-only trigger with a corner badge, for one-line toolbars (Library tabs). */
+  readonly compact = input(false);
 
   readonly filterChange = output<LibraryFilter>();
   /** Fires on trigger clicks — hosts lazy-load genre options on first open. */

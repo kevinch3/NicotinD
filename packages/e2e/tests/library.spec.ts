@@ -143,6 +143,18 @@ test.describe('library', () => {
     // Newest-first by default.
     await expect(page.getByTestId('library-songs-sort')).toHaveValue('newest');
 
+    // The sort control is an icon over a native select; picking an option
+    // through it still reorders the list (server-side, `title COLLATE NOCASE`).
+    await page.getByTestId('library-songs-sort').selectOption('title');
+    await expect(page.getByTestId('library-songs-sort')).toHaveValue('title');
+    await expect(async () => {
+      const titles = (await list.getByTestId('track-row-title').allTextContents())
+        .map((t) => t.trim().toLowerCase())
+        .slice(0, 10);
+      expect(titles.length).toBeGreaterThan(1);
+      expect(titles).toEqual([...titles].sort());
+    }).toPass({ timeout: 10_000 });
+
     // The shared LibraryFilter panel is available here too.
     await page.getByTestId('library-songs-filters').click();
     await expect(page.getByTestId('library-songs-filter-panel')).toBeVisible();

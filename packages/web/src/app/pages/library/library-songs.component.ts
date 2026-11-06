@@ -26,6 +26,14 @@ import {
 } from '../../components/track-row/track-row.component';
 import { SelectionBarComponent } from '../../components/selection-bar/selection-bar.component';
 import { LibraryFilterPanelComponent } from '../../components/library-filter-panel/library-filter-panel.component';
+import { IconComponent } from '../../components/icon/icon.component';
+import { SearchFieldComponent } from '../../components/search-field/search-field.component';
+import {
+  SortSelectComponent,
+  toSortChoices,
+  type SortChoice,
+} from '../../components/sort-select/sort-select.component';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
 import { SkeletonComponent } from '../../components/skeleton/skeleton.component';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
@@ -83,6 +91,10 @@ function metaToTrack(t: PreservedTrackMeta): Track {
     LibraryFilterPanelComponent,
     ConfirmDialogComponent,
     TvNavGroupDirective,
+    IconComponent,
+    SearchFieldComponent,
+    SortSelectComponent,
+    TranslatePipe,
   ],
   templateUrl: './library-songs.component.html',
 })
@@ -136,10 +148,11 @@ export class LibrarySongsComponent implements OnInit, OnDestroy {
   readonly searchText = signal('');
   private searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
+  // `label` is an i18n key, rendered by the sort control through `t`.
   readonly sortOptions: { value: SongSort; label: string }[] = [
-    { value: 'newest', label: 'Recently added' },
-    { value: 'title', label: 'Title' },
-    { value: 'album', label: 'Album' },
+    { value: 'newest', label: 'library.sortBy.recentlyAdded' },
+    { value: 'title', label: 'library.sortBy.title' },
+    { value: 'album', label: 'library.sortBy.album' },
   ];
 
   readonly songsSentinel = viewChild<ElementRef<HTMLElement>>('songsSentinel');
@@ -153,10 +166,11 @@ export class LibrarySongsComponent implements OnInit, OnDestroy {
 
   // ─── Offline listing state ────────────────────────────────────────
   readonly offlineSortOptions: SortOption[] = [
-    { field: 'preservedAt', label: 'Saved date' },
-    { field: 'title', label: 'Title' },
-    { field: 'artist', label: 'Artist' },
+    { field: 'preservedAt', label: 'library.sortBy.savedDate' },
+    { field: 'title', label: 'library.sortBy.title' },
+    { field: 'artist', label: 'library.sortBy.artist' },
   ];
+  readonly offlineSortChoices: SortChoice[] = toSortChoices(this.offlineSortOptions);
   readonly offlineControls = this.listControls.connect({
     pageKey: 'library-songs-offline',
     items: this.preserve.preservedTracks,

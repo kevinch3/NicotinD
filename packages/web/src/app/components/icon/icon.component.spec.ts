@@ -71,6 +71,30 @@ describe('IconComponent', () => {
     }
   });
 
+  it('renders every library tab and toolbar glyph as a stroked outline', () => {
+    const names = [
+      'search',
+      'sort',
+      'arrow-up',
+      'check-square',
+      'music',
+      'disc-album',
+      'disc',
+      'layers',
+      'mic-vocal',
+      'list-music',
+      'chart',
+    ] as const;
+    for (const name of names) {
+      const fixture = TestBed.createComponent(IconComponent);
+      setInputValue(fixture.componentInstance.name, name);
+      fixture.detectChanges();
+      const svg = fixture.nativeElement.querySelector('svg') as SVGElement;
+      expect(svg.children.length, `${name} rendered no shapes`).toBeGreaterThan(0);
+      expect(svg.getAttribute('fill')).toBe('none');
+    }
+  });
+
   it('renders the mic icon', () => {
     const fixture = TestBed.createComponent(IconComponent);
     setInputValue(fixture.componentInstance.name, 'mic');

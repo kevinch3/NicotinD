@@ -1,0 +1,26 @@
+<span
+  class="relative inline-flex size-9 shrink-0 items-center justify-center rounded-lg bg-theme-surface-2 text-theme-secondary transition hover:bg-theme-hover hover:text-theme-primary focus-within:ring-1 focus-within:ring-[var(--theme-accent)]">
+  <app-icon name="sort" [size]="18" />
+  <select
+    [attr.data-testid]="testId() || null"
+    [attr.aria-label]="label() | t"
+    [title]="(label() | t) + ': ' + (currentLabel() | t)"
+    (change)="valueChange.emit($any($event.target).value)"
+    class="absolute inset-0 size-full cursor-pointer appearance-none rounded-lg opacity-0 focus:outline-none">
+    @for (opt of options(); track opt.value) {
+      <option [value]="opt.value" [selected]="opt.value === value()">{{ opt.label | t }}</option>
+    }
+  </select>
+</span>
+@if (direction(); as dir) {
+  <button
+    type="button"
+    [attr.data-testid]="directionTestId() || null"
+    [attr.aria-label]="(dir === 'asc' ? 'library.sortDirection.asc' : 'library.sortDirection.desc') | t"
+    [title]="(dir === 'asc' ? 'library.sortDirection.asc' : 'library.sortDirection.desc') | t"
+    (click)="directionToggle.emit()"
+    class="inline-flex size-9 shrink-0 items-center justify-center rounded-lg bg-theme-surface-2 text-theme-secondary transition hover:bg-theme-hover hover:text-theme-primary focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)]">
+    <app-icon name="arrow-up" [size]="16" class="flex transition-transform motion-reduce:transition-none"
+      [class.rotate-180]="dir === 'desc'" />
+  </button>
+}

@@ -4,13 +4,14 @@ import type { LibraryFilter } from '@nicotind/core';
 import { LibraryFilterPanelComponent } from './library-filter-panel.component';
 import { setInputValue } from '../../../testing/signal-input';
 
-function setup(filter: LibraryFilter = {}, extraCount = 0) {
+function setup(filter: LibraryFilter = {}, extraCount = 0, compact = false) {
   // Inputs must be set before the first read: the SIGNAL escape hatch writes
   // the value without bumping the version, so computeds would keep a stale cache.
   TestBed.configureTestingModule({ imports: [LibraryFilterPanelComponent] });
   const fixture = TestBed.createComponent(LibraryFilterPanelComponent);
   setInputValue(fixture.componentInstance.filter, filter);
   setInputValue(fixture.componentInstance.extraCount, extraCount);
+  setInputValue(fixture.componentInstance.compact, compact);
   fixture.detectChanges();
   return fixture;
 }
@@ -37,6 +38,25 @@ describe('LibraryFilterPanelComponent', () => {
     const fixture = setup({ starred: true }, 2);
     const badge = fixture.debugElement.query(By.css('[data-testid="library-filter-count"]'));
     expect(badge.nativeElement.textContent.trim()).toBe('3');
+  });
+
+  it('labels the full trigger through the catalog', () => {
+    const trigger = setup().debugElement.query(By.css('[data-testid="library-filters"]'));
+    expect(trigger.nativeElement.textContent).toContain('library.filters.title');
+  });
+
+  it('compact: an icon-only trigger that keeps its name and its count badge', () => {
+    const fixture = setup({ starred: true, bpmMin: 90 }, 0, true);
+    const trigger = fixture.debugElement.query(By.css('[data-testid="library-filters"]'))
+      .nativeElement as HTMLButtonElement;
+    expect(trigger.getAttribute('aria-label')).toBe('library.filters.title');
+    expect(trigger.getAttribute('title')).toBe('library.filters.title');
+    expect(trigger.querySelector('app-icon')?.getAttribute('name')).toBe('sliders');
+    const badge = fixture.debugElement.query(By.css('[data-testid="library-filter-count"]'));
+    expect(badge.nativeElement.textContent.trim()).toBe('2');
+    // The badge rides the corner, so the button stays one square icon wide.
+    expect(badge.nativeElement.classList).toContain('absolute');
+    expect(trigger.textContent?.trim()).toBe('2');
   });
 
   it('toggles moods immutably, computing from the input state (host owns it)', () => {
