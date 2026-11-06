@@ -360,6 +360,60 @@ deploy is when the first reclaim lands.
 One residue to expect: slskd prunes **files, not directories**, so the empty album folders a swept
 partial leaves behind stay. They cost inodes, not bytes, and a later transfer reuses the name.
 
+## slskd version
+
+Compose pins **slskd 0.26.2** by tag and digest, raised from 0.25.1 on 2026-11-06.
+`scripts/compose-slskd-version.test.ts` holds the pin and the disk-logger setting.
+
+**What 0.26 changed for us:**
+
+- **Transient download failures retry inside slskd.** That is 3 attempts, 5 s growing to 60 s, and
+  the partial file is **resumed**. These are defaults that can only be set in YAML, and compose
+  sets none, so the defaults apply.
+- **Only transient failures are retried.** Rejections (`File not shared`, `Too many files`,
+  `Overwhelmed`), cancellations, duplicates and size mismatches are not. Those reach the slskd
+  addon's reason-aware retry policy straight away.
+- **A retrying transfer never looks failed to the addon.** Between attempts it sits in
+  `Queued, Locally` under the same id, and it only turns `Completed, …` after the last attempt,
+  carrying an `attempts` count. So the two retry layers never race. A timeout or connection
+  failure that reaches the addon has already failed 3 quick attempts.
+- **The addon's own re-enqueue resumes too.** The partial file is named by peer and remote path,
+  not by transfer id. Before this upgrade, every retry restarted at byte 0 (0.25.1's enqueue set
+  `StartOffset = 0`). Partials are now worth keeping, which makes `retention.files.incomplete`
+  matter a bit more.
+- **0.26.1 turned on a disk logger.** Compose sets `SLSKD_NO_DISK_LOGGER=true`: `docker logs`
+  already keeps this output, and the copy would land in `/app`, on the Docker data root (#1021).
+- **One breaking change:** `permissions.file.mode` moved under `transfers.download.destination`.
+  Nothing here sets it.
+
+**Checked against the 0.26.2 source.** No local Docker daemon was available, so these were not
+run:
+
+- Every CLI flag, env var and YAML key compose and `slskd-configure.sh` pass still binds.
+- The image entrypoint chain (`/usr/bin/tini -- /entrypoint.sh`, then `/slskd/slskd`) is
+  unchanged.
+- The base image is now .NET 10 on Ubuntu 24.04, which includes the `bash` the healthcheck uses,
+  and `/health` is still mapped.
+- The search, session, share and transfer routes the addon calls are unchanged. Server, options
+  and application routes now require the `ReadWrite` or `Administrator` role, and the addon's web
+  login is issued `Administrator`.
+
+**After deploy, check:**
+
+- `docker inspect nicotind-slskd-1` shows `0.26.2`.
+- `GET /api/v0/options` shows `.transfers.download.retry` as `{attempts: 3, partial: resume}`,
+  `.logger.noDisk: true`, and `.retention.files.incomplete: 43200`.
+- slskd's log shows "retry attempt #" and "Resuming download of" lines.
+
+**Rolling back is not a pin revert.** 0.26 migrates slskd's databases, and one migration drops a
+column 0.25.1 still reads (`Z2026_04_30_DropTransferStartOffsetMigration`). slskd copies every
+database to `/app/data/backups/<db>.pre-migration-backup.<id>.db` first; the ID is in its log. Its
+automatic cleanup removes these copies later. To go back:
+
+1. Stop slskd.
+2. Restore those files.
+3. Then pin 0.25.1.
+
 ## Resolving the set: `resolveReservedDirs`
 
 The predicate was right; the **call sites** were not. `scanMusicDir` and `buildBasenameIndex` both

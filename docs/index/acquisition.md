@@ -134,6 +134,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   binds env vars from an `[EnvironmentVariable]` allowlist; `retention.files.complete` stays unset
   (it would prune the addon-owned staging dir).
   → [library-path-conventions.md](../library-path-conventions.md)
+- **slskd version**: compose pins 0.26.2 (its own transient-failure retries, resumed), with
+  `SLSKD_NO_DISK_LOGGER` set; a rollback needs slskd's pre-migration database backups.
+  → [library-path-conventions.md](../library-path-conventions.md#slskd-version)
 - **Import music — two lanes into one pipeline**: an admin server path and a browser upload
   (`ImportUploadService`, chunked + resumable, `submitStaged`) both run through organize → scan;
   drop a folder on `/get`, gated by `canImport`. → [import.md](../import.md)

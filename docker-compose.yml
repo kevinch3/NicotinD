@@ -62,7 +62,10 @@ services:
   # both live behind the `slskd-addon` profile and deploy together.
   slskd:
     profiles: ["slskd-addon"]
-    image: slskd/slskd:0.25.1@sha256:ab9ed50e028b524cefdb7c1dd8ebca368a076e18441ee8ac2326473eb850b4c3
+    # 0.26 retries transient download failures itself (3 attempts, 5–60 s) and
+    # resumes the partial file; rejections reach the addon's retry policy as
+    # before. → docs/library-path-conventions.md "slskd version"
+    image: slskd/slskd:0.26.2@sha256:d0963a3e5b16facd295bf4f2156dad0182f246b1b21a032cae12f5494c694843
     user: "1000:1000"
     # Steady state ~350 MB.
     mem_limit: 1g
@@ -121,6 +124,9 @@ services:
       # retention has no env binding of its own. 30 days, in minutes.
       # → docs/library-path-conventions.md (#1145)
       SLSKD_INCOMPLETE_RETENTION_MINUTES: "43200"
+      # 0.26.1 turned on a disk logger; `docker logs` already keeps this output,
+      # and the copy would land in /app on the Docker data root (#1021).
+      SLSKD_NO_DISK_LOGGER: "true"
     healthcheck:
       # why: the slskd image ships no curl/wget, so a curl-based check fails at
       # exec time and marks the container permanently unhealthy; bash /dev/tcp
