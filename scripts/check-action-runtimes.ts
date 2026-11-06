@@ -35,6 +35,15 @@
  * action with **no** floor entry, and a floor entry **no workflow uses**. The
  * last one matters because dead config is how a stale rule survives a rename
  * while looking like it is still doing work.
+ *
+ * RUNNER IMAGES are the same failure one layer down. GitHub retires a hosted
+ * image on a date announced in actions/runner-images, and a job still naming it
+ * is cancelled before its first step. v0.8.122's `desktop-mac` died that way on
+ * `macos-14` (#1629): `publish-release` needs it, so the release stayed a draft
+ * and F-Droid found no APK at the tag. {@link RUNNER_IMAGES} is checked the same
+ * three ways. Like the floor table it records announced facts, so it refuses a
+ * retirement someone wrote down and a label nobody classified; it cannot learn
+ * of a new retirement by itself.
  */
 import { readFileSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
@@ -231,26 +240,121 @@ export function checkRefs(
   return { belowFloor, unclassified, unusedFloors };
 }
 
+/** One hosted runner label. `retired` is set once GitHub has removed the image. */
+export interface RunnerImage {
+  note: string;
+  /** Retirement date and source. A workflow naming a retired label fails the gate. */
+  retired?: string;
+}
+
+/**
+ * Every runner label these workflows use. A retired entry stays as the record
+ * of why that label is refused; it is exempt from the dead-config check.
+ */
+export const RUNNER_IMAGES: Record<string, RunnerImage> = {
+  'ubuntu-latest': { note: 'moves with GitHub; fine for jobs that pin their own toolchain' },
+  'ubuntu-24.04-arm': {
+    note: 'native arm64 for the multi-arch image (Bun JIT is unreliable under QEMU)',
+  },
+  'macos-15': { note: 'arm64; desktop-mac (electron-builder dmg)' },
+  'macos-26': { note: 'arm64; ios (Capacitor 8 needs Xcode 26)' },
+  'macos-14': {
+    note: 'arm64',
+    retired: '2026-11-02 (actions/runner-images#15226) — v0.8.122 stayed a draft, #1629',
+  },
+};
+
+export interface RunnerRef {
+  label: string;
+  file: string;
+  line: number;
+}
+
+const unquote = (v: string): string => v.trim().replace(/^(['"])(.*)\1$/, '$2');
+
+/**
+ * Every runner label in one file: literal `runs-on:` values plus matrix
+ * `runner:` values. `runs-on: ${{ matrix.runner }}` itself is skipped because
+ * its labels are the matrix values; any other expression is returned verbatim
+ * so {@link checkRunners} reports it instead of the gate going blind to it.
+ */
+export function parseRunners(source: string, file = ''): RunnerRef[] {
+  const refs: RunnerRef[] = [];
+  source.split('\n').forEach((raw, i) => {
+    if (/^\s*#/.test(raw)) return;
+    const m = raw.match(/^\s*(?:-\s*)?(runs-on|runner):\s*(.+?)\s*(?:#.*)?$/);
+    if (!m) return;
+    const [, key, value] = m;
+    const label = unquote(value ?? '');
+    if (!label) return;
+    if (key === 'runs-on' && /^\$\{\{\s*matrix\.runner\s*\}\}$/.test(label)) return;
+    refs.push({ label, file, line: i + 1 });
+  });
+  return refs;
+}
+
+export interface RunnerFindings {
+  /** A label GitHub has removed: the job is cancelled before its first step. */
+  retired: Array<{ ref: RunnerRef; image: RunnerImage }>;
+  /** A label (or expression) the table does not classify. */
+  unclassified: Array<{ ref: RunnerRef; why: string }>;
+  /** A live entry no workflow runs on — dead config. */
+  unusedImages: string[];
+}
+
+export function checkRunners(
+  refs: RunnerRef[],
+  images: Record<string, RunnerImage> = RUNNER_IMAGES,
+): RunnerFindings {
+  const retired: RunnerFindings['retired'] = [];
+  const unclassified: RunnerFindings['unclassified'] = [];
+  const seen = new Set<string>();
+  for (const ref of refs) {
+    const image = images[ref.label];
+    if (!image) {
+      unclassified.push({
+        ref,
+        why: ref.label.startsWith('${{')
+          ? 'an expression this gate cannot resolve — use `${{ matrix.runner }}` with literal `runner:` values'
+          : 'no entry in RUNNER_IMAGES — add one, checked against actions/runner-images',
+      });
+      continue;
+    }
+    seen.add(ref.label);
+    if (image.retired) retired.push({ ref, image });
+  }
+  const unusedImages = Object.keys(images)
+    .filter((l) => !seen.has(l) && !images[l]?.retired)
+    .sort();
+  return { retired, unclassified, unusedImages };
+}
+
 function main(): void {
   const files = workflowFiles();
-  const refs = files.flatMap((f) => parseUses(readFileSync(join(repoRoot, f), 'utf8'), f));
+  const sources = files.map((f) => [f, readFileSync(join(repoRoot, f), 'utf8')] as const);
+  const refs = sources.flatMap(([f, src]) => parseUses(src, f));
+  const runners = sources.flatMap(([f, src]) => parseRunners(src, f));
 
-  if (refs.length === 0) {
+  if (refs.length === 0 || runners.length === 0) {
     console.error(
-      `check:action-runtimes: examined ${files.length} file(s) and found no \`uses:\` at all.\n` +
-        'That is a broken scan, not a clean repo — the globs or the parser stopped matching.',
+      `check:action-runtimes: examined ${files.length} file(s) and found ${refs.length} \`uses:\` ` +
+        `and ${runners.length} runner label(s).\n` +
+        'That is a broken scan, not a clean repo — the globs or a parser stopped matching.',
     );
     process.exit(1);
   }
 
   const { belowFloor, unclassified, unusedFloors } = checkRefs(refs);
+  const runnerFindings = checkRunners(runners);
+  let failed = false;
 
   if (!belowFloor.length && !unclassified.length && !unusedFloors.length) {
     const distinct = new Set(refs.map((r) => r.action)).size;
     console.log(
       `Action runtimes: ${refs.length} pin(s) across ${distinct} action(s) in ${files.length} file(s), all at or above their runtime floor.`,
     );
-    return;
+  } else {
+    failed = true;
   }
 
   if (belowFloor.length) {
@@ -282,7 +386,43 @@ function main(): void {
     console.error('\nDrop the entry. A rule that guards nothing still reads as though it does.\n');
   }
 
-  process.exit(1);
+  const { retired, unclassified: unknownRunners, unusedImages } = runnerFindings;
+  if (!retired.length && !unknownRunners.length && !unusedImages.length) {
+    const distinct = new Set(runners.map((r) => r.label)).size;
+    console.log(
+      `Runner images: ${runners.length} label(s), ${distinct} distinct, all classified and live.`,
+    );
+  } else {
+    failed = true;
+  }
+
+  if (retired.length) {
+    console.error('Jobs on a retired runner image:\n');
+    for (const { ref, image } of retired) {
+      console.error(`  ${ref.file}:${ref.line}  runs-on ${ref.label} — retired ${image.retired}`);
+    }
+    console.error(
+      '\nThe job is cancelled before its first step. In deploy.yml that holds\n' +
+        'publish-release, so the release stays a draft after the tag is cut.\n',
+    );
+  }
+
+  if (unknownRunners.length) {
+    console.error('Runner labels this gate cannot classify:\n');
+    for (const { ref, why } of unknownRunners) {
+      console.error(`  ${ref.file}:${ref.line}  ${ref.label}`);
+      console.error(`    ${why}`);
+    }
+    console.error('');
+  }
+
+  if (unusedImages.length) {
+    console.error('RUNNER_IMAGES entries no workflow runs on (dead config):\n');
+    for (const l of unusedImages) console.error(`  · ${l}`);
+    console.error('');
+  }
+
+  if (failed) process.exit(1);
 }
 
 if (import.meta.main) main();

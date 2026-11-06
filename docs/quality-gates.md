@@ -718,6 +718,23 @@ SHA, stays unclassifiable, because its runtime genuinely is not derivable offlin
 - **`actions/cache` v5+ crosses the cache-service v2 migration.** A cache miss degrades to a slow
   build, it does not fail — so a bump is verified by cache **hits** in the log, not a green step.
 
+### Runner images: the same retirement, one layer down (#1629)
+
+GitHub also retires hosted **runner images**, on dates announced in `actions/runner-images`. A job
+still naming one is cancelled before its first step ("The configuration … is not supported"). macOS
+14 went on 2026-11-02. v0.8.122's `desktop-mac` died that way. `publish-release` needs that job, so
+the release stayed a draft, and F-Droid's `Binaries:` URL 404'd at a tag that already existed.
+
+`RUNNER_IMAGES` classifies every label that `runs-on:` names, plus matrix `runner:` values. A
+`runs-on: ${{ … }}` other than `${{ matrix.runner }}` is unclassifiable, because it hides its labels.
+It fails three ways, like the floor table: a **retired** label in use, an **unclassified** label,
+and a live entry **no workflow runs on**. A retired entry stays in the table as the record of why
+the label is refused.
+
+Its honest limit is the floor table's: it records announced facts. It refuses a retirement someone
+wrote down, and a label nobody classified. It does **not** learn of a new retirement by itself.
+When `actions/runner-images` announces one, mark the entry `retired` and move the job.
+
 ## `nicotind/search-matching` — asserting the invariant, not the symbol
 
 A lint rule since #1316 (formerly `check:search-matching`).

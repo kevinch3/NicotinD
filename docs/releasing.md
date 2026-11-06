@@ -262,6 +262,18 @@ release with nothing on it — the in-app APK updater would offer a download tha
   re-run the failed jobs; `publish-release` runs again and publishes. It uses
   `make_latest: legacy`, so a release published late cannot take `latest` from
   a newer one.
+- **A re-run cannot fix a cause inside `deploy.yml`.** A re-run executes the
+  workflow file *at the tag's commit*, so a retired runner image (v0.8.122's
+  `macos-14`, #1629) fails the same way every time. Fix it forward on master.
+  Then publish the stuck draft by hand so its APKs reach F-Droid. The tag
+  already exists, and F-Droid's `UpdateCheckMode: Tags` is already looking
+  for them:
+  `gh api -X PATCH repos/kevinch3/NicotinD/releases/<id> -f tag_name=vX.Y.Z -F draft=false`.
+  `make_latest=false` does **not** keep the previous release `latest` here.
+  v0.8.122 was published with it and became `latest` anyway. A release
+  without `latest-mac.yml` therefore becomes the mac feed, and that is
+  harmless: `updater.ts` only logs the error, and the next complete release
+  takes `latest` back.
 - **Publishing binds the release to its tag.** `publish --tag` sends
   `tag_name` with `draft: false`; flipping `draft` alone kept the `untagged-…`
   placeholder, so v0.8.105–v0.8.108 shipped with every
@@ -316,7 +328,8 @@ release with nothing on it — the in-app APK updater would offer a download tha
   Holding the host on a version is the `DEPLOY_HOLD` repository variable — see
   [deployment.md](deployment.md#rollback).
 - **A deploy job failed but the tag exists**: fix the cause, then re-run the
-  failed `deploy.yml` jobs from the Actions UI — don't re-tag.
+  failed `deploy.yml` jobs from the Actions UI — don't re-tag. If the cause is
+  in `deploy.yml` itself, a re-run repeats it; see the release-draft notes above.
 - **The credentials a release uses** (`RELEASE_TOKEN`, the deploy host's, the Android signing
   keys) live in GitHub environments that only `master` and `v*` tags can use — see
   [dependency-management.md](dependency-management.md#secrets-live-in-environments). A

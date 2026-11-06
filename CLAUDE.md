@@ -81,8 +81,8 @@ bun run src/main.ts      # Start NicotinD (requires .env or config/default.yml)
 **Check gates** (all CI-blocking unless noted): `check:claude-md` (this file's *and*
 `docs/index/`'s symbols, links, size and reachability) · `check:pr-title` (the PR title a squash
 merge turns into master's subject) · `check:ci-parity` (a gate job step `verify` misses, or a gate that stopped blocking
-what ships, `edge-image`) · `check:action-runtimes` (an action pinned to a retired Node runtime, or one the floor
-table cannot classify) · `check:route-auth` (an `/api` group mounted with no auth decision) · `check:audit` (an
+what ships, `edge-image`) · `check:action-runtimes` (an action pinned to a retired Node runtime or a job on a retired
+runner image, or one the tables cannot classify) · `check:route-auth` (an `/api` group mounted with no auth decision) · `check:audit` (an
 advisory that both ships and matches the resolved version) · `check:desktop-publish` (a desktop
 packaging job that does not verify its artifacts reached the Release) · `check:install-scripts` (a dependency
 whose install hook is unreviewed, or fetches from a host that is not the npm
