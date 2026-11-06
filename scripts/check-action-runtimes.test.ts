@@ -2,12 +2,17 @@ import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import {
+  RUNNER_IMAGES,
   RUNTIME_FLOORS,
   checkRefs,
+  checkRunners,
   majorOf,
+  parseRunners,
   parseUses,
   workflowFiles,
   type ActionRef,
+  type RunnerImage,
+  type RunnerRef,
   type RuntimeFloor,
 } from './check-action-runtimes';
 
@@ -161,9 +166,123 @@ describe('checkRefs', () => {
   });
 });
 
+const runner = (label: string, line = 1): RunnerRef => ({ label, file: 'w.yml', line });
+
+describe('parseRunners', () => {
+  it('reads a literal runs-on label with its line', () => {
+    expect(parseRunners('jobs:\n  build:\n    runs-on: macos-15\n', 'd.yml')).toEqual([
+      { label: 'macos-15', file: 'd.yml', line: 3 },
+    ]);
+  });
+
+  it('strips quotes and a trailing comment', () => {
+    expect(parseRunners(`    runs-on: 'ubuntu-latest' # cheap`).map((r) => r.label)).toEqual([
+      'ubuntu-latest',
+    ]);
+  });
+
+  // `runs-on: ${{ matrix.runner }}` names no image itself; the labels live in the
+  // matrix, so those are what get classified.
+  it('reads matrix runner values instead of the indirection that consumes them', () => {
+    const src = [
+      '    runs-on: ${{ matrix.runner }}',
+      '    strategy:',
+      '      matrix:',
+      '        include:',
+      '          - platform: linux/amd64',
+      '            runner: ubuntu-latest',
+      '          - runner: ubuntu-24.04-arm',
+    ].join('\n');
+    expect(parseRunners(src).map((r) => [r.label, r.line])).toEqual([
+      ['ubuntu-latest', 6],
+      ['ubuntu-24.04-arm', 7],
+    ]);
+  });
+
+  // Any other expression hides its labels from this gate, so it is surfaced to be
+  // reported rather than dropped.
+  it('returns any other runs-on expression verbatim', () => {
+    expect(parseRunners('    runs-on: ${{ matrix.os }}').map((r) => r.label)).toEqual([
+      '${{ matrix.os }}',
+    ]);
+  });
+
+  it('ignores runs-on inside a comment', () => {
+    expect(parseRunners('  # runs-on: macos-14 (retired)\n')).toEqual([]);
+  });
+});
+
+describe('checkRunners', () => {
+  const images: Record<string, RunnerImage> = {
+    'ubuntu-latest': { note: 'default' },
+    'macos-15': { note: 'arm64' },
+    'macos-14': { note: 'arm64', retired: '2026-11-02' },
+  };
+
+  it('passes a classified label', () => {
+    const f = checkRunners([runner('ubuntu-latest'), runner('macos-15')], images);
+    expect(f).toEqual({ retired: [], unclassified: [], unusedImages: [] });
+  });
+
+  it('fails a retired label, keeping where it is', () => {
+    const f = checkRunners(
+      [runner('ubuntu-latest'), runner('macos-15'), runner('macos-14', 477)],
+      images,
+    );
+    expect(f.retired).toHaveLength(1);
+    expect(f.retired[0]?.ref).toEqual({ label: 'macos-14', file: 'w.yml', line: 477 });
+    expect(f.retired[0]?.image.retired).toBe('2026-11-02');
+  });
+
+  it('fails a label the table has never heard of', () => {
+    const f = checkRunners(
+      [runner('ubuntu-latest'), runner('macos-15'), runner('macos-27')],
+      images,
+    );
+    expect(f.unclassified).toHaveLength(1);
+    expect(f.unclassified[0]?.why).toContain('RUNNER_IMAGES');
+  });
+
+  it('fails an expression it cannot resolve', () => {
+    const f = checkRunners(
+      [runner('ubuntu-latest'), runner('macos-15'), runner('${{ matrix.os }}')],
+      images,
+    );
+    expect(f.unclassified[0]?.why).toContain('matrix.runner');
+  });
+
+  // A retired entry is a record of why a label is refused, not a rule that needs a
+  // user; only a live image no workflow runs on is dead config.
+  it('reports an unused live image as dead config, but never a retired one', () => {
+    expect(checkRunners([runner('ubuntu-latest')], images).unusedImages).toEqual(['macos-15']);
+  });
+});
+
 describe('the real workflows', () => {
   const files = workflowFiles();
   const refs = files.flatMap((f) => parseUses(readFileSync(join(repoRoot, f), 'utf8'), f));
+  const runners = files.flatMap((f) => parseRunners(readFileSync(join(repoRoot, f), 'utf8'), f));
+
+  it('finds runner labels in them, matrix values included', () => {
+    const labels = new Set(runners.map((r) => r.label));
+    expect(labels.has('ubuntu-latest')).toBe(true);
+    expect(labels.has('ubuntu-24.04-arm')).toBe(true);
+  });
+
+  it('runs every job on a classified, live runner image', () => {
+    expect(checkRunners(runners, RUNNER_IMAGES)).toEqual({
+      retired: [],
+      unclassified: [],
+      unusedImages: [],
+    });
+  });
+
+  // Issue #1629: v0.8.122's desktop-mac never started, publish-release skipped,
+  // and F-Droid found no APK at the tag's download URL.
+  it('would have failed on the v0.8.122 desktop-mac runner', () => {
+    const { retired } = checkRunners([runner('macos-14', 477)], RUNNER_IMAGES);
+    expect(retired.map((r) => r.ref.label)).toEqual(['macos-14']);
+  });
 
   // The scan finding nothing is the failure mode that looks like success — it is
   // exactly what happened while Bun's Glob was skipping the `.github` dot-dir.

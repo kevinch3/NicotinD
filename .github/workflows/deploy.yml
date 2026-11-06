@@ -474,7 +474,7 @@ jobs:
   # CSC_IDENTITY_AUTO_DISCOVERY=false stops electron-builder from probing the
   # runner's keychain for a signing identity to auto-use.
   desktop-mac:
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 40
     # NOT continue-on-error — see desktop-linux above for the fail-loud rationale.
     needs: [create-draft]

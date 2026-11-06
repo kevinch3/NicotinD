@@ -347,7 +347,7 @@ the server `deploy` job: it runs in parallel with no `needs` linkage, so its suc
 of packaging.
 
 - `desktop-linux` (ubuntu) → `electron-builder --linux --publish never` (AppImage/deb + `latest-linux.yml`).
-- `desktop-mac` (macos-14) → `electron-builder --mac --publish never` (dmg + `latest-mac.yml`).
+- `desktop-mac` (macos-15; macos-14 was retired 2026-11-02, #1629) → `electron-builder --mac --publish never` (dmg + `latest-mac.yml`).
 
 Each then attaches what it built to the tag's draft release **by id**:
 `release-artifacts.ts` lists the files, `scripts/github-release.ts upload --id` uploads them.
