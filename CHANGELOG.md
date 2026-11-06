@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.124](https://github.com/kevinch3/NicotinD/compare/v0.8.123...v0.8.124) (2026-11-06)
+
+### Features
+
+* **web:** compact the library tab bar and toolbar into one line each ([#1637](https://github.com/kevinch3/NicotinD/issues/1637)) ([fd2b449](https://github.com/kevinch3/NicotinD/commit/fd2b44952413a076520a628eaf4346c93ada8e5d))
+* **web:** lift the mini player off the page and slim its scrubber ([#1644](https://github.com/kevinch3/NicotinD/issues/1644)) ([1df2083](https://github.com/kevinch3/NicotinD/commit/1df208341df8bcb107e71b9e8b0afe7f30fb6c95)), references [#1635](https://github.com/kevinch3/NicotinD/issues/1635) [#1638](https://github.com/kevinch3/NicotinD/issues/1638)
+* **web:** mosaic depth and fisheye — tile shadows, glass menu, tap to centre ([#1639](https://github.com/kevinch3/NicotinD/issues/1639)) ([3185b45](https://github.com/kevinch3/NicotinD/commit/3185b458888a36fe92bf47f8ada3fc7c9d43cd9c)), references [#1638](https://github.com/kevinch3/NicotinD/issues/1638) [#1638](https://github.com/kevinch3/NicotinD/issues/1638)
+
+### Bug Fixes
+
+* **acquisition:** queue interactive hunts in core so a burst of Get clicks stops timing out ([#1628](https://github.com/kevinch3/NicotinD/issues/1628)) ([8d32365](https://github.com/kevinch3/NicotinD/commit/8d323657c85e947beba8dbfcc2cb26276df696a3))
+* **release:** publish once the APKs are up, even if a desktop job failed ([#1634](https://github.com/kevinch3/NicotinD/issues/1634)) ([eadbb88](https://github.com/kevinch3/NicotinD/commit/eadbb884fae1567ac425a1cd546ba33657a60000)), closes [#1631](https://github.com/kevinch3/NicotinD/issues/1631), references [#1629](https://github.com/kevinch3/NicotinD/issues/1629)
+* **web:** a tap on a mosaic tile plays it on touch, and tiles size sub-linearly with the screen ([#1643](https://github.com/kevinch3/NicotinD/issues/1643)) ([9bfdb92](https://github.com/kevinch3/NicotinD/commit/9bfdb9236123fcc3849e0023d20dd8d06ea8a35f)), closes [#1642](https://github.com/kevinch3/NicotinD/issues/1642)
+* **web:** register theme-surface-2, theme-base and theme-hover so /NN modifiers emit ([#1641](https://github.com/kevinch3/NicotinD/issues/1641)) ([e5f1517](https://github.com/kevinch3/NicotinD/commit/e5f15170bd0dd361a0376b896dc0b9124c5833c9)), closes [#1640](https://github.com/kevinch3/NicotinD/issues/1640)
 ## [0.8.123](https://github.com/kevinch3/NicotinD/compare/v0.8.122...v0.8.123) (2026-11-06)
 
 ### Bug Fixes

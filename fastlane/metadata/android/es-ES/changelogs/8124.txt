@@ -1,0 +1,6 @@
+• web: compact the library tab bar and toolbar into one line each (#1637)
+• web: lift the mini player off the page and slim its scrubber (#1644)
+• web: mosaic depth and fisheye — tile shadows, glass menu, tap to centre (#1639)
+• acquisition: queue interactive hunts in core so a burst of Get clicks stops timing out (#1628)
+• release: publish once the APKs are up, even if a desktop job failed (#1634)
+…and 2 more
