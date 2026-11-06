@@ -244,9 +244,14 @@ Nothing looks the draft up by tag: the API reports a draft's tag as
 exactly that on v0.8.103, published a second, desktop-only release, and made it
 `latest` without the APKs; the desktop jobs now build with `--publish never` and
 upload by id (docs/desktop-app.md "Publishing to the GitHub Release").
-`publish-release` publishes it once `release-notes`, `android` and both desktop
-jobs have succeeded **and** the four assets updaters read are on it — both APKs,
-`latest-linux.yml` and `latest-mac.yml`.
+`publish-release` publishes it once `release-notes` and `android` have
+succeeded **and** both APKs are on it. It still waits for both desktop jobs, but
+runs past a failed one (`!cancelled()`). Each electron-updater feed
+(`latest-linux.yml`, `latest-mac.yml`) is expected only if its own job
+succeeded (`publish --feed <asset>=<job result>`), so a desktop failure
+withholds only that platform's feed. The run still ends red (#1631). Before,
+any desktop failure held back working APKs: 3 of the last 100 tag builds,
+v0.8.122 among them, where F-Droid's tag-driven build found nothing.
 
 Before, `release-notes` published the release within seconds of the tag and the
 artifacts arrived minutes later. For that window `releases/latest` pointed at a
@@ -258,14 +263,20 @@ release with nothing on it — the in-app APK updater would offer a download tha
   flaky macOS runner there must not hold the APK back from Android users. The
   `ios` job uploads by id, so it lands whether the release is still a draft or
   already published. It still fails loud.
-- **A failed required job leaves the release a draft.** Fix the cause and
-  re-run the failed jobs; `publish-release` runs again and publishes. It uses
-  `make_latest: legacy`, so a release published late cannot take `latest` from
-  a newer one.
+- **A failed `android` (or `create-draft`/`release-notes`) leaves the release a
+  draft.** Fix the cause and re-run the failed jobs; `publish-release` runs again
+  and publishes. It uses `make_latest: legacy`, so a release published late
+  cannot take `latest` from a newer one.
+- **A failed desktop job publishes the release without that feed.** The release
+  is `latest` with no `latest-<os>.yml` for that platform. That is harmless:
+  `updater.ts` only logs the error, and the platform waits for the next release.
+  Re-running the failed job uploads its artifacts into the published release by
+  id, and that restores the feed.
 - **A re-run cannot fix a cause inside `deploy.yml`.** A re-run executes the
   workflow file *at the tag's commit*, so a retired runner image (v0.8.122's
   `macos-14`, #1629) fails the same way every time. Fix it forward on master.
-  Then publish the stuck draft by hand so its APKs reach F-Droid. The tag
+  If the draft is stuck (an `android`-side cause, since #1631), publish it by
+  hand so its APKs reach F-Droid. The tag
   already exists, and F-Droid's `UpdateCheckMode: Tags` is already looking
   for them:
   `gh api -X PATCH repos/kevinch3/NicotinD/releases/<id> -f tag_name=vX.Y.Z -F draft=false`.

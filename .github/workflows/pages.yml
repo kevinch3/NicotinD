@@ -48,14 +48,12 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # `workflow_run` fires on `completed`, which includes FAILURE and CANCELLED —
-    # there is no `types: [succeeded]`. Without this, a failed release triggers a
-    # republish, and a release that failed before attaching its APKs is exactly
-    # the run whose artifacts should not be picked up. push/dispatch carry no
-    # workflow_run payload, so the second clause lets them through.
-    if: >-
-      github.event_name != 'workflow_run' ||
-      github.event.workflow_run.conclusion == 'success'
+    # Runs on EVERY completed Build & Deploy, failed or cancelled included. The
+    # APKs come from the newest *published* release (`--exclude-drafts` below),
+    # and publish-release publishes only once both APKs are attached, so a run
+    # that failed before them leaves a draft this cannot see. A run that failed
+    # only in a desktop job has published its APKs (#1631); gating on
+    # `conclusion == 'success'` froze the repository on v0.8.122 for that.
     permissions:
       pages: write
       id-token: write

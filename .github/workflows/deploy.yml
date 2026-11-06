@@ -529,18 +529,23 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bun run packages/desktop/scripts/verify-published-assets.ts --label desktop-mac --release-id "${{ needs.create-draft.outputs.id }}"
 
-  # Publish the draft once everything users update from is on it: both APKs
-  # (the in-app updater and F-Droid) and both electron-updater feeds. The unsigned
-  # IPA is deliberately not required — it is sideload-only, and a flaky macOS
-  # runner there must not hold the APK back from Android users. The script
-  # re-checks the assets itself rather than trusting the needs alone, and
-  # publishes with make_latest=legacy so a release published late (a re-run)
-  # cannot take `latest` from a newer one.
+  # Publish the draft once both APKs are on it (the in-app updater and F-Droid,
+  # whose `Binaries:` URL is live from the moment the tag exists). It waits for
+  # every packaging job but runs past a failed desktop one (`!cancelled()`): a
+  # desktop failure withholds only its own electron-updater feed, the run still
+  # ends red, and the APKs ship anyway (#1631). The unsigned IPA is not awaited
+  # at all. The script re-checks the assets itself rather than trusting the
+  # needs alone, and publishes with make_latest=legacy so a release published
+  # late (a re-run) cannot take `latest` from a newer one.
   publish-release:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [create-draft, release-notes, android, desktop-linux, desktop-mac]
-    if: github.ref_type == 'tag'
+    if: >-
+      !cancelled() && github.ref_type == 'tag' &&
+      needs.create-draft.result == 'success' &&
+      needs.release-notes.result == 'success' &&
+      needs.android.result == 'success'
     permissions:
       contents: write
     steps:
@@ -556,7 +561,9 @@ jobs:
           set -euo pipefail
           v="${GITHUB_REF_NAME#v}"
           bun scripts/github-release.ts publish --id "${{ needs.create-draft.outputs.id }}" --tag "$GITHUB_REF_NAME" \
-            --expect "NicotinD-$v.apk,NicotinD-TV-$v.apk,latest-linux.yml,latest-mac.yml"
+            --expect "NicotinD-$v.apk,NicotinD-TV-$v.apk" \
+            --feed "latest-linux.yml=${{ needs.desktop-linux.result }}" \
+            --feed "latest-mac.yml=${{ needs.desktop-mac.result }}"
 
   # Build + publish the multi-arch server image to GHCR (Immich-style): one
   # native-runner build per arch pushed by digest, then `docker-merge` stitches

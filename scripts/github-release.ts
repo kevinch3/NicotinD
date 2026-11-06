@@ -185,6 +185,53 @@ export async function publish(
   return published;
 }
 
+/** Every value `needs.<job>.result` can take. Anything else is a broken expression. */
+const JOB_RESULTS = new Set(['success', 'failure', 'cancelled', 'skipped']);
+
+/**
+ * What `publish` must find on the draft: the required assets, plus each
+ * updater feed whose packaging job succeeded (#1631).
+ *
+ * The APKs gate the release, and F-Droid's `Binaries:` URL with them, from the
+ * moment the tag exists. A desktop job that failed for its own reasons (a mac
+ * build, a retired or starved runner) must not hold them back, so its feed is
+ * withheld and the release still publishes. An unknown result throws: a
+ * mistyped `${{ needs.<job>.result }}` evaluates to '', and reading that as
+ * "did not succeed" would drop a feed on every release.
+ */
+export function expectedAssets(
+  required: string[],
+  feeds: Array<[asset: string, result: string]>,
+): { expect: string[]; withheld: Array<{ asset: string; result: string }> } {
+  const expect = [...required];
+  const withheld: Array<{ asset: string; result: string }> = [];
+  for (const [asset, result] of feeds) {
+    if (!JOB_RESULTS.has(result)) {
+      throw new Error(
+        `--feed ${asset}=${result}: '${result}' is not a job result ` +
+          `(${[...JOB_RESULTS].join(', ')}). Is the needs.<job>.result expression mistyped?`,
+      );
+    }
+    if (result === 'success') expect.push(asset);
+    else withheld.push({ asset, result });
+  }
+  return { expect, withheld };
+}
+
+/** One `--feed asset=result` argument. */
+export function parseFeed(arg: string): [string, string] {
+  const i = arg.indexOf('=');
+  if (i <= 0) throw new Error(`--feed ${arg}: expected asset=result.`);
+  return [arg.slice(0, i), arg.slice(i + 1)];
+}
+
+/** Every value of a repeatable `--name` flag. */
+function flags(args: string[], name: string): string[] {
+  return args.flatMap((a, i) =>
+    a === `--${name}` && args[i + 1] !== undefined ? [args[i + 1]!] : [],
+  );
+}
+
 function flag(args: string[], name: string): string | undefined {
   const i = args.indexOf(`--${name}`);
   return i === -1 ? undefined : args[i + 1];
@@ -229,10 +276,21 @@ async function main(argv: string[]): Promise<void> {
       return;
     }
     case 'publish': {
-      const expected = (flag(args, 'expect') ?? '').split(',').filter(Boolean);
+      const required = (flag(args, 'expect') ?? '').split(',').filter(Boolean);
       const tag = flag(args, 'tag') ?? process.env.GITHUB_REF_NAME;
-      if (!id || !tag || expected.length === 0) {
-        throw new Error('publish needs --id, --tag (or GITHUB_REF_NAME) and --expect a,b,c.');
+      if (!id || !tag || required.length === 0) {
+        throw new Error(
+          'publish needs --id, --tag (or GITHUB_REF_NAME) and --expect a,b,c [--feed asset=result]...',
+        );
+      }
+      const { expect: expected, withheld } = expectedAssets(
+        required,
+        flags(args, 'feed').map(parseFeed),
+      );
+      for (const w of withheld) {
+        console.log(
+          `::warning::Publishing without ${w.asset}: its packaging job ended ${w.result} (#1631).`,
+        );
       }
       const release = await publish(api, id, tag, expected);
       console.log(`${release.tag_name} is published (draft=${release.draft}).`);

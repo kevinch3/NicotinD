@@ -210,16 +210,21 @@ const { versionCode: currentVersionCode, versionName: currentVersionName } = and
       }
     }
 
-    // `workflow_run` has no `types: [succeeded]`; `completed` includes failure
-    // and cancellation. A release that failed before attaching its APKs is
-    // precisely the run whose artifacts must not be picked up.
-    if (
-      source.includes('workflow_run:') &&
-      !source.includes("workflow_run.conclusion == 'success'")
-    ) {
+    // What keeps a release without its APKs out of the repository is reading
+    // only PUBLISHED releases: publish-release publishes once both APKs are on
+    // the draft. A `conclusion == 'success'` guard on the trigger adds nothing
+    // to that and froze the repository whenever a desktop job failed (#1631).
+    if (!/gh release list[^\n]*--exclude-drafts/.test(source)) {
       errors.push(
-        `.github/workflows/pages.yml triggers on workflow_run without gating on ` +
-          `\`conclusion == 'success'\`, so a FAILED release republishes the site.`,
+        `.github/workflows/pages.yml lists releases without \`--exclude-drafts\`, so a draft ` +
+          `whose APKs never arrived could be read into the repository.`,
+      );
+    }
+    if (source.includes("workflow_run.conclusion == 'success'")) {
+      errors.push(
+        `.github/workflows/pages.yml gates on \`conclusion == 'success'\` again. A tag build ` +
+          `that failed only in a desktop job has published its APKs; skipping it freezes the ` +
+          `repository (#1631, v0.8.122).`,
       );
     }
 
