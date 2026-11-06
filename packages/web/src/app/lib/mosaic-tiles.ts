@@ -254,6 +254,18 @@ export function scoreSong(
  * the same constants must work on a 390px phone and a 1400px desktop. At a
  * 620px short side this reproduces the original 93–242px band.
  */
+/**
+ * The stage size tiles are scaled against (#1642). Linear in the stage's
+ * shorter side, tiles were tiny on a phone and huge on a big monitor; square-
+ * root scaling around SIZING_PIVOT keeps them proportionate without making a
+ * phone and a 4K screen draw the same pixels: about 1.28× on a 390px phone,
+ * 0.89× on an 800px desktop stage, 0.70× on a 1300px one.
+ */
+export const SIZING_PIVOT = 640;
+export function sizingReference(stageMin: number): number {
+  return SIZING_PIVOT * Math.sqrt(Math.max(1, stageMin) / SIZING_PIVOT);
+}
+
 export function tileSize(score: number, stageMin: number): number {
   return Math.round(stageMin * (0.15 + clamp01(score) * 0.24));
 }

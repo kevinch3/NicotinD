@@ -180,3 +180,39 @@ test.describe('mosaic home on a phone', () => {
     await expect(page.getByTestId('app-header')).toBeVisible();
   });
 });
+
+test.describe('mosaic home on a touch phone (#1642)', () => {
+  test.use({ viewport: { width: 390, height: 780 }, hasTouch: true, isMobile: true });
+
+  test('a tap on even a small tile plays it — only a hold opens the menu', async ({ page }) => {
+    await page.goto('/');
+    const tiles = page.locator('[data-testid="mosaic-tile"][data-tile-kind="song"]');
+    await expect(tiles.first()).toBeVisible({ timeout: 10_000 });
+    const before = await page.getByTestId('player-title').textContent();
+
+    // The smallest fully on-screen song tile whose centre hit-tests to it: the
+    // case where an invisible, fixed-size ⋯ covered most of the face.
+    const target = await tiles.evaluateAll((els) => {
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      let best: { x: number; y: number; w: number } | null = null;
+      for (const el of els) {
+        const r = el.getBoundingClientRect();
+        if (r.x < 0 || r.y < 0 || r.right > vw || r.bottom > vh - 140) continue;
+        const cx = r.x + r.width / 2;
+        const cy = r.y + r.height / 2;
+        if (document.elementFromPoint(cx, cy)?.closest('[data-testid="mosaic-tile"]') !== el)
+          continue;
+        if (!best || r.width < best.w) best = { x: cx, y: cy, w: r.width };
+      }
+      return best;
+    });
+    expect(target).not.toBeNull();
+    await page.touchscreen.tap(target!.x, target!.y);
+
+    await expect(page.getByTestId('player-title')).not.toHaveText(before ?? '', {
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId('entity-menu')).toHaveCount(0);
+  });
+});

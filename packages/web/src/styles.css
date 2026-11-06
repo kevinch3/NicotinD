@@ -476,13 +476,17 @@
      own image callout. */
   -webkit-touch-callout: none;
 }
-/* The hover ⋯ on a face (#1298): the same door every tile has, delegated. */
+/* The hover ⋯ on a face (#1298): the same door every tile has, delegated.
+   Sized with the face (`--face-more`): a fixed 32px covered most of a small
+   tile. And it exists only where hover does — on touch it was invisible but
+   still caught taps, so tapping a small tile opened its menu instead of
+   playing it (#1642). Touch opens the menu by holding. */
 .mosaic-more {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 32px;
-  height: 32px;
+  top: 6px;
+  right: 6px;
+  width: var(--face-more, 32px);
+  height: var(--face-more, 32px);
   border-radius: 9999px;
   display: flex;
   align-items: center;
@@ -494,6 +498,11 @@
 }
 .mosaic-more:focus-visible {
   opacity: 1;
+}
+@media not (hover: hover) {
+  .mosaic-more {
+    display: none;
+  }
 }
 @media (hover: hover) {
   .mosaic-tile:hover .mosaic-more {
