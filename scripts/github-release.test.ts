@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'bun:test';
-import { ensureDraft, publish, uploadAsset, type Api, type Release } from './github-release';
+import {
+  ensureDraft,
+  expectedAssets,
+  parseFeed,
+  publish,
+  uploadAsset,
+  type Api,
+  type Release,
+} from './github-release';
 
 /**
  * A fake GitHub releases API: enough state to prove the draft lifecycle
@@ -171,5 +179,56 @@ describe('publish', () => {
     const gh = fakeGitHub([{ ...release(5, 'v1', false, ['a']), tag_name: 'untagged-abc' }]);
     const r = await publish(gh.api, 5, 'v1', ['a']);
     expect(r.tag_name).toBe('v1');
+  });
+});
+
+describe('expectedAssets', () => {
+  const apks = ['NicotinD-1.apk', 'NicotinD-TV-1.apk'];
+
+  it('expects every feed whose packaging job succeeded', () => {
+    const r = expectedAssets(apks, [
+      ['latest-linux.yml', 'success'],
+      ['latest-mac.yml', 'success'],
+    ]);
+    expect(r.expect).toEqual([...apks, 'latest-linux.yml', 'latest-mac.yml']);
+    expect(r.withheld).toEqual([]);
+  });
+
+  // #1631: v0.8.122's desktop-mac was cancelled (retired runner) and held back
+  // two working APKs, so F-Droid found nothing at the tag.
+  it.each(['failure', 'cancelled', 'skipped'])(
+    'still publishes the APKs when a desktop job ended %s',
+    (result) => {
+      const r = expectedAssets(apks, [
+        ['latest-linux.yml', 'success'],
+        ['latest-mac.yml', result],
+      ]);
+      expect(r.expect).toEqual([...apks, 'latest-linux.yml']);
+      expect(r.withheld).toEqual([{ asset: 'latest-mac.yml', result }]);
+    },
+  );
+
+  // A mistyped `${{ needs.<job>.result }}` evaluates to ''. Reading that as "not
+  // success" would quietly drop a feed on every release.
+  it.each(['', 'sucess', 'SUCCESS'])('refuses a job result it does not know: %p', (result) => {
+    expect(() => expectedAssets(apks, [['latest-mac.yml', result]])).toThrow('latest-mac.yml');
+  });
+
+  it('never withholds the required assets', () => {
+    expect(expectedAssets(apks, []).expect).toEqual(apks);
+  });
+});
+
+describe('parseFeed', () => {
+  it('splits asset=result', () => {
+    expect(parseFeed('latest-mac.yml=cancelled')).toEqual(['latest-mac.yml', 'cancelled']);
+  });
+
+  it('keeps an empty result so expectedAssets can refuse it', () => {
+    expect(parseFeed('latest-mac.yml=')).toEqual(['latest-mac.yml', '']);
+  });
+
+  it('refuses a feed with no result at all', () => {
+    expect(() => parseFeed('latest-mac.yml')).toThrow('asset=result');
   });
 });

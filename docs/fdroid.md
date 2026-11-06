@@ -635,12 +635,14 @@ So the lane distinguishes the two cases by asking the live site, which is the on
 - **`Refuse to publish a site that would remove a live repository`** — if this run built no
   repository but one answers 200, the job fails instead of deploying. Verified against the real site
   in all three states: built (passes), none built with one live (fails), neither (passes, bootstrap).
-- **A conclusion guard on the trigger.** `workflow_run` has no `types: [succeeded]` — `completed`
-  includes failure and cancellation — so the job is gated on
-  `github.event.workflow_run.conclusion == 'success'`. A release that failed *before* attaching its
-  APKs is exactly the run whose assets must not be picked up.
+- **Only published releases are read.** The APKs come from
+  `gh release list --exclude-drafts`, and `publish-release` publishes only once both APKs are on the
+  draft. So a run that failed *before* attaching them leaves a draft this lane cannot see. The
+  trigger runs on **every** completed Build & Deploy: a run that failed only in a desktop job has
+  published its APKs. The old `conclusion == 'success'` guard predates drafts (#1184 vs #1454),
+  added nothing to them, and froze the repository on v0.8.122 (#1631).
 
-`check:fdroid` asserts both; removing either is caught.
+`check:fdroid` asserts both, and fails if the `success` guard comes back.
 
 ## Migration note
 

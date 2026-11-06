@@ -24,6 +24,12 @@
  *   2. An upload step attaches the artifacts by id (scripts/github-release.ts).
  *   3. After it, a step checks that what was built actually reached the release.
  *
+ * And for `publish-release` (#1631): it waits for every packaging job but runs
+ * past a failed one (`!cancelled()`), requires only `android`, and takes each
+ * desktop feed as `--feed <asset>=${{ needs.<job>.result }}`. Under the default
+ * `success()` a cancelled desktop-mac held back v0.8.122's working APKs, and
+ * F-Droid builds from the tag found nothing there.
+ *
  * A safety step nobody wired is off: the step can be dropped, renamed,
  * reordered before the upload, or neutered with `continue-on-error`, and every
  * one of those restores the exact silence #1261 shipped in.
@@ -65,7 +71,75 @@ const VERIFY_STEP = /verify-published-assets/;
 const VERIFY_SCRIPT = /(\S*verify-published-assets\.ts)/;
 
 type Step = { run?: string; uses?: string; 'continue-on-error'?: boolean | string };
-type Job = { steps?: Step[] };
+type Job = { steps?: Step[]; needs?: string[] | string; if?: string };
+
+/** The updater feed each packaging job produces, as `publish --feed` names it. */
+export const FEEDS: Record<string, string> = {
+  'desktop-linux': 'latest-linux.yml',
+  'desktop-mac': 'latest-mac.yml',
+};
+
+const PUBLISH_CMD = /scripts\/github-release\.ts publish\b/;
+const escape = (v: string): string => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** The `publish-release` contract from #1631. Returns one message per breach. */
+export function auditPublishJob(job: Job): string[] {
+  const errors: string[] = [];
+  const where = `${WORKFLOW}: job \`publish-release\``;
+  const needs = new Set(typeof job.needs === 'string' ? [job.needs] : (job.needs ?? []));
+  const cond = job.if ?? '';
+
+  for (const name of ['android', ...PACKAGING_JOBS]) {
+    if (!needs.has(name)) {
+      errors.push(
+        `${where} does not need \`${name}\`, so it can publish before ${name} has uploaded.`,
+      );
+    }
+  }
+  if (!/!\s*cancelled\(\)/.test(cond)) {
+    errors.push(
+      `${where} is not gated on \`!cancelled()\`. Under the default success() a failed desktop ` +
+        `job holds back the APKs, and F-Droid finds nothing at the tag (#1631).`,
+    );
+  }
+  if (!/needs\.android\.result\s*==\s*'success'/.test(cond)) {
+    errors.push(
+      `${where} must require \`needs.android.result == 'success'\`: the APKs are what the ` +
+        `release cannot ship without.`,
+    );
+  }
+  for (const name of PACKAGING_JOBS) {
+    if (new RegExp(`needs\\.${escape(name)}\\.result\\s*==\\s*'success'`).test(cond)) {
+      errors.push(`${where} requires \`${name}\` to succeed, which couples the APKs to it again.`);
+    }
+  }
+
+  const step = (job.steps ?? []).find((s) => PUBLISH_CMD.test(s.run ?? ''));
+  if (!step) {
+    errors.push(`${where} has no \`github-release.ts publish\` step.`);
+    return errors;
+  }
+  const run = step.run ?? '';
+  const expectArg = /--expect\s+["']?([^"'\s]+)/.exec(run)?.[1] ?? '';
+  for (const [name, asset] of Object.entries(FEEDS)) {
+    if (expectArg.split(',').includes(asset)) {
+      errors.push(
+        `${where} lists \`${asset}\` in --expect, which requires it unconditionally. Pass it ` +
+          `as --feed so a failed ${name} withholds only its own feed.`,
+      );
+    }
+    const feed = new RegExp(
+      `--feed\\s+["']?${escape(asset)}=\\$\\{\\{\\s*needs\\.${escape(name)}\\.result\\s*\\}\\}`,
+    );
+    if (!feed.test(run)) {
+      errors.push(
+        `${where} does not pass \`--feed ${asset}=\${{ needs.${name}.result }}\`. Without it the ` +
+          `feed is either dropped or required regardless of ${name}.`,
+      );
+    }
+  }
+  return errors;
+}
 
 /**
  * Where the publish and verify steps sit in one job's step list.
@@ -169,7 +243,16 @@ function main(): void {
     errors.push(...auditJob(name, job.steps ?? []));
   }
 
-  console.log(`Checked ${PACKAGING_JOBS.length} desktop packaging job(s) in ${WORKFLOW}.`);
+  const publishJob = jobs['publish-release'];
+  if (!publishJob) {
+    errors.push(`${WORKFLOW}: job \`publish-release\` is gone; its #1631 contract is unchecked.`);
+  } else {
+    errors.push(...auditPublishJob(publishJob));
+  }
+
+  console.log(
+    `Checked ${PACKAGING_JOBS.length} desktop packaging job(s) and publish-release in ${WORKFLOW}.`,
+  );
 
   if (errors.length > 0) {
     console.error(`\n❌ ${errors.length} problem(s):\n`);

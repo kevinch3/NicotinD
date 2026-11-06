@@ -1161,6 +1161,13 @@ gate checks the *wiring*, not the mechanism: it fails a packaging job whose veri
 deleted, renamed, reordered before the upload, or neutered with `continue-on-error`, and it fails
 when it stops finding the packaging jobs at all rather than passing over an empty set.
 
+It also holds `publish-release` to #1631. The job needs `android` and every packaging job, is gated
+on `!cancelled()` plus `needs.android.result == 'success'` and never on a desktop result, and passes
+each feed as `--feed <asset>=${{ needs.<job>.result }}` rather than in `--expect`. The default
+`success()` is the v0.8.122 shape: a cancelled `desktop-mac` held back two working APKs. On the
+script side, `expectedAssets` refuses a result it does not know. A mistyped `needs.<job>.result`
+evaluates to `''`, and reading that as "failed" would drop a feed on every release.
+
 **v0.8.103** added a rule. With the release draft-first, the publisher — which finds its release
 by tag, while the API reports a draft's tag as `untagged-…` — never saw the draft, created and
 published a second, desktop-only release, and that one became `latest` without the APKs. So the
