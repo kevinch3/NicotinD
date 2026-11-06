@@ -21,6 +21,7 @@
  */
 import { DestroyRef, inject, signal, type Signal } from '@angular/core';
 import { createPointerDrag } from './pointer-drag';
+import { scrollRootTop } from './scroll-root';
 import { TEXT_ENTRY_TARGETS } from './text-entry';
 
 export const PULL_SLOP_PX = 10;
@@ -139,7 +140,7 @@ export function createPullToRefresh(options: PullToRefreshOptions): PullToRefres
   const onPointerDown = (e: PointerEvent): void => {
     if (phase() !== 'idle') return;
     if (e.isPrimary === false || e.pointerType === 'mouse') return;
-    if (window.scrollY > 0) return;
+    if (scrollRootTop() > 0) return;
     if ((e.target as Element | null)?.closest?.(NON_PULL_TARGETS)) return;
     if (options.canStart && !options.canStart()) return;
     drag.start(e);

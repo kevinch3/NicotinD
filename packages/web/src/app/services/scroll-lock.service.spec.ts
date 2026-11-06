@@ -54,4 +54,19 @@ describe('ScrollLockService', () => {
     expect(svc.locked).toBe(true);
     expect(root().style.overflow).toBe('hidden');
   });
+
+  it('also pins the shell scroller (<main data-scroll-root>) and restores it', () => {
+    const main = document.createElement('main');
+    main.setAttribute('data-scroll-root', '');
+    main.style.overflow = 'auto';
+    document.body.append(main);
+
+    svc.lock();
+    expect(main.style.overflow).toBe('hidden');
+    expect(main.style.overscrollBehavior).toBe('none');
+
+    svc.unlock();
+    expect(main.style.overflow).toBe('auto');
+    main.remove();
+  });
 });

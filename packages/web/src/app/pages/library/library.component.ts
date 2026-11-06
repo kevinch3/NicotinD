@@ -57,6 +57,7 @@ import { EntityMenuButtonComponent } from '../../components/entity-menu-button/e
 import { EntityMenuService } from '../../services/entity-menu.service';
 import type { TrackAction } from '../../components/track-row/track-row.component';
 import { chunk } from '../../lib/tv-nav-grid';
+import { scrollRootTo, scrollRootTop } from '../../lib/scroll-root';
 import {
   LIBRARY_FILTER_PARAM_KEYS,
   isEmptyLibraryFilter,
@@ -879,7 +880,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
         if (page.length < fetchSize) this.done.set(true);
       }
       if (persisted.scrollY > 0) {
-        requestAnimationFrame(() => window.scrollTo({ top: persisted.scrollY }));
+        requestAnimationFrame(() => scrollRootTo(persisted.scrollY));
       }
     } catch {
       /* ignore */
@@ -902,7 +903,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
     writePersistedState({
       type: this.albumSort(),
       loaded: this.albums().length,
-      scrollY: typeof window !== 'undefined' ? window.scrollY : 0,
+      scrollY: scrollRootTop(),
     });
   }
 

@@ -485,8 +485,10 @@
   contain: strict;
   backface-visibility: hidden;
   /* Press-and-hold opens the tile's menu; keep iOS from racing it with its
-     own image callout. */
+     own image callout, and a drag after the hold from starting a text selection. */
   -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 /* The hover ⋯ on a face (#1298): the same door every tile has, delegated.
    Sized with the face (`--face-more`): a fixed 32px covered most of a small

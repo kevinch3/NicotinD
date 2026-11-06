@@ -2144,3 +2144,24 @@ Those two are declared in `allowedCommonJsDependencies`, which is Angular's sanc
 acknowledge a known CJS dependency, so the build is now **warning-free** and the next warning
 means something. Note the trade: a broken static import fails the build, a broken dynamic
 import fails at click time — hence `devices.component.spec.ts` covers the QR path.
+
+## The shell scrolls `<main>`, not the document (iOS PWA fixed-bar drift)
+
+On an iOS standalone PWA the fixed mini-player and tab bar rode the page's scroll: scrolling Settings with a
+track loaded left both floating mid-screen, shifted by the scroll distance, with content visible beneath. WebKit
+mishandles `position: fixed` against a *document* scroller there, and no CSS on the bars themselves cures it.
+So the layout shell is now a fixed-height column (`h-dvh overflow-hidden`) and `<main data-scroll-root>` is the
+one scroller; the document never scrolls, so there is nothing for the fixed layers to drift against. Routes
+outside the shell (login, setup) still scroll the document.
+
+Anything that used `window.scrollY` / `window.scrollTo` goes through `lib/scroll-root.ts`
+(`scrollRootTop` / `scrollRootTo`, `window` fallback outside the shell): the pull-to-refresh start check and the
+Library's scroll persistence. `ScrollLockService` locks both the root and the scroller. Horizontal-overflow
+e2e checks measure the document **and** `[data-scroll-root]`, since `overflow-y: auto` makes `<main>` the
+element that would overflow. Regression: the `mobile-ux` e2e "scrolling a long page leaves the player and tab
+bar pinned to the bottom". Not reproducible in Chromium or CI (no iOS WebKit) — on-device confirmation needed.
+
+**Held tiles and the entity menu are not selectable** (`user-select: none` on `.mosaic-tile` and the menu): a
+press-and-hold opens the menu, and the drag that follows used to start an iOS text selection (the Copy / Look Up
+/ Translate bubble) over the menu.
+
