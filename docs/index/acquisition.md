@@ -83,6 +83,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **Per-album hunt status**: every Get surface shows its album's search or live job (any lane, by
   name too) with progress, and is disabled by nothing else (`statusFor`, `statusForAlbum`,
   `AlbumHuntStatus`, `albumHuntLabel`, `beginSearch`). → [album-hunt.md](../album-hunt.md)
+- **Interactive hunt queue**: a Get click queues its hunt in core (`HuntQueue`) and polls
+  (`HUNT_POLL_MS`), so waiting is never billed to a 55 s request; a hunt that ran and failed
+  throws `HuntFailedError` with its reason. → [album-hunt.md](../album-hunt.md)
 - **Merged `/get` workspace**: Acquire + Downloads are one route with a `?tab=find|downloads` shell
   (`GetComponent`); the `@if` is load-bearing (destroying the inactive tab unregisters its handlers).
   → [web-ui.md](../web-ui.md)

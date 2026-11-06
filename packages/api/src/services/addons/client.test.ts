@@ -25,6 +25,7 @@ interface Captured {
   auth: string | null;
   body: string | null;
   idempotencyKey: string | null;
+  attemptId: string | null;
 }
 
 function stubFetch(
@@ -38,6 +39,7 @@ function stubFetch(
       auth: new Headers(init?.headers).get('authorization'),
       body: typeof init?.body === 'string' ? init.body : null,
       idempotencyKey: new Headers(init?.headers).get('idempotency-key'),
+      attemptId: new Headers(init?.headers).get('x-nicotind-attempt'),
     };
     captured.push(req);
     return respond(req);
@@ -53,6 +55,24 @@ describe('AddonClient', () => {
     expect(manifest.id).toBe('fixture-addon');
     expect(captured[0]!.url).toBe('http://addon:9999/addon/v1/manifest');
     expect(captured[0]!.auth).toBeNull();
+  });
+
+  // #1626: one id joins core's hunt log line to the addon's `hunt summary`.
+  it('sends the attempt id on a hunt, and omits the header without one', async () => {
+    const { fetchFn, captured } = stubFetch(() =>
+      Response.json({
+        candidates: [],
+        queries: [],
+        skewNeeded: false,
+        searchesFired: 2,
+        searchesAnswered: 2,
+      }),
+    );
+    const client = new AddonClient({ baseUrl: 'http://addon:9999', token: 'tok', fetchFn });
+    const req = { artist: 'A', album: 'B', canonicalTracks: [{ title: 'One' }] };
+    await client.albumsSearch(req, { attemptId: 'hunt-1' });
+    await client.albumsSearch(req);
+    expect(captured.map((c) => c.attemptId)).toEqual(['hunt-1', null]);
   });
 
   it('sends the bearer token on status', async () => {

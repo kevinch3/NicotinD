@@ -1,14 +1,14 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { of, throwError } from 'rxjs';
+import { NEVER, of, throwError } from 'rxjs';
 import type { AcquisitionJobView } from '@nicotind/core';
 import { AutoHuntService } from './auto-hunt.service';
-import { DownloadsApiService } from './api/downloads-api.service';
+import { DownloadsApiService, HuntFailedError } from './api/downloads-api.service';
 import { TransferService } from './transfer.service';
 import { ToastService } from './toast.service';
 import { Router } from '@angular/router';
-import type { DiscographyAlbum, FolderCandidate } from './api/api-types';
+import type { DiscographyAlbum, FolderCandidate, QueuedHuntWaiting } from './api/api-types';
 
 const ALBUM: DiscographyAlbum = {
   lidarrId: 42,
@@ -97,6 +97,36 @@ describe('AutoHuntService', () => {
   function svc(): AutoHuntService {
     return TestBed.inject(AutoHuntService);
   }
+
+  describe('a hunt waiting its turn on the server (#1625)', () => {
+    it('shows how many hunts are ahead, then plain Finding… once it runs', () => {
+      let onWait!: (w: QueuedHuntWaiting) => void;
+      huntAlbumBase.mockImplementation((_id: number, _o: unknown, cb: typeof onWait) => {
+        onWait = cb;
+        return NEVER;
+      });
+      const service = svc();
+      service.hunt(ALBUM, 'Pink Floyd', vi.fn());
+      onWait({ state: 'queued', position: 3, etaMs: 36_000 });
+      expect(service.statusFor(ALBUM.lidarrId)).toEqual({ phase: 'searching', ahead: 3 });
+      onWait({ state: 'searching', elapsedMs: 0, etaMs: 12_000 });
+      expect(service.statusFor(ALBUM.lidarrId)).toEqual({ phase: 'searching' });
+    });
+
+    it('a hunt that ran and failed names the reason', async () => {
+      huntAlbumBase.mockReturnValue(
+        throwError(() => new HuntFailedError('The source did not finish searching in time.', true)),
+      );
+      svc().hunt(ALBUM, 'Pink Floyd', vi.fn());
+      await flush();
+      expect(show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: expect.stringContaining('did not finish searching in time'),
+          kind: 'error',
+        }),
+      );
+    });
+  });
 
   it('shows a countdown toast when best match is ≥60%', async () => {
     huntAlbumBase.mockReturnValue(

@@ -187,12 +187,19 @@ source:
   second of two hunts. The response carries `searchesFired` / `searchesAnswered`;
   `huntCutShort` (fewer answered than fired) maps to `slskd-unavailable` in
   `acquireAlbum`, the auto-hunt toast says "source busy — n of m searches
-  completed" with a Retry, and the modal shows a `hunt-source-busy` state. The
-  triggers do not serialize hunts site-wide: each card is disabled only by its
-  own album's hunt (`statusFor`), and a hunt the lanes cut short takes this
-  Retry path. → [album-hunt.md](album-hunt.md) The addon side (waves of two, an 8 s per-search timeout, one
+  completed" with a Retry, and the modal shows a `hunt-source-busy` state. Each
+  card is disabled only by its own album's hunt (`statusFor`); interactive hunts
+  wait their turn in core's `HuntQueue`, one at a time, instead of each holding a
+  request whose 55 s budget a queue could exhaust (#1625).
+  → [album-hunt.md](album-hunt.md) The addon side (waves of two, an 8 s per-search timeout, one
   `SearchLanes` queue with user hunts ahead of fallback waves) lives in the slskd
   addon's protocol doc.
+- **A hunt carries its attempt id.** Core sends `X-NicotinD-Attempt: <huntId>` on
+  `POST albums/search`, and logs it on `addon hunt completed` / `addon hunt failed`
+  together with `artist`, `album`, `searchesFired` / `searchesAnswered` and the
+  `sourceOffline` / `rateLimited` flags. An addon that logs the header (the slskd
+  addon's `hunt summary`) joins its own record to core's on that one id (#1626).
+  The header is optional and additive: an addon may ignore it.
 - **An addon that deletes needs somewhere it may write.** The slskd addon's
   music mount is `:ro` on purpose — it shares those files out to the network and
   must never rewrite the library. That also made its file deletion silently

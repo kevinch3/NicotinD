@@ -175,6 +175,91 @@ describe('discography routes through a remote addon', () => {
     expect(body.candidates[0]!.files[0]!.bitRate).toBe(900);
   });
 
+  describe('queued hunts (#1625)', () => {
+    type Polled = {
+      state: string;
+      position?: number;
+      error?: string;
+      timedOut?: boolean;
+      result?: { candidates: Array<{ candidateRef?: string }>; searchesFired?: number };
+    };
+
+    async function queue(albumId: number): Promise<string> {
+      const res = await h.app.request(`/albums/${albumId}/hunt/queue`, jsonPost({}));
+      expect(res.status).toBe(202);
+      return ((await res.json()) as { huntId: string }).huntId;
+    }
+
+    async function poll(huntId: string): Promise<Polled> {
+      return (await (await h.app.request(`/hunts/${huntId}`)).json()) as Polled;
+    }
+
+    async function settle(huntId: string): Promise<Polled> {
+      for (let i = 0; i < 100; i++) {
+        const body = await poll(huntId);
+        if (body.state === 'done' || body.state === 'failed') return body;
+        await new Promise((r) => setTimeout(r, 1));
+      }
+      throw new Error('hunt never settled');
+    }
+
+    it('answers 202 at once, and the poll returns the hunt/base body', async () => {
+      const done = await settle(await queue(42));
+      expect(done.state).toBe('done');
+      expect(done.result!.candidates[0]!.candidateRef).toBe('ref-1');
+      expect(done.result!.searchesFired).toBe(2);
+    });
+
+    // The live failure: 7 clicks, hunts 5–7 timed out at 55 s having never searched.
+    it('a burst of seven hunts runs one at a time and every one succeeds', async () => {
+      let release!: () => void;
+      const gate = new Promise<void>((r) => (release = r));
+      let inFlight = 0;
+      let maxInFlight = 0;
+      h.albumsSearch.mockImplementation(async () => {
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await gate;
+        inFlight--;
+        return {
+          candidates: [CANDIDATE],
+          queries: ['q'],
+          skewNeeded: false,
+          searchesFired: 2,
+          searchesAnswered: 2,
+        };
+      });
+      const ids: string[] = [];
+      for (let album = 1; album <= 7; album++) ids.push(await queue(album));
+      expect(await poll(ids[6]!)).toMatchObject({ state: 'queued', position: 6 });
+      release();
+      for (const id of ids) expect((await settle(id)).state).toBe('done');
+      expect(maxInFlight).toBe(1);
+    });
+
+    it('gives the running hunt the queued budget, and its id as the attempt id', async () => {
+      const huntId = await queue(42);
+      await settle(huntId);
+      expect(h.albumsSearch.mock.calls.at(-1)?.[1]).toEqual({
+        timeoutMs: 120_000,
+        attemptId: huntId,
+      });
+    });
+
+    it('a timed-out hunt fails with the reason instead of a dropped request', async () => {
+      h.albumsSearch.mockImplementationOnce(async () => {
+        throw new AddonTimeoutError('timed out');
+      });
+      const failed = await settle(await queue(42));
+      expect(failed).toMatchObject({ state: 'failed', timedOut: true });
+      expect(failed.error).toContain('in time');
+    });
+
+    it('an unknown or expired hunt id is a 404', async () => {
+      expect((await h.app.request('/hunts/nope')).status).toBe(404);
+    });
+  });
+
   it('hunt-download acquires the exact pick and records the mapped feed row', async () => {
     const res = await h.app.request(
       '/albums/42/hunt-download',

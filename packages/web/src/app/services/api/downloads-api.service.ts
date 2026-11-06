@@ -1,5 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
+import { defer, first, map, repeat, switchMap, tap } from 'rxjs';
 import type { AcquireJob, AcquisitionJobView } from '@nicotind/core';
 import type {
   BrowseJobResult,
@@ -7,12 +8,33 @@ import type {
   ArtistProvisioningStatus,
   ProvisioningAccepted,
   HuntResult,
+  QueuedHuntStatus,
+  QueuedHuntWaiting,
   FolderCandidate,
   AlbumJob,
   UntrackedDownload,
   AlternateSourcesResult,
   Song,
 } from './api-types';
+
+/** How often a queued hunt is polled; a hunt takes ~11 s on kpc. */
+export const HUNT_POLL_MS = 1_500;
+
+/** A queued hunt that ran and failed — `timedOut` when the source never answered. */
+export class HuntFailedError extends Error {
+  constructor(
+    message: string,
+    readonly timedOut: boolean,
+  ) {
+    super(message);
+    this.name = 'HuntFailedError';
+  }
+}
+
+const settledHunt = (
+  s: QueuedHuntStatus,
+): s is Extract<QueuedHuntStatus, { state: 'done' | 'failed' }> =>
+  s.state === 'done' || s.state === 'failed';
 
 /** Acquisition: slskd transfers/browse, URL-acquire jobs, and the album hunt. */
 @Injectable({ providedIn: 'root' })
@@ -144,16 +166,34 @@ export class DownloadsApiService {
     return this.http.post<HuntResult>(`/api/discography/albums/${lidarrAlbumId}/hunt`, overrides);
   }
 
-  // Phase-1 of the two-phase hunt: fires base queries only and returns whether
-  // skew variants are needed (bestBasePct < threshold).
+  /**
+   * One album hunt, queued on the server (#1625): the source runs one hunt at a
+   * time, so this waits its turn there — not inside a request with a 55 s budget
+   * that a burst of clicks used to exhaust before the hunt ever searched. Emits
+   * the hunt's result once; `onWait` hears each "not yet" (queue position, ETA).
+   */
   huntAlbumBase(
     lidarrAlbumId: number,
     overrides: { artistName?: string; albumTitle?: string; skewSearch?: boolean } = {},
+    onWait?: (status: QueuedHuntWaiting) => void,
   ) {
-    return this.http.post<HuntResult & { skewNeeded: boolean }>(
-      `/api/discography/albums/${lidarrAlbumId}/hunt/base`,
-      overrides,
-    );
+    return this.http
+      .post<{ huntId: string }>(`/api/discography/albums/${lidarrAlbumId}/hunt/queue`, overrides)
+      .pipe(
+        switchMap(({ huntId }) =>
+          defer(() => this.http.get<QueuedHuntStatus>(`/api/discography/hunts/${huntId}`)).pipe(
+            repeat({ delay: HUNT_POLL_MS }),
+            tap((s) => {
+              if (!settledHunt(s)) onWait?.(s);
+            }),
+            first(settledHunt),
+          ),
+        ),
+        map((s) => {
+          if (s.state === 'failed') throw new HuntFailedError(s.error, s.timedOut);
+          return s.result;
+        }),
+      );
   }
 
   // §C1/§F2 fallback: when no whole-album folder exists, hunt each track

@@ -223,20 +223,32 @@ export class AddonClient implements AddonTransport {
    */
   async albumsSearch(
     req: AddonAlbumSearchRequest,
-    opts: { timeoutMs?: number } = {},
+    opts: { timeoutMs?: number; attemptId?: string } = {},
   ): Promise<AddonAlbumSearchResponse> {
     const started = performance.now();
+    // The attempt id joins this line to the addon's own `hunt summary` (#1626).
+    const trace = {
+      baseUrl: this.baseUrl,
+      ...(opts.attemptId ? { attemptId: opts.attemptId } : {}),
+      artist: req.artist,
+      album: req.album,
+    };
     try {
       const res = (await this.request('POST', '/addon/v1/albums/search', {
         auth: true,
         json: req,
         timeoutMs: opts.timeoutMs ?? 180_000,
+        headers: opts.attemptId ? { 'X-NicotinD-Attempt': opts.attemptId } : undefined,
       })) as AddonAlbumSearchResponse;
       this.log.info(
         {
-          baseUrl: this.baseUrl,
+          ...trace,
           durationMs: Math.round(performance.now() - started),
           candidates: res.candidates.length,
+          searchesFired: res.searchesFired,
+          searchesAnswered: res.searchesAnswered,
+          ...(res.sourceOffline ? { sourceOffline: true } : {}),
+          ...(res.rateLimited ? { rateLimited: true } : {}),
         },
         'addon hunt completed',
       );
@@ -244,7 +256,7 @@ export class AddonClient implements AddonTransport {
     } catch (err) {
       this.log.warn(
         {
-          baseUrl: this.baseUrl,
+          ...trace,
           durationMs: Math.round(performance.now() - started),
           err: err instanceof Error ? err.message : String(err),
         },
