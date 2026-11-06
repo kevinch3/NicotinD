@@ -11,6 +11,7 @@ import {
   ownPlayShare,
   playWeights,
   scoreSong,
+  sizingReference,
   tileSize,
   type MosaicSources,
   type MosaicTile,
@@ -528,5 +529,18 @@ describe('buildOfflineTiles', () => {
     const song = tiles.find((t) => t.kind === 'song')!;
     expect(Number.isFinite(song.score)).toBe(true);
     expect(song.score).toBeGreaterThan(0);
+  });
+});
+
+describe('sizingReference (#1642)', () => {
+  it('grows tiles on a phone and shrinks them on a big screen, relative to linear', () => {
+    expect(sizingReference(390) / 390).toBeCloseTo(1.28, 2);
+    expect(sizingReference(800) / 800).toBeCloseTo(0.89, 2);
+    expect(sizingReference(1300) / 1300).toBeCloseTo(0.7, 2);
+  });
+
+  it('still gives a bigger screen bigger tiles, just not proportionally', () => {
+    expect(sizingReference(1300)).toBeGreaterThan(sizingReference(800));
+    expect(sizingReference(800)).toBeGreaterThan(sizingReference(390));
   });
 });

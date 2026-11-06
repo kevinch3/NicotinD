@@ -38,6 +38,7 @@ import {
   buildMosaicTiles,
   buildOfflineTiles,
   playWeights,
+  sizingReference,
   tileSize,
   type MosaicTile,
   type PlayWeights,
@@ -829,7 +830,8 @@ export class MosaicHomeComponent implements OnInit {
     const stageMin = Math.max(1, Math.min(stage.clientWidth, stage.clientHeight));
     if (stageMin <= 1) return;
 
-    this.packing = packMosaic(list, (t) => tileSize(t.score, stageMin) * TILE_BASE);
+    const ref = sizingReference(stageMin);
+    this.packing = packMosaic(list, (t) => tileSize(t.score, ref) * TILE_BASE);
     this.lensRadius = stageMin;
     this.cx = this.packing.W / 2;
     this.cy = this.packing.W / 2;
@@ -857,7 +859,7 @@ export class MosaicHomeComponent implements OnInit {
     // Type and padding scale with the face: packed small under the fisheye,
     // fixed 12px padding and 13px titles clipped every small tile's label.
     const titleSize = clampPx(s * 0.12, 9, 17);
-    const faceVars = `--face-pad:${clampPx(s * 0.08, 5, 12)}px;--face-sub:${clampPx(s * 0.085, 7, 12)}px`;
+    const faceVars = `--face-pad:${clampPx(s * 0.08, 5, 12)}px;--face-sub:${clampPx(s * 0.085, 7, 12)}px;--face-more:${clampPx(s * 0.24, 20, 32)}px`;
     const title = escapeHtml(this.label(t));
     const subtitle = escapeHtml(t.subtitle);
 
