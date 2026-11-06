@@ -367,6 +367,14 @@
   --color-theme-secondary: var(--theme-text-secondary);
   --color-theme-surface: var(--theme-surface);
   --color-theme-muted: var(--theme-text-muted);
+  /* Same promotion, same failure (#1640): `bg-theme-surface-2/90` on the
+     mosaic's view switch, `bg-theme-base/80` on the header and 21 other
+     `/NN` uses emitted no rule while these existed only as static classes —
+     the switch rendered transparent over the tiles. `theme-opacity-modifiers.
+     spec.ts` now fails on any /NN colour missing from this block. */
+  --color-theme-surface-2: var(--theme-surface-2);
+  --color-theme-base: var(--theme-bg);
+  --color-theme-hover: var(--theme-hover);
   /* The four status hues get the same `@theme` promotion, for the same reason
      and after the same failure: `bg-status-success` / `bg-status-error` were
      referenced by the review inbox, the Admin panel (`bg-status-error/15`) and
