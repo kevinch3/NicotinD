@@ -2003,6 +2003,26 @@ station filter (`describeLibraryFilter`, reused rather than restated), else the 
 grew out of, else the track it seeded from. An ad-hoc queue is genuinely undetermined and falls
 through to the plain title rather than inventing a label.
 
+## The Now Playing sheet shows no bitrate; Track info does (#1661)
+
+The sheet used to stack a fourth text line under title / artist / album: `formatQuality(bitRate)`
+with no format, so it only ever read `214 kbps`. The library is almost all Opus since the 2026-09
+conversion, so that number is the bitrate of the *converted* file, and a reader with MP3 habits
+gets it wrong. Opus at 128 is generally transparent while MP3 at 128 is not, so 214 reads as
+"ok MP3" and 96 reads as "bad". The library keeps no provenance either: once a FLAC or a 320 MP3 is
+transcoded, nothing stored says what the source was. So the line told the listener little they
+could use, could mislead them, and cost a line on every sheet.
+
+The owner chose to **remove it from the sheet and keep it in Track info** (the `File` section's
+`Bitrate` row, `data-testid="track-info-bitrate"`). That changes no data and is easy to undo. The
+`now-playing-quality` testid went with the line. It was removed on purpose, and
+`now-playing-cover-art.component.spec.ts` checks that the sheet renders no `kbps`. The download
+cards, search results and folder browser keep their bitrate and format. There it helps the user
+pick which file to fetch, which is a different question
+([download-pipeline.md](download-pipeline.md#quality-chip--320-kbps--flac--1411-kbps)). Whether
+any listener-facing quality signal is worth showing (codec-aware bands, a recorded source class,
+badges) is a separate review. A "Lossless" or "Hi-Res" badge would be false for a transcoded file.
+
 ## The queue-resize notch is a drag target, so it clears 44px
 
 A drag is the least forgiving interaction there is, and the notch offered ~20px of target around a

@@ -9,7 +9,6 @@ import { ArtistLinksComponent } from '../../artist-links/artist-links.component'
 import { EntityLinkComponent } from '../../entity-link/entity-link.component';
 import { MenuPanelComponent } from '../../menu-panel/menu-panel.component';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
-import { formatQuality } from '../../../lib/download-status';
 import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 import { isTvUi } from '../../../lib/platform';
 
@@ -80,10 +79,6 @@ export class NowPlayingCoverArtComponent {
   readonly navigateToArtistClicked = output<void>();
   /** The album link under the artist line was followed — the sheet should close. */
   readonly navigateToAlbumClicked = output<void>();
-
-  formatQuality(bitrateKbps?: number | null): string {
-    return formatQuality(bitrateKbps, null);
-  }
 
   toggleLike(id: string): void {
     void this.likes.toggle(id);

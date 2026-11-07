@@ -39,12 +39,14 @@ describe('NowPlayingCoverArtComponent', () => {
     });
   });
 
-  it('renders a quality chip from bitRate', () => {
+  it('spends no line on the bitrate — it lives in Track info (#1661)', () => {
     const fixture = TestBed.createComponent(NowPlayingCoverArtComponent);
     setInputValue(fixture.componentInstance.coverMaxPx, 320);
     fixture.detectChanges();
-    const chip = fixture.nativeElement.querySelector('[data-testid="now-playing-quality"]');
-    expect(chip?.textContent?.trim()).toBe('320 kbps');
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('[data-testid="now-playing-album"]')).not.toBeNull();
+    expect(el.querySelector('[data-testid="now-playing-quality"]')).toBeNull();
+    expect(el.textContent).not.toContain('kbps');
   });
 
   it('has no standalone lyrics-toggle button (superseded by the panel tabs)', () => {
