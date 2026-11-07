@@ -7,9 +7,10 @@ export interface GenreSlice {
 }
 
 /**
- * Read-only listener-facing genre-weight strip for album pages and library
- * stats (issue #222 sub-goal 2). The artist page moved to the part-to-whole
- * `GenreShareBarComponent` (#1572), since overlapping weights read as a bug there. Deliberately a plain CSS bar list, not the SVG radar
+ * Read-only listener-facing genre-weight strip for album pages (issue #222
+ * sub-goal 2). The artist page (#1572) and library stats (#1670) moved to the
+ * part-to-whole `GenreShareBarComponent`, since overlapping weights read as a
+ * bug there. Deliberately a plain CSS bar list, not the SVG radar
  * (`GenreRadarComponent`) that curation uses — a strip is a linear form, and
  * the codebase already has this exact bar-fill pattern in
  * `TrackStatsBarsComponent`. No interaction with the curation/reclassify flow.

@@ -1,5 +1,29 @@
-import { test, expect } from '../helpers';
-import { FIXTURE } from '../helpers';
+import { test, expect, type APIRequestContext } from '../helpers';
+import { ADMIN, FIXTURE, bearer } from '../helpers';
+
+type Auth = Record<string, string>;
+
+async function songsMatching(request: APIRequestContext, auth: Auth, q: string) {
+  const res = await request.get('/api/search?q=' + encodeURIComponent(q), { headers: auth });
+  return ((await res.json()) as { local: { songs: Array<{ id: string; title: string }> } }).local
+    .songs;
+}
+
+/** Same seed as artist-genre-about.spec.ts, so the specs agree whichever runs first. */
+async function seedFixtureArtistGenres(request: APIRequestContext): Promise<void> {
+  const login = await request.post('/api/auth/login', { data: ADMIN });
+  const jwt = ((await login.json()) as { token: string }).token;
+  const artists = (await (
+    await request.get('/api/library/artists', { headers: bearer(jwt) })
+  ).json()) as Array<{ id: string; name: string }>;
+  const artist = artists.find((a) => a.name === FIXTURE.album.artist)!;
+  expect(artist, 'fixture artist must exist').toBeTruthy();
+  const applied = await request.post(`/api/library/artists/${artist.id}/genre`, {
+    headers: bearer(jwt),
+    data: { genres: 'Folclore; Chacarera; Zamba', note: 'e2e artist-genre-about' },
+  });
+  expect(applied.ok()).toBe(true);
+}
 
 /**
  * Library "Stats" tab (docs/listening-history.md, phase 2). Seeds counted plays
@@ -70,5 +94,73 @@ test.describe('listening stats', () => {
     await statsRequest;
 
     await expect(page.getByTestId('library-stats')).toBeVisible();
+  });
+
+  test('genre shares add up to 100 and the top is not share-of-top (#1670)', async ({
+    page,
+    request,
+  }) => {
+    await seedFixtureArtistGenres(request);
+    await page.goto('/library');
+    const token = await page.evaluate(() => localStorage.getItem('nicotind_token'));
+    const auth = { Authorization: `Bearer ${token}` };
+
+    const albumSongs = await songsMatching(request, auth, FIXTURE.album.title);
+    expect(albumSongs.length).toBeGreaterThan(1);
+    // The Untagged play is of a song no library row carries (a deleted song),
+    // not an untagged fixture: the DB is shared by the whole run and other specs
+    // retag fixtures (radio-landing.spec.ts gives the single artist 'Shoegaze').
+    const now = Date.now();
+    const gone = { id: `e2e-genre-share-deleted-${now}`, title: 'E2E Deleted Song' };
+
+    const events = [albumSongs[0], albumSongs[1], gone].map((song, n) => ({
+      clientEventId: `e2e-genre-share-${now}-${n}`,
+      songId: song.id,
+      startedAt: now - (n + 1) * 60_000,
+      msPlayed: 250_000,
+      durationMs: 300_000,
+      reason: 'ended',
+      source: 'album',
+      device: 'browser',
+      title: song.title,
+      artist: FIXTURE.album.artist,
+      album: FIXTURE.album.title,
+    }));
+    const post = await request.post('/api/history/plays', { headers: auth, data: { events } });
+    expect(post.ok()).toBeTruthy();
+
+    await page.goto('/library');
+    await page.getByTestId('library-tabs').getByRole('button', { name: 'Stats' }).click();
+    await page.getByTestId('stats-period').filter({ hasText: 'All time' }).click();
+
+    const section = page.getByTestId('stats-top-genres');
+    await expect(section.getByTestId('genre-share-bar')).toBeVisible();
+    const rows = section.getByTestId('stats-genre-row');
+    await expect(rows.first()).toBeVisible();
+
+    const read = await rows.evaluateAll((els) =>
+      els.map((el) => ({
+        genre: (el.getAttribute('data-genre') ?? '').toLowerCase(),
+        kind: el.getAttribute('data-kind'),
+        percent: Number(el.getAttribute('data-percent')),
+      })),
+    );
+    expect(read.reduce((sum, r) => sum + r.percent, 0)).toBe(100);
+    // Secondary genres are not shares: each play counts once, under Folclore.
+    expect(read.map((r) => r.genre)).not.toContain('chacarera');
+    expect(read.map((r) => r.genre)).not.toContain('zamba');
+    const folclore = read.find((r) => r.genre === 'folclore');
+    expect(folclore, 'the primary genre has a row').toBeTruthy();
+    expect(folclore!.percent).toBeLessThan(100);
+    expect(read.some((r) => r.kind === 'untagged')).toBe(true);
+    await expect(section.getByTestId('genre-share-bucket-untagged')).toBeVisible();
+
+    // The overlapping count is its own mode, and it carries no percentages.
+    await section.locator('[data-testid="stats-genre-mode"][data-mode="all"]').click();
+    await expect(section.getByTestId('stats-genre-all-row').first()).toBeVisible();
+    await expect(
+      section.getByTestId('stats-genre-all-row').filter({ hasText: 'Zamba' }),
+    ).toHaveCount(1);
+    await expect(section).not.toContainText('%');
   });
 });

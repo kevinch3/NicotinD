@@ -2,7 +2,12 @@ import { describe, expect, it, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import { recordPlayEvents, type PlayEventInput } from './play-history.js';
-import { STATS_PERIODS, listeningStats, resolvePeriod } from './listening-stats.js';
+import {
+  GENRE_SHARE_LIMIT,
+  STATS_PERIODS,
+  listeningStats,
+  resolvePeriod,
+} from './listening-stats.js';
 
 let db: Database;
 
@@ -161,6 +166,61 @@ describe('listeningStats', () => {
     expect(genres.find((g) => g.genre === 'Rock')?.plays).toBe(2);
   });
 
+  it('genre share counts each play once, under its primary genre', () => {
+    seedSong('a', { genre: 'Cumbia' });
+    seedSong('b', { genre: 'Cumbia' });
+    seedSong('c', { genre: 'Rock' });
+    db.run(`INSERT INTO library_song_genres (song_id, genre, position) VALUES ('a', 'Rock', 1)`);
+    recordPlayEvents(db, 'u1', [play('a', NOW - DAY), play('b', NOW - DAY), play('c', NOW - DAY)]);
+
+    const share = listeningStats(db, 'u1', '30d', NOW).genreShare;
+    expect(share.totalPlays).toBe(3);
+    expect(share.slices).toEqual([
+      { genre: 'Cumbia', plays: 2, share: 2 / 3 },
+      { genre: 'Rock', plays: 1, share: 1 / 3 },
+    ]);
+    expect(share.untagged.plays).toBe(0);
+  });
+
+  it('genre share parts sum to total plays, junk and deleted songs untagged', () => {
+    seedSong('tagged', { genre: 'Cumbia' });
+    seedSong('none');
+    seedSong('junk', { genre: 'Other' });
+    recordPlayEvents(db, 'u1', [
+      play('tagged', NOW - DAY),
+      play('none', NOW - DAY),
+      play('junk', NOW - DAY),
+      play('gone', NOW - DAY),
+    ]);
+
+    const stats = listeningStats(db, 'u1', '30d', NOW);
+    const share = stats.genreShare;
+    const sliceSum = share.slices.reduce((n, s) => n + s.plays, 0);
+    expect(sliceSum + share.other.plays + share.untagged.plays).toBe(stats.totals.plays);
+    expect(share.untagged).toEqual({ plays: 3, share: 3 / 4 });
+    expect(share.slices.map((s) => s.genre)).toEqual(['Cumbia']);
+  });
+
+  it('folds genres beyond GENRE_SHARE_LIMIT into other', () => {
+    const events: PlayEventInput[] = [];
+    // g0..g9 with 10..1 plays, except g3 and g4 tied at 7 to pin the name order.
+    const counts = [10, 9, 8, 7, 7, 5, 4, 3, 2, 1];
+    counts.forEach((n, i) => {
+      seedSong(`s${i}`, { genre: `Genre ${String.fromCharCode(74 - i)}` });
+      for (let k = 0; k < n; k += 1) events.push(play(`s${i}`, NOW - DAY));
+    });
+    recordPlayEvents(db, 'u1', events);
+
+    const share = listeningStats(db, 'u1', '30d', NOW).genreShare;
+    expect(share.slices).toHaveLength(GENRE_SHARE_LIMIT);
+    expect(share.slices.map((s) => s.plays)).toEqual([10, 9, 8, 7, 7, 5, 4, 3]);
+    // Tied at 7: 'Genre F' (i=4) sorts before 'Genre G' (i=3).
+    expect(share.slices[3]?.genre).toBe('Genre F');
+    expect(share.slices[4]?.genre).toBe('Genre G');
+    expect(share.other).toEqual({ plays: 3, share: 3 / 56, genreCount: 2 });
+    expect(share.untagged.plays).toBe(0);
+  });
+
   it('buckets plays by local hour of day', () => {
     seedSong('a');
     // Two plays in the same hour, one in another. Hours are local-time by
@@ -210,6 +270,12 @@ describe('listeningStats', () => {
     expect(stats.topSongs).toEqual([]);
     expect(stats.topArtists).toEqual([]);
     expect(stats.topGenres).toEqual([]);
+    expect(stats.genreShare).toEqual({
+      totalPlays: 0,
+      slices: [],
+      other: { plays: 0, share: 0, genreCount: 0 },
+      untagged: { plays: 0, share: 0 },
+    });
     // The clock is always 24 buckets so the chart never has to special-case it.
     expect(stats.clock).toHaveLength(24);
     expect(stats.clock.every((n) => n === 0)).toBe(true);

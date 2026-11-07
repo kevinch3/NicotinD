@@ -170,7 +170,8 @@ scan.
 | Radio candidate pooling (`radio.ts`)              | **full set**                   | A shared secondary genre is a real signal                       |
 | `genreSetCloseness` (radio scoring)               | **full set**                   | Scores set-against-set, junk vocab filtered first               |
 | `artistGenreDistribution` / `albumGenreDistribution` | **full set**                | The radar is about spread, which only the set can show          |
-| `listeningStats` genre ranking                    | **join table only**            | Ranks what you actually played, across all its genres           |
+| `listeningStats` `topGenres`                      | **join table only**            | Overlapping per-genre plays: the secondary mode + mosaic sizing |
+| `listeningStats` `genreShare`                     | **mirror column**              | Part-to-whole "what did I listen to"; junk via `unresolvedGenreSql` |
 | `loadGenreSets`                                   | **full set**                   | The batch accessor; prefer it over ad-hoc queries               |
 | Album / artist aggregate `genre` column           | **primary only**               | `mostCommonGenre` over member primaries — one stable label      |
 | `libraryHealth` "missing genre" metric            | **mirror column**              | `unresolvedGenreSql` tests the primary against `JUNK_GENRES`    |

@@ -1,4 +1,5 @@
 import type { Database } from 'bun:sqlite';
+import { unresolvedGenreSql } from './genre-split.js';
 
 /**
  * Aggregates over the listening log — the read side backing the Library "Stats"
@@ -21,6 +22,9 @@ export type StatsPeriod = (typeof STATS_PERIODS)[number];
 
 /** How many rows each ranked list returns. */
 export const TOP_LIMIT = 10;
+
+/** Named genres in the share; the rest fold into `other` (#1670). */
+export const GENRE_SHARE_LIMIT = 8;
 
 export interface StatsTotals {
   plays: number;
@@ -52,6 +56,27 @@ export interface TopGenre {
   plays: number;
 }
 
+export interface GenreShareSlice {
+  genre: string;
+  plays: number;
+  /** `plays / totals.plays`, 0..1. */
+  share: number;
+}
+
+/**
+ * Part-to-whole genre split of the period's plays: each play counts once, under
+ * its track's primary genre, so `slices + other + untagged` is exactly
+ * `totalPlays` (#1670).
+ */
+export interface StatsGenreShare {
+  totalPlays: number;
+  slices: GenreShareSlice[];
+  /** Real genres past {@link GENRE_SHARE_LIMIT}. */
+  other: { plays: number; share: number; genreCount: number };
+  /** No genre, junk vocab (`JUNK_GENRES`), or a deleted song. */
+  untagged: { plays: number; share: number };
+}
+
 export interface ListeningStats {
   period: StatsPeriod;
   from: number;
@@ -60,7 +85,9 @@ export interface ListeningStats {
   topSongs: TopSong[];
   topArtists: TopArtist[];
   topAlbums: TopAlbum[];
+  /** Overlapping per-genre counts (a 3-genre track counts 3 times) — never a share. */
   topGenres: TopGenre[];
+  genreShare: StatsGenreShare;
   /** Plays per local hour of day, always 24 buckets so charts never special-case. */
   clock: number[];
 }
@@ -193,6 +220,21 @@ export function listeningStats(
     )
     .all(...args, TOP_LIMIT);
 
+  // The share reads the primary mirror column so a play is counted once; junk
+  // vocab is treated as no genre, the same as library health (#1670).
+  const genreRows = db
+    .query<{ genre: string; plays: number }, [string, number, number]>(
+      `SELECT s.genre AS genre, COUNT(*) AS plays
+         FROM play_events p
+         JOIN library_songs s ON s.id = p.song_id
+        WHERE ${scope} AND NOT ${unresolvedGenreSql('s.genre')}
+        GROUP BY s.genre
+        ORDER BY plays DESC, genre ASC`,
+    )
+    .all(...args);
+  const totalPlays = totals?.plays ?? 0;
+  const genreShare = foldGenreShare(genreRows, totalPlays);
+
   // Local hour, not UTC: "when do I listen" is a wall-clock question, and a
   // server in another timezone would otherwise smear someone's evening.
   const clock = new Array<number>(24).fill(0);
@@ -219,6 +261,26 @@ export function listeningStats(
     topArtists,
     topAlbums,
     topGenres,
+    genreShare,
     clock,
+  };
+}
+
+/** Head of {@link GENRE_SHARE_LIMIT} rows, the tail summed into `other`, the remainder untagged. */
+function foldGenreShare(
+  rows: { genre: string; plays: number }[],
+  totalPlays: number,
+): StatsGenreShare {
+  const share = (plays: number): number => (totalPlays > 0 ? plays / totalPlays : 0);
+  const head = rows.slice(0, GENRE_SHARE_LIMIT);
+  const tail = rows.slice(GENRE_SHARE_LIMIT);
+  const tagged = rows.reduce((sum, r) => sum + r.plays, 0);
+  const otherPlays = tail.reduce((sum, r) => sum + r.plays, 0);
+  const untaggedPlays = Math.max(0, totalPlays - tagged);
+  return {
+    totalPlays,
+    slices: head.map((r) => ({ genre: r.genre, plays: r.plays, share: share(r.plays) })),
+    other: { plays: otherPlays, share: share(otherPlays), genreCount: tail.length },
+    untagged: { plays: untaggedPlays, share: share(untaggedPlays) },
   };
 }

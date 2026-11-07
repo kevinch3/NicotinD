@@ -1,19 +1,19 @@
 @if (segments().length) {
   <div class="share" data-testid="genre-share-bar">
     <div class="bar" role="img" [attr.aria-label]="label()">
-      @for (s of segments(); track s.genre) {
+      @for (s of segments(); track s.key) {
         <span class="seg {{ s.tone }}" [style.flex-grow]="s.weight" [title]="s.genre + ' ' + s.percent + '%'"></span>
       }
     </div>
     <ul class="legend">
-      @for (s of segments(); track s.genre) {
-        <li [attr.data-testid]="'genre-share-' + s.genre.toLowerCase()">
+      @for (s of segments(); track s.key) {
+        <li [attr.data-testid]="s.testid">
           <span class="swatch {{ s.tone }}" aria-hidden="true"></span>
           <span class="name">{{ s.genre }}</span>
           <span class="value">{{ s.percent }}%</span>
         </li>
       }
     </ul>
-    <p class="caption">{{ 'artist.genreShareCaption' | t: { count: taggedCount() } }}</p>
+    <p class="caption">{{ caption() ?? ('artist.genreShareCaption' | t: { count: taggedCount() }) }}</p>
   </div>
 }
