@@ -3,6 +3,7 @@ import {
   parseLrc,
   parseLrcDetailed,
   applyLyricsOffset,
+  lrcOverrunSec,
   findActiveLine,
   type LyricLine,
 } from './lrc.js';
@@ -157,5 +158,19 @@ describe('findActiveLine', () => {
     // What makes the nudge control work — the highlight moves without the text
     // being rewritten.
     expect(findActiveLine(applyLyricsOffset(lines, 5_000), 10_000)).toBe(0);
+  });
+});
+
+describe('lrcOverrunSec', () => {
+  it('is the last line past the end of the file, after the offset', () => {
+    const lrc = '[00:01.00]a\n[03:30.00]b';
+    expect(lrcOverrunSec(lrc, 0, 200)).toBe(10);
+    expect(lrcOverrunSec(lrc, -15_000, 200)).toBe(-5);
+    expect(lrcOverrunSec(lrc, null, 230)).toBe(-20);
+  });
+
+  it('is -Infinity with no timed lines', () => {
+    expect(lrcOverrunSec(null, 0, 200)).toBe(Number.NEGATIVE_INFINITY);
+    expect(lrcOverrunSec('plain words only', 0, 200)).toBe(Number.NEGATIVE_INFINITY);
   });
 });

@@ -55,6 +55,12 @@ const RETRY_BACKOFF_MS = 400;
  */
 const SEARCH_DURATION_TOLERANCE_SEC = LYRICS_DURATION_TOLERANCE_SEC;
 
+/** A /search pick, and whether it was ranked within the duration tolerance. */
+interface SearchHit {
+  result: LyricsResult;
+  verified: boolean;
+}
+
 /** Map a LRCLIB record to a LyricsResult, treating empty strings as "none". */
 function toResult(track: LrclibTrack): LyricsResult | null {
   const plain = track.plainLyrics?.trim() ? track.plainLyrics : null;
@@ -133,15 +139,17 @@ export class LrclibPlugin implements Plugin {
     }
     if (exact?.synced) return exact;
 
-    let searched: LyricsResult | null;
+    let searched: SearchHit | null;
     try {
       searched = await this.searchByQuery(query);
     } catch (err) {
       if (exact) return exact;
       throw getError ?? err;
     }
-    if (searched?.synced) return searched;
-    if (exact ?? searched) return exact ?? searched;
+    // Only a hit ranked within the duration tolerance may displace an exact /get
+    // record: an unranked one (no duration on either side) could be another take.
+    if (searched?.verified && searched.result.synced) return searched.result;
+    if (exact ?? searched) return exact ?? searched!.result;
     // /get failed and /search cleanly missed: /get might have had it, so this is
     // a source error (the UI offers a retry), not an authoritative "no lyrics".
     if (getError) throw getError;
@@ -170,7 +178,7 @@ export class LrclibPlugin implements Plugin {
    * (issue #1212). So rank by how close each hit's duration is to the local
    * file's and refuse anything beyond the tolerance.
    */
-  private async searchByQuery(query: LyricsQuery): Promise<LyricsResult | null> {
+  private async searchByQuery(query: LyricsQuery): Promise<SearchHit | null> {
     const params = new URLSearchParams({
       artist_name: query.artist,
       track_name: query.title,
@@ -188,7 +196,7 @@ export class LrclibPlugin implements Plugin {
     // keeps the old behaviour rather than silently dropping lyrics — the result
     // still carries the source's duration, so the host records an unverified
     // match instead of one that merely looks checked.
-    if (!target || target <= 0) return candidates[0]!.result;
+    if (!target || target <= 0) return { result: candidates[0]!.result, verified: false };
 
     const scored = candidates
       .filter((c) => typeof c.hit.duration === 'number')
@@ -197,13 +205,14 @@ export class LrclibPlugin implements Plugin {
       // Every hit left is within tolerance, i.e. plausibly this recording, so a
       // timed one wins over a closer untimed one (#1672); closest duration next.
       .sort((a, b) => Number(!!b.result.synced) - Number(!!a.result.synced) || a.delta - b.delta);
-    if (scored[0]) return scored[0].result;
+    if (scored[0]) return { result: scored[0].result, verified: true };
 
     // A hit that states no duration cannot be ranked or rejected on one. Dropping
     // it would lose real lyrics whenever LRCLIB simply omits the field, so take
     // it — but it carries no `matchedDurationSec`, which is what marks it
     // unverified downstream rather than letting it pass as a checked match.
-    return candidates.find((c) => typeof c.hit.duration !== 'number')?.result ?? null;
+    const unranked = candidates.find((c) => typeof c.hit.duration !== 'number');
+    return unranked ? { result: unranked.result, verified: false } : null;
   }
 
   /**

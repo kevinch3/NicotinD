@@ -147,4 +147,24 @@ describe('fetchSongLyrics never downgrades timed → untimed (#1672)', () => {
     expect(r.kind).toBe('kept-timed');
     expect(getLyrics(db, SONG)!.synced).toBe(LRC);
   });
+
+  it('a stored timed row with NO recorded duration whose LRC outlasts the file is replaceable', async () => {
+    // Song is 200 s; the stored LRC's last line is at 4:20 — another take (#1205).
+    setLyrics(db, SONG, {
+      plain: 'wrong',
+      synced: '[00:01.00]wrong\n[04:20.00]still wrong',
+      source: 'lrclib',
+      customized: false,
+    });
+    const r = await refetch(registry([plainOnly]));
+    expect(r.kind).toBe('fetched');
+    expect(getLyrics(db, SONG)).toMatchObject({ plain: 'untimed words', synced: null });
+  });
+
+  it('the same unverified row that ends inside the file stays protected', async () => {
+    setLyrics(db, SONG, { plain: timed.plain, synced: LRC, source: 'lrclib', customized: false });
+    expect(getLyrics(db, SONG)!.matchedDurationSec).toBeNull();
+    const r = await refetch(registry([plainOnly]));
+    expect(r.kind).toBe('kept-timed');
+  });
 });

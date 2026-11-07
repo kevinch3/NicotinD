@@ -3,8 +3,7 @@ import type { Database } from 'bun:sqlite';
 import type { Lidarr } from '../lidarr/index.js';
 import {
   titlesMissingFromOwned,
-  parseLrc,
-  applyLyricsOffset,
+  lrcOverrunSec,
   LYRICS_DURATION_TOLERANCE_SEC,
 } from '@nicotind/core';
 import { auditLibrary, type AuditSeverity } from './library-audit.js';
@@ -449,10 +448,7 @@ interface SyncedLyricsRow {
  * the question is whether it *still* overruns, not whether it once did.
  */
 function lyricsOverrunSec(row: SyncedLyricsRow): number {
-  const lines = applyLyricsOffset(parseLrc(row.synced), row.offsetMs ?? 0);
-  const last = lines[lines.length - 1];
-  if (!last) return Number.NEGATIVE_INFINITY;
-  return last.timeMs / 1000 - row.duration;
+  return lrcOverrunSec(row.synced, row.offsetMs, row.duration);
 }
 
 /**

@@ -313,6 +313,34 @@ describe('LrclibPlugin prefers a timed take (#1672)', () => {
     expect(result?.synced).toBe('[00:01.00]timed');
   });
 
+  it('an UNRANKED timed /search hit (no duration) does not displace a verified exact /get', async () => {
+    const fetchFn = both({ status: 200, body: { id: 1, duration: 200, plainLyrics: 'exact' } }, [
+      { duration: 260, plainLyrics: 'far', syncedLyrics: '[00:01.00]far take' },
+      { plainLyrics: 'y', syncedLyrics: '[00:01.00]no duration take' },
+    ]);
+    const result = await new LrclibPlugin({ enabled: true }, { fetchFn }).lyrics.fetchLyrics(query);
+    expect(result?.plain).toBe('exact');
+    expect(result?.sourceTrackId).toBe('1');
+  });
+
+  it('with no local duration, a timed /search hit cannot be ranked and does not displace /get', async () => {
+    const fetchFn = both({ status: 200, body: { id: 2, plainLyrics: 'exact' } }, [
+      { duration: 400, plainLyrics: 'x', syncedLyrics: '[00:01.00]some take' },
+    ]);
+    const plugin = new LrclibPlugin({ enabled: true }, { fetchFn });
+    const result = await plugin.lyrics.fetchLyrics({ title: 'Selva', artist: 'La Portuaria' });
+    expect(result?.sourceTrackId).toBe('2');
+  });
+
+  it('a plain-only /get is still returned when /search keeps failing', async () => {
+    const fetchFn = routeFetch([
+      { match: '/get', status: 200, body: { id: 3, duration: 200, plainLyrics: 'exact' } },
+      { match: '/search', status: 503, body: {} },
+    ]);
+    const plugin = new LrclibPlugin({ enabled: true }, { fetchFn, retryBackoffMs: 0 });
+    expect((await plugin.lyrics.fetchLyrics(query))?.sourceTrackId).toBe('3');
+  });
+
   it('whitespace-only syncedLyrics counts as untimed; a \\r\\n LRC survives verbatim', async () => {
     const blank = both(
       { status: 200, body: { duration: 200, plainLyrics: 'w', syncedLyrics: ' \n ' } },

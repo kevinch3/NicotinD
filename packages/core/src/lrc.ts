@@ -83,6 +83,24 @@ export function applyLyricsOffset(lines: LyricLine[], offsetMs: number): LyricLi
 }
 
 /**
+ * How far past the end of a `durationSec`-long file the last line of `synced`
+ * lands once `offsetMs` is applied, in seconds. Negative when the LRC finishes
+ * inside the track (the normal case); `-Infinity` when it has no timed lines.
+ * An overrun beyond `LYRICS_DURATION_TOLERANCE_SEC` cannot belong to that file —
+ * the library-health detector and the re-fetch guard read this one predicate.
+ */
+export function lrcOverrunSec(
+  synced: string | null | undefined,
+  offsetMs: number | null | undefined,
+  durationSec: number,
+): number {
+  const lines = applyLyricsOffset(parseLrc(synced), offsetMs ?? 0);
+  const last = lines[lines.length - 1];
+  if (!last) return Number.NEGATIVE_INFINITY;
+  return last.timeMs / 1000 - durationSec;
+}
+
+/**
  * Index of the line that should be highlighted at `currentMs`: the last line
  * whose timestamp is at or before the current position. Returns -1 before the
  * first line. `lines` must be time-sorted (as `parseLrc` returns them).

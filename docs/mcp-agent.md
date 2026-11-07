@@ -217,8 +217,9 @@ the words are still wrong, which is a human flag, not an offset. A re-fetch also
 answers plain-only for a song stored timed, the row (synced text and offset) is
 kept and the tool reports `replaced: false` with a `reason`. The exception is the
 wrong-take case above: a stored timed row whose matched duration is beyond
-`LYRICS_DURATION_TOLERANCE_SEC` holds another recording's words, so untimed right
-words still replace it.
+`LYRICS_DURATION_TOLERANCE_SEC`, or whose LRC outlasts the file (`overrunBySec`,
+the same `lrcOverrunSec` predicate), holds another recording's words, so untimed
+right words still replace it.
 
 `offsetMs` is **absolute, not a nudge**. An agent that retries a relative shift
 doubles it, and a doubled correction looks like a worse version of the problem it
