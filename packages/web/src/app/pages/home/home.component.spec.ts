@@ -1,12 +1,8 @@
 import { Component, NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
-import {
-  HOME_VIEW_LOADERS,
-  HomeComponent,
-  homeSwitchAnchorClass,
-  homeViewOf,
-} from './home.component';
+import { HOME_VIEW_LOADERS, HomeComponent, homeViewOf } from './home.component';
+import { homeSwitchAnchorClass } from './home-switch-anchor';
 import { UserPreferencesService } from '../../services/user-preferences.service';
 
 @Component({ standalone: true, template: '<p data-testid="fake-mosaic">mosaic</p>' })
