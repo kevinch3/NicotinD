@@ -26,7 +26,7 @@ invalidation rule is narrow and checkable:
 | `resyncLibrary`                                | ✅           | fires when the rescan *starts* (202); the walk's own `songs.landed`/`songs.deleted` events clear it again when rows change |
 | `hideAlbum` / `unhideAlbum`                    | ❌ correct   | `/artists` filters `library_artists.hidden`, not album hidden; the albums list is uncached |
 | `reclassifyAlbum` / `clearAlbumOverride`       | ❌ correct   | moves an album between tabs; the albums list is uncached |
-| artist-image / album-cover / lyrics            | ❌ correct   | `coverArt` is id-stable; no list membership change |
+| artist-image / album-cover / lyrics            | ❌ correct   | no list membership change. `coverArt` is id-stable, which is right for these server reads but is the *browser*-cache defect — see "Cover identity" below |
 | `optimizeAlbumMetadata`, `analyze*`, reclassify-genres | ❌ correct | per-id writes, no list impact          |
 
 ## Live invalidation over `/api/library/events`
@@ -39,8 +39,8 @@ until a reload.
 
 Now every library mutation announces itself on one bus, `services/library-events.ts`
 (`libraryEvents.emit`), from the **service** that made it — the scanner (`songs.landed` for
-inserted rows only, `songs.deleted` for pruned ones), `library-deletion`, `album-cover-mutate`
-(`artwork.changed`), `song-genre-mutate` / `song-metadata-mutate` (`album.changed`) and the job
+inserted rows only, `songs.deleted` for pruned ones), `library-deletion`, `cover-rev`
+(`artwork.changed`, see "Cover identity"), `song-genre-mutate` / `song-metadata-mutate` (`album.changed`) and the job
 store's `recomputeStage` (`job.changed`) — so a route, the MCP agent and a CLI script all emit the
 same way. `GET /api/library/events` (`routes/library-events.ts`) streams the bus as server-sent
 events; the web `LibraryEventsService` holds one stream per visible tab and fans events out to
@@ -49,7 +49,9 @@ signals the pages read.
 Three rules make it safe to rely on:
 
 - **Coalesced.** Emits of one type inside a 250 ms window merge (ids unioned; single-id types keep
-  the last per id), so a 2,000-song scan is a handful of frames.
+  the last per id), so a 2,000-song scan is a handful of frames. `artwork.changed` is a union too
+  — `changes: [{kind, id, rev}]`, the highest rev per entity — so an enrichment or backfill pass
+  over thousands of covers is one frame per window and cannot push the 500-event buffer into a gap.
 - **Replayable, honestly.** Every delivered event has a `seq`; the last 500 / 10 min are kept. A
   reconnect sends `Last-Event-ID` (or `?since=`) and gets what it missed — or one `resync` event
   when the seq fell out of the buffer, on which the client drops the cached whole-library reads and
@@ -69,13 +71,14 @@ and replay natively and already crosses the nginx edge (the admin processing str
 
 Consumers today: the Library "new album added" banner (`noteAlbumsLanded`, which lost its only
 caller when the review inbox went), deleted rows leaving every open list (`deletedSongIds`), the
-album page refetching when its album changes, and `coverBust` on the album page reading
-`artworkVersions` — so a cover set anywhere shows there at once, without the page hand-busting.
+album page refetching when its album changes, and `coverBust` on the album page reading the album's
+`coverRev` and `artworkVersions` — so a cover set anywhere shows there at once, without the page
+hand-busting. `artistArtworkVersions` carries the artist half; no page reads it yet (#1666 A2).
 
 | Cache                       | Invalidated by the stream                                   |
 | --------------------------- | ----------------------------------------------------------- |
 | `artistsCache`/`genresCache` | any `songs.*`, `album.changed`, `artist.changed`, `resync`  |
-| browser cover cache (24 h)  | `artwork.changed` → `&v=<version>` on the album page        |
+| browser cover cache (24 h)  | `artwork.changed` → `&v=<rev>` on the album page only; the other surfaces move with `coverRev` once they build URLs from it (#1666 A2/A3) |
 | an open album page          | `album.changed` / `songs.*` naming its id → refetch          |
 
 ## Structural findings — classes that cannot occur here
@@ -174,16 +177,59 @@ the design and the class comes back.
   never transiently empties `library_songs` — they're insurance against that ever changing.
   `countOrphanRows` feeds a `orphanRows` slice on `GET /api/admin/review`, rendered in the Admin
   panel (hidden at zero) so the prune is observable rather than silent.
-- **The cover negative-cache has a complete writer set.** `noArtCache` (10 min) short-circuits
-  `extractCover()` disk IO for artless ids; every path that can give an id art calls
-  `clearCoverNegativeCache(id)` — artist image upload/from-album/reset and the `artist-image`
-  enrichment task — or, for an album, `clearAlbumCoverNegativeCache(db, albumId)`: album cover
-  set/upload, `metadata-optimize`, `metadata-fix` and loose-single enrichment. The album form also
-  evicts every song id of the album, since a song id resolves to its album's cover. Evicting only
-  the album id left a song id that had 404ed still 404ing for up to 10 min (#1336). Adding a new
-  art-writing path without that call is the one way to reintroduce this bug. The bulk
+- **The cover negative-cache has a complete writer set.** `noArtCache` (10 min,
+  `services/cover-negative-cache.ts`) short-circuits `extractCover()` disk IO for artless ids. Every
+  cover change goes through `bumpCoverRev` (see "Cover identity"), which evicts the id — and, for an
+  album, `clearAlbumCoverNegativeCache(db, albumId)`, every song id of it, since a song id resolves
+  to its album's cover. Evicting only the album id left a song id that had 404ed still 404ing for up
+  to 10 min (#1336). Because the eviction rides on `setArtwork` / `deleteArtwork` and the override
+  writers, the discography hunt-time `setArtwork` — which never evicted — is covered by
+  construction (#1666). The older explicit calls (artist-image reset, `artist-image` enrichment,
+  `metadata-optimize`, `metadata-fix`, loose-single enrichment, a re-applied identical cover URL)
+  stay: they also cover a write that is not a change, which bumps nothing. The bulk
   `backfill-artwork` script runs as its own process, so it cannot reach the server's cache; its
   entries simply expire.
+
+## Cover identity travels with the entity (#1666)
+
+`/api/cover/<id>` is served `max-age=86400`, and every client builds that URL from the DTO's
+`coverArt` — the bare album/artist id. Before #1666 nothing about a replaced portrait or cover moved
+that URL, so a browser holding the old bytes served them for a day, on every surface, across
+reloads (worse since #1359 made the media-token half of the URL stable too).
+
+So the identity is persisted and carried:
+
+- **`cover_rev`** — an integer on `library_albums` and `library_artists`, default 0. Scanner upserts
+  never touch it (`ON CONFLICT` lists the columns they own), so it survives rescans. Ids are
+  name-derived, so a deleted and re-landed entity comes back at the same id with rev 0; a bump is
+  one past the higher of the row's rev and `library_cover_rev_floor` (the highest rev ever issued
+  per entity, which outlives the row), so it never re-issues a versioned URL a browser cached for
+  the previous incarnation.
+- **`bumpCoverRev(db, kind, id)`** (`services/cover-rev.ts`) is the one writer: it advances the
+  column (see the floor above), evicts the negative cache, and emits `artwork.changed {changes: [{kind, id, rev}]}`. It is
+  called from the **service-layer** art writers, never a route: `setArtwork` (only when the URL is new
+  or different — enrichment and backfill re-set the same URLs every pass, and an unconditional bump
+  would re-key every cover each time), `deleteArtwork` (only when it removed a row),
+  `writeArtistImageOverride` (unless the same bytes are already stored) /
+  `deleteArtistImageOverride` (only when it removed a file), `applyAlbumCover`'s folder-cover
+  modes, and the identity moves that carry art onto an entity that may already exist —
+  `repointAlbumKeyed` in `metadata-fix` (a rename merging onto an existing album with no canonical
+  row of its own) and `carryArtistCuration` (a merge carrying a canonical portrait or an uploaded
+  override). `PUT /albums/:id/cover` is `applyAlbumCover`'s `upload` mode, so the upload — which used to
+  emit nothing — announces itself like the picker and the MCP tool. A folder-cover write bumps once:
+  `deleteArtwork`'s bump when a canonical row went, else its own.
+- **`coverRev`** sits beside `coverArt` on the Artist, Album and Song DTOs (`/artists`,
+  `/artists/:id`, album lists, `/albums/:id`, song lists, radio, playlists, related artists, local
+  search). A song carries its **album's** rev — its cover resolves to the album's canonical or
+  folder art. The cover mutation responses return `{ ok, coverRev }`. OpenSubsonic is untouched.
+
+What this does not yet cover: disk-only art changes (a `cover.jpg` swapped by hand, a re-download
+replacing folder art) bump nothing until the scanner does; the `backfill-artwork` process persists its
+bumps but its events reach no open tab (they see the rev on their next fetch); a re-landed entity
+sits at rev 0 until its first bump, and rev 0 is the bare, unversioned URL, so within the 24 h cache
+TTL it can still show the previous incarnation's cover, as every cover did before #1666. The web
+surfaces other than the album page still build unversioned URLs, and the cache header is
+unchanged — #1666's later PRs (A2–A4).
 
 ## Server-side memos — all TTL-bounded by design
 
@@ -194,7 +240,7 @@ invalidation wiring at every mutation site. That trade is deliberate and documen
 | ---------------------------------------- | -------------------------------- | ------------------------------------------------- |
 | `albumIdsByGroupKey` (`routes/library.ts`) | `WeakMap<Database>`, 4 s        | a rename is a few seconds late; only consulted while a download is active, and downloading albums are excluded regardless |
 | `transferKeysCache`                       | module-global, 4 s               | ditto; also caches the slskd-unreachable miss so a dead sidecar isn't retried per request |
-| `noArtCache` (`routes/streaming.ts`)      | id → expiry, 10 min              | **explicitly evicted** — see above                |
+| `noArtCache` (`services/cover-negative-cache.ts`) | id → expiry, 10 min       | **explicitly evicted** — see above                |
 | `scan-cache` (`scan_cache` table)         | path + size + mtime              | content-addressed: a retag changes mtime → miss. Override tables are applied by `buildLibrary` *after* the raw tags, so an override needs no cache bust |
 | `library_song_analysis_failures`          | `file_size` at last failure      | content-addressed: a re-download changes the size → the skip resets |
 | `library_embeddings`                      | `(song_id, model)` + `file_size` | content-addressed since issue #258: song ids are path-derived, so a file replaced **in place** kept its id and the Radio scorer went on matching against a vector describing audio that was no longer there — silently, indefinitely. `loadEmbeddings` joins `library_songs` and treats a size mismatch as a miss. A NULL `file_size` (written before the column) still matches, so an upgrade doesn't discard every embedding at once. The common lossless→Opus rewrite changes the *extension*, hence the path, hence the id, so it was never the exposed case |

@@ -1,6 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { existsSync, mkdirSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
+import { bumpCoverRev } from './cover-rev.js';
 
 /**
  * Move an artist's curated data onto a new artist id (issue #305).
@@ -136,6 +137,11 @@ export function carryArtistCuration(
   }
 
   if (dataDir) result.overrideFile = carryOverrideFile(dataDir, fromId, toId);
+
+  // A portrait that arrived changes what the destination's cover serves — on a
+  // merge, an artist whose URL a browser may already cache (#1666). A rename's
+  // fresh id has no row yet; the bump then only evicts its negative cache.
+  if (result.artwork || result.overrideFile) bumpCoverRev(db, 'artist', toId);
 
   return result;
 }

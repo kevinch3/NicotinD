@@ -8,6 +8,7 @@ import { DESCRIPTOR_VERSION, upsertDescriptors } from '../services/descriptor-st
 import { recordFeedback } from '../services/recommendation/feedback-store.js';
 import { radioRoutes, buildFilterRadio, stationCentroid } from './radio.js';
 import { RADIO_FORMULA_VERSION } from '../services/radio.service.js';
+import { bumpCoverRev } from '../services/cover-rev.js';
 
 let testDb: Database = (() => {
   const d = new Database(':memory:');
@@ -848,6 +849,18 @@ describe('radio /next — artist credits', () => {
     const res = await app.request('/radio/next?seedId=seed&provenance=1');
     const body = (await res.json()) as { songs: Array<{ id: string }> };
     expect(names(body.songs)).toEqual(['One', 'Two']);
+  });
+
+  it.each([
+    ['seed', '/radio/next?seedId=seed'],
+    ['list', '/radio/next?seedIds=seed'],
+    ['filter', '/radio/next?genre=Rock'],
+  ])('the %s lane carries the album cover_rev on each song (#1666)', async (_lane, url) => {
+    bumpCoverRev(testDb, 'album', 'b');
+    const rev = bumpCoverRev(testDb, 'album', 'b')!;
+    const res = await app.request(url);
+    const songs = (await res.json()) as Array<{ id: string; coverRev?: number }>;
+    expect(songs.find((s) => s.id === 'joint')?.coverRev).toBe(rev);
   });
 });
 

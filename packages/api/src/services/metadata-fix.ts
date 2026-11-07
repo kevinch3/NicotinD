@@ -10,7 +10,8 @@ import { setReleaseType, mapLidarrAlbumType } from './release-meta-store.js';
 import { setOverride, findByCorrectedId } from './metadata-override-store.js';
 import { pruneOrphanArtist, refreshAlbumAggregate } from './library-aggregates.js';
 import { isPlaceholderArtist } from './artwork-backfill.js';
-import { clearAlbumCoverNegativeCache } from '../routes/streaming.js';
+import { clearAlbumCoverNegativeCache } from './cover-negative-cache.js';
+import { bumpCoverRev } from './cover-rev.js';
 import { reclassifyAlbum } from './library-curator.js';
 
 const log = createLogger('metadata-fix');
@@ -266,12 +267,16 @@ export function applyMetadataFix(
  * Move album-keyed side-table rows (canonical artwork, release-type) from the old
  * albumId to the new one, deleting the stale source if the target already has a
  * row (a confirmed cover/type below overwrites it anyway).
+ *
+ * A moved canonical row bumps the destination's `cover_rev` (#1666): on a merge
+ * onto an album that already existed, it changes the cover that album serves.
  */
 function repointAlbumKeyed(db: Database, oldId: string, newId: string): void {
   const artworkAtTarget =
     db.query('SELECT 1 FROM library_artwork WHERE id = ?').get(newId) !== null;
   if (artworkAtTarget) db.run('DELETE FROM library_artwork WHERE id = ?', [oldId]);
-  else db.run('UPDATE library_artwork SET id = ? WHERE id = ?', [newId, oldId]);
+  else if (db.run('UPDATE library_artwork SET id = ? WHERE id = ?', [newId, oldId]).changes > 0)
+    bumpCoverRev(db, 'album', newId);
 
   const metaAtTarget =
     db.query('SELECT 1 FROM library_release_meta WHERE album_id = ?').get(newId) !== null;

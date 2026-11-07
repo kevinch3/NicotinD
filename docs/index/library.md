@@ -47,6 +47,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   → [library-scanner.md](../library-scanner.md)
 - **Canonical artwork**: `library_artwork` stores canonical URLs keyed on deterministic ids, so they
   survive rescans. → [library-scanner.md](../library-scanner.md)
+- **Cover identity travels with the entity**: a persisted per-album/artist rev, bumped by the
+  service art writers on a real change only and carried beside `coverArt`; batched
+  `artwork.changed`. `bumpCoverRev`, `coverRev`. → [cache-invalidation.md](../cache-invalidation.md)
 - **Artwork is three tiers, and the metric names which one**: `missingAlbumArtSql` measures a
   canonical *row*, while `extractCover` serves folder image → embedded picture, so the report splits
   `missing` / `noEmbeddedArt` / `unrenderable` off `library_songs.has_embedded_art`.

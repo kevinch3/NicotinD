@@ -62,6 +62,8 @@ export interface RelatedArtist {
   id: string;
   name: string;
   coverArt: string | null;
+  /** The artist's `cover_rev` (#1666): moves when the portrait's bytes do. */
+  coverRev: number;
   albumCount: number;
   score: number;
   /** Which sources backed this pick, and with what — the "why" a tile can show. */
@@ -104,8 +106,17 @@ export function relatedArtists(
 
   const ids = [...merged.keys()];
   const rows = db
-    .query<{ id: string; name: string; cover_art: string | null; album_count: number }, string[]>(
-      `SELECT id, name, cover_art, album_count FROM library_artists
+    .query<
+      {
+        id: string;
+        name: string;
+        cover_art: string | null;
+        album_count: number;
+        cover_rev: number;
+      },
+      string[]
+    >(
+      `SELECT id, name, cover_art, album_count, cover_rev FROM library_artists
         WHERE id IN (${ids.map(() => '?').join(',')})
           AND hidden = 0 AND split_compound = 0 AND fragment_of IS NULL`,
     )
@@ -122,6 +133,7 @@ export function relatedArtists(
         id,
         name: r.name,
         coverArt: r.cover_art,
+        coverRev: r.cover_rev,
         albumCount: r.album_count,
         score,
         signals: merged.get(id)!,

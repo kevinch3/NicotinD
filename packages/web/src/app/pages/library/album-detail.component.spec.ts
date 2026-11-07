@@ -14,6 +14,7 @@ import { PlaylistService } from '../../services/playlist.service';
 import { ListControlsService } from '../../services/list-controls.service';
 import { TransferService } from '../../services/transfer.service';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
+import { LibraryEventsService } from '../../services/library-events.service';
 
 const ALBUM: AlbumDetail = {
   id: 'a1',
@@ -231,8 +232,30 @@ describe('AlbumDetailComponent — fix metadata', () => {
     await component.onMetadataApplied({ albumId: 'a1' });
 
     expect(component.showMetadataFix()).toBe(false);
-    expect(component.coverBust()).toBe(1);
+    expect(component.coverBust()).toBe('0.1');
     expect(component.selectedAlbum()?.id).toBe('a1');
+  });
+
+  it("the cover URL follows the album's cover rev: DTO, then a pushed change (#1666)", () => {
+    const { component } = setup();
+    const events = TestBed.inject(LibraryEventsService);
+    component.selectedAlbum.set({ ...ALBUM, coverRev: 0 });
+    expect(component.coverBust()).toBe('');
+    component.selectedAlbum.set({ ...ALBUM, coverRev: 3 });
+    expect(component.coverBust()).toBe('3');
+    events.apply({ type: 'artwork.changed', changes: [{ kind: 'album', id: 'a1', rev: 4 }] }, 1);
+    expect(component.coverBust()).toBe('4');
+  });
+
+  it('a pushed rev still moves the URL after local re-sets outnumber it (#1666)', async () => {
+    const { component } = setup();
+    const events = TestBed.inject(LibraryEventsService);
+    component.selectedAlbum.set(ALBUM);
+    await component.onCoverChanged();
+    await component.onCoverChanged();
+    const before = component.coverBust();
+    events.apply({ type: 'artwork.changed', changes: [{ kind: 'album', id: 'a1', rev: 1 }] }, 1);
+    expect(component.coverBust()).not.toBe(before);
   });
 
   it('navigates to the new album when a correction changes its id', async () => {

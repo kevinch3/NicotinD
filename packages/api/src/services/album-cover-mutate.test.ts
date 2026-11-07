@@ -5,6 +5,7 @@ import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { applySchema } from '../db.js';
 import { applyAlbumCover } from './album-cover-mutate.js';
+import { libraryEvents, type StampedEvent } from './library-events.js';
 
 let db: Database;
 const musicDir = mkdtempSync(join(tmpdir(), 'nicotind-cover-mutate-'));
@@ -44,8 +45,31 @@ describe('applyAlbumCover', () => {
 
   it('coverUrl mode stores the canonical album-kind artwork row', async () => {
     const res = await applyAlbumCover(db, {}, 'al1', { coverUrl: 'https://x/c.jpg' });
-    expect(res).toEqual({ ok: true, mode: 'canonical-url' });
+    expect(res).toEqual({ ok: true, mode: 'canonical-url', coverRev: 1 });
     expect(artworkRow('al1')).toEqual({ kind: 'album', cover_url: 'https://x/c.jpg' });
+  });
+
+  it('re-applying the same coverUrl is not a cover change: the rev stays (#1666)', async () => {
+    await applyAlbumCover(db, {}, 'al1', { coverUrl: 'https://x/c.jpg' });
+    const again = await applyAlbumCover(db, {}, 'al1', { coverUrl: 'https://x/c.jpg' });
+    expect(again).toEqual({ ok: true, mode: 'canonical-url', coverRev: 1 });
+    const other = await applyAlbumCover(db, {}, 'al1', { coverUrl: 'https://x/d.jpg' });
+    expect(other).toEqual({ ok: true, mode: 'canonical-url', coverRev: 2 });
+  });
+
+  it('announces the new rev as artwork.changed (#1666)', async () => {
+    libraryEvents.flush(); // earlier tests' changes are still in the coalescing window
+    const seen: StampedEvent[] = [];
+    const off = libraryEvents.on((e) => seen.push(e));
+    try {
+      await applyAlbumCover(db, {}, 'al1', { coverUrl: 'https://x/c.jpg' });
+      libraryEvents.flush();
+    } finally {
+      off();
+    }
+    expect(seen.map((e) => e.event)).toEqual([
+      { type: 'artwork.changed', changes: [{ kind: 'album', id: 'al1', rev: 1 }] },
+    ]);
   });
 
   it('400s when neither coverUrl nor songId is given', async () => {
@@ -84,7 +108,9 @@ describe('applyAlbumCover', () => {
       'al1',
       { songId: 's1' },
     );
-    expect(res).toEqual({ ok: true, mode: 'folder-cover' });
+    // One change, one bump: clearing the canonical row and writing the folder art
+    // together move the rev once.
+    expect(res).toEqual({ ok: true, mode: 'folder-cover', coverRev: 1 });
     expect(artworkRow('al1')).toBeNull(); // canonical cleared so the file art wins
     const written = readdirSync(dirname(abs)).filter((f) => f.startsWith('cover'));
     expect(written.length).toBe(1);
@@ -105,7 +131,7 @@ describe('applyAlbumCover', () => {
       'al1',
       { songId: 's1' },
     );
-    expect(res).toEqual({ ok: true, mode: 'folder-cover' });
+    expect(res).toEqual({ ok: true, mode: 'folder-cover', coverRev: 1 });
     expect(readdirSync(dirname(abs)).filter((f) => f.startsWith('cover'))).toEqual(['cover.png']);
     rmSync(join(dirname(abs), 'cover.png'));
   });
@@ -121,6 +147,55 @@ describe('applyAlbumCover', () => {
       ok: false,
       error: 'That track has no embedded artwork',
       status: 400,
+    });
+  });
+});
+
+describe('applyAlbumCover upload mode (PUT /albums/:id/cover)', () => {
+  async function pngBytes(): Promise<Uint8Array> {
+    const sharp = (await import('sharp')).default;
+    return new Uint8Array(
+      await sharp({ create: { width: 8, height: 8, channels: 3, background: '#f00' } })
+        .png()
+        .toBuffer(),
+    );
+  }
+
+  it('writes a standardized folder cover and bumps the rev', async () => {
+    const abs = join(musicDir, relPath);
+    mkdirSync(dirname(abs), { recursive: true });
+    writeFileSync(abs, 'x');
+    const res = await applyAlbumCover(db, { musicDir }, 'al1', {
+      upload: { data: await pngBytes(), contentType: 'image/png' },
+    });
+    expect(res).toEqual({ ok: true, mode: 'upload', coverRev: 1 });
+    const written = readdirSync(dirname(abs)).filter((f) => f.startsWith('cover'));
+    expect(written).toEqual(['cover.webp']);
+    rmSync(join(dirname(abs), 'cover.webp'));
+  });
+
+  it('400s bytes that are not an image, and bumps nothing', async () => {
+    const abs = join(musicDir, relPath);
+    mkdirSync(dirname(abs), { recursive: true });
+    writeFileSync(abs, 'x');
+    const res = await applyAlbumCover(db, { musicDir }, 'al1', {
+      upload: { data: new Uint8Array([1, 2, 3]), contentType: 'image/png' },
+    });
+    expect(res).toEqual({ ok: false, error: 'Could not read that image', status: 400 });
+    expect(
+      db.query<{ cover_rev: number }, []>(`SELECT cover_rev FROM library_albums`).get()!.cover_rev,
+    ).toBe(0);
+  });
+
+  it('404s an album with no track file to store the cover next to', async () => {
+    rmSync(join(musicDir, relPath), { force: true });
+    const res = await applyAlbumCover(db, { musicDir }, 'al1', {
+      upload: { data: await pngBytes(), contentType: 'image/png' },
+    });
+    expect(res).toEqual({
+      ok: false,
+      error: 'Album has no track files to store a cover next to',
+      status: 404,
     });
   });
 });

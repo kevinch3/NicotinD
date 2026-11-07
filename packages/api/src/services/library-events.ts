@@ -12,9 +12,11 @@
  *
  * - **Coalescing.** Emits of one type inside a `COALESCE_MS` window are merged
  *   (ids unioned) before subscribers see them, so a 2,000-song scan is a
- *   handful of frames rather than 2,000. Types that carry a single id
- *   (`album.changed`, `artist.changed`, `job.changed`, `artwork.changed`) are
- *   coalesced per id instead: the last one in the window wins.
+ *   handful of frames rather than 2,000 — and an artwork backfill over
+ *   thousands of covers cannot overflow the replay buffer (`artwork.changed`
+ *   unions its changes, keeping the highest rev per entity). Types that carry a
+ *   single id (`album.changed`, `artist.changed`, `job.changed`) are coalesced
+ *   per id instead: the last one in the window wins.
  * - **Replay.** Every delivered event gets a monotonic `seq`; the last
  *   `BUFFER_SIZE` are kept for `BUFFER_MS` so a reconnecting client can ask for
  *   everything since the last `seq` it saw. A `seq` older than the buffer is a
@@ -25,8 +27,15 @@ export type LibraryEvent =
   | { type: 'songs.deleted'; songIds: string[]; albumIds: string[] }
   | { type: 'album.changed'; albumId: string }
   | { type: 'artist.changed'; artistId: string }
-  | { type: 'artwork.changed'; albumId: string; coverArt: string | null; version: number }
+  | { type: 'artwork.changed'; changes: ArtworkChange[] }
   | { type: 'job.changed'; jobId: string };
+
+/** One entity whose cover bytes changed, with its new persisted `cover_rev` (#1666). */
+export interface ArtworkChange {
+  kind: 'album' | 'artist';
+  id: string;
+  rev: number;
+}
 
 export interface StampedEvent {
   seq: number;
@@ -53,9 +62,9 @@ function coalesceKey(e: LibraryEvent): string {
   switch (e.type) {
     case 'songs.landed':
     case 'songs.deleted':
+    case 'artwork.changed':
       return e.type;
     case 'album.changed':
-    case 'artwork.changed':
       return `${e.type}:${e.albumId}`;
     case 'artist.changed':
       return `${e.type}:${e.artistId}`;
@@ -88,6 +97,10 @@ export function createLibraryEvents(
   const listeners = new Set<(e: StampedEvent) => void>();
   const buffer: StampedEvent[] = [];
   const pending = new Map<string, LibraryEvent>();
+  // The window's cover changes, highest rev per entity. Kept beside `pending`
+  // (which holds only a placeholder for delivery order) so a burst of N changes
+  // costs O(N), not the O(N²) of re-merging one growing array per emit.
+  const pendingArtwork = new Map<string, ArtworkChange>();
   let seq = 0;
   let timerArmed = false;
 
@@ -107,16 +120,30 @@ export function createLibraryEvents(
 
   const flush = (): void => {
     timerArmed = false;
-    const batch = [...pending.values()];
+    const batch = [...pending.values()].map((e): LibraryEvent =>
+      e.type === 'artwork.changed'
+        ? { type: 'artwork.changed', changes: [...pendingArtwork.values()] }
+        : e,
+    );
     pending.clear();
+    pendingArtwork.clear();
     for (const e of batch) deliver(e);
   };
 
   return {
     emit(event) {
       const key = coalesceKey(event);
-      const prev = pending.get(key);
-      pending.set(key, prev ? merge(prev, event) : event);
+      if (event.type === 'artwork.changed') {
+        if (!pending.has(key)) pending.set(key, event);
+        for (const c of event.changes) {
+          const id = `${c.kind}:${c.id}`;
+          const prev = pendingArtwork.get(id);
+          if (!prev || c.rev > prev.rev) pendingArtwork.set(id, c);
+        }
+      } else {
+        const prev = pending.get(key);
+        pending.set(key, prev ? merge(prev, event) : event);
+      }
       if (!timerArmed) {
         timerArmed = true;
         schedule(flush, coalesceMs);

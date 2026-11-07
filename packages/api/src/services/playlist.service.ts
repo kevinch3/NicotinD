@@ -61,6 +61,7 @@ interface SongRow {
   album_id: string;
   album_name: string | null;
   album_cover_art: string | null;
+  album_cover_rev: number | null;
   title: string;
   artist: string;
   artist_id: string;
@@ -90,6 +91,7 @@ function rowToSong(r: SongRow): Song {
     year: r.year ?? undefined,
     genre: r.genre ?? undefined,
     coverArt: r.cover_art ?? r.album_cover_art ?? undefined,
+    coverRev: r.album_cover_rev ?? 0,
     size: r.size ?? 0,
     contentType: r.content_type ?? '',
     suffix: r.suffix ?? '',
@@ -142,7 +144,7 @@ export class PlaylistService {
     const songs = this.db
       .query<SongRow, [string]>(
         `SELECT s.id, s.album_id, a.name AS album_name, a.cover_art AS album_cover_art,
-                s.title, s.artist, s.artist_id, s.track, s.duration, s.year, s.genre,
+                a.cover_rev AS album_cover_rev, s.title, s.artist, s.artist_id, s.track, s.duration, s.year, s.genre,
                 s.cover_art, s.path, s.size, s.bit_rate, s.suffix, s.content_type,
                 s.created, s.starred
          FROM playlist_songs ps
@@ -199,7 +201,7 @@ export class PlaylistService {
     const candidates = this.db
       .query<SongRow, string[]>(
         `SELECT s.id, s.album_id, a.name AS album_name, a.cover_art AS album_cover_art,
-                s.title, s.artist, s.artist_id, s.track, s.duration, s.year, s.genre,
+                a.cover_rev AS album_cover_rev, s.title, s.artist, s.artist_id, s.track, s.duration, s.year, s.genre,
                 s.cover_art, s.path, s.size, s.bit_rate, s.suffix, s.content_type,
                 s.created, s.starred
          FROM library_songs s

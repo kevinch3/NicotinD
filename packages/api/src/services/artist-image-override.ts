@@ -1,6 +1,8 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import type { Database } from 'bun:sqlite';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { bumpCoverRev } from './cover-rev.js';
 
 /**
  * Manual artist-image overrides — a user-uploaded photo or a cover copied from
@@ -12,6 +14,9 @@ import { join } from 'node:path';
  * no URL and a disk-only album cover has no public one. The cover route serves these
  * ahead of canonical/auto artwork; `library_artists.manual_override = 1` then tells
  * the artist-image enrichment task to leave the artist alone.
+ *
+ * The writers bump the artist's `cover_rev` (cover-rev.ts) whenever the served
+ * bytes change, so every surface's cover URL follows the portrait (#1666).
  */
 
 const SUBDIR = 'artist-overrides';
@@ -62,28 +67,70 @@ export async function readArtistImageOverride(
   return null;
 }
 
-/** Persist override bytes, replacing any prior variant. `contentType` must be allowed. */
+/**
+ * Persist override bytes, replacing any prior variant. `contentType` must be
+ * allowed. Bumps the artist's `cover_rev` unless the same bytes are already
+ * stored under the same type; returns the artist's rev after the write.
+ */
 export function writeArtistImageOverride(
+  db: Database,
   dataDir: string,
   artistId: string,
   data: Uint8Array,
   contentType: string,
-): void {
-  deleteArtistImageOverride(dataDir, artistId);
+): number | null {
+  const target = join(overrideDir(dataDir), artistId + extForContentType(contentType));
+  if (sameBytes(target, data)) return coverRevOf(db, artistId);
+  removeOverrideFiles(dataDir, artistId);
   mkdirSync(overrideDir(dataDir), { recursive: true });
-  writeFileSync(join(overrideDir(dataDir), artistId + extForContentType(contentType)), data);
+  writeFileSync(target, data);
+  return bumpCoverRev(db, 'artist', artistId);
 }
 
-/** Remove every override variant for an artist id (no-op when none exist). */
-export function deleteArtistImageOverride(dataDir: string, artistId: string): void {
+/**
+ * Remove every override variant for an artist id (no-op when none exist). A
+ * removal reverts the portrait to auto artwork, so it bumps `cover_rev`.
+ * Returns whether an override was removed.
+ */
+export function deleteArtistImageOverride(
+  db: Database,
+  dataDir: string,
+  artistId: string,
+): boolean {
+  const removed = removeOverrideFiles(dataDir, artistId);
+  if (removed) bumpCoverRev(db, 'artist', artistId);
+  return removed;
+}
+
+function removeOverrideFiles(dataDir: string, artistId: string): boolean {
+  let removed = false;
   for (const ext of VARIANT_EXTS) {
     const p = join(overrideDir(dataDir), artistId + ext);
     if (existsSync(p)) {
       try {
         rmSync(p);
+        removed = true;
       } catch {
         /* best-effort */
       }
     }
   }
+  return removed;
+}
+
+function sameBytes(path: string, data: Uint8Array): boolean {
+  if (!existsSync(path)) return false;
+  try {
+    return Buffer.from(data).equals(readFileSync(path));
+  } catch {
+    return false;
+  }
+}
+
+function coverRevOf(db: Database, artistId: string): number | null {
+  return (
+    db
+      .query<{ cover_rev: number }, [string]>('SELECT cover_rev FROM library_artists WHERE id = ?')
+      .get(artistId)?.cover_rev ?? null
+  );
 }
