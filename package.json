@@ -21,6 +21,7 @@
   },
   "scripts": {
     "dev": "bun run ./scripts/dev.ts",
+    "phone-preview": "bun run ./scripts/phone-preview.ts",
     "build": "bun run ./scripts/build.ts",
     "check:claude-md": "bun run ./scripts/check-claude-md.ts",
     "check:ci-parity": "bun run ./scripts/check-ci-parity.ts",

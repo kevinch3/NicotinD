@@ -1,5 +1,5 @@
 @if (toastService.toasts().length) {
-  <div class="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] md:bottom-24
+  <div class="fixed bottom-[calc(5rem+env(safe-area-inset-bottom)-var(--vp-deficit))] md:bottom-24
               left-0 right-0 flex flex-col items-center gap-2 px-4 z-[60]
               pointer-events-none">
     @for (toast of toastService.toasts(); track toast.id) {

@@ -13,6 +13,20 @@
     touch-action: pan-x pan-y;
   }
 
+  /* iOS standalone can report a layout viewport shorter than the screen (innerHeight/dvh = screen minus
+     the top inset, lvh = full screen), so `fixed bottom-0` and a `100dvh` shell stop short and leave a
+     band under the tab bar. The deficit is lvh - dvh there and 0 on a healthy viewport, so everything
+     anchored to the bottom adds it back. Standalone only: in a browser tab dvh < lvh is the collapsing
+     toolbar, which `fixed bottom-0` must keep following. docs/web-ui.md "Viewport deficit". */
+  :root {
+    --vp-deficit: 0px;
+  }
+  @media (display-mode: standalone) {
+    :root {
+      --vp-deficit: max(0px, calc(100lvh - 100dvh));
+    }
+  }
+
   /* Suppress Chrome-Android's native pull-to-refresh (a full SPA reload) so the
      in-app refresher (lib/pull-to-refresh.ts) owns the gesture. `contain` — not
      `none` — only blocks scroll-chaining/navigation actions, so the iOS
