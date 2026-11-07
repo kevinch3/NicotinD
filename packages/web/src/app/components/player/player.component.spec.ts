@@ -15,7 +15,6 @@ import {
 import { SEEK_AVAILABILITY_EPSILON_SEC } from '../../lib/seek-availability';
 import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
-import { LikeService } from '../../services/like.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 import { PreserveService } from '../../services/preserve.service';
@@ -51,7 +50,6 @@ describe('PlayerComponent', () => {
   let mockPlay: ReturnType<typeof vi.fn>;
   let mockPause: ReturnType<typeof vi.fn>;
   let mockLoad: ReturnType<typeof vi.fn>;
-  let likes: { isLiked: ReturnType<typeof vi.fn>; toggle: ReturnType<typeof vi.fn> };
   let preserveMock: { isPreserved: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn> };
 
   // Shared signals — let tests control device/network state without re-providing
@@ -98,7 +96,6 @@ describe('PlayerComponent', () => {
     setVisibility('visible');
     isActiveDevice.set(true);
     netOnline.set(true);
-    likes = { isLiked: vi.fn().mockReturnValue(false), toggle: vi.fn() };
     preserveMock = {
       isPreserved: vi.fn().mockReturnValue(false),
       remove: vi.fn().mockResolvedValue(undefined),
@@ -112,7 +109,6 @@ describe('PlayerComponent', () => {
           provide: AuthService,
           useValue: { token: signal('test-token'), mediaToken: signal('test-token') },
         },
-        { provide: LikeService, useValue: likes },
         {
           provide: RemotePlaybackService,
           useValue: {
@@ -503,52 +499,20 @@ describe('PlayerComponent', () => {
     });
   });
 
-  // ─── Like button — quick interaction on the mini-player itself ────────────
+  // ─── No like control — the heart lives on the Now Playing sheet only ─────
+  // (#1650: the owner moved Like off the mini bar; the sheet, ⋯ menu and the
+  // `L` shortcut remain — see docs/song-actions.md.)
 
-  describe('like button', () => {
-    it('renders the heart for the current track and toggles it via LikeService', () => {
+  describe('like control', () => {
+    it('renders no like heart on the mini bar, even with a track loaded', () => {
       playerService.currentTrack.set(TRACK);
       fixture.detectChanges();
+      const root = fixture.nativeElement as HTMLElement;
 
-      const heart: HTMLButtonElement = fixture.nativeElement.querySelector(
-        '[data-testid="player-like"]',
-      );
-      expect(heart).toBeTruthy();
-      expect(heart.getAttribute('aria-pressed')).toBe('false');
-
-      heart.click();
-      expect(likes.toggle).toHaveBeenCalledWith(TRACK.id);
-    });
-
-    it('reflects the liked state via aria-pressed', () => {
-      playerService.currentTrack.set(TRACK);
-      likes.isLiked.mockReturnValue(true);
-      fixture.detectChanges();
-
-      const heart: HTMLButtonElement = fixture.nativeElement.querySelector(
-        '[data-testid="player-like"]',
-      );
-      expect(heart.getAttribute('aria-pressed')).toBe('true');
-    });
-
-    it('renders nothing when no track is loaded', () => {
-      playerService.currentTrack.set(null);
-      fixture.detectChanges();
-
-      expect(fixture.nativeElement.querySelector('[data-testid="player-like"]')).toBeNull();
-    });
-
-    it('does not hijack the swipe-to-open gesture (onBarPointerDown bails on a button target)', () => {
-      playerService.currentTrack.set(TRACK);
-      fixture.detectChanges();
-      const dragStartSpy = vi.spyOn(component['barDrag'], 'start');
-
-      const heart: HTMLButtonElement = fixture.nativeElement.querySelector(
-        '[data-testid="player-like"]',
-      );
-      heart.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
-
-      expect(dragStartSpy).not.toHaveBeenCalled();
+      expect(root.querySelector('[data-testid="player-like"]')).toBeNull();
+      // The track-info column is cover + title/artist only — no buttons.
+      const info = root.querySelector('[data-testid="player-track-info"]')!;
+      expect(info.querySelector('button')).toBeNull();
     });
   });
 
