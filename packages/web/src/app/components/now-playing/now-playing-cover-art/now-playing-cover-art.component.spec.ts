@@ -202,4 +202,48 @@ describe('NowPlayingCoverArtComponent', () => {
       expect(fixture.componentInstance.peekTrack()?.id).toBe('p');
     });
   });
+
+  // #1655: each credit must open its OWN artist. The link navigates via its own
+  // routerLink, so a followed credit may only report artistLinkFollowed (the sheet
+  // closes) — never the artist-agnostic navigateToArtistClicked, whose handler
+  // re-navigated to the primary artist and won. The nested links' DOM is not
+  // rendered under the JIT harness (docs/web-ui.md), so the clicks themselves are
+  // pinned in e2e/tests/now-playing-artist-links.spec.ts.
+  describe('artist credits (#1655)', () => {
+    afterEach(() => delete (track as { artists?: unknown }).artists);
+
+    function render(artists?: unknown[]) {
+      if (artists) Object.assign(track, { artists });
+      const fixture = TestBed.createComponent(NowPlayingCoverArtComponent);
+      const followed = vi.fn();
+      const generic = vi.fn();
+      fixture.componentInstance.artistLinkFollowed.subscribe(followed);
+      fixture.componentInstance.navigateToArtistClicked.subscribe(generic);
+      fixture.detectChanges();
+      return { fixture, followed, generic };
+    }
+
+    it('a followed credit link reports artistLinkFollowed, not the generic navigation', () => {
+      const { fixture, followed, generic } = render([
+        { id: 'a1', name: 'First', role: 'primary' },
+        { id: 'a2', name: 'Second', role: 'primary' },
+      ]);
+      const links = fixture.debugElement.query((d) => d.name === 'app-artist-links');
+      expect(links).toBeTruthy();
+      links.triggerEventHandler('linkFollowed');
+      expect(followed).toHaveBeenCalledTimes(1);
+      expect(generic).not.toHaveBeenCalled();
+    });
+
+    it('with no credits, the plain-text artist asks the sheet to navigate', () => {
+      const { fixture, followed, generic } = render();
+      expect(fixture.debugElement.query((d) => d.name === 'app-artist-links')).toBeNull();
+      const plain = Array.from(
+        fixture.nativeElement.querySelectorAll('span') as NodeListOf<HTMLElement>,
+      ).find((s) => s.textContent?.trim() === 'Artist')!;
+      plain.click();
+      expect(generic).toHaveBeenCalledTimes(1);
+      expect(followed).not.toHaveBeenCalled();
+    });
+  });
 });

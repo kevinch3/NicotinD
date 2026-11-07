@@ -56,6 +56,7 @@
           [swipeOffsetPx]="coverSwipeOffsetPx()"
           [swiping]="coverSwiping()"
           (openTrackInfo)="onOpenTrackInfo($event)"
+          (artistLinkFollowed)="closeForNavigation()"
           (navigateToArtistClicked)="navigateToArtist()"
           (navigateToAlbumClicked)="closeForNavigation()"
         />

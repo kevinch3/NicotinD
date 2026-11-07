@@ -73,6 +73,10 @@ export class NowPlayingCoverArtComponent {
   readonly coverCollapsed = computed(() => this.coverMaxPx() <= 0);
 
   readonly openTrackInfo = output<string>();
+  /** A linked artist name was followed; its own routerLink navigates, so the
+   *  sheet only closes (#1655). */
+  readonly artistLinkFollowed = output<void>();
+  /** The plain-text artist fallback (no `artists` credits) was clicked. */
   readonly navigateToArtistClicked = output<void>();
   /** The album link under the artist line was followed — the sheet should close. */
   readonly navigateToAlbumClicked = output<void>();

@@ -169,7 +169,7 @@
     </div>
     <p class="text-sm text-theme-secondary truncate mt-1 select-none hover:text-theme-primary transition">
       @if (track.artists?.length) {
-        <app-artist-links [artists]="track.artists" (linkFollowed)="navigateToArtistClicked.emit()" />
+        <app-artist-links [artists]="track.artists" (linkFollowed)="artistLinkFollowed.emit()" />
       } @else {
         <span class="cursor-pointer hover:underline" (click)="navigateToArtistClicked.emit()">{{ track.artist }}</span>
       }

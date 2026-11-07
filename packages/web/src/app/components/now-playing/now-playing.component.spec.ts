@@ -4,7 +4,7 @@ import { vi } from 'vitest';
 import { of, throwError, Subject } from 'rxjs';
 import type { Observable } from 'rxjs';
 import type { LyricsDto, WaveformData } from '@nicotind/core';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { NowPlayingComponent } from './now-playing.component';
 import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
@@ -1422,5 +1422,41 @@ describe('NowPlayingComponent — TV backdrop bleed (issue #439)', () => {
       fixture.componentInstance.closeForNavigation();
       expect(setOpen).toHaveBeenCalledWith(false);
     });
+  });
+});
+
+// #1655: a linked artist name navigates by its own routerLink; the sheet may only
+// close. Wiring the link's (linkFollowed) to navigateToArtist() made a second
+// navigation to the primary artist win, so every credit after the first opened
+// the first artist's page. The link side is pinned in the cover-art spec.
+describe('NowPlayingComponent — artist link wiring (#1655)', () => {
+  beforeEach(() => localStorage.clear());
+
+  function setupTrack() {
+    const ctx = setup();
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+    const close = vi.spyOn(ctx.playerStub, 'setNowPlayingOpen');
+    ctx.playerStub.currentTrack.set({ id: 't1', title: 'Song', artist: 'Plain', artistId: 'p1' });
+    ctx.fixture.detectChanges();
+    const coverArt = ctx.fixture.debugElement.query((d) => d.name === 'app-now-playing-cover-art');
+    return { ...ctx, navigate, close, coverArt };
+  }
+
+  it('a followed artist link only closes the sheet — it never navigates a second time', async () => {
+    const { fixture, navigate, close, coverArt } = setupTrack();
+    coverArt.triggerEventHandler('artistLinkFollowed');
+    await fixture.whenStable();
+    expect(close).toHaveBeenCalledWith(false);
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('the plain-text fallback (no credits) navigates to the primary artist', async () => {
+    const { fixture, navigate, close, coverArt } = setupTrack();
+    coverArt.triggerEventHandler('navigateToArtistClicked');
+    await fixture.whenStable();
+    expect(close).toHaveBeenCalledWith(false);
+    expect(navigate).toHaveBeenCalledTimes(1);
+    expect(navigate).toHaveBeenCalledWith(['/library', 'artists', 'p1']);
   });
 });
