@@ -12,6 +12,7 @@ import {
   RELATED_RELATIVE_CUT,
   type RelatedCandidate,
 } from './related-artists.js';
+import { bumpCoverRev } from './cover-rev.js';
 
 let db: Database;
 let songSeq = 0;
@@ -76,6 +77,14 @@ describe('relatedArtists', () => {
     expect(a).toMatchObject({ id: 'near', name: 'Name near', coverArt: 'ar-near', albumCount: 2 });
     expect(a!.signals.audio!.members).toBe(MIN_ARTIST_MEMBERS);
     expect(a!.score).toBeCloseTo(a!.signals.audio!.cosine, 6);
+  });
+
+  it('carries each artist cover_rev, so a portrait change moves its URL (#1666)', () => {
+    seedAnalysedArtist('seed', [1, 0]);
+    seedAnalysedArtist('near', [1, 0.1]);
+    computeArtistCentroids(db);
+    const rev = bumpCoverRev(db, 'artist', 'near');
+    expect(relatedArtists(db, 'seed').artists[0]?.coverRev).toBe(rev!);
   });
 
   it('filters hidden, compound and fragment artists at read time, without a rebuild', () => {

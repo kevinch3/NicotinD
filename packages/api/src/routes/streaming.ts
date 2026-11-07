@@ -57,7 +57,7 @@ const REMOTE_COVER_TIMEOUT_MS = 6_000;
 const COVER_CACHE_CONTROL = 'public, max-age=86400';
 
 // The negative cache lives with the service-layer cover writers that evict it
-// (services/cover-rev.ts); re-exported so existing callers keep their import.
+// (services/cover-negative-cache.ts); re-exported so existing callers keep their import.
 export { clearCoverNegativeCache, clearAlbumCoverNegativeCache };
 
 /**

@@ -1322,6 +1322,18 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   addColumnIfMissing(db, 'library_artists', 'fragment_of', 'TEXT');
   // Portrait revision (#1666): the artist twin of library_albums.cover_rev.
   addColumnIfMissing(db, 'library_artists', 'cover_rev', 'INTEGER NOT NULL DEFAULT 0');
+  // The highest cover_rev ever issued per entity, kept apart from the album/artist
+  // row so it outlives a delete: ids are name-derived, a re-landed entity comes
+  // back at cover_rev 0, and its next bump must not re-issue a versioned URL the
+  // browser still caches (#1666). Written only by bumpCoverRev.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_cover_rev_floor (
+      kind TEXT NOT NULL,
+      id   TEXT NOT NULL,
+      rev  INTEGER NOT NULL,
+      PRIMARY KEY (kind, id)
+    )
+  `);
   db.run(
     `CREATE INDEX IF NOT EXISTS idx_library_artists_name ON library_artists(name COLLATE NOCASE)`,
   );

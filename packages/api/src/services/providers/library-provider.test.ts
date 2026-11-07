@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../../db.js';
 import { LibrarySearchProvider } from './library-provider.js';
+import { bumpCoverRev } from '../cover-rev.js';
 
 let db: Database;
 
@@ -54,6 +55,19 @@ describe('LibrarySearchProvider song search', () => {
     seedSong('s1', 'Mi Canción');
     const { results } = await new LibrarySearchProvider(db).search('canción');
     expect(results!.songs[0]?.artistId).toBe('art');
+  });
+
+  it('carries cover_rev on artist, album and song hits, a song its album rev (#1666)', async () => {
+    seedSong('s1', 'Con Ritmo');
+    seedAlbum('alb', 'Con Ritmo Album', 'Alfredo Casero');
+    db.run(`INSERT INTO library_artists (id, name, synced_at) VALUES ('art', 'Con Ritmo Band', 1)`);
+    const albumRev = bumpCoverRev(db, 'album', 'alb')!;
+    bumpCoverRev(db, 'artist', 'art');
+    const artistRev = bumpCoverRev(db, 'artist', 'art')!;
+    const { results } = await new LibrarySearchProvider(db).search('con ritmo');
+    expect(results!.artists.find((a) => a.id === 'art')?.coverRev).toBe(artistRev);
+    expect(results!.albums.find((a) => a.id === 'alb')?.coverRev).toBe(albumRev);
+    expect(results!.songs.find((s) => s.id === 's1')?.coverRev).toBe(albumRev);
   });
 
   it('returns empty lists for a blank query', async () => {

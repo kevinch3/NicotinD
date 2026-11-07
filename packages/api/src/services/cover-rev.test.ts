@@ -64,10 +64,27 @@ describe('bumpCoverRev (#1666)', () => {
     expect([...noArtCache.keys()]).toEqual(['other']);
   });
 
+  it('a deleted and re-landed entity never re-issues a rev its previous incarnation used', () => {
+    // Ids are name-derived, so a re-acquired album comes back at the same id with
+    // cover_rev 0. Restarting the count would rebuild `&v=1` — a URL the browser
+    // cached with the previous incarnation's bytes.
+    expect(bumpCoverRev(db, 'album', 'al1')).toBe(1);
+    expect(bumpCoverRev(db, 'album', 'al1')).toBe(2);
+    db.run(`DELETE FROM library_albums WHERE id = 'al1'`);
+    db.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, synced_at)
+       VALUES ('al1', 'Al', 'A', 'ar1', 1, 0, 0)`,
+    );
+    expect(bumpCoverRev(db, 'album', 'al1')).toBe(3);
+    // Per kind: an artist sharing the id string has its own count.
+    expect(bumpCoverRev(db, 'artist', 'ar1')).toBe(1);
+  });
+
   it('an id with no row yet returns null and announces nothing, but still evicts', () => {
     noArtCache.set('ghost', Date.now() + 60_000);
     const seen = during(() => expect(bumpCoverRev(db, 'album', 'ghost')).toBeNull());
     expect(seen).toEqual([]);
     expect(noArtCache.has('ghost')).toBe(false);
+    expect(db.query(`SELECT 1 FROM library_cover_rev_floor`).all()).toEqual([]);
   });
 });

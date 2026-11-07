@@ -200,15 +200,22 @@ reloads (worse since #1359 made the media-token half of the URL stable too).
 So the identity is persisted and carried:
 
 - **`cover_rev`** — an integer on `library_albums` and `library_artists`, default 0. Scanner upserts
-  never touch it (`ON CONFLICT` lists the columns they own), so it survives rescans.
-- **`bumpCoverRev(db, kind, id)`** (`services/cover-rev.ts`) is the one writer: it increments the
-  column, evicts the negative cache, and emits `artwork.changed {changes: [{kind, id, rev}]}`. It is
+  never touch it (`ON CONFLICT` lists the columns they own), so it survives rescans. Ids are
+  name-derived, so a deleted and re-landed entity comes back at the same id with rev 0; a bump is
+  one past the higher of the row's rev and `library_cover_rev_floor` (the highest rev ever issued
+  per entity, which outlives the row), so it never re-issues a versioned URL a browser cached for
+  the previous incarnation.
+- **`bumpCoverRev(db, kind, id)`** (`services/cover-rev.ts`) is the one writer: it advances the
+  column (see the floor above), evicts the negative cache, and emits `artwork.changed {changes: [{kind, id, rev}]}`. It is
   called from the **service-layer** art writers, never a route: `setArtwork` (only when the URL is new
   or different — enrichment and backfill re-set the same URLs every pass, and an unconditional bump
   would re-key every cover each time), `deleteArtwork` (only when it removed a row),
   `writeArtistImageOverride` (unless the same bytes are already stored) /
-  `deleteArtistImageOverride` (only when it removed a file), and `applyAlbumCover`'s folder-cover
-  modes. `PUT /albums/:id/cover` is `applyAlbumCover`'s `upload` mode, so the upload — which used to
+  `deleteArtistImageOverride` (only when it removed a file), `applyAlbumCover`'s folder-cover
+  modes, and the identity moves that carry art onto an entity that may already exist —
+  `repointAlbumKeyed` in `metadata-fix` (a rename merging onto an existing album with no canonical
+  row of its own) and `carryArtistCuration` (a merge carrying a canonical portrait or an uploaded
+  override). `PUT /albums/:id/cover` is `applyAlbumCover`'s `upload` mode, so the upload — which used to
   emit nothing — announces itself like the picker and the MCP tool. A folder-cover write bumps once:
   `deleteArtwork`'s bump when a canonical row went, else its own.
 - **`coverRev`** sits beside `coverArt` on the Artist, Album and Song DTOs (`/artists`,
@@ -218,9 +225,11 @@ So the identity is persisted and carried:
 
 What this does not yet cover: disk-only art changes (a `cover.jpg` swapped by hand, a re-download
 replacing folder art) bump nothing until the scanner does; the `backfill-artwork` process persists its
-bumps but its events reach no open tab (they see the rev on their next fetch); a deleted and
-re-landed album restarts at 0. The web surfaces other than the album page still build unversioned
-URLs, and the cache header is unchanged — #1666's later PRs (A2–A4).
+bumps but its events reach no open tab (they see the rev on their next fetch); a re-landed entity
+sits at rev 0 until its first bump, and rev 0 is the bare, unversioned URL, so within the 24 h cache
+TTL it can still show the previous incarnation's cover, as every cover did before #1666. The web
+surfaces other than the album page still build unversioned URLs, and the cache header is
+unchanged — #1666's later PRs (A2–A4).
 
 ## Server-side memos — all TTL-bounded by design
 

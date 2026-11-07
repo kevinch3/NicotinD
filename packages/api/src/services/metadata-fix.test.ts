@@ -18,6 +18,7 @@ import { albumIdFor, artistIdFor } from './library-scanner.js';
 import { getOverride } from './metadata-override-store.js';
 import { setArtwork } from './artwork-store.js';
 import { getReleaseType } from './release-meta-store.js';
+import { libraryEvents } from './library-events.js';
 
 let db: Database;
 beforeEach(() => {
@@ -45,7 +46,7 @@ function seedAlbum(a: { artist: string; album: string; year?: number; songId?: s
     [songId, albumId, a.artist, artistId, `${a.artist}/${a.album}/01.opus`],
   );
   db.run(
-    `INSERT INTO library_artists (id, name, album_count, cover_art, synced_at) VALUES (?, ?, 1, ?, 0)`,
+    `INSERT OR IGNORE INTO library_artists (id, name, album_count, cover_art, synced_at) VALUES (?, ?, 1, ?, 0)`,
     [artistId, a.artist, artistId],
   );
   return { albumId, artistId, songId };
@@ -235,6 +236,51 @@ describe('applyMetadataFix', () => {
       .query<{ cover_url: string }, [string]>('SELECT cover_url FROM library_artwork WHERE id = ?')
       .get(result!.albumId);
     expect(art?.cover_url).toBe('http://img/NEW.jpg');
+  });
+
+  it('a merge that moves canonical art onto an existing album bumps its cover_rev (#1666)', () => {
+    const src = seedAlbum({ artist: 'X', album: 'Typo', songId: 's-src' });
+    const dst = seedAlbum({ artist: 'X', album: 'Right', songId: 's-dst' });
+    setArtwork(db, src.albumId, 'album', 'http://img/SRC.jpg');
+    const rev = (id: string) =>
+      db
+        .query<{ cover_rev: number }, [string]>('SELECT cover_rev FROM library_albums WHERE id = ?')
+        .get(id)!.cover_rev;
+    const before = rev(dst.albumId);
+    libraryEvents.flush(); // deliver the seed's own bump before listening
+    const seen: unknown[] = [];
+    const off = libraryEvents.on((e) => seen.push(e.event));
+    try {
+      applyMetadataFix(db, src.albumId, { album: 'Right' });
+      libraryEvents.flush();
+    } finally {
+      off();
+    }
+    // The destination now serves the moved image, so its URL must move too.
+    expect(
+      db.query<{ id: string }, []>(`SELECT id FROM library_artwork WHERE kind = 'album'`).all(),
+    ).toEqual([{ id: dst.albumId }]);
+    expect(rev(dst.albumId)).toBe(before + 1);
+    expect(seen).toContainEqual({
+      type: 'artwork.changed',
+      changes: [{ kind: 'album', id: dst.albumId, rev: before + 1 }],
+    });
+  });
+
+  it('a merge onto an album with its own canonical art leaves that rev alone', () => {
+    const src = seedAlbum({ artist: 'X', album: 'Typo', songId: 's-src' });
+    const dst = seedAlbum({ artist: 'X', album: 'Right', songId: 's-dst' });
+    setArtwork(db, src.albumId, 'album', 'http://img/SRC.jpg');
+    setArtwork(db, dst.albumId, 'album', 'http://img/DST.jpg');
+    const before = db
+      .query<{ cover_rev: number }, [string]>('SELECT cover_rev FROM library_albums WHERE id = ?')
+      .get(dst.albumId)!.cover_rev;
+    applyMetadataFix(db, src.albumId, { album: 'Right' });
+    expect(
+      db
+        .query<{ cover_rev: number }, [string]>('SELECT cover_rev FROM library_albums WHERE id = ?')
+        .get(dst.albumId)!.cover_rev,
+    ).toBe(before);
   });
 
   it('updates the same raw-keyed override when re-correcting an already-fixed album', () => {
