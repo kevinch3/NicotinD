@@ -52,8 +52,8 @@ const queue = demoTracks.slice(1, 4);
 
 /**
  * Nothing loaded: the mini-player has translated itself off-screen and
- * `<main>`'s bottom padding shrinks to clear only the tab bar
- * (`mainBottomPadClass`).
+ * publishes a 0px height, so `<main>`'s bottom padding clears only the tab bar
+ * (`MAIN_BOTTOM_PAD_CLASS`).
  */
 export const Idle: Story = { ...withState({}) };
 

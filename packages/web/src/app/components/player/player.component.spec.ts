@@ -484,6 +484,34 @@ describe('PlayerComponent', () => {
     });
   });
 
+  // ─── Scroller reservation (#1694) ─────────────────────────────────────────
+
+  describe('mini player height for the scroller', () => {
+    const published = () => document.documentElement.style.getPropertyValue('--mini-player-h');
+
+    it('publishes the measured bar height while a track is loaded, 0px when idle', () => {
+      // jsdom lays nothing out, so feed the measurement the observer would.
+      (component as unknown as { miniChromeHeight: { set(v: number): void } }).miniChromeHeight.set(
+        97.6,
+      );
+      fixture.detectChanges();
+      expect(published()).toBe('0px');
+
+      playerService.play(TRACK);
+      fixture.detectChanges();
+      expect(published()).toBe('98px');
+
+      playerService.currentTrack.set(null);
+      fixture.detectChanges();
+      expect(published()).toBe('0px');
+    });
+
+    it('withdraws the variable when the player is destroyed', () => {
+      fixture.destroy();
+      expect(published()).toBe('');
+    });
+  });
+
   // ─── Separation + refined seek (#1638) ────────────────────────────────────
 
   describe('chrome', () => {
