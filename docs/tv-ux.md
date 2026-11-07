@@ -270,7 +270,7 @@ driven by three shared pieces rather than a second copy of any of them:
 
 | Piece | Lives in | Used by |
 | --- | --- | --- |
-| Load / fetch / LRC parse / active line | `LyricsService` (`services/lyrics.service.ts`) | phone sheet, `TvKaraokeComponent` |
+| Load / fetch / LRC parse / active line | `LyricsService` (`services/lyrics.service.ts`) | phone sheet, `TvKaraokeComponent`, Track-info sheet |
 | Auto-follow ↔ browse, with the 4 s idle return | `KaraokeBrowseMode` (`lib/karaoke-browse.ts`) | both |
 | Cover → gradient palette (the Image/canvas shell) | `loadCoverPalette` (`lib/cover-colors.ts`) | both |
 

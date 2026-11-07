@@ -255,7 +255,8 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
   have actually been **loaded** for the current track — lyrics load lazily on first Lyrics-tab open,
   so the dot stays off from the Queue tab until the Lyrics tab has been visited at least once for
   that track; it does not proactively prefetch/probe availability (a known, out-of-scope limitation,
-  not a bug). `activePanel`
+  not a bug). A Track-info sheet reading the current track's lyrics does not light it either: the
+  dot follows `loadedForId`, which only the player's `ensureLoaded` moves. `activePanel`
   (`'queue' | 'lyrics'`, `NowPlayingComponent.setActivePanel`) drives which panel renders and is
   **persisted per-device** in `localStorage` (`nicotind:np-active-panel`), same durability as the
   queue-resize state below. `lyricsOpen` (the flag the lyrics-load/color-extraction/auto-scroll
@@ -291,6 +292,36 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
   values (`lib/lyrics-scroll-container.ts` `resolveLyricsScrollContainer`) and unit-test *that*, the
   same way `scrollToActiveLine`'s pixel math is pure and tested separately from the DOM wiring that
   calls it.
+  - **Lyrics have one owner (#1666)**: `LyricsService` is the only client copy of a song's lyrics.
+    The Now Playing panel, phone karaoke and `TvKaraokeComponent` render from it, and the
+    **Track-info sheet reads and writes through it too** — its Re-fetch, Edit and Reset used to call
+    `LibraryApiService` into a private signal, and since the panel and karaoke stay mounted under
+    the sheet and re-ask only on a track or tab change, the karaoke kept the old words until the
+    next track and back. The store is **keyed by song id** (an LRU of `LYRICS_CACHE_SIZE` = 20,
+    never evicting the current track or an id an open sheet is bound to), because the sheet opens
+    for any song row and a single "current track" slot would evict the playing track's lyrics.
+    The player's view keeps its names (`lyrics`, `lines`, `plain`, `offsetMs`, `loadedForId`,
+    `hasLyricsFor`) as the entry of the id the last `ensureLoaded` named; the sheet uses
+    `ensureEntry` (a stored-row read, never the sources, never moving the current track; it returns
+    the release the sheet calls on destroy) and `lyricsFor(id)`, and writes through `fetchFor` /
+    `save` / `remove`. Every request carries a **per-id token**: an answer for a superseded request
+    is dropped, and a slow answer for the previous track lands in that track's entry, never on the
+    current one. **No read starts while a write for that id is in flight** (`inFlight: 'write'`):
+    the read would answer the row from before the write and, holding the newer token, drop the
+    write's answer — a sheet opened mid-Fetch would blank found lyrics, and a track coming back
+    mid-Reset would restore the deleted words. A write that fails or is abandoned still frees the
+    entry. A re-read is **stale-while-revalidate** — `loading` is true only for a first load,
+    so karaoke never blanks mid-song on a refresh. A miss is not cached (the player asking again
+    retries the sources, as before). A **forced Re-fetch that finds nothing** answers null while the
+    server keeps the row (`fetchSongLyrics`), so the entry keeps its words and the sheet shows
+    `trackInfo.lyricsNoNewFound` (`data-testid="lyrics-no-new-found"`) beside them. **Saving an Edit
+    on timed lyrics asks first** (`ConfirmService`, `trackInfo.lyricsEditDropsSync`): the server
+    stores an edit without `synced` and resets the offset, so the save ends the karaoke sync, and
+    the owner chose to make that a decision. `ConfirmHostComponent` sits at `z-[96]`, above the
+    sheet (`z-[91]`): at `z-50` the confirm rendered under the sheet that asked. Specs: `services/lyrics-one-owner.spec.ts` (a stateful
+    fake server, so both write-through and re-read fixes pass and only a copy that never hears the
+    write fails) and `services/lyrics.service.spec.ts`. The sync-offset ordering race (#1656) is not
+    fixed here.
   - **Manual queue resize** (`data-testid="now-playing-queue-resize"`): the notch is the visible affordance for a resize the sheet's body gesture serves from **anywhere** — swipe up on the cover, transport, tabs or panel to pull the panel area **taller**, which **shrinks the cover art** to make room (the panel is `flex-1`, so shrinking the cover grows it); swipe down to collapse it (see the mode table above). The handle is **shell-owned, rendered above the Queue/Lyrics tab bar** — it originally lived inside the queue panel, so after the tab switcher shipped it vanished on the Lyrics tab and users reported the feature as lost; hoisting it makes it work for **both** panels (the queue panel's old `resizing` input / `resizeStart` output API is removed). `queueExtraHeightPx` (px the cover has shrunk from its 320px max, clamped to `[0, 320]` — the floor is 0 since #993) feeds `coverMaxPx = 320 − queueExtraHeightPx`, bound to the cover's `max-width`. The chosen size is **persisted per-device** in `localStorage` (`nicotind:np-queue-extra`) and read on construction, so it survives reload. Unit-tested in `now-playing.component.spec.ts` → "sheet body gesture (mode table)", "queue resize (drag handle)" + "hoisted resize handle (shell-owned)"; the Lyrics-tab drag and the swipe-from-the-tabs path are covered end-to-end in `mobile-ux.spec.ts`.
   - **Desktop side panel (`lg:` ≥1024px, Spotify-like)**: the sheet becomes two columns — cover art + transport centered in a flexible left column, the Queue/Lyrics panel (with its tab switcher) an always-visible right column (`data-testid="now-playing-body"` wraps both). **The border between them is a splitter** (`data-testid="now-playing-side-resize"`, `role="separator" aria-orientation="vertical"`, `tabindex="0"`, 8px hit area around a 1px line): drag it, or with focus use ArrowLeft/ArrowRight (±16px) and Home/End (min/max); double-click resets. `sidePanelWidthPx` defaults to 380, clamps to `[300, 640]` and never more than half the viewport, and is **persisted per-device** (`nicotind:np-side-width`). It rides a **`--np-side-w` CSS var** (`lg:w-[var(--np-side-w,380px)]`) rather than an inline width, for the same reason the cover cap does. Because every extracted child uses `host: {class: 'contents'}`, a grid/flex on the root would place each child's *inner* element as an individual item — so the shell adds two **group wrappers that are `contents` below `lg` and real flex columns at `lg`** (`class="contents lg:flex …"`): below the breakpoint the wrappers dissolve and the mobile stacked layout is untouched by construction. The breakpoint is `lg`, not `md` (the app's nav-chrome fork) — a portrait tablet at 768px lacks room for cover + a 380px column, and `lg:` is where the app's grids already assume real horizontal space. The mobile drag-resize notch is `lg:hidden` and the body gesture's resize mode is skipped at `lg` (`matchMedia('(min-width: 1024px)')`); the stored cover shrink is mobile-scoped: `coverMaxPx` rides a **`--np-cover-max` CSS var** (`max-w-[var(--np-cover-max,20rem)] lg:max-w-80`) instead of an inline `style.max-width`, which would beat every class including the `lg:` cap. Karaoke fullscreen is untouched (own `fixed inset-0 z-[70]` overlay at all widths). Covered by `now-playing-desktop.spec.ts` (e2e; jsdom has no layout engine) + the cover-art spec's var-binding case.
 - **Mini-player transport** (player-standardization plan, Task 11 — the plan's final task):

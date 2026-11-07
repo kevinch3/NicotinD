@@ -1,10 +1,18 @@
-import { Component, input, output, signal, computed, inject, OnInit } from '@angular/core';
+import {
+  Component,
+  DestroyRef,
+  input,
+  output,
+  signal,
+  computed,
+  inject,
+  OnInit,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import type {
   AcquisitionMethod,
   GenreSuggestion,
-  LyricsDto,
   MetadataCandidate,
   SongAcquisition,
 } from '@nicotind/core';
@@ -21,6 +29,8 @@ import type {
 import { AuthService } from '../../services/auth.service';
 import { TranslateService } from '../../services/translate.service';
 import { ToastService } from '../../services/toast.service';
+import { ConfirmService } from '../../services/confirm.service';
+import { LyricsService } from '../../services/lyrics.service';
 import { identifyFailureKey } from '../../lib/identify-failure';
 import { LikeService } from '../../services/like.service';
 import { ServerConfigService } from '../../services/server-config.service';
@@ -80,6 +90,9 @@ export class TrackInfoSheetComponent implements OnInit {
   private server = inject(ServerConfigService);
   private router = inject(Router);
   private toast = inject(ToastService);
+  private confirm = inject(ConfirmService);
+  private lyricsSvc = inject(LyricsService);
+  private destroyRef = inject(DestroyRef);
   readonly likes = inject(LikeService);
   private readonly plugins = inject(PluginService);
 
@@ -273,9 +286,11 @@ export class TrackInfoSheetComponent implements OnInit {
     ];
   });
 
-  // Lyrics state
-  readonly lyrics = signal<LyricsDto | null>(null);
+  // Lyrics live in `LyricsService`, the one owner the Now Playing panel and
+  // karaoke render from; this sheet reads and writes through it (#1666).
+  readonly lyrics = computed(() => this.lyricsSvc.lyricsFor(this.songId()));
   readonly fetchingLyrics = signal(false);
+  /** The last fetch found nothing new — with words shown, they were kept. */
   readonly noLyricsFound = signal(false);
   readonly editingLyrics = signal(false);
   readonly lyricsDraft = signal('');
@@ -345,10 +360,7 @@ export class TrackInfoSheetComponent implements OnInit {
       next: (acq) => this.acquisition.set(acq),
       error: () => this.acquisition.set(null),
     });
-    this.api.getLyrics(this.songId()).subscribe({
-      next: (l) => this.lyrics.set(l),
-      error: () => this.lyrics.set(null),
-    });
+    this.destroyRef.onDestroy(this.lyricsSvc.ensureEntry(this.songId()));
   }
 
   fetchLyricsNow(): void {
@@ -356,9 +368,8 @@ export class TrackInfoSheetComponent implements OnInit {
     this.fetchingLyrics.set(true);
     this.noLyricsFound.set(false);
     // Force a re-fetch when we already have a (cached/edited) row.
-    this.api.fetchLyrics(this.songId(), this.lyrics() !== null).subscribe({
+    this.lyricsSvc.fetchFor(this.songId(), this.lyrics() !== null).subscribe({
       next: (l) => {
-        this.lyrics.set(l);
         this.noLyricsFound.set(l === null);
         this.fetchingLyrics.set(false);
       },
@@ -371,13 +382,34 @@ export class TrackInfoSheetComponent implements OnInit {
     this.editingLyrics.set(true);
   }
 
+  /**
+   * Save the edited body. The server stores an edit without timings — they
+   * were written for the text it replaces — so editing timed lyrics ends the
+   * karaoke sync, and the owner asked for that to be a choice (#1666).
+   */
   saveLyricsNow(): void {
     const plain = this.lyricsDraft().trim();
     if (this.savingLyrics() || !plain) return;
+    if (!this.lyrics()?.synced) {
+      this.writeLyrics(plain);
+      return;
+    }
+    void this.confirm
+      .ask(this.i18n.t('trackInfo.lyricsEditDropsSync'), {
+        confirmLabel: this.i18n.t('trackInfo.lyricsEditDropsSyncConfirm'),
+        cancelLabel: this.i18n.t('trackInfo.lyricsEditKeepSync'),
+      })
+      .then((ok) => {
+        if (ok) this.writeLyrics(plain);
+      });
+  }
+
+  private writeLyrics(plain: string): void {
+    if (this.savingLyrics()) return;
     this.savingLyrics.set(true);
-    this.api.saveLyrics(this.songId(), plain).subscribe({
-      next: (l) => {
-        this.lyrics.set(l);
+    this.lyricsSvc.save(this.songId(), plain).subscribe({
+      next: () => {
+        this.noLyricsFound.set(false);
         this.savingLyrics.set(false);
         this.editingLyrics.set(false);
       },
@@ -386,9 +418,8 @@ export class TrackInfoSheetComponent implements OnInit {
   }
 
   resetLyrics(): void {
-    this.api.deleteLyrics(this.songId()).subscribe({
+    this.lyricsSvc.remove(this.songId()).subscribe({
       next: () => {
-        this.lyrics.set(null);
         this.noLyricsFound.set(false);
         this.editingLyrics.set(false);
         this.lyricsDraft.set('');
