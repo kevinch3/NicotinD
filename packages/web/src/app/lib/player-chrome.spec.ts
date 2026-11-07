@@ -1,7 +1,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import {
   miniPlayerSlideClass,
-  mainBottomPadClass,
+  MAIN_BOTTOM_PAD_CLASS,
+  miniPlayerReservation,
   bottomChromeInset,
   measureBottomChromeInset,
   topChromeInset,
@@ -32,17 +33,30 @@ describe('miniPlayerSlideClass', () => {
   });
 });
 
-describe('mainBottomPadClass', () => {
-  it('reserves tab bar + mini-player space when a track is loaded', () => {
-    const cls = mainBottomPadClass(true);
-    expect(cls).toContain('pb-[calc(8rem+env(safe-area-inset-bottom))]');
-    expect(cls).toContain('md:pb-20');
+describe('MAIN_BOTTOM_PAD_CLASS', () => {
+  it('reserves the tab bar (phone) plus the published mini player height', () => {
+    expect(MAIN_BOTTOM_PAD_CLASS).toContain(
+      'pb-[calc(3.5rem+env(safe-area-inset-bottom)+var(--mini-player-h,0px))]',
+    );
+    expect(MAIN_BOTTOM_PAD_CLASS).toContain('md:pb-[var(--mini-player-h,0px)]');
   });
 
-  it('reserves only tab bar space when idle (none on desktop)', () => {
-    const cls = mainBottomPadClass(false);
-    expect(cls).toContain('pb-[calc(3.5rem+env(safe-area-inset-bottom))]');
-    expect(cls).toContain('md:pb-0');
+  it('carries no guessed player height (the 8rem constant the bar outgrew, #1694)', () => {
+    expect(MAIN_BOTTOM_PAD_CLASS).not.toMatch(/8rem|md:pb-20/);
+  });
+});
+
+describe('miniPlayerReservation', () => {
+  it('is the measured height, rounded up so a fractional bar never shaves a pixel', () => {
+    expect(miniPlayerReservation(true, 97.6)).toBe('98px');
+  });
+
+  it('is 0px while no track is loaded (the bar is slid off-screen)', () => {
+    expect(miniPlayerReservation(false, 98)).toBe('0px');
+  });
+
+  it('is 0px when nothing was measured (TV renders no bar)', () => {
+    expect(miniPlayerReservation(true, 0)).toBe('0px');
   });
 });
 

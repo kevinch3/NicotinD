@@ -74,7 +74,7 @@ function setup() {
   // Override template to only what we're testing — avoids instantiating heavy child components
   TestBed.overrideComponent(LayoutComponent, {
     set: {
-      template: `<main [class]="'flex-1 ' + mainPadClass()"></main>`,
+      template: `<main [class]="'flex-1 ' + mainPadClass"></main>`,
       imports: [],
     },
   });
@@ -85,40 +85,21 @@ function setup() {
 }
 
 describe('LayoutComponent — player + tab-bar safe margin', () => {
-  it('stacks tab-bar + player padding when a track is loaded', () => {
+  // One reservation on the scroller (#1694): the tab bar plus the mini player's
+  // measured height, which PlayerComponent publishes as 0px while idle — so the
+  // class no longer switches on the track, and no constant guesses the bar.
+  it('reserves the tab bar plus the measured mini player on the scroller', () => {
     const { fixture, playerStub } = setup();
+    const main: HTMLElement = fixture.nativeElement.querySelector('main');
+    const idle = main.className;
+    expect(main.classList).toContain(
+      'pb-[calc(3.5rem+env(safe-area-inset-bottom)+var(--mini-player-h,0px))]',
+    );
+    expect(main.classList).toContain('md:pb-[var(--mini-player-h,0px)]');
 
     playerStub.currentTrack.set({ id: '1' });
     fixture.detectChanges();
-
-    const main: HTMLElement = fixture.nativeElement.querySelector('main');
-    // mobile: tab bar + player (+ safe-area inset); desktop: just the player
-    expect(main.classList).toContain('pb-[calc(8rem+env(safe-area-inset-bottom))]');
-    expect(main.classList).toContain('md:pb-20');
-  });
-
-  it('reserves only the tab-bar height on mobile when no track is loaded', () => {
-    const { fixture } = setup();
-    // currentTrack is null by default
-
-    const main: HTMLElement = fixture.nativeElement.querySelector('main');
-    expect(main.classList).toContain('pb-[calc(3.5rem+env(safe-area-inset-bottom))]');
-    expect(main.classList).toContain('md:pb-0');
-    expect(main.classList).not.toContain('pb-[calc(8rem+env(safe-area-inset-bottom))]');
-  });
-
-  it('drops the player padding when a track is cleared after being set', () => {
-    const { fixture, playerStub } = setup();
-
-    playerStub.currentTrack.set({ id: '1' });
-    fixture.detectChanges();
-
-    playerStub.currentTrack.set(null);
-    fixture.detectChanges();
-
-    const main: HTMLElement = fixture.nativeElement.querySelector('main');
-    expect(main.classList).not.toContain('pb-[calc(8rem+env(safe-area-inset-bottom))]');
-    expect(main.classList).toContain('pb-[calc(3.5rem+env(safe-area-inset-bottom))]');
+    expect(main.className).toBe(idle);
   });
 });
 
@@ -208,7 +189,7 @@ describe('LayoutComponent — pull-to-refresh gesture host', () => {
     TestBed.overrideComponent(LayoutComponent, {
       set: {
         template: `
-          <main [class]="'relative flex-1 ' + mainPadClass()" (pointerdown)="pull.onPointerDown($event)">
+          <main [class]="'relative flex-1 ' + mainPadClass" (pointerdown)="pull.onPointerDown($event)">
             @if (pull.phase() !== 'idle') {
               <div data-testid="pull-refresh-indicator"></div>
             }
