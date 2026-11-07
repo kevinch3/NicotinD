@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { Subject, of, throwError, type Observable } from 'rxjs';
 import { vi } from 'vitest';
 import type { LyricsDto } from '@nicotind/core';
-import { LyricsService } from './lyrics.service';
+import { LYRICS_CACHE_SIZE, LyricsService } from './lyrics.service';
 import { LibraryApiService } from './api/library-api.service';
 
 function dto(over: Partial<LyricsDto> = {}): LyricsDto {
@@ -245,5 +245,123 @@ describe('LyricsService sync offset', () => {
     const { api, lyrics } = loaded();
     lyrics.resetOffset();
     expect(api.setLyricsOffset).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * #1666: a response for a request the player has since superseded — an older
+ * track — must land in that track's entry, never on the current one.
+ */
+describe('LyricsService stale responses (#1666)', () => {
+  it('a slow load for the previous track does not overwrite the current track', () => {
+    const { api, lyrics } = setup();
+    const forA = new Subject<LyricsDto | null>();
+    const forB = new Subject<LyricsDto | null>();
+    api.getLyrics.mockImplementation((id) => (id === 'a' ? forA : forB));
+
+    lyrics.ensureLoaded('a'); // Lyrics tab open on track a…
+    lyrics.ensureLoaded('b'); // …skip to b before a answered
+    forB.next(dto({ plain: 'words of b' }));
+    forB.complete();
+    forA.next(dto({ plain: 'words of a' }));
+    forA.complete();
+
+    expect(lyrics.plain()).toBe('words of b');
+    expect(lyrics.loadedForId()).toBe('b');
+  });
+
+  it('a manual fetch for the previous track does not overwrite the current track', () => {
+    const { api, lyrics } = setup();
+    const manualA = new Subject<LyricsDto | null>();
+    api.fetchLyrics.mockImplementation((id, force) => (id === 'a' && force ? manualA : of(null)));
+    api.getLyrics.mockImplementation((id) => of(id === 'b' ? dto({ plain: 'words of b' }) : null));
+
+    lyrics.fetchManually('a');
+    lyrics.ensureLoaded('b');
+    manualA.next(dto({ plain: 'words of a' }));
+    manualA.complete();
+
+    expect(lyrics.plain()).toBe('words of b');
+    expect(lyrics.loadedForId()).toBe('b');
+  });
+});
+
+/** #1666: the store is keyed by song id, so a surface other than the player can
+ *  read one song without touching the track the player shows. */
+describe('LyricsService keyed entries (#1666)', () => {
+  it('a sheet read never moves the current track, and never asks the sources', () => {
+    const { api, lyrics } = setup();
+    api.getLyrics.mockImplementation((id) => of(dto({ plain: `words of ${id}` })));
+    lyrics.ensureLoaded('playing');
+
+    lyrics.ensureEntry('other');
+
+    expect(lyrics.lyricsFor('other')?.plain).toBe('words of other');
+    expect(lyrics.loadedForId()).toBe('playing');
+    expect(lyrics.plain()).toBe('words of playing');
+    api.getLyrics.mockReturnValue(of(null));
+    lyrics.ensureEntry('missing');
+    expect(api.fetchLyrics).not.toHaveBeenCalled();
+  });
+
+  it('a re-read keeps the words on screen until it answers — karaoke never blanks mid-song', () => {
+    const { api, lyrics } = setup();
+    api.getLyrics.mockReturnValue(of(dto({ synced: '[00:01.00]one' })));
+    lyrics.ensureLoaded('s1');
+    const reread = new Subject<LyricsDto | null>();
+    api.getLyrics.mockReturnValue(reread);
+
+    lyrics.ensureEntry('s1'); // the sheet opens on the playing track
+
+    expect(lyrics.lines().map((l) => l.text)).toEqual(['one']);
+    expect(lyrics.loading()).toBe(false);
+    reread.next(dto({ synced: '[00:01.00]one, fixed' }));
+    reread.complete();
+    expect(lyrics.lines().map((l) => l.text)).toEqual(['one, fixed']);
+  });
+
+  it('a track coming back shows its cached words at once and re-reads behind them', () => {
+    const { api, lyrics } = setup();
+    api.getLyrics.mockImplementation((id) => of(dto({ plain: `words of ${id}` })));
+    lyrics.ensureLoaded('a');
+    lyrics.ensureLoaded('b');
+    const reread = new Subject<LyricsDto | null>();
+    api.getLyrics.mockReturnValue(reread);
+
+    lyrics.ensureLoaded('a');
+
+    expect(lyrics.plain()).toBe('words of a');
+    expect(lyrics.loadedForId()).toBe('a');
+    reread.next(dto({ plain: 'words of a, edited elsewhere' }));
+    reread.complete();
+    expect(lyrics.plain()).toBe('words of a, edited elsewhere');
+  });
+
+  it('a miss is not cached: the player asking again retries the sources', () => {
+    const { api, lyrics } = setup();
+    lyrics.ensureLoaded('s1');
+    api.fetchLyrics.mockReturnValue(of(dto({ plain: 'found later' })));
+
+    lyrics.ensureLoaded('s1');
+
+    expect(api.fetchLyrics).toHaveBeenCalledTimes(2);
+    expect(lyrics.plain()).toBe('found later');
+  });
+
+  it('is bounded, but never evicts the current track or an id a sheet is bound to', () => {
+    const { api, lyrics } = setup();
+    api.getLyrics.mockImplementation((id) => of(dto({ plain: `words of ${id}` })));
+    const release = lyrics.ensureEntry('in-sheet');
+    for (let i = 0; i < LYRICS_CACHE_SIZE + 5; i++) lyrics.ensureLoaded(`t${i}`);
+    lyrics.ensureLoaded('t0'); // back to the first track: it is current again
+    for (let i = 0; i < LYRICS_CACHE_SIZE + 5; i++) lyrics.ensureEntry(`browse${i}`)();
+
+    expect(lyrics.lyricsFor('in-sheet')?.plain).toBe('words of in-sheet');
+    expect(lyrics.lyricsFor('t0')?.plain).toBe('words of t0');
+    expect(lyrics.lyricsFor('t1')).toBeNull();
+
+    release();
+    for (let i = 0; i < LYRICS_CACHE_SIZE + 5; i++) lyrics.ensureEntry(`more${i}`)();
+    expect(lyrics.lyricsFor('in-sheet')).toBeNull();
   });
 });

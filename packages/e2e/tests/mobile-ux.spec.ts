@@ -593,6 +593,56 @@ test.describe('mobile UX', () => {
     await expect(page.getByTestId('lyrics-sync-value')).toContainText('In sync');
   });
 
+  /**
+   * #1666: an Edit saved in the Track-info sheet reaches the karaoke panel
+   * under it with no track change. The sheet used to keep its own copy, and
+   * the panel — still mounted beneath — kept the old words until the next
+   * track and back. Editing timed lyrics asks first, since the save drops the
+   * timings.
+   */
+  test('Track-info sheet: an Edit reaches the Now Playing lyrics without a track change', async ({
+    page,
+    request,
+  }) => {
+    const token = (
+      (await (await request.post('/api/auth/login', { data: ADMIN })).json()) as { token: string }
+    ).token;
+    const albums = (await (
+      await request.get('/api/library/albums', { headers: bearer(token) })
+    ).json()) as Array<{ id: string; title: string }>;
+    const album = albums.find((a) => a.title === FIXTURE.album.title) ?? albums[0]!;
+    const detail = (await (
+      await request.get(`/api/library/albums/${album.id}`, { headers: bearer(token) })
+    ).json()) as { song: Array<{ id: string }> };
+    for (const s of detail.song) {
+      await request.put(`/api/library/songs/${s.id}/lyrics`, {
+        headers: bearer(token),
+        data: { plain: 'opening line\nsecond line', synced: '[00:00.50]opening line' },
+      });
+    }
+
+    await openNowPlaying(page);
+    const title = await page.getByTestId('now-playing-title').textContent();
+    await page.getByTestId('now-playing-tab-lyrics').click();
+    const panel = page.getByTestId('now-playing-lyrics');
+    await expect(panel.locator('[data-karaoke-line]').first()).toContainText('opening line');
+
+    await page.getByTestId('now-playing-info').click();
+    const section = page.getByTestId('lyrics-section');
+    await section.getByTestId('edit-lyrics-button').click();
+    await section.getByTestId('lyrics-editor').fill('words fixed in the sheet');
+    await section.getByTestId('save-lyrics-button').click();
+    // Timed lyrics: the save is a choice, not a side effect.
+    await expect(page.getByTestId('confirm-dialog')).toBeVisible();
+    await page.getByTestId('confirm-ok').click();
+    await expect(section.getByTestId('lyrics-text')).toContainText('words fixed in the sheet');
+    await page.getByTestId('track-info-close').click();
+
+    await expect(panel).toContainText('words fixed in the sheet');
+    await expect(panel.locator('[data-karaoke-line]')).toHaveCount(0);
+    await expect(page.getByTestId('now-playing-title')).toHaveText(title ?? '');
+  });
+
   // The drag-resize handle is shell-owned (above the Queue/Lyrics tabs) so it
   // must stay usable on the Lyrics tab — inside the queue panel it vanished with
   // the tab switch and read as a lost feature. Drag it up and assert the cover
