@@ -1,6 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { existsSync } from 'node:fs';
 import type { LyricsDto } from '@nicotind/core';
+import { LYRICS_DURATION_TOLERANCE_SEC, lrcOverrunSec } from '@nicotind/core';
 import { readAudioTags, writeAudioTags } from './audio-tags.js';
 import { getLyrics, setLyrics } from './lyrics-store.js';
 import type { PluginRegistry } from './plugins/registry.js';
@@ -9,6 +10,8 @@ import { expandDir, isUnderMusicDir, resolveSongPath } from './song-path.js';
 export type LyricsFetchOutcome =
   | { kind: 'fetched'; lyrics: LyricsDto }
   | { kind: 'cached'; lyrics: LyricsDto }
+  /** A forced fetch found only untimed lyrics for a song stored timed; the row is unchanged. */
+  | { kind: 'kept-timed'; lyrics: LyricsDto }
   | { kind: 'no-match' }
   | { kind: 'song-not-found' }
   | { kind: 'no-source' }
@@ -26,7 +29,17 @@ export type LyricsFetchOutcome =
  * same wrong words, and recovering from it made delete-then-refetch return
  * them again without contacting the source.
  *
- * A forced fetch that finds nothing leaves any stored row in place.
+ * A forced fetch that finds nothing leaves any stored row in place, and **a
+ * fetch never replaces timed lyrics with untimed ones** (#1672): LRCLIB can
+ * answer the same song with or without timings from one call to the next, and
+ * a plain-only answer used to overwrite the stored LRC — and the user's sync
+ * offset — with NULL. A plain-only candidate is skipped in favour of the next
+ * source; when none has timings the stored row is returned as `kept-timed`.
+ * The one exception is a stored timed row matched to **another take** — its
+ * recorded duration beyond `LYRICS_DURATION_TOLERANCE_SEC` of the song's, or its
+ * LRC running past the end of the file (`lrcOverrunSec`, the health report's
+ * detector for rows with no recorded duration): those are wrong words, and
+ * replacing them is what a re-fetch is for (#1205).
  */
 export async function fetchSongLyrics(
   db: Database,
@@ -79,12 +92,27 @@ export async function fetchSongLyrics(
   // A source that threw is not a source that cleanly missed: the caller offers
   // a retry for the first and "no lyrics" for the second.
   let sourceErrored = false;
+  let keptTimed = false;
+  // Either detector the health report uses: a recorded match duration beyond the
+  // tolerance, or (for rows whose source never stated one) an LRC that outlasts
+  // the file.
+  const storedIsOtherTake =
+    !!existing?.synced &&
+    song.duration > 0 &&
+    ((existing.matchedDurationSec != null &&
+      Math.abs(existing.matchedDurationSec - song.duration) > LYRICS_DURATION_TOLERANCE_SEC) ||
+      lrcOverrunSec(existing.synced, existing.offsetMs, song.duration) >
+        LYRICS_DURATION_TOLERANCE_SEC);
   for (const plugin of deps.plugins.getEnabledWithCapability('lyrics')) {
     const result = await plugin.lyrics?.fetchLyrics(query).catch(() => {
       sourceErrored = true;
       return null;
     });
     if (!result) continue;
+    if (existing?.synced && !result.synced && !storedIsOtherTake) {
+      keptTimed = true;
+      continue;
+    }
     const saved = setLyrics(db, songId, {
       plain: result.plain,
       synced: result.synced,
@@ -100,5 +128,6 @@ export async function fetchSongLyrics(
     }
     return { kind: 'fetched', lyrics: saved };
   }
+  if (keptTimed && existing) return { kind: 'kept-timed', lyrics: existing };
   return sourceErrored ? { kind: 'source-error' } : { kind: 'no-match' };
 }

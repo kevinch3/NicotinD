@@ -265,7 +265,13 @@ process.ts` — `runAcquireProcess` + progress parsing + audio collection; the i
   `lyrics` for `metadata` and **scopes the `defaultEnabled:true` ban to `acquisition` only**, so this
   benign source **default-enables**. It queries LRCLIB's `/api/get` (exact artist+title+album+duration
   match) and falls back to `/api/search`, returning both plain and synced (LRC) lyrics; `fetchFn` is
-  constructor-injected for tests. Registered in `index.ts` and **seeded enabled on first boot** via
+  constructor-injected for tests. **A timed take is preferred** (#1672): a `/get` record is taken
+  outright only when it carries `syncedLyrics`; a plain-only one is kept only if `/search` has no
+  timed hit **ranked** within `LYRICS_DURATION_TOLERANCE_SEC` (an unranked hit — no duration on either side — never displaces `/get`), and within that tolerance `/search` ranks timed
+  before closest. A `/get` that throws falls back to `/search` too — and if `/search` then misses,
+  the plugin still throws (a source error, not "no lyrics"). The same song used to come back timed
+  or untimed depending on which endpoint answered. The host never stores the downgrade either:
+  `fetchSongLyrics` skips a plain-only result for a song stored timed and returns `kept-timed` — unless the stored row is already another take's words (#1205) by either health-report detector — `matchedDurationSec` beyond the tolerance, or the LRC outlasting the file (`lrcOverrunSec`, shared with `library-health.ts`) — which a re-fetch may still replace. Registered in `index.ts` and **seeded enabled on first boot** via
   `seedEnabled('lrclib', 'system')` (idempotent — an admin's later disable wins). The host (lyrics
   routes in `routes/library.ts`) owns persistence (`library_lyrics` side-table + file-tag write-back)
   and the user-edit/`customized` protection — the plugin only resolves text. → see the "Lyrics"

@@ -595,7 +595,7 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'refetch_song_lyrics',
     description:
-      "Re-fetch a song's lyrics from the lyrics source, replacing the stored row. The fix for WRONG WORDS — get_song_lyrics showing a durationDeltaSec beyond a few seconds, or an overrunBySec above zero, means the source matched another take. Matching is duration-aware, so a row stored before that existed usually comes back right. Never overwrites lyrics a user edited (customized). If the source has no acceptable match the stored row is left UNCHANGED and the result says so — the words are still wrong, so flag it for a human rather than re-timing it with sync_song_lyrics. Returns the before/after source, matched duration and delta. Audit-logged.",
+      "Re-fetch a song's lyrics from the lyrics source, replacing the stored row. The fix for WRONG WORDS — get_song_lyrics showing a durationDeltaSec beyond a few seconds, or an overrunBySec above zero, means the source matched another take. Matching is duration-aware, so a row stored before that existed usually comes back right. Never overwrites lyrics a user edited (customized), and never replaces timed lyrics with untimed ones (replaced:false, with a reason). If the source has no acceptable match the stored row is left UNCHANGED and the result says so — the words are still wrong, so flag it for a human rather than re-timing it with sync_song_lyrics. Returns the before/after source, matched duration and delta. Audit-logged.",
     access: 'curate',
     inputSchema: {
       type: 'object',
@@ -641,6 +641,13 @@ export const MCP_TOOLS: McpTool[] = [
           return JSON.stringify({ error: 'The lyrics source failed; try again later.' });
         case 'no-match':
           return JSON.stringify({ ok: true, replaced: false, before: summary(before) });
+        case 'kept-timed':
+          return JSON.stringify({
+            ok: true,
+            replaced: false,
+            reason: 'The source only had untimed lyrics; the stored timed lyrics were kept.',
+            before: summary(before),
+          });
         default:
           recordAudit(
             db,

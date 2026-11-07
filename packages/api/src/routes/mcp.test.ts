@@ -2488,6 +2488,15 @@ describe('lyrics tools', () => {
       expect(calls()).toBe(0);
     });
 
+    it('keeps stored timed lyrics when the source only has untimed ones (#1672)', async () => {
+      seedLyrics({ durationSec: 232, lastLineSec: 200, matched: 231 });
+      const { refetch } = withSource({ plain: 'untimed', synced: null, source: 'lrclib' });
+      const out = await refetch('s-lyr');
+      expect(out).toMatchObject({ ok: true, replaced: false, before: { synced: true } });
+      expect(out.reason).toContain('untimed');
+      expect(getLyrics(testDb, 's-lyr')?.synced).toContain('[00:05.00]first line');
+    });
+
     it('leaves the stored row alone on a miss, and says so', async () => {
       seedLyrics({ durationSec: 232, lastLineSec: 200, matched: 222 });
       const { refetch } = withSource(null);
