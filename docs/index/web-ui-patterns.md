@@ -51,6 +51,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   `ScrollLockService` pins the document under sheets; `BottomChromeSafeDirective` +
   `measureBottomChromeInset`/`measureTopChromeInset` + `modal-max-h` keep modals reachable.
   → [design-patterns.md](../design-patterns.md)
+- **Blur + stacking contract**: `backdrop-filter` only on modal backdrops, inside the sheet, or
+  in-page layers that stand down under it (`mosaic-covered`); `backdrop-blur-policy.spec.ts`
+  holds the allowlist. → [design-patterns.md](../design-patterns.md)
 - **Page & section idioms**: every routed page inside the shell has a `page-shell` root with a width
   cap, grouped pages share `SettingsGroupComponent`, tables use `section-flush`; `page-shell.spec.ts`
   is the drift guard. → [web-ui.md](../web-ui.md)

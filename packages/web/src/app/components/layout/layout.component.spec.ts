@@ -443,6 +443,16 @@ describe('LayoutComponent — desktop chrome bar (Electron)', () => {
     fixture.destroy();
   });
 
+  it('the header is opaque and never blurs — persistent chrome owns no backdrop-filter (#1649)', () => {
+    const { fixture } = makeHeaderFixture();
+    fixture.detectChanges();
+    const tokens = fixture.componentInstance.headerClass().split(/\s+/);
+    expect(tokens.filter((t) => t.startsWith('backdrop-blur'))).toEqual([]);
+    expect(tokens).toContain('bg-theme-base');
+    expect(tokens.filter((t) => t.startsWith('bg-theme-base/'))).toEqual([]);
+    fixture.destroy();
+  });
+
   it('onHeaderDoubleClick is a no-op outside the desktop shell', () => {
     const { fixture } = makeHeaderFixture();
     fixture.detectChanges();

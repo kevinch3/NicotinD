@@ -202,6 +202,8 @@ export class MosaicHomeComponent implements OnInit {
   readonly discovered = signal<MosaicTile[]>([]);
   /** Device offline OR the server unreachable — both make the sources unusable. */
   readonly offline = computed(() => this.setup.isOffline());
+  /** Now Playing covers the field: the rim blur stands down under it (#1649). */
+  readonly covered = computed(() => this.player.nowPlayingOpen());
 
   /** Vibe titles are i18n keys; everything else is already a display string. */
   label(tile: MosaicTile): string {

@@ -214,6 +214,20 @@ describe('MosaicHomeComponent', () => {
     expect(kinds.filter((k) => k === 'vibe')).toHaveLength(8);
   });
 
+  it('marks the field covered while Now Playing is open, so the rim blur stands down (#1649)', async () => {
+    const { fixture, player } = setup({ tasteBreakers: [song({ id: 'a' })] });
+    await settle(fixture);
+    const root = (): HTMLElement =>
+      fixture.nativeElement.querySelector('[data-testid="mosaic-home"]');
+    expect(root().classList.contains('mosaic-covered')).toBe(false);
+    player.nowPlayingOpen.set(true);
+    fixture.detectChanges();
+    expect(root().classList.contains('mosaic-covered')).toBe(true);
+    player.nowPlayingOpen.set(false);
+    fixture.detectChanges();
+    expect(root().classList.contains('mosaic-covered')).toBe(false);
+  });
+
   it('only shows curated playlists — a user playlist is not a tastemaker', async () => {
     const { component, fixture } = setup({
       playlists: [playlist({ id: 'c', kind: 'curated' }), playlist({ id: 'u', kind: 'user' })],
