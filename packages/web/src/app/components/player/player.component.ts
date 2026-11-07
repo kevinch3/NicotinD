@@ -313,7 +313,9 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   constructor() {
     this.noteOggFallback();
     // <main> reserves the bar's real height (#1694): a transform slide never
-    // changes the box, so the observer only fires on genuine size changes.
+    // changes the box, so the observer only fires on genuine size changes. It
+    // watches the border box, the one measured: the default content box misses
+    // a padding or border change.
     effect((onCleanup) => {
       const el = this.miniChrome()?.nativeElement;
       if (!el) return;
@@ -321,7 +323,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       measure();
       if (typeof ResizeObserver === 'undefined') return;
       const observer = new ResizeObserver(measure);
-      observer.observe(el);
+      observer.observe(el, { box: 'border-box' });
       onCleanup(() => observer.disconnect());
     });
     effect(() => {

@@ -2226,11 +2226,15 @@ There is now one reservation, `MAIN_BOTTOM_PAD_CLASS` (`lib/player-chrome.ts`): 
 bar with a `ResizeObserver` and publishes the height on `<html>` through `miniPlayerReservation`: the real height
 while a track is loaded, `0px` while idle (the bar is slid off-screen) and on TV (no bar). So the "Playing on"
 strip, a font-size change or a future control is reserved without anyone updating a number. The slide is a
-transform, which does not change the box, so the observer fires only on real size changes. There is no
+transform, which does not change the box, so the observer fires only on real size changes. It observes the
+**border box**, the one `getBoundingClientRect` measures: the default content box never fires on a padding or
+border change. There is no
 `--vp-deficit` term: the shell grows by the deficit and the chrome is anchored to the shell's bottom, so `<main>`'s
 bottom and the chrome's move together. The `bottom-reservation` e2e scrolls Library → Songs and Settings to the
-bottom at 390x844, with no track, with a track, and with a forced 50px deficit (plus Library → Songs on a 1280x720 desktop
-with a track), and asserts the lowest painted
-element ends at or above the topmost visible `[data-bottom-chrome]`. On-device check: `bun run phone-preview`
+bottom at 390x844, with no track, with a track, with a forced 50px deficit, and with the bar grown 40px after first
+render (plus Library → Songs on a 1280x720 desktop with a track). It asserts from both sides that the lowest painted
+element ends at the topmost visible `[data-bottom-chrome]`: not below it, and not more than 2px above it (the
+measured gap is 0px), so an over-reservation such as a double-counted deficit fails too. Track cases first assert
+the track survived the reload and `--mini-player-h` is not `0px`. On-device check: `bun run phone-preview`
 ([phone-preview.md](phone-preview.md)).
 
