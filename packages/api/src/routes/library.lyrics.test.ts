@@ -137,6 +137,27 @@ describe('POST /songs/:id/lyrics/fetch', () => {
     expect(calls()).toBe(2);
   });
 
+  it('a forced fetch answering untimed returns the stored timed lyrics unchanged (#1672)', async () => {
+    seedSong(testDb, 'song-1');
+    const stored = '[00:01.00]timed';
+    testDb.run(
+      `INSERT INTO library_lyrics (song_id, plain_text, synced_text, source, customized, updated_at, offset_ms)
+       VALUES ('song-1', 'timed', ?, 'lrclib', 0, 1, 400)`,
+      [stored],
+    );
+    const { registry } = makeRegistry({
+      result: { plain: 'untimed', synced: null, source: 'lrclib' },
+    });
+    const res = await makeApp('user', registry).request('/songs/song-1/lyrics/fetch', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ force: true }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ synced: stored, offsetMs: 400 });
+    expect(getLyrics(testDb, 'song-1')).toMatchObject({ synced: stored, offsetMs: 400 });
+  });
+
   it('503s when no lyrics source is enabled', async () => {
     seedSong(testDb, 'song-1');
     const { registry } = makeRegistry({ enabled: false });

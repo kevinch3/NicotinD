@@ -253,3 +253,82 @@ describe('LrclibPlugin /search fallback is duration-aware', () => {
     expect(result?.matchedDurationSec).toBe(305);
   });
 });
+
+/**
+ * #1672. The same song came back timed or untimed depending on which endpoint
+ * answered: /get returns one record and was taken whenever it had any text, so a
+ * plain-only /get hid a timed take /search held; and a /get that threw ended the
+ * fetch before /search was asked.
+ */
+describe('LrclibPlugin prefers a timed take (#1672)', () => {
+  const both = (get: { status: number; body: unknown }, search: unknown) =>
+    routeFetch([
+      { match: '/get', ...get },
+      { match: '/search', status: 200, body: search },
+    ]);
+  const timedHit = { duration: 203, plainLyrics: 'words', syncedLyrics: '[00:01.00]words' };
+
+  it('a plain-only /get loses to a timed /search take within tolerance', async () => {
+    const fetchFn = both({ status: 200, body: { duration: 200, plainLyrics: 'words' } }, [
+      timedHit,
+    ]);
+    const result = await new LrclibPlugin({ enabled: true }, { fetchFn }).lyrics.fetchLyrics(query);
+    expect(result?.synced).toBe('[00:01.00]words');
+    expect(result?.matchedDurationSec).toBe(203);
+  });
+
+  it('a plain-only /get is kept when /search has no timed take within tolerance', async () => {
+    const fetchFn = both({ status: 200, body: { id: 7, duration: 200, plainLyrics: 'words' } }, [
+      { duration: 260, plainLyrics: 'w', syncedLyrics: '[00:01.00]another take' },
+    ]);
+    const result = await new LrclibPlugin({ enabled: true }, { fetchFn }).lyrics.fetchLyrics(query);
+    expect(result?.synced).toBeNull();
+    expect(result?.sourceTrackId).toBe('7');
+  });
+
+  it('a timed /get is taken without asking /search', async () => {
+    const fetchFn = both({ status: 200, body: { ...timedHit, duration: 200 } }, []);
+    await new LrclibPlugin({ enabled: true }, { fetchFn }).lyrics.fetchLyrics(query);
+    expect(fetchFn.calls.some((c) => c.includes('/search'))).toBe(false);
+  });
+
+  it('a /get that keeps failing falls back to /search', async () => {
+    const fetchFn = both({ status: 503, body: {} }, [timedHit]);
+    const plugin = new LrclibPlugin({ enabled: true }, { fetchFn, retryBackoffMs: 0 });
+    expect((await plugin.lyrics.fetchLyrics(query))?.synced).toBe('[00:01.00]words');
+  });
+
+  it('a failed /get plus a clean /search miss is a source error, not "no lyrics"', async () => {
+    const fetchFn = both({ status: 503, body: {} }, []);
+    const plugin = new LrclibPlugin({ enabled: true }, { fetchFn, retryBackoffMs: 0 });
+    await expect(plugin.lyrics.fetchLyrics(query)).rejects.toThrow(/LRCLIB request failed/);
+  });
+
+  it('on /search, a timed take within tolerance beats a closer untimed one', async () => {
+    const fetchFn = both({ status: 404, body: { code: 404 } }, [
+      { duration: 200, plainLyrics: 'exact length, untimed' },
+      { duration: 204, plainLyrics: 'timed', syncedLyrics: '[00:01.00]timed' },
+    ]);
+    const result = await new LrclibPlugin({ enabled: true }, { fetchFn }).lyrics.fetchLyrics(query);
+    expect(result?.synced).toBe('[00:01.00]timed');
+  });
+
+  it('whitespace-only syncedLyrics counts as untimed; a \\r\\n LRC survives verbatim', async () => {
+    const blank = both(
+      { status: 200, body: { duration: 200, plainLyrics: 'w', syncedLyrics: ' \n ' } },
+      [],
+    );
+    const r1 = await new LrclibPlugin({ enabled: true }, { fetchFn: blank }).lyrics.fetchLyrics(
+      query,
+    );
+    expect(r1?.synced).toBeNull();
+
+    const crlf = '[00:01.00]one\r\n[00:02.00]two\r\n';
+    const fetchFn = both(
+      { status: 200, body: { duration: 200, plainLyrics: 'w', syncedLyrics: crlf } },
+      [],
+    );
+    const r2 = await new LrclibPlugin({ enabled: true }, { fetchFn }).lyrics.fetchLyrics(query);
+    expect(r2?.synced).toBe(crlf);
+  });
+});

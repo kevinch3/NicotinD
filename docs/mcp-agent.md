@@ -212,7 +212,13 @@ short-circuited on the file tag, which holds the plain text the *bad* fetch wrot
 — returning the wrong words again without asking the source. `fetchSongLyrics`
 (shared with `POST /songs/:id/lyrics/fetch`) now skips the tag recovery on
 `force`. A miss leaves the stored row unchanged and reports `replaced: false`:
-the words are still wrong, which is a human flag, not an offset.
+the words are still wrong, which is a human flag, not an offset. A re-fetch also
+**never replaces timed lyrics with untimed ones** (#1672): when every source
+answers plain-only for a song stored timed, the row (synced text and offset) is
+kept and the tool reports `replaced: false` with a `reason`. The exception is the
+wrong-take case above: a stored timed row whose matched duration is beyond
+`LYRICS_DURATION_TOLERANCE_SEC` holds another recording's words, so untimed right
+words still replace it.
 
 `offsetMs` is **absolute, not a nudge**. An agent that retries a relative shift
 doubles it, and a doubled correction looks like a worse version of the problem it

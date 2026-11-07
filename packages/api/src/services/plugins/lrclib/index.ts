@@ -116,11 +116,36 @@ export class LrclibPlugin implements Plugin {
     return this.cfg.enabled;
   }
 
+  /**
+   * Prefer the exact-match /get record — but only outright when it carries
+   * timings (#1672). /get returns one record, and for many songs that record is
+   * plain-only while /search holds a timed take of the same length, so the same
+   * song came back timed or untimed depending on which endpoint answered. A /get
+   * that throws no longer ends the fetch before /search is asked either.
+   */
   private async fetchLyrics(query: LyricsQuery): Promise<LyricsResult | null> {
-    // Prefer the exact-match /get endpoint; fall back to a fuzzy /search.
-    const exact = await this.getExact(query);
-    if (exact) return exact;
-    return this.searchByQuery(query);
+    let exact: LyricsResult | null = null;
+    let getError: unknown = null;
+    try {
+      exact = await this.getExact(query);
+    } catch (err) {
+      getError = err;
+    }
+    if (exact?.synced) return exact;
+
+    let searched: LyricsResult | null;
+    try {
+      searched = await this.searchByQuery(query);
+    } catch (err) {
+      if (exact) return exact;
+      throw getError ?? err;
+    }
+    if (searched?.synced) return searched;
+    if (exact ?? searched) return exact ?? searched;
+    // /get failed and /search cleanly missed: /get might have had it, so this is
+    // a source error (the UI offers a retry), not an authoritative "no lyrics".
+    if (getError) throw getError;
+    return null;
   }
 
   private async getExact(query: LyricsQuery): Promise<LyricsResult | null> {
@@ -169,8 +194,9 @@ export class LrclibPlugin implements Plugin {
       .filter((c) => typeof c.hit.duration === 'number')
       .map((c) => ({ ...c, delta: Math.abs(c.hit.duration! - target) }))
       .filter((c) => c.delta <= SEARCH_DURATION_TOLERANCE_SEC)
-      // Closest duration wins; a tie goes to the hit that carries timings.
-      .sort((a, b) => a.delta - b.delta || Number(!!b.result.synced) - Number(!!a.result.synced));
+      // Every hit left is within tolerance, i.e. plausibly this recording, so a
+      // timed one wins over a closer untimed one (#1672); closest duration next.
+      .sort((a, b) => Number(!!b.result.synced) - Number(!!a.result.synced) || a.delta - b.delta);
     if (scored[0]) return scored[0].result;
 
     // A hit that states no duration cannot be ranked or rejected on one. Dropping
