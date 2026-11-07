@@ -7,14 +7,14 @@
  * definitions live in the API (`services/recommendation/strategies.ts`); this
  * module carries only the ids and the one mapping both sides need.
  *
- * The player's control speaks in *complaints* ("too similar", "too different")
- * while a strategy is a *remedy* (`different`, `similar`). Keeping the
- * inversion in exactly one tested function is what stops it shipping inverted.
+ * The player's control is a dial — Close · Medium · Far (#1660). Left to right
+ * is closer to farther, the same order as STRATEGY_IDS, so the mapping is
+ * monotone and lives in exactly one tested function.
  */
 export const STRATEGY_IDS = ['similar', 'balanced', 'different'] as const;
 export type StrategyId = (typeof STRATEGY_IDS)[number];
 
-export const VARIETIES = ['too-similar', 'balanced', 'too-different'] as const;
+export const VARIETIES = ['close', 'medium', 'far'] as const;
 export type Variety = (typeof VARIETIES)[number];
 
 export const DEFAULT_STRATEGY: StrategyId = 'balanced';
@@ -23,26 +23,26 @@ export function isStrategyId(v: unknown): v is StrategyId {
   return typeof v === 'string' && (STRATEGY_IDS as readonly string[]).includes(v);
 }
 
-/** "It's too similar" asks for the `different` strategy, and vice versa. */
+/** Close plays `similar`, Medium `balanced`, Far `different`. */
 export function strategyForVariety(v: Variety): StrategyId {
   switch (v) {
-    case 'too-similar':
-      return 'different';
-    case 'too-different':
+    case 'close':
       return 'similar';
+    case 'far':
+      return 'different';
     default:
       return 'balanced';
   }
 }
 
-/** The control position that produced a strategy (the inverse mapping). */
+/** The dial position that produced a strategy (the inverse mapping). */
 export function varietyForStrategy(s: StrategyId): Variety {
   switch (s) {
-    case 'different':
-      return 'too-similar';
     case 'similar':
-      return 'too-different';
+      return 'close';
+    case 'different':
+      return 'far';
     default:
-      return 'balanced';
+      return 'medium';
   }
 }

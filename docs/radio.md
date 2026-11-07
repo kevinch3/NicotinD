@@ -819,19 +819,23 @@ about — "Based on *title*" for a song anchor, "Based on the playlist *name*"
 for a list anchor, "Station: *label*" via the shared `describeLibraryFilter`
 for a vibe (never the playing track, #1277) — and a three-position control
 (`radio-variety`, `role="radiogroup"`, positions
-`radio-variety-too-similar|balanced|too-different`, ArrowLeft/Right move it).
+`radio-variety-close|medium|far`, ArrowLeft/Right move it).
 
-The labels are **complaints** and the strategies are **remedies**: "too similar"
-asks for `different`, "too different" asks for `similar`. That inversion lives
-in exactly one tested core function, `strategyForVariety`, so it cannot ship
-inverted. A move does three things:
+The control is a **left-to-right dial**, Close · Medium · Far (ES: Cerca ·
+Medio · Lejos): Close plays `similar`, Medium `balanced`, Far `different` — the
+same order as `STRATEGY_IDS`, in one monotone tested core function,
+`strategyForVariety` (#1660). It used to be labelled as complaints ("too
+similar" → `different`), which put the word "too different" over the `similar`
+strategy and contradicted the footer and the hint; the segment, the hint and
+the provenance footer now use one vocabulary. A move does three things:
 
 1. **Steers now.** `PlayerService.setRadioStrategy` drops the radio-appended
    tail of the queue — tracks carry `queuedBy: 'radio'`; anything the listener
    queued is never touched — and refetches immediately with the new strategy.
-2. **Logs a vote.** `POST /api/recommendations/feedback` with kind
-   `too_similar` / `balanced` / `too_different` against the playing track and a
-   context (`strategyFrom`, `strategyTo`, the anchor as `seedId`/`seedIds`, or
+2. **Logs a vote.** `POST /api/recommendations/feedback` with a kind that
+   follows the *target* strategy — `different` → `too_similar`, `balanced` →
+   `balanced`, `similar` → `too_different`, the same wire values as before the
+   dial — against the playing track and a context (`strategyFrom`, `strategyTo`, the anchor as `seedId`/`seedIds`, or
    the filter). Votes never exclude;
    they are the raw material for a later per-user taste profile.
 3. **Remembers.** `PUT /api/recommendations/preferences` stores the strategy on
@@ -848,7 +852,9 @@ chip.
 ### Provenance line (#1124)
 
 The panel's last line says how the queue was actually made —
-`formula v9 · balanced · genre by sound` (`radio-chip-provenance`). It exists
+`formula v9 · Medium · genre by sound` (`radio-chip-provenance`). The strategy
+word reuses the lit segment's own label key, so the footer cannot name a
+different position than the dial shows. It exists
 because `RADIO_FORMULA_VERSION` used to live only on the server: once the genre
 axis is a setting ([genre-affinity.md](genre-affinity.md)) the same seed yields
 different queues depending on a flag the listener cannot see, and a screenshot
@@ -904,7 +910,10 @@ recipe shelves and poll generation have no listener and are unaffected.
 
 The same table also stores the radio chip's variety votes (`too_similar`,
 `balanced`, `too_different`, with a free-form `context_json`) for the
-recommender to learn from later; those never exclude anything.
+recommender to learn from later; those never exclude anything. The stored kind
+reads as the dial's direction: `too_similar` is a move toward Far (the radio
+was too close), `too_different` a move toward Close; `strategyFrom`/`strategyTo`
+in the context say which side a `balanced` vote came from.
 
 Routes: `POST /api/recommendations/feedback`, `GET /api/recommendations/excluded`,
 `DELETE /api/recommendations/excluded/:songId` — all scoped to the caller, no
