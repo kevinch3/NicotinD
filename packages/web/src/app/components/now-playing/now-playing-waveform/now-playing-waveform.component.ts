@@ -1,6 +1,7 @@
 import { Component, computed, input, output } from '@angular/core';
 import { monoEnvelopePath } from '../../../lib/waveform-geometry';
 import { seekPercent } from '../../../lib/seek-utils';
+import { haptic } from '../../../lib/haptics';
 import type { WaveformData } from '../../../../types/core';
 
 /** viewBox size; CSS stretches it (`preserveAspectRatio="none"`). */
@@ -72,6 +73,7 @@ export class NowPlayingWaveformComponent {
     const d = this.duration();
     if (!Number.isFinite(d) || d <= 0) return;
     const f = Math.min(1, Math.max(0, fraction));
+    haptic('tap');
     this.seek.emit(f * d);
   }
 

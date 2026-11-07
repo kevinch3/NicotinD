@@ -6,6 +6,7 @@ import { RadioChipComponent } from '../radio-chip/radio-chip.component';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
 import { TvNavGroupDirective } from '../../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
+import { HapticDirective } from '../../../directives/haptic.directive';
 import type { WaveformData } from '../../../../types/core';
 
 @Component({
@@ -17,6 +18,7 @@ import type { WaveformData } from '../../../../types/core';
     TranslatePipe,
     TvNavGroupDirective,
     TvNavItemDirective,
+    HapticDirective,
   ],
   // `display: contents` so the host doesn't break the sheet's flex column —
   // the shell's flex container needs to see this component's own top-level

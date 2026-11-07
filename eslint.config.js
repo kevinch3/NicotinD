@@ -15,6 +15,13 @@ export const TAG_LOADERS = {
   'music-metadata': 'packages/api/src/services/music-metadata-loader.ts',
 };
 
+/** The one module allowed to reach a vibration API (#1659). */
+export const HAPTICS_MODULE = 'packages/web/src/app/lib/haptics.ts';
+
+const hapticsBan = (what) => ({
+  message: `${what} only inside ${HAPTICS_MODULE}: call \`haptic(event)\` from there, or the level setting and the throttle are skipped (#1659).`,
+});
+
 /** @param {string} mod */
 function tagLoaderBan(mod) {
   const source = `[source.value='${mod}']`;
@@ -79,6 +86,22 @@ export default [
           paths: [
             { name: 'vitest', message: 'Outside packages/web, tests run on bun: import bun:test.' },
           ],
+        },
+      ],
+    },
+  },
+  // One haptics door (#1659): `navigator.vibrate` or the Haptics plugin anywhere
+  // else would buzz past the user's Off/Reduced choice and the throttle.
+  {
+    files: ['packages/web/src/**/*.ts'],
+    ignores: ['**/*.spec.ts', HAPTICS_MODULE],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        { selector: "MemberExpression[property.name='vibrate']", ...hapticsBan('Vibrate') },
+        {
+          selector: "CallExpression[callee.name='getCapacitorPlugin'][arguments.0.value='Haptics']",
+          ...hapticsBan('Reach the Haptics plugin'),
         },
       ],
     },

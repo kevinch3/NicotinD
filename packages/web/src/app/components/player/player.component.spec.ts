@@ -25,6 +25,12 @@ import type { Track } from '../../services/player.service';
 import { ServerConfigService } from '../../services/server-config.service';
 import { ToastService } from '../../services/toast.service';
 import * as db from '../../lib/preserve-store';
+import { haptic } from '../../lib/haptics';
+
+vi.mock('../../lib/haptics', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/haptics')>()),
+  haptic: vi.fn(),
+}));
 
 // jsdom has no IndexedDB. Most tests never reach the store — the PreserveService
 // mock returns isPreserved() = false, so the component takes the streaming path —
@@ -594,6 +600,21 @@ describe('PlayerComponent', () => {
 
       expect(playerService.nowPlayingOpen()).toBe(true);
       expect(playerService.nowPlayingLiftPx()).toBe(0);
+    });
+
+    it('a committed open ticks `commit`; a lift that falls back and a tap do not (#1659)', () => {
+      vi.mocked(haptic).mockClear();
+      playerService.setNowPlayingOpen(false);
+      component.onBarPointerDown(down(300, document.createElement('div')));
+      move(260);
+      release(260);
+      expect(playerService.nowPlayingOpen()).toBe(false);
+      expect(haptic).not.toHaveBeenCalled();
+      component.onBarPointerDown(down(300, document.createElement('div')));
+      move(300 - PlayerComponent.OPEN_THRESHOLD_PX - 1);
+      release(300 - PlayerComponent.OPEN_THRESHOLD_PX - 1);
+      expect(playerService.nowPlayingOpen()).toBe(true);
+      expect(haptic).toHaveBeenCalledExactlyOnceWith('commit');
     });
 
     it('opens on a short but fast flick up', () => {

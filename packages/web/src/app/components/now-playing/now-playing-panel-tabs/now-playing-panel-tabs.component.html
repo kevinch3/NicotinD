@@ -2,7 +2,7 @@
   <button
     appTvNavItem
     type="button"
-    (click)="panelSelected.emit('queue')"
+    (click)="select('queue')"
     data-testid="now-playing-tab-queue"
     [attr.aria-pressed]="activePanel() === 'queue'"
     [class]="'flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition ' +
@@ -24,7 +24,7 @@
   <button
     appTvNavItem
     type="button"
-    (click)="panelSelected.emit('lyrics')"
+    (click)="select('lyrics')"
     data-testid="now-playing-tab-lyrics"
     [attr.aria-pressed]="activePanel() === 'lyrics'"
     [class]="'relative flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition ' +

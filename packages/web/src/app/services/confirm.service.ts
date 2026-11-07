@@ -1,4 +1,5 @@
 import { Injectable, signal } from '@angular/core';
+import { haptic } from '../lib/haptics';
 
 /**
  * Global confirm dialog. A single modal (see ConfirmHostComponent, mounted in
@@ -20,6 +21,8 @@ export class ConfirmService {
     // A prior open request resolves false before we replace it.
     this.pending?.(false);
     this.request.set({ message, ...labels });
+    // Every ask is a destructive action (see confirm-host.stories.ts).
+    haptic('warning');
     return new Promise<boolean>((res) => (this.pending = res));
   }
 

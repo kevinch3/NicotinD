@@ -1,10 +1,11 @@
 import { Component, ElementRef, computed, input, output, viewChild } from '@angular/core';
 import { LYRICS_OFFSET_STEP_MS } from '@nicotind/core';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
+import { HapticDirective } from '../../../directives/haptic.directive';
 
 @Component({
   selector: 'app-now-playing-lyrics-panel',
-  imports: [TranslatePipe],
+  imports: [TranslatePipe, HapticDirective],
   // `display: contents` so the host doesn't break the sheet's flex column —
   // the shell's flex container needs to see this component's own top-level
   // element as the flex item, and `contents` makes the host transparent.

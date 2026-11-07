@@ -39,6 +39,25 @@ describe('eslint.config.js wiring', () => {
     ]);
   });
 
+  it('keeps every vibration in lib/haptics.ts (#1659)', async () => {
+    const vibrate = 'export const buzz = () => navigator.vibrate(10);\n';
+    const plugin = "export const p = getCapacitorPlugin('Haptics');\n";
+    for (const code of [vibrate, plugin]) {
+      expect(await ruleIds(code, 'packages/web/src/app/components/x.component.ts')).toEqual([
+        'no-restricted-syntax',
+      ]);
+      expect(await ruleIds(code, 'packages/web/src/app/lib/haptics.ts')).toEqual([]);
+      expect(await ruleIds(code, 'packages/web/src/app/lib/x.spec.ts')).toEqual([]);
+    }
+    // Another plugin through the same helper is not a haptic.
+    expect(
+      await ruleIds(
+        "export const p = getCapacitorPlugin('NowPlaying');\n",
+        'packages/web/src/app/x.ts',
+      ),
+    ).toEqual([]);
+  });
+
   it('holds packages/web to no recommended rule yet (it needs @angular-eslint)', async () => {
     const code = 'const unused = 1;\n';
     expect(await ruleIds(code, 'packages/web/src/app/x.ts')).toEqual([]);

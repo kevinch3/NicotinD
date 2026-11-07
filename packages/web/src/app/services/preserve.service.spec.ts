@@ -12,6 +12,12 @@ import {
 import type { PreserveStore } from './preserve.service';
 import { AuthService } from './auth.service';
 import type { Track } from './player.service';
+import { haptic } from '../lib/haptics';
+
+vi.mock('../lib/haptics', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/haptics')>()),
+  haptic: vi.fn(),
+}));
 
 // In-memory fake of the IndexedDB store, injected via PRESERVE_STORE. The
 // Angular unit-test system forbids `vi.mock` on relative imports, so the store
@@ -187,6 +193,37 @@ describe('PreserveService', () => {
       expect(svc.batchFor('big')?.stoppedAtCap).toBe(true);
       svc.dismissBatch('big');
       expect(svc.batchFor('big')).toBeNull();
+    });
+  });
+
+  describe('haptics (#1659)', () => {
+    it('a saved track ticks `success`, a failed one `error`, an auto-save nothing', async () => {
+      await svc.preserve(track('a'));
+      expect(vi.mocked(haptic).mock.calls).toEqual([['success']]);
+      globalThis.fetch = vi.fn(async () => {
+        throw new TypeError('Failed to fetch');
+      }) as unknown as typeof fetch;
+      await svc.preserve(track('b'));
+      await svc.autoPreserve(track('c'));
+      expect(vi.mocked(haptic).mock.calls).toEqual([['success'], ['error']]);
+    });
+
+    it('a collection ticks once at the end: success, warning at the cap, error on a failure', async () => {
+      await svc.preserveCollection('ok', 'Ok', [track('a'), track('b')]);
+      expect(vi.mocked(haptic).mock.calls).toEqual([['success']]);
+
+      vi.mocked(haptic).mockClear();
+      svc.setBudget(250);
+      await svc.preserveCollection('big', 'Big', [track('c'), track('d'), track('e')]);
+      expect(vi.mocked(haptic).mock.calls).toEqual([['warning']]);
+
+      vi.mocked(haptic).mockClear();
+      svc.setBudget(UNLIMITED_BUDGET);
+      globalThis.fetch = vi.fn(async () => {
+        throw new TypeError('Failed to fetch');
+      }) as unknown as typeof fetch;
+      await svc.preserveCollection('offline', 'Offline', [track('f')]);
+      expect(vi.mocked(haptic).mock.calls).toEqual([['error']]);
     });
   });
 

@@ -2,6 +2,7 @@
       <!-- Previous -->
       <button
         appTvNavItem
+        appHaptic
         (click)="prevClicked.emit()"
         data-testid="player-prev"
         aria-label="Previous track"
@@ -19,6 +20,7 @@
            the line it crosses from cutting through it. -->
       <button
         appTvNavItem
+        appHaptic
         (click)="playPauseClicked.emit()"
         data-testid="player-playpause"
         [attr.aria-label]="playing() ? 'Pause' : 'Play'"
@@ -43,6 +45,7 @@
       <!-- Next -->
       <button
         appTvNavItem
+        appHaptic
         (click)="nextClicked.emit()"
         data-testid="player-next"
         aria-label="Next track"

@@ -4,6 +4,12 @@ import { of, throwError } from 'rxjs';
 import { LikeService } from './like.service';
 import { LibraryApiService } from './api/library-api.service';
 import { PlaylistService } from './playlist.service';
+import { haptic } from '../lib/haptics';
+
+vi.mock('../lib/haptics', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/haptics')>()),
+  haptic: vi.fn(),
+}));
 
 function setup(api: Partial<LibraryApiService>) {
   TestBed.configureTestingModule({
@@ -49,6 +55,19 @@ describe('LikeService', () => {
     await svc.refresh();
     await svc.toggle('s1');
     expect(svc.isLiked('s1')).toBe(false); // reverted
+  });
+
+  it('toggle() ticks `success` on a like and `tap` on an unlike (#1659)', async () => {
+    vi.mocked(haptic).mockClear();
+    const svc = setup({
+      getLikedIds: () => of({ ids: ['s1'] }),
+      likeSong: () => of({ liked: true }),
+      unlikeSong: () => of({ liked: false }),
+    } as never);
+    await svc.refresh();
+    await svc.toggle('s2');
+    await svc.toggle('s1');
+    expect(vi.mocked(haptic).mock.calls).toEqual([['success'], ['tap']]);
   });
 
   it('reset() clears state', async () => {

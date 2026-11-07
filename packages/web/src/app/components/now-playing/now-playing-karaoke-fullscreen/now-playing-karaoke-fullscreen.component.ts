@@ -5,6 +5,7 @@ import { NowPlayingVfxComponent } from '../now-playing-vfx/now-playing-vfx.compo
 import { TranslatePipe } from '../../../pipes/translate.pipe';
 import { TvNavGroupDirective } from '../../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
+import { HapticDirective } from '../../../directives/haptic.directive';
 import { DEFAULT_PALETTE, type CoverPalette } from '../../../lib/cover-colors';
 import { formatTime } from '../../../lib/format-time';
 import type { WaveformData } from '../../../../types/core';
@@ -17,6 +18,7 @@ import type { WaveformData } from '../../../../types/core';
     TranslatePipe,
     TvNavGroupDirective,
     TvNavItemDirective,
+    HapticDirective,
   ],
   templateUrl: './now-playing-karaoke-fullscreen.component.html',
 })

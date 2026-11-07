@@ -3,6 +3,12 @@ import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 import { EntityActionsDirective, HOLD_MS, HOLD_SLOP_PX } from './entity-actions.directive';
 import { EntityMenuService } from '../services/entity-menu.service';
+import { haptic } from '../lib/haptics';
+
+vi.mock('../lib/haptics', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/haptics')>()),
+  haptic: vi.fn(),
+}));
 
 @Component({
   standalone: true,
@@ -49,6 +55,7 @@ describe('EntityActionsDirective', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.mocked(haptic).mockClear();
     document.documentElement.classList.remove('tv-build');
   });
 
@@ -130,5 +137,33 @@ describe('EntityActionsDirective', () => {
     tile.dispatchEvent(pointer('pointerdown'));
     vi.advanceTimersByTime(HOLD_MS);
     expect(open).not.toHaveBeenCalled();
+  });
+
+  describe('haptics (#1659)', () => {
+    it('a hold ticks `hold` exactly once, at the HOLD_MS mark and not on release', () => {
+      const { tile } = setup();
+      tile.dispatchEvent(pointer('pointerdown'));
+      vi.advanceTimersByTime(HOLD_MS - 1);
+      expect(haptic).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(haptic).toHaveBeenCalledExactlyOnceWith('hold');
+      tile.dispatchEvent(pointer('pointerup'));
+      tile.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      expect(haptic).toHaveBeenCalledTimes(1);
+    });
+
+    it('a tap, a slop-cancelled hold and a mouse press never tick', () => {
+      const { tile } = setup();
+      tile.dispatchEvent(pointer('pointerdown'));
+      tile.dispatchEvent(pointer('pointerup'));
+      vi.advanceTimersByTime(HOLD_MS);
+      tile.dispatchEvent(pointer('pointerdown', { clientX: 20, clientY: 30 }));
+      tile.dispatchEvent(pointer('pointermove', { clientX: 20 + HOLD_SLOP_PX + 1, clientY: 30 }));
+      vi.advanceTimersByTime(HOLD_MS);
+      tile.dispatchEvent(pointer('pointerdown', { pointerType: 'mouse' }));
+      vi.advanceTimersByTime(HOLD_MS);
+      tile.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+      expect(haptic).not.toHaveBeenCalled();
+    });
   });
 });

@@ -41,6 +41,7 @@
         data-testid="lyrics-sync"
       >
         <button
+          appHaptic="select"
           (click)="offsetNudged.emit(-step)"
           data-testid="lyrics-sync-earlier"
           [attr.aria-label]="'nowPlaying.syncEarlier' | t"
@@ -59,6 +60,7 @@
           {{ offsetLabel() || ('nowPlaying.syncInSync' | t) }}
         </span>
         <button
+          appHaptic="select"
           (click)="offsetNudged.emit(step)"
           data-testid="lyrics-sync-later"
           [attr.aria-label]="'nowPlaying.syncLater' | t"

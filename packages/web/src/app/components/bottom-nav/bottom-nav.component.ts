@@ -6,6 +6,7 @@ import { AuthService } from '../../services/auth.service';
 import { SetupService } from '../../services/setup.service';
 import { TransferService } from '../../services/transfer.service';
 import { TranslatePipe } from '../../pipes/translate.pipe';
+import { haptic } from '../../lib/haptics';
 
 interface BottomNavItem {
   to: string;
@@ -73,6 +74,11 @@ export class BottomNavComponent {
   // so a hardcoded count leaves a trailing empty column and the tabs sit
   // off-centre. (The old bar was `grid-cols-5` with a 4-item listener case.)
   readonly gridColumns = computed(() => `repeat(${this.tabs().length}, minmax(0, 1fr))`);
+
+  /** A tab change ticks `select`; re-pressing the tab you are on is not a change. */
+  onTab(alreadyActive: boolean): void {
+    if (!alreadyActive) haptic('select');
+  }
 
   isDisabled(tab: BottomNavItem): boolean {
     return tab.onlineOnly && this.setup.isOffline();

@@ -1,6 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 import { NowPlayingPanelTabsComponent } from './now-playing-panel-tabs.component';
 import { setInputValue } from '../../../../testing/signal-input';
+import { vi } from 'vitest';
+import { haptic } from '../../../lib/haptics';
+
+vi.mock('../../../lib/haptics', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../lib/haptics')>()),
+  haptic: vi.fn(),
+}));
 
 describe('NowPlayingPanelTabsComponent', () => {
   it('shows the queue count on the queue tab', () => {
@@ -54,5 +61,16 @@ describe('NowPlayingPanelTabsComponent', () => {
     expect(
       fixture.nativeElement.querySelector('[data-testid="now-playing-lyrics-dot"]'),
     ).toBeNull();
+  });
+
+  it('a tab switch ticks `select`; pressing the shown tab does not (#1659)', () => {
+    vi.mocked(haptic).mockClear();
+    const fixture = TestBed.createComponent(NowPlayingPanelTabsComponent);
+    setInputValue(fixture.componentInstance.activePanel, 'queue');
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="now-playing-tab-queue"]').click();
+    expect(haptic).not.toHaveBeenCalled();
+    fixture.nativeElement.querySelector('[data-testid="now-playing-tab-lyrics"]').click();
+    expect(haptic).toHaveBeenCalledExactlyOnceWith('select');
   });
 });

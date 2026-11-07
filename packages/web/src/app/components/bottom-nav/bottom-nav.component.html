@@ -15,7 +15,9 @@
       <a
         [routerLink]="tab.to"
         routerLinkActive="is-active"
+        #rla="routerLinkActive"
         [routerLinkActiveOptions]="{ exact: tab.to === '/' }"
+        (click)="onTab(rla.isActive)"
         class="relative flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium text-theme-muted transition active:scale-95"
       >
         <ng-container [ngTemplateOutlet]="icon" [ngTemplateOutletContext]="{ $implicit: tab.to }" />

@@ -7,6 +7,12 @@ import { provideRouter } from '@angular/router';
 import { ToastService } from '../../../services/toast.service';
 import { RemotePlaybackService } from '../../../services/remote-playback.service';
 import { LONG_PRESS_MS } from '../../../lib/row-gesture';
+import { haptic } from '../../../lib/haptics';
+
+vi.mock('../../../lib/haptics', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../lib/haptics')>()),
+  haptic: vi.fn(),
+}));
 
 // jsdom lacks PointerEvent; MouseEvent stands in (same trick as row-gesture.spec).
 function pointer(
@@ -299,6 +305,42 @@ describe('NowPlayingQueuePanelComponent', () => {
       document.dispatchEvent(pointer('pointerup', 100, 140));
       expect(moveInQueue).toHaveBeenCalledWith(0, 2);
       expect(component.liftIndex()).toBeNull();
+    });
+
+    it('haptics: a remove commits, a lift holds, a drop taps; a snap-back is silent (#1659)', () => {
+      vi.mocked(haptic).mockClear();
+      const fixture = TestBed.createComponent(NowPlayingQueuePanelComponent);
+      fixture.detectChanges();
+      const component = fixture.componentInstance;
+      swipe(component, 1, [
+        [300, 0],
+        [260, 500],
+        [250, 1000],
+      ]);
+      expect(haptic).not.toHaveBeenCalled();
+      swipe(component, 1, [
+        [300, 0],
+        [250, 500],
+        [180, 1000],
+        [180, 1500],
+      ]);
+      expect(vi.mocked(haptic).mock.calls).toEqual([['commit']]);
+
+      vi.mocked(haptic).mockClear();
+      vi.useFakeTimers();
+      const items: HTMLElement[] = Array.from(
+        fixture.nativeElement.querySelectorAll('[data-testid="queue-item"]'),
+      );
+      items.forEach((el, i) => {
+        el.getBoundingClientRect = () =>
+          ({ top: i * 50, height: 50, bottom: i * 50 + 50 }) as DOMRect;
+      });
+      component.onRowPointerDown(pointer('pointerdown', 100, 25), 0);
+      vi.advanceTimersByTime(LONG_PRESS_MS);
+      expect(vi.mocked(haptic).mock.calls).toEqual([['hold']]);
+      document.dispatchEvent(pointer('pointermove', 100, 90));
+      document.dispatchEvent(pointer('pointerup', 100, 90));
+      expect(vi.mocked(haptic).mock.calls).toEqual([['hold'], ['tap']]);
     });
 
     it('a mouse on the handle is left to HTML5 drag', () => {
