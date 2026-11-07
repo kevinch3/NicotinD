@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.125](https://github.com/kevinch3/NicotinD/compare/v0.8.124...v0.8.125) (2026-11-07)
+
+### Bug Fixes
+
+* **web:** anchor bottom chrome to the real screen bottom on iOS standalone ([#1648](https://github.com/kevinch3/NicotinD/issues/1648)) ([5e4955a](https://github.com/kevinch3/NicotinD/commit/5e4955a73c8cc679fbf908b3eb4db0f73342f0fe)), closes [#1646](https://github.com/kevinch3/NicotinD/issues/1646), references [#1645](https://github.com/kevinch3/NicotinD/issues/1645)
+* **web:** scroll <main>, not the document, so the player stays pinned on iOS PWA ([#1646](https://github.com/kevinch3/NicotinD/issues/1646)) ([fcf5554](https://github.com/kevinch3/NicotinD/commit/fcf5554d963d4f8406d1c419a075b4191d72fb69)), references [#1645](https://github.com/kevinch3/NicotinD/issues/1645)
 ## [0.8.124](https://github.com/kevinch3/NicotinD/compare/v0.8.123...v0.8.124) (2026-11-06)
 
 ### Features

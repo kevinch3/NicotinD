@@ -1,0 +1,2 @@
+• web: anchor bottom chrome to the real screen bottom on iOS standalone (#1648)
+• web: scroll <main>, not the document, so the player stays pinned on iOS PWA (#1646)
