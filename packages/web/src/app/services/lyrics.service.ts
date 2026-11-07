@@ -62,6 +62,9 @@ export class LyricsService {
   /** The latest request per id; an answer carrying an older token is dropped. */
   private readonly tokens = new Map<string, number>();
   private seq = 0;
+  /** Per song, the sync-offset write outstanding: the latest tap not yet sent
+   *  (null once sent) and the last value the server confirmed (#1656). */
+  private readonly offsetWrites = new Map<string, { pending: number | null; confirmed: number }>();
 
   private readonly current = computed(() => {
     const id = this.currentId();
@@ -162,8 +165,13 @@ export class LyricsService {
   /** A stored-row read; keeps the entry's words until the answer lands. */
   private read(id: string): void {
     const token = this.begin(id, { inFlight: 'read' });
+    const racesOffset = this.offsetWrites.has(id);
     this.api.getLyrics(id).subscribe({
-      next: (l) => this.settle(id, token, { dto: l, inFlight: null }),
+      next: (l) =>
+        this.settle(id, token, {
+          dto: racesOffset || this.offsetWrites.has(id) ? this.withLocalOffset(id, l) : l,
+          inFlight: null,
+        }),
       error: () => this.settle(id, token, { inFlight: null }),
     });
   }
@@ -194,8 +202,9 @@ export class LyricsService {
    *
    * Applied to the signal first and persisted after: the whole reason to nudge
    * is to watch the highlight land on the beat, and a control that waits for a
-   * round-trip before moving cannot be judged by ear. A failed write reverts,
-   * so the view never keeps a correction the library did not store.
+   * round-trip before moving cannot be judged by ear. A failed write reverts to
+   * the last value the server confirmed, so the view never keeps a correction
+   * the library did not store.
    */
   nudgeOffset(stepMs: number): void {
     this.setOffset(this.offsetMs() + stepMs);
@@ -206,6 +215,13 @@ export class LyricsService {
     this.setOffset(0);
   }
 
+  /**
+   * Writes are serialized per song (#1656): at most one PATCH is in flight,
+   * and taps made meanwhile coalesce into one write of the latest value, sent
+   * when it answers. Two concurrent PATCHes could reach the server in either
+   * order and leave it on the older tap; and an answer only lands, or a failure
+   * only reverts, when no newer tap is queued behind it.
+   */
   private setOffset(next: number): void {
     const id = this.loadedForId();
     const current = this.lyrics();
@@ -213,11 +229,58 @@ export class LyricsService {
     const clamped = Math.max(-LYRICS_OFFSET_MAX_MS, Math.min(LYRICS_OFFSET_MAX_MS, next));
     if (clamped === current.offsetMs) return;
     this.patch(id, { dto: { ...current, offsetMs: clamped } });
-    this.api.setLyricsOffset(id, clamped).subscribe({
-      // Trust the server's value — it owns the clamp.
-      next: (saved) => this.patch(id, { dto: saved }),
-      error: () => this.patch(id, { dto: current }),
+    const w = this.offsetWrites.get(id);
+    if (w) {
+      w.pending = clamped;
+      return;
+    }
+    this.offsetWrites.set(id, { pending: clamped, confirmed: current.offsetMs });
+    this.flushOffset(id);
+  }
+
+  private flushOffset(id: string): void {
+    const w = this.offsetWrites.get(id);
+    if (!w || w.pending === null) {
+      this.offsetWrites.delete(id);
+      return;
+    }
+    const value = w.pending;
+    w.pending = null;
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      this.flushOffset(id);
+    };
+    this.api.setLyricsOffset(id, value).subscribe({
+      next: (saved) => {
+        w.confirmed = saved.offsetMs;
+        // Trust the server's value — it owns the clamp — unless a newer tap
+        // is queued, whose write will answer in turn.
+        if (w.pending === null) this.patchOffset(id, saved.offsetMs);
+      },
+      error: () => {
+        // Revert to the last value the server confirmed, never past a newer
+        // tap: a queued tap still goes out and its answer decides.
+        if (w.pending === null) this.patchOffset(id, w.confirmed);
+        done();
+      },
+      complete: done,
     });
+  }
+
+  /** Set only the offset of `id`'s entry; a row dropped meanwhile stays gone. */
+  private patchOffset(id: string, offsetMs: number): void {
+    const dto = untracked(() => this.entries().get(id)?.dto);
+    if (dto && dto.offsetMs !== offsetMs) this.patch(id, { dto: { ...dto, offsetMs } });
+  }
+
+  /** A row read while an offset write is outstanding may predate it; the
+   *  latest tap is what the server ends on, so the entry keeps that offset. */
+  private withLocalOffset(id: string, dto: LyricsDto | null): LyricsDto | null {
+    if (!dto) return dto;
+    const local = untracked(() => this.entries().get(id)?.dto?.offsetMs);
+    return local === undefined ? dto : { ...dto, offsetMs: local };
   }
 
   /**

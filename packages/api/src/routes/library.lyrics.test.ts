@@ -414,6 +414,13 @@ describe('PATCH /songs/:id/lyrics/offset', () => {
     expect((await (await patch('admin', { offsetMs: 0 })).json()).offsetMs).toBe(0);
   });
 
+  it('is absolute, so a repeated or late write never accumulates (#1656)', async () => {
+    await seedFetched();
+    await patch('admin', { offsetMs: 750 });
+    await patch('admin', { offsetMs: 750 });
+    expect(getLyrics(testDb, 'song-1')?.offsetMs).toBe(750);
+  });
+
   it('clamps rather than refusing an out-of-range nudge', async () => {
     await seedFetched();
     const res = await patch('admin', { offsetMs: 10_000_000 });
