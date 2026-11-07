@@ -57,6 +57,9 @@
               [album]="track.album ?? ''"
               [size]="40"
               rounded="rounded"
+              [eager]="true"
+              [holdPrevious]="true"
+              data-testid="player-cover-art"
             />
           }
           <div class="min-w-0 no-callout" translate="no">

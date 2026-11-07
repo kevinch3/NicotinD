@@ -1,4 +1,4 @@
-import { Component, input, signal, computed, effect, inject } from '@angular/core';
+import { Component, input, signal, computed, effect, inject, untracked } from '@angular/core';
 import { ServerConfigService } from '../../services/server-config.service';
 
 export function hashCode(str: string): number {
@@ -69,17 +69,50 @@ export class CoverArtComponent {
   readonly eager = input(false);
   readonly loadingAttr = computed<'eager' | 'lazy'>(() => coverLoadingAttr(this.eager()));
 
+  /**
+   * Keep the last loaded image on screen while a new `src` loads, then fade the
+   * new one in over it (#1653). For a cover whose src changes in place — the
+   * player bar and the Now Playing sheet on a skip — where the gradient
+   * placeholder in between read as a flash. Off by default: a grid tile's
+   * placeholder-until-loaded is the intended look there.
+   */
+  readonly holdPrevious = input(false);
+
   readonly imgError = signal(false);
   readonly imgLoaded = signal(false);
+  /** The previous image, shown under the loading one; cleared once it lands or fails. */
+  readonly heldSrc = signal<string | undefined>(undefined);
+  private loadedSrc: string | undefined;
+
+  readonly showPlaceholder = computed(
+    () => !this.resolvedSrc() || this.imgError() || (!this.imgLoaded() && !this.heldSrc()),
+  );
 
   constructor() {
     // Reset loading/error state when the resolved src changes so the gradient
-    // placeholder re-appears while new image bytes are in flight.
+    // placeholder re-appears while new image bytes are in flight — unless the
+    // previous image is held over it.
     effect(() => {
-      this.resolvedSrc();
-      this.imgLoaded.set(false);
-      this.imgError.set(false);
+      const src = this.resolvedSrc();
+      untracked(() => {
+        const prev = this.loadedSrc;
+        this.heldSrc.set(this.holdPrevious() && src && prev && prev !== src ? prev : undefined);
+        this.imgLoaded.set(false);
+        this.imgError.set(false);
+      });
     });
+  }
+
+  onImgLoad(): void {
+    this.loadedSrc = this.resolvedSrc();
+    this.imgLoaded.set(true);
+    this.heldSrc.set(undefined);
+  }
+
+  onImgError(): void {
+    this.loadedSrc = undefined;
+    this.imgError.set(true);
+    this.heldSrc.set(undefined);
   }
 
   get initialFontSize(): string {
