@@ -2019,9 +2019,14 @@ The owner chose to **remove it from the sheet and keep it in Track info** (the `
 `now-playing-cover-art.component.spec.ts` checks that the sheet renders no `kbps`. The download
 cards, search results and folder browser keep their bitrate and format. There it helps the user
 pick which file to fetch, which is a different question
-([download-pipeline.md](download-pipeline.md#quality-chip--320-kbps--flac--1411-kbps)). Whether
-any listener-facing quality signal is worth showing (codec-aware bands, a recorded source class,
-badges) is a separate review. A "Lossless" or "Hi-Res" badge would be false for a transcoded file.
+([download-pipeline.md](download-pipeline.md#quality-chip--320-kbps--flac--1411-kbps)).
+
+**Still open in #1700** (split from #1661): whether *any* listener-facing quality signal is worth showing. That covers
+codec-aware Opus bands justified from the library's bitrate distribution, a recorded source class
+(which needs provenance captured at acquire time, forward-only, as its own issue), badges, and
+where a signal would sit within the #1654 / #1651 viewport budget. Removing the line reclaimed the
+space; it did not answer that question. A "Lossless" or "Hi-Res" badge would be false for a
+transcoded file, whatever the review decides.
 
 ## The queue-resize notch is a drag target, so it clears 44px
 
