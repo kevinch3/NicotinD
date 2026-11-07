@@ -69,6 +69,13 @@ describe('HomeViewSwitchComponent', () => {
     }
   });
 
+  it('floats semi-opaque with no blur, so it never paints under the open sheet (#1649)', () => {
+    const { el } = setup('mosaic');
+    const classes = [...el.querySelector('[data-testid="home-view-switch"]')!.classList];
+    expect(classes.filter((c) => c.startsWith('backdrop-blur'))).toEqual([]);
+    expect(classes).toContain('bg-theme-surface-2/90');
+  });
+
   it('an icon-only option still clears the 44px floor', () => {
     const { el } = setup('mosaic');
     const cls = el.querySelector('[data-testid="home-view-shelves"]')!.className;

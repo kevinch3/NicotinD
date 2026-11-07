@@ -74,9 +74,10 @@ const NAV_VISIBLE_DELAY_MS = 250;
 
 /** Shared header layout — same pixels everywhere so the brand/title row
  *  doesn't shift between platform states (only the chrome integration
- *  bits change). The display class is prepended by `headerDisplayClass`. */
+ *  bits change). The display class is prepended by `headerDisplayClass`.
+ *  Opaque, never blurred: persistent chrome owns no backdrop-filter (#1649). */
 const HEADER_BASE_CLASSES =
-  'items-center justify-between px-4 md:px-6 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] border-b border-theme bg-theme-base/80 backdrop-blur-sm';
+  'items-center justify-between px-4 md:px-6 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] border-b border-theme bg-theme-base';
 
 /**
  * On the mosaic home the header collapses below `md`: every control in it is

@@ -649,12 +649,23 @@
     opacity 0.12s ease,
     visibility 0s linear 0.12s;
 }
+/* Off while Now Playing covers the field (#1649): a backdrop-filter layer
+   under the sheet is what blurred its top band on iOS (docs/design-patterns.md
+   "Blur and stacking contract"). Gone at once; the component keeps
+   `mosaic-covered` until the sheet has slid away, so the at-rest fade above
+   starts only after the band has left. */
+.mosaic-covered .mosaic-rim {
+  opacity: 0;
+  visibility: hidden;
+  transition: none;
+}
 @media (prefers-reduced-motion: reduce) {
   .mosaic-face,
   .mosaic-veil,
   .mosaic-rim,
   .mosaic-stage-contain.is-moving ~ .mosaic-rim,
-  .mosaic-holding .mosaic-rim {
+  .mosaic-holding .mosaic-rim,
+  .mosaic-covered .mosaic-rim {
     transition: none;
   }
 }
