@@ -1,8 +1,10 @@
 import { TestBed } from '@angular/core/testing';
+import { vi } from 'vitest';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { CoverArtComponent } from './cover-art.component';
+import { CoverArtComponent, COVER_HOLD_FADE_MS } from './cover-art.component';
+import { changeInputValue } from '../../../testing/signal-input';
 import { ServerConfigService } from '../../services/server-config.service';
 import {
   hashCode,
@@ -65,6 +67,116 @@ describe('CoverArtComponent — imgLoaded loading state', () => {
     // After flush, the effect reads resolvedSrc() and resets both flags
     expect(comp.imgLoaded()).toBe(false);
     expect(comp.imgError()).toBe(false);
+  });
+});
+
+// #1653: on a skip the player bar and sheet swap `src` in place; the gradient
+// placeholder painted for the whole fetch and read as a flash between two covers.
+describe('CoverArtComponent — holdPrevious (#1653)', () => {
+  function setup(hold: boolean) {
+    TestBed.configureTestingModule({
+      imports: [CoverArtComponent],
+      providers: [{ provide: ServerConfigService, useValue: { apiUrl: (u: string) => u } }],
+    });
+    const fixture = TestBed.createComponent(CoverArtComponent);
+    const comp = fixture.componentInstance;
+    changeInputValue(comp.holdPrevious, hold);
+    changeInputValue(comp.src, '/api/cover/a');
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    const placeholder = () => el.querySelector('[style*="gradient"]');
+    const held = () => el.querySelector<HTMLImageElement>('[data-testid="cover-art-held"]');
+    const swap = (src: string | undefined) => {
+      changeInputValue(comp.src, src);
+      fixture.detectChanges();
+    };
+    return { fixture, comp, placeholder, held, swap };
+  }
+
+  it('keeps the previous image over the wait — no placeholder between two covers', () => {
+    const { comp, placeholder, held, swap, fixture } = setup(true);
+    comp.onImgLoad();
+    fixture.detectChanges();
+    expect(placeholder()).toBeNull();
+
+    swap('/api/cover/b');
+    expect(placeholder()).toBeNull();
+    expect(held()?.getAttribute('src')).toBe('/api/cover/a');
+
+    vi.useFakeTimers();
+    try {
+      comp.onImgLoad();
+      fixture.detectChanges();
+      // Still held while the new image fades in over it — no dip to the background.
+      expect(held()?.getAttribute('src')).toBe('/api/cover/a');
+      vi.advanceTimersByTime(COVER_HOLD_FADE_MS);
+      fixture.detectChanges();
+      expect(held()).toBeNull();
+      expect(placeholder()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('after a coverless track, the next cover does not resurrect the one from two tracks back', () => {
+    const { comp, placeholder, held, swap } = setup(true);
+    comp.onImgLoad();
+    swap(undefined);
+    swap('/api/cover/c');
+    expect(held()).toBeNull();
+    expect(placeholder()).not.toBeNull();
+  });
+
+  it('skipping back to the cover still on screen holds it instead of flashing the placeholder', () => {
+    const { comp, placeholder, held, swap, fixture } = setup(true);
+    comp.onImgLoad();
+    fixture.detectChanges();
+    swap('/api/cover/b');
+    swap('/api/cover/a');
+    expect(held()?.getAttribute('src')).toBe('/api/cover/a');
+    expect(placeholder()).toBeNull();
+  });
+
+  it('a slow load keeps holding through several skips, showing the last LOADED cover', () => {
+    const { comp, held, swap, fixture } = setup(true);
+    comp.onImgLoad();
+    fixture.detectChanges();
+    swap('/api/cover/b');
+    swap('/api/cover/c');
+    expect(held()?.getAttribute('src')).toBe('/api/cover/a');
+  });
+
+  it('drops the held image and shows the placeholder when the new cover fails', () => {
+    const { comp, placeholder, held, swap, fixture } = setup(true);
+    comp.onImgLoad();
+    swap('/api/cover/b');
+    comp.onImgError();
+    fixture.detectChanges();
+    expect(held()).toBeNull();
+    expect(placeholder()).not.toBeNull();
+  });
+
+  it('a coverless next track shows the placeholder at once', () => {
+    const { comp, placeholder, held, swap } = setup(true);
+    comp.onImgLoad();
+    swap(undefined);
+    expect(held()).toBeNull();
+    expect(placeholder()).not.toBeNull();
+  });
+
+  it('nothing to hold on first paint: the placeholder shows until the first load', () => {
+    const { placeholder, held } = setup(true);
+    expect(held()).toBeNull();
+    expect(placeholder()).not.toBeNull();
+  });
+
+  it('off by default (grid tiles): a src change shows the placeholder while loading', () => {
+    const { comp, placeholder, held, swap, fixture } = setup(false);
+    comp.onImgLoad();
+    fixture.detectChanges();
+    swap('/api/cover/b');
+    expect(held()).toBeNull();
+    expect(placeholder()).not.toBeNull();
   });
 });
 

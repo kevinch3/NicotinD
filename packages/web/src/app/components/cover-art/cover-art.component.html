@@ -9,8 +9,9 @@
   [style.height.px]="fill() ? null : size()"
   [style.flex-shrink]="0"
 >
-  <!-- Gradient placeholder: visible until the image bytes have loaded or on error -->
-  @if (!resolvedSrc() || !imgLoaded() || imgError()) {
+  <!-- Gradient placeholder: visible until the image bytes have loaded or on error,
+       unless a held previous image covers the wait (holdPrevious, #1653) -->
+  @if (showPlaceholder()) {
     <div
       class="absolute inset-0 flex items-center justify-center select-none"
       [style.background]="gradient"
@@ -26,6 +27,17 @@
     </div>
   }
 
+  @if (heldSrc(); as held) {
+    <img
+      [src]="held"
+      alt=""
+      aria-hidden="true"
+      draggable="false"
+      data-testid="cover-art-held"
+      class="absolute inset-0 w-full h-full object-cover"
+    />
+  }
+
   <!-- Image: rendered immediately so the browser can start the request, but
        kept invisible (opacity-0) until the (load) event fires, then fades in. -->
   @if (resolvedSrc() && !imgError()) {
@@ -37,8 +49,8 @@
       draggable="false"
       class="absolute inset-0 w-full h-full object-cover transition-opacity duration-300"
       [class.opacity-0]="!imgLoaded()"
-      (load)="imgLoaded.set(true)"
-      (error)="imgError.set(true)"
+      (load)="onImgLoad()"
+      (error)="onImgError()"
     />
   }
 </div>

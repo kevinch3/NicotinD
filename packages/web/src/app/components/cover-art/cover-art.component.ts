@@ -1,4 +1,13 @@
-import { Component, input, signal, computed, effect, inject } from '@angular/core';
+import {
+  Component,
+  DestroyRef,
+  input,
+  signal,
+  computed,
+  effect,
+  inject,
+  untracked,
+} from '@angular/core';
 import { ServerConfigService } from '../../services/server-config.service';
 
 export function hashCode(str: string): number {
@@ -37,6 +46,9 @@ export function placeholderFontSize(size: number | undefined, fill: boolean): st
  * `eager`. Pure so it's unit-testable without driving the `input()` (the JIT
  * vitest harness can't set signal inputs).
  */
+/** How long the held image outlives the new one's load: its `duration-300` fade-in, plus a frame. */
+export const COVER_HOLD_FADE_MS = 320;
+
 export function coverLoadingAttr(eager: boolean): 'eager' | 'lazy' {
   return eager ? 'eager' : 'lazy';
 }
@@ -69,17 +81,71 @@ export class CoverArtComponent {
   readonly eager = input(false);
   readonly loadingAttr = computed<'eager' | 'lazy'>(() => coverLoadingAttr(this.eager()));
 
+  /**
+   * Keep the last loaded image on screen while a new `src` loads, then fade the
+   * new one in over it (#1653). For a cover whose src changes in place — the
+   * player bar and the Now Playing sheet on a skip — where the gradient
+   * placeholder in between read as a flash. Off by default: a grid tile's
+   * placeholder-until-loaded is the intended look there.
+   */
+  readonly holdPrevious = input(false);
+
   readonly imgError = signal(false);
   readonly imgLoaded = signal(false);
+  /** The previous image, shown under the loading one; cleared once it lands or fails. */
+  readonly heldSrc = signal<string | undefined>(undefined);
+  private loadedSrc: string | undefined;
+
+  readonly showPlaceholder = computed(
+    () => !this.resolvedSrc() || this.imgError() || (!this.imgLoaded() && !this.heldSrc()),
+  );
 
   constructor() {
     // Reset loading/error state when the resolved src changes so the gradient
-    // placeholder re-appears while new image bytes are in flight.
+    // placeholder re-appears while new image bytes are in flight — unless the
+    // previous image is held over it.
     effect(() => {
-      this.resolvedSrc();
-      this.imgLoaded.set(false);
-      this.imgError.set(false);
+      const src = this.resolvedSrc();
+      untracked(() => {
+        // A coverless track shows the placeholder, so there is nothing on screen
+        // to hold for the one after it.
+        if (!src) this.loadedSrc = undefined;
+        const prev = this.loadedSrc;
+        this.clearHoldTimer();
+        this.heldSrc.set(this.holdPrevious() && src && prev ? prev : undefined);
+        this.imgLoaded.set(false);
+        this.imgError.set(false);
+      });
     });
+    inject(DestroyRef).onDestroy(() => this.clearHoldTimer());
+  }
+
+  private holdTimer: ReturnType<typeof setTimeout> | undefined;
+
+  private clearHoldTimer(): void {
+    if (this.holdTimer !== undefined) clearTimeout(this.holdTimer);
+    this.holdTimer = undefined;
+  }
+
+  onImgLoad(): void {
+    this.loadedSrc = this.resolvedSrc();
+    this.imgLoaded.set(true);
+    // The new image fades in over the held one; dropping the held image now
+    // would show the background through the fade.
+    if (this.heldSrc()) {
+      this.clearHoldTimer();
+      this.holdTimer = setTimeout(() => {
+        this.holdTimer = undefined;
+        this.heldSrc.set(undefined);
+      }, COVER_HOLD_FADE_MS);
+    }
+  }
+
+  onImgError(): void {
+    this.loadedSrc = undefined;
+    this.clearHoldTimer();
+    this.imgError.set(true);
+    this.heldSrc.set(undefined);
   }
 
   get initialFontSize(): string {
