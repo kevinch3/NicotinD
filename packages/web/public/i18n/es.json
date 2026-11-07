@@ -1160,7 +1160,7 @@
   "settings.haptics.full": "Completa",
   "settings.haptics.off": "Desactivada",
   "settings.haptics.reduced": "Reducida",
-  "settings.hapticsHint": "Reducida vibra solo al mantener pulsado, al completar un deslizamiento y ante un error. Completa añade toques, cambios de pestaña, me gusta y confirmaciones.",
+  "settings.hapticsHint": "Reducida vibra solo al mantener pulsado, al completar un deslizamiento y ante un error. Completa añade toques, cambios de pestaña, me gusta, guardados sin conexión y confirmaciones.",
   "settings.hapticsTitle": "Respuesta háptica",
   "settings.removeAutoSavedOne": "¿Quitar {count} canción auto-guardada del almacenamiento sin conexión?",
   "settings.removeAutoSavedOther": "¿Quitar {count} canciones auto-guardadas del almacenamiento sin conexión?",

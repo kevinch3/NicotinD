@@ -48,6 +48,7 @@ export class LikeService {
       void this.playlists.refresh();
     } catch {
       this.setLocal(songId, wasLiked);
+      haptic('error');
     }
   }
 

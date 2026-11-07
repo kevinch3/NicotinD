@@ -225,6 +225,18 @@ describe('PreserveService', () => {
       await svc.preserveCollection('offline', 'Offline', [track('f')]);
       expect(vi.mocked(haptic).mock.calls).toEqual([['error']]);
     });
+
+    it('a collection with one failed track among saved ones ticks `warning`, not `error`', async () => {
+      const ok = mockFetch();
+      let calls = 0;
+      globalThis.fetch = vi.fn(async (...args: Parameters<typeof fetch>) => {
+        if (++calls === 2) throw new TypeError('Failed to fetch');
+        return ok(...args);
+      }) as unknown as typeof fetch;
+      await svc.preserveCollection('mostly', 'Mostly', [track('a'), track('b'), track('c')]);
+      expect(svc.preservedIds().size).toBe(2);
+      expect(vi.mocked(haptic).mock.calls).toEqual([['warning']]);
+    });
   });
 
   describe('store-time truncation gate', () => {

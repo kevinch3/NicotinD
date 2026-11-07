@@ -31,6 +31,14 @@ describe('ConfirmService', () => {
     expect(haptic).toHaveBeenCalledTimes(1);
   });
 
+  it('a non-destructive ask() opens silently, and keeps `destructive` off the request (#1659)', () => {
+    vi.mocked(haptic).mockClear();
+    void svc.ask('Download 5 files?', { confirmLabel: 'Download', destructive: false });
+    expect(haptic).not.toHaveBeenCalled();
+    expect(svc.request()).toEqual({ message: 'Download 5 files?', confirmLabel: 'Download' });
+    svc.resolve(false);
+  });
+
   it('ask() resolves false on cancel', async () => {
     const p = svc.ask('Delete this?');
     svc.resolve(false);

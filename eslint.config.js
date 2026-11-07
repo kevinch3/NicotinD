@@ -5,7 +5,8 @@ import nicotind from './scripts/eslint-rules/index.js';
 /**
  * Held to the recommended rules. `packages/web` is not: that needs
  * `@angular-eslint` (docs/quality-gates.md). It IS parsed, for the
- * `nicotind/*` code-shape rules below, which need no Angular awareness.
+ * `nicotind/*` code-shape rules and the haptics door below, which need no
+ * Angular awareness.
  */
 const RECOMMENDED = ['packages/*/src/**/*.ts', 'src/**/*.ts', 'scripts/**/*.{ts,js}'];
 

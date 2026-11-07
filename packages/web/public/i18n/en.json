@@ -1160,7 +1160,7 @@
   "settings.haptics.full": "Full",
   "settings.haptics.off": "Off",
   "settings.haptics.reduced": "Reduced",
-  "settings.hapticsHint": "Reduced ticks only for a hold, a committed swipe and an error. Full adds taps, tab switches, likes and confirmations.",
+  "settings.hapticsHint": "Reduced ticks only for a hold, a committed swipe and an error. Full adds taps, tab switches, likes, offline saves and confirmations.",
   "settings.hapticsTitle": "Haptic feedback",
   "settings.removeAutoSavedOne": "Remove {count} auto-saved track from offline storage?",
   "settings.removeAutoSavedOther": "Remove {count} auto-saved tracks from offline storage?",

@@ -288,10 +288,10 @@ into a plugin call and a `navigator.vibrate` pattern. Retuning a feel is a one-l
 | `tap` | impact `LIGHT` | `10` | transport prev/play/next (mini bar, sheet, karaoke), unlike, seek-bar release, waveform tap, a queue drop |
 | `select` | `selectionStart` → `selectionChanged` → `selectionEnd` | `5` | bottom-nav tab change, Queue/Lyrics tab switch, a lyrics sync nudge |
 | `hold` | impact `MEDIUM` | `25` | the hold that opens a menu (`EntityActionsDirective`, the mosaic), a queue-row lift |
-| `commit` | impact `LIGHT` | `15` | swipe-to-skip, sheet open/dismiss snap, queue swipe-remove |
+| `commit` | impact `LIGHT` | `15` | swipe-to-skip, sheet open/dismiss snap, queue swipe-remove, a Settings level press (sample) |
 | `success` | notification `SUCCESS` | `10,60,10` | like, a track or collection saved offline |
-| `warning` | notification `WARNING` | `25,80,25` | a `ConfirmService.ask()` dialog opening, a collection save stopped at the storage cap |
-| `error` | notification `ERROR` | `40,60,40,60,40` | a save offline that failed |
+| `warning` | notification `WARNING` | `25,80,25` | a destructive `ConfirmService.ask()` opening (`destructive: false` opts out, as Download all does), a collection save stopped at the cap or short of its total |
+| `error` | notification `ERROR` | `40,60,40,60,40` | a save offline that stored nothing, a like/unlike the server rejected |
 
 `select` is a whole start/changed/end triple because both platforms tick `selectionChanged` only inside
 a selection. `hapticTick()` survives as an alias of `commit`. Templates reach the table through
@@ -308,8 +308,9 @@ skips or a burst of nudges never buzz continuously. Everything is fire-and-forge
 
 **Where it does nothing.** Electron and TV (`isTvUi()`, no touch) are no-ops; iOS Safari and an iOS
 home-screen PWA have no vibration API, so they are silent; desktop browsers are skipped by the
-coarse-pointer test. Android Chrome/PWA vibrates the table's web column (Chrome may ignore a vibration
-without a recent user gesture, which only matters for the offline-save outcomes). Auto-preserve is
+coarse-pointer test. Android Chrome/PWA vibrates the table's web column, but Chrome drops a vibration until the page has
+had its first tap (sticky activation) — and a touch `pointerdown` grants none, so the one wired case it
+hits is a hold that is the very first touch after load. Native shells are unaffected. Auto-preserve is
 background work and never ticks. Out of scope: scrolling, hover, anything per frame.
 
 **What still needs a device.** The feel of every row of the table on Android and iOS (tune

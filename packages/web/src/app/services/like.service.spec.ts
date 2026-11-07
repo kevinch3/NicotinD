@@ -70,6 +70,18 @@ describe('LikeService', () => {
     expect(vi.mocked(haptic).mock.calls).toEqual([['success'], ['tap']]);
   });
 
+  it('a like the server rejects ticks `error` after the optimistic `success` (#1659)', async () => {
+    vi.mocked(haptic).mockClear();
+    const svc = setup({
+      getLikedIds: () => of({ ids: [] }),
+      likeSong: () => throwError(() => new Error('offline')),
+    } as never);
+    await svc.refresh();
+    await svc.toggle('s1');
+    expect(svc.isLiked('s1')).toBe(false);
+    expect(vi.mocked(haptic).mock.calls).toEqual([['success'], ['error']]);
+  });
+
   it('reset() clears state', async () => {
     const svc = setup({ getLikedIds: () => of({ ids: ['s1'] }) } as never);
     await svc.refresh();

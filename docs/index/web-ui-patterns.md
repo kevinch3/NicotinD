@@ -94,7 +94,7 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   → [web-ui.md](../web-ui.md)
 - **Swipe to skip**: `createHorizontalSwipe` on the full Now Playing sheet (not the mini bar), arbitrated
   against the vertical swipe by `dominantAxis` and a per-pointer claim; `skipDirection` commits,
-  `hapticTick` ticks. → [web-ui.md](../web-ui.md)
+  `haptic('commit')` ticks. → [web-ui.md](../web-ui.md)
 - **Haptic vocabulary**: call sites name an event (`haptic('tap' | 'hold' | 'commit' | …)`), one
   `HAPTIC_MAP` turns it into a plugin call or `navigator.vibrate`; `hapticEnabled` gates on the
   per-device Off/Reduced/Full level, `HapticDirective` is the template door, lint bans other doors.

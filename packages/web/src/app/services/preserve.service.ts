@@ -344,8 +344,14 @@ export class PreserveService {
     } finally {
       await this.refreshList();
       const final = this.batches().get(key);
+      // Only a batch that stored nothing failed; one that fell short stopped, like the cap.
+      const done = final?.done ?? 0;
       haptic(
-        final?.stoppedAtCap ? 'warning' : final && final.done >= final.total ? 'success' : 'error',
+        final?.stoppedAtCap || (final && done > 0 && done < final.total)
+          ? 'warning'
+          : done > 0
+            ? 'success'
+            : 'error',
       );
       // Keep the final state visible when we hit the cap (drives the "limit reached"
       // notice); otherwise clear so the button returns to its resting state.
