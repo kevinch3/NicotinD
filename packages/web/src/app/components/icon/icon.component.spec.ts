@@ -24,6 +24,8 @@ describe('isFilledIcon', () => {
       'wrench',
       'database',
       'mic',
+      'layout-grid',
+      'rows-3',
     ] as const) {
       expect(isFilledIcon(name)).toBe(false);
     }
@@ -71,7 +73,7 @@ describe('IconComponent', () => {
     }
   });
 
-  it('renders every library tab and toolbar glyph as a stroked outline', () => {
+  it('renders every library tab, home switch and toolbar glyph as a stroked outline', () => {
     const names = [
       'search',
       'sort',
@@ -84,6 +86,8 @@ describe('IconComponent', () => {
       'mic-vocal',
       'list-music',
       'chart',
+      'layout-grid',
+      'rows-3',
     ] as const;
     for (const name of names) {
       const fixture = TestBed.createComponent(IconComponent);

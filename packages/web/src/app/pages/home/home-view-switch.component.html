@@ -1,3 +1,5 @@
+<!-- Library-tab pattern: an inactive label stays in the DOM as sr-only so the
+     radio keeps its accessible name (docs/web-ui.md). -->
 <div
   role="radiogroup"
   data-testid="home-view-switch"
@@ -5,18 +7,22 @@
   class="inline-flex gap-1 p-1 bg-theme-surface-2/90 backdrop-blur-sm rounded-xl shadow-sm"
 >
   @for (option of options; track option) {
+    @let active = view() === option;
     <button
       type="button"
       role="radio"
       [attr.data-testid]="'home-view-' + option"
-      [attr.aria-checked]="view() === option"
+      [attr.aria-checked]="active"
+      [title]="labelKey(option) | t"
       (click)="pick(option)"
-      class="min-h-11 px-4 text-sm rounded-lg transition-colors"
-      [class.bg-theme-surface]="view() === option"
-      [class.text-theme-primary]="view() === option"
-      [class.text-theme-muted]="view() !== option"
+      class="flex items-center justify-center gap-1.5 min-h-11 min-w-11 rounded-lg text-sm transition-colors"
+      [class.px-3]="active"
+      [class.bg-theme-surface]="active"
+      [class.text-theme-primary]="active"
+      [class.text-theme-muted]="!active"
     >
-      {{ labelKey(option) | t }}
+      <app-icon [name]="iconOf(option)" [size]="18" class="flex shrink-0" />
+      <span data-testid="home-view-label" [class.sr-only]="!active">{{ labelKey(option) | t }}</span>
     </button>
   }
 </div>

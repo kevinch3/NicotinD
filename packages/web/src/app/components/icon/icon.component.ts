@@ -47,7 +47,9 @@ export type IconName =
   | 'layers'
   | 'mic-vocal'
   | 'list-music'
-  | 'chart';
+  | 'chart'
+  | 'layout-grid'
+  | 'rows-3';
 
 /** Play is the only filled glyph; the rest are stroked outlines. DI-free so the
  *  branch is unit-testable (the JIT harness can't drive the `name` input). */
