@@ -4,6 +4,7 @@ import {
   describeLibraryFilter,
   strategyForVariety,
   varietyForStrategy,
+  type StrategyId,
   type Variety,
 } from '@nicotind/core';
 import { firstValueFrom } from 'rxjs';
@@ -16,11 +17,15 @@ import { TvNavGroupDirective } from '../../../directives/tv-nav-group.directive'
 import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 import type { FeedbackKind } from '../../../services/api/api-types';
 
-/** The vote a position logs against the playing track (docs/radio.md "Variety chip"). */
-const KIND_FOR_VARIETY: Record<Variety, FeedbackKind> = {
-  'too-similar': 'too_similar',
+/**
+ * The vote a move logs against the playing track, keyed by the strategy it
+ * moves to: moving farther says the radio was too close. Unchanged on the wire
+ * since before the dial (docs/radio.md "Variety chip").
+ */
+const KIND_FOR_STRATEGY: Record<StrategyId, FeedbackKind> = {
+  different: 'too_similar',
   balanced: 'balanced',
-  'too-different': 'too_different',
+  similar: 'too_different',
 };
 
 /**
@@ -29,8 +34,10 @@ const KIND_FOR_VARIETY: Record<Variety, FeedbackKind> = {
  * says what the radio is playing from and offers the three-position variety
  * control. A move steers now (PlayerService swaps the radio-appended queue
  * tail) and is logged as a vote against the playing track, then remembered as
- * this user's default. Labels are complaints, strategies are remedies — the
- * mapping lives in one core function so it cannot ship inverted.
+ * this user's default. The control is a Close · Medium · Far dial whose
+ * mapping to strategies lives in one core function; the provenance footer
+ * reuses the segment's label keys, so both speak one vocabulary (#1660). The
+ * footer describes the last generated queue, so it can lag a fresh move.
  */
 @Component({
   selector: 'app-radio-chip',
@@ -76,13 +83,13 @@ export class RadioChipComponent {
    */
   readonly provenance = this.library.radioProvenance;
 
-  /** `v8 · balanced · learned genre` — one line, already translated. */
+  /** `formula v9 · Medium · genre by sound` — one line, already translated. */
   readonly provenanceLabel = computed(() => {
     const p = this.provenance();
     if (!p) return '';
     return [
       this.i18n.t('nowPlaying.radioFormula', { version: String(p.formulaVersion) }),
-      this.i18n.t(`nowPlaying.radioStrategy.${p.strategy}`),
+      this.i18n.t(this.labelKey(varietyForStrategy(p.strategy))),
       this.i18n.t(`nowPlaying.radioAxis.${p.genreAxis}`),
     ].join(' · ');
   });
@@ -97,12 +104,12 @@ export class RadioChipComponent {
 
   labelKey(v: Variety): string {
     switch (v) {
-      case 'too-similar':
-        return 'nowPlaying.varietyTooSimilar';
-      case 'too-different':
-        return 'nowPlaying.varietyTooDifferent';
+      case 'close':
+        return 'nowPlaying.varietyClose';
+      case 'far':
+        return 'nowPlaying.varietyFar';
       default:
-        return 'nowPlaying.varietyBalanced';
+        return 'nowPlaying.varietyMedium';
     }
   }
 
@@ -118,7 +125,7 @@ export class RadioChipComponent {
       const filter = this.player.radioFilter();
       const anchor = filter ? null : this.player.radioAnchor();
       void firstValueFrom(
-        this.api.feedback(track.id, KIND_FOR_VARIETY[v], {
+        this.api.feedback(track.id, KIND_FOR_STRATEGY[to], {
           strategyFrom: from,
           strategyTo: to,
           seedId: anchor?.kind === 'song' ? anchor.id : undefined,

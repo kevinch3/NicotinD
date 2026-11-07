@@ -7,11 +7,13 @@ import {
   varietyForStrategy,
 } from './radio-strategy.js';
 
-describe('strategyForVariety — the complaint → remedy inversion', () => {
-  it('"too similar" asks for different, "too different" asks for similar', () => {
-    expect(strategyForVariety('too-similar')).toBe('different');
-    expect(strategyForVariety('too-different')).toBe('similar');
-    expect(strategyForVariety('balanced')).toBe('balanced');
+describe('strategyForVariety — the Close · Medium · Far dial (#1660)', () => {
+  it('the dial is monotone: left to right is closer to farther, in STRATEGY_IDS order', () => {
+    expect(VARIETIES.map(strategyForVariety)).toEqual(['similar', 'balanced', 'different']);
+    expect(VARIETIES.map(strategyForVariety)).toEqual([...STRATEGY_IDS]);
+    expect(strategyForVariety('close')).toBe('similar');
+    expect(strategyForVariety('medium')).toBe('balanced');
+    expect(strategyForVariety('far')).toBe('different');
   });
 
   it('round-trips through varietyForStrategy for every position', () => {

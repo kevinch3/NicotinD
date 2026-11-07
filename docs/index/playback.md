@@ -7,8 +7,8 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   Get once its job lands — one toast, enqueued once; a per-user opt-out. `GetThenHearService`,
   `modeForFileCount`, `getJobSongs`, `queueAcquired`. → [get-then-hear.md](../get-then-hear.md)
 - **Recommendation strategies**: named recipes (weights, artist cap, pool mix, out-of-genre quota)
-  chosen by `?strategy=` and stamped on poll scenarios; the Now Playing chip's variety control maps
-  complaints to remedies in one core function. `STRATEGIES`, `resolveStrategy`,
+  chosen by `?strategy=` and stamped on poll scenarios; the Now Playing chip's Close·Medium·Far dial
+  maps to strategies in one core function. `STRATEGIES`, `resolveStrategy`,
   `strategyForVariety`, `radio-variety`. → [radio.md](../radio.md)
 - **Radio provenance**: the queue reports the formula version, the genre axis that actually ran
   (`learned` only when a centroid covered it; `station` for a filter radio) and the strategy, behind
