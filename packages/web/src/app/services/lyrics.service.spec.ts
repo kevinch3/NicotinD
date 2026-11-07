@@ -26,6 +26,10 @@ function setup() {
     setLyricsOffset: vi.fn<(id: string, offsetMs: number) => Observable<LyricsDto>>((_id, ms) =>
       of(dto({ offsetMs: ms })),
     ),
+    saveLyrics: vi.fn<(id: string, plain: string) => Observable<LyricsDto>>((_id, plain) =>
+      of(dto({ plain, source: 'user', customized: true })),
+    ),
+    deleteLyrics: vi.fn<(id: string) => Observable<{ ok: boolean }>>(() => of({ ok: true })),
   };
   TestBed.configureTestingModule({ providers: [{ provide: LibraryApiService, useValue: api }] });
   return { api, lyrics: TestBed.inject(LyricsService) };
@@ -363,5 +367,97 @@ describe('LyricsService keyed entries (#1666)', () => {
     release();
     for (let i = 0; i < LYRICS_CACHE_SIZE + 5; i++) lyrics.ensureEntry(`more${i}`)();
     expect(lyrics.lyricsFor('in-sheet')).toBeNull();
+  });
+});
+
+/** #1666 review: a read sent while a write is in flight was sent before the
+ *  write was stored, so it answers the old row. It must not supersede the
+ *  write, whose answer is the newer one. */
+describe('LyricsService a read never overrides a write in flight (#1666)', () => {
+  it('a Fetch lyrics from the player, then the Track-info sheet opens: the fetch lands', () => {
+    const { api, lyrics } = setup();
+    lyrics.ensureLoaded('s1'); // clean miss
+    const fetch = new Subject<LyricsDto | null>();
+    api.fetchLyrics.mockReturnValue(fetch);
+    const read = new Subject<LyricsDto | null>();
+    api.getLyrics.mockReturnValue(read);
+
+    lyrics.fetchManually('s1'); // the source POST takes seconds…
+    lyrics.ensureEntry('s1'); // …and the sheet opens for the same song
+    fetch.next(dto({ plain: 'found' }));
+    fetch.complete();
+    read.next(null);
+    read.complete();
+
+    expect(lyrics.plain()).toBe('found');
+    expect(lyrics.lyricsFor('s1')?.plain).toBe('found');
+    expect(lyrics.fetching()).toBe(false);
+  });
+
+  it('a Reset, then the track comes back: the deleted words stay gone', () => {
+    const { api, lyrics } = setup();
+    api.getLyrics.mockImplementation((id) => of(dto({ plain: `words of ${id}` })));
+    lyrics.ensureLoaded('x');
+    lyrics.ensureLoaded('y');
+    const del = new Subject<{ ok: boolean }>();
+    api.deleteLyrics.mockReturnValue(del);
+    const reread = new Subject<LyricsDto | null>();
+    api.getLyrics.mockReturnValue(reread);
+
+    lyrics.remove('x').subscribe();
+    lyrics.ensureLoaded('x');
+    del.next({ ok: true });
+    del.complete();
+    reread.next(dto({ plain: 'words of x' }));
+    reread.complete();
+
+    expect(lyrics.lyricsFor('x')).toBeNull();
+    expect(lyrics.plain()).toBe('');
+  });
+
+  it('an Edit, then that song becomes the current track with no row yet: the edit lands', () => {
+    const { api, lyrics } = setup();
+    const saved = new Subject<LyricsDto>();
+    api.saveLyrics.mockReturnValue(saved);
+
+    lyrics.save('n', 'typed by hand').subscribe();
+    lyrics.ensureLoaded('n');
+    saved.next(dto({ plain: 'typed by hand' }));
+    saved.complete();
+
+    expect(lyrics.plain()).toBe('typed by hand');
+    expect(api.fetchLyrics).not.toHaveBeenCalled();
+  });
+
+  it('a write in flight is not shown as a first load', () => {
+    const { api, lyrics } = setup();
+    api.fetchLyrics.mockReturnValue(new Subject());
+
+    lyrics.fetchManually('s1');
+
+    expect(lyrics.fetching()).toBe(true);
+    expect(lyrics.loading()).toBe(false);
+  });
+
+  it('a write that fails frees the entry, so the next read runs', () => {
+    const { api, lyrics } = setup();
+    api.saveLyrics.mockReturnValue(throwError(() => new Error('500')));
+    lyrics.save('s1', 'x').subscribe({ error: () => undefined });
+    api.getLyrics.mockReturnValue(of(dto({ plain: 'stored' })));
+
+    lyrics.ensureEntry('s1');
+
+    expect(lyrics.lyricsFor('s1')?.plain).toBe('stored');
+  });
+
+  it('a write abandoned before it answers frees the entry, so the next read runs', () => {
+    const { api, lyrics } = setup();
+    api.saveLyrics.mockReturnValue(new Subject());
+    lyrics.save('s1', 'x').subscribe().unsubscribe();
+    api.getLyrics.mockReturnValue(of(dto({ plain: 'stored' })));
+
+    lyrics.ensureEntry('s1');
+
+    expect(lyrics.lyricsFor('s1')?.plain).toBe('stored');
   });
 });

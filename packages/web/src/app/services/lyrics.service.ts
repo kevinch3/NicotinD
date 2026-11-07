@@ -1,5 +1,5 @@
 import { Injectable, computed, inject, signal, untracked } from '@angular/core';
-import { tap, type Observable } from 'rxjs';
+import { finalize, tap, type Observable } from 'rxjs';
 import type { LyricsDto } from '@nicotind/core';
 import { parseLrc, findActiveLine, applyLyricsOffset, LYRICS_OFFSET_MAX_MS } from '@nicotind/core';
 import { LibraryApiService } from './api/library-api.service';
@@ -8,9 +8,11 @@ import { LibraryApiService } from './api/library-api.service';
 interface LyricsEntry {
   /** The stored row; null when the library holds none (yet). */
   dto: LyricsDto | null;
-  /** The request whose answer this entry is waiting for: a plain read, or a
-   *  read that falls back to the sources on a miss. */
-  inFlight: 'read' | 'full' | null;
+  /** The request whose answer this entry is waiting for: a plain read, a
+   *  read that falls back to the sources on a miss, or a write (fetch, save,
+   *  delete). No read starts while a write is pending: it would answer the
+   *  row from before the write and supersede the write's newer answer. */
+  inFlight: 'read' | 'full' | 'write' | null;
   /** A source *failed* (vs a confident no-match) — offer a retry. */
   error: boolean;
   /** A manual (button-triggered) fetch is in flight. */
@@ -70,7 +72,7 @@ export class LyricsService {
   /** True only for a first load; a refresh keeps the old words on screen. */
   readonly loading = computed(() => {
     const e = this.current();
-    return !!e && e.inFlight !== null && e.dto === null;
+    return !!e && (e.inFlight === 'read' || e.inFlight === 'full') && e.dto === null;
   });
   readonly error = computed(() => this.current()?.error ?? false);
   readonly fetching = computed(() => this.current()?.fetching ?? false);
@@ -128,7 +130,7 @@ export class LyricsService {
     const wasCurrent = this.currentId() === id;
     this.currentId.set(id);
     const e = this.entries().get(id);
-    if (e?.inFlight === 'full' || e?.fetching) return;
+    if (e?.inFlight === 'full' || e?.inFlight === 'write' || e?.fetching) return;
     if (e?.dto) {
       if (!wasCurrent && !e.inFlight) this.read(id);
       return;
@@ -239,10 +241,22 @@ export class LyricsService {
    * row (`fetchSongLyrics`), so a null never clears words already held.
    */
   fetchFor(id: string, force: boolean): Observable<LyricsDto | null> {
-    const token = this.begin(id, {});
-    return this.api
-      .fetchLyrics(id, force)
-      .pipe(tap((l) => this.settle(id, token, l ? { dto: l, error: false } : {})));
+    const token = this.begin(id, { inFlight: 'write' });
+    return this.written(
+      id,
+      token,
+      this.api
+        .fetchLyrics(id, force)
+        .pipe(
+          tap((l) =>
+            this.settle(
+              id,
+              token,
+              l ? { dto: l, error: false, inFlight: null } : { inFlight: null },
+            ),
+          ),
+        ),
+    );
   }
 
   /**
@@ -251,18 +265,38 @@ export class LyricsService {
    * entry follows what the server answered.
    */
   save(id: string, plain: string): Observable<LyricsDto> {
-    const token = this.begin(id, {});
-    return this.api
-      .saveLyrics(id, plain)
-      .pipe(tap((l) => this.settle(id, token, { dto: l, inFlight: null })));
+    const token = this.begin(id, { inFlight: 'write' });
+    return this.written(
+      id,
+      token,
+      this.api
+        .saveLyrics(id, plain)
+        .pipe(tap((l) => this.settle(id, token, { dto: l, inFlight: null }))),
+    );
   }
 
   /** Drop `id`'s stored lyrics. */
   remove(id: string): Observable<{ ok: boolean }> {
-    const token = this.begin(id, {});
-    return this.api
-      .deleteLyrics(id)
-      .pipe(tap(() => this.settle(id, token, { dto: null, inFlight: null })));
+    const token = this.begin(id, { inFlight: 'write' });
+    return this.written(
+      id,
+      token,
+      this.api
+        .deleteLyrics(id)
+        .pipe(tap(() => this.settle(id, token, { dto: null, inFlight: null }))),
+    );
+  }
+
+  /** A write that fails or is abandoned unanswered still frees the entry, or
+   *  no read for `id` would ever start again. */
+  private written<T>(id: string, token: number, write: Observable<T>): Observable<T> {
+    return write.pipe(
+      finalize(() => {
+        if (this.isLatest(id, token) && this.entries().get(id)?.inFlight === 'write') {
+          this.patch(id, { inFlight: null });
+        }
+      }),
+    );
   }
 
   /** Start a request for `id`: mint its token and apply the pending state. A

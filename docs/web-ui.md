@@ -306,7 +306,11 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
     the release the sheet calls on destroy) and `lyricsFor(id)`, and writes through `fetchFor` /
     `save` / `remove`. Every request carries a **per-id token**: an answer for a superseded request
     is dropped, and a slow answer for the previous track lands in that track's entry, never on the
-    current one. A re-read is **stale-while-revalidate** — `loading` is true only for a first load,
+    current one. **No read starts while a write for that id is in flight** (`inFlight: 'write'`):
+    the read would answer the row from before the write and, holding the newer token, drop the
+    write's answer — a sheet opened mid-Fetch would blank found lyrics, and a track coming back
+    mid-Reset would restore the deleted words. A write that fails or is abandoned still frees the
+    entry. A re-read is **stale-while-revalidate** — `loading` is true only for a first load,
     so karaoke never blanks mid-song on a refresh. A miss is not cached (the player asking again
     retries the sources, as before). A **forced Re-fetch that finds nothing** answers null while the
     server keeps the row (`fetchSongLyrics`), so the entry keeps its words and the sheet shows

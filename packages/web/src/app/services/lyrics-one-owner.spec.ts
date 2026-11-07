@@ -4,7 +4,7 @@ import { provideRouter } from '@angular/router';
 import { of } from 'rxjs';
 import { vi } from 'vitest';
 import type { LyricsDto } from '@nicotind/core';
-import { LyricsService } from './lyrics.service';
+import { LYRICS_CACHE_SIZE, LyricsService } from './lyrics.service';
 import { LibraryApiService } from './api/library-api.service';
 import { AuthService } from './auth.service';
 import { LikeService } from './like.service';
@@ -15,9 +15,10 @@ import { ConfirmService } from './confirm.service';
 import { TrackInfoSheetComponent } from '../components/track-info-sheet/track-info-sheet.component';
 
 /**
- * #1666 Shape B: the lyrics of one song are owned twice — by `LyricsService`
- * (Now Playing panel, phone karaoke, TV karaoke) and by the Track-info sheet's
- * own `lyrics` signal — and neither hears the other's writes.
+ * #1666 Shape B: the lyrics of one song used to be owned twice — by
+ * `LyricsService` (Now Playing panel, phone karaoke, TV karaoke) and by the
+ * Track-info sheet's own `lyrics` signal — and neither heard the other's
+ * writes. The sheet now reads and writes through `LyricsService`.
  *
  * The API double is a stateful fake server, not a per-call stub: every write
  * lands in `rows` and every read serves from it, so a fix that writes through
@@ -102,7 +103,6 @@ function setup() {
     sheet.ngOnInit();
     return { fixture, sheet };
   };
-  /** Open the Track-info sheet for `id` (as TrackInfoHost does) and run its on-open loads. */
   const openSheet = (id: string) => mountSheet(id).sheet;
   return {
     api,
@@ -116,7 +116,7 @@ function setup() {
 }
 
 describe('lyrics have one owner (#1666 Shape B)', () => {
-  it('control: changing track and coming back is today the only thing that refreshes the player copy', () => {
+  it('control: a track change and back refreshes the player copy', () => {
     const { rows, svc, openSheet, setSourceAnswer } = setup();
     rows.set('s1', dto('old words'));
     svc.ensureLoaded('s1');
@@ -261,6 +261,34 @@ describe('lyrics have one owner (#1666 Shape B)', () => {
 
     const el = fixture.nativeElement as HTMLElement;
     expect(el.querySelector('[data-testid="lyrics-no-new-found"]')).toBeNull();
+  });
+
+  describe('a closed sheet releases its eviction guard', () => {
+    function browsePastTheCache(svc: LyricsService) {
+      for (let i = 0; i < LYRICS_CACHE_SIZE + 5; i++) svc.ensureEntry(`browse${i}`)();
+    }
+
+    it('closing the sheet lets its song be evicted like any other', () => {
+      const { rows, svc, mountSheet } = setup();
+      rows.set('x', dto('words of x'));
+      const { fixture } = mountSheet('x');
+      expect(svc.lyricsFor('x')?.plain).toBe('words of x');
+
+      fixture.destroy();
+      browsePastTheCache(svc);
+
+      expect(svc.lyricsFor('x')).toBeNull();
+    });
+
+    it('control: a sheet still open keeps its song in the store', () => {
+      const { rows, svc, mountSheet } = setup();
+      rows.set('x', dto('words of x'));
+      mountSheet('x');
+
+      browsePastTheCache(svc);
+
+      expect(svc.lyricsFor('x')?.plain).toBe('words of x');
+    });
   });
 
   describe('an Edit of timed lyrics asks first, because saving removes the sync', () => {
