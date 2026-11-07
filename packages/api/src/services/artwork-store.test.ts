@@ -13,6 +13,7 @@ import {
   canonicalCacheKey,
   purgeCanonicalCache,
   purgeDiskArtCache,
+  deleteArtwork,
 } from './artwork-store.js';
 import { diskArtCacheKey } from './disk-art-cache.js';
 
@@ -82,6 +83,47 @@ describe('setArtwork', () => {
     setArtwork(db, 'alb-1', 'album', 'https://x/same.jpg', cacheDir);
     expect(existsSync(cachedFile)).toBe(true);
     rmSync(cacheDir, { recursive: true, force: true });
+  });
+});
+
+describe('cover_rev from the canonical writers (#1666)', () => {
+  const rev = (table: string, id: string): number =>
+    db
+      .query<{ cover_rev: number }, [string]>(`SELECT cover_rev FROM ${table} WHERE id = ?`)
+      .get(id)!.cover_rev;
+
+  beforeEach(() => {
+    db.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, synced_at)
+       VALUES ('alb-1', 'Al', 'A', 'art-1', 0, 0, 0)`,
+    );
+    db.run(
+      `INSERT INTO library_artists (id, name, album_count, synced_at) VALUES ('art-1', 'A', 1, 0)`,
+    );
+  });
+
+  it('a new or different URL bumps the entity of that kind; the same URL does not', () => {
+    setArtwork(db, 'alb-1', 'album', 'https://x/a.jpg');
+    setArtwork(db, 'alb-1', 'album', 'https://x/a.jpg'); // an enrichment re-pass
+    expect(rev('library_albums', 'alb-1')).toBe(1);
+    setArtwork(db, 'alb-1', 'album', 'https://x/b.jpg');
+    expect(rev('library_albums', 'alb-1')).toBe(2);
+    setArtwork(db, 'art-1', 'artist', 'https://x/p.jpg');
+    expect(rev('library_artists', 'art-1')).toBe(1);
+    expect(rev('library_albums', 'alb-1')).toBe(2);
+  });
+
+  it('a URL written before the album exists bumps nothing and does not throw', () => {
+    setArtwork(db, 'alb-later', 'album', 'https://x/a.jpg');
+    expect(resolveArtwork(db, 'alb-later')?.url).toBe('https://x/a.jpg');
+  });
+
+  it('deleteArtwork bumps only when it removed a row, and says so', () => {
+    expect(deleteArtwork(db, 'alb-1')).toBe(false);
+    expect(rev('library_albums', 'alb-1')).toBe(0);
+    setArtwork(db, 'alb-1', 'album', 'https://x/a.jpg');
+    expect(deleteArtwork(db, 'alb-1')).toBe(true);
+    expect(rev('library_albums', 'alb-1')).toBe(2);
   });
 });
 

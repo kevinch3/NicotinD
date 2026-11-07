@@ -195,6 +195,8 @@ export interface AlbumDetail {
   artistId?: string;
   artists?: ArtistCredit[];
   coverArt?: string;
+  /** The album's `cover_rev`, bumped when its cover bytes change (#1666). */
+  coverRev?: number;
   year?: number;
   song: Array<{
     id: string;

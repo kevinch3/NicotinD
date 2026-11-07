@@ -38,14 +38,14 @@ export class LibrarySearchProvider implements ISearchProvider {
     if (tokens.length === 0) return { results: { artists: [], albums: [], songs: [] } };
 
     const artists = this.db
-      .query<{ id: string; name: string; album_count: number }, []>(
-        `SELECT id, name, album_count FROM library_artists WHERE hidden = 0`,
+      .query<{ id: string; name: string; album_count: number; cover_rev: number }, []>(
+        `SELECT id, name, album_count, cover_rev FROM library_artists WHERE hidden = 0`,
       )
       .all()
       .filter((r) => matchesAllTokens(r.name, tokens))
       .sort(rankBy(tokens, (r) => r.name))
       .slice(0, 10)
-      .map((r) => ({ id: r.id, name: r.name, albumCount: r.album_count }));
+      .map((r) => ({ id: r.id, name: r.name, albumCount: r.album_count, coverRev: r.cover_rev }));
 
     const albums = this.db
       .query<
@@ -56,6 +56,7 @@ export class LibrarySearchProvider implements ISearchProvider {
           artist_id: string | null;
           year: number | null;
           cover_art: string | null;
+          cover_rev: number;
           song_count: number;
           classification: string;
         },
@@ -65,7 +66,7 @@ export class LibrarySearchProvider implements ISearchProvider {
         // default Albums grid omits (the search page has its own section
         // rendering, so classification != 'album' is fine). Token matching runs
         // over "name + artist" in JS below.
-        `SELECT id, name, artist, artist_id, year, cover_art, song_count, classification
+        `SELECT id, name, artist, artist_id, year, cover_art, cover_rev, song_count, classification
          FROM library_albums
          WHERE hidden = 0`,
       )
@@ -80,6 +81,7 @@ export class LibrarySearchProvider implements ISearchProvider {
         artistId: r.artist_id ?? undefined,
         year: r.year ?? undefined,
         coverArt: r.cover_art ?? undefined,
+        coverRev: r.cover_rev,
         songCount: r.song_count,
         classification: r.classification as 'album' | 'ep' | 'single' | 'compilation' | 'unknown',
       }));
@@ -96,10 +98,12 @@ export class LibrarySearchProvider implements ISearchProvider {
           duration: number;
           bit_rate: number | null;
           cover_art: string | null;
+          album_cover_rev: number | null;
         },
         []
       >(
-        `SELECT s.id, s.title, s.artist, s.artist_id, s.album_id, a.name AS album, s.duration, s.bit_rate, s.cover_art
+        `SELECT s.id, s.title, s.artist, s.artist_id, s.album_id, a.name AS album, s.duration, s.bit_rate, s.cover_art,
+                a.cover_rev AS album_cover_rev
          FROM library_songs s
          LEFT JOIN library_albums a ON a.id = s.album_id
          WHERE s.hidden = 0`,
@@ -120,6 +124,7 @@ export class LibrarySearchProvider implements ISearchProvider {
         duration: r.duration,
         bitRate: r.bit_rate ?? undefined,
         coverArt: r.cover_art ?? undefined,
+        coverRev: r.album_cover_rev ?? 0,
       }));
 
     // Surface multi-artist credits so search rows render linked artists (same as

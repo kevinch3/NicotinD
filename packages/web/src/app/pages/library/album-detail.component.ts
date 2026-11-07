@@ -353,14 +353,20 @@ export class AlbumDetailComponent implements OnInit {
   /** Bumped after a fix so the cover URL busts its cache. */
   private readonly events = inject(LibraryEventsService);
   private readonly localCoverBust = signal(0);
-  /** Cache-bust for the cover URL: the newest of a local re-set and a pushed
-   *  `artwork.changed` version, so a cover replaced anywhere shows here at once. */
-  readonly coverBust = computed(() =>
-    Math.max(
-      this.localCoverBust(),
-      this.events.artworkVersions().get(this.selectedAlbum()?.id ?? '') ?? 0,
-    ),
-  );
+  /** Cache-bust for the cover URL: the album's cover rev — the newer of the DTO's
+   *  and a pushed `artwork.changed` (#1666), so a cover replaced anywhere shows here
+   *  at once and survives a reload — plus a local re-set count. Composed, never
+   *  `max`ed: a rev is a small integer that a local count could otherwise mask. */
+  readonly coverBust = computed(() => {
+    const album = this.selectedAlbum();
+    const rev = Math.max(
+      album?.coverRev ?? 0,
+      this.events.artworkVersions().get(album?.id ?? '') ?? 0,
+    );
+    const local = this.localCoverBust();
+    if (!local) return rev ? String(rev) : '';
+    return `${rev}.${local}`;
+  });
   /** Re-reads the completeness badge when this album changes (tracks landed). */
   readonly albumChangeSeq = computed(
     () => this.events.changedAlbums().get(this.selectedAlbum()?.id ?? '') ?? 0,

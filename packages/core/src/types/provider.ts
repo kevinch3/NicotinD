@@ -3,7 +3,7 @@ export type ProviderType = 'local' | 'network';
 import type { ArtistCredit } from './navidrome.js';
 
 export interface SearchProviderResult {
-  artists: Array<{ id: string; name: string; albumCount?: number }>;
+  artists: Array<{ id: string; name: string; albumCount?: number; coverRev?: number }>;
   albums: Array<{
     id: string;
     name: string;
@@ -11,6 +11,8 @@ export interface SearchProviderResult {
     artistId?: string;
     year?: number;
     coverArt?: string;
+    /** The album's `cover_rev` (#1666). */
+    coverRev?: number;
     artists?: ArtistCredit[];
   }>;
   songs: Array<{
@@ -23,6 +25,8 @@ export interface SearchProviderResult {
     duration?: number;
     bitRate?: number;
     coverArt?: string;
+    /** The song's album `cover_rev` (#1666). */
+    coverRev?: number;
     artists?: ArtistCredit[];
   }>;
 }

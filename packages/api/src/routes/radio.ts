@@ -94,6 +94,7 @@ export interface RadioSongRow {
   album_id: string;
   album_name: string;
   album_cover_art: string | null;
+  album_cover_rev: number | null;
   title: string;
   artist: string;
   artist_id: string;
@@ -125,6 +126,7 @@ export interface RadioSongRow {
 
 export const RADIO_SONG_SELECT = `
   SELECT s.id, s.album_id, a.name AS album_name, a.cover_art AS album_cover_art,
+         a.cover_rev AS album_cover_rev,
          s.title, s.artist, s.artist_id, s.track, s.duration, s.year, s.genre,
          s.cover_art, s.path, s.size, s.bit_rate, s.suffix, s.content_type,
          s.created, s.starred, s.bpm, s.key,
@@ -165,6 +167,7 @@ export function rowToSong(r: RadioSongRow): Song & SongFeatures {
     genre: r.genre ?? undefined,
     genres: genresOf(r),
     coverArt: r.cover_art ?? r.album_cover_art ?? r.album_id,
+    coverRev: r.album_cover_rev ?? 0,
     size: r.size ?? 0,
     contentType: r.content_type ?? '',
     suffix: r.suffix ?? '',

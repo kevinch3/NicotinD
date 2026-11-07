@@ -975,6 +975,10 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   // 'ep'-migration rebuild's `INSERT ... SELECT *` column counts matched.
   addColumnIfMissing(db, 'library_albums', 'licence', 'TEXT');
   db.run(`DROP INDEX IF EXISTS idx_library_albums_licence`); // rolled-back #683, unread
+  // Cover revision (#1666): bumped by the service-layer cover writers whenever the
+  // album's art bytes change (services/cover-rev.ts), and carried on the Album and
+  // Song DTOs beside the id-stable `coverArt`. ALTER-only, like `licence` above.
+  addColumnIfMissing(db, 'library_albums', 'cover_rev', 'INTEGER NOT NULL DEFAULT 0');
 
   db.run(`
     CREATE TABLE IF NOT EXISTS library_songs (
@@ -1316,6 +1320,8 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   // base's and the base owns an album with the same title key. NULL when nothing
   // represents it. Recomputed over the whole table on every scan.
   addColumnIfMissing(db, 'library_artists', 'fragment_of', 'TEXT');
+  // Portrait revision (#1666): the artist twin of library_albums.cover_rev.
+  addColumnIfMissing(db, 'library_artists', 'cover_rev', 'INTEGER NOT NULL DEFAULT 0');
   db.run(
     `CREATE INDEX IF NOT EXISTS idx_library_artists_name ON library_artists(name COLLATE NOCASE)`,
   );
