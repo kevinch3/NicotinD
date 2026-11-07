@@ -23,14 +23,14 @@ were the slowest half of it — see [deployment.md](deployment.md) "CI coverage"
 
 ## What is in it
 
-46 components, split by how much of the app they need in order to render:
+48 components, split by how much of the app they need in order to render:
 
-- **Presentational (20)** — zero injected services: `album-tile`, `artist-links`,
+- **Presentational (22)** — zero injected services: `album-tile`, `artist-links`,
   `changelog-modal`, `confirm-dialog`, `desktop-window-controls`, `disk-pill`,
   `download-item`, `genre-distribution-strip`, `genre-radar`, `icon`,
-  `library-filter-panel`, `metric-pill`, `password-field`, `seek-bar`, `selection-bar`,
-  `settings-group`, `settings-group-header`, `skeleton`, `source-chip`,
-  `track-stats-bars`.
+  `import-drop-card`, `import-entry`, `library-filter-panel`, `metric-pill`,
+  `password-field`, `seek-bar`, `selection-bar`, `settings-group`,
+  `settings-group-header`, `skeleton`, `source-chip`, `track-stats-bars`.
 - **Light-DI (18)** — one to three injected services, rendered against fixtures:
   `add-to-playlist`, `artist-genre-modal`, `artist-identity-modal`, `artist-info`,
   `confirm-host`, `cover-art`, `desktop-title-bar-overlay`, `device-switcher`,
@@ -43,9 +43,9 @@ were the slowest half of it — see [deployment.md](deployment.md) "CI coverage"
   app-shell trio at the end of that list is what the two element-level transports
   below exist for.
 
-**Not in it (13):** `artist-origin`, `entity-link`, `import-drop-card`, `keep-vibe`,
-`metadata-fix-modal`, `report-track-dialog`, `report-track-host`, `resource-picker`,
-`taste-breakers`, `tastemakers`, `track-info-host`, `tv-device-picker`, `vibe-tile`.
+**Not in it (12):** `artist-origin`, `entity-link`, `keep-vibe`, `metadata-fix-modal`,
+`report-track-dialog`, `report-track-host`, `resource-picker`, `taste-breakers`,
+`tastemakers`, `track-info-host`, `tv-device-picker`, `vibe-tile`.
 `metadata-fix-modal` did have stories; they were deleted with the review hold
 ([#981](https://github.com/kevinch3/NicotinD/issues/981)), which is why it is still
 named in the interaction and a11y notes below.

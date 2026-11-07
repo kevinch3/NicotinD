@@ -26,6 +26,7 @@ describe('isFilledIcon', () => {
       'mic',
       'layout-grid',
       'rows-3',
+      'folder',
     ] as const) {
       expect(isFilledIcon(name)).toBe(false);
     }
@@ -88,6 +89,7 @@ describe('IconComponent', () => {
       'chart',
       'layout-grid',
       'rows-3',
+      'folder',
     ] as const;
     for (const name of names) {
       const fixture = TestBed.createComponent(IconComponent);

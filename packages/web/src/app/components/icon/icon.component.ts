@@ -49,7 +49,8 @@ export type IconName =
   | 'list-music'
   | 'chart'
   | 'layout-grid'
-  | 'rows-3';
+  | 'rows-3'
+  | 'folder';
 
 /** Play is the only filled glyph; the rest are stroked outlines. DI-free so the
  *  branch is unit-testable (the JIT harness can't drive the `name` input). */

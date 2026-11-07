@@ -1,5 +1,6 @@
 import { Component, computed, input, output } from '@angular/core';
 import { TranslatePipe } from '../../pipes/translate.pipe';
+import { IconComponent } from '../icon/icon.component';
 
 export type ImportDropState = 'manifest' | 'uploading' | 'committing' | 'error';
 
@@ -9,6 +10,13 @@ export interface ImportDropSummary {
   totalBytes: number;
   skipped: string[];
 }
+
+const EMPTY_SUMMARY: ImportDropSummary = {
+  fileCount: 0,
+  albumCount: 0,
+  totalBytes: 0,
+  skipped: [],
+};
 
 /** Human size for the manifest line. Exported so it is testable without rendering. */
 export function formatBytes(bytes: number): string {
@@ -52,12 +60,14 @@ export function albumCountOf(paths: string[]): number {
 @Component({
   selector: 'app-import-drop-card',
   standalone: true,
-  imports: [TranslatePipe],
+  imports: [TranslatePipe, IconComponent],
   templateUrl: './import-drop-card.component.html',
 })
 export class ImportDropCardComponent {
-  readonly state = input.required<ImportDropState>();
-  readonly summary = input.required<ImportDropSummary>();
+  // Not `input.required`: the card is nested in the Get page, and a required
+  // signal input throws NG0950 there under the JIT unit harness.
+  readonly state = input<ImportDropState>('manifest');
+  readonly summary = input<ImportDropSummary>(EMPTY_SUMMARY);
   /** 0–99 while uploading; never 100 — the commit completes an upload. */
   readonly percent = input(0);
   readonly error = input<string | null>(null);

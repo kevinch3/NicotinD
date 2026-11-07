@@ -1,4 +1,4 @@
-import { test, expect } from '../helpers';
+import { test, expect, type Page } from '../helpers';
 import { E2E_MUSIC_DIR } from '../fixture-music';
 import { mkdtempSync, copyFileSync, mkdirSync, writeFileSync, rmSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -38,6 +38,10 @@ test.describe('import from a dropped folder', () => {
     copyFileSync(SRC_FLAC, join(album, '02 Uploaded Two.flac'));
     // Deliberate junk: the allowlist must drop it, and the card must say so.
     writeFileSync(join(album, 'notes.nfo'), 'not music');
+
+    const background = join(scratch, 'Background Album');
+    mkdirSync(background, { recursive: true });
+    copyFileSync(SRC_FLAC, join(background, '01 Background One.flac'));
 
     const junkOnly = join(scratch, 'Junk Only');
     mkdirSync(junkOnly, { recursive: true });
@@ -84,4 +88,80 @@ test.describe('import from a dropped folder', () => {
     await expect(page.getByTestId('import-drop-card')).toBeVisible();
     await expect(page.getByTestId('import-drop-skipped')).toBeVisible();
   });
+
+  // #1664: import is an Add-tab action.
+  test('the Activity tab offers no import and ignores a dropped file', async ({ page }) => {
+    await page.goto('/get?tab=activity');
+    await expect(page.getByTestId('get-tab-downloads')).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByTestId('import-browse')).toHaveCount(0);
+    await expect(page.getByTestId('import-folder-input')).toHaveCount(0);
+
+    const prevented = await dispatchFileDrag(page, ['dragenter', 'dragover', 'drop']);
+    // Swallowed (else the browser navigates to the file), but not taken.
+    expect(prevented.drop).toBe(true);
+    await expect(page.getByTestId('import-drop-overlay')).toHaveCount(0);
+    await expect(page.getByTestId('import-drop-card')).toHaveCount(0);
+    await expect(page.getByTestId('get-tab-downloads')).toHaveAttribute('aria-current', 'page');
+  });
+
+  test('the Add tab shows the entry, and a drag over it lights it up', async ({ page }) => {
+    await page.goto('/get?tab=add');
+    const entry = page.getByTestId('import-browse');
+    await expect(entry).toBeVisible();
+    await expect(entry).toHaveAttribute('data-dragging', 'false');
+
+    await dispatchFileDrag(page, ['dragenter']);
+    await expect(page.getByTestId('import-drop-overlay')).toBeVisible();
+    await expect(entry).toHaveAttribute('data-dragging', 'true');
+
+    await dispatchFileDrag(page, ['dragleave']);
+    await expect(page.getByTestId('import-drop-overlay')).toHaveCount(0);
+    await expect(entry).toHaveAttribute('data-dragging', 'false');
+  });
+
+  test('an upload keeps running on Activity, with a progress row and a badge', async ({ page }) => {
+    // Hold the chunk upload so the switch provably lands mid-upload.
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    await page.route('**/api/import/uploads/*/chunk*', async (route) => {
+      await held;
+      await route.continue();
+    });
+
+    await page.goto('/get?tab=add');
+    await page.getByTestId('import-folder-input').setInputFiles(join(scratch, 'Background Album'));
+    await page.getByTestId('import-drop-start').click();
+    // The bar is a 0-width box while the chunk is held, so assert the label.
+    await expect(page.getByTestId('import-drop-percent')).toHaveText('0%');
+
+    await page.getByTestId('get-tab-downloads').click();
+    await expect(page.getByTestId('import-browse')).toHaveCount(0);
+    await expect(page.getByTestId('import-progress-row')).toBeVisible();
+    await expect(page.getByTestId('import-progress-percent')).toHaveText('0%');
+    await expect(page.getByTestId('get-tab-downloads-badge')).toBeVisible();
+
+    release();
+    // At commit the feed's own import row takes over, so this one retires.
+    await expect(page.getByTestId('import-progress-row')).toHaveCount(0, { timeout: 60_000 });
+    await page.unroute('**/api/import/uploads/*/chunk*');
+  });
 });
+
+/**
+ * Dispatch synthetic file-drag events on the Get workspace. Playwright has no
+ * OS-level file drag, so this builds the `DataTransfer` a real one carries and
+ * reports, per event, whether the page called `preventDefault`.
+ */
+async function dispatchFileDrag(page: Page, types: string[]): Promise<Record<string, boolean>> {
+  return page.getByTestId('get-tabs').evaluate((el, eventTypes) => {
+    const dt = new DataTransfer();
+    dt.items.add(new File(['x'], 'dropped.flac', { type: 'audio/flac' }));
+    const out: Record<string, boolean> = {};
+    for (const type of eventTypes) {
+      const ev = new DragEvent(type, { dataTransfer: dt, bubbles: true, cancelable: true });
+      el.dispatchEvent(ev);
+      out[type] = ev.defaultPrevented;
+    }
+    return out;
+  }, types);
+}
