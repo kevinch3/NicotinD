@@ -36,7 +36,8 @@ const KIND_FOR_STRATEGY: Record<StrategyId, FeedbackKind> = {
  * tail) and is logged as a vote against the playing track, then remembered as
  * this user's default. The control is a Close · Medium · Far dial whose
  * mapping to strategies lives in one core function; the provenance footer
- * reuses the segment's label key, so the two cannot disagree (#1660).
+ * reuses the segment's label keys, so both speak one vocabulary (#1660). The
+ * footer describes the last generated queue, so it can lag a fresh move.
  */
 @Component({
   selector: 'app-radio-chip',

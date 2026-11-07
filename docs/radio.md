@@ -853,8 +853,10 @@ chip.
 
 The panel's last line says how the queue was actually made —
 `formula v9 · Medium · genre by sound` (`radio-chip-provenance`). The strategy
-word reuses the lit segment's own label key, so the footer cannot name a
-different position than the dial shows. It exists
+word reuses the segment's label keys, so the two share one vocabulary — but the
+footer names the strategy of the **last generated queue**, so it can lag the dial
+until the next radio fetch (radio off, a failed `/api/radio/next`, or another
+device filling the queue). It exists
 because `RADIO_FORMULA_VERSION` used to live only on the server: once the genre
 axis is a setting ([genre-affinity.md](genre-affinity.md)) the same seed yields
 different queues depending on a flag the listener cannot see, and a screenshot

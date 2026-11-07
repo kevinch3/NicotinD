@@ -161,10 +161,14 @@ describe('RadioChipComponent', () => {
       for (const l of labels) expect(typeof l === 'string' && l.length > 0).toBe(true);
       expect(new Set(labels).size).toBe(3);
       const hint = catalog['nowPlaying.varietyHint']!.toLowerCase();
-      for (const l of labels) expect(hint).toContain(l!.toLowerCase());
+      // The hint lists the three words in dial order, not just somewhere in a
+      // sentence ("how far" alone would satisfy a bare substring check).
+      expect(hint).toContain(`${labels[0]!.toLowerCase()}, ${labels[1]!.toLowerCase()} `);
+      expect(hint).toMatch(new RegExp(`\\b${labels[2]!.toLowerCase()}\\.`));
       const stale = Object.keys(catalog).filter(
         (k) =>
           k === 'nowPlaying.varietyTooSimilar' ||
+          k === 'nowPlaying.varietyBalanced' ||
           k === 'nowPlaying.varietyTooDifferent' ||
           k.startsWith('nowPlaying.radioStrategy.'),
       );
