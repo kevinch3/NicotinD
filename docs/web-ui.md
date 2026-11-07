@@ -2145,6 +2145,23 @@ acknowledge a known CJS dependency, so the build is now **warning-free** and the
 means something. Note the trade: a broken static import fails the build, a broken dynamic
 import fails at click time — hence `devices.component.spec.ts` covers the QR path.
 
+## Viewport deficit (iOS standalone band under the tab bar)
+
+Measured over USB on an iPhone 13 mini in standalone mode: `innerHeight`/`dvh`/`svh` = 762 but `lvh` = 812
+(screen 812, top inset 50). The layout viewport is short by the top inset, so `fixed bottom-0` and the
+`100dvh` shell both stop 50pt above the real bottom, and the canvas shows through as a band. The strip is
+inside the web view and paintable (a red `html` background filled it), so CSS can reach it.
+
+`styles.css` publishes `--vp-deficit` = `max(0px, 100lvh - 100dvh)` **only under
+`@media (display-mode: standalone)`** (0 elsewhere: in a browser tab `dvh < lvh` is the collapsing
+toolbar, which fixed bars must keep following). The shell height, the tab bar, the mini player, the toast
+outlet and the update banner add it back, so on a healthy viewport nothing changes and when iOS reports
+the right height the offset disappears by itself. `measureBottomChromeInset` needs no change: modal
+backdrops are `fixed inset-0`, sized to the same short viewport. Asserted in `mobile-ux.spec.ts`
+("bottom chrome extends by the viewport deficit", forced via the variable, since Chromium cannot
+reproduce the short viewport); the real numbers come from `bun run phone-preview`
+([phone-preview.md](phone-preview.md)).
+
 ## The shell scrolls `<main>`, not the document (iOS PWA fixed-bar drift)
 
 On an iOS standalone PWA the fixed mini-player and tab bar rode the page's scroll: scrolling Settings with a

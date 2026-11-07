@@ -92,6 +92,47 @@ test.describe('mobile UX', () => {
     expect(after.navBottom).toBe(after.vh);
   });
 
+  // iOS standalone can report a layout viewport shorter than the screen (measured on a 13 mini:
+  // innerHeight/dvh 762, lvh 812), so `fixed bottom-0` stopped 50pt above the screen bottom and
+  // left a band under the tab bar. Chromium cannot reproduce the short viewport, so force the
+  // deficit variable the CSS reads and assert every bottom-anchored layer follows it.
+  test('bottom chrome extends by the viewport deficit', async ({ page }) => {
+    await openAlbum(page);
+    await page.getByTestId('play-album').click();
+    await expect(page.getByTestId('player-title')).toBeVisible();
+
+    const measure = () =>
+      page.evaluate(() => {
+        const nav = document.querySelector('app-bottom-nav > *')!.getBoundingClientRect();
+        const shell = document.querySelector('app-root > app-layout > div, app-layout > div');
+        const player = document
+          .querySelector('app-player [data-bottom-chrome]')!
+          .getBoundingClientRect();
+        return {
+          navBottom: Math.round(nav.bottom),
+          navTop: Math.round(nav.top),
+          playerBottom: Math.round(player.bottom),
+          shellH: Math.round(shell!.getBoundingClientRect().height),
+          vh: window.innerHeight,
+        };
+      });
+
+    const base = await measure();
+    expect(base.navBottom, 'no deficit: nav sits on the viewport bottom').toBe(base.vh);
+
+    await page.addStyleTag({ content: ':root { --vp-deficit: 50px !important; }' });
+    const shifted = await measure();
+    expect(shifted.navBottom, 'tab bar follows the deficit').toBe(base.navBottom + 50);
+    // The player slides in on a transform transition, so poll until it settles on the tab bar.
+    await expect
+      .poll(async () => {
+        const m = await measure();
+        return m.playerBottom - m.navTop;
+      }, 'mini player stays flush on top of the tab bar')
+      .toBe(0);
+    expect(shifted.shellH, 'shell fills the real screen').toBe(base.shellH + 50);
+  });
+
   // A track-row `⋯` menu opened low on the list must not be hidden behind the
   // fixed mini-player + tab bar (the mobile context-menu-under-the-player bug).
   // With a track playing, open the LAST row's menu and assert its box clears the

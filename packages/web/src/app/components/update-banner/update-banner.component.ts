@@ -19,7 +19,7 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
     @if (update.updateAvailable()) {
       <div
         data-testid="update-banner"
-        class="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-between gap-4 px-4 py-3 border-t"
+        class="fixed bottom-[calc(-1*var(--vp-deficit))] left-0 right-0 z-50 flex items-center justify-between gap-4 px-4 py-3 border-t"
         style="background: var(--theme-surface); border-color: var(--theme-border); color: var(--theme-text-primary);"
       >
         <span class="text-sm" style="color: var(--theme-text-secondary);">

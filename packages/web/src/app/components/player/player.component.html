@@ -9,7 +9,7 @@
     @if (!isTv) {
     <!-- Mobile: floats above the fixed bottom tab bar (h-14 + safe-area inset); desktop: bottom-0 (no tab bar).
          Show/hide geometry lives in lib/player-chrome.ts — the hidden state must clear the tab bar too. -->
-    <div data-bottom-chrome [class]="'fixed bottom-[calc(3.5rem+env(safe-area-inset-bottom))] md:bottom-0 left-0 right-0 player-chrome z-50 transition-transform duration-300 ease-out ' +
+    <div data-bottom-chrome [class]="'fixed bottom-[calc(3.5rem+env(safe-area-inset-bottom)-var(--vp-deficit))] md:bottom-[calc(-1*var(--vp-deficit))] left-0 right-0 player-chrome z-50 transition-transform duration-300 ease-out ' +
       (remote.playingElsewhere() ? 'ring-2 ring-inset ring-[var(--theme-accent)] ' : '') +
       slideClass()">
 
