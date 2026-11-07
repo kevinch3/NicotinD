@@ -104,7 +104,34 @@ test.describe('sheet blur stacking (#1649)', () => {
     await expect(rim).toHaveCSS('visibility', 'hidden');
     await expect(page.getByTestId('mosaic-home')).toHaveClass(/\bmosaic-covered\b/);
 
+    // Sample every frame of the slide away: the rim must not be drawn while the
+    // band is still on screen (it used to fade back in under it). Keyed on the
+    // band's position, not on wall time, so a slow runner cannot flake it.
+    await page.evaluate(() => {
+      const w = window as unknown as { __rimUnderBand: number[]; __bandGone: boolean };
+      w.__rimUnderBand = [];
+      w.__bandGone = false;
+      const handle = document.querySelector('[data-testid="now-playing-drag-handle"]')!;
+      const rimEl = document.querySelector('[data-testid="mosaic-rim"]')!;
+      const tick = (): void => {
+        const top = handle.getBoundingClientRect().top;
+        if (top >= window.innerHeight) {
+          w.__bandGone = true;
+          return;
+        }
+        const s = getComputedStyle(rimEl);
+        if (s.visibility !== 'hidden' && Number(s.opacity) > 0) w.__rimUnderBand.push(top);
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
     await page.getByTestId('now-playing-close').click();
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { __bandGone: boolean }).__bandGone))
+      .toBe(true);
+    expect(
+      await page.evaluate(() => (window as unknown as { __rimUnderBand: number[] }).__rimUnderBand),
+    ).toEqual([]);
     await expect(page.getByTestId('mosaic-home')).not.toHaveClass(/\bmosaic-covered\b/);
     await expect(rim).toHaveCSS('visibility', 'visible');
   });

@@ -101,6 +101,7 @@ function setup(opts: SetupOptions = {}) {
     currentTrack: signal<Track | null>(null),
     isPlaying: signal(false),
     nowPlayingOpen: signal(false),
+    nowPlayingLiftPx: signal(0),
     startRadio: vi.fn(),
     startRadioWithFilter: vi.fn(),
     startRadioWithTracks: vi.fn(),
@@ -214,18 +215,75 @@ describe('MosaicHomeComponent', () => {
     expect(kinds.filter((k) => k === 'vibe')).toHaveLength(8);
   });
 
-  it('marks the field covered while Now Playing is open, so the rim blur stands down (#1649)', async () => {
-    const { fixture, player } = setup({ tasteBreakers: [song({ id: 'a' })] });
-    await settle(fixture);
-    const root = (): HTMLElement =>
-      fixture.nativeElement.querySelector('[data-testid="mosaic-home"]');
-    expect(root().classList.contains('mosaic-covered')).toBe(false);
-    player.nowPlayingOpen.set(true);
-    fixture.detectChanges();
-    expect(root().classList.contains('mosaic-covered')).toBe(true);
-    player.nowPlayingOpen.set(false);
-    fixture.detectChanges();
-    expect(root().classList.contains('mosaic-covered')).toBe(false);
+  describe('the rim blur stands down under Now Playing (#1649)', () => {
+    const covered = (fixture: { nativeElement: HTMLElement }): boolean =>
+      fixture.nativeElement
+        .querySelector('[data-testid="mosaic-home"]')!
+        .classList.contains('mosaic-covered');
+
+    it('covers the field at once while the sheet is open, and uncovers it only after the slide', async () => {
+      vi.useFakeTimers();
+      try {
+        const { fixture, player } = setup({ tasteBreakers: [song({ id: 'a' })] });
+        await settle(fixture);
+        expect(covered(fixture)).toBe(false);
+        player.nowPlayingOpen.set(true);
+        fixture.detectChanges();
+        expect(covered(fixture)).toBe(true);
+        player.nowPlayingOpen.set(false);
+        fixture.detectChanges();
+        // The sheet is still sliding down over the field.
+        vi.advanceTimersByTime(MosaicHomeComponent.SHEET_SLIDE_MS - 1);
+        fixture.detectChanges();
+        expect(covered(fixture)).toBe(true);
+        vi.advanceTimersByTime(1);
+        fixture.detectChanges();
+        expect(covered(fixture)).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('covers the field while the mini bar lifts the closed sheet, and through its spring-back', async () => {
+      vi.useFakeTimers();
+      try {
+        const { fixture, player } = setup({ tasteBreakers: [song({ id: 'a' })] });
+        await settle(fixture);
+        player.nowPlayingLiftPx.set(120);
+        fixture.detectChanges();
+        expect(player.nowPlayingOpen()).toBe(false);
+        expect(covered(fixture)).toBe(true);
+        player.nowPlayingLiftPx.set(0);
+        fixture.detectChanges();
+        vi.advanceTimersByTime(MosaicHomeComponent.SHEET_SLIDE_MS - 1);
+        fixture.detectChanges();
+        expect(covered(fixture)).toBe(true);
+        vi.advanceTimersByTime(1);
+        fixture.detectChanges();
+        expect(covered(fixture)).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('a drag that commits open never uncovers the field in between', async () => {
+      vi.useFakeTimers();
+      try {
+        const { fixture, player } = setup({ tasteBreakers: [song({ id: 'a' })] });
+        await settle(fixture);
+        player.nowPlayingLiftPx.set(200);
+        fixture.detectChanges();
+        // The bar's onEnd: the lift drops to 0 and the sheet opens in one tick.
+        player.nowPlayingLiftPx.set(0);
+        player.nowPlayingOpen.set(true);
+        fixture.detectChanges();
+        vi.advanceTimersByTime(MosaicHomeComponent.SHEET_SLIDE_MS * 2);
+        fixture.detectChanges();
+        expect(covered(fixture)).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   it('only shows curated playlists — a user playlist is not a tastemaker', async () => {

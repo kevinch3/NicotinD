@@ -7,6 +7,7 @@ import {
   effect,
   inject,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { Router } from '@angular/router';
@@ -202,8 +203,15 @@ export class MosaicHomeComponent implements OnInit {
   readonly discovered = signal<MosaicTile[]>([]);
   /** Device offline OR the server unreachable — both make the sources unusable. */
   readonly offline = computed(() => this.setup.isOffline());
-  /** Now Playing covers the field: the rim blur stands down under it (#1649). */
-  readonly covered = computed(() => this.player.nowPlayingOpen());
+  /** Now Playing is over the field: open, or lifted by the mini bar's drag. */
+  private readonly sheetOver = computed(
+    () => this.player.nowPlayingOpen() || this.player.nowPlayingLiftPx() > 0,
+  );
+  /** The sheet's slide back down (`duration-300` on its root). */
+  static readonly SHEET_SLIDE_MS = 300;
+  /** The rim blur stands down under the sheet (#1649): on at once, off only
+   *  once the sheet has slid away, so it never fades in under the band. */
+  readonly covered = signal(false);
 
   /** Vibe titles are i18n keys; everything else is already a display string. */
   label(tile: MosaicTile): string {
@@ -352,6 +360,16 @@ export class MosaicHomeComponent implements OnInit {
     // here, which is why markHeld moves the lift itself.
     effect(() => {
       if (this.entityMenu.state() === null) this.markHeld(null);
+    });
+
+    effect((onCleanup) => {
+      if (this.sheetOver()) {
+        this.covered.set(true);
+        return;
+      }
+      if (!untracked(this.covered)) return;
+      const t = setTimeout(() => this.covered.set(false), MosaicHomeComponent.SHEET_SLIDE_MS);
+      onCleanup(() => clearTimeout(t));
     });
 
     // Rebuild the mosaic when connectivity changes, in either direction: lose
