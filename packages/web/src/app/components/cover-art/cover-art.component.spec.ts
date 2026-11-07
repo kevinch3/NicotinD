@@ -1,8 +1,9 @@
 import { TestBed } from '@angular/core/testing';
+import { vi } from 'vitest';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { CoverArtComponent } from './cover-art.component';
+import { CoverArtComponent, COVER_HOLD_FADE_MS } from './cover-art.component';
 import { changeInputValue } from '../../../testing/signal-input';
 import { ServerConfigService } from '../../services/server-config.service';
 import {
@@ -102,9 +103,37 @@ describe('CoverArtComponent — holdPrevious (#1653)', () => {
     expect(placeholder()).toBeNull();
     expect(held()?.getAttribute('src')).toBe('/api/cover/a');
 
+    vi.useFakeTimers();
+    try {
+      comp.onImgLoad();
+      fixture.detectChanges();
+      // Still held while the new image fades in over it — no dip to the background.
+      expect(held()?.getAttribute('src')).toBe('/api/cover/a');
+      vi.advanceTimersByTime(COVER_HOLD_FADE_MS);
+      fixture.detectChanges();
+      expect(held()).toBeNull();
+      expect(placeholder()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('after a coverless track, the next cover does not resurrect the one from two tracks back', () => {
+    const { comp, placeholder, held, swap } = setup(true);
+    comp.onImgLoad();
+    swap(undefined);
+    swap('/api/cover/c');
+    expect(held()).toBeNull();
+    expect(placeholder()).not.toBeNull();
+  });
+
+  it('skipping back to the cover still on screen holds it instead of flashing the placeholder', () => {
+    const { comp, placeholder, held, swap, fixture } = setup(true);
     comp.onImgLoad();
     fixture.detectChanges();
-    expect(held()).toBeNull();
+    swap('/api/cover/b');
+    swap('/api/cover/a');
+    expect(held()?.getAttribute('src')).toBe('/api/cover/a');
     expect(placeholder()).toBeNull();
   });
 
