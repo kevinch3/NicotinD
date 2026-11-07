@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { Component, signal } from '@angular/core';
+import { Component, signal, type WritableSignal } from '@angular/core';
 import { ActivatedRoute, Router, provideRouter } from '@angular/router';
 import { describe, expect, it, vi } from 'vitest';
 import { GetComponent, parseGetTab } from './get.component';
@@ -21,6 +21,8 @@ interface SetupOpts {
   jobs?: number;
   canImport?: boolean;
   upload?: ImportUploadService['upload'];
+  /** The service's shared in-flight count; a test's `upload` drives it. */
+  inFlight?: WritableSignal<number>;
 }
 
 function setup(tab?: string, opts: SetupOpts = {}) {
@@ -32,7 +34,10 @@ function setup(tab?: string, opts: SetupOpts = {}) {
           { provide: AuthService, useValue: { canImport: signal(opts.canImport) } },
           {
             provide: ImportUploadService,
-            useValue: { upload: opts.upload ?? vi.fn().mockResolvedValue('job-1') },
+            useValue: {
+              upload: opts.upload ?? vi.fn().mockResolvedValue('job-1'),
+              inFlight: opts.inFlight ?? signal(0),
+            },
           },
         ];
 
@@ -233,11 +238,13 @@ describe('GetComponent — import is an Add-tab action', () => {
   it('keeps an upload running across a switch to Activity, with a progress row and a badge', async () => {
     let progress: ((p: number) => void) | undefined;
     let finish!: (id: string) => void;
+    const inFlight = signal(0);
     const upload = vi.fn((_files: unknown, opts?: { onProgress?: (p: number) => void }) => {
       progress = opts?.onProgress;
-      return new Promise<string>((resolve) => (finish = resolve));
+      inFlight.set(1);
+      return new Promise<string>((resolve) => (finish = resolve)).finally(() => inFlight.set(0));
     });
-    const { fixture } = setup('add', { canImport: true, upload, active: 1 });
+    const { fixture } = setup('add', { canImport: true, upload, inFlight, active: 1 });
     const c = fixture.componentInstance;
     pick(fixture);
     const done = c.startImport();
@@ -250,6 +257,10 @@ describe('GetComponent — import is an Add-tab action', () => {
     expect(row).not.toBeNull();
     expect(q(fixture, 'import-progress-percent')?.textContent).toContain('42%');
     expect((q(fixture, 'import-progress-bar') as HTMLElement).style.width).toBe('42%');
+    const track = q(fixture, 'import-progress-track') as HTMLElement;
+    expect(track.getAttribute('role')).toBe('progressbar');
+    expect(track.getAttribute('aria-valuenow')).toBe('42');
+    expect(track.getAttribute('aria-label')).toBeTruthy();
     // The upload is in-flight work the Activity tab now accounts for.
     expect(c.activeCount()).toBe(2);
     expect(q(fixture, 'get-tab-downloads-badge')?.textContent?.trim()).toBe('2');
@@ -259,6 +270,34 @@ describe('GetComponent — import is an Add-tab action', () => {
     fixture.detectChanges();
     expect(q(fixture, 'import-progress-row')).toBeNull();
     expect(c.activeCount()).toBe(1);
+  });
+
+  // The commit is its own request; while it is on the wire the row says so
+  // rather than sitting at 99%.
+  it('shows Finishing… on Activity while the commit is on the wire', async () => {
+    let committing: (() => void) | undefined;
+    let finish!: (id: string) => void;
+    const upload = vi.fn((_files: unknown, opts?: { onCommitting?: () => void }) => {
+      committing = opts?.onCommitting;
+      return new Promise<string>((resolve) => (finish = resolve));
+    });
+    const { fixture } = setup('add', { canImport: true, upload });
+    const c = fixture.componentInstance;
+    pick(fixture);
+    const done = c.startImport();
+    c.setTab('activity');
+    committing?.();
+    fixture.detectChanges();
+    expect(q(fixture, 'import-progress-row')?.getAttribute('data-state')).toBe('committing');
+    expect(q(fixture, 'import-progress-percent')?.textContent?.trim()).toBe(
+      'import.dropCommitting',
+    );
+    expect(q(fixture, 'import-progress-track')?.getAttribute('aria-valuenow')).toBe('100');
+
+    finish('job-1');
+    await done;
+    fixture.detectChanges();
+    expect(q(fixture, 'import-progress-row')).toBeNull();
   });
 
   it('surfaces a failed background upload on Activity and leads back to Add', async () => {

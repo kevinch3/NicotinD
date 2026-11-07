@@ -46,7 +46,7 @@ export function albumCountOf(paths: string[]): number {
 }
 
 /**
- * The drop card: what a dragged folder or zip becomes before it is an import
+ * The drop card: what a dragged folder becomes before it is an import
  * job (docs/import.md).
  *
  * Deliberately styled like the link-intent card and a blended result row — a

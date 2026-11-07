@@ -89,10 +89,17 @@
           </p>
         } @else {
           <div class="flex items-center gap-3">
-            <div class="h-1.5 flex-1 rounded-full bg-theme-surface-2 overflow-hidden">
+            <div
+              class="h-1.5 flex-1 rounded-full bg-theme-surface-2 overflow-hidden"
+              role="progressbar"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              [attr.aria-valuenow]="bg.state === 'committing' ? 100 : bg.percent"
+              [attr.aria-label]="'import.progressTitle' | t: { albums: bg.albumCount }"
+              data-testid="import-progress-track">
               <div
                 class="h-full bg-theme-accent transition-[width] duration-300"
-                [style.width.%]="bg.percent"
+                [style.width.%]="bg.state === 'committing' ? 100 : bg.percent"
                 data-testid="import-progress-bar"></div>
             </div>
             <span class="text-xs text-theme-muted tabular-nums" data-testid="import-progress-percent">

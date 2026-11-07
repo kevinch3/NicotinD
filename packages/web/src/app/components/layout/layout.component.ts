@@ -22,6 +22,7 @@ import { mainBottomPadClass } from '../../lib/player-chrome';
 import { SetupService } from '../../services/setup.service';
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
+import { ImportUploadService } from '../../services/import-upload.service';
 import { PreserveService } from '../../services/preserve.service';
 import { PlayerComponent } from '../player/player.component';
 import { NowPlayingComponent } from '../now-playing/now-playing.component';
@@ -128,6 +129,7 @@ export class LayoutComponent implements OnInit, OnDestroy {
   readonly version = inject(APP_VERSION);
   private transfers = inject(TransferService);
   private acquire = inject(AcquireService);
+  private uploads = inject(ImportUploadService);
   private likes = inject(LikeService);
   private readonly exclusions = inject(RecommendationExclusionsService);
   private readonly libraryEvents = inject(LibraryEventsService);
@@ -235,11 +237,15 @@ export class LayoutComponent implements OnInit, OnDestroy {
   }
 
   // Active download badge on the desktop "Add" nav link — slskd transfers
-  // + in-flight URL acquisitions (the old standalone header indicator's signal,
-  // folded into the nav item now that the dedicated header button is gone; the
-  // mobile tab bar and the /get Downloads tab carry the same count).
+  // + in-flight URL acquisitions + uploads not yet a job (the old standalone
+  // header indicator's signal, folded into the nav item now that the dedicated
+  // header button is gone; the mobile tab bar and the /get Downloads tab carry
+  // the same count).
   readonly downloadCount = computed(
-    () => this.transfers.activeDownloadCount() + this.acquire.activeJobs().length,
+    () =>
+      this.transfers.activeDownloadCount() +
+      this.acquire.activeJobs().length +
+      this.uploads.inFlight(),
   );
 
   // Bottom padding so fixed chrome never covers the last list item — geometry

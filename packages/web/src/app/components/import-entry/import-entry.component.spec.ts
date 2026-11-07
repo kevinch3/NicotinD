@@ -2,6 +2,8 @@ import { TestBed } from '@angular/core/testing';
 import { describe, expect, it, vi } from 'vitest';
 import { ImportEntryComponent } from './import-entry.component';
 import { setInputValue } from '../../../testing/signal-input';
+import EN from '../../../../public/i18n/en.json';
+import ES from '../../../../public/i18n/es.json';
 
 function render(dragging = false) {
   TestBed.resetTestingModule();
@@ -48,5 +50,17 @@ describe('ImportEntryComponent', () => {
     fixture.componentInstance.pick.subscribe(pick);
     button.click();
     expect(pick).toHaveBeenCalledTimes(1);
+  });
+
+  // The browser lane's allowlist (`isUploadableName`) skips archives — only the
+  // admin server-path lane extracts a .zip — so a hint offering one would end in
+  // a card that ignores it and an "Add" that fails.
+  it('never offers a .zip drop, in any language', () => {
+    for (const catalog of [EN, ES] as Record<string, string>[]) {
+      for (const key of ['import.entryHint', 'import.dropHint']) {
+        expect(catalog[key]).toBeTruthy();
+        expect(catalog[key]!.toLowerCase()).not.toContain('zip');
+      }
+    }
   });
 });

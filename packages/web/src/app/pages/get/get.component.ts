@@ -116,13 +116,6 @@ export class GetComponent {
   /** Import is an Add-tab action (#1664); `canImport` is the role bar. */
   readonly acceptsDrop = computed(() => this.canImport() && this.tab() === 'add');
 
-  /** An upload is on the wire. It is not a job yet, so no feed row shows it. */
-  readonly importInFlight = computed(
-    () =>
-      this.dropped() !== null &&
-      (this.dropState() === 'uploading' || this.dropState() === 'committing'),
-  );
-
   /**
    * What Activity shows of an upload started on Add: the page owns it, so it
    * keeps running across the switch. A failure is shown too, so it is not
@@ -136,13 +129,13 @@ export class GetComponent {
     return { state, percent: this.dropPercent(), albumCount: summary.albumCount };
   });
 
-  // Same formula the desktop nav badge uses — slskd transfers plus in-flight
-  // URL acquisitions — plus an upload that has not become a job yet.
+  // Same formula both nav badges use — slskd transfers, in-flight URL
+  // acquisitions, and uploads that have not become a job yet.
   readonly activeCount = computed(
     () =>
       this.transfers.activeDownloadCount() +
       this.acquire.activeJobs().length +
-      (this.importInFlight() ? 1 : 0),
+      this.uploads.inFlight(),
   );
 
   // Drag events fire per element, so a naive enter/leave pair flickers as the
@@ -205,8 +198,8 @@ export class GetComponent {
     try {
       await this.uploads.upload(files, {
         onProgress: (p) => this.dropPercent.set(p),
+        onCommitting: () => this.dropState.set('committing'),
       });
-      this.dropState.set('committing');
       // The job now owns this work — the feed is where it lives from here, so
       // the card retires rather than shadowing a Downloads row (#673's shape).
       this.dismissDrop();

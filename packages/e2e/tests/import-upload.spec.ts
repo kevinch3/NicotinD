@@ -99,6 +99,11 @@ test.describe('import from a dropped folder', () => {
     const prevented = await dispatchFileDrag(page, ['dragenter', 'dragover', 'drop']);
     // Swallowed (else the browser navigates to the file), but not taken.
     expect(prevented.drop).toBe(true);
+    // A taken drop stages its files only after an async DataTransfer walk, so a
+    // negative assertion polled straight away would pass before it could fail.
+    // Let that walk settle first, then require the page to have stayed put.
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 250)));
+    await expect(page).toHaveURL(/tab=activity/);
     await expect(page.getByTestId('import-drop-overlay')).toHaveCount(0);
     await expect(page.getByTestId('import-drop-card')).toHaveCount(0);
     await expect(page.getByTestId('get-tab-downloads')).toHaveAttribute('aria-current', 'page');
@@ -127,6 +132,10 @@ test.describe('import from a dropped folder', () => {
       await held;
       await route.continue();
     });
+    // The feed is shared across specs (an earlier test's import may still be
+    // running), so a bare "badge visible" proves nothing. Empty both feeds the
+    // badge sums, leaving the upload as the only thing it can count.
+    await page.route(EMPTY_FEEDS, (route) => route.fulfill({ json: [] }));
 
     await page.goto('/get?tab=add');
     await page.getByTestId('import-folder-input').setInputFiles(join(scratch, 'Background Album'));
@@ -138,14 +147,26 @@ test.describe('import from a dropped folder', () => {
     await expect(page.getByTestId('import-browse')).toHaveCount(0);
     await expect(page.getByTestId('import-progress-row')).toBeVisible();
     await expect(page.getByTestId('import-progress-percent')).toHaveText('0%');
-    await expect(page.getByTestId('get-tab-downloads-badge')).toBeVisible();
+    // With both feeds empty, a badge of exactly 1 can only be the upload.
+    await expect.poll(() => badgeCount(page)).toBe(1);
 
     release();
     // At commit the feed's own import row takes over, so this one retires.
     await expect(page.getByTestId('import-progress-row')).toHaveCount(0, { timeout: 60_000 });
     await page.unroute('**/api/import/uploads/*/chunk*');
+    await page.unroute(EMPTY_FEEDS);
   });
 });
+
+/** The two feeds the Activity badge sums besides an in-flight upload. */
+const EMPTY_FEEDS = /\/api\/(downloads|acquire)\/jobs(\?|$)/;
+
+/** The Activity tab badge's number; absent means nothing is in flight. */
+async function badgeCount(page: Page): Promise<number> {
+  const badge = page.getByTestId('get-tab-downloads-badge');
+  if ((await badge.count()) === 0) return 0;
+  return Number((await badge.textContent())?.trim() ?? 0);
+}
 
 /**
  * Dispatch synthetic file-drag events on the Get workspace. Playwright has no

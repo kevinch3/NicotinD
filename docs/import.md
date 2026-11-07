@@ -47,8 +47,12 @@ the progress bar is `bg-theme-accent`.
 
 **An upload outlives a switch to Activity** (owner decision on #1664). The page
 shell owns the upload, not a tab, so it keeps running; Activity shows it as an
-`import-progress-row` (percent, then *Finishing…*) and the tab badge counts it as
-one in-flight item until it is a job. A failure is shown there too, with *Review*
+`import-progress-row` (a `role="progressbar"` with the percent, then *Finishing…*
+while the commit request is on the wire — `ImportUploadService.upload`'s
+`onCommitting`, since the commit is part of that one call). Every Activity badge —
+the tab's, the bottom nav's and the desktop nav's — adds
+`ImportUploadService.inFlight`, so an upload counts as one in-flight item until it
+is a job, on all three alike. A failure is shown there too, with *Review*
 back to the Add tab's card and its *Try again*, so it is not stranded on a tab the
 user left. A manifest still awaiting confirmation shows nothing on Activity.
 
@@ -360,7 +364,8 @@ preview always reports the numbers.
 
 - The **admin** lane still takes only a server-readable path (Docker: mount it). The upload lane
   covers the client-side case; neither uploads a whole mounted disk.
-- `.zip` only, both lanes (issue #893 tracks 7z). `.rar`/`.7z`/`.tar.gz` are non-goals for now: the first two need a non-free binary, and a tar
+- `.zip` only, and only the admin lane: the browser upload's allowlist (`isUploadableName`) skips
+  archives, which is why the web drop hints say "folder" and never ".zip" (issue #893 tracks 7z). `.rar`/`.7z`/`.tar.gz` are non-goals for now: the first two need a non-free binary, and a tar
   stream has no central directory, so its uncompressed size — the number the disk preflight and the
   bomb guard both depend on — cannot be known without a full decompression pass.
 - No per-file preview listing; the dry run reports counts.
