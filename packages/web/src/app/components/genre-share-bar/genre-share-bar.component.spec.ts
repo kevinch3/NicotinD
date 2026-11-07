@@ -3,11 +3,12 @@ import { GenreShareBarComponent, type ShareSegment } from './genre-share-bar.com
 import { setInputValue } from '../../../testing/signal-input';
 
 describe('GenreShareBarComponent (#1572)', () => {
-  function setup(slices: ShareSegment[], taggedCount = 10) {
+  function setup(slices: ShareSegment[], taggedCount = 10, caption: string | null = null) {
     TestBed.configureTestingModule({ imports: [GenreShareBarComponent] });
     const fixture = TestBed.createComponent(GenreShareBarComponent);
     setInputValue(fixture.componentInstance.slices, slices);
     setInputValue(fixture.componentInstance.taggedCount, taggedCount);
+    setInputValue(fixture.componentInstance.caption, caption);
     fixture.detectChanges();
     return fixture;
   }
@@ -58,5 +59,53 @@ describe('GenreShareBarComponent (#1572)', () => {
       { genre: 'Rock', count: 1, weight: 0.25 },
     ]).nativeElement;
     expect(el.querySelector('.bar').getAttribute('aria-label')).toBe('Pop 75%, Rock 25%');
+  });
+
+  describe('synthesized buckets (#1670)', () => {
+    const buckets: ShareSegment[] = [
+      { genre: 'Untagged', count: 1, weight: 0.4, kind: 'untagged', percent: 40 },
+      { genre: 'Pop', count: 1, weight: 0.3, percent: 30 },
+      { genre: 'Other genres', count: 1, weight: 0.3, kind: 'other', percent: 30 },
+    ];
+
+    it('sorts other then untagged last, whatever their weight', () => {
+      expect(names(setup(buckets).nativeElement)).toEqual(['Pop', 'Other genres', 'Untagged']);
+    });
+
+    it('gives each kind the neutral tone and a testid of its own', () => {
+      const el = setup(buckets).nativeElement;
+      expect(el.querySelector('[data-testid="genre-share-untagged"]')).toBeTruthy();
+      expect(el.querySelector('[data-testid="genre-share-other"]')).toBeTruthy();
+      const tones = Array.from(el.querySelectorAll('.seg') as NodeListOf<HTMLElement>).map((s) =>
+        [...s.classList].find((c) => c.startsWith('tone-')),
+      );
+      expect(tones).toEqual(['tone-0', 'tone-other', 'tone-other']);
+    });
+
+    it('prints an explicit percent instead of rounding the weight', () => {
+      const el = setup([
+        { genre: 'A', count: 1, weight: 1 / 3, percent: 34 },
+        { genre: 'B', count: 1, weight: 1 / 3, percent: 33 },
+        { genre: 'C', count: 1, weight: 1 / 3, percent: 33 },
+      ]).nativeElement;
+      expect(el.querySelector('[data-testid="genre-share-a"] .value').textContent.trim()).toBe(
+        '34%',
+      );
+      expect(el.querySelector('.bar').getAttribute('aria-label')).toBe('A 34%, B 33%, C 33%');
+    });
+
+    it('a real tag named "Other genres" does not collide with the bucket', () => {
+      const el = setup([
+        { genre: 'Other genres', count: 1, weight: 0.5 },
+        { genre: 'Other genres', count: 1, weight: 0.5, kind: 'other' },
+      ]).nativeElement;
+      expect(el.querySelectorAll('.legend li')).toHaveLength(2);
+      expect(el.querySelector('[data-testid="genre-share-other"]')).toBeTruthy();
+    });
+
+    it('a caption replaces the artist-page caption', () => {
+      const el = setup(buckets, 10, 'Of 12 plays').nativeElement;
+      expect(el.querySelector('.caption').textContent.trim()).toBe('Of 12 plays');
+    });
   });
 });

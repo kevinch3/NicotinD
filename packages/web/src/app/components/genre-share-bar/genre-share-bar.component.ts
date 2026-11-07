@@ -5,17 +5,21 @@ export interface ShareSegment {
   genre: string;
   count: number;
   weight: number;
+  /** A synthesized bucket, not a tag: neutral tone, sorted last, own testid. */
+  kind?: 'other' | 'untagged';
+  /** Display percent when the caller already rounded the set to sum to 100. */
+  percent?: number;
 }
 
 /**
- * Part-to-whole genre bar for the artist page's About block (#1572): one
- * stacked bar plus a legend carrying the exact percentages. Fed the API's
- * primary-genre share, so segments sum to 100% — unlike
- * `GenreDistributionStripComponent`, whose weights overlap by design.
+ * Part-to-whole genre bar: one stacked bar plus a legend carrying the exact
+ * percentages. The artist page's About block (#1572) feeds it a per-track
+ * primary-genre share and Library Stats (#1670) a per-play one, so segments sum
+ * to 100% — unlike `GenreDistributionStripComponent`, whose weights overlap.
  *
- * Colour is one hue stepped down by rank (ordinal, not categorical), with
- * "Other" neutral; the legend text carries every value, so colour is never the
- * only way to read a segment. See docs/genre-radar.md.
+ * Colour is one hue stepped down by rank (ordinal, not categorical), with the
+ * catch-all buckets neutral; the legend text carries every value, so colour is
+ * never the only way to read a segment. See docs/genre-radar.md.
  */
 @Component({
   selector: 'app-genre-share-bar',
@@ -27,16 +31,27 @@ export class GenreShareBarComponent {
   readonly slices = input<ShareSegment[]>([]);
   /** Tracks with a primary genre — the whole the bar divides. */
   readonly taggedCount = input<number>(0);
+  /** Replaces the artist-page caption when set. */
+  readonly caption = input<string | null>(null);
 
-  /** Largest first, "Other" always last, each with its rank-step class. */
+  /** Largest first, the neutral buckets last (other, then untagged), each with its tone. */
   protected readonly segments = computed(() => {
-    const named = this.slices().filter((s) => s.genre !== 'Other');
-    const other = this.slices().filter((s) => s.genre === 'Other');
+    const named = this.slices().filter((s) => neutralRank(s) < 0);
+    const neutral = this.slices()
+      .filter((s) => neutralRank(s) >= 0)
+      .sort((a, b) => neutralRank(a) - neutralRank(b));
+    const view = (s: ShareSegment, tone: string) => ({
+      ...s,
+      tone,
+      key: s.kind ? `~${s.kind}` : s.genre,
+      testid: `genre-share-${s.kind ?? s.genre.toLowerCase()}`,
+      percent: s.percent ?? pct(s.weight),
+    });
     return [
       ...[...named]
         .sort((a, b) => b.weight - a.weight || a.genre.localeCompare(b.genre))
-        .map((s, i) => ({ ...s, tone: `tone-${Math.min(i, 4)}`, percent: pct(s.weight) })),
-      ...other.map((s) => ({ ...s, tone: 'tone-other', percent: pct(s.weight) })),
+        .map((s, i) => view(s, `tone-${Math.min(i, 4)}`)),
+      ...neutral.map((s) => view(s, 'tone-other')),
     ];
   });
 
@@ -45,6 +60,13 @@ export class GenreShareBarComponent {
       .map((s) => `${s.genre} ${s.percent}%`)
       .join(', '),
   );
+}
+
+/** -1 for a real genre; the artist page's literal "Other" tag still reads as the catch-all. */
+function neutralRank(s: ShareSegment): number {
+  if (s.kind === 'untagged') return 1;
+  if (s.kind === 'other' || (!s.kind && s.genre === 'Other')) return 0;
+  return -1;
 }
 
 function pct(weight: number): number {

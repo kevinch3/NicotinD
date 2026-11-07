@@ -1169,6 +1169,14 @@ export interface AdminHistoryPrivacy {
 /** Periods the Library "Stats" tab offers. Mirrors the server's STATS_PERIODS. */
 export type StatsPeriod = '30d' | 'year' | 'all';
 
+/** Mirrors the server's StatsGenreShare (#1670). `share` is 0..1 of `totalPlays`. */
+export interface StatsGenreShare {
+  totalPlays: number;
+  slices: Array<{ genre: string; plays: number; share: number }>;
+  other: { plays: number; share: number; genreCount: number };
+  untagged: { plays: number; share: number };
+}
+
 /** Aggregates over a user's listening log — see docs/listening-history.md. */
 export interface ListeningStats {
   period: StatsPeriod;
@@ -1178,7 +1186,10 @@ export interface ListeningStats {
   topSongs: Array<{ songId: string; title: string | null; artist: string | null; plays: number }>;
   topArtists: Array<{ artist: string; plays: number }>;
   topAlbums: Array<{ album: string; artist: string | null; plays: number }>;
+  /** Overlapping per-genre counts (a 3-genre track counts 3 times) — never a share. */
   topGenres: Array<{ genre: string; plays: number }>;
+  /** Each play counted once by its track's primary genre; parts sum to `totalPlays`. */
+  genreShare: StatsGenreShare;
   /** Plays per local hour of day; always 24 buckets. */
   clock: number[];
 }

@@ -1,8 +1,13 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { catchError, firstValueFrom, of } from 'rxjs';
 import { HistoryApiService } from '../../services/api/history-api.service';
-import { GenreDistributionStripComponent } from '../../components/genre-distribution-strip/genre-distribution-strip.component';
+import {
+  GenreShareBarComponent,
+  type ShareSegment,
+} from '../../components/genre-share-bar/genre-share-bar.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
+import { TranslateService } from '../../services/translate.service';
+import { sharePercents } from '../../lib/share-percents';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import type { ListeningStats, StatsPeriod } from '../../services/api/api-types';
@@ -10,6 +15,16 @@ import type { ListeningStats, StatsPeriod } from '../../services/api/api-types';
 interface PeriodOption {
   value: StatsPeriod;
   label: string;
+}
+
+/** One row of the genre share: a real genre, or a synthesized bucket. */
+export interface GenreRow {
+  key: string;
+  label: string;
+  plays: number;
+  share: number;
+  percent: number;
+  kind?: 'other' | 'untagged';
 }
 
 const PERIODS: PeriodOption[] = [
@@ -25,19 +40,19 @@ const PERIODS: PeriodOption[] = [
  * and ~760 lines), matching `LibraryFindComponent`. All aggregation happens
  * server-side; this component only picks a period and draws.
  *
- * The genre block reuses `GenreDistributionStripComponent` from the
- * artist/album pages rather than inventing a second bar chart — same visual
- * language, and its `weight` input is already a 0..1 share.
+ * The genre block is a part-to-whole share of the period's plays, each play
+ * counted once by its track's primary genre, so the rows sum to 100% (#1670);
+ * the overlapping every-genre count is a separate mode with no percentages.
  *
  * See docs/listening-history.md.
  */
 @Component({
   selector: 'app-library-stats',
   imports: [
-    GenreDistributionStripComponent,
+    GenreShareBarComponent,
     TranslatePipe,
-    // The period picker is the only focusable control here, so it must be
-    // D-pad reachable — Library is a TV surface.
+    // The period picker and genre mode switch are the only focusable controls
+    // here, so they must be D-pad reachable — Library is a TV surface.
     TvNavGroupDirective,
     TvNavItemDirective,
   ],
@@ -45,8 +60,10 @@ const PERIODS: PeriodOption[] = [
 })
 export class LibraryStatsComponent {
   private readonly api = inject(HistoryApiService);
+  private readonly i18n = inject(TranslateService);
 
   readonly periods = PERIODS;
+  readonly genreModes = ['share', 'all'] as const;
   readonly period = signal<StatsPeriod>('30d');
   readonly stats = signal<ListeningStats | null>(null);
   readonly loading = signal(false);
@@ -55,12 +72,56 @@ export class LibraryStatsComponent {
 
   readonly hasHistory = computed(() => (this.stats()?.totals.plays ?? 0) > 0);
 
-  /** Genre plays as 0..1 shares of the top genre, for the shared strip. */
-  readonly genreSlices = computed(() => {
-    const genres = this.stats()?.topGenres ?? [];
-    const max = genres[0]?.plays ?? 0;
-    if (max === 0) return [];
-    return genres.map((g) => ({ genre: g.genre, count: g.plays, weight: g.plays / max }));
+  /** `share`: each play once by primary genre; `all`: overlapping counts, no %. */
+  readonly genreMode = signal<'share' | 'all'>('share');
+
+  /** Named genres, then the "Other genres" and "Untagged" buckets; percents sum to 100. */
+  readonly genreRows = computed<GenreRow[]>(() => {
+    const gs = this.stats()?.genreShare;
+    if (!gs || gs.totalPlays === 0) return [];
+    const rows: Omit<GenreRow, 'percent'>[] = gs.slices.map((s) => ({
+      key: s.genre,
+      label: s.genre,
+      plays: s.plays,
+      share: s.share,
+    }));
+    if (gs.other.plays > 0) {
+      rows.push({
+        key: 'other',
+        label: this.i18n.t('stats.genreOther'),
+        plays: gs.other.plays,
+        share: gs.other.share,
+        kind: 'other',
+      });
+    }
+    if (gs.untagged.plays > 0) {
+      rows.push({
+        key: 'untagged',
+        label: this.i18n.t('stats.genreUntagged'),
+        plays: gs.untagged.plays,
+        share: gs.untagged.share,
+        kind: 'untagged',
+      });
+    }
+    const percents = sharePercents(rows.map((r) => r.plays));
+    return rows.map((r, i) => ({ ...r, percent: percents[i] ?? 0 }));
+  });
+
+  readonly genreSegments = computed<ShareSegment[]>(() =>
+    this.genreRows().map((r) => ({
+      genre: r.label,
+      count: r.plays,
+      weight: r.share,
+      percent: r.percent,
+      kind: r.kind,
+    })),
+  );
+
+  /** "+N more genres · P%" for the folded tail, or null when nothing folded. */
+  readonly genreTailCaption = computed(() => {
+    const other = this.stats()?.genreShare.other;
+    const row = this.genreRows().find((r) => r.kind === 'other');
+    return other && row ? { count: other.genreCount, percent: row.percent } : null;
   });
 
   /**

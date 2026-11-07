@@ -94,8 +94,8 @@ The issue's second sub-goal — "settle the multi-genre UX" — is decided: yes,
 identity is now listener-facing. `GenreDistributionStripComponent`
 (`components/genre-distribution-strip/`) is a **read-only** bar-list strip (the plain CSS bar-fill
 pattern from `TrackStatsBarsComponent`, not the SVG radar — a strip is a linear form) rendered on
-the album page (`album-detail.component`) and in library stats. The artist page used it too until
-#1572 replaced it there — see the next section. It has no interaction with `ArtistGenreModalComponent` or the
+the album page (`album-detail.component`) only. The artist page (#1572, next section) and library
+stats (#1670) replaced it with the part-to-whole share bar. It has no interaction with `ArtistGenreModalComponent` or the
 reclassify/curation flow; the radar stays the curation review aid described above.
 
 ## The artist page: a headline and a part-to-whole bar (#1572)
@@ -122,6 +122,13 @@ number, in two places:
   `embedded` (the block draws the card). The body is hidden with `[hidden]`, **not** `@if`: the
   component's first-load bio auto-fetch (#213) and its measured show-more must keep running while
   the block is closed.
+
+Library Stats reuses the same bar on a **per-play** basis (each play once by its track's primary
+genre; [listening-history.md](listening-history.md) "Stats"), where the artist page's basis is per
+track. For that it takes three optional inputs: `kind` (`'other'` / `'untagged'`) marks a synthesized
+bucket that is neutral, sorted last and given its own testid, so it never collides with a real tag
+named "Other"; `percent` overrides the rounded weight when the caller already rounded the set to sum
+to 100; `caption` replaces the artist-page caption.
 
 The bar is one hue stepped down by rank (ordinal), with "Other" neutral — a categorical palette
 would imply the genres are unrelated, and the legend text carries every value, so colour is never

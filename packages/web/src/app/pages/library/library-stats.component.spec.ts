@@ -3,7 +3,11 @@ import { vi } from 'vitest';
 import { of, throwError } from 'rxjs';
 import { LibraryStatsComponent } from './library-stats.component';
 import { HistoryApiService } from '../../services/api/history-api.service';
+import { TranslateService, interpolate } from '../../services/translate.service';
 import type { ListeningStats, StatsPeriod } from '../../services/api/api-types';
+import EN from '../../../../public/i18n/en.json';
+
+const CATALOG = EN as Record<string, string>;
 
 function stats(over: Partial<ListeningStats> = {}): ListeningStats {
   return {
@@ -18,6 +22,15 @@ function stats(over: Partial<ListeningStats> = {}): ListeningStats {
       { genre: 'Cumbia', plays: 8 },
       { genre: 'Rock', plays: 4 },
     ],
+    genreShare: {
+      totalPlays: 12,
+      slices: [
+        { genre: 'Cumbia', plays: 6, share: 6 / 12 },
+        { genre: 'Rock', plays: 3, share: 3 / 12 },
+      ],
+      other: { plays: 2, share: 2 / 12, genreCount: 2 },
+      untagged: { plays: 1, share: 1 / 12 },
+    },
     clock: Array.from({ length: 24 }, (_, h) => (h === 21 ? 6 : h === 9 ? 3 : 0)),
     ...over,
   };
@@ -29,7 +42,17 @@ function setup(res: ListeningStats | 'error' = stats()) {
   );
   TestBed.configureTestingModule({
     imports: [LibraryStatsComponent],
-    providers: [{ provide: HistoryApiService, useValue: { getStats } }],
+    providers: [
+      { provide: HistoryApiService, useValue: { getStats } },
+      {
+        provide: TranslateService,
+        useValue: {
+          t: (k: string, p?: Record<string, string | number>) => interpolate(CATALOG[k] ?? k, p),
+          lang: () => 'en',
+          revision: () => 0,
+        },
+      },
+    ],
   });
   const fixture = TestBed.createComponent(LibraryStatsComponent);
   fixture.detectChanges();
@@ -119,13 +142,77 @@ describe('LibraryStatsComponent', () => {
     expect(cmp.clockBars()[0].percent).toBe(0);
   });
 
-  it('scales genre slices against the top genre', async () => {
-    const { fixture, cmp } = setup();
-    await settle(fixture);
-    expect(cmp.genreSlices()).toEqual([
-      { genre: 'Cumbia', count: 8, weight: 1 },
-      { genre: 'Rock', count: 4, weight: 0.5 },
-    ]);
+  describe('genre share (#1670)', () => {
+    const rows = (el: HTMLElement) =>
+      Array.from(el.querySelectorAll('[data-testid="stats-genre-row"]')) as HTMLElement[];
+
+    it('shows true shares of period plays — the top genre is not forced to 100', async () => {
+      const { fixture, cmp } = setup();
+      await settle(fixture);
+      expect(cmp.genreRows().map((r) => r.percent)).toEqual([50, 25, 17, 8]);
+      const first = rows(fixture.nativeElement)[0];
+      expect(first.getAttribute('data-percent')).toBe('50');
+      expect(first.querySelector('[data-testid="stats-genre-value"]')?.textContent?.trim()).toBe(
+        '50% · 6 plays',
+      );
+    });
+
+    it('two tied genres show equal sub-100 shares', async () => {
+      const { fixture } = setup(
+        stats({
+          totals: { plays: 10, distinctSongs: 2, distinctArtists: 1, msPlayed: 1 },
+          genreShare: {
+            totalPlays: 10,
+            slices: [
+              { genre: 'A', plays: 5, share: 0.5 },
+              { genre: 'B', plays: 5, share: 0.5 },
+            ],
+            other: { plays: 0, share: 0, genreCount: 0 },
+            untagged: { plays: 0, share: 0 },
+          },
+        }),
+      );
+      await settle(fixture);
+      const percents = rows(fixture.nativeElement).map((r) => r.getAttribute('data-percent'));
+      expect(percents).toEqual(['50', '50']);
+      expect(
+        fixture.nativeElement.querySelector('[data-testid="stats-genre-tail-caption"]'),
+      ).toBeNull();
+    });
+
+    it('captions the hidden tail and keeps Untagged visible', async () => {
+      const { fixture } = setup();
+      await settle(fixture);
+      const el: HTMLElement = fixture.nativeElement;
+      const tail = el.querySelector('[data-testid="stats-genre-tail-caption"]')?.textContent;
+      expect(tail).toContain('+2');
+      expect(tail).toContain('17%');
+      const untagged = rows(el).find((r) => r.getAttribute('data-genre') === 'untagged');
+      expect(untagged?.textContent).toContain('Untagged');
+      expect(untagged?.getAttribute('data-percent')).toBe('8');
+      expect(el.querySelector('app-genre-distribution-strip')).toBeNull();
+      expect(el.querySelector('app-genre-share-bar')).toBeTruthy();
+    });
+
+    it('secondary mode lists overlapping plays without percentages', async () => {
+      const { fixture } = setup();
+      await settle(fixture);
+      const el: HTMLElement = fixture.nativeElement;
+      const allBtn = el.querySelector(
+        '[data-testid="stats-genre-mode"][data-mode="all"]',
+      ) as HTMLButtonElement;
+      allBtn.click();
+      await settle(fixture);
+
+      expect(allBtn.getAttribute('aria-pressed')).toBe('true');
+      const all = Array.from(el.querySelectorAll('[data-testid="stats-genre-all-row"]'));
+      expect(all.map((r) => r.textContent?.replace(/\s+/g, '').trim())).toEqual([
+        '1Cumbia8plays',
+        '2Rock4plays',
+      ]);
+      expect(el.querySelector('[data-testid="stats-top-genres"]')?.textContent).not.toContain('%');
+      expect(rows(el)).toHaveLength(0);
+    });
   });
 
   it('formats durations without a leading zero-hour', () => {

@@ -74,6 +74,12 @@ const EMPTY_STATS: ListeningStats = {
   topArtists: [],
   topAlbums: [],
   topGenres: [],
+  genreShare: {
+    totalPlays: 0,
+    slices: [],
+    other: { plays: 0, share: 0, genreCount: 0 },
+    untagged: { plays: 0, share: 0 },
+  },
   clock: new Array(24).fill(0),
 };
 

@@ -109,15 +109,89 @@
       }
     </div>
 
-    <!-- Top genres — reuses the artist/album strip rather than a second chart -->
-    @if (genreSlices().length > 0) {
+    <!-- Top genres: a share of the period's plays, one count per play by the
+         track's primary genre (#1670). The overlapping count is its own mode. -->
+    @if (genreRows().length > 0) {
       <section data-testid="stats-top-genres">
-        <h3 class="section-title mb-2">{{ 'stats.topGenres' | t }}</h3>
-        <app-genre-distribution-strip
-          [slices]="genreSlices()"
-          [trackCount]="stats()!.totals.distinctSongs"
-          [genreCount]="genreSlices().length"
-        />
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <h3 class="section-title">{{ 'stats.topGenres' | t }}</h3>
+          <div
+            appTvNavGroup
+            [axis]="'horizontal'"
+            class="flex gap-1 p-1 bg-theme-surface-2 rounded-xl w-fit"
+          >
+            @for (m of genreModes; track m) {
+              <button
+                appTvNavItem
+                type="button"
+                (click)="genreMode.set(m)"
+                data-testid="stats-genre-mode"
+                [attr.data-mode]="m"
+                [attr.aria-pressed]="genreMode() === m"
+                class="shrink-0 whitespace-nowrap px-3 py-1 text-xs rounded-lg transition-colors"
+                [class.bg-theme-surface]="genreMode() === m"
+                [class.text-theme-primary]="genreMode() === m"
+                [class.text-theme-muted]="genreMode() !== m"
+              >
+                {{ ('stats.genreMode.' + m) | t }}
+              </button>
+            }
+          </div>
+        </div>
+
+        @if (genreMode() === 'share') {
+          <app-genre-share-bar
+            [slices]="genreSegments()"
+            [caption]="'stats.genreShareCaption' | t: { count: stats()!.genreShare.totalPlays }"
+          />
+          <ol class="flex flex-col gap-1 mt-3">
+            @for (row of genreRows(); track row.kind ?? 'g:' + row.key) {
+              <li
+                class="flex items-center gap-3 text-sm"
+                data-testid="stats-genre-row"
+                [attr.data-genre]="row.key"
+                [attr.data-kind]="row.kind ?? null"
+                [attr.data-percent]="row.percent"
+              >
+                <span
+                  class="min-w-0 w-28 sm:w-40 shrink-0 truncate"
+                  [class.text-theme-primary]="!row.kind"
+                  [class.text-theme-muted]="!!row.kind"
+                  >{{ row.label }}</span
+                >
+                <span class="flex-1 h-2 rounded-full bg-theme-surface-2 overflow-hidden">
+                  <span
+                    class="block h-full rounded-full"
+                    [class.bg-theme-accent]="!row.kind"
+                    [class.bg-theme-muted]="!!row.kind"
+                    [style.width.%]="row.percent"
+                  ></span>
+                </span>
+                <span class="shrink-0 text-xs text-theme-muted tabular-nums" data-testid="stats-genre-value">
+                  {{ 'stats.genreShareValue' | t: { percent: row.percent, count: row.plays } }}
+                </span>
+              </li>
+            }
+          </ol>
+          @if (genreTailCaption(); as tail) {
+            <p class="mt-2 text-xs text-theme-muted" data-testid="stats-genre-tail-caption">
+              {{ 'stats.genreTailCaption' | t: tail }}
+            </p>
+          }
+        } @else {
+          <ol class="flex flex-col gap-1">
+            @for (g of stats()!.topGenres; track g.genre; let i = $index) {
+              <li class="flex items-center gap-3 text-sm" data-testid="stats-genre-all-row">
+                <span class="w-5 shrink-0 text-right text-xs text-theme-muted">{{ i + 1 }}</span>
+                <span class="min-w-0 flex-1 truncate text-theme-primary">{{ g.genre }}</span>
+                <span class="shrink-0 text-xs text-theme-muted">
+                  {{ 'stats.playCount' | t: { count: g.plays } }}
+                </span>
+              </li>
+            }
+          </ol>
+          <p class="mt-2 text-xs text-theme-muted">{{ 'stats.genreAllCaption' | t }}</p>
+        }
       </section>
     }
 

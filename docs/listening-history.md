@@ -189,9 +189,20 @@ Design notes worth keeping:
   answers; a rolling window would quietly mix two years together every January.
 - **An unknown `period` falls back to the default rather than 400ing.** It comes straight off a query
   string, and a stats page that errors on a typo is worse than one showing 30 days.
-- **Genres rank through `library_song_genres`**, not `library_songs.genre` — that column holds only
-  the *primary*, so ranking on it would under-report every secondary genre (same reason filters match
-  the set via `EXISTS`). Full reader table: [genre-model.md](genre-model.md).
+- **The genre block is a part-to-whole share, `genreShare` (#1670).** Each counted play counts
+  **once**, under its track's primary genre (the `library_songs.genre` mirror), so the parts sum to
+  the period's plays. The top `GENRE_SHARE_LIMIT` (8) genres are named; the rest fold into `other`
+  (exact plays and a `genreCount` for the "+N more genres" caption). `untagged` is everything else:
+  no genre, a junk tag (`JUNK_GENRES`, via `unresolvedGenreSql`, so a literal `Other` tag lands here,
+  not as a genre), or a deleted song. Invariant: `sum(slices) + other + untagged = totals.plays`.
+  The UI rounds the displayed percents by largest remainder (`sharePercents`), so they add up to
+  exactly 100, and keeps the Untagged row visible and muted. The old block divided every genre by the
+  top one, so the first row always read 100%. Known limit: a song whose primary is junk but whose
+  second genre is real (`[Other, Cumbia]`) counts as Untagged.
+- **`topGenres` stays the overlapping count** through `library_song_genres` — a three-genre track
+  counts three times, so it is never a share. It backs the "Including secondary genres" mode (play
+  counts, no %) and mosaic tile sizing (`playWeights.byGenre`). Full reader table:
+  [genre-model.md](genre-model.md).
 - **Deleted songs still count.** Every aggregate `COALESCE`s the live library row with the event's own
   snapshot, which is the payoff for storing it.
 - **The clock buckets by local hour.** "When do I listen" is a wall-clock question; UTC would smear
@@ -202,8 +213,9 @@ Design notes worth keeping:
 - SQL aliases are `artist_name`/`album_name`, not `artist`/`album`: those names also exist as real
   columns on both joined tables and SQLite rejects the `GROUP BY` as ambiguous.
 
-The genre block reuses `GenreDistributionStripComponent` from the artist/album pages rather than
-adding a second bar chart.
+The genre block draws `GenreShareBarComponent` (the artist page's part-to-whole bar, with
+`kind`/`percent`/`caption` inputs) above a ranked list reading "34% · 212 plays", plus a mode switch
+to the overlapping view. It no longer uses `GenreDistributionStripComponent`, whose weights overlap.
 
 ## Roadmap
 
