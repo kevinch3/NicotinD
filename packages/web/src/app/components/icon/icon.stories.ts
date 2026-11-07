@@ -1,43 +1,51 @@
 import type { Meta, StoryObj } from '@storybook/angular';
 import { IconComponent, type IconName } from './icon.component';
 
-/** Every glyph the set ships, in declaration order. */
-export const ICON_NAMES: IconName[] = [
-  'back',
-  'play',
-  'download',
-  'share',
-  'close',
-  'add',
-  'delete',
-  'queue',
-  'edit',
-  'tag',
-  'palette',
-  'headphones',
-  'user',
-  'sliders',
-  'speaker',
-  'smartphone',
-  'monitor',
-  'wifi',
-  'activity',
-  'wrench',
-  'database',
-  'mic',
-  'camera',
-  'search',
-  'sort',
-  'arrow-up',
-  'check-square',
-  'music',
-  'disc-album',
-  'disc',
-  'layers',
-  'mic-vocal',
-  'list-music',
-  'chart',
-];
+/**
+ * Every glyph the set ships, in declaration order. A `Record<IconName, true>`, so a
+ * glyph added to `IconName` and left out here fails the type check instead of
+ * silently missing from the AllIcons grid and the `name` control.
+ */
+const ICON_SET = {
+  back: true,
+  play: true,
+  download: true,
+  share: true,
+  close: true,
+  add: true,
+  delete: true,
+  queue: true,
+  edit: true,
+  tag: true,
+  palette: true,
+  headphones: true,
+  user: true,
+  sliders: true,
+  speaker: true,
+  smartphone: true,
+  monitor: true,
+  wifi: true,
+  activity: true,
+  wrench: true,
+  database: true,
+  mic: true,
+  camera: true,
+  search: true,
+  sort: true,
+  'arrow-up': true,
+  'check-square': true,
+  music: true,
+  'disc-album': true,
+  disc: true,
+  layers: true,
+  'mic-vocal': true,
+  'list-music': true,
+  chart: true,
+  'layout-grid': true,
+  'rows-3': true,
+} satisfies Record<IconName, true>;
+
+export const ICON_NAMES = Object.keys(ICON_SET) as IconName[];
 
 const meta: Meta<IconComponent> = {
   title: 'Components/Icon',

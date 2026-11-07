@@ -13,6 +13,7 @@ import type { HomeView } from '@nicotind/core';
 import { lazy } from '../../lib/stale-chunk';
 import { UserPreferencesService } from '../../services/user-preferences.service';
 import { HomeViewSwitchComponent } from './home-view-switch.component';
+import { homeSwitchAnchorClass } from './home-switch-anchor';
 
 /** One loader per view, each a lazy chunk. Injectable so a spec can count calls. */
 export type HomeViewLoaders = Record<HomeView, () => Promise<Type<unknown>>>;
@@ -56,6 +57,7 @@ export class HomeComponent {
   private readonly destroyRef = inject(DestroyRef);
 
   readonly view = computed(() => homeViewOf(this.prefs.homeView()));
+  readonly anchorClass = computed(() => homeSwitchAnchorClass(this.view()));
   readonly component = signal<Type<unknown> | null>(null);
   private loading: HomeView | null = null;
   private destroyed = false;
