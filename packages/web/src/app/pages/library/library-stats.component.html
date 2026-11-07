@@ -111,45 +111,47 @@
 
     <!-- Top genres: a share of the period's plays, one count per play by the
          track's primary genre (#1670). The overlapping count is its own mode. -->
-    @if (genreRows().length > 0) {
+    @if (genreRows().length > 0 || stats()!.topGenres.length > 0) {
       <section data-testid="stats-top-genres">
         <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
           <h3 class="section-title">{{ 'stats.topGenres' | t }}</h3>
-          <div
-            appTvNavGroup
-            [axis]="'horizontal'"
-            class="flex gap-1 p-1 bg-theme-surface-2 rounded-xl w-fit"
-          >
-            @for (m of genreModes; track m) {
-              <button
-                appTvNavItem
-                type="button"
-                (click)="genreMode.set(m)"
-                data-testid="stats-genre-mode"
-                [attr.data-mode]="m"
-                [attr.aria-pressed]="genreMode() === m"
-                class="shrink-0 whitespace-nowrap px-3 py-1 text-xs rounded-lg transition-colors"
-                [class.bg-theme-surface]="genreMode() === m"
-                [class.text-theme-primary]="genreMode() === m"
-                [class.text-theme-muted]="genreMode() !== m"
-              >
-                {{ ('stats.genreMode.' + m) | t }}
-              </button>
-            }
-          </div>
+          @if (hasGenreShare()) {
+            <div
+              appTvNavGroup
+              [axis]="'horizontal'"
+              class="flex gap-1 p-1 bg-theme-surface-2 rounded-xl w-fit"
+            >
+              @for (m of genreModes; track m) {
+                <button
+                  appTvNavItem
+                  type="button"
+                  (click)="genreMode.set(m)"
+                  data-testid="stats-genre-mode"
+                  [attr.data-mode]="m"
+                  [attr.aria-pressed]="genreMode() === m"
+                  class="shrink-0 whitespace-nowrap px-3 py-1 text-xs rounded-lg transition-colors"
+                  [class.bg-theme-surface]="genreMode() === m"
+                  [class.text-theme-primary]="genreMode() === m"
+                  [class.text-theme-muted]="genreMode() !== m"
+                >
+                  {{ ('stats.genreMode.' + m) | t }}
+                </button>
+              }
+            </div>
+          }
         </div>
 
-        @if (genreMode() === 'share') {
+        @if (effectiveGenreMode() === 'share') {
           <app-genre-share-bar
             [slices]="genreSegments()"
-            [caption]="'stats.genreShareCaption' | t: { count: stats()!.genreShare.totalPlays }"
+            [caption]="'stats.genreShareCaption' | t: { count: stats()!.genreShare?.totalPlays ?? 0 }"
           />
           <ol class="flex flex-col gap-1 mt-3">
             @for (row of genreRows(); track row.kind ?? 'g:' + row.key) {
               <li
                 class="flex items-center gap-3 text-sm"
                 data-testid="stats-genre-row"
-                [attr.data-genre]="row.key"
+                [attr.data-genre]="row.kind ? null : row.key"
                 [attr.data-kind]="row.kind ?? null"
                 [attr.data-percent]="row.percent"
               >

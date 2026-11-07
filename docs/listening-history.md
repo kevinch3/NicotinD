@@ -198,7 +198,9 @@ Design notes worth keeping:
   The UI rounds the displayed percents by largest remainder (`sharePercents`), so they add up to
   exactly 100, and keeps the Untagged row visible and muted. The old block divided every genre by the
   top one, so the first row always read 100%. Known limit: a song whose primary is junk but whose
-  second genre is real (`[Other, Cumbia]`) counts as Untagged.
+  second genre is real (`[Other, Cumbia]`) counts as Untagged. `genreShare` is optional on the web
+  type: a native app can talk to a pre-#1670 server, and then the block still renders from
+  `topGenres` in the counts mode, with no mode switch.
 - **`topGenres` stays the overlapping count** through `library_song_genres` — a three-genre track
   counts three times, so it is never a share. It backs the "Including secondary genres" mode (play
   counts, no %) and mosaic tile sizing (`playWeights.byGenre`). Full reader table:

@@ -5,7 +5,10 @@ export interface ShareSegment {
   genre: string;
   count: number;
   weight: number;
-  /** A synthesized bucket, not a tag: neutral tone, sorted last, own testid. */
+  /**
+   * A synthesized bucket, not a tag: neutral tone, sorted last, own testid. Only
+   * `kind` marks a bucket — a real tag named "Other" stays a ranked genre.
+   */
   kind?: 'other' | 'untagged';
   /** Display percent when the caller already rounded the set to sum to 100. */
   percent?: number;
@@ -43,8 +46,8 @@ export class GenreShareBarComponent {
     const view = (s: ShareSegment, tone: string) => ({
       ...s,
       tone,
-      key: s.kind ? `~${s.kind}` : s.genre,
-      testid: `genre-share-${s.kind ?? s.genre.toLowerCase()}`,
+      key: s.kind ? `bucket:${s.kind}` : `genre:${s.genre}`,
+      testid: s.kind ? `genre-share-bucket-${s.kind}` : `genre-share-${s.genre.toLowerCase()}`,
       percent: s.percent ?? pct(s.weight),
     });
     return [
@@ -62,10 +65,10 @@ export class GenreShareBarComponent {
   );
 }
 
-/** -1 for a real genre; the artist page's literal "Other" tag still reads as the catch-all. */
+/** -1 for a real genre, else the bucket's place at the end (other, then untagged). */
 function neutralRank(s: ShareSegment): number {
   if (s.kind === 'untagged') return 1;
-  if (s.kind === 'other' || (!s.kind && s.genre === 'Other')) return 0;
+  if (s.kind === 'other') return 0;
   return -1;
 }
 

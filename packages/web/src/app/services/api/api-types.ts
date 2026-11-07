@@ -1188,8 +1188,11 @@ export interface ListeningStats {
   topAlbums: Array<{ album: string; artist: string | null; plays: number }>;
   /** Overlapping per-genre counts (a 3-genre track counts 3 times) — never a share. */
   topGenres: Array<{ genre: string; plays: number }>;
-  /** Each play counted once by its track's primary genre; parts sum to `totalPlays`. */
-  genreShare: StatsGenreShare;
+  /**
+   * Each play counted once by its track's primary genre; parts sum to `totalPlays`.
+   * Optional: a native app can talk to a server older than #1670, which omits it.
+   */
+  genreShare?: StatsGenreShare;
   /** Plays per local hour of day; always 24 buckets. */
   clock: number[];
 }

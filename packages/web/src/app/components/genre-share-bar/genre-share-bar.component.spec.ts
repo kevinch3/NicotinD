@@ -20,9 +20,9 @@ describe('GenreShareBarComponent (#1572)', () => {
     expect(setup([]).nativeElement.querySelector('[data-testid="genre-share-bar"]')).toBeNull();
   });
 
-  it('orders segments largest first and keeps "Other" last', () => {
+  it('orders segments largest first and keeps the "Other" bucket last', () => {
     const el = setup([
-      { genre: 'Other', count: 3, weight: 0.3 },
+      { genre: 'Other', count: 3, weight: 0.3, kind: 'other' },
       { genre: 'Salsa', count: 2, weight: 0.2 },
       { genre: 'Pop', count: 5, weight: 0.5 },
     ]).nativeElement;
@@ -41,11 +41,11 @@ describe('GenreShareBarComponent (#1572)', () => {
     );
   });
 
-  it('steps the tone by rank and gives "Other" the neutral tone', () => {
+  it('steps the tone by rank and gives the "Other" bucket the neutral tone', () => {
     const el = setup([
       { genre: 'Pop', count: 2, weight: 0.5 },
       { genre: 'Rock', count: 1, weight: 0.25 },
-      { genre: 'Other', count: 1, weight: 0.25 },
+      { genre: 'Other', count: 1, weight: 0.25, kind: 'other' },
     ]).nativeElement;
     const tones = Array.from(el.querySelectorAll('.seg') as NodeListOf<HTMLElement>).map((s) =>
       [...s.classList].find((c) => c.startsWith('tone-')),
@@ -74,8 +74,8 @@ describe('GenreShareBarComponent (#1572)', () => {
 
     it('gives each kind the neutral tone and a testid of its own', () => {
       const el = setup(buckets).nativeElement;
-      expect(el.querySelector('[data-testid="genre-share-untagged"]')).toBeTruthy();
-      expect(el.querySelector('[data-testid="genre-share-other"]')).toBeTruthy();
+      expect(el.querySelector('[data-testid="genre-share-bucket-untagged"]')).toBeTruthy();
+      expect(el.querySelector('[data-testid="genre-share-bucket-other"]')).toBeTruthy();
       const tones = Array.from(el.querySelectorAll('.seg') as NodeListOf<HTMLElement>).map((s) =>
         [...s.classList].find((c) => c.startsWith('tone-')),
       );
@@ -94,13 +94,21 @@ describe('GenreShareBarComponent (#1572)', () => {
       expect(el.querySelector('.bar').getAttribute('aria-label')).toBe('A 34%, B 33%, C 33%');
     });
 
-    it('a real tag named "Other genres" does not collide with the bucket', () => {
+    it('a real tag named "Other" does not collide with the bucket', () => {
       const el = setup([
-        { genre: 'Other genres', count: 1, weight: 0.5 },
-        { genre: 'Other genres', count: 1, weight: 0.5, kind: 'other' },
+        { genre: 'Other', count: 1, weight: 0.2, kind: 'other' },
+        { genre: 'Pop', count: 1, weight: 0.3 },
+        { genre: 'Other', count: 1, weight: 0.5 },
       ]).nativeElement;
-      expect(el.querySelectorAll('.legend li')).toHaveLength(2);
-      expect(el.querySelector('[data-testid="genre-share-other"]')).toBeTruthy();
+      expect(names(el)).toEqual(['Other', 'Pop', 'Other']);
+      const testids = Array.from(el.querySelectorAll('.legend li')).map((li) =>
+        (li as HTMLElement).getAttribute('data-testid'),
+      );
+      expect(testids).toEqual(['genre-share-other', 'genre-share-pop', 'genre-share-bucket-other']);
+      const tones = Array.from(el.querySelectorAll('.seg') as NodeListOf<HTMLElement>).map((s) =>
+        [...s.classList].find((c) => c.startsWith('tone-')),
+      );
+      expect(tones).toEqual(['tone-0', 'tone-1', 'tone-other']);
     });
 
     it('a caption replaces the artist-page caption', () => {

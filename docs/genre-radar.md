@@ -126,11 +126,14 @@ number, in two places:
 Library Stats reuses the same bar on a **per-play** basis (each play once by its track's primary
 genre; [listening-history.md](listening-history.md) "Stats"), where the artist page's basis is per
 track. For that it takes three optional inputs: `kind` (`'other'` / `'untagged'`) marks a synthesized
-bucket that is neutral, sorted last and given its own testid, so it never collides with a real tag
-named "Other"; `percent` overrides the rounded weight when the caller already rounded the set to sum
-to 100; `caption` replaces the artist-page caption.
+bucket that is neutral, sorted last and given its own testid (`genre-share-bucket-<kind>`). Only
+`kind` marks a bucket — never the name — so a real tag named "Other" stays a ranked genre with its
+own tone and `genre-share-other` testid. The artist page's API still folds its tail into a slice
+named "Other", so `artist-detail.component` maps that slice to `kind: 'other'` before handing it
+over. `percent` overrides the rounded weight when the caller already rounded the set to sum to 100;
+`caption` replaces the artist-page caption.
 
-The bar is one hue stepped down by rank (ordinal), with "Other" neutral — a categorical palette
+The bar is one hue stepped down by rank (ordinal), with the buckets neutral — a categorical palette
 would imply the genres are unrelated, and the legend text carries every value, so colour is never
 the only carrier.
 

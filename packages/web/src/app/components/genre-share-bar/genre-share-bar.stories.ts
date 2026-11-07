@@ -13,7 +13,7 @@ const meta: Meta<GenreShareBarComponent> = {
       { genre: 'Latin Pop', count: 7, weight: 0.14 },
       { genre: 'Ballad', count: 4, weight: 0.08 },
       { genre: 'Tropical', count: 3, weight: 0.06 },
-      { genre: 'Other', count: 3, weight: 0.06 },
+      { genre: 'Other', count: 3, weight: 0.06, kind: 'other' },
     ],
   },
 };

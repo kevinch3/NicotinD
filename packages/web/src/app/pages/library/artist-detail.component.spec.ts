@@ -455,6 +455,17 @@ describe('ArtistDetailComponent — genre headline + About block', () => {
     expect(chips(el)).toEqual(['Pop', 'Salsa']);
   });
 
+  it('hands the API\'s folded "Other" to the bar as a bucket, not a genre', async () => {
+    const ctx = render(
+      share([
+        { genre: 'Pop', count: 8, weight: 0.8 },
+        { genre: 'Other', count: 2, weight: 0.2 },
+      ]),
+    );
+    await settle(ctx);
+    expect(ctx.component.genreShare()?.slices.map((s) => s.kind)).toEqual([undefined, 'other']);
+  });
+
   it('names a single genre when one dominates', async () => {
     const el = await settle(
       render(

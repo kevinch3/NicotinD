@@ -625,7 +625,13 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     this.genreShare.set(null);
     try {
       const data = await firstValueFrom(this.api.artistGenreDistribution(artistId));
-      if (this.artistId === artistId) this.genreShare.set(data.primary);
+      if (this.artistId !== artistId) return;
+      // The API folds its tail into a slice literally named "Other"; the bar
+      // reads a bucket only from `kind` (docs/genre-radar.md).
+      const slices = data.primary.slices.map((s): ShareSegment =>
+        s.genre === 'Other' ? { ...s, kind: 'other' } : s,
+      );
+      this.genreShare.set({ taggedCount: data.primary.taggedCount, slices });
     } catch {
       /* no-op — an empty/failed distribution just hides the chips and chart */
     }

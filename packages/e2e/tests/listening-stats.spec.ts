@@ -106,12 +106,14 @@ test.describe('listening stats', () => {
     const auth = { Authorization: `Bearer ${token}` };
 
     const albumSongs = await songsMatching(request, auth, FIXTURE.album.title);
-    const single = (await songsMatching(request, auth, FIXTURE.single.title))[0];
     expect(albumSongs.length).toBeGreaterThan(1);
-    expect(single, 'untagged single fixture').toBeTruthy();
-
+    // The Untagged play is of a song no library row carries (a deleted song),
+    // not an untagged fixture: the DB is shared by the whole run and other specs
+    // retag fixtures (radio-landing.spec.ts gives the single artist 'Shoegaze').
     const now = Date.now();
-    const events = [albumSongs[0], albumSongs[1], single].map((song, n) => ({
+    const gone = { id: `e2e-genre-share-deleted-${now}`, title: 'E2E Deleted Song' };
+
+    const events = [albumSongs[0], albumSongs[1], gone].map((song, n) => ({
       clientEventId: `e2e-genre-share-${now}-${n}`,
       songId: song.id,
       startedAt: now - (n + 1) * 60_000,
@@ -139,6 +141,7 @@ test.describe('listening stats', () => {
     const read = await rows.evaluateAll((els) =>
       els.map((el) => ({
         genre: (el.getAttribute('data-genre') ?? '').toLowerCase(),
+        kind: el.getAttribute('data-kind'),
         percent: Number(el.getAttribute('data-percent')),
       })),
     );
@@ -149,7 +152,8 @@ test.describe('listening stats', () => {
     const folclore = read.find((r) => r.genre === 'folclore');
     expect(folclore, 'the primary genre has a row').toBeTruthy();
     expect(folclore!.percent).toBeLessThan(100);
-    expect(read.some((r) => r.genre === 'untagged')).toBe(true);
+    expect(read.some((r) => r.kind === 'untagged')).toBe(true);
+    await expect(section.getByTestId('genre-share-bucket-untagged')).toBeVisible();
 
     // The overlapping count is its own mode, and it carries no percentages.
     await section.locator('[data-testid="stats-genre-mode"][data-mode="all"]').click();

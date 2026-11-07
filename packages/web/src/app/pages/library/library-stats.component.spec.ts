@@ -187,8 +187,9 @@ describe('LibraryStatsComponent', () => {
       const tail = el.querySelector('[data-testid="stats-genre-tail-caption"]')?.textContent;
       expect(tail).toContain('+2');
       expect(tail).toContain('17%');
-      const untagged = rows(el).find((r) => r.getAttribute('data-genre') === 'untagged');
+      const untagged = rows(el).find((r) => r.getAttribute('data-kind') === 'untagged');
       expect(untagged?.textContent).toContain('Untagged');
+      expect(untagged?.hasAttribute('data-genre')).toBe(false);
       expect(untagged?.getAttribute('data-percent')).toBe('8');
       expect(el.querySelector('app-genre-distribution-strip')).toBeNull();
       expect(el.querySelector('app-genre-share-bar')).toBeTruthy();
@@ -212,6 +213,21 @@ describe('LibraryStatsComponent', () => {
       ]);
       expect(el.querySelector('[data-testid="stats-top-genres"]')?.textContent).not.toContain('%');
       expect(rows(el)).toHaveLength(0);
+    });
+
+    it('falls back to the counts when an older server sends no genreShare', async () => {
+      const legacy = stats();
+      delete legacy.genreShare;
+      const { fixture, cmp } = setup(legacy);
+      await settle(fixture);
+      const el: HTMLElement = fixture.nativeElement;
+
+      expect(el.querySelector('[data-testid="stats-top-genres"]')).toBeTruthy();
+      expect(cmp.effectiveGenreMode()).toBe('all');
+      expect(el.querySelectorAll('[data-testid="stats-genre-all-row"]')).toHaveLength(2);
+      expect(el.querySelector('[data-testid="stats-genre-mode"]')).toBeNull();
+      expect(el.querySelector('app-genre-share-bar')).toBeNull();
+      expect(el.querySelector('[data-testid="stats-top-genres"]')?.textContent).not.toContain('%');
     });
   });
 

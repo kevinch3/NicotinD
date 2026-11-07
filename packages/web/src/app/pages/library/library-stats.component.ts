@@ -75,6 +75,11 @@ export class LibraryStatsComponent {
   /** `share`: each play once by primary genre; `all`: overlapping counts, no %. */
   readonly genreMode = signal<'share' | 'all'>('share');
 
+  /** False against a pre-#1670 server (no `genreShare`): only the counts can be drawn. */
+  readonly hasGenreShare = computed(() => this.genreRows().length > 0);
+
+  readonly effectiveGenreMode = computed(() => (this.hasGenreShare() ? this.genreMode() : 'all'));
+
   /** Named genres, then the "Other genres" and "Untagged" buckets; percents sum to 100. */
   readonly genreRows = computed<GenreRow[]>(() => {
     const gs = this.stats()?.genreShare;
@@ -119,7 +124,7 @@ export class LibraryStatsComponent {
 
   /** "+N more genres · P%" for the folded tail, or null when nothing folded. */
   readonly genreTailCaption = computed(() => {
-    const other = this.stats()?.genreShare.other;
+    const other = this.stats()?.genreShare?.other;
     const row = this.genreRows().find((r) => r.kind === 'other');
     return other && row ? { count: other.genreCount, percent: row.percent } : null;
   });
