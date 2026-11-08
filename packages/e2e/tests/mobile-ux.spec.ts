@@ -149,24 +149,38 @@ test.describe('mobile UX', () => {
 
     const menu = page.getByTestId('track-row-menu');
     await expect(menu).toBeVisible();
-    const menuBox = (await menu.boundingBox())!;
 
     // Highest top edge among the visible fixed bottom-chrome layers = where the
     // player/tab bar begins (mirrors bottomChromeInset's measurement).
-    const chromeTop = await page.evaluate(() => {
-      const tops = Array.from(document.querySelectorAll('[data-bottom-chrome]'))
-        .map((el) => el.getBoundingClientRect())
-        .filter((r) => r.height > 0 && r.top < window.innerHeight)
-        .map((r) => r.top);
-      return tops.length ? Math.min(...tops) : window.innerHeight;
-    });
+    const measure = () =>
+      page.evaluate(() => {
+        const tops = Array.from(document.querySelectorAll('[data-bottom-chrome]'))
+          .map((el) => el.getBoundingClientRect())
+          .filter((r) => r.height > 0 && r.top < window.innerHeight)
+          .map((r) => r.top);
+        const m = document.querySelector('[data-testid="track-row-menu"]')!.getBoundingClientRect();
+        return {
+          chromeTop: tops.length ? Math.min(...tops) : window.innerHeight,
+          top: m.top,
+          bottom: m.bottom,
+        };
+      });
 
-    expect(chromeTop, 'the mini-player chrome is present').toBeLessThan(PHONE.height);
-    expect(menuBox.y, 'menu top on-screen').toBeGreaterThanOrEqual(0);
-    expect(
-      menuBox.y + menuBox.height,
-      'menu bottom clears the mini-player/tab bar',
-    ).toBeLessThanOrEqual(chromeTop + 1);
+    // The mini-player is still sliding in (a transform transition) right after
+    // play, so the menu re-measures on its transitionend (#1714): poll until the
+    // settled menu sits on the chrome, never under it.
+    await expect
+      .poll(
+        async () => {
+          const m = await measure();
+          return m.bottom - m.chromeTop;
+        },
+        { message: 'menu bottom clears the mini-player/tab bar' },
+      )
+      .toBeLessThanOrEqual(1);
+    const settled = await measure();
+    expect(settled.chromeTop, 'the mini-player chrome is present').toBeLessThan(PHONE.height);
+    expect(settled.top, 'menu top on-screen').toBeGreaterThanOrEqual(0);
   });
 
   // G2 — Now Playing renders covers via app-cover-art, so a missing/404 cover

@@ -3,15 +3,34 @@
     <ng-content select="[menuTrigger]" />
   </span>
   @if (open()) {
+    @if (presentation() === 'sheet') {
+      <div
+        data-testid="menu-sheet-backdrop"
+        class="fixed inset-x-0 top-0 z-50 bg-black/40 touch-none menu-sheet-enter"
+        [style.bottom]="sheetBottomCss()"
+        [style.visibility]="positioned() ? 'visible' : 'hidden'"
+        (click)="onBackdropClick($event)"
+        (pointerdown)="$event.stopPropagation()"
+      ></div>
+    }
     <div
       #panelEl
       data-menu-panel-root
-      class="fixed z-50"
-      [style.left.px]="pos().x"
-      [style.top.px]="pos().y"
+      [attr.data-menu-sheet]="presentation() === 'sheet' ? '' : null"
+      [attr.data-presentation]="presentation()"
+      [class]="presentation() === 'sheet'
+        ? 'fixed inset-x-0 z-50 overflow-y-auto overscroll-contain bg-theme-surface border-t border-theme rounded-t-2xl shadow-2xl menu-sheet-enter'
+        : 'fixed z-50'"
+      [style.left.px]="presentation() === 'sheet' ? null : pos().x"
+      [style.top.px]="presentation() === 'sheet' ? null : pos().y"
+      [style.bottom]="presentation() === 'sheet' ? sheetBottomCss() : null"
+      [style.padding-bottom]="presentation() === 'sheet' && sheetBottom() === 0 ? 'env(safe-area-inset-bottom)' : null"
+      [style.max-height.px]="maxHeight()"
+      [style.overflow-y]="maxHeight() !== null ? 'auto' : null"
       [style.visibility]="positioned() ? 'visible' : 'hidden'"
       [attr.data-testid]="panelTestId()"
       (click)="$event.stopPropagation()"
+      (pointerdown)="$event.stopPropagation()"
     >
       <ng-content select="[menuPanel]" />
     </div>
