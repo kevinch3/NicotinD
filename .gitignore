@@ -62,3 +62,4 @@ docs/diagrams/*.visual-check.*
 
 # phone-preview state (scripts/phone-preview.ts)
 .tmp-preview/
+dist-server/
