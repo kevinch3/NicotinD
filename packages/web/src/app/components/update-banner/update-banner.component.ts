@@ -1,5 +1,14 @@
-import { Component, inject } from '@angular/core';
+import {
+  Component,
+  type ElementRef,
+  type OnDestroy,
+  effect,
+  inject,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { UpdateService } from '../../services/update.service';
+import { UPDATE_BANNER_HEIGHT_VAR, updateBannerReservation } from '../../lib/player-chrome';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 
 /**
@@ -18,6 +27,7 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
   template: `
     @if (update.updateAvailable()) {
       <div
+        #strip
         data-testid="update-banner"
         class="fixed bottom-[calc(-1*var(--vp-deficit))] left-0 right-0 z-50 flex items-center justify-between gap-4 px-4 py-3 border-t"
         style="background: var(--theme-surface); border-color: var(--theme-border); color: var(--theme-text-primary);"
@@ -44,6 +54,37 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
     }
   `,
 })
-export class UpdateBannerComponent {
+export class UpdateBannerComponent implements OnDestroy {
   readonly update = inject(UpdateService);
+
+  private readonly strip = viewChild<ElementRef<HTMLElement>>('strip');
+  private readonly stripHeight = signal(0);
+
+  constructor() {
+    // The toast stack clears the strip by this height (#1699), as it clears the
+    // mini player by `--mini-player-h`.
+    effect((onCleanup) => {
+      const el = this.strip()?.nativeElement;
+      if (!el) {
+        this.stripHeight.set(0);
+        return;
+      }
+      const measure = () => this.stripHeight.set(el.getBoundingClientRect().height);
+      measure();
+      if (typeof ResizeObserver === 'undefined') return;
+      const observer = new ResizeObserver(measure);
+      observer.observe(el, { box: 'border-box' });
+      onCleanup(() => observer.disconnect());
+    });
+    effect(() => {
+      document.documentElement.style.setProperty(
+        UPDATE_BANNER_HEIGHT_VAR,
+        updateBannerReservation(this.update.updateAvailable(), this.stripHeight()),
+      );
+    });
+  }
+
+  ngOnDestroy(): void {
+    document.documentElement.style.removeProperty(UPDATE_BANNER_HEIGHT_VAR);
+  }
 }

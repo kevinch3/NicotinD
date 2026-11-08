@@ -2330,10 +2330,19 @@ controls. The stack now anchors on the same measured `--mini-player-h` as the sc
 `TOAST_STACK_BOTTOM_CLASS` (`lib/player-chrome.ts`): on phones the player's own anchor (`3.5rem +
 env(safe-area-inset-bottom) - var(--vp-deficit)`) plus its height plus a 0.5rem gap; on desktop the player's height
 plus 1rem, minus the deficit the desktop player is anchored on too. With no track (and on TV, which renders no bar)
-the height is `0px`, so the stack sits 0.5rem above the tab bar on a phone and 1rem above the viewport bottom
-elsewhere. The `toast-offset` e2e raises a toast (the album page's curator Complete action, routed) and asserts from
-both sides that the stack's lowest edge ends that gap above the topmost visible `[data-bottom-chrome]` (within 2px):
-on a 390x844 phone with and without a track, under a forced 50px deficit and with the bar grown 40px after first
-render, and on a 1280x720 desktop with and without a track. On the old offset the phone track case overlapped the
-bar by 74px.
+the height is `0px`.
 
+The update strip (`UpdateBannerComponent`) is a second fixed layer on the viewport bottom, ~53px tall, and it is
+not `[data-bottom-chrome]`. It stays up for as long as the page is visible and nothing plays, which is exactly the
+no-track state, so a toast 1rem above a `0px` player sat on its text. The strip therefore publishes its measured
+height as `--update-banner-h` (`UPDATE_BANNER_HEIGHT_VAR`, `0px` while hidden), and both branches anchor on
+`max()` of the chrome and the strip. On TV the stack is floored at the overscan band too: `styles.css`
+(`html.tv-build [data-testid='toast-stack']`) sets `bottom` to that `max()` with `--tv-overscan-y` plus 1rem, so the
+'extra' preset (4vh) never crops a toast.
+
+The `toast-offset` e2e raises a toast (the album page's curator Complete action, routed) and asserts from both sides
+that the stack's lowest edge ends that gap above the topmost visible `[data-bottom-chrome]` or update strip (within
+2px): on a 390x844 phone with and without a track, under a forced 50px deficit and with the bar grown 40px after
+first render, on a 1280x720 desktop with and without a track, on desktop with no track and the real strip staged
+(a routed `/api/health` reporting another build, then Settings → "Check for updates"), and at 960x720 with
+`tv-build` stamped on the 'extra' preset. On the old offset the phone track case overlapped the bar by 74px.

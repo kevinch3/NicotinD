@@ -427,7 +427,9 @@ a `tv-build` class on `<html>` via `lib/platform.ts`'s `applyTvBuildClass` (pure
 `styles.css` insets _content_ into the action-safe area (`--tv-overscan-x/y`, ≈ the Android TV
 48/27dp-at-1080p guideline) on the app shell's stable landmarks — `header`, `main`,
 `[data-bottom-chrome]`, and the Now Playing sheet — while surfaces/backgrounds keep bleeding to the
-physical edge (the standard TV treatment). Non-TV builds are untouched: every rule is scoped under
+physical edge (the standard TV treatment). The toast stack is positioned rather than padded, so its
+`bottom` is floored at `--tv-overscan-y` plus 1rem (#1699; without it the 'extra' preset cropped
+every toast, since TV has no mini player to lift it). Non-TV builds are untouched: every rule is scoped under
 `html.tv-build`, and the class is only applied when `isTvBuild()`.
 
 **Dedicated TV player (Now Playing)**: the sheet root is a mixed nav group — header close, the

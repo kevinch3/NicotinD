@@ -3,7 +3,9 @@ import {
   miniPlayerSlideClass,
   MAIN_BOTTOM_PAD_CLASS,
   TOAST_STACK_BOTTOM_CLASS,
+  UPDATE_BANNER_HEIGHT_VAR,
   miniPlayerReservation,
+  updateBannerReservation,
   bottomChromeInset,
   measureBottomChromeInset,
   topChromeInset,
@@ -48,21 +50,33 @@ describe('MAIN_BOTTOM_PAD_CLASS', () => {
 });
 
 describe('TOAST_STACK_BOTTOM_CLASS', () => {
-  it('anchors on a phone above the tab bar plus the measured mini player', () => {
+  it('anchors on a phone above the tab bar plus the measured mini player, or the update strip', () => {
     // The mini player's own anchor (tab bar, deficit-adjusted) plus its height and a gap.
     expect(TOAST_STACK_BOTTOM_CLASS).toContain(
-      'bottom-[calc(3.5rem+env(safe-area-inset-bottom)+var(--mini-player-h,0px)+0.5rem-var(--vp-deficit))]',
+      'bottom-[calc(max(3.5rem+env(safe-area-inset-bottom)+var(--mini-player-h,0px),var(--update-banner-h,0px))+0.5rem-var(--vp-deficit))]',
     );
   });
 
-  it('anchors on desktop above the measured player, on its deficit-adjusted anchor', () => {
+  it('anchors on desktop above the measured player or the update strip, on their deficit-adjusted anchor', () => {
+    // With no track the strip is the only chrome: a 0px player alone parked the toast on it.
     expect(TOAST_STACK_BOTTOM_CLASS).toContain(
-      'md:bottom-[calc(var(--mini-player-h,0px)+1rem-var(--vp-deficit))]',
+      'md:bottom-[calc(max(var(--mini-player-h,0px),var(--update-banner-h,0px))+1rem-var(--vp-deficit))]',
     );
+  });
+
+  it('reads the variable the update strip publishes', () => {
+    expect(TOAST_STACK_BOTTOM_CLASS.split(UPDATE_BANNER_HEIGHT_VAR)).toHaveLength(3);
   });
 
   it('carries no guessed player height (the 5rem / bottom-24 constants the bar outgrew, #1699)', () => {
     expect(TOAST_STACK_BOTTOM_CLASS).not.toMatch(/calc\(5rem|md:bottom-24\b/);
+  });
+});
+
+describe('updateBannerReservation', () => {
+  it('is the measured strip height while it shows, and 0px while hidden', () => {
+    expect(updateBannerReservation(true, 52.4)).toBe('53px');
+    expect(updateBannerReservation(false, 52.4)).toBe('0px');
   });
 });
 

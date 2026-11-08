@@ -41,18 +41,31 @@ export const MAIN_BOTTOM_PAD_CLASS =
   'pb-[calc(3.5rem+env(safe-area-inset-bottom)+var(--mini-player-h,0px))] md:pb-[var(--mini-player-h,0px)]';
 
 /**
+ * The update strip's measured height, published by `UpdateBannerComponent` on
+ * `<html>` (`0px` while it is hidden). It sits on the viewport bottom at z-50,
+ * outside `[data-bottom-chrome]`, so only this variable tells the toast stack
+ * where it ends.
+ */
+export const UPDATE_BANNER_HEIGHT_VAR = '--update-banner-h';
+
+/**
  * The toast stack's anchor: 0.5rem above the top of the bottom chrome on phones
  * (tab bar + measured mini player, on the player's own deficit-adjusted
- * anchor), 1rem above the desktop player. Toasts are z-[60], above the player,
- * so a constant offset (5rem) that the bar outgrew covered its controls (#1699).
+ * anchor), 1rem above the desktop player — or above the update strip, when it
+ * is taller (#1699). Toasts are z-[60], above both, so a constant offset (5rem)
+ * that the bar outgrew covered its controls. TV adds its overscan floor in
+ * styles.css (`html.tv-build [data-testid='toast-stack']`).
  */
 export const TOAST_STACK_BOTTOM_CLASS =
-  'bottom-[calc(3.5rem+env(safe-area-inset-bottom)+var(--mini-player-h,0px)+0.5rem-var(--vp-deficit))] md:bottom-[calc(var(--mini-player-h,0px)+1rem-var(--vp-deficit))]';
+  'bottom-[calc(max(3.5rem+env(safe-area-inset-bottom)+var(--mini-player-h,0px),var(--update-banner-h,0px))+0.5rem-var(--vp-deficit))] md:bottom-[calc(max(var(--mini-player-h,0px),var(--update-banner-h,0px))+1rem-var(--vp-deficit))]';
 
 /** The value `PlayerComponent` publishes as {@link MINI_PLAYER_HEIGHT_VAR}. */
 export function miniPlayerReservation(hasTrack: boolean, measuredHeight: number): string {
   return `${hasTrack && measuredHeight > 0 ? Math.ceil(measuredHeight) : 0}px`;
 }
+
+/** The value `UpdateBannerComponent` publishes as {@link UPDATE_BANNER_HEIGHT_VAR}. */
+export const updateBannerReservation = miniPlayerReservation;
 
 /** A fixed chrome layer's viewport rect (the subset a popup needs to avoid it). */
 export interface ChromeRect {

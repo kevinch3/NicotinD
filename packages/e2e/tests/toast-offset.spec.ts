@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '../helpers';
-import { FIXTURE, openAlbumCard } from '../helpers';
+import { FIXTURE, expandGroup, openAlbumCard } from '../helpers';
 
 /**
  * #1699: the toast stack sits just above the bottom chrome, never on it. Toasts
@@ -7,7 +7,10 @@ import { FIXTURE, openAlbumCard } from '../helpers';
  * the player's track info and transport while it shows. The stack anchors on
  * the mini player's measured height (`--mini-player-h`, #1694), so it is
  * asserted against the real bar: on a phone (tab bar + bar) and on desktop (bar
- * alone), with and without a track, and under a forced viewport deficit.
+ * alone), with and without a track, and under a forced viewport deficit. The
+ * update strip is not `[data-bottom-chrome]` but sits on the viewport bottom
+ * too, so it publishes `--update-banner-h` and counts as chrome here; a TV
+ * build floors the offset at the overscan band.
  *
  * A toast is raised through the album page's curator Complete action with the
  * completeness routes fulfilled, as in album-completeness.spec.ts.
@@ -55,7 +58,9 @@ async function measure(page: Page) {
         (el) => el.getBoundingClientRect().bottom,
       ),
     );
-    const chromeTops = Array.from(document.querySelectorAll<HTMLElement>('[data-bottom-chrome]'))
+    const chromeTops = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-bottom-chrome], [data-testid="update-banner"]'),
+    )
       .map((el) => el.getBoundingClientRect())
       .filter((r) => r.height > 0 && r.top < vh)
       .map((r) => r.top);
@@ -66,6 +71,32 @@ async function measure(page: Page) {
       chromeTop: Math.round(chromeTops.length ? Math.min(...chromeTops) : vh),
     };
   });
+}
+
+/**
+ * Raises the real update strip: the server's health probe reports another
+ * build, and Settings → "Check for updates" stages it. It stays up while the
+ * page is visible (`canApplyUpdateNow`). Back is a same-document navigation, so
+ * the staged state survives the return to the album.
+ */
+async function showUpdateBanner(page: Page): Promise<void> {
+  await page.route('**/api/health', async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as Record<string, unknown>;
+    // A newer version as well as another commit: the e2e bundle may carry no
+    // commit, and then only the version decides.
+    return route.fulfill({
+      response,
+      json: { ...body, version: '99.0.0', commit: '0000000e2e1699' },
+    });
+  });
+  await page.locator('header a[href="/settings"]').first().click();
+  await expandGroup(page, 'settings-account');
+  await page.getByTestId('settings-check-update').click();
+  await expect(page.getByTestId('update-banner')).toBeVisible();
+  await page.goBack();
+  await expect(page.getByTestId('album-complete-action')).toBeEnabled();
+  await expect(page.getByTestId('update-banner')).toBeVisible();
 }
 
 async function expectToastClearOfChrome(
@@ -138,5 +169,52 @@ test.describe('toast stack clears the bottom chrome on desktop (#1699)', () => {
     await openAlbumWithToastTrigger(page);
     await raiseToast(page);
     await expectToastClearOfChrome(page, 'desktop, no track', false, DESKTOP_GAP_PX);
+  });
+});
+
+test.describe('toast stack clears the update strip on desktop (#1699)', () => {
+  test.use({ viewport: DESKTOP });
+
+  test('with no track and the update strip up, the toast sits above the strip', async ({
+    page,
+  }) => {
+    await openAlbumWithToastTrigger(page);
+    await showUpdateBanner(page);
+    await raiseToast(page);
+    const banner = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--update-banner-h'),
+    );
+    expect(banner, 'the strip publishes its measured height').not.toBe('0px');
+    await expectToastClearOfChrome(page, 'desktop, no track, update strip', false, DESKTOP_GAP_PX);
+  });
+});
+
+test.describe('toast stack clears the TV overscan band (#1699)', () => {
+  // The TV viewport class (md branch, no mini player) and a height where the
+  // 'extra' preset's 4vh band (28.8px) is past the old 16px offset plus padding.
+  test.use({ viewport: { width: 960, height: 720 } });
+
+  test("on the 'extra' overscan preset, the toast ends 1rem above the band", async ({ page }) => {
+    await openAlbumWithToastTrigger(page);
+    await raiseToast(page);
+    // The rule keys off the class main.ts stamps on a TV build; the preset lands
+    // as an inline variable, as `applyOverscan` writes it.
+    await page.evaluate(() => {
+      document.documentElement.classList.add('tv-build');
+      document.documentElement.style.setProperty('--tv-overscan-y', '4vh');
+    });
+    const m = await page.evaluate(() => {
+      const toasts = Array.from(document.querySelectorAll('[data-testid="toast"]'));
+      return {
+        vh: window.innerHeight,
+        toastBottom: Math.max(...toasts.map((el) => el.getBoundingClientRect().bottom)),
+      };
+    });
+    const band = m.vh * 0.04;
+    expect(m.vh - m.toastBottom, 'the toast clears the overscan band').toBeGreaterThan(band);
+    expect(
+      Math.abs(m.vh - m.toastBottom - (band + DESKTOP_GAP_PX)),
+      `the toast sits ${DESKTOP_GAP_PX}px above the band (gap ${m.vh - m.toastBottom}px)`,
+    ).toBeLessThanOrEqual(ROUNDING_PX);
   });
 });
