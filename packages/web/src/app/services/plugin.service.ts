@@ -57,6 +57,14 @@ export interface PluginInfo {
   urlPatterns?: string[];
 }
 
+/**
+ * The server's id for archive.org since it became a bundled addon (#511).
+ * Enabling it turns on resolve AND the archive.org search lane; the retired
+ * in-process plugin was 'archive', which nothing registers any more (#1728).
+ * Mirrors `BUNDLED_ARCHIVE_ID` in the api package.
+ */
+export const BUNDLED_ARCHIVE_ID = 'bundled-archive';
+
 export interface AddonStatus {
   available: boolean;
   rows: { key: string; label: string; value: string }[];
@@ -112,7 +120,9 @@ export class PluginService {
     return resolvers.flatMap((p) => p.urlPatterns!);
   });
   /** The archive.org plugin specifically is enabled (gates the archive.org search lane). */
-  readonly hasArchive = computed(() => this.plugins().some((p) => p.id === 'archive' && p.enabled));
+  readonly hasArchive = computed(() =>
+    this.plugins().some((p) => p.id === BUNDLED_ARCHIVE_ID && p.enabled),
+  );
   /** The Spotify metadata plugin is enabled (gates the Spotify fallback lane). */
   readonly hasSpotify = computed(() => this.plugins().some((p) => p.id === 'spotify' && p.enabled));
   /**

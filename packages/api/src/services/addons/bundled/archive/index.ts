@@ -28,8 +28,12 @@ export interface ArchiveBundledDeps {
   downloadFile?: ArchiveEngineOpts['downloadFile'];
 }
 
+/** The registry id of the archive.org addon: the one plugin that enables
+ *  archive.org, for resolve AND the search/hunt lanes (#1728). */
+export const BUNDLED_ARCHIVE_ID = 'bundled-archive';
+
 const MANIFEST: AddonManifest = {
-  id: 'bundled-archive',
+  id: BUNDLED_ARCHIVE_ID,
   name: 'archive.org',
   description: 'Download audio from an archive.org item by URL (Internet Archive).',
   version: '1.0.0',

@@ -125,6 +125,21 @@ describe('PluginService', () => {
     expect(svc.resolverPatterns()).toBeNull();
   });
 
+  // #1728: archive.org is the bundled addon 'bundled-archive' (#511). The web
+  // still looked for the retired in-process 'archive' plugin, so an enabled
+  // archive.org never showed as a source and its search lane never ran.
+  it('hasArchive follows the bundled archive addon the server reports', async () => {
+    get.mockReturnValue(
+      of([plugin({ id: 'bundled-archive', capabilities: ['resolve'], enabled: true })]),
+    );
+    await svc.refresh();
+    expect(svc.hasArchive()).toBe(true);
+
+    get.mockReturnValue(of([plugin({ id: 'bundled-archive', capabilities: ['resolve'] })]));
+    await svc.refresh();
+    expect(svc.hasArchive()).toBe(false);
+  });
+
   it('networkSource is null when no remote downloader is enabled', async () => {
     get.mockReturnValue(of([plugin({ id: 'slskd-addon', remote: true, enabled: false })]));
     await svc.refresh();

@@ -103,6 +103,7 @@ import {
 } from './services/plugins/gate.js';
 import { AcquireWatcher } from './services/acquire-watcher.js';
 import { DiscographyService } from './services/discography.service.js';
+import { sourceEnabled } from './services/source-plugin-ids.js';
 import { CatalogService } from './services/catalog-search.service.js';
 import { ArtistProvisioningService } from './services/artist-provisioning.service.js';
 import { lidarrRootPolicyFor } from './services/lidarr-root.js';
@@ -950,14 +951,14 @@ export function createApp({
         search: async (q) => (await spotifySearch.search(q)).map(spotifyToCandidate),
       },
     ],
-    (id) => plugins.isEnabled(id),
+    sourceEnabled(plugins),
   );
   app.route('/api/sources', sourcesRoutes({ aggregator: candidateAggregator }));
   // Source-agnostic album hunt across the metadata sources (Soulseek keeps its
   // specialized two-phase live search; these are the request/response sources).
   const sourceHunt = new AlbumHuntOrchestrator(
     [new ArchiveAlbumHunter(archiveSearch), new SpotifyAlbumHunter(spotifySearch)],
-    (id) => plugins.isEnabled(id),
+    sourceEnabled(plugins),
   );
 
   // Ingest-time enrichment of loose singles/EPs (release type + artwork). Only
