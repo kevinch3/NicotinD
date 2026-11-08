@@ -47,7 +47,7 @@ It is **not** an `ENRICHMENT_TASK`, for the four reasons below — a whole-libra
 
 ## Surfaces
 
-- **Per-album (admin)** — `POST /api/library/albums/:id/optimize-metadata` (`routes/library.ts`, gated on `lidarr`; `503` unconfigured, `404` on no confident match). The web album-detail page shows an **Optimize metadata** button (admin only) that calls it, re-fetches the album for an updated year, and bumps a local re-set count. The cover URL's `&v=` is the page's `coverBust`, composed as `<rev>` or `<rev>.<local>` from the album's `coverRev` (the newer of the DTO's and a pushed `artwork.changed`) and that count, so the `<app-cover-art>` re-requests the new image past the browser cache — see [cache-invalidation.md](cache-invalidation.md) "Cover identity travels with the entity".
+- **Per-album (admin)** — `POST /api/library/albums/:id/optimize-metadata` (`routes/library.ts`, gated on `lidarr`; `503` unconfigured, `404` on no confident match). The web album-detail page shows an **Optimize metadata** button (admin only) that calls it, and re-fetches the album for an updated year and cover. The hero's cover URL carries the album's `coverRev` (the newer of the refetched DTO's and a pushed `artwork.changed`), so the `<app-cover-art>` re-requests the new image past the browser cache; the page keeps no local re-set count any more — see [cache-invalidation.md](cache-invalidation.md) "Cover identity travels with the entity".
 - **Bulk (admin)** — `POST /api/admin/metadata-optimize` (`routes/admin.ts`; `?all=1` re-verifies every album, `?dryRun=1` reports only). Returns **202 immediately** and runs in the background; `POST /api/admin/maintenance/cancel` stops it and `GET /api/admin/maintenance/status` (or the `maintenance` slice of `GET /api/admin/review`) reports progress. The web admin **Library Maintenance** section has **Optimize metadata** + **Stop** with a live progress bar.
 - **CLI** — `bun run packages/api/src/scripts/optimize-metadata.ts`. Resolves Lidarr URL/key like `backfill-artwork.ts` (env → config → `secrets.json`); this is the bounded *synchronous* path — see [CLI](#cli) below for its flags.
 
@@ -91,7 +91,7 @@ The candidate "Apply" above always set artist+album+year+cover **together**, and
 ### Endpoints (admin)
 
 - **`GET /api/library/albums/:id/cover-candidates?q=`** → `CoverCandidatesResponse { current, lidarr[], files[] }`:
-  - `current` — `{ source:'current', url:'/api/cover/<id>' }`, always present.
+  - `current` — `{ source:'current', url:'/api/cover/<id>?v=<rev>' }` (the album's `cover_rev`, left off at 0, via `coverRoutePath`), always present, so the picker's Current thumbnail is not the day-cached old cover after an apply (#1666). The modal raises the `coverRev` an apply answers into `CoverRevisionsService`, so every surface in the acting tab re-keys at once.
   - `lidarr` — deduped alternatives from `searchCandidates` (each `{ url, label:"<title> (<year>)" }`); **omitted, not `503`,** when Lidarr is unconfigured/down.
   - `files` — one `{ source:'file', songId, url:'/api/cover/<songId>?embedded=1' }` per distinct embedded image (empty when no music dir / no art).
 - **`POST /api/library/albums/:id/cover`** (`ApplyCoverRequest`) → `{ ok, coverRev }`, through `applyAlbumCover` (`services/album-cover-mutate.ts`): exactly one of —

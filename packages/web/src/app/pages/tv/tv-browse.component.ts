@@ -5,6 +5,8 @@ import type { Album } from '../../services/api/api-types';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
+import { CoverRevisionsService } from '../../services/cover-revisions.service';
+import { albumCover } from '../../lib/cover-url';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
@@ -39,6 +41,12 @@ export class TvBrowseComponent implements OnInit {
   private readonly player = inject(PlayerService);
   readonly auth = inject(AuthService);
   private readonly router = inject(Router);
+  private readonly coverRevisions = inject(CoverRevisionsService);
+
+  /** An album card's cover at its live cover rev (#1666). */
+  coverSrc(a: Album): string | undefined {
+    return this.coverRevisions.url(albumCover(a), 400, this.auth.mediaToken());
+  }
 
   readonly tabs: readonly { id: Tab; label: string }[] = [
     { id: 'albums', label: 'library.tab.albums' },

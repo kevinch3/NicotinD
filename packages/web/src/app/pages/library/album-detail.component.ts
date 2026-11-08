@@ -15,6 +15,7 @@ import { ListControlsService, type SortOption } from '../../services/list-contro
 import { TrackRowComponent } from '../../components/track-row/track-row.component';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
+import { albumCover } from '../../lib/cover-url';
 import { toTrack } from '../../lib/track-utils';
 import { compareDiscThenTrack, discGroups } from '../../lib/disc-order';
 import { resolveArtistRoute, resolveAlbumRoute } from '../../lib/route-utils';
@@ -310,6 +311,7 @@ export class AlbumDetailComponent implements OnInit {
     albumId?: string;
     duration?: number;
     coverArt?: string;
+    coverRev?: number;
     bitRate?: number;
   }): Track {
     const album = this.selectedAlbum();
@@ -317,6 +319,7 @@ export class AlbumDetailComponent implements OnInit {
       ...toTrack(song, album?.name),
       albumId: song.albumId ?? album?.id,
       artistId: song.artistId ?? album?.artistId,
+      coverRev: song.coverRev ?? album?.coverRev,
     };
   }
 
@@ -351,20 +354,16 @@ export class AlbumDetailComponent implements OnInit {
 
   // ─── Fix metadata (admin) ─────────────────────────────────────────
   readonly showMetadataFix = signal(false);
-  /** Bumped after a fix so the cover URL busts its cache. */
   private readonly events = inject(LibraryEventsService);
   private readonly coverRevisions = inject(CoverRevisionsService);
-  private readonly localCoverBust = signal(0);
-  /** Cache-bust for the cover URL: the album's cover rev — the newer of the DTO's
-   *  and a pushed `artwork.changed` (#1666), so a cover replaced anywhere shows here
-   *  at once and survives a reload — plus a local re-set count. Composed, never
-   *  `max`ed: a rev is a small integer that a local count could otherwise mask. */
-  readonly coverBust = computed(() => {
+  /** The hero cover at the album's live cover rev (#1666): the newer of the DTO's
+   *  and a pushed or answered one, so a cover replaced anywhere shows here at once
+   *  and survives a reload. */
+  readonly coverSrc = computed(() => {
     const album = this.selectedAlbum();
-    const rev = Math.max(album?.coverRev ?? 0, this.coverRevisions.live('album', album?.id));
-    const local = this.localCoverBust();
-    if (!local) return rev ? String(rev) : '';
-    return `${rev}.${local}`;
+    return album
+      ? this.coverRevisions.url(albumCover(album), 300, this.auth.mediaToken())
+      : undefined;
   });
   /** Re-reads the completeness badge when this album changes (tracks landed). */
   readonly albumChangeSeq = computed(
@@ -401,7 +400,6 @@ export class AlbumDetailComponent implements OnInit {
     try {
       const detail = await firstValueFrom(this.api.getAlbum(result.albumId));
       this.selectedAlbum.set(detail);
-      this.localCoverBust.update((v) => v + 1);
     } catch {
       /* ignore */
     }
@@ -412,7 +410,8 @@ export class AlbumDetailComponent implements OnInit {
 
   /**
    * Cover-only change applied from the fix modal: the album id is unchanged, so
-   * just refetch in place and bump the cache-bust token. The modal stays open.
+   * just refetch in place. The modal raised the answered rev already; the DTO
+   * carries it too. The modal stays open.
    */
   async onCoverChanged(): Promise<void> {
     const id = this.selectedAlbum()?.id;
@@ -423,7 +422,6 @@ export class AlbumDetailComponent implements OnInit {
     } catch {
       /* ignore */
     }
-    this.localCoverBust.update((v) => v + 1);
   }
 
   getArtistLink(id: string | undefined): string[] {
@@ -438,10 +436,17 @@ export class AlbumDetailComponent implements OnInit {
     artist: string;
     artistId?: string;
     coverArt?: string;
+    coverRev?: number;
     duration?: number;
     bitRate?: number;
   }) {
-    return { ...s, albumId: this.selectedAlbum()?.id, album: this.selectedAlbum()?.name };
+    const album = this.selectedAlbum();
+    return {
+      ...s,
+      albumId: album?.id,
+      album: album?.name,
+      coverRev: s.coverRev ?? album?.coverRev,
+    };
   }
 
   shareAlbum(): void {

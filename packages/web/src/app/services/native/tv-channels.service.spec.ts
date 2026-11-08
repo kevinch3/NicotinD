@@ -7,6 +7,7 @@ import { AuthService } from '../auth.service';
 import { ServerConfigService } from '../server-config.service';
 import { LibraryApiService } from '../api/library-api.service';
 import { TranslateService } from '../translate.service';
+import { CoverRevisionsService } from '../cover-revisions.service';
 import { signal } from '@angular/core';
 
 describe('TvChannelsService (Play Next + Assistant voice)', () => {
@@ -18,6 +19,8 @@ describe('TvChannelsService (Play Next + Assistant voice)', () => {
   let clearChannel: ReturnType<typeof vi.fn>;
   let navigateByUrl: ReturnType<typeof vi.fn>;
   let token: ReturnType<typeof signal<string | null>>;
+  let publishPlayNext: ReturnType<typeof vi.fn>;
+  let currentTrack: ReturnType<typeof signal<Record<string, unknown> | null>>;
 
   function setup(platform: 'android' | 'web' = 'android') {
     listeners = {};
@@ -26,6 +29,8 @@ describe('TvChannelsService (Play Next + Assistant voice)', () => {
     publishChannel = vi.fn().mockResolvedValue(undefined);
     clearChannel = vi.fn().mockResolvedValue(undefined);
     token = signal<string | null>('tok');
+    publishPlayNext = vi.fn().mockResolvedValue(undefined);
+    currentTrack = signal<Record<string, unknown> | null>(null);
     songs = vi.fn(() =>
       of([
         { id: '1', title: 'Second Wind', artist: 'E2E Test Artist' },
@@ -34,7 +39,13 @@ describe('TvChannelsService (Play Next + Assistant voice)', () => {
     );
     albums = vi.fn(() =>
       of([
-        { id: 'a1', name: 'E2E Test Album', artist: 'E2E Test Artist', coverArt: 'cov1' },
+        {
+          id: 'a1',
+          name: 'E2E Test Album',
+          artist: 'E2E Test Artist',
+          coverArt: 'cov1',
+          coverRev: 3,
+        },
         { id: 'a2', name: 'Bare Album', artist: 'Someone' },
       ]),
     );
@@ -43,7 +54,7 @@ describe('TvChannelsService (Play Next + Assistant voice)', () => {
       getPlatform: () => platform,
       Plugins: {
         NicotindTvChannels: {
-          publishPlayNext: vi.fn().mockResolvedValue(undefined),
+          publishPlayNext,
           clearPlayNext: vi.fn().mockResolvedValue(undefined),
           publishChannel,
           clearChannel,
@@ -57,7 +68,7 @@ describe('TvChannelsService (Play Next + Assistant voice)', () => {
         TvChannelsService,
         {
           provide: PlayerService,
-          useValue: { currentTrack: signal(null), playSingle },
+          useValue: { currentTrack, playSingle },
         },
         { provide: AuthService, useValue: { token, mediaToken: token } },
         { provide: ServerConfigService, useValue: { apiUrl: (u: string) => `http://s${u}` } },
@@ -80,6 +91,26 @@ describe('TvChannelsService (Play Next + Assistant voice)', () => {
 
   afterEach(() => {
     delete (globalThis as { Capacitor?: unknown }).Capacitor;
+  });
+
+  // The launcher re-fetches the tile on every publish: a push for some other
+  // album must not re-publish it, the playing album's own push must (#1666).
+  it("re-publishes Play Next on the playing album's cover rev only", () => {
+    setup('android');
+    const revs = TestBed.inject(CoverRevisionsService);
+    currentTrack.set({ id: 's1', title: 'T', artist: 'A', albumId: 'al1', coverArt: 'al1' });
+    TestBed.tick();
+    expect(publishPlayNext).toHaveBeenCalledTimes(1);
+    revs.raise([{ kind: 'album', id: 'al2', rev: 4 }]);
+    revs.raise([{ kind: 'artist', id: 'al1', rev: 4 }]);
+    TestBed.tick();
+    expect(publishPlayNext).toHaveBeenCalledTimes(1);
+    revs.raise([{ kind: 'album', id: 'al1', rev: 2 }]);
+    TestBed.tick();
+    expect(publishPlayNext).toHaveBeenCalledTimes(2);
+    expect(publishPlayNext.mock.calls[1][0].coverUrl).toBe(
+      'http://s/api/cover/al1?size=600&v=2&token=tok',
+    );
   });
 
   it('registers the playFromSearch listener on Android only', () => {
@@ -118,7 +149,8 @@ describe('TvChannelsService (Play Next + Assistant voice)', () => {
         {
           title: 'E2E Test Album',
           subtitle: 'E2E Test Artist',
-          coverUrl: 'http://s/api/cover/cov1?size=600&token=tok',
+          // The launcher caches a tile by URL: the rev moves it (#1666).
+          coverUrl: 'http://s/api/cover/cov1?size=600&v=3&token=tok',
           route: '/library/albums/a1',
         },
         // No coverArt → no coverUrl key claiming art that will 404.

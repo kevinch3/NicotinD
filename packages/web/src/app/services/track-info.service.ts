@@ -7,6 +7,9 @@ export interface TrackInfoTarget {
   artist?: string;
   album?: string;
   coverArt?: string | null;
+  /** The album's cover rev and the album that owns it, for the header cover URL (#1666). */
+  coverRev?: number;
+  albumId?: string | null;
 }
 
 /**

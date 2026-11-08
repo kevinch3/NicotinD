@@ -5,6 +5,25 @@ import { clearAlbumCoverNegativeCache, clearCoverNegativeCache } from './cover-n
 export type CoverKind = 'album' | 'artist';
 
 /**
+ * A cover URL the server hands out (the cover picker's Current entry, a share's
+ * `og:image`), spelled like the web's `coverUrl`: `v=<rev>` makes it change
+ * when the bytes do, and is left off at rev 0 so a never-changed cover keeps
+ * the URL caches already hold (#1666).
+ */
+export function coverRoutePath(
+  id: string,
+  rev: number,
+  query: { size?: number; token?: string } = {},
+): string {
+  const parts = [
+    query.size !== undefined ? `size=${query.size}` : null,
+    rev > 0 ? `v=${rev}` : null,
+    query.token !== undefined ? `token=${query.token}` : null,
+  ].filter((p): p is string => p !== null);
+  return `/api/cover/${id}${parts.length ? `?${parts.join('&')}` : ''}`;
+}
+
+/**
  * Record that an album's or artist's cover bytes changed (#1666): bump the
  * persisted `cover_rev`, evict the cover route's negative cache for the id (and,
  * for an album, every song id that resolves to its cover), and announce the new

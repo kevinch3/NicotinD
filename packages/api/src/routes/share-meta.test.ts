@@ -161,6 +161,7 @@ describe('resolveShareMeta', () => {
       description: 'Album • Daft Punk',
       type: 'music.album',
       coverId: id,
+      coverRev: 0,
       creatorSub: 'u1',
     });
   });
@@ -179,6 +180,18 @@ describe('resolveShareMeta', () => {
     expect(meta?.type).toBe('music.playlist');
   });
 
+  it("takes a playlist's cover rev from its first track's album", () => {
+    const id = seedPlaylist();
+    db.run(`UPDATE library_albums SET cover_rev = 5 WHERE id = 'alb-x'`);
+    const meta = resolveShareMeta(db, {
+      resource_type: 'playlist',
+      resource_id: id,
+      created_by: 'u1',
+      expires_at: null,
+    });
+    expect(meta?.coverRev).toBe(5);
+  });
+
   it('resolves an artist with a bio excerpt as the description', () => {
     const id = seedArtist('French electronic duo from Paris.');
     const meta = resolveShareMeta(db, {
@@ -192,6 +205,7 @@ describe('resolveShareMeta', () => {
       description: 'French electronic duo from Paris.',
       type: 'profile',
       coverId: id,
+      coverRev: 0,
       creatorSub: 'u1',
     });
   });
@@ -261,6 +275,20 @@ describe('shareMetaHandler', () => {
     // `&` is HTML-escaped to `&amp;` inside the attribute (crawlers decode it back).
     expect(body).toMatch(
       /og:image" content="http:\/\/host\/api\/cover\/alb-1\?size=600&amp;token=/,
+    );
+  });
+
+  // #1666: a crawler caches the card image by URL, so the rev travels on it.
+  it("carries the album's cover rev on og:image once its cover changed", async () => {
+    const albumId = seedAlbum();
+    db.run('UPDATE library_albums SET cover_rev = 3 WHERE id = ?', [albumId]);
+    db.run(
+      `INSERT INTO share_tokens (token, resource_type, resource_id, created_by, created_at) VALUES ('tokrev', 'album', ?, 'u1', 1)`,
+      [albumId],
+    );
+    const body = await (await mount().request('http://host/share/tokrev')).text();
+    expect(body).toMatch(
+      /og:image" content="http:\/\/host\/api\/cover\/alb-1\?size=600&amp;v=3&amp;token=/,
     );
   });
 

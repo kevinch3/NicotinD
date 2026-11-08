@@ -166,9 +166,11 @@ and rendered in the Admin panel, so the policy is reviewed against a real number
 tapped, and a tile that can't play is worse than an absent one. The raw log keeps the deleted rows
 regardless, which is what a year review reads. Because the join is against the live library anyway,
 each row also ships the song's `coverArt` **id** (`library_songs.cover_art`) so the shelf renders
-real covers; the client builds the `/api/cover/:id?size=&token=` URL itself, like every other cover
-call site — `Track.coverArt`/`RecentPlay.coverArt` are always ids, never URLs (passing the raw id as
-an `<img src>` is exactly the bug that left the home tiles on their letter placeholders).
+real covers, and the album's `coverRev` beside it; the client builds the URL through the cover
+helper (`CoverRevisionsService.url`), like every other cover call site, so a replaced album cover
+re-keys the shelf (#1666) — `Track.coverArt`/`RecentPlay.coverArt` are always ids, never URLs
+(passing the raw id as an `<img src>` is exactly the bug that left the home tiles on their letter
+placeholders).
 
 Each row also ships `artists`, so a replay from the shelf or a mosaic tile links every credited
 artist like any other playback (#1597).

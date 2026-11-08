@@ -216,6 +216,15 @@ describe('recentPlays', () => {
     });
   });
 
+  // #1666: the shelf builds its cover URL from this row, so without the album's
+  // rev a replaced cover showed there from the browser's day-long cache.
+  it("carries the album's cover rev beside the cover id", () => {
+    seedSong('a');
+    db.run(`UPDATE library_albums SET cover_rev = 7 WHERE id = 'al'`);
+    recordPlayEvents(db, 'u1', [event({ songId: 'a' })]);
+    expect(recentPlays(db, 'u1', 10)[0]?.coverRev).toBe(7);
+  });
+
   it('never leaks another user’s history', () => {
     seedSong('mine');
     seedSong('theirs');

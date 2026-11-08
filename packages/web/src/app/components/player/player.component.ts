@@ -11,7 +11,7 @@ import {
   AfterViewInit,
   NgZone,
 } from '@angular/core';
-import { PlayerService } from '../../services/player.service';
+import { PlayerService, type Track } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
@@ -25,6 +25,8 @@ import { MediaControlsService } from '../../services/media-controls.service';
 import { NetworkStatusService } from '../../services/network-status.service';
 import { ToastService } from '../../services/toast.service';
 import { buildMediaMetadata } from '../../lib/media-metadata';
+import { songCover } from '../../lib/cover-url';
+import { CoverRevisionsService } from '../../services/cover-revisions.service';
 import * as db from '../../lib/preserve-store';
 import { createVerticalSwipe, shouldCommit } from '../../lib/vertical-swipe';
 import { haptic } from '../../lib/haptics';
@@ -190,6 +192,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   private zone = inject(NgZone);
   private preserve = inject(PreserveService);
   private server = inject(ServerConfigService);
+  private readonly coverRevisions = inject(CoverRevisionsService);
   private mediaControls = inject(MediaControlsService);
   private network = inject(NetworkStatusService);
   private toast = inject(ToastService);
@@ -268,6 +271,11 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   );
 
   readonly slideClass = computed(() => miniPlayerSlideClass(this.player.currentTrack() !== null));
+
+  /** The bar's cover at its album's live cover rev (#1666). */
+  coverSrc(track: Track): string | undefined {
+    return this.coverRevisions.url(songCover(track), 80, this.auth.mediaToken());
+  }
 
   readonly displayTime = computed(() => {
     if (!this.isActiveDevice()) return this.remote.remoteClock();
@@ -494,8 +502,8 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       }
 
       this.mediaControls.setMetadata(
-        buildMediaMetadata(track, (coverArt, size) =>
-          this.server.apiUrl(`/api/cover/${coverArt}?size=${size}&token=${token}`),
+        buildMediaMetadata(track, (cover, size) =>
+          this.server.apiUrl(this.coverRevisions.url(cover, size, token) ?? ''),
         ),
       );
     });

@@ -313,8 +313,8 @@ asserts.
 ## Code-shape gates as lint rules (#1316)
 
 Two regex `check:*` scripts are now rules in a local ESLint plugin
-(`scripts/eslint-rules/`, registered as `nicotind`), joined since by one written as
-a rule from the start, so they report in the editor with file:line instead of only
+(`scripts/eslint-rules/`, registered as `nicotind`), joined since by rules written
+as rules from the start, so they report in the editor with file:line instead of only
 in CI:
 
 | Rule | Was | What the AST bought |
@@ -322,6 +322,7 @@ in CI:
 | `nicotind/shared-helpers` | `check:shared-helpers` | a `let`/`var` copy is seen; a comment never is |
 | `nicotind/search-matching` | `check:search-matching` | only string/template literals are read, so prose cannot trip it; a literal nested in an interpolation is judged once |
 | `nicotind/lyrics-single-owner` | — (new, #1666) | any reference to a lyrics endpoint — a call, a callback, a computed key, a destructure — outside `LyricsService`; a comment or string never |
+| `nicotind/cover-writers` | — (new, #1666) | a raw cover-byte write — SQL writing `library_artwork`, the `artist-overrides` dir as a path segment of any string or template, a `replaceFolderCover` call — outside a module that bumps `cover_rev`; prose never trips it |
 
 The lint command gained `packages/*/scripts/**/*.{ts,mjs}` and `packages/web/src`
 (the helpers registry reaches both), which took `bun run lint` from ~11 s to ~20 s.
@@ -345,6 +346,11 @@ its test instead, against the **real** `eslint.config.js`:
   registered), lints `LyricsService`'s own source under a foreign filename and
   requires the rule to fire for every registered method, and requires it on, and
   reached, for every non-spec web source file (409 when it landed).
+- `cover-writers.test.ts` lints every `OWNERS` / `EXEMPT` module's own source under
+  a foreign filename and requires the rule to fire — so an entry the rule cannot
+  see, or one whose module stopped writing, fails both ways — requires every owner
+  to call `bumpCoverRev`, and requires the rule on and reached beside each module
+  and in `routes/`.
 - `config.test.ts` lints snippets through the real config, so a rule proven in
   isolation but never switched on fails.
 

@@ -57,7 +57,7 @@ import { EntityMenuButtonComponent } from '../../components/entity-menu-button/e
 import { EntityMenuService } from '../../services/entity-menu.service';
 import type { TrackAction } from '../../components/track-row/track-row.component';
 import { chunk } from '../../lib/tv-nav-grid';
-import { artistCover } from '../../lib/cover-url';
+import { albumCover, artistCover } from '../../lib/cover-url';
 import { CoverRevisionsService } from '../../services/cover-revisions.service';
 import { scrollRootTo, scrollRootTop } from '../../lib/scroll-root';
 import {
@@ -234,6 +234,11 @@ export class LibraryComponent implements OnInit, OnDestroy {
    */
   artistCoverSrc(artist: { id: string; coverArt?: string; coverRev?: number }): string | undefined {
     return this.coverRevisions.url(artistCover(artist), 160, this.auth.mediaToken());
+  }
+
+  /** An album tile's cover at its live cover rev (#1666). */
+  albumCoverSrc(album: { id: string; coverArt?: string; coverRev?: number }): string | undefined {
+    return this.coverRevisions.url(albumCover(album), 300, this.auth.mediaToken());
   }
 
   readonly libraryMode = signal<LibraryMode>(

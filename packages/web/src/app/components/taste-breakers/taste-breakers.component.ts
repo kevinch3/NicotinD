@@ -6,6 +6,8 @@ import { SongMenuService } from '../../services/song-menu.service';
 import type { BaseSong } from '../../lib/track-utils';
 import { catchError, firstValueFrom, of } from 'rxjs';
 import { AuthService } from '../../services/auth.service';
+import { CoverRevisionsService } from '../../services/cover-revisions.service';
+import { songCover } from '../../lib/cover-url';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { PlayerService } from '../../services/player.service';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
@@ -105,6 +107,7 @@ export class TasteBreakersComponent implements OnInit {
   private api = inject(LibraryApiService);
   private player = inject(PlayerService);
   private auth = inject(AuthService);
+  private readonly coverRevisions = inject(CoverRevisionsService);
 
   /** Recently-played rows to steer away from. Read live, never awaited. */
   readonly seeds = input<RecentPlay[]>([]);
@@ -154,13 +157,8 @@ export class TasteBreakersComponent implements OnInit {
     playShelfSong(this.player, [toTrack(song)], 0);
   }
 
-  /**
-   * `coverArt` is a cover *id*, never a URL — build the standard
-   * `/api/cover/:id?size=&token=` URL like every other cover call site.
-   */
+  /** A shelf tile's cover at its album's live cover rev (#1666). */
   coverSrc(song: Song): string | undefined {
-    return song.coverArt
-      ? `/api/cover/${song.coverArt}?size=300&token=${this.auth.mediaToken()}`
-      : undefined;
+    return this.coverRevisions.url(songCover(song), 300, this.auth.mediaToken());
   }
 }

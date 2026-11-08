@@ -224,38 +224,38 @@ describe('AlbumDetailComponent — fix metadata', () => {
     expect(component.showMetadataFix()).toBe(true);
   });
 
-  it('re-fetches in place and busts the cover when the album id is unchanged', async () => {
-    const { component } = setup();
-    component.selectedAlbum.set(ALBUM);
+  it('re-fetches in place, and the cover follows the refetched rev', async () => {
+    const { component, getAlbum } = setup();
+    component.selectedAlbum.set({ ...ALBUM, coverArt: 'a1' });
     component.showMetadataFix.set(true);
+    getAlbum.mockReturnValueOnce(of({ ...ALBUM, coverArt: 'a1', coverRev: 2 }));
 
     await component.onMetadataApplied({ albumId: 'a1' });
 
     expect(component.showMetadataFix()).toBe(false);
-    expect(component.coverBust()).toBe('0.1');
+    expect(component.coverSrc()).toContain('&v=2&');
     expect(component.selectedAlbum()?.id).toBe('a1');
   });
 
   it("the cover URL follows the album's cover rev: DTO, then a pushed change (#1666)", () => {
     const { component } = setup();
     const events = TestBed.inject(LibraryEventsService);
-    component.selectedAlbum.set({ ...ALBUM, coverRev: 0 });
-    expect(component.coverBust()).toBe('');
-    component.selectedAlbum.set({ ...ALBUM, coverRev: 3 });
-    expect(component.coverBust()).toBe('3');
+    component.selectedAlbum.set({ ...ALBUM, coverArt: 'a1', coverRev: 0 });
+    expect(component.coverSrc()).toBe('/api/cover/a1?size=300&token=tok');
+    component.selectedAlbum.set({ ...ALBUM, coverArt: 'a1', coverRev: 3 });
+    expect(component.coverSrc()).toBe('/api/cover/a1?size=300&v=3&token=tok');
     events.apply({ type: 'artwork.changed', changes: [{ kind: 'album', id: 'a1', rev: 4 }] }, 1);
-    expect(component.coverBust()).toBe('4');
+    expect(component.coverSrc()).toBe('/api/cover/a1?size=300&v=4&token=tok');
   });
 
-  it('a pushed rev still moves the URL after local re-sets outnumber it (#1666)', async () => {
-    const { component } = setup();
-    const events = TestBed.inject(LibraryEventsService);
-    component.selectedAlbum.set(ALBUM);
+  it('a cover-only change re-keys the hero from the refetched DTO (#1666)', async () => {
+    const { component, getAlbum } = setup();
+    component.selectedAlbum.set({ ...ALBUM, coverArt: 'a1', coverRev: 1 });
+    const before = component.coverSrc();
+    getAlbum.mockReturnValueOnce(of({ ...ALBUM, coverArt: 'a1', coverRev: 2 }));
     await component.onCoverChanged();
-    await component.onCoverChanged();
-    const before = component.coverBust();
-    events.apply({ type: 'artwork.changed', changes: [{ kind: 'album', id: 'a1', rev: 1 }] }, 1);
-    expect(component.coverBust()).not.toBe(before);
+    expect(component.coverSrc()).not.toBe(before);
+    expect(component.coverSrc()).toContain('&v=2&');
   });
 
   it('navigates to the new album when a correction changes its id', async () => {

@@ -14,15 +14,22 @@ vi.mock('../../lib/haptics', async (importOriginal) => ({
 }));
 import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
+import { CoverRevisionsService } from '../../services/cover-revisions.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 
 function makePlayerStub() {
   const stub = {
-    currentTrack: signal<{ id: string; title: string; artist: string; artistId?: string } | null>(
-      null,
-    ),
+    currentTrack: signal<{
+      id: string;
+      title: string;
+      artist: string;
+      artistId?: string;
+      coverArt?: string;
+      coverRev?: number;
+      albumId?: string;
+    } | null>(null),
     nowPlayingOpen: signal(true),
     nowPlayingPanelRequest: signal<'queue' | 'lyrics' | null>(null),
     nowPlayingLiftPx: signal(0),
@@ -1520,6 +1527,35 @@ describe('NowPlayingComponent — TV backdrop bleed (issue #439)', () => {
     fixture.detectChanges();
 
     expect(fixture.componentInstance.tvBackdropUrl()).toContain('/api/cover/cov-1');
+  });
+
+  // #1666: the backdrop and the palette follow the album's cover rev, so a cover
+  // replaced while the track plays is repainted rather than kept from cache.
+  it("carries the album's live cover rev on the backdrop", () => {
+    const { fixture, playerStub } = setup();
+    playerStub.currentTrack.set({ ...TRACK, coverRev: 3, albumId: 'al-1' });
+    playerStub.nowPlayingOpen.set(true);
+    fixture.detectChanges();
+    expect(fixture.componentInstance.tvBackdropUrl()).toContain('&v=3&');
+    TestBed.inject(CoverRevisionsService).raise([{ kind: 'album', id: 'al-1', rev: 4 }]);
+    expect(fixture.componentInstance.tvBackdropUrl()).toContain('&v=4&');
+  });
+
+  it('extracts the palette once per track and cover rev', () => {
+    const { fixture } = setup();
+    const c = fixture.componentInstance as unknown as {
+      extractColorsOnce(t: typeof TRACK & { albumId: string }): void;
+      extractColorsFromImage(src: string): void;
+    };
+    const extract = vi.spyOn(c, 'extractColorsFromImage').mockImplementation(() => undefined);
+    const t = { ...TRACK, albumId: 'al-2' };
+    c.extractColorsOnce(t);
+    c.extractColorsOnce(t);
+    expect(extract).toHaveBeenCalledTimes(1);
+    TestBed.inject(CoverRevisionsService).raise([{ kind: 'album', id: 'al-2', rev: 1 }]);
+    c.extractColorsOnce(t);
+    expect(extract).toHaveBeenCalledTimes(2);
+    expect(extract.mock.calls[1]![0]).toContain('&v=1&');
   });
 
   it('reacts to the sheet closing, not just its initial state', () => {

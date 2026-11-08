@@ -54,7 +54,7 @@
         >
           @if (player.currentTrack(); as track) {
             <app-cover-art
-              [src]="track.coverArt ? '/api/cover/' + track.coverArt + '?size=80&token=' + auth.mediaToken() : undefined"
+              [src]="coverSrc(track)"
               [artist]="track.artist"
               [album]="track.album ?? ''"
               [size]="40"

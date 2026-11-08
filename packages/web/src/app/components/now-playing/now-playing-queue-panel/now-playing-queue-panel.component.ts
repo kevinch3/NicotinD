@@ -7,7 +7,9 @@ import {
   output,
   signal,
 } from '@angular/core';
-import { PlayerService } from '../../../services/player.service';
+import { PlayerService, type Track } from '../../../services/player.service';
+import { songCover } from '../../../lib/cover-url';
+import { CoverRevisionsService } from '../../../services/cover-revisions.service';
 import { RemotePlaybackService } from '../../../services/remote-playback.service';
 import { AuthService } from '../../../services/auth.service';
 import { ToastService } from '../../../services/toast.service';
@@ -59,6 +61,12 @@ export class NowPlayingQueuePanelComponent {
   private readonly i18n = inject(TranslateService);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly injector = inject(Injector);
+  private readonly coverRevisions = inject(CoverRevisionsService);
+
+  /** A queue row's cover at its album's live cover rev (#1666). */
+  coverSrc(track: Track): string | undefined {
+    return this.coverRevisions.url(songCover(track), 80, this.auth.mediaToken());
+  }
 
   /** An artist/album link in a row was followed — the sheet should collapse. */
   readonly linkFollowed = output<void>();

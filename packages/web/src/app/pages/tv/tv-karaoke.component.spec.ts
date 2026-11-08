@@ -9,6 +9,13 @@ import { LibraryApiService } from '../../services/api/library-api.service';
 import { BackButtonService } from '../../services/native/back-button.service';
 import { TranslateService } from '../../services/translate.service';
 import { KaraokeBrowseMode } from '../../lib/karaoke-browse';
+import { CoverRevisionsService } from '../../services/cover-revisions.service';
+import { loadCoverPalette } from '../../lib/cover-colors';
+
+vi.mock('../../lib/cover-colors', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../lib/cover-colors')>();
+  return { ...real, loadCoverPalette: vi.fn(() => Promise.resolve(real.DEFAULT_PALETTE)) };
+});
 
 const track: Track = { id: 's1', title: 'Opening Static', artist: 'E2E Test Artist' };
 
@@ -80,6 +87,23 @@ describe('TvKaraokeComponent (#1134)', () => {
   // (src/testing/signal-input.ts), so a click routed through the child here
   // would prove nothing either way. What follows is the wiring this component
   // owns.
+
+  // Each run re-probes the cover's pixels: another album's push must not (#1666).
+  it("re-derives the palette on the playing album's cover rev only", () => {
+    const { fixture, player } = create();
+    const load = vi.mocked(loadCoverPalette);
+    player.play({ ...track, albumId: 'al1', coverArt: 'al1', coverRev: 0 });
+    fixture.detectChanges();
+    load.mockClear();
+    const revs = TestBed.inject(CoverRevisionsService);
+    revs.raise([{ kind: 'album', id: 'al2', rev: 3 }]);
+    fixture.detectChanges();
+    expect(load).not.toHaveBeenCalled();
+    revs.raise([{ kind: 'album', id: 'al1', rev: 2 }]);
+    fixture.detectChanges();
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(load.mock.calls[0]![0]).toContain('/api/cover/al1?size=80&v=2');
+  });
 
   it('Escape and hardware Back close the overlay first, not the route (#398 stack)', () => {
     const { closed } = create();

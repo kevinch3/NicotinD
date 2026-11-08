@@ -11,10 +11,34 @@ describe('mapSharedAlbum', () => {
     });
     expect(view.name).toBe('Discovery');
     expect(view.subtitle).toBe('Daft Punk');
-    expect(view.coverId).toBe('alb1');
+    expect(view.cover?.coverArt).toBe('alb1');
     expect(view.ogType).toBe('music.album');
     expect(view.tracks).toHaveLength(1);
     expect(view.tracks[0].title).toBe('One More Time');
+  });
+});
+
+// #1666: the guest's cover URL is built from these, so each carries the rev of
+// the entity that owns it — the album for a song, the artist for a portrait.
+describe('share cover identity', () => {
+  it('carries the album, artist and first-track album revs', () => {
+    expect(mapSharedAlbum({ id: 'alb1', coverArt: 'alb1', coverRev: 4, song: [] }).cover).toEqual({
+      coverArt: 'alb1',
+      coverRev: 4,
+      kind: 'album',
+      id: 'alb1',
+    });
+    expect(mapSharedArtist({ id: 'art1', coverRev: 2 }, []).cover).toEqual({
+      coverArt: 'art1',
+      coverRev: 2,
+      kind: 'artist',
+      id: 'art1',
+    });
+    const pl = mapSharedPlaylist({
+      name: 'Mix',
+      songs: [{ id: 's1', coverArt: 's1', coverRev: 6, albumId: 'al9' }],
+    });
+    expect(pl.cover).toEqual({ coverArt: 's1', coverRev: 6, kind: 'album', id: 'al9' });
   });
 });
 
@@ -26,7 +50,7 @@ describe('mapSharedArtist', () => {
     );
     expect(view.name).toBe('Daft Punk');
     expect(view.subtitle).toBe('2 albums');
-    expect(view.coverId).toBe('art1');
+    expect(view.cover?.coverArt).toBe('art1');
     expect(view.ogType).toBe('profile');
     expect(view.bio).toBe('French duo.');
     expect(view.ogDescription).toBe('French duo.');
@@ -65,14 +89,26 @@ describe('mapSharedPlaylist', () => {
       coverArt: null,
       songs: [{ id: 's1', title: 'A', artist: 'X', coverArt: 'covA' }],
     });
-    expect(view.coverId).toBe('covA');
+    expect(view.cover?.coverArt).toBe('covA');
     expect(view.subtitle).toBe('1 track');
+  });
+
+  // A curated playlist's coverArt is its designed-cover URL, not a cover id:
+  // through the id helper it became /api/cover//playlist-covers/… (a 404).
+  it("shows a curated playlist's designed cover as is, og art from the first track", () => {
+    const view = mapSharedPlaylist({
+      name: 'Late Night',
+      coverArt: '/playlist-covers/late-night.svg',
+      songs: [{ id: 's1', title: 'A', artist: 'X', coverArt: 's1', coverRev: 2, albumId: 'al1' }],
+    });
+    expect(view.coverImage).toBe('/playlist-covers/late-night.svg');
+    expect(view.cover).toEqual({ coverArt: 's1', coverRev: 2, kind: 'album', id: 'al1' });
   });
 
   it('handles an empty playlist without throwing', () => {
     const view = mapSharedPlaylist({ name: 'Empty', coverArt: null, songs: [] });
     expect(view.tracks).toEqual([]);
-    expect(view.coverId).toBeNull();
+    expect(view.cover).toBeNull();
     expect(view.subtitle).toBe('0 tracks');
   });
 });

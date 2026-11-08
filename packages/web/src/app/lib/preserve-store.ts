@@ -31,6 +31,9 @@ export interface PreservedTrackMeta {
   artist: string;
   album: string;
   coverArt?: string;
+  /** The album's cover rev and the album, as the track carried them (#1666). */
+  coverRev?: number;
+  albumId?: string;
   duration?: number;
   bitRate?: number;
   size: number;

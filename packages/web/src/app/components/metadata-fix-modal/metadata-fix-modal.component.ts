@@ -33,6 +33,9 @@ import {
 } from '../../lib/cover-candidates';
 import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.directive';
 import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
+import { albumCover, coverPath, type CoverRef } from '../../lib/cover-url';
+import { CoverRevisionsService } from '../../services/cover-revisions.service';
+import type { CoverMutationResult } from '../../services/api/api-types';
 
 /**
  * Admin metadata fix modal: search Lidarr with an editable query, pick a candidate
@@ -56,8 +59,11 @@ export class MetadataFixModalComponent implements OnInit {
   private api = inject(LibraryApiService);
   readonly auth = inject(AuthService);
   private server = inject(ServerConfigService);
+  private coverRevisions = inject(CoverRevisionsService);
 
   readonly albumId = input.required<string>();
+  /** The album DTO's `coverRev`, so the synthetic Current thumbnail is not a day stale (#1666). */
+  readonly coverRev = input(0);
   readonly currentArtist = input<string>('');
   readonly currentAlbum = input<string>('');
 
@@ -113,7 +119,13 @@ export class MetadataFixModalComponent implements OnInit {
   }
 
   private currentCoverOption(): AlbumCoverCandidate {
-    return { source: 'current', url: `/api/cover/${this.albumId()}`, label: 'Current' };
+    const ref: CoverRef = albumCover({
+      id: this.albumId(),
+      coverArt: this.albumId(),
+      coverRev: this.coverRev(),
+    })!;
+    const url = coverPath({ ...ref, coverRev: this.coverRevisions.effective(ref) });
+    return { source: 'current', url, label: 'Current' };
   }
 
   /** Load the cover picker options (current + Lidarr alts + per-track embedded). */
@@ -162,12 +174,16 @@ export class MetadataFixModalComponent implements OnInit {
     await this.runCoverApply(() => this.api.uploadAlbumCover(this.albumId(), file));
   }
 
-  private async runCoverApply(action: () => Observable<{ ok: boolean }>): Promise<void> {
+  private async runCoverApply(action: () => Observable<CoverMutationResult>): Promise<void> {
     if (this.coverApplying()) return;
     this.coverApplying.set(true);
     this.msg.set(null);
     try {
-      await firstValueFrom(action());
+      const res = await firstValueFrom(action());
+      // The acting tab re-keys every surface now, not when the stream echoes it.
+      if (typeof res.coverRev === 'number') {
+        this.coverRevisions.raise([{ kind: 'album', id: this.albumId(), rev: res.coverRev }]);
+      }
       this.customCoverUrl.set('');
       this.coverChanged.emit();
       // Refresh the picker so the "Current" thumbnail reflects the new cover.

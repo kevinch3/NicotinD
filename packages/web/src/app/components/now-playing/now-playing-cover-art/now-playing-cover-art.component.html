@@ -41,7 +41,7 @@
           [style.transform]="swipeOffsetPx() ? 'translateX(' + swipeOffsetPx() + 'px)' : null"
         >
           <app-cover-art
-            [src]="track.coverArt ? '/api/cover/' + track.coverArt + '?size=600&token=' + auth.mediaToken() : undefined"
+            [src]="coverSrc(track)"
             [artist]="track.artist"
             [album]="track.album ?? ''"
             [fill]="true"
@@ -67,7 +67,7 @@
               data-np-sliver
             >
               <app-cover-art
-                [src]="prev.coverArt ? '/api/cover/' + prev.coverArt + '?size=600&token=' + auth.mediaToken() : undefined"
+                [src]="coverSrc(prev)"
                 [artist]="prev.artist"
                 [album]="prev.album ?? ''"
                 [fill]="true"
@@ -89,7 +89,7 @@
               data-np-sliver
             >
               <app-cover-art
-                [src]="next.coverArt ? '/api/cover/' + next.coverArt + '?size=600&token=' + auth.mediaToken() : undefined"
+                [src]="coverSrc(next)"
                 [artist]="next.artist"
                 [album]="next.album ?? ''"
                 [fill]="true"

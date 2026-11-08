@@ -116,6 +116,16 @@ describe('GET /albums/:id/cover-candidates', () => {
     expect(body.files).toEqual([]);
   });
 
+  // #1666: after an apply the picker reloads; an id-only Current URL showed
+  // the replaced cover from the browser's day-long cache.
+  it("carries the album's cover rev on the Current entry once it changed", async () => {
+    seedAlbum(testDb);
+    testDb.run(`UPDATE library_albums SET cover_rev = 2 WHERE id = 'album-1'`);
+    const res = await makeApp().request('/albums/album-1/cover-candidates');
+    const body = (await res.json()) as { current: { url: string } };
+    expect(body.current.url).toBe('/api/cover/album-1?v=2');
+  });
+
   it('omits Lidarr covers (not a 503) when Lidarr is unconfigured', async () => {
     seedAlbum(testDb);
     const res = await makeApp('admin', false).request('/albums/album-1/cover-candidates');

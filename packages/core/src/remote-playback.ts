@@ -41,7 +41,10 @@ export interface RemoteTrack {
   title: string;
   artist: string;
   album?: string;
+  albumId?: string;
   coverArt?: string;
+  /** The album's cover rev (#1666); a device's `Track` carries it onto the wire. */
+  coverRev?: number;
   duration?: number;
 }
 

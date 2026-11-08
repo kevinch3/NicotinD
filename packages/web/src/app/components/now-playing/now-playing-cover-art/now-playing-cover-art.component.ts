@@ -11,7 +11,9 @@ import {
 import { NgTemplateOutlet } from '@angular/common';
 import { HOLD_MS, HOLD_SLOP_PX } from '../../../directives/entity-actions.directive';
 import { haptic } from '../../../lib/haptics';
-import { PlayerService } from '../../../services/player.service';
+import { PlayerService, type Track } from '../../../services/player.service';
+import { songCover } from '../../../lib/cover-url';
+import { CoverRevisionsService } from '../../../services/cover-revisions.service';
 import { AuthService } from '../../../services/auth.service';
 import { LikeService } from '../../../services/like.service';
 import { ReportTrackService } from '../../../services/report-track.service';
@@ -49,6 +51,12 @@ export class NowPlayingCoverArtComponent {
   readonly likes = inject(LikeService);
   readonly report = inject(ReportTrackService);
   private readonly songMenu = inject(SongMenuService);
+  private readonly coverRevisions = inject(CoverRevisionsService);
+
+  /** A track's cover at its album's live cover rev (#1666). */
+  coverSrc(track: Track): string | undefined {
+    return this.coverRevisions.url(songCover(track), 600, this.auth.mediaToken());
+  }
 
   private readonly menu = viewChild(MenuPanelComponent);
 

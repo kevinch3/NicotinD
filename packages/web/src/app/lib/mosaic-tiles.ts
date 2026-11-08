@@ -304,6 +304,7 @@ const recentToTrack = (p: RecentPlay): Track =>
     album: p.album ?? undefined,
     albumId: p.albumId ?? undefined,
     coverArt: p.coverArt ?? undefined,
+    coverRev: p.coverRev,
     duration: p.duration ?? undefined,
   });
 
@@ -321,6 +322,7 @@ function recentToTile(p: RecentPlay, w: PlayWeights): MosaicTile {
     action: { type: 'song', track: recentToTrack(p) },
     coverArt: p.coverArt ?? undefined,
     albumId: p.albumId ?? undefined,
+    coverRev: p.coverRev,
   };
 }
 

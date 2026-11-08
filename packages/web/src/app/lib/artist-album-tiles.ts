@@ -69,6 +69,8 @@ export interface AlbumTile {
   localAlbumId?: string;
   /** Local cover hash, resolved as `/api/cover/<hash>`. Wins over `coverArtUrl`. */
   coverArt?: string;
+  /** The local album's `cover_rev`, carried into the cover URL (#1666). */
+  coverRev?: number;
   /** Remote Lidarr/MusicBrainz cover URL — the only art a missing tile has. */
   coverArtUrl?: string;
   localTrackCount?: number;
@@ -136,6 +138,7 @@ function tileFromLocal(album: Album): AlbumTile {
     status: 'owned',
     localAlbumId: album.id,
     coverArt: album.coverArt,
+    coverRev: album.coverRev,
     secondary: false,
     kind: localKind(album),
   };
@@ -175,6 +178,7 @@ export function buildArtistAlbumTiles(
         status,
         localAlbumId: owned.id,
         coverArt: owned.coverArt,
+        coverRev: owned.coverRev,
         coverArtUrl: entry.coverArtUrl,
         localTrackCount: entry.localTrackCount,
         totalTracks: entry.totalTracks,

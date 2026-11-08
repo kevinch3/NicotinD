@@ -46,6 +46,16 @@ export function coverUrl(ref: CoverRef, size: number, token: string | null): str
   return `/api/cover/${ref.coverArt}?size=${size}${v}&token=${token ?? ''}`;
 }
 
+/**
+ * The cover's path with its rev and nothing else — no size, no token — for a
+ * URL that is completed later, as a server-built cover-candidate URL is
+ * (`coverThumbUrl`). The `current` candidate's path, spelled the way the
+ * server's `cover-candidates` route spells it.
+ */
+export function coverPath(ref: CoverRef): string {
+  return `/api/cover/${ref.coverArt}${ref.coverRev > 0 ? `?v=${ref.coverRev}` : ''}`;
+}
+
 /** An artist portrait, or null for an artist with no cover id. */
 export function artistCover(a: {
   id: string;
