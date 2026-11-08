@@ -82,6 +82,14 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 
 export type ArtistTab = 'albums' | 'singles' | 'appears-on' | 'songs';
+
+export const ARTIST_TAB_LABEL_KEYS: Record<ArtistTab, string> = {
+  albums: 'artist.tab.albums',
+  singles: 'artist.tab.singles',
+  'appears-on': 'artist.tab.appearsOn',
+  songs: 'artist.tab.songs',
+};
+
 export type SongSort = 'newest' | 'title' | 'album';
 const SONGS_PAGE_SIZE = 60;
 
@@ -271,6 +279,10 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     tabs.push('songs');
     return tabs;
   });
+
+  tabLabelKey(tab: ArtistTab): string {
+    return ARTIST_TAB_LABEL_KEYS[tab];
+  }
 
   setTab(tab: ArtistTab): void {
     this.activeTab.set(tab);

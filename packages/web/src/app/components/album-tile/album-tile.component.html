@@ -52,7 +52,7 @@
           </svg>
           <span data-testid="album-tile-hunt-status">{{ busyLabel() }}</span>
         } @else {
-          {{ actionLabel() }}
+          {{ actionLabelKey() | t }}
         }
       </button>
     }
@@ -110,7 +110,7 @@
           </svg>
           <span data-testid="album-tile-hunt-status">{{ busyLabel() }}</span>
         } @else {
-          {{ actionLabel() }}
+          {{ actionLabelKey() | t }}
         }
       </button>
     }

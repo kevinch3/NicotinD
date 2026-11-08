@@ -168,53 +168,76 @@
       activeTab() !== 'songs' &&
       activeTab() !== 'appears-on'
     ) {
-      <p class="text-center text-theme-muted py-20">No releases found for this artist.</p>
+      <p class="text-center text-theme-muted py-20">{{ 'artist.noReleases' | t }}</p>
     } @else {
-      <!-- Tabs: Albums | Singles & EPs | Appears On | Songs -->
-      <div class="flex items-center gap-1 border-b border-theme-surface-2 mb-5" role="tablist">
-        @for (tab of visibleTabs(); track tab) {
-          <button
-            type="button"
-            role="tab"
-            [attr.data-testid]="'artist-tab-' + tab"
-            [attr.aria-selected]="activeTab() === tab"
-            (click)="setTab(tab)"
-            [class]="
-              'px-3 py-2 text-sm font-medium border-b-2 -mb-px transition ' +
-              (activeTab() === tab
-                ? 'border-[var(--theme-accent)] text-theme-primary'
-                : 'border-transparent text-theme-muted hover:text-theme-secondary')
-            "
-          >
-            {{
-              tab === 'albums'
-                ? 'Albums'
-                : tab === 'singles'
-                  ? 'Singles & EPs'
-                  : tab === 'appears-on'
-                    ? 'Appears On'
-                    : 'Songs'
-            }}
-          </button>
-        }
+      <!-- Tabs: Albums | Singles & EPs | Appears On | Songs. The discography line is a
+           sibling of the tablist, not inside it: below md it takes its own line under
+           the tabs (#1636). Labels never wrap; a phone too narrow for all four scrolls
+           the strip, so below md the rule is an inset shadow (overflow would clip the
+           tabs' -mb-px overlap). See docs/web-ui.md. -->
+      <div
+        class="flex flex-wrap items-center gap-x-4 mb-5 md:flex-nowrap md:border-b md:border-theme-surface-2"
+        data-testid="artist-tab-row"
+      >
+        <div
+          class="flex items-center w-full overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden shadow-[inset_0_-1px_0_var(--theme-surface-2)] sm:gap-1 md:w-auto md:shrink-0 md:overflow-visible md:shadow-none"
+          role="tablist"
+          data-testid="artist-tablist"
+        >
+          @for (tab of visibleTabs(); track tab) {
+            <button
+              type="button"
+              role="tab"
+              [attr.data-testid]="'artist-tab-' + tab"
+              [attr.aria-selected]="activeTab() === tab"
+              (click)="setTab(tab)"
+              [class]="
+                'shrink-0 px-2 sm:px-3 py-2 text-sm font-medium whitespace-nowrap border-b-2 md:-mb-px transition ' +
+                (activeTab() === tab
+                  ? 'border-[var(--theme-accent)] text-theme-primary'
+                  : 'border-transparent text-theme-muted hover:text-theme-secondary')
+              "
+            >
+              {{ tabLabelKey(tab) | t }}
+            </button>
+          }
+        </div>
 
         <!-- What the discography knows, where the tabs are — the old section header. -->
         @if (discography(); as disc) {
-          <span class="ml-auto text-xs text-theme-muted" data-testid="discography-summary">
-            {{ disc.albums.length }} releases · {{ countByStatus(disc.albums, 'present') }} complete
-            · {{ countByStatus(disc.albums, 'partial') }} partial ·
-            {{ countByStatus(disc.albums, 'missing') }} missing · via MusicBrainz
+          <span
+            class="w-full pt-2 text-xs text-theme-muted md:w-auto md:min-w-0 md:ml-auto md:pt-0 md:text-right"
+            data-testid="discography-summary"
+          >
+            {{
+              'discography.summary'
+                | t
+                  : {
+                      total: disc.albums.length,
+                      present: countByStatus(disc.albums, 'present'),
+                      partial: countByStatus(disc.albums, 'partial'),
+                      missing: countByStatus(disc.albums, 'missing'),
+                    }
+            }}
           </span>
         } @else if (discographyLoading()) {
           <!-- A line, not a skeleton grid: the local albums are already rendered
                below, and eight placeholder tiles would read as real content. -->
-          <span class="ml-auto text-xs text-theme-muted">Checking full discography…</span>
+          <span
+            class="w-full pt-2 text-xs text-theme-muted md:w-auto md:min-w-0 md:ml-auto md:pt-0 md:text-right"
+            >{{ 'discography.checking' | t }}</span
+          >
         } @else if (provisioning()) {
-          <span class="ml-auto text-xs text-theme-muted" data-testid="discography-provisioning">
+          <span
+            class="w-full pt-2 text-xs text-theme-muted md:w-auto md:min-w-0 md:ml-auto md:pt-0 md:text-right"
+            data-testid="discography-provisioning"
+          >
             {{ 'discography.addingArtist' | t }}
           </span>
         } @else if (notProvisioned()) {
-          <span class="ml-auto flex items-center gap-2 text-xs text-theme-muted">
+          <span
+            class="w-full pt-2 flex items-center gap-2 text-xs text-theme-muted md:w-auto md:min-w-0 md:ml-auto md:pt-0 md:justify-end"
+          >
             @if (provisionError(); as err) {
               <span class="text-red-400" data-testid="discography-provision-error">{{ err }}</span>
             }
@@ -247,7 +270,7 @@
                 }
               </div>
             } @empty {
-              <p class="col-span-full text-center text-theme-muted py-16">Nothing here yet.</p>
+              <p class="col-span-full text-center text-theme-muted py-16">{{ 'artist.tabEmpty' | t }}</p>
             }
           </div>
 
@@ -259,7 +282,11 @@
                 (click)="showAllReleases.set(!showAllReleases())"
                 class="px-3 py-1.5 text-xs rounded-lg bg-theme-surface-2 text-theme-muted hover:bg-theme-hover transition"
               >
-                {{ showAllReleases() ? 'Show fewer releases' : 'Show all ' + hiddenReleaseCount() + ' more releases' }}
+                {{
+                  showAllReleases()
+                    ? ('artist.showFewerReleases' | t)
+                    : ('artist.showAllReleases' | t: { count: hiddenReleaseCount() })
+                }}
               </button>
             </div>
           }
@@ -280,7 +307,7 @@
                 }
               </div>
             } @empty {
-              <p class="col-span-full text-center text-theme-muted py-16">Nothing here yet.</p>
+              <p class="col-span-full text-center text-theme-muted py-16">{{ 'artist.tabEmpty' | t }}</p>
             }
           </div>
 
@@ -292,7 +319,11 @@
                 (click)="showAllReleases.set(!showAllReleases())"
                 class="px-3 py-1.5 text-xs rounded-lg bg-theme-surface-2 text-theme-muted hover:bg-theme-hover transition"
               >
-                {{ showAllReleases() ? 'Show fewer releases' : 'Show all ' + hiddenReleaseCount() + ' more releases' }}
+                {{
+                  showAllReleases()
+                    ? ('artist.showFewerReleases' | t)
+                    : ('artist.showAllReleases' | t: { count: hiddenReleaseCount() })
+                }}
               </button>
             </div>
           }
@@ -313,7 +344,7 @@
                 }
               </div>
             } @empty {
-              <p class="col-span-full text-center text-theme-muted py-16">Nothing here yet.</p>
+              <p class="col-span-full text-center text-theme-muted py-16">{{ 'artist.tabEmpty' | t }}</p>
             }
           </div>
 
@@ -325,7 +356,11 @@
                 (click)="showAllReleases.set(!showAllReleases())"
                 class="px-3 py-1.5 text-xs rounded-lg bg-theme-surface-2 text-theme-muted hover:bg-theme-hover transition"
               >
-                {{ showAllReleases() ? 'Show fewer releases' : 'Show all ' + hiddenReleaseCount() + ' more releases' }}
+                {{
+                  showAllReleases()
+                    ? ('artist.showFewerReleases' | t)
+                    : ('artist.showAllReleases' | t: { count: hiddenReleaseCount() })
+                }}
               </button>
             </div>
           }

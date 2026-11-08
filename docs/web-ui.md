@@ -796,6 +796,20 @@ in Lidarr). Local tiles render immediately and missing ones slot in; while it lo
 the tab bar carries a one-line `Checking full discography…` rather than a skeleton
 grid, because eight placeholder tiles next to real content read as content.
 
+**The summary is a sibling of the tablist, never inside it (#1636).** It used to share
+the tablist's flex row, so on a 390px phone it squeezed into a 4-line block beside the
+tabs and wrapped `Singles & EPs` onto two lines. Now the row (`artist-tab-row`) holds the
+tablist (`artist-tablist`, tabs only) and the summary as siblings: below `md` the summary
+takes its own line under the tabs; from `md` it sits inline, right-aligned, wrapping
+inside its own box rather than pushing the tabs. Labels are `whitespace-nowrap`, and a
+phone too narrow for all four tabs (a 360px Android in Spanish) scrolls the strip instead
+of wrapping a label or the page. Because a scrolling box clips, the phone strip draws its
+rule as an inset shadow and the tabs drop the `-mb-px` overlap they use from `md` up. Every
+label in the row, the toggle, the empty slates and the tile's `Get album` /
+`Complete album` / `n/N tracks` go through the catalog (`artist.tab.*`,
+`discography.summary`, `albumTile.*`). `artist-tab-row.spec.ts` measures the four-tab
+Spanish row at 390px, and at 1280px pins the summary inline and right-aligned on the tabs' row.
+
 **Testing note.** `AlbumTileComponent` takes `input<AlbumTile>(EMPTY_TILE)`, not
 `input.required()`. The JIT vitest harness does not register signal inputs on a
 *nested* component, so a required input throws NG0950 during the **host's** change
