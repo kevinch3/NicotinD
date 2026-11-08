@@ -135,7 +135,8 @@ describe('NowPlayingCoverArtComponent', () => {
       const fixture = TestBed.createComponent(NowPlayingCoverArtComponent);
       fixture.detectChanges();
       opened = vi.fn();
-      (fixture.componentInstance as unknown as { openMenu: () => void }).openMenu = opened;
+      (fixture.componentInstance as unknown as { openMenu: () => void }).openMenu =
+        opened as unknown as () => void;
       return fixture;
     }
 

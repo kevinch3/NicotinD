@@ -122,15 +122,16 @@
                 <circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" />
               </svg>
             </button>
-            <div menuPanel><ng-container *ngTemplateOutlet="menuItems" /></div>
+            <div menuPanel class="bg-theme-surface border border-theme rounded-xl shadow-xl py-1 min-w-40"><ng-container *ngTemplateOutlet="menuItems" /></div>
           </app-menu-panel>
         </div>
       }
     </div>
   </div>
 
+  <!-- The ⋯ menu's buttons are direct children of [menuPanel], so the phone
+       bottom sheet's 44px row rule applies to them (#1714). -->
   <ng-template #menuItems>
-    <div class="bg-theme-surface border border-theme rounded-xl shadow-xl py-1 min-w-40">
       @for (action of menuActions(); track action.label) {
         <button
           type="button"
@@ -143,7 +144,6 @@
           {{ action.labelKey ? (action.labelKey | t) : action.label }}
         </button>
       }
-    </div>
   </ng-template>
 
   <!-- Track info -->
@@ -175,7 +175,7 @@
                 <circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="19" r="2" />
               </svg>
             </button>
-            <div menuPanel><ng-container *ngTemplateOutlet="menuItems" /></div>
+            <div menuPanel class="bg-theme-surface border border-theme rounded-xl shadow-xl py-1 min-w-40"><ng-container *ngTemplateOutlet="menuItems" /></div>
           </app-menu-panel>
         }
       } @else {

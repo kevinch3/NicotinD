@@ -15,6 +15,17 @@ async function openSheet(page: Page): Promise<void> {
   await expect(page.getByTestId('player-title')).toBeVisible();
   await page.getByTestId('player-title').click();
   await expect(page.getByTestId('now-playing-cover')).toBeInViewport();
+  // The sheet slides up on a 300ms transform: measure only once it has stopped.
+  let last = '';
+  await expect
+    .poll(async () => {
+      const b = await page.getByTestId('now-playing-cover').boundingBox();
+      const now = b ? `${Math.round(b.x)},${Math.round(b.y)}` : '';
+      const settled = now !== '' && now === last;
+      last = now;
+      return settled;
+    })
+    .toBe(true);
 }
 
 /** A touch held on the cover's centre for `ms` (Playwright's touchscreen has no
