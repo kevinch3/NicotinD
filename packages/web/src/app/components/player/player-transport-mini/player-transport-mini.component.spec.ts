@@ -80,4 +80,22 @@ describe('PlayerTransportMiniComponent', () => {
     }
     expect(vi.mocked(haptic).mock.calls).toEqual([['tap'], ['tap'], ['tap']]);
   });
+
+  // #1743: jsdom has no layout, so the sizes are asserted as the classes that
+  // produce them; mini-player-spacing.spec.ts measures the real boxes.
+  it('makes every button a 44px target on a phone, denser from md, and lifts none', () => {
+    const fixture = TestBed.createComponent(PlayerTransportMiniComponent);
+    fixture.detectChanges();
+    const cls = (id: string) =>
+      (fixture.nativeElement as HTMLElement).querySelector(`[data-testid="${id}"]`)!.classList;
+    for (const id of ['player-prev', 'player-playpause', 'player-next']) {
+      expect(cls(id).contains('w-11') && cls(id).contains('h-11'), id).toBe(true);
+      expect(
+        [...cls(id)].some((c) => c.includes('translate-y')),
+        id,
+      ).toBe(false);
+    }
+    expect(cls('player-prev').contains('md:w-9')).toBe(true);
+    expect(cls('player-playpause').contains('md:w-10')).toBe(true);
+  });
 });
