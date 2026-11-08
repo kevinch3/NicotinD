@@ -324,23 +324,8 @@ export function loadConfig() {
       // Env override is not optional polish: .dockerignore drops
       // config/default.yml, so a key with no env var is unsettable in prod (#824).
       ...(process.env.NICOTIND_DOWNLOADS_DIR ? { dir: process.env.NICOTIND_DOWNLOADS_DIR } : {}),
-      ...(process.env.NICOTIND_AUTO_RETRY_ENABLED
-        ? { autoRetryEnabled: parseBooleanEnv(process.env.NICOTIND_AUTO_RETRY_ENABLED) }
-        : {}),
       ...(process.env.NICOTIND_AUTO_ACQUIRE_ENABLED
         ? { autoAcquireEnabled: parseBooleanEnv(process.env.NICOTIND_AUTO_ACQUIRE_ENABLED) }
-        : {}),
-      ...(process.env.NICOTIND_RETRY_MAX_ATTEMPTS
-        ? { retryMaxAttempts: Number(process.env.NICOTIND_RETRY_MAX_ATTEMPTS) }
-        : {}),
-      ...(process.env.NICOTIND_RETRY_INTERVAL_MS
-        ? { retryIntervalMs: Number(process.env.NICOTIND_RETRY_INTERVAL_MS) }
-        : {}),
-      ...(process.env.NICOTIND_RETRY_COOLDOWN_MS
-        ? { retryCooldownMs: Number(process.env.NICOTIND_RETRY_COOLDOWN_MS) }
-        : {}),
-      ...(process.env.NICOTIND_FALLBACK_MAX_ATTEMPTS
-        ? { fallbackMaxAttempts: Number(process.env.NICOTIND_FALLBACK_MAX_ATTEMPTS) }
         : {}),
       ...(process.env.NICOTIND_PREFER_FLAC_SKIP_MP3
         ? { preferFlacSkipMp3: parseBooleanEnv(process.env.NICOTIND_PREFER_FLAC_SKIP_MP3) }
