@@ -26,6 +26,11 @@ export type AlbumHuntStatus =
 export const IDLE_HUNT: AlbumHuntStatus = { phase: 'idle' };
 export const SEARCHING_HUNT: AlbumHuntStatus = { phase: 'searching' };
 export const STARTING_HUNT: AlbumHuntStatus = { phase: 'starting' };
+/**
+ * A job for the album just left `active`, and the page is re-reading what it
+ * landed — busy until that read is in, so the pre-job label never flashes back.
+ */
+export const LANDING_HUNT: AlbumHuntStatus = { phase: 'job', stage: 'scanning' };
 
 /**
  * The one busy label every Get surface shows — "Finding…", or the job's stage

@@ -204,7 +204,8 @@
         </div>
 
         <!-- What the discography knows, where the tabs are — the old section header. -->
-        @if (discography(); as disc) {
+        @if (discography()) {
+          @let sum = discographySummary();
           <span
             class="w-full pt-2 text-xs text-theme-muted md:w-auto md:min-w-0 md:ml-auto md:pt-0 md:text-right"
             data-testid="discography-summary"
@@ -213,10 +214,10 @@
               'discography.summary'
                 | t
                   : {
-                      total: disc.albums.length,
-                      present: countByStatus(disc.albums, 'present'),
-                      partial: countByStatus(disc.albums, 'partial'),
-                      missing: countByStatus(disc.albums, 'missing'),
+                      total: sum.releases,
+                      present: sum.complete,
+                      partial: sum.partial,
+                      missing: sum.missing,
                     }
             }}
           </span>

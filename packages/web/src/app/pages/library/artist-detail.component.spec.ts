@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { provideRouter, Router, ActivatedRoute, convertToParamMap } from '@angular/router';
-import { of, BehaviorSubject, throwError } from 'rxjs';
+import { of, BehaviorSubject, Subject, throwError } from 'rxjs';
 import { vi } from 'vitest';
 import { ArtistDetailComponent, ARTIST_TAB_LABEL_KEYS } from './artist-detail.component';
 import EN_CATALOG from '../../../../public/i18n/en.json';
@@ -909,7 +909,15 @@ const release = (over: Record<string, unknown>) => ({
   ...over,
 });
 
-function setupMerged(albums: unknown[], discographyFails = false) {
+function setupMerged(
+  albums: unknown[],
+  discographyFails = false,
+  opts: {
+    jobs?: ReturnType<typeof signal<unknown[]>>;
+    getArtistDiscography?: () => unknown;
+    getArtist?: () => unknown;
+  } = {},
+) {
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
     imports: [ArtistDetailComponent],
@@ -932,17 +940,20 @@ function setupMerged(albums: unknown[], discographyFails = false) {
       {
         provide: DownloadsApiService,
         useValue: {
-          getArtistDiscography: () =>
-            discographyFails
-              ? throwError(() => new Error('Lidarr not configured'))
-              : of({ artistId: 'ar1', lidarrId: 1, mbid: 'm', albums }),
+          getArtistDiscography:
+            opts.getArtistDiscography ??
+            (() =>
+              discographyFails
+                ? throwError(() => new Error('Lidarr not configured'))
+                : of({ artistId: 'ar1', lidarrId: 1, mbid: 'm', albums })),
         },
       },
       {
         provide: LibraryApiService,
         useValue: {
           artistImageSources: () => of({ sources: [] }),
-          getArtist: () => of({ artist: ARTIST, albums: ALBUMS, singlesAndEps: [] }),
+          getArtist:
+            opts.getArtist ?? (() => of({ artist: ARTIST, albums: ALBUMS, singlesAndEps: [] })),
           getArtistAppearsOn: () => of([]),
           getArtistSongs: () => of({ songs: [], total: 0 }),
           artistGenreDistribution: () =>
@@ -968,7 +979,10 @@ function setupMerged(albums: unknown[], discographyFails = false) {
       { provide: PlayerService, useValue: { playWithContext: () => {}, addToQueue: () => {} } },
       {
         provide: TransferService,
-        useValue: { deletedSongIds: signal(new Set<string>()), acquisitionJobs: signal([]) },
+        useValue: {
+          deletedSongIds: signal(new Set<string>()),
+          acquisitionJobs: opts.jobs ?? signal([]),
+        },
       },
     ],
     schemas: [NO_ERRORS_SCHEMA],
@@ -1141,6 +1155,202 @@ describe('ArtistDetailComponent — tab row (#1636)', () => {
     }
     expect((EN_CATALOG as Record<string, string>)['discography.summary']).toContain('{missing}');
     expect((ES_CATALOG as Record<string, string>)['discography.summary']).toContain('{missing}');
+  });
+});
+
+// #1627, the prod shape: a local "A contraluz" holding only "El viejo" and a local
+// "De bichos y flores" holding only "Zafar" — each song on the OTHER album's
+// tracklist. The server grades both missing; the tiles used to say partial.
+describe('ArtistDetailComponent — header and tiles read one completeness rule (#1627)', () => {
+  const swappedAlbums = [
+    { id: 'a1', name: 'A contraluz', artist: 'La Vela Puerca' },
+    { id: 'a2', name: 'De bichos y flores', artist: 'La Vela Puerca' },
+  ];
+  const swapped = [
+    release({ lidarrId: 1, title: 'A contraluz', localAlbumId: 'a1', totalTracks: 14 }),
+    release({ lidarrId: 2, title: 'De bichos y flores', localAlbumId: 'a2', totalTracks: 14 }),
+    release({ lidarrId: 3, title: 'Deskarado' }),
+  ];
+  const settle = async () => {
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+  };
+  const getArtist = () =>
+    of({ artist: { ...ARTIST, name: 'La Vela Puerca' }, albums: swappedAlbums, singlesAndEps: [] });
+
+  it('the header and the tiles agree: a folder holding none of its tracklist is missing', async () => {
+    const fixture = setupMerged(swapped, false, { getArtist });
+    await settle();
+    fixture.detectChanges();
+    const c = fixture.componentInstance;
+
+    // The rendered line is a catalog string (#1636), a bare key in a unit test;
+    // the counts it is fed are what the header shows.
+    expect(fixture.nativeElement.querySelector('[data-testid="discography-summary"]')).toBeTruthy();
+    expect(c.discographySummary()).toEqual({ releases: 3, complete: 0, partial: 0, missing: 3 });
+    const tiles = c.albumTiles();
+    expect(tiles.map((t) => t.status)).toEqual(['missing', 'missing', 'missing']);
+    expect(
+      tiles
+        .filter((t) => t.localAlbumId)
+        .map((t) => t.title)
+        .sort(),
+    ).toEqual(['A contraluz', 'De bichos y flores']);
+  });
+
+  it('re-reads the albums and their status when a job for one of them ends', async () => {
+    const jobs = signal<unknown[]>([]);
+    const discographyCalls = { n: 0 };
+    const artistCalls = { n: 0 };
+    const getArtistDiscography = () => {
+      discographyCalls.n++;
+      // After the job lands, the server's tracklist match finds every track.
+      const albums =
+        discographyCalls.n === 1
+          ? swapped
+          : [
+              { ...swapped[0], status: 'present' as const, localTrackCount: 14 },
+              ...swapped.slice(1),
+            ];
+      return of({ artistId: 'ar1', lidarrId: 1, mbid: 'm', albums });
+    };
+    const fixture = setupMerged([], false, {
+      jobs,
+      getArtistDiscography,
+      getArtist: () => {
+        artistCalls.n++;
+        return getArtist();
+      },
+    });
+    await settle();
+    fixture.detectChanges();
+    const c = fixture.componentInstance;
+    const contraluz = () => c.albumTiles().find((t) => t.title === 'A contraluz')!;
+    expect(contraluz().status).toBe('missing');
+
+    const live = {
+      id: 'j1',
+      kind: 'album-hunt',
+      state: 'active',
+      stage: 'downloading',
+      lidarrAlbumId: 1,
+      artistName: null,
+      albumTitle: null,
+      createdAt: 1,
+      progress: { expected: 14, delivered: 3, unavailable: 0, failed: 0, canonical: 14 },
+    };
+    jobs.set([live]);
+    fixture.detectChanges();
+    await settle();
+    // A live job is not an ending: nothing re-reads while it runs.
+    expect(discographyCalls.n).toBe(1);
+
+    jobs.set([{ ...live, state: 'done' }]);
+    fixture.detectChanges();
+    await settle();
+    fixture.detectChanges();
+
+    expect(discographyCalls.n).toBe(2);
+    expect(artistCalls.n).toBe(2);
+    expect(contraluz().status).toBe('owned');
+    expect(fixture.componentInstance.discographySummary().complete).toBe(1);
+  });
+
+  it('holds the landed tile busy until the discography re-read is in, reading both at once', async () => {
+    const jobs = signal<unknown[]>([]);
+    const reread = new Subject<unknown>();
+    const calls: string[] = [];
+    let discographyCalls = 0;
+    const fixture = setupMerged([], false, {
+      jobs,
+      getArtist: () => {
+        calls.push('artist');
+        return getArtist();
+      },
+      getArtistDiscography: () => {
+        discographyCalls++;
+        calls.push('discography');
+        return discographyCalls === 1
+          ? of({ artistId: 'ar1', lidarrId: 1, mbid: 'm', albums: swapped })
+          : reread;
+      },
+    });
+    await settle();
+    fixture.detectChanges();
+    const c = fixture.componentInstance;
+    // The status the grid hands each tile — its button is disabled on any phase but
+    // `idle` (album-tile.component.spec.ts; a nested tile renders defaults here).
+    const statusOf = (title: string) =>
+      c.tileHuntStatus(c.albumTiles().find((t) => t.title === title)!);
+    expect(statusOf('A contraluz').phase).toBe('idle');
+
+    const live = {
+      id: 'j1',
+      state: 'active',
+      stage: 'organizing',
+      lidarrAlbumId: 1,
+      artistName: null,
+      albumTitle: null,
+      createdAt: 1,
+      progress: { expected: 14, delivered: 14, unavailable: 0, failed: 0, canonical: 14 },
+    };
+    jobs.set([live]);
+    fixture.detectChanges();
+    await settle();
+    calls.length = 0;
+
+    // The job leaves `active`; the discography read has not answered yet.
+    jobs.set([{ ...live, state: 'done', stage: 'done' }]);
+    fixture.detectChanges();
+    await settle();
+    fixture.detectChanges();
+
+    expect(calls.sort()).toEqual(['artist', 'discography']);
+    expect(statusOf('A contraluz')).toEqual({ phase: 'job', stage: 'scanning' });
+    // Another release's tile is not held by this job's ending.
+    expect(statusOf('Deskarado').phase).toBe('idle');
+
+    reread.next({
+      artistId: 'ar1',
+      lidarrId: 1,
+      mbid: 'm',
+      albums: [{ ...swapped[0], status: 'partial', localTrackCount: 13 }, ...swapped.slice(1)],
+    });
+    reread.complete();
+    await settle();
+    fixture.detectChanges();
+
+    const contraluz = c.albumTiles().find((t) => t.title === 'A contraluz')!;
+    expect(contraluz.status).toBe('partial');
+    expect(c.tileHuntStatus(contraluz).phase).toBe('idle');
+  });
+
+  it('ignores a job that ends for another artist’s album', async () => {
+    const jobs = signal<unknown[]>([]);
+    let discographyCalls = 0;
+    const fixture = setupMerged([], false, {
+      jobs,
+      getArtist,
+      getArtistDiscography: () => {
+        discographyCalls++;
+        return of({ artistId: 'ar1', lidarrId: 1, mbid: 'm', albums: swapped });
+      },
+    });
+    await settle();
+    const other = {
+      id: 'j9',
+      state: 'active',
+      lidarrAlbumId: 99,
+      artistName: 'X',
+      albumTitle: 'Y',
+    };
+    jobs.set([other]);
+    fixture.detectChanges();
+    await settle();
+    jobs.set([{ ...other, state: 'done' }]);
+    fixture.detectChanges();
+    await settle();
+
+    expect(discographyCalls).toBe(1);
   });
 });
 
