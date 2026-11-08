@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { join, resolve, dirname, sep, extname } from 'node:path';
 import { existsSync, statSync } from 'node:fs';
-import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import type { Database } from 'bun:sqlite';
 import { createLogger } from '@nicotind/core';
 import type { AuthEnv } from '../middleware/auth.js';
@@ -13,7 +13,11 @@ import {
   pinTranscodeCacheFile,
   schedulePinRelease,
 } from '../services/transcode-cache.js';
-import { COVER_EXTS, COVER_FILE_NAMES, extractEmbeddedPicture } from '../services/cover-sources.js';
+import { COVER_EXTS, extractEmbeddedPicture } from '../services/cover-sources.js';
+import {
+  diskArtSource as sharedDiskArtSource,
+  folderImagePath,
+} from '../services/album-art-stamp.js';
 import { resolveArtwork, canonicalCacheKey } from '../services/artwork-store.js';
 import { folderArtBelongsToAlbum } from '../services/album-folder.js';
 import { diskArtCacheKey, readDiskArtRef, writeDiskArtRef } from '../services/disk-art-cache.js';
@@ -434,28 +438,9 @@ export function streamingRoutes(
     return respondCover(key, art, size);
   }
 
-  /**
-   * The stamp of the image `extractCover` would pick, without reading it: the
-   * album folder's image when folder art applies (never in a shared bucket,
-   * #978), else the audio file itself (embedded art).
-   */
-  async function diskArtSource(track: {
-    abs: string;
-    relPath: string;
-  }): Promise<{ stamp: string; folderImage: string | null } | null> {
-    const folderImage = folderArtBelongsToAlbum(db, track.relPath)
-      ? await folderImagePath(dirname(track.abs))
-      : null;
-    const statPath = folderImage ?? track.abs;
-    try {
-      const st = await stat(statPath);
-      return {
-        stamp: `${folderImage ? 'f' : 'e'}|${statPath}|${st.mtimeMs}|${st.size}`,
-        folderImage,
-      };
-    } catch {
-      return null;
-    }
+  /** The stamp of the image the route would pick (services/album-art-stamp.ts). */
+  function diskArtSource(track: { abs: string; relPath: string }) {
+    return sharedDiskArtSource(db, track);
   }
 
   /**
@@ -722,24 +707,6 @@ export async function extractCover(
 async function folderCover(dir: string): Promise<CoverArt | null> {
   const path = await folderImagePath(dir);
   return path ? readImageFile(path) : null;
-}
-
-/** The album folder's image (cover.jpg/folder.jpg/…) as an absolute path, or null. */
-async function folderImagePath(dir: string): Promise<string | null> {
-  let entries: string[];
-  try {
-    entries = await readdir(dir);
-  } catch {
-    return null;
-  }
-  const lower = new Map(entries.map((e) => [e.toLowerCase(), e]));
-  for (const base of COVER_FILE_NAMES) {
-    for (const ext of COVER_EXTS) {
-      const match = lower.get(base + ext);
-      if (match) return join(dir, match);
-    }
-  }
-  return null;
 }
 
 async function readImageFile(path: string): Promise<CoverArt | null> {

@@ -1,3 +1,4 @@
+import { refreshAlbumArtStamps } from './album-art-stamp.js';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { cpus } from 'node:os';
@@ -1129,6 +1130,7 @@ export class LibraryScanner {
       );
     }
     const result = this.persist(built, startedAt, incomplete.length === 0);
+    await this.restampArt(built.albums.map((a) => a.id));
     const recovered = this.recoverPresentOrphanedCacheRows(files);
     if (recovered > 0)
       log.info({ recovered }, 'cleared orphaned_at on scan-cache rows still on disk');
@@ -1223,7 +1225,22 @@ export class LibraryScanner {
       this.knownRelPaths(tracks),
     );
     this.persist(built, Date.now(), false);
+    await this.restampArt(built.albums.map((a) => a.id));
     log.info({ files: tracks.length, albums: built.albums.length }, 'Incremental scan complete');
+  }
+
+  /**
+   * Re-stamp these albums' on-disk art; a changed stamp bumps `cover_rev` (#1752).
+   * Never fails a scan: a stamping error leaves the old stamp, so the next scan
+   * retries it.
+   */
+  private async restampArt(albumIds: string[]): Promise<void> {
+    if (albumIds.length === 0) return;
+    try {
+      await refreshAlbumArtStamps(this.db, this.musicDir, albumIds);
+    } catch (err) {
+      log.warn({ err }, 'album art stamp refresh failed');
+    }
   }
 
   /**
@@ -1984,6 +2001,7 @@ export class LibraryScanner {
     );
     // A pruned-away album stays in this list; reclassifying a missing row is a
     // no-op, so callers need not filter.
+    await this.restampArt(touchedAlbumIds);
     return touchedAlbumIds;
   }
 
