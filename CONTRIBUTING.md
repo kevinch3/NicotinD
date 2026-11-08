@@ -18,11 +18,17 @@ and [CLAUDE.md](CLAUDE.md) (the always-loaded index of design patterns).
 ```bash
 bun install
 
-# Copy and edit config
-cp .env.example .env
-# Set SOULSEEK_USERNAME and SOULSEEK_PASSWORD (optional — acquisition is opt-in)
+# Build the web UI (packages/web/dist). Without it the API runs but every page
+# answers "web UI not built".
+bun run build
 
-# Run (embedded mode — auto-downloads slskd binary on first run)
+# Optional: copy and edit config (nothing Soulseek-related is read from it;
+# Soulseek is an opt-in addon registered under Extensions)
+cp .env.example .env
+
+# Run. Embedded mode (the default) downloads Lidarr (~100 MB) into
+# ~/.nicotind/bin on first run and starts it on 127.0.0.1:8686. Set
+# NICOTIND_MODE=external to skip it, and NICOTIND_LIDARR_URL if you run your own.
 bun run src/main.ts
 ```
 
