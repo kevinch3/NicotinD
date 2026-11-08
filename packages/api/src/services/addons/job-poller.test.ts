@@ -841,11 +841,25 @@ describe('AddonJobPoller', () => {
         'https://open.spotify.com/intl-es/album/5aqBD2HHSWt6VpSjSZfiMw',
         false,
       );
+      // Still resolving: nothing to file yet, so nothing adopted (#1735).
       localJobs = [makeJob({ intent: 'url', artist: null, album: null, title: 'Gondwana' })];
-
       await h.poller.tick();
       await h.poller.idle();
+      expect(albumTitleOf(coreJobId)).toBeNull();
 
+      // Finished and still no album from spotdl: the link's name is adopted.
+      localJobs = [
+        makeJob({
+          intent: 'url',
+          artist: null,
+          album: null,
+          title: 'Gondwana',
+          state: 'done',
+          items: [],
+        }),
+      ];
+      await h.poller.tick();
+      await h.poller.idle();
       expect(albumTitleOf(coreJobId)).toBe('Gondwana');
     });
 
@@ -865,6 +879,45 @@ describe('AddonJobPoller', () => {
       await h.poller.idle();
 
       expect(albumTitleOf(coreJobId)).toBeNull();
+    });
+
+    /**
+     * #1735: the bundled archive.org addon creates the job with only a
+     * placeholder title (the URL identifier, "MarinesHymn") and reports the real
+     * album when its background resolve lands. The first poll adopted the
+     * placeholder, and first-writer-wins then kept it over the real one, so the
+     * files were tagged and filed under the identifier. Adoption is a fallback
+     * for an addon that never reports an album, so it waits until there are
+     * files to file.
+     */
+    it('waits for the resolve instead of adopting a placeholder title', async () => {
+      let localJobs: AddonJob[] = [];
+      h = harness(() => localJobs);
+      await h.registry.enable('fixture-addon', 'admin');
+      const coreJobId = seedUrlJob('https://archive.org/details/MarinesHymn', false);
+
+      // Poll 1: resolving, placeholder title, nothing downloaded yet.
+      localJobs = [
+        makeJob({ intent: 'url', artist: null, album: null, title: 'MarinesHymn', items: [] }),
+      ];
+      await h.poller.tick();
+      await h.poller.idle();
+      expect(albumTitleOf(coreJobId)).toBeNull();
+
+      // Poll 2: resolved — the addon now knows the item's real title.
+      localJobs = [
+        makeJob({
+          intent: 'url',
+          artist: 'United States Marine Band',
+          album: "Marines' Hymn",
+          title: "Marines' Hymn",
+          state: 'done',
+          items: [],
+        }),
+      ];
+      await h.poller.tick();
+      await h.poller.idle();
+      expect(albumTitleOf(coreJobId)).toBe("Marines' Hymn");
     });
 
     it('never overrides an album the addon actually reported', async () => {
