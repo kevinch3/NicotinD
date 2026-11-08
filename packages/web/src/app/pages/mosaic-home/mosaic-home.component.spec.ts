@@ -27,6 +27,7 @@ import type { Track } from '../../services/player.service';
 import { LANE_MIX, type MosaicTile } from '../../lib/mosaic-tiles';
 import type { PackedTile, Packing } from '../../lib/mosaic-packing';
 import { haptic } from '../../lib/haptics';
+import { OverflowReveal } from '../../lib/overflow-reveal';
 
 vi.mock('../../lib/haptics', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../lib/haptics')>()),
@@ -476,6 +477,10 @@ interface MosaicInternals {
   dragging: boolean;
   vx: number;
   vy: number;
+  live: Map<string, { el: HTMLElement; content: string }>;
+  html: Map<string, string>;
+  reveals: Map<HTMLElement, OverflowReveal[]>;
+  tileHtml(p: PackedTile, t: MosaicTile): string;
 }
 
 const preservedMeta = (over: Partial<PreservedTrackMeta> = {}): PreservedTrackMeta => ({
@@ -719,7 +724,7 @@ describe('mosaic depth (#1638)', () => {
       c.packing = { W: 500, tiles: [packedStub(0, 100)] };
       c.frame();
       const el = stage.querySelector<HTMLElement>('.mosaic-tile')!;
-      return { component, c, el, player };
+      return { component, c, el, player, fixture };
     };
 
     afterEach(() => vi.restoreAllMocks());
@@ -841,6 +846,41 @@ describe('mosaic depth (#1638)', () => {
         expect(Math.abs(c.cx)).toBeGreaterThan(15 * 0.5);
         pointer(component.drag, 'pointerup', 15);
       });
+    });
+
+    it("gives a face's names their reveal at rest, never mid-pan, and drops it with the face (#1707)", async () => {
+      const { c, el, fixture } = await drawn();
+      const slot = c.packing!.tiles[0];
+      const long = { ...slot.tile, title: 'A title far too long for any tile', subtitle: 'Artist' };
+      c.html.set('h:0', c.tileHtml(slot, long));
+      const rewrite = (): void => [...c.live.values()].forEach((r) => (r.content = ''));
+
+      // Mid-pan the face is rewritten but nothing measures it.
+      rewrite();
+      c.dragging = true;
+      c.frame();
+      const names = el.querySelectorAll('[data-overflow-reveal]');
+      expect([...names].map((n) => n.tagName)).toEqual(['B', 'SPAN']);
+      expect(c.reveals.has(el)).toBe(false);
+
+      // At rest: one reveal per name.
+      c.dragging = false;
+      c.frame();
+      expect(c.reveals.get(el)).toHaveLength(2);
+
+      const destroy = vi.spyOn(OverflowReveal.prototype, 'destroy');
+      rewrite();
+      c.dragging = true;
+      c.frame();
+      expect(destroy, 'a recycled face releases its old reveals').toHaveBeenCalledTimes(2);
+      expect(c.reveals.has(el)).toBe(false);
+      c.dragging = false;
+      c.frame();
+      expect(c.reveals.get(el)).toHaveLength(2);
+      destroy.mockClear();
+      fixture.destroy();
+      expect(destroy).toHaveBeenCalledTimes(2);
+      expect(c.reveals.size).toBe(0);
     });
 
     it('a held tile that leaves the lens is let down as it is parked', async () => {

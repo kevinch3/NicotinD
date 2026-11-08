@@ -35,6 +35,13 @@ import { measureBottomChromeInset } from '../../lib/player-chrome';
 import { coverSizeBucket, songCover } from '../../lib/cover-url';
 import { CoverRevisionsService } from '../../services/cover-revisions.service';
 import { toTrack } from '../../lib/track-utils';
+import { isTvUi } from '../../lib/platform';
+import {
+  attachOverflowReveals,
+  browserRevealEnv,
+  type OverflowReveal,
+  type RevealEnv,
+} from '../../lib/overflow-reveal';
 import {
   LANE_MIX,
   assignSongsToSlots,
@@ -243,6 +250,10 @@ export class MosaicHomeComponent implements OnInit {
   private html = new Map<string, string>();
   private byId = new Map<number, PackedTile>();
   private reducedMotion = false;
+  /** The name reveals (#1707) on each pooled element's current face, attached at rest. */
+  private reveals = new Map<HTMLElement, OverflowReveal[]>();
+  /** A face is rewritten whole, never its text in place, so no text observer per name. */
+  private readonly revealEnv: RevealEnv = { ...browserRevealEnv(isTvUi), observeText: undefined };
 
   // --- Discovery cells ---
   private cells = new Map<string, CellState>();
@@ -452,6 +463,7 @@ export class MosaicHomeComponent implements OnInit {
       this.raf = 0;
       this.running = false;
       this.cancelPress();
+      this.dropAllReveals();
     });
   }
 
@@ -872,6 +884,7 @@ export class MosaicHomeComponent implements OnInit {
     this.discovered.set([]);
     // Every pooled element now holds markup for a stale packing.
     this.markHeld(null);
+    this.dropAllReveals();
     for (const rec of this.live.values()) rec.el.remove();
     this.live.clear();
     this.pool.length = 0;
@@ -890,14 +903,14 @@ export class MosaicHomeComponent implements OnInit {
     if (t.kind === 'vibe' || t.kind === 'downloads') {
       return `<div class="mosaic-face bg-gradient-to-br ${t.gradient} text-white" style="${faceVars}">
         <span style="font-size:${Math.round(s * 0.22)}px" aria-hidden="true">${t.emoji ?? ''}</span>
-        <div><b style="font-size:${titleSize}px">${title}</b><span>${subtitle}</span></div>
+        <div><b class="mosaic-name" data-overflow-reveal style="font-size:${titleSize}px">${title}</b><span class="mosaic-name" data-overflow-reveal>${subtitle}</span></div>
       </div>`;
     }
 
     if (t.kind === 'genre') {
       return `<div class="mosaic-face bg-theme-surface-2 text-theme-secondary" style="${faceVars}">
         <span class="mosaic-dot"></span>
-        <div><b style="font-size:${titleSize}px">${title}</b><span>${subtitle}</span></div>
+        <div><b class="mosaic-name" data-overflow-reveal style="font-size:${titleSize}px">${title}</b><span class="mosaic-name" data-overflow-reveal>${subtitle}</span></div>
         ${MORE_BUTTON}
       </div>`;
     }
@@ -917,7 +930,7 @@ export class MosaicHomeComponent implements OnInit {
       ? `background-image:url('${encodeURI(cover)}'),${fallback};background-size:cover;background-position:center`
       : `background-image:${fallback}`;
     return `<div class="mosaic-face text-white" style="${faceVars};${bg}">
-      <div class="mosaic-scrim"><b style="font-size:${titleSize}px">${title}</b><span>${subtitle}</span></div>
+      <div class="mosaic-scrim"><b class="mosaic-name" data-overflow-reveal style="font-size:${titleSize}px">${title}</b><span class="mosaic-name" data-overflow-reveal>${subtitle}</span></div>
       ${MORE_BUTTON}
     </div>`;
   }
@@ -1059,6 +1072,7 @@ export class MosaicHomeComponent implements OnInit {
       if (!rec) rec = this.acquire(pl.key, pl.packed);
       rec.stamp = this.stamp;
       if (rec.content !== content.key) {
+        this.dropReveals(rec.el);
         rec.el.innerHTML = content.html;
         rec.el.dataset['cell'] = cell;
         rec.el.dataset['tileKind'] = content.kind;
@@ -1090,8 +1104,34 @@ export class MosaicHomeComponent implements OnInit {
     }
 
     if (this.dragging || this.glide || this.vx !== 0 || this.vy !== 0) this.wake();
-    else this.setMoving(false);
+    else {
+      this.setMoving(false);
+      this.attachReveals();
+    }
   };
+
+  /**
+   * Give every face on screen its name reveals (#1707), once the field is at
+   * rest. Never mid-pan: a reveal reads layout as it starts, and between the
+   * loop's writes that would force one layout per tile entering the lens. A
+   * touch pass waits for the field to be still anyway.
+   */
+  private attachReveals(): void {
+    for (const { el } of this.live.values()) {
+      if (!this.reveals.has(el))
+        this.reveals.set(el, attachOverflowReveals(el, this.revealEnv, el));
+    }
+  }
+
+  /** A pooled element's face is about to be replaced: its reveals go with it. */
+  private dropReveals(el: HTMLElement): void {
+    for (const r of this.reveals.get(el) ?? []) r.destroy();
+    this.reveals.delete(el);
+  }
+
+  private dropAllReveals(): void {
+    for (const el of [...this.reveals.keys()]) this.dropReveals(el);
+  }
 
   /**
    * The rim blur stands down while the field moves and comes back at rest

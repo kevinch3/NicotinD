@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   OverflowReveal,
+  REVEAL_MARKER_ATTR,
+  attachOverflowReveals,
   REVEAL_ACTIVE_CLASS,
   REVEAL_EXPANDED_CLASS,
   REVEAL_PAUSE_MS,
@@ -32,6 +34,8 @@ function rig(
     hostIsControl?: boolean;
     /** A listener the host's template bound before the directive ran. */
     hostListener?: () => void;
+    /** Pass an explicit row around the usual one (a pooled mosaic tile, #1707). */
+    rowOverride?: boolean;
   } = {},
 ) {
   let now = 0;
@@ -55,7 +59,9 @@ function rig(
   if (opts.title) el.setAttribute('title', opts.title);
   if (opts.rtl) el.style.direction = 'rtl';
   row.appendChild(el);
-  document.body.appendChild(row);
+  const outer = opts.rowOverride ? document.createElement('div') : null;
+  if (outer) outer.appendChild(row);
+  document.body.appendChild(outer ?? row);
   let scrollLeft = 0;
   Object.defineProperty(el, 'clientWidth', { get: () => 200 });
   Object.defineProperty(el, 'scrollWidth', { get: () => 200 + state.overflow });
@@ -77,7 +83,7 @@ function rig(
     observeText: (_el, cb) => ((textCb = cb), () => (textCb = null)),
   };
 
-  const reveal = new OverflowReveal(el, opts.mode ?? 'list', env);
+  const reveal = new OverflowReveal(el, opts.mode ?? 'list', env, outer ?? undefined);
 
   /** Run the clock forward in frame-sized steps, firing timers then frames. */
   function advance(ms: number): number[] {
@@ -101,6 +107,8 @@ function rig(
   return {
     el,
     row,
+    outer,
+    env,
     reveal,
     state,
     advance,
@@ -289,6 +297,15 @@ describe('OverflowReveal', () => {
       expect(Math.max(...r.advance(2 * passMs(100)))).toBe(0);
     });
 
+    it('takes hover from an explicit row instead of the nearest control', () => {
+      const r = rig({ input: 'pointer', overflow: 100, rowOverride: true });
+      r.view(true);
+      r.row.dispatchEvent(new MouseEvent('mouseenter'));
+      expect(Math.max(...r.advance(passMs(100))), 'the inner control is not the row').toBe(0);
+      r.outer!.dispatchEvent(new MouseEvent('mouseenter'));
+      expect(Math.max(...r.advance(passMs(100)))).toBe(100);
+    });
+
     it('scrolls while the row holds keyboard focus', () => {
       const r = rig({ input: 'pointer', overflow: 100 });
       r.view(true);
@@ -452,6 +469,24 @@ describe('OverflowReveal', () => {
       r.resized();
       expect(r.el.getAttribute('title')).toBe('the full path');
     });
+  });
+
+  it('attaches to each name marked in string-built markup, and to nothing else (#1707)', () => {
+    const { env } = rig();
+    const root = document.createElement('div');
+    root.innerHTML = `<b ${REVEAL_MARKER_ATTR}>A title far too long for its tile</b>
+      <span ${REVEAL_MARKER_ATTR}>Short</span><span>Not a name</span>`;
+    const [title, sub, other] = Array.from(root.querySelectorAll<HTMLElement>('b, span'));
+    Object.defineProperty(title, 'scrollWidth', { get: () => 300 });
+    Object.defineProperty(title, 'clientWidth', { get: () => 100 });
+    const reveals = attachOverflowReveals(root, env, root);
+    expect(reveals).toHaveLength(2);
+    // Built over the right hosts: the one that overflows carries its full name.
+    expect(title.getAttribute('title')).toBe('A title far too long for its tile');
+    expect(sub.hasAttribute('title')).toBe(false);
+    expect(other.hasAttribute('title')).toBe(false);
+    expect(reveals[0].overflow()).toBe(200);
+    for (const r of reveals) r.destroy();
   });
 
   it('releases its observers, listeners and timers on destroy', () => {

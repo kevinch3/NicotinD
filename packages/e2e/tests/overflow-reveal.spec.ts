@@ -145,6 +145,78 @@ test.describe('overflow reveal on a touch phone (#1665)', () => {
   });
 });
 
+/**
+ * The home mosaic builds its faces as HTML strings on a pooled canvas, so no
+ * directive reaches them; the component attaches the controller itself (#1707).
+ * Every random pick is renamed so whichever tile lands on screen has a long name.
+ */
+const LONG_ARTIST = 'Los Hermanos Del Valle Y Su Orquesta Tropical De Medianoche';
+
+async function openMosaicWithLongNames(page: Page): Promise<Locator> {
+  await page.route(/\/api\/library\/random(\?|$)/, async (route) => {
+    const res = await route.fetch();
+    const songs = (await res.json()) as Array<Record<string, unknown>>;
+    for (const s of songs) Object.assign(s, { title: LONG, artist: LONG_ARTIST });
+    await route.fulfill({ response: res, json: songs });
+  });
+  await page.goto('/');
+  const tiles = page
+    .locator('[data-testid="mosaic-tile"][data-tile-kind="song"]')
+    .filter({ hasText: LONG });
+  await expect(tiles.first()).toBeVisible({ timeout: 10_000 });
+  // A tile wholly on screen and clear of the bottom chrome, whose centre is its own.
+  const index = await tiles.evaluateAll((els) =>
+    els.findIndex((el) => {
+      const r = el.getBoundingClientRect();
+      if (r.x < 0 || r.y < 0 || r.right > innerWidth || r.bottom > innerHeight - 140) return false;
+      const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+      return hit?.closest('[data-testid="mosaic-tile"]') === el;
+    }),
+  );
+  expect(index, 'a renamed song tile is fully on screen').toBeGreaterThanOrEqual(0);
+  return tiles.nth(index);
+}
+
+test.describe('overflow reveal on a mosaic tile, touch (#1707)', () => {
+  test.use({ viewport: PHONE, hasTouch: true, isMobile: true });
+
+  test('a long song and artist each scroll to their end once the field is still', async ({
+    page,
+  }) => {
+    const tile = await openMosaicWithLongNames(page);
+    const title = tile.locator('b.mosaic-name');
+    const artist = tile.locator('span.mosaic-name');
+    await expect(title).toHaveText(LONG);
+    await expect(artist).toHaveText(LONG_ARTIST);
+    for (const [name, full] of [
+      [title, LONG],
+      [artist, LONG_ARTIST],
+    ] as const) {
+      const before = await box(name);
+      expect(before.max, 'one line now, so the name overflows sideways').toBeGreaterThan(40);
+      expect(before.title, 'the full name is on the element').toBe(full);
+    }
+    await Promise.all([expectFullyRevealed(title, 40_000), expectFullyRevealed(artist, 40_000)]);
+    await expect.poll(async () => (await box(title)).scrollLeft, { timeout: 30_000 }).toBe(0);
+  });
+
+  test('under reduced motion a tap on the name wraps it and does not start the radio', async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    const tile = await openMosaicWithLongNames(page);
+    const title = tile.locator('b.mosaic-name');
+    await expect(title).toHaveText(LONG);
+    const before = await page.getByTestId('player-title').textContent();
+    expect(await maxScrollOver(page, title, 3_000)).toBe(0);
+
+    await title.tap();
+    await expect.poll(async () => (await box(title)).expanded).toBe(true);
+    await page.waitForTimeout(1_500);
+    await expect(page.getByTestId('player-title')).toHaveText(before ?? '');
+  });
+});
+
 test.describe('overflow reveal with a mouse (#1665)', () => {
   test.use({ viewport: { width: 800, height: 900 } });
 
@@ -161,5 +233,18 @@ test.describe('overflow reveal with a mouse (#1665)', () => {
     await page.mouse.move(0, 0);
     await expect.poll(async () => (await box(long)).scrollLeft, { timeout: 10_000 }).toBe(0);
     expect(await maxScrollOver(page, long, 3_000)).toBe(0);
+  });
+
+  test('a mosaic tile scrolls its long name while the tile is hovered (#1707)', async ({
+    page,
+  }) => {
+    const tile = await openMosaicWithLongNames(page);
+    const title = tile.locator('b.mosaic-name');
+    expect((await box(title)).max).toBeGreaterThan(40);
+    expect(await maxScrollOver(page, title, 3_000), 'no hover, no motion').toBe(0);
+
+    const r = (await tile.boundingBox())!;
+    await page.mouse.move(r.x + r.width / 2, r.y + r.height / 3);
+    await expectFullyRevealed(title, 40_000);
   });
 });
