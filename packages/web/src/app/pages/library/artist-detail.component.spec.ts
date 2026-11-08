@@ -1183,10 +1183,10 @@ describe('ArtistDetailComponent — header and tiles read one completeness rule 
     fixture.detectChanges();
     const c = fixture.componentInstance;
 
-    const summary = fixture.nativeElement.querySelector('[data-testid="discography-summary"]');
-    expect(summary.textContent.replace(/\s+/g, ' ')).toContain(
-      '3 releases · 0 complete · 0 partial · 3 missing',
-    );
+    // The rendered line is a catalog string (#1636), a bare key in a unit test;
+    // the counts it is fed are what the header shows.
+    expect(fixture.nativeElement.querySelector('[data-testid="discography-summary"]')).toBeTruthy();
+    expect(c.discographySummary()).toEqual({ releases: 3, complete: 0, partial: 0, missing: 3 });
     const tiles = c.albumTiles();
     expect(tiles.map((t) => t.status)).toEqual(['missing', 'missing', 'missing']);
     expect(
@@ -1252,9 +1252,7 @@ describe('ArtistDetailComponent — header and tiles read one completeness rule 
     expect(discographyCalls.n).toBe(2);
     expect(artistCalls.n).toBe(2);
     expect(contraluz().status).toBe('owned');
-    expect(
-      fixture.nativeElement.querySelector('[data-testid="discography-summary"]').textContent,
-    ).toContain('1 complete');
+    expect(fixture.componentInstance.discographySummary().complete).toBe(1);
   });
 
   it('holds the landed tile busy until the discography re-read is in, reading both at once', async () => {
