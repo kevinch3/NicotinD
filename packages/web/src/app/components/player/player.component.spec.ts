@@ -459,7 +459,7 @@ describe('PlayerComponent', () => {
     // column) — it's content-sized so it's 0-width when the switcher is hidden.
     function columns(): { trackInfo: Element; controls: Element; right: Element } {
       const root = fixture.nativeElement as HTMLElement;
-      const trackInfo = root.querySelector('.md\\:w-60');
+      const trackInfo = root.querySelector('[data-testid="player-track-info"]');
       const controls = root.querySelector('.flex-col');
       const right = root.querySelector('.justify-end');
       if (!trackInfo || !controls || !right) throw new Error('mini-player columns not found');
@@ -613,6 +613,37 @@ describe('PlayerComponent', () => {
       const bars = root.querySelectorAll('.player-mini-seek app-seek-bar');
       // Desktop inline bar + mobile bar; the sheet's scrubber keeps its own look.
       expect(bars.length).toBe(2);
+    });
+
+    // #1743: the owner found the bar cramped. jsdom has no layout, so this pins
+    // the classes behind the spacing; mini-player-spacing.spec.ts (e2e) measures it.
+    it('sets the title and artist a step larger than body-small (16px / 14px)', () => {
+      playerService.currentTrack.set(TRACK);
+      fixture.detectChanges();
+      const root = fixture.nativeElement as HTMLElement;
+      const title = root.querySelector('[data-testid="player-title"]')!;
+      const artist = root.querySelector('[data-testid="player-artist"]')!;
+      expect(title.classList.contains('text-base')).toBe(true);
+      expect(artist.classList.contains('text-sm')).toBe(true);
+      // The overflow reveal (#1665) still owns both lines.
+      expect(title.hasAttribute('appOverflowReveal')).toBe(true);
+      expect(artist.hasAttribute('appOverflowReveal')).toBe(true);
+    });
+
+    it('keeps the notch, the transport and the scrubber apart', () => {
+      const root = fixture.nativeElement as HTMLElement;
+      const grab = root.querySelector('[data-testid="player-grab"]')!.classList;
+      // Desktop: the transport column starts at the row's top, so the band's
+      // bottom padding is the whole notch → play-button gap.
+      expect(grab.contains('md:pb-2.5')).toBe(true);
+      // Desktop: the inline scrubber's time labels stand clear of the bottom edge.
+      const row = root.querySelector('[data-testid="player-track-info"]')!.parentElement!;
+      expect(row.classList.contains('md:pb-2')).toBe(true);
+      // Phone: the stacked scrubber no longer tucks under the row (-mt-1) and
+      // keeps a margin above the bar's bottom edge.
+      const mobileSeek = root.querySelector('[data-testid="player-mobile-seek"]')!.classList;
+      expect(mobileSeek.contains('-mt-1')).toBe(false);
+      expect(mobileSeek.contains('pb-1.5')).toBe(true);
     });
   });
 
