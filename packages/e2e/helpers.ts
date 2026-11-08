@@ -469,3 +469,18 @@ export async function openAlbumCard(page: Page, title?: string): Promise<void> {
     'album detail did not load — page is likely showing album-not-found, ' + 'album-unavailable',
   ).toBeVisible();
 }
+
+/**
+ * Make every vibe preset look playable (#1739). The pages probe each vibe's
+ * filter with a one-song `GET /api/library/songs?size=1…` and hide the vibes
+ * nothing matches. The fixture library is silent FLACs with no mood, energy or
+ * BPM data, so without this every vibe is (correctly) hidden. Specs that are
+ * about the vibe tiles themselves answer the probes with one song; every other
+ * songs request still reaches the server.
+ */
+export async function vibesPlayable(page: Page): Promise<void> {
+  await page.route('**/api/library/songs?**', (route) => {
+    const size = new URL(route.request().url()).searchParams.get('size');
+    return size === '1' ? route.fulfill({ json: [{ id: 'vibe-probe' }] }) : route.continue();
+  });
+}

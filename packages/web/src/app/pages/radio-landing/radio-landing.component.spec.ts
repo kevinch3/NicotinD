@@ -27,7 +27,14 @@ const SONG: Song = {
   created: '2024-01-01',
 } as Song;
 
-function setup(overrides: { getFilterRadio?: () => unknown; getGenres?: () => unknown } = {}) {
+function setup(
+  overrides: {
+    getFilterRadio?: () => unknown;
+    getGenres?: () => unknown;
+    /** The per-vibe probe (#1739); by default every vibe has a match. */
+    getAllSongs?: () => unknown;
+  } = {},
+) {
   const getFilterRadio = vi.fn(overrides.getFilterRadio ?? (() => of([SONG])));
   const getGenres = vi.fn(
     overrides.getGenres ?? (() => of([{ value: 'Rock' }, { value: 'Jazz' }])),
@@ -48,6 +55,7 @@ function setup(overrides: { getFilterRadio?: () => unknown; getGenres?: () => un
           getGenres,
           getRandomSongs: () => of([]),
           getListRadio: () => of([]),
+          getAllSongs: overrides.getAllSongs ?? (() => of([SONG])),
         },
       },
       { provide: ToastService, useValue: { show: toastShow } },
@@ -134,7 +142,7 @@ describe('RadioLandingComponent', () => {
     it('renders one tile per vibe preset', () => {
       const { fixture, component } = setup();
       const tiles = fixture.nativeElement.querySelectorAll('[data-testid="radio-preset"]');
-      expect(tiles).toHaveLength(component.presets.length);
+      expect(tiles).toHaveLength(component.presets().length);
     });
 
     it('renders one tile per loaded genre', async () => {
@@ -147,9 +155,23 @@ describe('RadioLandingComponent', () => {
       expect(fixture.nativeElement.querySelectorAll('[data-testid="radio-genre"]')).toHaveLength(2);
     });
 
+    it('drops the vibes nothing in the library matches (#1739)', async () => {
+      // No analysis sidecar: no moods or feature buckets, so only BPM matches.
+      const { fixture } = setup({
+        getAllSongs: ((_s: number, _o: number, opts: { filter?: { bpmMin?: number } }) =>
+          of(opts.filter?.bpmMin ? [SONG] : [])) as never,
+      });
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+      fixture.detectChanges();
+      const ids = [...fixture.nativeElement.querySelectorAll('[data-testid="radio-preset"]')].map(
+        (t: Element) => t.getAttribute('data-preset-id'),
+      );
+      expect(ids).toEqual(['fast']);
+    });
+
     it('gives every preset a gradient, since the colored tone renders one', () => {
       const { component } = setup();
-      for (const preset of component.presets) {
+      for (const preset of component.presets()) {
         expect(preset.gradient, `preset ${preset.id} has no gradient`).toMatch(/from-\S+ to-\S+/);
       }
     });

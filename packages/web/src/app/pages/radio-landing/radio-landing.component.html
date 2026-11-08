@@ -20,8 +20,12 @@
           <p class="text-xs font-medium text-theme-accent-text uppercase tracking-wide">
             {{ 'home.resume' | t }}
           </p>
-          <p appOverflowReveal class="text-sm font-semibold text-theme-primary truncate">{{ lastTrack()!.title }}</p>
-          <p appOverflowReveal class="text-xs text-theme-muted truncate">{{ lastTrack()!.artist }}</p>
+          <p appOverflowReveal class="text-sm font-semibold text-theme-primary truncate">
+            {{ lastTrack()!.title }}
+          </p>
+          <p appOverflowReveal class="text-xs text-theme-muted truncate">
+            {{ lastTrack()!.artist }}
+          </p>
         </div>
         <span
           class="shrink-0 flex items-center justify-center w-12 h-12 rounded-full bg-theme-accent text-theme-on-accent group-active:scale-95 transition"
@@ -57,7 +61,7 @@
 
     <!-- Fixed 2 rows; grid-flow-col makes the overflow scroll horizontally. -->
     <div class="grid grid-flow-col grid-rows-2 auto-cols-max gap-3 overflow-x-auto pb-2 -mx-1 px-1">
-      @for (preset of presets; track preset.id) {
+      @for (preset of presets(); track preset.id) {
         <app-vibe-tile
           data-testid="radio-preset"
           [attr.data-preset-id]="preset.id"

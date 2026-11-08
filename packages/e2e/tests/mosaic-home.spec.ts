@@ -1,4 +1,4 @@
-import { test, expect } from '../helpers';
+import { test, expect, vibesPlayable } from '../helpers';
 
 /**
  * The post-login landing (route '') is the mosaic: an infinite pannable field of
@@ -50,14 +50,27 @@ test.describe('mosaic home', () => {
     await expect(page.getByTestId('player-title')).not.toHaveText('', { timeout: 15_000 });
   });
 
+  test('hides the vibes the library cannot play (#1739)', async ({ page }) => {
+    // The fixture library is silent FLACs with no mood/energy/bpm enrichment, so
+    // every vibe's probe finds nothing and none is offered: a tile that would
+    // play nothing is not shown. Songs prove the field itself rendered.
+    await page.goto('/');
+    await expect(
+      page.locator('[data-testid="mosaic-tile-link"][data-tile-kind="song"]').first(),
+    ).toBeAttached({ timeout: 10_000 });
+    await expect(
+      page.locator('[data-testid="mosaic-tile-link"][data-tile-kind="vibe"]'),
+    ).toHaveCount(0);
+  });
+
   test('a vibe with no matching tracks says so instead of failing', async ({ page }) => {
+    // Offered (the probe is answered), yet the radio finds nothing: that path
+    // must surface a neutral notice, never an error.
+    await vibesPlayable(page);
     await page.goto('/');
     const vibe = page.locator('[data-testid="mosaic-tile-link"][data-tile-kind="vibe"]');
     await expect(vibe.first()).toBeAttached({ timeout: 10_000 });
 
-    // The fixture library is silent FLACs with no mood/energy/bpm enrichment, so
-    // every perceptual filter legitimately matches nothing. That path must
-    // surface a neutral notice, never an error.
     await vibe.first().dispatchEvent('click');
     await expect(page.getByText('No tracks match that vibe yet')).toBeVisible({ timeout: 10_000 });
   });

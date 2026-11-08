@@ -11,44 +11,72 @@
           }
         </span>
         @if (preserve.preservedTracks().length > 0) {
-          <button (click)="clearAllOffline()"
-            class="text-xs px-3 py-1.5 rounded-lg text-status-error hover:bg-theme-hover transition border border-theme">
+          <button
+            (click)="clearAllOffline()"
+            class="text-xs px-3 py-1.5 rounded-lg text-status-error hover:bg-theme-hover transition border border-theme"
+          >
             Clear all
           </button>
         }
       </div>
       @if (preserve.budget() < 9e15) {
         <div class="h-1.5 rounded-full bg-theme-surface-2 overflow-hidden">
-          <div class="h-full bg-[var(--theme-accent)] transition-all" [style.width.%]="storagePercent()"></div>
+          <div
+            class="h-full bg-[var(--theme-accent)] transition-all"
+            [style.width.%]="storagePercent()"
+          ></div>
         </div>
       }
       <!-- #1751: rows saved before a preserve stored everything show basic details
            until the next time the app is online tops them up. -->
       @if (preserve.needingDetails() > 0) {
         <p class="mt-2 text-xs text-theme-muted" data-testid="library-songs-offline-basic">
-          {{ (preserve.needingDetails() === 1 ? 'library.offline.basicDetailsOne' : 'library.offline.basicDetails') | t: { count: preserve.needingDetails() } }}
+          {{
+            (preserve.needingDetails() === 1
+              ? 'library.offline.basicDetailsOne'
+              : 'library.offline.basicDetails'
+            ) | t: { count: preserve.needingDetails() }
+          }}
         </p>
       }
     </div>
 
     @if (preserve.preservedTracks().length > 0) {
       <div class="flex items-center gap-2 mb-4">
-        <app-search-field testId="library-songs-offline-search"
-          placeholder="library.search.offlinePlaceholder" label="library.search.offlineLabel"
+        <app-search-field
+          testId="library-songs-offline-search"
+          placeholder="library.search.offlinePlaceholder"
+          label="library.search.offlineLabel"
           [value]="offlineControls.searchText()"
           (valueChange)="offlineControls.setSearchText($event)"
-          [hint]="offlineControls.searchText() ? ((offlineControls.filtered().length === 1 ? 'library.count.matchesOne' : 'library.count.matches') | t: { count: offlineControls.filtered().length }) : ''" />
+          [hint]="
+            offlineControls.searchText()
+              ? ((offlineControls.filtered().length === 1
+                  ? 'library.count.matchesOne'
+                  : 'library.count.matches'
+                ) | t: { count: offlineControls.filtered().length })
+              : ''
+          "
+        />
 
-        <app-sort-select testId="library-songs-offline-sort" label="library.sortLabel.offlineSongs"
+        <app-sort-select
+          testId="library-songs-offline-sort"
+          label="library.sortLabel.offlineSongs"
           [options]="offlineSortChoices"
           [value]="offlineControls.sortField()"
           (valueChange)="offlineControls.setSortField($event)"
           [direction]="offlineControls.sortDirection()"
           directionTestId="library-songs-offline-sort-direction"
-          (directionToggle)="offlineControls.toggleSortDirection()" />
+          (directionToggle)="offlineControls.toggleSortDirection()"
+        />
       </div>
 
-      <div class="space-y-0.5" data-testid="library-songs-offline-list" appTvNavGroup axis="vertical">
+      <div
+        class="space-y-0.5"
+        data-testid="library-songs-offline-list"
+        appTvNavGroup
+        axis="vertical"
+      >
         @for (t of offlineControls.filtered(); track t.id; let i = $index) {
           <app-track-row
             [track]="metaToTrack(t)"
@@ -73,15 +101,21 @@
     <!-- One row at phone width: the search takes what the icon controls leave,
          so nothing wraps and nothing overflows the viewport. -->
     <div class="flex items-center gap-2 mb-4">
-      <app-search-field testId="library-songs-search"
-        placeholder="library.search.songsPlaceholder" label="library.search.songsLabel"
+      <app-search-field
+        testId="library-songs-search"
+        placeholder="library.search.songsPlaceholder"
+        label="library.search.songsLabel"
         [value]="searchText()"
-        (valueChange)="setSearchText($event)" />
+        (valueChange)="setSearchText($event)"
+      />
 
-      <app-sort-select testId="library-songs-sort" label="library.sortLabel.songs"
+      <app-sort-select
+        testId="library-songs-sort"
+        label="library.sortLabel.songs"
         [options]="sortOptions"
         [value]="songSort()"
-        (valueChange)="setSongSort($any($event))" />
+        (valueChange)="setSongSort($any($event))"
+      />
 
       <app-library-filter-panel
         [compact]="true"
@@ -90,14 +124,18 @@
         [genres]="genres()"
         [countryOptions]="countryOptions()"
         (filterChange)="onFilterChange($event)"
-        (panelOpened)="ensureGenres.emit()" />
+        (panelOpened)="ensureGenres.emit()"
+      />
 
       @if (!selection.active() && visibleSongs().length > 0) {
-        <button type="button" data-testid="library-songs-select"
+        <button
+          type="button"
+          data-testid="library-songs-select"
           [attr.aria-label]="'library.songs.select' | t"
           [title]="'library.songs.select' | t"
           (click)="selection.enter()"
-          class="inline-flex size-9 shrink-0 items-center justify-center rounded-lg bg-theme-surface-2 text-theme-secondary transition hover:bg-theme-hover hover:text-theme-primary focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)]">
+          class="inline-flex size-9 shrink-0 items-center justify-center rounded-lg bg-theme-surface-2 text-theme-secondary transition hover:bg-theme-hover hover:text-theme-primary focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)]"
+        >
           <app-icon name="check-square" [size]="18" />
         </button>
       }
@@ -150,9 +188,14 @@
       <app-skeleton variant="track-row" [count]="3" containerClass="block space-y-0.5 mt-0.5" />
     }
     @if (songsLoaded() && visibleSongs().length === 0 && !songsLoadingMore()) {
-      <p class="text-center text-theme-muted py-16">
-        {{ hasActiveFilter() ? 'No songs match the filters.' : 'No songs found.' }}
-      </p>
+      @if (hasActiveFilter() || searchText().trim()) {
+        <p class="text-center text-theme-muted py-16">
+          {{ hasActiveFilter() ? 'No songs match the filters.' : 'No songs found.' }}
+        </p>
+      } @else {
+        <!-- Nothing narrowed and still nothing: the library itself is empty (#1739). -->
+        <div class="py-16"><app-empty-library /></div>
+      }
     }
     <div #songsSentinel class="h-px" aria-hidden="true"></div>
   </div>

@@ -11,7 +11,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { Router } from '@angular/router';
-import { catchError, firstValueFrom, of } from 'rxjs';
+import { catchError, firstValueFrom, map, of } from 'rxjs';
 import type { LibraryFilter } from '@nicotind/core';
 import { PlayerService, type Track } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
@@ -32,6 +32,8 @@ import { placeholderGradient } from '../../components/cover-art/cover-art.compon
 import { createPointerDrag } from '../../lib/pointer-drag';
 import { haptic } from '../../lib/haptics';
 import { measureBottomChromeInset } from '../../lib/player-chrome';
+import { playableVibes } from '../../lib/vibe-availability';
+import { EmptyLibraryComponent } from '../../components/empty-library/empty-library.component';
 import { coverSizeBucket, songCover } from '../../lib/cover-url';
 import { CoverRevisionsService } from '../../services/cover-revisions.service';
 import { toTrack } from '../../lib/track-utils';
@@ -179,7 +181,7 @@ interface TileContent {
 @Component({
   selector: 'app-mosaic-home',
   standalone: true,
-  imports: [SkeletonComponent],
+  imports: [SkeletonComponent, EmptyLibraryComponent],
   templateUrl: './mosaic-home.component.html',
 })
 export class MosaicHomeComponent implements OnInit {
@@ -502,7 +504,15 @@ export class MosaicHomeComponent implements OnInit {
    * must cost its own tiles, not the whole mosaic.
    */
   private async onlineTiles(): Promise<MosaicTile[]> {
-    const [recentPlays, tasteBreakers, playlistsRes, genres, stats] = await Promise.all([
+    const [hasSongs, recentPlays, tasteBreakers, playlistsRes, genres, stats] = await Promise.all([
+      // Does the library hold anything at all (#1739)? Null on failure: a failed
+      // request must not be mistaken for an empty library.
+      firstValueFrom(
+        this.api.getAllSongs(1).pipe(
+          map((songs) => songs.length > 0),
+          catchError(() => of(null)),
+        ),
+      ),
       firstValueFrom(
         this.history.getRecentPlays(LANE_MIX.recent.pool).pipe(catchError(() => of([]))),
       ),
@@ -516,15 +526,24 @@ export class MosaicHomeComponent implements OnInit {
       firstValueFrom(this.history.getStats('all').pipe(catchError(() => of(null)))),
     ]);
 
+    // A library with no songs gets the first-run empty state, not a field of
+    // radio tiles that would each play nothing (#1739).
+    if (hasSongs === false) return [];
+
     // Keep-the-vibe is seeded by the recent plays, so it can only run second.
     // The whole pool seeds it, not the ten that win the draw: the vibe is of
     // what was listened to, and the seeds are excluded from the answer anyway.
     const seedIds = recentPlays.map((p) => p.songId);
-    const keepVibe = seedIds.length
-      ? await firstValueFrom(
-          this.api.getListRadio(seedIds, LANE_MIX.keepVibe.pool).pipe(catchError(() => of([]))),
-        )
-      : [];
+    // Only the vibes something in the library matches (#1739); probed alongside
+    // keep-the-vibe rather than after it.
+    const [keepVibe, vibes] = await Promise.all([
+      seedIds.length
+        ? firstValueFrom(
+            this.api.getListRadio(seedIds, LANE_MIX.keepVibe.pool).pipe(catchError(() => of([]))),
+          )
+        : Promise.resolve([]),
+      playableVibes(this.api),
+    ]);
 
     // The discovery cells score their batches with the same personal weights.
     this.weights = playWeights(stats);
@@ -533,6 +552,7 @@ export class MosaicHomeComponent implements OnInit {
       keepVibe,
       tasteBreakers,
       recentPlays,
+      vibes,
       playlists: playlistsRes.playlists.filter((p) => p.kind === 'curated').slice(0, 10),
       genres: genres.slice(0, 8),
       stats,

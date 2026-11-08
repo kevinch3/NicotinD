@@ -528,6 +528,10 @@ export function adminRoutes(deps: AdminRoutesDeps) {
     }
   });
 
+  // Where the server reads music from, for the empty-library first run (#1739):
+  // a new admin with nothing in the library needs to know which folder to fill.
+  app.get('/library-location', (c) => c.json({ musicDir: deps.musicDir }));
+
   // --- Windowed library processing (BPM / genre enrichment) ----------------
 
   const requireProcessing = (): LibraryProcessingService | null => deps.processing ?? null;

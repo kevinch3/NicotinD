@@ -12,13 +12,16 @@
   }
 
   @if (isEmpty()) {
-    <div class="page-shell text-center text-theme-muted" data-testid="mosaic-empty">
+    <!-- Above the stage (#1739): the stage is absolutely positioned later in
+         the DOM, and without its own layer it swallowed the Scan button's click. -->
+    <div class="page-shell relative z-10 text-center text-theme-muted" data-testid="mosaic-empty">
       @if (offline()) {
         <!-- Offline with nothing downloaded is a different fact from an empty
              library, and saying "add some music" here would be wrong advice. -->
         <p class="mt-12">You're offline, and nothing is downloaded to this device yet.</p>
       } @else {
-        <p class="mt-12">Nothing to play yet — add some music and this fills itself.</p>
+        <!-- Where music goes, a scan, and the way to Add (#1739). -->
+        <div class="mt-12"><app-empty-library /></div>
       }
     </div>
   }

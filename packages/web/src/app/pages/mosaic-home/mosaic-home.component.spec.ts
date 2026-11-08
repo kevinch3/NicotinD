@@ -5,9 +5,10 @@ import { of, throwError } from 'rxjs';
 import { MosaicHomeComponent, TILE_INSET } from './mosaic-home.component';
 import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
+import { SystemApiService } from '../../services/api/system-api.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { HistoryApiService } from '../../services/api/history-api.service';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { PlaylistsApiService } from '../../services/api/playlists-api.service';
 import { ToastService } from '../../services/toast.service';
 import { TrackInfoService } from '../../services/track-info.service';
@@ -101,6 +102,10 @@ interface SetupOptions {
   filterRadio?: Song[];
   playlistSongs?: Song[];
   filterRadioFails?: boolean;
+  /** false: no song matches any vibe filter (no analysis data). */
+  vibeMatches?: boolean;
+  /** The library holds no songs at all. */
+  emptyLibrary?: boolean;
 }
 
 function setup(opts: SetupOptions = {}) {
@@ -120,6 +125,13 @@ function setup(opts: SetupOptions = {}) {
     getRandomSongs: vi.fn(() => of(opts.tasteBreakers ?? [])),
     getListRadio: vi.fn(() => of(opts.keepVibe ?? [])),
     getGenres: vi.fn(() => of(opts.genres ?? [])),
+    // The empty-library check and the per-vibe probe (#1739). By default the
+    // library holds songs and every vibe has a match.
+    getAllSongs: vi.fn((_size: number, _offset?: number, o?: { filter?: unknown }) => {
+      if (opts.emptyLibrary) return of([]);
+      if (o?.filter && opts.vibeMatches === false) return of([]);
+      return of([song({ id: 'probe' })]);
+    }),
     getFilterRadio: vi.fn(() =>
       opts.filterRadioFails
         ? throwError(() => new Error('boom'))
@@ -169,7 +181,19 @@ function setup(opts: SetupOptions = {}) {
       { provide: LibraryApiService, useValue: libraryApi },
       { provide: HistoryApiService, useValue: historyApi },
       { provide: PlaylistsApiService, useValue: playlistsApi },
-      { provide: AuthService, useValue: { token: () => 'tok', mediaToken: () => 'tok' } },
+      {
+        provide: AuthService,
+        useValue: {
+          token: () => 'tok',
+          mediaToken: () => 'tok',
+          isAdmin: signal(false),
+          canImport: signal(true),
+        },
+      },
+      {
+        provide: SystemApiService,
+        useValue: { triggerScan: vi.fn(() => of({ ok: true })), getLibraryLocation: vi.fn() },
+      },
       { provide: TrackInfoService, useValue: trackInfo },
       { provide: EntityMenuService, useValue: entityMenu },
       { provide: SongMenuService, useValue: songMenu },
@@ -177,6 +201,8 @@ function setup(opts: SetupOptions = {}) {
       { provide: NetworkStatusService, useValue: { reconnects } },
       { provide: PreserveService, useValue: preserve },
       { provide: Router, useValue: router },
+      // The empty state's Add link is a RouterLink (#1739).
+      { provide: ActivatedRoute, useValue: {} },
     ],
   });
   const fixture = TestBed.createComponent(MosaicHomeComponent);
@@ -199,11 +225,13 @@ function setup(opts: SetupOptions = {}) {
   };
 }
 
-/** Let the parallel source loads and the dependent keep-the-vibe fetch settle. */
+/**
+ * Let the parallel source loads, the dependent keep-the-vibe fetch and the vibe
+ * probes (#1739) settle. Microtask ticks, not a timer, because several tests
+ * run under fake timers; the count only has to cover the load's await depth.
+ */
 const settle = async (fixture: { detectChanges: () => void }): Promise<void> => {
-  await Promise.resolve();
-  await Promise.resolve();
-  await Promise.resolve();
+  for (let i = 0; i < 10; i++) await Promise.resolve();
   fixture.detectChanges();
 };
 
@@ -1113,6 +1141,36 @@ describe('offline', () => {
 
     expect(component.tiles().some((t) => t.key === 'song:back')).toBe(true);
     expect(component.tiles().some((t) => t.kind === 'downloads')).toBe(false);
+  });
+
+  describe('first run (#1739)', () => {
+    it('an empty library gets the empty state with a scan, not radio tiles', async () => {
+      const { fixture, component } = setup({ emptyLibrary: true });
+      await settle(fixture);
+      expect(component.tiles()).toEqual([]);
+      const el = fixture.nativeElement as HTMLElement;
+      expect(el.querySelector('[data-testid="empty-library"]')).not.toBeNull();
+      expect(el.querySelector('[data-testid="empty-library-scan"]')).not.toBeNull();
+    });
+
+    it('hides the vibes no song in the library matches', async () => {
+      const { fixture, component } = setup({
+        tasteBreakers: [song({ id: 'tb' })],
+        vibeMatches: false,
+      });
+      await settle(fixture);
+      expect(component.tiles().some((t) => t.kind === 'vibe')).toBe(false);
+      expect(component.tiles().some((t) => t.key === 'song:tb')).toBe(true);
+    });
+
+    it('a failed emptiness check is not taken for an empty library', async () => {
+      const { fixture, component, libraryApi } = setup({ tasteBreakers: [song({ id: 'tb' })] });
+      libraryApi.getAllSongs.mockImplementation((() =>
+        throwError(() => new Error('down'))) as never);
+      component.ngOnInit();
+      await settle(fixture);
+      expect(component.tiles().some((t) => t.key === 'song:tb')).toBe(true);
+    });
   });
 
   it('says it is offline rather than telling you to add music', async () => {

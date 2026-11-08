@@ -12,6 +12,8 @@ import { PreserveService } from '../../services/preserve.service';
 import { TransferService } from '../../services/transfer.service';
 import { SongMenuService } from '../../services/song-menu.service';
 import { ListControlsService } from '../../services/list-controls.service';
+import { SystemApiService } from '../../services/api/system-api.service';
+import { provideRouter } from '@angular/router';
 import type { Song } from '../../services/api/api-types';
 import type { LibraryFilter } from '@nicotind/core';
 import type { PreservedTrackMeta } from '../../lib/preserve-store';
@@ -149,7 +151,23 @@ function setup(
           },
         },
       },
-      { provide: AuthService, useValue: { role: () => opts.role ?? 'admin' } },
+      {
+        provide: AuthService,
+        useValue: {
+          role: () => opts.role ?? 'admin',
+          isAdmin: () => (opts.role ?? 'admin') === 'admin',
+          canImport: () => true,
+        },
+      },
+      // The first-run empty state (#1739) asks where music lives and offers a scan.
+      {
+        provide: SystemApiService,
+        useValue: {
+          getLibraryLocation: () => of({ musicDir: '/srv/music' }),
+          triggerScan: () => of({ ok: true }),
+        },
+      },
+      provideRouter([]),
       { provide: PlayerService, useValue: player },
       { provide: PlaylistService, useValue: { openPicker: () => {} } },
       { provide: PreserveService, useValue: preserveStub },
@@ -400,6 +418,19 @@ describe('LibrarySongsComponent — one-line toolbar', () => {
     expect(row.classList).not.toContain('flex-wrap');
     expect(row.querySelector('app-sort-select')).not.toBeNull();
     expect(row.querySelector('app-library-filter-panel')).not.toBeNull();
+  });
+
+  it('an empty library shows the first-run state with a scan (#1739)', async () => {
+    const { fixture } = setup({ emptyRows: true });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('[data-testid="empty-library-scan"]')).not.toBeNull();
+    expect(el.querySelector('[data-testid="empty-library-path"]')?.textContent).toContain(
+      '/srv/music',
+    );
+    expect(el.textContent).not.toContain('No songs found.');
   });
 
   it('sort options are catalog keys, so the picker translates', () => {

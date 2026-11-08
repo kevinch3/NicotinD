@@ -1,5 +1,5 @@
 import { test, expect } from '../helpers';
-import { FIXTURE, bearer, openAlbumCard } from '../helpers';
+import { FIXTURE, bearer, openAlbumCard, vibesPlayable } from '../helpers';
 
 /**
  * The shelf-based landing, now at '/classic' — the mosaic home took route ''.
@@ -10,6 +10,9 @@ import { FIXTURE, bearer, openAlbumCard } from '../helpers';
  */
 test.describe('radio landing', () => {
   test('renders vibe presets', async ({ page }) => {
+    // The fixtures carry no mood/feature data, so the presets are shown only
+    // when their probes find a match (#1739); answer them.
+    await vibesPlayable(page);
     await page.goto('/classic');
     await expect(page.getByTestId('radio-landing')).toBeVisible();
     await expect(page.getByTestId('radio-preset').first()).toBeVisible();
@@ -89,6 +92,7 @@ test.describe('radio landing', () => {
     // neither spec moves the other's counts) and asserts by label, so it reads
     // only what it wrote.
     const GENRE = 'Shoegaze';
+    await vibesPlayable(page); // the vibe row is shown only on a match (#1739)
     await page.goto('/classic');
     const token = await page.evaluate(() => localStorage.getItem('nicotind_token'));
     expect(token).toBeTruthy();
