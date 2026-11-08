@@ -84,7 +84,7 @@ every open player ([web-ui.md](web-ui.md) "A change made elsewhere reaches the l
 | Cache                       | Invalidated by the stream                                   |
 | --------------------------- | ----------------------------------------------------------- |
 | `artistsCache`/`genresCache` | any `songs.*`, `album.changed`, `artist.changed`, `resync`  |
-| browser cover cache (24 h)  | `artwork.changed` → `CoverRevisionsService` → `&v=<rev>` on every cover URL in the app (#1666); the sweep spec keeps it that way |
+| browser cover cache (24 h bare, 1 y versioned) | `artwork.changed` → `CoverRevisionsService` → `&v=<rev>` on every cover URL in the app (#1666); the sweep spec keeps it that way |
 | an open artist page         | `resync` (a replay gap) → re-reads its artist DTO, whose `coverRev` is server truth |
 | an open album page          | `album.changed` / `songs.*` naming its id → refetch          |
 | `LyricsService` entries on screen | `lyrics.changed` naming the id, or `resync` → re-read  |
@@ -200,7 +200,7 @@ the design and the class comes back.
 
 ## Cover identity travels with the entity (#1666)
 
-`/api/cover/<id>` is served `max-age=86400`, and every client builds that URL from the DTO's
+`/api/cover/<id>` was served `max-age=86400`, and every client built that URL from the DTO's
 `coverArt` — the bare album/artist id. Before #1666 nothing about a replaced portrait or cover moved
 that URL, so a browser holding the old bytes served them for a day, on every surface, across
 reloads (worse since #1359 made the media-token half of the URL stable too).
@@ -322,11 +322,26 @@ every persist (`scanFull`, `scanPaths`, `reconcileAlbums` → `refreshAlbumArtSt
 - A full scan stats every album in batches of 32; an incremental scan only the albums it touched.
   A stamping failure is logged and never fails the scan.
 
-What this does not yet cover: the `backfill-artwork` process persists its
-bumps but its events reach no open tab (they see the rev on their next fetch); a re-landed entity
-sits at rev 0 until its first bump, and rev 0 is the bare, unversioned URL, so within the 24 h cache
-TTL it can still show the previous incarnation's cover, as every cover did before #1666. The cache
-header is unchanged — #1666 A4.
+### The cache policy (#1666 A4)
+
+A cover URL that carries `v=<cover_rev>` is served `private, max-age=31536000, immutable`; a bare
+one (rev 0) keeps `public, max-age=86400`. The `/cover/*` middleware sets it, so the 304 it turns a
+matching `If-None-Match` into carries the same policy. Only a 200 from `/cover/:id` with `v` a
+positive integer is promoted — a 404, `/cover/remote` (URL-addressed, its upstream can change) and a
+`v` that is not a rev keep the day. `private` because the URL carries the media token.
+
+The year is safe only because the URL moves whenever the bytes do: every app writer bumps the rev,
+and the scanner bumps it for a change on disk (above). It waited for #1658 so the offline copy is
+not the only one that could go stale, and for #1752 so a hand-swapped `cover.jpg` is not frozen
+under its old URL for a year instead of a day.
+
+What this does not yet cover: a song whose cover is its **own** embedded art carries its album's
+rev, and the scanner stamps the album's representative track, so retagging the embedded art of
+another track on an album already at rev ≥ 1 keeps that song's versioned URL for a year (at rev 0 it
+is the bare URL and the day). The `backfill-artwork` process persists its bumps but its events reach
+no open tab (they see the rev on their next fetch); a re-landed entity sits at rev 0 until its first
+bump, and rev 0 is the bare, unversioned URL, so within the 24 h cache TTL it can still show the
+previous incarnation's cover, as every cover did before #1666.
 
 ## Server-side memos — all TTL-bounded by design
 

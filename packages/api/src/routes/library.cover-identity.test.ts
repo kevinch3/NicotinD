@@ -2,7 +2,8 @@
  * Regression tests for #1666 Shape A: a cover image whose bytes change under an
  * unchanged URL.
  *
- * `/api/cover/<id>` is served `max-age=86400`, and the client builds that URL
+ * A bare `/api/cover/<id>` is served `max-age=86400` (a versioned one for a
+ * year, immutable), and the client builds that URL
  * from entity data alone (`coverArt`, which is the bare entity id). So the
  * invariant every cover writer must keep is: **the entity's cover identity —
  * every `cover*` field the DTO carries — changes whenever the bytes do.**
@@ -100,8 +101,8 @@ async function json<T>(res: Response | Promise<Response>): Promise<T> {
 async function etagOf(app: Hono<AuthEnv>, path: string): Promise<string | null> {
   const res = await app.request(path);
   expect(res.status).toBe(200);
-  // Not asserted on purpose: today's `max-age=86400` is the hazard, and the fix
-  // may change the policy for unversioned URLs. The identity assertion is the contract.
+  // The header policy is pinned in streaming.test.ts (#1666 A4); here the
+  // identity assertion is the contract.
   return res.headers.get('etag');
 }
 

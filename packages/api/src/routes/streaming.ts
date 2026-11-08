@@ -56,9 +56,16 @@ export function _resetWaveformNegativeCacheForTests(): void {
 
 // Cap on remote canonical-cover fetches so a slow/dead host can't hang a connection.
 const REMOTE_COVER_TIMEOUT_MS = 6_000;
-// Successful covers are immutable per id within a session — let the browser cache
-// them so navigating between pages stops re-requesting every tile from the server.
+// A bare cover URL (rev 0) is cached for a day so navigation stops re-requesting
+// every tile; a versioned one (`v=<cover_rev>`) moves whenever the cover does, so
+// its bytes are immutable under it (#1666 A4, docs/cache-invalidation.md).
 const COVER_CACHE_CONTROL = 'public, max-age=86400';
+const VERSIONED_COVER_CACHE_CONTROL = 'private, max-age=31536000, immutable';
+
+/** Whether `v` is a real cover rev (a positive integer), the only thing worth a year. */
+function isCoverRev(v: string | undefined): boolean {
+  return v !== undefined && /^[1-9]\d{0,15}$/.test(v);
+}
 
 // The negative cache lives with the service-layer cover writers that evict it
 // (services/cover-negative-cache.ts); re-exported so existing callers keep their import.
@@ -271,6 +278,13 @@ export function streamingRoutes(
   // bodiless 304 instead of the bytes again (#1329).
   app.use('/cover/*', async (c, next) => {
     await next();
+    if (
+      c.res.status === 200 &&
+      c.req.path.split('/').pop() !== 'remote' &&
+      isCoverRev(c.req.query('v'))
+    ) {
+      c.res.headers.set('cache-control', VERSIONED_COVER_CACHE_CONTROL);
+    }
     const etag = c.res.headers.get('etag');
     if (c.res.status === 200 && etag && ifNoneMatchHits(c.req.header('if-none-match'), etag)) {
       c.res = new Response(null, {

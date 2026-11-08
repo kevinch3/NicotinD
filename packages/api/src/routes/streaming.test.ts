@@ -242,6 +242,37 @@ describe('streaming routes', () => {
     expect(new Uint8Array(await stale.arrayBuffer()).length).toBe(JPEG_BYTES.length);
   });
 
+  it('caches a versioned cover URL for a year, an unversioned one for a day (#1666 A4)', async () => {
+    // `v=<rev>` changes whenever the cover does (cover_rev), so its bytes are
+    // immutable under that URL. Rev 0 is the bare URL, which still needs expiry.
+    const versioned = await app.request('/cover/song-1?size=160&v=3');
+    expect(versioned.status).toBe(200);
+    expect(versioned.headers.get('cache-control')).toBe('private, max-age=31536000, immutable');
+
+    const bare = await app.request('/cover/song-1?size=160');
+    expect(bare.headers.get('cache-control')).toBe('public, max-age=86400');
+
+    // Not a rev: never promote a URL whose v= the client did not get from cover_rev.
+    for (const v of ['0', '', 'abc', '-1', '1.5']) {
+      const res = await app.request(`/cover/song-1?v=${v}`);
+      expect(res.headers.get('cache-control')).toBe('public, max-age=86400');
+    }
+
+    // The 304 for a versioned URL carries the same policy.
+    const etag = versioned.headers.get('etag')!;
+    const again = await app.request('/cover/song-1?size=160&v=3', {
+      headers: { 'if-none-match': etag },
+    });
+    expect(again.status).toBe(304);
+    expect(again.headers.get('cache-control')).toBe('private, max-age=31536000, immutable');
+  });
+
+  it('never marks a missing cover immutable', async () => {
+    const res = await app.request('/cover/song-2?v=3');
+    expect(res.status).toBe(404);
+    expect(res.headers.get('cache-control') ?? '').not.toContain('immutable');
+  });
+
   it('serves the original (not a thumbnail) when no size is requested', async () => {
     const res = await app.request('/cover/song-thumb');
     expect(res.status).toBe(200);
