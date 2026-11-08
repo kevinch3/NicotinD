@@ -1469,5 +1469,7 @@
   "subsonicKeys.errorRevoke": "Could not revoke the key",
   "acquire.noSourcesEnable": "Enable one in Extensions →",
   "acquire.noSourcesAskAdmin": "Ask an admin to enable one.",
-  "admin.acquisitionSourcesHint": "Sources (Soulseek, archive.org, yt-dlp…) are enabled one by one under"
+  "admin.acquisitionSourcesHint": "Sources (Soulseek, archive.org, yt-dlp…) are enabled one by one under",
+  "library.offline.basicDetails": "{count} saved songs have basic details only — artist links, genre, cover and lyrics fill in the next time you are online.",
+  "library.offline.basicDetailsOne": "1 saved song has basic details only — artist links, genre, cover and lyrics fill in the next time you are online."
 }

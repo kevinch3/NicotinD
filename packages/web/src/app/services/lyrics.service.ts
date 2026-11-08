@@ -295,6 +295,16 @@ export class LyricsService {
   }
 
   /**
+   * A preserved track saved before lyrics were kept (#1751 top-up): store its
+   * stored row if the device has no copy yet. Never the sources.
+   */
+  async topUpPreserved(id: string): Promise<void> {
+    if (await this.preserved.getLyrics(id)) return;
+    const dto = await this.snapshot(id);
+    if (dto) await this.preserved.refreshLyrics(id, dto);
+  }
+
+  /**
    * `id`'s stored lyrics for a preserve (#1751): the entry already held, else
    * the server's stored row — never the sources, so preserving an album costs
    * no lyrics fetches. Null when there are none or the read fails.

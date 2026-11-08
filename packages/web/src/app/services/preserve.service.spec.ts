@@ -13,6 +13,9 @@ import { PreservedCoversService } from './preserved-covers.service';
 import type { PreserveStore } from './preserve.service';
 import { AuthService } from './auth.service';
 import { LyricsService } from './lyrics.service';
+import { LibraryApiService } from './api/library-api.service';
+import { NetworkStatusService } from './network-status.service';
+import { of, throwError } from 'rxjs';
 import type { Track } from './player.service';
 import { haptic } from '../lib/haptics';
 
@@ -24,11 +27,35 @@ vi.mock('../lib/haptics', async (importOriginal) => ({
 // In-memory fake of the IndexedDB store, injected via PRESERVE_STORE. The
 // Angular unit-test system forbids `vi.mock` on relative imports, so the store
 // is swapped through DI instead of module mocking.
-type StoredMeta = { id: string; size: number; lastAccessedAt: number; source: 'user' | 'auto' };
+type StoredMeta = {
+  id: string;
+  size: number;
+  lastAccessedAt: number;
+  source: 'user' | 'auto';
+  [k: string]: unknown;
+};
 
 function makeStoreFake() {
   const tracks = new Map<string, StoredMeta>();
+  const covers = new Map<string, { key: string }>();
+  const lyrics = new Map<string, unknown>();
   return {
+    tracks,
+    covers,
+    lyrics,
+    updateMetas: vi.fn(async (patches: Array<{ id: string }>) => {
+      for (const p of patches) {
+        const cur = tracks.get(p.id);
+        if (cur) tracks.set(p.id, { ...cur, ...p });
+      }
+    }),
+    putCover: vi.fn(async (c: { key: string }) => void covers.set(c.key, c)),
+    getLyrics: vi.fn(async (id: string) => lyrics.get(id) ?? null),
+    refreshLyrics: vi.fn(async (id: string, d: unknown) => {
+      if (!tracks.has(id)) return false;
+      lyrics.set(id, d);
+      return true;
+    }),
     preserve: vi.fn(async (meta: StoredMeta) => {
       tracks.set(meta.id, meta);
     }),
@@ -36,7 +63,7 @@ function makeStoreFake() {
       tracks.delete(id);
     }),
     getAll: vi.fn(async () => [...tracks.values()]),
-    getAllCovers: vi.fn(async () => []),
+    getAllCovers: vi.fn(async () => [...covers.values()]),
     getBlob: vi.fn(async () => undefined),
     evictLRU: vi.fn(async () => [] as string[]),
     evictAutoLRU: vi.fn(async () => [] as string[]),
@@ -54,12 +81,20 @@ function makeStoreFake() {
       tracks.clear();
     }),
     reset: () => tracks.clear(),
-  } as unknown as PreserveStore & { reset: () => void };
+  } as unknown as PreserveStore & {
+    reset: () => void;
+    tracks: Map<string, StoredMeta>;
+    covers: Map<string, { key: string }>;
+    lyrics: Map<string, unknown>;
+  };
 }
 
-let store: PreserveStore & { reset: () => void };
+let store: ReturnType<typeof makeStoreFake>;
 /** The stored lyrics a preserve snapshots (#1751); none unless a test sets them. */
-let lyricsStub: { snapshot: ReturnType<typeof vi.fn> };
+let lyricsStub: { snapshot: ReturnType<typeof vi.fn>; topUpPreserved: ReturnType<typeof vi.fn> };
+/** The server's songs the #1751 top-up resolves; none unless a test sets them. */
+let apiStub: { resolveSongs: ReturnType<typeof vi.fn> };
+const online = signal(true);
 
 const BLOB_SIZE = 100;
 
@@ -87,7 +122,12 @@ describe('PreserveService', () => {
   beforeEach(() => {
     store = makeStoreFake();
     vi.clearAllMocks();
-    lyricsStub = { snapshot: vi.fn(async () => null) };
+    lyricsStub = {
+      snapshot: vi.fn(async () => null),
+      topUpPreserved: vi.fn(async () => undefined),
+    };
+    apiStub = { resolveSongs: vi.fn(() => of([])) };
+    online.set(true);
     localStorage.clear();
     globalThis.fetch = mockFetch();
 
@@ -97,6 +137,8 @@ describe('PreserveService', () => {
         { provide: AuthService, useValue: { token: signal('tok'), mediaToken: signal('tok') } },
         { provide: PRESERVE_STORE, useValue: store },
         { provide: LyricsService, useValue: lyricsStub },
+        { provide: LibraryApiService, useValue: apiStub },
+        { provide: NetworkStatusService, useValue: { online } },
       ],
     });
     svc = TestBed.inject(PreserveService);
@@ -134,6 +176,87 @@ describe('PreserveService', () => {
     await svc.preserve(track('a'));
     expect(store.preserve).toHaveBeenCalledTimes(1);
     expect(vi.mocked(store.preserve).mock.calls[0]![3]).toBeNull();
+  });
+
+  // #1751: rows saved before a preserve stored everything are completed once.
+  describe('top-up of older preserves', () => {
+    // The covers it stores become object URLs; jsdom cannot make one from the
+    // fake's Blob, and the URL itself is PreservedCoversService's business.
+    beforeEach(() => vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test'));
+    afterEach(() => vi.restoreAllMocks());
+    const old = (id: string, source: 'user' | 'auto' = 'user') => ({
+      id,
+      title: id,
+      artist: 'Artist',
+      album: 'Album',
+      size: 1,
+      format: 'audio/flac',
+      preservedAt: 1,
+      lastAccessedAt: 1,
+      source,
+    });
+    const serverSong = (id: string) => ({
+      id,
+      title: id,
+      artist: 'Artist',
+      artistId: 'ar1',
+      artists: [{ id: 'ar1', name: 'Artist', role: 'primary' }],
+      album: 'Album',
+      albumId: 'al1',
+      coverArt: 'al1',
+      coverRev: 2,
+      genre: 'Cumbia',
+    });
+
+    it('fills in credits and genre, marks the row, and leaves new preserves alone', async () => {
+      store.tracks.set('a', old('a'));
+      store.tracks.set('b', { ...old('b'), toppedUp: 1 });
+      apiStub.resolveSongs.mockReturnValue(of([serverSong('a')]));
+      await svc.init();
+      await vi.waitFor(() => expect(store.tracks.get('a')?.['toppedUp']).toBe(1));
+      expect(apiStub.resolveSongs).toHaveBeenCalledWith(['a']);
+      expect(store.tracks.get('a')).toMatchObject({
+        artistId: 'ar1',
+        genre: 'Cumbia',
+        albumId: 'al1',
+      });
+      expect(svc.needingDetails()).toBe(0);
+    });
+
+    it('adds the missing album cover and the lyrics for a user save, not an auto one', async () => {
+      store.tracks.set('u', old('u'));
+      store.tracks.set('q', old('q', 'auto'));
+      apiStub.resolveSongs.mockReturnValue(of([serverSong('u'), serverSong('q')]));
+      globalThis.fetch = vi.fn(async () => ({
+        ok: true,
+        blob: async () => new Blob(['c']),
+      })) as never;
+      await svc.init();
+      await vi.waitFor(() => expect(store.tracks.get('q')?.['toppedUp']).toBe(1));
+      expect([...store.covers.keys()]).toEqual(['album:al1']);
+      expect(lyricsStub.topUpPreserved.mock.calls).toEqual([['u']]);
+    });
+
+    it('a song the server no longer has is marked, so it is not asked for again', async () => {
+      store.tracks.set('gone', old('gone'));
+      apiStub.resolveSongs.mockReturnValue(of([]));
+      await svc.init();
+      await vi.waitFor(() => expect(store.tracks.get('gone')?.['toppedUp']).toBe(1));
+    });
+
+    it('offline, nothing is asked; a failed lookup leaves the rows for next time', async () => {
+      store.tracks.set('a', old('a'));
+      online.set(false);
+      await svc.init();
+      expect(apiStub.resolveSongs).not.toHaveBeenCalled();
+      expect(svc.needingDetails()).toBe(1);
+
+      online.set(true);
+      apiStub.resolveSongs.mockReturnValue(throwError(() => new Error('502')));
+      await svc.topUpOlderPreserves();
+      expect(store.tracks.get('a')?.['toppedUp']).toBeUndefined();
+      expect(svc.needingDetails()).toBe(1);
+    });
   });
 
   it('refreshes the offline covers after a preserve and after every list refresh', async () => {
@@ -369,6 +492,8 @@ describe('PreserveService', () => {
           { provide: AuthService, useValue: { token: signal('tok'), mediaToken: signal('tok') } },
           { provide: PRESERVE_STORE, useValue: store },
           { provide: LyricsService, useValue: lyricsStub },
+          { provide: LibraryApiService, useValue: apiStub },
+          { provide: NetworkStatusService, useValue: { online } },
         ],
       });
       const fresh = TestBed.inject(PreserveService);
@@ -664,6 +789,8 @@ describe('PreserveService', () => {
           { provide: AuthService, useValue: { token: signal('tok'), mediaToken: signal('tok') } },
           { provide: PRESERVE_STORE, useValue: store },
           { provide: LyricsService, useValue: lyricsStub },
+          { provide: LibraryApiService, useValue: apiStub },
+          { provide: NetworkStatusService, useValue: { online } },
         ],
       });
       const fresh = TestBed.inject(PreserveService);
@@ -679,6 +806,8 @@ describe('PreserveService', () => {
           { provide: AuthService, useValue: { token: signal('tok'), mediaToken: signal('tok') } },
           { provide: PRESERVE_STORE, useValue: store },
           { provide: LyricsService, useValue: lyricsStub },
+          { provide: LibraryApiService, useValue: apiStub },
+          { provide: NetworkStatusService, useValue: { online } },
         ],
       });
       const fresh = TestBed.inject(PreserveService);

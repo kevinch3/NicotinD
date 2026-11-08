@@ -1469,5 +1469,7 @@
   "subsonicKeys.errorRevoke": "No se pudo revocar la clave",
   "acquire.noSourcesEnable": "Activa una en Extensiones →",
   "acquire.noSourcesAskAdmin": "Pide a un administrador que active una.",
-  "admin.acquisitionSourcesHint": "Las fuentes (Soulseek, archive.org, yt-dlp…) se activan una por una en"
+  "admin.acquisitionSourcesHint": "Las fuentes (Soulseek, archive.org, yt-dlp…) se activan una por una en",
+  "library.offline.basicDetails": "{count} canciones guardadas tienen solo datos básicos: los enlaces al artista, el género, la portada y la letra se completan la próxima vez que estés en línea.",
+  "library.offline.basicDetailsOne": "1 canción guardada tiene solo datos básicos: los enlaces al artista, el género, la portada y la letra se completan la próxima vez que estés en línea."
 }

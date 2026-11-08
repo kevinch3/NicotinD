@@ -14,6 +14,8 @@ export interface PreserveStore {
   getAllCovers: typeof db.getAllCovers;
   getLyrics: typeof db.getLyrics;
   refreshLyrics: typeof db.refreshLyrics;
+  updateMetas: typeof db.updateMetas;
+  putCover: typeof db.putCover;
   evictLRU: typeof db.evictLRU;
   evictAutoLRU: typeof db.evictAutoLRU;
   removeAllAutoPreserved: typeof db.removeAllAutoPreserved;
