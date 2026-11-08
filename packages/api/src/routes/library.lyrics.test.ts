@@ -17,6 +17,7 @@ import type { PluginRegistry } from '../services/plugins/registry.js';
 import { applySchema } from '../db.js';
 import { libraryRoutes } from './library.js';
 import { getLyrics } from '../services/lyrics-store.js';
+import { libraryEvents, type StampedEvent } from '../services/library-events.js';
 import { writeAudioTags } from '../services/audio-tags.js';
 
 let testDb: Database = (() => {
@@ -451,5 +452,75 @@ describe('PATCH /songs/:id/lyrics/offset', () => {
   it('rejects a non-admin sync', async () => {
     await seedFetched();
     expect((await patch('user', { offsetMs: 500 })).status).toBe(403);
+  });
+});
+
+// Another device showing these lyrics (a TV in karaoke while a phone edits them) learns of the
+// change only from the event stream, so every write route must emit, and a route that changed
+// nothing must not (#1666).
+describe('lyrics writes reach open clients as lyrics.changed (#1666)', () => {
+  async function changed(fn: () => unknown): Promise<string[]> {
+    libraryEvents.flush();
+    const seen: StampedEvent[] = [];
+    const off = libraryEvents.on((e) => seen.push(e));
+    try {
+      await fn();
+      libraryEvents.flush();
+    } finally {
+      off();
+    }
+    return seen.flatMap((e) => (e.event.type === 'lyrics.changed' ? e.event.songIds : []));
+  }
+  const json = (method: string, body: unknown) => ({
+    method,
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  it('a fetch that stores lyrics, an edit, a re-time and a reset each name the song', async () => {
+    seedSong(testDb, 'song-1');
+    const { registry } = makeRegistry({ result: LYRICS });
+    const user = makeApp('user', registry);
+    const admin = makeApp('admin');
+    expect(
+      await changed(() =>
+        user.request('/songs/song-1/lyrics/fetch', json('POST', { force: true })),
+      ),
+    ).toEqual(['song-1']);
+    expect(
+      await changed(() =>
+        admin.request('/songs/song-1/lyrics/offset', json('PATCH', { offsetMs: 500 })),
+      ),
+    ).toEqual(['song-1']);
+    expect(
+      await changed(() => admin.request('/songs/song-1/lyrics', json('PUT', { plain: 'mine' }))),
+    ).toEqual(['song-1']);
+    expect(
+      await changed(() => admin.request('/songs/song-1/lyrics', { method: 'DELETE' })),
+    ).toEqual(['song-1']);
+  });
+
+  it('a fetch that changed nothing stays silent: a cached row, a miss, a kept timed row', async () => {
+    seedSong(testDb, 'song-1');
+    const user = makeApp('user', makeRegistry({ result: LYRICS }).registry);
+    await user.request('/songs/song-1/lyrics/fetch', { method: 'POST' });
+    expect(
+      await changed(() => user.request('/songs/song-1/lyrics/fetch', { method: 'POST' })),
+    ).toEqual([]);
+    const miss = makeApp('user', makeRegistry({ result: null }).registry);
+    expect(
+      await changed(() =>
+        miss.request('/songs/song-1/lyrics/fetch', json('POST', { force: true })),
+      ),
+    ).toEqual([]);
+    const untimed = makeApp(
+      'user',
+      makeRegistry({ result: { plain: 'untimed', synced: null, source: 'lrclib' } }).registry,
+    );
+    expect(
+      await changed(() =>
+        untimed.request('/songs/song-1/lyrics/fetch', json('POST', { force: true })),
+      ),
+    ).toEqual([]);
   });
 });

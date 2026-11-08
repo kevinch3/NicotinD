@@ -1,12 +1,21 @@
 import type { Database } from 'bun:sqlite';
 import type { LyricsDto } from '@nicotind/core';
 import { LYRICS_OFFSET_MAX_MS } from '@nicotind/core';
+import { libraryEvents } from './library-events.js';
 
 /**
  * Persisted lyrics for a single song, keyed on the scanner's path-derived songId.
  * Fetched on demand from a lyrics-capable plugin, then optionally edited by the
  * user. Same side-table pattern as `metadata-override-store.ts` / `artwork-store.ts`.
+ *
+ * Every write here announces itself as `lyrics.changed` (#1666): these three
+ * functions are the only writers of `library_lyrics` rows a client may hold, so
+ * the REST routes, the fetch path and the MCP tools all reach an open client —
+ * a phone edit reaches the TV's karaoke — without each caller remembering to.
  */
+function announce(songId: string): void {
+  libraryEvents.emit({ type: 'lyrics.changed', songIds: [songId] });
+}
 
 interface DbRow {
   song_id: string;
@@ -101,6 +110,7 @@ export function setLyrics(db: Database, songId: string, input: SetLyricsInput): 
       offsetMs,
     ],
   );
+  announce(songId);
   return {
     plain: input.plain,
     synced: input.synced,
@@ -132,10 +142,13 @@ export function setLyricsOffset(db: Database, songId: string, offsetMs: number):
     updatedAt,
     songId,
   ]);
+  announce(songId);
   return { ...existing, offsetMs: clamped, updatedAt };
 }
 
 /** Delete a song's lyrics row (reset). */
 export function deleteLyrics(db: Database, songId: string): void {
-  db.run('DELETE FROM library_lyrics WHERE song_id = ?', [songId]);
+  if (db.run('DELETE FROM library_lyrics WHERE song_id = ?', [songId]).changes > 0) {
+    announce(songId);
+  }
 }

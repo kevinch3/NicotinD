@@ -87,6 +87,25 @@ describe('library events — coalescing', () => {
     expect((replay![0]!.event as { changes: unknown[] }).changes).toHaveLength(BUFFER_SIZE * 3);
   });
 
+  it('lyrics.changed is one frame per window, song ids unioned (#1666)', () => {
+    const { bus, tick } = manual();
+    bus.emit({ type: 'job.changed', jobId: 'before' });
+    tick();
+    const from = bus.lastSeq();
+    // A curator pass over many songs, plus repeats of one song (each sync nudge writes).
+    for (let i = 0; i < BUFFER_SIZE * 3; i++) {
+      bus.emit({ type: 'lyrics.changed', songIds: [`s${i}`] });
+    }
+    bus.emit({ type: 'lyrics.changed', songIds: ['s0', 's1'] });
+    tick();
+    const replay = bus.since(from);
+    expect(replay).not.toBeNull();
+    expect(replay).toHaveLength(1);
+    const ids = (replay![0]!.event as { songIds: string[] }).songIds;
+    expect(ids).toHaveLength(BUFFER_SIZE * 3);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
   it('a subscriber that throws does not stop delivery to the others', () => {
     const { bus, tick } = manual();
     const seen: number[] = [];

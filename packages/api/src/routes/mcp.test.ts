@@ -16,6 +16,7 @@ import { getMbid, isMbidTombstoned, upsertMbid } from '../services/mbid-store.js
 import type { LyricsResult } from '@nicotind/core';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 import { getLyrics } from '../services/lyrics-store.js';
+import { libraryEvents, type StampedEvent } from '../services/library-events.js';
 import {
   dispatchTool,
   checkToolAccess,
@@ -2503,6 +2504,46 @@ describe('lyrics tools', () => {
       expect(await refetch('s-lyr')).toMatchObject({ ok: true, replaced: false });
       expect(getLyrics(testDb, 's-lyr')?.plain).toBe('first line\nsecond line');
     });
+  });
+
+  it('a curator re-time or re-fetch reaches open clients as lyrics.changed (#1666)', async () => {
+    seedLyrics({ durationSec: 232, lastLineSec: 200, matched: 222 });
+    libraryEvents.flush();
+    const seen: StampedEvent[] = [];
+    const off = libraryEvents.on((e) => seen.push(e));
+    const ids = () => {
+      libraryEvents.flush();
+      const out = seen.flatMap((e) => (e.event.type === 'lyrics.changed' ? e.event.songIds : []));
+      seen.length = 0;
+      return out;
+    };
+    try {
+      await call('refiner:curate', 'sync_song_lyrics', { songId: 's-lyr', offsetMs: 750 });
+      expect(ids()).toEqual(['s-lyr']);
+      const plugins = {
+        hasCapability: () => true,
+        getEnabledWithCapability: () => [
+          {
+            lyrics: {
+              fetchLyrics: async () => ({
+                plain: 'right words',
+                synced: null,
+                source: 'lrclib',
+                matchedDurationSec: 231,
+              }),
+            },
+          },
+        ],
+      } as unknown as PluginRegistry;
+      await dispatchTool(
+        { ...ctx('refiner:curate'), metadata: { musicDir, plugins } },
+        'refetch_song_lyrics',
+        { songId: 's-lyr' },
+      );
+      expect(ids()).toEqual(['s-lyr']);
+    } finally {
+      off();
+    }
   });
 
   it('refuses a song with no lyrics, naming the fix', async () => {

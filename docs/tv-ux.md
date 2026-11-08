@@ -274,6 +274,11 @@ driven by three shared pieces rather than a second copy of any of them:
 | Auto-follow ↔ browse, with the 4 s idle return | `KaraokeBrowseMode` (`lib/karaoke-browse.ts`) | both |
 | Cover → gradient palette (the Image/canvas shell) | `loadCoverPalette` (`lib/cover-colors.ts`) | both |
 
+A lyrics change made on a phone or by the MCP curator reaches the TV's karaoke as `lyrics.changed`,
+which is why `TvShellComponent` opens the library event stream as the phone layout does — before
+#1666 a TV never connected, and a phone's edit showed only on the next track and back
+([web-ui.md](web-ui.md) "A change made elsewhere reaches the lyrics on screen").
+
 `TvKaraokeComponent` (`pages/tv/tv-karaoke.component.ts`) is the wiring and the three TV
 adaptations: **no seek bar** — `app-seek-bar` is a native range input, the #438 trap, so the
 overlay's `seekBar` input is off and the ◀ ▶ hint takes its place while the route-scoped shortcut

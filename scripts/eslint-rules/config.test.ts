@@ -39,6 +39,15 @@ describe('eslint.config.js wiring', () => {
     ]);
   });
 
+  it('keeps every lyrics endpoint call in LyricsService (#1666)', async () => {
+    const code = "export const f = (api: any) => api.saveLyrics('s1', 'x');\n";
+    expect(await ruleIds(code, 'packages/web/src/app/components/x.component.ts')).toEqual([
+      'nicotind/lyrics-single-owner',
+    ]);
+    expect(await ruleIds(code, 'packages/web/src/app/services/lyrics.service.ts')).toEqual([]);
+    expect(await ruleIds(code, 'packages/web/src/app/components/x.spec.ts')).toEqual([]);
+  });
+
   it('keeps every vibration in lib/haptics.ts (#1659)', async () => {
     const vibrate = 'export const buzz = () => navigator.vibrate(10);\n';
     const plugin = "export const p = getCapacitorPlugin('Haptics');\n";

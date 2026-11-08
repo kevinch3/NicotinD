@@ -529,6 +529,51 @@ test.describe('mobile UX', () => {
   });
 
   /**
+   * #1666: a change made elsewhere — another device, the MCP curator — reaches
+   * the Lyrics panel already open, with no track change: the server announces
+   * it as `lyrics.changed` and `LyricsService` re-reads what is on screen.
+   * Before, nothing re-asked while the panel stayed up.
+   */
+  test('Now Playing lyrics: an edit made on another device reaches the open panel', async ({
+    page,
+    request,
+  }) => {
+    const token = (
+      (await (await request.post('/api/auth/login', { data: ADMIN })).json()) as { token: string }
+    ).token;
+    const albums = (await (
+      await request.get('/api/library/albums', { headers: bearer(token) })
+    ).json()) as Array<{ id: string; title: string }>;
+    const album = albums.find((a) => a.title === FIXTURE.album.title) ?? albums[0]!;
+    const detail = (await (
+      await request.get(`/api/library/albums/${album.id}`, { headers: bearer(token) })
+    ).json()) as { song: Array<{ id: string }> };
+    const seed = (plain: string) =>
+      Promise.all(
+        detail.song.map((s) =>
+          request.put(`/api/library/songs/${s.id}/lyrics`, {
+            headers: bearer(token),
+            data: { plain },
+          }),
+        ),
+      );
+    await seed('words before the edit');
+
+    const stream = page.waitForResponse((r) => r.url().includes('/api/library/events'));
+    await openNowPlaying(page);
+    await stream;
+    await page.getByTestId('now-playing-tab-lyrics').click();
+    const panel = page.getByTestId('now-playing-lyrics');
+    await expect(panel).toContainText('words before the edit');
+    const playing = (await page.getByTestId('player-title').textContent())!;
+
+    await seed('words from another device');
+
+    await expect(panel).toContainText('words from another device', { timeout: 10_000 });
+    await expect(page.getByTestId('player-title')).toHaveText(playing); // same track
+  });
+
+  /**
    * Synced (LRC) lyrics end-to-end — impossible to write until now. `PUT` used
    * to hard-code `synced: null`, so no route could seed timed lyrics and the
    * karaoke path was unit-test-only. It now keeps an explicitly-sent LRC, which

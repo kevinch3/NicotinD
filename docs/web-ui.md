@@ -321,7 +321,32 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
     the owner chose to make that a decision. `ConfirmHostComponent` sits at `z-[96]`, above the
     sheet (`z-[91]`): at `z-50` the confirm rendered under the sheet that asked. Specs: `services/lyrics-one-owner.spec.ts` (a stateful
     fake server, so both write-through and re-read fixes pass and only a copy that never hears the
-    write fails) and `services/lyrics.service.spec.ts`.
+    write fails) and `services/lyrics.service.spec.ts`. **The guard** is lint rule
+    `nicotind/lyrics-single-owner`: a reference to any of `LibraryApiService`'s lyrics methods
+    (`getLyrics`, `fetchLyrics`, `saveLyrics`, `setLyricsOffset`, `deleteLyrics` — a call, a callback,
+    a computed key or a destructure) outside `services/lyrics.service.ts` fails `bun run lint`;
+    specs are exempt. The pre-B1 sheet trips it four times. Its denominator is in
+    [quality-gates.md](quality-gates.md) "Code-shape gates as lint rules".
+  - **A change made elsewhere reaches the lyrics on screen (#1666)**: the server announces every
+    stored-lyrics write as **`lyrics.changed {songIds}`** on the library event stream, emitted from
+    `services/lyrics-store.ts` — the only writer of `library_lyrics` rows — so the REST routes, the
+    fetch path and the MCP `refetch_song_lyrics` / `sync_song_lyrics` tools all reach an open client
+    ([cache-invalidation.md](cache-invalidation.md) "Live invalidation"). `LibraryEventsService`
+    passes the ids to `lyricsChanged$` (`null` after a gap), and `LyricsService.invalidate`
+    **re-reads only the entries a surface is showing** — the current track and every id an open
+    sheet is bound to; any other cached entry is re-read when a surface next asks for it anyway. The
+    re-read is the ordinary stale-while-revalidate `read`, so it **never blanks karaoke mid-song**,
+    a read already out is superseded (it may have been served before the change), and a load or a
+    write still out is **left to finish** — a read now would drop its answer, the same rule as
+    above — with the id remembered in `changedWhileBusy` and re-read when it ends. A re-read inside
+    an offset write's window keeps the tapped offset (#1656, below), so this tab's own nudges
+    echoing back never rewind a later tap. That echo costs one `GET` per coalescing window after
+    each of this tab's own writes; the client cannot tell its echo from another device's write.
+    **The TV shell opens the event stream too** (`TvShellComponent.ngOnInit`, as `LayoutComponent`
+    does): before, a TV never connected at all, so a phone's edit reached its karaoke only on the
+    next track and back. Specs: `services/lyrics-changed.spec.ts` (a stateful fake server; a write
+    "from elsewhere" is a row the client did not write) and, server side,
+    `lyrics-store.test.ts`, `library.lyrics.test.ts` and `mcp.test.ts`.
   - **Sync-offset writes are serialized per song (#1656)**: a nudge applies to the entry at once
     and at most one `PATCH …/lyrics/offset` per song is in flight; taps made meanwhile coalesce
     into one write of the latest value, sent when the outstanding one answers (`offsetWrites`,

@@ -3,7 +3,7 @@
  * open client can learn about it without polling or reloading.
  *
  * Emitted from SERVICES, never routes — the scanner, deletion, cover and
- * metadata mutations, the job store — so the MCP agent, a CLI script and an
+ * metadata mutations, the lyrics store, the job store — so the MCP agent, a CLI script and an
  * HTTP route all emit the same way. Consumed by `GET /api/library/events`
  * (server-sent events; see routes/library-events.ts) and, through it, by the
  * web `LibraryEventsService`.
@@ -14,7 +14,8 @@
  *   (ids unioned) before subscribers see them, so a 2,000-song scan is a
  *   handful of frames rather than 2,000 — and an artwork backfill over
  *   thousands of covers cannot overflow the replay buffer (`artwork.changed`
- *   unions its changes, keeping the highest rev per entity). Types that carry a
+ *   unions its changes, keeping the highest rev per entity; `lyrics.changed`
+ *   unions its song ids). Types that carry a
  *   single id (`album.changed`, `artist.changed`, `job.changed`) are coalesced
  *   per id instead: the last one in the window wins.
  * - **Replay.** Every delivered event gets a monotonic `seq`; the last
@@ -28,6 +29,8 @@ export type LibraryEvent =
   | { type: 'album.changed'; albumId: string }
   | { type: 'artist.changed'; artistId: string }
   | { type: 'artwork.changed'; changes: ArtworkChange[] }
+  /** A song's stored lyrics row was written, re-timed or deleted (#1666). */
+  | { type: 'lyrics.changed'; songIds: string[] }
   | { type: 'job.changed'; jobId: string };
 
 /** One entity whose cover bytes changed, with its new persisted `cover_rev` (#1666). */
@@ -63,6 +66,7 @@ function coalesceKey(e: LibraryEvent): string {
     case 'songs.landed':
     case 'songs.deleted':
     case 'artwork.changed':
+    case 'lyrics.changed':
       return e.type;
     case 'album.changed':
       return `${e.type}:${e.albumId}`;
@@ -80,6 +84,9 @@ function merge(a: LibraryEvent, b: LibraryEvent): LibraryEvent {
       songIds: [...new Set([...a.songIds, ...b.songIds])],
       albumIds: [...new Set([...a.albumIds, ...b.albumIds])],
     };
+  }
+  if (a.type === 'lyrics.changed' && b.type === 'lyrics.changed') {
+    return { type: a.type, songIds: [...new Set([...a.songIds, ...b.songIds])] };
   }
   return b;
 }

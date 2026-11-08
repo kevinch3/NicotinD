@@ -11,6 +11,7 @@ import { UpdateBannerComponent } from '../update-banner/update-banner.component'
 import { TvDevicePickerComponent } from '../tv-device-picker/tv-device-picker.component';
 import { APP_VERSION } from '../../app.config';
 import { AuthService } from '../../services/auth.service';
+import { LibraryEventsService } from '../../services/library-events.service';
 
 @Component({ selector: 'app-player', template: '' })
 class StubPlayerComponent {}
@@ -66,6 +67,18 @@ describe('TvShellComponent', () => {
     expect(el.querySelector('[data-testid="tv-status-version"]')?.textContent?.trim()).toBe(
       'v0.1.234',
     );
+  });
+
+  it('opens the library event stream, so a lyrics edit on a phone reaches this TV (#1666)', () => {
+    const start = vi.spyOn(LibraryEventsService.prototype, 'start');
+    const stop = vi.spyOn(LibraryEventsService.prototype, 'stop');
+    const { fixture } = create();
+    expect(start).toHaveBeenCalledTimes(1);
+
+    fixture.destroy();
+    expect(stop).toHaveBeenCalledTimes(1);
+    start.mockRestore();
+    stop.mockRestore();
   });
 
   it('turns radio on, because a TV has no control that could turn it back on (#1127)', () => {

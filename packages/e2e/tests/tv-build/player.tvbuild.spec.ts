@@ -7,7 +7,7 @@
  * assertion is the regression test; the screenshot is the net for the next
  * one.
  */
-import { ADMIN, FIXTURE, KARAOKE_FIXTURE_LYRICS } from '../../helpers';
+import { ADMIN, FIXTURE, KARAOKE_FIXTURE_LYRICS, bearer } from '../../helpers';
 import { test, expect, centreOf, expectFitsTheScreen, expectNoNativeFormControls } from './tv-test';
 import type { Page } from '@playwright/test';
 
@@ -136,6 +136,49 @@ test.describe('TV player', () => {
     await expect(overlay).toHaveCount(0);
     await expect(page).toHaveURL(/\/player$/);
     await expect(lyricsRow).toBeFocused();
+  });
+
+  /**
+   * #1666: a phone's edit of the lyrics on screen reached the TV's karaoke only
+   * on the next track and back — the TV shell never opened the library event
+   * stream, and nothing re-asks while the overlay is up. The write here goes
+   * through the API, the way a phone or the MCP curator makes it.
+   */
+  test('a lyrics edit made on a phone reaches the open karaoke (#1666)', async ({
+    page,
+    request,
+  }) => {
+    const stream = page.waitForResponse((r) => r.url().includes('/api/library/events'));
+    await playFixtureAlbum(page);
+    await stream;
+    await page.getByTestId('tv-lyrics').click();
+    const overlay = page.getByTestId('karaoke-overlay');
+    await expect(overlay).toContainText(KARAOKE_FIXTURE_LYRICS.split('\n')[0]!);
+
+    const auth = bearer((await page.evaluate(() => localStorage.getItem('nicotind_token')))!);
+    const albums = (await (
+      await request.get('/api/library/albums', { headers: auth })
+    ).json()) as Array<{ id: string; name: string }>;
+    const album = albums.find((a) => a.name === FIXTURE.album.title)!;
+    const detail = (await (
+      await request.get(`/api/library/albums/${album.id}`, { headers: auth })
+    ).json()) as { song: Array<{ id: string }> };
+    const songId = detail.song[0]!.id; // the track seedAdminAndLibrary gave the karaoke lyrics
+    try {
+      const put = await request.put(`/api/library/songs/${songId}/lyrics`, {
+        headers: auth,
+        data: { plain: 'edited on the phone' },
+      });
+      expect(put.ok()).toBeTruthy();
+      await expect(overlay).toContainText('edited on the phone', { timeout: 10_000 });
+      await expect(overlay).not.toContainText(KARAOKE_FIXTURE_LYRICS.split('\n')[0]!);
+    } finally {
+      // The seed is shared: the karaoke screenshot above and later runs read it.
+      await request.put(`/api/library/songs/${songId}/lyrics`, {
+        headers: auth,
+        data: { plain: KARAOKE_FIXTURE_LYRICS },
+      });
+    }
   });
 
   test('once something plays, Home grows its "Now playing" entry', async ({ page }) => {
