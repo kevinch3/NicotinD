@@ -687,7 +687,13 @@ export class AddonJobPoller {
         [clampAddonText(job.title), now, coreJobId],
       );
     }
-    this.fillAlbumTitleFromLink(coreJobId, now);
+    // A fallback for an addon that never reports an album, so only once there
+    // is something to file: while the job is still resolving, its title can be
+    // a placeholder (the archive.org identifier) that the real album reported a
+    // poll later would then lose to under first-writer-wins (#1735).
+    if (job.state !== 'active' || job.items.some((i) => i.fileReady)) {
+      this.fillAlbumTitleFromLink(coreJobId, now);
+    }
   }
 
   /**

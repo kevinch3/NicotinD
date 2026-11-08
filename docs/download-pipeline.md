@@ -1512,6 +1512,15 @@ destinations) sees a job that knows its own album. It never overwrites an `album
 actually reported, refuses anything `isUnknownLike`, and is gated on `classifyAcquireUrl(...).kind
 === 'album'` plus `is_playlist = 0`.
 
+**It waits until there is something to file (#1735).** The poller adopts only once the addon job
+is no longer `active` or has a `fileReady` item. While a job is still resolving, its title can be a
+placeholder: the bundled archive.org addon shows the URL identifier (`MarinesHymn`) until its
+background resolve reports the item's real title and album (`Marines' Hymn`). Adopting on the first
+poll put the placeholder in `album_title`, and first-writer-wins then kept it over the real album, so
+the files were tagged and filed under the identifier. `updateJobMeta` writes the addon's album before
+the adoption runs, and before that tick's ingest, so a real album always wins and a fallback still
+lands before the organizer reads `jobMeta`.
+
 Why it was needed: spotdl reports `title` but never `album`, so `album_title` was NULL on **all five**
 prod Spotify album acquires. `applyJobCanonicalName` is guarded on `albumTitle != null`, so it never
 stamped the ALBUM tag; spotdl's own files carried the literal placeholder `ALBUM=Unknown`; the
