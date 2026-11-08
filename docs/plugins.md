@@ -157,6 +157,12 @@ discovery half now, and later PRs remove the token copy-paste entirely.
   token)` emits the paste-able compose block (the addon service + its pot-provider companion for
   ytdlp/spotdl) with the token baked in, and `catalogInstallState(entry, registrations)` diffs the
   catalog against the live registrations → `builtin | installed | pending | available`.
+- **Install is Docker-only, so the card names the other path (#1741).** An `available` or `pending`
+  card shows "Not using Docker? Run it as its README describes, then add it under 'Add a remote
+  addon' below…" with `http://127.0.0.1:<port>` (the entry's `addonUrl` port on loopback,
+  `loopbackUrl()`) and a link to `docsUrl`. Skipping Install keeps a bare-metal user clear of the
+  pending row and its compose snippet. Each addon's `*_ADDON_HOST=127.0.0.1` keeps that same-host
+  addon off the LAN.
 - `GET /api/plugins/catalog` (any authed user, like `GET /`) serves the entries + each one's install
   state. The web `AddonCatalogService` + `AddonCatalogCardComponent` render the admin-only section.
 

@@ -781,6 +781,8 @@
   "extensions.addonUrlPlaceholder": "http://addon-host:9999",
   "extensions.binariesMissing": "Not found: {binaries} — install it, or set its full path in the settings below and save.",
   "extensions.catalogAvailable": "Available",
+  "extensions.catalogBareMetal": "Not using Docker? Run it as its README describes, then add it under “Add a remote addon” below with the token you gave it, at",
+  "extensions.catalogBareMetalReadme": "README →",
   "extensions.catalogBuiltin": "Built-in",
   "extensions.catalogCheckNow": "Check now",
   "extensions.catalogCopied": "Copied",
