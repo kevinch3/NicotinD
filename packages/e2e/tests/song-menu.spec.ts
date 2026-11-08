@@ -10,7 +10,7 @@ import { FIXTURE, preserveMusicFixture, openAlbumCard } from '../helpers';
 test.describe('song row menu', () => {
   // The remove-from-library test below deletes this fixture from the run's music
   // dir; later specs in the run still expect it. See preserveMusicFixture.
-  preserveMusicFixture('E2E_Test_Artist/E2E_Test_Album/04 - Quiet_Hours.flac');
+  const quietHours = preserveMusicFixture('E2E_Test_Artist/E2E_Test_Album/04 - Quiet_Hours.flac');
 
   test('shows the common actions and hides "Go to album" on an album page', async ({ page }) => {
     await page.goto('/library');
@@ -55,6 +55,7 @@ test.describe('song row menu', () => {
 
   test('admin "Remove from library" confirms via the global ConfirmHost and removes the row', async ({
     page,
+    request,
   }) => {
     await page.goto('/library');
     await openAlbumCard(page, FIXTURE.album.title);
@@ -90,5 +91,13 @@ test.describe('song row menu', () => {
     await expect(dialog).toHaveCount(0);
     await expect(rows).toHaveCount(countBefore - 1);
     await expect(page.getByText(removedTitle, { exact: true })).toHaveCount(0);
+
+    // The put-back later specs rely on (#1713): the delete left a 6-track album,
+    // which the curator calls an EP, so it is off the Albums grid until the
+    // restored file is scanned. Through the grid card, as the next spec opens it.
+    await quietHours.restore(request);
+    await page.goto('/library');
+    await openAlbumCard(page, FIXTURE.album.title);
+    await expect(rows).toHaveCount(countBefore);
   });
 });

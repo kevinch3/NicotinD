@@ -101,21 +101,40 @@ export const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
  * expects the file would otherwise find it gone.
  *
  * Registers its own `beforeAll`/`afterAll`, so just call it at describe scope.
+ * The returned `restore` does the same put-back inside a test.
+ *
+ * Writing the file back is half of it: the server only sees a file a scan reads,
+ * so the restore rescans too. Without that the deleted row stays gone, and a
+ * delete that demoted its album (7 → 6 tracks is an EP) keeps it out of the
+ * Albums grid for every later spec (#1713).
  *
  * @param relPath path under `fixtures/music`, e.g. `'E2E_Test_Artist/E2E_Test_Album/04 - Quiet_Hours.flac'`
  */
-export function preserveMusicFixture(relPath: string): void {
+export function preserveMusicFixture(relPath: string): {
+  restore: (request: APIRequestContext) => Promise<void>;
+} {
   const abs = join(E2E_MUSIC_DIR, relPath);
   let snapshot: Buffer | null = null;
+
+  const restore = async (request: APIRequestContext): Promise<void> => {
+    // Only rewrite when the spec actually removed it — never clobber a live file.
+    if (!snapshot || existsSync(abs)) return;
+    writeFileSync(abs, snapshot);
+    const login = await request.post('/api/auth/login', {
+      data: { username: ADMIN.username, password: ADMIN.password },
+    });
+    expect(login.ok(), 'admin login for the fixture rescan').toBeTruthy();
+    const { token } = (await login.json()) as { token: string };
+    await scanAndWait(request, token);
+  };
 
   test.beforeAll(() => {
     if (existsSync(abs)) snapshot = readFileSync(abs);
   });
 
-  test.afterAll(() => {
-    // Only rewrite when the spec actually removed it — never clobber a live file.
-    if (snapshot && !existsSync(abs)) writeFileSync(abs, snapshot);
-  });
+  test.afterAll(async ({ request }) => restore(request));
+
+  return { restore };
 }
 
 /**
