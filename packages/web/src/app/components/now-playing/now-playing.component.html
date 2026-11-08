@@ -55,6 +55,7 @@
           [resizing]="resizingQueue()"
           [swipeOffsetPx]="coverSwipeOffsetPx()"
           [swiping]="coverSwiping()"
+          (skipRequested)="$event === 'next' ? handleNext() : handlePrev()"
           (openTrackInfo)="onOpenTrackInfo($event)"
           (artistLinkFollowed)="closeForNavigation()"
           (navigateToArtistClicked)="navigateToArtist()"

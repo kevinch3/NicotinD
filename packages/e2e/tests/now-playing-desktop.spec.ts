@@ -130,6 +130,42 @@ test.describe('Now Playing desktop layout', () => {
     await expect(splitter).toHaveAttribute('aria-valuenow', '300');
   });
 
+  // #1652 at lg: the cover column is narrower than the viewport, and narrowest
+  // at 1024px with the side panel at its widest (End clamps it to the viewport). The neighbour must stay inside
+  // the column (clipped, never over the panel) and its sliver still tap-to-skip.
+  test('the next cover peeks inside the narrowed cover column and a tap skips', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1024, height: 800 });
+    await openNowPlaying(page);
+    const splitter = page.getByTestId('now-playing-side-resize');
+    await splitter.focus();
+    await page.keyboard.press('End');
+    await expect(splitter).not.toHaveAttribute('aria-valuenow', '380');
+
+    const stage = page.getByTestId('now-playing-cover-stage');
+    await stage.hover();
+    const cover = (await stage.boundingBox())!;
+    const queue = (await page.getByTestId('now-playing-queue').boundingBox())!;
+    const hits = (x: number, y: number) =>
+      page.evaluate(
+        ([px, py]) =>
+          !!document.elementFromPoint(px, py)?.closest('[data-testid="now-playing-cover-next"]'),
+        [x, y] as const,
+      );
+    const y = cover.y + cover.height / 2;
+    const inner = cover.x + cover.width + 16;
+    const visibleTo = Math.min(inner + cover.width * 0.12, queue.x);
+    expect(visibleTo - inner, 'some sliver survives the narrow column').toBeGreaterThan(4);
+    expect(await hits((inner + visibleTo) / 2, y)).toBe(true);
+    expect(await hits(queue.x + 4, y), 'never over the side panel').toBe(false);
+
+    const title = page.getByTestId('player-title');
+    const first = (await title.textContent())!.trim();
+    await page.mouse.click((inner + visibleTo) / 2, y);
+    await expect(title).not.toHaveText(first);
+  });
+
   /**
    * Keyboard vocabulary (#1296). Blur first: the click that opened the sheet
    * leaves focus on a button, where Space is the button's own activation.

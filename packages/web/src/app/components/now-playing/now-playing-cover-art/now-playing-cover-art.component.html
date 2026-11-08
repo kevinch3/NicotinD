@@ -21,42 +21,77 @@
       data-testid="now-playing-cover"
       data-np-cover
     >
-      <!-- Swipe to skip (#1297): the cover follows the finger and the cover a
-           skip would land on peeks in beside it; the gesture itself lives on
-           the sheet (onBodyPointerDown). -->
+      <!-- Neighbour carousel (#1652): the stage clips 1rem + 12% of the cover
+           width past each side, so the neighbours peek in by that much (and
+           are hit-testable only there); a swipe drags the strip. The gesture
+           itself lives on the sheet (onBodyPointerDown, #1297). -->
       <div
         class="relative"
-        [class.transition-transform]="!swiping()"
-        [class.duration-200]="!swiping()"
-        [style.transform]="swipeOffsetPx() ? 'translateX(' + swipeOffsetPx() + 'px)' : null"
+        style="clip-path: inset(0 calc(-1rem - 12%))"
+        data-testid="now-playing-cover-stage"
       >
-        <app-cover-art
-          [src]="track.coverArt ? '/api/cover/' + track.coverArt + '?size=600&token=' + auth.mediaToken() : undefined"
-          [artist]="track.artist"
-          [album]="track.album ?? ''"
-          [fill]="true"
-          rounded="rounded-lg"
-          [eager]="true"
-          [holdPrevious]="true"
-          data-testid="now-playing-cover-art"
-        />
-        @if (peekTrack(); as peek) {
-          <div
-            class="absolute inset-y-0 w-full"
-            [style.left]="swipeOffsetPx() < 0 ? 'calc(100% + 1.5rem)' : null"
-            [style.right]="swipeOffsetPx() > 0 ? 'calc(100% + 1.5rem)' : null"
-            aria-hidden="true"
-            data-testid="now-playing-cover-peek"
-          >
-            <app-cover-art
-              [src]="peek.coverArt ? '/api/cover/' + peek.coverArt + '?size=600&token=' + auth.mediaToken() : undefined"
-              [artist]="peek.artist"
-              [album]="peek.album ?? ''"
-              [fill]="true"
-              rounded="rounded-lg"
-            />
-          </div>
-        }
+        <div
+          class="relative"
+          [class.transition-transform]="!swiping()"
+          [class.duration-200]="!swiping()"
+          [style.transform]="swipeOffsetPx() ? 'translateX(' + swipeOffsetPx() + 'px)' : null"
+        >
+          <app-cover-art
+            [src]="track.coverArt ? '/api/cover/' + track.coverArt + '?size=600&token=' + auth.mediaToken() : undefined"
+            [artist]="track.artist"
+            [album]="track.album ?? ''"
+            [fill]="true"
+            rounded="rounded-lg"
+            [eager]="true"
+            [holdPrevious]="true"
+            data-testid="now-playing-cover-art"
+          />
+          <!-- Scaled toward the cover and dimmed at rest; the one a swipe
+               heads for comes up to full size. Out of the tab order: the
+               transport's ⏮/⏭ are the keyboard path to the same skip. -->
+          @if (prevTrack(); as prev) {
+            <button
+              type="button"
+              tabindex="-1"
+              class="absolute inset-y-0 w-full right-[calc(100%+1rem)] origin-right transition-[opacity,scale] duration-200"
+              [style.opacity]="swipeOffsetPx() <= 0 ? 0.5 : null"
+              [style.scale]="swipeOffsetPx() <= 0 ? 0.85 : null"
+              [attr.aria-label]="'nowPlaying.skipToPrevious' | t: { title: prev.title }"
+              (click)="skipRequested.emit('prev')"
+              data-testid="now-playing-cover-prev"
+            >
+              <app-cover-art
+                [src]="prev.coverArt ? '/api/cover/' + prev.coverArt + '?size=600&token=' + auth.mediaToken() : undefined"
+                [artist]="prev.artist"
+                [album]="prev.album ?? ''"
+                [fill]="true"
+                rounded="rounded-lg"
+                [eager]="true"
+              />
+            </button>
+          }
+          @if (nextTrack(); as next) {
+            <button
+              type="button"
+              tabindex="-1"
+              class="absolute inset-y-0 w-full left-[calc(100%+1rem)] origin-left transition-[opacity,scale] duration-200"
+              [style.opacity]="swipeOffsetPx() >= 0 ? 0.5 : null"
+              [style.scale]="swipeOffsetPx() >= 0 ? 0.85 : null"
+              [attr.aria-label]="'nowPlaying.skipToNext' | t: { title: next.title }"
+              (click)="skipRequested.emit('next')"
+              data-testid="now-playing-cover-next"
+            >
+              <app-cover-art
+                [src]="next.coverArt ? '/api/cover/' + next.coverArt + '?size=600&token=' + auth.mediaToken() : undefined"
+                [artist]="next.artist"
+                [album]="next.album ?? ''"
+                [fill]="true"
+                rounded="rounded-lg"
+                [eager]="true"
+              />
+            </button>
+          }
+        </div>
       </div>
     </div>
   </div>

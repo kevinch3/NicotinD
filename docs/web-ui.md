@@ -168,13 +168,34 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
   touchmove, then a sideways drift before pointermove crosses slop), and the claim is what covers
   that. A skip never starts from `SKIP_SWIPE_EXCLUDE` (buttons, links, form controls, the seek bar,
   the waveform, menus); the grab notch starts only the vertical swipe. While dragging, the cover
-  follows the finger (`swipeOffsetPx`) and the cover a skip would land on peeks in beside it (the
-  queue head from the right, the history tail from the left).
+  follows the finger (`swipeOffsetPx`) and the neighbour carousel (below) moves with it.
   A commit calls `haptic('commit')` (`lib/haptics.ts`, the #1659 vocabulary; `hapticTick()` is its
   alias) — once per skip, never also the transport button's `tap`. The sheet's open and dismiss
   snaps and the queue's swipe-remove commit the same way; see [mobile-app.md](mobile-app.md)
   "Haptics" for the table, the Off/Reduced/Full setting and where it is a no-op. TV has no pointer, so nothing changes there. e2e (`mobile-ux.spec.ts`) drives the mouse path on the sheet (cover and background) and asserts the mini bar does not skip; the touch arbitration is
   unit-tested (`vertical-swipe.spec.ts`), and a real-device pass is the manual gate.
+- **Neighbour carousel** (#1652): the Now Playing sheet shows, **at rest**, the cover ⏮ would land
+  on peeking in from the left and the one ⏭ would land on from the right, dimmed (`opacity` 0.5)
+  and scaled to 0.85 toward the current cover; the one a swipe heads for comes up to full size.
+  Which track each side is comes from `PlayerService.nextNeighbour` / `prevNeighbour`, two computeds
+  kept beside `playNext`/`playPrev` and pinned against them in `player.service.spec.ts`: next is the
+  queue head (already shuffled, under shuffle); **none** under repeat-one (the skip replays), on a
+  drained queue that pauses (radio included, until its top-up lands), or under repeat-all + shuffle
+  on a drained queue (the context is reshuffled at the moment of the skip); repeat-all without
+  shuffle on a drained queue is the context's first track. Previous is the history tail, none on an
+  empty history. No neighbour means no element, so there is never a dead tap target. The neighbours
+  are absolutely placed 1rem beside the cover inside a stage (`now-playing-cover-stage`) whose
+  `clip-path: inset(0 calc(-1rem - 12%))` shows 12% of the cover width of each — and clips hit
+  testing, so only the visible sliver is tappable. A tap (`now-playing-cover-next` /
+  `now-playing-cover-prev`, `<button>`s labelled with the target title) emits `skipRequested`,
+  which the sheet routes through the same `handleNext`/`handlePrev` as ⏭/⏮; being buttons, they are
+  in `BODY_NO_SWIPE`, so a drag that starts on a sliver starts no gesture. Out of the tab order
+  (`tabindex="-1"`; ⏮/⏭ are the keyboard path) and absent on TV (`isTv`, the pinned D-pad order).
+  At `lg` the outer `overflow-hidden` wrapper is the cover column, so where the side panel narrows
+  it, the sliver is clipped to the column and never reaches over the panel. They load `eager` at
+  the sheet's 600px size, so the cover a skip lands on is usually already decoded — the other half
+  of #1653's `holdPrevious` on the current cover. e2e: `mobile-ux.spec.ts` "neighbour carousel"
+  and `now-playing-desktop.spec.ts` (the narrowed lg column); story `NowPlaying/NeighbourCovers`.
 - **Pull to refresh (touch)**: one gesture, hosted in the layout shell, not per-page. `lib/pull-to-refresh.ts` `createPullToRefresh()` composes `createPointerDrag()` and is bound once in `layout.component.ts` on `<main>`'s `(pointerdown)`, rendering a spinner indicator absolutely positioned inside it; `PullToRefreshService` is the seam a page uses to say what "refresh" means — `register(handler)` pushes onto a handler stack, auto-unregistered on the registrant's `DestroyRef` (route navigation destroys the page component, so this is route-scoped for free), and `trigger()` runs the top-of-stack handler. This is layout-hosted rather than per-page because the scroll container is `window`/`document` (the app has no per-page scrolling `<div>`), so "pulled past the top" is a single global condition (`window.scrollY <= 0`) regardless of which route is mounted — one gesture host, many registrants.
   - **Gates before a pull can start** (`onPointerDown`, all must hold): `isCoarsePointer()` (a real `matchMedia('(pointer: coarse)')` check — desktop mouse/trackpad never engages it), `window.scrollY <= 0` (only from the very top), `!ScrollLockService.locked` (a fullscreen sheet is up), `PullToRefreshService.hasHandler()` (no page registered = nothing to refresh), and no `[data-no-p2r]`/`input`/`textarea`/`select` ancestor (an explicit per-element opt-out for a nested scroller or a form control that needs its own vertical drag).
   - **Why a non-passive `touchmove` `preventDefault()` is required — and why it is armed at pointerdown, not at intent**: `drag.start()` attaches `document.addEventListener('touchmove', blockTouchMove, { passive: false })` immediately, and the blocker decides per event: pull intent → prevent; scroll intent → never; undecided → prevent only a downward-dominant move (`dy > 0 && dy >= |dx|` — the same dominance rule as the intent test, so horizontal tab-strip pans stay native). The timing is the load-bearing part: the browser reclaims an unprevented vertical pan as its own scroll after ~10px, stops delivering `pointermove` (firing `pointercancel` instead), and marks every subsequent `touchmove` non-cancelable — so preventing the **first** `touchmove` is the only winnable round (per the Touch Events spec it suppresses scrolling for the whole interaction). The original implementation attached the blocker only after intent classification, i.e. after ~10px — guaranteeing it lost that race, which left the gesture completely dead on real touch devices (#731). `overscroll-behavior` does **not** fix this: it only suppresses the *visual/navigation* side-effect (Chrome Android's reload glow, iOS's bounce-triggered nav), it does not keep the event stream alive. This is also why **a `pointercancel` while `phase === 'armed'` still commits the refresh** (`finish()` routes cancel through the same commit path as a clean pointerup) — on touch you cannot rely on ever seeing a real `pointerup` once the pull has crossed threshold, the same lesson `pointer-drag.ts`'s cancel handling and the player swipe-up gesture (`onMove`-committing, not `pointerup`-committing) already encode.

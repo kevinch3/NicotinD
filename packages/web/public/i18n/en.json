@@ -986,6 +986,8 @@
   "nowPlaying.undo": "Undo",
   "nowPlaying.reorderHandle": "Reorder {title}: drag, or use the up and down arrow keys",
   "nowPlaying.resizeSidePanel": "Resize side panel",
+  "nowPlaying.skipToNext": "Skip to the next track, {title}",
+  "nowPlaying.skipToPrevious": "Back to the previous track, {title}",
   "nowPlaying.syncEarlier": "Show lyrics earlier",
   "nowPlaying.syncLater": "Show lyrics later",
   "nowPlaying.syncInSync": "In sync",

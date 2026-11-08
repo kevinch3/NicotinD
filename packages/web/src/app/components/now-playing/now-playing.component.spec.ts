@@ -19,7 +19,7 @@ import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 
 function makePlayerStub() {
-  return {
+  const stub = {
     currentTrack: signal<{ id: string; title: string; artist: string; artistId?: string } | null>(
       null,
     ),
@@ -46,6 +46,11 @@ function makePlayerStub() {
     setNowPlayingOpen: () => {},
     seek: vi.fn(),
     vocalsMuted: () => false,
+  };
+  return {
+    ...stub,
+    nextNeighbour: () => stub.queue()[0] ?? null,
+    prevNeighbour: () => stub.history().at(-1) ?? null,
   };
 }
 
@@ -1202,6 +1207,34 @@ describe('NowPlayingComponent', () => {
       drag(300, 150);
       expect(send).toHaveBeenCalledWith('NEXT');
       expect(current.playNext).not.toHaveBeenCalled();
+    });
+
+    it('tapping a peeking neighbour skips that way, and starts no gesture (#1652)', () => {
+      current = skipSetup();
+      const { playerStub, fixture, component } = current;
+      playerStub.currentTrack.set({ id: '1', title: 'Song', artist: 'Artist' });
+      playerStub.queue.set([{ id: '2', title: 'Next', artist: 'B' }]);
+      (playerStub.history as ReturnType<typeof signal<unknown[]>>).set([
+        { id: '0', title: 'Prev', artist: 'C' },
+      ]);
+      fixture.detectChanges();
+      const el: HTMLElement = fixture.nativeElement;
+      const next = el.querySelector<HTMLElement>('[data-testid="now-playing-cover-next"]')!;
+      const prev = el.querySelector<HTMLElement>('[data-testid="now-playing-cover-prev"]')!;
+      component.onBodyPointerDown(pointer('pointerdown', 300, 100, 0, next));
+      document.dispatchEvent(pointer('pointermove', 240, 160, 500));
+      expect(component.coverSwipeOffsetPx()).toBe(0);
+      expect(component.dragOffsetPx()).toBe(0);
+      document.dispatchEvent(pointer('pointerup', 240, 160, 1000));
+      expect(prev).not.toBeNull();
+      // The nested output does not land under the JIT harness (docs/web-ui.md),
+      // so the sheet's binding is driven directly; the click itself is e2e
+      // (mobile-ux.spec.ts "neighbour carousel").
+      const art = fixture.debugElement.query((d) => d.name === 'app-now-playing-cover-art');
+      art.triggerEventHandler('skipRequested', 'next');
+      expect(current.playNext).toHaveBeenCalledTimes(1);
+      art.triggerEventHandler('skipRequested', 'prev');
+      expect(current.playPrev).toHaveBeenCalledTimes(1);
     });
 
     it('the cover offset follows the finger and resets on release', () => {

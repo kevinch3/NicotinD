@@ -986,6 +986,8 @@
   "nowPlaying.undo": "Deshacer",
   "nowPlaying.reorderHandle": "Reordenar {title}: arrastra, o usa las flechas arriba y abajo",
   "nowPlaying.resizeSidePanel": "Redimensionar panel lateral",
+  "nowPlaying.skipToNext": "Saltar a la siguiente pista, {title}",
+  "nowPlaying.skipToPrevious": "Volver a la pista anterior, {title}",
   "nowPlaying.syncEarlier": "Mostrar la letra antes",
   "nowPlaying.syncLater": "Mostrar la letra después",
   "nowPlaying.syncInSync": "Sincronizada",
