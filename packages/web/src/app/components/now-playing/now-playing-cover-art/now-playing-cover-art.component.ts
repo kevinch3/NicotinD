@@ -59,10 +59,19 @@ export class NowPlayingCoverArtComponent {
   /** True while the finger is down, so the cover tracks it without easing. */
   readonly swiping = input(false);
 
+  /** False while this device controls another: the output's history, repeat
+   *  and shuffle are not mirrored here, so a labelled neighbour would promise a
+   *  track ⏮/⏭ on the output may not land on. The swipe still sends NEXT/PREV. */
+  readonly showNeighbours = input(true);
+
   /** The carousel's neighbours (#1652): the covers a skip lands on, peeking in
    *  at rest and followed by the swipe. Not on TV (D-pad order, see isTv). */
-  readonly nextTrack = computed(() => (this.isTv ? null : this.player.nextNeighbour()));
-  readonly prevTrack = computed(() => (this.isTv ? null : this.player.prevNeighbour()));
+  readonly nextTrack = computed(() =>
+    this.isTv || !this.showNeighbours() ? null : this.player.nextNeighbour(),
+  );
+  readonly prevTrack = computed(() =>
+    this.isTv || !this.showNeighbours() ? null : this.player.prevNeighbour(),
+  );
 
   /** A peeking neighbour was tapped: the sheet skips the way its ⏭/⏮ do. */
   readonly skipRequested = output<'next' | 'prev'>();

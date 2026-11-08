@@ -20,9 +20,21 @@ export function skipDirection(dx: number, velocity: number): 'next' | 'prev' | n
   return null;
 }
 
+/** A Now Playing neighbour sliver (#1652): a `<button>` for its tap, but the
+ *  cover is still what a drag from it grabs. */
+export const NP_SLIVER = '[data-np-sliver]';
+
+/** The element a gesture is judged from: a sliver stands in for the cover
+ *  strip it sits on, so the button exclusions do not swallow its drags. */
+export function gestureOrigin(target: EventTarget | null): EventTarget | null {
+  if (!(target instanceof Element)) return target;
+  return target.closest(NP_SLIVER)?.parentElement ?? target;
+}
+
 /** True when a pointerdown on `target` may start a skip swipe. */
 export function canStartSkipSwipe(target: EventTarget | null): boolean {
-  return !(target instanceof Element && target.closest(SKIP_SWIPE_EXCLUDE));
+  const origin = gestureOrigin(target);
+  return !(origin instanceof Element && origin.closest(SKIP_SWIPE_EXCLUDE));
 }
 
 /** The scrolling queue/lyrics zone of the sheet: a sideways drag there is the

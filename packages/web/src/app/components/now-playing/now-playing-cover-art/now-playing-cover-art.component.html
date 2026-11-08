@@ -48,7 +48,8 @@
           />
           <!-- Scaled toward the cover and dimmed at rest; the one a swipe
                heads for comes up to full size. Out of the tab order: the
-               transport's ⏮/⏭ are the keyboard path to the same skip. -->
+               transport's ⏮/⏭ are the keyboard path to the same skip.
+               data-np-sliver: a drag from one is a drag of the cover. -->
           @if (prevTrack(); as prev) {
             <button
               type="button"
@@ -59,6 +60,7 @@
               [attr.aria-label]="'nowPlaying.skipToPrevious' | t: { title: prev.title }"
               (click)="skipRequested.emit('prev')"
               data-testid="now-playing-cover-prev"
+              data-np-sliver
             >
               <app-cover-art
                 [src]="prev.coverArt ? '/api/cover/' + prev.coverArt + '?size=600&token=' + auth.mediaToken() : undefined"
@@ -80,6 +82,7 @@
               [attr.aria-label]="'nowPlaying.skipToNext' | t: { title: next.title }"
               (click)="skipRequested.emit('next')"
               data-testid="now-playing-cover-next"
+              data-np-sliver
             >
               <app-cover-art
                 [src]="next.coverArt ? '/api/cover/' + next.coverArt + '?size=600&token=' + auth.mediaToken() : undefined"

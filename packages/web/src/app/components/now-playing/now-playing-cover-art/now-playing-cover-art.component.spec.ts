@@ -244,6 +244,28 @@ describe('NowPlayingCoverArtComponent', () => {
       expect(skips).toEqual(['next', 'prev']);
     });
 
+    it('marks each neighbour as a sliver, so a drag from it is a drag of the cover', () => {
+      const { nextEl, prevEl } = render(0);
+      expect(nextEl!.hasAttribute('data-np-sliver')).toBe(true);
+      expect(prevEl!.hasAttribute('data-np-sliver')).toBe(true);
+    });
+
+    it('renders no neighbour while showNeighbours is off (controlling another device)', () => {
+      TestBed.overrideProvider(PlayerService, {
+        useValue: {
+          currentTrack: () => track,
+          nextNeighbour: () => next,
+          prevNeighbour: () => prev,
+        },
+      });
+      const fixture = TestBed.createComponent(NowPlayingCoverArtComponent);
+      setInputValue(fixture.componentInstance.showNeighbours, false);
+      fixture.detectChanges();
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.querySelector('[data-testid="now-playing-cover-next"]')).toBeNull();
+      expect(el.querySelector('[data-testid="now-playing-cover-prev"]')).toBeNull();
+    });
+
     it('renders no neighbour (and no tap target) where a skip lands nowhere', () => {
       const { nextEl, prevEl } = render(0, {});
       expect(nextEl).toBeNull();

@@ -167,7 +167,8 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
   instead of resolving — the two channels can decide on different events (a vertical first
   touchmove, then a sideways drift before pointermove crosses slop), and the claim is what covers
   that. A skip never starts from `SKIP_SWIPE_EXCLUDE` (buttons, links, form controls, the seek bar,
-  the waveform, menus); the grab notch starts only the vertical swipe. While dragging, the cover
+  the waveform, menus; a neighbour sliver is the one button excepted, below); the grab notch starts
+  only the vertical swipe. While dragging, the cover
   follows the finger (`swipeOffsetPx`) and the neighbour carousel (below) moves with it.
   A commit calls `haptic('commit')` (`lib/haptics.ts`, the #1659 vocabulary; `hapticTick()` is its
   alias) — once per skip, never also the transport button's `tap`. The sheet's open and dismiss
@@ -188,8 +189,16 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
   `clip-path: inset(0 calc(-1rem - 12%))` shows 12% of the cover width of each — and clips hit
   testing, so only the visible sliver is tappable. A tap (`now-playing-cover-next` /
   `now-playing-cover-prev`, `<button>`s labelled with the target title) emits `skipRequested`,
-  which the sheet routes through the same `handleNext`/`handlePrev` as ⏭/⏮; being buttons, they are
-  in `BODY_NO_SWIPE`, so a drag that starts on a sliver starts no gesture. Out of the tab order
+  which the sheet routes through the same `handleNext`/`handlePrev` as ⏭/⏮. They are buttons for
+  that tap, but a drag from one is a drag of the cover: `data-np-sliver` makes `gestureOrigin`
+  (`lib/swipe-to-skip.ts`) judge the press from the strip it sits on, so neither `BODY_NO_SWIPE` nor
+  `SKIP_SWIPE_EXCLUDE` swallows it — sideways skips, down dismisses, as beside any other part of the
+  cover. The click the browser still fires on the sliver when that drag lifts is dropped
+  (`onSliverSkip` ignores one within 500 ms of an owned gesture's end; the next pointerdown clears
+  it), or one pull would skip twice, or skip and close. **While this device controls another**
+  (`drivesLocalPlayer()` false) there are no slivers: the output's history, repeat and shuffle are
+  not mirrored here (a `show-track` never touches history), so a labelled neighbour would promise a
+  track ⏮/⏭ on the output may not land on; the swipe still sends NEXT/PREV. Out of the tab order
   (`tabindex="-1"`; ⏮/⏭ are the keyboard path) and absent on TV (`isTv`, the pinned D-pad order).
   At `lg` the outer `overflow-hidden` wrapper is the cover column, so where the side panel narrows
   it, the sliver is clipped to the column and never reaches over the panel. They load `eager` at

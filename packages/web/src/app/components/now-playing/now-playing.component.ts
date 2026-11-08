@@ -34,7 +34,7 @@ import {
   scrollableAncestorTop,
   shouldCommit,
 } from '../../lib/vertical-swipe';
-import { canStartSheetSkip, skipDirection } from '../../lib/swipe-to-skip';
+import { canStartSheetSkip, gestureOrigin, skipDirection } from '../../lib/swipe-to-skip';
 import { haptic } from '../../lib/haptics';
 import { ScrollLockService } from '../../services/scroll-lock.service';
 import { ServerConfigService } from '../../services/server-config.service';
@@ -261,7 +261,8 @@ export class NowPlayingComponent {
       }
       this.dragOffsetPx.set(Math.max(0, dy - this.dismissBaseDy));
     },
-    onEnd: ({ velocity }) => {
+    onEnd: ({ velocity, owned }) => {
+      if (owned) this.markGestureEnded();
       const mode = this.bodyMode();
       this.bodyMode.set('idle');
       if (mode === 'resize') {
@@ -309,6 +310,7 @@ export class NowPlayingComponent {
     onEnd: ({ dx, velocity, owned }) => {
       this.coverSwipeOffsetPx.set(0);
       if (!owned) return;
+      this.markGestureEnded();
       const direction = skipDirection(dx, velocity);
       if (!direction) return;
       haptic('commit');
@@ -319,10 +321,28 @@ export class NowPlayingComponent {
   });
   readonly coverSwiping = this.coverSwipe.dragging;
 
+  // A drag that starts on a neighbour sliver (#1652) is a drag of the cover:
+  // gestureOrigin lets it past BODY_NO_SWIPE, and the click the browser still
+  // fires on the sliver at the end of that drag is swallowed here, or one
+  // gesture would skip twice (or skip and dismiss).
+  private static readonly SLIVER_CLICK_AFTER_DRAG_MS = 500;
+  private gestureEndedAt = Number.NEGATIVE_INFINITY;
+  private markGestureEnded(): void {
+    this.gestureEndedAt = Date.now();
+  }
+  onSliverSkip(direction: 'next' | 'prev'): void {
+    if (Date.now() - this.gestureEndedAt < NowPlayingComponent.SLIVER_CLICK_AFTER_DRAG_MS) return;
+    if (direction === 'next') this.handleNext();
+    else this.handlePrev();
+  }
+
   onBodyPointerDown(event: PointerEvent): void {
+    // A fresh press is a fresh tap: a drag's click window never outlives it.
+    this.gestureEndedAt = Number.NEGATIVE_INFINITY;
     if (this.karaokeFullscreen()) return;
     const target = event.target;
-    if (target instanceof Element && target.closest(NowPlayingComponent.BODY_NO_SWIPE)) return;
+    const origin = gestureOrigin(target);
+    if (origin instanceof Element && origin.closest(NowPlayingComponent.BODY_NO_SWIPE)) return;
     // Anywhere on the sheet but its scrolling panel, not just the artwork: the
     // cover is 60vw wide, and a swipe that started beside it did nothing.
     if (canStartSheetSkip(target)) this.coverSwipe.start(event);

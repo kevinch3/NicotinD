@@ -991,7 +991,23 @@ test.describe('mobile UX', () => {
       await expect(title).toHaveText(first);
     });
 
-    test('a drag that starts on a peeking cover neither skips nor moves the sheet', async ({
+    // A sliver is a button for its tap, but a drag from it is a drag of the
+    // cover: pulling the peeking card in is the gesture a carousel invites.
+    test('a sideways drag that starts on a peeking cover skips once', async ({ page }) => {
+      await openNowPlaying(page);
+      const title = page.getByTestId('player-title');
+      const label = await page.getByTestId('now-playing-cover-next').getAttribute('aria-label');
+      const upcoming = label!.replace(/^.*?, /, '');
+      const { inside } = await sliver(page, 'next');
+      await drag(page, inside, { x: inside.x - 150, y: inside.y });
+      await expect(title).toHaveText(upcoming);
+      // The click the drag ends with on the sliver must not skip a second time.
+      await page.waitForTimeout(400);
+      await expect(title).toHaveText(upcoming);
+      await expect(page.getByTestId('now-playing-heading')).toBeInViewport();
+    });
+
+    test('a downward drag that starts on a peeking cover closes the sheet, skipping nothing', async ({
       page,
     }) => {
       await openNowPlaying(page);
@@ -999,9 +1015,9 @@ test.describe('mobile UX', () => {
       const first = (await title.textContent())!.trim();
       const { inside } = await sliver(page, 'next');
       await drag(page, inside, { x: inside.x, y: inside.y + 200 });
+      await expect(page.getByTestId('now-playing-heading')).not.toBeInViewport();
       await page.waitForTimeout(400);
       await expect(title).toHaveText(first);
-      await expect(page.getByTestId('now-playing-heading')).toBeInViewport();
     });
   });
 

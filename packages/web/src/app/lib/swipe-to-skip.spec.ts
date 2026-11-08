@@ -2,6 +2,7 @@ import {
   SKIP_THRESHOLD_PX,
   canStartSheetSkip,
   canStartSkipSwipe,
+  gestureOrigin,
   skipDirection,
 } from './swipe-to-skip';
 import { FLICK_PX_PER_MS } from './vertical-swipe';
@@ -60,6 +61,44 @@ describe('canStartSkipSwipe', () => {
     expect(canStartSkipSwipe(document.createElement('img'))).toBe(true);
     expect(canStartSkipSwipe(document.createElement('p'))).toBe(true);
     expect(canStartSkipSwipe(null)).toBe(true);
+  });
+
+  // #1652: a neighbour sliver is a button for its tap, but a drag from it is a
+  // drag of the cover strip it sits on.
+  function sliverIn(parent: Element): Element {
+    const sliver = document.createElement('button');
+    sliver.setAttribute('data-np-sliver', '');
+    const img = document.createElement('img');
+    sliver.appendChild(img);
+    parent.appendChild(sliver);
+    return img;
+  }
+
+  it('accepts a neighbour sliver, though it is a button', () => {
+    expect(canStartSkipSwipe(sliverIn(document.createElement('div')))).toBe(true);
+  });
+
+  it('a sliver inside an excluded control is still refused', () => {
+    expect(canStartSkipSwipe(sliverIn(document.createElement('a')))).toBe(false);
+  });
+});
+
+describe('gestureOrigin', () => {
+  it('maps a sliver (or anything in it) to the strip it sits on', () => {
+    const strip = document.createElement('div');
+    const sliver = document.createElement('button');
+    sliver.setAttribute('data-np-sliver', '');
+    const img = document.createElement('img');
+    sliver.appendChild(img);
+    strip.appendChild(sliver);
+    expect(gestureOrigin(img)).toBe(strip);
+    expect(gestureOrigin(sliver)).toBe(strip);
+  });
+
+  it('leaves every other target as it is', () => {
+    const button = document.createElement('button');
+    expect(gestureOrigin(button)).toBe(button);
+    expect(gestureOrigin(null)).toBeNull();
   });
 });
 

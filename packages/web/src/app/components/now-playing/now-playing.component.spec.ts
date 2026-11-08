@@ -1209,32 +1209,88 @@ describe('NowPlayingComponent', () => {
       expect(current.playNext).not.toHaveBeenCalled();
     });
 
-    it('tapping a peeking neighbour skips that way, and starts no gesture (#1652)', () => {
-      current = skipSetup();
-      const { playerStub, fixture, component } = current;
-      playerStub.currentTrack.set({ id: '1', title: 'Song', artist: 'Artist' });
-      playerStub.queue.set([{ id: '2', title: 'Next', artist: 'B' }]);
-      (playerStub.history as ReturnType<typeof signal<unknown[]>>).set([
-        { id: '0', title: 'Prev', artist: 'C' },
-      ]);
-      fixture.detectChanges();
-      const el: HTMLElement = fixture.nativeElement;
-      const next = el.querySelector<HTMLElement>('[data-testid="now-playing-cover-next"]')!;
-      const prev = el.querySelector<HTMLElement>('[data-testid="now-playing-cover-prev"]')!;
-      component.onBodyPointerDown(pointer('pointerdown', 300, 100, 0, next));
-      document.dispatchEvent(pointer('pointermove', 240, 160, 500));
-      expect(component.coverSwipeOffsetPx()).toBe(0);
-      expect(component.dragOffsetPx()).toBe(0);
-      document.dispatchEvent(pointer('pointerup', 240, 160, 1000));
-      expect(prev).not.toBeNull();
-      // The nested output does not land under the JIT harness (docs/web-ui.md),
-      // so the sheet's binding is driven directly; the click itself is e2e
-      // (mobile-ux.spec.ts "neighbour carousel").
-      const art = fixture.debugElement.query((d) => d.name === 'app-now-playing-cover-art');
-      art.triggerEventHandler('skipRequested', 'next');
-      expect(current.playNext).toHaveBeenCalledTimes(1);
-      art.triggerEventHandler('skipRequested', 'prev');
-      expect(current.playPrev).toHaveBeenCalledTimes(1);
+    describe('neighbour slivers (#1652)', () => {
+      function sliverSetup() {
+        current = skipSetup();
+        const { playerStub, fixture } = current;
+        playerStub.currentTrack.set({ id: '1', title: 'Song', artist: 'Artist' });
+        playerStub.queue.set([{ id: '2', title: 'Next', artist: 'B' }]);
+        (playerStub.history as ReturnType<typeof signal<unknown[]>>).set([
+          { id: '0', title: 'Prev', artist: 'C' },
+        ]);
+        fixture.detectChanges();
+        const el: HTMLElement = fixture.nativeElement;
+        const q = (id: string) => el.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+        // The nested output does not land under the JIT harness (docs/web-ui.md),
+        // so the sheet's binding is driven directly; the click itself is e2e
+        // (mobile-ux.spec.ts "neighbour carousel").
+        const art = fixture.debugElement.query((d) => d.name === 'app-now-playing-cover-art');
+        const tap = (direction: 'next' | 'prev') =>
+          art.triggerEventHandler('skipRequested', direction);
+        return { ...current, q, tap };
+      }
+
+      it('a tap skips that way, through the same path as ⏭/⏮', () => {
+        const { q, tap, component, playNext, playPrev } = sliverSetup();
+        const next = q('now-playing-cover-next')!;
+        component.onBodyPointerDown(pointer('pointerdown', 300, 100, 0, next));
+        document.dispatchEvent(pointer('pointerup', 300, 100, 50));
+        tap('next');
+        expect(playNext).toHaveBeenCalledTimes(1);
+        component.onBodyPointerDown(
+          pointer('pointerdown', 10, 100, 2000, q('now-playing-cover-prev')!),
+        );
+        document.dispatchEvent(pointer('pointerup', 10, 100, 2050));
+        tap('prev');
+        expect(playPrev).toHaveBeenCalledTimes(1);
+      });
+
+      it('a sideways drag that starts on a sliver skips, and its trailing click does not skip again', () => {
+        const { q, tap, component, playNext, playPrev } = sliverSetup();
+        const next = q('now-playing-cover-next')!;
+        component.onBodyPointerDown(pointer('pointerdown', 300, 100, 0, next));
+        document.dispatchEvent(pointer('pointermove', 240, 102, 500));
+        expect(component.coverSwipeOffsetPx()).toBe(-60);
+        document.dispatchEvent(pointer('pointermove', 150, 102, 600));
+        document.dispatchEvent(pointer('pointerup', 150, 102, 1000));
+        expect(playNext).toHaveBeenCalledTimes(1);
+        tap('next');
+        expect(playNext).toHaveBeenCalledTimes(1);
+        expect(playPrev).not.toHaveBeenCalled();
+      });
+
+      it('a downward drag that starts on a sliver moves the sheet and dismisses it, never skipping', () => {
+        const { q, tap, component, playerStub, playNext } = sliverSetup();
+        const setOpen = vi.spyOn(playerStub, 'setNowPlayingOpen');
+        component.onBodyPointerDown(
+          pointer('pointerdown', 300, 100, 0, q('now-playing-cover-next')!),
+        );
+        document.dispatchEvent(pointer('pointermove', 302, 160, 500));
+        expect(component.dragOffsetPx()).toBeGreaterThan(0);
+        document.dispatchEvent(pointer('pointermove', 302, 300, 600));
+        document.dispatchEvent(pointer('pointerup', 302, 300, 1000));
+        expect(setOpen).toHaveBeenCalledWith(false);
+        tap('next');
+        expect(playNext).not.toHaveBeenCalled();
+      });
+
+      it('while controlling another device, the slivers are switched off (the output is not mirrored)', () => {
+        const { remoteStub, fixture, component } = sliverSetup();
+        const art = fixture.debugElement.query((d) => d.name === 'app-now-playing-cover-art');
+        // The nested input does not land under the JIT harness (see above), so
+        // this pins the value the sheet binds; the child spec pins what an off
+        // input renders (none).
+        expect(art.properties['showNeighbours']).toBe(true);
+        remoteStub.sessionControllable.set(true);
+        remoteStub.isActiveDevice.set(false);
+        fixture.detectChanges();
+        expect(component.drivesLocalPlayer()).toBe(false);
+        expect(art.properties['showNeighbours']).toBe(false);
+        // A playing-alone device (no controllable session) still shows them.
+        remoteStub.sessionControllable.set(false);
+        fixture.detectChanges();
+        expect(art.properties['showNeighbours']).toBe(true);
+      });
     });
 
     it('the cover offset follows the finger and resets on release', () => {
