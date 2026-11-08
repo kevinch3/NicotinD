@@ -195,8 +195,8 @@ source:
   → [album-hunt.md](album-hunt.md) The addon side (waves of two, an 8 s per-search timeout, one
   `SearchLanes` queue with user hunts ahead of fallback waves) lives in the slskd
   addon's protocol doc.
-- **A hunt carries its attempt id.** Core sends `X-NicotinD-Attempt: <huntId>` on
-  `POST albums/search`, and logs it on `addon hunt completed` / `addon hunt failed`
+- **A hunt carries its attempt id.** Core sends `X-NicotinD-Attempt` on every
+  `POST albums/search`: the queued lane's hunt id, or a minted `h-<uuid>` on other lanes, and logs it on `addon hunt completed` / `addon hunt failed`
   together with `artist`, `album`, `searchesFired` / `searchesAnswered` and the
   `sourceOffline` / `rateLimited` flags. An addon that logs the header (the slskd
   addon's `hunt summary`) joins its own record to core's on that one id (#1626).

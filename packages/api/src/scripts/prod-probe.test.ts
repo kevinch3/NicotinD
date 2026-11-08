@@ -11,10 +11,12 @@ import {
   PROBE_LOOP_BLOCK_MAX_ROWS,
   PROBE_LOOP_BLOCK_RETENTION_MS,
   probeJobs,
+  probeAttempts,
   probeLoopBlocks,
   probeOrphans,
   probeTransfers,
 } from './prod-probe.js';
+import { recordAttempt } from '../services/acquisition-attempts.js';
 import {
   LOOP_BLOCK_MAX_ROWS,
   LOOP_BLOCK_RETENTION_MS,
@@ -279,5 +281,61 @@ describe('probeLoopBlocks — the #1058 re-measure read path', () => {
     );
     const out = probeLoopBlocks(db, since + DAY);
     expect(out.summary.window_start).toBe(new Date(since).toISOString());
+  });
+});
+
+describe('probeAttempts — the #1626 questions over the ledger', () => {
+  it('groups outcomes, queue wait and retry success', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    const min = 60_000;
+    const t0 = Date.now() - 120 * min;
+    const hunt = (at: number, outcome: string, album: number, queuedMs: number | null = null) =>
+      recordAttempt(
+        db,
+        {
+          kind: 'hunt',
+          lane: 'hunt-queue',
+          lidarrAlbumId: album,
+          outcome,
+          queuedMs: queuedMs ?? undefined,
+        },
+        at,
+      );
+    hunt(t0, 'timeout', 1, 70_000);
+    hunt(t0 + 5 * min, 'candidates', 1, 1_000); // retried after 5 min, found
+    hunt(t0, 'no-candidates', 2);
+    hunt(t0 + 90 * min, 'no-candidates', 2); // retried after 90 min, nothing
+    recordAttempt(db, { kind: 'enqueue', lane: 'hunt-download', outcome: 'created' }, t0);
+    // Outside the window: never counted.
+    hunt(t0 - 30 * 86_400_000, 'error', 3);
+
+    const r = probeAttempts(db, t0 - 1);
+    expect(r.byOutcome.find((x) => x.kind === 'enqueue')).toMatchObject({
+      outcome: 'created',
+      count: 1,
+    });
+    expect(r.byOutcome.filter((x) => x.kind === 'hunt').reduce((n, x) => n + x.count, 0)).toBe(4);
+    expect(r.byQueueWait).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ wait: '>60s', hunts: 1, failed: 1 }),
+        expect.objectContaining({ wait: '<10s', hunts: 1, failed: 0 }),
+        expect.objectContaining({ wait: 'not queued', hunts: 2, failed: 2 }),
+      ]),
+    );
+    expect(r.retries).toEqual([
+      expect.objectContaining({
+        prev_outcome: 'no-candidates',
+        delay: '1-6h',
+        retries: 1,
+        found: 0,
+      }),
+      expect.objectContaining({ prev_outcome: 'timeout', delay: '<10m', retries: 1, found: 1 }),
+    ]);
+  });
+
+  it('answers empty on a database without the ledger', () => {
+    const db = new Database(':memory:');
+    expect(probeAttempts(db, 0)).toEqual({ byOutcome: [], byQueueWait: [], retries: [] });
   });
 });

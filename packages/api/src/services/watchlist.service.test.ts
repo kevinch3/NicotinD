@@ -211,6 +211,7 @@ describe('WatchlistService', () => {
       expect(enqueue).toHaveBeenCalledWith(
         expect.objectContaining({ intent: 'album', candidateRef: 'ref-0' }),
         'acquire:99',
+        expect.objectContaining({ lane: 'watchlist', albumId: 99 }),
       );
       expect(state(db)).toBe('acquired');
       const feed = db.query(`SELECT method, lidarr_album_id AS a FROM acquisition_jobs`).get() as {

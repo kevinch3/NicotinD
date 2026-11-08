@@ -12,6 +12,7 @@ import {
   createLogger,
 } from '@nicotind/core';
 import type { AddonTransport, AddonCallOutcome, HuntTrace } from './transport.js';
+import { reportAttempt } from '../acquisition-attempts.js';
 
 export type { HuntLane, HuntTrace } from './transport.js';
 
@@ -238,22 +239,35 @@ export class AddonClient implements AddonTransport {
     opts: { timeoutMs?: number } & HuntTrace = {},
   ): Promise<AddonAlbumSearchResponse> {
     const started = performance.now();
-    // The attempt id joins this line to the addon's own `hunt summary` (#1626).
+    // The attempt id joins this line and its ledger row to the addon's own `hunt
+    // summary` (#1626); a caller without one (every lane but the queue) gets one.
+    const attemptId = opts.attemptId ?? `h-${crypto.randomUUID()}`;
     const trace = {
       baseUrl: this.baseUrl,
-      ...(opts.attemptId ? { attemptId: opts.attemptId } : {}),
+      attemptId,
       ...(opts.lane ? { lane: opts.lane } : {}),
       ...(opts.albumId !== undefined ? { albumId: opts.albumId } : {}),
       ...(opts.queuedMs !== undefined ? { queuedMs: opts.queuedMs } : {}),
       artist: req.artist,
       album: req.album,
     };
+    const huntRow = () => ({
+      kind: 'hunt' as const,
+      lane: opts.lane,
+      attemptId,
+      addonUrl: this.baseUrl,
+      lidarrAlbumId: opts.albumId,
+      artist: req.artist,
+      album: req.album,
+      durationMs: Math.round(performance.now() - started),
+      queuedMs: opts.queuedMs,
+    });
     try {
       const res = (await this.request('POST', '/addon/v1/albums/search', {
         auth: true,
         json: req,
         timeoutMs: opts.timeoutMs ?? 180_000,
-        headers: opts.attemptId ? { 'X-NicotinD-Attempt': opts.attemptId } : undefined,
+        headers: { 'X-NicotinD-Attempt': attemptId },
       })) as AddonAlbumSearchResponse;
       this.log.info(
         {
@@ -268,6 +282,13 @@ export class AddonClient implements AddonTransport {
         },
         'addon hunt completed',
       );
+      reportAttempt({
+        ...huntRow(),
+        outcome: huntOutcome(res),
+        candidates: res.candidates.length,
+        searchesFired: res.searchesFired,
+        searchesAnswered: res.searchesAnswered,
+      });
       return res;
     } catch (err) {
       this.log.warn(
@@ -279,11 +300,49 @@ export class AddonClient implements AddonTransport {
         },
         'addon hunt failed',
       );
+      reportAttempt({
+        ...huntRow(),
+        outcome: err instanceof AddonTimeoutError ? 'timeout' : 'error',
+        detail: err instanceof Error ? err.message : String(err),
+      });
       throw err;
     }
   }
 
-  async createJob(req: AddonJobRequest, idempotencyKey?: string): Promise<AddonJob> {
+  /** Every enqueue, created or not, lands one `enqueue` row in the attempt ledger (#1626). */
+  async createJob(
+    req: AddonJobRequest,
+    idempotencyKey?: string,
+    trace: HuntTrace = {},
+  ): Promise<AddonJob> {
+    const started = performance.now();
+    const keyAlbum = /^acquire:(\d+)$/.exec(idempotencyKey ?? '')?.[1];
+    const albumId = trace.albumId ?? (keyAlbum ? Number(keyAlbum) : undefined);
+    const record = (outcome: string, detail?: string) =>
+      reportAttempt({
+        kind: 'enqueue',
+        lane: trace.lane ?? `intent:${req.intent}`,
+        attemptId: trace.attemptId,
+        addonUrl: this.baseUrl,
+        lidarrAlbumId: albumId,
+        artist: req.artist,
+        album: req.album ?? req.url,
+        outcome,
+        detail,
+        durationMs: Math.round(performance.now() - started),
+      });
+    try {
+      const job = await this.createJobOnce(req, idempotencyKey);
+      record('created');
+      return job;
+    } catch (err) {
+      const conflict = err instanceof AddonRequestError && err.status === 409;
+      record(conflict ? 'conflict' : 'error', err instanceof Error ? err.message : String(err));
+      throw err;
+    }
+  }
+
+  private async createJobOnce(req: AddonJobRequest, idempotencyKey?: string): Promise<AddonJob> {
     const body = (await this.request('POST', '/addon/v1/jobs', {
       auth: true,
       json: req,
@@ -301,7 +360,7 @@ export class AddonClient implements AddonTransport {
         { baseUrl: this.baseUrl, idempotencyKey, replayedState: job?.state ?? null },
         'idempotency key replayed a dead job — re-issuing without it',
       );
-      return this.createJob(req);
+      return this.createJobOnce(req);
     }
     if (!job) throw new AddonContractError('createJob answered without a job');
     return job;

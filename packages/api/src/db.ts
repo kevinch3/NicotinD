@@ -378,6 +378,30 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
     )
   `);
   db.run(`CREATE INDEX IF NOT EXISTS idx_acq_items_job ON acquisition_job_items (job_id)`);
+  // One row per hunt or enqueue an addon was asked for, failures included, so
+  // "what fraction of hunts fail, and why" is a query, not a log parse (#1626).
+  // Written by services/acquisition-attempts.ts; pruned after 90 days.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS acquisition_attempts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      at INTEGER NOT NULL,
+      kind TEXT NOT NULL,
+      lane TEXT,
+      attempt_id TEXT,
+      addon_url TEXT,
+      lidarr_album_id INTEGER,
+      artist TEXT,
+      album TEXT,
+      outcome TEXT NOT NULL,
+      detail TEXT,
+      duration_ms INTEGER,
+      queued_ms INTEGER,
+      candidates INTEGER,
+      searches_fired INTEGER,
+      searches_answered INTEGER
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_acq_attempts_at ON acquisition_attempts (at)`);
   db.run(
     `CREATE INDEX IF NOT EXISTS idx_acq_items_transfer ON acquisition_job_items (transfer_key)`,
   );

@@ -4,6 +4,7 @@ import { fold, sameAlbum } from '@nicotind/core';
 import { normalizeTitle, titlesOverlap } from '@nicotind/core';
 import { albumIdFor } from './library-scanner.js';
 import { jobDestinationAlbums } from './job-destinations.js';
+import { pruneAttempts } from './acquisition-attempts.js';
 import { libraryEvents } from './library-events.js';
 
 /**
@@ -1420,6 +1421,7 @@ export function reconcileOnBoot(db: Database, now = Date.now()): void {
        WHERE state IN ('done', 'failed', 'superseded') AND updated_at < ?`,
       [now - FINISHED_JOB_TTL_MS],
     );
+    pruneAttempts(db, now);
   });
   prune();
 }

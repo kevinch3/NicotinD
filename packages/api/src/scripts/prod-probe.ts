@@ -15,6 +15,7 @@
  *   --jobs        acquisition jobs by state/stage, + item-state breakdown
  *   --transfers   hidden_transfers size (the removal fallback's backlog)
  *   --loop-blocks persisted event-loop blocks: the window they cover + recent rows (#1058)
+ *   --attempts [days] the acquisition attempt ledger: outcomes, queue wait, retries (#1626; default 7)
  *   --sql "<q>"   one-off read, forced read-only (see assertReadOnlySql)
  *   --json        emit JSON instead of the text tables
  *   --db <path>   override the database path
@@ -177,6 +178,78 @@ export function probeJobs(db: Database): JobCount[] {
     .all() as JobCount[];
 }
 
+export interface AttemptsReport {
+  /** Rows per kind × lane × outcome, with the median-ish average duration. */
+  byOutcome: Array<{
+    kind: string;
+    lane: string | null;
+    outcome: string;
+    count: number;
+    avg_ms: number | null;
+  }>;
+  /** Hunt failure share by how long the hunt waited in core's queue. */
+  byQueueWait: Array<{ wait: string; hunts: number; failed: number; failed_pct: number }>;
+  /** A hunt after a failed one for the same album: did it find candidates, by reason × delay? */
+  retries: Array<{
+    prev_outcome: string;
+    delay: string;
+    retries: number;
+    found: number;
+    found_pct: number;
+  }>;
+}
+
+const FAILED_HUNT = `outcome IN ('error', 'timeout', 'source-offline', 'rate-limited', 'no-candidates')`;
+
+/**
+ * The #1626 questions over the attempt ledger: what fraction of hunts fail and why,
+ * does waiting in the queue predict it, and does a retry after N minutes help.
+ */
+export function probeAttempts(db: Database, sinceMs: number): AttemptsReport {
+  if (!tableExists(db, 'acquisition_attempts'))
+    return { byOutcome: [], byQueueWait: [], retries: [] };
+  const byOutcome = db
+    .query(
+      `SELECT kind, lane, outcome, COUNT(*) count, CAST(AVG(duration_ms) AS INTEGER) avg_ms
+       FROM acquisition_attempts WHERE at >= ?
+       GROUP BY kind, lane, outcome ORDER BY kind, count DESC`,
+    )
+    .all(sinceMs) as AttemptsReport['byOutcome'];
+  const byQueueWait = db
+    .query(
+      `SELECT wait, COUNT(*) hunts, SUM(failed) failed, ROUND(100.0 * SUM(failed) / COUNT(*), 1) failed_pct
+       FROM (SELECT CASE WHEN queued_ms IS NULL THEN 'not queued'
+                         WHEN queued_ms < 10000 THEN '<10s'
+                         WHEN queued_ms < 60000 THEN '10-60s'
+                         ELSE '>60s' END wait,
+                    ${FAILED_HUNT} failed
+             FROM acquisition_attempts WHERE kind = 'hunt' AND at >= ?)
+       GROUP BY wait ORDER BY wait`,
+    )
+    .all(sinceMs) as AttemptsReport['byQueueWait'];
+  const retries = db
+    .query(
+      `WITH h AS (
+         SELECT lidarr_album_id, at, outcome,
+                LAG(outcome) OVER w prev_outcome, LAG(at) OVER w prev_at
+         FROM acquisition_attempts
+         WHERE kind = 'hunt' AND lidarr_album_id IS NOT NULL AND at >= ?
+         WINDOW w AS (PARTITION BY lidarr_album_id ORDER BY at))
+       SELECT prev_outcome,
+              CASE WHEN at - prev_at < 600000 THEN '<10m'
+                   WHEN at - prev_at < 3600000 THEN '10-60m'
+                   WHEN at - prev_at < 21600000 THEN '1-6h'
+                   ELSE '>6h' END delay,
+              COUNT(*) retries,
+              SUM(outcome = 'candidates') found,
+              ROUND(100.0 * SUM(outcome = 'candidates') / COUNT(*), 1) found_pct
+       FROM h WHERE prev_outcome IS NOT NULL AND prev_outcome != 'candidates'
+       GROUP BY prev_outcome, delay ORDER BY prev_outcome, delay`,
+    )
+    .all(sinceMs) as AttemptsReport['retries'];
+  return { byOutcome, byQueueWait, retries };
+}
+
 export interface TransferCounts {
   hiddenTransfers: number;
 }
@@ -325,11 +398,13 @@ function main(): void {
     jobs: argv.includes('--jobs'),
     transfers: argv.includes('--transfers'),
     loopBlocks: argv.includes('--loop-blocks'),
+    attempts: argv.includes('--attempts'),
   };
-  const any = modes.orphans || modes.jobs || modes.transfers || modes.loopBlocks || sql;
+  const any =
+    modes.orphans || modes.jobs || modes.transfers || modes.loopBlocks || modes.attempts || sql;
   if (!any) {
     console.error(
-      'Usage: prod-probe.ts [--orphans] [--jobs] [--transfers] [--loop-blocks] [--sql "SELECT …"] [--json] [--db <path>]',
+      'Usage: prod-probe.ts [--orphans] [--jobs] [--transfers] [--loop-blocks] [--attempts [days]] [--sql "SELECT …"] [--json] [--db <path>]',
     );
     process.exit(1);
   }
@@ -358,6 +433,14 @@ function main(): void {
       const { summary, recent } = probeLoopBlocks(db);
       result.loop_blocks = summary;
       result.loop_blocks_recent = recent;
+    }
+    if (modes.attempts) {
+      const days = Number(argv[argv.indexOf('--attempts') + 1]);
+      const since = Date.now() - (Number.isFinite(days) && days > 0 ? days : 7) * 86_400_000;
+      const report = probeAttempts(db, since);
+      result.attempts_by_outcome = report.byOutcome;
+      result.attempts_by_queue_wait = report.byQueueWait;
+      result.attempts_retries = report.retries;
     }
     if (sql !== undefined) result.sql = db.query(sql).all();
 
