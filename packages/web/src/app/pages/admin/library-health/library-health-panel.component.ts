@@ -10,6 +10,7 @@ import { ServiceReviewService } from '../../../services/service-review.service';
 import { TranslateService } from '../../../services/translate.service';
 import { isMaintenanceRunning } from '../../../lib/maintenance-progress';
 import { buildHealthCards, type HealthCard } from './library-health-cards.lib';
+import { OverflowRevealDirective } from '../../../directives/overflow-reveal.directive';
 
 /**
  * Admin card over `GET /api/library/health` (issue #736): one card per report
@@ -23,7 +24,7 @@ import { buildHealthCards, type HealthCard } from './library-health-cards.lib';
   selector: 'app-library-health-panel',
   standalone: true,
   host: { class: 'contents' },
-  imports: [SettingsGroupComponent, TranslatePipe, RouterLink],
+  imports: [OverflowRevealDirective, SettingsGroupComponent, TranslatePipe, RouterLink],
   templateUrl: './library-health-panel.component.html',
 })
 export class LibraryHealthPanelComponent {

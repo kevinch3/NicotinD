@@ -79,8 +79,8 @@
               }
             </span>
             <span class="flex-1 min-w-0">
-              <span class="block truncate text-sm font-medium text-theme-primary">{{ track.title }}</span>
-              <span class="block truncate text-xs text-theme-muted">{{ track.artist }}</span>
+              <span appOverflowReveal class="block truncate text-sm font-medium text-theme-primary">{{ track.title }}</span>
+              <span appOverflowReveal class="block truncate text-xs text-theme-muted">{{ track.artist }}</span>
             </span>
             <span class="text-xs text-theme-muted flex-shrink-0">{{ formatTime(track.duration ?? 0) }}</span>
           </button>
@@ -108,8 +108,8 @@
 
       <!-- Track info -->
       <div class="flex-1 min-w-0">
-        <p class="text-sm font-medium text-theme-primary truncate">{{ currentTrack()!.title }}</p>
-        <p class="text-xs text-theme-muted truncate">{{ currentTrack()!.artist }}</p>
+        <p appOverflowReveal="always" class="text-sm font-medium text-theme-primary truncate">{{ currentTrack()!.title }}</p>
+        <p appOverflowReveal class="text-xs text-theme-muted truncate">{{ currentTrack()!.artist }}</p>
       </div>
 
       <!-- Controls -->

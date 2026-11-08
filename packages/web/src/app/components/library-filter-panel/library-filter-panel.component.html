@@ -185,7 +185,7 @@
               <input type="checkbox" class="accent-theme rounded"
                 [attr.data-testid]="testIdPrefix() + '-filter-genre-' + genre"
                 [checked]="isGenreActive(genre)" (change)="toggleGenre(genre)" />
-              <span class="truncate">{{ genre }}</span>
+              <span appOverflowReveal class="truncate">{{ genre }}</span>
             </label>
           }
         </div>

@@ -11,6 +11,7 @@ import { ToastService } from '../../services/toast.service';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { toTrack } from '../../lib/track-utils';
 import type { PlaylistSummary, Song } from '../../services/api/api-types';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 /** Shelf size — the curated list is server-ordered newest-refreshed first. */
 const SHELF_CAP = 10;
@@ -45,7 +46,12 @@ const SEED_CAP = 20;
 @Component({
   selector: 'app-tastemakers',
   standalone: true,
-  imports: [EntityActionsDirective, EntityMenuButtonComponent, TranslatePipe],
+  imports: [
+    OverflowRevealDirective,
+    EntityActionsDirective,
+    EntityMenuButtonComponent,
+    TranslatePipe,
+  ],
   template: `
     @if (shelf().length > 0) {
       <section data-testid="tastemakers">
@@ -90,10 +96,13 @@ const SEED_CAP = 20;
                     </span>
                   }
                 </div>
-                <p class="mt-1.5 text-xs font-semibold text-theme-primary truncate">
+                <p
+                  appOverflowReveal
+                  class="mt-1.5 text-xs font-semibold text-theme-primary truncate"
+                >
                   {{ playlist.name }}
                 </p>
-                <p class="text-xs text-theme-muted truncate">
+                <p appOverflowReveal class="text-xs text-theme-muted truncate">
                   {{ playlist.songCount }} {{ 'home.tastemakerSongs' | t }}
                 </p>
               </button>

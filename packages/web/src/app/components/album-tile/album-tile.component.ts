@@ -10,6 +10,7 @@ import { resolveAlbumRoute } from '../../lib/route-utils';
 import type { AlbumTile } from '../../lib/artist-album-tiles';
 import { TranslateService } from '../../services/translate.service';
 import { IDLE_HUNT, albumHuntLabel, type AlbumHuntStatus } from '../../lib/album-hunt-status';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 /**
  * One album in an artist's grid, in whichever of three states it is in.
@@ -37,6 +38,7 @@ const EMPTY_TILE: AlbumTile = {
   selector: 'app-album-tile',
   standalone: true,
   imports: [
+    OverflowRevealDirective,
     RouterLink,
     CoverArtComponent,
     TvNavItemDirective,

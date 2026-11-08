@@ -11,6 +11,7 @@ import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 import { otherDevicesFor } from '../../lib/device-list';
 import { TranslatePipe } from '../../pipes/translate.pipe';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 function deviceEmoji(name: string, type: string): string {
   if (type !== 'web') return '\uD83C\uDFB5';
@@ -19,7 +20,7 @@ function deviceEmoji(name: string, type: string): string {
 
 @Component({
   selector: 'app-device-switcher',
-  imports: [TranslatePipe],
+  imports: [OverflowRevealDirective, TranslatePipe],
   templateUrl: './device-switcher.component.html',
 })
 export class DeviceSwitcherComponent {

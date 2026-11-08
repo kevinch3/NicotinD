@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import type { Song } from '../../services/api/api-types';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 /**
  * Search-as-you-type song picker: song-agnostic-of-playlists reusable
@@ -12,7 +13,7 @@ import type { Song } from '../../services/api/api-types';
 @Component({
   selector: 'app-song-picker',
   standalone: true,
-  imports: [FormsModule],
+  imports: [OverflowRevealDirective, FormsModule],
   templateUrl: './song-picker.component.html',
 })
 export class SongPickerComponent {

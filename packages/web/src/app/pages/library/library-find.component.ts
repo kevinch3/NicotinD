@@ -15,6 +15,7 @@ import { albumRef, toTrack } from '../../lib/track-utils';
 import { albumCover, artistCover } from '../../lib/cover-url';
 import { CoverRevisionsService } from '../../services/cover-revisions.service';
 import type { SearchResult } from '../../services/api/api-types';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 type LocalResults = SearchResult['local'];
 
@@ -33,7 +34,14 @@ const EMPTY: LocalResults = { artists: [], albums: [], songs: [] };
 // in that lane, so they're out of scope.
 @Component({
   selector: 'app-library-find',
-  imports: [RouterLink, CoverArtComponent, TrackRowComponent, TranslatePipe, SkeletonComponent],
+  imports: [
+    OverflowRevealDirective,
+    RouterLink,
+    CoverArtComponent,
+    TrackRowComponent,
+    TranslatePipe,
+    SkeletonComponent,
+  ],
   templateUrl: './library-find.component.html',
 })
 export class LibraryFindComponent {

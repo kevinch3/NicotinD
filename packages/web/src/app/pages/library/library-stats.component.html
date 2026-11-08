@@ -61,8 +61,8 @@
           @for (song of stats()!.topSongs; track song.songId; let i = $index) {
             <li class="flex items-center gap-3 text-sm" data-testid="stats-top-song">
               <span class="w-5 shrink-0 text-right text-xs text-theme-muted">{{ i + 1 }}</span>
-              <span class="min-w-0 flex-1 truncate text-theme-primary">{{ song.title }}</span>
-              <span class="min-w-0 flex-1 truncate text-theme-muted">{{ song.artist }}</span>
+              <span appOverflowReveal class="min-w-0 flex-1 truncate text-theme-primary">{{ song.title }}</span>
+              <span appOverflowReveal class="min-w-0 flex-1 truncate text-theme-muted">{{ song.artist }}</span>
               <span class="shrink-0 text-xs text-theme-muted">
                 {{ 'stats.playCount' | t: { count: song.plays } }}
               </span>
@@ -81,7 +81,7 @@
             @for (a of stats()!.topArtists; track a.artist; let i = $index) {
               <li class="flex items-center gap-3 text-sm" data-testid="stats-top-artist">
                 <span class="w-5 shrink-0 text-right text-xs text-theme-muted">{{ i + 1 }}</span>
-                <span class="min-w-0 flex-1 truncate text-theme-primary">{{ a.artist }}</span>
+                <span appOverflowReveal class="min-w-0 flex-1 truncate text-theme-primary">{{ a.artist }}</span>
                 <span class="shrink-0 text-xs text-theme-muted">
                   {{ 'stats.playCount' | t: { count: a.plays } }}
                 </span>
@@ -98,7 +98,7 @@
             @for (al of stats()!.topAlbums; track al.album; let i = $index) {
               <li class="flex items-center gap-3 text-sm" data-testid="stats-top-album">
                 <span class="w-5 shrink-0 text-right text-xs text-theme-muted">{{ i + 1 }}</span>
-                <span class="min-w-0 flex-1 truncate text-theme-primary">{{ al.album }}</span>
+                <span appOverflowReveal class="min-w-0 flex-1 truncate text-theme-primary">{{ al.album }}</span>
                 <span class="shrink-0 text-xs text-theme-muted">
                   {{ 'stats.playCount' | t: { count: al.plays } }}
                 </span>
@@ -155,7 +155,7 @@
                 [attr.data-kind]="row.kind ?? null"
                 [attr.data-percent]="row.percent"
               >
-                <span
+                <span appOverflowReveal
                   class="min-w-0 w-28 sm:w-40 shrink-0 truncate"
                   [class.text-theme-primary]="!row.kind"
                   [class.text-theme-muted]="!!row.kind"
@@ -185,7 +185,7 @@
             @for (g of stats()!.topGenres; track g.genre; let i = $index) {
               <li class="flex items-center gap-3 text-sm" data-testid="stats-genre-all-row">
                 <span class="w-5 shrink-0 text-right text-xs text-theme-muted">{{ i + 1 }}</span>
-                <span class="min-w-0 flex-1 truncate text-theme-primary">{{ g.genre }}</span>
+                <span appOverflowReveal class="min-w-0 flex-1 truncate text-theme-primary">{{ g.genre }}</span>
                 <span class="shrink-0 text-xs text-theme-muted">
                   {{ 'stats.playCount' | t: { count: g.plays } }}
                 </span>

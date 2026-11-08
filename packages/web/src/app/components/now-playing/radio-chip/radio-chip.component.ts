@@ -16,6 +16,7 @@ import { TranslatePipe } from '../../../pipes/translate.pipe';
 import { TvNavGroupDirective } from '../../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 import type { FeedbackKind } from '../../../services/api/api-types';
+import { OverflowRevealDirective } from '../../../directives/overflow-reveal.directive';
 
 /**
  * The vote a move logs against the playing track, keyed by the strategy it
@@ -41,7 +42,7 @@ const KIND_FOR_STRATEGY: Record<StrategyId, FeedbackKind> = {
  */
 @Component({
   selector: 'app-radio-chip',
-  imports: [TranslatePipe, TvNavGroupDirective, TvNavItemDirective],
+  imports: [OverflowRevealDirective, TranslatePipe, TvNavGroupDirective, TvNavItemDirective],
   templateUrl: './radio-chip.component.html',
 })
 export class RadioChipComponent {

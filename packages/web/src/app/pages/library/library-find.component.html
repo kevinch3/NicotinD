@@ -48,8 +48,8 @@
                 rounded="rounded"
                 className="mb-2"
               />
-              <p class="text-sm text-theme-primary truncate">{{ album.name }}</p>
-              <p class="text-xs text-theme-muted truncate">
+              <p appOverflowReveal class="text-sm text-theme-primary truncate">{{ album.name }}</p>
+              <p appOverflowReveal class="text-xs text-theme-muted truncate">
                 {{ album.artist }}{{ album.year ? ' · ' + album.year : '' }}
               </p>
             </a>
@@ -77,7 +77,7 @@
                 rounded="rounded-full"
                 className="mb-2"
               />
-              <p class="text-sm text-theme-primary truncate">{{ artist.name }}</p>
+              <p appOverflowReveal class="text-sm text-theme-primary truncate">{{ artist.name }}</p>
             </a>
           }
         </div>

@@ -16,6 +16,7 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
 import { VIBE_PRESETS, type VibePreset } from '../../lib/vibe-presets';
 import { songCover } from '../../lib/cover-url';
 import { CoverRevisionsService } from '../../services/cover-revisions.service';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 // VIBE_PRESETS moved to lib/vibe-presets.ts when the mosaic home began sharing
 // them; the contrast and column-order rules that shaped the gradients live
@@ -39,6 +40,7 @@ import { CoverRevisionsService } from '../../services/cover-revisions.service';
   selector: 'app-radio-landing',
   standalone: true,
   imports: [
+    OverflowRevealDirective,
     CoverArtComponent,
     KeepVibeComponent,
     RecentlyPlayedComponent,

@@ -102,7 +102,7 @@
         <div class="px-4 py-3" data-testid="radio-polls-row">
           <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
             <div class="flex-1 min-w-0">
-              <p class="text-sm font-medium text-theme-primary truncate">
+              <p appOverflowReveal class="text-sm font-medium text-theme-primary truncate">
                 {{ row.name }}
                 <span
                   [class]="'ml-2 inline-block rounded px-2 py-0.5 text-[11px] align-middle ' +
@@ -160,7 +160,7 @@
                         <div class="text-xs">
                           <div class="flex items-center gap-2">
                             <span class="text-theme-muted w-5 text-right flex-shrink-0">#{{ c.rank }}</span>
-                            <span class="flex-1 min-w-0 truncate text-theme-primary">{{ c.song.title }} — {{ c.song.artist }}</span>
+                            <span appOverflowReveal class="flex-1 min-w-0 truncate text-theme-primary">{{ c.song.title }} — {{ c.song.artist }}</span>
                             @if (res.poll.voteScale === 'stars5') {
                               <span class="text-amber-500 flex-shrink-0" data-testid="radio-polls-rating">
                                 {{ ratingSummary(c.meanRating, c.ratingCount) ?? '—' }}

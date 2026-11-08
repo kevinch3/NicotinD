@@ -22,6 +22,7 @@ import type { Album } from '../../services/api/api-types';
 import { CoverRevisionsService } from '../../services/cover-revisions.service';
 import { albumCover } from '../../lib/cover-url';
 import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.directive';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 /**
  * The artist-portrait override control: upload / copy from an album cover /
@@ -44,7 +45,13 @@ import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.d
 @Component({
   selector: 'app-artist-image-menu',
   standalone: true,
-  imports: [MenuPanelComponent, IconComponent, CoverArtComponent, BottomChromeSafeDirective],
+  imports: [
+    OverflowRevealDirective,
+    MenuPanelComponent,
+    IconComponent,
+    CoverArtComponent,
+    BottomChromeSafeDirective,
+  ],
   templateUrl: './artist-image-menu.component.html',
 })
 export class ArtistImageMenuComponent {

@@ -11,10 +11,12 @@ import { MenuPanelComponent } from '../../menu-panel/menu-panel.component';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
 import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 import { isTvUi } from '../../../lib/platform';
+import { OverflowRevealDirective } from '../../../directives/overflow-reveal.directive';
 
 @Component({
   selector: 'app-now-playing-cover-art',
   imports: [
+    OverflowRevealDirective,
     CoverArtComponent,
     ArtistLinksComponent,
     EntityLinkComponent,

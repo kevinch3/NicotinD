@@ -32,6 +32,7 @@ import {
   customCoverToRequest,
 } from '../../lib/cover-candidates';
 import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.directive';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 /**
  * Admin metadata fix modal: search Lidarr with an editable query, pick a candidate
@@ -42,7 +43,13 @@ import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.d
 @Component({
   selector: 'app-metadata-fix-modal',
   standalone: true,
-  imports: [FormsModule, CoverArtComponent, BottomChromeSafeDirective, TranslatePipe],
+  imports: [
+    OverflowRevealDirective,
+    FormsModule,
+    CoverArtComponent,
+    BottomChromeSafeDirective,
+    TranslatePipe,
+  ],
   templateUrl: './metadata-fix-modal.component.html',
 })
 export class MetadataFixModalComponent implements OnInit {

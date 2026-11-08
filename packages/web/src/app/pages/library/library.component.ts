@@ -67,6 +67,7 @@ import {
   serializeLibraryFilter,
   type LibraryFilter,
 } from '@nicotind/core';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 export type { AlbumListType };
 
@@ -134,6 +135,7 @@ function writePersistedState(state: PersistedLibraryState): void {
 @Component({
   selector: 'app-library',
   imports: [
+    OverflowRevealDirective,
     ArtistImageMenuComponent,
     RouterLink,
     CoverArtComponent,

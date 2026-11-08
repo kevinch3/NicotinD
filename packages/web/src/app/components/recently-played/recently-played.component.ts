@@ -12,6 +12,7 @@ import { SkeletonComponent } from '../skeleton/skeleton.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import type { RecentPlay } from '../../services/api/api-types';
 import { playShelfSong } from '../../lib/shelf-play';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 /**
  * "Recently played" shelf — the first read surface over the listening log.
@@ -44,6 +45,7 @@ export function shouldShowRecentSkeleton(loading: boolean, hasPlayedBefore: bool
   selector: 'app-recently-played',
   standalone: true,
   imports: [
+    OverflowRevealDirective,
     CoverArtComponent,
     SkeletonComponent,
     TranslatePipe,
@@ -85,10 +87,13 @@ export function shouldShowRecentSkeleton(loading: boolean, hasPlayedBefore: bool
                   className="w-28 h-28"
                   rounded="rounded-lg"
                 />
-                <p class="mt-1.5 text-xs font-semibold text-theme-primary truncate">
+                <p
+                  appOverflowReveal
+                  class="mt-1.5 text-xs font-semibold text-theme-primary truncate"
+                >
                   {{ play.title }}
                 </p>
-                <p class="text-xs text-theme-muted truncate">{{ play.artist }}</p>
+                <p appOverflowReveal class="text-xs text-theme-muted truncate">{{ play.artist }}</p>
               </button>
             </div>
           }

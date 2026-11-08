@@ -1045,6 +1045,20 @@
   }
 }
 
+/* Reveal-on-overflow (#1665, OverflowRevealDirective). While a truncated name
+   scrolls, the ellipsis would hide the very text being revealed, so it is
+   clipped instead; at rest it comes back. A tap under reduced motion wraps the
+   name instead of moving it. `!important` because a state beats whichever rule
+   truncated the host (a utility, or a TV class like .np-tv-queue-title). */
+.overflow-reveal-active {
+  text-overflow: clip !important;
+}
+.overflow-reveal-expanded {
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+  text-overflow: clip !important;
+}
+
 /* E-paper ghosts on repaint and each frame costs a full refresh. The eink theme
    already drops transparency for the same class of reason. */
 [data-theme='eink'] .skeleton-block {

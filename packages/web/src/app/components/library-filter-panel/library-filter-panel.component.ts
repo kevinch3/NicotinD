@@ -13,6 +13,7 @@ import {
   type PerceptualAxis,
   type PerceptualBucket,
 } from '@nicotind/core';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 type NumericField = 'bpmMin' | 'bpmMax' | 'yearMin' | 'yearMax';
 type DurationField = 'durationMin' | 'durationMax';
@@ -27,7 +28,7 @@ type DurationField = 'durationMin' | 'durationMax';
  */
 @Component({
   selector: 'app-library-filter-panel',
-  imports: [MenuPanelComponent, IconComponent, TranslatePipe],
+  imports: [OverflowRevealDirective, MenuPanelComponent, IconComponent, TranslatePipe],
   templateUrl: './library-filter-panel.component.html',
 })
 export class LibraryFilterPanelComponent {

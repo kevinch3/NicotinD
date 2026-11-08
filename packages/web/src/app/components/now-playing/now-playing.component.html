@@ -29,7 +29,7 @@
         (click)="tvQueueOpen.set(true)"
       >
         <span class="np-tv-next-label">{{ 'nowPlaying.nextUp' | t }}</span>
-        <span class="np-tv-next-title">{{ next.title }} · {{ next.artist }}</span>
+        <span appOverflowReveal class="np-tv-next-title">{{ next.title }} · {{ next.artist }}</span>
       </button>
       @if (tvQueueOpen()) {
         <app-now-playing-tv-queue

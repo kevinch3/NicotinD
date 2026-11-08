@@ -17,7 +17,7 @@
         class="flex items-center justify-between px-6 py-5 rounded-xl bg-theme-surface-2 text-left
                focus:outline-none focus-visible:ring-4 focus-visible:ring-theme-accent"
       >
-        <span class="text-lg text-theme-primary truncate">{{ myName() }}</span>
+        <span appOverflowReveal class="text-lg text-theme-primary truncate">{{ myName() }}</span>
         <span class="text-base text-theme-muted shrink-0 ml-4">
           @if (playingHere()) {
             {{ 'remote.nowPlaying' | t }}
@@ -38,7 +38,7 @@
           class="flex items-center justify-between px-6 py-5 rounded-xl bg-theme-surface-2 text-left
                  disabled:opacity-50 focus:outline-none focus-visible:ring-4 focus-visible:ring-theme-accent"
         >
-          <span class="text-lg text-theme-primary truncate">{{ d.name }}</span>
+          <span appOverflowReveal class="text-lg text-theme-primary truncate">{{ d.name }}</span>
           <span class="text-base text-theme-muted shrink-0 ml-4">
             @if (!d.offerable) {
               {{ 'remote.notAvailable' | t }}

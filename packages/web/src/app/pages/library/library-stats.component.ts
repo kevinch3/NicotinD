@@ -11,6 +11,7 @@ import { sharePercents } from '../../lib/share-percents';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import type { ListeningStats, StatsPeriod } from '../../services/api/api-types';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 interface PeriodOption {
   value: StatsPeriod;
@@ -49,6 +50,7 @@ const PERIODS: PeriodOption[] = [
 @Component({
   selector: 'app-library-stats',
   imports: [
+    OverflowRevealDirective,
     GenreShareBarComponent,
     TranslatePipe,
     // The period picker and genre mode switch are the only focusable controls

@@ -29,6 +29,7 @@ import {
   type PollVoteValue,
 } from './poll-view.lib';
 import { getRaterKey } from './rater-key';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 /**
  * Public radio-evaluation poll wizard (docs/radio-eval-polls.md). Guard-less
@@ -44,7 +45,7 @@ import { getRaterKey } from './rater-key';
 @Component({
   selector: 'app-poll-view',
   templateUrl: './poll-view.component.html',
-  imports: [SeekBarComponent, SkeletonComponent, TranslatePipe],
+  imports: [OverflowRevealDirective, SeekBarComponent, SkeletonComponent, TranslatePipe],
 })
 export class PollViewComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);

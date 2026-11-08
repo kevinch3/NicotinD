@@ -63,8 +63,8 @@
             />
           }
           <div class="min-w-0 no-callout" translate="no">
-            <p class="text-sm font-medium text-theme-primary truncate" data-testid="player-title">{{ player.currentTrack()?.title }}</p>
-            <p class="text-xs text-theme-secondary truncate">
+            <p appOverflowReveal="always" class="text-sm font-medium text-theme-primary truncate" data-testid="player-title">{{ player.currentTrack()?.title }}</p>
+            <p appOverflowReveal class="text-xs text-theme-secondary truncate">
               @if (player.currentTrack()?.artists?.length) {
                 <app-artist-links [artists]="player.currentTrack()!.artists!" />
               } @else {

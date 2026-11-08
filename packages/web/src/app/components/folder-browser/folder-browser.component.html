@@ -1,6 +1,6 @@
     <div class="mt-2 border border-theme rounded-lg overflow-hidden bg-theme-surface" data-no-p2r>
       <div class="flex items-center justify-between px-3 py-2 bg-theme-surface-2 border-b border-theme">
-        <span class="text-xs text-theme-secondary truncate">{{ username() }}'s library</span>
+        <span appOverflowReveal class="text-xs text-theme-secondary truncate">{{ username() }}'s library</span>
         <div class="flex items-center gap-2">
           @if (!dirs() && !loading()) {
             <button
@@ -40,7 +40,7 @@
             }
           </div>
         } @else {
-          <div class="px-3 py-2 border-b border-theme text-[11px] text-theme-muted truncate">
+          <div appOverflowReveal class="px-3 py-2 border-b border-theme text-[11px] text-theme-muted truncate">
             {{ matchedPath() }}
           </div>
         }
@@ -50,7 +50,7 @@
             @for (child of mobileChildren(); track child.fullPath) {
               <button (click)="selected.set(child.fullPath)"
                 class="w-full text-left flex items-center justify-between px-2 py-1.5 rounded text-xs text-theme-secondary hover:bg-theme-hover hover:text-theme-primary">
-                <span class="flex items-center gap-1.5 truncate">
+                <span appOverflowReveal class="flex items-center gap-1.5 truncate">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" class="shrink-0 text-theme-muted">
                     <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/>
                   </svg>
@@ -65,7 +65,7 @@
           } @else {
             @for (file of directFiles(); track file.filename) {
               <div class="flex items-center justify-between text-[11px] text-theme-secondary hover:text-theme-primary px-2 py-1">
-                <span class="truncate flex-1">{{ extractBasename(file.filename) }}</span>
+                <span appOverflowReveal class="truncate flex-1">{{ extractBasename(file.filename) }}</span>
                 <div class="shrink-0 ml-2 flex items-center gap-2">
                   <span class="text-theme-muted">
                     {{ file.bitRate ? file.bitRate + ' kbps · ' : '' }}{{ formatSize(file.size) }}
@@ -132,7 +132,7 @@
             } @else {
               @for (file of directFiles(); track file.filename) {
                 <div class="flex items-center justify-between text-[11px] text-theme-secondary hover:text-theme-primary px-1 py-0.5">
-                  <span class="truncate flex-1">{{ extractBasename(file.filename) }}</span>
+                  <span appOverflowReveal class="truncate flex-1">{{ extractBasename(file.filename) }}</span>
                   <div class="flex items-center gap-3 ml-2 shrink-0">
                     <span class="text-theme-muted">
                       {{ file.bitRate ? file.bitRate + ' kbps · ' : '' }}{{ formatSize(file.size) }}

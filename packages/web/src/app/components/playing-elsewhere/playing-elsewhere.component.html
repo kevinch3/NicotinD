@@ -17,7 +17,7 @@
       <path d="M15.5 8.5a5 5 0 0 1 0 7" />
       <path d="M19 5a9 9 0 0 1 0 14" />
     </svg>
-    <span class="truncate" data-testid="playing-elsewhere-name">{{ 'remote.playingOn' | t: { name: name() } }}</span>
+    <span appOverflowReveal class="truncate" data-testid="playing-elsewhere-name">{{ 'remote.playingOn' | t: { name: name() } }}</span>
     @if (reconnecting()) {
       <span class="flex-shrink-0">· {{ 'remote.reconnecting' | t }}</span>
     }

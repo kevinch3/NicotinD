@@ -22,6 +22,7 @@ import { createRowGesture, reorderTargetIndex } from '../../../lib/row-gesture';
 import { shouldCommit } from '../../../lib/vertical-swipe';
 import { haptic } from '../../../lib/haptics';
 import { isCoarsePointer } from '../../../lib/platform';
+import { OverflowRevealDirective } from '../../../directives/overflow-reveal.directive';
 
 /** Leftward travel that removes a row without a flick. */
 export const QUEUE_SWIPE_REMOVE_PX = 96;
@@ -34,6 +35,7 @@ const AUTOSCROLL_STEP_PX = 8;
 @Component({
   selector: 'app-now-playing-queue-panel',
   imports: [
+    OverflowRevealDirective,
     CoverArtComponent,
     ArtistLinksComponent,
     EntityLinkComponent,

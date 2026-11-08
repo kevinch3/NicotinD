@@ -1,4 +1,5 @@
 import { Component, input, output } from '@angular/core';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 /**
  * One tappable "start something" tile, shared by the two rows of the home
@@ -17,6 +18,7 @@ import { Component, input, output } from '@angular/core';
  */
 @Component({
   selector: 'app-vibe-tile',
+  imports: [OverflowRevealDirective],
   standalone: true,
   // The host carries the caller's data-testid as a plain attribute (a signal
   // input can't: the JIT vitest harness never registers inputs on a nested
@@ -37,7 +39,7 @@ import { Component, input, output } from '@angular/core';
           emoji()
         }}</span>
       }
-      <span [class]="labelClasses()">{{ label() }}</span>
+      <span appOverflowReveal [class]="labelClasses()">{{ label() }}</span>
       @if (busy()) {
         <span
           class="absolute top-2 right-2 w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin"

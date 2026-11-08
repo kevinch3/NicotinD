@@ -22,6 +22,7 @@ import {
   mapSharedPlaylist,
   type ShareTrack,
 } from './share-view.lib';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 /** Real in-app route for a shared resource (issue #230 logged-in redirect). */
 export function inAppShareRoute(type: ShareResourceType, id: string): string {
@@ -40,7 +41,7 @@ type PageState = 'loading' | 'active' | 'expired' | 'error';
 @Component({
   selector: 'app-share-view',
   templateUrl: './share-view.component.html',
-  imports: [SkeletonComponent],
+  imports: [OverflowRevealDirective, SkeletonComponent],
 })
 export class ShareViewComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);

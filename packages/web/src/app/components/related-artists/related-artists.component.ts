@@ -6,6 +6,7 @@ import { CoverRevisionsService } from '../../services/cover-revisions.service';
 import { artistCover } from '../../lib/cover-url';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 /**
  * A scrolling row of library artists related to the one on the page
@@ -15,7 +16,13 @@ import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 @Component({
   selector: 'app-related-artists',
   standalone: true,
-  imports: [RouterLink, CoverArtComponent, TranslatePipe, TvNavGroupDirective],
+  imports: [
+    OverflowRevealDirective,
+    RouterLink,
+    CoverArtComponent,
+    TranslatePipe,
+    TvNavGroupDirective,
+  ],
   templateUrl: './related-artists.component.html',
 })
 export class RelatedArtistsComponent {

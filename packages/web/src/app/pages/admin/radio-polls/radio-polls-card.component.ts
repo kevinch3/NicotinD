@@ -10,6 +10,7 @@ import { TranslateService } from '../../../services/translate.service';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
 import { SongPickerComponent } from '../../../components/song-picker/song-picker.component';
 import { approvalShare, breakdownLine, ratingShare, ratingSummary } from './radio-polls-card.lib';
+import { OverflowRevealDirective } from '../../../directives/overflow-reveal.directive';
 
 /**
  * Admin card for radio evaluation polls (docs/radio-eval-polls.md): create a
@@ -20,7 +21,7 @@ import { approvalShare, breakdownLine, ratingShare, ratingSummary } from './radi
 @Component({
   selector: 'app-radio-polls-card',
   standalone: true,
-  imports: [FormsModule, TranslatePipe, SongPickerComponent],
+  imports: [OverflowRevealDirective, FormsModule, TranslatePipe, SongPickerComponent],
   templateUrl: './radio-polls-card.component.html',
 })
 export class RadioPollsCardComponent {

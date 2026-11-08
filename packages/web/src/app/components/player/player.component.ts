@@ -47,6 +47,7 @@ import { PlayerTransportMiniComponent } from './player-transport-mini/player-tra
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import { isAppleMobileWebKit, isTvBuild } from '../../lib/platform';
 import { formatTime } from '../../lib/format-time';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 /**
  * Absolute floor (seconds) used by both {@link browserDurationIsAcceptable}
@@ -163,6 +164,7 @@ export function browserDurationIsAcceptable(knownSec: number, nativeSec: number)
 @Component({
   selector: 'app-player',
   imports: [
+    OverflowRevealDirective,
     CoverArtComponent,
     DeviceSwitcherComponent,
     PlayingElsewhereComponent,

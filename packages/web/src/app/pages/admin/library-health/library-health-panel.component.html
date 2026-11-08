@@ -93,14 +93,14 @@
                     @for (row of list.rows; track $index) {
                       <li class="py-0.5 flex gap-2 min-w-0" data-testid="health-row">
                         @if (row.link) {
-                          <a
+                          <a appOverflowReveal
                             [routerLink]="row.link"
                             class="text-theme-primary underline truncate"
                             data-testid="health-row-link"
                             >{{ row.label }}</a
                           >
                         } @else {
-                          <span class="text-theme-primary truncate">{{ row.label }}</span>
+                          <span appOverflowReveal class="text-theme-primary truncate">{{ row.label }}</span>
                         }
                         <span class="text-theme-muted truncate">{{ row.detail }}</span>
                       </li>

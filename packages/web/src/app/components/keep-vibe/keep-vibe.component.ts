@@ -14,6 +14,7 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
 import { toTrack } from '../../lib/track-utils';
 import { playShelfSong } from '../../lib/shelf-play';
 import type { RecentPlay, Song } from '../../services/api/api-types';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 /**
  * "Keep the vibe" shelf — variations on what the listener has been hearing.
@@ -34,6 +35,7 @@ import type { RecentPlay, Song } from '../../services/api/api-types';
   selector: 'app-keep-vibe',
   standalone: true,
   imports: [
+    OverflowRevealDirective,
     CoverArtComponent,
     SkeletonComponent,
     TranslatePipe,
@@ -71,10 +73,13 @@ import type { RecentPlay, Song } from '../../services/api/api-types';
                   className="w-28 h-28"
                   rounded="rounded-lg"
                 />
-                <p class="mt-1.5 text-xs font-semibold text-theme-primary truncate">
+                <p
+                  appOverflowReveal
+                  class="mt-1.5 text-xs font-semibold text-theme-primary truncate"
+                >
                   {{ song.title }}
                 </p>
-                <p class="text-xs text-theme-muted truncate">{{ song.artist }}</p>
+                <p appOverflowReveal class="text-xs text-theme-muted truncate">{{ song.artist }}</p>
               </button>
             </div>
           }

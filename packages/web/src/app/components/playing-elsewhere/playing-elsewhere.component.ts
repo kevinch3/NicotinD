@@ -2,6 +2,7 @@ import { Component, computed, inject } from '@angular/core';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 /**
  * The "Playing on <device>" strip: the one persistent sign, on a controller,
@@ -13,7 +14,7 @@ import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
  */
 @Component({
   selector: 'app-playing-elsewhere',
-  imports: [TranslatePipe, TvNavItemDirective],
+  imports: [OverflowRevealDirective, TranslatePipe, TvNavItemDirective],
   templateUrl: './playing-elsewhere.component.html',
 })
 export class PlayingElsewhereComponent {

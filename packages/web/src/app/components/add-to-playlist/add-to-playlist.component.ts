@@ -1,6 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { PlaylistService } from '../../services/playlist.service';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 /**
  * Global "Add to playlist" picker. Mounted once in the layout; it renders only
@@ -10,7 +11,7 @@ import { PlaylistService } from '../../services/playlist.service';
 @Component({
   selector: 'app-add-to-playlist',
   standalone: true,
-  imports: [FormsModule],
+  imports: [OverflowRevealDirective, FormsModule],
   templateUrl: './add-to-playlist.component.html',
 })
 export class AddToPlaylistComponent {
