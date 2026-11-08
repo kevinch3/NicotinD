@@ -694,7 +694,7 @@ jobs:
         run: |
           set -euo pipefail
           ref="$IMAGE@${{ steps.build.outputs.digest }}"
-          docker pull "$ref"
+          bash scripts/registry-retry.sh docker pull "$ref"
           bash scripts/smoke-image.sh "$ref" "${GITHUB_REF_NAME#v}"
 
       - name: Smoke — container logs on failure
@@ -727,10 +727,17 @@ jobs:
     needs: [docker]
     if: github.ref_type == 'tag'
     permissions:
+      contents: read
       packages: write
     env:
       IMAGE: ghcr.io/kevinch3/nicotind
     steps:
+      # Only for scripts/registry-retry.sh: the read-back below retries GHCR's
+      # read-after-write lag (#1624).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          sparse-checkout: scripts/registry-retry.sh
+          sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           path: ${{ runner.temp }}/digests
@@ -759,7 +766,7 @@ jobs:
       # hole fails the release instead of being discovered months later by
       # whoever pins to it.
       - name: Verify the version tag resolves
-        run: docker buildx imagetools inspect "$IMAGE:${GITHUB_REF_NAME}"
+        run: bash scripts/registry-retry.sh docker buildx imagetools inspect "$IMAGE:${GITHUB_REF_NAME}"
 
       # Scans the BASE IMAGE's OS packages. Deliberately non-overlapping with
       # `check:audit`, which owns npm dependencies and structurally cannot see
@@ -835,8 +842,15 @@ jobs:
     needs: [docker-merge, docker-analysis]
     if: github.ref_type == 'tag'
     permissions:
+      contents: read
       packages: write
     steps:
+      # Only for scripts/registry-retry.sh: the read-back below retries GHCR's
+      # read-after-write lag (#1624).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          sparse-checkout: scripts/registry-retry.sh
+          sparse-checkout-cone-mode: false
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
@@ -862,7 +876,7 @@ jobs:
           for image in ghcr.io/kevinch3/nicotind ghcr.io/kevinch3/nicotind-analysis; do
             for tag in "$version" "$major" release; do
               echo "::group::inspect $image:$tag"
-              docker buildx imagetools inspect "$image:$tag"
+              bash scripts/registry-retry.sh docker buildx imagetools inspect "$image:$tag"
               echo "::endgroup::"
             done
           done
