@@ -65,6 +65,36 @@ async function getLatestVersion(repo: string): Promise<string> {
   return data.tag_name;
 }
 
+export interface ProgressStream {
+  isTTY?: boolean;
+  write(chunk: string): unknown;
+}
+
+/**
+ * Redraws the download bar on a terminal, but logs at 10% steps when stdout is
+ * a pipe or a file. A `\r` redraw every chunk once cost ~120 KB of journald
+ * noise for a 103 MB download (#1733).
+ */
+export function createProgressReporter(
+  out: ProgressStream,
+  totalBytes: number,
+): (downloaded: number) => void {
+  let lastStep = -1;
+  return (downloaded) => {
+    if (totalBytes <= 0) return;
+    const pct = (downloaded / totalBytes) * 100;
+    const megabytes = (downloaded / 1_000_000).toFixed(1);
+    if (out.isTTY) {
+      out.write(`\r  Downloading... ${pct.toFixed(0)}% (${megabytes} MB)`);
+      return;
+    }
+    const step = Math.floor(pct / 10);
+    if (step <= lastStep) return;
+    lastStep = step;
+    out.write(`  Downloading... ${step * 10}% (${megabytes} MB)\n`);
+  };
+}
+
 async function downloadFile(url: string, dest: string): Promise<void> {
   const res = await fetch(url, { headers: { 'User-Agent': 'nicotind' } });
   if (!res.ok) throw new Error(`Download failed: ${res.status} ${url}`);
@@ -75,6 +105,7 @@ async function downloadFile(url: string, dest: string): Promise<void> {
 
   const writer = createWriteStream(dest);
   const reader = res.body.getReader();
+  const report = createProgressReporter(process.stdout, totalBytes);
 
   // Manual pipe with progress
   while (true) {
@@ -82,19 +113,15 @@ async function downloadFile(url: string, dest: string): Promise<void> {
     if (done) break;
     writer.write(value);
     downloaded += value.length;
-    if (totalBytes > 0) {
-      const pct = ((downloaded / totalBytes) * 100).toFixed(0);
-      process.stdout.write(
-        `\r  Downloading... ${pct}% (${(downloaded / 1_000_000).toFixed(1)} MB)`,
-      );
-    }
+    report(downloaded);
   }
   writer.end();
   await new Promise<void>((resolve, reject) => {
     writer.on('finish', resolve);
     writer.on('error', reject);
   });
-  console.log();
+  // the redirected log already ended each step with a newline
+  if (process.stdout.isTTY) console.log();
 }
 
 async function downloadDep(dep: DepConfig): Promise<void> {
@@ -155,4 +182,4 @@ async function main() {
   console.log('\nAll dependencies installed.');
 }
 
-main();
+if (import.meta.main) main();
