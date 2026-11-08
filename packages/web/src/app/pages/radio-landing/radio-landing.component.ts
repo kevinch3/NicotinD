@@ -14,6 +14,7 @@ import { VibeTileComponent } from '../../components/vibe-tile/vibe-tile.componen
 import { toTrack } from '../../lib/track-utils';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { VIBE_PRESETS, type VibePreset } from '../../lib/vibe-presets';
+import { playableVibes } from '../../lib/vibe-availability';
 import { songCover } from '../../lib/cover-url';
 import { CoverRevisionsService } from '../../services/cover-revisions.service';
 import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
@@ -58,7 +59,11 @@ export class RadioLandingComponent implements OnInit {
   private auth = inject(AuthService);
   private readonly coverRevisions = inject(CoverRevisionsService);
 
-  readonly presets = VIBE_PRESETS;
+  /**
+   * Every preset until the probe answers, then only those the library can play
+   * (#1739): mood and feature vibes need the analysis sidecar's data.
+   */
+  readonly presets = signal<readonly VibePreset[]>(VIBE_PRESETS);
 
   // The last-played track (persisted across sessions) seeds the resume shortcut;
   // it's dismissed the moment it's tapped so the block disappears.
@@ -79,6 +84,7 @@ export class RadioLandingComponent implements OnInit {
 
   ngOnInit(): void {
     void this.loadGenres();
+    void playableVibes(this.api).then((vibes) => this.presets.set(vibes));
   }
 
   private async loadGenres(): Promise<void> {

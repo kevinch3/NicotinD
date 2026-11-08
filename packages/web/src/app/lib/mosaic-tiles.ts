@@ -3,7 +3,7 @@ import type { Track } from '../services/player.service';
 import type { ListeningStats, PlaylistSummary, RecentPlay, Song } from '../services/api/api-types';
 import type { PreservedTrackMeta } from './preserve-store';
 import { toTrack } from './track-utils';
-import { VIBE_PRESETS } from './vibe-presets';
+import { VIBE_PRESETS, type VibePreset } from './vibe-presets';
 
 /**
  * The mosaic home's data model: every landing source flattened into one list of
@@ -67,6 +67,12 @@ export interface MosaicSources {
   genres: Array<{ value: string; songCount: number }>;
   /** The caller's own listening aggregates; null when history is off or empty. */
   stats: ListeningStats | null;
+  /**
+   * The vibe presets this library can actually play (#1739); omitted means all.
+   * A mood or audio-feature vibe on a server with no analysis would otherwise
+   * be a tile that plays nothing.
+   */
+  vibes?: readonly VibePreset[];
 }
 
 // ---------------------------------------------------------------------------
@@ -377,7 +383,7 @@ export function buildMosaicTiles(
     });
   }
 
-  for (const preset of VIBE_PRESETS) {
+  for (const preset of sources.vibes ?? VIBE_PRESETS) {
     tiles.push({
       key: `vibe:${preset.id}`,
       kind: 'vibe',

@@ -54,6 +54,7 @@ function filterKey(f: LibraryFilter): string {
 }
 import { createSelection } from '../../lib/selection';
 import { albumRef, toTrack, offlineTrackAction } from '../../lib/track-utils';
+import { EmptyLibraryComponent } from '../../components/empty-library/empty-library.component';
 import { appendUnique } from '../../lib/append-unique';
 import type { PreservedTrackMeta } from '../../lib/preserve-store';
 
@@ -100,6 +101,7 @@ function metaToTrack(t: PreservedTrackMeta): Track {
     SearchFieldComponent,
     SortSelectComponent,
     TranslatePipe,
+    EmptyLibraryComponent,
   ],
   templateUrl: './library-songs.component.html',
 })

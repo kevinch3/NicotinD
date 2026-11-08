@@ -43,6 +43,11 @@ export class SystemApiService {
     return this.http.get<{ scanning: boolean; count: number }>('/api/system/scan/status');
   }
 
+  /** Admin-only: the folder the server reads music from (#1739 empty-library hint). */
+  getLibraryLocation() {
+    return this.http.get<{ musicDir: string }>('/api/admin/library-location');
+  }
+
   // Free/used/total bytes of the filesystem holding the music dir (downloads land here).
   getDiskUsage() {
     return this.http.get<DiskUsage>('/api/system/disk');

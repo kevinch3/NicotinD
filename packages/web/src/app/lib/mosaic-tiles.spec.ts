@@ -16,6 +16,7 @@ import {
   type MosaicSources,
   type MosaicTile,
 } from './mosaic-tiles';
+import { VIBE_PRESETS } from './vibe-presets';
 import type { ListeningStats, PlaylistSummary, RecentPlay, Song } from '../services/api/api-types';
 import type { PreservedTrackMeta } from './preserve-store';
 
@@ -232,9 +233,15 @@ describe('dedupeTiles', () => {
 });
 
 describe('buildMosaicTiles', () => {
-  it('always emits the eight vibe presets, even with an empty library', () => {
+  it('emits all eight vibe presets when the caller does not narrow them', () => {
     const tiles = buildMosaicTiles(emptySources());
     expect(tiles.filter((t) => t.kind === 'vibe')).toHaveLength(8);
+  });
+
+  it('emits only the vibes the library can play (#1739)', () => {
+    const fast = VIBE_PRESETS.find((p) => p.id === 'fast')!;
+    const tiles = buildMosaicTiles(emptySources({ vibes: [fast] }));
+    expect(tiles.filter((t) => t.kind === 'vibe').map((t) => t.key)).toEqual(['vibe:fast']);
   });
 
   it('gives every tile a radio-start action — the surface has one verb', () => {
