@@ -108,6 +108,11 @@ test.describe('plugin capability gating', () => {
     await expect(chip).toBeVisible();
     await expect(chip).toHaveAttribute('data-source', 'youtube');
     await expect(page.getByTestId('search-link-kind')).toHaveText('video');
+    // A screen reader hears the kind too, not just the host.
+    await expect(page.getByTestId('search-link-status')).toHaveAttribute('role', 'status');
+    await expect(page.getByTestId('search-link-status')).toHaveText(
+      /Recognised link:\s*YouTube\s*video/,
+    );
     await expect(page.getByTestId('search-submit')).toHaveText('Get');
     // Only the archive addon is enabled, and its urlPatterns do not claim YouTube.
     await expect(page.getByTestId('search-link-unsupported')).toBeVisible();

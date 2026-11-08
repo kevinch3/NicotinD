@@ -25,29 +25,55 @@ interface HostRule {
   kind: (url: URL) => LinkKind | null;
 }
 
-/** Path segments with Spotify's `intl-xx` locale prefix dropped. */
 function segments(url: URL): string[] {
-  return url.pathname.split('/').filter((s) => s && !/^intl-[a-z]{2}/i.test(s));
+  return url.pathname.split('/').filter(Boolean);
 }
 
 function youtubeKind(url: URL): LinkKind | null {
-  if (url.searchParams.has('list') || url.pathname === '/playlist') return 'playlist';
+  // An `RD…` list on a watch URL is YouTube's auto-generated mix, not a playlist.
+  const list = url.searchParams.get('list');
+  const mixOnVideo = list?.startsWith('RD') && url.searchParams.has('v');
+  if ((list !== null && !mixOnVideo) || url.pathname === '/playlist') return 'playlist';
   if (url.hostname === 'youtu.be') return segments(url).length > 0 ? 'video' : null;
   const [first] = segments(url);
   return first === 'watch' || first === 'shorts' ? 'video' : null;
 }
 
+/** SoundCloud's own top-level pages, which are not a user profile. */
+const SOUNDCLOUD_RESERVED_TOP = new Set([
+  'discover',
+  'search',
+  'you',
+  'stream',
+  'charts',
+  'upload',
+]);
+/** A profile's list tabs: many items, not one track. */
+const SOUNDCLOUD_PROFILE_TABS = new Set([
+  'likes',
+  'tracks',
+  'albums',
+  'reposts',
+  'popular-tracks',
+  'sets',
+  'followers',
+  'following',
+]);
+
 function soundcloudKind(url: URL): LinkKind | null {
   // on.soundcloud.com is a share shortener: the path is an opaque code.
   if (url.hostname === 'on.soundcloud.com') return null;
   const parts = segments(url);
-  if (parts[1] === 'sets') return 'playlist';
+  if (parts.length === 0 || SOUNDCLOUD_RESERVED_TOP.has(parts[0].toLowerCase())) return null;
+  if (parts[1] === 'sets' && parts.length >= 3) return 'playlist';
+  if (parts.length === 2 && SOUNDCLOUD_PROFILE_TABS.has(parts[1].toLowerCase())) return null;
   if (parts.length === 1) return 'artist';
   return parts.length === 2 ? 'track' : null;
 }
 
 function spotifyKind(url: URL): LinkKind | null {
-  const [first] = segments(url);
+  // Spotify's locale prefix: /intl-es/album/…, /intl-pt-br/track/…
+  const [first] = segments(url).filter((s) => !/^intl-[a-z]{2}(-[a-z]{2})?$/i.test(s));
   if (first === 'track' || first === 'album' || first === 'playlist' || first === 'artist') {
     return first;
   }

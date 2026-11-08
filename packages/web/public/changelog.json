@@ -1,81 +1,5 @@
 [
   {
-    "version": "0.8.125",
-    "date": "2026-11-07",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.124...v0.8.125",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**web:** anchor bottom chrome to the real screen bottom on iOS standalone ([#1648](https://github.com/kevinch3/NicotinD/issues/1648)) ([5e4955a](https://github.com/kevinch3/NicotinD/commit/5e4955a73c8cc679fbf908b3eb4db0f73342f0fe)), closes [#1646](https://github.com/kevinch3/NicotinD/issues/1646), references [#1645](https://github.com/kevinch3/NicotinD/issues/1645)",
-          "**web:** scroll <main>, not the document, so the player stays pinned on iOS PWA ([#1646](https://github.com/kevinch3/NicotinD/issues/1646)) ([fcf5554](https://github.com/kevinch3/NicotinD/commit/fcf5554d963d4f8406d1c419a075b4191d72fb69)), references [#1645](https://github.com/kevinch3/NicotinD/issues/1645)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.8.124",
-    "date": "2026-11-06",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.123...v0.8.124",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**web:** compact the library tab bar and toolbar into one line each ([#1637](https://github.com/kevinch3/NicotinD/issues/1637)) ([fd2b449](https://github.com/kevinch3/NicotinD/commit/fd2b44952413a076520a628eaf4346c93ada8e5d))",
-          "**web:** lift the mini player off the page and slim its scrubber ([#1644](https://github.com/kevinch3/NicotinD/issues/1644)) ([1df2083](https://github.com/kevinch3/NicotinD/commit/1df208341df8bcb107e71b9e8b0afe7f30fb6c95)), references [#1635](https://github.com/kevinch3/NicotinD/issues/1635) [#1638](https://github.com/kevinch3/NicotinD/issues/1638)",
-          "**web:** mosaic depth and fisheye — tile shadows, glass menu, tap to centre ([#1639](https://github.com/kevinch3/NicotinD/issues/1639)) ([3185b45](https://github.com/kevinch3/NicotinD/commit/3185b458888a36fe92bf47f8ada3fc7c9d43cd9c)), references [#1638](https://github.com/kevinch3/NicotinD/issues/1638) [#1638](https://github.com/kevinch3/NicotinD/issues/1638)"
-        ]
-      },
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**acquisition:** queue interactive hunts in core so a burst of Get clicks stops timing out ([#1628](https://github.com/kevinch3/NicotinD/issues/1628)) ([8d32365](https://github.com/kevinch3/NicotinD/commit/8d323657c85e947beba8dbfcc2cb26276df696a3))",
-          "**release:** publish once the APKs are up, even if a desktop job failed ([#1634](https://github.com/kevinch3/NicotinD/issues/1634)) ([eadbb88](https://github.com/kevinch3/NicotinD/commit/eadbb884fae1567ac425a1cd546ba33657a60000)), closes [#1631](https://github.com/kevinch3/NicotinD/issues/1631), references [#1629](https://github.com/kevinch3/NicotinD/issues/1629)",
-          "**web:** a tap on a mosaic tile plays it on touch, and tiles size sub-linearly with the screen ([#1643](https://github.com/kevinch3/NicotinD/issues/1643)) ([9bfdb92](https://github.com/kevinch3/NicotinD/commit/9bfdb9236123fcc3849e0023d20dd8d06ea8a35f)), closes [#1642](https://github.com/kevinch3/NicotinD/issues/1642)",
-          "**web:** register theme-surface-2, theme-base and theme-hover so /NN modifiers emit ([#1641](https://github.com/kevinch3/NicotinD/issues/1641)) ([e5f1517](https://github.com/kevinch3/NicotinD/commit/e5f15170bd0dd361a0376b896dc0b9124c5833c9)), closes [#1640](https://github.com/kevinch3/NicotinD/issues/1640)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.8.123",
-    "date": "2026-11-06",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.122...v0.8.123",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**slskd:** run slskd 0.26.2, which retries and resumes transient download failures ([#1630](https://github.com/kevinch3/NicotinD/issues/1630)) ([524c7cc](https://github.com/kevinch3/NicotinD/commit/524c7cce810f014633e6678a3a410272016b7bd7)), references [#1021](https://github.com/kevinch3/NicotinD/issues/1021)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.8.122",
-    "date": "2026-11-05",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.121...v0.8.122",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**downloads:** retry a failed album, group failure toasts, trust a file's own album tag ([#1618](https://github.com/kevinch3/NicotinD/issues/1618)) ([83a512d](https://github.com/kevinch3/NicotinD/commit/83a512d6f2587abce7c7c0a332ada256bc2aa816)), closes [#1511](https://github.com/kevinch3/NicotinD/issues/1511) [#1509](https://github.com/kevinch3/NicotinD/issues/1509) [#1540](https://github.com/kevinch3/NicotinD/issues/1540) [#1437](https://github.com/kevinch3/NicotinD/issues/1437), references [#1511](https://github.com/kevinch3/NicotinD/issues/1511) [#1509](https://github.com/kevinch3/NicotinD/issues/1509)"
-        ]
-      },
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**ci:** rebuild a reused analysis image when a fix lands after its release ([#1617](https://github.com/kevinch3/NicotinD/issues/1617)) ([09db16f](https://github.com/kevinch3/NicotinD/commit/09db16f89e1ebf5751d13585fdfece97dfc59bb7)), closes [#1477](https://github.com/kevinch3/NicotinD/issues/1477)",
-          "**library:** a joint-credit card offers no split it cannot stand behind ([#1621](https://github.com/kevinch3/NicotinD/issues/1621)) ([ff53527](https://github.com/kevinch3/NicotinD/commit/ff535275533809ca3309e05cf9aaa06ea695902c)), closes [#1613](https://github.com/kevinch3/NicotinD/issues/1613)",
-          "**library:** carry song-level review flags across an id change ([#1614](https://github.com/kevinch3/NicotinD/issues/1614)) ([79d0a4d](https://github.com/kevinch3/NicotinD/commit/79d0a4d1f0f73512aab67470e1ef93e8a6dd6914)), closes [#1475](https://github.com/kevinch3/NicotinD/issues/1475)",
-          "**library:** place a URL rip by fingerprint, and stop an unlinked match disabling it ([#1622](https://github.com/kevinch3/NicotinD/issues/1622)) ([bbf9748](https://github.com/kevinch3/NicotinD/commit/bbf974802087f2bb1a00a8db8dfe02c5932c83a3)), closes [#1583](https://github.com/kevinch3/NicotinD/issues/1583), references [#951](https://github.com/kevinch3/NicotinD/issues/951) [#1583](https://github.com/kevinch3/NicotinD/issues/1583)",
-          "**library:** the Opus cover cap is a size budget now, not a reader limit ([#1620](https://github.com/kevinch3/NicotinD/issues/1620)) ([0c3ecd4](https://github.com/kevinch3/NicotinD/commit/0c3ecd47474d3f685617067f969cbd388193d9c1)), closes [#1496](https://github.com/kevinch3/NicotinD/issues/1496)",
-          "**lidarr:** an outage is not an absence, and boot provisioning waits for Lidarr ([#1615](https://github.com/kevinch3/NicotinD/issues/1615)) ([dc95ffa](https://github.com/kevinch3/NicotinD/commit/dc95ffae5df8f43196f6d036a5f12acfb31821db)), closes [#1582](https://github.com/kevinch3/NicotinD/issues/1582) [#1591](https://github.com/kevinch3/NicotinD/issues/1591)",
-          "**web:** one tap on the update strip, and it says which build it loads ([#1619](https://github.com/kevinch3/NicotinD/issues/1619)) ([71d33ea](https://github.com/kevinch3/NicotinD/commit/71d33eaae9d3b1e7849377d25daeb49715d44655)), closes [#1596](https://github.com/kevinch3/NicotinD/issues/1596)"
-        ]
-      }
-    ]
-  },
-  {
     "version": "0.8.121",
     "date": "2026-11-04",
     "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.120...v0.8.121",
@@ -794,6 +718,62 @@
         "title": "Features",
         "items": [
           "**audit:** report duplicate files that share one album track slot ([#1380](https://github.com/kevinch3/NicotinD/issues/1380)) ([d80eac0](https://github.com/kevinch3/NicotinD/commit/d80eac039c3c42e1e71b97c5eeb10e97a3b3e18f)), references [#951](https://github.com/kevinch3/NicotinD/issues/951)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.8.75",
+    "date": "2026-09-24",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.74...v0.8.75",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**admin:** see the kept originals, and prune them only by name ([#1379](https://github.com/kevinch3/NicotinD/issues/1379)) ([3e58db5](https://github.com/kevinch3/NicotinD/commit/3e58db567e97645cca27747d70845d1619db0719)), references [#1255](https://github.com/kevinch3/NicotinD/issues/1255)",
+          "**library:** an incomplete badge and a curator Complete action on album pages ([#1378](https://github.com/kevinch3/NicotinD/issues/1378)) ([9bf56e1](https://github.com/kevinch3/NicotinD/commit/9bf56e120e0fef5158bc47b792d3cab148ef1d29)), references [#737](https://github.com/kevinch3/NicotinD/issues/737)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.8.74",
+    "date": "2026-09-24",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.73...v0.8.74",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**library:** the loudness target is an operator setting ([#1375](https://github.com/kevinch3/NicotinD/issues/1375)) ([082966b](https://github.com/kevinch3/NicotinD/commit/082966baa67c4bb992c4e681bdd41e7d646b5e58)), references [#1255](https://github.com/kevinch3/NicotinD/issues/1255)",
+          "**web:** swipe the cover or mini bar sideways to skip ([#1377](https://github.com/kevinch3/NicotinD/issues/1377)) ([42d066b](https://github.com/kevinch3/NicotinD/commit/42d066bd707a0fbd86747ec98c39aaabc1097657)), references [#1376](https://github.com/kevinch3/NicotinD/issues/1376) [#1298](https://github.com/kevinch3/NicotinD/issues/1298)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.8.73",
+    "date": "2026-09-24",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.72...v0.8.73",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**streaming:** convert Ogg for clients that cannot open it, and say so ([#1374](https://github.com/kevinch3/NicotinD/issues/1374)) ([e3de039](https://github.com/kevinch3/NicotinD/commit/e3de039882c34cb9a67320dd565a079220935c65))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.8.72",
+    "date": "2026-09-24",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.71...v0.8.72",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**acquisition:** re-source a job's not-offered titles to another peer ([#1372](https://github.com/kevinch3/NicotinD/issues/1372)) ([93e261e](https://github.com/kevinch3/NicotinD/commit/93e261e6438721796c0511b14e92162ea428daac)), closes [#1146](https://github.com/kevinch3/NicotinD/issues/1146), references [#1065](https://github.com/kevinch3/NicotinD/issues/1065)",
+          "**web:** an Admin Library health panel over the health report ([#1373](https://github.com/kevinch3/NicotinD/issues/1373)) ([139fbf3](https://github.com/kevinch3/NicotinD/commit/139fbf3a009f0d1e17e2e199a77079df83984c1e)), references [#736](https://github.com/kevinch3/NicotinD/issues/736)",
+          "**web:** reorder and remove queue rows by touch ([#1371](https://github.com/kevinch3/NicotinD/issues/1371)) ([dc61f3b](https://github.com/kevinch3/NicotinD/commit/dc61f3b50cf79929852b7c42065436f0d63b63af)), references [#1295](https://github.com/kevinch3/NicotinD/issues/1295)"
         ]
       }
     ]

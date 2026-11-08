@@ -151,6 +151,37 @@ describe('LibraryFindComponent', () => {
     expect(navigate).toHaveBeenCalledWith(['/get'], { queryParams: { tab: 'add' } });
   });
 
+  it('clears the previous search results when Get it swaps the query', async () => {
+    const { fixture } = setup(local(), 'zzz nothing');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+    const search = TestBed.inject(SearchService);
+    search.setQuery('daft punk');
+    search.network.set([{ username: 'u', files: [] }] as never);
+    search.catalog.set({ artists: [] } as never);
+
+    html(fixture).querySelector<HTMLButtonElement>('[data-testid="library-find-get"]')!.click();
+
+    expect(search.query()).toBe('zzz nothing');
+    expect(search.network()).toEqual([]);
+    expect(search.catalog()).toBeNull();
+  });
+
+  it('keeps the results when Get it re-offers the same query', async () => {
+    const { fixture } = setup(local(), 'daft punk');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+    const search = TestBed.inject(SearchService);
+    search.setQuery('daft punk');
+    search.network.set([{ username: 'u', files: [] }] as never);
+
+    html(fixture).querySelector<HTMLButtonElement>('[data-testid="library-find-get"]')!.click();
+
+    expect(search.network()).toHaveLength(1);
+  });
+
   it('offers no Get it to a listener', async () => {
     const { fixture } = setup(local(), 'tangana', false);
     await fixture.whenStable();

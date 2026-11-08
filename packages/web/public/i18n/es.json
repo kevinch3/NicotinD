@@ -68,7 +68,7 @@
   "acquire.linkKind.playlist": "lista",
   "acquire.linkKind.track": "pista",
   "acquire.linkKind.video": "vídeo",
-  "acquire.linkRecognised": "Enlace reconocido: {source}",
+  "acquire.linkRecognised": "Enlace reconocido:",
   "acquire.linkUnsupported": "Ninguna de tus fuentes activas puede obtener este enlace",
   "acquire.hideFullTree": "Ocultar árbol completo",
   "acquire.loadFullTree": "Cargar árbol completo",

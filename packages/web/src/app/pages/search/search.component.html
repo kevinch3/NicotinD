@@ -19,22 +19,25 @@
       <div class="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
         <!-- Live recognition (#1663): what the pasted link is, before submit.
              Labels only — Enter/Get still decides. -->
-        @if (shownLinkIntent(); as live) {
-          <span
-            class="flex items-center gap-1.5 pointer-events-none"
-            data-testid="search-link-chip"
-            [attr.data-source]="live.source"
-            role="status"
-            [attr.aria-label]="'acquire.linkRecognised' | t: { source: live.sourceLabel }"
-          >
-            <app-source-chip [source]="live.source" [label]="live.sourceLabel" />
-            @if (live.kind) {
-              <span class="text-xs text-zinc-400" data-testid="search-link-kind">{{
-                'acquire.linkKind.' + live.kind | t
-              }}</span>
-            }
-          </span>
-        }
+        <!-- The live region stays in the DOM so the chip's arrival is announced;
+             its visible text is the accessible name. -->
+        <span role="status" data-testid="search-link-status">
+          @if (shownLinkIntent(); as live) {
+            <span
+              class="flex items-center gap-1.5 pointer-events-none"
+              data-testid="search-link-chip"
+              [attr.data-source]="live.source"
+            >
+              <span class="sr-only">{{ 'acquire.linkRecognised' | t }}</span>
+              <app-source-chip [source]="live.source" [label]="live.sourceLabel" />
+              @if (live.kind) {
+                <span class="text-xs text-zinc-400" data-testid="search-link-kind">{{
+                  'acquire.linkKind.' + live.kind | t
+                }}</span>
+              }
+            </span>
+          }
+        </span>
         <button
           type="submit"
           [disabled]="loading()"

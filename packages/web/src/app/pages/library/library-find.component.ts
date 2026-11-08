@@ -121,7 +121,11 @@ export class LibraryFindComponent {
   /** Open Get → Add with the query in its omnibox. Prefilled only: the user
    *  presses Enter there, as for a pasted link (#1663). */
   getIt(): void {
-    this.acquireSearch.setQuery(this.query().trim());
+    const query = this.query().trim();
+    // The service outlives navigation (#1544): another query's results under
+    // this one would make their Get buttons fetch something else.
+    if (this.acquireSearch.query() !== query) this.acquireSearch.resetResults();
+    this.acquireSearch.setQuery(query);
     void this.router.navigate(['/get'], { queryParams: { tab: 'add' } });
   }
 

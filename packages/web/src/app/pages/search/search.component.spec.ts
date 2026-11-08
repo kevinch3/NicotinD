@@ -775,7 +775,11 @@ describe('SearchComponent — live link recognition', () => {
     ]);
     const chip = q('search-link-chip');
     expect(chip?.getAttribute('data-source')).toBe('youtube');
-    expect(chip?.getAttribute('aria-label')).toBe('acquire.linkRecognised');
+    // The visible host + kind are the name: an aria-label would hide the kind.
+    expect(chip?.hasAttribute('aria-label')).toBe(false);
+    expect(chip?.textContent).toContain('acquire.linkRecognised');
+    expect(chip?.textContent).toContain('acquire.linkKind.video');
+    expect(chip?.closest('[role="status"]')).toBe(q('search-link-status'));
     expect(q('search-link-kind')?.textContent?.trim()).toBe('acquire.linkKind.video');
     expect(q('search-submit')?.textContent?.trim()).toBe('acquire.get');
     // Owner decision on #1663: a paste never submits by itself.
@@ -788,6 +792,8 @@ describe('SearchComponent — live link recognition', () => {
     const { q, component } = render('https://www.youtube.com/watch?v=x', null);
     expect(component.liveLinkIntent()).toBeNull();
     expect(q('search-link-chip')).toBeNull();
+    // The live region exists before the chip, so the chip's arrival announces.
+    expect(q('search-link-status')?.getAttribute('role')).toBe('status');
     expect(q('search-link-unsupported')).toBeNull();
     expect(q('search-submit')?.textContent?.trim()).toBe('acquire.search');
   });
