@@ -12,6 +12,7 @@ import { ConfirmService } from './confirm.service';
 import { LikeService } from './like.service';
 import { RecommendationExclusionsService } from './recommendation-exclusions.service';
 import { ReportTrackService } from './report-track.service';
+import { OfflineModeService } from './offline-mode.service';
 import { asRole, canCurate as canCurateRole, type Role } from '../../types/core';
 import type { BaseSong } from '../lib/track-utils';
 import EN from '../../../public/i18n/en.json';
@@ -120,6 +121,30 @@ describe('SongMenuService.build', () => {
   it('hides Go to album without albumId', () => {
     const { svc } = setup();
     expect(labels(song({ artistId: 'ar1' }), svc)).not.toContain('Go to album');
+  });
+
+  // #1751: offline the artist and album pages need the server; the menu opens
+  // the saved songs filtered to the name instead of a dead page.
+  it('offline, Go to artist / Go to album open the saved songs filtered by name', () => {
+    const { svc, router } = setup();
+    TestBed.inject(OfflineModeService).serverUnreachable.set(true);
+    const actions = svc.build(
+      song({
+        artistId: 'compound',
+        artists: [{ id: 'one', name: 'One', role: 'primary' }],
+        albumId: 'al1',
+        album: 'Circus',
+      }),
+      {},
+    );
+    actions.find((a) => a.label === 'Go to artist')!.action();
+    expect(router.navigate).toHaveBeenLastCalledWith(['/library'], {
+      queryParams: { find: 'One' },
+    });
+    actions.find((a) => a.label === 'Go to album')!.action();
+    expect(router.navigate).toHaveBeenLastCalledWith(['/library'], {
+      queryParams: { find: 'Circus' },
+    });
   });
 
   it('sends Go to artist to the first credited artist, not a split compound', () => {
