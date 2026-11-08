@@ -1137,6 +1137,34 @@ retry that could never fail would be the hidden-retry shape this page warns abou
 it is bounded, it is loud, and `check:install-scripts` is what stops it widening to a second
 package by making one appear as a build failure instead of a withheld release.
 
+### A release-CDN outage must not block a merge (#1746)
+
+On 2026-11-08 GitHub's release CDN answered **504 for hours** while githubstatus.com showed green. Every PR's CI
+failed, and none of the failures was in the code. The failing downloads:
+
+- **`ci`:** the pinned actionlint and gitleaks archives.
+- **`desktop-package`:** ffmpeg-static's install, which exits 0 with no binary, so `prepare-resources` then failed with
+  "`'ffmpeg-static' reported … but that file does not exist`".
+- **`desktop-smoke`:** Electron's zip.
+
+Worse, `ci` stopped at its first step, so its lint, typecheck and tests never ran, and the run said nothing about the
+change itself. The owner admin-merged #1723, #1744 and #1745 past those failures on local `bun run verify` evidence. The
+fixes:
+
+- **The two tool downloads run last in `ci`**, behind a `Cache CI tool binaries` step (`~/.cache/nicotind-ci-tools`,
+  keyed on `ci.yml`). They go through `ci_tool_fetch` (`.github/scripts/ci-tool-fetch.sh`): a cached copy is used when
+  its pinned sha256 matches; otherwise `curl --retry 8 --retry-all-errors` fetches it. The checksum is verified on every
+  path, and the helper fails closed on its own, not only under the caller's `set -e`.
+- **`desktop-package` caches the ffmpeg binary** (`~/.cache/nicotind-ffmpeg`, keyed on the ffmpeg-static version read
+  from `bun.lock`) and hands it back through `FFMPEG_BIN`, the same variable the #1087 sentinel uses: the installer skips
+  its download and the package exports that path. On a cache miss, a bounded loop re-runs the package's `install.js`
+  until `require('ffmpeg-static')` names a real file, then seeds the cache.
+- **`desktop-smoke` caches `~/.cache/electron`**, keyed on the Electron version. That job is already
+  `continue-on-error`, so it never blocked a merge, only reddened the run.
+
+A cold cache still needs one successful download, so an outage during the first run after a version bump still fails;
+from then on, no run needs the network for these tools.
+
 ## A publisher that uploads nothing can still exit 0 (#1261)
 
 The desktop packaging jobs were written fail-loud on purpose: not `continue-on-error`, so a broken
