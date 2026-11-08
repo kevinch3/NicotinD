@@ -594,6 +594,79 @@ test.describe('mobile UX', () => {
   });
 
   /**
+   * #1656: rapid taps issued one PATCH each, so a slow first write could reach
+   * the server after the later ones and leave it — and the view — on the first
+   * tap. Holding the first PATCH back models that; the last tap must still win.
+   */
+  test('Now Playing lyrics: rapid sync taps end on the last tap even when the first write is slow', async ({
+    page,
+    request,
+  }) => {
+    const token = (
+      (await (await request.post('/api/auth/login', { data: ADMIN })).json()) as { token: string }
+    ).token;
+    const albums = (await (
+      await request.get('/api/library/albums', { headers: bearer(token) })
+    ).json()) as Array<{ id: string; title: string }>;
+    const album = albums.find((a) => a.title === FIXTURE.album.title) ?? albums[0]!;
+    const detail = (await (
+      await request.get(`/api/library/albums/${album.id}`, { headers: bearer(token) })
+    ).json()) as { song: Array<{ id: string }> };
+    for (const s of detail.song) {
+      await request.put(`/api/library/songs/${s.id}/lyrics`, {
+        headers: bearer(token),
+        data: {
+          plain: 'opening line\nsecond line',
+          synced: '[00:00.50]opening line\n[00:09.00]second line',
+        },
+      });
+    }
+
+    let inFlight = 0;
+    let held = false;
+    let patchedId: string | null = null;
+    const isOffsetPatch = (r: { url(): string; method(): string }) =>
+      r.method() === 'PATCH' && r.url().includes('/lyrics/offset');
+    page.on('request', (r) => {
+      if (isOffsetPatch(r)) inFlight++;
+    });
+    const settled = (r: { url(): string; method(): string }) => {
+      if (isOffsetPatch(r)) inFlight--;
+    };
+    page.on('requestfinished', settled);
+    page.on('requestfailed', settled);
+    await page.route('**/lyrics/offset', async (route) => {
+      patchedId ??= /songs\/([^/]+)\/lyrics\/offset/.exec(route.request().url())?.[1] ?? null;
+      if (!held) {
+        held = true;
+        await new Promise((r) => setTimeout(r, 1_000));
+      }
+      await route.continue();
+    });
+
+    await openNowPlaying(page);
+    await page.getByTestId('now-playing-tab-lyrics').click();
+    await expect(page.getByTestId('lyrics-sync-value')).toContainText('In sync');
+
+    const later = page.getByTestId('lyrics-sync-later');
+    await later.click();
+    await later.click();
+    await later.click();
+    await expect(page.getByTestId('lyrics-sync-value')).toContainText('+0.75s');
+
+    await expect
+      .poll(async () => {
+        if (inFlight > 0 || !patchedId) return 'writing';
+        const row = (await (
+          await request.get(`/api/library/songs/${patchedId}/lyrics`, { headers: bearer(token) })
+        ).json()) as { offsetMs: number };
+        return row.offsetMs;
+      })
+      .toBe(750);
+    await expect(page.getByTestId('lyrics-sync-value')).toContainText('+0.75s');
+  });
+
+  /**
    * #1666: an Edit saved in the Track-info sheet reaches the karaoke panel
    * under it with no track change. The sheet used to keep its own copy, and
    * the panel — still mounted beneath — kept the old words until the next

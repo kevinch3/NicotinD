@@ -461,3 +461,269 @@ describe('LyricsService a read never overrides a write in flight (#1666)', () =>
     expect(lyrics.lyricsFor('s1')?.plain).toBe('stored');
   });
 });
+
+/**
+ * #1656: rapid nudges issue several writes. The last tap must win — on screen
+ * and on the server — whatever order the requests are served or answered in.
+ * The fake server applies a write when it serves it, so out-of-order serving
+ * is modelled, not only out-of-order answers.
+ */
+describe('LyricsService sync offset: the last tap wins (#1656)', () => {
+  const SYNCED = '[00:01.00]one\n[00:03.00]two';
+
+  function loadedWithServer() {
+    const s = setup();
+    s.api.getLyrics.mockReturnValue(of(dto({ synced: SYNCED })));
+    s.lyrics.ensureLoaded('s1');
+    let stored = 0;
+    const calls: Array<{ ms: number; res: Subject<LyricsDto> }> = [];
+    const sent: number[] = [];
+    s.api.setLyricsOffset.mockImplementation((_id, ms) => {
+      const res = new Subject<LyricsDto>();
+      calls.push({ ms, res });
+      sent.push(ms);
+      return res;
+    });
+    const serve = (i: number, ok = true) => {
+      const [c] = calls.splice(i, 1);
+      if (!ok) return c!.res.error({ status: 500 });
+      stored = c!.ms;
+      c!.res.next(dto({ synced: SYNCED, offsetMs: c!.ms }));
+      c!.res.complete();
+    };
+    const drainNewestFirst = () => {
+      while (calls.length) serve(calls.length - 1);
+    };
+    return { ...s, calls, sent, serve, drainNewestFirst, stored: () => stored };
+  }
+
+  it('rapid taps end with the server and the entry on the last tap, whatever the serving order', () => {
+    const { lyrics, drainNewestFirst, stored } = loadedWithServer();
+    lyrics.nudgeOffset(100);
+    lyrics.nudgeOffset(100);
+    lyrics.nudgeOffset(100);
+    expect(lyrics.offsetMs()).toBe(300);
+
+    drainNewestFirst();
+
+    expect(stored()).toBe(300);
+    expect(lyrics.offsetMs()).toBe(300);
+    expect(lyrics.lyricsFor('s1')?.offsetMs).toBe(300);
+  });
+
+  it('one write per song is in flight; taps made meanwhile coalesce into one write of the latest', () => {
+    const { lyrics, calls, sent, serve } = loadedWithServer();
+    lyrics.nudgeOffset(100);
+    lyrics.nudgeOffset(100);
+    lyrics.nudgeOffset(100);
+    expect(calls).toHaveLength(1);
+
+    serve(0);
+    serve(0);
+
+    expect(sent).toEqual([100, 300]);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('the first answer landing while a newer tap is queued does not rewind the value', () => {
+    const { lyrics, serve } = loadedWithServer();
+    lyrics.nudgeOffset(250);
+    lyrics.nudgeOffset(250);
+
+    serve(0); // answers 250
+
+    expect(lyrics.offsetMs()).toBe(500);
+  });
+
+  it('a failed write with a newer tap queued does not revert; the queued tap still lands', () => {
+    const { lyrics, serve, stored } = loadedWithServer();
+    lyrics.nudgeOffset(250);
+    lyrics.nudgeOffset(250);
+
+    serve(0, false);
+    expect(lyrics.offsetMs()).toBe(500);
+    serve(0);
+
+    expect(stored()).toBe(500);
+    expect(lyrics.offsetMs()).toBe(500);
+  });
+
+  it('a failed last write reverts to the last value the server confirmed, not the pre-burst one', () => {
+    const { lyrics, serve } = loadedWithServer();
+    lyrics.nudgeOffset(250);
+    lyrics.nudgeOffset(250);
+
+    serve(0); // 250 confirmed
+    serve(0, false); // 500 refused
+
+    expect(lyrics.offsetMs()).toBe(250);
+  });
+
+  it('a failed write leaves nothing stuck: the next tap writes again', () => {
+    const { lyrics, sent, serve } = loadedWithServer();
+    lyrics.nudgeOffset(250);
+    serve(0, false);
+    expect(lyrics.offsetMs()).toBe(0);
+
+    lyrics.nudgeOffset(500);
+
+    expect(sent).toEqual([250, 500]);
+    expect(lyrics.offsetMs()).toBe(500);
+  });
+
+  it('a re-read landing mid-write keeps the tapped value, and the write still lands', () => {
+    const { api, lyrics, serve } = loadedWithServer();
+    lyrics.nudgeOffset(250);
+
+    // The Track-info sheet opens: its read may be served before the PATCH.
+    api.getLyrics.mockReturnValue(of(dto({ synced: SYNCED, offsetMs: 0 })));
+    lyrics.ensureEntry('s1');
+    expect(lyrics.offsetMs()).toBe(250);
+
+    serve(0);
+    expect(lyrics.offsetMs()).toBe(250);
+  });
+
+  it('a read started before the tap and answered after its write finished keeps the tapped value', () => {
+    const { api, lyrics } = setup();
+    api.getLyrics.mockReturnValue(of(dto({ synced: SYNCED })));
+    lyrics.ensureLoaded('s1');
+
+    const read = new Subject<LyricsDto | null>();
+    api.getLyrics.mockReturnValue(read);
+    lyrics.ensureEntry('s1');
+    lyrics.nudgeOffset(250); // the default fake answers the PATCH at once
+
+    read.next(dto({ synced: SYNCED, offsetMs: 0 }));
+    read.complete();
+
+    expect(lyrics.offsetMs()).toBe(250);
+  });
+});
+
+/**
+ * #1656 review: a Re-fetch, Edit or Delete replaces the row (the server's
+ * `setLyrics` resets the offset to 0). A tap measured against the old LRC must
+ * not be written onto, or shown on, the new one.
+ */
+describe('LyricsService sync offset vs a whole-row write (#1656)', () => {
+  const OLD = '[00:01.00]a\n[00:03.00]b';
+  const NEW = '[00:02.00]b';
+
+  function burstWithServer() {
+    const s = setup();
+    s.api.getLyrics.mockReturnValue(of(dto({ synced: OLD })));
+    s.lyrics.ensureLoaded('s1');
+    const calls: Array<{ ms: number; res: Subject<LyricsDto> }> = [];
+    const sent: number[] = [];
+    s.api.setLyricsOffset.mockImplementation((_id, ms) => {
+      const res = new Subject<LyricsDto>();
+      calls.push({ ms, res });
+      sent.push(ms);
+      return res;
+    });
+    const serve = (ok = true) => {
+      const c = calls.shift()!;
+      if (!ok) return c.res.error({ status: 500 });
+      c.res.next(dto({ synced: OLD, offsetMs: c.ms }));
+      c.res.complete();
+    };
+    return { ...s, calls, sent, serve };
+  }
+
+  it('a Re-fetch that replaces the row drops the queued tap; the stale answer does not land', () => {
+    const { api, lyrics, sent, serve } = burstWithServer();
+    lyrics.nudgeOffset(250);
+    lyrics.nudgeOffset(250); // 500 queued behind PATCH 250
+
+    api.fetchLyrics.mockReturnValue(of(dto({ synced: NEW, offsetMs: 0 })));
+    lyrics.fetchFor('s1', true).subscribe();
+    serve(); // PATCH 250 answers after the re-fetch
+
+    expect(sent).toEqual([250]);
+    expect(lyrics.offsetMs()).toBe(0);
+    expect(lyrics.lyrics()?.synced).toBe(NEW);
+  });
+
+  it('a queued tap is not sent while a Re-fetch is outstanding, then dropped when it replaces the row', () => {
+    const { api, lyrics, calls, sent, serve } = burstWithServer();
+    lyrics.nudgeOffset(250);
+    lyrics.nudgeOffset(250);
+    const fetched = new Subject<LyricsDto | null>();
+    api.fetchLyrics.mockReturnValue(fetched);
+    lyrics.fetchFor('s1', true).subscribe();
+
+    serve(); // PATCH 250 answers first; 500 must wait behind the re-fetch
+    expect(calls).toHaveLength(0);
+
+    fetched.next(dto({ synced: NEW, offsetMs: 0 }));
+    fetched.complete();
+
+    expect(sent).toEqual([250]);
+    expect(lyrics.offsetMs()).toBe(0);
+  });
+
+  it('an in-flight write answering after the Re-fetch landed does not put its value on the new row', () => {
+    const { api, lyrics, serve } = burstWithServer();
+    lyrics.nudgeOffset(250);
+
+    api.fetchLyrics.mockReturnValue(of(dto({ synced: NEW, offsetMs: 0 })));
+    lyrics.fetchFor('s1', true).subscribe();
+    serve();
+
+    expect(lyrics.offsetMs()).toBe(0);
+  });
+
+  it('an in-flight write failing after the Re-fetch landed does not revert the new row', () => {
+    const { api, lyrics, serve } = burstWithServer();
+    lyrics.nudgeOffset(250);
+    api.fetchLyrics.mockReturnValue(of(dto({ synced: NEW, offsetMs: 120 })));
+    lyrics.fetchFor('s1', true).subscribe();
+
+    serve(false);
+
+    expect(lyrics.offsetMs()).toBe(120);
+  });
+
+  it('a Re-fetch that finds nothing keeps the row, so the queued tap still goes out', () => {
+    const { api, lyrics, sent, serve } = burstWithServer();
+    lyrics.nudgeOffset(250);
+    lyrics.nudgeOffset(250);
+    api.fetchLyrics.mockReturnValue(of(null));
+    lyrics.fetchFor('s1', true).subscribe();
+
+    serve();
+    serve();
+
+    expect(sent).toEqual([250, 500]);
+    expect(lyrics.offsetMs()).toBe(500);
+  });
+
+  it('an Edit that replaces the row drops the queued tap', () => {
+    const { api, lyrics, sent, serve } = burstWithServer();
+    lyrics.nudgeOffset(250);
+    lyrics.nudgeOffset(250);
+    api.saveLyrics.mockReturnValue(of(dto({ plain: 'edited', offsetMs: 0 })));
+    lyrics.save('s1', 'edited').subscribe();
+
+    serve();
+
+    expect(sent).toEqual([250]);
+    expect(lyrics.offsetMs()).toBe(0);
+  });
+
+  it('a tap after the replacing write landed is written, and a failure reverts to the new row', () => {
+    const { api, lyrics, sent, serve } = burstWithServer();
+    lyrics.nudgeOffset(250);
+    api.fetchLyrics.mockReturnValue(of(dto({ synced: NEW, offsetMs: 0 })));
+    lyrics.fetchFor('s1', true).subscribe();
+    lyrics.nudgeOffset(-100); // measured against the new row, queued behind PATCH 250
+
+    serve(); // stale
+    expect(lyrics.offsetMs()).toBe(-100);
+    serve(false);
+
+    expect(sent).toEqual([250, -100]);
+    expect(lyrics.offsetMs()).toBe(0);
+  });
+});

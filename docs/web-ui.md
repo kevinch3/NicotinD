@@ -320,8 +320,31 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
     the owner chose to make that a decision. `ConfirmHostComponent` sits at `z-[96]`, above the
     sheet (`z-[91]`): at `z-50` the confirm rendered under the sheet that asked. Specs: `services/lyrics-one-owner.spec.ts` (a stateful
     fake server, so both write-through and re-read fixes pass and only a copy that never hears the
-    write fails) and `services/lyrics.service.spec.ts`. The sync-offset ordering race (#1656) is not
-    fixed here.
+    write fails) and `services/lyrics.service.spec.ts`.
+  - **Sync-offset writes are serialized per song (#1656)**: a nudge applies to the entry at once
+    and at most one `PATCH …/lyrics/offset` per song is in flight; taps made meanwhile coalesce
+    into one write of the latest value, sent when the outstanding one answers (`offsetWrites`,
+    `flushOffset`). Each tap used to fire its own PATCH and land its own answer, so the first
+    answer rewound the view past a later tap, and two concurrent PATCHes could reach the server in
+    either order and leave it on the older one — reproduced in e2e by holding the first PATCH back,
+    where the server ended at 250 after three +250 taps. The write is absolute (the route stores
+    the value it is sent), so a coalesced or repeated write is idempotent. An answer lands, and a
+    failure reverts to the **last value the server confirmed**, only when no newer tap is queued; a
+    failure never blocks the next tap. A row read whose window saw a tap — a write outstanding at
+    its start or answer, or a tap made while it was out (`offsetTaps`) — keeps the entry's tapped
+    offset, since the read may predate the PATCH; checking only for an outstanding write missed a
+    read started before the tap and answered after the write finished.
+  - **A whole-row write supersedes a queued tap (#1656)**: a Re-fetch, Edit or Delete replaces the
+    row, and the server's `setLyrics` resets its offset to 0. While one is outstanding a queued tap
+    is held (`rowWrites`) — sent first, it would land before or after the reset in either order;
+    when the answer replaced the row (`rowReplaced`) the tap is dropped, since it was measured
+    against the old LRC, and a PATCH answer still in flight is stale (`rowEpochs`) and neither
+    lands nor reverts. A Re-fetch that finds nothing keeps the row, so the held tap goes out. The
+    one PATCH already in flight when the row write starts can still be served after the reset —
+    the client cannot see the server's order, and the screen shows the new row's offset. Specs:
+    `lyrics.service.spec.ts` "the last tap wins (#1656)" (a fake server that applies a write when
+    it serves it), "sync offset vs a whole-row write" and `mobile-ux.spec.ts` "rapid sync taps end
+    on the last tap".
   - **Manual queue resize** (`data-testid="now-playing-queue-resize"`): the notch is the visible affordance for a resize the sheet's body gesture serves from **anywhere** — swipe up on the cover, transport, tabs or panel to pull the panel area **taller**, which **shrinks the cover art** to make room (the panel is `flex-1`, so shrinking the cover grows it); swipe down to collapse it (see the mode table above). The handle is **shell-owned, rendered above the Queue/Lyrics tab bar** — it originally lived inside the queue panel, so after the tab switcher shipped it vanished on the Lyrics tab and users reported the feature as lost; hoisting it makes it work for **both** panels (the queue panel's old `resizing` input / `resizeStart` output API is removed). `queueExtraHeightPx` (px the cover has shrunk from its 320px max, clamped to `[0, 320]` — the floor is 0 since #993) feeds `coverMaxPx = 320 − queueExtraHeightPx`, bound to the cover's `max-width`. The chosen size is **persisted per-device** in `localStorage` (`nicotind:np-queue-extra`) and read on construction, so it survives reload. Unit-tested in `now-playing.component.spec.ts` → "sheet body gesture (mode table)", "queue resize (drag handle)" + "hoisted resize handle (shell-owned)"; the Lyrics-tab drag and the swipe-from-the-tabs path are covered end-to-end in `mobile-ux.spec.ts`.
   - **Desktop side panel (`lg:` ≥1024px, Spotify-like)**: the sheet becomes two columns — cover art + transport centered in a flexible left column, the Queue/Lyrics panel (with its tab switcher) an always-visible right column (`data-testid="now-playing-body"` wraps both). **The border between them is a splitter** (`data-testid="now-playing-side-resize"`, `role="separator" aria-orientation="vertical"`, `tabindex="0"`, 8px hit area around a 1px line): drag it, or with focus use ArrowLeft/ArrowRight (±16px) and Home/End (min/max); double-click resets. `sidePanelWidthPx` defaults to 380, clamps to `[300, 640]` and never more than half the viewport, and is **persisted per-device** (`nicotind:np-side-width`). It rides a **`--np-side-w` CSS var** (`lg:w-[var(--np-side-w,380px)]`) rather than an inline width, for the same reason the cover cap does. Because every extracted child uses `host: {class: 'contents'}`, a grid/flex on the root would place each child's *inner* element as an individual item — so the shell adds two **group wrappers that are `contents` below `lg` and real flex columns at `lg`** (`class="contents lg:flex …"`): below the breakpoint the wrappers dissolve and the mobile stacked layout is untouched by construction. The breakpoint is `lg`, not `md` (the app's nav-chrome fork) — a portrait tablet at 768px lacks room for cover + a 380px column, and `lg:` is where the app's grids already assume real horizontal space. The mobile drag-resize notch is `lg:hidden` and the body gesture's resize mode is skipped at `lg` (`matchMedia('(min-width: 1024px)')`); the stored cover shrink is mobile-scoped: `coverMaxPx` rides a **`--np-cover-max` CSS var** (`max-w-[var(--np-cover-max,20rem)] lg:max-w-80`) instead of an inline `style.max-width`, which would beat every class including the `lg:` cap. Karaoke fullscreen is untouched (own `fixed inset-0 z-[70]` overlay at all widths). Covered by `now-playing-desktop.spec.ts` (e2e; jsdom has no layout engine) + the cover-art spec's var-binding case.
 - **Mini-player transport** (player-standardization plan, Task 11 — the plan's final task):
