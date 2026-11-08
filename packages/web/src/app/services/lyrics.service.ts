@@ -1,5 +1,5 @@
 import { Injectable, computed, inject, signal, untracked } from '@angular/core';
-import { finalize, tap, type Observable } from 'rxjs';
+import { defer, finalize, tap, type Observable } from 'rxjs';
 import type { LyricsDto } from '@nicotind/core';
 import { parseLrc, findActiveLine, applyLyricsOffset, LYRICS_OFFSET_MAX_MS } from '@nicotind/core';
 import { LibraryApiService } from './api/library-api.service';
@@ -63,8 +63,20 @@ export class LyricsService {
   private readonly tokens = new Map<string, number>();
   private seq = 0;
   /** Per song, the sync-offset write outstanding: the latest tap not yet sent
-   *  (null once sent) and the last value the server confirmed (#1656). */
-  private readonly offsetWrites = new Map<string, { pending: number | null; confirmed: number }>();
+   *  (null once sent), whether a PATCH is in flight, and the last value the
+   *  server confirmed (#1656). */
+  private readonly offsetWrites = new Map<
+    string,
+    { pending: number | null; sending: boolean; confirmed: number }
+  >();
+  /** Per song, taps made so far; a read whose window saw one keeps the tap. */
+  private readonly offsetTaps = new Map<string, number>();
+  /** Per song, whole-row writes (fetch, save, delete) outstanding; a queued
+   *  tap is not sent while one is, since it may replace the row it measured. */
+  private readonly rowWrites = new Map<string, number>();
+  /** Per song, bumped when a whole-row write replaced the row: an offset
+   *  answer for a PATCH sent before that belongs to the old row. */
+  private readonly rowEpochs = new Map<string, number>();
 
   private readonly current = computed(() => {
     const id = this.currentId();
@@ -165,13 +177,14 @@ export class LyricsService {
   /** A stored-row read; keeps the entry's words until the answer lands. */
   private read(id: string): void {
     const token = this.begin(id, { inFlight: 'read' });
-    const racesOffset = this.offsetWrites.has(id);
+    const writing = this.offsetWrites.has(id);
+    const taps = this.offsetTaps.get(id) ?? 0;
     this.api.getLyrics(id).subscribe({
-      next: (l) =>
-        this.settle(id, token, {
-          dto: racesOffset || this.offsetWrites.has(id) ? this.withLocalOffset(id, l) : l,
-          inFlight: null,
-        }),
+      next: (l) => {
+        const raced =
+          writing || this.offsetWrites.has(id) || (this.offsetTaps.get(id) ?? 0) !== taps;
+        this.settle(id, token, { dto: raced ? this.withLocalOffset(id, l) : l, inFlight: null });
+      },
       error: () => this.settle(id, token, { inFlight: null }),
     });
   }
@@ -229,31 +242,41 @@ export class LyricsService {
     const clamped = Math.max(-LYRICS_OFFSET_MAX_MS, Math.min(LYRICS_OFFSET_MAX_MS, next));
     if (clamped === current.offsetMs) return;
     this.patch(id, { dto: { ...current, offsetMs: clamped } });
-    const w = this.offsetWrites.get(id);
-    if (w) {
-      w.pending = clamped;
-      return;
-    }
-    this.offsetWrites.set(id, { pending: clamped, confirmed: current.offsetMs });
+    this.offsetTaps.set(id, (this.offsetTaps.get(id) ?? 0) + 1);
+    const w = this.offsetWrites.get(id) ?? {
+      pending: null,
+      sending: false,
+      confirmed: current.offsetMs,
+    };
+    w.pending = clamped;
+    this.offsetWrites.set(id, w);
     this.flushOffset(id);
   }
 
+  /** Send the queued tap, unless a PATCH or a whole-row write is outstanding —
+   *  each calls back here when it ends. */
   private flushOffset(id: string): void {
     const w = this.offsetWrites.get(id);
-    if (!w || w.pending === null) {
+    if (!w || w.sending || this.rowWrites.has(id)) return;
+    if (w.pending === null) {
       this.offsetWrites.delete(id);
       return;
     }
     const value = w.pending;
     w.pending = null;
+    w.sending = true;
+    const epoch = this.rowEpochs.get(id) ?? 0;
+    const current = () => (this.rowEpochs.get(id) ?? 0) === epoch;
     let settled = false;
     const done = () => {
       if (settled) return;
       settled = true;
+      w.sending = false;
       this.flushOffset(id);
     };
     this.api.setLyricsOffset(id, value).subscribe({
       next: (saved) => {
+        if (!current()) return;
         w.confirmed = saved.offsetMs;
         // Trust the server's value — it owns the clamp — unless a newer tap
         // is queued, whose write will answer in turn.
@@ -262,11 +285,22 @@ export class LyricsService {
       error: () => {
         // Revert to the last value the server confirmed, never past a newer
         // tap: a queued tap still goes out and its answer decides.
-        if (w.pending === null) this.patchOffset(id, w.confirmed);
+        if (current() && w.pending === null) this.patchOffset(id, w.confirmed);
         done();
       },
       complete: done,
     });
+  }
+
+  /** A whole-row write replaced `id`'s row (null: deleted). A queued tap was
+   *  measured against the old row, so it is dropped, and any offset answer
+   *  still in flight is stale; the new row's offset is what the server holds. */
+  private rowReplaced(id: string, row: LyricsDto | null): void {
+    this.rowEpochs.set(id, (this.rowEpochs.get(id) ?? 0) + 1);
+    const w = this.offsetWrites.get(id);
+    if (!w) return;
+    w.pending = null;
+    w.confirmed = row?.offsetMs ?? 0;
   }
 
   /** Set only the offset of `id`'s entry; a row dropped meanwhile stays gone. */
@@ -319,6 +353,7 @@ export class LyricsService {
             ),
           ),
         ),
+      (l) => l ?? undefined,
     );
   }
 
@@ -335,6 +370,7 @@ export class LyricsService {
       this.api
         .saveLyrics(id, plain)
         .pipe(tap((l) => this.settle(id, token, { dto: l, inFlight: null }))),
+      (l) => l,
     );
   }
 
@@ -347,19 +383,38 @@ export class LyricsService {
       this.api
         .deleteLyrics(id)
         .pipe(tap(() => this.settle(id, token, { dto: null, inFlight: null }))),
+      () => null,
     );
   }
 
   /** A write that fails or is abandoned unanswered still frees the entry, or
-   *  no read for `id` would ever start again. */
-  private written<T>(id: string, token: number, write: Observable<T>): Observable<T> {
-    return write.pipe(
-      finalize(() => {
-        if (this.isLatest(id, token) && this.entries().get(id)?.inFlight === 'write') {
-          this.patch(id, { inFlight: null });
-        }
-      }),
-    );
+   *  no read for `id` would ever start again. While it is outstanding a queued
+   *  offset tap waits (#1656); `rowOf` names the row the answer replaced
+   *  `id`'s with (null: deleted), or undefined when the row was kept. */
+  private written<T>(
+    id: string,
+    token: number,
+    write: Observable<T>,
+    rowOf: (answer: T) => LyricsDto | null | undefined,
+  ): Observable<T> {
+    return defer(() => {
+      this.rowWrites.set(id, (this.rowWrites.get(id) ?? 0) + 1);
+      return write.pipe(
+        tap((answer) => {
+          const row = rowOf(answer);
+          if (row !== undefined) this.rowReplaced(id, row);
+        }),
+        finalize(() => {
+          if (this.isLatest(id, token) && this.entries().get(id)?.inFlight === 'write') {
+            this.patch(id, { inFlight: null });
+          }
+          const n = (this.rowWrites.get(id) ?? 1) - 1;
+          if (n > 0) this.rowWrites.set(id, n);
+          else this.rowWrites.delete(id);
+          this.flushOffset(id);
+        }),
+      );
+    });
   }
 
   /** Start a request for `id`: mint its token and apply the pending state. A
@@ -401,6 +456,7 @@ export class LyricsService {
       if (id === keep || this.bound.has(id) || map.get(id)?.inFlight) continue;
       map.delete(id);
       this.tokens.delete(id);
+      this.offsetTaps.delete(id);
     }
   }
 }
