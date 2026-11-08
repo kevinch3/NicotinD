@@ -19,6 +19,7 @@
     <button
       class="text-theme-muted hover:text-theme-secondary text-2xl leading-none"
       (click)="close.emit()"
+      data-testid="track-info-close"
     >
       ×
     </button>
@@ -99,7 +100,7 @@
           </div>
           <div class="flex gap-2">
             <span class="text-theme-muted w-16 flex-shrink-0">Bitrate</span>
-            <span>{{ s.bitRate }} kbps</span>
+            <span data-testid="track-info-bitrate">{{ s.bitRate }} kbps</span>
           </div>
           <div class="flex gap-2">
             <span class="text-theme-muted w-16 flex-shrink-0">Size</span>
@@ -574,6 +575,11 @@
           class="whitespace-pre-wrap font-sans text-sm text-theme-secondary max-h-64 overflow-y-auto"
           data-testid="lyrics-text"
           >{{ lyricsText() }}</pre>
+        @if (noLyricsFound()) {
+          <p class="text-xs text-theme-muted mt-1" data-testid="lyrics-no-new-found">
+            {{ 'trackInfo.lyricsNoNewFound' | t }}
+          </p>
+        }
         @if (lyrics()?.customized) {
           <p class="text-xs text-theme-muted mt-1">Edited by you</p>
         } @else if (lyrics()?.source) {

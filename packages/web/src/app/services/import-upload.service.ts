@@ -1,4 +1,4 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { ImportApiService } from './api/import-api.service';
 import {
@@ -16,6 +16,8 @@ export interface UploadOptions {
   onProgress?: (percent: number) => void;
   /** Entries the allowlist dropped, so the card can say what it ignored. */
   onSkipped?: (paths: string[]) => void;
+  /** Every byte is staged and the commit request is on the wire. */
+  onCommitting?: () => void;
   signal?: AbortSignal;
 }
 
@@ -36,6 +38,13 @@ export class NothingToUploadError extends Error {
 @Injectable({ providedIn: 'root' })
 export class ImportUploadService {
   private api = inject(ImportApiService);
+  private readonly active = signal(0);
+
+  /**
+   * Uploads on the wire, session through commit. Not a job yet, so no feed row
+   * counts them — every Activity badge adds this so the badges agree (#1664).
+   */
+  readonly inFlight = this.active.asReadonly();
 
   /**
    * Upload a drop and hand the resulting import job back. Resolves with the job
@@ -49,6 +58,18 @@ export class ImportUploadService {
     // be a staging directory nothing ever fills, swept 24h later.
     if (plan.files.length === 0) throw new NothingToUploadError();
 
+    this.active.update((n) => n + 1);
+    try {
+      return await this.send(plan, opts);
+    } finally {
+      this.active.update((n) => n - 1);
+    }
+  }
+
+  private async send(
+    plan: ReturnType<typeof buildUploadManifest>,
+    opts: UploadOptions,
+  ): Promise<string> {
     const { uploadId } = await firstValueFrom(
       this.api.createSession(plan.files.map((f) => ({ path: f.path, size: f.size }))),
     );
@@ -69,6 +90,7 @@ export class ImportUploadService {
       }
     }
 
+    opts.onCommitting?.();
     const { jobId } = await firstValueFrom(this.api.commit(uploadId));
     return jobId;
   }

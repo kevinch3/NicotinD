@@ -29,21 +29,44 @@ that is not the server.
 
 ### The drop zone (web)
 
-`/get` is the whole drop target — aiming a dragged folder at a small rectangle is
-fiddly, and nothing else on that page could plausibly mean "a file was dropped".
-A drop is a **proposal, not a command**: the `ImportDropCardComponent` shows what
-was found (`N folders · M files · size`, plus what the allowlist ignored) and
-waits for *Add to library*. `import-browse` + a hidden `webkitdirectory` input
-covers browsers and keyboards that cannot drag.
+Import is an **Add-tab action** (#1664). On `/get?tab=add` the whole workspace is
+the drop target — aiming a dragged folder at a small rectangle is fiddly — and the
+`ImportEntryComponent` (`import-browse`: an outlined *Import from a folder* button
+with a folder glyph and an "or drop a folder here" hint) opens a hidden
+`webkitdirectory` input for browsers and keyboards that cannot drag. While a folder
+is dragged over the tab the entry turns dashed-accent (`data-dragging="true"`)
+alongside the full-screen `import-drop-overlay`. On the Activity tab neither the
+entry, the input nor the card renders, and a file drop is **swallowed and ignored**
+(`acceptsDrop`, `dropEffect = 'none'`): letting it through would have the browser
+navigate to the file and discard the SPA.
 
-The card retires the moment the server accepts the commit. From there the work is
-an ordinary `acquisition_jobs` row and the Downloads feed owns it — a card that
-lingered alongside its own job row would be #673's twin-row shape by construction.
+A drop is a **proposal, not a command**: the `ImportDropCardComponent` shows what
+was found (`N folders · M files · size`, with what the allowlist ignored as a
+collapsible `<details>` list) and waits for *Add to library*. Theme tokens only —
+the progress bar is `bg-theme-accent`.
+
+**An upload outlives a switch to Activity** (owner decision on #1664). The page
+shell owns the upload, not a tab, so it keeps running; Activity shows it as an
+`import-progress-row` (a `role="progressbar"` with the percent, then *Finishing…*
+while the commit request is on the wire — `ImportUploadService.upload`'s
+`onCommitting`, since the commit is part of that one call). Every Activity badge —
+the tab's, the bottom nav's and the desktop nav's — adds
+`ImportUploadService.inFlight`, so an upload counts as one in-flight item until it
+is a job, on all three alike. A failure is shown there too, with *Review*
+back to the Add tab's card and its *Try again*, so it is not stranded on a tab the
+user left. A manifest still awaiting confirmation shows nothing on Activity.
+
+The card (and the row) retire the moment the server accepts the commit. From there
+the work is an ordinary `acquisition_jobs` row and the Downloads feed owns it — a
+card that lingered alongside its own job row would be #673's twin-row shape by
+construction. That is also why there is no card-level "done" state: at commit
+nothing has been organized or scanned yet, so the feed row, not a "View in Library"
+button, is the honest place to watch it land.
 
 Gated on **`canImport`** (`auth.service.ts`), which is `canAcquire`'s role bar
 *without* the kill-switch, mirroring the server's mount. `acquireGuard` gained
 `|| canImport()` and both navs filter on it, so a streaming-only install still
-reaches `/get` — it just renders the drop zone and not the acquire lanes.
+reaches `/get` — its Add tab renders the drop zone and not the acquire lanes.
 
 Progress is bytes-weighted and capped at 99 (`uploadPercent`): the commit is what
 completes an upload, and a bar at 100 before the server has taken the job claims
@@ -341,7 +364,8 @@ preview always reports the numbers.
 
 - The **admin** lane still takes only a server-readable path (Docker: mount it). The upload lane
   covers the client-side case; neither uploads a whole mounted disk.
-- `.zip` only, both lanes (issue #893 tracks 7z). `.rar`/`.7z`/`.tar.gz` are non-goals for now: the first two need a non-free binary, and a tar
+- `.zip` only, and only the admin lane: the browser upload's allowlist (`isUploadableName`) skips
+  archives, which is why the web drop hints say "folder" and never ".zip" (issue #893 tracks 7z). `.rar`/`.7z`/`.tar.gz` are non-goals for now: the first two need a non-free binary, and a tar
   stream has no central directory, so its uncompressed size — the number the disk preflight and the
   bomb guard both depend on — cannot be known without a full decompression pass.
 - No per-file preview listing; the dry run reports counts.

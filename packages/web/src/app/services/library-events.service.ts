@@ -19,8 +19,15 @@ export type LibraryEvent =
   | { type: 'songs.deleted'; songIds: string[]; albumIds: string[] }
   | { type: 'album.changed'; albumId: string }
   | { type: 'artist.changed'; artistId: string }
-  | { type: 'artwork.changed'; albumId: string; coverArt: string | null; version: number }
+  | { type: 'artwork.changed'; changes: ArtworkChange[] }
   | { type: 'job.changed'; jobId: string };
+
+/** One entity whose cover bytes changed, with its new persisted `cover_rev` (#1666). */
+export interface ArtworkChange {
+  kind: 'album' | 'artist';
+  id: string;
+  rev: number;
+}
 
 export interface StampedEvent {
   seq: number;
@@ -66,8 +73,9 @@ export class LibraryEventsService {
   /** Latest change per album/artist, keyed by id → seq (grows monotonically). */
   readonly changedAlbums = signal<ReadonlyMap<string, number>>(new Map());
   readonly changedArtists = signal<ReadonlyMap<string, number>>(new Map());
-  /** Cover version per album, for cache-busting `/api/cover/:id` URLs. */
+  /** Latest pushed `cover_rev` per album / artist id (never rewinds), for `/api/cover/:id` URLs. */
   readonly artworkVersions = signal<ReadonlyMap<string, number>>(new Map());
+  readonly artistArtworkVersions = signal<ReadonlyMap<string, number>>(new Map());
   readonly jobsChanged$ = new Subject<string>();
   /** Incremented when the stream could not replay a gap: refetch everything. */
   readonly resync = signal(0);
@@ -200,12 +208,29 @@ export class LibraryEventsService {
         this.touch(this.changedArtists, [ev.artistId], seq);
         break;
       case 'artwork.changed':
-        this.artworkVersions.update((m) => new Map(m).set(ev.albumId, ev.version));
+        this.raise(
+          this.artworkVersions,
+          ev.changes.filter((c) => c.kind === 'album'),
+        );
+        this.raise(
+          this.artistArtworkVersions,
+          ev.changes.filter((c) => c.kind === 'artist'),
+        );
         break;
       case 'job.changed':
         this.jobsChanged$.next(ev.jobId);
         break;
     }
+  }
+
+  /** Keep the highest rev per id: a replayed older frame never rewinds a cover. */
+  private raise(sig: typeof this.artworkVersions, changes: ArtworkChange[]): void {
+    if (changes.length === 0) return;
+    (sig as ReturnType<typeof signal<ReadonlyMap<string, number>>>).update((m) => {
+      const next = new Map(m);
+      for (const c of changes) next.set(c.id, Math.max(next.get(c.id) ?? 0, c.rev));
+      return next;
+    });
   }
 
   private touch(sig: typeof this.changedAlbums, ids: string[], seq: number): void {

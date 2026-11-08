@@ -6,7 +6,7 @@ import { ConfirmService } from '../../services/confirm.service';
   template: `
     @if (confirm.request(); as req) {
       <div
-        class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+        class="fixed inset-0 z-[96] flex items-center justify-center bg-black/50 p-4"
         data-testid="confirm-dialog"
         (click)="confirm.resolve(false)"
       >
@@ -38,6 +38,11 @@ import { ConfirmService } from '../../services/confirm.service';
     }
   `,
 })
+/**
+ * Stacked above every sheet and dialog (Track-info is z-[91], the report
+ * dialog z-[95]): a confirm can be asked from inside one, and at z-50 it
+ * rendered beneath the sheet that asked, its buttons unclickable (#1666).
+ */
 export class ConfirmHostComponent {
   readonly confirm = inject(ConfirmService);
 }

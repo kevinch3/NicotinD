@@ -20,6 +20,12 @@ import { diskArtCacheKey, readDiskArtRef, writeDiskArtRef } from '../services/di
 import { bucketCoverSize, resizeCover } from '../services/cover-thumbnail.js';
 import { readArtistImageOverride } from '../services/artist-image-override.js';
 import {
+  noArtCache,
+  NO_ART_TTL_MS,
+  clearCoverNegativeCache,
+  clearAlbumCoverNegativeCache,
+} from '../services/cover-negative-cache.js';
+import {
   absolutizeLidarrCoverUrl,
   remoteCoverCacheKey,
   resolveRemoteCoverUrl,
@@ -44,35 +50,15 @@ export function _resetWaveformNegativeCacheForTests(): void {
   noWaveformCache.clear();
 }
 
-// id → expiry epoch ms. Short-circuits extractCover() disk IO for artless albums.
-// Keyed by album/artist/song id; cleared automatically when TTL expires.
-const noArtCache = new Map<string, number>();
-const NO_ART_TTL_MS = 10 * 60 * 1_000;
-
 // Cap on remote canonical-cover fetches so a slow/dead host can't hang a connection.
 const REMOTE_COVER_TIMEOUT_MS = 6_000;
 // Successful covers are immutable per id within a session — let the browser cache
 // them so navigating between pages stops re-requesting every tile from the server.
 const COVER_CACHE_CONTROL = 'public, max-age=86400';
 
-/** Evict the negative-art cache for a given id (e.g. after artwork is backfilled). */
-export function clearCoverNegativeCache(id?: string): void {
-  if (id) noArtCache.delete(id);
-  else noArtCache.clear();
-}
-
-/**
- * Evict the negative-art cache for an album AND every song id of it. A song id
- * resolves to its album's cover, so after a cover change one that was 404-cached
- * as artless would keep 404ing for up to `NO_ART_TTL_MS` (#1336).
- */
-export function clearAlbumCoverNegativeCache(db: Database, albumId: string): void {
-  noArtCache.delete(albumId);
-  const songs = db
-    .query<{ id: string }, [string]>('SELECT id FROM library_songs WHERE album_id = ?')
-    .all(albumId);
-  for (const { id } of songs) noArtCache.delete(id);
-}
+// The negative cache lives with the service-layer cover writers that evict it
+// (services/cover-negative-cache.ts); re-exported so existing callers keep their import.
+export { clearCoverNegativeCache, clearAlbumCoverNegativeCache };
 
 /**
  * Native streaming + cover art. Replaces the Navidrome media proxy: serves file

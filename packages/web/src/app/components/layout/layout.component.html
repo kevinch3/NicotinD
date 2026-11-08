@@ -78,7 +78,7 @@
       <!-- Content — pad bottom so the fixed player + mobile tab bar never cover the last item.
            `relative` anchors the pull-to-refresh indicator; the pointerdown feeds the
            layout-hosted pull gesture (coarse-pointer only — see lib/pull-to-refresh.ts). -->
-      <main data-scroll-root [class]="'relative flex-1 min-h-0 overflow-y-auto overscroll-y-contain ' + mainPadClass()" (pointerdown)="pull.onPointerDown($event)">
+      <main data-scroll-root [class]="'relative flex-1 min-h-0 overflow-y-auto overscroll-y-contain ' + mainPadClass" (pointerdown)="pull.onPointerDown($event)">
         @if (pull.phase() !== 'idle') {
           <div
             data-testid="pull-refresh-indicator"

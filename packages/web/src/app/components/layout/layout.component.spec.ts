@@ -15,6 +15,7 @@ import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
+import { ImportUploadService } from '../../services/import-upload.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { GetThenHearService } from '../../services/get-then-hear.service';
 import { LikeService } from '../../services/like.service';
@@ -74,7 +75,7 @@ function setup() {
   // Override template to only what we're testing — avoids instantiating heavy child components
   TestBed.overrideComponent(LayoutComponent, {
     set: {
-      template: `<main [class]="'flex-1 ' + mainPadClass()"></main>`,
+      template: `<main [class]="'flex-1 ' + mainPadClass"></main>`,
       imports: [],
     },
   });
@@ -85,45 +86,26 @@ function setup() {
 }
 
 describe('LayoutComponent — player + tab-bar safe margin', () => {
-  it('stacks tab-bar + player padding when a track is loaded', () => {
+  // One reservation on the scroller (#1694): the tab bar plus the mini player's
+  // measured height, which PlayerComponent publishes as 0px while idle — so the
+  // class no longer switches on the track, and no constant guesses the bar.
+  it('reserves the tab bar plus the measured mini player on the scroller', () => {
     const { fixture, playerStub } = setup();
+    const main: HTMLElement = fixture.nativeElement.querySelector('main');
+    const idle = main.className;
+    expect(main.classList).toContain(
+      'pb-[calc(3.5rem+env(safe-area-inset-bottom)+var(--mini-player-h,0px))]',
+    );
+    expect(main.classList).toContain('md:pb-[var(--mini-player-h,0px)]');
 
     playerStub.currentTrack.set({ id: '1' });
     fixture.detectChanges();
-
-    const main: HTMLElement = fixture.nativeElement.querySelector('main');
-    // mobile: tab bar + player (+ safe-area inset); desktop: just the player
-    expect(main.classList).toContain('pb-[calc(8rem+env(safe-area-inset-bottom))]');
-    expect(main.classList).toContain('md:pb-20');
-  });
-
-  it('reserves only the tab-bar height on mobile when no track is loaded', () => {
-    const { fixture } = setup();
-    // currentTrack is null by default
-
-    const main: HTMLElement = fixture.nativeElement.querySelector('main');
-    expect(main.classList).toContain('pb-[calc(3.5rem+env(safe-area-inset-bottom))]');
-    expect(main.classList).toContain('md:pb-0');
-    expect(main.classList).not.toContain('pb-[calc(8rem+env(safe-area-inset-bottom))]');
-  });
-
-  it('drops the player padding when a track is cleared after being set', () => {
-    const { fixture, playerStub } = setup();
-
-    playerStub.currentTrack.set({ id: '1' });
-    fixture.detectChanges();
-
-    playerStub.currentTrack.set(null);
-    fixture.detectChanges();
-
-    const main: HTMLElement = fixture.nativeElement.querySelector('main');
-    expect(main.classList).not.toContain('pb-[calc(8rem+env(safe-area-inset-bottom))]');
-    expect(main.classList).toContain('pb-[calc(3.5rem+env(safe-area-inset-bottom))]');
+    expect(main.className).toBe(idle);
   });
 });
 
 describe('LayoutComponent — desktop downloads badge', () => {
-  it('sums active transfers, in-flight acquire jobs, and the review queue into downloadCount', () => {
+  it('sums active transfers, in-flight acquire jobs and uploads into downloadCount', () => {
     const playerStub = {
       currentTrack: signal<{ id: string } | null>(null),
       setRadioProvider: () => {},
@@ -138,6 +120,8 @@ describe('LayoutComponent — desktop downloads badge', () => {
       activeJobs: signal<unknown[]>([{}, {}, {}]),
       refresh: async () => {},
     };
+    // #1664: a folder upload not yet a job, which the /get tab badge counts too.
+    const uploadsStub = { inFlight: signal(1) };
 
     TestBed.configureTestingModule({
       imports: [LayoutComponent],
@@ -155,6 +139,7 @@ describe('LayoutComponent — desktop downloads badge', () => {
         },
         { provide: TransferService, useValue: transfersStub },
         { provide: AcquireService, useValue: acquireStub },
+        { provide: ImportUploadService, useValue: uploadsStub },
         { provide: APP_VERSION, useValue: '0.0.0-test' },
       ],
       schemas: [NO_ERRORS_SCHEMA],
@@ -167,12 +152,13 @@ describe('LayoutComponent — desktop downloads badge', () => {
     const fixture = TestBed.createComponent(LayoutComponent);
     fixture.detectChanges();
 
-    expect(fixture.componentInstance.downloadCount()).toBe(5);
+    expect(fixture.componentInstance.downloadCount()).toBe(6);
     // The shell is what keeps "get, then hear it" listening app-wide (#1294).
     expect(start).toHaveBeenCalledTimes(1);
 
     transfersStub.activeDownloadCount.set(0);
     acquireStub.activeJobs.set([]);
+    uploadsStub.inFlight.set(0);
     expect(fixture.componentInstance.downloadCount()).toBe(0);
   });
 });
@@ -208,7 +194,7 @@ describe('LayoutComponent — pull-to-refresh gesture host', () => {
     TestBed.overrideComponent(LayoutComponent, {
       set: {
         template: `
-          <main [class]="'relative flex-1 ' + mainPadClass()" (pointerdown)="pull.onPointerDown($event)">
+          <main [class]="'relative flex-1 ' + mainPadClass" (pointerdown)="pull.onPointerDown($event)">
             @if (pull.phase() !== 'idle') {
               <div data-testid="pull-refresh-indicator"></div>
             }

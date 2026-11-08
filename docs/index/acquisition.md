@@ -142,7 +142,7 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   → [library-path-conventions.md](../library-path-conventions.md#slskd-version)
 - **Import music — two lanes into one pipeline**: an admin server path and a browser upload
   (`ImportUploadService`, chunked + resumable, `submitStaged`) both run through organize → scan;
-  drop a folder on `/get`, gated by `canImport`. → [import.md](../import.md)
+  drop a folder on `/get`'s Add tab only, gated by `canImport`. → [import.md](../import.md)
 - **Untracked downloads**: `relative_path IS NULL` rows backfilled by script, listed at
   `GET /api/library/untracked`. → [download-pipeline.md](../download-pipeline.md)
 - **Downloading albums suppressed from listing**: listings exclude albums with active `album_jobs` or

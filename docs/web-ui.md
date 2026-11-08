@@ -186,7 +186,7 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
 - **Download row overflow contained**: each `download-item` row is `overflow-hidden` (plus `min-w-0` on its wrapping metadata row and `max-w-full` on the expandable storage path), so a long title or file path **stays inside the row's rounded box** (titles `truncate`, the storage path `break-all` wraps) instead of widening the page. On mobile a row that overflowed forced the WebView to zoom out (shrinking all icons/text); `mobile-ux.spec.ts` guards the downloads page against horizontal overflow at phone width.
 - **Zoom disabled app-wide** (`styles.css` → `html { touch-action: pan-x pan-y }`, plus `maximum-scale=1, user-scalable=no` in the `index.html` viewport meta): stray double taps and pinches kept zooming the viewport on touch builds (web + native WebView), and iOS zoomed in on focusing any field under 16px (most fields are `text-sm`/`text-xs`) and stayed zoomed after blur. The app has no content that needs zoom, so both gestures are off rather than just double-tap (the earlier `manipulation`). `pan-x pan-y` keeps scrolling; the viewport meta stops pinch in the iOS WKWebView and focus-zoom in iOS Safari too (Safari itself still allows pinch; Apple ignores `user-scalable=no` there). The root rule is an element selector, so the finer-grained gesture surfaces win by specificity: the seek range (`.seek-range { touch-action: none }`) and the player drag handles (Tailwind `touch-pan-y`/`touch-none` utilities). Asserted in `mobile-ux.spec.ts` ("zoom is disabled via root touch-action and the viewport meta").
 - **Mini-player layout (two columns on mobile)**: the bar is a 3-section flex row (track info · controls · device switcher). On **mobile** only the track-info column grows (`flex-1`); the controls are content-sized (`flex-none`) and the device-switcher section is content-sized too — so track info fills the bar and pushes the controls to the **right edge** (a clean two-column layout: info | controls). Previously *both* side sections were `flex-1` to keep controls screen-centered, but the right (device-switcher) section is empty unless remote playback is on, so it reserved a wasted half-width "empty third column" and the controls sat marooned in the center (the reported "controls too centered, right part lost" bug). On **desktop** the side sections collapse (`md:flex-none`, track info pinned to `md:w-60`) and the controls reclaim `md:flex-1` to host the inline progress bar. The invariant (track-info is the only mobile `flex-1`; the device-switcher section is never `flex-1`) is asserted in `player.component.spec.ts` → "mini-player layout". `BottomNavComponent` (`components/bottom-nav/`) is a `md:hidden` fixed bar (Home · Library · Downloads · **Search** · Settings; Admin is desktop-only). The Search tab (`/search`, online-only — the route needs the backend) restores the mobile path to the network-browse + URL-acquire page that the radio landing used to link to. The bar is `grid-cols-5`, safe-area-aware: `h-[calc(3.5rem+env(safe-area-inset-bottom))]` + matching bottom padding so the tabs sit above the iOS home indicator. The mini-player floats above it, and the full-screen Now Playing sheet (higher z-index) covers it. **Active tab** uses the theme accent (`--theme-accent`) for both icon+label and a 2 px accent bar painted via a `::before` pseudo-element (`a.is-active` rule in `bottom-nav.component.css`); matches the Downloads badge accent vocabulary and reads cleanly across all 7 themes (E-Ink's black accent keeps it legible). The Downloads tab shows a live badge from the shared `TransferService.activeDownloadCount` computed (also feeding the header `download-indicator`, which additionally sums in-flight `AcquireService` jobs).
-- **Bottom chrome layering contract** (`lib/player-chrome.ts`): the mini-player (z-50) anchors one tab-bar height above the viewport bottom on mobile, so its *hidden* state must translate past its own height **plus** the tab bar and be `pointer-events-none` — a plain `translate-y-full` parked the opaque bar exactly on top of the z-40 tab bar whenever no track was loaded, hiding the nav and swallowing its taps until playback started ("lost bottom menu" bug). `miniPlayerSlideClass()` and `mainBottomPadClass()` (consumed by `PlayerComponent.slideClass` / `LayoutComponent.mainPadClass`) centralize this geometry as literal Tailwind class strings (arbitrary values must stay literal for Tailwind's source scan). Related: `PlayerService.playNext()` at end-of-queue now keeps the last track loaded but paused instead of clearing it, so the mini-player (and the persisted session in localStorage, which is wiped when `currentTrack` goes null) survives the queue running out.
+- **Bottom chrome layering contract** (`lib/player-chrome.ts`): the mini-player (z-50) anchors one tab-bar height above the viewport bottom on mobile, so its *hidden* state must translate past its own height **plus** the tab bar and be `pointer-events-none` — a plain `translate-y-full` parked the opaque bar exactly on top of the z-40 tab bar whenever no track was loaded, hiding the nav and swallowing its taps until playback started ("lost bottom menu" bug). `miniPlayerSlideClass()` and `MAIN_BOTTOM_PAD_CLASS` (consumed by `PlayerComponent.slideClass` / `LayoutComponent.mainPadClass`) centralize this geometry as literal Tailwind class strings (arbitrary values must stay literal for Tailwind's source scan); the scroller's reservation reads the mini player's *measured* height (see "The scroller reserves the measured bottom chrome"). Related: `PlayerService.playNext()` at end-of-queue now keeps the last track loaded but paused instead of clearing it, so the mini-player (and the persisted session in localStorage, which is wiped when `currentTrack` goes null) survives the queue running out.
 - **One-tap smart hunt**: the album-hunt modal (`album-hunt-modal.component`) defaults to the best candidate without a manual pick — `bestCandidate` = top of the server-ranked `filteredCandidates`, `effectiveCandidate` = the user's explicit row selection *or* the best. The footer (with a match%/slots/size confidence chip) downloads `effectiveCandidate` on a single tap; the per-row list remains for power users. The auto-pick row shows a "★ Best match (auto)" hint.
 - **PWA share-target → URL acquire**: `manifest.webmanifest` declares a GET `share_target` (`action: "/search"` — Search moved off `/` when the radio landing became the home route, so the share intent points at `/search`; params `title/text/url`). Sharing a link from a phone lands on the search route; `SearchComponent.ngOnInit` pulls the URL via the pure `extractSharedUrl` helper (`lib/share-url.ts`, scans `url`→`text`→`title`) and auto-starts a yt-dlp/spotdl acquisition, then strips the query params so a refresh doesn't resubmit.
 - **Watchlist star**: catalog album cards in search show a star overlay wired to the web `WatchlistService` (`isWatched`/`toggle`); a filled amber star means the backend watchlist poller will auto-acquire it.
@@ -255,7 +255,8 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
   have actually been **loaded** for the current track — lyrics load lazily on first Lyrics-tab open,
   so the dot stays off from the Queue tab until the Lyrics tab has been visited at least once for
   that track; it does not proactively prefetch/probe availability (a known, out-of-scope limitation,
-  not a bug). `activePanel`
+  not a bug). A Track-info sheet reading the current track's lyrics does not light it either: the
+  dot follows `loadedForId`, which only the player's `ensureLoaded` moves. `activePanel`
   (`'queue' | 'lyrics'`, `NowPlayingComponent.setActivePanel`) drives which panel renders and is
   **persisted per-device** in `localStorage` (`nicotind:np-active-panel`), same durability as the
   queue-resize state below. `lyricsOpen` (the flag the lyrics-load/color-extraction/auto-scroll
@@ -291,6 +292,36 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
   values (`lib/lyrics-scroll-container.ts` `resolveLyricsScrollContainer`) and unit-test *that*, the
   same way `scrollToActiveLine`'s pixel math is pure and tested separately from the DOM wiring that
   calls it.
+  - **Lyrics have one owner (#1666)**: `LyricsService` is the only client copy of a song's lyrics.
+    The Now Playing panel, phone karaoke and `TvKaraokeComponent` render from it, and the
+    **Track-info sheet reads and writes through it too** — its Re-fetch, Edit and Reset used to call
+    `LibraryApiService` into a private signal, and since the panel and karaoke stay mounted under
+    the sheet and re-ask only on a track or tab change, the karaoke kept the old words until the
+    next track and back. The store is **keyed by song id** (an LRU of `LYRICS_CACHE_SIZE` = 20,
+    never evicting the current track or an id an open sheet is bound to), because the sheet opens
+    for any song row and a single "current track" slot would evict the playing track's lyrics.
+    The player's view keeps its names (`lyrics`, `lines`, `plain`, `offsetMs`, `loadedForId`,
+    `hasLyricsFor`) as the entry of the id the last `ensureLoaded` named; the sheet uses
+    `ensureEntry` (a stored-row read, never the sources, never moving the current track; it returns
+    the release the sheet calls on destroy) and `lyricsFor(id)`, and writes through `fetchFor` /
+    `save` / `remove`. Every request carries a **per-id token**: an answer for a superseded request
+    is dropped, and a slow answer for the previous track lands in that track's entry, never on the
+    current one. **No read starts while a write for that id is in flight** (`inFlight: 'write'`):
+    the read would answer the row from before the write and, holding the newer token, drop the
+    write's answer — a sheet opened mid-Fetch would blank found lyrics, and a track coming back
+    mid-Reset would restore the deleted words. A write that fails or is abandoned still frees the
+    entry. A re-read is **stale-while-revalidate** — `loading` is true only for a first load,
+    so karaoke never blanks mid-song on a refresh. A miss is not cached (the player asking again
+    retries the sources, as before). A **forced Re-fetch that finds nothing** answers null while the
+    server keeps the row (`fetchSongLyrics`), so the entry keeps its words and the sheet shows
+    `trackInfo.lyricsNoNewFound` (`data-testid="lyrics-no-new-found"`) beside them. **Saving an Edit
+    on timed lyrics asks first** (`ConfirmService`, `trackInfo.lyricsEditDropsSync`): the server
+    stores an edit without `synced` and resets the offset, so the save ends the karaoke sync, and
+    the owner chose to make that a decision. `ConfirmHostComponent` sits at `z-[96]`, above the
+    sheet (`z-[91]`): at `z-50` the confirm rendered under the sheet that asked. Specs: `services/lyrics-one-owner.spec.ts` (a stateful
+    fake server, so both write-through and re-read fixes pass and only a copy that never hears the
+    write fails) and `services/lyrics.service.spec.ts`. The sync-offset ordering race (#1656) is not
+    fixed here.
   - **Manual queue resize** (`data-testid="now-playing-queue-resize"`): the notch is the visible affordance for a resize the sheet's body gesture serves from **anywhere** — swipe up on the cover, transport, tabs or panel to pull the panel area **taller**, which **shrinks the cover art** to make room (the panel is `flex-1`, so shrinking the cover grows it); swipe down to collapse it (see the mode table above). The handle is **shell-owned, rendered above the Queue/Lyrics tab bar** — it originally lived inside the queue panel, so after the tab switcher shipped it vanished on the Lyrics tab and users reported the feature as lost; hoisting it makes it work for **both** panels (the queue panel's old `resizing` input / `resizeStart` output API is removed). `queueExtraHeightPx` (px the cover has shrunk from its 320px max, clamped to `[0, 320]` — the floor is 0 since #993) feeds `coverMaxPx = 320 − queueExtraHeightPx`, bound to the cover's `max-width`. The chosen size is **persisted per-device** in `localStorage` (`nicotind:np-queue-extra`) and read on construction, so it survives reload. Unit-tested in `now-playing.component.spec.ts` → "sheet body gesture (mode table)", "queue resize (drag handle)" + "hoisted resize handle (shell-owned)"; the Lyrics-tab drag and the swipe-from-the-tabs path are covered end-to-end in `mobile-ux.spec.ts`.
   - **Desktop side panel (`lg:` ≥1024px, Spotify-like)**: the sheet becomes two columns — cover art + transport centered in a flexible left column, the Queue/Lyrics panel (with its tab switcher) an always-visible right column (`data-testid="now-playing-body"` wraps both). **The border between them is a splitter** (`data-testid="now-playing-side-resize"`, `role="separator" aria-orientation="vertical"`, `tabindex="0"`, 8px hit area around a 1px line): drag it, or with focus use ArrowLeft/ArrowRight (±16px) and Home/End (min/max); double-click resets. `sidePanelWidthPx` defaults to 380, clamps to `[300, 640]` and never more than half the viewport, and is **persisted per-device** (`nicotind:np-side-width`). It rides a **`--np-side-w` CSS var** (`lg:w-[var(--np-side-w,380px)]`) rather than an inline width, for the same reason the cover cap does. Because every extracted child uses `host: {class: 'contents'}`, a grid/flex on the root would place each child's *inner* element as an individual item — so the shell adds two **group wrappers that are `contents` below `lg` and real flex columns at `lg`** (`class="contents lg:flex …"`): below the breakpoint the wrappers dissolve and the mobile stacked layout is untouched by construction. The breakpoint is `lg`, not `md` (the app's nav-chrome fork) — a portrait tablet at 768px lacks room for cover + a 380px column, and `lg:` is where the app's grids already assume real horizontal space. The mobile drag-resize notch is `lg:hidden` and the body gesture's resize mode is skipped at `lg` (`matchMedia('(min-width: 1024px)')`); the stored cover shrink is mobile-scoped: `coverMaxPx` rides a **`--np-cover-max` CSS var** (`max-w-[var(--np-cover-max,20rem)] lg:max-w-80`) instead of an inline `style.max-width`, which would beat every class including the `lg:` cap. Karaoke fullscreen is untouched (own `fixed inset-0 z-[70]` overlay at all widths). Covered by `now-playing-desktop.spec.ts` (e2e; jsdom has no layout engine) + the cover-art spec's var-binding case.
 - **Mini-player transport** (player-standardization plan, Task 11 — the plan's final task):
@@ -1972,6 +2003,31 @@ station filter (`describeLibraryFilter`, reused rather than restated), else the 
 grew out of, else the track it seeded from. An ad-hoc queue is genuinely undetermined and falls
 through to the plain title rather than inventing a label.
 
+## The Now Playing sheet shows no bitrate; Track info does (#1661)
+
+The sheet used to stack a fourth text line under title / artist / album: `formatQuality(bitRate)`
+with no format, so it only ever read `214 kbps`. The library is almost all Opus since the 2026-09
+conversion, so that number is the bitrate of the *converted* file, and a reader with MP3 habits
+gets it wrong. Opus at 128 is generally transparent while MP3 at 128 is not, so 214 reads as
+"ok MP3" and 96 reads as "bad". The library keeps no provenance either: once a FLAC or a 320 MP3 is
+transcoded, nothing stored says what the source was. So the line told the listener little they
+could use, could mislead them, and cost a line on every sheet.
+
+The owner chose to **remove it from the sheet and keep it in Track info** (the `File` section's
+`Bitrate` row, `data-testid="track-info-bitrate"`). That changes no data and is easy to undo. The
+`now-playing-quality` testid went with the line. It was removed on purpose, and
+`now-playing-cover-art.component.spec.ts` checks that the sheet renders no `kbps`. The download
+cards, search results and folder browser keep their bitrate and format. There it helps the user
+pick which file to fetch, which is a different question
+([download-pipeline.md](download-pipeline.md#quality-chip--320-kbps--flac--1411-kbps)).
+
+**Still open in #1700** (split from #1661): whether *any* listener-facing quality signal is worth showing. That covers
+codec-aware Opus bands justified from the library's bitrate distribution, a recorded source class
+(which needs provenance captured at acquire time, forward-only, as its own issue), badges, and
+where a signal would sit within the #1654 / #1651 viewport budget. Removing the line reclaimed the
+space; it did not answer that question. A "Lossless" or "Hi-Res" badge would be false for a
+transcoded file, whatever the review decides.
+
 ## The queue-resize notch is a drag target, so it clears 44px
 
 A drag is the least forgiving interaction there is, and the notch offered ~20px of target around a
@@ -2030,7 +2086,7 @@ chip below it, so the hidden shortcut was the only thing lost.
 
 The mini player used to be the tab bar's own `bg-theme-surface` with a `border-t` hairline as the only seam, so player and nav read as one slab. It is now `.player-chrome`: a soft upward shadow (`--theme-elevation-up`, one value for the dark themes, one for Daylight/Warm Paper, a plain hairline on E-Ink) lifts it off the content above, and its background descends from `--theme-surface` toward `--theme-bg`, so its lower edge meets the tab bar as a visible seam. It stays **opaque**: the mosaic stops above the bottom chrome, so a blur would have nothing behind it, and fixed layers with `backdrop-filter` already misbehave on iOS (#1635).
 
-Its two scrubbers (desktop inline, mobile under the row) sit in `.player-mini-seek`, which slims the shared `app-seek-bar` there only — the sheet, karaoke and poll scrubbers keep their look: a 3px track, a fainter buffered band, and a 10px thumb that grows to 1.4× while active or focused (on hover only under `@media (hover: hover)`, since `:hover` sticks after a tap). On touch the thumb is hidden at rest — the fill says where you are, and the native range still jumps to the tapped point; the 20px hit box is untouched. The raised play button's shadow drops from `shadow-lg` to `shadow-md`; #1263's target sizes are an accessibility floor and stay. The heart and output icons were already `text-theme-muted`. Covered by `player.component.spec.ts` ("chrome").
+Its two scrubbers (desktop inline, mobile under the row) sit in `.player-mini-seek`, which slims the shared `app-seek-bar` there only — the sheet, karaoke and poll scrubbers keep their look: a 3px track, a fainter buffered band, and a 10px thumb that grows to 1.4× while active or focused (on hover only under `@media (hover: hover)`, since `:hover` sticks after a tap). On touch the thumb is hidden at rest — the fill says where you are, and the native range still jumps to the tapped point; the 20px hit box is untouched. The raised play button's shadow drops from `shadow-lg` to `shadow-md`; #1263's target sizes are an accessibility floor and stay. The output icon was already `text-theme-muted`; the bar carries no like heart (#1650 — it lives on the Now Playing sheet, see [song-actions.md](song-actions.md)). Covered by `player.component.spec.ts` ("chrome").
 
 ## Transport buttons are sized for a thumb (#1263)
 
@@ -2182,4 +2238,28 @@ bar pinned to the bottom". Not reproducible in Chromium or CI (no iOS WebKit) �
 **Held tiles and the entity menu are not selectable** (`user-select: none` on `.mosaic-tile` and the menu): a
 press-and-hold opens the menu, and the drag that follows used to start an iOS text selection (the Copy / Look Up
 / Translate bubble) over the menu.
+
+## The scroller reserves the measured bottom chrome (#1694)
+
+At maximum scroll the last element of every view ended about 26px under the mini player. `<main
+data-scroll-root>` reserved the tab bar plus a **constant** 4.5rem (72px) for the mini player, written when the
+bar was a 56px row; the grab notch (22px) and the mobile scrubber (20px) later made it ~98px and the constant
+never followed. The scroller from #1646 did not cause it, it only made the end of the scroll the place you look.
+
+There is now one reservation, `MAIN_BOTTOM_PAD_CLASS` (`lib/player-chrome.ts`): the tab bar's own
+`3.5rem + env(safe-area-inset-bottom)` on phones, plus `var(--mini-player-h)`. `PlayerComponent` measures its
+bar with a `ResizeObserver` and publishes the height on `<html>` through `miniPlayerReservation`: the real height
+while a track is loaded, `0px` while idle (the bar is slid off-screen) and on TV (no bar). So the "Playing on"
+strip, a font-size change or a future control is reserved without anyone updating a number. The slide is a
+transform, which does not change the box, so the observer fires only on real size changes. It observes the
+**border box**, the one `getBoundingClientRect` measures: the default content box never fires on a padding or
+border change. There is no
+`--vp-deficit` term: the shell grows by the deficit and the chrome is anchored to the shell's bottom, so `<main>`'s
+bottom and the chrome's move together. The `bottom-reservation` e2e scrolls Library → Songs and Settings to the
+bottom at 390x844, with no track, with a track, with a forced 50px deficit, and with the bar grown 40px after first
+render (plus Library → Songs on a 1280x720 desktop with a track). It asserts from both sides that the lowest painted
+element ends at the topmost visible `[data-bottom-chrome]`: not below it, and not more than 2px above it (the
+measured gap is 0px), so an over-reservation such as a double-counted deficit fails too. Track cases first assert
+the track survived the reload and `--mini-player-h` is not `0px`. On-device check: `bun run phone-preview`
+([phone-preview.md](phone-preview.md)).
 

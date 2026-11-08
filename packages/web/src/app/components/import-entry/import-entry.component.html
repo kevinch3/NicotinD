@@ -1,0 +1,21 @@
+<button
+  type="button"
+  class="w-full sm:w-auto min-h-11 flex items-center gap-3 rounded-xl border px-3 py-2 text-left transition-colors hover:border-theme-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-accent"
+  [class]="stateClass()"
+  [attr.data-dragging]="dragging()"
+  data-testid="import-browse"
+  (click)="pick.emit()">
+  <span
+    class="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-lg bg-theme-accent/15 text-theme-accent-text"
+    aria-hidden="true">
+    <app-icon name="folder" [size]="18" />
+  </span>
+  <span class="min-w-0 flex flex-col">
+    <span class="text-sm font-medium text-theme-primary" data-testid="import-browse-label">
+      {{ 'import.entryLabel' | t }}
+    </span>
+    <span class="text-xs text-theme-muted" data-testid="import-browse-hint">
+      {{ 'import.entryHint' | t }}
+    </span>
+  </span>
+</button>

@@ -13,7 +13,6 @@ import {
 } from '@angular/core';
 import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
-import { LikeService } from '../../services/like.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
@@ -29,7 +28,11 @@ import { buildMediaMetadata } from '../../lib/media-metadata';
 import * as db from '../../lib/preserve-store';
 import { createVerticalSwipe, shouldCommit } from '../../lib/vertical-swipe';
 import { haptic } from '../../lib/haptics';
-import { miniPlayerSlideClass } from '../../lib/player-chrome';
+import {
+  MINI_PLAYER_HEIGHT_VAR,
+  miniPlayerReservation,
+  miniPlayerSlideClass,
+} from '../../lib/player-chrome';
 import {
   SEEK_AVAILABILITY_EPSILON_SEC,
   seekTargetIsAvailable,
@@ -180,7 +183,6 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
 
   readonly player = inject(PlayerService);
   readonly auth = inject(AuthService);
-  readonly likes = inject(LikeService);
   readonly remote = inject(RemotePlaybackService);
   private ws = inject(PlaybackWsService);
   private zone = inject(NgZone);
@@ -194,6 +196,8 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
 
   private audioElA = viewChild<ElementRef<HTMLAudioElement>>('audioElA');
   private audioElB = viewChild<ElementRef<HTMLAudioElement>>('audioElB');
+  private miniChrome = viewChild<ElementRef<HTMLElement>>('miniChrome');
+  private readonly miniChromeHeight = signal(0);
   // Which element is currently active; flipping this makes all Effects switch to the other element.
   private primaryIsA = signal(true);
   private readonly audioEl = computed(() =>
@@ -307,6 +311,26 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
 
   constructor() {
     this.noteOggFallback();
+    // <main> reserves the bar's real height (#1694): a transform slide never
+    // changes the box, so the observer only fires on genuine size changes. It
+    // watches the border box, the one measured: the default content box misses
+    // a padding or border change.
+    effect((onCleanup) => {
+      const el = this.miniChrome()?.nativeElement;
+      if (!el) return;
+      const measure = () => this.miniChromeHeight.set(el.getBoundingClientRect().height);
+      measure();
+      if (typeof ResizeObserver === 'undefined') return;
+      const observer = new ResizeObserver(measure);
+      observer.observe(el, { box: 'border-box' });
+      onCleanup(() => observer.disconnect());
+    });
+    effect(() => {
+      document.documentElement.style.setProperty(
+        MINI_PLAYER_HEIGHT_VAR,
+        miniPlayerReservation(this.player.currentTrack() !== null, this.miniChromeHeight()),
+      );
+    });
     // Effect 1: Load track (checks IndexedDB first for offline-preserved tracks)
     effect((onCleanup) => {
       // Revoke any object URL we created in onEnded for a preserved track.
@@ -1673,6 +1697,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    document.documentElement.style.removeProperty(MINI_PLAYER_HEIGHT_VAR);
     this.audioListenerCleanups.forEach((fn) => fn());
     if (this.backgroundPauseTimer !== null) clearTimeout(this.backgroundPauseTimer);
     this.clearRecoveryTimeout();
@@ -1686,14 +1711,6 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     if (this.visibilityChangeHandler) {
       document.removeEventListener('visibilitychange', this.visibilityChangeHandler);
     }
-  }
-
-  /** Quick-interaction like/unlike on the mini-player bar (bug: the like
-   *  button was only reachable via the ⋯ menu / track row / track-info sheet
-   *  — see docs/song-actions.md). */
-  toggleLike(): void {
-    const id = this.player.currentTrack()?.id;
-    if (id) void this.likes.toggle(id);
   }
 
   handlePlayPause(): void {

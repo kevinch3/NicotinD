@@ -189,6 +189,9 @@ describe('KeyboardShortcutsService', () => {
 
   it('L likes the current track, and does nothing with no track loaded', () => {
     setup(false);
+    // With the Now Playing sheet closed: the mini bar has no heart (#1650), so
+    // the shortcut must not depend on the sheet being open.
+    expect(playerStub.nowPlayingOpen()).toBe(false);
     dispatchKeydown(window, 'l');
     expect(likeStub.toggle).toHaveBeenCalledWith('song-1');
     playerStub.currentTrack.set(null);

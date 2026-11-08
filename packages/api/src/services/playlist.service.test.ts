@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import { PlaylistService } from './playlist.service.js';
+import { bumpCoverRev } from './cover-rev.js';
 
 let db: Database;
 let svc: PlaylistService;
@@ -31,6 +32,19 @@ describe('PlaylistService', () => {
 
     const detail = svc.get('u1', pl.id);
     expect(detail?.songs.map((s) => s.id)).toEqual(['s1', 's2']);
+  });
+
+  it('a song carries its album cover_rev, in a playlist and in its proposals (#1666)', () => {
+    db.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, synced_at)
+       VALUES ('alb', 'Alb', 'A', 'art', 3, 0, 1)`,
+    );
+    const rev = bumpCoverRev(db, 'album', 'alb')!;
+    const pl = svc.create('u1', { name: 'P', songIds: ['s1'] });
+    expect(svc.get('u1', pl.id)?.songs.map((s) => s.coverRev)).toEqual([rev]);
+    // An empty playlist draws its tokens from its name: "A" matches all three by artist.
+    const empty = svc.create('u1', { name: 'A' });
+    expect(svc.proposals('u1', empty.id)?.map((s) => s.coverRev)).toEqual([rev, rev, rev]);
   });
 
   it('isolates playlists per user', () => {

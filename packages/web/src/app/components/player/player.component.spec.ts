@@ -15,7 +15,6 @@ import {
 import { SEEK_AVAILABILITY_EPSILON_SEC } from '../../lib/seek-availability';
 import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
-import { LikeService } from '../../services/like.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 import { PreserveService } from '../../services/preserve.service';
@@ -57,7 +56,6 @@ describe('PlayerComponent', () => {
   let mockPlay: ReturnType<typeof vi.fn>;
   let mockPause: ReturnType<typeof vi.fn>;
   let mockLoad: ReturnType<typeof vi.fn>;
-  let likes: { isLiked: ReturnType<typeof vi.fn>; toggle: ReturnType<typeof vi.fn> };
   let preserveMock: { isPreserved: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn> };
 
   // Shared signals — let tests control device/network state without re-providing
@@ -104,7 +102,6 @@ describe('PlayerComponent', () => {
     setVisibility('visible');
     isActiveDevice.set(true);
     netOnline.set(true);
-    likes = { isLiked: vi.fn().mockReturnValue(false), toggle: vi.fn() };
     preserveMock = {
       isPreserved: vi.fn().mockReturnValue(false),
       remove: vi.fn().mockResolvedValue(undefined),
@@ -118,7 +115,6 @@ describe('PlayerComponent', () => {
           provide: AuthService,
           useValue: { token: signal('test-token'), mediaToken: signal('test-token') },
         },
-        { provide: LikeService, useValue: likes },
         {
           provide: RemotePlaybackService,
           useValue: {
@@ -490,6 +486,113 @@ describe('PlayerComponent', () => {
     });
   });
 
+  // ─── Scroller reservation (#1694) ─────────────────────────────────────────
+
+  describe('mini player height for the scroller', () => {
+    const published = () => document.documentElement.style.getPropertyValue('--mini-player-h');
+
+    it('publishes the measured bar height while a track is loaded, 0px when idle', () => {
+      // jsdom lays nothing out, so feed the measurement the observer would.
+      (component as unknown as { miniChromeHeight: { set(v: number): void } }).miniChromeHeight.set(
+        97.6,
+      );
+      fixture.detectChanges();
+      expect(published()).toBe('0px');
+
+      playerService.play(TRACK);
+      fixture.detectChanges();
+      expect(published()).toBe('98px');
+
+      playerService.currentTrack.set(null);
+      fixture.detectChanges();
+      expect(published()).toBe('0px');
+    });
+
+    it('withdraws the variable when the player is destroyed', () => {
+      fixture.destroy();
+      expect(published()).toBe('');
+    });
+
+    describe('with ResizeObserver available', () => {
+      // Child directives observe their own elements too, so the stub keeps one
+      // record per observed target rather than a single captured callback.
+      type Observed = {
+        target: Element;
+        box: string | undefined;
+        fire: () => void;
+        disconnected: boolean;
+      };
+      let observers: Observed[];
+      const observerOf = (el: Element) => observers.find((o) => o.target === el);
+
+      beforeEach(() => {
+        observers = [];
+        // Spec-local stub, as in bottom-chrome-safe.directive.spec.ts: jsdom has
+        // none, and a global polyfill would mask the component's guard.
+        class ResizeObserverStub {
+          private readonly mine: Observed[] = [];
+          constructor(private readonly cb: () => void) {}
+          observe(target: Element, options?: { box?: string }): void {
+            const record = { target, box: options?.box, fire: this.cb, disconnected: false };
+            this.mine.push(record);
+            observers.push(record);
+          }
+          disconnect(): void {
+            for (const record of this.mine) record.disconnected = true;
+          }
+        }
+        (globalThis as Record<string, unknown>)['ResizeObserver'] = ResizeObserverStub;
+      });
+
+      afterEach(() => {
+        delete (globalThis as Record<string, unknown>)['ResizeObserver'];
+      });
+
+      // The outer beforeEach built the player before the stub existed, so build
+      // a fresh one. Signal viewChild does not resolve here (see `audioEl`), so the
+      // bar is injected the same way, before the first detectChanges runs the effect.
+      function observedPlayer(): { bar: HTMLElement; height: { value: number } } {
+        fixture.destroy();
+        fixture = TestBed.createComponent(PlayerComponent);
+        const height = { value: 98 };
+        const bar = document.createElement('div');
+        bar.getBoundingClientRect = () => ({ height: height.value }) as DOMRect;
+        Object.defineProperty(fixture.componentInstance, 'audioEl', {
+          value: () => ({ nativeElement: document.createElement('audio') }),
+          configurable: true,
+        });
+        Object.defineProperty(fixture.componentInstance, 'miniChrome', {
+          value: () => ({ nativeElement: bar }),
+          configurable: true,
+        });
+        fixture.detectChanges();
+        return { bar, height };
+      }
+
+      it('re-measures when the bar grows after the first render', () => {
+        const { bar, height } = observedPlayer();
+        TestBed.inject(PlayerService).play(TRACK);
+        fixture.detectChanges();
+        // The border box is the one measured; the default content box misses
+        // a padding or border change.
+        expect(observerOf(bar)?.box).toBe('border-box');
+        expect(published()).toBe('98px');
+
+        // e.g. the "Playing on" strip appears: only the observer can see it.
+        height.value = 140;
+        observerOf(bar)!.fire();
+        fixture.detectChanges();
+        expect(published()).toBe('140px');
+      });
+
+      it('disconnects the observer when the player is destroyed', () => {
+        const { bar } = observedPlayer();
+        fixture.destroy();
+        expect(observerOf(bar)!.disconnected).toBe(true);
+      });
+    });
+  });
+
   // ─── Separation + refined seek (#1638) ────────────────────────────────────
 
   describe('chrome', () => {
@@ -509,52 +612,20 @@ describe('PlayerComponent', () => {
     });
   });
 
-  // ─── Like button — quick interaction on the mini-player itself ────────────
+  // ─── No like control — the heart lives on the Now Playing sheet only ─────
+  // (#1650: the owner moved Like off the mini bar; the sheet, ⋯ menu and the
+  // `L` shortcut remain — see docs/song-actions.md.)
 
-  describe('like button', () => {
-    it('renders the heart for the current track and toggles it via LikeService', () => {
+  describe('like control', () => {
+    it('renders no like heart on the mini bar, even with a track loaded', () => {
       playerService.currentTrack.set(TRACK);
       fixture.detectChanges();
+      const root = fixture.nativeElement as HTMLElement;
 
-      const heart: HTMLButtonElement = fixture.nativeElement.querySelector(
-        '[data-testid="player-like"]',
-      );
-      expect(heart).toBeTruthy();
-      expect(heart.getAttribute('aria-pressed')).toBe('false');
-
-      heart.click();
-      expect(likes.toggle).toHaveBeenCalledWith(TRACK.id);
-    });
-
-    it('reflects the liked state via aria-pressed', () => {
-      playerService.currentTrack.set(TRACK);
-      likes.isLiked.mockReturnValue(true);
-      fixture.detectChanges();
-
-      const heart: HTMLButtonElement = fixture.nativeElement.querySelector(
-        '[data-testid="player-like"]',
-      );
-      expect(heart.getAttribute('aria-pressed')).toBe('true');
-    });
-
-    it('renders nothing when no track is loaded', () => {
-      playerService.currentTrack.set(null);
-      fixture.detectChanges();
-
-      expect(fixture.nativeElement.querySelector('[data-testid="player-like"]')).toBeNull();
-    });
-
-    it('does not hijack the swipe-to-open gesture (onBarPointerDown bails on a button target)', () => {
-      playerService.currentTrack.set(TRACK);
-      fixture.detectChanges();
-      const dragStartSpy = vi.spyOn(component['barDrag'], 'start');
-
-      const heart: HTMLButtonElement = fixture.nativeElement.querySelector(
-        '[data-testid="player-like"]',
-      );
-      heart.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
-
-      expect(dragStartSpy).not.toHaveBeenCalled();
+      expect(root.querySelector('[data-testid="player-like"]')).toBeNull();
+      // The track-info column is cover + title/artist only — no buttons.
+      const info = root.querySelector('[data-testid="player-track-info"]')!;
+      expect(info.querySelector('button')).toBeNull();
     });
   });
 

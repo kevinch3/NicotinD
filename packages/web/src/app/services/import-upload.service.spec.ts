@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
-import { of, throwError } from 'rxjs';
+import { Subject, of, throwError } from 'rxjs';
 import { ImportUploadService } from './import-upload.service';
 import { ImportApiService } from './api/import-api.service';
 import type { DroppedFile } from '../lib/upload-plan';
@@ -109,5 +109,55 @@ describe('ImportUploadService', () => {
     const { api, service } = setup();
     await expect(service.upload([file('a/readme.txt', 10)])).rejects.toThrow();
     expect(api.createSession).not.toHaveBeenCalled();
+    expect(service.inFlight()).toBe(0);
+  });
+
+  // #1664: the commit is a request of its own, so the page can say "Finishing…"
+  // while it is on the wire instead of sitting at 99%.
+  it('announces the commit after the last chunk and before the commit request', async () => {
+    const order: string[] = [];
+    const commit = new Subject<{ jobId: string }>();
+    const { service } = setup({
+      putChunk: vi.fn(() => {
+        order.push('chunk');
+        return of({ received: 10 });
+      }),
+      commit: vi.fn(() => {
+        order.push('commit');
+        return commit;
+      }),
+    });
+    const done = service.upload([file('a/01.flac', 10)], {
+      onCommitting: () => order.push('committing'),
+    });
+    await vi.waitFor(() => expect(order).toContain('commit'));
+    expect(order).toEqual(['chunk', 'committing', 'commit']);
+    commit.next({ jobId: 'job-1' });
+    commit.complete();
+    await expect(done).resolves.toBe('job-1');
+  });
+
+  // Every Activity badge reads this, so it must span session through commit
+  // and drop back on failure as well as success.
+  it('counts an upload as in flight until the commit resolves or it fails', async () => {
+    const commit = new Subject<{ jobId: string }>();
+    const { api, service } = setup({ commit: vi.fn(() => commit) });
+    expect(service.inFlight()).toBe(0);
+    const done = service.upload([file('a/01.flac', 10)]);
+    expect(service.inFlight()).toBe(1);
+    // Still one while the commit itself is on the wire.
+    await vi.waitFor(() => expect(api.commit).toHaveBeenCalled());
+    expect(service.inFlight()).toBe(1);
+    commit.next({ jobId: 'job-1' });
+    commit.complete();
+    await done;
+    expect(service.inFlight()).toBe(0);
+
+    TestBed.resetTestingModule();
+    const failing = setup({ putChunk: vi.fn(() => throwError(() => new Error('network'))) });
+    const failed = failing.service.upload([file('a/01.flac', 10)]);
+    expect(failing.service.inFlight()).toBe(1);
+    await expect(failed).rejects.toThrow();
+    expect(failing.service.inFlight()).toBe(0);
   });
 });

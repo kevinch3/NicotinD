@@ -13,15 +13,15 @@ import {
   RouterLinkActive,
 } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
-import { PlayerService } from '../../services/player.service';
 import { LikeService } from '../../services/like.service';
 import { RecommendationExclusionsService } from '../../services/recommendation-exclusions.service';
 import { LibraryEventsService } from '../../services/library-events.service';
 import { GetThenHearService } from '../../services/get-then-hear.service';
-import { mainBottomPadClass } from '../../lib/player-chrome';
+import { MAIN_BOTTOM_PAD_CLASS } from '../../lib/player-chrome';
 import { SetupService } from '../../services/setup.service';
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
+import { ImportUploadService } from '../../services/import-upload.service';
 import { PreserveService } from '../../services/preserve.service';
 import { PlayerComponent } from '../player/player.component';
 import { NowPlayingComponent } from '../now-playing/now-playing.component';
@@ -121,13 +121,13 @@ export function headerDisplayClass(url: string, homeView: HomeView | null = null
 })
 export class LayoutComponent implements OnInit, OnDestroy {
   readonly auth = inject(AuthService);
-  readonly player = inject(PlayerService);
   readonly setup = inject(SetupService);
   readonly preserve = inject(PreserveService);
   private router = inject(Router);
   readonly version = inject(APP_VERSION);
   private transfers = inject(TransferService);
   private acquire = inject(AcquireService);
+  private uploads = inject(ImportUploadService);
   private likes = inject(LikeService);
   private readonly exclusions = inject(RecommendationExclusionsService);
   private readonly libraryEvents = inject(LibraryEventsService);
@@ -235,16 +235,20 @@ export class LayoutComponent implements OnInit, OnDestroy {
   }
 
   // Active download badge on the desktop "Add" nav link — slskd transfers
-  // + in-flight URL acquisitions (the old standalone header indicator's signal,
-  // folded into the nav item now that the dedicated header button is gone; the
-  // mobile tab bar and the /get Downloads tab carry the same count).
+  // + in-flight URL acquisitions + uploads not yet a job (the old standalone
+  // header indicator's signal, folded into the nav item now that the dedicated
+  // header button is gone; the mobile tab bar and the /get Downloads tab carry
+  // the same count).
   readonly downloadCount = computed(
-    () => this.transfers.activeDownloadCount() + this.acquire.activeJobs().length,
+    () =>
+      this.transfers.activeDownloadCount() +
+      this.acquire.activeJobs().length +
+      this.uploads.inFlight(),
   );
 
-  // Bottom padding so fixed chrome never covers the last list item — geometry
-  // shared with the mini-player/tab-bar stack in lib/player-chrome.ts.
-  readonly mainPadClass = computed(() => mainBottomPadClass(this.player.currentTrack() !== null));
+  // Bottom padding so fixed chrome never covers the last list item — the tab bar
+  // plus the mini player's measured height, see lib/player-chrome.ts.
+  readonly mainPadClass = MAIN_BOTTOM_PAD_CLASS;
 
   readonly showChangelog = signal(false);
   readonly showLogoutDialog = signal(false);

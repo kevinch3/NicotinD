@@ -961,4 +961,12 @@ describe('TrackInfoSheetComponent (identity header links)', () => {
     expect(header.querySelector('app-entity-link')).not.toBeNull();
     expect(header.textContent).toContain('Título');
   });
+
+  it('keeps the bitrate in the File section, the one place it is shown (#1661)', () => {
+    const fixture = render();
+    const bitrate: HTMLElement | null = fixture.nativeElement.querySelector(
+      '[data-testid="track-info-bitrate"]',
+    );
+    expect(bitrate?.textContent?.trim()).toBe('320 kbps');
+  });
 });

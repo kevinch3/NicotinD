@@ -23,14 +23,26 @@ export function miniPlayerSlideClass(hasTrack: boolean): string {
 }
 
 /**
- * `<main>` bottom padding so the fixed chrome never covers the last list item:
- * tab bar only when idle, tab bar + mini-player when a track is loaded
- * (desktop has no tab bar, only the player).
+ * The mini player's measured height, published by `PlayerComponent` on `<html>`
+ * (`0px` while no track is loaded, or on TV where the bar is not rendered).
  */
-export function mainBottomPadClass(hasTrack: boolean): string {
-  return hasTrack
-    ? 'pb-[calc(8rem+env(safe-area-inset-bottom))] md:pb-20'
-    : 'pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0';
+export const MINI_PLAYER_HEIGHT_VAR = '--mini-player-h';
+
+/**
+ * `<main data-scroll-root>` bottom padding so the fixed chrome never covers the
+ * last item at maximum scroll: the tab bar (its own `3.5rem + safe-area`, phone
+ * only) plus the mini player's *measured* height. The player's height used to be
+ * a constant here (4.5rem) and the bar outgrew it — grab notch and mobile
+ * scrubber made it ~98px, so 26px of every view stayed under it (#1694). No
+ * deficit term: the shell grows by `--vp-deficit` and the chrome is anchored to
+ * the shell's bottom, so `<main>`'s bottom and the chrome's move together.
+ */
+export const MAIN_BOTTOM_PAD_CLASS =
+  'pb-[calc(3.5rem+env(safe-area-inset-bottom)+var(--mini-player-h,0px))] md:pb-[var(--mini-player-h,0px)]';
+
+/** The value `PlayerComponent` publishes as {@link MINI_PLAYER_HEIGHT_VAR}. */
+export function miniPlayerReservation(hasTrack: boolean, measuredHeight: number): string {
+  return `${hasTrack && measuredHeight > 0 ? Math.ceil(measuredHeight) : 0}px`;
 }
 
 /** A fixed chrome layer's viewport rect (the subset a popup needs to avoid it). */

@@ -103,7 +103,13 @@ describe('LibraryEventsService', () => {
     src.emit('library', {
       seq: 3,
       at: 3,
-      event: { type: 'artwork.changed', albumId: 'a1', coverArt: null, version: 42 },
+      event: {
+        type: 'artwork.changed',
+        changes: [
+          { kind: 'album', id: 'a1', rev: 42 },
+          { kind: 'artist', id: 'ar1', rev: 7 },
+        ],
+      },
     });
     const jobs: string[] = [];
     svc.jobsChanged$.subscribe((id) => jobs.push(id));
@@ -113,10 +119,19 @@ describe('LibraryEventsService', () => {
     expect(svc.changedAlbums().get('a1')).toBe(1);
     expect(svc.changedAlbums().get('a9')).toBe(2);
     expect(svc.artworkVersions().get('a1')).toBe(42);
+    expect(svc.artistArtworkVersions().get('ar1')).toBe(7);
+    expect(svc.artworkVersions().has('ar1')).toBe(false);
     expect(jobs).toEqual(['j1']);
     expect(invalidate).toHaveBeenCalled();
     svc.consumeLanded(['a1']);
     expect(svc.landedAlbumIds().size).toBe(0);
+  });
+
+  it('a cover rev never rewinds: an older frame for the same album is ignored (#1666)', () => {
+    const { svc } = setup();
+    svc.apply({ type: 'artwork.changed', changes: [{ kind: 'album', id: 'a1', rev: 3 }] }, 1);
+    svc.apply({ type: 'artwork.changed', changes: [{ kind: 'album', id: 'a1', rev: 2 }] }, 2);
+    expect(svc.artworkVersions().get('a1')).toBe(3);
   });
 
   it('a sequence hole or an explicit resync drops the caches and bumps resync', () => {

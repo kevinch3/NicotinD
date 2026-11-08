@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { basename, dirname, join, relative } from 'node:path';
+import { basename, join, relative } from 'node:path';
 import { existsSync } from 'node:fs';
 import {
   createLogger,
@@ -55,7 +55,6 @@ import {
   type SongMetadataMutateBody,
 } from '../services/song-metadata-mutate.js';
 import {
-  deleteArtwork,
   purgeDiskArtCache,
   purgeCanonicalCache,
   resolveArtwork,
@@ -65,12 +64,7 @@ import {
   deleteArtistImageOverride,
   ALLOWED_OVERRIDE_TYPES,
 } from '../services/artist-image-override.js';
-import {
-  clearAlbumCoverNegativeCache,
-  clearCoverNegativeCache,
-  extractCover,
-  fetchRemoteCover,
-} from './streaming.js';
+import { clearCoverNegativeCache, extractCover, fetchRemoteCover } from './streaming.js';
 import { albumGenreDistribution, artistGenreDistribution } from '../services/genre-distribution.js';
 import {
   RELATED_LIMIT_DEFAULT,
@@ -98,14 +92,11 @@ import {
   getGenreOverride,
   upsertGenreOverride,
 } from '../services/genre-overrides.js';
-import { resizeCover } from '../services/cover-thumbnail.js';
 import {
   dedupeCoverUrls,
   selectDistinctEmbeddedCovers,
   extractEmbeddedPicture,
-  replaceFolderCover,
 } from '../services/cover-sources.js';
-import { folderArtBelongsToAlbum } from '../services/album-folder.js';
 import { checkFragments } from '../services/library-fragments.js';
 import {
   albumConfirmedIncomplete,
@@ -452,6 +443,7 @@ interface AlbumRow {
   classification: string;
   hidden: number;
   manual_override: number;
+  cover_rev: number;
 }
 
 export interface SongRow {
@@ -459,6 +451,7 @@ export interface SongRow {
   album_id: string;
   album_name: string;
   album_cover_art: string | null;
+  album_cover_rev: number | null;
   title: string;
   artist: string;
   artist_id: string;
@@ -503,16 +496,18 @@ interface ArtistRow {
   album_count: number;
   cover_art: string | null;
   starred: string | null;
+  cover_rev: number;
 }
 
 const ALBUM_SELECT = `
   SELECT id, name, artist, artist_id, cover_art, song_count, duration,
-         year, genre, created, starred, classification, hidden, manual_override
+         year, genre, created, starred, classification, hidden, manual_override, cover_rev
   FROM library_albums
 `;
 
 export const SONG_SELECT = `
   SELECT s.id, s.album_id, a.name AS album_name, a.cover_art AS album_cover_art,
+         a.cover_rev AS album_cover_rev,
          s.title, s.artist, s.artist_id, s.album_artist, s.album_artist_id,
          s.track, s.disc, s.duration, s.year, s.genre, s.composer, s.conductor,
          s.work, s.movement, s.movement_number,
@@ -537,6 +532,9 @@ function rowToAlbum(r: AlbumRow): Album & { classification: string; hidden: bool
     // legacy song id on rows scanned before this change) makes canonical art
     // resolve without waiting for a rescan.
     coverArt: r.id,
+    // The cover's identity: bumped whenever its bytes change (#1666), so a URL
+    // built from coverArt + coverRev changes with the image.
+    coverRev: r.cover_rev ?? 0,
     songCount: r.song_count,
     duration: r.duration,
     year: r.year ?? undefined,
@@ -568,6 +566,9 @@ export function rowToSong(r: SongRow): Song {
     movement: r.movement ?? undefined,
     movementNumber: r.movement_number ?? undefined,
     coverArt: r.cover_art ?? r.album_cover_art ?? r.album_id,
+    // A song's cover resolves to its album's (canonical, then folder art), so it
+    // carries the album's revision.
+    coverRev: r.album_cover_rev ?? 0,
     size: r.size ?? 0,
     contentType: r.content_type ?? '',
     suffix: r.suffix ?? '',
@@ -618,6 +619,7 @@ function rowToArtist(r: ArtistRow): Artist {
     // Keyed on the artist id so the cover route serves the canonical Lidarr
     // poster (audio files carry none); disk fallback finds a representative song.
     coverArt: r.id,
+    coverRev: r.cover_rev ?? 0,
     starred: r.starred ?? undefined,
   };
 }
@@ -697,7 +699,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
         // the other direction (#864): a compound that did NOT split, whose base
         // row already represents the same album. album_count > 0: a guest credited
         // on someone else's song stays reachable by link and search, not as a tile.
-        `SELECT id, name, album_count, cover_art, starred
+        `SELECT id, name, album_count, cover_art, starred, cover_rev
          FROM library_artists
          WHERE hidden = 0 AND split_compound = 0 AND fragment_of IS NULL AND album_count > 0 AND name != 'Various Artists' COLLATE NOCASE${filterClause}
          ORDER BY name COLLATE NOCASE ASC LIMIT ? OFFSET ?`,
@@ -741,7 +743,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const db = getDatabase();
     const artistRow = db
       .query<ArtistRow, [string]>(
-        `SELECT id, name, album_count, cover_art, starred
+        `SELECT id, name, album_count, cover_art, starred, cover_rev
          FROM library_artists WHERE id = ?`,
       )
       .get(id);
@@ -1488,7 +1490,11 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     requireCurator(c);
     const id = c.req.param('id');
     const body = await c.req.json<ApplyCoverRequest>().catch(() => ({}) as ApplyCoverRequest);
-    const result = await applyAlbumCover(getDatabase(), { musicDir, coverCacheDir }, id, body);
+    // Only the JSON modes: an upload's bytes come through PUT, never a JSON body.
+    const result = await applyAlbumCover(getDatabase(), { musicDir, coverCacheDir }, id, {
+      coverUrl: body.coverUrl,
+      songId: body.songId,
+    });
     if (!result.ok) return c.json({ error: result.error }, result.status);
     recordAudit(getDatabase(), c.get('user'), 'album.cover', {
       targetKind: 'album',
@@ -1498,13 +1504,14 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
           ? `canonical URL: ${body.coverUrl?.trim()}`
           : `folder cover from track ${body.songId?.trim()}`,
     });
-    return c.json({ ok: true });
+    return c.json({ ok: true, coverRev: result.coverRev });
   });
 
   // Upload a custom cover image (multipart form-data, field "image"). Converted to
   // a standardized square WebP (resizeCover, same treatment thumbnails get) before
   // being written as the album's folder cover, so an arbitrary upload ends up
-  // looking/behaving like every other cover this route serves. Admin only.
+  // looking/behaving like every other cover this route serves. Admin only. The
+  // write is applyAlbumCover's upload mode, so it bumps cover_rev like the picker.
   app.put('/albums/:id/cover', async (c) => {
     requireCurator(c);
     const id = c.req.param('id');
@@ -1533,35 +1540,16 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const data = new Uint8Array(await file.arrayBuffer());
     if (data.length === 0) return c.json({ error: 'Empty image' }, 400);
 
-    const md = expandDir(musicDir);
-    const song = db
-      .query<{ path: string }, [string]>(
-        `SELECT path FROM library_songs WHERE album_id = ?
-         ORDER BY COALESCE(disc, 1), COALESCE(track, 999999), path LIMIT 1`,
-      )
-      .get(id);
-    const abs = song ? resolveSongPath(md, song.path) : null;
-    if (!abs || !isUnderMusicDir(md, abs) || !existsSync(abs)) {
-      return c.json({ error: 'Album has no track files to store a cover next to' }, 404);
-    }
-
-    let resized: { data: Uint8Array; contentType: string };
-    try {
-      resized = await resizeCover(data, 1200);
-    } catch {
-      return c.json({ error: 'Could not read that image' }, 400);
-    }
-
-    replaceFolderCover(dirname(abs), resized, folderArtBelongsToAlbum(db, song!.path));
-    deleteArtwork(db, id, coverCacheDir); // clear canonical → folder art wins
-    if (coverCacheDir) purgeDiskArtCache(coverCacheDir, id);
-    clearAlbumCoverNegativeCache(db, id); // in case an id was 404-cached as artless
+    const result = await applyAlbumCover(db, { musicDir, coverCacheDir }, id, {
+      upload: { data, contentType },
+    });
+    if (!result.ok) return c.json({ error: result.error }, result.status);
     recordAudit(db, c.get('user'), 'album.cover', {
       targetKind: 'album',
       targetId: id,
       detail: 'uploaded image as folder cover',
     });
-    return c.json({ ok: true });
+    return c.json({ ok: true, coverRev: result.coverRev });
   });
 
   // ── Artist image override (admin) ──────────────────────────────────────────
@@ -1579,7 +1567,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     data: Uint8Array,
     contentType: string,
   ): void {
-    writeArtistImageOverride(dataDir!, artistId, data, contentType);
+    writeArtistImageOverride(db, dataDir!, artistId, data, contentType);
     db.run('UPDATE library_artists SET manual_override = 1 WHERE id = ?', [artistId]);
     // The override occupies the un-prefixed cache namespace for this id; drop any
     // sized variants and the negative 404 so the new portrait shows immediately.
@@ -1763,7 +1751,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const db = getDatabase();
     if (!findArtist(db, id)) return c.json({ error: 'Artist not found' }, 404);
 
-    deleteArtistImageOverride(dataDir, id);
+    deleteArtistImageOverride(db, dataDir, id);
     db.run('UPDATE library_artists SET manual_override = 0 WHERE id = ?', [id]);
     if (coverCacheDir) {
       purgeDiskArtCache(coverCacheDir, id);

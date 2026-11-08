@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { LidarrImage } from '../lidarr/index.js';
 import { lidarrCoverPath } from './remote-cover.js';
 import { DISK_ART_REF_EXT } from './disk-art-cache.js';
+import { bumpCoverRev } from './cover-rev.js';
 
 /**
  * Canonical artwork store (Lidarr/MusicBrainz cover & poster URLs).
@@ -59,6 +60,10 @@ export function resolveArtwork(db: Database, id: string): ResolvedArtwork | null
  * Upsert a canonical artwork URL. When the URL changes, purge the stale
  * canonical-cache image so the next request re-fetches the new one. `coverCacheDir`
  * is optional (tests / contexts without a cache dir skip the purge).
+ *
+ * A new or different URL is a cover change, so it bumps the entity's `cover_rev`
+ * (#1666); re-setting the same URL — every enrichment and backfill pass does —
+ * bumps nothing.
  */
 export function setArtwork(
   db: Database,
@@ -83,6 +88,7 @@ export function setArtwork(
   if (coverCacheDir && prev && prev.cover_url !== url) {
     purgeCanonicalCache(coverCacheDir, id);
   }
+  if (prev?.cover_url !== url) bumpCoverRev(db, kind, id);
 }
 
 /**
@@ -170,11 +176,18 @@ export function purgeDiskArtCache(coverCacheDir: string, key: string): void {
 /**
  * Delete the canonical artwork row for an id so cover resolution falls back to
  * the file's folder/embedded art, purging the stale canonical cache. Used when a
- * user picks an album track's embedded image as the cover.
+ * user picks an album track's embedded image as the cover. Removing a row is a
+ * cover change and bumps `cover_rev`; returns whether a row was removed.
  */
-export function deleteArtwork(db: Database, id: string, coverCacheDir?: string): void {
-  db.run('DELETE FROM library_artwork WHERE id = ?', [id]);
+export function deleteArtwork(db: Database, id: string, coverCacheDir?: string): boolean {
+  const removed = db
+    .query<{ kind: ArtworkKind }, [string]>(
+      'DELETE FROM library_artwork WHERE id = ? RETURNING kind',
+    )
+    .get(id);
   if (coverCacheDir) purgeCanonicalCache(coverCacheDir, id);
+  if (removed) bumpCoverRev(db, removed.kind, id);
+  return removed !== null;
 }
 
 /**

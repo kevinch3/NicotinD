@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { applySchema } from '../db.js';
 import { carryArtistCuration } from './artist-curation-carry.js';
+import { libraryEvents } from './library-events.js';
+import { noArtCache } from './cover-negative-cache.js';
 
 let db: Database;
 let dataDir: string;
@@ -171,5 +173,63 @@ describe('carryArtistCuration (#305)', () => {
       true,
     );
     expect(existsSync(join(OVERRIDES(), 'new.webp'))).toBe(true);
+  });
+});
+
+/**
+ * A merge lands a portrait on an artist that already exists — one whose cover
+ * URL a browser may hold for a day. The bytes it serves change, so its
+ * cover_rev must move with them (#1666).
+ */
+describe('carryArtistCuration cover_rev (#1666)', () => {
+  const seedArtist = (id: string) =>
+    db.run(`INSERT INTO library_artists (id, name, album_count, synced_at) VALUES (?, ?, 1, 0)`, [
+      id,
+      id,
+    ]);
+  const rev = (id: string) =>
+    db
+      .query<{ cover_rev: number }, [string]>('SELECT cover_rev FROM library_artists WHERE id = ?')
+      .get(id)!.cover_rev;
+  const changesDuring = (fn: () => void): unknown[] => {
+    libraryEvents.flush();
+    const seen: unknown[] = [];
+    const off = libraryEvents.on((e) => seen.push(e.event));
+    try {
+      fn();
+      libraryEvents.flush();
+    } finally {
+      off();
+    }
+    return seen;
+  };
+
+  it.each([
+    ['canonical artwork', () => seedArtwork('old')],
+    ['an uploaded portrait', () => seedUpload('old')],
+  ])('moving %s onto an existing artist bumps its rev and announces it', (_what, seed) => {
+    seedArtist('new');
+    seed();
+    noArtCache.set('new', Date.now() + 60_000);
+    const seen = changesDuring(() =>
+      carryArtistCuration(db, dataDir, { fromId: 'old', toId: 'new' }),
+    );
+    expect(rev('new')).toBe(1);
+    expect(seen).toEqual([
+      { type: 'artwork.changed', changes: [{ kind: 'artist', id: 'new', rev: 1 }] },
+    ]);
+    expect(noArtCache.has('new')).toBe(false);
+  });
+
+  it('a carry that moves no portrait leaves the rev alone', () => {
+    seedArtist('new');
+    seedArtwork('old', 'https://cdn/OLD.jpg');
+    seedArtwork('new', 'https://cdn/KEEP.jpg');
+    seedMeta('old');
+    const seen = changesDuring(() =>
+      carryArtistCuration(db, dataDir, { fromId: 'old', toId: 'new' }),
+    );
+    expect(rev('new')).toBe(0);
+    expect(seen).toEqual([]);
   });
 });

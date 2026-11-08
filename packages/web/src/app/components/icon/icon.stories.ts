@@ -43,6 +43,7 @@ const ICON_SET = {
   chart: true,
   'layout-grid': true,
   'rows-3': true,
+  folder: true,
 } satisfies Record<IconName, true>;
 
 export const ICON_NAMES = Object.keys(ICON_SET) as IconName[];

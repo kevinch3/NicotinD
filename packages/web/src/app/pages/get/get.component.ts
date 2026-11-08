@@ -14,6 +14,8 @@ import {
   type ImportDropState,
   type ImportDropSummary,
 } from '../../components/import-drop-card/import-drop-card.component';
+import { ImportEntryComponent } from '../../components/import-entry/import-entry.component';
+import { IconComponent } from '../../components/icon/icon.component';
 import { ImportUploadService, NothingToUploadError } from '../../services/import-upload.service';
 import { filesFromDataTransfer, filesFromInput } from '../../lib/dropped-files';
 import { buildUploadManifest, type DroppedFile } from '../../lib/upload-plan';
@@ -61,7 +63,14 @@ export function parseGetTab(raw: string | null): GetTab {
 // because "show me my downloads" has to be linkable — /downloads redirects here.
 @Component({
   selector: 'app-get',
-  imports: [SearchComponent, DownloadsComponent, TranslatePipe, ImportDropCardComponent],
+  imports: [
+    SearchComponent,
+    DownloadsComponent,
+    TranslatePipe,
+    ImportDropCardComponent,
+    ImportEntryComponent,
+    IconComponent,
+  ],
   templateUrl: './get.component.html',
 })
 export class GetComponent {
@@ -79,7 +88,7 @@ export class GetComponent {
   /** Import outlives the acquisition kill-switch, so this is `canImport`. */
   readonly canImport = this.auth.canImport;
 
-  /** A drag is over the page. Coarse on purpose: the whole workspace is the
+  /** A drag is over the Add tab. Coarse on purpose: the whole workspace is the
    *  target, because aiming at a small rectangle with a folder is fiddly. */
   readonly dragging = signal(false);
   private dragDepth = 0;
@@ -104,16 +113,35 @@ export class GetComponent {
   readonly tabs = TABS;
   readonly tab = signal<GetTab>(parseGetTab(this.route.snapshot.queryParamMap.get('tab')));
 
-  // Same formula the desktop nav badge uses — slskd transfers plus in-flight
-  // URL acquisitions.
+  /** Import is an Add-tab action (#1664); `canImport` is the role bar. */
+  readonly acceptsDrop = computed(() => this.canImport() && this.tab() === 'add');
+
+  /**
+   * What Activity shows of an upload started on Add: the page owns it, so it
+   * keeps running across the switch. A failure is shown too, so it is not
+   * silently stranded on a tab the user left; a manifest awaiting confirmation
+   * is not — nothing is happening yet.
+   */
+  readonly backgroundImport = computed(() => {
+    const summary = this.dropSummary();
+    const state = this.dropState();
+    if (!summary || state === 'manifest') return null;
+    return { state, percent: this.dropPercent(), albumCount: summary.albumCount };
+  });
+
+  // Same formula both nav badges use — slskd transfers, in-flight URL
+  // acquisitions, and uploads that have not become a job yet.
   readonly activeCount = computed(
-    () => this.transfers.activeDownloadCount() + this.acquire.activeJobs().length,
+    () =>
+      this.transfers.activeDownloadCount() +
+      this.acquire.activeJobs().length +
+      this.uploads.inFlight(),
   );
 
   // Drag events fire per element, so a naive enter/leave pair flickers as the
   // pointer crosses children. Counting depth is the standard fix.
   onDragEnter(e: DragEvent): void {
-    if (!this.canImport() || !e.dataTransfer?.types.includes('Files')) return;
+    if (!this.acceptsDrop() || !e.dataTransfer?.types.includes('Files')) return;
     this.dragDepth += 1;
     this.dragging.set(true);
   }
@@ -124,18 +152,20 @@ export class GetComponent {
   }
 
   onDragOver(e: DragEvent): void {
-    if (!this.canImport() || !e.dataTransfer?.types.includes('Files')) return;
+    if (!e.dataTransfer?.types.includes('Files')) return;
     // Without preventDefault the browser navigates to the dropped file, which
-    // discards the SPA and everything in it.
+    // discards the SPA and everything in it — so a drop this tab does not take
+    // is still swallowed, just with a "no drop" cursor.
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
+    e.dataTransfer.dropEffect = this.acceptsDrop() ? 'copy' : 'none';
   }
 
   async onDrop(e: DragEvent): Promise<void> {
     this.dragDepth = 0;
     this.dragging.set(false);
-    if (!this.canImport() || !e.dataTransfer) return;
+    if (!e.dataTransfer) return;
     e.preventDefault();
+    if (!this.acceptsDrop()) return;
     this.stageFiles(await filesFromDataTransfer(e.dataTransfer));
   }
 
@@ -158,8 +188,6 @@ export class GetComponent {
     this.dropPercent.set(0);
     this.dropError.set(null);
     this.dropped.set(files);
-    // A drop while the Activity tab is open should still be visible.
-    this.setTab('add');
   }
 
   async startImport(): Promise<void> {
@@ -170,8 +198,8 @@ export class GetComponent {
     try {
       await this.uploads.upload(files, {
         onProgress: (p) => this.dropPercent.set(p),
+        onCommitting: () => this.dropState.set('committing'),
       });
-      this.dropState.set('committing');
       // The job now owns this work — the feed is where it lives from here, so
       // the card retires rather than shadowing a Downloads row (#673's shape).
       this.dismissDrop();

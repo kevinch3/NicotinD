@@ -19,6 +19,12 @@ export interface Artist {
   name: string;
   albumCount: number;
   coverArt?: string;
+  /**
+   * Cover identity beside the id-stable `coverArt` (#1666): the entity's
+   * persisted `cover_rev`, bumped whenever its cover bytes change. A song
+   * carries its album's. Absent from producers that do not join it.
+   */
+  coverRev?: number;
   starred?: string;
 }
 
@@ -35,6 +41,12 @@ export interface Album {
   artistId: string;
   artists?: ArtistCredit[];
   coverArt?: string;
+  /**
+   * Cover identity beside the id-stable `coverArt` (#1666): the entity's
+   * persisted `cover_rev`, bumped whenever its cover bytes change. A song
+   * carries its album's. Absent from producers that do not join it.
+   */
+  coverRev?: number;
   songCount: number;
   duration: number;
   year?: number;
@@ -74,6 +86,12 @@ export interface Song {
   movement?: string;
   movementNumber?: number;
   coverArt?: string;
+  /**
+   * Cover identity beside the id-stable `coverArt` (#1666): the entity's
+   * persisted `cover_rev`, bumped whenever its cover bytes change. A song
+   * carries its album's. Absent from producers that do not join it.
+   */
+  coverRev?: number;
   size: number;
   contentType: string;
   suffix: string;

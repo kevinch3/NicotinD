@@ -40,18 +40,51 @@ describe('library events — coalescing', () => {
     bus.on((e) => seen.push(e));
     bus.emit({ type: 'songs.landed', songIds: ['a'], albumIds: [] });
     bus.emit({ type: 'songs.deleted', songIds: ['b'], albumIds: [] });
-    bus.emit({ type: 'artwork.changed', albumId: 'x', coverArt: 'c1', version: 1 });
-    bus.emit({ type: 'artwork.changed', albumId: 'x', coverArt: 'c2', version: 2 });
-    bus.emit({ type: 'artwork.changed', albumId: 'y', coverArt: 'c3', version: 3 });
+    bus.emit({ type: 'album.changed', albumId: 'x' });
+    bus.emit({ type: 'album.changed', albumId: 'x' });
+    bus.emit({ type: 'album.changed', albumId: 'y' });
     tick();
     expect(seen.map((e) => e.event.type)).toEqual([
       'songs.landed',
       'songs.deleted',
-      'artwork.changed',
-      'artwork.changed',
+      'album.changed',
+      'album.changed',
     ]);
-    const x = seen.find((e) => e.event.type === 'artwork.changed' && e.event.albumId === 'x')!;
-    expect((x.event as { version: number }).version).toBe(2);
+  });
+
+  it('artwork.changed is one frame per window: changes unioned, highest rev per entity (#1666)', () => {
+    const { bus, tick } = manual();
+    const seen: StampedEvent[] = [];
+    bus.on((e) => seen.push(e));
+    bus.emit({ type: 'artwork.changed', changes: [{ kind: 'album', id: 'x', rev: 1 }] });
+    bus.emit({ type: 'artwork.changed', changes: [{ kind: 'album', id: 'x', rev: 2 }] });
+    bus.emit({ type: 'artwork.changed', changes: [{ kind: 'artist', id: 'x', rev: 5 }] });
+    // A late, lower rev for the same entity never rewinds it.
+    bus.emit({ type: 'artwork.changed', changes: [{ kind: 'album', id: 'x', rev: 1 }] });
+    tick();
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.event).toEqual({
+      type: 'artwork.changed',
+      changes: [
+        { kind: 'album', id: 'x', rev: 2 },
+        { kind: 'artist', id: 'x', rev: 5 },
+      ],
+    });
+  });
+
+  it('a backfill-sized burst of cover changes cannot overflow the replay buffer', () => {
+    const { bus, tick } = manual();
+    bus.emit({ type: 'job.changed', jobId: 'before' });
+    tick();
+    const from = bus.lastSeq();
+    for (let i = 0; i < BUFFER_SIZE * 3; i++) {
+      bus.emit({ type: 'artwork.changed', changes: [{ kind: 'artist', id: `a${i}`, rev: 1 }] });
+    }
+    tick();
+    const replay = bus.since(from);
+    expect(replay).not.toBeNull(); // not a gap: every client keeps its place
+    expect(replay).toHaveLength(1);
+    expect((replay![0]!.event as { changes: unknown[] }).changes).toHaveLength(BUFFER_SIZE * 3);
   });
 
   it('a subscriber that throws does not stop delivery to the others', () => {
