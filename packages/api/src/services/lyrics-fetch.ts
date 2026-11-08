@@ -1,6 +1,6 @@
 import type { Database } from 'bun:sqlite';
 import { existsSync } from 'node:fs';
-import type { LyricsDto } from '@nicotind/core';
+import type { LyricsChoice, LyricsDto, LyricsResult } from '@nicotind/core';
 import { LYRICS_DURATION_TOLERANCE_SEC, lrcOverrunSec } from '@nicotind/core';
 import { readAudioTags, writeAudioTags } from './audio-tags.js';
 import { getLyrics, setLyrics } from './lyrics-store.js';
@@ -76,6 +76,19 @@ export async function fetchSongLyrics(
           synced: null,
           source: 'file-tag',
           customized: false,
+          choice: {
+            source: 'file-tag',
+            sourceTrackId: null,
+            timed: false,
+            matchedDurationSec: null,
+            localDurationSec: song.duration > 0 ? song.duration : null,
+            durationDeltaSec: null,
+            matchedBy: null,
+            skippedUntimed: [],
+            replacedOtherTake: false,
+            forced: false,
+            at: Date.now(),
+          },
         }),
       };
     }
@@ -93,6 +106,7 @@ export async function fetchSongLyrics(
   // a retry for the first and "no lyrics" for the second.
   let sourceErrored = false;
   let keptTimed = false;
+  const skippedUntimed: string[] = [];
   // Either detector the health report uses: a recorded match duration beyond the
   // tolerance, or (for rows whose source never stated one) an LRC that outlasts
   // the file.
@@ -111,6 +125,7 @@ export async function fetchSongLyrics(
     if (!result) continue;
     if (existing?.synced && !result.synced && !storedIsOtherTake) {
       keptTimed = true;
+      skippedUntimed.push(result.source);
       continue;
     }
     const saved = setLyrics(db, songId, {
@@ -122,6 +137,11 @@ export async function fetchSongLyrics(
       // that reports no duration leaves these null, i.e. unverified (#1212).
       matchedDurationSec: result.matchedDurationSec ?? null,
       sourceTrackId: result.sourceTrackId ?? null,
+      choice: choiceFor(result, song.duration, {
+        skippedUntimed,
+        replacedOtherTake: storedIsOtherTake,
+        forced: !!opts.force,
+      }),
     });
     if (result.plain && onDisk) {
       await writeAudioTags(abs!, { lyrics: result.plain }).catch(() => false);
@@ -130,4 +150,30 @@ export async function fetchSongLyrics(
   }
   if (keptTimed && existing) return { kind: 'kept-timed', lyrics: existing };
   return sourceErrored ? { kind: 'source-error' } : { kind: 'no-match' };
+}
+
+/**
+ * Why `result` was the one stored (#1676), recorded beside the words so a song
+ * whose lyrics changed under a listener can be explained from the row alone.
+ */
+function choiceFor(
+  result: LyricsResult,
+  localDuration: number,
+  ctx: Pick<LyricsChoice, 'skippedUntimed' | 'replacedOtherTake' | 'forced'>,
+): LyricsChoice {
+  const matched = result.matchedDurationSec ?? null;
+  const local = localDuration > 0 ? localDuration : null;
+  return {
+    source: result.source,
+    sourceTrackId: result.sourceTrackId ?? null,
+    timed: !!result.synced,
+    matchedDurationSec: matched,
+    localDurationSec: local,
+    durationDeltaSec: matched != null && local != null ? matched - local : null,
+    matchedBy: result.matchedBy ?? null,
+    skippedUntimed: [...ctx.skippedUntimed],
+    replacedOtherTake: ctx.replacedOtherTake,
+    forced: ctx.forced,
+    at: Date.now(),
+  };
 }

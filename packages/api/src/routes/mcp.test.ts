@@ -2427,6 +2427,16 @@ describe('lyrics tools', () => {
     expect(out.offsetMs).toBe(1_000);
   });
 
+  it('shows provenance: no recorded choice on an old row, and who re-timed it (#1676)', async () => {
+    seedLyrics({ durationSec: 232, lastLineSec: 200 });
+    const before = await call('refiner:read', 'get_song_lyrics', { songId: 's-lyr' });
+    expect(before.provenance).toMatchObject({ choice: null, customizedBy: null, offsetBy: null });
+
+    await call('refiner:curate', 'sync_song_lyrics', { songId: 's-lyr', offsetMs: 500 });
+    const after = await call('refiner:read', 'get_song_lyrics', { songId: 's-lyr' });
+    expect(after.provenance).toMatchObject({ offsetBy: { userId: 'u1' } });
+  });
+
   it('clamps out of range and says so', async () => {
     seedLyrics({ durationSec: 232, lastLineSec: 200 });
     const out = await call('refiner:curate', 'sync_song_lyrics', {

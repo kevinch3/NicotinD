@@ -29,7 +29,8 @@ export interface ParsedLrc {
 }
 
 // [mm:ss.xx] / [mm:ss.xxx] / [mm:ss] — one or more may prefix a single line.
-const TIMESTAMP = /\[(\d{1,2}):(\d{1,2})(?:[.:](\d{1,3}))?\]/g;
+// Up to 3 minute digits, so a stamp past 99:59 (a long live set) is a line, not text.
+const TIMESTAMP = /\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]/g;
 // [offset:+250] — an ID tag on its own line. Anchored so it cannot match text.
 const FILE_OFFSET = /^\s*\[offset:\s*([+-]?\d{1,7})\s*\]\s*$/im;
 
@@ -80,6 +81,64 @@ export function parseLrcDetailed(raw: string | null | undefined): ParsedLrc {
 export function applyLyricsOffset(lines: LyricLine[], offsetMs: number): LyricLine[] {
   if (!offsetMs) return lines.map((l) => ({ ...l }));
   return lines.map((l) => ({ timeMs: l.timeMs + offsetMs, text: l.text }));
+}
+
+// A line timestamp `[mm:ss.xx]` or an enhanced-LRC word timestamp `<mm:ss.xx>`,
+// in TIMESTAMP's grammar — a stamp the bake writes must be one parseLrc reads.
+const ANY_STAMP =
+  /\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]|<(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?>/g;
+const OFFSET_LINE = /^\s*\[offset:\s*[+-]?\d{1,7}\s*\]\s*$/i;
+// The last instant a 3-digit-minute stamp can say: 999:59.999.
+const MAX_STAMP_MS = 999 * 60_000 + 59_999;
+
+// Keeps the stamp's own precision while that is exact, else widens it to ms.
+function formatStamp(ms: number, fracDigits: 0 | 2 | 3): string {
+  const min = Math.floor(ms / 60_000);
+  const sec = Math.floor((ms % 60_000) / 1000);
+  const rest = ms % 1000;
+  const head = `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  if (fracDigits === 3 || rest % 10 !== 0) return `${head}.${String(rest).padStart(3, '0')}`;
+  if (fracDigits === 0 && rest === 0) return head;
+  return `${head}.${String(rest / 10).padStart(2, '0')}`;
+}
+
+/**
+ * Rewrite `raw` so its timestamps already carry `offsetMs` (positive = later)
+ * **and** the file's own `[offset:]` tag, which is removed — the result needs
+ * no offset at all to play as the listener heard it. For handing a corrected
+ * LRC to something that has no field for a separate offset (#1676's export).
+ *
+ * Everything else is kept byte for byte: ID tags, untimed lines, line endings,
+ * text. Word timestamps (`<mm:ss.xx>`) move with their lines. A stamp shifted
+ * before 0 is clamped to 0, since an LRC cannot say "before the track starts",
+ * and one past 999:59.999 to that, the last instant `parseLrc` can read. Each
+ * stamp keeps its own precision unless the shifted time falls off its grid —
+ * a centisecond stamp moved by 5 ms is written in ms — so the bake loses nothing
+ * and the export's `offsetAppliedMs` is exactly what was written.
+ * With nothing to apply the input is returned unchanged.
+ */
+export function bakeLyricsOffset(raw: string, offsetMs: number): string {
+  const fileOffsetMs = Number(FILE_OFFSET.exec(raw)?.[1] ?? 0);
+  const shift = Math.round(offsetMs) - fileOffsetMs;
+  if (shift === 0 && !FILE_OFFSET.test(raw)) return raw;
+  const shiftStamp = (min: string, sec: string, frac: string | undefined): string => {
+    const f = frac ?? '';
+    const ms = f.length === 3 ? Number(f) : Number(f.padEnd(2, '0')) * 10;
+    const at = Math.min(
+      MAX_STAMP_MS,
+      Math.max(0, Number(min) * 60_000 + Number(sec) * 1000 + ms + shift),
+    );
+    return formatStamp(at, f.length === 3 ? 3 : f.length === 0 ? 0 : 2);
+  };
+  return raw
+    .split(/(?<=\n)/)
+    .filter((line) => !OFFSET_LINE.test(line.replace(/\r?\n$/, '')))
+    .map((line) =>
+      line.replace(ANY_STAMP, (_m, lm, ls, lf, wm, ws, wf) =>
+        lm !== undefined ? `[${shiftStamp(lm, ls, lf)}]` : `<${shiftStamp(wm, ws, wf)}>`,
+      ),
+    )
+    .join('');
 }
 
 /**

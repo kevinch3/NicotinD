@@ -75,6 +75,11 @@ function toResult(track: LrclibTrack): LyricsResult | null {
   };
 }
 
+const unrankedHit = (result: LyricsResult): SearchHit => ({
+  result: { ...result, matchedBy: 'search-unranked' },
+  verified: false,
+});
+
 /**
  * Metadata plugin that resolves lyrics from LRCLIB (lrclib.net) — a free,
  * keyless, community lyrics database that returns both plain and synced (LRC)
@@ -167,7 +172,8 @@ export class LrclibPlugin implements Plugin {
     }
     const track = await this.request<LrclibTrack>(`/get?${params.toString()}`);
     // 404 (no exact match) yields null — caller falls back to /search.
-    return track ? toResult(track) : null;
+    const result = track ? toResult(track) : null;
+    return result ? { ...result, matchedBy: 'exact' } : null;
   }
 
   /**
@@ -196,7 +202,7 @@ export class LrclibPlugin implements Plugin {
     // keeps the old behaviour rather than silently dropping lyrics — the result
     // still carries the source's duration, so the host records an unverified
     // match instead of one that merely looks checked.
-    if (!target || target <= 0) return { result: candidates[0]!.result, verified: false };
+    if (!target || target <= 0) return unrankedHit(candidates[0]!.result);
 
     const scored = candidates
       .filter((c) => typeof c.hit.duration === 'number')
@@ -205,14 +211,14 @@ export class LrclibPlugin implements Plugin {
       // Every hit left is within tolerance, i.e. plausibly this recording, so a
       // timed one wins over a closer untimed one (#1672); closest duration next.
       .sort((a, b) => Number(!!b.result.synced) - Number(!!a.result.synced) || a.delta - b.delta);
-    if (scored[0]) return { result: scored[0].result, verified: true };
+    if (scored[0]) return { result: { ...scored[0].result, matchedBy: 'search' }, verified: true };
 
     // A hit that states no duration cannot be ranked or rejected on one. Dropping
     // it would lose real lyrics whenever LRCLIB simply omits the field, so take
     // it — but it carries no `matchedDurationSec`, which is what marks it
     // unverified downstream rather than letting it pass as a checked match.
     const unranked = candidates.find((c) => typeof c.hit.duration !== 'number');
-    return unranked ? { result: unranked.result, verified: false } : null;
+    return unranked ? unrankedHit(unranked.result) : null;
   }
 
   /**

@@ -78,7 +78,7 @@ audit-logged.
 | `list_recent_songs` | read | recently-landed songs, newest first, paged, optional missing-genre or any-position `genre` filter; every row carries its full ordered `genres` |
 | `get_artist` | read | one artist + their albums |
 | `get_album_tracks` | read | one album: header (year/classification/cover status) + songs with genre, full ordered `genres`, track/disc, suffix, bitrate |
-| `get_song_lyrics` | read | `services/lyrics-store.ts` `getLyrics` + `parseLrc` — source, offset, matched vs local duration, and where the LRC's last line falls |
+| `get_song_lyrics` | read | `services/lyrics-store.ts` `getLyrics` + `getLyricsProvenance` + `parseLrc` — source, offset, matched vs local duration, where the LRC's last line falls, and `provenance` (why the candidate was chosen, who edited the text / offset and when) |
 | `sync_song_lyrics` | curate | `services/lyrics-store.ts` `setLyricsOffset` + `song.lyrics` audit (render-time offset, text untouched) |
 | `refetch_song_lyrics` | curate | `services/lyrics-fetch.ts` `fetchSongLyrics({ force: true })` + `song.lyrics` audit; refuses a customized row |
 | `set_song_genre` | curate | `services/song-genre-mutate.ts` `mutateSongGenre` + `song.genre` audit |
@@ -227,6 +227,15 @@ was sent to fix. 0 restores the source's own timings exactly; the write touches
 only `library_lyrics.offset_ms`, never the text, so nothing here can cost you the
 words. Clamped to ±30 s — needing more than that means it is the wrong recording,
 which is the first row of the table, not the second.
+
+**`get_song_lyrics` also returns `provenance`** (#1676): the row's `LyricsChoice` —
+which source and record won, whether it was timed, the matched-vs-local duration
+delta at the moment of choice, the source's own `matchedBy`, the untimed answers a
+re-fetch passed over and whether it replaced another take's words — plus who last
+edited the text (`customizedBy`/`customizedAt`) and the offset (`offsetBy`/`offsetAt`;
+an agent's `sync_song_lyrics` is attributed to the token's owner). `choice` survives
+a user edit, so it still names the record the words came from after `source` has
+become `user`. Rows written before #1676 report `choice: null` — unknown, not "none".
 
 ### `set_genre_alias` (issue #949) — fix the VALUE, not the songs
 
