@@ -13,6 +13,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   instead of starting a radio, repeat only stopped the radio top-up. `PlayerService.shuffle` and
   `repeat` stay, since `playNext` reads them. → [web-ui.md](../web-ui.md)
 
+- **Cover URLs carry the cover rev**: `/api/cover/<id>` is built through `CoverRevisionsService.url`
+  with a `CoverRef` (required `coverRev`, owning entity) from `artistCover`/`albumCover`/`songCover`;
+  `coverUrl` spells `v=<rev>`. → [cache-invalidation.md](../cache-invalidation.md)
 - **Unified song listings**: one `TrackRowComponent` + one root `SongMenuService.build(song, ctx)`
   builds every `⋯` menu; every album/artist name is an `EntityLinkComponent` link (span on TV for
   artists); Remove routes through `ConfirmService` → `deleteSongs` → `deletedSongIds()`;

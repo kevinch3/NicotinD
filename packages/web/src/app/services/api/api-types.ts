@@ -114,13 +114,14 @@ export interface AuthResult {
 export interface SearchResult {
   searchId: string;
   local: {
-    artists: Array<{ id: string; name: string; albumCount?: number }>;
+    artists: Array<{ id: string; name: string; albumCount?: number; coverRev?: number }>;
     albums: Array<{
       id: string;
       name: string;
       artist: string;
       artistId?: string;
       coverArt?: string;
+      coverRev?: number;
       songCount?: number;
       year?: number;
       classification?: 'album' | 'ep' | 'single' | 'compilation' | 'unknown';
@@ -177,6 +178,8 @@ export interface Album {
   artistId?: string;
   artists?: ArtistCredit[];
   coverArt?: string;
+  /** The album's `cover_rev` (#1666); the cover URL carries it. */
+  coverRev?: number;
   songCount?: number;
   year?: number;
   genre?: string;
@@ -239,6 +242,8 @@ export interface Song {
   duration?: number;
   track?: number;
   coverArt?: string;
+  /** The album's `cover_rev` (#1666); the cover URL carries it. */
+  coverRev?: number;
   path: string;
   bitRate: number;
   size: number;
@@ -484,6 +489,8 @@ export interface RelatedArtist {
   id: string;
   name: string;
   coverArt: string | null;
+  /** The portrait's `cover_rev` (#1666). */
+  coverRev?: number;
   albumCount: number;
   score: number;
   signals: RelatedArtistSignals;
@@ -1388,8 +1395,24 @@ export interface LibraryHealthReport {
  * boolean used to stand for five outcomes, so the UI could not tell a
  * curator-locked artist from a Discogs timeout and reported neither (#988).
  */
+/** One row of the Artists grid (`GET /api/library/artists`). */
+export interface LibraryArtistRow {
+  id: string;
+  name: string;
+  albumCount?: number;
+  coverArt?: string;
+  /** The portrait's `cover_rev` (#1666); the cover URL carries it. */
+  coverRev?: number;
+}
+
+/** A cover write's answer: the entity's `cover_rev` after it (#1666). */
+export interface CoverMutationResult {
+  ok: boolean;
+  coverRev?: number;
+}
+
 export type AutoFetchImageResult =
-  | { filled: true; source: string | null }
+  | { filled: true; source: string | null; coverRev?: number }
   | {
       filled: false;
       reason: 'not-found' | 'manual-override' | 'no-cache-dir' | 'no-candidate' | 'error';

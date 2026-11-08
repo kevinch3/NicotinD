@@ -21,6 +21,7 @@
           [src]="artistImageSrc()"
           [artist]="artist()!.name"
           [size]="80"
+          [holdPrevious]="true"
           rounded="rounded-full"
         />
         @if (auth.canCurate()) {
@@ -28,7 +29,6 @@
             <app-artist-image-menu
               [artistId]="artistId"
               [albums]="pickableAlbums()"
-              (changed)="onArtistImageChanged()"
             />
           </div>
         }

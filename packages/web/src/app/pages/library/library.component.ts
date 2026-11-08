@@ -57,6 +57,8 @@ import { EntityMenuButtonComponent } from '../../components/entity-menu-button/e
 import { EntityMenuService } from '../../services/entity-menu.service';
 import type { TrackAction } from '../../components/track-row/track-row.component';
 import { chunk } from '../../lib/tv-nav-grid';
+import { artistCover } from '../../lib/cover-url';
+import { CoverRevisionsService } from '../../services/cover-revisions.service';
 import { scrollRootTo, scrollRootTop } from '../../lib/scroll-root';
 import {
   LIBRARY_FILTER_PARAM_KEYS,
@@ -222,11 +224,14 @@ export class LibraryComponent implements OnInit, OnDestroy {
     { value: 'stats', label: 'library.tab.stats', icon: 'chart' },
   ];
 
-  /** Bumped after a portrait change so the grid's cover URLs re-fetch (#250). */
-  readonly artistImageVersion = signal(0);
+  private readonly coverRevisions = inject(CoverRevisionsService);
 
-  onArtistImageChanged(): void {
-    this.artistImageVersion.update((v) => v + 1);
+  /**
+   * An artist tile's portrait at its live cover rev (#1666): a change from the
+   * tile's own menu, or from anywhere via `artwork.changed`, re-keys the URL.
+   */
+  artistCoverSrc(artist: { id: string; coverArt?: string; coverRev?: number }): string | undefined {
+    return this.coverRevisions.url(artistCover(artist), 160, this.auth.mediaToken());
   }
 
   readonly libraryMode = signal<LibraryMode>(
@@ -455,7 +460,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
 
   // ─── Artists ──────────────────────────────────────────────────────
   readonly artists = signal<
-    Array<{ id: string; name: string; albumCount: number; coverArt?: string }>
+    Array<{ id: string; name: string; albumCount: number; coverArt?: string; coverRev?: number }>
   >([]);
   readonly loadingArtists = signal(false);
   readonly artistsFetched = signal(false);

@@ -19,6 +19,8 @@ import { ArtistImageSourcesService } from '../../services/artist-image-sources.s
 import { ToastService } from '../../services/toast.service';
 import { autoFetchToast, NoChangeError } from './auto-fetch-toast';
 import type { Album } from '../../services/api/api-types';
+import { CoverRevisionsService } from '../../services/cover-revisions.service';
+import { albumCover } from '../../lib/cover-url';
 import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.directive';
 
 /**
@@ -29,7 +31,10 @@ import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.d
  * only way to give an artist a photo was to open that artist's page. Issue #250
  * gap 4 wants the same affordance on the Artists grid, and explicitly asks for
  * **one component, not a copy** — a second implementation would drift on the
- * cache-bust and the busy-guard, which are the two easy things to get wrong here.
+ * cover rev and the busy-guard, which are the two easy things to get wrong here.
+ * Every action's answer carries the artist's new `cover_rev`, which goes into
+ * `CoverRevisionsService`, so every portrait of this artist re-keys at once —
+ * the host needs no cache-bust of its own (#1666).
  *
  * `albums` is optional: the artist page already has them loaded and passes them
  * (no extra request), while the grid has only a tile and lets the component
@@ -48,6 +53,7 @@ export class ArtistImageMenuComponent {
   /** Live artist-image source availability — gates "Fetch automatically" (issue #422). */
   readonly imageSources = inject(ArtistImageSourcesService);
   private readonly toast = inject(ToastService);
+  private readonly coverRevisions = inject(CoverRevisionsService);
 
   readonly artistId = input.required<string>();
   /** Albums offered for "choose from album". Empty → fetched lazily on open. */
@@ -55,7 +61,8 @@ export class ArtistImageMenuComponent {
   /** Compact trigger for a grid tile vs the larger one on the artist page. */
   readonly compact = input(false);
 
-  /** Emitted after any successful change so the host can bust its cover cache. */
+  /** Emitted after any successful change. The portrait URLs need nothing from the
+   *  host: the new rev already reached `CoverRevisionsService`. */
   readonly changed = output<void>();
 
   readonly busy = signal(false);
@@ -106,7 +113,9 @@ export class ArtistImageMenuComponent {
     const file = el.files?.[0];
     el.value = ''; // allow re-selecting the same file later
     if (!file) return;
-    await this.run(() => firstValueFrom(this.api.uploadArtistImage(this.artistId(), file)));
+    await this.run(async () => {
+      this.noteRev(await firstValueFrom(this.api.uploadArtistImage(this.artistId(), file)));
+    });
   }
 
   async openAlbumPicker(): Promise<void> {
@@ -137,9 +146,11 @@ export class ArtistImageMenuComponent {
 
   async pickAlbumCover(albumId: string): Promise<void> {
     this.setPickerOpen(false);
-    await this.run(() =>
-      firstValueFrom(this.api.setArtistImageFromAlbum(this.artistId(), albumId)),
-    );
+    await this.run(async () => {
+      this.noteRev(
+        await firstValueFrom(this.api.setArtistImageFromAlbum(this.artistId(), albumId)),
+      );
+    });
   }
 
   /**
@@ -158,12 +169,27 @@ export class ArtistImageMenuComponent {
       this.toast.show(autoFetchToast(result));
       // Only a real replacement should make callers re-read the cover.
       if (!result.filled) throw new NoChangeError();
+      this.noteRev(result);
     });
   }
 
   async reset(): Promise<void> {
     this.closeMenu();
-    await this.run(() => firstValueFrom(this.api.resetArtistImage(this.artistId())));
+    await this.run(async () => {
+      this.noteRev(await firstValueFrom(this.api.resetArtistImage(this.artistId())));
+    });
+  }
+
+  /** A picker tile's album cover, at its live rev. */
+  albumCoverSrc(a: Album): string | undefined {
+    return this.coverRevisions.url(albumCover(a), 160, this.auth.mediaToken());
+  }
+
+  /** Feed the answer's rev to the overlay; an older server that omits it waits for the event. */
+  private noteRev(res: { coverRev?: number }): void {
+    if (typeof res.coverRev === 'number') {
+      this.coverRevisions.raise([{ kind: 'artist', id: this.artistId(), rev: res.coverRev }]);
+    }
   }
 
   /**

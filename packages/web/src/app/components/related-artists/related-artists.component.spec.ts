@@ -54,4 +54,14 @@ describe('RelatedArtistsComponent', () => {
     );
     expect(c.coverSrc(artist('b'))).toBeUndefined();
   });
+
+  // #1666: a sibling surface — not the page hosting the image menu — must see a
+  // replaced portrait. Its only input is the DTO, so the URL has to follow the
+  // DTO's `coverRev`; before #1666 it was built from the bare id and stayed put.
+  it('#1666 a portrait replaced elsewhere yields a different cover URL here', () => {
+    const before = artist('a', { coverArt: 'ar-a', coverRev: 1 } as Partial<RelatedArtist>);
+    const after = artist('a', { coverArt: 'ar-a', coverRev: 2 } as Partial<RelatedArtist>);
+    const c = setup([before]).componentInstance;
+    expect(c.coverSrc(after)).not.toBe(c.coverSrc(before));
+  });
 });

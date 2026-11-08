@@ -12,6 +12,7 @@ import { TrackRowComponent } from '../../components/track-row/track-row.componen
 import { LikeService } from '../../services/like.service';
 import type { SearchResult } from '../../services/api/api-types';
 import { setInputValue } from '../../../testing/signal-input';
+import { LibraryEventsService } from '../../services/library-events.service';
 
 type Local = SearchResult['local'];
 
@@ -189,5 +190,40 @@ describe('LibraryFindComponent', () => {
 
     expect(fixture.componentInstance.results().albums.map((a) => a.id)).toEqual(['new']);
     expect(fixture.componentInstance.loading()).toBe(false);
+  });
+});
+
+// #1666: search hits are snapshots like any other DTO, so their covers read the
+// live overlay — a portrait or album cover replaced elsewhere re-keys here too.
+describe('LibraryFindComponent — covers carry the cover rev (#1666)', () => {
+  it('builds both covers through the helper, at the DTO rev', () => {
+    const { fixture } = setup();
+    const c = fixture.componentInstance;
+    expect(c.artistCoverSrc({ id: 'r1', name: 'R', coverRev: 2 })).toBe(
+      '/api/cover/r1?size=300&v=2&token=tok',
+    );
+    expect(c.albumCoverSrc({ ...album('a1'), coverArt: 'a1' })).toBe(
+      '/api/cover/a1?size=300&token=tok',
+    );
+    expect(c.albumCoverSrc(album('a2'))).toBeUndefined();
+  });
+
+  it('a pushed artwork.changed re-keys the matching hit', () => {
+    const { fixture } = setup();
+    const c = fixture.componentInstance;
+    TestBed.inject(LibraryEventsService).apply(
+      {
+        type: 'artwork.changed',
+        changes: [
+          { kind: 'artist', id: 'r1', rev: 5 },
+          { kind: 'album', id: 'a1', rev: 3 },
+        ],
+      },
+      1,
+    );
+    expect(c.artistCoverSrc({ id: 'r1', name: 'R' })).toBe('/api/cover/r1?size=300&v=5&token=tok');
+    expect(c.albumCoverSrc({ ...album('a1'), coverArt: 'a1' })).toBe(
+      '/api/cover/a1?size=300&v=3&token=tok',
+    );
   });
 });

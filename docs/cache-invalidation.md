@@ -71,14 +71,15 @@ and replay natively and already crosses the nginx edge (the admin processing str
 
 Consumers today: the Library "new album added" banner (`noteAlbumsLanded`, which lost its only
 caller when the review inbox went), deleted rows leaving every open list (`deletedSongIds`), the
-album page refetching when its album changes, and `coverBust` on the album page reading the album's
-`coverRev` and `artworkVersions` — so a cover set anywhere shows there at once, without the page
-hand-busting. `artistArtworkVersions` carries the artist half; no page reads it yet (#1666 A2).
+album page refetching when its album changes, and `artwork.changed` feeding `CoverRevisionsService`,
+the live cover-rev overlay every migrated cover URL reads (see "Cover identity" → "The web half") —
+so a cover set anywhere shows there at once, without any page hand-busting.
 
 | Cache                       | Invalidated by the stream                                   |
 | --------------------------- | ----------------------------------------------------------- |
 | `artistsCache`/`genresCache` | any `songs.*`, `album.changed`, `artist.changed`, `resync`  |
-| browser cover cache (24 h)  | `artwork.changed` → `&v=<rev>` on the album page only; the other surfaces move with `coverRev` once they build URLs from it (#1666 A2/A3) |
+| browser cover cache (24 h)  | `artwork.changed` → `CoverRevisionsService` → `&v=<rev>` on every surface built through it: the artist surfaces and the album page; the album/song/player sites follow (#1666 A3) |
+| an open artist page         | `resync` (a replay gap) → re-reads its artist DTO, whose `coverRev` is server truth |
 | an open album page          | `album.changed` / `songs.*` naming its id → refetch          |
 
 ## Structural findings — classes that cannot occur here
@@ -221,15 +222,47 @@ So the identity is persisted and carried:
 - **`coverRev`** sits beside `coverArt` on the Artist, Album and Song DTOs (`/artists`,
   `/artists/:id`, album lists, `/albums/:id`, song lists, radio, playlists, related artists, local
   search). A song carries its **album's** rev — its cover resolves to the album's canonical or
-  folder art. The cover mutation responses return `{ ok, coverRev }`. OpenSubsonic is untouched.
+  folder art. The cover mutation responses return `{ ok, coverRev }` — the album cover routes and
+  all four artist-portrait routes (upload, from-album, reset, and a filled auto-fetch). OpenSubsonic
+  is untouched.
+
+### The web half: one helper and a live overlay
+
+- **`coverUrl(ref, size, token)`** (`lib/cover-url.ts`) spells `/api/cover/<id>?size=&v=<rev>&token=`
+  once. It takes a `CoverRef` — `coverArt`, a **required** `coverRev`, and the `kind` + `id` of the
+  entity that owns the rev — so a migrated caller that forgets the rev is a compile error, not a
+  day-stale cover. `v` is left off at rev 0, so every URL a browser cached for a never-changed cover
+  stays valid. `artistCover` / `albumCover` / `songCover` build the ref; a song's owner is its
+  **album** (its `coverArt` may be its own id, for embedded art, while the rev that moves is the
+  album's).
+- **`CoverRevisionsService`** (root, no dependencies) holds the newest rev heard per
+  `(kind, id)`, fed by `artwork.changed` (`LibraryEventsService.apply`) and by a mutation's
+  `{ ok, coverRev }` (the artist-image menu raises it, so the acting tab does not wait for the
+  stream). A URL carries `max(ref.coverRev, overlay)`; neither side rewinds. Components call its
+  `url(ref, size, token)`, which reads a signal, so a pushed rev re-renders the URL — including on
+  surfaces holding an older DTO snapshot.
+- **A replay gap keeps the overlay.** Revs are monotonic per entity (`library_cover_rev_floor`), so
+  an entry is never wrong, only incomplete; dropping it would rewind snapshots to their older DTO
+  rev. The gap's existing resync drops the cached library reads, and the artist page re-reads its
+  DTO on `resync`, so a portrait change the stream missed still lands there. Other surfaces pick it
+  up on their next DTO read.
+- **A rev-only swap does not flash.** The artist hero, the Artists grid tiles, related-artists and
+  the find-bar artist tiles set `holdPrevious` (#1653), so a re-keyed portrait fades in over the
+  old one instead of dropping to the placeholder.
+- **Migrated so far** (#1666 A2): the artist page, the Artists grid, the find bar (artists and
+  albums), related artists, the artist-image menu's album picker, the mosaic home and the radio
+  landing's resume tile. The page-local counters they used (`imageVersion`, `artistImageVersion`)
+  are gone. The album page still composes its `coverBust` from the overlay; the remaining album,
+  song, player, TV, share and offline sites, and the sweep guard, are A3. The mosaic builds a
+  face's HTML once per tile, so a face already on screen keeps its URL until it is rebuilt.
 
 What this does not yet cover: disk-only art changes (a `cover.jpg` swapped by hand, a re-download
 replacing folder art) bump nothing until the scanner does; the `backfill-artwork` process persists its
 bumps but its events reach no open tab (they see the rev on their next fetch); a re-landed entity
 sits at rev 0 until its first bump, and rev 0 is the bare, unversioned URL, so within the 24 h cache
 TTL it can still show the previous incarnation's cover, as every cover did before #1666. The web
-surfaces other than the album page still build unversioned URLs, and the cache header is
-unchanged — #1666's later PRs (A2–A4).
+surfaces not yet migrated (above) still build unversioned URLs, and the cache header is
+unchanged — #1666's later PRs (A3–A4).
 
 ## Server-side memos — all TTL-bounded by design
 

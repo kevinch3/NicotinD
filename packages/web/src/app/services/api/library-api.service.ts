@@ -37,7 +37,7 @@ import type {
 } from './api-types';
 import type { IdentifyApplyFields, IdentifySuggestion, IncompleteAlbum } from './api-types';
 import type { SongMetadataCandidates, SongMetadataFields, SongMetadataResult } from './api-types';
-import type { MaintenanceStatus } from './api-types';
+import type { CoverMutationResult, LibraryArtistRow, MaintenanceStatus } from './api-types';
 import type { WaveformData } from '../../../types/core';
 
 type QueryParams = Record<string, string | number | boolean | string[]>;
@@ -179,11 +179,11 @@ export class LibraryApiService {
   uploadArtistImage(id: string, file: File) {
     const form = new FormData();
     form.append('image', file);
-    return this.http.put<{ ok: boolean }>(`/api/library/artists/${id}/image`, form);
+    return this.http.put<CoverMutationResult>(`/api/library/artists/${id}/image`, form);
   }
   /** Use one of the artist's album covers as the portrait (admin). */
   setArtistImageFromAlbum(id: string, albumId: string) {
-    return this.http.post<{ ok: boolean }>(`/api/library/artists/${id}/image/from-album`, {
+    return this.http.post<CoverMutationResult>(`/api/library/artists/${id}/image/from-album`, {
       albumId,
     });
   }
@@ -218,7 +218,7 @@ export class LibraryApiService {
   }
   /** Remove the manual artist-image override → revert to auto/placeholder (admin). */
   resetArtistImage(id: string) {
-    return this.http.delete<{ ok: boolean }>(`/api/library/artists/${id}/image`);
+    return this.http.delete<CoverMutationResult>(`/api/library/artists/${id}/image`);
   }
   /**
    * Start a library-wide maintenance pass (admin). Returns 202 immediately —
@@ -475,7 +475,7 @@ export class LibraryApiService {
   // Cached (shared + replayed) so tab-switching / re-navigation doesn't re-hit
   // the network; invalidated on library changes via invalidateLibraryReads().
   private artistsCache = createCachedObservable(() =>
-    this.http.get<Array<{ id: string; name: string; albumCount?: number }>>('/api/library/artists'),
+    this.http.get<LibraryArtistRow[]>('/api/library/artists'),
   );
   private genresCache = createCachedObservable(() =>
     this.http.get<Array<{ value: string; songCount: number; albumCount: number }>>(
@@ -486,10 +486,9 @@ export class LibraryApiService {
   getArtists(filter?: LibraryFilter) {
     // The cache is the unfiltered fast path; filtered reads always hit the API.
     if (!filter || isEmptyLibraryFilter(filter)) return this.artistsCache.get();
-    return this.http.get<Array<{ id: string; name: string; albumCount?: number }>>(
-      '/api/library/artists',
-      { params: withFilter({}, filter) },
-    );
+    return this.http.get<LibraryArtistRow[]>('/api/library/artists', {
+      params: withFilter({}, filter),
+    });
   }
 
   /** Drop cached artist/genre lists so the next read re-fetches (call after a
@@ -506,6 +505,8 @@ export class LibraryApiService {
         name: string;
         albumCount: number;
         coverArt?: string;
+        /** The portrait's `cover_rev` (#1666); the cover URL carries it. */
+        coverRev?: number;
         bio: string | null;
         urls: string[];
         // Issue #213: `false` means *never fetched*; the web fires a one-shot

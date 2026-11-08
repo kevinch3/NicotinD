@@ -14,7 +14,8 @@ import { VibeTileComponent } from '../../components/vibe-tile/vibe-tile.componen
 import { toTrack } from '../../lib/track-utils';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { VIBE_PRESETS, type VibePreset } from '../../lib/vibe-presets';
-import { coverUrl } from '../../lib/cover-url';
+import { songCover } from '../../lib/cover-url';
+import { CoverRevisionsService } from '../../services/cover-revisions.service';
 
 // VIBE_PRESETS moved to lib/vibe-presets.ts when the mosaic home began sharing
 // them; the contrast and column-order rules that shaped the gradients live
@@ -53,6 +54,7 @@ export class RadioLandingComponent implements OnInit {
   private api = inject(LibraryApiService);
   private toast = inject(ToastService);
   private auth = inject(AuthService);
+  private readonly coverRevisions = inject(CoverRevisionsService);
 
   readonly presets = VIBE_PRESETS;
 
@@ -90,8 +92,10 @@ export class RadioLandingComponent implements OnInit {
    * placeholder while the player (building the URL properly) showed the cover.
    */
   resumeCoverSrc(): string | undefined {
-    const coverArt = this.lastTrack()?.coverArt;
-    return coverArt ? coverUrl(coverArt, 160, this.auth.mediaToken()) : undefined;
+    const track = this.lastTrack();
+    return track
+      ? this.coverRevisions.url(songCover(track), 160, this.auth.mediaToken())
+      : undefined;
   }
 
   /** Resume radio from the last-played track, then hide the resume block. */

@@ -6,6 +6,7 @@ import { AuthService } from './auth.service';
 import { ServerConfigService } from './server-config.service';
 import { LibraryApiService } from './api/library-api.service';
 import { SetupService } from './setup.service';
+import { CoverRevisionsService } from './cover-revisions.service';
 
 class FakeEventSource {
   static instances: FakeEventSource[] = [];
@@ -118,9 +119,10 @@ describe('LibraryEventsService', () => {
     expect([...svc.deletedSongIds()]).toEqual(['s9']);
     expect(svc.changedAlbums().get('a1')).toBe(1);
     expect(svc.changedAlbums().get('a9')).toBe(2);
-    expect(svc.artworkVersions().get('a1')).toBe(42);
-    expect(svc.artistArtworkVersions().get('ar1')).toBe(7);
-    expect(svc.artworkVersions().has('ar1')).toBe(false);
+    const revs = TestBed.inject(CoverRevisionsService);
+    expect(revs.live('album', 'a1')).toBe(42);
+    expect(revs.live('artist', 'ar1')).toBe(7);
+    expect(revs.live('album', 'ar1')).toBe(0);
     expect(jobs).toEqual(['j1']);
     expect(invalidate).toHaveBeenCalled();
     svc.consumeLanded(['a1']);
@@ -131,7 +133,7 @@ describe('LibraryEventsService', () => {
     const { svc } = setup();
     svc.apply({ type: 'artwork.changed', changes: [{ kind: 'album', id: 'a1', rev: 3 }] }, 1);
     svc.apply({ type: 'artwork.changed', changes: [{ kind: 'album', id: 'a1', rev: 2 }] }, 2);
-    expect(svc.artworkVersions().get('a1')).toBe(3);
+    expect(TestBed.inject(CoverRevisionsService).live('album', 'a1')).toBe(3);
   });
 
   it('a sequence hole or an explicit resync drops the caches and bumps resync', () => {

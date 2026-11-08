@@ -11,6 +11,7 @@ import { asRole, canCurate as canCurateRole } from '../../../types/core';
 import { PlayerService } from '../../services/player.service';
 import { TransferService } from '../../services/transfer.service';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
+import { LibraryEventsService } from '../../services/library-events.service';
 
 const ARTIST = {
   id: 'ar1',
@@ -49,6 +50,16 @@ const ALBUM_DETAILS: Record<
     song: [{ id: 's3', title: 'Quatro Vezes Você', artist: 'Natiruts' }],
   },
 };
+
+/**
+ * What the server's artist DTO carries beyond ARTIST — #1666's tests use it to
+ * model "the portrait was replaced": whatever cover identity the API returns
+ * moves with the bytes. Reset after every test.
+ */
+let serverArtistPatch: Record<string, unknown> = {};
+afterEach(() => {
+  serverArtistPatch = {};
+});
 
 interface GetSongsCall {
   id: string;
@@ -132,7 +143,11 @@ function setup(
           artistImageSources: () => of({ sources: ['lidarr'] }),
           getArtist: (id: string) => {
             getArtistCalls.push(id);
-            return of({ artist: { ...ARTIST, id }, albums: ALBUMS, singlesAndEps: [] });
+            return of({
+              artist: { ...ARTIST, ...serverArtistPatch, id },
+              albums: ALBUMS,
+              singlesAndEps: [],
+            });
           },
           getAlbum: (id: string) => {
             getAlbumCalls.push(id);
@@ -383,8 +398,8 @@ describe('ArtistDetailComponent — Songs tab', () => {
 describe('ArtistDetailComponent — image override', () => {
   // Upload / from-album / auto-fetch / reset moved to ArtistImageMenuComponent
   // (issue #250 gap 4) so the Artists grid can reuse them; see that component's
-  // spec. What stays here is the page's own job: the cache-bust, because the
-  // portrait URL is otherwise identical after a change.
+  // spec. What stays here is the page's own job: a portrait URL that carries the
+  // artist's cover rev (#1666).
   it('exposes the artist albums + singles as pickable covers', async () => {
     const { component } = setup();
     await fixture_stable();
@@ -392,12 +407,100 @@ describe('ArtistDetailComponent — image override', () => {
     expect(component.pickableAlbums().map((a) => a.id)).toEqual(['a1', 'a2', 's-ep']);
   });
 
-  it('cache-busts the portrait src only after a change', async () => {
+  it('a never-changed portrait keeps its unversioned URL; a rev adds v', async () => {
     const { component } = setup();
     await fixture_stable();
     expect(component.artistImageSrc()).toBe('/api/cover/ar1?size=200&token=tok');
-    component.onArtistImageChanged();
-    expect(component.artistImageSrc()).toBe('/api/cover/ar1?size=200&token=tok&v=1');
+    TestBed.inject(LibraryEventsService).apply(
+      { type: 'artwork.changed', changes: [{ kind: 'artist', id: 'ar1', rev: 3 }] },
+      1,
+    );
+    expect(component.artistImageSrc()).toBe('/api/cover/ar1?size=200&v=3&token=tok');
+  });
+
+  it('#1666 a portrait changed elsewhere re-keys the open page from artwork.changed', async () => {
+    serverArtistPatch = { coverRev: 1 };
+    const { component } = setup();
+    await flush();
+    const before = component.artistImageSrc();
+    // Another tab, another device or the curator agent replaced it: only the
+    // pushed event reaches this page. Before #1666 nothing on the page read it.
+    TestBed.inject(LibraryEventsService).apply(
+      { type: 'artwork.changed', changes: [{ kind: 'artist', id: 'ar1', rev: 2 }] },
+      1,
+    );
+    expect(component.artistImageSrc()).not.toBe(before);
+    // Another entity's change leaves this portrait alone.
+    const after = component.artistImageSrc();
+    TestBed.inject(LibraryEventsService).apply(
+      { type: 'artwork.changed', changes: [{ kind: 'album', id: 'ar1', rev: 9 }] },
+      2,
+    );
+    expect(component.artistImageSrc()).toBe(after);
+  });
+
+  it('#1666 a replay gap re-reads the artist, so a missed portrait change still lands', async () => {
+    serverArtistPatch = { coverRev: 1 };
+    const { component, getArtistCalls } = setup();
+    await flush();
+    const before = component.artistImageSrc();
+    const reads = getArtistCalls.length;
+
+    // The change happened while the stream could not replay it.
+    serverArtistPatch = { coverRev: 2 };
+    TestBed.inject(LibraryEventsService).resync.update((n) => n + 1);
+    TestBed.tick();
+    await flush();
+
+    expect(getArtistCalls.length).toBe(reads + 1);
+    expect(component.artistImageSrc()).not.toBe(before);
+  });
+
+  // #1666: `/api/cover/<id>` is cached for a day, so the portrait URL must move
+  // with the image, not with a counter that lives as long as this page does.
+  // Both scenarios model a replaced portrait the same way: the server's artist
+  // DTO now carries the new `coverRev`, and (on navigation) artwork.changed
+  // pushes it too.
+  it('#1666 a replaced portrait still shows after navigating away and back', async () => {
+    serverArtistPatch = { coverRev: 1 };
+    const { component, paramMap } = setup();
+    await flush();
+    const stale = component.artistImageSrc();
+    expect(stale).toBeDefined();
+
+    // The menu's answer (or the pushed event) carries the new rev.
+    serverArtistPatch = { coverRev: 2 };
+    TestBed.inject(LibraryEventsService).apply(
+      { type: 'artwork.changed', changes: [{ kind: 'artist', id: 'ar1', rev: 2 }] },
+      1,
+    );
+    expect(component.artistImageSrc()).not.toBe(stale);
+
+    paramMap.next(convertToParamMap({ id: 'ar2' }));
+    await flush();
+    paramMap.next(convertToParamMap({ id: 'ar1' }));
+    await flush();
+
+    expect(component.artist()?.id).toBe('ar1');
+    // A page-local counter reset to 0 on the artist change, so the URL was
+    // byte-identical to the one the browser cached before the replacement.
+    expect(component.artistImageSrc()).not.toBe(stale);
+  });
+
+  it('#1666 a replaced portrait still shows when the page is mounted again', async () => {
+    serverArtistPatch = { coverRev: 1 };
+    const { component, fixture } = setup();
+    await flush();
+    const stale = component.artistImageSrc();
+
+    serverArtistPatch = { coverRev: 2 };
+    fixture.destroy();
+
+    const again = TestBed.createComponent(ArtistDetailComponent);
+    again.detectChanges();
+    await flush();
+    expect(again.componentInstance.artist()?.id).toBe('ar1');
+    expect(again.componentInstance.artistImageSrc()).not.toBe(stale);
   });
 });
 

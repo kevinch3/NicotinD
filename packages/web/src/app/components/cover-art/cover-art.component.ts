@@ -83,10 +83,12 @@ export class CoverArtComponent {
 
   /**
    * Keep the last loaded image on screen while a new `src` loads, then fade the
-   * new one in over it (#1653). For a cover whose src changes in place — the
-   * player bar and the Now Playing sheet on a skip — where the gradient
-   * placeholder in between read as a flash. Off by default: a grid tile's
-   * placeholder-until-loaded is the intended look there.
+   * new one in over it. For a cover whose src changes in place, where the
+   * gradient placeholder in between reads as a flash: the player bar and the
+   * Now Playing sheet on a skip (#1653), and a cover whose src can change by
+   * rev alone — the artist hero, Artists-grid, related-artists and find-bar
+   * artist tiles (#1666). Off by default: a grid tile leaves it off unless its
+   * src can change by rev alone.
    */
   readonly holdPrevious = input(false);
 

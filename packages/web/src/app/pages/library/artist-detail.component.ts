@@ -9,6 +9,7 @@ import {
   DestroyRef,
   OnInit,
   OnDestroy,
+  untracked,
 } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
@@ -37,6 +38,9 @@ import { SongMenuService } from '../../services/song-menu.service';
 import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
 import { ArtistImageMenuComponent } from '../../components/artist-image-menu/artist-image-menu.component';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
+import { CoverRevisionsService } from '../../services/cover-revisions.service';
+import { LibraryEventsService } from '../../services/library-events.service';
+import { artistCover } from '../../lib/cover-url';
 import { AlbumTileComponent } from '../../components/album-tile/album-tile.component';
 import { IconComponent } from '../../components/icon/icon.component';
 import { TrackRowComponent } from '../../components/track-row/track-row.component';
@@ -130,6 +134,15 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
       this.api.invalidateLibraryReads();
       return this.loadArtist(this.artistId);
     });
+    // A replay gap can have dropped an `artwork.changed` for this artist, so a
+    // resync re-reads its DTO (#1666).
+    let seenResync = untracked(this.events.resync);
+    effect(() => {
+      const n = this.events.resync();
+      if (n === seenResync) return;
+      seenResync = n;
+      untracked(() => this.rereadArtist());
+    });
   }
 
   // Return to the previous in-app view, falling back to the library grid.
@@ -214,23 +227,33 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
 
   // ─── Artist image override ────────────────────────────────────────
   // The control itself is `ArtistImageMenuComponent`, shared with the Artists
-  // grid (issue #250 gap 4). This page keeps only the cache-bust, because the
-  // portrait URL is otherwise identical after a change.
-  readonly imageVersion = signal(0);
+  // grid (issue #250 gap 4). The portrait URL carries the artist's cover rev —
+  // the DTO's, or a newer one the menu's answer or `artwork.changed` pushed
+  // (#1666) — so it changes with the image on this page and every other one.
+  private readonly coverRevisions = inject(CoverRevisionsService);
+  private readonly events = inject(LibraryEventsService);
 
-  /** The portrait src, cache-busted after an override change. */
   readonly artistImageSrc = computed<string | undefined>(() => {
     const a = this.artist();
-    if (!a?.coverArt) return undefined;
-    const v = this.imageVersion();
-    return `/api/cover/${a.coverArt}?size=200&token=${this.auth.mediaToken()}${v ? `&v=${v}` : ''}`;
+    return a ? this.coverRevisions.url(artistCover(a), 200, this.auth.mediaToken()) : undefined;
   });
 
   /** Albums the user can copy a cover from (regular albums + singles/EPs). */
   readonly pickableAlbums = computed<Album[]>(() => [...this.albums(), ...this.singlesAndEps()]);
 
-  onArtistImageChanged(): void {
-    this.imageVersion.update((v) => v + 1);
+  /** Re-read the artist DTO in place (no reset, no spinner): its rev is server truth. */
+  private rereadArtist(): void {
+    const id = this.artistId;
+    if (!id) return;
+    this.api
+      .getArtist(id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (data) => {
+          if (this.artistId === id) this.artist.set(data.artist);
+        },
+        error: () => undefined,
+      });
   }
 
   // ─── Tabs ─────────────────────────────────────────────────────────
@@ -559,7 +582,6 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     this.identityOpen.set(false);
     this.genreOpen.set(false);
     this.aboutOpen.set(false);
-    this.imageVersion.set(0);
     // Reset the Songs tab (lazy list + observer rewire happens via the effect).
     this.songs.set([]);
     this.songsOffset = 0;
