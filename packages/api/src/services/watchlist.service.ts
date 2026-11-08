@@ -168,7 +168,7 @@ export class WatchlistService {
     try {
       const albumId = await this.resolveAlbumId(row);
       if (albumId === null) {
-        this.touch(row.id);
+        this.touch(row.id, 'unresolved');
         return;
       }
 
@@ -197,8 +197,12 @@ export class WatchlistService {
           break;
         case 'no-candidate':
         case 'slskd-unavailable':
-          // Nothing good enough (or slskd down) yet — try again next sweep.
-          this.touch(row.id);
+          // Nothing good enough (or slskd down) yet — try again next sweep, and
+          // keep the reason so a long-waiting row says why (#1626).
+          this.touch(
+            row.id,
+            result.detail ? `${result.outcome}: ${result.detail}` : result.outcome,
+          );
           break;
       }
     } catch (err) {

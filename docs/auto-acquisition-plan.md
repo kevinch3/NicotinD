@@ -108,7 +108,8 @@ version is smaller and reuses more:
   from — see [mcp-agent.md](mcp-agent.md), issue #858). It was extracted out of
   `WatchlistService.tryAcquire`, which now calls it and maps the outcome to its row state
   (`enqueued|already-complete|in-flight` → acquired; `enqueue-failed` → failed, storing the
-  `detail` as `last_error`; `no-candidate|slskd-unavailable` → touch/retry). The watchlist tests
+  `detail` as `last_error`; `no-candidate|slskd-unavailable` → touch/retry, keeping the outcome and its `detail` in
+  `last_error` so a waiting row says why, and an unresolvable album records `unresolved`, #1626). The watchlist tests
   stayed green, proving the extraction was behavior-preserving.
 - **`AutoAcquireService`** (`services/auto-acquire.service.ts`) is therefore just the interval
   poller, feeding `wantedMissing` records to `acquireAlbum`. No new dedupe table — the

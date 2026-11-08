@@ -237,6 +237,37 @@ describe('WatchlistService', () => {
       expect(r.t).toBeGreaterThan(0);
     });
 
+    // touch() used to write last_error = NULL here, so a row retried for weeks
+    // showed no reason at all (#1626).
+    it('keeps the reason a retry is waiting on', async () => {
+      const { db, svc } = makeHarness({
+        candidates: [candidate({ matchPct: 50 })],
+        minMatchPct: 80,
+      });
+      watch(db, { lidarr_album_id: 99 });
+
+      await svc.sweep();
+
+      const r = db.query('SELECT last_error AS e FROM watchlist WHERE id = 1').get() as {
+        e: string | null;
+      };
+      expect(r.e).toStartWith('no-candidate');
+    });
+
+    it('records an album it cannot resolve as unresolved', async () => {
+      const { db, svc } = makeHarness({ candidates: [] });
+      watch(db, { lidarr_album_id: null, foreign_album_id: '' });
+
+      await svc.sweep();
+
+      const r = db.query('SELECT last_error AS e, state FROM watchlist WHERE id = 1').get() as {
+        e: string | null;
+        state: string;
+      };
+      expect(r.state).toBe('watching');
+      expect(r.e).toBe('unresolved');
+    });
+
     it('marks acquired without downloading when the album is already on disk', async () => {
       const { db, svc, enqueue, hunt } = makeHarness({});
       watch(db, { lidarr_album_id: 99 });

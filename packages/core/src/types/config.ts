@@ -77,23 +77,6 @@ export const NicotinDConfigSchema = z.object({
 
   downloads: z
     .object({
-      // Auto-retry/recovery for failed slskd transfers (resume truncated
-      // downloads, cross-peer fallback for tracks that keep failing).
-      autoRetryEnabled: z.boolean().default(true),
-      retryMaxAttempts: z.number().int().min(0).default(3),
-      retryIntervalMs: z.number().int().min(1000).default(15_000),
-      retryCooldownMs: z.number().int().min(0).default(60_000),
-      // Max cross-peer fallback waves per album (recorded alternates + fresh
-      // per-track searches) before a job is marked exhausted.
-      fallbackMaxAttempts: z.number().int().min(0).default(5),
-      // Periodically revive `exhausted` album jobs for another fallback wave —
-      // peers that were offline at hunt time often reappear. Disk-aware, so it
-      // only re-searches tracks still genuinely missing from the library.
-      autoRetryExhausted: z.boolean().default(true),
-      // Minimum delay before re-trying the same exhausted job (default 1h).
-      exhaustedRetryCooldownMs: z.number().int().min(0).default(3_600_000),
-      // Cap on how many times one job is revived before it stays exhausted.
-      exhaustedMaxRevives: z.number().int().min(0).default(5),
       // Drop an incoming MP3 when a FLAC of the same track is already in the
       // album folder (avoids mixed MP3+FLAC duplicate albums). Opt-in.
       preferFlacSkipMp3: z.boolean().default(false),
@@ -129,14 +112,6 @@ export const NicotinDConfigSchema = z.object({
       }),
     })
     .default({
-      autoRetryEnabled: true,
-      retryMaxAttempts: 3,
-      retryIntervalMs: 15_000,
-      retryCooldownMs: 60_000,
-      fallbackMaxAttempts: 5,
-      autoRetryExhausted: true,
-      exhaustedRetryCooldownMs: 3_600_000,
-      exhaustedMaxRevives: 5,
       preferFlacSkipMp3: false,
       autoAcquireEnabled: false,
       autoAcquireIntervalMs: 3_600_000,

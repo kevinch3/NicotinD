@@ -263,6 +263,8 @@ The web surfaces it in **two places**, both gated on `PluginService.hasArchive` 
 
 ## Album hunt — cross-peer fallback (duplication fix)
 
+> **History.** This engine moved into the slskd addon in #494 and left core in the #507 cutover; core no longer runs it. Its `downloads.*` config keys did nothing after that and were removed in #1626. The addon repo documents what runs today.
+
 `AlbumFallbackService` (`packages/api/src/services/album-fallback.service.ts`) recovers tracks the chosen folder _promised but the peer failed to deliver_. Recovery target is the **primary folder's own file manifest** (`target_files_json`, the files the user selected at `hunt-download` time) — **not** the canonical Lidarr tracklist.
 
 Why: Lidarr often returns a bloated deluxe/special-edition tracklist (e.g. "Circus" = 24 tracks incl. live/acoustic/bonus cuts) that no single Soulseek folder contains, so a canonical-targeted `missing` set is _permanently_ non-empty — the fallback then exhausts all attempts dumping near-complete duplicate rips into one `<Artist>/<Album>` folder. Targeting the manifest means a folder that downloads in full is `done` immediately; genuinely-failed primary tracks are still recovered from alternates. Legacy jobs without a stored manifest fall back to canonical titles (`parseTargets`).
@@ -287,6 +289,8 @@ The incomplete-album surface lists these jobs via `GET /api/discography/jobs?sta
 ---
 
 ## Auto-retry of exhausted hunts (disk-aware revival)
+
+> **History.** This engine moved into the slskd addon in #494 and left core in the #507 cutover; core no longer runs it. Its `downloads.*` config keys did nothing after that and were removed in #1626. The addon repo documents what runs today.
 
 `AlbumFallbackService.reviveExhausted` (gated by config `downloads.autoRetryExhausted`, default on) periodically flips long-`exhausted` jobs back to `active` so the next `sweep` gives them a fresh `fallbackMaxAttempts` budget — peers offline at hunt time often reappear.
 
