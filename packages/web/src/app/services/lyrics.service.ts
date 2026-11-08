@@ -1,9 +1,11 @@
 import { Injectable, computed, inject, signal, untracked } from '@angular/core';
-import { defer, finalize, tap, type Observable } from 'rxjs';
+import { defer, finalize, firstValueFrom, tap, type Observable } from 'rxjs';
 import type { LyricsDto } from '@nicotind/core';
 import { parseLrc, findActiveLine, applyLyricsOffset, LYRICS_OFFSET_MAX_MS } from '@nicotind/core';
 import { LibraryApiService } from './api/library-api.service';
 import { LibraryEventsService } from './library-events.service';
+import { NetworkStatusService } from './network-status.service';
+import { PRESERVE_STORE } from './preserve-store.token';
 
 /** One song's lyrics as this client knows them. */
 interface LyricsEntry {
@@ -59,6 +61,9 @@ export const LYRICS_CACHE_SIZE = 20;
 @Injectable({ providedIn: 'root' })
 export class LyricsService {
   private readonly api = inject(LibraryApiService);
+  private readonly network = inject(NetworkStatusService);
+  /** The preserved copies (#1751): read offline, kept current online. */
+  private readonly preserved = inject(PRESERVE_STORE);
 
   private readonly entries = signal<ReadonlyMap<string, LyricsEntry>>(new Map());
   /** The track the player view shows: the id the last `ensureLoaded` named. */
@@ -231,6 +236,7 @@ export class LyricsService {
   /** A stored-row read; keeps the entry's words until the answer lands. */
   private read(id: string): void {
     const token = this.begin(id, { inFlight: 'read' });
+    if (!this.network.online()) return this.fromPreserved(id, token);
     const writing = this.offsetWrites.has(id);
     const taps = this.offsetTaps.get(id) ?? 0;
     this.api.getLyrics(id).subscribe({
@@ -238,30 +244,69 @@ export class LyricsService {
         const raced =
           writing || this.offsetWrites.has(id) || (this.offsetTaps.get(id) ?? 0) !== taps;
         this.settle(id, token, { dto: raced ? this.withLocalOffset(id, l) : l, inFlight: null });
+        this.remember(id, l);
       },
-      error: () => this.settle(id, token, { inFlight: null }),
+      error: () => this.fromPreserved(id, token),
     });
   }
 
   /** The player's first load: the stored row, else the sources once. */
   private load(id: string): void {
     const token = this.begin(id, { inFlight: 'full', error: false });
+    if (!this.network.online()) return this.fromPreserved(id, token);
     this.api.getLyrics(id).subscribe({
       next: (l) => {
         if (l) {
           this.settle(id, token, { dto: l, inFlight: null });
+          this.remember(id, l);
           return;
         }
         if (!this.isLatest(id, token)) return;
         this.api.fetchLyrics(id).subscribe({
-          next: (f) => this.settle(id, token, { dto: f, inFlight: null }),
+          next: (f) => {
+            this.settle(id, token, { dto: f, inFlight: null });
+            this.remember(id, f);
+          },
           // A source failure (502) is distinct from a confident no-match —
           // flag it so the empty state offers a retry instead of "none".
           error: () => this.settle(id, token, { inFlight: null, error: true }),
         });
       },
-      error: () => this.settle(id, token, { inFlight: null }),
+      error: () => this.fromPreserved(id, token),
     });
+  }
+
+  /**
+   * The preserved copy of `id`'s lyrics (#1751) — offline, or when the server
+   * read failed — so karaoke on a saved track needs no network. A miss keeps
+   * whatever the entry already holds.
+   */
+  private fromPreserved(id: string, token: number): void {
+    this.preserved.getLyrics(id).then(
+      (dto) => this.settle(id, token, dto ? { dto, inFlight: null } : { inFlight: null }),
+      () => this.settle(id, token, { inFlight: null }),
+    );
+  }
+
+  /** The server answered `id`'s row: keep a preserved copy current (a no-op
+   *  for a song that is not preserved). Best effort — never fails a read. */
+  private remember(id: string, dto: LyricsDto | null): void {
+    this.preserved.refreshLyrics(id, dto).catch(() => undefined);
+  }
+
+  /**
+   * `id`'s stored lyrics for a preserve (#1751): the entry already held, else
+   * the server's stored row — never the sources, so preserving an album costs
+   * no lyrics fetches. Null when there are none or the read fails.
+   */
+  async snapshot(id: string): Promise<LyricsDto | null> {
+    const held = untracked(() => this.entries().get(id)?.dto);
+    if (held) return held;
+    try {
+      return await firstValueFrom(this.api.getLyrics(id));
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -335,6 +380,7 @@ export class LyricsService {
         // Trust the server's value — it owns the clamp — unless a newer tap
         // is queued, whose write will answer in turn.
         if (w.pending === null) this.patchOffset(id, saved.offsetMs);
+        this.remember(id, saved);
       },
       error: () => {
         // Revert to the last value the server confirmed, never past a newer
@@ -396,17 +442,12 @@ export class LyricsService {
     return this.written(
       id,
       token,
-      this.api
-        .fetchLyrics(id, force)
-        .pipe(
-          tap((l) =>
-            this.settle(
-              id,
-              token,
-              l ? { dto: l, error: false, inFlight: null } : { inFlight: null },
-            ),
-          ),
-        ),
+      this.api.fetchLyrics(id, force).pipe(
+        tap((l) => {
+          this.settle(id, token, l ? { dto: l, error: false, inFlight: null } : { inFlight: null });
+          if (l) this.remember(id, l);
+        }),
+      ),
       (l) => l ?? undefined,
     );
   }
@@ -421,9 +462,12 @@ export class LyricsService {
     return this.written(
       id,
       token,
-      this.api
-        .saveLyrics(id, plain)
-        .pipe(tap((l) => this.settle(id, token, { dto: l, inFlight: null }))),
+      this.api.saveLyrics(id, plain).pipe(
+        tap((l) => {
+          this.settle(id, token, { dto: l, inFlight: null });
+          this.remember(id, l);
+        }),
+      ),
       (l) => l,
     );
   }
@@ -434,9 +478,12 @@ export class LyricsService {
     return this.written(
       id,
       token,
-      this.api
-        .deleteLyrics(id)
-        .pipe(tap(() => this.settle(id, token, { dto: null, inFlight: null }))),
+      this.api.deleteLyrics(id).pipe(
+        tap(() => {
+          this.settle(id, token, { dto: null, inFlight: null });
+          this.remember(id, null);
+        }),
+      ),
       () => null,
     );
   }

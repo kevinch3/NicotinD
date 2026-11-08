@@ -4,6 +4,9 @@ import { vi } from 'vitest';
 import type { LyricsDto } from '@nicotind/core';
 import { LYRICS_CACHE_SIZE, LyricsService } from './lyrics.service';
 import { LibraryApiService } from './api/library-api.service';
+import { NetworkStatusService } from './network-status.service';
+import { PRESERVE_STORE } from './preserve-store.token';
+import { signal } from '@angular/core';
 
 function dto(over: Partial<LyricsDto> = {}): LyricsDto {
   return {
@@ -31,9 +34,41 @@ function setup() {
     ),
     deleteLyrics: vi.fn<(id: string) => Observable<{ ok: boolean }>>(() => of({ ok: true })),
   };
-  TestBed.configureTestingModule({ providers: [{ provide: LibraryApiService, useValue: api }] });
-  return { api, lyrics: TestBed.inject(LyricsService) };
+  // The preserved copies (#1751): an in-memory map holding only preserved ids.
+  const preservedIds = new Set<string>();
+  const copies = new Map<string, LyricsDto>();
+  const store = {
+    getLyrics: vi.fn(async (id: string) => copies.get(id) ?? null),
+    refreshLyrics: vi.fn(async (id: string, d: LyricsDto | null) => {
+      if (!preservedIds.has(id)) return false;
+      if (d) copies.set(id, d);
+      else copies.delete(id);
+      return true;
+    }),
+  };
+  const online = signal(true);
+  TestBed.configureTestingModule({
+    providers: [
+      { provide: LibraryApiService, useValue: api },
+      { provide: PRESERVE_STORE, useValue: store },
+      { provide: NetworkStatusService, useValue: { online } },
+    ],
+  });
+  return {
+    api,
+    lyrics: TestBed.inject(LyricsService),
+    store,
+    online,
+    preserve(id: string, copy?: LyricsDto) {
+      preservedIds.add(id);
+      if (copy) copies.set(id, copy);
+    },
+    copies,
+  };
 }
+
+/** Let the store's promises (and the settles they schedule) run. */
+const drain = () => new Promise((r) => setTimeout(r, 0));
 
 describe('LyricsService (#1134)', () => {
   it('serves a stored row without asking the sources', () => {
@@ -725,5 +760,103 @@ describe('LyricsService sync offset vs a whole-row write (#1656)', () => {
 
     expect(sent).toEqual([250, -100]);
     expect(lyrics.offsetMs()).toBe(0);
+  });
+});
+
+describe('LyricsService preserved copies (#1751)', () => {
+  const synced = '[00:01.00]hello\n[00:03.00]world';
+
+  it('offline, the player reads the preserved copy and asks nobody', async () => {
+    const { api, lyrics, online, preserve } = setup();
+    preserve('s1', dto({ synced, offsetMs: 250 }));
+    online.set(false);
+
+    lyrics.ensureLoaded('s1');
+    await drain();
+
+    expect(api.getLyrics).not.toHaveBeenCalled();
+    expect(api.fetchLyrics).not.toHaveBeenCalled();
+    expect(lyrics.lines().map((l) => l.text)).toEqual(['hello', 'world']);
+    expect(lyrics.offsetMs()).toBe(250);
+    expect(lyrics.loading()).toBe(false);
+  });
+
+  it('a failed server read (online but unreachable) falls back to the copy', async () => {
+    const { api, lyrics, preserve } = setup();
+    preserve('s1', dto({ synced }));
+    api.getLyrics.mockReturnValue(throwError(() => new Error('502')));
+
+    lyrics.ensureLoaded('s1');
+    await drain();
+
+    expect(lyrics.hasLyricsFor('s1')).toBe(true);
+    expect(api.fetchLyrics).not.toHaveBeenCalled();
+  });
+
+  it('offline with no copy: no lyrics, not stuck loading', async () => {
+    const { lyrics, online } = setup();
+    online.set(false);
+    lyrics.ensureLoaded('s1');
+    await drain();
+    expect(lyrics.hasLyricsFor('s1')).toBe(false);
+    expect(lyrics.loading()).toBe(false);
+  });
+
+  it('every server answer keeps a preserved copy current — read, change event, save, delete', async () => {
+    const { api, lyrics, preserve, copies } = setup();
+    preserve('s1', dto({ plain: 'old' }));
+    api.getLyrics.mockReturnValue(of(dto({ plain: 'fresh' })));
+
+    lyrics.ensureLoaded('s1');
+    await drain();
+    expect(copies.get('s1')?.plain).toBe('fresh');
+
+    api.getLyrics.mockReturnValue(of(dto({ plain: 'from another device' })));
+    lyrics.invalidate(['s1']);
+    await drain();
+    expect(copies.get('s1')?.plain).toBe('from another device');
+
+    lyrics.save('s1', 'edited').subscribe();
+    await drain();
+    expect(copies.get('s1')?.plain).toBe('edited');
+
+    lyrics.remove('s1').subscribe();
+    await drain();
+    expect(copies.has('s1')).toBe(false);
+  });
+
+  it('a confirmed sync offset reaches the copy', async () => {
+    const { api, lyrics, preserve, copies } = setup();
+    preserve('s1');
+    api.getLyrics.mockReturnValue(of(dto({ synced })));
+    lyrics.ensureLoaded('s1');
+    lyrics.nudgeOffset(100);
+    await drain();
+    expect(copies.get('s1')?.offsetMs).toBe(100);
+  });
+
+  it('a song that is not preserved stores nothing', async () => {
+    const { api, lyrics, store, copies } = setup();
+    api.getLyrics.mockReturnValue(of(dto()));
+    lyrics.ensureLoaded('s1');
+    await drain();
+    expect(store.refreshLyrics).toHaveBeenCalledWith('s1', expect.anything());
+    expect(copies.size).toBe(0);
+  });
+
+  it('snapshot: the held entry, else the stored row — never the sources', async () => {
+    const { api, lyrics } = setup();
+    api.getLyrics.mockReturnValue(of(dto({ plain: 'held' })));
+    lyrics.ensureLoaded('s1');
+    expect((await lyrics.snapshot('s1'))?.plain).toBe('held');
+
+    api.getLyrics.mockClear();
+    api.getLyrics.mockReturnValue(of(dto({ plain: 'stored' })));
+    expect((await lyrics.snapshot('s2'))?.plain).toBe('stored');
+    expect(api.getLyrics).toHaveBeenCalledWith('s2');
+
+    api.getLyrics.mockReturnValue(throwError(() => new Error('offline')));
+    expect(await lyrics.snapshot('s3')).toBeNull();
+    expect(api.fetchLyrics).not.toHaveBeenCalled();
   });
 });
