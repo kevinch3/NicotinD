@@ -124,8 +124,10 @@
             @if (error()) { <p class="text-red-400 text-sm">{{ error() }}</p> }
             <div class="flex gap-3">
               <button type="button" (click)="step.set('library')" class="px-5 py-3 rounded-lg border border-zinc-800 text-zinc-400 text-sm font-medium hover:border-zinc-600 transition">{{ 'common.back' | t }}</button>
+              <!-- Busy while the ~3 s submit runs, so it never looks dead (#1736). -->
               <button type="button" (click)="handleQualityNext()" data-testid="setup-next-quality"
-                class="flex-1 py-3 rounded-lg bg-zinc-100 text-zinc-900 font-semibold hover:bg-zinc-200 transition">{{ 'setup.completeSetup' | t }}</button>
+                [disabled]="loading()" [attr.aria-busy]="loading()"
+                class="flex-1 py-3 rounded-lg bg-zinc-100 text-zinc-900 font-semibold hover:bg-zinc-200 transition disabled:opacity-60 disabled:cursor-wait">{{ (loading() ? 'setup.completing' : 'setup.completeSetup') | t }}</button>
             </div>
           </div>
         }

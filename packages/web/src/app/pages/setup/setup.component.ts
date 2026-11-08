@@ -101,7 +101,7 @@ export class SetupComponent {
   }
 
   private submitSetup(): void {
-    if (!this.adminData) return;
+    if (!this.adminData || this.loading()) return; // one submit at a time (#1736)
     this.loading.set(true);
     this.error.set('');
 

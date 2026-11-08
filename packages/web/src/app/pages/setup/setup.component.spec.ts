@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import { of, throwError } from 'rxjs';
+import { of, throwError, Subject } from 'rxjs';
 import { SetupComponent } from './setup.component';
 import { SystemApiService } from '../../services/api/system-api.service';
 import { AuthService } from '../../services/auth.service';
@@ -92,6 +92,31 @@ describe('SetupComponent', () => {
     comp.step.set('library');
     comp.handleLibraryNext();
     expect(comp.step()).toBe('quality');
+  });
+
+  // #1736: the submit takes ~3 s on a modest laptop and the button looked dead
+  // the whole time, which invites a second click.
+  it('shows Complete Setup as busy and blocks a second submit while in flight', () => {
+    const fixture = TestBed.createComponent(SetupComponent);
+    const comp = fixture.componentInstance;
+    (comp as any).adminData = { username: 'admin', password: 'password' };
+    const pending = new Subject<never>();
+    const spy = vi.spyOn(comp['api'], 'completeSetup').mockReturnValue(pending);
+    comp.step.set('quality');
+    fixture.detectChanges();
+    const button = () =>
+      (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+        '[data-testid="setup-next-quality"]',
+      )!;
+
+    button().click();
+    fixture.detectChanges();
+    expect(button().disabled).toBe(true);
+    expect(button().getAttribute('aria-busy')).toBe('true');
+    expect(button().textContent).toContain('setup.completing');
+
+    comp.handleQualityNext(); // a second click that got through anyway
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 
   it('completes setup from the quality step (no Soulseek step since phase 3)', () => {
