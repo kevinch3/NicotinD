@@ -813,7 +813,10 @@ tier-2 readiness trigger — see "Feed eligibility".
 ## Variety chip
 
 The radio pill in Now Playing (`components/now-playing/radio-chip/`) grew a
-suffix. The main button keeps the `now-playing-radio` toggle contract; the
+suffix. On a phone it is now the compact `np-radio-control` at the end of the
+transport row (#1716, [web-ui.md](web-ui.md) "The Now Playing chrome is slim"),
+which extends the chip and opens the same dial from its icon; the TV keeps the
+pill. The main button keeps the `now-playing-radio` toggle contract; the
 chevron (`radio-chip-expand`) opens a panel that names what the radio is
 about — "Based on *title*" for a song anchor, "Based on the playlist *name*"
 for a list anchor, "Station: *label*" via the shared `describeLibraryFilter`

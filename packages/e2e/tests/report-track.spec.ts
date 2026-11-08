@@ -30,11 +30,11 @@ test.describe('report a track', () => {
     await page.getByTestId('player-title').click();
     await expect(page.getByTestId('now-playing-body')).toBeVisible();
 
-    // One visible tap on the flag beside the like heart (issue #1038). This
-    // used to be `click({ button: 'right' })` on the title — a gesture no
-    // touch or TV user can perform, which is what made the shipped feature
-    // unreachable in the first place.
-    await page.getByTestId('now-playing-report').click();
+    // A visible door, never a right-click (issue #1038): since #1716 it is the
+    // ⋯ on the artwork, not a standalone flag beside the title.
+    await expect(page.getByTestId('now-playing-report')).toHaveCount(0);
+    await page.getByTestId('now-playing-menu-toggle').click();
+    await page.getByTestId('track-action-Report this track').click();
     await expect(page.getByTestId('report-track-dialog')).toBeVisible();
   }
 
