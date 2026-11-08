@@ -9,7 +9,7 @@ import { Database } from 'bun:sqlite';
 import type { LyricsResult } from '@nicotind/core';
 import { applySchema } from '../db.js';
 import { fetchSongLyrics } from './lyrics-fetch.js';
-import { getLyrics, setLyrics, setLyricsOffset } from './lyrics-store.js';
+import { getLyrics, getLyricsProvenance, setLyrics, setLyricsOffset } from './lyrics-store.js';
 import type { PluginRegistry } from './plugins/registry.js';
 
 const SONG = 's1';
@@ -166,5 +166,73 @@ describe('fetchSongLyrics never downgrades timed → untimed (#1672)', () => {
     expect(getLyrics(db, SONG)!.matchedDurationSec).toBeNull();
     const r = await refetch(registry([plainOnly]));
     expect(r.kind).toBe('kept-timed');
+  });
+});
+
+/**
+ * #1676: the row records why its candidate won, so "the lyrics changed under me"
+ * is answerable from the database rather than from memory of what LRCLIB said.
+ */
+describe('fetchSongLyrics records why a candidate was chosen (#1676)', () => {
+  it('a first fetch records the source, timing, duration delta and how it matched', async () => {
+    const hit = { ...timed, matchedDurationSec: 203, sourceTrackId: '77', matchedBy: 'search' };
+    await fetchSongLyrics(db, { plugins: registry([hit]) }, SONG);
+    expect(getLyricsProvenance(db, SONG)?.choice).toMatchObject({
+      source: 'lrclib',
+      sourceTrackId: '77',
+      timed: true,
+      matchedDurationSec: 203,
+      localDurationSec: 200,
+      durationDeltaSec: 3,
+      matchedBy: 'search',
+      skippedUntimed: [],
+      replacedOtherTake: false,
+      forced: false,
+    });
+  });
+
+  it('an unverified match records no delta rather than a reassuring one', async () => {
+    await fetchSongLyrics(db, { plugins: registry([plainOnly]) }, SONG);
+    expect(getLyricsProvenance(db, SONG)?.choice).toMatchObject({
+      timed: false,
+      matchedDurationSec: null,
+      durationDeltaSec: null,
+      matchedBy: null,
+    });
+  });
+
+  it('names the untimed answers it passed over for a timed one', async () => {
+    storeTimed();
+    const newer = { ...timed, synced: '[00:02.00]newer', source: 'other' };
+    await refetch(registry([plainOnly], [newer]));
+    expect(getLyricsProvenance(db, SONG)?.choice).toMatchObject({
+      source: 'other',
+      timed: true,
+      skippedUntimed: ['lrclib'],
+      forced: true,
+    });
+  });
+
+  it('records that the replaced timed row was another take', async () => {
+    setLyrics(db, SONG, {
+      plain: 'wrong',
+      synced: '[00:01.00]wrong',
+      source: 'lrclib',
+      customized: false,
+      matchedDurationSec: 140,
+    });
+    await refetch(registry([{ ...plainOnly, matchedDurationSec: 201 }]));
+    expect(getLyricsProvenance(db, SONG)?.choice).toMatchObject({
+      timed: false,
+      replacedOtherTake: true,
+      durationDeltaSec: 1,
+    });
+  });
+
+  it('a kept-timed re-fetch leaves the stored choice alone', async () => {
+    await fetchSongLyrics(db, { plugins: registry([timed]) }, SONG);
+    const before = getLyricsProvenance(db, SONG)?.choice;
+    expect((await refetch(registry([plainOnly]))).kind).toBe('kept-timed');
+    expect(getLyricsProvenance(db, SONG)?.choice).toEqual(before!);
   });
 });

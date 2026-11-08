@@ -95,6 +95,7 @@ follow-up work, not part of the gate fix.
 | `GET`    | `/api/library/events`                    | Server-sent library events (landed/deleted/changed/artwork/job), `Last-Event-ID` replay |
 | `POST`   | `/api/library/songs/:id/lyrics/fetch`    | Fetch lyrics from enabled plugins                           |
 | `PUT`    | `/api/library/songs/:id/lyrics`          | Save custom lyrics (admin)                                  |
+| `GET`    | `/api/library/songs/:id/lyrics/export`   | Lyrics + provenance, stored offset baked into the LRC (curator) |
 | `DELETE` | `/api/library/albums/:id`                | Delete album (folder-first)                                 |
 | `GET`    | `/api/library/untracked`                 | Downloads with `relative_path IS NULL` (admin)              |
 | `GET`    | `/api/stream/:id`                        | Stream audio (Range/206 + seekable transcode cache)         |

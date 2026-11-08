@@ -59,6 +59,7 @@ describe('LrclibPlugin.fetchLyrics', () => {
       plain: 'line one\nline two',
       synced: '[00:01.00]line one',
       source: 'lrclib',
+      matchedBy: 'exact',
     });
   });
 
@@ -358,5 +359,39 @@ describe('LrclibPlugin prefers a timed take (#1672)', () => {
     );
     const r2 = await new LrclibPlugin({ enabled: true }, { fetchFn }).lyrics.fetchLyrics(query);
     expect(r2?.synced).toBe(crlf);
+  });
+});
+
+/**
+ * #1676. The host stores how a record was found beside the words, so "why did this
+ * song get these lyrics" is answerable from the row: /get, a ranked /search hit,
+ * or a /search hit nothing could rank are three different levels of trust.
+ */
+describe('LrclibPlugin says how it matched (#1676)', () => {
+  const searchOnly = (body: unknown) =>
+    routeFetch([
+      { match: '/get', status: 404, body: { code: 404 } },
+      { match: '/search', status: 200, body },
+    ]);
+
+  it('a ranked /search hit is `search`', async () => {
+    const fetchFn = searchOnly([{ id: 7, duration: 201, plainLyrics: 'w' }]);
+    const r = await new LrclibPlugin({ enabled: true }, { fetchFn }).lyrics.fetchLyrics(query);
+    expect(r?.matchedBy).toBe('search');
+  });
+
+  it('a /search hit with no duration to rank on is `search-unranked`', async () => {
+    const fetchFn = searchOnly([{ plainLyrics: 'w' }]);
+    const r = await new LrclibPlugin({ enabled: true }, { fetchFn }).lyrics.fetchLyrics(query);
+    expect(r?.matchedBy).toBe('search-unranked');
+  });
+
+  it('with no local duration every /search hit is `search-unranked`', async () => {
+    const fetchFn = searchOnly([{ duration: 305, plainLyrics: 'w' }]);
+    const r = await new LrclibPlugin({ enabled: true }, { fetchFn }).lyrics.fetchLyrics({
+      title: 'Selva',
+      artist: 'La Portuaria',
+    });
+    expect(r?.matchedBy).toBe('search-unranked');
   });
 });

@@ -1545,6 +1545,16 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   // better to offer. Defaults to 0, which is also what every pre-existing row
   // gets: "not corrected", never "corrected to zero by someone".
   addColumnIfMissing(db, 'library_lyrics', 'offset_ms', 'INTEGER NOT NULL DEFAULT 0');
+  // Provenance (#1676): why the words were chosen (a `LyricsChoice` as JSON —
+  // timed or not, the duration delta, how the source matched; kept across a
+  // user edit), and who made each human correction and when. All nullable with
+  // no default, so the ALTER rewrites no rows; every pre-existing row reads as
+  // "not recorded", never as a choice someone made.
+  addColumnIfMissing(db, 'library_lyrics', 'choice_json', 'TEXT');
+  addColumnIfMissing(db, 'library_lyrics', 'customized_by', 'TEXT');
+  addColumnIfMissing(db, 'library_lyrics', 'customized_at', 'INTEGER');
+  addColumnIfMissing(db, 'library_lyrics', 'offset_by', 'TEXT');
+  addColumnIfMissing(db, 'library_lyrics', 'offset_at', 'INTEGER');
 
   // Native per-user playlists (re-added after the Navidrome removal). Playlists
   // reference songs by the scanner's stable songId; reads JOIN library_songs and

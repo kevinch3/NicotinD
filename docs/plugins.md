@@ -276,7 +276,10 @@ process.ts` — `runAcquireProcess` + progress parsing + audio collection; the i
   `fetchSongLyrics` skips a plain-only result for a song stored timed and returns `kept-timed` — unless the stored row is already another take's words (#1205) by either health-report detector — `matchedDurationSec` beyond the tolerance, or the LRC outlasting the file (`lrcOverrunSec`, shared with `library-health.ts`) — which a re-fetch may still replace. Registered in `index.ts` and **seeded enabled on first boot** via
   `seedEnabled('lrclib', 'system')` (idempotent — an admin's later disable wins). The host (lyrics
   routes in `routes/library.ts`) owns persistence (`library_lyrics` side-table + file-tag write-back)
-  and the user-edit/`customized` protection — the plugin only resolves text. → see the "Lyrics"
+  and the user-edit/`customized` protection — the plugin only resolves text. Each result carries
+  an optional **`matchedBy`** (#1676: `exact` for `/get`, `search` for a duration-ranked hit,
+  `search-unranked` for one nothing could rank), which the host stores in the row's `LyricsChoice`
+  so why a song got its lyrics is readable after the fact. → see the "Lyrics"
   bullet in [CLAUDE.md](../CLAUDE.md).
 - **discogs** (`services/plugins/discogs/`) — a **`metadata`-kind** plugin (capability `genre`),
   **default-off + consent-gated** (Discogs API ToU). The **shell**: manifest + HTTP client (auth,

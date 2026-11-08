@@ -88,6 +88,10 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   (`applyLyricsOffset`), never by rewriting the LRC, so it is reversible; `parseLrc` is in core so
   `syncedBeyondDuration` parses server-side. Tools: `get_song_lyrics`, `sync_song_lyrics`, `refetch_song_lyrics`.
   → [design-patterns.md](../design-patterns.md), [mcp-agent.md](../mcp-agent.md)
+- **Lyrics provenance + export**: each row keeps why its candidate won and who edited text or
+  offset; the export bakes the offset into the LRC. `LyricsChoice`, `getLyricsProvenance`,
+  `getLyricsExport`, `bakeLyricsOffset`.
+  → [design-patterns.md](../design-patterns.md), [mcp-agent.md](../mcp-agent.md)
 - **Now Playing waveform + karaoke VFX**: rendered from a precomputed artifact.
   → [audio-ml-enrichment.md](../audio-ml-enrichment.md)
 - **A radio is about its anchor**: the song or list a radio was started from seeds every top-up

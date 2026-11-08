@@ -99,6 +99,12 @@ export interface LyricsResult {
   matchedDurationSec?: number;
   /** The source's own id for the matched record, for tracing a bad match back. */
   sourceTrackId?: string;
+  /**
+   * How the source found this record, in its own words (LRCLIB: `exact` for
+   * `/get`, `search` for a duration-ranked `/search` hit, `search-unranked` for
+   * one no duration could rank). Stored as part of the row's `LyricsChoice`.
+   */
+  matchedBy?: string;
 }
 
 /**

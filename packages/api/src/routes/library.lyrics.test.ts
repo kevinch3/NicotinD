@@ -16,7 +16,7 @@ import type { AuthEnv } from '../middleware/auth.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 import { applySchema } from '../db.js';
 import { libraryRoutes } from './library.js';
-import { getLyrics } from '../services/lyrics-store.js';
+import { getLyrics, getLyricsProvenance } from '../services/lyrics-store.js';
 import { libraryEvents, type StampedEvent } from '../services/library-events.js';
 import { writeAudioTags } from '../services/audio-tags.js';
 
@@ -226,6 +226,11 @@ describe('POST /songs/:id/lyrics/fetch', () => {
       expect(body.plain).toBe('embedded words');
       expect(body.source).toBe('file-tag');
       expect(getLyrics(testDb, 'song-9')?.plain).toBe('embedded words');
+      expect(getLyricsProvenance(testDb, 'song-9')?.choice).toMatchObject({
+        source: 'file-tag',
+        timed: false,
+        localDurationSec: 200,
+      });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -522,5 +527,75 @@ describe('lyrics writes reach open clients as lyrics.changed (#1666)', () => {
         untimed.request('/songs/song-1/lyrics/fetch', json('POST', { force: true })),
       ),
     ).toEqual([]);
+  });
+});
+
+/**
+ * #1676: who corrected a row is recorded by the routes that correct it, and the
+ * export is the corrected LRC with its provenance — curator-only, read-only.
+ */
+describe('lyrics provenance and export (#1676)', () => {
+  const json = (method: string, body: unknown): RequestInit => ({
+    method,
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  beforeEach(() => {
+    testDb.run(`INSERT INTO users (id, username, password_hash) VALUES ('u1', 'ana', 'h')`);
+    seedSong(testDb, 'song-1');
+  });
+
+  it('an edit records its author and keeps the fetched origin', async () => {
+    const { registry } = makeRegistry({
+      result: { ...LYRICS, sourceTrackId: '42', matchedDurationSec: 200, matchedBy: 'exact' },
+    });
+    await makeApp('user', registry).request('/songs/song-1/lyrics/fetch', { method: 'POST' });
+    await makeApp('admin').request('/songs/song-1/lyrics', json('PUT', { plain: 'fixed' }));
+    const p = getLyricsProvenance(testDb, 'song-1')!;
+    expect(p.customizedBy).toEqual({ userId: 'u1', username: 'ana' });
+    expect(p.customizedAt).toEqual(expect.any(Number));
+    expect(p.choice).toMatchObject({ source: 'lrclib', sourceTrackId: '42', matchedBy: 'exact' });
+  });
+
+  it('a sync records its author', async () => {
+    const { registry } = makeRegistry({ result: LYRICS });
+    await makeApp('user', registry).request('/songs/song-1/lyrics/fetch', { method: 'POST' });
+    await makeApp('admin').request('/songs/song-1/lyrics/offset', json('PATCH', { offsetMs: 500 }));
+    expect(getLyricsProvenance(testDb, 'song-1')?.offsetBy).toEqual({
+      userId: 'u1',
+      username: 'ana',
+    });
+  });
+
+  it('exports the LRC with the stored offset baked in, plus provenance', async () => {
+    const { registry } = makeRegistry({ result: LYRICS });
+    await makeApp('user', registry).request('/songs/song-1/lyrics/fetch', { method: 'POST' });
+    await makeApp('admin').request('/songs/song-1/lyrics/offset', json('PATCH', { offsetMs: 500 }));
+
+    const res = await makeApp('admin').request('/songs/song-1/lyrics/export');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      songId: 'song-1',
+      title: 'Selva',
+      artist: 'La Portuaria',
+      durationSec: 200,
+      synced: '[00:01.50]la selva',
+      offsetAppliedMs: 500,
+      corrected: true,
+      provenance: { source: 'lrclib', offsetBy: { userId: 'u1' }, choice: { timed: true } },
+    });
+    // Exporting is a read: the stored LRC and its offset are as they were.
+    expect(getLyrics(testDb, 'song-1')).toMatchObject({ synced: LYRICS.synced, offsetMs: 500 });
+  });
+
+  it('is null when no lyrics are stored, 404 for an unknown song', async () => {
+    expect(await (await makeApp('admin').request('/songs/song-1/lyrics/export')).json()).toBeNull();
+    expect((await makeApp('admin').request('/songs/nope/lyrics/export')).status).toBe(404);
+  });
+
+  it('is curator-only', async () => {
+    const { registry } = makeRegistry({ result: LYRICS });
+    await makeApp('user', registry).request('/songs/song-1/lyrics/fetch', { method: 'POST' });
+    expect((await makeApp('user').request('/songs/song-1/lyrics/export')).status).toBe(403);
   });
 });

@@ -27,7 +27,13 @@ import { PlaylistService } from '../services/playlist.service.js';
 import { analyzeBpm, verifyGenre } from '../services/track-analysis.js';
 import type { AudioFeaturesClient } from '../services/audio-features-client.js';
 import { readAudioTags, writeAudioTags, type AudioTags } from '../services/audio-tags.js';
-import { getLyrics, setLyrics, setLyricsOffset, deleteLyrics } from '../services/lyrics-store.js';
+import {
+  getLyrics,
+  getLyricsExport,
+  setLyrics,
+  setLyricsOffset,
+  deleteLyrics,
+} from '../services/lyrics-store.js';
 import { fetchSongLyrics } from '../services/lyrics-fetch.js';
 import { clusterDuplicateSongs } from '../services/duplicate-songs.js';
 import { getArtistMeta, upsertArtistMeta } from '../services/artist-meta-store.js';
@@ -2634,7 +2640,13 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       .get(id);
     if (!song) return c.json({ error: 'Song not found' }, 404);
 
-    const saved = setLyrics(db, id, { plain, synced, source: 'user', customized: true });
+    const saved = setLyrics(db, id, {
+      plain,
+      synced,
+      source: 'user',
+      customized: true,
+      actor: c.get('user')?.sub ?? null,
+    });
     if (musicDir) {
       const abs = resolveSongPath(expandDir(musicDir), song.path);
       if (isUnderMusicDir(expandDir(musicDir), abs) && existsSync(abs)) {
@@ -2669,9 +2681,24 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     // Out-of-range values are clamped, not refused: a nudge held down should
     // stop at the limit, not fail. The store owns the bound so the MCP tool
     // and this route cannot promise different ranges.
-    const saved = setLyricsOffset(db, id, body.offsetMs);
+    const saved = setLyricsOffset(db, id, body.offsetMs, c.get('user')?.sub ?? null);
     if (!saved) return c.json({ error: 'No lyrics stored for this song' }, 400);
     return c.json(saved);
+  });
+
+  // The lyrics as a self-contained record for a future share-back to the source
+  // (curator, #1676 — nothing is uploaded): track fields, the LRC with the stored
+  // offset baked into its timestamps, and where the words came from and who
+  // corrected them. `null` when none are stored, like the plain GET.
+  app.get('/songs/:id/lyrics/export', (c) => {
+    requireCurator(c);
+    const id = c.req.param('id');
+    const db = getDatabase();
+    const song = db
+      .query<{ id: string }, [string]>(`SELECT id FROM library_songs WHERE id = ?`)
+      .get(id);
+    if (!song) return c.json({ error: 'Song not found' }, 404);
+    return c.json(getLyricsExport(db, id));
   });
 
   // Reset lyrics (admin): drops the stored row. Leaves any embedded file tag in

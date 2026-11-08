@@ -3,6 +3,7 @@ import {
   parseLrc,
   parseLrcDetailed,
   applyLyricsOffset,
+  bakeLyricsOffset,
   lrcOverrunSec,
   findActiveLine,
   type LyricLine,
@@ -172,5 +173,58 @@ describe('lrcOverrunSec', () => {
   it('is -Infinity with no timed lines', () => {
     expect(lrcOverrunSec(null, 0, 200)).toBe(Number.NEGATIVE_INFINITY);
     expect(lrcOverrunSec('plain words only', 0, 200)).toBe(Number.NEGATIVE_INFINITY);
+  });
+});
+
+/**
+ * #1676: the export hands a corrected LRC to something with no field for a
+ * separate offset, so the offset is written into the timestamps. What must hold
+ * is that the baked text plays exactly as the stored text + offset does, and
+ * that nothing but timestamps changes.
+ */
+describe('bakeLyricsOffset', () => {
+  it('returns the input unchanged when there is nothing to apply', () => {
+    const raw = '[ar:X]\n[00:01.00]one\r\n[00:02.50]two';
+    expect(bakeLyricsOffset(raw, 0)).toBe(raw);
+  });
+
+  it('shifts every line stamp and keeps tags, untimed lines and line endings', () => {
+    const raw = '[ar:Artist]\r\n[00:01.00]one\r\nuntimed\r\n[00:02.50][01:00.00]chorus\r\n';
+    expect(bakeLyricsOffset(raw, 1_250)).toBe(
+      '[ar:Artist]\r\n[00:02.25]one\r\nuntimed\r\n[00:03.75][01:01.25]chorus\r\n',
+    );
+  });
+
+  it('moves enhanced-LRC word stamps with their line', () => {
+    expect(bakeLyricsOffset('[00:01.00]<00:01.00>a <00:01.50>b', 500)).toBe(
+      '[00:01.50]<00:01.50>a <00:02.00>b',
+    );
+  });
+
+  it("folds the file's own [offset:] tag in and removes it", () => {
+    // +500 in the tag means "500 ms sooner"; a stored -250 means "250 ms sooner" too.
+    expect(bakeLyricsOffset('[offset:+500]\n[00:02.00]x', -250)).toBe('[00:01.25]x');
+  });
+
+  it('keeps each stamp at its own precision', () => {
+    expect(bakeLyricsOffset('[00:01.000]ms\n[00:02]bare\n[00:03]bare2', 1_005)).toBe(
+      '[00:02.005]ms\n[00:03.00]bare\n[00:04.00]bare2',
+    );
+    expect(bakeLyricsOffset('[00:02]bare', 1_000)).toBe('[00:03]bare');
+  });
+
+  it('clamps a stamp shifted before the start to 0', () => {
+    expect(bakeLyricsOffset('[00:00.50]early\n[00:05.00]late', -1_000)).toBe(
+      '[00:00.00]early\n[00:04.00]late',
+    );
+  });
+
+  it('plays as the stored text + offset does', () => {
+    const raw = '[offset:-120]\n[00:01.00]a\n[00:03.40]b\n[01:12.88][02:00.10]c';
+    for (const offset of [-750, 0, 250, 3_000]) {
+      expect(parseLrc(bakeLyricsOffset(raw, offset))).toEqual(
+        applyLyricsOffset(parseLrc(raw), offset),
+      );
+    }
   });
 });

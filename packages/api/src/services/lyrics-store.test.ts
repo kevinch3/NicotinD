@@ -1,8 +1,15 @@
 import { describe, expect, it, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
-import { LYRICS_OFFSET_MAX_MS } from '@nicotind/core';
-import { getLyrics, setLyrics, setLyricsOffset, deleteLyrics } from './lyrics-store.js';
+import { LYRICS_OFFSET_MAX_MS, type LyricsChoice } from '@nicotind/core';
+import {
+  getLyrics,
+  getLyricsExport,
+  getLyricsProvenance,
+  setLyrics,
+  setLyricsOffset,
+  deleteLyrics,
+} from './lyrics-store.js';
 import { libraryEvents, type StampedEvent } from './library-events.js';
 
 let db: Database;
@@ -163,5 +170,203 @@ describe('lyrics-store announces every stored-lyrics change', () => {
       setLyricsOffset(db, 'a', 250);
     });
     expect(ids).toEqual([['a', 'b']]);
+  });
+});
+
+/**
+ * #1676: why a candidate was chosen and who corrected it live beside the words,
+ * so a song whose lyrics changed is diagnosable from the row — and the origin
+ * record survives the user edit that turns `source` into 'user'.
+ */
+describe('lyrics-store provenance', () => {
+  const choice: LyricsChoice = {
+    source: 'lrclib',
+    sourceTrackId: '42',
+    timed: true,
+    matchedDurationSec: 201,
+    localDurationSec: 200,
+    durationDeltaSec: 1,
+    matchedBy: 'exact',
+    skippedUntimed: [],
+    replacedOtherTake: false,
+    forced: false,
+    at: 1,
+  };
+  const fetched = {
+    plain: 'words',
+    synced: '[00:01.00]words',
+    source: 'lrclib',
+    customized: false,
+    sourceTrackId: '42',
+    choice,
+  };
+  beforeEach(() => {
+    db.run(`INSERT INTO users (id, username, password_hash) VALUES ('u1', 'ana', 'h')`);
+  });
+
+  it('stores why a fetched candidate was chosen', () => {
+    setLyrics(db, 'song-1', fetched);
+    const p = getLyricsProvenance(db, 'song-1');
+    expect(p?.choice).toEqual(choice);
+    expect(p?.customized).toBe(false);
+    expect(p?.customizedBy).toBeNull();
+  });
+
+  it('a user edit keeps the origin choice and records who and when', () => {
+    setLyrics(db, 'song-1', fetched);
+    const saved = setLyrics(db, 'song-1', {
+      plain: 'fixed',
+      synced: null,
+      source: 'user',
+      customized: true,
+      actor: 'u1',
+    });
+    const p = getLyricsProvenance(db, 'song-1')!;
+    expect(p.source).toBe('user');
+    expect(p.sourceTrackId).toBeNull();
+    expect(p.choice).toEqual(choice);
+    expect(p.customizedBy).toEqual({ userId: 'u1', username: 'ana' });
+    expect(p.customizedAt).toBe(saved.updatedAt);
+  });
+
+  it('a later fetch replaces the choice and clears the editor', () => {
+    setLyrics(db, 'song-1', { ...fetched, customized: true, source: 'user', actor: 'u1' });
+    const next = { ...choice, sourceTrackId: '43', matchedBy: 'search' };
+    setLyrics(db, 'song-1', { ...fetched, choice: next });
+    const p = getLyricsProvenance(db, 'song-1')!;
+    expect(p.choice).toEqual(next);
+    expect(p.customizedBy).toBeNull();
+    expect(p.customizedAt).toBeNull();
+  });
+
+  it('a removed account keeps its id and loses only its name', () => {
+    setLyrics(db, 'song-1', { ...fetched, customized: true, actor: 'gone' });
+    expect(getLyricsProvenance(db, 'song-1')?.customizedBy).toEqual({
+      userId: 'gone',
+      username: null,
+    });
+  });
+
+  it('records who set the offset, and forgets it with the offset when the text changes', () => {
+    setLyrics(db, 'song-1', fetched);
+    const saved = setLyricsOffset(db, 'song-1', 500, 'u1')!;
+    let p = getLyricsProvenance(db, 'song-1')!;
+    expect(p.offsetBy).toEqual({ userId: 'u1', username: 'ana' });
+    expect(p.offsetAt).toBe(saved.updatedAt);
+
+    setLyrics(db, 'song-1', { ...fetched, synced: '[00:02.00]new' });
+    p = getLyricsProvenance(db, 'song-1')!;
+    expect(p.offsetBy).toBeNull();
+    expect(p.offsetAt).toBeNull();
+  });
+
+  it('an offset carried over explicitly keeps its author', () => {
+    setLyrics(db, 'song-1', fetched);
+    setLyricsOffset(db, 'song-1', 500, 'u1');
+    setLyrics(db, 'song-1', { ...fetched, offsetMs: 500 });
+    expect(getLyricsProvenance(db, 'song-1')?.offsetBy?.userId).toBe('u1');
+  });
+
+  it('is null for a song with no lyrics', () => {
+    expect(getLyricsProvenance(db, 'song-1')).toBeNull();
+  });
+});
+
+describe('lyrics-store export (#1676)', () => {
+  function seedSong(id: string, duration = 200): void {
+    db.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, synced_at) VALUES ('al1', 'Huija', 'LP', 'a1', 0)`,
+    );
+    db.run(
+      `INSERT INTO library_songs
+        (id, album_id, title, artist, artist_id, duration, path,
+         size, bit_rate, suffix, content_type, created, synced_at)
+       VALUES (?, 'al1', 'Selva', 'La Portuaria', 'a1', ?, 'p.flac', 1, 1, 'flac', 'audio/flac', '2024', 0)`,
+      [id, duration],
+    );
+  }
+  const row = {
+    plain: 'w',
+    synced: '[00:01.00]w\n[00:02.00]x',
+    source: 'lrclib',
+    customized: false,
+  };
+
+  it('bakes the stored offset into the LRC and says how much', () => {
+    seedSong('song-1');
+    setLyrics(db, 'song-1', row);
+    setLyricsOffset(db, 'song-1', 750);
+    const e = getLyricsExport(db, 'song-1')!;
+    expect(e.synced).toBe('[00:01.75]w\n[00:02.75]x');
+    expect(e.offsetAppliedMs).toBe(750);
+    expect(e.corrected).toBe(true);
+    expect(e).toMatchObject({
+      songId: 'song-1',
+      title: 'Selva',
+      artist: 'La Portuaria',
+      album: 'Huija',
+      durationSec: 200,
+      plain: 'w',
+    });
+    // The stored text is untouched: the export is a view, not a rewrite.
+    expect(getLyrics(db, 'song-1')?.synced).toBe(row.synced);
+  });
+
+  it('an uncorrected fetched row exports verbatim and is not `corrected`', () => {
+    seedSong('song-1');
+    setLyrics(db, 'song-1', row);
+    const e = getLyricsExport(db, 'song-1')!;
+    expect(e.synced).toBe(row.synced);
+    expect(e.offsetAppliedMs).toBe(0);
+    expect(e.corrected).toBe(false);
+  });
+
+  it('a user-edited plain row is `corrected` with nothing to bake', () => {
+    seedSong('song-1');
+    setLyrics(db, 'song-1', { ...row, synced: null, customized: true, source: 'user' });
+    const e = getLyricsExport(db, 'song-1')!;
+    expect(e.synced).toBeNull();
+    expect(e.offsetAppliedMs).toBe(0);
+    expect(e.corrected).toBe(true);
+  });
+
+  it('is null without a row, or without the song', () => {
+    seedSong('song-1');
+    expect(getLyricsExport(db, 'song-1')).toBeNull();
+    setLyrics(db, 'orphan', row);
+    expect(getLyricsExport(db, 'orphan')).toBeNull();
+  });
+});
+
+describe('library_lyrics provenance migration (#1676)', () => {
+  it('adds the columns to a pre-#1676 table without touching its rows', () => {
+    const old = new Database(':memory:');
+    old.run(`
+      CREATE TABLE library_lyrics (
+        song_id TEXT PRIMARY KEY, plain_text TEXT, synced_text TEXT, source TEXT,
+        customized INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL,
+        matched_duration INTEGER, source_id TEXT, offset_ms INTEGER NOT NULL DEFAULT 0
+      )`);
+    old.run(
+      `INSERT INTO library_lyrics VALUES ('s1', 'w', '[00:01.00]w', 'lrclib', 1, 5, 200, '9', 250)`,
+    );
+    applySchema(old);
+    applySchema(old);
+    expect(getLyrics(old, 's1')).toMatchObject({
+      plain: 'w',
+      synced: '[00:01.00]w',
+      customized: true,
+      offsetMs: 250,
+      sourceTrackId: '9',
+    });
+    // Unknown, never invented: nobody recorded a choice or an editor for this row.
+    expect(getLyricsProvenance(old, 's1')).toMatchObject({
+      choice: null,
+      customizedBy: null,
+      customizedAt: null,
+      offsetBy: null,
+      offsetAt: null,
+    });
+    old.close();
   });
 });

@@ -8,7 +8,7 @@ import {
 } from '../services/agent-tokens.js';
 import { parseLrc, applyLyricsOffset, LYRICS_OFFSET_MAX_MS } from '@nicotind/core';
 import { recordAudit } from '../services/audit-log.js';
-import { getLyrics, setLyricsOffset } from '../services/lyrics-store.js';
+import { getLyrics, getLyricsProvenance, setLyricsOffset } from '../services/lyrics-store.js';
 import { fetchSongLyrics } from '../services/lyrics-fetch.js';
 import { deleteAlbum, deleteOne } from '../services/library-deletion.js';
 import { mutateArtistIdentity, verifyIdentityApplied } from '../services/artist-identity-mutate.js';
@@ -534,7 +534,7 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'get_song_lyrics',
     description:
-      "Everything needed to judge one song's stored lyrics without a second call: the source, whether a user edited them, the current sync offset, the length of the recording the source matched against the local file's own, and — for synced (LRC) lyrics — how many lines there are, where the last one falls, and the first/last few with their timings. Two independent things can be wrong and they have different fixes: WRONG WORDS (the source matched another take — visible as a durationDeltaSec beyond a few seconds, or an overrunBySec above zero meaning the lyrics outlast the file) need a re-fetch, while RIGHT WORDS ON A WRONG CLOCK need sync_song_lyrics. Read-only. Returns a bounded preview, never the full text.",
+      "Everything needed to judge one song's stored lyrics without a second call: the source, whether a user edited them, the current sync offset, the length of the recording the source matched against the local file's own, and — for synced (LRC) lyrics — how many lines there are, where the last one falls, and the first/last few with their timings — plus provenance: why the source's candidate was chosen (timed or not, the duration delta, how the source matched, untimed answers passed over) and who last edited the text or the sync offset, and when. Two independent things can be wrong and they have different fixes: WRONG WORDS (the source matched another take — visible as a durationDeltaSec beyond a few seconds, or an overrunBySec above zero meaning the lyrics outlast the file) need a re-fetch, while RIGHT WORDS ON A WRONG CLOCK need sync_song_lyrics. Read-only. Returns a bounded preview, never the full text.",
     access: 'read',
     inputSchema: {
       type: 'object',
@@ -586,6 +586,9 @@ export const MCP_TOOLS: McpTool[] = [
           firstLines: lines.slice(0, 3).map(preview),
           lastLines: lines.slice(-3).map(preview),
           plainPreview: stored.plain ? stored.plain.split('\n').slice(0, 3).join(' / ') : null,
+          // Why these words were chosen and who corrected them (#1676) — `choice`
+          // still names the source record after a user edit replaced `source`.
+          provenance: getLyricsProvenance(db, songId),
         },
         null,
         2,
@@ -689,7 +692,7 @@ export const MCP_TOOLS: McpTool[] = [
           error: 'offsetMs must be a number — an absolute offset in ms, not a delta',
         });
       }
-      const saved = setLyricsOffset(db, songId, requested);
+      const saved = setLyricsOffset(db, songId, requested, identity.userId);
       if (!saved) {
         return JSON.stringify({
           error:

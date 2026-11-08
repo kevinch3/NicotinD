@@ -145,6 +145,7 @@ export const SHARED_HELPERS = [
   { name: 'parseLrcDetailed', canonical: 'packages/core/src/lrc.ts' },
   { name: 'applyLyricsOffset', canonical: 'packages/core/src/lrc.ts' },
   { name: 'findActiveLine', canonical: 'packages/core/src/lrc.ts' },
+  { name: 'bakeLyricsOffset', canonical: 'packages/core/src/lrc.ts' },
 ];
 
 /** @type {import('eslint').Rule.RuleModule} */
