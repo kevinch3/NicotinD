@@ -1532,6 +1532,17 @@ which re-runs Effect 1; `lastManualSrc` makes that re-run return early, as it
 does for the natural advance. Covered by the `manual Next reuses the pre-buffered
 standby` spec block.
 
+**A dead standby is never reused (#1726).** Nothing listens on the standby, so a
+pre-load that failed (a 503 for a just-landed track, a dropped socket) went
+unnoticed. Swapping to it played nothing, and its `error` had already fired, so
+no recovery ran: the new title showed while the player sat "buffering" for good.
+A track under 30 s pre-buffers the next one at once, so this hit as soon as a
+short track was playing. `standbyAlive()` (no `error` on the element) gates both
+`standbyHolds()` for a committed load and `onEnded`'s natural advance; a dead
+standby falls through to a fresh load on the active element, which has the
+normal media-error retry. Covered by unit specs in both blocks and by the e2e
+`stream-error-stale-audio.spec.ts`, which 503s the pre-load in a real browser.
+
 **Still not in scope:** the standby pre-loads only in the last 30 s of playback,
 so a skip earlier in a track is a cold load. Extending the preload to the queue
 head at all times would make every single Next near-instant; it needs

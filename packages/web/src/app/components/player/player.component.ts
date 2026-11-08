@@ -745,10 +745,22 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     audio.src = src;
   }
 
+  /**
+   * Whether the standby's pre-load is still alive. Nothing listens on the
+   * standby, so a failed pre-load (a 503 for a just-landed track, a dropped
+   * socket) goes unnoticed; swapping to it plays nothing, and its `error` has
+   * already fired, so no recovery ever runs (#1726). A dead standby is never
+   * reused: the caller loads the track fresh on the active element instead.
+   */
+  private standbyAlive(standby: HTMLAudioElement): boolean {
+    return !standby.error;
+  }
+
   /** Whether the standby element is buffering exactly the resource `trackId` would load now. */
   private standbyHolds(trackId: string): boolean {
     return (
       this.standbyNativeEl !== null &&
+      this.standbyAlive(this.standbyNativeEl) &&
       this.preloadedTrackId === trackId &&
       this.preloadedSrc === this.streamSrc(trackId)
     );
@@ -1183,7 +1195,10 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
         if (nextTrack) {
           this.lastManualSrc = nextTrack.id;
           const standby = this.standbyNativeEl;
-          const isPreloaded = standby !== null && this.preloadedTrackId === nextTrack.id;
+          const isPreloaded =
+            standby !== null &&
+            this.preloadedTrackId === nextTrack.id &&
+            this.standbyAlive(standby);
 
           if (isPreloaded && standby) {
             // Standby element has the next track already buffered — swap instantly.

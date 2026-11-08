@@ -963,6 +963,22 @@ describe('PlayerComponent', () => {
       expect(elA.src).toContain('/t2');
       expect(elA.src).toContain('vocals=off');
     });
+
+    // #1726: the pre-load got a 503. Nothing listens on the standby, so the
+    // failure went unnoticed; swapping to it played nothing, the error had
+    // already fired, and no retry ever ran: the new title showed while the
+    // player sat "buffering" for good.
+    it('cold-loads instead of swapping to a standby whose pre-load failed', () => {
+      preloadNext();
+      Object.defineProperty(elB, 'error', { value: { code: 4 }, configurable: true });
+
+      playerService.playNext();
+      fixture.detectChanges();
+
+      expect(component['primaryIsA']()).toBe(true);
+      expect(elA.src).toContain('/t2');
+      expect(mockPlay.mock.contexts).toContain(elA);
+    });
   });
 
   describe('background advance', () => {
@@ -1058,6 +1074,20 @@ describe('PlayerComponent', () => {
 
       expect(component['primaryIsA']()).toBe(false);
       expect(mockPlay.mock.contexts).toContain(elB);
+    });
+
+    // #1726: same dead-standby trap on a natural advance.
+    it('advances on the active element when the standby pre-load failed', () => {
+      startNearTheEnd({ ios: false });
+      Object.defineProperty(elB, 'error', { value: { code: 4 }, configurable: true });
+      mockPlay.mockClear();
+
+      Object.defineProperty(elA, 'currentTime', { value: 200, configurable: true });
+      elA.dispatchEvent(new Event('ended'));
+
+      expect(component['primaryIsA']()).toBe(true);
+      expect(elA.src).toContain('/t2');
+      expect(mockPlay.mock.contexts).toContain(elA);
     });
 
     it('starts a preserved next track in the same task as `ended`, from a blob read ahead', async () => {

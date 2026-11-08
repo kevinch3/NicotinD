@@ -165,7 +165,9 @@ Web DSN is build-time (`environment.prod.ts`); there is no runtime web-DSN chann
 
 - API: `packages/api/src/observability/sentry.test.ts` (init on/off +
   `captureProcessingFailure` grouping/extra) +
-  `packages/api/src/middleware/error-handler.test.ts` (captures 500s, skips 4xx/503).
+  `packages/api/src/middleware/error-handler.test.ts` (captures 500s, skips 4xx/503;
+  every 503, connectivity or `ServiceUnavailableError`, is logged as a `http-errors`
+  warn with method, path and reason and carries `Retry-After: 5`, #1726).
 - Web: `app/observability/sentry.spec.ts` (init on/off + prod config).
 - Provider health: `packages/core/src/provider-health.test.ts` (window rollup, rate
   arithmetic, last-failure fields, boundedness), the "provider-health counters" blocks in
