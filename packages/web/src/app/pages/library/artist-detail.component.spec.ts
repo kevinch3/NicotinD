@@ -424,7 +424,7 @@ describe('ArtistDetailComponent — image override', () => {
     await flush();
     const before = component.artistImageSrc();
     // Another tab, another device or the curator agent replaced it: only the
-    // pushed event reaches this page. Today nothing on the page reads it.
+    // pushed event reaches this page. Before #1666 nothing on the page read it.
     TestBed.inject(LibraryEventsService).apply(
       { type: 'artwork.changed', changes: [{ kind: 'artist', id: 'ar1', rev: 2 }] },
       1,
@@ -458,8 +458,9 @@ describe('ArtistDetailComponent — image override', () => {
 
   // #1666: `/api/cover/<id>` is cached for a day, so the portrait URL must move
   // with the image, not with a counter that lives as long as this page does.
-  // Both scenarios model a replaced portrait the same way: the menu emits
-  // `changed` AND the server's artist DTO now names a different cover identity.
+  // Both scenarios model a replaced portrait the same way: the server's artist
+  // DTO now carries the new `coverRev`, and (on navigation) artwork.changed
+  // pushes it too.
   it('#1666 a replaced portrait still shows after navigating away and back', async () => {
     serverArtistPatch = { coverRev: 1 };
     const { component, paramMap } = setup();
