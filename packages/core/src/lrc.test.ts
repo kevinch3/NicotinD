@@ -206,11 +206,28 @@ describe('bakeLyricsOffset', () => {
     expect(bakeLyricsOffset('[offset:+500]\n[00:02.00]x', -250)).toBe('[00:01.25]x');
   });
 
-  it('keeps each stamp at its own precision', () => {
-    expect(bakeLyricsOffset('[00:01.000]ms\n[00:02]bare\n[00:03]bare2', 1_005)).toBe(
-      '[00:02.005]ms\n[00:03.00]bare\n[00:04.00]bare2',
+  it('keeps each stamp at its own precision while that is exact', () => {
+    expect(bakeLyricsOffset('[00:01.000]ms\n[00:02]bare\n[00:03.10]cs', 1_010)).toBe(
+      '[00:02.010]ms\n[00:03.01]bare\n[00:04.11]cs',
     );
     expect(bakeLyricsOffset('[00:02]bare', 1_000)).toBe('[00:03]bare');
+  });
+
+  it('widens a stamp to ms rather than round an off-grid shift away', () => {
+    // A centisecond stamp cannot say 5 ms; truncating it dropped the shift entirely.
+    expect(bakeLyricsOffset('[00:01.00]a\n[00:02]b', 5)).toBe('[00:01.005]a\n[00:02.005]b');
+    expect(bakeLyricsOffset('[00:01.00]a', -5)).toBe('[00:00.995]a');
+    expect(bakeLyricsOffset('[00:01.00]<00:01.50>a', 1_237)).toBe('[00:02.237]<00:02.737>a');
+  });
+
+  it('writes stamps past 99 minutes that parseLrc still reads', () => {
+    const baked = bakeLyricsOffset('[99:59.90]a\n[100:00.00]b', 500);
+    expect(baked).toBe('[100:00.40]a\n[100:00.50]b');
+    expect(parseLrc(baked)).toEqual([
+      { timeMs: 6_000_400, text: 'a' },
+      { timeMs: 6_000_500, text: 'b' },
+    ]);
+    expect(bakeLyricsOffset('[999:59.90]last', 500)).toBe('[999:59.999]last');
   });
 
   it('clamps a stamp shifted before the start to 0', () => {
@@ -220,8 +237,8 @@ describe('bakeLyricsOffset', () => {
   });
 
   it('plays as the stored text + offset does', () => {
-    const raw = '[offset:-120]\n[00:01.00]a\n[00:03.40]b\n[01:12.88][02:00.10]c';
-    for (const offset of [-750, 0, 250, 3_000]) {
+    const raw = '[offset:-120]\n[00:01.00]a\n[00:03.40]b\n[01:12.88][02:00.10]c\n[99:59.90]d';
+    for (const offset of [-750, -5, 0, 5, 250, 1_237, 3_000]) {
       expect(parseLrc(bakeLyricsOffset(raw, offset))).toEqual(
         applyLyricsOffset(parseLrc(raw), offset),
       );
