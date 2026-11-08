@@ -329,9 +329,12 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
     [quality-gates.md](quality-gates.md) "Code-shape gates as lint rules".
   - **A change made elsewhere reaches the lyrics on screen (#1666)**: the server announces every
     stored-lyrics write as **`lyrics.changed {songIds}`** on the library event stream, emitted from
-    `services/lyrics-store.ts` — the only writer of `library_lyrics` rows — so the REST routes, the
-    fetch path and the MCP `refetch_song_lyrics` / `sync_song_lyrics` tools all reach an open client
-    ([cache-invalidation.md](cache-invalidation.md) "Live invalidation"). `LibraryEventsService`
+    `services/lyrics-store.ts` — the only writer of `library_lyrics` rows a client may hold — so the
+    REST routes, the fetch path and the MCP `refetch_song_lyrics` / `sync_song_lyrics` tools all
+    reach an open client ([cache-invalidation.md](cache-invalidation.md) "Live invalidation"). The
+    one other writer is the song-id carry (`SONG_CARRY_TABLES`, `services/song-curation-carry.ts`),
+    which re-keys rows to a freshly minted id no client has read yet and so announces nothing; a
+    new writer of rows a client can hold goes through `lyrics-store`. `LibraryEventsService`
     passes the ids to `lyricsChanged$` (`null` after a gap), and `LyricsService.invalidate`
     **re-reads only the entries a surface is showing** — the current track and every id an open
     sheet is bound to; any other cached entry is re-read when a surface next asks for it anyway. The
@@ -344,7 +347,9 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
     each of this tab's own writes; the client cannot tell its echo from another device's write.
     **The TV shell opens the event stream too** (`TvShellComponent.ngOnInit`, as `LayoutComponent`
     does): before, a TV never connected at all, so a phone's edit reached its karaoke only on the
-    next track and back. Specs: `services/lyrics-changed.spec.ts` (a stateful fake server; a write
+    next track and back. The TV never starts `TransferService`'s poller, so a pushed `job.changed`
+    kicks the poller only while it runs (`poller.isRunning()`) — otherwise every TV would poll both
+    job feeds on each acquisition anywhere, for a result nothing on it renders. Specs: `services/lyrics-changed.spec.ts` (a stateful fake server; a write
     "from elsewhere" is a row the client did not write) and, server side,
     `lyrics-store.test.ts`, `library.lyrics.test.ts` and `mcp.test.ts`.
   - **Sync-offset writes are serialized per song (#1656)**: a nudge applies to the entry at once
@@ -597,7 +602,7 @@ Every recurring client poll goes through one helper, `createVisibilityPoller` (`
 
 | service | visible | hidden |
 | --- | --- | --- |
-| `TransferService` | 3 s while a job is in a live stage (resolving/queued/downloading/organizing/scanning — `jobKeepsFastCadence`, #806), 30 s idle; **10 s / 120 s while the library events stream is connected** (the stream carries the transitions, the poll is the safety net) | **paused** |
+| `TransferService` | 3 s while a job is in a live stage (resolving/queued/downloading/organizing/scanning — `jobKeepsFastCadence`, #806), 30 s idle; **10 s / 120 s while the library events stream is connected** (the stream carries the transitions, the poll is the safety net); a pushed `job.changed` kicks it only while it runs, so the TV, which opens the stream but never starts it, does not poll (#1666) | **paused** |
 | `LibraryEventsService` (not a poller: one SSE stream, `/api/library/events`) | open while visible | closes 30 s after hiding, reopens from the last seq — [cache-invalidation.md](cache-invalidation.md) "Live invalidation" |
 | `AcquireService` | 2 s (and it self-stops when no job is active) | **60 s** |
 | `ServiceReviewService` | 5 s | paused |

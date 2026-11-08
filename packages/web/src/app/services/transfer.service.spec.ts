@@ -4,6 +4,7 @@ import { of } from 'rxjs';
 import { TransferService, jobKeepsFastCadence } from './transfer.service';
 import { DownloadsApiService } from './api/downloads-api.service';
 import { SystemApiService } from './api/system-api.service';
+import { LibraryEventsService } from './library-events.service';
 import type { AcquireJob, AcquisitionJobView } from '@nicotind/core';
 
 /** Drive jsdom's `document.hidden`, which is a getter with no setter. */
@@ -237,6 +238,33 @@ describe('TransferService adaptive polling', () => {
     const before = pollCount;
     await service.kickPoll();
     expect(pollCount).toBe(before + 1);
+  });
+
+  // #1666: the TV shell opens the event stream but never starts this poller,
+  // so a pushed job change must not make every TV poll a feed it never renders.
+  it('a pushed job change kicks a running poller', async () => {
+    setup();
+    service.startPolling();
+    await vi.advanceTimersByTimeAsync(0);
+    const before = pollCount;
+    TestBed.inject(LibraryEventsService).jobsChanged$.next('aj-1');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(pollCount).toBe(before + 1);
+  });
+
+  it('a pushed job change never polls when the poller was not started (the TV)', async () => {
+    setup();
+    TestBed.inject(LibraryEventsService).jobsChanged$.next('aj-1');
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(pollCount).toBe(0);
+
+    service.startPolling();
+    await vi.advanceTimersByTimeAsync(0);
+    service.stopPolling();
+    const afterStop = pollCount;
+    TestBed.inject(LibraryEventsService).jobsChanged$.next('aj-1');
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(pollCount).toBe(afterStop);
   });
 
   // Issue #717: this poller had no visibility gate, so every backgrounded tab,

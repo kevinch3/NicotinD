@@ -543,10 +543,12 @@ test.describe('mobile UX', () => {
     ).token;
     const albums = (await (
       await request.get('/api/library/albums', { headers: bearer(token) })
-    ).json()) as Array<{ id: string; title: string }>;
-    const album = albums.find((a) => a.title === FIXTURE.album.title) ?? albums[0]!;
+    ).json()) as Array<{ id: string; name: string }>;
+    // The list names albums `name` (helpers.ts): a `title` lookup never matches.
+    const album = albums.find((a) => a.name === FIXTURE.album.title);
+    expect(album, `fixture album "${FIXTURE.album.title}" in the library list`).toBeDefined();
     const detail = (await (
-      await request.get(`/api/library/albums/${album.id}`, { headers: bearer(token) })
+      await request.get(`/api/library/albums/${album!.id}`, { headers: bearer(token) })
     ).json()) as { song: Array<{ id: string }> };
     const seed = (plain: string) =>
       Promise.all(

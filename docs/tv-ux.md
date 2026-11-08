@@ -277,7 +277,10 @@ driven by three shared pieces rather than a second copy of any of them:
 A lyrics change made on a phone or by the MCP curator reaches the TV's karaoke as `lyrics.changed`,
 which is why `TvShellComponent` opens the library event stream as the phone layout does — before
 #1666 a TV never connected, and a phone's edit showed only on the next track and back
-([web-ui.md](web-ui.md) "A change made elsewhere reaches the lyrics on screen").
+([web-ui.md](web-ui.md) "A change made elsewhere reaches the lyrics on screen"). The stream
+carries every library event, `job.changed` among them, and that one does not make the TV poll the
+acquisition feeds, because a push kicks `TransferService`'s poller only while it
+runs and the TV never starts it.
 
 `TvKaraokeComponent` (`pages/tv/tv-karaoke.component.ts`) is the wiring and the three TV
 adaptations: **no seek bar** — `app-seek-bar` is a native range input, the #438 trap, so the
