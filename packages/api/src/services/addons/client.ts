@@ -11,7 +11,19 @@ import {
   type AddonStatusRow,
   createLogger,
 } from '@nicotind/core';
-import type { AddonTransport, AddonCallOutcome } from './transport.js';
+import type { AddonTransport, AddonCallOutcome, HuntTrace } from './transport.js';
+
+export type { HuntLane, HuntTrace } from './transport.js';
+
+/** How a hunt that answered ended, in one token. */
+export function huntOutcome(
+  res: Pick<AddonAlbumSearchResponse, 'candidates' | 'sourceOffline' | 'rateLimited'>,
+): 'candidates' | 'no-candidates' | 'source-offline' | 'rate-limited' {
+  if (res.candidates.length) return 'candidates';
+  if (res.sourceOffline) return 'source-offline';
+  if (res.rateLimited) return 'rate-limited';
+  return 'no-candidates';
+}
 
 type HuntLog = {
   info(obj: Record<string, unknown>, msg: string): void;
@@ -223,13 +235,16 @@ export class AddonClient implements AddonTransport {
    */
   async albumsSearch(
     req: AddonAlbumSearchRequest,
-    opts: { timeoutMs?: number; attemptId?: string } = {},
+    opts: { timeoutMs?: number } & HuntTrace = {},
   ): Promise<AddonAlbumSearchResponse> {
     const started = performance.now();
     // The attempt id joins this line to the addon's own `hunt summary` (#1626).
     const trace = {
       baseUrl: this.baseUrl,
       ...(opts.attemptId ? { attemptId: opts.attemptId } : {}),
+      ...(opts.lane ? { lane: opts.lane } : {}),
+      ...(opts.albumId !== undefined ? { albumId: opts.albumId } : {}),
+      ...(opts.queuedMs !== undefined ? { queuedMs: opts.queuedMs } : {}),
       artist: req.artist,
       album: req.album,
     };
@@ -243,6 +258,7 @@ export class AddonClient implements AddonTransport {
       this.log.info(
         {
           ...trace,
+          outcome: huntOutcome(res),
           durationMs: Math.round(performance.now() - started),
           candidates: res.candidates.length,
           searchesFired: res.searchesFired,
@@ -257,6 +273,7 @@ export class AddonClient implements AddonTransport {
       this.log.warn(
         {
           ...trace,
+          outcome: err instanceof AddonTimeoutError ? 'timeout' : 'error',
           durationMs: Math.round(performance.now() - started),
           err: err instanceof Error ? err.message : String(err),
         },
