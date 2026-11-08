@@ -2180,6 +2180,38 @@ station filter (`describeLibraryFilter`, reused rather than restated), else the 
 grew out of, else the track it seeded from. An ad-hoc queue is genuinely undetermined and falls
 through to the plain title rather than inventing a label.
 
+## The Now Playing chrome is slim: layout B (#1715, #1716)
+
+The sheet's vertical space is the queue's. The title row used to carry four icons (♡ ⚑ ⓘ ⋯), and the
+radio pill took a full row under the transport, growing by 170px when its dial opened. At 390x844
+that dial left room for a quarter of a queue row. The owner compared four complete prototypes,
+screenshotted at 390x844, 375x667 and 1280x800, and chose **layout B**:
+
+- **The title stands alone** (`now-playing-title-row` has no buttons). Info and Report live only in
+  the `⋯` track menu, the shared `SongMenuService` list.
+- **The ⋯ sits on the artwork's top-right corner**, like a Mosaic tile
+  (`now-playing-menu-toggle`, inside `now-playing-cover`). It falls back to the title row only while
+  the cover is dragged away (#993), so the menu is never unreachable.
+- **A still long-press on the artwork opens the same menu** (`NowPlayingCoverArtComponent.
+  onCoverPointerDown`). It follows the Mosaic and `EntityActionsDirective` contract: `HOLD_MS` held
+  still, `HOLD_SLOP_PX` of travel cancels, `haptic('hold')`, touch and pen only (a mouse has
+  right-click, which opens it too). A press on a control (the ⋯, a #1652 neighbour sliver) belongs to
+  the control. A hold the sheet's swipe takes over is a swipe and skips, never a menu, and the click
+  the release fires is swallowed so the menu it opened stays open.
+- **Like leads the transport row and the radio control closes it** (`now-playing-like`, then
+  `app-np-radio-control` → `now-playing-radio`), both 44px and in thumb reach.
+  - With radio off, a tap on the radio icon starts radio.
+  - With radio on, the icon shows an accent fill and a dot, and a tap opens the variety dial (#1660)
+    as a menu panel: a bottom sheet on a phone (#1714). The dial carries the off switch
+    (`np-radio-switch`), and it no longer pushes the queue down.
+- **TV is unchanged**: its pinned D-pad chain (`now-playing-tv.spec.ts`) keeps prev / play / next,
+  the ⓘ and the radio chip.
+
+Measured at 390x844: 46px saved collapsed and 216px with the dial open; the visible queue grows from
+about 1.06 to 1.81 rows. Covered by the transport and cover-art specs (row order, the transport Like,
+the radio's one-tap start, the hold contract) and `now-playing-chrome.spec.ts` (row geometry, 44px
+targets, ⋯ on the art, a still hold opens the menu and a moving one skips, radio on then dial).
+
 ## The Now Playing sheet shows no bitrate; Track info does (#1661)
 
 The sheet used to stack a fourth text line under title / artist / album: `formatQuality(bitRate)`
@@ -2246,8 +2278,9 @@ it is a control that lies.
 Both buttons are gone from every surface: the mini bar
 (`player-transport-mini.component.html`) and the Now Playing sheet
 (`now-playing-transport.component.html`); the TV transport and the karaoke overlay never had them.
-The Now Playing sheet's replacement for "surprise me" is the radio chip directly beneath the row,
-which already toggles radio (anchored on the current track when turned on over a bare queue).
+The Now Playing sheet's replacement for "surprise me" is radio: on a phone the radio control at the
+end of the transport row (#1716, below), on TV the radio chip beneath it. Either toggles radio
+(anchored on the current track when turned on over a bare queue).
 
 **The service state stays.** `PlayerService.shuffle` / `repeat` are still signals, still persisted
 in the player snapshot, and still read by `playNext()`, `playWithContext()` and the media-session

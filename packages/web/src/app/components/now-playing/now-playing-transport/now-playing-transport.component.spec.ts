@@ -3,6 +3,7 @@ import { NowPlayingTransportComponent } from './now-playing-transport.component'
 import { PlayerService } from '../../../services/player.service';
 import { setInputValue } from '../../../../testing/signal-input';
 import { RecommendationsApiService } from '../../../services/api/recommendations-api.service';
+import { LikeService } from '../../../services/like.service';
 import { vi } from 'vitest';
 import { haptic } from '../../../lib/haptics';
 
@@ -12,9 +13,13 @@ vi.mock('../../../lib/haptics', async (importOriginal) => ({
 }));
 
 describe('NowPlayingTransportComponent', () => {
+  let current: { id: string } | null;
+  let likes: { isLiked: ReturnType<typeof vi.fn>; toggle: ReturnType<typeof vi.fn> };
   beforeEach(() => {
-    // The stub is for the nested radio chip, not for this row: the transport
-    // itself reads nothing off the player any more.
+    current = null;
+    likes = { isLiked: vi.fn().mockReturnValue(false), toggle: vi.fn() };
+    // The radio fields are for the nested radio control; the row reads the
+    // current track for its Like (layout B, #1716).
     TestBed.configureTestingModule({
       providers: [
         {
@@ -23,7 +28,7 @@ describe('NowPlayingTransportComponent', () => {
             radio: () => false,
             radioFilter: () => null,
             radioStrategy: () => 'balanced',
-            currentTrack: () => null,
+            currentTrack: () => current,
             toggleRadio: vi.fn(),
             setRadioStrategy: vi.fn(),
           },
@@ -32,7 +37,56 @@ describe('NowPlayingTransportComponent', () => {
           provide: RecommendationsApiService,
           useValue: { feedback: vi.fn(), setPreferences: vi.fn() },
         },
+        { provide: LikeService, useValue: likes },
       ],
+    });
+  });
+
+  describe('layout B on a phone (#1715, #1716)', () => {
+    it('Like leads the row and the radio control closes it', () => {
+      current = { id: 't1' };
+      const fixture = TestBed.createComponent(NowPlayingTransportComponent);
+      fixture.detectChanges();
+      const playPause = fixture.nativeElement.querySelector(
+        '[data-testid="now-playing-playpause"]',
+      ) as HTMLElement;
+      const ids = Array.from(
+        playPause.closest('[appTvNavGroup]')!.querySelectorAll('[data-testid]'),
+      ).map((e) => e.getAttribute('data-testid'));
+      expect(ids[0]).toBe('now-playing-like');
+      expect(ids.at(-1)).toBe('now-playing-radio');
+      // The radio chip row under the transport is gone on a phone.
+      expect(fixture.nativeElement.querySelector('app-radio-chip')).toBeNull();
+    });
+
+    it('the transport Like toggles the current track and reports its state', () => {
+      current = { id: 't1' };
+      likes.isLiked.mockReturnValue(true);
+      const fixture = TestBed.createComponent(NowPlayingTransportComponent);
+      fixture.detectChanges();
+      const heart = fixture.nativeElement.querySelector(
+        '[data-testid="now-playing-like"]',
+      ) as HTMLButtonElement;
+      expect(heart.getAttribute('aria-pressed')).toBe('true');
+      heart.click();
+      expect(likes.toggle).toHaveBeenCalledWith('t1');
+    });
+
+    it('with radio off, the radio icon starts the radio in one tap', () => {
+      const fixture = TestBed.createComponent(NowPlayingTransportComponent);
+      fixture.detectChanges();
+      const radio = fixture.nativeElement.querySelector(
+        '[data-testid="now-playing-radio"]',
+      ) as HTMLButtonElement;
+      expect(radio.getAttribute('aria-pressed')).toBe('false');
+      radio.click();
+      expect(TestBed.inject(PlayerService).toggleRadio).toHaveBeenCalled();
+    });
+
+    it('renders no Like without a track', () => {
+      const fixture = TestBed.createComponent(NowPlayingTransportComponent);
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('[data-testid="now-playing-like"]')).toBeNull();
     });
   });
 
@@ -47,6 +101,15 @@ describe('NowPlayingTransportComponent', () => {
       expect(q('now-playing-shuffle')).toBeNull();
       expect(q('now-playing-repeat')).toBeNull();
       expect(q('now-playing-playpause')).not.toBeNull();
+    });
+
+    it('keeps the radio chip and no Like: the pinned D-pad row is prev / play / next', () => {
+      current = { id: 't1' };
+      const fixture = TestBed.createComponent(NowPlayingTransportComponent);
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('app-radio-chip')).not.toBeNull();
+      expect(fixture.nativeElement.querySelector('[data-testid="now-playing-like"]')).toBeNull();
+      expect(fixture.nativeElement.querySelector('app-np-radio-control')).toBeNull();
     });
   });
 
@@ -94,16 +157,8 @@ describe('NowPlayingTransportComponent', () => {
     let prev = false;
     fixture.componentInstance.nextClicked.subscribe(() => (next = true));
     fixture.componentInstance.prevClicked.subscribe(() => (prev = true));
-    // The row is [prev, play/pause, next] — prev/next are the two buttons
-    // without their own data-testid, positioned around the playpause button.
-    const playPause = fixture.nativeElement.querySelector(
-      '[data-testid="now-playing-playpause"]',
-    ) as HTMLElement;
-    const row = playPause.closest('[appTvNavGroup]')!;
-    const rowButtons: HTMLButtonElement[] = Array.from(row.querySelectorAll('button'));
-    expect(rowButtons.length).toBe(3);
-    rowButtons[0].click(); // prev
-    rowButtons[2].click(); // next
+    fixture.nativeElement.querySelector('[data-testid="now-playing-prev"]').click();
+    fixture.nativeElement.querySelector('[data-testid="now-playing-next"]').click();
     expect(prev).toBe(true);
     expect(next).toBe(true);
   });

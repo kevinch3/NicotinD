@@ -7,6 +7,7 @@ import { LikeService } from '../../../services/like.service';
 import { ReportTrackService } from '../../../services/report-track.service';
 import { SongMenuService } from '../../../services/song-menu.service';
 import { setInputValue } from '../../../../testing/signal-input';
+import { HOLD_MS, HOLD_SLOP_PX } from '../../../directives/entity-actions.directive';
 import { provideRouter } from '@angular/router';
 import { TranslateService, interpolate } from '../../../services/translate.service';
 import EN from '../../../../../public/i18n/en.json';
@@ -66,27 +67,18 @@ describe('NowPlayingCoverArtComponent', () => {
     ).toBeNull();
   });
 
-  it('renders a like heart next to the title and toggles it (quick interaction)', () => {
+  it('the title stands alone on a phone: no like, flag or info beside it (#1716)', () => {
     const fixture = TestBed.createComponent(NowPlayingCoverArtComponent);
     fixture.detectChanges();
-    const heart: HTMLButtonElement = fixture.nativeElement.querySelector(
-      '[data-testid="now-playing-like"]',
+    const row: HTMLElement = fixture.nativeElement.querySelector(
+      '[data-testid="now-playing-title-row"]',
     );
-    expect(heart).toBeTruthy();
-    expect(heart.getAttribute('aria-pressed')).toBe('false');
-
-    heart.click();
-    expect(likes.toggle).toHaveBeenCalledWith('t1');
-  });
-
-  it('reflects the liked state via aria-pressed', () => {
-    likes.isLiked.mockReturnValue(true);
-    const fixture = TestBed.createComponent(NowPlayingCoverArtComponent);
-    fixture.detectChanges();
-    const heart: HTMLButtonElement = fixture.nativeElement.querySelector(
-      '[data-testid="now-playing-like"]',
-    );
-    expect(heart.getAttribute('aria-pressed')).toBe('true');
+    expect(row).toBeTruthy();
+    // Like leads the transport row (layout B); Info and Report are ⋯ items.
+    expect(row.querySelector('[data-testid="now-playing-like"]')).toBeNull();
+    expect(row.querySelector('[data-testid="now-playing-report"]')).toBeNull();
+    expect(row.querySelector('[data-testid="now-playing-info"]')).toBeNull();
+    expect(row.querySelector('button')).toBeNull();
   });
 
   it('hides the like heart on TV (root nav group has no room for a fourth stop)', () => {
@@ -100,27 +92,88 @@ describe('NowPlayingCoverArtComponent', () => {
     }
   });
 
-  it('reports the current track in one tap (issue #1038)', () => {
+  it('the ⋯ sits on the artwork and lists the shared song menu (#1716)', () => {
     const fixture = TestBed.createComponent(NowPlayingCoverArtComponent);
     fixture.detectChanges();
-    const flag: HTMLButtonElement = fixture.nativeElement.querySelector(
-      '[data-testid="now-playing-report"]',
-    );
-    // The whole point of the issue: an affordance you can see and tap, not a
-    // right-click. So assert it is a real, labelled button.
-    expect(flag).toBeTruthy();
-    expect(flag.getAttribute('aria-label')).toBeTruthy();
-
-    flag.click();
-    expect(report.open).toHaveBeenCalledWith('t1');
+    const el: HTMLElement = fixture.nativeElement;
+    const toggle = el.querySelector('[data-testid="now-playing-menu-toggle"]')!;
+    expect(toggle).toBeTruthy();
+    expect(toggle.closest('[data-testid="now-playing-cover"]')).not.toBeNull();
+    expect(toggle.closest('[data-testid="now-playing-title-row"]')).toBeNull();
+    // Info and Report reach the listener through the shared SongMenuService list.
+    expect(fixture.componentInstance.menuActions().map((a) => a.label)).toEqual(['Song info']);
   });
 
-  it('offers the shared ⋯ menu beside it', () => {
-    const fixture = TestBed.createComponent(NowPlayingCoverArtComponent);
-    fixture.detectChanges();
-    expect(
-      fixture.nativeElement.querySelector('[data-testid="now-playing-menu-toggle"]'),
-    ).toBeTruthy();
+  describe('long-press on the artwork (#1716)', () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => {
+      vi.useRealTimers();
+      // A fired hold arms a one-click swallow on window until the next press.
+      window.dispatchEvent(new Event('pointerdown'));
+    });
+
+    function press(
+      fixture: ReturnType<typeof TestBed.createComponent<NowPlayingCoverArtComponent>>,
+      init: { pointerType?: string; target?: Element } = {},
+    ): void {
+      const stage = fixture.nativeElement.querySelector(
+        '[data-testid="now-playing-cover-stage"]',
+      ) as HTMLElement;
+      fixture.componentInstance.onCoverPointerDown({
+        pointerType: init.pointerType ?? 'touch',
+        isPrimary: true,
+        clientX: 100,
+        clientY: 100,
+        target: init.target ?? stage,
+      } as unknown as PointerEvent);
+    }
+    // Signal viewChild does not resolve under the JIT harness (docs/web-ui.md),
+    // so the hold is asserted at the component's own seam; e2e drives the DOM.
+    let opened: ReturnType<typeof vi.fn>;
+    const menuOpen = () => opened.mock.calls.length > 0;
+    function create() {
+      const fixture = TestBed.createComponent(NowPlayingCoverArtComponent);
+      fixture.detectChanges();
+      opened = vi.fn();
+      (fixture.componentInstance as unknown as { openMenu: () => void }).openMenu = opened;
+      return fixture;
+    }
+
+    it('a still hold opens the track menu', () => {
+      const fixture = create();
+      press(fixture);
+      vi.advanceTimersByTime(HOLD_MS - 1);
+      expect(menuOpen()).toBe(false);
+      vi.advanceTimersByTime(1);
+      expect(menuOpen()).toBe(true);
+    });
+
+    it('a hold that travels past the slop is a swipe, never a menu', () => {
+      const fixture = create();
+      press(fixture);
+      document.dispatchEvent(
+        Object.assign(new Event('pointermove'), { clientX: 100 + HOLD_SLOP_PX, clientY: 100 }),
+      );
+      vi.advanceTimersByTime(HOLD_MS * 2);
+      expect(menuOpen()).toBe(false);
+    });
+
+    it('a mouse press starts no hold (a mouse has right-click)', () => {
+      const fixture = create();
+      press(fixture, { pointerType: 'mouse' });
+      vi.advanceTimersByTime(HOLD_MS * 2);
+      expect(menuOpen()).toBe(false);
+    });
+
+    it('a press on a control belongs to the control', () => {
+      const fixture = create();
+      const toggle = fixture.nativeElement.querySelector(
+        '[data-testid="now-playing-menu-toggle"]',
+      ) as HTMLElement;
+      press(fixture, { target: toggle });
+      vi.advanceTimersByTime(HOLD_MS * 2);
+      expect(menuOpen()).toBe(false);
+    });
   });
 
   it('hides the flag and the ⋯ menu on TV, like the like heart', () => {
