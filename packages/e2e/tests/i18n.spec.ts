@@ -1,4 +1,4 @@
-import { expect, test } from '../helpers';
+import { expect, test, vibesPlayable } from '../helpers';
 
 /**
  * Issue #236 — runtime JSON i18n. The property that matters end to end is that
@@ -123,6 +123,9 @@ test.describe('i18n (#236)', () => {
   test('translates the home page vibe presets', async ({ page }) => {
     // The post-login home route, and the last of the always-on-screen surfaces.
     await page.addInitScript(() => localStorage.setItem('nicotind-lang', 'es'));
+    // The fixtures carry no mood/feature data, so a vibe is offered only when
+    // its probe finds a match (#1739); answer them, or there is nothing to read.
+    await vibesPlayable(page);
     await page.goto('/');
 
     // The mosaic's accessible tile list is the deterministic place to read the

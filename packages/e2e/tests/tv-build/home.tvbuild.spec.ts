@@ -6,10 +6,14 @@
  * layout, not `TvHomeComponent`. Its nav row used to sit at y≈614 on a 540px
  * screen; this pins it above the fold.
  */
+import { vibesPlayable } from '../../helpers';
 import { test, expect, expectFitsTheScreen, expectNoNativeFormControls } from './tv-test';
 
 test.describe('TV home', () => {
   test('the nav is the first thing on screen, above the shelves', async ({ page }) => {
+    // The vibe tiles are the shelf under the nav, shown only when their probes
+    // find a match (#1739); the fixtures carry no mood/feature data.
+    await vibesPlayable(page);
     await page.goto('/');
     const home = page.getByTestId('tv-home');
     await expect(home).toBeVisible();
