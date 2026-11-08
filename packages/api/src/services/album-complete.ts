@@ -128,6 +128,7 @@ export async function completeAlbum(
       artistMbid: null,
       // Reached from the HTTP route and an MCP tool: someone is waiting on the answer.
       huntTimeoutMs: INTERACTIVE_HUNT_TIMEOUT_MS,
+      lane: 'complete-album',
     },
   );
   recordAudit(db, audit.actor, 'album.acquire', {

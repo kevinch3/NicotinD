@@ -135,10 +135,16 @@ describe('discography routes through a remote addon', () => {
       );
     });
 
-    it.each(['hunt', 'hunt/base', 'hunt/skew'])('%s passes that budget to the addon', async (r) => {
+    it.each([
+      ['hunt', 'hunt'],
+      ['hunt/base', 'hunt-base'],
+      ['hunt/skew', 'hunt-skew'],
+    ])('%s passes that budget, its lane and the album to the addon', async (r, lane) => {
       await h.app.request(`/albums/42/${r}`, jsonPost({}));
       expect(h.albumsSearch.mock.calls.at(-1)?.[1]).toEqual({
         timeoutMs: INTERACTIVE_HUNT_TIMEOUT_MS,
+        lane,
+        albumId: 42,
       });
     });
 
@@ -243,6 +249,9 @@ describe('discography routes through a remote addon', () => {
       expect(h.albumsSearch.mock.calls.at(-1)?.[1]).toEqual({
         timeoutMs: 120_000,
         attemptId: huntId,
+        lane: 'hunt-queue',
+        albumId: 42,
+        queuedMs: expect.any(Number),
       });
     });
 

@@ -10,6 +10,27 @@ import type {
   AddonJob,
 } from '@nicotind/core';
 
+/** Which path asked for a hunt — the field `docker logs | jq` groups by (#1626). */
+export type HuntLane =
+  | 'hunt'
+  | 'hunt-base'
+  | 'hunt-queue'
+  | 'hunt-skew'
+  | 'resource'
+  | 'retry'
+  | 'watchlist'
+  | 'auto-acquire'
+  | 'complete-album';
+
+export interface HuntTrace {
+  attemptId?: string;
+  lane?: HuntLane;
+  /** Lidarr album id, when the caller has one. */
+  albumId?: number;
+  /** How long the hunt waited in core's queue before it ran. */
+  queuedMs?: number;
+}
+
 /**
  * One clean/failed classification of an addon call for the circuit breaker.
  * Owned here (not in client.ts) so the transport interface and its two
@@ -37,7 +58,7 @@ export interface AddonTransport {
   search(req: AddonSearchRequest): Promise<AddonSearchResponse>;
   albumsSearch(
     req: AddonAlbumSearchRequest,
-    opts?: { timeoutMs?: number },
+    opts?: { timeoutMs?: number } & HuntTrace,
   ): Promise<AddonAlbumSearchResponse>;
   browse(user: string): Promise<{ directories: unknown[] }>;
   createJob(req: AddonJobRequest, idempotencyKey?: string): Promise<AddonJob>;

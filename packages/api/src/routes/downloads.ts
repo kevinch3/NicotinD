@@ -524,7 +524,11 @@ export function downloadRoutes(
           album: job.albumTitle ?? '',
           canonicalTracks: found.tracklist.map((title) => ({ title })),
         },
-        { timeoutMs: INTERACTIVE_HUNT_TIMEOUT_MS },
+        {
+          timeoutMs: INTERACTIVE_HUNT_TIMEOUT_MS,
+          lane: 'resource',
+          ...(job.lidarrAlbumId ? { albumId: job.lidarrAlbumId } : {}),
+        },
       );
     } catch (err) {
       if (err instanceof AddonTimeoutError) {
@@ -754,6 +758,7 @@ export function downloadRoutes(
         userId: user.sub,
         retry: true,
         huntTimeoutMs: INTERACTIVE_HUNT_TIMEOUT_MS,
+        lane: 'retry',
       },
     );
     recordAudit(db, user, 'album.acquire', {

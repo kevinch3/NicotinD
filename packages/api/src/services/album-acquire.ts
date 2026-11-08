@@ -6,7 +6,7 @@ import { recordAcquiredArtistIdentity } from './artist-identity-store.js';
 import { artistIdFor } from './library-scanner.js';
 import { createJob, findActiveAlbumJob, holdAlbum } from './acquisition-job-store.js';
 import type { RemoteAddonPlugin } from './addons/remote-addon-plugin.js';
-import { AddonRequestError } from './addons/client.js';
+import { AddonRequestError, type HuntLane } from './addons/client.js';
 import { mapAddonJob, sanitizeAddonError } from './addons/job-poller.js';
 
 const log = createLogger('album-acquire');
@@ -103,6 +103,8 @@ export interface AcquireAlbumInput {
   retry?: boolean;
   /** A caller answering a request passes its budget; unattended lanes can wait longer. */
   huntTimeoutMs?: number;
+  /** Which lane asked, for the hunt log line (#1626). */
+  lane?: HuntLane;
 }
 
 /**
@@ -178,7 +180,7 @@ async function acquireViaAddon(
         album: albumTitle,
         canonicalTracks: titles.map((title) => ({ title })),
       },
-      { timeoutMs: input.huntTimeoutMs },
+      { timeoutMs: input.huntTimeoutMs, lane: input.lane, albumId: lidarrAlbumId },
     );
   } catch (err) {
     log.warn({ lidarrAlbumId, addonId, err }, 'Addon album search failed');

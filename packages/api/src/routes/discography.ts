@@ -26,7 +26,7 @@ import type { AddonAlbumCandidate } from '@nicotind/core';
 import { join } from 'node:path';
 import type { Lidarr } from '../lidarr/index.js';
 import type { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
-import { AddonRequestError, AddonTimeoutError } from '../services/addons/client.js';
+import { AddonRequestError, AddonTimeoutError, type HuntTrace } from '../services/addons/client.js';
 import { INTERACTIVE_HUNT_TIMEOUT_MS } from '../middleware/idle-budget.js';
 import { mapAddonJob } from '../services/addons/job-poller.js';
 import { onDiskTitles } from '../services/library-completeness.js';
@@ -177,7 +177,7 @@ export function discographyRoutes({
           canonicalTracks: tracks.map((t) => ({ title: t.title })),
           skew: body.skewSearch,
         },
-        HUNT_OPTS,
+        { ...HUNT_OPTS, lane: 'hunt', albumId },
       );
       return c.json({
         candidates: res.candidates.map(wireCandidate),
@@ -325,7 +325,7 @@ export function discographyRoutes({
   async function runAlbumHunt(
     albumId: number,
     body: HuntBody,
-    opts: { timeoutMs: number; attemptId?: string },
+    opts: { timeoutMs: number } & HuntTrace,
   ) {
     const [album, tracks] = await Promise.all([
       lidarr.album.get(albumId),
@@ -346,7 +346,7 @@ export function discographyRoutes({
         canonicalTracks: tracks.map((t) => ({ title: t.title })),
         skew: body.skewSearch,
       },
-      opts,
+      { ...opts, albumId },
     );
     return {
       candidates: res.candidates.map(wireCandidate),
@@ -379,7 +379,7 @@ export function discographyRoutes({
     if (!getAddon()) return c.json({ error: 'No acquisition addon registered' }, 503);
 
     try {
-      return c.json(await runAlbumHunt(albumId, body, HUNT_OPTS));
+      return c.json(await runAlbumHunt(albumId, body, { ...HUNT_OPTS, lane: 'hunt-base' }));
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       log.warn({ albumId, err: msg }, 'Album hunt (base phase) failed');
@@ -409,6 +409,8 @@ export function discographyRoutes({
           const res = await runAlbumHunt(albumId, body, {
             timeoutMs: QUEUED_HUNT_TIMEOUT_MS,
             attemptId: huntId,
+            lane: 'hunt-queue',
+            queuedMs: trace.queuedMs,
           });
           log.info(
             { ...trace, searchMs: Date.now() - startedAt, candidates: res.candidates.length },
@@ -467,7 +469,7 @@ export function discographyRoutes({
           canonicalTracks: tracks.map((t) => ({ title: t.title })),
           skew: true,
         },
-        HUNT_OPTS,
+        { ...HUNT_OPTS, lane: 'hunt-skew', albumId },
       );
       return c.json({
         candidates: res.candidates.map(wireCandidate),

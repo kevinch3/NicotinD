@@ -183,6 +183,7 @@ export class WatchlistService {
           albumTitle: row.album_title,
           minMatchPct: this.minMatchPct,
           artistMbid: row.artist_mbid,
+          lane: 'watchlist',
         },
       );
 

@@ -144,9 +144,11 @@ export class AutoAcquireService {
           albumTitle: album.title,
           minMatchPct: this.minMatchPct,
           artistMbid: album.artist?.foreignArtistId ?? null,
+          lane: 'auto-acquire',
         },
       );
-      log.debug(
+      // info, not debug: an unattended lane's result is its only trace (#1626).
+      log.info(
         { albumId: album.id, album: album.title, outcome, detail },
         'Auto-acquire sweep result',
       );

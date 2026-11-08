@@ -78,12 +78,11 @@ function makeHarness(opts: {
   // albums/search (mapped to protocol candidates) and `enqueue` its job
   // creation, so the sweep-semantics assertions below survive unchanged.
   const enqueue = mock(async () => ({ id: 'aj-1', intent: 'album', items: [] }));
-  const hunt = mock(async () => opts.candidates ?? []);
+  const hunt = mock(async (_req?: unknown, _opts?: unknown) => opts.candidates ?? []);
   const addonClient = {
     baseUrl: 'http://addon:9999',
-    albumsSearch: async (req: { artist: string; album: string }) => {
-      void req;
-      const candidates = (await hunt()) as FolderCandidate[];
+    albumsSearch: async (req: { artist: string; album: string }, huntOpts?: unknown) => {
+      const candidates = (await hunt(req, huntOpts)) as FolderCandidate[];
       return {
         candidates: candidates.map((c, i) => ({
           candidateRef: `ref-${i}`,
@@ -202,7 +201,10 @@ describe('WatchlistService', () => {
 
       await svc.sweep();
 
-      expect(hunt).toHaveBeenCalled();
+      expect(hunt).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ lane: 'watchlist', albumId: 99 }),
+      );
       // Since phase 3 the acquire is an addon job: the user's pick travels as a
       // candidateRef and the unified feed row is recorded core-side (the
       // fallback job lives in the addon's own db now).

@@ -75,6 +75,62 @@ describe('AddonClient', () => {
     expect(captured.map((c) => c.attemptId)).toEqual(['hunt-1', null]);
   });
 
+  // #1626: every hunt line says which lane asked, for which album, and how it ended,
+  // so `docker logs | jq` can group failures without a hand-written parser.
+  describe('hunt log context', () => {
+    const req = { artist: 'A', album: 'B', canonicalTracks: [{ title: 'One' }] };
+    const answer = (over: Record<string, unknown> = {}) =>
+      Response.json({
+        candidates: [],
+        queries: [],
+        skewNeeded: false,
+        searchesFired: 2,
+        searchesAnswered: 2,
+        ...over,
+      });
+    function capture(respond: () => Response | Promise<Response>) {
+      const lines: Array<{ level: string; obj: Record<string, unknown>; msg: string }> = [];
+      const log = {
+        info: (obj: Record<string, unknown>, msg: string) =>
+          lines.push({ level: 'info', obj, msg }),
+        warn: (obj: Record<string, unknown>, msg: string) =>
+          lines.push({ level: 'warn', obj, msg }),
+      };
+      const fetchFn = (async () => respond()) as unknown as typeof fetch;
+      return { client: new AddonClient({ baseUrl: 'http://a', token: 't', fetchFn, log }), lines };
+    }
+
+    it('carries lane, album id and queue wait on a completed hunt', async () => {
+      const { client, lines } = capture(() => answer());
+      await client.albumsSearch(req, { lane: 'hunt-queue', albumId: 42, queuedMs: 1500 });
+      expect(lines[0]!.msg).toBe('addon hunt completed');
+      expect(lines[0]!.obj).toMatchObject({
+        lane: 'hunt-queue',
+        albumId: 42,
+        queuedMs: 1500,
+        outcome: 'no-candidates',
+      });
+    });
+
+    it.each([
+      [{ candidates: [{ username: 'u' }] }, 'candidates'],
+      [{ sourceOffline: true }, 'source-offline'],
+      [{ rateLimited: true }, 'rate-limited'],
+      [{}, 'no-candidates'],
+    ])('classifies %j as %s', async (over, outcome) => {
+      const { client, lines } = capture(() => answer(over));
+      await client.albumsSearch(req, { lane: 'watchlist' });
+      expect(lines[0]!.obj.outcome).toBe(outcome);
+    });
+
+    it('marks a failed hunt as an error with its lane', async () => {
+      const { client, lines } = capture(() => new Response('boom', { status: 500 }));
+      await expect(client.albumsSearch(req, { lane: 'resource', albumId: 7 })).rejects.toThrow();
+      expect(lines[0]!.msg).toBe('addon hunt failed');
+      expect(lines[0]!.obj).toMatchObject({ lane: 'resource', albumId: 7, outcome: 'error' });
+    });
+  });
+
   it('sends the bearer token on status', async () => {
     const { fetchFn, captured } = stubFetch(() =>
       Response.json([{ key: 'peers', label: 'Peers', value: '42' }]),
