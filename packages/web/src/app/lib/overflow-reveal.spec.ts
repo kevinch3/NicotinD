@@ -28,13 +28,17 @@ function rig(
     overflow?: number;
     rtl?: boolean;
     title?: string;
+    /** The name is itself the control (`<a appOverflowReveal routerLink>`). */
+    hostIsControl?: boolean;
+    /** A listener the host's template bound before the directive ran. */
+    hostListener?: () => void;
   } = {},
 ) {
   let now = 0;
   let seq = 0;
   const timers = new Map<number, { due: number; cb: () => void }>();
   let frames = new Map<number, (t: number) => void>();
-  let inViewCb: ((v: boolean) => void) | null = null;
+  let inViewCb: ((v: boolean, intersecting: boolean) => void) | null = null;
   let sizeCb: (() => void) | null = null;
   let textCb: (() => void) | null = null;
   const state = {
@@ -44,8 +48,9 @@ function rig(
     top: 100,
   };
 
-  const row = document.createElement('button');
-  const el = document.createElement('p');
+  const row = document.createElement(opts.hostIsControl ? 'li' : 'button');
+  const el = document.createElement(opts.hostIsControl ? 'button' : 'p');
+  if (opts.hostListener) el.addEventListener('click', opts.hostListener);
   el.textContent = opts.text ?? 'A title long enough to overflow its row';
   if (opts.title) el.setAttribute('title', opts.title);
   if (opts.rtl) el.style.direction = 'rtl';
@@ -101,7 +106,7 @@ function rig(
     advance,
     scrollLeft: () => scrollLeft,
     pending: () => timers.size + frames.size,
-    view: (v: boolean) => inViewCb?.(v),
+    view: (v: boolean, intersecting = v) => inViewCb?.(v, intersecting),
     resized: () => sizeCb?.(),
     textChanged: () => textCb?.(),
     observing: () => inViewCb !== null || sizeCb !== null || textCb !== null,
@@ -349,6 +354,65 @@ describe('OverflowReveal', () => {
       link.click();
       expect(rowTap).toHaveBeenCalledTimes(1);
       expect(r.reveal.isExpanded()).toBe(false);
+    });
+
+    it('stays wrapped when its own growth drops it under the in-view ratio at a viewport edge', () => {
+      const r = rig({ reducedMotion: true, overflow: 100 });
+      const rowTap = vi.fn();
+      r.row.addEventListener('click', rowTap);
+      r.view(true);
+      r.el.click();
+      // Wrapping made it taller than the space left above the edge: still on screen.
+      r.view(false, true);
+      expect(r.reveal.isExpanded()).toBe(true);
+      r.el.click();
+      expect(rowTap).toHaveBeenCalledTimes(1);
+    });
+
+    it('collapses once the name leaves the screen entirely, and the next visit wraps again', () => {
+      const r = rig({ reducedMotion: true, overflow: 100 });
+      const rowTap = vi.fn();
+      r.row.addEventListener('click', rowTap);
+      r.view(true);
+      r.el.click();
+      r.view(false, false);
+      expect(r.reveal.isExpanded()).toBe(false);
+      r.view(true);
+      r.el.click();
+      expect(r.reveal.isExpanded()).toBe(true);
+      expect(rowTap).not.toHaveBeenCalled();
+    });
+
+    it('leaves a pointer click to the row, which has the title tooltip instead', () => {
+      const r = rig({ reducedMotion: true, overflow: 100, input: 'pointer' });
+      const rowTap = vi.fn();
+      r.row.addEventListener('click', rowTap);
+      r.view(true);
+      r.el.click();
+      expect(r.reveal.isExpanded()).toBe(false);
+      expect(rowTap).toHaveBeenCalledTimes(1);
+      expect(r.el.getAttribute('title')).toBe('A title long enough to overflow its row');
+    });
+
+    it('wraps on a D-pad select on TV, where there is no tooltip either', () => {
+      const r = rig({ reducedMotion: true, overflow: 100, input: 'tv' });
+      const rowTap = vi.fn();
+      r.row.addEventListener('click', rowTap);
+      r.view(true);
+      r.el.click();
+      expect(r.reveal.isExpanded()).toBe(true);
+      expect(rowTap).not.toHaveBeenCalled();
+    });
+
+    it('takes the first tap before a host that is itself the control acts on it', () => {
+      const act = vi.fn();
+      const r = rig({ reducedMotion: true, overflow: 100, hostIsControl: true, hostListener: act });
+      r.view(true);
+      r.el.click();
+      expect(r.reveal.isExpanded()).toBe(true);
+      expect(act).not.toHaveBeenCalled();
+      r.el.click();
+      expect(act).toHaveBeenCalledTimes(1);
     });
 
     it('collapses again when the text changes', () => {

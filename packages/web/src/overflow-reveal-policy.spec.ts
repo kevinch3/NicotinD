@@ -32,6 +32,7 @@ const NOT_A_NAME = {
     'components/import-drop-card/import-drop-card.component.html',
     'components/playing-elsewhere/playing-elsewhere.component.html',
     'components/resource-picker/resource-picker.component.html',
+    'pages/get/get.component.html',
     'pages/library/library.component.html',
     'pages/search/search.component.html',
     'pages/search/search.component.html',
@@ -51,7 +52,8 @@ const NOT_A_NAME = {
   // A multi-line clamp with its own "Show more".
   ownExpander: ['components/artist-info/artist-info.component.html'],
   // The home mosaic builds its faces as HTML strings for a pooled fisheye
-  // canvas; a directive cannot attach there.
+  // canvas; a directive cannot attach there. These ARE names: an implementation
+  // limit tracked by #1707, not a reason. Remove the entry when that lands.
   htmlString: ['styles.css: .mosaic-face b', 'styles.css: .mosaic-face span'],
 } as const;
 

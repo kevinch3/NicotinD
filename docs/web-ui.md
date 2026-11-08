@@ -1930,7 +1930,7 @@ also gets its full text as `title`, unless the host already has a title.
 | Every other name, touch | one pass once the row is ≥95% in view and has not moved for `REVEAL_SETTLE_MS`; again only after it leaves view and comes back |
 | Every other name, desktop (`(hover: hover) and (pointer: fine)`) | while the row is hovered or `:focus-visible` |
 | Every other name, TV (`isTvUi()`) | while the row has D-pad focus; never on its own |
-| `prefers-reduced-motion: reduce` | never moves. The first tap on an overflowing name wraps it (`.overflow-reveal-expanded`) and does not reach the row. Later taps are the row's again. A tap on a link inside the name is never taken |
+| `prefers-reduced-motion: reduce` | never moves. On touch and TV the first tap on an overflowing name wraps it (`.overflow-reveal-expanded`) and does not reach the row, even when the name is itself the link or button (the listener is capture-phase). Later taps are the row's again. The wrap stays until the name leaves the screen entirely or its text changes: growing taller at a viewport edge does not undo it, or that tap would loop forever. A mouse click is never taken, because a pointer already has the `title` tooltip. A tap on a link inside the name is never taken |
 
 "The row" is the nearest link, button, focusable, `li` or `tr` above the host.
 An IntersectionObserver keeps a name that is off screen idle, so a list of 100
@@ -1946,7 +1946,8 @@ for every template, a component's own stylesheet for its own template only).
 Each one must carry `appOverflowReveal` or appear on `NOT_A_NAME`: error and
 status messages, secrets and URLs, fixed UI copy and count lines, admin
 diagnostics, the search input, the artist bio's clamp with its own "Show more",
-and the home mosaic's HTML-string faces. The list has one entry per site, so a
+and the home mosaic's HTML-string faces. The mosaic faces are names, and a
+directive cannot reach them; that gap is #1707, not a judgement. The list has one entry per site, so a
 new truncation in an allowlisted file is a new site. A TS class string bound
 with `[class]` is checked at its binding (`CLASS_STRINGS`). The spec also checks
 that every component using the attribute imports the directive. Without the

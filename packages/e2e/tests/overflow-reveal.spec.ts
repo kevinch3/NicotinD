@@ -133,8 +133,11 @@ test.describe('overflow reveal on a touch phone (#1665)', () => {
     const expanded = await box(long);
     expect(expanded.expanded).toBe(true);
     expect(expanded.max, 'the whole name fits once wrapped').toBe(0);
-    // That tap was for reading; it did not start the track.
-    await expect(page.getByTestId('player-title')).not.toHaveText(LONG);
+    // That tap was for reading; it did not start the track. The mini player's
+    // title is empty with no current track, and an "is empty" assertion passes
+    // on its first poll, so give a playback start time to render first.
+    await page.waitForTimeout(1_500);
+    await expect(page.getByTestId('player-title')).toBeEmpty();
 
     // The next one is the row's own.
     await long.tap();

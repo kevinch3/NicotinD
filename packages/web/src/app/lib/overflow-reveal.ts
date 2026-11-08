@@ -9,7 +9,8 @@
  * - `always` — the playing title: loops while on screen.
  * - `list` — touch: one pass when the row settles in view and is still;
  *   desktop: while hovered or keyboard-focused; TV: while D-pad focused.
- * - `prefers-reduced-motion` — never moves; a tap expands the text to wrap.
+ * - `prefers-reduced-motion` — never moves; on touch and TV the first tap
+ *   expands the text to wrap. A pointer already has the `title` tooltip.
  */
 
 export type OverflowRevealMode = 'list' | 'always';
@@ -41,7 +42,8 @@ export interface RevealEnv {
   cancelFrame(id: number): void;
   setTimer(cb: () => void, ms: number): number;
   clearTimer(id: number): void;
-  observeView?(el: Element, cb: (inView: boolean) => void): () => void;
+  /** `inView`: at least `REVEAL_IN_VIEW_RATIO` on screen; `intersecting`: any of it is. */
+  observeView?(el: Element, cb: (inView: boolean, intersecting: boolean) => void): () => void;
   observeSize?(el: Element, cb: () => void): () => void;
   observeText?(el: Element, cb: () => void): () => void;
 }
@@ -93,7 +95,7 @@ export function browserRevealEnv(isTv: () => boolean): RevealEnv {
                 new IntersectionObserver(dispatch, { threshold: [0, REVEAL_IN_VIEW_RATIO, 1] }),
             );
             return sharedView(el, (e) =>
-              cb(e.isIntersecting && e.intersectionRatio >= REVEAL_IN_VIEW_RATIO),
+              cb(e.isIntersecting && e.intersectionRatio >= REVEAL_IN_VIEW_RATIO, e.isIntersecting),
             );
           },
     observeSize:
@@ -144,11 +146,18 @@ export class OverflowReveal {
     private readonly env: RevealEnv,
   ) {
     this.row = el.closest(ROW_SELECTOR) ?? el.parentElement ?? el;
-    const on = (target: EventTarget, type: string, fn: (e: Event) => void): void => {
-      target.addEventListener(type, fn);
-      this.cleanups.push(() => target.removeEventListener(type, fn));
+    const on = (
+      target: EventTarget,
+      type: string,
+      fn: (e: Event) => void,
+      capture = false,
+    ): void => {
+      target.addEventListener(type, fn, capture);
+      this.cleanups.push(() => target.removeEventListener(type, fn, capture));
     };
-    on(el, 'click', (e) => this.onClick(e));
+    // Capture: when the host is itself the link or button, its own (click) and
+    // routerLink listeners were bound first and would act on the wrapping tap.
+    on(el, 'click', (e) => this.onClick(e), true);
     if (mode === 'list') {
       on(this.row, 'mouseenter', () => this.engage('hover', true));
       on(this.row, 'mouseleave', () => this.engage('hover', false));
@@ -161,7 +170,7 @@ export class OverflowReveal {
         if (!next || !this.row.contains(next)) this.engage('focus', false);
       });
     }
-    const view = env.observeView?.(el, (v) => this.onView(v));
+    const view = env.observeView?.(el, (v, i) => this.onView(v, i));
     if (view) {
       this.inView = false;
       this.cleanups.push(view);
@@ -194,13 +203,15 @@ export class OverflowReveal {
 
   // ── triggers ────────────────────────────────────────────────────────────
 
-  private onView(inView: boolean): void {
+  private onView(inView: boolean, intersecting = inView): void {
     this.inView = inView;
     if (!inView) {
       this.played = false;
       this.clearSettle();
       this.reset();
-      this.collapse();
+      // A wrapped name grows taller and can fall under the in-view ratio by its
+      // own growth at a viewport edge; only leaving the screen undoes the wrap.
+      if (!intersecting) this.collapse();
       return;
     }
     this.refresh();
@@ -230,13 +241,14 @@ export class OverflowReveal {
   }
 
   private onClick(e: Event): void {
-    if (!this.env.reducedMotion() || this.expanded || !this.overflow()) return;
+    if (!this.env.reducedMotion() || this.env.input() === 'pointer') return;
+    if (this.expanded || !this.overflow()) return;
     // A link or button inside the name (an artist credit) keeps its own tap.
     const target = e.target as Element | null;
     const inner = target?.closest?.('a, button');
     if (inner && inner !== this.el && this.el.contains(inner)) return;
     e.preventDefault();
-    e.stopPropagation();
+    e.stopImmediatePropagation();
     this.expanded = true;
     this.el.classList.add(REVEAL_EXPANDED_CLASS);
   }

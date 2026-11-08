@@ -537,6 +537,10 @@ describe('PlayerComponent', () => {
             this.mine.push(record);
             observers.push(record);
           }
+          unobserve(target: Element): void {
+            for (const record of this.mine)
+              if (record.target === target) record.disconnected = true;
+          }
           disconnect(): void {
             for (const record of this.mine) record.disconnected = true;
           }
