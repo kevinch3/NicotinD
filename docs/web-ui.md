@@ -185,9 +185,16 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
   on a drained queue (the context is reshuffled at the moment of the skip); repeat-all without
   shuffle on a drained queue is the context's first track. Previous is the history tail, none on an
   empty history. No neighbour means no element, so there is never a dead tap target. The neighbours
-  are absolutely placed 1rem beside the cover inside a stage (`now-playing-cover-stage`) whose
-  `clip-path: inset(0 calc(-1rem - 12%))` shows 12% of the cover width of each — and clips hit
-  testing, so only the visible sliver is tappable. A tap (`now-playing-cover-next` /
+  are absolutely placed 1rem beside the cover inside a stage (`now-playing-cover-stage`). **On a
+  phone (below md) they bleed to the screen edge** (#1763): the stage's clip is `inset(0 -100vw)`,
+  so the cover column's `overflow-hidden` is the real edge and a neighbour reads as a card sliding
+  in from off-screen rather than one cut short mid-screen. From md the clip is
+  `inset(0 calc(-1rem - 12%))`, 12% of the cover width of each, so a wide sheet shows a sliver, not
+  two whole covers. Either way the clip also clips hit testing, so only the visible part is
+  tappable. **They fade out as the queue resize shrinks the cover** (#1763): `neighbourFade`
+  multiplies their opacity from 1 at the cover's rest width (`min(60vw, 20rem)`) down to 0 at half
+  of it, and a faded-out neighbour is `pointer-events-none`; the transition is off while the resize
+  drags so they track the finger. At lg the cover ignores the shrink, and so does the fade. A tap (`now-playing-cover-next` /
   `now-playing-cover-prev`, `<button>`s labelled with the target title) emits `skipRequested`,
   which the sheet routes through the same `handleNext`/`handlePrev` as ⏭/⏮. They are buttons for
   that tap, but a drag from one is a drag of the cover: `data-np-sliver` makes `gestureOrigin`

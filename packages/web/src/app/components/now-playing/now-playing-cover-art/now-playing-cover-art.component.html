@@ -22,14 +22,16 @@
       data-np-cover
       [class.relative]="artChrome"
     >
-      <!-- Neighbour carousel (#1652): the stage clips 1rem + 12% of the cover
-           width past each side, so the neighbours peek in by that much (and
-           are hit-testable only there); a swipe drags the strip. The gesture
-           itself lives on the sheet (onBodyPointerDown, #1297). -->
+      <!-- Neighbour carousel (#1652): on a phone the neighbours bleed to the
+           screen edge (#1763) — the stage's clip reaches past the viewport and
+           the column's overflow-hidden is the real edge. From md the stage
+           clips 1rem + 12% of the cover width past each side, so a wide sheet
+           shows a sliver, not two whole covers. Hit-testable only where
+           visible; a swipe drags the strip. The gesture itself lives on the
+           sheet (onBodyPointerDown, #1297). -->
       <div
-        class="relative"
+        class="relative [clip-path:inset(0_-100vw)] md:[clip-path:inset(0_calc(-1rem_-_12%))]"
         [class.no-callout]="artChrome"
-        style="clip-path: inset(0 calc(-1rem - 12%))"
         data-testid="now-playing-cover-stage"
         (pointerdown)="onCoverPointerDown($event)"
         (contextmenu)="onCoverContextMenu($event)"
@@ -58,8 +60,11 @@
             <button
               type="button"
               tabindex="-1"
-              class="absolute inset-y-0 w-full right-[calc(100%+1rem)] origin-right transition-[opacity,scale] duration-200"
-              [style.opacity]="swipeOffsetPx() <= 0 ? 0.5 : null"
+              class="absolute inset-y-0 w-full right-[calc(100%+1rem)] origin-right"
+              [class.transition-[opacity,scale]]="!resizing()"
+              [class.duration-200]="!resizing()"
+              [class.pointer-events-none]="neighbourFade() === 0"
+              [style.opacity]="neighbourOpacity(!(swipeOffsetPx() <= 0))"
               [style.scale]="swipeOffsetPx() <= 0 ? 0.85 : null"
               [attr.aria-label]="'nowPlaying.skipToPrevious' | t: { title: prev.title }"
               (click)="skipRequested.emit('prev')"
@@ -80,8 +85,11 @@
             <button
               type="button"
               tabindex="-1"
-              class="absolute inset-y-0 w-full left-[calc(100%+1rem)] origin-left transition-[opacity,scale] duration-200"
-              [style.opacity]="swipeOffsetPx() >= 0 ? 0.5 : null"
+              class="absolute inset-y-0 w-full left-[calc(100%+1rem)] origin-left"
+              [class.transition-[opacity,scale]]="!resizing()"
+              [class.duration-200]="!resizing()"
+              [class.pointer-events-none]="neighbourFade() === 0"
+              [style.opacity]="neighbourOpacity(!(swipeOffsetPx() >= 0))"
               [style.scale]="swipeOffsetPx() >= 0 ? 0.85 : null"
               [attr.aria-label]="'nowPlaying.skipToNext' | t: { title: next.title }"
               (click)="skipRequested.emit('next')"

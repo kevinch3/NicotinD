@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
-import { NowPlayingCoverArtComponent } from './now-playing-cover-art.component';
+import { NowPlayingCoverArtComponent, neighbourFade } from './now-playing-cover-art.component';
 import { PlayerService } from '../../../services/player.service';
 import { AuthService } from '../../../services/auth.service';
 import { LikeService } from '../../../services/like.service';
@@ -241,6 +241,7 @@ describe('NowPlayingCoverArtComponent', () => {
     function render(
       offset: number,
       neighbours: { next?: unknown; prev?: unknown } = { next, prev },
+      coverMaxPx = 320,
     ) {
       TestBed.overrideProvider(PlayerService, {
         useValue: {
@@ -259,6 +260,7 @@ describe('NowPlayingCoverArtComponent', () => {
       });
       const fixture = TestBed.createComponent(NowPlayingCoverArtComponent);
       setInputValue(fixture.componentInstance.swipeOffsetPx, offset);
+      setInputValue(fixture.componentInstance.coverMaxPx, coverMaxPx);
       fixture.detectChanges();
       const el: HTMLElement = fixture.nativeElement;
       const q = (id: string) => el.querySelector(`[data-testid="${id}"]`) as HTMLElement | null;
@@ -354,15 +356,54 @@ describe('NowPlayingCoverArtComponent', () => {
     it('a leftward drag slides the strip and brings the next cover up to full size', () => {
       const { slider, nextEl, prevEl } = render(-60);
       expect(slider.style.transform).toBe('translateX(-60px)');
-      expect(nextEl!.style.opacity).toBe('');
+      expect(nextEl!.style.opacity).toBe('1');
       expect(nextEl!.style.scale).toBe('');
       expect(prevEl!.style.opacity).toBe('0.5');
     });
 
     it('a rightward drag brings the previous cover up instead', () => {
       const { prevEl, nextEl } = render(60);
-      expect(prevEl!.style.opacity).toBe('');
+      expect(prevEl!.style.opacity).toBe('1');
       expect(nextEl!.style.opacity).toBe('0.5');
+    });
+
+    describe('fading out as the queue resize shrinks the cover (#1763)', () => {
+      // A 390px phone: the cover rests at 60vw = 234px.
+      it('is fully shown at rest and while the cap is above the rest width', () => {
+        expect(neighbourFade(320, 390)).toBe(1);
+        expect(neighbourFade(234, 390)).toBe(1);
+      });
+      it('fades linearly to nothing by half the rest width', () => {
+        expect(neighbourFade(175.5, 390)).toBeCloseTo(0.5);
+        expect(neighbourFade(117, 390)).toBe(0);
+        expect(neighbourFade(0, 390)).toBe(0);
+      });
+      it('ignores the shrink at lg, where the cover ignores it too', () => {
+        expect(neighbourFade(0, 1024)).toBe(1);
+      });
+
+      function atPhoneWidth<T>(fn: () => T): T {
+        const original = window.innerWidth;
+        Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true });
+        try {
+          return fn();
+        } finally {
+          Object.defineProperty(window, 'innerWidth', { value: original, configurable: true });
+        }
+      }
+      it('multiplies into each neighbour while the cover shrinks', () =>
+        atPhoneWidth(() => {
+          const { nextEl } = render(0, { next, prev }, 175.5);
+          expect(Number(nextEl!.style.opacity)).toBeCloseTo(0.25);
+          expect(nextEl!.classList.contains('pointer-events-none')).toBe(false);
+        }));
+      it('takes them out of the scene and out of hit-testing once faded', () =>
+        atPhoneWidth(() => {
+          const { nextEl, prevEl } = render(0, { next, prev }, 100);
+          expect(nextEl!.style.opacity).toBe('0');
+          expect(prevEl!.style.opacity).toBe('0');
+          expect(nextEl!.classList.contains('pointer-events-none')).toBe(true);
+        }));
     });
 
     it('keeps the neighbours off TV (the root nav group order is pinned)', () => {
