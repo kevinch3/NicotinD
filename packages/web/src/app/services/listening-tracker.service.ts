@@ -3,6 +3,7 @@ import { ListeningQueueService, type PlayEventPayload } from './listening-queue.
 import { isTvBuild } from '../lib/platform';
 import { platformId } from './native/native-capabilities';
 import type { Track } from './player.service';
+import { randomUuid } from '../lib/uuid';
 
 /**
  * A `timeupdate` gap larger than this is a seek, not elapsed listening.
@@ -99,7 +100,7 @@ export class ListeningTrackerService {
     if (!s) return;
 
     this.queue.enqueue({
-      clientEventId: crypto.randomUUID(),
+      clientEventId: randomUuid(),
       songId: s.track.id,
       startedAt: s.startedAt,
       msPlayed: Math.round(s.listenedSec * 1000),

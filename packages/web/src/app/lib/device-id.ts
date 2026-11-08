@@ -8,24 +8,15 @@
  * survives the receiver refreshing.
  */
 
+import { randomUuid } from './uuid';
+
 export type KeyValueStore = Pick<Storage, 'getItem' | 'setItem'>;
 
 export const PROFILE_ID_KEY = 'nicotind_device_id';
 export const TAB_ID_KEY = 'nicotind_tab_id';
 
 export function mintId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-  return (
-    Array.from({ length: 16 }, () =>
-      Math.floor(Math.random() * 256)
-        .toString(16)
-        .padStart(2, '0'),
-    ).join('') +
-    '-' +
-    Date.now().toString(36)
-  );
+  return randomUuid();
 }
 
 function readOrMint(store: KeyValueStore, key: string): string {

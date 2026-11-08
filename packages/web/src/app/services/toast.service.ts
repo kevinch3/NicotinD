@@ -1,4 +1,5 @@
 import { Injectable, signal } from '@angular/core';
+import { randomUuid } from '../lib/uuid';
 
 export interface ToastAction {
   label: string;
@@ -31,7 +32,7 @@ export class ToastService {
   }
 
   show(config: ToastConfig): string {
-    const id = crypto.randomUUID();
+    const id = randomUuid();
     let dropped = false;
     this.toasts.update((prev) => {
       const next = [...prev, { ...config, id }];

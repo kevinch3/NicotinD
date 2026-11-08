@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { vi, beforeEach, afterEach, describe, it, expect } from 'vitest';
 import { ToastService } from './toast.service';
+import { stubInsecureCrypto } from '../../testing/insecure-context';
 
 describe('ToastService', () => {
   let svc: ToastService;
@@ -13,6 +14,15 @@ describe('ToastService', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  // #1724: on a plain-HTTP LAN origin crypto.randomUUID is undefined; show()
+  // threw there, so the toast never appeared and the caller's flow aborted.
+  it('show() works on a plain-HTTP origin without crypto.randomUUID', () => {
+    stubInsecureCrypto();
+    const id = svc.show({ message: 'Starting radio', kind: 'info' });
+    expect(svc.toasts().find((t) => t.id === id)?.message).toBe('Starting radio');
   });
 
   it('show() adds a toast and returns an ID', () => {

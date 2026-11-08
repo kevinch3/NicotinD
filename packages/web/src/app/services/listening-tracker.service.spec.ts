@@ -9,6 +9,7 @@ let mockPlatform: 'electron' | 'ios' | 'android' | 'web' = 'web';
 import { ListeningTrackerService, MAX_DELTA_SEC, accumulate } from './listening-tracker.service';
 import { ListeningQueueService, type PlayEventPayload } from './listening-queue.service';
 import type { Track } from './player.service';
+import { stubInsecureCrypto } from '../../testing/insecure-context';
 
 const TRACK = { id: 's1', title: 'Track', artist: 'Artist', duration: 300 } as Track;
 
@@ -204,5 +205,24 @@ describe('ListeningTrackerService', () => {
     expect(svc.isTracking('s1')).toBe(true);
     svc.end('ended');
     expect(svc.isTracking('s1')).toBe(false);
+  });
+});
+
+/**
+ * #1724: crypto.randomUUID only exists in a secure context. On a plain-HTTP LAN
+ * origin end() threw before enqueueing, so no play was ever recorded there:
+ * history, stats and scrobbles all stayed empty, silently.
+ */
+describe('on a plain-HTTP origin (no crypto.randomUUID)', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('still records the play when the track ends', () => {
+    TestBed.resetTestingModule();
+    stubInsecureCrypto();
+    const { svc, enqueue } = setup();
+    svc.start(TRACK, null);
+    svc.end('ended');
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    expect(queued(enqueue).clientEventId).toMatch(/^[0-9a-f-]{36}$/);
   });
 });
