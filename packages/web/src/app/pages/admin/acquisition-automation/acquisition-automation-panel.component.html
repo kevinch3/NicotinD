@@ -4,6 +4,17 @@
   [title]="'admin.groupAcquisitionAutomationTitle' | t"
   [description]="'admin.groupAcquisitionAutomationDesc' | t"
 >
+  <!-- This switch gates acquisition as a whole; the sources themselves are
+       enabled on the Extensions page, which nothing here pointed to (#1734). -->
+  <p class="text-sm text-theme-muted mb-6">
+    {{ 'admin.acquisitionSourcesHint' | t }}
+    <a
+      routerLink="/settings/plugins"
+      data-testid="acquisition-extensions-link"
+      class="font-medium text-[var(--theme-accent)] hover:underline"
+      >{{ 'settings.extensions' | t }}</a
+    >
+  </p>
   <!-- Deployment-wide acquisition kill-switch (issue #235). Hidden
            entirely when the server doesn't expose the toggle. -->
   @if (acqSvc.state(); as acq) {

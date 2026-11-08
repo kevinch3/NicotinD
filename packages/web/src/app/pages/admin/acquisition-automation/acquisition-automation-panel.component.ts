@@ -1,3 +1,4 @@
+import { RouterLink } from '@angular/router';
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { SettingsGroupComponent } from '../../../components/settings-group/settings-group.component';
@@ -19,7 +20,7 @@ import { TranslateService } from '../../../services/translate.service';
   selector: 'app-acquisition-automation-panel',
   standalone: true,
   host: { class: 'contents' },
-  imports: [SettingsGroupComponent, TranslatePipe],
+  imports: [SettingsGroupComponent, TranslatePipe, RouterLink],
   templateUrl: './acquisition-automation-panel.component.html',
 })
 export class AcquisitionAutomationPanelComponent implements OnInit {

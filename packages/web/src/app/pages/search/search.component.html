@@ -102,6 +102,18 @@
           {{ 'acquire.sources' | t: { list: availableSources().join(' · ') } }}
         } @else {
           {{ 'acquire.noSources' | t }}
+          <!-- Name the way out (#1734): only an admin can enable a source. -->
+          @if (auth.isAdmin()) {
+            &middot;
+            <a
+              routerLink="/settings/plugins"
+              data-testid="source-status-extensions-link"
+              class="font-medium text-[var(--theme-accent)] hover:underline"
+              >{{ 'acquire.noSourcesEnable' | t }}</a
+            >
+          } @else {
+            &middot; {{ 'acquire.noSourcesAskAdmin' | t }}
+          }
         }
       </span>
     </div>

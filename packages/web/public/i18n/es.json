@@ -1463,5 +1463,8 @@
   "subsonicKeys.empty": "Todavía no hay claves.",
   "subsonicKeys.errorLoad": "No se pudieron cargar las claves",
   "subsonicKeys.errorCreate": "No se pudo crear la clave",
-  "subsonicKeys.errorRevoke": "No se pudo revocar la clave"
+  "subsonicKeys.errorRevoke": "No se pudo revocar la clave",
+  "acquire.noSourcesEnable": "Activa una en Extensiones →",
+  "acquire.noSourcesAskAdmin": "Pide a un administrador que active una.",
+  "admin.acquisitionSourcesHint": "Las fuentes (Soulseek, archive.org, yt-dlp…) se activan una por una en"
 }

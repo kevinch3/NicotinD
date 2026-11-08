@@ -1463,5 +1463,8 @@
   "subsonicKeys.empty": "No keys yet.",
   "subsonicKeys.errorLoad": "Could not load keys",
   "subsonicKeys.errorCreate": "Could not create a key",
-  "subsonicKeys.errorRevoke": "Could not revoke the key"
+  "subsonicKeys.errorRevoke": "Could not revoke the key",
+  "acquire.noSourcesEnable": "Enable one in Extensions →",
+  "acquire.noSourcesAskAdmin": "Ask an admin to enable one.",
+  "admin.acquisitionSourcesHint": "Sources (Soulseek, archive.org, yt-dlp…) are enabled one by one under"
 }

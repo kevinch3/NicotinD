@@ -15,6 +15,15 @@ acquisition is an affirmative, admin-gated, consent-recorded opt-in (legality va
 >   The `auth` kind (OAuth — Google + Microsoft) is **proposed, not yet implemented**; see
 >   [oauth-auth.md](oauth-auth.md).
 
+## Where an admin finds it
+
+The management page is **Extensions**, route `/settings/plugins` (`adminGuard`). An admin reaches
+it from: the Add page's "No acquisition sources enabled · Enable one in Extensions →" (a non-admin
+who may acquire reads "Ask an admin to enable one."); Admin → Acquisition & Automation; Settings →
+Account & Devices → Extensions; and a typed `/extensions`, which redirects there. Before #1734 only
+the Settings link existed, inside a collapsed group, and `/extensions` fell through to Home.
+Covered by the e2e `extensions-reachable.spec.ts`.
+
 ## Layering
 
 ```
