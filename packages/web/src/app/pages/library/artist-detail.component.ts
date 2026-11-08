@@ -71,11 +71,13 @@ import { appendUnique } from '../../lib/append-unique';
 import {
   buildArtistAlbumTiles,
   partitionTiles,
+  releaseJobsInFlight,
+  summarizeDiscography,
   type AlbumTile,
 } from '../../lib/artist-album-tiles';
 import { NavigationService } from '../../services/navigation.service';
 import { AutoHuntService } from '../../services/auto-hunt.service';
-import { IDLE_HUNT, type AlbumHuntStatus } from '../../lib/album-hunt-status';
+import { IDLE_HUNT, LANDING_HUNT, type AlbumHuntStatus } from '../../lib/album-hunt-status';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import { SkeletonComponent } from '../../components/skeleton/skeleton.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
@@ -512,6 +514,32 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     buildArtistAlbumTiles(this.singlesAndEps(), this.discographyAlbums(), { tab: 'singles' }),
   );
 
+  /** The header's counts — the tiles' own rule (`albumCompleteness`, #1627). */
+  readonly discographySummary = computed(() => summarizeDiscography(this.discographyAlbums()));
+
+  /** Live jobs fetching one of this artist's releases, as of the last read. */
+  private releaseJobs: ReadonlyMap<string, number[]> = new Map();
+
+  /** Releases whose job ended and whose re-read has not landed, with a hold count. */
+  private readonly rereading = signal<ReadonlyMap<number, number>>(new Map());
+
+  // A tile's label is the completeness read when the page loaded. When a job for
+  // one of its releases leaves `active` (the feed `job.changed` drives), re-read
+  // it — otherwise the tile falls back to its pre-click label (#1627).
+  private readonly rereadWhenJobEnds = effect(() => {
+    const jobs = this.transferService.acquisitionJobs();
+    const releases = this.discographyAlbums();
+    untracked(() => {
+      const live = releaseJobsInFlight(jobs, releases, this.artist()?.name);
+      const ended = new Set<number>();
+      for (const [id, lidarrIds] of this.releaseJobs) {
+        if (!live.has(id)) for (const lidarrId of lidarrIds) ended.add(lidarrId);
+      }
+      this.releaseJobs = live;
+      if (ended.size) void this.rereadCompleteness([...ended]);
+    });
+  });
+
   /** Releases we do not own that are not primary studio records — collapsed by default. */
   readonly showAllReleases = signal(false);
 
@@ -542,11 +570,16 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   /** Any lane's live job for the release — a peer-folder grab included (#1539). */
   tileHuntStatus(tile: AlbumTile): AlbumHuntStatus {
     if (!tile.source) return IDLE_HUNT;
-    return this.autoHunt.statusForAlbum({
+    const live = this.autoHunt.statusForAlbum({
       lidarrAlbumId: tile.source.lidarrId,
       artist: this.artist()?.name,
       title: tile.title,
     });
+    // A job that just ended is no longer `active`, but its tile's label is still
+    // the pre-job read: hold it busy until the re-read lands, or a click in that
+    // window sends a hunt the server answers `already-complete` (#1627).
+    if (live.phase === 'idle' && this.rereading().has(tile.source.lidarrId)) return LANDING_HUNT;
+    return live;
   }
 
   // Lazy-load the next song page when the sentinel scrolls into view, but only
@@ -587,6 +620,8 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     this.singlesAndEps.set([]);
     this.appearsOn.set([]);
     this.discography.set(null);
+    this.releaseJobs = new Map();
+    this.rereading.set(new Map());
     this.notProvisioned.set(null);
     this.provisioning.set(false);
     this.provisionError.set(null);
@@ -754,8 +789,42 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     this.huntingAlbum.set(null);
   }
 
-  countByStatus(albums: DiscographyAlbum[], status: 'present' | 'partial' | 'missing'): number {
-    return albums.filter((a) => a.status === status).length;
+  /**
+   * In place — no reset, no spinner: the albums and their completeness, fresh,
+   * both reads at once. `landed` stays busy (`LANDING_HUNT`) until both finish.
+   */
+  private async rereadCompleteness(landed: number[]): Promise<void> {
+    const id = this.artistId;
+    if (!id) return;
+    this.holdRereading(landed, 1);
+    const artistRead = (async () => {
+      try {
+        const data = await firstValueFrom(this.api.getArtist(id));
+        if (this.artistId !== id) return;
+        this.artist.set(data.artist);
+        this.albums.set(data.albums);
+        this.singlesAndEps.set(data.singlesAndEps ?? []);
+      } catch {
+        /* keep the grid it has; the discography re-read still runs */
+      }
+    })();
+    try {
+      await Promise.all([artistRead, this.loadDiscography(id)]);
+    } finally {
+      if (this.artistId === id) this.holdRereading(landed, -1);
+    }
+  }
+
+  private holdRereading(lidarrIds: number[], delta: 1 | -1): void {
+    this.rereading.update((held) => {
+      const next = new Map(held);
+      for (const lidarrId of lidarrIds) {
+        const count = (next.get(lidarrId) ?? 0) + delta;
+        if (count > 0) next.set(lidarrId, count);
+        else next.delete(lidarrId);
+      }
+      return next;
+    });
   }
 
   async playAll(): Promise<void> {

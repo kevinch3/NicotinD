@@ -1,4 +1,7 @@
-import { Component, input, output } from '@angular/core';
+import { Component, inject, input, output } from '@angular/core';
+import { PlayerService } from '../../../services/player.service';
+import { LikeService } from '../../../services/like.service';
+import { NpRadioControlComponent } from '../np-radio-control/np-radio-control.component';
 import { isTvUi } from '../../../lib/platform';
 import { SeekBarComponent } from '../../seek-bar/seek-bar.component';
 import { NowPlayingWaveformComponent } from '../now-playing-waveform/now-playing-waveform.component';
@@ -15,6 +18,7 @@ import type { WaveformData } from '../../../../types/core';
     SeekBarComponent,
     NowPlayingWaveformComponent,
     RadioChipComponent,
+    NpRadioControlComponent,
     TranslatePipe,
     TvNavGroupDirective,
     TvNavItemDirective,
@@ -34,6 +38,12 @@ export class NowPlayingTransportComponent {
    * what the 10-foot build had always shown.
    */
   readonly isTv = isTvUi();
+  readonly player = inject(PlayerService);
+  readonly likes = inject(LikeService);
+
+  toggleLike(id: string): void {
+    void this.likes.toggle(id);
+  }
 
   readonly progress = input(0);
   readonly duration = input(0);

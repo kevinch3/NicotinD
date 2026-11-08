@@ -404,8 +404,12 @@ export class LibrarySongsComponent implements OnInit, OnDestroy {
   offlineActions(t: PreservedTrackMeta): TrackAction[] {
     const track = metaToTrack(t);
     return [
-      { label: 'Add to queue', action: () => this.player.addToQueue(track) },
-      { label: 'Play next', action: () => this.player.queueNext(track) },
+      {
+        label: 'Add to queue',
+        labelKey: 'song.addToQueue',
+        action: () => this.player.addToQueue(track),
+      },
+      { label: 'Play next', labelKey: 'song.playNext', action: () => this.player.queueNext(track) },
       offlineTrackAction(this.preserve, track),
     ];
   }

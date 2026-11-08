@@ -87,7 +87,8 @@ test('player & analysis — mobile screens', async ({ page, obs }) => {
   }
 
   // 8) Track-info sheet.
-  await page.getByTestId('now-playing-info').click();
+  await page.getByTestId('now-playing-menu-toggle').click();
+  await page.getByTestId('track-action-Song info').click();
   await expect(page.getByTestId('track-info-identity')).toBeVisible();
   await shot(page, FLOW, 7, 'track info', { settleMs: 700 });
 

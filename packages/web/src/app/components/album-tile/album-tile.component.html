@@ -1,4 +1,4 @@
-@if (tile().status === 'missing') {
+@if (tile().status === 'missing' && !tile().localAlbumId) {
   <!-- Not in the library: nowhere to navigate to, so the tile is inert and the
        button is the cell's one nav item. Dimmed so a full grid reads at a glance. -->
   <div
@@ -58,8 +58,8 @@
     }
   </div>
 } @else {
-  <!-- Owned, whole or partial. A partial album is still yours and still plays, so
-       it navigates and looks like any other tile — the count carries the gap. -->
+  <!-- In the library: whole, partial, or missing by its tracklist (#1627). It is
+       still yours and still plays, so it navigates — the button carries the gap. -->
   <a
     [routerLink]="route()"
     appTvNavItem

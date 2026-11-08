@@ -1,4 +1,4 @@
-    <div class="flex items-center gap-2 md:gap-3" appTvNavGroup axis="horizontal">
+    <div class="flex items-center gap-1 md:gap-3" appTvNavGroup axis="horizontal">
       <!-- Previous -->
       <button
         appTvNavItem
@@ -6,7 +6,7 @@
         (click)="prevClicked.emit()"
         data-testid="player-prev"
         aria-label="Previous track"
-        class="w-9 h-9 flex items-center justify-center text-theme-secondary hover:text-theme-primary transition"
+        class="w-11 h-11 md:w-9 md:h-9 flex items-center justify-center text-theme-secondary hover:text-theme-primary transition"
       >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
           <rect x="3" y="5" width="3" height="14" />
@@ -14,10 +14,10 @@
         </svg>
       </button>
 
-      <!-- Play/Pause. Raised out of the row and painted over the bar's own
-           chrome: at this size it no longer reads as one of three equal
-           buttons, and the lift is what says so. `z-10` + the surface ring keep
-           the line it crosses from cutting through it. -->
+      <!-- Play/Pause. Its filled disc is what sets it apart from prev/next. It
+           sits on the row's centre line: the -translate-y-1 lift it had (#1263)
+           pushed it into the grab notch above it (#1743). Every button is a 44px
+           target on a phone, the #1263 floor; desktop keeps the denser 36/40px. -->
       <button
         appTvNavItem
         appHaptic
@@ -26,7 +26,7 @@
         [attr.aria-label]="playing() ? 'Pause' : 'Play'"
         [attr.data-playing]="playing()"
         [attr.data-buffering]="buffering()"
-        class="w-10 h-10 -translate-y-1 z-10 ring-2 ring-theme-surface shadow-md rounded-full bg-theme-inverse text-theme-inverse flex items-center justify-center hover:opacity-90 transition"
+        class="w-11 h-11 md:w-10 md:h-10 ring-2 ring-theme-surface shadow-md rounded-full bg-theme-inverse text-theme-inverse flex items-center justify-center hover:opacity-90 transition"
       >
         @if (buffering()) {
           <span class="inline-block w-[1.125rem] h-[1.125rem] border-2 border-current border-t-transparent rounded-full animate-spin"></span>
@@ -49,7 +49,7 @@
         (click)="nextClicked.emit()"
         data-testid="player-next"
         aria-label="Next track"
-        class="w-9 h-9 flex items-center justify-center text-theme-secondary hover:text-theme-primary transition"
+        class="w-11 h-11 md:w-9 md:h-9 flex items-center justify-center text-theme-secondary hover:text-theme-primary transition"
       >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
           <polygon points="3,5 15,12 3,19" />

@@ -129,6 +129,21 @@ describe('AlbumTileComponent', () => {
     );
   });
 
+  // #1627: the header counts a local folder holding none of the tracklist missing;
+  // the tile says so too, but the folder's songs are still the user's to open.
+  it('a missing album the library holds a folder for navigates and offers Get album', () => {
+    const fixture = render(
+      tile({ status: 'missing', localAlbumId: 'a4', localTrackCount: 0, totalTracks: 14 }),
+    );
+    const root = el(fixture, '[data-testid="album-tile"]')!;
+
+    expect(root.tagName).toBe('A');
+    expect(root.getAttribute('href')).toBe('/library/albums/a4');
+    expect(root.getAttribute('data-status')).toBe('missing');
+    expect(el(fixture, '[data-testid="album-tile-action"]')!.textContent!.trim()).toBe('Get album');
+    expect(root.textContent).not.toContain('0/14');
+  });
+
   it('hides both actions from a listener who cannot acquire', () => {
     for (const status of ['partial', 'missing'] as const) {
       const fixture = render(tile({ status, localAlbumId: 'a3', totalTracks: 7 }), {

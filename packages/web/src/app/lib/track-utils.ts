@@ -85,6 +85,7 @@ export function offlineTrackAction(preserve: PreserveService, track: Track): Tra
 export function addToPlaylistAction(playlists: PlaylistService, songId: string): TrackAction {
   return {
     label: 'Add to playlist',
+    labelKey: 'song.addToPlaylist',
     action: () => playlists.openPicker([songId]),
   };
 }

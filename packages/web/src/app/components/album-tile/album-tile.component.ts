@@ -16,7 +16,10 @@ import { albumCover } from '../../lib/cover-url';
 import { CoverRevisionsService } from '../../services/cover-revisions.service';
 
 /**
- * One album in an artist's grid, in whichever of three states it is in.
+ * One album in an artist's grid: owned, partial, or missing — and, orthogonally,
+ * held locally or not. Any album the library holds navigates to it, a missing one
+ * included (a folder holding none of its tracklist, #1627); only an album with no
+ * local copy is the inert dashed tile.
  *
  * The artist page used to copy-paste this markup four times — once per tab, plus
  * again in the separate discography grid. Folding them into one component is what
@@ -55,7 +58,7 @@ export class AlbumTileComponent {
   private readonly injector = inject(Injector);
   private readonly i18n = inject(TranslateService);
   private readonly coverRevisions = inject(CoverRevisionsService);
-  /** The tile's menu (#1298): an owned or partial album is a library album. */
+  /** The tile's menu (#1298): any tile with a local album is a library album. */
   readonly menuActions = (): TrackAction[] => {
     const t = this.tile();
     if (!t.localAlbumId) return [];

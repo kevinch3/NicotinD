@@ -1,4 +1,16 @@
-import { Component, computed, inject, input, output, viewChild } from '@angular/core';
+import {
+  Component,
+  DestroyRef,
+  computed,
+  effect,
+  inject,
+  input,
+  output,
+  viewChild,
+} from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
+import { HOLD_MS, HOLD_SLOP_PX } from '../../../directives/entity-actions.directive';
+import { haptic } from '../../../lib/haptics';
 import { PlayerService, type Track } from '../../../services/player.service';
 import { songCover } from '../../../lib/cover-url';
 import { CoverRevisionsService } from '../../../services/cover-revisions.service';
@@ -18,6 +30,7 @@ import { OverflowRevealDirective } from '../../../directives/overflow-reveal.dir
 @Component({
   selector: 'app-now-playing-cover-art',
   imports: [
+    NgTemplateOutlet,
     OverflowRevealDirective,
     CoverArtComponent,
     ArtistLinksComponent,
@@ -62,6 +75,10 @@ export class NowPlayingCoverArtComponent {
   // ⋯ menu.
   readonly isTv = isTvUi();
 
+  /** Layout B (#1716): the ⋯ on the artwork and the long-press menu, with no
+   *  ⓘ/⚑/♡ beside the title. TV keeps its pinned D-pad chrome. */
+  readonly artChrome = !this.isTv;
+
   readonly coverMaxPx = input<number>(320);
   readonly resizing = input(false);
   /** Live horizontal swipe-to-skip travel (#1297); the cover follows it. */
@@ -97,6 +114,103 @@ export class NowPlayingCoverArtComponent {
   readonly navigateToArtistClicked = output<void>();
   /** The album link under the artist line was followed — the sheet should close. */
   readonly navigateToAlbumClicked = output<void>();
+
+  constructor() {
+    // A hold the sheet's swipe took over is a swipe, never a menu: the moment
+    // the cover starts following the finger the timer is dead (the slop check
+    // below catches the dismiss drag, which does not move the cover).
+    effect(() => {
+      if (this.swipeOffsetPx() !== 0) this.cancelHold();
+    });
+    inject(DestroyRef).onDestroy(() => this.cancelHold());
+  }
+
+  // ── Long-press on the artwork (#1716) ──────────────────────────
+  // The Mosaic / EntityActionsDirective contract: HOLD_MS still, HOLD_SLOP_PX
+  // of travel cancels, haptic('hold'), touch/pen only (a mouse has right-click),
+  // a press on a control (⋯, Like, a neighbour sliver) belongs to the control.
+  // Movement is watched on the document, like the sheet's own swipes, so a
+  // finger that leaves the cover still cancels.
+  private holdTimer: ReturnType<typeof setTimeout> | null = null;
+  private holdOrigin: { x: number; y: number } | null = null;
+  private readonly onHoldMove = (e: PointerEvent): void => {
+    if (!this.holdOrigin) return;
+    if (
+      Math.abs(e.clientX - this.holdOrigin.x) >= HOLD_SLOP_PX ||
+      Math.abs(e.clientY - this.holdOrigin.y) >= HOLD_SLOP_PX
+    ) {
+      this.cancelHold();
+    }
+  };
+  private readonly onHoldEnd = (): void => this.cancelHold();
+
+  onCoverPointerDown(e: PointerEvent): void {
+    if (!this.artChrome || e.pointerType === 'mouse' || e.isPrimary === false) return;
+    if (
+      e.target instanceof Element &&
+      e.target.closest('button, a, app-menu-panel, [data-np-sliver]')
+    ) {
+      return;
+    }
+    this.cancelHold();
+    this.holdOrigin = { x: e.clientX, y: e.clientY };
+    document.addEventListener('pointermove', this.onHoldMove);
+    document.addEventListener('pointerup', this.onHoldEnd);
+    document.addEventListener('pointercancel', this.onHoldEnd);
+    this.holdTimer = setTimeout(() => {
+      this.holdTimer = null;
+      this.cancelHold();
+      haptic('hold');
+      this.swallowNextClick();
+      this.openMenu();
+    }, HOLD_MS);
+  }
+
+  /** Right-click on the cover (desktop), and the touch contextmenu a long
+   *  press fires after the hold already opened the menu — idempotent. */
+  onCoverContextMenu(e: MouseEvent): void {
+    if (!this.artChrome) return;
+    if (e.target instanceof Element && e.target.closest('[data-np-sliver]')) return;
+    e.preventDefault();
+    this.openMenu();
+  }
+
+  cancelHold(): void {
+    if (this.holdTimer !== null) clearTimeout(this.holdTimer);
+    this.holdTimer = null;
+    this.holdOrigin = null;
+    document.removeEventListener('pointermove', this.onHoldMove);
+    document.removeEventListener('pointerup', this.onHoldEnd);
+    document.removeEventListener('pointercancel', this.onHoldEnd);
+  }
+
+  /** The release after a hold fires a click — on the common ancestor of the
+   *  cover and the panel that opened under the finger — and the menu panel's
+   *  document click would close the menu it just opened. Eat that one click. */
+  private swallowNextClick(): void {
+    const eat = (e: Event): void => {
+      e.stopPropagation();
+      e.preventDefault();
+      disarm();
+    };
+    // Armed until that click or the next press, whichever comes first — a
+    // finger that stays down a while after the menu opens still lifts into it.
+    const disarm = (): void => {
+      window.removeEventListener('click', eat, { capture: true });
+      window.removeEventListener('pointerdown', disarm, { capture: true });
+    };
+    window.addEventListener('click', eat, { capture: true });
+    window.addEventListener('pointerdown', disarm, { capture: true });
+  }
+
+  private openMenu(): void {
+    const m = this.menu();
+    if (m && !m.open()) m.toggle(new Event('hold'));
+  }
+
+  closeMenu(): void {
+    this.menu()?.close();
+  }
 
   toggleLike(id: string): void {
     void this.likes.toggle(id);

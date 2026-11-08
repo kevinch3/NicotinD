@@ -149,24 +149,38 @@ test.describe('mobile UX', () => {
 
     const menu = page.getByTestId('track-row-menu');
     await expect(menu).toBeVisible();
-    const menuBox = (await menu.boundingBox())!;
 
     // Highest top edge among the visible fixed bottom-chrome layers = where the
     // player/tab bar begins (mirrors bottomChromeInset's measurement).
-    const chromeTop = await page.evaluate(() => {
-      const tops = Array.from(document.querySelectorAll('[data-bottom-chrome]'))
-        .map((el) => el.getBoundingClientRect())
-        .filter((r) => r.height > 0 && r.top < window.innerHeight)
-        .map((r) => r.top);
-      return tops.length ? Math.min(...tops) : window.innerHeight;
-    });
+    const measure = () =>
+      page.evaluate(() => {
+        const tops = Array.from(document.querySelectorAll('[data-bottom-chrome]'))
+          .map((el) => el.getBoundingClientRect())
+          .filter((r) => r.height > 0 && r.top < window.innerHeight)
+          .map((r) => r.top);
+        const m = document.querySelector('[data-testid="track-row-menu"]')!.getBoundingClientRect();
+        return {
+          chromeTop: tops.length ? Math.min(...tops) : window.innerHeight,
+          top: m.top,
+          bottom: m.bottom,
+        };
+      });
 
-    expect(chromeTop, 'the mini-player chrome is present').toBeLessThan(PHONE.height);
-    expect(menuBox.y, 'menu top on-screen').toBeGreaterThanOrEqual(0);
-    expect(
-      menuBox.y + menuBox.height,
-      'menu bottom clears the mini-player/tab bar',
-    ).toBeLessThanOrEqual(chromeTop + 1);
+    // The mini-player is still sliding in (a transform transition) right after
+    // play, so the menu re-measures on its transitionend (#1714): poll until the
+    // settled menu sits on the chrome, never under it.
+    await expect
+      .poll(
+        async () => {
+          const m = await measure();
+          return m.bottom - m.chromeTop;
+        },
+        { message: 'menu bottom clears the mini-player/tab bar' },
+      )
+      .toBeLessThanOrEqual(1);
+    const settled = await measure();
+    expect(settled.chromeTop, 'the mini-player chrome is present').toBeLessThan(PHONE.height);
+    expect(settled.top, 'menu top on-screen').toBeGreaterThanOrEqual(0);
   });
 
   // G2 — Now Playing renders covers via app-cover-art, so a missing/404 cover
@@ -443,13 +457,15 @@ test.describe('mobile UX', () => {
     await expect(page.getByTestId('library-album-count')).toHaveText('1 album');
   });
 
-  // G4 — a *visible* Track-info affordance on Now Playing (previously the sheet
-  // was reachable only via long-press/right-click on the title).
-  test('Now Playing has a visible Track-info button that opens the sheet', async ({ page }) => {
+  // G4 — a *visible* way to Track info on Now Playing. Since #1716 it is the ⋯
+  // on the artwork (Song info), not a standalone ⓘ beside the title.
+  test('Now Playing reaches Track info from the ⋯ on the artwork', async ({ page }) => {
     await openNowPlaying(page);
-    const infoBtn = page.getByTestId('now-playing-info');
-    await expect(infoBtn).toBeVisible();
-    await infoBtn.click();
+    await expect(page.getByTestId('now-playing-info')).toHaveCount(0);
+    const toggle = page.getByTestId('now-playing-menu-toggle');
+    await expect(toggle).toBeVisible();
+    await toggle.click();
+    await page.getByTestId('track-action-Song info').click();
     await expect(page.getByTestId('track-info-identity')).toContainText('Opening Static');
   });
 
@@ -473,7 +489,8 @@ test.describe('mobile UX', () => {
   // stays deterministic in CI; the LRCLIB fetch path is exercised by unit tests).
   test('Track-info sheet lyrics: admin can add, save, and reset', async ({ page }) => {
     await openNowPlaying(page);
-    await page.getByTestId('now-playing-info').click();
+    await page.getByTestId('now-playing-menu-toggle').click();
+    await page.getByTestId('track-action-Song info').click();
 
     const section = page.getByTestId('lyrics-section');
     await expect(section).toBeVisible();
@@ -749,7 +766,8 @@ test.describe('mobile UX', () => {
     const panel = page.getByTestId('now-playing-lyrics');
     await expect(panel.locator('[data-karaoke-line]').first()).toContainText('opening line');
 
-    await page.getByTestId('now-playing-info').click();
+    await page.getByTestId('now-playing-menu-toggle').click();
+    await page.getByTestId('track-action-Song info').click();
     const section = page.getByTestId('lyrics-section');
     await section.getByTestId('edit-lyrics-button').click();
     await section.getByTestId('lyrics-editor').fill('words fixed in the sheet');

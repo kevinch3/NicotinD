@@ -1,25 +1,43 @@
 @if (state(); as s) {
-  <div
-    data-testid="entity-menu"
-    role="menu"
-    class="fixed z-50 no-callout glass-panel panel-enter rounded-xl py-1 min-w-40 w-50"
-    [style.left.px]="pos().x"
-    [style.top.px]="pos().y"
-    (click)="$event.stopPropagation()"
-    (pointerdown)="$event.stopPropagation()"
-  >
-    @for (action of s.actions; track action.label) {
-      <button
-        type="button"
-        role="menuitem"
-        [attr.data-testid]="'entity-action-' + action.label"
-        class="w-full text-left px-4 py-2 text-sm transition-colors hover:bg-theme-hover"
-        [class.text-red-400]="action.destructive"
-        [class.text-theme-secondary]="!action.destructive"
-        (click)="run(action)"
-      >
-        {{ action.labelKey ? (action.labelKey | t) : action.label }}
-      </button>
+  @if (layout(); as l) {
+    @if (l.kind === 'sheet') {
+      <!-- Clicks bubble to the document listener, which honours the hold's grace period. -->
+      <div
+        data-testid="entity-menu-backdrop"
+        class="fixed inset-x-0 top-0 z-50 bg-black/40 touch-none menu-sheet-enter"
+        [style.bottom]="sheetBottomCss(l.bottom)"
+      ></div>
     }
-  </div>
+    <div
+      data-testid="entity-menu"
+      role="menu"
+      [attr.data-presentation]="l.kind"
+      [class]="l.kind === 'sheet'
+        ? 'fixed inset-x-0 z-50 no-callout overflow-y-auto overscroll-contain bg-theme-surface border-t border-theme rounded-t-2xl shadow-2xl py-1 menu-sheet-enter'
+        : 'fixed z-50 no-callout glass-panel panel-enter rounded-xl py-1 min-w-40 w-50'"
+      [style.left.px]="l.kind === 'popover' ? l.x : null"
+      [style.top.px]="l.kind === 'popover' ? l.y : null"
+      [style.bottom]="l.kind === 'sheet' ? sheetBottomCss(l.bottom) : null"
+      [style.padding-bottom]="l.kind === 'sheet' && l.bottom === 0 ? 'env(safe-area-inset-bottom)' : null"
+      [style.max-height.px]="l.maxHeight"
+      [style.overflow-y]="l.maxHeight !== null ? 'auto' : null"
+      (click)="$event.stopPropagation()"
+      (pointerdown)="$event.stopPropagation()"
+    >
+      @for (action of s.actions; track action.label) {
+        <button
+          type="button"
+          role="menuitem"
+          [attr.data-testid]="'entity-action-' + action.label"
+          class="w-full text-left px-4 py-2 text-sm transition-colors hover:bg-theme-hover"
+          [class.min-h-11]="l.kind === 'sheet'"
+          [class.text-red-400]="action.destructive"
+          [class.text-theme-secondary]="!action.destructive"
+          (click)="run(action)"
+        >
+          {{ action.labelKey ? (action.labelKey | t) : action.label }}
+        </button>
+      }
+    </div>
+  }
 }

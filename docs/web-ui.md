@@ -216,7 +216,7 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
 - **Full-screen sheets clear the notch too**: the Now Playing sheet (`now-playing.component`) and its fullscreen lyrics overlay are `fixed inset-0` over the same `viewport-fit=cover` page, so their **top-anchored interactive chrome** — the drag-to-dismiss grab pill + close chevron (header), and the fullscreen exit button — would sit *under* the iPhone hardware notch on a PWA / Capacitor build, making the sheet impossible to close (regression: iPhone 13 Pro home-screen PWA, "can't find the player notch to close it"). Both headers pad their top with `pt-[calc(…+env(safe-area-inset-top))]` so the affordances drop below the cutout. No-op on web/desktop (inset → 0). Regression-asserted in `now-playing.component.spec.ts` → "notch / safe-area clearance".
 - **Download row overflow contained**: each `download-item` row is `overflow-hidden` (plus `min-w-0` on its wrapping metadata row and `max-w-full` on the expandable storage path), so a long title or file path **stays inside the row's rounded box** (titles `truncate`, the storage path `break-all` wraps) instead of widening the page. On mobile a row that overflowed forced the WebView to zoom out (shrinking all icons/text); `mobile-ux.spec.ts` guards the downloads page against horizontal overflow at phone width.
 - **Zoom disabled app-wide** (`styles.css` → `html { touch-action: pan-x pan-y }`, plus `maximum-scale=1, user-scalable=no` in the `index.html` viewport meta): stray double taps and pinches kept zooming the viewport on touch builds (web + native WebView), and iOS zoomed in on focusing any field under 16px (most fields are `text-sm`/`text-xs`) and stayed zoomed after blur. The app has no content that needs zoom, so both gestures are off rather than just double-tap (the earlier `manipulation`). `pan-x pan-y` keeps scrolling; the viewport meta stops pinch in the iOS WKWebView and focus-zoom in iOS Safari too (Safari itself still allows pinch; Apple ignores `user-scalable=no` there). The root rule is an element selector, so the finer-grained gesture surfaces win by specificity: the seek range (`.seek-range { touch-action: none }`) and the player drag handles (Tailwind `touch-pan-y`/`touch-none` utilities). Asserted in `mobile-ux.spec.ts` ("zoom is disabled via root touch-action and the viewport meta").
-- **Mini-player layout (two columns on mobile)**: the bar is a 3-section flex row (track info · controls · device switcher). On **mobile** only the track-info column grows (`flex-1`); the controls are content-sized (`flex-none`) and the device-switcher section is content-sized too — so track info fills the bar and pushes the controls to the **right edge** (a clean two-column layout: info | controls). Previously *both* side sections were `flex-1` to keep controls screen-centered, but the right (device-switcher) section is empty unless remote playback is on, so it reserved a wasted half-width "empty third column" and the controls sat marooned in the center (the reported "controls too centered, right part lost" bug). On **desktop** the side sections collapse (`md:flex-none`, track info pinned to `md:w-60`) and the controls reclaim `md:flex-1` to host the inline progress bar. The invariant (track-info is the only mobile `flex-1`; the device-switcher section is never `flex-1`) is asserted in `player.component.spec.ts` → "mini-player layout". `BottomNavComponent` (`components/bottom-nav/`) is a `md:hidden` fixed bar (Home · Library · Downloads · **Search** · Settings; Admin is desktop-only). The Search tab (`/search`, online-only — the route needs the backend) restores the mobile path to the network-browse + URL-acquire page that the radio landing used to link to. The bar is `grid-cols-5`, safe-area-aware: `h-[calc(3.5rem+env(safe-area-inset-bottom))]` + matching bottom padding so the tabs sit above the iOS home indicator. The mini-player floats above it, and the full-screen Now Playing sheet (higher z-index) covers it. **Active tab** uses the theme accent (`--theme-accent`) for both icon+label and a 2 px accent bar painted via a `::before` pseudo-element (`a.is-active` rule in `bottom-nav.component.css`); matches the Downloads badge accent vocabulary and reads cleanly across all 7 themes (E-Ink's black accent keeps it legible). The Downloads tab shows a live badge from the shared `TransferService.activeDownloadCount` computed (also feeding the header `download-indicator`, which additionally sums in-flight `AcquireService` jobs).
+- **Mini-player layout (two columns on mobile)**: the bar is a 3-section flex row (track info · controls · device switcher). On **mobile** only the track-info column grows (`flex-1`); the controls are content-sized (`flex-none`) and the device-switcher section is content-sized too — so track info fills the bar and pushes the controls to the **right edge** (a clean two-column layout: info | controls). Previously *both* side sections were `flex-1` to keep controls screen-centered, but the right (device-switcher) section is empty unless remote playback is on, so it reserved a wasted half-width "empty third column" and the controls sat marooned in the center (the reported "controls too centered, right part lost" bug). On **desktop** the side sections collapse (`md:flex-none`, track info pinned to `md:w-72`, widened from `md:w-60` for the larger type of #1743) and the controls reclaim `md:flex-1` to host the inline progress bar. The invariant (track-info is the only mobile `flex-1`; the device-switcher section is never `flex-1`) is asserted in `player.component.spec.ts` → "mini-player layout". `BottomNavComponent` (`components/bottom-nav/`) is a `md:hidden` fixed bar (Home · Library · Downloads · **Search** · Settings; Admin is desktop-only). The Search tab (`/search`, online-only — the route needs the backend) restores the mobile path to the network-browse + URL-acquire page that the radio landing used to link to. The bar is `grid-cols-5`, safe-area-aware: `h-[calc(3.5rem+env(safe-area-inset-bottom))]` + matching bottom padding so the tabs sit above the iOS home indicator. The mini-player floats above it, and the full-screen Now Playing sheet (higher z-index) covers it. **Active tab** uses the theme accent (`--theme-accent`) for both icon+label and a 2 px accent bar painted via a `::before` pseudo-element (`a.is-active` rule in `bottom-nav.component.css`); matches the Downloads badge accent vocabulary and reads cleanly across all 7 themes (E-Ink's black accent keeps it legible). The Downloads tab shows a live badge from the shared `TransferService.activeDownloadCount` computed (also feeding the header `download-indicator`, which additionally sums in-flight `AcquireService` jobs).
 - **Bottom chrome layering contract** (`lib/player-chrome.ts`): the mini-player (z-50) anchors one tab-bar height above the viewport bottom on mobile, so its *hidden* state must translate past its own height **plus** the tab bar and be `pointer-events-none` — a plain `translate-y-full` parked the opaque bar exactly on top of the z-40 tab bar whenever no track was loaded, hiding the nav and swallowing its taps until playback started ("lost bottom menu" bug). `miniPlayerSlideClass()`, `MAIN_BOTTOM_PAD_CLASS` and `TOAST_STACK_BOTTOM_CLASS` (consumed by `PlayerComponent.slideClass` / `LayoutComponent.mainPadClass` / `ToastOutletComponent.stackBottomClass`) centralize this geometry as literal Tailwind class strings (arbitrary values must stay literal for Tailwind's source scan); the scroller's reservation reads the mini player's *measured* height (see "The scroller reserves the measured bottom chrome"). Related: `PlayerService.playNext()` at end-of-queue now keeps the last track loaded but paused instead of clearing it, so the mini-player (and the persisted session in localStorage, which is wiped when `currentTrack` goes null) survives the queue running out.
 - **One-tap smart hunt**: the album-hunt modal (`album-hunt-modal.component`) defaults to the best candidate without a manual pick — `bestCandidate` = top of the server-ranked `filteredCandidates`, `effectiveCandidate` = the user's explicit row selection *or* the best. The footer (with a match%/slots/size confidence chip) downloads `effectiveCandidate` on a single tap; the per-row list remains for power users. The auto-pick row shows a "★ Best match (auto)" hint.
 - **PWA share-target → URL acquire**: `manifest.webmanifest` declares a GET `share_target` (`action: "/search"` — Search moved off `/` when the radio landing became the home route, so the share intent points at `/search`; params `title/text/url`). Sharing a link from a phone lands on the search route; `SearchComponent.ngOnInit` pulls the URL via the pure `extractSharedUrl` helper (`lib/share-url.ts`, scans `url`→`text`→`title`) and auto-starts a yt-dlp/spotdl acquisition, then strips the query params so a refresh doesn't resubmit.
@@ -456,6 +456,8 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
   **A release comes to an actual stop.** Inertia decays by `FRICTION` per frame with a hard snap to zero below `REST_EPSILON` (`decayVelocity` in `lib/mosaic-lens.ts`) — exponential decay alone never reaches zero, so the camera crept sub-pixel forever and read as "it never stops". The demo's idle drift was removed for the same reason: a resting mosaic is genuinely at rest. **And a resting mosaic draws nothing**: `frame()` asks for another frame only while a drag is held or the coast is still moving, and everything that changes what a frame would show calls `wake()` — pointer input, `repack()` (tiles, resize), a discovery cell's batch landing, the stage coming back on screen. The loop used to recompute the whole lens 60–120 times a second at rest to write nothing. `wake()` is idempotent (`raf === 0` means no frame is pending).
 
   **Press and hold a tile** (450ms within the tap slop) opens its menu at the finger (see "Tile interaction standard" — Song info is an item of a song tile's menu), with a suppress flag eating the click that follows the release so the hold does not also start a radio under the menu. Tiles with no menu (the downloads shortcut, an offline tile) do not arm the timer. Hovering with a fine pointer lifts the face slightly: faces rest at `scale(0.97)` and grow to `1` on hover, because `contain: strict` clips paint at the tile box so a scale past 1 would crop, not lift — the same reason `.mosaic-pop`'s fill is `backwards`, letting the animation release the transform once the pop lands.
+
+  **A face's long names reveal themselves (#1707).** The title and subtitle are one line each (`.mosaic-name`, marked `data-overflow-reveal`), and the frame that finds the field at rest gives every face in the lens that has none yet its `OverflowReveal`s via `attachOverflowReveals`, with the pooled tile element as the row. On touch that plays one pass once the field is still; with a mouse it plays while the tile is hovered; under reduced motion a tap on the name wraps it and does not start the radio (see "Names are never unreadably truncated"). The attach waits for rest because a reveal reads layout as it is built, and the field is still anyway before a touch pass may play. Rewriting a face (`innerHTML`) destroys its reveals first, and a repack or the page's teardown destroys them all. They use the module's shared IntersectionObserver and ResizeObserver and no MutationObserver, because a face is replaced whole, never its text in place. The title was a two-line clamp and is now one line: a clamp wraps instead of overflowing sideways, so the reveal could not move it. Measured with every song tile renamed to a long title and artist (390×780 touch, 4× CPU throttle, six reps of three pans and a 2.5 s rest each): frames over 25 ms went from 0.28% to 0.41% of all frames (two runs of the fix), the longest frame from 50 ms to 67 ms (one rep in six before, two in twelve after), and layouts per rep rose from about 47 to about 102, most of it the reveal passes themselves running at rest.
 
   **Depth (#1638)** comes in three layers, none of them per-tile work in the loop:
   - **Every face casts a soft shadow** (`--theme-elevation-tile`) and has no border: a 0.5px stroke on a lens-scaled layer rasterised into a light, uneven fringe around the rounded corners. The same paint clip means a shadow outside the box is cut off, so each pooled box is the packed face plus `TILE_INSET` on every side, translated back by the inset so the face lands where the lens put it, and the face sits `--mosaic-inset` inside it (the component sets the variable from the constant). Packing, spacing and the lens stay in face units — `GAP`, `DENSITY` and the field's look are untouched; only the box grew.
@@ -748,6 +750,7 @@ place. `buildArtistAlbumTiles` (`lib/artist-album-tiles.ts`) is the pure join;
 | `owned` | exactly what it always did | nothing — the grid stays quiet where there is nothing to do |
 | `partial` | a normal, clickable, playable tile with a `4/7 tracks` subtitle | `Complete album` |
 | `missing` | dimmed, dashed border, **does not navigate** | `Get album` |
+| `missing`, with a local folder | a normal, clickable tile, no count | `Get album` |
 
 A partial album is deliberately **not** dimmed. You own those four tracks and they
 play; dimming it would say otherwise. The action buttons are gated on
@@ -770,8 +773,31 @@ album-identity resolver deferred in [album-hunt.md](album-hunt.md).
 tag's "Felt (feat. Henry Green)" never equalled Lidarr's "Felt", so prod's *A Life* (one
 local song then) read **0/11** while owned. The server's `trackKey` drops the credit
 (`stripFeaturingSuffix`) before `normalizeTitle`. A tile prints its "n/N tracks" only when
-at least one track matched: an owned album whose tracklist matches nothing (another
-edition) shows its partial state without a false "0/N".
+at least one track matched.
+
+**One completeness rule, for the header and every tile (#1627).** The tab bar's
+`n releases · n complete · n partial · n missing` and each tile's state both read
+`albumCompleteness` — the server's tracklist match (`DiscographyAlbum.status`), never
+the mere existence of a local album. The tile used to draw any matched album that was
+not `present` as partial, so on prod's La Vela Puerca page — two folders each holding
+one song from the *other* album's tracklist — the header said `0 partial · 9 missing`
+while both tiles offered `Complete album`. A local folder that holds none of its
+release's tracklist is now `missing`, as the header counts it, and offers `Get album`;
+it keeps its link and its menu, because the songs in it are still yours.
+`summarizeDiscography` is the header's half.
+
+**A tile re-reads once its job lands (#1627).** The tile's label is the completeness
+read when the page loaded, so after Downloading → Organizing it fell back to its
+pre-click label until a reload. The page watches `TransferService.acquisitionJobs`
+— the feed `job.changed` on the library event stream re-polls — for the live jobs
+fetching one of its releases (`releaseJobsInFlight`: by Lidarr id, or by `sameAlbum`,
+the same two ways a tile finds its hunt status). When one leaves `active`, it
+re-reads the artist's albums and discography in place, both at once: no reset, no
+spinner, no polling of its own. Until that re-read lands, the releases the ended job
+was fetching report `LANDING_HUNT` (busy, "Scanning"), not `idle` — the hunt service
+drops a job the moment it leaves `active`, and the discography read (Lidarr plus a
+track fetch per release) takes seconds, a window in which the pre-job button was live
+again and a click drew a 409 `already-complete`.
 
 **The missing tail is filtered, the library never is.** A release we do *not* own
 whose `secondaryTypes` include Live / Compilation / Remix / Demo / Soundtrack /
@@ -1959,16 +1985,29 @@ class that sets `text-overflow: ellipsis` or `-webkit-line-clamp` (`styles.css`
 for every template, a component's own stylesheet for its own template only).
 Each one must carry `appOverflowReveal` or appear on `NOT_A_NAME`: error and
 status messages, secrets and URLs, fixed UI copy and count lines, admin
-diagnostics, the search input, the artist bio's clamp with its own "Show more",
-and the home mosaic's HTML-string faces. The mosaic faces are names, and a
-directive cannot reach them; that gap is #1707, not a judgement. The list has one entry per site, so a
+diagnostics, the search input, and the artist bio's clamp with its own "Show
+more". Markup built as a string, where no directive can attach, carries the
+marker `data-overflow-reveal` (`REVEAL_MARKER_ATTR`) instead, and the spec
+checks that every component writing it also calls `attachOverflowReveals`, or
+the marker would be inert. It also refuses the reveal on a multi-line clamp
+(`line-clamp-*`, or a stylesheet class setting `-webkit-line-clamp`): that text
+wraps rather than overflowing sideways, so the reveal would never move. The list has one entry per site, so a
 new truncation in an allowlisted file is a new site. A TS class string bound
 with `[class]` is checked at its binding (`CLASS_STRINGS`). The spec also checks
 that every component using the attribute imports the directive. Without the
 import, the attribute is silently inert. It asserts its own denominator, so a
 broken scanner cannot pass by finding nothing. The real layout is covered by
 `e2e/tests/overflow-reveal.spec.ts`: touch once, the playing title always,
-reduced-motion tap-to-wrap, and desktop hover.
+reduced-motion tap-to-wrap, and desktop hover, on a list row and on a mosaic
+tile.
+
+**The home mosaic (#1707)** builds its faces as HTML strings on pooled
+elements, so it attaches the plain controller itself: its title and subtitle
+carry `.mosaic-name` (one line, ellipsis) and the marker, and the frame that
+finds the field at rest calls `attachOverflowReveals` on every face in the lens
+that has none yet, with the tile element as the row (hover on the tile). The
+title used to be a two-line clamp; it is one line now, because a clamp cannot
+scroll. See the mosaic section for why the attach waits for rest.
 
 **Adding a name**: put `appOverflowReveal` on the truncated element and
 `OverflowRevealDirective` in the component's `imports`. A flex child still needs
@@ -2165,6 +2204,38 @@ station filter (`describeLibraryFilter`, reused rather than restated), else the 
 grew out of, else the track it seeded from. An ad-hoc queue is genuinely undetermined and falls
 through to the plain title rather than inventing a label.
 
+## The Now Playing chrome is slim: layout B (#1715, #1716)
+
+The sheet's vertical space is the queue's. The title row used to carry four icons (♡ ⚑ ⓘ ⋯), and the
+radio pill took a full row under the transport, growing by 170px when its dial opened. At 390x844
+that dial left room for a quarter of a queue row. The owner compared four complete prototypes,
+screenshotted at 390x844, 375x667 and 1280x800, and chose **layout B**:
+
+- **The title stands alone** (`now-playing-title-row` has no buttons). Info and Report live only in
+  the `⋯` track menu, the shared `SongMenuService` list.
+- **The ⋯ sits on the artwork's top-right corner**, like a Mosaic tile
+  (`now-playing-menu-toggle`, inside `now-playing-cover`). It falls back to the title row only while
+  the cover is dragged away (#993), so the menu is never unreachable.
+- **A still long-press on the artwork opens the same menu** (`NowPlayingCoverArtComponent.
+  onCoverPointerDown`). It follows the Mosaic and `EntityActionsDirective` contract: `HOLD_MS` held
+  still, `HOLD_SLOP_PX` of travel cancels, `haptic('hold')`, touch and pen only (a mouse has
+  right-click, which opens it too). A press on a control (the ⋯, a #1652 neighbour sliver) belongs to
+  the control. A hold the sheet's swipe takes over is a swipe and skips, never a menu, and the click
+  the release fires is swallowed so the menu it opened stays open.
+- **Like leads the transport row and the radio control closes it** (`now-playing-like`, then
+  `app-np-radio-control` → `now-playing-radio`), both 44px and in thumb reach.
+  - With radio off, a tap on the radio icon starts radio.
+  - With radio on, the icon shows an accent fill and a dot, and a tap opens the variety dial (#1660)
+    as a menu panel: a bottom sheet on a phone (#1714). The dial carries the off switch
+    (`np-radio-switch`), and it no longer pushes the queue down.
+- **TV is unchanged**: its pinned D-pad chain (`now-playing-tv.spec.ts`) keeps prev / play / next,
+  the ⓘ and the radio chip.
+
+Measured at 390x844: 46px saved collapsed and 216px with the dial open; the visible queue grows from
+about 1.06 to 1.81 rows. Covered by the transport and cover-art specs (row order, the transport Like,
+the radio's one-tap start, the hold contract) and `now-playing-chrome.spec.ts` (row geometry, 44px
+targets, ⋯ on the art, a still hold opens the menu and a moving one skips, radio on then dial).
+
 ## The Now Playing sheet shows no bitrate; Track info does (#1661)
 
 The sheet used to stack a fourth text line under title / artist / album: `formatQuality(bitRate)`
@@ -2231,8 +2302,9 @@ it is a control that lies.
 Both buttons are gone from every surface: the mini bar
 (`player-transport-mini.component.html`) and the Now Playing sheet
 (`now-playing-transport.component.html`); the TV transport and the karaoke overlay never had them.
-The Now Playing sheet's replacement for "surprise me" is the radio chip directly beneath the row,
-which already toggles radio (anchored on the current track when turned on over a bare queue).
+The Now Playing sheet's replacement for "surprise me" is radio: on a phone the radio control at the
+end of the transport row (#1716, below), on TV the radio chip beneath it. Either toggles radio
+(anchored on the current track when turned on over a bare queue).
 
 **The service state stays.** `PlayerService.shuffle` / `repeat` are still signals, still persisted
 in the player snapshot, and still read by `playNext()`, `playWithContext()` and the media-session
@@ -2250,6 +2322,35 @@ The mini player used to be the tab bar's own `bg-theme-surface` with a `border-t
 
 Its two scrubbers (desktop inline, mobile under the row) sit in `.player-mini-seek`, which slims the shared `app-seek-bar` there only — the sheet, karaoke and poll scrubbers keep their look: a 3px track, a fainter buffered band, and a 10px thumb that grows to 1.4× while active or focused (on hover only under `@media (hover: hover)`, since `:hover` sticks after a tap). On touch the thumb is hidden at rest — the fill says where you are, and the native range still jumps to the tapped point; the 20px hit box is untouched. The raised play button's shadow drops from `shadow-lg` to `shadow-md`; #1263's target sizes are an accessibility floor and stay. The output icon was already `text-theme-muted`; the bar carries no like heart (#1650 — it lives on the Now Playing sheet, see [song-actions.md](song-actions.md)). Covered by `player.component.spec.ts` ("chrome").
 
+## Mini player spacing (#1743)
+
+The owner found the bar cramped: on desktop the raised play button overlapped the notch pill by 2px
+and the inline scrubber's column (play 40px + 4px + scrubber 20px) was taller than the fixed `h-14`
+row, so it hung 4px below the viewport with its `0:00` / `4:03` labels on the screen edge; the title
+and artist were 14px and 12px. The measured spacing now (1280×800 and 390×844, from
+`mini-player-spacing.spec.ts`):
+
+| | Desktop before → after | Phone before → after |
+| --- | --- | --- |
+| Bar height | 78px (content overflowing to 82) → 96px | 98px → 104px |
+| Notch pill → play button | −2px → 10px | 10px → 12px |
+| Scrubber box → bar edge | −4px → 8px | 0px → 6px |
+| Title / artist | 14 / 12px → 16 / 14px | 14 / 12px → 16 / 14px |
+| Prev · play · next targets | 36 · 40 · 36px (unchanged) | 36 · 40 · 36px → 44 · 44 · 44px |
+
+How: on desktop the row drops its fixed height (`md:h-auto`) and takes its height from the
+transport column plus `md:pb-2`, and the grab band's bottom padding (`md:pb-2.5`) is the whole
+notch → button gap, since the column starts at the row's top. On a phone the row stays `h-14`, the
+44px buttons centre in it (6px each side), and the stacked scrubber loses its `-mt-1` tuck and gets
+`pb-1.5`, so its 3px track sits 14.5px below the play button and 14.5px above the bar's edge.
+The play button lost its lift (see "Transport buttons are sized for a thumb"). Title and artist are
+`text-base`/`text-sm` at `leading-5`, a 40px block matching the 40px cover; the desktop info column
+widened from `md:w-60` to `md:w-72` to keep long names readable at the new size, and the time labels
+are `tabular-nums` so the row does not jitter while it counts. The bar is still measured
+(`--mini-player-h`, #1694), so the scroller reservation and the toast stack (#1699) follow it with
+no change. Covered by `player.component.spec.ts` ("chrome"), `player-transport-mini.component.spec.ts`
+(the 44px phone floor, no lift) and `mini-player-spacing.spec.ts` (e2e: both layouts).
+
 ## Transport buttons are sized for a thumb (#1263)
 
 Prev/play/next were laid out for a dense desktop bar: 28px taps with 16px glyphs on the mini
@@ -2257,11 +2358,10 @@ player, 40px with 22px glyphs on the sheet. Every one of them is ~25% larger now
 `w-9`/`w-10` with 20/18px glyphs, sheet `w-[3.125rem]`/`w-[4.375rem]` with 28px glyphs — which is
 also what moves the mini bar's prev/next closer to a real 36px target.
 
-The mini play button is additionally raised (`-translate-y-1`) with `z-10` and a surface-coloured
-ring, so it breaks the row's baseline and paints over the chrome behind it rather than reading as
-one of three equal buttons. It stops short of clearing the bar's top border: the 22px band above
-the row is the grab handle, a drag target the notch rules already protect, and a button floating
-over it would be a tap target sitting on a drag target.
+The mini play button was additionally raised (`-translate-y-1`) to break the row's baseline. #1743
+retired the lift: on desktop it put the button 2px into the grab notch, so it now sits on the row's
+centre line and its filled disc alone sets it apart. On a phone every mini button is now a full 44px
+target (`w-11 h-11`, desktop keeps `md:w-9`/`md:w-10`) — see "Mini player spacing (#1743)".
 
 
 ## Keyboard shortcuts (issue #1296)

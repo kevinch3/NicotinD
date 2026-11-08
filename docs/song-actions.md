@@ -91,8 +91,8 @@ already exists).
   liked row; the detail page treats `liked` as read-only (`readOnly()` computed).
 - **On the player itself**: the original #225 rollout left Like reachable only
   via a `⋯` menu detour. The full-screen Now Playing sheet
-  (`NowPlayingCoverArtComponent`, `data-testid="now-playing-like"`, beside the
-  title next to the track-info button) is the player's single heart, reading
+  (`NowPlayingTransportComponent`, `data-testid="now-playing-like"`, leading the
+  transport row since #1716; it used to sit beside the title) is the player's single heart, reading
   `LikeService.isLiked`/`toggle` directly off `PlayerService.currentTrack()`
   (`nowPlaying.like`/`unlike` i18n keys, en+es). The mini-player bar
   deliberately carries **no** heart (#1650, owner decision): it is cover,

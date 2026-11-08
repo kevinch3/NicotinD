@@ -119,4 +119,51 @@ describe('EntityMenuHostComponent', () => {
       'text-red-400',
     );
   });
+
+  // #1714: on a phone the menu is a bottom sheet, wherever the hold happened.
+  describe('on a phone-width viewport', () => {
+    const realWidth = window.innerWidth;
+    beforeEach(() => {
+      Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true });
+    });
+    afterEach(() => {
+      Object.defineProperty(window, 'innerWidth', { value: realWidth, configurable: true });
+    });
+
+    it('opens as a full-width bottom sheet with a backdrop, not at the pointer', () => {
+      const { fixture, menu, el } = setup();
+      menu.open({ actions: actions(), at: { x: 200, y: 40 } });
+      fixture.detectChanges();
+      const panel = el.querySelector<HTMLElement>('[data-testid="entity-menu"]')!;
+      expect(panel.dataset['presentation']).toBe('sheet');
+      expect(panel.style.top).toBe('');
+      expect(panel.style.left).toBe('');
+      expect(panel.className).toContain('inset-x-0');
+      expect(el.querySelector('[data-testid="entity-menu-backdrop"]')).not.toBeNull();
+    });
+
+    it('sits on the bottom chrome when it is visible', () => {
+      const chrome = document.createElement('div');
+      chrome.setAttribute('data-bottom-chrome', '');
+      chrome.getBoundingClientRect = () =>
+        ({ top: window.innerHeight - 154, height: 154 }) as DOMRect;
+      document.body.appendChild(chrome);
+      const { fixture, menu, el } = setup();
+      menu.open({ actions: actions(), at: { x: 200, y: 40 } });
+      fixture.detectChanges();
+      const panel = el.querySelector<HTMLElement>('[data-testid="entity-menu"]')!;
+      expect(panel.style.bottom).toBe('154px');
+      chrome.remove();
+    });
+
+    it('stays a popover on the TV', () => {
+      document.documentElement.classList.add('tv-build');
+      const { fixture, menu, el } = setup();
+      menu.open({ actions: actions(), at: { x: 200, y: 40 } });
+      fixture.detectChanges();
+      const panel = el.querySelector<HTMLElement>('[data-testid="entity-menu"]')!;
+      expect(panel.dataset['presentation']).toBe('popover');
+      document.documentElement.classList.remove('tv-build');
+    });
+  });
 });

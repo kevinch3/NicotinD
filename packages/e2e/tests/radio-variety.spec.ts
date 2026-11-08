@@ -2,8 +2,8 @@ import { test, expect } from '../helpers';
 import { FIXTURE, openAlbumCard } from '../helpers';
 
 /**
- * The radio chip's variety control (docs/radio.md "Variety chip"): expanding
- * the pill shows a Close · Medium · Far dial; picking Far asks the server for
+ * The radio control's variety dial (docs/radio.md "Variety chip"): with radio
+ * on, the transport's radio icon opens a Close · Medium · Far dial; picking Far asks the server for
  * the `different` strategy on the very next radio fetch, the footer and hint
  * speak the same word as the lit segment (#1660), and the position is
  * remembered on the server as this user's default.
@@ -34,8 +34,9 @@ test.describe('radio variety chip', () => {
     const radio = page.getByTestId('now-playing-radio');
     await expect(radio).toHaveAttribute('aria-pressed', 'true');
 
-    // Expand, pick Far → the next /api/radio/next carries strategy=different.
-    await page.getByTestId('radio-chip-expand').click();
+    // With radio on, the transport's radio icon opens the dial (#1715, layout
+    // B); pick Far → the next /api/radio/next carries strategy=different.
+    await radio.click();
     const group = page.getByTestId('radio-variety');
     await expect(group).toHaveAttribute('role', 'radiogroup');
     await expect(page.getByTestId('radio-variety-medium')).toHaveAttribute('aria-checked', 'true');
