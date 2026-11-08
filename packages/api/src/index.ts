@@ -103,6 +103,7 @@ import {
 } from './services/plugins/gate.js';
 import { AcquireWatcher } from './services/acquire-watcher.js';
 import { DiscographyService } from './services/discography.service.js';
+import { mountWebUiMissing, webUiBuilt } from './middleware/web-dist-missing.js';
 import { sourceEnabled } from './services/source-plugin-ids.js';
 import { CatalogService } from './services/catalog-search.service.js';
 import { ArtistProvisioningService } from './services/artist-provisioning.service.js';
@@ -1087,8 +1088,10 @@ export function createApp({
     importUploadRoutes({ db, uploads: importUploads, imports: libraryImport }),
   );
 
-  // Serve web UI static files
-  if (webDistPath) {
+  // Serve web UI static files. Missing build → say so instead of a bare 404 (#1732).
+  if (webDistPath && !webUiBuilt(webDistPath)) {
+    mountWebUiMissing(app, webDistPath, createLogger('web-ui'));
+  } else if (webDistPath) {
     // Cache directives first: `serveStatic` sets only Content-Type, and a
     // response with no freshness information is heuristically cacheable — which
     // is how a browser pins a stale `index.html`/`ngsw.json` and an installed
