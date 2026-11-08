@@ -3,6 +3,13 @@ import { NowPlayingTransportComponent } from './now-playing-transport.component'
 import { PlayerService } from '../../../services/player.service';
 import { setInputValue } from '../../../../testing/signal-input';
 import { RecommendationsApiService } from '../../../services/api/recommendations-api.service';
+import { vi } from 'vitest';
+import { haptic } from '../../../lib/haptics';
+
+vi.mock('../../../lib/haptics', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../lib/haptics')>()),
+  haptic: vi.fn(),
+}));
 
 describe('NowPlayingTransportComponent', () => {
   beforeEach(() => {
@@ -137,5 +144,15 @@ describe('NowPlayingTransportComponent', () => {
     };
     fixture.nativeElement.querySelector('[data-testid="now-playing-radio"]').click();
     expect(player.toggleRadio).toHaveBeenCalled();
+  });
+
+  it('every transport press ticks `tap` (#1659)', () => {
+    vi.mocked(haptic).mockClear();
+    const fixture = TestBed.createComponent(NowPlayingTransportComponent);
+    fixture.detectChanges();
+    for (const id of ['now-playing-prev', 'now-playing-playpause', 'now-playing-next']) {
+      fixture.nativeElement.querySelector(`[data-testid="${id}"]`).click();
+    }
+    expect(vi.mocked(haptic).mock.calls).toEqual([['tap'], ['tap'], ['tap']]);
   });
 });

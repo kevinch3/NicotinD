@@ -271,16 +271,51 @@ Wiring (so it stays maintainable and testable):
 
 ## Haptics
 
-**`@capacitor/haptics`** is a `packages/mobile` dependency (#1376). It gives swipe-to-skip its tick:
-`hapticTick()` (`packages/web/src/app/lib/haptics.ts`) reaches the plugin through the Capacitor global
-and no-ops wherever it is absent, so the web bundle imports nothing (see [web-ui.md](web-ui.md) "Swipe
-to skip"). On Android the plugin drives the platform `Vibrator` (no Play Services, so F-Droid is
-unaffected) and merges one manifest permission, the normal (install-time, no prompt) **`VIBRATE`**.
-iOS gets the pod on `cap sync ios`. The vertical swipes (#1292) do not tick.
-Because a missing plugin is silent, `capacitor-toolchain.test.ts` fails if the dependency or its
-gradle include is dropped.
+**`@capacitor/haptics`** is a `packages/mobile` dependency (#1376), reached only through
+`packages/web/src/app/lib/haptics.ts` via the Capacitor global, so the web bundle imports nothing. On
+Android the plugin drives the platform `Vibrator` (no Play Services, so F-Droid is unaffected) and merges
+one manifest permission, the normal (install-time, no prompt) **`VIBRATE`**. iOS gets the pod on
+`cap sync ios`. Because a missing plugin is silent, `capacitor-toolchain.test.ts` fails if the dependency
+or its gradle include is dropped. An in-house plugin (`performHapticFeedback`, no permission) was
+evaluated on #1659 and deferred by the owner: swapping it in is a change to `lib/haptics.ts` alone.
 
-**What still needs a device.** One light tick per committed skip, on Android and iOS.
+**A vocabulary, not styles (#1659).** Call sites say *what happened* — `haptic('tap' | 'select' | 'hold'
+| 'commit' | 'success' | 'warning' | 'error')` — and `HAPTIC_MAP` is the one table that turns an event
+into a plugin call and a `navigator.vibrate` pattern. Retuning a feel is a one-line edit there.
+
+| Event | Native (`@capacitor/haptics`) | Web pattern (ms) | Fired by |
+| --- | --- | --- | --- |
+| `tap` | impact `LIGHT` | `10` | transport prev/play/next (mini bar, sheet, karaoke), unlike, seek-bar release, waveform tap, a queue drop |
+| `select` | `selectionStart` → `selectionChanged` → `selectionEnd` | `5` | bottom-nav tab change, Queue/Lyrics tab switch, a lyrics sync nudge |
+| `hold` | impact `MEDIUM` | `25` | the hold that opens a menu (`EntityActionsDirective`, the mosaic), a queue-row lift |
+| `commit` | impact `LIGHT` | `15` | swipe-to-skip, sheet open/dismiss snap, queue swipe-remove, a Settings level press (sample) |
+| `success` | notification `SUCCESS` | `10,60,10` | like, a track or collection saved offline |
+| `warning` | notification `WARNING` | `25,80,25` | a destructive `ConfirmService.ask()` opening (`destructive: false` opts out, as Download all does), a collection save stopped at the cap or short of its total |
+| `error` | notification `ERROR` | `40,60,40,60,40` | a save offline that stored nothing, a like/unlike the server rejected |
+
+`select` is a whole start/changed/end triple because both platforms tick `selectionChanged` only inside
+a selection. `hapticTick()` survives as an alias of `commit`. Templates reach the table through
+`HapticDirective` (`<button appHaptic="select">`, bare `appHaptic` = `tap`) on the click; everything
+else calls `haptic()`. An `eslint.config.js` `no-restricted-syntax` entry fails any `.vibrate` or
+`getCapacitorPlugin('Haptics')` outside `lib/haptics.ts`, since a second door would skip the gate.
+
+**The gate.** Settings → Playback carries a per-device **Off / Reduced / Full** choice
+(`localStorage` `nicotind-haptics`), shown only where `hapticsAvailable()`: a native shell, or a coarse
+pointer with `navigator.vibrate`. **Reduced is the default** (owner decision on #1659) and keeps only
+`hold`, `commit` and `error` — the moments a finger cannot otherwise feel landing. `prefers-reduced-motion`
+caps Full at Reduced. The same event again within `HAPTIC_COALESCE_MS` (40 ms) is dropped, so rapid
+skips or a burst of nudges never buzz continuously. Everything is fire-and-forget and never throws.
+
+**Where it does nothing.** Electron and TV (`isTvUi()`, no touch) are no-ops; iOS Safari and an iOS
+home-screen PWA have no vibration API, so they are silent; desktop browsers are skipped by the
+coarse-pointer test. Android Chrome/PWA vibrates the table's web column, but Chrome drops a vibration until the page has
+had its first tap (sticky activation) — and a touch `pointerdown` grants none, so the one wired case it
+hits is a hold that is the very first touch after load. Native shells are unaffected. Auto-preserve is
+background work and never ticks. Out of scope: scrolling, hover, anything per frame.
+
+**What still needs a device.** The feel of every row of the table on Android and iOS (tune
+`HAPTIC_MAP` and record the values here), one tick per committed skip, and no tick on a short tap of a
+tile under Reduced.
 
 ## Capacitor version
 

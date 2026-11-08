@@ -1,4 +1,5 @@
 import { Injectable, signal } from '@angular/core';
+import { haptic } from '../lib/haptics';
 
 /**
  * Global confirm dialog. A single modal (see ConfirmHostComponent, mounted in
@@ -10,16 +11,23 @@ export interface ConfirmLabels {
   cancelLabel?: string;
 }
 
+export interface ConfirmOptions extends ConfirmLabels {
+  /** Ticks `warning` as the dialog opens (#1659); false for a confirm that loses nothing. */
+  destructive?: boolean;
+}
+
 @Injectable({ providedIn: 'root' })
 export class ConfirmService {
   readonly request = signal<({ message: string } & ConfirmLabels) | null>(null);
   private pending: ((ok: boolean) => void) | null = null;
 
   /** `labels` names the two choices, so a button never answers its own title (#1542). */
-  ask(message: string, labels: ConfirmLabels = {}): Promise<boolean> {
+  ask(message: string, options: ConfirmOptions = {}): Promise<boolean> {
+    const { destructive = true, ...labels } = options;
     // A prior open request resolves false before we replace it.
     this.pending?.(false);
     this.request.set({ message, ...labels });
+    if (destructive) haptic('warning');
     return new Promise<boolean>((res) => (this.pending = res));
   }
 

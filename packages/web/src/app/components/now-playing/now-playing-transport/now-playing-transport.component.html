@@ -18,12 +18,13 @@
      on any surface (docs/web-ui.md). The radio chip below is what "surprise me"
      means here. -->
 <div class="flex items-center justify-center gap-6 mb-6" appTvNavGroup [axis]="'horizontal'">
-  <button appTvNavItem (click)="prevClicked.emit()" data-testid="now-playing-prev" [attr.aria-label]="'nowPlaying.previous' | t" class="w-[3.125rem] h-[3.125rem] flex items-center justify-center text-theme-secondary hover:text-theme-primary transition">
+  <button appTvNavItem appHaptic (click)="prevClicked.emit()" data-testid="now-playing-prev" [attr.aria-label]="'nowPlaying.previous' | t" class="w-[3.125rem] h-[3.125rem] flex items-center justify-center text-theme-secondary hover:text-theme-primary transition">
     <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="5" width="3" height="14" /><polygon points="21,5 9,12 21,19" /></svg>
   </button>
 
   <button
     appTvNavItem
+    appHaptic
     (click)="playPauseClicked.emit()"
     data-testid="now-playing-playpause"
     [attr.aria-label]="(playing() ? 'nowPlaying.pause' : 'nowPlaying.play') | t"
@@ -39,7 +40,7 @@
     }
   </button>
 
-  <button appTvNavItem (click)="nextClicked.emit()" data-testid="now-playing-next" [attr.aria-label]="'nowPlaying.next' | t" class="w-[3.125rem] h-[3.125rem] flex items-center justify-center text-theme-secondary hover:text-theme-primary transition">
+  <button appTvNavItem appHaptic (click)="nextClicked.emit()" data-testid="now-playing-next" [attr.aria-label]="'nowPlaying.next' | t" class="w-[3.125rem] h-[3.125rem] flex items-center justify-center text-theme-secondary hover:text-theme-primary transition">
     <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><polygon points="3,5 15,12 3,19" /><rect x="18" y="5" width="3" height="14" /></svg>
   </button>
 </div>

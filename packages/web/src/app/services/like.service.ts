@@ -2,6 +2,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { LibraryApiService } from './api/library-api.service';
 import { PlaylistService } from './playlist.service';
+import { haptic } from '../lib/haptics';
 
 /**
  * Per-user "like" state (issue #225). A like is a personal gesture, so it can't
@@ -38,6 +39,8 @@ export class LikeService {
   /** Optimistically flip the heart, then persist; revert the signal on failure. */
   async toggle(songId: string): Promise<void> {
     const wasLiked = this.isLiked(songId);
+    // Every caller is a person pressing a heart: a like lands, an unlike is a tap.
+    haptic(wasLiked ? 'tap' : 'success');
     this.setLocal(songId, !wasLiked);
     try {
       await firstValueFrom(wasLiked ? this.api.unlikeSong(songId) : this.api.likeSong(songId));
@@ -45,6 +48,7 @@ export class LikeService {
       void this.playlists.refresh();
     } catch {
       this.setLocal(songId, wasLiked);
+      haptic('error');
     }
   }
 

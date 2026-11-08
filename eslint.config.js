@@ -5,7 +5,8 @@ import nicotind from './scripts/eslint-rules/index.js';
 /**
  * Held to the recommended rules. `packages/web` is not: that needs
  * `@angular-eslint` (docs/quality-gates.md). It IS parsed, for the
- * `nicotind/*` code-shape rules below, which need no Angular awareness.
+ * `nicotind/*` code-shape rules and the haptics door below, which need no
+ * Angular awareness.
  */
 const RECOMMENDED = ['packages/*/src/**/*.ts', 'src/**/*.ts', 'scripts/**/*.{ts,js}'];
 
@@ -14,6 +15,13 @@ export const TAG_LOADERS = {
   'node-id3': 'packages/api/src/services/audio-tags.ts',
   'music-metadata': 'packages/api/src/services/music-metadata-loader.ts',
 };
+
+/** The one module allowed to reach a vibration API (#1659). */
+export const HAPTICS_MODULE = 'packages/web/src/app/lib/haptics.ts';
+
+const hapticsBan = (what) => ({
+  message: `${what} only inside ${HAPTICS_MODULE}: call \`haptic(event)\` from there, or the level setting and the throttle are skipped (#1659).`,
+});
 
 /** @param {string} mod */
 function tagLoaderBan(mod) {
@@ -79,6 +87,22 @@ export default [
           paths: [
             { name: 'vitest', message: 'Outside packages/web, tests run on bun: import bun:test.' },
           ],
+        },
+      ],
+    },
+  },
+  // One haptics door (#1659): `navigator.vibrate` or the Haptics plugin anywhere
+  // else would buzz past the user's Off/Reduced choice and the throttle.
+  {
+    files: ['packages/web/src/**/*.ts'],
+    ignores: ['**/*.spec.ts', HAPTICS_MODULE],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        { selector: "MemberExpression[property.name='vibrate']", ...hapticsBan('Vibrate') },
+        {
+          selector: "CallExpression[callee.name='getCapacitorPlugin'][arguments.0.value='Haptics']",
+          ...hapticsBan('Reach the Haptics plugin'),
         },
       ],
     },

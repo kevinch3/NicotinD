@@ -201,7 +201,9 @@
     <div class="flex items-center justify-center gap-6" appTvNavGroup [axis]="'horizontal'">
       <button
         appTvNavItem
+        appHaptic
         (click)="prevClicked.emit()"
+        data-testid="karaoke-prev"
         [attr.aria-label]="'nowPlaying.previous' | t"
         class="w-10 h-10 flex items-center justify-center text-white/60 hover:text-white transition rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
       >
@@ -212,7 +214,9 @@
       </button>
       <button
         appTvNavItem
+        appHaptic
         (click)="playPauseClicked.emit()"
+        data-testid="karaoke-playpause"
         [attr.aria-label]="(playing() ? 'nowPlaying.pause' : 'nowPlaying.play') | t"
         [attr.data-buffering]="buffering()"
         class="w-14 h-14 rounded-full bg-white/20 backdrop-blur-sm text-white flex items-center justify-center hover:bg-white/30 transition border border-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
@@ -232,7 +236,9 @@
       </button>
       <button
         appTvNavItem
+        appHaptic
         (click)="nextClicked.emit()"
+        data-testid="karaoke-next"
         [attr.aria-label]="'nowPlaying.next' | t"
         class="w-10 h-10 flex items-center justify-center text-white/60 hover:text-white transition rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
       >
@@ -252,6 +258,7 @@
         data-testid="karaoke-lyrics-sync"
       >
         <button
+          appHaptic="select"
           (click)="offsetNudged.emit(-step)"
           data-testid="karaoke-lyrics-sync-earlier"
           [attr.aria-label]="'nowPlaying.syncEarlier' | t"
@@ -269,6 +276,7 @@
           {{ offsetLabel() || ('nowPlaying.syncInSync' | t) }}
         </span>
         <button
+          appHaptic="select"
           (click)="offsetNudged.emit(step)"
           data-testid="karaoke-lyrics-sync-later"
           [attr.aria-label]="'nowPlaying.syncLater' | t"

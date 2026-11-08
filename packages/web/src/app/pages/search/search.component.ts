@@ -644,7 +644,7 @@ export class SearchComponent implements OnInit, OnDestroy {
     const size = formatBytes(flat.reduce((sum, f) => sum + (f.size || 0), 0));
     const ok = await this.confirm.ask(
       this.i18n.t('acquire.downloadAllConfirm', { count: flat.length, peers, size }),
-      { confirmLabel: this.i18n.t('acquire.downloadAllGo') },
+      { confirmLabel: this.i18n.t('acquire.downloadAllGo'), destructive: false },
     );
     if (ok) await this.downloadAll();
   }

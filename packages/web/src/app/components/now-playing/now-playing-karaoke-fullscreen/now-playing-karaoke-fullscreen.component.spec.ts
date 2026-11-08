@@ -1,6 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 import { NowPlayingKaraokeFullscreenComponent } from './now-playing-karaoke-fullscreen.component';
 import { setInputValue } from '../../../../testing/signal-input';
+import { vi } from 'vitest';
+import { haptic } from '../../../lib/haptics';
+
+vi.mock('../../../lib/haptics', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../lib/haptics')>()),
+  haptic: vi.fn(),
+}));
 
 describe('NowPlayingKaraokeFullscreenComponent', () => {
   it('emits exit when the close button is clicked', () => {
@@ -140,6 +147,28 @@ describe('NowPlayingKaraokeFullscreenComponent', () => {
     for (const button of buttons) {
       expect(button.hasAttribute('appTvNavItem')).toBe(true);
     }
+  });
+
+  it('transport presses tick `tap` and each sync nudge ticks `select` (#1659)', () => {
+    vi.mocked(haptic).mockClear();
+    const fixture = TestBed.createComponent(NowPlayingKaraokeFullscreenComponent);
+    setInputValue(fixture.componentInstance.canSync, true);
+    fixture.detectChanges();
+    const steps: number[] = [];
+    fixture.componentInstance.offsetNudged.subscribe((ms) => steps.push(ms));
+    for (const id of ['karaoke-prev', 'karaoke-playpause', 'karaoke-next']) {
+      fixture.nativeElement.querySelector(`[data-testid="${id}"]`).click();
+    }
+    fixture.nativeElement.querySelector('[data-testid="karaoke-lyrics-sync-later"]').click();
+    fixture.nativeElement.querySelector('[data-testid="karaoke-lyrics-sync-earlier"]').click();
+    expect(vi.mocked(haptic).mock.calls).toEqual([
+      ['tap'],
+      ['tap'],
+      ['tap'],
+      ['select'],
+      ['select'],
+    ]);
+    expect(steps).toHaveLength(2);
   });
 });
 

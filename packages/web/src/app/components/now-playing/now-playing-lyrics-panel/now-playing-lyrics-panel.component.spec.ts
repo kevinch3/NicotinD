@@ -1,6 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 import { NowPlayingLyricsPanelComponent } from './now-playing-lyrics-panel.component';
 import { setInputValue } from '../../../../testing/signal-input';
+import { vi } from 'vitest';
+import { haptic } from '../../../lib/haptics';
+
+vi.mock('../../../lib/haptics', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../lib/haptics')>()),
+  haptic: vi.fn(),
+}));
 
 describe('NowPlayingLyricsPanelComponent', () => {
   it('shows the empty state with a fetch button when there are no lyrics', () => {
@@ -64,6 +71,14 @@ describe('NowPlayingLyricsPanelComponent', () => {
       fixture.nativeElement.querySelector('[data-testid="lyrics-sync-later"]').click();
       fixture.nativeElement.querySelector('[data-testid="lyrics-sync-earlier"]').click();
       expect(steps).toEqual([fixture.componentInstance.step, -fixture.componentInstance.step]);
+    });
+
+    it('each nudge ticks `select` (#1659)', () => {
+      vi.mocked(haptic).mockClear();
+      const fixture = withLyrics();
+      fixture.nativeElement.querySelector('[data-testid="lyrics-sync-later"]').click();
+      fixture.nativeElement.querySelector('[data-testid="lyrics-sync-earlier"]').click();
+      expect(vi.mocked(haptic).mock.calls).toEqual([['select'], ['select']]);
     });
 
     it('reads "in sync" at zero and a signed value otherwise', () => {

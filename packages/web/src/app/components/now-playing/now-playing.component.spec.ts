@@ -6,6 +6,12 @@ import type { Observable } from 'rxjs';
 import type { LyricsDto, WaveformData } from '@nicotind/core';
 import { provideRouter, Router } from '@angular/router';
 import { NowPlayingComponent } from './now-playing.component';
+import { haptic } from '../../lib/haptics';
+
+vi.mock('../../lib/haptics', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/haptics')>()),
+  haptic: vi.fn(),
+}));
 import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
@@ -901,6 +907,20 @@ describe('NowPlayingComponent', () => {
       expect(component.dragOffsetPx()).toBe(0);
     });
 
+    it('a dismiss commit ticks `commit` once; a snap-back is silent (#1659)', () => {
+      vi.mocked(haptic).mockClear();
+      const { fixture } = setup();
+      const component = fixture.componentInstance;
+      component.onBodyPointerDown(pointer('pointerdown', 100));
+      move(150);
+      up(150);
+      expect(haptic).not.toHaveBeenCalled();
+      component.onBodyPointerDown(pointer('pointerdown', 100));
+      move(280);
+      up(280);
+      expect(haptic).toHaveBeenCalledExactlyOnceWith('commit');
+    });
+
     it('a short but fast flick down closes', () => {
       const { fixture, playerStub } = setup();
       const component = fixture.componentInstance;
@@ -1163,6 +1183,16 @@ describe('NowPlayingComponent', () => {
       drag(300, 260);
       expect(current.playNext).not.toHaveBeenCalled();
       expect(current.playPrev).not.toHaveBeenCalled();
+    });
+
+    it('a committed skip ticks `commit` once — not also the button `tap` (#1659)', () => {
+      vi.mocked(haptic).mockClear();
+      current = skipSetup();
+      drag(300, 260);
+      expect(haptic).not.toHaveBeenCalled();
+      drag(300, 150);
+      expect(current.playNext).toHaveBeenCalledTimes(1);
+      expect(haptic).toHaveBeenCalledExactlyOnceWith('commit');
     });
 
     it('drives a remote device exactly like the ⏭ button', () => {

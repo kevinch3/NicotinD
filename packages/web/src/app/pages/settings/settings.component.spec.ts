@@ -17,6 +17,13 @@ import { ConfirmService } from '../../services/confirm.service';
 import { APP_BUILD_INFO, APP_VERSION } from '../../app.config';
 import { resolveBuildInfo } from '../../lib/build-info';
 import { isElectron } from '../../lib/platform';
+import {
+  HAPTIC_LEVEL_KEY,
+  haptic,
+  hapticLevel,
+  hapticsAvailable,
+  setHapticLevel,
+} from '../../lib/haptics';
 import { pickDirectory, setMusicDir, revealLogs } from '../../services/native/native-capabilities';
 import { ToastService } from '../../services/toast.service';
 import { UpdateService } from '../../services/update.service';
@@ -27,6 +34,11 @@ import BASE_CATALOG from '../../../../public/i18n/en.json';
 vi.mock('../../lib/platform', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../lib/platform')>();
   return { ...actual, isElectron: vi.fn().mockReturnValue(false) };
+});
+
+vi.mock('../../lib/haptics', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../lib/haptics')>();
+  return { ...actual, haptic: vi.fn(), hapticsAvailable: vi.fn().mockReturnValue(false) };
 });
 
 vi.mock('../../services/native/native-capabilities', () => ({
@@ -604,6 +616,60 @@ describe('SettingsComponent (get, then hear it opt-out, #1294)', () => {
     fixture.detectChanges();
     expandAllGroups(fixture);
     expect(toggle(fixture)).toBeNull();
+  });
+});
+
+describe('SettingsComponent (haptics level, #1659)', () => {
+  async function makeFixture(available: boolean) {
+    vi.mocked(hapticsAvailable).mockReturnValue(available);
+    const { list } = makeProviders('user');
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    expandAllGroups(fixture);
+    return fixture;
+  }
+  const el = (fixture: { nativeElement: HTMLElement }, id: string) =>
+    fixture.nativeElement.querySelector<HTMLButtonElement>(`[data-testid="${id}"]`);
+
+  afterEach(() => {
+    vi.mocked(hapticsAvailable).mockReturnValue(false);
+    vi.mocked(haptic).mockClear();
+    setHapticLevel('reduced');
+    localStorage.clear();
+  });
+
+  it('is not offered where nothing can be felt (desktop, TV, iOS Safari)', async () => {
+    const fixture = await makeFixture(false);
+    expect(el(fixture, 'settings-haptics')).toBeNull();
+  });
+
+  it('offers Off / Reduced / Full, marks the current level, and a press sets it per device', async () => {
+    setHapticLevel('reduced');
+    const fixture = await makeFixture(true);
+    expect(el(fixture, 'settings-haptics')).not.toBeNull();
+    expect(el(fixture, 'settings-haptics-reduced')!.getAttribute('aria-pressed')).toBe('true');
+    expect(el(fixture, 'settings-haptics-full')!.getAttribute('aria-pressed')).toBe('false');
+
+    el(fixture, 'settings-haptics-off')!.click();
+    fixture.detectChanges();
+    expect(hapticLevel()).toBe('off');
+    expect(localStorage.getItem(HAPTIC_LEVEL_KEY)).toBe('off');
+    expect(el(fixture, 'settings-haptics-off')!.getAttribute('aria-pressed')).toBe('true');
+    // The press plays a sample of the new level.
+    expect(haptic).toHaveBeenCalledWith('commit');
+    for (const key of [
+      'settings.hapticsTitle',
+      'settings.hapticsHint',
+      'settings.haptics.off',
+      'settings.haptics.reduced',
+      'settings.haptics.full',
+    ]) {
+      expect(BASE_CATALOG, `missing catalog key: ${key}`).toHaveProperty([key]);
+    }
   });
 });
 

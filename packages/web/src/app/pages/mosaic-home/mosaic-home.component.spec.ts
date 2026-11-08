@@ -26,6 +26,12 @@ import type {
 import type { Track } from '../../services/player.service';
 import { LANE_MIX, type MosaicTile } from '../../lib/mosaic-tiles';
 import type { PackedTile, Packing } from '../../lib/mosaic-packing';
+import { haptic } from '../../lib/haptics';
+
+vi.mock('../../lib/haptics', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/haptics')>()),
+  haptic: vi.fn(),
+}));
 
 const song = (over: Partial<Song> = {}): Song => ({
   id: 's1',
@@ -531,6 +537,29 @@ describe('hold-for-menu (#1298)', () => {
       expect(c.suppressTap).toBe(false);
       expect(stop).toHaveBeenCalled();
       expect(player.startRadio).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('the hold ticks `hold` when the menu opens, and a released press never ticks (#1659)', async () => {
+    vi.useFakeTimers();
+    vi.mocked(haptic).mockClear();
+    try {
+      const { component, fixture } = setup({ tasteBreakers: [song({ id: 'a' })] });
+      await settle(fixture);
+      const c = internals(component);
+      const tile = component.tiles().find((t) => t.kind === 'song')!;
+      c.schedulePress(tile, { x: 0, y: 0 });
+      vi.advanceTimersByTime(200);
+      c.cancelPress();
+      vi.advanceTimersByTime(1000);
+      expect(haptic).not.toHaveBeenCalled();
+      c.schedulePress(tile, { x: 0, y: 0 });
+      vi.advanceTimersByTime(449);
+      expect(haptic).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(haptic).toHaveBeenCalledExactlyOnceWith('hold');
     } finally {
       vi.useRealTimers();
     }

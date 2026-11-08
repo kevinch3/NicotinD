@@ -1,5 +1,6 @@
 import { Directive, ElementRef, Injector, Input, inject } from '@angular/core';
 import type { TrackAction } from '../components/track-row/track-row.component';
+import { haptic } from '../lib/haptics';
 import { isTvUi } from '../lib/platform';
 import { EntityMenuService } from '../services/entity-menu.service';
 
@@ -78,6 +79,7 @@ export class EntityActionsDirective {
       this.timer = null;
       this.origin = null;
       this.suppressClick = true;
+      haptic('hold');
       this.menu.open({ actions: this.actions(), at });
     }, HOLD_MS);
   }

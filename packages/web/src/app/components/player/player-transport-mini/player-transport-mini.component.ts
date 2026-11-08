@@ -1,6 +1,7 @@
 import { Component, input, output } from '@angular/core';
 import { TvNavGroupDirective } from '../../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
+import { HapticDirective } from '../../../directives/haptic.directive';
 
 /**
  * The prev/play/next button cluster from the mini-player bar
@@ -16,7 +17,7 @@ import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
  */
 @Component({
   selector: 'app-player-transport-mini',
-  imports: [TvNavGroupDirective, TvNavItemDirective],
+  imports: [TvNavGroupDirective, TvNavItemDirective, HapticDirective],
   // `display: contents` so the host doesn't break the mini-player bar's flex
   // row — the shell's flex container needs to see this component's own
   // top-level element as the flex item, and `contents` makes the host

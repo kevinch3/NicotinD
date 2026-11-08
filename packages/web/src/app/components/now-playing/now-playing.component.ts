@@ -35,7 +35,7 @@ import {
   shouldCommit,
 } from '../../lib/vertical-swipe';
 import { canStartSheetSkip, skipDirection } from '../../lib/swipe-to-skip';
-import { hapticTick } from '../../lib/haptics';
+import { haptic } from '../../lib/haptics';
 import { ScrollLockService } from '../../services/scroll-lock.service';
 import { ServerConfigService } from '../../services/server-config.service';
 import { isTvUi } from '../../lib/platform';
@@ -274,6 +274,7 @@ export class NowPlayingComponent {
       if (
         shouldCommit(offset, velocity, { thresholdPx: NowPlayingComponent.DISMISS_THRESHOLD_PX })
       ) {
+        haptic('commit');
         this.player.setNowPlayingOpen(false);
       }
     },
@@ -310,7 +311,7 @@ export class NowPlayingComponent {
       if (!owned) return;
       const direction = skipDirection(dx, velocity);
       if (!direction) return;
-      hapticTick();
+      haptic('commit');
       if (direction === 'next') this.handleNext();
       else this.handlePrev();
     },

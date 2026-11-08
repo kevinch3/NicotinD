@@ -305,7 +305,10 @@ Prettier does still format those files — its ignore list is separate.
 is a deliberate follow-up, not an oversight: it needs `@angular-eslint`, and a
 `@typescript-eslint/utils` root devDependency because `bunfig.toml` sets
 `peer = false` under an isolated linker. Since #1316 it **is** parsed, for the
-`nicotind/*` code-shape rules only — see "Code-shape gates as lint rules" below.
+`nicotind/*` code-shape rules — see "Code-shape gates as lint rules" below — plus,
+since #1659, one core `no-restricted-syntax` entry, the haptics door (`.vibrate` or
+`getCapacitorPlugin('Haptics')` outside `lib/haptics.ts`), which `config.test.ts`
+asserts.
 
 ## Code-shape gates as lint rules (#1316)
 

@@ -1,5 +1,6 @@
 import { Component, computed, input, output, signal } from '@angular/core';
 import { seekPercent } from '../../lib/seek-utils';
+import { haptic } from '../../lib/haptics';
 import {
   bufferedGradient,
   computeBufferedSegments,
@@ -70,6 +71,8 @@ export class SeekBarComponent {
   onChange(event: Event): void {
     const v = Number((event.target as HTMLInputElement).value);
     this.scrub.set(null);
+    // One tick at the release, never per drag step.
+    haptic('tap');
     this.seek.emit(v);
   }
 }

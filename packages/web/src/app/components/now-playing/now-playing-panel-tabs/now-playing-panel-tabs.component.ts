@@ -3,6 +3,7 @@ import { IconComponent } from '../../icon/icon.component';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
 import { TvNavGroupDirective } from '../../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
+import { haptic } from '../../../lib/haptics';
 
 /**
  * Queue/Lyrics tab switcher for the Now Playing panel — a live queue-count
@@ -27,4 +28,10 @@ export class NowPlayingPanelTabsComponent {
   readonly hasLyrics = input(false);
 
   readonly panelSelected = output<'queue' | 'lyrics'>();
+
+  /** A switch ticks; pressing the tab already shown changes nothing, so it does not. */
+  select(panel: 'queue' | 'lyrics'): void {
+    if (panel !== this.activePanel()) haptic('select');
+    this.panelSelected.emit(panel);
+  }
 }

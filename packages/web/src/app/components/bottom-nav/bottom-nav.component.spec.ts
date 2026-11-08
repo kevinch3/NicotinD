@@ -8,6 +8,13 @@ import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
 import { ImportUploadService } from '../../services/import-upload.service';
 import BASE_CATALOG from '../../../../public/i18n/en.json';
+import { vi } from 'vitest';
+import { haptic } from '../../lib/haptics';
+
+vi.mock('../../lib/haptics', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/haptics')>()),
+  haptic: vi.fn(),
+}));
 
 @Component({ standalone: true, template: '' })
 class _Stub {}
@@ -171,6 +178,17 @@ describe('BottomNavComponent', () => {
       expect(settings, 'settings link present').toBeTruthy();
       expect(library!.classList.contains('is-active')).toBe(true);
       expect(settings!.classList.contains('is-active')).toBe(false);
+    });
+
+    it('a tab change ticks `select`; re-pressing the current tab does not (#1659)', async () => {
+      vi.mocked(haptic).mockClear();
+      const { fixture, router } = setup();
+      await router.navigateByUrl('/library');
+      fixture.detectChanges();
+      linkFor(fixture, '/library')!.click();
+      expect(haptic).not.toHaveBeenCalled();
+      linkFor(fixture, '/settings')!.click();
+      expect(haptic).toHaveBeenCalledExactlyOnceWith('select');
     });
 
     it('Home only matches on exact "/" so children do not light it up', async () => {

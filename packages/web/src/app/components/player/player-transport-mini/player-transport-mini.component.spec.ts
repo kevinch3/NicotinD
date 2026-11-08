@@ -1,6 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 import { PlayerTransportMiniComponent } from './player-transport-mini.component';
 import { setInputValue } from '../../../../testing/signal-input';
+import { vi } from 'vitest';
+import { haptic } from '../../../lib/haptics';
+
+vi.mock('../../../lib/haptics', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../lib/haptics')>()),
+  haptic: vi.fn(),
+}));
 
 describe('PlayerTransportMiniComponent', () => {
   beforeEach(() => {
@@ -62,5 +69,15 @@ describe('PlayerTransportMiniComponent', () => {
     for (const btn of fixture.nativeElement.querySelectorAll('button')) {
       expect((btn as HTMLElement).getAttribute('aria-label')?.trim()).toBeTruthy();
     }
+  });
+
+  it('every transport press ticks `tap` (#1659)', () => {
+    vi.mocked(haptic).mockClear();
+    const fixture = TestBed.createComponent(PlayerTransportMiniComponent);
+    fixture.detectChanges();
+    for (const id of ['player-prev', 'player-playpause', 'player-next']) {
+      fixture.nativeElement.querySelector(`[data-testid="${id}"]`).click();
+    }
+    expect(vi.mocked(haptic).mock.calls).toEqual([['tap'], ['tap'], ['tap']]);
   });
 });

@@ -27,6 +27,7 @@ import { ToastService } from '../../services/toast.service';
 import { buildMediaMetadata } from '../../lib/media-metadata';
 import * as db from '../../lib/preserve-store';
 import { createVerticalSwipe, shouldCommit } from '../../lib/vertical-swipe';
+import { haptic } from '../../lib/haptics';
 import {
   MINI_PLAYER_HEIGHT_VAR,
   miniPlayerReservation,
@@ -1794,6 +1795,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
         return;
       }
       if (shouldCommit(lift, -velocity, { thresholdPx: PlayerComponent.OPEN_THRESHOLD_PX })) {
+        haptic('commit');
         this.player.setNowPlayingOpen(true);
       }
     },

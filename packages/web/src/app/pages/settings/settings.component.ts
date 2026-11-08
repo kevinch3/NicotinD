@@ -18,6 +18,14 @@ import {
 } from '../../services/media-controls.service';
 import { isIosNative, isElectron, isNativePlatform, isTvUi } from '../../lib/platform';
 import {
+  HAPTIC_LEVELS,
+  haptic,
+  hapticLevel,
+  hapticsAvailable,
+  setHapticLevel,
+  type HapticLevel,
+} from '../../lib/haptics';
+import {
   loadOverscanPreset,
   setOverscanPreset,
   OVERSCAN_PRESETS,
@@ -122,6 +130,17 @@ export class SettingsComponent {
   readonly isTv = isTvUi();
   readonly overscanPresets = Object.keys(OVERSCAN_PRESETS) as OverscanPreset[];
   readonly overscanPreset = signal<OverscanPreset>(loadOverscanPreset());
+
+  // Haptics (#1659): per device, shown only where something can be felt.
+  readonly hapticsShown = hapticsAvailable();
+  readonly hapticLevels = HAPTIC_LEVELS;
+  readonly hapticLevel = hapticLevel;
+
+  setHaptics(level: HapticLevel): void {
+    setHapticLevel(level);
+    // A sample of the new setting, so the choice is felt where it is made.
+    haptic('commit');
+  }
 
   setOverscan(preset: OverscanPreset): void {
     this.overscanPreset.set(preset);

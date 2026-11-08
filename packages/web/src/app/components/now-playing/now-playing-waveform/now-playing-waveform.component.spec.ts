@@ -2,6 +2,13 @@ import { TestBed } from '@angular/core/testing';
 import { NowPlayingWaveformComponent } from './now-playing-waveform.component';
 import { setInputValue } from '../../../../testing/signal-input';
 import type { WaveformData } from '../../../../types/core';
+import { vi } from 'vitest';
+import { haptic } from '../../../lib/haptics';
+
+vi.mock('../../../lib/haptics', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../lib/haptics')>()),
+  haptic: vi.fn(),
+}));
 
 const WAVE: WaveformData = {
   version: 1,
@@ -87,6 +94,14 @@ describe('NowPlayingWaveformComponent', () => {
       new MouseEvent('pointerdown', { clientX: 50, bubbles: true }) as unknown as PointerEvent,
     );
     expect(seeks).toEqual([50]);
+  });
+
+  it('a tap-to-seek ticks `tap`; a strip with no duration does not (#1659)', () => {
+    vi.mocked(haptic).mockClear();
+    setup({ waveform: WAVE, duration: 0 }).component.seekAt(0.5);
+    expect(haptic).not.toHaveBeenCalled();
+    setup({ waveform: WAVE, duration: 200 }).component.seekAt(0.5);
+    expect(haptic).toHaveBeenCalledExactlyOnceWith('tap');
   });
 
   it('clips the played overlay to the progress fraction', () => {

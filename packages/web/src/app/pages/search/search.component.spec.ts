@@ -722,6 +722,8 @@ describe('SearchComponent — Download all asks first (#1542)', () => {
         size: formatBytes(5_000_000),
       }),
     );
+    // Queuing downloads loses nothing, so it opens without the destructive `warning` (#1659).
+    expect(ask.mock.calls[0]![1]).toMatchObject({ destructive: false });
     expect(enqueueDownload).not.toHaveBeenCalled();
   });
 

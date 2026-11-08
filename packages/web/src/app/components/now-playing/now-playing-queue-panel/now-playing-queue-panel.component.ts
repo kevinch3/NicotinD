@@ -20,6 +20,7 @@ import { TvNavGroupDirective } from '../../../directives/tv-nav-group.directive'
 import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 import { createRowGesture, reorderTargetIndex } from '../../../lib/row-gesture';
 import { shouldCommit } from '../../../lib/vertical-swipe';
+import { haptic } from '../../../lib/haptics';
 import { isCoarsePointer } from '../../../lib/platform';
 
 /** Leftward travel that removes a row without a flick. */
@@ -94,10 +95,14 @@ export class NowPlayingQueuePanelComponent {
       this.swallowNextClick();
       if (cancelled || index === null) return;
       if (shouldCommit(-dx, -velocity, { thresholdPx: QUEUE_SWIPE_REMOVE_PX })) {
+        haptic('commit');
         this.removeWithUndo(index);
       }
     },
-    onReorderStart: () => this.beginLift(),
+    onReorderStart: () => {
+      haptic('hold');
+      this.beginLift();
+    },
     onReorderMove: (dy, e) => {
       this.liftFingerDy = dy;
       this.liftClientY = e.clientY;
@@ -109,7 +114,9 @@ export class NowPlayingQueuePanelComponent {
       const to = this.liftTarget();
       this.endLift();
       this.swallowNextClick();
-      if (!cancelled && from !== null && to !== null) this.reorder(from, to);
+      if (cancelled || from === null || to === null) return;
+      haptic('tap');
+      this.reorder(from, to);
     },
   });
 

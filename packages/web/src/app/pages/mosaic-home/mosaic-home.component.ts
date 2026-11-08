@@ -30,6 +30,7 @@ import { ToastService } from '../../services/toast.service';
 import { SkeletonComponent } from '../../components/skeleton/skeleton.component';
 import { placeholderGradient } from '../../components/cover-art/cover-art.component';
 import { createPointerDrag } from '../../lib/pointer-drag';
+import { haptic } from '../../lib/haptics';
 import { measureBottomChromeInset } from '../../lib/player-chrome';
 import { coverSizeBucket, coverUrl } from '../../lib/cover-url';
 import { toTrack } from '../../lib/track-utils';
@@ -815,6 +816,7 @@ export class MosaicHomeComponent implements OnInit {
     this.pressTimer = window.setTimeout(() => {
       this.suppressTap = true;
       this.markHeld(el);
+      haptic('hold');
       this.entityMenu.open({ actions, at });
     }, LONG_PRESS_MS);
   }

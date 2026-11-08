@@ -1,6 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 import { SeekBarComponent } from './seek-bar.component';
 import { setInputValue } from '../../../testing/signal-input';
+import { vi } from 'vitest';
+import { haptic } from '../../lib/haptics';
+
+vi.mock('../../lib/haptics', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/haptics')>()),
+  haptic: vi.fn(),
+}));
 
 function setup() {
   TestBed.configureTestingModule({ imports: [SeekBarComponent] });
@@ -31,6 +38,16 @@ describe('SeekBarComponent', () => {
     expect(seeks).toEqual([42]);
     // Scrub released → value falls back to the bound position (default 0).
     expect(component.value()).toBe(0);
+  });
+
+  it('ticks `tap` once on the release, never while scrubbing (#1659)', () => {
+    vi.mocked(haptic).mockClear();
+    const { component } = setup();
+    component.onInput({ target: { value: '10' } } as unknown as Event);
+    component.onInput({ target: { value: '20' } } as unknown as Event);
+    expect(haptic).not.toHaveBeenCalled();
+    component.onChange({ target: { value: '20' } } as unknown as Event);
+    expect(haptic).toHaveBeenCalledExactlyOnceWith('tap');
   });
 
   it('emits a live preview while scrubbing', () => {

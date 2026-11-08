@@ -8,6 +8,7 @@ import {
 import type { Track } from './player.service';
 import { AuthService } from './auth.service';
 import { ServerConfigService } from './server-config.service';
+import { haptic } from '../lib/haptics';
 
 /**
  * The IndexedDB-backed store, injected so tests can swap in an in-memory fake.
@@ -185,7 +186,11 @@ export class PreserveService {
   }
 
   async preserve(track: Track): Promise<void> {
-    await this.preserveWithSource(track, 'user');
+    // The person asked for this one, so its landing (or not) is felt; the
+    // auto path below is background work and stays silent.
+    const outcome = await this.preserveWithSource(track, 'user');
+    if (outcome === 'stored') haptic('success');
+    else if (outcome === 'failed') haptic('error');
   }
 
   /**
@@ -338,9 +343,19 @@ export class PreserveService {
       }
     } finally {
       await this.refreshList();
+      const final = this.batches().get(key);
+      // Only a batch that stored nothing failed; one that fell short stopped, like the cap.
+      const done = final?.done ?? 0;
+      haptic(
+        final?.stoppedAtCap || (final && done > 0 && done < final.total)
+          ? 'warning'
+          : done > 0
+            ? 'success'
+            : 'error',
+      );
       // Keep the final state visible when we hit the cap (drives the "limit reached"
       // notice); otherwise clear so the button returns to its resting state.
-      if (!this.batches().get(key)?.stoppedAtCap) this.clearBatch(key);
+      if (!final?.stoppedAtCap) this.clearBatch(key);
     }
   }
 
