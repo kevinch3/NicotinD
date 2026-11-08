@@ -151,6 +151,18 @@ Consequences worth knowing:
 - **A burst of merges** queues host deploys; the newest pending one replaces
   older pending ones (one pending run per concurrency group), so the host skips
   straight to the newest commit.
+- **Registry reads after a push are retried.** GHCR can answer `manifest
+  unknown` / `not found` for a few seconds after accepting a write, which turned
+  good master commits red (#1624). Every `docker pull` / `imagetools inspect`
+  that reads back a push, in `ci.yml` and `deploy.yml`, runs through
+  `scripts/registry-retry.sh` (5 attempts, 75 s worst case). A probe that decides
+  on absence (the analysis-tag search) is deliberately not retried.
+- **`:edge` never moves backward.** Edge jobs of neighbouring commits overlap,
+  since the run concurrency group is per commit. Before moving the tags, `edge`
+  reads the commit `:edge` carries (`NICOTIND_BUILD_COMMIT` in the image config)
+  and, if it is a descendant of its own, skips both tag moves and the host
+  deploy. The check and the move are seconds apart, not atomic; a loss in that
+  window surfaces as the newer commit's deploy failing `expect_commit`.
 - **A Trivy finding stops edge.** A base-image CVE with a published fix fails
   `edge-image` (or `edge`, for the analysis image): the host keeps running the
   previous `:edge`, and releases hold, until the base image is bumped. The

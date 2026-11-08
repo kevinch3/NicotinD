@@ -923,7 +923,7 @@ jobs:
         run: |
           set -euo pipefail
           ref="$IMAGE@${{ steps.build.outputs.digest }}"
-          docker pull "$ref"
+          bash scripts/registry-retry.sh docker pull "$ref"
           bash scripts/smoke-image.sh "$ref" "$(jq -r .version package.json)"
 
       - name: Smoke — container logs on failure
@@ -1089,29 +1089,53 @@ jobs:
           exit-code: 1
           format: table
 
+      # The run concurrency group is per commit, so neighbouring commits' edge
+      # jobs overlap and an older one finishing last would move `:edge` backward
+      # (#1624). Leave the tags and the deploy alone when `:edge` already carries
+      # a descendant of this commit. An unreadable `:edge` proceeds, as before.
+      - name: Is :edge already ahead of this commit?
+        id: order
+        run: |
+          set -euo pipefail
+          current=""
+          if out=$(docker buildx imagetools inspect "$IMAGE:edge" --format '{{json .Image}}' 2>/dev/null); then
+            current=$(jq -r '[.. | objects | select(has("Env")) | .Env[]? | strings
+              | select(startswith("NICOTIND_BUILD_COMMIT=")) | ltrimstr("NICOTIND_BUILD_COMMIT=")] | first // ""' <<<"$out")
+          fi
+          if [ -n "$current" ] && [ "$current" != "$GITHUB_SHA" ] \
+            && git merge-base --is-ancestor "$GITHUB_SHA" "$current" 2>/dev/null; then
+            echo "::notice::$IMAGE:edge already carries $current, a newer commit; leaving edge and the host on it"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # Both edge tags move only once both images passed their scans, so a
       # finding in either leaves the pair where it was.
       - name: Point edge at this commit
+        if: steps.order.outputs.skip != 'true'
         working-directory: ${{ runner.temp }}/digests
         run: |
           set -euo pipefail
           refs=()
           for d in *; do refs+=("$IMAGE@sha256:$d"); done
           docker buildx imagetools create -t "$IMAGE:edge" "${refs[@]}"
-          docker buildx imagetools inspect "$IMAGE:edge"
+          bash scripts/registry-retry.sh docker buildx imagetools inspect "$IMAGE:edge"
 
       - name: Point the analysis edge at it
+        if: steps.order.outputs.skip != 'true'
         env:
           REF: ${{ steps.analysis-ref.outputs.ref }}
         run: |
           set -euo pipefail
           docker buildx imagetools create -t "$ANALYSIS:edge" "$REF"
-          docker buildx imagetools inspect "$ANALYSIS:edge"
+          bash scripts/registry-retry.sh docker buildx imagetools inspect "$ANALYSIS:edge"
 
       # A dispatch, not a call: deploy-host.yml queues host deploys on its own
       # group, and a newer edge commit simply deploys after this one. Honours
       # DEPLOY_HOLD (force=false).
       - name: Deploy this commit to the host
+        if: steps.order.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
