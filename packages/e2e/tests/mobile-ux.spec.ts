@@ -963,7 +963,8 @@ test.describe('mobile UX', () => {
   });
 
   // Neighbour carousel (#1652): the covers a skip lands on peek in at rest,
-  // clipped to a sliver that is the only part of them a tap can hit.
+  // bleeding to the screen edge on a phone (#1763); only the visible part of
+  // them is hit-testable.
   test.describe('neighbour carousel (#1652)', () => {
     async function sliver(page: Page, side: 'next' | 'prev') {
       const { box } = await settledCentre(page.getByTestId('now-playing-cover-stage'));
@@ -987,9 +988,40 @@ test.describe('mobile UX', () => {
       const { inside, beyond } = await sliver(page, 'next');
       expect(inside.x, 'the sliver is on screen').toBeLessThan(PHONE.width);
       expect(await hits(page, 'now-playing-cover-next', inside), 'sliver is tappable').toBe(true);
-      expect(await hits(page, 'now-playing-cover-next', beyond), 'clipped past it').toBe(false);
+      // #1763: past the old 12% sliver it keeps going, to the screen edge.
+      expect(await hits(page, 'now-playing-cover-next', beyond), 'bleeds past it').toBe(true);
+      const edge = { x: PHONE.width - 2, y: inside.y };
+      expect(await hits(page, 'now-playing-cover-next', edge), 'to the screen edge').toBe(true);
+      const nextBox = (await page.getByTestId('now-playing-cover-next').boundingBox())!;
+      expect(nextBox.x + nextBox.width, 'runs on past it').toBeGreaterThan(PHONE.width);
       // Empty history: no previous cover, so no dead tap target on the left.
       await expect(page.getByTestId('now-playing-cover-prev')).toHaveCount(0);
+    });
+
+    // #1763: pulling the queue panel up shrinks the cover; the neighbours fade
+    // out of the scene with it instead of shrinking along beside it.
+    test('the neighbours fade out as the queue resize shrinks the cover', async ({ page }) => {
+      await openNowPlaying(page);
+      const next = page.getByTestId('now-playing-cover-next');
+      const opacity = () => next.evaluate((el) => Number(getComputedStyle(el).opacity));
+      await expect.poll(opacity).toBeCloseTo(0.5);
+
+      const h = await settledCentre(page.getByTestId('now-playing-queue-resize'));
+      // The cap starts at 320px and the cover rests at 60vw (247px here), so
+      // the first ~73px of pull shrink nothing; 130px is part-way out.
+      await drag(page, h, { x: h.x, y: h.y - 130 });
+      await expect.poll(opacity).toBeLessThan(0.5);
+      expect(await opacity(), 'still on its way out').toBeGreaterThan(0);
+
+      const h2 = await settledCentre(page.getByTestId('now-playing-queue-resize'));
+      await drag(page, h2, { x: h2.x, y: h2.y - 150 });
+      await expect.poll(opacity).toBe(0);
+      // Read the box directly: hovering the shrunken cover lands on its ⋯.
+      const box = (await next.boundingBox())!;
+      const inside = { x: box.x + 4, y: box.y + box.height / 2 };
+      expect(await hits(page, 'now-playing-cover-next', inside), 'gone means untappable').toBe(
+        false,
+      );
     });
 
     test('tapping a peeking cover jumps to it, and back', async ({ page }) => {

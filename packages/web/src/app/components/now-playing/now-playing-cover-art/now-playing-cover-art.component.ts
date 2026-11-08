@@ -6,6 +6,7 @@ import {
   inject,
   input,
   output,
+  signal,
   viewChild,
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
@@ -27,6 +28,23 @@ import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 import { isTvUi } from '../../../lib/platform';
 import { OverflowRevealDirective } from '../../../directives/overflow-reveal.directive';
 
+/** The width Tailwind's `lg` starts at: the side-panel layout, where the cover
+ *  ignores the queue-resize shrink (`lg:max-w-80`). */
+const LG_PX = 1024;
+
+/**
+ * #1763: how visible the neighbour covers are while the queue resize shrinks
+ * the cover. 1 at the cover's rest width (`min(60vw, 20rem)`), fading linearly
+ * to 0 by half of it, so they leave the scene instead of shrinking along.
+ */
+export function neighbourFade(coverMaxPx: number, viewportWidth: number): number {
+  if (viewportWidth >= LG_PX) return 1;
+  const rest = Math.min(viewportWidth * 0.6, 320);
+  if (rest <= 0) return 0;
+  const shown = Math.min(coverMaxPx, rest) / rest;
+  return Math.max(0, Math.min(1, (shown - 0.5) / 0.5));
+}
+
 @Component({
   selector: 'app-now-playing-cover-art',
   imports: [
@@ -42,7 +60,7 @@ import { OverflowRevealDirective } from '../../../directives/overflow-reveal.dir
   // `display: contents` so the host doesn't break the sheet's flex column —
   // the shell's flex container needs to see this component's own top-level
   // element as the flex item, and `contents` makes the host transparent.
-  host: { class: 'contents' },
+  host: { class: 'contents', '(window:resize)': 'onViewportResize()' },
   templateUrl: './now-playing-cover-art.component.html',
 })
 export class NowPlayingCoverArtComponent {
@@ -99,6 +117,17 @@ export class NowPlayingCoverArtComponent {
   readonly prevTrack = computed(() =>
     this.isTv || !this.showNeighbours() ? null : this.player.prevNeighbour(),
   );
+
+  private readonly viewportWidth = signal(typeof window === 'undefined' ? 0 : window.innerWidth);
+  /** Neighbour visibility under the queue-resize shrink (#1763). */
+  readonly neighbourFade = computed(() => neighbourFade(this.coverMaxPx(), this.viewportWidth()));
+  /** A neighbour's opacity: dimmed at rest, full when a swipe heads for it, times the fade. */
+  neighbourOpacity(headedFor: boolean): number {
+    return (headedFor ? 1 : 0.5) * this.neighbourFade();
+  }
+  onViewportResize(): void {
+    this.viewportWidth.set(window.innerWidth);
+  }
 
   /** A peeking neighbour was tapped: the sheet skips the way its ⏭/⏮ do. */
   readonly skipRequested = output<'next' | 'prev'>();
