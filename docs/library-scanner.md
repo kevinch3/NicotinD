@@ -153,6 +153,32 @@ English word as the key for a real artist.
 `upsertArtistAlias` now refuses a placeholder-shaped `alias_norm` and returns `false`. It is a
 write-time guard only; the two existing rows need a delete.
 
+## Music dropped into the folder shows up on its own (issue #1740)
+
+Copying files into the music dir (scp, Samba, Syncthing) is how most self-hosters add music, and
+until #1740 nothing noticed: a scan ran at boot and on "Sync library" only. `startLibraryPickup`
+(`services/library-pickup.ts`) now runs two things:
+
+- **A watcher** (`MusicDirWatcher`, on by default, `NICOTIND_LIBRARY_WATCH=off` disables it). New
+  or changed files are batched until 3 s pass with no event, so a copy in progress is reported once
+  it's finished. Their album folders then go through the same album-scoped reconcile the
+  acquisition seam uses (`reconcileAlbumDirs`). A removal (file or folder) runs the coalesced full
+  sync instead, because `reconcileAlbums` only rebuilds albums that still have audio and cannot
+  prune one that is gone. It uses **one non-recursive `fs.watch` per directory**, not one recursive
+  watch: Bun's `{ recursive: true }` on Linux reports nothing inside a directory created after the
+  watch started, so a new album under an existing artist, the everyday case, produced no event. A
+  new directory gets its own watchers and is walked, because files can land before they attach.
+  Staging dirs and hidden files (Syncthing temp files, `._` forks) are skipped by the
+  `library-paths` rules. Hitting the inotify watch limit logs one warning naming
+  `fs.inotify.max_user_watches`. The organizer's own moves also fire it; the resulting reconcile of
+  an album it just reconciled is cheap (~10 ms) and idempotent.
+- **A periodic full sync** (`NICOTIND_LIBRARY_RESCAN_MINUTES`, default 0 = off) for network shares:
+  inotify sees local writes only, not one made by another machine on NFS/SMB. Off by default so a
+  spun-down disk is never woken on a timer.
+
+Covered by `music-dir-watcher.test.ts` (real `fs.watch` on a temp dir, including the new-album
+case and a scanner-backed "dropped file is in the library" test) and `library-pickup.test.ts`.
+
 ## The scanner announces what changed
 
 `persist()` computes which of the built songs are new rows before the upsert and emits one

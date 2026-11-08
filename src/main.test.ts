@@ -139,3 +139,44 @@ describe('loadConfig — Lidarr is only configured when the operator configured 
     expect(loadConfig().lidarr?.url).toBe('http://localhost:8686');
   });
 });
+
+describe('loadConfig — library pickup (#1740)', () => {
+  let dataDir: string;
+  const saved: Record<string, string | undefined> = {};
+  const ENV_KEYS = [
+    'NICOTIND_DATA_DIR',
+    'NICOTIND_CONFIG',
+    'NICOTIND_LIBRARY_WATCH',
+    'NICOTIND_LIBRARY_RESCAN_MINUTES',
+  ];
+
+  beforeEach(() => {
+    for (const k of ENV_KEYS) saved[k] = process.env[k];
+    for (const k of ENV_KEYS) delete process.env[k];
+    dataDir = mkdtempSync(join(tmpdir(), 'nicotind-cfg-'));
+    process.env.NICOTIND_DATA_DIR = dataDir;
+    process.env.NICOTIND_CONFIG = join(dataDir, 'config.yml');
+  });
+
+  afterEach(() => {
+    for (const k of ENV_KEYS) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  it('watches by default and never rescans on a timer by default', () => {
+    const cfg = loadConfig();
+    expect(cfg.libraryWatch).toBe(true);
+    expect(cfg.libraryRescanMinutes).toBe(0);
+  });
+
+  it('takes both from the environment', () => {
+    process.env.NICOTIND_LIBRARY_WATCH = 'off';
+    process.env.NICOTIND_LIBRARY_RESCAN_MINUTES = '30';
+    const cfg = loadConfig();
+    expect(cfg.libraryWatch).toBe(false);
+    expect(cfg.libraryRescanMinutes).toBe(30);
+  });
+});

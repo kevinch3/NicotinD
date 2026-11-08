@@ -7,6 +7,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   with deterministic SHA1 ids; `resolveTags` applies overrides before minting the artist/album ids.
   Incremental `scan_cache` + `mapPool`, `applyPerformancePragmas`, `albumIdsByGroupKey`.
   → [library-scanner.md](../library-scanner.md)
+- **Library pickup (#1740)**: a per-directory `fs.watch` tree (Bun's recursive watch misses new
+  subfolders) feeds the album reconcile; removals run a full sync; an opt-in periodic sync covers
+  network shares. `MusicDirWatcher`, `startLibraryPickup`. → [library-scanner.md](../library-scanner.md)
 - **A canonical tracklist ranks duplicates, it never deletes the only copy**: it keys an album's
   files to canonical tracks so duplicates collapse, and a file it does not name keys by its own
   title and survives. `selectAlbumTracks`, `selectAlbumTracksDetailed`,

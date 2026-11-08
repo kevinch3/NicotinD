@@ -118,7 +118,7 @@ async function main() {
   const webDistPath =
     process.env.NICOTIND_WEB_DIST ?? resolve(import.meta.dir, '../packages/web/dist');
 
-  const { app, processingRef, maintenance, websocket, remoteAccess } = createApp({
+  const { app, processingRef, maintenance, websocket, remoteAccess, libraryPickup } = createApp({
     config,
     lidarr,
     serviceManager,
@@ -187,6 +187,7 @@ async function main() {
     log.info('Shutting down...');
     if (processingRef.current) processingRef.current.stop();
     maintenance.stop();
+    libraryPickup.stop();
     await serviceManager.stopAll();
     optimizeDatabase(getDatabase());
     process.exit(0);
@@ -291,6 +292,14 @@ export function loadConfig() {
     // to the file value / schema default (on).
     ...(parseBooleanEnv(process.env.NICOTIND_ACQUISITION) !== undefined
       ? { acquisitionEnabled: parseBooleanEnv(process.env.NICOTIND_ACQUISITION) }
+      : {}),
+    // Library pickup (#1740): NICOTIND_LIBRARY_WATCH (on/off) and
+    // NICOTIND_LIBRARY_RESCAN_MINUTES (0 = off) override the file config.
+    ...(parseBooleanEnv(process.env.NICOTIND_LIBRARY_WATCH) !== undefined
+      ? { libraryWatch: parseBooleanEnv(process.env.NICOTIND_LIBRARY_WATCH) }
+      : {}),
+    ...(process.env.NICOTIND_LIBRARY_RESCAN_MINUTES
+      ? { libraryRescanMinutes: Number(process.env.NICOTIND_LIBRARY_RESCAN_MINUTES) }
       : {}),
     // Listening-history kill-switch (#454), same env-as-hard-floor semantics.
     ...(parseBooleanEnv(process.env.NICOTIND_HISTORY) !== undefined
