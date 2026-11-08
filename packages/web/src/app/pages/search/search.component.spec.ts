@@ -177,6 +177,30 @@ async function flush() {
   await Promise.resolve();
 }
 
+// #1734: "No acquisition sources enabled" was a dead end. An admin gets a link
+// to Extensions; anyone else who may acquire is told who can fix it.
+describe('SearchComponent — no sources enabled', () => {
+  function statusLine(role: string) {
+    const { component, fixture } = setup();
+    TestBed.inject(AuthService).role.set(role);
+    component.networkConnected.set(false);
+    fixture.detectChanges();
+    return (fixture.nativeElement as HTMLElement).querySelector('[data-testid="source-status"]')!;
+  }
+
+  it('links an admin to Extensions', () => {
+    const line = statusLine('admin');
+    const link = line.querySelector('[data-testid="source-status-extensions-link"]');
+    expect(link?.getAttribute('href')).toBe('/settings/plugins');
+  });
+
+  it('tells a non-admin to ask an admin, with no link they could not use', () => {
+    const line = statusLine('curator');
+    expect(line.querySelector('[data-testid="source-status-extensions-link"]')).toBeNull();
+    expect(line.textContent).toContain('acquire.noSourcesAskAdmin'); // harness renders keys
+  });
+});
+
 describe('SearchComponent — metadata-driven search', () => {
   it('populates catalog results and collapses the direct-search fallback when there are hits', async () => {
     const { component, search } = setup();

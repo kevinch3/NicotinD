@@ -248,6 +248,9 @@ export const routes: Routes = [
           ),
         ),
       },
+      // The README and the UI call this page "Extensions"; a guessed /extensions
+      // used to fall through to Home (#1734). adminGuard on the target applies.
+      { path: 'extensions', pathMatch: 'full', redirectTo: '/settings/plugins' },
       {
         path: 'settings/plugins',
         loadComponent: lazy(() =>
