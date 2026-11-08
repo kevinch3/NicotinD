@@ -1860,6 +1860,68 @@ describe('LibraryScanner.persist — fragment_of (issue #864)', () => {
  * order, so the displayed spelling was arbitrary — and unstable, because the
  * incremental path re-elected it from one batch.
  */
+// Prod's four delimiter-less mashes (#860), each once its members are in the library.
+// The split itself is right on master; these pin it through the whole build, album
+// artist included, so the "mash owns its own album" shape cannot come back.
+describe('buildLibrary — delimiter-less artist mashes from prod (issue #860)', () => {
+  const cases: Array<[string, string[]]> = [
+    ['Los NocherosLos Tekis', ['Los Nocheros', 'Los Tekis']],
+    ['2 MinutosTruenoDie Toten Hosen', ['2 Minutos', 'Trueno', 'Die Toten Hosen']],
+    ['MalumaCosculluela', ['Maluma', 'Cosculluela']],
+    ['J. BalvinDua LipaBad Bunny & Tainy', ['J. Balvin', 'Dua Lipa', 'Bad Bunny', 'Tainy']],
+  ];
+
+  it.each(cases)('%s credits its members and owns nothing as an act', (mash, members) => {
+    const tracks = [
+      ...members.map((m, i) =>
+        track({
+          relPath: `own/${i}.mp3`,
+          title: `Own ${i}`,
+          artist: m,
+          albumArtist: m,
+          album: `Own ${i}`,
+        }),
+      ),
+      track({
+        relPath: 'mash/1.mp3',
+        title: 'Vuela',
+        artist: mash,
+        albumArtist: mash,
+        album: 'Chamame',
+      }),
+    ];
+    const built = buildLibrary(tracks);
+    const nameOf = (id: string) => built.artists.find((a) => a.id === id)?.name;
+    const song = built.songs.find((x) => x.title === 'Vuela')!;
+    const credited = built.songArtists
+      .filter((l) => l.parentId === song.id && l.role === 'primary')
+      .map((l) => nameOf(l.artistId));
+    expect(credited).toEqual(members);
+    expect(built.artists.find((a) => a.name === mash)?.splitCompound).toBe(true);
+  });
+
+  it('stays whole while a member is not in the library yet', () => {
+    const built = buildLibrary([
+      track({
+        relPath: 'own/0.mp3',
+        title: 'Own',
+        artist: 'Los Nocheros',
+        albumArtist: 'Los Nocheros',
+        album: 'Signos',
+      }),
+      track({
+        relPath: 'mash/1.mp3',
+        title: 'Vuela',
+        artist: 'Los NocherosLos Tekis',
+        album: 'Chamame',
+      }),
+    ]);
+    expect(built.artists.find((a) => a.name === 'Los NocherosLos Tekis')?.splitCompound).toBe(
+      false,
+    );
+  });
+});
+
 describe('album artist display spelling (issue #958)', () => {
   const spellings = ['Cafe quijano', 'Café Quijano', 'Café Quijano'];
 
