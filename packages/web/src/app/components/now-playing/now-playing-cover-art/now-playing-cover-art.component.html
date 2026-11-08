@@ -3,9 +3,12 @@
        gradient tile (like the grid/mini-player) instead of a broken-image glyph. -->
   <!-- The padding is conditional: a fully-collapsed cover (#993) that kept its
        32px of vertical padding would leave an empty band where the artwork was,
-       giving back part of the space the drag just reclaimed. -->
+       giving back part of the space the drag just reclaimed.
+       overflow-clip, not -hidden (#1749): a hidden box is still a scroll
+       container, so anything that scrolled a neighbour into view (a screen
+       reader, a test runner) slid the cover off centre. -->
   <div
-    class="flex-shrink-0 flex justify-center md:px-8 overflow-hidden"
+    class="flex-shrink-0 flex justify-center md:px-8 overflow-clip"
     [class.px-4]="!coverCollapsed()"
     [class.py-4]="!coverCollapsed()"
   >

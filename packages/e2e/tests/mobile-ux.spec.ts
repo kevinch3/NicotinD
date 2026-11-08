@@ -1041,6 +1041,26 @@ test.describe('mobile UX', () => {
       await expect(title).toHaveText(first);
     });
 
+    // #1749: the cover column clips the slivers, but `overflow-hidden` is still
+    // a scroll container — anything that scrolls a sliver into view (a
+    // screen reader landing on its label, Playwright retrying an obscured
+    // hover) scrolled the column until the cover sat against the left edge
+    // with the previous sliver off-screen. `overflow-clip` cannot scroll.
+    test('scrolling a sliver into view never moves the cover off centre', async ({ page }) => {
+      await openNowPlaying(page);
+      const stage = page.getByTestId('now-playing-cover-stage');
+      const centre = async () => {
+        const b = (await stage.boundingBox())!;
+        return b.x + b.width / 2;
+      };
+      const before = await centre();
+      await page
+        .getByTestId('now-playing-cover-next')
+        .evaluate((el) => el.scrollIntoView({ inline: 'center', block: 'nearest' }));
+      expect(Math.abs((await centre()) - before), 'the cover stays put').toBeLessThan(1);
+      expect(Math.abs(before - PHONE.width / 2), 'and centred').toBeLessThan(2);
+    });
+
     // A sliver is a button for its tap, but a drag from it is a drag of the
     // cover: pulling the peeking card in is the gesture a carousel invites.
     test('a sideways drag that starts on a peeking cover skips once', async ({ page }) => {
