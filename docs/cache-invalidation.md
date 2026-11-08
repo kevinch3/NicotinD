@@ -84,7 +84,7 @@ every open player ([web-ui.md](web-ui.md) "A change made elsewhere reaches the l
 | Cache                       | Invalidated by the stream                                   |
 | --------------------------- | ----------------------------------------------------------- |
 | `artistsCache`/`genresCache` | any `songs.*`, `album.changed`, `artist.changed`, `resync`  |
-| browser cover cache (24 h)  | `artwork.changed` → `CoverRevisionsService` → `&v=<rev>` on every surface built through it: the artist surfaces and the album page; the album/song/player sites follow (#1666 A3) |
+| browser cover cache (24 h)  | `artwork.changed` → `CoverRevisionsService` → `&v=<rev>` on every cover URL in the app (#1666); the sweep spec keeps it that way |
 | an open artist page         | `resync` (a replay gap) → re-reads its artist DTO, whose `coverRev` is server truth |
 | an open album page          | `album.changed` / `songs.*` naming its id → refetch          |
 | `LyricsService` entries on screen | `lyrics.changed` naming the id, or `resync` → re-read  |
@@ -253,23 +253,61 @@ So the identity is persisted and carried:
   rev. The gap's existing resync drops the cached library reads, and the artist page re-reads its
   DTO on `resync`, so a portrait change the stream missed still lands there. Other surfaces pick it
   up on their next DTO read.
-- **A rev-only swap does not flash.** The artist hero, the Artists grid tiles, related-artists and
-  the find-bar artist tiles set `holdPrevious` (#1653), so a re-keyed portrait fades in over the
-  old one instead of dropping to the placeholder.
-- **Migrated so far** (#1666 A2): the artist page, the Artists grid, the find bar (artists and
-  albums), related artists, the artist-image menu's album picker, the mosaic home and the radio
-  landing's resume tile. The page-local counters they used (`imageVersion`, `artistImageVersion`)
-  are gone. The album page still composes its `coverBust` from the overlay; the remaining album,
-  song, player, TV, share and offline sites, and the sweep guard, are A3. The mosaic builds a
-  face's HTML once per tile, so a face already on screen keeps its URL until it is rebuilt.
+- **A rev-only swap does not flash.** The artist hero, the Artists grid tiles, related-artists,
+  the find-bar artist tiles, the album hero and the Library album grids set `holdPrevious`
+  (#1653), so a re-keyed cover fades in over the old one instead of dropping to the placeholder.
+  The player bar and Now Playing already did.
+- **Every surface is migrated** (#1666 A2 + A3): the artist surfaces, the album page (its
+  `coverBust` / `localCoverBust` are gone — the fix modal raises the rev an apply answers, and the
+  refetched DTO carries it), the Library album grids, album tiles, track rows, the player bar,
+  Now Playing (cover, neighbours, queue, TV backdrop), the track-info header, the home shelves, the
+  fix modal's synthetic Current entry (`coverPath`), the TV pages and karaoke, the launcher's
+  Play Next and channel row, the share and poll pages (on their own JWTs) and the offline
+  snapshot. Every `Track` builder carries `coverRev` — `toTrack`, the album page's rows, recent
+  plays (`RecentPlay.coverRev` is now on the wire), preserved metadata, the track-info target —
+  and `RemoteTrack` documents it, since a device sends its `Track` whole.
+- **Derived work is keyed by the rev too.** The lock-screen artwork builder
+  (`buildMediaMetadata`) is handed the whole `CoverRef`, so the OS and the native media plugins,
+  which cache bitmaps by URL, see a new URL; the Now Playing palette is extracted once per
+  `<track id>@<rev>`, so a cover replaced while the track plays is re-sampled.
+- **The offline snapshot is the current bytes.** `preserve` fetches the rev'd URL with
+  `cache: 'no-cache'`: the blob is kept indefinitely, and the default cache mode could store a
+  day-cached copy of a cover replaced on disk at rev 0.
+- **The TV player's cover is on the media key** like every other cover. It used the rotating
+  session JWT, which happened to re-key it on every token refresh — the only cover that was
+  invalidated, by accident.
+- **The mosaic builds a face's HTML once per tile**, so a face already on screen keeps its URL
+  until it is rebuilt. **Poll seeds** are frozen snapshots with no rev, so a poll page builds
+  rev-0 URLs.
+- **Server-built cover URLs carry the rev too**: the cover picker's Current entry and a share's
+  `og:image` go through `coverRoutePath(id, rev, query)` (`services/cover-rev.ts`). The
+  OpenSubsonic proxy and `/api/cover/remote?u=` are untouched (the latter is already
+  URL-addressed).
+
+### The guards
+
+- **`lib/cover-url.sweep.spec.ts`** (web-test CI) reads every `.ts` and `.html` under `src/app`
+  (spec and story files aside) and fails on a line outside `lib/cover-url.ts` that *builds* an
+  `/api/cover` URL: the prefix as a string that closes right there, in any quote, or that runs
+  into a `${…}` — so `+`, `.concat`, `.join` and template literals are all caught, and prose
+  (`/api/cover/:id`) and server-built `/api/cover/remote?u=` are not. It asserts its denominator:
+  the pattern matches the real pre-A3 lines verbatim, the walk covers more than 50 templates and
+  200 sources, and it still sees the helper's own spelling. `CoverRef.coverRev` being required is
+  the type half: a caller cannot reach the helper without a rev.
+- **`nicotind/cover-writers`** (lint, `packages/api/src`) fails a raw cover-byte write outside a
+  module that bumps the rev: SQL that writes `library_artwork`, the `artist-overrides` store
+  directory, or a direct `replaceFolderCover`. The bumping entry points — `setArtwork` /
+  `deleteArtwork`, `writeArtistImageOverride` / `deleteArtistImageOverride`, `applyAlbumCover` —
+  are callable from anywhere, since they bump inside. Each allowed module is listed with its
+  reason; those that only delete art with its entity are `EXEMPT`. See
+  [quality-gates.md](quality-gates.md) "Code-shape gates as lint rules".
 
 What this does not yet cover: disk-only art changes (a `cover.jpg` swapped by hand, a re-download
 replacing folder art) bump nothing until the scanner does; the `backfill-artwork` process persists its
 bumps but its events reach no open tab (they see the rev on their next fetch); a re-landed entity
 sits at rev 0 until its first bump, and rev 0 is the bare, unversioned URL, so within the 24 h cache
-TTL it can still show the previous incarnation's cover, as every cover did before #1666. The web
-surfaces not yet migrated (above) still build unversioned URLs, and the cache header is
-unchanged — #1666's later PRs (A3–A4).
+TTL it can still show the previous incarnation's cover, as every cover did before #1666. The cache
+header is unchanged — #1666 A4.
 
 ## Server-side memos — all TTL-bounded by design
 

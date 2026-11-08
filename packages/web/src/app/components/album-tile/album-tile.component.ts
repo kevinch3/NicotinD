@@ -12,6 +12,8 @@ import { TranslateService } from '../../services/translate.service';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { IDLE_HUNT, albumHuntLabel, type AlbumHuntStatus } from '../../lib/album-hunt-status';
 import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
+import { albumCover } from '../../lib/cover-url';
+import { CoverRevisionsService } from '../../services/cover-revisions.service';
 
 /**
  * One album in an artist's grid, in whichever of three states it is in.
@@ -52,6 +54,7 @@ const EMPTY_TILE: AlbumTile = {
 export class AlbumTileComponent {
   private readonly injector = inject(Injector);
   private readonly i18n = inject(TranslateService);
+  private readonly coverRevisions = inject(CoverRevisionsService);
   /** The tile's menu (#1298): an owned or partial album is a library album. */
   readonly menuActions = (): TrackAction[] => {
     const t = this.tile();
@@ -80,8 +83,8 @@ export class AlbumTileComponent {
   /** Local art wins; a missing tile only ever has the remote Lidarr/MusicBrainz URL. */
   readonly coverSrc = computed<string | undefined>(() => {
     const tile = this.tile();
-    if (tile.coverArt) return `/api/cover/${tile.coverArt}?size=300&token=${this.token() ?? ''}`;
-    return tile.coverArtUrl;
+    const ref = albumCover({ ...tile, id: tile.localAlbumId ?? tile.key });
+    return ref ? this.coverRevisions.url(ref, 300, this.token()) : tile.coverArtUrl;
   });
 
   /** `1969 · EP · 4/7 tracks`, skipping whatever this tile does not have. */

@@ -86,9 +86,9 @@ export class CoverArtComponent {
    * new one in over it. For a cover whose src changes in place, where the
    * gradient placeholder in between reads as a flash: the player bar and the
    * Now Playing sheet on a skip (#1653), and a cover whose src can change by
-   * rev alone — the artist hero, Artists-grid, related-artists and find-bar
-   * artist tiles (#1666). Off by default: a grid tile leaves it off unless its
-   * src can change by rev alone.
+   * rev alone — the artist and album heroes, the Artists and album grids,
+   * related-artists and find-bar artist tiles (#1666). Off by default: a grid
+   * tile leaves it off unless its src can change by rev alone.
    */
   readonly holdPrevious = input(false);
 

@@ -209,7 +209,9 @@ same PR that hit it.
   planted album showed a foreign track, or survived the delete of "its only" song). A spec
   that needs an album it alone owns plants a fixture *tagged* uniquely —
   `library-live.spec.ts` copies `fixtures/plant/live-probe.flac` (committed, since CI
-  has no ffmpeg to retag at runtime).
+  has no ffmpeg to retag at runtime). `album-cover-rev.spec.ts` plants the same album to
+  upload a cover into: a cover write lands in the album's folder, so it must never touch a
+  git-tracked fixture album that screenshot specs render (`workers: 1` keeps the two apart).
 
 - **A search result's Get button reads the shared feed, keyed by `username:filename`.** The
   result card's state comes from `TransferService.getStatus(username, filename)` over the unified

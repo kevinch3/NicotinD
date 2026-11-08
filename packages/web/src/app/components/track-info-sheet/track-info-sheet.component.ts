@@ -39,6 +39,8 @@ import { methodForBackend } from '../../lib/download-groups';
 import { PluginService } from '../../services/plugin.service';
 import { parseLrc } from '@nicotind/core';
 import { moveInList } from '../../lib/move-in-list';
+import { songCover } from '../../lib/cover-url';
+import { CoverRevisionsService } from '../../services/cover-revisions.service';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
 import { ArtistLinksComponent } from '../artist-links/artist-links.component';
 import { EntityLinkComponent } from '../entity-link/entity-link.component';
@@ -90,6 +92,7 @@ export class TrackInfoSheetComponent implements OnInit {
   private auth = inject(AuthService);
   private i18n = inject(TranslateService);
   private server = inject(ServerConfigService);
+  private coverRevisions = inject(CoverRevisionsService);
   private router = inject(Router);
   private toast = inject(ToastService);
   private confirm = inject(ConfirmService);
@@ -105,7 +108,12 @@ export class TrackInfoSheetComponent implements OnInit {
   readonly displayTitle = input('');
   readonly displayArtist = input('');
   readonly displayAlbum = input('');
-  readonly displayCoverArt = input<string | null>(null);
+  /** The caller's cover identity: id, its album's rev and the album that owns it (#1666). */
+  readonly displayCover = input<{
+    coverArt?: string | null;
+    coverRev?: number;
+    albumId?: string | null;
+  } | null>(null);
   readonly close = output<void>();
 
   // Song the sheet renders from: a freshly fetched one when we have it (set
@@ -119,9 +127,10 @@ export class TrackInfoSheetComponent implements OnInit {
   readonly headerArtist = computed(() => this.effectiveSong()?.artist ?? this.displayArtist());
   readonly headerAlbum = computed(() => this.effectiveSong()?.album ?? this.displayAlbum());
   readonly headerCoverUrl = computed(() => {
-    const id = this.effectiveSong()?.coverArt ?? this.displayCoverArt();
-    return id
-      ? this.server.apiUrl(`/api/cover/${id}?size=96&token=${this.auth.mediaToken()}`)
+    const song = this.effectiveSong();
+    const ref = songCover(song?.coverArt ? song : (this.displayCover() ?? {}));
+    return ref
+      ? this.server.apiUrl(this.coverRevisions.url(ref, 96, this.auth.mediaToken()) ?? '')
       : undefined;
   });
 

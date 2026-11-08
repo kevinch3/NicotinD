@@ -9,7 +9,9 @@ import {
   untracked,
 } from '@angular/core';
 import { Router } from '@angular/router';
-import { PlayerService } from '../../services/player.service';
+import { PlayerService, type Track } from '../../services/player.service';
+import { songCover } from '../../lib/cover-url';
+import { CoverRevisionsService } from '../../services/cover-revisions.service';
 import { AuthService } from '../../services/auth.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
@@ -87,6 +89,7 @@ export class NowPlayingComponent {
   private api = inject(LibraryApiService);
   private scrollLock = inject(ScrollLockService);
   private server = inject(ServerConfigService);
+  private readonly coverRevisions = inject(CoverRevisionsService);
   private destroyRef = inject(DestroyRef);
   readonly trackInfo = inject(TrackInfoService);
   /** Karaoke ML separation (issue #603): overlay-open trigger + the mute's serve state. */
@@ -191,7 +194,8 @@ export class NowPlayingComponent {
    *  on entry (ArrowUp/ArrowDown work immediately for keyboard/TV-remote
    *  users with no prior click), mirroring `lyricsPanel()` above. */
   readonly karaokeFullscreenPanel = viewChild(NowPlayingKaraokeFullscreenComponent);
-  private colorExtractedForId: string | null = null;
+  /** `<track id>@<cover rev>` the palette was taken from: a replaced cover re-extracts (#1666). */
+  private colorExtractedFor: string | null = null;
 
   readonly isActiveDevice = this.remote.isActiveDevice;
   /** See PlayerComponent.drivesLocalPlayer. */
@@ -426,10 +430,8 @@ export class NowPlayingComponent {
    */
   readonly tvBackdropUrl = computed(() => {
     const track = this.player.currentTrack();
-    if (!this.isTv || !track?.coverArt || !this.player.nowPlayingOpen()) return null;
-    return this.server.apiUrl(
-      `/api/cover/${track.coverArt}?size=600&token=${this.auth.mediaToken()}`,
-    );
+    if (!this.isTv || !track || !this.player.nowPlayingOpen()) return null;
+    return this.coverSrc(track, 600) ?? null;
   });
 
   /** Head of the queue, shown in the TV Next-up chip. */
@@ -619,13 +621,9 @@ export class NowPlayingComponent {
     // Extract cover colors when lyrics are open (needed for the fullscreen gradient).
     effect(() => {
       const track = this.player.currentTrack();
-      if (!track?.coverArt) return;
+      if (!track) return;
       if (!this.lyricsOpen()) return;
-      if (this.colorExtractedForId === track.id) return;
-      this.colorExtractedForId = track.id;
-      const token = this.auth.mediaToken();
-      const url = this.server.apiUrl(`/api/cover/${track.coverArt}?size=80&token=${token}`);
-      this.extractColorsFromImage(url);
+      this.extractColorsOnce(track);
     });
 
     // Auto-scroll lyrics to the active line — `resolveLyricsScrollContainer`
@@ -667,14 +665,27 @@ export class NowPlayingComponent {
       if (!this.lyricsOpen()) this.setActivePanel('lyrics');
       // Re-extract colors if needed
       const track = this.player.currentTrack();
-      if (track?.coverArt && this.colorExtractedForId !== track.id) {
-        this.colorExtractedForId = track.id;
-        const token = this.auth.mediaToken();
-        const url = this.server.apiUrl(`/api/cover/${track.coverArt}?size=80&token=${token}`);
-        this.extractColorsFromImage(url);
-      }
+      if (track) this.extractColorsOnce(track);
       setTimeout(() => this.karaokeFullscreenPanel()?.overlayRef()?.nativeElement.focus(), 0);
     }
+  }
+
+  /** A track's cover, resolved, at its album's live cover rev (#1666). */
+  private coverSrc(track: Track, size: number): string | undefined {
+    const url = this.coverRevisions.url(songCover(track), size, this.auth.mediaToken());
+    return url ? this.server.apiUrl(url) : undefined;
+  }
+
+  /** Extract the palette once per (track, cover rev): a cover replaced while
+   *  the track plays re-extracts, a re-render of the same one does not. */
+  private extractColorsOnce(track: Track): void {
+    const ref = songCover(track);
+    if (!ref) return;
+    const key = `${track.id}@${this.coverRevisions.effective(ref)}`;
+    if (this.colorExtractedFor === key) return;
+    this.colorExtractedFor = key;
+    const url = this.coverSrc(track, 80);
+    if (url) this.extractColorsFromImage(url);
   }
 
   /** The Image/<canvas> shell lives with the palette maths it feeds
@@ -790,6 +801,8 @@ export class NowPlayingComponent {
       artist: t?.artist,
       album: t?.album,
       coverArt: t?.coverArt ?? null,
+      coverRev: t?.coverRev,
+      albumId: t?.albumId ?? null,
     });
   }
 }

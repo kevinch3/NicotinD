@@ -64,6 +64,8 @@ export interface RecentPlay {
   duration: number | null;
   /** Live cover-art id (`library_songs.cover_art`) for `/api/cover/:id`. */
   coverArt: string | null;
+  /** The album's `cover_rev`, so the shelf's cover URL follows a replaced cover (#1666). */
+  coverRev: number;
   playedAt: number;
 }
 
@@ -196,6 +198,7 @@ export function recentPlays(db: Database, userId: string, limit: number): Recent
         album_id: string | null;
         duration: number | null;
         cover_art: string | null;
+        album_cover_rev: number | null;
         played_at: number;
       },
       [string, number]
@@ -208,6 +211,7 @@ export function recentPlays(db: Database, userId: string, limit: number): Recent
               s.album_id                         AS album_id,
               s.duration                         AS duration,
               s.cover_art                        AS cover_art,
+              al.cover_rev                       AS album_cover_rev,
               MAX(p.at)                          AS played_at
          FROM play_events p
          JOIN library_songs s   ON s.id = p.song_id
@@ -238,6 +242,7 @@ export function recentPlays(db: Database, userId: string, limit: number): Recent
       albumId: r.album_id ?? null,
       duration: r.duration,
       coverArt: r.cover_art,
+      coverRev: r.album_cover_rev ?? 0,
       playedAt: r.played_at,
     }));
   const credits = songCredits(

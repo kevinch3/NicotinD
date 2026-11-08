@@ -9,6 +9,7 @@ import { ServerConfigService } from '../../services/server-config.service';
 import { ConfirmService } from '../../services/confirm.service';
 import { ToastService } from '../../services/toast.service';
 import { TranslateService } from '../../services/translate.service';
+import { CoverRevisionsService } from '../../services/cover-revisions.service';
 
 // Instantiated without detectChanges (so ngOnInit, which reads required inputs,
 // never runs); the cover-apply logic is exercised directly. Input binding is
@@ -105,6 +106,24 @@ describe('MetadataFixModalComponent cover picker', () => {
 
     expect(uploadAlbumCover).toHaveBeenCalledWith('album-1', file);
     expect(emitted).toHaveBeenCalledTimes(1);
+  });
+
+  // #1666: the answered rev re-keys every surface in the acting tab at once, and
+  // the synthetic Current thumbnail carries it rather than a day-cached bare URL.
+  it('raises the rev a cover apply answers, and the Current thumbnail carries it', async () => {
+    const c = create();
+    const revs = TestBed.inject(CoverRevisionsService);
+    expect(
+      (c as unknown as { currentCoverOption(): AlbumCoverCandidate }).currentCoverOption().url,
+    ).toBe('/api/cover/album-1');
+    uploadAlbumCover.mockReturnValue(of({ ok: true, coverRev: 5 }));
+    const file = new File([new Uint8Array([1])], 'cover.png', { type: 'image/png' });
+    await c.onCoverFileSelected({ target: { files: [file], value: 'x' } } as unknown as Event);
+
+    expect(revs.live('album', 'album-1')).toBe(5);
+    expect(
+      (c as unknown as { currentCoverOption(): AlbumCoverCandidate }).currentCoverOption().url,
+    ).toBe('/api/cover/album-1?v=5');
   });
 
   it('does nothing when no file is selected for upload', async () => {

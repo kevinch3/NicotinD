@@ -9,6 +9,8 @@ import type { Track } from './player.service';
 import { AuthService } from './auth.service';
 import { ServerConfigService } from './server-config.service';
 import { haptic } from '../lib/haptics';
+import { songCover } from '../lib/cover-url';
+import { CoverRevisionsService } from './cover-revisions.service';
 
 /**
  * The IndexedDB-backed store, injected so tests can swap in an in-memory fake.
@@ -99,6 +101,7 @@ export function preservedAudioLooksComplete(
 export class PreserveService {
   private auth = inject(AuthService);
   private server = inject(ServerConfigService);
+  private coverRevisions = inject(CoverRevisionsService);
   private db = inject(PRESERVE_STORE);
 
   readonly preservedIds = signal(new Set<string>());
@@ -462,11 +465,13 @@ export class PreserveService {
     }
 
     let coverBlob: Blob | null = null;
-    if (track.coverArt) {
+    const cover = this.coverRevisions.url(songCover(track), 600, token);
+    if (cover) {
       try {
-        const coverRes = await fetch(
-          this.server.apiUrl(`/api/cover/${track.coverArt}?size=600&token=${token}`),
-        );
+        // The blob is kept for good, so it must be the current bytes: the rev'd
+        // URL, and a revalidation in case the browser holds a stale copy of
+        // even that (a rev-0 cover replaced on disk) (#1666).
+        const coverRes = await fetch(this.server.apiUrl(cover), { cache: 'no-cache' });
         if (coverRes.ok) coverBlob = await coverRes.blob();
       } catch {
         /* ignore cover failures */
@@ -487,6 +492,8 @@ export class PreserveService {
       artist: track.artist,
       album: track.album ?? '',
       coverArt: track.coverArt,
+      coverRev: track.coverRev,
+      albumId: track.albumId,
       duration: track.duration,
       bitRate: track.bitRate,
       size: blobs.audioBlob.size,

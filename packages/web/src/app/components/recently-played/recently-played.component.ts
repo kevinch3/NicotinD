@@ -5,6 +5,8 @@ import type { TrackAction } from '../track-row/track-row.component';
 import { SongMenuService } from '../../services/song-menu.service';
 import { catchError, firstValueFrom, of } from 'rxjs';
 import { AuthService } from '../../services/auth.service';
+import { CoverRevisionsService } from '../../services/cover-revisions.service';
+import { songCover } from '../../lib/cover-url';
 import { HistoryApiService } from '../../services/api/history-api.service';
 import { PlayerService, type Track } from '../../services/player.service';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
@@ -111,6 +113,7 @@ export class RecentlyPlayedComponent implements OnInit {
   private api = inject(HistoryApiService);
   private player = inject(PlayerService);
   private auth = inject(AuthService);
+  private readonly coverRevisions = inject(CoverRevisionsService);
 
   readonly plays = signal<RecentPlay[]>([]);
   readonly loading = signal(true);
@@ -144,15 +147,9 @@ export class RecentlyPlayedComponent implements OnInit {
     playShelfSong(this.player, tracks, index, { type: 'adhoc', name: 'Recently played' });
   }
 
-  /**
-   * `coverArt` is a cover *id*, never a URL — build the standard
-   * `/api/cover/:id?size=&token=` URL like every other cover call site (passing
-   * the bare id as an <img src> 404s into the letter placeholder).
-   */
+  /** A shelf tile's cover at its album's live cover rev (#1666). */
   coverSrc(play: RecentPlay): string | undefined {
-    return play.coverArt
-      ? `/api/cover/${play.coverArt}?size=300&token=${this.auth.mediaToken()}`
-      : undefined;
+    return this.coverRevisions.url(songCover(play), 300, this.auth.mediaToken());
   }
 }
 
@@ -167,6 +164,7 @@ function toTrack(play: RecentPlay): Track {
     album: play.album ?? undefined,
     albumId: play.albumId ?? undefined,
     coverArt: play.coverArt ?? undefined,
+    coverRev: play.coverRev,
     duration: play.duration ?? undefined,
   };
 }

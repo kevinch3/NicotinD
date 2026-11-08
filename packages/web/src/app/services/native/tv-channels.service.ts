@@ -9,6 +9,8 @@ import { AuthService } from '../auth.service';
 import { ServerConfigService } from '../server-config.service';
 import { LibraryApiService } from '../api/library-api.service';
 import { TranslateService } from '../translate.service';
+import { CoverRevisionsService } from '../cover-revisions.service';
+import { albumCover, songCover, type CoverRef } from '../../lib/cover-url';
 
 /** One tile in the launcher channel row. */
 interface ChannelProgram {
@@ -49,6 +51,7 @@ export class TvChannelsService {
   private readonly router = inject(Router);
   private readonly zone = inject(NgZone);
   private readonly injector = inject(Injector);
+  private readonly coverRevisions = inject(CoverRevisionsService);
 
   private plugin: TvChannelsPlugin | null = null;
   private lastChannelSyncKey: string | null = null;
@@ -101,9 +104,7 @@ export class TvChannelsService {
           .publishPlayNext({
             title: track.title,
             artist: track.artist,
-            coverUrl: track.coverArt
-              ? this.server.apiUrl(`/api/cover/${track.coverArt}?size=600&token=${token}`)
-              : undefined,
+            coverUrl: this.absoluteCover(songCover(track), token),
           })
           .catch(() => {});
       },
@@ -128,19 +129,19 @@ export class TvChannelsService {
         programs: albums.map((album) => ({
           title: album.name,
           subtitle: album.artist,
-          ...(album.coverArt
-            ? {
-                coverUrl: this.server.apiUrl(
-                  `/api/cover/${album.coverArt}?size=600&token=${token}`,
-                ),
-              }
-            : {}),
+          ...(album.coverArt ? { coverUrl: this.absoluteCover(albumCover(album), token) } : {}),
           route: `/library/albums/${album.id}`,
         })),
       });
     } catch {
       // Library unreachable — the launcher keeps the previous row.
     }
+  }
+
+  /** The launcher caches tiles by URL, so the URL carries the cover rev (#1666). */
+  private absoluteCover(ref: CoverRef | null, token: string | null): string | undefined {
+    const url = this.coverRevisions.url(ref, 600, token);
+    return url ? this.server.apiUrl(url) : undefined;
   }
 
   /** Voice query → best library match → play (exposed for tests). */

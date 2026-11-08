@@ -3,6 +3,7 @@ import { signal } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { AlbumTileComponent } from './album-tile.component';
 import { ServerConfigService } from '../../services/server-config.service';
+import { CoverRevisionsService } from '../../services/cover-revisions.service';
 import { setInputValue } from '../../../testing/signal-input';
 import type { AlbumTile } from '../../lib/artist-album-tiles';
 import type { AlbumHuntStatus } from '../../lib/album-hunt-status';
@@ -184,6 +185,16 @@ describe('AlbumTileComponent', () => {
 
     const missing = render(tile({ status: 'missing', coverArtUrl: 'https://mb/x.jpg' }));
     expect(missing.componentInstance.coverSrc()).toBe('https://mb/x.jpg');
+  });
+
+  // #1666: an owned tile's cover follows its album's rev, from the DTO or pushed.
+  it("carries the local album's cover rev, and a newer pushed one", () => {
+    const owned = render(
+      tile({ status: 'owned', localAlbumId: 'a', coverArt: 'hash', coverRev: 2 }),
+    );
+    expect(owned.componentInstance.coverSrc()).toBe('/api/cover/hash?size=300&v=2&token=tok');
+    TestBed.inject(CoverRevisionsService).raise([{ kind: 'album', id: 'a', rev: 3 }]);
+    expect(owned.componentInstance.coverSrc()).toBe('/api/cover/hash?size=300&v=3&token=tok');
   });
 
   it('builds a subtitle from only the parts a tile actually has', () => {

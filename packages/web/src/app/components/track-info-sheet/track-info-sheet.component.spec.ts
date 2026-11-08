@@ -6,6 +6,7 @@ import { of, throwError } from 'rxjs';
 import { TrackInfoSheetComponent } from './track-info-sheet.component';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { AuthService } from '../../services/auth.service';
+import { CoverRevisionsService } from '../../services/cover-revisions.service';
 import { LikeService } from '../../services/like.service';
 import { TranslateService } from '../../services/translate.service';
 import { ToastService } from '../../services/toast.service';
@@ -105,6 +106,21 @@ describe('TrackInfoSheetComponent (analysis)', () => {
     (c as unknown as { songId: () => string }).songId = () => 'song-1';
     return c;
   }
+
+  // #1666: the header cover is the album's, at its live rev — a caller that only
+  // has a Track (the player) hands over the rev and the album that owns it.
+  it("builds the header cover at the album's live rev from the caller's cover", () => {
+    const c = create();
+    const host = c as unknown as {
+      displayCover: () => { coverArt: string; coverRev: number; albumId: string };
+      auth: { mediaToken: () => string };
+    };
+    host.displayCover = () => ({ coverArt: 'song-1', coverRev: 4, albumId: 'al-1' });
+    host.auth = { mediaToken: () => 'tok' };
+    expect(c.headerCoverUrl()).toBe('/api/cover/song-1?size=96&v=4&token=tok');
+    TestBed.inject(CoverRevisionsService).raise([{ kind: 'album', id: 'al-1', rev: 5 }]);
+    expect(c.headerCoverUrl()).toBe('/api/cover/song-1?size=96&v=5&token=tok');
+  });
 
   it('badges the acquiring source by the addon that ran it, not as unknown', () => {
     const c = create();

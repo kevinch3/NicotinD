@@ -13,6 +13,8 @@ import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { EntityActionsDirective } from '../../directives/entity-actions.directive';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
+import { songCover } from '../../lib/cover-url';
+import { CoverRevisionsService } from '../../services/cover-revisions.service';
 
 /** An album name plus (when known) the id its name links to. */
 export interface AlbumRef {
@@ -104,6 +106,12 @@ export class TrackRowComponent {
     ),
   );
   readonly isCurrent = computed(() => this.playbackState() !== null);
+
+  private readonly coverRevisions = inject(CoverRevisionsService);
+  /** The row thumbnail at its album's live cover rev (#1666). */
+  readonly coverSrc = computed(() =>
+    this.coverRevisions.url(songCover(this.track()), 40, this.auth.mediaToken()),
+  );
 
   // Menu open/close/positioning is delegated to MenuPanelComponent (viewport-safe
   // + bottom-chrome aware); the row only runs the chosen action. The template

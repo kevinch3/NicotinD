@@ -31,7 +31,7 @@ const byTitle = (tiles: AlbumTile[]): Record<string, AlbumTile> =>
 describe('buildArtistAlbumTiles', () => {
   it('renders a matched, complete release as one owned tile — not two', () => {
     const tiles = buildArtistAlbumTiles(
-      [local({ id: 'a1', name: 'Meddle', year: 1971, coverArt: 'hash1' })],
+      [local({ id: 'a1', name: 'Meddle', year: 1971, coverArt: 'hash1', coverRev: 4 })],
       [
         release({
           lidarrId: 1,
@@ -51,6 +51,7 @@ describe('buildArtistAlbumTiles', () => {
     expect(tiles[0]).toMatchObject({ title: 'Meddle', status: 'owned', localAlbumId: 'a1' });
     // The local cover wins — it is the art the user actually has on disk.
     expect(tiles[0].coverArt).toBe('hash1');
+    expect(tiles[0].coverRev).toBe(4);
     // Nothing to do, so nothing to act on.
     expect(tiles[0].source).toBeUndefined();
   });

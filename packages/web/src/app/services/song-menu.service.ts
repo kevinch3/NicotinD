@@ -97,6 +97,8 @@ export class SongMenuService {
           artist: song.artist,
           album: song.album,
           coverArt: song.coverArt ?? null,
+          coverRev: song.coverRev,
+          albumId: song.albumId ?? null,
         }),
     });
 

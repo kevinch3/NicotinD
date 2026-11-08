@@ -34,7 +34,13 @@ describe('TvChannelsService (Play Next + Assistant voice)', () => {
     );
     albums = vi.fn(() =>
       of([
-        { id: 'a1', name: 'E2E Test Album', artist: 'E2E Test Artist', coverArt: 'cov1' },
+        {
+          id: 'a1',
+          name: 'E2E Test Album',
+          artist: 'E2E Test Artist',
+          coverArt: 'cov1',
+          coverRev: 3,
+        },
         { id: 'a2', name: 'Bare Album', artist: 'Someone' },
       ]),
     );
@@ -118,7 +124,8 @@ describe('TvChannelsService (Play Next + Assistant voice)', () => {
         {
           title: 'E2E Test Album',
           subtitle: 'E2E Test Artist',
-          coverUrl: 'http://s/api/cover/cov1?size=600&token=tok',
+          // The launcher caches a tile by URL: the rev moves it (#1666).
+          coverUrl: 'http://s/api/cover/cov1?size=600&v=3&token=tok',
           route: '/library/albums/a1',
         },
         // No coverArt → no coverUrl key claiming art that will 404.

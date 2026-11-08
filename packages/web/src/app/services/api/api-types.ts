@@ -211,6 +211,8 @@ export interface AlbumDetail {
     duration?: number;
     track?: number;
     coverArt?: string;
+    /** The album's `cover_rev`, like every song DTO (#1666). */
+    coverRev?: number;
   }>;
 }
 
@@ -1123,6 +1125,8 @@ export interface RecentPlay {
   duration: number | null;
   /** Live cover-art id for `/api/cover/:id` (null when the song has no cover). */
   coverArt: string | null;
+  /** The album's `cover_rev` (#1666). */
+  coverRev?: number;
   playedAt: number;
 }
 

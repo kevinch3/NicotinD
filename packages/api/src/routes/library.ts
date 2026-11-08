@@ -111,6 +111,7 @@ import {
 } from '../services/library-health.js';
 import { completeAlbum, type CompleteAlbumDeps } from '../services/album-complete.js';
 import { applyAlbumCover } from '../services/album-cover-mutate.js';
+import { coverRoutePath } from '../services/cover-rev.js';
 import {
   applyMissplitMerge,
   missplitClusterMembers,
@@ -1434,13 +1435,17 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const id = c.req.param('id');
     const db = getDatabase();
     const album = db
-      .query<{ id: string }, [string]>('SELECT id FROM library_albums WHERE id = ?')
+      .query<{ id: string; cover_rev: number }, [string]>(
+        'SELECT id, cover_rev FROM library_albums WHERE id = ?',
+      )
       .get(id);
     if (!album) return c.json({ error: 'Album not found' }, 404);
 
+    // Rev'd, so the picker's Current thumbnail is not the day-cached old cover
+    // after an apply (#1666).
     const current: AlbumCoverCandidate = {
       source: 'current',
-      url: `/api/cover/${id}`,
+      url: coverRoutePath(id, album.cover_rev),
       label: 'Current',
     };
 

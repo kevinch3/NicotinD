@@ -95,6 +95,23 @@ describe('PreserveService', () => {
     svc = TestBed.inject(PreserveService);
   });
 
+  // #1666: the snapshot is kept for good, so a stale day-cached cover must not
+  // be what lands in it — the rev'd URL, and a revalidation.
+  it("snapshots the cover at its album's rev, revalidating the browser cache", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const ok = mockFetch();
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url: String(url), init });
+      return ok(url, init);
+    }) as unknown as typeof fetch;
+
+    await svc.preserve({ ...track('a'), coverArt: 'al1', coverRev: 3, albumId: 'al1' });
+
+    const cover = calls.find((c) => c.url.includes('/api/cover/'));
+    expect(cover?.url).toBe('/api/cover/al1?size=600&v=3&token=tok');
+    expect(cover?.init?.cache).toBe('no-cache');
+  });
+
   describe('preserveCollection', () => {
     it('stores every track when under budget', async () => {
       await svc.preserveCollection('album1', 'Album', [track('a'), track('b'), track('c')]);

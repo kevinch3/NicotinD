@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import type { MiddlewareHandler } from 'hono';
 import type { Database } from 'bun:sqlite';
 import { mintShareJwt } from './share.js';
+import { coverRoutePath } from '../services/cover-rev.js';
 
 /**
  * Server-side Open Graph / Twitter Card injection for `/share/:token`.
@@ -37,6 +38,8 @@ export interface ShareMeta {
   type: 'music.album' | 'music.playlist' | 'profile';
   /** Cover/song/album/artist id for `/api/cover/<id>`, or null when there's no art. */
   coverId: string | null;
+  /** The `cover_rev` of the entity that owns the cover, carried on `og:image` (#1666). */
+  coverRev: number;
   /** JWT subject used to mint the read-only cover token. */
   creatorSub: string;
 }
@@ -134,7 +137,9 @@ export function publicOrigin(headers: Headers, requestUrl: string): string {
 export function resolveShareMeta(db: Database, row: ShareTokenRow): ShareMeta | null {
   if (row.resource_type === 'artist') {
     const artist = db
-      .query<{ name: string }, [string]>('SELECT name FROM library_artists WHERE id = ?')
+      .query<{ name: string; cover_rev: number }, [string]>(
+        'SELECT name, cover_rev FROM library_artists WHERE id = ?',
+      )
       .get(row.resource_id);
     if (!artist) return null;
     const meta = db
@@ -150,14 +155,15 @@ export function resolveShareMeta(db: Database, row: ShareTokenRow): ShareMeta | 
       // there's no real portrait (no album-cover fallback, by design) — the
       // crawler then just gets a card with no image, handled downstream.
       coverId: row.resource_id,
+      coverRev: artist.cover_rev,
       creatorSub: row.created_by,
     };
   }
 
   if (row.resource_type === 'album') {
     const album = db
-      .query<{ name: string; artist: string | null }, [string]>(
-        'SELECT name, artist FROM library_albums WHERE id = ?',
+      .query<{ name: string; artist: string | null; cover_rev: number }, [string]>(
+        'SELECT name, artist, cover_rev FROM library_albums WHERE id = ?',
       )
       .get(row.resource_id);
     if (!album) return null;
@@ -166,6 +172,7 @@ export function resolveShareMeta(db: Database, row: ShareTokenRow): ShareMeta | 
       description: album.artist ? `Album • ${album.artist}` : 'Album',
       type: 'music.album',
       coverId: row.resource_id,
+      coverRev: album.cover_rev,
       creatorSub: row.created_by,
     };
   }
@@ -182,21 +189,23 @@ export function resolveShareMeta(db: Database, row: ShareTokenRow): ShareMeta | 
           WHERE ps.playlist_id = ?`,
       )
       .get(row.resource_id)?.n ?? 0;
-  const firstCover =
-    db
-      .query<{ cover: string | null }, [string]>(
-        `SELECT COALESCE(s.cover_art, s.album_id) AS cover
-           FROM playlist_songs ps
-           JOIN library_songs s ON s.id = ps.song_id
-          WHERE ps.playlist_id = ?
-          ORDER BY ps.position ASC LIMIT 1`,
-      )
-      .get(row.resource_id)?.cover ?? null;
+  // A song's cover resolves to its album's, so the album's rev is the one.
+  const first = db
+    .query<{ cover: string | null; rev: number | null }, [string]>(
+      `SELECT COALESCE(s.cover_art, s.album_id) AS cover, al.cover_rev AS rev
+         FROM playlist_songs ps
+         JOIN library_songs s ON s.id = ps.song_id
+    LEFT JOIN library_albums al ON al.id = s.album_id
+        WHERE ps.playlist_id = ?
+        ORDER BY ps.position ASC LIMIT 1`,
+    )
+    .get(row.resource_id);
   return {
     title: pl.name,
     description: `Playlist • ${count} ${count === 1 ? 'track' : 'tracks'}`,
     type: 'music.playlist',
-    coverId: firstCover,
+    coverId: first?.cover ?? null,
+    coverRev: first?.rev ?? 0,
     creatorSub: row.created_by,
   };
 }
@@ -248,7 +257,7 @@ export function shareMetaHandler(opts: ShareMetaHandlerOptions): MiddlewareHandl
     let imageUrl: string | null = null;
     if (meta.coverId) {
       const jwt = await mintShareJwt(meta.creatorSub, Date.now() + 600_000, opts.jwtSecret);
-      imageUrl = `${origin}/api/cover/${meta.coverId}?size=600&token=${jwt}`;
+      imageUrl = `${origin}${coverRoutePath(meta.coverId, meta.coverRev, { size: 600, token: jwt })}`;
     }
 
     const tags = buildShareMetaTags({

@@ -14,6 +14,8 @@ import { Meta, Title } from '@angular/platform-browser';
 import { firstValueFrom } from 'rxjs';
 import { ShareSessionService, type ShareResourceType } from '../../services/share-session.service';
 import { ServerConfigService } from '../../services/server-config.service';
+import { CoverRevisionsService } from '../../services/cover-revisions.service';
+import type { CoverRef } from '../../lib/cover-url';
 import { AuthService } from '../../services/auth.service';
 import { SkeletonComponent } from '../../components/skeleton/skeleton.component';
 import {
@@ -51,6 +53,7 @@ export class ShareViewComponent implements OnInit, OnDestroy {
   private titleService = inject(Title);
   private shareSession = inject(ShareSessionService);
   private server = inject(ServerConfigService);
+  private coverRevisions = inject(CoverRevisionsService);
   private auth = inject(AuthService);
 
   readonly audioRef = viewChild<ElementRef<HTMLAudioElement>>('audioEl');
@@ -59,7 +62,7 @@ export class ShareViewComponent implements OnInit, OnDestroy {
   readonly resourceName = signal('');
   readonly resourceSubtitle = signal('');
   readonly resourceBio = signal('');
-  readonly coverArtId = signal<string | null>(null);
+  readonly cover = signal<CoverRef | null>(null);
   readonly tracks = signal<ShareTrack[]>([]);
   readonly currentIndex = signal(0);
   readonly isPlaying = signal(false);
@@ -71,9 +74,9 @@ export class ShareViewComponent implements OnInit, OnDestroy {
   readonly currentTrack = computed(() => this.tracks()[this.currentIndex()] ?? null);
 
   readonly coverUrl = computed(() => {
-    const id = this.coverArtId();
     const jwt = this.shareSession.shareJwt();
-    return id && jwt ? this.server.apiUrl(`/api/cover/${id}?size=300&token=${jwt}`) : null;
+    const url = jwt ? this.coverRevisions.url(this.cover(), 300, jwt) : undefined;
+    return url ? this.server.apiUrl(url) : null;
   });
 
   readonly streamUrl = computed(() => {
@@ -128,9 +131,9 @@ export class ShareViewComponent implements OnInit, OnDestroy {
       this.resourceName.set(view.name);
       this.resourceSubtitle.set(view.subtitle);
       this.resourceBio.set(view.bio ?? '');
-      this.coverArtId.set(view.coverId);
+      this.cover.set(view.cover);
       this.tracks.set(view.tracks);
-      this.setOgTags(view.name, view.ogDescription, jwt, view.coverId ?? undefined, view.ogType);
+      this.setOgTags(view.name, view.ogDescription, jwt, view.cover, view.ogType);
       this.state.set('active');
     } catch (err: any) {
       this.state.set(err?.status === 410 ? 'expired' : 'error');
@@ -211,18 +214,14 @@ export class ShareViewComponent implements OnInit, OnDestroy {
     title: string,
     description: string,
     jwt: string,
-    coverArtId: string | undefined,
+    cover: CoverRef | null,
     type: string,
   ): void {
     this.titleService.setTitle(`${title} — NicotinD`);
     this.meta.updateTag({ property: 'og:title', content: title });
     this.meta.updateTag({ property: 'og:description', content: description });
     this.meta.updateTag({ property: 'og:type', content: type });
-    if (coverArtId) {
-      this.meta.updateTag({
-        property: 'og:image',
-        content: this.server.apiUrl(`/api/cover/${coverArtId}?token=${jwt}`),
-      });
-    }
+    const image = this.coverRevisions.url(cover, 600, jwt);
+    if (image) this.meta.updateTag({ property: 'og:image', content: this.server.apiUrl(image) });
   }
 }

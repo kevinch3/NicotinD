@@ -69,7 +69,9 @@ function metaToTrack(t: PreservedTrackMeta): Track {
     title: t.title,
     artist: t.artist,
     album: t.album,
+    albumId: t.albumId,
     coverArt: t.coverArt,
+    coverRev: t.coverRev,
     duration: t.duration,
     bitRate: t.bitRate,
   };

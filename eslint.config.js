@@ -122,4 +122,11 @@ export default [
     ignores: ['**/*.spec.ts'],
     rules: { 'nicotind/lyrics-single-owner': 'error' },
   },
+  // A raw cover-byte write outside a module that bumps cover_rev serves new
+  // bytes under the old, day-cached URL (#1666).
+  {
+    files: ['packages/api/src/**/*.ts'],
+    ignores: ['**/*.test.ts'],
+    rules: { 'nicotind/cover-writers': 'error' },
+  },
 ];

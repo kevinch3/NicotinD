@@ -7,6 +7,7 @@ import { TvKaraokeComponent } from './tv-karaoke.component';
 import { PlayerService, type Track } from '../../services/player.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { TranslateService } from '../../services/translate.service';
+import { AuthService } from '../../services/auth.service';
 
 const track = (id: string): Track => ({ id, title: id.toUpperCase(), artist: 'E2E Test Artist' });
 
@@ -51,6 +52,17 @@ describe('TvPlayerComponent', () => {
     fixture.nativeElement.querySelector<HTMLElement>(`[data-testid="${id}"]`);
 
   afterEach(() => localStorage.clear());
+
+  // #1666: the cover and the backdrop carry the album's rev, on the media key
+  // like every other cover (it used the rotating session JWT).
+  it("builds the cover at the album's rev, on the media key", () => {
+    const { fixture, player } = create();
+    player.play({ ...track('s2'), coverArt: 'c2', coverRev: 2, albumId: 'al-2' });
+    fixture.detectChanges();
+    const token = TestBed.inject(AuthService).mediaToken() ?? '';
+    expect(fixture.componentInstance.coverSrc()).toBe(`/api/cover/c2?size=600&v=2&token=${token}`);
+    expect(fixture.componentInstance.backdrop()).toContain('/api/cover/c2?size=600&v=2&');
+  });
 
   it('has no Next-up control while nothing is queued', () => {
     const { fixture } = create();

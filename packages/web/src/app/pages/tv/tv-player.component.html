@@ -21,7 +21,7 @@
       <div class="flex items-center gap-[4vw]">
         <div class="shrink-0 flex flex-col items-center gap-5">
           <app-cover-art
-            [src]="t.coverArt ? '/api/cover/' + t.coverArt + '?size=600&token=' + auth.token() : undefined"
+            [src]="coverSrc()"
             [artist]="t.artist"
             [album]="t.album ?? ''"
             [size]="280"

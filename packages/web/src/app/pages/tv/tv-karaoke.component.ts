@@ -1,6 +1,8 @@
 import { Component, DestroyRef, computed, effect, inject, output, signal } from '@angular/core';
 import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
+import { CoverRevisionsService } from '../../services/cover-revisions.service';
+import { songCover } from '../../lib/cover-url';
 import { ServerConfigService } from '../../services/server-config.service';
 import { LyricsService } from '../../services/lyrics.service';
 import { registerOverlayCloser } from '../../services/native/back-button.service';
@@ -69,6 +71,7 @@ export class TvKaraokeComponent {
   readonly lyrics = inject(LyricsService);
   private readonly auth = inject(AuthService);
   private readonly server = inject(ServerConfigService);
+  private readonly coverRevisions = inject(CoverRevisionsService);
 
   /** The overlay asked to close — its exit button, Escape, or hardware Back. */
   readonly closed = output<void>();
@@ -113,13 +116,12 @@ export class TvKaraokeComponent {
     // has already moved on is dropped rather than painted over the wrong song.
     effect(() => {
       const track = this.player.currentTrack();
-      if (!track?.coverArt) {
+      const rel = track && this.coverRevisions.url(songCover(track), 80, this.auth.mediaToken());
+      if (!track || !rel) {
         this.colors.set(DEFAULT_PALETTE);
         return;
       }
-      const url = this.server.apiUrl(
-        `/api/cover/${track.coverArt}?size=80&token=${this.auth.mediaToken()}`,
-      );
+      const url = this.server.apiUrl(rel);
       void loadCoverPalette(url).then((palette) => {
         if (this.player.currentTrack()?.id === track.id) this.colors.set(palette);
       });

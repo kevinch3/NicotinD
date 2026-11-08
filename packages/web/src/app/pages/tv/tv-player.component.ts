@@ -2,6 +2,9 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { Location } from '@angular/common';
 import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
+import { CoverRevisionsService } from '../../services/cover-revisions.service';
+import { songCover } from '../../lib/cover-url';
+import { ServerConfigService } from '../../services/server-config.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { NowPlayingTvQueueComponent } from '../../components/now-playing/now-playing-tv-queue/now-playing-tv-queue.component';
@@ -45,6 +48,8 @@ export class TvPlayerComponent {
   readonly auth = inject(AuthService);
   readonly remote = inject(RemotePlaybackService);
   private readonly location = inject(Location);
+  private readonly coverRevisions = inject(CoverRevisionsService);
+  private readonly server = inject(ServerConfigService);
 
   readonly track = this.player.currentTrack;
   readonly nextUp = computed(() => this.player.queue()[0] ?? null);
@@ -72,8 +77,17 @@ export class TvPlayerComponent {
   /** Blurred cover behind the sheet. Safe to bind unconditionally here — unlike
    *  the phone sheet, this component only exists while the route is active. */
   readonly backdrop = computed(() => {
-    const art = this.track()?.coverArt;
-    return art ? `url(/api/cover/${art}?size=600&token=${this.auth.mediaToken()})` : null;
+    const src = this.coverSrc();
+    return src ? `url(${this.server.apiUrl(src)})` : null;
+  });
+
+  /** The current track's cover at its album's live cover rev (#1666), on the
+   *  media key like every other cover — it used the rotating session JWT. */
+  readonly coverSrc = computed(() => {
+    const track = this.track();
+    return track
+      ? this.coverRevisions.url(songCover(track), 600, this.auth.mediaToken())
+      : undefined;
   });
 
   togglePlay(): void {

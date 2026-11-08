@@ -13,6 +13,7 @@ import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import type { PublicPollScenario, PublicPollView } from '../../../types/core';
 import { ServerConfigService } from '../../services/server-config.service';
+import { coverUrl as buildCoverUrl, songCover } from '../../lib/cover-url';
 import { SeekBarComponent } from '../../components/seek-bar/seek-bar.component';
 import { SkeletonComponent } from '../../components/skeleton/skeleton.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
@@ -131,8 +132,11 @@ export class PollViewComponent implements OnInit, OnDestroy {
     }
   }
 
+  /** A seed's cover on the poll's own media JWT. The seeds are frozen snapshots
+   *  that carry no cover rev, so this is the rev-0 URL (#1666). */
   coverUrl(coverId: string): string {
-    return this.server.apiUrl(`/api/cover/${coverId}?size=300&token=${this.mediaJwt}`);
+    const ref = songCover({ coverArt: coverId });
+    return ref ? this.server.apiUrl(buildCoverUrl(ref, 300, this.mediaJwt)) : '';
   }
 
   vote(candidateId: string, value: PollVoteValue): void {

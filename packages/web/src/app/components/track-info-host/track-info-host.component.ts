@@ -12,7 +12,7 @@ import { TrackInfoSheetComponent } from '../track-info-sheet/track-info-sheet.co
         [displayTitle]="t.title ?? ''"
         [displayArtist]="t.artist ?? ''"
         [displayAlbum]="t.album ?? ''"
-        [displayCoverArt]="t.coverArt ?? null"
+        [displayCover]="t"
         (close)="info.close()"
       />
     }
