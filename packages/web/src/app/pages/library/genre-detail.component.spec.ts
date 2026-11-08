@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
-import { provideRouter, ActivatedRoute } from '@angular/router';
+import { provideRouter, ActivatedRoute, Router } from '@angular/router';
+import { PageBackService } from '../../services/page-back.service';
 import { of } from 'rxjs';
 import { GenreDetailComponent } from './genre-detail.component';
 import { vi } from 'vitest';
@@ -340,5 +341,19 @@ describe('GenreDetailComponent — pull-to-refresh', () => {
     await handler!();
 
     expect(getSongsByGenreCalls).toEqual(['Reggae']);
+  });
+});
+
+// #1770: the arrow moved to the shell's top bar; the genre's target stays the
+// fixed library route its routerLink pointed at, never history.
+describe('GenreDetailComponent — top-bar back target', () => {
+  it('registers the library as its back target', () => {
+    setup();
+    const pageBack = TestBed.inject(PageBackService);
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+
+    expect(pageBack.hasTarget()).toBe(true);
+    pageBack.back();
+    expect(navigate).toHaveBeenCalledWith(['/library']);
   });
 });

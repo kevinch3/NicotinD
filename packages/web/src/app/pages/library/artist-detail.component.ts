@@ -76,6 +76,7 @@ import {
   type AlbumTile,
 } from '../../lib/artist-album-tiles';
 import { NavigationService } from '../../services/navigation.service';
+import { PageBackService } from '../../services/page-back.service';
 import { AutoHuntService } from '../../services/auto-hunt.service';
 import { IDLE_HUNT, LANDING_HUNT, type AlbumHuntStatus } from '../../lib/album-hunt-status';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
@@ -139,6 +140,7 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   private p2r = inject(PullToRefreshService);
 
   constructor() {
+    inject(PageBackService).register(() => this.goBack());
     this.p2r.register(() => {
       if (!this.artistId) return;
       this.api.invalidateLibraryReads();

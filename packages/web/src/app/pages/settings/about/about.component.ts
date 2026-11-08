@@ -1,5 +1,4 @@
 import { Component, inject, signal } from '@angular/core';
-import { RouterLink } from '@angular/router';
 import { APP_BUILD_INFO, APP_VERSION } from '../../../app.config';
 import { LICENCE_URL, REPO_URL } from '../../../lib/build-info';
 import { ChangelogModalComponent } from '../../../components/changelog-modal/changelog-modal.component';
@@ -7,6 +6,7 @@ import { SettingsGroupComponent } from '../../../components/settings-group/setti
 import { TvNavGroupDirective } from '../../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
+import { PageBackService } from '../../../services/page-back.service';
 
 /**
  * Settings → About (issue #453): the licence notice and the AGPL §13 offer of
@@ -20,7 +20,6 @@ import { TranslatePipe } from '../../../pipes/translate.pipe';
 @Component({
   selector: 'app-about',
   imports: [
-    RouterLink,
     ChangelogModalComponent,
     SettingsGroupComponent,
     TvNavGroupDirective,
@@ -30,6 +29,10 @@ import { TranslatePipe } from '../../../pipes/translate.pipe';
   templateUrl: './about.component.html',
 })
 export class AboutComponent {
+  constructor() {
+    inject(PageBackService).registerRoute(['/settings']);
+  }
+
   readonly version = inject(APP_VERSION);
   readonly build = inject(APP_BUILD_INFO);
   readonly repoUrl = REPO_URL;

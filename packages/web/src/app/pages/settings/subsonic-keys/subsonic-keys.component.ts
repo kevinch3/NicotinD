@@ -1,6 +1,5 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
 import { SubsonicKeysApiService } from '../../../services/api/subsonic-keys-api.service';
 import type { SubsonicKeyMintResponse, SubsonicKeyRow } from '../../../services/api/api-types';
 import { AuthService } from '../../../services/auth.service';
@@ -10,6 +9,7 @@ import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 import { SettingsGroupComponent } from '../../../components/settings-group/settings-group.component';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
 import { TranslateService } from '../../../services/translate.service';
+import { PageBackService } from '../../../services/page-back.service';
 
 /**
  * Mint/list/revoke OpenSubsonic API keys (docs/opensubsonic.md) — what a
@@ -19,7 +19,6 @@ import { TranslateService } from '../../../services/translate.service';
 @Component({
   selector: 'app-subsonic-keys',
   imports: [
-    RouterLink,
     FormsModule,
     TvNavGroupDirective,
     TvNavItemDirective,
@@ -29,6 +28,10 @@ import { TranslateService } from '../../../services/translate.service';
   templateUrl: './subsonic-keys.component.html',
 })
 export class SubsonicKeysComponent implements OnInit {
+  constructor() {
+    inject(PageBackService).registerRoute(['/settings']);
+  }
+
   private api = inject(SubsonicKeysApiService);
   private readonly i18n = inject(TranslateService);
   private readonly serverConfig = inject(ServerConfigService);

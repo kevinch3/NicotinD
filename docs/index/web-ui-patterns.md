@@ -89,6 +89,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **Pull-to-refresh (touch)**: one layout-hosted gesture on `<main>` (`pull-to-refresh.ts` composing
   `createPointerDrag`) plus a `PullToRefreshService` handler stack pages register into,
   coarse-pointer-gated. → [web-ui.md](../web-ui.md)
+- **Top bar back control**: pages register their back target with `PageBackService`; the layout
+  renders the one arrow beside the logo, and below md the bar shows only then
+  (`headerDisplayClass`, `statusScrimVisible`). → [web-ui.md](../web-ui.md)
 - **Vertical swipe (own-or-release)**: `createVerticalSwipe` arms the touchmove blocker at
   pointerdown and asks `resolve` once; `shouldCommit` (distance or `flickVelocity`) commits. The
   mini-bar live-follow open, the Now Playing mode table (resize/dismiss, continuation) and the

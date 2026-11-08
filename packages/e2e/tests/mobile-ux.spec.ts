@@ -440,9 +440,10 @@ test.describe('mobile UX', () => {
   // The sticky header folds env(safe-area-inset-top) into its top padding so it
   // clears the iOS notch. On the web/headless (inset = 0) it must resolve to the
   // unchanged py-3 (12px) — i.e. the calc() is valid and desktop is unaffected.
+  // Below md the header shows only on a page with a back target (#1770).
   test('header top padding resolves to 12px on web (safe-area inset = 0)', async ({ page }) => {
-    await page.goto('/library');
-    await expect(page.locator('header')).toBeVisible();
+    await page.goto('/settings/about');
+    await expect(page.getByTestId('app-header')).toBeVisible();
     const paddingTop = await page.evaluate(() => {
       const header = document.querySelector('header');
       return header ? getComputedStyle(header).paddingTop : null;

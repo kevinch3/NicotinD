@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
+import { PageBackService } from '../../../services/page-back.service';
 import { AboutComponent } from './about.component';
 import { APP_BUILD_INFO, APP_VERSION } from '../../../app.config';
 import { REPO_URL, resolveBuildInfo } from '../../../lib/build-info';
@@ -101,5 +102,20 @@ describe('AboutComponent', () => {
       expect(BASE_CATALOG, `missing en key: ${key}`).toHaveProperty([key]);
       expect(ES_CATALOG, `missing es key: ${key}`).toHaveProperty([key]);
     }
+  });
+});
+
+// #1770: a settings sub-page's "← Settings" link became the top bar's arrow;
+// the destination stays the fixed /settings route.
+describe('AboutComponent — top-bar back target', () => {
+  it('registers /settings as its back target and renders no link row of its own', () => {
+    const { el } = setup();
+    const pageBack = TestBed.inject(PageBackService);
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+
+    expect(el.querySelector('a[href="/settings"]')).toBeNull();
+    expect(pageBack.hasTarget()).toBe(true);
+    pageBack.back();
+    expect(navigate).toHaveBeenCalledWith(['/settings']);
   });
 });

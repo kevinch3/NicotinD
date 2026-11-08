@@ -1,5 +1,5 @@
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
-import { Router, RouterLink } from '@angular/router';
+import { Router } from '@angular/router';
 import { AuthService } from '../../../services/auth.service';
 import { DevicesApiService } from '../../../services/api/devices-api.service';
 import type {
@@ -15,6 +15,7 @@ import { TranslatePipe } from '../../../pipes/translate.pipe';
 import { TvNavGroupDirective } from '../../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 import { SettingsGroupComponent } from '../../../components/settings-group/settings-group.component';
+import { PageBackService } from '../../../services/page-back.service';
 
 /**
  * "Link a device" — pair a phone to this server by QR (or manual URL + code)
@@ -24,16 +25,14 @@ import { SettingsGroupComponent } from '../../../components/settings-group/setti
  */
 @Component({
   selector: 'app-devices',
-  imports: [
-    RouterLink,
-    TranslatePipe,
-    TvNavGroupDirective,
-    TvNavItemDirective,
-    SettingsGroupComponent,
-  ],
+  imports: [TranslatePipe, TvNavGroupDirective, TvNavItemDirective, SettingsGroupComponent],
   templateUrl: './devices.component.html',
 })
 export class DevicesComponent implements OnInit, OnDestroy {
+  constructor() {
+    inject(PageBackService).registerRoute(['/settings']);
+  }
+
   readonly i18n = inject(TranslateService);
   private api = inject(DevicesApiService);
   private router = inject(Router);

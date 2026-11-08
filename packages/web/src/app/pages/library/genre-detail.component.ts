@@ -9,7 +9,8 @@ import {
   effect,
   viewChild,
 } from '@angular/core';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute } from '@angular/router';
+import { PageBackService } from '../../services/page-back.service';
 import { createRenderWindow } from '../../lib/render-window';
 import { firstValueFrom } from 'rxjs';
 import { LibraryApiService } from '../../services/api/library-api.service';
@@ -38,7 +39,6 @@ import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
     TranslatePipe,
     TrackRowComponent,
     ConfirmDialogComponent,
-    RouterLink,
     SelectionBarComponent,
     IconComponent,
     TvNavGroupDirective,
@@ -74,6 +74,8 @@ export class GenreDetailComponent implements OnInit, OnDestroy {
   private songsObserver?: IntersectionObserver;
 
   constructor() {
+    // Always the library (the arrow was a routerLink), never history.
+    inject(PageBackService).registerRoute(['/library']);
     this.p2r.register(() => {
       const slug = this.route.snapshot.paramMap.get('slug');
       return slug ? this.loadGenre(slug) : undefined;

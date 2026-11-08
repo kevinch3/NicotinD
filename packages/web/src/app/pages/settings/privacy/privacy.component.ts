@@ -1,5 +1,4 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
-import { RouterLink } from '@angular/router';
 import { catchError, firstValueFrom, of } from 'rxjs';
 import { HistoryApiService } from '../../../services/api/history-api.service';
 import { ConfirmService } from '../../../services/confirm.service';
@@ -11,6 +10,7 @@ import { TvNavGroupDirective } from '../../../directives/tv-nav-group.directive'
 import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
 import type { PrivacyState } from '../../../services/api/api-types';
+import { PageBackService } from '../../../services/page-back.service';
 
 /**
  * Settings → Privacy (issue #454): what this instance stores about you, and the
@@ -22,16 +22,14 @@ import type { PrivacyState } from '../../../services/api/api-types';
  */
 @Component({
   selector: 'app-privacy-settings',
-  imports: [
-    RouterLink,
-    SettingsGroupComponent,
-    TvNavGroupDirective,
-    TvNavItemDirective,
-    TranslatePipe,
-  ],
+  imports: [SettingsGroupComponent, TvNavGroupDirective, TvNavItemDirective, TranslatePipe],
   templateUrl: './privacy.component.html',
 })
 export class PrivacySettingsComponent implements OnInit {
+  constructor() {
+    inject(PageBackService).registerRoute(['/settings']);
+  }
+
   private api = inject(HistoryApiService);
   private confirm = inject(ConfirmService);
   private queue = inject(ListeningQueueService);

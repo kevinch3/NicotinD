@@ -26,6 +26,7 @@ import { IconComponent } from '../../components/icon/icon.component';
 import { MetadataFixModalComponent } from '../../components/metadata-fix-modal/metadata-fix-modal.component';
 import { ArtistLinksComponent } from '../../components/artist-links/artist-links.component';
 import { NavigationService } from '../../services/navigation.service';
+import { PageBackService } from '../../services/page-back.service';
 import { PreserveService } from '../../services/preserve.service';
 import {
   GenreDistributionStripComponent,
@@ -75,6 +76,7 @@ export class AlbumDetailComponent implements OnInit {
   readonly shareCopied = signal(false);
 
   constructor() {
+    inject(PageBackService).register(() => this.goBack());
     this.p2r.register(() => {
       const id = this.route.snapshot.paramMap.get('id');
       return id ? this.loadAlbum(id) : undefined;
