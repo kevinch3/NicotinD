@@ -59,7 +59,7 @@ import { reviewRoutes } from './routes/review.js';
 import { RemoteAccess } from './services/tailscale.js';
 import { shareMetaHandler } from './routes/share-meta.js';
 import { discographyRoutes } from './routes/discography.js';
-import { catalogRoutes } from './routes/catalog.js';
+import { catalogNotConfiguredRoutes, catalogRoutes } from './routes/catalog.js';
 import { MusicBrainzClient, MB_USER_AGENT } from './services/musicbrainz-client.js';
 import { archiveRoutes } from './routes/archive.js';
 import { ArchiveSearchService } from './services/archive-search.service.js';
@@ -144,7 +144,7 @@ export interface CreateAppOptions {
   lidarr: Lidarr | null;
   serviceManager: ServiceManager;
   webDistPath?: string;
-  saveLidarrSecretsFn?: (apiKey: string) => void;
+  saveLidarrConnectionFn?: (conn: { url: string; apiKey: string }) => void;
   stagingDir?: string;
   acoustidApiKey?: string;
   version?: string;
@@ -155,7 +155,7 @@ export function createApp({
   lidarr,
   serviceManager,
   webDistPath,
-  saveLidarrSecretsFn,
+  saveLidarrConnectionFn,
   stagingDir,
   acoustidApiKey,
   version,
@@ -619,7 +619,7 @@ export function createApp({
     setupRoutes({
       config,
       serviceManager,
-      saveLidarrSecretsFn: saveLidarrSecretsFn ?? (() => {}),
+      saveLidarrConnectionFn: saveLidarrConnectionFn ?? (() => {}),
     }),
   );
 
@@ -964,6 +964,9 @@ export function createApp({
   // wired when Lidarr is configured; absent → acquisition degrades to heuristic.
   let enrichSingles: ((relPaths: string[]) => Promise<void>) | undefined;
 
+  // No Lidarr: the catalog answers with a typed reason, not a 404 (#1729).
+  // One mount either way, so check:route-auth sees a single /api/catalog.
+  let catalogApp: ReturnType<typeof catalogNotConfiguredRoutes> = catalogNotConfiguredRoutes();
   if (lidarr) {
     const discographySvc = new DiscographyService(lidarr, db);
     const rootPolicy = lidarrRootPolicyFor(config, {
@@ -998,10 +1001,7 @@ export function createApp({
         dataDir: expandedDataDir,
       }),
     );
-    app.route(
-      '/api/catalog',
-      catalogRoutes({ catalog: catalogSvc, provisioning: artistProvisioning }),
-    );
+    catalogApp = catalogRoutes({ catalog: catalogSvc, provisioning: artistProvisioning });
 
     // Watchlist auto-hunt poller — reuses the same hunter + catalog as the
     // interactive flow, so an auto-acquired album is indistinguishable from a
@@ -1041,6 +1041,7 @@ export function createApp({
       autoAcquireSvc.start();
     }
   }
+  app.route('/api/catalog', catalogApp);
 
   // URL-based acquisition (yt-dlp / spotdl). The watcher routes each URL to an
   // enabled resolve-capable plugin via the registry; submit 503s when none is

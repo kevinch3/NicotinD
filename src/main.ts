@@ -120,11 +120,7 @@ async function main() {
     lidarr,
     serviceManager,
     webDistPath,
-    saveLidarrSecretsFn: (apiKey: string) => {
-      const currentSecrets = loadOrCreateSecrets(config.dataDir);
-      currentSecrets.lidarrApiKey = apiKey;
-      saveSecrets(config.dataDir, currentSecrets);
-    },
+    saveLidarrConnectionFn: (conn) => saveLidarrConnection(config.dataDir, conn),
     // URL-acquire plugins stage downloads here before the organizer ingests
     // them (the slskd-specific staging path died with the in-process client).
     stagingDir: join(
@@ -198,6 +194,10 @@ async function main() {
 
 export interface PersistedSecrets {
   lidarrApiKey: string;
+  /** A Lidarr URL entered in the setup wizard (#1729). Its presence is what
+   *  marks Lidarr as configured in external mode; `lidarrApiKey` cannot, since
+   *  it is generated on first boot for the embedded Lidarr. */
+  lidarrUrl?: string;
   jwtSecret: string;
   acoustidApiKey?: string;
 }
@@ -229,6 +229,30 @@ export function saveSecrets(dataDir: string, secrets: PersistedSecrets): void {
   mkdirSync(dir, { recursive: true });
   const secretsPath = join(dir, 'secrets.json');
   writeFileSync(secretsPath, JSON.stringify(secrets, null, 2), { mode: 0o600 });
+}
+
+/** Persist the Lidarr connection the setup wizard was given (#1729). */
+export function saveLidarrConnection(dataDir: string, conn: { url: string; apiKey: string }): void {
+  const secrets = loadOrCreateSecrets(dataDir);
+  secrets.lidarrUrl = conn.url;
+  if (conn.apiKey) secrets.lidarrApiKey = conn.apiKey;
+  saveSecrets(dataDir, secrets);
+}
+
+/**
+ * Whether this install has a Lidarr to talk to (#1729). Embedded mode bundles
+ * one on localhost:8686. External mode has one only if the operator said so:
+ * env, a `lidarr:` block in the config file, or a URL saved by the wizard.
+ * Otherwise there is no Lidarr, and nothing should be sent to a guessed URL.
+ */
+function lidarrConfigured(mode: unknown, fileLidarr: unknown, secrets: PersistedSecrets): boolean {
+  if ((mode ?? 'embedded') === 'embedded') return true;
+  return Boolean(
+    process.env.NICOTIND_LIDARR_URL ||
+    process.env.LIDARR_API_KEY ||
+    fileLidarr ||
+    secrets.lidarrUrl,
+  );
 }
 
 export function loadConfig() {
@@ -342,17 +366,23 @@ export function loadConfig() {
           }
         : {}),
     },
-    lidarr: {
-      url: 'http://localhost:8686',
-      port: 8686,
-      apiKey: secrets.lidarrApiKey,
-      ...((fileConfig as Record<string, unknown>).lidarr as Record<string, unknown>),
-      ...(process.env.NICOTIND_LIDARR_URL ? { url: process.env.NICOTIND_LIDARR_URL } : {}),
-      ...(process.env.NICOTIND_LIDARR_ROOT_FOLDER
-        ? { rootFolder: process.env.NICOTIND_LIDARR_ROOT_FOLDER }
-        : {}),
-      ...(process.env.LIDARR_API_KEY ? { apiKey: process.env.LIDARR_API_KEY } : {}),
-    },
+    lidarr: lidarrConfigured(
+      process.env.NICOTIND_MODE || (fileConfig as Record<string, unknown>).mode,
+      (fileConfig as Record<string, unknown>).lidarr,
+      secrets,
+    )
+      ? {
+          url: secrets.lidarrUrl || 'http://localhost:8686',
+          port: 8686,
+          apiKey: secrets.lidarrApiKey,
+          ...((fileConfig as Record<string, unknown>).lidarr as Record<string, unknown>),
+          ...(process.env.NICOTIND_LIDARR_URL ? { url: process.env.NICOTIND_LIDARR_URL } : {}),
+          ...(process.env.NICOTIND_LIDARR_ROOT_FOLDER
+            ? { rootFolder: process.env.NICOTIND_LIDARR_ROOT_FOLDER }
+            : {}),
+          ...(process.env.LIDARR_API_KEY ? { apiKey: process.env.LIDARR_API_KEY } : {}),
+        }
+      : undefined,
     analysis: {
       url: '',
       ...((fileConfig as Record<string, unknown>).analysis as Record<string, unknown>),

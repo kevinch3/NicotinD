@@ -660,6 +660,8 @@ export interface CatalogSearchResult {
    *  *unknown*, not *absent*; the UI offers Retry instead of the misleading
    *  "no albums" fallback. Issue #665. */
   albumLookupFailed?: boolean;
+  /** The server has no Lidarr, so there is no album catalog (#1729). */
+  catalogNotConfigured?: boolean;
 }
 
 export interface CatalogResolveResult {

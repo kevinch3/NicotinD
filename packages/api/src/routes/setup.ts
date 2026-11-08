@@ -10,10 +10,11 @@ import { setDownloadsSettings } from '../services/downloads-settings.js';
 interface SetupDeps {
   config: NicotinDConfig;
   serviceManager: ServiceManager;
-  saveLidarrSecretsFn: (apiKey: string) => void;
+  /** Persist what the wizard entered so it survives a restart (#1729). */
+  saveLidarrConnectionFn: (conn: { url: string; apiKey: string }) => void;
 }
 
-export function setupRoutes({ config, serviceManager, saveLidarrSecretsFn }: SetupDeps) {
+export function setupRoutes({ config, serviceManager, saveLidarrConnectionFn }: SetupDeps) {
   const app = new Hono();
 
   // GET /api/setup/status — check if setup is needed
@@ -80,15 +81,13 @@ export function setupRoutes({ config, serviceManager, saveLidarrSecretsFn }: Set
     // 4. Configure Lidarr (optional)
     let needsRestart = false;
     if (body.lidarr?.url?.trim() || body.lidarr?.apiKey?.trim()) {
+      // `||`, not `??`: the wizard sends an empty string for a blank field.
       config.lidarr = {
-        url: body.lidarr.url?.trim() ?? config.lidarr?.url ?? 'http://localhost:8686',
+        url: body.lidarr.url?.trim() || config.lidarr?.url || 'http://localhost:8686',
         apiKey: body.lidarr.apiKey?.trim() ?? '',
         port: config.lidarr?.port ?? 8686,
       };
-
-      if (body.lidarr.apiKey?.trim()) {
-        saveLidarrSecretsFn(body.lidarr.apiKey.trim());
-      }
+      saveLidarrConnectionFn({ url: config.lidarr.url, apiKey: config.lidarr.apiKey });
 
       serviceManager.updateConfig(config);
       needsRestart = true;

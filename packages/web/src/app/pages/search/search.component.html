@@ -694,7 +694,9 @@
         {{
           note.kind === 'no-albums'
             ? ('acquire.discographyUnavailable' | t: { artist: note.artist })
-            : ('acquire.catalogLookupFailed' | t)
+            : note.kind === 'not-configured'
+              ? ('acquire.catalogNotConfigured' | t)
+              : ('acquire.catalogLookupFailed' | t)
         }}
       </p>
       @if (note.kind === 'lookup-failed') {

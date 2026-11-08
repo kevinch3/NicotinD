@@ -32,7 +32,7 @@ function buildApp() {
     setupRoutes({
       config: mockConfig as any,
       serviceManager: mockServiceManager as any,
-      saveLidarrSecretsFn: mock(() => {}),
+      saveLidarrConnectionFn: mock(() => {}),
     }),
   );
   return app;
@@ -181,15 +181,15 @@ describe('POST /api/setup/complete', () => {
     expect(config.lidarr.apiKey).toBe('key123');
   });
 
-  it('calls saveLidarrSecretsFn when lidarr apiKey provided', async () => {
-    const saveLidarrSecretsFn = mock(() => {});
+  it('calls saveLidarrConnectionFn when lidarr apiKey provided', async () => {
+    const saveLidarrConnectionFn = mock(() => {});
     const app = new Hono();
     app.route(
       '/api/setup',
       setupRoutes({
         config: mockConfig as any,
         serviceManager: mockServiceManager as any,
-        saveLidarrSecretsFn,
+        saveLidarrConnectionFn,
       }),
     );
     await app.request('/api/setup/complete', {
@@ -200,7 +200,37 @@ describe('POST /api/setup/complete', () => {
         lidarr: { url: 'http://localhost:8686', apiKey: 'my-secret-key' },
       }),
     });
-    expect(saveLidarrSecretsFn).toHaveBeenCalledWith('my-secret-key');
+    expect(saveLidarrConnectionFn).toHaveBeenCalledWith({
+      url: 'http://localhost:8686',
+      apiKey: 'my-secret-key',
+    });
+  });
+
+  // #1729: only the key used to be persisted, so a wizard-entered URL was gone
+  // after a restart, and in external mode Lidarr reverted to "not configured".
+  it('persists a URL entered without a key, and does not save an empty URL', async () => {
+    const saveLidarrConnectionFn = mock(() => {});
+    const app = new Hono();
+    app.route(
+      '/api/setup',
+      setupRoutes({
+        config: { ...mockConfig, lidarr: undefined } as any,
+        serviceManager: mockServiceManager as any,
+        saveLidarrConnectionFn,
+      }),
+    );
+    await app.request('/api/setup/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        admin: { username: 'admin', password: 'password123' },
+        lidarr: { url: ' http://nas.lan:8686 ', apiKey: '' },
+      }),
+    });
+    expect(saveLidarrConnectionFn).toHaveBeenCalledWith({
+      url: 'http://nas.lan:8686',
+      apiKey: '',
+    });
   });
 
   it('rejects when users already exist', async () => {

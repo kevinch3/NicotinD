@@ -25,6 +25,7 @@
   "acquire.artists": "Artists",
   "acquire.artistsShowAll": "Show {count} more",
   "acquire.catalogLookupFailed": "The metadata catalog didn't answer — album results are unavailable right now.",
+  "acquire.catalogNotConfigured": "Album results need Lidarr, and this server has none configured. Track results below still work.",
   "acquire.catalogRetry": "Retry",
   "acquire.catalogRetrying": "Retrying…",
   "acquire.clearAll": "Clear all",

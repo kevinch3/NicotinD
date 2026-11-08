@@ -46,6 +46,8 @@ export interface CatalogSearchResult {
    * offer a retry instead of the misleading "no albums" fallback. Issue #665.
    */
   albumLookupFailed?: boolean;
+  /** No Lidarr on this install, so no album/artist catalog at all (#1729). */
+  catalogNotConfigured?: boolean;
 }
 
 export interface ResolveAlbumInput {
