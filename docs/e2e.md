@@ -43,7 +43,12 @@ modified after every full run. Now `playwright.config.ts` copies the fixtures, a
 the main process only, into one throwaway dir per server (`fixture-music.ts`: `.tmp-music`,
 `.tmp-music-onboarding`, `.tmp-music-tvbuild`; the screenshots config reuses `.tmp-music`). A spec
 that reads or plants files on disk uses `E2E_MUSIC_DIR`, never a `fixtures/music` path.
-`preserveMusicFixture` still restores a deleted track, because later specs in the same run expect it.
+`preserveMusicFixture` still restores a deleted track, because later specs in the same run expect it,
+and its restore **rescans** (`scanAndWait`) after writing the file back (#1713). A written file is
+invisible until a scan reads it, and the delete had reclassified the album: `E2E Test Album` at 6
+tracks is an EP, and it is the fixture library's only `album`, so `GET /api/library/albums` returned
+`[]` and every later spec that opened it from the grid failed. `song-menu.spec` asserts the album is
+back on the grid after the restore.
 
 **The data-dir wipe is main-process only too (#1360).** The config also wipes the three servers'
 `.tmp-data*` dirs so each run starts on a fresh DB — but Playwright re-evaluates the config in
