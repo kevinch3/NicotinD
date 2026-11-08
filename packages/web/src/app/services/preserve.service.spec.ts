@@ -12,6 +12,7 @@ import {
 import { PreservedCoversService } from './preserved-covers.service';
 import type { PreserveStore } from './preserve.service';
 import { AuthService } from './auth.service';
+import { LyricsService } from './lyrics.service';
 import type { Track } from './player.service';
 import { haptic } from '../lib/haptics';
 
@@ -57,6 +58,8 @@ function makeStoreFake() {
 }
 
 let store: PreserveStore & { reset: () => void };
+/** The stored lyrics a preserve snapshots (#1751); none unless a test sets them. */
+let lyricsStub: { snapshot: ReturnType<typeof vi.fn> };
 
 const BLOB_SIZE = 100;
 
@@ -84,6 +87,7 @@ describe('PreserveService', () => {
   beforeEach(() => {
     store = makeStoreFake();
     vi.clearAllMocks();
+    lyricsStub = { snapshot: vi.fn(async () => null) };
     localStorage.clear();
     globalThis.fetch = mockFetch();
 
@@ -92,6 +96,7 @@ describe('PreserveService', () => {
         PreserveService,
         { provide: AuthService, useValue: { token: signal('tok'), mediaToken: signal('tok') } },
         { provide: PRESERVE_STORE, useValue: store },
+        { provide: LyricsService, useValue: lyricsStub },
       ],
     });
     svc = TestBed.inject(PreserveService);
@@ -113,6 +118,22 @@ describe('PreserveService', () => {
     expect(meta['artistId']).toBe('ar1');
     expect(meta['artists']).toHaveLength(2);
     expect(meta['genre']).toBe('Reggae');
+  });
+
+  // #1751: the stored lyrics ride along, so karaoke works offline.
+  it("stores the song's lyrics with the preserve", async () => {
+    const dto = { plain: 'la la', synced: '[00:01.00]la la', offsetMs: 120 };
+    lyricsStub.snapshot.mockResolvedValueOnce(dto);
+    await svc.preserve(track('a'));
+    expect(lyricsStub.snapshot).toHaveBeenCalledWith('a');
+    expect(vi.mocked(store.preserve).mock.calls[0]![3]).toBe(dto);
+  });
+
+  it('preserves without lyrics when reading them fails', async () => {
+    lyricsStub.snapshot.mockRejectedValueOnce(new Error('offline'));
+    await svc.preserve(track('a'));
+    expect(store.preserve).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(store.preserve).mock.calls[0]![3]).toBeNull();
   });
 
   it('refreshes the offline covers after a preserve and after every list refresh', async () => {
@@ -347,6 +368,7 @@ describe('PreserveService', () => {
           PreserveService,
           { provide: AuthService, useValue: { token: signal('tok'), mediaToken: signal('tok') } },
           { provide: PRESERVE_STORE, useValue: store },
+          { provide: LyricsService, useValue: lyricsStub },
         ],
       });
       const fresh = TestBed.inject(PreserveService);
@@ -384,6 +406,7 @@ describe('PreserveService', () => {
       expect(store.preserve).toHaveBeenCalledWith(
         expect.objectContaining({ id: 'a', source: 'auto' }),
         expect.anything(),
+        null,
         null,
       );
       expect(svc.autoPreservedCount()).toBe(1);
@@ -640,6 +663,7 @@ describe('PreserveService', () => {
           PreserveService,
           { provide: AuthService, useValue: { token: signal('tok'), mediaToken: signal('tok') } },
           { provide: PRESERVE_STORE, useValue: store },
+          { provide: LyricsService, useValue: lyricsStub },
         ],
       });
       const fresh = TestBed.inject(PreserveService);
@@ -654,6 +678,7 @@ describe('PreserveService', () => {
           PreserveService,
           { provide: AuthService, useValue: { token: signal('tok'), mediaToken: signal('tok') } },
           { provide: PRESERVE_STORE, useValue: store },
+          { provide: LyricsService, useValue: lyricsStub },
         ],
       });
       const fresh = TestBed.inject(PreserveService);

@@ -5,6 +5,7 @@
  *   - `tracks`  — metadata (id, title, artist, credits, size, timestamps, source…)
  *   - `blobs`   — audio keyed by track id
  *   - `covers`  — one cover per album, keyed by `coverKeyOf` (#1658)
+ *   - `lyrics`  — the song's stored lyrics row, keyed by track id (#1751)
  *
  * Schema versions:
  *   v1 — initial (tracks, blobs)
@@ -19,15 +20,20 @@
  *         owns the cover's rev. The migration moves each v3 per-track cover into
  *         it (first one per album wins) and clears `blobs.cover`; a cover is
  *         deleted only with the last preserved track that points at it.
+ *   v5 — `lyrics`: the stored `LyricsDto` per preserved track, so karaoke works
+ *         offline (#1751). Written at preserve time and refreshed whenever the
+ *         client reads the server's row; deleted with its track.
  */
 
 const DB_NAME = 'nicotind-preserve';
+import type { LyricsDto } from '@nicotind/core';
 import { songCover } from './cover-url';
 
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 const TRACKS_STORE = 'tracks';
 const BLOBS_STORE = 'blobs';
 const COVERS_STORE = 'covers';
+const LYRICS_STORE = 'lyrics';
 
 export const DEFAULT_BUDGET = 2 * 1024 * 1024 * 1024; // 2 GB
 
@@ -62,6 +68,12 @@ export interface PreservedBlob {
   audio: Blob;
   /** Always null since v4: the cover lives once per album in `covers`. */
   cover: Blob | null;
+}
+
+/** A preserved track's lyrics (#1751): the server's row as last read. */
+export interface PreservedLyrics {
+  id: string;
+  dto: LyricsDto;
 }
 
 /** One album's preserved cover (#1658), served offline as an object URL. */
@@ -100,6 +112,9 @@ function open(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(COVERS_STORE)) {
         db.createObjectStore(COVERS_STORE, { keyPath: 'key' });
+      }
+      if (!db.objectStoreNames.contains(LYRICS_STORE)) {
+        db.createObjectStore(LYRICS_STORE, { keyPath: 'id' });
       }
       // v3: backfill source='user' on every existing track row. Old rows have
       // no field; writing them with the default keeps the eviction policy
@@ -170,11 +185,20 @@ export async function preserve(
   meta: PreservedTrackMeta,
   audioBlob: Blob,
   coverBlob: Blob | null,
+  lyrics: LyricsDto | null = null,
 ): Promise<void> {
   const db = await open();
-  const transaction = db.transaction([TRACKS_STORE, BLOBS_STORE, COVERS_STORE], 'readwrite');
+  const transaction = db.transaction(
+    [TRACKS_STORE, BLOBS_STORE, COVERS_STORE, LYRICS_STORE],
+    'readwrite',
+  );
   transaction.objectStore(TRACKS_STORE).put(meta);
   transaction.objectStore(BLOBS_STORE).put({ id: meta.id, audio: audioBlob, cover: null });
+  if (lyrics) {
+    transaction
+      .objectStore(LYRICS_STORE)
+      .put({ id: meta.id, dto: lyrics } satisfies PreservedLyrics);
+  }
   // One cover per album: the newest preserve's copy replaces the album's, so a
   // re-preserve after a cover change stores the current bytes.
   const key = coverKeyOf(meta);
@@ -195,7 +219,11 @@ export async function preserve(
 
 export async function remove(id: string): Promise<void> {
   const db = await open();
-  const transaction = db.transaction([TRACKS_STORE, BLOBS_STORE, COVERS_STORE], 'readwrite');
+  const transaction = db.transaction(
+    [TRACKS_STORE, BLOBS_STORE, COVERS_STORE, LYRICS_STORE],
+    'readwrite',
+  );
+  transaction.objectStore(LYRICS_STORE).delete(id);
   const tracks = transaction.objectStore(TRACKS_STORE);
   const get = tracks.get(id);
   get.onsuccess = () => {
@@ -344,7 +372,11 @@ export async function removeAllAutoPreserved(): Promise<number> {
 
 export async function clearAll(): Promise<void> {
   const db = await open();
-  const transaction = db.transaction([TRACKS_STORE, BLOBS_STORE, COVERS_STORE], 'readwrite');
+  const transaction = db.transaction(
+    [TRACKS_STORE, BLOBS_STORE, COVERS_STORE, LYRICS_STORE],
+    'readwrite',
+  );
+  transaction.objectStore(LYRICS_STORE).clear();
   transaction.objectStore(TRACKS_STORE).clear();
   transaction.objectStore(BLOBS_STORE).clear();
   transaction.objectStore(COVERS_STORE).clear();
@@ -353,4 +385,39 @@ export async function clearAll(): Promise<void> {
     transaction.onerror = () => reject(transaction.error);
   });
   db.close();
+}
+
+/** A preserved track's lyrics, or null when it has none stored (#1751). */
+export async function getLyrics(id: string): Promise<LyricsDto | null> {
+  const db = await open();
+  const row = await tx<PreservedLyrics | undefined>(db, LYRICS_STORE, 'readonly', (t) =>
+    t.objectStore(LYRICS_STORE).get(id),
+  );
+  db.close();
+  return row?.dto ?? null;
+}
+
+/**
+ * Keep a preserved track's lyrics current (#1751): store `dto` (or drop the
+ * copy when the server holds none) — only while the track is preserved, so a
+ * read for any other song writes nothing. Resolves whether it wrote.
+ */
+export async function refreshLyrics(id: string, dto: LyricsDto | null): Promise<boolean> {
+  const db = await open();
+  const transaction = db.transaction([TRACKS_STORE, LYRICS_STORE], 'readwrite');
+  let wrote = false;
+  const track = transaction.objectStore(TRACKS_STORE).getKey(id);
+  track.onsuccess = () => {
+    if (track.result === undefined) return;
+    const lyrics = transaction.objectStore(LYRICS_STORE);
+    if (dto) lyrics.put({ id, dto } satisfies PreservedLyrics);
+    else lyrics.delete(id);
+    wrote = true;
+  };
+  await new Promise<void>((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+  });
+  db.close();
+  return wrote;
 }

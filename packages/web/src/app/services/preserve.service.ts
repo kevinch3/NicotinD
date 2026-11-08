@@ -1,5 +1,4 @@
-import { Injectable, InjectionToken, inject, signal } from '@angular/core';
-import * as db from '../lib/preserve-store';
+import { Injectable, inject, signal } from '@angular/core';
 import {
   DEFAULT_BUDGET,
   type PreservedTrackMeta,
@@ -12,28 +11,12 @@ import { haptic } from '../lib/haptics';
 import { songCover } from '../lib/cover-url';
 import { CoverRevisionsService } from './cover-revisions.service';
 import { PreservedCoversService } from './preserved-covers.service';
+import { PRESERVE_STORE } from './preserve-store.token';
+import { LyricsService } from './lyrics.service';
 
-/**
- * The IndexedDB-backed store, injected so tests can swap in an in-memory fake.
- * The Angular unit-test system forbids `vi.mock` on relative imports, so the
- * store is provided through DI rather than module mocking.
- */
-export interface PreserveStore {
-  preserve: typeof db.preserve;
-  remove: typeof db.remove;
-  getBlob: typeof db.getBlob;
-  getAll: typeof db.getAll;
-  getAllCovers: typeof db.getAllCovers;
-  evictLRU: typeof db.evictLRU;
-  evictAutoLRU: typeof db.evictAutoLRU;
-  removeAllAutoPreserved: typeof db.removeAllAutoPreserved;
-  clearAll: typeof db.clearAll;
-}
-
-export const PRESERVE_STORE = new InjectionToken<PreserveStore>('PRESERVE_STORE', {
-  providedIn: 'root',
-  factory: () => db,
-});
+// The store token lives in its own module so LyricsService can read the
+// preserved lyrics without importing this service (#1751).
+export { PRESERVE_STORE, type PreserveStore } from './preserve-store.token';
 
 /** Sentinel "no cap" budget — large enough that the projected-usage check never trips. */
 export const UNLIMITED_BUDGET = Number.MAX_SAFE_INTEGER;
@@ -106,6 +89,7 @@ export class PreserveService {
   private coverRevisions = inject(CoverRevisionsService);
   private db = inject(PRESERVE_STORE);
   private preservedCovers = inject(PreservedCoversService);
+  private lyrics = inject(LyricsService);
 
   readonly preservedIds = signal(new Set<string>());
   readonly totalUsage = signal(0);
@@ -513,7 +497,10 @@ export class PreserveService {
       lastAccessedAt: now,
       source,
     };
-    await this.db.preserve(meta, blobs.audioBlob, blobs.coverBlob);
+    // The stored lyrics ride along so karaoke works offline (#1751); a song
+    // with none, or a failed read, preserves without them.
+    const lyrics = await this.lyrics.snapshot(track.id).catch(() => null);
+    await this.db.preserve(meta, blobs.audioBlob, blobs.coverBlob, lyrics);
     this.preservedIds.update((s) => new Set(s).add(track.id));
     void this.preservedCovers.refresh();
   }
