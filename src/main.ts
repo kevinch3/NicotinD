@@ -66,8 +66,11 @@ async function main() {
     if (needsLidarr) {
       log.info('Downloading dependencies (first run)...');
       const { execSync } = await import('node:child_process');
+      // Hand it the resolved data dir: it may come from the config file, which
+      // the script does not read, and boot looks for the binary under it.
       execSync(`bun run ${resolve(import.meta.dir, '../scripts/download-deps.ts')}`, {
         stdio: 'inherit',
+        env: { ...process.env, NICOTIND_DATA_DIR: dataDir },
       });
     }
 
