@@ -62,52 +62,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Statically validate the workflow files themselves. A malformed `${{ }}`
-      # expression (e.g. a double-quoted string literal) makes a workflow invalid and
-      # fails it at startup with zero jobs — invisible until a deploy silently never
-      # runs. actionlint turns that into a failed PR check here instead. We download
-      # the pinned binary directly rather than use a wrapper action: the popular ones
-      # run `npm install` in the repo root, which chokes on this Bun workspace's
-      # `workspace:*` deps (EUNSUPPORTEDPROTOCOL). shellcheck is preinstalled on the
-      # runner, so actionlint lints inline `run:` scripts too.
-      - name: Lint GitHub Actions workflows
-        run: |
-          set -euo pipefail
-          # renovate: datasource=github-releases depName=rhysd/actionlint
-          version=1.7.12
-          # Renovate moves `version` only: bump this with it (the step fails closed until
-          # you do). Hash = actionlint_<version>_checksums.txt, linux_amd64 line.
-          sha256=8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
-          curl -fsSL -o actionlint.tgz "https://github.com/rhysd/actionlint/releases/download/v${version}/actionlint_${version}_linux_amd64.tar.gz"
-          echo "${sha256}  actionlint.tgz" | sha256sum -c -
-          tar -xzf actionlint.tgz actionlint
-          ./actionlint -color
-
-      # Scans the FULL history, not the working tree: a secret committed and then
-      # deleted inside the same PR is still published forever, and a tree scan
-      # cannot see it. ~1.3s for 1,968 commits, because it walks diffs.
-      #
-      # Pinned binary rather than gitleaks-action, matching the actionlint step
-      # above — it also sidesteps that action's licensing terms entirely.
-      # Allowlists (with reasons) live in .gitleaks.toml.
-      #
-      # -v names the rule, file, line and commit of every finding. Without it the
-      # log says only "leaks found: N", and because the scan covers every fetched
-      # branch the finding is not necessarily on the branch under test (#1160).
-      # --redact stays on, so the matched value itself is never printed.
-      - name: Secret scan
-        run: |
-          set -euo pipefail
-          # renovate: datasource=github-releases depName=gitleaks/gitleaks
-          version=8.30.1
-          # Renovate moves `version` only: bump this with it (the step fails closed until
-          # you do). Hash = gitleaks_<version>_checksums.txt, linux_x64 line.
-          sha256=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
-          curl -fsSL -o gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz"
-          echo "${sha256}  gitleaks.tgz" | sha256sum -c -
-          tar -xzf gitleaks.tgz gitleaks
-          ./gitleaks git . --redact --no-banner --config .gitleaks.toml -v
-
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
@@ -290,6 +244,66 @@ jobs:
 
   # Split out of `ci` (see the header comment there). 135s of vitest shares nothing
   # with the type/lint gates, so it runs beside them rather than after them.
+
+      # The two tool downloads run LAST (#1746): a GitHub release-CDN outage (11-08,
+      # hours of 504s) used to stop this job before its lint, typecheck and tests
+      # ran, hiding whether the change itself was sound. They also come from a
+      # cache keyed on this file, and `ci_tool_fetch` retries a miss — the pinned
+      # sha256 is checked either way, so a cached copy is never trusted blind.
+      - name: Cache CI tool binaries
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cache/nicotind-ci-tools
+          key: ci-tools-${{ runner.os }}-${{ hashFiles('.github/workflows/ci.yml') }}
+          restore-keys: |
+            ci-tools-${{ runner.os }}-
+
+      # Statically validate the workflow files themselves. A malformed `${{ }}`
+      # expression (e.g. a double-quoted string literal) makes a workflow invalid and
+      # fails it at startup with zero jobs — invisible until a deploy silently never
+      # runs. actionlint turns that into a failed PR check here instead. We download
+      # the pinned binary directly rather than use a wrapper action: the popular ones
+      # run `npm install` in the repo root, which chokes on this Bun workspace's
+      # `workspace:*` deps (EUNSUPPORTEDPROTOCOL). shellcheck is preinstalled on the
+      # runner, so actionlint lints inline `run:` scripts too.
+      - name: Lint GitHub Actions workflows
+        run: |
+          set -euo pipefail
+          source .github/scripts/ci-tool-fetch.sh
+          # renovate: datasource=github-releases depName=rhysd/actionlint
+          version=1.7.12
+          # Renovate moves `version` only: bump this with it (the step fails closed until
+          # you do). Hash = actionlint_<version>_checksums.txt, linux_amd64 line.
+          sha256=8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+          ci_tool_fetch actionlint.tgz "https://github.com/rhysd/actionlint/releases/download/v${version}/actionlint_${version}_linux_amd64.tar.gz" "$sha256"
+          tar -xzf actionlint.tgz actionlint
+          ./actionlint -color
+
+      # Scans the FULL history, not the working tree: a secret committed and then
+      # deleted inside the same PR is still published forever, and a tree scan
+      # cannot see it. ~1.3s for 1,968 commits, because it walks diffs.
+      #
+      # Pinned binary rather than gitleaks-action, matching the actionlint step
+      # above — it also sidesteps that action's licensing terms entirely.
+      # Allowlists (with reasons) live in .gitleaks.toml.
+      #
+      # -v names the rule, file, line and commit of every finding. Without it the
+      # log says only "leaks found: N", and because the scan covers every fetched
+      # branch the finding is not necessarily on the branch under test (#1160).
+      # --redact stays on, so the matched value itself is never printed.
+      - name: Secret scan
+        run: |
+          set -euo pipefail
+          source .github/scripts/ci-tool-fetch.sh
+          # renovate: datasource=github-releases depName=gitleaks/gitleaks
+          version=8.30.1
+          # Renovate moves `version` only: bump this with it (the step fails closed until
+          # you do). Hash = gitleaks_<version>_checksums.txt, linux_x64 line.
+          sha256=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+          ci_tool_fetch gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz" "$sha256"
+          tar -xzf gitleaks.tgz gitleaks
+          ./gitleaks git . --redact --no-banner --config .gitleaks.toml -v
+
   web-test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -570,6 +584,22 @@ jobs:
       # never a `|| true`, which would land a release with resources staged from a
       # half-installed tree. `check:install-scripts` is what keeps this narrow, by
       # failing if a SECOND package starts downloading.
+      # ffmpeg-static's install script downloads its binary from GitHub releases and,
+      # when that 504s, exits 0 with no binary (#1746). A cached copy is handed back
+      # through FFMPEG_BIN, which both the install script (skips the download) and
+      # the package's own export honour.
+      - name: Resolve the ffmpeg-static version
+        id: ffmpeg
+        run: echo "version=$(grep -o '"ffmpeg-static@[0-9.]*"' bun.lock | head -1 | tr -d '"' | cut -d@ -f2)" >> "$GITHUB_OUTPUT"
+      - name: Cache the ffmpeg-static binary
+        id: ffmpeg-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cache/nicotind-ffmpeg
+          key: ffmpeg-static-${{ runner.os }}-${{ runner.arch }}-${{ steps.ffmpeg.outputs.version }}
+      - name: Use the cached ffmpeg binary
+        if: steps.ffmpeg-cache.outputs.cache-hit == 'true'
+        run: echo "FFMPEG_BIN=$HOME/.cache/nicotind-ffmpeg/ffmpeg" >> "$GITHUB_ENV"
       - name: Install dependencies (bounded retry — third-party binary download)
         run: |
           for attempt in 1 2 3; do
@@ -579,6 +609,23 @@ jobs:
           done
           echo "::error::bun install failed 3 times — not a transient download failure"
           exit 1
+      - name: Ensure the ffmpeg binary exists (bounded retry — silent download failure)
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        working-directory: packages/desktop
+        run: |
+          set -euo pipefail
+          dir=$(dirname "$(node -p "require.resolve('ffmpeg-static/package.json')")")
+          for attempt in 1 2 3 4 5 6; do
+            bin=$(node -p "require('ffmpeg-static')")
+            [ -s "$bin" ] && break
+            echo "::warning::ffmpeg-static binary missing (attempt ${attempt}/6); re-running its download"
+            (cd "$dir" && node install.js) || true
+            sleep $((attempt * 15))
+          done
+          bin=$(node -p "require('ffmpeg-static')")
+          [ -s "$bin" ] || { echo "::error::ffmpeg-static binary still missing after 6 downloads"; exit 1; }
+          mkdir -p ~/.cache/nicotind-ffmpeg
+          cp "$bin" ~/.cache/nicotind-ffmpeg/ffmpeg
       - name: Build web (prepare-resources stages the dist)
         run: bun run --filter @nicotind/web build
       - name: Stage desktop resources (production backend install)
@@ -607,6 +654,18 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version-file: '.nvmrc'
+
+      # Electron's postinstall downloads its zip from GitHub releases into
+      # ~/.cache/electron; caching it keeps a release-CDN outage from failing the
+      # smoke test before it starts (#1746).
+      - name: Resolve the Electron version
+        id: electron
+        run: echo "version=$(grep -o '"electron@[0-9.]*"' bun.lock | head -1 | tr -d '"' | cut -d@ -f2)" >> "$GITHUB_OUTPUT"
+      - name: Cache the Electron download
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cache/electron
+          key: electron-${{ runner.os }}-${{ runner.arch }}-${{ steps.electron.outputs.version }}
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
