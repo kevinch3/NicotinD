@@ -3,6 +3,7 @@ import { defer, finalize, tap, type Observable } from 'rxjs';
 import type { LyricsDto } from '@nicotind/core';
 import { parseLrc, findActiveLine, applyLyricsOffset, LYRICS_OFFSET_MAX_MS } from '@nicotind/core';
 import { LibraryApiService } from './api/library-api.service';
+import { LibraryEventsService } from './library-events.service';
 
 /** One song's lyrics as this client knows them. */
 interface LyricsEntry {
@@ -48,7 +49,12 @@ export const LYRICS_CACHE_SIZE = 20;
  * for (`ensureLoaded`); the sheet uses `ensureEntry`/`lyricsFor`, which never
  * move it. Every request carries a per-id token, so an answer for a request
  * since superseded is dropped, and an answer for another id lands in that id's
- * entry, never on the current track. → docs/web-ui.md "Lyrics have one owner".
+ * entry, never on the current track. A change made anywhere else — another
+ * device, the MCP curator — arrives as `lyrics.changed` and re-reads the
+ * entries on screen (`invalidate`). → docs/web-ui.md "Lyrics have one owner".
+ *
+ * Only this file may call `LibraryApiService`'s lyrics methods: lint rule
+ * `nicotind/lyrics-single-owner` (scripts/eslint-rules/lyrics-single-owner.js).
  */
 @Injectable({ providedIn: 'root' })
 export class LyricsService {
@@ -77,6 +83,16 @@ export class LyricsService {
   /** Per song, bumped when a whole-row write replaced the row: an offset
    *  answer for a PATCH sent before that belongs to the old row. */
   private readonly rowEpochs = new Map<string, number>();
+  /** Ids a `lyrics.changed` named while a load or write for them was out;
+   *  re-read once it ends, since its answer may predate the change. */
+  private readonly changedWhileBusy = new Set<string>();
+
+  constructor() {
+    // Optional and duck-typed: host specs stub the events service.
+    inject(LibraryEventsService, { optional: true })?.lyricsChanged$?.subscribe((ids) =>
+      this.invalidate(ids),
+    );
+  }
 
   private readonly current = computed(() => {
     const id = this.currentId();
@@ -172,6 +188,44 @@ export class LyricsService {
       if (n > 0) this.bound.set(id, n);
       else this.bound.delete(id);
     };
+  }
+
+  /**
+   * `ids`' stored lyrics changed somewhere — another device, the MCP curator,
+   * or this client's own write echoing back (#1666). Re-read each entry a
+   * surface is showing: the current track's and every id a sheet is bound to.
+   * Any other cached entry is re-read when a surface next asks for it, so it
+   * needs nothing now. `null` (a gap in the event stream) means any song.
+   *
+   * A read already out is superseded, since it may have been served before the
+   * change. A load or write still out is left to finish — a read now would
+   * drop its answer (see `entry.inFlight`) — and re-read after it ends.
+   */
+  invalidate(ids: readonly string[] | null): void {
+    untracked(() => {
+      const shown = new Set<string>(this.bound.keys());
+      const current = this.currentId();
+      if (current) shown.add(current);
+      for (const id of ids ?? shown) {
+        if (!shown.has(id)) continue;
+        const e = this.entries().get(id);
+        if (!e) continue;
+        if (e.inFlight === 'full' || e.inFlight === 'write' || e.fetching) {
+          this.changedWhileBusy.add(id);
+        } else {
+          this.read(id);
+        }
+      }
+    });
+  }
+
+  /** Re-read `id` if a change was announced while it was busy and it no longer is. */
+  private readIfChanged(id: string): void {
+    if (!this.changedWhileBusy.has(id)) return;
+    const e = untracked(() => this.entries().get(id));
+    if (!e || e.inFlight || e.fetching) return;
+    this.changedWhileBusy.delete(id);
+    this.read(id);
   }
 
   /** A stored-row read; keeps the entry's words until the answer lands. */
@@ -412,6 +466,7 @@ export class LyricsService {
           if (n > 0) this.rowWrites.set(id, n);
           else this.rowWrites.delete(id);
           this.flushOffset(id);
+          this.readIfChanged(id);
         }),
       );
     });
@@ -434,6 +489,7 @@ export class LyricsService {
   private settle(id: string, token: number, changes: Partial<LyricsEntry>): void {
     if (!this.isLatest(id, token)) return;
     this.patch(id, changes);
+    this.readIfChanged(id);
   }
 
   private patch(id: string, changes: Partial<LyricsEntry>): void {
@@ -457,6 +513,7 @@ export class LyricsService {
       map.delete(id);
       this.tokens.delete(id);
       this.offsetTaps.delete(id);
+      this.changedWhileBusy.delete(id);
     }
   }
 }

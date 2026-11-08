@@ -21,6 +21,7 @@ export type LibraryEvent =
   | { type: 'album.changed'; albumId: string }
   | { type: 'artist.changed'; artistId: string }
   | { type: 'artwork.changed'; changes: ArtworkChange[] }
+  | { type: 'lyrics.changed'; songIds: string[] }
   | { type: 'job.changed'; jobId: string };
 
 /** One entity whose cover bytes changed, with its new persisted `cover_rev` (#1666). */
@@ -38,8 +39,8 @@ export const HIDDEN_GRACE_MS = 30_000;
 /**
  * The client end of `GET /api/library/events`: one server-sent-events stream
  * per visible tab, through which an open page learns that songs landed or were
- * deleted, an album/artist changed, artwork was replaced, or a download job
- * moved — without polling or a reload. See docs/cache-invalidation.md "Live
+ * deleted, an album/artist changed, artwork or lyrics were replaced, or a
+ * download job moved — without polling or a reload. See docs/cache-invalidation.md "Live
  * invalidation".
  *
  * Stands down like every poller here: the stream closes `HIDDEN_GRACE_MS`
@@ -72,6 +73,9 @@ export class LibraryEventsService {
   readonly changedAlbums = signal<ReadonlyMap<string, number>>(new Map());
   readonly changedArtists = signal<ReadonlyMap<string, number>>(new Map());
   readonly jobsChanged$ = new Subject<string>();
+  /** Songs whose stored lyrics changed anywhere (#1666); `null` after a gap, when
+   *  any song's may have. `LyricsService` re-reads the entries on screen. */
+  readonly lyricsChanged$ = new Subject<readonly string[] | null>();
   /** Incremented when the stream could not replay a gap: refetch everything. */
   readonly resync = signal(0);
 
@@ -166,6 +170,7 @@ export class LibraryEventsService {
   private onResync(): void {
     this.libraryApi.invalidateLibraryReads();
     this.resync.update((v) => v + 1);
+    this.lyricsChanged$.next(null);
   }
 
   private onLibraryEvent(e: MessageEvent<string>): void {
@@ -205,6 +210,9 @@ export class LibraryEventsService {
       case 'artwork.changed':
         // The pushed revs live in the one overlay every cover URL reads (#1666).
         this.coverRevisions.raise(ev.changes);
+        break;
+      case 'lyrics.changed':
+        this.lyricsChanged$.next(ev.songIds);
         break;
       case 'job.changed':
         this.jobsChanged$.next(ev.jobId);

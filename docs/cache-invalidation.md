@@ -40,7 +40,8 @@ until a reload.
 Now every library mutation announces itself on one bus, `services/library-events.ts`
 (`libraryEvents.emit`), from the **service** that made it — the scanner (`songs.landed` for
 inserted rows only, `songs.deleted` for pruned ones), `library-deletion`, `cover-rev`
-(`artwork.changed`, see "Cover identity"), `song-genre-mutate` / `song-metadata-mutate` (`album.changed`) and the job
+(`artwork.changed`, see "Cover identity"), `song-genre-mutate` / `song-metadata-mutate` (`album.changed`), `lyrics-store`
+(`lyrics.changed`, every row written, re-timed or deleted) and the job
 store's `recomputeStage` (`job.changed`) — so a route, the MCP agent and a CLI script all emit the
 same way. `GET /api/library/events` (`routes/library-events.ts`) streams the bus as server-sent
 events; the web `LibraryEventsService` holds one stream per visible tab and fans events out to
@@ -52,6 +53,8 @@ Three rules make it safe to rely on:
   the last per id), so a 2,000-song scan is a handful of frames. `artwork.changed` is a union too
   — `changes: [{kind, id, rev}]`, the highest rev per entity — so an enrichment or backfill pass
   over thousands of covers is one frame per window and cannot push the 500-event buffer into a gap.
+  `lyrics.changed {songIds}` unions its ids the same way, so a curator pass re-timing many songs
+  is one frame too.
 - **Replayable, honestly.** Every delivered event has a `seq`; the last 500 / 10 min are kept. A
   reconnect sends `Last-Event-ID` (or `?since=`) and gets what it missed — or one `resync` event
   when the seq fell out of the buffer, on which the client drops the cached whole-library reads and
@@ -74,6 +77,9 @@ caller when the review inbox went), deleted rows leaving every open list (`delet
 album page refetching when its album changes, and `artwork.changed` feeding `CoverRevisionsService`,
 the live cover-rev overlay every migrated cover URL reads (see "Cover identity" → "The web half") —
 so a cover set anywhere shows there at once, without any page hand-busting.
+`lyricsChanged$` re-reads the lyrics a surface is showing (`LyricsService.invalidate`), so a phone
+edit reaches the karaoke on a TV — whose shell opens the stream too — and an MCP re-time reaches
+every open player ([web-ui.md](web-ui.md) "A change made elsewhere reaches the lyrics on screen").
 
 | Cache                       | Invalidated by the stream                                   |
 | --------------------------- | ----------------------------------------------------------- |
@@ -81,6 +87,7 @@ so a cover set anywhere shows there at once, without any page hand-busting.
 | browser cover cache (24 h)  | `artwork.changed` → `CoverRevisionsService` → `&v=<rev>` on every surface built through it: the artist surfaces and the album page; the album/song/player sites follow (#1666 A3) |
 | an open artist page         | `resync` (a replay gap) → re-reads its artist DTO, whose `coverRev` is server truth |
 | an open album page          | `album.changed` / `songs.*` naming its id → refetch          |
+| `LyricsService` entries on screen | `lyrics.changed` naming the id, or `resync` → re-read  |
 
 ## Structural findings — classes that cannot occur here
 

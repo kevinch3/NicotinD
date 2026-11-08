@@ -1,4 +1,4 @@
-import { Component, effect, inject, untracked } from '@angular/core';
+import { Component, effect, inject, untracked, type OnDestroy, type OnInit } from '@angular/core';
 import { APP_VERSION } from '../../app.config';
 import { AuthService } from '../../services/auth.service';
 import { Router, RouterOutlet } from '@angular/router';
@@ -8,6 +8,7 @@ import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { UpdateBannerComponent } from '../update-banner/update-banner.component';
 import { TvDevicePickerComponent } from '../tv-device-picker/tv-device-picker.component';
 import { TvProfileListenerService } from '../../services/tv-profile-listener.service';
+import { LibraryEventsService } from '../../services/library-events.service';
 
 /**
  * The TV chrome: a router outlet and a headless audio engine.
@@ -60,7 +61,7 @@ import { TvProfileListenerService } from '../../services/tv-profile-listener.ser
     </div>
   `,
 })
-export class TvShellComponent {
+export class TvShellComponent implements OnInit, OnDestroy {
   private readonly player = inject(PlayerService);
   readonly remote = inject(RemotePlaybackService);
   readonly auth = inject(AuthService);
@@ -68,6 +69,7 @@ export class TvShellComponent {
   private readonly router = inject(Router);
   // Exists so every stored person can cast to this TV, #1406.
   private readonly castListeners = inject(TvProfileListenerService);
+  private readonly libraryEvents = inject(LibraryEventsService);
 
   constructor() {
     // Radio is always on for a TV build. The five TV screens carry no radio
@@ -111,5 +113,15 @@ export class TvShellComponent {
         void this.router.navigate(['/player']);
       });
     });
+  }
+
+  ngOnInit(): void {
+    // The library event stream, as the phone layout opens it: without it a
+    // lyrics edit made on a phone never reached the karaoke on this TV (#1666).
+    this.libraryEvents.start();
+  }
+
+  ngOnDestroy(): void {
+    this.libraryEvents.stop();
   }
 }

@@ -116,4 +116,10 @@ export default [
     ignores: ['**/*.test.ts'],
     rules: { 'nicotind/search-matching': 'error' },
   },
+  // One owner of a song's lyrics on the client (#1666); specs drive the API double directly.
+  {
+    files: ['packages/web/src/**/*.ts'],
+    ignores: ['**/*.spec.ts'],
+    rules: { 'nicotind/lyrics-single-owner': 'error' },
+  },
 ];

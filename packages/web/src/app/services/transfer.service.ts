@@ -113,7 +113,11 @@ export class TransferService {
       if (deleted.size === 0) return;
       this.deletedSongIds.update((s) => new Set([...s, ...deleted]));
     });
-    this.events.jobsChanged$.subscribe(() => void this.kickPoll());
+    // Only a running poller is kicked: a TV opens the stream but never polls
+    // the job feed, and nothing there reads it (docs/web-ui.md, #1666).
+    this.events.jobsChanged$.subscribe(() => {
+      if (this.poller.isRunning()) void this.kickPoll();
+    });
   }
 
   clearLibraryDirty(): void {

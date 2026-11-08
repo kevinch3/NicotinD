@@ -3,6 +3,7 @@ import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import { LYRICS_OFFSET_MAX_MS } from '@nicotind/core';
 import { getLyrics, setLyrics, setLyricsOffset, deleteLyrics } from './lyrics-store.js';
+import { libraryEvents, type StampedEvent } from './library-events.js';
 
 let db: Database;
 beforeEach(() => {
@@ -121,5 +122,46 @@ describe('lyrics-store sync offset', () => {
   it('carries an offset over only when the caller asks explicitly', () => {
     setLyrics(db, 'song-1', { ...fetched, customized: false, offsetMs: 750 });
     expect(getLyrics(db, 'song-1')?.offsetMs).toBe(750);
+  });
+});
+
+// The store is the one writer of `library_lyrics` rows a client holds, so emitting here is what
+// makes every caller — REST, the fetch path, the MCP tools — reach an open client (#1666).
+describe('lyrics-store announces every stored-lyrics change', () => {
+  function changedIds(fn: () => void): string[][] {
+    libraryEvents.flush();
+    const seen: StampedEvent[] = [];
+    const off = libraryEvents.on((e) => seen.push(e));
+    try {
+      fn();
+      libraryEvents.flush();
+    } finally {
+      off();
+    }
+    return seen
+      .map((e) => e.event)
+      .filter((e) => e.type === 'lyrics.changed')
+      .map((e) => (e as { songIds: string[] }).songIds);
+  }
+  const row = { plain: 'w', synced: '[00:01.00]w', source: 'lrclib', customized: false };
+
+  it('a save, a re-time and a delete each name the song', () => {
+    expect(changedIds(() => setLyrics(db, 'song-1', row))).toEqual([['song-1']]);
+    expect(changedIds(() => setLyricsOffset(db, 'song-1', 500))).toEqual([['song-1']]);
+    expect(changedIds(() => deleteLyrics(db, 'song-1'))).toEqual([['song-1']]);
+  });
+
+  it('a write that changed no row stays silent', () => {
+    expect(changedIds(() => setLyricsOffset(db, 'song-nope', 500))).toEqual([]);
+    expect(changedIds(() => deleteLyrics(db, 'song-nope'))).toEqual([]);
+  });
+
+  it('a burst over several songs is one frame naming each once', () => {
+    const ids = changedIds(() => {
+      setLyrics(db, 'a', row);
+      setLyrics(db, 'b', row);
+      setLyricsOffset(db, 'a', 250);
+    });
+    expect(ids).toEqual([['a', 'b']]);
   });
 });

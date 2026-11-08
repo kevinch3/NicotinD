@@ -313,13 +313,15 @@ asserts.
 ## Code-shape gates as lint rules (#1316)
 
 Two regex `check:*` scripts are now rules in a local ESLint plugin
-(`scripts/eslint-rules/`, registered as `nicotind`), so they report in the editor
-with file:line instead of only in CI:
+(`scripts/eslint-rules/`, registered as `nicotind`), joined since by one written as
+a rule from the start, so they report in the editor with file:line instead of only
+in CI:
 
 | Rule | Was | What the AST bought |
 |---|---|---|
 | `nicotind/shared-helpers` | `check:shared-helpers` | a `let`/`var` copy is seen; a comment never is |
 | `nicotind/search-matching` | `check:search-matching` | only string/template literals are read, so prose cannot trip it; a literal nested in an interpolation is judged once |
+| `nicotind/lyrics-single-owner` | — (new, #1666) | any reference to a lyrics endpoint — a call, a callback, a computed key, a destructure — outside `LyricsService`; a comment or string never |
 
 The lint command gained `packages/*/scripts/**/*.{ts,mjs}` and `packages/web/src`
 (the helpers registry reaches both), which took `bun run lint` from ~11 s to ~20 s.
@@ -338,6 +340,11 @@ its test instead, against the **real** `eslint.config.js`:
   module.
 - `search-matching.test.ts` requires every non-test source file holding a `LIKE`
   to be reached by the lint command with the rule on (12 files when ported).
+- `lyrics-single-owner.test.ts` reads the lyrics members off `LibraryApiService`
+  itself and requires the registry to match them (a new lyrics endpoint must be
+  registered), lints `LyricsService`'s own source under a foreign filename and
+  requires the rule to fire for every registered method, and requires it on, and
+  reached, for every non-spec web source file (409 when it landed).
 - `config.test.ts` lints snippets through the real config, so a rule proven in
   isolation but never switched on fails.
 
