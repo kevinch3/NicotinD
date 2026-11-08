@@ -104,6 +104,7 @@ import {
 import { AcquireWatcher } from './services/acquire-watcher.js';
 import { DiscographyService } from './services/discography.service.js';
 import { mountWebUiMissing, webUiBuilt } from './middleware/web-dist-missing.js';
+import { startLibraryPickup } from './services/library-pickup.js';
 import { sourceEnabled } from './services/source-plugin-ids.js';
 import { CatalogService } from './services/catalog-search.service.js';
 import { ArtistProvisioningService } from './services/artist-provisioning.service.js';
@@ -236,12 +237,11 @@ export function createApp({
     curator.reclassify(result.albumIds, 'curation-fix');
     return result;
   };
-  const scanIncremental = async (relPaths: string[]): Promise<void> => {
+  const reconcileAlbumDirs = async (albumDirs: string[]): Promise<void> => {
     try {
       // Nothing landed → nothing to reconcile and nothing to reclassify. This
       // used to run a full-library reclassify even for an empty batch.
-      if (relPaths.length === 0) return;
-      const albumDirs = [...new Set(relPaths.map((p) => dirname(join(expandedMusicDir, p))))];
+      if (albumDirs.length === 0) return;
       const touchedAlbumIds = await scanner.reconcileAlbums(albumDirs);
       curator.reclassify(touchedAlbumIds, 'scan-incremental');
       // A scanned song is library-visible at once; this nudges enrichment (and
@@ -253,9 +253,23 @@ export function createApp({
       syncLog.error({ err }, 'Incremental reconcile/curate failed');
     }
   };
+  const scanIncremental = (relPaths: string[]): Promise<void> =>
+    reconcileAlbumDirs([...new Set(relPaths.map((p) => dirname(join(expandedMusicDir, p))))]);
   // First full scan runs in the background — the UI gracefully shows an empty
   // library until it lands rather than blocking startup.
   void runSyncAndCurate();
+
+  // Music dropped into the library folder shows up without a manual Sync
+  // (#1740): a watcher for local disks, an opt-in periodic sync for network
+  // shares. Both feed the same reconcile/sync paths as everything else.
+  const libraryPickup = startLibraryPickup({
+    musicDir: expandedMusicDir,
+    reserved: reservedDirs,
+    watch: config.libraryWatch,
+    rescanMinutes: config.libraryRescanMinutes,
+    reconcileAlbumDirs,
+    runSync: runSyncAndCurate,
+  });
 
   const app = new OpenAPIHono();
   const { upgradeWebSocket, websocket } = createBunWebSocket();
@@ -1124,7 +1138,7 @@ export function createApp({
     });
   }
 
-  return { app, processingRef, maintenance, websocket, remoteAccess };
+  return { app, processingRef, maintenance, websocket, remoteAccess, libraryPickup };
 }
 
 export { AutoAcquireService } from './services/auto-acquire.service.js';

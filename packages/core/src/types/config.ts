@@ -55,6 +55,12 @@ export const NicotinDConfigSchema = z.object({
   // today's behavior. Distinct from the per-user role gate (`requireAcquirer`)
   // and the per-plugin opt-in — it removes the subsystem regardless of those.
   acquisitionEnabled: z.boolean().default(true),
+  // Pick up files dropped into the music dir without a manual Sync (#1740):
+  // a watcher for local disks, and an optional periodic full sync (minutes,
+  // 0 = off) for network shares, where inotify sees no remote change. Off by
+  // default so a spun-down disk is never woken on a timer.
+  libraryWatch: z.boolean().default(true),
+  libraryRescanMinutes: z.number().int().min(0).default(0),
   // Deployment-wide listening-history kill-switch (issue #454). When false, no
   // play events are recorded for anyone and the per-user consent toggle is
   // shown as env-locked. Like `acquisitionEnabled` this is a hard floor an
