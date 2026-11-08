@@ -26,6 +26,18 @@ describe('nicotind/cover-writers — flags a write past the bump', () => {
     expect(lines("const p = join(dataDir, 'artist-overrides', id + '.jpg');")).toEqual([1]);
   });
 
+  it('flags the directory inside a path string or a template', () => {
+    expect(lines("const p = join(dataDir, 'artist-overrides/' + id);")).toEqual([1]);
+    expect(lines('const p = `${dataDir}/artist-overrides/${id}.jpg`;')).toEqual([1]);
+    expect(lines('const p = `artist-overrides/${id}`;')).toEqual([1]);
+    expect(lines("const p = dataDir + '\\\\artist-overrides\\\\' + id;")).toEqual([1]);
+  });
+
+  it('ignores a name that only contains the directory', () => {
+    expect(lines("const k = 'artist-overrides-count';")).toEqual([]);
+    expect(lines("const k = 'my-artist-overrides';")).toEqual([]);
+  });
+
   it('flags it in a script, too', () => {
     const script = 'packages/api/src/scripts/some-script.ts';
     expect(lines(`db.run('DELETE FROM library_artwork WHERE id = ?', [a]);`, script)).toEqual([1]);

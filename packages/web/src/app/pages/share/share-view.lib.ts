@@ -27,6 +27,11 @@ export interface ShareResourceView {
   subtitle: string;
   /** The cover, rev included (#1666), or null when there's no art. */
   cover: CoverRef | null;
+  /**
+   * A ready image URL shown in place of `cover` — a curated playlist's designed
+   * cover (`/playlist-covers/<slug>.svg`), which is a URL, not a cover id.
+   */
+  coverImage?: string;
   tracks: ShareTrack[];
   ogDescription: string;
   ogType: 'music.album' | 'music.playlist' | 'profile';
@@ -88,16 +93,23 @@ export function mapSharedArtist(artist: any, songs: any[]): ShareResourceView {
 
 export function mapSharedPlaylist(pl: any): ShareResourceView {
   const tracks = toTracks(pl.songs);
-  // A user playlist has no canonical cover id; fall back to the first track's
-  // art so the share still gets a thumbnail.
-  const cover = pl.coverArt ? songCover({ coverArt: pl.coverArt }) : songCover(tracks[0] ?? {});
+  // A playlist's `coverArt` is a designed-cover URL (curated) or null, never a
+  // cover id: the URL is shown as is, and `cover` is the first track's art, so
+  // og:image stays a raster the server's own og:image also uses.
+  const coverImage = isImageUrl(pl.coverArt) ? pl.coverArt : undefined;
+  const cover =
+    pl.coverArt && !coverImage ? songCover({ coverArt: pl.coverArt }) : songCover(tracks[0] ?? {});
   const trackLabel = `${tracks.length} ${tracks.length === 1 ? 'track' : 'tracks'}`;
   return {
     name: pl.name,
     subtitle: trackLabel,
     cover,
+    ...(coverImage ? { coverImage } : {}),
     tracks,
     ogDescription: trackLabel,
     ogType: 'music.playlist',
   };
 }
+
+const isImageUrl = (v: unknown): v is string =>
+  typeof v === 'string' && (v.startsWith('/') || /^https?:\/\//.test(v));

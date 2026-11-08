@@ -23,6 +23,7 @@ import { NetworkStatusService } from '../../services/network-status.service';
 import type { Track } from '../../services/player.service';
 import { ServerConfigService } from '../../services/server-config.service';
 import { ToastService } from '../../services/toast.service';
+import { CoverRevisionsService } from '../../services/cover-revisions.service';
 import * as db from '../../lib/preserve-store';
 import { haptic } from '../../lib/haptics';
 
@@ -598,6 +599,27 @@ describe('PlayerComponent', () => {
   });
 
   // ─── Separation + refined seek (#1638) ────────────────────────────────────
+
+  // setMetadata blanks and re-downloads the lock-screen art on Android, so it
+  // runs on the playing album's own cover rev, never on another album's (#1666).
+  describe('media session metadata', () => {
+    it("re-sends the artwork on the playing album's rev only", () => {
+      const setMetadata = TestBed.inject(MediaControlsService).setMetadata as ReturnType<
+        typeof vi.fn
+      >;
+      playerService.currentTrack.set({ ...TRACK, albumId: 'al1', coverArt: 'al1', coverRev: 0 });
+      fixture.detectChanges();
+      setMetadata.mockClear();
+      const revs = TestBed.inject(CoverRevisionsService);
+      revs.raise([{ kind: 'album', id: 'al2', rev: 3 }]);
+      fixture.detectChanges();
+      expect(setMetadata).not.toHaveBeenCalled();
+      revs.raise([{ kind: 'album', id: 'al1', rev: 2 }]);
+      fixture.detectChanges();
+      expect(setMetadata).toHaveBeenCalledTimes(1);
+      expect(setMetadata.mock.calls[0]![0].artwork[0].src).toContain('/api/cover/al1?size=96&v=2');
+    });
+  });
 
   describe('chrome', () => {
     it('draws the bar as its own lifted layer, not a flat surface with a hairline', () => {

@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { computed } from '@angular/core';
+import { computed, effect } from '@angular/core';
 import { describe, expect, it, beforeEach } from 'vitest';
 import { CoverRevisionsService } from './cover-revisions.service';
 import { artistCover, songCover } from '../lib/cover-url';
@@ -61,6 +61,26 @@ describe('CoverRevisionsService (#1666)', () => {
     svc.raise([{ kind: 'artist', id: 'ar1', rev: 2 }]);
     src();
     expect(runs).toBe(1);
+  });
+
+  // Effects that re-fetch artwork when they run (lock screen, launcher, palette)
+  // must not re-run on a push for some other entity.
+  it("an effect reading one entity's rev does not re-run on another entity's push", () => {
+    let runs = 0;
+    TestBed.runInInjectionContext(() =>
+      effect(() => {
+        runs++;
+        svc.url(songCover({ coverArt: 'al1', albumId: 'al1' }), 80, 't');
+      }),
+    );
+    TestBed.tick();
+    expect(runs).toBe(1);
+    svc.raise([{ kind: 'album', id: 'al2', rev: 1 }]);
+    TestBed.tick();
+    expect(runs).toBe(1);
+    svc.raise([{ kind: 'album', id: 'al1', rev: 1 }]);
+    TestBed.tick();
+    expect(runs).toBe(2);
   });
 
   it('no ref, no URL', () => {

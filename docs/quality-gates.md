@@ -322,7 +322,7 @@ in CI:
 | `nicotind/shared-helpers` | `check:shared-helpers` | a `let`/`var` copy is seen; a comment never is |
 | `nicotind/search-matching` | `check:search-matching` | only string/template literals are read, so prose cannot trip it; a literal nested in an interpolation is judged once |
 | `nicotind/lyrics-single-owner` | — (new, #1666) | any reference to a lyrics endpoint — a call, a callback, a computed key, a destructure — outside `LyricsService`; a comment or string never |
-| `nicotind/cover-writers` | — (new, #1666) | a raw cover-byte write — SQL writing `library_artwork`, the `artist-overrides` dir, a `replaceFolderCover` call — outside a module that bumps `cover_rev`; prose never trips it |
+| `nicotind/cover-writers` | — (new, #1666) | a raw cover-byte write — SQL writing `library_artwork`, the `artist-overrides` dir as a path segment of any string or template, a `replaceFolderCover` call — outside a module that bumps `cover_rev`; prose never trips it |
 
 The lint command gained `packages/*/scripts/**/*.{ts,mjs}` and `packages/web/src`
 (the helpers registry reaches both), which took `bun run lint` from ~11 s to ~20 s.

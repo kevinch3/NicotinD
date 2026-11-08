@@ -93,6 +93,18 @@ describe('mapSharedPlaylist', () => {
     expect(view.subtitle).toBe('1 track');
   });
 
+  // A curated playlist's coverArt is its designed-cover URL, not a cover id:
+  // through the id helper it became /api/cover//playlist-covers/… (a 404).
+  it("shows a curated playlist's designed cover as is, og art from the first track", () => {
+    const view = mapSharedPlaylist({
+      name: 'Late Night',
+      coverArt: '/playlist-covers/late-night.svg',
+      songs: [{ id: 's1', title: 'A', artist: 'X', coverArt: 's1', coverRev: 2, albumId: 'al1' }],
+    });
+    expect(view.coverImage).toBe('/playlist-covers/late-night.svg');
+    expect(view.cover).toEqual({ coverArt: 's1', coverRev: 2, kind: 'album', id: 'al1' });
+  });
+
   it('handles an empty playlist without throwing', () => {
     const view = mapSharedPlaylist({ name: 'Empty', coverArt: null, songs: [] });
     expect(view.tracks).toEqual([]);

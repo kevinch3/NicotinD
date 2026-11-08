@@ -247,7 +247,10 @@ So the identity is persisted and carried:
   `{ ok, coverRev }` (the artist-image menu raises it, so the acting tab does not wait for the
   stream). A URL carries `max(ref.coverRev, overlay)`; neither side rewinds. Components call its
   `url(ref, size, token)`, which reads a signal, so a pushed rev re-renders the URL — including on
-  surfaces holding an older DTO snapshot.
+  surfaces holding an older DTO snapshot. The overlay is **one signal per entity**, not one map
+  signal, so a reader depends on its own entity's rev only: a push for another album does not
+  re-run the lock-screen metadata, the launcher's Play Next or the karaoke palette (each of which
+  re-fetches artwork when it runs).
 - **A replay gap keeps the overlay.** Revs are monotonic per entity (`library_cover_rev_floor`), so
   an entry is never wrong, only incomplete; dropping it would rewind snapshots to their older DTO
   rev. The gap's existing resync drops the cached library reads, and the artist page re-reads its
@@ -296,7 +299,7 @@ So the identity is persisted and carried:
   the type half: a caller cannot reach the helper without a rev.
 - **`nicotind/cover-writers`** (lint, `packages/api/src`) fails a raw cover-byte write outside a
   module that bumps the rev: SQL that writes `library_artwork`, the `artist-overrides` store
-  directory, or a direct `replaceFolderCover`. The bumping entry points — `setArtwork` /
+  directory (as a path segment of any string or template, not only the bare name), or a direct `replaceFolderCover`. The bumping entry points — `setArtwork` /
   `deleteArtwork`, `writeArtistImageOverride` / `deleteArtistImageOverride`, `applyAlbumCover` —
   are callable from anywhere, since they bump inside. Each allowed module is listed with its
   reason; those that only delete art with its entity are `EXEMPT`. See

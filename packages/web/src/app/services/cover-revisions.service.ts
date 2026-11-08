@@ -1,4 +1,4 @@
-import { Injectable, signal, untracked } from '@angular/core';
+import { Injectable, signal, untracked, type WritableSignal } from '@angular/core';
 import { coverUrl, type CoverKind, type CoverRef } from '../lib/cover-url';
 
 /** One entity whose cover bytes changed, with its new persisted `cover_rev`. */
@@ -27,25 +27,23 @@ export interface CoverRevision {
  */
 @Injectable({ providedIn: 'root' })
 export class CoverRevisionsService {
-  private readonly revs = signal<ReadonlyMap<string, number>>(new Map());
+  // One signal per entity, not one map signal: a reader depends on its own
+  // entity's rev only, so a push for another album re-runs nothing that reads
+  // this one — no lock-screen re-send, no launcher re-publish, no palette
+  // re-probe (docs/cache-invalidation.md "The web half").
+  private readonly revs = new Map<string, WritableSignal<number>>();
 
   /** Record revisions; a rev no newer than the one held is ignored. */
   raise(changes: Iterable<CoverRevision>): void {
-    const next = new Map(untracked(this.revs));
-    let moved = false;
     for (const c of changes) {
-      const k = key(c.kind, c.id);
-      if (c.rev <= (next.get(k) ?? 0)) continue;
-      next.set(k, c.rev);
-      moved = true;
+      const slot = this.slot(key(c.kind, c.id));
+      if (c.rev > untracked(slot)) slot.set(c.rev);
     }
-    // No new map for nothing new: every cover URL reading the overlay would re-render.
-    if (moved) this.revs.set(next);
   }
 
-  /** The newest pushed rev for one entity (0 when none). Reactive. */
+  /** The newest pushed rev for one entity (0 when none). Reactive, per entity. */
   live(kind: CoverKind, id: string | null | undefined): number {
-    return id ? (this.revs().get(key(kind, id)) ?? 0) : 0;
+    return id ? this.slot(key(kind, id))() : 0;
   }
 
   /** The rev a URL should carry: the DTO's, or a newer one heard since. Reactive. */
@@ -59,6 +57,12 @@ export class CoverRevisionsService {
    */
   url(ref: CoverRef | null | undefined, size: number, token: string | null): string | undefined {
     return ref ? coverUrl({ ...ref, coverRev: this.effective(ref) }, size, token) : undefined;
+  }
+
+  private slot(k: string): WritableSignal<number> {
+    let s = this.revs.get(k);
+    if (!s) this.revs.set(k, (s = signal(0)));
+    return s;
   }
 }
 

@@ -63,6 +63,7 @@ export class ShareViewComponent implements OnInit, OnDestroy {
   readonly resourceSubtitle = signal('');
   readonly resourceBio = signal('');
   readonly cover = signal<CoverRef | null>(null);
+  readonly coverImage = signal<string | null>(null);
   readonly tracks = signal<ShareTrack[]>([]);
   readonly currentIndex = signal(0);
   readonly isPlaying = signal(false);
@@ -74,6 +75,8 @@ export class ShareViewComponent implements OnInit, OnDestroy {
   readonly currentTrack = computed(() => this.tracks()[this.currentIndex()] ?? null);
 
   readonly coverUrl = computed(() => {
+    const image = this.coverImage();
+    if (image) return image;
     const jwt = this.shareSession.shareJwt();
     const url = jwt ? this.coverRevisions.url(this.cover(), 300, jwt) : undefined;
     return url ? this.server.apiUrl(url) : null;
@@ -132,6 +135,7 @@ export class ShareViewComponent implements OnInit, OnDestroy {
       this.resourceSubtitle.set(view.subtitle);
       this.resourceBio.set(view.bio ?? '');
       this.cover.set(view.cover);
+      this.coverImage.set(view.coverImage ?? null);
       this.tracks.set(view.tracks);
       this.setOgTags(view.name, view.ogDescription, jwt, view.cover, view.ogType);
       this.state.set('active');

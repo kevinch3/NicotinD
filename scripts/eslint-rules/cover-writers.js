@@ -71,8 +71,12 @@ export const EXEMPT = [
 const ARTWORK_WRITE =
   /\b(?:INSERT(?:\s+OR\s+\w+)?\s+INTO|REPLACE\s+INTO|UPDATE(?:\s+OR\s+\w+)?|DELETE\s+FROM)\s+library_artwork\b/i;
 
-/** The artist-override store's directory name: reaching it is writing past the bump. */
-const OVERRIDE_DIR = 'artist-overrides';
+/**
+ * The artist-override store's directory, as a path segment of any string or
+ * template — `'artist-overrides'`, `'artist-overrides/' + id`,
+ * `${dataDir}/artist-overrides/${id}.jpg` — so reaching it is writing past the bump.
+ */
+const OVERRIDE_DIR = /(?:^|[\\/'"`])artist-overrides(?:[\\/'"`]|$)/;
 
 /** Writes the folder cover and bumps nothing; `applyAlbumCover` is the door. */
 const RAW_CALLEES = new Set(['replaceFolderCover']);
@@ -108,7 +112,7 @@ export default {
           node,
           message: `Raw write to library_artwork: the cover's URL never moves. ${advice}`,
         });
-      } else if (node.type === 'Literal' && node.value === OVERRIDE_DIR) {
+      } else if (OVERRIDE_DIR.test(text)) {
         context.report({
           node,
           message: `Reaching the artist-override store directly skips the rev bump. ${advice}`,
