@@ -1,0 +1,6 @@
+• library: pick up music dropped into the folder without a manual Sync (#1740) (#1767)
+• lyrics: keep provenance and an exportable corrected LRC (#1717)
+• web: a saved track keeps its lyrics, so karaoke works offline (#1768)
+• web: a semantic haptic vocabulary wired to the primary interactions (#1704)
+• web: a truncated name scrolls to reveal itself instead of ending in an ellipsis (#1712)
+…and 45 more
