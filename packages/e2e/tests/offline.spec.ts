@@ -200,6 +200,34 @@ test.describe('mosaic home offline', () => {
     await expect(page.getByTestId('offline-banner')).toHaveCount(0);
   });
 
+  // An installed PWA reopened with no network (#1777). The catalogs come from a
+  // runtime fetch, so unless ngsw prefetched them every label rendered as its key.
+  test('a relaunch with no network still shows translated labels', async ({ page, context }) => {
+    await page.goto('/');
+    await expectBootedShell(page);
+    await expectServiceWorkerControl(page);
+    // One controlled load, so ngsw's prefetch of the "app" group has run.
+    await page.goto('/library');
+    await expectBootedShell(page);
+    await page.waitForFunction(async () => {
+      for (const name of await caches.keys()) {
+        if (await (await caches.open(name)).match('/i18n/en.json')) return true;
+      }
+      return false;
+    });
+
+    await context.setOffline(true);
+    await page.reload();
+    await expectBootedShell(page);
+
+    await expect(page.getByTestId('offline-banner')).toBeVisible();
+    await expect(page.getByTestId('offline-banner')).not.toContainText('shell.offline');
+    await expect(page.getByTestId('desktop-nav')).toContainText('Library');
+    await expect(page.getByTestId('desktop-nav')).not.toContainText('nav.library');
+
+    await context.setOffline(false);
+  });
+
   test('fills with the downloaded set and offers a way to the list', async ({ page, context }) => {
     await page.goto('/');
     await expectBootedShell(page);
