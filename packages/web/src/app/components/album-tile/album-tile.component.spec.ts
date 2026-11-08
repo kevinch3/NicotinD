@@ -1,10 +1,30 @@
 import { TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { AlbumTileComponent } from './album-tile.component';
 import { ServerConfigService } from '../../services/server-config.service';
 import { setInputValue } from '../../../testing/signal-input';
 import type { AlbumTile } from '../../lib/artist-album-tiles';
 import type { AlbumHuntStatus } from '../../lib/album-hunt-status';
+import { TranslateService, interpolate } from '../../services/translate.service';
+import EN from '../../../../public/i18n/en.json';
+import ES from '../../../../public/i18n/es.json';
+
+type Catalog = Record<string, string>;
+
+/**
+ * The real catalogs behind a stub service — `init()` never runs in a unit test, so
+ * the live service would render raw keys. Spanish falls through to English the way
+ * the service does (#1636: the tile rendered English in a Spanish UI).
+ */
+function translateWith(active: Catalog) {
+  return {
+    lang: signal(active === ES ? 'es' : 'en'),
+    revision: signal(0),
+    t: (key: string, params?: Record<string, string | number>) =>
+      interpolate(active[key] ?? (EN as Catalog)[key] ?? key, params),
+  };
+}
 
 const tile = (over: Partial<AlbumTile> & Pick<AlbumTile, 'status'>): AlbumTile => ({
   key: 'k',
@@ -17,6 +37,7 @@ const tile = (over: Partial<AlbumTile> & Pick<AlbumTile, 'status'>): AlbumTile =
 function render(
   t: AlbumTile,
   inputs: Partial<{ canAcquire: boolean; status: AlbumHuntStatus }> = {},
+  catalog: Catalog = EN,
 ) {
   // One fresh component per scenario (signal-input.ts landmine 2), which means a
   // reset — TestBed refuses to be reconfigured once it has been instantiated.
@@ -26,6 +47,7 @@ function render(
     providers: [
       provideRouter([]),
       { provide: ServerConfigService, useValue: { apiUrl: (u: string) => u } },
+      { provide: TranslateService, useValue: translateWith(catalog) },
     ],
   });
   const fixture = TestBed.createComponent(AlbumTileComponent);
@@ -87,6 +109,23 @@ describe('AlbumTileComponent', () => {
     expect(el(fixture, '[data-testid="album-tile-action"]')!.textContent!.trim()).toBe('Get album');
     // No track count on something we do not have — "0/5" would read as a real album.
     expect(root.textContent).not.toContain('tracks');
+  });
+
+  it('speaks the active language: action and track count come from the catalog (#1636)', () => {
+    const missing = render(tile({ status: 'missing', totalTracks: 5 }), {}, ES);
+    expect(el(missing, '[data-testid="album-tile-action"]')!.textContent!.trim()).toBe(
+      'Obtener álbum',
+    );
+
+    const partial = render(
+      tile({ status: 'partial', localAlbumId: 'a2', localTrackCount: 4, totalTracks: 7 }),
+      {},
+      ES,
+    );
+    expect(el(partial, '[data-testid="album-tile"]')!.textContent).toContain('4/7 pistas');
+    expect(el(partial, '[data-testid="album-tile-action"]')!.textContent!.trim()).toBe(
+      'Completar álbum',
+    );
   });
 
   it('hides both actions from a listener who cannot acquire', () => {

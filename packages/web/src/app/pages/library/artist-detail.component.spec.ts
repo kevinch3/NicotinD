@@ -3,7 +3,9 @@ import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { provideRouter, Router, ActivatedRoute, convertToParamMap } from '@angular/router';
 import { of, BehaviorSubject, throwError } from 'rxjs';
 import { vi } from 'vitest';
-import { ArtistDetailComponent } from './artist-detail.component';
+import { ArtistDetailComponent, ARTIST_TAB_LABEL_KEYS } from './artist-detail.component';
+import EN_CATALOG from '../../../../public/i18n/en.json';
+import ES_CATALOG from '../../../../public/i18n/es.json';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import { AuthService } from '../../services/auth.service';
@@ -1080,6 +1082,65 @@ describe('ArtistDetailComponent — merged album grid', () => {
 
     expect(fixture.nativeElement.textContent).not.toContain('Full Discography');
     expect(fixture.nativeElement.querySelector('[data-testid="discography-summary"]')).toBeTruthy();
+  });
+});
+
+// #1636: the summary sat inside the tablist's flex row and squeezed the tabs on a
+// phone, and the row's labels were English literals. The layout itself is
+// measured at 390px in e2e (artist-tab-row.spec.ts); this pins the structure and
+// that every label is a catalog key.
+describe('ArtistDetailComponent — tab row (#1636)', () => {
+  it('keeps the discography summary out of the tablist', async () => {
+    const fixture = setupMerged([release({ lidarrId: 1, title: 'Natiruts', localAlbumId: 'a1' })]);
+    await fixture_stable();
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+
+    const tablist = el.querySelector('[role="tablist"]')!;
+    expect(tablist.querySelector('[data-testid="discography-summary"]')).toBeNull();
+    expect(Array.from(tablist.children).every((c) => c.getAttribute('role') === 'tab')).toBe(true);
+    expect(
+      el.querySelector('[data-testid="artist-tab-row"] [data-testid="discography-summary"]'),
+    ).toBeTruthy();
+  });
+
+  it('renders every label in the row through the catalog', async () => {
+    const fixture = setupMerged([
+      release({ lidarrId: 1, title: 'Natiruts', localAlbumId: 'a1' }),
+      release({ lidarrId: 2, title: 'Ao Vivo', secondaryTypes: ['Live'] }),
+    ]);
+    await fixture_stable();
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+
+    // No catalog loads in a unit test, so a translated label renders as its key.
+    expect(el.querySelector('[data-testid="artist-tab-albums"]')!.textContent!.trim()).toBe(
+      'artist.tab.albums',
+    );
+    expect(el.querySelector('[data-testid="discography-summary"]')!.textContent!.trim()).toBe(
+      'discography.summary',
+    );
+    expect(el.querySelector('[data-testid="toggle-all-releases"]')!.textContent!.trim()).toBe(
+      'artist.showAllReleases',
+    );
+  });
+
+  it('has every key it renders in both catalogs', () => {
+    const keys = [
+      ...Object.values(ARTIST_TAB_LABEL_KEYS),
+      'artist.noReleases',
+      'artist.tabEmpty',
+      'artist.showAllReleases',
+      'artist.showFewerReleases',
+      'discography.summary',
+      'discography.checking',
+    ];
+    for (const key of keys) {
+      expect(EN_CATALOG, `missing en key: ${key}`).toHaveProperty([key]);
+      expect(ES_CATALOG, `missing es key: ${key}`).toHaveProperty([key]);
+    }
+    expect((EN_CATALOG as Record<string, string>)['discography.summary']).toContain('{missing}');
+    expect((ES_CATALOG as Record<string, string>)['discography.summary']).toContain('{missing}');
   });
 });
 

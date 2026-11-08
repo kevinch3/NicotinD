@@ -9,6 +9,7 @@ import type { TrackAction } from '../track-row/track-row.component';
 import { resolveAlbumRoute } from '../../lib/route-utils';
 import type { AlbumTile } from '../../lib/artist-album-tiles';
 import { TranslateService } from '../../services/translate.service';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 import { IDLE_HUNT, albumHuntLabel, type AlbumHuntStatus } from '../../lib/album-hunt-status';
 import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
@@ -44,6 +45,7 @@ const EMPTY_TILE: AlbumTile = {
     TvNavItemDirective,
     EntityActionsDirective,
     EntityMenuButtonComponent,
+    TranslatePipe,
   ],
   templateUrl: './album-tile.component.html',
 })
@@ -91,7 +93,9 @@ export class AlbumTileComponent {
     // An owned album whose tracklist matched nothing printed "0/11 tracks" for
     // music the user has (#1565): no matched count, no count.
     if (tile.status === 'partial' && tile.totalTracks && tile.localTrackCount) {
-      parts.push(`${tile.localTrackCount}/${tile.totalTracks} tracks`);
+      parts.push(
+        this.i18n.t('albumTile.tracks', { have: tile.localTrackCount, total: tile.totalTracks }),
+      );
     }
     return parts.join(' · ');
   });
@@ -99,8 +103,8 @@ export class AlbumTileComponent {
   /** A complete album needs no action — the grid stays quiet where there is nothing to do. */
   readonly showAction = computed(() => this.canAcquire() && this.tile().status !== 'owned');
 
-  readonly actionLabel = computed(() =>
-    this.tile().status === 'partial' ? 'Complete album' : 'Get album',
+  readonly actionLabelKey = computed(() =>
+    this.tile().status === 'partial' ? 'albumTile.completeAlbum' : 'albumTile.getAlbum',
   );
 
   readonly busy = computed(() => this.status().phase !== 'idle');
