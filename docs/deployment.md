@@ -7,6 +7,8 @@ one install path, and build-from-source demoted to an override.
 
 ## Install
 
+> No root or Docker on the host? See [bare-metal.md](bare-metal.md).
+
 ```bash
 git clone https://github.com/kevinch3/NicotinD.git
 cd NicotinD

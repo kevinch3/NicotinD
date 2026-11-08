@@ -73,6 +73,10 @@ under Extensions (see below). Install, upgrade, rollback, image tags, GPU
 passthrough, and the lighter streaming-only profile:
 **[docs/deployment.md](docs/deployment.md)**.
 
+**No root, no Docker?** Docker (and rootless Podman) need root to set up, and the `.deb`
+installs system-wide. On a host where you only have a user account, run the server from
+source as a systemd user service: **[docs/bare-metal.md](docs/bare-metal.md)**.
+
 ## How it works
 
 ```
@@ -132,6 +136,7 @@ tables below group every document by what you're trying to do.
 | Doc | What it covers |
 | --- | --- |
 | [deployment.md](docs/deployment.md) | Docker install, image tags, upgrade/rollback, GPU passthrough, streaming-only profile, incident runbooks |
+| [bare-metal.md](docs/bare-metal.md) | No root, no Docker: run from source as a systemd user service; what needs root; measured footprint |
 | [configuration.md](docs/configuration.md) | Environment variables + `config/default.yml` reference |
 | [onboarding.md](docs/onboarding.md) | Setup wizard + first-login flow |
 | [backup-restore.md](docs/backup-restore.md) | Daily `VACUUM INTO` backups, retention, manual restore |
