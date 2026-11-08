@@ -10,6 +10,7 @@ import { setInputValue } from '../../../../testing/signal-input';
 import { provideRouter } from '@angular/router';
 import { TranslateService, interpolate } from '../../../services/translate.service';
 import EN from '../../../../../public/i18n/en.json';
+import { CoverRevisionsService } from '../../../services/cover-revisions.service';
 
 describe('NowPlayingCoverArtComponent', () => {
   const track = {
@@ -242,6 +243,30 @@ describe('NowPlayingCoverArtComponent', () => {
       nextEl!.click();
       prevEl!.click();
       expect(skips).toEqual(['next', 'prev']);
+    });
+
+    // A neighbour is a cover a skip lands on: it must not hold a stale image
+    // the moment it becomes the playing one (#1666). Each side's src binds to
+    // coverSrc; a child signal input does not bind under JIT, so it is read here.
+    it("draws each neighbour at its own album's live cover rev", () => {
+      const { fixture } = render(0, {
+        next: { ...next, albumId: 'aln', coverRev: 1 },
+        prev: { ...prev, albumId: 'alp' },
+      });
+      const c = fixture.componentInstance;
+      const srcs = () => [c.coverSrc(c.nextTrack()!), c.coverSrc(c.prevTrack()!)];
+      expect(srcs()).toEqual([
+        '/api/cover/cn?size=600&v=1&token=tok',
+        '/api/cover/cp?size=600&token=tok',
+      ]);
+      TestBed.inject(CoverRevisionsService).raise([
+        { kind: 'album', id: 'aln', rev: 4 },
+        { kind: 'album', id: 'alp', rev: 2 },
+      ]);
+      expect(srcs()).toEqual([
+        '/api/cover/cn?size=600&v=4&token=tok',
+        '/api/cover/cp?size=600&v=2&token=tok',
+      ]);
     });
 
     it('marks each neighbour as a sliver, so a drag from it is a drag of the cover', () => {
