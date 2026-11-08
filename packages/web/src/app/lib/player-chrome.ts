@@ -40,6 +40,15 @@ export const MINI_PLAYER_HEIGHT_VAR = '--mini-player-h';
 export const MAIN_BOTTOM_PAD_CLASS =
   'pb-[calc(3.5rem+env(safe-area-inset-bottom)+var(--mini-player-h,0px))] md:pb-[var(--mini-player-h,0px)]';
 
+/**
+ * The toast stack's anchor: 0.5rem above the top of the bottom chrome on phones
+ * (tab bar + measured mini player, on the player's own deficit-adjusted
+ * anchor), 1rem above the desktop player. Toasts are z-[60], above the player,
+ * so a constant offset (5rem) that the bar outgrew covered its controls (#1699).
+ */
+export const TOAST_STACK_BOTTOM_CLASS =
+  'bottom-[calc(3.5rem+env(safe-area-inset-bottom)+var(--mini-player-h,0px)+0.5rem-var(--vp-deficit))] md:bottom-[calc(var(--mini-player-h,0px)+1rem-var(--vp-deficit))]';
+
 /** The value `PlayerComponent` publishes as {@link MINI_PLAYER_HEIGHT_VAR}. */
 export function miniPlayerReservation(hasTrack: boolean, measuredHeight: number): string {
   return `${hasTrack && measuredHeight > 0 ? Math.ceil(measuredHeight) : 0}px`;

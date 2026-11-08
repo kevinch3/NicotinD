@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import {
   miniPlayerSlideClass,
   MAIN_BOTTOM_PAD_CLASS,
+  TOAST_STACK_BOTTOM_CLASS,
   miniPlayerReservation,
   bottomChromeInset,
   measureBottomChromeInset,
@@ -43,6 +44,25 @@ describe('MAIN_BOTTOM_PAD_CLASS', () => {
 
   it('carries no guessed player height (the 8rem constant the bar outgrew, #1694)', () => {
     expect(MAIN_BOTTOM_PAD_CLASS).not.toMatch(/8rem|md:pb-20/);
+  });
+});
+
+describe('TOAST_STACK_BOTTOM_CLASS', () => {
+  it('anchors on a phone above the tab bar plus the measured mini player', () => {
+    // The mini player's own anchor (tab bar, deficit-adjusted) plus its height and a gap.
+    expect(TOAST_STACK_BOTTOM_CLASS).toContain(
+      'bottom-[calc(3.5rem+env(safe-area-inset-bottom)+var(--mini-player-h,0px)+0.5rem-var(--vp-deficit))]',
+    );
+  });
+
+  it('anchors on desktop above the measured player, on its deficit-adjusted anchor', () => {
+    expect(TOAST_STACK_BOTTOM_CLASS).toContain(
+      'md:bottom-[calc(var(--mini-player-h,0px)+1rem-var(--vp-deficit))]',
+    );
+  });
+
+  it('carries no guessed player height (the 5rem / bottom-24 constants the bar outgrew, #1699)', () => {
+    expect(TOAST_STACK_BOTTOM_CLASS).not.toMatch(/calc\(5rem|md:bottom-24\b/);
   });
 });
 

@@ -4,6 +4,7 @@ import { signal } from '@angular/core';
 import { ToastOutletComponent } from './toast-outlet.component';
 import { ToastService } from '../../services/toast.service';
 import type { Toast } from '../../services/toast.service';
+import { TOAST_STACK_BOTTOM_CLASS } from '../../lib/player-chrome';
 
 function makeToast(overrides: Partial<Toast> = {}): Toast {
   return {
@@ -80,5 +81,15 @@ describe('ToastOutletComponent', () => {
     fixture.detectChanges();
     const toast = fixture.nativeElement.querySelector('[data-testid="toast"]');
     expect(toast?.className).toContain('border-red');
+  });
+
+  it('anchors the stack on the measured mini player, not a constant offset (#1699)', () => {
+    toastsSignal.set([makeToast()]);
+    const fixture = setup();
+    fixture.detectChanges();
+    const stack: HTMLElement = fixture.nativeElement.querySelector('[data-testid="toast-stack"]');
+    for (const cls of TOAST_STACK_BOTTOM_CLASS.split(' ')) expect(stack.classList).toContain(cls);
+    expect(stack.classList).toContain('z-[60]');
+    expect(stack.className).not.toMatch(/calc\(5rem|md:bottom-24\b/);
   });
 });
