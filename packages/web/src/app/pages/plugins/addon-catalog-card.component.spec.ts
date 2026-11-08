@@ -62,6 +62,29 @@ function render(entry: AddonCatalogItem) {
 }
 
 describe('AddonCatalogCardComponent', () => {
+  // NicotinD #1741: Install only offers a docker-compose snippet, so a bare-metal
+  // self-hoster had no path. The card now names the one that works.
+  it('tells a non-Docker install how to run and register it, with the loopback URL', () => {
+    const el = render(
+      baseEntry({
+        state: 'available',
+        docsUrl: 'https://github.com/kevinch3/nicotind-ytdlp-addon',
+      }),
+    ).nativeElement as HTMLElement;
+    const hint = el.querySelector('[data-testid="addon-catalog-bare-metal"]');
+    expect(hint).toBeTruthy();
+    expect(hint!.querySelector('a')?.getAttribute('href')).toBe(
+      'https://github.com/kevinch3/nicotind-ytdlp-addon',
+    );
+    expect(hint!.textContent).toContain('http://127.0.0.1:8586');
+    expect(BASE_CATALOG).toHaveProperty(['extensions.catalogBareMetal']);
+  });
+
+  it('drops the non-Docker hint once the add-on is installed', () => {
+    const el = render(baseEntry({ state: 'installed' })).nativeElement as HTMLElement;
+    expect(el.querySelector('[data-testid="addon-catalog-bare-metal"]')).toBeNull();
+  });
+
   it('shows the state badge with a real i18n key', () => {
     const el = render(baseEntry({ state: 'available' })).nativeElement as HTMLElement;
     expect(el.querySelector('[data-testid="addon-catalog-state"]')?.textContent?.trim()).toBe(

@@ -50,6 +50,22 @@ export class AddonCatalogCardComponent implements OnDestroy {
   readonly shareOpen = signal(false);
   readonly qrDataUrl = signal<string | null>(null);
   readonly copied = signal(false);
+
+  /**
+   * The URL a same-host, non-Docker run of this add-on answers on (#1741): the
+   * catalog's docker-internal service URL with its port kept and the host
+   * swapped for loopback, which is what "Add a remote addon" needs.
+   */
+  readonly loopbackUrl = computed(() => {
+    const url = this.entry()?.addonUrl;
+    if (!url) return null;
+    try {
+      const port = new URL(url).port;
+      return port ? `http://127.0.0.1:${port}` : null;
+    } catch {
+      return null;
+    }
+  });
   /** The install response (minted token + snippet), kept while pending. */
   readonly install = signal<AddonInstallResult | null>(null);
 

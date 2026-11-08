@@ -52,6 +52,22 @@
           }
         </div>
         <p class="text-xs text-theme-muted mt-2">{{ e.risk }}</p>
+        <!-- Install is Docker-only; name the path that works without it (#1741). -->
+        @if ((e.state === 'available' || e.state === 'pending') && loopbackUrl(); as url) {
+          <p class="text-xs text-theme-muted mt-2" data-testid="addon-catalog-bare-metal">
+            {{ 'extensions.catalogBareMetal' | t }}
+            <code class="px-1 rounded bg-theme-surface-2 text-theme-secondary select-all">{{ url }}</code>.
+            @if (e.docsUrl) {
+              <a
+                [href]="e.docsUrl"
+                target="_blank"
+                rel="noopener"
+                class="font-medium text-[var(--theme-accent)] hover:underline"
+                >{{ 'extensions.catalogBareMetalReadme' | t }}</a
+              >
+            }
+          </p>
+        }
       </div>
       <div class="shrink-0 flex flex-col items-end gap-2">
         @switch (e.state) {
