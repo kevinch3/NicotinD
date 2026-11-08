@@ -13,6 +13,7 @@ import { test, expect, type APIRequestContext, type Page } from '../helpers';
 import { ADMIN, FIXTURE, bearer } from '../helpers';
 
 const PHONE = { width: 390, height: 844 }; // iPhone 14
+const DESKTOP = { width: 1280, height: 800 };
 
 /** The `request` fixture carries no auth — log in explicitly (see docs/e2e.md). */
 async function token(request: APIRequestContext): Promise<string> {
@@ -68,7 +69,7 @@ async function openArtistPage(page: Page, request: APIRequestContext): Promise<v
 }
 
 /** Every tab on one line, none wrapped, the strip inside the viewport. */
-async function expectTabsOnOneLine(page: Page): Promise<void> {
+async function expectTabsOnOneLine(page: Page, viewportWidth = PHONE.width): Promise<void> {
   const tabs = page.getByRole('tablist').getByRole('tab');
   await expect(tabs).toHaveCount(4);
   const boxes = await tabs.evaluateAll((els) =>
@@ -91,7 +92,7 @@ async function expectTabsOnOneLine(page: Page): Promise<void> {
     .getByRole('tablist')
     .evaluate((el) => ({ scroll: el.scrollWidth, client: el.clientWidth }));
   expect(strip.scroll, 'the tab strip overflows its row').toBeLessThanOrEqual(strip.client);
-  expect(Math.max(...boxes.map((b) => b.right))).toBeLessThanOrEqual(PHONE.width);
+  expect(Math.max(...boxes.map((b) => b.right))).toBeLessThanOrEqual(viewportWidth);
 }
 
 test.describe('artist tab row on a phone (#1636)', () => {
@@ -131,5 +132,24 @@ test.describe('artist tab row on a phone (#1636)', () => {
 
     // Spanish labels are the longer set — they must fit on one line too.
     await expectTabsOnOneLine(page);
+  });
+});
+
+test.describe('artist tab row on a desktop (#1636)', () => {
+  test.use({ viewport: DESKTOP });
+
+  test('keeps the summary inline, right-aligned beside the tabs', async ({ page, request }) => {
+    await openArtistPage(page, request);
+    await expectTabsOnOneLine(page, DESKTOP.width);
+
+    const row = (await page.getByTestId('artist-tab-row').boundingBox())!;
+    const tablist = (await page.getByRole('tablist').boundingBox())!;
+    const lastTab = (await page.getByRole('tablist').getByRole('tab').last().boundingBox())!;
+    const summary = (await page.getByTestId('discography-summary').boundingBox())!;
+    // Same row: the summary starts above the tablist's bottom edge, not under it.
+    expect(summary.y, 'summary dropped under the tabs').toBeLessThan(tablist.y + tablist.height);
+    expect(summary.x, 'summary overlaps the tabs').toBeGreaterThan(lastTab.x + lastTab.width);
+    // Right-aligned: it ends at the row's right edge (md:ml-auto).
+    expect(Math.abs(summary.x + summary.width - (row.x + row.width))).toBeLessThanOrEqual(1);
   });
 });

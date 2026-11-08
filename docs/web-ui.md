@@ -808,7 +808,7 @@ rule as an inset shadow and the tabs drop the `-mb-px` overlap they use from `md
 label in the row, the toggle, the empty slates and the tile's `Get album` /
 `Complete album` / `n/N tracks` go through the catalog (`artist.tab.*`,
 `discography.summary`, `albumTile.*`). `artist-tab-row.spec.ts` measures the four-tab
-Spanish row at 390px.
+Spanish row at 390px, and at 1280px pins the summary inline and right-aligned on the tabs' row.
 
 **Testing note.** `AlbumTileComponent` takes `input<AlbumTile>(EMPTY_TILE)`, not
 `input.required()`. The JIT vitest harness does not register signal inputs on a
