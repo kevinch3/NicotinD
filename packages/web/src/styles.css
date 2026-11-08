@@ -1194,6 +1194,14 @@ html.tv-build [data-bottom-chrome] {
   padding-right: var(--tv-overscan-x);
   padding-bottom: calc(var(--tv-overscan-y) / 2);
 }
+/* The toast stack is positioned, not padded: floor its offset at the overscan
+   band so the 'extra' preset never crops a toast (#1699). */
+html.tv-build [data-testid='toast-stack'] {
+  bottom: calc(
+    max(var(--mini-player-h, 0px), var(--update-banner-h, 0px), var(--tv-overscan-y)) + 1rem -
+      var(--vp-deficit)
+  );
+}
 html.tv-build app-now-playing > div {
   padding-left: var(--tv-overscan-x);
   padding-right: var(--tv-overscan-x);
