@@ -305,8 +305,24 @@ So the identity is persisted and carried:
   reason; those that only delete art with its entity are `EXEMPT`. See
   [quality-gates.md](quality-gates.md) "Code-shape gates as lint rules".
 
-What this does not yet cover: disk-only art changes (a `cover.jpg` swapped by hand, a re-download
-replacing folder art) bump nothing until the scanner does; the `backfill-artwork` process persists its
+### Covers that change on disk (#1752)
+
+The writers above bump for a cover set *through the app*. A `cover.jpg` swapped by hand, a
+re-download replacing folder art, or a retag adding embedded art changes the bytes the cover route
+serves without passing through any of them. So the scanner stamps each album's on-disk art after
+every persist (`scanFull`, `scanPaths`, `reconcileAlbums` → `refreshAlbumArtStamps` in
+`services/album-art-stamp.ts`):
+
+- The stamp is the same `kind|path|mtime|size` the disk-art cache keys on (`diskArtSource`, now
+  shared by the cover route), taken from the album's representative track exactly as `/api/cover`
+  resolves an album id (`albumRepresentativeTrack`) — so a stat per album, never a picture read.
+- It is stored in `library_albums.art_stamp`. A changed stamp calls `bumpCoverRev`. NULL means
+  "never stamped" and records without bumping, so the first scan after deploy re-keys nothing; `''`
+  records "no on-disk art", so a folder that later gains one is a change, as is one that loses it.
+- A full scan stats every album in batches of 32; an incremental scan only the albums it touched.
+  A stamping failure is logged and never fails the scan.
+
+What this does not yet cover: the `backfill-artwork` process persists its
 bumps but its events reach no open tab (they see the rev on their next fetch); a re-landed entity
 sits at rev 0 until its first bump, and rev 0 is the bare, unversioned URL, so within the 24 h cache
 TTL it can still show the previous incarnation's cover, as every cover did before #1666. The cache

@@ -1104,6 +1104,9 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   // canonical artwork row" (what `missingAlbumArtSql` measures) from "this album
   // renders nothing" — which were the same number, ~3x apart, until issue #952.
   addColumnIfMissing(db, 'library_songs', 'has_embedded_art', 'INTEGER');
+  // #1752: the on-disk art stamp a scan last saw per album (NULL = never
+  // stamped, '' = no art); a change bumps cover_rev (services/album-art-stamp.ts).
+  addColumnIfMissing(db, 'library_albums', 'art_stamp', 'TEXT');
   // "Landed" timestamp (epoch ms): when the song was FIRST scanned into the
   // library. Landing is instant — a scanned song is visible at once — so the
   // scanner stamps this on INSERT and leaves it alone on rescan. It is the
