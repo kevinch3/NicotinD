@@ -34,7 +34,30 @@ describe('buildLidarrDefinition', () => {
     const xml = readFileSync(join(dataDir, 'lidarr', 'config.xml'), 'utf-8');
     expect(xml).toContain('<ApiKey>TEST-API-KEY</ApiKey>');
     expect(xml).toContain('<Port>8686</Port>');
-    expect(xml).toContain('<AuthenticationMethod>None</AuthenticationMethod>');
+  });
+
+  // Core reaches the embedded Lidarr on localhost; nothing else should.
+  it('binds the embedded Lidarr to loopback only', () => {
+    buildLidarrDefinition(makeConfig(dataDir), 'KEY');
+    const xml = readFileSync(join(dataDir, 'lidarr', 'config.xml'), 'utf-8');
+    expect(xml).toContain('<BindAddress>127.0.0.1</BindAddress>');
+    expect(xml).not.toContain('<BindAddress>*</BindAddress>');
+  });
+
+  // With AuthenticationMethod=None, GET /initialize.json returns the API key to
+  // any caller. Forms keeps API-key calls working and stops that leak.
+  it('requires authentication instead of None', () => {
+    buildLidarrDefinition(makeConfig(dataDir), 'KEY');
+    const xml = readFileSync(join(dataDir, 'lidarr', 'config.xml'), 'utf-8');
+    expect(xml).toContain('<AuthenticationMethod>Forms</AuthenticationMethod>');
+    expect(xml).toContain('<AuthenticationRequired>Enabled</AuthenticationRequired>');
+    expect(xml).not.toContain('<AuthenticationMethod>None</AuthenticationMethod>');
+  });
+
+  it('turns Lidarr analytics off', () => {
+    buildLidarrDefinition(makeConfig(dataDir), 'KEY');
+    const xml = readFileSync(join(dataDir, 'lidarr', 'config.xml'), 'utf-8');
+    expect(xml).toContain('<AnalyticsEnabled>False</AnalyticsEnabled>');
   });
 
   it('honors a custom lidarr port in both config.xml and the health check', () => {
@@ -51,7 +74,15 @@ describe('buildLidarrDefinition', () => {
     const def = buildLidarrDefinition(makeConfig(dataDir), 'KEY');
     expect(def.name).toBe('lidarr');
     expect(def.command).toBe(join(dataDir, 'bin', 'Lidarr', 'Lidarr'));
-    expect(def.args).toEqual(['-nobrowser', '-data', join(dataDir, 'lidarr')]);
     expect(existsSync(join(dataDir, 'lidarr'))).toBe(true);
+  });
+
+  // Servarr apps only parse `-data=<dir>`. A separate `-data <dir>` pair is
+  // dropped, so Lidarr fell back to ~/.config/Lidarr with its own defaults
+  // (bind *, auth None, its own API key) and never read the config.xml written
+  // below: the LAN exposure and the permanent 401 had this one cause.
+  it('passes the data dir as a single -data=<dir> argument, the only form Lidarr parses', () => {
+    const def = buildLidarrDefinition(makeConfig(dataDir), 'KEY');
+    expect(def.args).toEqual(['-nobrowser', `-data=${join(dataDir, 'lidarr')}`]);
   });
 });
