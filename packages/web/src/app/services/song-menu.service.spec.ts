@@ -14,6 +14,8 @@ import { RecommendationExclusionsService } from './recommendation-exclusions.ser
 import { ReportTrackService } from './report-track.service';
 import { asRole, canCurate as canCurateRole, type Role } from '../../types/core';
 import type { BaseSong } from '../lib/track-utils';
+import EN from '../../../public/i18n/en.json';
+import ES from '../../../public/i18n/es.json';
 
 const song = (over: Partial<BaseSong> = {}): BaseSong => ({
   id: 's1',
@@ -227,5 +229,45 @@ describe('SongMenuService.build — Report this track', () => {
     });
     expect(out.slice(-2)).toEqual(['Remove from playlist', 'X']);
     expect(out).toContain('Report this track');
+  });
+});
+
+// #1714: the owner's Spanish UI showed eight of the ten items in English — only
+// the two that already carried a key were translated. Every item must render
+// through a key both catalogs carry; `label` stays English for the testid.
+describe('SongMenuService.build — every item is translated', () => {
+  const en = EN as Record<string, string>;
+  const es = ES as Record<string, string>;
+
+  function everyAction(liked: boolean, excluded: boolean) {
+    const { svc } = setup('admin', excluded);
+    const likes = TestBed.inject(LikeService) as unknown as { isLiked: () => boolean };
+    likes.isLiked = () => liked;
+    return svc.build(song({ artistId: 'ar1', albumId: 'al1' }), {
+      removable: true,
+      onRemoveFromPlaylist: () => {},
+    });
+  }
+
+  for (const [liked, excluded] of [
+    [false, false],
+    [true, true],
+  ] as const) {
+    it(`carries a key in en and es for every item (liked=${liked}, excluded=${excluded})`, () => {
+      for (const action of everyAction(liked, excluded)) {
+        expect(action.labelKey, `${action.label} has no labelKey`).toBeTruthy();
+        expect(en[action.labelKey!], `${action.labelKey} missing from en.json`).toBeTruthy();
+        expect(es[action.labelKey!], `${action.labelKey} missing from es.json`).toBeTruthy();
+      }
+    });
+  }
+
+  it('keeps the English label as the stable identity (the e2e testid suffix)', () => {
+    const labelsByKey = Object.fromEntries(
+      everyAction(false, false).map((a) => [a.labelKey, a.label]),
+    );
+    expect(labelsByKey['song.addToQueue']).toBe('Add to queue');
+    expect(en['song.addToQueue']).toBe('Add to queue');
+    expect(es['song.addToQueue']).toBe('Añadir a la cola');
   });
 });

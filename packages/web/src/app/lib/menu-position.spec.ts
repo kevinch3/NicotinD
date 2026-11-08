@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { clampMenuPosition, computeMenuPosition, type TriggerRect } from './menu-position';
+import {
+  MENU_SHEET_MAX_WIDTH,
+  clampMenuPosition,
+  computeMenuPosition,
+  menuMaxHeight,
+  menuPresentation,
+  menuSheetLayout,
+  type TriggerRect,
+} from './menu-position';
 
 describe('clampMenuPosition', () => {
   const VW = 412;
@@ -89,5 +97,87 @@ describe('computeMenuPosition (anchored dropdown, viewport-safe)', () => {
       128,
     );
     expect(flipped.y).toBe(560 - 4 - 180); // above = 376
+  });
+});
+
+// #1714: the owner's iPhone, 375x812 CSS px, status bar 47px. The Now Playing ⋯
+// sat beside the title at y≈420 and the song menu is 13 items tall.
+describe('the top reservation (status bar / notch + header)', () => {
+  const VW = 375;
+  const VH = 812;
+  const SAFE_TOP = 47;
+  const MENU_H = 13 * 36 + 8; // 476
+  const npTrigger: TriggerRect = { top: 410, bottom: 430, left: 330, right: 350 };
+
+  it('used to flip up and clamp to the 8px margin — under the status bar', () => {
+    // No top reservation: the old call. Room above (406) beats room below (382).
+    expect(computeMenuPosition(npTrigger, 200, MENU_H, VW, VH, 'end').y).toBe(8);
+  });
+
+  it('never places the menu above the reserved top band', () => {
+    const pos = computeMenuPosition(
+      npTrigger,
+      200,
+      MENU_H,
+      VW,
+      VH,
+      'end',
+      undefined,
+      undefined,
+      0,
+      SAFE_TOP,
+    );
+    expect(pos.y).toBeGreaterThanOrEqual(SAFE_TOP + 8);
+  });
+
+  it('counts the reservation against the room above when deciding to flip', () => {
+    // 200px panel: below has 150 (bottom chrome 228), above has 170 bare but
+    // only 70 once a 100px header is reserved — so it no longer flips up into it.
+    const trigger: TriggerRect = { top: 174, bottom: 430, left: 100, right: 200 };
+    const bare = computeMenuPosition(trigger, 200, 200, VW, VH, 'end', 4, 8, 228);
+    const reserved = computeMenuPosition(trigger, 200, 200, VW, VH, 'end', 4, 8, 228, 100);
+    expect(bare.y).toBeLessThan(trigger.top);
+    expect(reserved.y).toBeGreaterThanOrEqual(108);
+  });
+
+  it('clampMenuPosition floors y at topInset + margin', () => {
+    expect(clampMenuPosition({ x: 50, y: 0 }, VW, VH, 200, 96, 8, 0, SAFE_TOP).y).toBe(55);
+  });
+});
+
+describe('menuMaxHeight', () => {
+  it('is the band between both reservations, less a margin at each end', () => {
+    // A landscape phone: 390 tall, 47 safe top, no bottom chrome.
+    expect(menuMaxHeight(390, 47, 0)).toBe(390 - 47 - 16);
+  });
+
+  it('never goes negative', () => {
+    expect(menuMaxHeight(100, 80, 80)).toBe(0);
+  });
+});
+
+describe('menuPresentation (#1714)', () => {
+  it('is a bottom sheet on a phone-width viewport', () => {
+    expect(menuPresentation(390, false)).toBe('sheet');
+    expect(menuPresentation(MENU_SHEET_MAX_WIDTH, false)).toBe('sheet');
+  });
+
+  it('stays an anchored popover from the md breakpoint up (tablet, desktop)', () => {
+    expect(menuPresentation(MENU_SHEET_MAX_WIDTH + 1, false)).toBe('popover');
+    expect(menuPresentation(1280, false)).toBe('popover');
+  });
+
+  it('stays a popover on the TV, whatever the width — the D-pad contract is built on it', () => {
+    expect(menuPresentation(390, true)).toBe('popover');
+  });
+});
+
+describe('menuSheetLayout', () => {
+  it('sits on the bottom chrome and stops a margin short of the top band', () => {
+    expect(menuSheetLayout(844, 47, 154)).toEqual({ bottom: 154, maxHeight: 844 - 47 - 154 - 8 });
+  });
+
+  it('sits on the screen bottom where no chrome is visible (inside Now Playing)', () => {
+    expect(menuSheetLayout(844, 47, 0)).toEqual({ bottom: 0, maxHeight: 844 - 47 - 8 });
   });
 });

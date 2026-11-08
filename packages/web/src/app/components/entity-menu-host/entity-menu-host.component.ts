@@ -1,9 +1,16 @@
-import { Component, HostListener, computed, effect, inject } from '@angular/core';
+import { Component, HostListener, computed, effect, inject, signal } from '@angular/core';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { EntityMenuService } from '../../services/entity-menu.service';
 import { BackButtonService } from '../../services/native/back-button.service';
-import { clampMenuPosition, type Point } from '../../lib/menu-position';
-import { measureBottomChromeInset } from '../../lib/player-chrome';
+import {
+  clampMenuPosition,
+  menuMaxHeight,
+  menuPresentation,
+  menuSheetLayout,
+  type Point,
+} from '../../lib/menu-position';
+import { measureBottomChromeInset, measureTopChromeInset } from '../../lib/player-chrome';
+import { isTvUi } from '../../lib/platform';
 import type { TrackAction } from '../track-row/track-row.component';
 
 const MENU_WIDTH = 200;
@@ -17,13 +24,20 @@ export const OPEN_GRACE_MS = 350;
 const ITEM_HEIGHT = 36;
 const ANCHOR_GAP = 4;
 
+export type EntityMenuLayout =
+  | { kind: 'popover'; x: number; y: number; maxHeight: number | null }
+  | { kind: 'sheet'; bottom: number; maxHeight: number };
+
 /**
  * The one entity menu (issue #1298), mounted once in the layout like the
  * confirm and track-info hosts. Tiles never carry a panel of their own: they
  * call `EntityMenuService.open()` with a pointer point (right-click, hold) or
  * an anchor (their ⋯ button), and this renders it — clamped into the viewport
- * and above the bottom chrome, closed by Escape, an outside click, hardware
- * Back, or running an item.
+ * between the status bar + header and the bottom chrome, closed by Escape, an
+ * outside click, hardware Back, or running an item. On a phone it is the same
+ * bottom action sheet `MenuPanelComponent` becomes (#1714, `menuPresentation`):
+ * a hold anywhere on the screen opens it at the thumb's edge, not under the
+ * finger.
  */
 @Component({
   selector: 'app-entity-menu-host',
@@ -37,21 +51,41 @@ export class EntityMenuHostComponent {
 
   readonly state = this.menu.state;
 
-  readonly pos = computed<Point>(() => {
+  /** Bumped when the bottom chrome finishes a transition, so the layout re-measures. */
+  private readonly chromeMoved = signal(0);
+
+  readonly layout = computed<EntityMenuLayout | null>(() => {
     const s = this.state();
-    if (!s) return { x: 0, y: 0 };
-    const height = s.actions.length * ITEM_HEIGHT + 8;
+    if (!s) return null;
+    this.chromeMoved();
+    const vh = window.innerHeight;
+    const bottomInset = measureBottomChromeInset(s.anchor);
+    const topInset = measureTopChromeInset(s.anchor);
+    if (menuPresentation(window.innerWidth, isTvUi()) === 'sheet') {
+      const sheet = menuSheetLayout(vh, topInset, bottomInset);
+      return { kind: 'sheet', bottom: sheet.bottom, maxHeight: sheet.maxHeight };
+    }
+    const natural = s.actions.length * ITEM_HEIGHT + 8;
+    const band = menuMaxHeight(vh, topInset, bottomInset);
+    const height = Math.min(natural, band);
     const raw: Point = s.anchor ? anchorPoint(s.anchor) : (s.at ?? { x: 0, y: 0 });
-    return clampMenuPosition(
+    const at = clampMenuPosition(
       raw,
       window.innerWidth,
-      window.innerHeight,
+      vh,
       MENU_WIDTH,
       height,
       8,
-      measureBottomChromeInset(),
+      bottomInset,
+      topInset,
     );
+    return { kind: 'popover', x: at.x, y: at.y, maxHeight: natural > band ? band : null };
   });
+
+  /** The sheet's `bottom`: on the chrome, or on the real screen bottom (iOS deficit). */
+  sheetBottomCss(bottom: number): string {
+    return bottom > 0 ? `${bottom}px` : 'calc(-1 * var(--vp-deficit, 0px))';
+  }
 
   constructor() {
     effect((onCleanup) => {
@@ -86,6 +120,14 @@ export class EntityMenuHostComponent {
       const next =
         e.key === 'ArrowDown' ? (i + 1) % items.length : (i - 1 + items.length) % items.length;
       items[next].focus();
+    }
+  }
+
+  /** The mini-player slides in on a transform transition: re-measure once it settles. */
+  @HostListener('document:transitionend', ['$event'])
+  onChromeTransitionEnd(e: Event): void {
+    if (this.state() && (e.target as Element | null)?.closest?.('[data-bottom-chrome]')) {
+      this.chromeMoved.update((n) => n + 1);
     }
   }
 

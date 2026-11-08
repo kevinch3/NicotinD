@@ -61,16 +61,26 @@ export class SongMenuService {
       // reflects current state; the toggle adds/removes it from Liked Songs.
       {
         label: this.likes.isLiked(song.id) ? 'Unlike' : 'Like',
+        labelKey: this.likes.isLiked(song.id) ? 'song.unlike' : 'song.like',
         action: () => void this.likes.toggle(song.id),
       },
-      { label: 'Add to queue', action: () => this.player.addToQueue(track) },
-      { label: 'Play next', action: () => this.player.queueNext(track) },
-      { label: 'Start radio', action: () => this.player.startRadio(track) },
+      {
+        label: 'Add to queue',
+        labelKey: 'song.addToQueue',
+        action: () => this.player.addToQueue(track),
+      },
+      { label: 'Play next', labelKey: 'song.playNext', action: () => this.player.queueNext(track) },
+      {
+        label: 'Start radio',
+        labelKey: 'song.startRadio',
+        action: () => this.player.startRadio(track),
+      },
     ];
 
     if (song.artistId && !ctx.hideGoToArtist) {
       actions.push({
         label: 'Go to artist',
+        labelKey: 'song.goToArtist',
         action: () =>
           void this.router.navigate(
             resolveArtistRoute(
@@ -82,6 +92,7 @@ export class SongMenuService {
     if (song.albumId && !ctx.hideGoToAlbum) {
       actions.push({
         label: 'Go to album',
+        labelKey: 'song.goToAlbum',
         action: () => void this.router.navigate(resolveAlbumRoute(song.albumId)),
       });
     }
@@ -90,6 +101,7 @@ export class SongMenuService {
     actions.push(offlineTrackAction(this.preserve, track));
     actions.push({
       label: 'Song info',
+      labelKey: 'song.info',
       action: () =>
         this.trackInfo.open({
           songId: song.id,
@@ -104,8 +116,16 @@ export class SongMenuService {
     // song stays in the library, it just stops being *proposed* to this listener.
     actions.push(
       this.exclusions.isExcluded(song.id)
-        ? { label: 'Recommend again', action: () => void this.exclusions.restore(song.id) }
-        : { label: "Don't recommend this", action: () => void this.exclusions.exclude(song.id) },
+        ? {
+            label: 'Recommend again',
+            labelKey: 'song.recommendAgain',
+            action: () => void this.exclusions.restore(song.id),
+          }
+        : {
+            label: "Don't recommend this",
+            labelKey: 'song.dontRecommend',
+            action: () => void this.exclusions.exclude(song.id),
+          },
     );
 
     // The other half of the pair above: the veto says nothing is wrong, the
@@ -120,6 +140,7 @@ export class SongMenuService {
     if (ctx.removable && this.auth.canCurate()) {
       actions.push({
         label: 'Remove from library',
+        labelKey: 'song.removeFromLibrary',
         destructive: true,
         action: () => void this.removeFromLibrary(song.id, song.title),
       });
@@ -127,6 +148,7 @@ export class SongMenuService {
     if (ctx.onRemoveFromPlaylist) {
       actions.push({
         label: 'Remove from playlist',
+        labelKey: 'song.removeFromPlaylist',
         destructive: true,
         action: ctx.onRemoveFromPlaylist,
       });

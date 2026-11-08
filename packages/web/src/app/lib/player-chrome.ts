@@ -93,12 +93,29 @@ export function bottomChromeInset(rects: ChromeRect[], viewportHeight: number): 
 }
 
 /**
+ * Marks a full-screen overlay that paints over the app chrome (Now Playing,
+ * `fixed inset-0 z-[60]`, opaque). A popup opened from inside one reserves
+ * neither the bottom chrome nor the header: both are still in the layout, and
+ * still measured, but nobody can see or reach them. Reserving them anyway put
+ * the Now Playing ⋯ menu 150px off the bottom and flipped it up under the
+ * status bar (#1714).
+ */
+export const COVERS_CHROME_ATTR = 'data-covers-chrome';
+
+function insideChromeCover(from: Element | null | undefined): boolean {
+  return !!from?.closest(`[${COVERS_CHROME_ATTR}]`);
+}
+
+/**
  * Measures the live `[data-bottom-chrome]` layers in the document and returns
  * their `bottomChromeInset` — the one DOM-reading entry point shared by
- * `BottomChromeSafeDirective` (modal backdrops) and `MenuPanelComponent`
- * (popovers), so the two never drift on how the chrome is found or measured.
+ * `BottomChromeSafeDirective` (modal backdrops), `MenuPanelComponent` and
+ * `EntityMenuHostComponent` (menus), so they never drift on how the chrome is
+ * found or measured. `from` is the popup's own element: inside a
+ * `[data-covers-chrome]` overlay there is no chrome to reserve.
  */
-export function measureBottomChromeInset(): number {
+export function measureBottomChromeInset(from?: Element | null): number {
+  if (insideChromeCover(from)) return 0;
   return bottomChromeInset(
     Array.from(document.querySelectorAll<HTMLElement>('[data-bottom-chrome]')).map((el) => {
       const rect = el.getBoundingClientRect();
@@ -126,17 +143,23 @@ export function topChromeInset(rects: ChromeRect[]): number {
  * Measures `[data-top-chrome]` and floors it at the status-bar safe area, so a
  * route that collapses the header (the phone mosaic home) still keeps a modal
  * out from under the notch. `env()` only resolves through a real style, hence
- * the probe; jsdom resolves it to nothing, i.e. 0.
+ * the probe; jsdom resolves it to nothing, i.e. 0. The probe reads `--safe-top`
+ * (styles.css: `env(safe-area-inset-top)`), which an e2e can override to stand
+ * in for a notch Chromium cannot produce. Inside a `[data-covers-chrome]`
+ * overlay the header is hidden, so only the safe area counts.
  */
-export function measureTopChromeInset(): number {
-  const header = topChromeInset(
-    Array.from(document.querySelectorAll<HTMLElement>('[data-top-chrome]')).map((el) => {
-      const rect = el.getBoundingClientRect();
-      return { top: rect.top, height: rect.height };
-    }),
-  );
+export function measureTopChromeInset(from?: Element | null): number {
+  const header = insideChromeCover(from)
+    ? 0
+    : topChromeInset(
+        Array.from(document.querySelectorAll<HTMLElement>('[data-top-chrome]')).map((el) => {
+          const rect = el.getBoundingClientRect();
+          return { top: rect.top, height: rect.height };
+        }),
+      );
   const probe = document.createElement('div');
-  probe.style.cssText = 'position:fixed;visibility:hidden;padding-top:env(safe-area-inset-top,0px)';
+  probe.style.cssText =
+    'position:fixed;visibility:hidden;padding-top:var(--safe-top,env(safe-area-inset-top,0px))';
   document.body.appendChild(probe);
   const safeArea = parseFloat(getComputedStyle(probe).paddingTop) || 0;
   probe.remove();

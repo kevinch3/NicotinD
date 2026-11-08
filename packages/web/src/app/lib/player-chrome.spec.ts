@@ -159,6 +159,20 @@ describe('measureBottomChromeInset', () => {
     addChromeLayer(vh - 128, 72); // mini-player stacked above it
     expect(measureBottomChromeInset()).toBe(128);
   });
+  // #1714: Now Playing paints over the chrome. Reserving it there pushed the ⋯
+  // menu 150px off the bottom and flipped it up under the status bar.
+  it('reserves nothing for a popup inside a [data-covers-chrome] overlay', () => {
+    const vh = window.innerHeight;
+    addChromeLayer(vh - 56, 56);
+    const overlay = document.createElement('div');
+    overlay.setAttribute('data-covers-chrome', '');
+    const menu = document.createElement('div');
+    overlay.appendChild(menu);
+    document.body.appendChild(overlay);
+    expect(measureBottomChromeInset(menu)).toBe(0);
+    expect(measureBottomChromeInset(document.body)).toBe(56);
+    overlay.remove();
+  });
 });
 
 // The sticky app header painted OVER modal panels on iOS, burying the close
@@ -197,5 +211,20 @@ describe('measureTopChromeInset', () => {
 
   it('is 0 when no [data-top-chrome] layer exists', () => {
     expect(measureTopChromeInset()).toBe(0);
+  });
+  it('ignores the header for a popup inside a [data-covers-chrome] overlay', () => {
+    const el = document.createElement('header');
+    el.setAttribute('data-top-chrome', '');
+    el.getBoundingClientRect = () =>
+      ({ top: 0, height: 83, bottom: 83, left: 0, right: 0, width: 0, x: 0, y: 0 }) as DOMRect;
+    document.body.appendChild(el);
+    const overlay = document.createElement('div');
+    overlay.setAttribute('data-covers-chrome', '');
+    const menu = document.createElement('div');
+    overlay.appendChild(menu);
+    document.body.appendChild(overlay);
+    expect(measureTopChromeInset(menu)).toBe(0);
+    expect(measureTopChromeInset(document.body)).toBe(83);
+    overlay.remove();
   });
 });
