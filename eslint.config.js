@@ -107,6 +107,23 @@ export default [
       ],
     },
   },
+  // crypto.randomUUID only exists in a secure context, so it throws on the
+  // plain-HTTP LAN origins most self-hosters use (#1724). One door: lib/uuid.ts.
+  {
+    files: ['packages/web/src/**/*.ts'],
+    ignores: ['**/*.spec.ts', 'packages/web/src/app/lib/uuid.ts'],
+    rules: {
+      'no-restricted-properties': [
+        'error',
+        {
+          // No `object`: also catches window.crypto / globalThis.crypto.
+          property: 'randomUUID',
+          message:
+            'Undefined on plain-HTTP origins (not a secure context). Use randomUuid() from lib/uuid.ts.',
+        },
+      ],
+    },
+  },
   {
     files: ['packages/*/src/**/*.ts', 'packages/*/scripts/**/*.{ts,mjs}'],
     rules: { 'nicotind/shared-helpers': 'error' },

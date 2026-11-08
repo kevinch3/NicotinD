@@ -28,6 +28,19 @@ profile; the addon connects to slskd and holds its credentials via `SLSKD_ADDON_
 env vars on the addon container (`SLSKD_ADDON_SLSKD_USERNAME`/`_PASSWORD` for the
 slskd web API, `SLSKD_ADDON_TOKEN` for core→addon auth). Core carries none of it.
 
+### Opening it from another device: plain HTTP works, HTTPS unlocks the PWA
+
+`http://<lan-or-tailnet-ip>:8484` is a fully working client: playback, search,
+listening history and stats all run there (#1724; the web code never relies on
+secure-context-only APIs such as `crypto.randomUUID`, see `lib/uuid.ts`). The
+browser does withhold two things from a plain-HTTP origin: the **service
+worker** and **Install app**, so offline caching and the installed PWA need
+HTTPS. `localhost` counts as secure; any other origin needs a real certificate,
+either from a reverse proxy (Caddy, Traefik, nginx) in front of port 8484 or
+from `tailscale serve --bg 8484`, which gives the host an HTTPS name on your
+tailnet with no open ports (enable HTTPS certificates for the tailnet in the
+Tailscale admin console first).
+
 ### Volumes
 
 | Volume          | Purpose                                                            |
