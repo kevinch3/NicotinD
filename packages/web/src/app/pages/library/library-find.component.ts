@@ -11,6 +11,8 @@ import { CoverArtComponent } from '../../components/cover-art/cover-art.componen
 import { TrackRowComponent } from '../../components/track-row/track-row.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { albumRef, toTrack } from '../../lib/track-utils';
+import { albumCover, artistCover } from '../../lib/cover-url';
+import { CoverRevisionsService } from '../../services/cover-revisions.service';
 import type { SearchResult } from '../../services/api/api-types';
 
 type LocalResults = SearchResult['local'];
@@ -90,8 +92,19 @@ export class LibraryFindComponent {
     }
   }
 
-  coverUrl(coverArt: string | undefined): string | undefined {
-    return coverArt ? `/api/cover/${coverArt}?size=300&token=${this.auth.mediaToken()}` : undefined;
+  private readonly coverRevisions = inject(CoverRevisionsService);
+
+  /** Both at their live cover rev (#1666). A search hit's artist cover id is its id. */
+  albumCoverSrc(album: LocalResults['albums'][number]): string | undefined {
+    return this.coverRevisions.url(albumCover(album), 300, this.auth.mediaToken());
+  }
+
+  artistCoverSrc(artist: LocalResults['artists'][number]): string | undefined {
+    return this.coverRevisions.url(
+      artistCover({ ...artist, coverArt: artist.id }),
+      300,
+      this.auth.mediaToken(),
+    );
   }
 
   /** The found songs are the queue — a click plays in the context of the

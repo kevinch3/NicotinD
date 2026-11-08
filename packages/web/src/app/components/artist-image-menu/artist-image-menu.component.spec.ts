@@ -5,6 +5,7 @@ import { ArtistImageMenuComponent } from './artist-image-menu.component';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { AuthService } from '../../services/auth.service';
 import { setInputValue } from '../../../testing/signal-input';
+import { CoverRevisionsService } from '../../services/cover-revisions.service';
 
 /**
  * These cases moved here from artist-detail.component.spec when the control was
@@ -221,5 +222,48 @@ describe('ArtistImageMenuComponent', () => {
       // project's JIT harness.
       expect(el.querySelector('[data-testid="artist-image-upload"]')).not.toBeNull();
     });
+  });
+});
+
+// #1666: every action's answer carries the artist's new cover_rev, and the menu
+// hands it to the overlay, so every portrait of this artist — the page hero,
+// the grid tile, a related-artists tile — re-keys without a host cache-bust.
+describe('ArtistImageMenuComponent — the answered rev reaches every portrait (#1666)', () => {
+  const live = () => TestBed.inject(CoverRevisionsService).live('artist', 'ar1');
+
+  it('upload, copy from album, reset and auto-fetch each raise the rev they answered', async () => {
+    const m = make({ albums: [{ id: 'a1', name: 'One', artist: 'X' }] });
+    m.c['api'].uploadArtistImage = vi.fn(() => of({ ok: true, coverRev: 1 }));
+    m.c['api'].setArtistImageFromAlbum = vi.fn(() => of({ ok: true, coverRev: 2 }));
+    m.c['api'].resetArtistImage = vi.fn(() => of({ ok: true, coverRev: 3 }));
+    m.c['api'].autoFetchArtistImage = vi.fn(() =>
+      of({ filled: true as const, source: 'lidarr', coverRev: 4 }),
+    );
+
+    await m.c.onFileSelected(fileEvent([new File([new Uint8Array([1])], 'p.png')]));
+    expect(live()).toBe(1);
+    await m.c.pickAlbumCover('a1');
+    expect(live()).toBe(2);
+    await m.c.reset();
+    expect(live()).toBe(3);
+    await m.c.autoFetch();
+    expect(live()).toBe(4);
+  });
+
+  it('an auto-fetch that changed nothing raises nothing', async () => {
+    const m = make();
+    m.c['api'].autoFetchArtistImage = vi.fn(() =>
+      of({ filled: false as const, reason: 'no-candidate' as const }),
+    );
+    await m.c.autoFetch();
+    expect(live()).toBe(0);
+  });
+
+  it('a picker tile builds its album cover through the helper', () => {
+    const m = make();
+    expect(
+      m.c.albumCoverSrc({ id: 'a1', name: 'One', artist: 'X', coverArt: 'a1', coverRev: 2 }),
+    ).toBe('/api/cover/a1?size=160&v=2&token=tok');
+    expect(m.c.albumCoverSrc({ id: 'a2', name: 'Two', artist: 'X' })).toBeUndefined();
   });
 });

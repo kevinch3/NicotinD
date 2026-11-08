@@ -617,8 +617,9 @@ navigation. The control is now `ArtistImageMenuComponent`
 (`components/artist-image-menu/`), used by **both** the artist page and each Artists-grid tile
 (curator-gated), which is what the issue asks for: *one component, not a copy*. A second
 implementation would have drifted on the two easy things to get wrong here — the busy-guard and the
-cache-bust (the portrait URL is byte-identical after a change, so without a version bump the browser
-serves the old image).
+cover rev. Every action answers the artist's new `coverRev`, which the menu hands to
+`CoverRevisionsService`, so every portrait of that artist re-keys at once and the hosts keep no
+cache-bust of their own (#1666; the page-local counters it replaced reset on the next mount).
 
 It also adds **Fetch automatically**, which calls the already-existing
 `POST /artists/:id/auto-fetch-image`. That route shipped with gap 1 but **no web client ever called

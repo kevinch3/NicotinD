@@ -216,6 +216,30 @@ describe('#1666 artist portrait: cover identity travels with the bytes', () => {
     });
     expect(typeof artist.coverRev).toBe('number');
   });
+
+  // The acting client re-keys its portrait URL from the response (A2), so the
+  // answer must be the rev the DTO now carries, not just `ok`.
+  it('every portrait mutation answers the rev the artist DTO now carries', async () => {
+    const app = makeApp();
+    const revNow = async () =>
+      (await json<{ artist: { coverRev: number } }>(app.request('/artists/artist-1'))).artist
+        .coverRev;
+
+    const put = await json<{ ok: boolean; coverRev: number }>(
+      app.request('/artists/artist-1/image', {
+        method: 'PUT',
+        body: uploadForm(await png(255, 0, 0)),
+      }),
+    );
+    expect(put.coverRev).toBe(await revNow());
+    expect(put.coverRev).toBeGreaterThan(0);
+
+    const del = await json<{ ok: boolean; coverRev: number }>(
+      app.request('/artists/artist-1/image', { method: 'DELETE' }),
+    );
+    expect(del.coverRev).toBe(await revNow());
+    expect(del.coverRev).toBeGreaterThan(put.coverRev);
+  });
 });
 
 describe('#1666 album cover: cover identity travels with the bytes', () => {

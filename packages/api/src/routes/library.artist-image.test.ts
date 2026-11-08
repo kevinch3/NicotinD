@@ -234,7 +234,12 @@ describe('POST /artists/:id/auto-fetch-image (#250)', () => {
       { method: 'POST' },
     );
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ filled: true, source: 'Aphex Twin → spotify' });
+    // The fill bumped the portrait's cover_rev, and the answer carries it (#1666).
+    expect(await res.json()).toEqual({
+      filled: true,
+      source: 'Aphex Twin → spotify',
+      coverRev: 1,
+    });
     expect(
       testDb.query(`SELECT cover_url FROM library_artwork WHERE id = 'artist-1'`).get(),
     ).toEqual({ cover_url: 'https://cdn/aphex.jpg' });

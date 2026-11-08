@@ -16,6 +16,7 @@ import { ListControlsService } from '../../services/list-controls.service';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import { TranslateService, interpolate } from '../../services/translate.service';
 import type { PlaylistSummary } from '../../services/api/api-types';
+import { CoverRevisionsService } from '../../services/cover-revisions.service';
 
 // Real catalogs aren't loaded in a unit test (TranslateService.init() is never
 // called), so the raw key would render with no interpolation — enough of a
@@ -107,6 +108,7 @@ function setup(
         // renders them, so the stub has to answer.
         useValue: {
           token: signal('tok'),
+          mediaToken: signal('tok'),
           role: () => 'user',
           canCurate: () => opts.canCurate ?? false,
         },
@@ -954,5 +956,26 @@ describe('LibraryComponent — compact tab bar', () => {
     await component.setAlbumSort('frequent');
     expect(component.albumSort()).toBe('frequent');
     expect(albumCalls.at(-1)?.type).toBe('frequent');
+  });
+});
+
+// #1666: the grid's portrait URL carries the artist's live cover rev, so a
+// change from any tile's menu — or from anywhere, via artwork.changed — re-keys
+// only that artist's tile, and survives the page being mounted again.
+describe('LibraryComponent — artist portraits carry the cover rev (#1666)', () => {
+  it('a pushed rev re-keys that artist only; rev 0 stays unversioned', () => {
+    const { component } = setup();
+    const a = { id: 'ar1', coverArt: 'ar1', coverRev: 0 };
+    const b = { id: 'ar2', coverArt: 'ar2', coverRev: 4 };
+    expect(component.artistCoverSrc(a)).toBe('/api/cover/ar1?size=160&token=tok');
+    expect(component.artistCoverSrc(b)).toBe('/api/cover/ar2?size=160&v=4&token=tok');
+    TestBed.inject(CoverRevisionsService).raise([{ kind: 'artist', id: 'ar1', rev: 2 }]);
+    expect(component.artistCoverSrc(a)).toBe('/api/cover/ar1?size=160&v=2&token=tok');
+    expect(component.artistCoverSrc(b)).toBe('/api/cover/ar2?size=160&v=4&token=tok');
+  });
+
+  it('an artist with no cover id has no URL', () => {
+    const { component } = setup();
+    expect(component.artistCoverSrc({ id: 'ar1' })).toBeUndefined();
   });
 });

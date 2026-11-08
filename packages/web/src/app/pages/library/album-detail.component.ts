@@ -9,6 +9,7 @@ import { PlayerService, type Track } from '../../services/player.service';
 import { PlaylistService } from '../../services/playlist.service';
 import { TransferService } from '../../services/transfer.service';
 import { LibraryEventsService } from '../../services/library-events.service';
+import { CoverRevisionsService } from '../../services/cover-revisions.service';
 import { SongMenuService } from '../../services/song-menu.service';
 import { ListControlsService, type SortOption } from '../../services/list-controls.service';
 import { TrackRowComponent } from '../../components/track-row/track-row.component';
@@ -352,6 +353,7 @@ export class AlbumDetailComponent implements OnInit {
   readonly showMetadataFix = signal(false);
   /** Bumped after a fix so the cover URL busts its cache. */
   private readonly events = inject(LibraryEventsService);
+  private readonly coverRevisions = inject(CoverRevisionsService);
   private readonly localCoverBust = signal(0);
   /** Cache-bust for the cover URL: the album's cover rev — the newer of the DTO's
    *  and a pushed `artwork.changed` (#1666), so a cover replaced anywhere shows here
@@ -359,10 +361,7 @@ export class AlbumDetailComponent implements OnInit {
    *  `max`ed: a rev is a small integer that a local count could otherwise mask. */
   readonly coverBust = computed(() => {
     const album = this.selectedAlbum();
-    const rev = Math.max(
-      album?.coverRev ?? 0,
-      this.events.artworkVersions().get(album?.id ?? '') ?? 0,
-    );
+    const rev = Math.max(album?.coverRev ?? 0, this.coverRevisions.live('album', album?.id));
     const local = this.localCoverBust();
     if (!local) return rev ? String(rev) : '';
     return `${rev}.${local}`;

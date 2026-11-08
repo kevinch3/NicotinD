@@ -47,6 +47,9 @@ export interface MosaicTile {
   action: MosaicAction;
   /** Cover *id* (never a URL) for song and playlist tiles. */
   coverArt?: string;
+  /** A song tile's album: the entity whose `cover_rev` (`coverRev`) the cover URL carries (#1666). */
+  albumId?: string;
+  coverRev?: number;
   /** Tailwind `from-*`/`to-*` pair for vibe tiles. */
   gradient?: string;
   emoji?: string;
@@ -286,6 +289,8 @@ export function songToTile(s: Song, w: PlayWeights): MosaicTile {
     score: scoreSong(key, s.id, s.artist, s.popularity, w),
     action: { type: 'song', track: toTrack(s) },
     coverArt: s.coverArt,
+    albumId: s.albumId,
+    coverRev: s.coverRev,
   };
 }
 
@@ -315,6 +320,7 @@ function recentToTile(p: RecentPlay, w: PlayWeights): MosaicTile {
     score: scoreSong(key, p.songId, p.artist, undefined, w),
     action: { type: 'song', track: recentToTrack(p) },
     coverArt: p.coverArt ?? undefined,
+    albumId: p.albumId ?? undefined,
   };
 }
 

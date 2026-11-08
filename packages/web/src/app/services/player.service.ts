@@ -17,6 +17,8 @@ export interface Track {
   album?: string;
   albumId?: string;
   coverArt?: string;
+  /** The album's `cover_rev` when the source DTO carried it (#1666). */
+  coverRev?: number;
   duration?: number;
   bitRate?: number;
   genre?: string;

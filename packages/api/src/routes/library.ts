@@ -1560,19 +1560,35 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // Shared by the artist-image and album-cover upload routes.
   const MAX_IMAGE_UPLOAD_BYTES = 8 * 1024 * 1024;
 
-  /** Persist override bytes for an artist + flip the manual flag + bust caches. */
+  /**
+   * Persist override bytes for an artist + flip the manual flag + bust caches.
+   * Returns the artist's `cover_rev` after the write, which the route answers so
+   * the acting client re-keys its portrait URL without waiting for the event (#1666).
+   */
   function commitArtistImage(
     db: Database,
     artistId: string,
     data: Uint8Array,
     contentType: string,
-  ): void {
-    writeArtistImageOverride(db, dataDir!, artistId, data, contentType);
+  ): number {
+    const rev = writeArtistImageOverride(db, dataDir!, artistId, data, contentType);
     db.run('UPDATE library_artists SET manual_override = 1 WHERE id = ?', [artistId]);
     // The override occupies the un-prefixed cache namespace for this id; drop any
     // sized variants and the negative 404 so the new portrait shows immediately.
     if (coverCacheDir) purgeDiskArtCache(coverCacheDir, artistId);
     clearCoverNegativeCache(artistId);
+    return rev ?? artistCoverRev(db, artistId);
+  }
+
+  /** The artist's persisted `cover_rev` (0 when the row is gone). */
+  function artistCoverRev(db: Database, id: string): number {
+    return (
+      db
+        .query<{ cover_rev: number }, [string]>(
+          'SELECT cover_rev FROM library_artists WHERE id = ?',
+        )
+        .get(id)?.cover_rev ?? 0
+    );
   }
 
   function findArtist(db: Database, id: string): boolean {
@@ -1658,10 +1674,14 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
         },
         [{ id: artist.id, name: artist.name }],
       );
-      // A bulk fill changes what the Artists grid renders, but a single
-      // portrait is cover-id-stable (#237 audit) — the grid re-reads
-      // /api/cover/<id>, whose negative cache fillArtistImages already evicted.
-      if (applied > 0) return c.json({ filled: true as const, source: labels[0] ?? null });
+      // The fill bumped the artist's cover_rev (setArtwork → bumpCoverRev);
+      // answering it lets the acting client re-key the portrait URL at once (#1666).
+      if (applied > 0)
+        return c.json({
+          filled: true as const,
+          source: labels[0] ?? null,
+          coverRev: artistCoverRev(db, artist.id),
+        });
       return c.json({ filled: false, reason: 'no-candidate' as const });
     } catch (err) {
       log.warn({ err, artistId: id }, 'artist portrait auto-fetch failed');
@@ -1695,8 +1715,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const data = new Uint8Array(await file.arrayBuffer());
     if (data.length === 0) return c.json({ error: 'Empty image' }, 400);
 
-    commitArtistImage(db, id, data, contentType);
-    return c.json({ ok: true });
+    return c.json({ ok: true, coverRev: commitArtistImage(db, id, data, contentType) });
   });
 
   // Copy one of the artist's album covers into the portrait slot. Admin only.
@@ -1739,8 +1758,10 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     }
     if (!bytes) return c.json({ error: 'That album has no cover to copy' }, 400);
 
-    commitArtistImage(db, id, bytes.data, bytes.contentType);
-    return c.json({ ok: true });
+    return c.json({
+      ok: true,
+      coverRev: commitArtistImage(db, id, bytes.data, bytes.contentType),
+    });
   });
 
   // Remove the manual override → revert to auto (canonical) artwork or placeholder.
@@ -1758,7 +1779,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       purgeCanonicalCache(coverCacheDir, id); // also drop any stale auto-artwork cache
     }
     clearCoverNegativeCache(id);
-    return c.json({ ok: true });
+    return c.json({ ok: true, coverRev: artistCoverRev(db, id) });
   });
 
   // User-corrected artist identity (admin). Writes the highest-authority

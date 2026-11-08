@@ -32,7 +32,8 @@ import { placeholderGradient } from '../../components/cover-art/cover-art.compon
 import { createPointerDrag } from '../../lib/pointer-drag';
 import { haptic } from '../../lib/haptics';
 import { measureBottomChromeInset } from '../../lib/player-chrome';
-import { coverSizeBucket, coverUrl } from '../../lib/cover-url';
+import { coverSizeBucket, songCover } from '../../lib/cover-url';
+import { CoverRevisionsService } from '../../services/cover-revisions.service';
 import { toTrack } from '../../lib/track-utils';
 import {
   LANE_MIX,
@@ -181,6 +182,7 @@ export class MosaicHomeComponent implements OnInit {
   private playlistsApi = inject(PlaylistsApiService);
   private auth = inject(AuthService);
   private server = inject(ServerConfigService);
+  private readonly coverRevisions = inject(CoverRevisionsService);
   private i18n = inject(TranslateService);
   private toast = inject(ToastService);
   private readonly entityMenu = inject(EntityMenuService);
@@ -904,12 +906,13 @@ export class MosaicHomeComponent implements OnInit {
     // placeholder gradient sits underneath, so a missing or slow cover still
     // reads as a deliberate tile rather than a hole.
     const fallback = placeholderGradient(t.subtitle, t.title);
-    const cover = t.coverArt
-      ? this.server.apiUrl(
-          // Sized for the centre, where the fisheye draws it largest.
-          coverUrl(t.coverArt, coverSizeBucket(s * CENTER_SCALE), this.auth.mediaToken()),
-        )
-      : null;
+    // Sized for the centre, where the fisheye draws it largest; at the live rev (#1666).
+    const rel = this.coverRevisions.url(
+      songCover(t),
+      coverSizeBucket(s * CENTER_SCALE),
+      this.auth.mediaToken(),
+    );
+    const cover = rel ? this.server.apiUrl(rel) : null;
     const bg = cover
       ? `background-image:url('${encodeURI(cover)}'),${fallback};background-size:cover;background-position:center`
       : `background-image:${fallback}`;

@@ -409,9 +409,10 @@
                 <app-entity-menu-button [actions]="artistActions(artist)" />
                 <div class="relative">
                   <app-cover-art
-                    [src]="artist.coverArt ? '/api/cover/' + artist.coverArt + '?size=160&token=' + auth.mediaToken() + (artistImageVersion() ? '&v=' + artistImageVersion() : '') : undefined"
+                    [src]="artistCoverSrc(artist)"
                     [artist]="artist.name"
                     [size]="80"
+                    [holdPrevious]="true"
                     rounded="rounded-full"
                   />
                   <!-- Add-photo affordance (issue #250 gap 4): the same component the
@@ -422,7 +423,6 @@
                       <app-artist-image-menu
                         [artistId]="artist.id"
                         [compact]="true"
-                        (changed)="onArtistImageChanged()"
                       />
                     </div>
                   }
