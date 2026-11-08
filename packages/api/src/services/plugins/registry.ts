@@ -9,6 +9,7 @@ import {
 } from '@nicotind/core';
 import { createPluginHostContext, type HostContextDeps } from './host-context.js';
 import { resolvesOnPath } from './acquire/process.js';
+import { RemoteAddonPlugin } from '../addons/remote-addon-plugin.js';
 
 const log = createLogger('plugin-registry');
 
@@ -296,6 +297,11 @@ export class PluginRegistry {
         missingBinaries,
         remote: p.origin?.remote,
         addonUrl: p.origin?.url,
+        // The same patterns resolveAddonForUrl routes a paste by (#1663).
+        urlPatterns:
+          p instanceof RemoteAddonPlugin && m.capabilities.includes('resolve')
+            ? (p.addonManifest.urlPatterns ?? [])
+            : undefined,
       });
     }
     return infos;

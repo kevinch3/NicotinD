@@ -477,6 +477,12 @@
   @apply rounded-xl border bg-theme-surface/50 overflow-x-auto;
   border-color: var(--theme-border);
 }
+/* A primary text field (Library find): a 48px touch target, and a 16px font,
+   which is also what stops iOS Safari zooming the page on focus (#1663).
+   docs/design-patterns.md "Primary text fields". */
+@utility input-lg {
+  @apply min-h-12 py-3 text-base rounded-xl;
+}
 
 /* ─── Mosaic home tiles ──────────────────────────────────────────────────
    The mosaic's tiles are created by its render loop, not by an Angular

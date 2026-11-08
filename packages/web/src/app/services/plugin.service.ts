@@ -53,6 +53,8 @@ export interface PluginInfo {
   remote?: boolean;
   /** The remote addon's base URL. */
   addonUrl?: string;
+  /** A resolve addon's declared URL regexes — what the server routes a paste by. */
+  urlPatterns?: string[];
 }
 
 export interface AddonStatus {
@@ -99,6 +101,16 @@ export class PluginService {
   readonly hasSearch = computed(() => this.enabledCaps().has('search'));
   readonly hasResolve = computed(() => this.enabledCaps().has('resolve'));
   readonly hasDownload = computed(() => this.enabledCaps().has('download'));
+  /**
+   * Every enabled resolver's `urlPatterns`, for `resolverClaims` (#1663). Null
+   * when an enabled resolver declares none (not an addon), so the omnibox never
+   * calls a link unsupported on a list it cannot see whole.
+   */
+  readonly resolverPatterns = computed<string[] | null>(() => {
+    const resolvers = this.plugins().filter((p) => p.enabled && p.capabilities.includes('resolve'));
+    if (resolvers.some((p) => !p.urlPatterns)) return null;
+    return resolvers.flatMap((p) => p.urlPatterns!);
+  });
   /** The archive.org plugin specifically is enabled (gates the archive.org search lane). */
   readonly hasArchive = computed(() => this.plugins().some((p) => p.id === 'archive' && p.enabled));
   /** The Spotify metadata plugin is enabled (gates the Spotify fallback lane). */

@@ -150,7 +150,8 @@ manifest snapshot — no network, a down addon still renders its card;
 `DELETE /addons/:id` (`addon.remove`), `GET /:id/addon-status` (degrades to
 `{available:false}` rather than 500). The web Extensions page gains an "Add addon" form in
 the Acquisition group and a per-card Remove for `remote` cards; `PluginInfo` carries
-`remote`/`addonUrl`. e2e: `tests/helpers/fixture-addon.ts` + `addon-registry.spec.ts` cover
+`remote`/`addonUrl`, and a resolve addon's `urlPatterns` (the search omnibox's live link
+recognition, #1663). e2e: `tests/helpers/fixture-addon.ts` + `addon-registry.spec.ts` cover
 register → consent-gated enable → status panel → remove against a live in-process addon.
 
 ## Readiness: `ready` means "a hunt sent here can succeed"

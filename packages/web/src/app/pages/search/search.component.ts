@@ -62,7 +62,7 @@ import {
   mergeAndRank,
   type BlendedCandidate,
 } from '../../lib/acquisition-candidate';
-import { parseLinkIntent, type LinkIntent } from '../../lib/link-intent';
+import { parseLinkIntent, resolverClaims, type LinkIntent } from '../../lib/link-intent';
 import { FolderBrowserComponent } from '../../components/folder-browser/folder-browser.component';
 import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
 import { SourceChipComponent } from '../../components/source-chip/source-chip.component';
@@ -335,6 +335,22 @@ export class SearchComponent implements OnInit, OnDestroy {
   // the album default.
   readonly treatAsPlaylist = signal(false);
 
+  // The omnibox text read as a link live, as it is typed or pasted (#1663),
+  // behind the same hasResolve() compliance gate as the submit. It only labels
+  // the field: Enter/Get still decides (owner: a paste never auto-submits).
+  readonly liveLinkIntent = computed(() =>
+    this.plugins.hasResolve() ? parseLinkIntent(this.search.query()) : null,
+  );
+  /** The live link as the field shows it: acquirers only, like the card. */
+  readonly shownLinkIntent = computed(() =>
+    this.auth.canAcquire() ? this.liveLinkIntent() : null,
+  );
+  /** True when no enabled resolver's urlPatterns claim the live link. */
+  readonly liveLinkUnsupported = computed(() => {
+    const intent = this.liveLinkIntent();
+    return !!intent && resolverClaims(intent.url, this.plugins.resolverPatterns()) === false;
+  });
+
   readonly hasCatalog = computed(() => {
     const c = this.catalog();
     return !!c && (c.artists.length > 0 || c.albums.length > 0);
@@ -598,7 +614,7 @@ export class SearchComponent implements OnInit, OnDestroy {
     // A pasted URL becomes a link-intent card, not a search — but detection
     // stays behind the hasResolve() gate so acquisition UI never appears
     // before a plugin is enabled (compliance; see packages/e2e/tests/plugins.spec.ts).
-    const intent = this.plugins.hasResolve() ? parseLinkIntent(this.search.query()) : null;
+    const intent = this.liveLinkIntent();
     if (intent) {
       this.linkSubmitError.set(null);
       // Reset the playlist-toggle every time a new URL is recognized as a link
