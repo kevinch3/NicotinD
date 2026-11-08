@@ -1242,6 +1242,7 @@
   "setup.chooseNewUsername": "Elegí un nombre de usuario",
   "setup.choosePassword": "Elegí una contraseña",
   "setup.completeSetup": "Completar configuración",
+  "setup.completing": "Configurando…",
   "setup.confirmPassword": "Confirmar contraseña",
   "setup.convertLosslessToOpus": "Convertir sin pérdida a Opus",
   "setup.createAdminAccount": "Crear cuenta de administrador",

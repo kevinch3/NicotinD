@@ -1242,6 +1242,7 @@
   "setup.chooseNewUsername": "Choose a username",
   "setup.choosePassword": "Choose a password",
   "setup.completeSetup": "Complete Setup",
+  "setup.completing": "Setting up…",
   "setup.confirmPassword": "Confirm password",
   "setup.convertLosslessToOpus": "Convert lossless to Opus",
   "setup.createAdminAccount": "Create Admin Account",
