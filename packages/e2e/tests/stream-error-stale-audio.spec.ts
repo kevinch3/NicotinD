@@ -16,7 +16,9 @@ import { ADMIN, FIXTURE, bearer, openAlbumCard } from '../helpers';
  * The 503 is injected at the network layer so the browser's own media pipeline
  * raises the error, as it did on the trial host.
  */
-async function fixtureSongIds(request: APIRequestContext): Promise<string[]> {
+async function fixtureSongs(
+  request: APIRequestContext,
+): Promise<Array<{ id: string; title: string }>> {
   const login = await request.post('/api/auth/login', {
     data: { username: ADMIN.username, password: ADMIN.password },
   });
@@ -27,8 +29,8 @@ async function fixtureSongIds(request: APIRequestContext): Promise<string[]> {
   const album = albums.find((a) => a.name === FIXTURE.album.title)!;
   const detail = (await (
     await request.get(`/api/library/albums/${album.id}`, { headers: bearer(token) })
-  ).json()) as { song: Array<{ id: string }> };
-  return detail.song.map((s) => s.id);
+  ).json()) as { song: Array<{ id: string; title: string }> };
+  return detail.song.map((s) => ({ id: s.id, title: s.title }));
 }
 
 /** Ids of the <audio> elements that are currently producing sound. */
@@ -45,7 +47,7 @@ test.describe('a stream error on a track change', () => {
     page,
     request,
   }) => {
-    const [first, second] = await fixtureSongIds(request);
+    const [{ id: first }, { id: second, title: secondTitle }] = await fixtureSongs(request);
     let failed = 0;
     await page.route(`**/api/stream/${second}**`, async (route) => {
       if (failed === 0) {
@@ -66,6 +68,12 @@ test.describe('a stream error on a track change', () => {
     await expect.poll(() => failed, { timeout: 15_000 }).toBe(1);
 
     await rows.nth(1).getByTestId('track-row-title').click();
+    // The player acts on the click from an effect, after change detection. On
+    // a busy runner that trails the click by tens of ms, and sampling straight
+    // away caught track 1 in the last frames before its element was reloaded
+    // (#1760: sample at +48 ms, the fresh load at +80 ms). The bar renders the
+    // new title in the same pass that reloads the element.
+    await expect(page.getByTestId('player-title')).toHaveText(secondTitle);
 
     // From the moment track 2 is current, track 1 must be silent. Sampled
     // across the load and the 1 s media-error retry window.
