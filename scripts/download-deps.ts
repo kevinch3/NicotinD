@@ -6,6 +6,7 @@
 import { existsSync, mkdirSync, chmodSync, createWriteStream } from 'node:fs';
 import { join } from 'node:path';
 import { execSync } from 'node:child_process';
+import { createProgressReporter } from './download-progress.js';
 
 const DATA_DIR = join(process.env.HOME ?? '/root', '.nicotind');
 const BIN_DIR = join(DATA_DIR, 'bin');
@@ -72,6 +73,11 @@ async function downloadFile(url: string, dest: string): Promise<void> {
 
   const totalBytes = Number(res.headers.get('content-length') ?? 0);
   let downloaded = 0;
+  const tty = process.stdout.isTTY === true;
+  const report = createProgressReporter(
+    { isTTY: tty, write: (s) => process.stdout.write(s) },
+    totalBytes,
+  );
 
   const writer = createWriteStream(dest);
   const reader = res.body.getReader();
@@ -82,19 +88,14 @@ async function downloadFile(url: string, dest: string): Promise<void> {
     if (done) break;
     writer.write(value);
     downloaded += value.length;
-    if (totalBytes > 0) {
-      const pct = ((downloaded / totalBytes) * 100).toFixed(0);
-      process.stdout.write(
-        `\r  Downloading... ${pct}% (${(downloaded / 1_000_000).toFixed(1)} MB)`,
-      );
-    }
+    report(downloaded);
   }
   writer.end();
   await new Promise<void>((resolve, reject) => {
     writer.on('finish', resolve);
     writer.on('error', reject);
   });
-  console.log();
+  if (tty) console.log(); // end the live bar's line
 }
 
 async function downloadDep(dep: DepConfig): Promise<void> {
