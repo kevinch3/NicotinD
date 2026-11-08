@@ -10,6 +10,7 @@ import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { toTrack } from '../../lib/track-utils';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 type Tab = 'albums' | 'artists' | 'genres';
 
@@ -24,7 +25,13 @@ type Tab = 'albums' | 'artists' | 'genres';
 @Component({
   selector: 'app-tv-browse',
   standalone: true,
-  imports: [CoverArtComponent, TvNavGroupDirective, TvNavItemDirective, TranslatePipe],
+  imports: [
+    OverflowRevealDirective,
+    CoverArtComponent,
+    TvNavGroupDirective,
+    TvNavItemDirective,
+    TranslatePipe,
+  ],
   templateUrl: './tv-browse.component.html',
 })
 export class TvBrowseComponent implements OnInit {

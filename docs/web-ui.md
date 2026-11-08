@@ -1902,6 +1902,65 @@ mechanism to maintain.
 - `pages/page-shell.spec.ts` — the migrated templates must not regrow the spinner
   literal, and must render an `<app-skeleton>`.
 
+## Names are never unreadably truncated (#1665)
+
+A name the layout cuts to `Muriendo De Envidia F…` must still be readable in
+full. `truncate` alone hides the rest for good on touch: there is no hover, and
+`title=` tooltips do not exist on iOS or Android. A name that fits (`I am 34`)
+stays plain static text.
+
+**The primitive** is `OverflowRevealDirective` (`[appOverflowReveal]`), put on
+the element that already carries `truncate`; the controller is the plain class
+`OverflowReveal` in `lib/overflow-reveal.ts`. When `scrollWidth > clientWidth`
+it animates the host's **own `scrollLeft`**. Nothing is cloned or wrapped, so
+nothing reflows, a screen reader reads the one text node once, and
+`translate="no"` stays wherever it was. The ellipsis shows at rest. While the
+text is off its start, `.overflow-reveal-active` clips instead, so the ellipsis
+does not cover the text being revealed. A pass rests `REVEAL_PAUSE_MS`
+(1.5 s), scrolls at a constant `REVEAL_SPEED_PX_S` (40 px/s, so a long name
+takes longer rather than blurring), holds, and returns at
+`REVEAL_RETURN_SPEED_PX_S`. RTL names scroll the other way. An overflowing name
+also gets its full text as `title`, unless the host already has a title.
+
+**When it moves** (owner decision on #1665):
+
+| Where | Trigger |
+| --- | --- |
+| The playing title: Now Playing sheet, mini player, TV player, karaoke overlay, share-page player (`appOverflowReveal="always"`) | loops while on screen |
+| Every other name, touch | one pass once the row is ≥95% in view and has not moved for `REVEAL_SETTLE_MS`; again only after it leaves view and comes back |
+| Every other name, desktop (`(hover: hover) and (pointer: fine)`) | while the row is hovered or `:focus-visible` |
+| Every other name, TV (`isTvUi()`) | while the row has D-pad focus; never on its own |
+| `prefers-reduced-motion: reduce` | never moves. The first tap on an overflowing name wraps it (`.overflow-reveal-expanded`) and does not reach the row. Later taps are the row's again. A tap on a link inside the name is never taken |
+
+"The row" is the nearest link, button, focusable, `li` or `tr` above the host.
+An IntersectionObserver keeps a name that is off screen idle, so a list of 100
+rows never runs 100 animations. A ResizeObserver stops it when the name starts
+to fit. A MutationObserver resets it to the start when the text changes (a
+track change).
+
+**The guard** is `src/overflow-reveal-policy.spec.ts`, which runs in
+`web-test`. It reads every `.html` and `.ts` template and finds each element
+truncated by `truncate`, `text-ellipsis` or `line-clamp-*`, or by a stylesheet
+class that sets `text-overflow: ellipsis` or `-webkit-line-clamp` (`styles.css`
+for every template, a component's own stylesheet for its own template only).
+Each one must carry `appOverflowReveal` or appear on `NOT_A_NAME`: error and
+status messages, secrets and URLs, fixed UI copy and count lines, admin
+diagnostics, the search input, the artist bio's clamp with its own "Show more",
+and the home mosaic's HTML-string faces. The list has one entry per site, so a
+new truncation in an allowlisted file is a new site. A TS class string bound
+with `[class]` is checked at its binding (`CLASS_STRINGS`). The spec also checks
+that every component using the attribute imports the directive. Without the
+import, the attribute is silently inert. It asserts its own denominator, so a
+broken scanner cannot pass by finding nothing. The real layout is covered by
+`e2e/tests/overflow-reveal.spec.ts`: touch once, the playing title always,
+reduced-motion tap-to-wrap, and desktop hover.
+
+**Adding a name**: put `appOverflowReveal` on the truncated element and
+`OverflowRevealDirective` in the component's `imports`. A flex child still needs
+`min-w-0` (or `truncate`'s own `overflow: hidden`) before it can overflow at
+all. **Adding a truncation that is not a name**: add its file to the matching
+`NOT_A_NAME` group, with a reason if no group fits.
+
 ## Changelog Modal
 
 Clicking the version string in the **desktop header** (`layout.component`, `data-testid="version-changelog"`) or the **Settings page footer** (`settings.component`, `data-testid="version-changelog-settings"`) opens a scrollable modal showing the project's release history — versions, dates, and commit links from `CHANGELOG.md`.

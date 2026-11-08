@@ -10,6 +10,7 @@ import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { formatTime } from '../../lib/format-time';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 /**
  * The 10-foot player, as a route rather than a sheet.
@@ -29,6 +30,7 @@ import { formatTime } from '../../lib/format-time';
   selector: 'app-tv-player',
   standalone: true,
   imports: [
+    OverflowRevealDirective,
     CoverArtComponent,
     NowPlayingTvQueueComponent,
     TvKaraokeComponent,

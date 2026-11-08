@@ -1,4 +1,5 @@
 import { Component, computed, input } from '@angular/core';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 export interface GenreSlice {
   genre: string;
@@ -17,6 +18,7 @@ export interface GenreSlice {
  */
 @Component({
   selector: 'app-genre-distribution-strip',
+  imports: [OverflowRevealDirective],
   templateUrl: './genre-distribution-strip.component.html',
   styleUrls: ['./genre-distribution-strip.component.css'],
 })

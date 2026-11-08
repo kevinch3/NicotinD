@@ -55,7 +55,7 @@
         <tbody>
           @for (r of rows(); track r.genre) {
             <tr>
-              <td class="py-0.5 pr-3 text-theme-secondary truncate">{{ r.genre }}</td>
+              <td appOverflowReveal class="py-0.5 pr-3 text-theme-secondary truncate">{{ r.genre }}</td>
               <td class="py-0.5 text-right text-theme-primary tabular-nums whitespace-nowrap">
                 {{ percent(r.weight) }}
               </td>

@@ -25,7 +25,7 @@
             Liked songs
           </p>
         }
-        <h1 class="page-title truncate">{{ pl.name }}</h1>
+        <h1 class="page-title truncate" appOverflowReveal>{{ pl.name }}</h1>
         @if (pl.description) {
           <p class="text-theme-secondary text-sm mt-1">{{ pl.description }}</p>
         }
@@ -99,7 +99,7 @@
           <div class="space-y-0.5">
             @for (song of proposals(); track song.id) {
               <div class="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-theme-surface-2">
-                <span class="min-w-0 truncate text-sm text-theme-primary">
+                <span appOverflowReveal class="min-w-0 truncate text-sm text-theme-primary">
                   {{ song.title }} <span class="text-theme-muted">— {{ song.artist }}</span>
                 </span>
                 <button type="button" data-testid="proposal-add" (click)="addSong(song)"

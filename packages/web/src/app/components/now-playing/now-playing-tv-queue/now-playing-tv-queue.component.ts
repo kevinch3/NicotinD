@@ -4,6 +4,7 @@ import { registerOverlayCloser } from '../../../services/native/back-button.serv
 import { TvNavGroupDirective } from '../../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
+import { OverflowRevealDirective } from '../../../directives/overflow-reveal.directive';
 
 /**
  * The lightweight D-pad queue overlay the TV Next-up chip opens (issue #399).
@@ -15,7 +16,7 @@ import { TranslatePipe } from '../../../pipes/translate.pipe';
  */
 @Component({
   selector: 'app-now-playing-tv-queue',
-  imports: [TvNavGroupDirective, TvNavItemDirective, TranslatePipe],
+  imports: [OverflowRevealDirective, TvNavGroupDirective, TvNavItemDirective, TranslatePipe],
   templateUrl: './now-playing-tv-queue.component.html',
 })
 export class NowPlayingTvQueueComponent implements AfterViewChecked {

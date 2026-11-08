@@ -37,6 +37,7 @@ import { TranslateService } from '../../../services/translate.service';
 import { AutoHuntService } from '../../../services/auto-hunt.service';
 import { IDLE_HUNT, type AlbumHuntStatus } from '../../../lib/album-hunt-status';
 import { stageLabel } from '../../../lib/pipeline-stage';
+import { OverflowRevealDirective } from '../../../directives/overflow-reveal.directive';
 
 /** A copy in a duplicate group — shape returned by the maintenance duplicates API. */
 type DuplicateSong = {
@@ -67,6 +68,7 @@ type DuplicateSong = {
   standalone: true,
   host: { class: 'contents' },
   imports: [
+    OverflowRevealDirective,
     SettingsGroupComponent,
     AlbumHuntModalComponent,
     TranslatePipe,

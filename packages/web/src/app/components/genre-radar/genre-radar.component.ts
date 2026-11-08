@@ -1,5 +1,6 @@
 import { Component, computed, input } from '@angular/core';
 import { radarAxes, polygonPoints, ringPoints, truncateLabel } from '../../lib/radar-geometry';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 export interface GenreSlice {
   genre: string;
@@ -24,6 +25,7 @@ const RING_FRACTIONS = [0.25, 0.5, 0.75, 1];
  */
 @Component({
   selector: 'app-genre-radar',
+  imports: [OverflowRevealDirective],
   templateUrl: './genre-radar.component.html',
 })
 export class GenreRadarComponent {

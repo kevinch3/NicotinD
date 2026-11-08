@@ -14,7 +14,7 @@
             class="w-full flex items-center justify-between px-3 py-2 rounded-lg text-left hover:bg-theme-hover transition disabled:opacity-50"
             [disabled]="busy()"
             (click)="addTo(pl.id)">
-            <span class="text-sm text-theme-primary truncate">{{ pl.name }}</span>
+            <span appOverflowReveal class="text-sm text-theme-primary truncate">{{ pl.name }}</span>
             <span class="text-xs text-theme-muted">{{ pl.songCount }}</span>
           </button>
         }

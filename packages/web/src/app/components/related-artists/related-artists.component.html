@@ -10,7 +10,7 @@
           class="flex-shrink-0 w-24 flex flex-col items-center gap-2 rounded-lg p-1 hover:bg-theme-surface-2 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-accent)]"
         >
           <app-cover-art [src]="coverSrc(a)" [artist]="a.name" [size]="88" [holdPrevious]="true" rounded="rounded-full" />
-          <span class="w-full text-center text-xs text-theme-secondary truncate" [title]="a.name">{{ a.name }}</span>
+          <span appOverflowReveal class="w-full text-center text-xs text-theme-secondary truncate" [title]="a.name">{{ a.name }}</span>
         </a>
       }
     </div>

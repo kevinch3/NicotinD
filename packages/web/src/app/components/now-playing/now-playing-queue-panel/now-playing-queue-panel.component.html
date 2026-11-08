@@ -1,6 +1,6 @@
 <div class="flex-1 min-h-0 flex flex-col px-4 overflow-hidden" data-testid="now-playing-queue">
   @if (remote.sharedQueue()) {
-    <p class="text-xs text-theme-accent px-2 mb-1 truncate" data-testid="queue-session-label">
+    <p appOverflowReveal class="text-xs text-theme-accent px-2 mb-1 truncate" data-testid="queue-session-label">
       @if (remote.playingElsewhere()) {
         {{ 'nowPlaying.sessionQueueOn' | t: { device: remote.activeDevice()?.name ?? '' } }}
       } @else {
@@ -9,7 +9,7 @@
     </p>
   }
   @if (player.context() && player.context()!.type !== 'adhoc') {
-    <p class="text-xs text-theme-muted px-2 mb-1 truncate">{{ 'nowPlaying.nextFrom' | t: { name: player.context()!.name ?? '' } }}</p>
+    <p appOverflowReveal class="text-xs text-theme-muted px-2 mb-1 truncate">{{ 'nowPlaying.nextFrom' | t: { name: player.context()!.name ?? '' } }}</p>
   }
   <div class="flex items-center gap-2 mb-3 px-2">
     <span class="text-xs font-semibold text-theme-secondary uppercase tracking-wider">{{ 'nowPlaying.nextUp' | t }}</span>
@@ -91,9 +91,9 @@
               />
               <div class="min-w-0 flex-1">
                 <button type="button" appTvNavItem data-testid="queue-row-title" (click)="jumpToTrack($index)" class="w-full text-left">
-                  <p class="text-sm text-theme-primary truncate">{{ queueTrack.title }}</p>
+                  <p appOverflowReveal class="text-sm text-theme-primary truncate">{{ queueTrack.title }}</p>
                 </button>
-                <p class="text-xs text-theme-muted truncate">
+                <p appOverflowReveal class="text-xs text-theme-muted truncate">
                   <app-artist-links [artists]="queueTrack.artists" [fallbackArtist]="queueTrack.artist" [fallbackArtistId]="queueTrack.artistId" (linkFollowed)="linkFollowed.emit()" />@if (queueTrack.album) {<span> · </span><app-entity-link kind="album" [id]="queueTrack.albumId" [name]="queueTrack.album" (followed)="linkFollowed.emit()" />}
                 </p>
               </div>

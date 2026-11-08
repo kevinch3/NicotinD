@@ -21,6 +21,7 @@ import type { Translator } from '../../lib/relative-time';
 import { FolderTreeNodeComponent } from './folder-tree-node.component';
 import { createPointerDrag } from '../../lib/pointer-drag';
 import { TranslatePipe } from '../../pipes/translate.pipe';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 function buildBreadcrumb(path: string): Array<{ label: string; path: string }> {
   const segs = path.split(/[\\/]/).filter(Boolean);
@@ -47,7 +48,7 @@ const MAX_TREE_WIDTH = 420;
 
 @Component({
   selector: 'app-folder-browser',
-  imports: [FolderTreeNodeComponent, TranslatePipe],
+  imports: [OverflowRevealDirective, FolderTreeNodeComponent, TranslatePipe],
   templateUrl: './folder-browser.component.html',
 })
 export class FolderBrowserComponent {

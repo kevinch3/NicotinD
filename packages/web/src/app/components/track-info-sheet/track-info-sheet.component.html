@@ -37,9 +37,9 @@
         rounded="rounded"
       />
       <div class="min-w-0">
-        <p class="text-sm font-medium text-theme-primary truncate">{{ headerTitle() }}</p>
+        <p appOverflowReveal class="text-sm font-medium text-theme-primary truncate">{{ headerTitle() }}</p>
         @if (headerArtist()) {
-          <p class="text-xs text-theme-secondary truncate">
+          <p appOverflowReveal class="text-xs text-theme-secondary truncate">
             <app-artist-links
               [artists]="effectiveSong()?.artists"
               [fallbackArtist]="headerArtist()"
@@ -60,7 +60,7 @@
           </p>
         }
         @if (headerAlbum()) {
-          <p class="text-xs text-theme-muted truncate">
+          <p appOverflowReveal class="text-xs text-theme-muted truncate">
             <app-entity-link kind="album" [id]="effectiveSong()?.albumId" [name]="headerAlbum()" (followed)="close.emit()" />
           </p>
         }
@@ -239,7 +239,7 @@
             @for (row of tagSummary(); track row.labelKey) {
               <div class="flex gap-2">
                 <span class="text-theme-muted w-20 flex-shrink-0">{{ row.labelKey | t }}</span>
-                <span class="truncate">{{ row.value || '—' }}</span>
+                <span appOverflowReveal class="truncate">{{ row.value || '—' }}</span>
               </div>
             }
           </div>

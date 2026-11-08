@@ -4,6 +4,7 @@ import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.d
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import type { AlternateSource } from '../../services/api/api-types';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 /**
  * Pick a peer to take over the tracks a download is stuck on (#1065).
@@ -20,7 +21,7 @@ import type { AlternateSource } from '../../services/api/api-types';
 @Component({
   selector: 'app-resource-picker',
   standalone: true,
-  imports: [BottomChromeSafeDirective, TranslatePipe],
+  imports: [OverflowRevealDirective, BottomChromeSafeDirective, TranslatePipe],
   templateUrl: './resource-picker.component.html',
 })
 export class ResourcePickerComponent {

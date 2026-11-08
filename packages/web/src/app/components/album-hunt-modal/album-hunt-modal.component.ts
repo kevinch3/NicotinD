@@ -32,6 +32,7 @@ import { CoverArtComponent } from '../cover-art/cover-art.component';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.directive';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 type HuntState =
   | 'idle'
@@ -48,6 +49,7 @@ type ArchiveState = 'idle' | 'searching' | 'done' | 'error';
   selector: 'app-album-hunt-modal',
   standalone: true,
   imports: [
+    OverflowRevealDirective,
     NgTemplateOutlet,
     SourceChipComponent,
     CoverArtComponent,

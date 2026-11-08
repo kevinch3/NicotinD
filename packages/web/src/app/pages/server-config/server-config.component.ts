@@ -14,6 +14,7 @@ import { platformId } from '../../services/native/native-capabilities';
 import type { SavedServer } from '../../lib/server-registry';
 import { TranslateService } from '../../services/translate.service';
 import { errorMessageForCode } from '../../lib/http-error';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 /**
  * Server-picker screen (native shell). Lets the user point the app at any
@@ -34,7 +35,7 @@ import { errorMessageForCode } from '../../lib/http-error';
  */
 @Component({
   selector: 'app-server-config',
-  imports: [FormsModule],
+  imports: [OverflowRevealDirective, FormsModule],
   templateUrl: './server-config.component.html',
 })
 export class ServerConfigComponent {

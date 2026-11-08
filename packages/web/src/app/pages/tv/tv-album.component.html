@@ -12,8 +12,8 @@
       />
       <div class="min-w-0 flex flex-col gap-4">
         <div class="min-w-0">
-          <h1 class="text-4xl font-bold truncate text-theme-primary">{{ a.name }}</h1>
-          <p class="text-xl text-theme-secondary truncate">{{ a.artist }}</p>
+          <h1 appOverflowReveal class="text-4xl font-bold truncate text-theme-primary">{{ a.name }}</h1>
+          <p appOverflowReveal class="text-xl text-theme-secondary truncate">{{ a.artist }}</p>
           @if (a.year) {
             <p class="text-base text-theme-muted">{{ a.year }}</p>
           }
@@ -45,7 +45,7 @@
                  focus-visible:bg-theme-surface-2"
         >
           <span class="w-8 text-right text-sm text-theme-muted tabular-nums">{{ i + 1 }}</span>
-          <span class="flex-1 min-w-0 truncate text-base text-theme-primary">{{ s.title }}</span>
+          <span appOverflowReveal class="flex-1 min-w-0 truncate text-base text-theme-primary">{{ s.title }}</span>
         </button>
       }
     </div>

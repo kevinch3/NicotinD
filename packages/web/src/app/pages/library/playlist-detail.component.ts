@@ -20,11 +20,13 @@ import type { PlaylistDetail, Song } from '../../services/api/api-types';
 import { SkeletonComponent } from '../../components/skeleton/skeleton.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 @Component({
   selector: 'app-playlist-detail',
   standalone: true,
   imports: [
+    OverflowRevealDirective,
     SkeletonComponent,
     TranslatePipe,
     TrackRowComponent,

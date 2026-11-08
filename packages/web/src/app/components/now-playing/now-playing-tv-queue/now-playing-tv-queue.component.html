@@ -11,8 +11,8 @@
             class="np-tv-queue-row"
             (click)="jump.emit($index)"
           >
-            <span class="np-tv-queue-title">{{ track.title }}</span>
-            <span class="np-tv-queue-artist">{{ track.artist }}</span>
+            <span appOverflowReveal class="np-tv-queue-title">{{ track.title }}</span>
+            <span appOverflowReveal class="np-tv-queue-artist">{{ track.artist }}</span>
           </button>
           <button
             type="button"

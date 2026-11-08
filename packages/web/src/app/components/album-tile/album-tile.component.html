@@ -20,7 +20,7 @@
          opacity step here drops the subtitle below the contrast floor (caught by
          a11y:storybook:strict), and "not in your library" is a state, not a
          reason to make words hard to read. -->
-    <p class="text-sm text-theme-muted truncate">{{ tile().title }}</p>
+    <p appOverflowReveal class="text-sm text-theme-muted truncate">{{ tile().title }}</p>
     <p class="text-xs text-theme-muted">{{ subtitle() }}</p>
 
     @if (showAction()) {
@@ -77,7 +77,7 @@
       rounded="rounded"
       className="mb-2"
     />
-    <p class="text-sm text-theme-primary truncate">{{ tile().title }}</p>
+    <p appOverflowReveal class="text-sm text-theme-primary truncate">{{ tile().title }}</p>
     <p class="text-xs" [class]="tile().status === 'partial' ? 'text-status-warn' : 'text-theme-muted'">
       {{ subtitle() }}
     </p>

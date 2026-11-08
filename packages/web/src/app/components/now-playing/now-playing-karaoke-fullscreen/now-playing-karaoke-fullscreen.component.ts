@@ -9,10 +9,12 @@ import { HapticDirective } from '../../../directives/haptic.directive';
 import { DEFAULT_PALETTE, type CoverPalette } from '../../../lib/cover-colors';
 import { formatTime } from '../../../lib/format-time';
 import type { WaveformData } from '../../../../types/core';
+import { OverflowRevealDirective } from '../../../directives/overflow-reveal.directive';
 
 @Component({
   selector: 'app-now-playing-karaoke-fullscreen',
   imports: [
+    OverflowRevealDirective,
     SeekBarComponent,
     NowPlayingVfxComponent,
     TranslatePipe,

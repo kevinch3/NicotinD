@@ -102,7 +102,7 @@
   <!-- Track info -->
   <div class="text-center px-4 mb-4 md:px-8 no-callout" translate="no">
     <div class="flex items-center justify-center gap-2 min-w-0">
-      <h2
+      <h2 appOverflowReveal="always"
         class="text-xl font-semibold text-theme-primary truncate select-none"
         data-testid="now-playing-title"
         (contextmenu)="onTitleContextMenu($event)"
@@ -208,7 +208,7 @@
         </app-menu-panel>
       }
     </div>
-    <p class="text-sm text-theme-secondary truncate mt-1 select-none hover:text-theme-primary transition">
+    <p appOverflowReveal class="text-sm text-theme-secondary truncate mt-1 select-none hover:text-theme-primary transition">
       @if (track.artists?.length) {
         <app-artist-links [artists]="track.artists" (linkFollowed)="artistLinkFollowed.emit()" />
       } @else {
@@ -219,7 +219,7 @@
          ArrowUp order (now-playing-tv.spec.ts); TV reaches the album via the
          track row instead. -->
     @if (!isTv && track.album) {
-      <p class="text-xs text-theme-muted truncate mt-0.5" data-testid="now-playing-album">
+      <p appOverflowReveal class="text-xs text-theme-muted truncate mt-0.5" data-testid="now-playing-album">
         <app-entity-link kind="album" [id]="track.albumId" [name]="track.album" (followed)="navigateToAlbumClicked.emit()" />
       </p>
     }

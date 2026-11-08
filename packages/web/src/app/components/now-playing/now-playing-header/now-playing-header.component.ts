@@ -5,10 +5,11 @@ import { nowPlayingHeading } from '../../../lib/now-playing-heading';
 import { RemotePlaybackService } from '../../../services/remote-playback.service';
 import { DeviceSwitcherComponent } from '../../device-switcher/device-switcher.component';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
+import { OverflowRevealDirective } from '../../../directives/overflow-reveal.directive';
 
 @Component({
   selector: 'app-now-playing-header',
-  imports: [DeviceSwitcherComponent, TranslatePipe, TvNavItemDirective],
+  imports: [OverflowRevealDirective, DeviceSwitcherComponent, TranslatePipe, TvNavItemDirective],
   // `display: contents` so the host doesn't break the sheet's flex column —
   // the shell's flex container needs to see this component's own top-level
   // element as the flex item, and `contents` makes the host transparent.

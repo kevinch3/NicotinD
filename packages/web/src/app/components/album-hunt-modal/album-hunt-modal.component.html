@@ -21,7 +21,7 @@
     <div class="flex items-start justify-between p-5 border-b border-theme-surface-2 flex-shrink-0">
       <div>
         <h2 class="text-base font-semibold text-theme-primary">Find Complete Album</h2>
-        <p class="text-sm text-theme-muted mt-0.5 truncate max-w-sm">{{ album().title }}</p>
+        <p appOverflowReveal class="text-sm text-theme-muted mt-0.5 truncate max-w-sm">{{ album().title }}</p>
       </div>
       <button
         (click)="close()"
@@ -262,7 +262,7 @@
                     class="mt-2 space-y-0.5 text-xs text-theme-muted"
                   >
                     @for (miss of r.misses; track miss) {
-                      <li class="truncate">· {{ miss }}</li>
+                      <li appOverflowReveal class="truncate">· {{ miss }}</li>
                     }
                   </ul>
                 }
@@ -291,7 +291,7 @@
           @if (effectiveCandidate(); as best) {
             <div class="px-5 py-4" data-testid="hunt-best-match">
               <p class="text-sm font-medium text-green-400">✓ Best match ready</p>
-              <p class="text-sm text-theme-primary mt-1 truncate">
+              <p appOverflowReveal class="text-sm text-theme-primary mt-1 truncate">
                 {{ displayDir(best.directory) }}
               </p>
               <p class="text-xs text-theme-muted mt-0.5">
@@ -325,11 +325,11 @@
                   <div class="flex items-center justify-between gap-3">
                     <!-- Folder info -->
                     <div class="min-w-0 flex-1">
-                      <p class="text-sm font-medium text-theme-primary truncate">
+                      <p appOverflowReveal class="text-sm font-medium text-theme-primary truncate">
                         {{ displayDir(candidate.directory) }}
                       </p>
                       <p class="text-xs text-theme-muted mt-0.5 flex items-center gap-2">
-                        <span class="truncate">{{ candidate.username }}</span>
+                        <span appOverflowReveal class="truncate">{{ candidate.username }}</span>
                         <span
                           class="flex-shrink-0"
                           [class.text-green-400]="candidate.freeUploadSlots > 0"
@@ -470,10 +470,10 @@
                     <div class="min-w-0">
                       <div class="flex items-center gap-2">
                         <app-source-chip [source]="c.source" [label]="c.sourceLabel" />
-                        <p class="text-sm font-medium text-theme-primary truncate">{{ c.title }}</p>
+                        <p appOverflowReveal class="text-sm font-medium text-theme-primary truncate">{{ c.title }}</p>
                       </div>
                       @if (c.subtitle) {
-                        <p class="text-xs text-theme-muted mt-0.5 truncate">{{ c.subtitle }}</p>
+                        <p appOverflowReveal class="text-xs text-theme-muted mt-0.5 truncate">{{ c.subtitle }}</p>
                       }
                     </div>
                   </div>

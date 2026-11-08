@@ -63,8 +63,8 @@
                 class="w-20 h-20 rounded-lg object-cover flex-shrink-0 shadow" />
               <div class="flex-1 min-w-0">
                 <p class="text-[11px] uppercase tracking-wide text-theme-muted mb-1">{{ 'poll.nowPlaying' | t }}</p>
-                <p class="text-base font-semibold text-theme-primary truncate">{{ seed.title }}</p>
-                <p class="text-sm text-theme-muted truncate">{{ seed.artist }}</p>
+                <p appOverflowReveal class="text-base font-semibold text-theme-primary truncate">{{ seed.title }}</p>
+                <p appOverflowReveal class="text-sm text-theme-muted truncate">{{ seed.artist }}</p>
               </div>
               <button (click)="togglePlay(seed.id)" data-testid="poll-play"
                 class="w-10 h-10 rounded-full bg-theme-surface-2 flex items-center justify-center hover:bg-theme-hover transition text-theme-primary flex-shrink-0"
@@ -131,8 +131,8 @@
                   }
                 </button>
                 <div class="flex-1 min-w-0">
-                  <p class="text-sm font-medium text-theme-primary truncate">{{ c.title }}</p>
-                  <p class="text-xs text-theme-muted truncate">
+                  <p appOverflowReveal class="text-sm font-medium text-theme-primary truncate">{{ c.title }}</p>
+                  <p appOverflowReveal class="text-xs text-theme-muted truncate">
                     {{ c.artist }} · {{ formatTime(c.duration) }}
                   </p>
                 </div>

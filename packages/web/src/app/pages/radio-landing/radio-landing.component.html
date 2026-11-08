@@ -20,8 +20,8 @@
           <p class="text-xs font-medium text-theme-accent-text uppercase tracking-wide">
             {{ 'home.resume' | t }}
           </p>
-          <p class="text-sm font-semibold text-theme-primary truncate">{{ lastTrack()!.title }}</p>
-          <p class="text-xs text-theme-muted truncate">{{ lastTrack()!.artist }}</p>
+          <p appOverflowReveal class="text-sm font-semibold text-theme-primary truncate">{{ lastTrack()!.title }}</p>
+          <p appOverflowReveal class="text-xs text-theme-muted truncate">{{ lastTrack()!.artist }}</p>
         </div>
         <span
           class="shrink-0 flex items-center justify-center w-12 h-12 rounded-full bg-theme-accent text-theme-on-accent group-active:scale-95 transition"

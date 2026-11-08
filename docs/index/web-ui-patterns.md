@@ -134,3 +134,7 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **Shared relative time**: one `timeAgo` (`lib/relative-time.ts`) for the Downloads feed and Admin
   users table, with the translator an optional param so the module stays pure.
   → [presence-tracking.md](../presence-tracking.md)
+- **Names never unreadably truncated**: `OverflowRevealDirective` scrolls an overflowing name's own
+  `scrollLeft` (touch: once when settled; desktop: hover/focus; TV: focus; the playing title always;
+  reduced motion: tap to wrap); `overflow-reveal-policy.spec.ts` gates every truncation.
+  → [web-ui.md](../web-ui.md), [design-patterns.md](../design-patterns.md)

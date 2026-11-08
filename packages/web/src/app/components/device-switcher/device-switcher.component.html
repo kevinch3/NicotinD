@@ -34,7 +34,7 @@
               (click)="selectThisDevice()"
             >
               <span class="text-base leading-none">{{ myDeviceEmoji() }}</span>
-              <span class="flex-1 text-left truncate">{{ myDeviceName() }}</span>
+              <span appOverflowReveal class="flex-1 text-left truncate">{{ myDeviceName() }}</span>
               <span class="text-[10px] text-theme-muted flex-shrink-0">{{ 'remote.thisDevice' | t }}</span>
               @if (isThisDeviceActive()) {
                 <span class="w-2 h-2 rounded-full bg-[var(--theme-accent)] flex-shrink-0 animate-pulse"></span>
@@ -59,7 +59,7 @@
                   (click)="selectDevice(device.id)"
                 >
                   <span class="text-base leading-none">{{ getDeviceEmoji(device.name, device.type) }}</span>
-                  <span class="flex-1 text-left truncate">{{ device.name }}</span>
+                  <span appOverflowReveal class="flex-1 text-left truncate">{{ device.name }}</span>
                   @if (device.sibling) {
                     <span
                       data-testid="device-sibling-tab"
@@ -83,7 +83,7 @@
           </ul>
 
           @if (isRemoteActive() && activeDevice()) {
-            <div class="px-4 py-2 border-t border-theme text-xs text-theme-muted truncate">
+            <div appOverflowReveal class="px-4 py-2 border-t border-theme text-xs text-theme-muted truncate">
               {{ 'remote.playingOn' | t: { name: activeDevice()!.name } }}
             </div>
           }

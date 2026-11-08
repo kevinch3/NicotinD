@@ -440,10 +440,10 @@
                       }
                     </div>
                     <div class="p-2">
-                      <p class="text-sm truncate" style="color: var(--theme-text-primary)">
+                      <p appOverflowReveal class="text-sm truncate" style="color: var(--theme-text-primary)">
                         {{ album.title }}
                       </p>
-                      <p class="text-xs truncate" style="color: var(--theme-text-secondary)">
+                      <p appOverflowReveal class="text-xs truncate" style="color: var(--theme-text-secondary)">
                         {{ album.artistName }}
                       </p>
                       <p class="text-xs truncate" style="color: var(--theme-text-muted)">
@@ -524,13 +524,13 @@
                         }
                       </div>
                       <div class="p-2">
-                        <p class="text-sm truncate" style="color: var(--theme-text-primary)">
+                        <p appOverflowReveal class="text-sm truncate" style="color: var(--theme-text-primary)">
                           {{ album.title }}
                         </p>
-                        <p class="text-xs truncate" style="color: var(--theme-text-secondary)">
+                        <p appOverflowReveal class="text-xs truncate" style="color: var(--theme-text-secondary)">
                           {{ album.artist }}
                         </p>
-                        <p class="text-xs truncate mt-0.5 text-emerald-400/90">
+                        <p appOverflowReveal class="text-xs truncate mt-0.5 text-emerald-400/90">
                           {{ availabilityLabel(album.availability) }}
                         </p>
                       </div>
@@ -637,7 +637,7 @@
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-2">
                 <app-source-chip [source]="c.source" [label]="c.sourceLabel" />
-                <p class="truncate text-sm text-zinc-200">{{ c.title }}</p>
+                <p appOverflowReveal class="truncate text-sm text-zinc-200">{{ c.title }}</p>
                 @if (transcodeActive() && isLosslessCandidate(c)) {
                   <span
                     class="shrink-0 text-[10px] uppercase tracking-wide text-emerald-500/80"
@@ -649,7 +649,7 @@
                 }
               </div>
               @if (c.subtitle) {
-                <p class="truncate text-xs text-zinc-500 mt-0.5">{{ c.subtitle }}</p>
+                <p appOverflowReveal class="truncate text-xs text-zinc-500 mt-0.5">{{ c.subtitle }}</p>
               }
             </div>
             @if (blendedState(c) === 'done' || blendedState(c) === 'queued') {
@@ -851,12 +851,12 @@
                   }
 
                   <div class="relative flex-1 min-w-0">
-                    <p
+                    <p appOverflowReveal
                       class="text-sm truncate"
                       style="color: var(--theme-text-primary)"
                       [innerHTML]="highlightSongTitle(song)"
                     ></p>
-                    <p class="text-xs truncate" style="color: var(--theme-text-muted)">
+                    <p appOverflowReveal class="text-xs truncate" style="color: var(--theme-text-muted)">
                       @if (song.artist) {
                         <span [innerHTML]="highlightSongArtist(song)"></span> ·
                       }
@@ -931,7 +931,7 @@
                 >
                   <div class="flex items-center gap-2 px-3 py-2 border-b border-zinc-800/80">
                     <div class="flex-1 min-w-0">
-                      <p
+                      <p appOverflowReveal
                         class="text-sm truncate flex items-center gap-1.5"
                         style="color: var(--theme-text-primary)"
                       >
@@ -958,7 +958,7 @@
                             </span>
                           }
                         }
-                        <span
+                        <span appOverflowReveal
                           class="truncate cursor-pointer hover:underline transition"
                           style="color: var(--theme-text-primary)"
                           (click)="navigateAndSearch(getDirBasename(group))"
@@ -966,7 +966,7 @@
                           {{ getDirBasename(group) }}
                         </span>
                       </p>
-                      <p class="text-xs truncate" style="color: var(--theme-text-muted)">
+                      <p appOverflowReveal class="text-xs truncate" style="color: var(--theme-text-muted)">
                         {{ group.username }}
                         {{ group.bitRate ? ' · ' + group.bitRate + ' kbps' : '' }}
                         ·
@@ -1059,13 +1059,13 @@
                         <div class="relative flex-1 min-w-0">
                           <div class="flex items-start gap-2">
                             <div class="min-w-0 flex-1">
-                              <p
+                              <p appOverflowReveal
                                 class="text-sm truncate"
                                 style="color: var(--theme-text-primary)"
                                 [innerHTML]="highlightGroupFileTitle(file)"
                               ></p>
                               @if (getGroupFileSubtitle(file)) {
-                                <p
+                                <p appOverflowReveal
                                   class="text-xs truncate"
                                   style="color: var(--theme-text-secondary)"
                                   [innerHTML]="highlightGroupFileSubtitle(file)"

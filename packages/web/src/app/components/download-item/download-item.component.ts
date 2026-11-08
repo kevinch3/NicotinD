@@ -11,6 +11,7 @@ import { PipelineStageBadgeComponent } from '../pipeline-stage-badge/pipeline-st
 import { MenuPanelComponent } from '../menu-panel/menu-panel.component';
 import { timeAgo } from '../../lib/relative-time';
 import { TranslatePipe } from '../../pipes/translate.pipe';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 /**
  * Layout-critical classes for the row, exported and *bound* (not hardcoded in
@@ -186,7 +187,13 @@ export function failureClassLabel(klass: FailureClass): string {
 @Component({
   selector: 'app-download-item',
   standalone: true,
-  imports: [PipelineStageBadgeComponent, RouterLink, MenuPanelComponent, TranslatePipe],
+  imports: [
+    OverflowRevealDirective,
+    PipelineStageBadgeComponent,
+    RouterLink,
+    MenuPanelComponent,
+    TranslatePipe,
+  ],
   host: { '[class]': 'hostClass' },
   templateUrl: './download-item.component.html',
 })

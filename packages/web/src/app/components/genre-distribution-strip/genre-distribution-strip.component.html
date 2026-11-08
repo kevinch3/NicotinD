@@ -3,7 +3,7 @@
     <div class="bar-list">
       @for (r of rows(); track r.genre) {
         <div class="bar-item" [attr.data-testid]="'genre-bar-' + r.genre.toLowerCase()">
-          <span class="bar-label" [title]="r.genre">{{ r.genre }}</span>
+          <span appOverflowReveal class="bar-label" [title]="r.genre">{{ r.genre }}</span>
           <div class="bar-track">
             <div class="bar-fill" [style.--bar-current.%]="percent(r.weight)"></div>
           </div>

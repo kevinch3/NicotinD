@@ -45,6 +45,7 @@ import { EntityLinkComponent } from '../entity-link/entity-link.component';
 import { TrackStatsBarsComponent } from '../track-stats-bars/track-stats-bars.component';
 import { ArtistIdentityModalComponent } from '../artist-identity-modal/artist-identity-modal.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 const ACTION_LABELS: Record<string, string> = {
   duplicate_removed: 'Duplicate removed',
@@ -73,6 +74,7 @@ type TagTextField = Exclude<keyof TagDraft, 'year'>;
   selector: 'app-track-info-sheet',
   standalone: true,
   imports: [
+    OverflowRevealDirective,
     CommonModule,
     CoverArtComponent,
     ArtistLinksComponent,

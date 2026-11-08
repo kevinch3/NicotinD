@@ -1,8 +1,10 @@
 import { Component, input, output, signal } from '@angular/core';
 import type { FolderNode } from '../../lib/folder-utils';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 @Component({
   selector: 'app-folder-tree-node',
+  imports: [OverflowRevealDirective],
   templateUrl: './folder-tree-node.component.html',
 })
 export class FolderTreeNodeComponent {

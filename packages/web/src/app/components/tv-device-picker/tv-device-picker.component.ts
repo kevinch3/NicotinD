@@ -6,6 +6,7 @@ import { registerOverlayCloser } from '../../services/native/back-button.service
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import { TranslatePipe } from '../../pipes/translate.pipe';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 /**
  * "Play on …" for a remote: a full-screen list of buttons.
@@ -26,7 +27,7 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
 @Component({
   selector: 'app-tv-device-picker',
   standalone: true,
-  imports: [TvNavGroupDirective, TvNavItemDirective, TranslatePipe],
+  imports: [OverflowRevealDirective, TvNavGroupDirective, TvNavItemDirective, TranslatePipe],
   templateUrl: './tv-device-picker.component.html',
 })
 export class TvDevicePickerComponent implements AfterViewChecked {

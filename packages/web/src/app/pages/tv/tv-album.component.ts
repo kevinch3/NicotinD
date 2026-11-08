@@ -10,6 +10,7 @@ import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { toTrack } from '../../lib/track-utils';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 /**
  * Cover, title, artist, Play, tracklist. That is the whole screen.
@@ -23,7 +24,13 @@ import { toTrack } from '../../lib/track-utils';
 @Component({
   selector: 'app-tv-album',
   standalone: true,
-  imports: [CoverArtComponent, TvNavGroupDirective, TvNavItemDirective, TranslatePipe],
+  imports: [
+    OverflowRevealDirective,
+    CoverArtComponent,
+    TvNavGroupDirective,
+    TvNavItemDirective,
+    TranslatePipe,
+  ],
   templateUrl: './tv-album.component.html',
 })
 export class TvAlbumComponent implements OnInit {

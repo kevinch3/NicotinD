@@ -52,6 +52,7 @@ import {
 import { LyricsService } from '../../services/lyrics.service';
 import { KaraokeBrowseMode } from '../../lib/karaoke-browse';
 import { resolveLyricsScrollContainer } from '../../lib/lyrics-scroll-container';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 /** The `lg:` side-panel layout, where a vertical panel resize has nothing to do. */
 function isDesktopSheet(): boolean {
@@ -61,6 +62,7 @@ function isDesktopSheet(): boolean {
 @Component({
   selector: 'app-now-playing',
   imports: [
+    OverflowRevealDirective,
     NowPlayingHeaderComponent,
     NowPlayingCoverArtComponent,
     NowPlayingTransportComponent,

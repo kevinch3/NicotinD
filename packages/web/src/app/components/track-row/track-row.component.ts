@@ -12,6 +12,7 @@ import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { EntityActionsDirective } from '../../directives/entity-actions.directive';
 import { TranslatePipe } from '../../pipes/translate.pipe';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 /** An album name plus (when known) the id its name links to. */
 export interface AlbumRef {
@@ -41,6 +42,7 @@ function formatDuration(seconds?: number): string {
 @Component({
   selector: 'app-track-row',
   imports: [
+    OverflowRevealDirective,
     CoverArtComponent,
     ArtistLinksComponent,
     EntityLinkComponent,

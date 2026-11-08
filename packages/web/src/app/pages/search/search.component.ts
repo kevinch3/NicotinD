@@ -81,6 +81,7 @@ import {
   scopedArtistMbid,
   applyDiscography,
 } from '../../lib/catalog-display';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -233,6 +234,7 @@ function isAlreadyDownloading(err: unknown): boolean {
 @Component({
   selector: 'app-search',
   imports: [
+    OverflowRevealDirective,
     FormsModule,
     FolderBrowserComponent,
     RouterLink,
