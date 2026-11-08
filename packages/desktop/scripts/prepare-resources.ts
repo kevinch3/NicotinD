@@ -212,16 +212,20 @@ function pinExternalDeps(
   return pinned;
 }
 
-/** 1. Build the Angular SPA and stage its output at `resources/web`. */
-function stageWeb(): void {
+/**
+ * 1. Build the Angular SPA and stage its output at `resources/web` — or at
+ * `dest`, which is how the server tarball (#1742, `scripts/server-tarball.ts`)
+ * reuses this exact recipe for its `packages/web/dist`.
+ */
+function stageWeb(dest: string = path.join(resourcesDir, 'web')): void {
   run('Build @nicotind/web', 'bun', ['run', '--filter', '@nicotind/web', 'build'], repoRoot);
 
   const webDist = path.join(repoRoot, 'packages', 'web', 'dist');
   if (!existsSync(webDist)) {
     throw new Error(`Expected web build output at ${webDist} — build did not produce it`);
   }
-  const dest = path.join(resourcesDir, 'web');
   rmSync(dest, { recursive: true, force: true });
+  mkdirSync(path.dirname(dest), { recursive: true });
   cpSync(webDist, dest, { recursive: true });
   console.log(`✓ Staged web dist -> ${dest}`);
 }
@@ -233,9 +237,11 @@ function stageWeb(): void {
  * `package.json` for the staged tree and run a production `bun install`
  * inside it so `bun run resources/backend/src/main.ts` resolves every
  * import without the rest of the monorepo present.
+ *
+ * `backendDir` defaults to `resources/backend`; the server tarball (#1742)
+ * stages into its own root, so both artifacts ship the same pinned tree.
  */
-function stageBackend(): void {
-  const backendDir = path.join(resourcesDir, 'backend');
+function stageBackend(backendDir: string = path.join(resourcesDir, 'backend')): void {
   rmSync(backendDir, { recursive: true, force: true });
   mkdirSync(backendDir, { recursive: true });
 

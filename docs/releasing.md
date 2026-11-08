@@ -27,12 +27,12 @@ You never build either by hand — you land commits and the pipeline does the re
    bumping commit and its `edge` run succeeded: it bumps the version from the
    commit history, regenerates `CHANGELOG.md`, commits `chore(release): X.Y.Z`,
    tags `vX.Y.Z`, and pushes the tag. **Need it now?** Actions → **Release** →
-   *Run workflow* (tick `force` only if `edge` is red for a host-side reason:
+   _Run workflow_ (tick `force` only if `edge` is red for a host-side reason:
    see [Forcing a release](#forcing-a-release)).
 4. **The tag triggers `deploy.yml`**, which publishes the images and builds
    **every** app artifact — an API-only release still rebuilds the APKs, the IPA
    and the desktop packages. That is deliberate: the in-app APK updater,
-   electron-updater and the F-Droid repo all read the *latest* release and
+   electron-updater and the F-Droid repo all read the _latest_ release and
    expect its assets (see [Why every release builds every app](#why-every-release-builds-every-app)).
    It does **not** deploy the host, which already runs that code as `edge`.
 5. **Verify** (takes a minute):
@@ -54,7 +54,7 @@ without a conventional-commit type therefore lands a commit that bumps nothing,
 whatever it contains.
 
 That froze releases once. PR #1263 squash-merged five `feat:` commits under the
-title *"Radio queue depth: replace batch refill with target-based top-up"*. No
+title _"Radio queue depth: replace batch refill with target-based top-up"_. No
 type, no bump, no tag, no deploy — v0.8.40 stayed the latest release while the
 features sat on master, and **every check was green**, because nothing was
 broken: the release genuinely was not needed, from a subject that had lost the
@@ -65,13 +65,13 @@ machine, and a squash merge is performed by GitHub from a title nothing
 validated. Two things close it:
 
 - **`check:pr-title`** (`.github/workflows/pr-title.yml`) fails a PR whose title
-  is not a conventional commit, *and* a PR whose title does not bump while its
+  is not a conventional commit, _and_ a PR whose title does not bump while its
   commits do. It re-runs on every title edit — a retitle pushes no commit — which
   is why its trigger lists `edited`, and why it is a separate workflow: `edited`
   fires on body edits too, and `ci.yml` must not rebuild everything because
   someone fixed a typo in a description.
 - **`release-needed.ts`** prints a `::warning::` when it skips a commit whose
-  *body* lists bumping commits its subject lost. The decision is unchanged —
+  _body_ lists bumping commits its subject lost. The decision is unchanged —
   only a subject may bump — but the skip stops being silent.
 
 **If it happens anyway**: nothing on master can be retyped without rewriting
@@ -103,13 +103,14 @@ in-job check would leave those changelogs checked by nothing.
 
 ## What each release ships, and how it reaches people
 
-| Artifact                                  | Built when                | How it reaches users                                                                                                            |
-| ----------------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| **Server image**                          | every tag                 | multi-arch image published to `ghcr.io/kevinch3/nicotind` (`vX.Y.Z` + `vX` + `release` tags); self-hosters `docker compose pull` |
-| **Server (production host)**              | every green master commit | runs `:edge`, deployed by **Deploy host** (exact commit, snapshot first) — nothing to do                                          |
-| **Android APK** (+ a separate TV APK)     | every tag                 | download from the GitHub Release and sideload (see below); signed when `ANDROID_KEYSTORE_*` secrets are present                  |
-| **iOS IPA** (unsigned)                    | every tag                 | re-sign + install via AltStore/Sideloadly (see below)                                                                            |
-| **Desktop** Linux AppImage/deb + macOS dmg | every tag                 | GitHub Release download; **existing installs auto-update** via electron-updater — Linux applies updates itself, macOS only notifies (ad-hoc signing) |
+| Artifact                                   | Built when                | How it reaches users                                                                                                                                                                                                                                       |
+| ------------------------------------------ | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Server image**                           | every tag                 | multi-arch image published to `ghcr.io/kevinch3/nicotind` (`vX.Y.Z` + `vX` + `release` tags); self-hosters `docker compose pull`                                                                                                                           |
+| **Server (production host)**               | every green master commit | runs `:edge`, deployed by **Deploy host** (exact commit, snapshot first) — nothing to do                                                                                                                                                                   |
+| **Android APK** (+ a separate TV APK)      | every tag                 | download from the GitHub Release and sideload (see below); signed when `ANDROID_KEYSTORE_*` secrets are present                                                                                                                                            |
+| **iOS IPA** (unsigned)                     | every tag                 | re-sign + install via AltStore/Sideloadly (see below)                                                                                                                                                                                                      |
+| **Desktop** Linux AppImage/deb + macOS dmg | every tag                 | GitHub Release download; **existing installs auto-update** via electron-updater — Linux applies updates itself, macOS only notifies (ad-hoc signing)                                                                                                       |
+| **Server tarball** linux-x64 + linux-arm64 | every tag                 | GitHub Release download for non-Docker hosts ([bare-metal.md](bare-metal.md)); `deploy.yml` `server-tarball` builds it on a native runner per arch, smoke-starts it with only Bun, and uploads it by release id. Not required by `publish-release` (#1742) |
 
 ### Edge and releases
 
@@ -145,7 +146,7 @@ Consequences worth knowing:
   keeps reporting the last release's `version` until the next one (an edge
   build carries the version in `package.json`); `commit` says which build it is.
 - **Releases never deploy the host.** It already runs that code, and deploying
-  the tag would move it *backward* onto an older commit, over a schema the
+  the tag would move it _backward_ onto an older commit, over a schema the
   newer one already migrated.
 - **A burst of merges** queues host deploys; the newest pending one replaces
   older pending ones (one pending run per concurrency group), so the host skips
@@ -167,7 +168,7 @@ Consequences worth knowing:
 
 ### Forcing a release
 
-**Release**'s *Run workflow* has a `force` checkbox (off by default). It skips
+**Release**'s _Run workflow_ has a `force` checkbox (off by default). It skips
 the one check that the tip has a successful `edge` run — for when `edge` is red
 for a reason that is not the code, e.g. Deploy host could not be dispatched —
 and nothing else: `release-needed.ts`, the orphan-tag handling, `check:fdroid`
@@ -200,7 +201,7 @@ log and a count per package in the job summary:
 
 - Weekly (Mondays 05:43 UTC): dry run, unless the repository variable
   `GHCR_RETENTION_DELETE` is `true`.
-- Actions → **GHCR retention** → *Run workflow* with `delete` ticked: deletes.
+- Actions → **GHCR retention** → _Run workflow_ with `delete` ticked: deletes.
 - Off master, it never deletes.
 
 Locally (needs a token with `read:packages`, and `delete:packages` for
@@ -273,7 +274,7 @@ release with nothing on it — the in-app APK updater would offer a download tha
   Re-running the failed job uploads its artifacts into the published release by
   id, and that restores the feed.
 - **A re-run cannot fix a cause inside `deploy.yml`.** A re-run executes the
-  workflow file *at the tag's commit*, so a retired runner image (v0.8.122's
+  workflow file _at the tag's commit_, so a retired runner image (v0.8.122's
   `macos-14`, #1629) fails the same way every time. Fix it forward on master.
   If the draft is stuck (an `android`-side cause, since #1631), publish it by
   hand so its APKs reach F-Droid. The tag

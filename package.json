@@ -23,6 +23,7 @@
     "dev": "bun run ./scripts/dev.ts",
     "phone-preview": "bun run ./scripts/phone-preview.ts",
     "build": "bun run ./scripts/build.ts",
+    "server-tarball": "bun run ./scripts/server-tarball.ts",
     "check:claude-md": "bun run ./scripts/check-claude-md.ts",
     "check:ci-parity": "bun run ./scripts/check-ci-parity.ts",
     "check:action-runtimes": "bun run ./scripts/check-action-runtimes.ts",
