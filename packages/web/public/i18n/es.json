@@ -25,6 +25,7 @@
   "acquire.artists": "Artistas",
   "acquire.artistsShowAll": "Ver {count} más",
   "acquire.catalogLookupFailed": "El catálogo de metadatos no respondió — los resultados de álbumes no están disponibles ahora.",
+  "acquire.catalogNotConfigured": "Los resultados de álbumes necesitan Lidarr, y este servidor no lo tiene configurado. Los resultados de pistas de abajo siguen funcionando.",
   "acquire.catalogRetry": "Reintentar",
   "acquire.catalogRetrying": "Reintentando…",
   "acquire.clearAll": "Borrar todo",

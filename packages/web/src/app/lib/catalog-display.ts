@@ -18,16 +18,21 @@ export function shouldOpenDirectSearch(catalog: CatalogSearchResult | null): boo
  * albums" and push the user toward the Lidarr-mutating discography load (#665).
  */
 export type DiscographyNote =
-  { kind: 'no-albums'; artist: string } | { kind: 'lookup-failed'; artist: string | null };
+  | { kind: 'no-albums'; artist: string }
+  | { kind: 'lookup-failed'; artist: string | null }
+  | { kind: 'not-configured' };
 
 export const DISCOGRAPHY_NOTE_KEYS: Record<DiscographyNote['kind'], string> = {
   'no-albums': 'acquire.discographyUnavailable',
   'lookup-failed': 'acquire.catalogLookupFailed',
+  'not-configured': 'acquire.catalogNotConfigured',
 };
 
 export function discographyFallbackNote(
   catalog: CatalogSearchResult | null,
 ): DiscographyNote | null {
+  // No Lidarr at all (#1729): not an outage, so no Retry; it wins over both.
+  if (catalog?.catalogNotConfigured) return { kind: 'not-configured' };
   if (catalog?.albumLookupFailed) {
     return { kind: 'lookup-failed', artist: catalog.scopedArtist ?? null };
   }

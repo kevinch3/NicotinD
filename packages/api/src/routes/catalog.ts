@@ -116,3 +116,18 @@ export function catalogRoutes({ catalog, provisioning }: CatalogRoutesOptions) {
 
   return app;
 }
+
+/**
+ * Mounted at /api/catalog when there is no Lidarr (#1729). Search answers with
+ * empty results and `catalogNotConfigured`, so the web can say "album results
+ * need Lidarr" instead of offering a Retry that cannot succeed; every other
+ * catalog action is a typed 503.
+ */
+export function catalogNotConfiguredRoutes() {
+  const app = new Hono<AuthEnv>();
+  app.get('/search', (c) => c.json({ artists: [], albums: [], catalogNotConfigured: true }));
+  app.all('*', (c) =>
+    c.json({ error: 'Lidarr is not configured', code: 'LIDARR_NOT_CONFIGURED' }, 503),
+  );
+  return app;
+}

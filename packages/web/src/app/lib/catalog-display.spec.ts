@@ -89,6 +89,14 @@ describe('discographyFallbackNote', () => {
     });
   });
 
+  // #1729: no Lidarr on this install. A Retry can never succeed, so the note
+  // must name the cause instead of reading as an outage.
+  it('returns not-configured when the server has no Lidarr — it wins over everything', () => {
+    expect(
+      discographyFallbackNote(result({ catalogNotConfigured: true, albumLookupFailed: true })),
+    ).toEqual({ kind: 'not-configured' });
+  });
+
   it('is null when albums are present or no artist was scoped', () => {
     expect(discographyFallbackNote(null)).toBeNull();
     expect(discographyFallbackNote(result({ scopedArtist: 'X' }))).toBeNull();
