@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
+import { Component, NO_ERRORS_SCHEMA, input, signal } from '@angular/core';
 import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { vi } from 'vitest';
@@ -22,6 +22,7 @@ import type { FolderGroup } from '../../lib/folder-utils';
 import { GetThenHearService } from '../../services/get-then-hear.service';
 import { ConfirmService } from '../../services/confirm.service';
 import { formatBytes } from '../../lib/disk-usage';
+import { SourceChipComponent } from '../../components/source-chip/source-chip.component';
 
 let registeredHandler: (() => Promise<void> | void) | null = null;
 
@@ -734,6 +735,105 @@ describe('SearchComponent — Download all asks first (#1542)', () => {
   });
 });
 
+// #1663: the omnibox recognises a link while it is typed/pasted, before submit.
+// SourceChipComponent's input.required inputs throw NG0950 when nested under
+// this JIT harness (src/testing/signal-input.ts, landmine 1); its own spec covers it.
+@Component({ selector: 'app-source-chip', template: '' })
+class SourceChipStub {
+  readonly source = input<unknown>();
+  readonly label = input<unknown>();
+}
+
+describe('SearchComponent — live link recognition', () => {
+  beforeEach(() => {
+    TestBed.overrideComponent(SearchComponent, {
+      remove: { imports: [SourceChipComponent] },
+      add: { imports: [SourceChipStub] },
+    });
+  });
+
+  function render(query: string, resolvers: Partial<PluginInfo>[] | null) {
+    const ctx = setup();
+    TestBed.inject(AuthService).role.set('admin');
+    if (resolvers) {
+      ctx.plugins.plugins.set(
+        resolvers.map(
+          (r) => ({ id: 'r', enabled: true, capabilities: ['resolve'], ...r }) as PluginInfo,
+        ),
+      );
+    }
+    ctx.search.setQuery(query);
+    ctx.fixture.detectChanges();
+    const el: HTMLElement = ctx.fixture.nativeElement;
+    const q = (id: string) => el.querySelector(`[data-testid="${id}"]`);
+    return { ...ctx, el, q };
+  }
+
+  it('shows the chip and flips the button to Get as a link is pasted, without submitting', () => {
+    const { q, component, acquireSubmit } = render('https://www.youtube.com/watch?v=x', [
+      { urlPatterns: ['^https?://'] },
+    ]);
+    const chip = q('search-link-chip');
+    expect(chip?.getAttribute('data-source')).toBe('youtube');
+    // The visible host + kind are the name: an aria-label would hide the kind.
+    expect(chip?.hasAttribute('aria-label')).toBe(false);
+    expect(chip?.textContent).toContain('acquire.linkRecognised');
+    expect(chip?.textContent).toContain('acquire.linkKind.video');
+    expect(chip?.closest('[role="status"]')).toBe(q('search-link-status'));
+    expect(q('search-link-kind')?.textContent?.trim()).toBe('acquire.linkKind.video');
+    expect(q('search-submit')?.textContent?.trim()).toBe('acquire.get');
+    // Owner decision on #1663: a paste never submits by itself.
+    expect(component.linkIntent()).toBeNull();
+    expect(acquireSubmit).not.toHaveBeenCalled();
+    expect(q('search-link-unsupported')).toBeNull();
+  });
+
+  it('shows no chip and no detection before a resolver is enabled (compliance)', () => {
+    const { q, component } = render('https://www.youtube.com/watch?v=x', null);
+    expect(component.liveLinkIntent()).toBeNull();
+    expect(q('search-link-chip')).toBeNull();
+    // The live region exists before the chip, so the chip's arrival announces.
+    expect(q('search-link-status')?.getAttribute('role')).toBe('status');
+    expect(q('search-link-unsupported')).toBeNull();
+    expect(q('search-submit')?.textContent?.trim()).toBe('acquire.search');
+  });
+
+  it('keeps the Search label for ordinary text', () => {
+    const { q } = render('pink floyd', [{ urlPatterns: ['^https?://'] }]);
+    expect(q('search-link-chip')).toBeNull();
+    expect(q('search-submit')?.textContent?.trim()).toBe('acquire.search');
+  });
+
+  it('says so when no enabled resolver claims the link', () => {
+    const archive = '^https?://([a-z0-9-]+\\.)?archive\\.org/';
+    const { q, fixture, search } = render('https://youtu.be/x', [{ urlPatterns: [archive] }]);
+    expect(q('search-link-chip')).not.toBeNull();
+    expect(q('search-link-unsupported')).not.toBeNull();
+    expect(q('search-input')?.getAttribute('aria-describedby')).toBe('search-link-unsupported');
+
+    search.setQuery('https://archive.org/details/x');
+    fixture.detectChanges();
+    expect(q('search-link-unsupported')).toBeNull();
+  });
+
+  it('never calls a link unsupported when a resolver lists no patterns', () => {
+    const { q } = render('https://youtu.be/x', [{}]);
+    expect(q('search-link-chip')).not.toBeNull();
+    expect(q('search-link-unsupported')).toBeNull();
+  });
+
+  it('Enter on a recognised link opens the card, not a search', async () => {
+    const { component, fixture, q } = render('https://youtu.be/x', [
+      { urlPatterns: ['^https?://'] },
+    ]);
+    component.handleSearch(new Event('submit'));
+    await flush();
+    fixture.detectChanges();
+    expect(component.linkIntent()).toEqual(expect.objectContaining({ source: 'youtube' }));
+    expect(q('link-intent-card')).not.toBeNull();
+  });
+});
+
 describe('SearchComponent — link-intent card (merged URL acquisition)', () => {
   it('does not treat a pasted URL as a link intent when no resolve plugin is enabled', async () => {
     const { component, search } = setup();
@@ -804,6 +904,7 @@ describe('SearchComponent — link-intent card (merged URL acquisition)', () => 
       source: 'youtube',
       sourceLabel: 'YouTube',
       host: 'www.youtube.com',
+      kind: null,
     });
 
     await component.submitLinkIntent();
@@ -819,6 +920,7 @@ describe('SearchComponent — link-intent card (merged URL acquisition)', () => 
       source: 'youtube',
       sourceLabel: 'YouTube',
       host: 'youtu.be',
+      kind: null,
     });
 
     await component.submitLinkIntent();
@@ -833,6 +935,7 @@ describe('SearchComponent — link-intent card (merged URL acquisition)', () => 
       source: 'youtube',
       sourceLabel: 'YouTube',
       host: 'youtu.be',
+      kind: null,
     });
 
     await component.submitLinkIntent();
@@ -858,6 +961,7 @@ describe('SearchComponent — link-intent card (merged URL acquisition)', () => 
       source: 'youtube',
       sourceLabel: 'YouTube',
       host: 'youtu.be',
+      kind: null,
     });
 
     const first = component.submitLinkIntent();
@@ -877,6 +981,7 @@ describe('SearchComponent — link-intent card (merged URL acquisition)', () => 
       source: 'youtube',
       sourceLabel: 'YouTube',
       host: 'youtu.be',
+      kind: null,
     });
     acquireJobs.set([
       {
@@ -903,6 +1008,7 @@ describe('SearchComponent — link-intent card (merged URL acquisition)', () => 
       source: 'link',
       sourceLabel: 'Link',
       host: 'example.com',
+      kind: null,
     });
 
     await component.submitLinkIntent();
@@ -920,6 +1026,7 @@ describe('SearchComponent — link-intent card (merged URL acquisition)', () => 
       source: 'link',
       sourceLabel: 'Link',
       host: 'example.com',
+      kind: null,
     });
 
     await component.submitLinkIntent();
@@ -935,6 +1042,7 @@ describe('SearchComponent — link-intent card (merged URL acquisition)', () => 
       source: 'spotify',
       sourceLabel: 'Spotify',
       host: 'open.spotify.com',
+      kind: null,
     });
 
     await component.submitLinkIntent();
@@ -955,6 +1063,7 @@ describe('SearchComponent — link-intent card (merged URL acquisition)', () => 
       source: 'youtube',
       sourceLabel: 'YouTube',
       host: 'youtu.be',
+      kind: null,
     });
     acquireJobs.set([
       {
@@ -979,6 +1088,7 @@ describe('SearchComponent — link-intent card (merged URL acquisition)', () => 
       source: 'youtube',
       sourceLabel: 'YouTube',
       host: 'youtu.be',
+      kind: null,
     });
     acquireJobs.set([
       {
@@ -1005,6 +1115,7 @@ describe('SearchComponent — link-intent card (merged URL acquisition)', () => 
       source: 'youtube',
       sourceLabel: 'YouTube',
       host: 'youtu.be',
+      kind: null,
     });
     acquireJobs.set([
       {
@@ -1052,6 +1163,7 @@ describe('SearchComponent — link-intent card (merged URL acquisition)', () => 
       source: 'link',
       sourceLabel: 'Link',
       host: 'example.com',
+      kind: null,
     });
     component.linkSubmitError.set('boom');
 

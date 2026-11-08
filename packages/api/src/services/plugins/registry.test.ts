@@ -1,9 +1,12 @@
 import { describe, expect, it, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { z } from 'zod';
-import type { Plugin, PluginManifest, PluginHostContext } from '@nicotind/core';
+import type { AddonManifest, Plugin, PluginManifest, PluginHostContext } from '@nicotind/core';
 import { applySchema } from '../../db.js';
 import { PluginRegistry } from './registry.js';
+import { RemoteAddonPlugin } from '../addons/remote-addon-plugin.js';
+import { LocalAddonTransport } from '../addons/local-transport.js';
+import type { BundledAddon } from '../addons/bundled/types.js';
 
 // A configurable fixture plugin that records lifecycle calls. Capabilities are
 // stub objects — the registry only cares that the accessor is present and that
@@ -328,6 +331,33 @@ describe('PluginRegistry remote addons', () => {
     expect(addon?.remote).toBe(true);
     expect(addon?.addonUrl).toBe('http://addon:9999');
     expect(builtin?.remote).toBeUndefined();
+  });
+
+  // #1663: the omnibox recognises a link against the patterns the server
+  // routes by, not a host table the web app guesses.
+  it("surfaces a resolve addon's urlPatterns in list(), and nothing for other plugins", async () => {
+    const manifest = (id: string, capabilities: AddonManifest['capabilities']): AddonManifest => ({
+      id,
+      name: id,
+      description: 'test',
+      version: '1.0.0',
+      protocolVersion: '1.0.0',
+      kind: 'acquisition',
+      capabilities,
+      urlPatterns: ['^https?://stub\\.test/'],
+    });
+    const addon = (m: AddonManifest) =>
+      new RemoteAddonPlugin(m, new LocalAddonTransport({ manifest: m } as BundledAddon));
+    registry.register(addon(manifest('resolver', ['resolve'])));
+    registry.register(addon({ ...manifest('no-patterns', ['resolve']), urlPatterns: undefined }));
+    registry.register(addon(manifest('searcher', ['search'])));
+    registry.register(makePlugin(acquisitionManifest({ id: 'builtin' })));
+    const infos = await registry.list();
+    const byId = (id: string) => infos.find((i) => i.id === id);
+    expect(byId('resolver')?.urlPatterns).toEqual(['^https?://stub\\.test/']);
+    expect(byId('no-patterns')?.urlPatterns).toEqual([]);
+    expect(byId('searcher')?.urlPatterns).toBeUndefined();
+    expect(byId('builtin')?.urlPatterns).toBeUndefined();
   });
 
   it('unregister removes the plugin and disposes an initialized one', async () => {

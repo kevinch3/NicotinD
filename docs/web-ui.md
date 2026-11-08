@@ -694,6 +694,10 @@ Mechanically:
 
 Deliberately out of scope: **playlists** (the local lane returns `{artists, albums, songs}` only — adding them is an API change), and any **acquisition handoff** from the results. Library is a listening surface; the bridge to `/get` is the nav item. The Songs-tab search box stays as a within-tab filter.
 
+The one handoff is the **empty state** (#1663): when nothing matches, an acquirer (`auth.canAcquire()`) gets a **Get it** button (`library-find-get`) that writes the query into `SearchService.query` and opens `/get?tab=add` — **prefilled, never searched**, the same "the user presses Enter" rule as a pasted link. When the query differs from the one already there it first calls `SearchService.resetResults()`: the service is a root singleton that keeps results across navigation (#1544), and another query's cards under the new box would fetch something other than what it reads. A listener sees only the empty message.
+
+The bar is a **primary field** (#1663): the shared `input-lg` utility (`styles.css`) gives it a 48px height and a 16px font — the size below which iOS Safari zooms the page on focus — with a 20px icon and a 40px clear button. The per-tab filters (`app-search-field`) stay compact `h-9` secondary controls. `library.spec.ts` measures both floors at 375px.
+
 Offline the bar is hidden (`findAvailable()`), since the local lane is unreachable and the page falls back to on-device preserved tracks.
 
 ## One album grid per artist tab (the discography is not a second list)

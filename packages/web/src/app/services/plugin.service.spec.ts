@@ -99,6 +99,32 @@ describe('PluginService', () => {
     expect(svc.networkSource()?.name).toBe('Demo Source');
   });
 
+  it("resolverPatterns collects every enabled resolver's urlPatterns", async () => {
+    get.mockReturnValue(
+      of([
+        plugin({ id: 'archive', capabilities: ['resolve'], enabled: true, urlPatterns: ['^a'] }),
+        plugin({ id: 'ytdlp', capabilities: ['resolve'], enabled: false, urlPatterns: ['^y'] }),
+        plugin({ id: 'spotdl', capabilities: ['resolve'], enabled: true, urlPatterns: ['^s'] }),
+        plugin({ id: 'slskd', capabilities: ['search'], enabled: true }),
+      ]),
+    );
+    await svc.refresh();
+    expect(svc.resolverPatterns()).toEqual(['^a', '^s']);
+  });
+
+  it('resolverPatterns is unknown when an enabled resolver lists none', async () => {
+    // Not an addon: the server cannot say what it claims, so nothing may be
+    // called unsupported on its behalf.
+    get.mockReturnValue(
+      of([
+        plugin({ id: 'archive', capabilities: ['resolve'], enabled: true, urlPatterns: ['^a'] }),
+        plugin({ id: 'inproc', capabilities: ['resolve'], enabled: true }),
+      ]),
+    );
+    await svc.refresh();
+    expect(svc.resolverPatterns()).toBeNull();
+  });
+
   it('networkSource is null when no remote downloader is enabled', async () => {
     get.mockReturnValue(of([plugin({ id: 'slskd-addon', remote: true, enabled: false })]));
     await svc.refresh();

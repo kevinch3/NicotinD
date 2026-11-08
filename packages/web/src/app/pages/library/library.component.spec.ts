@@ -111,6 +111,8 @@ function setup(
           mediaToken: signal('tok'),
           role: () => 'user',
           canCurate: () => opts.canCurate ?? false,
+          // Read by the find bar's empty state (its Get it handoff, #1663).
+          canAcquire: () => false,
         },
       },
       {

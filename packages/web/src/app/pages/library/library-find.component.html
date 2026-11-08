@@ -10,9 +10,23 @@
       Search failed. Pull down to try again.
     </p>
   } @else if (isEmpty()) {
-    <p class="text-center text-theme-muted py-20" data-testid="library-find-empty">
-      {{ 'library.find.empty' | t: { query: query() } }}
-    </p>
+    <div class="flex flex-col items-center gap-4 py-20">
+      <p class="text-center text-theme-muted" data-testid="library-find-empty">
+        {{ 'library.find.empty' | t: { query: query() } }}
+      </p>
+      <!-- "Find what I have" came up empty: hand the query to Get → Add,
+           prefilled, never searched (#1663). -->
+      @if (auth.canAcquire()) {
+        <button
+          type="button"
+          (click)="getIt()"
+          data-testid="library-find-get"
+          class="min-h-11 rounded-full px-5 text-sm font-medium bg-theme-surface-2 text-theme-primary hover:opacity-90 transition"
+        >
+          {{ 'library.find.getIt' | t }}
+        </button>
+      }
+    </div>
   } @else {
     @if (results().albums.length) {
       <section class="mb-8" data-testid="library-find-albums">

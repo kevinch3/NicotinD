@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { Component, input, output, signal } from '@angular/core';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import { of, throwError, Subject } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { LibraryFindComponent } from './library-find.component';
@@ -10,6 +10,7 @@ import { PlayerService } from '../../services/player.service';
 import { SongMenuService } from '../../services/song-menu.service';
 import { TrackRowComponent } from '../../components/track-row/track-row.component';
 import { LikeService } from '../../services/like.service';
+import { SearchService } from '../../services/search.service';
 import type { SearchResult } from '../../services/api/api-types';
 import { setInputValue } from '../../../testing/signal-input';
 import { LibraryEventsService } from '../../services/library-events.service';
@@ -24,11 +25,11 @@ function local(partial: Partial<Local> = {}): Local {
   return { albums: [], artists: [], songs: [], ...partial } as Local;
 }
 
-const authStub = () => ({
+const authStub = (canAcquire = true) => ({
   token: signal('tok'),
   mediaToken: signal('tok'),
   canCurate: () => false,
-  canAcquire: () => true,
+  canAcquire: () => canAcquire,
   isAdmin: () => false,
 });
 
@@ -56,7 +57,7 @@ class TrackRowStub {
   readonly play = output<void>();
 }
 
-function setup(result: Local | 'error' = local(), query = 'tangana') {
+function setup(result: Local | 'error' = local(), query = 'tangana', canAcquire = true) {
   const search = vi
     .fn()
     .mockReturnValue(
@@ -69,7 +70,7 @@ function setup(result: Local | 'error' = local(), query = 'tangana') {
     providers: [
       provideRouter([]),
       { provide: SearchApiService, useValue: { search } },
-      { provide: AuthService, useValue: authStub() },
+      { provide: AuthService, useValue: authStub(canAcquire) },
       { provide: PlayerService, useValue: playerStub(playWithContext) },
       { provide: SongMenuService, useValue: { build: () => [] } },
       { provide: LikeService, useValue: { isLiked: () => false, toggle: vi.fn() } },
@@ -133,6 +134,60 @@ describe('LibraryFindComponent', () => {
     fixture.detectChanges();
 
     expect(has(fixture, 'library-find-empty')).toBe(true);
+  });
+
+  // #1663: an empty find hands the query to Get → Add, prefilled, unsearched.
+  it('offers to get what the library lacks, prefilling Get → Add', async () => {
+    const { fixture } = setup(local(), '  rosalía motomami ');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+    const search = TestBed.inject(SearchService);
+
+    html(fixture).querySelector<HTMLButtonElement>('[data-testid="library-find-get"]')!.click();
+
+    expect(search.query()).toBe('rosalía motomami');
+    expect(search.autoSearch()).toBe(false);
+    expect(navigate).toHaveBeenCalledWith(['/get'], { queryParams: { tab: 'add' } });
+  });
+
+  it('clears the previous search results when Get it swaps the query', async () => {
+    const { fixture } = setup(local(), 'zzz nothing');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+    const search = TestBed.inject(SearchService);
+    search.setQuery('daft punk');
+    search.network.set([{ username: 'u', files: [] }] as never);
+    search.catalog.set({ artists: [] } as never);
+
+    html(fixture).querySelector<HTMLButtonElement>('[data-testid="library-find-get"]')!.click();
+
+    expect(search.query()).toBe('zzz nothing');
+    expect(search.network()).toEqual([]);
+    expect(search.catalog()).toBeNull();
+  });
+
+  it('keeps the results when Get it re-offers the same query', async () => {
+    const { fixture } = setup(local(), 'daft punk');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+    const search = TestBed.inject(SearchService);
+    search.setQuery('daft punk');
+    search.network.set([{ username: 'u', files: [] }] as never);
+
+    html(fixture).querySelector<HTMLButtonElement>('[data-testid="library-find-get"]')!.click();
+
+    expect(search.network()).toHaveLength(1);
+  });
+
+  it('offers no Get it to a listener', async () => {
+    const { fixture } = setup(local(), 'tangana', false);
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(has(fixture, 'library-find-empty')).toBe(true);
+    expect(has(fixture, 'library-find-get')).toBe(false);
   });
 
   it('reports a failed search distinctly from an empty one', async () => {

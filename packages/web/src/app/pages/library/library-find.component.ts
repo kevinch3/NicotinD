@@ -1,11 +1,12 @@
 import { Component, computed, effect, inject, input, signal } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { SearchApiService } from '../../services/api/search-api.service';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import { SongMenuService } from '../../services/song-menu.service';
+import { SearchService } from '../../services/search.service';
 import { SkeletonComponent } from '../../components/skeleton/skeleton.component';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { TrackRowComponent } from '../../components/track-row/track-row.component';
@@ -41,6 +42,8 @@ export class LibraryFindComponent {
   private readonly p2r = inject(PullToRefreshService);
   readonly auth = inject(AuthService);
   readonly songMenu = inject(SongMenuService);
+  private readonly router = inject(Router);
+  private readonly acquireSearch = inject(SearchService);
 
   /** Already debounced by the host — every change here is a real request.
    *  Defaults to empty (which searches nothing) rather than being required, so
@@ -113,6 +116,17 @@ export class LibraryFindComponent {
     const tracks = this.results().songs.map((s) => toTrack(s));
     if (tracks.length === 0) return;
     this.player.playWithContext(tracks, index, { type: 'adhoc', name: 'Search results' });
+  }
+
+  /** Open Get → Add with the query in its omnibox. Prefilled only: the user
+   *  presses Enter there, as for a pasted link (#1663). */
+  getIt(): void {
+    const query = this.query().trim();
+    // The service outlives navigation (#1544): another query's results under
+    // this one would make their Get buttons fetch something else.
+    if (this.acquireSearch.query() !== query) this.acquireSearch.resetResults();
+    this.acquireSearch.setQuery(query);
+    void this.router.navigate(['/get'], { queryParams: { tab: 'add' } });
   }
 
   readonly toTrack = toTrack;

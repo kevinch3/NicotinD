@@ -120,7 +120,9 @@ removes it). The full protocol + phased migration lives in
   document applies unchanged**: the addon is default-off, consent-gated when its manifest
   says so, listed by `GET /api/plugins`, enabled/disabled/configured through the same
   routes, and rendered by the same card. `Plugin.origin` / `PluginInfo.remote`+`addonUrl`
-  are the only additions. Config is core-owned and pushed down (`PUT /addon/v1/config`) on
+  are the only additions, plus `PluginInfo.urlPatterns` on a resolve-capable addon (its
+  manifest's patterns, so the omnibox can tell before submit whether an enabled resolver
+  claims a link — #1663). Config is core-owned and pushed down (`PUT /addon/v1/config`) on
   every (re-)init; `isAvailable()` follows `GET /addon/v1/health`.
 - At boot, `loadRegisteredAddons` re-registers every persisted addon **from its manifest
   snapshot with no network** — a down addon still renders its card and simply reports

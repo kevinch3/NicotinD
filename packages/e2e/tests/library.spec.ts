@@ -292,4 +292,36 @@ test.describe('library', () => {
     await expect(page.getByTestId('library-find-error')).toHaveCount(0);
     await expect(page.getByTestId('library-find-empty')).toBeVisible();
   });
+
+  // #1663: the find bar is the main way into the library, so it gets a primary
+  // field's touch target, and a 16px font (below that, iOS Safari zooms the page
+  // on focus).
+  test('the find bar is a full-size touch target on a phone', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto('/library');
+    const find = page.getByTestId('library-find');
+    await expect(find).toBeVisible();
+    const box = await find.boundingBox();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+    const fontPx = await find.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+    expect(fontPx).toBeGreaterThanOrEqual(16);
+  });
+
+  test('a find with no match offers Get it, which opens Get → Add prefilled', async ({ page }) => {
+    await page.goto('/library');
+    const query = 'zzz nothing owned zzz';
+    const searched = page.waitForResponse(
+      (r) => r.url().includes('/api/search') && r.request().method() === 'GET',
+      { timeout: 15_000 },
+    );
+    await page.getByTestId('library-find').fill(query);
+    await searched;
+    await expect(page.getByTestId('library-find-empty')).toBeVisible();
+
+    await page.getByTestId('library-find-get').click();
+    await expect(page).toHaveURL(/\/get\?tab=add/);
+    // Prefilled, not searched: the user presses Enter there.
+    await expect(page.getByTestId('search-input')).toHaveValue(query);
+    await expect(page.getByTestId('search-submit')).toBeEnabled();
+  });
 });

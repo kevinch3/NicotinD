@@ -176,6 +176,13 @@ export interface PluginInfo {
   remote?: boolean;
   /** The remote addon's base URL (shown on its card; admins registered it). */
   addonUrl?: string;
+  /**
+   * A resolve-capable addon's declared `urlPatterns` — the regexes the server
+   * routes a pasted link by — so the UI can tell, before submit, whether an
+   * enabled resolver claims a link. Absent for anything that is not a
+   * resolve-capable addon.
+   */
+  urlPatterns?: string[];
 }
 
 /**
