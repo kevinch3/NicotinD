@@ -41,3 +41,12 @@ export function resolveGenreRoute(genreSlug: string | undefined): string[] {
   if (!genreSlug) return ['/library'];
   return ['/library', 'genres', genreSlug];
 }
+
+/**
+ * Offline, where an album or artist link goes (#1751): the Library's saved
+ * songs filtered to the name — the server-backed pages are unreachable. Router
+ * `navigate` arguments.
+ */
+export function offlineFind(name: string): [string[], { queryParams: { find: string } }] {
+  return [['/library'], { queryParams: { find: name.trim() } }];
+}

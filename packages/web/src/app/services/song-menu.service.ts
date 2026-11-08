@@ -1,5 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
+import { OfflineModeService } from './offline-mode.service';
 import { firstValueFrom } from 'rxjs';
 import { PlayerService } from './player.service';
 import { PlaylistService } from './playlist.service';
@@ -12,7 +13,7 @@ import { ConfirmService } from './confirm.service';
 import { LikeService } from './like.service';
 import { RecommendationExclusionsService } from './recommendation-exclusions.service';
 import { ReportTrackService } from './report-track.service';
-import { resolveArtistRoute, resolveAlbumRoute } from '../lib/route-utils';
+import { resolveArtistRoute, offlineFind, resolveAlbumRoute } from '../lib/route-utils';
 import {
   toTrack,
   offlineTrackAction,
@@ -45,6 +46,7 @@ export class SongMenuService {
   private readonly playlists = inject(PlaylistService);
   private readonly preserve = inject(PreserveService);
   private readonly router = inject(Router);
+  private readonly offline = inject(OfflineModeService).isOffline;
   private readonly auth = inject(AuthService);
   private readonly api = inject(LibraryApiService);
   private readonly transfers = inject(TransferService);
@@ -81,19 +83,25 @@ export class SongMenuService {
       actions.push({
         label: 'Go to artist',
         labelKey: 'song.goToArtist',
-        action: () =>
-          void this.router.navigate(
-            resolveArtistRoute(
-              song.artists?.find((a) => a.role === 'primary')?.id ?? song.artistId,
-            ),
-          ),
+        action: () => {
+          const primary = song.artists?.find((a) => a.role === 'primary');
+          // Offline the artist page needs the server: open the saved songs
+          // filtered to the name instead (#1751).
+          if (this.offline())
+            return void this.router.navigate(...offlineFind(primary?.name ?? song.artist));
+          void this.router.navigate(resolveArtistRoute(primary?.id ?? song.artistId));
+        },
       });
     }
     if (song.albumId && !ctx.hideGoToAlbum) {
       actions.push({
         label: 'Go to album',
         labelKey: 'song.goToAlbum',
-        action: () => void this.router.navigate(resolveAlbumRoute(song.albumId)),
+        action: () => {
+          if (this.offline() && song.album)
+            return void this.router.navigate(...offlineFind(song.album));
+          void this.router.navigate(resolveAlbumRoute(song.albumId));
+        },
       });
     }
 

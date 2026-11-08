@@ -1,6 +1,6 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import type { PreservedCover } from '../lib/preserve-store';
-import { NetworkStatusService } from './network-status.service';
+import { OfflineModeService } from './offline-mode.service';
 
 /** Reads the preserved covers; the IndexedDB store in the app, a fake in tests. */
 export interface PreservedCoverSource {
@@ -9,7 +9,7 @@ export interface PreservedCoverSource {
 
 /**
  * Preserved album covers as object URLs (#1658), so a cover keeps showing when
- * the device is offline. Before this the preserve flow stored a 600px cover per
+ * the app is offline. Before this the preserve flow stored a 600px cover per
  * track and nothing ever read it: offline, every cover fell back to the
  * placeholder.
  *
@@ -25,12 +25,12 @@ export interface PreservedCoverSource {
  */
 @Injectable({ providedIn: 'root' })
 export class PreservedCoversService {
-  private readonly network = inject(NetworkStatusService);
   private readonly urls = signal<ReadonlyMap<string, string>>(new Map());
   private source: PreservedCoverSource | null = null;
 
-  /** Device connectivity, as the rest of the app reads it. */
-  readonly offline = computed(() => !this.network.online());
+  /** Offline mode (#1751): no network, or the server not answering — a server
+   *  that is down serves no covers either, so the preserved copy is the one. */
+  readonly offline = inject(OfflineModeService).isOffline;
 
   /** Bind the store (PreserveService does, at construction) and load it. */
   attach(source: PreservedCoverSource): Promise<void> {

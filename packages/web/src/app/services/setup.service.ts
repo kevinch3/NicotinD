@@ -2,6 +2,7 @@ import { Injectable, inject, signal, computed, effect, untracked } from '@angula
 import { SystemApiService } from './api/system-api.service';
 import type { SetupStatus } from './api/api-types';
 import { NetworkStatusService } from './network-status.service';
+import { OfflineModeService } from './offline-mode.service';
 import { ServerConfigService } from './server-config.service';
 import { firstValueFrom, timeout } from 'rxjs';
 
@@ -35,17 +36,17 @@ export class SetupService {
 
   readonly status = signal<SetupStatus | null>(null);
   readonly checked = signal(false);
+  private readonly offlineMode = inject(OfflineModeService);
   // "Device reports a live network but the server didn't answer" — distinct from
   // being disconnected. Set by the probe (boot or mid-session); the two are
-  // OR-folded below.
-  private readonly serverUnreachable = signal(false);
+  // OR-folded in OfflineModeService, which this service is the only writer of.
+  private readonly serverUnreachable = this.offlineMode.serverUnreachable;
 
-  // Offline == no live network OR the server is unreachable. A `computed` reads
-  // like a plain signal, so every existing `setup.isOffline()` call site is
-  // unchanged — but it now recomputes when connectivity flips in EITHER direction
-  // mid-session, so the whole UI (library source swap, nav gating, offline
-  // banner, redirects) reacts live instead of being frozen at boot time.
-  readonly isOffline = computed(() => !this.network.online() || this.serverUnreachable());
+  // Offline == no live network OR the server is unreachable. It recomputes when
+  // connectivity flips in EITHER direction mid-session, so the whole UI (library
+  // source swap, nav gating, offline banner, redirects) reacts live. The signal
+  // lives in OfflineModeService so readers need no HTTP dependency (#1751).
+  readonly isOffline = this.offlineMode.isOffline;
 
   // Single-flight guard: at most one probe in the air. Also what makes
   // reportServerFailure() safe against the probe's own failure re-entering it

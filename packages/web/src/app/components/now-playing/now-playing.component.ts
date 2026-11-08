@@ -25,7 +25,8 @@ import { NowPlayingLyricsPanelComponent } from './now-playing-lyrics-panel/now-p
 import { NowPlayingKaraokeFullscreenComponent } from './now-playing-karaoke-fullscreen/now-playing-karaoke-fullscreen.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { TrackInfoService } from '../../services/track-info.service';
-import { resolveArtistTarget } from '../../lib/route-utils';
+import { offlineFind, resolveArtistTarget } from '../../lib/route-utils';
+import { OfflineModeService } from '../../services/offline-mode.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import type { WaveformData } from '@nicotind/core';
 import { firstValueFrom } from 'rxjs';
@@ -86,6 +87,7 @@ export class NowPlayingComponent {
   readonly remote = inject(RemotePlaybackService);
   private ws = inject(PlaybackWsService);
   private router = inject(Router);
+  private readonly offlineMode = inject(OfflineModeService);
   private api = inject(LibraryApiService);
   private scrollLock = inject(ScrollLockService);
   private server = inject(ServerConfigService);
@@ -779,6 +781,9 @@ export class NowPlayingComponent {
     const track = this.player.currentTrack();
     if (!track) return;
     this.player.setNowPlayingOpen(false);
+    // Offline the artist page needs the server: the saved songs by name (#1751).
+    if (this.offlineMode.isOffline())
+      return void this.router.navigate(...offlineFind(track.artist));
     // A track played from a network result has no artistId — resolve by name so
     // the link still lands on the real artist page when they exist locally.
     const target = await resolveArtistTarget(track, (name) =>

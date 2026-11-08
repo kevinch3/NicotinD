@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PreservedCoversService } from './preserved-covers.service';
 import { CoverRevisionsService } from './cover-revisions.service';
 import { NetworkStatusService } from './network-status.service';
+import { OfflineModeService } from './offline-mode.service';
 import { albumCover, artistCover, songCover } from '../lib/cover-url';
 import { coverKeyOf, type PreservedCover } from '../lib/preserve-store';
 
@@ -71,6 +72,13 @@ describe('PreservedCoversService (#1658)', () => {
     const svc = TestBed.inject(PreservedCoversService);
     expect(svc.offline()).toBe(false);
     online.set(false);
+    expect(svc.offline()).toBe(true);
+  });
+
+  // #1751: a server that does not answer serves no covers either.
+  it('offline also when the device is online but the server is unreachable', () => {
+    const svc = TestBed.inject(PreservedCoversService);
+    TestBed.inject(OfflineModeService).serverUnreachable.set(true);
     expect(svc.offline()).toBe(true);
   });
 

@@ -2,13 +2,15 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { EntityLinkComponent, type EntityKind } from './entity-link.component';
 import { setInputValue } from '../../../testing/signal-input';
+import { OfflineModeService } from '../../services/offline-mode.service';
 
-function render(kind: EntityKind, id: string | undefined, name = 'Name') {
+function render(kind: EntityKind, id: string | undefined, name = 'Name', offline = false) {
   TestBed.configureTestingModule({
     imports: [EntityLinkComponent],
     // A catch-all route so the click test's real navigation has somewhere to land.
     providers: [provideRouter([{ path: '**', children: [] }])],
   });
+  if (offline) TestBed.inject(OfflineModeService).serverUnreachable.set(true);
   const fixture = TestBed.createComponent(EntityLinkComponent);
   setInputValue(fixture.componentInstance.kind, kind);
   setInputValue(fixture.componentInstance.id, id);
@@ -63,5 +65,34 @@ describe('EntityLinkComponent', () => {
     anchor!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     expect(followed).toBe(1);
     expect(bubbled).toBe(0);
+  });
+
+  // #1751: offline the album and artist pages need the server — never a dead link.
+  describe('offline', () => {
+    it.each([
+      ['album', 'al1', 'Sky Blue'],
+      ['artist', 'ar1', 'Ana Tijoux'],
+    ] as const)('an %s name opens the saved songs filtered to it', (kind, id, name) => {
+      const { anchor } = render(kind, id, name, true);
+      const href = new URL(anchor!.getAttribute('href')!, 'http://x');
+      expect(href.pathname).toBe('/library');
+      expect(href.searchParams.get('find')).toBe(name);
+      expect(anchor!.getAttribute('data-testid')).toBe(`entity-link-${kind}`);
+      expect(anchor!.hasAttribute('data-offline-link')).toBe(true);
+    });
+
+    it.each([
+      ['genre', 'rock'],
+      ['playlist', 'pl1'],
+    ] as const)('a %s, with no offline view, is plain text', (kind, id) => {
+      const { anchor, span } = render(kind, id, 'X', true);
+      expect(anchor).toBeNull();
+      expect(span?.textContent).toBe('X');
+    });
+
+    it('still a span with no id', () => {
+      const { anchor } = render('album', undefined, 'Unknown', true);
+      expect(anchor).toBeNull();
+    });
   });
 });

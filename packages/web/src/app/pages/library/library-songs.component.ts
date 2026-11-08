@@ -10,8 +10,11 @@ import {
   viewChild,
   OnInit,
   OnDestroy,
+  untracked,
 } from '@angular/core';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, map, of } from 'rxjs';
+import { ActivatedRoute } from '@angular/router';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import type { Song } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
@@ -239,6 +242,23 @@ export class LibrarySongsComponent implements OnInit, OnDestroy {
     this.lastOffline = offline;
     if (offline) void this.preserve.refreshList();
     else void this.loadSongs(true);
+  });
+
+  /**
+   * Offline, an album or artist link elsewhere in the app opens
+   * `/library?find=<name>` (#1751): the server pages are unreachable, so the
+   * name filters this list of saved songs instead. Re-applied on every change
+   * of the param, since a link followed while already here re-uses this tab.
+   */
+  private readonly findParam = toSignal(
+    inject(ActivatedRoute, { optional: true })?.queryParamMap.pipe(
+      map((q) => (q.get('find') ?? '').trim()),
+    ) ?? of(''),
+    { initialValue: '' },
+  );
+  private offlineFindEffect = effect(() => {
+    const find = this.findParam();
+    if (find && this.offline()) untracked(() => this.offlineControls.setSearchText(find));
   });
 
   /**
