@@ -8,6 +8,8 @@ import { ReportTrackService } from '../../../services/report-track.service';
 import { SongMenuService } from '../../../services/song-menu.service';
 import { setInputValue } from '../../../../testing/signal-input';
 import { provideRouter } from '@angular/router';
+import { TranslateService, interpolate } from '../../../services/translate.service';
+import EN from '../../../../../public/i18n/en.json';
 
 describe('NowPlayingCoverArtComponent', () => {
   const track = {
@@ -27,7 +29,14 @@ describe('NowPlayingCoverArtComponent', () => {
     TestBed.configureTestingModule({
       providers: [
         provideRouter([]),
-        { provide: PlayerService, useValue: { currentTrack: () => track } },
+        {
+          provide: PlayerService,
+          useValue: {
+            currentTrack: () => track,
+            nextNeighbour: () => null,
+            prevNeighbour: () => null,
+          },
+        },
         { provide: AuthService, useValue: { token: () => 'tok', mediaToken: () => 'tok' } },
         { provide: LikeService, useValue: likes },
         { provide: ReportTrackService, useValue: report },
@@ -168,40 +177,124 @@ describe('NowPlayingCoverArtComponent', () => {
     expect(cover.style.maxWidth).toBe('');
   });
 
-  describe('swipe to skip (#1297)', () => {
-    const next = { id: 'n', title: 'Next', artist: 'B', coverArt: 'cn' };
-    const prev = { id: 'p', title: 'Prev', artist: 'C', coverArt: 'cp' };
-    function render(offset: number) {
+  // #1652: a ±1 carousel at rest. Which track each side is comes from
+  // PlayerService.nextNeighbour/prevNeighbour, pinned against playNext/playPrev
+  // in player.service.spec.ts; this pins what the sheet does with them.
+  describe('neighbour carousel (#1652)', () => {
+    const next = { id: 'n', title: 'Upcoming Song', artist: 'B', coverArt: 'cn' };
+    const prev = { id: 'p', title: 'Earlier Song', artist: 'C', coverArt: 'cp' };
+    function render(
+      offset: number,
+      neighbours: { next?: unknown; prev?: unknown } = { next, prev },
+    ) {
       TestBed.overrideProvider(PlayerService, {
-        useValue: { currentTrack: () => track, queue: () => [next], history: () => [prev] },
+        useValue: {
+          currentTrack: () => track,
+          nextNeighbour: () => neighbours.next ?? null,
+          prevNeighbour: () => neighbours.prev ?? null,
+        },
+      });
+      const catalog = EN as Record<string, string>;
+      TestBed.overrideProvider(TranslateService, {
+        useValue: {
+          t: (k: string, p?: Record<string, string | number>) => interpolate(catalog[k] ?? k, p),
+          lang: () => 'en',
+          revision: () => 0,
+        },
       });
       const fixture = TestBed.createComponent(NowPlayingCoverArtComponent);
       setInputValue(fixture.componentInstance.swipeOffsetPx, offset);
       fixture.detectChanges();
       const el: HTMLElement = fixture.nativeElement;
-      const slider = el.querySelector('[data-testid="now-playing-cover"] > div') as HTMLElement;
-      const peek = el.querySelector('[data-testid="now-playing-cover-peek"]') as HTMLElement | null;
-      return { fixture, slider, peek };
+      const q = (id: string) => el.querySelector(`[data-testid="${id}"]`) as HTMLElement | null;
+      const slider = q('now-playing-cover-stage')!.firstElementChild as HTMLElement;
+      return {
+        fixture,
+        slider,
+        nextEl: q('now-playing-cover-next'),
+        prevEl: q('now-playing-cover-prev'),
+      };
     }
 
-    it('renders no peek and no transform at rest', () => {
-      const { slider, peek } = render(0);
-      expect(peek).toBeNull();
+    it('shows both neighbours at rest, dimmed and scaled toward the cover', () => {
+      const { slider, nextEl, prevEl } = render(0);
       expect(slider.style.transform).toBe('');
+      expect(nextEl).not.toBeNull();
+      expect(prevEl).not.toBeNull();
+      expect(nextEl!.className).toContain('left-[calc(100%+1rem)]');
+      expect(prevEl!.className).toContain('right-[calc(100%+1rem)]');
+      for (const side of [nextEl!, prevEl!]) {
+        expect(side.style.opacity).toBe('0.5');
+        expect(side.style.scale).toBe('0.85');
+      }
     });
 
-    it('slides with the finger and peeks the next cover in from the right', () => {
-      const { fixture, slider, peek } = render(-60);
+    it('names the track each neighbour skips to', () => {
+      const { nextEl, prevEl } = render(0);
+      expect(nextEl!.getAttribute('aria-label')).toBe('Skip to the next track, Upcoming Song');
+      expect(prevEl!.getAttribute('aria-label')).toBe('Back to the previous track, Earlier Song');
+    });
+
+    it('tapping a neighbour asks the sheet to skip that way', () => {
+      const { fixture, nextEl, prevEl } = render(0);
+      const skips: string[] = [];
+      fixture.componentInstance.skipRequested.subscribe((d) => skips.push(d));
+      nextEl!.click();
+      prevEl!.click();
+      expect(skips).toEqual(['next', 'prev']);
+    });
+
+    it('marks each neighbour as a sliver, so a drag from it is a drag of the cover', () => {
+      const { nextEl, prevEl } = render(0);
+      expect(nextEl!.hasAttribute('data-np-sliver')).toBe(true);
+      expect(prevEl!.hasAttribute('data-np-sliver')).toBe(true);
+    });
+
+    it('renders no neighbour while showNeighbours is off (controlling another device)', () => {
+      TestBed.overrideProvider(PlayerService, {
+        useValue: {
+          currentTrack: () => track,
+          nextNeighbour: () => next,
+          prevNeighbour: () => prev,
+        },
+      });
+      const fixture = TestBed.createComponent(NowPlayingCoverArtComponent);
+      setInputValue(fixture.componentInstance.showNeighbours, false);
+      fixture.detectChanges();
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.querySelector('[data-testid="now-playing-cover-next"]')).toBeNull();
+      expect(el.querySelector('[data-testid="now-playing-cover-prev"]')).toBeNull();
+    });
+
+    it('renders no neighbour (and no tap target) where a skip lands nowhere', () => {
+      const { nextEl, prevEl } = render(0, {});
+      expect(nextEl).toBeNull();
+      expect(prevEl).toBeNull();
+    });
+
+    it('a leftward drag slides the strip and brings the next cover up to full size', () => {
+      const { slider, nextEl, prevEl } = render(-60);
       expect(slider.style.transform).toBe('translateX(-60px)');
-      expect(peek).not.toBeNull();
-      expect(peek!.style.left).toContain('100%');
-      expect(fixture.componentInstance.peekTrack()?.id).toBe('n');
+      expect(nextEl!.style.opacity).toBe('');
+      expect(nextEl!.style.scale).toBe('');
+      expect(prevEl!.style.opacity).toBe('0.5');
     });
 
-    it('peeks the previous cover in from the left on a rightward drag', () => {
-      const { fixture, peek } = render(60);
-      expect(peek!.style.right).toContain('100%');
-      expect(fixture.componentInstance.peekTrack()?.id).toBe('p');
+    it('a rightward drag brings the previous cover up instead', () => {
+      const { prevEl, nextEl } = render(60);
+      expect(prevEl!.style.opacity).toBe('');
+      expect(nextEl!.style.opacity).toBe('0.5');
+    });
+
+    it('keeps the neighbours off TV (the root nav group order is pinned)', () => {
+      document.documentElement.classList.add('tv-build');
+      try {
+        const { nextEl, prevEl } = render(0);
+        expect(nextEl).toBeNull();
+        expect(prevEl).toBeNull();
+      } finally {
+        document.documentElement.classList.remove('tv-build');
+      }
     });
   });
 

@@ -102,6 +102,8 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   `HAPTIC_MAP` turns it into a plugin call or `navigator.vibrate`; `hapticEnabled` gates on the
   per-device Off/Reduced/Full level, `HapticDirective` is the template door, lint bans other doors.
   → [mobile-app.md](../mobile-app.md)
+- **Neighbour carousel**: the sheet's ±1 cover strip at rest, read from `nextNeighbour` /
+  `prevNeighbour`; a tapped sliver emits `skipRequested`. → [web-ui.md](../web-ui.md)
 - **PWA install promotion**: `captureInstallPrompt` stashes `beforeinstallprompt` before bootstrap;
   `InstallPromptService` + `installPromotionVisible` drive a one-time layout strip
   (`InstallPromoBannerComponent`) and a permanent Settings row, iOS gets manual copy.

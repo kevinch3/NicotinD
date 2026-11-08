@@ -176,7 +176,9 @@ test.describe('mobile UX', () => {
   test('Now Playing hero cover degrades to the gradient fallback', async ({ page }) => {
     await openNowPlayingArtless(page);
 
-    const cover = page.getByTestId('now-playing-cover');
+    // The current cover only: its neighbours (#1652) sit inside the same box,
+    // and the track after the single may well have art.
+    const cover = page.getByTestId('now-playing-cover-art');
     await expect(cover).toBeVisible();
     // Fallback active: no <img> survives (it errors → gradient div) and the
     // initial ("E") is shown over the gradient.
@@ -940,6 +942,83 @@ test.describe('mobile UX', () => {
 
     await drag(page, c, { x: c.x - 150, y: c.y });
     await expect(title).not.toHaveText(first);
+  });
+
+  // Neighbour carousel (#1652): the covers a skip lands on peek in at rest,
+  // clipped to a sliver that is the only part of them a tap can hit.
+  test.describe('neighbour carousel (#1652)', () => {
+    async function sliver(page: Page, side: 'next' | 'prev') {
+      const { box } = await settledCentre(page.getByTestId('now-playing-cover-stage'));
+      const band = box.width * 0.12;
+      const dir = side === 'next' ? 1 : -1;
+      const edge = side === 'next' ? box.x + box.width + 16 : box.x - 16;
+      const y = box.y + box.height / 2;
+      return {
+        inside: { x: edge + (dir * band) / 2, y },
+        beyond: { x: edge + dir * (band + 8), y },
+      };
+    }
+    const hits = (page: Page, testId: string, p: { x: number; y: number }) =>
+      page.evaluate(
+        ([id, x, y]) => !!document.elementFromPoint(x, y)?.closest(`[data-testid="${id}"]`),
+        [testId, p.x, p.y] as const,
+      );
+
+    test('the next cover peeks in at rest; the first track has no previous', async ({ page }) => {
+      await openNowPlaying(page);
+      const { inside, beyond } = await sliver(page, 'next');
+      expect(inside.x, 'the sliver is on screen').toBeLessThan(PHONE.width);
+      expect(await hits(page, 'now-playing-cover-next', inside), 'sliver is tappable').toBe(true);
+      expect(await hits(page, 'now-playing-cover-next', beyond), 'clipped past it').toBe(false);
+      // Empty history: no previous cover, so no dead tap target on the left.
+      await expect(page.getByTestId('now-playing-cover-prev')).toHaveCount(0);
+    });
+
+    test('tapping a peeking cover jumps to it, and back', async ({ page }) => {
+      await openNowPlaying(page);
+      const title = page.getByTestId('player-title');
+      const first = (await title.textContent())!.trim();
+
+      const next = await sliver(page, 'next');
+      await page.mouse.click(next.inside.x, next.inside.y);
+      await expect(title).not.toHaveText(first);
+      await expect(page.getByTestId('now-playing-heading')).toBeInViewport();
+
+      await expect(page.getByTestId('now-playing-cover-prev')).toHaveCount(1);
+      const prev = await sliver(page, 'prev');
+      expect(await hits(page, 'now-playing-cover-prev', prev.inside)).toBe(true);
+      await page.mouse.click(prev.inside.x, prev.inside.y);
+      await expect(title).toHaveText(first);
+    });
+
+    // A sliver is a button for its tap, but a drag from it is a drag of the
+    // cover: pulling the peeking card in is the gesture a carousel invites.
+    test('a sideways drag that starts on a peeking cover skips once', async ({ page }) => {
+      await openNowPlaying(page);
+      const title = page.getByTestId('player-title');
+      const label = await page.getByTestId('now-playing-cover-next').getAttribute('aria-label');
+      const upcoming = label!.replace(/^.*?, /, '');
+      const { inside } = await sliver(page, 'next');
+      await drag(page, inside, { x: inside.x - 150, y: inside.y });
+      await expect(title).toHaveText(upcoming);
+      // The click the drag ends with on the sliver must not skip a second time.
+      await page.waitForTimeout(400);
+      await expect(title).toHaveText(upcoming);
+      await expect(page.getByTestId('now-playing-heading')).toBeInViewport();
+    });
+
+    test('a downward drag that starts on a peeking cover closes the sheet, skipping nothing', async ({
+      page,
+    }) => {
+      await openNowPlaying(page);
+      const title = page.getByTestId('player-title');
+      const first = (await title.textContent())!.trim();
+      const { inside } = await sliver(page, 'next');
+      await drag(page, inside, { x: inside.x, y: inside.y + 200 });
+      await expect(page.getByTestId('now-playing-heading')).not.toBeInViewport();
+      await page.waitForTimeout(400);
+      await expect(title).toHaveText(first);
+    });
   });
 
   // The mouse specs above cannot model the browser reclaiming a touch pan

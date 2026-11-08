@@ -59,14 +59,22 @@ export class NowPlayingCoverArtComponent {
   /** True while the finger is down, so the cover tracks it without easing. */
   readonly swiping = input(false);
 
-  /** The covers a skip would land on, peeking in beside the dragged one:
-   *  the next track from the right, the previous from the left. */
-  readonly peekTrack = computed(() => {
-    const offset = this.swipeOffsetPx();
-    if (offset < 0) return this.player.queue()[0] ?? null;
-    if (offset > 0) return this.player.history().at(-1) ?? null;
-    return null;
-  });
+  /** False while this device controls another: the output's history, repeat
+   *  and shuffle are not mirrored here, so a labelled neighbour would promise a
+   *  track ⏮/⏭ on the output may not land on. The swipe still sends NEXT/PREV. */
+  readonly showNeighbours = input(true);
+
+  /** The carousel's neighbours (#1652): the covers a skip lands on, peeking in
+   *  at rest and followed by the swipe. Not on TV (D-pad order, see isTv). */
+  readonly nextTrack = computed(() =>
+    this.isTv || !this.showNeighbours() ? null : this.player.nextNeighbour(),
+  );
+  readonly prevTrack = computed(() =>
+    this.isTv || !this.showNeighbours() ? null : this.player.prevNeighbour(),
+  );
+
+  /** A peeking neighbour was tapped: the sheet skips the way its ⏭/⏮ do. */
+  readonly skipRequested = output<'next' | 'prev'>();
 
   /** Fully dragged away — the wrapper drops its padding so no empty band remains. */
   readonly coverCollapsed = computed(() => this.coverMaxPx() <= 0);

@@ -51,6 +51,8 @@ export interface StoryState {
   /** Drives the buffering spinner / track-row buffering indicator. */
   buffering?: boolean;
   queue?: Track[];
+  /** Tracks already played; the last one is what ⏮ (and the sheet's left neighbour) lands on. */
+  history?: Track[];
   /**
    * Counts behind the download badge. Seeded as the *upstream* signals rather
    * than the derived count, because `activeDownloadCount`/`activeJobs` are
@@ -218,6 +220,7 @@ export function storyProviders(state: StoryState = {}): Array<Provider | Environ
         player.bufferingVisible.set(state.buffering);
       }
       if (state.queue !== undefined) player.queue.set(state.queue);
+      if (state.history !== undefined) player.history.set(state.history);
       if (state.restoredTime !== undefined) player.restoredTime = state.restoredTime;
       if (state.nowPlayingOpen !== undefined) player.nowPlayingOpen.set(state.nowPlayingOpen);
       if (state.offline) inject(NetworkStatusService).online.set(false);

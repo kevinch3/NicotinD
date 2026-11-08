@@ -465,6 +465,26 @@ export class PlayerService {
     }
   }
 
+  /**
+   * The track `playNext()` would land on, shown beside the sheet's cover
+   * (#1652). Null when a skip reaches no other known track: repeat-one
+   * replays, an empty queue pauses (radio too, until its top-up lands), and
+   * repeat-all under shuffle reshuffles at the moment of the skip.
+   */
+  readonly nextNeighbour = computed<Track | null>(() => {
+    if (this.repeat() === 'one') return null;
+    const head = this.queue()[0];
+    if (head) return head;
+    const context = this.context();
+    if (this.repeat() === 'all' && context && !this.shuffle()) {
+      return context.originalOrder[0] ?? null;
+    }
+    return null;
+  });
+
+  /** The track `playPrev()` would land on; null on an empty history (a no-op). */
+  readonly prevNeighbour = computed<Track | null>(() => this.history().at(-1) ?? null);
+
   playPrev(): void {
     const history = this.history();
     const currentTrack = this.currentTrack();

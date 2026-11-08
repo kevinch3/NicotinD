@@ -55,6 +55,8 @@
           [resizing]="resizingQueue()"
           [swipeOffsetPx]="coverSwipeOffsetPx()"
           [swiping]="coverSwiping()"
+          [showNeighbours]="drivesLocalPlayer()"
+          (skipRequested)="onSliverSkip($event)"
           (openTrackInfo)="onOpenTrackInfo($event)"
           (artistLinkFollowed)="closeForNavigation()"
           (navigateToArtistClicked)="navigateToArtist()"

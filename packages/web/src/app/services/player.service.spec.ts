@@ -207,6 +207,93 @@ describe('PlayerService', () => {
     });
   });
 
+  // #1652: the sheet's carousel shows these beside the cover, and tapping one
+  // runs playNext()/playPrev(), so each must name the track the skip plays.
+  describe('nextNeighbour / prevNeighbour', () => {
+    const album: PlayContext = { type: 'album', originalOrder: [track1, track2, track3] };
+    // Playing a track in none of the lists, so "the skip stayed put" is never
+    // confused with "the skip landed on the same id".
+    const playing: Track = { id: 't0', title: 'Track 0', artist: 'Artist Z' };
+
+    /** The track playNext() moved to, or null when it stayed on (or replayed) the current one. */
+    function landedNext(): Track | null {
+      const before = service.currentTrack();
+      service.playNext();
+      const after = service.currentTrack();
+      return after && after.id !== before?.id ? after : null;
+    }
+
+    const nextCases: Array<[string, () => void, string | null]> = [
+      ['the queue head', () => service.queue.set([track2, track3]), 't2'],
+      [
+        'shuffle on: the already-shuffled queue head',
+        () => {
+          service.queue.set([track2, track3]);
+          service.toggleShuffle();
+        },
+        'queue-head',
+      ],
+      [
+        'repeat one: the skip replays the current track, so no neighbour',
+        () => {
+          service.queue.set([track2]);
+          service.repeat.set('one');
+        },
+        null,
+      ],
+      [
+        'repeat all, queue drained: the context reloads from its first track',
+        () => {
+          service.context.set(album);
+          service.repeat.set('all');
+        },
+        't1',
+      ],
+      ['repeat off, queue drained: the skip pauses', () => service.queue.set([]), null],
+      [
+        'radio before its top-up lands: no queue()[0] yet',
+        () => {
+          service.radio.set(true);
+          service.queue.set([]);
+        },
+        null,
+      ],
+    ];
+
+    it.each(nextCases)('next is %s', (_label, setup, expected) => {
+      service.play(playing);
+      setup();
+      const predicted = service.nextNeighbour();
+      const want = expected === 'queue-head' ? service.queue()[0].id : expected;
+      expect(predicted?.id ?? null).toBe(want);
+      expect(landedNext()?.id ?? null).toBe(predicted?.id ?? null);
+    });
+
+    it('repeat all + shuffle on a drained queue reshuffles at the skip, so no neighbour', () => {
+      service.play(playing);
+      service.context.set(album);
+      service.repeat.set('all');
+      service.shuffle.set(true);
+      expect(service.nextNeighbour()).toBeNull();
+    });
+
+    it('previous is the history tail, which playPrev() plays', () => {
+      service.play(playing);
+      service.history.set([track1, track2]);
+      expect(service.prevNeighbour()?.id).toBe('t2');
+      service.playPrev();
+      expect(service.currentTrack()?.id).toBe('t2');
+    });
+
+    it('previous is null on an empty history, where playPrev() is a no-op', () => {
+      service.play(playing);
+      service.history.set([]);
+      expect(service.prevNeighbour()).toBeNull();
+      service.playPrev();
+      expect(service.currentTrack()?.id).toBe('t0');
+    });
+  });
+
   describe('state persistence', () => {
     const STORAGE_KEY = 'nicotind_player_state';
 

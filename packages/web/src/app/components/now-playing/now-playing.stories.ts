@@ -101,6 +101,17 @@ export const Idle: Story = { ...withState({ ...loaded, isPlaying: false }) };
 export const Playing: Story = { ...withState({ ...loaded, isPlaying: true }) };
 
 /**
+ * A played track behind and a queue ahead, so both neighbours are known: the
+ * previous cover peeks in on the left and the next on the right, dimmed and
+ * scaled toward the current one (#1652). Each sliver is a button that skips that way; a sideways swipe drags
+ * the strip. On the first track (`Idle`) the left side is empty, never a dead
+ * tap target. The fixture tracks carry no art, so both read as gradient tiles.
+ */
+export const NeighbourCovers: Story = {
+  ...withState({ ...loaded, history: [demoTracks[6]], isPlaying: false }),
+};
+
+/**
  * Waiting on bytes: the transport shows the spinner in place of the play
  * state. Held there by a stream that never delivers a byte — seeding
  * `buffering` alone would be cleared by the element the moment it could play.
