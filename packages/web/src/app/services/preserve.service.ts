@@ -11,6 +11,7 @@ import { ServerConfigService } from './server-config.service';
 import { haptic } from '../lib/haptics';
 import { songCover } from '../lib/cover-url';
 import { CoverRevisionsService } from './cover-revisions.service';
+import { PreservedCoversService } from './preserved-covers.service';
 
 /**
  * The IndexedDB-backed store, injected so tests can swap in an in-memory fake.
@@ -22,6 +23,7 @@ export interface PreserveStore {
   remove: typeof db.remove;
   getBlob: typeof db.getBlob;
   getAll: typeof db.getAll;
+  getAllCovers: typeof db.getAllCovers;
   evictLRU: typeof db.evictLRU;
   evictAutoLRU: typeof db.evictAutoLRU;
   removeAllAutoPreserved: typeof db.removeAllAutoPreserved;
@@ -103,6 +105,7 @@ export class PreserveService {
   private server = inject(ServerConfigService);
   private coverRevisions = inject(CoverRevisionsService);
   private db = inject(PRESERVE_STORE);
+  private preservedCovers = inject(PreservedCoversService);
 
   readonly preservedIds = signal(new Set<string>());
   readonly totalUsage = signal(0);
@@ -135,6 +138,9 @@ export class PreserveService {
   private readonly autoFailedAt = new Map<string, number>();
 
   async init(): Promise<void> {
+    // Binding the store loads the preserved covers (#1658); refreshList keeps
+    // them in step with every later preserve / remove.
+    this.preservedCovers.attach(this.db);
     await this.refreshList();
   }
 
@@ -448,6 +454,8 @@ export class PreserveService {
     this.preservedIds.set(ids);
     this.totalUsage.set(usage);
     this.preservedTracks.set(all);
+    // Every remove / evict / clear path ends here: the covers follow the rows.
+    void this.preservedCovers.refresh();
   }
 
   // ─── internals ──────────────────────────────────────────────────────
@@ -494,6 +502,9 @@ export class PreserveService {
       coverArt: track.coverArt,
       coverRev: track.coverRev,
       albumId: track.albumId,
+      artistId: track.artistId,
+      artists: track.artists,
+      genre: track.genre,
       duration: track.duration,
       bitRate: track.bitRate,
       size: blobs.audioBlob.size,
@@ -504,6 +515,7 @@ export class PreserveService {
     };
     await this.db.preserve(meta, blobs.audioBlob, blobs.coverBlob);
     this.preservedIds.update((s) => new Set(s).add(track.id));
+    void this.preservedCovers.refresh();
   }
 
   private setBatch(key: string, b: PreserveBatch): void {

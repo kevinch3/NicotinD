@@ -1,5 +1,6 @@
-import { Injectable, signal, untracked, type WritableSignal } from '@angular/core';
+import { Injectable, inject, signal, untracked, type WritableSignal } from '@angular/core';
 import { coverUrl, type CoverKind, type CoverRef } from '../lib/cover-url';
+import { PreservedCoversService } from './preserved-covers.service';
 
 /** One entity whose cover bytes changed, with its new persisted `cover_rev`. */
 export interface CoverRevision {
@@ -32,6 +33,7 @@ export class CoverRevisionsService {
   // this one — no lock-screen re-send, no launcher re-publish, no palette
   // re-probe (docs/cache-invalidation.md "The web half").
   private readonly revs = new Map<string, WritableSignal<number>>();
+  private readonly preserved = inject(PreservedCoversService);
 
   /** Record revisions; a rev no newer than the one held is ignored. */
   raise(changes: Iterable<CoverRevision>): void {
@@ -56,7 +58,15 @@ export class CoverRevisionsService {
    * Reading it inside a computed or a template re-renders on a pushed rev.
    */
   url(ref: CoverRef | null | undefined, size: number, token: string | null): string | undefined {
-    return ref ? coverUrl({ ...ref, coverRev: this.effective(ref) }, size, token) : undefined;
+    if (!ref) return undefined;
+    // Offline, an album's preserved cover (#1658): an object URL, which
+    // ServerConfigService.apiUrl passes through untouched. Artist portraits are
+    // never preserved.
+    if (ref.kind === 'album' && this.preserved.offline()) {
+      const local = this.preserved.urlFor(`album:${ref.id}`);
+      if (local) return local;
+    }
+    return coverUrl({ ...ref, coverRev: this.effective(ref) }, size, token);
   }
 
   private slot(k: string): WritableSignal<number> {

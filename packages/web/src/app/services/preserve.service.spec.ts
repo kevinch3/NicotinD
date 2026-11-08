@@ -9,6 +9,7 @@ import {
   AUTO_PRESERVE_RETRY_MS,
   preservedAudioLooksComplete,
 } from './preserve.service';
+import { PreservedCoversService } from './preserved-covers.service';
 import type { PreserveStore } from './preserve.service';
 import { AuthService } from './auth.service';
 import type { Track } from './player.service';
@@ -34,6 +35,7 @@ function makeStoreFake() {
       tracks.delete(id);
     }),
     getAll: vi.fn(async () => [...tracks.values()]),
+    getAllCovers: vi.fn(async () => []),
     getBlob: vi.fn(async () => undefined),
     evictLRU: vi.fn(async () => [] as string[]),
     evictAutoLRU: vi.fn(async () => [] as string[]),
@@ -93,6 +95,33 @@ describe('PreserveService', () => {
       ],
     });
     svc = TestBed.inject(PreserveService);
+  });
+
+  // #1658: a preserved track keeps its credits, so artist links and joint
+  // credits still work offline; and the offline covers follow every write.
+  it('keeps the artist credits, artist id and genre on the preserved row', async () => {
+    await svc.preserve({
+      ...track('a'),
+      artistId: 'ar1',
+      artists: [
+        { id: 'ar1', name: 'Artist', role: 'primary' },
+        { id: 'ar2', name: 'Guest', role: 'featuring' },
+      ],
+      genre: 'Reggae',
+    });
+    const meta = vi.mocked(store.preserve).mock.calls[0]![0] as unknown as Record<string, unknown>;
+    expect(meta['artistId']).toBe('ar1');
+    expect(meta['artists']).toHaveLength(2);
+    expect(meta['genre']).toBe('Reggae');
+  });
+
+  it('refreshes the offline covers after a preserve and after every list refresh', async () => {
+    const covers = TestBed.inject(PreservedCoversService);
+    const refresh = vi.spyOn(covers, 'refresh');
+    await svc.init();
+    await svc.preserve(track('a'));
+    await svc.refreshList();
+    expect(refresh.mock.calls.length).toBeGreaterThanOrEqual(3);
   });
 
   // #1666: the snapshot is kept for good, so a stale day-cached cover must not

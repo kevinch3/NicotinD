@@ -1,9 +1,10 @@
 /**
  * IndexedDB wrapper for preserved tracks — handles CRUD, LRU eviction, and storage budget.
  *
- * Two object stores:
- *   - `tracks`  — metadata (id, title, artist, size, timestamps, source…)
- *   - `blobs`   — audio + cover binary data keyed by track id
+ * Three object stores:
+ *   - `tracks`  — metadata (id, title, artist, credits, size, timestamps, source…)
+ *   - `blobs`   — audio keyed by track id
+ *   - `covers`  — one cover per album, keyed by `coverKeyOf` (#1658)
  *
  * Schema versions:
  *   v1 — initial (tracks, blobs)
@@ -13,12 +14,20 @@
  *         queue-preserves (driven by the AutoPreserveCoordinator for PWA
  *         lock-screen resilience). Migration backfills every existing row
  *         with `source: 'user'` so eviction policy treats them as user-owned.
+ *   v4 — `covers`: one cover per album, shared by every preserved track of it
+ *         (#1658, owner decision). Keyed by `coverKeyOf(meta)`, the album that
+ *         owns the cover's rev. The migration moves each v3 per-track cover into
+ *         it (first one per album wins) and clears `blobs.cover`; a cover is
+ *         deleted only with the last preserved track that points at it.
  */
 
 const DB_NAME = 'nicotind-preserve';
-const DB_VERSION = 3;
+import { songCover } from './cover-url';
+
+const DB_VERSION = 4;
 const TRACKS_STORE = 'tracks';
 const BLOBS_STORE = 'blobs';
+const COVERS_STORE = 'covers';
 
 export const DEFAULT_BUDGET = 2 * 1024 * 1024 * 1024; // 2 GB
 
@@ -34,6 +43,11 @@ export interface PreservedTrackMeta {
   /** The album's cover rev and the album, as the track carried them (#1666). */
   coverRev?: number;
   albumId?: string;
+  /** The primary artist and the credits with their ids (#1658), so artist links
+   *  and joint credits survive offline. Absent on rows preserved before v4. */
+  artistId?: string;
+  artists?: Array<{ id: string; name: string; role: 'primary' | 'featuring' }>;
+  genre?: string;
   duration?: number;
   bitRate?: number;
   size: number;
@@ -46,40 +60,96 @@ export interface PreservedTrackMeta {
 export interface PreservedBlob {
   id: string;
   audio: Blob;
+  /** Always null since v4: the cover lives once per album in `covers`. */
   cover: Blob | null;
+}
+
+/** One album's preserved cover (#1658), served offline as an object URL. */
+export interface PreservedCover {
+  key: string;
+  cover: Blob;
+  coverArt?: string;
+  coverRev: number;
+}
+
+/**
+ * The `covers` key for a track's cover: the album that owns its rev — the same
+ * owner `songCover` / `albumCover` name, so an album tile and its tracks find
+ * one entry. Null for a track with no cover.
+ */
+export function coverKeyOf(meta: {
+  coverArt?: string;
+  coverRev?: number;
+  albumId?: string;
+}): string | null {
+  const ref = songCover(meta);
+  return ref ? `album:${ref.id}` : null;
 }
 
 function open(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
+    req.onupgradeneeded = (event) => {
       const db = req.result;
+      const upgrade = req.transaction!;
       if (!db.objectStoreNames.contains(TRACKS_STORE)) {
         db.createObjectStore(TRACKS_STORE, { keyPath: 'id' });
       }
       if (!db.objectStoreNames.contains(BLOBS_STORE)) {
         db.createObjectStore(BLOBS_STORE, { keyPath: 'id' });
       }
+      if (!db.objectStoreNames.contains(COVERS_STORE)) {
+        db.createObjectStore(COVERS_STORE, { keyPath: 'key' });
+      }
       // v3: backfill source='user' on every existing track row. Old rows have
       // no field; writing them with the default keeps the eviction policy
       // conservative (they're treated as user-owned, never auto-evicted).
-      if (db.objectStoreNames.contains(TRACKS_STORE)) {
-        const tx = req.transaction!;
-        const store = tx.objectStore(TRACKS_STORE);
-        store.openCursor().onsuccess = (e) => {
-          const cursor = (e.target as IDBRequest<IDBCursorWithValue | null>).result;
-          if (!cursor) return;
-          const value = cursor.value as PreservedTrackMeta;
-          if (value.source !== 'user' && value.source !== 'auto') {
-            cursor.update({ ...value, source: 'user' });
-          }
-          cursor.continue();
-        };
-      }
+      const tracks = upgrade.objectStore(TRACKS_STORE);
+      tracks.openCursor().onsuccess = (e) => {
+        const cursor = (e.target as IDBRequest<IDBCursorWithValue | null>).result;
+        if (!cursor) return;
+        const value = cursor.value as PreservedTrackMeta;
+        if (value.source !== 'user' && value.source !== 'auto') {
+          cursor.update({ ...value, source: 'user' });
+        }
+        cursor.continue();
+      };
+      // v4: move each per-track cover into the per-album `covers` store.
+      if (event.oldVersion > 0 && event.oldVersion < 4) migrateCoversToAlbums(upgrade);
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
+}
+
+/** v3 → v4: one cover per album, first per-track copy wins; `blobs.cover` cleared. */
+function migrateCoversToAlbums(upgrade: IDBTransaction): void {
+  const metas = upgrade.objectStore(TRACKS_STORE).getAll();
+  metas.onsuccess = () => {
+    const byId = new Map((metas.result as PreservedTrackMeta[]).map((m) => [m.id, m]));
+    const covers = upgrade.objectStore(COVERS_STORE);
+    const seen = new Set<string>();
+    upgrade.objectStore(BLOBS_STORE).openCursor().onsuccess = (e) => {
+      const cursor = (e.target as IDBRequest<IDBCursorWithValue | null>).result;
+      if (!cursor) return;
+      const blob = cursor.value as PreservedBlob;
+      const meta = byId.get(blob.id);
+      const key = meta ? coverKeyOf(meta) : null;
+      if (blob.cover) {
+        if (key && !seen.has(key)) {
+          seen.add(key);
+          covers.put({
+            key,
+            cover: blob.cover,
+            coverArt: meta!.coverArt,
+            coverRev: meta!.coverRev ?? 0,
+          } satisfies PreservedCover);
+        }
+        cursor.update({ ...blob, cover: null });
+      }
+      cursor.continue();
+    };
+  };
 }
 
 function tx<T>(
@@ -102,9 +172,20 @@ export async function preserve(
   coverBlob: Blob | null,
 ): Promise<void> {
   const db = await open();
-  const transaction = db.transaction([TRACKS_STORE, BLOBS_STORE], 'readwrite');
+  const transaction = db.transaction([TRACKS_STORE, BLOBS_STORE, COVERS_STORE], 'readwrite');
   transaction.objectStore(TRACKS_STORE).put(meta);
-  transaction.objectStore(BLOBS_STORE).put({ id: meta.id, audio: audioBlob, cover: coverBlob });
+  transaction.objectStore(BLOBS_STORE).put({ id: meta.id, audio: audioBlob, cover: null });
+  // One cover per album: the newest preserve's copy replaces the album's, so a
+  // re-preserve after a cover change stores the current bytes.
+  const key = coverKeyOf(meta);
+  if (coverBlob && key) {
+    transaction.objectStore(COVERS_STORE).put({
+      key,
+      cover: coverBlob,
+      coverArt: meta.coverArt,
+      coverRev: meta.coverRev ?? 0,
+    } satisfies PreservedCover);
+  }
   await new Promise<void>((resolve, reject) => {
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error);
@@ -114,9 +195,21 @@ export async function preserve(
 
 export async function remove(id: string): Promise<void> {
   const db = await open();
-  const transaction = db.transaction([TRACKS_STORE, BLOBS_STORE], 'readwrite');
-  transaction.objectStore(TRACKS_STORE).delete(id);
-  transaction.objectStore(BLOBS_STORE).delete(id);
+  const transaction = db.transaction([TRACKS_STORE, BLOBS_STORE, COVERS_STORE], 'readwrite');
+  const tracks = transaction.objectStore(TRACKS_STORE);
+  const get = tracks.get(id);
+  get.onsuccess = () => {
+    const key = get.result ? coverKeyOf(get.result as PreservedTrackMeta) : null;
+    tracks.delete(id);
+    transaction.objectStore(BLOBS_STORE).delete(id);
+    if (!key) return;
+    // A cover goes only with the last preserved track that points at it.
+    const rest = tracks.getAll();
+    rest.onsuccess = () => {
+      const shared = (rest.result as PreservedTrackMeta[]).some((m) => coverKeyOf(m) === key);
+      if (!shared) transaction.objectStore(COVERS_STORE).delete(key);
+    };
+  };
   await new Promise<void>((resolve, reject) => {
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error);
@@ -146,6 +239,16 @@ export async function getAll(): Promise<PreservedTrackMeta[]> {
   const db = await open();
   const result = await tx<PreservedTrackMeta[]>(db, TRACKS_STORE, 'readonly', (t) =>
     t.objectStore(TRACKS_STORE).getAll(),
+  );
+  db.close();
+  return result;
+}
+
+/** Every preserved album cover (#1658). */
+export async function getAllCovers(): Promise<PreservedCover[]> {
+  const db = await open();
+  const result = await tx<PreservedCover[]>(db, COVERS_STORE, 'readonly', (t) =>
+    t.objectStore(COVERS_STORE).getAll(),
   );
   db.close();
   return result;
@@ -241,9 +344,10 @@ export async function removeAllAutoPreserved(): Promise<number> {
 
 export async function clearAll(): Promise<void> {
   const db = await open();
-  const transaction = db.transaction([TRACKS_STORE, BLOBS_STORE], 'readwrite');
+  const transaction = db.transaction([TRACKS_STORE, BLOBS_STORE, COVERS_STORE], 'readwrite');
   transaction.objectStore(TRACKS_STORE).clear();
   transaction.objectStore(BLOBS_STORE).clear();
+  transaction.objectStore(COVERS_STORE).clear();
   await new Promise<void>((resolve, reject) => {
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error);
