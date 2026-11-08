@@ -457,6 +457,8 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
 
   **Press and hold a tile** (450ms within the tap slop) opens its menu at the finger (see "Tile interaction standard" — Song info is an item of a song tile's menu), with a suppress flag eating the click that follows the release so the hold does not also start a radio under the menu. Tiles with no menu (the downloads shortcut, an offline tile) do not arm the timer. Hovering with a fine pointer lifts the face slightly: faces rest at `scale(0.97)` and grow to `1` on hover, because `contain: strict` clips paint at the tile box so a scale past 1 would crop, not lift — the same reason `.mosaic-pop`'s fill is `backwards`, letting the animation release the transform once the pop lands.
 
+  **A face's long names reveal themselves (#1707).** The title and subtitle are one line each (`.mosaic-name`, marked `data-overflow-reveal`), and the frame that finds the field at rest gives every face in the lens that has none yet its `OverflowReveal`s via `attachOverflowReveals`, with the pooled tile element as the row. On touch that plays one pass once the field is still; with a mouse it plays while the tile is hovered; under reduced motion a tap on the name wraps it and does not start the radio (see "Names are never unreadably truncated"). The attach waits for rest because a reveal reads layout as it is built, and the field is still anyway before a touch pass may play. Rewriting a face (`innerHTML`) destroys its reveals first, and a repack or the page's teardown destroys them all. They use the module's shared IntersectionObserver and ResizeObserver and no MutationObserver, because a face is replaced whole, never its text in place. The title was a two-line clamp and is now one line: a clamp wraps instead of overflowing sideways, so the reveal could not move it. Measured with every song tile renamed to a long title and artist (390×780 touch, 4× CPU throttle, six reps of three pans and a 2.5 s rest each): frames over 25 ms went from 0.28% to 0.41% of all frames (two runs of the fix), the longest frame from 50 ms to 67 ms (one rep in six before, two in twelve after), and layouts per rep rose from about 47 to about 102, most of it the reveal passes themselves running at rest.
+
   **Depth (#1638)** comes in three layers, none of them per-tile work in the loop:
   - **Every face casts a soft shadow** (`--theme-elevation-tile`) and has no border: a 0.5px stroke on a lens-scaled layer rasterised into a light, uneven fringe around the rounded corners. The same paint clip means a shadow outside the box is cut off, so each pooled box is the packed face plus `TILE_INSET` on every side, translated back by the inset so the face lands where the lens put it, and the face sits `--mosaic-inset` inside it (the component sets the variable from the constant). Packing, spacing and the lens stay in face units — `GAP`, `DENSITY` and the field's look are untouched; only the box grew.
   - **The edges blur.** The lens already shrinks and fades the rim; `.mosaic-rim` adds blur toward the viewport edges as **one** masked `backdrop-filter` layer over the stage, tinted 30% toward `--theme-bg`. The mask is a **circle reaching the stage's farther edge** (clear inside 55%, full at 100%) because that is about where the lens draws its rim (`R·sin THETA_MAX`, with `R` the stage's shorter side): a portrait phone's side edges are still near the lens centre and stay sharp, while its top and bottom recede. A viewport-shaped ellipse was tried first and blurred a phone's side tiles halfway to the middle. A per-tile `filter: blur()` was rejected because it would change on every tile every frame of a pan and re-rasterise each layer — the opposite of a loop that writes only transforms. **It is drawn only at rest.** Measured on a weak-GPU stand-in (SwiftShader on 2 cores, 4× CPU throttle, 390×780@3×, 6 interleaved runs per variant), a blur over the moving field took a pan from 2.4% to 9.2% dropped frames, with the shadows costing nothing measurable; on a real GPU (Radeon 760M) no variant differed. So `setMoving` puts `is-moving` on the stage on the move that crosses the tap slop (so a tap or a still hold never flickers it) and clears it on the frame that finds the field at rest; `.is-moving ~ .mosaic-rim` hides the blur **at once** (a fade-out measured as a hitch at the start of every pan) with `visibility: hidden` so it is not drawn at all, and it fades back in at rest. **It also stands down while Now Playing covers the field** (#1649): `covered` (the sheet open or lifted by the mini bar's drag, held until its 300 ms slide away is over) puts `mosaic-covered` on the root, and `.mosaic-covered .mosaic-rim` hides it at once — a `backdrop-filter` layer left under the sheet is the in-page exception of the blur and stacking contract ([design-patterns.md](design-patterns.md)). Gone under `prefers-reduced-transparency` and on E-Ink.
@@ -1959,16 +1961,29 @@ class that sets `text-overflow: ellipsis` or `-webkit-line-clamp` (`styles.css`
 for every template, a component's own stylesheet for its own template only).
 Each one must carry `appOverflowReveal` or appear on `NOT_A_NAME`: error and
 status messages, secrets and URLs, fixed UI copy and count lines, admin
-diagnostics, the search input, the artist bio's clamp with its own "Show more",
-and the home mosaic's HTML-string faces. The mosaic faces are names, and a
-directive cannot reach them; that gap is #1707, not a judgement. The list has one entry per site, so a
+diagnostics, the search input, and the artist bio's clamp with its own "Show
+more". Markup built as a string, where no directive can attach, carries the
+marker `data-overflow-reveal` (`REVEAL_MARKER_ATTR`) instead, and the spec
+checks that every component writing it also calls `attachOverflowReveals`, or
+the marker would be inert. It also refuses the reveal on a multi-line clamp
+(`line-clamp-*`, or a stylesheet class setting `-webkit-line-clamp`): that text
+wraps rather than overflowing sideways, so the reveal would never move. The list has one entry per site, so a
 new truncation in an allowlisted file is a new site. A TS class string bound
 with `[class]` is checked at its binding (`CLASS_STRINGS`). The spec also checks
 that every component using the attribute imports the directive. Without the
 import, the attribute is silently inert. It asserts its own denominator, so a
 broken scanner cannot pass by finding nothing. The real layout is covered by
 `e2e/tests/overflow-reveal.spec.ts`: touch once, the playing title always,
-reduced-motion tap-to-wrap, and desktop hover.
+reduced-motion tap-to-wrap, and desktop hover, on a list row and on a mosaic
+tile.
+
+**The home mosaic (#1707)** builds its faces as HTML strings on pooled
+elements, so it attaches the plain controller itself: its title and subtitle
+carry `.mosaic-name` (one line, ellipsis) and the marker, and the frame that
+finds the field at rest calls `attachOverflowReveals` on every face in the lens
+that has none yet, with the tile element as the row (hover on the tile). The
+title used to be a two-line clamp; it is one line now, because a clamp cannot
+scroll. See the mosaic section for why the attach waits for rest.
 
 **Adding a name**: put `appOverflowReveal` on the truncated element and
 `OverflowRevealDirective` in the component's `imports`. A flex child still needs

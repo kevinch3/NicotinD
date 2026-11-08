@@ -689,16 +689,18 @@
 }
 .mosaic-face b {
   font-weight: 500;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  display: block;
 }
 .mosaic-face span {
   display: block;
   font-size: var(--face-sub, 12px);
   margin-top: 3px;
   opacity: 0.75;
+}
+/* A face's title and subtitle (#1707): one line each, scrolled to reveal by
+   the OverflowReveal the component attaches. The title was a two-line clamp,
+   which the reveal cannot move, so a long one was cut for good. */
+.mosaic-name {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

@@ -118,6 +118,25 @@ export function browserRevealEnv(isTv: () => boolean): RevealEnv {
   };
 }
 
+/**
+ * Markup built as a string, where no directive can attach (the home mosaic's
+ * pooled faces, #1707), marks each truncated name with this attribute instead;
+ * the code that writes the markup then calls `attachOverflowReveals` on it.
+ */
+export const REVEAL_MARKER_ATTR = 'data-overflow-reveal';
+
+/** One `list` reveal per marked name under `root`, all sharing `row`'s hover and focus. */
+export function attachOverflowReveals(
+  root: ParentNode,
+  env: RevealEnv,
+  row?: Element,
+): OverflowReveal[] {
+  return Array.from(
+    root.querySelectorAll<HTMLElement>(`[${REVEAL_MARKER_ATTR}]`),
+    (el) => new OverflowReveal(el, 'list', env, row),
+  );
+}
+
 type Phase = 'idle' | 'lead' | 'forward' | 'hold' | 'back';
 
 export class OverflowReveal {
@@ -140,12 +159,14 @@ export class OverflowReveal {
   private readonly row: Element;
   private readonly cleanups: Array<() => void> = [];
 
+  /** `row` overrides the nearest-control lookup, for a host with no control above it. */
   constructor(
     private readonly el: HTMLElement,
     private readonly mode: OverflowRevealMode,
     private readonly env: RevealEnv,
+    row?: Element,
   ) {
-    this.row = el.closest(ROW_SELECTOR) ?? el.parentElement ?? el;
+    this.row = row ?? el.closest(ROW_SELECTOR) ?? el.parentElement ?? el;
     const on = (
       target: EventTarget,
       type: string,
