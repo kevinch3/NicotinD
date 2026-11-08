@@ -61,6 +61,15 @@ export interface PreservedTrackMeta {
   preservedAt: number;
   lastAccessedAt: number;
   source: PreserveSource;
+  /** 1 once the row carries everything a preserve stores today — credits,
+   *  genre, the album cover, the lyrics (#1751). Rows saved before that are
+   *  topped up once, the next time the app is online. */
+  toppedUp?: 1;
+}
+
+/** Whether a preserved row predates the full record and wants a top-up (#1751). */
+export function needsTopUp(meta: PreservedTrackMeta): boolean {
+  return meta.toppedUp !== 1;
 }
 
 export interface PreservedBlob {
@@ -420,4 +429,35 @@ export async function refreshLyrics(id: string, dto: LyricsDto | null): Promise<
   });
   db.close();
   return wrote;
+}
+
+/**
+ * Merge `patches` into the preserved rows they name (#1751 top-up). A row
+ * removed meanwhile stays removed: only existing rows are written.
+ */
+export async function updateMetas(
+  patches: Array<Partial<PreservedTrackMeta> & { id: string }>,
+): Promise<void> {
+  if (patches.length === 0) return;
+  const db = await open();
+  const transaction = db.transaction(TRACKS_STORE, 'readwrite');
+  const tracks = transaction.objectStore(TRACKS_STORE);
+  for (const patch of patches) {
+    const get = tracks.get(patch.id);
+    get.onsuccess = () => {
+      if (get.result) tracks.put({ ...(get.result as PreservedTrackMeta), ...patch });
+    };
+  }
+  await new Promise<void>((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+  });
+  db.close();
+}
+
+/** Store an album's cover for preserved tracks that had none (#1751 top-up). */
+export async function putCover(cover: PreservedCover): Promise<void> {
+  const db = await open();
+  await tx(db, COVERS_STORE, 'readwrite', (t) => t.objectStore(COVERS_STORE).put(cover));
+  db.close();
 }

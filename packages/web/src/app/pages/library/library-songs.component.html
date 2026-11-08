@@ -22,6 +22,13 @@
           <div class="h-full bg-[var(--theme-accent)] transition-all" [style.width.%]="storagePercent()"></div>
         </div>
       }
+      <!-- #1751: rows saved before a preserve stored everything show basic details
+           until the next time the app is online tops them up. -->
+      @if (preserve.needingDetails() > 0) {
+        <p class="mt-2 text-xs text-theme-muted" data-testid="library-songs-offline-basic">
+          {{ (preserve.needingDetails() === 1 ? 'library.offline.basicDetailsOne' : 'library.offline.basicDetails') | t: { count: preserve.needingDetails() } }}
+        </p>
+      }
     </div>
 
     @if (preserve.preservedTracks().length > 0) {

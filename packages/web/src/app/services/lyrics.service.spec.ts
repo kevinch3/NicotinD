@@ -844,6 +844,19 @@ describe('LyricsService preserved copies (#1751)', () => {
     expect(copies.size).toBe(0);
   });
 
+  it('topUpPreserved: stores the row for a preserved track with no copy, once', async () => {
+    const { api, lyrics, preserve, copies } = setup();
+    preserve('s1');
+    api.getLyrics.mockReturnValue(of(dto({ plain: 'later' })));
+    await lyrics.topUpPreserved('s1');
+    expect(copies.get('s1')?.plain).toBe('later');
+
+    api.getLyrics.mockClear();
+    await lyrics.topUpPreserved('s1');
+    expect(api.getLyrics).not.toHaveBeenCalled();
+    expect(api.fetchLyrics).not.toHaveBeenCalled();
+  });
+
   it('snapshot: the held entry, else the stored row — never the sources', async () => {
     const { api, lyrics } = setup();
     api.getLyrics.mockReturnValue(of(dto({ plain: 'held' })));

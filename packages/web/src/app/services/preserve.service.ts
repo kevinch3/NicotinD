@@ -1,6 +1,9 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
 import {
   DEFAULT_BUDGET,
+  coverKeyOf,
+  needsTopUp,
   type PreservedTrackMeta,
   type PreserveSource,
 } from '../lib/preserve-store';
@@ -13,10 +16,16 @@ import { CoverRevisionsService } from './cover-revisions.service';
 import { PreservedCoversService } from './preserved-covers.service';
 import { PRESERVE_STORE } from './preserve-store.token';
 import { LyricsService } from './lyrics.service';
+import { LibraryApiService } from './api/library-api.service';
+import { OfflineModeService } from './offline-mode.service';
+import { toTrack } from '../lib/track-utils';
 
 // The store token lives in its own module so LyricsService can read the
 // preserved lyrics without importing this service (#1751).
 export { PRESERVE_STORE, type PreserveStore } from './preserve-store.token';
+
+/** Rows per server lookup in the #1751 top-up. */
+export const TOP_UP_BATCH = 50;
 
 /** Sentinel "no cap" budget — large enough that the projected-usage check never trips. */
 export const UNLIMITED_BUDGET = Number.MAX_SAFE_INTEGER;
@@ -90,6 +99,8 @@ export class PreserveService {
   private db = inject(PRESERVE_STORE);
   private preservedCovers = inject(PreservedCoversService);
   private lyrics = inject(LyricsService);
+  private libraryApi = inject(LibraryApiService);
+  private offlineMode = inject(OfflineModeService);
 
   readonly preservedIds = signal(new Set<string>());
   readonly totalUsage = signal(0);
@@ -121,11 +132,104 @@ export class PreserveService {
   /** Track id → when its last auto-preserve fetch failed (see AUTO_PRESERVE_RETRY_MS). */
   private readonly autoFailedAt = new Map<string, number>();
 
+  /** Saved rows still waiting for the #1751 top-up — the "basic" state. */
+  readonly needingDetails = computed(() => this.preservedTracks().filter(needsTopUp).length);
+  private toppingUp = false;
+  private initialized = false;
+
+  constructor() {
+    // Leaving offline mode is when an older preserve can be completed (#1751).
+    effect(() => {
+      if (!this.offlineMode.isOffline()) untracked(() => void this.topUpOlderPreserves());
+    });
+  }
+
   async init(): Promise<void> {
     // Binding the store loads the preserved covers (#1658); refreshList keeps
     // them in step with every later preserve / remove.
     this.preservedCovers.attach(this.db);
     await this.refreshList();
+    this.initialized = true;
+    void this.topUpOlderPreserves();
+  }
+
+  /**
+   * Complete the rows preserved before a preserve stored everything (#1751):
+   * credits, artist id and genre from the server's songs, the album cover when
+   * the album has none on the device, and the stored lyrics. Once per row
+   * (`toppedUp`), online only, one run at a time. Metadata for every row; the
+   * cover and lyrics only for the person's own saves (auto-preserves churn with
+   * the queue) and the cover only while under the storage budget. A failed
+   * request ends the run; the rest waits for the next time the app is online.
+   */
+  async topUpOlderPreserves(): Promise<void> {
+    // `initialized` first: the online effect fires in every host that injects
+    // this service, init or not, and must cost nothing there.
+    if (!this.initialized || this.toppingUp || this.offlineMode.isOffline()) return;
+    const token = this.auth.token();
+    if (!token) return;
+    const pending = this.preservedTracks().filter(needsTopUp);
+    if (pending.length === 0) return;
+    this.toppingUp = true;
+    try {
+      const coverKeys = new Set((await this.db.getAllCovers()).map((c) => c.key));
+      for (let i = 0; i < pending.length; i += TOP_UP_BATCH) {
+        const batch = pending.slice(i, i + TOP_UP_BATCH);
+        const songs = await firstValueFrom(this.libraryApi.resolveSongs(batch.map((m) => m.id)));
+        const byId = new Map(songs.map((s) => [s.id, toTrack(s)]));
+        const patches: Array<Partial<PreservedTrackMeta> & { id: string }> = [];
+        for (const meta of batch) {
+          const t = byId.get(meta.id);
+          // A song the server no longer has is marked too, or it would be
+          // asked for again on every launch.
+          const patch: Partial<PreservedTrackMeta> & { id: string } = t
+            ? {
+                id: meta.id,
+                artistId: t.artistId,
+                artists: t.artists,
+                genre: t.genre,
+                album: t.album ?? meta.album,
+                albumId: t.albumId,
+                coverArt: t.coverArt,
+                coverRev: t.coverRev,
+                toppedUp: 1,
+              }
+            : { id: meta.id, toppedUp: 1 };
+          patches.push(patch);
+          if (t && meta.source === 'user')
+            await this.topUpExtras({ ...meta, ...patch }, t, token, coverKeys);
+        }
+        await this.db.updateMetas(patches);
+      }
+    } catch {
+      /* offline again, or the server failed — the next online moment retries */
+    } finally {
+      this.toppingUp = false;
+      await this.refreshList();
+    }
+  }
+
+  /** The cover and lyrics a user-saved row lacks (#1751 top-up). */
+  private async topUpExtras(
+    meta: PreservedTrackMeta,
+    track: Track,
+    token: string,
+    coverKeys: Set<string>,
+  ): Promise<void> {
+    const key = coverKeyOf(meta);
+    if (key && !coverKeys.has(key) && this.totalUsage() < this.budget()) {
+      coverKeys.add(key);
+      const cover = await this.fetchCover(track, token);
+      if (cover) {
+        await this.db.putCover({
+          key,
+          cover,
+          coverArt: meta.coverArt,
+          coverRev: meta.coverRev ?? 0,
+        });
+      }
+    }
+    await this.lyrics.topUpPreserved(meta.id).catch(() => undefined);
   }
 
   /** Persist the offline storage budget (bytes). Use UNLIMITED_BUDGET for "no cap". */
@@ -456,20 +560,23 @@ export class PreserveService {
       return null;
     }
 
-    let coverBlob: Blob | null = null;
-    const cover = this.coverRevisions.url(songCover(track), 600, token);
-    if (cover) {
-      try {
-        // The blob is kept for good, so it must be the current bytes: the rev'd
-        // URL, and a revalidation in case the browser holds a stale copy of
-        // even that (a rev-0 cover replaced on disk) (#1666).
-        const coverRes = await fetch(this.server.apiUrl(cover), { cache: 'no-cache' });
-        if (coverRes.ok) coverBlob = await coverRes.blob();
-      } catch {
-        /* ignore cover failures */
-      }
-    }
+    const coverBlob = await this.fetchCover(track, token);
     return { audioBlob, coverBlob, format: audioRes.headers.get('content-type') ?? 'audio/mpeg' };
+  }
+
+  /** The track's album cover at 600px, or null (no cover, or the fetch failed). */
+  private async fetchCover(track: Track, token: string): Promise<Blob | null> {
+    const cover = this.coverRevisions.url(songCover(track), 600, token);
+    if (!cover) return null;
+    try {
+      // The blob is kept for good, so it must be the current bytes: the rev'd
+      // URL, and a revalidation in case the browser holds a stale copy of even
+      // that (a rev-0 cover replaced on disk) (#1666).
+      const coverRes = await fetch(this.server.apiUrl(cover), { cache: 'no-cache' });
+      return coverRes.ok ? await coverRes.blob() : null;
+    } catch {
+      return null;
+    }
   }
 
   private async storeTrack(
@@ -496,6 +603,7 @@ export class PreserveService {
       preservedAt: now,
       lastAccessedAt: now,
       source,
+      toppedUp: 1,
     };
     // The stored lyrics ride along so karaoke works offline (#1751); a song
     // with none, or a failed read, preserves without them.
