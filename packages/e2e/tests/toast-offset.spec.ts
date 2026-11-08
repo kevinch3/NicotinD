@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '../helpers';
-import { FIXTURE, expandGroup, openAlbumCard } from '../helpers';
+import { ADMIN, FIXTURE, bearer, expandGroup } from '../helpers';
 
 /**
  * #1699: the toast stack sits just above the bottom chrome, never on it. Toasts
@@ -34,8 +34,25 @@ async function openAlbumWithToastTrigger(page: Page): Promise<void> {
   await page.route('**/api/library/albums/*/complete', (route) =>
     route.fulfill({ json: { ok: true, outcome: 'already-complete', lidarrAlbumId: 1 } }),
   );
-  await page.goto('/library');
-  await openAlbumCard(page, FIXTURE.album.title);
+  // By id, read off the songs list: song-menu.spec (which runs just before this
+  // one in a shard) deletes and restores a fixture track, and the album grid
+  // list leaves that album out for a while afterwards. The page itself loads.
+  const login = await page.request.post('/api/auth/login', {
+    data: { username: ADMIN.username, password: ADMIN.password },
+  });
+  expect(login.ok()).toBeTruthy();
+  const { token } = (await login.json()) as { token: string };
+  let albumId = '';
+  await expect(async () => {
+    const songs = (await (
+      await page.request.get('/api/library/songs?size=200', { headers: bearer(token) })
+    ).json()) as Array<{ album?: string; albumId?: string }>;
+    const song = songs.find((s) => s.album === FIXTURE.album.title && s.albumId);
+    expect(song, 'a fixture album song is listed').toBeTruthy();
+    albumId = song!.albumId!;
+  }).toPass({ timeout: 30_000 });
+  await page.goto(`/library/albums/${albumId}`);
+  await expect(page.getByTestId('play-album')).toBeVisible();
   await expect(page.getByTestId('album-complete-action')).toBeEnabled();
 }
 
