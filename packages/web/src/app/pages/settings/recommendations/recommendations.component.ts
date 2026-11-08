@@ -1,5 +1,4 @@
 import { Component, OnInit, inject } from '@angular/core';
-import { RouterLink } from '@angular/router';
 import { SettingsGroupComponent } from '../../../components/settings-group/settings-group.component';
 import { TrackRowComponent } from '../../../components/track-row/track-row.component';
 import { TvNavGroupDirective } from '../../../directives/tv-nav-group.directive';
@@ -8,6 +7,7 @@ import { PlayerService } from '../../../services/player.service';
 import { RecommendationExclusionsService } from '../../../services/recommendation-exclusions.service';
 import { toTrack } from '../../../lib/track-utils';
 import type { ExcludedSong } from '../../../services/api/api-types';
+import { PageBackService } from '../../../services/page-back.service';
 
 /**
  * Settings → Recommendations: the songs this listener has told the feeds not
@@ -17,16 +17,14 @@ import type { ExcludedSong } from '../../../services/api/api-types';
  */
 @Component({
   selector: 'app-recommendations-settings',
-  imports: [
-    RouterLink,
-    SettingsGroupComponent,
-    TrackRowComponent,
-    TvNavGroupDirective,
-    TranslatePipe,
-  ],
+  imports: [SettingsGroupComponent, TrackRowComponent, TvNavGroupDirective, TranslatePipe],
   templateUrl: './recommendations.component.html',
 })
 export class RecommendationsSettingsComponent implements OnInit {
+  constructor() {
+    inject(PageBackService).registerRoute(['/settings']);
+  }
+
   readonly exclusions = inject(RecommendationExclusionsService);
   private readonly player = inject(PlayerService);
 

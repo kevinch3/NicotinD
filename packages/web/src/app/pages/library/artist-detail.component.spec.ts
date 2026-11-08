@@ -14,6 +14,8 @@ import { PlayerService } from '../../services/player.service';
 import { TransferService } from '../../services/transfer.service';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import { LibraryEventsService } from '../../services/library-events.service';
+import { PageBackService } from '../../services/page-back.service';
+import { NavigationService } from '../../services/navigation.service';
 
 const ARTIST = {
   id: 'ar1',
@@ -1445,5 +1447,20 @@ describe('ArtistDetailComponent — header count names what it counts', () => {
     expect(el.querySelector('[data-testid="artist-album-count"]')?.textContent).toMatch(
       /\d+ albums? in your library/,
     );
+  });
+});
+
+// #1770: the arrow lives in the shell's top bar; the page declares the target.
+describe('ArtistDetailComponent — top-bar back target', () => {
+  it('registers a back target that returns via history, falling back to the library', () => {
+    setup();
+    const pageBack = TestBed.inject(PageBackService);
+    const navBack = vi
+      .spyOn(TestBed.inject(NavigationService), 'back')
+      .mockImplementation(() => {});
+
+    expect(pageBack.hasTarget()).toBe(true);
+    pageBack.back();
+    expect(navBack).toHaveBeenCalledWith(['/library']);
   });
 });

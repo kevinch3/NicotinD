@@ -10,7 +10,8 @@ import {
 } from '@angular/router';
 import { Subject } from 'rxjs';
 import { vi } from 'vitest';
-import { LayoutComponent, headerDisplayClass } from './layout.component';
+import { LayoutComponent, headerDisplayClass, statusScrimVisible } from './layout.component';
+import { PageBackService } from '../../services/page-back.service';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { TransferService } from '../../services/transfer.service';
@@ -339,6 +340,29 @@ describe('LayoutComponent — pull-to-refresh wiring on the REAL template', () =
     ).toBeNull();
   });
 
+  it('renders the top-bar back control only while a page has a back target, and runs it', () => {
+    const { fixture, component } = setup();
+    fixture.detectChanges();
+    const q = () => fixture.nativeElement.querySelector('[data-testid="top-bar-back"]');
+    expect(q()).toBeNull();
+    expect(component.headerClass().split(/\s+/)).toContain('hidden');
+
+    const handler = vi.fn();
+    TestBed.runInInjectionContext(() => TestBed.inject(PageBackService).register(handler));
+    fixture.detectChanges();
+
+    const btn: HTMLButtonElement = q();
+    expect(btn).not.toBeNull();
+    expect(btn.getAttribute('aria-label')).toBeTruthy();
+    // Beside the brand, inside the header — not a row of its own.
+    expect(btn.closest('header')).not.toBeNull();
+    expect(btn.parentElement!.querySelector('[data-testid="app-brand"]')).not.toBeNull();
+    expect(component.headerClass().split(/\s+/)).not.toContain('hidden');
+
+    btn.click();
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
   it('a real pointerdown on <main> reaches the gesture and arms it past threshold', () => {
     const { fixture, component } = setup();
     fixture.detectChanges();
@@ -425,6 +449,8 @@ describe('LayoutComponent — desktop chrome bar (Electron)', () => {
     expect(
       fixture.nativeElement.querySelector('header').getAttribute('data-electron-title-bar'),
     ).toBe('');
+    // The header is the frameless window's chrome: a narrow window keeps it.
+    expect(fixture.componentInstance.headerClass().split(/\s+/)).not.toContain('hidden');
     vi.mocked(platform.isElectronLinux).mockReturnValue(false);
     fixture.destroy();
   });
@@ -483,30 +509,34 @@ describe('LayoutComponent — desktop chrome bar (Electron)', () => {
   });
 });
 
-// With the shelves chosen (#1300) the home is a scrolling page again, and a
-// scrolling page wants the sticky header back.
-describe('headerDisplayClass — the shelves home keeps the header', () => {
-  it('shows the header on / when the home view is shelves', () => {
-    expect(headerDisplayClass('/', 'shelves')).toBe('flex');
-    expect(headerDisplayClass('/', 'mosaic')).toBe('hidden md:flex');
-    expect(headerDisplayClass('/', null)).toBe('hidden md:flex');
+// #1770: below md the bar exists only to carry a back target.
+describe('headerDisplayClass — the phone bar carries a back target or nothing', () => {
+  it('collapses below md on a page with no back target, keeps it at md+', () => {
+    expect(headerDisplayClass(false)).toBe('hidden md:flex');
+  });
+
+  it('shows at every width when the page registered a back target', () => {
+    expect(headerDisplayClass(true)).toBe('flex');
   });
 });
 
-describe('headerDisplayClass — the top bar yields to the mosaic on phones', () => {
-  it('collapses below md on the mosaic home, where every control is already md-gated', () => {
-    expect(headerDisplayClass('/')).toBe('hidden md:flex');
-  });
-
-  it('ignores query params and fragments when matching the home route', () => {
-    expect(headerDisplayClass('/?utm=x')).toBe('hidden md:flex');
-    expect(headerDisplayClass('/#top')).toBe('hidden md:flex');
-  });
-
-  it('keeps the header everywhere else — scrolling pages want the sticky backdrop', () => {
-    for (const url of ['/library', '/classic', '/get?tab=find', '/settings']) {
-      expect(headerDisplayClass(url)).toBe('flex');
+describe('statusScrimVisible — the strip that replaces the collapsed bar', () => {
+  it('guards every scrolling page with no bar, the shelves home included', () => {
+    for (const url of ['/library', '/get?tab=add', '/settings', '/admin']) {
+      expect(statusScrimVisible(url, null, false)).toBe(true);
     }
+    expect(statusScrimVisible('/', 'shelves', false)).toBe(true);
+  });
+
+  it('stays off on the immersive mosaic home, whatever the query or fragment', () => {
+    expect(statusScrimVisible('/', 'mosaic', false)).toBe(false);
+    expect(statusScrimVisible('/', null, false)).toBe(false);
+    expect(statusScrimVisible('/?utm=x', null, false)).toBe(false);
+    expect(statusScrimVisible('/#top', null, false)).toBe(false);
+  });
+
+  it('stays off whenever the header itself is showing on the phone', () => {
+    expect(statusScrimVisible('/library', null, true)).toBe(false);
   });
 });
 

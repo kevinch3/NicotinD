@@ -5,8 +5,8 @@ import type { HomeView } from '@nicotind/core';
  * (`px-4 md:px-6`), 12px below `<main>`'s top in both views. On the mosaic
  * the wrapper overlays the `absolute inset-0` stage (`pointer-events-none`
  * keeps its padding from eating drags); on the shelves it pushes the page
- * down. The mosaic hides the header below md, so only it adds the safe area
- * there. Full literal strings so Tailwind's scanner emits every class.
+ * down. Below md neither view has the header (#1770); the shelves sit under the
+ * layout's status-bar strip, so only the mosaic adds the safe area itself. Full literal strings so Tailwind's scanner emits every class.
  */
 export function homeSwitchAnchorClass(view: HomeView): string {
   return view === 'mosaic'

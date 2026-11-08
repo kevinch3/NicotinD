@@ -16,7 +16,25 @@
         (dblclick)="onHeaderDoubleClick()"
       >
         <div class="flex items-center gap-4 md:gap-6 [-webkit-app-region:no-drag]">
-          <a routerLink="/" class="text-lg font-bold text-theme-primary hover:opacity-80 transition">NicotinD</a>
+          <!-- The one back control (#1770): pages register their target with
+               PageBackService instead of rendering an arrow row of their own.
+               44px tap target; the negative margins keep the bar's height and
+               put the glyph on the page gutter. -->
+          <div class="flex items-center gap-1">
+            @if (pageBack.hasTarget()) {
+              <button
+                type="button"
+                data-testid="top-bar-back"
+                (click)="pageBack.back()"
+                [attr.aria-label]="'common.back' | t"
+                [attr.title]="'common.back' | t"
+                class="-ml-2.5 -my-2 inline-flex items-center justify-center w-11 h-11 rounded-lg text-theme-secondary hover:text-theme-primary hover:bg-theme-surface-2 transition"
+              >
+                <app-icon name="back" />
+              </button>
+            }
+            <a routerLink="/" data-testid="app-brand" class="text-lg font-bold text-theme-primary hover:opacity-80 transition">NicotinD</a>
+          </div>
           <!-- Desktop nav -->
           <nav class="hidden md:flex gap-1" data-testid="desktop-nav">
             @for (item of navItems(); track item.to) {
@@ -56,6 +74,12 @@
           <app-desktop-window-controls />
         </div>
       </header>
+
+      <!-- Below md a page with no back target has no bar; this strip keeps a
+           scrolling page from running under the status bar (statusScrimVisible). -->
+      @if (statusScrim()) {
+        <div data-testid="status-bar-scrim" aria-hidden="true" class="md:hidden shrink-0 h-[env(safe-area-inset-top)] bg-theme-base"></div>
+      }
 
       <!-- Offline banner. Driven by the now-reactive SetupService.isOffline()
            signal (see network-status.service.ts), so it appears/hides live on a

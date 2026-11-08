@@ -1,6 +1,5 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
 import { AgentTokensApiService } from '../../../services/api/agent-tokens-api.service';
 import type {
   AgentScope,
@@ -12,6 +11,7 @@ import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 import { SettingsGroupComponent } from '../../../components/settings-group/settings-group.component';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
 import { TranslateService } from '../../../services/translate.service';
+import { PageBackService } from '../../../services/page-back.service';
 
 /**
  * Mint/list/revoke MCP agent tokens (issue #232) — the credential an external
@@ -22,7 +22,6 @@ import { TranslateService } from '../../../services/translate.service';
 @Component({
   selector: 'app-agent-tokens',
   imports: [
-    RouterLink,
     FormsModule,
     TvNavGroupDirective,
     TvNavItemDirective,
@@ -32,6 +31,10 @@ import { TranslateService } from '../../../services/translate.service';
   templateUrl: './agent-tokens.component.html',
 })
 export class AgentTokensComponent implements OnInit {
+  constructor() {
+    inject(PageBackService).registerRoute(['/settings']);
+  }
+
   private api = inject(AgentTokensApiService);
   private readonly i18n = inject(TranslateService);
 

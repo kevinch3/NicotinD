@@ -15,6 +15,9 @@ import { ListControlsService } from '../../services/list-controls.service';
 import { TransferService } from '../../services/transfer.service';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import { LibraryEventsService } from '../../services/library-events.service';
+import { PageBackService } from '../../services/page-back.service';
+import { NavigationService } from '../../services/navigation.service';
+import { resolveArtistRoute } from '../../lib/route-utils';
 
 const ALBUM: AlbumDetail = {
   id: 'a1',
@@ -347,5 +350,22 @@ describe('AlbumDetailComponent — disc headers', () => {
   it('renders no header under a sort that interleaves the discs', () => {
     // Headers mark disc BOUNDARIES. Sorted by title there are none to mark.
     expect(make(SONGS, 'title').discHeaders().size).toBe(0);
+  });
+});
+
+// #1770: the arrow lives in the shell's top bar; the page only declares where
+// "back" goes, keeping its history-then-artist behaviour.
+describe('AlbumDetailComponent — top-bar back target', () => {
+  it('registers a back target that returns via history, falling back to the artist', () => {
+    const { component } = setup();
+    component.selectedAlbum.set(ALBUM);
+    const pageBack = TestBed.inject(PageBackService);
+    const navBack = vi
+      .spyOn(TestBed.inject(NavigationService), 'back')
+      .mockImplementation(() => {});
+
+    expect(pageBack.hasTarget()).toBe(true);
+    pageBack.back();
+    expect(navBack).toHaveBeenCalledWith(resolveArtistRoute('ar1'));
   });
 });

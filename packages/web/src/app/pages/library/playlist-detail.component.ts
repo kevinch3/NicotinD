@@ -11,6 +11,7 @@ import { createSelection } from '../../lib/selection';
 import { SelectionBarComponent } from '../../components/selection-bar/selection-bar.component';
 import { IconComponent } from '../../components/icon/icon.component';
 import { NavigationService } from '../../services/navigation.service';
+import { PageBackService } from '../../services/page-back.service';
 import { PreserveService } from '../../services/preserve.service';
 import { TransferService } from '../../services/transfer.service';
 import { SongMenuService } from '../../services/song-menu.service';
@@ -52,6 +53,7 @@ export class PlaylistDetailComponent implements OnInit {
   private p2r = inject(PullToRefreshService);
 
   constructor() {
+    inject(PageBackService).register(() => this.goBack());
     this.p2r.register(() => this.reload());
   }
 

@@ -1,4 +1,6 @@
+import { inject, provideAppInitializer } from '@angular/core';
 import { applicationConfig, moduleMetadata, type Meta, type StoryObj } from '@storybook/angular';
+import { PageBackService } from '../../services/page-back.service';
 import { LayoutComponent } from './layout.component';
 import { storyProviders, type StoryState } from '../../../stories/support/story-providers';
 import { demoTrack, demoTracks } from '../../../stories/support/fixtures';
@@ -13,11 +15,11 @@ import { demoTrack, demoTracks } from '../../../stories/support/fixtures';
  * - **`<main>` is empty on purpose.** The story router has no route table (the
  *   story URL is `/iframe.html`), so the outlet has nothing to activate. The
  *   subject here is the chrome around the page, not a page.
- * - **The header collapses below `md`.** On the mosaic home — which `/` is, and
- *   which is the URL a story sits at — every control in the header is already
- *   `hidden md:*`, so it would be a dead brand row eating a strip of a
- *   full-bleed surface (`headerDisplayClass`). Switch the Viewport global to
- *   Mobile to see that, and the tab bar that replaces it.
+ * - **The header collapses below `md`** unless the page has a back target
+ *   (#1770): every other control in it is `hidden md:*`, so without the arrow
+ *   it is a dead brand row (`headerDisplayClass`). Switch the Viewport global
+ *   to Mobile to see that, and the tab bar that replaces it; `WithBackTarget`
+ *   shows the bar a detail page gets.
  *
  * `ngOnInit` starts the shell's own hydration — likes, recommendation
  * exclusions, in-flight acquisitions, the transfer poll — which the fixture
@@ -80,4 +82,20 @@ export const Buffering: Story = {
  */
 export const Offline: Story = {
   ...withState({ currentTrack: demoTrack, isPlaying: false, queue, offline: true }),
+};
+
+/**
+ * A detail page's shell: the page registered a back target, so the bar shows
+ * the arrow beside the logo at every width — and, on a phone, shows at all.
+ */
+export const WithBackTarget: Story = {
+  decorators: [
+    applicationConfig({
+      providers: [
+        ...storyProviders({}),
+        provideAppInitializer(() => inject(PageBackService).register(() => {})),
+      ],
+    }),
+    moduleMetadata({ imports: [LayoutComponent] }),
+  ],
 };

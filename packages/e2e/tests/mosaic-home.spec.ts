@@ -168,16 +168,24 @@ test.describe('mosaic home', () => {
 test.describe('mosaic home on a phone', () => {
   test.use({ viewport: { width: 390, height: 780 } });
 
-  test('the top bar yields to the mosaic below md, and only there', async ({ page }) => {
+  test('below md the top bar shows only to carry a back target (#1770)', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByTestId('mosaic-home')).toBeVisible();
     // Every header control is md-gated on a phone (nav lives in the bottom tab
-    // bar), so on the immersive home the bar is dead space and collapses.
+    // bar), so the bar is dead space and collapses — and the immersive home
+    // takes no status-bar strip either, it pads its own overlay.
     await expect(page.getByTestId('app-header')).toBeHidden();
+    await expect(page.getByTestId('status-bar-scrim')).toHaveCount(0);
 
-    // Any other route keeps the sticky header.
+    // A top-level page has nothing to go back to: no bar, but the strip.
     await page.goto('/settings');
+    await expect(page.getByTestId('app-header')).toBeHidden();
+    await expect(page.getByTestId('status-bar-scrim')).toHaveCount(1);
+
+    // A sub-page has a back target, so the bar returns to carry it.
+    await page.goto('/settings/about');
     await expect(page.getByTestId('app-header')).toBeVisible();
+    await expect(page.getByTestId('top-bar-back')).toBeVisible();
   });
 });
 

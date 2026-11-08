@@ -1,6 +1,6 @@
 import { Component, inject, signal, effect, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink, ActivatedRoute } from '@angular/router';
+import { ActivatedRoute } from '@angular/router';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
 import { AuthService } from '../../services/auth.service';
 import {
@@ -18,6 +18,7 @@ import { AddonCatalogService } from '../../services/addon-catalog.service';
 import { SettingsGroupComponent } from '../../components/settings-group/settings-group.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { TranslateService } from '../../services/translate.service';
+import { PageBackService } from '../../services/page-back.service';
 
 /**
  * Admin-only plugin management. Lists plugins grouped by kind (acquisition now;
@@ -35,7 +36,6 @@ import { TranslateService } from '../../services/translate.service';
   standalone: true,
   imports: [
     FormsModule,
-    RouterLink,
     ConfirmDialogComponent,
     TvNavGroupDirective,
     TvNavItemDirective,
@@ -77,6 +77,7 @@ export class PluginsComponent implements OnInit {
   readonly configDraft = signal<Record<string, Record<string, string>>>({});
 
   constructor() {
+    inject(PageBackService).registerRoute(['/settings']);
     // Reseed the form drafts whenever the plugin list changes (initial load,
     // after enable/disable, after a save+refresh). Typing doesn't change the
     // list, so in-progress edits aren't clobbered.

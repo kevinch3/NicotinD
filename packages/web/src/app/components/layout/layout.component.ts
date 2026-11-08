@@ -47,6 +47,9 @@ import { UserPreferencesService } from '../../services/user-preferences.service'
 import { homeViewOf } from '../../pages/home/home.component';
 import type { HomeView } from '@nicotind/core';
 import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.directive';
+import { IconComponent } from '../icon/icon.component';
+import { PageBackService } from '../../services/page-back.service';
+import { NavigationService } from '../../services/navigation.service';
 
 interface NavItem {
   to: string;
@@ -80,17 +83,32 @@ const HEADER_BASE_CLASSES =
   'items-center justify-between px-4 md:px-6 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] border-b border-theme bg-theme-base';
 
 /**
- * On the mosaic home the header collapses below `md`: every control in it is
- * already `hidden md:*` there (nav lives in the bottom tab bar), so on a phone
- * the bar is a dead brand row eating a strip of an immersive, full-bleed
- * surface. Every other route keeps it — a scrolling page wants the sticky
- * backdrop and the safe-area padding it carries.
+ * Below `md` the bar exists only to carry a back target (#1770). Every other
+ * control in it is `hidden md:*` (nav lives in the bottom tab bar, and the logo
+ * duplicates its Home tab), so on a page with nothing to go back to the bar is
+ * a dead brand row and collapses. A page that registers a back target
+ * (`PageBackService`) gets the bar, with the arrow beside the logo, at every
+ * width.
  */
-export function headerDisplayClass(url: string, homeView: HomeView | null = null): string {
+export function headerDisplayClass(hasBack: boolean): string {
+  return hasBack ? 'flex' : 'hidden md:flex';
+}
+
+/**
+ * Whether a phone-only status-bar strip stands in for the collapsed header: an
+ * opaque band the height of the safe area, so a scrolling page never runs
+ * under the iOS status bar (the PWA uses `black-translucent`). The mosaic home
+ * is the exception — an immersive full-bleed surface that pads its own overlay.
+ */
+export function statusScrimVisible(
+  url: string,
+  homeView: HomeView | null,
+  phoneHeader: boolean,
+): boolean {
+  if (phoneHeader) return false;
   const path = url.split(/[?#]/)[0];
   const isHome = path === '/' || path === '';
-  // With the shelves chosen (#1300) the home is a scrolling page again.
-  return isHome && homeViewOf(homeView) === 'mosaic' ? 'hidden md:flex' : 'flex';
+  return !(isHome && homeViewOf(homeView) === 'mosaic');
 }
 
 @Component({
@@ -116,6 +134,7 @@ export function headerDisplayClass(url: string, homeView: HomeView | null = null
     ReportTrackHostComponent,
     DesktopWindowControlsComponent,
     BottomChromeSafeDirective,
+    IconComponent,
   ],
   templateUrl: './layout.component.html',
 })
@@ -137,6 +156,7 @@ export class LayoutComponent implements OnInit, OnDestroy {
   private readonly p2r = inject(PullToRefreshService);
   private readonly scrollLock = inject(ScrollLockService);
   private readonly prefs = inject(UserPreferencesService);
+  readonly pageBack = inject(PageBackService);
 
   /** Current route URL as a signal, for route-dependent chrome (headerClass). */
   private readonly currentUrl = signal(this.router.url);
@@ -151,6 +171,10 @@ export class LayoutComponent implements OnInit, OnDestroy {
   private navigatingTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
+    // Eager, so it counts the navigation that mounts the shell. Left to the first
+    // detail page to construct, it missed /library and sent that page's back to
+    // the deep-link fallback instead of history.
+    inject(NavigationService);
     this.router.events.pipe(takeUntilDestroyed()).subscribe((e) => {
       if (e instanceof NavigationEnd) this.currentUrl.set(e.urlAfterRedirects);
       if (e instanceof NavigationStart) this.setNavigating(true);
@@ -215,12 +239,23 @@ export class LayoutComponent implements OnInit, OnDestroy {
    *  the entire bar into a drag handle for the frameless window — see
    *  `electron/window.ts` for the matching shape. */
   readonly headerClass = computed(() => {
-    const base = `${headerDisplayClass(this.currentUrl(), this.prefs.homeView())} ${HEADER_BASE_CLASSES} sticky top-0 z-40`;
+    const base = `${headerDisplayClass(this.phoneHeader())} ${HEADER_BASE_CLASSES} sticky top-0 z-40`;
     if (!this.isElectronLinux()) {
       return base;
     }
     return `${base} [-webkit-app-region:drag]`;
   });
+
+  /** The header shows below md: the page has a back target, or the header is
+   *  the frameless window's chrome (Linux Electron), which a narrow window must
+   *  not lose. */
+  private readonly phoneHeader = computed(
+    () => this.pageBack.hasTarget() || this.isElectronLinux(),
+  );
+
+  readonly statusScrim = computed(() =>
+    statusScrimVisible(this.currentUrl(), this.prefs.homeView(), this.phoneHeader()),
+  );
 
   readonly navItems = computed<NavItem[]>(() => {
     // /get is the acquisition surface — hidden from listeners (declutter).

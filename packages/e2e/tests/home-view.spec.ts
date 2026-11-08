@@ -78,13 +78,17 @@ test.describe('home view switch', () => {
     expect(shelvesBox.y, 'above the shelves').toBeLessThan(landing.y + 1);
   });
 
-  test('the header comes back on a phone when the shelves are chosen', async ({ page }) => {
+  // #1770: below md the bar only carries a back target, which neither home view
+  // has; the scrolling shelves take the status-bar strip instead.
+  test('the shelves home on a phone has no bar, only the status-bar strip', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/');
     await expect(page.getByTestId('app-header')).toBeHidden();
+    await expect(page.getByTestId('status-bar-scrim')).toHaveCount(0);
     await page.getByTestId('home-view-shelves').click();
     await expect(page.getByTestId('radio-landing')).toBeVisible();
-    await expect(page.getByTestId('app-header')).toBeVisible();
+    await expect(page.getByTestId('app-header')).toBeHidden();
+    await expect(page.getByTestId('status-bar-scrim')).toHaveCount(1);
   });
 
   // #1667: one switch instance, anchored on the header's content edge, so a
