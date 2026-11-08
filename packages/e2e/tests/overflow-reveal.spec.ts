@@ -226,6 +226,9 @@ test.describe('overflow reveal with a mouse (#1665)', () => {
     // Squeeze the row so the title overflows at a desktop width too.
     await long.evaluate((n: HTMLElement) => (n.style.maxWidth = '160px'));
     expect((await box(long)).max).toBeGreaterThan(40);
+    // Park the pointer off the rows: it rests where the album card was
+    // clicked, and once the back row left the page (#1770) that spot is a row.
+    await page.mouse.move(0, 0);
     expect(await maxScrollOver(page, long, 3_000), 'no hover, no motion').toBe(0);
 
     await long.hover();
