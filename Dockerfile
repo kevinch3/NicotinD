@@ -157,6 +157,10 @@ USER bun
 
 EXPOSE 8484
 
+# One JSON object per log line, so `docker logs | jq` works; a local run stays
+# pretty (#1626). → docs/configuration.md
+ENV LOG_FORMAT=json
+
 # /api/health is the real unauthenticated liveness probe (same target the
 # compose healthcheck uses); /api/auth/login was a stale pre-health-route probe.
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 \

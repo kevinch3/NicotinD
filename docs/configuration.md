@@ -7,6 +7,7 @@ of truth; this page summarizes the ones most installs touch.
 | Variable                              | Default                 | Description                                                    |
 | ------------------------------------- | ----------------------- | -------------------------------------------------------------- |
 | `NICOTIND_PORT`                        | `8484`                  | API server port                                                |
+| `LOG_FORMAT`                           | `pretty` locally; `json` in the Docker image | `json` prints one JSON object per log line (`docker logs \| jq`); `pretty` is pino-pretty. Unset, `NODE_ENV=production` also means `json` (#1626) |
 | `NICOTIND_DATA_DIR`                    | `~/.nicotind`           | Data directory (SQLite DB, secrets, artist-overrides)          |
 | `NICOTIND_OPUS_HEADER_GAIN`            | unset (off)             | Offer the loudness-normalization task; off until Opus header gain is confirmed on iOS 18.4+ |
 | `NICOTIND_QUARANTINE_DIR`              | `<dataDir>/quarantine`  | Where transcode backups go. Set it when dataDir's filesystem cannot hold every original |
