@@ -53,7 +53,11 @@ export function summarizeDiscography(entries: DiscographyAlbum[]): DiscographySu
 }
 
 export interface AlbumTile {
-  /** Stable `@for` track key. Local id when owned, `mb:<lidarrId>` when missing. */
+  /**
+   * Stable `@for` track key: the local album id whenever the library holds the
+   * album (owned, partial, or missing by its tracklist), `mb:<lidarrId>` only
+   * when no local album exists.
+   */
   key: string;
   title: string;
   year: number | null;
@@ -222,31 +226,34 @@ export function sortTiles(tiles: AlbumTile[]): AlbumTile[] {
 }
 
 /**
- * Ids of the live jobs fetching one of these releases — by Lidarr id, or by name
- * through `sameAlbum`, the two ways a tile finds its own hunt status. A job that
- * leaves this set has landed what it will land, so the page re-reads (#1627).
+ * The live jobs fetching one of these releases — by Lidarr id, or by name through
+ * `sameAlbum`, the two ways a tile finds its own hunt status — each mapped to the
+ * Lidarr ids of the releases it is fetching. A job that leaves this map has landed
+ * what it will land, so the page re-reads, and holds those tiles busy until the
+ * re-read does (#1627).
  */
 export function releaseJobsInFlight(
   jobs: readonly AcquisitionJobView[],
   releases: readonly DiscographyAlbum[],
   artistName: string | undefined,
-): Set<string> {
-  const ids = new Set(releases.map((r) => r.lidarrId));
-  const live = new Set<string>();
+): Map<string, number[]> {
+  const live = new Map<string, number[]>();
   for (const job of jobs) {
     if (job.state !== 'active') continue;
-    const byId = job.lidarrAlbumId !== null && ids.has(job.lidarrAlbumId);
-    const byName =
-      !!artistName &&
-      job.artistName !== null &&
-      job.albumTitle !== null &&
-      releases.some((r) =>
-        sameAlbum(
-          { artist: artistName, title: r.title },
-          { artist: job.artistName!, title: job.albumTitle! },
-        ),
-      );
-    if (byId || byName) live.add(job.id);
+    const matched = releases
+      .filter(
+        (r) =>
+          r.lidarrId === job.lidarrAlbumId ||
+          (!!artistName &&
+            job.artistName !== null &&
+            job.albumTitle !== null &&
+            sameAlbum(
+              { artist: artistName, title: r.title },
+              { artist: job.artistName, title: job.albumTitle },
+            )),
+      )
+      .map((r) => r.lidarrId);
+    if (matched.length) live.set(job.id, matched);
   }
   return live;
 }

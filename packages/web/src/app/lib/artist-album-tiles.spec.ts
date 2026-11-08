@@ -333,7 +333,20 @@ describe('releaseJobsInFlight', () => {
       releases,
       'Pink Floyd',
     );
-    expect([...live].sort()).toEqual(['by-id', 'by-name']);
+    expect([...live.keys()].sort()).toEqual(['by-id', 'by-name']);
+  });
+
+  it('maps each job to the releases it is fetching, so only their tiles hold busy', () => {
+    const live = releaseJobsInFlight(
+      [
+        job({ id: 'by-id', lidarrAlbumId: 2 }),
+        job({ id: 'by-name', artistName: 'Pink Floyd', albumTitle: 'A Contraluz' }),
+      ],
+      [...releases, release({ lidarrId: 2, title: 'Zafar' })],
+      'Pink Floyd',
+    );
+    expect(live.get('by-id')).toEqual([2]);
+    expect(live.get('by-name')).toEqual([1]);
   });
 
   it('matches nothing by name without an artist to match against', () => {

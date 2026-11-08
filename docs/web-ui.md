@@ -790,8 +790,12 @@ pre-click label until a reload. The page watches `TransferService.acquisitionJob
 — the feed `job.changed` on the library event stream re-polls — for the live jobs
 fetching one of its releases (`releaseJobsInFlight`: by Lidarr id, or by `sameAlbum`,
 the same two ways a tile finds its hunt status). When one leaves `active`, it
-re-reads the artist's albums and discography in place: no reset, no spinner, no
-polling of its own.
+re-reads the artist's albums and discography in place, both at once: no reset, no
+spinner, no polling of its own. Until that re-read lands, the releases the ended job
+was fetching report `LANDING_HUNT` (busy, "Scanning"), not `idle` — the hunt service
+drops a job the moment it leaves `active`, and the discography read (Lidarr plus a
+track fetch per release) takes seconds, a window in which the pre-job button was live
+again and a click drew a 409 `already-complete`.
 
 **The missing tail is filtered, the library never is.** A release we do *not* own
 whose `secondaryTypes` include Live / Compilation / Remix / Demo / Soundtrack /

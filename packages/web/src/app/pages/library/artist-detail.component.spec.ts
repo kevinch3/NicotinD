@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { provideRouter, Router, ActivatedRoute, convertToParamMap } from '@angular/router';
-import { of, BehaviorSubject, throwError } from 'rxjs';
+import { of, BehaviorSubject, Subject, throwError } from 'rxjs';
 import { vi } from 'vitest';
 import { ArtistDetailComponent, ARTIST_TAB_LABEL_KEYS } from './artist-detail.component';
 import EN_CATALOG from '../../../../public/i18n/en.json';
@@ -1255,6 +1255,75 @@ describe('ArtistDetailComponent — header and tiles read one completeness rule 
     expect(
       fixture.nativeElement.querySelector('[data-testid="discography-summary"]').textContent,
     ).toContain('1 complete');
+  });
+
+  it('holds the landed tile busy until the discography re-read is in, reading both at once', async () => {
+    const jobs = signal<unknown[]>([]);
+    const reread = new Subject<unknown>();
+    const calls: string[] = [];
+    let discographyCalls = 0;
+    const fixture = setupMerged([], false, {
+      jobs,
+      getArtist: () => {
+        calls.push('artist');
+        return getArtist();
+      },
+      getArtistDiscography: () => {
+        discographyCalls++;
+        calls.push('discography');
+        return discographyCalls === 1
+          ? of({ artistId: 'ar1', lidarrId: 1, mbid: 'm', albums: swapped })
+          : reread;
+      },
+    });
+    await settle();
+    fixture.detectChanges();
+    const c = fixture.componentInstance;
+    // The status the grid hands each tile — its button is disabled on any phase but
+    // `idle` (album-tile.component.spec.ts; a nested tile renders defaults here).
+    const statusOf = (title: string) =>
+      c.tileHuntStatus(c.albumTiles().find((t) => t.title === title)!);
+    expect(statusOf('A contraluz').phase).toBe('idle');
+
+    const live = {
+      id: 'j1',
+      state: 'active',
+      stage: 'organizing',
+      lidarrAlbumId: 1,
+      artistName: null,
+      albumTitle: null,
+      createdAt: 1,
+      progress: { expected: 14, delivered: 14, unavailable: 0, failed: 0, canonical: 14 },
+    };
+    jobs.set([live]);
+    fixture.detectChanges();
+    await settle();
+    calls.length = 0;
+
+    // The job leaves `active`; the discography read has not answered yet.
+    jobs.set([{ ...live, state: 'done', stage: 'done' }]);
+    fixture.detectChanges();
+    await settle();
+    fixture.detectChanges();
+
+    expect(calls.sort()).toEqual(['artist', 'discography']);
+    expect(statusOf('A contraluz')).toEqual({ phase: 'job', stage: 'scanning' });
+    // Another release's tile is not held by this job's ending.
+    expect(statusOf('Deskarado').phase).toBe('idle');
+
+    reread.next({
+      artistId: 'ar1',
+      lidarrId: 1,
+      mbid: 'm',
+      albums: [{ ...swapped[0], status: 'partial', localTrackCount: 13 }, ...swapped.slice(1)],
+    });
+    reread.complete();
+    await settle();
+    fixture.detectChanges();
+
+    const contraluz = c.albumTiles().find((t) => t.title === 'A contraluz')!;
+    expect(contraluz.status).toBe('partial');
+    expect(c.tileHuntStatus(contraluz).phase).toBe('idle');
   });
 
   it('ignores a job that ends for another artist’s album', async () => {
