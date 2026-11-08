@@ -6,6 +6,7 @@ import { AuthService } from '../../services/auth.service';
 import { SetupService } from '../../services/setup.service';
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
+import { ImportUploadService } from '../../services/import-upload.service';
 import BASE_CATALOG from '../../../../public/i18n/en.json';
 
 @Component({ standalone: true, template: '' })
@@ -18,12 +19,14 @@ function setup(
     acquireJobs?: number;
     canAcquire?: boolean;
     canImport?: boolean;
+    uploads?: number;
   } = {},
 ) {
   const isOffline = signal(opts.offline ?? false);
   const activeDownloadCount = signal(opts.active ?? 0);
   const activeJobs = signal(new Array(opts.acquireJobs ?? 0).fill({}));
   const canAcquire = signal(opts.canAcquire ?? true);
+  const inFlight = signal(opts.uploads ?? 0);
   // Defaults to canAcquire because they agree for every role; they diverge only
   // when the acquisition kill-switch is off, which the #907 test below drives.
   const canImport = signal(opts.canImport ?? opts.canAcquire ?? true);
@@ -41,6 +44,7 @@ function setup(
       { provide: SetupService, useValue: { isOffline } },
       { provide: TransferService, useValue: { activeDownloadCount } },
       { provide: AcquireService, useValue: { activeJobs } },
+      { provide: ImportUploadService, useValue: { inFlight } },
     ],
   });
 
@@ -126,6 +130,14 @@ describe('BottomNavComponent', () => {
     const { fixture } = setup({ active: 2, acquireJobs: 3 });
     const badge = fixture.nativeElement.querySelector('nav a span') as HTMLElement;
     expect(badge?.textContent?.trim()).toBe('5');
+  });
+
+  // #1664: an upload is in-flight work before it is a job, and the /get tab
+  // badge counts it — this one must too, or the two badges disagree.
+  it('counts an in-flight folder upload, matching the /get tab badge', () => {
+    const { fixture } = setup({ active: 1, uploads: 1 });
+    const badge = fixture.nativeElement.querySelector('nav a span') as HTMLElement;
+    expect(badge?.textContent?.trim()).toBe('2');
   });
 
   it('sits at the mini-player stacking level (z-50) so a modal hides menu + player together', () => {

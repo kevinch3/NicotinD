@@ -15,6 +15,7 @@ import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
+import { ImportUploadService } from '../../services/import-upload.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { GetThenHearService } from '../../services/get-then-hear.service';
 import { LikeService } from '../../services/like.service';
@@ -104,7 +105,7 @@ describe('LayoutComponent — player + tab-bar safe margin', () => {
 });
 
 describe('LayoutComponent — desktop downloads badge', () => {
-  it('sums active transfers, in-flight acquire jobs, and the review queue into downloadCount', () => {
+  it('sums active transfers, in-flight acquire jobs and uploads into downloadCount', () => {
     const playerStub = {
       currentTrack: signal<{ id: string } | null>(null),
       setRadioProvider: () => {},
@@ -119,6 +120,8 @@ describe('LayoutComponent — desktop downloads badge', () => {
       activeJobs: signal<unknown[]>([{}, {}, {}]),
       refresh: async () => {},
     };
+    // #1664: a folder upload not yet a job, which the /get tab badge counts too.
+    const uploadsStub = { inFlight: signal(1) };
 
     TestBed.configureTestingModule({
       imports: [LayoutComponent],
@@ -136,6 +139,7 @@ describe('LayoutComponent — desktop downloads badge', () => {
         },
         { provide: TransferService, useValue: transfersStub },
         { provide: AcquireService, useValue: acquireStub },
+        { provide: ImportUploadService, useValue: uploadsStub },
         { provide: APP_VERSION, useValue: '0.0.0-test' },
       ],
       schemas: [NO_ERRORS_SCHEMA],
@@ -148,12 +152,13 @@ describe('LayoutComponent — desktop downloads badge', () => {
     const fixture = TestBed.createComponent(LayoutComponent);
     fixture.detectChanges();
 
-    expect(fixture.componentInstance.downloadCount()).toBe(5);
+    expect(fixture.componentInstance.downloadCount()).toBe(6);
     // The shell is what keeps "get, then hear it" listening app-wide (#1294).
     expect(start).toHaveBeenCalledTimes(1);
 
     transfersStub.activeDownloadCount.set(0);
     acquireStub.activeJobs.set([]);
+    uploadsStub.inFlight.set(0);
     expect(fixture.componentInstance.downloadCount()).toBe(0);
   });
 });

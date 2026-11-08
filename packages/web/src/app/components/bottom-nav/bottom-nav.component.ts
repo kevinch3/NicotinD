@@ -5,6 +5,7 @@ import { AcquireService } from '../../services/acquire.service';
 import { AuthService } from '../../services/auth.service';
 import { SetupService } from '../../services/setup.service';
 import { TransferService } from '../../services/transfer.service';
+import { ImportUploadService } from '../../services/import-upload.service';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 
 interface BottomNavItem {
@@ -53,6 +54,7 @@ export class BottomNavComponent {
   readonly setup = inject(SetupService);
   private transfers = inject(TransferService);
   private acquire = inject(AcquireService);
+  private uploads = inject(ImportUploadService);
   private auth = inject(AuthService);
 
   // /get is an acquisition surface — hidden from listeners (declutter).
@@ -63,10 +65,13 @@ export class BottomNavComponent {
     this.auth.canImport() ? TABS : TABS.filter((t) => t.to !== '/get'),
   );
   // Same formula as the desktop nav badge: slskd transfers + in-flight URL
-  // acquisitions. Mobile used to omit the acquire jobs, so a spotdl/yt-dlp
-  // download showed a badge on desktop and none on the phone.
+  // acquisitions + uploads not yet a job. Mobile used to omit the acquire jobs,
+  // so a spotdl/yt-dlp download showed a badge on desktop and none on the phone.
   readonly activeDownloads = computed(
-    () => this.transfers.activeDownloadCount() + this.acquire.activeJobs().length,
+    () =>
+      this.transfers.activeDownloadCount() +
+      this.acquire.activeJobs().length +
+      this.uploads.inFlight(),
   );
 
   // Derived, not a fixed `grid-cols-N` class: a listener has /get filtered out,

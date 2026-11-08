@@ -1,6 +1,6 @@
-<!-- The whole workspace is the drop target: aiming a dragged folder at a small
-     rectangle is fiddly, and there is nothing else on this page a file drop
-     could plausibly mean. -->
+<!-- On the Add tab the whole workspace is the drop target: aiming a dragged
+     folder at a small rectangle is fiddly. On Activity a drop is swallowed and
+     ignored — import is an Add-tab action (#1664). -->
 <div
   class="relative"
   (dragenter)="onDragEnter($event)"
@@ -39,7 +39,7 @@
   </div>
 </div>
 
-@if (canImport()) {
+@if (canImport() && tab() === 'add') {
   <div class="max-w-6xl mx-auto px-4 md:px-6 mt-4 flex flex-col gap-3">
     @if (dropSummary(); as s) {
       <app-import-drop-card
@@ -50,14 +50,7 @@
         (start)="startImport()"
         (cancel)="dismissDrop()" />
     } @else {
-      <button
-        type="button"
-        class="self-start text-xs text-theme-muted hover:text-theme-primary underline decoration-dotted transition"
-        data-testid="import-browse"
-        [title]="'import.dropHint' | t"
-        (click)="pickFolder()">
-        {{ 'import.dropBrowse' | t }}
-      </button>
+      <app-import-entry [dragging]="dragging()" (pick)="pickFolder()" />
     }
     <!-- webkitdirectory is the only way to pick a *folder*; it is non-standard
          but universally supported, and the drop path covers browsers without it. -->
@@ -69,6 +62,62 @@
       webkitdirectory
       data-testid="import-folder-input"
       (change)="onFolderPicked($event)" />
+  </div>
+}
+
+<!-- An upload outlives a switch to Activity (#1664): the page owns it, so it
+     keeps running, and this row is where Activity shows it until the server
+     takes the commit and the feed's own import row replaces it. -->
+@if (tab() === 'activity' && backgroundImport(); as bg) {
+  <div class="max-w-6xl mx-auto px-4 md:px-6 mt-4">
+    <div
+      class="rounded-xl border border-theme bg-theme-surface px-4 py-3 flex items-center gap-3"
+      [attr.data-state]="bg.state"
+      data-testid="import-progress-row">
+      <span
+        class="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-lg bg-theme-accent/15 text-theme-accent-text"
+        aria-hidden="true">
+        <app-icon name="folder" [size]="18" />
+      </span>
+      <div class="min-w-0 flex-1 flex flex-col gap-1.5">
+        <p class="text-sm text-theme-primary truncate">
+          {{ 'import.progressTitle' | t: { albums: bg.albumCount } }}
+        </p>
+        @if (bg.state === 'error') {
+          <p class="text-xs text-status-error" role="alert" data-testid="import-progress-error">
+            {{ dropError() }}
+          </p>
+        } @else {
+          <div class="flex items-center gap-3">
+            <div
+              class="h-1.5 flex-1 rounded-full bg-theme-surface-2 overflow-hidden"
+              role="progressbar"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              [attr.aria-valuenow]="bg.state === 'committing' ? 100 : bg.percent"
+              [attr.aria-label]="'import.progressTitle' | t: { albums: bg.albumCount }"
+              data-testid="import-progress-track">
+              <div
+                class="h-full bg-theme-accent transition-[width] duration-300"
+                [style.width.%]="bg.state === 'committing' ? 100 : bg.percent"
+                data-testid="import-progress-bar"></div>
+            </div>
+            <span class="text-xs text-theme-muted tabular-nums" data-testid="import-progress-percent">
+              {{ bg.state === 'committing' ? ('import.dropCommitting' | t) : bg.percent + '%' }}
+            </span>
+          </div>
+        }
+      </div>
+      @if (bg.state === 'error') {
+        <button
+          type="button"
+          class="shrink-0 min-h-9 px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-accent text-theme-on-accent"
+          data-testid="import-progress-review"
+          (click)="setTab('add')">
+          {{ 'import.progressReview' | t }}
+        </button>
+      }
+    </div>
   </div>
 }
 

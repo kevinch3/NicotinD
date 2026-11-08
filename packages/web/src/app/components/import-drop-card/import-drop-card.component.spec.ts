@@ -12,7 +12,12 @@ function summary(over: Partial<ImportDropSummary> = {}): ImportDropSummary {
   return { fileCount: 12, albumCount: 1, totalBytes: 1024, skipped: [], ...over };
 }
 
-function render(state: ImportDropState, over: Partial<ImportDropSummary> = {}, percent = 0) {
+function render(
+  state: ImportDropState,
+  over: Partial<ImportDropSummary> = {},
+  percent = 0,
+  error: string | null = null,
+) {
   // Reset per render: a couple of these tests render twice to compare states,
   // and TestBed refuses reconfiguration once instantiated.
   TestBed.resetTestingModule();
@@ -21,6 +26,7 @@ function render(state: ImportDropState, over: Partial<ImportDropSummary> = {}, p
   setInputValue(fixture.componentInstance.state, state);
   setInputValue(fixture.componentInstance.summary, summary(over));
   setInputValue(fixture.componentInstance.percent, percent);
+  setInputValue(fixture.componentInstance.error, error);
   fixture.detectChanges();
   return fixture;
 }
@@ -99,5 +105,51 @@ describe('ImportDropCardComponent', () => {
         render(state).nativeElement.querySelector('[data-testid="import-drop-cancel"]'),
       ).not.toBeNull();
     }
+  });
+});
+
+// #1664: the card is on-theme — theme tokens only, an SVG glyph, a collapsible
+// skipped-files detail.
+describe('ImportDropCardComponent — styling contract', () => {
+  const STATES: ImportDropState[] = ['manifest', 'uploading', 'committing', 'error'];
+
+  it('uses theme tokens only, in every state', () => {
+    for (const state of STATES) {
+      const html = render(state, { skipped: ['a.nfo'] }, 50, 'nope').nativeElement.innerHTML;
+      // Hardcoded palette colours ignore the theme; `border-theme-border` is not a
+      // registered utility, so it emitted no rule at all.
+      expect(html).not.toMatch(/\b(bg|text|border)-(blue|zinc|gray|red|green)-\d/);
+      expect(html).not.toContain('border-theme-border');
+    }
+  });
+
+  it('draws the progress bar in the accent token', () => {
+    const bar = render('uploading', {}, 30).nativeElement.querySelector(
+      '[data-testid="import-drop-bar"]',
+    ) as HTMLElement;
+    expect(bar.classList).toContain('bg-theme-accent');
+  });
+
+  it('carries an SVG folder glyph, not an emoji', () => {
+    const el = render('manifest').nativeElement as HTMLElement;
+    expect(el.textContent).not.toContain('📁');
+    expect(el.querySelector('[data-testid="import-drop-icon"] svg')).not.toBeNull();
+  });
+
+  it('lists the ignored files in a collapsible detail', () => {
+    const el = render('manifest', { skipped: ['Album/notes.nfo', 'Album/cover.psd'] })
+      .nativeElement as HTMLElement;
+    const details = el.querySelector('[data-testid="import-drop-skipped"]');
+    expect(details?.tagName).toBe('DETAILS');
+    expect(details?.querySelector('summary')).not.toBeNull();
+    const items = Array.from(details!.querySelectorAll('li')).map((li) => li.textContent?.trim());
+    expect(items).toEqual(['Album/notes.nfo', 'Album/cover.psd']);
+  });
+
+  it('announces a failure', () => {
+    const err = render('error', {}, 0, 'That upload did not finish.').nativeElement.querySelector(
+      '[data-testid="import-drop-error"]',
+    );
+    expect(err?.getAttribute('role')).toBe('alert');
   });
 });
