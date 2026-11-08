@@ -1,11 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import {
+  albumCompleteness,
   buildArtistAlbumTiles,
   partitionTiles,
+  releaseJobsInFlight,
   releaseYear,
+  summarizeDiscography,
   type AlbumTile,
 } from './artist-album-tiles';
 import type { Album, DiscographyAlbum } from '../services/api/api-types';
+import type { AcquisitionJobView } from '@nicotind/core';
 
 const local = (over: Partial<Album> & Pick<Album, 'id' | 'name'>): Album => ({
   artist: 'Pink Floyd',
@@ -224,6 +228,121 @@ describe('buildArtistAlbumTiles', () => {
       'Two',
       'One',
     ]);
+  });
+});
+
+// #1627, seen on prod (La Vela Puerca): two local albums each held one song, and each
+// song belonged to the OTHER album's tracklist. The server graded both missing (0
+// tracklist titles matched); the header said "0 partial · 2 missing" while both tiles
+// said "Complete album", because a tile graded a matched album by its existence.
+describe('one completeness rule for the header and the tiles (#1627)', () => {
+  const swapped = [
+    release({
+      lidarrId: 1,
+      title: 'A contraluz',
+      releaseDate: '2004-06-01',
+      localAlbumId: 'contraluz',
+      status: 'missing',
+      localTrackCount: 0,
+      totalTracks: 14,
+    }),
+    release({
+      lidarrId: 2,
+      title: 'De bichos y flores',
+      releaseDate: '2001-05-01',
+      localAlbumId: 'bichos',
+      status: 'missing',
+      localTrackCount: 0,
+      totalTracks: 14,
+    }),
+  ];
+  const localAlbums = [
+    local({ id: 'contraluz', name: 'A contraluz', year: 2004 }),
+    local({ id: 'bichos', name: 'De bichos y flores', year: 2001 }),
+  ];
+
+  it('draws an album whose folder holds none of its tracklist as missing, as the header counts it', () => {
+    const tiles = buildArtistAlbumTiles(localAlbums, swapped, { tab: 'albums' });
+
+    expect(summarizeDiscography(swapped)).toEqual({
+      releases: 2,
+      complete: 0,
+      partial: 0,
+      missing: 2,
+    });
+    expect(tiles.map((t) => t.status)).toEqual(['missing', 'missing']);
+    // Still one tile per album, still a link to the folder the user has.
+    expect(tiles.map((t) => t.localAlbumId).sort()).toEqual(['bichos', 'contraluz']);
+    // Get album needs the release behind it.
+    expect(tiles.map((t) => t.source?.lidarrId).sort()).toEqual([1, 2]);
+  });
+
+  it('the header and the tiles agree on every state', () => {
+    const entries = [
+      ...swapped,
+      release({ lidarrId: 3, title: 'Whole', status: 'present', localAlbumId: 'whole' }),
+      release({
+        lidarrId: 4,
+        title: 'Half',
+        status: 'partial',
+        localAlbumId: 'half',
+        localTrackCount: 5,
+      }),
+      release({ lidarrId: 5, title: 'Absent' }),
+    ];
+    const tiles = buildArtistAlbumTiles(
+      [...localAlbums, local({ id: 'whole', name: 'Whole' }), local({ id: 'half', name: 'Half' })],
+      entries,
+      { tab: 'albums' },
+    );
+    const count = (s: AlbumTile['status']) => tiles.filter((t) => t.status === s).length;
+    const summary = summarizeDiscography(entries);
+
+    expect(summary).toEqual({ releases: 5, complete: 1, partial: 1, missing: 3 });
+    expect({
+      complete: count('owned'),
+      partial: count('partial'),
+      missing: count('missing'),
+    }).toEqual({ complete: summary.complete, partial: summary.partial, missing: summary.missing });
+    const tileOf = (e: DiscographyAlbum) =>
+      tiles.find((t) => t.key === (e.localAlbumId ?? `mb:${e.lidarrId}`))!;
+    expect(entries.map((e) => tileOf(e).status)).toEqual(entries.map(albumCompleteness));
+  });
+});
+
+describe('releaseJobsInFlight', () => {
+  const job = (over: Partial<AcquisitionJobView>): AcquisitionJobView =>
+    ({
+      id: 'j',
+      state: 'active',
+      lidarrAlbumId: null,
+      artistName: null,
+      albumTitle: null,
+      ...over,
+    }) as AcquisitionJobView;
+  const releases = [release({ lidarrId: 1, title: 'A contraluz' })];
+
+  it('holds the live jobs for these releases, by Lidarr id or by name', () => {
+    const live = releaseJobsInFlight(
+      [
+        job({ id: 'by-id', lidarrAlbumId: 1 }),
+        job({ id: 'by-name', artistName: 'Pink Floyd', albumTitle: 'A Contraluz' }),
+        job({ id: 'other-album', lidarrAlbumId: 9, artistName: 'Pink Floyd', albumTitle: 'Zafar' }),
+        job({ id: 'finished', lidarrAlbumId: 1, state: 'done' }),
+      ],
+      releases,
+      'Pink Floyd',
+    );
+    expect([...live].sort()).toEqual(['by-id', 'by-name']);
+  });
+
+  it('matches nothing by name without an artist to match against', () => {
+    const live = releaseJobsInFlight(
+      [job({ id: 'by-name', artistName: 'Pink Floyd', albumTitle: 'A contraluz' })],
+      releases,
+      undefined,
+    );
+    expect(live.size).toBe(0);
   });
 });
 

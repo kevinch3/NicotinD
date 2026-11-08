@@ -71,6 +71,8 @@ import { appendUnique } from '../../lib/append-unique';
 import {
   buildArtistAlbumTiles,
   partitionTiles,
+  releaseJobsInFlight,
+  summarizeDiscography,
   type AlbumTile,
 } from '../../lib/artist-album-tiles';
 import { NavigationService } from '../../services/navigation.service';
@@ -512,6 +514,26 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     buildArtistAlbumTiles(this.singlesAndEps(), this.discographyAlbums(), { tab: 'singles' }),
   );
 
+  /** The header's counts — the tiles' own rule (`albumCompleteness`, #1627). */
+  readonly discographySummary = computed(() => summarizeDiscography(this.discographyAlbums()));
+
+  /** Live jobs fetching one of this artist's releases, as of the last read. */
+  private releaseJobs: ReadonlySet<string> = new Set();
+
+  // A tile's label is the completeness read when the page loaded. When a job for
+  // one of its releases leaves `active` (the feed `job.changed` drives), re-read
+  // it — otherwise the tile falls back to its pre-click label (#1627).
+  private readonly rereadWhenJobEnds = effect(() => {
+    const jobs = this.transferService.acquisitionJobs();
+    const releases = this.discographyAlbums();
+    untracked(() => {
+      const live = releaseJobsInFlight(jobs, releases, this.artist()?.name);
+      const ended = [...this.releaseJobs].some((id) => !live.has(id));
+      this.releaseJobs = live;
+      if (ended) void this.rereadCompleteness();
+    });
+  });
+
   /** Releases we do not own that are not primary studio records — collapsed by default. */
   readonly showAllReleases = signal(false);
 
@@ -587,6 +609,7 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     this.singlesAndEps.set([]);
     this.appearsOn.set([]);
     this.discography.set(null);
+    this.releaseJobs = new Set();
     this.notProvisioned.set(null);
     this.provisioning.set(false);
     this.provisionError.set(null);
@@ -754,8 +777,20 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     this.huntingAlbum.set(null);
   }
 
-  countByStatus(albums: DiscographyAlbum[], status: 'present' | 'partial' | 'missing'): number {
-    return albums.filter((a) => a.status === status).length;
+  /** In place — no reset, no spinner: the albums and their completeness, fresh. */
+  private async rereadCompleteness(): Promise<void> {
+    const id = this.artistId;
+    if (!id) return;
+    try {
+      const data = await firstValueFrom(this.api.getArtist(id));
+      if (this.artistId !== id) return;
+      this.artist.set(data.artist);
+      this.albums.set(data.albums);
+      this.singlesAndEps.set(data.singlesAndEps ?? []);
+    } catch {
+      /* keep the grid it has; the discography re-read below still runs */
+    }
+    await this.loadDiscography(id);
   }
 
   async playAll(): Promise<void> {

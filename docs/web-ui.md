@@ -748,6 +748,7 @@ place. `buildArtistAlbumTiles` (`lib/artist-album-tiles.ts`) is the pure join;
 | `owned` | exactly what it always did | nothing — the grid stays quiet where there is nothing to do |
 | `partial` | a normal, clickable, playable tile with a `4/7 tracks` subtitle | `Complete album` |
 | `missing` | dimmed, dashed border, **does not navigate** | `Get album` |
+| `missing`, with a local folder | a normal, clickable tile, no count | `Get album` |
 
 A partial album is deliberately **not** dimmed. You own those four tracks and they
 play; dimming it would say otherwise. The action buttons are gated on
@@ -770,8 +771,27 @@ album-identity resolver deferred in [album-hunt.md](album-hunt.md).
 tag's "Felt (feat. Henry Green)" never equalled Lidarr's "Felt", so prod's *A Life* (one
 local song then) read **0/11** while owned. The server's `trackKey` drops the credit
 (`stripFeaturingSuffix`) before `normalizeTitle`. A tile prints its "n/N tracks" only when
-at least one track matched: an owned album whose tracklist matches nothing (another
-edition) shows its partial state without a false "0/N".
+at least one track matched.
+
+**One completeness rule, for the header and every tile (#1627).** The tab bar's
+`n releases · n complete · n partial · n missing` and each tile's state both read
+`albumCompleteness` — the server's tracklist match (`DiscographyAlbum.status`), never
+the mere existence of a local album. The tile used to draw any matched album that was
+not `present` as partial, so on prod's La Vela Puerca page — two folders each holding
+one song from the *other* album's tracklist — the header said `0 partial · 9 missing`
+while both tiles offered `Complete album`. A local folder that holds none of its
+release's tracklist is now `missing`, as the header counts it, and offers `Get album`;
+it keeps its link and its menu, because the songs in it are still yours.
+`summarizeDiscography` is the header's half.
+
+**A tile re-reads once its job lands (#1627).** The tile's label is the completeness
+read when the page loaded, so after Downloading → Organizing it fell back to its
+pre-click label until a reload. The page watches `TransferService.acquisitionJobs`
+— the feed `job.changed` on the library event stream re-polls — for the live jobs
+fetching one of its releases (`releaseJobsInFlight`: by Lidarr id, or by `sameAlbum`,
+the same two ways a tile finds its hunt status). When one leaves `active`, it
+re-reads the artist's albums and discography in place: no reset, no spinner, no
+polling of its own.
 
 **The missing tail is filtered, the library never is.** A release we do *not* own
 whose `secondaryTypes` include Live / Compilation / Remix / Demo / Soundtrack /

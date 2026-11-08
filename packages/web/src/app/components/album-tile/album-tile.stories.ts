@@ -59,6 +59,24 @@ export const Missing: Story = {
   },
 };
 
+/**
+ * A local folder of this name holds none of the release's tracklist (#1627): the
+ * header counts it missing, so the tile says Get album — but it keeps its link,
+ * because the songs in that folder are still yours.
+ */
+export const MissingButInLibrary: Story = {
+  args: {
+    tile: tile({
+      status: 'missing',
+      title: 'A contraluz',
+      year: 2004,
+      localAlbumId: 'a4',
+      localTrackCount: 0,
+      totalTracks: 14,
+    }),
+  },
+};
+
 /** Clicked, no job yet — the button holds its place rather than disappearing. */
 export const Hunting: Story = {
   args: {

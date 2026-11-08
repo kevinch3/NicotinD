@@ -909,7 +909,15 @@ const release = (over: Record<string, unknown>) => ({
   ...over,
 });
 
-function setupMerged(albums: unknown[], discographyFails = false) {
+function setupMerged(
+  albums: unknown[],
+  discographyFails = false,
+  opts: {
+    jobs?: ReturnType<typeof signal<unknown[]>>;
+    getArtistDiscography?: () => unknown;
+    getArtist?: () => unknown;
+  } = {},
+) {
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
     imports: [ArtistDetailComponent],
@@ -932,17 +940,20 @@ function setupMerged(albums: unknown[], discographyFails = false) {
       {
         provide: DownloadsApiService,
         useValue: {
-          getArtistDiscography: () =>
-            discographyFails
-              ? throwError(() => new Error('Lidarr not configured'))
-              : of({ artistId: 'ar1', lidarrId: 1, mbid: 'm', albums }),
+          getArtistDiscography:
+            opts.getArtistDiscography ??
+            (() =>
+              discographyFails
+                ? throwError(() => new Error('Lidarr not configured'))
+                : of({ artistId: 'ar1', lidarrId: 1, mbid: 'm', albums })),
         },
       },
       {
         provide: LibraryApiService,
         useValue: {
           artistImageSources: () => of({ sources: [] }),
-          getArtist: () => of({ artist: ARTIST, albums: ALBUMS, singlesAndEps: [] }),
+          getArtist:
+            opts.getArtist ?? (() => of({ artist: ARTIST, albums: ALBUMS, singlesAndEps: [] })),
           getArtistAppearsOn: () => of([]),
           getArtistSongs: () => of({ songs: [], total: 0 }),
           artistGenreDistribution: () =>
@@ -968,7 +979,10 @@ function setupMerged(albums: unknown[], discographyFails = false) {
       { provide: PlayerService, useValue: { playWithContext: () => {}, addToQueue: () => {} } },
       {
         provide: TransferService,
-        useValue: { deletedSongIds: signal(new Set<string>()), acquisitionJobs: signal([]) },
+        useValue: {
+          deletedSongIds: signal(new Set<string>()),
+          acquisitionJobs: opts.jobs ?? signal([]),
+        },
       },
     ],
     schemas: [NO_ERRORS_SCHEMA],
@@ -1141,6 +1155,135 @@ describe('ArtistDetailComponent — tab row (#1636)', () => {
     }
     expect((EN_CATALOG as Record<string, string>)['discography.summary']).toContain('{missing}');
     expect((ES_CATALOG as Record<string, string>)['discography.summary']).toContain('{missing}');
+  });
+});
+
+// #1627, the prod shape: a local "A contraluz" holding only "El viejo" and a local
+// "De bichos y flores" holding only "Zafar" — each song on the OTHER album's
+// tracklist. The server grades both missing; the tiles used to say partial.
+describe('ArtistDetailComponent — header and tiles read one completeness rule (#1627)', () => {
+  const swappedAlbums = [
+    { id: 'a1', name: 'A contraluz', artist: 'La Vela Puerca' },
+    { id: 'a2', name: 'De bichos y flores', artist: 'La Vela Puerca' },
+  ];
+  const swapped = [
+    release({ lidarrId: 1, title: 'A contraluz', localAlbumId: 'a1', totalTracks: 14 }),
+    release({ lidarrId: 2, title: 'De bichos y flores', localAlbumId: 'a2', totalTracks: 14 }),
+    release({ lidarrId: 3, title: 'Deskarado' }),
+  ];
+  const settle = async () => {
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+  };
+  const getArtist = () =>
+    of({ artist: { ...ARTIST, name: 'La Vela Puerca' }, albums: swappedAlbums, singlesAndEps: [] });
+
+  it('the header and the tiles agree: a folder holding none of its tracklist is missing', async () => {
+    const fixture = setupMerged(swapped, false, { getArtist });
+    await settle();
+    fixture.detectChanges();
+    const c = fixture.componentInstance;
+
+    const summary = fixture.nativeElement.querySelector('[data-testid="discography-summary"]');
+    expect(summary.textContent.replace(/\s+/g, ' ')).toContain(
+      '3 releases · 0 complete · 0 partial · 3 missing',
+    );
+    const tiles = c.albumTiles();
+    expect(tiles.map((t) => t.status)).toEqual(['missing', 'missing', 'missing']);
+    expect(
+      tiles
+        .filter((t) => t.localAlbumId)
+        .map((t) => t.title)
+        .sort(),
+    ).toEqual(['A contraluz', 'De bichos y flores']);
+  });
+
+  it('re-reads the albums and their status when a job for one of them ends', async () => {
+    const jobs = signal<unknown[]>([]);
+    const discographyCalls = { n: 0 };
+    const artistCalls = { n: 0 };
+    const getArtistDiscography = () => {
+      discographyCalls.n++;
+      // After the job lands, the server's tracklist match finds every track.
+      const albums =
+        discographyCalls.n === 1
+          ? swapped
+          : [
+              { ...swapped[0], status: 'present' as const, localTrackCount: 14 },
+              ...swapped.slice(1),
+            ];
+      return of({ artistId: 'ar1', lidarrId: 1, mbid: 'm', albums });
+    };
+    const fixture = setupMerged([], false, {
+      jobs,
+      getArtistDiscography,
+      getArtist: () => {
+        artistCalls.n++;
+        return getArtist();
+      },
+    });
+    await settle();
+    fixture.detectChanges();
+    const c = fixture.componentInstance;
+    const contraluz = () => c.albumTiles().find((t) => t.title === 'A contraluz')!;
+    expect(contraluz().status).toBe('missing');
+
+    const live = {
+      id: 'j1',
+      kind: 'album-hunt',
+      state: 'active',
+      stage: 'downloading',
+      lidarrAlbumId: 1,
+      artistName: null,
+      albumTitle: null,
+      createdAt: 1,
+      progress: { expected: 14, delivered: 3, unavailable: 0, failed: 0, canonical: 14 },
+    };
+    jobs.set([live]);
+    fixture.detectChanges();
+    await settle();
+    // A live job is not an ending: nothing re-reads while it runs.
+    expect(discographyCalls.n).toBe(1);
+
+    jobs.set([{ ...live, state: 'done' }]);
+    fixture.detectChanges();
+    await settle();
+    fixture.detectChanges();
+
+    expect(discographyCalls.n).toBe(2);
+    expect(artistCalls.n).toBe(2);
+    expect(contraluz().status).toBe('owned');
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="discography-summary"]').textContent,
+    ).toContain('1 complete');
+  });
+
+  it('ignores a job that ends for another artist’s album', async () => {
+    const jobs = signal<unknown[]>([]);
+    let discographyCalls = 0;
+    const fixture = setupMerged([], false, {
+      jobs,
+      getArtist,
+      getArtistDiscography: () => {
+        discographyCalls++;
+        return of({ artistId: 'ar1', lidarrId: 1, mbid: 'm', albums: swapped });
+      },
+    });
+    await settle();
+    const other = {
+      id: 'j9',
+      state: 'active',
+      lidarrAlbumId: 99,
+      artistName: 'X',
+      albumTitle: 'Y',
+    };
+    jobs.set([other]);
+    fixture.detectChanges();
+    await settle();
+    jobs.set([{ ...other, state: 'done' }]);
+    fixture.detectChanges();
+    await settle();
+
+    expect(discographyCalls).toBe(1);
   });
 });
 

@@ -194,6 +194,51 @@ describe('DiscographyService', () => {
     expect(aLife.tracks.find((t) => t.title === 'Felt')?.hasFile).toBe(true);
   });
 
+  // #1627, seen on prod (La Vela Puerca): each local album held one song, and each
+  // song belonged to the OTHER album's tracklist. The tracklist match is the rule the
+  // header and every tile read: both are missing, though each keeps its local album.
+  it('grades an album holding only another album’s song missing, keeping its local id', async () => {
+    insertArtist(db, 'ar1', 'La Vela Puerca');
+    insertAlbum(db, 'contraluz', 'A contraluz', 'ar1');
+    insertSong(db, 's1', 'contraluz', 'El viejo', 'ar1');
+    insertAlbum(db, 'bichos', 'De bichos y flores', 'ar1');
+    insertSong(db, 's2', 'bichos', 'Zafar', 'ar1');
+
+    const stats = { trackCount: 2, totalTrackCount: 2, sizeOnDisk: 0, percentOfTracks: 100 };
+    const { lidarr } = makeLidarrStub({
+      albums: [
+        makeLidarrAlbum({ id: 1, title: 'A contraluz', statistics: stats }),
+        makeLidarrAlbum({ id: 2, title: 'De bichos y flores', statistics: stats }),
+      ],
+      tracksByAlbum: {
+        1: [makeTrack(11, 1, 'Zafar'), makeTrack(12, 1, 'Va a escampar')],
+        2: [makeTrack(21, 2, 'El viejo'), makeTrack(22, 2, 'José Sabía')],
+      },
+      monitoredArtist: {
+        id: 99,
+        foreignArtistId: 'mbid-lvp',
+        artistName: 'La Vela Puerca',
+        sortName: 'Vela Puerca, La',
+        status: 'continuing',
+        images: [],
+        monitored: true,
+      },
+    });
+
+    const result = disc(await new DiscographyService(lidarr, db).getArtistDiscography('ar1'));
+    const byTitle = Object.fromEntries(result.albums.map((a) => [a.title, a]));
+    expect(byTitle['A contraluz']).toMatchObject({
+      status: 'missing',
+      localTrackCount: 0,
+      localAlbumId: 'contraluz',
+    });
+    expect(byTitle['De bichos y flores']).toMatchObject({
+      status: 'missing',
+      localTrackCount: 0,
+      localAlbumId: 'bichos',
+    });
+  });
+
   it('normalizes track-number prefixes and remaster suffixes when matching', async () => {
     insertArtist(db, 'ar1', 'Artist');
     insertAlbum(db, 'al1', 'Greatest Hits (Remastered)', 'ar1');

@@ -1,3 +1,4 @@
+import { sameAlbum, type AcquisitionJobView } from '@nicotind/core';
 import type { Album, DiscographyAlbum } from '../services/api/api-types';
 
 /**
@@ -19,13 +20,48 @@ import type { Album, DiscographyAlbum } from '../services/api/api-types';
 
 export type AlbumTileStatus = 'owned' | 'partial' | 'missing';
 
+/**
+ * The one completeness rule the header and every tile read (#1627): the server's
+ * tracklist match, never the mere existence of a local album (docs/web-ui.md).
+ */
+export function albumCompleteness(entry: DiscographyAlbum): AlbumTileStatus {
+  if (entry.status === 'present') return 'owned';
+  return entry.status === 'partial' ? 'partial' : 'missing';
+}
+
+export interface DiscographySummary {
+  releases: number;
+  complete: number;
+  partial: number;
+  missing: number;
+}
+
+/** The header's counts, by the same rule as the tiles — see {@link albumCompleteness}. */
+export function summarizeDiscography(entries: DiscographyAlbum[]): DiscographySummary {
+  const summary: DiscographySummary = {
+    releases: entries.length,
+    complete: 0,
+    partial: 0,
+    missing: 0,
+  };
+  for (const entry of entries) {
+    const status = albumCompleteness(entry);
+    if (status === 'owned') summary.complete++;
+    else summary[status]++;
+  }
+  return summary;
+}
+
 export interface AlbumTile {
   /** Stable `@for` track key. Local id when owned, `mb:<lidarrId>` when missing. */
   key: string;
   title: string;
   year: number | null;
   status: AlbumTileStatus;
-  /** Set for owned + partial — the tile navigates to the album page. */
+  /**
+   * Set whenever the library holds the album — owned, partial, or missing by the
+   * tracklist with a local folder of the same name — and the tile navigates to it.
+   */
   localAlbumId?: string;
   /** Local cover hash, resolved as `/api/cover/<hash>`. Wins over `coverArtUrl`. */
   coverArt?: string;
@@ -125,18 +161,21 @@ export function buildArtistAlbumTiles(
       // A matched release belongs to the tab its LOCAL row is in; an entry whose
       // local album lives in the other tab is that tab's business, not ours.
       claimed.add(owned.id);
+      const status = albumCompleteness(entry);
       tiles.push({
         key: owned.id,
         title: owned.name,
         year: owned.year ?? releaseYear(entry.releaseDate),
-        status: entry.status === 'present' ? 'owned' : 'partial',
+        // A local folder holding none of the tracklist is missing, as the header
+        // says, but keeps its link: the songs in it are still yours (#1627).
+        status,
         localAlbumId: owned.id,
         coverArt: owned.coverArt,
         coverArtUrl: entry.coverArtUrl,
         localTrackCount: entry.localTrackCount,
         totalTracks: entry.totalTracks,
         // A complete album needs no action, so it carries no hunt source.
-        source: entry.status === 'present' ? undefined : entry,
+        source: status === 'owned' ? undefined : entry,
         secondary: false,
         kind: localKind(owned),
       });
@@ -180,6 +219,36 @@ export function sortTiles(tiles: AlbumTile[]): AlbumTile[] {
     }
     return a.title.localeCompare(b.title);
   });
+}
+
+/**
+ * Ids of the live jobs fetching one of these releases — by Lidarr id, or by name
+ * through `sameAlbum`, the two ways a tile finds its own hunt status. A job that
+ * leaves this set has landed what it will land, so the page re-reads (#1627).
+ */
+export function releaseJobsInFlight(
+  jobs: readonly AcquisitionJobView[],
+  releases: readonly DiscographyAlbum[],
+  artistName: string | undefined,
+): Set<string> {
+  const ids = new Set(releases.map((r) => r.lidarrId));
+  const live = new Set<string>();
+  for (const job of jobs) {
+    if (job.state !== 'active') continue;
+    const byId = job.lidarrAlbumId !== null && ids.has(job.lidarrAlbumId);
+    const byName =
+      !!artistName &&
+      job.artistName !== null &&
+      job.albumTitle !== null &&
+      releases.some((r) =>
+        sameAlbum(
+          { artist: artistName, title: r.title },
+          { artist: job.artistName!, title: job.albumTitle! },
+        ),
+      );
+    if (byId || byName) live.add(job.id);
+  }
+  return live;
 }
 
 /** The tiles shown by default, and the collapsed tail behind "Show all releases". */

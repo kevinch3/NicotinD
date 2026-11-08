@@ -33,7 +33,8 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **One album grid per artist tab**: library albums and the MusicBrainz discography merge into a
   single ordered set of tiles — owned, partial (`Complete album`) or missing (`Get album`) — joined
   on the server's `localAlbumId`; the unowned non-studio tail collapses behind a toggle.
-  `buildArtistAlbumTiles`, `partitionTiles`, `AlbumTileComponent`. → [web-ui.md](../web-ui.md)
+  `buildArtistAlbumTiles`, `albumCompleteness`, `partitionTiles`, `AlbumTileComponent`.
+  → [web-ui.md](../web-ui.md)
 - **Library cross-type find bar**: one box above the Library tabs searching everything you own at once
   (`LibraryFindComponent`); a non-empty query *replaces* the tab content rather than filtering the
   active tab, debounced into `?find=` so it is linkable. → [web-ui.md](../web-ui.md)
