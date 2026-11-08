@@ -7,8 +7,9 @@ import { existsSync, mkdirSync, chmodSync, createWriteStream } from 'node:fs';
 import { join } from 'node:path';
 import { execSync } from 'node:child_process';
 import { createProgressReporter } from './download-progress.js';
+import { depsDataDir } from './download-deps-paths.js';
 
-const DATA_DIR = join(process.env.HOME ?? '/root', '.nicotind');
+const DATA_DIR = depsDataDir(process.env);
 const BIN_DIR = join(DATA_DIR, 'bin');
 const FORCE = process.argv.includes('--force');
 
