@@ -49,8 +49,13 @@ function fetchReturning(
   return { fn, calls };
 }
 
+// The id the registry really holds for archive.org since it became a bundled
+// addon (#511). The fake used to answer for 'archive', an id nothing registers
+// any more, which is how this lane stayed 503 for every real install (#1728).
 function fakePlugins(enabled: boolean): PluginRegistry {
-  return { isEnabled: (id: string) => id === 'archive' && enabled } as unknown as PluginRegistry;
+  return {
+    isEnabled: (id: string) => id === 'bundled-archive' && enabled,
+  } as unknown as PluginRegistry;
 }
 
 function makeApp(opts: { enabled: boolean; fetchFn: typeof fetch }) {

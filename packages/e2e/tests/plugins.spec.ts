@@ -133,6 +133,32 @@ test.describe('plugin capability gating', () => {
     await expect(page.getByTestId('search-submit')).toHaveText('Search');
   });
 
+  // #1728: enabling archive.org used to turn on its link resolve only. The Add
+  // page still said "No acquisition sources enabled" and a keyword search never
+  // asked archive.org, because the search gates looked for the retired
+  // in-process plugin id 'archive' instead of the bundled 'bundled-archive'.
+  test('enabling archive.org makes it a named source that keyword search asks', async ({
+    page,
+  }) => {
+    await page.goto('/settings/plugins');
+    const card = await archiveCard(page);
+    await card.getByTestId('plugin-toggle').click();
+    await page.getByTestId('confirm-ok').click();
+    await expect(card.getByTestId('plugin-toggle')).toHaveText('Disable');
+
+    await page.goto('/search');
+    await expect(page.getByTestId('source-status')).toContainText('Internet Archive');
+
+    // The lane is asked, and the server's gate lets it through. archive.org
+    // itself is unreachable from the e2e sandbox, so the body may be an
+    // upstream failure, but never the "archive.org is disabled" refusal.
+    const archive = page.waitForResponse((r) => r.url().includes('/api/archive/search'));
+    await page.getByTestId('search-input').fill('nina simone');
+    await page.getByTestId('search-submit').click();
+    const res = await archive;
+    expect(await res.text()).not.toContain('archive.org is disabled');
+  });
+
   test('the archive.org plugin ships registered and default-off', async ({ page }) => {
     await page.goto('/settings/plugins');
     const card = await openPluginCard(page, 'plugins-acquisition', 'bundled-archive');

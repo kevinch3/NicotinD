@@ -52,6 +52,18 @@ are deliberately undoing.
    adapter + a **pure mapper** to `AcquisitionCandidate`, register it at the
    composition root (`packages/api/src/index.ts`) — **zero route or UI changes**.
 
+   **A source id is not always its plugin id (#1728).** Candidates are tagged
+   with a source id (`archive`, `spotify`), and the gate asks the registry about
+   the plugin that enables that source. archive.org's plugin is the bundled addon
+   `bundled-archive` (#511), so `sourceEnabled()` in
+   `services/source-plugin-ids.ts` maps `archive` → `bundled-archive` for the
+   blended search and the album hunt, `routes/archive.ts` gates on
+   `BUNDLED_ARCHIVE_ID`, and the web's `PluginService.hasArchive()` checks the same
+   id. Asking about the retired in-process id `archive` left archive.org search
+   permanently off: the Add page said "No acquisition sources enabled" with it
+   enabled. Covered by `source-plugin-ids.test.ts`, the archive route tests and
+   the e2e `enabling archive.org makes it a named source that keyword search asks`.
+
 4. **One acquire dispatch.** A candidate carries its own acquire intent; the
    single Get action dispatches on `acquire.via`. The web mirrors this with
    [`lib/acquisition-candidate.ts`](../packages/web/src/app/lib/acquisition-candidate.ts)
@@ -90,7 +102,8 @@ sources (archive.org, Spotify, future). The user sees one list either way.
    in the web blended list, a `xToCandidate` in `lib/acquisition-candidate.ts`.
    Unit-test both.
 3. Register a `CandidateSource` (search) and/or `SourceHunter` (album hunt)
-   adapter at the composition root, gated by `plugins.isEnabled('<id>')`.
+   adapter at the composition root, gated by `sourceEnabled(plugins)`; if the
+   enabling plugin's id differs from the source id, add it to `PLUGIN_FOR_SOURCE`.
 4. A metadata lane gets its label in `SOURCE_LABELS` (core + web) and a chip tone in
    `app-source-chip`. A **network** addon needs neither: the web names it from its manifest.
 5. Do **not** add a new route or a new UI section. If you find yourself adding a

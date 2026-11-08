@@ -162,10 +162,11 @@ function enableResolve(plugins: PluginService): void {
   ]);
 }
 
-/** Flip the archive plugin on in the (real) PluginService so hasArchive() is true. */
+/** Flip the archive plugin on in the (real) PluginService so hasArchive() is true.
+ *  'bundled-archive' is the id the server really reports (#1728). */
 function enableArchive(plugins: PluginService): void {
   plugins.plugins.set([
-    { id: 'archive', enabled: true, capabilities: ['resolve'] } as unknown as PluginInfo,
+    { id: 'bundled-archive', enabled: true, capabilities: ['resolve'] } as unknown as PluginInfo,
   ]);
 }
 

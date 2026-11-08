@@ -6,6 +6,7 @@ import { requireAcquirer } from '../middleware/current-user.js';
 import type { ArchiveSearchService } from '../services/archive-search.service.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 
+import { BUNDLED_ARCHIVE_ID } from '../services/addons/bundled/archive/index.js';
 const log = createLogger('archive');
 
 export interface ArchiveRoutesOptions {
@@ -13,8 +14,8 @@ export interface ArchiveRoutesOptions {
   plugins: PluginRegistry;
 }
 
-/** Plugin id of the archive.org resolve plugin (the gate for this lane). */
-const ARCHIVE_PLUGIN_ID = 'archive';
+/** The bundled archive.org addon gates this lane too; see source-plugin-ids.ts. */
+const ARCHIVE_PLUGIN_ID = BUNDLED_ARCHIVE_ID;
 
 export function archiveRoutes({ search, plugins }: ArchiveRoutesOptions) {
   const app = new Hono<AuthEnv>();
