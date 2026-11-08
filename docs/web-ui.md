@@ -188,7 +188,10 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
   are absolutely placed 1rem beside the cover inside a stage (`now-playing-cover-stage`). **On a
   phone (below md) they bleed to the screen edge** (#1763): the stage's clip is `inset(0 -100vw)`,
   so the cover column's `overflow-hidden` is the real edge and a neighbour reads as a card sliding
-  in from off-screen rather than one cut short mid-screen. From md the clip is
+  in from off-screen rather than one cut short mid-screen. That column is `overflow-clip`, not
+  `overflow-hidden` (#1749): a hidden box is still a scroll container, so anything that scrolled a
+  neighbour into view — a screen reader landing on its label, Playwright retrying an obscured
+  hover — slid the cover off centre with the previous sliver off-screen. From md the clip is
   `inset(0 calc(-1rem - 12%))`, 12% of the cover width of each, so a wide sheet shows a sliver, not
   two whole covers. Either way the clip also clips hit testing, so only the visible part is
   tappable. **They fade out as the queue resize shrinks the cover** (#1763): `neighbourFade`
