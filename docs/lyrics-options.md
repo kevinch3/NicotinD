@@ -402,29 +402,16 @@ identical text). These are small, they close gaps 1 and 2, and every later test 
 (2) The #1656 options group with the sync tool. (3) #1674 candidates and `next`. (4) #1675, the
 timing editor.
 
-## Open decisions for the owner
+## Decisions (owner, 2026-11-09)
 
-1. Who may use "Try another source", given that it replaces the shared row for every listener?
-   - **(a) Curators only, like Edit and Sync (recommended).**
-   - (b) Any user, as `POST …/fetch` allows today.
-2. After a fetch again or a timing save replaces a row, how does someone get the previous version
-   back?
-   - **(a) Keep one previous version (`previous_json`) and offer "Undo last change" (recommended).**
-   - (b) A confirm before replacing, with no undo.
-   - (c) A full version history per song.
-3. What does "n of m" count?
-   - **(a) Distinct lyrics after de-duplication, only those the walk may apply (recommended).**
-   - (b) Every record the sources returned, duplicates included.
-4. When the player's first load finds no row but the file tag has words (after a Reset, for
-   example), what happens?
-   - **(a) Use the tag's words at once, and upgrade the row the first time a timed candidate
-     within the tolerance is found (recommended).**
-   - (b) Keep today's behaviour: the tag's plain words, until someone presses fetch again.
-   - (c) Ask the sources first and use the tag only when none answers.
-5. Does vocal mute move into the options group?
-   - **(a) No: it stays a one-tap header button, and the group holds only lyrics settings
-     (recommended).**
-   - (b) Yes: everything karaoke-related goes behind Options.
-6. Can a timing save include lines without a time?
-   - **(a) No: every non-empty line needs a stamp before Save (recommended).**
-   - (b) Yes: unstamped lines get times spread evenly between their stamped neighbours.
+The owner took the recommended option on all six.
+
+1. **"Try another source" is for curators only**, like Edit and Sync. It replaces the shared row
+   for every listener.
+2. **One previous version is kept** (`previous_json`), with "Undo last change", after a fetch again
+   or a timing save replaces a row. No full history.
+3. **"n of m" counts distinct lyrics** after de-duplication, and only those the walk may apply.
+4. **With no row but words in the file tag** (after a Reset, for example), the tag's words show at
+   once, and the row is upgraded the first time a timed candidate within the tolerance is found.
+5. **Vocal mute stays a one-tap header button.** The options group holds only lyrics settings.
+6. **A timing save needs a stamp on every non-empty line** before Save is enabled.
