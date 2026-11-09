@@ -177,6 +177,20 @@ async function flush() {
   await Promise.resolve();
 }
 
+// #1796: the empty state used raw zinc-600/700, about 1.6–2.6:1 on the dark presets.
+describe('SearchComponent — empty state', () => {
+  it('uses theme text tokens, never a hardcoded zinc', () => {
+    const { fixture } = setup();
+    fixture.detectChanges();
+    const empty = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="search-empty-state"]',
+    )!;
+    expect(empty).toBeTruthy();
+    expect(empty.innerHTML).not.toMatch(/zinc-/);
+    expect(empty.querySelectorAll('.text-theme-secondary, .text-theme-muted')).toHaveLength(2);
+  });
+});
+
 // #1734: "No acquisition sources enabled" was a dead end. An admin gets a link
 // to Extensions; anyone else who may acquire is told who can fix it.
 describe('SearchComponent — no sources enabled', () => {
