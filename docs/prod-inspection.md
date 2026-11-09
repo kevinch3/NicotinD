@@ -76,6 +76,21 @@ That is the point: measuring a table you would never prune is exactly what tells
 prune policy is right. This is the **measure** set; `ORPHAN_TABLES` is the **prune** set. Keeping
 them separate is intentional, not duplication.
 
+## `measure-similar-artists.ts` (issue #1486)
+
+The "measure first" step for cultural artist relations. It reads the artist MBIDs in `library_mbids` (read-only), samples N of them in a fixed spread (`--sample`, default 100, so two runs sample the same artists), and asks ListenBrainz labs `similar-artists` for each one, at 1 req/s with the ListenBrainz user agent. It reports:
+- **`coveragePct`**: how many artists get any neighbours at all
+- **`inLibraryPct`** / **`top10InLibraryPct`**: the share of neighbours already in the library (what radio could use)
+- **`usableForRadioPct`**: artists whose top 10 reaches at least one library artist
+- **`topScore`** p10/p50/p90: the scale a calibration against cosine has to map
+
+A failed call counts as `failed`, never as "no neighbours". The script is self-contained, so it pipes into the container like the probe:
+
+```bash
+ssh kpc 'docker exec -i nicotind-nicotind-1 sh -lc "cat > /tmp/m.ts && bun /tmp/m.ts --sample 100"' \
+  < packages/api/src/scripts/measure-similar-artists.ts
+```
+
 ## Replays that must write
 
 Some verification needs writes — #259's grace-period simulation had to run the real
