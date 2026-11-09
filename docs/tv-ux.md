@@ -188,7 +188,9 @@ not a toggle on TV at all — see "Radio is always on" below.
 `TvShellComponent` paints the signed-in username and `v<version>` in the top corners, inside the
 overscan inset, faint and non-interactive (#1404). Nothing in the TV tree said which account the
 box was on or what it ran; the phone puts both on its Settings page, which the TV tree replaced.
-Full-bleed overlays (karaoke, queue, output picker) cover it. Settings repeats the two facts under
+Full-bleed overlays (karaoke, queue, output picker) cover it. On `/player` both labels sit on a
+translucent dark pill (`bg-black/55`, white text): the muted text token is dark on the light presets
+and vanished over the dark cover backdrop (#1796). Elsewhere they stay plain. Settings repeats the two facts under
 its heading, where a person goes looking for them.
 
 ## Profiles (#1406)
