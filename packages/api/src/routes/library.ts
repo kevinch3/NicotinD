@@ -35,7 +35,7 @@ import {
   deleteLyrics,
 } from '../services/lyrics-store.js';
 import { fetchSongLyrics } from '../services/lyrics-fetch.js';
-import { clusterDuplicateSongs } from '../services/duplicate-songs.js';
+import { clusterDuplicateSongs, markSameRelease } from '../services/duplicate-songs.js';
 import { getArtistMeta, upsertArtistMeta } from '../services/artist-meta-store.js';
 import {
   getMbid,
@@ -3056,7 +3056,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const allSongs = rows.map(rowToSong);
     // One rule with the health report's `duplicateSongs` count (#951).
     const duplicates = clusterDuplicateSongs(allSongs).map((cluster) =>
-      cluster.map((s) => ({
+      markSameRelease(cluster).map((s) => ({
         id: s.id,
         title: s.title,
         artist: s.artist,
@@ -3066,6 +3066,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
         suffix: s.suffix,
         path: s.path,
         coverArt: s.coverArt,
+        sameRelease: s.sameRelease,
       })),
     );
 

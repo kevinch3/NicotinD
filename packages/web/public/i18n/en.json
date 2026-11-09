@@ -425,6 +425,7 @@
   "admin.neverConnected": "Never",
   "admin.newPasswordPlaceholder": "New password",
   "admin.noDuplicatesFound": "No duplicates found",
+  "admin.duplicateOtherRelease": "Another release — not selected",
   "admin.noFragmentation": "No fragmentation detected.",
   "admin.noLidarrAlbumId": "No Lidarr album id recorded",
   "admin.noUntrackedDownloads": "No untracked downloads. 🎉",

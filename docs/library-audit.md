@@ -701,8 +701,16 @@ metric is `clusters` and `redundantFiles` (copies beyond the best one), the work
 clusters with the albums they span. **Candidates, not confirmed duplicates** — #951's fingerprint
 sample confirmed the strongest tier, not every row, so nothing here deletes; the remediation text
 says to check a cluster in the finder first. Same-album same-slot copies are the stronger audit
-rule `slot_duplicate`. The ~6% figure in #951 predates the key fix, so the first run of this
-dimension on prod is the re-measure.
+rule `slot_duplicate`. The ~6% figure in #951 predates the key fix; the 2026-11-09 re-measure read
+1,205 clusters and 1,302 redundant files (5.0%).
+
+**Only same-release copies are redundant (#1791).** That re-measure's sample showed most clusters
+are the same song on different releases (album + single + compilation + live), which a person
+keeps on purpose. `markSameRelease` flags the copies whose album folds to the kept copy's own
+release (`releaseKey`: the album grouping fold plus a leading `YYYY - ` prefix, so `2015 - 7` and
+`7 (2015)` agree). The finder pre-arms only those for deletion, and lists the rest unarmed as
+"another release". `sameReleaseFiles` counts them: it is the real re-acquisition backlog, where
+`redundantFiles` counts every extra copy.
 
 ### The Admin panel (issue #736)
 

@@ -427,7 +427,7 @@
           <div
             class="rounded-lg border border-theme bg-theme-surface-2/30 divide-y divide-theme"
           >
-            @for (song of group; track song.id) {
+            @for (song of group; track song.id; let first = $first) {
               <label
                 appTvNavItem
                 class="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-theme-hover/30 transition"
@@ -443,6 +443,11 @@
                   <p appOverflowReveal class="text-xs text-theme-muted truncate">
                     {{ song.artist }} — {{ song.album }}
                   </p>
+                  @if (!first && !song.sameRelease) {
+                    <p class="text-xs text-theme-muted" data-testid="duplicate-other-release">
+                      {{ 'admin.duplicateOtherRelease' | t }}
+                    </p>
+                  }
                 </div>
                 <div class="text-right flex-shrink-0 space-y-0.5">
                   <p
