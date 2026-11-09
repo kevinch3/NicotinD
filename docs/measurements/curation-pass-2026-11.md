@@ -13,10 +13,10 @@ Run against prod over MCP on 2026-11-09, refiner scope. Covered flags, `jointCre
 | --- | --- | --- | --- |
 | flags.open | 3 | 1 | −2 |
 | jointCredits.credits (all `human`) | 6 | 0 | −6 |
-| genres.lowInformation | 249 | 143 | −106 |
+| genres.lowInformation | 249 | 142 | −107 |
 | years.missing | 188 | 181 | −7 |
 | years.missingMultiTrack | 17 | 10 | −7 |
-| genres.missing | 152 | 152 | 0 |
+| genres.missing | 152 | 97 | −55 (second batch, below) |
 | artists | 5,735 | 5,750 | +15 (new member rows from the splits) |
 
 Every number above was re-read from `get_library_health` after the writes. `lowInformation` was read
@@ -59,6 +59,24 @@ Also recorded `split_artist(Anitta/Maluma)`, for flag 75. It changed nothing vis
 The Damian Lazarus row repeats October's finding: the row's label is not the artist of its songs.
 None of his own four albums held an Electronic-only song. The 28 were the Ancient Moons rips.
 
+## Genre-less songs, second batch (`mode: replace`)
+
+Worked from `list_recent_songs({missingGenre: true})`, by album cluster, from siblings only. Each
+step was read back: 152 → 140 → 106 → 97.
+
+| Songs | Artist · album | Genre written | Evidence |
+| --- | --- | --- | --- |
+| 10 | Jorge Cafrune · *El Chacho, vida y obra de un caudillo* (1965) | `Folclore` | *Esenciales* (opus) `Folclore`, *Yo he visto cantar al viento* (mp3 320) `South American Folk Music`, *Inolvidable* `Folk`. These are independent rips. |
+| 22 | Los Palmeras · *Una Nueva Vida*, *Sin Fronteras*, *Te Va A Gustar*, *Un Toque Diferente* | `Cumbia Santafesina; Cumbia` | Seven sibling albums are `Cumbia`, and an opus straggler on *Una Nueva Vida* carries `Cumbia`. Their own album is titled *Bailando cumbia santafecina*. |
+| 12 | Peteco Carabajal · *Soy Santiagueño, Soy Chacarera* | `Folclore` | The album title names the chacarera, and sibling *Andando* is `Folk`. |
+| 9 | Miranda! · *Es mentira* (2002) | `Electropop; Pop` | 11 sibling albums are `Pop`. |
+| 1 + 1 | Guy J · *Equinox* (Electronic-only), *Cicada* (none) | `Progressive House` | Three independent rips (*Esperanza*, *1000 Words*, *The Trees, The Sea & The Sun*) carry Progressive House. |
+| 1 | Exaltasamba · *Cartão Postal* | `Samba` | `identify_song` matched at 0.97 (Exaltasamba, a pagode group). The file sits in a mis-bucketed "Jazz Fusion" VA folder. |
+
+The remaining 97 are mostly 1-song singletons with no siblings, such as the Kauffman Brazilian-bass
+singles and the VA "Jazz Fusion" bucket. Matías Aguayo *CD 01* has no year because it is a
+four-track mix of tracks from different releases.
+
 ## Years (`fix_album_metadata`)
 
 Green Day *Warning:* 2000 (49 songs: a 3-disc edition of the album, demos and 2001 Tokyo live; the
@@ -78,7 +96,6 @@ call, and the options are in the issue.
 
 - **Duplicate rips** of *Message From the Other Side* (opus 14 + mp3 320 14): not deleted, because
   deletes need the owner's go-ahead. Admin → Find duplicates keeps the best copy.
-- **`genres.missing` (152)**: not worked. The head is the same residue every pass has triaged.
 - **Remaining multi-track missing years**: VA mixes (`08 - Latin Tech…`, `01 - Pop Aguante`), Gondwana
   *Together* (year not known without a search), `CD 01`, `E D I T A R Singles`.
 - **`lowInformation` tail**: Dekel (6), Avicii (5) and Ibu Selva (4) were left inconclusive in
