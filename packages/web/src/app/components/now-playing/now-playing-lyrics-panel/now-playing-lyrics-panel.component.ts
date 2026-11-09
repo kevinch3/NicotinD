@@ -1,11 +1,10 @@
-import { Component, ElementRef, computed, input, output, viewChild } from '@angular/core';
-import { LYRICS_OFFSET_STEP_MS } from '@nicotind/core';
+import { Component, ElementRef, input, output, signal, viewChild } from '@angular/core';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
-import { HapticDirective } from '../../../directives/haptic.directive';
+import { LyricsOptionsSheetComponent } from '../lyrics-options-sheet/lyrics-options-sheet.component';
 
 @Component({
   selector: 'app-now-playing-lyrics-panel',
-  imports: [TranslatePipe, HapticDirective],
+  imports: [TranslatePipe, LyricsOptionsSheetComponent],
   // `display: contents` so the host doesn't break the sheet's flex column —
   // the shell's flex container needs to see this component's own top-level
   // element as the flex item, and `contents` makes the host transparent.
@@ -24,20 +23,17 @@ export class NowPlayingLyricsPanelComponent {
   /** Whether this viewer may change it — the control is hidden, not disabled,
    *  for everyone else, so nobody is offered a button that cannot work. */
   readonly canSync = input(false);
+  /** The stored row's source and whether someone edited it, for the options sheet. */
+  readonly lyricsSource = input<string | null>(null);
+  readonly lyricsEdited = input(false);
+  /** The options sheet; closed whenever the panel is shown again (#1656). */
+  readonly optionsOpen = signal(false);
 
   readonly fullscreenRequested = output<void>();
   readonly fetchRequested = output<void>();
   /** Emits the delta in ms, not the new absolute value — the panel doesn't own the state. */
   readonly offsetNudged = output<number>();
   readonly offsetReset = output<void>();
-
-  readonly step = LYRICS_OFFSET_STEP_MS;
-  /** Signed seconds, e.g. `+1.25s`. Empty at zero, where the label reads "in sync". */
-  readonly offsetLabel = computed(() => {
-    const ms = this.offsetMs();
-    if (!ms) return '';
-    return `${ms > 0 ? '+' : '−'}${(Math.abs(ms) / 1000).toFixed(2)}s`;
-  });
 
   readonly lyricsScrollRef = viewChild<ElementRef<HTMLElement>>('lyricsScroll');
 }

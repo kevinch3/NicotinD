@@ -629,16 +629,23 @@ test.describe('mobile UX', () => {
     // Timed lines, not the plain-text fallback — the karaoke branch.
     await expect(panel.locator('[data-karaoke-line]').first()).toContainText('opening line');
 
-    // The control sits WITH the lyrics. Before this it only existed in the
-    // empty state, i.e. nowhere a mistimed-lyrics complaint could reach it.
+    // The control sits behind Options, beside the lyrics, hidden by default
+    // because it permanently took space in a short viewport (#1656).
     const sync = page.getByTestId('lyrics-sync');
+    await expect(sync).toHaveCount(0);
+    await page.getByTestId('lyrics-options-toggle').click();
     await expect(sync).toBeVisible();
     await expect(page.getByTestId('lyrics-sync-value')).toContainText('In sync');
 
-    await page.getByTestId('lyrics-sync-later').click();
-    await expect(page.getByTestId('lyrics-sync-value')).toContainText('+0.25s');
-    await page.getByTestId('lyrics-sync-later').click();
-    await expect(page.getByTestId('lyrics-sync-value')).toContainText('+0.50s');
+    // The first tap away from zero used to add Reset and move both buttons
+    // 20 px, so the second tap missed. Nothing may move now.
+    const later = page.getByTestId('lyrics-sync-later');
+    const before = await later.boundingBox();
+    await later.click();
+    await expect(page.getByTestId('lyrics-sync-value')).toContainText('Lyrics 0.25 s later');
+    expect(await later.boundingBox()).toEqual(before);
+    await later.click();
+    await expect(page.getByTestId('lyrics-sync-value')).toContainText('Lyrics 0.50 s later');
 
     // Durable, and the words are untouched — the correction is an offset, not
     // a rewrite, so the source's text must come back exactly as it went in.
@@ -658,6 +665,7 @@ test.describe('mobile UX', () => {
     // Reset returns to the source's own timings.
     await page.getByTestId('lyrics-sync-reset').click();
     await expect(page.getByTestId('lyrics-sync-value')).toContainText('In sync');
+    await expect(page.getByTestId('lyrics-sync-reset')).toBeDisabled();
   });
 
   /**
@@ -713,13 +721,14 @@ test.describe('mobile UX', () => {
 
     await openNowPlaying(page);
     await page.getByTestId('now-playing-tab-lyrics').click();
+    await page.getByTestId('lyrics-options-toggle').click();
     await expect(page.getByTestId('lyrics-sync-value')).toContainText('In sync');
 
     const later = page.getByTestId('lyrics-sync-later');
     await later.click();
     await later.click();
     await later.click();
-    await expect(page.getByTestId('lyrics-sync-value')).toContainText('+0.75s');
+    await expect(page.getByTestId('lyrics-sync-value')).toContainText('Lyrics 0.75 s later');
 
     await expect
       .poll(async () => {
@@ -730,7 +739,7 @@ test.describe('mobile UX', () => {
         return row.offsetMs;
       })
       .toBe(750);
-    await expect(page.getByTestId('lyrics-sync-value')).toContainText('+0.75s');
+    await expect(page.getByTestId('lyrics-sync-value')).toContainText('Lyrics 0.75 s later');
   });
 
   /**

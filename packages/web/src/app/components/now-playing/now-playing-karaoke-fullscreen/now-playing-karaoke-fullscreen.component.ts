@@ -1,5 +1,4 @@
-import { Component, ElementRef, computed, input, output, viewChild } from '@angular/core';
-import { LYRICS_OFFSET_STEP_MS } from '@nicotind/core';
+import { Component, ElementRef, input, output, signal, viewChild } from '@angular/core';
 import { SeekBarComponent } from '../../seek-bar/seek-bar.component';
 import { NowPlayingVfxComponent } from '../now-playing-vfx/now-playing-vfx.component';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
@@ -10,6 +9,7 @@ import { DEFAULT_PALETTE, type CoverPalette } from '../../../lib/cover-colors';
 import { formatTime } from '../../../lib/format-time';
 import type { WaveformData } from '../../../../types/core';
 import { OverflowRevealDirective } from '../../../directives/overflow-reveal.directive';
+import { LyricsOptionsSheetComponent } from '../lyrics-options-sheet/lyrics-options-sheet.component';
 
 @Component({
   selector: 'app-now-playing-karaoke-fullscreen',
@@ -21,6 +21,7 @@ import { OverflowRevealDirective } from '../../../directives/overflow-reveal.dir
     TvNavGroupDirective,
     TvNavItemDirective,
     HapticDirective,
+    LyricsOptionsSheetComponent,
   ],
   templateUrl: './now-playing-karaoke-fullscreen.component.html',
 })
@@ -62,6 +63,11 @@ export class NowPlayingKaraokeFullscreenComponent {
    * navigation tree without ever being reachable by a curator's ears.
    */
   readonly canSync = input(false);
+  /** The stored row's source and whether someone edited it, for the options sheet. */
+  readonly lyricsSource = input<string | null>(null);
+  readonly lyricsEdited = input(false);
+  /** The options sheet; a fresh overlay starts with it closed (#1656). */
+  readonly optionsOpen = signal(false);
 
   readonly exit = output<void>();
   /** Emits the delta in ms — the overlay doesn't own the stored offset. */
@@ -81,14 +87,6 @@ export class NowPlayingKaraokeFullscreenComponent {
    *  auto-scroll effect can reach it while fullscreen browse mode is active,
    *  mirroring `NowPlayingLyricsPanelComponent.lyricsScrollRef`. */
   readonly lyricsScrollRef = viewChild<ElementRef<HTMLElement>>('lyricsScroll');
-
-  readonly step = LYRICS_OFFSET_STEP_MS;
-  /** Signed seconds, e.g. `+1.25s`. Empty at zero, where the label reads "in sync". */
-  readonly offsetLabel = computed(() => {
-    const ms = this.offsetMs();
-    if (!ms) return '';
-    return `${ms > 0 ? '+' : '−'}${(Math.abs(ms) / 1000).toFixed(2)}s`;
-  });
 
   formatTime(s: number): string {
     return formatTime(s);

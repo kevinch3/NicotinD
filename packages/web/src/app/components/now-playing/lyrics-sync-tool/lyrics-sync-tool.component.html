@@ -1,0 +1,68 @@
+<div
+  class="flex flex-col items-center gap-1"
+  [class]="tone() === 'overlay' ? 'text-white/70' : 'text-theme-muted'"
+  [attr.data-testid]="testid()"
+>
+  <div class="grid grid-cols-[6.5rem_9rem_6.5rem] items-center gap-1">
+    <button
+      appHaptic="select"
+      (pointerdown)="press(-1, $event)"
+      (pointerup)="release()"
+      (pointerleave)="release()"
+      (pointercancel)="release()"
+      (click)="keyClick(-1, $event)"
+      [attr.data-testid]="testid() + '-earlier'"
+      [attr.aria-label]="'nowPlaying.syncEarlier' | t"
+      class="h-9 rounded-full text-xs font-medium transition select-none touch-none focus:outline-none focus-visible:ring-2"
+      [class]="tone() === 'overlay' ? 'bg-white/10 hover:bg-white/20 hover:text-white focus-visible:ring-white' : 'bg-theme-surface-2 hover:bg-theme-hover hover:text-theme-primary'"
+    >
+      {{ 'nowPlaying.syncEarlierShort' | t }}
+    </button>
+    <span
+      [attr.data-testid]="testid() + '-value'"
+      class="text-center text-xs tabular-nums"
+      [class.font-medium]="offsetMs() !== 0"
+      aria-live="polite"
+    >
+      @if (offsetMs() > 0) {
+        {{ 'nowPlaying.syncValueLater' | t: { s: seconds() } }}
+      } @else if (offsetMs() < 0) {
+        {{ 'nowPlaying.syncValueEarlier' | t: { s: seconds() } }}
+      } @else {
+        {{ 'nowPlaying.syncInSync' | t }}
+      }
+    </span>
+    <button
+      appHaptic="select"
+      (pointerdown)="press(1, $event)"
+      (pointerup)="release()"
+      (pointerleave)="release()"
+      (pointercancel)="release()"
+      (click)="keyClick(1, $event)"
+      [attr.data-testid]="testid() + '-later'"
+      [attr.aria-label]="'nowPlaying.syncLater' | t"
+      class="h-9 rounded-full text-xs font-medium transition select-none touch-none focus:outline-none focus-visible:ring-2"
+      [class]="tone() === 'overlay' ? 'bg-white/10 hover:bg-white/20 hover:text-white focus-visible:ring-white' : 'bg-theme-surface-2 hover:bg-theme-hover hover:text-theme-primary'"
+    >
+      {{ 'nowPlaying.syncLaterShort' | t }}
+    </button>
+  </div>
+  <!-- Fixed height: the confirmation and Reset never move the buttons above. -->
+  <div class="h-6 flex items-center gap-3 text-xs">
+    <span class="w-28 text-right tabular-nums" [attr.data-testid]="testid() + '-step'">
+      @if (lastStep(); as d) {
+        {{ (d > 0 ? 'nowPlaying.syncStepLater' : 'nowPlaying.syncStepEarlier') | t: { s: (d > 0 ? d : -d) / 1000 } }}
+      }
+    </span>
+    <button
+      (click)="reset.emit()"
+      [disabled]="offsetMs() === 0"
+      [attr.data-testid]="testid() + '-reset'"
+      [attr.aria-label]="'nowPlaying.syncReset' | t"
+      class="w-28 text-left underline underline-offset-2 transition rounded disabled:opacity-40 disabled:no-underline disabled:cursor-default focus:outline-none focus-visible:ring-2"
+      [class]="tone() === 'overlay' ? 'enabled:hover:text-white focus-visible:ring-white' : 'enabled:hover:text-theme-primary'"
+    >
+      {{ 'nowPlaying.syncReset' | t }}
+    </button>
+  </div>
+</div>

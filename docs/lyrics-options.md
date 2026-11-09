@@ -327,6 +327,10 @@ the track-info sheet when the row is timed or plain.
 
 ## 5. Karaoke options group (absorbs #1656)
 
+**Built:** the Options button, the sheet, the source line (without "n of m" and the editor's name,
+which need #1674 and the provenance read) and the sync tool with fixed geometry, words and press
+and hold. Items 2, 4 and 5 below arrive with #1674 and #1675.
+
 One "Options" button (a sliders icon) in the karaoke header, between the title and the vocal-mute
 button (`now-playing-karaoke-fullscreen.component.html:44-99`), and the same button in the Lyrics
 panel. It opens a bottom sheet that lies over the lower part of the lyrics without pushing them. It

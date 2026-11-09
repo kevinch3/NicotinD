@@ -149,26 +149,36 @@ describe('NowPlayingKaraokeFullscreenComponent', () => {
     }
   });
 
-  it('transport presses tick `tap` and each sync nudge ticks `select` (#1659)', () => {
+  it('keeps the options sheet closed until Options is pressed, and off without canSync', () => {
+    const make = (canSync: boolean) => {
+      const f = TestBed.createComponent(NowPlayingKaraokeFullscreenComponent);
+      setInputValue(f.componentInstance.lines, [{ text: 'la la', timeMs: 0 }]);
+      setInputValue(f.componentInstance.canSync, canSync);
+      f.detectChanges();
+      return f;
+    };
+    // TV mounts this component with canSync off: nothing new in its D-pad tree.
+    expect(
+      make(false).nativeElement.querySelector('[data-testid="karaoke-lyrics-options"]'),
+    ).toBeNull();
+    const fixture = make(true);
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('[data-testid="lyrics-options-sheet"]')).toBeNull();
+    (el.querySelector('[data-testid="karaoke-lyrics-options"]') as HTMLElement).click();
+    fixture.detectChanges();
+    expect(el.querySelector('[data-testid="lyrics-options-sheet"]')).not.toBeNull();
+    // The sync row no longer sits under the transport.
+    expect(el.querySelector('[data-testid="karaoke-lyrics-sync"]')).toBeNull();
+  });
+
+  it('transport presses tick `tap` (#1659)', () => {
     vi.mocked(haptic).mockClear();
     const fixture = TestBed.createComponent(NowPlayingKaraokeFullscreenComponent);
-    setInputValue(fixture.componentInstance.canSync, true);
     fixture.detectChanges();
-    const steps: number[] = [];
-    fixture.componentInstance.offsetNudged.subscribe((ms) => steps.push(ms));
     for (const id of ['karaoke-prev', 'karaoke-playpause', 'karaoke-next']) {
       fixture.nativeElement.querySelector(`[data-testid="${id}"]`).click();
     }
-    fixture.nativeElement.querySelector('[data-testid="karaoke-lyrics-sync-later"]').click();
-    fixture.nativeElement.querySelector('[data-testid="karaoke-lyrics-sync-earlier"]').click();
-    expect(vi.mocked(haptic).mock.calls).toEqual([
-      ['tap'],
-      ['tap'],
-      ['tap'],
-      ['select'],
-      ['select'],
-    ]);
-    expect(steps).toHaveLength(2);
+    expect(vi.mocked(haptic).mock.calls).toEqual([['tap'], ['tap'], ['tap']]);
   });
 });
 

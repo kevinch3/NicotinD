@@ -394,6 +394,16 @@ flex flex-col`, and an unstyled component host element is a `display: block` box
     job feeds on each acquisition anywhere, for a result nothing on it renders. Specs: `services/lyrics-changed.spec.ts` (a stateful fake server; a write
     "from elsewhere" is a row the client did not write) and, server side,
     `lyrics-store.test.ts`, `library.lyrics.test.ts` and `mcp.test.ts`.
+  - **The sync tool lives in the lyrics options sheet (#1656)**: one `LyricsSyncToolComponent`
+    renders it in both the Lyrics panel and fullscreen karaoke, inside `LyricsOptionsSheetComponent`,
+    which opens from an Options button (`lyrics-options-toggle`, `karaoke-lyrics-options`) and starts
+    closed each time its view mounts. Its geometry is fixed (three constant-width slots, Reset always
+    rendered and disabled at 0), because a Reset that appeared on the first tap moved both buttons
+    20 px and the next tap missed. The direction is in words ("Lyrics earlier", "Lyrics 0.25 s
+    later"). A held button repeats every `HOLD_REPEAT_MS` after `HOLD_DELAY_MS`, and moves whole
+    seconds after `HOLD_COARSE_AFTER_MS` (`holdStepMs`); the write serialization below folds a hold
+    into one PATCH. A pointer press steps on `pointerdown`, and the click that follows is ignored
+    unless it is a keyboard click (`detail === 0`). Curator-only, and off on TV (`canSync`).
   - **Sync-offset writes are serialized per song (#1656)**: a nudge applies to the entry at once
     and at most one `PATCH …/lyrics/offset` per song is in flight; taps made meanwhile coalesce
     into one write of the latest value, sent when the outstanding one answers (`offsetWrites`,
