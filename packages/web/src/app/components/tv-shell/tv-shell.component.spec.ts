@@ -69,6 +69,28 @@ describe('TvShellComponent', () => {
     );
   });
 
+  it('puts the status labels on a dark pill only over the player backdrop (#1796)', async () => {
+    const { fixture } = create();
+    const router = TestBed.inject(Router);
+    const user = () =>
+      (fixture.nativeElement as HTMLElement).querySelector('[data-testid="tv-status-user"]')!;
+    const version = () =>
+      (fixture.nativeElement as HTMLElement).querySelector('[data-testid="tv-status-version"]')!;
+
+    await router.navigateByUrl('/');
+    fixture.detectChanges();
+    expect(user().className).not.toContain('bg-black/55');
+
+    await router.navigateByUrl('/player');
+    fixture.detectChanges();
+    expect(user().className).toContain('bg-black/55');
+    expect(version().className).toContain('text-white');
+
+    await router.navigateByUrl('/');
+    fixture.detectChanges();
+    expect(version().className).not.toContain('bg-black/55');
+  });
+
   it('opens the library event stream, so a lyrics edit on a phone reaches this TV (#1666)', () => {
     const start = vi.spyOn(LibraryEventsService.prototype, 'start');
     const stop = vi.spyOn(LibraryEventsService.prototype, 'stop');

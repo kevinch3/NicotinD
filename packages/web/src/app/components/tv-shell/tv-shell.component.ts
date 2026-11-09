@@ -1,7 +1,9 @@
 import { Component, effect, inject, untracked, type OnDestroy, type OnInit } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { filter, map } from 'rxjs';
 import { APP_VERSION } from '../../app.config';
 import { AuthService } from '../../services/auth.service';
-import { Router, RouterOutlet } from '@angular/router';
+import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { PlayerComponent } from '../player/player.component';
 import { PlayerService } from '../../services/player.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
@@ -38,8 +40,12 @@ import { LibraryEventsService } from '../../services/library-events.service';
         data-testid="tv-status"
         aria-hidden="true"
       >
-        <span data-testid="tv-status-user">{{ auth.username() }}</span>
-        <span data-testid="tv-status-version">v{{ version }}</span>
+        <!-- Over the player's dark cover backdrop a light preset's muted text
+             vanished (#1796), so there both labels sit on a dark pill. -->
+        <span data-testid="tv-status-user" [class]="onPlayer() ? pill : ''">{{
+          auth.username()
+        }}</span>
+        <span data-testid="tv-status-version" [class]="onPlayer() ? pill : ''">v{{ version }}</span>
       </div>
       <router-outlet />
       <!-- Headless on TV: PlayerComponent renders only its <audio> engine here
@@ -67,6 +73,14 @@ export class TvShellComponent implements OnInit, OnDestroy {
   readonly auth = inject(AuthService);
   readonly version = inject(APP_VERSION);
   private readonly router = inject(Router);
+  readonly pill = 'rounded-full bg-black/55 px-2 py-0.5 text-white';
+  readonly onPlayer = toSignal(
+    this.router.events.pipe(
+      filter((e): e is NavigationEnd => e instanceof NavigationEnd),
+      map((e) => e.urlAfterRedirects.split('?')[0] === '/player'),
+    ),
+    { initialValue: this.router.url.split('?')[0] === '/player' },
+  );
   // Exists so every stored person can cast to this TV, #1406.
   private readonly castListeners = inject(TvProfileListenerService);
   private readonly libraryEvents = inject(LibraryEventsService);
