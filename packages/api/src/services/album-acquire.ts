@@ -251,6 +251,7 @@ async function acquireViaAddon(
         candidateRef: best.candidateRef,
       },
       input.retry ? undefined : `acquire:${lidarrAlbumId}`,
+      { lane: input.lane, albumId: lidarrAlbumId },
     );
   } catch (err) {
     if (err instanceof AddonRequestError && err.status === 409) return { outcome: 'in-flight' };

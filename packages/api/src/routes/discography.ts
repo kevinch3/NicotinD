@@ -675,6 +675,7 @@ export function discographyRoutes({
               candidateRef: body.selected.candidateRef,
             },
             idempotencyKey,
+            { lane: 'hunt-download', albumId },
           );
 
         let addonJob;

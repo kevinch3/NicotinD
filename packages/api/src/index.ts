@@ -114,6 +114,7 @@ import { SingleEnrichmentService } from './services/single-enrichment.service.js
 import { WatchlistService } from './services/watchlist.service.js';
 import { AutoAcquireService } from './services/auto-acquire.service.js';
 import { reconcileOnBoot as reconcileAcquisitionJobs } from './services/acquisition-job-store.js';
+import { recordAttempt, setAttemptRecorder } from './services/acquisition-attempts.js';
 import { MaintenanceService } from './services/maintenance/maintenance.service.js';
 import { reconcileTranscodeRunsOnBoot } from './services/transcode-run-store.js';
 import { LibraryProcessingService } from './services/library-processing.service.js';
@@ -172,6 +173,9 @@ export function createApp({
   // Version-history ledger: record every version this server has ever booted
   // (support: "did this DB ever run 0.1.180?"). One INSERT OR IGNORE per boot.
   if (version) recordBootVersion(db, version);
+
+  // Every addon hunt and enqueue lands one row in the attempt ledger (#1626).
+  setAttemptRecorder((record) => recordAttempt(db, record));
 
   // Startup hygiene for the unified acquisition jobs: fail items idle past the
   // 24h valve (a restart must never strand a job "downloading") and prune

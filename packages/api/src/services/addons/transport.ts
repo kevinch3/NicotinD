@@ -17,6 +17,7 @@ export type HuntLane =
   | 'hunt-queue'
   | 'hunt-skew'
   | 'resource'
+  | 'hunt-download'
   | 'retry'
   | 'watchlist'
   | 'auto-acquire'
@@ -61,7 +62,7 @@ export interface AddonTransport {
     opts?: { timeoutMs?: number } & HuntTrace,
   ): Promise<AddonAlbumSearchResponse>;
   browse(user: string): Promise<{ directories: unknown[] }>;
-  createJob(req: AddonJobRequest, idempotencyKey?: string): Promise<AddonJob>;
+  createJob(req: AddonJobRequest, idempotencyKey?: string, trace?: HuntTrace): Promise<AddonJob>;
   listJobs(sinceMs?: number): Promise<AddonJob[]>;
   getJob(id: string): Promise<AddonJob>;
   cancelJob(id: string): Promise<void>;

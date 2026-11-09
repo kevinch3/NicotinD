@@ -58,7 +58,7 @@ describe('AddonClient', () => {
   });
 
   // #1626: one id joins core's hunt log line to the addon's `hunt summary`.
-  it('sends the attempt id on a hunt, and omits the header without one', async () => {
+  it('sends the attempt id on a hunt, and mints one when the caller has none', async () => {
     const { fetchFn, captured } = stubFetch(() =>
       Response.json({
         candidates: [],
@@ -72,7 +72,8 @@ describe('AddonClient', () => {
     const req = { artist: 'A', album: 'B', canonicalTracks: [{ title: 'One' }] };
     await client.albumsSearch(req, { attemptId: 'hunt-1' });
     await client.albumsSearch(req);
-    expect(captured.map((c) => c.attemptId)).toEqual(['hunt-1', null]);
+    expect(captured[0]!.attemptId).toBe('hunt-1');
+    expect(captured[1]!.attemptId).toMatch(/^h-[0-9a-f-]{36}$/);
   });
 
   // #1626: every hunt line says which lane asked, for which album, and how it ended,

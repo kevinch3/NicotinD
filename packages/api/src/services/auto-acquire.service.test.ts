@@ -166,6 +166,7 @@ describe('AutoAcquireService.sweep', () => {
     expect(enqueue).toHaveBeenCalledWith(
       expect.objectContaining({ intent: 'album', candidateRef: 'ref-0' }),
       'acquire:99',
+      expect.objectContaining({ lane: 'auto-acquire', albumId: 99 }),
     );
     const job = db.query('SELECT lidarr_album_id AS a, method FROM acquisition_jobs').get() as {
       a: number;
@@ -207,7 +208,11 @@ describe('AutoAcquireService.sweep', () => {
     await svc.sweep();
 
     expect(enqueue).toHaveBeenCalledTimes(1);
-    expect(enqueue).toHaveBeenCalledWith(expect.anything(), 'acquire:999');
+    expect(enqueue).toHaveBeenCalledWith(
+      expect.anything(),
+      'acquire:999',
+      expect.objectContaining({ lane: 'auto-acquire' }),
+    );
   });
 
   it('does not spend the per-sweep budget on albums that turn out to be complete', async () => {
@@ -221,7 +226,11 @@ describe('AutoAcquireService.sweep', () => {
     await svc.sweep();
 
     expect(enqueue).toHaveBeenCalledTimes(1);
-    expect(enqueue).toHaveBeenCalledWith(expect.anything(), 'acquire:2');
+    expect(enqueue).toHaveBeenCalledWith(
+      expect.anything(),
+      'acquire:2',
+      expect.objectContaining({ lane: 'auto-acquire' }),
+    );
   });
 
   it('carries on from the next page on the following sweep', async () => {
