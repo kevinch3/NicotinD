@@ -164,17 +164,26 @@ async function openMosaicWithLongNames(page: Page): Promise<Locator> {
     .locator('[data-testid="mosaic-tile"][data-tile-kind="song"]')
     .filter({ hasText: LONG });
   await expect(tiles.first()).toBeVisible({ timeout: 10_000 });
-  // A tile wholly on screen and clear of the bottom chrome, whose centre is its own.
+  // A tile wholly on screen and clear of the bottom chrome, whose centre and name are its own.
   const index = await tiles.evaluateAll((els) =>
     els.findIndex((el) => {
       const r = el.getBoundingClientRect();
       if (r.x < 0 || r.y < 0 || r.right > innerWidth || r.bottom > innerHeight - 140) return false;
       const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
-      return hit?.closest('[data-testid="mosaic-tile"]') === el;
+      if (hit?.closest('[data-testid="mosaic-tile"]') !== el) return false;
+      // The name is what gets tapped: nothing (the Shelves | Mosaic switch) may sit over it.
+      const name = el.querySelector('b.mosaic-name')?.getBoundingClientRect();
+      if (!name) return false;
+      const onName = document.elementFromPoint(name.x + name.width / 2, name.y + name.height / 2);
+      return onName?.closest('[data-testid="mosaic-tile"]') === el;
     }),
   );
   expect(index, 'a renamed song tile is fully on screen').toBeGreaterThanOrEqual(0);
-  return tiles.nth(index);
+  // Pin the element itself. `tiles.nth(index)` re-resolves on every use, and the
+  // field re-renders its pooled faces, so it could hover one tile and then watch
+  // another — which never moves.
+  await tiles.nth(index).evaluate((el) => el.setAttribute('data-e2e-picked', ''));
+  return page.locator('[data-e2e-picked]');
 }
 
 test.describe('overflow reveal on a mosaic tile, touch (#1707)', () => {
@@ -241,6 +250,8 @@ test.describe('overflow reveal with a mouse (#1665)', () => {
   test('a mosaic tile scrolls its long name while the tile is hovered (#1707)', async ({
     page,
   }) => {
+    // The reveal is allowed 40 s below; the default 30 s budget would end the test first.
+    test.setTimeout(60_000);
     const tile = await openMosaicWithLongNames(page);
     const title = tile.locator('b.mosaic-name');
     expect((await box(title)).max).toBeGreaterThan(40);
