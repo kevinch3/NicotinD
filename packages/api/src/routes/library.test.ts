@@ -3014,6 +3014,37 @@ describe('GET /duplicates — grouping key (issue #951)', () => {
   // The admin panel PRE-ARMS every non-best member of a returned group for
   // deletion, so a false group is a delete-the-wrong-file hazard, not a
   // cosmetic one. → docs/library-processing.md
+  it("marks which copies sit on the kept copy's own release (#1791)", async () => {
+    testDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, synced_at)
+       VALUES ('alb', '7 (2015)', 'Paul Kalkbrenner', 'pk', 1, 0, 1),
+              ('twin', '2015 - 7', 'Paul Kalkbrenner', 'pk', 1, 0, 1),
+              ('live', '7 Tour - Nantes 21 mars 2019', 'Paul Kalkbrenner', 'pk', 1, 0, 1)`,
+    );
+    seedSong('best', 'Cylence 412', 'Paul Kalkbrenner', 300);
+    seedSong('twin-copy', 'Cylence 412', 'Paul Kalkbrenner', 300);
+    seedSong('live-copy', 'Cylence 412', 'Paul Kalkbrenner', 301);
+    testDb.run(`UPDATE library_songs SET album_id = 'twin' WHERE id = 'twin-copy'`);
+    testDb.run(`UPDATE library_songs SET album_id = 'live' WHERE id = 'live-copy'`);
+    testDb.run(`UPDATE library_songs SET suffix = 'flac' WHERE id = 'best'`);
+
+    const testApp = new Hono<AuthEnv>();
+    testApp.use('*', (c, next) => {
+      c.set('user', { sub: 'u', role: 'admin', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    testApp.route('/', libraryRoutes());
+    const body = (await (await testApp.request('/duplicates')).json()) as Array<
+      Array<{ id: string; sameRelease: boolean }>
+    >;
+    expect(body).toHaveLength(1);
+    expect(Object.fromEntries(body[0]!.map((s) => [s.id, s.sameRelease]))).toEqual({
+      best: true,
+      'twin-copy': true,
+      'live-copy': false,
+    });
+  });
+
   it('does not cluster unrelated non-Latin songs into one group', async () => {
     seedSong('kino', 'Группа крови', 'Кино', 120);
     seedSong('tsoi', 'Пачка сигарет', 'Виктор Цой', 121);

@@ -578,6 +578,23 @@ describe('AdminComponent (incomplete albums / untracked)', () => {
     state: 'done',
   };
   const incompleteAlbumsApi = vi.fn(() => of([INCOMPLETE]));
+  const dup = (id: string, album: string, sameRelease: boolean) => ({
+    id,
+    title: 'Cylence 412',
+    artist: 'Paul Kalkbrenner',
+    album,
+    path: `${id}.mp3`,
+    sameRelease,
+  });
+  const duplicatesApi = vi.fn(() =>
+    of([
+      [
+        dup('best', '7 (2015)', true),
+        dup('twin', '2015 - 7', true),
+        dup('live', '7 Tour - Nantes 21 mars 2019', false),
+      ],
+    ]),
+  );
   const resyncLibraryApi = vi.fn((): Observable<{ ok: boolean; started?: boolean }> =>
     of({ ok: true }),
   );
@@ -619,6 +636,7 @@ describe('AdminComponent (incomplete albums / untracked)', () => {
           useValue: {
             resyncLibrary: resyncLibraryApi,
             incompleteAlbums: incompleteAlbumsApi,
+            getDuplicates: duplicatesApi,
             getFragments: vi.fn(() =>
               of({
                 duplicateAlbums: [],
@@ -634,6 +652,17 @@ describe('AdminComponent (incomplete albums / untracked)', () => {
         { provide: AuthService, useValue: { token: () => null, mediaToken: () => null } },
       ],
     }).compileComponents();
+  });
+
+  // #1791: a copy on another release (compilation, single, live) is listed, never armed.
+  it("pre-arms only the copies on the kept copy's own release", async () => {
+    const fixture = TestBed.createComponent(LibraryMaintenancePanelComponent);
+    const c = fixture.componentInstance;
+    await c.loadDuplicates();
+    expect([...c.duplicatesDeleteSet()]).toEqual(['twin']);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelectorAll('[data-testid="duplicate-other-release"]')).toHaveLength(1);
   });
 
   // #1444: the list is the health report's confirmed worklist, fetched on demand —

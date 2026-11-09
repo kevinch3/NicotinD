@@ -924,6 +924,8 @@ export class LibraryApiService {
           suffix?: string;
           path: string;
           coverArt?: string;
+          /** On the kept copy's own release: only these are pre-armed (#1791). */
+          sameRelease?: boolean;
         }>
       >
     >('/api/library/duplicates');

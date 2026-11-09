@@ -50,6 +50,7 @@ type DuplicateSong = {
   suffix?: string;
   path: string;
   coverArt?: string;
+  sameRelease?: boolean;
 };
 
 /**
@@ -145,7 +146,9 @@ export class LibraryMaintenancePanelComponent {
       } else {
         const toDelete = new Set<string>();
         for (const group of groups) {
-          for (const song of group.slice(1)) toDelete.add(song.id);
+          // A copy on another release (compilation, single, live) is not redundant:
+          // listed, never pre-armed (#1791).
+          for (const song of group.slice(1)) if (song.sameRelease) toDelete.add(song.id);
         }
         this.duplicatesDeleteSet.set(toDelete);
       }

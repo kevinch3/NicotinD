@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite';
-import { normalizeTitle } from '@nicotind/core';
+import { normalizeForGrouping, normalizeTitle } from '@nicotind/core';
 
 /**
  * Song-level duplicate candidates (#951): one rule for the Admin finder
@@ -47,6 +47,35 @@ export function qualityScore(song: Pick<DuplicateCandidate, 'suffix' | 'bitRate'
   return formatScore + (song.bitRate ?? 0);
 }
 
+/** "2015 - 7": a year prefix a folder name carries, which the album fold keeps. */
+const LEADING_YEAR = /^\s*(?:19|20)\d{2}\s*[-–.:]\s*/;
+
+/**
+ * Which release an album title names, for the finder only (#1791): the album
+ * grouping fold, plus a leading year prefix, so "2015 - 7" and "7 (2015)" (one
+ * release acquired twice) agree while "7 Tour - Nantes" does not. Not an album
+ * identity: changing the grouping fold itself would re-mint album ids.
+ */
+export function releaseKey(album: string): string {
+  return normalizeForGrouping(album.replace(LEADING_YEAR, ''));
+}
+
+/**
+ * Mark each copy that sits on the best copy's own release. Only those are
+ * redundant: the same song on a compilation, a single or a live album is a
+ * different release, and the finder must not pre-arm it for deletion (#1791).
+ * A copy with no album is never marked, since nothing says which release it is.
+ */
+export function markSameRelease<T extends { album?: string }>(
+  cluster: readonly T[],
+): Array<T & { sameRelease: boolean }> {
+  const best = releaseKey(cluster[0]?.album ?? '');
+  return cluster.map((s, i) => ({
+    ...s,
+    sameRelease: i === 0 || (best !== '' && releaseKey(s.album ?? '') === best),
+  }));
+}
+
 /** Clusters of 2+ candidates, each sorted best copy first. */
 export function clusterDuplicateSongs<T extends DuplicateCandidate>(songs: readonly T[]): T[][] {
   const groups = new Map<string, T[]>();
@@ -78,7 +107,8 @@ export function clusterDuplicateSongs<T extends DuplicateCandidate>(songs: reado
 }
 
 export interface DuplicateSongFacts {
-  metric: { clusters: number; redundantFiles: number };
+  /** `sameReleaseFiles`: the redundant copies on the kept copy's own release (#1791). */
+  metric: { clusters: number; redundantFiles: number; sameReleaseFiles: number };
   /** Largest clusters first. */
   worklist: Array<{ title: string; artist: string; copies: number; albums: string[] }>;
 }
@@ -115,6 +145,10 @@ export function duplicateSongFacts(db: Database, sample: number): DuplicateSongF
     metric: {
       clusters: clusters.length,
       redundantFiles: clusters.reduce((n, c) => n + c.length - 1, 0),
+      sameReleaseFiles: clusters.reduce(
+        (n, c) => n + markSameRelease(c).filter((s, i) => i > 0 && s.sameRelease).length,
+        0,
+      ),
     },
     worklist: [...clusters]
       .sort((a, b) => b.length - a.length || a[0]!.title.localeCompare(b[0]!.title))

@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
-import { clusterDuplicateSongs, duplicateSongFacts, normalizeDupKey } from './duplicate-songs.js';
+import {
+  clusterDuplicateSongs,
+  duplicateSongFacts,
+  markSameRelease,
+  normalizeDupKey,
+  releaseKey,
+} from './duplicate-songs.js';
 
 describe('clusterDuplicateSongs (#951)', () => {
   it('groups folded artist+title within 2 s, best copy first, and never a row that folds to nothing', () => {
@@ -52,8 +58,50 @@ describe('duplicateSongFacts (#951)', () => {
     song('s5', 'a1', 'Runaway', 180, 1); // hidden: not a visible duplicate
 
     const f = duplicateSongFacts(db, 10);
-    expect(f.metric).toEqual({ clusters: 1, redundantFiles: 2 });
+    expect(f.metric).toEqual({ clusters: 1, redundantFiles: 2, sameReleaseFiles: 2 });
     expect(f.worklist[0]).toMatchObject({ copies: 3 });
     expect(f.worklist[0]!.albums.sort()).toEqual(['Pampas Reggae', 'Pampas reggae']);
+  });
+});
+
+// The finder pre-arms what `sameRelease` marks, so a cross-release copy marked
+// true is a compilation track deleted (#1791).
+describe('releaseKey / markSameRelease (#1791)', () => {
+  it.each([
+    ['2015 - 7', '7 (2015)'],
+    ['Corazón de Papel', 'corazon de papel'],
+    ['2001 - Coolio.com', 'Coolio.com (2001)'],
+    ['1978 - Van Halen (2000 HDCD RM)', 'Van Halen'],
+  ])('%s and %s are one release', (a, b) => {
+    expect(releaseKey(a)).toBe(releaseKey(b));
+  });
+
+  it.each([
+    ['Are You Gonna Go My Way', 'Greatest Hits'],
+    ['7 (2015)', '7 Tour - Nantes 21 mars 2019'],
+    ['Mi sangre', 'Tr3s Presents MTV Unplugged'],
+  ])('%s and %s are different releases', (a, b) => {
+    expect(releaseKey(a)).not.toBe(releaseKey(b));
+  });
+
+  it('marks only the best copy and its own release', () => {
+    const marked = markSameRelease([
+      { id: 'best', album: '7 (2015)' },
+      { id: 'twin', album: '2015 - 7' },
+      { id: 'live', album: '7 Tour - Nantes 21 mars 2019' },
+    ]);
+    expect(marked.map((s) => [s.id, s.sameRelease])).toEqual([
+      ['best', true],
+      ['twin', true],
+      ['live', false],
+    ]);
+  });
+
+  it('never marks a copy with no album as the same release', () => {
+    const marked = markSameRelease([
+      { id: 'a', album: '' },
+      { id: 'b', album: '' },
+    ]);
+    expect(marked[1]!.sameRelease).toBe(false);
   });
 });
