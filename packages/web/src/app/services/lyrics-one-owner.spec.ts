@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { computed, signal } from '@angular/core';
 import { provideRouter } from '@angular/router';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { vi } from 'vitest';
 import type { LyricsDto } from '@nicotind/core';
 import { LYRICS_CACHE_SIZE, LyricsService } from './lyrics.service';
@@ -46,9 +46,13 @@ function setup() {
     // Mirrors fetchSongLyrics: an unforced fetch serves a stored row; a hit is
     // persisted; a miss — forced or not — leaves any stored row in place and
     // answers null (the route's `no-match`).
-    fetchLyrics: vi.fn((id: string, force = false) => {
+    fetchLyrics: vi.fn((id: string, force = false, confirmReplaceEdit = false) => {
       const stored = rows.get(id);
       if (stored && !force) return of(stored);
+      // The route's 409: an edit is replaced only once confirmed (#1786).
+      if (stored?.customized && !confirmReplaceEdit) {
+        return throwError(() => ({ status: 409, error: { code: 'lyrics-customized' } }));
+      }
       if (sourceAnswer) rows.set(id, sourceAnswer);
       return of(sourceAnswer);
     }),
@@ -288,6 +292,54 @@ describe('lyrics have one owner (#1666 Shape B)', () => {
       browsePastTheCache(svc);
 
       expect(svc.lyricsFor('x')?.plain).toBe('words of x');
+    });
+  });
+
+  describe('a Re-fetch of edited lyrics asks first, because it replaces the edit (#1786)', () => {
+    function refetchingEdited() {
+      const s = setup();
+      s.rows.set('s1', dto('my words', { source: 'user', customized: true }));
+      s.setSourceAnswer(dto('source words'));
+      s.svc.ensureLoaded('s1');
+      const sheet = s.openSheet('s1');
+      sheet.fetchLyricsNow();
+      return { ...s, sheet };
+    }
+
+    it('asks before fetching anything', () => {
+      const { api, confirm } = refetchingEdited();
+      expect(confirm.request()?.message).toBe('trackInfo.lyricsRefetchReplacesEdit');
+      expect(confirm.request()?.confirmLabel).toBe('trackInfo.lyricsRefetchReplacesEditConfirm');
+      expect(api.fetchLyrics).not.toHaveBeenCalledWith('s1', true, expect.anything());
+    });
+
+    it('declining keeps the edit', async () => {
+      const { api, confirm, svc } = refetchingEdited();
+      confirm.resolve(false);
+      await Promise.resolve();
+
+      expect(api.fetchLyrics).not.toHaveBeenCalledWith('s1', true, expect.anything());
+      expect(svc.plain()).toBe('my words');
+    });
+
+    it('confirming sends the confirmation, and the player follows the source', async () => {
+      const { api, confirm, svc } = refetchingEdited();
+      confirm.resolve(true);
+      await Promise.resolve();
+
+      expect(api.fetchLyrics).toHaveBeenCalledWith('s1', true, true);
+      expect(svc.plain()).toBe('source words');
+    });
+
+    it('a Re-fetch of lyrics nobody edited does not ask', () => {
+      const { rows, svc, openSheet, confirm, api, setSourceAnswer } = setup();
+      rows.set('s1', dto('source words'));
+      setSourceAnswer(dto('newer words'));
+      svc.ensureLoaded('s1');
+      openSheet('s1').fetchLyricsNow();
+
+      expect(confirm.request()).toBeNull();
+      expect(api.fetchLyrics).toHaveBeenCalledWith('s1', true);
     });
   });
 

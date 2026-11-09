@@ -447,12 +447,15 @@ export class LyricsService {
    * fetch that finds nothing answers null while the server keeps the stored
    * row (`fetchSongLyrics`), so a null never clears words already held.
    */
-  fetchFor(id: string, force: boolean): Observable<LyricsDto | null> {
+  fetchFor(id: string, force: boolean, confirmReplaceEdit = false): Observable<LyricsDto | null> {
     const token = this.begin(id, { inFlight: 'write' });
     return this.written(
       id,
       token,
-      this.api.fetchLyrics(id, force).pipe(
+      (confirmReplaceEdit
+        ? this.api.fetchLyrics(id, force, true)
+        : this.api.fetchLyrics(id, force)
+      ).pipe(
         tap((l) => {
           this.settle(id, token, l ? { dto: l, error: false, inFlight: null } : { inFlight: null });
           if (l) this.remember(id, l);

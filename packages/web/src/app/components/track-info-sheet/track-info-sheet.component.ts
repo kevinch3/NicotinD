@@ -374,12 +374,32 @@ export class TrackInfoSheetComponent implements OnInit {
     this.destroyRef.onDestroy(this.lyricsSvc.ensureEntry(this.songId()));
   }
 
+  /**
+   * Re-fetch from the sources. Lyrics someone edited are replaced only after
+   * the listener confirms (#1786); the server refuses the forced fetch without it.
+   */
   fetchLyricsNow(): void {
+    if (this.fetchingLyrics()) return;
+    if (!this.lyrics()?.customized) {
+      this.runFetch(false);
+      return;
+    }
+    void this.confirm
+      .ask(this.i18n.t('trackInfo.lyricsRefetchReplacesEdit'), {
+        confirmLabel: this.i18n.t('trackInfo.lyricsRefetchReplacesEditConfirm'),
+        cancelLabel: this.i18n.t('trackInfo.lyricsRefetchKeepEdit'),
+      })
+      .then((ok) => {
+        if (ok) this.runFetch(true);
+      });
+  }
+
+  private runFetch(confirmReplaceEdit: boolean): void {
     if (this.fetchingLyrics()) return;
     this.fetchingLyrics.set(true);
     this.noLyricsFound.set(false);
     // Force a re-fetch when we already have a (cached/edited) row.
-    this.lyricsSvc.fetchFor(this.songId(), this.lyrics() !== null).subscribe({
+    this.lyricsSvc.fetchFor(this.songId(), this.lyrics() !== null, confirmReplaceEdit).subscribe({
       next: (l) => {
         this.noLyricsFound.set(l === null);
         this.fetchingLyrics.set(false);

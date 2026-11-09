@@ -305,6 +305,33 @@ describe('PUT /songs/:id/lyrics', () => {
     expect(calls()).toBe(0);
   });
 
+  it('a forced re-fetch answers 409 on a customized row until it is confirmed (#1786)', async () => {
+    seedSong(testDb, 'song-1');
+    const { registry, calls } = makeRegistry({ result: LYRICS });
+    await makeApp('admin').request('/songs/song-1/lyrics', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ plain: 'my words' }),
+    });
+    const fetch = (body: object) =>
+      makeApp('user', registry).request('/songs/song-1/lyrics/fetch', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+    const refused = await fetch({ force: true });
+    expect(refused.status).toBe(409);
+    expect((await refused.json()).code).toBe('lyrics-customized');
+    expect(calls()).toBe(0);
+    expect(getLyrics(testDb, 'song-1')?.plain).toBe('my words');
+
+    const confirmed = await fetch({ force: true, confirmReplaceEdit: true });
+    expect(confirmed.status).toBe(200);
+    expect(calls()).toBe(1);
+    expect(getLyrics(testDb, 'song-1')?.customized).toBe(false);
+  });
+
   it('rejects a non-admin edit', async () => {
     seedSong(testDb, 'song-1');
     const res = await makeApp('user').request('/songs/song-1/lyrics', {

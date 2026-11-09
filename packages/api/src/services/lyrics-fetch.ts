@@ -12,6 +12,8 @@ export type LyricsFetchOutcome =
   | { kind: 'cached'; lyrics: LyricsDto }
   /** A forced fetch found only untimed lyrics for a song stored timed; the row is unchanged. */
   | { kind: 'kept-timed'; lyrics: LyricsDto }
+  /** A forced fetch on a row a user edited, without `confirmReplaceEdit`; the row is unchanged. */
+  | { kind: 'customized'; lyrics: LyricsDto }
   | { kind: 'no-match' }
   | { kind: 'song-not-found' }
   | { kind: 'no-source' }
@@ -40,12 +42,16 @@ export type LyricsFetchOutcome =
  * LRC running past the end of the file (`lrcOverrunSec`, the health report's
  * detector for rows with no recorded duration): those are wrong words, and
  * replacing them is what a re-fetch is for (#1205).
+ *
+ * **A forced fetch never replaces a user's edit unasked** (#1786): a `customized`
+ * row answers `customized` unless the caller passes `confirmReplaceEdit`, which
+ * the web app sends only after the listener confirms.
  */
 export async function fetchSongLyrics(
   db: Database,
   deps: { plugins?: PluginRegistry | null; musicDir?: string },
   songId: string,
-  opts: { force?: boolean } = {},
+  opts: { force?: boolean; confirmReplaceEdit?: boolean } = {},
 ): Promise<LyricsFetchOutcome> {
   const song = db
     .query<
@@ -61,6 +67,9 @@ export async function fetchSongLyrics(
 
   const existing = getLyrics(db, songId);
   if (existing && !opts.force) return { kind: 'cached', lyrics: existing };
+  if (existing?.customized && !opts.confirmReplaceEdit) {
+    return { kind: 'customized', lyrics: existing };
+  }
 
   const md = deps.musicDir ? expandDir(deps.musicDir) : null;
   const abs = md ? resolveSongPath(md, song.path) : null;
