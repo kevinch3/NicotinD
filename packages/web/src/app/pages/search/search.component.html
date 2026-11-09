@@ -1167,9 +1167,9 @@
 
   <!-- Empty state -->
   @if (search.networkState() === 'idle' && !loading() && !linkIntent()) {
-    <div class="text-center py-20">
-      <p class="text-zinc-600 text-lg">{{ 'acquire.emptyTitle' | t }}</p>
-      <p class="text-zinc-700 text-sm mt-1">{{ 'acquire.emptySubtitle' | t }}</p>
+    <div class="text-center py-20" data-testid="search-empty-state">
+      <p class="text-theme-secondary text-lg">{{ 'acquire.emptyTitle' | t }}</p>
+      <p class="text-theme-muted text-sm mt-1">{{ 'acquire.emptySubtitle' | t }}</p>
     </div>
   }
 
