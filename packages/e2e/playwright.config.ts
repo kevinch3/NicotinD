@@ -4,6 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { rmSync } from 'node:fs';
 import { TV_DIST, ensureWebBuild } from './ensure-web-build.js';
 import { FIXTURE_LIDARR_PORT, FIXTURE_LIDARR_URL } from './tests/helpers/fixture-lidarr.js';
+import { FIXTURE_LRCLIB_PORT, FIXTURE_LRCLIB_URL } from './tests/helpers/fixture-lrclib.js';
 import {
   E2E_MUSIC_DIR,
   ONBOARDING_MUSIC_DIR,
@@ -141,6 +142,14 @@ export default defineConfig({
           timeout: 30_000,
           env: { E2E_LIDARR_PORT: FIXTURE_LIDARR_PORT },
         },
+        {
+          command: 'bun run tests/helpers/fixture-lrclib.ts',
+          cwd: __dirname,
+          url: `${FIXTURE_LRCLIB_URL}/__fixture/health`,
+          reuseExistingServer: false,
+          timeout: 30_000,
+          env: { E2E_LRCLIB_PORT: FIXTURE_LRCLIB_PORT },
+        },
         makeServer(PORT, dataDir, E2E_MUSIC_DIR, { NICOTIND_LIDARR_URL: FIXTURE_LIDARR_URL }),
         makeServer(ONBOARDING_PORT, onboardingDataDir, ONBOARDING_MUSIC_DIR),
         makeServer(TV_PORT, tvDataDir, TV_BUILD_MUSIC_DIR, { NICOTIND_WEB_DIST: TV_DIST }),
@@ -237,6 +246,7 @@ function makeServer(
       NICOTIND_PORT: port,
       NICOTIND_MODE: 'external', // never spawn sub-services
       NICOTIND_LIDARR_URL: 'http://127.0.0.1:1', // isolate from a real Lidarr
+      NICOTIND_LRCLIB_URL: `${FIXTURE_LRCLIB_URL}/api`, // the fixture LRCLIB, never lrclib.net
       NICOTIND_DATA_DIR: dir,
       NICOTIND_MUSIC_DIR: musicDir,
       // The silent-FLAC fixtures are ~30s; without this the radio pool's 60s

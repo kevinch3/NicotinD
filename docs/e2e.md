@@ -432,6 +432,16 @@ same PR that hit it.
   run the whole loop from search to library; see that spec. `artist-provisioning.spec.ts` keeps its route
   stubs on purpose, and says why.
 
+- **The lyrics source is a fixture too, and it answers "no match" until you seed it.** Every server's
+  `NICOTIND_LRCLIB_URL` points at `tests/helpers/fixture-lrclib.ts` (`E2E_LRCLIB_PORT`, default 8590),
+  so no spec reaches lrclib.net. The server fetches lyrics from inside its own process, so `page.route`
+  cannot stand in for it. `seedFixtureLyrics` replaces one song's records, keyed by artist and title;
+  mark the one `/get` should return `exact`, and leave the rest for `/search`. Specs run in parallel
+  against the one fixture, so seed titles no other spec uses and call `clearFixtureLyrics` afterwards.
+  `fixtureLyricsCalls` counts the requests for a song. `lyrics-source.spec.ts` is the example. Its
+  shapes follow the plugin's `LrclibTrack`, so like the fixture Lidarr it proves the wiring, not
+  LRCLIB's behaviour.
+
 - **The fixture library is minimal.** Silent FLACs from `fixtures/music/**`,
   no acquire jobs, no user playlists, no curated content beyond what boot
   seeds. Don't assert on content existing unless the setup project or your

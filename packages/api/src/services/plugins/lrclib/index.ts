@@ -17,6 +17,8 @@ export interface LrclibPluginDeps {
   fetchFn?: typeof fetch;
   /** Base retry backoff (ms). Overridable so tests don't wait on real delays. */
   retryBackoffMs?: number;
+  /** API root, `https://lrclib.net/api` by default; e2e points it at a fixture. */
+  baseUrl?: string;
 }
 
 /** One track record as returned by LRCLIB's /get and /search endpoints. */
@@ -107,11 +109,13 @@ export class LrclibPlugin implements Plugin {
   private cfg: LrclibPluginConfig;
   private readonly fetchFn: typeof fetch;
   private readonly retryBackoffMs: number;
+  private readonly baseUrl: string;
 
   constructor(config: LrclibPluginConfig = { enabled: true }, deps: LrclibPluginDeps = {}) {
     this.cfg = config;
     this.fetchFn = deps.fetchFn ?? fetch;
     this.retryBackoffMs = deps.retryBackoffMs ?? RETRY_BACKOFF_MS;
+    this.baseUrl = (deps.baseUrl ?? API_BASE).replace(/\/+$/, '');
   }
 
   readonly lyrics: LyricsCapability = {
@@ -246,7 +250,7 @@ export class LrclibPlugin implements Plugin {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
-      const res = await this.fetchFn(`${API_BASE}${path}`, {
+      const res = await this.fetchFn(`${this.baseUrl}${path}`, {
         signal: controller.signal,
         headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
       });
