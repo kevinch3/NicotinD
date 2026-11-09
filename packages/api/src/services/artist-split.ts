@@ -350,6 +350,25 @@ export function splitArtists(raw: string, known: KnownArtistSets = {}): ArtistCr
 
 const EMPTY: ReadonlySet<string> = new Set();
 
+/**
+ * The display text for a raw credit whose names are glued together with no separator
+ * ("Los NocherosLos Tekis"), with ", " put back at each glue point. Only a cut where
+ * both sides are names in `members` (the entity's own credited artists) is opened, so
+ * a credit that is not a mash comes back unchanged. Display only: the stored tag text
+ * stays raw, because the identity pass reads it (#860).
+ */
+export function unmashDisplay(raw: string, members: readonly string[]): string {
+  if (!raw || members.length < 2) return raw;
+  const byName = new Map(members.map((m) => [normalize(m), m]));
+  const resolve = (piece: string): string | null => byName.get(normalize(piece)) ?? null;
+  let out = raw;
+  for (const candidate of splitOnDelimiters(raw)) {
+    const segments = segmentConcatenatedArtist(candidate, resolve);
+    if (segments) out = out.replace(candidate, segments.join(', '));
+  }
+  return out;
+}
+
 export function formatArtistDisplay(artists: ArtistCredit[]): string {
   const primaries = artists.filter((a) => a.role === 'primary');
   const feats = artists.filter((a) => a.role === 'featuring');

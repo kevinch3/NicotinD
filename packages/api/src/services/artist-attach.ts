@@ -1,8 +1,18 @@
 import type { Database } from 'bun:sqlite';
 import type { ArtistCredit } from '@nicotind/core';
+import { unmashDisplay } from './artist-split';
 
 /** Minimal shape both the full `Song`/`Album` and the lighter search results satisfy. */
-type HasArtists = { id: string; artists?: ArtistCredit[] };
+type HasArtists = { id: string; artist?: string; artists?: ArtistCredit[] };
+
+/** A glued credit ("Los NocherosLos Tekis") reads as its credited names (#860). */
+function unmash(entity: HasArtists, artists: ArtistCredit[]): void {
+  if (typeof entity.artist !== 'string') return;
+  entity.artist = unmashDisplay(
+    entity.artist,
+    artists.map((a) => a.name),
+  );
+}
 
 /** Each song's credited artists, in billing order. A song with none has no entry. */
 export function songCredits(db: Database, ids: string[]): Map<string, ArtistCredit[]> {
@@ -37,7 +47,10 @@ export function attachSongArtists(db: Database, songs: HasArtists[]): void {
   );
   for (const song of songs) {
     const artists = credits.get(song.id);
-    if (artists) song.artists = artists;
+    if (artists) {
+      song.artists = artists;
+      unmash(song, artists);
+    }
   }
 }
 
@@ -65,6 +78,9 @@ export function attachAlbumArtists(db: Database, albums: HasArtists[]): void {
   }
   for (const album of albums) {
     const artists = map.get(album.id);
-    if (artists && artists.length > 0) album.artists = artists;
+    if (artists && artists.length > 0) {
+      album.artists = artists;
+      unmash(album, artists);
+    }
   }
 }

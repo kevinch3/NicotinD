@@ -6,6 +6,7 @@ import {
   formatArtistDisplay,
   isAtomicArtist,
   segmentConcatenatedArtist,
+  unmashDisplay,
 } from './artist-split.js';
 import type { ArtistCredit } from './artist-split.js';
 
@@ -564,5 +565,36 @@ describe('confirmAtomicNames', () => {
     ]) {
       expect(set.has(normalizeArtistForGrouping('Gramatik/Luxas'))).toBe(false);
     }
+  });
+});
+
+describe('unmashDisplay (#860)', () => {
+  it('puts ", " back at each glue point between credited names', () => {
+    expect(unmashDisplay('Los NocherosLos Tekis', ['Los Nocheros', 'Los Tekis'])).toBe(
+      'Los Nocheros, Los Tekis',
+    );
+    expect(
+      unmashDisplay('2 MinutosTruenoDie Toten Hosen', ['2 Minutos', 'Trueno', 'Die Toten Hosen']),
+    ).toBe('2 Minutos, Trueno, Die Toten Hosen');
+  });
+
+  it('keeps a real delimiter and opens only the glued part', () => {
+    expect(
+      unmashDisplay('J. BalvinDua LipaBad Bunny & Tainy', [
+        'J. Balvin',
+        'Dua Lipa',
+        'Bad Bunny',
+        'Tainy',
+      ]),
+    ).toBe('J. Balvin, Dua Lipa, Bad Bunny & Tainy');
+  });
+
+  it('leaves a credit alone when the cut is not between two credited names', () => {
+    expect(unmashDisplay('Bad Bunny & Tainy', ['Bad Bunny', 'Tainy'])).toBe('Bad Bunny & Tainy');
+    expect(unmashDisplay('McCartney', ['McCartney', 'Wings'])).toBe('McCartney');
+    expect(unmashDisplay('Los NocherosLos Tekis', ['Los Nocheros'])).toBe('Los NocherosLos Tekis');
+    expect(unmashDisplay('Los NocherosLos Tekis', ['Los Nocheros', 'Soledad'])).toBe(
+      'Los NocherosLos Tekis',
+    );
   });
 });
