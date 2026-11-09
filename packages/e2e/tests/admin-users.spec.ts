@@ -1,5 +1,5 @@
 import { test, expect } from '../helpers';
-import { ADMIN, bearer, expandGroup } from '../helpers';
+import { ADMIN, bearer, expandGroup, expectNoHorizontalOverflow } from '../helpers';
 
 /**
  * The Admin users table, after it was consolidated from eight columns (four of
@@ -42,10 +42,7 @@ test.describe('admin user management table', () => {
       await expect(cell).toBeVisible();
     }
     // And the page itself must not scroll sideways to achieve that.
-    const overflows = await page.evaluate(
-      () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
-    );
-    expect(overflows, 'the page should not scroll horizontally at 390px').toBe(false);
+    await expectNoHorizontalOverflow(page, 'the page should not scroll horizontally at 390px');
   });
 
   test('the Activity column reports a never-connected user and the live admin', async ({

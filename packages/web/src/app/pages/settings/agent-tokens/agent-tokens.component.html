@@ -50,7 +50,7 @@
           class="w-full px-3 py-2 rounded-lg bg-theme-elevated text-theme-primary text-sm"
         />
       </div>
-      <div>
+      <div class="min-w-0">
         <label class="block text-xs text-theme-muted mb-1" for="agent-token-scope">{{
           'agentTokens.scope' | t
         }}</label>
@@ -58,7 +58,7 @@
           id="agent-token-scope"
           [(ngModel)]="scope"
           data-testid="agent-token-scope-select"
-          class="px-3 py-2 rounded-lg bg-theme-elevated text-theme-primary text-sm"
+          class="w-full max-w-full px-3 py-2 rounded-lg bg-theme-elevated text-theme-primary text-sm"
         >
           <option value="refiner:curate">{{ 'agentTokens.scopeCurate' | t }}</option>
           <option value="refiner:read">{{ 'agentTokens.scopeRead' | t }}</option>

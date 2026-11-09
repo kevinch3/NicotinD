@@ -650,6 +650,20 @@ clipping. The rows themselves follow these rules:
 
 `radio-poll.spec.ts` pins the reported case: an open poll's row in Spanish at 375 px.
 
+**Every route is swept, not just the reported ones.** `horizontal-overflow.spec.ts` opens every
+route — the library tabs, album/artist/genre/playlist/curate, both Get tabs, Settings and its
+sub-pages, Admin, and the public poll, share and login pages — at 320, 360 and 390 px, in `en` and
+`es`, with **every settings group expanded** (a collapsed group renders no body, so a card nobody
+opened is a card nobody measured). Polls (one open, one closed), a playlist and a share link are
+seeded so their rows exist. It asserts through `expectNoHorizontalOverflow` (`packages/e2e/helpers.ts`),
+which every page-overflow check in the suite now shares: `html`, `body` and `<main>` must not scroll
+sideways, and no element may cross the viewport's edge. A failure names the **outermost** offender,
+skipping `position: fixed` layers and anything inside a container that owns its own overflow (a scroll
+strip, a `section-flush` table, a `truncate` host). Chromium only: an iOS-only overflow is still a
+device check. Its first run found three rows the code audit had not: the new-playlist form (an input
+with no `min-w-0`), the Agent tokens scope `<select>` (as wide as its longest option) and the Stats
+period strip in Spanish at 360 px.
+
 ## Boot — player restore never autoplays
 
 `PlayerService.restoreState()` (called from `provideAppInitializer` in `app.config.ts`) loads the last track/queue/history/currentTime from `nicotind_player_state` but **leaves `isPlaying` false, unconditionally**. The snapshot's `wasPlaying` field is still written (harmless, and compatible in both directions with an older bundle) but is ignored on read. The page never attempts a gesture-less `audio.play()` on load, so the user always presses play themselves.

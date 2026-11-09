@@ -494,7 +494,7 @@
     <section data-testid="playlists-list">
       <h2 class="text-lg font-bold text-theme-primary mb-3">Playlists</h2>
       <form class="flex gap-2 mb-5 max-w-md" (submit)="$event.preventDefault(); createPlaylist()">
-        <input class="flex-1 px-3 py-2 rounded-lg bg-theme-surface-2 text-theme-primary text-sm outline-none"
+        <input class="flex-1 min-w-0 px-3 py-2 rounded-lg bg-theme-surface-2 text-theme-primary text-sm outline-none"
           placeholder="New playlist name"
           [ngModel]="newPlaylistName()" (ngModelChange)="newPlaylistName.set($event)" name="newPlaylistName" />
         <button type="submit" [disabled]="creatingPlaylist() || !newPlaylistName().trim()"

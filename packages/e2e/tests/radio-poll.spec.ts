@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext, type Page } from '../helpers';
-import { ADMIN, bearer, expandGroup } from '../helpers';
+import { ADMIN, bearer, expandGroup, expectNoHorizontalOverflow } from '../helpers';
 
 /**
  * Radio evaluation polls (docs/radio-eval-polls.md): an admin freezes radio
@@ -231,12 +231,7 @@ test.describe('radio evaluation polls', () => {
     expect(del.x + del.width, 'Delete stays inside its row').toBeLessThanOrEqual(
       rowBox.x + rowBox.width + 1,
     );
-    const overflow = await page.evaluate(() =>
-      [document.documentElement, document.querySelector('[data-scroll-root]')]
-        .filter((el): el is Element => !!el)
-        .reduce((max, el) => Math.max(max, el.scrollWidth - el.clientWidth), 0),
-    );
-    expect(overflow, 'no horizontal page overflow at phone width').toBeLessThanOrEqual(1);
+    await expectNoHorizontalOverflow(page, 'no horizontal page overflow at phone width');
   });
 
   test('a closed poll answers 410 and the page explains itself', async ({
