@@ -35,6 +35,8 @@ export type LyricsFetchOutcome =
  * a plain-only answer used to overwrite the stored LRC — and the user's sync
  * offset — with NULL. A plain-only candidate is skipped in favour of the next
  * source; when none has timings the stored row is returned as `kept-timed`.
+ * A timed answer whose LRC is the stored text again keeps the sync offset, which
+ * was measured against that text (#1785); different timed text resets it.
  * The one exception is a stored timed row matched to **another take** — its
  * recorded duration beyond `LYRICS_DURATION_TOLERANCE_SEC` of the song's, or its
  * LRC running past the end of the file (`lrcOverrunSec`, the health report's
@@ -137,6 +139,10 @@ export async function fetchSongLyrics(
       // that reports no duration leaves these null, i.e. unverified (#1212).
       matchedDurationSec: result.matchedDurationSec ?? null,
       sourceTrackId: result.sourceTrackId ?? null,
+      // The same timed text again: the offset was measured against it (#1785).
+      ...(existing?.synced && result.synced && sameLrc(existing.synced, result.synced)
+        ? { offsetMs: existing.offsetMs }
+        : {}),
       choice: choiceFor(result, song.duration, {
         skippedUntimed,
         replacedOtherTake: storedIsOtherTake,
@@ -150,6 +156,12 @@ export async function fetchSongLyrics(
   }
   if (keptTimed && existing) return { kind: 'kept-timed', lyrics: existing };
   return sourceErrored ? { kind: 'source-error' } : { kind: 'no-match' };
+}
+
+/** Two LRC bodies are the same text, ignoring line endings and edge whitespace. */
+function sameLrc(a: string, b: string): boolean {
+  const norm = (t: string) => t.replace(/\r\n?/g, '\n').trim();
+  return norm(a) === norm(b);
 }
 
 /**
