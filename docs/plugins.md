@@ -288,7 +288,7 @@ process.ts` — `runAcquireProcess` + progress parsing + audio collection; the i
   before closest. A `/get` that throws falls back to `/search` too — and if `/search` then misses,
   the plugin still throws (a source error, not "no lyrics"). The same song used to come back timed
   or untimed depending on which endpoint answered. The host never stores the downgrade either:
-  `fetchSongLyrics` skips a plain-only result for a song stored timed and returns `kept-timed` — unless the stored row is already another take's words (#1205) by either health-report detector — `matchedDurationSec` beyond the tolerance, or the LRC outlasting the file (`lrcOverrunSec`, shared with `library-health.ts`) — which a re-fetch may still replace. Registered in `index.ts` and **seeded enabled on first boot** via
+  `fetchSongLyrics` skips a plain-only result for a song stored timed and returns `kept-timed` — unless the stored row is already another take's words (#1205) by either health-report detector — `matchedDurationSec` beyond the tolerance, or the LRC outlasting the file (`lrcOverrunSec`, shared with `library-health.ts`) — which a re-fetch may still replace. A timed answer whose LRC is the stored text again keeps the sync offset measured against it (#1785); different timed text resets it to 0. Registered in `index.ts` and **seeded enabled on first boot** via
   `seedEnabled('lrclib', 'system')` (idempotent — an admin's later disable wins). The host (lyrics
   routes in `routes/library.ts`) owns persistence (`library_lyrics` side-table + file-tag write-back)
   and the user-edit/`customized` protection — the plugin only resolves text. Each result carries

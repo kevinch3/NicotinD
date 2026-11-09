@@ -93,6 +93,23 @@ describe('fetchSongLyrics never downgrades timed → untimed (#1672)', () => {
     expect(getLyrics(db, SONG)!.synced).toBe('[00:03.00]replacement');
   });
 
+  it('a re-fetch that returns the same timed text keeps the offset measured against it (#1785)', async () => {
+    storeTimed(1500);
+    // The same record, as a source re-serialises it (CRLF, trailing newline).
+    const same = { ...timed, synced: `${LRC.replace(/\n/g, '\r\n')}\r\n` };
+
+    const r = await refetch(registry([same]));
+
+    expect(r.kind).toBe('fetched');
+    expect(getLyrics(db, SONG)!.offsetMs).toBe(1500);
+  });
+
+  it('a re-fetch that returns different timed text resets the offset', async () => {
+    storeTimed(1500);
+    await refetch(registry([{ ...timed, synced: '[00:03.00]replacement' }]));
+    expect(getLyrics(db, SONG)!.offsetMs).toBe(0);
+  });
+
   it('a plain answer may replace a plain row', async () => {
     setLyrics(db, SONG, { plain: 'old words', synced: null, source: 'lrclib', customized: false });
     const r = await refetch(registry([plainOnly]));
