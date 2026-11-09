@@ -31,7 +31,7 @@
             </h2>
             <!-- Fixed slots (#1506): a button that does not apply is hidden in
                  place, never removed, so the other can't slide under a click. -->
-            <div class="flex items-center gap-6">
+            <div class="flex flex-wrap items-center gap-x-6 gap-y-1">
               <button (click)="retryFailed()" data-testid="downloads-retry-failed"
                 [disabled]="retriableFailedCount() === 0 || retryingAllFailed()"
                 [class.invisible]="retriableFailedCount() === 0 && !retryingAllFailed()"
