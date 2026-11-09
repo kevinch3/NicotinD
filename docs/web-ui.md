@@ -664,6 +664,40 @@ device check. Its first run found three rows the code audit had not: the new-pla
 with no `min-w-0`), the Agent tokens scope `<select>` (as wide as its longest option) and the Stats
 period strip in Spanish at 360 px.
 
+**The guard is the backstop, not the fix.** Routed content sits inside a non-scrolling
+`<div data-x-guard class="overflow-x-clip">`: one inside `<main>` around the shell's
+`<router-outlet>`, and one in `app-root` around the root outlet for the pages outside the shell
+(login, setup, the public poll and share pages scroll the document). `clip`, never `hidden`:
+`overflow-x: hidden` is still a scroll container, so `focus()`, `scrollIntoView` or D-pad focus can
+slide it sideways with no way back (the #1749 trap), while `clip` makes no scroll container at all,
+so sticky descendants still stick to `<main>`. `clip` on `<main>` itself would not work: with
+`overflow-y: auto` it computes to `hidden`. `position: fixed` layers (sheets, toasts, players) and the
+mosaic's absolute stage have containing blocks outside the guard and are not clipped by it.
+`expectNoHorizontalOverflow` switches every guard off before it measures, so the sweep still finds
+the offender a user would no longer see; `horizontal-overflow.spec.ts` also plants a 2000 px row in
+each guard and asserts that the page does not scroll.
+
+**The template rules.** `src/horizontal-overflow-policy.spec.ts` parses every template (`.html` and
+inline) with `@angular/compiler`'s `parseTemplate` and fails on the shapes that overflow once data is
+longer or the locale wordier, which the sweep's fixture data may never render:
+
+| Rule | Fails on |
+| --- | --- |
+| R1 | a flex row of ≥3 text buttons/links that cannot wrap, or a `shrink-0` group of ≥2 |
+| R2 | an `<input>`/`<select>` in a flex row with no width and no `min-w-0` |
+| R3 | a flex item (or an item of an arbitrary `grid-cols-[…]`) without `min-w-0` whose descendant truncates unbounded |
+| R4 | a bare `1fr` in an arbitrary grid template (`minmax(auto,1fr)`), instead of `minmax(0,1fr)` |
+| R5 | a `<table>` outside an `overflow-x-auto` frame, or a truncating cell without `table-fixed` or `max-w-0` |
+| R6 | `whitespace-nowrap` that is not `truncate` and not inside a horizontal scroller |
+
+Not a rule: `truncate` directly on a flex item, since its `overflow: hidden` already zeroes the
+item's minimum. Built-in `grid-cols-N` tracks are `minmax(0,1fr)`, so their items are not R3
+candidates. A site that is fine (a TV-only row, a count beside a flexible input) is listed in the
+spec's `ALLOWED` table under a reason, one entry per site, and a fixed site's stale entry fails too.
+The spec asserts its own denominator (≥120 templates, ≥400 flex rows). Landing it fixed every site it
+found: twelve form controls given `min-w-0`, two `[auto_1fr]` grids, the genre radar's truncating
+cell, the format ladder's table (now framed), the Stats genre-mode strip, and four rows that now wrap.
+
 ## Boot — player restore never autoplays
 
 `PlayerService.restoreState()` (called from `provideAppInitializer` in `app.config.ts`) loads the last track/queue/history/currentTime from `nicotind_player_state` but **leaves `isPlaying` false, unconditionally**. The snapshot's `wasPlaying` field is still written (harmless, and compatible in both directions with an older bundle) but is ignored on read. The page never attempts a gesture-less `audio.play()` on load, so the user always presses play themselves.

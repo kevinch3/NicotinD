@@ -257,9 +257,17 @@ export interface HorizontalOverflow {
  * `visible`): a scroll strip, a `section-flush` table, a `truncate` host. Only
  * the outermost offender is reported, so one overflowing row is one line, not
  * one line per button in it.
+ *
+ * Measured with the `[data-x-guard]` wrappers switched off: they clip the
+ * overflow so a user never sees the page slide, which would also hide it here.
  */
 export async function measureHorizontalOverflow(page: Page): Promise<HorizontalOverflow> {
   return page.evaluate(() => {
+    // The page's overflow-x guards (`[data-x-guard]`, overflow-x: clip) would hide
+    // every offender; measure with them off, then put them back.
+    const guardsOff = document.createElement('style');
+    guardsOff.textContent = '[data-x-guard]{overflow-x:visible!important}';
+    document.head.appendChild(guardsOff);
     const roots = [
       document.documentElement,
       document.body,
@@ -309,6 +317,7 @@ export async function measureHorizontalOverflow(page: Page): Promise<HorizontalO
       for (const child of Array.from(el.children)) walk(child);
     };
     for (const child of Array.from(document.body.children)) walk(child);
+    guardsOff.remove();
     return { overflow, offenders: offenders.filter((o, i) => offenders.indexOf(o) === i) };
   });
 }

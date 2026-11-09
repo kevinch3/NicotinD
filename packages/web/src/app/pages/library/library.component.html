@@ -147,7 +147,7 @@
           <select data-testid="library-filter-mintracks"
             [value]="minSongCount() ?? ''"
             (change)="setMinTracksFromSelect($any($event.target).value)"
-            class="px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)]">
+            class="min-w-0 px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)]">
             @for (opt of trackCountOptions; track opt.label) {
               <option [value]="opt.value ?? ''">{{ opt.label }}</option>
             }

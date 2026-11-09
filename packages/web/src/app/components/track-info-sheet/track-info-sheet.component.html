@@ -545,7 +545,7 @@
           (input)="lyricsDraft.set($any($event.target).value)"
           data-testid="lyrics-editor"
         ></textarea>
-        <div class="flex gap-2 mt-2">
+        <div class="flex flex-wrap gap-2 mt-2">
           <button
             class="px-2 py-0.5 rounded bg-theme-accent text-theme-on-accent hover:opacity-90 text-xs disabled:opacity-50"
             [disabled]="savingLyrics() || !lyricsDraft().trim()"

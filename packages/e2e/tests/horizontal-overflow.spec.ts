@@ -263,3 +263,55 @@ test.describe('no horizontal overflow on a phone (#1807)', () => {
     }
   }
 });
+
+/**
+ * The guard (`[data-x-guard]`, overflow-x: clip) is the backstop: a row the sweep
+ * has not met yet is clipped instead of sliding the page. Planted here, since the
+ * sweep itself measures with the guard off.
+ */
+test.describe('the overflow-x guard (#1807)', () => {
+  async function plantWideRow(page: Page, where: string): Promise<void> {
+    await page.evaluate((selector) => {
+      const guard = document.querySelector(selector)!;
+      const row = document.createElement('div');
+      row.setAttribute('data-testid', 'planted-wide-row');
+      row.style.width = '2000px';
+      row.style.height = '10px';
+      guard.appendChild(row);
+    }, where);
+  }
+
+  async function pageScrollOverflow(page: Page): Promise<number> {
+    return page.evaluate(() =>
+      [document.documentElement, document.body, document.querySelector('[data-scroll-root]')]
+        .filter((el): el is Element => !!el)
+        .reduce((max, el) => Math.max(max, el.scrollWidth - el.clientWidth), 0),
+    );
+  }
+
+  test('a row wider than the page is clipped inside the shell, not scrolled', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: HEIGHT });
+    await page.goto('/settings');
+    await expect(page.locator('h1').first()).toBeVisible();
+    await plantWideRow(page, '[data-scroll-root] > [data-x-guard]');
+    expect(await pageScrollOverflow(page), 'the guard clips it').toBeLessThanOrEqual(1);
+    // …and the sweep's measurement still sees it, because it switches the guard off.
+    await expect(expectNoHorizontalOverflow(page, 'planted')).rejects.toThrow(/planted-wide-row/);
+  });
+
+  test('a row wider than the page is clipped on a page outside the shell', async ({
+    browser,
+    baseURL,
+  }) => {
+    const ctx = await browser.newContext({
+      baseURL: baseURL ?? undefined,
+      viewport: { width: 390, height: HEIGHT },
+    });
+    const page = await ctx.newPage();
+    await page.goto('/login');
+    await expect(page.getByRole('button').first()).toBeVisible();
+    await plantWideRow(page, 'app-root > [data-x-guard]');
+    expect(await pageScrollOverflow(page), 'the guard clips it').toBeLessThanOrEqual(1);
+    await ctx.close();
+  });
+});

@@ -36,7 +36,7 @@
     [title]="'subsonicKeys.connect' | t"
     [description]="'subsonicKeys.connectDesc' | t"
   >
-    <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm" data-testid="subsonic-connect-details">
+    <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm" data-testid="subsonic-connect-details">
       <dt class="text-theme-muted">{{ 'subsonicKeys.serverUrl' | t }}</dt>
       <dd class="min-w-0 flex items-center gap-2">
         <code class="truncate" data-testid="subsonic-server-url">{{ serverUrl() }}</code>
@@ -94,7 +94,7 @@
         <div class="mb-2 p-4 rounded-xl bg-theme-surface border border-theme flex items-center justify-between gap-4"
              data-testid="subsonic-key-row">
           <div class="min-w-0">
-            <p class="font-medium text-theme-primary">{{ k.name }}</p>
+            <p class="font-medium text-theme-primary [overflow-wrap:anywhere]">{{ k.name }}</p>
             <p class="text-xs text-theme-muted mt-0.5">
               {{ 'subsonicKeys.keyMeta' | t: { createdAt: formatWhen(k.createdAt), lastUsedAt: formatWhen(k.lastUsedAt) } }}
             </p>

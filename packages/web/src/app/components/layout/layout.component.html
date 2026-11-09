@@ -135,7 +135,14 @@
             class="pointer-events-none absolute inset-x-0 top-0 z-30 h-0.5 bg-theme-accent animate-pulse"
           ></div>
         }
-        <router-outlet />
+        <!-- The horizontal-overflow guard (#1807). <main> scrolls on y, which turns its
+             overflow-x into a scroller too, so a row wider than the page used to slide the
+             whole view sideways. `clip` — never `hidden` — makes no scroll container, so
+             focus() or scrollIntoView cannot slide it either, and sticky still sticks to
+             <main>. A backstop, not the fix: the e2e sweep switches it off to find offenders. -->
+        <div data-x-guard class="overflow-x-clip">
+          <router-outlet />
+        </div>
       </main>
 
       <!-- Bottom player -->
