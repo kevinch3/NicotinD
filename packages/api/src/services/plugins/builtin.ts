@@ -77,7 +77,10 @@ export function registerBuiltinPlugins(plugins: PluginRegistry, deps: BuiltinPlu
   // URL resolver (`urlPatterns: ['^https?://']`, priority -10).
   // Metadata source — lyrics from LRCLIB. Default-on (keyless, benign); seeded
   // enabled on first boot only, so an admin's later disable is preserved.
-  plugins.register(new LrclibPlugin());
+  // NICOTIND_LRCLIB_URL is a test seam: e2e points it at a fixture LRCLIB.
+  plugins.register(
+    new LrclibPlugin(undefined, { baseUrl: process.env.NICOTIND_LRCLIB_URL || undefined }),
+  );
   // Metadata source — release genres/styles from Discogs. Default-off + consent-
   // gated (Discogs API ToU); the admin enters a Consumer Key + Secret on its
   // extension card. The on-disk response cache lives under the data dir. The

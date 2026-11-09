@@ -63,6 +63,20 @@ describe('LrclibPlugin.fetchLyrics', () => {
     });
   });
 
+  it('asks lrclib.net by default, and the configured base URL when one is given', async () => {
+    const body = { plainLyrics: 'w', syncedLyrics: '[00:01.00]w' };
+    const real = routeFetch([{ match: '/get', status: 200, body }]);
+    await new LrclibPlugin({ enabled: true }, { fetchFn: real }).lyrics.fetchLyrics(query);
+    expect(real.calls[0]).toStartWith('https://lrclib.net/api/get?');
+
+    const fixture = routeFetch([{ match: '/get', status: 200, body }]);
+    await new LrclibPlugin(
+      { enabled: true },
+      { fetchFn: fixture, baseUrl: 'http://127.0.0.1:8590/api/' },
+    ).lyrics.fetchLyrics(query);
+    expect(fixture.calls[0]).toStartWith('http://127.0.0.1:8590/api/get?');
+  });
+
   it('falls back to /search when /get 404s', async () => {
     const fetchFn = routeFetch([
       { match: '/get', status: 404, body: { code: 404 } },

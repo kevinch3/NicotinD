@@ -365,14 +365,15 @@ gated on `auth.canCurate()` and stays off on TV (`canSync` defaults to false,
 
 ## 6. Testing seam and tests
 
-**A fixture lyrics source for e2e.** Without one, the e2e tests #1657 asks for ("fetch-again
-changes the applied source", "an alternating source never leaves the song untimed") cannot be
-written, and today's specs depend on lrclib.net returning nothing. Proposal: a
-`NICOTIND_LRCLIB_URL` override of `API_BASE` (`lrclib/index.ts:34`), and a small stub LRCLIB server
-that `playwright.config.ts` starts and points the main server at, the way it already does for the
-Lidarr fixture (`NICOTIND_LIDARR_URL`, `playwright.config.ts:144`). The stub serves `/get` and
-`/search` from an in-spec table keyed by title, so a spec can arrange plain-only `/get` with timed
-`/search`, alternation, and several takes.
+**A fixture lyrics source for e2e (built).** Without one, the e2e tests #1657 asks for
+("fetch-again changes the applied source", "an alternating source never leaves the song untimed")
+could not be written, and every spec depended on lrclib.net returning nothing. `NICOTIND_LRCLIB_URL`
+now overrides the plugin's API root (`LrclibPluginDeps.baseUrl`), and `playwright.config.ts` starts
+`tests/helpers/fixture-lrclib.ts` and points every server at it, the way it does for the Lidarr
+fixture. The fixture serves `/get` and `/search` from records a spec seeds, keyed by artist and
+title, so a spec can arrange a plain-only `/get` with a timed `/search`, alternation (reseed between
+presses), and several takes. See "The lyrics source is a fixture too" in [e2e.md](e2e.md) and
+`lyrics-source.spec.ts`.
 
 Tests per piece. The #1657 list, with the gaps above added:
 
