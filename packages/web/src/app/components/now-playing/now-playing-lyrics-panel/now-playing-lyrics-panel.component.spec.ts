@@ -1,13 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { NowPlayingLyricsPanelComponent } from './now-playing-lyrics-panel.component';
 import { setInputValue } from '../../../../testing/signal-input';
-import { vi } from 'vitest';
-import { haptic } from '../../../lib/haptics';
-
-vi.mock('../../../lib/haptics', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../../lib/haptics')>()),
-  haptic: vi.fn(),
-}));
 
 describe('NowPlayingLyricsPanelComponent', () => {
   it('shows the empty state with a fetch button when there are no lyrics', () => {
@@ -38,75 +31,51 @@ describe('NowPlayingLyricsPanelComponent', () => {
   });
 
   /**
-   * The sync nudge. Its placement is the feature: before this, the only lyrics
-   * control lived in the empty state, so a listener looking at lyrics that were
-   * plainly mistimed had nothing to press.
+   * The lyrics options (#1656). The sync tool sits behind one Options button,
+   * hidden by default, because it permanently took space in a short viewport.
+   * The sheet and the tool have their own specs: a child's signal inputs do
+   * not bind under this harness (docs/web-ui.md).
    */
-  describe('sync nudge', () => {
-    function withLyrics(opts: { canSync?: boolean; offsetMs?: number } = {}) {
+  describe('lyrics options', () => {
+    function withLyrics(opts: { canSync?: boolean } = {}) {
       const fixture = TestBed.createComponent(NowPlayingLyricsPanelComponent);
       setInputValue(fixture.componentInstance.lines, [{ text: 'la la' }]);
       setInputValue(fixture.componentInstance.canSync, opts.canSync ?? true);
-      setInputValue(fixture.componentInstance.offsetMs, opts.offsetMs ?? 0);
       fixture.detectChanges();
       return fixture;
     }
+    const q = (el: HTMLElement, id: string) => el.querySelector(`[data-testid="${id}"]`);
 
-    it('appears beside the lyrics, not only in the empty state', () => {
-      const el = withLyrics().nativeElement;
-      expect(el.querySelector('[data-testid="lyrics-sync"]')).toBeTruthy();
-      expect(el.querySelector('[data-testid="now-playing-lyrics-empty"]')).toBeFalsy();
-    });
-
-    it('is hidden — not disabled — for a viewer who cannot curate', () => {
-      // A dead button invites a click that can only fail.
-      const el = withLyrics({ canSync: false }).nativeElement;
-      expect(el.querySelector('[data-testid="lyrics-sync"]')).toBeFalsy();
-    });
-
-    it('emits a signed step, letting the parent own the absolute value', () => {
+    it('is closed by default, and Options opens and closes the sheet', () => {
       const fixture = withLyrics();
-      const steps: number[] = [];
-      fixture.componentInstance.offsetNudged.subscribe((ms) => steps.push(ms));
-      fixture.nativeElement.querySelector('[data-testid="lyrics-sync-later"]').click();
-      fixture.nativeElement.querySelector('[data-testid="lyrics-sync-earlier"]').click();
-      expect(steps).toEqual([fixture.componentInstance.step, -fixture.componentInstance.step]);
+      const el = fixture.nativeElement as HTMLElement;
+      const toggle = q(el, 'lyrics-options-toggle') as HTMLElement;
+      expect(q(el, 'lyrics-options-sheet')).toBeFalsy();
+      expect(toggle.getAttribute('aria-expanded')).toBe('false');
+
+      toggle.click();
+      fixture.detectChanges();
+      expect(q(el, 'lyrics-options-sheet')).toBeTruthy();
+      expect(toggle.getAttribute('aria-expanded')).toBe('true');
+
+      toggle.click();
+      fixture.detectChanges();
+      expect(q(el, 'lyrics-options-sheet')).toBeFalsy();
     });
 
-    it('each nudge ticks `select` (#1659)', () => {
-      vi.mocked(haptic).mockClear();
-      const fixture = withLyrics();
-      fixture.nativeElement.querySelector('[data-testid="lyrics-sync-later"]').click();
-      fixture.nativeElement.querySelector('[data-testid="lyrics-sync-earlier"]').click();
-      expect(vi.mocked(haptic).mock.calls).toEqual([['select'], ['select']]);
+    it('no longer keeps a sync row under the lyrics', () => {
+      expect(q(withLyrics().nativeElement, 'lyrics-sync')).toBeFalsy();
     });
 
-    it('reads "in sync" at zero and a signed value otherwise', () => {
-      const zero = withLyrics({ offsetMs: 0 }).nativeElement;
-      expect(zero.querySelector('[data-testid="lyrics-sync-value"]').textContent).toContain(
-        'nowPlaying.syncInSync',
-      );
-      const later = withLyrics({ offsetMs: 1_500 }).nativeElement;
-      expect(later.querySelector('[data-testid="lyrics-sync-value"]').textContent).toContain(
-        '+1.50s',
-      );
-      const earlier = withLyrics({ offsetMs: -250 }).nativeElement;
-      expect(earlier.querySelector('[data-testid="lyrics-sync-value"]').textContent).toContain(
-        '0.25s',
-      );
+    it('is hidden, not disabled, for a viewer who cannot curate', () => {
+      expect(q(withLyrics({ canSync: false }).nativeElement, 'lyrics-options-toggle')).toBeFalsy();
     });
 
-    it('offers reset only once there is something to reset', () => {
-      expect(
-        withLyrics({ offsetMs: 0 }).nativeElement.querySelector(
-          '[data-testid="lyrics-sync-reset"]',
-        ),
-      ).toBeFalsy();
-      const fixture = withLyrics({ offsetMs: 1_000 });
-      let reset = false;
-      fixture.componentInstance.offsetReset.subscribe(() => (reset = true));
-      fixture.nativeElement.querySelector('[data-testid="lyrics-sync-reset"]').click();
-      expect(reset).toBe(true);
+    it('is not offered while there are no lyrics to set', () => {
+      const fixture = TestBed.createComponent(NowPlayingLyricsPanelComponent);
+      setInputValue(fixture.componentInstance.canSync, true);
+      fixture.detectChanges();
+      expect(q(fixture.nativeElement, 'lyrics-options-toggle')).toBeFalsy();
     });
   });
 });

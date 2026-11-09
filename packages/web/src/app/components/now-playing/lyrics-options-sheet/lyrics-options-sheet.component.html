@@ -1,0 +1,47 @@
+<div
+  role="dialog"
+  [attr.aria-label]="'nowPlaying.lyricsOptions' | t"
+  data-testid="lyrics-options-sheet"
+  class="absolute inset-x-0 bottom-0 z-20 rounded-t-2xl px-4 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-2xl"
+  [class]="tone() === 'overlay' ? 'bg-black/85 text-white' : 'bg-theme-surface border-t border-theme text-theme-primary'"
+>
+  <div class="flex items-center justify-between gap-2 mb-3">
+    <p class="text-sm font-medium">{{ 'nowPlaying.lyricsOptions' | t }}</p>
+    <button
+      (click)="closed.emit()"
+      data-testid="lyrics-options-close"
+      [attr.aria-label]="'nowPlaying.lyricsOptionsClose' | t"
+      class="w-8 h-8 flex items-center justify-center rounded-full transition focus:outline-none focus-visible:ring-2"
+      [class]="tone() === 'overlay' ? 'text-white/60 hover:text-white hover:bg-white/10 focus-visible:ring-white' : 'text-theme-muted hover:text-theme-primary hover:bg-theme-hover'"
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M18 6L6 18" /><path d="M6 6l12 12" />
+      </svg>
+    </button>
+  </div>
+
+  <p
+    class="text-xs mb-3"
+    [class]="tone() === 'overlay' ? 'text-white/60' : 'text-theme-muted'"
+    data-testid="lyrics-options-source"
+  >
+    @if (edited()) {
+      {{ 'nowPlaying.lyricsEditedByHand' | t }}
+    } @else if (sourceName(); as name) {
+      {{ name }}
+    } @else {
+      {{ 'nowPlaying.lyricsFromFile' | t }}
+    }
+    · {{ (timed() ? 'nowPlaying.lyricsTimed' : 'nowPlaying.lyricsUntimed') | t }}
+  </p>
+
+  @if (timed()) {
+    <app-lyrics-sync-tool
+      [tone]="tone()"
+      [testid]="syncTestid()"
+      [offsetMs]="offsetMs()"
+      (nudged)="nudged.emit($event)"
+      (reset)="reset.emit()"
+    />
+  }
+</div>
