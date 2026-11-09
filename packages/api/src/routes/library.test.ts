@@ -3182,3 +3182,71 @@ describe('curation fixes re-bucket instead of rescanning the library', () => {
     expect(runSync).not.toHaveBeenCalled();
   });
 });
+
+describe('a glued album artist reads as its credited names (#860)', () => {
+  const testDb = new Database(':memory:');
+  applySchema(testDb);
+
+  beforeEach(() => {
+    testDb.run('DELETE FROM library_album_artists');
+    testDb.run('DELETE FROM library_albums');
+    testDb.run('DELETE FROM library_artists');
+    mock.module('../db.js', () => ({ getDatabase: () => testDb, applySchema }));
+  });
+
+  afterEach(() => {
+    mock.module('../db.js', () => ({ getDatabase: () => sharedDb, applySchema }));
+  });
+
+  function seed(albumId: string, raw: string, members: string[]): void {
+    testDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, classification, hidden, synced_at)
+       VALUES (?, 'Chamame', ?, ?, 1, 60, 'album', 0, 1)`,
+      [albumId, raw, `ar-${members[0]}`],
+    );
+    members.forEach((name, position) => {
+      testDb.run(`INSERT OR IGNORE INTO library_artists (id, name, synced_at) VALUES (?, ?, 1)`, [
+        `ar-${name}`,
+        name,
+      ]);
+      testDb.run(
+        `INSERT INTO library_album_artists (album_id, artist_id, role, position) VALUES (?, ?, 'primary', ?)`,
+        [albumId, `ar-${name}`, position],
+      );
+    });
+  }
+
+  function makeApp(): Hono<AuthEnv> {
+    const testApp = new Hono<AuthEnv>();
+    testApp.use('*', (c, next) => {
+      c.set('user', { sub: 'u', role: 'user', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    testApp.route('/', libraryRoutes());
+    return testApp;
+  }
+
+  it('GET /albums/:id shows "A, B" while the stored tag stays raw', async () => {
+    seed('mash', 'Los NocherosLos Tekis', ['Los Nocheros', 'Los Tekis']);
+
+    const body = (await (await makeApp().request('/albums/mash')).json()) as { artist: string };
+    expect(body.artist).toBe('Los Nocheros, Los Tekis');
+    const stored = testDb
+      .query<{ artist: string }, []>(`SELECT artist FROM library_albums WHERE id = 'mash'`)
+      .get();
+    expect(stored?.artist).toBe('Los NocherosLos Tekis');
+  });
+
+  it('GET /albums applies it to list rows, and leaves a separated credit alone', async () => {
+    seed('mash', 'MalumaCosculluela', ['Maluma', 'Cosculluela']);
+    seed('duo', 'Bad Bunny & Tainy', ['Bad Bunny', 'Tainy']);
+
+    const body = (await (await makeApp().request('/albums')).json()) as Array<{
+      id: string;
+      artist: string;
+    }>;
+    const byId = new Map(body.map((a) => [a.id, a.artist]));
+    expect(byId.get('mash')).toBe('Maluma, Cosculluela');
+    expect(byId.get('duo')).toBe('Bad Bunny & Tainy');
+  });
+});
