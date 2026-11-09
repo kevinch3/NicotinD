@@ -644,6 +644,10 @@ export const MCP_TOOLS: McpTool[] = [
           return JSON.stringify({ error: 'The lyrics source failed; try again later.' });
         case 'no-match':
           return JSON.stringify({ ok: true, replaced: false, before: summary(before) });
+        case 'customized':
+          return JSON.stringify({
+            error: 'These lyrics were edited by a user; a re-fetch would discard the edit.',
+          });
         case 'kept-timed':
           return JSON.stringify({
             ok: true,

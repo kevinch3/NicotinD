@@ -840,9 +840,15 @@ export class LibraryApiService {
     return this.http.get<WaveformData>(`/api/peaks/${id}`);
   }
 
-  /** Fetch lyrics on demand from an enabled source; null when none found. */
-  fetchLyrics(id: string, force = false) {
-    return this.http.post<LyricsDto | null>(`/api/library/songs/${id}/lyrics/fetch`, { force });
+  /**
+   * Fetch lyrics on demand from an enabled source; null when none found. A
+   * forced fetch on edited lyrics answers 409 unless `confirmReplaceEdit` (#1786).
+   */
+  fetchLyrics(id: string, force = false, confirmReplaceEdit = false) {
+    return this.http.post<LyricsDto | null>(
+      `/api/library/songs/${id}/lyrics/fetch`,
+      confirmReplaceEdit ? { force, confirmReplaceEdit } : { force },
+    );
   }
 
   /**

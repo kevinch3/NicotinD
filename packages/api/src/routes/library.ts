@@ -2595,17 +2595,27 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // non-customized cached row immediately; otherwise queries each enabled
   // lyrics-capable plugin, persists the first hit, writes the plain text back to
   // the file tag, and returns it. A user-edited row (customized=1) is left
-  // untouched unless `force:true`, which also skips the file-tag recovery
-  // (see `fetchSongLyrics`). 503 when no lyrics source is enabled.
+  // untouched unless `force:true` AND `confirmReplaceEdit:true`; a forced fetch
+  // on it without the confirmation answers 409 `lyrics-customized` (#1786).
+  // `force` also skips the file-tag recovery (see `fetchSongLyrics`). 503 when
+  // no lyrics source is enabled.
   app.post('/songs/:id/lyrics/fetch', async (c) => {
-    const body = await c.req.json<{ force?: boolean }>().catch(() => ({}) as { force?: boolean });
+    const body = await c.req
+      .json<{ force?: boolean; confirmReplaceEdit?: boolean }>()
+      .catch(() => ({}) as { force?: boolean; confirmReplaceEdit?: boolean });
     const r = await fetchSongLyrics(
       getDatabase(),
       { plugins: pluginRegistry, musicDir },
       c.req.param('id'),
-      { force: body.force },
+      { force: body.force, confirmReplaceEdit: body.confirmReplaceEdit },
     );
     switch (r.kind) {
+      // A user's edit is replaced only after the listener confirms (#1786).
+      case 'customized':
+        return c.json(
+          { error: 'These lyrics were edited; confirm to replace them', code: 'lyrics-customized' },
+          409,
+        );
       case 'song-not-found':
         return c.json({ error: 'Song not found' }, 404);
       case 'no-source':
