@@ -261,7 +261,7 @@
                         }
                       }
                     </span>
-                    <span class="inline-flex gap-1 ml-2">
+                    <span class="inline-flex flex-wrap gap-1 ml-2">
                       <button
                         type="button"
                         data-testid="fragments-reclassify"
@@ -353,7 +353,7 @@
                   </li>
                 }
               </ul>
-              <div class="flex items-center gap-2">
+              <div class="flex flex-wrap items-center gap-2">
                 <label class="text-xs text-theme-secondary" for="missplit-album-artist">{{
                   'admin.missplitAlbumArtist' | t
                 }}</label>
@@ -363,7 +363,7 @@
                   data-testid="fragments-missplit-artist"
                   [value]="ms.albumArtist"
                   (input)="setMissplitAlbumArtist($any($event.target).value)"
-                  class="text-xs rounded-lg bg-theme-surface-2 border border-theme px-2 py-1 text-theme-primary"
+                  class="flex-1 min-w-0 text-xs rounded-lg bg-theme-surface-2 border border-theme px-2 py-1 text-theme-primary"
                 />
                 <button
                   type="button"
@@ -587,7 +587,7 @@
 
     <p class="text-xs text-theme-muted mb-4">
       {{ 'admin.untrackedHintPrefix' | t }}
-      <code class="px-1 py-0.5 rounded bg-theme-surface-2 text-theme-secondary"
+      <code class="px-1 py-0.5 rounded bg-theme-surface-2 text-theme-secondary break-all"
         >bun run packages/api/src/scripts/backfill-untracked.ts --apply</code
       >
       {{ 'admin.untrackedHintSuffix' | t }}

@@ -620,6 +620,26 @@ Pre-auth full-screen shells (login, setup wizard, pair, server-config) are exemp
 they render before there is an authenticated app shell to be consistent with, so they keep their
 own full-viewport layout rather than adopting `page-shell`.
 
+### Rows never widen the page (#1807)
+
+`<main data-scroll-root>` is `overflow-y-auto`, and a scrolling y axis turns `overflow-x: visible`
+into `auto`, so one row wider than its card slides the **whole page** sideways on a phone instead of
+clipping. The rows themselves follow these rules:
+
+- **Two or more text buttons, chips or links wrap** (`flex flex-wrap`), or the row is an explicit
+  `overflow-x-auto` strip. A _group_ of controls is never `shrink-0`; `shrink-0` is for one short
+  control beside a `min-w-0` sibling. Size for the longest locale (es). A title that shares a
+  wrapping row with buttons gets a floor (`min-w-[10rem]`) instead of `min-w-0`, so the buttons
+  wrap below it rather than squeezing it to nothing.
+- **A flex or grid item holding text, a nested row or a form control gets `min-w-0`.** An
+  arbitrary grid track is `minmax(0,1fr)`, never a bare `1fr`.
+- **Server or user text that can be long without spaces** (paths, URLs, ids, errors, `<code>`)
+  carries `break-all` or `[overflow-wrap:anywhere]`.
+- **A form control in a row takes the leftover space** (`flex-1 min-w-0`), never its intrinsic
+  width.
+
+`radio-poll.spec.ts` pins the reported case: an open poll's row in Spanish at 375 px.
+
 ## Boot — player restore never autoplays
 
 `PlayerService.restoreState()` (called from `provideAppInitializer` in `app.config.ts`) loads the last track/queue/history/currentTime from `nicotind_player_state` but **leaves `isPlaying` false, unconditionally**. The snapshot's `wasPlaying` field is still written (harmless, and compatible in both directions with an older bundle) but is ignored on read. The page never attempts a gesture-less `audio.play()` on load, so the user always presses play themselves.

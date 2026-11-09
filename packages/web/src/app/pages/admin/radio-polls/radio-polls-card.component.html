@@ -117,7 +117,7 @@
                 {{ 'admin.radioPollsScale_' + row.voteScale | t }}
               </p>
             </div>
-            <div class="flex items-center gap-2 flex-shrink-0">
+            <div class="flex flex-wrap items-center gap-2">
               <button type="button" data-testid="radio-polls-copy"
                 class="text-xs rounded border border-theme px-2.5 py-1.5 hover:bg-theme-hover transition"
                 (click)="copyLink(row.url)">

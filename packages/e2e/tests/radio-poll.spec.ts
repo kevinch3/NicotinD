@@ -216,6 +216,29 @@ test.describe('radio evaluation polls', () => {
     await expect(page.getByTestId('radio-polls-copy').first()).toBeVisible();
   });
 
+  // #1807: an open poll's four text buttons in Spanish are wider than a phone's
+  // card. The row wraps; it never slides the page sideways.
+  test('an open poll row fits a 375 px phone in Spanish', async ({ page, request }) => {
+    await createPoll(request);
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.addInitScript(() => localStorage.setItem('nicotind-lang', 'es'));
+    await page.goto('/admin');
+    await expandGroup(page, 'radio-polls');
+    const row = page.getByTestId('radio-polls-row').first();
+    await expect(row.getByTestId('radio-polls-close')).toBeVisible();
+    const rowBox = (await row.boundingBox())!;
+    const del = (await row.getByTestId('radio-polls-delete').boundingBox())!;
+    expect(del.x + del.width, 'Delete stays inside its row').toBeLessThanOrEqual(
+      rowBox.x + rowBox.width + 1,
+    );
+    const overflow = await page.evaluate(() =>
+      [document.documentElement, document.querySelector('[data-scroll-root]')]
+        .filter((el): el is Element => !!el)
+        .reduce((max, el) => Math.max(max, el.scrollWidth - el.clientWidth), 0),
+    );
+    expect(overflow, 'no horizontal page overflow at phone width').toBeLessThanOrEqual(1);
+  });
+
   test('a closed poll answers 410 and the page explains itself', async ({
     request,
     browser,
