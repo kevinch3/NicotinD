@@ -1,5 +1,12 @@
 import { test, expect, type Page } from '../helpers';
-import { ADMIN, FIXTURE, bearer, expandGroup, openAlbumCard } from '../helpers';
+import {
+  ADMIN,
+  FIXTURE,
+  bearer,
+  expandGroup,
+  openAlbumCard,
+  preserveAlbumLyrics,
+} from '../helpers';
 
 /**
  * Mobile-viewport UX regressions (the G-series in
@@ -50,6 +57,9 @@ async function openNowPlayingArtless(page: Page): Promise<void> {
 
 test.describe('mobile UX', () => {
   test.use({ viewport: PHONE });
+  // The lyrics tests below write to every track of the album, tags included;
+  // offline-lyrics reads the same files (#1800).
+  preserveAlbumLyrics('E2E_Test_Artist/E2E_Test_Album', FIXTURE.album.title);
 
   // G1 — the primary Play button must never be clipped off-screen by the
   // (now wrapping) action row.
@@ -520,8 +530,8 @@ test.describe('mobile UX', () => {
     ).token;
     const albums = (await (
       await request.get('/api/library/albums', { headers: bearer(token) })
-    ).json()) as Array<{ id: string; title: string }>;
-    const album = albums.find((a) => a.title === FIXTURE.album.title) ?? albums[0]!;
+    ).json()) as Array<{ id: string; name: string }>;
+    const album = albums.find((a) => a.name === FIXTURE.album.title)!;
     const detail = (await (
       await request.get(`/api/library/albums/${album.id}`, { headers: bearer(token) })
     ).json()) as { song: Array<{ id: string }> };
@@ -610,8 +620,8 @@ test.describe('mobile UX', () => {
     ).token;
     const albums = (await (
       await request.get('/api/library/albums', { headers: bearer(token) })
-    ).json()) as Array<{ id: string; title: string }>;
-    const album = albums.find((a) => a.title === FIXTURE.album.title) ?? albums[0]!;
+    ).json()) as Array<{ id: string; name: string }>;
+    const album = albums.find((a) => a.name === FIXTURE.album.title)!;
     const detail = (await (
       await request.get(`/api/library/albums/${album.id}`, { headers: bearer(token) })
     ).json()) as { song: Array<{ id: string }> };
@@ -674,8 +684,8 @@ test.describe('mobile UX', () => {
     ).token;
     const albums = (await (
       await request.get('/api/library/albums', { headers: bearer(token) })
-    ).json()) as Array<{ id: string; title: string }>;
-    const album = albums.find((a) => a.title === FIXTURE.album.title) ?? albums[0]!;
+    ).json()) as Array<{ id: string; name: string }>;
+    const album = albums.find((a) => a.name === FIXTURE.album.title)!;
     const detail = (await (
       await request.get(`/api/library/albums/${album.id}`, { headers: bearer(token) })
     ).json()) as { song: Array<{ id: string }> };
@@ -749,8 +759,8 @@ test.describe('mobile UX', () => {
     ).token;
     const albums = (await (
       await request.get('/api/library/albums', { headers: bearer(token) })
-    ).json()) as Array<{ id: string; title: string }>;
-    const album = albums.find((a) => a.title === FIXTURE.album.title) ?? albums[0]!;
+    ).json()) as Array<{ id: string; name: string }>;
+    const album = albums.find((a) => a.name === FIXTURE.album.title)!;
     const detail = (await (
       await request.get(`/api/library/albums/${album.id}`, { headers: bearer(token) })
     ).json()) as { song: Array<{ id: string }> };
@@ -821,8 +831,8 @@ test.describe('mobile UX', () => {
     ).token;
     const albums = (await (
       await request.get('/api/library/albums', { headers: bearer(token) })
-    ).json()) as Array<{ id: string; title: string }>;
-    const album = albums.find((a) => a.title === FIXTURE.album.title) ?? albums[0]!;
+    ).json()) as Array<{ id: string; name: string }>;
+    const album = albums.find((a) => a.name === FIXTURE.album.title)!;
     const detail = (await (
       await request.get(`/api/library/albums/${album.id}`, { headers: bearer(token) })
     ).json()) as { song: Array<{ id: string }> };

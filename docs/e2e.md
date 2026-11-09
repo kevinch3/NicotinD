@@ -43,6 +43,12 @@ modified after every full run. Now `playwright.config.ts` copies the fixtures, a
 the main process only, into one throwaway dir per server (`fixture-music.ts`: `.tmp-music`,
 `.tmp-music-onboarding`, `.tmp-music-tvbuild`; the screenshots config reuses `.tmp-music`). A spec
 that reads or plants files on disk uses `E2E_MUSIC_DIR`, never a `fixtures/music` path.
+**The copy is shared within a run, though**, and `PUT /songs/:id/lyrics` writes the text into the
+file's tag. `mobile-ux`'s lyrics tests wrote to every track of the album, so `offline-lyrics`, which
+expects only track 1 to carry lyrics, failed whenever it ran after them (#1800). A spec that writes
+lyrics to fixture songs calls `preserveAlbumLyrics`: it snapshots the album's lyrics rows and files,
+and after the spec file writes the rows back as they were (track 1 keeps the setup's karaoke seed),
+writes back any changed file, and rescans. Match an album by `name`: the list DTO has no `title`.
 `preserveMusicFixture` still restores a deleted track, because later specs in the same run expect it,
 and its restore **rescans** (`scanAndWait`) after writing the file back (#1713). A written file is
 invisible until a scan reads it, and the delete had reclassified the album: `E2E Test Album` at 6

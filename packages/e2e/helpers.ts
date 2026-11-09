@@ -1,6 +1,6 @@
 import type { APIRequestContext, Locator, Page } from '@playwright/test';
 import { expect, test as base } from '@playwright/test';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { E2E_MUSIC_DIR } from './fixture-music';
 
@@ -135,6 +135,79 @@ export function preserveMusicFixture(relPath: string): {
   test.afterAll(async ({ request }) => restore(request));
 
   return { restore };
+}
+
+/**
+ * Put an album's lyrics back once the calling spec file finishes (#1800).
+ *
+ * `PUT /songs/:id/lyrics` stores a `customized` row and may write the text into
+ * the file's tag, in the per-run copy every spec shares. A spec that writes
+ * lyrics to every track left them for whatever ran next: `offline-lyrics`
+ * expects only track 1 to carry lyrics, the row the setup seeds. So this
+ * snapshots the album's rows and files first, and afterwards writes the rows
+ * back as they were (deleting the ones that did not exist), writes back any
+ * file whose bytes changed, and rescans.
+ *
+ * Call it at describe scope in a spec that writes lyrics to fixture songs.
+ * Safe because the suite runs one spec file at a time per worker
+ * (`fullyParallel: false`).
+ *
+ * @param relDir album folder under `fixtures/music`, e.g. `'E2E_Test_Artist/E2E_Test_Album'`
+ */
+export function preserveAlbumLyrics(relDir: string, albumTitle: string): void {
+  const dir = join(E2E_MUSIC_DIR, relDir);
+  const files = new Map<string, Buffer>();
+  const rows = new Map<string, { plain: string | null; synced: string | null } | null>();
+
+  async function adminToken(request: APIRequestContext): Promise<string> {
+    const login = await request.post('/api/auth/login', { data: ADMIN });
+    expect(login.ok(), 'admin login for the lyrics snapshot').toBeTruthy();
+    return ((await login.json()) as { token: string }).token;
+  }
+  async function songIds(request: APIRequestContext, token: string): Promise<string[]> {
+    const albums = (await (
+      await request.get('/api/library/albums', { headers: bearer(token) })
+    ).json()) as Array<{ id: string; name: string }>;
+    // The album DTO's title is `name`.
+    const album = albums.find((a) => a.name === albumTitle);
+    expect(album, `the fixture album "${albumTitle}" to snapshot`).toBeTruthy();
+    const detail = (await (
+      await request.get(`/api/library/albums/${album!.id}`, { headers: bearer(token) })
+    ).json()) as { song: Array<{ id: string }> };
+    return detail.song.map((s) => s.id);
+  }
+
+  test.beforeAll(async ({ request }) => {
+    for (const name of readdirSync(dir)) files.set(name, readFileSync(join(dir, name)));
+    const token = await adminToken(request);
+    for (const id of await songIds(request, token)) {
+      const res = await request.get(`/api/library/songs/${id}/lyrics`, { headers: bearer(token) });
+      const row = (await res.json()) as { plain: string | null; synced: string | null } | null;
+      rows.set(id, row ? { plain: row.plain, synced: row.synced } : null);
+    }
+  });
+
+  test.afterAll(async ({ request }) => {
+    const token = await adminToken(request);
+    for (const [id, row] of rows) {
+      if (row?.plain) {
+        await request.put(`/api/library/songs/${id}/lyrics`, {
+          headers: bearer(token),
+          data: row.synced ? { plain: row.plain, synced: row.synced } : { plain: row.plain },
+        });
+      } else {
+        await request.delete(`/api/library/songs/${id}/lyrics`, { headers: bearer(token) });
+      }
+    }
+    let rewritten = false;
+    for (const [name, bytes] of files) {
+      const abs = join(dir, name);
+      if (existsSync(abs) && readFileSync(abs).equals(bytes)) continue;
+      writeFileSync(abs, bytes);
+      rewritten = true;
+    }
+    if (rewritten) await scanAndWait(request, token);
+  });
 }
 
 /**
