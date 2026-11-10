@@ -53,7 +53,7 @@
             <input type="text" [value]="member"
               (input)="updateMember($index, $any($event.target).value)"
               [attr.data-testid]="'identity-member-' + $index"
-              class="flex-1 px-3 py-1.5 rounded-lg bg-theme-surface-2 text-sm text-theme-primary border border-theme focus:outline-none" />
+              class="min-w-0 flex-1 px-3 py-1.5 rounded-lg bg-theme-surface-2 text-sm text-theme-primary border border-theme focus:outline-none" />
             <button type="button" (click)="removeMember($index)" aria-label="Remove member"
               class="w-7 h-7 flex items-center justify-center rounded-lg text-theme-muted hover:bg-theme-surface-2 transition">
               <app-icon name="close" />

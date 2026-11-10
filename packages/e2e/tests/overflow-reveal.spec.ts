@@ -164,17 +164,28 @@ async function openMosaicWithLongNames(page: Page): Promise<Locator> {
     .locator('[data-testid="mosaic-tile"][data-tile-kind="song"]')
     .filter({ hasText: LONG });
   await expect(tiles.first()).toBeVisible({ timeout: 10_000 });
-  // A tile wholly on screen and clear of the bottom chrome, whose centre is its own.
-  const index = await tiles.evaluateAll((els) =>
-    els.findIndex((el) => {
-      const r = el.getBoundingClientRect();
+  // A tile wholly on screen and clear of the bottom chrome, whose centre and name
+  // are its own. Picked and pinned in ONE evaluation: the render loop rewrites its
+  // pooled faces, so the list `tiles` matches can change between two calls, and an
+  // index found in one and used in the next (`tiles.nth(index)`) can name another
+  // tile — one off screen, which no hover reaches.
+  const picked = await tiles.evaluateAll((els) => {
+    const el = els.find((t) => {
+      const r = t.getBoundingClientRect();
       if (r.x < 0 || r.y < 0 || r.right > innerWidth || r.bottom > innerHeight - 140) return false;
       const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
-      return hit?.closest('[data-testid="mosaic-tile"]') === el;
-    }),
-  );
-  expect(index, 'a renamed song tile is fully on screen').toBeGreaterThanOrEqual(0);
-  return tiles.nth(index);
+      if (hit?.closest('[data-testid="mosaic-tile"]') !== t) return false;
+      // The name is what gets tapped: nothing (the Shelves | Mosaic switch) may sit over it.
+      const name = t.querySelector('b.mosaic-name')?.getBoundingClientRect();
+      if (!name) return false;
+      const onName = document.elementFromPoint(name.x + name.width / 2, name.y + name.height / 2);
+      return onName?.closest('[data-testid="mosaic-tile"]') === t;
+    });
+    el?.setAttribute('data-e2e-picked', '');
+    return !!el;
+  });
+  expect(picked, 'a renamed song tile is fully on screen').toBe(true);
+  return page.locator('[data-e2e-picked]');
 }
 
 test.describe('overflow reveal on a mosaic tile, touch (#1707)', () => {
@@ -241,6 +252,8 @@ test.describe('overflow reveal with a mouse (#1665)', () => {
   test('a mosaic tile scrolls its long name while the tile is hovered (#1707)', async ({
     page,
   }) => {
+    // The reveal is allowed 40 s below; the default 30 s budget would end the test first.
+    test.setTimeout(60_000);
     const tile = await openMosaicWithLongNames(page);
     const title = tile.locator('b.mosaic-name');
     expect((await box(title)).max).toBeGreaterThan(40);

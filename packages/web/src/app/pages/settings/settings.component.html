@@ -18,7 +18,7 @@
           </span>
           <select data-testid="settings-language"
             [value]="i18n.lang()" (change)="setLanguage($any($event.target).value)"
-            class="rounded-lg bg-theme-surface border border-theme px-2 py-1 text-sm text-theme-primary">
+            class="min-w-0 rounded-lg bg-theme-surface border border-theme px-2 py-1 text-sm text-theme-primary">
             @for (l of i18n.available; track l) {
               <option [value]="l" [selected]="l === i18n.lang()">{{ 'lang.' + l | t }}</option>
             }

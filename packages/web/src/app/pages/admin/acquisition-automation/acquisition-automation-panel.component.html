@@ -62,7 +62,7 @@
             data-testid="auto-playlists-cadence"
             [value]="ap.cadence"
             (change)="setAutoPlaylistCadence($any($event.target).value)"
-            class="px-2 py-1 rounded-lg bg-theme-surface-2 text-theme-secondary text-xs"
+            class="min-w-0 px-2 py-1 rounded-lg bg-theme-surface-2 text-theme-secondary text-xs"
           >
             <option value="off">{{ 'admin.off' | t }}</option>
             <option value="daily">{{ 'admin.daily' | t }}</option>

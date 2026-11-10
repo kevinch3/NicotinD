@@ -4,6 +4,7 @@ import {
   FIXTURE,
   bearer,
   expandGroup,
+  expectNoHorizontalOverflow,
   openAlbumCard,
   preserveAlbumLyrics,
 } from '../helpers';
@@ -308,14 +309,7 @@ test.describe('mobile UX', () => {
     // arrive here with an empty feed, which is also the one state that cannot
     // overflow (the same trap the #616 comment above describes).
     await expect(page.getByRole('heading', { level: 1, name: 'Activity' })).toBeVisible();
-    const overflow = await page.evaluate(() => {
-      // The shell's <main> is the page scroller (the document no longer scrolls), so
-      // overflow is measured on both — either one widening is the bug.
-      return [document.documentElement, document.querySelector('[data-scroll-root]')]
-        .filter((el): el is Element => !!el)
-        .reduce((max, el) => Math.max(max, el.scrollWidth - el.clientWidth), 0);
-    });
-    expect(overflow, 'no horizontal page overflow at phone width').toBeLessThanOrEqual(1);
+    await expectNoHorizontalOverflow(page, 'no horizontal page overflow at phone width');
   });
 
   // Originally: the Admin "Library processing" window row held two native
@@ -330,14 +324,7 @@ test.describe('mobile UX', () => {
     // group, which starts collapsed by default — expand it first.
     await expandGroup(page, 'library-processing');
     await expect(page.getByTestId('processing-panel')).toBeVisible();
-    const overflow = await page.evaluate(() => {
-      // The shell's <main> is the page scroller (the document no longer scrolls), so
-      // overflow is measured on both — either one widening is the bug.
-      return [document.documentElement, document.querySelector('[data-scroll-root]')]
-        .filter((el): el is Element => !!el)
-        .reduce((max, el) => Math.max(max, el.scrollWidth - el.clientWidth), 0);
-    });
-    expect(overflow, 'no horizontal page overflow at phone width').toBeLessThanOrEqual(1);
+    await expectNoHorizontalOverflow(page, 'no horizontal page overflow at phone width');
   });
 
   // The Library Songs tab toolbar (search + sort + Filters + Select) used a
@@ -352,14 +339,7 @@ test.describe('mobile UX', () => {
     // The Select button (last control) only renders once songs are listed — wait
     // for it so the full toolbar is measured, not a partial one.
     await expect(page.getByRole('button', { name: 'Select' })).toBeVisible();
-    const overflow = await page.evaluate(() => {
-      // The shell's <main> is the page scroller (the document no longer scrolls), so
-      // overflow is measured on both — either one widening is the bug.
-      return [document.documentElement, document.querySelector('[data-scroll-root]')]
-        .filter((el): el is Element => !!el)
-        .reduce((max, el) => Math.max(max, el.scrollWidth - el.clientWidth), 0);
-    });
-    expect(overflow, 'no horizontal page overflow at phone width').toBeLessThanOrEqual(1);
+    await expectNoHorizontalOverflow(page, 'no horizontal page overflow at phone width');
   });
 
   // A fresh device opens the Library on Songs — the first tab — and at the
@@ -437,14 +417,7 @@ test.describe('mobile UX', () => {
       ).toBeGreaterThanOrEqual(3);
       expectOneRow(boxes, `${mode} toolbar`);
     }
-    const overflow = await page.evaluate(() => {
-      // The shell's <main> is the page scroller (the document no longer scrolls), so
-      // overflow is measured on both — either one widening is the bug.
-      return [document.documentElement, document.querySelector('[data-scroll-root]')]
-        .filter((el): el is Element => !!el)
-        .reduce((max, el) => Math.max(max, el.scrollWidth - el.clientWidth), 0);
-    });
-    expect(overflow, 'no horizontal page overflow at 360 px').toBeLessThanOrEqual(1);
+    await expectNoHorizontalOverflow(page, 'no horizontal page overflow at 360 px');
   });
 
   // The sticky header folds env(safe-area-inset-top) into its top padding so it
@@ -857,14 +830,7 @@ test.describe('mobile UX', () => {
     await page.getByTestId('now-playing-tab-lyrics').click();
     await expect(page.getByTestId('now-playing-lyrics')).toBeVisible();
 
-    const overflow = await page.evaluate(() => {
-      // The shell's <main> is the page scroller (the document no longer scrolls), so
-      // overflow is measured on both — either one widening is the bug.
-      return [document.documentElement, document.querySelector('[data-scroll-root]')]
-        .filter((el): el is Element => !!el)
-        .reduce((max, el) => Math.max(max, el.scrollWidth - el.clientWidth), 0);
-    });
-    expect(overflow, 'long lyrics must not widen the page').toBeLessThanOrEqual(1);
+    await expectNoHorizontalOverflow(page, 'long lyrics must not widen the page');
   });
 
   /** Mouse drag between two points; touch itself cannot be driven in Desktop

@@ -44,7 +44,7 @@
               [value]="s.format"
               [disabled]="streamingSaving()"
               (change)="saveStreaming({ format: $any($event.target).value })"
-              class="text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary"
+              class="min-w-0 text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary"
             >
               <option value="mp3">MP3</option>
               <option value="opus">Opus</option>
@@ -58,7 +58,7 @@
               [value]="s.maxBitRate"
               [disabled]="streamingSaving()"
               (change)="saveStreaming({ maxBitRate: +$any($event.target).value })"
-              class="text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary"
+              class="min-w-0 text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary"
             >
               <option [value]="96">96</option>
               <option [value]="128">128</option>

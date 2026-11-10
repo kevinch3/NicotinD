@@ -234,6 +234,107 @@ export async function clearGroupState(page: Page): Promise<void> {
   });
 }
 
+/** What {@link measureHorizontalOverflow} found: the widest scroller overflow and who caused it. */
+export interface HorizontalOverflow {
+  /** Largest `scrollWidth - clientWidth` across `html`, `body` and `[data-scroll-root]`. */
+  overflow: number;
+  /** The outermost elements whose box crosses the viewport's left or right edge. */
+  offenders: string[];
+}
+
+/**
+ * Measure horizontal overflow the way a phone user meets it (#1807): the page
+ * scrollers widening, plus the elements that widen them.
+ *
+ * The scrollers are `html`, `body` and the shell's `<main data-scroll-root>` —
+ * `<main>`'s `overflow-y: auto` turns its `overflow-x` into `auto` too, so content
+ * wider than the page slides the whole view sideways instead of being clipped.
+ *
+ * An offender is an element whose box sits more than 1px past the viewport's
+ * left or right edge. Skipped: hidden and zero-size boxes, `position: fixed`
+ * layers (sheets, toasts, the player — not part of the page), and anything
+ * under an ancestor that does not let overflow through (`overflow-x` other than
+ * `visible`): a scroll strip, a `section-flush` table, a `truncate` host. Only
+ * the outermost offender is reported, so one overflowing row is one line, not
+ * one line per button in it.
+ *
+ * Measured with the `[data-x-guard]` wrappers switched off: they clip the
+ * overflow so a user never sees the page slide, which would also hide it here.
+ */
+export async function measureHorizontalOverflow(page: Page): Promise<HorizontalOverflow> {
+  return page.evaluate(() => {
+    // The page's overflow-x guards (`[data-x-guard]`, overflow-x: clip) would hide
+    // every offender; measure with them off, then put them back.
+    const guardsOff = document.createElement('style');
+    guardsOff.textContent = '[data-x-guard]{overflow-x:visible!important}';
+    document.head.appendChild(guardsOff);
+    const roots = [
+      document.documentElement,
+      document.body,
+      document.querySelector<HTMLElement>('[data-scroll-root]'),
+    ].filter((el): el is HTMLElement => !!el);
+    const overflow = roots.reduce((max, el) => Math.max(max, el.scrollWidth - el.clientWidth), 0);
+
+    const vw = document.documentElement.clientWidth;
+    const label = (el: Element): string => {
+      const testid = el.getAttribute('data-testid');
+      if (testid) return `${el.tagName.toLowerCase()}[data-testid=${testid}]`;
+      const cls = (el.getAttribute('class') ?? '').trim().split(/\s+/).slice(0, 4).join('.');
+      return `${el.tagName.toLowerCase()}${cls ? `.${cls}` : ''}`;
+    };
+    const path = (el: Element): string => {
+      const parts: string[] = [];
+      for (
+        let n: Element | null = el;
+        n && n !== document.body && parts.length < 4;
+        n = n.parentElement
+      ) {
+        parts.unshift(label(n));
+        if (n.hasAttribute('data-testid') && n !== el) break;
+      }
+      return parts.join(' > ');
+    };
+
+    // The shell's own boxes clip (overflow-hidden) and <main> scrolls on both axes,
+    // but they are the page itself: walk through them rather than stopping there.
+    const shell = new Set<Element>();
+    for (let n = document.querySelector('[data-scroll-root]'); n; n = n.parentElement) shell.add(n);
+
+    const offenders: string[] = [];
+    const walk = (el: Element): void => {
+      const style = getComputedStyle(el);
+      if (style.display === 'none' || style.position === 'fixed') return;
+      const r = el.getBoundingClientRect();
+      const visible = style.visibility !== 'hidden' && r.width > 0 && r.height > 0;
+      if (visible && (r.right > vw + 1 || r.left < -1)) {
+        offenders.push(
+          `${path(el)} (left ${Math.round(r.left)}, right ${Math.round(r.right)}, viewport ${vw})`,
+        );
+        return;
+      }
+      // A container that clips or scrolls owns its own overflow — not the page's.
+      if (!shell.has(el) && style.overflowX !== 'visible') return;
+      for (const child of Array.from(el.children)) walk(child);
+    };
+    for (const child of Array.from(document.body.children)) walk(child);
+    guardsOff.remove();
+    return { overflow, offenders: offenders.filter((o, i) => offenders.indexOf(o) === i) };
+  });
+}
+
+/**
+ * Assert the page has no horizontal overflow (#1807): no page scroller wider
+ * than the viewport, and no element crossing its edge. The failure names the
+ * outermost offending elements.
+ */
+export async function expectNoHorizontalOverflow(page: Page, label: string): Promise<void> {
+  const m = await measureHorizontalOverflow(page);
+  expect(
+    { overflow: m.overflow <= 1 ? 0 : m.overflow, offenders: m.offenders },
+    `${label}: nothing wider than the viewport`,
+  ).toEqual({ overflow: 0, offenders: [] });
+}
+
 /**
  * Trigger a library scan and **wait for it to finish**.
  *

@@ -93,7 +93,8 @@
           </summary>
           <p class="text-xs text-theme-muted mt-2">{{ 'admin.ladderHint' | t }}</p>
           @if (ladderDraft(); as d) {
-            <table class="mt-2 text-xs text-theme-secondary">
+            <div class="mt-2 max-w-full overflow-x-auto">
+            <table class="text-xs text-theme-secondary">
               <tbody>
                 @for (step of d.steps; track $index; let i = $index; let last = $last) {
                   <tr>
@@ -147,6 +148,7 @@
                 </tr>
               </tbody>
             </table>
+            </div>
             <div class="flex gap-2 mt-2" appTvNavGroup axis="horizontal">
               <button
                 type="button"
