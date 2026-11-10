@@ -241,6 +241,14 @@ provider-agnostic**: SMTP is the baseline, so Mailgun is a preset, not a depende
   one reset mail; the link sets a password the old one no longer opens) and the verify block in
   `account-security.spec.ts`.
 
+## Fix after the first real send: the server's name
+
+The first real Brevo test arrived as "Test email from 95fe07a0e91c": emails and the invite page
+named the server with `os.hostname()`, which in Docker is the container id — meaningless to a
+friend, and a random string spam filters weigh. `resolveServerName` now picks
+`NICOTIND_SERVER_NAME`, then the public URL's host, then a hostname only when it is not a container
+id, else `NicotinD`; `index.ts` passes that one `serverName` to every route that renders it.
+
 ## Before this work (verified 2026-11-09)
 
 What the plan started from — every line here has since changed:

@@ -175,6 +175,8 @@ export interface InvitePublicRoutesDeps {
   jwtSecret: string;
   jwtExpiresIn: string;
   now?: () => number;
+  /** What the invite page calls this server; see services/server-name.ts. */
+  serverName?: () => string;
 }
 
 export function invitePublicRoutes(deps: InvitePublicRoutesDeps) {
@@ -195,7 +197,7 @@ export function invitePublicRoutes(deps: InvitePublicRoutesDeps) {
     const token = typeof body.token === 'string' ? body.token : '';
     const result = inspectInvite(db, token, now());
     if (result.status === 'invalid' && !failureLimiter.hit()) return c.json(rateLimited, 429);
-    return c.json({ ...result, serverName: hostname() });
+    return c.json({ ...result, serverName: (deps.serverName ?? hostname)() });
   });
 
   app.post('/accept', async (c) => {
