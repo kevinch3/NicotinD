@@ -30,14 +30,15 @@ export function deleteSongRow(db: Database, songId: string): void {
 /** Anything still pointing at the artist: an owned song or album, or a credit on either. */
 function artistReferenced(db: Database, artistId: string): boolean {
   return !!db
-    .query<{ one: number }, [string, string, string, string]>(
+    .query<{ one: number }, [string, string, string, string, string]>(
       `SELECT 1 AS one WHERE
          EXISTS (SELECT 1 FROM library_songs WHERE artist_id = ?)
+         OR EXISTS (SELECT 1 FROM library_songs WHERE album_artist_id = ?)
          OR EXISTS (SELECT 1 FROM library_song_artists WHERE artist_id = ?)
          OR EXISTS (SELECT 1 FROM library_albums WHERE artist_id = ?)
          OR EXISTS (SELECT 1 FROM library_album_artists WHERE artist_id = ?)`,
     )
-    .get(artistId, artistId, artistId, artistId);
+    .get(artistId, artistId, artistId, artistId, artistId);
 }
 
 function deleteArtistRow(db: Database, artistId: string): void {

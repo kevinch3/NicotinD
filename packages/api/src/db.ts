@@ -1159,6 +1159,9 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   }
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_album_id ON library_songs(album_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_artist_id ON library_songs(artist_id)`);
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_library_songs_album_artist_id ON library_songs(album_artist_id)`,
+  );
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_path ON library_songs(path)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_genre ON library_songs(genre)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_hidden ON library_songs(hidden)`);
