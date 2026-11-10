@@ -1,7 +1,7 @@
 <!-- Loading -->
 @if (state() === 'loading') {
   <div class="min-h-screen bg-theme-base pb-24">
-    <div class="page-shell max-w-2xl">
+    <div class="page-shell max-w-3xl">
       <app-skeleton variant="detail-header" label="Loading poll" />
       <app-skeleton variant="track-row" [count]="5" [trackCover]="false" />
     </div>
@@ -27,7 +27,7 @@
 
 @if (state() === 'active' && view(); as v) {
   <div class="min-h-screen bg-theme-base pb-16">
-    <div class="page-shell max-w-2xl">
+    <div class="page-shell max-w-3xl">
 
       <!-- Intro -->
       @if (step() === 'intro') {
