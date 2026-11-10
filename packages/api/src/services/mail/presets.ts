@@ -33,7 +33,7 @@ export const MAIL_PRESETS: readonly MailPreset[] = [
     host: 'smtp-relay.brevo.com',
     port: 587,
     secure: false,
-    usernameHint: 'your Brevo login email',
+    usernameHint: 'the Login shown under SMTP & API → SMTP',
     helpKey: 'admin.email.presetHelp.brevo',
   },
   {
