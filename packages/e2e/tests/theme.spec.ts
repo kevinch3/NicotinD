@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '../helpers';
 import { ADMIN, bearer, expandGroup } from '../helpers';
+import { composite, contrast, parseColor } from './helpers/contrast';
 
 test.describe('e-ink theme', () => {
   // Regression guard for the e-paper legibility fix: stroked icons "blended"
@@ -72,6 +73,81 @@ test.describe('theme utilities + contrast', () => {
     // oled accent (#818cf8) is light → on-accent is dark (#0a0a0a), so text on
     // an accent pill stays legible instead of the old hardcoded white.
     expect(r.onAccent.color).toBe('rgb(10, 10, 10)');
+  });
+});
+
+// The contrast table (#1684): every text and fill pair the themes promise, on
+// every preset, measured from the computed tokens the page paints. A pill's
+// translucent background is composited over `surface`, where pills sit; any
+// other translucent token over `bg`. Targets: 4.5 for text, 3 for an accent
+// used as a fill. → docs/web-ui.md "Theme System".
+test.describe('theme contrast table', () => {
+  const PRESETS = ['midnight', 'daylight', 'warm-paper', 'oled', 'twilight', 'forest', 'eink'];
+  const TOKENS = [
+    'bg',
+    'surface',
+    'surface-1',
+    'surface-2',
+    'text-primary',
+    'text-secondary',
+    'text-muted',
+    'accent',
+    'accent-text',
+    'on-accent',
+    'accent-2',
+    'accent-2-text',
+    'on-accent-2',
+    'highlight-bg',
+    'highlight-text',
+    ...['progress', 'done', 'warn', 'error'].flatMap((k) => [`status-${k}-bg`, `status-${k}-text`]),
+  ];
+  type Pair = [fg: string, bg: string, target: number, over?: 'bg' | 'surface'];
+  const PAIRS: Pair[] = [
+    ['text-primary', 'bg', 4.5],
+    ['text-primary', 'surface-2', 4.5],
+    ...['text-secondary', 'text-muted', 'accent-text', 'accent-2-text'].flatMap((fg) =>
+      ['bg', 'surface', 'surface-2'].map((on): Pair => [fg, on, 4.5]),
+    ),
+    ['on-accent', 'accent', 4.5],
+    ['on-accent-2', 'accent-2', 4.5],
+    ['accent', 'bg', 3],
+    ['accent-2', 'bg', 3],
+    ['highlight-text', 'highlight-bg', 4.5, 'surface'],
+    ...['progress', 'done', 'warn', 'error'].map((k): Pair => [
+      `status-${k}-text`,
+      `status-${k}-bg`,
+      4.5,
+      'surface',
+    ]),
+    ['status-error-text', 'bg', 4.5],
+  ];
+
+  test('every pair meets its target on every preset', async ({ page }) => {
+    await page.goto('/library');
+    const failures: string[] = [];
+    for (const preset of PRESETS) {
+      const raw = await page.evaluate(
+        ({ preset, names }) => {
+          document.documentElement.setAttribute('data-theme', preset);
+          const cs = getComputedStyle(document.documentElement);
+          return Object.fromEntries(names.map((n) => [n, cs.getPropertyValue(`--theme-${n}`)]));
+        },
+        { preset, names: TOKENS },
+      );
+      const bg = parseColor(raw['bg']!);
+      const opaque = (name: string, over: 'bg' | 'surface' = 'bg') => {
+        const c = parseColor(raw[name]!);
+        if (c.a === 1) return c;
+        return composite(c, over === 'bg' ? bg : composite(parseColor(raw['surface']!), bg));
+      };
+      for (const [fg, on, target, over] of PAIRS) {
+        const ratio = contrast(opaque(fg, over), opaque(on, over));
+        if (ratio < target)
+          failures.push(`${preset}: ${fg} on ${on} = ${ratio.toFixed(2)} < ${target}`);
+      }
+      expect(raw['surface-1'], `${preset}: surface-1 aliases surface`).toBe(raw['surface']);
+    }
+    expect(failures).toEqual([]);
   });
 });
 

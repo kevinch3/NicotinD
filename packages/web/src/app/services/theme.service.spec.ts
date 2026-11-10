@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 import { resolveTheme, THEME_PRESETS, ThemeService, type ThemeId } from './theme.service';
@@ -139,5 +141,38 @@ describe('ThemeService — per-user preferences', () => {
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({});
     expect(TestBed.inject(ThemeService).theme()).toBe('twilight');
+  });
+});
+
+// The browser-chrome colour is a copy of each preset's accent. It drifted once
+// (Midnight and Daylight said #6366f1 against #6164f1, theme audit 2026-11), so
+// the copy is checked against the stylesheet it copies (#1684).
+describe('ThemeService — theme-color meta', () => {
+  const css = readFileSync(join(__dirname, '../../styles.css'), 'utf8');
+  const accentOf = (id: ThemeId) =>
+    new RegExp(`\\[data-theme="${id}"\\]\\s*\\{[^}]*--theme-accent:\\s*(#[0-9a-f]{6});`, 'i').exec(
+      css,
+    )?.[1];
+
+  afterEach(() => {
+    document.querySelector('meta[name="theme-color"]')?.remove();
+    delete (window as { matchMedia?: unknown }).matchMedia;
+    localStorage.clear();
+  });
+
+  it.each(THEME_PRESETS.map((p) => p.id))('%s paints its stylesheet accent', (id) => {
+    (window as { matchMedia?: unknown }).matchMedia = () => ({
+      matches: false,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    });
+    const meta = document.createElement('meta');
+    meta.name = 'theme-color';
+    document.head.appendChild(meta);
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({});
+    TestBed.inject(ThemeService).setTheme(id);
+    expect(accentOf(id)).toBeDefined();
+    expect(meta.content.toLowerCase()).toBe(accentOf(id)!.toLowerCase());
   });
 });

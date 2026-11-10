@@ -24,9 +24,9 @@ export const THEME_PRESETS: ThemePreset[] = [
 const STORAGE_KEY = 'nicotind-theme';
 
 const ACCENT_COLORS: Record<ThemeId, string> = {
-  midnight: '#6366f1',
-  daylight: '#6366f1',
-  'warm-paper': '#d97706',
+  midnight: '#6164f1',
+  daylight: '#6164f1',
+  'warm-paper': '#d27306',
   oled: '#818cf8',
   twilight: '#a78bfa',
   forest: '#2dd4bf',

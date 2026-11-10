@@ -42,6 +42,11 @@
   }
 
   /* Midnight (default — values match current hardcoded zinc classes) */
+  /* Names added by the token pass (#1684) that only rename an existing level. */
+  :root {
+    --theme-surface-1: var(--theme-surface);
+  }
+
   :root,
   [data-theme="midnight"] {
     --theme-bg:           #09090b;
@@ -55,6 +60,9 @@
     --theme-accent:       #6164f1;
     --theme-accent-text:  #7f82f4;
     --theme-on-accent:    #ffffff;
+    --theme-accent-2:     #f0806a;
+    --theme-accent-2-text: #f39a87;
+    --theme-on-accent-2:  #1a0b07;
     --theme-highlight-bg: rgba(245,158,11,0.35);
     --theme-highlight-text: #fef3c7;
     --theme-status-progress-bg:   rgba(30,58,138,0.6);
@@ -79,6 +87,9 @@
     --theme-accent:       #6164f1;
     --theme-accent-text:  #4b4eef;
     --theme-on-accent:    #ffffff;
+    --theme-accent-2:     #c2410c;
+    --theme-accent-2-text: #a3360a;
+    --theme-on-accent-2:  #ffffff;
     --theme-highlight-bg: #fde68a;
     --theme-highlight-text: #78350f;
     --theme-status-progress-bg:   #dbeafe;
@@ -100,9 +111,12 @@
     --theme-text-primary: #292524;
     --theme-text-secondary: #57534e;
     --theme-text-muted:   #67615c;
-    --theme-accent:       #d97706;
+    --theme-accent:       #d27306;
     --theme-accent-text:  #945104;
     --theme-on-accent:    #431407;
+    --theme-accent-2:     #0f766e;
+    --theme-accent-2-text: #0d625b;
+    --theme-on-accent-2:  #ffffff;
     --theme-highlight-bg: #fcd34d;
     --theme-highlight-text: #78350f;
     --theme-status-progress-bg:   #fef3c7;
@@ -127,6 +141,9 @@
     --theme-accent:       #818cf8;
     --theme-accent-text:  #818cf8;
     --theme-on-accent:    #0a0a0a;
+    --theme-accent-2:     #f0806a;
+    --theme-accent-2-text: #f39a87;
+    --theme-on-accent-2:  #1a0b07;
     --theme-highlight-bg: #78350f;
     --theme-highlight-text: #fef3c7;
     --theme-status-progress-bg:   #172554;
@@ -151,6 +168,9 @@
     --theme-accent:       #a78bfa;
     --theme-accent-text:  #ad93fa;
     --theme-on-accent:    #1e1b2e;
+    --theme-accent-2:     #f0806a;
+    --theme-accent-2-text: #f39a87;
+    --theme-on-accent-2:  #1a0b07;
     --theme-highlight-bg: rgba(167,139,250,0.35);
     --theme-highlight-text: #f5f3ff;
     --theme-status-progress-bg:   #312e81;
@@ -170,11 +190,14 @@
     --theme-hover:        rgba(36,61,53,0.6);
     --theme-border:       #243d35;
     --theme-text-primary: #e2f5ed;
-    --theme-text-secondary: #7aaa96;
+    --theme-text-secondary: #7dac98;
     --theme-text-muted:   #75ac9b;
     --theme-accent:       #2dd4bf;
     --theme-accent-text:  #2dd4bf;
     --theme-on-accent:    #05130f;
+    --theme-accent-2:     #f0806a;
+    --theme-accent-2-text: #f39a87;
+    --theme-on-accent-2:  #1a0b07;
     --theme-highlight-bg: rgba(45,212,191,0.28);
     --theme-highlight-text: #ccfbf1;
     --theme-status-progress-bg:   #134e4a;
@@ -203,6 +226,9 @@
     --theme-accent:       #000000;
     --theme-accent-text:  #000000;
     --theme-on-accent:    #ffffff;
+    --theme-accent-2:     #000000;
+    --theme-accent-2-text: #000000;
+    --theme-on-accent-2:  #ffffff;
     --theme-highlight-bg: #000000;
     --theme-highlight-text: #ffffff;
     --theme-status-progress-bg:   #d0e4ff;
@@ -394,6 +420,13 @@
      the switch rendered transparent over the tiles. `theme-opacity-modifiers.
      spec.ts` now fails on any /NN colour missing from this block. */
   --color-theme-surface-2: var(--theme-surface-2);
+  --color-theme-surface-1: var(--theme-surface-1);
+  /* The second hue (#1684, theme audit Q1): "now playing / live", so the
+     accent keeps "press me" and "you are here". Fill, text and on-fill split
+     the way the accent's do. */
+  --color-theme-accent-2: var(--theme-accent-2);
+  --color-theme-accent-2-text: var(--theme-accent-2-text);
+  --color-theme-on-accent-2: var(--theme-on-accent-2);
   --color-theme-base: var(--theme-bg);
   --color-theme-hover: var(--theme-hover);
   /* The four status hues get the same `@theme` promotion, for the same reason
