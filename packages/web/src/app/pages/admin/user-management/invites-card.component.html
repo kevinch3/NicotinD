@@ -49,7 +49,7 @@
             </span>
           }
           @if (invite.note) {
-            <span class="text-xs text-theme-secondary truncate max-w-48" [title]="invite.note">{{ invite.note }}</span>
+            <span class="text-xs text-theme-secondary break-words min-w-0">{{ invite.note }}</span>
           }
           @if (invite.acceptedBy.length) {
             <span class="text-xs text-theme-muted" data-testid="invite-accepted-by">
