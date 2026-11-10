@@ -85,5 +85,8 @@ Clicking **Got it** calls `POST /api/auth/dismiss-welcome` which sets `welcome_d
 
 - First admin: always open via `/api/setup/complete` or `/api/auth/register`
 - Subsequent users: admin-only via `POST /api/admin/users` (or `registrationEnabled: true` in config enables self-registration for all)
+- Invited users: an admin mints a link in Admin → User Management → **Invitations**; the friend
+  opens `/invite#t=…`, picks their own username and password, and joins at the role the admin
+  chose — **even while public signup is closed**. See [email-invitations.md](email-invitations.md).
 
 The existing Admin panel at `/admin` provides user management (list, create, reset password, disable, delete) without requiring API calls.

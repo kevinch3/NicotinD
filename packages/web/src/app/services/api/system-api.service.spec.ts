@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting, HttpTestingController } from '@angular/common/http/testing';
 import { SystemApiService } from './system-api.service';
+import { KEEP_SESSION_ON_401 } from '../../lib/http-context';
 
 describe('SystemApiService', () => {
   let service: SystemApiService;
@@ -31,5 +32,19 @@ describe('SystemApiService', () => {
     expect(req.request.method).toBe('POST');
     expect(req.request.body).toEqual(data);
     req.flush({ token: 't', user: { id: '1', username: 'a', role: 'admin' } });
+  });
+
+  it('flags a background radio-settings read so its 401 keeps the session', () => {
+    service.getRadioSettings({ background: true }).subscribe({ error: () => {} });
+    const req = http.expectOne('/api/settings/radio');
+    expect(req.request.context.get(KEEP_SESSION_ON_401)).toBe(true);
+    req.flush({}, { status: 401, statusText: 'Unauthorized' });
+  });
+
+  it('leaves an ordinary radio-settings read to the normal 401 handling', () => {
+    service.getRadioSettings().subscribe();
+    const req = http.expectOne('/api/settings/radio');
+    expect(req.request.context.get(KEEP_SESSION_ON_401)).toBe(false);
+    req.flush({});
   });
 });

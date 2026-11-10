@@ -1,10 +1,10 @@
-# Invitations, email delivery & password recovery  ·  **PROPOSAL, NOT IMPLEMENTED**
+# Invitations, email delivery & password recovery
 
-> **Status: plan, 2026-11-09.** Nothing here ships yet. This page is the agreed shape
-> so each increment can be built, tested and merged on its own. Coordinate with
-> [oauth-auth.md](oauth-auth.md) (also unbuilt): it too adds a user email and
-> `NICOTIND_PUBLIC_URL`, and both must land on the *same* column and the *same* variable.
-
+> **Status: increment 1 (link invites) shipped; increments 2–5 planned.** The plan below
+> (2026-11-09) is the agreed shape, so each increment can be built, tested and merged
+> on its own. Coordinate with [oauth-auth.md](oauth-auth.md) (also unbuilt): it too adds a
+> user email and `NICOTIND_PUBLIC_URL`, and both must land on the *same* column and the
+> *same* variable.
 ## The principle
 
 **The invite link is the primitive; email is one delivery channel for it.** Many
@@ -12,6 +12,39 @@ self-hosters will never configure email (see "Mailgun reality" below), so every 
 must work with *copy link / QR* first, and email upgrades it. **And email is
 provider-agnostic**: SMTP is the baseline, so Mailgun is a preset, not a dependency (see
 "Provider-agnostic by design").
+
+## Shipped: link invites (increment 1)
+
+- **Data**: `invites` (sha256 `token_hash`, role, note, expiry, `max_uses` ≤ 25, `use_count`,
+  `revoked_at`) and `invite_acceptances` (who joined through which invite), in `db.ts`.
+  Logic lives in `services/invites.ts`: `createInvite`, `listInvites`, `rotateInviteToken`,
+  `revokeInvite`, `inspectInvite`, `acceptInvite`, and the pure `inviteStatus` (revoked >
+  used > expired > pending).
+- **Routes** (`routes/invites.ts`), split by trust like radio polls:
+  `inviteAdminRoutes` under `/api/admin/invites` (list, mint, new link, revoke; audited as
+  `invite.create` / `invite.rotate` / `invite.revoke`) and `invitePublicRoutes` under
+  `/api/invites` (`/inspect`, `/accept`; rate-limited with the pairing claim's
+  `createFixedWindowLimiter`; `invite.accept` audited as the new user). The token travels only
+  in POST bodies, so it never lands in an access log.
+- **Accept** spends a use through a compare-and-swap `UPDATE` inside the transaction that
+  creates the user, so two concurrent accepts cannot overspend, and a failed attempt (taken
+  username, short password) leaves the invite unspent. New passwords need ≥ 8 characters.
+- **Link base**: the pairing QR's `candidateUrls` (Funnel URL, then the request origin, loopback
+  dropped). When nothing but loopback is known, the card builds the link from the page's own
+  origin and shows "only works on this computer" (`buildInviteLink` → `localOnly`).
+- **Web**: `InvitesCardComponent` inside Admin → User Management (Invite dialog → link + QR
+  shown once → list with Pending/Used/Expired/Revoked, *New link*, *Revoke*);
+  `InviteAcceptComponent` at the public `/invite` route, with one state per outcome
+  (`form`, `signed-in`, `invalid`, `expired`, `used`, `revoked`) exposed as `data-state`.
+- **Fix that came with it**: the radio provider's boot-time `GET /api/settings/radio` ran
+  before any session existed, and its 401 made the interceptor sign out and jump to `/login`,
+  hijacking **every** public page opened without a session. It now passes
+  `getRadioSettings({ background: true })` (`KEEP_SESSION_ON_401`), the 401 it already
+  expected.
+- **Tests**: `routes/invites.test.ts` (API), `invites-card.component.spec.ts`,
+  `invite-accept.component.spec.ts`, `lib/invite-link.spec.ts`, and the e2e
+  `invite-link.spec.ts` (a fresh browser context joins at the preset role; the reused link reads
+  *used*; a revoked link reads *revoked*).
 
 ## Today (verified)
 
@@ -123,7 +156,7 @@ falls back to the link. Forgot password then reads "Ask your server admin."
 
 ## Increments (one PR each, each independently useful)
 
-1. **Link invites.**
+1. **Link invites.** ✅ Shipped — see above.
    - Ships: `invites` table (hashed token, role ≤ inviter, expiry, uses ≤ 25, revoked); admin API; invites card with copy and QR; `/invite` accept page.
    - Invites work while public signup is closed.
    - Tests: API unit tests (expiry, reuse, role cap, revoke) and e2e `invite-link.spec` (fresh context accepts, reopen shows *used*).

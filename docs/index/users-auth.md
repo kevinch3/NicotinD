@@ -18,6 +18,10 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   `NICOTIND_REGISTRATION` pins by *presence* (`resolveRegistrationEnabled`): set either way, the
   toggle is read-only. `registrationBlocked` exempts the first-user bootstrap.
   → [deployment.md](../deployment.md)
+- **Invitations (link invites)**: an admin-minted, hashed, expiring, use-capped link that creates an
+  account at a preset role even while signup is closed; `inviteAdminRoutes`/`invitePublicRoutes`,
+  `acceptInvite` (CAS spend), `InvitesCardComponent`, `InviteAcceptComponent` at `/invite`.
+  → [email-invitations.md](../email-invitations.md)
 - **Device pairing (QR link) + remote access**: a 5-minute single-use token rendered as a QR link plus
   a printed fallback code; `parseApproveCode` and core `pairing-code.ts` `isPairingCodeShape` keep the
   minter and validator from drifting; `paired_devices` rows are revocable at refresh. Tailscale Funnel

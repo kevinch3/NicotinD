@@ -6,6 +6,7 @@ import { UserManagementPanelComponent } from './user-management-panel.component'
 import { AuthService } from '../../../services/auth.service';
 import { ConfirmService } from '../../../services/confirm.service';
 import { SystemApiService } from '../../../services/api/system-api.service';
+import { InvitesApiService } from '../../../services/api/invites-api.service';
 import type { AdminUser } from '../../../services/api/api-types';
 import { ROLES } from '../../../../types/core';
 import { expandAllGroups } from '../../../../testing/expand-groups';
@@ -66,6 +67,8 @@ describe('UserManagementPanelComponent', () => {
           useValue: { token: () => over.token ?? null, mediaToken: () => over.token ?? null },
         },
         { provide: ConfirmService, useValue: { ask } },
+        // The embedded invites card has its own spec; here it only must not throw.
+        { provide: InvitesApiService, useValue: { list: vi.fn(() => of({ invites: [] })) } },
       ],
     }).compileComponents();
 

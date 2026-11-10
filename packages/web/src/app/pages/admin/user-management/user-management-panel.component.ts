@@ -9,6 +9,7 @@ import { TranslatePipe } from '../../../pipes/translate.pipe';
 import { TvNavGroupDirective } from '../../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 import { BottomChromeSafeDirective } from '../../../directives/bottom-chrome-safe.directive';
+import { InvitesCardComponent } from './invites-card.component';
 import { userActivityDetail, userActivityLabel } from '../../../lib/user-activity';
 import type { Translator } from '../../../lib/relative-time';
 import { AuthService } from '../../../services/auth.service';
@@ -41,6 +42,7 @@ import { TranslateService } from '../../../services/translate.service';
     TvNavGroupDirective,
     TvNavItemDirective,
     BottomChromeSafeDirective,
+    InvitesCardComponent,
   ],
   templateUrl: './user-management-panel.component.html',
 })

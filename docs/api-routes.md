@@ -71,6 +71,12 @@ follow-up work, not part of the gate fix.
 | `POST`   | `/api/auth/register`                     | Register a new user                                         |
 | `POST`   | `/api/auth/login`                        | Login, returns JWT                                          |
 | `POST`   | `/api/auth/refresh`                      | Sliding-window refresh                                      |
+| `POST`   | `/api/invites/inspect`                   | Public: an invite token's state (body `{ token }`)          |
+| `POST`   | `/api/invites/accept`                    | Public: create an account from an invite, returns JWT       |
+| `GET`    | `/api/admin/invites`                     | Admin: list invites (pending first, finished for 7 days)    |
+| `POST`   | `/api/admin/invites`                     | Admin: mint an invite link (role, expiry, uses, note)       |
+| `POST`   | `/api/admin/invites/:id/link`            | Admin: new link for a pending invite (old one dies)         |
+| `DELETE` | `/api/admin/invites/:id`                 | Admin: revoke an invite                                     |
 | `GET`    | `/api/search?q=`                         | Unified search (local library + parallel network sources)   |
 | `GET`    | `/api/search/:id/network`                | Poll for Soulseek results                                   |
 | `POST`   | `/api/acquire`                           | Acquire from a URL (YouTube/Spotify/archive.org) via plugins |

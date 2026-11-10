@@ -43,6 +43,7 @@ import { usersRoutes } from './routes/users.js';
 import { shareRoutes } from './routes/share.js';
 import { radioPollAdminRoutes, radioPollPublicRoutes } from './routes/radio-polls.js';
 import { devicesRoutes } from './routes/devices.js';
+import { inviteAdminRoutes, invitePublicRoutes } from './routes/invites.js';
 import { agentTokensRoutes } from './routes/agent-tokens.js';
 import { subsonicKeysRoutes } from './routes/subsonic-keys.js';
 import { openSubsonicRoutes } from './routes/opensubsonic.js';
@@ -913,6 +914,14 @@ export function createApp({
     }),
   );
   app.route('/api/admin/remote-access', remoteAccessRoutes(remoteAccess));
+  // Invitations (docs/email-invitations.md): the admin half rides the
+  // /api/admin/* blanket auth; the public half takes the invite token as its
+  // credential, the same trust model as the pairing claim.
+  app.route('/api/admin/invites', inviteAdminRoutes({ db, remoteAccess }));
+  app.route(
+    '/api/invites',
+    invitePublicRoutes({ db, jwtSecret: config.jwt.secret, jwtExpiresIn: config.jwt.expiresIn }),
+  );
   // ServiceReview: one read-only snapshot aggregating the running service's
   // telemetry (hardware metrics, slskd state, library scan, update check,
   // backups, processing summary, jobs, audit tail, …). Admin-only; the

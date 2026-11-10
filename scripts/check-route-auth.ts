@@ -74,6 +74,11 @@ export const PUBLIC_ROUTES: Array<{ route: string; reason: string }> = [
       'pairing flow: devicesRoutes applies `auth` per-route (/pair, /login-approve, GET /, DELETE /:id) and deliberately leaves /claim, /login-request and /login-claim open, where the short-lived pairing token is itself the credential — a blanket app.use would break pairing (docs/device-pairing.md)',
   },
   {
+    route: '/api/invites',
+    reason:
+      'invitation landing: /inspect and /accept are reachable before an account exists, and the 256-bit invite token in the POST body is the credential (only its hash is stored); the admin half mounts under /api/admin/invites — see docs/email-invitations.md',
+  },
+  {
     route: '/api',
     reason:
       'bare mount for streamingRoutes, whose only paths are /stream/:id, /cover/:id and /cover/remote — each covered by its own app.use(auth) registered earlier in index.ts. RESIDUAL RISK: a route added at this mount root would land on /api/<name> and be public; narrowing the mount is tracked separately',

@@ -1462,3 +1462,49 @@ export interface CurationRound {
   cases: CurationCase[];
   awaitingAgent: number;
 }
+
+// ── Invitations (docs/email-invitations.md) ────────────────────────────────
+type Role = import('../../../types/core').Role;
+export type InviteStatus = 'pending' | 'used' | 'expired' | 'revoked';
+
+export interface InviteSummary {
+  id: string;
+  role: Role;
+  note: string | null;
+  createdBy: string | null;
+  createdAt: number;
+  expiresAt: number;
+  maxUses: number;
+  useCount: number;
+  revokedAt: number | null;
+  status: InviteStatus;
+  acceptedBy: string[];
+}
+
+/** A freshly minted (or rotated) link — the only moment the token exists. */
+export interface InviteLinkResponse {
+  invite: InviteSummary;
+  token: string;
+  /** Usable bases (Funnel first); empty when only loopback is known. */
+  urls: string[];
+  /** `/invite#t=<token>`, appended to a base. */
+  path: string;
+}
+
+export interface CreateInviteRequest {
+  role: Role;
+  expiresInHours: 24 | 168 | 720;
+  maxUses: number;
+  note?: string;
+}
+
+export type InviteInspection =
+  | { status: 'invalid'; serverName: string }
+  | { status: 'used' | 'expired' | 'revoked'; invitedBy: string | null; serverName: string }
+  | {
+      status: 'pending';
+      invitedBy: string | null;
+      role: Role;
+      expiresAt: number;
+      serverName: string;
+    };

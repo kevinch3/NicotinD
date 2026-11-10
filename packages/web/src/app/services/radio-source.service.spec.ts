@@ -259,6 +259,17 @@ describe('RadioSourceService', () => {
     expect(player.radioQueueTarget()).toBe(35);
   });
 
+  // The read runs from the app initializer, before any session exists. Its 401
+  // is expected, so it must not reach the interceptor's sign-out-and-redirect:
+  // that hijacked every public page (/invite, /pair, /share) to /login.
+  it('reads the queue depth as a background request that keeps the session on 401', async () => {
+    const { system } = setup(35);
+
+    await settle();
+
+    expect(system.getRadioSettings).toHaveBeenCalledWith({ background: true });
+  });
+
   /** A server too old to have the field still answers; the built-in default stands. */
   it('keeps its default depth against a server that has no opinion', async () => {
     const api = {

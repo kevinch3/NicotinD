@@ -65,6 +65,15 @@ export const routes: Routes = [
     ),
   },
   {
+    // Invitation landing (docs/email-invitations.md): `/invite#t=…`, token in
+    // the fragment like /pair. No guards — the invitee has no account yet, and
+    // an already-signed-in visitor is handled on the page, not bounced.
+    path: 'invite',
+    loadComponent: lazy(() =>
+      import('./pages/invite/invite-accept.component').then((m) => m.InviteAcceptComponent),
+    ),
+  },
+  {
     path: 'setup',
     loadComponent: lazy(() =>
       import('./pages/setup/setup.component').then((m) => m.SetupComponent),

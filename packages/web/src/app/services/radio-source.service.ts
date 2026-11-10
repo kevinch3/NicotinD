@@ -49,7 +49,7 @@ export class RadioSourceService {
   private async syncQueueTarget(): Promise<void> {
     if (this.queueTargetLoaded) return;
     try {
-      const settings = await firstValueFrom(this.system.getRadioSettings());
+      const settings = await firstValueFrom(this.system.getRadioSettings({ background: true }));
       this.queueTargetLoaded = true;
       if (typeof settings.queueTarget === 'number') {
         this.player.radioQueueTarget.set(settings.queueTarget);

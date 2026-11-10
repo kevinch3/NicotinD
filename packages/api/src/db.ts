@@ -896,6 +896,39 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   db.run(
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_subsonic_api_keys_hash ON subsonic_api_keys (key_hash)`,
   );
+  // Invitations (docs/email-invitations.md): an admin-minted link that lets a
+  // friend create their own account at a preset role, even while public signup
+  // is closed. Only the sha256 hash of the token is stored — the link is shown
+  // once at mint time, and rotating it replaces the hash. `use_count` advances
+  // through a compare-and-swap UPDATE, so two concurrent accepts can't both
+  // spend the last use.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS invites (
+      id           TEXT    PRIMARY KEY,
+      token_hash   TEXT    NOT NULL,
+      role         TEXT    NOT NULL,
+      note         TEXT,
+      created_by   TEXT    REFERENCES users(id) ON DELETE SET NULL,
+      created_at   INTEGER NOT NULL,
+      expires_at   INTEGER NOT NULL,
+      max_uses     INTEGER NOT NULL DEFAULT 1,
+      use_count    INTEGER NOT NULL DEFAULT 0,
+      revoked_at   INTEGER,
+      last_used_at INTEGER
+    )
+  `);
+  db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_invites_token_hash ON invites (token_hash)`);
+  // Who joined through which invite — the admin list's "used by". Survives the
+  // invite being revoked; dies with either side.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS invite_acceptances (
+      invite_id   TEXT    NOT NULL REFERENCES invites(id) ON DELETE CASCADE,
+      user_id     TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      accepted_at INTEGER NOT NULL,
+      PRIMARY KEY (invite_id, user_id)
+    )
+  `);
+
   // Per-user stars on albums and artists, set through Subsonic `star`. A song
   // star is a like (the Liked Songs playlist), so songs never land here.
   db.run(`
