@@ -154,9 +154,11 @@
             (click)="resource.emit(selectedOrAll())"
           >
             {{
-              selectedCount()
-                ? ('downloads.resource.selected' | t: { count: selectedCount() })
-                : ('downloads.resource.all' | t)
+              resourcing()
+                ? ('downloads.resource.working' | t)
+                : selectedCount()
+                  ? ('downloads.resource.selected' | t: { count: selectedCount() })
+                  : ('downloads.resource.all' | t)
             }}
           </button>
         }

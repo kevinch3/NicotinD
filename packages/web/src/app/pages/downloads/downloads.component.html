@@ -55,7 +55,7 @@
                 (cancel)="onItemCancel(item)"
                 (remove)="onItemRemove(item)"
                 (discardPartial)="onItemDiscardPartial(item)"
-                [resourcing]="resourcing()?.jobId === item.jobId"
+                [resourcing]="resource.isBusy(item.jobId)"
                 (resource)="onItemResource(item, $event)"
               />
             }
@@ -65,15 +65,16 @@
         <p class="text-center text-theme-muted text-sm py-20">{{ 'downloads.empty' | t }}</p>
       }
 
-      <!-- Peer picker for a stuck download (#1065). Owned by the page, not the
-           card: it is a modal over the whole feed, and a card is recycled on
-           every poll while the dialog must survive them. -->
-      @if (resourcing(); as target) {
+      <!-- Peer picker for a stuck download (#1065), opened on request: a
+           re-source picks its own peer unless the user asks to choose. Owned by
+           the page, not the card, which is recycled on every poll. -->
+      @if (resource.picker(); as target) {
         <app-resource-picker
           [jobId]="target.jobId"
           [require]="target.titles"
-          (cancel)="resourcing.set(null)"
-          (resourced)="onResourced($event)"
+          [seed]="target.seed"
+          (cancel)="resource.closePicker()"
+          (resourced)="resource.picked($event)"
         />
       }
 

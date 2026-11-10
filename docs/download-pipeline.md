@@ -2063,16 +2063,46 @@ card**.
 Core retains no candidates after a job starts: `candidateRef` is opaque, addon-side and
 short-lived, and `album_jobs.alternates_json` has had no writer since the addon cutover. So
 `POST /jobs/:id/resource/search` re-runs `AddonClient.albumsSearch`, which costs tens of
-seconds (#1049: two search lanes at ~28 s). That cost is why the UI is a **search then a
-picker** rather than one blind button — an action that spins for a minute and then reports a
-choice the user never saw is not an improvement on being stuck.
+seconds (#1049: two search lanes at ~28 s). That cost is why the action says what it is doing
+while it searches and names the peer before it switches. An action that spins for a minute and
+then reports a choice the user never saw is not an improvement on being stuck.
+
+### Automatic by default, a picker on request
+
+The first UI was a **search then a modal picker**, with the best row preselected. Almost every
+use confirmed that row, so the dialog was a step with no decision in it. It also had a deadline
+nobody could see: the list's `candidateRef`s expire addon-side, and a dialog left open past
+that answered Confirm with "run the search again", after the stuck job had already been
+released.
+
+Now `ResourceService` (`packages/web/src/app/services/resource.service.ts`) runs it the way
+one-click Get runs a hunt:
+
+- The card's button reads "Finding another peer…" while the search runs. No dialog opens.
+- The result is a **5 s countdown toast** naming the pick (peer, coverage, format), with
+  **Switch now**, **Cancel** and **Choose peer**. Left alone, it switches.
+- The pick is `autoResourcePick` (`lib/resource-auto-pick.ts`): the first row of
+  `rankAlternates`, whatever it covers. Returning `null` there sends a result to the picker
+  instead, which is the one place to change when automatic should stop being automatic.
+- **Choose peer** opens `ResourcePickerComponent` on the search already run (`seed`), so
+  choosing costs no second hunt.
+- An empty search is a toast saying so (offline and "nobody has it" stay separate, #1040). A
+  countdown dropped at the toast cap opens the picker, so the choice is never nobody's.
+
+The picker no longer dead-ends on an old list. A refused pick that is not a 409 makes it search
+again by itself and keep the chosen peer, matched by username and folder because tokens are
+re-minted per search. Confirming then sends a selection the source will honour. A 409 still
+reports the conflict and searches nothing (#1069).
+
+The countdown is longer than Get's 3 s because there is more to read, and because switching
+releases the peer the download was waiting on.
 
 The search subtracts the peers already on the card (`activePeers`): an alternate that is the
 peer we are already waiting on is the same dead end. Candidates are ranked by coverage of
 the wanted titles first, then by peer availability (`freeUploadSlots`, `queueLength`,
 `uploadSpeed`) — availability second because it is what was actually wrong. Format is
-carried on every row but **not ranked on**: which encode you want is a taste call, and the
-picker exists so a person makes it.
+carried on every row but **not ranked on**: which encode you want is a taste call, so the
+countdown names it and the picker is one tap away.
 
 ### No protocol change
 

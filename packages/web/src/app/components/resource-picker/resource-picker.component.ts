@@ -3,20 +3,20 @@ import { registerOverlayCloser } from '../../services/native/back-button.service
 import { BottomChromeSafeDirective } from '../../directives/bottom-chrome-safe.directive';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
-import type { AlternateSource } from '../../services/api/api-types';
+import type { AlternateSource, AlternateSourcesResult } from '../../services/api/api-types';
 import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 /**
  * Pick a peer to take over the tracks a download is stuck on (#1065).
  *
- * The dialog exists *because* the search is slow. Core keeps no candidates
- * after a job starts — `candidateRef` is addon-side and short-lived — so
- * finding another peer means re-running the hunt, tens of seconds of it. A
- * one-click action would be a button that hangs and then reports a decision
- * the user never saw; this states what it is doing and shows the evidence the
- * choice was made on.
+ * Opened on request: a re-source picks the best peer by itself
+ * (`ResourceService`), and this is where someone who wants another one chooses.
+ * Core keeps no candidates after a job starts — `candidateRef` is addon-side
+ * and short-lived — so a list that sat open too long is refused. The dialog
+ * then searches again by itself and keeps the choice, rather than sending the
+ * user back to the card.
  *
- * → docs/download-pipeline.md "Re-sourcing from another peer"
+ * → docs/download-pipeline.md "Automatic by default, a picker on request"
  */
 @Component({
   selector: 'app-resource-picker',
@@ -35,6 +35,8 @@ export class ResourcePickerComponent {
    * pending (#1069).
    */
   readonly require = input<string[]>([]);
+  /** A search the caller already ran. Without one the dialog runs its own. */
+  readonly seed = input<AlternateSourcesResult | null>(null);
 
   readonly cancel = output<void>();
   /** Emitted once the re-source is accepted, so the feed can re-poll. */
@@ -59,29 +61,39 @@ export class ResourcePickerComponent {
     registerOverlayCloser(() => this.cancel.emit());
     // `input.required` is readable here because the overlay is only created
     // once its inputs are bound (the parent gates it behind an @if).
-    queueMicrotask(() => this.search());
+    queueMicrotask(() => {
+      const seed = this.seed();
+      if (seed) this.show(seed);
+      else this.search();
+    });
   }
 
-  private search(): void {
+  /** `keep` survives a refresh: tokens are re-minted per search, the peer's folder is not. */
+  private search(keep?: AlternateSource, notice: string | null = null): void {
     this.searching.set(true);
-    this.error.set(null);
+    this.error.set(notice);
     this.api.searchAlternateSources(this.jobId(), this.require()).subscribe({
-      next: (res) => {
-        this.wanted.set(res.wanted);
-        this.required.set(res.required ?? []);
-        this.alternates.set(res.alternates);
-        this.rateLimited.set(!!res.rateLimited);
-        this.sourceOffline.set(!!res.sourceOffline);
-        // Preselect the best row: the ranking already answers "which peer",
-        // and making the user re-derive it is friction with no information.
-        this.chosen.set(res.alternates[0]?.candidateRef ?? null);
-        this.searching.set(false);
-      },
+      next: (res) => this.show(res, keep),
       error: () => {
         this.searching.set(false);
         this.error.set('downloads.resource.failed');
       },
     });
+  }
+
+  private show(res: AlternateSourcesResult, keep?: AlternateSource): void {
+    this.wanted.set(res.wanted);
+    this.required.set(res.required ?? []);
+    this.alternates.set(res.alternates);
+    this.rateLimited.set(!!res.rateLimited);
+    this.sourceOffline.set(!!res.sourceOffline);
+    const kept =
+      keep &&
+      res.alternates.find((a) => a.username === keep.username && a.directory === keep.directory);
+    // Preselect the best row: the ranking already answers "which peer",
+    // and making the user re-derive it is friction with no information.
+    this.chosen.set((kept ?? res.alternates[0])?.candidateRef ?? null);
+    this.searching.set(false);
   }
 
   choose(ref: string): void {
@@ -104,9 +116,10 @@ export class ResourcePickerComponent {
         this.submitting.set(false);
         // 409 is the source still holding the album, not a stale selection —
         // and only one of those is fixed by running the search again (#1069).
-        this.error.set(
-          err?.status === 409 ? 'downloads.resource.conflict' : 'downloads.resource.failed',
-        );
+        if (err?.status === 409) return this.error.set('downloads.resource.conflict');
+        // Anything else is a list this peer no longer honours, most often
+        // because it sat open past the token's life. Fetch a new one here.
+        this.search(pick, 'downloads.resource.refreshed');
       },
     });
   }

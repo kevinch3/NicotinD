@@ -1,3 +1,4 @@
+import type { APIRequestContext } from '@playwright/test';
 import { test, expect } from '../helpers';
 import { ADMIN, bearer } from '../helpers';
 import { startFixtureAddon, FIXTURE_ADDON_TOKEN, type FixtureAddon } from './helpers/fixture-addon';
@@ -58,14 +59,14 @@ test.describe('re-source a stuck download', () => {
     await addon.close();
   });
 
-  test('hands the pending track to another peer, on the same card', async ({ page, request }) => {
+  /** Start a job on the original peer and wait for its card to offer a re-source. */
+  async function stuckJob(request: APIRequestContext, album: string): Promise<string> {
     const created = await request.post(`${addon.url}/addon/v1/jobs`, {
       headers: ADDON_AUTH,
-      data: { intent: 'album', artist: 'Addon Artist', album: 'Addon Album' },
+      data: { intent: 'album', artist: 'Addon Artist', album },
     });
     expect(created.status()).toBe(201);
 
-    // Mirrored into the feed, stuck on the original peer.
     let jobId = '';
     await expect
       .poll(
@@ -75,15 +76,40 @@ test.describe('re-source a stuck download', () => {
           const jobs = (await res.json()) as Array<{
             id: string;
             method: string;
+            albumTitle?: string | null;
             canResource?: boolean;
           }>;
-          const job = jobs.find((j) => j.method === ADDON_ID);
+          const job = jobs.find((j) => j.method === ADDON_ID && j.albumTitle === album);
           if (job) jobId = job.id;
           return job?.canResource ?? null;
         },
         { timeout: 20_000 },
       )
       .toBe(true);
+    return jobId;
+  }
+
+  /** The peers a card is fetching from, once the replacement's items have mirrored in. */
+  async function expectSources(request: APIRequestContext, jobId: string, peers: string) {
+    await expect
+      .poll(
+        async () => {
+          const res = await request.get('/api/downloads/jobs', { headers: auth });
+          if (!res.ok()) return null;
+          const jobs = (await res.json()) as Array<{ id: string; sources: { username: string }[] }>;
+          const job = jobs.find((j) => j.id === jobId);
+          return job ? job.sources.map((s) => s.username).join(',') : null;
+        },
+        { timeout: 25_000 },
+      )
+      .toBe(peers);
+  }
+
+  test('switches the pending track to the best peer by itself, on the same card', async ({
+    page,
+    request,
+  }) => {
+    const jobId = await stuckJob(request, 'Addon Album');
 
     await page.goto('/downloads');
     // Keyed on the job id, not the album title: the fixture payload's "Addon
@@ -95,15 +121,17 @@ test.describe('re-source a stuck download', () => {
     // The action is reachable WITHOUT expanding — the stuck card is the point.
     await card.getByTestId('download-resource').click();
 
-    // The picker searches, then offers the alternate peer. The peer already on
-    // the job must not be among the options: that is the same dead end.
-    const picker = page.getByTestId('resource-picker');
-    await expect(picker).toBeVisible({ timeout: 15_000 });
-    await expect(picker.getByTestId('resource-alternate')).toHaveCount(1, { timeout: 20_000 });
-    await expect(picker.getByTestId('resource-alternate')).toHaveAttribute('data-peer', ALTERNATE);
+    // No dialog and no deadline: the search names its pick in a countdown and
+    // then acts on it. The peer already on the job is never the pick — that is
+    // the same dead end. Nothing below clicks the toast.
+    const offer = page.getByTestId('toast').filter({ hasText: ALTERNATE });
+    await expect(offer).toBeVisible({ timeout: 20_000 });
+    await expect(offer.getByTestId('toast-progress')).toBeVisible();
+    await expect(page.getByTestId('resource-picker')).toHaveCount(0);
 
-    await picker.getByTestId('resource-confirm').click();
-    await expect(picker).toBeHidden({ timeout: 15_000 });
+    await expect(
+      page.getByTestId('toast').filter({ hasText: `Re-sourcing 1 track(s) from ${ALTERNATE}` }),
+    ).toBeVisible({ timeout: 20_000 });
 
     // The stuck job is released BEFORE the replacement is created (#1069). The
     // addon allows one active job per album, so the reverse order 409s — and
@@ -112,22 +140,7 @@ test.describe('re-source a stuck download', () => {
 
     // The replacement's item arrives on the SAME job, from the new peer, and
     // the abandoned row stops counting rather than doubling the tracklist.
-    await expect
-      .poll(
-        async () => {
-          const res = await request.get('/api/downloads/jobs', { headers: auth });
-          if (!res.ok()) return null;
-          const jobs = (await res.json()) as Array<{
-            id: string;
-            sources: { username: string }[];
-            items: { username?: string | null }[];
-          }>;
-          const job = jobs.find((j) => j.id === jobId);
-          return job ? job.sources.map((s) => s.username).join(',') : null;
-        },
-        { timeout: 25_000 },
-      )
-      .toBe(ALTERNATE);
+    await expectSources(request, jobId, ALTERNATE);
 
     // Still one card: re-sourcing is not a second download.
     const cards = await request.get('/api/downloads/jobs', { headers: auth });
@@ -140,5 +153,27 @@ test.describe('re-source a stuck download', () => {
     // And still one row for the track: the row reserved at commit (#1146) was
     // adopted by the replacement's report, not joined by a second one.
     expect(all.find((j) => j.id === jobId)!.items.map((i) => i.title)).toEqual(['Addon Song']);
+  });
+
+  test('Choose peer opens the picker on the search already run', async ({ page, request }) => {
+    const jobId = await stuckJob(request, 'Addon Album Two');
+
+    await page.goto('/downloads');
+    const card = page.locator(`[data-testid="download-item"][data-job-id="${jobId}"]`);
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    await card.getByTestId('download-resource').click();
+
+    const offer = page.getByTestId('toast').filter({ hasText: ALTERNATE });
+    await expect(offer).toBeVisible({ timeout: 20_000 });
+    await offer.getByRole('button', { name: 'Choose peer' }).click();
+
+    // Listed at once: the dialog shows the search the countdown came from.
+    const picker = page.getByTestId('resource-picker');
+    await expect(picker.getByTestId('resource-alternate')).toHaveCount(1);
+    await expect(picker.getByTestId('resource-alternate')).toHaveAttribute('data-peer', ALTERNATE);
+
+    await picker.getByTestId('resource-confirm').click();
+    await expect(picker).toBeHidden({ timeout: 15_000 });
+    await expectSources(request, jobId, ALTERNATE);
   });
 });
