@@ -29,6 +29,11 @@ const PAGE_TIERS: Array<[string, '6xl' | '3xl']> = [
   ['share/share-view.component.html', '3xl'],
   // Curator triage joins the 3xl tier rather than reviving the 2xl split (#420).
   ['curate/curate.component.html', '3xl'],
+  // The last 2xl pages (#1807): Privacy and Recommendations made the Settings column
+  // jump, and the public poll page joins its sibling share page.
+  ['settings/privacy/privacy.component.html', '3xl'],
+  ['settings/recommendations/recommendations.component.html', '3xl'],
+  ['poll/poll-view.component.html', '3xl'],
 ];
 
 const IDIOM_PAGES = [
