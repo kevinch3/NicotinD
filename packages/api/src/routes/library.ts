@@ -2593,8 +2593,8 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
 
   // On-demand lyrics fetch (any user — LRCLIB is keyless/benign). Returns a
   // non-customized cached row immediately; otherwise queries each enabled
-  // lyrics-capable plugin, persists the first hit, writes the plain text back to
-  // the file tag, and returns it. A user-edited row (customized=1) is left
+  // lyrics-capable plugin, persists the first hit, mirrors the plain text into the
+  // file tag once nobody is streaming the file, and returns it. A user-edited row (customized=1) is left
   // untouched unless `force:true` AND `confirmReplaceEdit:true`; a forced fetch
   // on it without the confirmation answers 409 `lyrics-customized` (#1786).
   // `force` also skips the file-tag recovery (see `fetchSongLyrics`). 503 when

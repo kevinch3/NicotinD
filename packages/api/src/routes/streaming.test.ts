@@ -15,6 +15,7 @@ import {
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { streamingRoutes } from './streaming.js';
+import { streamActivity } from '../services/stream-activity.js';
 import { applySchema } from '../db.js';
 import {
   transcodeCacheKey,
@@ -72,6 +73,16 @@ afterAll(() => {
 });
 
 describe('streaming routes', () => {
+  it('marks the file as streaming, so a tag write waits for the listener', async () => {
+    const writes: string[] = [];
+    await app.request('/stream/song-2', { headers: { range: 'bytes=0-3' } });
+    streamActivity.writeWhenIdle(join(musicDir, 'NoArt', 'bare.mp3'), async () => {
+      writes.push('wrote');
+    });
+    await Promise.resolve();
+    expect(writes).toEqual([]);
+  });
+
   it('serves the full file with a 200 and accept-ranges', async () => {
     const res = await app.request('/stream/song-1');
     expect(res.status).toBe(200);

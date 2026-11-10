@@ -35,6 +35,7 @@ import {
   resolveRemoteCoverUrl,
 } from '../services/remote-cover.js';
 import { isKnownUntranscodable, rememberTranscodeFailure } from '../services/transcode-failures.js';
+import { streamActivity } from '../services/stream-activity.js';
 import { getWaveform, type PcmDecoder } from '../services/waveform-store.js';
 
 const log = createLogger('streaming');
@@ -146,6 +147,7 @@ export function streamingRoutes(
     const id = c.req.param('id');
     const abs = resolvePath(id);
     if (!abs) return c.body(null, 404);
+    streamActivity.noteStreamed(abs);
 
     const settings = getStreamingSettings(db);
     const reqFormat = c.req.query('format');
