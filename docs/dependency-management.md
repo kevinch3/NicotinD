@@ -62,6 +62,22 @@ Measured 2026-09-23 on a fresh worktree of `437dcae9`, warm bun cache:
 The script still accepts an old symlinked tree and deletes its links first, because an install
 on top of them would write through into the main checkout's store.
 
+## Cloud sessions run `.nvmrc`'s Node (#1575)
+
+A cloud Claude Code session's container ships its own Node (v22.22.0 when this was written), below
+the `.nvmrc` pin and below what the Angular CLI accepts, so `bun run verify` passed every gate up
+to `bun run --filter @nicotind/web build` and died there. CI was never affected: `setup-node`
+reads `.nvmrc`.
+
+`.claude/settings.json` runs `scripts/cloud-node.sh` as a **SessionStart** hook. It does nothing
+unless `CLAUDE_CODE_REMOTE=true`. When the container's `node --version` differs from `.nvmrc`, it
+downloads that exact release from nodejs.org, checks it against the release's `SHASUMS256.txt`,
+caches it under `~/.cache/nicotind-node/<version>`, and puts its `bin` first on `PATH` through
+`CLAUDE_ENV_FILE`. It prints one line naming the Node in use, so a mismatch shows at session start
+instead of at the build step. A failed download only warns; the session still starts. Tested in
+`scripts/cloud-node.test.ts`. The cloud environment's setup script can do the same install outside
+the repo; the hook is the version-controlled half.
+
 ## One Bun everywhere (#1409)
 
 CI, the desktop package and the prod image run the **same** Bun: every workflow's `BUN_VERSION` must
