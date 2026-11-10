@@ -20,6 +20,20 @@
             {{ summary() }}
           </p>
           <form (ngSubmit)="submit()" class="space-y-4" data-testid="invite-accept-form">
+            @if (email(); as address) {
+              <label class="block text-xs text-white/60">
+                {{ 'invite.emailLabel' | t }}
+                <input
+                  type="email"
+                  name="email"
+                  readonly
+                  [value]="address"
+                  data-testid="invite-email"
+                  class="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white/80"
+                />
+                <span class="mt-1 block text-xs text-white/40">{{ 'invite.emailHint' | t }}</span>
+              </label>
+            }
             <input
               type="text"
               name="username"

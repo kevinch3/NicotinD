@@ -47,3 +47,19 @@ export function clearGroupStates(storage: EnumerableStorage): void {
   }
   keysToRemove.forEach((key) => storage.removeItem(key));
 }
+
+/**
+ * Jump to another settings group on the same page: open it if collapsed (by
+ * clicking its own toggle, so its persisted state and `opened` output behave
+ * exactly as for a user click), then scroll it into view. The target of an
+ * in-page "set it up here" link — e.g. the invite dialog's "Set up email".
+ * Returns false when no such group is on the page.
+ */
+export function revealSettingsGroup(groupId: string, root: ParentNode = document): boolean {
+  const section = root.querySelector<HTMLElement>(`[data-group-id="${groupId}"]`);
+  if (!section) return false;
+  const toggle = section.querySelector<HTMLElement>('[data-testid="settings-group-toggle"]');
+  if (toggle?.getAttribute('aria-expanded') === 'false') toggle.click();
+  section.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+  return true;
+}

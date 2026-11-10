@@ -69,6 +69,11 @@ export class InviteAcceptComponent implements OnInit {
     return i?.status === 'pending' ? i.role : null;
   });
   readonly serverName = computed(() => this.inspection()?.serverName ?? '');
+  /** An emailed invite's address, shown read-only: the account gets it, verified. */
+  readonly email = computed(() => {
+    const i = this.inspection();
+    return i?.status === 'pending' ? (i.email ?? null) : null;
+  });
 
   readonly passwordsMismatch = computed(
     () => this.confirmPassword().length > 0 && this.password() !== this.confirmPassword(),

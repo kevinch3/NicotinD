@@ -390,6 +390,10 @@ export interface AdminUser {
    * server restart. See docs/presence-tracking.md.
    */
   last_seen_at: number | null;
+  /** The account's address (docs/email-invitations.md); null = none. Older servers omit it. */
+  email?: string | null;
+  /** Whether that address was proven (an emailed invite or a verification link). */
+  emailVerified?: boolean;
   // Ephemeral presence, merged server-side from PresenceService (see docs/presence-tracking.md).
   isConnected: boolean;
   amountOfDevices: number;
@@ -1479,6 +1483,8 @@ export interface InviteSummary {
   revokedAt: number | null;
   status: InviteStatus;
   acceptedBy: string[];
+  /** The recipient of an emailed invite; null for a link invite. */
+  email: string | null;
 }
 
 /** A freshly minted (or rotated) link — the only moment the token exists. */
@@ -1489,6 +1495,8 @@ export interface InviteLinkResponse {
   urls: string[];
   /** `/invite#t=<token>`, appended to a base. */
   path: string;
+  /** Present only for an emailed invite: how the send went. The invite exists either way. */
+  mail?: MailSendResult;
 }
 
 export interface CreateInviteRequest {
@@ -1496,6 +1504,8 @@ export interface CreateInviteRequest {
   expiresInHours: 24 | 168 | 720;
   maxUses: number;
   note?: string;
+  /** Mail the link to this address; the invite is then single-use. */
+  email?: string;
 }
 
 export type InviteInspection =
@@ -1507,6 +1517,8 @@ export type InviteInspection =
       role: Role;
       expiresAt: number;
       serverName: string;
+      /** An emailed invite's address — the new account gets it, verified. */
+      email?: string | null;
     };
 
 // ── Email delivery (docs/email-invitations.md, increment 3) ────────────────
@@ -1521,6 +1533,10 @@ export type MailSendReason =
   | 'unknown'
   | 'off'
   | 'quota-exhausted';
+
+/** How one send went (`MailService.send` on the server). */
+export type MailSendResult =
+  { ok: true; providerId?: string } | { ok: false; reason: MailSendReason; detail: string };
 
 export const MAIL_SEND_REASONS: readonly MailSendReason[] = [
   'auth',

@@ -103,6 +103,20 @@
                     <span class="ml-1.5 text-xs text-theme-muted">{{ 'admin.you' | t }}</span>
                   }
                 </div>
+                <!-- The address wraps rather than truncating: it is read, not copied
+                     (docs/design-patterns.md, names are never unreadably cut). -->
+                @if (user.email) {
+                  <div
+                    class="text-xs text-theme-secondary break-all"
+                    data-testid="user-email"
+                    [attr.data-verified]="user.emailVerified === true"
+                  >
+                    {{ user.email }}
+                    <span [class]="user.emailVerified ? 'text-status-success' : 'text-status-warn'">
+                      · {{ (user.emailVerified ? 'admin.emailVerified' : 'admin.emailUnverified') | t }}
+                    </span>
+                  </div>
+                }
                 <div class="text-xs text-theme-muted">
                   {{ 'admin.joinedOn' | t: { date: formatDate(user.created_at) } }}
                 </div>

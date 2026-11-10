@@ -16,6 +16,8 @@ import { signJwt } from '../middleware/auth.js';
 import { recordAudit } from '../services/audit-log.js';
 import { sessionVersionOf } from '../services/session-version.js';
 import { linkBaseCandidates } from '../services/link-base.js';
+import type { MailSendResult, MailService } from '../services/mail/mailer.js';
+import { inviteEmail } from '../services/mail/templates.js';
 import type { RemoteAccess } from '../services/tailscale.js';
 import {
   acceptInvite,
@@ -41,6 +43,12 @@ export interface InviteAdminRoutesDeps {
    * desktop on 127.0.0.1 has no address a friend could open.
    */
   publicUrl?: () => string | null;
+  /**
+   * Sends emailed invites (increment 4). Absent, an invite with an email is
+   * still created and the response says `{ ok: false, reason: 'off' }`.
+   */
+  mail?: MailService | null;
+  serverName?: () => string;
   now?: () => number;
 }
 
@@ -48,11 +56,45 @@ function withLink(invite: InviteSummary, token: string, urls: string[]) {
   return { invite, token, urls, path: `/invite#t=${token}` };
 }
 
+const MAIL_OFF: MailSendResult = {
+  ok: false,
+  reason: 'off',
+  detail: 'Email delivery is turned off',
+};
+
 export function inviteAdminRoutes(deps: InviteAdminRoutesDeps) {
   const { db } = deps;
   const linkSources = { remoteAccess: deps.remoteAccess ?? null, publicUrl: deps.publicUrl };
   const now = deps.now ?? Date.now;
+  const serverName = deps.serverName ?? hostname;
   const app = new Hono<AuthEnv>();
+
+  /**
+   * Mail the link to an emailed invite's recipient. Never fails the request:
+   * the invite exists either way, and the admin still gets the link to pass on.
+   * The link base is the admin's own first candidate, else the origin their
+   * browser used — the same fallback as the test email.
+   */
+  async function sendInvite(
+    invite: InviteSummary,
+    token: string,
+    urls: string[],
+    requestUrl: string,
+    inviterName: string,
+  ): Promise<MailSendResult> {
+    if (!invite.email || !deps.mail) return MAIL_OFF;
+    const base = (urls[0] ?? new URL(requestUrl).origin).replace(/\/+$/, '');
+    return deps.mail.send('invite', {
+      to: invite.email,
+      ...inviteEmail({
+        serverName: serverName(),
+        inviterName,
+        role: invite.role,
+        link: `${base}/invite#t=${token}`,
+        expiresAt: invite.expiresAt,
+      }),
+    });
+  }
 
   app.use('*', async (c, next) => {
     if (c.get('user')?.role !== 'admin') {
@@ -67,14 +109,24 @@ export function inviteAdminRoutes(deps: InviteAdminRoutesDeps) {
     const body = await c.req.json<Record<string, unknown>>().catch(() => ({}));
     const actor = c.get('user');
     const result = createInvite(db, actor.sub, body, now());
-    if (!result.ok) return c.json({ error: result.error, code: result.code }, 400);
+    if (!result.ok) {
+      return c.json(
+        { error: result.error, code: result.code },
+        result.code === 'EMAIL_TAKEN' ? 409 : 400,
+      );
+    }
+    const urls = await linkBaseCandidates(linkSources, c.req.url);
+    const { invite, token } = result;
+    const mail = invite.email
+      ? await sendInvite(invite, token, urls, c.req.url, actor.username ?? 'Your server admin')
+      : null;
+    // Whether it was mailed, never to whom: the audit log is not an address book.
     recordAudit(db, actor, 'invite.create', {
       targetKind: 'invite',
-      targetId: result.invite.id,
-      detail: `role=${result.invite.role} uses=${result.invite.maxUses}`,
+      targetId: invite.id,
+      detail: `role=${invite.role} uses=${invite.maxUses}` + (mail ? ` emailed=${mail.ok}` : ''),
     });
-    const urls = await linkBaseCandidates(linkSources, c.req.url);
-    return c.json(withLink(result.invite, result.token, urls), 201);
+    return c.json({ ...withLink(invite, token, urls), ...(mail ? { mail } : {}) }, 201);
   });
 
   app.post('/:id/link', async (c) => {
@@ -85,9 +137,24 @@ export function inviteAdminRoutes(deps: InviteAdminRoutesDeps) {
         ? c.json({ error: 'Invite not found', code: 'NOT_FOUND' }, 404)
         : c.json({ error: 'Invite is no longer pending', code: result.code }, 409);
     }
-    recordAudit(db, c.get('user'), 'invite.rotate', { targetKind: 'invite', targetId: id });
     const urls = await linkBaseCandidates(linkSources, c.req.url);
-    return c.json(withLink(result.invite, result.token, urls));
+    const actor = c.get('user');
+    // An emailed invite's new link goes to the same inbox — "resend".
+    const mail = result.invite.email
+      ? await sendInvite(
+          result.invite,
+          result.token,
+          urls,
+          c.req.url,
+          actor.username ?? 'Your server admin',
+        )
+      : null;
+    recordAudit(db, actor, 'invite.rotate', {
+      targetKind: 'invite',
+      targetId: id,
+      ...(mail ? { detail: `emailed=${mail.ok}` } : {}),
+    });
+    return c.json({ ...withLink(result.invite, result.token, urls), ...(mail ? { mail } : {}) });
   });
 
   app.delete('/:id', (c) => {
@@ -153,7 +220,7 @@ export function invitePublicRoutes(deps: InvitePublicRoutesDeps) {
     recordAudit(db, { sub: user.id, username: user.username }, 'invite.accept', {
       targetKind: 'invite',
       targetId: result.inviteId,
-      detail: `role=${user.role}`,
+      detail: `role=${user.role}` + (result.email ? ' email=verified' : ''),
     });
     const token = await signJwt(
       { sub: user.id, username: user.username, role: user.role, tv: sessionVersionOf(db, user.id) },

@@ -13,6 +13,9 @@ import type { AuthEnv } from '../middleware/auth.js';
 import { applySchema } from '../db.js';
 import { inviteAdminRoutes, invitePublicRoutes } from './invites.js';
 import { hashInviteToken, inviteStatus, MAX_INVITE_USES } from '../services/invites.js';
+import { MailService } from '../services/mail/mailer.js';
+import { MailSettingsStore, readMailEnv } from '../services/mail/settings.js';
+import type { MailMessage, MailResult } from '../services/mail/transport.js';
 
 const SECRET = 'test-secret';
 const HOUR = 3_600_000;
@@ -325,5 +328,185 @@ describe('public: accept', () => {
     expect(
       db.query<{ use_count: number }, []>('SELECT use_count FROM invites').get()!.use_count,
     ).toBe(0);
+  });
+});
+
+describe('emailed invites (increment 4)', () => {
+  let sent: MailMessage[];
+  let nextResult: MailResult;
+
+  beforeEach(() => {
+    sent = [];
+    nextResult = { ok: true, providerId: 'q-1' };
+  });
+
+  function mailer(on = true) {
+    const settings = new MailSettingsStore(
+      db,
+      readMailEnv(on ? { NICOTIND_MAIL_TRANSPORT: 'smtp' } : {}),
+    );
+    return new MailService({
+      db,
+      settings,
+      now,
+      transportFor: () => ({
+        send: async (msg) => {
+          sent.push(msg);
+          return nextResult;
+        },
+        verify: async () => ({ ok: true }),
+      }),
+    });
+  }
+
+  function mailAdmin(mail: MailService | null = mailer()) {
+    const wrap = new Hono<AuthEnv>();
+    wrap.use('*', async (c, next) => {
+      c.set('user', {
+        sub: 'admin1',
+        username: 'boss',
+        role: 'admin',
+        iat: 0,
+        exp: 0,
+      } as JwtPayload);
+      await next();
+    });
+    wrap.route('/', inviteAdminRoutes({ db, now, mail, serverName: () => 'den' }));
+    return wrap;
+  }
+
+  async function mintEmailed(body: Record<string, unknown>, mail?: MailService | null) {
+    return mailAdmin(mail).request('http://music.example.com/', json(body));
+  }
+
+  it('mails the link, stores the lower-cased address, and reports the send', async () => {
+    const res = await mintEmailed({ email: '  Friend@Example.COM ', role: 'listener' });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.mail).toEqual({ ok: true, providerId: 'q-1' });
+    expect(body.invite.email).toBe('friend@example.com');
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.to).toBe('friend@example.com');
+    expect(sent[0]!.subject).toBe('boss invited you to den');
+    expect(sent[0]!.text).toContain(`http://music.example.com/invite#t=${body.token}`);
+    expect(sent[0]!.text).toContain('as a listener');
+    expect(sent[0]!.html).toContain(`href="http://music.example.com/invite#t=${body.token}"`);
+  });
+
+  it('rejects an address that is not one', async () => {
+    const res = await mintEmailed({ email: 'not-an-email' });
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe('VALIDATION_ERROR');
+    expect(sent).toHaveLength(0);
+  });
+
+  it('an emailed invite is single-use', async () => {
+    const res = await mintEmailed({ email: 'friend@example.com', maxUses: 3 });
+    expect(res.status).toBe(400);
+  });
+
+  it('refuses an address an account already has, case-insensitively', async () => {
+    db.run("UPDATE users SET email = 'taken@example.com' WHERE id = 'admin1'");
+    const res = await mintEmailed({ email: 'TAKEN@example.com' });
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('EMAIL_TAKEN');
+    expect(db.query('SELECT id FROM invites').all()).toHaveLength(0);
+  });
+
+  it('still creates the invite when the send fails', async () => {
+    nextResult = { ok: false, reason: 'unreachable', detail: 'ECONNREFUSED' };
+    const res = await mintEmailed({ email: 'friend@example.com' });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.mail).toMatchObject({ ok: false, reason: 'unreachable' });
+    expect(body.path).toBe(`/invite#t=${body.token}`);
+    expect(body.invite.status).toBe('pending');
+  });
+
+  it("still creates the invite while mail is off, and says 'off'", async () => {
+    for (const mail of [mailer(false), null]) {
+      const res = await mintEmailed({ email: `friend-${String(!!mail)}@example.com` }, mail);
+      expect(res.status).toBe(201);
+      expect((await res.json()).mail).toMatchObject({ ok: false, reason: 'off' });
+    }
+    expect(sent).toHaveLength(0);
+  });
+
+  it('a link invite carries no mail field and sends nothing', async () => {
+    const body = await (await mintEmailed({})).json();
+    expect(body).not.toHaveProperty('mail');
+    expect(body.invite.email).toBeNull();
+    expect(sent).toHaveLength(0);
+  });
+
+  it('audits whether it was emailed, never the address', async () => {
+    await mintEmailed({ email: 'secret-friend@example.com' });
+    const rows = db.query<{ detail: string }, []>('SELECT detail FROM audit_log').all();
+    expect(rows.map((r) => r.detail)).toEqual(['role=user uses=1 emailed=true']);
+    expect(JSON.stringify(db.query('SELECT * FROM audit_log').all())).not.toContain('secret');
+  });
+
+  it('a new link for an emailed invite is re-sent to the same address', async () => {
+    const first = await (await mintEmailed({ email: 'friend@example.com' })).json();
+    const res = await mailAdmin().request(`http://music.example.com/${first.invite.id}/link`, {
+      method: 'POST',
+    });
+    expect(res.status).toBe(200);
+    const second = await res.json();
+    expect(second.mail).toEqual({ ok: true, providerId: 'q-1' });
+    expect(sent).toHaveLength(2);
+    expect(sent[1]!.to).toBe('friend@example.com');
+    expect(sent[1]!.text).toContain(`/invite#t=${second.token}`);
+    expect(sent[1]!.text).not.toContain(first.token);
+  });
+
+  it('inspect shows the address of a pending emailed invite', async () => {
+    const { token } = await (await mintEmailed({ email: 'friend@example.com' })).json();
+    const body = await (await pub().request('/inspect', json({ token }))).json();
+    expect(body).toMatchObject({ status: 'pending', email: 'friend@example.com' });
+  });
+
+  it('accepting sets the account email, verified at accept time', async () => {
+    const { token } = await (await mintEmailed({ email: 'friend@example.com' })).json();
+    clock += 5000;
+    const res = await pub().request(
+      '/accept',
+      json({ token, username: 'friend', password: 'longenough' }),
+    );
+    expect(res.status).toBe(201);
+    const { user } = await res.json();
+    const row = db
+      .query<{ email: string; email_verified_at: number }, [string]>(
+        'SELECT email, email_verified_at FROM users WHERE id = ?',
+      )
+      .get(user.id)!;
+    expect(row).toEqual({ email: 'friend@example.com', email_verified_at: clock });
+  });
+
+  it('a link invite leaves the new account without an email', async () => {
+    const { token } = await mint();
+    const { user } = await (
+      await pub().request('/accept', json({ token, username: 'linky', password: 'longenough' }))
+    ).json();
+    const row = db
+      .query<{ email: string | null }, [string]>('SELECT email FROM users WHERE id = ?')
+      .get(user.id)!;
+    expect(row.email).toBeNull();
+  });
+
+  it('accepts without the address if another account took it meanwhile', async () => {
+    const { token } = await (await mintEmailed({ email: 'friend@example.com' })).json();
+    db.run("UPDATE users SET email = 'friend@example.com' WHERE id = 'admin1'");
+    const res = await pub().request(
+      '/accept',
+      json({ token, username: 'late', password: 'longenough' }),
+    );
+    expect(res.status).toBe(201);
+    const { user } = await res.json();
+    expect(
+      db
+        .query<{ email: string | null }, [string]>('SELECT email FROM users WHERE id = ?')
+        .get(user.id)!.email,
+    ).toBeNull();
   });
 });

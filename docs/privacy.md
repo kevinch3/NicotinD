@@ -89,6 +89,13 @@ link's token does not reach it. The rows are not keyed by a user (an invitee has
 they are not in `USER_TABLES` and not in a user's export; they are kept until a retention sweep
 exists for them.
 
+**Accounts have an email since increment 4.** `users.email` (lower-cased, unique among accounts
+that have one) and `users.email_verified_at` are personal data: both are in the Art. 15 export's
+hand-projected `user` row (`email`, `emailVerifiedAt` — the trap described above, pinned by a test)
+and go with the user row on deletion. An emailed invite stores its recipient in `invites.email`
+until the invite row goes. The admin users list shows the address to admins; the audit log records
+only *whether* an invite was emailed, never to whom.
+
 Sending hands the recipient address and the message body to whichever SMTP provider the admin
 configured — a third party in the same sense as the metadata sources below, but one that sees an
 identity. Bodies exist on disk only under the test-only `outbox` transport (`mail_outbox`, selected

@@ -80,6 +80,19 @@ describe('InviteAcceptComponent', () => {
     expect(BASE_CATALOG['invite.summaryBy']).toBeTruthy();
   });
 
+  it('shows an emailed invite’s address read-only', async () => {
+    const { q } = await mount({ inspection: { ...pending, email: 'sam@example.com' } });
+    const input = q('invite-email') as HTMLInputElement;
+    expect(input.value).toBe('sam@example.com');
+    expect(input.readOnly).toBe(true);
+    expect(BASE_CATALOG['invite.emailHint']).toBeTruthy();
+  });
+
+  it('shows no email field for a link invite', async () => {
+    const { q } = await mount();
+    expect(q('invite-email')).toBeNull();
+  });
+
   it('is invalid without a token, and never calls the server', async () => {
     const { q, api } = await mount({ hash: '' });
     expect(state(q)).toBe('invalid');

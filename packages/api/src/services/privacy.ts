@@ -189,6 +189,9 @@ export interface UserDataExport {
     status: string;
     createdAt: string | null;
     lastSeenAt: number | null;
+    /** The account's address (increment 4) and when it was verified; null = none / unverified. */
+    email: string | null;
+    emailVerifiedAt: number | null;
   };
   tables: Record<string, Array<Record<string, unknown>>>;
   /** Tables checked but absent from this schema version — a visible gap, not a silent one. */
@@ -205,7 +208,8 @@ export interface UserDataExport {
  * The `users` row itself is the exception: it is not in `USER_TABLES` (it is keyed by
  * `id`, not a `user_id`) and is projected explicitly below, so **a new `users` column
  * must be added to this SELECT and to `UserDataExport['user']` by hand** or it will be
- * missing from the export. `last_seen_at` is the first column that hit this.
+ * missing from the export. `last_seen_at` is the first column that hit this; `email` and
+ * `email_verified_at` the second.
  */
 export function exportUserData(db: Database, userId: string): UserDataExport {
   const user = db
@@ -217,9 +221,13 @@ export function exportUserData(db: Database, userId: string): UserDataExport {
         status: string;
         created_at: string | null;
         last_seen_at: number | null;
+        email: string | null;
+        email_verified_at: number | null;
       },
       [string]
-    >('SELECT id, username, role, status, created_at, last_seen_at FROM users WHERE id = ?')
+    >(
+      'SELECT id, username, role, status, created_at, last_seen_at, email, email_verified_at FROM users WHERE id = ?',
+    )
     .get(userId);
   if (!user) throw new Error(`User not found: ${userId}`);
 
@@ -257,6 +265,8 @@ export function exportUserData(db: Database, userId: string): UserDataExport {
       status: user.status,
       createdAt: user.created_at,
       lastSeenAt: user.last_seen_at,
+      email: user.email,
+      emailVerifiedAt: user.email_verified_at,
     },
     tables,
     skipped,

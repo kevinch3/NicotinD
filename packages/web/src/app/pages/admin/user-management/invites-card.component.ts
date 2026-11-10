@@ -1,21 +1,25 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { ROLES, type Role } from '../../../../types/core';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
 import { BottomChromeSafeDirective } from '../../../directives/bottom-chrome-safe.directive';
 import { InvitesApiService } from '../../../services/api/invites-api.service';
+import { MailApiService } from '../../../services/api/mail-api.service';
 import type {
   CreateInviteRequest,
   InviteLinkResponse,
   InviteSummary,
+  MailSendResult,
 } from '../../../services/api/api-types';
 import { ConfirmService } from '../../../services/confirm.service';
 import { ToastService } from '../../../services/toast.service';
 import { TranslateService } from '../../../services/translate.service';
 import { httpErrorMessageI18n } from '../../../lib/http-error';
 import { buildInviteLink } from '../../../lib/invite-link';
+import { revealSettingsGroup } from '../../../lib/group-state';
 import { renderQrDataUrl } from '../../../lib/qr';
+import { mailReasonKey } from '../email-delivery/email-delivery-panel.component';
 
 /** Lifetimes the API accepts — the same closed set as `INVITE_EXPIRY_HOURS`. */
 export const INVITE_EXPIRY_OPTIONS: ReadonlyArray<CreateInviteRequest['expiresInHours']> = [
@@ -28,6 +32,14 @@ export interface MintedInviteLink {
   link: string;
   localOnly: boolean;
   expiresAt: number;
+  /** An emailed invite's recipient and how the send went; absent for a link invite. */
+  email?: string;
+  mail?: MailSendResult;
+}
+
+/** Loose, like the server's `looksLikeEmail`: one @, a dot after it, no spaces. */
+export function looksLikeEmail(value: string): boolean {
+  return /^[^\s@<>"',;]+@[^\s@<>"',;]+\.[^\s@<>"',;]+$/.test(value.trim());
 }
 
 /**
@@ -39,6 +51,11 @@ export interface MintedInviteLink {
  *
  * A link is shown once: only its hash is stored, so "copy again" means minting
  * a fresh link for the same invite (the old one stops working).
+ *
+ * With an email (increment 4) the server also mails the link; the dialog says
+ * it was sent, or — when the send failed — says why and still shows the link,
+ * because the invite exists either way. The email field is disabled, with a
+ * jump to Admin → Email delivery, while mail is off.
  */
 @Component({
   selector: 'app-invites-card',
@@ -48,6 +65,7 @@ export interface MintedInviteLink {
 })
 export class InvitesCardComponent implements OnInit {
   private readonly api = inject(InvitesApiService);
+  private readonly mailApi = inject(MailApiService);
   private readonly confirm = inject(ConfirmService);
   private readonly toast = inject(ToastService);
   readonly i18n = inject(TranslateService);
@@ -65,13 +83,36 @@ export class InvitesCardComponent implements OnInit {
   readonly expiresInHours = signal<CreateInviteRequest['expiresInHours']>(168);
   readonly maxUses = signal(1);
   readonly note = signal('');
+  readonly email = signal('');
   readonly creating = signal(false);
+  /** Whether the server can send mail at all; false until known, and on any failure. */
+  readonly mailEnabled = signal(false);
+
+  readonly emailGiven = computed(() => this.email().trim().length > 0);
+  readonly emailValid = computed(() => !this.emailGiven() || looksLikeEmail(this.email()));
 
   readonly minted = signal<MintedInviteLink | null>(null);
   readonly qrDataUrl = signal<string | null>(null);
 
   ngOnInit(): void {
     void this.load();
+    void this.loadMailStatus();
+  }
+
+  /** Non-fatal: unknown reads as "off", which only disables the email field. */
+  private async loadMailStatus(): Promise<void> {
+    try {
+      const view = await firstValueFrom(this.mailApi.get());
+      this.mailEnabled.set(view.effectiveTransport !== 'off');
+    } catch {
+      this.mailEnabled.set(false);
+    }
+  }
+
+  /** The disabled email field's way out: close the dialog, open Email delivery. */
+  setUpEmail(): void {
+    this.closeDialog();
+    revealSettingsGroup('email-delivery');
   }
 
   async load(): Promise<void> {
@@ -92,6 +133,7 @@ export class InvitesCardComponent implements OnInit {
     this.expiresInHours.set(168);
     this.maxUses.set(1);
     this.note.set('');
+    this.email.set('');
     this.minted.set(null);
     this.qrDataUrl.set(null);
     this.dialogOpen.set(true);
@@ -110,21 +152,34 @@ export class InvitesCardComponent implements OnInit {
   }
 
   validUses(): boolean {
+    // An emailed invite is single-use; the uses field is disabled then.
+    if (this.sendsEmail()) return true;
     const n = this.maxUses();
     return Number.isInteger(n) && n >= 1 && n <= MAX_INVITE_USES;
   }
 
+  /** The submit mails the link only with mail on and an address typed. */
+  sendsEmail(): boolean {
+    return this.mailEnabled() && this.emailGiven();
+  }
+
+  canCreate(): boolean {
+    return !this.creating() && this.validUses() && (!this.sendsEmail() || this.emailValid());
+  }
+
   async create(): Promise<void> {
-    if (this.creating() || !this.validUses()) return;
+    if (!this.canCreate()) return;
     this.creating.set(true);
     try {
       const note = this.note().trim();
+      const email = this.sendsEmail() ? this.email().trim() : '';
       const res = await firstValueFrom(
         this.api.create({
           role: this.role(),
           expiresInHours: this.expiresInHours(),
-          maxUses: this.maxUses(),
+          maxUses: email ? 1 : this.maxUses(),
           ...(note ? { note } : {}),
+          ...(email ? { email } : {}),
         }),
       );
       await this.showLink(res);
@@ -170,8 +225,23 @@ export class InvitesCardComponent implements OnInit {
 
   private async showLink(res: InviteLinkResponse): Promise<void> {
     const { link, localOnly } = buildInviteLink(res.urls, res.path, window.location.origin);
-    this.minted.set({ link, localOnly, expiresAt: res.invite.expiresAt });
+    this.minted.set({
+      link,
+      localOnly,
+      expiresAt: res.invite.expiresAt,
+      ...(res.mail && res.invite.email ? { email: res.invite.email, mail: res.mail } : {}),
+    });
     this.qrDataUrl.set(await renderQrDataUrl(link));
+  }
+
+  /** Mailed and delivered: the dialog says so instead of showing the link. */
+  mailSent(link: MintedInviteLink): boolean {
+    return link.mail?.ok === true;
+  }
+
+  mailFailureKey(link: MintedInviteLink): string | null {
+    const mail = link.mail;
+    return mail && !mail.ok ? mailReasonKey(mail.reason) : null;
   }
 
   formatDate(ms: number): string {

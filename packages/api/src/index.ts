@@ -934,7 +934,7 @@ export function createApp({
   const mail = new MailService({ db, settings: mailSettings });
   const publicUrl = () => mailSettings.publicUrl();
   app.route('/api/admin/mail', mailAdminRoutes({ db, mail, remoteAccess }));
-  app.route('/api/admin/invites', inviteAdminRoutes({ db, remoteAccess, publicUrl }));
+  app.route('/api/admin/invites', inviteAdminRoutes({ db, remoteAccess, publicUrl, mail }));
   app.route(
     '/api/invites',
     invitePublicRoutes({ db, jwtSecret: config.jwt.secret, jwtExpiresIn: config.jwt.expiresIn }),

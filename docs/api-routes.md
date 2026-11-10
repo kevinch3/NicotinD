@@ -74,8 +74,8 @@ follow-up work, not part of the gate fix.
 | `POST`   | `/api/invites/inspect`                   | Public: an invite token's state (body `{ token }`)          |
 | `POST`   | `/api/invites/accept`                    | Public: create an account from an invite, returns JWT       |
 | `GET`    | `/api/admin/invites`                     | Admin: list invites (pending first, finished for 7 days)    |
-| `POST`   | `/api/admin/invites`                     | Admin: mint an invite link (role, expiry, uses, note)       |
-| `POST`   | `/api/admin/invites/:id/link`            | Admin: new link for a pending invite (old one dies)         |
+| `POST`   | `/api/admin/invites`                     | Admin: mint an invite link (role, expiry, uses, note, optional `email` → mailed, single-use, `mail` result; 409 `EMAIL_TAKEN`) |
+| `POST`   | `/api/admin/invites/:id/link`            | Admin: new link for a pending invite (old one dies); an emailed invite is re-sent |
 | `DELETE` | `/api/admin/invites/:id`                 | Admin: revoke an invite                                     |
 | `PUT`    | `/api/me/account/password`               | Change own password; ends other sessions, returns new JWT   |
 | `POST`   | `/api/admin/password-resets`             | Admin: a 24 h single-use reset link for `{ userId }`        |

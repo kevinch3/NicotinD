@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { GROUP_STATE_PREFIX, readGroupOpen, writeGroupOpen, clearGroupStates } from './group-state';
+import {
+  GROUP_STATE_PREFIX,
+  readGroupOpen,
+  writeGroupOpen,
+  clearGroupStates,
+  revealSettingsGroup,
+} from './group-state';
 
 function memoryStorage(): Storage {
   const map = new Map<string, string>();
@@ -59,5 +65,34 @@ describe('group-state', () => {
   it('clearGroupStates is a no-op on an empty storage', () => {
     const storage = memoryStorage();
     expect(() => clearGroupStates(storage)).not.toThrow();
+  });
+});
+
+describe('revealSettingsGroup', () => {
+  function page(expanded: boolean) {
+    const root = document.createElement('div');
+    root.innerHTML = `<section data-group-id="email-delivery">
+      <button data-testid="settings-group-toggle" aria-expanded="${expanded}"></button>
+    </section>`;
+    const toggle = root.querySelector('button')!;
+    let clicks = 0;
+    toggle.addEventListener('click', () => clicks++);
+    return { root, clicks: () => clicks };
+  }
+
+  it('opens a collapsed group through its own toggle', () => {
+    const p = page(false);
+    expect(revealSettingsGroup('email-delivery', p.root)).toBe(true);
+    expect(p.clicks()).toBe(1);
+  });
+
+  it('leaves an open group open', () => {
+    const p = page(true);
+    expect(revealSettingsGroup('email-delivery', p.root)).toBe(true);
+    expect(p.clicks()).toBe(0);
+  });
+
+  it('says false when the group is not on the page', () => {
+    expect(revealSettingsGroup('nope', page(false).root)).toBe(false);
   });
 });

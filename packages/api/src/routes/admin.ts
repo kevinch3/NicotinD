@@ -172,12 +172,16 @@ export function adminRoutes(deps: AdminRoutesDeps) {
           status: string;
           created_at: string;
           last_seen_at: number | null;
+          email: string | null;
+          email_verified_at: number | null;
         },
         []
       >(
-        "SELECT id, username, role, COALESCE(status, 'active') as status, created_at, last_seen_at FROM users ORDER BY created_at ASC",
+        "SELECT id, username, role, COALESCE(status, 'active') as status, created_at, last_seen_at, email, email_verified_at FROM users ORDER BY created_at ASC",
       )
-      .all();
+      .all()
+      // The address and whether it was proven — not when (docs/email-invitations.md).
+      .map(({ email_verified_at, ...u }) => ({ ...u, emailVerified: email_verified_at !== null }));
 
     // Merge ephemeral presence (in-memory) into each row; absent users read as offline.
     const active = presenceService.getActiveUsers();

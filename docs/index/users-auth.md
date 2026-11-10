@@ -18,9 +18,10 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   `NICOTIND_REGISTRATION` pins by *presence* (`resolveRegistrationEnabled`): set either way, the
   toggle is read-only. `registrationBlocked` exempts the first-user bootstrap.
   → [deployment.md](../deployment.md)
-- **Invitations (link invites)**: an admin-minted, hashed, expiring, use-capped link that creates an
-  account at a preset role even while signup is closed; `inviteAdminRoutes`/`invitePublicRoutes`,
-  `acceptInvite` (CAS spend), `InvitesCardComponent`, `InviteAcceptComponent` at `/invite`.
+- **Invitations (link + email invites)**: an admin-minted, hashed, expiring, use-capped link that
+  creates an account at a preset role even while signup is closed; `inviteAdminRoutes`,
+  `acceptInvite` (CAS spend), `InvitesCardComponent`, `/invite`. An emailed one is mailed
+  (`inviteEmail`) and verifies `users.email` on accept (`normalizeEmail`).
   → [email-invitations.md](../email-invitations.md)
 - **Session versions + reset links**: `users.token_version` in every JWT as `tv`, stamped by
   `signJwt`, refused on mismatch (`SESSION_REVOKED`); any password write calls

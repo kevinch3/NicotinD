@@ -228,6 +228,17 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   // the auth middleware refuses a mismatch. Bumped by a password change/reset,
   // which is how stateless tokens get a "sign out everywhere".
   addColumnIfMissing(db, 'users', 'token_version', 'INTEGER NOT NULL DEFAULT 0');
+  // The account's email (docs/email-invitations.md, increment 4): stored trimmed
+  // and lower-cased (`normalizeEmail`), unique among the accounts that have one —
+  // a partial index, so any number of users can have none. `email_verified_at`
+  // is when the address was proven (an emailed invite's link was clicked, or a
+  // verification link was); NULL = unverified. Only a verified address ever
+  // receives a reset link.
+  addColumnIfMissing(db, 'users', 'email', 'TEXT');
+  addColumnIfMissing(db, 'users', 'email_verified_at', 'INTEGER');
+  db.run(
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email) WHERE email IS NOT NULL',
+  );
 
   // Add welcome_dismissed column to existing user_settings table
   addColumnIfMissing(db, 'user_settings', 'welcome_dismissed', 'INTEGER NOT NULL DEFAULT 0');
@@ -922,6 +933,9 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
     )
   `);
   db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_invites_token_hash ON invites (token_hash)`);
+  // An emailed invite (increment 4) records its recipient: accepting it sets the
+  // new account's email, already verified — the link reached that inbox.
+  addColumnIfMissing(db, 'invites', 'email', 'TEXT');
   // Who joined through which invite — the admin list's "used by". Survives the
   // invite being revoked; dies with either side.
   db.run(`

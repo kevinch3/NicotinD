@@ -253,6 +253,15 @@ describe('exportUserData', () => {
     expect(exportUserData(db, 'u1').user.lastSeenAt).toBe(1_700_000_000_000);
   });
 
+  it('includes the email and when it was verified — also projected by hand', () => {
+    expect(exportUserData(db, 'u1').user).toMatchObject({ email: null, emailVerifiedAt: null });
+    db.run(`UPDATE users SET email = 'ana@example.com', email_verified_at = 42 WHERE id = 'u1'`);
+    expect(exportUserData(db, 'u1').user).toMatchObject({
+      email: 'ana@example.com',
+      emailVerifiedAt: 42,
+    });
+  });
+
   it('reports a never-connected account as null rather than omitting the field', () => {
     expect(exportUserData(db, 'u1').user).toHaveProperty('lastSeenAt', null);
   });

@@ -3,8 +3,10 @@
  * it and creates their own account at the role the admin chose — the one way in
  * while public signup is closed.
  *
- * The link is the primitive; email (a later increment) is only one way to
- * deliver it. So nothing here knows about email.
+ * The link is the primitive; email is only one way to deliver it. An emailed
+ * invite (increment 4) records its recipient so accepting it can set the new
+ * account's address, already verified — but sending is the route's job, through
+ * `MailService`, and nothing here knows how mail goes out.
  *
  * Token handling follows `agent_tokens`, not `pairing_tokens`: 32 random bytes,
  * only the sha256 stored, shown once at mint. An invite lives for days rather
@@ -13,6 +15,7 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { Database } from 'bun:sqlite';
 import { asRole, hashPassword, ROLES, type Role } from '@nicotind/core';
+import { emailTaken, parseOptionalEmail } from './user-email.js';
 
 /** Allowed lifetimes, in hours — a closed set so the UI and API cannot drift. */
 export const INVITE_EXPIRY_HOURS = [24, 168, 720] as const;
@@ -41,6 +44,7 @@ export interface InviteRow {
   use_count: number;
   revoked_at: number | null;
   last_used_at: number | null;
+  email: string | null;
 }
 
 export interface InviteSummary {
@@ -55,6 +59,8 @@ export interface InviteSummary {
   revokedAt: number | null;
   status: InviteStatus;
   acceptedBy: string[];
+  /** The recipient of an emailed invite; null for a link invite. */
+  email: string | null;
 }
 
 export function hashInviteToken(token: string): string {
@@ -84,11 +90,13 @@ export interface CreateInviteInput {
   expiresInHours?: unknown;
   maxUses?: unknown;
   note?: unknown;
+  /** Optional recipient; given, the invite is single-use and accepting it verifies the address. */
+  email?: unknown;
 }
 
 export type CreateInviteResult =
   | { ok: true; invite: InviteSummary; token: string }
-  | { ok: false; code: 'VALIDATION_ERROR'; error: string };
+  | { ok: false; code: 'VALIDATION_ERROR' | 'EMAIL_TAKEN'; error: string };
 
 export function createInvite(
   db: Database,
@@ -128,14 +136,26 @@ export function createInvite(
     }
     note = input.note.trim().slice(0, MAX_NOTE_LENGTH) || null;
   }
+  const parsedEmail = parseOptionalEmail(input.email);
+  if (!parsedEmail.ok) return { ok: false, code: 'VALIDATION_ERROR', error: parsedEmail.error };
+  const email = parsedEmail.email;
+  if (email !== null) {
+    // One address, one account: a second use could never carry it.
+    if (maxUses !== 1) {
+      return { ok: false, code: 'VALIDATION_ERROR', error: 'An emailed invite is single-use' };
+    }
+    if (emailTaken(db, email)) {
+      return { ok: false, code: 'EMAIL_TAKEN', error: 'An account already uses this email' };
+    }
+  }
 
   const id = randomUUID();
   const token = generateInviteToken();
   const expiresAt = now + (hours as number) * 3_600_000;
   db.run(
-    `INSERT INTO invites (id, token_hash, role, note, created_by, created_at, expires_at, max_uses)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, hashInviteToken(token), role, note, creatorId, now, expiresAt, maxUses],
+    `INSERT INTO invites (id, token_hash, role, note, created_by, created_at, expires_at, max_uses, email)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, hashInviteToken(token), role, note, creatorId, now, expiresAt, maxUses, email],
   );
   return { ok: true, invite: getInviteSummary(db, id, now)!, token };
 }
@@ -165,6 +185,7 @@ function summarize(db: Database, row: InviteRow, now: number): InviteSummary {
     revokedAt: row.revoked_at,
     status: inviteStatus(row, now),
     acceptedBy: accepted,
+    email: row.email ?? null,
   };
 }
 
@@ -236,7 +257,14 @@ function findByToken(db: Database, token: string): InviteRow | null {
 export type InspectResult =
   | { status: 'invalid' }
   | { status: Exclude<InviteStatus, 'pending'>; invitedBy: string | null }
-  | { status: 'pending'; invitedBy: string | null; role: Role; expiresAt: number };
+  | {
+      status: 'pending';
+      invitedBy: string | null;
+      role: Role;
+      expiresAt: number;
+      /** The address an emailed invite was sent to — the account gets it, verified. */
+      email: string | null;
+    };
 
 /** What the public landing page may know before the invitee commits. */
 export function inspectInvite(db: Database, token: string, now: number): InspectResult {
@@ -251,11 +279,18 @@ export function inspectInvite(db: Database, token: string, now: number): Inspect
     invitedBy: summary.createdBy,
     role: summary.role,
     expiresAt: summary.expiresAt,
+    email: summary.email,
   };
 }
 
 export type AcceptInviteResult =
-  | { ok: true; user: { id: string; username: string; role: Role }; inviteId: string }
+  | {
+      ok: true;
+      user: { id: string; username: string; role: Role };
+      inviteId: string;
+      /** The emailed invite's address, now on the account and verified; null otherwise. */
+      email: string | null;
+    }
   | {
       ok: false;
       code:
@@ -326,19 +361,23 @@ export async function acceptInvite(
     if (spent.changes === 0) {
       return { ok: false, code: 'INVITE_USED', error: 'This invite has already been used' };
     }
-    db.run('INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)', [
-      id,
-      username,
-      passwordHash,
-      role,
-    ]);
+    // An emailed invite proves the address: the link only reached that inbox.
+    // Should another account have claimed it since the invite was sent, the
+    // account is still created — without the address, which its owner can add
+    // from Settings → Account — rather than stranding the invitee.
+    const email = row.email && !emailTaken(db, row.email) ? row.email : null;
+    db.run(
+      `INSERT INTO users (id, username, password_hash, role, email, email_verified_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [id, username, passwordHash, role, email, email ? now : null],
+    );
     db.run('INSERT INTO user_settings (user_id) VALUES (?)', [id]);
     db.run('INSERT INTO invite_acceptances (invite_id, user_id, accepted_at) VALUES (?, ?, ?)', [
       row.id,
       id,
       now,
     ]);
-    return { ok: true, user: { id, username, role }, inviteId: row.id };
+    return { ok: true, user: { id, username, role }, inviteId: row.id, email };
   })();
   return outcome;
 }

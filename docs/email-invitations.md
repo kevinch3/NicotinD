@@ -1,6 +1,6 @@
 # Invitations, email delivery & password recovery
 
-> **Status: increments 1 (link invites), 2 (account security) and 3 (mail transport) shipped; 4–5 planned.** The plan below
+> **Status: increments 1 (link invites), 2 (account security), 3 (mail transport) and 4 (email invites) shipped; 5 planned.** The plan below
 > (2026-11-09) is the agreed shape, so each increment can be built, tested and merged
 > on its own. Coordinate with [oauth-auth.md](oauth-auth.md) (also unbuilt): it too adds a
 > user email and `NICOTIND_PUBLIC_URL`, and both must land on the *same* column and the
@@ -135,9 +135,53 @@ provider-agnostic**: SMTP is the baseline, so Mailgun is a preset, not a depende
   path is not covered in-process (it would need a certificate); "one real send per preset before
   release" stays a manual check.
 
+## Shipped: email invites (increment 4)
+
+- **Data**: `users.email` (nullable, stored trimmed and lower-cased by `normalizeEmail`, unique among
+  the accounts that have one through the partial index `idx_users_email`) and
+  `users.email_verified_at` (NULL = unverified); `invites.email` for an emailed invite. Shared
+  helpers in `services/user-email.ts`: `parseOptionalEmail` (reuses `looksLikeEmail`),
+  `emailTaken`, `userEmailOf`, `verifiedEmailOf`.
+- **Mint**: `POST /api/admin/invites` takes an optional `email`. Given, it must look like an
+  address (400), no account may already have it (409 `EMAIL_TAKEN`), and the invite is
+  single-use (400 otherwise — one address, one account). The invite is created first, then
+  `inviteEmail` (server name, inviter, role, link, expiry; every value HTML-escaped, the subject
+  kept to one line) goes out through `MailService.send('invite', …)`. **A failed or refused send
+  never fails the request**: the response carries `mail: MailSendResult` beside the usual link
+  (`{ ok: false, reason: 'off' }` while mail is off) and the admin still has the link to pass on.
+  The mailed link's base is the first `linkBaseCandidates` entry, else the admin's own origin —
+  the test email's fallback. A link invite has no `mail` field.
+- **Resend**: `POST /api/admin/invites/:id/link` on an emailed invite mails the fresh link to the
+  same address and returns the same `mail` field.
+- **Audit**: `invite.create` / `invite.rotate` add `emailed=true|false`; `invite.accept` adds
+  `email=verified`. The address itself is never in the audit log (a test pins it).
+- **Accept**: `inspectInvite` returns `email` for a pending emailed invite, and the landing page
+  shows it read-only. Accepting sets the new account's `email` with `email_verified_at = now` —
+  clicking the mailed link proves the inbox. If another account took the address between the send
+  and the accept, the account is still created, without it (its owner can add one later), rather
+  than stranding the invitee. A link invite accepts exactly as before.
+- **Admin users list**: `GET /api/admin/users` adds `email` and `emailVerified` (not the timestamp);
+  the users table shows the address under the username, wrapped rather than truncated, with
+  Verified / Not verified.
+- **Web**: the invite dialog's email field (`invite-email-input`) is disabled with a "Set up email"
+  jump (`revealSettingsGroup('email-delivery')`) while `GET /api/admin/mail` says
+  `effectiveTransport: 'off'`; with an address typed the submit reads *Send invite* and the uses
+  field locks to 1. The result shows *Invite sent to …* (`invite-sent`) on success, or the reason
+  (`admin.email.reason.*`) **and** the link + QR (`invite-mail-failed`) on failure. Invite rows show
+  the address (`invite-email`).
+- **Privacy**: the export's hand-projected `user` row gains `email` and `emailVerifiedAt`
+  ([privacy.md](privacy.md)).
+- **Tests**: the emailed-invites block in `routes/invites.test.ts` (validation, `EMAIL_TAKEN`,
+  single-use, created when the send fails or mail is off, no address in the audit, resend on
+  rotate, inspect, accept sets a verified address, taken-meanwhile), `templates.test.ts`
+  (`inviteEmail`), `admin.presence.test.ts`, `privacy.test.ts`, the card/accept/users-table specs,
+  `group-state.spec.ts`, and the e2e `invite-email.spec.ts` (sent through the UI, read back from
+  the outbox, accepted from the mailed link in a fresh context, shown verified in Admin).
+
 ## Today (verified)
 
-- `users` has no email: `id, username, password_hash, role, created_at` (`packages/api/src/db.ts`).
+- `users` had no email: `id, username, password_hash, role, created_at` (`packages/api/src/db.ts`) —
+  increment 4 added `email` and `email_verified_at`.
 - Admins create users and *type* a new password for them (`POST /api/admin/users`,
   `PUT /api/admin/users/:id/password`); minimum length is 4.
 - A user cannot change their own password anywhere in the web UI.
@@ -255,7 +299,7 @@ falls back to the link. Forgot password then reads "Ask your server admin."
 3. **Mail transport.** ✅ Shipped — see above.
    - Ships: `MailTransport` with `smtp` and `outbox` implementations; provider presets (Mailgun first); the email card; test send (to the admin, with a link that proves the base URL opens); send log and quota meter.
    - Tests: a **contract test suite** every adapter must pass (send, verify, each `reason`), run against `outbox` and against the SMTP adapter talking to an in-process fake SMTP server (auth failure, 550, 421, TLS on/off). The Playwright server boots with the outbox. Manual check: one real send per preset before release.
-4. **Email invites.**
+4. **Email invites.** ✅ Shipped — see above.
    - Ships: nullable, unique, lower-cased `users.email`. An emailed invite captures the email at accept time, already verified because the link was clicked.
    - Tests: e2e `invite-email.spec` reads the outbox filtered by a per-spec recipient.
 5. **Recovery.**

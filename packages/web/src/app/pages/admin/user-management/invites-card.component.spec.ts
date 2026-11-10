@@ -4,6 +4,7 @@ import { of, throwError } from 'rxjs';
 import BASE_CATALOG from '../../../../../public/i18n/en.json';
 import { InvitesCardComponent } from './invites-card.component';
 import { InvitesApiService } from '../../../services/api/invites-api.service';
+import { MailApiService } from '../../../services/api/mail-api.service';
 import type { InviteLinkResponse, InviteSummary } from '../../../services/api/api-types';
 import { ConfirmService } from '../../../services/confirm.service';
 import { ToastService } from '../../../services/toast.service';
@@ -24,6 +25,7 @@ const pending: InviteSummary = {
   revokedAt: null,
   status: 'pending',
   acceptedBy: [],
+  email: null,
 };
 
 function link(urls: string[], invite = pending): InviteLinkResponse {
@@ -35,6 +37,8 @@ async function mount(
     invites?: InviteSummary[];
     api?: Partial<Record<string, unknown>>;
     confirm?: boolean;
+    /** The mail API's effective transport; 'fail' makes the status read throw. */
+    transport?: 'off' | 'smtp' | 'outbox' | 'fail';
   } = {},
 ) {
   TestBed.resetTestingModule();
@@ -46,10 +50,19 @@ async function mount(
     ...over.api,
   };
   const toast = { show: vi.fn() };
+  const transport = over.transport ?? 'off';
+  const mailApi = {
+    get: vi.fn(() =>
+      transport === 'fail'
+        ? throwError(() => new Error('403'))
+        : of({ effectiveTransport: transport }),
+    ),
+  };
   await TestBed.configureTestingModule({
     imports: [InvitesCardComponent],
     providers: [
       { provide: InvitesApiService, useValue: api },
+      { provide: MailApiService, useValue: mailApi },
       { provide: ConfirmService, useValue: { ask: vi.fn(async () => over.confirm ?? true) } },
       { provide: ToastService, useValue: toast },
     ],
@@ -172,6 +185,113 @@ describe('InvitesCardComponent', () => {
     await settle();
     expect(api.rotateLink).toHaveBeenCalledWith('i1');
     expect(q('invite-link')).toBeTruthy();
+  });
+
+  describe('emailed invites', () => {
+    const emailed = (mail: InviteLinkResponse['mail']): InviteLinkResponse => ({
+      ...link(['https://box.ts.net'], { ...pending, email: 'sam@example.com' }),
+      mail,
+    });
+
+    it('disables the email field while mail is off, with a way to set it up', async () => {
+      for (const transport of ['off', 'fail'] as const) {
+        const { q, settle, cmp } = await mount({ transport });
+        q('invite-open')!.click();
+        await settle();
+        expect((q('invite-email-input') as HTMLInputElement).disabled).toBe(true);
+        expect(q('invite-email-off')).toBeTruthy();
+        expect(q('invite-email-setup')).toBeTruthy();
+        expect(cmp.sendsEmail()).toBe(false);
+      }
+      expect(BASE_CATALOG['invites.emailOff']).toBeTruthy();
+      expect(BASE_CATALOG['invites.emailSetUp']).toBeTruthy();
+    });
+
+    it('"Set up email" closes the dialog and opens the Email delivery group', async () => {
+      const section = document.createElement('section');
+      section.setAttribute('data-group-id', 'email-delivery');
+      section.innerHTML =
+        '<button data-testid="settings-group-toggle" aria-expanded="false"></button>';
+      const toggle = vi.fn();
+      section.querySelector('button')!.addEventListener('click', toggle);
+      document.body.appendChild(section);
+      try {
+        const { q, settle } = await mount();
+        q('invite-open')!.click();
+        await settle();
+        q('invite-email-setup')!.click();
+        await settle();
+        expect(q('invite-dialog')).toBeNull();
+        expect(toggle).toHaveBeenCalledTimes(1);
+      } finally {
+        section.remove();
+      }
+    });
+
+    it('with an address, the submit says "Send invite" and sends a single-use invite', async () => {
+      const create = vi.fn(() => of(emailed({ ok: true })));
+      const { q, settle, cmp, api } = await mount({ transport: 'outbox', api: { create } });
+      q('invite-open')!.click();
+      await settle();
+      cmp.maxUses.set(5);
+      cmp.email.set(' sam@example.com ');
+      await settle();
+      expect(q('invite-submit')!.textContent?.trim()).toBe('invites.sendInvite');
+      expect((q('invite-uses-input') as HTMLInputElement).disabled).toBe(true);
+      q('invite-submit')!.click();
+      await settle();
+      expect(api.create).toHaveBeenCalledWith({
+        role: 'user',
+        expiresInHours: 168,
+        maxUses: 1,
+        email: 'sam@example.com',
+      });
+      expect(q('invite-sent')?.textContent).toContain('invites.sentTo');
+      expect(q('invite-link')).toBeNull();
+      expect(q('invite-mail-failed')).toBeNull();
+      expect(BASE_CATALOG['invites.sentTo']).toContain('{email}');
+    });
+
+    it('without an address the label stays "Create link"', async () => {
+      const { q, settle } = await mount({ transport: 'smtp' });
+      q('invite-open')!.click();
+      await settle();
+      expect(q('invite-submit')!.textContent?.trim()).toBe('invites.createLink');
+    });
+
+    it('refuses an address that is not one', async () => {
+      const { q, settle, cmp } = await mount({ transport: 'smtp' });
+      q('invite-open')!.click();
+      await settle();
+      cmp.email.set('nope');
+      await settle();
+      expect(q('invite-email-invalid')).toBeTruthy();
+      expect((q('invite-submit') as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it('a failed send warns with the reason and still shows the link and QR', async () => {
+      const create = vi.fn(() =>
+        of(emailed({ ok: false, reason: 'unreachable', detail: 'ECONNREFUSED' })),
+      );
+      const { q, settle, cmp } = await mount({ transport: 'smtp', api: { create } });
+      q('invite-open')!.click();
+      await settle();
+      cmp.email.set('sam@example.com');
+      q('invite-submit')!.click();
+      await settle();
+      expect(q('invite-mail-failed')?.textContent).toContain('admin.email.reason.unreachable');
+      expect((q('invite-link') as HTMLInputElement).value).toBe('https://box.ts.net/invite#t=tok');
+      expect(q('invite-qr')).toBeTruthy();
+      expect(q('invite-sent')).toBeNull();
+      expect(BASE_CATALOG['invites.mailFailed']).toBeTruthy();
+    });
+
+    it('shows an emailed invite’s address on its row', async () => {
+      const { el } = await mount({ invites: [{ ...pending, email: 'sam@example.com' }] });
+      expect(el.querySelector('[data-testid="invite-email"]')?.textContent).toContain(
+        'sam@example.com',
+      );
+    });
   });
 
   it('surfaces a create failure without leaving the dialog open', async () => {

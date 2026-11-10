@@ -8,6 +8,7 @@ import { ConfirmService } from '../../../services/confirm.service';
 import { SystemApiService } from '../../../services/api/system-api.service';
 import { InvitesApiService } from '../../../services/api/invites-api.service';
 import { AccountApiService } from '../../../services/api/account-api.service';
+import { MailApiService } from '../../../services/api/mail-api.service';
 import type { AdminUser } from '../../../services/api/api-types';
 import { ROLES } from '../../../../types/core';
 import { expandAllGroups } from '../../../../testing/expand-groups';
@@ -75,6 +76,10 @@ describe('UserManagementPanelComponent', () => {
         // The embedded invites card has its own spec; here it only must not throw.
         { provide: InvitesApiService, useValue: { list: vi.fn(() => of({ invites: [] })) } },
         { provide: AccountApiService, useValue: { issueResetLink } },
+        {
+          provide: MailApiService,
+          useValue: { get: vi.fn(() => of({ effectiveTransport: 'off' })) },
+        },
       ],
     }).compileComponents();
 
@@ -115,6 +120,23 @@ describe('UserManagementPanelComponent', () => {
     expect(table.querySelectorAll('.hidden')).toHaveLength(0);
     // The old duplicate role control is gone with them.
     expect(el.querySelector('[data-testid="user-role-select"]')).toBeNull();
+    fixture.destroy();
+  });
+
+  it('shows the email under the username, with whether it is verified', async () => {
+    const { fixture, el } = await mountWithUsers([
+      { ...testUser, email: 'alice@example.com', emailVerified: true },
+      { ...testUser, id: 'u2', username: 'bob', email: 'bob@example.com', emailVerified: false },
+      { ...testUser, id: 'u3', username: 'carol', email: null },
+    ]);
+    const emails = Array.from(el.querySelectorAll('[data-testid="user-email"]'));
+    expect(emails.map((e) => e.getAttribute('data-verified'))).toEqual(['true', 'false']);
+    expect(emails[0]!.textContent).toContain('alice@example.com');
+    expect(emails[0]!.textContent).toContain('admin.emailVerified');
+    expect(emails[1]!.textContent).toContain('admin.emailUnverified');
+    // Wrapped, never truncated (src/overflow-reveal-policy.spec.ts).
+    expect(emails[0]!.className).toContain('break-all');
+    expect(BASE_CATALOG['admin.emailVerified']).toBeTruthy();
     fixture.destroy();
   });
 
