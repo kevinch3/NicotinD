@@ -1,0 +1,315 @@
+<app-settings-group
+  groupId="email-delivery"
+  icon="mail"
+  [title]="'admin.email.groupTitle' | t"
+  [description]="'admin.email.groupDesc' | t"
+  (opened)="load()"
+>
+  <section data-testid="email-panel" [attr.data-locked]="locked()">
+    @if (error()) {
+      <div
+        class="mb-4 px-4 py-2.5 rounded-lg text-sm status-error border border-theme"
+        data-testid="email-error"
+      >
+        {{ error() }}
+        <button type="button" (click)="error.set(null)" class="ml-2 hover:opacity-80">
+          {{ 'admin.dismiss' | t }}
+        </button>
+      </div>
+    }
+
+    @if (loading() && !view()) {
+      <p class="text-xs text-theme-muted" data-testid="email-loading">
+        {{ 'admin.email.loading' | t }}
+      </p>
+    }
+
+    @if (view(); as v) {
+      @if (locked()) {
+        <p class="mb-4 text-xs text-status-warn" data-testid="email-env-locked">
+          {{ 'admin.email.envLocked' | t }}
+        </p>
+      }
+
+      <div class="grid gap-3 sm:grid-cols-2">
+        <label class="block text-xs text-theme-muted">
+          {{ 'admin.email.transport' | t }}
+          <select
+            [ngModel]="transport()"
+            (ngModelChange)="transport.set($event)"
+            [disabled]="locked()"
+            data-testid="email-transport-select"
+            class="mt-1 w-full px-3 py-2 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary text-sm"
+          >
+            <option value="off">{{ 'admin.email.transportOff' | t }}</option>
+            <option value="smtp">{{ 'admin.email.transportSmtp' | t }}</option>
+            @if (v.effectiveTransport === 'outbox') {
+              <option value="outbox">{{ 'admin.email.transportOutbox' | t }}</option>
+            }
+          </select>
+        </label>
+
+        @if (transport() === 'smtp') {
+          <label class="block text-xs text-theme-muted">
+            {{ 'admin.email.preset' | t }}
+            <select
+              [ngModel]="presetId()"
+              (ngModelChange)="choosePreset($event)"
+              [disabled]="locked()"
+              data-testid="email-preset-select"
+              class="mt-1 w-full px-3 py-2 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary text-sm"
+            >
+              @for (p of presets(); track p.id) {
+                <option [value]="p.id">{{ p.label }}</option>
+              }
+            </select>
+          </label>
+        }
+      </div>
+
+      @if (transport() === 'smtp') {
+        @if (preset(); as p) {
+          <p class="mt-2 text-xs text-theme-muted break-words" data-testid="email-preset-help">
+            {{ p.helpKey | t }}
+          </p>
+        }
+
+        <div class="mt-4 grid gap-3 sm:grid-cols-[1fr_7rem]">
+          <label class="block text-xs text-theme-muted min-w-0">
+            {{ 'admin.email.host' | t }}
+            <input
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              [ngModel]="host()"
+              (ngModelChange)="host.set($event)"
+              [disabled]="locked()"
+              data-testid="email-host-input"
+              class="mt-1 w-full px-3 py-2 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary text-sm font-mono"
+            />
+          </label>
+          <label class="block text-xs text-theme-muted">
+            {{ 'admin.email.port' | t }}
+            <input
+              type="number"
+              min="1"
+              max="65535"
+              [ngModel]="port()"
+              (ngModelChange)="port.set(+$event)"
+              [disabled]="locked()"
+              data-testid="email-port-input"
+              class="mt-1 w-full px-3 py-2 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary text-sm"
+            />
+          </label>
+        </div>
+
+        <label class="mt-3 flex items-center justify-between gap-4">
+          <span class="text-sm text-theme-primary">
+            {{ 'admin.email.secure' | t }}
+            <span class="block text-xs text-theme-muted">{{ 'admin.email.secureHint' | t }}</span>
+          </span>
+          <input
+            type="checkbox"
+            [checked]="secure()"
+            (change)="secure.set($any($event.target).checked)"
+            [disabled]="locked()"
+            data-testid="email-secure-toggle"
+            class="w-4 h-4 rounded accent-emerald-500"
+          />
+        </label>
+
+        <div class="mt-3 grid gap-3 sm:grid-cols-2">
+          <label class="block text-xs text-theme-muted min-w-0">
+            {{ 'admin.email.username' | t }}
+            <input
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              [ngModel]="username()"
+              (ngModelChange)="username.set($event)"
+              [placeholder]="preset()?.usernameHint ?? ''"
+              [disabled]="locked()"
+              data-testid="email-user-input"
+              class="mt-1 w-full px-3 py-2 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder:text-theme-muted text-sm"
+            />
+          </label>
+          <label class="block text-xs text-theme-muted min-w-0">
+            {{ 'admin.email.password' | t }}
+            <span class="mt-1 flex gap-2">
+              <input
+                type="password"
+                autocomplete="new-password"
+                [ngModel]="password()"
+                (ngModelChange)="setPassword($event)"
+                [placeholder]="passwordSet() ? ('admin.email.passwordSaved' | t) : ''"
+                [disabled]="locked()"
+                data-testid="email-password-input"
+                class="min-w-0 flex-1 px-3 py-2 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder:text-theme-muted text-sm"
+              />
+              @if (passwordSet() && !locked()) {
+                <button
+                  type="button"
+                  (click)="clearSavedPassword()"
+                  data-testid="email-password-clear"
+                  class="shrink-0 px-2 text-xs text-theme-secondary hover:text-theme-primary transition"
+                >
+                  {{ 'admin.email.passwordClear' | t }}
+                </button>
+              }
+            </span>
+            @if (clearPassword()) {
+              <span class="mt-1 block text-xs text-status-warn" data-testid="email-password-cleared">
+                {{ 'admin.email.passwordCleared' | t }}
+              </span>
+            }
+          </label>
+        </div>
+
+        <div class="mt-3 grid gap-3 sm:grid-cols-2">
+          <label class="block text-xs text-theme-muted min-w-0">
+            {{ 'admin.email.fromName' | t }}
+            <input
+              type="text"
+              maxlength="100"
+              [ngModel]="fromName()"
+              (ngModelChange)="fromName.set($event)"
+              [disabled]="locked()"
+              data-testid="email-from-name-input"
+              class="mt-1 w-full px-3 py-2 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary text-sm"
+            />
+          </label>
+          <label class="block text-xs text-theme-muted min-w-0">
+            {{ 'admin.email.fromAddress' | t }}
+            <input
+              type="email"
+              autocomplete="off"
+              [ngModel]="fromAddress()"
+              (ngModelChange)="fromAddress.set($event)"
+              [disabled]="locked()"
+              data-testid="email-from-input"
+              class="mt-1 w-full px-3 py-2 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary text-sm"
+            />
+          </label>
+        </div>
+      }
+
+      <label class="mt-4 block text-xs text-theme-muted">
+        {{ 'admin.email.publicUrl' | t }}
+        <input
+          type="url"
+          spellcheck="false"
+          [ngModel]="publicUrl()"
+          (ngModelChange)="publicUrl.set($event)"
+          [disabled]="publicUrlLocked()"
+          placeholder="https://music.example.com"
+          data-testid="email-public-url-input"
+          class="mt-1 w-full px-3 py-2 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder:text-theme-muted text-sm font-mono"
+        />
+        <span class="mt-1 block text-xs text-theme-muted">
+          {{
+            (v.publicUrlConfigurable ? 'admin.email.publicUrlHint' : 'admin.email.publicUrlEnvLocked')
+              | t
+          }}
+        </span>
+      </label>
+      <p class="mt-2 text-xs break-all" data-testid="email-link-base" [attr.data-base]="v.linkBase">
+        @if (v.linkBase) {
+          <span class="text-theme-secondary">{{
+            'admin.email.linkBase' | t: { url: v.linkBase }
+          }}</span>
+        } @else {
+          <span class="text-status-warn">{{ 'admin.email.linkBaseNone' | t }}</span>
+        }
+      </p>
+
+      <div class="mt-4 flex flex-wrap items-end justify-between gap-3">
+        <label class="block text-xs text-theme-muted">
+          {{ 'admin.email.dailyCap' | t }}
+          <input
+            type="number"
+            min="1"
+            max="10000"
+            [ngModel]="dailyCap()"
+            (ngModelChange)="dailyCap.set(+$event)"
+            [disabled]="locked()"
+            data-testid="email-cap-input"
+            class="mt-1 w-28 block px-3 py-2 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary text-sm"
+          />
+        </label>
+        @if (usage(); as u) {
+          <p
+            class="text-xs text-theme-muted"
+            data-testid="email-quota"
+            [attr.data-sent]="u.sentToday"
+            [attr.data-cap]="u.cap"
+          >
+            {{ 'admin.email.quota' | t: { sent: u.sentToday, cap: u.cap } }}
+          </p>
+        }
+      </div>
+
+      @if (!locked()) {
+        <div class="mt-4 flex items-center justify-end gap-3">
+          @if (saved()) {
+            <span class="text-xs text-status-success" data-testid="email-saved">{{
+              'admin.email.saved' | t
+            }}</span>
+          }
+          <button
+            type="button"
+            (click)="save()"
+            [disabled]="saving()"
+            data-testid="email-save"
+            class="px-4 py-2 rounded-lg bg-theme-inverse text-theme-inverse text-sm font-semibold hover:opacity-90 transition disabled:opacity-50"
+          >
+            {{ (saving() ? 'admin.email.saving' : 'admin.email.save') | t }}
+          </button>
+        </div>
+      }
+
+      <div class="mt-6 pt-4 border-t border-theme">
+        <h3 class="text-sm font-semibold text-theme-primary">{{ 'admin.email.test' | t }}</h3>
+        <p class="text-xs text-theme-muted mb-2">{{ 'admin.email.testHint' | t }}</p>
+        <div class="flex gap-2">
+          <input
+            type="email"
+            [ngModel]="testTo()"
+            (ngModelChange)="testTo.set($event)"
+            [placeholder]="'admin.email.testTo' | t"
+            data-testid="email-test-to"
+            class="min-w-0 flex-1 px-3 py-2 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder:text-theme-muted text-sm"
+          />
+          <button
+            type="button"
+            (click)="sendTest()"
+            [disabled]="!canTest()"
+            data-testid="email-test-send"
+            class="shrink-0 px-3 py-2 rounded-lg bg-theme-inverse text-theme-inverse text-xs font-semibold hover:opacity-90 transition disabled:opacity-50"
+          >
+            {{ (testing() ? 'admin.email.testSending' : 'admin.email.testSend') | t }}
+          </button>
+        </div>
+        @if (v.effectiveTransport === 'off') {
+          <p class="mt-2 text-xs text-theme-muted">{{ 'admin.email.testNeedsTransport' | t }}</p>
+        }
+        @if (testResult(); as r) {
+          <p
+            class="mt-2 text-xs break-words"
+            data-testid="email-test-result"
+            [attr.data-ok]="r.ok"
+            [attr.data-reason]="r.ok ? null : r.reason"
+          >
+            @if (r.ok) {
+              <span class="text-status-success">{{ 'admin.email.testOk' | t }}</span>
+            } @else {
+              <span class="text-status-error">{{ reasonKey(r.reason) | t }}</span>
+              @if (r.detail) {
+                <span class="block text-theme-muted font-mono">{{ r.detail }}</span>
+              }
+            }
+          </p>
+        }
+      </div>
+    }
+  </section>
+</app-settings-group>

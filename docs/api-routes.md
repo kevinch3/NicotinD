@@ -81,6 +81,10 @@ follow-up work, not part of the gate fix.
 | `POST`   | `/api/admin/password-resets`             | Admin: a 24 h single-use reset link for `{ userId }`        |
 | `POST`   | `/api/password-reset/inspect`            | Public: a reset token's state and account name              |
 | `POST`   | `/api/password-reset/complete`           | Public: set the password from a reset link, returns JWT     |
+| `GET`    | `/api/admin/mail`                        | Admin: mail settings (no password, `passwordSet`), presets, usage, link base |
+| `PUT`    | `/api/admin/mail`                        | Admin: save mail settings; password omitted keeps it, `''` clears it; 409 `MAIL_ENV_LOCKED` when env-pinned |
+| `POST`   | `/api/admin/mail/test`                   | Admin: send the test email to `{ to }`; returns the `MailResult` + usage |
+| `GET`    | `/api/admin/mail/outbox?to=`             | Admin, **outbox transport only** (404 otherwise): messages the test outbox holds |
 | `GET`    | `/api/search?q=`                         | Unified search (local library + parallel network sources)   |
 | `GET`    | `/api/search/:id/network`                | Poll for Soulseek results                                   |
 | `POST`   | `/api/acquire`                           | Acquire from a URL (YouTube/Spotify/archive.org) via plugins |

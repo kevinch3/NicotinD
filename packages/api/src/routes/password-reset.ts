@@ -10,7 +10,7 @@ import type { AuthEnv } from '../middleware/auth.js';
 import { signJwt } from '../middleware/auth.js';
 import { recordAudit } from '../services/audit-log.js';
 import { sessionVersionOf } from '../services/session-version.js';
-import { candidateUrls } from '../services/pairing-urls.js';
+import { linkBaseCandidates } from '../services/link-base.js';
 import type { RemoteAccess } from '../services/tailscale.js';
 import {
   ADMIN_RESET_TTL_MS,
@@ -23,11 +23,14 @@ import { createFixedWindowLimiter } from './devices.js';
 export interface PasswordResetAdminDeps {
   db: Database;
   remoteAccess?: Pick<RemoteAccess, 'publicUrl'> | null;
+  /** The operator's public URL — first link base, as for invites. */
+  publicUrl?: () => string | null;
   now?: () => number;
 }
 
 export function passwordResetAdminRoutes(deps: PasswordResetAdminDeps) {
-  const { db, remoteAccess = null } = deps;
+  const { db } = deps;
+  const linkSources = { remoteAccess: deps.remoteAccess ?? null, publicUrl: deps.publicUrl };
   const now = deps.now ?? Date.now;
   const app = new Hono<AuthEnv>();
 
@@ -48,8 +51,7 @@ export function passwordResetAdminRoutes(deps: PasswordResetAdminDeps) {
     const issued = issueResetToken(db, body.userId, actor.sub, ADMIN_RESET_TTL_MS, now());
     if (!issued) return c.json({ error: 'User not found', code: 'NOT_FOUND' }, 404);
     recordAudit(db, actor, 'user.reset-link', { targetKind: 'user', targetId: body.userId });
-    const funnelUrl = remoteAccess ? await remoteAccess.publicUrl().catch(() => null) : null;
-    const urls = candidateUrls({ funnelUrl, requestOrigin: new URL(c.req.url).origin });
+    const urls = await linkBaseCandidates(linkSources, c.req.url);
     return c.json(
       { path: `/reset-password#t=${issued.token}`, urls, expiresAt: issued.expiresAt },
       201,

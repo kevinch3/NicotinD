@@ -15,7 +15,7 @@ import type { AuthEnv } from '../middleware/auth.js';
 import { signJwt } from '../middleware/auth.js';
 import { recordAudit } from '../services/audit-log.js';
 import { sessionVersionOf } from '../services/session-version.js';
-import { candidateUrls } from '../services/pairing-urls.js';
+import { linkBaseCandidates } from '../services/link-base.js';
 import type { RemoteAccess } from '../services/tailscale.js';
 import {
   acceptInvite,
@@ -33,21 +33,15 @@ export interface InviteAdminRoutesDeps {
   db: Database;
   /** Funnel URL source for the link's base; null outside a Tailscale setup. */
   remoteAccess?: Pick<RemoteAccess, 'publicUrl'> | null;
+  /**
+   * The operator's public URL (`NICOTIND_PUBLIC_URL` or the mail settings),
+   * read per request so a change in Admin applies to the next link. Wins over
+   * the Funnel URL and the request origin (`linkBaseCandidates`); the web
+   * builds the link from the first base and warns when the list is empty — a
+   * desktop on 127.0.0.1 has no address a friend could open.
+   */
+  publicUrl?: () => string | null;
   now?: () => number;
-}
-
-/**
- * Where the link should point. Same candidates the pairing QR uses (Funnel
- * first, then the request origin, loopback dropped); the web builds the link
- * from the first and warns when the list is empty — a desktop on 127.0.0.1 has
- * no address a friend could open.
- */
-async function linkBases(
-  remoteAccess: InviteAdminRoutesDeps['remoteAccess'],
-  requestUrl: string,
-): Promise<string[]> {
-  const funnelUrl = remoteAccess ? await remoteAccess.publicUrl().catch(() => null) : null;
-  return candidateUrls({ funnelUrl, requestOrigin: new URL(requestUrl).origin });
 }
 
 function withLink(invite: InviteSummary, token: string, urls: string[]) {
@@ -55,7 +49,8 @@ function withLink(invite: InviteSummary, token: string, urls: string[]) {
 }
 
 export function inviteAdminRoutes(deps: InviteAdminRoutesDeps) {
-  const { db, remoteAccess = null } = deps;
+  const { db } = deps;
+  const linkSources = { remoteAccess: deps.remoteAccess ?? null, publicUrl: deps.publicUrl };
   const now = deps.now ?? Date.now;
   const app = new Hono<AuthEnv>();
 
@@ -78,7 +73,7 @@ export function inviteAdminRoutes(deps: InviteAdminRoutesDeps) {
       targetId: result.invite.id,
       detail: `role=${result.invite.role} uses=${result.invite.maxUses}`,
     });
-    const urls = await linkBases(remoteAccess, c.req.url);
+    const urls = await linkBaseCandidates(linkSources, c.req.url);
     return c.json(withLink(result.invite, result.token, urls), 201);
   });
 
@@ -91,7 +86,7 @@ export function inviteAdminRoutes(deps: InviteAdminRoutesDeps) {
         : c.json({ error: 'Invite is no longer pending', code: result.code }, 409);
     }
     recordAudit(db, c.get('user'), 'invite.rotate', { targetKind: 'invite', targetId: id });
-    const urls = await linkBases(remoteAccess, c.req.url);
+    const urls = await linkBaseCandidates(linkSources, c.req.url);
     return c.json(withLink(result.invite, result.token, urls));
   });
 

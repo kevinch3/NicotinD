@@ -257,6 +257,11 @@ function makeServer(
       // would drive a dead output. Short enough to clear between specs, long
       // enough that a reload inside one spec still reconnects within it.
       NICOTIND_PLAYBACK_GRACE_MS: '2000',
+      // Mail goes to the `mail_outbox` table, never a real server, and pins the
+      // Email delivery card read-only. `GET /api/admin/mail/outbox?to=` exists
+      // only under this transport — specs read their own recipient's messages
+      // there (docs/email-invitations.md).
+      NICOTIND_MAIL_TRANSPORT: 'outbox',
       ...extraEnv,
     },
   };

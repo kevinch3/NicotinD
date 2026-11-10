@@ -111,6 +111,23 @@ describe('admin: issue a reset link', () => {
     expect(audit()).toEqual(['user.reset-link']);
   });
 
+  it('bases the link on the operator public URL first, then Funnel, then the request origin', async () => {
+    const app = asAdmin(
+      passwordResetAdminRoutes({
+        db,
+        now,
+        remoteAccess: { publicUrl: async () => 'https://box.tail.ts.net' },
+        publicUrl: () => 'https://music.example.org',
+      }),
+    );
+    const res = await app.request('http://192.168.1.20:8484/', json({ userId: 'u1' }));
+    expect((await res.json()).urls).toEqual([
+      'https://music.example.org',
+      'https://box.tail.ts.net',
+      'http://192.168.1.20:8484',
+    ]);
+  });
+
   it('a re-issue kills the previous link', async () => {
     const first = await issue();
     await issue();

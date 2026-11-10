@@ -1485,7 +1485,7 @@ export interface InviteSummary {
 export interface InviteLinkResponse {
   invite: InviteSummary;
   token: string;
-  /** Usable bases (Funnel first); empty when only loopback is known. */
+  /** Usable bases (public URL, then Funnel, then the origin); empty when only loopback is known. */
   urls: string[];
   /** `/invite#t=<token>`, appended to a base. */
   path: string;
@@ -1508,3 +1508,80 @@ export type InviteInspection =
       expiresAt: number;
       serverName: string;
     };
+
+// ── Email delivery (docs/email-invitations.md, increment 3) ────────────────
+
+/** Why a send failed: a transport's reason, or one MailService refuses with. */
+export type MailSendReason =
+  | 'auth'
+  | 'sender-rejected'
+  | 'recipient-rejected'
+  | 'rate-limited'
+  | 'unreachable'
+  | 'unknown'
+  | 'off'
+  | 'quota-exhausted';
+
+export const MAIL_SEND_REASONS: readonly MailSendReason[] = [
+  'auth',
+  'sender-rejected',
+  'recipient-rejected',
+  'rate-limited',
+  'unreachable',
+  'unknown',
+  'off',
+  'quota-exhausted',
+];
+
+export interface MailSettingsDto {
+  transport: 'off' | 'smtp' | 'outbox';
+  presetId: string;
+  host: string;
+  port: number;
+  secure: boolean;
+  username: string;
+  fromAddress: string;
+  fromName: string;
+  publicUrl: string;
+  dailyCap: number;
+}
+
+export interface MailPresetDto {
+  id: string;
+  label: string;
+  host: string;
+  port: number;
+  secure: boolean;
+  usernameHint: string;
+  helpKey: string;
+}
+
+export interface MailUsage {
+  sentToday: number;
+  cap: number;
+}
+
+/** `GET /api/admin/mail` — never carries the password, only whether one is set. */
+export interface MailAdminView {
+  settings: MailSettingsDto;
+  effectiveTransport: 'off' | 'smtp' | 'outbox';
+  passwordSet: boolean;
+  /** False when NICOTIND_MAIL_TRANSPORT pins the whole block. */
+  configurable: boolean;
+  /** False when NICOTIND_PUBLIC_URL fixes the link base. */
+  publicUrlConfigurable: boolean;
+  presets: MailPresetDto[];
+  usage: MailUsage;
+  /** Where links will point; null when only loopback is known. */
+  linkBase: string | null;
+}
+
+/** `PUT /api/admin/mail`: `password` omitted keeps it, `''` clears it. */
+export type MailSettingsUpdate = Partial<Omit<MailSettingsDto, 'transport'>> & {
+  transport?: 'off' | 'smtp';
+  password?: string;
+};
+
+export type MailTestResult = (
+  { ok: true; providerId?: string } | { ok: false; reason: MailSendReason; detail: string }
+) & { usage: MailUsage; linkBase: string };

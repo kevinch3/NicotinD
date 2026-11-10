@@ -952,6 +952,36 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   );
   db.run(`CREATE INDEX IF NOT EXISTS idx_password_resets_user ON password_resets (user_id)`);
 
+  // Mail (docs/email-invitations.md, increment 3). The send log drives the
+  // "N / cap today" meter and records who was mailed and how it went — never a
+  // body or a token. `status`: sent | failed | refused (transport off, cap hit).
+  db.run(`
+    CREATE TABLE IF NOT EXISTS mail_send_log (
+      id          TEXT    PRIMARY KEY,
+      kind        TEXT    NOT NULL,
+      recipient   TEXT    NOT NULL,
+      status      TEXT    NOT NULL CHECK (status IN ('sent','failed','refused')),
+      reason      TEXT,
+      provider_id TEXT,
+      created_at  INTEGER NOT NULL
+    )
+  `);
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_mail_send_log_status_created ON mail_send_log (status, created_at)`,
+  );
+  // The `outbox` test transport's mailbox — the only table that holds a body,
+  // and only ever written when NICOTIND_MAIL_TRANSPORT=outbox (tests, e2e).
+  db.run(`
+    CREATE TABLE IF NOT EXISTS mail_outbox (
+      id         TEXT    PRIMARY KEY,
+      recipient  TEXT    NOT NULL,
+      subject    TEXT    NOT NULL,
+      text       TEXT    NOT NULL,
+      html       TEXT    NOT NULL,
+      created_at INTEGER NOT NULL
+    )
+  `);
+
   // Per-user stars on albums and artists, set through Subsonic `star`. A song
   // star is a like (the Liked Songs playlist), so songs never land here.
   db.run(`

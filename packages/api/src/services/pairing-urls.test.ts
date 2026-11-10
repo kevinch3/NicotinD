@@ -36,6 +36,46 @@ describe('candidateUrls', () => {
   });
 });
 
+describe('candidateUrls: the operator public URL', () => {
+  it('goes first, ahead of the Funnel URL and the request origin', () => {
+    expect(
+      candidateUrls({
+        publicUrl: 'https://music.example.com',
+        funnelUrl: 'https://desk.tail1234.ts.net',
+        requestOrigin: 'http://192.168.1.20:8484',
+      }),
+    ).toEqual([
+      'https://music.example.com',
+      'https://desk.tail1234.ts.net',
+      'http://192.168.1.20:8484',
+    ]);
+  });
+
+  it('is trusted as given — even loopback, which the operator chose on purpose', () => {
+    expect(
+      candidateUrls({
+        publicUrl: 'http://localhost:8484/',
+        requestOrigin: 'http://127.0.0.1:8484',
+      }),
+    ).toEqual(['http://localhost:8484']);
+  });
+
+  it('drops its trailing slash and dedupes against the request origin', () => {
+    expect(
+      candidateUrls({
+        publicUrl: 'https://music.example.com/',
+        requestOrigin: 'https://music.example.com',
+      }),
+    ).toEqual(['https://music.example.com']);
+  });
+
+  it('absent or null leaves the old behaviour untouched', () => {
+    expect(
+      candidateUrls({ publicUrl: null, funnelUrl: null, requestOrigin: 'https://a.example.com' }),
+    ).toEqual(['https://a.example.com']);
+  });
+});
+
 describe('isLoopbackOrigin', () => {
   it('treats unparseable origins as loopback (unusable)', () => {
     expect(isLoopbackOrigin('not a url')).toBeTrue();

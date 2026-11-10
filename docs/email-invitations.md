@@ -1,6 +1,6 @@
 # Invitations, email delivery & password recovery
 
-> **Status: increments 1 (link invites) and 2 (account security) shipped; 3–5 planned.** The plan below
+> **Status: increments 1 (link invites), 2 (account security) and 3 (mail transport) shipped; 4–5 planned.** The plan below
 > (2026-11-09) is the agreed shape, so each increment can be built, tested and merged
 > on its own. Coordinate with [oauth-auth.md](oauth-auth.md) (also unbuilt): it too adds a
 > user email and `NICOTIND_PUBLIC_URL`, and both must land on the *same* column and the
@@ -29,8 +29,8 @@ provider-agnostic**: SMTP is the baseline, so Mailgun is a preset, not a depende
 - **Accept** spends a use through a compare-and-swap `UPDATE` inside the transaction that
   creates the user, so two concurrent accepts cannot overspend, and a failed attempt (taken
   username, short password) leaves the invite unspent. New passwords need ≥ 8 characters.
-- **Link base**: the pairing QR's `candidateUrls` (Funnel URL, then the request origin, loopback
-  dropped). When nothing but loopback is known, the card builds the link from the page's own
+- **Link base**: the pairing QR's `candidateUrls` (since increment 3: the operator's public URL,
+  then the Funnel URL, then the request origin, loopback dropped — `linkBaseCandidates`). When nothing but loopback is known, the card builds the link from the page's own
   origin and shows "only works on this computer" (`buildInviteLink` → `localOnly`).
 - **Web**: `InvitesCardComponent` inside Admin → User Management (Invite dialog → link + QR
   shown once → list with Pending/Used/Expired/Revoked, *New link*, *Revoke*);
@@ -73,6 +73,67 @@ provider-agnostic**: SMTP is the baseline, so Mailgun is a preset, not a depende
   `middleware/auth.test.ts`, `opensubsonic-upstream.test.ts`, the account/reset/user-management
   specs, and the e2e `account-security.spec.ts` (reset link → new password works, old one and
   old sessions do not; Settings change keeps this browser signed in and ends the others).
+
+## Shipped: mail transport (increment 3)
+
+- **One interface** (`services/mail/transport.ts`): `MailTransport` with `send`/`verify`, both
+  returning a `MailResult` — never throwing — whose `reason` is one of `MAIL_FAILURES`. Nothing above
+  it sees a vendor code.
+- **SMTP** (`services/mail/smtp.ts`, on `nodemailer`, which ships its own types — no `@types`
+  package): `createSmtpTransport`, one connection per send, always with `SMTP_TIMEOUTS` (10 s
+  connect, 10 s greeting, 20 s socket — nodemailer's own defaults are minutes). `classifySmtpError`
+  maps the reply code *and* the phase: 530/534/535 → `auth`; 550/551/553 at `MAIL FROM` →
+  `sender-rejected`, at `RCPT TO` → `recipient-rejected`, elsewhere `unknown`; 421/450/451/452 →
+  `rate-limited`; socket/DNS/timeout codes → `unreachable`. The reply wins over nodemailer's own
+  code (a refused greeting is `EPROTOCOL` + 421 → `rate-limited`).
+  With a username on a non-implicit-TLS port, STARTTLS is **required** (`requireTLS`): a server
+  — or an attacker in the path — that does not offer it gets no credentials and no mail. An
+  unauthenticated local relay still works in plain text.
+- **Outbox** (`services/mail/outbox.ts`): `createOutboxTransport` writes `mail_outbox`; `listOutbox`
+  reads it. Selected only by `NICOTIND_MAIL_TRANSPORT=outbox`, and `GET /api/admin/mail/outbox` is
+  registered only under it.
+- **Presets are data** (`services/mail/presets.ts`, `MAIL_PRESETS`): Mailgun, Brevo, Gmail,
+  Fastmail, Custom — host, port, TLS mode, a username hint and an i18n `helpKey`. Adding a provider
+  is one entry plus its help text in `en.json`/`es.json`.
+- **Settings** (`services/mail/settings.ts`, `MailSettingsStore`): non-secret fields as JSON in
+  `app_settings` key `mail`; the password under its own key `mail_secret`, which config export
+  drops unless secrets are opted in (`CONFIG_SECTIONS.app_settings.secretRows`) and which the API
+  never returns (`passwordSet` only; a PUT without `password` keeps it, `''` clears it).
+  `applyMailSettingsPatch` validates the whole result (port 1–65535, an email-looking From, a
+  one-line From name, an http(s) public URL, cap 1–10000; host and From required for SMTP).
+  **Env pinning by presence**, like the signup switch: `NICOTIND_MAIL_TRANSPORT` set ⇒ the whole
+  block comes from `readMailEnv` (`NICOTIND_SMTP_*`, defaults for the rest), the stored settings are
+  kept but unused, and the card is read-only (`MAIL_ENV_LOCKED` on PUT). `NICOTIND_SMTP_*` are read
+  only under that pin. `NICOTIND_PUBLIC_URL` pins just the link base.
+  - *Deviation from the plan above*: the password lives in `app_settings`, not `secrets.json`, so an
+    admin can set it from the UI without the API writing the boot-time secrets file; the export
+    exclusion is what keeps it out of a shared bundle.
+- **`MailService`** (`services/mail/mailer.ts`, one instance from `createApp`, exported for
+  increments 4–5): `send(kind, msg)` refuses with `off` while mail is off and with
+  `quota-exhausted` once today's `sent` rows reach the cap (`startOfUtcDay`, 00:00 UTC), then logs
+  every attempt to `mail_send_log` (kind, recipient, status, reason, provider id — never a subject,
+  body or token). `usage()` drives the "N / cap today" meter. Failures and refusals do not count.
+- **Link base**: `candidateUrls` takes an optional `publicUrl` first; invites, reset links and the
+  test email all go through `linkBaseCandidates` (public URL → Funnel → request origin).
+- **Template** (`services/mail/templates.ts`): `testEmail` — text plus inline-styled HTML, no
+  remote assets, every value through `escapeHtml`, and a link to `<linkBase>/` so the test proves
+  the base opens.
+- **Routes** (`routes/mail.ts`, `mailAdminRoutes` at `/api/admin/mail`, admin-only): `GET /`,
+  `PUT /` (audited `mail.settings` with the changed field *names*), `POST /test` (audited
+  `mail.test`), and the outbox-only `GET /outbox?to=`.
+- **Web**: `EmailDeliveryPanelComponent` (Admin → Email delivery, right after User Management; loads
+  when the group opens), `MailApiService`. Env-locked renders every field read-only with a note but
+  keeps the test send; failure reasons map to `admin.email.reason.*`.
+- **Tests**: the transport contract suite (`transport-contract.test.ts`: send, verify and each
+  reason, run against the outbox and against SMTP talking to the in-process
+  `test-helpers/fake-smtp-server.ts` — auth 535, 553 at MAIL, 550 at RCPT, 421 greeting, 554 after
+  DATA, a closed port, implicit TLS against a plain server, a silent server timing out), plus
+  `smtp.test.ts`, `settings.test.ts`, `mailer.test.ts`, `templates.test.ts`, `routes/mail.test.ts`,
+  the public-URL cases in the invite/reset/pairing tests, `email-delivery-panel.component.spec.ts`,
+  and the e2e `email-delivery.spec.ts` (every Playwright server boots with the outbox; the spec
+  sends through the locked card and reads its own recipient back from the outbox). A TLS *success*
+  path is not covered in-process (it would need a certificate); "one real send per preset before
+  release" stays a manual check.
 
 ## Today (verified)
 
@@ -133,9 +194,9 @@ type MailResult =
 - **Optional hardening**: disable provider link or open tracking, where the provider allows
   it, so token links are never rewritten. This is a per-preset note, not a core concern.
 - **Config**: `NICOTIND_MAIL_TRANSPORT=smtp|outbox|off` (plus `mailgun-api` if that
-  adapter ships), with `NICOTIND_SMTP_HOST/PORT/USER/FROM`. The password lives in
-  `secrets.json` or `NICOTIND_SMTP_PASSWORD`. Env pins the UI read-only, the same as the
-  registration switch.
+  adapter ships), with `NICOTIND_SMTP_HOST/PORT/SECURE/USER/PASSWORD/FROM`. Set from the UI, the
+  password is write-only in `app_settings` (`mail_secret`, see increment 3). Env pins the UI
+  read-only, the same as the registration switch.
 
 ## Engineering rules (apply to every increment)
 
@@ -146,7 +207,7 @@ type MailResult =
 - **Sessions**: a `token_version` on `users`, embedded in the JWT and checked by the auth
   middleware and at refresh. A reset or password change bumps it, which signs out everywhere.
 - **Passwords**: new flows (accept, reset, change) require ≥ 8 characters. The admin "set password" flow keeps working as is.
-- **Adapters**: no vendor names outside `services/mail/transports/` and the presets file.
+- **Adapters**: no vendor names outside the adapter files in `services/mail/` and the presets file.
   An optional Mailgun HTTP adapter would use plain `fetch` (no SDK) with
   `o:tracking-clicks=no`, and map 401 → `auth`, 402/403 → `sender-rejected`,
   429 → `rate-limited`.
@@ -191,7 +252,7 @@ falls back to the link. Forgot password then reads "Ask your server admin."
 2. **Account security, still without email.** ✅ Shipped — see above.
    - Ships: `token_version` session revocation, `/settings/account` with change password, admin *Copy reset link*, and `/reset-password`.
    - Tests: e2e `admin-reset-link.spec` (old password fails afterwards).
-3. **Mail transport.**
+3. **Mail transport.** ✅ Shipped — see above.
    - Ships: `MailTransport` with `smtp` and `outbox` implementations; provider presets (Mailgun first); the email card; test send (to the admin, with a link that proves the base URL opens); send log and quota meter.
    - Tests: a **contract test suite** every adapter must pass (send, verify, each `reason`), run against `outbox` and against the SMTP adapter talking to an in-process fake SMTP server (auth failure, 550, 421, TLS on/off). The Playwright server boots with the outbox. Manual check: one real send per preset before release.
 4. **Email invites.**

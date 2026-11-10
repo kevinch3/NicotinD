@@ -45,6 +45,9 @@ import { radioPollAdminRoutes, radioPollPublicRoutes } from './routes/radio-poll
 import { devicesRoutes } from './routes/devices.js';
 import { inviteAdminRoutes, invitePublicRoutes } from './routes/invites.js';
 import { passwordResetAdminRoutes, passwordResetPublicRoutes } from './routes/password-reset.js';
+import { mailAdminRoutes } from './routes/mail.js';
+import { MailService } from './services/mail/mailer.js';
+import { MailSettingsStore } from './services/mail/settings.js';
 import { accountRoutes } from './routes/account.js';
 import { agentTokensRoutes } from './routes/agent-tokens.js';
 import { subsonicKeysRoutes } from './routes/subsonic-keys.js';
@@ -924,13 +927,23 @@ export function createApp({
   // Invitations (docs/email-invitations.md): the admin half rides the
   // /api/admin/* blanket auth; the public half takes the invite token as its
   // credential, the same trust model as the pairing claim.
-  app.route('/api/admin/invites', inviteAdminRoutes({ db, remoteAccess }));
+  // Mail (docs/email-invitations.md): one MailService for the process, so every
+  // later sender (invites, resets) shares the daily cap and the send log. The
+  // operator's public URL is the first base of every link the server mints.
+  const mailSettings = new MailSettingsStore(db);
+  const mail = new MailService({ db, settings: mailSettings });
+  const publicUrl = () => mailSettings.publicUrl();
+  app.route('/api/admin/mail', mailAdminRoutes({ db, mail, remoteAccess }));
+  app.route('/api/admin/invites', inviteAdminRoutes({ db, remoteAccess, publicUrl }));
   app.route(
     '/api/invites',
     invitePublicRoutes({ db, jwtSecret: config.jwt.secret, jwtExpiresIn: config.jwt.expiresIn }),
   );
   // Password reset links: same split — an admin issues, the token spends.
-  app.route('/api/admin/password-resets', passwordResetAdminRoutes({ db, remoteAccess }));
+  app.route(
+    '/api/admin/password-resets',
+    passwordResetAdminRoutes({ db, remoteAccess, publicUrl }),
+  );
   app.route(
     '/api/password-reset',
     passwordResetPublicRoutes({
@@ -1168,7 +1181,7 @@ export function createApp({
     });
   }
 
-  return { app, processingRef, maintenance, websocket, remoteAccess, libraryPickup };
+  return { app, processingRef, maintenance, websocket, remoteAccess, libraryPickup, mail };
 }
 
 export { AutoAcquireService } from './services/auto-acquire.service.js';
@@ -1182,3 +1195,5 @@ export { findInsecureDefaults, REMOVAL_RELEASE } from './services/insecure-defau
 // initServerSentry is intentionally NOT re-exported from the barrel: it must be
 // imported via the isolated `@nicotind/api/instrument` subpath so Sentry inits
 // before Hono/http modules load. See src/instrument.ts.
+export { MailService } from './services/mail/mailer.js';
+export type { MailKind, MailSendResult } from './services/mail/mailer.js';

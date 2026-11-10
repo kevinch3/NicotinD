@@ -1024,8 +1024,9 @@ describe('AdminComponent — group structure (Task 4 regroup)', () => {
     // preferences card (docs/genre-affinity.md). 12 with the library format
     // card (#1256), which is what finally made the irreversible conversion path
     // configurable from the UI rather than only from compose files. 13 with
-    // the library health report (#736).
-    expect(headers.length).toBe(13);
+    // the library health report (#736). 14 with email delivery
+    // (docs/email-invitations.md, increment 3).
+    expect(headers.length).toBe(14);
     fixture.destroy();
   });
 
@@ -1049,6 +1050,7 @@ describe('AdminComponent — group structure (Task 4 regroup)', () => {
       .filter((t) => t.startsWith('app-'));
     expect(order).toEqual([
       'app-user-management-panel',
+      'app-email-delivery-panel',
       'app-library-processing-panel',
       'app-system-health-panel',
       'app-library-maintenance-panel',

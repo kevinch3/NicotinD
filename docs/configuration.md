@@ -22,6 +22,12 @@ of truth; this page summarizes the ones most installs touch.
 | `NICOTIND_LIBRARY_RESCAN_MINUTES`      | `0` (off)               | Also run a full library sync every N minutes: for network shares, where the watcher can't see another machine's writes |
 | `NICOTIND_PLAYBACK_GRACE_MS`          | `15000`                 | How long a remote-playback session survives its output's socket dropping before it is released; the e2e server sets 2000 |
 | `NICOTIND_REGISTRATION`                | *(unset)*               | Public self-signup. Unset = the Admin → User Management toggle owns it (starts closed); setting `off`/`on` pins it and makes that toggle read-only |
+| `NICOTIND_MAIL_TRANSPORT`              | *(unset)*               | Email delivery: `off`, `smtp` or `outbox` (test-only: messages go to the `mail_outbox` table, read back at `GET /api/admin/mail/outbox`). Unset = Admin → Email delivery owns the config; **set = the whole mail config comes from the env** (`NICOTIND_SMTP_*`, defaults for the rest) and the card is read-only ([email-invitations.md](email-invitations.md)) |
+| `NICOTIND_SMTP_HOST` / `NICOTIND_SMTP_PORT` | — / `587`          | SMTP server, read only while `NICOTIND_MAIL_TRANSPORT` is set. Port 587 = STARTTLS, 465 = implicit TLS |
+| `NICOTIND_SMTP_SECURE`                 | `true` when the port is 465 | Implicit TLS from the first byte (`true`/`false`)       |
+| `NICOTIND_SMTP_USER` / `NICOTIND_SMTP_PASSWORD` | —              | SMTP credentials while env-pinned. Configured in the UI instead, the password is stored write-only and left out of config exports unless secrets are opted in |
+| `NICOTIND_SMTP_FROM`                   | —                       | The From address while env-pinned                              |
+| `NICOTIND_PUBLIC_URL`                  | *(unset)*               | Where this server is reachable, e.g. `https://music.example.com`. The first base of every invite, reset and test-email link, ahead of the Funnel URL and the request origin; pins the card's *Public URL* field. Independent of mail |
 | `NICOTIND_METADATA_FIX_ENABLED`        | `true`                  | Auto-repair missing MP3 tags after download                    |
 | `NICOTIND_METADATA_FIX_MIN_SCORE`      | `85`                    | Minimum MusicBrainz match score (0-100) for auto-fill          |
 | `NICOTIND_TRANSCODE_LOSSLESS_ENABLED`  | `true`                  | Transcode FLAC → Opus in place after download                  |

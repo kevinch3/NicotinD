@@ -30,7 +30,11 @@ beforeEach(() => {
   clock = 1_700_000_000_000;
 });
 
-function admin(role: 'admin' | 'user' = 'admin', remoteUrl: string | null = null) {
+function admin(
+  role: 'admin' | 'user' = 'admin',
+  remoteUrl: string | null = null,
+  publicUrl: string | null = null,
+) {
   const wrap = new Hono<AuthEnv>();
   wrap.use('*', async (c, next) => {
     c.set('user', { sub: 'admin1', username: 'boss', role, iat: 0, exp: 0 } as JwtPayload);
@@ -38,7 +42,12 @@ function admin(role: 'admin' | 'user' = 'admin', remoteUrl: string | null = null
   });
   wrap.route(
     '/',
-    inviteAdminRoutes({ db, now, remoteAccess: { publicUrl: async () => remoteUrl } }),
+    inviteAdminRoutes({
+      db,
+      now,
+      remoteAccess: { publicUrl: async () => remoteUrl },
+      publicUrl: () => publicUrl,
+    }),
   );
   return wrap;
 }
@@ -112,6 +121,28 @@ describe('admin: create', () => {
     expect((await res.json()).urls).toEqual(['https://box.tail.ts.net']);
     const lan = await mint();
     expect(lan.urls).toEqual(['http://music.example.com']);
+  });
+
+  it('puts the operator public URL first: public URL → Funnel → request origin', async () => {
+    const res = await admin(
+      'admin',
+      'https://box.tail.ts.net',
+      'https://music.example.org',
+    ).request('http://192.168.1.20:8484/', json({}));
+    expect((await res.json()).urls).toEqual([
+      'https://music.example.org',
+      'https://box.tail.ts.net',
+      'http://192.168.1.20:8484',
+    ]);
+  });
+
+  it('a rotated link uses the same bases', async () => {
+    const { invite } = await mint();
+    const res = await admin('admin', null, 'https://music.example.org').request(
+      `http://127.0.0.1:8484/${invite.id}/link`,
+      { method: 'POST' },
+    );
+    expect((await res.json()).urls).toEqual(['https://music.example.org']);
   });
 
   it.each([
