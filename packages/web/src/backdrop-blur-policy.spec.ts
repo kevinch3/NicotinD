@@ -34,7 +34,11 @@ const BLUR_SITES = {
     'styles.css: html.tv-build .np-tv-queue-panel',
   ],
   // Pages outside the app shell — no header, mini player or sheet to sit under.
-  chromelessPage: ['pages/login/login.component.html', 'pages/invite/invite-accept.component.html'],
+  chromelessPage: [
+    'pages/login/login.component.html',
+    'pages/invite/invite-accept.component.html',
+    'pages/reset-password/reset-password.component.html',
+  ],
   floatingPanel: ['styles.css: .glass-panel'],
   inPageStandsDown: ['styles.css: .mosaic-rim'],
 } as const;

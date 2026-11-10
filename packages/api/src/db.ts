@@ -224,6 +224,10 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   // seen since this column landed — there is nothing to backfill it from, since
   // presence has always been in-memory only (docs/presence-tracking.md).
   addColumnIfMissing(db, 'users', 'last_seen_at', 'INTEGER');
+  // Session version: every JWT carries the value it was minted at (`tv`), and
+  // the auth middleware refuses a mismatch. Bumped by a password change/reset,
+  // which is how stateless tokens get a "sign out everywhere".
+  addColumnIfMissing(db, 'users', 'token_version', 'INTEGER NOT NULL DEFAULT 0');
 
   // Add welcome_dismissed column to existing user_settings table
   addColumnIfMissing(db, 'user_settings', 'welcome_dismissed', 'INTEGER NOT NULL DEFAULT 0');
@@ -928,6 +932,25 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
       PRIMARY KEY (invite_id, user_id)
     )
   `);
+
+  // Password reset links (docs/email-invitations.md): single-use, hashed like
+  // invites. `created_by` is the admin who issued it (NULL once self-service
+  // recovery exists). At most one live link per user — issuing replaces it.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS password_resets (
+      id         TEXT    PRIMARY KEY,
+      token_hash TEXT    NOT NULL,
+      user_id    TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_by TEXT    REFERENCES users(id) ON DELETE SET NULL,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      used_at    INTEGER
+    )
+  `);
+  db.run(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_password_resets_token_hash ON password_resets (token_hash)`,
+  );
+  db.run(`CREATE INDEX IF NOT EXISTS idx_password_resets_user ON password_resets (user_id)`);
 
   // Per-user stars on albums and artists, set through Subsonic `star`. A song
   // star is a like (the Liked Songs playlist), so songs never land here.

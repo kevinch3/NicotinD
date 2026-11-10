@@ -1,0 +1,52 @@
+<div class="page-shell max-w-2xl" data-testid="account-settings">
+  <h1 class="page-title mb-6">{{ 'account.title' | t }}</h1>
+
+  <app-settings-group groupId="account-password" [title]="'account.passwordTitle' | t">
+    <form class="flex flex-col gap-3 max-w-sm" (ngSubmit)="save()" data-testid="account-password-form">
+      <p class="text-sm text-theme-muted">{{ 'account.passwordHint' | t }}</p>
+      <app-password-field
+        name="currentPassword"
+        [ngModel]="currentPassword()"
+        (ngModelChange)="currentPassword.set($event)"
+        [placeholder]="'account.currentPassword' | t"
+        [autocomplete]="'current-password'"
+        [testId]="'account-current-password'"
+        [inputClass]="'w-full px-4 py-2.5 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder:text-theme-muted focus:outline-none focus:border-theme-accent transition text-sm'"
+      />
+      <app-password-field
+        name="newPassword"
+        [ngModel]="newPassword()"
+        (ngModelChange)="newPassword.set($event)"
+        [placeholder]="'account.newPassword' | t: { min: minPassword }"
+        [autocomplete]="'new-password'"
+        [testId]="'account-new-password'"
+        [inputClass]="'w-full px-4 py-2.5 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder:text-theme-muted focus:outline-none focus:border-theme-accent transition text-sm'"
+      />
+      <app-password-field
+        name="confirmPassword"
+        [ngModel]="confirmPassword()"
+        (ngModelChange)="confirmPassword.set($event)"
+        [placeholder]="'account.confirmPassword' | t"
+        [autocomplete]="'new-password'"
+        [testId]="'account-confirm-password'"
+        [inputClass]="'w-full px-4 py-2.5 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder:text-theme-muted focus:outline-none focus:border-theme-accent transition text-sm'"
+      />
+      @if (mismatch()) {
+        <p class="text-xs text-status-warn" data-testid="account-mismatch">{{ 'account.mismatch' | t }}</p>
+      }
+      @if (error()) {
+        <p class="text-xs text-status-error" data-testid="account-password-error">{{ error() }}</p>
+      }
+      <div>
+        <button
+          type="submit"
+          [disabled]="!canSave()"
+          data-testid="account-change-password"
+          class="px-4 py-2 rounded-lg bg-theme-inverse text-theme-inverse text-sm font-semibold hover:opacity-90 transition disabled:opacity-50"
+        >
+          {{ (saving() ? 'account.saving' : 'account.changePassword') | t }}
+        </button>
+      </div>
+    </form>
+  </app-settings-group>
+</div>

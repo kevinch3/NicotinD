@@ -6,6 +6,7 @@ import type { ProcessingSettings, ProcessingStatus, Role } from '@nicotind/core'
 import type { AuthEnv } from '../middleware/auth.js';
 import { getDatabase } from '../db.js';
 import { listAudit, recordAudit } from '../services/audit-log.js';
+import { bumpSessionVersion } from '../services/session-version.js';
 import type { AcquisitionToggle } from '../services/acquisition-toggle.js';
 import type { RegistrationToggle } from '../services/registration-toggle.js';
 import {
@@ -260,6 +261,9 @@ export function adminRoutes(deps: AdminRoutesDeps) {
     if (result.changes === 0) {
       return c.json({ error: 'User not found' }, 404);
     }
+    // A reset means the old password may be in the wrong hands: end every
+    // session that was opened with it (docs/email-invitations.md).
+    bumpSessionVersion(db, id);
     recordAudit(db, c.get('user'), 'user.password-reset', { targetKind: 'user', targetId: id });
     return c.json({ ok: true });
   });

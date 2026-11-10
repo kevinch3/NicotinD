@@ -255,6 +255,14 @@
                     </button>
                     <button
                       type="button"
+                      data-testid="user-action-copy-reset"
+                      class="w-full text-left px-4 py-2 text-sm text-theme-secondary hover:bg-theme-hover transition"
+                      (click)="userMenu.close(); issueResetLink(user)"
+                    >
+                      {{ 'admin.resetLink' | t }}
+                    </button>
+                    <button
+                      type="button"
                       data-testid="user-action-delete"
                       [disabled]="user.id === currentUserId()"
                       class="w-full text-left px-4 py-2 text-sm text-status-error hover:bg-theme-hover transition disabled:opacity-30 disabled:cursor-not-allowed"
@@ -322,6 +330,63 @@
           class="px-4 py-2 rounded-lg bg-theme-inverse text-theme-inverse text-sm font-semibold hover:opacity-90 transition disabled:opacity-50"
         >
           {{ (creating() ? 'admin.creating' : 'admin.createUser') | t }}
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Reset link (docs/email-invitations.md): the alternative to typing a
+     password for someone — they choose their own through the link. -->
+@if (resetLink(); as link) {
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+    appBottomChromeSafe
+    (click)="resetLink.set(null)"
+  >
+    <div
+      class="bg-theme-surface border border-theme rounded-xl p-6 w-full max-w-sm mx-4"
+      role="dialog"
+      aria-modal="true"
+      data-testid="reset-link-dialog"
+      (click)="$event.stopPropagation()"
+    >
+      <h3 class="text-sm font-semibold text-theme-primary mb-1">
+        {{ 'admin.resetLinkFor' | t: { username: link.username } }}
+      </h3>
+      <p class="text-xs text-theme-muted mb-4">
+        {{ 'admin.resetLinkHint' | t: { date: formatDateTime(link.expiresAt) } }}
+      </p>
+      <div class="flex gap-2">
+        <input
+          type="text"
+          readonly
+          [value]="link.link"
+          data-testid="reset-link"
+          (focus)="$any($event.target).select()"
+          class="min-w-0 flex-1 px-3 py-2 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary text-xs font-mono"
+        />
+        <button
+          type="button"
+          data-testid="reset-link-copy"
+          (click)="copyResetLink()"
+          class="px-3 py-2 rounded-lg bg-theme-inverse text-theme-inverse text-xs font-semibold hover:opacity-90 transition"
+        >
+          {{ 'invites.copy' | t }}
+        </button>
+      </div>
+      @if (link.localOnly) {
+        <p class="mt-3 text-xs text-status-warn" data-testid="reset-link-local-only">
+          {{ 'invites.localOnly' | t }}
+        </p>
+      }
+      <div class="flex justify-end mt-4">
+        <button
+          type="button"
+          (click)="resetLink.set(null)"
+          class="px-4 py-2 rounded-lg text-sm text-theme-secondary hover:text-theme-primary transition"
+        >
+          {{ 'invites.done' | t }}
         </button>
       </div>
     </div>

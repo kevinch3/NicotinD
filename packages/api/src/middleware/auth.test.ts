@@ -156,7 +156,12 @@ describe('a database failure is not an auth failure (#927)', () => {
       app.onError((e, c) => c.json({ error: 'handled', message: String(e) }, 500));
       app.use('/protected', authMiddleware(SECRET));
       app.get('/protected', (c) => c.json({ ok: true }));
-      const token = await signJwt({ sub: 'user-123', username: 'testuser', role: 'user' }, SECRET);
+      // An explicit `tv` keeps signing off the broken DB: this test is about the
+      // middleware's lookup, not the mint-time one.
+      const token = await signJwt(
+        { sub: 'user-123', username: 'testuser', role: 'user', tv: 0 },
+        SECRET,
+      );
       return await app.request('/protected', { headers: { Authorization: `Bearer ${token}` } });
     } finally {
       // mock.module is process-global; restore or every later file sees brokenDb.
@@ -243,5 +248,68 @@ describe('media key (#1329)', () => {
 
   it('is stable across calls, unlike a JWT', async () => {
     expect(await key()).toBe(await key());
+  });
+});
+
+// Session versions (docs/email-invitations.md): a password change bumps
+// `users.token_version`, and every token minted before it stops working.
+describe('authMiddleware — session version', () => {
+  const SECRET = 'test-secret';
+  let app: Hono<AuthEnv>;
+
+  beforeEach(() => {
+    testDb.run("UPDATE users SET token_version = 0 WHERE id = 'user-123'");
+    app = new Hono();
+    app.use('/protected', authMiddleware(SECRET));
+    app.get('/protected', (c) => c.json({ ok: true }));
+  });
+
+  const get = (token: string) =>
+    app.request('/protected', { headers: { Authorization: `Bearer ${token}` } });
+
+  it('stamps the current version into every minted token', async () => {
+    testDb.run("UPDATE users SET token_version = 4 WHERE id = 'user-123'");
+    const token = await signJwt({ sub: 'user-123', username: 'testuser', role: 'user' }, SECRET);
+    const claims = JSON.parse(atob(token.split('.')[1]));
+    expect(claims.tv).toBe(4);
+    expect((await get(token)).status).toBe(200);
+  });
+
+  it('refuses a token minted before a bump, with a stable code', async () => {
+    const old = await signJwt({ sub: 'user-123', username: 'testuser', role: 'user' }, SECRET);
+    testDb.run("UPDATE users SET token_version = 1 WHERE id = 'user-123'");
+    const res = await get(old);
+    expect(res.status).toBe(401);
+    expect((await res.json()).code).toBe('SESSION_REVOKED');
+  });
+
+  it('treats a pre-versioning token (no tv claim) as version 0', async () => {
+    const legacy = await signJwt(
+      { sub: 'user-123', username: 'testuser', role: 'user', tv: undefined },
+      SECRET,
+    );
+    // signJwt fills tv; craft a claim-less one the way an old binary minted it.
+    const jose = await import('jose');
+    const bare = await new jose.SignJWT({ sub: 'user-123', role: 'user' })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime('1h')
+      .sign(new TextEncoder().encode(SECRET));
+    expect((await get(legacy)).status).toBe(200);
+    expect((await get(bare)).status).toBe(200);
+    testDb.run("UPDATE users SET token_version = 1 WHERE id = 'user-123'");
+    expect((await get(bare)).status).toBe(401);
+  });
+
+  it('never ends share sessions — their subject is the link creator', async () => {
+    const jose = await import('jose');
+    const share = await new jose.SignJWT({ share: true, scope: 'read' })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setSubject('user-123')
+      .setIssuedAt()
+      .setExpirationTime('1h')
+      .sign(new TextEncoder().encode(SECRET));
+    testDb.run("UPDATE users SET token_version = 7 WHERE id = 'user-123'");
+    expect((await get(share)).status).toBe(200);
   });
 });

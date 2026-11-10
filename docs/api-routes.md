@@ -77,6 +77,10 @@ follow-up work, not part of the gate fix.
 | `POST`   | `/api/admin/invites`                     | Admin: mint an invite link (role, expiry, uses, note)       |
 | `POST`   | `/api/admin/invites/:id/link`            | Admin: new link for a pending invite (old one dies)         |
 | `DELETE` | `/api/admin/invites/:id`                 | Admin: revoke an invite                                     |
+| `PUT`    | `/api/me/account/password`               | Change own password; ends other sessions, returns new JWT   |
+| `POST`   | `/api/admin/password-resets`             | Admin: a 24 h single-use reset link for `{ userId }`        |
+| `POST`   | `/api/password-reset/inspect`            | Public: a reset token's state and account name              |
+| `POST`   | `/api/password-reset/complete`           | Public: set the password from a reset link, returns JWT     |
 | `GET`    | `/api/search?q=`                         | Unified search (local library + parallel network sources)   |
 | `GET`    | `/api/search/:id/network`                | Poll for Soulseek results                                   |
 | `POST`   | `/api/acquire`                           | Acquire from a URL (YouTube/Spotify/archive.org) via plugins |

@@ -79,6 +79,11 @@ export const PUBLIC_ROUTES: Array<{ route: string; reason: string }> = [
       'invitation landing: /inspect and /accept are reachable before an account exists, and the 256-bit invite token in the POST body is the credential (only its hash is stored); the admin half mounts under /api/admin/invites — see docs/email-invitations.md',
   },
   {
+    route: '/api/password-reset',
+    reason:
+      'password reset landing: /inspect and /complete serve someone who cannot sign in, and the single-use 256-bit reset token in the POST body is the credential (only its hash is stored); links are issued under /api/admin/password-resets — see docs/email-invitations.md',
+  },
+  {
     route: '/api',
     reason:
       'bare mount for streamingRoutes, whose only paths are /stream/:id, /cover/:id and /cover/remote — each covered by its own app.use(auth) registered earlier in index.ts. RESIDUAL RISK: a route added at this mount root would land on /api/<name> and be public; narrowing the mount is tracked separately',

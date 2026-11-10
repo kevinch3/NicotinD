@@ -14,6 +14,7 @@ import type { Database } from 'bun:sqlite';
 import type { AuthEnv } from '../middleware/auth.js';
 import { signJwt } from '../middleware/auth.js';
 import { recordAudit } from '../services/audit-log.js';
+import { sessionVersionOf } from '../services/session-version.js';
 import { candidateUrls } from '../services/pairing-urls.js';
 import type { RemoteAccess } from '../services/tailscale.js';
 import {
@@ -160,7 +161,7 @@ export function invitePublicRoutes(deps: InvitePublicRoutesDeps) {
       detail: `role=${user.role}`,
     });
     const token = await signJwt(
-      { sub: user.id, username: user.username, role: user.role },
+      { sub: user.id, username: user.username, role: user.role, tv: sessionVersionOf(db, user.id) },
       jwtSecret,
       jwtExpiresIn,
     );

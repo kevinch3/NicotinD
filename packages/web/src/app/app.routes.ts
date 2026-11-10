@@ -74,6 +74,16 @@ export const routes: Routes = [
     ),
   },
   {
+    // Reset-link landing (docs/email-invitations.md): `/reset-password#t=…`.
+    // Public for the same reason as /invite — whoever opens it cannot sign in.
+    path: 'reset-password',
+    loadComponent: lazy(() =>
+      import('./pages/reset-password/reset-password.component').then(
+        (m) => m.ResetPasswordComponent,
+      ),
+    ),
+  },
+  {
     path: 'setup',
     loadComponent: lazy(() =>
       import('./pages/setup/setup.component').then((m) => m.SetupComponent),
@@ -216,6 +226,14 @@ export const routes: Routes = [
         path: 'settings/about',
         loadComponent: lazy(() =>
           import('./pages/settings/about/about.component').then((m) => m.AboutComponent),
+        ),
+      },
+      {
+        path: 'settings/account',
+        loadComponent: lazy(() =>
+          import('./pages/settings/account/account-settings.component').then(
+            (m) => m.AccountSettingsComponent,
+          ),
         ),
       },
       {

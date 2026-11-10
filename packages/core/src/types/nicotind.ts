@@ -72,6 +72,11 @@ export interface JwtPayload {
   /** Set on QR-paired sessions — points at a paired_devices row; the refresh
    * endpoint rejects tokens whose row was revoked (deleted). */
   deviceId?: string;
+  /** Session version (docs/email-invitations.md): the `users.token_version` the
+   *  token was minted at. A password change or reset bumps the column, and every
+   *  token carrying an older value stops working — "sign out everywhere" for
+   *  otherwise stateless JWTs. Absent on tokens minted before it existed = 0. */
+  tv?: number;
   iat: number;
   exp: number;
 }

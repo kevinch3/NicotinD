@@ -1,6 +1,6 @@
 # Invitations, email delivery & password recovery
 
-> **Status: increment 1 (link invites) shipped; increments 2–5 planned.** The plan below
+> **Status: increments 1 (link invites) and 2 (account security) shipped; 3–5 planned.** The plan below
 > (2026-11-09) is the agreed shape, so each increment can be built, tested and merged
 > on its own. Coordinate with [oauth-auth.md](oauth-auth.md) (also unbuilt): it too adds a
 > user email and `NICOTIND_PUBLIC_URL`, and both must land on the *same* column and the
@@ -45,6 +45,34 @@ provider-agnostic**: SMTP is the baseline, so Mailgun is a preset, not a depende
   `invite-accept.component.spec.ts`, `lib/invite-link.spec.ts`, and the e2e
   `invite-link.spec.ts` (a fresh browser context joins at the preset role; the reused link reads
   *used*; a revoked link reads *revoked*).
+
+## Shipped: account security without email (increment 2)
+
+- **Session versions**: `users.token_version`, carried in every JWT as `tv` (`JwtPayload.tv`).
+  `signJwt` stamps the current value itself (via `sessionVersionOf`), so no mint site can
+  forget it; `authMiddleware` refuses a mismatch with `401 SESSION_REVOKED`
+  (`sessionVersionMatches`). A token minted before this existed has no `tv` and reads as 0, so
+  nobody was signed out by the upgrade. Share tokens are exempt — their subject is the link's
+  creator. `bumpSessionVersion` is "sign out everywhere".
+- **Every password write bumps it**: the user's own change (`PUT /api/me/account/password`,
+  `changePassword` — proves the current password, returns a fresh token for this device and keeps
+  a paired device's `deviceId`), a reset link (`completeReset`), and the admin's existing
+  *Set password…* (`PUT /api/admin/users/:id/password`), which now also ends the user's sessions.
+- **OpenSubsonic**: the upstream's cached internal session dies with a bump while the client's
+  API key is still good, so `internalUpstream` re-mints once on `SESSION_REVOKED`.
+- **Reset links**: `password_resets` (hashed, single use, one live link per user, 24 h when an
+  admin issues it — `ADMIN_RESET_TTL_MS`). `passwordResetAdminRoutes` at
+  `/api/admin/password-resets`; `passwordResetPublicRoutes` at `/api/password-reset`
+  (`/inspect`, `/complete`, rate-limited). Spending is a compare-and-swap, so two tabs cannot
+  both set a password; a short password leaves the link unspent.
+- **Web**: *Copy reset link* in the users table's ⋯ menu (a dialog showing the link once, with
+  the same local-only warning as invites); the public `ResetPasswordComponent` at
+  `/reset-password`; `AccountSettingsComponent` at `/settings/account` (linked from Settings →
+  Account), the first place a user can change their own password.
+- **Tests**: `routes/password-reset.test.ts`, the session-version block in
+  `middleware/auth.test.ts`, `opensubsonic-upstream.test.ts`, the account/reset/user-management
+  specs, and the e2e `account-security.spec.ts` (reset link → new password works, old one and
+  old sessions do not; Settings change keeps this browser signed in and ends the others).
 
 ## Today (verified)
 
@@ -160,7 +188,7 @@ falls back to the link. Forgot password then reads "Ask your server admin."
    - Ships: `invites` table (hashed token, role ≤ inviter, expiry, uses ≤ 25, revoked); admin API; invites card with copy and QR; `/invite` accept page.
    - Invites work while public signup is closed.
    - Tests: API unit tests (expiry, reuse, role cap, revoke) and e2e `invite-link.spec` (fresh context accepts, reopen shows *used*).
-2. **Account security, still without email.**
+2. **Account security, still without email.** ✅ Shipped — see above.
    - Ships: `token_version` session revocation, `/settings/account` with change password, admin *Copy reset link*, and `/reset-password`.
    - Tests: e2e `admin-reset-link.spec` (old password fails afterwards).
 3. **Mail transport.**

@@ -90,3 +90,5 @@ Clicking **Got it** calls `POST /api/auth/dismiss-welcome` which sets `welcome_d
   chose — **even while public signup is closed**. See [email-invitations.md](email-invitations.md).
 
 The existing Admin panel at `/admin` provides user management (list, create, reset password, disable, delete) without requiring API calls.
+Setting a password for someone, or handing them a *reset link* (they choose the password), signs
+that user out everywhere — see [email-invitations.md](email-invitations.md).

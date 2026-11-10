@@ -7,6 +7,7 @@ import { AuthService } from '../../../services/auth.service';
 import { ConfirmService } from '../../../services/confirm.service';
 import { SystemApiService } from '../../../services/api/system-api.service';
 import { InvitesApiService } from '../../../services/api/invites-api.service';
+import { AccountApiService } from '../../../services/api/account-api.service';
 import type { AdminUser } from '../../../services/api/api-types';
 import { ROLES } from '../../../../types/core';
 import { expandAllGroups } from '../../../../testing/expand-groups';
@@ -39,6 +40,7 @@ describe('UserManagementPanelComponent', () => {
       deleteUser?: unknown;
       registration?: { enabled: boolean; configurable: boolean };
       setRegistration?: unknown;
+      issueResetLink?: unknown;
     } = {},
   ) {
     TestBed.resetTestingModule();
@@ -48,6 +50,9 @@ describe('UserManagementPanelComponent', () => {
     const setRegistration =
       over.setRegistration ?? vi.fn((enabled: boolean) => of({ ...registration, enabled }));
     const ask = vi.fn(async () => over.confirm ?? true);
+    const issueResetLink =
+      over.issueResetLink ??
+      vi.fn(() => of({ path: '/reset-password#t=rt', urls: ['https://box.ts.net'], expiresAt: 1 }));
     await TestBed.configureTestingModule({
       imports: [UserManagementPanelComponent],
       providers: [
@@ -69,6 +74,7 @@ describe('UserManagementPanelComponent', () => {
         { provide: ConfirmService, useValue: { ask } },
         // The embedded invites card has its own spec; here it only must not throw.
         { provide: InvitesApiService, useValue: { list: vi.fn(() => of({ invites: [] })) } },
+        { provide: AccountApiService, useValue: { issueResetLink } },
       ],
     }).compileComponents();
 
@@ -84,6 +90,7 @@ describe('UserManagementPanelComponent', () => {
       deleteUser,
       ask,
       setRegistration,
+      issueResetLink,
     };
   }
 
@@ -361,5 +368,22 @@ describe('UserManagementPanelComponent', () => {
         true,
       );
     });
+  });
+
+  // docs/email-invitations.md increment 2: the admin's alternative to typing a
+  // password for someone.
+  it('issues a reset link from the row menu and shows it once', async () => {
+    const { fixture, el, issueResetLink } = await mountWithUsers();
+    (el.querySelector('[data-testid="user-actions-toggle"]') as HTMLElement).click();
+    fixture.detectChanges();
+    (el.querySelector('[data-testid="user-action-copy-reset"]') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(issueResetLink).toHaveBeenCalledWith('u1');
+    const input = el.querySelector('[data-testid="reset-link"]') as HTMLInputElement;
+    expect(input.value).toBe('https://box.ts.net/reset-password#t=rt');
+    expect(el.querySelector('[data-testid="reset-link-local-only"]')).toBeNull();
+    expect(BASE_CATALOG['admin.resetLink']).toBeTruthy();
+    fixture.destroy();
   });
 });
