@@ -50,8 +50,9 @@ newer server, but a bundle from an older one is applied through the same reconci
 
 ## Secrets are opt-out on the wire, opt-in in the file
 
-`GET /api/admin/config/export` redacts credentials (`plugin_kv.value`, `users.password_hash`) unless
-called with `?secrets=1`, so the default download is safe to attach to an issue. The Admin panel has
+`GET /api/admin/config/export` redacts credentials (`plugin_kv.value`, `users.password_hash`, and
+the SMTP password's whole `app_settings` row, key `mail_secret` — `secretRows`) unless called with
+`?secrets=1`, so the default download is safe to attach to an issue. The Admin panel has
 an "Include credentials" checkbox for the migration case.
 
 Redaction is honoured on the way back in: importing a bundle whose `includesSecrets` is false

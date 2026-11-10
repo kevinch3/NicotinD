@@ -50,4 +50,41 @@ describe('internalUpstream', () => {
     await up({ ...user, role: 'user' }, '/b');
     expect(mints).toBe(3);
   });
+
+  // A password change bumps the session version; the cached internal session
+  // dies with it, but the Subsonic client's API key is still good.
+  it('re-mints once when its cached session was revoked', async () => {
+    let mints = 0;
+    let calls = 0;
+    const up = internalUpstream(
+      () => {
+        calls++;
+        return calls === 2
+          ? Response.json({ error: 'Session ended', code: 'SESSION_REVOKED' }, { status: 401 })
+          : new Response('ok');
+      },
+      SECRET,
+      () => 0,
+      (...args) => {
+        mints++;
+        return signJwt(...args);
+      },
+    );
+    const user = { id: 'u1', username: 'ana', role: 'listener' };
+    await up(user, '/api/a');
+    const res = await up(user, '/api/b');
+    expect(res.status).toBe(200);
+    expect(calls).toBe(3);
+    expect(mints).toBe(2);
+  });
+
+  it('passes any other 401 straight through', async () => {
+    const up = internalUpstream(
+      () => Response.json({ error: 'nope' }, { status: 401 }),
+      SECRET,
+      () => 0,
+    );
+    const res = await up({ id: 'u1', username: 'ana', role: 'listener' }, '/api/a');
+    expect(res.status).toBe(401);
+  });
 });

@@ -120,9 +120,9 @@ column behind it. Two things matter for roles specifically:
 - **Your own row is a plain badge, not a disabled control.** `PUT /users/:id/role` still 400s a
   self-change server-side; the UI just doesn't offer something that cannot work.
 
-Every remaining action (Enable/Disable, Reset password, Delete) is behind one `⋯` menu; Delete
+Every remaining action (Enable/Disable, Reset password, Copy reset link, Delete) is behind one `⋯` menu; Delete
 routes through the shared `ConfirmService` host rather than a modal this page hand-rolls. All four
-mutations remain `recordAudit`-ed.
+mutations remain `recordAudit`-ed, and so does issuing a reset link.
 
 The e2e selector contract (`packages/e2e/tests/roles.spec.ts` + `tests/admin-users.spec.ts`):
 `user-role-trigger`, `user-role-option-<role>`, `user-role-static`, `user-actions-toggle`,

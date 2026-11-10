@@ -9,6 +9,7 @@ import { TranslatePipe } from '../../../pipes/translate.pipe';
 import { TvNavGroupDirective } from '../../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 import { BottomChromeSafeDirective } from '../../../directives/bottom-chrome-safe.directive';
+import { InvitesCardComponent } from './invites-card.component';
 import { userActivityDetail, userActivityLabel } from '../../../lib/user-activity';
 import type { Translator } from '../../../lib/relative-time';
 import { AuthService } from '../../../services/auth.service';
@@ -16,6 +17,12 @@ import { ConfirmService } from '../../../services/confirm.service';
 import { SystemApiService } from '../../../services/api/system-api.service';
 import type { AdminUser } from '../../../services/api/api-types';
 import { TranslateService } from '../../../services/translate.service';
+import { AccountApiService } from '../../../services/api/account-api.service';
+import { MailApiService } from '../../../services/api/mail-api.service';
+import { mailReasonKey } from '../email-delivery/email-delivery-panel.component';
+import { ToastService } from '../../../services/toast.service';
+import { buildInviteLink } from '../../../lib/invite-link';
+import { httpErrorMessageI18n } from '../../../lib/http-error';
 
 /**
  * Admin card for user management: the users table with role/status changes,
@@ -41,6 +48,7 @@ import { TranslateService } from '../../../services/translate.service';
     TvNavGroupDirective,
     TvNavItemDirective,
     BottomChromeSafeDirective,
+    InvitesCardComponent,
   ],
   templateUrl: './user-management-panel.component.html',
 })
@@ -49,6 +57,20 @@ export class UserManagementPanelComponent implements OnInit {
   private readonly auth = inject(AuthService);
   private readonly confirm = inject(ConfirmService);
   readonly i18n = inject(TranslateService);
+  private readonly account = inject(AccountApiService);
+  private readonly mailApi = inject(MailApiService);
+  private readonly toast = inject(ToastService);
+
+  /** Whether the server can send mail — gates *Email reset link*. False until known. */
+  readonly mailEnabled = signal(false);
+
+  /** The reset link just issued for a user; shown once, like an invite link. */
+  readonly resetLink = signal<{
+    username: string;
+    link: string;
+    localOnly: boolean;
+    expiresAt: number;
+  } | null>(null);
 
   readonly users = signal<AdminUser[]>([]);
   readonly loading = signal(true);
@@ -79,6 +101,47 @@ export class UserManagementPanelComponent implements OnInit {
   ngOnInit(): void {
     void this.loadUsers();
     void this.loadSignup();
+    void this.loadMailStatus();
+  }
+
+  /** Non-fatal, like the signup switch: unknown reads as "off". */
+  private async loadMailStatus(): Promise<void> {
+    try {
+      const view = await firstValueFrom(this.mailApi.get());
+      this.mailEnabled.set(view.effectiveTransport !== 'off');
+    } catch {
+      this.mailEnabled.set(false);
+    }
+  }
+
+  /** Why *Email reset link* is unavailable for this user, as an i18n key; null when it is. */
+  emailResetBlockedKey(user: AdminUser): string | null {
+    if (!this.mailEnabled()) return 'admin.emailResetNeedsMail';
+    if (!user.email || !user.emailVerified) return 'admin.emailResetNeedsEmail';
+    return null;
+  }
+
+  /**
+   * The same 24 h link as *Copy reset link*, mailed to the user's verified
+   * address instead of shown — the admin never sees it.
+   */
+  async emailResetLink(user: AdminUser): Promise<void> {
+    if (this.emailResetBlockedKey(user)) return;
+    try {
+      const res = await firstValueFrom(this.account.emailResetLink(user.id));
+      if (res.mail.ok) {
+        this.toast.show({
+          message: this.i18n.t('admin.emailResetSent', { username: user.username }),
+          kind: 'success',
+        });
+      } else {
+        this.error.set(
+          `${this.i18n.t('admin.emailResetFailed')} ${this.i18n.t(mailReasonKey(res.mail.reason))}`,
+        );
+      }
+    } catch (err) {
+      this.error.set(httpErrorMessageI18n(err, this.i18n, this.i18n.t('admin.emailResetFailed')));
+    }
   }
 
   /** Non-fatal: a failure here must not blank the users table beside it. */
@@ -177,6 +240,31 @@ export class UserManagementPanelComponent implements OnInit {
     } finally {
       this.resetting.set(false);
     }
+  }
+
+  /**
+   * A link the user opens to choose their own password — the alternative to an
+   * admin typing one for them. Issuing replaces any earlier unused link.
+   */
+  async issueResetLink(user: AdminUser): Promise<void> {
+    try {
+      const res = await firstValueFrom(this.account.issueResetLink(user.id));
+      const { link, localOnly } = buildInviteLink(res.urls, res.path, window.location.origin);
+      this.resetLink.set({ username: user.username, link, localOnly, expiresAt: res.expiresAt });
+    } catch (err) {
+      this.error.set(httpErrorMessageI18n(err, this.i18n, this.i18n.t('admin.resetLinkFailed')));
+    }
+  }
+
+  copyResetLink(): void {
+    const link = this.resetLink();
+    if (!link) return;
+    navigator.clipboard?.writeText(link.link).catch(() => {});
+    this.toast.show({ message: this.i18n.t('admin.resetLinkCopied'), kind: 'success' });
+  }
+
+  formatDateTime(ms: number): string {
+    return new Date(ms).toLocaleString();
   }
 
   async handleCreateUser(): Promise<void> {

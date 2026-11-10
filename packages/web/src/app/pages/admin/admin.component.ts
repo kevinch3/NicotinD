@@ -4,6 +4,7 @@ import { SettingsGroupComponent } from '../../components/settings-group/settings
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { RadioPollsCardComponent } from './radio-polls/radio-polls-card.component';
 import { UserManagementPanelComponent } from './user-management/user-management-panel.component';
+import { EmailDeliveryPanelComponent } from './email-delivery/email-delivery-panel.component';
 import { LibraryProcessingPanelComponent } from './library-processing/library-processing-panel.component';
 import { SystemHealthPanelComponent } from './system-health/system-health-panel.component';
 import { LibraryMaintenancePanelComponent } from './library-maintenance/library-maintenance-panel.component';
@@ -35,6 +36,7 @@ import { ReviewFlagsPanelComponent } from './review-flags/review-flags-panel.com
     SettingsGroupComponent,
     RadioPollsCardComponent,
     UserManagementPanelComponent,
+    EmailDeliveryPanelComponent,
     LibraryProcessingPanelComponent,
     SystemHealthPanelComponent,
     LibraryMaintenancePanelComponent,

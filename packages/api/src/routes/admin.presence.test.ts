@@ -115,6 +115,25 @@ describe('admin /users presence merge', () => {
     expect(users.find((u) => u.id === 'never1')!.last_seen_at).toBeNull();
   });
 
+  it('ships the email and whether it is verified, not when (docs/email-invitations.md)', async () => {
+    seedUser('mail1', 'alice');
+    seedUser('mail2', 'bob');
+    seedUser('none1', 'carol');
+    testDb.run(
+      "UPDATE users SET email = 'alice@example.com', email_verified_at = 1 WHERE id = 'mail1'",
+    );
+    testDb.run("UPDATE users SET email = 'bob@example.com' WHERE id = 'mail2'");
+
+    const app = authedAdmin(new Hono<AuthEnv>().route('/', adminRoutes({ musicDir: '/music' })));
+    const users = (await (await app.request('/users')).json()) as Array<Record<string, unknown>>;
+    const pick = (id: string) => users.find((u) => u.id === id)!;
+
+    expect(pick('mail1')).toMatchObject({ email: 'alice@example.com', emailVerified: true });
+    expect(pick('mail2')).toMatchObject({ email: 'bob@example.com', emailVerified: false });
+    expect(pick('none1')).toMatchObject({ email: null, emailVerified: false });
+    expect(pick('mail1')).not.toHaveProperty('email_verified_at');
+  });
+
   it('orders the list by activity: online first, then most recently seen, never last', async () => {
     // Deliberately seeded so created_at ASC (the old order) would give the
     // opposite answer to the one we want.

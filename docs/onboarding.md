@@ -85,5 +85,17 @@ Clicking **Got it** calls `POST /api/auth/dismiss-welcome` which sets `welcome_d
 
 - First admin: always open via `/api/setup/complete` or `/api/auth/register`
 - Subsequent users: admin-only via `POST /api/admin/users` (or `registrationEnabled: true` in config enables self-registration for all)
+- Invited users: an admin mints a link in Admin → User Management → **Invitations**; the friend
+  opens `/invite#t=…`, picks their own username and password, and joins at the role the admin
+  chose — **even while public signup is closed**. See [email-invitations.md](email-invitations.md).
 
 The existing Admin panel at `/admin` provides user management (list, create, reset password, disable, delete) without requiring API calls.
+Setting a password for someone, or handing them a *reset link* (they choose the password), signs
+that user out everywhere — see [email-invitations.md](email-invitations.md).
+
+**Forgot password** exists once the admin turns on *Password recovery by email* in Admin → Email
+delivery (default off, and only while email delivery is on): the login page then links to
+`/forgot-password`, which mails a 30-minute reset link to the account's **verified** address.
+Users add and verify an address in Settings → Account (an emailed invite verifies it at sign-up).
+With recovery off, the login page says "Ask your server admin", who can still copy — or, with mail
+on, email — a reset link from the users table.

@@ -27,6 +27,7 @@ export type IconName =
   | 'palette'
   | 'headphones'
   | 'user'
+  | 'mail'
   | 'sliders'
   | 'speaker'
   | 'smartphone'

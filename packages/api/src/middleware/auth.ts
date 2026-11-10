@@ -3,6 +3,7 @@ import * as jose from 'jose';
 import type { JwtPayload } from '@nicotind/core';
 import { getDatabase } from '../db.js';
 import { isMediaKey, MEDIA_PATH_RE, verifyMediaKey } from '../services/media-key.js';
+import { sessionVersionMatches, sessionVersionOf } from '../services/session-version.js';
 
 export type AuthEnv = {
   Variables: {
@@ -50,13 +51,19 @@ export function authMiddleware(jwtSecret: string) {
     // error handler as a 5xx, which is what a storage failure is.
     const db = getDatabase();
     const user = db
-      .query<{ status: string }, [string]>(
-        "SELECT COALESCE(status, 'active') as status FROM users WHERE id = ?",
+      .query<{ status: string; token_version: number }, [string]>(
+        "SELECT COALESCE(status, 'active') as status, COALESCE(token_version, 0) as token_version FROM users WHERE id = ?",
       )
       .get(jwtPayload.sub);
 
     if (!user || user.status === 'disabled') {
       return c.json({ error: 'Account disabled' }, 403);
+    }
+
+    // A password change/reset bumped the version: every older session is over.
+    // 401 (not 403) so clients do exactly what they do for an expired token.
+    if (!sessionVersionMatches(jwtPayload, user.token_version)) {
+      return c.json({ error: 'Session ended — sign in again', code: 'SESSION_REVOKED' }, 401);
     }
 
     c.set('user', jwtPayload);
@@ -67,13 +74,33 @@ export function authMiddleware(jwtSecret: string) {
   });
 }
 
+/**
+ * The session version a new token is minted at. Read here rather than at each
+ * of the mint sites (login, register, setup, refresh, pairing, invites, the
+ * OpenSubsonic upstream) so none of them can forget it — a forgotten `tv` would
+ * mint a token that dies the moment the user's version is first bumped.
+ *
+ * No database means a unit test that exercises signing alone; there is no
+ * session state to read, and version 0 is what such a user would have.
+ */
+function mintVersion(userId: string): number {
+  let db;
+  try {
+    db = getDatabase();
+  } catch {
+    return 0;
+  }
+  return sessionVersionOf(db, userId);
+}
+
 export async function signJwt(
   payload: Omit<JwtPayload, 'iat' | 'exp'>,
   secret: string,
   expiresIn = '24h',
 ): Promise<string> {
   const secretKey = new TextEncoder().encode(secret);
-  return new jose.SignJWT(payload as unknown as jose.JWTPayload)
+  const claims = { ...payload, tv: payload.tv ?? mintVersion(payload.sub) };
+  return new jose.SignJWT(claims as unknown as jose.JWTPayload)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime(expiresIn)

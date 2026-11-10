@@ -55,6 +55,7 @@ describe('IconComponent', () => {
       'palette',
       'headphones',
       'user',
+      'mail',
       'sliders',
       'speaker',
       'smartphone',

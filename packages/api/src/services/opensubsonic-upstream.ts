@@ -34,19 +34,43 @@ export function internalUpstream(
   // change re-mints at once rather than waiting the session out.
   const sessions = new Map<string, { token: string; role: string; until: number }>();
 
-  return async (user, path, init = {}) => {
-    let session = sessions.get(user.id);
-    if (!session || session.until <= now() || session.role !== user.role) {
+  const session = async (user: SubsonicUser) => {
+    let current = sessions.get(user.id);
+    if (!current || current.until <= now() || current.role !== user.role) {
       const token = await sign(
         { sub: user.id, username: user.username, role: asRole(user.role) },
         jwtSecret,
         TOKEN_TTL,
       );
-      session = { token, role: user.role, until: now() + REUSE_MS };
-      sessions.set(user.id, session);
+      current = { token, role: user.role, until: now() + REUSE_MS };
+      sessions.set(user.id, current);
     }
+    return current.token;
+  };
+  const send = async (user: SubsonicUser, path: string, init: RequestInit) => {
     const headers = new Headers(init.headers);
-    headers.set('Authorization', `Bearer ${session.token}`);
+    headers.set('Authorization', `Bearer ${await session(user)}`);
     return fetchApp(new Request(`http://nicotind.internal${path}`, { ...init, headers }));
+  };
+
+  return async (user, path, init = {}) => {
+    const res = await send(user, path, init);
+    // A password change ends every session (`token_version`), including the
+    // one cached here — but the Subsonic client authenticated with its API key,
+    // which is still good. Re-mint once instead of failing calls for the rest
+    // of the cache window.
+    if (
+      res.status === 401 &&
+      (
+        await res
+          .clone()
+          .json()
+          .catch(() => null)
+      )?.code === 'SESSION_REVOKED'
+    ) {
+      sessions.delete(user.id);
+      return send(user, path, init);
+    }
+    return res;
   };
 }

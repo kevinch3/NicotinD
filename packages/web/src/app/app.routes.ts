@@ -65,6 +65,43 @@ export const routes: Routes = [
     ),
   },
   {
+    // Invitation landing (docs/email-invitations.md): `/invite#t=…`, token in
+    // the fragment like /pair. No guards — the invitee has no account yet, and
+    // an already-signed-in visitor is handled on the page, not bounced.
+    path: 'invite',
+    loadComponent: lazy(() =>
+      import('./pages/invite/invite-accept.component').then((m) => m.InviteAcceptComponent),
+    ),
+  },
+  {
+    // Reset-link landing (docs/email-invitations.md): `/reset-password#t=…`.
+    // Public for the same reason as /invite — whoever opens it cannot sign in.
+    path: 'reset-password',
+    loadComponent: lazy(() =>
+      import('./pages/reset-password/reset-password.component').then(
+        (m) => m.ResetPasswordComponent,
+      ),
+    ),
+  },
+  {
+    // "Forgot password?" (docs/email-invitations.md, increment 5). Public for the
+    // same reason as /reset-password; the page itself says when recovery is off.
+    path: 'forgot-password',
+    loadComponent: lazy(() =>
+      import('./pages/forgot-password/forgot-password.component').then(
+        (m) => m.ForgotPasswordComponent,
+      ),
+    ),
+  },
+  {
+    // Email verification landing: `/verify-email#t=…`. No guards — the link may
+    // be opened on a device that was never signed in.
+    path: 'verify-email',
+    loadComponent: lazy(() =>
+      import('./pages/verify-email/verify-email.component').then((m) => m.VerifyEmailComponent),
+    ),
+  },
+  {
     path: 'setup',
     loadComponent: lazy(() =>
       import('./pages/setup/setup.component').then((m) => m.SetupComponent),
@@ -207,6 +244,14 @@ export const routes: Routes = [
         path: 'settings/about',
         loadComponent: lazy(() =>
           import('./pages/settings/about/about.component').then((m) => m.AboutComponent),
+        ),
+      },
+      {
+        path: 'settings/account',
+        loadComponent: lazy(() =>
+          import('./pages/settings/account/account-settings.component').then(
+            (m) => m.AccountSettingsComponent,
+          ),
         ),
       },
       {

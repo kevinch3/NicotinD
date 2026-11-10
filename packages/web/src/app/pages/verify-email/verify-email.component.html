@@ -1,0 +1,40 @@
+<div class="relative min-h-screen flex items-center justify-center overflow-hidden bg-zinc-950 px-6">
+  <div
+    class="relative z-10 w-full max-w-sm rounded-2xl border border-white/10 bg-white/5 p-8 shadow-2xl shadow-black/40 backdrop-blur-xl"
+    data-testid="verify-page"
+  >
+    <div class="mb-5 flex justify-center">
+      <img src="/icons/icon.svg" alt="" class="h-14 w-14 rounded-2xl shadow-lg shadow-indigo-500/40" />
+    </div>
+    <div data-testid="verify-state" [attr.data-state]="state()" class="text-center">
+      @switch (state()) {
+        @case ('loading') {
+          <p class="text-sm text-white/60">{{ 'verifyEmail.checking' | t }}</p>
+        }
+        @case ('done') {
+          <h1 class="text-xl font-bold text-white mb-2">{{ 'verifyEmail.doneTitle' | t }}</h1>
+          <p class="text-sm text-emerald-400 break-all" data-testid="verify-email">
+            {{ 'verifyEmail.done' | t: { email: email() } }}
+          </p>
+        }
+        @default {
+          <h1 class="text-xl font-bold text-white mb-2">{{ 'verifyEmail.unavailableTitle' | t }}</h1>
+          <p class="text-sm text-white/60" data-testid="verify-state-message">
+            {{ 'verifyEmail.state.' + state() | t }}
+          </p>
+        }
+      }
+      @if (state() !== 'loading') {
+        @if (auth.isAuthenticated()) {
+          <a routerLink="/settings/account" data-testid="verify-continue" class="mt-6 block text-sm text-white/50 underline hover:text-white/80">
+            {{ 'verifyEmail.toAccount' | t }}
+          </a>
+        } @else {
+          <a routerLink="/login" data-testid="verify-continue" class="mt-6 block text-sm text-white/50 underline hover:text-white/80">
+            {{ 'verifyEmail.toLogin' | t }}
+          </a>
+        }
+      }
+    </div>
+  </div>
+</div>

@@ -10,6 +10,7 @@
  */
 import type { Database } from 'bun:sqlite';
 import { createLogger } from '@nicotind/core';
+import { MAIL_SECRET_KEY } from './mail/settings.js';
 
 const log = createLogger('config-export');
 
@@ -37,6 +38,13 @@ type Row = Record<string, unknown>;
 interface SectionSpec {
   /** Columns holding credentials; blanked unless the export opts into secrets. */
   secretColumns?: string[];
+  /**
+   * Whole rows that are credentials, matched on `column` — for a key/value
+   * table where one key is a secret and its neighbours are not. Left out of the
+   * bundle entirely unless the export opts into secrets, so a redacted import
+   * cannot touch the target's copy.
+   */
+  secretRows?: { column: string; values: string[] };
 }
 
 /**
@@ -47,7 +55,8 @@ interface SectionSpec {
  * that doesn't match the obvious guess.
  */
 export const CONFIG_SECTIONS: Record<ConfigSection, SectionSpec> = {
-  app_settings: {},
+  // The SMTP password row (services/mail/settings.ts).
+  app_settings: { secretRows: { column: 'key', values: [MAIL_SECRET_KEY] } },
   plugins: {},
   plugin_kv: { secretColumns: ['value'] },
   users: { secretColumns: ['password_hash'] },
@@ -123,7 +132,11 @@ export function exportConfig(
 
   for (const [name, spec] of Object.entries(CONFIG_SECTIONS) as [ConfigSection, SectionSpec][]) {
     if (!columnsOf(db, name)) continue;
-    const rows = db.query<Row, []>(`SELECT * FROM ${name}`).all();
+    let rows = db.query<Row, []>(`SELECT * FROM ${name}`).all();
+    if (!includeSecrets && spec.secretRows) {
+      const { column, values } = spec.secretRows;
+      rows = rows.filter((row) => !values.includes(row[column] as string));
+    }
     if (!includeSecrets && spec.secretColumns) {
       for (const row of rows) {
         for (const col of spec.secretColumns) {
@@ -189,7 +202,7 @@ export function previewImport(db: Database, bundle: ConfigBundle): ImportPlan {
 
   if (!bundle.includesSecrets) {
     warnings.push(
-      'This bundle was exported without secrets: plugin credentials and user passwords are blank and will be preserved from this install rather than overwritten.',
+      'This bundle was exported without secrets: plugin credentials, user passwords and the SMTP password are blank and will be preserved from this install rather than overwritten.',
     );
   }
 

@@ -20,6 +20,7 @@ const ICON_SET = {
   palette: true,
   headphones: true,
   user: true,
+  mail: true,
   sliders: true,
   speaker: true,
   smartphone: true,

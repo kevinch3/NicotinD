@@ -43,6 +43,14 @@ import { usersRoutes } from './routes/users.js';
 import { shareRoutes } from './routes/share.js';
 import { radioPollAdminRoutes, radioPollPublicRoutes } from './routes/radio-polls.js';
 import { devicesRoutes } from './routes/devices.js';
+import { inviteAdminRoutes, invitePublicRoutes } from './routes/invites.js';
+import { passwordResetAdminRoutes, passwordResetPublicRoutes } from './routes/password-reset.js';
+import { mailAdminRoutes } from './routes/mail.js';
+import { MailService } from './services/mail/mailer.js';
+import { MailSettingsStore } from './services/mail/settings.js';
+import { accountRoutes } from './routes/account.js';
+import { recoveryPublicRoutes, withRecovery } from './routes/recovery.js';
+import { RecoverySetting } from './services/recovery-setting.js';
 import { agentTokensRoutes } from './routes/agent-tokens.js';
 import { subsonicKeysRoutes } from './routes/subsonic-keys.js';
 import { openSubsonicRoutes } from './routes/opensubsonic.js';
@@ -629,10 +637,27 @@ export function createApp({
   acquisitionOnRef.enabled = acquisitionOn;
   const requireAcquisitionEnabled = requireAcquisitionEnabledMiddleware(acquisitionOn);
 
-  // Public routes
+  // Built before any route that needs them: link bases (Funnel) and mail are
+  // shared by invites, resets, account email and recovery.
+  const remoteAccess = new RemoteAccess(db);
+  // Mail (docs/email-invitations.md): one MailService for the process, so every
+  // sender (invites, resets, verification, notices) shares the daily cap and the
+  // send log. The operator's public URL is the first base of every link minted.
+  const mailSettings = new MailSettingsStore(db);
+  const mail = new MailService({ db, settings: mailSettings });
+  const publicUrl = () => mailSettings.publicUrl();
+  // "Forgot password?": default off, and only ever on while mail is.
+  const recovery = new RecoverySetting(db, () => mail.status().enabled);
+
+  // Public routes. Self-service recovery (docs/email-invitations.md, increment
+  // 5: recovery-status, forgot, verify-email) shares the /api/auth group — one
+  // mount per prefix, so check:route-auth audits it as the group it is.
   app.route(
     '/api/auth',
-    authRoutes(config.jwt.secret, config.jwt.expiresIn, registrationOn, acquisitionOn),
+    withRecovery(
+      authRoutes(config.jwt.secret, config.jwt.expiresIn, registrationOn, acquisitionOn),
+      recoveryPublicRoutes({ db, mail, recovery, remoteAccess, publicUrl }),
+    ),
   );
   app.route(
     '/api/setup',
@@ -760,6 +785,7 @@ export function createApp({
       processing: processingRef.current,
       maintenance,
       version,
+      mail,
     }),
   );
   // MCP agent (issue #232): agent-token-authenticated (not JWT), refiner-capped.
@@ -805,6 +831,18 @@ export function createApp({
   app.route('/api/history', historyRoutes(historyEnabled));
   app.route('/api/privacy', privacyRoutes(historyEnabled));
   app.route('/api/me', userPreferencesRoutes());
+  // Own prefix: a second mount at /api/me would be one group to the route-auth audit.
+  app.route(
+    '/api/me/account',
+    accountRoutes({
+      db,
+      jwtSecret: config.jwt.secret,
+      jwtExpiresIn: config.jwt.expiresIn,
+      mail,
+      remoteAccess,
+      publicUrl,
+    }),
+  );
   app.route('/api/recommendations', recommendationRoutes());
   app.route('/api/playback', playbackRoutes());
   // Partial-track discard (#810) deletes files, so it carries the same
@@ -902,7 +940,6 @@ export function createApp({
   // Device pairing (QR link): claim is public (the pairing token is the
   // credential), so /api/devices is deliberately NOT in the blanket-auth list —
   // pair/list/revoke apply auth per-route.
-  const remoteAccess = new RemoteAccess(db);
   app.route(
     '/api/devices',
     devicesRoutes({
@@ -913,6 +950,29 @@ export function createApp({
     }),
   );
   app.route('/api/admin/remote-access', remoteAccessRoutes(remoteAccess));
+  // Invitations (docs/email-invitations.md): the admin half rides the
+  // /api/admin/* blanket auth; the public half takes the invite token as its
+  // credential, the same trust model as the pairing claim.
+  app.route('/api/admin/mail', mailAdminRoutes({ db, mail, remoteAccess, recovery }));
+  app.route('/api/admin/invites', inviteAdminRoutes({ db, remoteAccess, publicUrl, mail }));
+  app.route(
+    '/api/invites',
+    invitePublicRoutes({ db, jwtSecret: config.jwt.secret, jwtExpiresIn: config.jwt.expiresIn }),
+  );
+  // Password reset links: same split — an admin issues, the token spends.
+  app.route(
+    '/api/admin/password-resets',
+    passwordResetAdminRoutes({ db, remoteAccess, publicUrl, mail }),
+  );
+  app.route(
+    '/api/password-reset',
+    passwordResetPublicRoutes({
+      db,
+      jwtSecret: config.jwt.secret,
+      jwtExpiresIn: config.jwt.expiresIn,
+      mail,
+    }),
+  );
   // ServiceReview: one read-only snapshot aggregating the running service's
   // telemetry (hardware metrics, slskd state, library scan, update check,
   // backups, processing summary, jobs, audit tail, …). Admin-only; the
@@ -1142,7 +1202,7 @@ export function createApp({
     });
   }
 
-  return { app, processingRef, maintenance, websocket, remoteAccess, libraryPickup };
+  return { app, processingRef, maintenance, websocket, remoteAccess, libraryPickup, mail };
 }
 
 export { AutoAcquireService } from './services/auto-acquire.service.js';
@@ -1156,3 +1216,5 @@ export { findInsecureDefaults, REMOVAL_RELEASE } from './services/insecure-defau
 // initServerSentry is intentionally NOT re-exported from the barrel: it must be
 // imported via the isolated `@nicotind/api/instrument` subpath so Sentry inits
 // before Hono/http modules load. See src/instrument.ts.
+export { MailService } from './services/mail/mailer.js';
+export type { MailKind, MailSendResult } from './services/mail/mailer.js';

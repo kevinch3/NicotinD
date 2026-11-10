@@ -153,6 +153,22 @@
       </button>
     </form>
 
+    @if (!isTv && !isRegister() && recoveryEnabled() !== null) {
+      @if (recoveryEnabled()) {
+        <a
+          routerLink="/forgot-password"
+          data-testid="login-forgot-link"
+          class="mt-4 block text-center text-sm text-white/50 transition hover:text-white/80"
+        >
+          {{ 'login.forgot' | t }}
+        </a>
+      } @else {
+        <p data-testid="login-forgot-ask-admin" class="mt-4 text-center text-xs text-white/40">
+          {{ 'login.forgotAskAdmin' | t }}
+        </p>
+      }
+    }
+
     @if (registrationEnabled()) {
       <button
         (click)="toggleMode()"

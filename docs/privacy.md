@@ -78,6 +78,37 @@ shows that a credential exists — it is the user's data — without handing ove
 list is explicit rather than name-pattern-matched, so a rename breaks a test instead of quietly
 starting to leak.
 
+## Email addresses (mail send log)
+
+Email delivery ([email-invitations.md](email-invitations.md), increment 3) is the first feature to
+store email addresses. `mail_send_log` keeps one row per attempted send — `kind`, the **recipient
+address**, `status` (`sent`/`failed`/`refused`), the failure `reason` and the provider's message id
+— because the daily cap is counted locally, never asked of the provider. It never stores a
+subject, a body or a token, and there is a test (`mailer.test.ts`, "logs who, never what") that a
+link's token does not reach it. The rows are not keyed by a user (an invitee has no account yet), so
+they are not in `USER_TABLES` and not in a user's export; they are kept until a retention sweep
+exists for them.
+
+**Accounts have an email since increment 4.** `users.email` (lower-cased, unique among accounts
+that have one) and `users.email_verified_at` are personal data: both are in the Art. 15 export's
+hand-projected `user` row (`email`, `emailVerifiedAt` — the trap described above, pinned by a test)
+and go with the user row on deletion. An emailed invite stores its recipient in `invites.email`
+until the invite row goes. The admin users list shows the address to admins; the audit log records
+only *whether* an invite was emailed, never to whom.
+
+**Verification and notices (increment 5).** A user's own address change waits in
+`email_verifications` — the *pending* address, a sha256 of the link's token, expiry and when it was
+used — until the link is opened; it is in `USER_TABLES` with `token_hash` redacted, and cascades
+with the user. Rows are not swept yet. Every password change (own, reset link, admin) sends a short
+"your password was changed" notice to a **verified** address only, while mail is on; it carries no
+link. "Forgot password" mails only verified addresses and answers the same for every input, so it
+cannot be used to learn whether an account or address exists.
+
+Sending hands the recipient address and the message body to whichever SMTP provider the admin
+configured — a third party in the same sense as the metadata sources below, but one that sees an
+identity. Bodies exist on disk only under the test-only `outbox` transport (`mail_outbox`, selected
+by `NICOTIND_MAIL_TRANSPORT=outbox`, never by the UI).
+
 ## Erasure (Art. 17)
 
 `DELETE /api/privacy/history` (`deleteUserHistory`) wipes the caller's `play_events` and returns the

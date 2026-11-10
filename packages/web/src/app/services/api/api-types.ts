@@ -390,6 +390,10 @@ export interface AdminUser {
    * server restart. See docs/presence-tracking.md.
    */
   last_seen_at: number | null;
+  /** The account's address (docs/email-invitations.md); null = none. Older servers omit it. */
+  email?: string | null;
+  /** Whether that address was proven (an emailed invite or a verification link). */
+  emailVerified?: boolean;
   // Ephemeral presence, merged server-side from PresenceService (see docs/presence-tracking.md).
   isConnected: boolean;
   amountOfDevices: number;
@@ -1462,3 +1466,143 @@ export interface CurationRound {
   cases: CurationCase[];
   awaitingAgent: number;
 }
+
+// ── Invitations (docs/email-invitations.md) ────────────────────────────────
+type Role = import('../../../types/core').Role;
+export type InviteStatus = 'pending' | 'used' | 'expired' | 'revoked';
+
+export interface InviteSummary {
+  id: string;
+  role: Role;
+  note: string | null;
+  createdBy: string | null;
+  createdAt: number;
+  expiresAt: number;
+  maxUses: number;
+  useCount: number;
+  revokedAt: number | null;
+  status: InviteStatus;
+  acceptedBy: string[];
+  /** The recipient of an emailed invite; null for a link invite. */
+  email: string | null;
+}
+
+/** A freshly minted (or rotated) link — the only moment the token exists. */
+export interface InviteLinkResponse {
+  invite: InviteSummary;
+  token: string;
+  /** Usable bases (public URL, then Funnel, then the origin); empty when only loopback is known. */
+  urls: string[];
+  /** `/invite#t=<token>`, appended to a base. */
+  path: string;
+  /** Present only for an emailed invite: how the send went. The invite exists either way. */
+  mail?: MailSendResult;
+}
+
+export interface CreateInviteRequest {
+  role: Role;
+  expiresInHours: 24 | 168 | 720;
+  maxUses: number;
+  note?: string;
+  /** Mail the link to this address; the invite is then single-use. */
+  email?: string;
+}
+
+export type InviteInspection =
+  | { status: 'invalid'; serverName: string }
+  | { status: 'used' | 'expired' | 'revoked'; invitedBy: string | null; serverName: string }
+  | {
+      status: 'pending';
+      invitedBy: string | null;
+      role: Role;
+      expiresAt: number;
+      serverName: string;
+      /** An emailed invite's address — the new account gets it, verified. */
+      email?: string | null;
+    };
+
+// ── Email delivery (docs/email-invitations.md, increment 3) ────────────────
+
+/** Why a send failed: a transport's reason, or one MailService refuses with. */
+export type MailSendReason =
+  | 'auth'
+  | 'sender-rejected'
+  | 'recipient-rejected'
+  | 'rate-limited'
+  | 'unreachable'
+  | 'unknown'
+  | 'off'
+  | 'quota-exhausted';
+
+/** How one send went (`MailService.send` on the server). */
+export type MailSendResult =
+  { ok: true; providerId?: string } | { ok: false; reason: MailSendReason; detail: string };
+
+export const MAIL_SEND_REASONS: readonly MailSendReason[] = [
+  'auth',
+  'sender-rejected',
+  'recipient-rejected',
+  'rate-limited',
+  'unreachable',
+  'unknown',
+  'off',
+  'quota-exhausted',
+];
+
+export interface MailSettingsDto {
+  transport: 'off' | 'smtp' | 'outbox';
+  presetId: string;
+  host: string;
+  port: number;
+  secure: boolean;
+  username: string;
+  fromAddress: string;
+  fromName: string;
+  publicUrl: string;
+  dailyCap: number;
+}
+
+export interface MailPresetDto {
+  id: string;
+  label: string;
+  host: string;
+  port: number;
+  secure: boolean;
+  usernameHint: string;
+  helpKey: string;
+}
+
+export interface MailUsage {
+  sentToday: number;
+  cap: number;
+}
+
+/** `GET /api/admin/mail` — never carries the password, only whether one is set. */
+export interface MailAdminView {
+  settings: MailSettingsDto;
+  effectiveTransport: 'off' | 'smtp' | 'outbox';
+  passwordSet: boolean;
+  /** False when NICOTIND_MAIL_TRANSPORT pins the whole block. */
+  configurable: boolean;
+  /** False when NICOTIND_PUBLIC_URL fixes the link base. */
+  publicUrlConfigurable: boolean;
+  presets: MailPresetDto[];
+  usage: MailUsage;
+  /** Where links will point; null when only loopback is known. */
+  linkBase: string | null;
+  /**
+   * "Forgot password?" (increment 5): `enabled` is the admin's choice,
+   * `effective` adds "and mail is on". Older servers omit it.
+   */
+  recovery?: { enabled: boolean; effective: boolean };
+}
+
+/** `PUT /api/admin/mail`: `password` omitted keeps it, `''` clears it. */
+export type MailSettingsUpdate = Partial<Omit<MailSettingsDto, 'transport'>> & {
+  transport?: 'off' | 'smtp';
+  password?: string;
+};
+
+export type MailTestResult = (
+  { ok: true; providerId?: string } | { ok: false; reason: MailSendReason; detail: string }
+) & { usage: MailUsage; linkBase: string };

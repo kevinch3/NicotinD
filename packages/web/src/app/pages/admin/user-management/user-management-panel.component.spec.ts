@@ -6,6 +6,10 @@ import { UserManagementPanelComponent } from './user-management-panel.component'
 import { AuthService } from '../../../services/auth.service';
 import { ConfirmService } from '../../../services/confirm.service';
 import { SystemApiService } from '../../../services/api/system-api.service';
+import { InvitesApiService } from '../../../services/api/invites-api.service';
+import { AccountApiService } from '../../../services/api/account-api.service';
+import { MailApiService } from '../../../services/api/mail-api.service';
+import { ToastService } from '../../../services/toast.service';
 import type { AdminUser } from '../../../services/api/api-types';
 import { ROLES } from '../../../../types/core';
 import { expandAllGroups } from '../../../../testing/expand-groups';
@@ -38,6 +42,9 @@ describe('UserManagementPanelComponent', () => {
       deleteUser?: unknown;
       registration?: { enabled: boolean; configurable: boolean };
       setRegistration?: unknown;
+      issueResetLink?: unknown;
+      emailResetLink?: unknown;
+      transport?: 'off' | 'smtp' | 'outbox';
     } = {},
   ) {
     TestBed.resetTestingModule();
@@ -47,6 +54,12 @@ describe('UserManagementPanelComponent', () => {
     const setRegistration =
       over.setRegistration ?? vi.fn((enabled: boolean) => of({ ...registration, enabled }));
     const ask = vi.fn(async () => over.confirm ?? true);
+    const toast = { show: vi.fn() };
+    const emailResetLink =
+      over.emailResetLink ?? vi.fn(() => of({ mail: { ok: true }, expiresAt: 1 }));
+    const issueResetLink =
+      over.issueResetLink ??
+      vi.fn(() => of({ path: '/reset-password#t=rt', urls: ['https://box.ts.net'], expiresAt: 1 }));
     await TestBed.configureTestingModule({
       imports: [UserManagementPanelComponent],
       providers: [
@@ -66,6 +79,14 @@ describe('UserManagementPanelComponent', () => {
           useValue: { token: () => over.token ?? null, mediaToken: () => over.token ?? null },
         },
         { provide: ConfirmService, useValue: { ask } },
+        // The embedded invites card has its own spec; here it only must not throw.
+        { provide: InvitesApiService, useValue: { list: vi.fn(() => of({ invites: [] })) } },
+        { provide: AccountApiService, useValue: { issueResetLink, emailResetLink } },
+        {
+          provide: MailApiService,
+          useValue: { get: vi.fn(() => of({ effectiveTransport: over.transport ?? 'off' })) },
+        },
+        { provide: ToastService, useValue: toast },
       ],
     }).compileComponents();
 
@@ -81,6 +102,10 @@ describe('UserManagementPanelComponent', () => {
       deleteUser,
       ask,
       setRegistration,
+      issueResetLink,
+      emailResetLink,
+      toast,
+      cmp: fixture.componentInstance,
     };
   }
 
@@ -105,6 +130,23 @@ describe('UserManagementPanelComponent', () => {
     expect(table.querySelectorAll('.hidden')).toHaveLength(0);
     // The old duplicate role control is gone with them.
     expect(el.querySelector('[data-testid="user-role-select"]')).toBeNull();
+    fixture.destroy();
+  });
+
+  it('shows the email under the username, with whether it is verified', async () => {
+    const { fixture, el } = await mountWithUsers([
+      { ...testUser, email: 'alice@example.com', emailVerified: true },
+      { ...testUser, id: 'u2', username: 'bob', email: 'bob@example.com', emailVerified: false },
+      { ...testUser, id: 'u3', username: 'carol', email: null },
+    ]);
+    const emails = Array.from(el.querySelectorAll('[data-testid="user-email"]'));
+    expect(emails.map((e) => e.getAttribute('data-verified'))).toEqual(['true', 'false']);
+    expect(emails[0]!.textContent).toContain('alice@example.com');
+    expect(emails[0]!.textContent).toContain('admin.emailVerified');
+    expect(emails[1]!.textContent).toContain('admin.emailUnverified');
+    // Wrapped, never truncated (src/overflow-reveal-policy.spec.ts).
+    expect(emails[0]!.className).toContain('break-all');
+    expect(BASE_CATALOG['admin.emailVerified']).toBeTruthy();
     fixture.destroy();
   });
 
@@ -357,6 +399,76 @@ describe('UserManagementPanelComponent', () => {
       expect(el.querySelector<HTMLInputElement>('[data-testid="signup-toggle"]')!.disabled).toBe(
         true,
       );
+    });
+  });
+
+  // docs/email-invitations.md increment 2: the admin's alternative to typing a
+  // password for someone.
+  it('issues a reset link from the row menu and shows it once', async () => {
+    const { fixture, el, issueResetLink } = await mountWithUsers();
+    (el.querySelector('[data-testid="user-actions-toggle"]') as HTMLElement).click();
+    fixture.detectChanges();
+    (el.querySelector('[data-testid="user-action-copy-reset"]') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(issueResetLink).toHaveBeenCalledWith('u1');
+    const input = el.querySelector('[data-testid="reset-link"]') as HTMLInputElement;
+    expect(input.value).toBe('https://box.ts.net/reset-password#t=rt');
+    expect(el.querySelector('[data-testid="reset-link-local-only"]')).toBeNull();
+    expect(BASE_CATALOG['admin.resetLink']).toBeTruthy();
+    fixture.destroy();
+  });
+
+  describe('Email reset link (increment 5)', () => {
+    const verified: AdminUser = { ...testUser, email: 'alice@example.com', emailVerified: true };
+    /** Opens the row's ⋯ menu (its items render only while open) and returns the item. */
+    function openItem(m: { fixture: { detectChanges(): void }; el: HTMLElement }) {
+      (m.el.querySelector('[data-testid="user-actions-toggle"]') as HTMLElement).click();
+      m.fixture.detectChanges();
+      return m.el.querySelector('[data-testid="user-action-email-reset"]') as HTMLButtonElement;
+    }
+
+    it('is disabled with a reason while mail is off', async () => {
+      const m = await mountWithUsers([verified]);
+      const item = openItem(m);
+      expect(item.disabled).toBe(true);
+      expect(item.title).toBe('admin.emailResetNeedsMail');
+      expect(m.cmp.emailResetBlockedKey(verified)).toBe('admin.emailResetNeedsMail');
+      m.fixture.destroy();
+    });
+
+    it('is disabled with a reason for a user without a verified email', async () => {
+      const unverified = { ...testUser, email: 'a@example.com', emailVerified: false };
+      const m = await mountWithUsers([unverified], { transport: 'smtp' });
+      const item = openItem(m);
+      expect(item.disabled).toBe(true);
+      expect(item.title).toBe('admin.emailResetNeedsEmail');
+      m.fixture.destroy();
+    });
+
+    it('mails the link for a verified user and confirms with a toast', async () => {
+      const m = await mountWithUsers([verified], { transport: 'outbox' });
+      const item = openItem(m);
+      expect(item.disabled).toBe(false);
+      item.click();
+      await m.fixture.whenStable();
+      expect(m.emailResetLink).toHaveBeenCalledWith('u1');
+      expect(m.toast.show).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'admin.emailResetSent', kind: 'success' }),
+      );
+      expect(BASE_CATALOG['admin.emailResetLink']).toBeTruthy();
+      m.fixture.destroy();
+    });
+
+    it('surfaces a failed send', async () => {
+      const emailResetLink = vi.fn(() =>
+        of({ mail: { ok: false, reason: 'unreachable', detail: 'x' }, expiresAt: 1 }),
+      );
+      const m = await mountWithUsers([verified], { transport: 'smtp', emailResetLink });
+      openItem(m).click();
+      await m.fixture.whenStable();
+      expect(m.cmp.error()).toContain('admin.email.reason.unreachable');
+      m.fixture.destroy();
     });
   });
 });

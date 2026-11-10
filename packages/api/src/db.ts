@@ -224,6 +224,21 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   // seen since this column landed — there is nothing to backfill it from, since
   // presence has always been in-memory only (docs/presence-tracking.md).
   addColumnIfMissing(db, 'users', 'last_seen_at', 'INTEGER');
+  // Session version: every JWT carries the value it was minted at (`tv`), and
+  // the auth middleware refuses a mismatch. Bumped by a password change/reset,
+  // which is how stateless tokens get a "sign out everywhere".
+  addColumnIfMissing(db, 'users', 'token_version', 'INTEGER NOT NULL DEFAULT 0');
+  // The account's email (docs/email-invitations.md, increment 4): stored trimmed
+  // and lower-cased (`normalizeEmail`), unique among the accounts that have one —
+  // a partial index, so any number of users can have none. `email_verified_at`
+  // is when the address was proven (an emailed invite's link was clicked, or a
+  // verification link was); NULL = unverified. Only a verified address ever
+  // receives a reset link.
+  addColumnIfMissing(db, 'users', 'email', 'TEXT');
+  addColumnIfMissing(db, 'users', 'email_verified_at', 'INTEGER');
+  db.run(
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email) WHERE email IS NOT NULL',
+  );
 
   // Add welcome_dismissed column to existing user_settings table
   addColumnIfMissing(db, 'user_settings', 'welcome_dismissed', 'INTEGER NOT NULL DEFAULT 0');
@@ -896,6 +911,113 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   db.run(
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_subsonic_api_keys_hash ON subsonic_api_keys (key_hash)`,
   );
+  // Invitations (docs/email-invitations.md): an admin-minted link that lets a
+  // friend create their own account at a preset role, even while public signup
+  // is closed. Only the sha256 hash of the token is stored — the link is shown
+  // once at mint time, and rotating it replaces the hash. `use_count` advances
+  // through a compare-and-swap UPDATE, so two concurrent accepts can't both
+  // spend the last use.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS invites (
+      id           TEXT    PRIMARY KEY,
+      token_hash   TEXT    NOT NULL,
+      role         TEXT    NOT NULL,
+      note         TEXT,
+      created_by   TEXT    REFERENCES users(id) ON DELETE SET NULL,
+      created_at   INTEGER NOT NULL,
+      expires_at   INTEGER NOT NULL,
+      max_uses     INTEGER NOT NULL DEFAULT 1,
+      use_count    INTEGER NOT NULL DEFAULT 0,
+      revoked_at   INTEGER,
+      last_used_at INTEGER
+    )
+  `);
+  db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_invites_token_hash ON invites (token_hash)`);
+  // An emailed invite (increment 4) records its recipient: accepting it sets the
+  // new account's email, already verified — the link reached that inbox.
+  addColumnIfMissing(db, 'invites', 'email', 'TEXT');
+  // Who joined through which invite — the admin list's "used by". Survives the
+  // invite being revoked; dies with either side.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS invite_acceptances (
+      invite_id   TEXT    NOT NULL REFERENCES invites(id) ON DELETE CASCADE,
+      user_id     TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      accepted_at INTEGER NOT NULL,
+      PRIMARY KEY (invite_id, user_id)
+    )
+  `);
+
+  // Password reset links (docs/email-invitations.md): single-use, hashed like
+  // invites. `created_by` is the admin who issued it (NULL once self-service
+  // recovery exists). At most one live link per user — issuing replaces it.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS password_resets (
+      id         TEXT    PRIMARY KEY,
+      token_hash TEXT    NOT NULL,
+      user_id    TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_by TEXT    REFERENCES users(id) ON DELETE SET NULL,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      used_at    INTEGER
+    )
+  `);
+  db.run(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_password_resets_token_hash ON password_resets (token_hash)`,
+  );
+  db.run(`CREATE INDEX IF NOT EXISTS idx_password_resets_user ON password_resets (user_id)`);
+
+  // Email verification links (docs/email-invitations.md, increment 5): hashed and
+  // single-use like reset links, 24 h. The *pending* address lives here, not on
+  // `users`: the account's email only changes once the link is opened, so a
+  // typo never replaces a working address. One live row per user.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS email_verifications (
+      id         TEXT    PRIMARY KEY,
+      user_id    TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      email      TEXT    NOT NULL,
+      token_hash TEXT    NOT NULL,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      used_at    INTEGER
+    )
+  `);
+  db.run(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_email_verifications_token_hash ON email_verifications (token_hash)`,
+  );
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_email_verifications_user ON email_verifications (user_id)`,
+  );
+
+  // Mail (docs/email-invitations.md, increment 3). The send log drives the
+  // "N / cap today" meter and records who was mailed and how it went — never a
+  // body or a token. `status`: sent | failed | refused (transport off, cap hit).
+  db.run(`
+    CREATE TABLE IF NOT EXISTS mail_send_log (
+      id          TEXT    PRIMARY KEY,
+      kind        TEXT    NOT NULL,
+      recipient   TEXT    NOT NULL,
+      status      TEXT    NOT NULL CHECK (status IN ('sent','failed','refused')),
+      reason      TEXT,
+      provider_id TEXT,
+      created_at  INTEGER NOT NULL
+    )
+  `);
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_mail_send_log_status_created ON mail_send_log (status, created_at)`,
+  );
+  // The `outbox` test transport's mailbox — the only table that holds a body,
+  // and only ever written when NICOTIND_MAIL_TRANSPORT=outbox (tests, e2e).
+  db.run(`
+    CREATE TABLE IF NOT EXISTS mail_outbox (
+      id         TEXT    PRIMARY KEY,
+      recipient  TEXT    NOT NULL,
+      subject    TEXT    NOT NULL,
+      text       TEXT    NOT NULL,
+      html       TEXT    NOT NULL,
+      created_at INTEGER NOT NULL
+    )
+  `);
+
   // Per-user stars on albums and artists, set through Subsonic `star`. A song
   // star is a like (the Liked Songs playlist), so songs never land here.
   db.run(`

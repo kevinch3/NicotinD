@@ -61,7 +61,7 @@ export const PUBLIC_ROUTES: Array<{ route: string; reason: string }> = [
   {
     route: '/api/auth',
     reason:
-      'login and register must be reachable before a session exists; the routes here that need one take `auth` themselves',
+      'login and register must be reachable before a session exists; the routes here that need one take `auth` themselves. Also mounts recoveryPublicRoutes (docs/email-invitations.md, increment 5): /recovery-status, /forgot (same 200 for every identifier, mails only a verified address, rate-limited) and /verify-email (the single-use 256-bit token in the POST body is the credential, only its hash is stored)',
   },
   {
     route: '/api/setup',
@@ -72,6 +72,16 @@ export const PUBLIC_ROUTES: Array<{ route: string; reason: string }> = [
     route: '/api/devices',
     reason:
       'pairing flow: devicesRoutes applies `auth` per-route (/pair, /login-approve, GET /, DELETE /:id) and deliberately leaves /claim, /login-request and /login-claim open, where the short-lived pairing token is itself the credential — a blanket app.use would break pairing (docs/device-pairing.md)',
+  },
+  {
+    route: '/api/invites',
+    reason:
+      'invitation landing: /inspect and /accept are reachable before an account exists, and the 256-bit invite token in the POST body is the credential (only its hash is stored); the admin half mounts under /api/admin/invites — see docs/email-invitations.md',
+  },
+  {
+    route: '/api/password-reset',
+    reason:
+      'password reset landing: /inspect and /complete serve someone who cannot sign in, and the single-use 256-bit reset token in the POST body is the credential (only its hash is stored); links are issued under /api/admin/password-resets — see docs/email-invitations.md',
   },
   {
     route: '/api',

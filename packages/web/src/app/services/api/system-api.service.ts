@@ -1,5 +1,6 @@
 import { Injectable, inject } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpContext } from '@angular/common/http';
+import { KEEP_SESSION_ON_401 } from '../../lib/http-context';
 import type { ProcessingSettings, ProcessingStatus } from '@nicotind/core';
 import type { Role } from '../../../types/core';
 import type {
@@ -144,8 +145,16 @@ export class SystemApiService {
   }
 
   // Radio — the learned genre axis opt-in (docs/genre-affinity.md)
-  getRadioSettings() {
-    return this.http.get<RadioSettings>('/api/settings/radio');
+  /**
+   * `background`: the caller expects a 401 and handles it itself, so the
+   * interceptor must not sign out and jump to /login. The radio provider reads
+   * this from the app initializer, before any session exists — without the
+   * flag, every public page (/invite, /pair, /share, /poll) opened by a
+   * visitor with no session was hijacked to /login a moment after loading.
+   */
+  getRadioSettings(opts: { background?: boolean } = {}) {
+    const context = opts.background ? new HttpContext().set(KEEP_SESSION_ON_401, true) : undefined;
+    return this.http.get<RadioSettings>('/api/settings/radio', { context });
   }
 
   saveRadioSettings(patch: Partial<Pick<RadioSettings, 'genreAffinity' | 'queueTarget'>>) {

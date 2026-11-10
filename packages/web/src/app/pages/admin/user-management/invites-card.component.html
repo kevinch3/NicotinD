@@ -1,0 +1,277 @@
+<div class="mt-8" data-testid="invites-card">
+  <div class="flex items-center justify-between gap-4 mb-3">
+    <div>
+      <h3 class="text-sm font-semibold text-theme-primary">{{ 'invites.title' | t }}</h3>
+      <p class="text-xs text-theme-muted">{{ 'invites.hint' | t }}</p>
+    </div>
+    <button
+      type="button"
+      data-testid="invite-open"
+      (click)="openDialog()"
+      class="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-inverse text-theme-inverse hover:opacity-90 transition"
+    >
+      {{ 'invites.invite' | t }}
+    </button>
+  </div>
+
+  @if (error()) {
+    <div class="mb-3 px-4 py-2.5 rounded-lg text-sm status-error border border-theme" data-testid="invites-error">
+      {{ error() }}
+      <button type="button" (click)="error.set(null)" class="ml-2 hover:opacity-80">
+        {{ 'admin.dismiss' | t }}
+      </button>
+    </div>
+  }
+
+  @if (loading()) {
+    <p class="text-xs text-theme-muted" data-testid="invites-loading">{{ 'invites.loading' | t }}</p>
+  } @else if (invites().length === 0) {
+    <p class="text-sm text-theme-muted" data-testid="invites-empty">{{ 'invites.empty' | t }}</p>
+  } @else {
+    <ul class="divide-y divide-theme-border border border-theme rounded-lg" data-testid="invites-list">
+      @for (invite of invites(); track invite.id) {
+        <li
+          class="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2.5 text-sm"
+          data-testid="invite-row"
+          [attr.data-status]="invite.status"
+          [class.opacity-60]="invite.status !== 'pending'"
+        >
+          <span [class]="statusClass(invite.status)" data-testid="invite-status">
+            {{ 'invites.status.' + invite.status | t }}
+          </span>
+          <span class="text-theme-primary">{{ 'admin.role.' + invite.role | t }}</span>
+          <span class="text-xs text-theme-muted">
+            {{ 'invites.uses' | t: { used: invite.useCount, max: invite.maxUses } }}
+          </span>
+          @if (invite.status === 'pending') {
+            <span class="text-xs text-theme-muted">
+              {{ 'invites.expiresOn' | t: { date: formatDate(invite.expiresAt) } }}
+            </span>
+          }
+          @if (invite.email) {
+            <span class="text-xs text-theme-secondary break-all min-w-0" data-testid="invite-email">{{
+              invite.email
+            }}</span>
+          }
+          @if (invite.note) {
+            <span class="text-xs text-theme-secondary break-words min-w-0">{{ invite.note }}</span>
+          }
+          @if (invite.acceptedBy.length) {
+            <span class="text-xs text-theme-muted" data-testid="invite-accepted-by">
+              {{ 'invites.acceptedBy' | t: { names: invite.acceptedBy.join(', ') } }}
+            </span>
+          }
+          @if (invite.status === 'pending') {
+            <span class="ml-auto flex gap-2">
+              <button
+                type="button"
+                data-testid="invite-new-link"
+                (click)="newLink(invite)"
+                class="text-xs text-theme-secondary hover:text-theme-primary transition"
+              >
+                {{ 'invites.newLink' | t }}
+              </button>
+              <button
+                type="button"
+                data-testid="invite-revoke"
+                (click)="revoke(invite)"
+                class="text-xs text-status-error hover:opacity-80 transition"
+              >
+                {{ 'invites.revoke' | t }}
+              </button>
+            </span>
+          }
+        </li>
+      }
+    </ul>
+  }
+</div>
+
+@if (dialogOpen()) {
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+    appBottomChromeSafe
+    (click)="closeDialog()"
+  >
+    <div
+      class="bg-theme-surface border border-theme rounded-xl p-6 w-full max-w-sm mx-4"
+      role="dialog"
+      aria-modal="true"
+      data-testid="invite-dialog"
+      (click)="$event.stopPropagation()"
+    >
+      @if (minted(); as link) {
+        @if (mailSent(link)) {
+          <h3 class="text-sm font-semibold text-theme-primary mb-1">{{ 'invites.sentTitle' | t }}</h3>
+          <p class="text-sm text-status-success break-all" data-testid="invite-sent">
+            {{ 'invites.sentTo' | t: { email: link.email ?? '' } }}
+          </p>
+          <p class="mt-2 text-xs text-theme-muted">
+            {{ 'invites.sentHint' | t: { date: formatDate(link.expiresAt) } }}
+          </p>
+        } @else {
+          @if (mailFailureKey(link); as reasonKey) {
+            <div class="mb-4 text-xs text-status-warn break-words" data-testid="invite-mail-failed">
+              <p class="font-medium">{{ 'invites.mailFailed' | t: { email: link.email ?? '' } }}</p>
+              <p class="mt-1">{{ reasonKey | t }}</p>
+            </div>
+          }
+          <h3 class="text-sm font-semibold text-theme-primary mb-1">{{ 'invites.linkReady' | t }}</h3>
+          <p class="text-xs text-theme-muted mb-4">
+            {{ 'invites.linkReadyHint' | t: { date: formatDate(link.expiresAt) } }}
+          </p>
+          @if (qrDataUrl(); as qr) {
+            <div class="mx-auto mb-4 w-fit rounded-lg bg-white p-2">
+              <img [src]="qr" [alt]="'invites.qrAlt' | t" width="200" height="200" data-testid="invite-qr" />
+            </div>
+          }
+          <div class="flex gap-2">
+            <input
+              type="text"
+              readonly
+              [value]="link.link"
+              data-testid="invite-link"
+              (focus)="$any($event.target).select()"
+              class="min-w-0 flex-1 px-3 py-2 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary text-xs font-mono"
+            />
+            <button
+              type="button"
+              data-testid="invite-copy"
+              (click)="copyLink()"
+              class="px-3 py-2 rounded-lg bg-theme-inverse text-theme-inverse text-xs font-semibold hover:opacity-90 transition"
+            >
+              {{ 'invites.copy' | t }}
+            </button>
+          </div>
+          @if (link.localOnly) {
+            <p class="mt-3 text-xs text-status-warn" data-testid="invite-local-only">
+              {{ 'invites.localOnly' | t }}
+            </p>
+          }
+          <p class="mt-3 text-xs text-theme-muted">{{ 'invites.shownOnce' | t }}</p>
+        }
+        <div class="flex justify-end mt-4">
+          <button
+            type="button"
+            data-testid="invite-done"
+            (click)="closeDialog()"
+            class="px-4 py-2 rounded-lg text-sm text-theme-secondary hover:text-theme-primary transition"
+          >
+            {{ 'invites.done' | t }}
+          </button>
+        </div>
+      } @else {
+        <h3 class="text-sm font-semibold text-theme-primary mb-4">{{ 'invites.dialogTitle' | t }}</h3>
+        <div class="space-y-3">
+          <label class="block text-xs text-theme-muted">
+            {{ 'invites.role' | t }}
+            <select
+              [ngModel]="role()"
+              (ngModelChange)="role.set($event)"
+              data-testid="invite-role-select"
+              class="mt-1 w-full px-3 py-2 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary text-sm"
+            >
+              @for (r of roles; track r) {
+                <option [value]="r">{{ 'admin.role.' + r | t }}</option>
+              }
+            </select>
+          </label>
+          <label class="block text-xs text-theme-muted">
+            {{ 'invites.expiry' | t }}
+            <select
+              [ngModel]="expiresInHours()"
+              (ngModelChange)="setExpiry($event)"
+              data-testid="invite-expiry-select"
+              class="mt-1 w-full px-3 py-2 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary text-sm"
+            >
+              @for (h of expiryOptions; track h) {
+                <option [ngValue]="h">{{ 'invites.expiry.' + h | t }}</option>
+              }
+            </select>
+          </label>
+          <label class="block text-xs text-theme-muted">
+            {{ 'invites.email' | t }}
+            <input
+              type="email"
+              autocomplete="off"
+              spellcheck="false"
+              maxlength="254"
+              [ngModel]="email()"
+              (ngModelChange)="email.set($event)"
+              [disabled]="!mailEnabled()"
+              data-testid="invite-email-input"
+              [placeholder]="'invites.emailPlaceholder' | t"
+              class="mt-1 w-full px-3 py-2 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder:text-theme-muted text-sm disabled:opacity-50"
+            />
+          </label>
+          @if (!mailEnabled()) {
+            <p class="text-xs text-theme-muted" data-testid="invite-email-off">
+              {{ 'invites.emailOff' | t }}
+              <button
+                type="button"
+                data-testid="invite-email-setup"
+                (click)="setUpEmail()"
+                class="underline hover:text-theme-primary transition"
+              >
+                {{ 'invites.emailSetUp' | t }}
+              </button>
+            </p>
+          } @else if (emailGiven() && !emailValid()) {
+            <p class="text-xs text-status-warn" data-testid="invite-email-invalid">
+              {{ 'invites.emailInvalid' | t }}
+            </p>
+          }
+          <label class="block text-xs text-theme-muted">
+            {{ 'invites.maxUses' | t: { max: maxUsesCap } }}
+            <input
+              type="number"
+              min="1"
+              [max]="maxUsesCap"
+              [ngModel]="sendsEmail() ? 1 : maxUses()"
+              (ngModelChange)="maxUses.set(+$event)"
+              [disabled]="sendsEmail()"
+              data-testid="invite-uses-input"
+              class="mt-1 w-24 block px-3 py-2 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary text-sm disabled:opacity-50"
+            />
+            @if (sendsEmail()) {
+              <span class="mt-1 block text-xs text-theme-muted">{{ 'invites.emailSingleUse' | t }}</span>
+            }
+          </label>
+          <label class="block text-xs text-theme-muted">
+            {{ 'invites.note' | t }}
+            <input
+              type="text"
+              maxlength="200"
+              [ngModel]="note()"
+              (ngModelChange)="note.set($event)"
+              data-testid="invite-note-input"
+              [placeholder]="'invites.notePlaceholder' | t"
+              class="mt-1 w-full px-3 py-2 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder:text-theme-muted text-sm"
+            />
+          </label>
+        </div>
+        <div class="flex justify-end gap-2 mt-4">
+          <button
+            type="button"
+            (click)="closeDialog()"
+            class="px-4 py-2 rounded-lg text-sm text-theme-secondary hover:text-theme-primary transition"
+          >
+            {{ 'admin.cancel' | t }}
+          </button>
+          <button
+            type="button"
+            data-testid="invite-submit"
+            (click)="create()"
+            [disabled]="!canCreate()"
+            class="px-4 py-2 rounded-lg bg-theme-inverse text-theme-inverse text-sm font-semibold hover:opacity-90 transition disabled:opacity-50"
+          >
+            {{
+              (creating() ? 'invites.creating' : sendsEmail() ? 'invites.sendInvite' : 'invites.createLink')
+                | t
+            }}
+          </button>
+        </div>
+      }
+    </div>
+  </div>
+}

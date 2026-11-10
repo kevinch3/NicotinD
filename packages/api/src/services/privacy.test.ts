@@ -253,6 +253,25 @@ describe('exportUserData', () => {
     expect(exportUserData(db, 'u1').user.lastSeenAt).toBe(1_700_000_000_000);
   });
 
+  it('includes the email and when it was verified — also projected by hand', () => {
+    expect(exportUserData(db, 'u1').user).toMatchObject({ email: null, emailVerifiedAt: null });
+    db.run(`UPDATE users SET email = 'ana@example.com', email_verified_at = 42 WHERE id = 'u1'`);
+    expect(exportUserData(db, 'u1').user).toMatchObject({
+      email: 'ana@example.com',
+      emailVerifiedAt: 42,
+    });
+  });
+
+  it('exports a pending email change with its token hash redacted', () => {
+    db.run(
+      `INSERT INTO email_verifications (id, user_id, email, token_hash, created_at, expires_at)
+       VALUES ('v1', 'u1', 'new@example.com', 'HASH', 1, 2)`,
+    );
+    const rows = exportUserData(db, 'u1').tables.email_verifications!;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ email: 'new@example.com', token_hash: '[redacted]' });
+  });
+
   it('reports a never-connected account as null rather than omitting the field', () => {
     expect(exportUserData(db, 'u1').user).toHaveProperty('lastSeenAt', null);
   });

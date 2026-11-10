@@ -1,11 +1,15 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
+import { hostname } from 'node:os';
 import { streamSSE } from 'hono/streaming';
 import { hashPassword, ROLES } from '@nicotind/core';
 import type { ProcessingSettings, ProcessingStatus, Role } from '@nicotind/core';
 import type { AuthEnv } from '../middleware/auth.js';
 import { getDatabase } from '../db.js';
 import { listAudit, recordAudit } from '../services/audit-log.js';
+import { adminSetPassword } from '../services/password-reset.js';
+import { notifyPasswordChanged } from '../services/password-notice.js';
+import type { MailService } from '../services/mail/mailer.js';
 import type { AcquisitionToggle } from '../services/acquisition-toggle.js';
 import type { RegistrationToggle } from '../services/registration-toggle.js';
 import {
@@ -63,6 +67,9 @@ export interface AdminRoutesDeps {
   db?: Database | null;
   /** Where kept originals live when not under dataDir (`NICOTIND_QUARANTINE_DIR`). */
   quarantineDir?: string;
+  /** The "password changed" notice after *Set password…*; absent → none is sent. */
+  mail?: MailService | null;
+  serverName?: () => string;
 }
 
 /** The subset of an admin user row the activity ordering reads. */
@@ -171,12 +178,16 @@ export function adminRoutes(deps: AdminRoutesDeps) {
           status: string;
           created_at: string;
           last_seen_at: number | null;
+          email: string | null;
+          email_verified_at: number | null;
         },
         []
       >(
-        "SELECT id, username, role, COALESCE(status, 'active') as status, created_at, last_seen_at FROM users ORDER BY created_at ASC",
+        "SELECT id, username, role, COALESCE(status, 'active') as status, created_at, last_seen_at, email, email_verified_at FROM users ORDER BY created_at ASC",
       )
-      .all();
+      .all()
+      // The address and whether it was proven — not when (docs/email-invitations.md).
+      .map(({ email_verified_at, ...u }) => ({ ...u, emailVerified: email_verified_at !== null }));
 
     // Merge ephemeral presence (in-memory) into each row; absent users read as offline.
     const active = presenceService.getActiveUsers();
@@ -255,12 +266,16 @@ export function adminRoutes(deps: AdminRoutesDeps) {
     }
 
     const db = getDatabase();
-    const passwordHash = await hashPassword(password);
-    const result = db.run('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, id]);
-    if (result.changes === 0) {
+    // A reset means the old password may be in the wrong hands, so this also
+    // ends every session that was opened with it (docs/email-invitations.md).
+    if (!(await adminSetPassword(db, id, password))) {
       return c.json({ error: 'User not found' }, 404);
     }
     recordAudit(db, c.get('user'), 'user.password-reset', { targetKind: 'user', targetId: id });
+    void notifyPasswordChanged(
+      { db, mail: deps.mail, serverName: deps.serverName ?? hostname },
+      id,
+    );
     return c.json({ ok: true });
   });
 
