@@ -156,7 +156,11 @@ Consequences worth knowing:
   good master commits red (#1624). Every `docker pull` / `imagetools inspect`
   that reads back a push, in `ci.yml` and `deploy.yml`, runs through
   `scripts/registry-retry.sh` (5 attempts, 75 s worst case). A probe that decides
-  on absence (the analysis-tag search) is deliberately not retried.
+  on absence (the analysis-tag search) is deliberately not retried. A step with
+  its own `working-directory` calls it as `$GITHUB_WORKSPACE/scripts/…`: the
+  relative path exited 127 in edge's digests directory after `:edge` moved, so
+  every master run from #1782 to the fix skipped the host deploy.
+  `scripts/ci-workflow-paths.test.ts` keeps any workflow from doing that again.
 - **`:edge` never moves backward.** Edge jobs of neighbouring commits overlap,
   since the run concurrency group is per commit. Before moving the tags, `edge`
   reads the commit `:edge` carries (`NICOTIND_BUILD_COMMIT` in the image config)
