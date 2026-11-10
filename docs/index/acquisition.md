@@ -55,10 +55,10 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   `sanitizeAddonError`.
   → [download-pipeline.md](../download-pipeline.md),
   [acquisition-addon-protocol.md](../acquisition-addon-protocol.md)
-- **Re-source a stuck download from another peer**: a fresh hunt, a peer picker, and a second
-  addon job scoped to the still-pending titles and mirrored onto the same card, the stuck job
-  released first; `canResourceJob`, `coveredTitles`, `rankAlternates`, `supersedeItems`,
-  `OWNED_BY_ADDON_JOB`, `conflictOnActiveAlbum`.
+- **Re-source a stuck download from another peer**: a fresh hunt, an automatic pick behind a
+  countdown (picker on request), and a second addon job scoped to the still-pending titles on
+  the same card, the stuck job released first; `canResourceJob`, `coveredTitles`,
+  `rankAlternates`, `autoResourcePick`, `supersedeItems`, `OWNED_BY_ADDON_JOB`.
   → [download-pipeline.md](../download-pipeline.md)
 - **Spotify metadata fallback**: metadata-only lane handing a `spotify.com/album` URL to
   `/api/acquire`; the external spotdl addon resolves the download.

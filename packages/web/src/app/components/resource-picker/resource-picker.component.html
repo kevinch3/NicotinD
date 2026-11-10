@@ -95,7 +95,7 @@
         type="button"
         class="px-4 py-2 text-sm rounded-lg transition-colors bg-theme-surface-2 text-theme-primary hover:opacity-80 disabled:opacity-40"
         data-testid="resource-confirm"
-        [disabled]="!selected() || submitting()"
+        [disabled]="searching() || !selected() || submitting()"
         (click)="submit()"
       >
         {{ 'downloads.resource.use' | t }}
