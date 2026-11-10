@@ -966,6 +966,28 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   );
   db.run(`CREATE INDEX IF NOT EXISTS idx_password_resets_user ON password_resets (user_id)`);
 
+  // Email verification links (docs/email-invitations.md, increment 5): hashed and
+  // single-use like reset links, 24 h. The *pending* address lives here, not on
+  // `users`: the account's email only changes once the link is opened, so a
+  // typo never replaces a working address. One live row per user.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS email_verifications (
+      id         TEXT    PRIMARY KEY,
+      user_id    TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      email      TEXT    NOT NULL,
+      token_hash TEXT    NOT NULL,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      used_at    INTEGER
+    )
+  `);
+  db.run(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_email_verifications_token_hash ON email_verifications (token_hash)`,
+  );
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_email_verifications_user ON email_verifications (user_id)`,
+  );
+
   // Mail (docs/email-invitations.md, increment 3). The send log drives the
   // "N / cap today" meter and records who was mailed and how it went — never a
   // body or a token. `status`: sent | failed | refused (transport off, cap hit).

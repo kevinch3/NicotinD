@@ -173,6 +173,9 @@ const USER_TABLES: Array<{ table: string; column: string; redact?: string[] }> =
   { table: 'paired_devices', column: 'user_id' },
   { table: 'pairing_tokens', column: 'user_id' },
   { table: 'agent_tokens', column: 'user_id', redact: ['token_hash'] },
+  // A pending address change (increment 5): the address is the user's data, the
+  // link's hash is a credential.
+  { table: 'email_verifications', column: 'user_id', redact: ['token_hash'] },
   { table: 'share_tokens', column: 'created_by' },
   // Poll scenarios/votes have no user column by design (anonymous rater_key,
   // not an identity) and cascade off the poll row.

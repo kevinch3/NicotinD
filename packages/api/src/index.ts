@@ -49,6 +49,8 @@ import { mailAdminRoutes } from './routes/mail.js';
 import { MailService } from './services/mail/mailer.js';
 import { MailSettingsStore } from './services/mail/settings.js';
 import { accountRoutes } from './routes/account.js';
+import { recoveryPublicRoutes, withRecovery } from './routes/recovery.js';
+import { RecoverySetting } from './services/recovery-setting.js';
 import { agentTokensRoutes } from './routes/agent-tokens.js';
 import { subsonicKeysRoutes } from './routes/subsonic-keys.js';
 import { openSubsonicRoutes } from './routes/opensubsonic.js';
@@ -635,10 +637,27 @@ export function createApp({
   acquisitionOnRef.enabled = acquisitionOn;
   const requireAcquisitionEnabled = requireAcquisitionEnabledMiddleware(acquisitionOn);
 
-  // Public routes
+  // Built before any route that needs them: link bases (Funnel) and mail are
+  // shared by invites, resets, account email and recovery.
+  const remoteAccess = new RemoteAccess(db);
+  // Mail (docs/email-invitations.md): one MailService for the process, so every
+  // sender (invites, resets, verification, notices) shares the daily cap and the
+  // send log. The operator's public URL is the first base of every link minted.
+  const mailSettings = new MailSettingsStore(db);
+  const mail = new MailService({ db, settings: mailSettings });
+  const publicUrl = () => mailSettings.publicUrl();
+  // "Forgot password?": default off, and only ever on while mail is.
+  const recovery = new RecoverySetting(db, () => mail.status().enabled);
+
+  // Public routes. Self-service recovery (docs/email-invitations.md, increment
+  // 5: recovery-status, forgot, verify-email) shares the /api/auth group — one
+  // mount per prefix, so check:route-auth audits it as the group it is.
   app.route(
     '/api/auth',
-    authRoutes(config.jwt.secret, config.jwt.expiresIn, registrationOn, acquisitionOn),
+    withRecovery(
+      authRoutes(config.jwt.secret, config.jwt.expiresIn, registrationOn, acquisitionOn),
+      recoveryPublicRoutes({ db, mail, recovery, remoteAccess, publicUrl }),
+    ),
   );
   app.route(
     '/api/setup',
@@ -766,6 +785,7 @@ export function createApp({
       processing: processingRef.current,
       maintenance,
       version,
+      mail,
     }),
   );
   // MCP agent (issue #232): agent-token-authenticated (not JWT), refiner-capped.
@@ -814,7 +834,14 @@ export function createApp({
   // Own prefix: a second mount at /api/me would be one group to the route-auth audit.
   app.route(
     '/api/me/account',
-    accountRoutes({ db, jwtSecret: config.jwt.secret, jwtExpiresIn: config.jwt.expiresIn }),
+    accountRoutes({
+      db,
+      jwtSecret: config.jwt.secret,
+      jwtExpiresIn: config.jwt.expiresIn,
+      mail,
+      remoteAccess,
+      publicUrl,
+    }),
   );
   app.route('/api/recommendations', recommendationRoutes());
   app.route('/api/playback', playbackRoutes());
@@ -913,7 +940,6 @@ export function createApp({
   // Device pairing (QR link): claim is public (the pairing token is the
   // credential), so /api/devices is deliberately NOT in the blanket-auth list —
   // pair/list/revoke apply auth per-route.
-  const remoteAccess = new RemoteAccess(db);
   app.route(
     '/api/devices',
     devicesRoutes({
@@ -927,13 +953,7 @@ export function createApp({
   // Invitations (docs/email-invitations.md): the admin half rides the
   // /api/admin/* blanket auth; the public half takes the invite token as its
   // credential, the same trust model as the pairing claim.
-  // Mail (docs/email-invitations.md): one MailService for the process, so every
-  // later sender (invites, resets) shares the daily cap and the send log. The
-  // operator's public URL is the first base of every link the server mints.
-  const mailSettings = new MailSettingsStore(db);
-  const mail = new MailService({ db, settings: mailSettings });
-  const publicUrl = () => mailSettings.publicUrl();
-  app.route('/api/admin/mail', mailAdminRoutes({ db, mail, remoteAccess }));
+  app.route('/api/admin/mail', mailAdminRoutes({ db, mail, remoteAccess, recovery }));
   app.route('/api/admin/invites', inviteAdminRoutes({ db, remoteAccess, publicUrl, mail }));
   app.route(
     '/api/invites',
@@ -942,7 +962,7 @@ export function createApp({
   // Password reset links: same split — an admin issues, the token spends.
   app.route(
     '/api/admin/password-resets',
-    passwordResetAdminRoutes({ db, remoteAccess, publicUrl }),
+    passwordResetAdminRoutes({ db, remoteAccess, publicUrl, mail }),
   );
   app.route(
     '/api/password-reset',
@@ -950,6 +970,7 @@ export function createApp({
       db,
       jwtSecret: config.jwt.secret,
       jwtExpiresIn: config.jwt.expiresIn,
+      mail,
     }),
   );
   // ServiceReview: one read-only snapshot aggregating the running service's

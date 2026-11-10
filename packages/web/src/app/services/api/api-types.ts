@@ -1590,6 +1590,11 @@ export interface MailAdminView {
   usage: MailUsage;
   /** Where links will point; null when only loopback is known. */
   linkBase: string | null;
+  /**
+   * "Forgot password?" (increment 5): `enabled` is the admin's choice,
+   * `effective` adds "and mail is on". Older servers omit it.
+   */
+  recovery?: { enabled: boolean; effective: boolean };
 }
 
 /** `PUT /api/admin/mail`: `password` omitted keeps it, `''` clears it. */

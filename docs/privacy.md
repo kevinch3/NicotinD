@@ -96,6 +96,14 @@ and go with the user row on deletion. An emailed invite stores its recipient in 
 until the invite row goes. The admin users list shows the address to admins; the audit log records
 only *whether* an invite was emailed, never to whom.
 
+**Verification and notices (increment 5).** A user's own address change waits in
+`email_verifications` — the *pending* address, a sha256 of the link's token, expiry and when it was
+used — until the link is opened; it is in `USER_TABLES` with `token_hash` redacted, and cascades
+with the user. Rows are not swept yet. Every password change (own, reset link, admin) sends a short
+"your password was changed" notice to a **verified** address only, while mail is on; it carries no
+link. "Forgot password" mails only verified addresses and answers the same for every input, so it
+cannot be used to learn whether an account or address exists.
+
 Sending hands the recipient address and the message body to whichever SMTP provider the admin
 configured — a third party in the same sense as the metadata sources below, but one that sees an
 identity. Bodies exist on disk only under the test-only `outbox` transport (`mail_outbox`, selected

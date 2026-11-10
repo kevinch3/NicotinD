@@ -21,4 +21,9 @@ export class MailApiService {
   sendTest(to: string) {
     return this.http.post<MailTestResult>('/api/admin/mail/test', { to });
   }
+
+  /** The forgot-password switch; 409 `MAIL_NOT_CONFIGURED` while mail is off. */
+  setRecovery(enabled: boolean) {
+    return this.http.put<MailAdminView>('/api/admin/mail/recovery', { enabled });
+  }
 }

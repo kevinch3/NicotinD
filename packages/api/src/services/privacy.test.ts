@@ -262,6 +262,16 @@ describe('exportUserData', () => {
     });
   });
 
+  it('exports a pending email change with its token hash redacted', () => {
+    db.run(
+      `INSERT INTO email_verifications (id, user_id, email, token_hash, created_at, expires_at)
+       VALUES ('v1', 'u1', 'new@example.com', 'HASH', 1, 2)`,
+    );
+    const rows = exportUserData(db, 'u1').tables.email_verifications!;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ email: 'new@example.com', token_hash: '[redacted]' });
+  });
+
   it('reports a never-connected account as null rather than omitting the field', () => {
     expect(exportUserData(db, 'u1').user).toHaveProperty('lastSeenAt', null);
   });

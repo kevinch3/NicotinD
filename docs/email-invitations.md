@@ -1,6 +1,7 @@
 # Invitations, email delivery & password recovery
 
-> **Status: increments 1 (link invites), 2 (account security), 3 (mail transport) and 4 (email invites) shipped; 5 planned.** The plan below
+> **Status: all five increments shipped** — 1 (link invites), 2 (account security), 3 (mail
+> transport), 4 (email invites) and 5 (self-service email and recovery); 6 ("Later") is not planned work. The plan below
 > (2026-11-09) is the agreed shape, so each increment can be built, tested and merged
 > on its own. Coordinate with [oauth-auth.md](oauth-auth.md) (also unbuilt): it too adds a
 > user email and `NICOTIND_PUBLIC_URL`, and both must land on the *same* column and the
@@ -178,18 +179,82 @@ provider-agnostic**: SMTP is the baseline, so Mailgun is a preset, not a depende
   `group-state.spec.ts`, and the e2e `invite-email.spec.ts` (sent through the UI, read back from
   the outbox, accepted from the mailed link in a fresh context, shown verified in Admin).
 
-## Today (verified)
+## Shipped: self-service email and recovery (increment 5)
 
-- `users` had no email: `id, username, password_hash, role, created_at` (`packages/api/src/db.ts`) —
-  increment 4 added `email` and `email_verified_at`.
-- Admins create users and *type* a new password for them (`POST /api/admin/users`,
-  `PUT /api/admin/users/:id/password`); minimum length is 4.
-- A user cannot change their own password anywhere in the web UI.
+- **Own email, verified by link**: `email_verifications` (user, the *pending* address, sha256
+  `token_hash`, 24 h, `used_at`; one live row per user) in `services/email-verification.ts` —
+  `startEmailVerification`, `pendingEmailOf`, `completeEmailVerification`. `PUT
+  /api/me/account/email { email, currentPassword }` proves the password first (403
+  `INVALID_CREDENTIALS`, never 401), then: empty clears the address; otherwise validates (400),
+  refuses one another account has (409 `EMAIL_TAKEN`) or while mail is off (409
+  `MAIL_NOT_CONFIGURED`), and mails `verifyEmail` (kind `verify`). **`users.email` does not change
+  until the link is opened**, so a typo never replaces a working address. `GET /api/me/account` →
+  `{ email, emailVerified, pendingEmail, mailEnabled }`. The public `POST /api/auth/verify-email
+  { token }` spends the link by compare-and-swap in the transaction that sets the address; an
+  address taken meanwhile is 409 `EMAIL_TAKEN` and leaves the link unspent.
+- **Recovery switch**: `RecoverySetting` (`app_settings` key `recovery`, **default off**),
+  `PUT /api/admin/mail/recovery { enabled }` (audited `mail.recovery`), refused with 409
+  `MAIL_NOT_CONFIGURED` while the effective transport is `off`. Its own setting, so it stays
+  usable while `NICOTIND_MAIL_TRANSPORT` pins the rest of the card; `effective()` also requires mail
+  on, read per request, so turning mail off closes recovery with it. *Deviation from the plan*: it
+  needs mail on, not a prior successful test send — the test send is one click away and a "proven
+  once" flag would go stale the moment the provider changes.
+- **Forgot password** (`recoveryPublicRoutes`, mounted beside `authRoutes` under `/api/auth`):
+  `GET /recovery-status` → `{ enabled }`; `POST /forgot { identifier }` (username, or a verified
+  email) **always answers `200 { ok: true }`** — unknown user, no or unverified email, disabled
+  account, recovery off, the per-account throttle (one self-service reset per user per 15 minutes,
+  counted from `password_resets` rows with `created_by IS NULL`) and an exhausted quota all look the
+  same. The lookup always runs, an ineligible request does the same token work, and the mail is
+  sent after the response, so timing does not tell either. A global `createFixedWindowLimiter`
+  (20/min) is the only other answer (429), and it never looks at the identifier. An eligible request
+  issues `issueResetToken(db, userId, null, 30 * 60_000, now)` and mails `resetEmail` (kind `reset`).
+- **No Host-header links for anonymous requests**: the forgot link's base is the public URL, then
+  the Funnel URL, then the origin the admin used when turning recovery on (stored with the switch)
+  — never the forgot request's own `Host`, which its caller chooses (reset-link poisoning).
+- **Quota headroom**: `MailService.send` refuses every kind but `reset` once `sentToday >= cap -
+  resetReserve(cap)`; the reserve is `max(5, ceil(cap × 10%))`, never more than `cap - 1`
+  (`capFor`). An invite burst cannot use up the day before someone needs back in.
+- **"Password changed" notice**: `notifyPasswordChanged` after `changePassword`, `completeReset` and
+  the admin's *Set password…* (now through `adminSetPassword`): `passwordChangedEmail` (kind
+  `notice`, deliberately without a link) to the **verified** address while mail is on. Fire and log
+  — a failed, refused or throwing send never breaks the password change.
+- **Admin *Email reset link***: `POST /api/admin/password-resets { userId, send: true }` mails the
+  24 h link to the verified address and returns `{ mail, expiresAt }` — no path, the admin never
+  sees it (409 `MAIL_NOT_CONFIGURED` / `NO_VERIFIED_EMAIL`). Without `send` it is *Copy reset link*
+  as before. The ⋯ menu item (`user-action-email-reset`) is disabled with a `title` reason when
+  mail is off or the user has no verified address.
+- **Web**: the login page shows *Forgot password?* (`login-forgot-link`) when recovery is on, else a
+  muted "Ask your server admin" (`login-forgot-ask-admin`), never on TV and never while registering;
+  the public `ForgotPasswordComponent` at `/forgot-password` shows one confirmation for every
+  submit (`forgot-sent`), or `forgot-disabled`; the public `VerifyEmailComponent` at
+  `/verify-email#t=` (`verify-state`: loading/done/invalid/expired/used/taken); Settings → Account's
+  Email group (status verified / unverified / pending / none, address + current password, read-only
+  while mail is off); the Email delivery card's `recovery-toggle`. Public calls carry
+  `KEEP_SESSION_ON_401`.
+- **Tests**: `routes/recovery.test.ts` (verification incl. CAS, expiry, reuse, taken-meanwhile,
+  password required; forgot: identical responses across every case, only the verified address
+  receives, per-account throttle, recovery off, quota exhausted, reserve, no Host-header link; the
+  switch; admin `send: true`; notices sent and not sent), `mailer.test.ts` (reserve),
+  `templates.test.ts`, `privacy.test.ts`, the login/forgot/verify/account/email-delivery/user-management
+  specs, and the e2e `forgot-password.spec.ts` (recovery enabled through the locked card; a user
+  verifies an address through the real flow; the same confirmation for them and for an unknown name,
+  one reset mail; the link sets a password the old one no longer opens) and the verify block in
+  `account-security.spec.ts`.
+
+## Before this work (verified 2026-11-09)
+
+What the plan started from — every line here has since changed:
+
+- `users` had no email: `id, username, password_hash, role, created_at` (`packages/api/src/db.ts`)
+  — increment 4 added `email` and `email_verified_at`.
+- Admins created users and *typed* a new password for them (`POST /api/admin/users`,
+  `PUT /api/admin/users/:id/password`, minimum 4) — still possible, alongside reset links.
+- A user could not change their own password, or recover a forgotten one — increments 2 and 5.
 - Public signup is default-closed (`registrationEnabled`, env-pinnable).
-- Public token-in-fragment pages already exist: `/pair#t=`, `/approve#c=`, `/share/:token`.
-- Link base candidates already exist server-side (`services/pairing-urls.ts`, Funnel URL first).
-- An in-process limiter exists (`createFixedWindowLimiter`, `routes/devices.ts`).
-- JWTs are stateless 30-day sliding tokens — "sign out everywhere" needs new state.
+- Public token-in-fragment pages existed: `/pair#t=`, `/approve#c=`, `/share/:token`.
+- Link base candidates existed server-side (`services/pairing-urls.ts`, Funnel URL first).
+- An in-process limiter existed (`createFixedWindowLimiter`, `routes/devices.ts`).
+- JWTs were stateless 30-day sliding tokens with no "sign out everywhere" — increment 2.
 
 ## Mailgun reality (check the live pricing page before relying on it)
 
@@ -302,7 +367,7 @@ falls back to the link. Forgot password then reads "Ask your server admin."
 4. **Email invites.** ✅ Shipped — see above.
    - Ships: nullable, unique, lower-cased `users.email`. An emailed invite captures the email at accept time, already verified because the link was clicked.
    - Tests: e2e `invite-email.spec` reads the outbox filtered by a per-spec recipient.
-5. **Recovery.**
+5. **Recovery.** ✅ Shipped — see above.
    - Ships: add, verify and change your own email; forgot password (**default off**, can only be enabled after a successful test send); admin *Email reset link*; a "your password was changed" notice.
    - Tests: e2e `forgot-password.spec` checks identical UI for known and unknown users, with 1 vs 0 outbox messages.
 6. **Later.** Optional HTTP API adapters (Mailgun first) for SMTP-blocked hosts; each must pass the same contract suite. `nicotind://` "Continue in app", invite QR on TV.

@@ -18,6 +18,8 @@ import { SystemApiService } from '../../../services/api/system-api.service';
 import type { AdminUser } from '../../../services/api/api-types';
 import { TranslateService } from '../../../services/translate.service';
 import { AccountApiService } from '../../../services/api/account-api.service';
+import { MailApiService } from '../../../services/api/mail-api.service';
+import { mailReasonKey } from '../email-delivery/email-delivery-panel.component';
 import { ToastService } from '../../../services/toast.service';
 import { buildInviteLink } from '../../../lib/invite-link';
 import { httpErrorMessageI18n } from '../../../lib/http-error';
@@ -56,7 +58,11 @@ export class UserManagementPanelComponent implements OnInit {
   private readonly confirm = inject(ConfirmService);
   readonly i18n = inject(TranslateService);
   private readonly account = inject(AccountApiService);
+  private readonly mailApi = inject(MailApiService);
   private readonly toast = inject(ToastService);
+
+  /** Whether the server can send mail — gates *Email reset link*. False until known. */
+  readonly mailEnabled = signal(false);
 
   /** The reset link just issued for a user; shown once, like an invite link. */
   readonly resetLink = signal<{
@@ -95,6 +101,47 @@ export class UserManagementPanelComponent implements OnInit {
   ngOnInit(): void {
     void this.loadUsers();
     void this.loadSignup();
+    void this.loadMailStatus();
+  }
+
+  /** Non-fatal, like the signup switch: unknown reads as "off". */
+  private async loadMailStatus(): Promise<void> {
+    try {
+      const view = await firstValueFrom(this.mailApi.get());
+      this.mailEnabled.set(view.effectiveTransport !== 'off');
+    } catch {
+      this.mailEnabled.set(false);
+    }
+  }
+
+  /** Why *Email reset link* is unavailable for this user, as an i18n key; null when it is. */
+  emailResetBlockedKey(user: AdminUser): string | null {
+    if (!this.mailEnabled()) return 'admin.emailResetNeedsMail';
+    if (!user.email || !user.emailVerified) return 'admin.emailResetNeedsEmail';
+    return null;
+  }
+
+  /**
+   * The same 24 h link as *Copy reset link*, mailed to the user's verified
+   * address instead of shown — the admin never sees it.
+   */
+  async emailResetLink(user: AdminUser): Promise<void> {
+    if (this.emailResetBlockedKey(user)) return;
+    try {
+      const res = await firstValueFrom(this.account.emailResetLink(user.id));
+      if (res.mail.ok) {
+        this.toast.show({
+          message: this.i18n.t('admin.emailResetSent', { username: user.username }),
+          kind: 'success',
+        });
+      } else {
+        this.error.set(
+          `${this.i18n.t('admin.emailResetFailed')} ${this.i18n.t(mailReasonKey(res.mail.reason))}`,
+        );
+      }
+    } catch (err) {
+      this.error.set(httpErrorMessageI18n(err, this.i18n, this.i18n.t('admin.emailResetFailed')));
+    }
   }
 
   /** Non-fatal: a failure here must not blank the users table beside it. */

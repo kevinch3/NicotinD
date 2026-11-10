@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'bun:test';
-import { escapeHtml, formatUtc, inviteEmail, testEmail } from './templates.js';
+import {
+  escapeHtml,
+  formatUtc,
+  inviteEmail,
+  passwordChangedEmail,
+  resetEmail,
+  testEmail,
+  verifyEmail,
+} from './templates.js';
 
 describe('testEmail', () => {
   it('links to the base so the admin can check it opens', () => {
@@ -71,5 +79,38 @@ describe('inviteEmail', () => {
 describe('formatUtc', () => {
   it('pads hours and minutes', () => {
     expect(formatUtc(Date.UTC(2026, 0, 2, 3, 4))).toBe('2 Jan 2026, 03:04 UTC');
+  });
+});
+
+describe('increment 5 templates', () => {
+  const link = 'https://music.example.com/x#t=TOKEN';
+  const evil = '<i>x</i>\nBcc: a@b.c';
+
+  it('verifyEmail and resetEmail carry the link in both parts and escape names', () => {
+    for (const mail of [
+      verifyEmail({ serverName: evil, username: evil, link }),
+      resetEmail({ serverName: evil, username: evil, link, expiresIn: '30 minutes' }),
+    ]) {
+      expect(mail.text).toContain(link);
+      expect(mail.html).toContain(`href="${link}"`);
+      expect(mail.html).not.toContain('<i>x');
+      expect(mail.subject).not.toMatch(/[\r\n]/);
+      expect(mail.html).not.toMatch(/<img|<link|<script|url\(/i);
+    }
+    expect(
+      resetEmail({ serverName: 'den', username: 'sam', link, expiresIn: '30 minutes' }).text,
+    ).toContain('expires in 30 minutes');
+  });
+
+  it('passwordChangedEmail says when, and carries no link at all', () => {
+    const mail = passwordChangedEmail({
+      serverName: 'den',
+      username: 'sam',
+      at: Date.UTC(2026, 10, 10, 9, 30),
+    });
+    expect(mail.subject).toBe('Your password for den was changed');
+    expect(mail.text).toContain('10 Nov 2026, 09:30 UTC');
+    expect(mail.text).not.toMatch(/https?:\/\//);
+    expect(mail.html).not.toContain('href=');
   });
 });

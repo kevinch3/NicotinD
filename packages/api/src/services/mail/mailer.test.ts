@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../../db.js';
-import { MailService, startOfUtcDay } from './mailer.js';
+import { capFor, MailService, resetReserve, startOfUtcDay } from './mailer.js';
 import { MailSettingsStore, readMailEnv } from './settings.js';
 import type { MailMessage, MailResult, MailTransport } from './transport.js';
 
@@ -105,6 +105,7 @@ describe('MailService.send', () => {
   });
 
   it('stops at the daily cap with a typed quota-exhausted, then resets at 00:00 UTC', async () => {
+    // A cap of 2 keeps a reserve of 1 for resets; a 'reset' may use the whole cap.
     new MailSettingsStore(db, readMailEnv({})).update({
       transport: 'smtp',
       host: 'smtp.example.com',
@@ -118,9 +119,9 @@ describe('MailService.send', () => {
       transportFor: () => stub,
     });
     expect((await mail.send('test', MSG)).ok).toBe(true);
-    expect((await mail.send('test', MSG)).ok).toBe(true);
+    expect((await mail.send('reset', MSG)).ok).toBe(true);
     expect(mail.usage()).toEqual({ sentToday: 2, cap: 2 });
-    expect(await mail.send('test', MSG)).toMatchObject({ ok: false, reason: 'quota-exhausted' });
+    expect(await mail.send('reset', MSG)).toMatchObject({ ok: false, reason: 'quota-exhausted' });
     expect(sent).toHaveLength(2);
     expect(log().at(-1)).toMatchObject({ status: 'refused', reason: 'quota-exhausted' });
 
@@ -144,6 +145,44 @@ describe('MailService.send', () => {
     clock = MIDNIGHT;
     expect(mail.usage(clock).sentToday).toBe(0);
     expect(mail.usage(MIDNIGHT - 2).sentToday).toBe(1);
+  });
+});
+
+describe('reset headroom', () => {
+  it('reserves 10% of the cap, at least 5, never the whole cap', () => {
+    expect(resetReserve(100)).toBe(10);
+    expect(resetReserve(1000)).toBe(100);
+    expect(resetReserve(20)).toBe(5);
+    expect(resetReserve(6)).toBe(5);
+    expect(resetReserve(3)).toBe(2);
+    expect(resetReserve(1)).toBe(0);
+    expect(capFor('reset', 100)).toBe(100);
+    for (const kind of ['test', 'invite', 'verify', 'notice'] as const) {
+      expect(capFor(kind, 100)).toBe(90);
+    }
+  });
+
+  it('refuses other kinds once only the reserve is left, while resets use the full cap', async () => {
+    new MailSettingsStore(db, readMailEnv({})).update({
+      transport: 'smtp',
+      host: 'smtp.example.com',
+      fromAddress: 'music@example.com',
+      dailyCap: 10,
+    });
+    const mail = new MailService({
+      db,
+      settings: new MailSettingsStore(db, readMailEnv({})),
+      now: () => clock,
+      transportFor: () => stub,
+    });
+    // Reserve for a cap of 10: max(5, 1) = 5, so five non-reset sends.
+    for (let i = 0; i < 5; i++) expect((await mail.send('invite', MSG)).ok).toBe(true);
+    for (const kind of ['invite', 'verify', 'notice', 'test'] as const) {
+      expect(await mail.send(kind, MSG)).toMatchObject({ ok: false, reason: 'quota-exhausted' });
+    }
+    for (let i = 0; i < 5; i++) expect((await mail.send('reset', MSG)).ok).toBe(true);
+    expect(await mail.send('reset', MSG)).toMatchObject({ ok: false, reason: 'quota-exhausted' });
+    expect(mail.usage()).toEqual({ sentToday: 10, cap: 10 });
   });
 });
 

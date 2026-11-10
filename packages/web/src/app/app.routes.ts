@@ -84,6 +84,24 @@ export const routes: Routes = [
     ),
   },
   {
+    // "Forgot password?" (docs/email-invitations.md, increment 5). Public for the
+    // same reason as /reset-password; the page itself says when recovery is off.
+    path: 'forgot-password',
+    loadComponent: lazy(() =>
+      import('./pages/forgot-password/forgot-password.component').then(
+        (m) => m.ForgotPasswordComponent,
+      ),
+    ),
+  },
+  {
+    // Email verification landing: `/verify-email#t=…`. No guards — the link may
+    // be opened on a device that was never signed in.
+    path: 'verify-email',
+    loadComponent: lazy(() =>
+      import('./pages/verify-email/verify-email.component').then((m) => m.VerifyEmailComponent),
+    ),
+  },
+  {
     path: 'setup',
     loadComponent: lazy(() =>
       import('./pages/setup/setup.component').then((m) => m.SetupComponent),

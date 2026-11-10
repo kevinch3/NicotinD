@@ -31,6 +31,10 @@ export function mailReasonKey(reason: MailSendReason): string {
  * read-only with a note — the signup switch's `signupConfigurable` pattern —
  * but the test send still works, which is how e2e proves the outbox.
  *
+ * The "Forgot password?" switch (increment 5) lives here too, as its own
+ * setting: it works while env pins the transport, saves on toggle, and is
+ * disabled while mail is off — recovery without mail would be a dead link.
+ *
  * Loaded when the group opens, not on page load: Admin already polls enough.
  */
 @Component({
@@ -70,6 +74,12 @@ export class EmailDeliveryPanelComponent {
   readonly testTo = signal('');
   readonly testing = signal(false);
   readonly testResult = signal<MailTestResult | null>(null);
+
+  readonly recoverySaving = signal(false);
+  readonly recoveryEnabled = computed(() => this.view()?.recovery?.enabled === true);
+  readonly recoveryAvailable = computed(
+    () => !!this.view() && this.view()!.effectiveTransport !== 'off',
+  );
 
   readonly locked = computed(() => this.view()?.configurable === false);
   readonly publicUrlLocked = computed(
@@ -182,6 +192,29 @@ export class EmailDeliveryPanelComponent {
       this.error.set(httpErrorMessageI18n(err, this.i18n, this.i18n.t('admin.email.testFailed')));
     } finally {
       this.testing.set(false);
+    }
+  }
+
+  /**
+   * Saved on toggle. The checkbox is handed back to the model first (the
+   * signup switch's pattern): a native checkbox flips itself on click, and the
+   * binding only re-applies when the bound value changes.
+   */
+  async setRecovery(target: HTMLInputElement): Promise<void> {
+    const enabled = target.checked;
+    target.checked = this.recoveryEnabled();
+    if (this.recoverySaving() || (enabled && !this.recoveryAvailable())) return;
+    this.recoverySaving.set(true);
+    try {
+      const view = await firstValueFrom(this.api.setRecovery(enabled));
+      this.view.update((v) => (v ? { ...v, recovery: view.recovery } : view));
+      this.error.set(null);
+    } catch (err) {
+      this.error.set(
+        httpErrorMessageI18n(err, this.i18n, this.i18n.t('admin.email.recoveryFailed')),
+      );
+    } finally {
+      this.recoverySaving.set(false);
     }
   }
 

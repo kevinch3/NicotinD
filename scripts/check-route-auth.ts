@@ -61,7 +61,7 @@ export const PUBLIC_ROUTES: Array<{ route: string; reason: string }> = [
   {
     route: '/api/auth',
     reason:
-      'login and register must be reachable before a session exists; the routes here that need one take `auth` themselves',
+      'login and register must be reachable before a session exists; the routes here that need one take `auth` themselves. Also mounts recoveryPublicRoutes (docs/email-invitations.md, increment 5): /recovery-status, /forgot (same 200 for every identifier, mails only a verified address, rate-limited) and /verify-email (the single-use 256-bit token in the POST body is the credential, only its hash is stored)',
   },
   {
     route: '/api/setup',

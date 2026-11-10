@@ -27,6 +27,10 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   `signJwt`, refused on mismatch (`SESSION_REVOKED`); any password write calls
   `bumpSessionVersion`. Admin reset links (`passwordResetPublicRoutes`), `/settings/account`.
   → [email-invitations.md](../email-invitations.md)
+- **Self-service email + recovery**: own email via a 24 h link (`email_verifications`,
+  `completeEmailVerification`); default-off `RecoverySetting`; `recoveryPublicRoutes` (`/forgot`
+  answers the same for every input, mails only a verified address); `resetReserve` keeps quota for
+  resets; `notifyPasswordChanged`. → [email-invitations.md](../email-invitations.md)
 - **Email delivery (mail transport)**: one `MailTransport` interface, SMTP (`createSmtpTransport`,
   `classifySmtpError`) and the test `outbox`; presets are data (`MAIL_PRESETS`). `MailService` owns
   the daily cap and `mail_send_log`; `MailSettingsStore` env-pins and keeps the password write-only.

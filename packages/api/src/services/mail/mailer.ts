@@ -16,7 +16,23 @@ import { createSmtpTransport } from './smtp.js';
 import { clipDetail, type MailFailure, type MailMessage, type MailTransport } from './transport.js';
 
 /** What a send is for — one log vocabulary across increments. */
-export type MailKind = 'test' | 'invite' | 'reset' | 'notice';
+export type MailKind = 'test' | 'invite' | 'reset' | 'verify' | 'notice';
+
+/**
+ * Headroom kept for password resets (docs/email-invitations.md, "Quota"): every
+ * other kind stops at `cap - reserve`, so an invite burst or a flood of
+ * verification requests cannot use up the day before someone needs to get back
+ * into their account. 10% of the cap, at least 5, but never the whole cap —
+ * with a cap of 1 the reserve is 0 and that one send is anyone's.
+ */
+export function resetReserve(cap: number): number {
+  return Math.max(0, Math.min(Math.max(5, Math.ceil(cap * 0.1)), cap - 1));
+}
+
+/** How many sends of this kind the day allows: resets the whole cap, the rest less the reserve. */
+export function capFor(kind: MailKind, cap: number): number {
+  return kind === 'reset' ? cap : cap - resetReserve(cap);
+}
 
 /** A transport's reasons plus the two MailService refuses with before calling one. */
 export type MailSendFailure = MailFailure | 'off' | 'quota-exhausted';
@@ -99,12 +115,16 @@ export class MailService {
       return { ok: false, reason: 'off', detail: 'Email delivery is turned off' };
     }
     const { sentToday, cap } = this.usage(now);
-    if (sentToday >= cap) {
+    const allowed = capFor(kind, cap);
+    if (sentToday >= allowed) {
       this.log(kind, msg.to, 'refused', 'quota-exhausted', null, now);
       return {
         ok: false,
         reason: 'quota-exhausted',
-        detail: `Daily cap of ${cap} emails reached; it resets at 00:00 UTC`,
+        detail:
+          allowed < cap
+            ? `Daily cap reached (${allowed} of ${cap}; the rest is kept for password resets); it resets at 00:00 UTC`
+            : `Daily cap of ${cap} emails reached; it resets at 00:00 UTC`,
       };
     }
     let result: MailSendResult;

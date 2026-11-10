@@ -50,6 +50,12 @@ export class LoginComponent implements OnInit, OnDestroy {
   readonly error = signal('');
   readonly loading = signal(false);
   readonly registrationEnabled = signal(true);
+  /**
+   * "Forgot password?" (docs/email-invitations.md, increment 5): a link when the
+   * admin turned recovery on and mail is on, else a muted "ask your admin".
+   * `null` until the status is known, so neither flashes in first.
+   */
+  readonly recoveryEnabled = signal<boolean | null>(null);
   /** Native shell only: login is per-server, so offer the way out to the
    * server-picker — before this link, "log out" trapped you on one server. */
   readonly showServerLink = this.server.native;
@@ -77,7 +83,15 @@ export class LoginComponent implements OnInit, OnDestroy {
       next: (res) => this.registrationEnabled.set(res.enabled),
       error: () => this.registrationEnabled.set(false),
     });
-    if (this.isTv) void this.startTvLogin();
+    if (this.isTv) {
+      // Never on TV: recovering a password from a couch remote is the phone's job.
+      void this.startTvLogin();
+    } else {
+      this.api.getRecoveryStatus().subscribe({
+        next: (res) => this.recoveryEnabled.set(res.enabled),
+        error: () => this.recoveryEnabled.set(false),
+      });
+    }
   }
 
   ngOnDestroy(): void {

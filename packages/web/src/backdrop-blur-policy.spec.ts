@@ -38,6 +38,8 @@ const BLUR_SITES = {
     'pages/login/login.component.html',
     'pages/invite/invite-accept.component.html',
     'pages/reset-password/reset-password.component.html',
+    'pages/forgot-password/forgot-password.component.html',
+    'pages/verify-email/verify-email.component.html',
   ],
   floatingPanel: ['styles.css: .glass-panel'],
   inPageStandsDown: ['styles.css: .mosaic-rim'],

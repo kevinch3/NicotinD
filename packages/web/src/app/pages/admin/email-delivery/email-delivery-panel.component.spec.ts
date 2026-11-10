@@ -290,4 +290,59 @@ describe('EmailDeliveryPanelComponent', () => {
     expect(en['admin.email.quota']).toBe('{sent} / {cap} today');
     expect(en['admin.email.linkBase']).toContain('{url}');
   });
+
+  describe('password recovery switch', () => {
+    const withRecovery = (enabled: boolean, over: Partial<MailAdminView> = {}) =>
+      makeView({ recovery: { enabled, effective: enabled }, ...over });
+
+    it("saves on toggle and shows the server's answer", async () => {
+      const setRecovery = vi.fn(() => of(withRecovery(true)));
+      const { q, settle, cmp } = await mount(withRecovery(false), { setRecovery });
+      const toggle = q<HTMLInputElement>('recovery-toggle')!;
+      expect(toggle.checked).toBe(false);
+      expect(toggle.disabled).toBe(false);
+      toggle.checked = true;
+      await cmp.setRecovery(toggle);
+      await settle();
+      expect(setRecovery).toHaveBeenCalledWith(true);
+      expect(cmp.recoveryEnabled()).toBe(true);
+      expect(q<HTMLInputElement>('recovery-toggle')!.checked).toBe(true);
+      expect(BASE_CATALOG['admin.email.recoveryHint']).toBeTruthy();
+      expect(ES_CATALOG['admin.email.recoveryHint']).toBeTruthy();
+    });
+
+    it('works while the card is env-locked — it is its own setting', async () => {
+      const { q } = await mount(
+        withRecovery(false, { configurable: false, effectiveTransport: 'outbox' }),
+      );
+      expect(q('email-env-locked')).not.toBeNull();
+      expect(q<HTMLInputElement>('recovery-toggle')!.disabled).toBe(false);
+    });
+
+    it('is disabled with a reason while mail is off', async () => {
+      const setRecovery = vi.fn();
+      const { q, cmp } = await mount(withRecovery(false, { effectiveTransport: 'off' }), {
+        setRecovery,
+      });
+      expect(q<HTMLInputElement>('recovery-toggle')!.disabled).toBe(true);
+      expect(q('recovery-needs-mail')).not.toBeNull();
+      const toggle = q<HTMLInputElement>('recovery-toggle')!;
+      toggle.checked = true;
+      await cmp.setRecovery(toggle);
+      expect(setRecovery).not.toHaveBeenCalled();
+    });
+
+    it('keeps the old value and says so when the save fails', async () => {
+      const setRecovery = vi.fn(() => {
+        throw { error: { error: 'nope', code: 'MAIL_NOT_CONFIGURED' } };
+      });
+      const { q, cmp, settle } = await mount(withRecovery(false), { setRecovery });
+      const toggle = q<HTMLInputElement>('recovery-toggle')!;
+      toggle.checked = true;
+      await cmp.setRecovery(toggle);
+      await settle();
+      expect(cmp.recoveryEnabled()).toBe(false);
+      expect(q('email-error')).not.toBeNull();
+    });
+  });
 });

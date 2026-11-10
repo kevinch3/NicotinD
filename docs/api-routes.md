@@ -78,12 +78,18 @@ follow-up work, not part of the gate fix.
 | `POST`   | `/api/admin/invites/:id/link`            | Admin: new link for a pending invite (old one dies); an emailed invite is re-sent |
 | `DELETE` | `/api/admin/invites/:id`                 | Admin: revoke an invite                                     |
 | `PUT`    | `/api/me/account/password`               | Change own password; ends other sessions, returns new JWT   |
-| `POST`   | `/api/admin/password-resets`             | Admin: a 24 h single-use reset link for `{ userId }`        |
+| `GET`    | `/api/me/account`                        | Own `{ email, emailVerified, pendingEmail, mailEnabled }`   |
+| `PUT`    | `/api/me/account/email`                  | `{ email, currentPassword }`: mail a verification link (`''` clears); 403 wrong password, 409 `EMAIL_TAKEN` / `MAIL_NOT_CONFIGURED` |
+| `POST`   | `/api/auth/verify-email`                 | Public: open a verification link `{ token }`; 404/410, 409 `EMAIL_TAKEN` |
+| `GET`    | `/api/auth/recovery-status`              | Public: `{ enabled }` — recovery switched on **and** mail on |
+| `POST`   | `/api/auth/forgot`                       | Public: `{ identifier }` (username or email); always `200 { ok: true }`, mails a 30 min link to a verified address only |
+| `POST`   | `/api/admin/password-resets`             | Admin: a 24 h single-use reset link for `{ userId }`; with `send: true` it is mailed and the response is `{ mail, expiresAt }` |
 | `POST`   | `/api/password-reset/inspect`            | Public: a reset token's state and account name              |
 | `POST`   | `/api/password-reset/complete`           | Public: set the password from a reset link, returns JWT     |
 | `GET`    | `/api/admin/mail`                        | Admin: mail settings (no password, `passwordSet`), presets, usage, link base |
 | `PUT`    | `/api/admin/mail`                        | Admin: save mail settings; password omitted keeps it, `''` clears it; 409 `MAIL_ENV_LOCKED` when env-pinned |
 | `POST`   | `/api/admin/mail/test`                   | Admin: send the test email to `{ to }`; returns the `MailResult` + usage |
+| `PUT`    | `/api/admin/mail/recovery`               | Admin: the "Forgot password?" switch `{ enabled }`; 409 `MAIL_NOT_CONFIGURED` while mail is off |
 | `GET`    | `/api/admin/mail/outbox?to=`             | Admin, **outbox transport only** (404 otherwise): messages the test outbox holds |
 | `GET`    | `/api/search?q=`                         | Unified search (local library + parallel network sources)   |
 | `GET`    | `/api/search/:id/network`                | Poll for Soulseek results                                   |

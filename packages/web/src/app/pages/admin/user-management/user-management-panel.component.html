@@ -277,6 +277,16 @@
                     </button>
                     <button
                       type="button"
+                      data-testid="user-action-email-reset"
+                      [disabled]="emailResetBlockedKey(user) !== null"
+                      [title]="emailResetBlockedKey(user) ? i18n.t(emailResetBlockedKey(user)!) : ''"
+                      class="w-full text-left px-4 py-2 text-sm text-theme-secondary hover:bg-theme-hover transition disabled:opacity-30 disabled:cursor-not-allowed"
+                      (click)="userMenu.close(); emailResetLink(user)"
+                    >
+                      {{ 'admin.emailResetLink' | t }}
+                    </button>
+                    <button
+                      type="button"
                       data-testid="user-action-delete"
                       [disabled]="user.id === currentUserId()"
                       class="w-full text-left px-4 py-2 text-sm text-status-error hover:bg-theme-hover transition disabled:opacity-30 disabled:cursor-not-allowed"

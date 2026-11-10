@@ -130,3 +130,103 @@ export function inviteEmail(opts: {
   );
   return { subject, text, html };
 }
+
+/**
+ * "Confirm your email" (increment 5): the address only lands on the account
+ * once this link is opened, and only a confirmed address can receive a reset link.
+ */
+export function verifyEmail(opts: {
+  serverName: string;
+  username: string;
+  link: string;
+}): RenderedMail {
+  const subject = oneLine(`Confirm your email for ${opts.serverName}`);
+  const text = [
+    `Hi ${opts.username},`,
+    '',
+    `Confirm this address for your account on the NicotinD server "${opts.serverName}":`,
+    opts.link,
+    '',
+    'The link works once and expires in 24 hours. Once confirmed, password reset links can be sent here.',
+    '',
+    "If you didn't ask for this, ignore it — nothing changes until the link is opened.",
+  ].join('\n');
+  const html = layout(
+    subject,
+    [
+      `<p style="margin:0 0 12px;">Hi ${escapeHtml(opts.username)},</p>`,
+      `<p style="margin:0 0 12px;">Confirm this address for your account on the NicotinD server <strong>${escapeHtml(opts.serverName)}</strong>.</p>`,
+      button(opts.link, 'Confirm my email'),
+      '<p style="margin:0 0 4px;">Or open this link:</p>',
+      `<p style="margin:0 0 12px;word-break:break-all;"><code>${escapeHtml(opts.link)}</code></p>`,
+      '<p style="margin:0 0 12px;">The link works once and expires in 24 hours. Once confirmed, password reset links can be sent here.</p>',
+      `<p style="margin:0;color:#71717a;font-size:13px;">If you didn't ask for this, ignore it — nothing changes until the link is opened.</p>`,
+    ].join(''),
+  );
+  return { subject, text, html };
+}
+
+/** "Reset your password": the forgot-password flow (30 min) and the admin's *Email reset link* (24 h). */
+export function resetEmail(opts: {
+  serverName: string;
+  username: string;
+  link: string;
+  /** How long the link lives, already worded: "30 minutes", "24 hours". */
+  expiresIn: string;
+}): RenderedMail {
+  const subject = oneLine(`Reset your password for ${opts.serverName}`);
+  const text = [
+    `Hi ${opts.username},`,
+    '',
+    `Someone asked to reset the password of your account on the NicotinD server "${opts.serverName}".`,
+    'Open this link to choose a new one:',
+    opts.link,
+    '',
+    `The link works once and expires in ${opts.expiresIn}. Setting a new password signs you out everywhere else.`,
+    '',
+    "If it wasn't you, ignore this email — your password stays as it is.",
+  ].join('\n');
+  const html = layout(
+    subject,
+    [
+      `<p style="margin:0 0 12px;">Hi ${escapeHtml(opts.username)},</p>`,
+      `<p style="margin:0 0 12px;">Someone asked to reset the password of your account on the NicotinD server <strong>${escapeHtml(opts.serverName)}</strong>.</p>`,
+      button(opts.link, 'Choose a new password'),
+      '<p style="margin:0 0 4px;">Or open this link:</p>',
+      `<p style="margin:0 0 12px;word-break:break-all;"><code>${escapeHtml(opts.link)}</code></p>`,
+      `<p style="margin:0 0 12px;">The link works once and expires in ${escapeHtml(opts.expiresIn)}. Setting a new password signs you out everywhere else.</p>`,
+      `<p style="margin:0;color:#71717a;font-size:13px;">If it wasn't you, ignore this email — your password stays as it is.</p>`,
+    ].join(''),
+  );
+  return { subject, text, html };
+}
+
+/**
+ * "Your password was changed" — no link on purpose: a notice that could be
+ * phished into "click here to undo" is worse than none.
+ */
+export function passwordChangedEmail(opts: {
+  serverName: string;
+  username: string;
+  at: number;
+}): RenderedMail {
+  const when = formatUtc(opts.at);
+  const subject = oneLine(`Your password for ${opts.serverName} was changed`);
+  const text = [
+    `Hi ${opts.username},`,
+    '',
+    `The password of your account on the NicotinD server "${opts.serverName}" was changed on ${when}.`,
+    'Every other device was signed out.',
+    '',
+    "If this wasn't you, contact your server admin right away.",
+  ].join('\n');
+  const html = layout(
+    subject,
+    [
+      `<p style="margin:0 0 12px;">Hi ${escapeHtml(opts.username)},</p>`,
+      `<p style="margin:0 0 12px;">The password of your account on the NicotinD server <strong>${escapeHtml(opts.serverName)}</strong> was changed on ${escapeHtml(when)}. Every other device was signed out.</p>`,
+      `<p style="margin:0;color:#71717a;font-size:13px;">If this wasn't you, contact your server admin right away.</p>`,
+    ].join(''),
+  );
+  return { subject, text, html };
+}

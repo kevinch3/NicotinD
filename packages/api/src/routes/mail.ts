@@ -3,6 +3,9 @@
  * `/api/admin/mail` behind the `/api/admin/*` blanket auth plus the admin check
  * here. The SMTP password is write-only: GET says `passwordSet`, never the value.
  *
+ * `PUT /recovery` is the self-service "Forgot password?" switch (increment 5): its
+ * own setting, so it works while env pins the rest, and refused while mail is off.
+ *
  * `GET /outbox` exists only when the effective transport is `outbox` — that is
  * env-only (`NICOTIND_MAIL_TRANSPORT=outbox`, fixed at boot), so the route is
  * registered or not at construction and a production server has no such path.
@@ -18,6 +21,7 @@ import { listOutbox } from '../services/mail/outbox.js';
 import { MAIL_PRESETS } from '../services/mail/presets.js';
 import { looksLikeEmail, type MailSettings } from '../services/mail/settings.js';
 import { testEmail } from '../services/mail/templates.js';
+import type { RecoverySetting } from '../services/recovery-setting.js';
 import type { RemoteAccess } from '../services/tailscale.js';
 
 export interface MailAdminRoutesDeps {
@@ -25,6 +29,8 @@ export interface MailAdminRoutesDeps {
   mail: MailService;
   remoteAccess?: Pick<RemoteAccess, 'publicUrl'> | null;
   serverName?: () => string;
+  /** The forgot-password switch; absent → `PUT /recovery` 503s and the view says off. */
+  recovery?: RecoverySetting | null;
 }
 
 /** Which fields a save changed — the audit detail, never their values. */
@@ -63,6 +69,11 @@ export function mailAdminRoutes(deps: MailAdminRoutesDeps) {
       presets: MAIL_PRESETS,
       usage: mail.usage(),
       linkBase: bases[0] ?? null,
+      // `enabled` is the admin's choice; `effective` adds "and mail is on".
+      recovery: {
+        enabled: deps.recovery?.stored().enabled ?? false,
+        effective: deps.recovery?.effective() ?? false,
+      },
     };
   };
 
@@ -88,6 +99,32 @@ export function mailAdminRoutes(deps: MailAdminRoutesDeps) {
     recordAudit(db, c.get('user'), 'mail.settings', {
       targetKind: 'mail',
       detail: `transport=${result.settings.transport} changed=${changed.join(',') || 'none'}`,
+    });
+    return c.json(await view(c.req.url));
+  });
+
+  // PUT /recovery { enabled } — "Forgot password?" on the login page.
+  app.put('/recovery', async (c) => {
+    const recovery = deps.recovery;
+    if (!recovery) return c.json({ error: 'Recovery is not available', code: 'UNAVAILABLE' }, 503);
+    const body = await c.req
+      .json<{ enabled?: unknown }>()
+      .catch(() => ({}) as { enabled?: unknown });
+    if (typeof body.enabled !== 'boolean') {
+      return c.json({ error: 'enabled must be a boolean', code: 'VALIDATION_ERROR' }, 400);
+    }
+    if (body.enabled && !mail.status().enabled) {
+      return c.json(
+        { error: 'Turn on email delivery before password recovery', code: 'MAIL_NOT_CONFIGURED' },
+        409,
+      );
+    }
+    // The admin's own origin becomes the last-resort base for anonymous reset
+    // links — never the forgot request's Host (services/recovery-setting.ts).
+    recovery.set(body.enabled, new URL(c.req.url).origin);
+    recordAudit(db, c.get('user'), 'mail.recovery', {
+      targetKind: 'mail',
+      detail: `enabled=${body.enabled}`,
     });
     return c.json(await view(c.req.url));
   });

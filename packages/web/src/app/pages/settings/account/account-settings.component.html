@@ -1,6 +1,90 @@
 <div class="page-shell max-w-2xl" data-testid="account-settings">
   <h1 class="page-title mb-6">{{ 'account.title' | t }}</h1>
 
+  <app-settings-group groupId="account-email" [title]="'account.emailTitle' | t">
+    <form class="flex flex-col gap-3 max-w-sm" (ngSubmit)="saveEmail()" data-testid="account-email-form">
+      <p class="text-sm break-all" data-testid="account-email-status" [attr.data-status]="emailStatus()">
+        @switch (emailStatus()) {
+          @case ('verified') {
+            <span class="text-theme-primary">{{ account()?.email }}</span>
+            <span class="text-status-success"> · {{ 'account.emailVerified' | t }}</span>
+          }
+          @case ('unverified') {
+            <span class="text-theme-primary">{{ account()?.email }}</span>
+            <span class="text-status-warn"> · {{ 'account.emailUnverified' | t }}</span>
+          }
+          @case ('pending') {
+            <span class="text-status-warn">{{ 'account.emailPending' | t: { email: account()?.pendingEmail ?? '' } }}</span>
+            @if (account()?.email; as current) {
+              <span class="block text-xs text-theme-muted">{{ 'account.emailCurrent' | t: { email: current } }}</span>
+            }
+          }
+          @default {
+            <span class="text-theme-muted">{{ 'account.emailNone' | t }}</span>
+          }
+        }
+      </p>
+      <p class="text-sm text-theme-muted">{{ 'account.emailHint' | t }}</p>
+      @if (account() && !mailEnabled()) {
+        <p class="text-xs text-status-warn" data-testid="account-email-off">{{ 'account.emailMailOff' | t }}</p>
+      }
+      <input
+        type="email"
+        name="email"
+        autocomplete="email"
+        spellcheck="false"
+        maxlength="254"
+        [ngModel]="emailInput()"
+        (ngModelChange)="emailInput.set($event)"
+        [disabled]="!mailEnabled()"
+        [placeholder]="'account.emailPlaceholder' | t"
+        data-testid="account-email-input"
+        class="w-full px-4 py-2.5 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder:text-theme-muted focus:outline-none focus:border-theme-accent transition text-sm disabled:opacity-50"
+      />
+      <app-password-field
+        name="emailPassword"
+        [ngModel]="emailPassword()"
+        (ngModelChange)="emailPassword.set($event)"
+        [placeholder]="'account.currentPassword' | t"
+        [autocomplete]="'current-password'"
+        [testId]="'account-email-password'"
+        [inputClass]="'w-full px-4 py-2.5 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder:text-theme-muted focus:outline-none focus:border-theme-accent transition text-sm'"
+      />
+      @if (emailError()) {
+        <p class="text-xs text-status-error" data-testid="account-email-error">{{ emailError() }}</p>
+      }
+      @if (emailOutcome(); as outcome) {
+        <p class="text-xs break-all" data-testid="account-email-result" [attr.data-result]="outcome.kind">
+          @switch (outcome.kind) {
+            @case ('sent') {
+              <span class="text-status-success">{{ 'account.emailSent' | t: { email: outcome.email ?? '' } }}</span>
+            }
+            @case ('failed') {
+              <span class="text-status-error">{{ 'account.emailSendFailed' | t: { email: outcome.email ?? '' } }}</span>
+              <span class="block text-theme-muted">{{ outcome.reasonKey ?? '' | t }}</span>
+            }
+            @case ('cleared') {
+              <span class="text-theme-secondary">{{ 'account.emailCleared' | t }}</span>
+            }
+            @default {
+              <span class="text-theme-secondary">{{ 'account.emailUnchanged' | t }}</span>
+            }
+          }
+        </p>
+      }
+      <div>
+        <button
+          type="submit"
+          [disabled]="!canSaveEmail()"
+          data-testid="account-email-save"
+          class="px-4 py-2 rounded-lg bg-theme-inverse text-theme-inverse text-sm font-semibold hover:opacity-90 transition disabled:opacity-50"
+        >
+          {{ (emailSaving() ? 'account.saving' : 'account.emailSave') | t }}
+        </button>
+      </div>
+    </form>
+  </app-settings-group>
+
   <app-settings-group groupId="account-password" [title]="'account.passwordTitle' | t">
     <form class="flex flex-col gap-3 max-w-sm" (ngSubmit)="save()" data-testid="account-password-form">
       <p class="text-sm text-theme-muted">{{ 'account.passwordHint' | t }}</p>

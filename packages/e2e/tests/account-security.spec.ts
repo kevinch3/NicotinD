@@ -3,9 +3,10 @@ import { ADMIN, bearer, expandGroup } from '../helpers';
 import type { APIRequestContext, Browser, TestInfo } from '@playwright/test';
 
 /**
- * Account security without email (docs/email-invitations.md, increment 2): an
- * admin hands someone a reset link instead of typing a password for them, and a
- * signed-in user changes their own password. Both end every other session.
+ * Account security (docs/email-invitations.md, increments 2 and 5): an admin
+ * hands someone a reset link instead of typing a password for them, a signed-in
+ * user changes their own password — both end every other session — and a user
+ * adds an email, which only lands on the account once the mailed link is opened.
  *
  * Each test owns a user with a unique name; nothing here touches the seeded
  * admin's password, which every other spec signs in with.
@@ -121,5 +122,71 @@ test.describe('account security', () => {
     const stale = await request.get('/api/auth/me', { headers: bearer(elsewhere.token) });
     expect(stale.status()).toBe(401);
     expect((await login(request, username, 'changed-pass-22')).status()).toBe(200);
+  });
+
+  // Increment 5: the address lands on the account only once the mailed link is opened.
+  test('a user adds an email from Settings → Account and confirms it from the mailed link', async ({
+    browser,
+    request,
+  }, testInfo) => {
+    const stamp = Date.now();
+    const username = `e2e-email-${stamp}`;
+    const email = `e2e-verify-${stamp}@example.com`;
+    await createUser(request, username, 'original-pass-1');
+
+    const user = await strangerPage(browser, testInfo);
+    try {
+      await user.page.goto('/login');
+      await user.page.getByTestId('login-username').fill(username);
+      await user.page.getByTestId('login-password').fill('original-pass-1');
+      await user.page.getByTestId('login-submit').click();
+      await expect(user.page).not.toHaveURL(/\/login/);
+
+      await user.page.goto('/settings/account');
+      await expandGroup(user.page, 'account-email');
+      const status = user.page.getByTestId('account-email-status');
+      await expect(status).toHaveAttribute('data-status', 'none');
+
+      // A wrong password changes nothing and signs nobody out.
+      await user.page.getByTestId('account-email-input').fill(email);
+      await user.page.getByTestId('account-email-password').fill('not-my-password');
+      await user.page.getByTestId('account-email-save').click();
+      await expect(user.page.getByTestId('account-email-error')).toBeVisible();
+      await expect(user.page).toHaveURL(/\/settings\/account/);
+
+      await user.page.getByTestId('account-email-password').fill('original-pass-1');
+      await user.page.getByTestId('account-email-save').click();
+      await expect(user.page.getByTestId('account-email-result')).toHaveAttribute(
+        'data-result',
+        'sent',
+      );
+      await expect(status).toHaveAttribute('data-status', 'pending');
+      await expect(status).toContainText(email);
+
+      const res = await request.get(`/api/admin/mail/outbox?to=${encodeURIComponent(email)}`, {
+        headers: bearer(await adminToken(request)),
+      });
+      const { messages } = (await res.json()) as { messages: Array<{ text: string }> };
+      expect(messages).toHaveLength(1);
+      const link = messages[0]!.text.match(/https?:\/\/\S+\/verify-email#t=[\w-]+/)?.[0];
+      expect(link, 'the mail carries a verification link').toBeTruthy();
+
+      await user.page.goto(link!);
+      await expect(user.page.getByTestId('verify-state')).toHaveAttribute('data-state', 'done');
+      await expect(user.page.getByTestId('verify-email')).toContainText(email);
+      await user.page.getByTestId('verify-continue').click();
+      await expect(user.page).toHaveURL(/\/settings\/account/);
+      await expandGroup(user.page, 'account-email');
+      await expect(user.page.getByTestId('account-email-status')).toHaveAttribute(
+        'data-status',
+        'verified',
+      );
+
+      // The same link a second time says so.
+      await user.page.goto(link!);
+      await expect(user.page.getByTestId('verify-state')).toHaveAttribute('data-state', 'used');
+    } finally {
+      await user.context.close();
+    }
   });
 });
