@@ -1,3 +1,4 @@
+import { hostname } from 'node:os';
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { swaggerUI } from '@hono/swagger-ui';
 import { serveStatic, createBunWebSocket } from 'hono/bun';
@@ -48,6 +49,7 @@ import { passwordResetAdminRoutes, passwordResetPublicRoutes } from './routes/pa
 import { mailAdminRoutes } from './routes/mail.js';
 import { MailService } from './services/mail/mailer.js';
 import { MailSettingsStore } from './services/mail/settings.js';
+import { resolveServerName } from './services/server-name.js';
 import { accountRoutes } from './routes/account.js';
 import { recoveryPublicRoutes, withRecovery } from './routes/recovery.js';
 import { RecoverySetting } from './services/recovery-setting.js';
@@ -646,6 +648,14 @@ export function createApp({
   const mailSettings = new MailSettingsStore(db);
   const mail = new MailService({ db, settings: mailSettings });
   const publicUrl = () => mailSettings.publicUrl();
+  // What people see this server called in emails and on the invite page —
+  // never the container id `os.hostname()` returns in Docker.
+  const serverName = () =>
+    resolveServerName({
+      explicit: process.env.NICOTIND_SERVER_NAME,
+      publicUrl: publicUrl(),
+      host: hostname(),
+    });
   // "Forgot password?": default off, and only ever on while mail is.
   const recovery = new RecoverySetting(db, () => mail.status().enabled);
 
@@ -656,7 +666,7 @@ export function createApp({
     '/api/auth',
     withRecovery(
       authRoutes(config.jwt.secret, config.jwt.expiresIn, registrationOn, acquisitionOn),
-      recoveryPublicRoutes({ db, mail, recovery, remoteAccess, publicUrl }),
+      recoveryPublicRoutes({ db, mail, recovery, remoteAccess, publicUrl, serverName }),
     ),
   );
   app.route(
@@ -775,6 +785,7 @@ export function createApp({
   app.route(
     '/api/admin',
     adminRoutes({
+      serverName,
       acquisition: acquisitionToggle,
       registration: registrationToggle,
       historyEnabled,
@@ -835,6 +846,7 @@ export function createApp({
   app.route(
     '/api/me/account',
     accountRoutes({
+      serverName,
       db,
       jwtSecret: config.jwt.secret,
       jwtExpiresIn: config.jwt.expiresIn,
@@ -953,16 +965,24 @@ export function createApp({
   // Invitations (docs/email-invitations.md): the admin half rides the
   // /api/admin/* blanket auth; the public half takes the invite token as its
   // credential, the same trust model as the pairing claim.
-  app.route('/api/admin/mail', mailAdminRoutes({ db, mail, remoteAccess, recovery }));
-  app.route('/api/admin/invites', inviteAdminRoutes({ db, remoteAccess, publicUrl, mail }));
+  app.route('/api/admin/mail', mailAdminRoutes({ db, mail, remoteAccess, recovery, serverName }));
+  app.route(
+    '/api/admin/invites',
+    inviteAdminRoutes({ db, remoteAccess, publicUrl, mail, serverName }),
+  );
   app.route(
     '/api/invites',
-    invitePublicRoutes({ db, jwtSecret: config.jwt.secret, jwtExpiresIn: config.jwt.expiresIn }),
+    invitePublicRoutes({
+      db,
+      jwtSecret: config.jwt.secret,
+      jwtExpiresIn: config.jwt.expiresIn,
+      serverName,
+    }),
   );
   // Password reset links: same split — an admin issues, the token spends.
   app.route(
     '/api/admin/password-resets',
-    passwordResetAdminRoutes({ db, remoteAccess, publicUrl, mail }),
+    passwordResetAdminRoutes({ db, remoteAccess, publicUrl, mail, serverName }),
   );
   app.route(
     '/api/password-reset',
@@ -971,6 +991,7 @@ export function createApp({
       jwtSecret: config.jwt.secret,
       jwtExpiresIn: config.jwt.expiresIn,
       mail,
+      serverName,
     }),
   );
   // ServiceReview: one read-only snapshot aggregating the running service's

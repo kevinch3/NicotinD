@@ -28,6 +28,7 @@ of truth; this page summarizes the ones most installs touch.
 | `NICOTIND_SMTP_USER` / `NICOTIND_SMTP_PASSWORD` | —              | SMTP credentials while env-pinned. Configured in the UI instead, the password is stored write-only and left out of config exports unless secrets are opted in |
 | `NICOTIND_SMTP_FROM`                   | —                       | The From address while env-pinned                              |
 | `NICOTIND_PUBLIC_URL`                  | *(unset)*               | Where this server is reachable, e.g. `https://music.example.com`. The first base of every invite, reset and test-email link, ahead of the Funnel URL and the request origin; pins the card's *Public URL* field. Independent of mail |
+| `NICOTIND_SERVER_NAME`                 | *(unset)*               | What emails and the invite page call this server. Unset: the host of the public URL, else the machine hostname unless it is a container id (Docker's `95fe07a0e91c`), else `NicotinD` (`resolveServerName`) |
 | `NICOTIND_METADATA_FIX_ENABLED`        | `true`                  | Auto-repair missing MP3 tags after download                    |
 | `NICOTIND_METADATA_FIX_MIN_SCORE`      | `85`                    | Minimum MusicBrainz match score (0-100) for auto-fill          |
 | `NICOTIND_TRANSCODE_LOSSLESS_ENABLED`  | `true`                  | Transcode FLAC → Opus in place after download                  |
