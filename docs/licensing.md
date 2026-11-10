@@ -98,3 +98,17 @@ One head start for whoever picks this up: `ng build` already emits
 bundle. It is neither served nor linked today, and it covers only the browser bundle (not the API's
 dependencies, the Python analysis sidecar, or ffmpeg), so it answers part of decision 1 and none of
 decision 3.
+
+## Build tooling kept out of what ships
+
+`@sentry/node` lists `@sentry/bundler-plugins` as a regular dependency, and that pulls in Sentry's
+CLI, `sentry`, licensed **FSL-1.1-Apache-2.0**: source-available, not open source, so not something
+an AGPL-3.0-only release should distribute (#1810, owner ruling: keep it out). Only `@sentry/node`'s
+`bundler-plugin/*` subpaths import the plugins, and nothing at runtime does.
+
+`scripts/prune-build-tooling.ts` deletes both packages after each production install: in the
+Dockerfile's production stage and in the desktop backend staging (`prepare-resources.ts`). It
+handles bun's isolated store and the hoisted layout, and exits non-zero when it finds neither
+package, so a Sentry upgrade that drops the dependency surfaces as a build failure to revisit rather
+than a silent no-op. The Dockerfile then imports `@sentry/bun`, so an upgrade that starts needing
+the plugins at runtime fails the image build instead of reaching a host.
