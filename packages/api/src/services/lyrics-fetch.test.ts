@@ -5,6 +5,9 @@
  * with NULL through `setLyrics`'s full-column upsert.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Database } from 'bun:sqlite';
 import type { LyricsResult } from '@nicotind/core';
 import { applySchema } from '../db.js';
@@ -251,5 +254,36 @@ describe('fetchSongLyrics records why a candidate was chosen (#1676)', () => {
     const before = getLyricsProvenance(db, SONG)?.choice;
     expect((await refetch(registry([plainOnly]))).kind).toBe('kept-timed');
     expect(getLyricsProvenance(db, SONG)?.choice).toEqual(before!);
+  });
+});
+
+// A first play asks for lyrics about a second into streaming; rewriting the
+// file then shifted every audio byte under iOS Safari's range reads (noise,
+// then silence). The file-tag mirror is handed to the stream activity instead.
+describe('fetchSongLyrics leaves a streaming file alone', () => {
+  let musicDir: string;
+  beforeEach(() => {
+    musicDir = mkdtempSync(join(tmpdir(), 'lyrics-defer-'));
+    mkdirSync(join(musicDir, 'La Portuaria/Huija'), { recursive: true });
+    writeFileSync(join(musicDir, 'La Portuaria/Huija/01 - Selva.flac'), 'audio bytes');
+  });
+  afterEach(() => rmSync(musicDir, { recursive: true, force: true }));
+
+  it('stores the lyrics at once and defers the file-tag write to the stream activity', async () => {
+    const deferred: string[] = [];
+    const activity = {
+      noteStreamed: () => {},
+      writeWhenIdle: (path: string) => void deferred.push(path),
+      trackedCount: () => 0,
+    };
+    const file = join(musicDir, 'La Portuaria/Huija/01 - Selva.flac');
+    const before = readFileSync(file);
+
+    const r = await fetchSongLyrics(db, { plugins: registry([timed]), musicDir, activity }, SONG);
+
+    expect(r.kind).toBe('fetched');
+    expect(getLyrics(db, SONG)?.synced).toBe(LRC);
+    expect(deferred).toEqual([file]);
+    expect(readFileSync(file).equals(before)).toBe(true);
   });
 });

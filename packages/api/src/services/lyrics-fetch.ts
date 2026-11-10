@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import type { LyricsChoice, LyricsDto, LyricsResult } from '@nicotind/core';
 import { LYRICS_DURATION_TOLERANCE_SEC, lrcOverrunSec } from '@nicotind/core';
 import { readAudioTags, writeAudioTags } from './audio-tags.js';
+import { streamActivity, type StreamActivity } from './stream-activity.js';
 import { getLyrics, setLyrics } from './lyrics-store.js';
 import type { PluginRegistry } from './plugins/registry.js';
 import { expandDir, isUnderMusicDir, resolveSongPath } from './song-path.js';
@@ -51,7 +52,7 @@ export type LyricsFetchOutcome =
  */
 export async function fetchSongLyrics(
   db: Database,
-  deps: { plugins?: PluginRegistry | null; musicDir?: string },
+  deps: { plugins?: PluginRegistry | null; musicDir?: string; activity?: StreamActivity },
   songId: string,
   opts: { force?: boolean; confirmReplaceEdit?: boolean } = {},
 ): Promise<LyricsFetchOutcome> {
@@ -158,8 +159,13 @@ export async function fetchSongLyrics(
         forced: !!opts.force,
       }),
     });
+    // The tag write rewrites the file, so it waits until nobody is streaming it:
+    // the first play of a song is what asked for these lyrics (iOS noise-then-silence).
     if (result.plain && onDisk) {
-      await writeAudioTags(abs!, { lyrics: result.plain }).catch(() => false);
+      const plain = result.plain;
+      (deps.activity ?? streamActivity).writeWhenIdle(abs!, () =>
+        writeAudioTags(abs!, { lyrics: plain }),
+      );
     }
     return { kind: 'fetched', lyrics: saved };
   }

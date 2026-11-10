@@ -252,10 +252,30 @@ started from.
   available" when the last walk saw a timed candidate (`passedOver` has one). The action that
   applies it asks first, like any replacement of an edit. Nothing queries the source in the
   background just to show the hint.
-- **The file tag carries plain text only, as today.** A fetch writes it (`lyrics-fetch.ts:146-148`)
-  and so does `PUT` (`library.ts:2655-2660`). A timing-editor save whose words did not change must
+- **The file tag carries plain text only, as today.** A fetch writes it (`lyrics-fetch.ts`, after
+  playback, see below) and so does `PUT` (`library.ts:2655-2660`). A timing-editor save whose words did not change must
   **not** rewrite the audio file. The words are already in the tag, and every tag write rewrites
   the file. Only `PUT` with changed plain text writes the tag.
+
+### The file tag waits for playback
+
+A fetch stores the lyrics in `library_lyrics` at once, but the file-tag mirror waits until nobody
+has requested the file from `/api/stream` for `STREAM_IDLE_MS` (10 minutes). The stream route
+records every request in `streamActivity` (`services/stream-activity.ts`), and `fetchSongLyrics`
+hands the tag write to `writeWhenIdle` instead of writing it inline. Writes are keyed per file, and
+a later write for the same file replaces the earlier one.
+
+**Why:** the player's first load of a song is what fetches its lyrics, about a second into
+playback, and a tag write replaces the file and moves every audio byte (54 lines moved an Opus
+file's first audio page from byte 136 to 2,413). iOS Safari reads a stream as many `Range`
+requests, so it got bytes from the new layout at offsets from the old one: about a second of
+music, then a second or two of full-scale noise, then digital silence while the clock kept running
+(Safari's Ogg clock is estimated, not read from the stream, WebKit bug 293310). Skipping away and
+back reloaded the new file and played. Measured from a screen recording on 2026-11-10: the song's
+lyrics row was written 17 s before the failing play.
+
+**Accepted:** a write still pending at a restart is lost. The database row is the source of truth,
+so only the file's copy is missing until the next write to that field.
 
 ## 4. Timing editor (#1675)
 
