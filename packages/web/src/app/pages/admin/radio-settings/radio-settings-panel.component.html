@@ -58,7 +58,7 @@
             data-testid="radio-queue-target"
             [disabled]="saving()"
             (change)="save({ queueTarget: +$any($event.target).value })"
-            class="text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary"
+            class="min-w-0 text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary"
           >
             @for (n of queueTargets; track n) {
               <option [value]="n" [selected]="n === r.queueTarget">{{ n }}</option>

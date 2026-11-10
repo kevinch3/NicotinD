@@ -16,7 +16,12 @@ import { DesktopTitleBarOverlayComponent } from './components/desktop-title-bar-
   imports: [RouterOutlet, ToastOutletComponent, DesktopTitleBarOverlayComponent],
   // The overlay self-gates (Linux/Win Electron + no shell header active),
   // so it's a no-op everywhere else — see desktop-title-bar-overlay.
-  template: `<app-desktop-title-bar-overlay /><router-outlet /><app-toast-outlet />`,
+  // The routes outside the shell (login, setup, the public poll and share pages)
+  // scroll the document; they get the same overflow-x guard as <main>'s content
+  // (#1807, docs/web-ui.md "Rows never widen the page").
+  template: `<app-desktop-title-bar-overlay />
+    <div data-x-guard class="overflow-x-clip"><router-outlet /></div>
+    <app-toast-outlet />`,
 })
 export class App {
   private setup = inject(SetupService);

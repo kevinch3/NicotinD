@@ -57,7 +57,7 @@
             (keydown.enter)="applyCustomCover()"
             placeholder="Or paste an image URL…"
             data-testid="cover-url-input"
-            class="flex-1 px-3 py-2 rounded-lg bg-theme-surface-2 text-theme-primary text-sm border border-theme focus:outline-none focus:border-theme-accent"
+            class="min-w-0 flex-1 px-3 py-2 rounded-lg bg-theme-surface-2 text-theme-primary text-sm border border-theme focus:outline-none focus:border-theme-accent"
           />
           <button
             (click)="applyCustomCover()"
@@ -106,7 +106,7 @@
         (keydown.enter)="search()"
         placeholder="Artist and album…"
         data-testid="metadata-search-input"
-        class="flex-1 px-3 py-2 rounded-lg bg-theme-surface-2 text-theme-primary text-sm border border-theme focus:outline-none focus:border-theme-accent"
+        class="min-w-0 flex-1 px-3 py-2 rounded-lg bg-theme-surface-2 text-theme-primary text-sm border border-theme focus:outline-none focus:border-theme-accent"
       />
       <button
         (click)="search()"

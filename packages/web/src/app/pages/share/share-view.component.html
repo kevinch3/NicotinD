@@ -145,11 +145,11 @@
       </div>
 
       <!-- Seek bar -->
-      <div class="flex items-center gap-2 flex-1 max-w-xs">
+      <div class="flex items-center gap-2 flex-1 min-w-0 max-w-xs">
         <span class="text-xs text-theme-muted w-8 text-right">{{ formatTime(currentTime()) }}</span>
         <input type="range" min="0" [max]="audioDuration()" [value]="currentTime()" step="1"
           (input)="onSeek($event)"
-          class="flex-1 h-1 accent-theme-secondary cursor-pointer" />
+          class="flex-1 min-w-0 h-1 accent-theme-secondary cursor-pointer" />
         <span class="text-xs text-theme-muted w-8">{{ formatTime(audioDuration()) }}</span>
       </div>
     </div>

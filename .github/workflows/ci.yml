@@ -1120,7 +1120,7 @@ jobs:
           refs=()
           for d in *; do refs+=("$IMAGE@sha256:$d"); done
           docker buildx imagetools create -t "$IMAGE:edge" "${refs[@]}"
-          bash scripts/registry-retry.sh docker buildx imagetools inspect "$IMAGE:edge"
+          bash "$GITHUB_WORKSPACE/scripts/registry-retry.sh" docker buildx imagetools inspect "$IMAGE:edge"
 
       - name: Point the analysis edge at it
         if: steps.order.outputs.skip != 'true'

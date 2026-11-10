@@ -135,6 +135,13 @@ COPY src/ src/
 # `@img/sharp-linux-*` packages resolved from the lockfile, with no postinstall.
 RUN bun install --frozen-lockfile --ignore-scripts --production
 
+# Sentry's build-time CLI (FSL-1.1, not open source) rides in through
+# @sentry/node's bundler plugins, which nothing at runtime imports (#1810).
+# The import check fails the build if a Sentry upgrade starts needing them.
+COPY scripts/prune-build-tooling.ts scripts/
+RUN bun scripts/prune-build-tooling.ts /app \
+  && cd packages/api && bun -e "await import('@sentry/bun')"
+
 # Copy pre-built web UI
 COPY --from=web-builder /app/packages/web/dist packages/web/dist
 

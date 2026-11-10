@@ -6,6 +6,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **A vertical scroller constrains both axes**: `overflow-y-auto` alone computes `overflow-x` to
   `auto`, so a sheet scrolls sideways and `truncate` never applies; pinned by
   `now-playing-scroll-axes.spec.ts`. → [web-ui.md](../web-ui.md)
+- **Rows never widen the page**: rows wrap and flex children get `min-w-0`; a `data-x-guard`
+  `overflow-x-clip` backstop; `horizontal-overflow-policy.spec.ts` (template rules) and
+  `horizontal-overflow.spec.ts` (every route, `expectNoHorizontalOverflow`). → [web-ui.md](../web-ui.md)
 - **Now Playing sheet**: `nowPlayingHeading` names the session (radio wins over the context it
   extended); `coverCollapsed` drops the cover padding at the notch's zero floor; `monoEnvelopePath`
   folds the waveform onto the seek line. → [web-ui.md](../web-ui.md)

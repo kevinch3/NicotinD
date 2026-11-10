@@ -27,6 +27,7 @@ import {
 import { loadOverrides, type MetadataOverrideValue } from './metadata-override-store.js';
 import {
   confirmAtomicNames,
+  isKnownMember,
   primaryCredit,
   splitArtists,
   type ArtistCredit,
@@ -738,6 +739,13 @@ export function buildLibrary(
     for (const name of t.artistList ?? []) confirmedArtists.add(normalizeArtistForGrouping(name));
   }
   const known = { confirmedArtists, canonicalWhole, explicitSplits: authority.explicitSplits };
+  // An album credited to a list owns under its first known member, so the compound row
+  // owns nothing and the album floor hides it; null when the credit does not split (#1804).
+  const listOwner = (credit: string): string | null => {
+    const primaries = splitCredits(credit).filter((c) => c.role === 'primary');
+    if (primaries.length < 2) return null;
+    return (primaries.find((c) => isKnownMember(c.name, known)) ?? primaries[0]!).name;
+  };
 
   // Pass 2: build songs, albums, artists, and artist-link join rows.
   const songs: SongRow[] = [];
@@ -755,6 +763,8 @@ export function buildLibrary(
        *  Its sibling `names` has always been reduced; `artist` was not. */
       artists: string[];
       artistId: string;
+      /** The member a list credit is owned under, which names its row (#1804). */
+      ownerName: string | null;
       names: string[];
       songCount: number;
       duration: number;
@@ -775,6 +785,7 @@ export function buildLibrary(
     const trackArtist = aliasFix(rawArtists.trackArtist);
     const trackArtistOwner = aliasFix(rawArtists.trackArtistOwner);
     const albumArtistId = artistIdFor(albumArtist);
+    const albumOwner = listOwner(albumArtist);
     // `artist` carries the credit, `artist_id` the ownership key — the whole
     // point of #817. On a non-VA album the owner IS the album artist, so this
     // resolves to `albumArtistId`; on a compilation it is the real performer.
@@ -900,7 +911,8 @@ export function buildLibrary(
       albumAcc.set(albId, {
         id: albId,
         artists: [albumArtist],
-        artistId: albumArtistId,
+        artistId: albumOwner ? artistIdFor(albumOwner) : albumArtistId,
+        ownerName: albumOwner,
         names: [album],
         songCount: 1,
         duration: t.duration,
@@ -981,7 +993,8 @@ export function buildLibrary(
     // is what mis-named Cultura Profética — 126 of its 126 song tags are
     // accented, and the row was named from a split of
     // "Flor De Toloache; John Legend; Cultura Profetica".
-    ensureArtist(a.artistId, pickDisplayName(a.artists), a.id, 1);
+    ensureArtist(a.artistId, a.ownerName ?? pickDisplayName(a.artists), a.id, 1);
+    if (a.ownerName) ensureArtist(artistIdFor(a.artists[0]!), pickDisplayName(a.artists));
 
     // Multi-artist join rows for this album
     for (let i = 0; i < a.splitCredits.length; i++) {
