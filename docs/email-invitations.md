@@ -241,6 +241,16 @@ provider-agnostic**: SMTP is the baseline, so Mailgun is a preset, not a depende
   one reset mail; the link sets a password the old one no longer opens) and the verify block in
   `account-security.spec.ts`.
 
+## Provider note: Brevo click tracking breaks token links
+
+The first real Brevo send rewrote the email's button through Brevo's click-tracking redirect on the
+branded subdomain (`r.<brand>.<domain>/tr/cl/…`), which had no valid certificate yet and, under the
+domain's HSTS, could not be opened at all. Even with a certificate, tracking routes every invite and
+reset token through the provider and risks dropping the `#t=` fragment. The Brevo preset's help text
+now says to turn click and open tracking off and to send from an authenticated domain (otherwise
+Brevo rewrites the sender to `…@<id>.brevosend.com`). This is a provider setting, not something the
+SMTP transport can switch off.
+
 ## Fix after the first real send: the server's name
 
 The first real Brevo test arrived as "Test email from 95fe07a0e91c": emails and the invite page
