@@ -302,6 +302,13 @@ function stageBackend(backendDir: string = path.join(resourcesDir, 'backend')): 
   // artifact gets the versions the tests ran against, and a package published
   // upstream mid-release cannot change the build (#1174).
   run('bun install --production (backend)', 'bun', ['install', '--production'], backendDir);
+  // Sentry's build-time CLI is not open source and nothing at runtime needs it (#1810).
+  run(
+    'prune build tooling (backend)',
+    'bun',
+    [path.join(repoRoot, 'scripts', 'prune-build-tooling.ts'), backendDir],
+    backendDir,
+  );
 
   const entry = path.join(backendDir, 'src', 'main.ts');
   if (!existsSync(entry)) {
