@@ -1,0 +1,6 @@
+• acquisition: an attempt ledger for every hunt and enqueue, and a report over it (#1790)
+• auth: friend invitations, provider-agnostic email and password recovery (#1821)
+• downloads: complete from another peer picks the best peer by itself (#1825)
+• lyrics: the sync tool moves into a lyrics options sheet, with fixed geometry and words (#1809)
+• release: publish a prebuilt server tarball for non-Docker installs (#1742) (#1776)
+…and 19 more
