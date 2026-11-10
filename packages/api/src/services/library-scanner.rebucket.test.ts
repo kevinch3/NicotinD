@@ -280,3 +280,31 @@ describe('rebucketArtists on a prod-sized library', () => {
     expect(wide.albumIds.length).toBeGreaterThan(13500);
   });
 });
+
+describe('an album credited to a list (#1804)', () => {
+  const albumCount = (name: string) =>
+    row('SELECT album_count FROM library_artists WHERE id = ?', artistIdFor(name))?.album_count;
+
+  it('is owned by its first known member, and the compound keeps a row owning nothing', async () => {
+    put('Anitta/Bang/01.mp3', { artist: 'Anitta', album: 'Bang', title: 'Bang' });
+    put('Anitta, Maluma/El Que Espera/01.mp3', {
+      artist: 'Anitta/Maluma',
+      album: 'El Que Espera',
+      title: 'El Que Espera',
+    });
+    await scanner.scanFull();
+
+    const album = albumIdFor('Anitta/Maluma', 'El Que Espera');
+    expect(row('SELECT artist_id FROM library_albums WHERE id = ?', album)?.artist_id).toBe(
+      artistIdFor('Anitta'),
+    );
+    expect(albumCount('Anitta')).toBe(2);
+    expect(albumCount('Maluma')).toBe(1);
+    expect(albumCount('Anitta/Maluma')).toBe(0);
+
+    // A re-bucket keeps what the full scan kept, rather than pruning the compound.
+    await scanner.rebucketArtists(['Anitta/Maluma']);
+    expect(albumCount('Anitta/Maluma')).toBe(0);
+    expect(albumCount('Anitta')).toBe(2);
+  });
+});

@@ -550,6 +550,62 @@ describe('loose singles (un-bucketing)', () => {
       expect(song.albumArtistId).toBe(artistIdFor('Gramatik/Luxas'));
     });
 
+    describe('an album whose album artist is a list credit (#1804)', () => {
+      const anitta = track({
+        relPath: 'Anitta/Bang/01 - Bang.opus',
+        artist: 'Anitta',
+        albumArtist: 'Anitta',
+        album: 'Bang',
+        title: 'Bang',
+      });
+      const single = (credit: string, title: string) =>
+        track({
+          relPath: `${credit.replace(/\//g, ', ')}/${title}/01 - ${title}.opus`,
+          artist: credit,
+          albumArtist: credit,
+          album: title,
+          title,
+        });
+      const ownersOf = (built: ReturnType<typeof buildLibrary>, name: string) => {
+        const album = built.albums.find((a) => a.name === name)!;
+        return {
+          owner: album.artistId,
+          credited: built.albumArtists
+            .filter((l) => l.parentId === album.id)
+            .map((l) => l.artistId),
+        };
+      };
+
+      it('is owned by its first known member and credited to every member', () => {
+        const built = buildLibrary([anitta, single('Anitta/Maluma', 'El Que Espera')]);
+        expect(ownersOf(built, 'El Que Espera')).toEqual({
+          owner: artistIdFor('Anitta'),
+          credited: [artistIdFor('Anitta'), artistIdFor('Maluma')],
+        });
+        const album = built.albums.find((a) => a.name === 'El Que Espera')!;
+        expect(album.id).toBe(albumIdFor('Anitta/Maluma', 'El Que Espera'));
+      });
+
+      it('skips an unknown first member for a known one', () => {
+        const built = buildLibrary([anitta, single('Peso Pluma/Anitta', 'BELLAKEO')]);
+        expect(ownersOf(built, 'BELLAKEO').owner).toBe(artistIdFor('Anitta'));
+      });
+
+      it('leaves the compound row owning nothing, and the member keeps its own name', () => {
+        const built = buildLibrary([anitta, single('Anitta/Maluma', 'El Que Espera')]);
+        const compound = built.artists.find((a) => a.id === artistIdFor('Anitta/Maluma'));
+        expect(compound?.albumCount ?? 0).toBe(0);
+        const member = built.artists.find((a) => a.id === artistIdFor('Anitta'))!;
+        expect(member).toMatchObject({ name: 'Anitta', albumCount: 2 });
+        expect(built.artists.find((a) => a.id === artistIdFor('Maluma'))!.albumCount).toBe(1);
+      });
+
+      it('keeps the credit as the owner when it does not split', () => {
+        const built = buildLibrary([single('Hugo Fattoruso/Ruben Rada', 'Dúo')]);
+        expect(ownersOf(built, 'Dúo').owner).toBe(artistIdFor('Hugo Fattoruso/Ruben Rada'));
+      });
+    });
+
     it('leaves a split song on a normal album with the owner it credits', () => {
       const path = 'Rihanna/Reloaded/15 - Duet.opus';
       const built = buildLibrary([
