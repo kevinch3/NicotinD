@@ -1,0 +1,2 @@
+• acquisition: a Get whose pick lacks the missing tracks tries the next peer (#1826)
+• acquisition: one-click Get picks a folder that has the missing tracks (#1827)

@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.128](https://github.com/kevinch3/NicotinD/compare/v0.8.127...v0.8.128) (2026-11-11)
+
+### Bug Fixes
+
+* **acquisition:** a Get whose pick lacks the missing tracks tries the next peer ([#1826](https://github.com/kevinch3/NicotinD/issues/1826)) ([de49024](https://github.com/kevinch3/NicotinD/commit/de49024b16c1d6f344891ea5b869d4a856fe68c1)), references [#1823](https://github.com/kevinch3/NicotinD/issues/1823)
+* **acquisition:** one-click Get picks a folder that has the missing tracks ([#1827](https://github.com/kevinch3/NicotinD/issues/1827)) ([d4c9c98](https://github.com/kevinch3/NicotinD/commit/d4c9c981f941eaa983a298f87262bac897a4423f)), references [#1823](https://github.com/kevinch3/NicotinD/issues/1823)
 ## [0.8.127](https://github.com/kevinch3/NicotinD/compare/v0.8.126...v0.8.127) (2026-11-10)
 
 ### Features
