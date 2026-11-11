@@ -215,6 +215,32 @@ The fix has four parts:
   appears/hides live on a mid-session connectivity change rather than only at boot. See `docs/web-ui.md`
   §Offline / network detection.
 
+## Minimum WebView
+
+The app renders in the device's **Android System WebView** (or Chrome, its provider on Android 7–9),
+which updates separately from the APK. The floor is **WebView/Chrome 111**: Tailwind v4's CSS
+(`@layer`, `oklch()`, `color-mix()`) needs 111, and the ES2022 bundle needs 72+ for class fields
+alone. Below the floor, the module entry is a `SyntaxError` and nothing boots. The user saw a
+**black screen** (the native window background) on a moto g6 plus running Android 9 with Chrome 70
+as its WebView and no Play Store.
+
+`index.html` carries an **engine floor guard**, an inline ES5 script after `<app-root>` that runs
+before the module bundle. It checks `CSS.supports('color', 'oklch(0 0 0)')`, a single test that
+arrives with the same engines as the floor, and on failure it replaces `<app-root>` with a message
+naming the device's Chrome version and how to fix it. Angular then finds no root to bootstrap into,
+so the message stays. Every inline script in `index.html` must stay ES5, including the
+pre-paint theme script, because they all run on the engines the guard rejects.
+`engine-floor-guard.spec.ts` pins both rules.
+
+**Fixing a device**: update *Chrome* (the WebView provider on Android 7–9) or *Android System
+WebView* from Play, or from Aurora Store if there is no Play Store. Only Google-signed packages are
+valid providers on a stock ROM, so the WebView builds on F-Droid will not register. On Android 7–9
+the standalone WebView is the *fallback* provider (`dumpsys webviewupdate`: "Fallback logic
+enabled"), and while Chrome is enabled the system silently uninstalls its updates right after
+install. `adb install` still reports Success. Either update Chrome itself, or
+`pm disable-user com.android.chrome` before installing WebView. On the moto g6 plus, Aurora offered
+WebView 138 (the last release for Android 9) but only Chrome 101, which is below the floor (#1828).
+
 ## CORS (cross-origin from the WebView)
 
 The native shell runs from `https://localhost` and calls the server cross-origin. Auth is a **Bearer
