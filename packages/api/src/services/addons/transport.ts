@@ -15,6 +15,7 @@ export type HuntLane =
   | 'hunt'
   | 'hunt-base'
   | 'hunt-queue'
+  | 'get'
   | 'hunt-skew'
   | 'resource'
   | 'hunt-download'

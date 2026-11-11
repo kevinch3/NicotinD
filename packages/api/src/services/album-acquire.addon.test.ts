@@ -5,6 +5,7 @@ import type { Lidarr } from '../lidarr/index.js';
 import { applySchema } from '../db.js';
 import { albumIdFor, artistIdFor } from './library-scanner.js';
 import { acquireAlbum } from './album-acquire.js';
+import { createJob } from './acquisition-job-store.js';
 import { RemoteAddonPlugin } from './addons/remote-addon-plugin.js';
 import { AddonRequestError, type AddonClient } from './addons/client.js';
 
@@ -477,5 +478,91 @@ describe('acquireAlbum when the source is offline', () => {
       },
     });
     expect((await acquireAlbum(h.deps, INPUT)).outcome).toBe('enqueue-failed');
+  });
+
+  describe('walking down the confident candidates', () => {
+    const SECOND = { ...CANDIDATE, candidateRef: 'ref-2', username: 'peer-two', matchPct: 90 };
+    const search = async () => ({
+      candidates: [CANDIDATE, SECOND],
+      queries: [],
+      skewNeeded: false,
+    });
+    const failingFirst = (err: Error) => {
+      const refs: string[] = [];
+      const deps = makeDeps({
+        albumsSearch: search,
+        getHealth: async () => ({ ok: true, ready: true }),
+        createJob: async (req: unknown) => {
+          const ref = (req as { candidateRef: string }).candidateRef;
+          refs.push(ref);
+          if (ref === 'ref-1') throw err;
+          return { id: 'aj-2', intent: 'album', items: [] };
+        },
+      } as unknown as Partial<AddonClient>);
+      return { deps, refs };
+    };
+
+    it('tries the next peer when the first holds none of the wanted tracks', async () => {
+      const { deps, refs } = failingFirst(
+        new AddonRequestError('bad request', 400, 'candidate covers none of the wanted tracks'),
+      );
+      expect(await acquireAlbum(deps.deps, INPUT)).toEqual({ outcome: 'enqueued' });
+      expect(refs).toEqual(['ref-1', 'ref-2']);
+    });
+
+    it('tries the next peer when the first cannot be enqueued from', async () => {
+      const { deps, refs } = failingFirst(new AddonRequestError('peer offline', 502));
+      expect(await acquireAlbum(deps.deps, INPUT)).toEqual({ outcome: 'enqueued' });
+      expect(refs).toEqual(['ref-1', 'ref-2']);
+    });
+
+    it('stops at a refusal of the request itself', async () => {
+      const { deps, refs } = failingFirst(new AddonRequestError('bad request', 400, 'expired'));
+      const result = await acquireAlbum(deps.deps, INPUT);
+      expect(result.outcome).toBe('enqueue-failed');
+      expect(result.detail).toContain('expired');
+      expect(refs).toEqual(['ref-1']);
+    });
+  });
+
+  describe('with a reserved job row', () => {
+    const reserve = (db: Database) =>
+      createJob(db, {
+        kind: 'album-hunt',
+        method: 'fixture-addon',
+        stage: 'resolving',
+        artistName: 'Artist',
+        albumTitle: 'Album',
+        lidarrAlbumId: 42,
+        files: [],
+      });
+
+    it('attaches the addon job to the reservation instead of a second row', async () => {
+      const h = makeDeps();
+      const reservedJobId = reserve(h.db);
+      expect(await acquireAlbum(h.deps, { ...INPUT, reservedJobId })).toEqual({
+        outcome: 'enqueued',
+      });
+      const rows = h.db
+        .query<{ id: string; stage: string; source_ref: string }, []>(
+          `SELECT id, stage, source_ref FROM acquisition_jobs`,
+        )
+        .all();
+      expect(rows).toEqual([
+        { id: reservedJobId, stage: 'queued', source_ref: 'addon:fixture-addon:aj-9' },
+      ]);
+    });
+
+    it('enqueues nothing once the reservation is no longer wanted', async () => {
+      const h = makeDeps();
+      const reservedJobId = reserve(h.db);
+      const result = await acquireAlbum(h.deps, {
+        ...INPUT,
+        reservedJobId,
+        stillWanted: () => false,
+      });
+      expect(result).toEqual({ outcome: 'cancelled' });
+      expect(h.jobRequests).toHaveLength(0);
+    });
   });
 });

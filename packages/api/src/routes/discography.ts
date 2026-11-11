@@ -31,6 +31,7 @@ import { INTERACTIVE_HUNT_TIMEOUT_MS } from '../middleware/idle-budget.js';
 import { mapAddonJob } from '../services/addons/job-poller.js';
 import { onDiskTitles } from '../services/library-completeness.js';
 import { HuntQueue, HuntQueueFullError } from '../services/hunt-queue.js';
+import { AlbumGetService } from '../services/album-get.service.js';
 
 const log = createLogger('discography');
 
@@ -107,6 +108,8 @@ export interface DiscographyRoutesOptions {
   getAddon: () => RemoteAddonPlugin | null;
   /** The explicit add-artist job (issue #644). */
   provisioning: ArtistProvisioningService;
+  /** The server-owned one-click Get; built from the options above when not shared. */
+  albumGet?: AlbumGetService;
 }
 
 export function discographyRoutes({
@@ -117,9 +120,11 @@ export function discographyRoutes({
   dataDir,
   getAddon,
   provisioning,
+  albumGet: sharedAlbumGet,
 }: DiscographyRoutesOptions) {
   const app = new Hono<AuthEnv>();
   const coverCacheDir = dataDir ? join(dataDir, 'cover-cache') : undefined;
+  const albumGet = sharedAlbumGet ?? new AlbumGetService({ db, lidarr, getAddon, coverCacheDir });
 
   // Discography hunt is acquisition — hidden from listeners, gated server-side.
   app.use('*', async (c, next) => {
@@ -487,6 +492,34 @@ export function discographyRoutes({
     const status = huntQueue.status(c.req.param('huntId'));
     if (!status) return c.json({ error: 'Unknown or expired hunt' }, 404);
     return c.json(status);
+  });
+
+  // POST /api/discography/albums/:lidarrAlbumId/get → 202 {jobId}
+  // The one-click Get: the job is reserved and the server finds, picks and
+  // enqueues on its own. The caller reads the outcome off the downloads feed.
+  app.post('/albums/:lidarrAlbumId/get', async (c) => {
+    const albumId = Number(c.req.param('lidarrAlbumId'));
+    if (Number.isNaN(albumId)) return c.json({ error: 'Invalid album ID' }, 400);
+    const body = await c.req.json<HuntBody>().catch(() => ({}) as HuntBody);
+    const answer = await albumGet.request({
+      lidarrAlbumId: albumId,
+      artistName: body.artistName,
+      albumTitle: body.albumTitle,
+      localAlbumId: body.localAlbumId,
+      userId: getCurrentUser(c).sub,
+    });
+    switch (answer.status) {
+      case 'accepted':
+        return c.json({ jobId: answer.jobId }, 202);
+      case 'already-downloading':
+        return c.json({ error: 'already-downloading', jobId: answer.jobId }, 409);
+      case 'already-complete':
+        return c.json({ error: 'already-complete' }, 409);
+      case 'no-addon':
+        return c.json({ error: 'No acquisition addon registered' }, 503);
+      case 'unknown-album':
+        return c.json({ error: 'Album not found in Lidarr' }, 404);
+    }
   });
 
   // POST /api/discography/albums/:lidarrAlbumId/hunt/skew

@@ -948,6 +948,67 @@ export function failReservedJob(db: Database, jobId: string, reason: string): vo
 }
 
 /**
+ * Drop a reservation that turned out to have nothing to do: the album was
+ * already whole, or another lane's job owns it. Only a row no addon job was
+ * ever attached to, so a card with files behind it can never be removed here.
+ */
+export function discardReservedJob(db: Database, jobId: string): void {
+  db.run(`DELETE FROM acquisition_jobs WHERE id = ? AND source_ref IS NULL`, [jobId]);
+}
+
+/** Album Gets reserved but never handed to the source — what a restart must resume. */
+export function listReservedAlbumGets(db: Database): Array<{
+  id: string;
+  lidarrAlbumId: number;
+  artistName: string;
+  albumTitle: string;
+  artistMbid: string | null;
+  userId: string | null;
+}> {
+  return db
+    .query<
+      {
+        id: string;
+        lidarr_album_id: number;
+        artist_name: string;
+        album_title: string;
+        artist_mbid: string | null;
+        user_id: string | null;
+      },
+      []
+    >(
+      `SELECT id, lidarr_album_id, artist_name, album_title, artist_mbid, user_id
+         FROM acquisition_jobs
+        WHERE state = 'active' AND stage = 'resolving' AND kind = 'album-hunt'
+          AND source_ref IS NULL AND cancel_requested_at IS NULL
+          AND lidarr_album_id IS NOT NULL AND artist_name IS NOT NULL AND album_title IS NOT NULL
+        ORDER BY created_at`,
+    )
+    .all()
+    .map((r) => ({
+      id: r.id,
+      lidarrAlbumId: r.lidarr_album_id,
+      artistName: r.artist_name,
+      albumTitle: r.album_title,
+      artistMbid: r.artist_mbid,
+      userId: r.user_id,
+    }));
+}
+
+/** Is this reservation still waiting for its source — not cancelled, failed or attached? */
+export function isReservedJobPending(db: Database, jobId: string): boolean {
+  return (
+    db
+      .query<{ n: number }, [string]>(
+        `SELECT 1 AS n FROM acquisition_jobs
+          WHERE id = ? AND state = 'active' AND source_ref IS NULL
+            AND cancel_requested_at IS NULL`,
+      )
+      .get(jobId) != null
+  );
+}
+
+/**
  * Give up on a job's still-pending items (fallback exhausted / manual close):
  * they become `unavailable` so the job can finish as an honest partial
  * ("11 of 13 · 2 unavailable") instead of hanging on tracks nobody has.

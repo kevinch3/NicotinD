@@ -456,6 +456,43 @@ Now the wait is free and only the running hunt spends a budget:
 - `POST …/hunt/base`, the synchronous hunt, stays for installed apps that carry an older web
   bundle. Nothing in the current web calls it.
 
+## A Get is a server job
+
+A one-click Get used to be driven by the browser: queue a hunt, poll it, pick, count down 3 s, then
+call `hunt-download` up to three times. Closing the tab or backgrounding the app between the click
+and the enqueue dropped the album with no trace. The pick itself was written twice, once in the web
+and once in `acquireAlbum`, and the two drifted (#1823 needed a fix on each side).
+
+`POST /api/discography/albums/:id/get` moves all of it into core. It answers **202** `{jobId}`,
+or **409** `already-downloading` / `already-complete`, **503** with no addon, **404** for an album
+Lidarr does not know. Body: optional `artistName`, `albumTitle`, `localAlbumId`.
+
+- `AlbumGetService.request` (`services/album-get.service.ts`) runs the in-flight and completeness
+  guards, saves the canonical cover and artist identity, and **reserves the job row in
+  `resolving`** before the source is asked. The card exists from the click, and the reservation is
+  what a second click's guard finds.
+- The hunt waits its turn in the service's own `HuntQueue` and runs `acquireAlbum` with
+  `reservedJobId`, which attaches the addon job to the reservation (`attachAddonRef`) and does not
+  create a second row.
+- The pick clears `GET_MIN_MATCH_PCT` (60). The unattended sweeps keep 80: a person asked for this
+  album by name, a sweep must not guess.
+- `acquireAlbum` walks down to `MAX_PICK_ATTEMPTS` (3) confident candidates. A peer that cannot be
+  enqueued from, or whose folder has none of the wanted tracks, says nothing about the next one. Any
+  other 400 is about the request and stops the walk. This applies to every lane that calls it.
+- **A source that could not search is asked again.** `slskd-unavailable` (offline, or its lanes
+  were busy) leaves the row in `resolving` and re-queues it after `albumGetRetryDelayMs`: 30 s,
+  2 min, 5 min, 15 min, then the job fails with the source's reason.
+- Every other failure closes the row with `failReservedJob` and its reason, so it is an Error card
+  with the existing Retry (`POST /api/downloads/jobs/:id/retry`). An album that turned out whole, or
+  that another lane already fetches, drops the reservation (`discardReservedJob`).
+- A cancelled reservation is never enqueued: `isReservedJobPending` is read before the hunt, before
+  the enqueue (`stillWanted`) and before each retry.
+- **A restart resumes.** The queue is in memory, the rows are not: `resumePending` re-queues every
+  `resolving` album-hunt row with no addon job (`listReservedAlbumGets`) at boot. A resumed Get
+  has lost its `localAlbumId` and matches on-disk tracks by name.
+
+The manual picker still uses `hunt/queue` and `hunt-download`: choosing a folder is interactive.
+
 ## Deferred: unify the hunt engines
 
 The fixes above are targeted; the underlying structure still has avoidable duplication worth folding
