@@ -697,6 +697,32 @@ describe('AutoHuntService', () => {
       expect(lastToast?.message).toContain('Selection expired');
     });
 
+    // #1823: a partly-owned album, and the first peer's folder has none of the
+    // missing tracks. That gap is this peer's, so the next one is asked.
+    it('walks to the next candidate when the pick lacks the missing tracks', async () => {
+      huntDownload
+        .mockReturnValueOnce(
+          throwError(() => ({
+            status: 422,
+            error: {
+              error: 'this source has none of the tracks still missing',
+              code: 'candidate-lacks-wanted',
+            },
+          })),
+        )
+        .mockReturnValueOnce(of({ queued: 2 }));
+
+      await runDownload([candidate(85, 'peer1'), candidate(80, 'peer2')]);
+
+      expect(huntDownload).toHaveBeenCalledTimes(2);
+      expect(
+        show.mock.calls.some(([t]) =>
+          t.message.includes(`"peer1" doesn't have the missing tracks — trying "peer2"`),
+        ),
+      ).toBe(true);
+      expect(show.mock.calls.at(-1)?.[0]?.kind).toBe('success');
+    });
+
     // #1507: one core 500 read as "hardkorr unavailable — trying holden093…",
     // and every hop hit the same fault.
     it('does not walk the alternates on a server fault (500)', async () => {
