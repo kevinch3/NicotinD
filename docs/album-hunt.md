@@ -398,30 +398,29 @@ live elsewhere (`folderElsewhereStatus`; only album-shaped folders of 3+ tracks,
 (`downloadFolder(group, true)`, the server's `replace`), instead of an enabled "Download folder". A
 folder grab sends its album as the enqueue's `album` intent, and the server's 409
 `already-downloading` is treated as news, not an error. Every surface prints one label,
-`albumHuntLabel`: "Finding…", "Starting download…" (`starting`: the pick is being enqueued, no
-job yet), or the stage with its count ("Downloading · 7/13", over
+`albumHuntLabel`: "Finding…", or the stage with its count ("Downloading · 7/13", over
 `jobDenominator`, and only once `hasCommittedTotal`).
 
-**The `searching` hold outlives the search.** A confident match hands off to a 3 s countdown toast,
-so the hold is released on the countdown's terminal outcome — Cancel, Choose Manually, a failure
-toast — or, on success, only **after `await kickPoll()`**, when the new job is already in
-`acquisitionJobs`. Releasing when the search resolved (as the old lock did) left the card idle
-through countdown → enqueue → first poll, and a second click started a second hunt for the same
-album. A countdown dropped unseen at the toast cap never fires, so that case falls back to the
-manual picker instead of holding forever. Holds are refcounted (`beginSearch`/`endSearch`), since
-the modal and the auto-hunt can hold one album at once.
+**The `searching` hold outlives the request.** A click holds its album until the reserved job is
+in `acquisitionJobs`: `hunt()` releases only **after `await kickPoll()`**, so the card goes
+searching → job with no idle gap for a second click to land in. A reserved job still in `resolving`
+reads as `searching` too ("Finding…", not the URL lane's "Resolving link…"). Holds are refcounted
+(`beginSearch`/`endSearch`), since the modal and a Get can hold one album at once.
 
-**The countdown names its pick, and a failure stays on screen (#1543).** The toast reads "Best
-match: FLAC · 13/13 tracks from bunraku — downloading … in 3s", because that toast is where the
-peer and format get decided. A failed enqueue's error toast offers Dismiss / Find Manually and
-stays until one is taken: `ToastService` gives an `error` toast with actions no timer. At the
-4-second default, the prod failure looked like nothing had happened.
+**A Get that works says nothing; failures share one toast.** There is no countdown and no
+"Downloading" toast: the card's own status is the feedback, and Cancel on the Downloads card is the
+undo. `AutoHuntService` remembers the job ids this session asked for and, when the feed shows one
+`failed` (and not cancelled), raises one error toast worded by `failureDigest`
+(`lib/failure-digest.ts`). A failure while that toast is still on screen folds into it. One album
+offers Dismiss / Find Manually; several offer View in Downloads, where each Error card carries its
+reason and Retry. A 409 from the request is an info notice ("You already have…", "…is already
+downloading"). An `error` toast with actions has no timer (#1543).
 
 **No site-wide lock.** #1049 disabled every trigger while any hunt ran (`anyHunting`), because the
 source has two search lanes. That lock only ever covered the search, and extending it to cover the
 job would have locked the whole UI for minutes per album. Every card can be clicked; the hunts
-queue on the server (next section) rather than in the UI, and one the lanes still cut short comes
-back `huntCutShort` and gets the "source busy — Retry" toast. A catalog card knows its Lidarr id
+queue on the server rather than in the UI, and one the lanes still cut short is asked again by the
+server ("A Get is a server job"). A catalog card knows its Lidarr id
 only once resolved, so after a reload it reads idle until clicked; the click resolves it and
 `hunt()` no-ops onto the live job.
 
@@ -448,9 +447,9 @@ Now the wait is free and only the running hunt spends a budget:
   durations (12 s before any finish; a timed-out hunt is not a sample, since it measures the budget,
   not the source). More than 50 waiting answers 429. Finished hunts stay readable for 5 min.
 - The web's `DownloadsApiService.huntAlbumBase` posts to the queue and polls every 1.5 s
-  (`HUNT_POLL_MS`), emitting the result once, so `AutoHuntService` and the manual modal are
-  unchanged above it. While a hunt waits, the tile reads **"Queued · N ahead"** (`searching` with
-  `ahead`). A hunt that ran and failed throws `HuntFailedError`, and its toast says why.
+  (`HUNT_POLL_MS`), emitting the result once. Only the manual picker modal calls it now; a one-click
+  Get is a server job (below) and polls nothing of its own. A hunt that ran and failed throws
+  `HuntFailedError`.
 - The hunt id is sent to the addon as `X-NicotinD-Attempt`, so core's `addon hunt completed` line
   and the addon's `hunt summary` join on it (#1626).
 - `POST …/hunt/base`, the synchronous hunt, stays for installed apps that carry an older web
@@ -490,6 +489,12 @@ Lidarr does not know. Body: optional `artistName`, `albumTitle`, `localAlbumId`.
 - **A restart resumes.** The queue is in memory, the rows are not: `resumePending` re-queues every
   `resolving` album-hunt row with no addon job (`listReservedAlbumGets`) at boot. A resumed Get
   has lost its `localAlbumId` and matches on-disk tracks by name.
+
+The web's side is `AutoHuntService.hunt`: one `getAlbum` POST, then the downloads feed. It keeps
+no candidates, no threshold and no retry loop; the paragraphs above that describe the client
+walking candidates (#530) or filtering on `wantedMatched` (#1823) are the history of rules that now
+live only in `acquireAlbum`. The feed carries no queue position, so a waiting Get reads "Finding…"
+rather than "Queued · N ahead".
 
 The manual picker still uses `hunt/queue` and `hunt-download`: choosing a folder is interactive.
 

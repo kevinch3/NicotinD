@@ -152,19 +152,11 @@ test.describe('admin incomplete albums', () => {
       }),
     );
     const hunts: string[] = [];
-    // A hunt queues on the server and is polled (#1625).
-    await page.route('**/api/discography/albums/4242/hunt/queue', (route) => {
+    // One request: the server owns the Get from here, so a refusal is the whole story.
+    await page.route('**/api/discography/albums/4242/get', (route) => {
       hunts.push(route.request().method());
-      return route.fulfill({
-        status: 202,
-        json: { huntId: 'h-4242', state: 'queued', position: 0, etaMs: 0 },
-      });
+      return route.fulfill({ status: 503, json: { error: 'No acquisition addon registered' } });
     });
-    await page.route('**/api/discography/hunts/h-4242', (route) =>
-      route.fulfill({
-        json: { state: 'done', result: { candidates: [], totalTracks: 11, skewNeeded: false } },
-      }),
-    );
 
     await page.goto('/admin');
     await expandGroup(page, 'library-maintenance');
@@ -179,7 +171,7 @@ test.describe('admin incomplete albums', () => {
     await complete.click();
 
     await expect(
-      page.getByTestId('toast').filter({ hasText: 'No confident match found' }),
+      page.getByTestId('toast').filter({ hasText: 'No acquisition addon registered' }),
     ).toBeVisible();
     expect(hunts).toEqual(['POST']);
     await expect(complete).toBeEnabled();

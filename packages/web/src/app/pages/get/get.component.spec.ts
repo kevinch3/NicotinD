@@ -55,6 +55,7 @@ function setup(tab?: string, opts: SetupOpts = {}) {
         provide: TransferService,
         useValue: {
           activeDownloadCount: signal(opts.active ?? 0),
+          acquisitionJobs: signal([]),
           kickPoll: vi.fn().mockResolvedValue(undefined),
         },
       },
