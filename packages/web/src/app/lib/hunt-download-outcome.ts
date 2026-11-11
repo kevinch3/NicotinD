@@ -33,8 +33,11 @@ export interface HuntDownloadErrorOutcome {
    * failure qualify. A 4xx (stale selection), a 500 (server fault) and a 503
    * (no addon / source down) fail identically for every peer — walking the
    * alternates there only multiplied one fault into several toasts (#1507).
+   * The one 4xx that qualifies is the 422 `candidate-lacks-wanted` (#1823).
    */
   retriable: boolean;
+  /** The picked folder holds none of the tracks still missing — this peer's gap, not the album's. */
+  lacksWanted?: boolean;
 }
 
 /**
@@ -55,5 +58,7 @@ export function classifyHuntDownloadError(err: unknown): HuntDownloadErrorOutcom
   const retriable = status === 0 || status === 502 || status === 504;
   const message =
     (typeof code === 'string' && code) || (err instanceof Error ? err.message : 'Download failed');
+  if ((err as { error?: { code?: string } })?.error?.code === 'candidate-lacks-wanted')
+    return { kind: 'error', message, retriable: true, lacksWanted: true };
   return { kind: 'error', message, retriable };
 }

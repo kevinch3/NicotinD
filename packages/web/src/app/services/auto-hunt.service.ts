@@ -442,8 +442,9 @@ export class AutoHuntService {
         }
         const next = attempts[i + 1];
         if (outcome.retriable && next) {
+          const why = outcome.lacksWanted ? "doesn't have the missing tracks" : 'unavailable';
           this.toasts.show({
-            message: `"${pick.username}" unavailable — trying "${next.username}"…`,
+            message: `"${pick.username}" ${why} — trying "${next.username}"…`,
             kind: 'info',
           });
           continue;

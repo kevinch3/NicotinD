@@ -73,6 +73,23 @@ describe('classifyHuntDownloadError', () => {
     });
   });
 
+  // #1823: the one 4xx that is about the peer, not the album.
+  it('marks a folder lacking the missing tracks retriable', () => {
+    const err = {
+      status: 422,
+      error: {
+        error: 'this source has none of the tracks still missing',
+        code: 'candidate-lacks-wanted',
+      },
+    };
+    expect(classifyHuntDownloadError(err)).toEqual({
+      kind: 'error',
+      message: 'this source has none of the tracks still missing',
+      retriable: true,
+      lacksWanted: true,
+    });
+  });
+
   // #1507: a bare 500 was a core TypeError, identical for every peer — treating
   // it as "peer unavailable" walked the whole alternate list into the same fault.
   it('keeps a server fault (500) and a missing source (503) terminal', () => {

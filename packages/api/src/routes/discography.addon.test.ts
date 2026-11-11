@@ -115,6 +115,16 @@ function harness(clientOver: Partial<AddonClient> = {}) {
   return { app, db, jobRequests, jobKeys, albumsSearch };
 }
 
+/** A pick whose folder carries the wanted tracks. */
+const PICK = {
+  selected: {
+    username: 'peer',
+    directory: 'Soda Stereo - Dynamo',
+    files: [{ filename: '01 One.flac', size: 1 }],
+    candidateRef: 'ref-1',
+  },
+};
+
 const jsonPost = (body: unknown) => ({
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
@@ -302,7 +312,11 @@ describe('discography routes through a remote addon', () => {
     const res = await h.app.request(
       '/albums/42/hunt-download',
       jsonPost({
-        selected: { username: 'peer', directory: 'd', files: [{ filename: 'f', size: 1 }] },
+        selected: {
+          username: 'peer',
+          directory: 'd',
+          files: [{ filename: '01 One.flac', size: 1 }],
+        },
       }),
     );
     expect(res.status).toBe(400);
@@ -320,7 +334,7 @@ describe('discography routes through a remote addon', () => {
         selected: {
           username: 'peer',
           directory: 'd',
-          files: [{ filename: 'f', size: 1 }],
+          files: [{ filename: '01 One.flac', size: 1 }],
           candidateRef: 'ref-1',
         },
       }),
@@ -344,7 +358,7 @@ describe('discography routes through a remote addon', () => {
         selected: {
           username: 'peer',
           directory: 'd',
-          files: [{ filename: 'f', size: 1 }],
+          files: [{ filename: '01 One.flac', size: 1 }],
           candidateRef: 'ref-1',
         },
       }),
@@ -353,6 +367,61 @@ describe('discography routes through a remote addon', () => {
     const body = (await res.json()) as { error: string };
     expect(body.error).toContain('peer');
     expect(body.error).toContain('slskd rejected the enqueue');
+  });
+
+  // #1823: a partly-owned album whose pick holds none of the missing tracks.
+  // The refusal is about this peer, so the body says so and carries a code the
+  // web walks to its next candidate on.
+  it('refuses a pick carrying none of the wanted tracks before asking the addon', async () => {
+    const res = await h.app.request(
+      '/albums/42/hunt-download',
+      jsonPost({
+        selected: {
+          username: 'peer',
+          directory: 'd',
+          files: [{ filename: 'Music\\Other Album\\01 Something Else.flac', size: 1 }],
+          candidateRef: 'ref-1',
+        },
+      }),
+    );
+    expect(res.status).toBe(422);
+    expect(await res.json()).toEqual({
+      error: 'this source has none of the tracks still missing',
+      code: 'candidate-lacks-wanted',
+    });
+    expect(h.jobRequests).toHaveLength(0);
+  });
+
+  it("maps the addon's own lacks-wanted 400 to the same per-candidate refusal", async () => {
+    h = harness({
+      createJob: mock(async () => {
+        throw new AddonRequestError(
+          'addon responded 400 for POST /addon/v1/jobs',
+          400,
+          'the picked folder covers none of the wanted tracks',
+        );
+      }) as unknown as AddonClient['createJob'],
+    });
+    const res = await h.app.request('/albums/42/hunt-download', jsonPost(PICK));
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { code: string }).code).toBe('candidate-lacks-wanted');
+  });
+
+  it("carries any other addon 400 as the addon's reason, without the protocol path", async () => {
+    h = harness({
+      createJob: mock(async () => {
+        throw new AddonRequestError(
+          'addon responded 400 for POST /addon/v1/jobs',
+          400,
+          'candidateRef expired or unknown — re-run albums/search',
+        );
+      }) as unknown as AddonClient['createJob'],
+    });
+    const res = await h.app.request('/albums/42/hunt-download', jsonPost(PICK));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: 'candidateRef expired or unknown — re-run albums/search',
+    });
   });
 
   /**
@@ -366,7 +435,7 @@ describe('discography routes through a remote addon', () => {
       selected: {
         username: 'peer',
         directory: 'd',
-        files: [{ filename: 'f', size: 1 }],
+        files: [{ filename: '01 One.flac', size: 1 }],
         candidateRef: 'ref-1',
       },
     };
@@ -534,7 +603,7 @@ describe('discography routes through a remote addon', () => {
       selected: {
         username: 'peer',
         directory: 'd',
-        files: [{ filename: 'f', size: 1 }],
+        files: [{ filename: '01 One.flac', size: 1 }],
         candidateRef: 'ref-1',
       },
     };

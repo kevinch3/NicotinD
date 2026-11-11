@@ -21,7 +21,7 @@ import {
   pendingIngestForAddonJob,
   supersedeActiveJobs,
 } from '../services/acquisition-job-store.js';
-import { titlesMissingFromOwned } from '@nicotind/core';
+import { filesMatchingTitles, titlesMissingFromOwned } from '@nicotind/core';
 import type { AddonAlbumCandidate } from '@nicotind/core';
 import { join } from 'node:path';
 import type { Lidarr } from '../lidarr/index.js';
@@ -37,6 +37,18 @@ const log = createLogger('discography');
 /** A person is waiting on these, behind the socket's idle budget (#1437). */
 const HUNT_OPTS = { timeoutMs: INTERACTIVE_HUNT_TIMEOUT_MS };
 const HUNT_TIMED_OUT = 'The source did not finish searching in time. Try again in a moment.';
+
+/**
+ * A picked folder carrying none of the tracks still missing (#1823): a refusal
+ * about this peer, not the album, so `code` tells the client to try its next
+ * candidate rather than give up.
+ */
+const LACKS_WANTED = {
+  error: 'this source has none of the tracks still missing',
+  code: 'candidate-lacks-wanted',
+} as const;
+/** The slskd addon's own words for the same refusal (#1209). */
+const ADDON_LACKS_WANTED = /covers none of the wanted tracks/i;
 // A queued hunt holds no request (#1625), so the running one gets the addon's
 // whole multi-wave budget: a base wave plus two skew waves at 30 s each.
 const QUEUED_HUNT_TIMEOUT_MS = 120_000;
@@ -657,6 +669,18 @@ export function discographyRoutes({
         if (titles.length > 0 && wanted.length === 0) {
           return c.json({ ok: true, queued: 0, alreadyComplete: true }, 200);
         }
+        // The addon's own scoping rule, asked before the addon is: the unattended
+        // lane skips such a folder the same way (`acquireAlbum`).
+        if (
+          wanted.length > 0 &&
+          filesMatchingTitles(body.selected.files, wanted, titles).length === 0
+        ) {
+          log.info(
+            { albumId, username: body.selected.username, wanted: wanted.length },
+            'hunt-download: the picked folder has none of the wanted tracks',
+          );
+          return c.json(LACKS_WANTED, 422);
+        }
 
         // Same key the auto-acquire lane uses (`album-acquire.ts`), so a manual
         // Get and the poller dedupe against *each other* — one album is one
@@ -725,7 +749,9 @@ export function discographyRoutes({
             }
           } else if (err instanceof AddonRequestError && err.status === 400) {
             log.warn({ albumId, err: err.message }, 'hunt-download rejected by the addon');
-            return c.json({ error: err.message }, 400);
+            if (err.detail && ADDON_LACKS_WANTED.test(err.detail)) return c.json(LACKS_WANTED, 422);
+            // The addon's reason alone: the protocol path in `message` means nothing in a toast.
+            return c.json({ error: err.detail ?? err.message }, 400);
           } else {
             // Keep the offline framing (it is the dominant real cause) but carry
             // the addon's own reason — "they may be offline" alone made a
