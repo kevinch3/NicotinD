@@ -3,10 +3,9 @@
  *
  *   bun run scripts/build-pages-index.ts <site-dir>
  *
- * The site holds two unrelated things — the component catalog and our F-Droid
- * repository — so the root needs to say what they are. Without it, trimming the
- * URL to the host gives a 404, and the repository address (the one thing a user
- * has to copy by hand) is undiscoverable.
+ * The site serves our F-Droid repository. Without a root page, trimming the URL
+ * to the host gives a 404, and the repository address (the one thing a user has
+ * to copy by hand) is undiscoverable.
  *
  * It describes what is actually in `<site-dir>`, not what is supposed to be:
  * the F-Droid half is skipped when the signing key is absent, and a page that
@@ -22,7 +21,6 @@ const { version } = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf
   version: string;
 };
 
-const hasCatalog = existsSync(join(siteDir, 'storybook', 'index.html'));
 const hasFdroid = existsSync(join(siteDir, 'fdroid', 'repo', 'index-v2.json'));
 
 /** Absolute, because a user pastes it into an F-Droid client, not a browser. */
@@ -39,14 +37,6 @@ const fdroidSection = hasFdroid
         is signed with a separate key held only by CI.
       </p>
       <p><a href="fdroid/repo/">Browse the repository</a></p>
-    </section>`
-  : '';
-
-const catalogSection = hasCatalog
-  ? `    <section>
-      <h2>Component catalog</h2>
-      <p>The web UI's shared components, as they exist on <code>master</code>.</p>
-      <p><a href="storybook/">Open Storybook</a></p>
     </section>`
   : '';
 
@@ -78,7 +68,7 @@ const html = `<!doctype html>
   <body>
     <h1>NicotinD</h1>
     <p class="tagline">A self-hosted music server that finds the music too.</p>
-${[fdroidSection, catalogSection].filter(Boolean).join('\n')}
+${fdroidSection}
     <footer>
       Version ${version} &middot; AGPL-3.0-only &middot;
       <a href="https://github.com/kevinch3/NicotinD">Source on GitHub</a>
@@ -88,6 +78,4 @@ ${[fdroidSection, catalogSection].filter(Boolean).join('\n')}
 `;
 
 writeFileSync(join(siteDir, 'index.html'), html);
-console.log(
-  `site index written: catalog=${hasCatalog ? 'yes' : 'no'} fdroid=${hasFdroid ? 'yes' : 'no'}`,
-);
+console.log(`site index written: fdroid=${hasFdroid ? 'yes' : 'no'}`);
