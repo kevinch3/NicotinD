@@ -21,7 +21,7 @@ import {
   pendingIngestForAddonJob,
   supersedeActiveJobs,
 } from '../services/acquisition-job-store.js';
-import { titlesMissingFromOwned } from '@nicotind/core';
+import { filesMatchingTitles, titlesMissingFromOwned } from '@nicotind/core';
 import type { AddonAlbumCandidate } from '@nicotind/core';
 import { join } from 'node:path';
 import type { Lidarr } from '../lidarr/index.js';
@@ -44,12 +44,25 @@ const QUEUED_HUNT_TIMEOUT_MS = 120_000;
 class HuntTimedOutError extends Error {}
 
 /**
+ * The tracks a hunt-download of this album would ask for: the tracklist minus
+ * what is on disk. A whole-album `matchPct` says nothing about this subset on
+ * a partly-owned album, so each candidate carries its own count (#1823).
+ */
+interface WantedTracks {
+  titles: string[];
+  canonical: string[];
+}
+
+/**
  * An addon album candidate in the wire shape the hunt modal renders (the
  * in-process FolderCandidate), plus its candidateRef — the modal passes it
  * back through hunt-download so the addon acquires the user's exact pick.
  */
-function wireCandidate(c: AddonAlbumCandidate) {
+function wireCandidate(c: AddonAlbumCandidate, wanted?: WantedTracks) {
   return {
+    ...(wanted && {
+      wantedMatched: filesMatchingTitles(c.files, wanted.titles, wanted.canonical).length,
+    }),
     candidateRef: c.candidateRef,
     username: c.username,
     directory: c.directory,
@@ -180,7 +193,7 @@ export function discographyRoutes({
         { ...HUNT_OPTS, lane: 'hunt', albumId },
       );
       return c.json({
-        candidates: res.candidates.map(wireCandidate),
+        candidates: res.candidates.map((c) => wireCandidate(c)),
         totalTracks: tracks.length,
         // The source throttled the search burst (slskd 429) so the hunt may be
         // incomplete — the modal keeps trying instead of reporting no results.
@@ -315,7 +328,13 @@ export function discographyRoutes({
     }
   });
 
-  type HuntBody = { artistName?: string; albumTitle?: string; skewSearch?: boolean };
+  type HuntBody = {
+    artistName?: string;
+    albumTitle?: string;
+    skewSearch?: boolean;
+    /** The local album being completed, as hunt-download receives it. */
+    localAlbumId?: string;
+  };
 
   /**
    * One album hunt against the addon, answered in the shape the web's hunt
@@ -348,8 +367,9 @@ export function discographyRoutes({
       },
       { ...opts, albumId },
     );
+    const wanted = wantedTracksFor(album, tracks, body.localAlbumId);
     return {
-      candidates: res.candidates.map(wireCandidate),
+      candidates: res.candidates.map((c) => wireCandidate(c, wanted)),
       totalTracks: tracks.length,
       skewNeeded: false,
       rateLimited: res.rateLimited ?? false,
@@ -361,6 +381,23 @@ export function discographyRoutes({
       searchesFired: res.searchesFired,
       searchesAnswered: res.searchesAnswered,
     };
+  }
+
+  /**
+   * Hunt-download's own `wanted`, keyed on Lidarr's names as that route is.
+   * Undefined when it would name nothing: no tracklist, or nothing missing.
+   */
+  function wantedTracksFor(
+    album: { title?: string; artist?: { artistName?: string } },
+    tracks: Array<{ title: string }>,
+    localAlbumId?: string,
+  ): WantedTracks | undefined {
+    const canonical = tracks.map((t) => t.title);
+    const artistName = album.artist?.artistName;
+    if (!canonical.length || !artistName || !album.title) return undefined;
+    const onDisk = onDiskTitles(db, artistName, album.title, localAlbumId);
+    const titles = titlesMissingFromOwned(canonical, onDisk);
+    return titles.length ? { titles, canonical } : undefined;
   }
 
   const huntQueue = new HuntQueue<Awaited<ReturnType<typeof runAlbumHunt>>>({
@@ -472,7 +509,7 @@ export function discographyRoutes({
         { ...HUNT_OPTS, lane: 'hunt-skew', albumId },
       );
       return c.json({
-        candidates: res.candidates.map(wireCandidate),
+        candidates: res.candidates.map((c) => wireCandidate(c)),
         rateLimited: res.rateLimited ?? false,
         sourceOffline: res.sourceOffline ?? false,
         // Submitted vs completed inside the hunt's deadline (#1049): fewer answered

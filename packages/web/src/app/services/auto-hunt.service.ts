@@ -196,7 +196,12 @@ export class AutoHuntService {
         this.api
           .huntAlbumBase(
             album.lidarrId,
-            { artistName, albumTitle: album.title, skewSearch: true },
+            {
+              artistName,
+              albumTitle: album.title,
+              skewSearch: true,
+              localAlbumId: album.localAlbumId,
+            },
             (wait) =>
               this.setQueuedAhead(album.lidarrId, wait.state === 'queued' ? wait.position : 0),
           )
@@ -251,6 +256,10 @@ export class AutoHuntService {
       return false;
     }
 
+    // On a partly-owned album a folder with none of the missing tracks cannot
+    // help, whatever its whole-album match (#1823) — the rule `acquireAlbum` picks by.
+    const lacking = candidates.filter((c) => c.wantedMatched === 0);
+    candidates = candidates.filter((c) => c.wantedMatched !== 0);
     const confident = candidates[0] !== undefined && candidates[0].matchPct >= AUTO_THRESHOLD;
 
     // No retry button: the source reconnects on its own over minutes, and a
@@ -302,9 +311,12 @@ export class AutoHuntService {
 
     const best = candidates[0];
     if (!best || best.matchPct < AUTO_THRESHOLD) {
+      const onlyLacking = lacking.some((c) => c.matchPct >= AUTO_THRESHOLD);
       let noMatchId!: string;
       noMatchId = this.toasts.show({
-        message: `No confident match found for "${album.title}"`,
+        message: onlyLacking
+          ? `No match has the tracks still missing from "${album.title}"`
+          : `No confident match found for "${album.title}"`,
         kind: 'error',
         actions: [
           {

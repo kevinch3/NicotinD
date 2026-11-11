@@ -174,7 +174,12 @@ export class DownloadsApiService {
    */
   huntAlbumBase(
     lidarrAlbumId: number,
-    overrides: { artistName?: string; albumTitle?: string; skewSearch?: boolean } = {},
+    overrides: {
+      artistName?: string;
+      albumTitle?: string;
+      skewSearch?: boolean;
+      localAlbumId?: string;
+    } = {},
     onWait?: (status: QueuedHuntWaiting) => void,
   ) {
     return this.http
