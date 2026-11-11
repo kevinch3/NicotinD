@@ -30,8 +30,9 @@
         var THEMES = ['midnight', 'daylight', 'warm-paper', 'oled', 'twilight', 'forest', 'eink'];
         try {
           var stored = JSON.parse(localStorage.getItem('nicotind-theme') || '{}');
-          var theme = stored.state?.theme || 'midnight';
-          var sys = stored.state?.systemTheme;
+          var state = stored.state || {};
+          var theme = state.theme || 'midnight';
+          var sys = state.systemTheme;
           if (sys) {
             theme = window.matchMedia('(prefers-color-scheme: light)').matches
               ? 'daylight'
@@ -47,5 +48,31 @@
   </head>
   <body style="background-color: var(--theme-bg, #09090b); color: var(--theme-text-primary, #f4f4f5);" class="antialiased">
     <app-root></app-root>
+    <script>
+      // Engine floor guard (docs/mobile-app.md "Minimum WebView"). ES5 only: it
+      // must run on the engines it rejects, where the module bundle is a
+      // SyntaxError and the app would otherwise boot to a blank screen.
+      (function () {
+        var css = window.CSS;
+        if (css && css.supports && css.supports('color', 'oklch(0 0 0)')) return;
+        var root = document.querySelector('app-root');
+        if (!root) return;
+        var m = /Chrome\/(\d+)/.exec(navigator.userAgent);
+        var box = document.createElement('div');
+        box.id = 'engine-too-old';
+        box.setAttribute('style', 'max-width:28rem;margin:20vh auto 0;padding:0 1.5rem;font-family:sans-serif;line-height:1.5;color:#f4f4f5');
+        var h = document.createElement('h1');
+        h.setAttribute('style', 'font-size:1.25rem');
+        h.textContent = 'This browser engine is too old for NicotinD';
+        var p = document.createElement('p');
+        p.textContent =
+          'NicotinD needs Android System WebView or Chrome 111 or newer' +
+          (m ? ' (this device has ' + m[1] + ')' : '') +
+          '. Update Android System WebView or Chrome, then reopen the app.';
+        box.appendChild(h);
+        box.appendChild(p);
+        root.parentNode.replaceChild(box, root);
+      })();
+    </script>
   </body>
 </html>
