@@ -585,6 +585,13 @@ the release's F-Droid APKs; `.github/workflows/pages.yml` publishes it. `config.
 `metadata/<applicationId>.yml` are **generated** (`fdroid-repo.ts`) rather than committed — the repo
 URL, app ids and current version all come from things the repo already knows.
 
+**A failed publish opens an issue.** The site is left as it was, so clients stay on the previous
+release with nothing visible to them, and a red run on a `workflow_run` trigger notifies nobody. The
+`notify` job opens one "F-Droid repository publish failed" issue (or comments on the open one) and
+closes it on the next successful publish. It is a separate job, so `issues: write` is never held next
+to the signing key. A transient failure (on 2026-11-11, the artifact service answered HTML for
+10 minutes) is fixed with `gh workflow run pages.yml --ref master`.
+
 It publishes **only the current release**, which is what keeps it stateless: an F-Droid repository is
 valid with one version per app, so there is no history to carry between runs and re-running a release
 reproduces the same repository. The trade-off is no downgrades.

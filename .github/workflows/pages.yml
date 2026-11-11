@@ -1,36 +1,20 @@
 name: Pages
 
-# ONE workflow owns GitHub Pages, because Pages serves one site per repository
-# and every `deploy-pages` replaces the whole thing. Two workflows publishing
-# two trees would each delete the other's. So both live here:
+# GitHub Pages serves our signed F-Droid repository at /fdroid/repo/, plus a
+# landing page. The Storybook catalog was published here too until it was
+# dropped (docs/storybook.md "Publishing"); nothing linked to it.
 #
-#   /storybook/    the component catalog (was the whole site until #1168)
-#   /fdroid/repo/  our signed F-Droid repository
-#
-# Which means every run must produce BOTH, whatever triggered it — a release
-# cannot publish the repository without also rebuilding the catalog, or the
-# catalog vanishes.
+# Only a release changes the repository, so this keys off the release workflow
+# finishing rather than the tag itself (a tag cannot deploy to github-pages).
+# That is also the moment the APKs actually exist as release assets.
 on:
-  push:
-    branches: [master]
-    # The catalog documents master as it is now, so it rebuilds on anything it
-    # renders. Breakage from elsewhere is caught by `ci` on the same push.
-    paths:
-      - 'packages/web/**'
-      - 'packages/core/**'
-      - '.github/workflows/pages.yml'
-  # The F-Droid half is what a release changes, and `paths:` filters do not work
-  # for tag pushes, so this keys off the release workflow finishing instead of
-  # the tag itself. That is also the moment the F-Droid APKs actually exist as
-  # release assets.
   workflow_run:
     workflows: ['Build & Deploy']
     types: [completed]
   workflow_dispatch: {}
 
 # Pages accepts one deployment at a time. Queue rather than cancel: a cancelled
-# run would leave the site half-replaced — and since one deployment carries both
-# trees, "half" could mean a catalog with no repository next to it.
+# run would leave the newest release out of the repository.
 concurrency:
   group: pages
   cancel-in-progress: false
@@ -76,11 +60,6 @@ jobs:
           restore-keys: |
             bun-${{ runner.os }}-${{ env.BUN_VERSION }}-
 
-      # ng build (storybook) requires Node >= 24.19.0; pin from .nvmrc.
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
-        with:
-          node-version-file: '.nvmrc'
-
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
@@ -91,20 +70,10 @@ jobs:
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
         id: pages
 
-      - name: Build Storybook
-        run: bun run build:storybook
-
-      - name: Stage the catalog at /storybook
-        run: |
-          set -euo pipefail
-          mkdir -p site/storybook
-          cp -r packages/web/storybook-static/. site/storybook/
-
       # --- The F-Droid repository -----------------------------------------
-      # Skipped, not failed, when the repo signing key is absent: until the
-      # secret is set this workflow still has a catalog to publish, and a hard
-      # failure would take that down too. Same shape as deploy.yml's keystore
-      # handling. `has_key` gates every step below.
+      # Skipped, not failed, when the repo signing key is absent: that is the
+      # bootstrap case (no repository yet). Once one is live, the guard before
+      # the upload turns the skip into a failure. `has_key` gates every step below.
       - name: Check for the F-Droid repo signing key
         id: key
         env:
@@ -114,7 +83,7 @@ jobs:
             echo "has_key=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_key=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::No FDROID_REPO_KEYSTORE_BASE64 — publishing the catalog only, no F-Droid repository."
+            echo "::warning::No FDROID_REPO_KEYSTORE_BASE64 — no F-Droid repository is built."
           fi
 
       # fdroidserver builds and signs the index; apksigner (Android SDK) is what
@@ -136,8 +105,8 @@ jobs:
           packages: platform-tools build-tools;34.0.0
 
       # The APKs come from the latest RELEASE, not from this checkout: the
-      # repository must serve what was released, and a master-push catalog
-      # refresh has to republish those same files rather than build new ones.
+      # repository must serve what was released, and a manual re-run has to
+      # republish those same files rather than build new ones.
       - name: Download the latest release's F-Droid APKs
         id: apks
         if: steps.key.outputs.has_key == 'true'
@@ -149,7 +118,7 @@ jobs:
           tag="$(gh release list --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName')"
           echo "Latest release: $tag"
           # `|| true`: a release predating the F-Droid APKs has none, which is a
-          # skip rather than a failure — the catalog still publishes.
+          # skip here; the guard before the upload decides whether that fails.
           # The release's OWN APKs since #1168 — there is no separate F-Droid
           # variant any more. TV first: its name is a superset of the phone's,
           # so globbing the phone pattern would otherwise match it too.
@@ -166,7 +135,7 @@ jobs:
             echo "have_apks=true" >> "$GITHUB_OUTPUT"
           else
             echo "have_apks=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::$tag has no Android APKs — publishing the catalog only."
+            echo "::warning::$tag has no Android APKs — no F-Droid repository is built."
           fi
 
       - name: Build the signed F-Droid repository
@@ -224,7 +193,7 @@ jobs:
             echo "::error::Fix the cause (signing key secret, or the release's F-Droid APKs) and re-run."
             exit 1
           fi
-          echo "No repository live (HTTP $live) and none built — bootstrap case, publishing the catalog only."
+          echo "No repository live (HTTP $live) and none built — bootstrap case, publishing the landing page only."
 
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
@@ -232,3 +201,45 @@ jobs:
 
       - id: deploy
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
+
+  # A failed publish leaves every client of the repository on the previous
+  # release with nothing visible to them, and a red run on a workflow_run
+  # trigger notifies nobody. So a failure opens ONE tracking issue (or comments
+  # on the open one), and the next successful publish closes it. Its own job,
+  # so `issues: write` is never held by the job that handles the signing key.
+  notify:
+    needs: publish
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RESULT: ${{ needs.publish.result }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      RELEASE: ${{ github.event.workflow_run.head_branch || 'latest release' }}
+    steps:
+      - name: Open, update or close the publish-failure issue
+        run: |
+          set -euo pipefail
+          title='F-Droid repository publish failed'
+          open="$(gh issue list --state open --search "\"$title\" in:title" --json number,title \
+            --jq "map(select(.title == \"$title\"))[0].number // empty")"
+          if [ "$RESULT" = "success" ]; then
+            if [ -n "$open" ]; then
+              gh issue close "$open" --comment "Published successfully in $RUN_URL ($RELEASE)."
+            fi
+            exit 0
+          fi
+          body="The Pages publish for **$RELEASE** ended \`$RESULT\`: $RUN_URL
+
+          Until a publish succeeds, clients of the self-hosted repository stay on the previous
+          release (the live site is left as it was). If the cause was transient, re-run with
+          \`gh workflow run pages.yml --ref master\`. This issue closes itself on the next success."
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi

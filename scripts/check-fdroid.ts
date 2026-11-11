@@ -194,8 +194,8 @@ const { versionCode: currentVersionCode, versionName: currentVersionName } = and
   const pages = join(repoRoot, '.github/workflows/pages.yml');
   if (!existsSync(pages)) {
     errors.push(
-      '.github/workflows/pages.yml is missing. It owns the Pages site (catalog + ' +
-        'F-Droid repository); without it neither is published.',
+      '.github/workflows/pages.yml is missing. It owns the Pages site that serves the ' +
+        'F-Droid repository; without it nothing is published.',
     );
   } else {
     const source = readFileSync(pages, 'utf8');
@@ -203,7 +203,6 @@ const { versionCode: currentVersionCode, versionName: currentVersionName } = and
       'scripts/build-fdroid-repo.ts',
       'scripts/build-pages-index.ts',
       'FDROID_REPO_KEYSTORE_BASE64',
-      'site/storybook',
     ]) {
       if (!source.includes(needle)) {
         errors.push(`.github/workflows/pages.yml no longer mentions "${needle}".`);
@@ -225,6 +224,17 @@ const { versionCode: currentVersionCode, versionName: currentVersionName } = and
         `.github/workflows/pages.yml gates on \`conclusion == 'success'\` again. A tag build ` +
           `that failed only in a desktop job has published its APKs; skipping it freezes the ` +
           `repository (#1631, v0.8.122).`,
+      );
+    }
+
+    // A failed publish strands every client on the previous release, and a red
+    // workflow_run run notifies nobody: the notify job is what makes it loud.
+    if (
+      !/needs: publish[\s\S]*issues: write[\s\S]*F-Droid repository publish failed/.test(source)
+    ) {
+      errors.push(
+        `.github/workflows/pages.yml no longer opens the "F-Droid repository publish failed" ` +
+          `issue. Without it a failed publish leaves clients on the previous release silently.`,
       );
     }
 

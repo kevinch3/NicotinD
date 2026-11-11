@@ -21,8 +21,8 @@ visitor click through the real UI with **no server at all**.
 
 ## Design
 
-- **Same bundle, `demo` configuration**, published as a third tree (`/demo/`) by `pages.yml` beside
-  `/storybook/` and `/fdroid/repo/`; a native "Try the demo" entry on the server picker later.
+- **Same bundle, `demo` configuration**, published as a second tree (`/demo/`) by `pages.yml` beside
+  `/fdroid/repo/`; a native "Try the demo" entry on the server picker later.
 - **Fake the transport, run the real services** — the pattern Storybook's `fixtureHttpInterceptor`
   already uses. Four transports need a seam each: `HttpClient` (an interceptor), `<audio>`
   (`ServerConfigService.streamUrl()` returns a `blob:` URL from `renderTone`), `<img>` covers

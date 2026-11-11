@@ -21,7 +21,7 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   policy-clean and hides its self-updater at runtime via `getInstallerPackage` +
   `isSideloadInstaller`; `androidAppId` gives TV its own id. → [fdroid.md](../fdroid.md)
 - **Own signed F-Droid repository**: `build-fdroid-repo.ts` + `FDROID_APPS` assemble and sign it
-  from the release's APKs; `pages.yml` publishes it beside the Storybook catalog.
+  from the release's APKs; `pages.yml` publishes it per release and opens an issue on failure.
   → [fdroid.md](../fdroid.md)
 - **Reproducible Android build**: F-Droid rebuilds the APK and compares byte-for-byte;
   `pinManifestTimestamp` (web `postbuild`) fixes the one nondeterministic input, `dependenciesInfo`
