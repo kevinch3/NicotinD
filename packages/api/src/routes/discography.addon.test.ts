@@ -191,6 +191,37 @@ describe('discography routes through a remote addon', () => {
     expect(body.candidates[0]!.files[0]!.bitRate).toBe(900);
   });
 
+  // #1823: on a partly-owned album, whole-album matchPct says nothing about the
+  // tracks still missing, so each candidate says how many of them it carries.
+  it('hunt/base counts, per candidate, the missing tracks its folder carries', async () => {
+    const two = {
+      ...CANDIDATE,
+      candidateRef: 'ref-2',
+      username: 'peer2',
+      files: [{ filename: '02 Two.flac', size: 1, bitRateKbps: 900 }],
+    };
+    h = harness({
+      albumsSearch: mock(async () => ({
+        candidates: [CANDIDATE, two],
+        queries: ['q1'],
+        skewNeeded: false,
+      })) as unknown as AddonClient['albumsSearch'],
+    });
+    h.db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, synced_at)
+       VALUES ('s1', 'local-1', 'One', 'Soda Stereo', 'a1', '/m/one.flac', 1)`,
+    );
+    const counts = async (body: unknown) => {
+      const res = await h.app.request('/albums/42/hunt/base', jsonPost(body));
+      const json = (await res.json()) as { candidates: Array<{ wantedMatched?: number }> };
+      return json.candidates.map((c) => c.wantedMatched);
+    };
+    // Nothing of this album resolved on disk: every track is wanted.
+    expect(await counts({})).toEqual([1, 1]);
+    // "One" is owned, so the folder holding only "One" has none of what is missing.
+    expect(await counts({ localAlbumId: 'local-1' })).toEqual([0, 1]);
+  });
+
   describe('queued hunts (#1625)', () => {
     type Polled = {
       state: string;

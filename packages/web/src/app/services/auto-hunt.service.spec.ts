@@ -152,6 +152,45 @@ describe('AutoHuntService', () => {
     expect(message).toContain('peer1');
   });
 
+  // #1823: a partly-owned album; the best whole-album match holds none of the
+  // tracks still missing, so the pick passes it over.
+  it('picks past a candidate that carries none of the missing tracks', async () => {
+    const lacking = { ...candidate(95, 'peer1'), wantedMatched: 0 };
+    const useful = { ...candidate(80, 'peer2'), wantedMatched: 2 };
+    huntAlbumBase.mockReturnValue(
+      of({ candidates: [lacking, useful], totalTracks: 10, skewNeeded: false }),
+    );
+
+    svc().hunt({ ...ALBUM, localAlbumId: 'local-1' }, 'Pink Floyd', vi.fn());
+    await Promise.resolve();
+
+    expect(huntAlbumBase.mock.calls[0]![1]).toMatchObject({ localAlbumId: 'local-1' });
+    const countdown = show.mock.calls.find((c) => c[0].countdown)![0].message;
+    expect(countdown).toContain('peer2');
+    expect(countdown).not.toContain('peer1');
+  });
+
+  it('says so when every confident match lacks the missing tracks', async () => {
+    huntAlbumBase.mockReturnValue(
+      of({
+        candidates: [{ ...candidate(95), wantedMatched: 0 }],
+        totalTracks: 10,
+        skewNeeded: false,
+      }),
+    );
+
+    svc().hunt(ALBUM, 'Pink Floyd', vi.fn());
+    await Promise.resolve();
+
+    expect(show).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'error',
+        message: 'No match has the tracks still missing from "Wish You Were Here"',
+      }),
+    );
+    expect(show.mock.calls.some(([t]) => t.countdown)).toBe(false);
+  });
+
   it('auto-downloads when countdown expires', async () => {
     huntAlbumBase.mockReturnValue(
       of({ candidates: [candidate(85)], totalTracks: 10, skewNeeded: false }),

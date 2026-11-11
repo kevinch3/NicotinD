@@ -555,6 +555,8 @@ export interface FolderCandidate {
   matchedTracks: number;
   totalTracks: number;
   matchPct: number;
+  /** How many of the tracks still missing this folder carries (#1823); absent when unknown. */
+  wantedMatched?: number;
   format: string;
   estimatedSizeMb: number;
   isLive: boolean;
