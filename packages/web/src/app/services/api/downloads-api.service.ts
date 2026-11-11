@@ -201,6 +201,20 @@ export class DownloadsApiService {
       );
   }
 
+  /**
+   * The one-click Get: the server reserves the job and finds, picks and enqueues
+   * on its own. The outcome is read off the downloads feed, by `jobId`.
+   */
+  getAlbum(
+    lidarrAlbumId: number,
+    overrides: { artistName?: string; albumTitle?: string; localAlbumId?: string } = {},
+  ) {
+    return this.http.post<{ jobId: string }>(
+      `/api/discography/albums/${lidarrAlbumId}/get`,
+      overrides,
+    );
+  }
+
   // §C1/§F2 fallback: when no whole-album folder exists, hunt each track
   // individually and enqueue the best match. Returns per-track outcome.
   huntAlbumTracks(lidarrAlbumId: number, artistName: string) {

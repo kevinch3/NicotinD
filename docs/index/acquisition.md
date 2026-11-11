@@ -75,7 +75,7 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   `materializeAddonPlaylist`; legacy in-process fallback: `classifyAcquireUrl`,
   `recordAcquireJobTrack`. → [playlist-from-acquisition.md](../playlist-from-acquisition.md)
 - **Guided acquire UX**: catalog cards are the primary path, the raw peer lane sits behind Advanced;
-  `pickNetworkView` defaults to Folders for album intent, `AutoHuntService` self-heals one-click Get.
+  `pickNetworkView` defaults to Folders for album intent, `AutoHuntService` posts a one-click Get and groups failures (`failureDigest`).
   → [album-hunt.md](../album-hunt.md)
 - **What the provider holds**: catalog cards carry the peers holding them (dimmed "Not on …" when
   none), and albums only the network holds get cards of their own (`availabilityFor`,
@@ -83,12 +83,12 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **Per-album hunt status**: every Get surface shows its album's search or live job (any lane, by
   name too) with progress, and is disabled by nothing else (`statusFor`, `statusForAlbum`,
   `AlbumHuntStatus`, `albumHuntLabel`, `beginSearch`). → [album-hunt.md](../album-hunt.md)
-- **Interactive hunt queue**: a Get click queues its hunt in core (`HuntQueue`) and polls
+- **Interactive hunt queue**: the manual picker queues its hunt in core (`HuntQueue`) and polls
   (`HUNT_POLL_MS`), so waiting is never billed to a 55 s request; a hunt that ran and failed
   throws `HuntFailedError` with its reason. → [album-hunt.md](../album-hunt.md)
 - **A Get is a server job**: one POST reserves the job row, core hunts, picks, retries an offline
   source and resumes after a restart (`AlbumGetService`, `albumGetRetryDelayMs`,
-  `listReservedAlbumGets`, `GET_MIN_MATCH_PCT`). → [album-hunt.md](../album-hunt.md)
+  `listReservedAlbumGets`, `GET_MIN_MATCH_PCT`, `getAlbum`). → [album-hunt.md](../album-hunt.md)
 - **Merged `/get` workspace**: Acquire + Downloads are one route with a `?tab=find|downloads` shell
   (`GetComponent`); the `@if` is load-bearing (destroying the inactive tab unregisters its handlers).
   → [web-ui.md](../web-ui.md)

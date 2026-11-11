@@ -111,7 +111,7 @@ test.describe('guided acquire through the catalog', () => {
     // The artist is not in Lidarr yet, so this also runs the real 202 add job.
     await card.click();
 
-    // The hunt scores a 100% match, and the countdown toast Gets it by itself.
+    // One click: the server finds the 100% match and enqueues it by itself.
     await expect
       .poll(async () => (await jobsNamed(request, ALBUM)).length, { timeout: 30_000 })
       .toBe(1);

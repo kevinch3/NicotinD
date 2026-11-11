@@ -2075,8 +2075,8 @@ nobody could see: the list's `candidateRef`s expire addon-side, and a dialog lef
 that answered Confirm with "run the search again", after the stuck job had already been
 released.
 
-Now `ResourceService` (`packages/web/src/app/services/resource.service.ts`) runs it the way
-one-click Get runs a hunt:
+Now `ResourceService` (`packages/web/src/app/services/resource.service.ts`) runs it without
+asking first:
 
 - The card's button reads "Finding another peer…" while the search runs. No dialog opens.
 - The result is a **5 s countdown toast** naming the pick (peer, coverage, format), with
@@ -2094,8 +2094,8 @@ again by itself and keep the chosen peer, matched by username and folder because
 re-minted per search. Confirming then sends a selection the source will honour. A 409 still
 reports the conflict and searches nothing (#1069).
 
-The countdown is longer than Get's 3 s because there is more to read, and because switching
-releases the peer the download was waiting on.
+A re-source keeps a countdown where a Get has none (docs/album-hunt.md "A Get is a server job"):
+switching releases the peer the download was waiting on, which cannot be undone.
 
 The search subtracts the peers already on the card (`activePeers`): an alternate that is the
 peer we are already waiting on is the same dead end. Candidates are ranked by coverage of
