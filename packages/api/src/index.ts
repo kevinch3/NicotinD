@@ -69,6 +69,7 @@ import { reviewRoutes } from './routes/review.js';
 import { RemoteAccess } from './services/tailscale.js';
 import { shareMetaHandler } from './routes/share-meta.js';
 import { discographyRoutes } from './routes/discography.js';
+import { AlbumGetService } from './services/album-get.service.js';
 import { catalogNotConfiguredRoutes, catalogRoutes } from './routes/catalog.js';
 import { MusicBrainzClient, MB_USER_AGENT } from './services/musicbrainz-client.js';
 import { archiveRoutes } from './routes/archive.js';
@@ -1090,9 +1091,18 @@ export function createApp({
       // here made the URL-acquire path pay for the whole library twice per job.
       curator.reclassify(albumIdsForPaths(db, relPaths), 'enrich-singles');
     };
+    const albumGet = new AlbumGetService({
+      db,
+      lidarr,
+      getAddon: () => activeRemoteAcquisitionAddon(plugins),
+      coverCacheDir: join(expandedDataDir, 'cover-cache'),
+    });
+    // A restart between a click and its hunt must not drop the album.
+    albumGet.resumePending();
     app.route(
       '/api/discography',
       discographyRoutes({
+        albumGet,
         getAddon: () => activeRemoteAcquisitionAddon(plugins),
         discography: discographySvc,
         provisioning: artistProvisioning,

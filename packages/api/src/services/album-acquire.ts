@@ -4,7 +4,12 @@ import { createLogger, filesMatchingTitles, titlesMissingFromOwned } from '@nico
 import { albumAlreadyComplete, onDiskTitles } from './library-completeness.js';
 import { recordAcquiredArtistIdentity } from './artist-identity-store.js';
 import { artistIdFor } from './library-scanner.js';
-import { createJob, findActiveAlbumJob, holdAlbum } from './acquisition-job-store.js';
+import {
+  attachAddonRef,
+  createJob,
+  findActiveAlbumJob,
+  holdAlbum,
+} from './acquisition-job-store.js';
 import type { RemoteAddonPlugin } from './addons/remote-addon-plugin.js';
 import { AddonRequestError, type HuntLane } from './addons/client.js';
 import { mapAddonJob, sanitizeAddonError } from './addons/job-poller.js';
@@ -33,7 +38,14 @@ export type AcquireOutcome =
    */
   | 'slskd-unavailable'
   /** A candidate was chosen but the enqueue call failed. */
-  | 'enqueue-failed';
+  | 'enqueue-failed'
+  /** The reserved job was cancelled while the hunt ran, so nothing was enqueued. */
+  | 'cancelled';
+
+/** How many confident candidates one acquire walks before giving up (#530). */
+const MAX_PICK_ATTEMPTS = 3;
+/** The slskd addon's words for a folder carrying none of the wanted tracks (#1209). */
+const ADDON_LACKS_WANTED = /covers none of the wanted tracks/i;
 
 /**
  * The outcome plus, on a failure, the cause it was derived from. A bare token
@@ -105,6 +117,17 @@ export interface AcquireAlbumInput {
   huntTimeoutMs?: number;
   /** Which lane asked, for the hunt log line (#1626). */
   lane?: HuntLane;
+  /** The local album being completed, so on-disk tracks match by id, not only by name. */
+  localAlbumId?: string;
+  /**
+   * A job row the caller reserved in `resolving` (docs/album-hunt.md "A Get is a
+   * server job"). The caller ran the in-flight guard to reserve it, so it is not
+   * run again here — it would find this very row — and the row is attached to the
+   * addon job rather than a second one created.
+   */
+  reservedJobId?: string;
+  /** Asked just before the enqueue: false when the reserved job was cancelled meanwhile. */
+  stillWanted?: () => boolean;
 }
 
 /**
@@ -132,10 +155,13 @@ export async function acquireAlbum(
   // Already downloading through any lane — checked before the hunt, which would
   // otherwise spend the source's search lanes on an album in flight (#1539).
   const target = { lidarrAlbumId, artist: artistName, title: albumTitle };
-  if (findActiveAlbumJob(db, target)) return { outcome: 'in-flight' };
-  // Held until the job row exists, as every Get lane does (`holdAlbum`).
-  const release = holdAlbum(target);
-  if (!release) return { outcome: 'in-flight' };
+  let release: (() => void) | null = null;
+  if (!input.reservedJobId) {
+    if (findActiveAlbumJob(db, target)) return { outcome: 'in-flight' };
+    // Held until the job row exists, as every Get lane does (`holdAlbum`).
+    release = holdAlbum(target);
+    if (!release) return { outcome: 'in-flight' };
+  }
   try {
     const tracks = await lidarr.track.listByAlbum(lidarrAlbumId);
 
@@ -150,7 +176,7 @@ export async function acquireAlbum(
     }
     return await acquireViaAddon(deps, input, addon, tracks);
   } finally {
-    release();
+    release?.();
   }
 }
 
@@ -194,7 +220,7 @@ async function acquireViaAddon(
   // no-candidate/deferral whatever is on disk.
   let wanted = titles;
   if (confident.length) {
-    const onDisk = onDiskTitles(db, artistName, albumTitle);
+    const onDisk = onDiskTitles(db, artistName, albumTitle, input.localAlbumId);
     wanted = titlesMissingFromOwned(titles, onDisk);
     if (wanted.length === 0) return { outcome: 'already-complete' };
   }
@@ -203,10 +229,10 @@ async function acquireViaAddon(
   // them with a 400 (#1209) — so the pick skips such a folder under the addon's
   // own rule. A candidate listing no files gives nothing to judge; the addon
   // keeps the final word on it.
-  const best = confident.find(
-    (c) => c.files.length === 0 || filesMatchingTitles(c.files, wanted, titles).length > 0,
-  );
-  if (!best) {
+  const picks = confident
+    .filter((c) => c.files.length === 0 || filesMatchingTitles(c.files, wanted, titles).length > 0)
+    .slice(0, MAX_PICK_ATTEMPTS);
+  if (!picks.length) {
     // The hunt never reached the source's network (slskd running but logged out
     // of Soulseek, #1040), or its search lanes were held by other work and some
     // of this hunt's searches never ran (#1049). The result then says nothing
@@ -239,50 +265,77 @@ async function acquireViaAddon(
     log.warn({ lidarrAlbumId, err }, 'Failed to persist acquired artist identity');
   }
 
+  if (input.stillWanted && !input.stillWanted()) return { outcome: 'cancelled' };
+
+  // A refusal about one peer (offline, or holding none of the wanted tracks) says
+  // nothing about the next, so the pick walks down the confident candidates.
   let addonJob;
-  try {
-    addonJob = await addon.client.createJob(
-      {
-        intent: 'album',
-        artist: artistName,
-        album: albumTitle,
-        canonicalTracks: titles.map((title) => ({ title })),
-        wantedTracks: wanted.map((title) => ({ title })),
-        candidateRef: best.candidateRef,
-      },
-      input.retry ? undefined : `acquire:${lidarrAlbumId}`,
-      { lane: input.lane, albumId: lidarrAlbumId },
-    );
-  } catch (err) {
-    if (err instanceof AddonRequestError && err.status === 409) return { outcome: 'in-flight' };
-    log.warn({ lidarrAlbumId, addonId, err }, 'Addon job creation failed');
-    // 'enqueue-failed' is terminal for the caller (the watchlist marks the row
-    // failed), so it has to mean "asking again will fail again". A source that
-    // went down between the hunt and the enqueue is the opposite of that, and
-    // used to kill the row over an outage that clears in minutes. The addon's
-    // readiness is the discriminator — and only ever downgrades a failure to a
-    // retry, so if asking throws we keep the original, harsher outcome.
-    if (!(await addonIsReady(addon))) {
-      return { outcome: 'slskd-unavailable', detail: 'Source offline — enqueue deferred' };
+  let best = picks[0]!;
+  const refusals: Array<{ peer: string; cause: string }> = [];
+  for (const pick of picks) {
+    try {
+      addonJob = await addon.client.createJob(
+        {
+          intent: 'album',
+          artist: artistName,
+          album: albumTitle,
+          canonicalTracks: titles.map((title) => ({ title })),
+          wantedTracks: wanted.map((title) => ({ title })),
+          candidateRef: pick.candidateRef,
+        },
+        input.retry ? undefined : `acquire:${lidarrAlbumId}`,
+        { lane: input.lane, albumId: lidarrAlbumId },
+      );
+      best = pick;
+      break;
+    } catch (err) {
+      if (err instanceof AddonRequestError && err.status === 409) return { outcome: 'in-flight' };
+      log.warn({ lidarrAlbumId, addonId, peer: pick.username, err }, 'Addon job creation failed');
+      refusals.push({ peer: pick.username, cause: causeOf(err) });
+      // Any other 400 is about the request, and fails the same for every peer (#1507).
+      if (err instanceof AddonRequestError && err.status === 400) {
+        if (ADDON_LACKS_WANTED.test(err.detail ?? err.message)) continue;
+        break;
+      }
+      // 'enqueue-failed' is terminal for the caller (the watchlist marks the row
+      // failed), so it has to mean "asking again will fail again". A source that
+      // went down between the hunt and the enqueue is the opposite of that, and
+      // used to kill the row over an outage that clears in minutes. The addon's
+      // readiness is the discriminator — and only ever downgrades a failure to a
+      // retry, so if asking throws we keep the original, harsher outcome.
+      if (!(await addonIsReady(addon))) {
+        return { outcome: 'slskd-unavailable', detail: 'Source offline — enqueue deferred' };
+      }
     }
-    return { outcome: 'enqueue-failed', detail: causeOf(err) };
+  }
+  if (!addonJob) {
+    // One refusal reads as its cause; several need their peers to tell them apart.
+    const detail =
+      refusals.length === 1
+        ? refusals[0]!.cause
+        : refusals.map((r) => `${r.peer}: ${r.cause}`).join('; ');
+    return { outcome: 'enqueue-failed', detail };
   }
 
   // The unified feed row carries the hunt metadata; the poller mirrors the
   // addon's items into it (repoints included) via the job mapping.
+  const sourceRef = `addon:${addonId}:${addonJob.id}`;
   try {
-    const coreJobId = createJob(db, {
-      kind: 'auto-acquire',
-      method: addonId,
-      artistName,
-      albumTitle,
-      lidarrAlbumId,
-      artistMbid: artistMbid ?? null,
-      canonicalTracks: titles,
-      sourceRef: `addon:${addonId}:${addonJob.id}`,
-      userId: input.userId ?? null,
-      files: [],
-    });
+    if (input.reservedJobId) attachAddonRef(db, input.reservedJobId, sourceRef);
+    const coreJobId =
+      input.reservedJobId ??
+      createJob(db, {
+        kind: 'auto-acquire',
+        method: addonId,
+        artistName,
+        albumTitle,
+        lidarrAlbumId,
+        artistMbid: artistMbid ?? null,
+        canonicalTracks: titles,
+        sourceRef,
+        userId: input.userId ?? null,
+        files: [],
+      });
     // `addonJob.createdAt` is what lets a later poll tell "this exact job's
     // card was removed" apart from "the addon restarted and reissued this id
     // for a different job" (issue #1018) — the same protection the poller's

@@ -78,6 +78,9 @@ succeeded:
   `releaseDate`, both MBIDs), items = the exact `filesToDownload`.
   `?replace=true` supersedes prior active unified jobs via
   `supersedeActiveJobs` alongside the album_jobs supersede.
+- `POST /albums/:id/get` (`AlbumGetService.request`) — kind `album-hunt`, the
+  same Lidarr metadata, written **before** the source is asked, in stage
+  `resolving` with no items. `acquireAlbum` attaches the addon job to it.
 - `acquireAlbum` (`services/album-acquire.ts`) — kind `auto-acquire` (shared
   core of the watchlist poller and Lidarr missing-list loop).
 - `POST /api/downloads` (`routes/downloads.ts`) — kind `direct` for raw
