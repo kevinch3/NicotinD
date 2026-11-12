@@ -5,6 +5,7 @@ import type { ArtistNotProvisioned } from './lidarr-provision.js';
 import { corroboratesLidarrHit } from './lidarr-confidence.js';
 import { normalizeArtistForGrouping, normalizeForGrouping } from './album-grouping.js';
 import { stripFeaturingSuffix } from './path-sanitize.js';
+import { artistAlbumAlreadyComplete } from './library-completeness.js';
 
 const log = createLogger('discography');
 
@@ -127,7 +128,13 @@ export class DiscographyService {
 
     const albums = collapseSameTitledReleases(
       lidarrAlbums.map((album) =>
-        this.buildDiscographyAlbum(album, trackMap.get(album.id) ?? [], localAlbums, localSongs),
+        this.buildDiscographyAlbum(
+          artistId,
+          album,
+          trackMap.get(album.id) ?? [],
+          localAlbums,
+          localSongs,
+        ),
       ),
     );
 
@@ -278,6 +285,7 @@ export class DiscographyService {
   }
 
   private buildDiscographyAlbum(
+    artistId: string,
     lidarrAlbum: LidarrAlbum,
     tracks: LidarrTrack[],
     localAlbums: Array<{ id: string; name: string }>,
@@ -313,6 +321,12 @@ export class DiscographyService {
       localTrackCount = localAlbumSongs.length;
       status = localTrackCount >= totalTracks ? 'present' : 'partial';
     } else if (matchedLocal && localTrackCount >= totalTracks) {
+      status = 'present';
+    } else if (
+      tracks.length > 0 &&
+      artistAlbumAlreadyComplete(this.db, artistId, lidarrAlbum.title, tracks.length)
+    ) {
+      // The Get refuses this album as already-complete, so the tile must not offer one.
       status = 'present';
     } else if (localTrackCount > 0) {
       status = 'partial';

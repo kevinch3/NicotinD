@@ -21,12 +21,20 @@ export function matchingLocalAlbums(
   artist: string,
   title: string,
 ): Array<{ id: string; name: string; song_count: number }> {
+  return localAlbumsOfArtist(db, artistIdFor(artist), title);
+}
+
+function localAlbumsOfArtist(
+  db: Database,
+  artistId: string,
+  title: string,
+): Array<{ id: string; name: string; song_count: number }> {
   const targetName = normalizeForGrouping(title);
   const rows = db
     .query<{ id: string; name: string; song_count: number }, [string]>(
       `SELECT id, name, song_count FROM library_albums WHERE artist_id = ?`,
     )
-    .all(artistIdFor(artist));
+    .all(artistId);
   return rows.filter((r) => normalizeForGrouping(r.name) === targetName);
 }
 
@@ -46,6 +54,20 @@ export function albumAlreadyComplete(
   trackCount: number,
 ): boolean {
   return matchingLocalAlbums(db, artist, title).some((r) => r.song_count >= trackCount);
+}
+
+/**
+ * {@link albumAlreadyComplete} for a caller that already holds the local artist id.
+ * The artist page grades its tiles with it, so a tile never offers a Get the guard
+ * would refuse.
+ */
+export function artistAlbumAlreadyComplete(
+  db: Database,
+  artistId: string,
+  title: string,
+  trackCount: number,
+): boolean {
+  return localAlbumsOfArtist(db, artistId, title).some((r) => r.song_count >= trackCount);
 }
 
 /** Normalize a peer filename to its bare track title (drops dir, ext, track #). */
