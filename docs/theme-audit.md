@@ -9,6 +9,12 @@ Nothing here changes code or tokens.
 default's range. The blur and stacking contract (#1649) is settled in
 [design-patterns.md](design-patterns.md) ("Blur and stacking contract"). A restyle keeps to it.
 
+**Answered (owner, 2026-11-09):** Q1 **A**, Q2 **A**, Q3 **B**, Q4 **A**, Q5 **A**. Two holdout
+fixes were decided with them: the TV status line goes on a small dark translucent pill (#1796), and
+the Forest and Warm Paper contrast fixes go into the palette refresh (#1683/#1684), not a separate
+PR. Q3 B is the one answer that differs from the recommendation; the draft palette below is
+amended for it.
+
 ## How the screenshots were taken
 
 - **Harness**: a throwaway Playwright `*.screens.ts` flow on the same managed-server, fixture-library
@@ -234,10 +240,18 @@ The ratio is what WCAG measures. ΔL is closer to what the eye sees as "a differ
   smaller than its `surface → surface-2` (1.27). On the light presets the "raised" level is darker
   than the page and the "base" level is lighter, so the order is not monotonic.
 
-## Decisions for the owner
+## Decisions
 
-One decision per question. The recommended option comes first, and "keep current" is always
-offered.
+One decision per question. The recommended option came first, and "keep current" was always
+offered. **Answers (2026-11-09):**
+
+| Question | Answer | What it means for #1683 / #1684 |
+| --- | --- | --- |
+| Q1 Secondary accent | **A** | A warm second hue owns "now playing / live"; the primary keeps "press me" and "you are here". |
+| Q2 Entity colours | **A** | Deterministic hues only for coverless placeholders and genre tiles. |
+| Q3 Cover tint | **B** | The cover wash reaches Now Playing, the mini player **and** the album and artist headers. |
+| Q4 Elevation and radius | **A** | Tonal steps first, shadows only on floating layers, and the written radius rule. |
+| Q5 Default neutrals | **A** | A slight indigo tint on Midnight and Daylight. |
 
 **Q1 — Secondary accent: which job should a second hue take over from the accent?**
 - **A. "Now playing / live" (recommended).** Radio chip, playing row, eq bars, seek fill and the
@@ -289,10 +303,12 @@ offered.
   presets for exactly that reason.
 - **B. Keep current**: pure zinc neutrals, with only the lightness steps widened (per Q4).
 
-## Draft palette direction (pending answers)
+## Draft palette direction
 
-**Draft.** It assumes the recommended answer to every question above, and it changes if any answer
-differs. It covers Midnight and Daylight only. The other five presets follow the same mapping in
+**Draft.** It was written assuming the recommended answer to every question above. All of them
+held except Q3, which was answered B: `--theme-cover-wash` is also set on the album and artist
+headers, from the same `loadCoverPalette` extraction and with the same 4.5:1 clamp and E-Ink off
+switch. It covers Midnight and Daylight only. The other five presets follow the same mapping in
 #1683. It is a sketch for #1683 and #1684, not a token change. The old names stay as aliases
 (#1684 slice a), so nothing regresses on day one.
 
@@ -309,7 +325,7 @@ differs. It covers Midnight and Daylight only. The other five presets follow the
 | `--theme-accent-text` | unchanged name | `#7f82f4` → `#8a8cf7` | `#4b4eef` → `#4245dc` | |
 | — | `--theme-accent-2`, `-2-text`, `on-accent-2` (new, Q1) | → `#f0806a` / `#f39a87` / `#1a0b07` | → `#c2410c` / `#a3360a` / `#ffffff` | "now playing / live" |
 | — | `--theme-hue-1…8` (new, Q2) | the vibe gradient end colours, mixed into the surface the way `.chip-tone-*` are | the same | placeholders and genre tiles |
-| — | `--theme-cover-wash` (runtime, Q3) | set from `loadCoverPalette` on the sheet | the same | `none` on E-Ink |
+| — | `--theme-cover-wash` (runtime, Q3 B) | set from `loadCoverPalette` on the sheet, the mini player and the album/artist headers | the same | `none` on E-Ink |
 | `--theme-elevation-*` | unchanged | — | — | used only on floating layers (Q4) |
 
 **Contrast of the draft** (same method as above):
