@@ -38,7 +38,7 @@ import type {
 import type { IdentifyApplyFields, IdentifySuggestion, IncompleteAlbum } from './api-types';
 import type { SongMetadataCandidates, SongMetadataFields, SongMetadataResult } from './api-types';
 import type { CoverMutationResult, LibraryArtistRow, MaintenanceStatus } from './api-types';
-import type { ArtistCompletion } from './api-types';
+import type { ArtistCompletion, ArtistSources } from './api-types';
 import type { WaveformData } from '../../../types/core';
 
 type QueryParams = Record<string, string | number | boolean | string[]>;
@@ -512,6 +512,7 @@ export class LibraryApiService {
         manualOverride: boolean;
         /** Origin country (docs/artist-origin.md); null row-absent = not yet resolved. */
         origin: { country: string | null; source: string } | null;
+        sources?: ArtistSources;
       };
       albums: Album[];
       singlesAndEps: Album[];

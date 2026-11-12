@@ -7,6 +7,7 @@ import {
   ArtistDetailComponent,
   ARTIST_TAB_LABEL_KEYS,
   needsCompletion,
+  sourceName,
 } from './artist-detail.component';
 import EN_CATALOG from '../../../../public/i18n/en.json';
 import ES_CATALOG from '../../../../public/i18n/es.json';
@@ -1563,5 +1564,56 @@ describe('needsCompletion', () => {
     expect(needsCompletion({ ...full, metaExists: false })).toBe(true);
     expect(needsCompletion({ ...full, origin: null })).toBe(true);
     expect(needsCompletion({ ...full, coverArt: undefined })).toBe(true);
+  });
+});
+
+// #1855: the About block names where each header value came from.
+describe('ArtistDetailComponent — value sources', () => {
+  const COMPLETE = { metaExists: true, origin: { country: 'BR', source: 'musicbrainz' } };
+
+  it('lists the recorded sources, country first, and only those', async () => {
+    serverArtistPatch = {
+      ...COMPLETE,
+      sources: { bio: 'discogs', origin: 'musicbrainz', portrait: null },
+    };
+    const { component, fixture } = setup('admin');
+    await flush();
+    expect(component.sourceEntries()).toEqual([
+      { field: 'origin', source: 'musicbrainz' },
+      { field: 'bio', source: 'discogs' },
+    ]);
+    fixture.detectChanges();
+    const line = fixture.nativeElement.querySelector('[data-testid="artist-sources"]');
+    expect(line?.textContent).toContain('MusicBrainz');
+    expect(line?.textContent).toContain('Discogs');
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="artist-source-portrait"]'),
+    ).toBeNull();
+  });
+
+  it("a curator's own country edit becomes the country's source", async () => {
+    serverArtistPatch = {
+      ...COMPLETE,
+      sources: { bio: null, origin: 'musicbrainz', portrait: null },
+    };
+    const { component } = setup('admin');
+    await flush();
+    component.onOriginChanged({ country: 'AR', source: 'user' });
+    expect(component.artist()?.sources?.origin).toBe('user');
+    component.onOriginChanged({ country: null, source: 'user' });
+    expect(component.artist()?.sources?.origin).toBeNull();
+  });
+
+  it('a bio update names no bio source rather than a stale one', async () => {
+    serverArtistPatch = { ...COMPLETE, sources: { bio: 'discogs', origin: null, portrait: null } };
+    const { component } = setup('admin');
+    await flush();
+    component.onArtistInfoUpdated({ bio: 'Edited', urls: [] });
+    expect(component.artist()?.sources?.bio).toBeNull();
+  });
+
+  it('names a provider by its display name, and an unknown one as recorded', () => {
+    expect(sourceName('musicbrainz')).toBe('MusicBrainz');
+    expect(sourceName('somewhere')).toBe('somewhere');
   });
 });

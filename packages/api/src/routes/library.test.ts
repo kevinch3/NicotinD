@@ -2150,6 +2150,38 @@ describe('artist-info routes', () => {
     expect(body.artist.manualOverride).toBe(false);
   });
 
+  // #1855: each header value says where it came from — only what is recorded.
+  it('GET /artists/:id names the source of the bio, the origin and a curator portrait', async () => {
+    const artistId = seedArtistWithAlbum('art-src', 'Sourced Artist');
+    upsertArtistMeta(testDb, { artistId, bio: 'A bio', urls: [], source: 'discogs' });
+    upsertArtistOrigin(testDb, { artistId, country: 'AR', source: 'musicbrainz' });
+    type Sources = { sources: { bio: string | null; origin: string | null; portrait: unknown } };
+    let body = (await (await makeApp('user').request(`/artists/${artistId}`)).json()) as {
+      artist: Sources;
+    };
+    expect(body.artist.sources).toEqual({ bio: 'discogs', origin: 'musicbrainz', portrait: null });
+
+    testDb.run(`UPDATE library_artists SET cover_art = ?, manual_override = 1 WHERE id = ?`, [
+      artistId,
+      artistId,
+    ]);
+    body = (await (await makeApp('user').request(`/artists/${artistId}`)).json()) as {
+      artist: Sources;
+    };
+    expect(body.artist.sources.portrait).toBe('user');
+  });
+
+  it('GET /artists/:id names no source for a tombstone (nothing to attribute)', async () => {
+    const artistId = seedArtistWithAlbum('art-src-none', 'Unsourced Artist');
+    upsertArtistMeta(testDb, { artistId, bio: null, urls: [], source: 'discogs' });
+    upsertArtistOrigin(testDb, { artistId, country: null, source: 'musicbrainz' });
+    const body = (await (await makeApp('user').request(`/artists/${artistId}`)).json()) as {
+      artist: { sources: { bio: unknown; origin: unknown } };
+    };
+    expect(body.artist.sources.bio).toBeNull();
+    expect(body.artist.sources.origin).toBeNull();
+  });
+
   it('GET /artists/:id flags a tombstoned (bio=null but row exists) row as metaExists=true', async () => {
     // A tombstone is `bio=NULL, urls=[]`, but the *row* is present — the web
     // must distinguish "never fetched" from "confident miss" so it doesn't
