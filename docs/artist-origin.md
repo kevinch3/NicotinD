@@ -75,6 +75,11 @@ Discogs link comes from, so `fetchArtistEntity` caches **both** answers from one
 response — whichever of `getArtistOrigin` / `getArtistDiscogsUrl` runs first pays
 for the other (#1855). A transient failure caches neither.
 
+**On-visit completion (#1855).** The task's per-artist body is `fillArtistOrigin`, which the
+artist page's `POST /artists/:id/complete` also runs, so an artist someone opens gets a country
+right away instead of waiting its turn in the album-count-ordered queue. Same predicate
+(`ORIGIN_PENDING_WHERE`), same tombstones, same `user` protection → docs/library-scanner.md.
+
 Miss semantics (the three-way split):
 
 | Case                                   | Action                                    |

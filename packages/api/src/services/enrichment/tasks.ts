@@ -1424,12 +1424,65 @@ function corroborationFor(
 /** Re-check a no-MBID / no-country origin tombstone at most this often. */
 export const ORIGIN_RECHECK_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-const ORIGIN_PENDING_WHERE = `
+export const ORIGIN_PENDING_WHERE = `
   a.hidden = 0
   AND NOT EXISTS (
     SELECT 1 FROM library_artist_origins o
     WHERE o.artist_id = a.id
       AND (o.country IS NOT NULL OR o.source = 'user' OR o.checked_at > ?))`;
+
+/** What one origin fill did — `transient` writes nothing, so the artist stays due. */
+export type OriginFillResult =
+  | { status: 'filled'; country: string }
+  | { status: 'miss' }
+  | { status: 'skipped' }
+  | { status: 'transient' };
+
+/**
+ * One artist's origin: resolve the MBID (the same re-resolution policy as the
+ * bio, #1008), ask MusicBrainz, persist. Shared by the `artist-origin` task and
+ * the artist page's on-visit completion (#1855), so the two cannot drift.
+ * A curator's MBID tombstone ends it untouched (#1112); a `user` origin is
+ * protected by `upsertArtistOrigin` itself. Throws only what the lookup throws.
+ */
+export async function fillArtistOrigin(
+  db: Database,
+  deps: {
+    lidarr: Lidarr | null | undefined;
+    lookupArtistOrigin: (mbid: string) => Promise<{ ok: boolean; country: string | null }>;
+    corroboration?: MbidCorroboration;
+  },
+  artist: { id: string; name: string },
+): Promise<OriginFillResult> {
+  const key = normalizeArtistForGrouping(artist.name);
+  const mbidRow = getMbid(db, 'artist', key);
+  if (isMbidTombstoned(mbidRow)) return { status: 'skipped' };
+  let mbid = usableMbid(mbidRow);
+  if ((!mbid || isMbidReResolvable(mbidRow)) && deps.lidarr) {
+    const resolved = await resolveMbidViaLidarr(deps.lidarr, artist.name, deps.corroboration);
+    // An outage is not "no identity" — no 30-day stamp for it.
+    if (resolved.status === 'unavailable') return { status: 'transient' };
+    if (resolved.status === 'resolved') {
+      mbid = resolved.mbid;
+      upsertMbid(db, {
+        scope: 'artist',
+        key,
+        mbid,
+        source: 'lidarr',
+        confidence: resolved.confidence,
+      });
+    }
+  }
+  if (!mbid) {
+    // TTL-tombstone, not permanent: reopens once ORIGIN_RECHECK_TTL_MS lapses.
+    upsertArtistOrigin(db, { artistId: artist.id, country: null, source: 'musicbrainz' });
+    return { status: 'miss' };
+  }
+  const res = await deps.lookupArtistOrigin(mbid);
+  if (!res.ok) return { status: 'transient' };
+  upsertArtistOrigin(db, { artistId: artist.id, country: res.country, source: 'musicbrainz' });
+  return res.country ? { status: 'filled', country: res.country } : { status: 'miss' };
+}
 
 /**
  * Fill artist origin countries from MusicBrainz (docs/artist-origin.md).
@@ -1470,44 +1523,17 @@ const artistOriginTask: EnrichmentTask = {
     const tally: FailureTally = { failed: 0, sample: null };
     let applied = 0;
     for (const artist of rows) {
-      const mbidRow = getMbid(db, 'artist', normalizeArtistForGrouping(artist.name));
-      // A tombstoned identity must not be re-resolved into an origin either — the
-      // wrong country is the symptom a curator most often corrects first (#1112).
-      if (isMbidTombstoned(mbidRow)) continue;
-      let mbid = usableMbid(mbidRow);
-      // Same re-resolution policy as artistInfoTask (issue #1008).
-      if ((!mbid || isMbidReResolvable(mbidRow)) && ctx.lidarr) {
-        const resolved = await resolveMbidViaLidarr(
-          ctx.lidarr,
-          artist.name,
-          corroborationFor(db, ctx, artist.id),
-        );
-        if (resolved.status === 'unavailable') continue; // not a 30-day "no identity" stamp
-        if (resolved.status === 'resolved') {
-          mbid = resolved.mbid;
-          upsertMbid(db, {
-            scope: 'artist',
-            key: normalizeArtistForGrouping(artist.name),
-            mbid,
-            source: 'lidarr',
-            confidence: resolved.confidence,
-          });
-        }
-      }
-      if (!mbid) {
-        // TTL-tombstone, not permanent: reopens once ORIGIN_RECHECK_TTL_MS lapses.
-        upsertArtistOrigin(db, { artistId: artist.id, country: null, source: 'musicbrainz' });
-        continue;
-      }
       try {
-        const res = await ctx.lookupArtistOrigin(mbid);
-        if (!res.ok) continue; // transient — nothing written, retried next window
-        upsertArtistOrigin(db, {
-          artistId: artist.id,
-          country: res.country,
-          source: 'musicbrainz',
-        });
-        if (res.country) {
+        const res = await fillArtistOrigin(
+          db,
+          {
+            lidarr: ctx.lidarr,
+            lookupArtistOrigin: ctx.lookupArtistOrigin,
+            corroboration: corroborationFor(db, ctx, artist.id),
+          },
+          artist,
+        );
+        if (res.status === 'filled') {
           applied++;
           labels.push(`${artist.name} → ${res.country}`);
         }

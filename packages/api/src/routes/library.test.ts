@@ -2586,6 +2586,46 @@ describe('artist-info routes', () => {
     expect(calls()).toBe(1);
   });
 
+  // #1855: the page's one completion call answers the header fields it patches.
+  it('POST /artists/:id/complete fills the bio and answers the header fields', async () => {
+    const artistId = seedArtistWithAlbum('art-complete', 'Complete Artist');
+    upsertMbid(testDb, {
+      scope: 'artist',
+      key: normalizeArtistForGrouping('Complete Artist'),
+      mbid: 'mbid-complete',
+      source: 'tag',
+      confidence: 1,
+    });
+    const { registry, calls } = makeRegistry({
+      result: { bio: 'Filled on visit', urls: [], source: 'discogs', confidence: 0.9 },
+    });
+    const app = makeApp('user', registry);
+    const res = await app.request(`/artists/${artistId}/complete`, { method: 'POST' });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      filled: string[];
+      bio: string | null;
+      metaExists: boolean;
+      origin: unknown;
+      coverRev: number;
+    };
+    expect(body.filled).toContain('bio');
+    expect(body.bio).toBe('Filled on visit');
+    expect(body.metaExists).toBe(true);
+    expect(typeof body.coverRev).toBe('number');
+    // A second visit finds nothing due and asks the source again for nothing.
+    await app.request(`/artists/${artistId}/complete`, { method: 'POST' });
+    expect(calls()).toBe(1);
+  });
+
+  it('POST /artists/:id/complete answers 404 for an unknown artist', async () => {
+    const { registry } = makeRegistry({ result: null });
+    const res = await makeApp('user', registry).request('/artists/nope/complete', {
+      method: 'POST',
+    });
+    expect(res.status).toBe(404);
+  });
+
   it('POST /artists/:id/auto-fetch-info returns the existing bio and does not re-query on a manual_override row', async () => {
     const artistId = seedArtistWithAlbum('art-auto-override', 'Override Artist');
     upsertArtistMeta(testDb, {

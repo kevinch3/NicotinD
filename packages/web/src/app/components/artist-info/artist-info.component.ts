@@ -9,7 +9,6 @@ import {
   input,
   output,
   signal,
-  untracked,
   viewChild,
 } from '@angular/core';
 import { LibraryApiService } from '../../services/api/library-api.service';
@@ -27,17 +26,12 @@ import { formatArtistBio, isOverflowing, mergeArtistSources } from '../../lib/ar
  * without a refetch, and a future markup change can't leave rows stuck with
  * the old garbage.
  *
- * Three pieces of UX polish from issue #213:
- *  1. **Auto-fetch on first load.** When the parent reports `metaExists=false`
- *     (no `library_artist_meta` row at all — *not* the same as a tombstone)
- *     and the user can curate, the component silently fetches once. Never
- *     fires for a `manualOverride=true` row, never surfaces a toast on miss
- *     (that's the explicit Refresh's job), and never re-fires once the row
- *     exists (the server tombstones, so the next visit sees `metaExists=true`).
- *  2. **Sources behind a disclosure.** External URLs (`urls` + URLs extracted
+ * UX polish from issue #213 (the first-visit bio fetch moved to the artist
+ * page's on-visit completion, #1855):
+ *  1. **Sources behind a disclosure.** External URLs (`urls` + URLs extracted
  *     from the profile) are hidden under a "Sources (N)" button rather than
  *     displayed inline.
- *  3. **Show-more based on actual overflow.** The toggle's visibility is
+ *  2. **Show-more based on actual overflow.** The toggle's visibility is
  *     measured via `scrollHeight` vs `clientHeight` in a `ResizeObserver`,
  *     not a char count — so it never appears when there's nothing to expand
  *     (Britney example) and always appears when there is (ABBA example).
@@ -55,13 +49,6 @@ export class ArtistInfoComponent implements AfterViewInit, OnDestroy {
   readonly artistId = input.required<string>();
   readonly bio = input<string | null>(null);
   readonly urls = input<string[]>([]);
-  /**
-   * Whether a `library_artist_meta` row exists. `false` ⇒ *never fetched*;
-   * the auto-fetch path uses this to fire a one-shot on first load. A row
-   * with `bio=null && manualOverride=false` (a tombstoned confident miss)
-   * has `metaExists=true` and must NOT trigger a re-fetch.
-   */
-  readonly metaExists = input(true);
   /** A curator's hand-edit (`source='user', manual_override=1`). Auto-fetch
    *  must never touch this — the curator wins. */
   readonly manualOverride = input(false);
@@ -100,21 +87,6 @@ export class ArtistInfoComponent implements AfterViewInit, OnDestroy {
       if (!el) return;
       this.resizeObserver = new ResizeObserver(() => this.measureOverflow());
       this.resizeObserver.observe(el);
-    });
-
-    // Auto-fetch on first load (issue #213 part 1). Fires once, only when
-    // no row exists at all, and only for users who can curate. Silently
-    // degrades on any outcome (no toasts — that's the explicit Refresh's
-    // job). The `untracked` reads inside the `if` are deliberate: the
-    // auto-fetch is a one-shot on mount, not a response to reactive input
-    // changes after that.
-    effect(() => {
-      const bio = this.effectiveBio();
-      const metaExists = this.metaExists();
-      const override = this.manualOverride();
-      const canCurate = this.auth.canCurate();
-      if (bio || metaExists || override || !canCurate) return;
-      untracked(() => this.autoFetch());
     });
   }
 
@@ -172,28 +144,6 @@ export class ArtistInfoComponent implements AfterViewInit, OnDestroy {
       error: () => {
         this.refreshing.set(false);
         this.toasts.show({ kind: 'error', message: 'Could not fetch artist info.' });
-      },
-    });
-  }
-
-  /** Silent auto-fetch (issue #213 part 1). Same backend as `refresh()` but
-   *  always available (not curator-gated), never surfaces a toast on any
-   *  outcome, and is naturally a one-shot per artist (the server tombstones
-   *  on a confident miss so subsequent visits see `metaExists=true`). */
-  private autoFetch(): void {
-    if (this.refreshing()) return;
-    this.refreshing.set(true);
-    this.api.autoFetchArtistInfo(this.artistId()).subscribe({
-      next: (r) => {
-        this.refreshing.set(false);
-        this.shownBio.set(r.bio);
-        this.shownUrls.set(r.urls);
-        this.updated.emit(r);
-        // Silent — the inline bio is the confirmation, the miss is silent.
-      },
-      error: () => {
-        this.refreshing.set(false);
-        // Silent — auto-fetch must never toast.
       },
     });
   }

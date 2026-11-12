@@ -169,11 +169,10 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     name: string;
     albumCount: number;
     coverArt?: string;
+    coverRev?: number;
     bio: string | null;
     urls: string[];
-    // Issue #213: surface the meta-row presence + override flag so the
-    // `ArtistInfoComponent` can fire a one-shot auto-fetch and skip the
-    // refresh on curator-locked bios.
+    /** `false` = no bio fetched yet; one of the gaps `completeArtist` fills (#1855). */
     metaExists: boolean;
     manualOverride: boolean;
     origin: { country: string | null; source: string } | null;
@@ -649,6 +648,7 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
       // Guard against an out-of-order response after a rapid re-navigation.
       if (this.artistId !== id) return;
       this.artist.set(data.artist);
+      if (needsCompletion(data.artist)) void this.completeArtist(id);
       this.albums.set(data.albums);
       this.singlesAndEps.set(data.singlesAndEps ?? []);
       // Default to the first populated tab (Albums → Singles → Songs).
@@ -730,6 +730,34 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     }
   }
 
+  /**
+   * On-visit completion (#1855): one server call fills whatever of bio, origin
+   * and portrait is missing and due, and the header is patched in place.
+   * Curators only, like the first-visit bio fetch it replaces (#213).
+   */
+  private async completeArtist(id: string): Promise<void> {
+    if (!this.auth.canCurate()) return;
+    try {
+      const r = await firstValueFrom(this.api.completeArtist(id));
+      const current = this.artist();
+      if (this.artistId !== id || current?.id !== id) return;
+      this.artist.set({
+        ...current,
+        bio: r.bio,
+        urls: r.urls,
+        metaExists: r.metaExists,
+        origin: r.origin,
+        coverArt: r.coverArt ?? undefined,
+        coverRev: r.coverRev,
+      });
+      if (r.filled.includes('portrait')) {
+        this.coverRevisions.raise([{ kind: 'artist', id, rev: r.coverRev }]);
+      }
+    } catch {
+      /* silent — the background tasks remain the sweep */
+    }
+  }
+
   private async loadDiscography(artistId: string): Promise<void> {
     this.discographyLoading.set(true);
     try {
@@ -780,6 +808,7 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
       return;
     }
     await this.loadDiscography(artistId);
+    void this.completeArtist(artistId);
     const fresh = this.discography();
     if (!fresh) return;
     await awaitDiscographyArt(
@@ -877,4 +906,13 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   }
 
   readonly toTrack = toTrack;
+}
+
+/** A header gap the on-visit completion could fill (#1855); the server decides what is due. */
+export function needsCompletion(a: {
+  metaExists: boolean;
+  origin: unknown;
+  coverArt?: string | null;
+}): boolean {
+  return !a.metaExists || a.origin === null || !a.coverArt;
 }

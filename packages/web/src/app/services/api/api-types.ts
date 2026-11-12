@@ -1608,3 +1608,15 @@ export type MailSettingsUpdate = Partial<Omit<MailSettingsDto, 'transport'>> & {
 export type MailTestResult = (
   { ok: true; providerId?: string } | { ok: false; reason: MailSendReason; detail: string }
 ) & { usage: MailUsage; linkBase: string };
+
+/** `POST /api/library/artists/:id/complete` (#1855): the header fields after an on-visit fill. */
+export interface ArtistCompletion {
+  /** What this call wrote a value for; empty when nothing was due or found. */
+  filled: Array<'bio' | 'origin' | 'portrait'>;
+  bio: string | null;
+  urls: string[];
+  metaExists: boolean;
+  origin: { country: string | null; source: string } | null;
+  coverArt: string | null;
+  coverRev: number;
+}
