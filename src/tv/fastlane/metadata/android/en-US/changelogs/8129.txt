@@ -1,0 +1,7 @@
+• acquisition: run a one-click album Get on the server (#1832)
+• library: fill an artist's missing bio, origin and portrait on visit (#1858)
+• library: show where an artist's bio, country and photo came from (#1861)
+• web: a one-click Get is one request, and failures share a toast (#1833)
+• web: cancel a Get from search cards and admin Incomplete Albums rows (#1847)
+• web: cancel a Get from the album tile that started it (#1839)
+…and 11 more
