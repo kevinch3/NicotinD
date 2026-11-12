@@ -179,6 +179,29 @@ function getMbClient(dataDir?: string): MusicBrainzClient | null {
  * (auto-fetch). A confident miss is always tombstoned so a repeat visit
  * never re-queries.
  */
+/**
+ * Where each artist-page header value came from (#1855). Only what is recorded:
+ * a bio's and an origin's `source`, and a portrait a curator set (which locks
+ * the row); an automatic portrait's provider is not stored.
+ */
+function artistSources(
+  db: Database,
+  artistId: string,
+): { bio: string | null; origin: string | null; portrait: 'user' | null } {
+  const meta = getArtistMeta(db, artistId);
+  const origin = getArtistOrigin(db, artistId);
+  const row = db
+    .query<{ cover_art: string | null; manual_override: number }, [string]>(
+      `SELECT cover_art, manual_override FROM library_artists WHERE id = ?`,
+    )
+    .get(artistId);
+  return {
+    bio: meta?.bio ? meta.source : null,
+    origin: origin?.country ? origin.source : null,
+    portrait: row?.cover_art && row.manual_override === 1 ? 'user' : null,
+  };
+}
+
 async function fetchAndStoreArtistInfo(
   db: Database,
   lidarr: Lidarr | null | undefined,
@@ -794,6 +817,9 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
         // client uses this to fire a one-shot auto-fetch on first visit.
         metaExists: meta !== null,
         manualOverride: meta?.manualOverride ?? false,
+        // Where each header value came from (#1855), so a wrong one can be reported
+        // to the right place. Only what is recorded: a portrait's provider is not.
+        sources: artistSources(db, id),
       },
       albums,
       singlesAndEps,
@@ -996,6 +1022,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       origin: origin ? { country: origin.country, source: origin.source } : null,
       coverArt: row?.cover_art ?? null,
       coverRev: artistCoverRev(db, id),
+      sources: artistSources(db, id),
     });
   });
 

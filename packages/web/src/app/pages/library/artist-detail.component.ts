@@ -26,6 +26,7 @@ import type {
   DiscographyNotProvisioned,
   ArtistIdentityResult,
   RelatedArtist,
+  ArtistSources,
 } from '../../services/api/api-types';
 import { awaitDiscographyArt, awaitProvisioning } from '../../lib/await-provisioning';
 import { httpErrorMessage } from '../../lib/http-error';
@@ -176,6 +177,7 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     metaExists: boolean;
     manualOverride: boolean;
     origin: { country: string | null; source: string } | null;
+    sources?: ArtistSources;
   } | null>(null);
   readonly albums = signal<Album[]>([]);
   readonly singlesAndEps = signal<Album[]>([]);
@@ -220,7 +222,12 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   /** A saved origin keeps the artist id — patch the signal, no reload needed. */
   onOriginChanged(origin: { country: string | null; source: string }): void {
     const current = this.artist();
-    if (current) this.artist.set({ ...current, origin });
+    if (!current) return;
+    const sources = current.sources && {
+      ...current.sources,
+      origin: origin.country ? origin.source : null,
+    };
+    this.artist.set({ ...current, origin, sources });
   }
 
   onArtistInfoUpdated(info: { bio: string | null; urls: string[] }): void {
@@ -229,9 +236,10 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
       this.artist.set({
         ...current,
         ...info,
-        // The row now exists (auto-fetch just wrote it). Flip the flag so a
-        // re-mount of the artist-info component doesn't re-fire the auto-fetch.
         metaExists: true,
+        // A refresh or a hand edit — the event does not say which, and naming
+        // no source beats naming the wrong one until the next read.
+        sources: current.sources && { ...current.sources, bio: null },
       });
     }
   }
@@ -681,10 +689,22 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   readonly aboutOpen = signal(false);
 
   /** Shown when it would hold anything: a bio, sources, a curator's refresh, or genres. */
+  readonly sourceName = sourceName;
+
+  /** The About block's "where this came from" line (#1855), country first. */
+  readonly sourceEntries = computed(() => {
+    const s = this.artist()?.sources;
+    if (!s) return [];
+    return (['origin', 'bio', 'portrait'] as const)
+      .filter((field) => !!s[field])
+      .map((field) => ({ field, source: s[field]! }));
+  });
+
   readonly hasAbout = computed(() => {
     const a = this.artist();
     if (!a) return false;
     return (
+      this.sourceEntries().length > 0 ||
       !!a.bio ||
       a.urls.length > 0 ||
       this.auth.canCurate() ||
@@ -749,6 +769,7 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
         origin: r.origin,
         coverArt: r.coverArt ?? undefined,
         coverRev: r.coverRev,
+        sources: r.sources,
       });
       if (r.filled.includes('portrait')) {
         this.coverRevisions.raise([{ kind: 'artist', id, rev: r.coverRev }]);
@@ -915,4 +936,17 @@ export function needsCompletion(a: {
   coverArt?: string | null;
 }): boolean {
   return !a.metaExists || a.origin === null || !a.coverArt;
+}
+
+const SOURCE_NAMES: Record<string, string> = {
+  musicbrainz: 'MusicBrainz',
+  discogs: 'Discogs',
+  lidarr: 'Lidarr',
+  spotify: 'Spotify',
+  lastfm: 'Last.fm',
+};
+
+/** A provider's display name; an unknown id is shown as recorded. */
+export function sourceName(source: string): string {
+  return SOURCE_NAMES[source] ?? source;
 }

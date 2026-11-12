@@ -1619,4 +1619,12 @@ export interface ArtistCompletion {
   origin: { country: string | null; source: string } | null;
   coverArt: string | null;
   coverRev: number;
+  sources: ArtistSources;
+}
+
+/** Where each artist-page header value came from (#1855); null = nothing recorded. */
+export interface ArtistSources {
+  bio: string | null;
+  origin: string | null;
+  portrait: 'user' | null;
 }
