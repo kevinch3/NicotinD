@@ -99,7 +99,7 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   pointerdown and asks `resolve` once; `shouldCommit` (distance or `flickVelocity`) commits. The
   mini-bar live-follow open, the Now Playing mode table (resize/dismiss, continuation) and the
   `lg:` side-panel splitter (`sidePanelWidthPx`). → [web-ui.md](../web-ui.md)
-- **Player panel snap points (proposal, #1651)**: one hidden/rest/full state machine for the Now
+- **Player panel snap points (decided, #1651)**: one rest/full state machine for the Now
   Playing panel, folding `karaokeFullscreen` and `resolveLyricsScrollContainer` in, with a
   declarative tab contract and a migration off `queueExtraHeightPx`. → [player-panel.md](../player-panel.md)
 - **Queue row gestures**: `createRowGesture` — swipe left removes with Undo (`insertInQueue`),
