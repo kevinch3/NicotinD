@@ -584,3 +584,40 @@ describe('provider-health counters (#670)', () => {
     expect(providerHealthSnapshot().lidarr).toMatchObject({ ok: 0, failed: 0 });
   });
 });
+
+// #1855: the artist entity with url-rels carries country/area too, so origin and
+// the bio's Discogs link are one MusicBrainz request, whichever is asked first.
+describe('MusicBrainzClient artist entity is fetched once for origin + Discogs', () => {
+  const entity = {
+    id: 'mbid-9',
+    country: 'AR',
+    relations: [{ type: 'discogs', url: { resource: 'https://www.discogs.com/artist/9' } }],
+  };
+
+  it('origin first, then the Discogs link from the same response', async () => {
+    const calls = mockFetch(entity);
+    const client = testClient();
+    expect(await client.getArtistOrigin('mbid-9')).toEqual({ ok: true, country: 'AR' });
+    expect(await client.getArtistDiscogsUrl('mbid-9')).toBe('https://www.discogs.com/artist/9');
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toContain('inc=url-rels');
+  });
+
+  it('Discogs link first, then origin from the same response', async () => {
+    const calls = mockFetch(entity);
+    const client = testClient();
+    expect(await client.getArtistDiscogsUrl('mbid-9')).toBe('https://www.discogs.com/artist/9');
+    expect(await client.getArtistOrigin('mbid-9')).toEqual({ ok: true, country: 'AR' });
+    expect(calls).toHaveLength(1);
+  });
+
+  it('a transient failure caches neither answer', async () => {
+    mockFetchFail();
+    const client = testClient();
+    expect(await client.getArtistOrigin('mbid-9')).toEqual({ ok: false, country: null });
+    const calls = mockFetch(entity);
+    expect(await client.getArtistDiscogsUrl('mbid-9')).toBe('https://www.discogs.com/artist/9');
+    expect(await client.getArtistOrigin('mbid-9')).toEqual({ ok: true, country: 'AR' });
+    expect(calls).toHaveLength(1);
+  });
+});
