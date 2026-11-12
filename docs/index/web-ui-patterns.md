@@ -148,6 +148,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   `scrollLeft` (touch: once when settled; desktop: hover/focus; TV: focus; the playing title always;
   reduced motion: tap to wrap); `overflow-reveal-policy.spec.ts` gates every truncation.
   → [web-ui.md](../web-ui.md), [design-patterns.md](../design-patterns.md)
+- **Palette proposal (2026-11)**: the audit's answers as a token set for all 7 presets — `surface-3`,
+  a lifted `border`, the hue set and cover wash — with a generated WCAG table; `loadCoverPalette`.
+  → [palette-proposal.md](../palette-proposal.md)
 - **Theme audit (2026-11)**: every surface × the 7 presets on phone, desktop and TV, where the palette
   is flat, a contrast table for today's tokens, and the owner's closed questions before #1683;
   `placeholderGradient`, `SettingsGroupComponent`. → [theme-audit.md](../theme-audit.md)
