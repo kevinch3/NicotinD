@@ -490,9 +490,12 @@ Lidarr does not know. Body: optional `artistName`, `albumTitle`, `localAlbumId`.
   the enqueue (`stillWanted`) and before each retry.
 - **Cancel works from the click on.** `POST /api/downloads/jobs/:id/cancel` on a reservation stamps
   the cancel marker (`requestJobCancel`) and closes the row, so the feed reports it as cancelled and
-  the web raises no failure toast. The artist-page tile shows a ✕ beside its busy label as soon as
-  the job is in the feed (`cancellableJobId`), for the search and for the download after it;
-  `AutoHuntService.cancel` sends it.
+  the web raises no failure toast. Every surface that shows a Get's status shows a ✕ as soon as
+  the job is in the feed (`cancellableJobId`), for the search and for the download after it: the
+  artist-page tile, the search catalog and provider-album cards, and the admin Incomplete Albums
+  rows (#1841). `AutoHuntService.cancel` sends it. The catalog card is itself a `<button>` that
+  goes disabled while busy, so its ✕ is a sibling in a wrapper, not a child a disabled button
+  would swallow clicks for.
 - **A restart resumes.** The queue is in memory, the rows are not: `resumePending` re-queues every
   `resolving` album-hunt row with no addon job (`listReservedAlbumGets`) at boot. A resumed Get
   has lost its `localAlbumId` and matches on-disk tracks by name.

@@ -35,7 +35,7 @@ import { ServiceReviewService } from '../../../services/service-review.service';
 import { httpErrorMessage } from '../../../lib/http-error';
 import { TranslateService } from '../../../services/translate.service';
 import { AutoHuntService } from '../../../services/auto-hunt.service';
-import { IDLE_HUNT, type AlbumHuntStatus } from '../../../lib/album-hunt-status';
+import { IDLE_HUNT, cancellableJobId, type AlbumHuntStatus } from '../../../lib/album-hunt-status';
 import { stageLabel } from '../../../lib/pipeline-stage';
 import { OverflowRevealDirective } from '../../../directives/overflow-reveal.directive';
 
@@ -454,6 +454,12 @@ export class LibraryMaintenancePanelComponent {
 
   rowHuntStatus(row: IncompleteAlbum): AlbumHuntStatus {
     return row.lidarrAlbumId == null ? IDLE_HUNT : this.autoHunt.statusFor(row.lidarrAlbumId);
+  }
+
+  readonly cancellableJobId = cancellableJobId;
+
+  cancelHunt(jobId: string): void {
+    void this.autoHunt.cancel(jobId);
   }
 
   huntLabel(status: AlbumHuntStatus): string {

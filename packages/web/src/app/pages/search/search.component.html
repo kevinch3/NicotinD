@@ -363,6 +363,8 @@
                 @for (album of row; track album.foreignAlbumId) {
                   @let huntStatus = catalogHuntStatus(album);
                   @let availability = catalogAvailabilityOf(album);
+                  @let cancelJob = cancellableJobId(huntStatus);
+                  <div class="relative">
                   <button
                     appTvNavItem
                     data-testid="catalog-album"
@@ -482,6 +484,19 @@
                       }
                     </div>
                   </button>
+                  @if (cancelJob) {
+                    <button
+                      type="button"
+                      data-testid="catalog-album-cancel"
+                      (click)="cancelGet(cancelJob, $event)"
+                      [attr.aria-label]="'albumTile.cancelGet' | t"
+                      [title]="'albumTile.cancelGet' | t"
+                      class="absolute top-1.5 left-1.5 w-7 h-7 flex items-center justify-center rounded-full bg-black/60 hover:bg-black/80 text-white text-xs transition"
+                    >
+                      ✕
+                    </button>
+                  }
+                  </div>
                 }
               </div>
             }
@@ -547,7 +562,18 @@
                         </p>
                       </div>
                     </button>
-                    @if (status.phase === 'idle') {
+                    @if (cancellableJobId(status); as jobId) {
+                      <button
+                        type="button"
+                        data-testid="provider-album-cancel"
+                        (click)="cancelGet(jobId, $event)"
+                        [attr.aria-label]="'albumTile.cancelGet' | t"
+                        [title]="'albumTile.cancelGet' | t"
+                        class="absolute top-1.5 right-1.5 w-8 h-8 flex items-center justify-center rounded-full bg-black/60 hover:bg-black/80 text-white text-xs transition"
+                      >
+                        ✕
+                      </button>
+                    } @else if (status.phase === 'idle') {
                       <button
                         (click)="getBestProviderCopy(album, $event)"
                         data-testid="provider-album-get"

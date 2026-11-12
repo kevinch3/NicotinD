@@ -58,6 +58,7 @@ function setup(
   const retryAcquireJob = vi.fn(() => of({ jobId: 'job2' }));
   const autoHunt = {
     hunt: vi.fn(),
+    cancel: vi.fn(() => Promise.resolve()),
     statusFor: vi.fn((_id: number): AlbumHuntStatus => ({ phase: 'idle' })),
     statusForAlbum: vi.fn(
       (_target: { artist?: string | null; title?: string | null; lidarrAlbumId?: number | null }) =>
@@ -312,6 +313,36 @@ describe('SearchComponent — metadata-driven search', () => {
       .querySelector('[data-testid="catalog-album-cover"]')
       ?.closest('[appTvNavGroup]');
     expect(group?.getAttribute('axis')).toBe('grid');
+  });
+
+  // #1841: a catalog card showing a running Get carries its cancel, beside the
+  // card rather than inside it, since the card is a button that goes disabled.
+  it('a catalog card with a running Get offers a cancel that stops that job', async () => {
+    const { component, search, fixture, autoHunt } = setup();
+    autoHunt.statusForAlbum.mockReturnValue({ phase: 'searching', jobId: 'job-7' });
+    search.setQuery('pink floyd');
+    component.handleSearch(new Event('submit'));
+    await flush();
+    fixture.detectChanges();
+
+    const el: HTMLElement = fixture.nativeElement;
+    const cancel = el.querySelector<HTMLButtonElement>('[data-testid="catalog-album-cancel"]');
+    expect(cancel).not.toBeNull();
+    expect(cancel!.closest('[data-testid="catalog-album"]')).toBeNull();
+    cancel!.click();
+    expect(autoHunt.cancel).toHaveBeenCalledWith('job-7');
+    expect(autoHunt.hunt).not.toHaveBeenCalled();
+  });
+
+  it('an idle catalog card has no cancel', async () => {
+    const { component, search, fixture } = setup();
+    search.setQuery('pink floyd');
+    component.handleSearch(new Event('submit'));
+    await flush();
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('[data-testid="catalog-album"]')).not.toBeNull();
+    expect(el.querySelector('[data-testid="catalog-album-cancel"]')).toBeNull();
   });
 
   // The assertion above only proves the ATTRIBUTE is in the DOM, which
@@ -673,6 +704,24 @@ describe('SearchComponent — what the provider holds (#1538)', () => {
     expect(component.directSearchOpen()).toBe(true);
     expect(component.networkView()).toBe('folders');
     expect(component.visibleFolderGroups().map((g) => g.username)).toEqual(['c']);
+  });
+
+  it('a provider card with a running Get swaps its Get button for a cancel (#1841)', () => {
+    const { component, fixture, autoHunt } = seeded('complete');
+    autoHunt.statusForAlbum.mockImplementation((target) =>
+      target.title === 'The Wall'
+        ? { phase: 'job', stage: 'downloading', jobId: 'job-3' }
+        : { phase: 'idle' },
+    );
+    expect(component.providerAlbums().length).toBeGreaterThan(0);
+    fixture.detectChanges();
+    const card = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="provider-album"]',
+    )!;
+    expect(card.querySelector('[data-testid="provider-album-get"]')).toBeNull();
+    card.querySelector<HTMLButtonElement>('[data-testid="provider-album-cancel"]')!.click();
+    expect(autoHunt.cancel).toHaveBeenCalledWith('job-3');
+    expect(component.directSearchOpen()).toBe(false);
   });
 });
 

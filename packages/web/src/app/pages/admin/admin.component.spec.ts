@@ -600,11 +600,13 @@ describe('AdminComponent (incomplete albums / untracked)', () => {
   );
   const autoHunt = {
     hunt: vi.fn(),
+    cancel: vi.fn(() => Promise.resolve()),
     statusFor: vi.fn((_id: number): AlbumHuntStatus => ({ phase: 'idle' })),
   };
 
   beforeEach(async () => {
     incompleteAlbumsApi.mockClear();
+    autoHunt.cancel.mockClear();
     resyncLibraryApi.mockReset();
     resyncLibraryApi.mockReturnValue(of({ ok: true }));
     autoHunt.hunt.mockClear();
@@ -729,6 +731,35 @@ describe('AdminComponent (incomplete albums / untracked)', () => {
     expect(autoHunt.statusFor).toHaveBeenCalledWith(10);
     expect(c.huntLabel(status)).toBe('Downloading');
     expect(c.huntLabel({ phase: 'idle' })).toBe('admin.completeAlbum');
+  });
+
+  // #1841: wherever a Get's status shows, so does the way to stop it.
+  it('a row with a running Get offers a cancel that stops that job', async () => {
+    autoHunt.statusFor.mockReturnValue({ phase: 'searching', jobId: 'job-9' });
+    const fixture = TestBed.createComponent(LibraryMaintenancePanelComponent);
+    await fixture.componentInstance.loadIncompleteAlbums();
+    fixture.detectChanges();
+    const cancel = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+      '[data-testid="incomplete-album-cancel"]',
+    );
+    expect(cancel).not.toBeNull();
+    cancel!.click();
+    expect(autoHunt.cancel).toHaveBeenCalledWith('job-9');
+  });
+
+  it('an idle row, or a Get with no job yet, has no cancel', async () => {
+    const fixture = TestBed.createComponent(LibraryMaintenancePanelComponent);
+    await fixture.componentInstance.loadIncompleteAlbums();
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('[data-testid="incomplete-album-row"]')).not.toBeNull();
+    expect(el.querySelector('[data-testid="incomplete-album-cancel"]')).toBeNull();
+    autoHunt.statusFor.mockReturnValue({ phase: 'searching' });
+    fixture.componentInstance.incompleteAlbums.set([
+      ...fixture.componentInstance.incompleteAlbums()!,
+    ]);
+    fixture.detectChanges();
+    expect(el.querySelector('[data-testid="incomplete-album-cancel"]')).toBeNull();
   });
 
   it('syncLibrary calls resyncLibrary and reports success', async () => {

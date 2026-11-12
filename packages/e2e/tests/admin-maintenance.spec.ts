@@ -177,6 +177,79 @@ test.describe('admin incomplete albums', () => {
     await expect(complete).toBeEnabled();
   });
 
+  // #1841: a row showing a running Get carries the way to stop it.
+  test('a row with a running Get offers a cancel that stops that job', async ({ page }) => {
+    await page.route('**/api/library/incomplete-albums', (route) =>
+      route.fulfill({
+        json: [
+          {
+            albumId: null,
+            artist: 'Soda Stereo',
+            album: 'Canción Animal',
+            expected: 11,
+            owned: 9,
+            missing: 2,
+            lidarrAlbumId: 4242,
+            state: 'done',
+          },
+        ],
+      }),
+    );
+    let cancelled = false;
+    const now = Date.now();
+    const job = () => ({
+      id: 'job-1841',
+      kind: 'album-hunt',
+      method: 'slskd',
+      state: cancelled ? 'failed' : 'active',
+      stage: cancelled ? 'failed' : 'resolving',
+      artistName: 'Soda Stereo',
+      albumTitle: 'Canción Animal',
+      displayTitle: null,
+      sourceUrl: null,
+      playlistId: null,
+      lidarrAlbumId: 4242,
+      sourceRef: null,
+      error: null,
+      createdAt: now,
+      updatedAt: now,
+      albumId: null,
+      progress: { expected: 0, delivered: 0, unavailable: 0, failed: 0, canonical: 11 },
+      cancelRequested: cancelled,
+      items: [],
+    });
+    let feedLive = false;
+    await page.route('**/api/downloads/jobs', (route) =>
+      route.fulfill({ json: feedLive ? [job()] : [] }),
+    );
+    await page.route('**/api/discography/albums/4242/get', (route) => {
+      feedLive = true;
+      return route.fulfill({ json: { jobId: 'job-1841' } });
+    });
+    const cancels: string[] = [];
+    await page.route('**/api/downloads/jobs/*/cancel', (route) => {
+      cancels.push(new URL(route.request().url()).pathname);
+      cancelled = true;
+      return route.fulfill({ json: { ok: true } });
+    });
+
+    await page.goto('/admin');
+    await expandGroup(page, 'library-maintenance');
+    const panel = page.getByTestId('incomplete-albums');
+    await panel.getByTestId('incomplete-albums-check').click();
+    const row = panel.getByTestId('incomplete-album-row');
+    await expect(row.getByTestId('incomplete-album-cancel')).toHaveCount(0);
+
+    await row.getByTestId('incomplete-album-complete').click();
+    const cancel = row.getByTestId('incomplete-album-cancel');
+    await expect(cancel).toBeVisible();
+    await cancel.click();
+
+    expect(cancels).toEqual(['/api/downloads/jobs/job-1841/cancel']);
+    await expect(cancel).toHaveCount(0);
+    await expect(row.getByTestId('incomplete-album-complete')).toBeEnabled();
+  });
+
   // The health card keeps only the count; its jump opens this table, checked.
   test('the Library health completeness card jumps to the table', async ({ page }) => {
     await page.route('**/api/library/health', async (route) => {
