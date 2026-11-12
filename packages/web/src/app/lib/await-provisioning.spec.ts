@@ -1,6 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
-import { awaitProvisioning, isProvisioningAccepted } from './await-provisioning';
-import type { ArtistProvisioningStatus } from '../services/api/api-types';
+import {
+  awaitDiscographyArt,
+  awaitProvisioning,
+  isProvisioningAccepted,
+} from './await-provisioning';
+import type {
+  ArtistProvisioningStatus,
+  DiscographyAlbum,
+  DiscographyResult,
+} from '../services/api/api-types';
 
 function status(over: Partial<ArtistProvisioningStatus> = {}): ArtistProvisioningStatus {
   return {
@@ -55,5 +63,61 @@ describe('isProvisioningAccepted', () => {
     expect(isProvisioningAccepted({ provisioning: true, code: 'ARTIST_PROVISIONING' })).toBe(true);
     expect(isProvisioningAccepted({ albums: [] })).toBe(false);
     expect(isProvisioningAccepted(null)).toBe(false);
+  });
+});
+
+describe('awaitDiscographyArt', () => {
+  const album = (lidarrId: number, coverArtUrl?: string): DiscographyAlbum => ({
+    lidarrId,
+    foreignAlbumId: `f${lidarrId}`,
+    title: `A${lidarrId}`,
+    albumType: 'Album',
+    secondaryTypes: [],
+    totalTracks: 1,
+    localTrackCount: 0,
+    status: 'missing',
+    coverArtUrl,
+    tracks: [],
+  });
+  const disco = (...albums: DiscographyAlbum[]): DiscographyResult => ({
+    artistId: 'ar1',
+    lidarrId: 1,
+    mbid: 'm',
+    albums,
+  });
+
+  // Lidarr's refresh after an add lists the albums before their images (#1854).
+  it('re-reads until the covers Lidarr was still fetching arrive', async () => {
+    const reads = [disco(album(1), album(2)), disco(album(1, 'c1'), album(2, 'c2'))];
+    const read = vi.fn(async () => reads.shift()!);
+    const seen: DiscographyResult[] = [];
+    await awaitDiscographyArt(disco(album(1), album(2)), read, (d) => seen.push(d), {
+      sleep: noSleep,
+    });
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(seen.at(-1)!.albums.map((a) => a.coverArtUrl)).toEqual(['c1', 'c2']);
+  });
+
+  it('does not re-read when every album already has art', async () => {
+    const read = vi.fn();
+    await awaitDiscographyArt(disco(album(1, 'c1')), read, () => {}, { sleep: noSleep });
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it('gives up after its attempts for an album that never gets art', async () => {
+    const read = vi.fn(async () => disco(album(1)));
+    await awaitDiscographyArt(disco(album(1)), read, () => {}, { sleep: noSleep, attempts: 3 });
+    expect(read).toHaveBeenCalledTimes(3);
+  });
+
+  it('stops once the view that asked has gone', async () => {
+    const read = vi.fn(async () => disco(album(1)));
+    const apply = vi.fn();
+    await awaitDiscographyArt(disco(album(1)), read, apply, {
+      sleep: noSleep,
+      alive: () => false,
+    });
+    expect(read).not.toHaveBeenCalled();
+    expect(apply).not.toHaveBeenCalled();
   });
 });
