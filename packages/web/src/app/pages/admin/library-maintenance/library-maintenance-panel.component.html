@@ -554,6 +554,18 @@
                     >
                       {{ huntLabel(huntStatus) }}
                     </button>
+                    @if (cancellableJobId(huntStatus); as jobId) {
+                      <button
+                        type="button"
+                        data-testid="incomplete-album-cancel"
+                        (click)="cancelHunt(jobId)"
+                        [attr.aria-label]="'albumTile.cancelGet' | t"
+                        [title]="'albumTile.cancelGet' | t"
+                        class="ml-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-theme-surface-2 text-theme-secondary hover:opacity-90 transition"
+                      >
+                        ✕
+                      </button>
+                    }
                   </td>
                 </tr>
               }

@@ -22,7 +22,12 @@ import { WatchlistService } from '../../services/watchlist.service';
 import { AuthService } from '../../services/auth.service';
 import { PluginService } from '../../services/plugin.service';
 import { AutoHuntService } from '../../services/auto-hunt.service';
-import { IDLE_HUNT, albumHuntLabel, type AlbumHuntStatus } from '../../lib/album-hunt-status';
+import {
+  IDLE_HUNT,
+  albumHuntLabel,
+  cancellableJobId,
+  type AlbumHuntStatus,
+} from '../../lib/album-hunt-status';
 import { withMediaToken } from '../../lib/cover-url';
 import { formatBytes } from '../../lib/disk-usage';
 import { ConfirmService } from '../../services/confirm.service';
@@ -879,6 +884,14 @@ export class SearchComponent implements OnInit, OnDestroy {
       title: album.title,
       lidarrAlbumId: this.resolvedLidarrIds().get(album.foreignAlbumId) ?? null,
     });
+  }
+
+  readonly cancellableJobId = cancellableJobId;
+
+  /** Stop a Get from the card showing it; the card sits inside a clickable surface. */
+  cancelGet(jobId: string, event: Event): void {
+    event.stopPropagation();
+    void this.autoHunt.cancel(jobId);
   }
 
   catalogHuntLabel(status: AlbumHuntStatus): string {
