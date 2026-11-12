@@ -89,11 +89,26 @@ export function upsertDiscographyLink(
   ).run(artistId, lidarrId, mbid, Date.now());
 }
 
+/**
+ * How long one album's Lidarr tracklist is reused (#1855). Short on purpose: a
+ * Lidarr refresh can switch the monitored release, and a tile's completeness must
+ * not drift far from the live list the Get checks against (#1080).
+ */
+export const TRACKLIST_CACHE_TTL_MS = 10 * 60 * 1000;
+const TRACKLIST_CACHE_MAX = 5_000;
+
 export class DiscographyService {
+  /** Lidarr album id → its tracklist and when it was read; never holds an empty list. */
+  private readonly tracklists = new Map<number, { at: number; tracks: LidarrTrack[] }>();
+  private readonly now: () => number;
+
   constructor(
     private lidarr: Lidarr,
     private db: Database,
-  ) {}
+    opts: { now?: () => number } = {},
+  ) {
+    this.now = opts.now ?? Date.now;
+  }
 
   artistName(artistId: string): string | null {
     return (
@@ -241,15 +256,34 @@ export class DiscographyService {
     };
   }
 
+  /**
+   * One album's tracklist, reused for {@link TRACKLIST_CACHE_TTL_MS}: every page
+   * open used to ask Lidarr for every album's tracks (#1855). An empty answer is
+   * never kept — it is what Lidarr returns before its refresh has the tracks, and
+   * what a failed call degrades to.
+   */
+  private async tracklist(albumId: number): Promise<LidarrTrack[]> {
+    const hit = this.tracklists.get(albumId);
+    if (hit && this.now() - hit.at < TRACKLIST_CACHE_TTL_MS) return hit.tracks;
+    const tracks = await this.lidarr.track.listByAlbum(albumId).catch(() => [] as LidarrTrack[]);
+    this.tracklists.delete(albumId);
+    if (tracks.length > 0) {
+      if (this.tracklists.size >= TRACKLIST_CACHE_MAX) {
+        const oldest = this.tracklists.keys().next().value;
+        if (oldest !== undefined) this.tracklists.delete(oldest);
+      }
+      this.tracklists.set(albumId, { at: this.now(), tracks });
+    }
+    return tracks;
+  }
+
   private async fetchAllTracks(albums: LidarrAlbum[]): Promise<Map<number, LidarrTrack[]>> {
     const result = new Map<number, LidarrTrack[]>();
     const concurrency = 5;
 
     for (let i = 0; i < albums.length; i += concurrency) {
       const batch = albums.slice(i, i + concurrency);
-      const fetched = await Promise.all(
-        batch.map((a) => this.lidarr.track.listByAlbum(a.id).catch(() => [] as LidarrTrack[])),
-      );
+      const fetched = await Promise.all(batch.map((a) => this.tracklist(a.id)));
       batch.forEach((a, idx) => result.set(a.id, fetched[idx]));
     }
 

@@ -4,6 +4,7 @@ import type { Lidarr, LidarrAlbum, LidarrArtist, LidarrTrack } from '../lidarr/i
 import { applySchema } from '../db';
 import {
   DiscographyService,
+  TRACKLIST_CACHE_TTL_MS,
   type ArtistDiscography,
   type DiscographyNotProvisioned,
 } from './discography.service';
@@ -594,5 +595,73 @@ describe('DiscographyService', () => {
       const result = disc(await new DiscographyService(lidarr, db).getArtistDiscography('ar1'));
       expect(result.albums[0].status).toBe('missing');
     });
+  });
+});
+
+// #1855: every page open (and every post-add re-read, #1854) used to ask Lidarr
+// for every album's tracklist. They are cached per album for a while — except an
+// empty one, which is what Lidarr answers before its refresh has the tracks.
+describe('DiscographyService tracklist cache', () => {
+  let db: Database;
+  const monitoredArtist = {
+    id: 99,
+    foreignArtistId: 'mbid-arjona',
+    artistName: 'Arjona',
+    sortName: 'Arjona',
+    status: 'continuing',
+    images: [],
+    monitored: true,
+  };
+
+  beforeEach(() => {
+    db = new Database(':memory:');
+    applySchema(db);
+    insertArtist(db, 'ar1', 'Arjona');
+  });
+
+  function trackCalls(lidarr: Lidarr): number {
+    return (lidarr.track.listByAlbum as unknown as { mock: { calls: unknown[] } }).mock.calls
+      .length;
+  }
+
+  it('a second read of the same artist asks Lidarr for no tracklist', async () => {
+    const { lidarr } = makeLidarrStub({
+      albums: [makeLidarrAlbum({ id: 1, title: 'A' }), makeLidarrAlbum({ id: 2, title: 'B' })],
+      tracksByAlbum: { 1: [makeTrack(11, 1, 'x')], 2: [makeTrack(21, 2, 'y')] },
+      monitoredArtist,
+    });
+    const svc = new DiscographyService(lidarr, db);
+    await svc.getArtistDiscography('ar1');
+    await svc.getArtistDiscography('ar1');
+    expect(trackCalls(lidarr)).toBe(2);
+  });
+
+  it('never caches an empty tracklist', async () => {
+    const tracksByAlbum: Record<number, LidarrTrack[]> = { 1: [] };
+    const { lidarr } = makeLidarrStub({
+      albums: [makeLidarrAlbum({ id: 1, title: 'A' })],
+      tracksByAlbum,
+      monitoredArtist,
+    });
+    const svc = new DiscographyService(lidarr, db);
+    await svc.getArtistDiscography('ar1');
+    tracksByAlbum[1] = [makeTrack(11, 1, 'x')];
+    const second = disc(await svc.getArtistDiscography('ar1'));
+    expect(trackCalls(lidarr)).toBe(2);
+    expect(second.albums[0].tracks).toHaveLength(1);
+  });
+
+  it('asks again once the cached tracklist has expired', async () => {
+    let now = 1_000;
+    const { lidarr } = makeLidarrStub({
+      albums: [makeLidarrAlbum({ id: 1, title: 'A' })],
+      tracksByAlbum: { 1: [makeTrack(11, 1, 'x')] },
+      monitoredArtist,
+    });
+    const svc = new DiscographyService(lidarr, db, { now: () => now });
+    await svc.getArtistDiscography('ar1');
+    now += TRACKLIST_CACHE_TTL_MS + 1;
+    await svc.getArtistDiscography('ar1');
+    expect(trackCalls(lidarr)).toBe(2);
   });
 });
