@@ -868,6 +868,14 @@ local song then) read **0/11** while owned. The server's `trackKey` drops the cr
 (`stripFeaturingSuffix`) before `normalizeTitle`. A tile prints its "n/N tracks" only when
 at least one track matched.
 
+**A tile never offers a Get the server would refuse.** The title match and the Get's
+guard are different rules: `albumAlreadyComplete` counts the local album's songs against
+the tracklist's length, so a song under a spelling the title match misses still counts
+there. Prod's _Epigram_ held all 35 songs, 21 of them titled with the featuring credit
+before the remix name; the tile read **14/35** with a "Complete album" button, and every
+click answered "You already have". `buildDiscographyAlbum` now grades such an album
+`present` through `artistAlbumAlreadyComplete`, the same count keyed on the local artist id.
+
 **One completeness rule, for the header and every tile (#1627).** The tab bar's
 `n releases · n complete · n partial · n missing` and each tile's state both read
 `albumCompleteness` — the server's tracklist match (`DiscographyAlbum.status`), never

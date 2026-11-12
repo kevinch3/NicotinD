@@ -194,6 +194,48 @@ describe('DiscographyService', () => {
     expect(aLife.tracks.find((t) => t.title === 'Felt')?.hasFile).toBe(true);
   });
 
+  // Seen on prod: "Epigram" held all 35 songs, 21 under titles whose featuring credit
+  // sits before the remix name, which the title match misses. The tile offered "Complete album" and every Get answered
+  // already-complete, because the Get counts songs. The tile now applies that guard.
+  it('grades an album present when the Get would call it already complete', async () => {
+    insertArtist(db, 'ar1', 'Gramatik');
+    insertAlbum(db, 'al1', 'Epigram', 'ar1');
+    insertSong(db, 's1', 'al1', 'Room 3327', 'ar1');
+    insertSong(
+      db,
+      's2',
+      'al1',
+      'Satoshi Nakamoto Feat. Adrian Lau & ProbCause (Psymbionic Remix)',
+      'ar1',
+    );
+    db.run(`UPDATE library_albums SET song_count = 2 WHERE id = 'al1'`);
+
+    const { lidarr } = makeLidarrStub({
+      albums: [
+        makeLidarrAlbum({
+          id: 1,
+          title: 'Epigram',
+          statistics: { trackCount: 2, totalTrackCount: 2, sizeOnDisk: 0, percentOfTracks: 100 },
+        }),
+      ],
+      tracksByAlbum: {
+        1: [makeTrack(11, 1, 'Room 3327'), makeTrack(12, 1, 'Satoshi Nakamoto (Psymbionic remix)')],
+      },
+      monitoredArtist: {
+        id: 99,
+        foreignArtistId: 'mbid-gramatik',
+        artistName: 'Gramatik',
+        sortName: 'Gramatik',
+        status: 'continuing',
+        images: [],
+        monitored: true,
+      },
+    });
+
+    const result = disc(await new DiscographyService(lidarr, db).getArtistDiscography('ar1'));
+    expect(result.albums[0]).toMatchObject({ status: 'present', localAlbumId: 'al1' });
+  });
+
   // #1627, seen on prod (La Vela Puerca): each local album held one song, and each
   // song belonged to the OTHER album's tracklist. The tracklist match is the rule the
   // header and every tile read: both are missing, though each keeps its local album.
