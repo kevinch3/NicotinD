@@ -868,6 +868,13 @@ local song then) read **0/11** while owned. The server's `trackKey` drops the cr
 (`stripFeaturingSuffix`) before `normalizeTitle`. A tile prints its "n/N tracks" only when
 at least one track matched.
 
+**One tile per title and type.** Lidarr can list several albums under one title: prod's
+Ed Sheeran page drew four identical "÷ (Deluxe)" tiles, each with its own Get, though the
+Get's in-flight guard treats them as one album. `collapseSameTitledReleases` keeps one
+entry per title (case and accents folded) and album type: the one the library matches
+best, then the one with a tracklist. Editions keep their own tile. What the four Lidarr
+rows are (separate release groups or metadata duplicates) was not inspected.
+
 **One completeness rule, for the header and every tile (#1627).** The tab bar's
 `n releases · n complete · n partial · n missing` and each tile's state both read
 `albumCompleteness` — the server's tracklist match (`DiscographyAlbum.status`), never
