@@ -20,6 +20,7 @@ const ALBUM: DiscographyAlbum = {
 
 describe('AutoHuntService', () => {
   const getAlbum = vi.fn();
+  const cancelJob = vi.fn();
   const kickPoll = vi.fn();
   const show = vi.fn<ToastService['show']>();
   const dismiss = vi.fn();
@@ -33,6 +34,8 @@ describe('AutoHuntService', () => {
     vi.useFakeTimers();
     getAlbum.mockReset();
     getAlbum.mockReturnValue(of({ jobId: 'j1' }));
+    cancelJob.mockReset();
+    cancelJob.mockReturnValue(of({ ok: true }));
     kickPoll.mockReset();
     kickPoll.mockResolvedValue(undefined);
     show.mockReset();
@@ -44,7 +47,7 @@ describe('AutoHuntService', () => {
     TestBed.configureTestingModule({
       providers: [
         AutoHuntService,
-        { provide: DownloadsApiService, useValue: { getAlbum } },
+        { provide: DownloadsApiService, useValue: { getAlbum, cancelJob } },
         { provide: TransferService, useValue: { kickPoll, acquisitionJobs } },
         { provide: ToastService, useValue: { show, dismiss, toasts } },
       ],
@@ -110,6 +113,24 @@ describe('AutoHuntService', () => {
       feed([job({ stage: 'resolving' })]);
       feed([job({ stage: 'downloading' })]);
       feed([job({ state: 'done', stage: 'done' })]);
+      expect(show).not.toHaveBeenCalled();
+    });
+
+    it('a searching Get names its job, so the surface can cancel it', async () => {
+      const service = svc();
+      feed([job({ stage: 'resolving' })]);
+      expect(service.statusFor(42)).toEqual({ phase: 'searching', jobId: 'j1' });
+    });
+
+    it('cancels through the job route and stays quiet when the job then closes', async () => {
+      const service = svc();
+      service.hunt(ALBUM, 'Pink Floyd', vi.fn());
+      await flush();
+      feed([job({ stage: 'resolving' })]);
+      await service.cancel('j1');
+      feed([job({ state: 'failed', stage: 'error', error: 'Cancelled by user' })]);
+
+      expect(cancelJob).toHaveBeenCalledWith('j1');
       expect(show).not.toHaveBeenCalled();
     });
 

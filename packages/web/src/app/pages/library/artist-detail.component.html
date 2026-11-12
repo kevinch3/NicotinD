@@ -256,6 +256,7 @@
                     [status]="tileHuntStatus(tile)"
                     [canAcquire]="auth.canAcquire()"
                     (acquire)="huntTile(tile)"
+                    (cancel)="autoHunt.cancel($event)"
                   />
                 }
               </div>
@@ -293,6 +294,7 @@
                     [status]="tileHuntStatus(tile)"
                     [canAcquire]="auth.canAcquire()"
                     (acquire)="huntTile(tile)"
+                    (cancel)="autoHunt.cancel($event)"
                   />
                 }
               </div>
@@ -330,6 +332,7 @@
                     [status]="tileHuntStatus(tile)"
                     [canAcquire]="auth.canAcquire()"
                     (acquire)="huntTile(tile)"
+                    (cancel)="autoHunt.cancel($event)"
                   />
                 }
               </div>

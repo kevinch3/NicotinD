@@ -486,6 +486,11 @@ Lidarr does not know. Body: optional `artistName`, `albumTitle`, `localAlbumId`.
   that another lane already fetches, drops the reservation (`discardReservedJob`).
 - A cancelled reservation is never enqueued: `isReservedJobPending` is read before the hunt, before
   the enqueue (`stillWanted`) and before each retry.
+- **Cancel works from the click on.** `POST /api/downloads/jobs/:id/cancel` on a reservation stamps
+  the cancel marker (`requestJobCancel`) and closes the row, so the feed reports it as cancelled and
+  the web raises no failure toast. The artist-page tile shows a ✕ beside its busy label as soon as
+  the job is in the feed (`cancellableJobId`), for the search and for the download after it;
+  `AutoHuntService.cancel` sends it.
 - **A restart resumes.** The queue is in memory, the rows are not: `resumePending` re-queues every
   `resolving` album-hunt row with no addon job (`listReservedAlbumGets`) at boot. A resumed Get
   has lost its `localAlbumId` and matches on-disk tracks by name.

@@ -24,37 +24,51 @@
     <p class="text-xs text-theme-muted">{{ subtitle() }}</p>
 
     @if (showAction()) {
-      <button
-        appTvNavItem
-        type="button"
-        data-testid="album-tile-action"
-        (click)="acquire.emit()"
-        [disabled]="busy()"
-        [attr.data-hunt-phase]="status().phase"
-        class="mt-2 w-full px-2 py-1.5 rounded-md text-xs font-semibold bg-theme-surface-2 text-theme-secondary hover:bg-theme-surface-2/80 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
-      >
-        @if (busy()) {
-          <svg class="animate-spin h-3 w-3" viewBox="0 0 24 24">
-            <circle
-              class="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              stroke-width="4"
-              fill="none"
-            />
-            <path
-              class="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-            />
-          </svg>
-          <span data-testid="album-tile-hunt-status">{{ busyLabel() }}</span>
-        } @else {
-          {{ actionLabelKey() | t }}
+      <div class="mt-2 flex gap-1.5">
+        <button
+          appTvNavItem
+          type="button"
+          data-testid="album-tile-action"
+          (click)="acquire.emit()"
+          [disabled]="busy()"
+          [attr.data-hunt-phase]="status().phase"
+          class="flex-1 min-w-0 px-2 py-1.5 rounded-md text-xs font-semibold bg-theme-surface-2 text-theme-secondary hover:bg-theme-surface-2/80 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+        >
+          @if (busy()) {
+            <svg class="animate-spin h-3 w-3" viewBox="0 0 24 24">
+              <circle
+                class="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="4"
+                fill="none"
+              />
+              <path
+                class="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+              />
+            </svg>
+            <span data-testid="album-tile-hunt-status">{{ busyLabel() }}</span>
+          } @else {
+            {{ actionLabelKey() | t }}
+          }
+        </button>
+        @if (cancelJobId(); as jobId) {
+          <button
+            type="button"
+            data-testid="album-tile-cancel"
+            (click)="$event.preventDefault(); $event.stopPropagation(); cancel.emit(jobId)"
+            [attr.aria-label]="'albumTile.cancelGet' | t"
+            [title]="'albumTile.cancelGet' | t"
+            class="shrink-0 px-2.5 py-1.5 rounded-md text-xs font-semibold bg-theme-surface-2 text-theme-secondary hover:bg-theme-surface-2/80 transition"
+          >
+            ✕
+          </button>
         }
-      </button>
+      </div>
     }
   </div>
 } @else {
@@ -83,36 +97,50 @@
     </p>
 
     @if (showAction()) {
-      <button
-        type="button"
-        data-testid="album-tile-action"
-        (click)="$event.preventDefault(); $event.stopPropagation(); acquire.emit()"
-        [disabled]="busy()"
-        [attr.data-hunt-phase]="status().phase"
-        class="mt-2 w-full px-2 py-1.5 rounded-md text-xs font-semibold bg-theme-surface-2 text-theme-secondary hover:bg-theme-surface-2/80 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
-      >
-        @if (busy()) {
-          <svg class="animate-spin h-3 w-3" viewBox="0 0 24 24">
-            <circle
-              class="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              stroke-width="4"
-              fill="none"
-            />
-            <path
-              class="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-            />
-          </svg>
-          <span data-testid="album-tile-hunt-status">{{ busyLabel() }}</span>
-        } @else {
-          {{ actionLabelKey() | t }}
+      <div class="mt-2 flex gap-1.5">
+        <button
+          type="button"
+          data-testid="album-tile-action"
+          (click)="$event.preventDefault(); $event.stopPropagation(); acquire.emit()"
+          [disabled]="busy()"
+          [attr.data-hunt-phase]="status().phase"
+          class="flex-1 min-w-0 px-2 py-1.5 rounded-md text-xs font-semibold bg-theme-surface-2 text-theme-secondary hover:bg-theme-surface-2/80 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+        >
+          @if (busy()) {
+            <svg class="animate-spin h-3 w-3" viewBox="0 0 24 24">
+              <circle
+                class="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="4"
+                fill="none"
+              />
+              <path
+                class="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+              />
+            </svg>
+            <span data-testid="album-tile-hunt-status">{{ busyLabel() }}</span>
+          } @else {
+            {{ actionLabelKey() | t }}
+          }
+        </button>
+        @if (cancelJobId(); as jobId) {
+          <button
+            type="button"
+            data-testid="album-tile-cancel"
+            (click)="$event.preventDefault(); $event.stopPropagation(); cancel.emit(jobId)"
+            [attr.aria-label]="'albumTile.cancelGet' | t"
+            [title]="'albumTile.cancelGet' | t"
+            class="shrink-0 px-2.5 py-1.5 rounded-md text-xs font-semibold bg-theme-surface-2 text-theme-secondary hover:bg-theme-surface-2/80 transition"
+          >
+            ✕
+          </button>
         }
-      </button>
+      </div>
     }
   </a>
 }

@@ -63,6 +63,7 @@
   "discography.checking": "Checking full discography…",
   "albumTile.getAlbum": "Get album",
   "albumTile.completeAlbum": "Complete album",
+  "albumTile.cancelGet": "Cancel",
   "albumTile.tracks": "{have}/{total} tracks",
   "acquire.done": "✓ Done",
   "acquire.download": "Get",
