@@ -45,6 +45,7 @@ import {
   usableMbid,
 } from '../services/mbid-store.js';
 import { fillArtistImages } from '../services/artist-image-fill.js';
+import { completeArtist } from '../services/artist-complete.js';
 import { BIO_MIN_MBID_CONFIDENCE, resolveMbidViaLidarr } from '../services/enrichment/tasks.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 import { optimizeAlbum } from '../services/metadata-optimize.js';
@@ -937,6 +938,65 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       return c.json({ bio: existing?.bio ?? null, urls: existing?.urls ?? [] });
     }
     return c.json({ bio: result.bio, urls: result.urls });
+  });
+
+  /**
+   * On-visit completion (#1855): fill whatever of bio, origin and portrait is
+   * still missing and due, in one call, then answer the header fields so the
+   * page patches in place. Silent like `auto-fetch-info`: never a 5xx.
+   */
+  app.post('/artists/:id/complete', async (c) => {
+    const id = c.req.param('id');
+    const db = getDatabase();
+    const artist = db
+      .query<{ id: string; name: string }, [string]>(
+        `SELECT id, name FROM library_artists WHERE id = ? AND hidden = 0`,
+      )
+      .get(id);
+    if (!artist) return c.json({ error: 'Artist not found' }, 404);
+    const mb = getMbClient(dataDir);
+    const { filled } = await completeArtist(
+      db,
+      {
+        fetchInfo: (a) => fetchAndStoreArtistInfo(db, lidarr, pluginRegistry, a, dataDir),
+        origin: mb
+          ? {
+              lidarr,
+              lookupArtistOrigin: (mbid) => mb.getArtistOrigin(mbid),
+              corroboration: {
+                libraryAlbums: libraryAlbumTitles(db, artist.id),
+                releaseGroupsFor: async (mbid) =>
+                  (await mb.getArtistReleaseGroups(mbid)).map((rg) => rg.title),
+              },
+            }
+          : null,
+        portrait: coverCacheDir
+          ? {
+              lidarr,
+              spotifyLookup: lookupArtistImageSpotify ?? null,
+              discogsLookup: lookupArtistImageDiscogs ?? null,
+              coverCacheDir,
+            }
+          : null,
+      },
+      artist,
+    );
+    const meta = getArtistMeta(db, id);
+    const origin = getArtistOrigin(db, id);
+    const row = db
+      .query<{ cover_art: string | null }, [string]>(
+        `SELECT cover_art FROM library_artists WHERE id = ?`,
+      )
+      .get(id);
+    return c.json({
+      filled,
+      bio: meta?.bio ?? null,
+      urls: meta?.urls ?? [],
+      metaExists: meta !== null,
+      origin: origin ? { country: origin.country, source: origin.source } : null,
+      coverArt: row?.cover_art ?? null,
+      coverRev: artistCoverRev(db, id),
+    });
   });
 
   /** Curator hand-edit of an artist's bio/links — locks out the background task. */

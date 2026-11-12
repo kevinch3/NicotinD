@@ -1,9 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { provideRouter, Router, ActivatedRoute, convertToParamMap } from '@angular/router';
-import { of, BehaviorSubject, Subject, throwError } from 'rxjs';
+import { of, BehaviorSubject, EMPTY, Subject, throwError, type Observable } from 'rxjs';
 import { vi } from 'vitest';
-import { ArtistDetailComponent, ARTIST_TAB_LABEL_KEYS } from './artist-detail.component';
+import {
+  ArtistDetailComponent,
+  ARTIST_TAB_LABEL_KEYS,
+  needsCompletion,
+} from './artist-detail.component';
 import EN_CATALOG from '../../../../public/i18n/en.json';
 import ES_CATALOG from '../../../../public/i18n/es.json';
 import { LibraryApiService } from '../../services/api/library-api.service';
@@ -61,8 +65,11 @@ const ALBUM_DETAILS: Record<
  * moves with the bytes. Reset after every test.
  */
 let serverArtistPatch: Record<string, unknown> = {};
+/** The on-visit completion (#1855); answers nothing unless a test says otherwise. */
+let completeArtistImpl: (id: string) => Observable<unknown> = () => EMPTY;
 afterEach(() => {
   serverArtistPatch = {};
+  completeArtistImpl = () => EMPTY;
 });
 
 interface GetSongsCall {
@@ -193,6 +200,7 @@ function setup(
             imageCalls.reset.push(id);
             return of({ ok: true });
           },
+          completeArtist: (id: string) => completeArtistImpl(id),
           deleteSongs,
           invalidateLibraryReads,
           ...(artistGenreDistribution ? { artistGenreDistribution } : {}),
@@ -1500,5 +1508,60 @@ describe('ArtistDetailComponent — top-bar back target', () => {
     expect(pageBack.hasTarget()).toBe(true);
     pageBack.back();
     expect(navBack).toHaveBeenCalledWith(['/library']);
+  });
+});
+
+// #1855: the page fills a header gap (no bio fetched, no origin row, no portrait)
+// with one completion call, then patches the header in place.
+describe('ArtistDetailComponent — on-visit completion', () => {
+  const COMPLETE = { metaExists: true, origin: { country: 'BR', source: 'musicbrainz' } };
+
+  it('asks once for a missing origin and patches the header', async () => {
+    serverArtistPatch = { metaExists: true, origin: null };
+    const calls: string[] = [];
+    completeArtistImpl = (id) => {
+      calls.push(id);
+      return of({
+        filled: ['origin'],
+        bio: null,
+        urls: [],
+        metaExists: true,
+        origin: { country: 'BR', source: 'musicbrainz' },
+        coverArt: 'ar1',
+        coverRev: 0,
+      });
+    };
+    const { component } = setup('admin');
+    await flush();
+    expect(calls).toEqual(['ar1']);
+    expect(component.artist()?.origin?.country).toBe('BR');
+  });
+
+  it('does not ask when the header has nothing missing', async () => {
+    serverArtistPatch = COMPLETE;
+    const complete = vi.fn(() => EMPTY);
+    completeArtistImpl = complete;
+    setup('admin');
+    await flush();
+    expect(complete).not.toHaveBeenCalled();
+  });
+
+  it('does not ask for a listener who cannot curate', async () => {
+    serverArtistPatch = { metaExists: false, origin: null };
+    const complete = vi.fn(() => EMPTY);
+    completeArtistImpl = complete;
+    setup('user');
+    await flush();
+    expect(complete).not.toHaveBeenCalled();
+  });
+});
+
+describe('needsCompletion', () => {
+  it('names each gap the completion can fill', () => {
+    const full = { metaExists: true, origin: { country: 'AR' }, coverArt: 'x' };
+    expect(needsCompletion(full)).toBe(false);
+    expect(needsCompletion({ ...full, metaExists: false })).toBe(true);
+    expect(needsCompletion({ ...full, origin: null })).toBe(true);
+    expect(needsCompletion({ ...full, coverArt: undefined })).toBe(true);
   });
 });

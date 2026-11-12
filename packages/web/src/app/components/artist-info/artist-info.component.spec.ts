@@ -17,10 +17,8 @@ describe('ArtistInfoComponent', () => {
       bio?: string | null;
       urls?: string[];
       canCurate?: boolean;
-      metaExists?: boolean;
       manualOverride?: boolean;
       refreshResult?: Observable<ArtistInfoResponse>;
-      autoFetchResult?: Observable<ArtistInfoResponse>;
     } = {},
   ) {
     TestBed.resetTestingModule();
@@ -28,11 +26,6 @@ describe('ArtistInfoComponent', () => {
       .fn()
       .mockReturnValue(
         overrides.refreshResult ?? of<ArtistInfoResponse>({ bio: 'Refreshed bio', urls: [] }),
-      );
-    const autoFetchArtistInfo = vi
-      .fn()
-      .mockReturnValue(
-        overrides.autoFetchResult ?? of<ArtistInfoResponse>({ bio: 'Auto bio', urls: [] }),
       );
     const setArtistInfo = vi
       .fn()
@@ -43,7 +36,7 @@ describe('ArtistInfoComponent', () => {
       providers: [
         {
           provide: LibraryApiService,
-          useValue: { refreshArtistInfo, autoFetchArtistInfo, setArtistInfo },
+          useValue: { refreshArtistInfo, setArtistInfo },
         },
         { provide: AuthService, useValue: { canCurate: () => overrides.canCurate ?? true } },
         { provide: ToastService, useValue: { show } },
@@ -54,10 +47,9 @@ describe('ArtistInfoComponent', () => {
     setInputValue(c.artistId, 'artist-1');
     setInputValue(c.bio, 'bio' in overrides ? (overrides.bio ?? null) : 'Existing bio');
     setInputValue(c.urls, overrides.urls ?? ['https://x.com']);
-    setInputValue(c.metaExists, overrides.metaExists ?? true);
     setInputValue(c.manualOverride, overrides.manualOverride ?? false);
     fixture.detectChanges();
-    return { fixture, c, refreshArtistInfo, autoFetchArtistInfo, setArtistInfo, show };
+    return { fixture, c, refreshArtistInfo, setArtistInfo, show };
   }
 
   // ─── Existing behavior (preserved) ────────────────────────────────────────
@@ -232,124 +224,5 @@ describe('ArtistInfoComponent', () => {
     c.hasOverflow.set(true); // pre-set
     (c as unknown as { measureOverflow: () => void }).measureOverflow();
     expect(c.hasOverflow()).toBe(false);
-  });
-
-  // ─── Auto-fetch (issue #213 part 1) ──────────────────────────────────────
-
-  it('auto-fetches once on mount when metaExists=false and the user can curate', () => {
-    const { fixture, autoFetchArtistInfo } = setup({
-      bio: null,
-      urls: [],
-      metaExists: false,
-      manualOverride: false,
-    });
-    fixture.detectChanges();
-    expect(autoFetchArtistInfo).toHaveBeenCalledWith('artist-1');
-  });
-
-  it('does not auto-fetch when the row already exists (metaExists=true)', () => {
-    const { autoFetchArtistInfo } = setup({
-      bio: null,
-      urls: [],
-      metaExists: true, // tombstoned or populated — doesn't matter
-    });
-    expect(autoFetchArtistInfo).not.toHaveBeenCalled();
-  });
-
-  it('does not auto-fetch when manualOverride=true (curator edit wins)', () => {
-    const { autoFetchArtistInfo } = setup({
-      bio: 'Curator bio',
-      urls: [],
-      metaExists: false,
-      manualOverride: true,
-    });
-    expect(autoFetchArtistInfo).not.toHaveBeenCalled();
-  });
-
-  it('does not auto-fetch when the bio is already populated', () => {
-    const { autoFetchArtistInfo } = setup({
-      bio: 'Existing bio',
-      urls: [],
-      metaExists: false,
-    });
-    expect(autoFetchArtistInfo).not.toHaveBeenCalled();
-  });
-
-  it('does not auto-fetch when the user cannot curate', () => {
-    const { autoFetchArtistInfo } = setup({
-      bio: null,
-      urls: [],
-      metaExists: false,
-      canCurate: false,
-    });
-    expect(autoFetchArtistInfo).not.toHaveBeenCalled();
-  });
-
-  it('shows no toast on a successful auto-fetch (silent path)', () => {
-    const { fixture, show, autoFetchArtistInfo } = setup({
-      bio: null,
-      urls: [],
-      metaExists: false,
-      autoFetchResult: of({ bio: 'Auto bio', urls: [] }),
-    });
-    fixture.detectChanges();
-    expect(autoFetchArtistInfo).toHaveBeenCalled();
-    expect(show).not.toHaveBeenCalled();
-  });
-
-  it('shows no toast when the auto-fetch finds no bio (tombstone is silent)', () => {
-    const { fixture, show } = setup({
-      bio: null,
-      urls: [],
-      metaExists: false,
-      autoFetchResult: of({ bio: null, urls: [] }),
-    });
-    fixture.detectChanges();
-    expect(show).not.toHaveBeenCalled();
-  });
-
-  it('shows no toast when the auto-fetch HTTP fails (silent degrade)', () => {
-    const { fixture, show } = setup({
-      bio: null,
-      urls: [],
-      metaExists: false,
-      autoFetchResult: throwError(() => new Error('boom')) as never,
-    });
-    fixture.detectChanges();
-    expect(show).not.toHaveBeenCalled();
-  });
-
-  it('emits updated after a successful auto-fetch', async () => {
-    const { fixture, c } = setup({
-      bio: null,
-      urls: [],
-      metaExists: false,
-      autoFetchResult: of({ bio: 'Auto bio', urls: ['https://x.com'] }),
-    });
-    const emissions: Array<{ bio: string | null; urls: string[] }> = [];
-    c.updated.subscribe((v) => emissions.push(v));
-    // Trigger change detection so the effect re-runs with the set inputs.
-    fixture.detectChanges();
-    // The effect fires in a microtask; the Observable emission is sync
-    // but `output.emit` schedules subscribers on the microtask queue too.
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    // The bio + urls signals are the locally-shown values, which the
-    // parent reads via `updated` to mirror into its own state. Asserting
-    // on `shownBio`/`shownUrls` is a direct test of the auto-fetch
-    // landing the new values; the `updated` emit wires the same data out.
-    expect(c.shownBio()).toBe('Auto bio');
-    expect(c.shownUrls()).toEqual(['https://x.com']);
-  });
-
-  it('fires the auto-fetch only once across re-renders (in-flight guard)', () => {
-    const { fixture, autoFetchArtistInfo } = setup({
-      bio: null,
-      urls: [],
-      metaExists: false,
-    });
-    fixture.detectChanges();
-    fixture.detectChanges();
-    fixture.detectChanges();
-    expect(autoFetchArtistInfo).toHaveBeenCalledTimes(1);
   });
 });

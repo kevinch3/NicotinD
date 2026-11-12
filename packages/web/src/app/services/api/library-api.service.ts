@@ -38,6 +38,7 @@ import type {
 import type { IdentifyApplyFields, IdentifySuggestion, IncompleteAlbum } from './api-types';
 import type { SongMetadataCandidates, SongMetadataFields, SongMetadataResult } from './api-types';
 import type { CoverMutationResult, LibraryArtistRow, MaintenanceStatus } from './api-types';
+import type { ArtistCompletion } from './api-types';
 import type { WaveformData } from '../../../types/core';
 
 type QueryParams = Record<string, string | number | boolean | string[]>;
@@ -402,19 +403,13 @@ export class LibraryApiService {
   }
 
   /**
-   * Silent one-shot auto-fetch (issue #213). Fires from the web on first
-   * artist-page visit when `metaExists=false`. Auth-gated on the server (any
-   * role), not curator-gated; never surfaces a 409/502 — the response is
-   * always `{ bio, urls }` so the caller never has to branch on status.
-   * The server tombstones on a confident miss, so a repeat visit won't
-   * re-query (the auto-fetch is naturally a one-shot per artist).
+   * On-visit completion (#1855): the server fills whatever of bio, origin and
+   * portrait is still missing and due, then answers the header fields. Silent —
+   * never a 5xx — so the caller only ever patches.
    */
-  autoFetchArtistInfo(id: string) {
+  completeArtist(id: string) {
     return this.http
-      .post<ArtistInfoResponse>(
-        `/api/library/artists/${encodeURIComponent(id)}/auto-fetch-info`,
-        {},
-      )
+      .post<ArtistCompletion>(`/api/library/artists/${encodeURIComponent(id)}/complete`, {})
       .pipe(
         // Bounded like a read, unlike the POSTs the interceptor deliberately
         // leaves unbounded (rescans, uploads). Nothing here is interactive —
