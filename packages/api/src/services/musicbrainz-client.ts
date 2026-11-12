@@ -465,58 +465,52 @@ export class MusicBrainzClient {
    * Returns null when MB has no such relation (the common case).
    */
   async getArtistDiscogsUrl(mbid: string): Promise<string | null> {
-    const key = `discogs-url:${mbid}`;
-    const cached = this.getCached(key);
+    const cached = this.getCached(`discogs-url:${mbid}`);
     if (cached?.type === 'discogs-url') return cached.result;
-
-    const url = `${MB_BASE}/artist/${encodeURIComponent(mbid)}?fmt=json&inc=url-rels`;
-    const data = this.unwrap(
-      await this.fetch<{
-        relations?: Array<{ type?: string; url?: { resource?: string } }>;
-      }>(url),
-    );
-    // Transient: do not cache, so the next call retries.
-    if (data === undefined) return null;
-    let discogsUrl: string | null = null;
-    for (const rel of data?.relations ?? []) {
-      if (rel.type === 'discogs' && rel.url?.resource) {
-        discogsUrl = rel.url.resource;
-        break;
-      }
-    }
-    this.setCached(key, { type: 'discogs-url', result: discogsUrl });
-    return discogsUrl;
+    const entity = await this.fetchArtistEntity(mbid);
+    return entity.ok ? entity.discogsUrl : null;
   }
 
   /**
-   * Resolve an artist's origin country (ISO 3166-1 alpha-2) from the bare
-   * artist entity: `country` first, else a country-typed `area`'s iso code.
+   * Resolve an artist's origin country (ISO 3166-1 alpha-2) from the artist
+   * entity: `country` first, else a country-typed `area`'s iso code.
    * `ok:false` = transient fetch failure (retry later, never cached);
    * `ok:true, country:null` = MB has no usable country (a confirmed miss).
    */
   async getArtistOrigin(mbid: string): Promise<{ ok: boolean; country: string | null }> {
-    const key = `origin:${mbid}`;
-    const cached = this.getCached(key);
+    const cached = this.getCached(`origin:${mbid}`);
     if (cached?.type === 'origin') return { ok: true, country: cached.result };
+    const entity = await this.fetchArtistEntity(mbid);
+    return entity.ok ? { ok: true, country: entity.country } : { ok: false, country: null };
+  }
 
+  /**
+   * One `artist?inc=url-rels` request answers both the origin and the Discogs
+   * link, so it caches both (#1855) — the bio and origin paths used to fetch
+   * the same entity twice. A transient failure caches neither; a 404 (`null`)
+   * is a real absence and caches both as null.
+   */
+  private async fetchArtistEntity(
+    mbid: string,
+  ): Promise<{ ok: true; country: string | null; discogsUrl: string | null } | { ok: false }> {
     const data = this.unwrap(
       await this.fetch<{
         country?: string;
         area?: { type?: string; 'iso-3166-1-codes'?: string[] };
-      }>(`${MB_BASE}/artist/${encodeURIComponent(mbid)}?fmt=json`),
+        relations?: Array<{ type?: string; url?: { resource?: string } }>;
+      }>(`${MB_BASE}/artist/${encodeURIComponent(mbid)}?fmt=json&inc=url-rels`),
     );
-    // Transient: do not cache, so the next call retries.
-    if (data === undefined) return { ok: false, country: null };
-
-    // `data === null` is now reachable and meaningful: MB answered 404, so the
-    // absence is real and worth remembering. Previously this method could not
-    // tell that from a network failure and refused to cache either.
+    if (data === undefined) return { ok: false };
     const raw =
       data?.country ??
       (data?.area?.type === 'Country' ? data?.area?.['iso-3166-1-codes']?.[0] : undefined);
     const country = normalizeMbCountry(raw);
-    this.setCached(key, { type: 'origin', result: country });
-    return { ok: true, country };
+    const discogsUrl =
+      (data?.relations ?? []).find((r) => r.type === 'discogs' && r.url?.resource)?.url?.resource ??
+      null;
+    this.setCached(`origin:${mbid}`, { type: 'origin', result: country });
+    this.setCached(`discogs-url:${mbid}`, { type: 'discogs-url', result: discogsUrl });
+    return { ok: true, country, discogsUrl };
   }
 
   /**

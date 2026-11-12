@@ -70,7 +70,10 @@ Modeled on `library_artist_meta`:
 Per-artist like `artist-info`, default-on. One cached MB request per artist under the client's
 existing 1 req/s limiter (`getArtistOrigin`: `country` field first, else a
 country-typed `area`'s ISO code; new `origin` variant in the disk-cache
-union).
+union). The request is `artist/<mbid>?inc=url-rels`, the same entity the bio's
+Discogs link comes from, so `fetchArtistEntity` caches **both** answers from one
+response — whichever of `getArtistOrigin` / `getArtistDiscogsUrl` runs first pays
+for the other (#1855). A transient failure caches neither.
 
 Miss semantics (the three-way split):
 
