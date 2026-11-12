@@ -23,6 +23,26 @@ export const SENTRY_DATA_COLLECTION = {
   graphQL: { document: false, variables: false },
 } satisfies SentryNs.BrowserOptions['dataCollection'];
 
+/**
+ * True for a page load that is not a real user: a browser driven by automation
+ * (Playwright/WebDriver set `navigator.webdriver`) or a web build served from a
+ * loopback host (e2e, `bun run src/main.ts`, a local `ng serve` of the prod
+ * config). Both bundle the prod DSN, so without this every e2e test is a Sentry
+ * session and burns the replay quota. Electron is exempt from the host check —
+ * it always loads `http://127.0.0.1:<port>`.
+ */
+export function isNonUserSession(
+  nav: Pick<Navigator, 'webdriver'>,
+  hostname: string,
+  nativeShell: boolean,
+): boolean {
+  if (nav.webdriver) return true;
+  if (nativeShell) return false;
+  return (
+    /^(localhost|127(\.\d+){3}|\[::1\]|::1)$/.test(hostname) || hostname.endsWith('.localhost')
+  );
+}
+
 export interface SentryEnvironment {
   production: boolean;
   sentryDsn: string;
@@ -49,11 +69,16 @@ export async function loadSentry(
   release: string,
   nativeShell = false,
   capacitor = false,
+  page: { nav: Pick<Navigator, 'webdriver'>; hostname: string } = {
+    nav: navigator,
+    hostname: location.hostname,
+  },
 ): Promise<boolean> {
   // The Android/TV/iOS apps report nothing: even with no integrations passed,
   // Sentry's defaults send a session on every launch, which F-Droid counts as
   // tracking (#1502). Web and Electron keep error reporting.
   if (!env.sentryDsn || capacitor) return false;
+  if (isNonUserSession(page.nav, page.hostname, nativeShell)) return false;
   const Sentry: typeof SentryNs = await import('@sentry/angular');
   Sentry.init({
     dsn: env.sentryDsn,
