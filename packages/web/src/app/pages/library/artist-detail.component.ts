@@ -27,7 +27,7 @@ import type {
   ArtistIdentityResult,
   RelatedArtist,
 } from '../../services/api/api-types';
-import { awaitProvisioning } from '../../lib/await-provisioning';
+import { awaitDiscographyArt, awaitProvisioning } from '../../lib/await-provisioning';
 import { httpErrorMessage } from '../../lib/http-error';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
@@ -780,6 +780,18 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
       return;
     }
     await this.loadDiscography(artistId);
+    const fresh = this.discography();
+    if (!fresh) return;
+    await awaitDiscographyArt(
+      fresh,
+      async () => {
+        const r = await firstValueFrom(this.downloadsApi.getArtistDiscography(artistId));
+        if ('notProvisioned' in r) throw new Error('not provisioned');
+        return r;
+      },
+      (d) => this.discography.set(d),
+      { alive: () => this.artistId === artistId },
+    ).catch(() => undefined);
   }
 
   openHunt(album: DiscographyAlbum): void {

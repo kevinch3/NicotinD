@@ -1407,6 +1407,44 @@ describe('ArtistDetailComponent — add artist to Lidarr (#644)', () => {
     expect(component.discography()?.lidarrId).toBe(9);
   });
 
+  // #1854: Lidarr lists a just-added artist's albums before their images.
+  it('keeps re-reading after the add until the album covers arrive', async () => {
+    vi.useFakeTimers();
+    const wanted = (coverArtUrl?: string) => ({
+      lidarrId: 1,
+      foreignAlbumId: 'f1',
+      title: 'Soul Talk',
+      albumType: 'Album',
+      secondaryTypes: [],
+      totalTracks: 1,
+      localTrackCount: 0,
+      status: 'missing',
+      coverArtUrl,
+      tracks: [],
+    });
+    const disco = (coverArtUrl?: string) =>
+      of({ artistId: 'ar1', lidarrId: 9, mbid: 'mb', albums: [wanted(coverArtUrl)] });
+    const getArtistDiscography = vi
+      .fn()
+      .mockReturnValueOnce(of(notProvisioned))
+      .mockReturnValueOnce(disco())
+      .mockReturnValue(disco('https://img/soul-talk.jpg'));
+    const { component } = setup('admin', undefined, true, {
+      getArtistDiscography,
+      provisionArtist: () => of({ provisioning: true, status: running }),
+      getArtistProvisioning: () => of({ ...running, phase: 'idle', lastOutcome: 'completed' }),
+    });
+    await flush();
+    const adding = component.addArtistToLidarr();
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(component.discography()?.albums[0].coverArtUrl).toBeUndefined();
+
+    await vi.advanceTimersByTimeAsync(3_000);
+    await adding;
+    expect(component.discography()?.albums[0].coverArtUrl).toBe('https://img/soul-talk.jpg');
+    expect(getArtistDiscography).toHaveBeenCalledTimes(3);
+  });
+
   it('surfaces the job error instead of reloading when the add failed', async () => {
     vi.useFakeTimers();
     const getArtistDiscography = vi.fn(() => of(notProvisioned));
