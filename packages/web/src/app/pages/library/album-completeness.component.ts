@@ -6,7 +6,6 @@ import { AuthService } from '../../services/auth.service';
 import { ToastService } from '../../services/toast.service';
 import { TranslateService } from '../../services/translate.service';
 import { TranslatePipe } from '../../pipes/translate.pipe';
-import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 
 type Outcome = CompleteAlbumResponse['outcome'];
 
@@ -20,39 +19,31 @@ const OUTCOME_KIND: Record<Outcome, 'info' | 'success' | 'error'> = {
 };
 
 /**
- * The album page's "incomplete — N of M tracks" badge and, for curators, the
- * "Complete this album" action (issue #737). The badge is the health report's
- * CONFIRMED completeness row for this album, read through the album-scoped
- * endpoint — never the whole report. The action hunts only the missing tracks
- * (the MCP `complete_album` path) and is disabled under the acquisition
- * kill-switch. → docs/library-audit.md "Album page badge".
+ * The album page's "incomplete — N of M tracks" badge, and the state behind the
+ * curator's "Complete this album" action (issue #737), which the page renders in
+ * its ⋯ menu. The badge is the health report's CONFIRMED completeness row for
+ * this album, read through the album-scoped endpoint — never the whole report.
+ * The action hunts only the missing tracks (the MCP `complete_album` path) and
+ * is disabled under the acquisition kill-switch. → docs/library-audit.md "Album page badge".
  */
 @Component({
   selector: 'app-album-completeness',
-  imports: [TranslatePipe, TvNavItemDirective],
+  imports: [TranslatePipe],
+  host: { class: 'contents' },
   template: `
     @if (confirmed(); as c) {
-      <div class="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-2">
-        <span
-          data-testid="album-incomplete-badge"
-          class="px-2 py-0.5 rounded-md text-xs status-warn"
-        >
-          {{ 'album.incompleteBadge' | t: { owned: c.owned, expected: c.expected } }}
-        </span>
-        @if (auth.canCurate()) {
-          <button
-            appTvNavItem
-            type="button"
-            data-testid="album-complete-action"
-            (click)="complete()"
-            [disabled]="actionDisabled()"
-            [attr.title]="auth.canAcquire() ? null : ('album.completeDisabled' | t)"
-            class="px-3 py-1 rounded-lg text-xs bg-theme-surface-2 text-theme-muted hover:bg-theme-hover transition disabled:opacity-50"
-          >
-            {{ (busy() ? 'album.completeBusy' : 'album.completeAction') | t }}
-          </button>
-        }
-      </div>
+      <span
+        data-testid="album-incomplete-badge"
+        class="px-2 py-0.5 rounded-md text-xs status-warn"
+        [attr.title]="'album.incompleteBadge' | t: { owned: c.owned, expected: c.expected }"
+      >
+        <span class="sm:hidden">{{
+          'album.incompleteShort' | t: { owned: c.owned, expected: c.expected }
+        }}</span>
+        <span class="hidden sm:inline">{{
+          'album.incompleteBadge' | t: { owned: c.owned, expected: c.expected }
+        }}</span>
+      </span>
     }
   `,
 })

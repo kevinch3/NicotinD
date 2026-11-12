@@ -23,7 +23,7 @@ type Story = StoryObj<GenreShareBarComponent>;
 
 /**
  * The artist page's About-block chart (#1572): each track counted once by its
- * primary genre, so segments sum to 100% — unlike `GenreDistributionStrip`.
+ * primary genre, so segments sum to 100%.
  */
 export const Default: Story = {};
 

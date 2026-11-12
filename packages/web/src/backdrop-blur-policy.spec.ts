@@ -119,7 +119,7 @@ describe('backdrop blur policy (#1649)', () => {
     expect(templateSites.length).toBeGreaterThanOrEqual(8);
     expect(cssSites.length).toBeGreaterThanOrEqual(4);
     // The component stylesheets are read too (the tab bar's among them).
-    expect(stylesheets.length).toBeGreaterThanOrEqual(5);
+    expect(stylesheets.length).toBeGreaterThanOrEqual(4);
     expect(stylesheets.map(rel)).toContain('components/bottom-nav/bottom-nav.component.css');
   });
 

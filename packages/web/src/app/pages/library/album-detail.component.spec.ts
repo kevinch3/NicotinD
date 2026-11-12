@@ -35,8 +35,13 @@ function setup(
   opts: {
     deleteSongs?: ReturnType<typeof vi.fn>;
     optimizeAlbumMetadata?: ReturnType<typeof vi.fn>;
+    albumGenreDistribution?: ReturnType<typeof vi.fn>;
+    role?: string;
   } = {},
 ) {
+  const searchText = signal('');
+  const sortField = signal('track');
+  const sortDirection = signal<'asc' | 'desc'>('asc');
   const deleteSongs = opts.deleteSongs ?? vi.fn(() => of({ ok: true, deletedCount: 0 }));
   const playWithContext = vi.fn();
   const playSingle = vi.fn();
@@ -69,7 +74,12 @@ function setup(
       { provide: ActivatedRoute, useValue: { snapshot: { paramMap: { get: () => 'a1' } } } },
       {
         provide: LibraryApiService,
-        useValue: { getAlbum, deleteSongs, optimizeAlbumMetadata },
+        useValue: {
+          getAlbum,
+          deleteSongs,
+          optimizeAlbumMetadata,
+          albumGenreDistribution: opts.albumGenreDistribution,
+        },
       },
       {
         provide: AuthService,
@@ -81,7 +91,9 @@ function setup(
       // template here; a minimal stub keeps construction cheap.
       {
         provide: ListControlsService,
-        useValue: { connect: () => ({ filtered: () => ALBUM.song }) },
+        useValue: {
+          connect: () => ({ filtered: () => ALBUM.song, searchText, sortField, sortDirection }),
+        },
       },
       { provide: HttpClient, useValue: {} },
     ],
@@ -100,6 +112,9 @@ function setup(
     getAlbum,
     getAlbumCalls,
     getRegisteredHandler: () => registeredHandler,
+    searchText,
+    sortField,
+    sortDirection,
   };
 }
 
@@ -367,5 +382,129 @@ describe('AlbumDetailComponent — top-bar back target', () => {
     expect(pageBack.hasTarget()).toBe(true);
     pageBack.back();
     expect(navBack).toHaveBeenCalledWith(resolveArtistRoute('ar1'));
+  });
+});
+
+describe('AlbumDetailComponent — header menu', () => {
+  it('offers the queue verbs then Select, and nothing destructive', () => {
+    const { component } = setup();
+    component.selectedAlbum.set(ALBUM);
+    expect(component.albumMenu().map((a) => a.label)).toEqual([
+      'Start radio',
+      'Play next',
+      'Add to queue',
+      'Select',
+    ]);
+    expect(component.albumMenu().some((a) => a.destructive)).toBe(false);
+  });
+
+  it('Select enters selection mode and then leaves the menu', () => {
+    const { component } = setup();
+    component.selectedAlbum.set(ALBUM);
+    component
+      .albumMenu()
+      .find((a) => a.label === 'Select')!
+      .action();
+    expect(component.selection.active()).toBe(true);
+    expect(component.albumMenu().map((a) => a.label)).not.toContain('Select');
+  });
+
+  it('is empty until an album is loaded', () => {
+    const { component } = setup();
+    expect(component.albumMenu()).toEqual([]);
+  });
+
+  it('puts the destructive curator action last', () => {
+    const { component } = setup();
+    component.selectedAlbum.set(ALBUM);
+    const curator = component.curatorMenu();
+    expect(curator.map((a) => a.label)).toEqual(['Fix metadata', 'Remove album']);
+    expect(curator.map((a) => !!a.destructive)).toEqual([false, true]);
+    curator[0].action();
+    expect(component.showMetadataFix()).toBe(true);
+    curator[1].action();
+    expect(component.showConfirm()).toBe(true);
+  });
+});
+
+describe('AlbumDetailComponent — filter row toggle', () => {
+  it('is closed by default and follows the toggle', () => {
+    const { component } = setup();
+    expect(component.controlsOpen()).toBe(false);
+    component.toggleControls();
+    expect(component.controlsOpen()).toBe(true);
+    component.toggleControls();
+    expect(component.controlsOpen()).toBe(false);
+  });
+
+  it('opens itself for a persisted search or order, until the user closes it', () => {
+    const { component, searchText, sortField, sortDirection } = setup();
+    sortField.set('title');
+    expect(component.filterActive()).toBe(true);
+    expect(component.controlsOpen()).toBe(true);
+
+    sortField.set('track');
+    sortDirection.set('desc');
+    expect(component.controlsOpen()).toBe(true);
+
+    sortDirection.set('asc');
+    searchText.set('one');
+    expect(component.controlsOpen()).toBe(true);
+
+    // Closed by hand: the filter stays active (the toggle shows its dot), the row stays shut.
+    component.toggleControls();
+    expect(component.controlsOpen()).toBe(false);
+    expect(component.filterActive()).toBe(true);
+  });
+});
+
+describe('AlbumDetailComponent — genre chip', () => {
+  const distribution = (slices: Array<{ genre: string; count: number; weight: number }>) =>
+    vi.fn(() =>
+      of({
+        album: 'Natiruts',
+        trackCount: 3,
+        genreCount: slices.length,
+        // The overlapping weights the page must not read.
+        slices: [{ genre: 'Pop', count: 3, weight: 1 }],
+        primary: { taggedCount: 3, slices },
+      }),
+    );
+
+  it('headlines the primary share, collapsed, and marks the folded tail as a bucket', async () => {
+    const { component } = setup({
+      albumGenreDistribution: distribution([
+        { genre: 'Reggae', count: 2, weight: 0.67 },
+        { genre: 'Other', count: 1, weight: 0.33 },
+      ]),
+    });
+    await component.ngOnInit();
+    await Promise.resolve();
+    expect(component.headline()).toEqual({ kind: 'single', genres: ['Reggae'] });
+    expect(component.genresOpen()).toBe(false);
+    expect(component.genreShare()).toEqual({
+      taggedCount: 3,
+      slices: [
+        { genre: 'Reggae', count: 2, weight: 0.67 },
+        { genre: 'Other', count: 1, weight: 0.33, kind: 'other' },
+      ],
+    });
+  });
+
+  it('shows no chip for an untagged album or a failed read', async () => {
+    const empty = setup({ albumGenreDistribution: distribution([]) });
+    await empty.component.ngOnInit();
+    await Promise.resolve();
+    expect(empty.component.headline()).toBeNull();
+
+    TestBed.resetTestingModule();
+    const failed = setup({
+      albumGenreDistribution: vi.fn(() => {
+        throw new Error('boom');
+      }),
+    });
+    await failed.component.ngOnInit();
+    await Promise.resolve();
+    expect(failed.component.headline()).toBeNull();
   });
 });

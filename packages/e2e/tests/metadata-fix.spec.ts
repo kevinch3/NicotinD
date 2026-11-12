@@ -1,5 +1,5 @@
 import { test, expect } from '../helpers';
-import { FIXTURE, openAlbumCard } from '../helpers';
+import { FIXTURE, openAlbumCard, openAlbumMetadataFix } from '../helpers';
 
 /**
  * User-driven metadata fix — free-text fallback path. The e2e server runs with a
@@ -36,7 +36,7 @@ test('the fix modal shows the cover picker with the current cover', async ({ pag
   await page.goto('/library');
   await openAlbumCard(page, FIXTURE.album.title);
 
-  await page.getByTestId('optimize-metadata').click();
+  await openAlbumMetadataFix(page);
   await expect(page.getByTestId('metadata-fix-modal')).toBeVisible();
 
   // The cover section is always present (it offers at least the current cover);
@@ -49,8 +49,8 @@ test('admin fixes album metadata via free-text and it re-buckets', async ({ page
   await page.goto('/library');
   await openAlbumCard(page, FIXTURE.album.title);
 
-  // Open the fix modal (admin-only "Fix metadata" button).
-  await page.getByTestId('optimize-metadata').click();
+  // Open the fix modal (admin-only "Fix metadata", in the ⋯ menu).
+  await openAlbumMetadataFix(page);
   await expect(page.getByTestId('metadata-fix-modal')).toBeVisible();
 
   // Use the manual fallback (no Lidarr needed). Expand it and rename the artist.

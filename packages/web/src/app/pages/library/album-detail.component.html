@@ -26,35 +26,44 @@
             [fallbackArtistId]="selectedAlbum()!.artistId"
           />
         </p>
-        @if (selectedAlbum()!.year) {
-          <p class="text-theme-muted text-sm mt-1">{{ selectedAlbum()!.year }}</p>
-        }
-        <app-album-completeness
-          [albumId]="selectedAlbum()!.id"
-          [reloadKey]="albumChangeSeq()"
-        />
-        <!-- flex-wrap so the 4–6 actions never overflow/clip the primary Play
-             button off a narrow (mobile) viewport. Play is the accent-filled
-             primary action; the rest stay neutral-secondary. -->
-        <div appTvNavGroup [axis]="'horizontal'" class="flex flex-wrap justify-center sm:justify-start gap-3 mt-4">
-          <button appTvNavItem (click)="playAlbum()"
-            data-testid="play-album" aria-label="Play album" title="Play album"
-            class="w-10 h-10 flex items-center justify-center rounded-lg bg-theme-accent text-theme-on-accent hover:opacity-90 transition">
-            <app-icon name="play" />
-          </button>
-          @if (!selection.active()) {
-            <button appTvNavItem (click)="selection.enter()"
-              class="px-4 py-2 rounded-lg text-sm bg-theme-surface-2 text-theme-muted hover:bg-theme-hover transition">
-              Select
+        <!-- One line of facts: year, the genre disclosure, the completeness badge. -->
+        <div class="flex flex-wrap items-center justify-center sm:justify-start gap-x-2 gap-y-1 mt-1 text-sm text-theme-muted">
+          @if (selectedAlbum()!.year) {
+            <span>{{ selectedAlbum()!.year }}</span>
+          }
+          @if (headline(); as h) {
+            <button type="button" data-testid="album-genres-toggle"
+              (click)="genresOpen.set(!genresOpen())"
+              [attr.aria-expanded]="genresOpen()"
+              aria-controls="album-genres-body"
+              [attr.title]="'album.genresToggle' | t"
+              class="min-h-11 sm:min-h-0 inline-flex items-center">
+              <span class="px-2 py-0.5 rounded-full text-xs bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition">
+                {{ h.kind === 'mixed' ? ('artist.genreMixed' | t) : h.genres.join(' · ') }}
+                <span aria-hidden="true">{{ genresOpen() ? '▴' : '▾' }}</span>
+              </span>
             </button>
           }
+          <app-album-completeness
+            #completeness
+            [albumId]="selectedAlbum()!.id"
+            [reloadKey]="albumChangeSeq()"
+          />
+        </div>
+        <!-- Five icon buttons; everything occasional or destructive lives in the ⋯ menu. -->
+        <div appTvNavGroup [axis]="'horizontal'" class="flex flex-wrap justify-center sm:justify-start gap-2 mt-3">
+          <button appTvNavItem (click)="playAlbum()"
+            data-testid="play-album" aria-label="Play album" title="Play album"
+            class="w-11 h-11 flex items-center justify-center rounded-lg bg-theme-accent text-theme-on-accent hover:opacity-90 transition">
+            <app-icon name="play" />
+          </button>
           @if (preserve.batchFor(selectedAlbum()!.id); as b) {
-            <span class="px-4 py-2 text-sm text-theme-muted">Saving {{ b.done }}/{{ b.total }}…</span>
+            <span class="px-3 h-11 flex items-center text-sm text-theme-muted">Saving {{ b.done }}/{{ b.total }}…</span>
           } @else {
             <button appTvNavItem (click)="toggleDownloadAlbum()"
               [attr.aria-label]="albumDownloaded() ? 'Downloaded — remove offline' : 'Download album'"
               [attr.title]="albumDownloaded() ? 'Downloaded' : 'Download'"
-              [class]="'w-10 h-10 flex items-center justify-center rounded-lg transition ' + (albumDownloaded()
+              [class]="'w-11 h-11 flex items-center justify-center rounded-lg transition ' + (albumDownloaded()
                 ? 'status-done hover:opacity-80'
                 : 'bg-theme-surface-2 text-theme-muted hover:bg-theme-hover')">
               <app-icon name="download" />
@@ -63,32 +72,80 @@
           <button appTvNavItem (click)="shareAlbum()"
             [attr.aria-label]="shareCopied() ? 'Link copied' : 'Share album'"
             [attr.title]="shareCopied() ? 'Link copied!' : 'Share'"
-            [class]="'w-10 h-10 flex items-center justify-center rounded-lg transition ' + (shareCopied()
+            [class]="'w-11 h-11 flex items-center justify-center rounded-lg transition ' + (shareCopied()
               ? 'status-done'
               : 'bg-theme-surface-2 text-theme-muted hover:bg-theme-hover')">
             <app-icon name="share" />
           </button>
-          @if (auth.canCurate()) {
-            <button appTvNavItem (click)="openMetadataFix()"
-              data-testid="optimize-metadata"
-              class="px-4 py-2 rounded-lg text-sm bg-theme-surface-2 text-theme-muted hover:bg-theme-hover transition disabled:opacity-50">
-              Fix metadata
+          <button appTvNavItem type="button" (click)="toggleControls()"
+            data-testid="album-detail-controls-toggle"
+            [attr.aria-expanded]="controlsOpen()"
+            aria-controls="album-detail-controls"
+            [attr.aria-label]="'album.filterToggle' | t"
+            [attr.title]="'album.filterToggle' | t"
+            class="relative w-11 h-11 flex items-center justify-center rounded-lg bg-theme-surface-2 text-theme-muted hover:bg-theme-hover transition">
+            <app-icon name="sliders" />
+            @if (filterActive() && !controlsOpen()) {
+              <span data-testid="album-detail-controls-active"
+                class="absolute top-2 right-2 w-2 h-2 rounded-full bg-theme-accent"></span>
+            }
+          </button>
+          <app-menu-panel #albumMenuPanel align="end" panelTestId="album-menu">
+            <button menuTrigger appTvNavItem type="button"
+              data-testid="album-menu-toggle"
+              [attr.aria-label]="'album.more' | t"
+              [attr.title]="'album.more' | t"
+              class="w-11 h-11 flex items-center justify-center rounded-lg bg-theme-surface-2 text-theme-muted hover:bg-theme-hover transition">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/>
+              </svg>
             </button>
-            <button appTvNavItem (click)="removeAlbum()" [disabled]="deleting()"
-              class="px-4 py-2 rounded-lg text-sm text-status-error hover:bg-theme-hover transition disabled:opacity-50">
-              {{ deleting() ? 'Removing...' : 'Remove album' }}
-            </button>
-          }
+            <div menuPanel class="bg-theme-surface border border-theme rounded-xl shadow-xl py-1 min-w-48">
+              @for (action of albumMenu(); track action.label) {
+                <button type="button"
+                  [attr.data-testid]="'album-action-' + action.label"
+                  class="w-full min-h-11 text-left px-4 py-2 text-sm text-theme-secondary transition-colors hover:bg-theme-hover"
+                  (click)="albumMenuPanel.close(); action.action()">
+                  {{ action.labelKey ? (action.labelKey | t) : action.label }}
+                </button>
+              }
+              @if (auth.canCurate()) {
+                @if (completeness.confirmed()) {
+                  <button type="button"
+                    data-testid="album-complete-action"
+                    [disabled]="completeness.actionDisabled()"
+                    [attr.title]="auth.canAcquire() ? null : ('album.completeDisabled' | t)"
+                    class="w-full min-h-11 text-left px-4 py-2 text-sm text-theme-secondary transition-colors hover:bg-theme-hover disabled:opacity-50"
+                    (click)="albumMenuPanel.close(); completeness.complete()">
+                    {{ (completeness.busy() ? 'album.completeBusy' : 'album.completeAction') | t }}
+                  </button>
+                }
+                @for (action of curatorMenu(); track action.label) {
+                  <button type="button"
+                    [attr.data-testid]="'album-action-' + action.label"
+                    [disabled]="action.destructive && deleting()"
+                    class="w-full min-h-11 text-left px-4 py-2 text-sm transition-colors hover:bg-theme-hover disabled:opacity-50"
+                    [class.text-red-400]="action.destructive"
+                    [class.text-theme-secondary]="!action.destructive"
+                    (click)="albumMenuPanel.close(); action.action()">
+                    {{ action.labelKey ? (action.labelKey | t) : action.label }}
+                  </button>
+                }
+              }
+            </div>
+          </app-menu-panel>
         </div>
       </div>
     </div>
 
-    @if (genreDistribution(); as gd) {
-      <app-genre-distribution-strip
-        [slices]="gd.slices"
-        [trackCount]="gd.trackCount"
-        [genreCount]="gd.genreCount"
-      />
+    <!-- Genre split, collapsed by default: each track once by primary genre, so it sums to 100%. -->
+    @if (genreShare(); as gs) {
+      @if (gs.slices.length) {
+        <section id="album-genres-body" data-testid="album-genres"
+          class="mb-4 px-4 py-3 rounded-lg bg-theme-surface/30" [hidden]="!genresOpen()">
+          <app-genre-share-bar [slices]="gs.slices" [taggedCount]="gs.taggedCount" />
+        </section>
+      }
     }
 
     @if (deleteError()) {
@@ -106,7 +163,7 @@
       }
     }
 
-    <div class="flex flex-wrap items-center gap-2 mb-4">
+    <div id="album-detail-controls" class="flex flex-wrap items-center gap-2 mb-4" [class.hidden]="!controlsOpen()">
       <div class="relative flex-1 min-w-[12rem]">
         <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 text-theme-muted pointer-events-none"
           width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"

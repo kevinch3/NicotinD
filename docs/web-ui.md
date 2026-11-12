@@ -2671,3 +2671,24 @@ that the stack's lowest edge ends that gap above the topmost visible `[data-bott
 first render, on a 1280x720 desktop with and without a track, on desktop with no track and the real strip staged
 (a routed `/api/health` reporting another build, then Settings → "Check for updates"), and at 960x720 with
 `tv-build` stamped on the 'extra' preset. On the old offset the phone track case overlapped the bar by 74px.
+
+## Album page header: five buttons and a menu
+
+The album page used to stack a completeness row, a wrapping action row, a curator row, a six-bar
+genre strip and the filter row above the first track — on a phone the tracklist started below the
+fold. The header is now three lines under the title:
+
+- **Facts line** — year, the genre chip (`album-genres-toggle`, a disclosure over
+  `GenreShareBarComponent`, see [genre-radar.md](genre-radar.md)) and the completeness badge
+  (`AlbumCompletenessComponent`, badge only; short "34/45 tracks" label below `sm`).
+- **Action row** — Play, Download, Share, the filter toggle (`album-detail-controls-toggle`) and
+  the ⋯ menu (`album-menu-toggle`), all 44px. Same order on phone, desktop and TV.
+- **⋯ menu** (`MenuPanelComponent`, so a bottom sheet on a phone and D-pad driven on TV) — Start
+  radio, Play next and Add to queue from `EntityMenuService.build`, then Select; for curators,
+  Complete this album (`album-complete-action`, only while the badge shows), Fix metadata and
+  Remove album, the destructive one last. Items are `album-action-<label>`.
+
+The filter/sort row is closed by default. It opens itself when a search or a non-default order is
+already in effect (list controls persist per page), and once the user toggles it their choice wins;
+a closed row with an active filter puts an accent dot on the toggle, so a filtered tracklist never
+looks like a short album.

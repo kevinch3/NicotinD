@@ -59,8 +59,19 @@ describe('AlbumCompletenessComponent (issue #737)', () => {
     return {
       fixture,
       badge: () => el.querySelector('[data-testid="album-incomplete-badge"]'),
-      action: () =>
-        el.querySelector('[data-testid="album-complete-action"]') as HTMLButtonElement | null,
+      el,
+      // The button itself is the album page's menu item; it binds exactly these.
+      action: () => {
+        const c = fixture.componentInstance;
+        return c.confirmed()
+          ? {
+              get disabled() {
+                return c.actionDisabled();
+              },
+              click: () => void c.complete(),
+            }
+          : null;
+      },
     };
   }
 
@@ -85,11 +96,11 @@ describe('AlbumCompletenessComponent (issue #737)', () => {
     expect(badge()).toBeNull();
   });
 
-  it('offers the Complete action to curators only', async () => {
-    canCurate.set(false);
-    const { badge, action } = await render();
-    expect(badge()).not.toBeNull();
-    expect(action()).toBeNull();
+  it('is a badge only: the action is rendered by the page menu, with a short label for phones', async () => {
+    const { badge, el } = await render();
+    expect(el.querySelector('button')).toBeNull();
+    expect(badge()?.textContent).toContain('album.incompleteShort');
+    expect(badge()?.getAttribute('title')).toContain('album.incompleteBadge');
   });
 
   it('disables the action under the acquisition kill-switch', async () => {

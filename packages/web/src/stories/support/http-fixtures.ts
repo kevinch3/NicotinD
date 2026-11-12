@@ -28,11 +28,21 @@ const ROUTES: Array<[RegExp, () => unknown]> = [
   [/\/api\/library\/liked-ids$/, () => ({ ids: [demoSongs[0].id] })],
   [
     /\/api\/library\/artists\/[^/]+\/genre-distribution$/,
-    () => ({ slices: demoGenreSlices, trackCount: 47, genreCount: 9 }),
+    () => ({
+      slices: demoGenreSlices,
+      trackCount: 47,
+      genreCount: 9,
+      primary: { taggedCount: 47, slices: demoGenreSlices },
+    }),
   ],
   [
     /\/api\/library\/albums\/[^/]+\/genre-distribution$/,
-    () => ({ slices: demoGenreSlices.slice(0, 3), trackCount: 7, genreCount: 3 }),
+    () => ({
+      slices: demoGenreSlices.slice(0, 3),
+      trackCount: 7,
+      genreCount: 3,
+      primary: { taggedCount: 7, slices: demoGenreSlices.slice(0, 3) },
+    }),
   ],
   [
     /\/api\/library\/artists\/[^/]+$/,

@@ -219,7 +219,7 @@ Design notes worth keeping:
 
 The genre block draws `GenreShareBarComponent` (the artist page's part-to-whole bar, with
 `kind`/`percent`/`caption` inputs) above a ranked list reading "34% · 212 plays", plus a mode switch
-to the overlapping view. It no longer uses `GenreDistributionStripComponent`, whose weights overlap.
+to the overlapping view.
 
 ## Roadmap
 
