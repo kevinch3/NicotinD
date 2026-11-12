@@ -13,7 +13,7 @@ import { failureDigest, type GetFailure } from '../lib/failure-digest';
 
 function jobStatus(job: AcquisitionJobView): AlbumHuntStatus {
   // A Get the server has reserved but not yet found a source for.
-  if (job.stage === 'resolving' && job.kind !== 'url') return SEARCHING_HUNT;
+  if (job.stage === 'resolving' && job.kind !== 'url') return { phase: 'searching', jobId: job.id };
   return {
     phase: 'job',
     stage: job.stage,
@@ -163,6 +163,17 @@ export class AutoHuntService {
         this.showFailure({ title: album.title, reason: outcome.message }, openManual);
       }
     }
+  }
+
+  /** Cancel a Get or its download from the surface that started it. */
+  async cancel(jobId: string): Promise<void> {
+    this.asked.delete(jobId);
+    try {
+      await firstValueFrom(this.api.cancelJob(jobId));
+    } catch {
+      this.toasts.show({ message: "Couldn't cancel — try from Downloads", kind: 'error' });
+    }
+    await this.transfer.kickPoll();
   }
 
   /** Toast each asked-for Get the feed now shows as failed; forget the ones that moved on. */

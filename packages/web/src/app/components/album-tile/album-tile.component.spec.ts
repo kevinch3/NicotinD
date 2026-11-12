@@ -162,6 +162,22 @@ describe('AlbumTileComponent', () => {
     expect(el(fixture, '[data-testid="album-tile-hunt-status"]')!.textContent).toBe('Finding…');
   });
 
+  it('offers a cancel carrying the job once the server has one, and none before', () => {
+    const before = render(tile({ status: 'missing' }), { status: { phase: 'searching' } });
+    expect(el(before, '[data-testid="album-tile-cancel"]')).toBeNull();
+
+    for (const status of [
+      { phase: 'searching', jobId: 'j9' },
+      { phase: 'job', stage: 'downloading', jobId: 'j9' },
+    ] as const) {
+      const fixture = render(tile({ status: 'partial', localAlbumId: 'a' }), { status });
+      const cancelled: string[] = [];
+      fixture.componentInstance.cancel.subscribe((id) => cancelled.push(id));
+      el(fixture, '[data-testid="album-tile-cancel"]')!.click();
+      expect(cancelled).toEqual(['j9']);
+    }
+  });
+
   it('carries its live job stage, worded as on the Downloads page', () => {
     for (const [status, stage, label] of [
       ['missing', 'queued', 'Queued'],

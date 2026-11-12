@@ -587,6 +587,25 @@ describe('addon job actions (acquisition addon protocol phase 2)', () => {
     expect(calls.cancelled).toEqual(['aj-7']); // the addon was not re-notified
   });
 
+  it('cancelling a Get that has no source yet closes it as cancelled, not failed', async () => {
+    const { app } = makeAddonApp();
+    const reserved = createJob(testDb, {
+      kind: 'album-hunt',
+      method: 'fixture-addon',
+      stage: 'resolving',
+      artistName: 'A',
+      albumTitle: 'C',
+      files: [],
+    });
+    const res = await app.request(`/jobs/${reserved}/cancel`, { method: 'POST' });
+    expect(res.status).toBe(200);
+    expect(cancelMarker(reserved)).not.toBeNull();
+    const row = testDb
+      .query<{ state: string }, [string]>(`SELECT state FROM acquisition_jobs WHERE id = ?`)
+      .get(reserved);
+    expect(row?.state).toBe('failed');
+  });
+
   it('an unreachable addon still records the cancel and returns 200 (#806)', async () => {
     const { app, jobId } = makeAddonApp({ failCancel: true });
     const res = await app.request(`/jobs/${jobId}/cancel`, { method: 'POST' });

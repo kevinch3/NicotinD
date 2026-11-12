@@ -365,6 +365,8 @@ export function downloadRoutes(
       // the row is core's, and refusing here is what left "Cancel all"
       // powerless against a stuck card. Close it honestly instead.
       log.info({ jobId: job.id, method: job.method }, 'closing a non-addon job core-side');
+      // A Get still looking for its source: marked, so the feed says cancelled, not failed.
+      if (job.source_ref === null) requestJobCancel(db, job.id);
       cancelUnownedJob(db, job.id);
       return c.json({ ok: true });
     }

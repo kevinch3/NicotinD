@@ -10,7 +10,12 @@ import { resolveAlbumRoute } from '../../lib/route-utils';
 import type { AlbumTile } from '../../lib/artist-album-tiles';
 import { TranslateService } from '../../services/translate.service';
 import { TranslatePipe } from '../../pipes/translate.pipe';
-import { IDLE_HUNT, albumHuntLabel, type AlbumHuntStatus } from '../../lib/album-hunt-status';
+import {
+  IDLE_HUNT,
+  albumHuntLabel,
+  cancellableJobId,
+  type AlbumHuntStatus,
+} from '../../lib/album-hunt-status';
 import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 import { albumCover } from '../../lib/cover-url';
 import { CoverRevisionsService } from '../../services/cover-revisions.service';
@@ -80,6 +85,8 @@ export class AlbumTileComponent {
   readonly canAcquire = input(false);
 
   readonly acquire = output<void>();
+  /** Stop this album's Get or download; carries the job to cancel. */
+  readonly cancel = output<string>();
 
   readonly route = computed(() => resolveAlbumRoute(this.tile().localAlbumId));
 
@@ -114,6 +121,8 @@ export class AlbumTileComponent {
   );
 
   readonly busy = computed(() => this.status().phase !== 'idle');
+
+  readonly cancelJobId = computed(() => cancellableJobId(this.status()));
 
   /** `Finding…` before a job exists, then the job's own stage, worded as on Downloads. */
   readonly busyLabel = computed(() => albumHuntLabel(this.status(), (key) => this.i18n.t(key)));

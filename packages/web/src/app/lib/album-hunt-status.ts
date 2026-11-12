@@ -10,7 +10,7 @@ import { stageLabel } from './pipeline-stage';
 export type AlbumHuntStatus =
   | { phase: 'idle' }
   /** `ahead`: hunts the server runs before this one (#1625); absent once it is searching. */
-  | { phase: 'searching'; ahead?: number }
+  | { phase: 'searching'; ahead?: number; jobId?: string }
   /** A pick is made and its download is being enqueued — no job visible yet. */
   | { phase: 'starting' }
   | {
@@ -57,4 +57,11 @@ export function albumHuntLabel(status: AlbumHuntStatus, t: (key: string) => stri
   }
   const stage = stageLabel(status.stage, t);
   return status.expected ? `${stage} · ${status.delivered ?? 0}/${status.expected}` : stage;
+}
+
+/** The job a busy album can be cancelled through; absent before the server has one. */
+export function cancellableJobId(status: AlbumHuntStatus): string | null {
+  return (status.phase === 'searching' || status.phase === 'job') && status.jobId
+    ? status.jobId
+    : null;
 }
