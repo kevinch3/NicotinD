@@ -12,7 +12,7 @@
         [placeholder]="'acquire.placeholder' | t"
         data-testid="search-input"
         [attr.aria-describedby]="shownLinkIntent() && liveLinkUnsupported() ? 'search-link-unsupported' : null"
-        class="w-full pl-5 py-4 text-lg rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-600 transition"
+        class="w-full pl-5 py-4 text-lg rounded-xl bg-theme-surface border border-theme text-theme-primary placeholder:text-theme-muted focus:outline-none focus:border-theme-accent transition"
         [class.pr-28]="!shownLinkIntent()"
         [class.pr-52]="shownLinkIntent()"
       />
@@ -31,7 +31,7 @@
               <span class="sr-only">{{ 'acquire.linkRecognised' | t }}</span>
               <app-source-chip [source]="live.source" [label]="live.sourceLabel" />
               @if (live.kind) {
-                <span class="text-xs text-zinc-400" data-testid="search-link-kind">{{
+                <span class="text-xs text-theme-secondary" data-testid="search-link-kind">{{
                   'acquire.linkKind.' + live.kind | t
                 }}</span>
               }
@@ -42,7 +42,7 @@
           type="submit"
           [disabled]="loading()"
           data-testid="search-submit"
-          class="px-4 py-2 rounded-lg bg-zinc-700 text-zinc-200 text-sm font-medium hover:bg-zinc-600 transition disabled:opacity-50"
+          class="px-4 py-2 rounded-lg bg-theme-surface-2 text-theme-primary text-sm font-medium hover:bg-theme-hover transition disabled:opacity-50"
         >
           {{
             (loading() ? 'acquire.searching' : shownLinkIntent() ? 'acquire.get' : 'acquire.search')
@@ -53,13 +53,13 @@
 
       @if (searchFocused() && search.history().length > 0 && !search.query()) {
         <div
-          class="absolute top-full left-0 right-0 mt-1 bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden z-10"
+          class="absolute top-full left-0 right-0 mt-1 bg-theme-surface border border-theme rounded-xl overflow-hidden z-10"
         >
-          <div class="flex items-center justify-between px-4 py-2 border-b border-zinc-800">
-            <span class="text-xs text-zinc-500 font-medium">{{ 'acquire.recentSearches' | t }}</span>
+          <div class="flex items-center justify-between px-4 py-2 border-b border-theme">
+            <span class="text-xs text-theme-muted font-medium">{{ 'acquire.recentSearches' | t }}</span>
             <button
               (click)="search.clearHistory()"
-              class="text-xs text-zinc-600 hover:text-zinc-400 transition"
+              class="text-xs text-theme-muted hover:text-theme-secondary transition"
             >
               {{ 'acquire.clearAll' | t }}
             </button>
@@ -67,7 +67,7 @@
           @for (h of search.history(); track h) {
             <button
               (click)="navigateAndSearch(h)"
-              class="w-full text-left px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-800 transition"
+              class="w-full text-left px-4 py-2.5 text-sm text-theme-secondary hover:bg-theme-hover transition"
             >
               {{ h }}
             </button>
@@ -94,10 +94,10 @@
       <span
         [class]="
           'inline-block w-2 h-2 rounded-full ' +
-          (availableSources().length > 0 ? 'bg-emerald-500' : 'bg-zinc-600')
+          (availableSources().length > 0 ? 'bg-emerald-500' : 'bg-theme-muted')
         "
       ></span>
-      <span class="text-xs text-zinc-500" data-testid="source-status">
+      <span class="text-xs text-theme-muted" data-testid="source-status">
         @if (availableSources().length > 0) {
           {{ 'acquire.sources' | t: { list: availableSources().join(' · ') } }}
         } @else {
@@ -202,15 +202,15 @@
        See docs/source-agnostic-acquisition.md. -->
   @if (auth.canAcquire() && linkIntent(); as intent) {
     <section class="mb-6" data-testid="link-intent-section">
-      <ul class="divide-y divide-zinc-800 rounded-lg border border-zinc-800 overflow-hidden">
+      <ul class="divide-y divide-theme-border rounded-lg border border-theme overflow-hidden">
         <li
-          class="flex items-center gap-3 px-3 py-2.5 bg-zinc-900/40"
+          class="flex items-center gap-3 px-3 py-2.5 bg-theme-surface/40"
           data-testid="link-intent-card"
         >
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2 flex-wrap">
               <app-source-chip [source]="intent.source" [label]="intent.sourceLabel" />
-              <p class="truncate text-sm text-zinc-200">{{ intent.url }}</p>
+              <p class="truncate text-sm text-theme-primary">{{ intent.url }}</p>
               <!-- Archive items don't expose a playlist signal at the URL level
                    (they're by-creator/multi-track by default), so the user has
                    to opt in. Spotify/YouTube playlists auto-detect via the
@@ -264,7 +264,7 @@
                     (click)="retryLinkJob()"
                     [disabled]="linkSubmitting()"
                     data-testid="link-intent-retry"
-                    class="shrink-0 px-3 py-1.5 rounded-md text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                    class="shrink-0 px-3 py-1.5 rounded-md text-xs font-medium bg-theme-surface-2 hover:bg-theme-hover text-theme-primary disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Retry
                   </button>
@@ -275,19 +275,19 @@
                   (click)="retryLinkJob()"
                   [disabled]="linkSubmitting()"
                   data-testid="link-intent-retry"
-                  class="shrink-0 px-3 py-1.5 rounded-md text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  class="shrink-0 px-3 py-1.5 rounded-md text-xs font-medium bg-theme-surface-2 hover:bg-theme-hover text-theme-primary disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Retry
                 </button>
               }
               @default {
-                <span class="shrink-0 text-xs text-zinc-400">
+                <span class="shrink-0 text-xs text-theme-secondary">
                   {{ job.progress ? job.progress.done + '/' + job.progress.total : 'Starting…' }}
                 </span>
                 <button
                   (click)="cancelLinkJob()"
                   data-testid="link-intent-cancel"
-                  class="shrink-0 text-zinc-600 hover:text-zinc-300 transition text-base leading-none"
+                  class="shrink-0 text-theme-muted hover:text-theme-primary transition text-base leading-none"
                   [attr.title]="'downloads.cancel' | t"
                 >
                   ×
@@ -302,7 +302,7 @@
               (click)="submitLinkIntent()"
               [disabled]="linkSubmitting()"
               data-testid="link-intent-get"
-              class="shrink-0 px-3 py-1.5 rounded-md text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              class="shrink-0 px-3 py-1.5 rounded-md text-xs font-medium bg-theme-surface-2 hover:bg-theme-hover text-theme-primary disabled:opacity-50 disabled:cursor-not-allowed"
             >
               @if (linkSubmitting()) {
                 Starting…
@@ -317,7 +317,7 @@
             <button
               (click)="dismissLinkIntent()"
               data-testid="link-intent-dismiss"
-              class="shrink-0 text-zinc-600 hover:text-zinc-300 transition text-base leading-none"
+              class="shrink-0 text-theme-muted hover:text-theme-primary transition text-base leading-none"
               [attr.title]="'downloads.dismiss' | t"
             >
               ×
@@ -334,7 +334,7 @@
          acquisition source, not a local read, so "Searching…" is doing real
          work that a placeholder shape cannot. The skeleton previews the catalog
          grid below it, which is a narrower column scale than the library's. -->
-    <p class="text-zinc-500 text-sm mb-3">{{ 'acquire.searching' | t }}</p>
+    <p class="text-theme-muted text-sm mb-3">{{ 'acquire.searching' | t }}</p>
     <app-skeleton
       variant="album-tile"
       [count]="4"
@@ -349,7 +349,7 @@
     <section class="space-y-6 mb-8">
       @if (catalog()!.albums.length > 0) {
         <div>
-          <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-3">
+          <h2 class="text-xs font-semibold uppercase tracking-wide text-theme-muted mb-3">
             {{ 'acquire.albums' | t }}
           </h2>
           <div
@@ -374,11 +374,11 @@
                     [attr.data-availability]="
                       availability === undefined ? 'unknown' : availability ? 'available' : 'none'
                     "
-                    class="group text-left rounded-lg overflow-hidden border border-zinc-800/80 transition hover:border-zinc-600 disabled:opacity-60"
+                    class="group text-left rounded-lg overflow-hidden border border-theme transition hover:border-theme-accent disabled:opacity-60"
                     [class.opacity-50]="availability === null && huntStatus.phase === 'idle'"
                     style="background: var(--theme-surface)"
                   >
-                    <div class="aspect-square bg-zinc-800 relative" data-testid="catalog-album-cover">
+                    <div class="aspect-square bg-theme-surface-2 relative" data-testid="catalog-album-cover">
                       <!-- Shared cover component: gradient placeholder, fade-in on
                            load and an error fallback, none of which the raw <img>
                            here ever had (issue #263). -->
@@ -394,18 +394,18 @@
                           class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60"
                         >
                           <span
-                            class="inline-block w-5 h-5 border-2 border-zinc-500 border-t-zinc-200 rounded-full animate-spin"
+                            class="inline-block w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"
                           ></span>
-                          <span class="text-xs text-zinc-300">{{ 'acquire.preparing' | t }}</span>
+                          <span class="text-xs text-white/85">{{ 'acquire.preparing' | t }}</span>
                         </div>
                       } @else if (huntStatus.phase !== 'idle') {
                         <div
                           class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60"
                         >
                           <span
-                            class="inline-block w-5 h-5 border-2 border-zinc-500 border-t-zinc-200 rounded-full animate-spin"
+                            class="inline-block w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"
                           ></span>
-                          <span class="text-xs text-zinc-300" data-testid="catalog-album-hunt-status">{{
+                          <span class="text-xs text-white/85" data-testid="catalog-album-hunt-status">{{
                             catalogHuntLabel(huntStatus)
                           }}</span>
                         </div>
@@ -508,7 +508,7 @@
            lane; the icon gets the fullest copy outright. -->
       @if (providerAlbums().length > 0) {
         <div data-testid="provider-albums">
-          <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-3">
+          <h2 class="text-xs font-semibold uppercase tracking-wide text-theme-muted mb-3">
             {{ 'acquire.moreOnProvider' | t }}
           </h2>
           <div
@@ -522,7 +522,7 @@
                 @for (album of row; track album.key) {
                   @let status = providerAlbumStatus(album);
                   <div
-                    class="group relative text-left rounded-lg overflow-hidden border border-zinc-800/80 transition hover:border-zinc-600"
+                    class="group relative text-left rounded-lg overflow-hidden border border-theme transition hover:border-theme-accent"
                     style="background: var(--theme-surface)"
                     data-testid="provider-album"
                   >
@@ -532,7 +532,7 @@
                       class="block w-full text-left"
                       [title]="'acquire.showCopiesHint' | t"
                     >
-                      <div class="aspect-square bg-zinc-800 relative">
+                      <div class="aspect-square bg-theme-surface-2 relative">
                         <app-cover-art
                           [artist]="album.artist"
                           [album]="album.title"
@@ -544,9 +544,9 @@
                             class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60"
                           >
                             <span
-                              class="inline-block w-5 h-5 border-2 border-zinc-500 border-t-zinc-200 rounded-full animate-spin"
+                              class="inline-block w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"
                             ></span>
-                            <span class="text-xs text-zinc-300">{{ catalogHuntLabel(status) }}</span>
+                            <span class="text-xs text-white/85">{{ catalogHuntLabel(status) }}</span>
                           </div>
                         }
                       </div>
@@ -593,7 +593,7 @@
       }
       @if (catalog()!.artists.length > 0) {
         <div>
-          <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-3">
+          <h2 class="text-xs font-semibold uppercase tracking-wide text-theme-muted mb-3">
             {{ 'acquire.artists' | t }}
           </h2>
           <div class="flex flex-wrap gap-2" appTvNavGroup axis="horizontal">
@@ -649,7 +649,7 @@
        with a single Get action. No "primary network" / "Also on…" hierarchy. -->
   @if (auth.canAcquire() && !loading() && search.query().trim() && hasBlendedResults()) {
     <section class="mt-4" data-testid="results">
-      <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-2">
+      <h2 class="text-xs font-semibold uppercase tracking-wide text-theme-muted mb-2">
         {{ 'acquire.results' | t }}
       </h2>
       @if (plugins.hasSpotify() && !plugins.hasSpotdl() && search.spotify().length > 0) {
@@ -661,21 +661,21 @@
            (ffmpeg present) AND there's a lossless pick in view — so it never
            claims a conversion that won't happen for a 320k MP3 pick. -->
       @if (transcodeActive() && hasLosslessInView()) {
-        <p class="text-xs text-zinc-500 mb-2" data-testid="transcode-note">
+        <p class="text-xs text-theme-muted mb-2" data-testid="transcode-note">
           Lossless picks are stored as Opus {{ transcodeBitRate() }}k to save space.
         </p>
       }
-      <ul class="divide-y divide-zinc-800 rounded-lg border border-zinc-800 overflow-hidden">
+      <ul class="divide-y divide-theme-border rounded-lg border border-theme overflow-hidden">
         @for (c of visibleBlendedResults(); track c.id) {
           <li
-            class="flex items-center gap-3 px-3 py-2.5 bg-zinc-900/40"
+            class="flex items-center gap-3 px-3 py-2.5 bg-theme-surface/40"
             data-testid="acquire-result"
             [attr.data-source]="c.source"
           >
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-2">
                 <app-source-chip [source]="c.source" [label]="c.sourceLabel" />
-                <p appOverflowReveal class="truncate text-sm text-zinc-200">{{ c.title }}</p>
+                <p appOverflowReveal class="truncate text-sm text-theme-primary">{{ c.title }}</p>
                 @if (transcodeActive() && isLosslessCandidate(c)) {
                   <span
                     class="shrink-0 text-[10px] uppercase tracking-wide text-emerald-500/80"
@@ -687,7 +687,7 @@
                 }
               </div>
               @if (c.subtitle) {
-                <p appOverflowReveal class="truncate text-xs text-zinc-500 mt-0.5">{{ c.subtitle }}</p>
+                <p appOverflowReveal class="truncate text-xs text-theme-muted mt-0.5">{{ c.subtitle }}</p>
               }
             </div>
             @if (blendedState(c) === 'done' || blendedState(c) === 'queued') {
@@ -699,7 +699,7 @@
                 (click)="getBlended(c)"
                 [disabled]="blendedState(c) === 'working'"
                 data-testid="acquire-result-get"
-                class="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-200 disabled:opacity-60"
+                class="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium bg-theme-surface-2 hover:bg-theme-hover text-theme-primary disabled:opacity-60"
               >
                 @if (blendedState(c) === 'working') {
                   {{ blendedPercent(c) > 0 ? blendedPercent(c) + '%' : '…' }}
@@ -728,7 +728,7 @@
        the network fallback and offer to load their real discography on demand. -->
   @if (!loading() && discographyNote(); as note) {
     <div class="mt-2 px-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-      <p class="text-xs text-zinc-500" data-testid="discography-note">
+      <p class="text-xs text-theme-muted" data-testid="discography-note">
         {{
           note.kind === 'no-albums'
             ? ('acquire.discographyUnavailable' | t: { artist: note.artist })
@@ -776,7 +776,7 @@
       <button
         (click)="toggleDirectSearch()"
         data-testid="advanced-toggle"
-        class="w-full flex items-center justify-between px-1 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-500 hover:text-zinc-300 transition"
+        class="w-full flex items-center justify-between px-1 py-2 text-xs font-semibold uppercase tracking-wide text-theme-muted hover:text-theme-primary transition"
       >
         <span>{{ 'acquire.advancedToggle' | t: { source: networkLabel() } }}</span>
         <span class="flex items-center gap-2 normal-case font-normal">
@@ -786,7 +786,7 @@
             <span
               aria-hidden="true"
               data-testid="network-searching-header"
-              class="inline-block w-3 h-3 border-2 border-zinc-600 border-t-zinc-300 rounded-full animate-spin"
+              class="inline-block w-3 h-3 border-2 border-theme border-t-theme-secondary rounded-full animate-spin"
             ></span>
           }
           @if (hasNetwork()) {
@@ -802,9 +802,9 @@
       @if (directSearchOpen()) {
         <!-- Searching indicator -->
         @if (search.networkState() === 'searching') {
-          <div class="flex items-center gap-2 px-1 py-2 text-xs text-zinc-500">
+          <div class="flex items-center gap-2 px-1 py-2 text-xs text-theme-muted">
             <span
-              class="inline-block w-3 h-3 border-2 border-zinc-600 border-t-zinc-300 rounded-full animate-spin"
+              class="inline-block w-3 h-3 border-2 border-theme border-t-theme-secondary rounded-full animate-spin"
             ></span>
             {{ 'acquire.searchingNetwork' | t: { source: networkLabel() } }}
             @if (flatNetwork().length > 0) {
@@ -815,7 +815,7 @@
             }
             <button
               (click)="handleStopSearch()"
-              class="text-zinc-500 hover:text-zinc-300 transition"
+              class="text-theme-muted hover:text-theme-primary transition"
             >
               {{ 'acquire.stop' | t }}
             </button>
@@ -825,21 +825,21 @@
         <!-- No direct results -->
         @if (!hasNetwork() && search.networkState() === 'complete') {
           <div class="text-center py-8">
-            <p class="text-zinc-500">{{ 'acquire.noNetworkResults' | t: { source: networkLabel(), query: search.query() } }}</p>
+            <p class="text-theme-muted">{{ 'acquire.noNetworkResults' | t: { source: networkLabel(), query: search.query() } }}</p>
           </div>
         }
 
         @if (hasNetwork()) {
           <div class="flex items-center justify-between gap-2 mb-2">
-            <div class="inline-flex rounded-md overflow-hidden border border-zinc-800 text-xs">
+            <div class="inline-flex rounded-md overflow-hidden border border-theme text-xs">
               <button
                 (click)="setNetworkView('songs')"
                 data-testid="network-view-songs"
                 [class]="
                   'px-3 py-1 font-medium transition ' +
                   (networkView() === 'songs'
-                    ? 'bg-zinc-700 text-zinc-100'
-                    : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200')
+                    ? 'bg-theme-surface-2 text-theme-primary'
+                    : 'bg-theme-surface text-theme-secondary hover:text-theme-primary')
                 "
               >
                 {{ 'acquire.songsCount' | t: { count: songResults().length } }}
@@ -850,8 +850,8 @@
                 [class]="
                   'px-3 py-1 font-medium transition ' +
                   (networkView() === 'folders'
-                    ? 'bg-zinc-700 text-zinc-100'
-                    : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200')
+                    ? 'bg-theme-surface-2 text-theme-primary'
+                    : 'bg-theme-surface text-theme-secondary hover:text-theme-primary')
                 "
               >
                 {{ 'acquire.foldersCount' | t: { count: folderGroups().length } }}
@@ -860,7 +860,7 @@
             <button
               (click)="requestDownloadAll()"
               data-testid="download-all"
-              class="px-3 py-1 rounded-md text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition shrink-0"
+              class="px-3 py-1 rounded-md text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition shrink-0"
             >
               {{ 'acquire.downloadAllCount' | t: { count: flatNetwork().length } }}
             </button>
@@ -872,7 +872,7 @@
             <div class="space-y-1" data-testid="song-results">
               @for (song of songResults(); track song.key) {
                 <div
-                  class="relative flex items-center gap-3 px-3 py-2 rounded-lg border border-zinc-800/80 overflow-hidden transition"
+                  class="relative flex items-center gap-3 px-3 py-2 rounded-lg border border-theme overflow-hidden transition"
                   style="background: var(--theme-surface)"
                   data-testid="song-result"
                 >
@@ -940,7 +940,7 @@
                   </div>
                 </div>
               } @empty {
-                <p class="text-center py-6 text-zinc-500 text-sm">{{ 'acquire.noIndividualSongs' | t }}</p>
+                <p class="text-center py-6 text-theme-muted text-sm">{{ 'acquire.noIndividualSongs' | t }}</p>
               }
             </div>
           } @else {
@@ -956,7 +956,7 @@
                   </span>
                   <button
                     (click)="folderFilter.set(null)"
-                    class="inline-flex items-center gap-1 text-zinc-400 hover:text-zinc-200"
+                    class="inline-flex items-center gap-1 text-theme-secondary hover:text-theme-primary"
                     [attr.aria-label]="'acquire.showAllFolders' | t"
                   >
                     <app-icon name="close" [size]="12" />
@@ -966,10 +966,10 @@
               }
               @for (group of visibleFolderGroups(); track getFolderKey(group)) {
                 <div
-                  class="rounded-lg border border-zinc-800/80 overflow-hidden"
+                  class="rounded-lg border border-theme overflow-hidden"
                   style="background: var(--theme-surface)"
                 >
-                  <div class="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-zinc-800/80">
+                  <div class="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-theme">
                     <div class="flex-1 min-w-[10rem]">
                       <p appOverflowReveal
                         class="text-sm truncate flex items-center gap-1.5"
@@ -982,7 +982,7 @@
                               'shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold leading-none ' +
                               (fmt.lossless
                                 ? 'bg-emerald-500/20 text-emerald-400'
-                                : 'bg-zinc-700 text-zinc-300')
+                                : 'bg-theme-surface-2 text-theme-secondary')
                             "
                             >{{ fmt.label }}</span
                           >
@@ -1039,7 +1039,7 @@
                         (click)="downloadFolder(group, true)"
                         data-testid="folder-replace"
                         [title]="'acquire.replaceWithThisCopyHint' | t"
-                        class="px-2 py-1 rounded text-xs text-zinc-400 hover:text-zinc-200 transition shrink-0"
+                        class="px-2 py-1 rounded text-xs text-theme-secondary hover:text-theme-primary transition shrink-0"
                       >
                         {{ 'acquire.replaceWithThisCopy' | t }}
                       </button>
@@ -1065,7 +1065,7 @@
                     @if (search.canBrowse()) {
                       <button
                         (click)="toggleBrowser(getFolderKey(group))"
-                        class="px-2 py-1 rounded text-xs text-zinc-500 hover:text-zinc-300 transition shrink-0"
+                        class="px-2 py-1 rounded text-xs text-theme-muted hover:text-theme-primary transition shrink-0"
                       >
                         {{
                           (search.openBrowserKey() === getFolderKey(group)

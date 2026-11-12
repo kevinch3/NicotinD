@@ -467,7 +467,7 @@ export class AlbumHuntModalComponent implements OnInit {
   matchClass(pct: number): string {
     if (pct >= 90) return 'text-green-400';
     if (pct >= 60) return 'text-yellow-400';
-    return 'text-zinc-400';
+    return 'text-theme-muted';
   }
 
   displayDir(dir: string): string {

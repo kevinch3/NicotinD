@@ -112,7 +112,7 @@
           class="flex flex-col items-center justify-center py-12 gap-3 text-theme-muted"
         >
           <span
-            class="inline-block w-6 h-6 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"
+            class="inline-block w-6 h-6 border-2 border-theme border-t-theme-secondary rounded-full animate-spin"
           ></span>
           <span class="text-sm"
             >Searching {{ networkLabel() }} for "{{ artistName() }} — {{ album().title }}"…</span
@@ -419,7 +419,7 @@
       @if (state() === 'downloading') {
         <div class="flex items-center justify-center py-16 gap-3 text-theme-muted">
           <span
-            class="inline-block w-5 h-5 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"
+            class="inline-block w-5 h-5 border-2 border-theme border-t-theme-secondary rounded-full animate-spin"
           ></span>
           <span class="text-sm">Queuing downloads…</span>
         </div>

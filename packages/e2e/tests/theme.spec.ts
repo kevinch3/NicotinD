@@ -67,6 +67,21 @@ test.describe('theme utilities + contrast', () => {
     expect(r.textStatusWarn.color).toBe('rgb(146, 64, 14)');
   });
 
+  // #1685: Search's input was hardcoded bg-zinc-900, a black slab on the light presets.
+  test('the Search input follows the preset (daylight)', async ({ page }) => {
+    await page.goto('/get?tab=add');
+    const input = page.getByTestId('search-input');
+    await expect(input).toBeVisible();
+    await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'daylight'));
+    // The input carries `transition`, so poll past the colour fade.
+    const read = () =>
+      input.evaluate((el) => {
+        const c = getComputedStyle(el);
+        return { bg: c.backgroundColor, color: c.color };
+      });
+    await expect.poll(read).toEqual({ bg: 'rgb(255, 255, 255)', color: 'rgb(24, 24, 27)' }); // daylight surface / text-primary
+  });
+
   test('on-accent flips to a dark foreground on light accents (oled)', async ({ page }) => {
     await page.goto('/library');
     const r = await probe(page, 'oled');
