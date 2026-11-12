@@ -3,7 +3,7 @@ import { E2E_MUSIC_DIR } from '../fixture-music';
 import { copyFileSync, existsSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ADMIN, bearer, scanAndWait, waitForLibrary } from '../helpers';
+import { ADMIN, bearer, openAlbumMetadataFix, scanAndWait, waitForLibrary } from '../helpers';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /** The uniquely tagged one-track album `library-live.spec.ts` also plants (workers: 1, so the two
@@ -65,7 +65,7 @@ test.describe('album cover revision', () => {
       'img:not([data-testid="cover-art-held"])[src*="/api/cover/"][src*="size=300"]',
     );
 
-    await page.getByTestId('optimize-metadata').click();
+    await openAlbumMetadataFix(page);
     await expect(page.getByTestId('cover-picker')).toBeVisible();
     const uploaded = page.waitForResponse(
       (r) =>

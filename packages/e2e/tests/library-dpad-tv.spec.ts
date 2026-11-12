@@ -48,6 +48,23 @@ test.describe('TV D-pad find-a-song flow', () => {
     await page.keyboard.press('ArrowRight');
     await expect(play).not.toBeFocused(); // moved to the next action in the row
 
+    // The ⋯ menu is the row's last item: reached by arrows, opened by Enter, and
+    // walked by ArrowDown — Remove album, the last curator item, included.
+    const menuToggle = page.getByTestId('album-menu-toggle');
+    for (let i = 0; i < 6; i++) {
+      if (await menuToggle.evaluate((el) => el === document.activeElement)) break;
+      await page.keyboard.press('ArrowRight');
+    }
+    await expect(menuToggle).toBeFocused();
+    await page.keyboard.press('Enter');
+    const removeAlbum = page.getByTestId('album-action-Remove album');
+    await expect(removeAlbum).toBeVisible();
+    for (let i = 0; i < 10; i++) {
+      if (await removeAlbum.evaluate((el) => el === document.activeElement)) break;
+      await page.keyboard.press('ArrowDown');
+    }
+    await expect(removeAlbum).toBeFocused();
+
     // Play the album so the queue exists for the menu step below.
     await play.focus();
     await page.keyboard.press('Enter');

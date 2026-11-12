@@ -72,6 +72,23 @@ test.describe('mobile UX', () => {
     expect(box.x + box.width, 'right edge within viewport').toBeLessThanOrEqual(PHONE.width);
   });
 
+  // The header used to push the tracklist below the fold (completeness row, a
+  // wrapped curator row, a genre strip, the filter row). The seeded admin is a
+  // curator, so this is the tallest header there is.
+  test('album-detail shows its first tracks without scrolling', async ({ page }) => {
+    await openAlbum(page);
+    await expect(page.getByTestId('album-detail-search')).toBeHidden();
+    await expect(page.getByTestId('track-row').first()).toBeInViewport({ ratio: 1 });
+    await expect(page.getByTestId('track-row').nth(1)).toBeInViewport({ ratio: 1 });
+
+    // The filter row is one tap away, and the ⋯ menu is a bottom sheet here.
+    await page.getByTestId('album-detail-controls-toggle').click();
+    await expect(page.getByTestId('album-detail-search')).toBeVisible();
+    await page.getByTestId('album-menu-toggle').click();
+    await expect(page.getByTestId('album-menu')).toHaveAttribute('data-presentation', 'sheet');
+    await expect(page.getByTestId('album-action-Remove album')).toBeInViewport({ ratio: 1 });
+  });
+
   // On an iOS standalone PWA the fixed player + tab bar rode the page scroll (they
   // stopped following the viewport bottom and floated mid-screen over the content).
   // The shell now scrolls inside <main>, so the document itself must never scroll

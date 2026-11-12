@@ -336,13 +336,18 @@ export class LibraryApiService {
     );
   }
 
-  /** Genre weight distribution for one album (issue #222 listener-facing strip). */
+  /** Genre distribution for one album; the page reads `primary`. */
   albumGenreDistribution(id: string) {
     return this.http.get<{
       album: string;
       trackCount: number;
       genreCount: number;
       slices: Array<{ genre: string; count: number; weight: number }>;
+      /** Each track once, by primary genre — sums to 1. */
+      primary: {
+        taggedCount: number;
+        slices: Array<{ genre: string; count: number; weight: number }>;
+      };
     }>(`/api/library/albums/${encodeURIComponent(id)}/genre-distribution`);
   }
 

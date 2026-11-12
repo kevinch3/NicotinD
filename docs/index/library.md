@@ -115,7 +115,7 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   row, so a curation outlives the next scan (`mutateSongGenre`).
   → [library-scanner.md](../library-scanner.md)
 - **Genre radar**: `artistGenreDistribution` + `albumGenreDistribution` feed an inline-SVG radar and a
-  read-only `GenreDistributionStripComponent`; pure `radar-geometry.ts` + `genre-projection.ts`;
+  the part-to-whole `GenreShareBarComponent`; pure `radar-geometry.ts` + `genre-projection.ts`;
   album aggregate is `mostCommonGenre`. Weights deliberately do not sum to 1.
   → [genre-radar.md](../genre-radar.md)
 - **Artist genre headline**: `PrimaryGenreShare` (sums to 1) drives header chips via `headlineGenres`

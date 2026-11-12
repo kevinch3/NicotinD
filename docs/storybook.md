@@ -25,9 +25,9 @@ were the slowest half of it — see [deployment.md](deployment.md) "CI coverage"
 
 48 components, split by how much of the app they need in order to render:
 
-- **Presentational (22)** — zero injected services: `album-tile`, `artist-links`,
+- **Presentational (21)** — zero injected services: `album-tile`, `artist-links`,
   `changelog-modal`, `confirm-dialog`, `desktop-window-controls`, `disk-pill`,
-  `download-item`, `genre-distribution-strip`, `genre-radar`, `icon`,
+  `download-item`, `genre-radar`, `icon`,
   `import-drop-card`, `import-entry`, `library-filter-panel`, `metric-pill`,
   `password-field`, `seek-bar`, `selection-bar`, `settings-group`,
   `settings-group-header`, `skeleton`, `source-chip`, `track-stats-bars`.

@@ -91,11 +91,13 @@ passes vacuously.
 ## Everyday-UI decision: shipped (#222 sub-goal 2)
 
 The issue's second sub-goal — "settle the multi-genre UX" — is decided: yes, a weighted multi-genre
-identity is now listener-facing. `GenreDistributionStripComponent`
-(`components/genre-distribution-strip/`) is a **read-only** bar-list strip (the plain CSS bar-fill
-pattern from `TrackStatsBarsComponent`, not the SVG radar — a strip is a linear form) rendered on
-the album page (`album-detail.component`) only. The artist page (#1572, next section) and library
-stats (#1670) replaced it with the part-to-whole share bar. It has no interaction with `ArtistGenreModalComponent` or the
+identity is now listener-facing. It first shipped as a bar-list strip of the overlapping weights,
+where one genre read 100% on almost every album; the artist page (#1572, next section), library
+stats (#1670) and finally the album page replaced it with the part-to-whole share bar, and the
+strip component is gone. On the album page (`album-detail.component`) the header carries one chip
+— `headlineGenres` over the `primary` share — that is a disclosure toggle
+(`album-genres-toggle`); expanded, it shows `GenreShareBarComponent`. Collapsed by default: the
+split is not what the page is for. None of this touches `ArtistGenreModalComponent` or the
 reclassify/curation flow; the radar stays the curation review aid described above.
 
 ## The artist page: a headline and a part-to-whole bar (#1572)

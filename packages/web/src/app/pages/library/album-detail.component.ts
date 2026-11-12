@@ -29,9 +29,13 @@ import { NavigationService } from '../../services/navigation.service';
 import { PageBackService } from '../../services/page-back.service';
 import { PreserveService } from '../../services/preserve.service';
 import {
-  GenreDistributionStripComponent,
-  type GenreSlice,
-} from '../../components/genre-distribution-strip/genre-distribution-strip.component';
+  GenreShareBarComponent,
+  type ShareSegment,
+} from '../../components/genre-share-bar/genre-share-bar.component';
+import { headlineGenres } from '../../lib/headline-genres';
+import { MenuPanelComponent } from '../../components/menu-panel/menu-panel.component';
+import { EntityMenuService } from '../../services/entity-menu.service';
+import type { TrackAction } from '../../components/track-row/track-row.component';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import { SkeletonComponent } from '../../components/skeleton/skeleton.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
@@ -52,7 +56,8 @@ import { AlbumCompletenessComponent } from './album-completeness.component';
     IconComponent,
     MetadataFixModalComponent,
     ArtistLinksComponent,
-    GenreDistributionStripComponent,
+    GenreShareBarComponent,
+    MenuPanelComponent,
     TvNavGroupDirective,
     TvNavItemDirective,
     AlbumCompletenessComponent,
@@ -97,12 +102,12 @@ export class AlbumDetailComponent implements OnInit {
   readonly deleting = signal(false);
   readonly deleteError = signal<string | null>(null);
 
-  // ─── Genre distribution strip (issue #222 sub-goal 2, listener-facing) ────
-  readonly genreDistribution = signal<{
-    slices: GenreSlice[];
-    trackCount: number;
-    genreCount: number;
-  } | null>(null);
+  // ─── Genre chip + expandable share (docs/genre-radar.md) ──────────────────
+  /** Primary-genre share: each track once, so it sums to 100%. */
+  readonly genreShare = signal<{ taggedCount: number; slices: ShareSegment[] } | null>(null);
+  /** One or two main genres for the chip, or "mixed"; null hides it. */
+  readonly headline = computed(() => headlineGenres(this.genreShare()?.slices ?? []));
+  readonly genresOpen = signal(false);
 
   readonly detailSongs = computed(() => {
     const deleted = this.transferService.deletedSongIds();
@@ -204,11 +209,69 @@ export class AlbumDetailComponent implements OnInit {
   private async loadGenreDistribution(albumId: string): Promise<void> {
     try {
       const data = await firstValueFrom(this.api.albumGenreDistribution(albumId));
-      if (this.selectedAlbum()?.id === albumId) this.genreDistribution.set(data);
+      if (this.selectedAlbum()?.id !== albumId) return;
+      // The API folds its tail into a slice literally named "Other"; the bar
+      // reads a bucket only from `kind` (docs/genre-radar.md).
+      const slices = data.primary.slices.map((s): ShareSegment =>
+        s.genre === 'Other' ? { ...s, kind: 'other' } : s,
+      );
+      this.genreShare.set({ taggedCount: data.primary.taggedCount, slices });
     } catch {
-      /* no-op — an empty/failed distribution just hides the strip */
+      /* no-op — an empty/failed distribution just hides the chip and chart */
     }
   }
+
+  // ─── Filter/sort row, behind a toggle ─────────────────────────────────────
+  /** A search or a non-default order is in effect — marks the toggle when the row is closed. */
+  readonly filterActive = computed(
+    () =>
+      !!this.detailControls.searchText() ||
+      this.detailControls.sortField() !== 'track' ||
+      this.detailControls.sortDirection() === 'desc',
+  );
+  private readonly controlsToggled = signal<boolean | null>(null);
+  /** Closed by default; opens itself for a persisted filter until the user says otherwise. */
+  readonly controlsOpen = computed(() => this.controlsToggled() ?? this.filterActive());
+
+  toggleControls(): void {
+    this.controlsToggled.set(!this.controlsOpen());
+  }
+
+  // ─── ⋯ menu ───────────────────────────────────────────────────────────────
+  private readonly entityMenu = inject(EntityMenuService);
+
+  /** Listener items: the album tile's queue verbs, then Select. */
+  readonly albumMenu = computed<TrackAction[]>(() => {
+    const album = this.selectedAlbum();
+    if (!album) return [];
+    const keep = new Set(['Start radio', 'Play next', 'Add to queue']);
+    const actions = this.entityMenu
+      .build({ kind: 'album', id: album.id, name: album.name })
+      .filter((a) => keep.has(a.label));
+    if (!this.selection.active()) {
+      actions.push({
+        label: 'Select',
+        labelKey: 'album.menu.select',
+        action: () => this.selection.enter(),
+      });
+    }
+    return actions;
+  });
+
+  /** Curator items, the destructive one last. */
+  readonly curatorMenu = computed<TrackAction[]>(() => [
+    {
+      label: 'Fix metadata',
+      labelKey: 'album.menu.fixMetadata',
+      action: () => this.openMetadataFix(),
+    },
+    {
+      label: 'Remove album',
+      labelKey: 'album.menu.remove',
+      destructive: true,
+      action: () => this.removeAlbum(),
+    },
+  ]);
 
   // ─── Albums methods ───────────────────────────────────────────────
   /** Plays from the clicked row through the album — the album becomes the queue. */

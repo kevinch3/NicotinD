@@ -16,9 +16,9 @@ export interface ShareSegment {
 
 /**
  * Part-to-whole genre bar: one stacked bar plus a legend carrying the exact
- * percentages. The artist page's About block (#1572) feeds it a per-track
+ * percentages. The artist page's About block (#1572) and the album page feed it a per-track
  * primary-genre share and Library Stats (#1670) a per-play one, so segments sum
- * to 100% — unlike `GenreDistributionStripComponent`, whose weights overlap.
+ * to 100% — unlike the overlapping weights the genre radar draws.
  *
  * Colour is one hue stepped down by rank (ordinal, not categorical), with the
  * catch-all buckets neutral; the legend text carries every value, so colour is

@@ -658,3 +658,18 @@ export async function vibesPlayable(page: Page): Promise<void> {
     return size === '1' ? route.fulfill({ json: [{ id: 'vibe-probe' }] }) : route.continue();
   });
 }
+
+/**
+ * Open the album page's ⋯ menu (docs/web-ui.md "Album page header"). Select, Fix
+ * metadata, Remove album and Complete this album live in it, not in the header.
+ */
+export async function openAlbumMenu(page: Page): Promise<void> {
+  await page.getByTestId('album-menu-toggle').click();
+  await expect(page.getByTestId('album-menu')).toBeVisible();
+}
+
+/** Open the album's fix-metadata modal through the ⋯ menu. */
+export async function openAlbumMetadataFix(page: Page): Promise<void> {
+  await openAlbumMenu(page);
+  await page.getByTestId('album-action-Fix metadata').click();
+}

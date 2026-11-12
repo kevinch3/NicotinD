@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '../helpers';
-import { FIXTURE, expandGroup, openAlbumCard } from '../helpers';
+import { FIXTURE, expandGroup, openAlbumCard, openAlbumMenu } from '../helpers';
 
 /**
  * #1699: the toast stack sits just above the bottom chrome, never on it. Toasts
@@ -40,7 +40,7 @@ async function openAlbumWithToastTrigger(page: Page): Promise<void> {
   await page.goto('/library');
   await openAlbumCard(page, FIXTURE.album.title);
   await expect(page.getByTestId('play-album')).toBeVisible();
-  await expect(page.getByTestId('album-complete-action')).toBeEnabled();
+  await expect(page.getByTestId('album-incomplete-badge')).toBeVisible();
 }
 
 async function startTrack(page: Page): Promise<void> {
@@ -49,6 +49,7 @@ async function startTrack(page: Page): Promise<void> {
 }
 
 async function raiseToast(page: Page): Promise<void> {
+  await openAlbumMenu(page);
   await page.getByTestId('album-complete-action').click();
   await expect(page.getByTestId('toast').filter({ hasText: 'Nothing to hunt' })).toBeVisible();
 }
@@ -99,7 +100,7 @@ async function showUpdateBanner(page: Page): Promise<void> {
   await page.getByTestId('settings-check-update').click();
   await expect(page.getByTestId('update-banner')).toBeVisible();
   await page.goBack();
-  await expect(page.getByTestId('album-complete-action')).toBeEnabled();
+  await expect(page.getByTestId('album-incomplete-badge')).toBeVisible();
   await expect(page.getByTestId('update-banner')).toBeVisible();
 }
 

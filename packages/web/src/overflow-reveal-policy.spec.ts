@@ -251,12 +251,9 @@ describe('overflow reveal policy (#1665)', () => {
     expect(sources.length).toBeGreaterThanOrEqual(300);
     expect(tagSites.length).toBeGreaterThanOrEqual(150);
     expect(covered.length).toBeGreaterThanOrEqual(120);
-    // Stylesheet truncation is read too: the TV queue rows and the genre strip.
+    // Stylesheet truncation is read too: the TV queue rows.
     expect(allCssClasses).toEqual(
-      expect.arrayContaining(['np-tv-queue-title', 'np-tv-queue-artist', 'bar-label']),
-    );
-    expect(stylesheets.map(rel)).toContain(
-      'components/genre-distribution-strip/genre-distribution-strip.component.css',
+      expect.arrayContaining(['np-tv-queue-title', 'np-tv-queue-artist']),
     );
     // The home mosaic's string-built faces: a title and a subtitle on each of three face kinds.
     expect(markerSites.filter((s) => s.file.startsWith('pages/mosaic-home/')).length).toBe(6);
@@ -269,12 +266,6 @@ describe('overflow reveal policy (#1665)', () => {
     expect(tags('<p class="line-clamp-2">x</p><p class="line-clamp-[3]">y</p>')).toHaveLength(2);
     expect(tags('<input class="text-ellipsis" />')).toHaveLength(1);
     expect(tags('<span class="np-tv-queue-title">x</span>')).toHaveLength(1);
-    // A component stylesheet's class truncates in its own template only.
-    const strip = 'components/genre-distribution-strip/genre-distribution-strip.component.html';
-    expect(sitesIn(strip, '<span class="bar-label">x</span>')).toHaveLength(1);
-    expect(
-      sitesIn('components/other/other.component.html', '<span class="bar-label">x</span>'),
-    ).toEqual([]);
     // A tag split over lines, with a `>` inside a binding, is still one tag.
     expect(
       tags('<p\n  [title]="a > b ? x : y"\n  class="truncate"\n  appOverflowReveal\n>x</p>'),

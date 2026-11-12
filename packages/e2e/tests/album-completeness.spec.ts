@@ -1,6 +1,6 @@
 import type { APIRequestContext } from '@playwright/test';
 import { test, expect } from '../helpers';
-import { ADMIN, bearer } from '../helpers';
+import { ADMIN, bearer, openAlbumMenu } from '../helpers';
 
 /**
  * The album page's incomplete badge + curator Complete action (issue #737).
@@ -44,6 +44,8 @@ test.describe('album completeness badge', () => {
     await expect(page.getByTestId('play-album')).toBeVisible();
     expect((await read).ok()).toBe(true);
     await expect(page.getByTestId('album-incomplete-badge')).toHaveCount(0);
+    await openAlbumMenu(page);
+    await expect(page.getByTestId('album-action-Fix metadata')).toBeVisible();
     await expect(page.getByTestId('album-complete-action')).toHaveCount(0);
   });
 
@@ -65,9 +67,10 @@ test.describe('album completeness badge', () => {
 
     await page.goto(`/library/albums/${id}`);
     const badge = page.getByTestId('album-incomplete-badge');
-    await expect(badge).toHaveText('Incomplete — 9 of 12 tracks');
+    await expect(badge).toContainText('Incomplete — 9 of 12 tracks');
 
     // The seeded admin is a curator, on a server with acquisition on.
+    await openAlbumMenu(page);
     const action = page.getByTestId('album-complete-action');
     await expect(action).toBeEnabled();
     await action.click();
