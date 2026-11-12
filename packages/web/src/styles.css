@@ -305,7 +305,6 @@
      referenced as `bg-theme-muted` in two places but never registered, so it
      rendered transparent — the grab notch looked invisible. */
   .bg-theme-muted   { background-color: var(--theme-text-muted); }
-  .border-theme     { border-color: var(--theme-border); }
   /* Subtle divider using the *lighter* surface-2 tone (not the border token) —
      album-hunt-modal section rules + artist-detail tabs referenced
      `border-theme-surface-2`/`divide-theme-surface-2` but neither was ever
@@ -412,6 +411,9 @@
      (harmless, byte-identical duplicates for the plain no-variant case) so no
      existing call site needs touching. */
   --color-theme-secondary: var(--theme-text-secondary);
+  /* #1846: `hover:text-theme-primary` (100 uses) emitted no rule while the
+     name existed only as a static class. */
+  --color-theme-primary: var(--theme-text-primary);
   --color-theme-surface: var(--theme-surface);
   --color-theme-muted: var(--theme-text-muted);
   /* Same promotion, same failure (#1640): `bg-theme-surface-2/90` on the
@@ -468,6 +470,11 @@
    as a border (spinner ring / track-row checkbox hover); `ring-theme-bg` rings
    an element in the page bg colour to separate it from the surface behind;
    `accent-theme[-secondary]` themes native form-control `accent-color`. */
+/* `@utility`, not a static class, so `hover:`/`focus:border-theme` resolve
+   (#1846). Not a `--color-theme` entry: that would also mint `bg-theme`. */
+@utility border-theme {
+  border-color: var(--theme-border);
+}
 @utility border-theme-secondary {
   border-color: var(--theme-text-secondary);
 }
