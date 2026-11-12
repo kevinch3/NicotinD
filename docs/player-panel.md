@@ -1,7 +1,7 @@
 # Player panel: one snap-point state machine (design proposal)
 
-**Status: proposal, not built.** This is Step 0 of #1651 (sub-issue #1677). It unblocks #1678 (pure
-state machine), #1679 (full height and off-scene), #1680 (karaoke fold) and #1681 (tab registration
+**Status: decided (owner, 2026-11-09), not built.** This is Step 0 of #1651 (sub-issue #1677). It
+unblocks #1678 (pure state machine), #1679 (full height, and the pull-down past rest), #1680 (karaoke fold) and #1681 (tab registration
 and coverage), and it coordinates with #1668 (the shared tab component). Nothing here describes
 shipped behaviour except the "Today" sections, and each claim there cites `file:line` on `master`
 at `c5671c23`. Anything marked **assumption** was not verified in code.
@@ -9,6 +9,20 @@ at `c5671c23`. Anything marked **assumption** was not verified in code.
 Owner decision already taken (#1651, 2026-11-07): tapping Queue or pulling up extends the panel to
 **full height, showing its notch**. Pulling down returns it to rest, and pulling further slides it
 **off scene**. Karaoke and future tabs share the same state machine.
+
+**Owner decisions (2026-11-09)**, recorded in full under "Decisions" at the end:
+
+| | Answer | Effect on this proposal |
+| --- | --- | --- |
+| D1 | **C**: no `hidden` state | "Further down" keeps meaning *dismiss the sheet*. There is no off-scene snap and no peek strip. |
+| D2 | **A**: the origin decides | Stage down-pull dismisses in 120 px. A panel down-pull from `rest` continues into a dismiss; one from `full` stops at `rest`. |
+| D3 | **A**: fixed snaps, so **two** | With D1 = C the snaps are `rest` and `full`. The cover shrink is only the animation between them. |
+| D4 | **A** | An inactive tab switches and keeps the snap; the active tab toggles `rest` ↔ `full`. |
+| D5 | **A** | Karaoke is the Lyrics tab at `full`. |
+| D6 | **A** | A compact transport strip above a `full` Queue; karaoke brings its own chrome. |
+
+The sections below are written to these answers. #1651's "slide it off scene" is therefore the
+sheet's own dismiss, reached by pulling the panel down from `rest`.
 
 Paths below are relative to `packages/web/src/app/` unless they start with `docs/` or `packages/`.
 
@@ -123,7 +137,7 @@ Paths below are relative to `packages/web/src/app/` unless they start with `docs
 
 ```ts
 // Proposed: lib/player-panel.ts (pure, no Angular)
-type PanelSnap = 'hidden' | 'rest' | 'full';
+type PanelSnap = 'rest' | 'full'; // D1 = C: no 'hidden'
 interface PanelState {
   snap: PanelSnap;
   tab: string; // a registered tab id (§4)
@@ -136,11 +150,10 @@ and off TV. "Dismiss" is an **exit** of the panel machine into the sheet's state
 
 | Snap     | Panel                                                                 | Cover               | Transport                       |
 | -------- | --------------------------------------------------------------------- | ------------------- | ------------------------------- |
-| `hidden` | translated below the sheet; only the peek strip is visible (D1)        | max (320)           | visible                         |
 | `rest`   | today's layout with `queueExtraHeightPx = 0`                           | max                 | visible                         |
 | `full`   | top edge just under the safe-area inset; notch at its top; covers the cover, transport and header | covered | compact strip or tab's own (D6) |
 
-The proposal **recommends three fixed snaps** (D3). Today's free cover shrink becomes the visual
+**Two fixed snaps** (D3 A under D1 C). Today's free cover shrink becomes the visual
 interpolation between `rest` and `full` while the finger is down: the first 320 px of lift shrink the
 cover exactly as `coverMaxPx` does today, and the rest translate the panel up over the transport and
 header. The panel never comes to rest in between.
@@ -152,82 +165,78 @@ downward. It is measured once at resolve time from the live layout (**assumption
 `getBoundingClientRect` per gesture is cheap enough; no ResizeObserver).
 
 - `lift(full) = F` = distance from the panel's rest top to `env(safe-area-inset-top)`.
-- `lift(hidden) = −H` = panel rest height minus the peek height.
-- `lift < −H` is a dismiss drag: sheet offset `= −H − lift`. This is today's `dismissBaseDy` idea
-  generalised.
+- `lift < 0` is a dismiss drag: sheet offset `= −lift`. It is reachable only from a gesture that
+  started at `rest` (D2 A). A gesture that started at `full` clamps `lift` at 0, so a hard collapse
+  never closes the player. This is today's `dismissBaseDy` idea generalised.
 
 Render mapping, all pure (`panelLayout(lift, geometry)`):
 
 | `lift` range | `coverMaxPx`     | panel `translateY` | header/transport                          |
 | ------------ | ---------------- | ------------------ | ----------------------------------------- |
-| `[−H, 0)`    | 320              | `−lift` (down)     | normal                                    |
+| `< 0`        | 320              | 0 (sheet moves)    | normal; the whole sheet follows the finger |
 | `[0, 320]`   | `320 − lift`     | 0                  | normal                                    |
 | `(320, F]`   | 0                | `−(lift − 320)`    | covered; fade with progress (motion-safe) |
 
 ### 2.3 Transition table
 
 Events: `drag-end(lift, velocity)`, `cancel(lift)`, `tap-active-tab`, `tap-tab(id)`, `notch-activate`,
-`key-up`, `key-down`, `back`, `restore`. The geometry gaps are `G_up = F` (rest→full) and
-`G_down = H` (rest→hidden). `SNAP_COMMIT = min(96 px, 35 % of the gap)`. 96 is the mini bar's
-`OPEN_THRESHOLD_PX` (`components/player/player.component.ts:1807`). `FLICK` is the existing
-`FLICK_PX_PER_MS`.
+`key-up`, `key-down`, `back`, `restore`. The geometry gap is `G = F` (rest→full).
+`SNAP_COMMIT = min(96 px, 35 % of G)`. 96 is the mini bar's `OPEN_THRESHOLD_PX`
+(`components/player/player.component.ts:1807`). `FLICK` is the existing `FLICK_PX_PER_MS`.
+`start` is the snap the gesture began on.
 
-| From     | Event                                    | Condition                                      | To                         |
-| -------- | ---------------------------------------- | ---------------------------------------------- | -------------------------- |
-| `rest`   | drag-end                                 | `lift ≥ SNAP_COMMIT` or up-flick               | `full`                     |
-| `rest`   | drag-end                                 | `lift ≤ −SNAP_COMMIT` or down-flick            | `hidden`                   |
-| `rest`   | drag-end                                 | otherwise                                      | `rest`                     |
-| `full`   | drag-end                                 | `F − lift ≥ SNAP_COMMIT` or down-flick         | `rest` (never two snaps)   |
-| `full`   | drag-end                                 | otherwise                                      | `full`                     |
-| `hidden` | drag-end                                 | `lift + H ≥ SNAP_COMMIT` or up-flick           | `rest` (never two snaps)   |
-| `hidden` | drag-end                                 | otherwise                                      | `hidden`                   |
-| any      | drag-end in the dismiss range            | `shouldCommit(offset, v, {thresholdPx: 120})`  | **exit: dismiss sheet**    |
-| any      | drag-end in the dismiss range            | otherwise                                      | `hidden`                   |
-| any      | cancel                                   | same rows with `velocity = 0`                  | per distance only          |
-| `rest`   | tap-active-tab / notch-activate          | —                                              | `full`                     |
-| `full`   | tap-active-tab / notch-activate          | —                                              | `rest`                     |
-| `hidden` | tap-active-tab / notch-activate / peek tap | —                                            | `rest`                     |
-| any      | tap-tab(id ≠ active)                     | —                                              | same snap, `tab = id`; `hidden → rest` |
-| any      | key-up / key-down                        | —                                              | one snap up / down, clamped |
-| `full`   | back                                     | —                                              | `rest` (consumed)          |
-| `rest`, `hidden` | back                             | —                                              | not consumed → sheet closes |
-| —        | restore                                  | §8                                             | persisted snap and tab     |
+| Start  | Event                         | Condition                                     | To                       |
+| ------ | ----------------------------- | --------------------------------------------- | ------------------------ |
+| `rest` | drag-end, `lift ≥ 0`          | `lift ≥ SNAP_COMMIT` or up-flick              | `full`                   |
+| `rest` | drag-end, `lift ≥ 0`          | otherwise                                     | `rest`                   |
+| `rest` | drag-end, `lift < 0`          | `shouldCommit(−lift, v, {thresholdPx: 120})`  | **exit: dismiss sheet**  |
+| `rest` | drag-end, `lift < 0`          | otherwise                                     | `rest`                   |
+| `full` | drag-end                      | `F − lift ≥ SNAP_COMMIT` or down-flick        | `rest` (never a dismiss) |
+| `full` | drag-end                      | otherwise                                     | `full`                   |
+| any    | cancel                        | same rows with `velocity = 0`                 | per distance only        |
+| `rest` | tap-active-tab / notch-activate | —                                           | `full`                   |
+| `full` | tap-active-tab / notch-activate | —                                           | `rest`                   |
+| any    | tap-tab(id ≠ active)          | —                                             | same snap, `tab = id`    |
+| any    | key-up / key-down             | —                                             | `full` / `rest` (no dismiss from a key) |
+| `full` | back                          | —                                             | `rest` (consumed)        |
+| `rest` | back                          | —                                             | not consumed → sheet closes |
+| —      | restore                       | §8                                            | persisted snap and tab   |
 
 A flick advances **at most one snap from where the gesture started**. A distance release settles on
 the start snap or its neighbour in the direction of travel, so a fling from `full` lands on `rest`,
-not off scene. That one rule replaces "projected position" maths and is trivially table-testable.
+not into a dismiss. That one rule replaces "projected position" maths and is trivially
+table-testable.
 
 ### 2.4 Who owns a pull (the new mode table)
 
 `resolve` still runs once at slop (`lib/vertical-swipe.ts:176-183`). It now returns `panel`,
 `dismiss` or `release`, decided by `(origin zone, direction, snap, nested scrollTop, lg)`.
-Recommended D2 option A:
+Decided D2 option A:
 
 | Origin                    | Direction | Snap              | Condition                         | Mode                     |
 | ------------------------- | --------- | ----------------- | --------------------------------- | ------------------------ |
 | any                       | any       | any               | `lg` (side column)                | today's rows: up releases, down dismisses (§5) |
 | panel                     | down      | any               | nested `scrollTop > 0`            | release                  |
 | panel                     | up        | `full`            | —                                 | release (native scroll)  |
-| panel / peek              | up        | `rest`, `hidden`  | —                                 | **panel**                |
-| panel / peek              | down      | `full`, `rest`, `hidden` | at top                     | **panel** (continues into dismiss past `hidden` only if the gesture started at `rest` or `hidden`) |
-| stage (cover, transport, header) | up | `rest`, `hidden` | —                                | **panel**                |
-| stage                     | down      | `rest`, `hidden`  | —                                 | **dismiss** (today's cheap 120 px close is kept) |
+| panel                     | up        | `rest`            | —                                 | **panel**                |
+| panel                     | down      | `rest`, `full`    | at top                            | **panel** (from `rest` it continues into a dismiss; from `full` it stops at `rest`) |
+| stage (cover, transport, header) | up | `rest`           | —                                 | **panel**                |
+| stage                     | down      | `rest`            | —                                 | **dismiss** (today's cheap 120 px close is kept) |
 | stage                     | any       | `full`            | —                                 | not reachable: the stage is covered |
 
 What changes against `docs/web-ui.md:98-106`:
 
-- **`resize` becomes `panel`** and covers both directions and all three snaps. "Panel grown" rows
+- **`resize` becomes `panel`** and covers both directions and both snaps. "Panel grown" rows
   disappear, because there is no grown-but-resting state.
 - **New: `panel + up + full` releases.** At full height the list should scroll. Today an up-swipe on
   the panel resizes first whenever there is room (`now-playing.component.ts:366-371`).
 - **Kept:** the nested-scroller yield, `BODY_NO_SWIPE`, queue rows owning their pointer through
   `data-np-no-swipe` (`now-playing-queue-panel.component.html:37`, #1295), and the swipe-skip
   arbitration (`createHorizontalSwipe` and the per-pointer claim, `lib/vertical-swipe.ts:160-183`).
-  Skip stays excluded from the panel zone (`lib/swipe-to-skip.ts:42-51`), so the peek strip must
-  carry `data-np-zone="panel"` too.
-- **Continuation** stays as one uninterrupted pull, but it is now positional. `lift` keeps running
-  across `rest`, so a pull from `full` can pass through `rest` into `hidden` in one stroke and
-  settle by §2.3. Whether it may go on into a dismiss is D2. Nothing is written to storage
+  Skip stays excluded from the panel zone (`lib/swipe-to-skip.ts:42-51`); with D1 C there is no
+  peek strip to add to it.
+- **Continuation** stays as one uninterrupted pull, but it is now positional. From `rest`, `lift`
+  runs below 0 into today's dismiss. From `full`, it clamps at `rest` (D2 A). Nothing is written to storage
   mid-gesture: the write at `now-playing.component.ts:266` goes, and persistence happens only on a
   settled snap.
 - **pointercancel** settles by distance only (velocity forced to 0). An OS interruption, such as a
@@ -240,7 +249,7 @@ What changes against `docs/web-ui.md:98-106`:
 
 ## 3. Karaoke folds in
 
-Recommended D5 option A: **Karaoke is the Lyrics tab at `full`.**
+Decided D5 option A: **Karaoke is the Lyrics tab at `full`.**
 
 | Today                                                  | Proposed                                                                 |
 | ------------------------------------------------------ | ------------------------------------------------------------------------ |
@@ -301,15 +310,14 @@ template obeys rules 1 and 2. The tab strip itself becomes #1668's `<app-icon-ta
 
 ## 5. `lg`
 
-- The side column stays. There is no `hidden` and no vertical `panel` mode at `lg`, so today's two
+- The side column stays. There is no vertical `panel` mode at `lg`, so today's two
   `lg` rows are kept verbatim (`now-playing.component.ts:368`, `:373`), and so are the splitter and
   `nicotind:np-side-width`.
 - The machine still runs, with snaps `{rest, full}` only. `rest` is the side column. `full` exists
   only for tabs whose `full.atLg` is true: Lyrics/karaoke yes, as today, since karaoke covers the
   sheet at every width (`docs/web-ui.md:422`); Queue no (a full-width queue on a desktop buys
   nothing). Tapping the active Queue tab at `lg` is then a no-op.
-- The persisted snap is shared across widths. A stored `hidden` renders as `rest` at `lg`, and a
-  `full` for a tab without `atLg` renders as `rest`. The stored value is not rewritten, so the phone
+- The persisted snap is shared across widths. A `full` for a tab without `atLg` renders as `rest`. The stored value is not rewritten, so the phone
   layout returns as left (`matchMedia` is read live, `:60-63`).
 
 ## 6. TV, desktop pointer and keyboard
@@ -338,8 +346,7 @@ template obeys rules 1 and 2. The tab strip itself becomes #1668's `<app-icon-ta
 
 - **Focus order** follows DOM order, which matches visual order: header → cover/track info →
   transport → notch → tabs → panel body. At `full` the covered stage (header, cover, transport) gets
-  `inert`, so Tab cannot land behind the panel. At `hidden` the panel body gets `inert` and the peek
-  strip stays focusable. Snap changes move focus as in §3.
+  `inert`, so Tab cannot land behind the panel. Snap changes move focus as in §3.
 - **ARIA**: the notch has `aria-expanded = snap === 'full'` and `aria-controls` pointing at the panel
   frame, with its label switching "Expand queue/lyrics" ↔ "Collapse". The tabs are
   `tablist`/`tab`/`tabpanel` via #1668. The frame carries `aria-label` from the active tab. No live
@@ -349,8 +356,7 @@ template obeys rules 1 and 2. The tab strip itself becomes #1668's `<app-icon-ta
   The finger-following drag stays, because direct manipulation is not decorative motion. The same
   applies to the sheet's existing `duration-300` (`now-playing.component.html:13`), which fixes the
   gap from §1.5 in passing.
-- **Targets**: the notch stays at least 44 px (`docs/web-ui.md:2290-2300`), and the peek strip is at
-  least 44 px plus `env(safe-area-inset-bottom)`.
+- **Targets**: the notch stays at least 44 px (`docs/web-ui.md:2290-2300`).
 
 ## 8. Persistence migration
 
@@ -361,6 +367,7 @@ construction, as the two old keys are today.
 | -------------------------------------- | --------------------------------------------------------------- |
 | `np-panel` valid, tab registered       | use it                                                          |
 | `np-panel` valid, tab not registered   | first registered tab, same snap                                 |
+| `np-panel` with an unknown snap (e.g. `hidden`) | `rest`, same tab                                       |
 | `np-panel` malformed or `v` unknown    | fall through to the legacy keys                                 |
 | legacy `nicotind:np-active-panel`      | `'lyrics'` → `tab: 'lyrics'`, anything else → `'queue'` (as `:541-548`) |
 | legacy `nicotind:np-queue-extra`       | any value → `snap: 'rest'` under D3 A (see below)               |
@@ -371,8 +378,7 @@ order, so a failed write leaves the old state readable. Storage errors are swall
 `nicotind:np-side-width` is untouched.
 
 `np-queue-extra` maps to `rest`, not `full`, even for someone who had dragged it to 320. `full`
-covers the transport, which their old layout never did, and `full` is one tap away. Under D3 B the
-key keeps its meaning (the user-sized rest) and is not migrated at all.
+covers the transport, which their old layout never did, and `full` is one tap away.
 
 `full` is persisted and restored, karaoke included. Nothing jumps on load, because the sheet itself
 always boots closed (`services/player.service.ts:200`). The next open lands where the listener left
@@ -384,8 +390,8 @@ asserts it.
 - **#1678, unit, pure, table-driven** (`lib/player-panel.spec.ts`):
   - every row of §2.3 and §2.4;
   - flick against distance on each side of `SNAP_COMMIT`;
-  - one-snap-max on a hard fling;
-  - continuation across `rest`, and into dismiss by start snap (D2);
+  - one-snap-max on a hard fling (a fling down from `full` lands on `rest`, never a dismiss);
+  - continuation from `rest` into a dismiss, and its absence from `full` (D2);
   - `cancel` with velocity 0;
   - interrupted settle starting from the rendered `lift`;
   - `lg` reduction;
@@ -393,15 +399,19 @@ asserts it.
 - **#1679, component**: the `panelLayout` mapping bound to `coverMaxPx` and the frame transform;
   notch ARIA and keys; `inert` per snap; the queue at `full` releasing up-swipes to native scroll.
   **e2e (CDP touch, as `mobile-ux.spec.ts:1097`)**: pull-up to full, tap active tab, pull-down to
-  rest, over-pull to hidden, reload resume, swipe-skip and dismiss side by side with no stolen
+  rest, over-pull from rest into a dismiss, reload resume, swipe-skip and dismiss side by side with no stolen
   pointer, and a queue-row swipe still owning its pointer.
 - **#1680**: karaoke entered and exited through the notch, the tab and a pull; browse mode not
   entered by an owned pull; vocal mute and offset present at `full`; TV karaoke spec unchanged.
 - **#1681**: the sweep spec for tab rules 1 and 2; a fake third tab registered in a spec and driven
-  through every snap with zero gesture code; Storybook stories per snap × tab (`hidden`, `rest`,
-  `full`, karaoke), extending `now-playing.stories.ts`.
+  through every snap with zero gesture code; Storybook stories per snap × tab (`rest`, `full`,
+  karaoke), extending `now-playing.stories.ts`.
 
-## Decisions for the owner
+## Decisions
+
+Answered by the owner on 2026-11-09: **D1 C, D2 A, D3 A, D4 A, D5 A, D6 A**. The options are kept
+below as the record of what was weighed. D3 A's "three fixed snaps" became two because D1 C removed
+`hidden`.
 
 **D1. When the panel is pulled off scene, what is left on screen?**
 - **A (recommended):** a 44 px peek strip with the notch and the tab icons, because without one
