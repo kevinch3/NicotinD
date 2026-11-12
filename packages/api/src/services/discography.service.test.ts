@@ -236,6 +236,44 @@ describe('DiscographyService', () => {
     expect(result.albums[0]).toMatchObject({ status: 'present', localAlbumId: 'al1' });
   });
 
+  // Seen on prod (Ed Sheeran): Lidarr listed four albums titled "÷ (Deluxe)", and the
+  // page drew four identical tiles, each with its own Get.
+  it('lists releases sharing a title and type once, keeping the one the library matches', async () => {
+    insertArtist(db, 'ar1', 'Ed Sheeran');
+    insertAlbum(db, 'al1', '÷ (Deluxe)', 'ar1');
+    insertSong(db, 's1', 'al1', 'Eraser', 'ar1');
+
+    const stats = { trackCount: 2, totalTrackCount: 2, sizeOnDisk: 0, percentOfTracks: 100 };
+    const { lidarr } = makeLidarrStub({
+      albums: [
+        makeLidarrAlbum({ id: 1, title: '÷ (Deluxe)', statistics: stats }),
+        makeLidarrAlbum({ id: 2, title: '÷ (Deluxe)', statistics: stats }),
+        makeLidarrAlbum({ id: 3, title: '÷ (deluxe)', statistics: stats }),
+        makeLidarrAlbum({ id: 4, title: '÷ (Deluxe)', albumType: 'Single', statistics: stats }),
+        makeLidarrAlbum({ id: 5, title: '÷', statistics: stats }),
+      ],
+      tracksByAlbum: {
+        1: [],
+        2: [makeTrack(21, 2, 'Eraser'), makeTrack(22, 2, 'Castle on the Hill')],
+        3: [makeTrack(31, 3, 'Dive'), makeTrack(32, 3, 'Perfect')],
+        4: [makeTrack(41, 4, 'Shape of You')],
+        5: [makeTrack(51, 5, 'Eraser'), makeTrack(52, 5, 'Castle on the Hill')],
+      },
+      monitoredArtist: {
+        id: 99,
+        foreignArtistId: 'mbid-sheeran',
+        artistName: 'Ed Sheeran',
+        sortName: 'Sheeran, Ed',
+        status: 'continuing',
+        images: [],
+        monitored: true,
+      },
+    });
+
+    const result = disc(await new DiscographyService(lidarr, db).getArtistDiscography('ar1'));
+    expect(result.albums.map((a) => a.lidarrId).sort()).toEqual([2, 4, 5]);
+  });
+
   // #1627, seen on prod (La Vela Puerca): each local album held one song, and each
   // song belonged to the OTHER album's tracklist. The tracklist match is the rule the
   // header and every tile read: both are missing, though each keeps its local album.

@@ -126,20 +126,21 @@ export class DiscographyService {
     // Fetch tracks for all albums in parallel (concurrency 5)
     const trackMap = await this.fetchAllTracks(lidarrAlbums);
 
-    const albums = lidarrAlbums.map((album) =>
-      this.buildDiscographyAlbum(
-        artistId,
-        album,
-        trackMap.get(album.id) ?? [],
-        localAlbums,
-        localSongs,
+    const albums = collapseSameTitledReleases(
+      lidarrAlbums.map((album) =>
+        this.buildDiscographyAlbum(
+          artistId,
+          album,
+          trackMap.get(album.id) ?? [],
+          localAlbums,
+          localSongs,
+        ),
       ),
     );
 
     // Sort: present first, then partial, then missing; within each group by date desc
     albums.sort((a, b) => {
-      const order: Record<AlbumStatus, number> = { present: 0, partial: 1, missing: 2 };
-      const diff = order[a.status] - order[b.status];
+      const diff = STATUS_RANK[a.status] - STATUS_RANK[b.status];
       if (diff !== 0) return diff;
       return (b.releaseDate ?? '').localeCompare(a.releaseDate ?? '');
     });
@@ -346,6 +347,34 @@ export class DiscographyService {
       tracks: discographyTracks,
     };
   }
+}
+
+const STATUS_RANK: Record<AlbumStatus, number> = { present: 0, partial: 1, missing: 2 };
+
+/**
+ * One entry per title and type. Lidarr can list several albums under one title, and
+ * the page then draws tiles nothing tells apart (docs/web-ui.md). Editions keep their
+ * own entry: the key folds case and accents only.
+ */
+export function collapseSameTitledReleases(albums: DiscographyAlbum[]): DiscographyAlbum[] {
+  const kept = new Map<string, DiscographyAlbum>();
+  for (const album of albums) {
+    const title = normalizeArtistForGrouping(album.title);
+    const key = title ? `${album.albumType}\u0000${title}` : `id:${album.lidarrId}`;
+    const rival = kept.get(key);
+    if (!rival || betterRelease(album, rival)) kept.set(key, album);
+  }
+  return [...kept.values()];
+}
+
+/** The library's own match first, then the entry with a tracklist to hunt by. */
+function betterRelease(a: DiscographyAlbum, b: DiscographyAlbum): boolean {
+  const rank =
+    STATUS_RANK[a.status] - STATUS_RANK[b.status] ||
+    b.localTrackCount - a.localTrackCount ||
+    b.tracks.length - a.tracks.length ||
+    a.lidarrId - b.lidarrId;
+  return rank < 0;
 }
 
 function pickCoverArt(album: LidarrAlbum): string | undefined {
