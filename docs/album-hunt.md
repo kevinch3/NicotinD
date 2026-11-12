@@ -414,7 +414,9 @@ undo. `AutoHuntService` remembers the job ids this session asked for and, when t
 (`lib/failure-digest.ts`). A failure while that toast is still on screen folds into it. One album
 offers Dismiss / Find Manually; several offer View in Downloads, where each Error card carries its
 reason and Retry. A 409 from the request is an info notice ("You already have…", "…is already
-downloading"). An `error` toast with actions has no timer (#1543).
+downloading"). An `error` toast with actions has no timer (#1543). Every one of these strings is a
+`getToast.*` catalog key, and `failureDigest` takes `TranslateService.t` as an argument so it
+stays pure (#1840).
 
 **No site-wide lock.** #1049 disabled every trigger while any hunt ran (`anyHunting`), because the
 source has two search lanes. That lock only ever covered the search, and extending it to cover the

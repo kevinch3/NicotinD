@@ -10,6 +10,13 @@ import { TransferService } from './transfer.service';
 import { ToastService } from './toast.service';
 import { Router } from '@angular/router';
 import type { DiscographyAlbum } from './api/api-types';
+import { TranslateService } from './translate.service';
+import EN_CATALOG from '../../../public/i18n/en.json';
+import ES_CATALOG from '../../../public/i18n/es.json';
+
+/** Serves the shipped catalogs, so the toasts are asserted in the words a listener reads. */
+const catalogFetch = (async (url: string) =>
+  new Response(JSON.stringify(url.endsWith('/es.json') ? ES_CATALOG : EN_CATALOG))) as typeof fetch;
 
 const ALBUM: DiscographyAlbum = {
   lidarrId: 42,
@@ -30,8 +37,7 @@ describe('AutoHuntService', () => {
   const toasts = () =>
     toastsVisible ? show.mock.results.map((r) => ({ id: r.value as string })) : [];
 
-  beforeEach(() => {
-    vi.useFakeTimers();
+  beforeEach(async () => {
     getAlbum.mockReset();
     getAlbum.mockReturnValue(of({ jobId: 'j1' }));
     cancelJob.mockReset();
@@ -52,6 +58,11 @@ describe('AutoHuntService', () => {
         { provide: ToastService, useValue: { show, dismiss, toasts } },
       ],
     });
+    localStorage.clear();
+    const i18n = TestBed.inject(TranslateService);
+    await i18n.init(catalogFetch);
+    await i18n.use('en', catalogFetch, { choice: false });
+    vi.useFakeTimers();
   });
 
   const flush = async () => {
@@ -345,6 +356,35 @@ describe('AutoHuntService', () => {
       const status = svc().statusForAlbum({ artist: 'A', title: 'B' });
       expect(status).toMatchObject({ phase: 'job' });
       expect(status).not.toHaveProperty('expected');
+    });
+  });
+
+  describe('in Spanish (#1840)', () => {
+    beforeEach(async () => {
+      vi.useRealTimers();
+      await TestBed.inject(TranslateService).use('es', catalogFetch, { choice: false });
+      vi.useFakeTimers();
+    });
+
+    it('says the album is already owned in Spanish, with the title interpolated', async () => {
+      getAlbum.mockReturnValue(httpError(409, { error: 'already-complete' }));
+      svc().hunt(ALBUM, 'Pink Floyd', vi.fn());
+      await flush();
+      expect(messages()).toEqual(['Ya tienes "Wish You Were Here"']);
+    });
+
+    it('translates a failure and its actions', async () => {
+      getAlbum.mockReturnValue(httpError(503, { error: 'Sin coincidencias' }));
+      svc().hunt(ALBUM, 'Pink Floyd', vi.fn());
+      await flush();
+      expect(messages()).toEqual(['No se pudo conseguir "Wish You Were Here" — Sin coincidencias']);
+      expect(labels()).toEqual(['Cerrar', 'Buscar manualmente']);
+    });
+
+    it('translates a failed cancel', async () => {
+      cancelJob.mockReturnValue(httpError(500, {}));
+      await svc().cancel('j1');
+      expect(messages()).toEqual(['No se pudo cancelar — inténtalo desde Descargas']);
     });
   });
 });

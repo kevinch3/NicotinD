@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { DownloadsApiService } from './api/downloads-api.service';
 import { TransferService } from './transfer.service';
 import { ToastService, type ToastAction } from './toast.service';
+import { TranslateService } from './translate.service';
 import { sameAlbum, type AcquisitionJobView } from '@nicotind/core';
 import { IDLE_HUNT, SEARCHING_HUNT, type AlbumHuntStatus } from '../lib/album-hunt-status';
 import type { DiscographyAlbum } from './api/api-types';
@@ -31,6 +32,9 @@ export class AutoHuntService {
   private transfer = inject(TransferService);
   private toasts = inject(ToastService);
   private router = inject(Router);
+  private i18n = inject(TranslateService);
+  private readonly t = (key: string, params?: Record<string, string | number>) =>
+    this.i18n.t(key, params);
   /** The failure toast on screen, so a run of failures groups into one (#1509). */
   private failureToast: { id: string; failures: GetFailure[] } | null = null;
   /** Gets this session asked for, by job id, until the feed says how each ended. */
@@ -151,11 +155,14 @@ export class AutoHuntService {
     } catch (err) {
       const outcome = classifyHuntDownloadError(err);
       if (outcome.kind === 'already-complete') {
-        this.toasts.show({ message: `You already have "${album.title}"`, kind: 'info' });
+        this.toasts.show({
+          message: this.t('getToast.alreadyHave', { title: album.title }),
+          kind: 'info',
+        });
       } else if (outcome.kind === 'already-downloading') {
         let id!: string;
         id = this.toasts.show({
-          message: `"${album.title}" is already downloading`,
+          message: this.t('getToast.alreadyDownloading', { title: album.title }),
           kind: 'info',
           actions: [this.viewInDownloads(() => id)],
         });
@@ -171,7 +178,7 @@ export class AutoHuntService {
     try {
       await firstValueFrom(this.api.cancelJob(jobId));
     } catch {
-      this.toasts.show({ message: "Couldn't cancel — try from Downloads", kind: 'error' });
+      this.toasts.show({ message: this.t('getToast.cancelFailed'), kind: 'error' });
     }
     await this.transfer.kickPoll();
   }
@@ -193,7 +200,7 @@ export class AutoHuntService {
 
   private viewInDownloads(toastId: () => string): ToastAction {
     return {
-      label: 'View in Downloads',
+      label: this.t('getToast.viewInDownloads'),
       callback: () => {
         this.toasts.dismiss(toastId());
         void this.router.navigateByUrl('/get?tab=activity');
@@ -217,19 +224,22 @@ export class AutoHuntService {
     if (onScreen) this.toasts.dismiss(prior.id);
 
     let id!: string;
-    const dismiss: ToastAction = { label: 'Dismiss', callback: () => this.toasts.dismiss(id) };
+    const dismiss: ToastAction = {
+      label: this.t('getToast.dismiss'),
+      callback: () => this.toasts.dismiss(id),
+    };
     const next: ToastAction =
       failures.length > 1
         ? this.viewInDownloads(() => id)
         : {
-            label: 'Find Manually',
+            label: this.t('getToast.findManually'),
             callback: () => {
               this.toasts.dismiss(id);
               openManual();
             },
           };
     id = this.toasts.show({
-      message: failureDigest(failures),
+      message: failureDigest(failures, this.t),
       kind: 'error',
       actions: [dismiss, next],
     });
