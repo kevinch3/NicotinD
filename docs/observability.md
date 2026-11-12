@@ -6,12 +6,19 @@ surfaces** and inert when unconfigured.
 ## Web (Angular)
 
 - **The SDK is loaded lazily (issue #285).** Sentry is ~272 kB — 42 % of the initial
-  chunk, Session Replay alone 124 kB — so `loadSentry(environment, release, nativeShell?, capacitor?)`
+  chunk, Session Replay alone 124 kB — so `loadSentry(environment, release, nativeShell?, capacitor?, page?)`
   (`app/observability/sentry.ts`) reaches the SDK only via a dynamic
   `import('@sentry/angular')`, which esbuild splits into a lazy chunk off the first-paint
   path. `main.ts` calls it in the post-bootstrap `.then()` (and on the `.catch()` for a
   bootstrap failure). It **no-ops when `sentryDsn` is empty**, so dev (`environment.ts`,
   empty DSN) sends nothing; prod (`environment.prod.ts`) is on.
+- **A prod bundle that is not serving a real user sends nothing either.** `isNonUserSession`
+  skips the SDK when `navigator.webdriver` is set (Playwright, WebDriver — the e2e suite and
+  the TV emulator lane) or the web build is served from a loopback host (`localhost`,
+  `127.x`, `[::1]`, `*.localhost`). e2e serves the *prod* bundle, DSN and all, so before this
+  every one of ~400 tests per run was a Sentry session — 10 % recorded, 100 % on any error —
+  and the replay quota drained in days. Electron is exempt from the host check: its normal
+  origin is `http://127.0.0.1:<port>`.
 - **Startup-error capture is preserved by a buffer, not by eager init.**
   `error-buffer.ts` records errors synchronously; `main.ts` installs
   `installStartupErrorCapture()` (global `error`/`unhandledrejection` listeners) *before*
