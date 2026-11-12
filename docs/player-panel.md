@@ -460,3 +460,12 @@ below as the record of what was weighed. D3 A's "three fixed snaps" became two b
   Without the strip, a full queue on a short phone loses play/pause, which today's max resize never
   did.
 - B: nothing but the notch and tabs. The panel is the whole screen, and you pull down for controls.
+
+## Built so far
+
+- **#1678, the pure machine:** `lib/player-panel.ts`, with no Angular and no DOM. It holds the snap
+  type (`rest | full`), the settle rules (`settle`, `snapCommitPx`, `clampLift`), the interrupted
+  start (`gestureBaseLift`), the render mapping (`panelLayout`), the mode table (`resolvePullMode`),
+  the discrete events (`transition`), the `lg` reduction (`effectiveSnap`) and the §8 migration
+  (`restorePanelState`, `persistPanelState`). `lib/player-panel.spec.ts` is table-driven over every
+  row. Nothing renders through it yet; #1679 binds it to the sheet.
