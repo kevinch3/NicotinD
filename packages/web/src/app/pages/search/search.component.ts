@@ -51,6 +51,7 @@ import {
   type FolderGroup,
 } from '../../lib/folder-utils';
 import { folderAlbumIdentity, sameAlbum } from '@nicotind/core';
+import { GetNoticeComponent } from '../../components/get-notice/get-notice.component';
 import {
   GetAlbumCardComponent,
   type CardLibraryState,
@@ -78,7 +79,6 @@ import { SourceChipComponent } from '../../components/source-chip/source-chip.co
 import { extractSharedUrl } from '../../lib/share-url';
 import { httpErrorMessage, httpErrorCode } from '../../lib/http-error';
 import { SkeletonComponent } from '../../components/skeleton/skeleton.component';
-import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { TranslateService } from '../../services/translate.service';
 import type { Translator } from '../../lib/relative-time';
@@ -244,13 +244,13 @@ function isAlreadyDownloading(err: unknown): boolean {
   selector: 'app-search',
   imports: [
     GetAlbumCardComponent,
+    GetNoticeComponent,
     OverflowRevealDirective,
     FormsModule,
     FolderBrowserComponent,
     RouterLink,
     AlbumHuntModalComponent,
     SourceChipComponent,
-    CoverArtComponent,
     SkeletonComponent,
     TranslatePipe,
     TvNavGroupDirective,
@@ -648,7 +648,7 @@ export class SearchComponent implements OnInit, OnDestroy {
       this.downloadError.set(null);
     } catch (err) {
       this.search.removeDownloading(key);
-      this.downloadError.set(err instanceof Error ? err.message : 'Download failed');
+      this.downloadError.set(err instanceof Error ? err.message : this.i18n.t('getError.download'));
     }
   }
 
@@ -685,7 +685,9 @@ export class SearchComponent implements OnInit, OnDestroy {
         this.getThenHear.remember(res?.jobId, modeForFileCount(files.length));
       } catch (err) {
         for (const f of files) this.search.removeDownloading(`${username}:${f.filename}`);
-        this.downloadError.set(err instanceof Error ? err.message : 'Download failed');
+        this.downloadError.set(
+          err instanceof Error ? err.message : this.i18n.t('getError.download'),
+        );
       }
     }
   }
@@ -733,7 +735,7 @@ export class SearchComponent implements OnInit, OnDestroy {
         void this.transfers.kickPoll();
         return;
       }
-      this.downloadError.set(err instanceof Error ? err.message : 'Folder download failed');
+      this.downloadError.set(err instanceof Error ? err.message : this.i18n.t('getError.folder'));
     }
   }
 
@@ -752,7 +754,7 @@ export class SearchComponent implements OnInit, OnDestroy {
       this.downloadError.set(null);
     } catch (err) {
       for (const f of validFiles) this.search.removeDownloading(`${username}:${f.filename}`);
-      this.downloadError.set(err instanceof Error ? err.message : 'Download failed');
+      this.downloadError.set(err instanceof Error ? err.message : this.i18n.t('getError.download'));
     }
   }
 
@@ -819,7 +821,7 @@ export class SearchComponent implements OnInit, OnDestroy {
       this.catalog.set(cat ? applyDiscography(cat, loaded) : loaded);
       this.directSearchOpen.set(shouldOpenDirectSearch(this.catalog()));
     } catch (err) {
-      this.resolveError.set(httpErrorMessage(err, "Couldn't load the artist's discography"));
+      this.resolveError.set(httpErrorMessage(err, this.i18n.t('getError.discography')));
     } finally {
       this.loadingDiscography.set(false);
     }
@@ -977,7 +979,7 @@ export class SearchComponent implements OnInit, OnDestroy {
       // Surface the server's reason (e.g. a transient Lidarr metadata outage)
       // instead of a generic fallback — HttpErrorResponse isn't an Error, so we
       // must read its `{ error }` body.
-      this.resolveError.set(httpErrorMessage(err, 'Failed to prepare album'));
+      this.resolveError.set(httpErrorMessage(err, this.i18n.t('getError.prepare')));
     } finally {
       this.setResolving(album.foreignAlbumId, false);
     }
@@ -1048,9 +1050,7 @@ export class SearchComponent implements OnInit, OnDestroy {
     // before its first await, so set them *after* kicking it off — they survive.
     void this.executeSearch({ forceDirectOpen: true });
     this.rawFallbackAlbum.set(album);
-    this.rawFallbackNote.set(
-      `"${album.title}" isn't in ${album.artistName}'s Lidarr catalog — download it from the ${this.networkLabel()} folders below.`,
-    );
+    this.rawFallbackNote.set(album.title);
   }
 
   // Opt-in from the catalog-miss banner: load the artist's real discography (adds
@@ -1101,7 +1101,9 @@ export class SearchComponent implements OnInit, OnDestroy {
       // poll; this lane was the omission.
       void this.transfers.kickPoll();
     } catch (err: unknown) {
-      this.linkSubmitError.set(err instanceof Error ? err.message : 'Failed to start download');
+      this.linkSubmitError.set(
+        err instanceof Error ? err.message : this.i18n.t('getError.linkStart'),
+      );
     } finally {
       this.linkSubmitting.set(false);
     }
@@ -1123,7 +1125,7 @@ export class SearchComponent implements OnInit, OnDestroy {
       await this.acquire.refresh();
       void this.transfers.kickPoll();
     } catch (err: unknown) {
-      this.linkSubmitError.set(err instanceof Error ? err.message : 'Retry failed');
+      this.linkSubmitError.set(err instanceof Error ? err.message : this.i18n.t('getError.retry'));
     } finally {
       this.linkSubmitting.set(false);
     }
@@ -1395,7 +1397,7 @@ export class SearchComponent implements OnInit, OnDestroy {
       this.search.setNetworkState(res.networkAvailable ? 'searching' : 'complete');
       if (res.networkAvailable) this.startPoll();
     } catch (err) {
-      this.searchError.set(err instanceof Error ? err.message : 'Search failed');
+      this.searchError.set(err instanceof Error ? err.message : this.i18n.t('getError.search'));
       this.search.setNetworkState('complete');
     } finally {
       await catalogPromise;

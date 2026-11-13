@@ -119,81 +119,112 @@
     </div>
   }
 
-  <!-- Errors -->
-  @if (searchError()) {
-    <div class="mb-6 px-4 py-3 rounded-lg bg-red-950/50 border border-red-900/50">
-      <p class="text-sm text-red-400">{{ searchError() }}</p>
-    </div>
-  }
-  @if (downloadError()) {
-    <div
-      class="mb-6 px-4 py-3 rounded-lg bg-red-950/50 border border-red-900/50 flex items-center justify-between"
-    >
-      <p class="text-sm text-red-400">{{ downloadError() }}</p>
-      <button
-        (click)="downloadError.set(null)"
-        class="text-red-500 hover:text-red-300 text-lg font-medium"
+  <!-- Notices: one column under the sources line, in the theme's status colours,
+       each carrying the action that resolves it. -->
+  <div class="mb-6 space-y-2 empty:hidden" data-testid="get-notices">
+    @if (searchError()) {
+      <app-get-notice tone="error" data-testid="search-error">{{ searchError() }}</app-get-notice>
+    }
+    @if (downloadError()) {
+      <app-get-notice
+        tone="error"
+        [dismissible]="true"
+        (dismiss)="downloadError.set(null)"
+        data-testid="download-error"
+        >{{ downloadError() }}</app-get-notice
       >
-        ×
-      </button>
-    </div>
-  }
-  @if (resolveError()) {
-    <div
-      class="mb-6 px-4 py-3 rounded-lg bg-red-950/50 border border-red-900/50 flex items-center justify-between"
-    >
-      <p class="text-sm text-red-400">{{ resolveError() }}</p>
-      <button
-        (click)="resolveError.set(null)"
-        class="text-red-500 hover:text-red-300 text-lg font-medium"
+    }
+    @if (resolveError()) {
+      <app-get-notice
+        tone="error"
+        [dismissible]="true"
+        (dismiss)="resolveError.set(null)"
+        data-testid="resolve-error"
+        >{{ resolveError() }}</app-get-notice
       >
-        ×
-      </button>
-    </div>
-  }
-  @if (provisioningArtist(); as artist) {
-    <div
-      class="mb-6 px-4 py-3 rounded-lg bg-blue-950/40 border border-blue-900/50"
-      data-testid="artist-provisioning"
-    >
-      <p class="text-sm text-blue-300">{{ 'acquire.addingArtist' | t: { artist: artist } }}</p>
-    </div>
-  }
-  @if (rawFallbackNote()) {
-    <div
-      class="mb-6 px-4 py-3 rounded-lg bg-blue-950/40 border border-blue-900/50 flex items-center gap-3"
-      data-testid="raw-fallback-note"
-    >
-      <p class="flex-1 text-sm text-blue-300">{{ rawFallbackNote() }}</p>
-      @if (rawFallbackAlbum()?.artistMbid) {
-        <button
-          (click)="browseFallbackDiscography()"
-          [disabled]="loadingDiscography()"
-          data-testid="raw-fallback-discography"
-          class="shrink-0 px-3 py-1.5 rounded-md text-xs font-semibold bg-blue-900/60 hover:bg-blue-800/70 text-blue-100 disabled:opacity-50"
+    }
+    @if (provisioningArtist(); as artist) {
+      <app-get-notice data-testid="artist-provisioning">{{
+        'acquire.addingArtist' | t: { artist: artist }
+      }}</app-get-notice>
+    }
+    @if (rawFallbackAlbum(); as album) {
+      @if (rawFallbackNote()) {
+        <app-get-notice
+          [dismissible]="true"
+          (dismiss)="rawFallbackNote.set(null)"
+          data-testid="raw-fallback-note"
         >
           {{
-            loadingDiscography()
-              ? 'Loading…'
-              : 'Browse ' + rawFallbackAlbum()!.artistName + "'s discography"
+            'getNotice.rawFallback'
+              | t: { album: album.title, artist: album.artistName, source: networkLabel() }
           }}
-        </button>
+          @if (album.artistMbid) {
+            <button
+              noticeAction
+              type="button"
+              (click)="browseFallbackDiscography()"
+              [disabled]="loadingDiscography()"
+              data-testid="raw-fallback-discography"
+              class="shrink-0 px-3 py-1.5 rounded-md text-xs font-semibold bg-theme-surface-2 text-theme-primary hover:bg-theme-surface-2/80 disabled:opacity-50"
+            >
+              {{
+                loadingDiscography()
+                  ? ('getNotice.loading' | t)
+                  : ('getNotice.browseDiscography' | t: { artist: album.artistName })
+              }}
+            </button>
+          }
+        </app-get-notice>
       }
-      <button
-        (click)="rawFallbackNote.set(null)"
-        class="shrink-0 text-blue-400 hover:text-blue-200 text-lg font-medium"
-      >
-        ×
-      </button>
-    </div>
-  }
-  @if (errors().length > 0) {
-    <div class="mb-6 px-4 py-3 rounded-lg bg-amber-950/50 border border-amber-900/50 space-y-1">
-      @for (err of errors(); track $index) {
-        <p class="text-sm text-amber-400">{{ err }}</p>
-      }
-    </div>
-  }
+    }
+    @if (errors().length > 0) {
+      <app-get-notice tone="warn" data-testid="source-errors">
+        @for (err of errors(); track $index) {
+          <p>{{ err }}</p>
+        }
+      </app-get-notice>
+    }
+    @if (!loading() && discographyNote(); as note) {
+      <app-get-notice [tone]="note.kind === 'lookup-failed' ? 'warn' : 'info'">
+        <span data-testid="discography-note">{{
+          note.kind === 'no-albums'
+            ? ('acquire.discographyUnavailable' | t: { artist: note.artist })
+            : note.kind === 'not-configured'
+              ? ('acquire.catalogNotConfigured' | t)
+              : ('acquire.catalogLookupFailed' | t)
+        }}</span>
+        @if (note.kind === 'lookup-failed') {
+          <button
+            noticeAction
+            type="button"
+            (click)="retryCatalog()"
+            [disabled]="retryingCatalog()"
+            data-testid="retry-catalog"
+            class="shrink-0 px-3 py-1.5 rounded-md text-xs font-semibold bg-theme-surface-2 text-theme-primary hover:bg-theme-surface-2/80 disabled:opacity-50"
+          >
+            {{ (retryingCatalog() ? 'acquire.catalogRetrying' : 'acquire.catalogRetry') | t }}
+          </button>
+        }
+        @if (canLoadDiscography()) {
+          <button
+            noticeAction
+            type="button"
+            (click)="loadDiscography()"
+            [disabled]="loadingDiscography()"
+            data-testid="load-discography"
+            class="shrink-0 px-3 py-1.5 rounded-md text-xs font-semibold bg-theme-surface-2 text-theme-primary hover:bg-theme-surface-2/80 disabled:opacity-50"
+          >
+            {{
+              loadingDiscography()
+                ? ('getNotice.loading' | t)
+                : ('getNotice.loadDiscography' | t: { artist: catalog()!.scopedArtist ?? '' })
+            }}
+          </button>
+        }
+      </app-get-notice>
+    }
+  </div>
 
   <!-- Link-intent card: a pasted/shared URL is one acquisition candidate,
        styled like a blended Results row but rendered standalone (no search
@@ -226,13 +257,13 @@
                     [checked]="treatAsPlaylist()"
                     (change)="toggleTreatAsPlaylist()"
                   />
-                  Treat as playlist
+                  {{ 'getLink.treatAsPlaylist' | t }}
                 </label>
               }
             </div>
             @if (linkJob()?.state === 'failed') {
               <p class="truncate text-xs text-red-400 mt-0.5">
-                {{ linkJob()?.error ?? 'Download failed' }}
+                {{ linkJob()?.error ?? ('getLink.failed' | t) }}
               </p>
             } @else if (linkJob()?.state === 'done' && linkJob()?.error) {
               <p class="truncate text-xs text-amber-400 mt-0.5" [title]="linkJob()?.error ?? ''">
@@ -257,7 +288,7 @@
                   "
                   data-testid="link-intent-open"
                 >
-                  {{ job.playlistId ? 'Open playlist' : 'Added to library ✓ · Open' }}
+                  {{ (job.playlistId ? 'getLink.openPlaylist' : 'getLink.addedOpen') | t }}
                 </a>
                 @if (job.error) {
                   <button
@@ -266,7 +297,7 @@
                     data-testid="link-intent-retry"
                     class="shrink-0 px-3 py-1.5 rounded-md text-xs font-medium bg-theme-surface-2 hover:bg-theme-hover text-theme-primary disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Retry
+                    {{ 'acquire.catalogRetry' | t }}
                   </button>
                 }
               }
@@ -277,12 +308,12 @@
                   data-testid="link-intent-retry"
                   class="shrink-0 px-3 py-1.5 rounded-md text-xs font-medium bg-theme-surface-2 hover:bg-theme-hover text-theme-primary disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Retry
+                  {{ 'acquire.catalogRetry' | t }}
                 </button>
               }
               @default {
                 <span class="shrink-0 text-xs text-theme-secondary">
-                  {{ job.progress ? job.progress.done + '/' + job.progress.total : 'Starting…' }}
+                  {{ job.progress ? job.progress.done + '/' + job.progress.total : ('getLink.starting' | t) }}
                 </span>
                 <button
                   (click)="cancelLinkJob()"
@@ -307,7 +338,7 @@
               @if (linkSubmitting()) {
                 Starting…
               } @else {
-                {{ intent.source === 'spotify' && !plugins.hasSpotdl() ? 'Open in Spotify' : 'Get' }}
+                {{ (intent.source === 'spotify' && !plugins.hasSpotdl() ? 'getLink.openInSpotify' : 'acquire.get') | t }}
               }
             </button>
           }
@@ -483,7 +514,7 @@
       </h2>
       @if (plugins.hasSpotify() && !plugins.hasSpotdl() && search.spotify().length > 0) {
         <p class="text-xs text-amber-500 mb-2" data-testid="spotify-needs-spotdl">
-          Spotify matches open in Spotify — enable the spotDL plugin to download them.
+          {{ 'getNotice.spotifyNeedsSpotdl' | t }}
         </p>
       }
       <!-- Transcode reminder: only when the lossless→Opus standardization is on
@@ -491,7 +522,7 @@
            claims a conversion that won't happen for a 320k MP3 pick. -->
       @if (transcodeActive() && hasLosslessInView()) {
         <p class="text-xs text-theme-muted mb-2" data-testid="transcode-note">
-          Lossless picks are stored as Opus {{ transcodeBitRate() }}k to save space.
+          {{ 'getNotice.losslessAsOpus' | t: { kbps: transcodeBitRate() } }}
         </p>
       }
       <ul class="divide-y divide-theme-border rounded-lg border border-theme overflow-hidden">
@@ -547,7 +578,7 @@
           data-testid="results-show-all"
           class="mt-2 text-xs font-medium text-[var(--theme-accent)] hover:underline"
         >
-          Show all {{ blendedResults().length }} results
+          {{ 'acquire.showAllResults' | t: { count: blendedResults().length } }}
         </button>
       }
     </section>
@@ -555,41 +586,7 @@
 
   <!-- §A6 — matched the artist but the catalog had none of their albums; explain
        the network fallback and offer to load their real discography on demand. -->
-  @if (!loading() && discographyNote(); as note) {
-    <div class="mt-2 px-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-      <p class="text-xs text-theme-muted" data-testid="discography-note">
-        {{
-          note.kind === 'no-albums'
-            ? ('acquire.discographyUnavailable' | t: { artist: note.artist })
-            : note.kind === 'not-configured'
-              ? ('acquire.catalogNotConfigured' | t)
-              : ('acquire.catalogLookupFailed' | t)
-        }}
-      </p>
-      @if (note.kind === 'lookup-failed') {
-        <button
-          (click)="retryCatalog()"
-          [disabled]="retryingCatalog()"
-          data-testid="retry-catalog"
-          class="text-xs font-medium text-[var(--theme-accent)] hover:underline disabled:opacity-50 disabled:no-underline"
-        >
-          {{ (retryingCatalog() ? 'acquire.catalogRetrying' : 'acquire.catalogRetry') | t }}
-        </button>
-      }
-      @if (canLoadDiscography()) {
-        <button
-          (click)="loadDiscography()"
-          [disabled]="loadingDiscography()"
-          data-testid="load-discography"
-          class="text-xs font-medium text-[var(--theme-accent)] hover:underline disabled:opacity-50 disabled:no-underline"
-        >
-          {{
-            loadingDiscography() ? 'Loading…' : 'Load ' + catalog()!.scopedArtist + "'s discography"
-          }}
-        </button>
-      }
-    </div>
-  }
+
 
   <!-- Advanced: raw network search — a power-user escape hatch, demoted below the
        guided catalog/song results. Peer stats + the folder-tree browser live only
