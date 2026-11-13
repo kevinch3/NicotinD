@@ -18,22 +18,19 @@ import {
   markPartialDiscarded,
   recomputeStage,
   resolveJobAlbumId,
-  activePeers,
-  canResourceJob,
-  claimUnattributedItems,
-  huntTracklist,
-  getJob,
-  reserveResourcedItems,
-  resourceableTitles,
-  supersedeItems,
   findActiveAlbumJob,
   holdAlbum,
   supersedeActiveJobs,
   addonJobIdsOf,
 } from '../services/acquisition-job-store.js';
-import { rankAlternates } from '../services/download-resource.js';
+import {
+  parseAddonRef,
+  resolveResourceTarget,
+  searchAlternates,
+  switchToPeer,
+} from '../services/job-resource.js';
 import { mapAddonJob } from '../services/addons/job-poller.js';
-import { AddonRequestError, AddonTimeoutError } from '../services/addons/client.js';
+import { AddonTimeoutError } from '../services/addons/client.js';
 import { INTERACTIVE_HUNT_TIMEOUT_MS } from '../middleware/idle-budget.js';
 import { deleteSongs } from '../services/library-deletion.js';
 import { errorHandler } from '../middleware/error-handler.js';
@@ -98,15 +95,6 @@ const ErrorSchema = z
     error: z.string(),
   })
   .openapi('Error');
-
-/** Parse a `addon:<id>:<jobId>` sourceRef, if that's what it is. */
-function parseAddonRef(sourceRef: string | null): { addonId: string; addonJobId: string } | null {
-  if (!sourceRef?.startsWith('addon:')) return null;
-  const rest = sourceRef.slice('addon:'.length);
-  const sep = rest.indexOf(':');
-  if (sep <= 0) return null;
-  return { addonId: rest.slice(0, sep), addonJobId: rest.slice(sep + 1) };
-}
 
 export interface DownloadDiscardDeps {
   musicDir?: string;
@@ -463,178 +451,81 @@ export function downloadRoutes(
    */
   function resourceableJob(c: Context<AuthEnv>, db: ReturnType<typeof getDatabase>) {
     const id = c.req.param('id');
-    const job = id ? getJob(db, id) : null;
-    if (!job) return { error: c.json({ error: 'Job not found' }, 404) } as const;
-    const row = db
-      .query<{ cancel_requested_at: number | null; user_id: string | null }, [string]>(
-        `SELECT cancel_requested_at, user_id FROM acquisition_jobs WHERE id = ?`,
-      )
-      .get(job.id);
+    const owner = id
+      ? db
+          .query<{ user_id: string | null }, [string]>(
+            `SELECT user_id FROM acquisition_jobs WHERE id = ?`,
+          )
+          .get(id)
+      : null;
+    if (!owner) return { error: c.json({ error: 'Job not found' }, 404) } as const;
     // Same gate as discard-partial: re-sourcing your own download is not
     // curation (docs/roles.md), and a NULL-owner row stays curator-only.
     const user = getCurrentUser(c);
-    const isOwner = row?.user_id != null && row.user_id === user.sub;
+    const isOwner = owner.user_id != null && owner.user_id === user.sub;
     if (!isOwner && !canCurate(asRole(user.role))) {
       throw new ForbiddenError("Requires curator role, or the job's own user");
     }
-    const facts = {
-      kind: job.kind,
-      artistName: job.artistName,
-      albumTitle: job.albumTitle,
-      canonicalTracks: job.canonicalTracks,
-      cancelRequestedAt: row?.cancel_requested_at ?? null,
-      items: job.items,
-    };
-    if (!canResourceJob(facts)) {
-      return {
-        error: c.json({ error: 'This download cannot be re-sourced from another peer' }, 400),
-      } as const;
+    const target = resolveResourceTarget(db, (addonId) => pluginRegistry?.get(addonId), id!);
+    if ('error' in target) {
+      return { error: c.json({ error: target.error }, target.status) } as const;
     }
-    const ref = parseAddonRef(job.sourceRef);
-    if (!ref || ref.addonId !== job.method) {
-      return { error: c.json({ error: 'No acquisition addon owns this download' }, 400) } as const;
-    }
-    const addon = pluginRegistry?.get(ref.addonId);
-    if (!(addon instanceof RemoteAddonPlugin)) {
-      return { error: c.json({ error: 'The acquisition addon is not available' }, 503) } as const;
-    }
-    return { job, ref, addon, user, tracklist: huntTracklist(facts) } as const;
+    return { target, user } as const;
   }
 
   /**
-   * Which other peers have the tracks this job is stuck on. Re-runs the hunt
-   * and subtracts the peers already on the card — an "alternate" that is the
-   * peer we are already waiting on is the same dead end.
+   * Which other peers have the tracks this job is stuck on.
+   * → services/job-resource.ts `searchAlternates`.
    */
   app.post('/jobs/:id/resource/search', async (c) => {
     const db = getDatabase();
     const found = resourceableJob(c, db);
     if ('error' in found) return found.error;
-    const { job, addon } = found;
 
     const body = await c.req
       .json<{ require?: string[] }>()
       .catch(() => ({}) as { require?: string[] });
-    // Coverage is always measured over EVERYTHING still pending, because that
-    // is what the chosen peer will be asked for: re-sourcing releases the stuck
-    // job, so there is no second source left to split the remainder with
-    // (#1069). A narrower `wanted` here would quietly shrink the request.
-    const wanted = resourceableTitles(db, job.id);
-    if (!wanted.length) return c.json({ error: 'Nothing on this download is still pending' }, 400);
-    // Ticked tracks are a REQUIREMENT, not a narrowing: "only offer peers that
-    // have these". Intersected with what is pending right now, so a track
-    // delivered since the tick cannot rule out every peer.
-    const required = (body.require ?? []).filter((t) => wanted.includes(t));
-
     let res;
     try {
-      res = await addon.client.albumsSearch(
-        {
-          artist: job.artistName ?? '',
-          album: job.albumTitle ?? '',
-          canonicalTracks: found.tracklist.map((title) => ({ title })),
-        },
-        {
-          timeoutMs: INTERACTIVE_HUNT_TIMEOUT_MS,
-          lane: 'resource',
-          ...(job.lidarrAlbumId ? { albumId: job.lidarrAlbumId } : {}),
-        },
-      );
+      res = await searchAlternates(db, found.target, {
+        require: body.require,
+        timeoutMs: INTERACTIVE_HUNT_TIMEOUT_MS,
+        lane: 'resource',
+      });
     } catch (err) {
       if (err instanceof AddonTimeoutError) {
         return c.json({ error: 'The source did not finish searching in time.' }, 504);
       }
       throw err;
     }
-    const ranked = rankAlternates(wanted, res.candidates, activePeers(db, job.id));
-    return c.json({
-      wanted,
-      required,
-      alternates: required.length
-        ? ranked.filter((a) => required.every((t) => a.coveredTitles.includes(t)))
-        : ranked,
-      // An empty list means something different in each of these cases, and the
-      // picker says so: throttled and offline are both "we could not look
-      // properly", not "nobody has it" (#1040, #1045).
-      rateLimited: res.rateLimited ?? false,
-      sourceOffline: res.sourceOffline ?? false,
-    });
+    if (!res) return c.json({ error: 'Nothing on this download is still pending' }, 400);
+    return c.json(res);
   });
 
   /**
-   * Hand the named titles to the chosen peer. The new addon job is mapped onto
-   * THIS core job, so its items mirror into the same card rather than opening a
-   * second one — the download the user started is still the download they are
-   * watching.
+   * Hand the named titles to the chosen peer, on THIS card — the download the
+   * user started is still the download they are watching.
+   * → services/job-resource.ts `switchToPeer`.
    */
   app.post('/jobs/:id/resource', async (c) => {
     const db = getDatabase();
     const found = resourceableJob(c, db);
     if ('error' in found) return found.error;
-    const { job, ref, addon, user } = found;
+    const { target, user } = found;
 
     const body = await c.req
       .json<{ candidateRef?: string; titles?: string[] }>()
       .catch(() => ({}) as { candidateRef?: string; titles?: string[] });
     if (!body.candidateRef) return c.json({ error: 'Pick a peer first' }, 400);
-    const available = resourceableTitles(db, job.id);
-    // Intersected with what is pending RIGHT NOW: the picker's list was built
-    // from a search that took tens of seconds, and a track delivered in the
-    // meantime must not be taken away from the peer that delivered it.
-    const titles = body.titles?.length
-      ? body.titles.filter((t) => available.includes(t))
-      : available;
-    if (!titles.length) return c.json({ error: 'Nothing on this download is still pending' }, 400);
 
-    // Attribute the existing rows BEFORE a second addon job can report, so the
-    // terminal sweeps can tell the two apart (see OWNED_BY_ADDON_JOB).
-    claimUnattributedItems(db, job.id, ref.addonJobId);
-
-    // Release the stuck job FIRST (#1069). An addon may allow only one active
-    // job per release — slskd does, and answers a second one with 409 — so
-    // creating before cancelling made every re-source fail against the real
-    // addon while passing against a more permissive test double. Cancelling
-    // does not delete what already landed (only `deleteJob` does); it ends the
-    // transfers that were not moving, which is the situation being fixed.
-    //
-    // This is why the new peer takes ALL of what is still pending rather than
-    // only a ticked subset: once the old job is gone there is no second source
-    // left to split with, so a split would just be a slower way to lose tracks.
-    //
-    // "The stuck job" is whichever peer holds the pending rows NOW: after one
-    // re-source that is the replacement, not `source_ref`'s first job (#1878).
-    for (const addonJobId of addonJobIdsOf(db, job.id, ref.addonJobId, { live: true })) {
-      await addon.client.cancelJob(addonJobId).catch((err: unknown) => {
-        log.warn(
-          { jobId: job.id, addonJobId, err },
-          're-source: cancelling the stuck addon job failed',
-        );
-      });
-    }
-
-    let addonJobId: string;
-    try {
-      const created = await addon.client.createJob({
-        intent: 'album',
-        artist: job.artistName ?? undefined,
-        album: job.albumTitle ?? undefined,
-        canonicalTracks: found.tracklist.map((title) => ({ title })),
-        // The whole point: this peer is asked for the missing titles only, not
-        // for the folder again.
-        wantedTracks: titles.map((title) => ({ title })),
-        candidateRef: body.candidateRef,
-      });
-      addonJobId = created.id;
-    } catch (err) {
-      // Past the cancel, so the stuck job is gone either way and its items will
-      // settle as `unavailable`. Say which failure this was: only an expired
-      // selection is fixed by searching again, and telling someone to re-run a
-      // 45 s hunt against a source that is refusing the job is worse than
-      // saying nothing.
-      log.warn({ jobId: job.id, err }, 're-source rejected by the addon');
-      recomputeStage(db, job.id);
-      const status = err instanceof AddonRequestError ? err.status : null;
-      if (status === 409) {
+    const result = await switchToPeer(db, target, body.candidateRef, body.titles);
+    switch (result.status) {
+      case 'nothing-pending':
+        return c.json({ error: 'Nothing on this download is still pending' }, 400);
+      // Only an expired selection is fixed by searching again, and telling
+      // someone to re-run a 45 s hunt against a source that is refusing the
+      // job is worse than saying nothing.
+      case 'conflict':
         return c.json(
           {
             error: 'The source is still holding this album. Give it a moment and try again.',
@@ -642,24 +533,18 @@ export function downloadRoutes(
           },
           409,
         );
-      }
-      return c.json(
-        { error: 'Selection expired — run the search again', code: 'resource_expired' },
-        400,
-      );
+      case 'expired':
+        return c.json(
+          { error: 'Selection expired — run the search again', code: 'resource_expired' },
+          400,
+        );
     }
-
-    mapAddonJob(db, ref.addonId, addonJobId, job.id);
-    supersedeItems(db, job.id, titles);
-    // After the supersede, which would otherwise take these queued rows too.
-    reserveResourcedItems(db, job.id, addonJobId, titles);
-    recomputeStage(db, job.id);
     recordAudit(db, user, 'download.resource', {
       targetKind: 'acquisition_job',
-      targetId: job.id,
-      detail: `re-sourced ${titles.length} track(s) to a new peer (addon job ${addonJobId})`,
+      targetId: target.job.id,
+      detail: `re-sourced ${result.titles.length} track(s) to a new peer (addon job ${result.addonJobId})`,
     });
-    return c.json({ ok: true, resourced: titles.length, addonJobId });
+    return c.json({ ok: true, resourced: result.titles.length, addonJobId: result.addonJobId });
   });
 
   /**

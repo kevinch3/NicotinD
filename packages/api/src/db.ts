@@ -487,6 +487,15 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   addColumnIfMissing(db, 'acquisition_jobs', 'album_from_folder', 'INTEGER NOT NULL DEFAULT 0');
   addColumnIfMissing(db, 'acquisition_jobs', 'is_playlist', 'INTEGER NOT NULL DEFAULT 0');
   addColumnIfMissing(db, 'acquisition_jobs', 'playlist_id', 'TEXT');
+  // Automatic completion of a partial from another peer (#1879): how many
+  // hand-overs it made, and when a search found nobody left to ask.
+  addColumnIfMissing(
+    db,
+    'acquisition_jobs',
+    'auto_resource_attempts',
+    'INTEGER NOT NULL DEFAULT 0',
+  );
+  addColumnIfMissing(db, 'acquisition_jobs', 'auto_resource_exhausted_at', 'INTEGER');
 
   db.run(`
     CREATE TABLE IF NOT EXISTS completed_downloads (

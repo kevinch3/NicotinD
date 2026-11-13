@@ -794,6 +794,19 @@ describe('download-item re-sourcing (issue #1065)', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="download-resource"]')).toBeNull();
   });
 
+  // #1879: the server already looked for the rest and nobody had it. Said
+  // beside the button, which stays: a peer may come online later.
+  it('says when the automatic completion found no other peer, and keeps the button', () => {
+    const quiet = setup(STUCK);
+    expect(quiet.nativeElement.querySelector('[data-testid="download-auto-exhausted"]')).toBeNull();
+
+    const fixture = setup({ ...STUCK, autoResourceExhausted: true });
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="download-auto-exhausted"]'),
+    ).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="download-resource"]')).not.toBeNull();
+  });
+
   it('ticks only tracks that have not arrived', () => {
     const fixture = setup(STUCK);
     expand(fixture);

@@ -151,6 +151,8 @@ export interface DownloadItem {
    * and tracklist a fresh hunt needs, and whether anything is still pending.
    */
   canResource?: boolean;
+  /** No other peer had the missing tracks when the server looked (#1879). */
+  autoResourceExhausted?: boolean;
 }
 
 /**
@@ -439,6 +441,7 @@ export function mergeAcquisitionJobs(
           : undefined,
       cancelRequested: job.cancelRequested || undefined,
       canResource: job.canResource || undefined,
+      autoResourceExhausted: job.autoResourceExhausted || undefined,
       totalCommitted: hasCommittedTotal(job),
       // why: only a *shortfall* is news. A source that offered the whole
       // tracklist (or more — a folder with bonus tracks) leaves these unset so

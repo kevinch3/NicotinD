@@ -161,6 +161,11 @@
                   : ('downloads.resource.all' | t)
             }}
           </button>
+          @if (item().autoResourceExhausted) {
+            <span class="text-xs text-theme-muted" data-testid="download-auto-exhausted">
+              {{ 'downloads.resource.autoExhausted' | t }}
+            </span>
+          }
         }
         @if (showPartialDiscard()) {
           <span class="flex items-center gap-2 text-xs" data-testid="download-partial-landed">

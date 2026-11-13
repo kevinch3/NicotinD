@@ -373,6 +373,7 @@ interface JobRow {
   created_at: number;
   updated_at: number;
   cancel_requested_at: number | null;
+  auto_resource_exhausted_at?: number | null;
   partial_discarded_at: number | null;
 }
 
@@ -831,6 +832,51 @@ export function resourceableTitles(db: Database, jobId: string): string[] {
   if (!job) return pending;
   const missing = notOfferedTitles({ ...job, cancelRequestedAt: null });
   return [...pending, ...missing.filter((t) => !pending.includes(t))];
+}
+
+/**
+ * The partials an automatic completion may still work on (#1879): closed
+ * `done` with something missing, under the attempt budget, not given up on, not
+ * cancelled. `jobId` narrows it to one card; `since` bounds a boot sweep so a
+ * restart never re-hunts the whole history.
+ */
+export function autoCompleteCandidates(
+  db: Database,
+  opts: { maxAttempts: number; jobId?: string; since?: number },
+): string[] {
+  const rows = db
+    .query<{ id: string }, [number, string | null, string | null, number, number]>(
+      `SELECT id FROM acquisition_jobs
+        WHERE state = 'done' AND kind IN ('album-hunt', 'auto-acquire')
+          AND cancel_requested_at IS NULL
+          AND auto_resource_exhausted_at IS NULL
+          AND auto_resource_attempts < ?
+          AND (? IS NULL OR id = ?)
+          AND updated_at >= ?
+        ORDER BY updated_at ASC
+        LIMIT ?`,
+    )
+    .all(
+      opts.maxAttempts,
+      opts.jobId ?? null,
+      opts.jobId ?? null,
+      opts.since ?? 0,
+      opts.jobId ? 1 : 500,
+    );
+  return rows.map((r) => r.id).filter((id) => resourceableTitles(db, id).length > 0);
+}
+
+/** Count one automatic hand-over to another peer. */
+export function recordAutoResourceAttempt(db: Database, jobId: string): void {
+  db.run(
+    `UPDATE acquisition_jobs SET auto_resource_attempts = auto_resource_attempts + 1 WHERE id = ?`,
+    [jobId],
+  );
+}
+
+/** No other peer has what is missing: stop asking, and let the card say so. */
+export function markAutoResourceExhausted(db: Database, jobId: string, at = Date.now()): void {
+  db.run(`UPDATE acquisition_jobs SET auto_resource_exhausted_at = ? WHERE id = ?`, [at, jobId]);
 }
 
 /**
@@ -1549,6 +1595,8 @@ export interface AcquisitionJobFeedItem {
   cancelRequested: boolean;
   /** Mirrors `AcquisitionJobView.canResource` — see `canResourceJob` (#1065). */
   canResource: boolean;
+  /** Mirrors `AcquisitionJobView.autoResourceExhausted` (#1879). */
+  autoResourceExhausted: boolean;
   /**
    * Dominant enqueue-time bitrate + codec across the job's items (mode wins;
    * ties broken by max kbps), upgraded post-scan via the items' matching
@@ -1902,6 +1950,7 @@ export function listJobFeed(db: Database, limit = 50): AcquisitionJobFeedItem[] 
           trackTitle: r.track_title,
         })),
       }),
+      autoResourceExhausted: row.auto_resource_exhausted_at != null,
       ...(quality ? { bitRate: quality.bitRate, audioFormat: quality.audioFormat } : {}),
       sources,
       destinationAlbums: jobDestinationAlbums(db, row.id),
