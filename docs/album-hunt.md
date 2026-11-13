@@ -53,16 +53,27 @@ Again*. The page already holds every folder the network search answered with, so
   folders (≥ `MIN_ALBUM_TRACKS` = 3) count.
 - **`availabilityFor`** gives each catalog card its peers, best copy, lossless flag and completeness,
   over the **un-deduped** folders (`allFolderGroups`), since the dedupe merges exactly the copies
-  being counted. The card prints "2 peers · FLAC · complete". A card no peer holds reads **"Not on
-  <source>"** — the network addon's own manifest name (`PluginService.networkSource`), never a
-  hardcoded brand — and is dimmed. Its watch star stays visible as
-  its action, and it sinks to the end of the grid (`orderedCatalogAlbums`). Both happen **only once
-  the network search is `complete`**, so a slow peer never demotes an album.
+  being counted. The card prints "2 peers · FLAC · complete". A card no peer holds reads **"No copy
+  seen yet"** and its cover is dimmed, **only once the network search is `complete`**, so a slow
+  peer never demotes an album. It keeps its place and its Get: the page search is not the hunt, whose
+  wildcard queries can still find a copy, and a card that sinks after it is drawn moves under the
+  pointer (the grid used to re-sort).
+- **One card for both grids** (`GetAlbumCardComponent`, `data-testid="catalog-album"`, with
+  `data-origin="provider"` on an album only a source holds). Four text lines: title, artist, catalog
+  facts, and one status line, the only one that changes: availability, then `albumHuntLabel` while
+  busy, then "In library". **Get is an explicit button** (`catalog-album-get`); the cover and the
+  Copies button open the album's copies in the folders lane (`showCatalogCopies`), and are absent
+  when no copy is known. A click on a cover can add an artist to Lidarr, which Cancel does not undo,
+  so the cover never starts a Get.
+- **Owned albums are marked before the click** (`libraryStateOf`). `/api/search` already returns the
+  library albums the query matched; the page keeps them (`SearchService.localAlbums`) only to join
+  them to cards with `sameAlbum`. A whole album offers **Open**; one with fewer songs than the
+  release offers **Complete album**. The page still lists no library results (#227).
 - **`providerOnlyAlbums`** lists the albums the network holds for the matched artist
   (`scopedArtist`) that no card covers, grouped by title key and ranked by peers. They render as a
   second grid, "More albums your sources have". A folder whose title is only the artist's name is a
   container and is skipped. A card **opens its copies** in the folders lane (`folderFilter` →
-  `visibleFolderGroups`, with a "Copies of X · Show all folders" bar). Its download icon gets the
+  `visibleFolderGroups`, with a "Copies of X · Show all folders" bar). Its Get takes the
   fullest copy outright through `downloadFolder`, so the album intent and the cross-lane guard
   (#1539) apply, and its overlay is `statusForAlbum`.
 
@@ -502,8 +513,9 @@ Lidarr does not know. Body: optional `artistName`, `albumTitle`, `localAlbumId`.
   the web raises no failure toast. Every surface that shows a Get's status shows a ✕ as soon as
   the job is in the feed (`cancellableJobId`), for the search and for the download after it: the
   artist-page tile, the search catalog and provider-album cards, and the admin Incomplete Albums
-  rows (#1841). `AutoHuntService.cancel` sends it. The catalog card is itself a `<button>` that
-  goes disabled while busy, so its ✕ is a sibling in a wrapper, not a child a disabled button
+  rows (#1841). `AutoHuntService.cancel` sends it. On the Get page's card Cancel takes the Get button's own slot (`GetAlbumCardComponent`), which
+  replaced the card that was itself a `<button>`
+  going disabled while busy, whose ✕ had to be a sibling in a wrapper, not a child a disabled button
   would swallow clicks for.
 - **A restart resumes.** The queue is in memory, the rows are not: `resumePending` re-queues every
   `resolving` album-hunt row with no addon job (`listReservedAlbumGets`) at boot. A resumed Get

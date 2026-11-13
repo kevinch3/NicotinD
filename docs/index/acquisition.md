@@ -80,9 +80,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **Guided acquire UX**: catalog cards are the primary path, the raw peer lane sits behind Advanced;
   `pickNetworkView` defaults to Folders for album intent, `AutoHuntService` posts a one-click Get and groups failures (`failureDigest`).
   → [album-hunt.md](../album-hunt.md)
-- **What the provider holds**: catalog cards carry the peers holding them (dimmed "Not on …" when
-  none), and albums only the network holds get cards of their own (`availabilityFor`,
-  `providerOnlyAlbums`, `folderIsAlbum`). → [album-hunt.md](../album-hunt.md)
+- **What the provider holds**: one card (`GetAlbumCardComponent`) for catalog and source-only albums, carrying
+  the peers holding it and whether the library has it (`availabilityFor`, `providerOnlyAlbums`,
+  `folderIsAlbum`, `libraryStateOf`). → [album-hunt.md](../album-hunt.md)
 - **Per-album hunt status**: every Get surface shows its album's search or live job (any lane, by
   name too) with progress, and is disabled by nothing else (`statusFor`, `statusForAlbum`,
   `AlbumHuntStatus`, `albumHuntLabel`, `beginSearch`). → [album-hunt.md](../album-hunt.md)

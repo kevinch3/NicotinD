@@ -361,140 +361,24 @@
             @for (row of chunk(orderedCatalogAlbums(), catalogAlbumsGrid.gridColumns()); track $index) {
               <div role="row" style="display: contents">
                 @for (album of row; track album.foreignAlbumId) {
-                  @let huntStatus = catalogHuntStatus(album);
                   @let availability = catalogAvailabilityOf(album);
-                  @let cancelJob = cancellableJobId(huntStatus);
-                  <div class="group relative">
-                  <button
-                    appTvNavItem
-                    data-testid="catalog-album"
-                    (click)="huntCatalogAlbum(album)"
-                    [disabled]="resolvingAlbums().has(album.foreignAlbumId) || huntStatus.phase !== 'idle'"
-                    [attr.data-hunt-phase]="huntStatus.phase"
-                    [attr.data-availability]="
-                      availability === undefined ? 'unknown' : availability ? 'available' : 'none'
-                    "
-                    class="group block w-full text-left rounded-lg overflow-hidden border border-theme transition hover:border-theme-accent disabled:opacity-60"
-                    [class.opacity-50]="availability === null && huntStatus.phase === 'idle'"
-                    style="background: var(--theme-surface)"
-                  >
-                    <div class="aspect-square bg-theme-surface-2 relative" data-testid="catalog-album-cover">
-                      <!-- Shared cover component: gradient placeholder, fade-in on
-                           load and an error fallback, none of which the raw <img>
-                           here ever had (issue #263). -->
-                      <app-cover-art
-                        [src]="catalogCoverUrl(album)"
-                        [artist]="album.artistName"
-                        [album]="album.title"
-                        [fill]="true"
-                        rounded="rounded-none"
-                      />
-                      @if (resolvingAlbums().has(album.foreignAlbumId)) {
-                        <div
-                          class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60"
-                        >
-                          <span
-                            class="inline-block w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"
-                          ></span>
-                          <span class="text-xs text-white/85">{{ 'acquire.preparing' | t }}</span>
-                        </div>
-                      } @else if (huntStatus.phase !== 'idle') {
-                        <div
-                          class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60"
-                        >
-                          <span
-                            class="inline-block w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"
-                          ></span>
-                          <span class="text-xs text-white/85" data-testid="catalog-album-hunt-status">{{
-                            catalogHuntLabel(huntStatus)
-                          }}</span>
-                        </div>
-                      }
-                    </div>
-                    <div class="p-2">
-                      <p appOverflowReveal class="text-sm truncate" style="color: var(--theme-text-primary)">
-                        {{ album.title }}
-                      </p>
-                      <p appOverflowReveal class="text-xs truncate" style="color: var(--theme-text-secondary)">
-                        {{ album.artistName }}
-                      </p>
-                      <p class="text-xs truncate" style="color: var(--theme-text-muted)">
-                        {{ album.year }}{{ album.year && album.albumType ? ' · ' : ''
-                        }}{{ album.albumType
-                        }}{{ album.trackCount ? ' · ' + album.trackCount + ' tracks' : '' }}
-                      </p>
-                      @if (availability) {
-                        <p
-                          class="text-xs truncate mt-0.5 text-emerald-400/90"
-                          data-testid="catalog-album-availability"
-                        >
-                          {{ availabilityLabel(availability) }}
-                        </p>
-                      } @else if (availability === null) {
-                        <p
-                          class="text-xs truncate mt-0.5"
-                          style="color: var(--theme-text-muted)"
-                          data-testid="catalog-album-unavailable"
-                          [title]="'acquire.notOnProviderHint' | t"
-                        >
-                          {{ 'acquire.notOnProvider' | t: { source: networkLabel() } }}
-                        </p>
-                      }
-                    </div>
-                  </button>
-                  <!-- Watchlist star — auto-acquire when a complete folder appears
-                           (only when a download-capable plugin is enabled) -->
-                  @if (plugins.hasDownload()) {
-                    <button
-                      type="button"
-                      data-testid="watchlist-star"
-                      (click)="toggleWatch(album, $event)"
-                      [attr.aria-label]="
-                        watchlist.isWatched(album.foreignAlbumId)
-                          ? 'Stop watching'
-                          : 'Watch for this album'
-                      "
-                      [attr.title]="
-                        watchlist.isWatched(album.foreignAlbumId)
-                          ? 'Watching — auto-downloads when found'
-                          : 'Watch — auto-download when found'
-                      "
-                      class="absolute top-1.5 right-1.5 w-7 h-7 flex items-center justify-center rounded-full bg-black/55 hover:bg-black/75 transition cursor-pointer opacity-0 group-hover:opacity-100 focus:opacity-100 [@media(hover:none)]:opacity-100"
-                      [class.!opacity-100]="watchlist.isWatched(album.foreignAlbumId) || availability === null"
-                    >
-                      <svg
-                        width="15"
-                        height="15"
-                        viewBox="0 0 24 24"
-                        [attr.fill]="
-                          watchlist.isWatched(album.foreignAlbumId) ? 'currentColor' : 'none'
-                        "
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        [class.text-amber-400]="watchlist.isWatched(album.foreignAlbumId)"
-                        [class.text-white]="!watchlist.isWatched(album.foreignAlbumId)"
-                      >
-                        <polygon
-                          points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"
-                        />
-                      </svg>
-                    </button>
-                  }
-                  @if (cancelJob) {
-                    <button
-                      type="button"
-                      data-testid="catalog-album-cancel"
-                      (click)="cancelGet(cancelJob, $event)"
-                      [attr.aria-label]="'albumTile.cancelGet' | t"
-                      [title]="'albumTile.cancelGet' | t"
-                      class="absolute top-1.5 left-1.5 w-7 h-7 flex items-center justify-center rounded-full bg-black/60 hover:bg-black/80 text-white text-xs transition"
-                    >
-                      ✕
-                    </button>
-                  }
-                  </div>
+                  <app-get-album-card
+                    [title]="album.title"
+                    [artist]="album.artistName"
+                    [meta]="catalogMeta(album)"
+                    [coverSrc]="catalogCoverUrl(album)"
+                    [status]="catalogHuntStatus(album)"
+                    [preparing]="resolvingAlbums().has(album.foreignAlbumId)"
+                    [availability]="availability ? availabilityLabel(availability) : availability"
+                    [hasCopies]="!!availability"
+                    [library]="libraryStateOf(album.artistName, album.title, album.trackCount)"
+                    [showWatch]="plugins.hasDownload()"
+                    [watched]="watchlist.isWatched(album.foreignAlbumId)"
+                    (get)="huntCatalogAlbum(album)"
+                    (copies)="showCatalogCopies(album)"
+                    (cancel)="cancelGet($event)"
+                    (watch)="toggleWatch(album)"
+                  />
                 }
               </div>
             }
@@ -518,71 +402,18 @@
             @for (row of chunk(providerAlbums(), providerAlbumsGrid.gridColumns()); track $index) {
               <div role="row" style="display: contents">
                 @for (album of row; track album.key) {
-                  @let status = providerAlbumStatus(album);
-                  <div
-                    class="group relative text-left rounded-lg overflow-hidden border border-theme transition hover:border-theme-accent"
-                    style="background: var(--theme-surface)"
-                    data-testid="provider-album"
-                  >
-                    <button
-                      appTvNavItem
-                      (click)="showProviderCopies(album)"
-                      class="block w-full text-left"
-                      [title]="'acquire.showCopiesHint' | t"
-                    >
-                      <div class="aspect-square bg-theme-surface-2 relative">
-                        <app-cover-art
-                          [artist]="album.artist"
-                          [album]="album.title"
-                          [fill]="true"
-                          rounded="rounded-none"
-                        />
-                        @if (status.phase !== 'idle') {
-                          <div
-                            class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60"
-                          >
-                            <span
-                              class="inline-block w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"
-                            ></span>
-                            <span class="text-xs text-white/85">{{ catalogHuntLabel(status) }}</span>
-                          </div>
-                        }
-                      </div>
-                      <div class="p-2">
-                        <p appOverflowReveal class="text-sm truncate" style="color: var(--theme-text-primary)">
-                          {{ album.title }}
-                        </p>
-                        <p appOverflowReveal class="text-xs truncate" style="color: var(--theme-text-secondary)">
-                          {{ album.artist }}
-                        </p>
-                        <p appOverflowReveal class="text-xs truncate mt-0.5 text-emerald-400/90">
-                          {{ availabilityLabel(album.availability) }}
-                        </p>
-                      </div>
-                    </button>
-                    @if (cancellableJobId(status); as jobId) {
-                      <button
-                        type="button"
-                        data-testid="provider-album-cancel"
-                        (click)="cancelGet(jobId, $event)"
-                        [attr.aria-label]="'albumTile.cancelGet' | t"
-                        [title]="'albumTile.cancelGet' | t"
-                        class="absolute top-1.5 right-1.5 w-8 h-8 flex items-center justify-center rounded-full bg-black/60 hover:bg-black/80 text-white text-xs transition"
-                      >
-                        ✕
-                      </button>
-                    } @else if (status.phase === 'idle') {
-                      <button
-                        (click)="getBestProviderCopy(album, $event)"
-                        data-testid="provider-album-get"
-                        [attr.aria-label]="'acquire.getBestCopy' | t: { album: album.title }"
-                        [title]="'acquire.getBestCopy' | t: { album: album.title }"
-                        class="absolute top-1.5 right-1.5 w-8 h-8 flex items-center justify-center rounded-full bg-black/60 hover:bg-black/80 text-white transition"
-                      >
-                        <app-icon name="download" [size]="16" />
-                      </button>
-                    }
-                  </div>
+                  <app-get-album-card
+                    origin="provider"
+                    [title]="album.title"
+                    [artist]="album.artist"
+                    [status]="providerAlbumStatus(album)"
+                    [availability]="availabilityLabel(album.availability)"
+                    [hasCopies]="true"
+                    [library]="libraryStateOf(album.artist, album.title)"
+                    (get)="getBestProviderCopy(album)"
+                    (copies)="showProviderCopies(album)"
+                    (cancel)="cancelGet($event)"
+                  />
                 }
               </div>
             }

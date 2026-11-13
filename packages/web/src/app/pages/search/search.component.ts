@@ -50,7 +50,11 @@ import {
   folderAudioFiles,
   type FolderGroup,
 } from '../../lib/folder-utils';
-import { folderAlbumIdentity } from '@nicotind/core';
+import { folderAlbumIdentity, sameAlbum } from '@nicotind/core';
+import {
+  GetAlbumCardComponent,
+  type CardLibraryState,
+} from '../../components/get-album-card/get-album-card.component';
 import {
   availabilityFor,
   folderIsAlbum,
@@ -239,6 +243,7 @@ function isAlreadyDownloading(err: unknown): boolean {
 @Component({
   selector: 'app-search',
   imports: [
+    GetAlbumCardComponent,
     OverflowRevealDirective,
     FormsModule,
     FolderBrowserComponent,
@@ -421,20 +426,8 @@ export class SearchComponent implements OnInit, OnDestroy {
     return byAlbum;
   });
 
-  /**
-   * Catalog cards, available first. A card no peer holds stays (its watch star
-   * is the useful action) but sinks to the end, dimmed — only once the network
-   * search completed, so a slow peer never demotes an album.
-   */
-  readonly orderedCatalogAlbums = computed(() => {
-    const albums = this.catalog()?.albums ?? [];
-    if (!this.networkComplete() || !this.hasNetwork()) return albums;
-    const avail = this.catalogAvailability();
-    return [...albums].sort(
-      (a, b) =>
-        Number(avail.get(a.foreignAlbumId) == null) - Number(avail.get(b.foreignAlbumId) == null),
-    );
-  });
+  /** Catalog cards in the catalog's own order: a card never moves once drawn. */
+  readonly orderedCatalogAlbums = computed(() => this.catalog()?.albums ?? []);
 
   /** The provider's albums no catalog card covers — "Mare" for Christian Löffler. */
   readonly providerAlbums = computed(() => {
@@ -592,8 +585,8 @@ export class SearchComponent implements OnInit, OnDestroy {
   // Star/unstar a catalog album so the watchlist poller auto-acquires it when a
   // complete folder appears. Stops propagation so it doesn't trigger the card's
   // hunt-now action.
-  async toggleWatch(album: CatalogAlbum, e: Event): Promise<void> {
-    e.stopPropagation();
+  async toggleWatch(album: CatalogAlbum, e?: Event): Promise<void> {
+    e?.stopPropagation();
     try {
       await this.watchlist.toggle({
         foreignAlbumId: album.foreignAlbumId,
@@ -858,6 +851,41 @@ export class SearchComponent implements OnInit, OnDestroy {
     return this.autoHunt.statusForAlbum({ artist: album.artist, title: album.title });
   }
 
+  /** `1971 · Album · 12 tracks`, skipping what the catalog did not say. */
+  catalogMeta(album: CatalogAlbum): string {
+    return [
+      album.year,
+      album.albumType,
+      album.trackCount ? this.i18n.t('acquire.tracksCount', { count: album.trackCount }) : '',
+    ]
+      .filter(Boolean)
+      .join(' · ');
+  }
+
+  /** What the library holds of this album, by the duplicate guard's own rule. */
+  libraryStateOf(artist: string, title: string, trackCount?: number): CardLibraryState | null {
+    const owned = this.search
+      .localAlbums()
+      .find((a) => sameAlbum({ artist, title }, { artist: a.artist, title: a.name }));
+    if (!owned) return null;
+    return {
+      albumId: owned.id,
+      partial: !!trackCount && !!owned.songCount && owned.songCount < trackCount,
+    };
+  }
+
+  /** A catalog card's copies, in the folders lane. */
+  showCatalogCopies(album: CatalogAlbum): void {
+    const availability = this.catalogAvailability().get(album.foreignAlbumId);
+    if (!availability) return;
+    this.showProviderCopies({
+      key: album.foreignAlbumId,
+      title: album.title,
+      artist: album.artistName,
+      availability,
+    });
+  }
+
   /** Show every copy of a provider album in the folders lane, to pick one. */
   showProviderCopies(album: ProviderOnlyAlbum): void {
     this.folderFilter.set(album);
@@ -872,8 +900,8 @@ export class SearchComponent implements OnInit, OnDestroy {
   }
 
   /** Get the best copy outright: most tracks, then the lane's own ranking. */
-  getBestProviderCopy(album: ProviderOnlyAlbum, event: Event): void {
-    event.stopPropagation();
+  getBestProviderCopy(album: ProviderOnlyAlbum, event?: Event): void {
+    event?.stopPropagation();
     const best = album.availability.folders[0];
     if (best) void this.downloadFolder(best);
   }
@@ -890,8 +918,8 @@ export class SearchComponent implements OnInit, OnDestroy {
   readonly cancellableJobId = cancellableJobId;
 
   /** Stop a Get from the card showing it; the card sits inside a clickable surface. */
-  cancelGet(jobId: string, event: Event): void {
-    event.stopPropagation();
+  cancelGet(jobId: string, event?: Event): void {
+    event?.stopPropagation();
     void this.autoHunt.cancel(jobId);
   }
 
@@ -1360,8 +1388,8 @@ export class SearchComponent implements OnInit, OnDestroy {
     try {
       const res = await firstValueFrom(this.api.search(query));
       this.searchId.set(res.searchId);
-      // Local library results are no longer rendered here (#227 — acquisition-only
-      // Search); `res.local` still arrives but is intentionally ignored.
+      // Library results are not listed here (#227); the albums only mark a card as owned.
+      this.search.localAlbums.set(res.local?.albums ?? []);
       this.errors.set(res.errors ?? []);
       this.networkAvailable.set(res.networkAvailable ?? false);
       this.search.setNetworkState(res.networkAvailable ? 'searching' : 'complete');

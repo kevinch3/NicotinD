@@ -51,12 +51,14 @@ test('2 acquire', async ({ page, request, shot }) => {
   await shot.click(input);
   await input.pressSequentially(ACQUIRED.artist, { delay: 75 });
   await shot.click(page.getByTestId('search-submit'));
-  const card = page.getByRole('gridcell', { name: new RegExp(`^${ACQUIRED.title}`) });
+  const card = page
+    .getByTestId('catalog-album')
+    .filter({ hasText: new RegExp(`${ACQUIRED.title}`) });
   await expect(card).toBeVisible({ timeout: 20_000 });
   await shot.hold(1500);
 
   await shot.caption('One tap. It picks the best match…', 'top');
-  await shot.click(card.getByTestId('catalog-album-cover'));
+  await shot.click(card.getByTestId('catalog-album-get'));
   // Step off the card: the cursor would sit on the very status text it is showing.
   await shot.glide({ x: 470, y: 470 }, 20);
   await expect(page.getByText(/Best match found/)).toBeVisible({ timeout: 15_000 });

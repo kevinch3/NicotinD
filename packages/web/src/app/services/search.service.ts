@@ -1,6 +1,6 @@
 import { Injectable, signal } from '@angular/core';
 import type { ArchiveCandidate, SpotifyCandidate } from '@nicotind/core';
-import type { CatalogSearchResult } from './api/api-types';
+import type { CatalogSearchResult, SearchResult } from './api/api-types';
 
 export interface NetworkResult {
   username: string;
@@ -67,6 +67,8 @@ export class SearchService {
   /** The query's album cards. Here, not on the page, so leaving the Add tab and
    *  coming back restores them along with the Results (#1544). */
   readonly catalog = signal<CatalogSearchResult | null>(null);
+  /** Library albums the query matched, so a card can say "In library" before a click. */
+  readonly localAlbums = signal<SearchResult['local']['albums']>([]);
 
   setQuery(query: string): void {
     this.query.set(query);
@@ -169,6 +171,7 @@ export class SearchService {
     this.autoSearch.set(false);
     this.openBrowserKey.set(null);
     this.catalog.set(null);
+    this.localAlbums.set([]);
   }
 
   /** Logout: everything the user left behind. A new search must not call this —

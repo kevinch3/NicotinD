@@ -57,11 +57,11 @@ test('a Get acquires a held-back album into the library', async ({ page }) => {
   await page.goto('get');
   await page.getByTestId('search-input').fill(heldBack.artist);
   await page.getByTestId('search-submit').click();
-  const card = page.getByRole('gridcell', {
-    name: new RegExp(`^${heldBack.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i'),
+  const card = page.getByTestId('catalog-album').filter({
+    hasText: new RegExp(`${heldBack.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i'),
   });
   await expect(card).toBeVisible({ timeout: 20_000 });
-  await card.getByTestId('catalog-album-cover').click();
+  await card.getByTestId('catalog-album-get').click();
   await expect
     .poll(
       async () => {
