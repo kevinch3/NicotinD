@@ -364,12 +364,12 @@
                   @let huntStatus = catalogHuntStatus(album);
                   @let availability = catalogAvailabilityOf(album);
                   @let cancelJob = cancellableJobId(huntStatus);
-                  <div class="relative">
+                  <div class="group relative">
                   <button
                     appTvNavItem
                     data-testid="catalog-album"
                     (click)="huntCatalogAlbum(album)"
-                    [disabled]="resolvingAlbum() !== null || huntStatus.phase !== 'idle'"
+                    [disabled]="resolvingAlbums().has(album.foreignAlbumId) || huntStatus.phase !== 'idle'"
                     [attr.data-hunt-phase]="huntStatus.phase"
                     [attr.data-availability]="
                       availability === undefined ? 'unknown' : availability ? 'available' : 'none'
@@ -389,7 +389,7 @@
                         [fill]="true"
                         rounded="rounded-none"
                       />
-                      @if (resolvingAlbum() === album.foreignAlbumId) {
+                      @if (resolvingAlbums().has(album.foreignAlbumId)) {
                         <div
                           class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60"
                         >
@@ -409,48 +409,6 @@
                             catalogHuntLabel(huntStatus)
                           }}</span>
                         </div>
-                      }
-                      <!-- Watchlist star — auto-acquire when a complete folder appears
-                               (only when a download-capable plugin is enabled) -->
-                      @if (plugins.hasDownload()) {
-                        <span
-                          role="button"
-                          tabindex="0"
-                          data-testid="watchlist-star"
-                          (click)="toggleWatch(album, $event)"
-                          (keydown.enter)="toggleWatch(album, $event)"
-                          [attr.aria-label]="
-                            watchlist.isWatched(album.foreignAlbumId)
-                              ? 'Stop watching'
-                              : 'Watch for this album'
-                          "
-                          [attr.title]="
-                            watchlist.isWatched(album.foreignAlbumId)
-                              ? 'Watching — auto-downloads when found'
-                              : 'Watch — auto-download when found'
-                          "
-                          class="absolute top-1.5 right-1.5 w-7 h-7 flex items-center justify-center rounded-full bg-black/55 hover:bg-black/75 transition cursor-pointer opacity-0 group-hover:opacity-100 focus:opacity-100 [@media(hover:none)]:opacity-100"
-                          [class.!opacity-100]="watchlist.isWatched(album.foreignAlbumId) || availability === null"
-                        >
-                          <svg
-                            width="15"
-                            height="15"
-                            viewBox="0 0 24 24"
-                            [attr.fill]="
-                              watchlist.isWatched(album.foreignAlbumId) ? 'currentColor' : 'none'
-                            "
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            [class.text-amber-400]="watchlist.isWatched(album.foreignAlbumId)"
-                            [class.text-white]="!watchlist.isWatched(album.foreignAlbumId)"
-                          >
-                            <polygon
-                              points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"
-                            />
-                          </svg>
-                        </span>
                       }
                     </div>
                     <div class="p-2">
@@ -484,6 +442,46 @@
                       }
                     </div>
                   </button>
+                  <!-- Watchlist star — auto-acquire when a complete folder appears
+                           (only when a download-capable plugin is enabled) -->
+                  @if (plugins.hasDownload()) {
+                    <button
+                      type="button"
+                      data-testid="watchlist-star"
+                      (click)="toggleWatch(album, $event)"
+                      [attr.aria-label]="
+                        watchlist.isWatched(album.foreignAlbumId)
+                          ? 'Stop watching'
+                          : 'Watch for this album'
+                      "
+                      [attr.title]="
+                        watchlist.isWatched(album.foreignAlbumId)
+                          ? 'Watching — auto-downloads when found'
+                          : 'Watch — auto-download when found'
+                      "
+                      class="absolute top-1.5 right-1.5 w-7 h-7 flex items-center justify-center rounded-full bg-black/55 hover:bg-black/75 transition cursor-pointer opacity-0 group-hover:opacity-100 focus:opacity-100 [@media(hover:none)]:opacity-100"
+                      [class.!opacity-100]="watchlist.isWatched(album.foreignAlbumId) || availability === null"
+                    >
+                      <svg
+                        width="15"
+                        height="15"
+                        viewBox="0 0 24 24"
+                        [attr.fill]="
+                          watchlist.isWatched(album.foreignAlbumId) ? 'currentColor' : 'none'
+                        "
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        [class.text-amber-400]="watchlist.isWatched(album.foreignAlbumId)"
+                        [class.text-white]="!watchlist.isWatched(album.foreignAlbumId)"
+                      >
+                        <polygon
+                          points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"
+                        />
+                      </svg>
+                    </button>
+                  }
                   @if (cancelJob) {
                     <button
                       type="button"
