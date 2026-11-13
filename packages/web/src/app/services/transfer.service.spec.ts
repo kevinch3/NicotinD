@@ -352,6 +352,18 @@ describe('TransferService item status → transfer state mapping', () => {
   it('maps done to Completed, Succeeded', async () => {
     expect(await stateFor('done')).toBe('Completed, Succeeded');
   });
+
+  // A row on the Get page cancels a track through the job carrying it.
+  it('carries the job id of a live job, and none once the job ended', async () => {
+    const live = jobWithItemStatus('downloading');
+    getDownloadsMock.mockReturnValue(of([live]));
+    await service.poll();
+    expect(service.getStatus('peer', 'file0')?.jobId).toBe(live.id);
+
+    getDownloadsMock.mockReturnValue(of([{ ...live, state: 'done' }]));
+    await service.poll();
+    expect(service.getStatus('peer', 'file0')?.jobId).toBeUndefined();
+  });
 });
 
 describe('TransferService libraryDirty flagging', () => {

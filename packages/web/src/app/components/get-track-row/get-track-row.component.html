@@ -1,0 +1,77 @@
+<div
+  class="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2.5 bg-theme-surface/40"
+  [attr.data-testid]="testid()"
+  [attr.data-source]="source()"
+  [attr.data-state]="state()"
+>
+  <div class="min-w-0 flex-1 basis-48">
+    <div class="flex items-center gap-2 min-w-0">
+      @if (source(); as src) {
+        <app-source-chip [source]="src" [label]="sourceLabel()" />
+      }
+      <p appOverflowReveal class="truncate text-sm text-theme-primary">{{ title() }}</p>
+      @if (transcodeKbps()) {
+        <span
+          class="shrink-0 text-[10px] uppercase tracking-wide text-status-done"
+          [title]="'acquire.losslessOpusTooltip' | t"
+          data-testid="transcode-chip"
+        >
+          → Opus {{ transcodeKbps() }}k
+        </span>
+      }
+    </div>
+    <p appOverflowReveal class="truncate text-xs text-theme-muted mt-0.5">
+      {{ subtitle() }}
+      @if (subtitle() && facts()) {
+        ·
+      }
+      {{ facts() }}
+      @if (copies() > 1) {
+        · <span data-testid="track-copies">{{ 'getRow.copies' | t: { count: copies() } }}</span>
+      }
+    </p>
+  </div>
+
+  <div class="ml-auto flex items-center gap-1.5">
+    @if (statusKey(); as key) {
+      <span
+        class="text-xs"
+        [class]="state() === 'failed' ? 'text-status-error' : 'text-status-done'"
+        [attr.data-testid]="testid() + '-status'"
+        >{{ key | t }}</span
+      >
+    }
+    @if (state() !== 'done' && state() !== 'queued') {
+      <button
+        type="button"
+        (click)="get.emit()"
+        [disabled]="busy()"
+        [attr.data-testid]="testid() + '-get'"
+        [attr.aria-label]="'getRow.getTitled' | t: { title: title() }"
+        class="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium bg-theme-surface-2 hover:bg-theme-hover text-theme-primary disabled:opacity-60"
+      >
+        @if (busy()) {
+          {{ percent() > 0 ? percent() + '%' : '…' }}
+        } @else if (opensExternally()) {
+          {{ 'getLink.openInSpotify' | t }}
+        } @else {
+          <app-icon name="download" [size]="14" />
+          {{ 'acquire.get' | t }}
+        }
+      </button>
+    }
+    @if (cancelJobId(); as jobId) {
+      @if (busy()) {
+        <button
+          type="button"
+          (click)="cancel.emit(jobId)"
+          [attr.data-testid]="testid() + '-cancel'"
+          [attr.aria-label]="'getRow.cancelTitled' | t: { title: title() }"
+          class="w-7 h-7 flex items-center justify-center rounded-md bg-theme-surface-2 hover:bg-theme-hover text-theme-secondary"
+        >
+          <app-icon name="close" [size]="14" />
+        </button>
+      }
+    }
+  </div>
+</div>

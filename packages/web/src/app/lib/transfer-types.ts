@@ -5,4 +5,6 @@
 export interface TransferEntry {
   state: string;
   percent?: number;
+  /** The job carrying this file, so the row showing it can cancel it. */
+  jobId?: string;
 }

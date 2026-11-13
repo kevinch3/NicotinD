@@ -200,6 +200,7 @@ export class TransferService {
           map.set(`${item.username}:${item.filename}`, {
             state: itemStatusToTransferState(item.status),
             percent: undefined,
+            jobId: job.state === 'active' ? job.id : undefined,
           });
         }
       }
