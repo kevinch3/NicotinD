@@ -1,0 +1,141 @@
+<div
+  data-testid="catalog-album"
+  [attr.data-origin]="origin()"
+  [attr.data-hunt-phase]="status().phase"
+  [attr.data-availability]="dataAvailability()"
+  [attr.data-state]="dataState()"
+  class="relative h-full flex flex-col rounded-lg overflow-hidden border border-theme bg-theme-surface"
+>
+  <div class="aspect-square bg-theme-surface-2 relative" data-testid="catalog-album-cover">
+    <div class="absolute inset-0" [class.opacity-50]="unseen()">
+      <app-cover-art
+        [src]="coverSrc()"
+        [artist]="artist()"
+        [album]="title()"
+        [fill]="true"
+        rounded="rounded-none"
+      />
+    </div>
+    @if (hasCopies()) {
+      <button
+        type="button"
+        data-testid="catalog-album-copies-cover"
+        tabindex="-1"
+        (click)="copies.emit()"
+        [attr.aria-label]="'getCard.copiesOf' | t: { album: title() }"
+        [title]="'acquire.showCopiesHint' | t"
+        class="absolute inset-0 cursor-pointer"
+      ></button>
+    }
+    @if (progress() !== null) {
+      <div class="absolute inset-x-0 bottom-0 h-1 bg-black/50" data-testid="catalog-album-progress">
+        <div class="h-full bg-theme-accent transition-[width]" [style.width.%]="progress()"></div>
+      </div>
+    }
+  </div>
+
+  @if (showWatch()) {
+    <button
+      type="button"
+      data-testid="watchlist-star"
+      (click)="watch.emit()"
+      [attr.aria-pressed]="watched()"
+      [attr.aria-label]="(watched() ? 'getCard.unwatch' : 'getCard.watch') | t"
+      [title]="(watched() ? 'getCard.unwatchHint' : 'getCard.watchHint') | t"
+      class="absolute top-1.5 right-1.5 w-8 h-8 flex items-center justify-center rounded-full bg-black/60 hover:bg-black/80 transition"
+    >
+      <svg
+        width="15"
+        height="15"
+        viewBox="0 0 24 24"
+        [attr.fill]="watched() ? 'currentColor' : 'none'"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        [class]="watched() ? 'text-amber-400' : 'text-white'"
+      >
+        <polygon
+          points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"
+        />
+      </svg>
+    </button>
+  }
+
+  <div class="p-2 flex flex-col flex-1 min-w-0">
+    <p appOverflowReveal class="text-sm text-theme-primary truncate">{{ title() }}</p>
+    <p appOverflowReveal class="text-xs text-theme-secondary truncate">{{ artist() }}</p>
+    <p appOverflowReveal class="text-xs text-theme-muted truncate">{{ meta() || '\u00a0' }}</p>
+    <p
+      appOverflowReveal
+      class="text-xs truncate"
+      [class]="busy() ? 'text-status-progress' : owned() ? 'text-status-success' : 'text-theme-muted'"
+      [attr.data-testid]="busy() ? 'catalog-album-hunt-status' : 'catalog-album-status'"
+      role="status"
+    >
+      {{ statusLine() || '\u00a0' }}
+    </p>
+
+    <div class="mt-2 flex flex-wrap gap-1.5">
+      @if (cancelJobId(); as jobId) {
+        <button
+          appTvNavItem
+          type="button"
+          data-testid="catalog-album-cancel"
+          (click)="cancel.emit(jobId)"
+          [attr.aria-label]="'getCard.cancelTitled' | t: { album: title() }"
+          class="flex-1 min-w-0 px-2 py-1.5 rounded-md text-xs font-semibold bg-theme-surface-2 text-theme-secondary hover:bg-theme-surface-2/80 transition flex items-center justify-center gap-1.5"
+        >
+          <app-icon name="close" [size]="14" />
+          <span class="truncate">{{ 'albumTile.cancelGet' | t }}</span>
+        </button>
+      } @else if (owned() && !busy()) {
+        <a
+          appTvNavItem
+          data-testid="catalog-album-open"
+          [routerLink]="libraryRoute()"
+          [attr.aria-label]="'getCard.openTitled' | t: { album: title() }"
+          class="flex-1 min-w-0 px-2 py-1.5 rounded-md text-xs font-semibold bg-theme-surface-2 text-theme-secondary hover:bg-theme-surface-2/80 transition flex items-center justify-center gap-1.5"
+        >
+          <app-icon name="play" [size]="14" />
+          <span class="truncate">{{ 'acquire.open' | t }}</span>
+        </a>
+      } @else {
+        <button
+          appTvNavItem
+          type="button"
+          data-testid="catalog-album-get"
+          (click)="get.emit()"
+          [disabled]="busy()"
+          [attr.aria-label]="
+            (library() ? 'getCard.completeTitled' : 'getCard.getTitled') | t: { album: title() }
+          "
+          class="flex-1 min-w-0 px-2 py-1.5 rounded-md text-xs font-semibold bg-theme-surface-2 text-theme-secondary hover:bg-theme-surface-2/80 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+        >
+          @if (busy()) {
+            <span
+              class="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"
+            ></span>
+          } @else {
+            <app-icon name="download" [size]="14" />
+          }
+          <span class="truncate">{{
+            (library() ? 'albumTile.completeAlbum' : 'acquire.get') | t
+          }}</span>
+        </button>
+      }
+      @if (hasCopies()) {
+        <button
+          type="button"
+          data-testid="catalog-album-copies"
+          (click)="copies.emit()"
+          [attr.aria-label]="'getCard.copiesOf' | t: { album: title() }"
+          [title]="'acquire.showCopiesHint' | t"
+          class="shrink-0 px-2.5 py-1.5 rounded-md text-xs font-semibold bg-theme-surface-2 text-theme-secondary hover:bg-theme-surface-2/80 transition flex items-center"
+        >
+          <app-icon name="layers" [size]="14" />
+        </button>
+      }
+    </div>
+  </div>
+</div>

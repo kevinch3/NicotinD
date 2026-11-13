@@ -295,9 +295,9 @@ async function recordGet(
   await page.goto('/get');
   await page.getByTestId('search-input').fill(album.artist);
   await page.getByTestId('search-submit').click();
-  const card = page.getByRole('gridcell', {
-    name: new RegExp(`^${album.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i'),
-  });
+  const card = page
+    .getByTestId('catalog-album')
+    .filter({ hasText: new RegExp(`${album.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i') });
   await card.waitFor({ timeout: 30_000 });
   await page.waitForTimeout(1500);
 
@@ -325,7 +325,7 @@ async function recordGet(
   page.on('response', onWrite);
   rec.t0 = Date.now();
   rec.timeline = [];
-  await card.getByTestId('catalog-album-cover').click();
+  await card.getByTestId('catalog-album-get').click();
   const auth = { headers: { Authorization: `Bearer ${token}` } };
   await poll(
     `${album.title} to land`,

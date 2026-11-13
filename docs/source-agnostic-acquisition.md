@@ -115,7 +115,7 @@ The network lane — raw search, album hunts, folder browse — runs on whicheve
 picks (`activeRemoteAcquisitionAddon`: the first enabled remote acquisition addon that can
 download). The web mirrors that rule in `PluginService.networkSource` and labels the lane with
 **that addon's manifest name** everywhere it shows: the "Sources:" line, each result's chip
-(`CandidateSource` `'network'`, labelled by the caller), the "Not on …" card, the Advanced toggle,
+(`CandidateSource` `'network'`, labelled by the caller), the Advanced toggle,
 the searching / no-results states and the hunt modal. A job's method badge falls back the same way:
 `methodBadge(method, name)` keeps a first-party badge and otherwise names the addon by its manifest
 (`PluginService.names`), so a source the web has never heard of reads as itself — "Unknown source"

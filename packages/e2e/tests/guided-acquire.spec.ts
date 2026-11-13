@@ -116,7 +116,7 @@ test.describe('guided acquire through the catalog', () => {
     expect(Math.abs(widths[0] - widths[1])).toBeLessThanOrEqual(1);
 
     // The artist is not in Lidarr yet, so this also runs the real 202 add job.
-    await card.click();
+    await card.getByTestId('catalog-album-get').click();
 
     // One click: the server finds the 100% match and enqueues it by itself.
     await expect
@@ -142,6 +142,15 @@ test.describe('guided acquire through the catalog', () => {
     const detail = await request.get(`/api/library/albums/${landedAlbumId}`, { headers: auth });
     expect(detail.status()).toBe(200);
     expect(((await detail.json()) as { artist: string }).artist).toBe('Rick Astley');
+
+    // Owned now, and the card says so before a click instead of with a toast after.
+    await page.goto('/get?tab=add');
+    await page.getByTestId('search-input').fill('Rick Astley');
+    await page.getByTestId('search-submit').click();
+    const owned = page.getByTestId('catalog-album').filter({ hasText: ALBUM });
+    await expect(owned).toHaveAttribute('data-state', 'in-library', { timeout: 15_000 });
+    await expect(owned.getByTestId('catalog-album-open')).toBeVisible();
+    await expect(owned.getByTestId('catalog-album-get')).toHaveCount(0);
   });
 
   test('a compilation Lidarr cannot resolve falls back to the raw network search', async ({
@@ -157,7 +166,11 @@ test.describe('guided acquire through the catalog', () => {
     await page.goto('/get?tab=add');
     await page.getByTestId('search-input').fill('Rick Astley');
     await page.getByTestId('search-submit').click();
-    await page.getByTestId('catalog-album').filter({ hasText: title }).click();
+    await page
+      .getByTestId('catalog-album')
+      .filter({ hasText: title })
+      .getByTestId('catalog-album-get')
+      .click();
     await expect(page.getByTestId('raw-fallback-note')).toBeVisible({ timeout: 30_000 });
   });
 

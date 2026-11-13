@@ -315,91 +315,31 @@ describe('SearchComponent — metadata-driven search', () => {
     expect(group?.getAttribute('axis')).toBe('grid');
   });
 
-  // #1841: a catalog card showing a running Get carries its cancel, beside the
-  // card rather than inside it, since the card is a button that goes disabled.
-  it('a catalog card with a running Get offers a cancel that stops that job', async () => {
-    const { component, search, fixture, autoHunt } = setup();
-    autoHunt.statusForAlbum.mockReturnValue({ phase: 'searching', jobId: 'job-7' });
-    search.setQuery('pink floyd');
-    component.handleSearch(new Event('submit'));
-    await flush();
-    fixture.detectChanges();
-
-    const el: HTMLElement = fixture.nativeElement;
-    const cancel = el.querySelector<HTMLButtonElement>('[data-testid="catalog-album-cancel"]');
-    expect(cancel).not.toBeNull();
-    expect(cancel!.closest('[data-testid="catalog-album"]')).toBeNull();
-    cancel!.click();
+  // #1841: a card's cancel stops that job and starts nothing.
+  it('a card cancel stops that job', () => {
+    const { component, autoHunt } = setup();
+    component.cancelGet('job-7');
     expect(autoHunt.cancel).toHaveBeenCalledWith('job-7');
     expect(autoHunt.hunt).not.toHaveBeenCalled();
   });
 
-  it('an idle catalog card has no cancel', async () => {
-    const { component, search, fixture } = setup();
-    search.setQuery('pink floyd');
-    component.handleSearch(new Event('submit'));
-    await flush();
-    fixture.detectChanges();
-    const el: HTMLElement = fixture.nativeElement;
-    expect(el.querySelector('[data-testid="catalog-album"]')).not.toBeNull();
-    expect(el.querySelector('[data-testid="catalog-album-cancel"]')).toBeNull();
-  });
-
   // One album preparing used to disable every card, on the page built to queue
   // a discography.
-  it('a card resolving leaves the other cards clickable', async () => {
+  it('a card resolving leaves the other cards clickable', () => {
     const second: CatalogAlbum = {
       ...CATALOG_ALBUM,
       foreignAlbumId: 'wywh-rg',
       title: 'Wish You Were Here',
     };
     const catalogResolve = vi.fn(() => NEVER);
-    const { component, search, fixture } = setup({
-      catalogSearch: () => of({ artists: [], albums: [CATALOG_ALBUM, second] }),
-      catalogResolve,
-    });
-    search.setQuery('pink floyd');
-    component.handleSearch(new Event('submit'));
-    await flush();
-    fixture.detectChanges();
+    const { component } = setup({ catalogResolve });
 
-    const cards = () =>
-      Array.from(
-        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
-          '[data-testid="catalog-album"]',
-        ),
-      );
-    cards()[0].click();
-    fixture.detectChanges();
-    expect(cards().map((c) => c.disabled)).toEqual([true, false]);
+    void component.huntCatalogAlbum(CATALOG_ALBUM);
+    void component.huntCatalogAlbum(second);
+    void component.huntCatalogAlbum(CATALOG_ALBUM);
 
-    cards()[1].click();
-    cards()[0].click();
     expect(catalogResolve).toHaveBeenCalledTimes(2);
     expect([...component.resolvingAlbums()]).toEqual(['dsotm-rg', 'wywh-rg']);
-  });
-
-  // The star was a span[role=button] inside the card button: invalid nesting,
-  // and dead whenever the card went disabled.
-  it('the watch star is a button beside the card and never starts a Get', async () => {
-    const { component, search, fixture, plugins, autoHunt } = setup();
-    plugins.plugins.set([
-      { id: 'src', enabled: true, capabilities: ['download'] } as unknown as PluginInfo,
-    ]);
-    const toggle = vi.spyOn(component.watchlist, 'toggle').mockResolvedValue(undefined as never);
-    search.setQuery('pink floyd');
-    component.handleSearch(new Event('submit'));
-    await flush();
-    fixture.detectChanges();
-
-    const star = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>(
-      '[data-testid="watchlist-star"]',
-    )!;
-    expect(star.tagName).toBe('BUTTON');
-    expect(star.closest('[data-testid="catalog-album"]')).toBeNull();
-    star.click();
-    expect(toggle).toHaveBeenCalledWith(expect.objectContaining({ foreignAlbumId: 'dsotm-rg' }));
-    expect(autoHunt.hunt).not.toHaveBeenCalled();
   });
 
   // The assertion above only proves the ATTRIBUTE is in the DOM, which
@@ -734,22 +674,45 @@ describe('SearchComponent — what the provider holds (#1538)', () => {
     expect(component.catalogAvailabilityOf(WYWH)).toBeNull();
   });
 
-  it('sinks the cards no peer holds to the end, once complete', () => {
-    const { component, search } = seeded('complete');
+  // A card that moves after it is drawn moves under the pointer.
+  it('keeps the catalog order when the search completes', () => {
+    const { component, search } = seeded('searching');
     component.catalog.set({
       artists: [],
       albums: [WYWH, CATALOG_ALBUM],
       scopedArtist: 'Pink Floyd',
     });
-    expect(component.orderedCatalogAlbums().map((a) => a.foreignAlbumId)).toEqual([
-      'dsotm-rg',
-      'wywh',
-    ]);
-    search.setNetworkState('searching');
+    search.setNetworkState('complete');
+    expect(component.catalogAvailabilityOf(WYWH)).toBeNull();
     expect(component.orderedCatalogAlbums().map((a) => a.foreignAlbumId)).toEqual([
       'wywh',
       'dsotm-rg',
     ]);
+  });
+
+  it("opens a catalog card's copies in the folders lane", () => {
+    const { component } = seeded('complete');
+    component.showCatalogCopies(CATALOG_ALBUM);
+    expect(component.directSearchOpen()).toBe(true);
+    expect(component.networkView()).toBe('folders');
+    expect(component.visibleFolderGroups().length).toBeGreaterThan(0);
+    expect(component.visibleFolderGroups().length).toBeLessThan(component.folderGroups().length);
+  });
+
+  it('marks a card whose album the library holds, whole or in part', () => {
+    const { component, search } = seeded('complete');
+    search.localAlbums.set([
+      { id: 'a1', name: 'The Dark Side Of The Moon', artist: 'Pink Floyd', songCount: 10 },
+    ]);
+    expect(component.libraryStateOf('Pink Floyd', 'The Dark Side of the Moon', 10)).toEqual({
+      albumId: 'a1',
+      partial: false,
+    });
+    expect(component.libraryStateOf('Pink Floyd', 'The Dark Side of the Moon', 12)).toEqual({
+      albumId: 'a1',
+      partial: true,
+    });
+    expect(component.libraryStateOf('Pink Floyd', 'Animals', 5)).toBeNull();
   });
 
   it('offers the albums only the provider holds, and opens their copies in the folders lane', () => {
@@ -763,22 +726,12 @@ describe('SearchComponent — what the provider holds (#1538)', () => {
     expect(component.visibleFolderGroups().map((g) => g.username)).toEqual(['c']);
   });
 
-  it('a provider card with a running Get swaps its Get button for a cancel (#1841)', () => {
-    const { component, fixture, autoHunt } = seeded('complete');
-    autoHunt.statusForAlbum.mockImplementation((target) =>
-      target.title === 'The Wall'
-        ? { phase: 'job', stage: 'downloading', jobId: 'job-3' }
-        : { phase: 'idle' },
-    );
-    expect(component.providerAlbums().length).toBeGreaterThan(0);
-    fixture.detectChanges();
-    const card = (fixture.nativeElement as HTMLElement).querySelector(
-      '[data-testid="provider-album"]',
-    )!;
-    expect(card.querySelector('[data-testid="provider-album-get"]')).toBeNull();
-    card.querySelector<HTMLButtonElement>('[data-testid="provider-album-cancel"]')!.click();
-    expect(autoHunt.cancel).toHaveBeenCalledWith('job-3');
-    expect(component.directSearchOpen()).toBe(false);
+  it('a provider card gets the fullest copy', () => {
+    const { component } = seeded('complete');
+    const download = vi.spyOn(component, 'downloadFolder').mockResolvedValue(undefined as never);
+    const [wall] = component.providerAlbums();
+    component.getBestProviderCopy(wall!);
+    expect(download).toHaveBeenCalledWith(wall!.availability.folders[0]);
   });
 });
 

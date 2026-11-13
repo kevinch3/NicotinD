@@ -17,8 +17,6 @@ const NOT_A_NAME = {
     'components/download-item/download-item.component.html',
     'components/download-item/download-item.component.html',
     'pages/search/search.component.html',
-    'pages/search/search.component.html',
-    'pages/search/search.component.html',
   ],
   // A secret or a URL: copied, not read.
   secretOrUrl: [
@@ -30,12 +28,14 @@ const NOT_A_NAME = {
   ],
   // Fixed UI copy or a count line, no user content in it.
   uiCopy: [
+    'components/get-album-card/get-album-card.component.html',
+    'components/get-album-card/get-album-card.component.html',
+    'components/get-album-card/get-album-card.component.html',
     'components/import-drop-card/import-drop-card.component.html',
     'components/playing-elsewhere/playing-elsewhere.component.html',
     'components/resource-picker/resource-picker.component.html',
     'pages/get/get.component.html',
     'pages/library/library.component.html',
-    'pages/search/search.component.html',
     'pages/search/search.component.html',
     'pages/search/search.component.html',
     'pages/search/search.component.html',
