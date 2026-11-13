@@ -125,7 +125,8 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   line with curator edit. → [artist-origin.md](../artist-origin.md)
 - **Popularity / hotness per song**: normalized 0–1 `library_songs.popularity` from ListenBrainz via
   `ListenBrainzClient` + `normalizePopularity`, MBID-native and tags-first. Not tag-mirrored, so it
-  survives rescans untouched. → [popularity.md](../popularity.md)
+  survives rescans untouched. The artist page's Popular block ranks it with local plays:
+  `artistTopSongCandidates`, `rankTopSongs`. → [popularity.md](../popularity.md)
 - **Search matching (tokenized + accent-insensitive)**: shared `search-tokens.ts`
   (`tokenize`/`matchesAllTokens`) folds and ANDs per token over a name+artist haystack; the catalog
   lane reuses it through `filterAlbumsByRelevance`. → [library-scanner.md](../library-scanner.md)

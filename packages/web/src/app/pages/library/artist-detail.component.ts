@@ -671,6 +671,7 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     this.loadAppearsOn(id);
     this.loadDiscography(id);
     this.loadGenreDistribution(id);
+    this.loadTopSongs(id);
     this.loadRelatedArtists(id);
   }
 
@@ -726,6 +727,27 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     } catch {
       /* no-op — an empty/failed distribution just hides the chips and chart */
     }
+  }
+
+  // ─── Popular (docs/popularity.md "Artist page: Popular") ──────────────────
+  /** Up to five songs some signal ranks; empty hides the block. */
+  readonly topSongs = signal<Song[]>([]);
+
+  private async loadTopSongs(artistId: string): Promise<void> {
+    this.topSongs.set([]);
+    try {
+      const songs = await firstValueFrom(this.api.getArtistTopSongs(artistId));
+      if (this.artistId === artistId) this.topSongs.set(songs);
+    } catch {
+      /* no-op — the block is optional */
+    }
+  }
+
+  /** Plays from the clicked row through the rest of the list. */
+  playTopSong(index: number): void {
+    const tracks = this.topSongs().map((s) => toTrack(s));
+    if (!tracks[index]) return;
+    this.player.playWithContext(tracks, index, { type: 'adhoc', name: this.artist()?.name });
   }
 
   // ─── Related artists (docs/related-artists.md) ────────────────────────────
