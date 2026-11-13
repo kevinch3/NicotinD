@@ -8,9 +8,11 @@ test.describe('favicon', () => {
       expect(res.status(), `${path} should resolve`).toBe(200);
     }
 
+    // The href is base-relative (the static demo serves the bundle under a
+    // sub-path, docs/demo-mode.md), so assert where it resolves, not its text.
     await page.goto('/');
-    await expect(page.locator('link[rel="icon"][type="image/svg+xml"]')).toHaveAttribute(
-      'href',
+    const link = page.locator('link[rel="icon"][type="image/svg+xml"]');
+    expect(new URL(await link.evaluate((el) => (el as HTMLLinkElement).href)).pathname).toBe(
       '/icons/icon.svg',
     );
   });

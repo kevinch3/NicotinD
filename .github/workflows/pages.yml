@@ -166,6 +166,8 @@ jobs:
       # server, so it needs what e2e needs — Chromium and ffmpeg.
       - name: Install Playwright OS deps
         uses: ./.github/actions/playwright-deps
+        with:
+          install-command: bun run --filter @nicotind/e2e install:deps
 
       - name: Install Playwright browser
         run: bun run --filter @nicotind/e2e install:browsers
