@@ -145,6 +145,12 @@ export interface AcquisitionJobView {
    */
   canResource?: boolean;
   /**
+   * The automatic completion (#1879) searched for the missing tracks and no
+   * other peer had any of them. The card says so beside the button, which stays
+   * for a manual try later.
+   */
+  autoResourceExhausted?: boolean;
+  /**
    * Dominant bitrate (kbps) of the job's files. For slskd hunts, this is the
    * enqueue-time bitrate (what the peer advertised); it upgrades to the
    * library-scanned value once the scan lands (see downloads.ts enrichWithBitrate

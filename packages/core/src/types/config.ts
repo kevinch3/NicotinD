@@ -89,6 +89,9 @@ export const NicotinDConfigSchema = z.object({
       autoAcquireIntervalMs: z.number().int().min(10_000).default(3_600_000),
       // Max albums acquired per sweep, so a large missing list never floods slskd.
       autoAcquireMaxPerSweep: z.number().int().min(1).default(3),
+      // A partial album (some tracks unavailable) asks another peer for the rest
+      // by itself, the way the "Complete from another peer" button does (#1879).
+      autoCompletePartial: z.boolean().default(true),
       // Acquisition staging. Relative → resolved under musicDir, so ingest is
       // an atomic rename on one filesystem and a self-hoster mounts one path.
       // Must be a single top-level name: only a top-level name can be reserved,
@@ -116,6 +119,7 @@ export const NicotinDConfigSchema = z.object({
       autoAcquireEnabled: false,
       autoAcquireIntervalMs: 3_600_000,
       autoAcquireMaxPerSweep: 3,
+      autoCompletePartial: true,
       dir: '.downloads',
       transcodeLossless: { enabled: true, format: 'opus', bitRate: 192 },
     }),

@@ -18,6 +18,7 @@ export type HuntLane =
   | 'get'
   | 'hunt-skew'
   | 'resource'
+  | 'resource-auto'
   | 'hunt-download'
   | 'retry'
   | 'watchlist'

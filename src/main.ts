@@ -327,6 +327,9 @@ export function loadConfig() {
       ...(process.env.NICOTIND_AUTO_ACQUIRE_ENABLED
         ? { autoAcquireEnabled: parseBooleanEnv(process.env.NICOTIND_AUTO_ACQUIRE_ENABLED) }
         : {}),
+      ...(process.env.NICOTIND_AUTO_COMPLETE_PARTIAL
+        ? { autoCompletePartial: parseBooleanEnv(process.env.NICOTIND_AUTO_COMPLETE_PARTIAL) }
+        : {}),
       ...(process.env.NICOTIND_PREFER_FLAC_SKIP_MP3
         ? { preferFlacSkipMp3: parseBooleanEnv(process.env.NICOTIND_PREFER_FLAC_SKIP_MP3) }
         : {}),

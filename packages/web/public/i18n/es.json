@@ -826,6 +826,7 @@
   "downloads.resource.auto": "Mejor par: {peer} · {covered} de {wanted} pistas · {format}. Cambiando en {seconds}s",
   "downloads.resource.useNow": "Cambiar ahora",
   "downloads.resource.choose": "Elegir par",
+  "downloads.resource.autoExhausted": "Ningún otro par tenía el resto cuando buscamos",
   "downloads.resource.working": "Buscando otro par…",
   "downloads.resource.searchFailed": "No se pudo buscar en otros pares. Inténtalo de nuevo en un momento.",
   "downloads.resource.refreshed": "Ese par no se pudo usar, así que la lista se actualizó. Confirma para intentarlo de nuevo.",

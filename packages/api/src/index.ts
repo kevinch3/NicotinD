@@ -70,6 +70,7 @@ import { RemoteAccess } from './services/tailscale.js';
 import { shareMetaHandler } from './routes/share-meta.js';
 import { discographyRoutes } from './routes/discography.js';
 import { AlbumGetService } from './services/album-get.service.js';
+import { AutoCompleteService } from './services/auto-complete.service.js';
 import { catalogNotConfiguredRoutes, catalogRoutes } from './routes/catalog.js';
 import { MusicBrainzClient, MB_USER_AGENT } from './services/musicbrainz-client.js';
 import { archiveRoutes } from './routes/archive.js';
@@ -567,6 +568,12 @@ export function createApp({
   // addon's jobs into the unified feed tables and ingests finished files over
   // HTTP through the same organize→scan pipeline slskd completions use. Ticks
   // are no-ops while no remote addon is enabled.
+  // A partial album asks another peer for the rest by itself (#1879).
+  const autoComplete = new AutoCompleteService({
+    db,
+    getPlugin: (addonId) => plugins.get(addonId),
+    enabled: () => config.downloads.autoCompletePartial && (acquisitionOnRef.enabled?.() ?? true),
+  });
   const addonJobPoller = new AddonJobPoller({
     db,
     registry: plugins,
@@ -574,8 +581,10 @@ export function createApp({
     organizer: sharedOrganizer,
     scan: scanIncremental,
     isEnabled: () => acquisitionOnRef.enabled?.() ?? true,
+    onJobClosed: (coreJobId) => autoComplete.onJobClosed(coreJobId),
   });
   addonJobPoller.start();
+  autoComplete.resumePending();
   // why: registerBuiltinPlugins already builds a MusicBrainzClient for Discogs
   // artist-info resolution, but keeps it private to that function — a second
   // instance here (sharing the same on-disk cache file) is cheaper than

@@ -13,6 +13,7 @@ of truth; this page summarizes the ones most installs touch.
 | `NICOTIND_QUARANTINE_DIR`              | `<dataDir>/quarantine`  | Where transcode backups go. Set it when dataDir's filesystem cannot hold every original |
 | `NICOTIND_MUSIC_DIR`                   | `~/Music`               | Shared music folder                                            |
 | `NICOTIND_DOWNLOADS_DIR`               | `.downloads`            | Acquisition staging; top-level name under the music dir, or an absolute path |
+| `NICOTIND_AUTO_COMPLETE_PARTIAL`      | `true`                  | A partial album download asks another peer for its missing tracks by itself ([download-pipeline.md](download-pipeline.md#a-partial-completes-itself-1879)) |
 | `NICOTIND_MODE`                        | `embedded`              | `embedded` (best-effort manage Lidarr; slskd is its own addon) or `external` (connect to existing) |
 | `NICOTIND_ACQUISITION`                 | `on`                    | Deployment-wide acquisition kill-switch (`off` = streaming-only install) |
 | `NICOTIND_LRCLIB_URL` | `https://lrclib.net/api` | The LRCLIB API root the lyrics plugin asks. A test seam: e2e points it at a fixture ([e2e.md](e2e.md)); there is no reason to set it in a deployment |

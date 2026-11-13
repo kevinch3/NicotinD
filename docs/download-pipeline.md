@@ -2226,6 +2226,52 @@ one not-offered title (`notOfferedTitles`, #1146).
 with the shared `normalizeTitle`/`titlesOverlap`, so a peer judged to have a track here is
 judged to have it everywhere else too.
 
+### A partial completes itself (#1879)
+
+**What prompted it.** On prod, 2026-11-13, *The Final Countdown* (Europe) closed as
+**Done · 8 of 16 · 8 unavailable**. Clicking the button then found **Kwekerij · 8 of 8 · FLAC**
+at once: the rest of the album was one search away, and only a click asked for it.
+
+**Why nothing else asked.**
+1. The slskd addon's fallback ran out of attempts, and `jobClosed` marked every incomplete item
+   `unavailable`.
+2. `recomputeStage` calls a card `done` once one item is scanned and nothing is in flight.
+3. `maybeReleaseAddonJob` then deletes the addon job, so the addon's own `reviveExhausted` finds no
+   owner.
+4. `/jobs/:id/retry` takes only `failed` cards.
+
+So a `done` partial was a dead end without a person.
+
+**What happens now.** `AutoCompleteService` (`auto-complete.service.ts`) does what the button does,
+with no click. Both share `job-resource.ts`: `resolveResourceTarget`, `searchAlternates` and
+`switchToPeer`, so the pick and the hand-over have one home.
+
+- **Trigger.** `AddonJobPoller` calls `onJobClosed` from `maybeReleaseAddonJob`, once a closed job
+  has nothing left to ingest and **after** its release, because the addon allows one *active* job
+  per album.
+- **Eligibility.** `autoCompleteCandidates` requires:
+  - the card is `done` and its kind is `album-hunt`/`auto-acquire`;
+  - no cancel was requested;
+  - `resourceableTitles` is non-empty;
+  - it is under `AUTO_RESOURCE_MAX_ATTEMPTS` (2);
+  - it is not `auto_resource_exhausted_at`.
+
+  A card that landed nothing closes `failed`, which is Retry's job, not this one.
+- **Run.** One search at a time, in the service's own `HuntQueue`, lane `resource-auto`, with the
+  unattended 120 s budget. It takes `alternates[0]`, the same rule as the button's `autoResourcePick`.
+  Eligibility is re-checked after the search, because someone may have cancelled, removed or
+  re-sourced the card meanwhile. The card reopens as **Queued** on the new peer, as a manual switch
+  does.
+- **Stops.**
+  - No alternate covers anything: the service stamps `auto_resource_exhausted_at`, and the card says
+    "No other peer had the rest when we looked" (`autoResourceExhausted`) beside the button. The
+    button stays, since a peer may come online later.
+  - Offline or throttled: the search is retried on `albumGetRetryDelayMs`, without being called
+    exhausted.
+  - A search that throws, or a refused hand-over: one attempt spent, so a broken source cannot loop.
+- **Restart.** `resumePending` queues the eligible partials updated in the last 24 h.
+- **Toggle.** `downloads.autoCompletePartial` / `NICOTIND_AUTO_COMPLETE_PARTIAL`, on by default.
+
 ## A partial download says why, and can be retried
 
 The reporting fixes above made a partial playlist *honest* (`5 of 89 · 84 unavailable`)

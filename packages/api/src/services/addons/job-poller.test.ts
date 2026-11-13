@@ -85,6 +85,7 @@ function harness(
     organizeFails?: () => boolean;
   } = {},
 ) {
+  const closed: string[] = [];
   const db = new Database(':memory:');
   applySchema(db);
   // Prod's `openDatabase` enforces foreign keys; a test DB that does not never
@@ -141,8 +142,11 @@ function harness(
     onIngestReceipt: (r) => {
       receipts.push(r);
     },
+    onJobClosed: (coreJobId) => {
+      closed.push(coreJobId);
+    },
   });
-  return { db, registry, poller, organized, scanned, deleted, receipts };
+  return { db, registry, poller, organized, scanned, deleted, receipts, closed };
 }
 
 describe('AddonJobPoller', () => {
@@ -246,6 +250,28 @@ describe('AddonJobPoller', () => {
 
       // Fully ingested + terminal → released addon-side.
       expect(h.deleted).toEqual(['aj-1']);
+    });
+
+    // #1879: the automatic completion of a partial listens here. It must hear
+    // a close only once the addon side is terminal and released — never while
+    // the job is still working, when a second job would 409 against it.
+    it('reports a closed job to onJobClosed only after it is terminal and released', async () => {
+      await h.poller.tick();
+      await h.poller.idle();
+      expect(h.closed).toEqual([]);
+
+      jobsData = [
+        makeJob({
+          state: 'partial',
+          updatedAt: 4000,
+          items: [{ ...makeJob().items[0]!, state: 'unavailable', updatedAt: 4000 }],
+        }),
+      ];
+      await h.poller.tick();
+      await h.poller.idle();
+      expect(h.deleted).toEqual(['aj-1']);
+      const coreJobId = h.db.query<{ id: string }, []>(`SELECT id FROM acquisition_jobs`).get()!.id;
+      expect(h.closed).toEqual([coreJobId]);
     });
 
     it('records the surviving copy when dedupe collapses the acquired file (#1032)', async () => {

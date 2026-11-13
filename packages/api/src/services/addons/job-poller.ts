@@ -114,6 +114,12 @@ export interface AddonJobPollerDeps {
    * checks, and this PR's whole purpose is to be trusted enough to plan from.
    */
   onIngestReceipt?: (receipt: IngestReceipt) => void;
+  /**
+   * A card's addon job closed and everything it delivered has landed: the
+   * moment a partial can ask another peer for the rest (#1879). Called once
+   * per release attempt; the listener owns idempotency.
+   */
+  onJobClosed?: (coreJobId: string) => void;
 }
 
 /** Mirror key for an addon item in `acquisition_job_items.transfer_key`. */
@@ -1072,6 +1078,13 @@ export class AddonJobPoller {
       this.kvSet(plugin.manifest.id, `released:${job.id}`, '1');
     } catch {
       // The addon janitor mops up eventually.
+    }
+    // After the release, never before: the addon allows one active job per
+    // album, and a closed one no longer counts against it.
+    try {
+      this.deps.onJobClosed?.(coreJobId);
+    } catch (err) {
+      log.warn({ coreJobId, err }, 'onJobClosed listener threw');
     }
   }
 
