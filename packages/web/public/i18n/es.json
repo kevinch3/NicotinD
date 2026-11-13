@@ -1768,5 +1768,8 @@
   "getError.prepare": "No se pudo preparar el álbum",
   "getError.linkStart": "No se pudo iniciar la descarga",
   "getError.retry": "El reintento falló",
-  "getError.search": "La búsqueda falló"
+  "getError.search": "La búsqueda falló",
+  "getRow.copies": "{count} copias",
+  "getRow.getTitled": "Obtener {title}",
+  "getRow.cancelTitled": "Cancelar {title}"
 }

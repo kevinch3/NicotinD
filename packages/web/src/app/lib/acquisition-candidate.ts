@@ -35,6 +35,8 @@ export interface BlendedCandidate {
   /** Short format badge ("FLAC", "320k MP3") when known (network files). */
   format?: string;
   coverUrl?: string;
+  /** How many copies of this track the sources hold (network songs). */
+  copies?: number;
   /** Cross-source ranking key (higher = better). */
   score: number;
   acquire:
@@ -71,6 +73,7 @@ export function songResultToCandidate(s: SongResult, sourceLabel: string): Blend
     title: s.title,
     subtitle,
     format: formatBadge(s.best),
+    copies: s.versions.length,
     score,
     acquire: {
       via: 'enqueue',

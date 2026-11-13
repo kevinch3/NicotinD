@@ -53,6 +53,10 @@ import {
 import { folderAlbumIdentity, sameAlbum } from '@nicotind/core';
 import { GetNoticeComponent } from '../../components/get-notice/get-notice.component';
 import {
+  GetTrackRowComponent,
+  type TrackRowState,
+} from '../../components/get-track-row/get-track-row.component';
+import {
   GetAlbumCardComponent,
   type CardLibraryState,
 } from '../../components/get-album-card/get-album-card.component';
@@ -244,6 +248,7 @@ function isAlreadyDownloading(err: unknown): boolean {
   selector: 'app-search',
   imports: [
     GetAlbumCardComponent,
+    GetTrackRowComponent,
     GetNoticeComponent,
     OverflowRevealDirective,
     FormsModule,
@@ -641,10 +646,12 @@ export class SearchComponent implements OnInit, OnDestroy {
   async handleDownload(username: string, file: { filename: string; size: number }): Promise<void> {
     if (file.size === 0) return;
     const key = `${username}:${file.filename}`;
+    this.forgetCancelled(key);
     this.search.addDownloading(key);
     try {
       const res = await firstValueFrom(this.downloadsApi.enqueueDownload(username, [file]));
       this.getThenHear.remember(res?.jobId, 'next');
+      if (res?.jobId) this.trackJobs.update((m) => new Map(m).set(key, res.jobId!));
       this.downloadError.set(null);
     } catch (err) {
       this.search.removeDownloading(key);
@@ -1202,16 +1209,62 @@ export class SearchComponent implements OnInit, OnDestroy {
    * Neither end state is "in the library" (#1544): a link job is only queued,
    * and a finished transfer still has to be organized and scanned.
    */
-  blendedState(c: BlendedCandidate): 'idle' | 'working' | 'queued' | 'done' {
+  blendedState(c: BlendedCandidate): TrackRowState {
     if (c.acquire.via === 'enqueue') {
       const key = `${c.acquire.username}:${c.acquire.file.filename}`;
+      if (this.cancelledTracks().has(key)) return 'idle';
       const status = this.transfers.getStatus(c.acquire.username, c.acquire.file.filename);
       // The unified feed carries no per-file percent (#663) — completion is a state.
       if (status?.state === 'Completed, Succeeded') return 'done';
+      // A finished file that did not succeed was read as busy forever.
+      if (status?.state.startsWith('Completed')) return 'failed';
       if (this.search.downloading().has(key) || status) return 'working';
       return 'idle';
     }
     return this.blendedAcquired().has(c.id) ? 'queued' : 'idle';
+  }
+
+  /** The running job a blended row may cancel: a peer file's own job. */
+  blendedJobId(c: BlendedCandidate): string | null {
+    if (c.acquire.via !== 'enqueue') return null;
+    return this.trackJobId(c.acquire.username, c.acquire.file.filename);
+  }
+
+  /**
+   * Files whose Get was cancelled here, so their row reads idle again rather than
+   * as the failed item the cancelled job leaves in the feed. A new Get forgets it.
+   */
+  readonly cancelledTracks = signal<ReadonlySet<string>>(new Set());
+  /** The job each Get here started, by file: the row can cancel before the feed lists it. */
+  private readonly trackJobs = signal<ReadonlyMap<string, string>>(new Map());
+
+  private trackJobId(username: string, filename: string): string | null {
+    const fromFeed = this.transfers.getStatus(username, filename);
+    if (fromFeed) return fromFeed.jobId ?? null;
+    return this.trackJobs().get(`${username}:${filename}`) ?? null;
+  }
+
+  private forgetCancelled(key: string): void {
+    if (!this.cancelledTracks().has(key)) return;
+    this.cancelledTracks.update((s) => {
+      const next = new Set(s);
+      next.delete(key);
+      return next;
+    });
+  }
+
+  /** Stop one track's Get from the row showing it. */
+  async cancelTrack(username: string, filename: string, jobId: string): Promise<void> {
+    const key = `${username}:${filename}`;
+    this.cancelledTracks.update((s) => new Set(s).add(key));
+    await this.autoHunt.cancel(jobId);
+    this.search.removeDownloading(key);
+  }
+
+  cancelBlended(c: BlendedCandidate, jobId: string): void {
+    if (c.acquire.via === 'enqueue') {
+      void this.cancelTrack(c.acquire.username, c.acquire.file.filename, jobId);
+    }
   }
 
   blendedPercent(c: BlendedCandidate): number {
@@ -1328,20 +1381,38 @@ export class SearchComponent implements OnInit, OnDestroy {
     return this.getSongBtn(song).variant;
   }
 
+  /** The Songs view's button variant, in the track row's words. */
+  songRowState(song: SongResult): TrackRowState {
+    if (this.cancelledTracks().has(`${song.best.username}:${song.best.filename}`)) return 'idle';
+    switch (this.getSongVariant(song)) {
+      case 'progress':
+      case 'queued':
+        return 'working';
+      case 'done':
+        return 'done';
+      case 'error':
+        return 'failed';
+      default:
+        return 'idle';
+    }
+  }
+
+  songFacts(song: SongResult): string {
+    return [
+      formatBadge(song.best),
+      formatSize(song.best.size),
+      song.best.length ? formatDuration(song.best.length) : '',
+    ]
+      .filter(Boolean)
+      .join(' · ');
+  }
+
+  songJobId(song: SongResult): string | null {
+    return this.trackJobId(song.best.username, song.best.filename);
+  }
+
   getSongPercent(song: SongResult): number {
     return this.transfers.getStatus(song.best.username, song.best.filename)?.percent ?? 0;
-  }
-
-  songFormatBadge(song: SongResult): string {
-    return formatBadge(song.best);
-  }
-
-  highlightSongTitle(song: SongResult): string {
-    return highlightHtml(song.title, this.highlightTerms());
-  }
-
-  highlightSongArtist(song: SongResult): string {
-    return highlightHtml(song.artist, this.highlightTerms());
   }
 
   // ─── Private ────────────────────────────────────────────────────

@@ -1768,5 +1768,8 @@
   "getError.prepare": "Failed to prepare album",
   "getError.linkStart": "Failed to start download",
   "getError.retry": "Retry failed",
-  "getError.search": "Search failed"
+  "getError.search": "Search failed",
+  "getRow.copies": "{count} copies",
+  "getRow.getTitled": "Get {title}",
+  "getRow.cancelTitled": "Cancel {title}"
 }

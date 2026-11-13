@@ -1,5 +1,27 @@
 [
   {
+    "version": "0.8.130",
+    "date": "2026-11-13",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.129...v0.8.130",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**demo:** a static demo on GitHub Pages over real CC music ([#1877](https://github.com/kevinch3/NicotinD/issues/1877)) ([1ea5010](https://github.com/kevinch3/NicotinD/commit/1ea501006438a1e6cc0be41f97c5c0cb3c19f1a4))",
+          "**library:** popular songs on the artist page ([#1869](https://github.com/kevinch3/NicotinD/issues/1869)) ([74ca9df](https://github.com/kevinch3/NicotinD/commit/74ca9df54ec7fc57477dbe498928c64b8ab9e0b1))",
+          "**web:** compact album header and expandable genre share ([#1865](https://github.com/kevinch3/NicotinD/issues/1865)) ([339d8bc](https://github.com/kevinch3/NicotinD/commit/339d8bc9ac7cd76a33a01bf7a1a39ff2c01819c8))"
+        ]
+      },
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**deps:** bump hono to 4.13.18 for five advisories ([#1868](https://github.com/kevinch3/NicotinD/issues/1868)) ([193fa36](https://github.com/kevinch3/NicotinD/commit/193fa36894a8f5dafbbbabce4232716dac2ae63d))",
+          "**hunt:** retry a hunt with wildcarded words, not literal variations ([#1871](https://github.com/kevinch3/NicotinD/issues/1871)) ([36306e4](https://github.com/kevinch3/NicotinD/commit/36306e4b0a12f0039c7a875b86bb8349e10ef5e9)), references [#1870](https://github.com/kevinch3/NicotinD/issues/1870)"
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.8.129",
     "date": "2026-11-12",
     "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.128...v0.8.129",
@@ -889,25 +911,6 @@
         "items": [
           "**backup:** bound the snapshot worker and measure the loop it frees ([#1389](https://github.com/kevinch3/NicotinD/issues/1389)) ([16710af](https://github.com/kevinch3/NicotinD/commit/16710af6c3067298b3c27117c33b0a8f0e0f5687)), references [#1342](https://github.com/kevinch3/NicotinD/issues/1342) [#1313](https://github.com/kevinch3/NicotinD/issues/1313) [#1313](https://github.com/kevinch3/NicotinD/issues/1313)",
           "**scanner:** derive the genre alias canonicals once per alias table, not per call ([#1387](https://github.com/kevinch3/NicotinD/issues/1387)) ([749c185](https://github.com/kevinch3/NicotinD/commit/749c1858d7854e490cc673b02d1cb8a0ecac3eb9)), closes [#1386](https://github.com/kevinch3/NicotinD/issues/1386), references [#1386](https://github.com/kevinch3/NicotinD/issues/1386)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.8.80",
-    "date": "2026-09-25",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.79...v0.8.80",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**library:** work and movement fields, readable and retaggable ([#1385](https://github.com/kevinch3/NicotinD/issues/1385)) ([5ec416f](https://github.com/kevinch3/NicotinD/commit/5ec416f0c4dc5f87341a1bf23553ed3af80af0bf)), references [#1369](https://github.com/kevinch3/NicotinD/issues/1369)"
-        ]
-      },
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**addons:** carry the addon's own error text, not just its status ([#1384](https://github.com/kevinch3/NicotinD/issues/1384)) ([367140f](https://github.com/kevinch3/NicotinD/commit/367140f6501d7ae5655f19bd49af8769b58d3f86)), references [#1209](https://github.com/kevinch3/NicotinD/issues/1209)"
         ]
       }
     ]

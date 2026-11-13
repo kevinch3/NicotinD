@@ -527,48 +527,21 @@
       }
       <ul class="divide-y divide-theme-border rounded-lg border border-theme overflow-hidden">
         @for (c of visibleBlendedResults(); track c.id) {
-          <li
-            class="flex items-center gap-3 px-3 py-2.5 bg-theme-surface/40"
-            data-testid="acquire-result"
-            [attr.data-source]="c.source"
-          >
-            <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-2">
-                <app-source-chip [source]="c.source" [label]="c.sourceLabel" />
-                <p appOverflowReveal class="truncate text-sm text-theme-primary">{{ c.title }}</p>
-                @if (transcodeActive() && isLosslessCandidate(c)) {
-                  <span
-                    class="shrink-0 text-[10px] uppercase tracking-wide text-emerald-500/80"
-                    [title]="'acquire.losslessOpusTooltip' | t"
-                    data-testid="transcode-chip"
-                  >
-                    → Opus {{ transcodeBitRate() }}k
-                  </span>
-                }
-              </div>
-              @if (c.subtitle) {
-                <p appOverflowReveal class="truncate text-xs text-theme-muted mt-0.5">{{ c.subtitle }}</p>
-              }
-            </div>
-            @if (blendedState(c) === 'done' || blendedState(c) === 'queued') {
-              <span class="shrink-0 text-xs text-emerald-400">{{
-                (blendedState(c) === 'done' ? 'acquire.downloadedCheck' : 'acquire.queuedCheck') | t
-              }}</span>
-            } @else {
-              <button
-                (click)="getBlended(c)"
-                [disabled]="blendedState(c) === 'working'"
-                data-testid="acquire-result-get"
-                class="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium bg-theme-surface-2 hover:bg-theme-hover text-theme-primary disabled:opacity-60"
-              >
-                @if (blendedState(c) === 'working') {
-                  {{ blendedPercent(c) > 0 ? blendedPercent(c) + '%' : '…' }}
-                } @else {
-                  <app-icon name="download" [size]="14" />
-                  {{ 'acquire.get' | t }}
-                }
-              </button>
-            }
+          <li>
+            <app-get-track-row
+              [title]="c.title"
+              [subtitle]="c.subtitle"
+              [source]="c.source"
+              [sourceLabel]="c.sourceLabel"
+              [state]="blendedState(c)"
+              [percent]="blendedPercent(c)"
+              [cancelJobId]="blendedJobId(c)"
+              [copies]="c.copies ?? 0"
+              [opensExternally]="c.source === 'spotify' && !plugins.hasSpotdl()"
+              [transcodeKbps]="transcodeActive() && isLosslessCandidate(c) ? transcodeBitRate() : 0"
+              (get)="getBlended(c)"
+              (cancel)="cancelBlended(c, $event)"
+            />
           </li>
         }
       </ul>
@@ -697,74 +670,19 @@
           @if (networkView() === 'songs') {
             <div class="space-y-1" data-testid="song-results">
               @for (song of songResults(); track song.key) {
-                <div
-                  class="relative flex items-center gap-3 px-3 py-2 rounded-lg border border-theme overflow-hidden transition"
-                  style="background: var(--theme-surface)"
-                  data-testid="song-result"
-                >
-                  @if (getSongVariant(song) === 'progress') {
-                    <div
-                      class="absolute inset-0 pointer-events-none rounded-lg transition-all duration-500"
-                      [style.width.%]="getSongPercent(song)"
-                      style="background: var(--theme-status-progress-bg)"
-                    ></div>
-                  }
-                  @if (getSongVariant(song) === 'done') {
-                    <div
-                      class="absolute inset-0 pointer-events-none rounded-lg"
-                      style="background: var(--theme-status-done-bg)"
-                    ></div>
-                  }
-
-                  <div class="relative flex-1 min-w-0">
-                    <p appOverflowReveal
-                      class="text-sm truncate"
-                      style="color: var(--theme-text-primary)"
-                      [innerHTML]="highlightSongTitle(song)"
-                    ></p>
-                    <p appOverflowReveal class="text-xs truncate" style="color: var(--theme-text-muted)">
-                      @if (song.artist) {
-                        <span [innerHTML]="highlightSongArtist(song)"></span> ·
-                      }
-                      <span style="color: var(--theme-accent)">{{ songFormatBadge(song) }}</span> ·
-                      {{ formatSize(song.best.size) }}
-                      @if (song.best.length) {
-                        · {{ formatDuration(song.best.length) }}
-                      }
-                      @if (song.versions.length > 1) {
-                        · {{ song.versions.length }} sources
-                      }
-                    </p>
-                  </div>
-
-                  <div class="relative shrink-0">
-                    @if (getSongVariant(song) === 'done') {
-                      <a
-                        routerLink="/library"
-                        class="px-2 py-1 rounded text-xs font-semibold transition"
-                        style="
-                          background: var(--theme-status-done-bg);
-                          color: var(--theme-status-done-text);
-                        "
-                      >
-                        {{ 'acquire.open' | t }}
-                      </a>
-                    } @else {
-                      <button
-                        (click)="downloadSong(song)"
-                        [disabled]="getSongBtn(song).disabled"
-                        data-testid="song-download"
-                        [class]="
-                          'px-3 py-1 rounded text-xs font-medium transition ' +
-                          btnClasses[getSongVariant(song)] +
-                          (getSongBtn(song).disabled ? ' cursor-default' : '')
-                        "
-                      >
-                        {{ getSongBtn(song).label }}
-                      </button>
-                    }
-                  </div>
-                </div>
+                <app-get-track-row
+                  testid="song-result"
+                  class="rounded-lg border border-theme overflow-hidden"
+                  [title]="song.title"
+                  [subtitle]="song.artist || song.artistHint || ''"
+                  [facts]="songFacts(song)"
+                  [state]="songRowState(song)"
+                  [percent]="getSongPercent(song)"
+                  [cancelJobId]="songJobId(song)"
+                  [copies]="song.versions.length"
+                  (get)="downloadSong(song)"
+                  (cancel)="cancelTrack(song.best.username, song.best.filename, $event)"
+                />
               } @empty {
                 <p class="text-center py-6 text-theme-muted text-sm">{{ 'acquire.noIndividualSongs' | t }}</p>
               }

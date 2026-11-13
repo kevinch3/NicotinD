@@ -192,6 +192,84 @@ describe('SearchComponent — empty state', () => {
   });
 });
 
+// A single-track or song Get could only be stopped from the Activity tab.
+describe('SearchComponent — cancel a track from its row', () => {
+  it('cancels the job carrying the file and frees the row', async () => {
+    const { component, search, autoHunt } = setup();
+    search.addDownloading('peer:a.flac');
+    await component.cancelTrack('peer', 'a.flac', 'job-4');
+    expect(autoHunt.cancel).toHaveBeenCalledWith('job-4');
+    expect(search.downloading().has('peer:a.flac')).toBe(false);
+  });
+
+  it('a cancelled row reads idle over the failed item its job left, until the next Get', async () => {
+    const { component } = setup();
+    const transfers = TestBed.inject(TransferService) as unknown as {
+      getStatus: (u: string, f: string) => unknown;
+    };
+    transfers.getStatus = () => ({ state: 'Completed, Errored' });
+    const row = {
+      id: 'n',
+      source: 'network',
+      sourceLabel: 'Peers',
+      title: 'A',
+      subtitle: '',
+      score: 1,
+      acquire: { via: 'enqueue', username: 'peer', file: { filename: 'a.flac', size: 1 } },
+    } as const;
+    expect(component.blendedState(row)).toBe('failed');
+    await component.cancelTrack('peer', 'a.flac', 'job-4');
+    expect(component.blendedState(row)).toBe('idle');
+    await component.handleDownload('peer', { filename: 'a.flac', size: 1 });
+    expect(component.blendedState(row)).toBe('failed');
+  });
+
+  it('a blended row finds its job through the transfer feed; a link row has none', () => {
+    const { component } = setup();
+    const transfers = TestBed.inject(TransferService) as unknown as {
+      getStatus: (u: string, f: string) => unknown;
+    };
+    transfers.getStatus = (u, f) =>
+      u === 'peer' && f === 'a.flac' ? { state: 'InProgress', jobId: 'job-4' } : undefined;
+    const network = {
+      id: 'n',
+      source: 'network',
+      sourceLabel: 'Peers',
+      title: 'A',
+      subtitle: '',
+      score: 1,
+      acquire: { via: 'enqueue', username: 'peer', file: { filename: 'a.flac', size: 1 } },
+    } as const;
+    const link = { ...network, acquire: { via: 'url', url: 'https://x' } } as const;
+    expect(component.blendedJobId(network)).toBe('job-4');
+    expect(component.blendedJobId(link)).toBeNull();
+  });
+
+  it('a row can cancel the Get it just made, before the feed lists the job', async () => {
+    const { component } = setup(
+      {},
+      {},
+      {},
+      {
+        enqueueDownload: () => of({ ok: true, queued: 1, jobId: 'job-new' }),
+      },
+    );
+    const row = {
+      id: 'n',
+      source: 'network',
+      sourceLabel: 'Peers',
+      title: 'A',
+      subtitle: '',
+      score: 1,
+      acquire: { via: 'enqueue', username: 'peer', file: { filename: 'b.flac', size: 1 } },
+    } as const;
+    expect(component.blendedJobId(row)).toBeNull();
+    await component.getBlended(row);
+    expect(component.blendedState(row)).toBe('working');
+    expect(component.blendedJobId(row)).toBe('job-new');
+  });
+});
+
 // The page stacked five banners in raw red/blue/amber that vanished on the light
 // themes, with the discography note detached below the results it explains.
 describe('SearchComponent — notices', () => {
