@@ -11,7 +11,7 @@ const ES = { 'login.title': 'Iniciar sesión' };
 /** Serves the two catalogs without touching the network. */
 function fakeFetch(catalogs: Record<string, unknown> = { en: EN, es: ES }) {
   return vi.fn(async (url: string) => {
-    const lang = url.replace('/i18n/', '').replace('.json', '');
+    const lang = url.replace(/^\/?i18n\//, '').replace('.json', '');
     const body = catalogs[lang];
     return {
       ok: body !== undefined,

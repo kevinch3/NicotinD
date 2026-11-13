@@ -1732,5 +1732,10 @@
   "verifyEmail.state.taken": "Otra cuenta ya usa este correo, así que no se añadió. Elige otra dirección en Ajustes → Cuenta.",
   "verifyEmail.toAccount": "Ir a Ajustes → Cuenta",
   "verifyEmail.toLogin": "Ir a iniciar sesión",
-  "resetPassword.backToLogin": "Volver a iniciar sesión"
+  "resetPassword.backToLogin": "Volver a iniciar sesión",
+  "errors.demoUnsupported": "No disponible en la demo",
+  "demo.banner": "Demo — nada de lo que hagas aquí se guarda.",
+  "demo.getIt": "Obtener NicotinD",
+  "demo.credits": "Créditos de la música de la demo",
+  "demo.creditsIntro": "La biblioteca de la demo es música real, libre para compartir bajo Creative Commons:"
 }

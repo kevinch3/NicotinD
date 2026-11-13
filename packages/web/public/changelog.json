@@ -1,5 +1,99 @@
 [
   {
+    "version": "0.8.129",
+    "date": "2026-11-12",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.128...v0.8.129",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**acquisition:** run a one-click album Get on the server ([#1832](https://github.com/kevinch3/NicotinD/issues/1832)) ([2d5d81f](https://github.com/kevinch3/NicotinD/commit/2d5d81f9f814b77bcadc778c59896bd484af3cb7))",
+          "**library:** fill an artist's missing bio, origin and portrait on visit ([#1858](https://github.com/kevinch3/NicotinD/issues/1858)) ([4e14d9e](https://github.com/kevinch3/NicotinD/commit/4e14d9ef85ad61e4c4e8436ac1ffd47713267f0c)), references [#1855](https://github.com/kevinch3/NicotinD/issues/1855)",
+          "**library:** show where an artist's bio, country and photo came from ([#1861](https://github.com/kevinch3/NicotinD/issues/1861)) ([470338c](https://github.com/kevinch3/NicotinD/commit/470338cac6876350885cd80f178bfc28ece71a07)), references [#1855](https://github.com/kevinch3/NicotinD/issues/1855)",
+          "**web:** a one-click Get is one request, and failures share a toast ([#1833](https://github.com/kevinch3/NicotinD/issues/1833)) ([281aac4](https://github.com/kevinch3/NicotinD/commit/281aac476dff3808872a6fd007fa893aa974bf63))",
+          "**web:** cancel a Get from search cards and admin Incomplete Albums rows ([#1847](https://github.com/kevinch3/NicotinD/issues/1847)) ([b7d17fd](https://github.com/kevinch3/NicotinD/commit/b7d17fd518141a9ce3531b90a14dbdabe115bbf6)), closes [#1841](https://github.com/kevinch3/NicotinD/issues/1841)",
+          "**web:** cancel a Get from the album tile that started it ([#1839](https://github.com/kevinch3/NicotinD/issues/1839)) ([c586adc](https://github.com/kevinch3/NicotinD/commit/c586adc4aaded8920d99d88306f52c1c4bb1705f))",
+          "**web:** the player panel's snap-point machine as pure, table-tested functions ([#1849](https://github.com/kevinch3/NicotinD/issues/1849)) ([6022c39](https://github.com/kevinch3/NicotinD/commit/6022c39fbe9943ba7632a867f9fc8b714943e2c1)), closes [#1678](https://github.com/kevinch3/NicotinD/issues/1678), references [#1679](https://github.com/kevinch3/NicotinD/issues/1679)"
+        ]
+      },
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**library:** an artist tile never offers a Get the server refuses ([#1835](https://github.com/kevinch3/NicotinD/issues/1835)) ([b4276f1](https://github.com/kevinch3/NicotinD/commit/b4276f1999c6d8eb4f0c6a0b5b3d5945183c98b1))",
+          "**library:** list same-titled releases once on the artist page ([#1837](https://github.com/kevinch3/NicotinD/issues/1837)) ([741c549](https://github.com/kevinch3/NicotinD/commit/741c549348e75febc5ed8ec75a6602b71ca45cea))",
+          "**mobile:** show a \"WebView too old\" message instead of a black screen ([#1829](https://github.com/kevinch3/NicotinD/issues/1829)) ([0156ec3](https://github.com/kevinch3/NicotinD/commit/0156ec3e6582930638b7666389ce8b45b32471b8))",
+          "**web:** hover:text-theme-primary and hover/focus:border-theme emit CSS ([#1850](https://github.com/kevinch3/NicotinD/issues/1850)) ([adec963](https://github.com/kevinch3/NicotinD/commit/adec9638723c63672f63166a49281c3b25317353)), closes [#1846](https://github.com/kevinch3/NicotinD/issues/1846)",
+          "**web:** keep re-reading the discography until a new artist's covers arrive ([#1856](https://github.com/kevinch3/NicotinD/issues/1856)) ([693a9ad](https://github.com/kevinch3/NicotinD/commit/693a9ad530cf5a03d85200947c6fd024966234ff)), closes [#1854](https://github.com/kevinch3/NicotinD/issues/1854)",
+          "**web:** move Search and the last shared holdouts off hardcoded zinc, with a gate ([#1851](https://github.com/kevinch3/NicotinD/issues/1851)) ([05ad57a](https://github.com/kevinch3/NicotinD/commit/05ad57a67ed70fb9f5c8c70bd472ca7d4508edfc)), closes [#1685](https://github.com/kevinch3/NicotinD/issues/1685)",
+          "**web:** never start Sentry in an automated browser or on a loopback host ([#1853](https://github.com/kevinch3/NicotinD/issues/1853)) ([e3719e6](https://github.com/kevinch3/NicotinD/commit/e3719e63b7879557579953aaa91437745ef05e0a)), references [#1852](https://github.com/kevinch3/NicotinD/issues/1852)",
+          "**web:** translate the one-click Get toasts ([#1845](https://github.com/kevinch3/NicotinD/issues/1845)) ([0bc5cdb](https://github.com/kevinch3/NicotinD/commit/0bc5cdb5335083a5766d424d459b2d4b9356a45a)), closes [#1840](https://github.com/kevinch3/NicotinD/issues/1840)"
+        ]
+      },
+      {
+        "title": "Performance",
+        "items": [
+          "**discography:** reuse each album's Lidarr tracklist for 10 minutes ([#1859](https://github.com/kevinch3/NicotinD/issues/1859)) ([8813717](https://github.com/kevinch3/NicotinD/commit/88137170a4d2a85e9510b3545c73b25d9398cfbd)), references [#1855](https://github.com/kevinch3/NicotinD/issues/1855)",
+          "**musicbrainz:** one artist request answers both origin and the Discogs link ([#1857](https://github.com/kevinch3/NicotinD/issues/1857)) ([187e0c7](https://github.com/kevinch3/NicotinD/commit/187e0c76f107605a25946ca7d45e5b332746ca34)), references [#1855](https://github.com/kevinch3/NicotinD/issues/1855)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.8.128",
+    "date": "2026-11-11",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.127...v0.8.128",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**acquisition:** a Get whose pick lacks the missing tracks tries the next peer ([#1826](https://github.com/kevinch3/NicotinD/issues/1826)) ([de49024](https://github.com/kevinch3/NicotinD/commit/de49024b16c1d6f344891ea5b869d4a856fe68c1)), references [#1823](https://github.com/kevinch3/NicotinD/issues/1823)",
+          "**acquisition:** one-click Get picks a folder that has the missing tracks ([#1827](https://github.com/kevinch3/NicotinD/issues/1827)) ([d4c9c98](https://github.com/kevinch3/NicotinD/commit/d4c9c981f941eaa983a298f87262bac897a4423f)), references [#1823](https://github.com/kevinch3/NicotinD/issues/1823)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.8.127",
+    "date": "2026-11-10",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.126...v0.8.127",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**acquisition:** an attempt ledger for every hunt and enqueue, and a report over it ([#1790](https://github.com/kevinch3/NicotinD/issues/1790)) ([263071c](https://github.com/kevinch3/NicotinD/commit/263071c0cd3d8b5ea39f753bdaa71bb536517a9d)), closes [#1626](https://github.com/kevinch3/NicotinD/issues/1626)",
+          "**auth:** friend invitations, provider-agnostic email and password recovery ([#1821](https://github.com/kevinch3/NicotinD/issues/1821)) ([4f8c2c1](https://github.com/kevinch3/NicotinD/commit/4f8c2c142a6206fc1d869d1a881540e02af056ea))",
+          "**downloads:** complete from another peer picks the best peer by itself ([#1825](https://github.com/kevinch3/NicotinD/issues/1825)) ([cf05512](https://github.com/kevinch3/NicotinD/commit/cf05512dcee5a3af8aa45a5e4d926bad37d1b1ed)), references [#1065](https://github.com/kevinch3/NicotinD/issues/1065)",
+          "**lyrics:** the sync tool moves into a lyrics options sheet, with fixed geometry and words ([#1809](https://github.com/kevinch3/NicotinD/issues/1809)) ([3d5fb1a](https://github.com/kevinch3/NicotinD/commit/3d5fb1a7e063cc185745ea5552438ddf9bbb2bf1)), closes [#1656](https://github.com/kevinch3/NicotinD/issues/1656)",
+          "**release:** publish a prebuilt server tarball for non-Docker installs ([#1742](https://github.com/kevinch3/NicotinD/issues/1742)) ([#1776](https://github.com/kevinch3/NicotinD/issues/1776)) ([d97f28e](https://github.com/kevinch3/NicotinD/commit/d97f28e61cc91cd4676b201be09e789baef0dbc0))",
+          "**web:** a second hue token and a contrast table every preset must pass ([#1818](https://github.com/kevinch3/NicotinD/issues/1818)) ([5fced1c](https://github.com/kevinch3/NicotinD/commit/5fced1c86c121dc610a37cef9d98b136897b37ed)), references [#1684](https://github.com/kevinch3/NicotinD/issues/1684)",
+          "**web:** empty-library first run with a scan, and only the vibes the library can play ([#1739](https://github.com/kevinch3/NicotinD/issues/1739)) ([#1775](https://github.com/kevinch3/NicotinD/issues/1775)) ([fbcc462](https://github.com/kevinch3/NicotinD/commit/fbcc462469a6de62d7ff2bd74cf55e7ca9a0bffa))"
+        ]
+      },
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**acquisition:** say which lane hunted which album, and how it ended ([#1788](https://github.com/kevinch3/NicotinD/issues/1788)) ([216189f](https://github.com/kevinch3/NicotinD/commit/216189ff42d4a27e029c74ebf9a8718a0e4f7797)), references [#1626](https://github.com/kevinch3/NicotinD/issues/1626)",
+          "**ci:** edge reaches registry-retry.sh from its digests directory ([#1815](https://github.com/kevinch3/NicotinD/issues/1815)) ([6961364](https://github.com/kevinch3/NicotinD/commit/69613641d60d3e37a3bca9f050827594d3554b43)), references [#1782](https://github.com/kevinch3/NicotinD/issues/1782)",
+          "**library:** a glued album artist reads as its credited names ([#1803](https://github.com/kevinch3/NicotinD/issues/1803)) ([475b257](https://github.com/kevinch3/NicotinD/commit/475b2577684d3f18840a202c8251539ce984ec71)), references [#860](https://github.com/kevinch3/NicotinD/issues/860)",
+          "**library:** a list-credited album is owned by its first known member ([#1813](https://github.com/kevinch3/NicotinD/issues/1813)) ([e90e61f](https://github.com/kevinch3/NicotinD/commit/e90e61fef353bc544697ac10f30d0a8e5a141af1)), references [#1804](https://github.com/kevinch3/NicotinD/issues/1804)",
+          "**library:** the duplicate finder pre-arms only copies on the same release ([#1793](https://github.com/kevinch3/NicotinD/issues/1793)) ([2db2050](https://github.com/kevinch3/NicotinD/commit/2db2050d57bbafa31553da7a8215b4255655df60)), closes [#1791](https://github.com/kevinch3/NicotinD/issues/1791), references [#951](https://github.com/kevinch3/NicotinD/issues/951)",
+          "**logging:** print JSON logs in the Docker image, pretty only locally ([#1783](https://github.com/kevinch3/NicotinD/issues/1783)) ([fd0207c](https://github.com/kevinch3/NicotinD/commit/fd0207ccc1e1ac0230f426e9db872e943cd81a2b)), references [#1626](https://github.com/kevinch3/NicotinD/issues/1626)",
+          "**lyrics:** a first play no longer rewrites the file it is streaming ([#1820](https://github.com/kevinch3/NicotinD/issues/1820)) ([550bb30](https://github.com/kevinch3/NicotinD/commit/550bb30f04810b7971d01beff055e79caa5b326e))",
+          "**lyrics:** a re-fetch asks before it replaces lyrics someone edited ([#1799](https://github.com/kevinch3/NicotinD/issues/1799)) ([cd83136](https://github.com/kevinch3/NicotinD/commit/cd831363c65748ad8bf7b2f98236c94c7f080746)), closes [#1786](https://github.com/kevinch3/NicotinD/issues/1786)",
+          "**lyrics:** a re-fetch that returns the same timed text keeps the sync offset ([#1798](https://github.com/kevinch3/NicotinD/issues/1798)) ([db3c3ea](https://github.com/kevinch3/NicotinD/commit/db3c3ea94f12e19c39b49314563a8fbbd93f236d)), closes [#1785](https://github.com/kevinch3/NicotinD/issues/1785)",
+          "**mail:** name the server by its public address, and warn about Brevo click tracking ([#1822](https://github.com/kevinch3/NicotinD/issues/1822)) ([e43333d](https://github.com/kevinch3/NicotinD/commit/e43333dd50c4825760e082580e07b6c0c9f0065a))",
+          "**tv:** a dark pill behind the status line over the player backdrop ([#1802](https://github.com/kevinch3/NicotinD/issues/1802)) ([f75355c](https://github.com/kevinch3/NicotinD/commit/f75355cf16f1848e15d01458a297b2e097f63741)), references [#1796](https://github.com/kevinch3/NicotinD/issues/1796)",
+          "**watchlist:** keep the reason a retry waits on, and drop dead retry config ([#1787](https://github.com/kevinch3/NicotinD/issues/1787)) ([a1e86e4](https://github.com/kevinch3/NicotinD/commit/a1e86e4b244dcd55875a672784b8bcea50e56d2d)), references [#507](https://github.com/kevinch3/NicotinD/issues/507) [#1626](https://github.com/kevinch3/NicotinD/issues/1626)",
+          "**web:** an installed app reopened offline keeps its translations ([#1779](https://github.com/kevinch3/NicotinD/issues/1779)) ([f22147e](https://github.com/kevinch3/NicotinD/commit/f22147ec9413be0fa140beba05aab3bf69d980b5)), closes [#1777](https://github.com/kevinch3/NicotinD/issues/1777)",
+          "**web:** nothing on a page is wider than a phone: sweep, guard and rules ([#1812](https://github.com/kevinch3/NicotinD/issues/1812)) ([b66c61f](https://github.com/kevinch3/NicotinD/commit/b66c61f413013b9dd6d3e0654c2b257e9d12efdc)), references [#1807](https://github.com/kevinch3/NicotinD/issues/1807) [#1807](https://github.com/kevinch3/NicotinD/issues/1807) [#1749](https://github.com/kevinch3/NicotinD/issues/1749)",
+          "**web:** rows that wrap instead of sliding the page sideways on a phone ([#1811](https://github.com/kevinch3/NicotinD/issues/1811)) ([ca16548](https://github.com/kevinch3/NicotinD/commit/ca16548e143d0c93316bd5b8bac8404ecaa8eaee)), closes [#1807](https://github.com/kevinch3/NicotinD/issues/1807), references [#1807](https://github.com/kevinch3/NicotinD/issues/1807)",
+          "**web:** the privacy, recommendations and poll pages share the 3xl page width ([#1814](https://github.com/kevinch3/NicotinD/issues/1814)) ([0337545](https://github.com/kevinch3/NicotinD/commit/03375456a30f7b066da2d0e0b2e8af7273b0e403)), references [#420](https://github.com/kevinch3/NicotinD/issues/420) [#1807](https://github.com/kevinch3/NicotinD/issues/1807)",
+          "**web:** the Search empty state reads on dark themes ([#1797](https://github.com/kevinch3/NicotinD/issues/1797)) ([c336e00](https://github.com/kevinch3/NicotinD/commit/c336e00f24c8bca72099343e6b502dd1788b05d4)), references [#1796](https://github.com/kevinch3/NicotinD/issues/1796)"
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.8.126",
     "date": "2026-11-08",
     "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.125...v0.8.126",
@@ -814,45 +908,6 @@
         "title": "Bug Fixes",
         "items": [
           "**addons:** carry the addon's own error text, not just its status ([#1384](https://github.com/kevinch3/NicotinD/issues/1384)) ([367140f](https://github.com/kevinch3/NicotinD/commit/367140f6501d7ae5655f19bd49af8769b58d3f86)), references [#1209](https://github.com/kevinch3/NicotinD/issues/1209)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.8.79",
-    "date": "2026-09-25",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.78...v0.8.79",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**web:** a track got from search joins the queue when it lands ([#1383](https://github.com/kevinch3/NicotinD/issues/1383)) ([05948c0](https://github.com/kevinch3/NicotinD/commit/05948c02da1de4834a8c6f9a322b5dbb4830e720)), references [#1294](https://github.com/kevinch3/NicotinD/issues/1294) [#1299](https://github.com/kevinch3/NicotinD/issues/1299) [#1294](https://github.com/kevinch3/NicotinD/issues/1294)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.8.78",
-    "date": "2026-09-25",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.77...v0.8.78",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**library:** the bitrate ladder is an operator setting, behind \"advanced\" ([#1382](https://github.com/kevinch3/NicotinD/issues/1382)) ([8c397bf](https://github.com/kevinch3/NicotinD/commit/8c397bfae69cd725b9944ee059f40ff87144e57c)), closes [#1255](https://github.com/kevinch3/NicotinD/issues/1255)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.8.77",
-    "date": "2026-09-25",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.76...v0.8.77",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**health:** count song-level duplicate candidates in the health report ([#1381](https://github.com/kevinch3/NicotinD/issues/1381)) ([5374a75](https://github.com/kevinch3/NicotinD/commit/5374a75e95a433f5ab0595ce3765433549c26a5d)), references [#951](https://github.com/kevinch3/NicotinD/issues/951) [#951](https://github.com/kevinch3/NicotinD/issues/951)"
         ]
       }
     ]

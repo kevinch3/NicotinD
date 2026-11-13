@@ -22,6 +22,16 @@ const { version } = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf
 };
 
 const hasFdroid = existsSync(join(siteDir, 'fdroid', 'repo', 'index-v2.json'));
+const hasDemo = existsSync(join(siteDir, 'demo', 'index.html'));
+
+const demoSection = hasDemo
+  ? `    <section>
+      <h2>Try the demo</h2>
+      <p>The real app in your browser, over a small library of Creative Commons music —
+      browse, play, and watch it fetch an album. Nothing is saved and no server is involved.</p>
+      <p><a href="demo/">Open the demo</a></p>
+    </section>`
+  : '';
 
 /** Absolute, because a user pastes it into an F-Droid client, not a browser. */
 const repoUrl = `${process.env.PAGES_BASE_URL ?? 'https://kevinch3.github.io/NicotinD'}/fdroid/repo`;
@@ -68,6 +78,7 @@ const html = `<!doctype html>
   <body>
     <h1>NicotinD</h1>
     <p class="tagline">A self-hosted music server that finds the music too.</p>
+${demoSection}
 ${fdroidSection}
     <footer>
       Version ${version} &middot; AGPL-3.0-only &middot;

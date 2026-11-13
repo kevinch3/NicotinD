@@ -10,6 +10,7 @@
     "dev": "ng serve --proxy-config proxy.conf.json",
     "prebuild": "bun run scripts/build-changelog.ts",
     "build": "ng build",
+    "build:demo": "bun run scripts/build-changelog.ts && ng build --configuration demo --output-path dist-demo",
     "postbuild": "bun run scripts/pin-ngsw-timestamp.ts",
     "pretest": "bun run scripts/build-changelog.ts",
     "test": "vitest run",

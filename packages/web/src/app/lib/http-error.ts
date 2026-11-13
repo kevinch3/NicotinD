@@ -39,6 +39,7 @@ export const ERROR_CODE_I18N_KEYS: Record<string, string> = {
   PAIRING_NOT_FOUND: 'errors.pairingNotFound',
   PAIRING_EXPIRED: 'errors.pairingExpired',
   RATE_LIMITED: 'errors.rateLimited',
+  DEMO_UNSUPPORTED: 'errors.demoUnsupported',
 };
 
 /** Minimal shape `errorMessageForCode`/`httpErrorMessageI18n` need from TranslateService. */

@@ -1,6 +1,7 @@
 # NicotinD
 
 <p align="center">
+  <a href="https://kevinch3.github.io/NicotinD/demo/"><img src="https://img.shields.io/badge/demo-try%20it%20in%20your%20browser-2ea44f" alt="Try the demo" /></a>
   <a href="https://github.com/kevinch3/NicotinD/releases/latest"><img src="https://img.shields.io/github/v/release/kevinch3/NicotinD?label=release&color=4c7dd0" alt="Latest release" /></a>
   <a href="https://github.com/kevinch3/NicotinD/actions/workflows/ci.yml"><img src="https://github.com/kevinch3/NicotinD/actions/workflows/ci.yml/badge.svg?branch=master" alt="CI status" /></a>
   <a href="https://github.com/kevinch3/NicotinD/actions/workflows/deploy.yml"><img src="https://github.com/kevinch3/NicotinD/actions/workflows/deploy.yml/badge.svg" alt="Build &amp; Deploy status" /></a>
@@ -36,6 +37,10 @@ every result lands in the same organized, tagged, analyzed library.
 </p>
 
 <p align="center"><sub>Search → one tap → downloaded, tagged and filed.</sub></p>
+
+**[Try the demo →](https://kevinch3.github.io/NicotinD/demo/)** The real app in your browser, over a
+small library of Creative Commons music. Browse, play, and Get an album; nothing is saved and no
+server is involved ([docs/demo-mode.md](docs/demo-mode.md)).
 
 > Recorded from the real app over a generated demo catalog — invented artists, synthesized audio —
 > by `bun run --filter @nicotind/e2e tour` + `tour:cut`; see [docs/product-tour.md](docs/product-tour.md).

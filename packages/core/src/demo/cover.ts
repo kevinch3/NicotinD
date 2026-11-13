@@ -1,8 +1,7 @@
 /**
- * Generated album sleeves for the demo catalog (docs/demo-mode.md).
+ * Generated album sleeves for the demo catalog (docs/product-tour.md).
  *
- * An SVG string, so the static demo can serve it as-is and the build script can
- * rasterise it once (in Chromium) into the `cover.jpg` the scanner picks up as
+ * An SVG string, so the build script can rasterise it once (in Chromium) into the `cover.jpg` the scanner picks up as
  * folder art. Like the tones, a pure function of the seed: the same album gets
  * the same sleeve everywhere.
  */

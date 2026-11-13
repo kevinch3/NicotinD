@@ -11,9 +11,9 @@
  */
 import { createServer, type Server } from 'node:http';
 import { readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
-import { DEMO_ALBUMS, demoSlug, demoTracks, type DemoAlbum } from '../../core/src/demo/index.js';
-import { albumDir, trackFileName } from './make-demo-library.js';
+import { extname } from 'node:path';
+import { demoSlug } from '../../core/src/demo/index.js';
+import { toneCatalog, trackPath, type StandInAlbum } from './stand-in-catalog.js';
 
 export const DEMO_ADDON_ID = 'demo-source';
 export const DEMO_ADDON_TOKEN = 'demo-token';
@@ -63,24 +63,27 @@ interface Job {
 
 const fold = (s: string) => s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 
-const POOL = DEMO_ALBUMS.filter((a) => a.pool === 'acquirable');
-
-function poolFiles(album: DemoAlbum) {
-  return demoTracks(album).map((t) => {
-    const path = join(albumDir(album), trackFileName(t));
+function poolFiles(album: StandInAlbum) {
+  return album.tracks.map((t) => {
+    const path = trackPath(album, t);
     return {
       title: t.title,
       path,
       size: statSync(path).size,
-      filename: `Music\\${album.artist}\\${album.title}\\${trackFileName(t)}`,
+      filename: `Music\\${album.artist}\\${album.title}\\${t.fileName}`,
+      format: extname(t.fileName).slice(1).toUpperCase(),
     };
   });
 }
 
-const candidateRef = (album: DemoAlbum, peer: number) =>
+const candidateRef = (album: StandInAlbum, peer: number) =>
   `${demoSlug(album.artist)}/${demoSlug(album.title)}#${peer}`;
 
-export async function startDemoAddon(port: number): Promise<Server> {
+export async function startDemoAddon(
+  port: number,
+  catalog: StandInAlbum[] = toneCatalog(),
+): Promise<Server> {
+  const POOL = catalog.filter((a) => a.pool === 'acquirable');
   const jobs: Job[] = [];
   let nextJob = 1;
 
@@ -171,7 +174,7 @@ export async function startDemoAddon(port: number): Promise<Server> {
               filename: f.filename,
               size: f.size,
               bitRateKbps: PEERS[0].bitRateKbps,
-              audioFormat: 'FLAC',
+              audioFormat: f.format,
               freeUploadSlots: 3,
               queueLength: 0,
               uploadSpeed: PEERS[0].speed,
@@ -202,7 +205,7 @@ export async function startDemoAddon(port: number): Promise<Server> {
               matchPct: peer.matchPct,
               matchedTracks: matched,
               totalTracks: files.length,
-              format: peer.format,
+              format: files[0]?.format ?? peer.format,
               estimatedSizeMb: Math.max(1, Math.round((totalMb * matched) / files.length)),
               isLive: false,
               freeUploadSlots: i === 0 ? 3 : 1,
@@ -245,7 +248,7 @@ export async function startDemoAddon(port: number): Promise<Server> {
             filename: f.filename,
             size: f.size,
             bitRateKbps: peer.bitRateKbps,
-            audioFormat: 'FLAC',
+            audioFormat: f.format,
             state: 'queued',
             fileReady: false,
             bytesTransferred: 0,
