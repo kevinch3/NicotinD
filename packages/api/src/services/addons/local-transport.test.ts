@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { LocalAddonTransport } from './local-transport.js';
 import type { BundledAddon } from './bundled/types.js';
+import { makeArchiveBundledAddon } from './bundled/archive/index.js';
+import { AddonRequestError } from './client.js';
 import type { AddonJob } from '@nicotind/core';
 
 function doneJob(): AddonJob {
@@ -68,6 +70,13 @@ describe('LocalAddonTransport', () => {
     const t = new LocalAddonTransport(fakeAddon(tmp));
     const res = await t.fetchFile('j1', 'i1');
     expect(await res.text()).toBe('hi');
+  });
+
+  it('reports a job the restarted archive addon forgot as a 404, like an HTTP addon', async () => {
+    const t = new LocalAddonTransport(makeArchiveBundledAddon({ stagingDir: tmpdir() }));
+    const err = await t.getJob('url:https://archive.org/details/x').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AddonRequestError);
+    expect((err as AddonRequestError).status).toBe(404);
   });
 
   it('rejects unsupported search/browse with a contract error', async () => {

@@ -2399,6 +2399,14 @@ working its word outranks core's guess. An addon that has forgotten the job (404
 `reconcileOrphanedJobs` instead; one stuck at `active` forever is the addon's bug, and its card
 stays cancellable and removable on the Downloads page.
 
+The 404 is the only signal, so a bundled addon must speak it too. The archive.org addon keeps its
+jobs in memory, and a deploy empties that store mid-download — but its `getJob` threw a plain
+`Error`, which the reconcile treats as a network blip and retries forever, so every archive job
+caught by a restart sat at "Queued · 0 so far" until the 24h valve (measured on prod 2026-11-13:
+2 of 3 archive cards, created 20 s before a deploy). A bundled addon now throws
+`BundledJobNotFoundError`, and `LocalAddonTransport.getJob` reports it as `AddonRequestError` 404,
+the same shape an HTTP addon's missing job takes.
+
 ### A released job is not an orphaned one (#744)
 
 `maybeReleaseAddonJob` deletes the addon-side job once every file is fetched and stamps

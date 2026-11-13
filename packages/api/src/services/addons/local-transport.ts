@@ -10,8 +10,8 @@ import type {
   AddonJob,
 } from '@nicotind/core';
 import type { AddonTransport, AddonCallOutcome } from './transport.js';
-import { AddonContractError } from './client.js';
-import type { BundledAddon } from './bundled/types.js';
+import { AddonContractError, AddonRequestError } from './client.js';
+import { BundledJobNotFoundError, type BundledAddon } from './bundled/types.js';
 
 /**
  * In-process `AddonTransport` for a bundled first-party addon (Approach A of the
@@ -79,7 +79,16 @@ export class LocalAddonTransport implements AddonTransport {
   }
 
   async getJob(id: string): Promise<AddonJob> {
-    return this.ok(this.addon.getJob(id));
+    try {
+      return await this.ok(this.addon.getJob(id));
+    } catch (err) {
+      // why: the orphan reconcile fails a job only on an HTTP addon's 404; a
+      // restart empties a bundled addon's in-memory store the same way.
+      if (err instanceof BundledJobNotFoundError) {
+        throw new AddonRequestError(err.message, 404);
+      }
+      throw err;
+    }
   }
 
   async cancelJob(id: string): Promise<void> {

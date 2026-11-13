@@ -6,6 +6,14 @@ import type {
   AddonHealth,
 } from '@nicotind/core';
 
+/** A bundled addon has no such job — `LocalAddonTransport` reports it as an HTTP 404. */
+export class BundledJobNotFoundError extends Error {
+  constructor(addonId: string, jobId: string) {
+    super(`${addonId}: unknown job ${jobId}`);
+    this.name = 'BundledJobNotFoundError';
+  }
+}
+
 /**
  * The handler surface a bundled first-party addon implements — a resolve-shaped
  * subset of the protocol, called in-process by `LocalAddonTransport`. It shares
