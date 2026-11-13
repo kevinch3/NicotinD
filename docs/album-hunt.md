@@ -32,6 +32,16 @@ alone. It's still read-only: nothing is added.
 
 **Catalog-miss flow made intuitive (2026-07).** The fallback used to *also* auto-load the artist's full discography (a silent Lidarr artist-add) and framed the banner as a bare "showing network results and their full discography below" notice with no obvious next action — the user who clicked "Muscle Museum" got a failure message + a giant discography grid instead of the album they wanted. Two changes: (1) the fallback query is **album-intent multi-word**, so `pickNetworkView` **defaults the raw lane to the Folders view** — a folder is a whole-album grab, exactly the "get this album" unit, each with a `downloadFolder` CTA (the flat blended song list, which could run to hundreds of near-duplicate rows, is capped by `visibleBlendedResults`/`RESULTS_CAP` with a "Show all N" escape). (2) Loading the full discography is now **opt-in** — the banner carries a `data-testid="raw-fallback-discography"` "Browse &lt;artist&gt;'s discography" button (`browseFallbackDiscography` → the same `doLoadDiscography` §A6 path) instead of firing automatically, so the surprise Lidarr mutation + noise only happens when the user asks. `rawFallbackAlbum` holds the clicked album so the banner can offer that CTA; it's cleared in `resetResultSurfaces` like the note.
 
+**Notices are one column (`GetNoticeComponent`, `data-testid="get-notices"`).** The page used to
+stack up to five banners in raw `red-950`/`blue-950`/`amber-950`, which lost their contrast on the
+light themes, and printed the catalog note (no albums / not configured / lookup failed) *below* the
+Results it explains. Every notice now renders in one column under the sources line, painted with
+the theme's status tokens (`status-error`, `status-warn`, `status-progress` for info), with the
+action that resolves it inside it: Retry and Load discography on the catalog note, Browse
+discography on the raw-fallback note. An error is `role="alert"`, anything else `role="status"`.
+The strings, and the page's other hardcoded English, are `getNotice.*`, `getLink.*` and
+`getError.*` catalog keys.
+
 **Compilations demoted in `rankAlbums` (2026-07).** Reproduced live against prod (search "Cyndi Lauper Time After Time" / "Deep Purple"): `album.lookup`'s free-text relevance ranking surfaces "Best Of"/"Very Best Of" reissues *extremely* well (6-7 of the top 8-10 hits for a well-known artist), while Lidarr's own `listByArtist` discography carried **zero** compilations for either artist. Since the raw-fallback path above only triggers on click, and the top-ranked card is the one a user naturally clicks first, this meant the guided card flow dead-ended into the raw-fallback banner on almost every search for a well-known artist/song — not just the genuinely-absent-compilation edge case the fallback was designed for. `rankAlbums()` now sorts non-compilation releases (by `secondaryTypes`) ahead of compilations, before the existing Album > EP > Single > newest-first tiebreakers, so the default, most-clickable cards are the ones that actually resolve. Compilations aren't hidden — they still render, just lower in the grid, and still correctly raw-fallback when chosen. See `catalog-search.service.test.ts` for a fixture mirroring the real Deep Purple lookup order.
 
 ---

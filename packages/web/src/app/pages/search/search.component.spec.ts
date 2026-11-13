@@ -192,6 +192,34 @@ describe('SearchComponent — empty state', () => {
   });
 });
 
+// The page stacked five banners in raw red/blue/amber that vanished on the light
+// themes, with the discography note detached below the results it explains.
+describe('SearchComponent — notices', () => {
+  it('puts every notice in one column, with no raw palette colours', () => {
+    const { component, fixture } = setup();
+    component.searchError.set('boom');
+    component.resolveError.set('Lidarr said no');
+    component.provisioningArtist.set('Pink Floyd');
+    component.errors.set(['peer slow']);
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    const column = el.querySelector('[data-testid="get-notices"]')!;
+    for (const id of ['search-error', 'resolve-error', 'artist-provisioning', 'source-errors']) {
+      expect(column.querySelector(`[data-testid="${id}"]`), id).not.toBeNull();
+    }
+    expect(el.innerHTML).not.toMatch(/(red|blue|amber)-9\d\d/);
+  });
+
+  it('the catalog note sits with the notices, above the results it explains', () => {
+    const { component, fixture } = setup();
+    component.catalog.set({ artists: [], albums: [], albumLookupFailed: true });
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    const note = el.querySelector('[data-testid="discography-note"]');
+    expect(note?.closest('[data-testid="get-notices"]')).not.toBeNull();
+  });
+});
+
 // #1734: "No acquisition sources enabled" was a dead end. An admin gets a link
 // to Extensions; anyone else who may acquire is told who can fix it.
 describe('SearchComponent — no sources enabled', () => {
@@ -1334,7 +1362,7 @@ describe('SearchComponent — catalog-miss fallback', () => {
     await flush();
 
     expect(component.rawFallbackAlbum()?.title).toBe(CATALOG_ALBUM.title);
-    expect(component.rawFallbackNote()).toMatch(/isn't in/);
+    expect(component.rawFallbackNote()).toBe(CATALOG_ALBUM.title);
     expect(component.directSearchOpen()).toBe(true);
     // Discography load auto-adds the artist to Lidarr — must be opt-in now.
     expect(catalogDiscography).not.toHaveBeenCalled();
