@@ -108,6 +108,13 @@ test.describe('guided acquire through the catalog', () => {
       .poll(() => cover.evaluate((img: HTMLImageElement) => img.naturalWidth), { timeout: 15_000 })
       .toBeGreaterThan(0);
 
+    // A card fills its grid cell whatever its title's length.
+    const widths = await card.evaluate((el) => [
+      el.getBoundingClientRect().width,
+      el.parentElement!.getBoundingClientRect().width,
+    ]);
+    expect(Math.abs(widths[0] - widths[1])).toBeLessThanOrEqual(1);
+
     // The artist is not in Lidarr yet, so this also runs the real 202 add job.
     await card.click();
 
