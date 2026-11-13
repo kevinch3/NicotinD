@@ -1732,5 +1732,10 @@
   "verifyEmail.state.taken": "Another account already uses this email, so it wasn't added. Pick a different address in Settings → Account.",
   "verifyEmail.toAccount": "Go to Settings → Account",
   "verifyEmail.toLogin": "Go to sign in",
-  "resetPassword.backToLogin": "Back to sign in"
+  "resetPassword.backToLogin": "Back to sign in",
+  "errors.demoUnsupported": "Not available in the demo",
+  "demo.banner": "Demo — nothing you do here is saved.",
+  "demo.getIt": "Get NicotinD",
+  "demo.credits": "Demo music credits",
+  "demo.creditsIntro": "The demo library is real music, free to share under Creative Commons:"
 }

@@ -1,3 +1,5 @@
+import { DemoBannerComponent } from '../demo-banner/demo-banner.component';
+import { environment } from '../../../environments/environment';
 import { Component, inject, computed, signal, OnInit, OnDestroy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -121,6 +123,7 @@ export function statusScrimVisible(
     PlayerComponent,
     NowPlayingComponent,
     UpdateBannerComponent,
+    DemoBannerComponent,
     WelcomeBannerComponent,
     InstallPromoBannerComponent,
     BottomNavComponent,
@@ -139,6 +142,8 @@ export function statusScrimVisible(
   templateUrl: './layout.component.html',
 })
 export class LayoutComponent implements OnInit, OnDestroy {
+  /** The static demo build shows its banner (docs/demo-mode.md). */
+  readonly isDemo = environment.demo;
   readonly auth = inject(AuthService);
   readonly setup = inject(SetupService);
   readonly preserve = inject(PreserveService);

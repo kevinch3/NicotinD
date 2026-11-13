@@ -90,6 +90,36 @@
               ],
               "outputHashing": "all",
               "serviceWorker": "ngsw-config.json"
+            },
+            "demo": {
+              "fileReplacements": [
+                {
+                  "replace": "src/environments/environment.ts",
+                  "with": "src/environments/environment.demo.ts"
+                },
+                {
+                  "replace": "src/app/demo/demo-config.ts",
+                  "with": "src/app/demo/demo-config.demo.ts"
+                }
+              ],
+              "allowedCommonJsDependencies": [
+                "qrcode",
+                "dijkstrajs"
+              ],
+              "budgets": [
+                {
+                  "type": "initial",
+                  "maximumWarning": "780kB",
+                  "maximumError": "1MB"
+                },
+                {
+                  "type": "anyComponentStyle",
+                  "maximumWarning": "4kB",
+                  "maximumError": "8kB"
+                }
+              ],
+              "outputHashing": "all",
+              "baseHref": "/NicotinD/demo/"
             }
           },
           "defaultConfiguration": "production"

@@ -1,3 +1,6 @@
+import { environment } from '../../environments/environment';
+import { demoMediaPath } from './demo-media';
+
 /** The entity that owns a cover's revision: an album (also for its songs) or an artist. */
 export type CoverKind = 'album' | 'artist';
 
@@ -43,7 +46,8 @@ export interface CoverRef {
  */
 export function coverUrl(ref: CoverRef, size: number, token: string | null): string {
   const v = ref.coverRev > 0 ? `&v=${ref.coverRev}` : '';
-  return `/api/cover/${ref.coverArt}?size=${size}${v}&token=${token ?? ''}`;
+  const url = `/api/cover/${ref.coverArt}?size=${size}${v}&token=${token ?? ''}`;
+  return environment.demo ? (demoMediaPath(url) ?? url) : url;
 }
 
 /**
@@ -105,6 +109,7 @@ export function songCover(s: {
  * external Spotify/archive URL) and a URL that already has one pass through.
  */
 export function withMediaToken(url: string | undefined, token: string | null): string | undefined {
+  if (environment.demo && url?.startsWith('/api/cover/')) return demoMediaPath(url) ?? url;
   if (!url || !token || !url.startsWith('/api/cover/') || /[?&]token=/.test(url)) return url;
   return `${url}${url.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`;
 }

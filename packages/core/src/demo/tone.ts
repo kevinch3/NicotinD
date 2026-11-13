@@ -1,12 +1,11 @@
 /**
- * Deterministic tone "songs" for the demo catalog (docs/demo-mode.md).
+ * Deterministic tone "songs" for the demo catalog (docs/product-tour.md).
  *
- * why: the demo and the product tour need audio that is free to redistribute,
+ * why: the product tour needs audio that is free to redistribute,
  * costs no bytes to ship, and sounds like music rather than a test signal. A
  * song is therefore a pure function of its seed: tempo, key, chords and melody
- * are drawn from a seeded PRNG and synthesised here, so the build script (Bun,
- * encoding FLAC for a real server) and the static demo (the browser, rendering
- * on play) produce the same song from the same id.
+ * are drawn from a seeded PRNG and synthesised here, so every run of the build
+ * script produces the same song from the same id.
  *
  * The metadata is honest about the audio: `bpm` is the tempo actually rendered
  * and `durationSec` is the exact rendered length — the player rejects a

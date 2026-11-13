@@ -31,7 +31,8 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 30 for the F-Droid half, plus the demo recorder (~10 min on a runner).
+    timeout-minutes: 45
     # Runs on EVERY completed Build & Deploy, failed or cancelled included. The
     # APKs come from the newest *published* release (`--exclude-drafts` below),
     # and publish-release publishes only once both APKs are attached, so a run
@@ -158,6 +159,42 @@ jobs:
           # the password-bearing config.yml.
           cp -r "$RUNNER_TEMP/fdroid-out/repo" site/fdroid/repo
           shred -u "$RUNNER_TEMP/fdroid-repo.keystore"
+
+      # --- The static demo (docs/demo-mode.md) -----------------------------
+      # Every publish rebuilds it: one deployment replaces the whole site, so a
+      # run that skipped it would take /demo/ down. The recorder boots the real
+      # server, so it needs what e2e needs — Chromium and ffmpeg.
+      - name: Install Playwright OS deps
+        uses: ./.github/actions/playwright-deps
+        with:
+          install-command: bun run --filter @nicotind/e2e install:deps
+
+      - name: Install Playwright browser
+        run: bun run --filter @nicotind/e2e install:browsers
+
+      - name: Install ffmpeg
+        run: scripts/ci-apt-install.sh ffmpeg
+
+      # The CC source audio (~420 MB) is pinned by sha1 in the manifest; a hit
+      # skips every download, and the Internet Archive is only asked on a change.
+      - name: Cache the demo's source audio
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: packages/e2e/.tmp-cc-demo/cache
+          key: demo-audio-${{ hashFiles('packages/e2e/demo/manifest.json') }}
+
+      # The bundle the recorder's real server serves; E2E_SKIP_BUILD keeps the
+      # recorder from building it (and the TV bundle) a second time.
+      - name: Build (web)
+        run: bun run --filter @nicotind/web build
+
+      # Never blocks the F-Droid repository, whose clients depend on this
+      # publish; a failed demo build ships the site without /demo/ instead.
+      - name: Build the demo
+        continue-on-error: true
+        run: bun run scripts/build-demo.ts site
+        env:
+          E2E_SKIP_BUILD: '1'
 
       # A landing page, so the site root is not a 404 for someone who trims the
       # URL, and so the repository address is copy-pasteable.

@@ -35,6 +35,8 @@ import pkg from '../../../../package.json';
 import { switchMap } from 'rxjs/operators';
 import { TranslateService } from './services/translate.service';
 import { BUILD_INFO, type BuildInfo } from './lib/build-info';
+import { DEMO_INTERCEPTORS, DEMO_PROVIDERS } from './demo/demo-config';
+import { environment } from '../environments/environment';
 
 export const APP_VERSION = new InjectionToken<string>('APP_VERSION');
 
@@ -132,7 +134,8 @@ export const appConfig: ApplicationConfig = {
     { provide: ErrorHandler, useClass: BufferingErrorHandler },
     provideBrowserGlobalErrorListeners(),
     provideRouter(routes),
-    provideHttpClient(withInterceptors([authInterceptor])),
+    provideHttpClient(withInterceptors([...DEMO_INTERCEPTORS, authInterceptor])),
+    ...DEMO_PROVIDERS,
     provideAppInitializer(() => {
       const setup = inject(SetupService);
       const theme = inject(ThemeService);
@@ -190,7 +193,8 @@ export const appConfig: ApplicationConfig = {
       });
     }),
     provideServiceWorker('ngsw-worker.js', {
-      enabled: serviceWorkerEnabled(isDevMode(), isNativeShell()),
+      // The demo ships no worker: its bundle lives under a GitHub Pages path.
+      enabled: !environment.demo && serviceWorkerEnabled(isDevMode(), isNativeShell()),
       registrationStrategy: 'registerWhenStable:30000',
     }),
   ],

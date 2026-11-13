@@ -2,6 +2,8 @@ import { Injectable, signal } from '@angular/core';
 import { normalizeServerUrl, buildApiUrl, buildWsUrl } from '../lib/server-url';
 import { isNativePlatform } from '../lib/platform';
 import { probeOggOpus, type OggSupport } from '../lib/ogg-support';
+import { demoMediaPath } from '../lib/demo-media';
+import { environment } from '../../environments/environment';
 import {
   loadServers,
   rememberServer,
@@ -94,6 +96,7 @@ export class ServerConfigService {
    * touching the SW driver when it sees this query param.
    */
   streamUrl(id: string, token: string | null, opts?: { vocalsOff?: boolean }): string {
+    if (environment.demo) return demoMediaPath(`/api/stream/${id}`)!;
     const params =
       `token=${token}&ngsw-bypass=1${opts?.vocalsOff ? '&vocals=off' : ''}` +
       // An element that cannot play Ogg-Opus asks the server to convert Ogg

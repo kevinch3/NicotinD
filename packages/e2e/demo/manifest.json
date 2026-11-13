@@ -1,0 +1,903 @@
+{
+  "version": 1,
+  "albums": [
+    {
+      "ia": "The_Simple_Life_Part_2_1667-16369",
+      "artist": "Josh Woodward",
+      "title": "The Simple Life (Part 2)",
+      "year": 2008,
+      "genre": "Folk",
+      "heldBack": false,
+      "licence": "http://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://archive.org/details/The_Simple_Life_Part_2_1667-16369",
+      "cover": {
+        "file": "The_Simple_Life_Part_2_1667-16369.jpg",
+        "sha1": "35f122a999f8605f78bda1050280428954515871",
+        "size": 654422
+      },
+      "tracks": [
+        {
+          "file": "Josh_Woodward_-_01_-_Ships.mp3",
+          "sha1": "fd1a20d0b7fcd6e03f42f9865eaf264ac69ed3cd",
+          "size": 2416768,
+          "title": "Ships",
+          "track": 1,
+          "seconds": 122
+        },
+        {
+          "file": "Josh_Woodward_-_03_-_Flutter_By_Butterfly.mp3",
+          "sha1": "e95f0ed9ad2149add5a974ac4382da889223b65a",
+          "size": 3083080,
+          "title": "Flutter By, Butterfly",
+          "track": 2,
+          "seconds": 158
+        },
+        {
+          "file": "Josh_Woodward_-_05_-_On_Brevity.mp3",
+          "sha1": "31196c70791c7e4b0bbaec28939d3d639f2a4612",
+          "size": 4550784,
+          "title": "On Brevity",
+          "track": 3,
+          "seconds": 190
+        },
+        {
+          "file": "Josh_Woodward_-_11_-_Shadows_in_the_Moonlight.mp3",
+          "sha1": "514a45a52dd2529256c21a3a417d04435b8caeb3",
+          "size": 5680079,
+          "title": "Shadows in the Moonlight",
+          "track": 4,
+          "seconds": 266
+        },
+        {
+          "file": "Josh_Woodward_-_07_-_Dont_Close_Your_Eyes.mp3",
+          "sha1": "422d1a07d0d2ab21c25ac42c5160db941f052206",
+          "size": 4204672,
+          "title": "Don't Close Your Eyes",
+          "track": 5,
+          "seconds": 214
+        },
+        {
+          "file": "Josh_Woodward_-_09_-_Me_and_Billy_Barnum.mp3",
+          "sha1": "8afb92cfbf0d13d8b37b32d48f5805a056bc0a85",
+          "size": 4817024,
+          "title": "Me and Billy Barnum",
+          "track": 6,
+          "seconds": 211
+        },
+        {
+          "file": "Josh_Woodward_-_19_-_I_Wanna_Know.mp3",
+          "sha1": "7e17c55b30da357d9a4b4b8d69393d41c9aaf87b",
+          "size": 2984064,
+          "title": "I Wanna Know",
+          "track": 7,
+          "seconds": 158
+        },
+        {
+          "file": "Josh_Woodward_-_13_-_Good_to_Go.mp3",
+          "sha1": "a121bbdef334a5af25eb1b23177dd1e28a7ccee5",
+          "size": 3741824,
+          "title": "Good to Go",
+          "track": 8,
+          "seconds": 189
+        },
+        {
+          "file": "Josh_Woodward_-_15_-_Memorized.mp3",
+          "sha1": "ce51d312fba5282f2bbcbd8d8645870d305aedb5",
+          "size": 4905088,
+          "title": "Memorized",
+          "track": 9,
+          "seconds": 266
+        },
+        {
+          "file": "Josh_Woodward_-_17_-_The_Mission.mp3",
+          "sha1": "43440cc44bef2041099a257cd96fbdf15a4628da",
+          "size": 4640896,
+          "title": "The Mission",
+          "track": 10,
+          "seconds": 229
+        }
+      ]
+    },
+    {
+      "ia": "Crawford_Street-17897",
+      "artist": "Josh Woodward",
+      "title": "Crawford Street",
+      "year": 2005,
+      "genre": "Rock",
+      "heldBack": false,
+      "licence": "http://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://archive.org/details/Crawford_Street-17897",
+      "cover": {
+        "file": "Crawford_Street-17897.jpg",
+        "sha1": "dd5847206f3d28fcb3988da677720a8a96450ba3",
+        "size": 454203
+      },
+      "tracks": [
+        {
+          "file": "Josh_Woodward_-_01_-_Fight_the_Sea.mp3",
+          "sha1": "7d8a464b2eb51e71f8de9cf368b77c56bd110ccb",
+          "size": 5974865,
+          "title": "Fight the Sea",
+          "track": 1,
+          "seconds": 277
+        },
+        {
+          "file": "Josh_Woodward_-_03_-_Cherry.mp3",
+          "sha1": "f2277b718a7ff209d48b56f3bb1968e89fe7c88b",
+          "size": 5726175,
+          "title": "Cherry",
+          "track": 2,
+          "seconds": 251
+        },
+        {
+          "file": "Josh_Woodward_-_05_-_Cant_Take_Our_Love_Away.mp3",
+          "sha1": "2d3451b576bdad45fb9b5dfe1150acfcf7b4b829",
+          "size": 3816600,
+          "title": "Can't Take Our Love Away",
+          "track": 3,
+          "seconds": 226
+        },
+        {
+          "file": "Josh_Woodward_-_07_-_Big_Disco_Ball.mp3",
+          "sha1": "93c67d7076ca4aa427a02ffda7a31e7ed5b2179f",
+          "size": 4940710,
+          "title": "Big Disco Ball",
+          "track": 4,
+          "seconds": 236
+        },
+        {
+          "file": "Josh_Woodward_-_09_-_The_Pawnbrokers_Stepdaughter.mp3",
+          "sha1": "613c6b2d82b392a64f1be962f692b4897b2fde45",
+          "size": 4690136,
+          "title": "The Pawnbroker's Stepdaughter",
+          "track": 5,
+          "seconds": 246
+        },
+        {
+          "file": "Josh_Woodward_-_11_-_The_Spirit_World.mp3",
+          "sha1": "0d8a166cb7bd40ace043bf7d40a13597829ec269",
+          "size": 4347122,
+          "title": "The Spirit World",
+          "track": 6,
+          "seconds": 229
+        },
+        {
+          "file": "Josh_Woodward_-_13_-_Shower_Scene.mp3",
+          "sha1": "79f7774b452a08ddfe1d9c9512f44851b125bf77",
+          "size": 2417396,
+          "title": "Shower Scene",
+          "track": 7,
+          "seconds": 131
+        },
+        {
+          "file": "Josh_Woodward_-_15_-_Swimming_to_Cambodia.mp3",
+          "sha1": "98c11dad6e7cecacbef29f051f47f91022416005",
+          "size": 4538530,
+          "title": "Swimming to Cambodia",
+          "track": 8,
+          "seconds": 220
+        },
+        {
+          "file": "Josh_Woodward_-_17_-_Twelve_Monkeys.mp3",
+          "sha1": "a0cb94f7da0c2123b49bf430809b6141fc06c613",
+          "size": 3480126,
+          "title": "Twelve Monkeys",
+          "track": 9,
+          "seconds": 194
+        },
+        {
+          "file": "Josh_Woodward_-_19_-_Hey_Ruth.mp3",
+          "sha1": "ad217a7ffed4cb3e654c355e7b3abd0feb01ff20",
+          "size": 3814230,
+          "title": "Hey Ruth",
+          "track": 10,
+          "seconds": 200
+        }
+      ]
+    },
+    {
+      "ia": "Dune-13188",
+      "artist": "Jahzzar",
+      "title": "Dune",
+      "year": null,
+      "genre": "Electronic",
+      "heldBack": false,
+      "licence": "http://creativecommons.org/licenses/by-sa/3.0/",
+      "sourceUrl": "https://archive.org/details/Dune-13188",
+      "cover": {
+        "file": "Dune-13188.jpg",
+        "sha1": "31201fa4ae2b85cae058fb1ff9bde9c491fcd251",
+        "size": 674369
+      },
+      "tracks": [
+        {
+          "file": "01_-_Dune.mp3",
+          "sha1": "d01d92d685bd3658f3434b584d56b811ebd60d62",
+          "size": 6264319,
+          "title": "Dune",
+          "track": 1,
+          "seconds": 157
+        },
+        {
+          "file": "02_-_Baroque.mp3",
+          "sha1": "c6d3eeec7f7519a6dc0c26255b96e6525eb1ac58",
+          "size": 6120220,
+          "title": "Baroque",
+          "track": 2,
+          "seconds": 153
+        },
+        {
+          "file": "03_-_Revolver.mp3",
+          "sha1": "474a4326e474bde0e6d63d2d6332661812614195",
+          "size": 7467096,
+          "title": "Revolver",
+          "track": 3,
+          "seconds": 187
+        },
+        {
+          "file": "04_-_master_trip.mp3",
+          "sha1": "e4abd45efe926b59f0f2de71182fe249bf18b3db",
+          "size": 7467088,
+          "title": "master_trip",
+          "track": 4,
+          "seconds": 187
+        },
+        {
+          "file": "05_-_Bones.mp3",
+          "sha1": "cb65a6edd1a23b6f4e132b13e612603a3d882442",
+          "size": 7753392,
+          "title": "Bones",
+          "track": 5,
+          "seconds": 194
+        },
+        {
+          "file": "06_-_Wizard.mp3",
+          "sha1": "4976d55b4ba29fbc3a7362850e8bc2e2152df315",
+          "size": 6753424,
+          "title": "Wizard",
+          "track": 6,
+          "seconds": 169
+        },
+        {
+          "file": "07_-_Parfum.mp3",
+          "sha1": "9843b84299c3160d0a82e72d0e72c67312363631",
+          "size": 7354243,
+          "title": "Parfum",
+          "track": 7,
+          "seconds": 184
+        },
+        {
+          "file": "08_-_Lowrider.mp3",
+          "sha1": "1ff6123d754129f038aca8b38789bf24c7b20d66",
+          "size": 6897626,
+          "title": "Lowrider",
+          "track": 8,
+          "seconds": 172
+        },
+        {
+          "file": "09_-_master_spin.mp3",
+          "sha1": "6d5f6c019392e22e5299b14b6b1604b29661b0a3",
+          "size": 8410630,
+          "title": "master_spin",
+          "track": 9,
+          "seconds": 210
+        },
+        {
+          "file": "10_-_Fuzz.mp3",
+          "sha1": "8d830bcf3e7a254afc92d7a8e527b3f28fb52aa7",
+          "size": 6495325,
+          "title": "Fuzz",
+          "track": 10,
+          "seconds": 162
+        }
+      ]
+    },
+    {
+      "ia": "Directionless_EP-8295",
+      "artist": "Broke For Free",
+      "title": "Directionless EP",
+      "year": 2011,
+      "genre": "Downtempo",
+      "heldBack": false,
+      "licence": "http://creativecommons.org/licenses/by/3.0/",
+      "sourceUrl": "https://archive.org/details/Directionless_EP-8295",
+      "cover": {
+        "file": "Directionless_EP-8295.jpg",
+        "sha1": "7a8f584f4156a7277556c4196bf80e99ae417f19",
+        "size": 265912
+      },
+      "tracks": [
+        {
+          "file": "Broke_For_Free_-_01_-_Night_Owl.mp3",
+          "sha1": "ac14d79ea42ae916f8800bdd6e38adccc2ec7e8e",
+          "size": 8054458,
+          "title": "Night Owl",
+          "track": 1,
+          "seconds": 194
+        },
+        {
+          "file": "Broke_For_Free_-_02_-_My_Always_Mood.mp3",
+          "sha1": "dbe63b5dee1a1539900f8ce3fec789ff51d047aa",
+          "size": 7833985,
+          "title": "My Always Mood",
+          "track": 2,
+          "seconds": 189
+        },
+        {
+          "file": "Broke_For_Free_-_03_-_Day_Bird.mp3",
+          "sha1": "c65142d48ec2b8c67f430b65d3d72ddb9da0ef82",
+          "size": 9221609,
+          "title": "Day Bird",
+          "track": 3,
+          "seconds": 223
+        },
+        {
+          "file": "Broke_For_Free_-_04_-_My_Luck.mp3",
+          "sha1": "342f8bbeeddb6bc0203522f04f82a57717502ba7",
+          "size": 13204760,
+          "title": "My Luck",
+          "track": 4,
+          "seconds": 323
+        },
+        {
+          "file": "Broke_For_Free_-_05_-_Mells_Parade.mp3",
+          "sha1": "74b8f58d18374d05a1b571f4d923fcccb7d10921",
+          "size": 8215373,
+          "title": "Mell's Parade",
+          "track": 5,
+          "seconds": 198
+        },
+        {
+          "file": "Broke_For_Free_-_06_-_Only_Instrumental.mp3",
+          "sha1": "f276389df447d38243ac1f79911836097a6b5330",
+          "size": 6635487,
+          "title": "Only Instrumental",
+          "track": 6,
+          "seconds": 159
+        }
+      ]
+    },
+    {
+      "ia": "Komiku-TaleOnTheLate",
+      "artist": "Komiku",
+      "title": "Tale On The Late",
+      "year": null,
+      "genre": "Soundtrack",
+      "heldBack": false,
+      "licence": "http://creativecommons.org/publicdomain/zero/1.0/",
+      "sourceUrl": "https://archive.org/details/Komiku-TaleOnTheLate",
+      "cover": {
+        "file": "Komiku_-_Tale_on_the_Late_-_2018041043811630.png.jpeg",
+        "sha1": "741d2e3e6c0137f56a7cc6fa20f6eeb091c057da",
+        "size": 34833
+      },
+      "tracks": [
+        {
+          "file": "Komiku - Tale on the Late - 01 Tale on the Late (Main Theme).mp3",
+          "sha1": "6639b0632c7cb6881cf4c4d8a8ab91c9e60d63bf",
+          "size": 1871936,
+          "title": "Tale on the Late (Main Theme)",
+          "track": 1,
+          "seconds": 76
+        },
+        {
+          "file": "Komiku - Tale on the Late - 02 Remember the time we use to play.mp3",
+          "sha1": "fcec71b234f4276f23384c51584b11b546da6c02",
+          "size": 2089928,
+          "title": "Remember the time we use to play",
+          "track": 2,
+          "seconds": 96
+        },
+        {
+          "file": "Komiku - Tale on the Late - 03 The road we use to travel when we were kids.mp3",
+          "sha1": "8741fc3ed1cf8d77c938828f92ce9c1e0a53102b",
+          "size": 3281168,
+          "title": "The road we use to travel when we were kids",
+          "track": 3,
+          "seconds": 140
+        },
+        {
+          "file": "Komiku - Tale on the Late - 04 Friends, 2018.mp3",
+          "sha1": "a57af01fbd38eeb3cb2245be518ee8cdcba6228a",
+          "size": 1321122,
+          "title": "Friends, 2018",
+          "track": 4,
+          "seconds": 64
+        },
+        {
+          "file": "Komiku - Tale on the Late - 05 Village, 2018.mp3",
+          "sha1": "094737069bee53c8fab8206fef9318c169ee8c16",
+          "size": 1373919,
+          "title": "Village, 2018",
+          "track": 5,
+          "seconds": 67
+        },
+        {
+          "file": "Komiku - Tale on the Late - 06 Get Ready.mp3",
+          "sha1": "4777045453f2e6dbb160cb6b860eed4156fc4643",
+          "size": 1957010,
+          "title": "Get Ready",
+          "track": 6,
+          "seconds": 75
+        },
+        {
+          "file": "Komiku - Tale on the Late - 07 Welcome to the machine.mp3",
+          "sha1": "e1d62399e9ae7244cd2c2f6a3bfe22a7f201e52c",
+          "size": 1757137,
+          "title": "Welcome to the machine",
+          "track": 7,
+          "seconds": 76
+        },
+        {
+          "file": "Komiku - Tale on the Late - 08 Rupture.mp3",
+          "sha1": "cf460149d62d3cd2d52080af6065d9b60f4fe48a",
+          "size": 2129906,
+          "title": "Rupture",
+          "track": 8,
+          "seconds": 107
+        },
+        {
+          "file": "Komiku - Tale on the Late - 09 Village, 2068.mp3",
+          "sha1": "87d5d5f9c451753be5f6b167014c357f406d0720",
+          "size": 2879906,
+          "title": "Village, 2068",
+          "track": 9,
+          "seconds": 131
+        },
+        {
+          "file": "Komiku - Tale on the Late - 10 Is everything of this is true -.mp3",
+          "sha1": "e2a17b885c2330406acb1989e7d623fd740049eb",
+          "size": 2875862,
+          "title": "Is everything of this is true ?",
+          "track": 10,
+          "seconds": 136
+        }
+      ]
+    },
+    {
+      "ia": "Monplaisir-RelaxingUkulele",
+      "artist": "Monplaisir",
+      "title": "Relaxing Ukulele",
+      "year": 2017,
+      "genre": "Acoustic",
+      "heldBack": false,
+      "licence": "http://creativecommons.org/publicdomain/zero/1.0/",
+      "sourceUrl": "https://archive.org/details/Monplaisir-RelaxingUkulele",
+      "cover": {
+        "file": "cover.jpg",
+        "sha1": "a28e2340cbc358f851302a8edd8ca8da81712e0d",
+        "size": 4992723
+      },
+      "tracks": [
+        {
+          "file": "Monplaisir - Relaxing Ukulele - 01 Red Hair, Blue Sky.mp3",
+          "sha1": "45458024c2c9c5e0710efd398fc81773eb98264e",
+          "size": 3157614,
+          "title": "Red Hair, Blue Sky",
+          "track": 1,
+          "seconds": 136
+        },
+        {
+          "file": "Monplaisir - Relaxing Ukulele - 02 Sincere Love.mp3",
+          "sha1": "9d8cb8bfc56abcb9a307399560508620d18341c3",
+          "size": 2303170,
+          "title": "Sincere Love",
+          "track": 2,
+          "seconds": 100
+        },
+        {
+          "file": "Monplaisir - Relaxing Ukulele - 03 Time Gap.mp3",
+          "sha1": "9c2e27e15308c681816baf6895c96e2e3fbff143",
+          "size": 2731754,
+          "title": "Time Gap",
+          "track": 3,
+          "seconds": 115
+        },
+        {
+          "file": "Monplaisir - Relaxing Ukulele - 04 First.mp3",
+          "sha1": "6bb1c47de8ea4ba9bb0dc107cccc14de4dadb647",
+          "size": 2465950,
+          "title": "First",
+          "track": 4,
+          "seconds": 109
+        },
+        {
+          "file": "Monplaisir - Relaxing Ukulele - 05 Stay Quiet.mp3",
+          "sha1": "4db9c8d9d79935bdca4f0f67a4bafd4cf4125639",
+          "size": 3056513,
+          "title": "Stay Quiet",
+          "track": 5,
+          "seconds": 133
+        },
+        {
+          "file": "Monplaisir - Relaxing Ukulele - 06 On the road, looking at your feet.mp3",
+          "sha1": "ac2a796fb1384b8e7311223af813bda8378672b9",
+          "size": 2755371,
+          "title": "On the road, looking at your feet",
+          "track": 6,
+          "seconds": 118
+        },
+        {
+          "file": "Monplaisir - Relaxing Ukulele - 07 Floating Temple.mp3",
+          "sha1": "99f00fb7c9c2f6cd5bc7e75f435ccd91db873848",
+          "size": 3665910,
+          "title": "Floating Temple",
+          "track": 7,
+          "seconds": 165
+        },
+        {
+          "file": "Monplaisir - Relaxing Ukulele - 08 Hop.mp3",
+          "sha1": "78c138a75f78c953c93b28b7a1459edabaf92217",
+          "size": 3621959,
+          "title": "Hop",
+          "track": 8,
+          "seconds": 158
+        }
+      ]
+    },
+    {
+      "ia": "TheBlackDot",
+      "artist": "rolemusic",
+      "title": "The Black Dot",
+      "year": 2017,
+      "genre": "Chiptune",
+      "heldBack": false,
+      "licence": "http://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://archive.org/details/TheBlackDot",
+      "cover": {
+        "file": "00_cover_art.png",
+        "sha1": "a0a4fefd19f64084d488060ec113061b006f3b30",
+        "size": 174864
+      },
+      "tracks": [
+        {
+          "file": "01_rolemusic_-_the_white_kitty.mp3",
+          "sha1": "650cbeed3673ca26cc96e58ddabd5bb470127cb9",
+          "size": 2969088,
+          "title": "The White Kitty",
+          "track": 1,
+          "seconds": 198
+        },
+        {
+          "file": "02_rolemusic_-_the_white_frame.mp3",
+          "sha1": "f4a5251364b474be5f5a389fb341572c7a769acf",
+          "size": 2714112,
+          "title": "The White Frame",
+          "track": 2,
+          "seconds": 184
+        },
+        {
+          "file": "03_rolemusic_-_the_white.mp3",
+          "sha1": "81cbc3e23c2a2ca2ddb1bb0b1dc096018404cb7f",
+          "size": 2095616,
+          "title": "The White",
+          "track": 3,
+          "seconds": 142
+        },
+        {
+          "file": "04_rolemusic_-_the_black_kitty.mp3",
+          "sha1": "336eda95b70f431f1630fe4c98b5a1cf2741a338",
+          "size": 6366208,
+          "title": "The Black Kitty",
+          "track": 4,
+          "seconds": 427
+        },
+        {
+          "file": "05_rolemusic_-_the_black_frame.mp3",
+          "sha1": "974025987792e12995a7dbc59ab289ca45c547fa",
+          "size": 4509184,
+          "title": "The Black Frame",
+          "track": 5,
+          "seconds": 290
+        },
+        {
+          "file": "06_rolemusic_-_the_black.mp3",
+          "sha1": "f0c30e0bdef939b9a0d1820b48b0084db0a36844",
+          "size": 6088192,
+          "title": "The Black",
+          "track": 6,
+          "seconds": 389
+        },
+        {
+          "file": "07_rolemusic_-_the_great_madeja.mp3",
+          "sha1": "ca88d8c5fc07765b1668a18128eca70027e45426",
+          "size": 3737600,
+          "title": "The Great Madeja",
+          "track": 7,
+          "seconds": 250
+        },
+        {
+          "file": "08_rolemusic_-_juglar_street.mp3",
+          "sha1": "2f4938c6b7396cc6d930f43255e4eae2ca56f89f",
+          "size": 3884544,
+          "title": "Jugar Street",
+          "track": 8,
+          "seconds": 238
+        },
+        {
+          "file": "09_rolemusic_-_the_little_broth.mp3",
+          "sha1": "8e53dabe44178bf6b2584fb68f972f0ee37749ae",
+          "size": 4047360,
+          "title": "The Little Broth",
+          "track": 9,
+          "seconds": 266
+        }
+      ]
+    },
+    {
+      "ia": "Jazz_Sampler-9619",
+      "artist": "Kevin MacLeod",
+      "title": "Jazz Sampler",
+      "year": 2011,
+      "genre": "Jazz",
+      "heldBack": false,
+      "licence": "http://creativecommons.org/licenses/by/3.0/",
+      "sourceUrl": "https://archive.org/details/Jazz_Sampler-9619",
+      "cover": {
+        "file": "Jazz_Sampler-9619.jpg",
+        "sha1": "7edcb2d4d25cee42ce94b03fe57027ded146e69f",
+        "size": 42655
+      },
+      "tracks": [
+        {
+          "file": "Kevin_MacLeod_-_Acid_Trumpet.mp3",
+          "sha1": "8ffa62548403f9c6af7cb457135b0e0d8afcada3",
+          "size": 5090909,
+          "title": "Acid Trumpet",
+          "track": 1,
+          "seconds": 212
+        },
+        {
+          "file": "Kevin_MacLeod_-_AcidJazz.mp3",
+          "sha1": "100aa2a5b21aa0cd2fb0a04b6c907ec59b1be8ee",
+          "size": 5090909,
+          "title": "AcidJazz",
+          "track": 2,
+          "seconds": 212
+        },
+        {
+          "file": "Kevin_MacLeod_-_As_I_Figure.mp3",
+          "sha1": "a39d51989d385df91b901a48f26d7a4c3542460e",
+          "size": 8813705,
+          "title": "As I Figure",
+          "track": 3,
+          "seconds": 220
+        },
+        {
+          "file": "Kevin_MacLeod_-_Backed_Vibes_Clean.mp3",
+          "sha1": "2d8b85f4dbfa6b38b4d1cd07392a830b31b4dc7d",
+          "size": 9277779,
+          "title": "Backed Vibes Clean",
+          "track": 4,
+          "seconds": 232
+        },
+        {
+          "file": "Kevin_MacLeod_-_Corncob.mp3",
+          "sha1": "79146c763ce800df9caec3cd29b008f9d84f7848",
+          "size": 2221213,
+          "title": "Corncob",
+          "track": 5,
+          "seconds": 56
+        },
+        {
+          "file": "Kevin_MacLeod_-_Dances_and_Dames.mp3",
+          "sha1": "535afec7b5b889c29fb9f33a79f7e1f69d8faa6b",
+          "size": 5962419,
+          "title": "Dances and Dames",
+          "track": 6,
+          "seconds": 149
+        },
+        {
+          "file": "Kevin_MacLeod_-_Faster_Does_It.mp3",
+          "sha1": "ff40bfca6ef39748df3a2fe8bdcc0f675b4b3bbd",
+          "size": 7275665,
+          "title": "Faster Does It",
+          "track": 7,
+          "seconds": 182
+        },
+        {
+          "file": "Kevin_MacLeod_-_I_Knew_a_Guy.mp3",
+          "sha1": "524b478a91ea76b79dd3dc6db56dfd2866a874f7",
+          "size": 6044335,
+          "title": "I Knew a Guy",
+          "track": 8,
+          "seconds": 167
+        },
+        {
+          "file": "Kevin_MacLeod_-_Night_on_the_Docks_-_Sax.mp3",
+          "sha1": "0f32a515ee44665a86d73dcf8b0fa803f296dfa4",
+          "size": 5919408,
+          "title": "Night on the Docks - Sax",
+          "track": 9,
+          "seconds": 174
+        },
+        {
+          "file": "Kevin_MacLeod_-_Off_to_Osaka.mp3",
+          "sha1": "1ec5360a558dceed79c1fa043a572f002c0927da",
+          "size": 4021693,
+          "title": "Off to Osaka",
+          "track": 10,
+          "seconds": 110
+        },
+        {
+          "file": "Kevin_MacLeod_-_Vibe_Ace.mp3",
+          "sha1": "34d7974ef0737c82d02de01594c7f7461131379b",
+          "size": 2521098,
+          "title": "Vibe Ace",
+          "track": 11,
+          "seconds": 63
+        }
+      ]
+    },
+    {
+      "ia": "KaiEngelTheRun",
+      "artist": "Kai Engel",
+      "title": "The Run",
+      "year": 2017,
+      "genre": "Ambient",
+      "heldBack": true,
+      "licence": "http://creativecommons.org/licenses/by/3.0/",
+      "sourceUrl": "https://archive.org/details/KaiEngelTheRun",
+      "cover": {
+        "file": "cover.jpg",
+        "sha1": "e86d1b571eee2c20a5ccd16b254ad748710ed959",
+        "size": 7537618
+      },
+      "tracks": [
+        {
+          "file": "Kai Engel - The Run - 01 Seeker.mp3",
+          "sha1": "af4ace473c7ceb98b11aff53ab5dc150f9cd3cc6",
+          "size": 6254592,
+          "title": "Seeker",
+          "track": 1,
+          "seconds": 276
+        },
+        {
+          "file": "Kai Engel - The Run - 02 Run.mp3",
+          "sha1": "1b90135f14c2a13920028be691131623f2d0fedb",
+          "size": 5454336,
+          "title": "Run",
+          "track": 2,
+          "seconds": 241
+        },
+        {
+          "file": "Kai Engel - The Run - 03 Harbor.mp3",
+          "sha1": "b0cf60eecbf4420f1942ddfadb8e4f8ba531c121",
+          "size": 4749824,
+          "title": "Harbor",
+          "track": 3,
+          "seconds": 240
+        },
+        {
+          "file": "Kai Engel - The Run - 04 Imminence.mp3",
+          "sha1": "dd912b0276e6154a5b552bad647ec7d2c4c0ac55",
+          "size": 3430400,
+          "title": "Imminence",
+          "track": 4,
+          "seconds": 160
+        },
+        {
+          "file": "Kai Engel - The Run - 05 Passages.mp3",
+          "sha1": "2f5bf59248eeeab8eec8409b95d844d097c65196",
+          "size": 4189696,
+          "title": "Passages",
+          "track": 5,
+          "seconds": 193
+        },
+        {
+          "file": "Kai Engel - The Run - 06 Scenery.mp3",
+          "sha1": "04e55d7a1bddf8c1267265a4d8d06e83ca9fcf1c",
+          "size": 3843584,
+          "title": "Scenery",
+          "track": 6,
+          "seconds": 168
+        },
+        {
+          "file": "Kai Engel - The Run - 07 Tumult.mp3",
+          "sha1": "787e22b6b1e7b5e49799bec5a87a29b1c0e9381e",
+          "size": 6528512,
+          "title": "Tumult",
+          "track": 7,
+          "seconds": 278
+        },
+        {
+          "file": "Kai Engel - The Run - 08 Chance.mp3",
+          "sha1": "d59ebb1b8337c7d5128f0498fdd26c565aabaaf5",
+          "size": 3883008,
+          "title": "Chance",
+          "track": 8,
+          "seconds": 163
+        },
+        {
+          "file": "Kai Engel - The Run - 09 Denouement.mp3",
+          "sha1": "977c48ed44256ea0bb6f9ae51fd8704eb696ff19",
+          "size": 4569600,
+          "title": "Denouement",
+          "track": 9,
+          "seconds": 198
+        }
+      ]
+    },
+    {
+      "ia": "LoyaltyFreakMusic-ROLLERDISCODANCEDANCE",
+      "artist": "Loyalty freak music",
+      "title": "ROLLER DISCO DANCE DANCE",
+      "year": null,
+      "genre": "Disco",
+      "heldBack": true,
+      "licence": "http://creativecommons.org/publicdomain/zero/1.0/",
+      "sourceUrl": "https://archive.org/details/LoyaltyFreakMusic-ROLLERDISCODANCEDANCE",
+      "cover": {
+        "file": "cover.jpg",
+        "sha1": "572299d229a2bbc2c8f608165ea6286c7e3f34f6",
+        "size": 394649
+      },
+      "tracks": [
+        {
+          "file": "Loyalty Freak Music - ROLLER DISCO DANCE DANCE - 01 Roller Fever.mp3",
+          "sha1": "628f8b0af286939d89f6a01d95c568df658a1999",
+          "size": 3503816,
+          "title": "Roller Fever",
+          "track": 1,
+          "seconds": 145
+        },
+        {
+          "file": "Loyalty Freak Music - ROLLER DISCO DANCE DANCE - 02 Dance Robot ACTIVATE.mp3",
+          "sha1": "c05a219f4894a8363b69b8c656046c17dbcd5642",
+          "size": 3909707,
+          "title": "Dance Robot ACTIVATE",
+          "track": 2,
+          "seconds": 159
+        },
+        {
+          "file": "Loyalty Freak Music - ROLLER DISCO DANCE DANCE - 03 I'M ON FIRE.mp3",
+          "sha1": "3fc4910824cdcbd28626e28354b17343f7241bf2",
+          "size": 4317532,
+          "title": "I'M ON FIRE",
+          "track": 3,
+          "seconds": 184
+        },
+        {
+          "file": "Loyalty Freak Music - ROLLER DISCO DANCE DANCE - 04 Can't Stop My Feet !.mp3",
+          "sha1": "50abec2c10312d5f4511099f3100c088df19c3a3",
+          "size": 4813782,
+          "title": "Can't Stop My Feet !",
+          "track": 4,
+          "seconds": 185
+        },
+        {
+          "file": "Loyalty Freak Music - ROLLER DISCO DANCE DANCE - 05 Grab A Partner.mp3",
+          "sha1": "32227b77b5e12eda3ea5f20c453f0a4a1a20e913",
+          "size": 4630220,
+          "title": "Grab A Partner",
+          "track": 5,
+          "seconds": 191
+        },
+        {
+          "file": "Loyalty Freak Music - ROLLER DISCO DANCE DANCE - 06 Take A Break.mp3",
+          "sha1": "0e2c3ff39fe90e0ae5daf04983d6f39c7407c5ce",
+          "size": 3103133,
+          "title": "Take A Break",
+          "track": 6,
+          "seconds": 125
+        },
+        {
+          "file": "Loyalty Freak Music - ROLLER DISCO DANCE DANCE - 07 Sweat Time !.mp3",
+          "sha1": "ecdb9d57340c17b09b99738d3cd9b2057589c88e",
+          "size": 3134609,
+          "title": "Sweat Time !",
+          "track": 7,
+          "seconds": 127
+        },
+        {
+          "file": "Loyalty Freak Music - ROLLER DISCO DANCE DANCE - 08 Last Energy For The Day.mp3",
+          "sha1": "aa13230d8198b1856bc5d354c4b6951c7b90b51c",
+          "size": 3654216,
+          "title": "Last Energy For The Day",
+          "track": 8,
+          "seconds": 145
+        }
+      ]
+    }
+  ]
+}

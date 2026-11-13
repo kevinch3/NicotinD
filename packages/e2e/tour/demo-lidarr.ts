@@ -15,8 +15,8 @@
 import { createServer, type Server } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { DEMO_ALBUMS, demoTracks, hashSeed, type DemoAlbum } from '../../core/src/demo/index.js';
-import { albumDir } from './make-demo-library.js';
+import { hashSeed } from '../../core/src/demo/index.js';
+import { toneCatalog, type StandInAlbum } from './stand-in-catalog.js';
 
 /** A stable, MBID-shaped id from a seed — the catalog is invented, so is its MusicBrainz. */
 function fakeMbid(seed: string): string {
@@ -42,14 +42,14 @@ interface ArtistRow {
 }
 interface AlbumRow {
   id: number;
-  album: DemoAlbum;
+  album: StandInAlbum;
   artist: ArtistRow;
 }
 
-export function buildLidarrModel() {
+export function buildLidarrModel(catalog: StandInAlbum[] = toneCatalog()) {
   const artists = new Map<string, ArtistRow>();
   const albums: AlbumRow[] = [];
-  for (const album of DEMO_ALBUMS) {
+  for (const album of catalog) {
     let artist = artists.get(album.artist);
     if (!artist) {
       artist = { id: artists.size + 1, name: album.artist, albums: [] };
@@ -69,7 +69,7 @@ function artistJson(a: ArtistRow) {
     artistName: a.name,
     sortName: a.name,
     status: 'continuing',
-    overview: `${a.name} is an invented act from the NicotinD demo catalog.`,
+    overview: `${a.name}, from the NicotinD demo catalog.`,
     genres: [...new Set(a.albums.map((r) => r.album.genre))],
     images: [{ coverType: 'poster', url: `/MediaCover/Artists/${a.id}/poster.jpg` }],
     albumCount: a.albums.length,
@@ -103,7 +103,7 @@ function albumJson(r: AlbumRow) {
 }
 
 function trackJson(r: AlbumRow) {
-  return demoTracks(r.album).map((t) => ({
+  return r.album.tracks.map((t) => ({
     id: r.id * 100 + t.trackNumber,
     foreignTrackId: fakeMbid(`track:${t.seed}`),
     foreignRecordingId: fakeMbid(`recording:${t.seed}`),
@@ -113,13 +113,16 @@ function trackJson(r: AlbumRow) {
     trackNumber: String(t.trackNumber),
     absoluteTrackNumber: t.trackNumber,
     title: t.title,
-    duration: Math.round(t.tone.durationSec * 1000),
+    duration: Math.round(t.durationSec * 1000),
     hasFile: false,
   }));
 }
 
-export async function startDemoLidarr(port: number): Promise<Server> {
-  const { artists, albums } = buildLidarrModel();
+export async function startDemoLidarr(
+  port: number,
+  catalog: StandInAlbum[] = toneCatalog(),
+): Promise<Server> {
+  const { artists, albums } = buildLidarrModel(catalog);
   const server = createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://x');
     const path = url.pathname;
@@ -137,14 +140,14 @@ export async function startDemoLidarr(port: number): Promise<Server> {
     const albumCover = path.match(/^\/MediaCover\/Albums\/(\d+)\/cover\.jpg$/);
     if (albumCover) {
       const row = albums.find((a) => a.id === Number(albumCover[1]));
-      return row ? jpeg(join(albumDir(row.album), 'cover.jpg')) : json(404, {});
+      return row ? jpeg(join(row.album.dir, 'cover.jpg')) : json(404, {});
     }
     // An artist's portrait is the sleeve of their first album — the catalog has
     // no photos, and a sleeve reads as intended where a placeholder would not.
     const artistPoster = path.match(/^\/MediaCover\/Artists\/(\d+)\/poster\.jpg$/);
     if (artistPoster) {
       const row = artists.find((a) => a.id === Number(artistPoster[1]));
-      return row ? jpeg(join(albumDir(row.albums[0]!.album), 'cover.jpg')) : json(404, {});
+      return row ? jpeg(join(row.albums[0]!.album.dir, 'cover.jpg')) : json(404, {});
     }
 
     if (path === '/api/v1/artist' && req.method === 'GET')

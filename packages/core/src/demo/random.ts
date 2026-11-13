@@ -1,7 +1,6 @@
 /**
  * Seeded randomness for the demo catalog. Everything generated from the catalog
- * (tones, covers) must come out identical on every run and on every runtime —
- * Bun at build time, the browser in the static demo — so it is a pure function
+ * (tones, covers) must come out identical on every run, so it is a pure function
  * of a string seed, never `Math.random()`.
  */
 

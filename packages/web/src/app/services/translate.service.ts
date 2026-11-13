@@ -148,7 +148,7 @@ export class TranslateService {
 
 async function loadCatalog(lang: string, fetchFn: typeof fetch): Promise<Catalog> {
   try {
-    const res = await fetchFn(`/i18n/${lang}.json`);
+    const res = await fetchFn(`i18n/${lang}.json`);
     if (!res.ok) return {};
     return (await res.json()) as Catalog;
   } catch {
