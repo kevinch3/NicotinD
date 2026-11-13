@@ -394,7 +394,7 @@ per-album status, `AutoHuntService.statusFor(lidarrId)`: `searching` while a cli
 visible yet, `job` (with its `PipelineStage`) while an **active** acquisition job carries that
 `lidarrAlbumId` (newest wins), else `idle`. The job half is a join over `TransferService`'s
 `acquisitionJobs`, which is already live app-wide, so a card shows the same stage words as the
-Downloads page (`stageLabel`) with no new transport. A card is disabled only by its own album.
+Downloads page (`stageLabel`) with no new transport. A card is disabled only by its own album, from the resolve on (`resolvingAlbums`, a set), and its watch star is a sibling button that stays live.
 
 **Asked by the album, not the lane (#1539).** The artist-page tiles and the catalog cards ask
 `statusForAlbum({artist, title, lidarrAlbumId?})`. It checks the Lidarr id when the surface has one,

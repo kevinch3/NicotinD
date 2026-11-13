@@ -305,12 +305,13 @@ export class SearchComponent implements OnInit, OnDestroy {
   readonly catalogUnavailable = signal(false); // Lidarr not configured / lookup failed
   // NOTE: local-library search results were removed from this page (issue #227) —
   // Search is now acquisition-only. "Find what I own" lives in Library/Radio.
-  readonly resolvingAlbum = signal<string | null>(null); // foreignAlbumId being resolved
+  readonly resolvingAlbums = signal<ReadonlySet<string>>(new Set()); // by foreignAlbumId
   /** foreignAlbumId → Lidarr id, learned on resolve: hunt status is keyed by the Lidarr id. */
   private readonly resolvedLidarrIds = signal<ReadonlyMap<string, number>>(new Map());
   readonly resolveError = signal<string | null>(null);
   /** The artist Lidarr is being asked to add before a catalog action can run (#644). */
   readonly provisioningArtist = signal<string | null>(null);
+  private readonly provisioningWaits = new Map<string, number>();
   private destroyed = false;
   readonly directSearchOpen = signal(false);
   // Set when a catalog album can't be resolved (not in Lidarr) and we fall back to
@@ -901,9 +902,9 @@ export class SearchComponent implements OnInit, OnDestroy {
   // Resolve a searched album into a real Lidarr album, then open the same
   // album-hunt modal used by the discography flow.
   async huntCatalogAlbum(album: CatalogAlbum): Promise<void> {
-    if (this.resolvingAlbum()) return;
+    if (this.resolvingAlbums().has(album.foreignAlbumId)) return;
     this.resolveError.set(null);
-    this.resolvingAlbum.set(album.foreignAlbumId);
+    this.setResolving(album.foreignAlbumId, true);
     try {
       const resolved = await this.untilProvisioned(
         () =>
@@ -950,8 +951,25 @@ export class SearchComponent implements OnInit, OnDestroy {
       // must read its `{ error }` body.
       this.resolveError.set(httpErrorMessage(err, 'Failed to prepare album'));
     } finally {
-      this.resolvingAlbum.set(null);
+      this.setResolving(album.foreignAlbumId, false);
     }
+  }
+
+  private setResolving(foreignAlbumId: string, on: boolean): void {
+    this.resolvingAlbums.update((current) => {
+      const next = new Set(current);
+      if (on) next.add(foreignAlbumId);
+      else next.delete(foreignAlbumId);
+      return next;
+    });
+  }
+
+  private trackProvisioning(artistName: string, delta: 1 | -1): void {
+    const left = (this.provisioningWaits.get(artistName) ?? 0) + delta;
+    if (left > 0) this.provisioningWaits.set(artistName, left);
+    else this.provisioningWaits.delete(artistName);
+    const names = [...this.provisioningWaits.keys()];
+    this.provisioningArtist.set(names.length ? names[names.length - 1] : null);
   }
 
   /**
@@ -968,7 +986,7 @@ export class SearchComponent implements OnInit, OnDestroy {
     const isOurs = (t: typeof target) =>
       t?.artistName === target?.artistName &&
       (t?.artistMbid ?? null) === (target?.artistMbid ?? null);
-    this.provisioningArtist.set(artistName);
+    this.trackProvisioning(artistName, 1);
     try {
       const status = await awaitProvisioning(
         () => firstValueFrom(this.downloadsApi.getArtistProvisioning()),
@@ -979,7 +997,7 @@ export class SearchComponent implements OnInit, OnDestroy {
         throw new Error(status.lastError ?? `Couldn't add ${artistName} to Lidarr`);
       }
     } finally {
-      this.provisioningArtist.set(null);
+      this.trackProvisioning(artistName, -1);
     }
     const second = await send();
     if (isProvisioningAccepted(second)) {
@@ -996,7 +1014,7 @@ export class SearchComponent implements OnInit, OnDestroy {
   // discography is **opt-in** now (the banner CTA), because loading it auto-adds
   // the artist to Lidarr and buries the thing they actually wanted under a grid.
   private rawHuntFallback(album: CatalogAlbum): void {
-    this.resolvingAlbum.set(null);
+    this.setResolving(album.foreignAlbumId, false);
     this.search.setQuery(`${album.artistName} ${album.title}`.trim());
     // executeSearch runs its synchronous reset (clearing note + fallback album)
     // before its first await, so set them *after* kicking it off — they survive.

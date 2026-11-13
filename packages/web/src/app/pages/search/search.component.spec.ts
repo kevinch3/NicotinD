@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { Component, NO_ERRORS_SCHEMA, input, signal } from '@angular/core';
 import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
-import { of, throwError } from 'rxjs';
+import { NEVER, of, throwError } from 'rxjs';
 import { vi } from 'vitest';
 import { SearchComponent, getHighlightTerms } from './search.component';
 import { SearchApiService } from '../../services/api/search-api.service';
@@ -345,6 +345,63 @@ describe('SearchComponent — metadata-driven search', () => {
     expect(el.querySelector('[data-testid="catalog-album-cancel"]')).toBeNull();
   });
 
+  // One album preparing used to disable every card, on the page built to queue
+  // a discography.
+  it('a card resolving leaves the other cards clickable', async () => {
+    const second: CatalogAlbum = {
+      ...CATALOG_ALBUM,
+      foreignAlbumId: 'wywh-rg',
+      title: 'Wish You Were Here',
+    };
+    const catalogResolve = vi.fn(() => NEVER);
+    const { component, search, fixture } = setup({
+      catalogSearch: () => of({ artists: [], albums: [CATALOG_ALBUM, second] }),
+      catalogResolve,
+    });
+    search.setQuery('pink floyd');
+    component.handleSearch(new Event('submit'));
+    await flush();
+    fixture.detectChanges();
+
+    const cards = () =>
+      Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
+          '[data-testid="catalog-album"]',
+        ),
+      );
+    cards()[0].click();
+    fixture.detectChanges();
+    expect(cards().map((c) => c.disabled)).toEqual([true, false]);
+
+    cards()[1].click();
+    cards()[0].click();
+    expect(catalogResolve).toHaveBeenCalledTimes(2);
+    expect([...component.resolvingAlbums()]).toEqual(['dsotm-rg', 'wywh-rg']);
+  });
+
+  // The star was a span[role=button] inside the card button: invalid nesting,
+  // and dead whenever the card went disabled.
+  it('the watch star is a button beside the card and never starts a Get', async () => {
+    const { component, search, fixture, plugins, autoHunt } = setup();
+    plugins.plugins.set([
+      { id: 'src', enabled: true, capabilities: ['download'] } as unknown as PluginInfo,
+    ]);
+    const toggle = vi.spyOn(component.watchlist, 'toggle').mockResolvedValue(undefined as never);
+    search.setQuery('pink floyd');
+    component.handleSearch(new Event('submit'));
+    await flush();
+    fixture.detectChanges();
+
+    const star = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>(
+      '[data-testid="watchlist-star"]',
+    )!;
+    expect(star.tagName).toBe('BUTTON');
+    expect(star.closest('[data-testid="catalog-album"]')).toBeNull();
+    star.click();
+    expect(toggle).toHaveBeenCalledWith(expect.objectContaining({ foreignAlbumId: 'dsotm-rg' }));
+    expect(autoHunt.hunt).not.toHaveBeenCalled();
+  });
+
   // The assertion above only proves the ATTRIBUTE is in the DOM, which
   // NO_ERRORS_SCHEMA would let pass even with the directives unimported. This
   // one proves the group's item list is actually populated and navigable —
@@ -416,7 +473,7 @@ describe('SearchComponent — metadata-driven search', () => {
       expect.any(Function),
     );
     expect(component.huntingArtistName()).toBe('Pink Floyd');
-    expect(component.resolvingAlbum()).toBeNull();
+    expect(component.resolvingAlbums().size).toBe(0);
   });
 
   // Hunt status is keyed by the Lidarr id, which a catalog card only learns on
