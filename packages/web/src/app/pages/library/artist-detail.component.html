@@ -162,6 +162,29 @@
       </section>
     }
 
+    <!-- Popular: what a signal ranks, never a padded list — no songs, no block. -->
+    @if (topSongs().length) {
+      <section class="mb-6" data-testid="artist-top-songs">
+        <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-theme-muted">
+          {{ 'artist.popular' | t }}
+        </h2>
+        <div class="space-y-0.5" appTvNavGroup axis="vertical">
+          @for (song of topSongs(); track song.id; let i = $index) {
+            <app-track-row
+              [track]="toTrack(song)"
+              [indexLabel]="i + 1"
+              [album]="albumRef(song)"
+              [artists]="song.artists"
+              [duration]="song.duration"
+              [offline]="preserve.isPreserved(song.id)"
+              [actions]="songMenu.build(song, { hideGoToArtist: true })"
+              (play)="playTopSong(i)"
+            />
+          }
+        </div>
+      </section>
+    }
+
     <!-- Only collapse to the "no releases" slate for release tabs; Songs and
              Appears On are valid destinations that must keep the tab bar rendered
              (an artist with only compilation appearances has no albums/singles). -->

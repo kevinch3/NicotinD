@@ -48,6 +48,7 @@
   "artist.related": "Related artists",
   "artist.relatedHint": "Artists in your library that sound alike",
   "artist.about": "About {name}",
+  "artist.popular": "Popular",
   "artist.genres": "Genres",
   "artist.sources": "Sources —",
   "artist.source.origin": "country",

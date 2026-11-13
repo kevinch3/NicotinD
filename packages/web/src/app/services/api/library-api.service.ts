@@ -563,6 +563,13 @@ export class LibraryApiService {
     });
   }
 
+  /** The artist page's "Popular" block: 0–`limit` songs, best first (docs/popularity.md). */
+  getArtistTopSongs(id: string, limit = 5) {
+    return this.http.get<Song[]>(`/api/library/artists/${encodeURIComponent(id)}/top-songs`, {
+      params: { limit },
+    });
+  }
+
   getGenres() {
     return this.genresCache.get();
   }

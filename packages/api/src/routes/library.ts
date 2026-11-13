@@ -78,6 +78,11 @@ import {
   RELATED_LIMIT_MAX,
   relatedArtists,
 } from '../services/related-artists.js';
+import {
+  artistTopSongIds,
+  TOP_SONGS_DEFAULT,
+  TOP_SONGS_MAX,
+} from '../services/artist-top-songs.js';
 import { mutateArtistIdentity, verifyIdentityApplied } from '../services/artist-identity-mutate.js';
 import type { RebucketResult } from '../services/library-scanner.js';
 import { mutateSongGenre, parseGenreList } from '../services/song-genre-mutate.js';
@@ -2005,6 +2010,27 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       ? Math.min(RELATED_LIMIT_MAX, Math.max(1, Math.trunc(raw)))
       : RELATED_LIMIT_DEFAULT;
     return c.json(relatedArtists(db, id, limit));
+  });
+
+  // The artist page's "Popular" block: up to `limit` songs some signal ranks,
+  // best first, or [] — the page then shows no block (docs/popularity.md).
+  app.get('/artists/:id/top-songs', (c) => {
+    const db = getDatabase();
+    const id = c.req.param('id');
+    const artist = db
+      .query<{ id: string }, [string]>(`SELECT id FROM library_artists WHERE id = ?`)
+      .get(id);
+    if (!artist) return c.json({ error: 'Artist not found' }, 404);
+    const limit = clampQueryInt(c, 'limit', { fallback: TOP_SONGS_DEFAULT, max: TOP_SONGS_MAX });
+    const ids = artistTopSongIds(db, id, limit);
+    if (ids.length === 0) return c.json([]);
+    const rows = db
+      .query<SongRow, string[]>(`${SONG_SELECT} WHERE s.id IN (${ids.map(() => '?').join(', ')})`)
+      .all(...ids);
+    const rank = new Map(ids.map((songId, i) => [songId, i]));
+    const songs = rows.map(rowToSong).sort((x, y) => rank.get(x.id)! - rank.get(y.id)!);
+    attachSongArtists(db, songs);
+    return c.json(songs);
   });
 
   // Album-scoped counterpart of the above (issue #222 listener-facing strip).

@@ -95,6 +95,9 @@ function song(id: string) {
   };
 }
 
+/** Per-artist answer of the top-songs stub; empty by default so no other case renders the block. */
+let topSongsFor: Record<string, Array<{ id: string; title: string; artist: string }>> = {};
+
 function setup(
   role = 'admin',
   deleteSongs = vi.fn(() => of({ ok: true, deletedCount: 0 })),
@@ -202,6 +205,7 @@ function setup(
             return of({ ok: true });
           },
           completeArtist: (id: string) => completeArtistImpl(id),
+          getArtistTopSongs: (id: string) => of(topSongsFor[id] ?? []),
           deleteSongs,
           invalidateLibraryReads,
           ...(artistGenreDistribution ? { artistGenreDistribution } : {}),
@@ -765,6 +769,58 @@ describe('ArtistDetailComponent — related artists', () => {
     paramMap.next(convertToParamMap({ id: 'ar2' }));
     await flush();
     expect(component.relatedArtists().map((a) => a.id)).toEqual(['rel-of-ar2']);
+  });
+});
+
+describe('ArtistDetailComponent — popular songs', () => {
+  afterEach(() => {
+    topSongsFor = {};
+  });
+
+  it('stays empty when nothing ranks, so the block is not rendered', async () => {
+    const { component, fixture } = setup();
+    await fixture_stable();
+    await flush();
+    expect(component.topSongs()).toEqual([]);
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('[data-testid="artist-top-songs"]'),
+    ).toBeNull();
+  });
+
+  it('loads the ranked songs in order and swaps them on artist→artist navigation', async () => {
+    topSongsFor = {
+      ar1: [
+        { id: 'hit', title: 'Hit', artist: 'Natiruts' },
+        { id: 'second', title: 'Second', artist: 'Natiruts' },
+      ],
+      ar2: [{ id: 'other', title: 'Other', artist: 'Someone' }],
+    };
+    const { component, paramMap } = setup();
+    await flush();
+    expect(component.topSongs().map((s) => s.id)).toEqual(['hit', 'second']);
+
+    paramMap.next(convertToParamMap({ id: 'ar2' }));
+    await flush();
+    expect(component.topSongs().map((s) => s.id)).toEqual(['other']);
+  });
+
+  it('plays from the chosen row through the rest of the list', async () => {
+    topSongsFor = {
+      ar1: [
+        { id: 'hit', title: 'Hit', artist: 'Natiruts' },
+        { id: 'second', title: 'Second', artist: 'Natiruts' },
+      ],
+    };
+    const { component, playWithContextCalls } = setup();
+    await flush();
+    component.playTopSong(1);
+    expect(playWithContextCalls).toHaveLength(1);
+    const [tracks, index] = playWithContextCalls[0] as [Array<{ id: string }>, number];
+    expect(tracks.map((t) => t.id)).toEqual(['hit', 'second']);
+    expect(index).toBe(1);
+
+    component.playTopSong(7);
+    expect(playWithContextCalls).toHaveLength(1);
   });
 });
 

@@ -137,6 +137,37 @@ missing-file counts. It skips ledgered songs via `notPermanentlyFailedClause`, a
 reports the retryable "not answered this run" count separately — without that line
 a run during an outage prints zeroes and reads as a no-op.
 
+## Artist page: Popular
+
+The first UI consumer. `GET /api/library/artists/:id/top-songs?limit=5` answers up to `limit`
+(default `TOP_SONGS_DEFAULT`, clamped to `TOP_SONGS_MAX`) whole songs, best first, and the artist
+page renders them as a "Popular" block (`artist-top-songs`) above the tabs. An empty answer renders
+no block — the list is never padded with songs nothing ranks.
+
+`services/artist-top-songs.ts` splits it in two:
+
+- `artistTopSongCandidates` — one query. Membership is the Songs tab's (primary artist or any
+  credit in `library_song_artists`), minus hidden songs and songs on a hidden album. Each candidate
+  carries `popularity` (ListenBrainz, nullable) and `plays` (counted `play_events`, **all
+  listeners**), and only songs with at least one of the two are candidates. The play count never
+  leaves the server: the response is the ordinary `Song` DTO, so listeners see an order, not each
+  other's numbers.
+- `rankTopSongs` — pure; the one place that decides which signal leads. **Provider first**: songs
+  with a positive ListenBrainz score, highest first, then locally played songs fill the remaining
+  slots, most played first. A score of `0` means "scored, nobody listened" and ranks nothing by
+  itself — such a song appears only if it has local plays, ordered with the played ones. A tie on
+  one signal falls to the other, then to the id, so the block does not reshuffle between loads. It
+  keeps one song per `recordingKey` (`recording-identity.ts`) — the best-ranked copy, with plays
+  **not** summed across copies — so the album, single and deluxe copies of a hit take one slot.
+
+The cost of provider-first is stated rather than hidden: a song with no recording MBID can never
+outrank a scored one, however often it is played here.
+
+Local plays are the fallback that makes the block exist at all for an artist whose files carry no
+recording MBID, which is the common case given the coverage numbers above. This answers the "local
+play-count axis" follow-up below for this one consumer; it does not write plays into the
+`popularity` column, and radio still does not read either signal.
+
 ## Deliberately left as follow-ups
 
 The issue lists several consumers; v1 ships the **signal itself** and leaves the
