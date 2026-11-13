@@ -29,6 +29,7 @@ import {
   findActiveAlbumJob,
   holdAlbum,
   supersedeActiveJobs,
+  addonJobIdsOf,
 } from '../services/acquisition-job-store.js';
 import { rankAlternates } from '../services/download-resource.js';
 import { mapAddonJob } from '../services/addons/job-poller.js';
@@ -382,13 +383,20 @@ export function downloadRoutes(
     if (!(addon instanceof RemoteAddonPlugin)) {
       return c.json({ ok: true, addonNotified: false });
     }
-    try {
-      await addon.client.cancelJob(ref.addonJobId);
-    } catch (err) {
-      log.warn({ jobId: job.id, err }, 'addon cancel failed; grace valve will close the job');
-      return c.json({ ok: true, addonNotified: false });
+    // Every peer still working for this card, not just the first (#1878).
+    let notified = true;
+    for (const addonJobId of addonJobIdsOf(db, job.id, ref.addonJobId, { live: true })) {
+      try {
+        await addon.client.cancelJob(addonJobId);
+      } catch (err) {
+        log.warn(
+          { jobId: job.id, addonJobId, err },
+          'addon cancel failed; grace valve will close the job',
+        );
+        notified = false;
+      }
     }
-    return c.json({ ok: true });
+    return c.json(notified ? { ok: true } : { ok: true, addonNotified: false });
   });
 
   /**
@@ -592,9 +600,17 @@ export function downloadRoutes(
     // This is why the new peer takes ALL of what is still pending rather than
     // only a ticked subset: once the old job is gone there is no second source
     // left to split with, so a split would just be a slower way to lose tracks.
-    await addon.client.cancelJob(ref.addonJobId).catch((err: unknown) => {
-      log.warn({ jobId: job.id, err }, 're-source: cancelling the stuck addon job failed');
-    });
+    //
+    // "The stuck job" is whichever peer holds the pending rows NOW: after one
+    // re-source that is the replacement, not `source_ref`'s first job (#1878).
+    for (const addonJobId of addonJobIdsOf(db, job.id, ref.addonJobId, { live: true })) {
+      await addon.client.cancelJob(addonJobId).catch((err: unknown) => {
+        log.warn(
+          { jobId: job.id, addonJobId, err },
+          're-source: cancelling the stuck addon job failed',
+        );
+      });
+    }
 
     let addonJobId: string;
     try {
@@ -663,7 +679,9 @@ export function downloadRoutes(
       const addon = pluginRegistry?.get(ref.addonId);
       released = `addon ${ref.addonId} unavailable, addon job ${ref.addonJobId} not released`;
       if (addon instanceof RemoteAddonPlugin) {
-        await addon.client.cancelJob(ref.addonJobId).catch(() => {});
+        // Every addon job the card ever had, not only `source_ref`'s first one:
+        // a re-sourced card's replacement peer holds files too (#1878).
+        const addonJobIds = addonJobIdsOf(db, job.id, ref.addonJobId, { live: false });
         // Releasing the job makes the addon delete its downloaded files
         // (NicotinD#1052), and the rows below are gone in this same request, so
         // the stranded sweep could never recover them. Discarding is exactly
@@ -672,15 +690,22 @@ export function downloadRoutes(
         const pending = pendingIngestCount(db, job.id);
         if (pending > 0) {
           log.info(
-            { jobId: job.id, addonJobId: ref.addonJobId, pending },
+            { jobId: job.id, addonJobIds, pending },
             'remove: discarding files that had not landed yet',
           );
         }
-        released = await addon.client.deleteJob(ref.addonJobId).then(
-          () => `released addon job ${ref.addonId}:${ref.addonJobId}`,
-          (err: unknown) =>
-            `addon delete of ${ref.addonId}:${ref.addonJobId} failed (best-effort): ${String(err)}`,
-        );
+        const outcomes: string[] = [];
+        for (const addonJobId of addonJobIds) {
+          await addon.client.cancelJob(addonJobId).catch(() => {});
+          outcomes.push(
+            await addon.client.deleteJob(addonJobId).then(
+              () => `released addon job ${ref.addonId}:${addonJobId}`,
+              (err: unknown) =>
+                `addon delete of ${ref.addonId}:${addonJobId} failed (best-effort): ${String(err)}`,
+            ),
+          );
+        }
+        released = outcomes.join('; ');
       }
     }
     db.run(`DELETE FROM acquisition_job_items WHERE job_id = ?`, [job.id]);

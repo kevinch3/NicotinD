@@ -2164,6 +2164,15 @@ with, so a split would only be a slower way to lose tracks. Ticking tracks is th
 of the request. Titles the chosen peer does not have stay on the released job and settle as
 `unavailable`: visible on the card, and re-sourceable again.
 
+**"The stuck job" is whichever addon job holds the pending rows now, not `source_ref`** (#1878).
+`source_ref` names the card's *first* addon job and never moves, so after one re-source it points
+at a job already released. Re-source, Cancel and Remove all resolve their targets through
+`addonJobIdsOf`, from the items' `addon_job_id`. Re-source and Cancel take the jobs still owning a
+`queued`/`downloading` row. Remove takes every job the card ever had, because releasing them is
+what frees their files. Before this, a second re-source cancelled the dead first job, collided with
+the live replacement and answered 409 on every click. #1069's spec had never re-sourced one card
+twice.
+
 A 409 and an expired `candidateRef` are reported separately (`resource_conflict` /
 `resource_expired`). Only one of them is fixed by searching again.
 

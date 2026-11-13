@@ -155,6 +155,28 @@ test.describe('re-source a stuck download', () => {
     expect(all.find((j) => j.id === jobId)!.items.map((i) => i.title)).toEqual(['Addon Song']);
   });
 
+  // #1878: the second re-source on a card used to cancel `source_ref`'s first
+  // job — long gone — and collide with the replacement still active, so the
+  // real addon's one-active-album guard answered 409 on every click. Driven
+  // through the route because the UI search rightly excludes both peers
+  // already on the card, which leaves this fixture nobody new to offer.
+  test('a second re-source on the same card releases the live replacement', async ({ request }) => {
+    const jobId = await stuckJob(request, 'Addon Album Three');
+    const resource = () =>
+      request.post(`/api/downloads/jobs/${jobId}/resource`, {
+        headers: auth,
+        data: { candidateRef: 'fixture-candidate-2' },
+      });
+
+    const first = await resource();
+    expect(first.status()).toBe(200);
+    const replacement = ((await first.json()) as { addonJobId: string }).addonJobId;
+
+    const second = await resource();
+    expect(second.status()).toBe(200);
+    expect(addon.cancelRequests).toContain(replacement);
+  });
+
   test('Choose peer opens the picker on the search already run', async ({ page, request }) => {
     const jobId = await stuckJob(request, 'Addon Album Two');
 
