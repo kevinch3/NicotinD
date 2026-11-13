@@ -952,12 +952,22 @@ describe('re-source the not-offered titles (#1146)', () => {
     testDb.run('DELETE FROM audit_log');
     const calls = {
       cancelled: [] as string[],
+      deleted: [] as string[],
       created: [] as Array<{ wantedTracks?: { title: string }[]; candidateRef?: string }>,
     };
+    // As strict as the real slskd addon (#1069): one ACTIVE album job per
+    // release, so a create while another is live answers 409. A double that
+    // let it through is how #1878 shipped.
+    const active = new Set<string>();
     const client = {
       baseUrl: 'http://addon:9999',
       cancelJob: async (id: string) => {
         calls.cancelled.push(id);
+        active.delete(id);
+      },
+      deleteJob: async (id: string) => {
+        calls.deleted.push(id);
+        active.delete(id);
       },
       albumsSearch: async () => ({
         candidates: [
@@ -984,8 +994,11 @@ describe('re-source the not-offered titles (#1146)', () => {
         ],
       }),
       createJob: async (req: { wantedTracks?: { title: string }[]; candidateRef?: string }) => {
+        if (active.size > 0) throw new AddonRequestError('addon responded 409', 409);
         calls.created.push(req);
-        return { id: 'aj-second', items: [] };
+        const id = calls.created.length === 1 ? 'aj-second' : `aj-${calls.created.length + 1}`;
+        active.add(id);
+        return { id, items: [] };
       },
     } as unknown as import('../services/addons/client.js').AddonClient;
     const pluginRegistry = new PluginRegistry({ db: testDb, dataDir: '/tmp/nicotind-test' });
@@ -1079,6 +1092,48 @@ describe('re-source the not-offered titles (#1146)', () => {
     });
     expect(res.status).toBe(200);
     expect(calls.created[0]!.wantedTracks).toEqual([{ title: 'Sabor a mí' }]);
+  });
+
+  // #1878: `source_ref` still names the FIRST addon job after a re-source, so
+  // the second one used to cancel that long-gone job and collide with the
+  // live replacement — a 409 on every click, forever.
+  it('a second re-source on the same card releases the live replacement, not the first job', async () => {
+    const { app, calls, jobId } = makeApp();
+    const first = await post(app, `/jobs/${jobId}/resource`, { candidateRef: 'c-full' });
+    expect(first.status).toBe(200);
+
+    const second = await post(app, `/jobs/${jobId}/resource`, { candidateRef: 'c-full' });
+    expect(second.status).toBe(200);
+    expect(calls.cancelled).toContain('aj-second');
+    expect(calls.created).toHaveLength(2);
+    const rows = testDb
+      .query<{ track_title: string; state: string; addon_job_id: string | null }, [string]>(
+        `SELECT track_title, state, addon_job_id FROM acquisition_job_items
+          WHERE job_id = ? AND state <> 'superseded' ORDER BY id`,
+      )
+      .all(jobId);
+    expect(rows).toEqual([
+      { track_title: 'Amanecer', state: 'scanned', addon_job_id: 'aj-first' },
+      { track_title: 'Bésame mucho', state: 'queued', addon_job_id: 'aj-3' },
+      { track_title: 'Sabor a mí', state: 'queued', addon_job_id: 'aj-3' },
+    ]);
+  });
+
+  it('Cancel on a re-sourced card stops the replacement peer too', async () => {
+    const { app, calls, jobId } = makeApp();
+    await post(app, `/jobs/${jobId}/resource`, { candidateRef: 'c-full' });
+    calls.cancelled.length = 0;
+    const res = await app.request(`/jobs/${jobId}/cancel`, { method: 'POST' });
+    expect(res.status).toBe(200);
+    expect(calls.cancelled.sort()).toEqual(['aj-first', 'aj-second']);
+  });
+
+  it('Remove on a re-sourced card releases the replacement too', async () => {
+    const { app, calls, jobId } = makeApp();
+    await post(app, `/jobs/${jobId}/resource`, { candidateRef: 'c-full' });
+    const res = await app.request(`/jobs/${jobId}`, { method: 'DELETE' });
+    expect(res.status).toBe(200);
+    expect(calls.deleted.sort()).toEqual(['aj-first', 'aj-second']);
   });
 });
 

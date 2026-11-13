@@ -921,6 +921,29 @@ export function claimUnattributedItems(db: Database, jobId: string, addonJobId: 
 }
 
 /**
+ * The addon jobs behind one card. `source_ref` names only the FIRST one and
+ * never moves, so after a re-source the live peer is found on the items
+ * (#1878). `live` keeps the jobs still owning a pending item — what a cancel
+ * must reach; without it, every job the card ever had — what a release frees.
+ */
+export function addonJobIdsOf(
+  db: Database,
+  jobId: string,
+  sourceAddonJobId: string,
+  opts: { live: boolean },
+): string[] {
+  const rows = db
+    .query<{ addon_job_id: string }, [string]>(
+      `SELECT DISTINCT addon_job_id FROM acquisition_job_items
+        WHERE job_id = ? AND addon_job_id IS NOT NULL
+          ${opts.live ? `AND state IN ('queued', 'downloading')` : ''}
+        ORDER BY addon_job_id`,
+    )
+    .all(jobId);
+  return [...new Set([sourceAddonJobId, ...rows.map((r) => r.addon_job_id)])];
+}
+
+/**
  * Attach the addon's job ref to a row reserved before the addon was called
  * (#714), and move it out of `resolving` now that the link is understood.
  */
