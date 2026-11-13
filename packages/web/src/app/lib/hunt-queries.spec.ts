@@ -21,19 +21,14 @@ describe('stripTitleQualifiers', () => {
 });
 
 describe('skewedQueries', () => {
-  it('produces de-duped variants that exclude the base queries', () => {
+  it('wildcards the artist words, then every word, and excludes the base queries', () => {
     const variants = skewedQueries('Ariana Grande', 'Dangerous Woman');
-    // reorder + album-only are always present
-    expect(variants).toContain('Dangerous Woman Ariana Grande');
-    expect(variants).toContain('Dangerous Woman');
-    // never re-emits a base query
+    expect(variants).toEqual(['*riana *rande Dangerous Woman', '*riana *rande *angerous *oman']);
     expect(variants).not.toContain('Ariana Grande Dangerous Woman');
-    expect(variants).not.toContain('Ariana Grande - Dangerous Woman');
   });
 
-  it('drops a leading "the" from both artist and album', () => {
-    const variants = skewedQueries('The Beatles', 'The White Album');
-    expect(variants).toContain('Beatles White Album');
+  it('leaves filler words literal', () => {
+    expect(skewedQueries('The Beatles', 'The White Album')[0]).toBe('The *eatles The White Album');
   });
 
   it('has no duplicate entries', () => {

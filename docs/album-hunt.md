@@ -157,17 +157,25 @@ lives in the addon repo (`kevinch3/nicotind-slskd-addon`); core only consumes th
 
 ## Album hunt — soft-ban bypass ("skew search")
 
-`AlbumHunterService.hunt` (`packages/api/src/services/album-hunter.service.ts`) normally fires `Artist Album` / `Artist - Album` against slskd. slskd/Soulseek silently returns **zero** responses for some exact phrases (a server-side soft ban) even when the files exist.
+The addon's `AlbumHunterService.hunt` first fires `Artist Album` / `Artist - Album` against slskd. The Soulseek server silently drops a search that carries a banned word and answers **zero** responses even when the files exist.
 
-When `skewSearch` is set on the `POST .../hunt` body (the album-hunt modal's "Skew search" checkbox, **on by default**) **and** no base candidate is confidently complete (best `matchPct < SKEW_TRIGGER_PCT`, ~67%), `hunt` also runs textually-skewed variants from `buildSkewedQueries` (now in **`@nicotind/core` `hunt-queries.ts`**, the single source shared with the web). The goal is a *faithful* set: each variant is a different **literal string for the same release**, so it dodges slskd's exact-phrase soft ban / cache **and** stays precise (unlike a fuzzy match). Because slskd matches the search text against peer filenames, literal variation also **improves recall** against peers who share files with unaccented / differently-punctuated names — the outgoing query, not just the scorer, now folds. Variants (ranked most-precise first):
+### A banned word
 
-- **Accent-folded** — `fold("<artist> <album>")` (`"Beyoncé Lemonade"` → `"beyonce lemonade"`); reaches unaccented shares + a distinct cache key. Dropped when the input is already plain ASCII.
-- **Punctuation-stripped** — `"AC/DC Back in Black"` → `"AC DC Back in Black"`, `&`→"and", apostrophes vanish.
-- **Reorder** artist/album.
-- **Distinctive tokens** — drop filler words (the/of/and/de/la…), keep the identifying ones (`"Pink Floyd The Dark Side of the Moon"` → `"Pink Floyd Dark Side Moon"`); replaces the old too-generic "first album word".
-- Qualifier-stripped (`stripTitleQualifiers` removes `(feat …)`/`(Remix)`/bracketed suffixes — for singles), artist+core / core-only, album-only (broad), drop-leading-"the".
+The ban is on a *word*, not a phrase. Measured on prod (2026-11-13): every query carrying `gorillaz` got 0 responses after the full timeout (9 of 9 — bare, doubled, with an album, a track or a year), while `Demon Days` alone returned 3,333 files with "gorillaz" in their path. A self-titled album is the worst case, because no rewording of `Gorillaz Gorillaz` avoids the word. A doubled word is harmless on its own (`Metallica Metallica` reached 230 peers).
 
-The old **artist-name last-char truncation** (`"Bahiano"` → `"Bahian"`) is **removed** — it was imprecise (a partial-token query returns junk); the fold/punctuation/reorder/distinctive variants already vary the literal phrase enough to bypass the ban while staying faithful. De-duped and never re-running a base query. Results merged via `mergeCandidates` (de-duped by `username::directory`, higher score wins). A confidently-complete base adds zero extra searches. The per-track hunt (`buildTrackQueries`, also in core, used by `TrackHunterService`) applies the same primitives.
+A leading `*` is the network's own wildcard and the filter does not see through it: `*orillaz *orillaz` reached 238 peers (14,900 files, all Gorillaz), `*orillaz 2001` 233.
+
+### The retry queries
+
+When `skewSearch` is set on the hunt (the album-hunt modal's "Skew search" checkbox, **on by default**) **and** no base candidate is confidently complete (best `matchPct < SKEW_TRIGGER_PCT`, ~67%), the hunt also runs the queries from `buildSkewedQueries` (`packages/addon-sdk/src/hunt-queries.ts`, the single source shared with the web):
+
+1. **Artist words wildcarded** — `"Gorillaz Demon Days"` → `"*orillaz Demon Days"`. Album words stay literal, so the query is as narrow as the plain one.
+2. **Every word wildcarded** — `"*orillaz *emon *ays"`, for a ban on an album word.
+3. **Artist-wildcarded, qualifier-stripped** — `"Weezer Weezer (Blue Album)"` → `"*eezer *eezer"`, only when the title carries a bracketed qualifier a peer folder often omits (`stripTitleQualifiers`).
+
+`wildcardWord` leaves a word alone when wildcarding it would only broaden the search: filler (`the`, `of`, `de`…), a word with fewer than three characters after the first (`U2`, `Yes`), and a word that does not start with a letter. An artist and album with no such word get no retry at all. De-duped and never re-running a base query; results merge via `mergeCandidates` (de-duped by `username::directory`, higher score wins). A confidently-complete base adds zero extra searches.
+
+These replaced the earlier literal variations (accent-fold, punctuation-strip, reorder, distinctive tokens, drop-"the", album-only): they dodged a ban only when the variation happened to drop the banned word, and could not help a self-titled album. The per-track hunt (`buildTrackQueries`, used by the addon's `TrackHunterService`) fires the exact phrase, the same two wildcarded forms, then the qualifier-stripped title.
 
 **Singles (1 canonical track)** aren't scored all-or-nothing: `singleMatchStrength` returns 100 when full normalized titles overlap, `SINGLE_PARTIAL_PCT` (50) when only qualifier-stripped cores overlap — so a peer that drops a `(feat …)` suffix still surfaces. EPs (2–6 tracks) keep the proportional formula.
 
@@ -251,7 +259,7 @@ The hunt works at **folder** granularity and dead-ends ("No candidates") when an
 
 It calls `POST /api/discography/albums/:id/hunt-tracks` (auth + acquisition gated like the album hunt), which resolves the canonical tracklist from Lidarr and runs `TrackHunterService` (`services/track-hunter.service.ts`): the **healthiest *cleanest*** file chosen by the shared pure `pickBestTrackFile` (`services/track-pick.ts`) — fewest extra words beyond the title wins, so it grabs "Bohemian Rhapsody" not the "(5.1 mix)" a healthy FLAC peer would otherwise win on; FLAC + peer health only break ties among equally-clean files. Picks are grouped per peer and enqueued; the modal reports "Enqueued N of M tracks individually" and **lists the still-missing titles** (`data-testid="track-hunt-misses"`) so the user can act. `pickBestTrackFile` is the testable core extracted for reuse (the cross-peer `AlbumFallbackService` keeps its own copy to avoid churning battle-tested recovery code).
 
-**Skew + qualifier-aware per track (don't lose 13 of 14).** A lone `"<artist> <title>"` search is silently soft-banned for many phrases — the *same* server-side ban the album-hunt skew-search bypasses — so a single query loses most tracks (a real case: album hunt found no folder, per-track fallback then enqueued only 1 of 14). `huntTrack` therefore runs the pure, ordered `buildTrackQueries(artist, title)` (`track-pick.ts`) — exact phrase, **title-only**, **artist-name truncation** (drop the last char, the documented Spanish/Portuguese per-name ban bypass), and **qualifier-stripped title** (`stripTitleQualifiers`) — stopping at the first variant that yields a pick (a confident first hit fires no extra searches, mirroring the album hunter's budget discipline). Matching is also qualifier-aware: `pickBestTrackFile` falls back from the full normalized title to `stripTitleQualifiers`'s core, so a peer that omits a `(feat …)`/`(Remasterizado)` suffix still matches (the core is `null` for already-bare titles, so matching never loosens spuriously).
+**Skew + qualifier-aware per track (don't lose 13 of 14).** A lone `"<artist> <title>"` search is silently soft-banned for many phrases — the *same* server-side ban the album-hunt skew-search bypasses — so a single query loses most tracks (a real case: album hunt found no folder, per-track fallback then enqueued only 1 of 14). `huntTrack` therefore runs the pure, ordered `buildTrackQueries(artist, title)` — exact phrase, **artist words wildcarded**, **every word wildcarded**, and **qualifier-stripped title** (`stripTitleQualifiers`) — stopping at the first variant that yields a pick (a confident first hit fires no extra searches, mirroring the album hunter's budget discipline). Matching is also qualifier-aware: `pickBestTrackFile` falls back from the full normalized title to `stripTitleQualifiers`'s core, so a peer that omits a `(feat …)`/`(Remasterizado)` suffix still matches (the core is `null` for already-bare titles, so matching never loosens spuriously).
 
 ---
 

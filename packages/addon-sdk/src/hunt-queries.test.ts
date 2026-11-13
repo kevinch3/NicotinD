@@ -2,8 +2,8 @@ import { describe, it, expect } from 'bun:test';
 import {
   fold,
   stripTitleQualifiers,
-  stripPunctuation,
-  distinctiveTokens,
+  wildcardWord,
+  wildcardPhrase,
   baseQueries,
   buildSkewedQueries,
   skewedQueries,
@@ -16,17 +16,24 @@ describe('primitives', () => {
     expect(fold('Sigur Rós')).toBe('sigur ros');
   });
 
-  it('stripPunctuation spaces punctuation, expands &, drops apostrophes', () => {
-    expect(stripPunctuation("Guns N' Roses")).toBe('Guns N Roses');
-    expect(stripPunctuation('Simon & Garfunkel')).toBe('Simon and Garfunkel');
-    expect(stripPunctuation('AC/DC')).toBe('AC DC');
+  it('wildcardWord masks the first letter of a name', () => {
+    expect(wildcardWord('Gorillaz')).toBe('*orillaz');
+    expect(wildcardWord('Beyoncé')).toBe('*eyoncé');
   });
 
-  it('distinctiveTokens drops filler words, keeps identifying ones + casing', () => {
-    expect(distinctiveTokens('Pink Floyd The Dark Side of the Moon')).toBe(
-      'Pink Floyd Dark Side Moon',
-    );
-    expect(distinctiveTokens('La Bifurcada')).toBe('Bifurcada'); // "La" is a stopword
+  it('wildcardWord leaves short words, filler and non-letter starts alone', () => {
+    expect(wildcardWord('U2')).toBe('U2');
+    expect(wildcardWord('Yes')).toBe('Yes');
+    expect(wildcardWord('The')).toBe('The');
+    expect(wildcardWord('from')).toBe('from');
+    expect(wildcardWord('(Blue')).toBe('(Blue');
+    expect(wildcardWord('2Pac')).toBe('2Pac');
+  });
+
+  it('wildcardPhrase masks only the artist words when given one, every word otherwise', () => {
+    expect(wildcardPhrase('Gorillaz Demon Days', 'Gorillaz')).toBe('*orillaz Demon Days');
+    expect(wildcardPhrase('Gorillaz Demon Days')).toBe('*orillaz *emon *ays');
+    expect(wildcardPhrase('The Beatles Abbey Road', 'The Beatles')).toBe('The *eatles Abbey Road');
   });
 
   it('stripTitleQualifiers removes bracketed + feat clauses', () => {
@@ -38,26 +45,26 @@ describe('primitives', () => {
 describe('buildSkewedQueries', () => {
   const skew = (a: string, b: string) => buildSkewedQueries(a, b, baseQueries(a, b));
 
-  it('plain ASCII input drops the redundant/imprecise variants (no char-drop)', () => {
-    // fold/punctuation/drop-the all collapse to a base for plain input; the old
-    // "Artis Album" / "Artis - Album" last-char hack is gone entirely.
-    expect(skew('Artist', 'Album')).toEqual(['Album Artist', 'Album']);
+  // Measured on prod 2026-11-13: every query carrying "gorillaz" got 0 responses
+  // (9 of 9), while "*orillaz *orillaz" reached 238 peers.
+  it('a self-titled album gets one query, free of the bare artist word', () => {
+    expect(skew('Gorillaz', 'Gorillaz')).toEqual(['*orillaz *orillaz']);
   });
 
-  it('adds an accent-folded variant for an accented name', () => {
-    expect(skew('Beyoncé', 'Lemonade')).toContain('beyonce lemonade');
+  it('wildcards the artist words first, then every word', () => {
+    expect(skew('Gorillaz', 'Demon Days')).toEqual(['*orillaz Demon Days', '*orillaz *emon *ays']);
   });
 
-  it('adds a punctuation-stripped + distinctive-token variant', () => {
-    const out = skew('AC/DC', 'Back in Black');
-    expect(out).toContain('AC DC Back in Black'); // punctuation stripped
-    expect(out).toContain('AC/DC Back Black'); // distinctive tokens ("in" dropped)
+  it('adds the qualifier-stripped title a peer folder often carries', () => {
+    expect(skew('Weezer', 'Weezer (Blue Album)')).toEqual([
+      '*eezer *eezer (Blue Album)',
+      '*eezer *eezer (Blue *lbum)',
+      '*eezer *eezer',
+    ]);
   });
 
-  it('keeps the qualifier-stripped core for singles + drops leading "the"', () => {
-    const out = skew('Pink Floyd', 'The Dark Side of the Moon');
-    expect(out).toContain('Pink Floyd Dark Side Moon'); // distinctive
-    expect(out).toContain('Pink Floyd Dark Side of the Moon'); // drop-the
+  it('an artist and album with no word worth wildcarding get no retry', () => {
+    expect(skew('U2', 'War')).toEqual([]);
   });
 
   it('never re-emits a base query and has no duplicates', () => {
@@ -75,17 +82,22 @@ describe('buildSkewedQueries', () => {
 });
 
 describe('buildTrackQueries', () => {
-  it('leads with the exact phrase then faithful variants (no char-drop)', () => {
-    const out = buildTrackQueries('Beyoncé', 'Halo');
-    expect(out[0]).toBe('Beyoncé Halo');
-    expect(out).toContain('beyonce halo'); // accent-folded
-    expect(out).toContain('Halo'); // title only
-    expect(out).not.toContain('Beyonc Halo'); // old last-char hack gone
+  it('leads with the exact phrase, then the wildcarded retries', () => {
+    expect(buildTrackQueries('Gorillaz', 'Clint Eastwood')).toEqual([
+      'Gorillaz Clint Eastwood',
+      '*orillaz Clint Eastwood',
+      '*orillaz *lint *astwood',
+    ]);
   });
 
-  it('adds a qualifier-stripped variant for a (feat …) title', () => {
+  it('adds the qualifier-stripped title for a (feat …) title', () => {
     const out = buildTrackQueries('Artist', 'Song (feat. X)');
-    expect(out).toContain('Artist Song'); // qualifier stripped
-    expect(out).toContain('Artist Song feat X'); // punctuation stripped
+    expect(out[0]).toBe('Artist Song (feat. X)');
+    expect(out).toContain('Artist Song');
+    expect(out).toContain('*rtist Song');
+  });
+
+  it('a phrase with nothing to wildcard is the exact query alone', () => {
+    expect(buildTrackQueries('U2', 'One')).toEqual(['U2 One']);
   });
 });
