@@ -374,7 +374,7 @@
                     [attr.data-availability]="
                       availability === undefined ? 'unknown' : availability ? 'available' : 'none'
                     "
-                    class="group text-left rounded-lg overflow-hidden border border-theme transition hover:border-theme-accent disabled:opacity-60"
+                    class="group block w-full text-left rounded-lg overflow-hidden border border-theme transition hover:border-theme-accent disabled:opacity-60"
                     [class.opacity-50]="availability === null && huntStatus.phase === 'idle'"
                     style="background: var(--theme-surface)"
                   >
