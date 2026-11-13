@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.130](https://github.com/kevinch3/NicotinD/compare/v0.8.129...v0.8.130) (2026-11-13)
+
+### Features
+
+* **demo:** a static demo on GitHub Pages over real CC music ([#1877](https://github.com/kevinch3/NicotinD/issues/1877)) ([1ea5010](https://github.com/kevinch3/NicotinD/commit/1ea501006438a1e6cc0be41f97c5c0cb3c19f1a4))
+* **library:** popular songs on the artist page ([#1869](https://github.com/kevinch3/NicotinD/issues/1869)) ([74ca9df](https://github.com/kevinch3/NicotinD/commit/74ca9df54ec7fc57477dbe498928c64b8ab9e0b1))
+* **web:** compact album header and expandable genre share ([#1865](https://github.com/kevinch3/NicotinD/issues/1865)) ([339d8bc](https://github.com/kevinch3/NicotinD/commit/339d8bc9ac7cd76a33a01bf7a1a39ff2c01819c8))
+
+### Bug Fixes
+
+* **deps:** bump hono to 4.13.18 for five advisories ([#1868](https://github.com/kevinch3/NicotinD/issues/1868)) ([193fa36](https://github.com/kevinch3/NicotinD/commit/193fa36894a8f5dafbbbabce4232716dac2ae63d))
+* **hunt:** retry a hunt with wildcarded words, not literal variations ([#1871](https://github.com/kevinch3/NicotinD/issues/1871)) ([36306e4](https://github.com/kevinch3/NicotinD/commit/36306e4b0a12f0039c7a875b86bb8349e10ef5e9)), references [#1870](https://github.com/kevinch3/NicotinD/issues/1870)
 ## [0.8.129](https://github.com/kevinch3/NicotinD/compare/v0.8.128...v0.8.129) (2026-11-12)
 
 ### Features

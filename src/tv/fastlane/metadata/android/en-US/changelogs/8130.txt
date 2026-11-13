@@ -1,0 +1,5 @@
+• demo: a static demo on GitHub Pages over real CC music (#1877)
+• library: popular songs on the artist page (#1869)
+• web: compact album header and expandable genre share (#1865)
+• deps: bump hono to 4.13.18 for five advisories (#1868)
+• hunt: retry a hunt with wildcarded words, not literal variations (#1871)
