@@ -1947,6 +1947,17 @@ describe('set_artist_mbid (#1112)', () => {
     expect(audit?.detail).toContain('via MCP agent');
   });
 
+  it('search_library hides a resolved compound artist but keeps an unresolved one', async () => {
+    testDb.run(
+      `INSERT OR REPLACE INTO library_artists (id, name, album_count, hidden, split_compound, synced_at)
+       VALUES ('c-done', 'Zed/Yan', 0, 0, 1, 1), ('c-open', 'Zed/Xia', 1, 0, 0, 1)`,
+    );
+    const res = await dispatchTool(mbidCtx('refiner:read'), 'search_library', { query: 'zed' });
+    expect(JSON.parse(res.content[0]!.text).artists.map((a: { name: string }) => a.name)).toEqual([
+      'Zed/Xia',
+    ]);
+  });
+
   it('lists an album credited to the artist, not only one it is owned by', async () => {
     testDb.run(
       `INSERT OR REPLACE INTO library_artists (id, name, album_count, hidden, synced_at)

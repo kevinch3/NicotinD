@@ -229,7 +229,9 @@ export const MCP_TOOLS: McpTool[] = [
       }
       const artists = db
         .query<{ id: string; name: string }, []>(
-          'SELECT id, name FROM library_artists ORDER BY album_count DESC',
+          // A resolved compound (split_compound = 1) is represented by its members;
+          // an unresolved one stays listed, because the curator has to act on it.
+          'SELECT id, name FROM library_artists WHERE split_compound = 0 ORDER BY album_count DESC',
         )
         .all()
         .filter((r) => matchesAllTokens(r.name, tokens))
