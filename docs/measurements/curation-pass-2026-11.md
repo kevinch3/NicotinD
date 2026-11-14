@@ -117,6 +117,14 @@ call, and the options are in the issue.
 
 **Cause.** `LibrarySearchProvider` filtered artists by `hidden = 0` only; the grid also applies
 `split_compound = 0 AND fragment_of IS NULL`. Fixed in PR #1912.
+Deployed 2026-11-14 (`cbd9e6a3`); verified by running the deployed `LibrarySearchProvider` against the
+prod DB read-only: `Cultura Profetica` → only `Cultura Profética`, `Kid Smoko` → only `Kid Smoko`.
+
+**Album ownership was already right.** Every joint album (`Te Creí`, `Mantis`, `Lágrimas`, `Mi Balcon`,
+`Quisiera`, `Llévame`) carries a `library_album_artists` row per member (#1813) and the web artist route
+and album DTO use them. The gap was the MCP curator view: `get_artist` listed owned albums only, and
+`search_library` listed resolved compounds. Fixed in PR #1913. The compound display string on an album
+or song is the file's own credit, rendered as linked members; it is not an artist row.
 
 **Curation actions.**
 
