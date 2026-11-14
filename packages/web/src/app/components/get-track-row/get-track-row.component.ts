@@ -40,7 +40,7 @@ export class GetTrackRowComponent {
   readonly opensExternally = input(false);
   /** Lossless pick that will be stored as Opus at this bitrate; 0 when not. */
   readonly transcodeKbps = input(0);
-  /** Root testid; the Advanced lane keeps its own ids until it is folded in. */
+  /** Root testid; its parts are suffixed from it (`-get`, `-cancel`). */
   readonly testid = input('acquire-result');
 
   readonly get = output<void>();

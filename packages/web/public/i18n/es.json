@@ -1791,5 +1791,12 @@
   "copyPicker.browse": "Explorar la carpeta entera",
   "copyPicker.allCopiesTitle": "Todo en {source}",
   "acquire.allCopies": "Todas las copias en {source}",
-  "getNotice.rawFallbackSearch": "Buscar este álbum en {source}"
+  "getNotice.rawFallbackSearch": "Buscar este álbum en {source}",
+  "acquire.tracks": "Canciones",
+  "acquire.topResult": "Mejor resultado",
+  "acquire.topArtist": "Artista",
+  "acquire.scope": "Mostrar",
+  "acquire.scope.all": "Todo",
+  "acquire.scope.albums": "Álbumes",
+  "acquire.scope.tracks": "Canciones"
 }
