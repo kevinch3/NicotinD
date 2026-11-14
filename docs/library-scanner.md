@@ -82,6 +82,14 @@ library layer now strips a leading digit only when it equals the file's own tagg
 (`normalizeTrackTitle` in `library-track-select.ts`) — the hunt engine's `normalizeTitle` is
 unchanged, since it has no comparable per-file track number to check against.
 
+**Ingest applies the same rule before it rewrites a title (issue #1876).** The organizer's tag-title
+cleanup (`readWithFallback`) and filename inference (`inferMetadataFromPath`) strip a leading number
+only when no track number is known yet or it equals that number (`isTrackPrefixOf`). Before this, both
+stripped unconditionally, and the organizer wrote the result back to the file: Gorillaz's `19-2000`
+(track 11) landed as `2000`, and filenames like `03 - 99 Luftballons` or `02 - 5-4` inferred
+`Luftballons` and `4`. `01-Demasiado` on track 1, or with no track at all, is still cleaned. A bare
+`19-2000.flac` with no other track evidence stays ambiguous and is still read as track 19.
+
 **An ID3v1 trailer must not outvote ID3v2 on the track number (issue #1077).** music-metadata maps
 `track` without its tag-priority check, so on an MP3 carrying both tags the ID3v1 trailer — parsed
 last — overwrites `common.track` with its own value. Every ID3 writer here (node-id3) updates only

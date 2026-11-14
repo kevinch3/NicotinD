@@ -826,6 +826,31 @@ describe('LibraryOrganizer (real fs)', () => {
     expect(tags && typeof tags === 'object' ? tags.trackNumber : undefined).toBe('1');
   });
 
+  it('keeps a title whose leading number is not the tagged track: "19-2000" on 11 (#1876)', async () => {
+    const root = tmpRoot();
+    const staging = join(root, '_staging');
+    seed(staging, 'Gorillaz/Gorillaz/11 - 19-2000.mp3', {
+      artist: 'Gorillaz',
+      album: 'Gorillaz',
+      title: '19-2000',
+      trackNumber: 11,
+    });
+    await makeOrg(root, staging).organizeBatch([
+      {
+        username: 'u',
+        directory: 'Gorillaz/Gorillaz',
+        filename: '11 - 19-2000.mp3',
+        directoryFileCount: 1,
+      },
+    ]);
+    // One file in the batch, so it files as a single; the title is what matters.
+    const dest = join(root, 'Gorillaz', 'Singles', '11 - 19-2000.mp3');
+    expect(existsSync(dest)).toBe(true);
+    const tags = nodeId3.read(dest) as { title?: string; trackNumber?: string } | false;
+    expect(tags && typeof tags === 'object' ? tags.title : undefined).toBe('19-2000');
+    expect(tags && typeof tags === 'object' ? tags.trackNumber : undefined).toBe('11');
+  });
+
   it('writes an inferred title back to a file whose title tag is missing', async () => {
     const root = tmpRoot();
     const staging = join(root, '_staging');
