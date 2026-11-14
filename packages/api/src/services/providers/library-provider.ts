@@ -39,7 +39,8 @@ export class LibrarySearchProvider implements ISearchProvider {
 
     const artists = this.db
       .query<{ id: string; name: string; album_count: number; cover_rev: number }, []>(
-        `SELECT id, name, album_count, cover_rev FROM library_artists WHERE hidden = 0`,
+        `SELECT id, name, album_count, cover_rev FROM library_artists
+          WHERE hidden = 0 AND split_compound = 0 AND fragment_of IS NULL`,
       )
       .all()
       .filter((r) => matchesAllTokens(r.name, tokens))

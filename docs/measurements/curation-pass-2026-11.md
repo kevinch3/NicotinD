@@ -104,3 +104,35 @@ call, and the options are in the issue.
 ## Issues filed
 
 - **#1804**: a joint-credit album artist still owns its album, so compound rows stay in the grid.
+
+## Pass 2026-11-14: composed artists
+
+**Trigger.** One search for "Cultura Profética" returned five compound tiles
+(`Greeicy/Cultura Profética`, `Jowell & Randy/…`, `Vicente Garcia/…`, `Cultura Profética/Bebo Dumont`,
+`Flor De Toloache; John Legend; …`). All five are real collaborations.
+
+**Scope (prod, read-only probe).** Artist rows with `/` or `;` in the name: **479** resolved
+(`split_compound = 1`, 0 in the grid) and **10** unresolved (`split_compound = 0`, 7 with albums).
+`jointCredits` reports 1 open credit (auto), so the health metric could not see any of this.
+
+**Cause.** `LibrarySearchProvider` filtered artists by `hidden = 0` only; the grid also applies
+`split_compound = 0 AND fragment_of IS NULL`. Fixed in PR #1912.
+
+**Curation actions.**
+
+| Credit | Action | Evidence |
+| --- | --- | --- |
+| `Bob Rum/ DJ Marlboro` | split | song `Rap Do Silva` already credited to Bob Rum |
+| `Kid Smoko/ Selah` | split | song `Like Me Now` already credited to Kid Smoko |
+| `mc pl alves/ mc FG/ LC Santos` | split | three MC credits on the same polluted V.A. album |
+| `Johnny Hammond / Seldon Powell` | split | Hammond album credit |
+| `Orquesta: Caló / Cantor: Raul Beron` | split → Miguel Caló + Raúl Berón | sibling songs credited `Miguel Caló/Raúl Berón` |
+| `VE/RA`, `Au/Ra`, `Axwell /\ Ingrosso` | kept whole | single acts |
+| `This EP is for you. Pre-order…` | flag 90 (card) | promo text as artist; `identify_song` no-match |
+
+**Delta.** Not measurable yet: splits apply at the next scan and #1912 is not deployed. Re-run
+`SELECT … FROM library_artists WHERE (name LIKE '%/%' OR name LIKE '%;%') AND split_compound = 0`
+after the next scan; expected: 0 split-pending rows beyond the promo-text one.
+
+**Left alone.** The `V.A. - Jazz Fusion of the 70s…` album holds unrelated tracks (Brazilian funk
+under a jazz title); regrouping it is the owner's call.

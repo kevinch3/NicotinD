@@ -124,3 +124,19 @@ describe('LibrarySearchProvider artist matching', () => {
     expect(results!.artists.map((a) => a.id)).toContain('a1');
   });
 });
+
+describe('LibrarySearchProvider artist search', () => {
+  it('omits a resolved compound and a fragment, as the artists grid does', async () => {
+    const seed = (id: string, name: string, splitCompound: number, fragmentOf: string | null) =>
+      db.run(
+        `INSERT INTO library_artists (id, name, album_count, split_compound, fragment_of, synced_at)
+         VALUES (?, ?, 1, ?, ?, 1)`,
+        [id, name, splitCompound, fragmentOf],
+      );
+    seed('a1', 'Cultura Profética', 0, null);
+    seed('a2', 'Greeicy/Cultura Profética', 1, null);
+    seed('a3', 'Cultura Profética/Bebo Dumont', 0, 'a1');
+    const { results } = await new LibrarySearchProvider(db).search('cultura');
+    expect(results!.artists.map((a) => a.id)).toEqual(['a1']);
+  });
+});
