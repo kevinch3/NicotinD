@@ -2,6 +2,9 @@ import { describe, it, expect, beforeEach, mock } from 'bun:test';
 import { Hono } from 'hono';
 import { NicotinDError } from '@nicotind/core';
 import type { AuthEnv } from '../middleware/auth.js';
+import { Database } from 'bun:sqlite';
+import { applySchema } from '../db.js';
+import { albumIdFor, artistIdFor } from '../services/library-scanner.js';
 import { catalogRoutes } from './catalog.js';
 import type { CatalogService } from '../services/catalog-search.service.js';
 import type { ArtistProvisioningService } from '../services/artist-provisioning.service.js';
@@ -34,13 +37,14 @@ function makeCatalogMock(over: Partial<Record<keyof CatalogService, unknown>> = 
 function makeApp(
   catalog: CatalogService,
   provisioning: ArtistProvisioningService = makeProvisioning(),
+  db?: Database,
 ): Hono<AuthEnv> {
   const app = new Hono<AuthEnv>();
   app.use('*', (c, next) => {
     c.set('user', { sub: 'u', username: 'kevin', role: 'admin', iat: 0, exp: 9999999999 });
     return next();
   });
-  app.route('/', catalogRoutes({ catalog, provisioning }));
+  app.route('/', catalogRoutes({ catalog, provisioning, db }));
   return app;
 }
 
@@ -63,6 +67,46 @@ describe('catalog routes', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { artists: Array<{ name: string }> };
     expect(body.artists[0]?.name).toBe('Floyd');
+  });
+
+  it("GET /search marks each album with what the library holds, by the guard's rule", async () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    // Tagged with an accent and a remaster suffix: the guard still calls it the same album.
+    db.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, synced_at)
+       VALUES (?, ?, ?, ?, ?, 1)`,
+      [
+        albumIdFor('Pink Floyd', 'Animals'),
+        'Animals (Remastered)',
+        'Pink Floyd',
+        artistIdFor('Pink Floyd'),
+        3,
+      ],
+    );
+    const album = (title: string) => ({
+      foreignAlbumId: title,
+      title,
+      artistName: 'Pink Floyd',
+      artistMbid: 'pf',
+      albumType: 'Album',
+      secondaryTypes: [],
+      trackCount: 5,
+    });
+    catalog = makeCatalogMock({
+      search: mock(async () => ({ artists: [], albums: [album('Animals'), album('Meddle')] })),
+    });
+    app = makeApp(catalog, makeProvisioning(), db);
+
+    const res = await app.request('/search?q=pink+floyd');
+    const body = (await res.json()) as {
+      albums: Array<{ title: string; library?: { albumId: string; songs: number } }>;
+    };
+    expect(body.albums[0]!.library).toEqual({
+      albumId: albumIdFor('Pink Floyd', 'Animals'),
+      songs: 3,
+    });
+    expect(body.albums[1]!.library).toBeUndefined();
   });
 
   it('GET /search 400s without a query', async () => {

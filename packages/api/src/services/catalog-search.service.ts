@@ -26,6 +26,11 @@ export interface CatalogAlbum {
   secondaryTypes: string[];
   coverUrl?: string;
   trackCount: number;
+  /**
+   * What the library holds of this album, by the duplicate guard's own rule
+   * (`matchingLocalAlbums`): absent when it holds none. Set by the search route.
+   */
+  library?: { albumId: string; songs: number };
 }
 
 export interface CatalogSearchResult {

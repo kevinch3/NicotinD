@@ -1121,7 +1121,7 @@ export function createApp({
         dataDir: expandedDataDir,
       }),
     );
-    catalogApp = catalogRoutes({ catalog: catalogSvc, provisioning: artistProvisioning });
+    catalogApp = catalogRoutes({ catalog: catalogSvc, provisioning: artistProvisioning, db });
 
     // Watchlist auto-hunt poller — reuses the same hunter + catalog as the
     // interactive flow, so an auto-acquired album is indistinguishable from a

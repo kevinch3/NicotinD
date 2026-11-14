@@ -77,10 +77,16 @@ Again*. The page already holds every folder the network search answered with, so
   leaves the card in a **failed** state (`data-state="failed"`, "Couldn't get it — choose a copy",
   the reason in its title) from `AutoHuntService.failureFor` until the next Get of that album. A click on a cover can add an artist to Lidarr, which Cancel does not undo,
   so the cover never starts a Get.
-- **Owned albums are marked before the click** (`libraryStateOf`). `/api/search` already returns the
-  library albums the query matched; the page keeps them (`SearchService.localAlbums`) only to join
-  them to cards with `sameAlbum`. A whole album offers **Open**; one with fewer songs than the
-  release offers **Complete album**. The page still lists no library results (#227).
+- **Owned albums are marked before the click** (`catalogLibraryState`). The catalog routes
+  (`/api/catalog/search` and `/discography`) mark each album with the library's fullest copy
+  (`withLibraryState`: `library: { albumId, songs }`), matched by `matchingLocalAlbums`, the
+  hunt-download guard's own rule (artist identity, edition-stripped title), over the whole library.
+  So a card never offers a Get the guard would refuse, and an album the text search did not happen
+  to match is still marked. A provider card, which has no catalog row, falls back to `libraryStateOf`:
+  the library albums `/api/search` returned (`SearchService.localAlbums`), joined with `sameAlbum`.
+  A whole album offers **Open**; one with fewer songs than the release offers **Complete album**,
+  whose Get names the library album (`localAlbumId`), so the server fetches only the missing
+  tracks. The page still lists no library results (#227).
 - **`providerOnlyAlbums`** lists the albums the network holds for the matched artist
   (`scopedArtist`) that no card covers, grouped by title key and ranked by peers. They render as a
   second grid, "More albums your sources have". A folder whose title is only the artist's name is a

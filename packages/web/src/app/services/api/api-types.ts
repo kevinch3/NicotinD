@@ -652,6 +652,8 @@ export interface CatalogAlbum {
   secondaryTypes: string[];
   coverUrl?: string;
   trackCount: number;
+  /** The library's fullest copy, matched by the server's duplicate-guard rule; absent: none. */
+  library?: { albumId: string; songs: number };
 }
 
 export interface CatalogSearchResult {
