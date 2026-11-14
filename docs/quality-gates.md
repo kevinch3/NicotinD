@@ -1346,3 +1346,27 @@ in `docs/cast-integration.md` and in one Storybook component description.
 the alternatives it weighs are still the right starting point. Browser-tab
 [remote playback](remote-playback.md) is the shipped way to control another
 device.
+
+## `check:addon-sdk-sync` — two copies of the hunt helpers, kept identical
+
+`packages/addon-sdk/src/hunt-queries.ts` and `title-match.ts` also live in
+`kevinch3/nicotind-slskd-addon`, which vendors its own `packages/addon-sdk`
+(#1874). The addon's copy is the one that searches; this repo's copy only feeds
+the web hunt modal's "queries this hunt fires". A change merged here alone makes
+the UI describe searches prod never runs, and #1870 needed two PRs for that
+reason with nothing to catch a forgotten second one.
+
+The gate fetches both files from the addon's `main` (raw GitHub, 15 s timeout) and
+compares bytes. `syncVerdict` decides:
+
+- **Blocks** when this branch changed a shared file (since its merge base with
+  `origin/master`, or uncommitted) and the addon does not carry the same bytes.
+  That enforces the deploy order that works: the addon's `main` builds `:latest`,
+  which Deploy host pulls, so the addon PR merges first.
+- **Warns** on drift this branch did not cause (the addon moved first). Blocking
+  there would redden master for every unrelated PR until someone ports it.
+- **Warns** when GitHub is unreachable, unless the branch touched a shared file:
+  then passing would be a guess, so it fails.
+
+To change either file: land it in the addon, then mirror the bytes here.
+
