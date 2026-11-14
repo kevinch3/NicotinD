@@ -8,7 +8,7 @@ import {
   type AddonJobItem,
   type AddonJobRequest,
 } from '@nicotind/core';
-import type { BundledAddon } from '../types.js';
+import { BundledJobNotFoundError, type BundledAddon } from '../types.js';
 import {
   resolveArchive,
   parseArchiveIdentifier,
@@ -137,7 +137,7 @@ export function makeArchiveBundledAddon(deps: ArchiveBundledDeps): BundledAddon 
 
     async getJob(id: string): Promise<AddonJob> {
       const entry = jobs.get(id);
-      if (!entry) throw new Error(`bundled:archive: unknown job ${id}`);
+      if (!entry) throw new BundledJobNotFoundError(BUNDLED_ARCHIVE_ID, id);
       return entry.job;
     },
 
