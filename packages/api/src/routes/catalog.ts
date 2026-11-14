@@ -2,7 +2,9 @@ import { Hono, type Context } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { createLogger, NicotinDError } from '@nicotind/core';
 import type { AuthEnv } from '../middleware/auth.js';
-import type { CatalogService } from '../services/catalog-search.service.js';
+import type { Database } from 'bun:sqlite';
+import type { CatalogSearchResult, CatalogService } from '../services/catalog-search.service.js';
+import { matchingLocalAlbums } from '../services/library-completeness.js';
 import {
   provisioningResponse,
   type ArtistProvisioningService,
@@ -15,9 +17,28 @@ export interface CatalogRoutesOptions {
   catalog: CatalogService;
   /** The add-artist job (issue #644); status lives at /api/discography/provisioning. */
   provisioning: ArtistProvisioningService;
+  /** The library, so each album says what is already on disk. */
+  db?: Database;
 }
 
-export function catalogRoutes({ catalog, provisioning }: CatalogRoutesOptions) {
+/**
+ * Mark each album with the library's fullest copy of it, matched the way the
+ * hunt-download guard matches (artist identity, edition-stripped title), so a
+ * card never offers a Get the guard would refuse as already complete.
+ */
+export function withLibraryState(db: Database, result: CatalogSearchResult): CatalogSearchResult {
+  return {
+    ...result,
+    albums: result.albums.map((album) => {
+      const best = matchingLocalAlbums(db, album.artistName, album.title).sort(
+        (a, b) => b.song_count - a.song_count,
+      )[0];
+      return best ? { ...album, library: { albumId: best.id, songs: best.song_count } } : album;
+    }),
+  };
+}
+
+export function catalogRoutes({ catalog, provisioning, db }: CatalogRoutesOptions) {
   const app = new Hono<AuthEnv>();
 
   // Both POSTs below are already a user's button press, so an artist Lidarr lacks
@@ -41,7 +62,7 @@ export function catalogRoutes({ catalog, provisioning }: CatalogRoutesOptions) {
 
     try {
       const result = await catalog.search(query);
-      return c.json(result);
+      return c.json(db ? withLibraryState(db, result) : result);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       log.warn({ query, err: msg }, 'Catalog search failed');
@@ -105,7 +126,7 @@ export function catalogRoutes({ catalog, provisioning }: CatalogRoutesOptions) {
       if (isNotProvisioned(result)) {
         return startProvisioning(c, body.artistMbid ?? '', body.artistName);
       }
-      return c.json(result);
+      return c.json(db ? withLibraryState(db, result) : result);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       const status = (err instanceof NicotinDError ? err.statusCode : 500) as ContentfulStatusCode;

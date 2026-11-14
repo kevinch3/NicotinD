@@ -849,7 +849,20 @@ export class SearchComponent implements OnInit, OnDestroy {
       .join(' · ');
   }
 
-  /** What the library holds of this album, by the duplicate guard's own rule. */
+  /**
+   * A catalog card's library state: the server's answer (the guard's own match,
+   * over the whole library), else the page search's local albums.
+   */
+  catalogLibraryState(album: CatalogAlbum): CardLibraryState | null {
+    const held = album.library;
+    if (!held) return this.libraryStateOf(album.artistName, album.title, album.trackCount);
+    return {
+      albumId: held.albumId,
+      partial: !!album.trackCount && held.songs < album.trackCount,
+    };
+  }
+
+  /** What the page search's local albums hold of this album, by `sameAlbum`. */
   libraryStateOf(artist: string, title: string, trackCount?: number): CardLibraryState | null {
     const owned = this.search
       .localAlbums()
@@ -934,7 +947,11 @@ export class SearchComponent implements OnInit, OnDestroy {
         discAlbum.lidarrId,
         artistName,
         discAlbum.title,
-        { skew: true, onBase: (candidates) => live() && this.scoredCopies.set(candidates) },
+        {
+          skew: true,
+          localAlbumId: discAlbum.localAlbumId,
+          onBase: (candidates) => live() && this.scoredCopies.set(candidates),
+        },
       );
       if (!live()) return;
       this.scoredCopies.set(hunt.candidates);
@@ -1114,7 +1131,9 @@ export class SearchComponent implements OnInit, OnDestroy {
         albumType: album.albumType,
         secondaryTypes: album.secondaryTypes,
         totalTracks: resolved.totalTracks || album.trackCount,
-        localTrackCount: 0,
+        // A partly-held album completes: the server skips the tracks on disk.
+        localTrackCount: album.library?.songs ?? 0,
+        ...(album.library ? { localAlbumId: album.library.albumId } : {}),
         status: 'missing',
         coverArtUrl: album.coverUrl,
         tracks: [],

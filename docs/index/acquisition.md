@@ -85,7 +85,7 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   → [album-hunt.md](../album-hunt.md)
 - **What the provider holds**: one card (`GetAlbumCardComponent`) for catalog and source-only albums, carrying
   the peers holding it and whether the library has it (`availabilityFor`, `providerOnlyAlbums`,
-  `folderIsAlbum`, `libraryStateOf`). → [album-hunt.md](../album-hunt.md)
+  `folderIsAlbum`, `withLibraryState`). → [album-hunt.md](../album-hunt.md)
 - **Choose a copy**: one picker for every copy of an album, best first, five facts a row; a drawer
   on desktop, a sheet on a phone (`CopyPickerComponent`, `folderToCopy`, `huntToCopy`, `mergeCopies`).
   → [album-hunt.md](../album-hunt.md)

@@ -903,6 +903,30 @@ describe('SearchComponent — what the provider holds (#1538)', () => {
     ).toEqual(['c']);
   });
 
+  it("prefers the server's library mark, which sees the whole library", () => {
+    const { component, search } = seeded('complete');
+    search.localAlbums.set([]);
+    const held = { ...CATALOG_ALBUM, trackCount: 10, library: { albumId: 'lib-1', songs: 7 } };
+    expect(component.catalogLibraryState(held)).toEqual({ albumId: 'lib-1', partial: true });
+    expect(
+      component.catalogLibraryState({ ...held, library: { albumId: 'lib-1', songs: 10 } }),
+    ).toEqual({ albumId: 'lib-1', partial: false });
+    expect(component.catalogLibraryState(CATALOG_ALBUM)).toBeNull();
+  });
+
+  it('a partly-held album completes: its Get names the library album', async () => {
+    const { component, autoHunt } = setup();
+    await component.huntCatalogAlbum({
+      ...CATALOG_ALBUM,
+      library: { albumId: 'lib-1', songs: 7 },
+    });
+    expect(autoHunt.hunt).toHaveBeenCalledWith(
+      expect.objectContaining({ localAlbumId: 'lib-1', localTrackCount: 7 }),
+      'Pink Floyd',
+      expect.any(Function),
+    );
+  });
+
   it('marks a card whose album the library holds, whole or in part', () => {
     const { component, search } = seeded('complete');
     search.localAlbums.set([
