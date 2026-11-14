@@ -105,11 +105,24 @@ async function seed(request: APIRequestContext): Promise<Seeded> {
  */
 async function expandAllGroups(page: Page): Promise<void> {
   const collapsed = page.locator('[data-testid="settings-group-toggle"][aria-expanded="false"]');
-  // Each open re-renders the page below it; re-query rather than iterate a stale list.
-  for (let guard = 0; guard < 40 && (await collapsed.count()) > 0; guard++) {
-    await collapsed.first().evaluate((el: HTMLElement) => el.click());
-  }
-  await expect(collapsed).toHaveCount(0);
+  // A group can render late (Devices' Remote access waits on its own request and
+  // on the pairing mint that opening "Link a device" fires), so the pass is "none
+  // collapsed after a settle", retried, not "none collapsed right now" (#1887).
+  await expect(async () => {
+    // Each open re-renders the page below it; re-query rather than iterate a stale list.
+    for (let guard = 0; guard < 40 && (await collapsed.count()) > 0; guard++) {
+      const toggle = await collapsed.first().elementHandle();
+      if (!toggle) continue;
+      await toggle.evaluate((el: HTMLElement) => el.click());
+      // Re-querying before the click renders would click it again and close it.
+      await page.waitForFunction(
+        (el) => !el.isConnected || el.getAttribute('aria-expanded') === 'true',
+        toggle,
+      );
+    }
+    await page.waitForTimeout(300);
+    expect(await collapsed.count()).toBe(0);
+  }).toPass({ timeout: 10_000 });
 }
 
 interface View {
