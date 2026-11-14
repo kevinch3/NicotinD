@@ -87,9 +87,11 @@ export class MenuPanelComponent {
    *  panel has rendered, so a remote user lands inside the menu instead of on
    *  a spatial-nav lottery. A lifecycle hook rather than the effect above:
    *  idempotent, writes no signals, and — unlike injector effects — runs
-   *  under the JIT test harness's plain `detectChanges` too. */
+   *  under the JIT test harness's plain `detectChanges` too. Waits for
+   *  `positioned`: the panel is `visibility:hidden` until then, and `focus()`
+   *  on a hidden element is a no-op (#1862). */
   ngAfterViewChecked(): void {
-    if (this.open() && !this.autofocused) {
+    if (this.open() && this.positioned() && !this.autofocused) {
       const first = this.panelButtons()[0];
       if (first) {
         this.autofocused = true;

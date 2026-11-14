@@ -59,6 +59,10 @@ test.describe('TV D-pad find-a-song flow', () => {
     await page.keyboard.press('Enter');
     const removeAlbum = page.getByTestId('album-action-Remove album');
     await expect(removeAlbum).toBeVisible();
+    // Opening lands on the first action, not the trigger (#389, #1862).
+    await expect(
+      page.locator('[data-menu-panel-root] button:not([disabled])').first(),
+    ).toBeFocused();
     for (let i = 0; i < 10; i++) {
       if (await removeAlbum.evaluate((el) => el === document.activeElement)) break;
       await page.keyboard.press('ArrowDown');
