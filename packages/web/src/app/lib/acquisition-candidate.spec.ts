@@ -36,6 +36,19 @@ describe('songResultToCandidate', () => {
     expect(c.format).toBe('FLAC');
   });
 
+  it('names the song for a server-side Get, with the album its best copy is tagged with', () => {
+    expect(songResultToCandidate(song({ album: 'The Album' }), 'Net').work).toEqual({
+      artist: 'Artist',
+      title: 'Song',
+      album: 'The Album',
+    });
+  });
+
+  it('carries no song to search for when no artist is known', () => {
+    const untagged = { ...song(), artist: '' };
+    expect(songResultToCandidate(untagged, 'Net').work).toBeUndefined();
+  });
+
   it('scores FLAC + free slot above lossy + no slot', () => {
     const flac = songResultToCandidate(song({ filename: 'a.flac', freeUploadSlots: 1 }), 'Net');
     const mp3 = songResultToCandidate(

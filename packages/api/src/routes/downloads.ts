@@ -34,6 +34,8 @@ import { AddonTimeoutError } from '../services/addons/client.js';
 import { INTERACTIVE_HUNT_TIMEOUT_MS } from '../middleware/idle-budget.js';
 import { deleteSongs } from '../services/library-deletion.js';
 import { errorHandler } from '../middleware/error-handler.js';
+import type { TrackGetService } from '../services/track-get.service.js';
+import { trackGetRoutes } from './track-get.js';
 import { recordAudit } from '../services/audit-log.js';
 import { acquireAlbum } from '../services/album-acquire.js';
 import type { Lidarr } from '../lidarr/index.js';
@@ -115,6 +117,7 @@ export function downloadRoutes(
   pluginRegistry?: PluginRegistry,
   discardDeps?: DownloadDiscardDeps,
   albumRetry?: AlbumRetryDeps,
+  trackGet?: TrackGetService,
 ) {
   const app = new OpenAPIHono<AuthEnv>();
   // Self-contained error mapping (the download-review.ts pattern): the
@@ -127,6 +130,9 @@ export function downloadRoutes(
     requireAcquirer(c);
     await next();
   });
+
+  // POST /track — the one-click track Get (#1885).
+  if (trackGet) app.route('/', trackGetRoutes(trackGet));
 
   // Enqueue downloads — via network provider
   app.openapi(

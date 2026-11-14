@@ -95,6 +95,8 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **Interactive hunt queue**: the manual picker queues its hunt in core (`HuntQueue`) and polls
   (`HUNT_POLL_MS`), so waiting is never billed to a 55 s request; a hunt that ran and failed
   throws `HuntFailedError` with its reason. → [album-hunt.md](../album-hunt.md)
+- **A track Get is a server job**: one POST reserves a `track-search` job; the source's `tracks`
+  intent finds the song and picks the copy (`TrackGetService`, `trackGetRoutes`). → [album-hunt.md](../album-hunt.md)
 - **A Get is a server job**: one POST reserves the job row, core hunts, picks, retries an offline
   source and resumes after a restart (`AlbumGetService`, `albumGetRetryDelayMs`,
   `listReservedAlbumGets`, `GET_MIN_MATCH_PCT`, `getAlbum`). → [album-hunt.md](../album-hunt.md)

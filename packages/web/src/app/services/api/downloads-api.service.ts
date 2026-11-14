@@ -58,6 +58,14 @@ export class DownloadsApiService {
     });
   }
 
+  /**
+   * The one-click track Get (#1885): the server reserves a job, finds the song
+   * and picks the copy. The outcome is read off the downloads feed, by `jobId`.
+   */
+  getTrack(work: { artist: string; title: string; album?: string }) {
+    return this.http.post<{ jobId: string }>('/api/downloads/track', work);
+  }
+
   startBrowse(username: string) {
     return this.http.get<{ jobId: string; state: string }>(
       `/api/users/${encodeURIComponent(username)}/browse`,
