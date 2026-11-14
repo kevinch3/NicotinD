@@ -133,6 +133,12 @@ jobs:
       - name: Check every recommendation feed uses the shared eligibility predicate
         run: bun run check:feed-eligibility
 
+      # hunt-queries.ts and title-match.ts also live in the slskd addon, whose copy
+      # is the one that searches (#1874). Blocks a PR that changes them before the
+      # addon's main carries the same bytes; drift this PR did not cause only warns.
+      - name: Check the shared addon-sdk files match the slskd addon
+        run: bun run check:addon-sdk-sync
+
       # A check this job runs that no local command reaches is invisible until
       # push — how the web-spec typecheck drifted. This asserts `bun run verify`
       # still covers every step below.
