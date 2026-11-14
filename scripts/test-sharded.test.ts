@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'bun:test';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { discover, parseArgs, shard } from './test-sharded';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { discover, filesRan, parseArgs, shard } from './test-sharded';
 
 const repoRoot = resolve(dirname(new URL(import.meta.url).pathname), '..');
 const rootTest = (
@@ -9,6 +10,14 @@ const rootTest = (
     scripts: Record<string, string>;
   }
 ).scripts.test!;
+
+describe('filesRan', () => {
+  it("reads the file count from bun test's summary, colour codes and all", () => {
+    expect(filesRan('\x1b[1mRan 12 tests across 3 files.\x1b[0m [1.2s]')).toBe(3);
+    expect(filesRan('Ran 1 test across 1 file. [5ms]')).toBe(1);
+    expect(filesRan('no summary')).toBeNull();
+  });
+});
 
 describe('shard', () => {
   it('deals round-robin, so neighbours in the sorted list land apart', () => {
@@ -43,24 +52,32 @@ describe('the root test script', () => {
     expect(rootTest.startsWith('bun scripts/test-sharded.ts ')).toBe(true);
   });
 
-  // The gate asserts its own denominator: sharding must run exactly the files a
-  // single `bun test` with the same arguments would.
-  it('finds the same files a single bun test searches', () => {
-    const args = rootTest.split(' ').slice(2);
-    const plan = parseArgs(args)!;
-    const mine = discover(repoRoot, plan.roots, plan.ignores).length;
-    const res = Bun.spawnSync(
-      [
-        'bun',
-        'test',
-        ...args.map((a) => a.replace(/='(.*)'$/, '=$1')),
-        '-t',
-        '^no test is named this$',
-      ],
-      { cwd: repoRoot, stderr: 'pipe', stdout: 'pipe' },
-    );
-    const searched = /Searched (\d+) files/.exec(res.stderr.toString() + res.stdout.toString());
-    expect(searched).not.toBeNull();
-    expect(mine).toBe(Number(searched![1]));
-  }, 60_000);
+  it('finds every file bun test would collect, and skips what it ignores', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'shard-'));
+    const touch = (rel: string) => {
+      mkdirSync(join(dir, dirname(rel)), { recursive: true });
+      writeFileSync(join(dir, rel), '');
+    };
+    for (const f of [
+      'pkg/a.test.ts',
+      'pkg/b_test.js',
+      'pkg/c.spec.tsx',
+      'pkg/d_spec.mjs',
+      'pkg/not-a-test.ts',
+      'pkg/dist/e.test.js',
+      'pkg/node_modules/x/f.test.ts',
+      'web/src/g.spec.ts',
+    ])
+      touch(f);
+    try {
+      expect(discover(dir, ['pkg', 'web'], ['**/dist/**', '**/web/src/**'])).toEqual([
+        'pkg/a.test.ts',
+        'pkg/b_test.js',
+        'pkg/c.spec.tsx',
+        'pkg/d_spec.mjs',
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

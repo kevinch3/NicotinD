@@ -4,7 +4,7 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 `bun run check:claude-md` still enforces them here.
 
 - **Low-memory gates**: `verify` fits a 3 GB cgroup: backend tests in round-robin process shards
-  (`TEST_SHARDS`), vitest workers capped by free memory (`VITEST_MAX_WORKERS`), Storybook unminified
+  (`TEST_SHARDS`, `filesRan`), vitest workers capped by free memory (`VITEST_MAX_WORKERS`), Storybook unminified
   when short (`NICOTIND_LOW_MEM`). → [quality-gates.md](../quality-gates.md)
 - **Product tour video**: a Playwright spec drives the real app over the generated demo catalog and
   writes its own cut list; `cut-tour.ts` assembles the MP4 + GIF. Stand-ins: `startDemoLidarr`,
