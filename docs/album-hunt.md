@@ -72,7 +72,7 @@ Again*. The page already holds every folder the network search answered with, so
   `data-origin="provider"` on an album only a source holds). Four text lines: title, artist, catalog
   facts, and one status line, the only one that changes: availability, then `albumHuntLabel` while
   busy, then "In library". **Get is an explicit button** (`catalog-album-get`); the cover and the
-  Copies button open the album's copies in the folders lane (`showCatalogCopies`), and are absent
+  Copies button open **Choose a copy** (below), and are absent
   when no copy is known. A click on a cover can add an artist to Lidarr, which Cancel does not undo,
   so the cover never starts a Get.
 - **Owned albums are marked before the click** (`libraryStateOf`). `/api/search` already returns the
@@ -82,10 +82,22 @@ Again*. The page already holds every folder the network search answered with, so
 - **`providerOnlyAlbums`** lists the albums the network holds for the matched artist
   (`scopedArtist`) that no card covers, grouped by title key and ranked by peers. They render as a
   second grid, "More albums your sources have". A folder whose title is only the artist's name is a
-  container and is skipped. A card **opens its copies** in the folders lane (`folderFilter` →
-  `visibleFolderGroups`, with a "Copies of X · Show all folders" bar). Its Get takes the
+  container and is skipped. A card **opens its copies** in Choose a copy, like a catalog card. Its Get takes the
   fullest copy outright through `downloadFolder`, so the album intent and the cross-lane guard
   (#1539) apply, and its overlay is `statusForAlbum`.
+
+**Choose a copy** (`CopyPickerComponent`, `data-testid="copy-picker"`) lists every copy the page
+search saw of one album, best first with the top one preselected, as `CopyCandidate`s
+(`lib/copy-candidate.ts`: `folderToCopy`, `huntToCopy`, `mergeCopies`). A row shows the five facts
+that decide between copies: completeness (`12/12`, or a track count when the release's is unknown,
+with the hunt's match % when one scored it), majority format, size, whether the peer has a free
+slot or a queue, and the peer with the folder's leaf name. "Get this copy" goes through
+`downloadFolder`, so the cross-lane guard applies; while a Get for the album runs the footer reads
+"Replace with this copy" and sends `replace`. It is a right-hand drawer from `lg` up, so the grid
+it was opened from stays in view and a card's state changes behind it, and a bottom sheet below
+(`appBottomChromeSafe`); Escape and hardware Back close it (`registerOverlayCloser`). It opens
+with no Lidarr call, so looking at copies never adds an artist. Scored copies from the hunt, a
+card's failed state opening it, and the Advanced lane folding into it are the next steps of #1885.
 
 The folder badge is the folder's **majority** format (`folderFormat`): a lossless minority reads
 "Mixed". The prod "Trip-Hop" grab-bag, one FLAC among 50 mostly-128k files, wore a FLAC badge and

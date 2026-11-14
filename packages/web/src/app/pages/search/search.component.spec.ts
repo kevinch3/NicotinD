@@ -796,13 +796,26 @@ describe('SearchComponent — what the provider holds (#1538)', () => {
     ]);
   });
 
-  it("opens a catalog card's copies in the folders lane", () => {
+  it("opens a catalog card's copies in the picker, and gets the chosen one", () => {
     const { component } = seeded('complete');
+    const download = vi.spyOn(component, 'downloadFolder').mockResolvedValue(undefined as never);
     component.showCatalogCopies(CATALOG_ALBUM);
-    expect(component.directSearchOpen()).toBe(true);
-    expect(component.networkView()).toBe('folders');
-    expect(component.visibleFolderGroups().length).toBeGreaterThan(0);
-    expect(component.visibleFolderGroups().length).toBeLessThan(component.folderGroups().length);
+    const open = component.copiesOpen()!;
+    expect(open.title).toBe(CATALOG_ALBUM.title);
+    expect(open.copies.length).toBeGreaterThan(0);
+    expect(open.copies[0]!.totalTracks).toBe(CATALOG_ALBUM.trackCount);
+    expect(component.directSearchOpen()).toBe(false);
+
+    component.getCopy(open.copies[0]!, false);
+    expect(download).toHaveBeenCalledWith(open.copies[0]!.folder, false);
+    expect(component.copiesOpen()).toBeNull();
+  });
+
+  it('a source-only album opens its copies in the same picker', () => {
+    const { component } = seeded('complete');
+    const [wall] = component.providerAlbums();
+    component.openProviderCopies(wall!);
+    expect(component.copiesOpen()!.copies.map((c) => c.username)).toEqual(['c']);
   });
 
   it('marks a card whose album the library holds, whole or in part', () => {
