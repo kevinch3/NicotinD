@@ -413,7 +413,7 @@
       <h2 class="text-xs font-semibold uppercase tracking-wide text-theme-muted mb-2">
         {{ 'acquire.tracks' | t }}
       </h2>
-      @if (plugins.hasSpotify() && !plugins.hasSpotdl() && search.spotify().length > 0) {
+      @if (!plugins.hasSpotdl() && hasSpotifyRows()) {
         <p class="text-xs text-amber-500 mb-2" data-testid="spotify-needs-spotdl">
           {{ 'getNotice.spotifyNeedsSpotdl' | t }}
         </p>

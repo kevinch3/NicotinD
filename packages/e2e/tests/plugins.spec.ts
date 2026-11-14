@@ -149,14 +149,14 @@ test.describe('plugin capability gating', () => {
     await page.goto('/search');
     await expect(page.getByTestId('source-status')).toContainText('Internet Archive');
 
-    // The lane is asked, and the server's gate lets it through. archive.org
-    // itself is unreachable from the e2e sandbox, so the body may be an
-    // upstream failure, but never the "archive.org is disabled" refusal.
-    const archive = page.waitForResponse((r) => r.url().includes('/api/archive/search'));
+    // The blended sources search asks archive.org: the server's gate lists it.
+    // archive.org itself is unreachable from the e2e sandbox, so it may bring
+    // no rows, but it is one of the sources the server asked.
+    const sources = page.waitForResponse((r) => r.url().includes('/api/sources/search'));
     await page.getByTestId('search-input').fill('nina simone');
     await page.getByTestId('search-submit').click();
-    const res = await archive;
-    expect(await res.text()).not.toContain('archive.org is disabled');
+    const res = await sources;
+    expect(((await res.json()) as { sources: string[] }).sources).toContain('archive');
   });
 
   test('the archive.org plugin ships registered and default-off', async ({ page }) => {

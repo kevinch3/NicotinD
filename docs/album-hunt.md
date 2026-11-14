@@ -346,7 +346,7 @@ Albums missing from Soulseek are often freely available on archive.org, so the `
 The web surfaces it in **two places**, both gated on `PluginService.hasArchive` and both downloading by handing the candidate's `detailsUrl` to `POST /api/acquire` (the `archive` resolve plugin then stages + ingests it — the job tracks in Downloads → Active, _not_ through `album_jobs`/cross-peer fallback):
 
 - **Album-hunt modal** — an "Also on archive.org" section searched in parallel with the Soulseek hunt (`searchArchive` fires from `ngOnInit`, never blocking the slskd lane); each item has a one-click "Get from archive.org".
-- **Unified search page** — a "From archive.org" section below the network divider, populated by `executeSearch` firing `searchArchive(query)` alongside the catalog + network lanes.
+- **Unified search page** — archive.org rows blended into Results, from the one `GET /api/sources/search` that `executeSearch` fires (`searchSources`) alongside the catalog + network lanes.
 
 ---
 

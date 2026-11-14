@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  sourceToCandidate,
   songResultToCandidate,
   archiveToCandidate,
   spotifyToCandidate,
@@ -116,5 +117,31 @@ describe('mergeAndRank', () => {
 
   it('names only the first-party lanes — the network lane is named by its addon', () => {
     expect(Object.keys(SOURCE_LABELS)).toEqual(['archive', 'spotify']);
+  });
+});
+
+describe('sourceToCandidate', () => {
+  const base = {
+    source: 'bandcamp',
+    sourceLabel: 'Bandcamp',
+    kind: 'album' as const,
+    title: 'T',
+    acquire: { via: 'url' as const, url: 'https://x.bandcamp.com/album/t' },
+  };
+
+  it('a source the web has never heard of reads as itself', () => {
+    expect(sourceToCandidate(base)).toMatchObject({
+      id: 'bandcamp:https://x.bandcamp.com/album/t',
+      sourceLabel: 'Bandcamp',
+      score: 50,
+      subtitle: 'album',
+    });
+  });
+
+  it('keeps a score the server sent, and drops a row it cannot Get by URL', () => {
+    expect(sourceToCandidate({ ...base, score: 80 })?.score).toBe(80);
+    expect(
+      sourceToCandidate({ ...base, acquire: { via: 'enqueue', sourceRef: 'p', files: [] } }),
+    ).toBeNull();
   });
 });
