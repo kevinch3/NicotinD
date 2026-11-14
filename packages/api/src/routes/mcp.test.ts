@@ -1947,6 +1947,25 @@ describe('set_artist_mbid (#1112)', () => {
     expect(audit?.detail).toContain('via MCP agent');
   });
 
+  it('lists an album credited to the artist, not only one it is owned by', async () => {
+    testDb.run(
+      `INSERT OR REPLACE INTO library_artists (id, name, album_count, hidden, synced_at)
+       VALUES ('art-guest', 'Guest', 1, 0, 1)`,
+    );
+    testDb.run(
+      `INSERT OR REPLACE INTO library_albums (id, name, artist, artist_id, synced_at)
+       VALUES ('al-joint', 'Joint Single', 'Rocky/Guest', 'art-rocky', 1)`,
+    );
+    testDb.run(
+      `INSERT OR REPLACE INTO library_album_artists (album_id, artist_id, role, position)
+       VALUES ('al-joint', 'art-rocky', 'primary', 0), ('al-joint', 'art-guest', 'primary', 1)`,
+    );
+    const res = await dispatchTool(mbidCtx('refiner:read'), 'get_artist', { id: 'art-guest' });
+    expect(JSON.parse(res.content[0]!.text).albums.map((a: { id: string }) => a.id)).toEqual([
+      'al-joint',
+    ]);
+  });
+
   it('reports a tombstone distinctly on get_artist, not as "no mbid"', async () => {
     await dispatchTool(mbidCtx('refiner:curate'), 'set_artist_mbid', {
       artistId: 'art-rocky',

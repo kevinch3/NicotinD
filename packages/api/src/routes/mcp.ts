@@ -375,7 +375,12 @@ export const MCP_TOOLS: McpTool[] = [
       if (!artist) return JSON.stringify({ error: 'artist not found' });
       const albums = db
         .query<{ id: string; name: string; year: number | null; genre: string | null }, [string]>(
-          'SELECT id, name, year, genre FROM library_albums WHERE artist_id = ? ORDER BY year',
+          // Credited albums too: a joint-credited album is owned by its first
+          // known member but credits every member through library_album_artists.
+          `SELECT id, name, year, genre FROM library_albums
+            WHERE artist_id = ?1
+               OR id IN (SELECT album_id FROM library_album_artists WHERE artist_id = ?1)
+            ORDER BY year`,
         )
         .all(id);
       // Origin + MBID are read-only here but not decoration (#759): a wrong
