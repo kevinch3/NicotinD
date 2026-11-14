@@ -186,14 +186,29 @@ test.describe('track menus are reachable on a phone (#1714)', () => {
       ['Go to album', 'Ir al álbum'],
       ['Add to playlist', 'Añadir a una lista'],
       ['Song info', 'Info de la canción'],
-      ["Don't recommend this", 'No recomendar esto'],
       ['Report this track', 'Reportar esta canción'],
     ]) {
       await expect(menu.getByTestId(`track-action-${label}`)).toHaveText(spanish);
     }
+    // The veto item is a pair, and the user is shared: two early skips in any
+    // earlier spec hold the song out, and the menu offers "Recommend again" (#1864).
+    const veto = menu.getByTestId(/^track-action-(Don't recommend this|Recommend again)$/);
+    await expect(veto).toHaveCount(1);
+    const vetoSpanish =
+      (await veto.getAttribute('data-testid')) === "track-action-Don't recommend this"
+        ? 'No recomendar esto'
+        : 'Volver a recomendar';
+    await expect(veto).toHaveText(vetoSpanish);
     // No item is left in English, and no key leaks as its dotted name.
     const texts = (await measure(menu)).items.map((i) => i.label);
-    for (const english of ['Add to queue', 'Play next', 'Go to', 'Song info', "Don't recommend"]) {
+    for (const english of [
+      'Add to queue',
+      'Play next',
+      'Go to',
+      'Song info',
+      "Don't recommend",
+      'Recommend again',
+    ]) {
       expect(texts.join(' | ')).not.toContain(english);
     }
     expect(texts.join(' | ')).not.toMatch(/\bsong\.|report\./);
