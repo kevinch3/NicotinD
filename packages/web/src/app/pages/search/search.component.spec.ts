@@ -121,7 +121,12 @@ function setup(
       { provide: LibraryApiService, useValue: { resolveArtistIdByName: () => of(null) } },
       {
         provide: TransferService,
-        useValue: { poll: () => {}, getStatus: () => undefined, kickPoll: transferKickPoll },
+        useValue: {
+          poll: () => {},
+          getStatus: () => undefined,
+          kickPoll: transferKickPoll,
+          acquisitionJobs: signal<unknown[]>([]),
+        },
       },
       {
         provide: AcquireService,
@@ -270,6 +275,67 @@ describe('SearchComponent — cancel a track from its row', () => {
     await component.getBlended(row);
     expect(component.blendedState(row)).toBe('working');
     expect(component.blendedJobId(row)).toBe('job-new');
+  });
+
+  // #1885: a track Get is a server job — the server finds the song and picks the copy.
+  describe('server track Get', () => {
+    const song = {
+      id: 'network:peer:c.flac',
+      source: 'network',
+      sourceLabel: 'Peers',
+      title: "L'estasi dell'oro",
+      subtitle: '',
+      score: 1,
+      acquire: { via: 'enqueue', username: 'peer', file: { filename: 'c.flac', size: 1 } },
+      work: { artist: 'Ennio Morricone', title: "L'estasi dell'oro", album: 'Il buono' },
+    } as const;
+
+    function serverSetup() {
+      const getTrack = vi.fn((_w: unknown) => of({ jobId: 'tj-1' }));
+      const enqueueDownload = vi.fn(() => of({ ok: true, queued: 1, jobId: 'direct' }));
+      const ctx = setup({}, {}, {}, { getTrack, enqueueDownload });
+      const feed = (
+        TestBed.inject(TransferService) as unknown as {
+          acquisitionJobs: ReturnType<typeof signal<unknown[]>>;
+        }
+      ).acquisitionJobs;
+      return { ...ctx, getTrack, enqueueDownload, feed };
+    }
+
+    it('posts the song, not the copy, and follows its job on the feed', async () => {
+      const { component, getTrack, enqueueDownload, feed } = serverSetup();
+      await component.getBlended(song);
+      expect(getTrack).toHaveBeenCalledWith(song.work);
+      expect(enqueueDownload).not.toHaveBeenCalled();
+      // Busy and cancellable from the click, before the feed lists the job.
+      expect(component.blendedState(song)).toBe('working');
+      expect(component.blendedJobId(song)).toBe('tj-1');
+
+      feed.set([{ id: 'tj-1', state: 'done' }]);
+      expect(component.blendedState(song)).toBe('done');
+      expect(component.blendedJobId(song)).toBeNull();
+    });
+
+    it('a song nobody has reads failed; a cancel here reads idle', async () => {
+      const { component, feed, autoHunt } = serverSetup();
+      await component.getBlended(song);
+      feed.set([{ id: 'tj-1', state: 'failed', error: 'No copy of "x" was found.' }]);
+      expect(component.blendedState(song)).toBe('failed');
+
+      await component.getBlended(song);
+      feed.set([{ id: 'tj-1', state: 'active' }]);
+      component.cancelBlended(song, 'tj-1');
+      expect(autoHunt.cancel).toHaveBeenCalledWith('tj-1');
+      expect(component.blendedState(song)).toBe('idle');
+    });
+
+    it('a row with no artist gets the very copy it shows', async () => {
+      const { component, getTrack, enqueueDownload } = serverSetup();
+      const { work: _drop, ...noArtist } = song;
+      await component.getBlended(noArtist);
+      expect(getTrack).not.toHaveBeenCalled();
+      expect(enqueueDownload).toHaveBeenCalled();
+    });
   });
 });
 

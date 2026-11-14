@@ -71,6 +71,7 @@ import { RemoteAccess } from './services/tailscale.js';
 import { shareMetaHandler } from './routes/share-meta.js';
 import { discographyRoutes } from './routes/discography.js';
 import { AlbumGetService } from './services/album-get.service.js';
+import { TrackGetService } from './services/track-get.service.js';
 import { AutoCompleteService } from './services/auto-complete.service.js';
 import { catalogNotConfiguredRoutes, catalogRoutes } from './routes/catalog.js';
 import { MusicBrainzClient, MB_USER_AGENT } from './services/musicbrainz-client.js';
@@ -868,6 +869,13 @@ export function createApp({
   );
   app.route('/api/recommendations', recommendationRoutes());
   app.route('/api/playback', playbackRoutes());
+  // The track Get (#1885): same reservation as the album Get, the source's
+  // `tracks` intent. Served under /api/downloads, behind its auth and acquirer gate.
+  const trackGet = new TrackGetService({
+    db,
+    getAddon: () => activeRemoteAcquisitionAddon(plugins),
+  });
+  trackGet.resumePending();
   // Partial-track discard (#810) deletes files, so it carries the same
   // debounced share-rescan the review inbox's discard uses.
   app.route(
@@ -884,6 +892,7 @@ export function createApp({
         getAddon: () => activeRemoteAcquisitionAddon(plugins),
         minMatchPct: config.watchlist.minMatchPct,
       },
+      trackGet,
     ),
   );
   // Mounted before the library routes so `/events` is not shadowed by a
@@ -1084,6 +1093,7 @@ export function createApp({
   // No Lidarr: the catalog answers with a typed reason, not a 404 (#1729).
   // One mount either way, so check:route-auth sees a single /api/catalog.
   let catalogApp: ReturnType<typeof catalogNotConfiguredRoutes> = catalogNotConfiguredRoutes();
+
   if (lidarr) {
     const discographySvc = new DiscographyService(lidarr, db);
     const rootPolicy = lidarrRootPolicyFor(config, {

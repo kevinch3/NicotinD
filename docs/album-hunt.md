@@ -319,7 +319,7 @@ The `LibraryCurator` won't auto-hide a deliberately-hunted release (its normaliz
 
 **Two-phase hunt for live progress**: the hunt modal uses two separate requests — `POST .../hunt/base` (base queries only, returns `{ candidates, skewNeeded }`) followed by `POST .../hunt/skew` (skew queries only, if needed) — so the UI can highlight each query row in real time (idle → searching → done/skipped). The single-shot `POST .../hunt` endpoint is preserved for watchlist/catalog callers.
 
-**Every hunt logs its duration (#1437).** `AddonClient.albumsSearch` allows an addon 180 s, but the hunt routes answer behind the 60 s socket budget, so a hunt that runs past ~56 s without writing a byte is idle-killed before the addon's own ceiling. Nothing recorded real hunt times, so each call now logs `addon hunt completed` / `addon hunt failed` with `durationMs` and `baseUrl` (and `candidates` on success). Since #1626 each line also carries `lane` (`hunt`, `hunt-base`, `hunt-queue`, `hunt-skew`, `resource`, `resource-auto`, `retry`, `watchlist`, `auto-acquire`, `complete-album`), `albumId`, `queuedMs` on the queued lane, and one `outcome` token (`candidates`, `no-candidates`, `source-offline`, `rate-limited`, `timeout`, `error`). With JSON logs, `docker logs nicotind-nicotind-1 | jq -c 'select(.msg=="addon hunt failed") | {lane, outcome}'` groups failures without a parser. The auto-acquire sweep result logs at `info`. **A hunt someone is waiting on ends inside that budget.** Routes answering a request pass `INTERACTIVE_HUNT_TIMEOUT_MS` (55 s) and map `AddonTimeoutError` to a 504 that says what happened, instead of a dropped connection. That is no worse in any case, since past ~56 s the socket was already gone. Unattended lanes (auto-acquire, the watchlist) answer nobody and keep the 180 s. `addon hunt failed` lines with `durationMs` near 55000 are the signal to read on prod: if real hunts reach it, move the hunt to a job like artist provisioning rather than raising the socket budget.
+**Every hunt logs its duration (#1437).** `AddonClient.albumsSearch` allows an addon 180 s, but the hunt routes answer behind the 60 s socket budget, so a hunt that runs past ~56 s without writing a byte is idle-killed before the addon's own ceiling. Nothing recorded real hunt times, so each call now logs `addon hunt completed` / `addon hunt failed` with `durationMs` and `baseUrl` (and `candidates` on success). Since #1626 each line also carries `lane` (`hunt`, `hunt-base`, `hunt-queue`, `hunt-skew`, `resource`, `resource-auto`, `retry`, `watchlist`, `auto-acquire`, `complete-album`, `track-get`), `albumId`, `queuedMs` on the queued lane, and one `outcome` token (`candidates`, `no-candidates`, `source-offline`, `rate-limited`, `timeout`, `error`). With JSON logs, `docker logs nicotind-nicotind-1 | jq -c 'select(.msg=="addon hunt failed") | {lane, outcome}'` groups failures without a parser. The auto-acquire sweep result logs at `info`. **A hunt someone is waiting on ends inside that budget.** Routes answering a request pass `INTERACTIVE_HUNT_TIMEOUT_MS` (55 s) and map `AddonTimeoutError` to a 504 that says what happened, instead of a dropped connection. That is no worse in any case, since past ~56 s the socket was already gone. Unattended lanes (auto-acquire, the watchlist) answer nobody and keep the 180 s. `addon hunt failed` lines with `durationMs` near 55000 are the signal to read on prod: if real hunts reach it, move the hunt to a job like artist provisioning rather than raising the socket budget.
 
 ### The attempt ledger (issue #1626)
 
@@ -593,6 +593,28 @@ live only in `acquireAlbum`. The feed carries no queue position, so a waiting Ge
 rather than "Queued · N ahead".
 
 The manual picker still uses `hunt/queue` and `hunt-download`: choosing a folder is interactive.
+
+## A track Get is a server job
+
+The album Get's shape for one song (#1885). A track row's Get used to enqueue the exact file the
+page search ranked first, straight from the browser. `POST /api/downloads/track` instead takes the
+song, `{ artist, title, album? }`, and answers **202** `{jobId}`, or **503** with no addon, or
+**400** without an artist and a title.
+
+- `TrackGetService.request` (`services/track-get.service.ts`) **reserves a `track-search` job in
+  `resolving`** (`displayTitle` the title, `canonicalTracks` the one title), so the row is busy and
+  cancellable from the click. It also survives the tab closing.
+- The service's own `HuntQueue` hands the source the addon `tracks` intent (lane `track-get`). The
+  source finds the song on the network and picks the copy, and replacing a peer that fails is the
+  addon's job. The addon job attaches to the reservation (`attachAddonRef`, `mapAddonJob`).
+- A song nobody has (the source's 400) closes the job with "No copy of … was found."; any other
+  fault keeps its message (`sanitizeAddonError`). A Get cancelled while the source searched cancels
+  what the source started.
+- `resumePending` re-queues reservations a restart caught before the source was asked.
+- **Web:** a row whose song has an artist carries `work` (`songResultToCandidate`), and its Get
+  posts it (`DownloadsApiService.getTrack`). The row reads its state off that job in the feed:
+  working, done, failed, or idle when cancelled here. A row with no artist to search by, a file in
+  Choose a copy, and the folder browser still get the exact copy they show.
 
 ## Deferred: unify the hunt engines
 

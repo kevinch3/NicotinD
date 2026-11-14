@@ -9,15 +9,20 @@ import {
 } from './helpers/fixture-addon';
 
 const ADDON_ID = 'fixture-cancel-track-addon';
-/** A wire path of its own: a row reads its state off the shared feed by `username:filename`. */
+/**
+ * A wire path of its own, under an artist folder: that folder is how an
+ * untagged peer file names its artist, and a song with an artist is the
+ * server's to find (#1885).
+ */
 const PAYLOAD: FixturePayload = {
   ...RICK_ASTLEY_PAYLOAD,
-  filename: 'Music\\Cancel Track\\01 Never Gonna Give You Up.flac',
+  filename: 'Music\\Rick Astley\\Cancel Track\\01 Never Gonna Give You Up.flac',
 };
 
 /**
  * A single track got from search could only be stopped from the Activity tab.
  * Its row now carries Cancel while the job runs, and reads Get again after.
+ * The Get is a server job (#1885): the row posts the song, the server finds it.
  */
 test.describe('cancel a track from its row', () => {
   let addon: FixtureAddon;
@@ -65,6 +70,11 @@ test.describe('cancel a track from its row', () => {
     await expect(row).toBeVisible({ timeout: 20_000 });
 
     await row.getByTestId('acquire-result-get').click();
+    // The song is the server's to find (#1885): the source gets a `tracks` job
+    // naming it, not the file the row happened to rank first.
+    await expect
+      .poll(() => addon.jobs.map((j) => j.intent), { timeout: 15_000 })
+      .toContain('tracks');
     const cancel = row.getByTestId('acquire-result-cancel');
     await expect(cancel).toBeVisible({ timeout: 20_000 });
     await cancel.click();

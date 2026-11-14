@@ -23,7 +23,8 @@ export type HuntLane =
   | 'retry'
   | 'watchlist'
   | 'auto-acquire'
-  | 'complete-album';
+  | 'complete-album'
+  | 'track-get';
 
 export interface HuntTrace {
   attemptId?: string;

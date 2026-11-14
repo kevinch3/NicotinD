@@ -1324,8 +1324,12 @@ export class SearchComponent implements OnInit, OnDestroy {
   readonly blendedAcquired = signal<Set<string>>(new Set());
 
   async getBlended(c: BlendedCandidate): Promise<void> {
+    if (c.acquire.via === 'enqueue' && c.work) {
+      await this.getServerTrack(c, c.work);
+      return;
+    }
     if (c.acquire.via === 'enqueue') {
-      // Reuse the network download path (downloading-state keyed on username:file).
+      // No artist to search by: get the very copy the row shows.
       await this.handleDownload(c.acquire.username, c.acquire.file);
       return;
     }
@@ -1353,6 +1357,8 @@ export class SearchComponent implements OnInit, OnDestroy {
    * and a finished transfer still has to be organized and scanned.
    */
   blendedState(c: BlendedCandidate): TrackRowState {
+    const server = this.serverTrackState(c);
+    if (server) return server;
     if (c.acquire.via === 'enqueue') {
       const key = `${c.acquire.username}:${c.acquire.file.filename}`;
       if (this.cancelledTracks().has(key)) return 'idle';
@@ -1369,6 +1375,11 @@ export class SearchComponent implements OnInit, OnDestroy {
 
   /** The running job a blended row may cancel: a peer file's own job. */
   blendedJobId(c: BlendedCandidate): string | null {
+    const server = this.serverTrackJobs().get(c.id);
+    if (server && !this.cancelledServerTracks().has(c.id)) {
+      const job = this.transfers.acquisitionJobs().find((j) => j.id === server);
+      return !job || job.state === 'active' ? server : null;
+    }
     if (c.acquire.via !== 'enqueue') return null;
     return this.trackJobId(c.acquire.username, c.acquire.file.filename);
   }
@@ -1405,12 +1416,55 @@ export class SearchComponent implements OnInit, OnDestroy {
   }
 
   cancelBlended(c: BlendedCandidate, jobId: string): void {
+    if (this.serverTrackJobs().get(c.id) === jobId) {
+      this.cancelledServerTracks.update((s) => new Set(s).add(c.id));
+      void this.autoHunt.cancel(jobId);
+      return;
+    }
     if (c.acquire.via === 'enqueue') {
       void this.cancelTrack(c.acquire.username, c.acquire.file.filename, jobId);
     }
   }
 
+  // ─── Server-side track Get (#1885) ──────────────────────────────────
+  /** The job each server track Get started, by row: the server finds the copy. */
+  private readonly serverTrackJobs = signal<ReadonlyMap<string, string>>(new Map());
+  /** Rows whose server Get was cancelled here: they read idle, not failed. */
+  private readonly cancelledServerTracks = signal<ReadonlySet<string>>(new Set());
+
+  private async getServerTrack(
+    c: BlendedCandidate,
+    work: NonNullable<BlendedCandidate['work']>,
+  ): Promise<void> {
+    this.cancelledServerTracks.update((s) => {
+      const next = new Set(s);
+      next.delete(c.id);
+      return next;
+    });
+    try {
+      const { jobId } = await firstValueFrom(this.downloadsApi.getTrack(work));
+      this.serverTrackJobs.update((m) => new Map(m).set(c.id, jobId));
+      this.getThenHear.remember(jobId, 'next');
+      this.downloadError.set(null);
+      void this.transfers.kickPoll();
+    } catch (err) {
+      this.downloadError.set(httpErrorMessage(err, this.i18n.t('getError.download')));
+    }
+  }
+
+  /** A server Get's row state, read off its job in the feed; null for any other row. */
+  private serverTrackState(c: BlendedCandidate): TrackRowState | null {
+    const jobId = this.serverTrackJobs().get(c.id);
+    if (!jobId) return null;
+    if (this.cancelledServerTracks().has(c.id)) return 'idle';
+    const job = this.transfers.acquisitionJobs().find((j) => j.id === jobId);
+    if (!job || job.state === 'active') return 'working';
+    if (job.state === 'done') return 'done';
+    return job.cancelRequested ? 'idle' : 'failed';
+  }
+
   blendedPercent(c: BlendedCandidate): number {
+    if (this.serverTrackJobs().has(c.id)) return 0;
     if (c.acquire.via !== 'enqueue') return 0;
     return this.transfers.getStatus(c.acquire.username, c.acquire.file.filename)?.percent ?? 0;
   }

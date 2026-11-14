@@ -42,6 +42,11 @@ export interface BlendedCandidate {
   acquire:
     | { via: 'enqueue'; username: string; file: { filename: string; size: number } }
     | { via: 'url'; url: string };
+  /**
+   * The song itself, for a server-side Get that finds its own copy (#1885).
+   * Absent when no artist is known: the row then gets the copy it shows.
+   */
+  work?: { artist: string; title: string; album?: string };
 }
 
 const LOSSLESS_FORMAT_BONUS = 30;
@@ -75,6 +80,15 @@ export function songResultToCandidate(s: SongResult, sourceLabel: string): Blend
     format: formatBadge(s.best),
     copies: s.versions.length,
     score,
+    ...(s.artist || s.artistHint
+      ? {
+          work: {
+            artist: (s.artist || s.artistHint)!,
+            title: s.title,
+            ...(s.best.album ? { album: s.best.album } : {}),
+          },
+        }
+      : {}),
     acquire: {
       via: 'enqueue',
       username: s.best.username,
