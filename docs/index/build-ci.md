@@ -22,6 +22,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **`check:route-auth`**: fails when an `/api` group is mounted without `auth` or a reasoned
   `PUBLIC_ROUTES` entry; AST-parsed, not grepped, and it fails when its own count disagrees with the
   file's. → [api-routes.md](../api-routes.md)
+- **`check:addon-sdk-sync`**: `hunt-queries.ts` and `title-match.ts` must match the slskd addon's
+  `main`; blocks only a branch that changed them first, else warns (`syncVerdict`).
+  → [quality-gates.md](../quality-gates.md)
 - **One APK per form factor, F-Droid included**: no build flavour — the single build is
   policy-clean and hides its self-updater at runtime via `getInstallerPackage` +
   `isSideloadInstaller`; `androidAppId` gives TV its own id. → [fdroid.md](../fdroid.md)
