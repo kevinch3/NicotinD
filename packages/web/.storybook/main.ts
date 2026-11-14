@@ -1,3 +1,4 @@
+import { freemem } from 'node:os';
 import type { StorybookConfig } from '@storybook/angular';
 
 const config: StorybookConfig = {
@@ -24,8 +25,23 @@ const config: StorybookConfig = {
       ...webpackConfig.resolve.extensionAlias,
       '.js': ['.ts', '.js'],
     };
+    // Minifying is the build's memory peak: Terser's parallel pass took the whole
+    // build to 3.5 GB and has been OOM-killed (exit 137) on a busy dev machine,
+    // leaving a stale storybook-static for the gates to grade. The gates check
+    // behaviour, not bundle bytes, so a short-memory machine skips it (#1906).
+    if (lowMemory()) {
+      webpackConfig.optimization ??= {};
+      webpackConfig.optimization.minimize = false;
+    }
     return webpackConfig;
   },
 };
+
+/** `NICOTIND_LOW_MEM=1`, or under 4 GB free: CI runners have the headroom, a busy laptop does not. */
+function lowMemory(): boolean {
+  if (process.env['NICOTIND_LOW_MEM'] === '0') return false;
+  const free = process.availableMemory?.() ?? freemem();
+  return process.env['NICOTIND_LOW_MEM'] === '1' || free < 4 * 1024 ** 3;
+}
 
 export default config;
