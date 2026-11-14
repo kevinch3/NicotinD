@@ -41,6 +41,10 @@ const en = {
     expiry:
       'The link works once and expires in 24 hours. Once confirmed, password reset links can be sent here.',
     ignore: "If you didn't ask for this, ignore it — nothing changes until the link is opened.",
+    assignedIntro: (admin: string, server: string) =>
+      `${admin} added this address to your account on the NicotinD server ${server}. Confirm it's yours:`,
+    assignedIgnore:
+      "If you don't have an account there, ignore this email — nothing changes until the link is opened.",
   },
   reset: {
     subject: (server: string) => `Reset your password for ${server}`,
@@ -97,6 +101,10 @@ const es: MailStrings = {
     expiry:
       'El enlace funciona una sola vez y vence en 24 horas. Una vez confirmada, aquí podrán llegarte los enlaces para restablecer la contraseña.',
     ignore: 'Si no lo pediste, ignóralo: nada cambia hasta que se abra el enlace.',
+    assignedIntro: (admin, server) =>
+      `${admin} agregó esta dirección a tu cuenta en el servidor NicotinD ${server}. Confirma que es tuya:`,
+    assignedIgnore:
+      'Si no tienes una cuenta allí, ignora este correo: nada cambia hasta que se abra el enlace.',
   },
   reset: {
     subject: (server) => `Restablece tu contraseña de ${server}`,

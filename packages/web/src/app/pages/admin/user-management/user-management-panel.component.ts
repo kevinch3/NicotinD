@@ -22,7 +22,7 @@ import { MailApiService } from '../../../services/api/mail-api.service';
 import { mailReasonKey } from '../email-delivery/email-delivery-panel.component';
 import { ToastService } from '../../../services/toast.service';
 import { buildInviteLink } from '../../../lib/invite-link';
-import { httpErrorMessageI18n } from '../../../lib/http-error';
+import { httpErrorCode, httpErrorMessageI18n } from '../../../lib/http-error';
 
 /**
  * Admin card for user management: the users table with role/status changes,
@@ -75,6 +75,16 @@ export class UserManagementPanelComponent implements OnInit {
   readonly users = signal<AdminUser[]>([]);
   readonly loading = signal(true);
   readonly error = signal<string | null>(null);
+
+  /** *Assign email…*: the user the dialog is for, the typed address, and its state. */
+  readonly assignTarget = signal<AdminUser | null>(null);
+  readonly assignEmail = signal('');
+  readonly assigning = signal(false);
+  readonly assignError = signal<string | null>(null);
+  /** Sending a link needs mail; removing an address does not. */
+  readonly assignNeedsMail = computed(
+    () => !this.mailEnabled() && this.assignEmail().trim() !== '',
+  );
 
   readonly resetTarget = signal<AdminUser | null>(null);
   readonly newPassword = signal('');
@@ -141,6 +151,68 @@ export class UserManagementPanelComponent implements OnInit {
       }
     } catch (err) {
       this.error.set(httpErrorMessageI18n(err, this.i18n, this.i18n.t('admin.emailResetFailed')));
+    }
+  }
+
+  /** Opens on the address the dialog would most likely be fixing: a pending one, else the current. */
+  openAssignEmail(user: AdminUser): void {
+    this.assignEmail.set(user.pendingEmail ?? user.email ?? '');
+    this.assignError.set(null);
+    this.assignTarget.set(user);
+  }
+
+  /**
+   * Sends the confirmation link (or removes the address) and folds the server's
+   * answer into the row, so "Pending: …" shows without a reload. A failed send
+   * keeps the dialog open with the reason: the pending change exists, and the
+   * admin may want to fix the address or retry.
+   */
+  async handleAssignEmail(): Promise<void> {
+    const target = this.assignTarget();
+    if (!target || this.assigning() || this.assignNeedsMail()) return;
+    const email = this.assignEmail().trim();
+    this.assigning.set(true);
+    this.assignError.set(null);
+    try {
+      const res = await firstValueFrom(this.account.assignUserEmail(target.id, email));
+      this.users.update((prev) =>
+        prev.map((u) =>
+          u.id === target.id
+            ? {
+                ...u,
+                email: res.email,
+                emailVerified: res.emailVerified,
+                pendingEmail: res.pendingEmail,
+              }
+            : u,
+        ),
+      );
+      if (res.mail && !res.mail.ok) {
+        this.assignError.set(
+          `${this.i18n.t('admin.assignEmailFailed')} ${this.i18n.t(mailReasonKey(res.mail.reason))}`,
+        );
+        return;
+      }
+      this.assignTarget.set(null);
+      if (res.mail) {
+        this.toast.show({
+          message: this.i18n.t('admin.assignEmailSent', { email }),
+          kind: 'success',
+        });
+      } else if (!email) {
+        this.toast.show({
+          message: this.i18n.t('admin.assignEmailRemoved', { username: target.username }),
+          kind: 'success',
+        });
+      }
+    } catch (err) {
+      this.assignError.set(
+        httpErrorCode(err) === 'EMAIL_TAKEN'
+          ? this.i18n.t('account.emailTaken')
+          : httpErrorMessageI18n(err, this.i18n, this.i18n.t('admin.assignEmailFailed')),
+      );
+    } finally {
+      this.assigning.set(false);
     }
   }
 

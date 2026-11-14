@@ -117,6 +117,11 @@
                     </span>
                   </div>
                 }
+                @if (user.pendingEmail && user.pendingEmail !== user.email) {
+                  <div class="text-xs text-status-warn break-all" data-testid="user-email-pending">
+                    {{ 'admin.emailPending' | t: { email: user.pendingEmail } }}
+                  </div>
+                }
                 <div class="text-xs text-theme-muted">
                   {{ 'admin.joinedOn' | t: { date: formatDate(user.created_at) } }}
                 </div>
@@ -287,6 +292,14 @@
                     </button>
                     <button
                       type="button"
+                      data-testid="user-action-assign-email"
+                      class="w-full text-left px-4 py-2 text-sm text-theme-secondary hover:bg-theme-hover transition"
+                      (click)="userMenu.close(); openAssignEmail(user)"
+                    >
+                      {{ 'admin.assignEmail' | t }}
+                    </button>
+                    <button
+                      type="button"
                       data-testid="user-action-delete"
                       [disabled]="user.id === currentUserId()"
                       class="w-full text-left px-4 py-2 text-sm text-status-error hover:bg-theme-hover transition disabled:opacity-30 disabled:cursor-not-allowed"
@@ -451,6 +464,64 @@
           class="px-4 py-2 rounded-lg bg-theme-inverse text-theme-inverse text-sm font-semibold hover:opacity-90 transition disabled:opacity-50"
         >
           {{ (resetting() ? 'admin.resettingEllipsis' : 'admin.resetPasswordButton') | t }}
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Assign Email Modal: the admin names an address, a link to it proves it. -->
+@if (assignTarget(); as target) {
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+    appBottomChromeSafe
+    (click)="assignTarget.set(null)"
+  >
+    <div
+      class="bg-theme-surface border border-theme rounded-xl p-6 w-full max-w-sm mx-4"
+      data-testid="assign-email-dialog"
+      (click)="$event.stopPropagation()"
+    >
+      <h3 class="text-sm font-semibold text-theme-primary mb-2">
+        {{ 'admin.assignEmailFor' | t: { username: target.username } }}
+      </h3>
+      <p class="text-xs text-theme-muted mb-4">
+        {{ 'admin.assignEmailHelp' | t: { username: target.username } }}
+      </p>
+      <input
+        type="email"
+        autocomplete="off"
+        data-testid="assign-email-input"
+        [ngModel]="assignEmail()"
+        (ngModelChange)="assignEmail.set($event)"
+        (keydown.enter)="handleAssignEmail()"
+        [placeholder]="i18n.t('admin.assignEmailPlaceholder')"
+        class="w-full px-4 py-2.5 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder:text-theme-muted focus:outline-none focus:border-theme-accent transition text-sm"
+      />
+      @if (assignNeedsMail()) {
+        <p class="text-xs text-status-warn mt-2" data-testid="assign-email-needs-mail">
+          {{ 'admin.emailResetNeedsMail' | t }}
+        </p>
+      }
+      @if (assignError(); as message) {
+        <p class="text-xs text-status-error mt-2" data-testid="assign-email-error">{{ message }}</p>
+      }
+      <div class="flex justify-end gap-2 mt-4">
+        <button
+          type="button"
+          (click)="assignTarget.set(null)"
+          class="px-4 py-2 rounded-lg text-sm text-theme-secondary hover:text-theme-primary transition"
+        >
+          {{ 'admin.cancel' | t }}
+        </button>
+        <button
+          type="button"
+          data-testid="assign-email-submit"
+          (click)="handleAssignEmail()"
+          [disabled]="assigning() || assignNeedsMail()"
+          class="px-4 py-2 rounded-lg bg-theme-inverse text-theme-inverse text-sm font-semibold hover:opacity-90 transition disabled:opacity-50"
+        >
+          {{ (assignEmail().trim() ? 'admin.assignEmailSubmit' : 'admin.assignEmailRemove') | t }}
         </button>
       </div>
     </div>

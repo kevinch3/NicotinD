@@ -46,6 +46,7 @@ import { radioPollAdminRoutes, radioPollPublicRoutes } from './routes/radio-poll
 import { devicesRoutes } from './routes/devices.js';
 import { inviteAdminRoutes, invitePublicRoutes } from './routes/invites.js';
 import { passwordResetAdminRoutes, passwordResetPublicRoutes } from './routes/password-reset.js';
+import { adminUserEmailRoutes } from './routes/admin-user-email.js';
 import { mailAdminRoutes } from './routes/mail.js';
 import { MailService } from './services/mail/mailer.js';
 import { MailSettingsStore } from './services/mail/settings.js';
@@ -993,6 +994,11 @@ export function createApp({
   app.route(
     '/api/admin/password-resets',
     passwordResetAdminRoutes({ db, remoteAccess, publicUrl, mail, serverName }),
+  );
+  // *Assign email…*: the admin names an address, a link to it proves it.
+  app.route(
+    '/api/admin/user-emails',
+    adminUserEmailRoutes({ db, remoteAccess, publicUrl, mail, serverName }),
   );
   app.route(
     '/api/password-reset',

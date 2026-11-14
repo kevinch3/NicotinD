@@ -46,6 +46,7 @@ import type { MaintenanceTaskId } from '../services/maintenance/tasks.js';
 import type { Database } from 'bun:sqlite';
 import { listTranscodeRuns } from '../services/transcode-run-store.js';
 import { describeQuarantine } from '../services/transcode-quarantine.js';
+import { pendingEmailOf } from '../services/email-verification.js';
 
 export interface AdminRoutesDeps {
   musicDir: string;
@@ -187,7 +188,11 @@ export function adminRoutes(deps: AdminRoutesDeps) {
       )
       .all()
       // The address and whether it was proven — not when (docs/email-invitations.md).
-      .map(({ email_verified_at, ...u }) => ({ ...u, emailVerified: email_verified_at !== null }));
+      .map(({ email_verified_at, ...u }) => ({
+        ...u,
+        emailVerified: email_verified_at !== null,
+        pendingEmail: pendingEmailOf(db, u.id, Date.now()),
+      }));
 
     // Merge ephemeral presence (in-memory) into each row; absent users read as offline.
     const active = presenceService.getActiveUsers();

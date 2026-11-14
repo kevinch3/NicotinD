@@ -241,6 +241,37 @@ provider-agnostic**: SMTP is the baseline, so Mailgun is a preset, not a depende
   one reset mail; the link sets a password the old one no longer opens) and the verify block in
   `account-security.spec.ts`.
 
+## Admin: assign an email
+
+For accounts made before email existed (or by a plain link invite), the admin can name the address
+from the users table's ⋯ menu (*Assign email…*, `user-action-assign-email`). The admin names it;
+the user's inbox proves it.
+
+- **Route** (`routes/admin-user-email.ts`, `adminUserEmailRoutes` at `/api/admin/user-emails`,
+  admin-only): `PUT /:userId { email }`. Non-empty: validated (400), refused while mail is off (409
+  `MAIL_NOT_CONFIGURED`) or when another account has it (409 `EMAIL_TAKEN`); otherwise it starts
+  the same verification as the user's own change, through the shared `sendEmailVerification`
+  (`services/mail/verify-mail.ts`), and returns `{ email, emailVerified, pendingEmail, mail }`.
+  **`users.email` does not change until the link is opened** — a mistyped address never receives
+  the account's reset links, and a verified address stays until its replacement is confirmed.
+  Empty clears the address and any pending change (audited `user.email-clear`), which needs no
+  mail: the way out of a wrong address the user cannot fix. Re-entering the verified address sends
+  nothing. Audited `user.email-assign` with `emailed=true|false`, never the address.
+- **The mail** is `verifyEmail` with `assignedBy`: "*boss* added this address to your account…",
+  and "if you don't have an account there, ignore this" in place of "if you didn't ask for this".
+  Language: the target user's saved one, else the admin's browser (`mailLangOf`).
+- **Users list**: `GET /api/admin/users` adds `pendingEmail` (live links only; one
+  `pendingEmailOf` per row — the users table is small). The row shows *Pending: …*
+  (`user-email-pending`) under the address.
+- **Web**: a dialog (`assign-email-dialog`) opening on the pending address, else the current one;
+  submit reads *Send link*, or *Remove email* when empty; disabled with a note while mail is off
+  unless removing. A failed send keeps the dialog open with the reason (the pending change exists;
+  fix the address or retry); `EMAIL_TAKEN` reads as `account.emailTaken`.
+- **Tests**: `routes/admin-user-email.test.ts`, the pending case in `admin.presence.test.ts`, the
+  "Assign email" block in `user-management-panel.component.spec.ts`, and the e2e
+  `assign-email.spec.ts` (assigned through the UI, read back from the outbox, confirmed from the
+  link in a session-less browser, shown verified).
+
 ## Mail language and brand
 
 - **Language** (`services/mail/mail-lang.ts`, `mailLangOf`): the recipient's saved language
