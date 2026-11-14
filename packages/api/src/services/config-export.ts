@@ -31,7 +31,8 @@ export type ConfigSection =
   | 'library_genre_overrides'
   | 'library_artist_aliases'
   | 'library_artist_identity'
-  | 'library_metadata_overrides';
+  | 'library_metadata_overrides'
+  | 'library_song_album_overrides';
 
 type Row = Record<string, unknown>;
 
@@ -70,6 +71,7 @@ export const CONFIG_SECTIONS: Record<ConfigSection, SectionSpec> = {
   library_artist_aliases: {},
   library_artist_identity: {},
   library_metadata_overrides: {},
+  library_song_album_overrides: {},
 };
 
 export interface ConfigBundle {

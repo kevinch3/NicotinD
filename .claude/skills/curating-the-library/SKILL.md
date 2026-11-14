@@ -194,6 +194,13 @@ that mix series' *installment number*, not a year, and the compilation's own rea
 would not have been the remix's true release year. When recall and a title-derived guess disagree,
 that disagreement is the signal to search, not to silently pick the more confident-sounding one.
 
+**A row with no single right year may be two releases.** When `lookup_album_metadata` returns a
+combined title with `year: null` and the parts as separate candidates (Grover Washington, Jr.'s
+"Winelight / The Best Is Yet to Come": 1980 and 1982), do not pick one year for both. Split it:
+`split_album({ albumId, groups: [{ songIds, album, year }, …], confirm: true })`, one group per
+release, assigning songs from `get_album_tracks` by their track order and titles. It never moves
+files and survives rescans. Use the returned `albumId`s afterwards; check `notApplied` is empty.
+
 `flag_for_review` is for ambiguity that risks **wrong data** — a b2b DJ credit, two
 plausible artist identities, an authenticity call — not for "I don't know this one".
 

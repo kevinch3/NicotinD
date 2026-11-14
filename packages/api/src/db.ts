@@ -1609,6 +1609,20 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
     `CREATE INDEX IF NOT EXISTS idx_metadata_overrides_corrected ON library_metadata_overrides(corrected_album_id)`,
   );
 
+  // The song-scoped twin of the table above (#1866): which album a single song
+  // belongs to, so one row holding two releases can be split. Keyed on the
+  // path-derived song id, so it survives rescans and is carried on a re-land.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_song_album_overrides (
+      song_id    TEXT PRIMARY KEY,
+      artist     TEXT,
+      album      TEXT NOT NULL,
+      year       INTEGER,
+      source     TEXT,
+      updated_at INTEGER NOT NULL
+    )
+  `);
+
   // The download inbox (#411, "hold for review") is gone with instant landing:
   // drop its decision table wherever an older build created it.
   db.run(`DROP TABLE IF EXISTS download_reviews`);

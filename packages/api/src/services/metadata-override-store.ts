@@ -67,12 +67,65 @@ export function findByCorrectedId(db: Database, albumId: string): MetadataOverri
     : null;
 }
 
-/** Load every (rawAlbumId → correction) mapping; threaded into the scanner build. */
+/**
+ * Key of a song-scoped override in the map `loadOverrides` returns. Album keys
+ * are bare sha1 hex, so the prefix cannot collide with one.
+ */
+export function songOverrideKey(songId: string): string {
+  return `song:${songId}`;
+}
+
+/**
+ * Load every correction, threaded into the scanner build: album-scoped ones by
+ * raw albumId, song-scoped ones (#1866) by {@link songOverrideKey}. One map, so
+ * every build path that honours the first honours the second.
+ */
 export function loadOverrides(db: Database): Map<string, MetadataOverrideValue> {
   const rows = db.query<DbRow, []>('SELECT * FROM library_metadata_overrides').all();
   const map = new Map<string, MetadataOverrideValue>();
   for (const r of rows) map.set(r.raw_album_id, toValue(r));
+  const songRows = db
+    .query<{ song_id: string; artist: string | null; album: string; year: number | null }, []>(
+      'SELECT song_id, artist, album, year FROM library_song_album_overrides',
+    )
+    .all();
+  for (const r of songRows) {
+    const v: MetadataOverrideValue = { album: r.album };
+    if (r.artist != null) v.artist = r.artist;
+    if (r.year != null) v.year = r.year;
+    map.set(songOverrideKey(r.song_id), v);
+  }
   return map;
+}
+
+/**
+ * Pin one song to an album (#1866). Applied by the scanner after any album-scoped
+ * correction, so it wins for that song. `artist` is the album artist.
+ */
+export function setSongAlbumOverride(
+  db: Database,
+  songId: string,
+  value: { album: string; artist?: string; year?: number },
+  opts: { source?: string } = {},
+): void {
+  db.run(
+    `INSERT INTO library_song_album_overrides (song_id, artist, album, year, source, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(song_id) DO UPDATE SET
+       artist = excluded.artist,
+       album = excluded.album,
+       year = excluded.year,
+       source = excluded.source,
+       updated_at = excluded.updated_at`,
+    [
+      songId,
+      value.artist ?? null,
+      value.album,
+      value.year ?? null,
+      opts.source ?? null,
+      Date.now(),
+    ],
+  );
 }
 
 /**
