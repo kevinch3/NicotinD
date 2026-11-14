@@ -48,7 +48,7 @@ runs its steps in sequence, so its peak is its largest step, and each large step
 
 | Step | Before | After | How |
 | --- | --- | --- | --- |
-| `bun run test` (backend) | 6.2 GB, 4 m 25 s | ≤ 3 GB, 2 m 45 s | `scripts/test-sharded.ts`: 8 sequential `bun test` processes (`TEST_SHARDS`) |
+| `bun run test` (backend) | 6.2 GB, 4 m 25 s | 2.1 GB, 2 m 33 s | `scripts/test-sharded.ts`: 12 sequential `bun test` processes (`TEST_SHARDS`) |
 | `test:web` | 2.4 GB at 12 workers | ~170 MB per worker | `maxWorkers` = one per core, capped at one per 300 MB free (`VITEST_MAX_WORKERS`) |
 | `build:storybook` | 3.5 GB | 1.9 GB | no minify under 4 GB free or `NICOTIND_LOW_MEM=1` |
 
@@ -57,9 +57,15 @@ files: the suite peaked at 6.2 GB against 1.3 GB for its heaviest single file
 (`library-scanner.rebucket.test.ts`), and `--smol` only got it to 5.8 GB. A fresh process per
 shard bounds the peak by the shard, and turned out faster as well. Files are dealt **round-robin**
 from the sorted list, because the heaviest family (`library-scanner.*`) sorts together and a
-contiguous split stacked it into one 3.9 GB shard. The runner asserts its own denominator:
-`test-sharded.test.ts` checks that it finds exactly the files one `bun test` with the same
-arguments searches. CI's `ci` job runs `bun test <paths>` directly and is unchanged.
+contiguous split stacked it into one 3.9 GB shard. Twelve shards rather than eight: 2.5 GB
+against 2.1 GB, at no cost in time, and the heaviest single file (1.3 GB) is the floor.
+
+**The runner asserts its own denominator, in-process.** Each shard's summary ("Ran N tests across
+M files") is read back and must name every file the shard was dealt, or the run fails. The first
+version proved it with a unit test that spawned a whole `bun test` discovery beside the running
+shard; that second process was what the OOM killer took in a 3 GB cgroup. `test-sharded.test.ts`
+now checks discovery against a fixture tree of every pattern `bun test` collects. CI's `ci` job runs
+`bun test <paths>` directly and is unchanged.
 
 **Free memory means the cgroup's.** `os.freemem()` reports the host and ignores a
 `MemoryMax`; both configs read Node 22's `process.availableMemory()`, which honours it.

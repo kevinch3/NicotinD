@@ -13,12 +13,13 @@
  * stacking in one.
  *
  * Arguments naming a file or a test filter (anything that is not a root
- * directory or a flag) run as one plain `bun test`, unsharded.
+ * directory or a flag) run as one plain `bun test`, unsharded. Each shard's
+ * summary must report every file it was dealt, or the run fails.
  */
 import { readdirSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 
-const DEFAULT_SHARDS = 8;
+const DEFAULT_SHARDS = 12;
 /** What `bun test` collects: `*.test.*`, `*_test.*`, `*.spec.*`, `*_spec.*`. */
 const TEST_FILE = /[._](test|spec)\.(c|m)?[jt]sx?$/;
 
@@ -85,6 +86,32 @@ function run(args: string[]): number {
     .exitCode;
 }
 
+/** The file count from `bun test`'s summary ("Ran 12 tests across 3 files."), or null. */
+export function filesRan(output: string): number | null {
+  const m = /Ran \d+ tests? across (\d+) files?/.exec(output.replace(/\x1b\[[0-9;]*m/g, ''));
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * One shard, its output passed straight through. The summary is read back so
+ * the run can prove every file it dealt out actually ran — the denominator,
+ * asserted without a second process holding memory beside the shard (#1906).
+ */
+async function runShard(args: string[]): Promise<{ code: number; files: number | null }> {
+  const proc = Bun.spawn(['bun', 'test', ...args], {
+    stdin: 'inherit',
+    stdout: 'inherit',
+    stderr: 'pipe',
+  });
+  let tail = '';
+  const decoder = new TextDecoder();
+  for await (const chunk of proc.stderr) {
+    process.stderr.write(chunk);
+    tail = (tail + decoder.decode(chunk, { stream: true })).slice(-4096);
+  }
+  return { code: await proc.exited, files: filesRan(tail) };
+}
+
 if (import.meta.main) {
   const argv = process.argv.slice(2);
   const plan = parseArgs(argv);
@@ -98,11 +125,18 @@ if (import.meta.main) {
   }
   const n = Number(process.env.TEST_SHARDS) || DEFAULT_SHARDS;
   const shards = shard(files, n);
-  const failed: number[] = [];
-  shards.forEach((group, i) => {
+  const failed: string[] = [];
+  for (const [i, group] of shards.entries()) {
     console.error(`\n[test] shard ${i + 1}/${shards.length}: ${group.length} files`);
-    if (run([...plan.passthrough, ...group.map((f) => `./${f}`)]) !== 0) failed.push(i + 1);
-  });
+    const { code, files: ran } = await runShard([
+      ...plan.passthrough,
+      ...group.map((f) => `./${f}`),
+    ]);
+    if (code !== 0) failed.push(`${i + 1}`);
+    // A file bun skipped is a test that silently stopped running.
+    else if (ran !== group.length)
+      failed.push(`${i + 1} (ran ${ran ?? '?'} of ${group.length} files)`);
+  }
   console.error(
     `\n[test] ${files.length} files in ${shards.length} shards` +
       (failed.length ? ` — FAILED in shard ${failed.join(', ')}` : ' — all passed'),
