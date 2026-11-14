@@ -1647,6 +1647,15 @@ describe('ArtistDetailComponent — value sources', () => {
     ).toBeNull();
   });
 
+  it('names the provider an automatic portrait came from (#1860)', async () => {
+    serverArtistPatch = { ...COMPLETE, sources: { bio: null, origin: null, portrait: 'spotify' } };
+    const { fixture } = setup('admin');
+    await flush();
+    fixture.detectChanges();
+    const portrait = fixture.nativeElement.querySelector('[data-testid="artist-source-portrait"]');
+    expect(portrait?.textContent).toContain('Spotify');
+  });
+
   it("a curator's own country edit becomes the country's source", async () => {
     serverArtistPatch = {
       ...COMPLETE,

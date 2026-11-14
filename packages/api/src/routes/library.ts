@@ -186,13 +186,13 @@ function getMbClient(dataDir?: string): MusicBrainzClient | null {
  */
 /**
  * Where each artist-page header value came from (#1855). Only what is recorded:
- * a bio's and an origin's `source`, and a portrait a curator set (which locks
- * the row); an automatic portrait's provider is not stored.
+ * a bio's and an origin's `source`, a portrait a curator set (which locks the
+ * row), and otherwise the provider its `library_artwork` row names (#1860).
  */
 function artistSources(
   db: Database,
   artistId: string,
-): { bio: string | null; origin: string | null; portrait: 'user' | null } {
+): { bio: string | null; origin: string | null; portrait: string | null } {
   const meta = getArtistMeta(db, artistId);
   const origin = getArtistOrigin(db, artistId);
   const row = db
@@ -203,8 +203,18 @@ function artistSources(
   return {
     bio: meta?.bio ? meta.source : null,
     origin: origin?.country ? origin.source : null,
-    portrait: row?.cover_art && row.manual_override === 1 ? 'user' : null,
+    portrait: row?.cover_art && row.manual_override === 1 ? 'user' : artworkSource(db, artistId),
   };
+}
+
+function artworkSource(db: Database, artistId: string): string | null {
+  return (
+    db
+      .query<{ source: string | null }, [string]>(
+        `SELECT source FROM library_artwork WHERE id = ? AND kind = 'artist'`,
+      )
+      .get(artistId)?.source ?? null
+  );
 }
 
 async function fetchAndStoreArtistInfo(

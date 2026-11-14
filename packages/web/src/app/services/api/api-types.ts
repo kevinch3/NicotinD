@@ -1632,5 +1632,6 @@ export interface ArtistCompletion {
 export interface ArtistSources {
   bio: string | null;
   origin: string | null;
-  portrait: 'user' | null;
+  /** 'user' for a curator's pick, else the provider that answered (#1860). */
+  portrait: string | null;
 }

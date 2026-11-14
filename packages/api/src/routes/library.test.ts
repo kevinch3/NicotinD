@@ -21,6 +21,7 @@ import { normalizeArtistForGrouping } from '../services/album-grouping.js';
 import { artistIdFor } from '../services/library-scanner.js';
 
 import { applySchema } from '../db.js';
+import { setArtwork } from '../services/artwork-store.js';
 import { createJob } from '../services/acquisition-job-store.js';
 
 const sharedDb = new Database(':memory:');
@@ -2169,6 +2170,15 @@ describe('artist-info routes', () => {
       artist: Sources;
     };
     expect(body.artist.sources.portrait).toBe('user');
+  });
+
+  it('GET /artists/:id names the provider of an automatic portrait (#1860)', async () => {
+    const artistId = seedArtistWithAlbum('art-src-auto', 'Auto Portrait');
+    setArtwork(testDb, artistId, 'artist', 'https://x/p.jpg', undefined, 'spotify');
+    const body = (await (await makeApp('user').request(`/artists/${artistId}`)).json()) as {
+      artist: { sources: { portrait: unknown } };
+    };
+    expect(body.artist.sources.portrait).toBe('spotify');
   });
 
   it('GET /artists/:id names no source for a tombstone (nothing to attribute)', async () => {

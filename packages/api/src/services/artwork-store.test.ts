@@ -24,6 +24,24 @@ beforeEach(() => {
   applySchema(db);
 });
 
+describe('setArtwork source (#1860)', () => {
+  const source = (id: string) =>
+    db
+      .query<{ source: string | null }, [string]>('SELECT source FROM library_artwork WHERE id = ?')
+      .get(id)?.source;
+
+  it('records the provider, keeps it on a same-URL rewrite, clears it on a new URL', () => {
+    setArtwork(db, 'art-1', 'artist', 'https://x/a.jpg', undefined, 'spotify');
+    expect(source('art-1')).toBe('spotify');
+    setArtwork(db, 'art-1', 'artist', 'https://x/a.jpg');
+    expect(source('art-1')).toBe('spotify');
+    setArtwork(db, 'art-1', 'artist', 'https://x/b.jpg');
+    expect(source('art-1')).toBeNull();
+    setArtwork(db, 'art-1', 'artist', 'https://x/c.jpg', undefined, 'discogs');
+    expect(source('art-1')).toBe('discogs');
+  });
+});
+
 describe('resolveArtwork', () => {
   it('returns a direct album hit', () => {
     setArtwork(db, 'alb-1', 'album', 'https://x/cover.jpg');

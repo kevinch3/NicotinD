@@ -64,6 +64,10 @@ export function resolveArtwork(db: Database, id: string): ResolvedArtwork | null
  * A new or different URL is a cover change, so it bumps the entity's `cover_rev`
  * (#1666); re-setting the same URL — every enrichment and backfill pass does —
  * bumps nothing.
+ *
+ * `source` names the provider that answered (#1860). Re-setting the same URL
+ * without one keeps what is recorded; a new URL without one clears it, since
+ * the old provider no longer describes the image.
  */
 export function setArtwork(
   db: Database,
@@ -71,19 +75,23 @@ export function setArtwork(
   kind: ArtworkKind,
   url: string,
   coverCacheDir?: string,
+  source?: string,
 ): void {
   if (!url) return;
   const prev = db
     .query<{ cover_url: string }, [string]>('SELECT cover_url FROM library_artwork WHERE id = ?')
     .get(id);
   db.run(
-    `INSERT INTO library_artwork (id, kind, cover_url, updated_at)
-     VALUES (?, ?, ?, ?)
+    `INSERT INTO library_artwork (id, kind, cover_url, updated_at, source)
+     VALUES (?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        kind = excluded.kind,
+       source = CASE WHEN library_artwork.cover_url = excluded.cover_url
+                     THEN COALESCE(excluded.source, library_artwork.source)
+                     ELSE excluded.source END,
        cover_url = excluded.cover_url,
        updated_at = excluded.updated_at`,
-    [id, kind, url, Date.now()],
+    [id, kind, url, Date.now(), source ?? null],
   );
   if (coverCacheDir && prev && prev.cover_url !== url) {
     purgeCanonicalCache(coverCacheDir, id);

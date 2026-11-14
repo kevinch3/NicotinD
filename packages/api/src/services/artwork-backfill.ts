@@ -192,7 +192,7 @@ export async function backfillArtwork(
 
     const image = pickArtistImage(lidarrArtist.images);
     if (image) {
-      if (opts.apply) setArtwork(db, artist.id, 'artist', image, opts.coverCacheDir);
+      if (opts.apply) setArtwork(db, artist.id, 'artist', image, opts.coverCacheDir, 'lidarr');
       result.artistsMatched += 1;
     } else {
       result.artistsUnresolved += 1;
@@ -268,7 +268,8 @@ export async function backfillArtwork(
           )
           .get(album.artist_id)
       ) {
-        if (opts.apply) setArtwork(db, album.artist_id, 'artist', poster, opts.coverCacheDir);
+        if (opts.apply)
+          setArtwork(db, album.artist_id, 'artist', poster, opts.coverCacheDir, 'lidarr');
         result.artistsMatched += 1;
       }
     }

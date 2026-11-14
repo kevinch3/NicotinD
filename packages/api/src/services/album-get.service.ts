@@ -270,7 +270,7 @@ export class AlbumGetService {
       }
       const artistImage = pickArtistImage(album?.artist?.images);
       if (artistImage) {
-        setArtwork(db, artistIdFor(artistName), 'artist', artistImage, coverCacheDir);
+        setArtwork(db, artistIdFor(artistName), 'artist', artistImage, coverCacheDir, 'lidarr');
       }
       recordAcquiredArtistIdentity(db, {
         artistKey: artistIdFor(artistName),

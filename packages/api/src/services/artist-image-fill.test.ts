@@ -123,8 +123,10 @@ describe('fillArtistImages (#250)', () => {
     expect(res.applied).toBe(1);
     expect(res.labels[0]).toContain('Real Artist');
     expect(
-      db.query(`SELECT cover_url FROM library_artwork WHERE id = 'a' AND kind = 'artist'`).get(),
-    ).toEqual({ cover_url: 'https://cdn/portrait.jpg' });
+      db
+        .query(`SELECT cover_url, source FROM library_artwork WHERE id = 'a' AND kind = 'artist'`)
+        .get(),
+    ).toEqual({ cover_url: 'https://cdn/portrait.jpg', source: 'spotify' });
   });
 
   it('reports an unresolvable artist rather than counting it as applied', async () => {

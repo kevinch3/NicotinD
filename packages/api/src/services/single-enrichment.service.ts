@@ -94,7 +94,7 @@ export class SingleEnrichmentService {
     // Artist photo (audio files carry none) — match the catalog artist by name.
     const artist = result.artists.find((a) => titlesMatch(a.name, row.artist));
     if (artist?.imageUrl) {
-      setArtwork(db, row.artist_id, 'artist', artist.imageUrl, coverCacheDir);
+      setArtwork(db, row.artist_id, 'artist', artist.imageUrl, coverCacheDir, 'lidarr');
     }
 
     log.info(
