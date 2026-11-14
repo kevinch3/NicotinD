@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { Component } from '@angular/core';
+import { By } from '@angular/platform-browser';
 import { MenuPanelComponent } from './menu-panel.component';
 import { BackButtonService } from '../../services/native/back-button.service';
 
@@ -67,14 +68,22 @@ describe('MenuPanelComponent D-pad support (issue #389)', () => {
     fixture.detectChanges();
     const root: HTMLElement = fixture.nativeElement;
     const trig = root.querySelector<HTMLButtonElement>('.trig')!;
+    const menu = fixture.debugElement.query(By.directive(MenuPanelComponent))
+      .componentInstance as MenuPanelComponent;
+    // jsdom cannot measure, and signal view queries never populate here, so
+    // `reposition()` never runs, nor the view check after it: `place()`
+    // stands in for both.
+    const place = () => {
+      menu.positioned.set(true);
+      fixture.detectChanges();
+      menu.ngAfterViewChecked();
+    };
     const openMenu = async () => {
       trig.focus();
       trig.click();
       fixture.detectChanges();
-      // The autofocus lives in an injector effect keyed on the panel
-      // viewChild — let the scheduler flush it, then render the outcome.
       await fixture.whenStable();
-      fixture.detectChanges();
+      place();
     };
     const q = (sel: string) => root.querySelector<HTMLButtonElement>(sel)!;
     const key = (el: HTMLElement, key: string): KeyboardEvent => {
@@ -82,12 +91,24 @@ describe('MenuPanelComponent D-pad support (issue #389)', () => {
       el.dispatchEvent(event);
       return event;
     };
-    return { fixture, trig, openMenu, q, key };
+    return { fixture, trig, openMenu, place, q, key };
   }
 
   it('opening the menu focuses the first action', async () => {
     const { openMenu, q } = setupHost();
     await openMenu();
+    expect(document.activeElement).toBe(q('.a1'));
+  });
+
+  it('waits for the panel to be positioned before focusing the first action (#1862)', async () => {
+    const { fixture, trig, place, q } = setupHost();
+    trig.focus();
+    trig.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    // Still visibility:hidden — focus() there is a no-op in a real browser.
+    expect(document.activeElement).toBe(trig);
+    place();
     expect(document.activeElement).toBe(q('.a1'));
   });
 
