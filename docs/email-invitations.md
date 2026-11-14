@@ -116,8 +116,8 @@ provider-agnostic**: SMTP is the baseline, so Mailgun is a preset, not a depende
   body or token). `usage()` drives the "N / cap today" meter. Failures and refusals do not count.
 - **Link base**: `candidateUrls` takes an optional `publicUrl` first; invites, reset links and the
   test email all go through `linkBaseCandidates` (public URL → Funnel → request origin).
-- **Template** (`services/mail/templates.ts`): `testEmail` — text plus inline-styled HTML, no
-  remote assets, every value through `escapeHtml`, and a link to `<linkBase>/` so the test proves
+- **Template** (`services/mail/templates.ts`): `testEmail` — text plus inline-styled HTML (branded
+  and localized since; see "Mail language and brand"), no remote assets, every value through `escapeHtml`, and a link to `<linkBase>/` so the test proves
   the base opens.
 - **Routes** (`routes/mail.ts`, `mailAdminRoutes` at `/api/admin/mail`, admin-only): `GET /`,
   `PUT /` (audited `mail.settings` with the changed field *names*), `POST /test` (audited
@@ -240,6 +240,29 @@ provider-agnostic**: SMTP is the baseline, so Mailgun is a preset, not a depende
   verifies an address through the real flow; the same confirmation for them and for an unknown name,
   one reset mail; the link sets a password the old one no longer opens) and the verify block in
   `account-security.spec.ts`.
+
+## Mail language and brand
+
+- **Language** (`services/mail/mail-lang.ts`, `mailLangOf`): the recipient's saved language
+  (`user_settings.language`), else the `Accept-Language` of the request that caused the mail
+  (`negotiateLang`: by q-value, then order, matched on the base language), else English — the web
+  app's own order, so the 5-of-6 prod accounts that never picked a language read mail as they read
+  the app. Per mail: the test send and an invite follow the **admin** who sent it (an invitee has no
+  account yet); verify follows the user; an admin's *Email reset link* and *Set password…* notice
+  follow the target user, falling back to the admin's browser; a forgot-password mail follows the
+  **account**, and only falls back to the anonymous request when the account saved none.
+- **Words** (`services/mail/strings.ts`, `MAIL_STRINGS`): one object per language, `es` typed as the
+  shape of `en`, so a sentence missing from one language is a typecheck failure. Kept in core
+  rather than read from the web's `public/i18n/*.json`, which the API does not ship. Role names
+  match the app's `admin.role.*` (English *refiner*, Spanish *curador*). Dates are
+  `formatUtc(ms, lang)` with the language's month names; a link lifetime is `formatDuration`
+  (`resetEmail` takes `ttlMs`, not a worded string).
+- **Brand** (`templates.ts` `layout`): the app icon's colours — a dark `#09090b` header with an
+  indigo `#6366f1` play mark drawn as a table cell plus a text glyph (no image: remote images are
+  blocked or tracked, data URIs are stripped by Gmail), the wordmark, the server name, a two-tone
+  indigo/coral rule, an indigo button, an inbox preheader, and a footer naming the server. The
+  layout is tables because clients that ignore `max-width` on a div honour it on a table. The text
+  part ends with the same footer.
 
 ## Provider note: Brevo click tracking breaks token links
 

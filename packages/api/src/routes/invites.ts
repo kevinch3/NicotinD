@@ -18,6 +18,8 @@ import { sessionVersionOf } from '../services/session-version.js';
 import { linkBaseCandidates } from '../services/link-base.js';
 import type { MailSendResult, MailService } from '../services/mail/mailer.js';
 import { inviteEmail } from '../services/mail/templates.js';
+import { mailLangOf } from '../services/mail/mail-lang.js';
+import type { PreferenceLang } from '@nicotind/core';
 import type { RemoteAccess } from '../services/tailscale.js';
 import {
   acceptInvite,
@@ -81,6 +83,7 @@ export function inviteAdminRoutes(deps: InviteAdminRoutesDeps) {
     urls: string[],
     requestUrl: string,
     inviterName: string,
+    lang: PreferenceLang,
   ): Promise<MailSendResult> {
     if (!invite.email || !deps.mail) return MAIL_OFF;
     const base = (urls[0] ?? new URL(requestUrl).origin).replace(/\/+$/, '');
@@ -92,6 +95,7 @@ export function inviteAdminRoutes(deps: InviteAdminRoutesDeps) {
         role: invite.role,
         link: `${base}/invite#t=${token}`,
         expiresAt: invite.expiresAt,
+        lang,
       }),
     });
   }
@@ -118,7 +122,14 @@ export function inviteAdminRoutes(deps: InviteAdminRoutesDeps) {
     const urls = await linkBaseCandidates(linkSources, c.req.url);
     const { invite, token } = result;
     const mail = invite.email
-      ? await sendInvite(invite, token, urls, c.req.url, actor.username ?? 'Your server admin')
+      ? await sendInvite(
+          invite,
+          token,
+          urls,
+          c.req.url,
+          actor.username ?? 'Your server admin',
+          mailLangOf(db, actor.sub, c.req.header('accept-language')),
+        )
       : null;
     // Whether it was mailed, never to whom: the audit log is not an address book.
     recordAudit(db, actor, 'invite.create', {
@@ -147,6 +158,7 @@ export function inviteAdminRoutes(deps: InviteAdminRoutesDeps) {
           urls,
           c.req.url,
           actor.username ?? 'Your server admin',
+          mailLangOf(db, actor.sub, c.req.header('accept-language')),
         )
       : null;
     recordAudit(db, actor, 'invite.rotate', {

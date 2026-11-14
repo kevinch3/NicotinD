@@ -21,6 +21,7 @@ import { listOutbox } from '../services/mail/outbox.js';
 import { MAIL_PRESETS } from '../services/mail/presets.js';
 import { looksLikeEmail, type MailSettings } from '../services/mail/settings.js';
 import { testEmail } from '../services/mail/templates.js';
+import { mailLangOf } from '../services/mail/mail-lang.js';
 import type { RecoverySetting } from '../services/recovery-setting.js';
 import type { RemoteAccess } from '../services/tailscale.js';
 
@@ -139,7 +140,11 @@ export function mailAdminRoutes(deps: MailAdminRoutesDeps) {
     const linkBase = bases[0] ?? new URL(c.req.url).origin;
     const result = await mail.send('test', {
       to,
-      ...testEmail({ serverName: serverName(), linkBase }),
+      ...testEmail({
+        serverName: serverName(),
+        linkBase,
+        lang: mailLangOf(db, c.get('user')?.sub, c.req.header('accept-language')),
+      }),
     });
     recordAudit(db, c.get('user'), 'mail.test', {
       targetKind: 'mail',

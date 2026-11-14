@@ -275,6 +275,7 @@ export function adminRoutes(deps: AdminRoutesDeps) {
     void notifyPasswordChanged(
       { db, mail: deps.mail, serverName: deps.serverName ?? hostname },
       id,
+      c.req.header('accept-language'),
     );
     return c.json({ ok: true });
   });

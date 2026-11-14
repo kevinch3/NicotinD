@@ -17,6 +17,7 @@ import { sessionVersionOf } from '../services/session-version.js';
 import { linkBaseCandidates } from '../services/link-base.js';
 import type { MailService } from '../services/mail/mailer.js';
 import { resetEmail } from '../services/mail/templates.js';
+import { mailLangOf } from '../services/mail/mail-lang.js';
 import { notifyPasswordChanged } from '../services/password-notice.js';
 import type { RemoteAccess } from '../services/tailscale.js';
 import { verifiedEmailOf } from '../services/user-email.js';
@@ -89,7 +90,8 @@ export function passwordResetAdminRoutes(deps: PasswordResetAdminDeps) {
           serverName: serverName(),
           username: user.username,
           link: `${base}/reset-password#t=${issued.token}`,
-          expiresIn: '24 hours',
+          ttlMs: ADMIN_RESET_TTL_MS,
+          lang: mailLangOf(db, userId, c.req.header('accept-language')),
         }),
       });
       recordAudit(db, actor, 'user.reset-link', {
@@ -160,7 +162,11 @@ export function passwordResetPublicRoutes(deps: PasswordResetPublicDeps) {
       targetKind: 'user',
       targetId: user.id,
     });
-    void notifyPasswordChanged({ db, mail: deps.mail, serverName, now }, user.id);
+    void notifyPasswordChanged(
+      { db, mail: deps.mail, serverName, now },
+      user.id,
+      c.req.header('accept-language'),
+    );
     // Signed after the bump, so this is the one session that survives it.
     const token = await signJwt(
       { sub: user.id, username: user.username, role: user.role, tv: sessionVersionOf(db, user.id) },

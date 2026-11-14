@@ -12,6 +12,7 @@ import type { Database } from 'bun:sqlite';
 import { createLogger } from '@nicotind/core';
 import type { MailService } from './mail/mailer.js';
 import { passwordChangedEmail } from './mail/templates.js';
+import { mailLangOf } from './mail/mail-lang.js';
 import { verifiedEmailOf } from './user-email.js';
 
 const log = createLogger('password-notice');
@@ -27,6 +28,8 @@ export interface PasswordNoticeDeps {
 export async function notifyPasswordChanged(
   deps: PasswordNoticeDeps,
   userId: string,
+  /** The request that changed it: its language words the notice when the user saved none. */
+  acceptLanguage?: string | null,
 ): Promise<boolean> {
   try {
     const { db, mail } = deps;
@@ -43,6 +46,7 @@ export async function notifyPasswordChanged(
         serverName: deps.serverName(),
         username: user.username,
         at: (deps.now ?? Date.now)(),
+        lang: mailLangOf(db, userId, acceptLanguage),
       }),
     });
     if (!result.ok) log.warn({ userId, reason: result.reason }, 'password-changed notice not sent');
