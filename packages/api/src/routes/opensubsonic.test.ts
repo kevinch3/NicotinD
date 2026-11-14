@@ -286,6 +286,30 @@ describe('OpenSubsonic browsing', () => {
   });
 });
 
+describe('OpenSubsonic getTopSongs', () => {
+  const topIds = async (params: Record<string, string> = {}) =>
+    (
+      (await ok('getTopSongs', { artist: 'Air', ...params })) as {
+        topSongs: { song?: R[] };
+      }
+    ).topSongs.song?.map((x) => x.id) ?? [];
+
+  it('ranks as the artist page does: ListenBrainz first, then local plays, never padded (#1867)', async () => {
+    db.run("UPDATE library_songs SET popularity = 0.9 WHERE id = 's2'");
+    db.run(
+      `INSERT INTO play_events (client_event_id, user_id, song_id, at, ms_played, counted, reason)
+       VALUES ('e1', 'u1', 's1', 1, 60000, 1, 'ended'), ('e2', 'u1', 's1', 2, 60000, 1, 'ended')`,
+    );
+    // s3 has no signal: the old ranking padded it in, the Popular block does not.
+    expect(await topIds()).toEqual(['s2', 's1']);
+    expect(await topIds({ count: '1' })).toEqual(['s2']);
+  });
+
+  it('answers empty for an artist no signal ranks', async () => {
+    expect(await topIds()).toEqual([]);
+  });
+});
+
 describe('OpenSubsonic media', () => {
   it('streams the file, honouring Range', async () => {
     const full = await call('stream', { id: 's1' });

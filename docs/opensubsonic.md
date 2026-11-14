@@ -77,13 +77,16 @@ extension). The `.view` suffix older clients add is accepted.
 | Search | `search2` `search3` | `LibrarySearchProvider`; an empty query pages `/api/library/songs` |
 | Media | `stream` `download` `getCoverArt` `getLyricsBySongId` `getLyrics` | `/api/stream/:id`, `/api/cover/:id`, `/songs/:id/lyrics` |
 | User data | `star` `unstar` `scrobble` `getPlaylists` `getPlaylist` `createPlaylist` `updatePlaylist` `deletePlaylist` | likes, `user_starred_items`, `/api/history/plays`, `/api/playlists` |
-| Discovery | `getSimilarSongs(2)` `getTopSongs` | `/songs/:id/similar`, `popularity` |
+| Discovery | `getSimilarSongs(2)` `getTopSongs` | `/songs/:id/similar`, `/artists/:id/top-songs` |
 | Empty by design | `getNowPlaying` `getInternetRadioStations` `getPodcasts` `getNewestPodcasts` `getBookmarks` `getPlayQueue` `getShares` | — |
 
 The artist index leaves out an artist with no album, as the web grid does, since their page would list nothing. Their `getArtist` still answers, so a song's artist link keeps working (#1526).
 
 ### Mapping notes
 
+- **Top songs are the artist page's Popular block.** `getTopSongs` reads `/artists/:id/top-songs`, so
+  it ranks as the web does (ListenBrainz score, then local plays, one song per recording), returns
+  at most `TOP_SONGS_MAX` (20) whatever `count` asks, and never pads with unranked songs (#1867).
 - **Albums of every release type.** The web grid shows full-length albums only and puts singles and
   EPs on the artist page. Subsonic has no such split, so the album lists ask for
   `classification=any`. `releaseTypes` and `isCompilation` carry the type.
