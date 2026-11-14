@@ -491,6 +491,16 @@ E2E_SKIP_BUILD=1 bunx playwright test --project=tv      # the TV bundle only (ru
 bun run --filter @nicotind/e2e typecheck    # type-check the specs (also part of root typecheck)
 ```
 
+**A `--project` subset starts only what it uses (#1906).** Playwright starts every `webServer`
+for every run, so a `--project=setup --project=chromium` subset used to pay for the onboarding
+server, the TV-bundle server and a second production build (`--configuration tv`) it never
+touched. `serverNeeds` (`selected-projects.ts`) reads the `--project` flags: the onboarding server
+starts only with `onboarding`, and the TV server and TV build only with `tv` or `tv-setup`. With no
+`--project` (the whole suite, and CI's sharded runs) everything starts as before. Measured: a
+14-spec chromium subset went from 4.4 GB to a 1.66 GB peak and passes inside
+`systemd-run --user --scope -p MemoryMax=3G -p MemorySwapMax=0`. See
+[quality-gates.md](quality-gates.md) "Low-memory hosts" for the `verify` half.
+
 **Specs are type-checked (issue #376).** `packages/e2e` used to sit in none of the repo's
 type-check surfaces, so a spec type error only surfaced when Playwright actually loaded the file.
 `tsc --noEmit` (node + bun types — the playground `bun:test` files and `make-fixtures.ts` use Bun
