@@ -271,7 +271,7 @@ describe('EmailDeliveryPanelComponent', () => {
     const es = ES_CATALOG as Record<string, string>;
     const keys = [
       ...MAIL_SEND_REASONS.map(mailReasonKey),
-      ...['mailgun', 'brevo', 'gmail', 'fastmail', 'custom'].map(
+      ...['mailgun', 'brevo', 'resend', 'gmail', 'fastmail', 'custom'].map(
         (id) => `admin.email.presetHelp.${id}`,
       ),
       'admin.email.groupTitle',

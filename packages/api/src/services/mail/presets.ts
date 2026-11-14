@@ -37,6 +37,15 @@ export const MAIL_PRESETS: readonly MailPreset[] = [
     helpKey: 'admin.email.presetHelp.brevo',
   },
   {
+    id: 'resend',
+    label: 'Resend',
+    host: 'smtp.resend.com',
+    port: 465,
+    secure: true,
+    usernameHint: 'resend',
+    helpKey: 'admin.email.presetHelp.resend',
+  },
+  {
     id: 'gmail',
     label: 'Gmail',
     host: 'smtp.gmail.com',
