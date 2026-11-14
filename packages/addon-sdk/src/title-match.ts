@@ -40,6 +40,39 @@ export function normalizeTitle(title: string): string {
   return foldTitleText(fold(title).replace(/^\d+[\s.\-]+/, ''));
 }
 
+/**
+ * A canonical (tracklist) title normalized for matching against peer files.
+ * Unlike {@link normalizeTitle} it keeps a leading number: a tracklist title
+ * never carries a track prefix, so the "19" of "19-2000" is the title (#1872).
+ */
+export function normalizeCanonicalTitle(title: string): string {
+  return foldTitleText(fold(title));
+}
+
+/** Spacing and `_` dropped, so a peer's `5_4` meets the tracklist's `5/4` (#1872). */
+function compact(text: string): string {
+  return text.replace(/[\s_]+/g, '');
+}
+
+/**
+ * Whether a peer file's basename (extension already dropped) carries a title
+ * normalized by {@link normalizeCanonicalTitle}: {@link titlesOverlap}, or the
+ * same characters once spacing is ignored, against the whole name or any
+ * ` - ` suffix, each with and without its leading number.
+ */
+export function fileCarriesTitle(canonical: string, basename: string): boolean {
+  if (!canonical) return false;
+  const whole = compact(canonical);
+  const segments = basename.split(/\s+[-–—]\s+/);
+  for (let i = 0; i < segments.length; i++) {
+    const rest = segments.slice(i).join(' ');
+    for (const cand of [normalizeTitle(rest), normalizeCanonicalTitle(rest)]) {
+      if (titlesOverlap(canonical, cand) || compact(cand) === whole) return true;
+    }
+  }
+  return false;
+}
+
 export function titlesOverlap(canonical: string, filename: string): boolean {
   if (canonical === filename) return true;
   // Check if the canonical words are mostly in the filename
@@ -103,11 +136,18 @@ function titleWords(title: string): string[] {
   return normalizeTitle(stripTitleNoise(title)).split(' ').filter(Boolean);
 }
 
+/** A tracklist title's words, its leading number kept (#1872). */
+function canonicalWords(title: string): string[] {
+  return normalizeCanonicalTitle(stripTitleNoise(title)).split(' ').filter(Boolean);
+}
+
 /**
  * The titles a peer filename may carry: its whole basename, and every suffix
  * after a ` - ` separator — so `07 Paulina Rubio - Sexy Dance` and
  * `Molotov - 02 - Molotov Coktail Party` offer the bare title too. Each
- * candidate is word-split after `normalizeTitle` (which drops a track prefix).
+ * candidate is word-split twice: after `normalizeTitle` (which drops a track
+ * prefix) and without that, for a file named after a title that starts with a
+ * number ("19-2000.flac", #1872).
  */
 function fileTitleCandidates(filename: string): string[][] {
   const base = filename.replace(/\\/g, '/').split('/').pop() ?? filename;
@@ -116,8 +156,11 @@ function fileTitleCandidates(filename: string): string[][] {
   const segments = noExt.split(/\s+[-–—]\s+/).map(stripTitleNoise);
   const out: string[][] = [];
   for (let i = 0; i < segments.length; i++) {
-    const words = normalizeTitle(segments.slice(i).join(' ')).split(' ').filter(Boolean);
-    if (words.length) out.push(words);
+    const rest = segments.slice(i).join(' ');
+    for (const form of [normalizeTitle(rest), normalizeCanonicalTitle(rest)]) {
+      const words = form.split(' ').filter(Boolean);
+      if (words.length) out.push(words);
+    }
   }
   return out;
 }
@@ -132,7 +175,7 @@ function fileTitleCandidates(filename: string): string[][] {
  */
 function pairScore(wanted: string[], file: string[]): number {
   if (!wanted.length || !file.length) return 0;
-  if (wanted.join(' ') === file.join(' ')) return 1;
+  if (compact(wanted.join('')) === compact(file.join(''))) return 1;
   const fileSet = new Set(file);
   const wantedSet = new Set(wanted);
   const inWanted = wanted.filter((w) => fileSet.has(w)).length / wanted.length;
@@ -150,7 +193,7 @@ function isNeutralExtra(word: string): boolean {
 
 /** The best {@link pairScore} of any of a file's title candidates against one title. */
 export function fileTitleScore(title: string, filename: string): number {
-  const wanted = titleWords(title);
+  const wanted = canonicalWords(title);
   let best = 0;
   for (const cand of fileTitleCandidates(filename)) best = Math.max(best, pairScore(wanted, cand));
   return best;
@@ -187,12 +230,12 @@ export function matchFilesToTitles<T extends { filename: string }>(
 ): FileTitleMatch<T>[] {
   const pool = new Map<string, { title: string; words: string[]; wanted: boolean }>();
   for (const t of wanted) {
-    const words = titleWords(t);
+    const words = canonicalWords(t);
     const key = words.join(' ');
     if (key && !pool.has(key)) pool.set(key, { title: t, words, wanted: true });
   }
   for (const t of canonical) {
-    const words = titleWords(t);
+    const words = canonicalWords(t);
     const key = words.join(' ');
     if (key && !pool.has(key)) pool.set(key, { title: t, words, wanted: false });
   }
@@ -219,8 +262,10 @@ export function matchFilesToTitles<T extends { filename: string }>(
     if (entry && !tied && entry.wanted) {
       assigned.push({ file, title: entry.title, score: bestScore, key: bestKey!, index });
     } else if (wholeAlbum) {
-      const base = normalizeFileBasename(file.filename);
-      const loose = wanted.find((t) => titlesOverlap(normalizeTitle(t), base));
+      const name = file.filename.replace(/\\/g, '/').split('/').pop() ?? file.filename;
+      const dot = name.lastIndexOf('.');
+      const base = dot > 0 ? name.slice(0, dot) : name;
+      const loose = wanted.find((t) => fileCarriesTitle(normalizeCanonicalTitle(t), base));
       if (loose) assigned.push({ file, title: loose, score: 0, key: `#${index}`, index });
     }
   });

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 import {
+  fileCarriesTitle,
   filesMatchingTitles,
   fileTitleScore,
   foldTitleText,
   matchFilesToTitles,
+  normalizeCanonicalTitle,
   normalizeFileBasename,
   normalizeTitle,
   titlesMissingFromOwned,
@@ -296,5 +298,46 @@ describe('titlesMissingFromOwned (#1473)', () => {
   it('owns nothing from an empty library and everything from an exact one', () => {
     expect(titlesMissingFromOwned(['A', 'B'], [])).toEqual(['A', 'B']);
     expect(titlesMissingFromOwned(['Ночь', 'Группа крови'], ['ночь', 'группа крови'])).toEqual([]);
+  });
+});
+
+describe('a tracklist title that starts with a number (#1872)', () => {
+  const carries = (title: string, base: string) =>
+    fileCarriesTitle(normalizeCanonicalTitle(title), base);
+
+  it('keeps the leading number of a canonical title', () => {
+    expect(normalizeCanonicalTitle('19-2000')).toBe('192000');
+    expect(normalizeCanonicalTitle('5/4')).toBe('54');
+    expect(normalizeCanonicalTitle('99 Luftballons')).toBe('99 luftballons');
+  });
+
+  it('matches every peer filename shape the issue names', () => {
+    expect(carries('19-2000', '11 - 19-2000')).toBe(true);
+    expect(carries('19-2000', '19-2000')).toBe(true);
+    expect(carries('5/4', '02 Gorillaz - 5_4')).toBe(true);
+    expect(carries('5/4', '02 - 5-4')).toBe(true);
+    expect(carries('1979', '05 - 1979')).toBe(true);
+    expect(carries('99 Luftballons', '99 Luftballons')).toBe(true);
+    expect(carries('99 Luftballons', '03. 99 Luftballons')).toBe(true);
+    expect(carries('7 Rings', '10 Ariana Grande - 7 rings')).toBe(true);
+    expect(carries('4 Minutes', '4 Minutes')).toBe(true);
+  });
+
+  it('still tells different titles apart', () => {
+    expect(carries('19-2000', '11 - 2000')).toBe(false);
+    expect(carries('5/4', '02 - 5')).toBe(false);
+    expect(carries('7 Rings', '07 Rings')).toBe(false);
+    expect(carries('', 'anything')).toBe(false);
+  });
+
+  it('assigns those files at enqueue time too', () => {
+    const files = [{ filename: 'G\\11 - 19-2000.flac' }, { filename: 'G\\02 Gorillaz - 5_4.flac' }];
+    const titles = ['5/4', '19-2000'];
+    expect(matchFilesToTitles(files, titles, titles).map((m) => m.title)).toEqual([
+      '19-2000',
+      '5/4',
+    ]);
+    expect(matchFilesToTitles(files, ['19-2000'], ['19-2000', '5/4', 'Re-Hash'])).toHaveLength(1);
+    expect(fileTitleScore('99 Luftballons', '99 Luftballons.mp3')).toBe(1);
   });
 });
