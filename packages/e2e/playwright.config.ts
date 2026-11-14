@@ -1,3 +1,4 @@
+import { serverNeeds } from './selected-projects';
 import { defineConfig, devices, type PlaywrightTestConfig } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -65,7 +66,10 @@ if (!externalBaseUrl && isMainProcess()) {
 // The managed server serves the prebuilt packages/web/dist, so build it here —
 // same config-eval timing and same external-URL gate as the wipe above. See
 // ensure-web-build.ts for why this isn't a globalSetup or a root-script change.
-ensureWebBuild();
+// Only the servers the selected projects use (#1906): a `--project=chromium`
+// subset skips the onboarding and TV servers and the TV build.
+const needs = serverNeeds(process.argv);
+ensureWebBuild({ tv: needs.tv });
 
 // Gated playground mode: PLAYGROUND=1 runs ONLY the `*.playground.ts` feedback
 // flows (against a live backend via E2E_BASE_URL, or the managed server in
@@ -151,8 +155,12 @@ export default defineConfig({
           env: { E2E_LRCLIB_PORT: FIXTURE_LRCLIB_PORT },
         },
         makeServer(PORT, dataDir, E2E_MUSIC_DIR, { NICOTIND_LIDARR_URL: FIXTURE_LIDARR_URL }),
-        makeServer(ONBOARDING_PORT, onboardingDataDir, ONBOARDING_MUSIC_DIR),
-        makeServer(TV_PORT, tvDataDir, TV_BUILD_MUSIC_DIR, { NICOTIND_WEB_DIST: TV_DIST }),
+        ...(needs.onboarding
+          ? [makeServer(ONBOARDING_PORT, onboardingDataDir, ONBOARDING_MUSIC_DIR)]
+          : []),
+        ...(needs.tv
+          ? [makeServer(TV_PORT, tvDataDir, TV_BUILD_MUSIC_DIR, { NICOTIND_WEB_DIST: TV_DIST })]
+          : []),
       ],
 });
 

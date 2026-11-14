@@ -48,7 +48,7 @@ export const TV_DIST = resolve(repoRoot, 'packages/web/dist-tv/browser');
  * Fixing only the root script would have left the form docs/e2e.md actually
  * documents still broken.
  */
-export function ensureWebBuild(): void {
+export function ensureWebBuild({ tv = true }: { tv?: boolean } = {}): void {
   // Playwright re-evaluates the config file inside every worker process, so a
   // bare call here builds once per worker (measured: 3x on a single-spec run).
   // Only the main process should build — by the time a worker loads the config
@@ -66,6 +66,8 @@ export function ensureWebBuild(): void {
   }
 
   build('@nicotind/web', ['run', '--filter', '@nicotind/web', 'build']);
+  // Only when a TV project runs: it is a second full production build (#1906).
+  if (!tv) return;
   build('@nicotind/web (tv configuration)', [
     'run',
     '--filter',
