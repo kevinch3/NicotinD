@@ -32,6 +32,16 @@ const PRESETS = [
     helpKey: 'admin.email.presetHelp.fastmail',
   },
   {
+    id: 'resend',
+    label: 'Resend',
+    host: 'smtp.resend.com',
+    port: 465,
+    secure: true,
+    usernameHint: 'resend',
+    username: 'resend',
+    helpKey: 'admin.email.presetHelp.resend',
+  },
+  {
     id: 'custom',
     label: 'Custom SMTP',
     host: '',
@@ -156,6 +166,25 @@ describe('EmailDeliveryPanelComponent', () => {
     // Custom keeps what is there rather than blanking it.
     cmp.choosePreset('custom');
     expect(cmp.host()).toBe('smtp.fastmail.com');
+  });
+
+  it('switching provider replaces the old provider’s username (#1904)', async () => {
+    const { cmp } = await mount();
+    cmp.choosePreset('mailgun');
+    cmp.username.set('c26bd1001@smtp-brevo.com');
+    // A provider with a fixed username fills it in.
+    cmp.choosePreset('resend');
+    expect(cmp.username()).toBe('resend');
+    // A provider whose username is per account clears it, so its hint shows.
+    cmp.choosePreset('fastmail');
+    expect(cmp.username()).toBe('');
+    // Re-choosing the same provider keeps what the admin typed.
+    cmp.username.set('me@fastmail.com');
+    cmp.choosePreset('fastmail');
+    expect(cmp.username()).toBe('me@fastmail.com');
+    // Custom keeps every field.
+    cmp.choosePreset('custom');
+    expect(cmp.username()).toBe('me@fastmail.com');
   });
 
   it('saves without the password when it was not touched', async () => {

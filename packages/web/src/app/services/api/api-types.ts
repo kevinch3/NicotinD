@@ -1575,6 +1575,8 @@ export interface MailPresetDto {
   port: number;
   secure: boolean;
   usernameHint: string;
+  /** Set when the provider fixes the username for everyone; choosing the preset fills it. */
+  username?: string;
   helpKey: string;
 }
 

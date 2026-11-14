@@ -94,7 +94,7 @@ provider-agnostic**: SMTP is the baseline, so Mailgun is a preset, not a depende
   reads it. Selected only by `NICOTIND_MAIL_TRANSPORT=outbox`, and `GET /api/admin/mail/outbox` is
   registered only under it.
 - **Presets are data** (`services/mail/presets.ts`, `MAIL_PRESETS`): Mailgun, Brevo, Resend,
-  Gmail, Fastmail, Custom — host, port, TLS mode, a username hint and an i18n `helpKey`. Adding a provider
+  Gmail, Fastmail, Custom — host, port, TLS mode, a username hint, an optional fixed `username` (Resend's `resend`; switching provider fills it or clears the old one, #1904) and an i18n `helpKey`. Adding a provider
   is one entry plus its help text in `en.json`/`es.json`.
 - **Settings** (`services/mail/settings.ts`, `MailSettingsStore`): non-secret fields as JSON in
   `app_settings` key `mail`; the password under its own key `mail_secret`, which config export

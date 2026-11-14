@@ -127,13 +127,21 @@ export class EmailDeliveryPanelComponent {
   }
 
   /** A preset fills host, port and TLS mode; Custom keeps what is there. */
+  /**
+   * Fill a provider's host, port and TLS mode. Switching to another provider
+   * also replaces the username, which belonged to the old one (#1904): with
+   * the new provider's fixed username when it has one, else cleared so its
+   * hint shows. *Custom* keeps every field, as it always has.
+   */
   choosePreset(id: string): void {
+    const changed = id !== this.presetId();
     this.presetId.set(id);
     const p = this.presets().find((x) => x.id === id);
     if (!p || !p.host) return;
     this.host.set(p.host);
     this.port.set(p.port);
     this.secure.set(p.secure);
+    if (changed) this.username.set(p.username ?? '');
   }
 
   setPassword(value: string): void {
