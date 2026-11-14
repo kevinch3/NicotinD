@@ -23,4 +23,9 @@ test('the About card renders and shows the running version', async ({ page }) =>
     'href',
     /github\.com\/kevinch3\/NicotinD/,
   );
+
+  await page.getByTestId('about-notices-toggle').click();
+  await expect(
+    page.getByTestId('about-notices-list').getByRole('link', { name: 'hono', exact: true }),
+  ).toBeVisible();
 });

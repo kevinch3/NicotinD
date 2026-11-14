@@ -23,9 +23,11 @@ like every other settings card:
   resolves, because an offer that 404s is not an offer;
 - a **Release notes** button that opens the shared `ChangelogModalComponent` — the same component
   the shell and the Settings page mount, not a second copy of the modal;
-- a third-party notices section that **declares the gap** rather than rendering empty. An empty
-  section reads as "there are none", which would be a false statement about a bundle that ships
-  Angular, RxJS and ffmpeg.
+- a **third-party notices** section: a count and a toggle that lists every component in
+  `packages/web/public/licenses.json`, each name linking to its source and each single SPDX id to
+  its text on spdx.org (`spdxUrl`; an expression such as `(MIT OR Apache-2.0)` stays unlinked). The
+  JSON is imported, not fetched, so the list is the one this bundle was built with and reads
+  offline. See "The third-party manifest" below.
 
 Every string is in both `packages/web/public/i18n/en.json` and `es.json`; `about.component.spec.ts`
 asserts that parity for the page's whole key set, because a missing `es` key degrades a compliance
@@ -73,31 +75,36 @@ the object code), which the GitHub release does not currently state anywhere in-
 mobile shells ever need their own notice, it wants a 10-foot layout rather than this card: external
 links are not reachable from a D-pad WebView.
 
-## Not shipped yet: the generated third-party manifest
+## The third-party manifest
 
-Issue #453 also asks for a generated manifest of bundled third-party components and their licences,
-a `check:licenses` gate over it, and coverage of the non-npm tail (`packages/analysis`'s Python
-dependencies, the bundled ffmpeg, the vendored PO-token provider). None of that is built. It is
-blocked on three owner decisions that must not be guessed:
+`scripts/generate-licenses.ts` writes `packages/web/public/licenses.json` (#453). The owner decided
+three things on 2026-11-09: **SPDX ids plus links**, not bundled licence texts; generated **at
+release only**; and the acquisition addons' images are out of scope, since they are separate repos
+with their own trees.
 
-1. **Full licence texts bundled, or SPDX ids plus links?** Bundling is the safer reading of the
-   GPL-family notice requirements and costs bundle size; linking is smaller and assumes the user
-   has network access to a third party.
-2. **Generated on release only, or on every build?** Recommendation: release only. The precedent —
-   `scripts/build-changelog.ts`, wired into both `prebuild` and `pretest` — regenerates a tracked
-   file on every build and test run and is a recurring source of accidental commits. A manifest
-   generator belongs in `bun run release`.
-3. **Are the acquisition addons' images in scope?** They are separate repos and images with their
-   own dependency trees, and yt-dlp/spotdl moved out of the core image.
+- **What it walks:** the production closure (`dependencies` and installed `optionalDependencies`,
+  never dev) of every workspace that ships, in `SHIPPING_ROOTS`: the root (the server), `web` and
+  `mobile`. Resolution is Node's, from each package's real directory, so bun's isolated store
+  resolves a dependency as the sibling it is. `@nicotind/*` packages are walked through but not
+  listed, because they are this repository. A missing required dependency **throws**: a manifest
+  that drops a package states something false. An optional one that is not installed (another
+  platform's binary) is skipped, so the list matches the Linux image the release builds.
+- **What npm cannot see** is curated in `NON_NPM`: Bun, the image's FFmpeg, Chromaprint (`fpcalc`)
+  and opus-tools, and the analysis sidecar's Python stack. A new apt package or Python dependency
+  needs an entry there.
+- **When it runs:** `.versionrc.json`'s `postchangelog`, so the release commit carries it. No build
+  or test rewrites it, unlike `changelog.json`. There is deliberately no CI freshness gate: a gate
+  that a release-only step satisfies would be red on master between releases.
+- **What is gated:** `scripts/generate-licenses.test.ts` reads the committed file and fails on a
+  package with no declared licence, or one whose licence an AGPL-3.0-only program cannot ship
+  (`COMPATIBLE`). An exception needs an entry in `UNDECIDED` naming the issue that decides it;
+  there are none today.
+- **What is not walked:** `BUILD_TOOLING`, the packages `scripts/prune-build-tooling.ts` deletes from
+  the production install (below), and anything only they pulled in. Sentry's CLI is not listed
+  because it does not ship.
 
-Until that lands, the dependency manifests in the linked source are the authoritative list, which
-is what `about.noticesPending` says.
-
-One head start for whoever picks this up: `ng build` already emits
-`packages/web/dist/3rdpartylicenses.txt` — the licence texts of everything bundled into the web
-bundle. It is neither served nor linked today, and it covers only the browser bundle (not the API's
-dependencies, the Python analysis sidecar, or ffmpeg), so it answers part of decision 1 and none of
-decision 3.
+`ng build` also emits `packages/web/dist/3rdpartylicenses.txt`, the full texts of what the browser
+bundle contains. It is neither served nor linked; the manifest is the in-app list.
 
 ## Build tooling kept out of what ships
 

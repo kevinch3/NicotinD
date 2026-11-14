@@ -1,0 +1,1233 @@
+{
+  "packages": [
+    {
+      "name": "@angular/common",
+      "version": "22.2.1",
+      "license": "MIT",
+      "url": "https://github.com/angular/angular",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "@angular/compiler",
+      "version": "22.2.1",
+      "license": "MIT",
+      "url": "https://github.com/angular/angular",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "@angular/core",
+      "version": "22.2.1",
+      "license": "MIT",
+      "url": "https://github.com/angular/angular",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "@angular/forms",
+      "version": "22.2.1",
+      "license": "MIT",
+      "url": "https://github.com/angular/angular",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "@angular/platform-browser",
+      "version": "22.2.1",
+      "license": "MIT",
+      "url": "https://github.com/angular/angular",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "@angular/router",
+      "version": "22.2.1",
+      "license": "MIT",
+      "url": "https://github.com/angular/angular",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "@angular/service-worker",
+      "version": "22.2.1",
+      "license": "MIT",
+      "url": "https://github.com/angular/angular",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "@asteasolutions/zod-to-openapi",
+      "version": "9.1.0",
+      "license": "MIT",
+      "url": "https://github.com/asteasolutions/zod-to-openapi",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "@borewit/text-codec",
+      "version": "0.2.2",
+      "license": "MIT",
+      "url": "https://github.com/Borewit/text-codec",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "@capacitor/android",
+      "version": "8.5.2",
+      "license": "MIT",
+      "url": "https://github.com/ionic-team/capacitor",
+      "surfaces": [
+        "app"
+      ]
+    },
+    {
+      "name": "@capacitor/app",
+      "version": "8.1.1",
+      "license": "MIT",
+      "url": "https://github.com/ionic-team/capacitor-plugins",
+      "surfaces": [
+        "app"
+      ]
+    },
+    {
+      "name": "@capacitor/core",
+      "version": "8.5.2",
+      "license": "MIT",
+      "url": "https://github.com/ionic-team/capacitor",
+      "surfaces": [
+        "app"
+      ]
+    },
+    {
+      "name": "@capacitor/haptics",
+      "version": "8.0.2",
+      "license": "MIT",
+      "url": "https://github.com/ionic-team/capacitor-haptics",
+      "surfaces": [
+        "app"
+      ]
+    },
+    {
+      "name": "@capacitor/ios",
+      "version": "8.5.2",
+      "license": "MIT",
+      "url": "https://github.com/ionic-team/capacitor",
+      "surfaces": [
+        "app"
+      ]
+    },
+    {
+      "name": "@capacitor/network",
+      "version": "8.0.1",
+      "license": "MIT",
+      "url": "https://github.com/ionic-team/capacitor-plugins",
+      "surfaces": [
+        "app"
+      ]
+    },
+    {
+      "name": "@capacitor/preferences",
+      "version": "8.0.1",
+      "license": "MIT",
+      "url": "https://github.com/ionic-team/capacitor-plugins",
+      "surfaces": [
+        "app"
+      ]
+    },
+    {
+      "name": "@capgo/capacitor-media-session",
+      "version": "8.0.32",
+      "license": "MPL-2.0",
+      "url": "https://github.com/Cap-go/capacitor-media-session",
+      "surfaces": [
+        "web",
+        "app"
+      ]
+    },
+    {
+      "name": "@hono/swagger-ui",
+      "version": "0.6.1",
+      "license": "MIT",
+      "url": "https://github.com/honojs/middleware",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "@hono/zod-openapi",
+      "version": "1.6.1",
+      "license": "MIT",
+      "url": "https://github.com/honojs/middleware",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "@hono/zod-validator",
+      "version": "0.9.0",
+      "license": "MIT",
+      "url": "https://github.com/honojs/middleware",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "@img/colour",
+      "version": "1.1.0",
+      "license": "MIT",
+      "url": "https://github.com/lovell/colour",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "@img/sharp-libvips-linux-x64",
+      "version": "1.3.4",
+      "license": "LGPL-3.0-or-later",
+      "url": "https://github.com/lovell/sharp-libvips",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "@img/sharp-libvips-linuxmusl-x64",
+      "version": "1.3.4",
+      "license": "LGPL-3.0-or-later",
+      "url": "https://github.com/lovell/sharp-libvips",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "@img/sharp-linux-x64",
+      "version": "0.35.5",
+      "license": "Apache-2.0",
+      "url": "https://github.com/lovell/sharp",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "@img/sharp-linuxmusl-x64",
+      "version": "0.35.5",
+      "license": "Apache-2.0",
+      "url": "https://github.com/lovell/sharp",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "@opentelemetry/api",
+      "version": "1.9.1",
+      "license": "Apache-2.0",
+      "url": "https://github.com/open-telemetry/opentelemetry-js",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "@pinojs/redact",
+      "version": "0.4.0",
+      "license": "MIT",
+      "url": "https://github.com/pinojs/redact",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "@sentry/angular",
+      "version": "11.0.0",
+      "license": "MIT",
+      "url": "https://github.com/getsentry/sentry-javascript",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "@sentry/browser",
+      "version": "11.0.0",
+      "license": "MIT",
+      "url": "https://github.com/getsentry/sentry-javascript",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "@sentry/browser-utils",
+      "version": "11.0.0",
+      "license": "MIT",
+      "url": "https://github.com/getsentry/sentry-javascript",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "@sentry/bun",
+      "version": "11.0.0",
+      "license": "MIT",
+      "url": "https://github.com/getsentry/sentry-javascript",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "@sentry/conventions",
+      "version": "0.23.0",
+      "license": "MIT",
+      "url": "https://github.com/getsentry/sentry-conventions",
+      "surfaces": [
+        "web",
+        "server"
+      ]
+    },
+    {
+      "name": "@sentry/core",
+      "version": "11.0.0",
+      "license": "MIT",
+      "url": "https://github.com/getsentry/sentry-javascript",
+      "surfaces": [
+        "web",
+        "server"
+      ]
+    },
+    {
+      "name": "@sentry/feedback",
+      "version": "11.0.0",
+      "license": "MIT",
+      "url": "https://github.com/getsentry/sentry-javascript",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "@sentry/node",
+      "version": "11.0.0",
+      "license": "MIT",
+      "url": "https://github.com/getsentry/sentry-javascript",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "@sentry/opentelemetry",
+      "version": "11.0.0",
+      "license": "MIT",
+      "url": "https://github.com/getsentry/sentry-javascript",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "@sentry/replay",
+      "version": "11.0.0",
+      "license": "MIT",
+      "url": "https://github.com/getsentry/sentry-javascript",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "@sentry/replay-canvas",
+      "version": "11.0.0",
+      "license": "MIT",
+      "url": "https://github.com/getsentry/sentry-javascript",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "@sentry/server-runtime-injection",
+      "version": "11.0.0",
+      "license": "MIT",
+      "url": "https://github.com/getsentry/sentry-javascript",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "@sentry/server-utils",
+      "version": "11.0.0",
+      "license": "MIT",
+      "url": "https://github.com/getsentry/sentry-javascript",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "@standard-schema/spec",
+      "version": "1.1.0",
+      "license": "MIT",
+      "url": "https://github.com/standard-schema/standard-schema",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "@tokenizer/inflate",
+      "version": "0.4.1",
+      "license": "MIT",
+      "url": "https://github.com/Borewit/tokenizer-inflate",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "@tokenizer/token",
+      "version": "0.3.0",
+      "license": "MIT",
+      "url": "https://github.com/Borewit/tokenizer-token",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "ansi-regex",
+      "version": "5.0.1",
+      "license": "MIT",
+      "url": "https://github.com/chalk/ansi-regex",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "ansi-styles",
+      "version": "4.3.0",
+      "license": "MIT",
+      "url": "https://github.com/chalk/ansi-styles",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "atomic-sleep",
+      "version": "1.0.0",
+      "license": "MIT",
+      "url": "https://github.com/davidmarkclements/atomic-sleep",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "Bun",
+      "version": "runtime",
+      "license": "MIT",
+      "url": "https://github.com/oven-sh/bun",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "camelcase",
+      "version": "5.3.1",
+      "license": "MIT",
+      "url": "https://github.com/sindresorhus/camelcase",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "Chromaprint (fpcalc)",
+      "version": "Debian",
+      "license": "LGPL-2.1-or-later",
+      "url": "https://github.com/acoustid/chromaprint",
+      "surfaces": [
+        "image"
+      ]
+    },
+    {
+      "name": "cliui",
+      "version": "6.0.0",
+      "license": "ISC",
+      "url": "https://www.npmjs.com/package/cliui",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "color-convert",
+      "version": "2.0.1",
+      "license": "MIT",
+      "url": "https://github.com/Qix-/color-convert",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "color-name",
+      "version": "1.1.4",
+      "license": "MIT",
+      "url": "https://github.com/colorjs/color-name",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "colorette",
+      "version": "2.0.20",
+      "license": "MIT",
+      "url": "https://github.com/jorgebucaran/colorette",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "content-type",
+      "version": "2.1.0",
+      "license": "MIT",
+      "url": "https://github.com/jshttp/content-type",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "dateformat",
+      "version": "4.6.3",
+      "license": "MIT",
+      "url": "https://github.com/felixge/node-dateformat",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "debug",
+      "version": "4.4.3",
+      "license": "MIT",
+      "url": "https://github.com/debug-js/debug",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "decamelize",
+      "version": "1.2.0",
+      "license": "MIT",
+      "url": "https://github.com/sindresorhus/decamelize",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "detect-libc",
+      "version": "2.1.2",
+      "license": "Apache-2.0",
+      "url": "https://github.com/lovell/detect-libc",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "dijkstrajs",
+      "version": "1.0.3",
+      "license": "MIT",
+      "url": "https://github.com/tcort/dijkstrajs",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "emoji-regex",
+      "version": "8.0.0",
+      "license": "MIT",
+      "url": "https://github.com/mathiasbynens/emoji-regex",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "end-of-stream",
+      "version": "1.4.5",
+      "license": "MIT",
+      "url": "https://github.com/mafintosh/end-of-stream",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "Essentia",
+      "version": "pip",
+      "license": "AGPL-3.0-only",
+      "url": "https://github.com/MTG/essentia",
+      "surfaces": [
+        "analysis"
+      ]
+    },
+    {
+      "name": "fast-copy",
+      "version": "4.1.2",
+      "license": "MIT",
+      "url": "https://github.com/planttheidea/fast-copy",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "fast-safe-stringify",
+      "version": "2.1.1",
+      "license": "MIT",
+      "url": "https://github.com/davidmarkclements/fast-safe-stringify",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "FastAPI",
+      "version": "pip",
+      "license": "MIT",
+      "url": "https://github.com/fastapi/fastapi",
+      "surfaces": [
+        "analysis"
+      ]
+    },
+    {
+      "name": "FFmpeg",
+      "version": "Debian",
+      "license": "GPL-2.0-or-later",
+      "url": "https://ffmpeg.org/legal.html",
+      "surfaces": [
+        "image"
+      ]
+    },
+    {
+      "name": "file-type",
+      "version": "21.3.4",
+      "license": "MIT",
+      "url": "https://github.com/sindresorhus/file-type",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "find-up",
+      "version": "4.1.0",
+      "license": "MIT",
+      "url": "https://github.com/sindresorhus/find-up",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "get-caller-file",
+      "version": "2.0.5",
+      "license": "ISC",
+      "url": "https://github.com/stefanpenner/get-caller-file",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "help-me",
+      "version": "5.0.0",
+      "license": "MIT",
+      "url": "https://github.com/mcollina/help-me",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "hono",
+      "version": "4.13.18",
+      "license": "MIT",
+      "url": "https://github.com/honojs/hono",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "iconv-lite",
+      "version": "0.6.2",
+      "license": "MIT",
+      "url": "https://github.com/ashtuchkin/iconv-lite",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "ieee754",
+      "version": "1.2.1",
+      "license": "BSD-3-Clause",
+      "url": "https://github.com/feross/ieee754",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "is-fullwidth-code-point",
+      "version": "3.0.0",
+      "license": "MIT",
+      "url": "https://github.com/sindresorhus/is-fullwidth-code-point",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "jose",
+      "version": "6.2.3",
+      "license": "MIT",
+      "url": "https://github.com/panva/jose",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "joycon",
+      "version": "3.1.1",
+      "license": "MIT",
+      "url": "https://github.com/egoist/joycon",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "locate-path",
+      "version": "5.0.0",
+      "license": "MIT",
+      "url": "https://github.com/sindresorhus/locate-path",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "media-typer",
+      "version": "2.0.0",
+      "license": "MIT",
+      "url": "https://github.com/jshttp/media-typer",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "minimist",
+      "version": "1.2.8",
+      "license": "MIT",
+      "url": "https://github.com/minimistjs/minimist",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "ms",
+      "version": "2.1.3",
+      "license": "MIT",
+      "url": "https://github.com/vercel/ms",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "music-metadata",
+      "version": "11.16.1",
+      "license": "MIT",
+      "url": "https://github.com/Borewit/music-metadata",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "music-tempo",
+      "version": "1.0.3",
+      "license": "MIT",
+      "url": "https://github.com/killercrush/music-tempo",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "node-id3",
+      "version": "0.2.9",
+      "license": "MIT",
+      "url": "https://github.com/Zazama/node-id3",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "nodemailer",
+      "version": "10.3.1",
+      "license": "MIT-0",
+      "url": "https://github.com/nodemailer/nodemailer",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "NumPy",
+      "version": "pip",
+      "license": "BSD-3-Clause",
+      "url": "https://github.com/numpy/numpy",
+      "surfaces": [
+        "analysis"
+      ]
+    },
+    {
+      "name": "on-exit-leak-free",
+      "version": "2.1.2",
+      "license": "MIT",
+      "url": "https://github.com/mcollina/on-exit-or-gc",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "once",
+      "version": "1.4.0",
+      "license": "ISC",
+      "url": "https://github.com/isaacs/once",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "openapi3-ts",
+      "version": "4.5.0",
+      "license": "MIT",
+      "url": "https://github.com/metadevpro/openapi3-ts",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "openapi3-ts",
+      "version": "4.6.1",
+      "license": "MIT",
+      "url": "https://github.com/metadevpro/openapi3-ts",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "opus-tools",
+      "version": "Debian",
+      "license": "BSD-2-Clause",
+      "url": "https://github.com/xiph/opus-tools",
+      "surfaces": [
+        "image"
+      ]
+    },
+    {
+      "name": "p-limit",
+      "version": "2.3.0",
+      "license": "MIT",
+      "url": "https://github.com/sindresorhus/p-limit",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "p-locate",
+      "version": "4.1.0",
+      "license": "MIT",
+      "url": "https://github.com/sindresorhus/p-locate",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "p-try",
+      "version": "2.2.0",
+      "license": "MIT",
+      "url": "https://github.com/sindresorhus/p-try",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "path-exists",
+      "version": "4.0.0",
+      "license": "MIT",
+      "url": "https://github.com/sindresorhus/path-exists",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "pino",
+      "version": "10.3.1",
+      "license": "MIT",
+      "url": "https://github.com/pinojs/pino",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "pino-abstract-transport",
+      "version": "3.0.0",
+      "license": "MIT",
+      "url": "https://github.com/pinojs/pino-abstract-transport",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "pino-pretty",
+      "version": "13.1.3",
+      "license": "MIT",
+      "url": "https://github.com/pinojs/pino-pretty",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "pino-std-serializers",
+      "version": "7.1.0",
+      "license": "MIT",
+      "url": "https://github.com/pinojs/pino-std-serializers",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "pngjs",
+      "version": "5.0.0",
+      "license": "MIT",
+      "url": "https://github.com/lukeapage/pngjs",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "process-warning",
+      "version": "5.0.0",
+      "license": "MIT",
+      "url": "https://github.com/fastify/process-warning",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "pump",
+      "version": "3.0.4",
+      "license": "MIT",
+      "url": "https://github.com/mafintosh/pump",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "qrcode",
+      "version": "1.5.4",
+      "license": "MIT",
+      "url": "https://github.com/soldair/node-qrcode",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "quick-format-unescaped",
+      "version": "4.0.4",
+      "license": "MIT",
+      "url": "https://github.com/davidmarkclements/quick-format",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "real-require",
+      "version": "0.2.0",
+      "license": "MIT",
+      "url": "https://github.com/pinojs/real-require",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "real-require",
+      "version": "1.0.0",
+      "license": "MIT",
+      "url": "https://github.com/pinojs/real-require",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "require-directory",
+      "version": "2.1.1",
+      "license": "MIT",
+      "url": "https://github.com/troygoode/node-require-directory",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "require-main-filename",
+      "version": "2.0.0",
+      "license": "ISC",
+      "url": "https://github.com/yargs/require-main-filename",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "rxjs",
+      "version": "7.8.2",
+      "license": "Apache-2.0",
+      "url": "https://github.com/reactivex/rxjs",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "safe-stable-stringify",
+      "version": "2.5.0",
+      "license": "MIT",
+      "url": "https://github.com/BridgeAR/safe-stable-stringify",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "safer-buffer",
+      "version": "2.1.2",
+      "license": "MIT",
+      "url": "https://github.com/ChALkeR/safer-buffer",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "secure-json-parse",
+      "version": "4.1.0",
+      "license": "BSD-3-Clause",
+      "url": "https://github.com/fastify/secure-json-parse",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "semver",
+      "version": "7.8.5",
+      "license": "ISC",
+      "url": "https://github.com/npm/node-semver",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "set-blocking",
+      "version": "2.0.0",
+      "license": "ISC",
+      "url": "https://github.com/yargs/set-blocking",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "sharp",
+      "version": "0.35.5",
+      "license": "Apache-2.0",
+      "url": "https://github.com/lovell/sharp",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "sonic-boom",
+      "version": "4.2.1",
+      "license": "MIT",
+      "url": "https://github.com/pinojs/sonic-boom",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "split2",
+      "version": "4.2.0",
+      "license": "ISC",
+      "url": "https://github.com/mcollina/split2",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "string-width",
+      "version": "4.2.3",
+      "license": "MIT",
+      "url": "https://github.com/sindresorhus/string-width",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "strip-ansi",
+      "version": "6.0.1",
+      "license": "MIT",
+      "url": "https://github.com/chalk/strip-ansi",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "strip-json-comments",
+      "version": "5.0.3",
+      "license": "MIT",
+      "url": "https://github.com/sindresorhus/strip-json-comments",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "strtok3",
+      "version": "10.3.5",
+      "license": "MIT",
+      "url": "https://github.com/Borewit/strtok3",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "TensorFlow",
+      "version": "pip",
+      "license": "Apache-2.0",
+      "url": "https://github.com/tensorflow/tensorflow",
+      "surfaces": [
+        "analysis"
+      ]
+    },
+    {
+      "name": "thread-stream",
+      "version": "4.2.0",
+      "license": "MIT",
+      "url": "https://github.com/mcollina/thread-stream",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "token-types",
+      "version": "6.1.2",
+      "license": "MIT",
+      "url": "https://github.com/Borewit/token-types",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "tslib",
+      "version": "2.8.1",
+      "license": "0BSD",
+      "url": "https://github.com/Microsoft/tslib",
+      "surfaces": [
+        "web",
+        "app"
+      ]
+    },
+    {
+      "name": "uint8array-extras",
+      "version": "1.5.0",
+      "license": "MIT",
+      "url": "https://github.com/sindresorhus/uint8array-extras",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "Uvicorn",
+      "version": "pip",
+      "license": "BSD-3-Clause",
+      "url": "https://github.com/encode/uvicorn",
+      "surfaces": [
+        "analysis"
+      ]
+    },
+    {
+      "name": "web-vitals",
+      "version": "6.2.2",
+      "license": "Apache-2.0",
+      "url": "https://github.com/GoogleChrome/web-vitals",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "which-module",
+      "version": "2.0.1",
+      "license": "ISC",
+      "url": "https://github.com/nexdrew/which-module",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "win-guid",
+      "version": "0.2.1",
+      "license": "MIT",
+      "url": "https://github.com/Borewit/win-guid",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "wrap-ansi",
+      "version": "6.2.0",
+      "license": "MIT",
+      "url": "https://github.com/chalk/wrap-ansi",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "wrappy",
+      "version": "1.0.2",
+      "license": "ISC",
+      "url": "https://github.com/npm/wrappy",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "y18n",
+      "version": "4.0.3",
+      "license": "ISC",
+      "url": "https://github.com/yargs/y18n",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "yaml",
+      "version": "2.9.0",
+      "license": "ISC",
+      "url": "https://github.com/eemeli/yaml",
+      "surfaces": [
+        "server"
+      ]
+    },
+    {
+      "name": "yargs",
+      "version": "15.4.1",
+      "license": "MIT",
+      "url": "https://github.com/yargs/yargs",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "yargs-parser",
+      "version": "18.1.3",
+      "license": "ISC",
+      "url": "https://github.com/yargs/yargs-parser",
+      "surfaces": [
+        "web"
+      ]
+    },
+    {
+      "name": "zod",
+      "version": "4.6.6",
+      "license": "MIT",
+      "url": "https://github.com/colinhacks/zod",
+      "surfaces": [
+        "web",
+        "server"
+      ]
+    }
+  ]
+}

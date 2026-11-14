@@ -67,7 +67,7 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **In-app licence + source offer**: `/settings/about` states AGPL-3.0-only and links the §13
   corresponding source, pinned to the exact tree when the bundle is stamped at build time
   (`AboutComponent`, `resolveBuildInfo`, `APP_BUILD_INFO` from `ng build --define`); third-party
-  notices are a declared gap. → [licensing.md](../licensing.md)
+  notices list `licenses.json`, written at release by `generate-licenses.ts`. → [licensing.md](../licensing.md)
 - **Settings-cards unification**: one bordered collapsible `SettingsGroupComponent` backs every group
   across every settings-family view, collapsed by default and persisted per device via
   `group-state.ts`; `settings-consistency.spec.ts` is the cross-view gate.

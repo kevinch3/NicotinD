@@ -1,7 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { PageBackService } from '../../../services/page-back.service';
-import { AboutComponent } from './about.component';
+import { AboutComponent, spdxUrl } from './about.component';
+import LICENCES from '../../../../../public/licenses.json';
 import { APP_BUILD_INFO, APP_VERSION } from '../../../app.config';
 import { REPO_URL, resolveBuildInfo } from '../../../lib/build-info';
 import { expandAllGroups } from '../../../../testing/expand-groups';
@@ -27,7 +28,9 @@ const KEYS = [
   'about.sourceThisBuild',
   'about.sourceRepo',
   'about.noticesTitle',
-  'about.noticesPending',
+  'about.noticesBody',
+  'about.noticesShow',
+  'about.noticesHide',
 ] as const;
 
 function setup(commit: string | null = null) {
@@ -92,9 +95,21 @@ describe('AboutComponent', () => {
     expect(el.querySelector('[data-testid="changelog-modal"]')).toBeTruthy();
   });
 
-  it('declares the third-party notices gap instead of implying there are none', () => {
-    const { el } = setup();
-    expect(el.querySelector('[data-testid="about-notices"]')).toBeTruthy();
+  it('lists every third-party component of the manifest, behind a toggle', () => {
+    const { fixture, el } = setup();
+    expect(el.querySelector('[data-testid="about-notices-list"]')).toBeNull();
+    (el.querySelector('[data-testid="about-notices-toggle"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const rows = el.querySelectorAll('[data-testid="about-notice"]');
+    expect(rows.length).toBe(LICENCES.packages.length);
+    expect(rows.length).toBeGreaterThan(100);
+    const hono = [...rows].find((r) => r.textContent?.includes('hono'))!;
+    expect(hono.querySelector('a[href^="https://spdx.org/licenses/MIT.html"]')).toBeTruthy();
+  });
+
+  it('links a single SPDX id and leaves an expression unlinked', () => {
+    expect(spdxUrl('Apache-2.0')).toBe('https://spdx.org/licenses/Apache-2.0.html');
+    expect(spdxUrl('(MIT OR Apache-2.0)')).toBeNull();
   });
 
   it('has every string in both the base and the Spanish catalog', () => {
