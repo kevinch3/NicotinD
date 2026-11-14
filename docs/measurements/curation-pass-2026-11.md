@@ -136,11 +136,13 @@ or song is the file's own credit, rendered as linked members; it is not an artis
 | `Johnny Hammond / Seldon Powell` | split | Hammond album credit |
 | `Orquesta: Caló / Cantor: Raul Beron` | split → Miguel Caló + Raúl Berón | sibling songs credited `Miguel Caló/Raúl Berón` |
 | `VE/RA`, `Au/Ra`, `Axwell /\ Ingrosso` | kept whole | single acts |
-| `This EP is for you. Pre-order…` | flag 90 (card) | promo text as artist; `identify_song` no-match |
+| `This EP is for you. Pre-order…` | song deleted (owner's call, flag 90) | promo text as artist; `identify_song` no-match, no web match; a retag to `Unknown Artist` is refused by design (`isPlaceholderArtist`) |
 
 **Delta.** Not measurable yet: splits apply at the next scan and #1912 is not deployed. Re-run
 `SELECT … FROM library_artists WHERE (name LIKE '%/%' OR name LIKE '%;%') AND split_compound = 0`
-after the next scan; expected: 0 split-pending rows beyond the promo-text one.
+after the next scan; expected: 0 split-pending rows.
+
+**Result.** All five splits landed on the next scan (member rows listed, compound rows gone from search); the promo-text song was deleted and verified gone.
 
 **Left alone.** The `V.A. - Jazz Fusion of the 70s…` album holds unrelated tracks (Brazilian funk
 under a jazz title); regrouping it is the owner's call.
