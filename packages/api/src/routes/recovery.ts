@@ -31,6 +31,7 @@ import { generateInviteToken, hashInviteToken } from '../services/invites.js';
 import { linkBaseCandidates } from '../services/link-base.js';
 import type { MailService } from '../services/mail/mailer.js';
 import { resetEmail } from '../services/mail/templates.js';
+import { mailLangOf } from '../services/mail/mail-lang.js';
 import { issueResetToken } from '../services/password-reset.js';
 import type { RecoverySetting } from '../services/recovery-setting.js';
 import type { RemoteAccess } from '../services/tailscale.js';
@@ -117,7 +118,11 @@ export function recoveryPublicRoutes(deps: RecoveryRoutesDeps) {
     return bases[0] ?? (stored || null);
   }
 
-  async function sendReset(user: RecoveryCandidate, token: string): Promise<void> {
+  async function sendReset(
+    user: RecoveryCandidate,
+    token: string,
+    acceptLanguage: string | undefined,
+  ): Promise<void> {
     try {
       const base = await resetLinkBase();
       if (!base) {
@@ -130,7 +135,8 @@ export function recoveryPublicRoutes(deps: RecoveryRoutesDeps) {
           serverName: serverName(),
           username: user.username,
           link: `${base.replace(/\/+$/, '')}/reset-password#t=${token}`,
-          expiresIn: '30 minutes',
+          ttlMs: FORGOT_RESET_TTL_MS,
+          lang: mailLangOf(db, user.id, acceptLanguage),
         }),
       });
       recordAudit(db, { sub: user.id, username: user.username }, 'user.reset-email', {
@@ -155,7 +161,7 @@ export function recoveryPublicRoutes(deps: RecoveryRoutesDeps) {
     const user = recoverableUser(identifier, at);
     if (user && recovery.effective()) {
       const issued = issueResetToken(db, user.id, null, FORGOT_RESET_TTL_MS, at);
-      if (issued) background(sendReset(user, issued.token));
+      if (issued) background(sendReset(user, issued.token, c.req.header('accept-language')));
     } else {
       // The token work `issueResetToken` does, for nobody.
       hashInviteToken(generateInviteToken());

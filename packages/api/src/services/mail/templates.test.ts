@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import {
   escapeHtml,
+  formatDuration,
   formatUtc,
   inviteEmail,
   passwordChangedEmail,
@@ -89,7 +90,7 @@ describe('increment 5 templates', () => {
   it('verifyEmail and resetEmail carry the link in both parts and escape names', () => {
     for (const mail of [
       verifyEmail({ serverName: evil, username: evil, link }),
-      resetEmail({ serverName: evil, username: evil, link, expiresIn: '30 minutes' }),
+      resetEmail({ serverName: evil, username: evil, link, ttlMs: 30 * 60_000 }),
     ]) {
       expect(mail.text).toContain(link);
       expect(mail.html).toContain(`href="${link}"`);
@@ -98,7 +99,7 @@ describe('increment 5 templates', () => {
       expect(mail.html).not.toMatch(/<img|<link|<script|url\(/i);
     }
     expect(
-      resetEmail({ serverName: 'den', username: 'sam', link, expiresIn: '30 minutes' }).text,
+      resetEmail({ serverName: 'den', username: 'sam', link, ttlMs: 30 * 60_000 }).text,
     ).toContain('expires in 30 minutes');
   });
 
@@ -112,5 +113,69 @@ describe('increment 5 templates', () => {
     expect(mail.text).toContain('10 Nov 2026, 09:30 UTC');
     expect(mail.text).not.toMatch(/https?:\/\//);
     expect(mail.html).not.toContain('href=');
+  });
+});
+
+describe('brand and language', () => {
+  const link = 'https://music.example.com/x#t=TOKEN';
+  const all = (lang?: 'en' | 'es') => [
+    testEmail({ serverName: 'den', linkBase: 'https://music.example.com', lang }),
+    inviteEmail({
+      serverName: 'den',
+      inviterName: 'boss',
+      role: 'refiner',
+      link,
+      expiresAt: Date.UTC(2026, 0, 5, 8, 0),
+      lang,
+    }),
+    verifyEmail({ serverName: 'den', username: 'sam', link, lang }),
+    resetEmail({ serverName: 'den', username: 'sam', link, ttlMs: 24 * 3_600_000, lang }),
+    passwordChangedEmail({ serverName: 'den', username: 'sam', at: 0, lang }),
+  ];
+
+  it('every mail carries the brand header, its language and a footer naming the server', () => {
+    for (const mail of all('es')) {
+      expect(mail.html).toContain('<html lang="es">');
+      expect(mail.html).toContain('>NicotinD</td>');
+      expect(mail.html).toContain('#6366f1');
+      expect(mail.html).toContain('Enviado por den, un servidor de música NicotinD.');
+      expect(mail.text.endsWith('Enviado por den, un servidor de música NicotinD.')).toBe(true);
+      expect(mail.html).not.toMatch(/<img|<link|<script|url\(/i);
+    }
+    for (const mail of all()) expect(mail.html).toContain('<html lang="en">');
+  });
+
+  it('Spanish wording: subject, role, month and duration', () => {
+    const [test, invite, verify, reset, changed] = all('es');
+    expect(test!.subject).toBe('Correo de prueba de den');
+    expect(invite!.subject).toBe('boss te invitó a den');
+    expect(invite!.text).toContain('como curador.');
+    expect(invite!.text).toContain('vence el 5 ene 2026, 08:00 UTC');
+    expect(verify!.html).toContain('Confirmar mi correo');
+    expect(reset!.text).toContain('vence en 24 horas');
+    expect(changed!.subject).toBe('Se cambió tu contraseña de den');
+  });
+
+  it('English names the refiner role as the app does', () => {
+    expect(all()[1]!.text).toContain('as a refiner.');
+  });
+
+  it('an unknown role is shown as stored rather than dropped', () => {
+    const mail = inviteEmail({
+      serverName: 'den',
+      inviterName: 'boss',
+      role: 'dj',
+      link,
+      expiresAt: 0,
+      lang: 'es',
+    });
+    expect(mail.text).toContain('como dj.');
+  });
+
+  it('formatDuration: whole hours as hours, else minutes, singular for one', () => {
+    expect(formatDuration(30 * 60_000)).toBe('30 minutes');
+    expect(formatDuration(24 * 3_600_000)).toBe('24 hours');
+    expect(formatDuration(3_600_000, 'es')).toBe('1 hora');
+    expect(formatDuration(90 * 60_000, 'es')).toBe('90 minutos');
   });
 });

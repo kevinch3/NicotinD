@@ -34,6 +34,7 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **Email delivery (mail transport)**: one `MailTransport` interface, SMTP (`createSmtpTransport`,
   `classifySmtpError`) and the test `outbox`; presets are data (`MAIL_PRESETS`). `MailService` owns
   the daily cap and `mail_send_log`; `MailSettingsStore` env-pins and keeps the password write-only.
+  Mails are branded and localized (`mailLangOf`, `MAIL_STRINGS`).
   → [email-invitations.md](../email-invitations.md)
 - **Device pairing (QR link) + remote access**: a 5-minute single-use token rendered as a QR link plus
   a printed fallback code; `parseApproveCode` and core `pairing-code.ts` `isPairingCodeShape` keep the

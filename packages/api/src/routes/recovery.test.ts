@@ -686,3 +686,46 @@ describe('withRecovery', () => {
     expect(login.status).toBe(200);
   });
 });
+
+describe('mail language', () => {
+  const saveLanguage = (userId: string, lang: string) =>
+    db.run('INSERT INTO user_settings (user_id, language) VALUES (?, ?)', [userId, lang]);
+
+  async function putEmailIn(app: Hono<AuthEnv>, acceptLanguage: string) {
+    return app.request(`${HOST}/api/me/account/email`, {
+      ...json({ email: 'new@example.com', currentPassword: 'old-password' }, 'PUT'),
+      headers: {
+        ...bearer(await tokenFor('u1', 'sam')),
+        'Content-Type': 'application/json',
+        'Accept-Language': acceptLanguage,
+      },
+    });
+  }
+
+  it('words the verify mail in the browser language when the user saved none', async () => {
+    const { app } = server();
+    expect((await putEmailIn(app, 'es-AR,es;q=0.9,en;q=0.8')).status).toBe(200);
+    expect(sent[0]!.subject).toBe('Confirma tu correo para den');
+    expect(sent[0]!.html).toContain('<html lang="es">');
+  });
+
+  it('a saved language wins over the browser', async () => {
+    saveLanguage('u1', 'en');
+    const { app } = server();
+    await putEmailIn(app, 'es-AR');
+    expect(sent[0]!.subject).toBe('Confirm your email for den');
+  });
+
+  it('a forgot-password mail follows the account, not the anonymous request', async () => {
+    saveLanguage('u1', 'es');
+    const { app, recovery } = server();
+    recovery.set(true, HOST);
+    await app.request(`${HOST}/api/auth/forgot`, {
+      ...json({ identifier: 'sam' }),
+      headers: { 'Content-Type': 'application/json', 'Accept-Language': 'en-US' },
+    });
+    await flush();
+    expect(sent[0]!.subject).toBe('Restablece tu contraseña de den');
+    expect(sent[0]!.text).toContain('vence en 30 minutos');
+  });
+});

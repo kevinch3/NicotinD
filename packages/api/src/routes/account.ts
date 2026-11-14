@@ -24,6 +24,7 @@ import {
 import { linkBaseCandidates } from '../services/link-base.js';
 import type { MailService } from '../services/mail/mailer.js';
 import { verifyEmail } from '../services/mail/templates.js';
+import { mailLangOf } from '../services/mail/mail-lang.js';
 import { notifyPasswordChanged } from '../services/password-notice.js';
 import { sessionVersionOf } from '../services/session-version.js';
 import { changePassword } from '../services/password-reset.js';
@@ -122,6 +123,7 @@ export function accountRoutes(deps: AccountRoutesDeps) {
         serverName: serverName(),
         username: row?.username ?? user.username ?? '',
         link: `${base}/verify-email#t=${token}`,
+        lang: mailLangOf(db, user.sub, c.req.header('accept-language')),
       }),
     });
     // Whether a link went out, never where to.
@@ -153,7 +155,11 @@ export function accountRoutes(deps: AccountRoutesDeps) {
     }
     recordAudit(db, user, 'user.password-change', { targetKind: 'user', targetId: user.sub });
     // Fire and log: the change has happened whatever the mail does.
-    void notifyPasswordChanged({ db, mail: deps.mail, serverName, now }, user.sub);
+    void notifyPasswordChanged(
+      { db, mail: deps.mail, serverName, now },
+      user.sub,
+      c.req.header('accept-language'),
+    );
     const row = db
       .query<{ username: string; role: string }, [string]>(
         'SELECT username, role FROM users WHERE id = ?',
