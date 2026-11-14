@@ -258,6 +258,15 @@ the item's declared `size`, so the retry is a pure organize retry instead of one
 full re-download per sweep until the 24 h valve (issue #1025). A copy of any
 other size (a crash mid-write) or an item with no declared size is fetched again.
 
+**An addon that dies mid-file does not wedge the ingest (#1895).** `fetchToIncoming`
+still streams through `Readable.fromWeb` + `pipeline`, which under Bun never settles
+when a *synthetic* web stream errors (the bundled archive engine reads its body
+directly for that reason, [acquisition-addon-protocol.md](acquisition-addon-protocol.md)).
+A real network body was measured on Bun 1.3.11 and prod's 1.3.14: a dropped or reset
+socket rejects in ~100 ms, and a silent stall is cut off by `fetchFile`'s 600 s
+`AbortSignal.timeout`. The failed item's partial file is removed. A real-`fetch` test
+against a server that dies mid-file pins it.
+
 **It keys on outstanding items, never on the job row's `updated_at`.**
 `recomputeStage` rewrites `updated_at` on every call even when the stage is
 unchanged, so a stranded job reads as seconds-idle while its items are

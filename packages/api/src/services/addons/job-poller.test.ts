@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readdirSync } from 'node:fs';
+import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ADDON_PROTOCOL_VERSION, type AddonJob, type AddonManifest } from '@nicotind/core';
@@ -116,10 +117,11 @@ function harness(
   const organized: CompletedDownloadFile[] = [];
   const scanned: string[][] = [];
   const receipts: IngestReceipt[] = [];
+  const incomingDir = mkdtempSync(join(tmpdir(), 'addon-incoming-'));
   const poller = new AddonJobPoller({
     db,
     registry,
-    incomingDir: mkdtempSync(join(tmpdir(), 'addon-incoming-')),
+    incomingDir,
     strandedSweepIntervalMs: opts.strandedSweepIntervalMs ?? 0,
     organizer: {
       organizeBatch: async (files) => {
@@ -146,7 +148,7 @@ function harness(
       closed.push(coreJobId);
     },
   });
-  return { db, registry, poller, organized, scanned, deleted, receipts, closed };
+  return { db, registry, poller, organized, scanned, deleted, receipts, closed, incomingDir };
 }
 
 describe('AddonJobPoller', () => {
@@ -2030,5 +2032,71 @@ describe('a failed organize is retried without re-downloading (#1025)', () => {
     const { fetches, item } = await run(BODY.length + 50);
     expect(fetches).toBe(2);
     expect(item.state).toBe('organized');
+  });
+});
+
+/**
+ * #1895: under Bun 1.3.11 `pipeline(Readable.fromWeb(body), …)` never settled
+ * when a *synthetic* web stream errored. A real network body does settle (1.3.11
+ * and prod's 1.3.14 both reject in ~100 ms), so the ingest is not wedged by an
+ * addon that dies mid-file. This pins that through a real `fetch`.
+ */
+describe('an addon that dies mid-file (#1895)', () => {
+  let server: Server | undefined;
+
+  async function dyingAddon(): Promise<string> {
+    server = createServer((req, res) => {
+      res.writeHead(200, { 'content-length': String(4_000_000) });
+      res.write(Buffer.alloc(64 * 1024, 1));
+      setTimeout(() => req.socket.destroy(), 50);
+    });
+    await new Promise<void>((r) => server!.listen(0, '127.0.0.1', r));
+    return `http://127.0.0.1:${(server.address() as { port: number }).port}/file`;
+  }
+
+  it('settles the ingest, ingests nothing and leaves no partial file', async () => {
+    const url = await dyingAddon();
+    const job = makeJob({
+      id: 'aj-dies',
+      state: 'done',
+      items: [
+        {
+          itemId: 't:one',
+          title: 'Song One',
+          username: 'peer',
+          filename: 'Music\\Album\\01 Song One.flac',
+          size: 4_000_000,
+          bitRateKbps: 900,
+          audioFormat: 'FLAC',
+          state: 'completed',
+          fileReady: true,
+          updatedAt: 2000,
+        },
+      ],
+    });
+    const h = harness(
+      () => [job],
+      async () => job,
+      { fetchFile: () => fetch(url) },
+    );
+    await h.registry.enable('fixture-addon', 'admin');
+    try {
+      const settled = await Promise.race([
+        (async () => {
+          await h.poller.tick();
+          await h.poller.idle();
+          return true;
+        })(),
+        new Promise<false>((r) => setTimeout(() => r(false), 5000)),
+      ]);
+      expect(settled).toBe(true);
+      expect(h.organized).toHaveLength(0);
+      const files = readdirSync(h.incomingDir, { recursive: true, withFileTypes: true })
+        .filter((d) => d.isFile())
+        .map((d) => d.name);
+      expect(files).toEqual([]);
+    } finally {
+      server?.close();
+    }
   });
 });
