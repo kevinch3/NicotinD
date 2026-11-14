@@ -27,6 +27,7 @@ import {
 } from '../services/opensubsonic-map.js';
 import type { SubsonicUser, Upstream } from '../services/opensubsonic-upstream.js';
 import { verifySubsonicKey } from '../services/subsonic-keys.js';
+import { TOP_SONGS_MAX } from '../services/artist-top-songs.js';
 import { PlaylistService } from '../services/playlist.service.js';
 import { starItem, starredItems, unstarItem } from '../services/user-stars.js';
 
@@ -790,19 +791,16 @@ export function openSubsonicRoutes(deps: OpenSubsonicDeps) {
 
     getTopSongs: async ({ p, api, stars }) => {
       const name = p.require('artist');
-      const count = p.int('count', 50, MAX_LIST) || 50;
+      // The artist page's Popular ranking, so two clients agree (#1867): it caps
+      // at TOP_SONGS_MAX and never pads with unranked songs.
+      const count = Math.min(p.int('count', 50, MAX_LIST) || 50, TOP_SONGS_MAX);
       const ref = await api
         .json<{ id: string }>(`/api/library/artists/by-name?name=${enc(name)}`)
         .catch(() => null);
       if (!ref) return { topSongs: {} };
-      const songs = await api.json<Array<Song & { popularity?: number }>>(
-        `/api/library/artists/${enc(ref.id)}/songs?size=200`,
+      const top = await api.json<Song[]>(
+        `/api/library/artists/${enc(ref.id)}/top-songs?limit=${count}`,
       );
-      const top = songs
-        .map((x, i) => ({ x, i }))
-        .sort((a, b) => (b.x.popularity ?? -1) - (a.x.popularity ?? -1) || a.i - b.i)
-        .slice(0, count)
-        .map(({ x }) => x);
       const s = stars();
       return { topSongs: { song: top.map((x) => toChild(x, s)) } };
     },
