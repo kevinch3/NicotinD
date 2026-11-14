@@ -315,7 +315,7 @@ comparator non-trivial there would silently re-open this bug on the client.
 
 The `LibraryCurator` won't auto-hide a deliberately-hunted release (its normalized artist+title matches an `album_jobs` row), so a thin hunted single/EP can't vanish from the grid.
 
-**Matching is diacritic-insensitive**: `normalizeTitle` NFD-decomposes then strips combining marks (`"canción"` → `"cancion"`) so accented Latin-American titles match peers' unaccented spellings — used by both hunt scoring and the fallback. `HUNT_TIMEOUT_MS` is 45s.
+**Matching is diacritic-insensitive**: `normalizeTitle` NFD-decomposes then strips combining marks (`"canción"` → `"cancion"`) so accented Latin-American titles match peers' unaccented spellings — used by both hunt scoring and the fallback. A **tracklist** title goes through `normalizeCanonicalTitle` instead, which keeps a leading number (`19-2000`, `1979`, `99 Luftballons` are titles, not track prefixes), and `fileCarriesTitle` tries a peer basename with and without its leading number, whole and per ` - ` suffix, and on equal characters once spacing and `_` are ignored (`5_4` ↔ `5/4`). Both the scorer and the enqueue step (`matchFilesToTitles`) use it (#1872). `HUNT_TIMEOUT_MS` is 45s.
 
 **Two-phase hunt for live progress**: the hunt modal uses two separate requests — `POST .../hunt/base` (base queries only, returns `{ candidates, skewNeeded }`) followed by `POST .../hunt/skew` (skew queries only, if needed) — so the UI can highlight each query row in real time (idle → searching → done/skipped). The single-shot `POST .../hunt` endpoint is preserved for watchlist/catalog callers.
 
