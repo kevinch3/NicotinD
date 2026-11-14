@@ -2,6 +2,10 @@ import { defineConfig, type Plugin } from 'vitest/config';
 import { resolve, dirname } from 'path';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
+import { availableParallelism, freemem } from 'os';
+
+/** Free memory, inside a cgroup limit when there is one (Node 22's `availableMemory`). */
+const free = (): number => process.availableMemory?.() ?? freemem();
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
@@ -71,6 +75,14 @@ function angularTemplateInliner(): Plugin {
   };
 }
 
+/** Workers for this machine: one per core, capped at one per 300 MB of free memory. */
+function maxWorkers(): number {
+  const pinned = Number(process.env['VITEST_MAX_WORKERS']);
+  if (pinned > 0) return pinned;
+  const byMemory = Math.floor(free() / (300 * 1024 * 1024));
+  return Math.max(1, Math.min(availableParallelism(), byMemory));
+}
+
 export default defineConfig({
   plugins: [angularTemplateInliner()],
   resolve: {
@@ -87,10 +99,11 @@ export default defineConfig({
     // process isolation (no `process.chdir`, no native module state), so threads are
     // strictly cheaper.
     pool: 'threads',
-    // The default leaves one core idle. This suite is CPU-bound, not memory-bound —
-    // measured at 193 files / 2056 tests, the cost is jsdom construction and Angular
-    // JIT, both of which scale with workers.
-    maxWorkers: '100%',
+    // Every core while memory allows: the cost is jsdom construction and Angular JIT,
+    // both of which scale with workers. Each worker holds ~170 MB (12 workers peaked
+    // at 2.4 GB, 2 at 0.9 GB), so a machine with little free memory gets fewer
+    // workers instead of an OOM kill (#1906). `VITEST_MAX_WORKERS` overrides.
+    maxWorkers: maxWorkers(),
     // `isolate: false` was measured at **14.1s vs 134.7s** — a 9x win — and is
     // deliberately NOT taken. It re-uses one module registry per worker, and three
     // specs in desktop-window-controls depend on `vi.mock` of `lib/platform` resolving

@@ -2220,7 +2220,7 @@ A backgrounded tab that is still the output is _playing_, and playing wins. Ever
 
 `cacheControlForStatic` (`packages/api/src/services/static-cache.ts`) runs as a middleware _before_ `serveStatic`. Two answers, and the split is the build's own: a filename carrying a content hash (`-[A-Z0-9]{8,}\.(js|mjs|css)`) names one byte sequence forever and gets `public, max-age=31536000, immutable`; everything else gets `no-cache`, which means "revalidate before reuse", not "don't cache" — a 304 costs nothing when nothing changed. `/api/*`, `/doc` and `/openapi.json` are left to their own handlers.
 
-**Pool and isolation (measured).** `pool: 'threads'` + `maxWorkers: '100%'` took the suite
+**Pool and isolation (measured).** `pool: 'threads'` + one worker per core (capped by free memory since #1906, see [quality-gates.md](quality-gates.md#low-memory-hosts--the-budget-is-a-gate-too-1906)) took the suite
 from 134.7s to 113.1s; nothing here needs process isolation, so `forks` was pure spawn
 overhead. `isolate: false` is the much bigger lever — **14.1s**, a 9x win, because
 `test-setup.ts` imports `@angular/compiler` and that is re-evaluated for each of the 193

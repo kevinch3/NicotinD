@@ -40,6 +40,34 @@ So, when writing or changing a `check:*` script:
    not supposed to change semantics; with a regex it does.
 5. **Make allowlists self-invalidating.** See below.
 
+## Low-memory hosts — the budget is a gate too (#1906)
+
+The dev machine often has 2–3 GB to spare. A gate the OOM killer stops reports nothing true, and a
+killed Storybook build leaves the *previous* `storybook-static` for the gates to grade. `verify`
+runs its steps in sequence, so its peak is its largest step, and each large step is now bounded:
+
+| Step | Before | After | How |
+| --- | --- | --- | --- |
+| `bun run test` (backend) | 6.2 GB, 4 m 25 s | ≤ 3 GB, 2 m 45 s | `scripts/test-sharded.ts`: 8 sequential `bun test` processes (`TEST_SHARDS`) |
+| `test:web` | 2.4 GB at 12 workers | ~170 MB per worker | `maxWorkers` = one per core, capped at one per 300 MB free (`VITEST_MAX_WORKERS`) |
+| `build:storybook` | 3.5 GB | 1.9 GB | no minify under 4 GB free or `NICOTIND_LOW_MEM=1` |
+
+**Why shard rather than `--smol`.** One `bun test` process never hands memory back between
+files: the suite peaked at 6.2 GB against 1.3 GB for its heaviest single file
+(`library-scanner.rebucket.test.ts`), and `--smol` only got it to 5.8 GB. A fresh process per
+shard bounds the peak by the shard, and turned out faster as well. Files are dealt **round-robin**
+from the sorted list, because the heaviest family (`library-scanner.*`) sorts together and a
+contiguous split stacked it into one 3.9 GB shard. The runner asserts its own denominator:
+`test-sharded.test.ts` checks that it finds exactly the files one `bun test` with the same
+arguments searches. CI's `ci` job runs `bun test <paths>` directly and is unchanged.
+
+**Free memory means the cgroup's.** `os.freemem()` reports the host and ignores a
+`MemoryMax`; both configs read Node 22's `process.availableMemory()`, which honours it.
+
+**Proving it.** `systemd-run --user --scope -p MemoryMax=3G -p MemorySwapMax=0 bun run verify`
+passes (7 m 20 s, measured 2026-11-14). `scripts/measure-memory.sh <cmd>` prints a command's peak
+over its whole process group.
+
 ## `check:claude-md` — existence must be proven by code, not prose
 
 `CLAUDE.md` loads into every request and is read as ground truth, so a symbol it
