@@ -94,7 +94,7 @@ provider-agnostic**: SMTP is the baseline, so Mailgun is a preset, not a depende
   reads it. Selected only by `NICOTIND_MAIL_TRANSPORT=outbox`, and `GET /api/admin/mail/outbox` is
   registered only under it.
 - **Presets are data** (`services/mail/presets.ts`, `MAIL_PRESETS`): Mailgun, Brevo, Resend,
-  Gmail, Fastmail, Custom — host, port, TLS mode, a username hint and an i18n `helpKey`. Adding a provider
+  Gmail, Fastmail, Custom — host, port, TLS mode, a username hint, an optional fixed `username` (Resend's `resend`; switching provider fills it or clears the old one, #1904) and an i18n `helpKey`. Adding a provider
   is one entry plus its help text in `en.json`/`es.json`.
 - **Settings** (`services/mail/settings.ts`, `MailSettingsStore`): non-secret fields as JSON in
   `app_settings` key `mail`; the password under its own key `mail_secret`, which config export
@@ -289,10 +289,15 @@ the user's inbox proves it.
   `formatUtc(ms, lang)` with the language's month names; a link lifetime is `formatDuration`
   (`resetEmail` takes `ttlMs`, not a worded string).
 - **Brand** (`templates.ts` `layout`): the app icon's colours — a dark `#09090b` header with an
-  indigo `#6366f1` play mark drawn as a table cell plus a text glyph (no image: remote images are
-  blocked or tracked, data URIs are stripped by Gmail), the wordmark, the server name, a two-tone
+  indigo `#6366f1` play mark drawn as a table cell with a CSS border triangle (no image: remote
+  images are blocked or tracked, data URIs are stripped by Gmail; and no glyph: Gmail swapped ▶ for
+  its orange emoji even with the text-presentation selector), the wordmark, the server name, a two-tone
   indigo/coral rule, an indigo button, an inbox preheader, and a footer naming the server. The
-  layout is tables because clients that ignore `max-width` on a div honour it on a table. The text
+  layout is tables because clients that ignore `max-width` on a div honour it on a table.
+  Gmail links any domain-shaped text, so the server name (often a hostname) came out blue and
+  underlined in the header, title and footer: every visible name goes through `noAutolink`, a word
+  joiner (U+2060) after each inner dot, which breaks the match without adding a wrap point. The
+  text part and real `href`s are untouched. The text
   part ends with the same footer.
 
 ## Provider note: Brevo click tracking breaks token links

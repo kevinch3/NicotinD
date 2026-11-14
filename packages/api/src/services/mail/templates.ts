@@ -34,7 +34,18 @@ export function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-const strong = (value: string) => `<strong>${escapeHtml(value)}</strong>`;
+/**
+ * Escaped text that Gmail will not turn into a link: it links anything shaped
+ * like a domain, so a server named `music.example.com` came out blue and
+ * underlined in the header, the title and the footer. A word joiner (U+2060) after
+ * each inner dot breaks the match, renders as nothing, and — unlike a zero-width
+ * space — gives the name no new place to wrap.
+ */
+export function noAutolink(value: string): string {
+  return escapeHtml(value).replace(/\.(?=[A-Za-z0-9])/g, '.&#8288;');
+}
+
+const strong = (value: string) => `<strong>${noAutolink(value)}</strong>`;
 const p = (html: string, style = 'margin:0 0 14px;') => `<p style="${style}">${html}</p>`;
 const note = (html: string) => p(html, `margin:0;color:${BRAND.muted};font-size:13px;`);
 
@@ -69,23 +80,26 @@ function layout(opts: {
     `<title>${escapeHtml(opts.title)}</title></head>`,
     `<body style="margin:0;padding:0;background:${BRAND.page};">`,
     // The inbox preview line, hidden in the opened mail.
-    `<div style="display:none;max-height:0;overflow:hidden;opacity:0;">${escapeHtml(opts.preheader)}</div>`,
+    `<div style="display:none;max-height:0;overflow:hidden;opacity:0;">${noAutolink(opts.preheader)}</div>`,
     `<table ${table} width="100%" style="background:${BRAND.page};"><tr><td align="center" style="padding:24px 12px;">`,
     `<table ${table} width="100%" style="max-width:520px;background:#ffffff;border-radius:16px;overflow:hidden;font-family:${FONT};color:${BRAND.text};font-size:15px;line-height:1.5;">`,
     `<tr><td style="background:${BRAND.ink};padding:18px 24px;">`,
     `<table ${table} width="100%"><tr>`,
-    `<td width="32" style="width:32px;height:32px;background:${BRAND.accent};border-radius:16px;text-align:center;vertical-align:middle;color:${BRAND.onInk};font-size:12px;line-height:32px;">&#9654;&#xFE0E;</td>`,
+    // The play mark is a CSS border triangle, not a glyph: Gmail swaps ▶ for its
+    // orange emoji even with the text-presentation selector.
+    `<td width="32" style="width:32px;height:32px;background:${BRAND.accent};border-radius:16px;vertical-align:middle;font-size:0;line-height:0;">`,
+    `<div style="width:0;height:0;margin-left:12px;border-top:7px solid transparent;border-bottom:7px solid transparent;border-left:11px solid ${BRAND.onInk};"></div></td>`,
     `<td style="padding-left:10px;color:${BRAND.onInk};font-size:17px;font-weight:700;letter-spacing:0.2px;">NicotinD</td>`,
-    `<td align="right" style="color:#a1a1aa;font-size:13px;">${escapeHtml(opts.serverName)}</td>`,
+    `<td align="right" style="color:#a1a1aa;font-size:13px;">${noAutolink(opts.serverName)}</td>`,
     '</tr></table></td></tr>',
     `<tr><td style="padding:0;font-size:0;line-height:0;"><table ${table} width="100%"><tr>`,
     `<td width="70%" style="height:3px;background:${BRAND.accent};"></td><td style="height:3px;background:${BRAND.accent2};"></td>`,
     '</tr></table></td></tr>',
     `<tr><td style="padding:28px 24px 12px;">`,
-    `<h1 style="font-size:20px;line-height:1.3;margin:0 0 16px;">${escapeHtml(opts.title)}</h1>`,
+    `<h1 style="font-size:20px;line-height:1.3;margin:0 0 16px;">${noAutolink(opts.title)}</h1>`,
     opts.bodyHtml,
     '</td></tr>',
-    `<tr><td style="padding:16px 24px 22px;border-top:1px solid ${BRAND.rule};color:${BRAND.muted};font-size:12px;">${escapeHtml(opts.footer)}</td></tr>`,
+    `<tr><td style="padding:16px 24px 22px;border-top:1px solid ${BRAND.rule};color:${BRAND.muted};font-size:12px;">${noAutolink(opts.footer)}</td></tr>`,
     '</table></td></tr></table></body></html>',
   ].join('');
 }

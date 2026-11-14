@@ -13,6 +13,12 @@ export interface MailPreset {
   secure: boolean;
   /** What the provider expects in the username field, shown as a placeholder. */
   usernameHint: string;
+  /**
+   * The username itself, when the provider fixes it for everyone (Resend's is
+   * the literal word `resend`); choosing the preset fills it in. Absent: the
+   * username is per account, so choosing the preset clears the field instead.
+   */
+  username?: string;
   /** i18n key of the one-paragraph help shown under the preset select. */
   helpKey: string;
 }
@@ -43,6 +49,7 @@ export const MAIL_PRESETS: readonly MailPreset[] = [
     port: 465,
     secure: true,
     usernameHint: 'resend',
+    username: 'resend',
     helpKey: 'admin.email.presetHelp.resend',
   },
   {

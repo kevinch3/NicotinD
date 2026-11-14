@@ -19,6 +19,12 @@ describe('MAIL_PRESETS', () => {
       port: 465,
       secure: true,
       usernameHint: 'resend',
+      username: 'resend',
     });
+  });
+
+  it('only a provider with one username for everyone carries it', () => {
+    const fixed = MAIL_PRESETS.filter((p) => p.username !== undefined).map((p) => p.id);
+    expect(fixed).toEqual(['resend']);
   });
 });

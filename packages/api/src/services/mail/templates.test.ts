@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import {
   escapeHtml,
+  noAutolink,
   formatDuration,
   formatUtc,
   inviteEmail,
@@ -177,5 +178,50 @@ describe('brand and language', () => {
     expect(formatDuration(24 * 3_600_000)).toBe('24 hours');
     expect(formatDuration(3_600_000, 'es')).toBe('1 hora');
     expect(formatDuration(90 * 60_000, 'es')).toBe('90 minutos');
+  });
+});
+
+describe('Gmail rendering', () => {
+  const server = 'nicotined.kevinroberts.ar';
+  const mails = () => [
+    testEmail({ serverName: server, linkBase: 'https://nicotined.kevinroberts.ar' }),
+    inviteEmail({
+      serverName: server,
+      inviterName: 'boss',
+      role: 'listener',
+      link: 'https://nicotined.kevinroberts.ar/invite#t=T',
+      expiresAt: 0,
+    }),
+    passwordChangedEmail({ serverName: server, username: 'sam', at: 0 }),
+  ];
+
+  it('draws the play mark with CSS, never a glyph Gmail swaps for an emoji', () => {
+    for (const { html } of mails()) {
+      expect(html).not.toMatch(/&#9654;|&#x25b6;|▶/i);
+      expect(html).toContain('border-left:11px solid #f4f4f5');
+    }
+  });
+
+  it('never shows the server name as a bare domain, so Gmail does not link it', () => {
+    for (const { html } of mails()) {
+      // Visible text only: hrefs and the <title> may carry the real address.
+      const visible = html
+        .replace(/<title>.*?<\/title>/, '')
+        .replace(/href="[^"]*"/g, '')
+        .replace(/<code[^>]*>.*?<\/code>/g, '');
+      expect(visible).not.toContain(server);
+      expect(visible).toContain('nicotined.&#8288;kevinroberts.&#8288;ar');
+    }
+  });
+
+  it('leaves the text part and the real links untouched', () => {
+    const [test] = mails();
+    expect(test!.text).toContain('"nicotined.kevinroberts.ar"');
+    expect(test!.html).toContain('href="https://nicotined.kevinroberts.ar/"');
+  });
+
+  it('noAutolink escapes first, and only breaks dots inside a word', () => {
+    expect(noAutolink('<a.b>')).toBe('&lt;a.&#8288;b&gt;');
+    expect(noAutolink('Done.')).toBe('Done.');
   });
 });
