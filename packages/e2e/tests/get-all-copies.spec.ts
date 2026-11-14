@@ -68,4 +68,23 @@ test.describe('all copies on the source', () => {
     await page.keyboard.press('Escape');
     await expect(picker).toHaveCount(0);
   });
+
+  test('a track query tops with the track, and the scope chip lives in the URL', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await page.goto('/get?tab=add');
+    await page.getByTestId('search-input').fill(PAYLOAD.title);
+    await page.getByTestId('search-submit').click();
+
+    const top = page.getByTestId('top-result');
+    await expect(top).toHaveAttribute('data-kind', 'track', { timeout: 20_000 });
+    await expect(top.getByTestId('acquire-result')).toContainText(PAYLOAD.title);
+
+    await page.getByTestId('scope-tracks').click();
+    await expect(page).toHaveURL(/[?&]scope=tracks/);
+    await expect(page.getByTestId('top-result')).toHaveCount(0);
+    await page.getByTestId('scope-all').click();
+    await expect(page).not.toHaveURL(/scope=/);
+  });
 });

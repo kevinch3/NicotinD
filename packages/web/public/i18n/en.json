@@ -1791,5 +1791,12 @@
   "copyPicker.browse": "Browse the whole folder",
   "copyPicker.allCopiesTitle": "Everything on {source}",
   "acquire.allCopies": "All copies on {source}",
-  "getNotice.rawFallbackSearch": "Search {source} for this album"
+  "getNotice.rawFallbackSearch": "Search {source} for this album",
+  "acquire.tracks": "Tracks",
+  "acquire.topResult": "Top result",
+  "acquire.topArtist": "Artist",
+  "acquire.scope": "Show",
+  "acquire.scope.all": "All",
+  "acquire.scope.albums": "Albums",
+  "acquire.scope.tracks": "Tracks"
 }

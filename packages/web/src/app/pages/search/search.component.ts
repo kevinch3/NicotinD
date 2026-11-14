@@ -1,5 +1,6 @@
 import { Component, inject, signal, computed, effect, OnInit, OnDestroy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { NgTemplateOutlet } from '@angular/common';
 import { Router, RouterLink, ActivatedRoute } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { SearchApiService } from '../../services/api/search-api.service';
@@ -58,6 +59,7 @@ import {
   classifyHuntDownloadResult,
 } from '../../lib/hunt-download-outcome';
 import { ToastService } from '../../services/toast.service';
+import { inferIntent, parseScope, SEARCH_SCOPES, type SearchScope } from '../../lib/search-intent';
 import {
   GetTrackRowComponent,
   type TrackRowState,
@@ -212,6 +214,7 @@ interface CopiesView {
   imports: [
     GetAlbumCardComponent,
     CopyPickerComponent,
+    NgTemplateOutlet,
     GetTrackRowComponent,
     GetNoticeComponent,
     OverflowRevealDirective,
@@ -411,19 +414,67 @@ export class SearchComponent implements OnInit, OnDestroy {
     ),
   );
   readonly hasBlendedResults = computed(() => this.blendedResults().length > 0);
-  // The blended song-first list can run to hundreds of near-duplicate peer rows
-  // ("amazingly long and useless" for an album search — the Folders view is the
-  // useful unit there). Cap it to a scannable head with a "show all" escape so it
-  // never dominates the page; folder-mode carries whole-album grabs.
-  private static readonly RESULTS_CAP = 8;
+  // ─── Top result, sections and scope (#1885) ─────────────────────────
+  /** Which works the page lists, from `?scope=`. */
+  readonly scope = signal<SearchScope>(parseScope(this.route.snapshot.queryParamMap?.get('scope')));
+  readonly scopes = SEARCH_SCOPES;
+  /** The query the results are for — not the box, which may already say something else. */
+  readonly searchedQuery = signal('');
+  /** The track the Top result showed first, so later peers never swap it out. */
+  private readonly pinnedTrackId = signal<string | null>(null);
+  readonly topResult = computed(() => {
+    if (this.loading()) return null;
+    const results = this.blendedResults();
+    const pinned = results.find((c) => c.id === this.pinnedTrackId());
+    return inferIntent(this.searchedQuery(), this.catalog(), pinned ?? results[0] ?? null);
+  });
+  private readonly pinTopTrack = effect(() => {
+    const top = this.topResult();
+    if (top?.kind === 'track' && this.pinnedTrackId() === null)
+      this.pinnedTrackId.set(top.track.id);
+  });
+  /** The album grid, without the album the Top result already shows. */
+  readonly gridCatalogAlbums = computed(() => {
+    const top = this.topResult();
+    const albums = this.orderedCatalogAlbums();
+    return top?.kind === 'album'
+      ? albums.filter((a) => a.foreignAlbumId !== top.album.foreignAlbumId)
+      : albums;
+  });
+  /** The Tracks section, without the track the Top result already shows. */
+  readonly trackResults = computed(() => {
+    const top = this.topResult();
+    const results = this.blendedResults();
+    return top?.kind === 'track' ? results.filter((c) => c.id !== top.track.id) : results;
+  });
+
+  setScope(scope: SearchScope): void {
+    if (this.scope() === scope) return;
+    this.scope.set(scope);
+    this.router
+      .navigate([], {
+        relativeTo: this.route,
+        queryParams: { scope: scope === 'all' ? null : scope },
+        queryParamsHandling: 'merge',
+        replaceUrl: true,
+      })
+      .catch(() => undefined);
+  }
+
+  // The song list can run to hundreds of near-duplicate peer rows. Under All it
+  // is a short head (the Tracks section); the Tracks scope gives it room. Both
+  // keep a "show all" escape.
+  private static readonly RESULTS_CAP = 5;
+  private static readonly TRACKS_SCOPE_CAP = 50;
   readonly resultsExpanded = signal(false);
+  private readonly resultsCap = computed(() =>
+    this.scope() === 'tracks' ? SearchComponent.TRACKS_SCOPE_CAP : SearchComponent.RESULTS_CAP,
+  );
   readonly visibleBlendedResults = computed(() =>
-    this.resultsExpanded()
-      ? this.blendedResults()
-      : this.blendedResults().slice(0, SearchComponent.RESULTS_CAP),
+    this.resultsExpanded() ? this.trackResults() : this.trackResults().slice(0, this.resultsCap()),
   );
   readonly hiddenResultCount = computed(() =>
-    Math.max(0, this.blendedResults().length - SearchComponent.RESULTS_CAP),
+    Math.max(0, this.trackResults().length - this.resultsCap()),
   );
 
   // Download-pipeline transcode reminder. `downloads.transcodeLossless` is
@@ -1369,6 +1420,7 @@ export class SearchComponent implements OnInit, OnDestroy {
     this.catalogUnavailable.set(false);
     this.resultsExpanded.set(false);
     this.artistsExpanded.set(false);
+    this.pinnedTrackId.set(null);
     this.closeCopies();
   }
 
@@ -1377,6 +1429,7 @@ export class SearchComponent implements OnInit, OnDestroy {
     if (!query) return;
 
     this.search.addToHistory(query);
+    this.searchedQuery.set(query);
 
     const prevId = this.searchId();
     if (prevId) this.cleanupSearch(prevId);

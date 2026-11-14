@@ -80,6 +80,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **Guided acquire UX**: catalog cards are the primary path, every raw peer copy sits behind one
   All copies row (`openAllCopies`); `AutoHuntService` posts a one-click Get and groups failures (`failureDigest`).
   → [album-hunt.md](../album-hunt.md)
+- **Top result and scope**: fixed Get-page sections (Top result, Tracks, Albums, Artists) and `?scope=` chips;
+  the Top result is the album, artist or pinned track the query names (`inferIntent`, `parseScope`).
+  → [album-hunt.md](../album-hunt.md)
 - **What the provider holds**: one card (`GetAlbumCardComponent`) for catalog and source-only albums, carrying
   the peers holding it and whether the library has it (`availabilityFor`, `providerOnlyAlbums`,
   `folderIsAlbum`, `libraryStateOf`). → [album-hunt.md](../album-hunt.md)

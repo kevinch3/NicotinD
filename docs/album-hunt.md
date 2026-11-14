@@ -88,6 +88,22 @@ Again*. The page already holds every folder the network search answered with, so
   fullest copy outright through `downloadFolder`, so the album intent and the cross-lane guard
   (#1539) apply, and its overlay is `statusForAlbum`.
 
+**Top result, sections and scope (#1885).** The page answers three intents, an artist, one album
+and one track, in fixed sections that never reorder as peers answer: **Top result**, then
+**Tracks**, **Albums** (catalog, then "More albums your sources have") and **Artists**. The pure
+`inferIntent` (`lib/search-intent.ts`) picks the Top result from the *searched* query
+(`searchedQuery`, not the box) and the catalog. It is the **album** whose title words are all in the
+query and whose title and artist words cover the query; a query that is only the artist's name names
+no album, and two different titles name neither. Otherwise it is the **artist**, when the query is
+just the name the catalog scoped the search to. Otherwise it is the **best track**, which the page
+pins (`pinnedTrackId`) so a faster peer arriving later never swaps it. The shown album leaves the
+grid (`gridCatalogAlbums`), and the shown track leaves Tracks (`trackResults`). Tracks shows five
+under All. **Scope chips** `All · Albums · Tracks` (`data-testid="get-scope"`, `scope-<name>`)
+live in `?scope=` (`parseScope`; anything unknown is All). Albums hides Tracks, Tracks hides Albums
+and Artists and gives the list up to 50 rows, and both hide the Top result. The album card in the
+Top result comes from an `ng-template`; the grid keeps its cards inline, because an item stamped
+from a template declared outside a `TvNavGroup` is not one of its items, and D-pad roving breaks.
+
 **Choose a copy** (`CopyPickerComponent`, `data-testid="copy-picker"`) lists every copy the page
 search saw of one album, best first with the top one preselected, as `CopyCandidate`s
 (`lib/copy-candidate.ts`: `folderToCopy`, `huntToCopy`, `mergeCopies`). A row shows the five facts

@@ -1530,6 +1530,83 @@ describe('SearchComponent — transcode reminder', () => {
   });
 });
 
+describe('SearchComponent — Top result, sections and scope (#1885)', () => {
+  const tracks = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      filename: `Artist/${i}-Title${i}.flac`,
+      size: 1000,
+      artist: 'Artist',
+      title: `Title ${i}`,
+    }));
+
+  it('an artist + album query tops with that album and keeps it out of the grid', async () => {
+    const { component, search } = setup();
+    search.setQuery('pink floyd dark side of the moon');
+    component.handleSearch(new Event('submit'));
+    await flush();
+    const top = component.topResult();
+    expect(top?.kind).toBe('album');
+    expect(component.gridCatalogAlbums()).toHaveLength(0);
+  });
+
+  it('a bare artist query tops with the artist', async () => {
+    const { component, search } = setup({
+      catalogSearch: () =>
+        of({
+          artists: [{ mbid: 'pf-mbid', name: 'Pink Floyd' }],
+          albums: [CATALOG_ALBUM],
+          scopedArtist: 'Pink Floyd',
+        }),
+    });
+    search.setQuery('Pink Floyd');
+    component.handleSearch(new Event('submit'));
+    await flush();
+    expect(component.topResult()).toMatchObject({ kind: 'artist', artist: { name: 'Pink Floyd' } });
+    expect(component.gridCatalogAlbums()).toHaveLength(1);
+  });
+
+  it('a track query tops with the first track, pinned while more peers answer', async () => {
+    const { component, search } = setup({ catalogSearch: () => of({ artists: [], albums: [] }) });
+    search.setQuery('title');
+    component.handleSearch(new Event('submit'));
+    await flush();
+    search.setNetwork([{ username: 'p1', freeUploadSlots: 1, uploadSpeed: 1, files: tracks(3) }]);
+    const first = component.topResult();
+    expect(first?.kind).toBe('track');
+    TestBed.tick();
+    const firstId = first?.kind === 'track' ? first.track.id : '';
+    expect(component.trackResults().some((c) => c.id === firstId)).toBe(false);
+
+    // A faster peer would now rank first; the Top result does not move.
+    search.setNetwork([
+      { username: 'p0', freeUploadSlots: 1, uploadSpeed: 999, files: tracks(3).slice(2) },
+      { username: 'p1', freeUploadSlots: 1, uploadSpeed: 1, files: tracks(3) },
+    ]);
+    const after = component.topResult();
+    expect(after?.kind === 'track' && after.track.id).toBe(firstId);
+  });
+
+  it('the Tracks scope lists more tracks; Albums hides them', () => {
+    const { component, search } = setup();
+    search.setNetwork([{ username: 'p', freeUploadSlots: 1, uploadSpeed: 1, files: tracks(12) }]);
+    expect(component.visibleBlendedResults()).toHaveLength(5);
+    component.setScope('tracks');
+    expect(component.scope()).toBe('tracks');
+    expect(component.visibleBlendedResults()).toHaveLength(12);
+  });
+
+  it('reads the scope from the URL, and writes it back on a chip', () => {
+    const { component } = setup({}, {}, { scope: 'albums' } as never);
+    expect(component.scope()).toBe('albums');
+    const navigate = vi.spyOn(component.router, 'navigate').mockResolvedValue(true);
+    component.setScope('all');
+    expect(navigate).toHaveBeenCalledWith(
+      [],
+      expect.objectContaining({ queryParams: { scope: null }, queryParamsHandling: 'merge' }),
+    );
+  });
+});
+
 describe('SearchComponent — catalog-miss fallback', () => {
   // httpErrorCode reads err.error.code; this shape triggers the raw fallback.
   const notInLidarr = () => throwError(() => ({ error: { code: 'ALBUM_NOT_IN_LIDARR' } }));
@@ -1650,8 +1727,8 @@ describe('SearchComponent — results cap', () => {
     search.setNetwork([{ username: 'peer', freeUploadSlots: 1, uploadSpeed: 100, files }]);
 
     expect(component.blendedResults().length).toBe(12);
-    expect(component.visibleBlendedResults().length).toBe(8); // RESULTS_CAP
-    expect(component.hiddenResultCount()).toBe(4);
+    expect(component.visibleBlendedResults().length).toBe(5); // RESULTS_CAP under All
+    expect(component.hiddenResultCount()).toBe(7);
 
     component.resultsExpanded.set(true);
     expect(component.visibleBlendedResults().length).toBe(12);

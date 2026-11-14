@@ -344,11 +344,112 @@
     />
   }
 
+  <!-- Scope chips and the Top result (#1885): fixed sections — Top result, then
+       Tracks, Albums, Artists — that never reorder as peers answer. -->
+  @if (auth.canAcquire() && !loading() && searchedQuery() && (hasCatalog() || hasBlendedResults())) {
+    <div
+      class="flex flex-wrap gap-1.5 mb-4"
+      role="group"
+      [attr.aria-label]="'acquire.scope' | t"
+      data-testid="get-scope"
+      appTvNavGroup
+      axis="horizontal"
+    >
+      @for (s of scopes; track s) {
+        <button
+          appTvNavItem
+          type="button"
+          [attr.data-testid]="'scope-' + s"
+          [attr.aria-pressed]="scope() === s"
+          (click)="setScope(s)"
+          class="px-3 py-1 rounded-full text-xs font-semibold border transition"
+          [class]="
+            scope() === s
+              ? 'bg-theme-accent text-theme-on-accent border-transparent'
+              : 'border-theme text-theme-secondary hover:text-theme-primary'
+          "
+        >
+          {{ 'acquire.scope.' + s | t }}
+        </button>
+      }
+    </div>
+  }
+  @if (auth.canAcquire() && scope() === 'all' && topResult(); as top) {
+    <section class="mb-6" data-testid="top-result" [attr.data-kind]="top.kind">
+      <h2 class="text-xs font-semibold uppercase tracking-wide text-theme-muted mb-3">
+        {{ 'acquire.topResult' | t }}
+      </h2>
+      @if (top.kind === 'album') {
+        <div class="max-w-[13rem]">
+          <ng-container *ngTemplateOutlet="albumCard; context: { $implicit: top.album }" />
+        </div>
+      } @else if (top.kind === 'artist') {
+        <button
+          appTvNavItem
+          type="button"
+          (click)="activateArtist(top.artist)"
+          data-testid="top-result-artist"
+          [attr.aria-label]="'acquire.artistChipAction' | t: { artist: top.artist.name }"
+          class="w-full sm:w-auto text-left px-4 py-3 rounded-lg border border-theme bg-theme-surface hover:border-theme-accent transition"
+        >
+          <span class="block text-base font-semibold text-theme-primary">{{ top.artist.name }}</span>
+          <span class="block text-xs text-theme-muted">{{ 'acquire.topArtist' | t }} &rarr;</span>
+        </button>
+      } @else {
+        <div class="rounded-lg border border-theme overflow-hidden">
+          <ng-container *ngTemplateOutlet="trackRow; context: { $implicit: top.track }" />
+        </div>
+      }
+    </section>
+  }
+
+  <!-- Source-agnostic blended results: one ranked list across every enabled
+       source (the network addon's peer files + archive.org + Spotify), each row chip-labelled
+       with a single Get action. No "primary network" / "Also on…" hierarchy. -->
+  @if (
+    auth.canAcquire() && !loading() && search.query().trim() && scope() !== 'albums' && trackResults().length > 0
+  ) {
+    <section class="mt-4" data-testid="results">
+      <h2 class="text-xs font-semibold uppercase tracking-wide text-theme-muted mb-2">
+        {{ 'acquire.tracks' | t }}
+      </h2>
+      @if (plugins.hasSpotify() && !plugins.hasSpotdl() && search.spotify().length > 0) {
+        <p class="text-xs text-amber-500 mb-2" data-testid="spotify-needs-spotdl">
+          {{ 'getNotice.spotifyNeedsSpotdl' | t }}
+        </p>
+      }
+      <!-- Transcode reminder: only when the lossless→Opus standardization is on
+           (ffmpeg present) AND there's a lossless pick in view — so it never
+           claims a conversion that won't happen for a 320k MP3 pick. -->
+      @if (transcodeActive() && hasLosslessInView()) {
+        <p class="text-xs text-theme-muted mb-2" data-testid="transcode-note">
+          {{ 'getNotice.losslessAsOpus' | t: { kbps: transcodeBitRate() } }}
+        </p>
+      }
+      <ul class="divide-y divide-theme-border rounded-lg border border-theme overflow-hidden">
+        @for (c of visibleBlendedResults(); track c.id) {
+          <li>
+            <ng-container *ngTemplateOutlet="trackRow; context: { $implicit: c }" />
+          </li>
+        }
+      </ul>
+      @if (hiddenResultCount() > 0 && !resultsExpanded()) {
+        <button
+          (click)="resultsExpanded.set(true)"
+          data-testid="results-show-all"
+          class="mt-2 text-xs font-medium text-[var(--theme-accent)] hover:underline"
+        >
+          {{ 'acquire.showAllResults' | t: { count: trackResults().length } }}
+        </button>
+      }
+    </section>
+  }
+
   <!-- Metadata (catalog) results — the primary, MusicBrainz/Lidarr-backed path.
        Acquisition-oriented (cards lead to album hunt), so hidden from listeners. -->
-  @if (auth.canAcquire() && hasCatalog() && !loading()) {
+  @if (auth.canAcquire() && hasCatalog() && !loading() && scope() !== 'tracks') {
     <section class="space-y-6 mb-8">
-      @if (catalog()!.albums.length > 0) {
+      @if (gridCatalogAlbums().length > 0) {
         <div>
           <h2 class="text-xs font-semibold uppercase tracking-wide text-theme-muted mb-3">
             {{ 'acquire.albums' | t }}
@@ -359,7 +460,7 @@
             axis="grid"
             #catalogAlbumsGrid="appTvNavGroup"
           >
-            @for (row of chunk(orderedCatalogAlbums(), catalogAlbumsGrid.gridColumns()); track $index) {
+            @for (row of chunk(gridCatalogAlbums(), catalogAlbumsGrid.gridColumns()); track $index) {
               <div role="row" style="display: contents">
                 @for (album of row; track album.foreignAlbumId) {
                   @let availability = catalogAvailabilityOf(album);
@@ -472,59 +573,6 @@
         <a routerLink="/library" class="underline hover:no-underline">{{ 'nav.library' | t }}</a
         >.
       </p>
-    </section>
-  }
-
-  <!-- Source-agnostic blended results: one ranked list across every enabled
-       source (the network addon's peer files + archive.org + Spotify), each row chip-labelled
-       with a single Get action. No "primary network" / "Also on…" hierarchy. -->
-  @if (auth.canAcquire() && !loading() && search.query().trim() && hasBlendedResults()) {
-    <section class="mt-4" data-testid="results">
-      <h2 class="text-xs font-semibold uppercase tracking-wide text-theme-muted mb-2">
-        {{ 'acquire.results' | t }}
-      </h2>
-      @if (plugins.hasSpotify() && !plugins.hasSpotdl() && search.spotify().length > 0) {
-        <p class="text-xs text-amber-500 mb-2" data-testid="spotify-needs-spotdl">
-          {{ 'getNotice.spotifyNeedsSpotdl' | t }}
-        </p>
-      }
-      <!-- Transcode reminder: only when the lossless→Opus standardization is on
-           (ffmpeg present) AND there's a lossless pick in view — so it never
-           claims a conversion that won't happen for a 320k MP3 pick. -->
-      @if (transcodeActive() && hasLosslessInView()) {
-        <p class="text-xs text-theme-muted mb-2" data-testid="transcode-note">
-          {{ 'getNotice.losslessAsOpus' | t: { kbps: transcodeBitRate() } }}
-        </p>
-      }
-      <ul class="divide-y divide-theme-border rounded-lg border border-theme overflow-hidden">
-        @for (c of visibleBlendedResults(); track c.id) {
-          <li>
-            <app-get-track-row
-              [title]="c.title"
-              [subtitle]="c.subtitle"
-              [source]="c.source"
-              [sourceLabel]="c.sourceLabel"
-              [state]="blendedState(c)"
-              [percent]="blendedPercent(c)"
-              [cancelJobId]="blendedJobId(c)"
-              [copies]="c.copies ?? 0"
-              [opensExternally]="c.source === 'spotify' && !plugins.hasSpotdl()"
-              [transcodeKbps]="transcodeActive() && isLosslessCandidate(c) ? transcodeBitRate() : 0"
-              (get)="getBlended(c)"
-              (cancel)="cancelBlended(c, $event)"
-            />
-          </li>
-        }
-      </ul>
-      @if (hiddenResultCount() > 0 && !resultsExpanded()) {
-        <button
-          (click)="resultsExpanded.set(true)"
-          data-testid="results-show-all"
-          class="mt-2 text-xs font-medium text-[var(--theme-accent)] hover:underline"
-        >
-          {{ 'acquire.showAllResults' | t: { count: blendedResults().length } }}
-        </button>
-      }
     </section>
   }
 
@@ -652,4 +700,42 @@
       }
     </app-copy-picker>
   }
+  <ng-template #albumCard let-album>
+    @let availability = catalogAvailabilityOf(album);
+    <app-get-album-card
+      [title]="album.title"
+      [artist]="album.artistName"
+      [meta]="catalogMeta(album)"
+      [coverSrc]="catalogCoverUrl(album)"
+      [status]="catalogHuntStatus(album)"
+      [preparing]="resolvingAlbums().has(album.foreignAlbumId)"
+      [availability]="availability ? availabilityLabel(availability) : availability"
+      [hasCopies]="!!availability || !!plugins.networkSource()"
+      [failed]="catalogFailure(album)"
+      [library]="libraryStateOf(album.artistName, album.title, album.trackCount)"
+      [showWatch]="plugins.hasDownload()"
+      [watched]="watchlist.isWatched(album.foreignAlbumId)"
+      (get)="huntCatalogAlbum(album)"
+      (copies)="showCatalogCopies(album)"
+      (cancel)="cancelGet($event)"
+      (watch)="toggleWatch(album)"
+    />
+  </ng-template>
+
+  <ng-template #trackRow let-c>
+    <app-get-track-row
+      [title]="c.title"
+      [subtitle]="c.subtitle"
+      [source]="c.source"
+      [sourceLabel]="c.sourceLabel"
+      [state]="blendedState(c)"
+      [percent]="blendedPercent(c)"
+      [cancelJobId]="blendedJobId(c)"
+      [copies]="c.copies ?? 0"
+      [opensExternally]="c.source === 'spotify' && !plugins.hasSpotdl()"
+      [transcodeKbps]="transcodeActive() && isLosslessCandidate(c) ? transcodeBitRate() : 0"
+      (get)="getBlended(c)"
+      (cancel)="cancelBlended(c, $event)"
+    />
+  </ng-template>
 </div>
