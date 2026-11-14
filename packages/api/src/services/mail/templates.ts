@@ -223,33 +223,39 @@ export function verifyEmail(opts: {
   username: string;
   link: string;
   lang?: PreferenceLang;
+  /** The admin who assigned the address (*Assign email…*); absent → the user asked. */
+  assignedBy?: string;
 }): RenderedMail {
   const lang = opts.lang ?? 'en';
   const t = stringsFor(lang);
+  const by = opts.assignedBy;
+  const intro = (server: string, admin = by ?? '') =>
+    by === undefined ? t.verify.intro(server) : t.verify.assignedIntro(admin, server);
+  const ignore = by === undefined ? t.verify.ignore : t.verify.assignedIgnore;
   const subject = oneLine(t.verify.subject(opts.serverName));
   const text = textBody(t, opts.serverName, [
     t.hi(opts.username),
     '',
-    t.verify.intro(`"${opts.serverName}"`),
+    intro(`"${opts.serverName}"`),
     opts.link,
     '',
     t.verify.expiry,
     '',
-    t.verify.ignore,
+    ignore,
   ]);
   const html = layout({
     lang,
     title: subject,
-    preheader: oneLine(t.verify.intro(opts.serverName)),
+    preheader: oneLine(intro(opts.serverName)),
     serverName: opts.serverName,
     footer: t.footer(opts.serverName),
     bodyHtml: [
       p(escapeHtml(t.hi(opts.username))),
-      p(t.verify.intro(strong(opts.serverName))),
+      p(intro(strong(opts.serverName), by === undefined ? '' : strong(by))),
       button(opts.link, t.verify.button),
       linkBlock(t, opts.link),
       p(escapeHtml(t.verify.expiry)),
-      note(escapeHtml(t.verify.ignore)),
+      note(escapeHtml(ignore)),
     ].join(''),
   });
   return { subject, text, html };

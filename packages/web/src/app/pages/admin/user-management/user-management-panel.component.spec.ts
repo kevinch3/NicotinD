@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
+import { HttpErrorResponse } from '@angular/common/http';
 import BASE_CATALOG from '../../../../../public/i18n/en.json';
 import { UserManagementPanelComponent } from './user-management-panel.component';
 import { AuthService } from '../../../services/auth.service';
@@ -44,6 +45,7 @@ describe('UserManagementPanelComponent', () => {
       setRegistration?: unknown;
       issueResetLink?: unknown;
       emailResetLink?: unknown;
+      assignUserEmail?: unknown;
       transport?: 'off' | 'smtp' | 'outbox';
     } = {},
   ) {
@@ -57,6 +59,16 @@ describe('UserManagementPanelComponent', () => {
     const toast = { show: vi.fn() };
     const emailResetLink =
       over.emailResetLink ?? vi.fn(() => of({ mail: { ok: true }, expiresAt: 1 }));
+    const assignUserEmail =
+      over.assignUserEmail ??
+      vi.fn((_id: string, email: string) =>
+        of({
+          email: null,
+          emailVerified: false,
+          pendingEmail: email || null,
+          ...(email ? { mail: { ok: true } } : {}),
+        }),
+      );
     const issueResetLink =
       over.issueResetLink ??
       vi.fn(() => of({ path: '/reset-password#t=rt', urls: ['https://box.ts.net'], expiresAt: 1 }));
@@ -81,7 +93,10 @@ describe('UserManagementPanelComponent', () => {
         { provide: ConfirmService, useValue: { ask } },
         // The embedded invites card has its own spec; here it only must not throw.
         { provide: InvitesApiService, useValue: { list: vi.fn(() => of({ invites: [] })) } },
-        { provide: AccountApiService, useValue: { issueResetLink, emailResetLink } },
+        {
+          provide: AccountApiService,
+          useValue: { issueResetLink, emailResetLink, assignUserEmail },
+        },
         {
           provide: MailApiService,
           useValue: { get: vi.fn(() => of({ effectiveTransport: over.transport ?? 'off' })) },
@@ -104,6 +119,7 @@ describe('UserManagementPanelComponent', () => {
       setRegistration,
       issueResetLink,
       emailResetLink,
+      assignUserEmail,
       toast,
       cmp: fixture.componentInstance,
     };
@@ -469,6 +485,135 @@ describe('UserManagementPanelComponent', () => {
       await m.fixture.whenStable();
       expect(m.cmp.error()).toContain('admin.email.reason.unreachable');
       m.fixture.destroy();
+    });
+  });
+
+  describe('Assign email', () => {
+    type Mounted = Awaited<ReturnType<typeof mountWithUsers>>;
+    const q = (m: Mounted, id: string) =>
+      m.el.querySelector(`[data-testid="${id}"]`) as HTMLElement;
+
+    async function openDialog(m: Mounted) {
+      (q(m, 'user-actions-toggle') as HTMLButtonElement).click();
+      m.fixture.detectChanges();
+      (q(m, 'user-action-assign-email') as HTMLButtonElement).click();
+      m.fixture.detectChanges();
+      await m.fixture.whenStable();
+      m.fixture.detectChanges();
+    }
+    function type(m: Mounted, value: string) {
+      const input = q(m, 'assign-email-input') as HTMLInputElement;
+      input.value = value;
+      input.dispatchEvent(new Event('input'));
+      m.fixture.detectChanges();
+    }
+    async function submit(m: Mounted) {
+      (q(m, 'assign-email-submit') as HTMLButtonElement).click();
+      await m.fixture.whenStable();
+      m.fixture.detectChanges();
+    }
+
+    it('sends a link, shows the address as pending on the row, and closes', async () => {
+      const m = await mountWithUsers([testUser], { transport: 'smtp' });
+      await openDialog(m);
+      expect(q(m, 'assign-email-dialog').textContent).toContain('admin.assignEmailFor');
+      type(m, ' alice@example.com ');
+      expect(q(m, 'assign-email-submit').textContent).toContain('admin.assignEmailSubmit');
+      await submit(m);
+      expect(m.assignUserEmail).toHaveBeenCalledWith('u1', 'alice@example.com');
+      expect(m.toast.show).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'admin.assignEmailSent', kind: 'success' }),
+      );
+      expect(q(m, 'assign-email-dialog')).toBeNull();
+      expect(q(m, 'user-email-pending').textContent).toContain('admin.emailPending');
+      m.fixture.destroy();
+    });
+
+    it('opens on the pending address, else the current one', async () => {
+      const m = await mountWithUsers([
+        {
+          ...testUser,
+          email: 'old@example.com',
+          emailVerified: true,
+          pendingEmail: 'new@example.com',
+        },
+      ]);
+      await openDialog(m);
+      expect(m.cmp.assignEmail()).toBe('new@example.com');
+      m.fixture.destroy();
+    });
+
+    it('cannot send while mail is off, but can still remove an address', async () => {
+      const m = await mountWithUsers([
+        { ...testUser, email: 'a@example.com', emailVerified: true },
+      ]);
+      await openDialog(m);
+      expect(q(m, 'assign-email-needs-mail')).not.toBeNull();
+      expect((q(m, 'assign-email-submit') as HTMLButtonElement).disabled).toBe(true);
+      type(m, '');
+      expect(q(m, 'assign-email-needs-mail')).toBeNull();
+      expect(q(m, 'assign-email-submit').textContent).toContain('admin.assignEmailRemove');
+      await submit(m);
+      expect(m.assignUserEmail).toHaveBeenCalledWith('u1', '');
+      expect(m.toast.show).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'admin.assignEmailRemoved' }),
+      );
+      m.fixture.destroy();
+    });
+
+    it('keeps the dialog open with the reason when the send fails', async () => {
+      const assignUserEmail = vi.fn(() =>
+        of({
+          email: null,
+          emailVerified: false,
+          pendingEmail: 'a@example.com',
+          mail: { ok: false, reason: 'auth', detail: '535' },
+        }),
+      );
+      const m = await mountWithUsers([testUser], { transport: 'smtp', assignUserEmail });
+      await openDialog(m);
+      type(m, 'a@example.com');
+      await submit(m);
+      expect(q(m, 'assign-email-error').textContent).toContain('admin.email.reason.auth');
+      expect(q(m, 'assign-email-dialog')).not.toBeNull();
+      m.fixture.destroy();
+    });
+
+    it('says when another account has the address', async () => {
+      const assignUserEmail = vi.fn(() =>
+        throwError(
+          () => new HttpErrorResponse({ status: 409, error: { code: 'EMAIL_TAKEN', error: 'x' } }),
+        ),
+      );
+      const m = await mountWithUsers([testUser], { transport: 'smtp', assignUserEmail });
+      await openDialog(m);
+      type(m, 'taken@example.com');
+      await submit(m);
+      expect(q(m, 'assign-email-error').textContent).toContain('account.emailTaken');
+      m.fixture.destroy();
+    });
+
+    it('every key it renders exists in both catalogs', async () => {
+      const es = (await import('../../../../../public/i18n/es.json')).default as Record<
+        string,
+        string
+      >;
+      const en = BASE_CATALOG as Record<string, string>;
+      for (const key of [
+        'admin.assignEmail',
+        'admin.assignEmailFor',
+        'admin.assignEmailHelp',
+        'admin.assignEmailPlaceholder',
+        'admin.assignEmailSubmit',
+        'admin.assignEmailRemove',
+        'admin.assignEmailSent',
+        'admin.assignEmailRemoved',
+        'admin.assignEmailFailed',
+        'admin.emailPending',
+      ]) {
+        expect(en[key], key).toBeTruthy();
+        expect(es[key], key).toBeTruthy();
+      }
     });
   });
 });

@@ -394,6 +394,8 @@ export interface AdminUser {
   email?: string | null;
   /** Whether that address was proven (an emailed invite or a verification link). */
   emailVerified?: boolean;
+  /** An address waiting for its confirmation link to be opened; null = none. */
+  pendingEmail?: string | null;
   // Ephemeral presence, merged server-side from PresenceService (see docs/presence-tracking.md).
   isConnected: boolean;
   amountOfDevices: number;

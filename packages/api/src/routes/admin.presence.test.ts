@@ -11,6 +11,7 @@ import type { AuthEnv } from '../middleware/auth.js';
 import { applySchema } from '../db.js';
 import { adminRoutes, compareUsersByActivity } from './admin.js';
 import { presenceService } from '../services/presence.js';
+import { startEmailVerification } from '../services/email-verification.js';
 
 let testDb: Database = (() => {
   const d = new Database(':memory:');
@@ -132,6 +133,20 @@ describe('admin /users presence merge', () => {
     expect(pick('mail2')).toMatchObject({ email: 'bob@example.com', emailVerified: false });
     expect(pick('none1')).toMatchObject({ email: null, emailVerified: false });
     expect(pick('mail1')).not.toHaveProperty('email_verified_at');
+  });
+
+  it('ships a pending address while its link is live, and drops it once expired', async () => {
+    seedUser('pend1', 'dana');
+    startEmailVerification(testDb, 'pend1', 'dana@example.com', Date.now());
+    seedUser('old1', 'erin');
+    startEmailVerification(testDb, 'old1', 'erin@example.com', Date.now() - 2 * 86_400_000);
+
+    const app = authedAdmin(new Hono<AuthEnv>().route('/', adminRoutes({ musicDir: '/music' })));
+    const users = (await (await app.request('/users')).json()) as Array<Record<string, unknown>>;
+    const pick = (id: string) => users.find((u) => u.id === id)!;
+
+    expect(pick('pend1')).toMatchObject({ email: null, pendingEmail: 'dana@example.com' });
+    expect(pick('old1')).toMatchObject({ pendingEmail: null });
   });
 
   it('orders the list by activity: online first, then most recently seen, never last', async () => {

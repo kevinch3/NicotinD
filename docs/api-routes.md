@@ -77,6 +77,7 @@ follow-up work, not part of the gate fix.
 | `POST`   | `/api/admin/invites`                     | Admin: mint an invite link (role, expiry, uses, note, optional `email` → mailed, single-use, `mail` result; 409 `EMAIL_TAKEN`) |
 | `POST`   | `/api/admin/invites/:id/link`            | Admin: new link for a pending invite (old one dies); an emailed invite is re-sent |
 | `DELETE` | `/api/admin/invites/:id`                 | Admin: revoke an invite                                     |
+| `PUT`    | `/api/admin/user-emails/:userId`         | Admin: assign an address (`{ email }` → confirmation link, pending until opened; `''` removes) |
 | `PUT`    | `/api/me/account/password`               | Change own password; ends other sessions, returns new JWT   |
 | `GET`    | `/api/me/account`                        | Own `{ email, emailVerified, pendingEmail, mailEnabled }`   |
 | `PUT`    | `/api/me/account/email`                  | `{ email, currentPassword }`: mail a verification link (`''` clears); 403 wrong password, 409 `EMAIL_TAKEN` / `MAIL_NOT_CONFIGURED` |

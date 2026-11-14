@@ -16,14 +16,10 @@ import { asRole, verifyPassword } from '@nicotind/core';
 import type { AuthEnv } from '../middleware/auth.js';
 import { signJwt } from '../middleware/auth.js';
 import { recordAudit } from '../services/audit-log.js';
-import {
-  cancelEmailVerification,
-  pendingEmailOf,
-  startEmailVerification,
-} from '../services/email-verification.js';
+import { cancelEmailVerification, pendingEmailOf } from '../services/email-verification.js';
 import { linkBaseCandidates } from '../services/link-base.js';
 import type { MailService } from '../services/mail/mailer.js';
-import { verifyEmail } from '../services/mail/templates.js';
+import { sendEmailVerification } from '../services/mail/verify-mail.js';
 import { mailLangOf } from '../services/mail/mail-lang.js';
 import { notifyPasswordChanged } from '../services/password-notice.js';
 import { sessionVersionOf } from '../services/session-version.js';
@@ -110,21 +106,17 @@ export function accountRoutes(deps: AccountRoutesDeps) {
       return c.json({ error: 'An account already uses this email', code: 'EMAIL_TAKEN' }, 409);
     }
 
-    const { token } = startEmailVerification(db, user.sub, email, now());
     // A signed-in request: its origin is where this user reaches the server.
     const bases = await linkBaseCandidates(linkSources, c.req.url);
-    const base = (bases[0] ?? new URL(c.req.url).origin).replace(/\/+$/, '');
-    const row = db
-      .query<{ username: string }, [string]>('SELECT username FROM users WHERE id = ?')
-      .get(user.sub);
-    const mail = await deps.mail.send('verify', {
-      to: email,
-      ...verifyEmail({
-        serverName: serverName(),
-        username: row?.username ?? user.username ?? '',
-        link: `${base}/verify-email#t=${token}`,
-        lang: mailLangOf(db, user.sub, c.req.header('accept-language')),
-      }),
+    const mail = await sendEmailVerification({
+      db,
+      mail: deps.mail,
+      userId: user.sub,
+      email,
+      serverName: serverName(),
+      linkBase: bases[0] ?? new URL(c.req.url).origin,
+      lang: mailLangOf(db, user.sub, c.req.header('accept-language')),
+      now: now(),
     });
     // Whether a link went out, never where to.
     recordAudit(db, user, 'user.email-change', {

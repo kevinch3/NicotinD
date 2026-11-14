@@ -29,6 +29,15 @@ export interface AccountView {
 /** `PUT /api/me/account/email`: the view, plus how the verification mail went when one was sent. */
 export type AccountEmailResult = AccountView & { mail?: MailSendResult };
 
+/** `PUT /api/admin/user-emails/:id` — the user's address state after *Assign email…*. */
+export interface AssignedEmailResult {
+  email: string | null;
+  emailVerified: boolean;
+  pendingEmail: string | null;
+  /** Present when a confirmation link was sent (or failed to be). */
+  mail?: MailSendResult;
+}
+
 export type ResetInspection =
   { status: 'valid'; username: string } | { status: 'invalid' | 'expired' | 'used' };
 
@@ -62,6 +71,14 @@ export class AccountApiService {
       userId,
       send: true,
     });
+  }
+
+  /** *Assign email…*: a confirmation link to `email`; `''` removes the address. */
+  assignUserEmail(userId: string, email: string) {
+    return this.http.put<AssignedEmailResult>(
+      `/api/admin/user-emails/${encodeURIComponent(userId)}`,
+      { email },
+    );
   }
 
   getAccount() {
