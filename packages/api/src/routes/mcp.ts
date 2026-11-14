@@ -229,7 +229,9 @@ export const MCP_TOOLS: McpTool[] = [
       }
       const artists = db
         .query<{ id: string; name: string }, []>(
-          'SELECT id, name FROM library_artists ORDER BY album_count DESC',
+          // A resolved compound (split_compound = 1) is represented by its members;
+          // an unresolved one stays listed, because the curator has to act on it.
+          'SELECT id, name FROM library_artists WHERE split_compound = 0 ORDER BY album_count DESC',
         )
         .all()
         .filter((r) => matchesAllTokens(r.name, tokens))
@@ -375,7 +377,12 @@ export const MCP_TOOLS: McpTool[] = [
       if (!artist) return JSON.stringify({ error: 'artist not found' });
       const albums = db
         .query<{ id: string; name: string; year: number | null; genre: string | null }, [string]>(
-          'SELECT id, name, year, genre FROM library_albums WHERE artist_id = ? ORDER BY year',
+          // Credited albums too: a joint-credited album is owned by its first
+          // known member but credits every member through library_album_artists.
+          `SELECT id, name, year, genre FROM library_albums
+            WHERE artist_id = ?1
+               OR id IN (SELECT album_id FROM library_album_artists WHERE artist_id = ?1)
+            ORDER BY year`,
         )
         .all(id);
       // Origin + MBID are read-only here but not decoration (#759): a wrong
