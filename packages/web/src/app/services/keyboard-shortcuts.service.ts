@@ -1,4 +1,4 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { DestroyRef, Injectable, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { Subscription, fromEvent } from 'rxjs';
 import { PlayerService } from './player.service';
@@ -22,6 +22,12 @@ export class KeyboardShortcutsService {
   private readonly player = inject(PlayerService);
   private readonly likes = inject(LikeService);
   private readonly router = inject(Router);
+  /** Pending library-find poll; cleared on destroy so it never outlives the page (#1863). */
+  private searchFocusTimer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor() {
+    inject(DestroyRef).onDestroy(() => this.cancelSearchFocus());
+  }
 
   /** The `?` sheet. */
   readonly helpOpen = signal(false);
@@ -111,16 +117,26 @@ export class KeyboardShortcutsService {
       local.focus();
       return;
     }
+    this.cancelSearchFocus();
     void this.router.navigate(['/library']).then(() => {
       const deadline = Date.now() + KeyboardShortcutsService.SEARCH_FOCUS_TIMEOUT_MS;
       const attempt = (): void => {
+        this.searchFocusTimer = null;
         const input = visibleSearchInput();
         if (input) input.focus();
         else if (Date.now() < deadline)
-          setTimeout(attempt, KeyboardShortcutsService.SEARCH_FOCUS_POLL_MS);
+          this.searchFocusTimer = setTimeout(
+            attempt,
+            KeyboardShortcutsService.SEARCH_FOCUS_POLL_MS,
+          );
       };
       attempt();
     });
+  }
+
+  private cancelSearchFocus(): void {
+    if (this.searchFocusTimer !== null) clearTimeout(this.searchFocusTimer);
+    this.searchFocusTimer = null;
   }
 }
 

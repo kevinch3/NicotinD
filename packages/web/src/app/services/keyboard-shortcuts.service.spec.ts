@@ -258,6 +258,22 @@ describe('KeyboardShortcutsService', () => {
     expect(navigateSpy).toHaveBeenCalledWith(['/library']);
   });
 
+  it('the library find-box poll stops when the service is destroyed (#1863)', async () => {
+    vi.useFakeTimers();
+    try {
+      const { router } = setup(false);
+      vi.spyOn(router, 'navigate').mockResolvedValue(true);
+      dispatchKeydown(window, '/');
+      await vi.advanceTimersByTimeAsync(0);
+      expect(vi.getTimerCount()).toBe(1);
+      sub?.unsubscribe();
+      TestBed.resetTestingModule();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('Alt/Meta+Arrow (browser Back/Forward) neither seeks nor preventDefaults', () => {
     setup(false);
     playerStub.currentTime.set(30);
