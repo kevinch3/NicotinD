@@ -689,7 +689,7 @@ export function discographyRoutes({
           }
           const artistImage = pickArtistImage(album.artist?.images);
           if (artistImage) {
-            setArtwork(db, artistIdFor(artistName), 'artist', artistImage, coverCacheDir);
+            setArtwork(db, artistIdFor(artistName), 'artist', artistImage, coverCacheDir, 'lidarr');
           }
         } catch (err) {
           log.warn({ albumId, err }, 'Failed to persist canonical artwork');

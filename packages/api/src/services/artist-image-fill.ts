@@ -93,7 +93,7 @@ export async function fillArtistImages(
       continue;
     }
 
-    setArtwork(db, artist.id, 'artist', resolved.url, deps.coverCacheDir);
+    setArtwork(db, artist.id, 'artist', resolved.url, deps.coverCacheDir, resolved.source);
     // The cover route negative-caches an artist 404 (an artist with no portrait
     // is served the placeholder by design), so without this eviction the new
     // portrait stays invisible until that entry expires.

@@ -1556,6 +1556,9 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
       updated_at INTEGER NOT NULL
     )
   `);
+  // The provider that answered (lidarr, spotify, discogs), when the writer knew
+  // it; null for older rows and writers that don't (#1860).
+  addColumnIfMissing(db, 'library_artwork', 'source', 'TEXT');
 
   // When the artist-image task last came back empty for an artist, so it drops
   // out of the queue for PORTRAIT_RETRY_TTL_MS instead of being re-asked every

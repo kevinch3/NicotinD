@@ -69,6 +69,15 @@ describe('carryArtistCuration (#305)', () => {
     expect(existsSync(join(OVERRIDES(), 'old.jpg'))).toBe(false);
   });
 
+  it('carries the portrait provider with the artwork row (#1860)', () => {
+    seedArtwork('old');
+    db.run(`UPDATE library_artwork SET source = 'discogs' WHERE id = 'old'`);
+    carryArtistCuration(db, dataDir, { fromId: 'old', toId: 'new' });
+    expect(db.query(`SELECT source FROM library_artwork WHERE id = 'new'`).get()).toEqual({
+      source: 'discogs',
+    });
+  });
+
   it('moves the origin row and never clobbers the destination', () => {
     db.run(
       `INSERT INTO library_artist_origins (artist_id, country, source, checked_at)
