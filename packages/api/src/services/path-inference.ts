@@ -87,6 +87,14 @@ export function inferFolderAlbum(
   return album;
 }
 
+/**
+ * A title's leading number reads as a track prefix only when no track number is
+ * known yet or it is that number; otherwise it is part of the title (#1876).
+ */
+export function isTrackPrefixOf(prefix: string, known: string | number | undefined): boolean {
+  return known === undefined || known === '' || Number(prefix) === Number(known);
+}
+
 export function inferMetadataFromPath(filename: string, directory: string): ParsedMetadata {
   const localName = cleanToken(basename(splitPathSegments(filename).join('/')));
   const fileNoExt = localName.replace(/\.[^/.]+$/, '').trim();
@@ -133,10 +141,12 @@ export function inferMetadataFromPath(filename: string, directory: string): Pars
 
   // Permissive track-prefix strip on the inferred title: handles "01-Demasiado",
   // "5 Track" (cleanToken turns underscores into spaces), "06 its always you".
-  // \d{1,3} keeps 4-digit years like "1989" safe.
+  // \d{1,3} keeps 4-digit years like "1989" safe. Once a track number is known,
+  // a different leading number belongs to the title: "11 - 19-2000", "03 - 99
+  // Luftballons" (#1876).
   if (parsed.title) {
     const m = parsed.title.match(/^\s*(\d{1,3})\s*(?:[.)\-_]\s*|\s+)(\S.*)$/);
-    if (m) {
+    if (m && isTrackPrefixOf(m[1]!, parsed.trackNumber)) {
       if (!parsed.trackNumber) parsed.trackNumber = String(Number(m[1]));
       parsed.title = m[2];
     }

@@ -20,7 +20,12 @@ import {
   parseYearFromFolder,
 } from '@nicotind/core';
 import { classifyFolder, type Classification } from './compilation-tagger.js';
-import { extractAlbumName, inferFolderAlbum, inferMetadataFromPath } from './path-inference.js';
+import {
+  extractAlbumName,
+  inferFolderAlbum,
+  inferMetadataFromPath,
+  isTrackPrefixOf,
+} from './path-inference.js';
 import type { CompletedDownloadFile } from './path-inference.js';
 import {
   readAudioTags,
@@ -648,11 +653,13 @@ export class LibraryOrganizer {
     let title = normalizeTagValue(tags.title);
     let album = sanitizeAlbumTag(normalizeTagValue(tags.album));
     // Existing title that's just a filename leak ("01-Demasiado", "05. LA SED VERDADERA").
-    // Strict pattern (requires .)\-_ separator) avoids stripping legit titles like "99 Red Balloons".
+    // Strict pattern (requires .)\-_ separator) avoids stripping legit titles like "99 Red Balloons",
+    // and a number other than the tagged track is the title's own: "19-2000" on track 11 (#1876).
     if (title) {
       // Our own `D-NN - Title` shape first, so its disc is not read as a track.
       const own = parseOrganizerStem(title);
-      const m = own ? null : title.match(/^\s*(\d{1,3})\s*[.)\-_]\s*(\S.*)$/);
+      const strict = own ? null : title.match(/^\s*(\d{1,3})\s*[.)\-_]\s*(\S.*)$/);
+      const m = strict && isTrackPrefixOf(strict[1]!, tags.trackNumber) ? strict : null;
       if (own) {
         if (tags.trackNumber === undefined) tags.trackNumber = own.track;
         if (tags.discNumber === undefined && own.disc !== undefined) tags.discNumber = own.disc;

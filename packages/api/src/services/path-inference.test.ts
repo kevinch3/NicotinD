@@ -48,6 +48,33 @@ describe('inferMetadataFromPath', () => {
     expect(parsed.album).toBe('Babasónicos');
   });
 
+  it('keeps a leading number that is not the track already read (#1876)', () => {
+    const cases: Array<[string, string, string]> = [
+      ['11 - 19-2000.flac', '11', '19-2000'],
+      ['Gorillaz - Gorillaz - 11 - 19-2000.flac', '11', '19-2000'],
+      ['02 - 5-4.flac', '2', '5-4'],
+      ['03 - 99 Luftballons.mp3', '3', '99 Luftballons'],
+      ['04 - 7 Rings.mp3', '4', '7 Rings'],
+      ['01 - 4 Minutes.mp3', '1', '4 Minutes'],
+      ['07 - 1979.flac', '7', '1979'],
+    ];
+    for (const [file, track, title] of cases) {
+      const parsed = inferMetadataFromPath(file, 'Album');
+      expect({ file, track: parsed.trackNumber, title: parsed.title }).toEqual({
+        file,
+        track,
+        title,
+      });
+    }
+  });
+
+  it('still strips a prefix that repeats the track number ("03 - 03. Song")', () => {
+    expect(inferMetadataFromPath('03 - 03. Song.mp3', 'Album')).toMatchObject({
+      trackNumber: '3',
+      title: 'Song',
+    });
+  });
+
   it('extracts trackNumber + title from "5_Track.mp3"', () => {
     const parsed = inferMetadataFromPath('5_Track.mp3', 'Some Album');
     expect(parsed.title).toBe('Track');
