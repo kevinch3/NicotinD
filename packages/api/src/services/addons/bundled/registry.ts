@@ -1,3 +1,4 @@
+import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { createLogger, negotiateCapabilities, validateAddonManifest } from '@nicotind/core';
 import type { PluginRegistry } from '../../plugins/registry.js';
@@ -27,9 +28,12 @@ export interface BundledAddonDeps {
  * consent-gated plugin (a one-click, zero-install first-party source).
  */
 export function registerBundledAddons(registry: PluginRegistry, deps: BundledAddonDeps): void {
-  const addons: BundledAddon[] = [
-    makeArchiveBundledAddon({ stagingDir: join(deps.stagingDir, 'bundled-archive') }),
-  ];
+  const archiveStaging = join(deps.stagingDir, 'bundled-archive');
+  // why: a bundled addon's job store is in-memory, so whatever is staged here
+  // belongs to a previous process and no job can ever deliver it — on prod a
+  // deploy mid-download left 1.9 GB of it (#1892).
+  rmSync(archiveStaging, { recursive: true, force: true });
+  const addons: BundledAddon[] = [makeArchiveBundledAddon({ stagingDir: archiveStaging })];
   for (const addon of addons) {
     const id = addon.manifest.id;
     const errors = validateAddonManifest(addon.manifest);
