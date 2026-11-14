@@ -93,8 +93,8 @@ provider-agnostic**: SMTP is the baseline, so Mailgun is a preset, not a depende
 - **Outbox** (`services/mail/outbox.ts`): `createOutboxTransport` writes `mail_outbox`; `listOutbox`
   reads it. Selected only by `NICOTIND_MAIL_TRANSPORT=outbox`, and `GET /api/admin/mail/outbox` is
   registered only under it.
-- **Presets are data** (`services/mail/presets.ts`, `MAIL_PRESETS`): Mailgun, Brevo, Gmail,
-  Fastmail, Custom — host, port, TLS mode, a username hint and an i18n `helpKey`. Adding a provider
+- **Presets are data** (`services/mail/presets.ts`, `MAIL_PRESETS`): Mailgun, Brevo, Resend,
+  Gmail, Fastmail, Custom — host, port, TLS mode, a username hint and an i18n `helpKey`. Adding a provider
   is one entry plus its help text in `en.json`/`es.json`.
 - **Settings** (`services/mail/settings.ts`, `MailSettingsStore`): non-secret fields as JSON in
   `app_settings` key `mail`; the password under its own key `mail_secret`, which config export
@@ -251,6 +251,13 @@ now says to turn click and open tracking off and to send from an authenticated d
 Brevo rewrites the sender to `…@<id>.brevosend.com`). This is a provider setting, not something the
 SMTP transport can switch off.
 
+## Provider note: Resend
+
+`smtp.resend.com`, port 465 with implicit TLS (587 STARTTLS also works). The username is the literal
+word `resend` and the password an API key with sending access; the From must be on a domain verified
+in Resend. Resend's per-domain click tracking has the same effect as Brevo's above, so the preset's
+help text says to leave it off.
+
 ## Fix after the first real send: the server's name
 
 The first real Brevo test arrived as "Test email from 95fe07a0e91c": emails and the invite page
@@ -307,7 +314,7 @@ type MailResult =
     `check:install-scripts` / `check:audit` review.
   - Config: host, port (587 STARTTLS default, 465 implicit TLS), username, password, From.
 - **Presets, not code, per provider.** The settings card offers *Mailgun*, *Brevo*,
-  *Gmail*, *Fastmail*, *Custom SMTP*. A preset only pre-fills host, port and help text
+  *Resend*, *Gmail*, *Fastmail*, *Custom SMTP*. A preset only pre-fills host, port and help text
   (for example "Mailgun: smtp.mailgun.org:587, user `postmaster@<domain>`, EU uses
   smtp.eu.mailgun.org"). Adding a provider is a JSON entry plus a docs line.
 - **HTTP API adapters are optional extras** behind the same interface, for hosts where

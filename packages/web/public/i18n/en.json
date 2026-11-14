@@ -387,6 +387,7 @@
   "admin.email.preset": "Provider",
   "admin.email.presetHelp.mailgun": "Mailgun: smtp.mailgun.org, port 587. The username is postmaster@<your-domain> with that domain's SMTP password; EU domains use smtp.eu.mailgun.org. The sandbox domain only delivers to recipients you have authorized.",
   "admin.email.presetHelp.brevo": "Brevo: smtp-relay.brevo.com, port 587. Use the Login and an SMTP key from SMTP & API → SMTP, not your account password. Send from an address on a domain you authenticated in Brevo, or Brevo rewrites the sender. Turn off Brevo's click and open tracking: tracked links are rewritten through a redirect, which breaks invite and reset links.",
+  "admin.email.presetHelp.resend": "Resend: smtp.resend.com, port 465 with implicit TLS. The username is the word resend and the password is an API key (re_…) with sending access. Send from an address on a domain you verified in Resend. Leave the domain's click tracking off: tracked links are rewritten through a redirect, which breaks invite and reset links.",
   "admin.email.presetHelp.gmail": "Gmail: smtp.gmail.com, port 587. Needs 2-Step Verification and an app password; your normal password will not work.",
   "admin.email.presetHelp.fastmail": "Fastmail: smtp.fastmail.com, port 465 with implicit TLS. Use an app password.",
   "admin.email.presetHelp.custom": "Any SMTP server: your provider's host, with port 587 (STARTTLS) or 465 (implicit TLS).",

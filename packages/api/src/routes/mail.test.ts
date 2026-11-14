@@ -125,6 +125,7 @@ describe('GET /', () => {
     expect(body.presets.map((p: { id: string }) => p.id)).toEqual([
       'mailgun',
       'brevo',
+      'resend',
       'gmail',
       'fastmail',
       'custom',
