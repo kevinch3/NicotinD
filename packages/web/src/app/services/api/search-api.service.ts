@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import type { ArchiveCandidate, SpotifyCandidate } from '@nicotind/core';
+import type { AcquisitionCandidate, ArchiveCandidate, SpotifyCandidate } from '@nicotind/core';
 import type {
   SearchResult,
   NetworkResults,
@@ -58,12 +58,16 @@ export class SearchApiService {
     );
   }
 
-  // archive.org search lane — returns item candidates; download via AcquireService
-  // with the candidate's detailsUrl. 503s when the archive plugin is disabled.
-  archiveSearch(q: string) {
-    return this.http.get<{ candidates: ArchiveCandidate[] }>('/api/archive/search', {
-      params: { q },
-    });
+  /**
+   * Every enabled metadata source (archive.org, Spotify, …) in one blended list;
+   * `sources` names the ones the server asked. The network lane stays on
+   * `/api/search` for its live progress.
+   */
+  sourcesSearch(q: string) {
+    return this.http.get<{ candidates: AcquisitionCandidate[]; sources: string[] }>(
+      '/api/sources/search',
+      { params: { q } },
+    );
   }
 
   archiveSearchAlbum(artist: string, album: string) {
@@ -72,15 +76,8 @@ export class SearchApiService {
     });
   }
 
-  // Spotify metadata fallback lane — returns album candidates; download via
-  // AcquireService with the candidate's `url` (spotDL resolves it). 503s when the
-  // spotify plugin is disabled or its credentials aren't configured.
-  spotifySearch(q: string) {
-    return this.http.get<{ candidates: SpotifyCandidate[] }>('/api/spotify/search', {
-      params: { q },
-    });
-  }
-
+  // Spotify album lookup for the album-hunt modal; download via AcquireService
+  // with the candidate's `url` (spotDL resolves it).
   spotifySearchAlbum(artist: string, album: string) {
     return this.http.get<{ candidates: SpotifyCandidate[] }>('/api/spotify/search', {
       params: { artist, album },

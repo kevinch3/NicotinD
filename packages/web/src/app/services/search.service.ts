@@ -1,5 +1,5 @@
 import { Injectable, signal } from '@angular/core';
-import type { ArchiveCandidate, SpotifyCandidate } from '@nicotind/core';
+import type { AcquisitionCandidate } from '@nicotind/core';
 import type { CatalogSearchResult, SearchResult } from './api/api-types';
 
 export interface NetworkResult {
@@ -50,14 +50,10 @@ export class SearchService {
   // the search so a slow niche query shows progress before files materialize,
   // instead of a dead "Searching…". See §C2.
   readonly networkResponseCount = signal(0);
-  // archive.org lane — populated in parallel with the network search when the
-  // archive plugin is enabled. Mirrors the network signals.
-  readonly archive = signal<ArchiveCandidate[]>([]);
-  readonly archiveState = signal<'idle' | 'searching' | 'complete'>('idle');
-  // Spotify metadata fallback lane — populated in parallel when the spotify
-  // plugin is enabled. Downloads route through spotDL. Mirrors the archive lane.
-  readonly spotify = signal<SpotifyCandidate[]>([]);
-  readonly spotifyState = signal<'idle' | 'searching' | 'complete'>('idle');
+  // Every metadata source the server blends (archive.org, Spotify, …), from
+  // `/api/sources/search`, populated in parallel with the network search.
+  readonly sources = signal<AcquisitionCandidate[]>([]);
+  readonly sourcesState = signal<'idle' | 'searching' | 'complete'>('idle');
   readonly downloading = signal(new Set<string>());
   readonly downloadedFolders = signal(loadDownloadedFolders());
   readonly canBrowse = signal(false);
@@ -142,20 +138,12 @@ export class SearchService {
     this.history.set([]);
   }
 
-  setArchive(items: ArchiveCandidate[]): void {
-    this.archive.set(items);
+  setSources(items: AcquisitionCandidate[]): void {
+    this.sources.set(items);
   }
 
-  setArchiveState(state: 'idle' | 'searching' | 'complete'): void {
-    this.archiveState.set(state);
-  }
-
-  setSpotify(items: SpotifyCandidate[]): void {
-    this.spotify.set(items);
-  }
-
-  setSpotifyState(state: 'idle' | 'searching' | 'complete'): void {
-    this.spotifyState.set(state);
+  setSourcesState(state: 'idle' | 'searching' | 'complete'): void {
+    this.sourcesState.set(state);
   }
 
   /** What one search produced — cleared when a new search starts. */
@@ -163,10 +151,8 @@ export class SearchService {
     this.network.set([]);
     this.networkState.set('idle');
     this.networkResponseCount.set(0);
-    this.archive.set([]);
-    this.archiveState.set('idle');
-    this.spotify.set([]);
-    this.spotifyState.set('idle');
+    this.sources.set([]);
+    this.sourcesState.set('idle');
     this.canBrowse.set(false);
     this.autoSearch.set(false);
     this.openBrowserKey.set(null);

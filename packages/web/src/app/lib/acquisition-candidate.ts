@@ -6,7 +6,7 @@
 // secondary "Also on…" lanes). The `acquire` intent is a discriminated union the
 // Get handler dispatches on. See docs/source-agnostic-acquisition.md.
 
-import type { ArchiveCandidate, SpotifyCandidate } from '../../types/core';
+import type { AcquisitionCandidate, ArchiveCandidate, SpotifyCandidate } from '../../types/core';
 import { formatBadge, fileExt, type SongResult } from './song-results';
 import { archiveSubtitle } from './archive-display';
 import { spotifySubtitle } from './spotify-display';
@@ -110,7 +110,37 @@ export function spotifyToCandidate(s: SpotifyCandidate): BlendedCandidate {
   };
 }
 
-const SOURCE_ORDER: Record<CandidateSource, number> = { network: 0, archive: 1, spotify: 2 };
+/** Each first-party source's baseline: a metadata hit has no peer health to rank by. */
+const SOURCE_BASELINE: Record<string, number> = { archive: 62, spotify: 56 };
+
+/**
+ * A `/api/sources/search` candidate → a row. One mapper for every source the
+ * server blends, so a new source needs no web code: its chip is the label the
+ * server sends, and its subtitle the facts every source shares.
+ */
+export function sourceToCandidate(c: AcquisitionCandidate): BlendedCandidate | null {
+  if (c.acquire.via !== 'url') return null;
+  const tracks = c.trackCount ? `${c.trackCount} ${c.trackCount === 1 ? 'track' : 'tracks'}` : '';
+  return {
+    id: `${c.source}:${c.acquire.url}`,
+    source: c.source as CandidateSource,
+    sourceLabel: c.sourceLabel,
+    title: c.title,
+    subtitle: [
+      c.artist,
+      c.year ? String(c.year) : '',
+      tracks,
+      c.kind === 'single' ? 'single' : 'album',
+    ]
+      .filter(Boolean)
+      .join(' · '),
+    coverUrl: c.coverUrl,
+    score: c.score ?? SOURCE_BASELINE[c.source] ?? 50,
+    acquire: { via: 'url', url: c.acquire.url },
+  };
+}
+
+const SOURCE_ORDER: Record<string, number> = { network: 0, archive: 1, spotify: 2 };
 
 /**
  * Merge candidate lists into one ranked list: best score first, then source.
@@ -121,6 +151,6 @@ const SOURCE_ORDER: Record<CandidateSource, number> = { network: 0, archive: 1, 
 export function mergeAndRank(...lists: BlendedCandidate[][]): BlendedCandidate[] {
   return lists.flat().sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
-    return SOURCE_ORDER[a.source] - SOURCE_ORDER[b.source];
+    return (SOURCE_ORDER[a.source] ?? 3) - (SOURCE_ORDER[b.source] ?? 3);
   });
 }

@@ -88,7 +88,7 @@ function setup(
         title: 'The Dark Side of the Moon',
         artistName: 'Pink Floyd',
       }),
-    archiveSearch: () => of({ candidates: [] }),
+    sourcesSearch: () => of({ candidates: [], sources: [] }),
     cancelSearch: () => of({ ok: true }),
     deleteSearch: () => of({ ok: true }),
     ...apiOverrides,
@@ -561,54 +561,71 @@ describe('SearchComponent — metadata-driven search', () => {
     expect(component.resolveError()).toMatch(/not yet available/);
   });
 
-  it('populates the archive.org lane in parallel when the plugin is enabled', async () => {
-    const { component, search, plugins } = setup({
-      archiveSearch: () =>
-        of({
-          candidates: [
-            { identifier: 'a1', title: 'Album', creator: 'Artist', year: '2016', detailsUrl: 'u1' },
-          ],
-        }),
-    });
-    enableArchive(plugins);
+  const archiveHit = {
+    source: 'archive',
+    sourceLabel: 'Internet Archive',
+    kind: 'album',
+    title: 'Album',
+    artist: 'Artist',
+    year: 2016,
+    trackCount: 9,
+    acquire: { via: 'url', url: 'https://archive.org/details/a1' },
+  };
+  const spotifyHit = {
+    source: 'spotify',
+    sourceLabel: 'Spotify',
+    kind: 'single',
+    title: 'Single',
+    artist: 'Artist',
+    acquire: { via: 'url', url: 'https://open.spotify.com/album/s1' },
+  };
+
+  it('asks every metadata source in one request, in parallel with the network', async () => {
+    const sourcesSearch = vi.fn((_q: string) =>
+      of({ candidates: [archiveHit], sources: ['archive'] }),
+    );
+    const { component, search } = setup({ sourcesSearch });
     search.setQuery('pink floyd');
 
     component.handleSearch(new Event('submit'));
     await flush();
 
-    expect(search.archiveState()).toBe('complete');
-    expect(search.archive().map((x) => x.identifier)).toEqual(['a1']);
+    expect(sourcesSearch).toHaveBeenCalledTimes(1);
+    expect(sourcesSearch).toHaveBeenCalledWith('pink floyd');
+    expect(search.sourcesState()).toBe('complete');
+    expect(search.sources().map((x) => x.title)).toEqual(['Album']);
   });
 
-  it('skips the archive.org lane when the plugin is disabled', async () => {
-    const archiveSearch = vi.fn(() => of({ candidates: [] }));
-    const { component, search } = setup({ archiveSearch });
-    search.setQuery('pink floyd');
-
-    component.handleSearch(new Event('submit'));
-    await flush();
-
-    expect(archiveSearch).not.toHaveBeenCalled();
-    expect(search.archiveState()).toBe('idle');
-  });
-
-  it('blends archive + Spotify candidates into one ranked Results list', async () => {
-    const { component, search, plugins } = setup({
-      archiveSearch: () =>
-        of({
-          candidates: [
-            { identifier: 'a1', title: 'Album', creator: 'Artist', year: '2016', detailsUrl: 'u1' },
-          ],
-        }),
+  it('blends every source into one ranked list, chip and facts from the server', async () => {
+    const { component, search } = setup({
+      sourcesSearch: () =>
+        of({ candidates: [archiveHit, spotifyHit], sources: ['archive', 'spotify'] }),
     });
-    enableArchive(plugins);
     search.setQuery('pink floyd');
     component.handleSearch(new Event('submit'));
     await flush();
 
     const blended = component.blendedResults();
-    expect(blended.some((c) => c.source === 'archive' && c.id === 'archive:a1')).toBe(true);
-    expect(component.hasBlendedResults()).toBe(true);
+    expect(blended.map((c) => c.id)).toEqual([
+      'archive:https://archive.org/details/a1',
+      'spotify:https://open.spotify.com/album/s1',
+    ]);
+    expect(blended[0]).toMatchObject({
+      sourceLabel: 'Internet Archive',
+      subtitle: 'Artist · 2016 · 9 tracks · album',
+    });
+    expect(component.hasSpotifyRows()).toBe(true);
+  });
+
+  it('a failed sources request leaves the network rows standing', async () => {
+    const { component, search } = setup({
+      sourcesSearch: () => throwError(() => new Error('down')),
+    });
+    search.setQuery('pink floyd');
+    component.handleSearch(new Event('submit'));
+    await flush();
+    expect(search.sourcesState()).toBe('complete');
+    expect(search.sources()).toEqual([]);
   });
 
   // Search is now acquisition-only (#227): local-library results were removed

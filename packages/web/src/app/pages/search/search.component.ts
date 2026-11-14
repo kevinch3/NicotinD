@@ -78,8 +78,7 @@ import { IconComponent } from '../../components/icon/icon.component';
 import { groupBySong, isLossless } from '../../lib/song-results';
 import {
   songResultToCandidate,
-  archiveToCandidate,
-  spotifyToCandidate,
+  sourceToCandidate,
   mergeAndRank,
   type BlendedCandidate,
 } from '../../lib/acquisition-candidate';
@@ -409,11 +408,17 @@ export class SearchComponent implements OnInit, OnDestroy {
   readonly blendedResults = computed<BlendedCandidate[]>(() =>
     mergeAndRank(
       this.songResults().map((s) => songResultToCandidate(s, this.networkLabel())),
-      this.search.archive().map(archiveToCandidate),
-      this.search.spotify().map(spotifyToCandidate),
+      this.search
+        .sources()
+        .map(sourceToCandidate)
+        .filter((c): c is BlendedCandidate => c !== null),
     ),
   );
   readonly hasBlendedResults = computed(() => this.blendedResults().length > 0);
+  /** Spotify rows open in Spotify unless spotDL can fetch them, which the list says once. */
+  readonly hasSpotifyRows = computed(() =>
+    this.search.sources().some((c) => c.source === 'spotify'),
+  );
   // ─── Top result, sections and scope (#1885) ─────────────────────────
   /** Which works the page lists, from `?scope=`. */
   readonly scope = signal<SearchScope>(parseScope(this.route.snapshot.queryParamMap?.get('scope')));
@@ -1298,33 +1303,18 @@ export class SearchComponent implements OnInit, OnDestroy {
     this.linkSubmitting.set(false);
   }
 
-  // archive.org search lane — fired in parallel with the network search. Gated on
-  // the archive plugin; failures degrade silently to an empty section.
-  private async searchArchive(query: string): Promise<void> {
-    if (!this.plugins.hasArchive()) return;
-    this.search.setArchiveState('searching');
+  // Every metadata source in one request, fired in parallel with the network
+  // search. The server gates each source on its plugin and isolates a failing
+  // one; a failed request leaves the rows empty.
+  private async searchSources(query: string): Promise<void> {
+    this.search.setSourcesState('searching');
     try {
-      const res = await firstValueFrom(this.api.archiveSearch(query));
-      this.search.setArchive(res.candidates);
+      const res = await firstValueFrom(this.api.sourcesSearch(query));
+      this.search.setSources(res.candidates);
     } catch {
-      // Non-fatal — leave the section empty.
+      // Non-fatal — the network rows still stand.
     } finally {
-      this.search.setArchiveState('complete');
-    }
-  }
-
-  // Spotify metadata fallback lane — fired in parallel with the network search.
-  // Gated on the spotify plugin; failures degrade silently to an empty section.
-  private async searchSpotify(query: string): Promise<void> {
-    if (!this.plugins.hasSpotify()) return;
-    this.search.setSpotifyState('searching');
-    try {
-      const res = await firstValueFrom(this.api.spotifySearch(query));
-      this.search.setSpotify(res.candidates);
-    } catch {
-      // Non-fatal — leave the section empty.
-    } finally {
-      this.search.setSpotifyState('complete');
+      this.search.setSourcesState('complete');
     }
   }
 
@@ -1464,10 +1454,8 @@ export class SearchComponent implements OnInit, OnDestroy {
       .then((res) => this.catalog.set(res))
       .catch(() => this.catalogUnavailable.set(true));
 
-    // archive.org runs in parallel as a third lane (only when the plugin is on).
-    void this.searchArchive(query);
-    // Spotify metadata fallback runs in parallel too (only when its plugin is on).
-    void this.searchSpotify(query);
+    // The metadata sources (archive.org, Spotify, …) run in parallel, as one request.
+    void this.searchSources(query);
 
     try {
       const res = await firstValueFrom(this.api.search(query));
