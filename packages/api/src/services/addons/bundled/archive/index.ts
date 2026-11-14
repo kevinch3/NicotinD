@@ -1,4 +1,5 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   ADDON_PROTOCOL_VERSION,
@@ -21,7 +22,7 @@ import { humanizeSlug } from '@nicotind/core';
 const log = createLogger('bundled:archive');
 
 export interface ArchiveBundledDeps {
-  /** Base staging dir; each job downloads under `<stagingDir>/<jobId>/`. */
+  /** Base staging dir; each job downloads under `<stagingDir>/<hash of jobId>/`. */
   stagingDir: string;
   preferredFormats?: string[];
   fetchFn?: ArchiveEngineOpts['fetchFn'];
@@ -61,43 +62,82 @@ export function makeArchiveBundledAddon(deps: ArchiveBundledDeps): BundledAddon 
   const controllers = new Map<string, AbortController>();
   const now = (): number => Date.now();
 
+  // why: a job id is the caller's idempotency key — often the item URL — so it
+  // cannot be a path segment as-is.
+  const jobDir = (id: string): string =>
+    join(deps.stagingDir, createHash('sha256').update(id).digest('hex').slice(0, 16));
+
+  function touch(entry: JobEntry, item?: AddonJobItem): void {
+    const t = now();
+    if (item) item.updatedAt = t;
+    entry.job.updatedAt = t;
+  }
+
   async function runResolve(id: string, url: string, entry: JobEntry): Promise<void> {
     const controller = new AbortController();
     controllers.set(id, controller);
+    const { job } = entry;
     try {
-      const resolved = await resolveArchive(url, {
-        stagingDir: join(deps.stagingDir, id),
+      await resolveArchive(url, {
+        stagingDir: jobDir(id),
         preferredFormats: deps.preferredFormats ?? ['MP3', 'FLAC'],
         fetchFn: deps.fetchFn,
         downloadFile: deps.downloadFile,
         signal: controller.signal,
+        // Every file is listed the moment the metadata names it, so the card
+        // counts "n of N" and shows bytes instead of "Queued · 0" for a whole
+        // multi-hour item (#1892).
+        onPlan: (plan) => {
+          job.artist = plan.artist;
+          job.album = plan.album;
+          // The real item title, replacing the identifier-derived placeholder.
+          job.title = plan.album;
+          job.items = plan.files.map((f, i): AddonJobItem => ({
+            itemId: `${id}:${i}`,
+            title: f.title,
+            username: 'bundled:archive',
+            filename: f.filename,
+            size: f.size,
+            state: 'downloading',
+            bytesTransferred: 0,
+            fileReady: false,
+            updatedAt: now(),
+          }));
+          touch(entry);
+        },
+        onProgress: (i, bytes) => {
+          const item = job.items[i];
+          if (!item) return;
+          item.bytesTransferred = bytes;
+          touch(entry, item);
+        },
+        // Each file is deliverable as it lands; the poller ingests it while
+        // the rest of the item still downloads.
+        onFileDone: (i, f) => {
+          const item = job.items[i];
+          if (!item) return;
+          entry.paths.set(item.itemId, f.path);
+          item.size = f.size;
+          item.bytesTransferred = f.size;
+          item.state = 'completed';
+          item.fileReady = true;
+          touch(entry, item);
+        },
       });
-      entry.job.artist = resolved.artist;
-      entry.job.album = resolved.album;
-      // The real item title, replacing the identifier-derived placeholder set
-      // at createJob so the card is never generic, even mid-resolve.
-      entry.job.title = resolved.album;
-      entry.job.items = resolved.files.map((f, i): AddonJobItem => {
-        const itemId = `${id}:${i}`;
-        entry.paths.set(itemId, f.path);
-        return {
-          itemId,
-          title: f.title,
-          username: 'bundled:archive',
-          filename: f.filename,
-          size: f.size,
-          state: 'completed',
-          fileReady: true,
-          updatedAt: now(),
-        };
-      });
-      entry.job.state = 'done';
-      entry.job.updatedAt = now();
+      job.state = 'done';
+      touch(entry);
     } catch (err) {
-      entry.job.state = 'failed';
-      entry.job.error = err instanceof Error ? err.message : String(err);
-      entry.job.updatedAt = now();
-      log.warn({ id, err: entry.job.error }, 'archive resolve failed');
+      job.state = 'failed';
+      job.error = err instanceof Error ? err.message : String(err);
+      // Files that landed stay deliverable; only the unfinished ones failed.
+      for (const item of job.items) {
+        if (item.state !== 'completed') {
+          item.state = 'failed';
+          touch(entry, item);
+        }
+      }
+      touch(entry);
+      log.warn({ id, err: job.error }, 'archive resolve failed');
     } finally {
       controllers.delete(id);
     }
@@ -149,6 +189,14 @@ export function makeArchiveBundledAddon(deps: ArchiveBundledDeps): BundledAddon 
 
     async cancelJob(id: string): Promise<void> {
       controllers.get(id)?.abort();
+    },
+
+    // The poller releases a job once every file is fetched (or its card was
+    // removed): drop it and its staged copies, which nothing reads again.
+    async deleteJob(id: string): Promise<void> {
+      controllers.get(id)?.abort();
+      jobs.delete(id);
+      rmSync(jobDir(id), { recursive: true, force: true });
     },
 
     async filePath(jobId: string, itemId: string): Promise<string> {

@@ -1,6 +1,6 @@
-import { createWriteStream, mkdirSync, statSync } from 'node:fs';
-import { Readable } from 'node:stream';
-import { pipeline } from 'node:stream/promises';
+import { createWriteStream, mkdirSync, renameSync, rmSync, statSync } from 'node:fs';
+import { once } from 'node:events';
+import { finished } from 'node:stream/promises';
 import { basename, dirname, extname, join } from 'node:path';
 import { AUDIO_EXTENSIONS } from '../../../plugins/acquire/process.js';
 
@@ -47,12 +47,33 @@ export interface ResolvedArchive {
   album: string;
 }
 
+/** A file chosen for download, known before any byte of it arrives. */
+export interface PlannedArchiveFile {
+  title: string;
+  filename: string;
+  /** The size archive.org's metadata declares (0 when it declares none). */
+  size: number;
+}
+
+export interface ArchiveDownloadOpts {
+  signal?: AbortSignal;
+  /** Bytes of this file written so far. */
+  onBytes?: (bytes: number) => void;
+  /** Override the stall timeout (tests). */
+  idleTimeoutMs?: number;
+}
+
 export interface ArchiveEngineOpts {
   stagingDir: string;
   preferredFormats: string[];
   fetchFn?: typeof fetch;
-  downloadFile?: (url: string, dest: string, opts: { signal?: AbortSignal }) => Promise<void>;
+  downloadFile?: (url: string, dest: string, opts: ArchiveDownloadOpts) => Promise<void>;
   signal?: AbortSignal;
+  idleTimeoutMs?: number;
+  /** Once, after the metadata lookup: the item's meta and every file about to download. */
+  onPlan?: (plan: { artist: string; album: string; files: PlannedArchiveFile[] }) => void;
+  onProgress?: (index: number, bytes: number) => void;
+  onFileDone?: (index: number, file: ResolvedArchiveFile) => void;
 }
 
 /** Make a string safe as a single path segment (no separators, traversal, control chars). */
@@ -106,19 +127,82 @@ export function selectArchiveFiles(files: ArchiveFile[], preferred: string[]): A
   return [...byFormat.values()].sort((a, b) => b.length - a.length)[0]!;
 }
 
+/** No byte for this long fails the file: a peer that stops sending never errors on its own. */
+const DOWNLOAD_IDLE_TIMEOUT_MS = 60_000;
+
+/**
+ * Stream to `<dest>.part` and rename on success, so a file at its final name is
+ * always whole — a restart or a dropped connection mid-file leaves no truncated
+ * MP3 that looks complete.
+ *
+ * Reads the web stream directly rather than through `Readable.fromWeb` +
+ * `pipeline`: under Bun that pipeline never settles when the body errors, so a
+ * dropped connection hung the job at `active` forever.
+ */
 async function streamToFile(
   url: string,
   dest: string,
-  opts: { signal?: AbortSignal },
+  opts: ArchiveDownloadOpts,
   fetchFn: typeof fetch,
 ): Promise<void> {
-  const res = await fetchFn(url, { signal: opts.signal });
-  if (!res.ok || !res.body) {
-    throw new Error(`archive.org download failed (${res.status}) for ${url}`);
+  const idle = new AbortController();
+  const idleMs = opts.idleTimeoutMs ?? DOWNLOAD_IDLE_TIMEOUT_MS;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const arm = (): void => {
+    clearTimeout(timer);
+    timer = setTimeout(
+      () => idle.abort(new Error(`archive.org download stalled (no data for ${idleMs / 1000}s)`)),
+      idleMs,
+    );
+  };
+  const signal = opts.signal ? AbortSignal.any([opts.signal, idle.signal]) : idle.signal;
+  const aborted = new Promise<never>((_, reject) => {
+    const fail = (): void => reject(signal.reason ?? new Error('archive.org download aborted'));
+    if (signal.aborted) fail();
+    else signal.addEventListener('abort', fail, { once: true });
+  });
+  aborted.catch(() => {});
+
+  const part = `${dest}.part`;
+  let out: ReturnType<typeof createWriteStream> | undefined;
+  try {
+    arm();
+    const res = await Promise.race([fetchFn(url, { signal }), aborted]);
+    if (!res.ok || !res.body) {
+      throw new Error(`archive.org download failed (${res.status}) for ${url}`);
+    }
+    mkdirSync(dirname(dest), { recursive: true });
+    out = createWriteStream(part);
+    const reader = res.body.getReader();
+    let written = 0;
+    try {
+      for (;;) {
+        const { done, value } = await Promise.race([reader.read(), aborted]);
+        if (done) break;
+        arm();
+        written += value.byteLength;
+        if (!out.write(value)) await Promise.race([once(out, 'drain'), aborted]);
+        opts.onBytes?.(written);
+      }
+    } finally {
+      reader.cancel().catch(() => {});
+    }
+    out.end();
+    await finished(out);
+    renameSync(part, dest);
+  } catch (err) {
+    if (out) {
+      const stream = out;
+      stream.destroy();
+      // why: the stream opens its file asynchronously; deleting before it
+      // closes lets that open recreate the `.part` afterwards.
+      if (!stream.closed) await once(stream, 'close');
+    }
+    rmSync(part, { force: true });
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
-  mkdirSync(dirname(dest), { recursive: true });
-  const webStream = res.body as unknown as Parameters<typeof Readable.fromWeb>[0];
-  await pipeline(Readable.fromWeb(webStream), createWriteStream(dest));
 }
 
 function coerceCreator(creator: string | string[] | undefined): string {
@@ -155,27 +239,42 @@ export async function resolveArchive(
   const creatorRaw = coerceCreator(meta.metadata?.creator) || 'Unknown Artist';
   const titleRaw = meta.metadata?.title || id;
   const albumDir = join(opts.stagingDir, safeSegment(creatorRaw), safeSegment(titleRaw));
+  opts.onPlan?.({
+    artist: creatorRaw,
+    album: titleRaw,
+    files: chosen.map((f) => ({
+      title: trackTitleFor(f.name),
+      filename: basename(f.name),
+      size: Number(f.size) || 0,
+    })),
+  });
 
   const files: ResolvedArchiveFile[] = [];
-  for (const file of chosen) {
+  for (const [index, file] of chosen.entries()) {
     const dest = join(albumDir, ...file.name.split('/').map(safeSegment));
     const fileUrl = `${DOWNLOAD_BASE}/${encodeURIComponent(id)}/${file.name
       .split('/')
       .map(encodeURIComponent)
       .join('/')}`;
-    await downloadFile(fileUrl, dest, { signal: opts.signal });
+    await downloadFile(fileUrl, dest, {
+      signal: opts.signal,
+      idleTimeoutMs: opts.idleTimeoutMs,
+      onBytes: (bytes) => opts.onProgress?.(index, bytes),
+    });
     let size = 0;
     try {
       size = statSync(dest).size;
     } catch {
       size = 0;
     }
-    files.push({
+    const resolved = {
       path: dest,
       title: trackTitleFor(file.name),
       filename: basename(file.name),
       size,
-    });
+    };
+    files.push(resolved);
+    opts.onFileDone?.(index, resolved);
   }
 
   return { files, artist: creatorRaw, album: titleRaw };

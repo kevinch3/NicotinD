@@ -486,6 +486,20 @@ bundled built-in addon**.
   `bundled-archive`, non-removable via the `origin.bundled` flag — a `local:` transport target —,
   disabled until the admin enables the consent-gated card; no `addon_registrations` row). `resolve`
   was added to `CORE_IMPLEMENTED_ADDON_CAPABILITIES`.
+  - **Per-file progress (#1892).** The engine's `onPlan` lists every chosen file as a `downloading`
+    item right after the metadata lookup; `onProgress` carries `bytesTransferred`; `onFileDone` flips
+    one item to `completed` + `fileReady`, so the poller ingests each file while the rest of a
+    multi-hour item still downloads, instead of the card reading "Queued · 0 so far" until the last
+    byte. A later failure keeps the landed files and fails only the unfinished items.
+  - **Robust download.** Each file streams to `<name>.part` and is renamed on success. The body is
+    read directly, not through `Readable.fromWeb` + `pipeline`, which under Bun never settles when the
+    stream errors (a dropped connection hung the job at `active`). A file with no byte for 60 s fails
+    as stalled.
+  - **Staging lifecycle.** `deleteJob` (the poller's release once every file is ingested, or a
+    removed card) drops the job and its `<stagingDir>/<hash>/` dir. The job store is in-memory, so
+    `registerBundledAddons` clears `bundled-archive/` at boot: anything there belongs to a dead
+    process. A job a restart forgot is reported as a 404 (`BundledJobNotFoundError`), which the
+    orphan reconcile fails ([download-pipeline.md](download-pipeline.md)).
 - **Protocol additions**: `AddonJobIntent += 'url'`; `AddonJobRequest.url?` + `as?`; the tagless
   `ResolveResult.meta` rides the existing `AddonJob.artist/album` fields. `KIND_BY_INTENT` maps
   `url → 'url'`; the poller backfills the feed row's artist/album once the background resolve supplies
