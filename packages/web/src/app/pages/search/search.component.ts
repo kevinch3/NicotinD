@@ -35,19 +35,11 @@ import { ConfirmService } from '../../services/confirm.service';
 import { GetThenHearService, modeForFileCount } from '../../services/get-then-hear.service';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import {
-  getSingleDownloadLabel,
-  getFolderDownloadLabel,
-  isPathEffectivelyQueued,
-  BUTTON_CLASSES,
-} from '../../lib/download-status';
-import {
   groupByDirectory,
   formatPeerInfo,
   rankFolders,
   dedupeFolders,
   folderFormat,
-  fileQualityLabel,
-  pickNetworkView,
   folderAudioFiles,
   type FolderGroup,
 } from '../../lib/folder-utils';
@@ -76,13 +68,12 @@ import {
 } from '../../components/get-album-card/get-album-card.component';
 import {
   availabilityFor,
-  folderIsAlbum,
   providerOnlyAlbums,
   type ProviderAvailability,
   type ProviderOnlyAlbum,
 } from '../../lib/provider-albums';
 import { IconComponent } from '../../components/icon/icon.component';
-import { groupBySong, formatBadge, isLossless, type SongResult } from '../../lib/song-results';
+import { groupBySong, isLossless } from '../../lib/song-results';
 import {
   songResultToCandidate,
   archiveToCandidate,
@@ -91,18 +82,15 @@ import {
   type BlendedCandidate,
 } from '../../lib/acquisition-candidate';
 import { parseLinkIntent, resolverClaims, type LinkIntent } from '../../lib/link-intent';
-import { FolderBrowserComponent } from '../../components/folder-browser/folder-browser.component';
 import { SourceChipComponent } from '../../components/source-chip/source-chip.component';
 import { extractSharedUrl } from '../../lib/share-url';
 import { httpErrorMessage, httpErrorCode } from '../../lib/http-error';
 import { SkeletonComponent } from '../../components/skeleton/skeleton.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { TranslateService } from '../../services/translate.service';
-import type { Translator } from '../../lib/relative-time';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import {
-  shouldOpenDirectSearch,
   discographyFallbackNote,
   scopedArtistMbid,
   applyDiscography,
@@ -140,26 +128,6 @@ const ALLOWED_EXTENSIONS = new Set([
   '.wv',
 ]);
 
-function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/** Words too common to be worth a highlight ("The" marked in every title, #1537). */
-const HIGHLIGHT_STOP_WORDS = new Set(['the', 'a', 'an', 'and', 'of', 'de', 'la', 'el', 'y', '&']);
-
-/**
- * The query's words worth marking, longest first, plus the whole query as one
- * phrase, so "Christian Löffler" is one highlight, not two chips side by side.
- */
-export function getHighlightTerms(query: string): string[] {
-  const phrase = query.trim().replace(/\s+/g, ' ');
-  const words = phrase
-    .split(' ')
-    .filter((w) => w.length > 1 && !HIGHLIGHT_STOP_WORDS.has(w.toLowerCase()));
-  const terms = words.length > 1 && !/[&<>"]/.test(phrase) ? [phrase, ...words] : words;
-  return Array.from(new Set(terms)).sort((a, b) => b.length - a.length);
-}
-
 function extractName(filepath: string) {
   const parts = filepath.split(/[\\/]/);
   return parts[parts.length - 1];
@@ -171,11 +139,6 @@ function getFilenameStem(filepath: string) {
 
 function getDisplayTitle(file: Pick<FlatFile, 'filename' | 'title'>) {
   return file.title ?? getFilenameStem(file.filename);
-}
-
-function getDisplaySubtitle(file: Pick<FlatFile, 'artist' | 'album'>) {
-  const parts = [file.artist, file.album].filter(Boolean);
-  return parts.length > 0 ? parts.join(' · ') : '';
 }
 
 function flattenAndFilter(results: NetworkResult[]): FlatFile[] {
@@ -211,35 +174,9 @@ function flattenAndFilter(results: NetworkResult[]): FlatFile[] {
   return flat;
 }
 
-function formatDuration(seconds?: number) {
-  if (!seconds) return '';
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
-
-function formatSize(bytes: number) {
-  if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`;
-  return `${(bytes / 1_000).toFixed(0)} KB`;
-}
-
 function formatSpeed(bytesPerSec: number) {
   if (bytesPerSec >= 1_000_000) return `${(bytesPerSec / 1_000_000).toFixed(1)} MB/s`;
   return `${(bytesPerSec / 1_000).toFixed(0)} KB/s`;
-}
-
-function highlightHtml(text: string, terms: string[]): string {
-  if (!terms.length) return escapeHtml(text);
-  const pattern = new RegExp(`(${terms.map(escapeRegExp).join('|')})`, 'gi');
-  return escapeHtml(text).replace(pattern, '<mark class="search-highlight">$1</mark>');
-}
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }
 
 // ─── Component ──────────────────────────────────────────────────────
@@ -262,7 +199,12 @@ interface CopiesView {
   title: string;
   artist: string;
   status: () => AlbumHuntStatus;
-  copies: CopyCandidate[];
+  /** Read live, so rows arrive while peers are still answering. */
+  copies: () => CopyCandidate[];
+  /** Every copy the network search saw, not one work's. */
+  all?: boolean;
+  /** Opened by a Get that missed Lidarr: carries the fallback note. */
+  fallback?: boolean;
 }
 
 @Component({
@@ -274,7 +216,6 @@ interface CopiesView {
     GetNoticeComponent,
     OverflowRevealDirective,
     FormsModule,
-    FolderBrowserComponent,
     RouterLink,
     SourceChipComponent,
     SkeletonComponent,
@@ -306,7 +247,6 @@ export class SearchComponent implements OnInit, OnDestroy {
   private p2r = inject(PullToRefreshService);
   readonly i18n = inject(TranslateService);
   private readonly confirm = inject(ConfirmService);
-  private readonly translate: Translator = (key, params) => this.i18n.t(key, params);
 
   constructor() {
     this.p2r.register(async () => {
@@ -315,9 +255,6 @@ export class SearchComponent implements OnInit, OnDestroy {
     });
   }
 
-  readonly btnClasses = BUTTON_CLASSES;
-  readonly formatDuration = formatDuration;
-  readonly formatSize = formatSize;
   readonly formatSpeed = formatSpeed;
   readonly formatPeerInfo = formatPeerInfo;
 
@@ -345,14 +282,9 @@ export class SearchComponent implements OnInit, OnDestroy {
   readonly provisioningArtist = signal<string | null>(null);
   private readonly provisioningWaits = new Map<string, number>();
   private destroyed = false;
-  readonly directSearchOpen = signal(false);
-  // Set when a catalog album can't be resolved (not in Lidarr) and we fall back to
-  // a raw network search — explains why the results switched to the network lane.
-  readonly rawFallbackNote = signal<string | null>(null);
-  // The album that triggered the catalog-miss fallback, so the banner can offer an
-  // opt-in "Browse discography" CTA (loading the full discography auto-adds the
-  // artist to Lidarr, so we no longer do it unprompted — the folder results below
-  // are the primary "get this album" path). Null when not in a fallback.
+  // The album whose Get missed Lidarr: its picker explains why the copies are
+  // unscored and offers a search for it, or the artist's discography (which adds
+  // the artist to Lidarr, so it is never done unprompted).
   readonly rawFallbackAlbum = signal<CatalogAlbum | null>(null);
 
   // Link-intent card: a pasted/shared URL recognized as one acquisition
@@ -428,7 +360,6 @@ export class SearchComponent implements OnInit, OnDestroy {
 
   readonly flatNetwork = computed(() => flattenAndFilter(this.search.network()));
   readonly hasNetwork = computed(() => this.flatNetwork().length > 0);
-  readonly highlightTerms = computed(() => getHighlightTerms(this.search.query()));
   // Ranked so the best copies (free slot, lossless, complete, fast) lead, then
   // deduped so the ~100 near-identical album folders collapse to one card per
   // distinct copy (distinct editions/formats survive). See §A7.
@@ -461,21 +392,10 @@ export class SearchComponent implements OnInit, OnDestroy {
     return providerOnlyAlbums(this.allFolderGroups(), this.catalog()?.albums ?? [], artist);
   });
 
-  /** A provider card opened: the folders lane, narrowed to that album's copies. */
-  readonly folderFilter = signal<ProviderOnlyAlbum | null>(null);
-  readonly visibleFolderGroups = computed(() => {
-    const filter = this.folderFilter();
-    if (!filter) return this.folderGroups();
-    const target = { artistName: filter.artist, title: filter.title };
-    return this.folderGroups().filter((g) => folderIsAlbum(g, target));
-  });
   // Template helpers for folder format badge + per-file quality label (§A7).
-  readonly folderFormat = folderFormat;
-  readonly fileQualityLabel = fileQualityLabel;
   // Song-first view of the network results: one row per song (deduped across
   // peers, best copy auto-picked) so finding a single track is one click. The
   // folder view stays available for whole-album grabs. See §F1.
-  readonly networkView = signal<'songs' | 'folders'>('songs');
   readonly songResults = computed(() => groupBySong(this.flatNetwork(), this.search.query()));
 
   // ─── Source-agnostic blended results ────────────────────────────────
@@ -726,17 +646,6 @@ export class SearchComponent implements OnInit, OnDestroy {
     return artist && title ? { artist, title } : null;
   }
 
-  /**
-   * The folder's album downloading through another lane or peer (#1539) — a
-   * catalog Get, a different folder. This folder's own in-flight files already
-   * show on its button, so they are not reported twice.
-   */
-  folderElsewhereStatus(group: FolderGroup): AlbumHuntStatus {
-    const target = this.folderAlbumTarget(group);
-    if (!target || this.getFolderBtn(group).disabled) return IDLE_HUNT;
-    return this.autoHunt.statusForAlbum(target);
-  }
-
   async downloadFolder(group: FolderGroup, replace = false): Promise<void> {
     const validFiles = group.files.filter((f) => f.size > 0);
     const folderKey = `${group.username}:${group.directory}`;
@@ -827,7 +736,6 @@ export class SearchComponent implements OnInit, OnDestroy {
       const res = await firstValueFrom(this.api.catalogSearch(query));
       this.catalog.set(res);
       this.catalogUnavailable.set(false);
-      this.directSearchOpen.set(shouldOpenDirectSearch(this.catalog()));
     } catch {
       this.catalogUnavailable.set(true);
     } finally {
@@ -846,7 +754,6 @@ export class SearchComponent implements OnInit, OnDestroy {
       );
       const cat = this.catalog();
       this.catalog.set(cat ? applyDiscography(cat, loaded) : loaded);
-      this.directSearchOpen.set(shouldOpenDirectSearch(this.catalog()));
     } catch (err) {
       this.resolveError.set(httpErrorMessage(err, this.i18n.t('getError.discography')));
     } finally {
@@ -914,7 +821,7 @@ export class SearchComponent implements OnInit, OnDestroy {
   /** The picker's rows: scored copies first, as they arrive, then the rest. */
   readonly pickerCopies = computed(() => {
     const open = this.copiesOpen();
-    return open ? mergeCopies(this.scoredCopies().map(huntToCopy), open.copies) : [];
+    return open ? mergeCopies(this.scoredCopies().map(huntToCopy), open.copies()) : [];
   });
 
   private openCopies(view: CopiesView): number {
@@ -938,15 +845,30 @@ export class SearchComponent implements OnInit, OnDestroy {
    * A catalog card's copies, in the picker: what the page search saw at once,
    * then the album hunt's scored copies in place once Lidarr knows the album.
    */
-  showCatalogCopies(album: CatalogAlbum): void {
-    const availability = this.catalogAvailability().get(album.foreignAlbumId);
+  showCatalogCopies(album: CatalogAlbum, opts: { fallback?: boolean } = {}): void {
     const seq = this.openCopies({
       title: album.title,
       artist: album.artistName,
       status: () => this.catalogHuntStatus(album),
-      copies: (availability?.folders ?? []).map((f) => folderToCopy(f, album.trackCount)),
+      copies: () =>
+        (this.catalogAvailability().get(album.foreignAlbumId)?.folders ?? []).map((f) =>
+          folderToCopy(f, album.trackCount),
+        ),
+      fallback: opts.fallback,
     });
-    if (this.plugins.networkSource()) void this.scoreCatalogCopies(album, seq);
+    // An album Lidarr does not track has nothing to score against.
+    if (this.plugins.networkSource() && !opts.fallback) void this.scoreCatalogCopies(album, seq);
+  }
+
+  /** Every copy the network search saw, in the picker: the escape hatch for any query. */
+  openAllCopies(): void {
+    this.openCopies({
+      title: this.i18n.t('copyPicker.allCopiesTitle', { source: this.networkLabel() }),
+      artist: this.search.query().trim(),
+      status: () => IDLE_HUNT,
+      copies: () => this.folderGroups().map((f) => folderToCopy(f)),
+      all: true,
+    });
   }
 
   private async scoreCatalogCopies(album: CatalogAlbum, seq: number): Promise<void> {
@@ -994,7 +916,7 @@ export class SearchComponent implements OnInit, OnDestroy {
       title: album.title,
       artist: album.artist,
       status: () => this.providerAlbumStatus(album),
-      copies: album.availability.folders.map((f) => folderToCopy(f)),
+      copies: () => album.availability.folders.map((f) => folderToCopy(f)),
     });
   }
 
@@ -1055,19 +977,6 @@ export class SearchComponent implements OnInit, OnDestroy {
   /** Why this album's last Get failed, for the card. */
   catalogFailure(album: CatalogAlbum): string | null {
     return this.autoHunt.failureFor(this.resolvedLidarrIds().get(album.foreignAlbumId));
-  }
-
-  /** Show every copy of a provider album in the folders lane, to pick one. */
-  showProviderCopies(album: ProviderOnlyAlbum): void {
-    this.folderFilter.set(album);
-    this.directSearchOpen.set(true);
-    this.networkView.set('folders');
-    // The lane renders below the fold; take the user to the copies they asked for.
-    setTimeout(() =>
-      document
-        .querySelector('[data-testid="advanced-network-search"]')
-        ?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
-    );
   }
 
   /** Get the best copy outright: most tracks, then the lane's own ranking. */
@@ -1222,12 +1131,20 @@ export class SearchComponent implements OnInit, OnDestroy {
   // the artist to Lidarr and buries the thing they actually wanted under a grid.
   private rawHuntFallback(album: CatalogAlbum): void {
     this.setResolving(album.foreignAlbumId, false);
-    this.search.setQuery(`${album.artistName} ${album.title}`.trim());
-    // executeSearch runs its synchronous reset (clearing note + fallback album)
-    // before its first await, so set them *after* kicking it off — they survive.
-    void this.executeSearch({ forceDirectOpen: true });
     this.rawFallbackAlbum.set(album);
-    this.rawFallbackNote.set(album.title);
+    this.showCatalogCopies(album, { fallback: true });
+  }
+
+  /**
+   * Asked for from the fallback note: search the network for "<artist> <album>"
+   * and show every copy it finds. The person's query changes only on this click.
+   */
+  searchFallbackAlbum(): void {
+    const album = this.rawFallbackAlbum();
+    if (!album) return;
+    this.search.setQuery(`${album.artistName} ${album.title}`.trim());
+    void this.executeSearch();
+    this.openAllCopies();
   }
 
   // Opt-in from the catalog-miss banner: load the artist's real discography (adds
@@ -1438,148 +1355,7 @@ export class SearchComponent implements OnInit, OnDestroy {
     return this.transfers.getStatus(c.acquire.username, c.acquire.file.filename)?.percent ?? 0;
   }
 
-  toggleDirectSearch(): void {
-    this.directSearchOpen.update((v) => !v);
-  }
-
-  toggleBrowser(key: string): void {
-    this.search.openBrowserKey.update((k) => (k === key ? null : key));
-  }
-
   // ─── Template helpers ───────────────────────────────────────────
-
-  getDirBasename(group: FolderGroup): string {
-    return group.directory.split(/[\\/]/).at(-1) ?? group.directory;
-  }
-
-  getFolderKey(group: FolderGroup): string {
-    return `${group.username}::${group.directory}`;
-  }
-
-  getFolderBtn(group: FolderGroup) {
-    const folderFiles = group.files
-      .filter((f) => f.size > 0)
-      .map((f) => ({ username: group.username, filename: f.filename }));
-    const isFolderQueued = isPathEffectivelyQueued(
-      group.username,
-      group.directory,
-      this.search.downloadedFolders(),
-    );
-    return getFolderDownloadLabel(
-      folderFiles,
-      isFolderQueued,
-      (u, f) => this.transfers.getStatus(u, f),
-      this.translate,
-    );
-  }
-
-  getFolderValidFiles(group: FolderGroup) {
-    return group.files.filter((f) => f.size > 0);
-  }
-
-  getFolderBrowseFiles(group: FolderGroup) {
-    return group.files.map((f) => ({
-      filename: f.filename,
-      size: f.size,
-      bitRate: f.bitRate,
-      length: f.length,
-    }));
-  }
-
-  getGroupFileBtn(group: FolderGroup, file: FolderGroup['files'][number]) {
-    const key = `${group.username}:${file.filename}`;
-    return getSingleDownloadLabel(
-      group.username,
-      file.filename,
-      this.search.downloading().has(key),
-      (u, f) => this.transfers.getStatus(u, f),
-      this.translate,
-    );
-  }
-
-  getGroupFileVariant(group: FolderGroup, file: FolderGroup['files'][number]) {
-    return this.getGroupFileBtn(group, file).variant;
-  }
-
-  getGroupFilePercent(group: FolderGroup, file: FolderGroup['files'][number]) {
-    const entry = this.transfers.getStatus(group.username, file.filename);
-    return entry?.percent ?? 0;
-  }
-
-  getGroupFileSubtitle(file: FolderGroup['files'][number]) {
-    return getDisplaySubtitle(file);
-  }
-
-  highlightGroupFileTitle(file: FolderGroup['files'][number]): string {
-    return highlightHtml(getDisplayTitle(file), this.highlightTerms());
-  }
-
-  highlightGroupFileSubtitle(file: FolderGroup['files'][number]): string {
-    return highlightHtml(getDisplaySubtitle(file), this.highlightTerms());
-  }
-
-  // ─── Songs view (network results, song-first) ───────────────────
-
-  setNetworkView(view: 'songs' | 'folders'): void {
-    this.networkView.set(view);
-  }
-
-  // Download the best copy of a deduped song in one click.
-  downloadSong(song: SongResult): Promise<void> {
-    return this.handleDownload(song.best.username, {
-      filename: song.best.filename,
-      size: song.best.size,
-    });
-  }
-
-  getSongBtn(song: SongResult) {
-    const key = `${song.best.username}:${song.best.filename}`;
-    return getSingleDownloadLabel(
-      song.best.username,
-      song.best.filename,
-      this.search.downloading().has(key),
-      (u, f) => this.transfers.getStatus(u, f),
-      this.translate,
-    );
-  }
-
-  getSongVariant(song: SongResult) {
-    return this.getSongBtn(song).variant;
-  }
-
-  /** The Songs view's button variant, in the track row's words. */
-  songRowState(song: SongResult): TrackRowState {
-    if (this.cancelledTracks().has(`${song.best.username}:${song.best.filename}`)) return 'idle';
-    switch (this.getSongVariant(song)) {
-      case 'progress':
-      case 'queued':
-        return 'working';
-      case 'done':
-        return 'done';
-      case 'error':
-        return 'failed';
-      default:
-        return 'idle';
-    }
-  }
-
-  songFacts(song: SongResult): string {
-    return [
-      formatBadge(song.best),
-      formatSize(song.best.size),
-      song.best.length ? formatDuration(song.best.length) : '',
-    ]
-      .filter(Boolean)
-      .join(' · ');
-  }
-
-  songJobId(song: SongResult): string | null {
-    return this.trackJobId(song.best.username, song.best.filename);
-  }
-
-  getSongPercent(song: SongResult): number {
-    return this.transfers.getStatus(song.best.username, song.best.filename)?.percent ?? 0;
-  }
 
   // ─── Private ────────────────────────────────────────────────────
 
@@ -1589,17 +1365,14 @@ export class SearchComponent implements OnInit, OnDestroy {
     this.searchError.set(null);
     this.downloadError.set(null);
     this.resolveError.set(null);
-    // A raw fallback re-sets this note + album right after kicking off the search;
-    // a normal user-initiated search clears them here so they never linger.
-    this.rawFallbackNote.set(null);
     this.rawFallbackAlbum.set(null);
     this.catalogUnavailable.set(false);
     this.resultsExpanded.set(false);
     this.artistsExpanded.set(false);
-    this.folderFilter.set(null);
+    this.closeCopies();
   }
 
-  private async executeSearch(opts?: { forceDirectOpen?: boolean }): Promise<void> {
+  private async executeSearch(): Promise<void> {
     const query = this.search.query().trim();
     if (!query) return;
 
@@ -1638,14 +1411,6 @@ export class SearchComponent implements OnInit, OnDestroy {
       this.search.setNetworkState('complete');
     } finally {
       await catalogPromise;
-      // Open the raw-search fallback whenever the guided path has no actionable
-      // album cards — no catalog, or an artist matched but their discography
-      // wasn't available (§A6). Artist pills alone don't keep it closed.
-      this.directSearchOpen.set(opts?.forceDirectOpen || shouldOpenDirectSearch(this.catalog()));
-      // Default the raw-network view to folders for an album-intent query (the
-      // useful unit for "get this album"); a bare one-word song hunt stays on the
-      // deduped song list. The user can still toggle.
-      this.networkView.set(pickNetworkView(query, (this.catalog()?.albums.length ?? 0) > 0));
       this.loading.set(false);
     }
   }

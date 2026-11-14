@@ -1,10 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  shouldOpenDirectSearch,
-  discographyFallbackNote,
-  scopedArtistMbid,
-  applyDiscography,
-} from './catalog-display';
+import { discographyFallbackNote, scopedArtistMbid, applyDiscography } from './catalog-display';
 import type { CatalogSearchResult } from '../services/api/api-types';
 
 const album = (title: string) => ({
@@ -21,44 +16,6 @@ const result = (over: Partial<CatalogSearchResult>): CatalogSearchResult => ({
   artists: [],
   albums: [],
   ...over,
-});
-
-describe('shouldOpenDirectSearch', () => {
-  it('opens when there is no catalog at all', () => {
-    expect(shouldOpenDirectSearch(null)).toBe(true);
-  });
-
-  it('opens when an artist matched but has no album cards (§A6)', () => {
-    expect(
-      shouldOpenDirectSearch(
-        result({
-          artists: [{ mbid: 'm', name: 'Zara Larsson' }],
-          albums: [],
-          discographyUnavailable: true,
-        }),
-      ),
-    ).toBe(true);
-  });
-
-  it('stays closed when there are actionable album cards', () => {
-    expect(
-      shouldOpenDirectSearch(
-        result({
-          albums: [
-            {
-              foreignAlbumId: 'a',
-              title: 'X',
-              artistName: 'Y',
-              artistMbid: 'm',
-              albumType: 'Album',
-              secondaryTypes: [],
-              trackCount: 1,
-            },
-          ],
-        }),
-      ),
-    ).toBe(false);
-  });
 });
 
 describe('discographyFallbackNote', () => {

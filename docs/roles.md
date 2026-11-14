@@ -97,7 +97,7 @@ _everyone_ when the whole module is off. UI surfaces gate on these:
 - **Acquisition hidden from listeners** (`canAcquire()`): the Downloads nav item (desktop
   `layout.component` + mobile `bottom-nav`), the `/downloads` route (`acquireGuard`), and the search
   page's acquisition surfaces (source-availability pill, link-intent/URL card, catalog hunt cards,
-  blended "Get" results, the Advanced network lane). Since Search is now acquisition-only (#227), a
+  blended "Get" results, the All copies row). Since Search is now acquisition-only (#227), a
   non-acquirer sees a "browse your Library instead" empty state (`data-testid="search-acquisition-off"`)
   rather than local results — "find what I own" lives in the Library tabs/filters + Radio.
 - **Curation gated to refiner+admin** (`canCurate()`): the `⋯` Remove action

@@ -148,36 +148,6 @@
         'acquire.addingArtist' | t: { artist: artist }
       }}</app-get-notice>
     }
-    @if (rawFallbackAlbum(); as album) {
-      @if (rawFallbackNote()) {
-        <app-get-notice
-          [dismissible]="true"
-          (dismiss)="rawFallbackNote.set(null)"
-          data-testid="raw-fallback-note"
-        >
-          {{
-            'getNotice.rawFallback'
-              | t: { album: album.title, artist: album.artistName, source: networkLabel() }
-          }}
-          @if (album.artistMbid) {
-            <button
-              noticeAction
-              type="button"
-              (click)="browseFallbackDiscography()"
-              [disabled]="loadingDiscography()"
-              data-testid="raw-fallback-discography"
-              class="shrink-0 px-3 py-1.5 rounded-md text-xs font-semibold bg-theme-surface-2 text-theme-primary hover:bg-theme-surface-2/80 disabled:opacity-50"
-            >
-              {{
-                loadingDiscography()
-                  ? ('getNotice.loading' | t)
-                  : ('getNotice.browseDiscography' | t: { artist: album.artistName })
-              }}
-            </button>
-          }
-        </app-get-notice>
-      }
-    }
     @if (errors().length > 0) {
       <app-get-notice tone="warn" data-testid="source-errors">
         @for (err of errors(); track $index) {
@@ -562,9 +532,8 @@
        the network fallback and offer to load their real discography on demand. -->
 
 
-  <!-- Advanced: raw network search — a power-user escape hatch, demoted below the
-       guided catalog/song results. Peer stats + the folder-tree browser live only
-       inside this collapsed disclosure so normal users never see them. -->
+  <!-- Every copy the network search saw, behind one row: it opens Choose a copy
+       with all of them, live while peers are still answering. -->
   @if (
     auth.canAcquire() &&
     !loading() &&
@@ -573,366 +542,48 @@
     (networkAvailable() || hasNetwork())
   ) {
     <section class="mt-2" data-testid="advanced-network-search">
-      <button
-        (click)="toggleDirectSearch()"
-        data-testid="advanced-toggle"
-        class="w-full flex items-center justify-between px-1 py-2 text-xs font-semibold uppercase tracking-wide text-theme-muted hover:text-theme-primary transition"
-      >
-        <span>{{ 'acquire.advancedToggle' | t: { source: networkLabel() } }}</span>
-        <span class="flex items-center gap-2 normal-case font-normal">
-          <!-- Peers still answering shows on the collapsed header too: the album
-               cards land ~10 s before Results (#1543). -->
-          @if (search.networkState() === 'searching') {
-            <span
-              aria-hidden="true"
-              data-testid="network-searching-header"
-              class="inline-block w-3 h-3 border-2 border-theme border-t-theme-secondary rounded-full animate-spin"
-            ></span>
-          }
-          @if (hasNetwork()) {
-            <span>{{
-              'acquire.advancedSummary'
-                | t: { folders: folderGroups().length, tracks: flatNetwork().length }
-            }}</span>
-          }
-          <span>{{ directSearchOpen() ? '▾' : '▸' }}</span>
-        </span>
-      </button>
-
-      @if (directSearchOpen()) {
-        <!-- Searching indicator -->
-        @if (search.networkState() === 'searching') {
-          <div class="flex items-center gap-2 px-1 py-2 text-xs text-theme-muted">
-            <span
-              class="inline-block w-3 h-3 border-2 border-theme border-t-theme-secondary rounded-full animate-spin"
-            ></span>
-            {{ 'acquire.searchingNetwork' | t: { source: networkLabel() } }}
-            @if (flatNetwork().length > 0) {
-              <span>{{ 'acquire.tracksCount' | t: { count: flatNetwork().length } }}</span>
+      <div class="flex flex-wrap items-center gap-2 px-1 py-2 text-xs text-theme-muted">
+        <button
+          type="button"
+          (click)="openAllCopies()"
+          data-testid="advanced-toggle"
+          [disabled]="!hasNetwork()"
+          class="flex-1 min-w-0 flex items-center justify-between gap-2 font-semibold uppercase tracking-wide hover:text-theme-primary disabled:hover:text-theme-muted transition"
+        >
+          <span>{{ 'acquire.allCopies' | t: { source: networkLabel() } }}</span>
+          <span class="flex items-center gap-2 normal-case font-normal">
+            @if (search.networkState() === 'searching') {
+              <span
+                aria-hidden="true"
+                data-testid="network-searching-header"
+                class="inline-block w-3 h-3 border-2 border-theme border-t-theme-secondary rounded-full animate-spin"
+              ></span>
+            }
+            @if (hasNetwork()) {
+              <span>{{
+                'acquire.advancedSummary'
+                  | t: { folders: folderGroups().length, tracks: flatNetwork().length }
+              }}</span>
+              <span aria-hidden="true">▸</span>
+            } @else if (search.networkState() === 'complete') {
+              <span>{{
+                'acquire.noNetworkResults' | t: { source: networkLabel(), query: search.query() }
+              }}</span>
             } @else if (search.networkResponseCount() > 0) {
-              <!-- §C2: show peer-response progress before files materialize. -->
               <span>{{ 'acquire.peersResponded' | t: { count: search.networkResponseCount() } }}</span>
             }
-            <button
-              (click)="handleStopSearch()"
-              class="text-theme-muted hover:text-theme-primary transition"
-            >
-              {{ 'acquire.stop' | t }}
-            </button>
-          </div>
+          </span>
+        </button>
+        @if (search.networkState() === 'searching') {
+          <button
+            type="button"
+            (click)="handleStopSearch()"
+            class="shrink-0 hover:text-theme-primary transition"
+          >
+            {{ 'acquire.stop' | t }}
+          </button>
         }
-
-        <!-- No direct results -->
-        @if (!hasNetwork() && search.networkState() === 'complete') {
-          <div class="text-center py-8">
-            <p class="text-theme-muted">{{ 'acquire.noNetworkResults' | t: { source: networkLabel(), query: search.query() } }}</p>
-          </div>
-        }
-
-        @if (hasNetwork()) {
-          <div class="flex items-center justify-between gap-2 mb-2">
-            <div class="inline-flex rounded-md overflow-hidden border border-theme text-xs">
-              <button
-                (click)="setNetworkView('songs')"
-                data-testid="network-view-songs"
-                [class]="
-                  'px-3 py-1 font-medium transition ' +
-                  (networkView() === 'songs'
-                    ? 'bg-theme-surface-2 text-theme-primary'
-                    : 'bg-theme-surface text-theme-secondary hover:text-theme-primary')
-                "
-              >
-                {{ 'acquire.songsCount' | t: { count: songResults().length } }}
-              </button>
-              <button
-                (click)="setNetworkView('folders')"
-                data-testid="network-view-folders"
-                [class]="
-                  'px-3 py-1 font-medium transition ' +
-                  (networkView() === 'folders'
-                    ? 'bg-theme-surface-2 text-theme-primary'
-                    : 'bg-theme-surface text-theme-secondary hover:text-theme-primary')
-                "
-              >
-                {{ 'acquire.foldersCount' | t: { count: folderGroups().length } }}
-              </button>
-            </div>
-            <button
-              (click)="requestDownloadAll()"
-              data-testid="download-all"
-              class="px-3 py-1 rounded-md text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition shrink-0"
-            >
-              {{ 'acquire.downloadAllCount' | t: { count: flatNetwork().length } }}
-            </button>
-          </div>
-
-          <!-- Songs view: one row per song, deduped across peers, best copy
-               auto-picked — a single click grabs the right file (§F1). -->
-          @if (networkView() === 'songs') {
-            <div class="space-y-1" data-testid="song-results">
-              @for (song of songResults(); track song.key) {
-                <app-get-track-row
-                  testid="song-result"
-                  class="rounded-lg border border-theme overflow-hidden"
-                  [title]="song.title"
-                  [subtitle]="song.artist || song.artistHint || ''"
-                  [facts]="songFacts(song)"
-                  [state]="songRowState(song)"
-                  [percent]="getSongPercent(song)"
-                  [cancelJobId]="songJobId(song)"
-                  [copies]="song.versions.length"
-                  (get)="downloadSong(song)"
-                  (cancel)="cancelTrack(song.best.username, song.best.filename, $event)"
-                />
-              } @empty {
-                <p class="text-center py-6 text-theme-muted text-sm">{{ 'acquire.noIndividualSongs' | t }}</p>
-              }
-            </div>
-          } @else {
-            <div class="space-y-2">
-              @if (folderFilter(); as filter) {
-                <div
-                  class="flex items-center justify-between gap-2 mb-2 px-2 py-1.5 rounded-md text-xs"
-                  style="background: var(--theme-hover)"
-                  data-testid="folder-filter"
-                >
-                  <span style="color: var(--theme-text-secondary)">
-                    {{ 'acquire.showingCopiesOf' | t: { album: filter.title } }}
-                  </span>
-                  <button
-                    (click)="folderFilter.set(null)"
-                    class="inline-flex items-center gap-1 text-theme-secondary hover:text-theme-primary"
-                    [attr.aria-label]="'acquire.showAllFolders' | t"
-                  >
-                    <app-icon name="close" [size]="12" />
-                    {{ 'acquire.showAllFolders' | t }}
-                  </button>
-                </div>
-              }
-              @for (group of visibleFolderGroups(); track getFolderKey(group)) {
-                <div
-                  class="rounded-lg border border-theme overflow-hidden"
-                  style="background: var(--theme-surface)"
-                >
-                  <div class="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-theme">
-                    <div class="flex-1 min-w-[10rem]">
-                      <p appOverflowReveal
-                        class="text-sm truncate flex items-center gap-1.5"
-                        style="color: var(--theme-text-primary)"
-                      >
-                        @if (folderFormat(group); as fmt) {
-                          <!-- Format badge so the (few) lossless folders are obvious in the dup wall (§A7). -->
-                          <span
-                            [class]="
-                              'shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold leading-none ' +
-                              (fmt.lossless
-                                ? 'bg-emerald-500/20 text-emerald-400'
-                                : 'bg-theme-surface-2 text-theme-secondary')
-                            "
-                            >{{ fmt.label }}</span
-                          >
-                          <!-- Lossless folder → will be stored as Opus. Same gate as the
-                               Results hint: only when transcoding is on + ffmpeg present. -->
-                          @if (fmt.lossless && transcodeActive()) {
-                            <span
-                              class="shrink-0 text-[10px] uppercase tracking-wide text-emerald-500/70"
-                              [title]="'acquire.losslessOpusTooltip' | t"
-                              data-testid="transcode-chip-folder"
-                            >
-                              → Opus {{ transcodeBitRate() }}k
-                            </span>
-                          }
-                        }
-                        <span appOverflowReveal
-                          class="truncate cursor-pointer hover:underline transition"
-                          style="color: var(--theme-text-primary)"
-                          (click)="navigateAndSearch(getDirBasename(group))"
-                        >
-                          {{ getDirBasename(group) }}
-                        </span>
-                      </p>
-                      <p appOverflowReveal class="text-xs truncate" style="color: var(--theme-text-muted)">
-                        {{ group.username }}
-                        {{ group.bitRate ? ' · ' + group.bitRate + ' kbps' : '' }}
-                        ·
-                        <span style="color: var(--theme-accent)">{{ formatPeerInfo(group) }}</span>
-                        · {{ 'acquire.filesCount' | t: { count: group.files.length } }}
-                        @if (group.duplicatePeers) {
-                          · {{ 'acquire.peersCount' | t: { count: group.duplicatePeers + 1 } }}
-                        }
-                      </p>
-                    </div>
-                    <!-- One album = one download (#1539): when another lane or peer is
-                         already fetching this folder's album, say so and offer to swap
-                         copies instead of starting a second download. -->
-                    @let elsewhere = folderElsewhereStatus(group);
-                    @if (elsewhere.phase === 'job') {
-                      <a
-                        routerLink="/get"
-                        [queryParams]="{ tab: 'activity' }"
-                        data-testid="folder-album-elsewhere"
-                        [title]="'acquire.albumDownloadingElsewhere' | t"
-                        class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs shrink-0 text-[var(--theme-accent)] hover:underline"
-                      >
-                        <span
-                          aria-hidden="true"
-                          class="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"
-                        ></span>
-                        {{ catalogHuntLabel(elsewhere) }}
-                      </a>
-                      <button
-                        (click)="downloadFolder(group, true)"
-                        data-testid="folder-replace"
-                        [title]="'acquire.replaceWithThisCopyHint' | t"
-                        class="px-2 py-1 rounded text-xs text-theme-secondary hover:text-theme-primary transition shrink-0"
-                      >
-                        {{ 'acquire.replaceWithThisCopy' | t }}
-                      </button>
-                    } @else {
-                      <button
-                        (click)="downloadFolder(group)"
-                        data-testid="folder-download"
-                        [disabled]="
-                          getFolderBtn(group).disabled || getFolderValidFiles(group).length === 0
-                        "
-                        [class]="
-                          'inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition shrink-0 ' +
-                          btnClasses[getFolderBtn(group).variant] +
-                          (getFolderBtn(group).disabled ? ' cursor-default' : '')
-                        "
-                      >
-                        @if (!getFolderBtn(group).disabled) {
-                          <app-icon name="download" [size]="14" />
-                        }
-                        {{ getFolderBtn(group).label }}
-                      </button>
-                    }
-                    @if (search.canBrowse()) {
-                      <button
-                        (click)="toggleBrowser(getFolderKey(group))"
-                        class="px-2 py-1 rounded text-xs text-theme-muted hover:text-theme-primary transition shrink-0"
-                      >
-                        {{
-                          (search.openBrowserKey() === getFolderKey(group)
-                            ? 'acquire.hideFullTree'
-                            : 'acquire.loadFullTree') | t
-                        }}
-                      </button>
-                    }
-                  </div>
-
-                  <div class="px-2 py-2 space-y-1">
-                    @for (file of group.files; track file.filename) {
-                      <div
-                        class="relative flex items-center gap-2 px-2 py-1.5 rounded-md overflow-hidden transition"
-                        style="background: var(--theme-hover)"
-                      >
-                        @if (getGroupFileVariant(group, file) === 'progress') {
-                          <div
-                            class="absolute inset-0 pointer-events-none rounded-md transition-all duration-500"
-                            [style.width.%]="getGroupFilePercent(group, file)"
-                            style="background: var(--theme-status-progress-bg)"
-                          ></div>
-                        }
-                        @if (getGroupFileVariant(group, file) === 'done') {
-                          <div
-                            class="absolute inset-0 pointer-events-none rounded-md"
-                            style="background: var(--theme-status-done-bg)"
-                          ></div>
-                        }
-
-                        <div class="relative flex-1 min-w-0">
-                          <div class="flex items-start gap-2">
-                            <div class="min-w-0 flex-1">
-                              <p appOverflowReveal
-                                class="text-sm truncate"
-                                style="color: var(--theme-text-primary)"
-                                [innerHTML]="highlightGroupFileTitle(file)"
-                              ></p>
-                              @if (getGroupFileSubtitle(file)) {
-                                <p appOverflowReveal
-                                  class="text-xs truncate"
-                                  style="color: var(--theme-text-secondary)"
-                                  [innerHTML]="highlightGroupFileSubtitle(file)"
-                                ></p>
-                              }
-                            </div>
-                            @if (file.length) {
-                              <span
-                                class="shrink-0 pt-0.5 text-xs"
-                                style="color: var(--theme-text-muted)"
-                              >
-                                {{ formatDuration(file.length) }}
-                              </span>
-                            }
-                          </div>
-                          <p class="mt-0.5 text-xs truncate" style="color: var(--theme-text-muted)">
-                            {{ fileQualityLabel(file) }}
-                            · {{ formatSize(file.size) }}
-                          </p>
-                        </div>
-
-                        <div class="relative shrink-0">
-                          @if (getGroupFileVariant(group, file) === 'done') {
-                            <a
-                              routerLink="/library"
-                              class="px-2 py-1 rounded text-xs font-semibold transition"
-                              style="
-                                background: var(--theme-status-done-bg);
-                                color: var(--theme-status-done-text);
-                              "
-                            >
-                              {{ 'acquire.open' | t }}
-                            </a>
-                          } @else {
-                            <button
-                              (click)="
-                                handleDownload(group.username, {
-                                  filename: file.filename,
-                                  size: file.size,
-                                })
-                              "
-                              [disabled]="getGroupFileBtn(group, file).disabled"
-                              [class]="
-                                'inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition ' +
-                                (getGroupFileBtn(group, file).disabled ? 'cursor-default' : '')
-                              "
-                              [style]="
-                                getGroupFileVariant(group, file) === 'progress'
-                                  ? 'background: var(--theme-status-progress-bg); color: var(--theme-status-progress-text)'
-                                  : ''
-                              "
-                            >
-                              @if (getGroupFileVariant(group, file) === 'progress') {
-                                {{ getGroupFileBtn(group, file).label }}
-                              } @else {
-                                <app-icon name="download" [size]="12" />
-                                {{ 'acquire.download' | t }}
-                              }
-                            </button>
-                          }
-                        </div>
-                      </div>
-                    }
-                  </div>
-
-                  @if (search.openBrowserKey() === getFolderKey(group)) {
-                    <div class="px-2 pb-2">
-                      <app-folder-browser
-                        [username]="group.username"
-                        [matchedPath]="group.directory"
-                        [fallbackFiles]="getFolderBrowseFiles(group)"
-                        (download)="handleBrowserDownload(group.username, group.directory, $event)"
-                        (downloadTrack)="handleDownload($event.username, $event.file)"
-                      />
-                    </div>
-                  }
-                </div>
-              }
-            </div>
-          }
-        }
-      }
+      </div>
     </section>
   }
 
@@ -954,8 +605,51 @@
       [searching]="copiesSearching()"
       [notice]="copiesNotice()"
       [replaces]="status.phase !== 'idle'"
+      [browsable]="search.canBrowse()"
+      [downloadAllCount]="open.all ? flatNetwork().length : 0"
       (pick)="getCopy($event, status.phase !== 'idle')"
+      (pickFile)="handleDownload($event.copy.username, $event.file)"
+      (browseDownload)="
+        handleBrowserDownload($event.copy.username, $event.copy.directory, $event)
+      "
+      (downloadAll)="requestDownloadAll()"
       (close)="closeCopies()"
-    />
+    >
+      @if (open.fallback && rawFallbackAlbum(); as album) {
+        <div pickerNote class="mt-2 text-xs text-theme-secondary" data-testid="raw-fallback-note">
+          <p>
+            {{
+              'getNotice.rawFallback'
+                | t: { album: album.title, artist: album.artistName, source: networkLabel() }
+            }}
+          </p>
+          <div class="mt-1.5 flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              (click)="searchFallbackAlbum()"
+              data-testid="raw-fallback-search"
+              class="px-2.5 py-1 rounded-md font-semibold bg-theme-surface-2 text-theme-primary hover:bg-theme-surface-2/80"
+            >
+              {{ 'getNotice.rawFallbackSearch' | t: { source: networkLabel() } }}
+            </button>
+            @if (album.artistMbid) {
+              <button
+                type="button"
+                (click)="browseFallbackDiscography()"
+                [disabled]="loadingDiscography()"
+                data-testid="raw-fallback-discography"
+                class="px-2.5 py-1 rounded-md font-semibold bg-theme-surface-2 text-theme-primary hover:bg-theme-surface-2/80 disabled:opacity-50"
+              >
+                {{
+                  loadingDiscography()
+                    ? ('getNotice.loading' | t)
+                    : ('getNotice.browseDiscography' | t: { artist: album.artistName })
+                }}
+              </button>
+            }
+          </div>
+        </div>
+      }
+    </app-copy-picker>
   }
 </div>

@@ -54,7 +54,7 @@ process/repo boundary.
 5. **Generic UI, no slskd Angular code survives.** The addon manifest declares config-field
    schema + status fields; NicotinD renders a generic addon card (form-from-schema, status
    pill, consent flow) by **reusing the existing plugin kernel / Extensions UI**. The Acquire
-   page's raw "Advanced" folder-browser lane becomes an optional generic `browse` capability.
+   page's raw folder browser (now inside Choose a copy) becomes an optional generic `browse` capability.
    The bespoke slskd shares/uploads views fold into generic status rows — an accepted
    fidelity loss.
 
@@ -113,7 +113,7 @@ Endpoints under `/addon/v1/`:
 | `GET jobs?since=` / `GET jobs/:id`                  | items carry a **stable `itemId`** — the repoint contract: addon-internal fallback re-pulls flip `username` on the _same_ item, and core's mirror upsert reproduces `repointItem` semantics without knowing fallback exists                                                         |
 | `POST jobs/:id/cancel` / `retry`, `DELETE jobs/:id` | job actions the Downloads UI fans out                                                                                                                                                                                                                                              |
 | `GET jobs/:id/files/:itemId`                        | file bytes once `fileReady` (Content-Length + ETag); core streams into staging, deletes the job after full ingest; a 7-day addon janitor mops up                                                                                                                                   |
-| Optional capabilities                               | `browse` (`GET browse?user=&path=` — Advanced lane), `sharesLibrary` (`POST notify/library-changed`), `feedback` (`POST jobs/:id/feedback` — hunt-match 👍/👎 keeps feeding the addon's replay fixtures)                                                                           |
+| Optional capabilities                               | `browse` (`GET browse?user=&path=` — Choose a copy), `sharesLibrary` (`POST notify/library-changed`), `feedback` (`POST jobs/:id/feedback` — hunt-match 👍/👎 keeps feeding the addon's replay fixtures)                                                                           |
 
 **Feed continuity**: each poll upserts items into `acquisition_job_items` keyed
 `addon:<addonId>:<itemId>` — `transfer_key` relaxes from `username::filename` to an opaque

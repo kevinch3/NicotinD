@@ -8,6 +8,8 @@ import { IconComponent } from '../icon/icon.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { formatBytes } from '../../lib/disk-usage';
 import { copyFolderName, type CopyCandidate } from '../../lib/copy-candidate';
+import { folderAudioFiles } from '../../lib/folder-utils';
+import { FolderBrowserComponent } from '../folder-browser/folder-browser.component';
 
 /**
  * "Choose a copy": every copy the sources hold of one work, best first, with the
@@ -24,6 +26,7 @@ import { copyFolderName, type CopyCandidate } from '../../lib/copy-candidate';
     TvNavItemDirective,
     IconComponent,
     TranslatePipe,
+    FolderBrowserComponent,
   ],
   templateUrl: './copy-picker.component.html',
 })
@@ -44,9 +47,25 @@ export class CopyPickerComponent {
   readonly searching = input(false);
   /** Why the copies may be incomplete (source busy, offline), or null. */
   readonly notice = input<string | null>(null);
+  /** The source can list a peer's whole folder (the `browse` capability). */
+  readonly browsable = input(false);
+  /** Tracks a "Get all" would queue; 0 hides it. */
+  readonly downloadAllCount = input(0);
 
   readonly pick = output<CopyCandidate>();
   readonly close = output<void>();
+  /** One file of a copy, picked on its own. */
+  readonly pickFile = output<{ copy: CopyCandidate; file: { filename: string; size: number } }>();
+  /** Files picked in the folder browser. */
+  readonly browseDownload = output<{
+    copy: CopyCandidate;
+    files: Array<{ filename: string; size: number }>;
+    path?: string;
+  }>();
+  readonly downloadAll = output<void>();
+
+  readonly filesOpen = signal(false);
+  readonly browsing = signal(false);
 
   private readonly chosenKey = signal<string | null>(null);
   readonly selected = computed(() => {
@@ -59,7 +78,25 @@ export class CopyPickerComponent {
   }
 
   choose(copy: CopyCandidate): void {
+    if (copy.key !== this.chosenKey()) this.browsing.set(false);
     this.chosenKey.set(copy.key);
+  }
+
+  toggleFiles(): void {
+    this.filesOpen.update((v) => !v);
+    this.browsing.set(false);
+  }
+
+  audioFiles(copy: CopyCandidate) {
+    return folderAudioFiles(copy.folder);
+  }
+
+  fileName(path: string): string {
+    return path.split(/[\\/]/).at(-1) ?? path;
+  }
+
+  fileSize(bytes: number): string {
+    return formatBytes(bytes);
   }
 
   confirm(): void {
