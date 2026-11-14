@@ -1777,5 +1777,12 @@
   "copyPicker.free": "libre",
   "copyPicker.queue": "cola {count}",
   "copyPicker.none": "Aún no se vio ninguna copia",
-  "copyPicker.getThis": "Obtener esta copia"
+  "copyPicker.getThis": "Obtener esta copia",
+  "copyPicker.scoring": "Comprobando qué copias coinciden…",
+  "copyPicker.searching": "Buscando copias…",
+  "copyPicker.rateLimited": "La fuente está ocupada, así que la lista puede estar incompleta. Prueba de nuevo en un momento.",
+  "copyPicker.offline": "La fuente se está reconectando, así que esta búsqueda no llegó. No significa que el álbum no esté disponible.",
+  "copyPicker.cutShort": "Algunas búsquedas no terminaron a tiempo, así que la lista puede estar incompleta.",
+  "copyPicker.scoreFailed": "No se pudieron comprobar estas copias: {reason}",
+  "getCard.failed": "No se pudo conseguir — elige una copia"
 }

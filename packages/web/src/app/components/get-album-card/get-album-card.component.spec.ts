@@ -16,6 +16,7 @@ interface Inputs {
   library: CardLibraryState | null;
   showWatch: boolean;
   origin: 'catalog' | 'provider';
+  failed: string | null;
 }
 
 function render(inputs: Partial<Inputs> = {}) {
@@ -49,6 +50,7 @@ function render(inputs: Partial<Inputs> = {}) {
   setInputValue(c.library, inputs.library ?? null);
   setInputValue(c.showWatch, inputs.showWatch ?? false);
   setInputValue(c.origin, inputs.origin ?? 'catalog');
+  setInputValue(c.failed, inputs.failed ?? null);
   const emitted = { get: 0, copies: 0, watch: 0, cancel: [] as string[] };
   c.get.subscribe(() => emitted.get++);
   c.copies.subscribe(() => emitted.copies++);
@@ -76,6 +78,21 @@ describe('GetAlbumCardComponent', () => {
     q('catalog-album-copies-cover')!.click();
     q('catalog-album-copies')!.click();
     expect(emitted).toMatchObject({ copies: 2, get: 0 });
+  });
+
+  it('failed: says so, keeps Get, and opens its copies even with none seen', () => {
+    const { q, text, emitted } = render({ availability: undefined, failed: 'No confident match' });
+    expect(text('catalog-album-status')).toBe("Couldn't get it — choose a copy");
+    expect(q('catalog-album-status')!.getAttribute('title')).toBe('No confident match');
+    expect(q('catalog-album')!.getAttribute('data-state')).toBe('failed');
+    expect(q('catalog-album-get')).not.toBeNull();
+    q('catalog-album-copies')!.click();
+    expect(emitted.copies).toBe(1);
+  });
+
+  it('a running Get hides an earlier failure', () => {
+    const { q } = render({ failed: 'x', status: { phase: 'searching' } });
+    expect(q('catalog-album')!.getAttribute('data-state')).toBe('busy');
   });
 
   it('with no copies the cover is inert', () => {

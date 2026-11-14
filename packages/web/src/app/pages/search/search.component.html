@@ -401,7 +401,8 @@
                     [status]="catalogHuntStatus(album)"
                     [preparing]="resolvingAlbums().has(album.foreignAlbumId)"
                     [availability]="availability ? availabilityLabel(availability) : availability"
-                    [hasCopies]="!!availability"
+                    [hasCopies]="!!availability || !!plugins.networkSource()"
+                    [failed]="catalogFailure(album)"
                     [library]="libraryStateOf(album.artistName, album.title, album.trackCount)"
                     [showWatch]="plugins.hasDownload()"
                     [watched]="watchlist.isWatched(album.foreignAlbumId)"
@@ -949,20 +950,12 @@
       [title]="open.title"
       [artist]="open.artist"
       [status]="copiesStatusLabel(status)"
-      [copies]="open.copies"
+      [copies]="pickerCopies()"
+      [searching]="copiesSearching()"
+      [notice]="copiesNotice()"
       [replaces]="status.phase !== 'idle'"
       (pick)="getCopy($event, status.phase !== 'idle')"
-      (close)="copiesOpen.set(null)"
-    />
-  }
-
-  <!-- Album-hunt modal — same flow as the discography page -->
-  @if (huntingAlbum()) {
-    <app-album-hunt-modal
-      [album]="huntingAlbum()!"
-      [artistName]="huntingArtistName()"
-      (closed)="closeHunt()"
-      (downloaded)="closeHunt()"
+      (close)="closeCopies()"
     />
   }
 </div>

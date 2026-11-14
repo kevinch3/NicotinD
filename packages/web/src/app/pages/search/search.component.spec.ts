@@ -59,6 +59,9 @@ function setup(
   const autoHunt = {
     hunt: vi.fn(),
     cancel: vi.fn(() => Promise.resolve()),
+    failureFor: vi.fn((_id: number | null | undefined): string | null => null),
+    beginSearch: vi.fn(),
+    endSearch: vi.fn(),
     statusFor: vi.fn((_id: number): AlbumHuntStatus => ({ phase: 'idle' })),
     statusForAlbum: vi.fn(
       (_target: { artist?: string | null; title?: string | null; lidarrAlbumId?: number | null }) =>
@@ -518,8 +521,11 @@ describe('SearchComponent — metadata-driven search', () => {
       'Pink Floyd',
       expect.any(Function),
     );
-    expect(component.huntingArtistName()).toBe('Pink Floyd');
     expect(component.resolvingAlbums().size).toBe(0);
+    // "Find manually" on a failed Get opens this album's copies, not a modal.
+    const openManual = autoHunt.hunt.mock.calls[0]![2] as () => void;
+    openManual();
+    expect(component.copiesOpen()?.title).toBe(CATALOG_ALBUM.title);
   });
 
   // Hunt status is keyed by the Lidarr id, which a catalog card only learns on
@@ -809,6 +815,85 @@ describe('SearchComponent — what the provider holds (#1538)', () => {
     component.getCopy(open.copies[0]!, false);
     expect(download).toHaveBeenCalledWith(open.copies[0]!.folder, false);
     expect(component.copiesOpen()).toBeNull();
+  });
+
+  it('upgrades the picker rows with the hunt scores, and gets a scored copy with alternates', async () => {
+    const candidate = (username: string, matchPct: number) => ({
+      username,
+      directory: `Music\\${username}\\The Dark Side of the Moon`,
+      files: [{ filename: `${username}/01.flac`, size: 10 }],
+      matchedTracks: 10,
+      totalTracks: 10,
+      matchPct,
+      format: 'FLAC',
+      estimatedSizeMb: 300,
+      isLive: false,
+      freeUploadSlots: 1,
+      queueLength: 0,
+      uploadSpeed: 1,
+    });
+    const huntDownload = vi.fn((..._args: unknown[]) => of({ ok: true, queued: 10 }));
+    const ctx = setup(
+      {},
+      {},
+      {},
+      {
+        huntAlbumBase: () =>
+          of({
+            candidates: [candidate('z', 98), candidate('y', 70)],
+            totalTracks: 10,
+            skewNeeded: false,
+          }),
+        huntAlbumSkew: () => of({ candidates: [] }),
+        huntDownload,
+      },
+    );
+    ctx.plugins.plugins.set([
+      {
+        id: 'slskd',
+        name: 'Soulseek',
+        enabled: true,
+        remote: true,
+        kind: 'acquisition',
+        capabilities: ['download'],
+      } as unknown as PluginInfo,
+    ]);
+    ctx.component.catalog.set({ artists: [], albums: [CATALOG_ALBUM], scopedArtist: 'Pink Floyd' });
+    ctx.search.network.set([
+      peer('a', 'Music\\Pink Floyd\\The Dark Side of the Moon (1973)', 10),
+    ] as never);
+    ctx.search.setNetworkState('complete');
+
+    ctx.component.showCatalogCopies(CATALOG_ALBUM);
+    expect(ctx.component.copiesSearching()).toBe(true);
+    for (let i = 0; i < 5; i++) await flush();
+
+    const rows = ctx.component.pickerCopies();
+    expect(rows.map((r) => r.username)).toEqual(['z', 'y', 'a']);
+    expect(rows[0]!.matchPct).toBe(98);
+    expect(ctx.component.copiesSearching()).toBe(false);
+
+    ctx.component.getCopy(rows[1]!, false);
+    await flush();
+    expect(huntDownload).toHaveBeenCalledTimes(1);
+    const [lidarrId, payload, replace] = huntDownload.mock.calls[0]! as [
+      number,
+      { selected: { username: string }; alternates: { username: string }[] },
+      boolean,
+    ];
+    expect(lidarrId).toBe(55);
+    expect(payload.selected.username).toBe('y');
+    expect(payload.alternates.map((a) => a.username)).toEqual(['z']);
+    expect(replace).toBe(false);
+    expect(ctx.component.copiesOpen()).toBeNull();
+  });
+
+  it('a card shows the failure of its last Get, once it knows its Lidarr id', async () => {
+    const { component, autoHunt } = setup();
+    autoHunt.failureFor.mockImplementation((id) => (id === 55 ? 'no peer had it' : null));
+    expect(component.catalogFailure(CATALOG_ALBUM)).toBeNull();
+    await component.huntCatalogAlbum(CATALOG_ALBUM);
+    expect(component.catalogFailure(CATALOG_ALBUM)).toBe('no peer had it');
   });
 
   it('a source-only album opens its copies in the same picker', () => {

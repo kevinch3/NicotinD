@@ -23,6 +23,8 @@ export interface CopyCandidate {
   queueLength: number;
   /** What a Get of this copy enqueues. */
   folder: FolderGroup;
+  /** The hunt's candidate, when the hunt scored this copy: a Get goes through hunt-download. */
+  scored?: FolderCandidate;
 }
 
 export const copyKey = (username: string, directory: string): string => `${username}::${directory}`;
@@ -67,6 +69,7 @@ export function huntToCopy(c: FolderCandidate): CopyCandidate {
     freeSlot: c.freeUploadSlots > 0,
     queueLength: c.queueLength,
     folder,
+    scored: c,
   };
 }
 

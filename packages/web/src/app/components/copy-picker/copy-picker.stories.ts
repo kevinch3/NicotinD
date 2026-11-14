@@ -82,3 +82,11 @@ export const Replacing: Story = { args: { status: 'Downloading · 7/20', replace
 
 /** Nothing seen yet. */
 export const Empty: Story = { args: { copies: [] } };
+
+/** The hunt is still scoring: nothing yet, and the header says it is looking. */
+export const Scoring: Story = { args: { copies: [], searching: true } };
+
+/** The source throttled the hunt, so the list may be short. */
+export const Incomplete: Story = {
+  args: { notice: 'The source is busy, so this list may be incomplete. Try again in a moment.' },
+};

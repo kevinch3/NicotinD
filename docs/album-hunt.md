@@ -72,8 +72,10 @@ Again*. The page already holds every folder the network search answered with, so
   `data-origin="provider"` on an album only a source holds). Four text lines: title, artist, catalog
   facts, and one status line, the only one that changes: availability, then `albumHuntLabel` while
   busy, then "In library". **Get is an explicit button** (`catalog-album-get`); the cover and the
-  Copies button open **Choose a copy** (below), and are absent
-  when no copy is known. A click on a cover can add an artist to Lidarr, which Cancel does not undo,
+  Copies button open **Choose a copy** (below). On a catalog card they are there whenever a network
+  source is (the picker can hunt); on a provider card, whenever a copy is known. A Get that failed
+  leaves the card in a **failed** state (`data-state="failed"`, "Couldn't get it — choose a copy",
+  the reason in its title) from `AutoHuntService.failureFor` until the next Get of that album. A click on a cover can add an artist to Lidarr, which Cancel does not undo,
   so the cover never starts a Get.
 - **Owned albums are marked before the click** (`libraryStateOf`). `/api/search` already returns the
   library albums the query matched; the page keeps them (`SearchService.localAlbums`) only to join
@@ -96,8 +98,16 @@ slot or a queue, and the peer with the folder's leaf name. "Get this copy" goes 
 "Replace with this copy" and sends `replace`. It is a right-hand drawer from `lg` up, so the grid
 it was opened from stays in view and a card's state changes behind it, and a bottom sheet below
 (`appBottomChromeSafe`); Escape and hardware Back close it (`registerOverlayCloser`). It opens
-with no Lidarr call, so looking at copies never adds an artist. Scored copies from the hunt, a
-card's failed state opening it, and the Advanced lane folding into it are the next steps of #1885.
+at once with the copies the page search saw. On a catalog card it then resolves the album
+(the same `resolveCatalog` the Get uses, so it can add the artist to Lidarr, as the Get button can)
+and runs the scored hunt (`lib/scored-hunt.ts`: `runScoredHunt`, the base-then-skew sequence the
+album-hunt modal also runs). Scored copies take the lead as they arrive and a copy both lanes saw
+keeps its score; the header says it is still checking, and a rate-limited, offline or cut-short
+hunt says the list may be incomplete. A scored copy's Get goes through `hunt-download` with the
+other scored copies as alternates (`huntDownloadPayload`); an unscored one through `downloadFolder`.
+An album Lidarr does not track keeps its unscored copies. A failed Get's **Find Manually** opens
+this picker; the Get page no longer mounts the album-hunt modal, which the artist page and the
+admin re-hunt still use. The Advanced lane folding into it is the next step of #1885.
 
 The folder badge is the folder's **majority** format (`folderFormat`): a lossless minority reads
 "Mixed". The prod "Trip-Hop" grab-bag, one FLAC among 50 mostly-128k files, wore a FLAC badge and

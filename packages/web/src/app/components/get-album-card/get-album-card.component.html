@@ -16,7 +16,7 @@
         rounded="rounded-none"
       />
     </div>
-    @if (hasCopies()) {
+    @if (copiesOffered()) {
       <button
         type="button"
         data-testid="catalog-album-copies-cover"
@@ -69,7 +69,16 @@
     <p
       appOverflowReveal
       class="text-xs truncate"
-      [class]="busy() ? 'text-status-progress' : owned() ? 'text-status-success' : 'text-theme-muted'"
+      [class]="
+        busy()
+          ? 'text-status-progress'
+          : showFailed()
+            ? 'text-status-error'
+            : owned()
+              ? 'text-status-success'
+              : 'text-theme-muted'
+      "
+      [attr.title]="showFailed() ? failed() : null"
       [attr.data-testid]="busy() ? 'catalog-album-hunt-status' : 'catalog-album-status'"
       role="status"
     >
@@ -124,7 +133,7 @@
           }}</span>
         </button>
       }
-      @if (hasCopies()) {
+      @if (copiesOffered()) {
         <button
           type="button"
           data-testid="catalog-album-copies"

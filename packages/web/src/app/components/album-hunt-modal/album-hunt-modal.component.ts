@@ -5,18 +5,14 @@ import { firstValueFrom } from 'rxjs';
 import type { ArchiveCandidate, SpotifyCandidate } from '@nicotind/core';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import { SearchApiService } from '../../services/api/search-api.service';
-import {
-  huntCutShort,
-  type DiscographyAlbum,
-  type FolderCandidate,
-} from '../../services/api/api-types';
+import { type DiscographyAlbum, type FolderCandidate } from '../../services/api/api-types';
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
 import { PluginService } from '../../services/plugin.service';
 import { ToastService } from '../../services/toast.service';
 import { AutoHuntService } from '../../services/auto-hunt.service';
 import { baseQueries, skewedQueries } from '../../lib/hunt-queries';
-import { mergeCandidates } from '../../lib/merge-candidates';
+import { runScoredHunt, huntDownloadPayload } from '../../lib/scored-hunt';
 import {
   archiveToCandidate,
   spotifyToCandidate,
@@ -252,12 +248,6 @@ export class AlbumHuntModalComponent implements OnInit {
     return this.blendedAcquired().has(c.id);
   }
 
-  private _noteSearchCounts(res: { searchesFired?: number; searchesAnswered?: number }): void {
-    this.searchesFired.update((n) => n + (res.searchesFired ?? 0));
-    this.searchesAnswered.update((n) => n + (res.searchesAnswered ?? 0));
-    if (huntCutShort(res)) this.sourceBusy.set(true);
-  }
-
   async startHunt(): Promise<void> {
     this.state.set('searching');
     this.candidates.set([]);
@@ -284,50 +274,24 @@ export class AlbumHuntModalComponent implements OnInit {
     const lidarrId = this.album().lidarrId;
     this.autoHunt.beginSearch(lidarrId);
     try {
-      // Phase 1 — base queries.
-      this._setPhaseState(baseQueries(artist, album), 'searching');
-
-      const baseResult = await firstValueFrom(
-        this.api.huntAlbumBase(this.album().lidarrId, {
-          artistName: artist,
-          albumTitle: album,
-          skewSearch: this.skewSearch(),
-        }),
-      );
-
-      this._setPhaseState(baseQueries(artist, album), 'done');
-      this.candidates.set(baseResult.candidates);
-      this.totalTracks.set(baseResult.totalTracks);
-
-      // Phase 2 — skew queries (only when the base didn't find a confident match).
-      if (this.skewSearch() && baseResult.skewNeeded) {
-        const skewQs = skewedQueries(artist, album);
-        if (skewQs.length) {
-          this._setPhaseState(skewQs, 'searching');
-
-          const skewResult = await firstValueFrom(
-            this.api.huntAlbumSkew(this.album().lidarrId, {
-              artistName: artist,
-              albumTitle: album,
-            }),
-          );
-
-          this._setPhaseState(skewQs, 'done');
-
-          // Merge skew candidates with base on the frontend: de-dupe by
-          // username::directory, keep the higher-scoring instance, then re-rank.
-          this.candidates.set(mergeCandidates(baseResult.candidates, skewResult.candidates));
-          if (skewResult.rateLimited) this.rateLimited.set(true);
-          if (skewResult.sourceOffline) this.sourceOffline.set(true);
-          this._noteSearchCounts(skewResult);
-        }
-      } else if (this.skewSearch()) {
-        // Base was confident — skew not needed; mark rows as skipped.
-        this._setPhaseState(skewedQueries(artist, album), 'skipped');
-      }
-      if (baseResult.rateLimited) this.rateLimited.set(true);
-      if (baseResult.sourceOffline) this.sourceOffline.set(true);
-      this._noteSearchCounts(baseResult);
+      const hunt = await runScoredHunt(this.api, lidarrId, artist, album, {
+        skew: this.skewSearch(),
+        onPhase: (phase, st) =>
+          this._setPhaseState(
+            phase === 'base' ? baseQueries(artist, album) : skewedQueries(artist, album),
+            st,
+          ),
+        onBase: (candidates, totalTracks) => {
+          this.candidates.set(candidates);
+          this.totalTracks.set(totalTracks);
+        },
+      });
+      this.candidates.set(hunt.candidates);
+      this.rateLimited.set(hunt.rateLimited);
+      this.sourceOffline.set(hunt.sourceOffline);
+      this.sourceBusy.set(hunt.cutShort);
+      this.searchesFired.set(hunt.searchesFired);
+      this.searchesAnswered.set(hunt.searchesAnswered);
 
       // The source throttled the search burst (slskd 429), so an empty result is
       // "still searching — keep trying", not a genuine miss. Offer a one-tap retry.
@@ -373,14 +337,6 @@ export class AlbumHuntModalComponent implements OnInit {
     const candidate = this.effectiveCandidate();
     if (!candidate) return;
 
-    // Pass the other candidates as ranked alternates so the server can recover
-    // any tracks this peer fails to deliver from a different peer.
-    const toFiles = (c: FolderCandidate) =>
-      c.files.map((f) => ({ filename: f.filename, size: f.size }));
-    const alternates = this.candidates()
-      .filter((c) => c !== candidate)
-      .map((c) => ({ username: c.username, directory: c.directory, files: toFiles(c) }));
-
     this.state.set('downloading');
     const lidarrId = this.album().lidarrId;
     this.autoHunt.beginSearch(lidarrId);
@@ -388,16 +344,7 @@ export class AlbumHuntModalComponent implements OnInit {
       const res = await firstValueFrom(
         this.api.huntDownload(
           lidarrId,
-          {
-            selected: {
-              username: candidate.username,
-              directory: candidate.directory,
-              files: toFiles(candidate),
-              candidateRef: candidate.candidateRef,
-            },
-            alternates,
-            localAlbumId: this.album().localAlbumId,
-          },
+          huntDownloadPayload(candidate, this.candidates(), this.album().localAlbumId),
           this.replace(),
         ),
       );

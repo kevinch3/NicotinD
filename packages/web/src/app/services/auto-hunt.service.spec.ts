@@ -283,6 +283,17 @@ describe('AutoHuntService', () => {
       expect(messages()[1]).toBe(`Couldn't get "Animals" — No confident match`);
     });
 
+    it('remembers the failure for the card, and forgets it on the next Get', async () => {
+      const service = svc();
+      service.hunt(ALBUM, 'Pink Floyd', vi.fn());
+      await flush();
+      feed([failed()]);
+      expect(service.failureFor(ALBUM.lidarrId)).toBe('No confident match');
+      expect(service.failureFor(null)).toBeNull();
+      service.hunt(ALBUM, 'Pink Floyd', vi.fn());
+      expect(service.failureFor(ALBUM.lidarrId)).toBeNull();
+    });
+
     it('says nothing about a job the person cancelled', async () => {
       svc().hunt(ALBUM, 'Pink Floyd', vi.fn());
       await flush();

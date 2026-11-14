@@ -40,6 +40,10 @@ export class CopyPickerComponent {
   readonly copies = input<readonly CopyCandidate[]>([]);
   /** Another Get for this work is running: picking replaces it. */
   readonly replaces = input(false);
+  /** A scored hunt is still out: rows may yet upgrade or arrive. */
+  readonly searching = input(false);
+  /** Why the copies may be incomplete (source busy, offline), or null. */
+  readonly notice = input<string | null>(null);
 
   readonly pick = output<CopyCandidate>();
   readonly close = output<void>();

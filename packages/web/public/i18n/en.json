@@ -1777,5 +1777,12 @@
   "copyPicker.free": "free",
   "copyPicker.queue": "queue {count}",
   "copyPicker.none": "No copy seen yet",
-  "copyPicker.getThis": "Get this copy"
+  "copyPicker.getThis": "Get this copy",
+  "copyPicker.scoring": "Checking which copies match…",
+  "copyPicker.searching": "Looking for copies…",
+  "copyPicker.rateLimited": "The source is busy, so this list may be incomplete. Try again in a moment.",
+  "copyPicker.offline": "The source is reconnecting, so this search never reached it. That does not mean the album is unavailable.",
+  "copyPicker.cutShort": "Some searches did not run in time, so this list may be incomplete.",
+  "copyPicker.scoreFailed": "Couldn't check these copies: {reason}",
+  "getCard.failed": "Couldn't get it — choose a copy"
 }
