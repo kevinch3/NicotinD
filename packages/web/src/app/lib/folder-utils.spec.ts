@@ -10,7 +10,6 @@ import {
   folderFormat,
   fileQualityLabel,
   folderBasename,
-  pickNetworkView,
   type FolderGroup,
 } from './folder-utils';
 
@@ -227,21 +226,6 @@ describe('folderBasename', () => {
   it('takes the last path segment (backslash or slash)', () => {
     expect(folderBasename('Music\\Zara Larsson\\Poster Girl')).toBe('Poster Girl');
     expect(folderBasename('a/b/c')).toBe('c');
-  });
-});
-
-describe('pickNetworkView', () => {
-  it('picks folders when the catalog surfaced album cards (album-intent)', () => {
-    expect(pickNetworkView('muse', true)).toBe('folders');
-  });
-
-  it('picks folders for a multi-word "artist title" query', () => {
-    expect(pickNetworkView('la bifurcada', false)).toBe('folders');
-  });
-
-  it('picks songs for a bare one-word query with no album cards', () => {
-    expect(pickNetworkView('toxic', false)).toBe('songs');
-    expect(pickNetworkView('  toxic  ', false)).toBe('songs');
   });
 });
 

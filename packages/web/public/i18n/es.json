@@ -1750,7 +1750,7 @@
   "getCard.unwatchHint": "Vigilando: se descarga solo cuando aparezca",
   "getNotice.dismiss": "Descartar",
   "getNotice.loading": "Cargando…",
-  "getNotice.rawFallback": "\"{album}\" no está en el catálogo de Lidarr de {artist}: obtenlo de las carpetas de {source} más abajo.",
+  "getNotice.rawFallback": "\"{album}\" no está en el catálogo de Lidarr de {artist}: estas copias vienen de la búsqueda de la página, sin puntuar.",
   "getNotice.browseDiscography": "Ver la discografía de {artist}",
   "getNotice.loadDiscography": "Cargar la discografía de {artist}",
   "getNotice.spotifyNeedsSpotdl": "Los resultados de Spotify se abren en Spotify: activa el plugin spotDL para descargarlos.",
@@ -1784,5 +1784,12 @@
   "copyPicker.offline": "La fuente se está reconectando, así que esta búsqueda no llegó. No significa que el álbum no esté disponible.",
   "copyPicker.cutShort": "Algunas búsquedas no terminaron a tiempo, así que la lista puede estar incompleta.",
   "copyPicker.scoreFailed": "No se pudieron comprobar estas copias: {reason}",
-  "getCard.failed": "No se pudo conseguir — elige una copia"
+  "getCard.failed": "No se pudo conseguir — elige una copia",
+  "copyPicker.files": "Archivos",
+  "copyPicker.hideFiles": "Ocultar archivos",
+  "copyPicker.getFile": "Conseguir {file}",
+  "copyPicker.browse": "Explorar la carpeta entera",
+  "copyPicker.allCopiesTitle": "Todo en {source}",
+  "acquire.allCopies": "Todas las copias en {source}",
+  "getNotice.rawFallbackSearch": "Buscar este álbum en {source}"
 }

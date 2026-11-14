@@ -3,7 +3,7 @@ import { Component, NO_ERRORS_SCHEMA, input, signal } from '@angular/core';
 import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 import { NEVER, of, throwError } from 'rxjs';
 import { vi } from 'vitest';
-import { SearchComponent, getHighlightTerms } from './search.component';
+import { SearchComponent } from './search.component';
 import { SearchApiService } from '../../services/api/search-api.service';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
@@ -326,7 +326,7 @@ describe('SearchComponent — no sources enabled', () => {
 });
 
 describe('SearchComponent — metadata-driven search', () => {
-  it('populates catalog results and collapses the direct-search fallback when there are hits', async () => {
+  it('populates catalog results when there are hits', async () => {
     const { component, search } = setup();
     search.setQuery('pink floyd');
 
@@ -335,7 +335,6 @@ describe('SearchComponent — metadata-driven search', () => {
 
     expect(component.hasCatalog()).toBe(true);
     expect(component.catalog()?.albums[0]?.title).toBe('The Dark Side of the Moon');
-    expect(component.directSearchOpen()).toBe(false);
   });
 
   // #1536: the proxied catalog cover is behind auth and an <img> sends no
@@ -487,7 +486,7 @@ describe('SearchComponent — metadata-driven search', () => {
     expect(document.activeElement).toBe(cards[1]);
   });
 
-  it('opens the direct-search fallback when catalog has no hits', async () => {
+  it('has no catalog when the catalog has no hits', async () => {
     const { component, search } = setup({ catalogSearch: () => of({ artists: [], albums: [] }) });
     search.setQuery('zzz nothing');
 
@@ -495,10 +494,9 @@ describe('SearchComponent — metadata-driven search', () => {
     await flush();
 
     expect(component.hasCatalog()).toBe(false);
-    expect(component.directSearchOpen()).toBe(true);
   });
 
-  it('opens the direct-search fallback and flags unavailability when catalog lookup fails (no Lidarr)', async () => {
+  it('flags unavailability when catalog lookup fails (no Lidarr)', async () => {
     const { component, search } = setup({
       catalogSearch: () => throwError(() => new Error('404')),
     });
@@ -508,7 +506,6 @@ describe('SearchComponent — metadata-driven search', () => {
     await flush();
 
     expect(component.catalogUnavailable()).toBe(true);
-    expect(component.directSearchOpen()).toBe(true);
   });
 
   it('resolves a searched album and calls autoHunt.hunt() with the real Lidarr id', async () => {
@@ -690,13 +687,11 @@ describe('SearchComponent — metadata-driven search', () => {
 
     expect(component.discographyNote()?.kind).toBe('lookup-failed');
     expect(component.canLoadDiscography()).toBe(false); // outage hides the mutating CTA
-    expect(component.directSearchOpen()).toBe(true);
 
     await component.retryCatalog();
     expect(calls).toBe(2);
     expect(component.catalog()?.albums.length).toBe(1);
     expect(component.discographyNote()).toBeNull();
-    expect(component.directSearchOpen()).toBe(false);
   });
 
   it('a failing retryCatalog flips catalogUnavailable instead of throwing', async () => {
@@ -807,13 +802,13 @@ describe('SearchComponent — what the provider holds (#1538)', () => {
     const download = vi.spyOn(component, 'downloadFolder').mockResolvedValue(undefined as never);
     component.showCatalogCopies(CATALOG_ALBUM);
     const open = component.copiesOpen()!;
+    const copies = open.copies();
     expect(open.title).toBe(CATALOG_ALBUM.title);
-    expect(open.copies.length).toBeGreaterThan(0);
-    expect(open.copies[0]!.totalTracks).toBe(CATALOG_ALBUM.trackCount);
-    expect(component.directSearchOpen()).toBe(false);
+    expect(copies.length).toBeGreaterThan(0);
+    expect(copies[0]!.totalTracks).toBe(CATALOG_ALBUM.trackCount);
 
-    component.getCopy(open.copies[0]!, false);
-    expect(download).toHaveBeenCalledWith(open.copies[0]!.folder, false);
+    component.getCopy(copies[0]!, false);
+    expect(download).toHaveBeenCalledWith(copies[0]!.folder, false);
     expect(component.copiesOpen()).toBeNull();
   });
 
@@ -900,7 +895,12 @@ describe('SearchComponent — what the provider holds (#1538)', () => {
     const { component } = seeded('complete');
     const [wall] = component.providerAlbums();
     component.openProviderCopies(wall!);
-    expect(component.copiesOpen()!.copies.map((c) => c.username)).toEqual(['c']);
+    expect(
+      component
+        .copiesOpen()!
+        .copies()
+        .map((c) => c.username),
+    ).toEqual(['c']);
   });
 
   it('marks a card whose album the library holds, whole or in part', () => {
@@ -919,15 +919,29 @@ describe('SearchComponent — what the provider holds (#1538)', () => {
     expect(component.libraryStateOf('Pink Floyd', 'Animals', 5)).toBeNull();
   });
 
-  it('offers the albums only the provider holds, and opens their copies in the folders lane', () => {
+  it('offers the albums only the provider holds', () => {
     const { component } = seeded('complete');
     const [wall] = component.providerAlbums();
     expect(wall).toMatchObject({ title: 'The Wall', artist: 'Pink Floyd' });
+  });
 
-    component.showProviderCopies(wall!);
-    expect(component.directSearchOpen()).toBe(true);
-    expect(component.networkView()).toBe('folders');
-    expect(component.visibleFolderGroups().map((g) => g.username)).toEqual(['c']);
+  it('All copies opens every folder the search saw in the picker, live, with Get all', () => {
+    const { component, search } = seeded('searching');
+    component.openAllCopies();
+    const open = component.copiesOpen()!;
+    expect(open.all).toBe(true);
+    expect(component.pickerCopies().length).toBe(component.folderGroups().length);
+    search.network.update((n) => [
+      ...n,
+      {
+        username: 'late',
+        freeUploadSlots: 1,
+        uploadSpeed: 1,
+        queueLength: 0,
+        files: [{ filename: 'Music\\Late\\Animals\\01 Dogs.flac', size: 1_000_000 }],
+      } as never,
+    ]);
+    expect(component.pickerCopies().map((c) => c.username)).toContain('late');
   });
 
   it('a provider card gets the fullest copy', () => {
@@ -980,16 +994,6 @@ describe('SearchComponent — one album = one download in the folder lane (#1539
     expect(component.downloadError()).toBeNull();
     expect(search.downloadedFolders().has(`${group.username}:${group.directory}`)).toBe(false);
     expect(transferKickPoll).toHaveBeenCalled();
-  });
-
-  it('shows the album downloading elsewhere on a folder whose own files are idle', () => {
-    const { component, autoHunt } = setup();
-    autoHunt.statusForAlbum.mockReturnValue({ phase: 'job', stage: 'downloading', jobId: 'cat-1' });
-    expect(component.folderElsewhereStatus(folder(3))).toMatchObject({ jobId: 'cat-1' });
-    expect(autoHunt.statusForAlbum).toHaveBeenLastCalledWith({
-      artist: 'Damian Lazarus & The Ancient Moons',
-      title: 'Message From The Other Side',
-    });
   });
 });
 
@@ -1530,16 +1534,18 @@ describe('SearchComponent — catalog-miss fallback', () => {
   // httpErrorCode reads err.error.code; this shape triggers the raw fallback.
   const notInLidarr = () => throwError(() => ({ error: { code: 'ALBUM_NOT_IN_LIDARR' } }));
 
-  it('opens the network lane for the clicked album without auto-loading the discography', async () => {
+  it("opens the album's copies with the note, keeping the query, without loading the discography", async () => {
     const catalogDiscography = vi.fn(() => of({ artists: [], albums: [] }));
-    const { component } = setup({ catalogResolve: notInLidarr, catalogDiscography });
+    const { component, search } = setup({ catalogResolve: notInLidarr, catalogDiscography });
+    search.setQuery('pink floyd');
 
     await component.huntCatalogAlbum(CATALOG_ALBUM);
     await flush();
 
     expect(component.rawFallbackAlbum()?.title).toBe(CATALOG_ALBUM.title);
-    expect(component.rawFallbackNote()).toBe(CATALOG_ALBUM.title);
-    expect(component.directSearchOpen()).toBe(true);
+    expect(component.copiesOpen()).toMatchObject({ title: CATALOG_ALBUM.title, fallback: true });
+    // The person's query is theirs: no silent rewrite to "<artist> <album>".
+    expect(search.query()).toBe('pink floyd');
     // Discography load auto-adds the artist to Lidarr — must be opt-in now.
     expect(catalogDiscography).not.toHaveBeenCalled();
   });
@@ -1555,6 +1561,17 @@ describe('SearchComponent — catalog-miss fallback', () => {
     await component.browseFallbackDiscography();
 
     expect(catalogDiscography).toHaveBeenCalled();
+  });
+
+  it('searches the network for the album only when asked, then shows every copy', async () => {
+    const { component, search } = setup({ catalogResolve: notInLidarr });
+    search.setQuery('pink floyd');
+    await component.huntCatalogAlbum(CATALOG_ALBUM);
+    await flush();
+
+    component.searchFallbackAlbum();
+    expect(search.query()).toBe('Pink Floyd The Dark Side of the Moon');
+    expect(component.copiesOpen()?.all).toBe(true);
   });
 });
 
@@ -1758,20 +1775,5 @@ describe('SearchComponent — get, then hear it', () => {
     downloads.enqueueDownload = vi.fn(() => throwError(() => new Error('offline')));
     await component.handleDownload('peer', { filename: 'x.flac', size: 10 });
     expect(remember).not.toHaveBeenCalled();
-  });
-});
-
-describe('getHighlightTerms (#1537)', () => {
-  it('marks a multi-word query as one phrase first, then its words', () => {
-    expect(getHighlightTerms('Christian  Löffler')).toEqual([
-      'Christian Löffler',
-      'Christian',
-      'Löffler',
-    ]);
-  });
-
-  it('never marks a stop-word or a single letter', () => {
-    expect(getHighlightTerms('Message From The Other Side')).not.toContain('The');
-    expect(getHighlightTerms('a b Mare')).toEqual(['Mare']);
   });
 });

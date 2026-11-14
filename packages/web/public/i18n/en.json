@@ -1750,7 +1750,7 @@
   "getCard.unwatchHint": "Watching — auto-downloads when found",
   "getNotice.dismiss": "Dismiss",
   "getNotice.loading": "Loading…",
-  "getNotice.rawFallback": "\"{album}\" isn't in {artist}'s Lidarr catalog — get it from the {source} folders below.",
+  "getNotice.rawFallback": "\"{album}\" isn't in {artist}'s Lidarr catalog, so these copies come from the page search, unscored.",
   "getNotice.browseDiscography": "Browse {artist}'s discography",
   "getNotice.loadDiscography": "Load {artist}'s discography",
   "getNotice.spotifyNeedsSpotdl": "Spotify matches open in Spotify — enable the spotDL plugin to download them.",
@@ -1784,5 +1784,12 @@
   "copyPicker.offline": "The source is reconnecting, so this search never reached it. That does not mean the album is unavailable.",
   "copyPicker.cutShort": "Some searches did not run in time, so this list may be incomplete.",
   "copyPicker.scoreFailed": "Couldn't check these copies: {reason}",
-  "getCard.failed": "Couldn't get it — choose a copy"
+  "getCard.failed": "Couldn't get it — choose a copy",
+  "copyPicker.files": "Files",
+  "copyPicker.hideFiles": "Hide files",
+  "copyPicker.getFile": "Get {file}",
+  "copyPicker.browse": "Browse the whole folder",
+  "copyPicker.allCopiesTitle": "Everything on {source}",
+  "acquire.allCopies": "All copies on {source}",
+  "getNotice.rawFallbackSearch": "Search {source} for this album"
 }

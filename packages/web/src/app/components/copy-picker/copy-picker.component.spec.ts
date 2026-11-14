@@ -21,7 +21,14 @@ const copy = (username: string, free: boolean): CopyCandidate =>
 
 function render(
   copies: CopyCandidate[],
-  opts: { replaces?: boolean; status?: string; searching?: boolean; notice?: string | null } = {},
+  opts: {
+    replaces?: boolean;
+    status?: string;
+    searching?: boolean;
+    notice?: string | null;
+    browsable?: boolean;
+    downloadAllCount?: number;
+  } = {},
 ) {
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
@@ -47,15 +54,21 @@ function render(
   setInputValue(c.status, opts.status ?? '');
   setInputValue(c.searching, opts.searching ?? false);
   setInputValue(c.notice, opts.notice ?? null);
+  setInputValue(c.browsable, opts.browsable ?? false);
+  setInputValue(c.downloadAllCount, opts.downloadAllCount ?? 0);
   const picked: CopyCandidate[] = [];
+  const files: string[] = [];
+  let all = 0;
   let closed = 0;
+  c.pickFile.subscribe((x) => files.push(`${x.copy.username}:${x.file.filename}`));
+  c.downloadAll.subscribe(() => all++);
   c.pick.subscribe((x) => picked.push(x));
   c.close.subscribe(() => closed++);
   fixture.detectChanges();
   const el = fixture.nativeElement as HTMLElement;
   const q = (id: string) => el.querySelector<HTMLElement>(`[data-testid="${id}"]`);
   const rows = () => Array.from(el.querySelectorAll<HTMLElement>('[data-testid="copy-row"]'));
-  return { fixture, el, q, rows, picked, closed: () => closed };
+  return { fixture, c, el, q, rows, picked, files, all: () => all, closed: () => closed };
 }
 
 describe('CopyPickerComponent', () => {
@@ -104,6 +117,34 @@ describe('CopyPickerComponent', () => {
     const { q } = render([], { notice: 'The source is busy' });
     expect(q('copy-picker-notice')!.textContent).toContain('The source is busy');
     expect(q('copy-picker-scoring')).toBeNull();
+  });
+
+  it("opens the selected copy's files, and gets one on its own", () => {
+    const { fixture, q, el, files } = render([copy('alpha', true)]);
+    expect(q('copy-files')).toBeNull();
+    q('copy-picker-files')!.click();
+    fixture.detectChanges();
+    const gets = el.querySelectorAll<HTMLElement>('[data-testid="copy-file-get"]');
+    expect(gets).toHaveLength(1);
+    gets[0]!.click();
+    expect(files).toEqual(['alpha:Music\\alpha\\Album\\01.flac']);
+    expect(q('copy-picker-browse')).toBeNull();
+  });
+
+  it('offers the whole-folder browser only where the source can browse', () => {
+    const { fixture, q, c } = render([copy('alpha', true)], { browsable: true });
+    q('copy-picker-files')!.click();
+    fixture.detectChanges();
+    q('copy-picker-browse')!.click();
+    expect(c.browsing()).toBe(true);
+  });
+
+  it('Get all is offered only with a count, and only emits', () => {
+    expect(render([copy('alpha', true)]).q('download-all')).toBeNull();
+    const { q, all } = render([copy('alpha', true)], { downloadAllCount: 7 });
+    expect(q('download-all')!.textContent).toContain('7');
+    q('download-all')!.click();
+    expect(all()).toBe(1);
   });
 
   it('closes from its button', () => {

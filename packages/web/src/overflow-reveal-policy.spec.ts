@@ -39,7 +39,6 @@ const NOT_A_NAME = {
     'pages/library/library.component.html',
     'pages/search/search.component.html',
     'pages/search/search.component.html',
-    'pages/search/search.component.html',
   ],
   // Admin progress and diagnostic lines.
   diagnostic: [
